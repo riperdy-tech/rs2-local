@@ -1,0 +1,426 @@
+Proceeding with **#19 AMT** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #19 — American Tower / AMT
+
+## Top-Line Execution Summary
+
+| Item                        |                                      Result |
+| --------------------------- | ------------------------------------------: |
+| Current Price / T0          |                      **$168.72** `[Actual]` |
+| Market Cap                  |                       **$79.1B** `[Actual]` |
+| Reported P/E                |                        **26.9x** `[Actual]` |
+| 2026 AFFO/share Guide       |                **$10.90–$11.07** `[Actual]` |
+| Forward P/AFFO              |                     **~15.4x** `[Estimate]` |
+| Dividend Yield              |                      **~4.2%** `[Estimate]` |
+| Base Intrinsic Value        |                 **$185/share** `[Estimate]` |
+| Expected Price              |                 **$188/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                       **8.8%** `[Estimate]` |
+| 50% CI                      |                  **$150–$210** `[Estimate]` |
+| 80% CI                      |                  **$130–$250** `[Estimate]` |
+| Conviction                  |   **Medium-High / 10.0 of 15** `[Estimate]` |
+| Recommended Max Weight      |                       **4.0%** `[Estimate]` |
+| Entry Strategy              | **Scale-in acceptable; better below ~$160** |
+| Execution Opinion           |                   **Modest Buy / Scale-In** |
+
+**Core conclusion:** AMT is one of the more attractive “quality at reasonable price” names in the queue so far. Growth is not explosive, leverage is still high, and rates matter, but at **~15.4x 2026 AFFO** with a **~4% dividend yield**, tower/data-center infrastructure looks reasonably priced rather than stretched.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** American Tower / AMT
+**Baseline Date:** June 26, 2026
+**T0:** current price **$168.72**, market cap **$79.1B**, P/E **26.9x**, EPS **$6.27** `[Actual]`.
+**T-1:** latest reported quarter is Q1 2026. AMT reported revenue of **$2.738B**, property revenue of **$2.670B**, adjusted EBITDA of **$1.835B**, AFFO attributable to common stockholders of **$1.324B**, and AFFO/share of **$2.84**. ([American Tower][1])
+**Tpf:** current valuation reflects 2026 guidance for AFFO/share of **$10.90–$11.07**, adjusted EBITDA of **$7.195–$7.265B**, and property revenue of **$10.585–$10.735B**. ([American Tower][1])
+
+**Archetype:** **A/B hybrid — Infrastructure REIT + Quality Compounder**
+**Valuation Engine:** **Engine 1 — REIT-adapted AFFO / DCF + Multiples**
+
+**Why this engine:** AMT is a cash-flow REIT, so GAAP EPS is less useful than AFFO, tenant billings, property revenue, adjusted EBITDA, leverage, dividend coverage, and interest-rate sensitivity.
+
+---
+
+## Section 1. Macro Context
+
+AMT is highly rate-sensitive because it carries large debt and trades partly as a yield/long-duration infrastructure asset. The Fed held the policy range at **3.50–3.75%** on June 17, and the 10-year Treasury was around **4.38–4.40%** on June 26. ([Federal Reserve][2])
+
+| Macro Variable       | AMT Impact                                |
+| -------------------- | ----------------------------------------- |
+| Higher long rates    | Valuation and refinancing headwind        |
+| Lower future rates   | Multiple expansion / refinancing tailwind |
+| 5G densification     | Tower demand tailwind                     |
+| AI / cloud workloads | Data-center demand tailwind               |
+| Carrier capex cycles | Near-term leasing risk                    |
+| FX                   | Meaningful due international exposure     |
+
+**Macro alignment:** **Neutral-to-mild positive.** The current rate backdrop is not ideal, but AMT’s stock has already de-rated, and digital infrastructure demand remains solid.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                |   RS2 View |
+| --------------------------------------------- | ---------: |
+| 5Y survival for major tower REIT              |   **>95%** |
+| Sustaining AFFO/share growth 3–5%             | **60–75%** |
+| Returning leverage toward target range        | **55–70%** |
+| Data-center segment compounding double digits | **50–65%** |
+| Multiple re-rating above 20x AFFO             | **25–35%** |
+
+**Base-rate adjustment:** positive for business durability, modest for growth. This is not a hypergrowth infrastructure story; it is a durable cash-flow compounder with moderate upside if rates ease.
+
+---
+
+## Section 2. Business Quality
+
+American Tower owns and leases communications infrastructure: towers, rooftop sites, distributed antenna systems, and data centers. Its customers include wireless carriers, broadcasters, cloud/hybrid-cloud customers, and enterprises. The business is understandable: tenants lease mission-critical vertical real estate, and adding tenants to an existing tower is high-margin.
+
+### Moat Score
+
+| Moat Type                               |       Score |
+| --------------------------------------- | ----------: |
+| Site scarcity / zoning                  |         3/3 |
+| Switching costs                         |       2.5/3 |
+| Network density                         |       2.5/3 |
+| Cost advantage                          |       2.5/3 |
+| Economies of scale                      |         3/3 |
+| Regulatory / permitting barriers        |       2.5/3 |
+| Data-center interconnection optionality |       1.5/3 |
+| **Total**                               | **17.5/21** |
+
+**Moat direction:** **Stable-to-widening.** Towers remain mission-critical, hard to replicate, and economically attractive when multiple tenants share the same asset. Data centers add growth optionality, but also require more capital and compete with specialized data-center REITs.
+
+### Financial Health
+
+| Metric                         |                               Result |
+| ------------------------------ | -----------------------------------: |
+| FY25 revenue                   | **$10.645B**, up **5.1%** `[Actual]` |
+| FY25 property revenue          | **$10.305B**, up **3.7%** `[Actual]` |
+| FY25 adjusted EBITDA           |  **$7.130B**, up **4.7%** `[Actual]` |
+| FY25 AFFO                      |  **$5.042B**, up **2.2%** `[Actual]` |
+| Q1 2026 revenue                |  **$2.738B**, up **6.8%** `[Actual]` |
+| Q1 2026 property revenue       |  **$2.670B**, up **7.3%** `[Actual]` |
+| Q1 2026 adjusted EBITDA margin |                 **67.0%** `[Actual]` |
+| Q1 2026 AFFO/share             |    **$2.84**, up **3.3%** `[Actual]` |
+| Total debt                     |              **$37.322B** `[Actual]` |
+| Cash                           |               **$1.609B** `[Actual]` |
+| Net debt                       |              **$35.713B** `[Actual]` |
+| Net leverage                   |                  **4.9x** `[Actual]` |
+
+FY25 results show steady but not explosive growth: revenue rose **5.1%**, adjusted EBITDA rose **4.7%**, and AFFO rose **2.2%**. ([American Tower][3]) Q1 leverage was **4.9x net debt to annualized adjusted EBITDA**, with total debt of **$37.322B** and cash of **$1.609B**. ([American Tower][1])
+
+**Financial health judgment:** **Good, not pristine.** AMT has durable cash flows, but leverage is material, so interest-rate and refinancing assumptions matter.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+For AMT, the most important adjusted metric is **AFFO**, not GAAP EPS.
+
+| Item                             |                              Result |
+| -------------------------------- | ----------------------------------: |
+| 2026 AFFO guide                  |       **$5.090–$5.170B** `[Actual]` |
+| 2026 AFFO/share guide            |        **$10.90–$11.07** `[Actual]` |
+| Weighted average shares in guide |                 **467M** `[Actual]` |
+| 2026 adjusted EBITDA guide       |       **$7.195–$7.265B** `[Actual]` |
+| 2026 cash interest expense guide |      **~$1.342–$1.362B** `[Actual]` |
+| Latest quarterly dividend        | **$1.79/share** `[Actual/Estimate]` |
+| Annualized dividend              |       **~$7.16/share** `[Estimate]` |
+| AFFO payout ratio                |               **~65%** `[Estimate]` |
+
+AMT’s 2026 AFFO bridge includes cash interest expense of about **$1.34–1.36B**, capital-improvement capex of **$165–175M**, corporate capex of **$15M**, and AFFO/share of **$10.90–$11.07**. ([American Tower][1]) The latest dividend data show a quarterly dividend of **$1.79/share**, implying roughly **$7.16/share annualized** and about a **4.2% yield** at the current price. ([dividendmax.com][4])
+
+**Adjusted financials judgment:** Clean enough for a REIT. Dividend coverage is acceptable, but leverage and interest expense keep the risk profile above “defensive utility.”
+
+---
+
+## Section 3. Valuation — REIT-Adapted Engine 1
+
+### AFFO Multiple Framework
+
+| Scenario | AFFO/share | Fair P/AFFO | Value / Share |
+| -------- | ---------: | ----------: | ------------: |
+| Bear     |     $10.50 |       12.5x |      **$130** |
+| Base     |     $11.20 |       16.5x |      **$185** |
+| Bull     |     $12.50 |       20.0x |      **$250** |
+
+**Base IV:** **$185/share** `[Estimate]`
+**Current price:** **$168.72** `[Actual]`
+**Margin of Safety:** **8.8%** `[Estimate]`
+
+### Cross-Check
+
+| Metric                                |     Result |
+| ------------------------------------- | ---------: |
+| Current P/AFFO on 2026 guide midpoint | **~15.4x** |
+| Dividend yield                        |  **~4.2%** |
+| AFFO yield                            |  **~6.5%** |
+| Net leverage                          |   **4.9x** |
+| Adjusted EBITDA margin                |  **67.0%** |
+
+AMT is not “deep value,” but it is trading at a reasonable AFFO multiple for a high-quality infrastructure REIT. The valuation is much more attractive than LIN/COST/CAT-style quality names, though the growth rate is also lower.
+
+### Reverse DCF
+
+At **$168.72**, the market is pricing AMT as if AFFO/share growth stays around **2–4%**, leverage remains elevated but controlled, and the multiple stays around the mid-teens. `[Estimate]`
+
+**Judgment:** **Conservative-to-reasonable.** This is one of the clearer cases where the current price does not require heroic growth.
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:** Crown Castle and SBA Communications are the closest U.S. tower peers, while data-center competition includes Equinix and Digital Realty. AMT’s tower business has strong barriers; its data-center business faces more capex-heavy competition.
+
+**Reflexivity:** A lower stock price makes equity issuance less attractive, so balance-sheet improvement must come from AFFO retention, asset recycling, and disciplined capex. Positive reflexivity appears if rates fall and the stock re-rates, improving capital-market flexibility.
+
+**Customer behavior:** Carrier consolidation and capex cycles can create churn or slower leasing, but mobile data growth pushes networks toward densification over time.
+
+**Network dynamics:** Towers are not a pure network effect, but site density and zoning scarcity create local quasi-monopolies. Data-center interconnection can create stronger network effects, but AMT is not yet in EQIX’s category.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                               |
+| -------- | ----------: | ------------: | ------------------------------------------------------------------------------ |
+| Bear     |         25% |      **$130** | Rates stay high, U.S. churn/straight-line drag persists, leverage remains high |
+| Base     |         50% |      **$185** | AFFO/share grows low-single digits, dividend covered, leverage stable/improves |
+| Bull     |         25% |      **$250** | Rates fall, data centers grow double digits, tower leasing accelerates         |
+
+**Expected Price:**
+25% × $130 + 50% × $185 + 25% × $250 = **$187.50/share** `[Estimate]`
+
+**Rounded Expected Price:** **$188/share**
+**50% CI:** **$150–$210**
+**80% CI:** **$130–$250**
+**MoS:** **8.8%**
+**MoS Judgment:** **Moderate positive margin of safety.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **1–2 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **Positive**
+
+The market is punishing AMT for rates, leverage, and slow AFFO growth. A patient holder can earn a covered yield while waiting for carrier demand, data-center demand, and eventual lower-rate optionality.
+
+**Horizon arbitrage judgment:** **Moderate positive.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |       Score |
+| ------------------------ | ----------: |
+| Business quality         |      2.75/3 |
+| Valuation attractiveness |       2.0/3 |
+| Macro alignment          |       1.5/3 |
+| Thesis clarity           |       2.0/3 |
+| Execution trackability   |      1.75/3 |
+| **Total**                | **10.0/15** |
+
+**Conviction Tier:** **Medium-High**
+**Recommended Max Weight:** **4.0%**
+
+The score is not higher because leverage, interest-rate sensitivity, and slow 2026 AFFO growth limit upside.
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item              |                      Result |
+| ----------------- | --------------------------: |
+| Short interest    | **9.06M shares** `[Actual]` |
+| Short % float     |        **1.95%** `[Actual]` |
+| Days to cover     |         **4.22** `[Actual]` |
+| Put/call OI ratio |         **1.19** `[Actual]` |
+| Squeeze risk      |                         Low |
+| Crowding score    |             **7/15 Medium** |
+
+Short interest is low-to-normal at **1.95% of float**, with **4.22 days to cover**. ([Fintel][5]) Options sentiment is mildly cautious, with Fintel reporting a put/call open-interest ratio of **1.19**. ([Fintel][6])
+
+**Behavioral judgment:** Mildly contrarian but not a squeeze setup. The market is cautious on AMT, which improves the setup slightly.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Digital infrastructure REIT / yield + 5G/data-center exposure.
+**Expected 3–5Y annualized return:** **8–11%** `[Estimate]`, from dividend yield, AFFO growth, and possible multiple normalization.
+**Overlap:** Moderate with data-center and AI-infrastructure themes; low with energy/materials; moderate with O and other REITs through rate sensitivity.
+
+**Portfolio fit judgment:** **Good**, especially as a yield/infrastructure diversifier. But AMT + O together would create meaningful REIT/rate exposure.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Weighted upside from current  | **~29%** `[Estimate]` |
+| Bear downside from current    | **~23%** `[Estimate]` |
+| Practical fractional Kelly    |              **4–6%** |
+| RS2 leverage/rate cap         |              **4.0%** |
+
+**Final recommended max weight:** **4.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Rate / refinancing risk:** AMT has **$35.7B net debt** and **4.9x** leverage, so higher-for-longer rates matter. ([American Tower][1])
+2. **Slow AFFO growth:** 2026 AFFO/share guide implies only **2.1%** midpoint growth. ([American Tower][1])
+3. **U.S. tower softness:** 2026 U.S. & Canada property revenue guidance implies a **-3.0%** midpoint growth rate, partly due lower straight-line revenue recognition. ([American Tower][1])
+
+### Top 3 Catalysts
+
+1. Rates fall or credit spreads tighten, helping REIT multiples.
+2. Data-center property revenue grows toward the **12.5%** guidance midpoint. ([American Tower][1])
+3. U.S. carrier leasing improves as 5G densification and future 6G prep require more network capacity.
+
+**Highest-impact bear scenario:** Rates stay high, AFFO/share growth remains low, and AMT trades like a leveraged bond proxy instead of a digital-infrastructure compounder.
+
+---
+
+## Section 7.5. Correlation Risk
+
+AMT’s bear triggers are interest rates, credit spreads, carrier capex cuts, FX, and REIT factor outflows. It overlaps with **O** through rate/yield sensitivity and with **DLR/EQIX** through data-center exposure, but it has lower commodity and AI-semiconductor beta.
+
+**Stress correlation estimate:**
+With REITs/rate-sensitive equities: **0.70–0.85** `[Estimate]`
+With data-center infrastructure: **0.45–0.65** `[Estimate]`
+With energy/materials cyclicals: **0.15–0.35** `[Estimate]`
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                            | Warning Trigger |      Re-underwrite Trigger |
+| ------------------------------ | --------------: | -------------------------: |
+| AFFO/share growth              |             <2% |              flat/negative |
+| Net leverage                   |           >5.2x |                      >5.5x |
+| Dividend payout / AFFO         |            >75% |                       >85% |
+| U.S. & Canada property revenue |  worse than -3% |  sustained negative growth |
+| Data-center revenue growth     |            <10% |                        <7% |
+| Cash interest expense          |     above guide | refinancing pressure rises |
+
+### Pre-Mortem
+
+1. **Wrong because AMT is a leveraged bond proxy.**
+   Early warning: P/AFFO keeps falling despite stable AFFO.
+   Response: require higher AFFO yield before adding.
+
+2. **Wrong because carrier leasing disappoints.**
+   Early warning: U.S. & Canada property revenue remains negative into 2027.
+   Response: lower growth and terminal multiple.
+
+3. **Wrong because leverage does not improve.**
+   Early warning: net leverage remains above 5x while AFFO growth stalls.
+   Response: reduce max weight and lower IV.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. AMT has good assets, but 2026 AFFO/share growth is only guided at **2.1%**, which is not high-growth infrastructure. ([American Tower][1])
+2. Net leverage is still **4.9x**, which makes AMT sensitive to rates and credit conditions. ([American Tower][1])
+3. U.S. & Canada property revenue is guided down **3.0%** at the midpoint in 2026. ([American Tower][1])
+4. Data centers are attractive but capital-intensive and competitively crowded.
+5. Dividend yield is attractive, but dividend growth could be slow if AFFO growth remains low.
+6. FX can help or hurt results; Q1 guidance raise partly reflected positive FX impacts. ([American Tower][1])
+7. A higher-for-longer 10-year yield near **4.4%** caps REIT multiple expansion. ([Trading Economics][7])
+
+### Long vs Short Logic Battle
+
+| Issue                 | Long Score | Short Score | Winner |
+| --------------------- | ---------: | ----------: | ------ |
+| Tower moat            |          3 |         0.5 | Long   |
+| Dividend / AFFO yield |        2.5 |           1 | Long   |
+| Valuation             |          2 |         1.5 | Long   |
+| Leverage              |       1.25 |         2.5 | Short  |
+| AFFO growth           |       1.25 |        2.25 | Short  |
+| Data-center upside    |          2 |         1.5 | Long   |
+| Rate sensitivity      |          1 |         2.5 | Short  |
+
+**Long score:** **13.0**
+**Short score:** **11.75**
+**Judgment:** Long thesis wins, but only moderately. This is a **modest buy**, not a table-pounder.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                       | Status                            |
+| -------------------------------- | --------------------------------- |
+| Correct engine selected          | Pass — REIT/AFFO-adapted Engine 1 |
+| GAAP EPS not overused            | Pass                              |
+| AFFO/share valuation included    | Pass                              |
+| Leverage included                | Pass                              |
+| Rate sensitivity included        | Pass                              |
+| Dividend coverage included       | Pass                              |
+| Data-center optionality included | Pass                              |
+| U.S. tower softness included     | Pass                              |
+| Position sizing included         | Pass                              |
+| Red team included                | Pass                              |
+| Pre-mortem included              | Pass                              |
+
+**Model Reliability:** **Medium-High**
+**Key uncertainty:** interest-rate path and whether AFFO/share growth re-accelerates after 2026.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                                  |
+| ----------------- | ---------------------------------------------------------------------- |
+| Baseline date     | June 26, 2026                                                          |
+| Current price     | $168.72                                                                |
+| Base IV           | $185                                                                   |
+| Expected price    | $188                                                                   |
+| Margin of Safety  | 8.8%                                                                   |
+| Core assumption 1 | 2026 AFFO/share around $11.00                                          |
+| Core assumption 2 | Fair base multiple around 16.5x AFFO                                   |
+| Core assumption 3 | AFFO/share growth re-accelerates to 3–5% after 2026                    |
+| 3M KPI            | AFFO/share guide maintained or raised                                  |
+| 6M KPI            | Net leverage stays ≤5.0x                                               |
+| 12M KPI           | U.S. tower growth stabilizes and data centers keep double-digit growth |
+| Conviction        | Medium-High / 10.0 of 15                                               |
+| Top concern       | Leverage / rates                                                       |
+| Second concern    | Slow AFFO growth                                                       |
+| Third concern     | U.S. tower revenue softness                                            |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                         |
+| ----------------------------- | ------------------------------------------------ |
+| Investment Attractiveness     | **Medium-High**                                  |
+| Current Price Attractiveness  | **Medium-High**                                  |
+| Long-Term Holding Suitability | **High**                                         |
+| Portfolio Suitability         | **Medium-High; watch REIT/rate exposure with O** |
+| Conviction                    | **Medium-High**                                  |
+| Recommended Max Weight        | **4.0%**                                         |
+| Entry Strategy                | **Scale-in acceptable; better below ~$160**      |
+| Execution Opinion             | **Modest Buy / Scale-In**                        |
+
+**One-line summary:** AMT is not a fast grower right now, but at **~15.4x forward AFFO** with a **~4.2% yield** and durable tower/data-center assets, RS2 sees a **reasonable positive margin of safety** for patient investors.
+
+**Next ticker in queue:** O.
+
+[1]: https://americantower.gcs-web.com/news-releases/news-release-details/american-tower-corporation-reports-first-quarter-2026-financial "American Tower Corporation Reports First Quarter 2026 Financial Results | American Tower"
+[2]: https://www.federalreserve.gov/newsevents/pressreleases/monetary20260617a.htm?utm_source=chatgpt.com "Federal Reserve issues FOMC statement"
+[3]: https://americantower.gcs-web.com/news-releases/news-release-details/american-tower-corporation-reports-fourth-quarter-and-full-21 "American Tower Corporation Reports Fourth Quarter and Full Year 2025 Financial Results | American Tower"
+[4]: https://www.dividendmax.com/united-states/nyse/real-estate-investment-trusts/american-tower-corp/dividends?utm_source=chatgpt.com "American Tower Corp. (AMT) Dividends"
+[5]: https://fintel.io/ss/us/amt "AMT / American Tower Corporation Stock - Short Interest, Short Squeeze, Borrow Rates"
+[6]: https://fintel.io/sopt/us/amt "AMT / American Tower Corporation - Put/Call Ratio, Options Sentiment, Unusual Options Activity"
+[7]: https://tradingeconomics.com/united-states/government-bond-yield?utm_source=chatgpt.com "US 10 Year Treasury Note Yield - Quote - Chart"

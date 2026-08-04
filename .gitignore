@@ -1,0 +1,45 @@
+# ── secrets — NEVER commit ────────────────────────────────────────────────
+# Holds TAVILY_API_KEY, FMP_API_KEY, LLM_API_KEY, telegram_bot_token/chat_id.
+# Code references credentials by NAME (see api_llm/config.json api_key_name)
+# and resolves them from here at runtime, so no other tracked file carries a key.
+.secrets.json
+*.secrets
+
+# ── environments & vendored tools (huge, reinstallable) ───────────────────
+# NOTE: git does NOT support trailing inline comments — a pattern must be alone
+# on its line, or the comment becomes part of the pattern and matches nothing.
+# 'research-venv/' is 2.4GB / 81k files and is NOT matched by 'venv/'.
+venv/
+research-venv/
+AgentWebSearch-MCP/
+node_modules/
+
+# ── generated analysis output (regenerable; published to the screener repo) ─
+reports/
+ab_reports/
+api_llm/reports/
+research/
+enrich/
+fable_runs/
+chatgpt_runs/
+
+# ── runtime state & caches ────────────────────────────────────────────────
+# cache/ holds analysis_state.json (band membership, due dates, failure counts)
+# and orchestrate.lock — live state that changes every run, so it does not belong
+# in git. It IS worth backing up separately: losing it resets the whole queue.
+cache/
+__pycache__/
+*.pyc
+*.pyo
+.ruff_cache/
+.pytest_cache/
+
+# ── editor / OS noise ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# ── local service config carrying an instance secret ──────────────────────
+# searxng/settings.yml holds server.secret_key; commit settings.yml.example instead.
+searxng/settings.yml

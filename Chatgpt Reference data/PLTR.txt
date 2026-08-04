@@ -1,0 +1,378 @@
+Proceeding with **#23 PLTR** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #23 — Palantir / PLTR
+
+## Top-Line Execution Summary
+
+| Item                        |                                               Result |
+| --------------------------- | ---------------------------------------------------: |
+| Current Price / T0          |                               **$107.27** `[Actual]` |
+| Market Cap                  |                               **$275.8B** `[Actual]` |
+| Reported P/E                |                                **120.5x** `[Actual]` |
+| FY26 Revenue Guide          |                        **$7.650–$7.662B** `[Actual]` |
+| FY26 Adjusted FCF Guide     |                            **$4.2–$4.4B** `[Actual]` |
+| EV / FY26E Revenue          |                                **~35x** `[Estimate]` |
+| EV / FY26E Adjusted FCF     |                                **~62x** `[Estimate]` |
+| Base Intrinsic Value        |                          **$105/share** `[Estimate]` |
+| Expected Price              |                          **$119/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                               **-2.2%** `[Estimate]` |
+| 50% CI                      |                            **$85–$145** `[Estimate]` |
+| 80% CI                      |                            **$55–$220** `[Estimate]` |
+| Conviction                  |             **Medium-High / 9.5 of 15** `[Estimate]` |
+| Recommended Max Weight      |                                **2.5%** `[Estimate]` |
+| Entry Strategy              | **Hold / small scale-in only; better below ~$90–95** |
+| Execution Opinion           |                  **Hold; do not chase aggressively** |
+
+**Core conclusion:** Palantir is one of the strongest AI software businesses in the market: Q1 revenue grew **85%**, U.S. revenue grew **104%**, adjusted operating margin reached **60%**, and the company raised full-year 2026 revenue guidance to about **71% growth**. But even after the stock’s decline to **$107.27**, the valuation still prices in years of exceptional execution. RS2 sees **excellent business quality but almost no base-case margin of safety**. ([SEC][1])
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Palantir Technologies / PLTR
+**Baseline Date:** June 26, 2026
+**T0:** current price **$107.27**, market cap **$275.8B**, reported EPS **$0.89**, and P/E **120.5x** `[Actual]`.
+**T-1:** latest financials are Q1 2026. Palantir reported revenue of **$1.633B**, GAAP operating income of **$754M**, GAAP net income attributable to common stockholders of **$871M**, adjusted operating income of **$984M**, cash from operations of **$899M**, and adjusted FCF of **$925M**. ([SEC][1])
+**Tpf:** current valuation reflects Palantir’s raised 2026 guidance: revenue of **$7.650–$7.662B**, adjusted operating income of **$4.440–$4.452B**, adjusted FCF of **$4.2–$4.4B**, and U.S. commercial revenue growth of at least **120%**. ([SEC][1])
+
+**Archetype:** **B/D hybrid — AI software quality compounder + expectation-driven growth stock**
+**Valuation Engine:** **Engine 3 / Engine 4 hybrid:** platform-quality valuation with expectation-pressure stress test.
+
+**Why this engine:** PLTR is now profitable, cash-generative, and scaling fast, so it is not a pure speculative software name. But the valuation is so high that the stock must still be judged by reverse expectations: how much future AI-platform dominance is already priced in?
+
+---
+
+## Section 1. Macro Context
+
+PLTR benefits from three powerful forces: enterprise AI adoption, U.S. government AI/defense modernization, and the need for secure AI workflows in regulated environments. It is also exposed to software multiple compression, AI competition, government procurement timing, geopolitical controversy, and the risk that customers build internal AI tooling instead of expanding Palantir. The company itself highlights risks around AI use, macro conditions, tariffs/trade relations, contract realization, customer retention, and long/unpredictable sales cycles. ([SEC][1])
+
+**Macro alignment:** **Positive for fundamentals, negative for valuation discipline.**
+The AI demand wave is real, but the stock already carries a premium AI-infrastructure multiple.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                          |                           RS2 View |
+| ------------------------------------------------------- | ---------------------------------: |
+| 5Y survival for profitable AI software leader           |              **>95%** `[Estimate]` |
+| Sustaining 40%+ revenue growth for 5Y at $7B+ scale     |            **25–40%** `[Estimate]` |
+| Sustaining 45%+ adjusted FCF margin                     |            **45–60%** `[Estimate]` |
+| Sustaining 30x+ revenue multiple                        |      **Low / 15–25%** `[Estimate]` |
+| Building a true enterprise AI operating system category |            **35–50%** `[Estimate]` |
+| Government/customer concentration creating downside     | **Moderate / 25–35%** `[Estimate]` |
+
+**Base-rate adjustment:** strongly positive for business quality, strongly negative for valuation. Companies rarely sustain **85% growth + 60% adjusted operating margins** for long, even when the product is excellent.
+
+---
+
+## Section 2. Business Quality
+
+Palantir builds software that integrates data, decisions, and operations at scale. Its main platforms are **Gotham**, **Foundry**, **Apollo**, and **AIP**; the 2025 10-K describes AIP as Palantir’s generative AI platform for connecting LLMs, building AI agents/automations, governing AI workflows, and deploying AI into production. ([SEC][2])
+
+### Moat Score
+
+| Moat Type                                |        Score |
+| ---------------------------------------- | -----------: |
+| Mission-critical software                |          3/3 |
+| Switching costs                          |       2.75/3 |
+| Data/ontology/process embedding          |          3/3 |
+| Government trust/security clearance moat |          3/3 |
+| Brand / AI category leadership           |        2.5/3 |
+| Scale efficiency                         |          3/3 |
+| Regulatory / compliance complexity       |        2.5/3 |
+| **Total**                                | **19.75/21** |
+
+**Moat direction:** **Widening.** Q1 showed extreme operating leverage: revenue grew **85%**, adjusted operating margin reached **60%**, and Rule of 40 reached **145%**. ([SEC][1])
+
+### Financial Health
+
+| Metric                            |                                             Result |
+| --------------------------------- | -------------------------------------------------: |
+| FY25 revenue                      |                 **$4.475B**, up **56%** `[Actual]` |
+| FY25 government revenue           |                 **$2.402B**, up **53%** `[Actual]` |
+| FY25 commercial revenue           |                 **$2.073B**, up **60%** `[Actual]` |
+| FY25 gross margin                 |                                 **82%** `[Actual]` |
+| FY25 operating margin             |                                 **32%** `[Actual]` |
+| FY25 net margin                   |                                 **36%** `[Actual]` |
+| Q1 FY26 revenue                   |                 **$1.633B**, up **85%** `[Actual]` |
+| Q1 FY26 GAAP operating margin     |                                 **46%** `[Actual]` |
+| Q1 FY26 adjusted operating margin |                                 **60%** `[Actual]` |
+| Q1 FY26 adjusted FCF margin       |                                 **57%** `[Actual]` |
+| Cash + short-term U.S. Treasuries |                               **$8.0B** `[Actual]` |
+| Debt                              | **No material debt disclosed** `[Actual/Estimate]` |
+
+FY25 financials show revenue of **$4.475B**, gross profit of **$3.686B**, operating income of **$1.414B**, and net income margin of **36%**. ([SEC][2]) The company had **$8.0B** of cash, cash equivalents, and short-term U.S. Treasury securities at Q1. ([SEC][1])
+
+**Financial health judgment:** **Excellent.** PLTR has a net-cash balance sheet, elite margins, and very high cash conversion.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+The key adjustment is **stock-based compensation**. PLTR’s Q1 adjusted operating income excludes **$201.6M** of stock-based compensation and **$28.0M** of related payroll taxes. That is acceptable for tracking operating momentum, but RS2 still treats SBC as a real shareholder cost because it can dilute owners over time. ([SEC][1])
+
+| Item                                      |                      Result |
+| ----------------------------------------- | --------------------------: |
+| Q1 GAAP net income attributable to common |      **$870.5M** `[Actual]` |
+| Q1 adjusted net income                    |      **$856.5M** `[Actual]` |
+| Q1 SBC                                    |      **$201.6M** `[Actual]` |
+| Q1 adjusted FCF                           |      **$924.6M** `[Actual]` |
+| FY26 adjusted FCF guide midpoint          |     **~$4.3B** `[Estimate]` |
+| FY26 SBC-adjusted owner earnings proxy    | **~$3.4–3.6B** `[Estimate]` |
+| Diluted shares                            |      **~2.571B** `[Actual]` |
+
+PLTR’s diluted weighted-average share count was **2.571B** in Q1 2026 versus **2.553B** in Q1 2025, so dilution was limited recently, but the absolute SBC expense remains meaningful. ([SEC][1])
+
+**Adjusted financials judgment:** high quality, but use both adjusted FCF and SBC-adjusted owner earnings.
+
+---
+
+## Section 3. Valuation — Engine 3/4 Hybrid
+
+### Reverse Expectations
+
+At **$275.8B** market cap and roughly **$267.8B** enterprise value after net cash, PLTR trades around **35x FY26 revenue** and **62x FY26 adjusted FCF**. That means the market is already assuming Palantir becomes a dominant, durable AI software platform, not merely a fast-growing analytics vendor. ([SEC][1])
+
+### Scenario Valuation
+
+| Scenario | Assumptions                                                                                                         | Value / Share |
+| -------- | ------------------------------------------------------------------------------------------------------------------- | ------------: |
+| Bear     | Growth decelerates fast; AI competition compresses multiple; 35–40% owner-earnings margin                           |       **$55** |
+| Base     | Revenue compounds ~25–30% for several years; owner-earnings margin settles near mid-40s; premium multiple holds     |      **$105** |
+| Bull     | PLTR becomes a core AI operating system for government + enterprise; growth remains 35%+ longer; margins stay elite |      **$220** |
+
+**Base IV:** **$105/share** `[Estimate]`
+**Current price:** **$107.27/share** `[Actual]`
+**Margin of Safety:** **-2.2%** `[Estimate]`
+
+### Multiple Cross-Check
+
+| Metric                  |                Result |
+| ----------------------- | --------------------: |
+| Reported P/E            | **120.5x** `[Actual]` |
+| EV / FY26E revenue      | **~35x** `[Estimate]` |
+| EV / FY26E adjusted FCF | **~62x** `[Estimate]` |
+| Q1 Rule of 40           |   **145%** `[Actual]` |
+| Net cash                |   **~$8B** `[Actual]` |
+
+**Multiple judgment:** extraordinary business, extraordinary valuation. PLTR can grow into this valuation, but the stock does not offer a classic margin of safety.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                                        |
+| -------- | ----------: | ------------: | --------------------------------------------------------------------------------------- |
+| Bear     |         25% |       **$55** | Growth slows, AI software multiples compress, government/commercial momentum normalizes |
+| Base     |         50% |      **$105** | Growth remains strong but decelerates; margins remain among best-in-class               |
+| Bull     |         25% |      **$220** | PLTR becomes a dominant AI operating layer across government and enterprise             |
+
+**Expected Price:**
+25% × $55 + 50% × $105 + 25% × $220 = **$118.75/share** `[Estimate]`
+
+**Rounded Expected Price:** **$119/share**
+**50% CI:** **$85–$145**
+**80% CI:** **$55–$220**
+**MoS vs Base IV:** **-2.2%**
+
+**MoS judgment:** **No base-case margin of safety, but positive expected value due to bull-case convexity.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |      Score |
+| ------------------------ | ---------: |
+| Business quality         |      3.0/3 |
+| Valuation attractiveness |     0.75/3 |
+| Macro alignment          |     2.25/3 |
+| Thesis clarity           |      2.0/3 |
+| Execution trackability   |      1.5/3 |
+| **Total**                | **9.5/15** |
+
+**Conviction tier:** **Medium-High business conviction / Medium stock conviction**
+**Recommended max weight:** **2.5%**
+
+The company is better than most software peers, but the stock still has a valuation problem. This is not like AMT/O, where cash-flow yield creates downside support.
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item               |                             Result |
+| ------------------ | ---------------------------------: |
+| Short interest     |       **76.44M shares** `[Actual]` |
+| Short % float      |               **3.52%** `[Actual]` |
+| Days to cover      |                 **2.0** `[Actual]` |
+| Short squeeze risk |                **Low-to-moderate** |
+| Crowding score     | **11/15 Medium-High** `[Estimate]` |
+
+Short interest is not extreme: as of June 15, 2026, MarketBeat reports **76.44M shares short**, **3.52%** of float, and **2.0 days to cover**. ([MarketBeat][3])
+
+**Behavioral judgment:** PLTR is heavily debated but not heavily shorted. The bigger risk is not short pressure; it is valuation/crowding unwind.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** AI software platform / government AI / enterprise operating-system optionality.
+**Expected 3–5Y annualized return:** **0–12%** `[Estimate]`, with very wide dispersion.
+**Overlap:** high with AI/high-multiple growth exposure; medium with defense/government technology; low with energy, REITs, consumer staples, and traditional financials.
+
+**Portfolio fit judgment:** good thematic exposure, but must be capped. PLTR + AMD + TSLA + OKLO would create a very high-duration, high-narrative AI/tech sleeve.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Weighted upside from current  | **~46%** `[Estimate]` |
+| Bear downside from current    | **~49%** `[Estimate]` |
+| Practical fractional Kelly    | **2–4%** `[Estimate]` |
+| RS2 valuation/crowding cap    |              **2.5%** |
+
+**Final recommended max weight:** **2.5%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Valuation compression:** even after the decline, PLTR trades around **35x FY26 revenue** and **62x adjusted FCF**.
+2. **Growth deceleration:** Q1 growth is extraordinary, but the base rate for sustaining **70%+ revenue growth** at increasing scale is poor.
+3. **Government/political/customer risk:** Palantir’s contracts can include termination-for-convenience provisions, and the company notes that RDV and TCV assume options are exercised and contracts are not terminated. ([SEC][1])
+
+### Top 3 Catalysts
+
+1. U.S. commercial growth remains near or above the **120%** 2026 guide.
+2. U.S. government AI/defense work continues scaling; Reuters noted demand tied to AI in modern warfare and Maven becoming a Pentagon program of record. ([Reuters][4])
+3. Adjusted FCF margin remains above **50%**, proving PLTR is not sacrificing profitability for growth.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                       |  Warning Trigger |     Re-underwrite Trigger |
+| ------------------------- | ---------------: | ------------------------: |
+| Revenue growth            |             <55% |                      <40% |
+| U.S. commercial growth    |             <90% |                      <70% |
+| Adjusted operating margin |             <50% |                      <45% |
+| Adjusted FCF margin       |             <45% |                      <40% |
+| SBC / revenue             |             >15% |                      >20% |
+| RDV / TCV growth          | materially slows | negative sequential trend |
+| Diluted share count       |   >3% YoY growth |            >5% YoY growth |
+
+### Pre-Mortem
+
+1. **Wrong because valuation mattered more than growth.**
+   Early warning: revenue beats but multiple compresses.
+   Response: wait for lower entry instead of averaging up.
+
+2. **Wrong because AI tools commoditize parts of Palantir’s value proposition.**
+   Early warning: customers reduce expansion or choose internal AI tooling.
+   Response: reduce terminal multiple.
+
+3. **Wrong because government/customer concentration creates volatility.**
+   Early warning: large program delays, contract reshuffling, or public-policy backlash.
+   Response: lower bull probability.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. PLTR is a great business, but **120x reported earnings** and **~35x forward revenue** are still very demanding. ([SEC][1])
+2. Q1’s **85% revenue growth** and **60% adjusted operating margin** are exceptional, but investors may be extrapolating peak acceleration too far. ([SEC][1])
+3. Adjusted metrics exclude stock-based compensation; Q1 SBC was **$201.6M**, or about **12% of revenue**. ([SEC][1])
+4. The top three customers accounted for **16%** of FY25 revenue, so concentration is lower than feared but still relevant. ([SEC][2])
+5. Government work can be politically controversial and procurement-dependent.
+6. AI competition is intensifying from cloud providers, defense primes, consultants, model companies, and internal enterprise teams.
+7. The stock’s upside depends on PLTR becoming a category-defining AI operating system, not just continuing to be a very good software company.
+
+### Long vs Short Logic Battle
+
+| Issue                     | Long Score | Short Score | Winner |
+| ------------------------- | ---------: | ----------: | ------ |
+| Business quality          |          3 |         0.5 | Long   |
+| Growth                    |          3 |           1 | Long   |
+| Margin / FCF quality      |          3 |           1 | Long   |
+| Balance sheet             |          3 |         0.5 | Long   |
+| Valuation                 |        0.5 |           3 | Short  |
+| AI competition            |        1.5 |        2.25 | Short  |
+| Government/political risk |        1.5 |           2 | Short  |
+
+**Long score:** **15.5**
+**Short score:** **10.25**
+**Judgment:** Long thesis wins on business quality, but valuation prevents a strong buy.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                           | Status                                     |
+| ------------------------------------ | ------------------------------------------ |
+| Correct engine selected              | Pass — AI platform / expectation valuation |
+| GAAP and adjusted metrics separated  | Pass                                       |
+| SBC adjustment included              | Pass                                       |
+| Revenue multiple stress-tested       | Pass                                       |
+| Government/commercial split included | Pass                                       |
+| Balance sheet included               | Pass                                       |
+| Reverse expectations included        | Pass                                       |
+| Position sizing included             | Pass                                       |
+| Red team included                    | Pass                                       |
+| Pre-mortem included                  | Pass                                       |
+
+**Model reliability:** **Medium.** PLTR is hard to value because the operating metrics are elite but the valuation is highly sensitive to long-term growth and terminal multiple.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                |
+| ----------------- | ---------------------------------------------------- |
+| Baseline date     | June 26, 2026                                        |
+| Current price     | $107.27                                              |
+| Base IV           | $105                                                 |
+| Expected price    | $119                                                 |
+| Margin of Safety  | -2.2%                                                |
+| Core assumption 1 | FY26 revenue around $7.66B                           |
+| Core assumption 2 | Adjusted FCF around $4.3B                            |
+| Core assumption 3 | Growth remains very high but decelerates after FY26  |
+| 3M KPI            | Q2 revenue guide beat / full-year guide raised again |
+| 6M KPI            | U.S. commercial growth stays near triple digits      |
+| 12M KPI           | Adjusted FCF margin remains >50%                     |
+| Conviction        | Medium-High / 9.5 of 15                              |
+| Top concern       | Valuation                                            |
+| Second concern    | AI competition / commoditization                     |
+| Third concern     | Government and contract realization risk             |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                             |
+| ----------------------------- | ---------------------------------------------------- |
+| Investment Attractiveness     | **High business / Medium stock**                     |
+| Current Price Attractiveness  | **Medium**                                           |
+| Long-Term Holding Suitability | **High if bought with discipline**                   |
+| Portfolio Suitability         | **Good, but cap AI/high-multiple exposure**          |
+| Conviction                    | **Medium-High business conviction**                  |
+| Recommended Max Weight        | **2.5%**                                             |
+| Entry Strategy                | **Hold / small scale-in only; better below ~$90–95** |
+| Execution Opinion             | **Hold; do not chase aggressively**                  |
+
+**One-line summary:** Palantir is an elite AI software platform with extraordinary growth and margins, but at **$107.27** the stock is already pricing in years of dominance, so RS2 recommends **Hold / small disciplined scale-in**, capped at **2.5%**.
+
+**Next ticker in queue:** OKLO.
+
+[1]: https://www.sec.gov/Archives/edgar/data/1321655/000132165526000026/a2026q1ex991pressrelease.htm "Document"
+[2]: https://www.sec.gov/Archives/edgar/data/1321655/000132165526000011/pltr-20251231.htm "pltr-20251231"
+[3]: https://www.marketbeat.com/stocks/NASDAQ/PLTR/short-interest/ "
+	Palantir Technologies (PLTR) Short Interest & Short Float | Updated Jun 2026
+"
+[4]: https://www.reuters.com/business/palantir-tops-first-quarter-revenue-estimates-strong-us-government-demand-2026-05-04/?utm_source=chatgpt.com "Palantir lifts annual revenue forecast on robust US government demand"

@@ -1,0 +1,44 @@
+[api] backend https://api.deepseek.com/v1  model=deepseek-v4-pro  -> reports in api_llm/reports
+[enrich] yfinance HG ...
+
+Found 17 total filings and 0 uncached entries to download, estimated download time: 0 seconds.
+
+[nltk_data] Downloading package punkt_tab to C:\Users\Public\Documents
+[nltk_data]     \ESTsoft\CreatorTemp\defeatbeta\nltk...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[38;5;10m______      __           _    ______      _        
+|  _  \    / _|         | |   | ___ \    | |       
+| | | |___| |_ ___  __ _| |_  | |_/ / ___| |_ __ _ 
+| | | / _ \  _/ _ \/ _` | __| | ___ \/ _ \ __/ _` |
+| |/ /  __/ ||  __/ (_| | |_  | |_/ /  __/ || (_| |
+|___/ \___|_| \___|\__,_|\__| \____/ \___|\__\__,_|[0m
+[1;38;5;10m📈:: Data Update Time ::[0m	2026-07-16T04:51:26Z [1;38;5;10m::[0m
+[1;38;5;10m📈:: Software Version ::[0m	0.0.60      [1;38;5;10m::[0m
+2026-07-16 17:02:58 INFO DuckDBClient MainThread - Cache is up-to-date. Update time: 2026-07-16T04:51:26Z
+[out] C:\Users\riper\Downloads\RS2 Local\api_llm\reports\HG_20260716_170301
+
+[backbone] HG: FINANCIAL | ROE 29.8% vs implied 11.2% | P/B 1.2x vs justified 4.29x | gap -18.5pts
+>> Layers 0, 1, 1.5 — Classification / Macro / Base Rate
+   done in 109.2s -> S1_macro_classify.md
+
+>> Layers 2, 2.5 — Business Quality / Adjusted Financials
+   done in 121.9s -> S2_quality.md
+
+>> Layers 3, 3.5 — Expectations Test / Second-Order
+   done in 32.3s -> S3_valuation.md
+   [valuation] financial ROE-gap -18.5pts | fair $35.45 MoS 3.7% | stance fair
+
+>> Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage
+   done in 49.1s -> S4_scenarios.md
+   [valuation] scenario probs {'bear': 0.25, 'base': 0.5, 'bull': 0.25}
+
+>> Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly
+   done in 114.4s -> S5_conviction.md
+
+>> Layers 7, 7.5, 8, 9 — Monitoring / Correlation / Audit / Red Team
+   done in 132.6s -> S6_redteam_audit.md
+
+>> FINAL ASSEMBLY (Sections 0-12) [ctx 32768]
+   done in 162.0s
+[DONE] -> C:\Users\riper\Downloads\RS2 Local\api_llm\reports\HG_20260716_170301\FINAL.md
+   [verdict] HG: method=financial_pb_roe stance=fair action=HOLD conv=8.0 entry=stage (BRAKE: was 'HOLD' 8.0)

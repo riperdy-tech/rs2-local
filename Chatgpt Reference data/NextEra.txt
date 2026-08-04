@@ -1,0 +1,451 @@
+Proceeding with **#21 NEE** using RS2 sequence and data-tag discipline.
+
+# RS2 Engine Run #21 — NextEra Energy / NEE
+
+## Top-Line Execution Summary
+
+| Item                        |                                                  Result |
+| --------------------------- | ------------------------------------------------------: |
+| Current Price / T0          |                                   **$87.70** `[Actual]` |
+| Market Cap                  |                                  **$182.9B** `[Actual]` |
+| Reported P/E                |                                    **22.3x** `[Actual]` |
+| 2026 Adjusted EPS Guide     |                              **$3.92–$4.02** `[Actual]` |
+| Forward Adjusted P/E        |                                 **~22.1x** `[Estimate]` |
+| Annualized Dividend         |                            **$2.4928/share** `[Actual]` |
+| Dividend Yield              |                                  **~2.8%** `[Estimate]` |
+| Base Intrinsic Value        |                              **$95/share** `[Estimate]` |
+| Expected Price              |                              **$96/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                                   **7.7%** `[Estimate]` |
+| 50% CI                      |                               **$80–$105** `[Estimate]` |
+| 80% CI                      |                               **$65–$120** `[Estimate]` |
+| Conviction                  |               **Medium-High / 10.0 of 15** `[Estimate]` |
+| Recommended Max Weight      |                                   **3.5%** `[Estimate]` |
+| Entry Strategy              |              **Scale-in acceptable; better below ~$82** |
+| Execution Opinion           | **Modest Buy / Scale-In, capped by deal and rate risk** |
+
+**Core conclusion:** NEE is a high-quality utility/infrastructure compounder with FPL’s regulated Florida growth, NEER’s renewable/storage backlog, and a major AI/data-center power demand tailwind. At **~22x forward adjusted EPS**, it is not cheap like O or AMT, but the growth profile is stronger. RS2 supports a **modest scale-in**, not an aggressive buy, because the pending Dominion deal adds regulatory/integration risk and the business is capital-intensive.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** NextEra Energy / NEE
+**Baseline Date:** June 26, 2026
+**T0:** current price **$87.70**, market cap **$182.9B**, reported EPS **$3.94**, P/E **22.26x** `[Actual]`.
+**T-1:** latest reported financials are Q1 2026. NEE reported GAAP net income attributable to NEE of **$2.182B**, or **$1.04/share**, and adjusted earnings of **$2.275B**, or **$1.09/share**, versus **$0.99/share** adjusted EPS in Q1 2025. ([SEC][1])
+**Tpf:** the stock now reflects both Q1 execution and the May 2026 definitive agreement to combine with Dominion Energy in an all-stock transaction. Dominion holders would receive **0.8138 NEE shares per D share**, and current NEE holders would own about **74.5%** of the combined company if the deal closes. ([NextEra Energy Newsroom][2])
+
+**Archetype:** **A/B hybrid — Regulated Utility + Energy Infrastructure Growth Compounder**
+**Valuation Engine:** **Utility-adapted Engine 1: adjusted EPS / dividend / regulated-rate-base valuation**, with merger-risk overlay.
+
+---
+
+## Section 1. Macro Context
+
+NEE is rate-sensitive and capital-intensive. It benefits from electricity demand growth, Florida population growth, AI/data-center power demand, renewables/storage demand, and transmission/grid investment. It is pressured by high interest rates, regulatory risk, construction cost inflation, financing needs, and merger approval risk.
+
+| Macro Variable                 | NEE Impact                                      |
+| ------------------------------ | ----------------------------------------------- |
+| Higher long rates              | Negative: valuation + financing cost            |
+| Florida population/load growth | Positive for FPL                                |
+| AI/data-center demand          | Positive for NEER, FPL, and Dominion deal logic |
+| Renewable/storage demand       | Positive                                        |
+| Regulatory scrutiny            | Negative, especially post-Dominion deal         |
+| Utility M&A environment        | Mixed: strategic upside, approval risk          |
+
+The AI/data-center demand tailwind is real: in Q1, NEER added **4 GW** to its renewables/storage backlog, including **1.3 GW** of battery storage, bringing total backlog to about **33 GW**. ([SEC][1])
+
+**Macro alignment:** **Positive but rate-sensitive.** NEE is one of the best-positioned public utilities for the electricity-demand boom, but the stock still behaves like a long-duration infrastructure asset.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                    |                RS2 View |
+| ------------------------------------------------- | ----------------------: |
+| 5Y survival for large regulated utility           |   **>95%** `[Estimate]` |
+| Sustaining 6–8% utility EPS growth                | **55–70%** `[Estimate]` |
+| Sustaining 8%+ NEE adjusted EPS CAGR through 2032 | **45–60%** `[Estimate]` |
+| Large utility merger closing on planned timeline  | **50–65%** `[Estimate]` |
+| Stock sustaining >22x EPS multiple                | **35–50%** `[Estimate]` |
+| Dividend growth continuing as guided              | **65–80%** `[Estimate]` |
+
+NEE’s own guidance is aggressive for a utility: management expects **2026 adjusted EPS of $3.92–$4.02**, targets the high end, and expects **8%+ adjusted EPS CAGR through 2032**, with the same target from 2032 through 2035 off the 2025 base. ([SEC][1])
+
+**Base-rate adjustment:** positive for business quality and growth visibility; negative for valuation and merger complexity.
+
+---
+
+## Section 2. Business Quality
+
+NextEra has two main engines: **FPL**, the regulated Florida utility, and **NextEra Energy Resources**, the renewables/storage/generation-development platform. FPL provides regulated earnings, rate-base growth, and Florida demographic exposure; NEER provides contracted renewables, storage, nuclear/gas, transmission, and data-center power development exposure.
+
+### Moat Score
+
+| Moat Type                          |     Score |
+| ---------------------------------- | --------: |
+| Regulated monopoly / FPL franchise |       3/3 |
+| Scale / procurement advantage      |       3/3 |
+| Development pipeline / execution   |     2.5/3 |
+| Cost of capital                    |     2.5/3 |
+| Customer/load growth               |     2.5/3 |
+| Regulatory relationship            |       2/3 |
+| Renewable/storage expertise        |     2.5/3 |
+| **Total**                          | **18/21** |
+
+**Moat direction:** **Widening**, assuming Dominion closes without major regulatory concessions. Scale is becoming more valuable because AI/data-center power demand requires land, interconnection, generation, storage, permitting, transmission, procurement, and financing.
+
+### Financial Health
+
+| Metric                         |                            Result |
+| ------------------------------ | --------------------------------: |
+| FY25 adjusted EPS              | **$3.71**, up **8.2%** `[Actual]` |
+| FY25 GAAP net income           |            **$6.835B** `[Actual]` |
+| FY25 adjusted earnings         |            **$7.683B** `[Actual]` |
+| FY25 FPL net income            |            **$5.012B** `[Actual]` |
+| FY25 NEER adjusted earnings    |            **$3.523B** `[Actual]` |
+| Q1 2026 adjusted EPS           |  **$1.09**, up **10%** `[Actual]` |
+| Q1 2026 FPL net income         |            **$1.462B** `[Actual]` |
+| Q1 2026 NEER adjusted earnings |            **$1.038B** `[Actual]` |
+| Q1 2026 cash                   |            **$2.812B** `[Actual]` |
+| Q1 2026 long-term debt         |           **$93.948B** `[Actual]` |
+| Q1 2026 total assets           |          **$212.721B** `[Actual]` |
+
+FY25 adjusted earnings were **$7.683B**, or **$3.71/share**, with FPL contributing **$2.42/share**, NEER **$1.70/share**, and Corporate & Other **-$0.41/share**.  Q1 2026 balance-sheet data show **$2.812B** cash and **$93.948B** long-term debt, excluding short-term debt and current maturities. ([SEC][1])
+
+**Financial health judgment:** **Good for a mega-utility, but highly capital-intensive.** NEE’s size and regulated/contracted earnings support leverage, but the absolute debt load and capex burden are material.
+
+### Segment Quality
+
+| Segment            | RS2 Read                                                                |
+| ------------------ | ----------------------------------------------------------------------- |
+| FPL                | Highest-quality regulated utility growth engine                         |
+| NEER               | Best-in-class renewables/storage/data-center power development platform |
+| Corporate & Other  | Meaningful drag from financing/corporate structure                      |
+| Dominion pro forma | Strategic upside, but approval/integration risk                         |
+
+FPL added nearly **100,000 customers** year over year in Q1, invested about **$3.2B** in Q1 capex, expects **$12–13B** full-year FPL capital investments, and regulatory capital employed rose **8.8%** year over year. ([SEC][1])
+
+---
+
+## Section 2.5. Adjusted Financials
+
+For NEE, adjusted EPS is the most useful near-term earnings measure, while cash flow must be interpreted carefully because utilities are structurally capex-heavy.
+
+| Item                                          |                     Result |
+| --------------------------------------------- | -------------------------: |
+| Q1 2026 adjusted EPS                          |       **$1.09** `[Actual]` |
+| 2026 adjusted EPS guide                       | **$3.92–$4.02** `[Actual]` |
+| 2026 guide midpoint                           |     **$3.97** `[Estimate]` |
+| Forward adjusted P/E                          |    **~22.1x** `[Estimate]` |
+| Q1 2026 operating cash flow                   |     **$2.614B** `[Actual]` |
+| Q1 2026 net cash used in investing            |    **$10.821B** `[Actual]` |
+| Q1 FPL capex                                  |     **$3.046B** `[Actual]` |
+| Q1 NEER independent power / other investments |     **$7.868B** `[Actual]` |
+| Q1 common dividends paid                      |     **$1.300B** `[Actual]` |
+
+Q1 operating cash flow was **$2.614B**, while investing cash outflow was **$10.821B**, including **$3.046B** of FPL capex and **$7.868B** of NEER independent power and other investments. ([SEC][1])
+
+**Adjusted financials judgment:** NEE is not a free-cash-flow yield story. It is a regulated/contracted growth story funded through retained earnings, debt, equity-linked securities, tax equity, project finance, asset recycling, and capital markets.
+
+---
+
+## Section 3. Valuation — Utility-Adapted Engine 1
+
+### EPS / Multiple Framework
+
+| Scenario | 2028E Adjusted EPS | Fair P/E | Discounted / Dividend-Adjusted Value |
+| -------- | -----------------: | -------: | -----------------------------------: |
+| Bear     |              $4.15 |      16x |                              **$65** |
+| Base     |              $4.75 |      20x |                              **$95** |
+| Bull     |              $5.15 |      23x |                             **$120** |
+
+**Base IV:** **$95/share** `[Estimate]`
+**Current price:** **$87.70/share** `[Actual]`
+**Margin of Safety:** **7.7%** `[Estimate]`
+
+### Cross-Check
+
+| Metric                               |                  Result |
+| ------------------------------------ | ----------------------: |
+| Reported P/E                         |    **22.3x** `[Actual]` |
+| Forward adjusted P/E                 | **~22.1x** `[Estimate]` |
+| Dividend yield                       |  **~2.8%** `[Estimate]` |
+| 2026 dividend growth plan            |     **~10%** `[Actual]` |
+| 2027–2028 dividend growth plan       | **~6%/year** `[Actual]` |
+| Long-term adjusted EPS growth target |      **8%+** `[Actual]` |
+
+NEE raised the quarterly dividend to **$0.6232/share**, a **10%** increase versus the prior-year comparable quarterly dividend, and said this is consistent with its plan for roughly **10% annual dividend growth through 2026** and **6% annual growth from year-end 2026 through 2028**. ([investor.nexteraenergy.com][3])
+
+**Multiple judgment:** NEE trades at a premium to ordinary utilities, but it deserves a premium because FPL and NEER are higher-growth assets. The issue is that at **22x forward EPS**, the stock already prices much of that quality.
+
+### Dominion Deal Overlay
+
+The Dominion transaction increases both upside and risk. Strategically, it adds Virginia/Carolinas regulated exposure and data-center load proximity; financially, it creates dilution and integration complexity; politically, it requires federal/state/shareholder approvals and includes customer bill-credit commitments. The companies expect closing in **12–18 months**, subject to shareholder, HSR, FERC, NRC, and other approvals. ([NextEra Energy Newsroom][2])
+
+**Deal adjustment:**
+
+* Strategic/data-center scale upside: **+5% to bull case** `[Estimate]`
+* Regulatory/integration risk: **-5% to bear/base probability** `[Estimate]`
+* Net valuation effect today: **roughly neutral-to-slightly positive** `[Estimate]`
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:** Constellation, Duke, Southern, Dominion, Entergy, AES, regulated utilities, IPPs, hyperscaler-backed power developers, and private infrastructure capital are all competing for generation, transmission, storage, and data-center power opportunities.
+
+**Reflexivity:** If NEE stock stays strong, the cost of equity remains favorable and the company can finance growth more easily. If NEE derates, its ability to use equity as low-cost acquisition/growth currency weakens.
+
+**Customer behavior:** Utilities and hyperscalers increasingly want reliable, fast-to-market power. This favors NEE’s scale, but regulators will watch whether data-center load shifts costs to residential customers.
+
+**Network dynamics:** Not a classic network effect, but energy infrastructure scale matters: procurement, permitting, interconnection, financing, gas/renewables/storage portfolios, and operating experience compound.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                                       |
+| -------- | ----------: | ------------: | -------------------------------------------------------------------------------------- |
+| Bear     |         25% |       **$65** | Rates stay high, Dominion approval difficult, capex/debt concerns pressure multiple    |
+| Base     |         50% |       **$95** | EPS grows ~8%, FPL remains strong, NEER backlog converts, deal outcome manageable      |
+| Bull     |         25% |      **$120** | AI/data-center power boom accelerates, Dominion closes cleanly, multiple stays premium |
+
+**Expected Price:**
+25% × $65 + 50% × $95 + 25% × $120 = **$93.75/share** `[Estimate]`
+With scale/data-center optionality adjustment: **$96/share** `[Estimate]`
+
+**50% CI:** **$80–$105**
+**80% CI:** **$65–$120**
+**MoS:** **7.7%**
+**MoS Judgment:** **Moderate but not large.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **2–4 years** `[Estimate]`
+**My horizon:** **4–7 years**
+**Spread:** **Positive**
+
+The market understands the data-center power story, but may still underweight how long the electricity-demand cycle can last if AI, electrification, reshoring, and Florida load growth all continue. The offset is that the Dominion deal has already pulled some of that future into the stock.
+
+**Horizon arbitrage judgment:** **Moderate positive.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |       Score |
+| ------------------------ | ----------: |
+| Business quality         |      2.75/3 |
+| Valuation attractiveness |      1.75/3 |
+| Macro alignment          |       2.0/3 |
+| Thesis clarity           |      1.75/3 |
+| Execution trackability   |      1.75/3 |
+| **Total**                | **10.0/15** |
+
+**Conviction Tier:** **Medium-High**
+**Recommended Max Weight:** **3.5%**
+
+The business is high quality, but RS2 caps the weight because of capital intensity, debt, rates, and Dominion approval/integration uncertainty.
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                      |                       Result |
+| ------------------------- | ---------------------------: |
+| Short interest            | **49.75M shares** `[Actual]` |
+| Short % float             |         **2.39%** `[Actual]` |
+| Days to cover             |           **4.6** `[Actual]` |
+| Put/call OI ratio         |         **~0.69** `[Actual]` |
+| Institutional owners      |         **3,094** `[Actual]` |
+| Institutional shares held |       **~1.973B** `[Actual]` |
+| Squeeze risk              |                          Low |
+| Crowding score            | **8/15 Medium** `[Estimate]` |
+
+Short interest is normal rather than extreme: **49.75M shares**, **2.39%** of float, and **4.6 days to cover**. ([MarketBeat][4]) Options positioning is mildly bullish, with Fintel reporting a NEE open-interest put/call ratio of **0.69**. ([Fintel][5])
+
+**Behavioral judgment:** Neutral-to-mildly positive. This is not a short-squeeze setup, but sentiment is not heavily bearish.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Utility growth / electricity-demand / renewables-storage / AI-power infrastructure exposure.
+**Expected 3–5Y annualized return:** **7–10%** `[Estimate]`, from adjusted EPS growth, dividend yield, and modest rerating potential.
+**Overlap:** High with CEG and OKLO through power-demand themes; moderate with AMT/O through rate sensitivity; lower with energy commodities and consumer defensives.
+
+**Portfolio fit judgment:** **Good**, but be careful: NEE + AMT + O creates a meaningful rate-sensitive sleeve, while NEE + CEG + OKLO creates concentrated electricity/AI-power exposure.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Weighted upside from current  | **~23%** `[Estimate]` |
+| Bear downside from current    | **~26%** `[Estimate]` |
+| Practical fractional Kelly    | **4–5%** `[Estimate]` |
+| RS2 cap for rate/deal risk    |              **3.5%** |
+
+**Final recommended max weight:** **3.5%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Rate and financing risk:** NEE had **$93.948B** long-term debt at Q1 2026, before including short-term debt and current maturities, so higher-for-longer rates matter. ([SEC][1])
+2. **Dominion deal approval/integration risk:** the transaction needs multiple approvals and may face regulatory scrutiny, especially because it would create a very large regulated utility platform. ([NextEra Energy Newsroom][2])
+3. **Capital intensity / negative FCF risk:** Q1 operating cash flow was far below total investing outflows, which is normal for growth utilities but raises dependence on capital markets. ([SEC][1])
+
+### Top 3 Catalysts
+
+1. FPL rate-base growth continues while customer bills remain politically acceptable.
+2. NEER converts its **33 GW** backlog into earnings and adds more data-center-driven generation/storage. ([SEC][1])
+3. Dominion deal moves through approvals with limited concessions and clear EPS accretion.
+
+**Highest-impact bear scenario:** Rates stay high, regulators push back on Dominion/large-load cost allocation, and investors re-rate NEE from “growth utility” toward an ordinary utility multiple.
+
+---
+
+## Section 7.5. Correlation Risk
+
+NEE’s risk factors are rates, regulation, infrastructure capex, utility M&A, renewables tax policy, data-center load growth, and capital-market access. It is not a commodity stock, but it is not defensive in a rate shock.
+
+**Stress correlation estimate:**
+With AMT/O/rate-sensitive income assets: **0.55–0.75** `[Estimate]`
+With CEG/OKLO/power-demand names: **0.50–0.70** `[Estimate]`
+With broad market: **0.45–0.65** `[Estimate]`
+With energy/materials cyclicals: **0.25–0.45** `[Estimate]`
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                           |                       Warning Trigger |                Re-underwrite Trigger |
+| ----------------------------- | ------------------------------------: | -----------------------------------: |
+| Adjusted EPS guide            |                           below $3.92 |                          below $3.80 |
+| FPL regulatory capital growth |                                   <7% |                                  <5% |
+| NEER backlog                  |                                <30 GW | backlog cancellations / weak margins |
+| Long-term rates               |                            10Y >4.75% |                  10Y >5.0% sustained |
+| Debt / financing cost         | interest burden rises faster than EPS |  equity issuance materially dilutive |
+| Dominion deal                 |                       approval delays |    major concessions or failed close |
+
+### Pre-Mortem
+
+1. **Wrong because the stock was still too rate-sensitive.**
+   Early warning: NEE derates despite EPS growth as yields rise.
+   Response: require lower P/E entry.
+
+2. **Wrong because Dominion deal creates more risk than value.**
+   Early warning: regulatory concessions, bill credits, or approval conditions reduce economics.
+   Response: lower fair multiple and reduce max weight.
+
+3. **Wrong because NEER backlog under-earns.**
+   Early warning: backlog grows but ROIC or margins disappoint.
+   Response: reduce NEER premium multiple.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. NEE trades at **~22x forward adjusted EPS**, expensive for a utility.
+2. It is capital-intensive: Q1 investing cash outflow was **$10.821B** versus operating cash flow of **$2.614B**. ([SEC][1])
+3. Debt is large, with **$93.948B** of long-term debt at Q1 before short-term debt/current maturities. ([SEC][1])
+4. The Dominion deal adds complexity, approval risk, integration risk, and potential regulatory concessions.
+5. The AI/data-center power story is real, but the market is already pricing much of it into utilities and power developers.
+6. Renewables/storage economics depend on tax policy, interconnection, equipment costs, financing, and contract pricing.
+7. If the market reverts to valuing NEE as a normal utility at **17–18x earnings**, downside is material.
+
+### Long vs Short Logic Battle
+
+| Issue                    | Long Score | Short Score | Winner       |
+| ------------------------ | ---------: | ----------: | ------------ |
+| FPL regulated quality    |          3 |        0.75 | Long         |
+| NEER backlog / scale     |       2.75 |           1 | Long         |
+| Data-center power demand |        2.5 |        1.25 | Long         |
+| Valuation                |       1.25 |        2.25 | Short        |
+| Debt / rates             |       1.25 |        2.75 | Short        |
+| Dominion deal            |       1.75 |           2 | Slight Short |
+| Dividend growth          |        2.5 |           1 | Long         |
+
+**Long score:** **15.0**
+**Short score:** **11.0**
+**Judgment:** Long thesis wins, but not enough for an aggressive buy.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                        | Status                              |
+| --------------------------------- | ----------------------------------- |
+| Correct engine selected           | Pass — utility/EPS/dividend adapted |
+| GAAP EPS not overused             | Pass                                |
+| Adjusted EPS used                 | Pass                                |
+| Capex/debt burden included        | Pass                                |
+| FPL and NEER separated            | Pass                                |
+| Dominion deal included            | Pass                                |
+| Rate sensitivity included         | Pass                                |
+| Data-center power upside included | Pass                                |
+| Position sizing included          | Pass                                |
+| Red team included                 | Pass                                |
+| Pre-mortem included               | Pass                                |
+
+**Model Reliability:** **Medium-High**
+**Key uncertainty:** Dominion deal outcome and long-term cost of capital.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                              |
+| ----------------- | ------------------------------------------------------------------ |
+| Baseline date     | June 26, 2026                                                      |
+| Current price     | $87.70                                                             |
+| Base IV           | $95                                                                |
+| Expected price    | $96                                                                |
+| Margin of Safety  | 7.7%                                                               |
+| Core assumption 1 | 2026 adjusted EPS around $4.00                                     |
+| Core assumption 2 | Adjusted EPS grows around 8% annually                              |
+| Core assumption 3 | Fair multiple around 20x normalized forward EPS                    |
+| 3M KPI            | Q2 results keep 2026 guide intact                                  |
+| 6M KPI            | NEER backlog stays ≥33 GW and Dominion approval path remains clean |
+| 12M KPI           | FPL RCE growth and rate-case economics remain supportive           |
+| Conviction        | Medium-High / 10.0 of 15                                           |
+| Top concern       | Rates / debt                                                       |
+| Second concern    | Dominion approval/integration                                      |
+| Third concern     | Premium valuation                                                  |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                            |
+| ----------------------------- | --------------------------------------------------- |
+| Investment Attractiveness     | **Medium-High**                                     |
+| Current Price Attractiveness  | **Medium-High**                                     |
+| Long-Term Holding Suitability | **High**                                            |
+| Portfolio Suitability         | **Medium-High; watch rate and power-theme overlap** |
+| Conviction                    | **Medium-High**                                     |
+| Recommended Max Weight        | **3.5%**                                            |
+| Entry Strategy                | **Scale-in acceptable; better below ~$82**          |
+| Execution Opinion             | **Modest Buy / Scale-In**                           |
+
+**One-line summary:** NextEra is a premium utility/infrastructure compounder with real AI/data-center power upside, but at **~22x forward adjusted EPS** and with a large pending Dominion transaction, RS2 supports only a **modest scale-in**, capped at **3.5%**.
+
+**Next ticker in queue:** CEG.
+
+[1]: https://www.sec.gov/Archives/edgar/data/37634/000075330826000028/neeq12026exhibit99.htm "Document"
+[2]: https://newsroom.nexteraenergy.com/2026-05-18-NextEra-Energy-and-Dominion-Energy-to-Combine%2C-Creating-the-Worlds-Largest-Regulated-Electric-Utility-Business-and-North-Americas-Premier-Energy-Infrastructure-Platform-Benefiting-Customers?l=12&utm_source=chatgpt.com "NextEra Energy and Dominion Energy to Combine ..."
+[3]: https://www.investor.nexteraenergy.com/news-and-events/news-releases/2026/02-13-2026-163308214 "
+	NextEra Energy board declares quarterly dividend – NextEra Energy, Inc.
+"
+[4]: https://www.marketbeat.com/stocks/NYSE/NEE/short-interest/?utm_source=chatgpt.com "NextEra Energy (NEE) Short Interest Ratio & Short Volume"
+[5]: https://fintel.io/sopt/us/nee?utm_source=chatgpt.com "NEE / NextEra Energy, Inc. - Put/Call Ratio, Options ..."

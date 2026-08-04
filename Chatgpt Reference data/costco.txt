@@ -1,0 +1,488 @@
+Proceeding with **#8 COST** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #8 — Costco Wholesale / COST
+
+## Top-Line Execution Summary
+
+| Item                        |                                                    Result |
+| --------------------------- | --------------------------------------------------------: |
+| Current Price / T0          |                                    **$948.71** `[Actual]` |
+| Market Cap                  |                                    **$421.6B** `[Actual]` |
+| Reported P/E                |                                      **47.7x** `[Actual]` |
+| TTM EPS                     |                            **$19.88** `[Actual/Estimate]` |
+| Base Intrinsic Value        |                               **$700/share** `[Estimate]` |
+| Expected Price              |                               **$704/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                                   **-35.5%** `[Estimate]` |
+| 50% CI                      |                                **$620–$820** `[Estimate]` |
+| 80% CI                      |                                **$500–$980** `[Estimate]` |
+| Conviction                  | **High business / Medium stock / 9.0 of 15** `[Estimate]` |
+| Recommended Max Weight      |                                     **2.5%** `[Estimate]` |
+| Entry Strategy              |                     **Hold / wait for material pullback** |
+| Execution Opinion           |    **Hold if owned; avoid fresh buying at current price** |
+
+**Core conclusion:** Costco is one of the best retail businesses in the world, but at **~47.7x earnings**, the stock requires near-flawless execution. The business is fortress-quality; the current stock setup is not.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Costco Wholesale Corporation / COST
+**Baseline Date:** June 25, 2026
+**T0:** current price **$948.71**, market cap **$421.6B**, P/E **47.7x**, EPS **$19.88** `[Actual]`.
+**T-1:** latest reported period is fiscal Q3 2026, ended May 10, 2026. Costco reported Q3 net sales of **$69.15B**, membership fees of **$1.37B**, total revenue of **$70.53B**, operating income of **$2.82B**, net income of **$2.19B**, and diluted EPS of **$4.93**. For the first 36 weeks of FY26, net sales were **$203.37B**, total revenue **$207.43B**, net income **$6.23B**, and diluted EPS **$14.01**. ([Costco Investor Relations][1])
+**Tpf:** May 2026 sales were released after Q3. Costco reported May net sales of **$24.01B**, up **14.5% YoY**, with total comparable sales up **12.5%** and digitally-enabled comparable sales up **21.1%**. ([Costco Investor Relations][2])
+
+**Archetype:** **B. Quality Compounder / Defensive Retail Platform**
+**Valuation Engine:** **Engine 1 — Traditional DCF + Multiples**
+
+**Why this engine:**
+
+1. Costco is a highly profitable recurring-membership retailer, not a speculative option-led company.
+2. Value is driven by warehouse growth, traffic, membership renewal, membership fee income, merchandise margin discipline, and capital returns.
+3. The business has some consumer-cycle exposure, but its value proposition is defensive enough that a pure cyclical valuation would understate its durability.
+
+**Model Confidence:** **High for business quality; Medium for valuation.** The biggest uncertainty is not data quality; it is how much premium multiple the market should pay for Costco’s unusually durable model.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable | COST Impact                                                               |
+| -------------- | ------------------------------------------------------------------------- |
+| Higher rates   | Valuation headwind because COST is priced like a long-duration compounder |
+| Inflation      | Mixed; Costco benefits from value-seeking consumers but has cost pressure |
+| Consumer cycle | Defensive relative winner if consumers trade down                         |
+| Fuel prices    | Can lift sales, traffic, and gas volumes, but can distort comps           |
+| Strong USD     | Mild FX headwind through Canada/international                             |
+| Credit spreads | Low impact due strong balance sheet                                       |
+
+**Regime probabilities:**
+Goldilocks **20%**, Reflation **30%**, Stagflation **30%**, Recession **20%** `[Estimate]`.
+
+**Costco macro sensitivity score:**
+Interest rates **-1.5**; dollar **-0.5**; liquidity **-0.5**; economic cycle **-0.5**; commodity/fuel **+0.5 / -0.5 mixed**.
+**Macro alignment:** **Neutral.** Costco is operationally defensive, but the stock’s high multiple is rate-sensitive.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                       |                     Base Rate | COST Adjustment      |
+| ---------------------------------------------------- | ----------------------------: | -------------------- |
+| 5Y survival for dominant membership retailer         |         **>95%** `[Estimate]` | COST passes          |
+| Sustaining 5–8% revenue growth for 5Y at $300B scale |       **45–60%** `[Estimate]` | Raised to **60–70%** |
+| Sustaining >90% U.S./Canada renewal rate             |       **60–75%** `[Estimate]` | Raised to **75–85%** |
+| Sustaining 40x+ P/E for 5Y                           | **Low / 15–25%** `[Estimate]` | Kept low             |
+
+Costco ended FY25 with **81.0M paid members**, **145.2M total cardholders**, **38.7M Executive members**, and renewal rates of **92.3% in the U.S./Canada** and **89.8% worldwide**. Executive members represented **73.6% of worldwide net sales** in FY25. ([SEC][3])
+
+**Base-rate shock check:** The business deserves a premium base rate. The stock’s valuation does not. RS2 separates business quality from price attractiveness.
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+Costco operates membership warehouses, e-commerce sites, gas stations, pharmacies, optical centers, food courts, travel services, business centers, and private-label Kirkland Signature products. It sells high-volume merchandise at low markups, using membership fees as a recurring profit engine and low prices as the customer loyalty loop. The business is highly understandable, with the central question being how much valuation premium the membership model deserves.
+
+**Comprehensibility:** **High**
+
+### Moat Score
+
+| Moat Type                  |       Score | Direction                     |
+| -------------------------- | ----------: | ----------------------------- |
+| Brand / trust              |         3/3 | Widening                      |
+| Switching costs            |       2.5/3 | Stable/Widening               |
+| Network effects            |       1.5/3 | Stable                        |
+| Cost advantage             |         3/3 | Widening                      |
+| Economies of scale         |         3/3 | Widening                      |
+| Regulatory barriers        |       0.5/3 | Stable                        |
+| Data / membership insights |         2/3 | Widening                      |
+| **Total**                  | **15.5/21** | **Wide / near-fortress moat** |
+
+**Moat direction:** **Widening.** Membership loyalty, price trust, scale purchasing, Kirkland, high traffic, gas, and Executive member penetration reinforce each other.
+
+**Peter Lynch classification:** **Stalwart / Quality Compounder.**
+
+### Financial Health Scorecard
+
+| Metric                        |                                     Result |
+| ----------------------------- | -----------------------------------------: |
+| FY25 net sales                |         **$269.91B**, up **8%** `[Actual]` |
+| FY25 membership fee revenue   |          **$5.32B**, up **10%** `[Actual]` |
+| FY25 net income               |      **$8.10B**, EPS **$18.21** `[Actual]` |
+| FY25 operating cash flow      |                     **$13.34B** `[Actual]` |
+| FY25 capex                    |                      **$5.50B** `[Actual]` |
+| Q3 FY26 net sales             |       **$69.15B**, up **11.6%** `[Actual]` |
+| Q3 FY26 total comp sales      |   **+9.8%**, adjusted **+6.6%** `[Actual]` |
+| Q3 FY26 digital comp sales    | **+21.5%**, adjusted **+20.8%** `[Actual]` |
+| 36W FY26 net income           |      **$6.23B**, EPS **$14.01** `[Actual]` |
+| 36W FY26 operating cash flow  |                     **$11.13B** `[Actual]` |
+| 36W FY26 capex                |                      **$4.23B** `[Actual]` |
+| Cash + short-term investments |            **$20.00B** `[Actual/Estimate]` |
+| Long-term debt ex-current     |                      **$5.67B** `[Actual]` |
+| Net cash before leases        |                  **~$14.33B** `[Estimate]` |
+
+FY25 sales, membership fee revenue, net income, operating cash flow, capex plan, and warehouse expansion are from Costco’s FY25 10-K. ([SEC][3]) Q3 FY26 and 36-week FY26 revenue, membership fee revenue, operating income, EPS, cash flow, cash, investments, and debt are from Costco’s Q3 FY26 release. ([Costco Investor Relations][1])
+
+**Financial Health Judgment:** **Excellent.** Costco has net cash before leases, strong working-capital economics, durable membership income, and low financial leverage.
+
+### Capital Allocation Scorecard
+
+| Dimension                             |       Score |
+| ------------------------------------- | ----------: |
+| Buyback efficiency                    |         1/3 |
+| M&A track record                      |         2/3 |
+| Capex efficiency                      |         3/3 |
+| Dividend / buyback / reinvestment mix |       2.5/3 |
+| Guidance / execution consistency      |         3/3 |
+| Insider adjustment                    |           0 |
+| **Total**                             | **11.5/15** |
+
+Costco repurchased **943,000 shares** in FY25 at an average price of **$957.66**, totaling about **$903M**, while the remaining authorization was **$1.96B** at FY25 year-end. ([SEC][3])
+
+**Capital allocation judgment:** **Good**, but buybacks at nearly **48x earnings** are not highly accretive. Costco’s best capital allocation remains reinvesting in warehouses, logistics, digital, employee retention, and member value.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                    |                         Result |
+| ----------------------- | -----------------------------: |
+| FY25 SBC                |           **$860M** `[Actual]` |
+| 36W FY26 SBC            |           **$771M** `[Actual]` |
+| TTM SBC                 |        **~$911M** `[Estimate]` |
+| TTM net income          |       **~$8.84B** `[Estimate]` |
+| TTM EPS                 | **$19.88** `[Actual/Estimate]` |
+| TTM operating cash flow |      **~$15.00B** `[Estimate]` |
+| TTM capex               |       **~$6.19B** `[Estimate]` |
+| TTM FCF                 |       **~$8.81B** `[Estimate]` |
+| TTM SBC-adjusted FCF    |       **~$7.90B** `[Estimate]` |
+| P/FCF                   |        **~47.9x** `[Estimate]` |
+| P/SBC-adjusted FCF      |        **~53.4x** `[Estimate]` |
+
+FY25 SBC was **$860M**, and 36-week FY26 SBC was **$771M**. ([SEC][3])
+
+**Adjusted financials judgment:** Accounting quality is clean. The issue is not SBC or financial engineering; the issue is valuation.
+
+---
+
+## Section 3. Valuation — Engine 1
+
+### DCF / Owner Earnings Assumptions
+
+| Scenario | Starting EPS / Owner Earnings |        Growth Path | Discount Rate | Terminal Growth | IV / Share |
+| -------- | ----------------------------: | -----------------: | ------------: | --------------: | ---------: |
+| Bear     |         $19.00 `[Assumption]` |        3–4% fading |          8.5% |            2.5% |   **$500** |
+| Base     |         $20.50 `[Assumption]` |    8% fading to 4% |          7.5% |            3.0% |   **$700** |
+| Bull     |         $21.50 `[Assumption]` | 10% fading to 4.5% |          7.0% |           3.25% |   **$980** |
+
+**Base IV:** **$700/share** `[Estimate]`
+**Current price:** **$948.71/share** `[Actual]`
+**Margin of Safety:** **-35.5%** `[Estimate]`
+
+### Multiple Cross-Check
+
+| Metric                    |                     Result |
+| ------------------------- | -------------------------: |
+| P/E                       |       **47.7x** `[Actual]` |
+| P/TTM FCF                 |    **~47.9x** `[Estimate]` |
+| P/SBC-adjusted FCF        |    **~53.4x** `[Estimate]` |
+| EV / TTM operating income |      **~45x** `[Estimate]` |
+| Dividend yield            | **~0.5–0.6%** `[Estimate]` |
+
+**Multiple judgment:** Costco deserves a premium, but the current premium is extreme. At this price, a lot of future warehouse growth, fee growth, digital growth, and margin stability is already capitalized.
+
+### Reverse DCF
+
+At **$948.71**, Costco must likely deliver approximately **9–11% EPS/owner-earnings CAGR for 10 years**, while retaining a premium terminal multiple or low discount-rate treatment. `[Estimate]`
+
+**Judgment:** **Plausible only in a high-quality bull case.** Costco can compound, but the current price leaves little room for any multiple compression.
+
+### Tornado Sensitivity
+
+| Variable                           | -1σ Impact | +1σ Impact |
+| ---------------------------------- | ---------: | ---------: |
+| Terminal multiple / terminal value |       -25% |       +30% |
+| EPS growth rate                    |       -22% |       +28% |
+| Comparable sales growth            |       -18% |       +22% |
+| Membership fee growth / renewal    |       -15% |       +18% |
+| Discount rate                      |       -14% |       +16% |
+
+**Top 3 thesis KPIs:**
+
+1. Comparable sales growth excluding gas/FX
+2. Membership fee revenue and renewal rates
+3. EPS growth / operating leverage
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+Walmart/Sam’s Club, BJ’s, Amazon, Target, Aldi, Lidl, and regional grocers compete on value and convenience. Costco’s low-SKU, high-volume, membership model remains structurally advantaged, but Sam’s Club and Walmart are improving digital, pickup, and value positioning.
+
+**Reflexivity:**
+Positive: high stock price supports employee morale, capital access, and optionality for special dividends.
+Negative: the same high valuation makes the stock fragile; even strong results can produce poor returns if the multiple compresses from ~48x toward 35–40x.
+
+**Customer behavior evolution:**
+Inflation and value-seeking behavior favor Costco. Reuters reported that Q3 traffic and gas volumes benefited from frugal consumers seeking lower fuel prices, helping Costco beat quarterly sales expectations. ([Reuters][4])
+
+**Network dynamics:**
+Costco’s “member value loop” is powerful: low prices drive membership, membership fees fund low merchandise margins, scale improves purchasing power, and high renewal reinforces recurring income.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                                                 |
+| -------- | ----------: | ------------: | ------------------------------------------------------------------------------------------------ |
+| Bear     |         25% |      **$500** | Multiple compresses, comps normalize, wage/freight/gas distort margins                           |
+| Base     |         50% |      **$700** | High-single-digit EPS growth, stable renewal, steady warehouse expansion                         |
+| Bull     |         25% |      **$980** | International/digital growth accelerates, membership income compounds, premium multiple persists |
+
+**Expected Price:**
+25% × $500 + 50% × $700 + 25% × $980 = **$720/share** `[Estimate]`
+After quality premium but valuation penalty: **$704/share** `[Estimate]`
+
+**50% CI:** **$620–$820** `[Estimate]`
+**80% CI:** **$500–$980** `[Estimate]`
+**Margin of Safety:** **-35.5%**
+**MoS Judgment:** **No Margin of Safety.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **5–7 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **Negative**
+
+The market is already pricing Costco far into the future. This is the opposite of a classic horizon-arbitrage setup.
+
+**Horizon arbitrage judgment:** **Negative.** Costco is not being ignored; it is being treated as near-perfect.
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |      Score |
+| ------------------------ | ---------: |
+| Business quality         |      3.0/3 |
+| Valuation attractiveness |      0.0/3 |
+| Macro alignment          |      2.0/3 |
+| Thesis clarity           |      2.0/3 |
+| Execution trackability   |      2.0/3 |
+| **Total**                | **9.0/15** |
+
+**Conviction Tier:** **Medium overall** despite **Very High business quality**.
+**Layer 5 preliminary weight:** **3–5%** for business quality.
+**Adjustments:**
+
+* No MoS: -1.0%
+* Extreme multiple: -1.0%
+* Low dividend yield: -0.5%
+* Defensive diversification benefit: +0.5%
+
+**Layer 5 recommended max weight:** **2.5%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                    |                         Result |
+| ----------------------- | -----------------------------: |
+| Short interest          |    **7.88M shares** `[Actual]` |
+| Short % float           |           **1.78%** `[Actual]` |
+| Days to cover           |             **2.7** `[Actual]` |
+| Institutional ownership | **68.48%** `[Actual/Estimate]` |
+| Squeeze risk            |                            Low |
+| Crowding score          |   **9/15 Medium** `[Estimate]` |
+
+Costco short interest is low: MarketBeat reports **7.88M shares short**, **1.78%** of float, and **2.7 days to cover** as of May 29, 2026. Institutional ownership is reported at **68.48%**. ([MarketBeat][5])
+
+**Behavioral judgment:** Costco is not hated. The risk is not short pressure; the risk is premium-multiple crowding in a beloved compounder.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Defensive consumer compounder / quality ballast.
+**Expected 3–5Y annualized return from current price:** **2–6%** `[Estimate]`, assuming earnings compound but multiple compresses moderately.
+**Portfolio overlap:** Moderate with PG and HD through consumer exposure; lower correlation with AI names like MSFT, AMD, META, TSLA, PLTR, OKLO, and CEG.
+
+**Portfolio fit judgment:** **High as a business, medium as a stock.** Costco improves portfolio quality but may dilute future returns if bought at too high a price.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                  Value |
+| ----------------------------- | ---------------------: |
+| Probability of base-or-better |   **75%** `[Estimate]` |
+| Weighted upside from current  | **~2–3%** `[Estimate]` |
+| Bear downside from current    |  **~47%** `[Estimate]` |
+| Practical fractional Kelly    |  **0–2%** `[Estimate]` |
+| RS2 final cap                 |               **2.5%** |
+
+The Kelly result is weak because upside from current price is limited while bear-case downside from multiple compression is large.
+**Final recommended max weight:** **2.5%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Multiple compression:** The stock can fall materially even if the business remains strong.
+2. **Comps normalization:** May and Q3 comps were very strong, but fuel, inflation, and traffic effects may normalize.
+3. **Cost pressure:** wages, freight, beef/food, technology, and international expansion can pressure margins.
+
+### Top 3 Catalysts
+
+1. Comparable sales excluding gas/FX stay above **5–6%**.
+2. Membership fee revenue continues double-digit growth.
+3. International warehouse expansion and digital sales sustain high-single-digit EPS growth.
+
+**Highest-impact bear scenario:** Costco remains an excellent company but rerates from ~48x earnings toward 32–36x, overwhelming several years of EPS growth.
+
+---
+
+## Section 7.5. Correlation Risk
+
+Costco’s bear triggers are consumer spending slowdown, multiple compression, wage/freight cost pressure, and defensive-quality derating. It has low direct overlap with AI/semiconductor names and moderate overlap with PG, HD, Walmart, and consumer-staples/value retail.
+
+**Stress correlation estimate:** **0.45–0.65** with the broad market; **0.25–0.45** with high-beta AI names. `[Estimate]`
+**True diversification judgment:** **High operational diversification, medium valuation diversification.**
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                           |                Warning Trigger |        Re-underwrite Trigger |
+| ----------------------------- | -----------------------------: | ---------------------------: |
+| Adjusted comparable sales     |                            <4% |           <3% for 2+ periods |
+| Membership fee revenue growth |                            <7% |                          <5% |
+| Renewal rate                  |               U.S./Canada <91% |             U.S./Canada <90% |
+| Operating margin              | flat/down despite strong comps |    sustained margin pressure |
+| Warehouse openings            |                     below plan | expansion slowdown due costs |
+| Digital comp growth           |                           <15% |                         <10% |
+
+### Pre-Mortem
+
+1. **Wrong because multiple compression dominates fundamentals.**
+   Early warning: P/E falls below 40x despite stable results.
+   Response: wait; do not add unless IV gap closes.
+
+2. **Wrong because comps normalize faster than expected.**
+   Early warning: adjusted comps fall below 4%.
+   Response: reduce growth assumption to 5–6%.
+
+3. **Wrong because labor and logistics costs pressure margins.**
+   Early warning: SG&A grows faster than net sales for multiple quarters.
+   Response: lower operating leverage and IV.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. Costco is a great business but trades at **~47.7x earnings**, which is extreme for a mature retailer.
+2. TTM FCF yield is only about **2.1%**, before SBC adjustment `[Estimate]`.
+3. Membership economics are excellent, but they are not new; the market already understands them.
+4. Buybacks at current prices are low-return capital allocation.
+5. If rates stay elevated, Costco’s bond-like defensive premium can compress.
+6. Strong comps partly reflect fuel/gas and inflation effects, which can reverse or normalize.
+7. The stock has little room for execution error.
+
+### Long vs Short Logic Battle
+
+| Issue                     | Long Score | Short Score | Winner |
+| ------------------------- | ---------: | ----------: | ------ |
+| Business quality          |          3 |         0.5 | Long   |
+| Membership moat           |          3 |           1 | Long   |
+| Balance sheet             |          3 |         0.5 | Long   |
+| Valuation                 |          0 |           3 | Short  |
+| Comps durability          |          2 |         1.5 | Long   |
+| Capital allocation        |        1.5 |           2 | Short  |
+| Portfolio diversification |        2.5 |           1 | Long   |
+
+**Long score:** **15.0**
+**Short score:** **9.5**
+**Gap:** **+5.5 Long on business quality, but Short wins valuation.**
+
+**Adversarial data check:** No major current short-seller fraud thesis found. The strongest bear case is simple and serious: **excellent company, overpaid stock**.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                                | Status |
+| ----------------------------------------- | ------ |
+| Correct engine selected                   | Pass   |
+| DCF-only conclusion avoided               | Pass   |
+| Multiples cross-check included            | Pass   |
+| Macro included                            | Pass   |
+| Base rates included                       | Pass   |
+| Business quality separated from valuation | Pass   |
+| Membership economics included             | Pass   |
+| Position sizing included                  | Pass   |
+| Monitoring KPIs included                  | Pass   |
+| Red team included                         | Pass   |
+| Pre-mortem included                       | Pass   |
+| Data tier reliance disclosed              | Pass   |
+| Recalculation required                    | No     |
+
+**Model Reliability:** **High for business quality; Medium for valuation.**
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                          |
+| ----------------- | -------------------------------------------------------------- |
+| Baseline date     | June 25, 2026                                                  |
+| Current price     | $948.71                                                        |
+| Base IV           | $700                                                           |
+| Expected price    | $704                                                           |
+| Margin of Safety  | -35.5%                                                         |
+| Core assumption 1 | TTM EPS around $19.88                                          |
+| Core assumption 2 | Long-term EPS growth around 7–8%                               |
+| Core assumption 3 | Premium multiple persists but gradually normalizes             |
+| 3M KPI            | Adjusted comps remain >5%                                      |
+| 6M KPI            | Membership fee revenue growth remains high-single/double-digit |
+| 12M KPI           | EPS growth remains high-single-digit or better                 |
+| Conviction        | 9.0/15                                                         |
+| Revalidation date | After Q4 FY26 earnings                                         |
+| Top concern       | Extreme valuation                                              |
+| Second concern    | Multiple compression                                           |
+| Third concern     | Comps normalization                                            |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                               |
+| ----------------------------- | ------------------------------------------------------ |
+| Investment Attractiveness     | **High business / Medium stock**                       |
+| Current Price Attractiveness  | **Low**                                                |
+| Long-Term Holding Suitability | **High if bought well; medium at current price**       |
+| Portfolio Suitability         | **Medium-High as defensive quality ballast**           |
+| Conviction                    | **Medium overall**                                     |
+| Recommended Max Weight        | **2.5%**                                               |
+| Entry Strategy                | **Hold; wait for material pullback**                   |
+| Execution Opinion             | **Hold if owned; avoid fresh buying at current price** |
+
+**One-line summary:** Costco is a near-fortress retailer with outstanding membership economics, but at **~48x earnings** the stock has **no RS2 margin of safety** and should be bought only after a meaningful valuation reset.
+
+**Next ticker in queue:** XOM.
+
+[1]: https://investor.costco.com/news/news-details/2026/Costco-Wholesale-Corporation-Reports-Third-Quarter-and-Year-To-Date-Operating-Results-For-Fiscal-2026/default.aspx "
+	Costco Wholesale Corporation - Costco Wholesale Corporation Reports Third Quarter and Year-To-Date Operating Results For Fiscal 2026
+"
+[2]: https://investor.costco.com/news/news-details/2026/Costco-Wholesale-Corporation-Reports-May-Sales-Results/default.aspx?utm_source=chatgpt.com "Costco Wholesale Corporation Reports May Sales Results"
+[3]: https://www.sec.gov/Archives/edgar/data/909832/000090983225000101/cost-20250831.htm "cost-20250831"
+[4]: https://www.reuters.com/business/retail-consumer/costco-wholesale-beats-quarterly-sales-estimates-2026-05-28/?utm_source=chatgpt.com "Costco gas stations draw more frugal Americans as prices bite"
+[5]: https://www.marketbeat.com/stocks/NASDAQ/COST/short-interest/?utm_source=chatgpt.com "Costco Wholesale (COST) Short Interest & Short Float"

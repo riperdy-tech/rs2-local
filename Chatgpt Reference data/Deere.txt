@@ -1,0 +1,411 @@
+Proceeding with **#16 DE** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #16 — Deere & Company / DE
+
+## Top-Line Execution Summary
+
+| Item                        |                                        Result |
+| --------------------------- | --------------------------------------------: |
+| Current Price / T0          |                        **$630.76** `[Actual]` |
+| Market Cap                  |                        **$170.8B** `[Actual]` |
+| Reported P/E                |                          **35.8x** `[Actual]` |
+| TTM EPS                     |               **~$17.65** `[Actual/Estimate]` |
+| FY26 Net Income Guide       |                     **$4.5–$5.0B** `[Actual]` |
+| Base Intrinsic Value        |                   **$610/share** `[Estimate]` |
+| Expected Price              |                   **$625/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                        **-3.4%** `[Estimate]` |
+| 50% CI                      |                    **$540–$700** `[Estimate]` |
+| 80% CI                      |                    **$430–$850** `[Estimate]` |
+| Conviction                  |      **Medium-High / 9.5 of 15** `[Estimate]` |
+| Recommended Max Weight      |                         **3.0%** `[Estimate]` |
+| Entry Strategy              |           **Hold / wait; better below ~$570** |
+| Execution Opinion           | **Hold; selective scale-in only on pullback** |
+
+**Core conclusion:** Deere is a very high-quality cyclical with a real precision-ag / dealer-network moat, and 2026 may be close to the bottom of the large-ag cycle. But the stock already prices in a recovery: at **~36x depressed TTM EPS** and near my cycle-adjusted value, RS2 sees **no meaningful margin of safety**. ([PR Newswire][1])
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Deere & Company / DE
+**Baseline Date:** June 25–26, 2026
+**T0:** current price **$630.76**, market cap **$170.8B**, P/E **35.76x**, EPS **$17.64** `[Actual]`.
+**T-1:** latest reported results are fiscal Q2 2026. Deere reported Q2 net income of **$1.773B**, EPS of **$6.55**, net sales and revenues of **$13.369B**, and first-half EPS of **$8.97**; management kept FY26 net income guidance at **$4.5–$5.0B**. ([PR Newswire][1])
+**Tpf:** the stock reflects a market belief that large agriculture is near trough, while small agriculture, construction, forestry, and precision technology provide downside support.
+
+**Archetype:** **C/B hybrid — Industrial Cyclical + Quality Compounder**
+**Valuation Engine:** **Engine 2 — Cycle-Adjusted Valuation**, with Engine 3 quality overlay.
+
+**Why this engine:** Deere’s earnings are cyclical because large farm equipment demand depends on crop prices, farmer income, input costs, used equipment, interest rates, and dealer inventory. But it deserves a quality overlay because of brand, dealer density, parts/service, financing, precision ag, and its installed base.
+
+---
+
+## Section 1. Macro Context
+
+Deere’s macro backdrop is mixed. USDA forecasts 2026 net farm income of **$153.4B**, down **0.7% nominally** and down **2.6% inflation-adjusted**, while net cash farm income is forecast to rise modestly; this supports the view that the farm economy is not collapsing but is still under pressure. ([경제 연구 서비스][2])
+
+**Macro score:** Neutral-to-mild headwind.
+Higher rates hurt equipment affordability and financing, while construction/data-center infrastructure helps Construction & Forestry. Agriculture remains the weak link.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                   |         RS2 View |
+| ------------------------------------------------ | ---------------: |
+| 5Y survival for Deere                            |         **>95%** |
+| Large-ag trough followed by recovery within 2–3Y |       **55–65%** |
+| Sustaining premium margins through cycle         |       **55–65%** |
+| Precision-ag monetization becoming material      |       **45–60%** |
+| Current 30x+ P/E sustained for 5Y                | **Low / 20–30%** |
+
+**Base-rate adjustment:** Positive for business quality, negative for valuation. Deere’s moat is real, but the base rate for buying cyclical machinery stocks at high P/E multiples is not attractive.
+
+---
+
+## Section 2. Business Quality
+
+Deere sells agricultural, turf, construction, forestry, roadbuilding, and related equipment, plus financing and technology-enabled services. Its moat comes from brand trust, dealer network, parts/service, embedded equipment workflows, and precision-ag software/hardware. The business is understandable, but current earnings are cycle-dependent.
+
+### Moat Score
+
+| Moat Type                        |       Score |
+| -------------------------------- | ----------: |
+| Brand / dealer network           |         3/3 |
+| Switching costs / installed base |       2.5/3 |
+| Network effects                  |         1/3 |
+| Cost advantage                   |         2/3 |
+| Economies of scale               |         3/3 |
+| Regulatory / technical barriers  |       1.5/3 |
+| Data / precision-ag moat         |       2.5/3 |
+| **Total**                        | **15.5/21** |
+
+**Moat direction:** Stable-to-widening. Precision agriculture, automation, digital operations center, parts/service, and dealer support can make Deere more than a simple equipment cycle name.
+
+### Financial Health
+
+| Metric                                    |                                Result |
+| ----------------------------------------- | ------------------------------------: |
+| FY25 net sales and revenues               | **$45.684B**, down **12%** `[Actual]` |
+| FY25 net income                           |                **$5.027B** `[Actual]` |
+| FY25 EPS                                  |                 **$18.50** `[Actual]` |
+| Q2 FY26 net sales and revenues            |    **$13.369B**, up **5%** `[Actual]` |
+| Q2 FY26 EPS                               |                  **$6.55** `[Actual]` |
+| H1 FY26 net income                        |                **$2.429B** `[Actual]` |
+| H1 FY26 EPS                               |                  **$8.97** `[Actual]` |
+| FY26 net income guide                     |             **$4.5–$5.0B** `[Actual]` |
+| Consolidated cash + marketable securities |      **~$9.335B** `[Actual/Estimate]` |
+| Equipment operations cash + securities    |       **~$6.09B** `[Actual/Estimate]` |
+
+FY25 revenue, net income, EPS, and the original FY26 guide are from Deere’s FY25 release; Q2/H1 2026 results and the updated unchanged FY26 guide are from the Q2 2026 release.  Deere had consolidated cash of **$7.905B** and marketable securities of **$1.430B** at Q2, while supplemental data shows equipment-operations cash of **$5.917B** and marketable securities of **$173M**. ([PR Newswire][1])
+
+**Financial health judgment:** Strong, but with meaningful Financial Services leverage that should be treated as matched financing debt rather than normal industrial debt.
+
+### Segment Read
+
+| Segment                   |                                    Q2 FY26 Result | Judgment                           |
+| ------------------------- | ------------------------------------------------: | ---------------------------------- |
+| Production & Precision Ag | Sales **$4.503B**, down **14%**; margin **15.7%** | Weak cycle / core risk             |
+| Small Ag & Turf           |   Sales **$3.485B**, up **16%**; margin **20.6%** | Strong offset                      |
+| Construction & Forestry   |   Sales **$3.790B**, up **29%**; margin **14.8%** | Major bright spot                  |
+| Financial Services        |                  Net income **$190M**, up **18%** | Supportive, but credit-cycle watch |
+
+Production & Precision Agriculture remained weak, with sales down **14%** and operating profit down **39%**, while Small Ag & Turf and Construction & Forestry were strong offsets. ([PR Newswire][1])
+
+---
+
+## Section 2.5. Adjusted Financials
+
+For Deere, I normalize earnings rather than use raw TTM P/E. TTM EPS is about **$17.65**, calculated as FY25 EPS **$18.50** plus H1 FY26 EPS **$8.97** minus H1 FY25 EPS **$9.82**. Deere’s reported finance feed EPS is essentially the same at **$17.64**. 
+
+FY25 consolidated operating cash flow was **$7.459B**, down from **$9.231B** in FY24, and FY25 repurchases were **$1.138B** versus **$4.007B** in FY24, showing Deere is pulling back buybacks in a weaker cycle. 
+
+**Adjusted financials judgment:** Deere’s current earnings are likely below mid-cycle, but the stock price already anticipates recovery.
+
+---
+
+## Section 3. Valuation — Cycle-Adjusted Engine 2
+
+### Normalized Earnings Framework
+
+| Scenario | Normalized EPS | Fair Multiple | Value / Share |
+| -------- | -------------: | ------------: | ------------: |
+| Bear     |         $17.50 |         24.5x |      **$430** |
+| Base     |         $25.50 |         24.0x |      **$610** |
+| Bull     |         $34.00 |         25.0x |      **$850** |
+
+**Base IV:** **$610/share** `[Estimate]`
+**Current price:** **$630.76/share** `[Actual]`
+**Margin of Safety:** **-3.4%** `[Estimate]`
+
+**Why not lower:** Deere is likely near a large-ag trough, and Small Ag plus Construction & Forestry are growing. Management’s segment outlook calls for Production & Precision Ag sales down **5–10%**, but Small Ag & Turf up about **15%** and Construction & Forestry up about **20%** in FY26. ([PR Newswire][1])
+
+**Why not higher:** the stock already trades at **~36x TTM EPS**, while the large-ag industry outlook remains weak: U.S./Canada Large Ag is expected to be down **15–20%**, and South America tractors/combines down about **15%**. ([PR Newswire][1])
+
+### Multiple Cross-Check
+
+| Metric                          |                 Result |
+| ------------------------------- | ---------------------: |
+| Reported P/E                    |              **35.8x** |
+| FY26 guide midpoint implied P/E |  **~36x** `[Estimate]` |
+| P / normalized base EPS         |             **~24.7x** |
+| Dividend yield                  | **~1.0%** `[Estimate]` |
+| Short interest                  |     **1.89% of float** |
+
+The stock is expensive on current earnings but roughly fair on a high-quality mid-cycle estimate. That makes it **not a short**, but also **not an obvious buy**.
+
+### Reverse DCF
+
+At **$630.76**, the market is implying roughly **$25–27 normalized EPS**, a premium mid-cycle multiple, and a large-ag recovery beginning within the next 12–24 months. `[Estimate]`
+
+**Judgment:** Plausible, but not conservative.
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:** CNH, AGCO, Kubota, Caterpillar, Komatsu, and regional OEMs compete across segments. Deere’s strongest advantage is in North American large ag and integrated precision-ag workflows; competition is tougher in smaller equipment and construction.
+
+**Reflexivity:** A high stock price supports buybacks and confidence, but buybacks at high-cycle-recovery multiples are less accretive. Deere reduced repurchases materially in FY25, which is prudent but lowers EPS compounding. 
+
+**Customer behavior:** Farmers can defer equipment purchases for years by using older machines, rental, repair, or used equipment when crop prices and margins are weak. This makes the timing of the recovery uncertain.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                      |
+| -------- | ----------: | ------------: | --------------------------------------------------------------------- |
+| Bear     |         25% |      **$430** | Large-ag downturn persists; tariffs/input costs pressure margins      |
+| Base     |         50% |      **$610** | 2026 is trough; EPS normalizes toward mid-$20s                        |
+| Bull     |         25% |      **$850** | Ag recovery + precision monetization + construction strength compound |
+
+**Expected Price:**
+25% × $430 + 50% × $610 + 25% × $850 = **$625/share** `[Estimate]`
+
+**50% CI:** **$540–$700** `[Estimate]`
+**80% CI:** **$430–$850** `[Estimate]`
+**MoS:** **-3.4%**
+**MoS Judgment:** **No meaningful margin of safety.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **2–4 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **Small positive**
+
+There is some horizon arbitrage if investors are too focused on current weak large-ag results and not enough on the next cycle plus precision-ag monetization. But the stock already appears to be pricing a recovery, so the arbitrage is limited.
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |      Score |
+| ------------------------ | ---------: |
+| Business quality         |     2.75/3 |
+| Valuation attractiveness |      1.0/3 |
+| Macro alignment          |      1.5/3 |
+| Thesis clarity           |      2.0/3 |
+| Execution trackability   |     2.25/3 |
+| **Total**                | **9.5/15** |
+
+**Conviction Tier:** **Medium-High business quality, Medium stock attractiveness**
+**Recommended Max Weight:** **3.0%**
+
+The business is better than the current-cycle earnings show, but the entry price is already giving Deere recovery credit.
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                    |                             Result |
+| ----------------------- | ---------------------------------: |
+| Short interest          |        **5.07M shares** `[Actual]` |
+| Short % float           |               **1.89%** `[Actual]` |
+| Days to cover           |                 **3.0** `[Actual]` |
+| Put/call OI ratio       | **~1.02–1.06** `[Actual/Estimate]` |
+| Institutional ownership |           **~68–75%** `[Estimate]` |
+| Squeeze risk            |                                Low |
+| Crowding score          |                    **8/15 Medium** |
+
+Short interest is normal, with MarketBeat reporting **5.07M** shares short, **1.89%** of float, and **3.0** days to cover. ([마켓비트][3]) Options positioning is neutral-to-slightly cautious, with Fintel reporting a put/call open-interest ratio around **1.02–1.06**. ([Fintel][4])
+
+**Behavioral judgment:** Neutral. No squeeze setup, no obvious contrarian fear.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** High-quality industrial/agriculture cyclical with precision-ag optionality.
+**Expected 3–5Y annualized return:** **5–8%** `[Estimate]` from current price.
+**Overlap:** Moderate-high with CAT, FCX, XOM, FANG through cyclical/global-growth exposure; low with PG, V, LLY; medium with AI-infrastructure names only indirectly through construction/data-center activity.
+
+**Portfolio fit judgment:** Good diversifier versus pure AI, but not if already heavily exposed to CAT and commodity cyclicals.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Weighted upside from current  | **~20%** `[Estimate]` |
+| Bear downside from current    | **~32%** `[Estimate]` |
+| Practical fractional Kelly    |              **3–4%** |
+| RS2 cyclicality cap           |              **3.0%** |
+
+**Final recommended max weight:** **3.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Large-ag cycle lasts longer than expected.** Deere still expects U.S./Canada Large Ag down **15–20%** and Production & Precision Ag sales down **5–10%** in FY26. ([PR Newswire][1])
+2. **Margins disappoint.** Production & Precision Ag operating margin fell to **15.7%** in Q2 from **22.0%** a year earlier. ([PR Newswire][1])
+3. **High valuation on trough earnings.** The stock’s **35.8x** P/E requires confidence that trough earnings normalize.
+
+### Top 3 Catalysts
+
+1. FY26 proves to be the bottom of the large-ag cycle.
+2. Production & Precision Ag margins stabilize and begin recovering.
+3. Construction & Forestry and Small Ag continue offsetting large-ag weakness.
+
+**Highest-impact bear scenario:** Large-ag remains weak into 2027 while the stock derates from “recovery multiple” back toward a normal industrial cyclical multiple.
+
+---
+
+## Section 7.5. Correlation Risk
+
+Deere’s bear triggers overlap with agriculture, industrial cyclicals, interest rates, farmer income, tariffs, and global construction. It is less correlated with software/AI megacaps, but highly correlated with a cyclical basket that includes CAT, FCX, XOM, FANG, and to some extent DE/CAT-adjacent infrastructure names.
+
+**Stress correlation estimate:**
+With CAT/industrial cyclicals: **0.75–0.90** `[Estimate]`
+With energy/materials cyclicals: **0.55–0.75** `[Estimate]`
+With defensives like PG/LLY/V: **0.25–0.45** `[Estimate]`
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                             |                 Warning Trigger |     Re-underwrite Trigger |
+| ------------------------------- | ------------------------------: | ------------------------: |
+| Production & Precision Ag sales |      worse than -10% FY26 guide |           worse than -15% |
+| PPA operating margin            |                            <15% |                      <13% |
+| FY26 net income guide           |                     below $4.5B |               below $4.0B |
+| Dealer inventory                | builds while retail demand weak |    forced production cuts |
+| Farm income / crop prices       |           further deterioration | large-ag recovery delayed |
+| Construction & Forestry growth  |                            <15% |                      <10% |
+
+### Pre-Mortem
+
+1. **Wrong because 2026 is not the trough.**
+   Early warning: FY26 guide cut below $4.5B.
+   Response: reduce base IV toward $500–525.
+
+2. **Wrong because precision-ag moat does not monetize enough.**
+   Early warning: technology adoption does not improve margins or recurring revenue.
+   Response: lower fair multiple.
+
+3. **Wrong because Construction & Forestry strength fades.**
+   Early warning: construction guide moves below +20% growth.
+   Response: lower bull probability.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. DE trades at **~36x TTM EPS**, a high multiple for a cyclical equipment company.
+2. Large Ag remains weak: Deere’s FY26 industry outlook calls U.S./Canada Large Ag down **15–20%**. ([PR Newswire][1])
+3. Production & Precision Ag profit fell **39%** in Q2, showing that the core ag cycle is still under pressure. ([PR Newswire][1])
+4. FY26 net income guidance remained **$4.5–$5.0B**, so Q2 strength did not translate into a raised full-year guide. ([PR Newswire][1])
+5. Farm income is not clearly accelerating; USDA forecasts inflation-adjusted net farm income down in 2026. ([경제 연구 서비스][5])
+6. Deere is a great company, but the stock already prices a recovery.
+
+### Long vs Short Logic Battle
+
+| Issue                            | Long Score | Short Score | Winner |
+| -------------------------------- | ---------: | ----------: | ------ |
+| Brand/dealer moat                |          3 |           1 | Long   |
+| Precision-ag optionality         |        2.5 |         1.5 | Long   |
+| Construction & Forestry strength |        2.5 |           1 | Long   |
+| Valuation                        |          1 |         2.5 | Short  |
+| Large-ag cycle                   |       1.25 |        2.75 | Short  |
+| Balance sheet / financing        |          2 |         1.5 | Long   |
+| Capital allocation               |          2 |         1.5 | Long   |
+
+**Long score:** **14.25**
+**Short score:** **11.75**
+**Judgment:** Long thesis wins on quality, but valuation prevents a strong buy.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                               | Status                |
+| ---------------------------------------- | --------------------- |
+| Correct engine selected                  | Pass — cycle-adjusted |
+| DCF-only conclusion avoided              | Pass                  |
+| Current vs normalized earnings separated | Pass                  |
+| Segment divergence included              | Pass                  |
+| Farm-income macro included               | Pass                  |
+| Precision-ag optionality included        | Pass                  |
+| Financial Services risk included         | Pass                  |
+| Position sizing included                 | Pass                  |
+| Red team included                        | Pass                  |
+| Pre-mortem included                      | Pass                  |
+
+**Model Reliability:** **Medium-High**
+**Key uncertainty:** timing and strength of the large-ag recovery.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                       |
+| ----------------- | ------------------------------------------- |
+| Baseline date     | June 25–26, 2026                            |
+| Current price     | $630.76                                     |
+| Base IV           | $610                                        |
+| Expected price    | $625                                        |
+| Margin of Safety  | -3.4%                                       |
+| Core assumption 1 | FY26 is near trough earnings                |
+| Core assumption 2 | Normalized EPS recovers toward ~$25–26      |
+| Core assumption 3 | Fair normalized multiple around 24x         |
+| 3M KPI            | FY26 guide maintained or raised             |
+| 6M KPI            | Production & Precision Ag margin stabilizes |
+| 12M KPI           | Large-ag demand shows recovery signs        |
+| Conviction        | Medium-High / 9.5 of 15                     |
+| Top concern       | No MoS                                      |
+| Second concern    | Large-ag weakness                           |
+| Third concern     | High multiple on trough earnings            |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                      |
+| ----------------------------- | --------------------------------------------- |
+| Investment Attractiveness     | **Medium-High business / Medium stock**       |
+| Current Price Attractiveness  | **Medium-Low**                                |
+| Long-Term Holding Suitability | **High if bought lower**                      |
+| Portfolio Suitability         | **Medium; watch CAT/commodity overlap**       |
+| Conviction                    | **Medium-High**                               |
+| Recommended Max Weight        | **3.0%**                                      |
+| Entry Strategy                | **Hold / wait; better below ~$570**           |
+| Execution Opinion             | **Hold; selective scale-in only on pullback** |
+
+**One-line summary:** Deere is a superior cyclical with real precision-ag and dealer-network advantages, but at **$630.76** the stock is already pricing a large-ag recovery, so RS2 recommends **Hold**, not aggressive buying.
+
+**Next ticker in queue:** FCX.
+
+[1]: https://www.prnewswire.com/news-releases/deere-reports-second-quarter-net-income-of-1-773-billion-302778847.html "Deere Reports Second Quarter Net Income of $1.773 Billion"
+[2]: https://www.ers.usda.gov/topics/farm-economy/farm-sector-income-finances/farm-sector-income-forecast?utm_source=chatgpt.com "Farm Sector Income Forecast - Economic Research Service"
+[3]: https://www.marketbeat.com/stocks/NYSE/DE/short-interest/?utm_source=chatgpt.com "Deere & Company (DE) Short Interest Ratio & Short Volume"
+[4]: https://fintel.io/sopt/us/de?utm_source=chatgpt.com "DE / Deere & Company - Put/Call Ratio, Options Sentiment, ..."
+[5]: https://www.ers.usda.gov/topics/farm-economy/farm-sector-income-finances/highlights-from-the-farm-income-forecast?utm_source=chatgpt.com "Highlights from the Farm Income Forecast"

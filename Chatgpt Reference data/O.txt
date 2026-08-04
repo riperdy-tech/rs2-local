@@ -1,0 +1,422 @@
+Proceeding with **#20 O** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #20 — Realty Income / O
+
+## Top-Line Execution Summary
+
+| Item                        |                                        Result |
+| --------------------------- | --------------------------------------------: |
+| Current Price / T0          |                         **$62.04** `[Actual]` |
+| Market Cap                  |                         **$58.0B** `[Actual]` |
+| Reported P/E                |          **50.9x** `[Actual, low usefulness]` |
+| 2026 AFFO/share Guide       |                    **$4.41–$4.44** `[Actual]` |
+| Forward P/AFFO              |                       **~14.0x** `[Estimate]` |
+| Annualized Dividend         |                   **$3.252/share** `[Actual]` |
+| Dividend Yield              |                        **~5.2%** `[Estimate]` |
+| Base Intrinsic Value        |                    **$70/share** `[Estimate]` |
+| Expected Price              |                    **$71/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                        **11.4%** `[Estimate]` |
+| 50% CI                      |                      **$58–$78** `[Estimate]` |
+| 80% CI                      |                      **$48–$91** `[Estimate]` |
+| Conviction                  |     **Medium-High / 10.0 of 15** `[Estimate]` |
+| Recommended Max Weight      |                         **4.0%** `[Estimate]` |
+| Entry Strategy              | **Scale-in acceptable; better below ~$58–60** |
+| Execution Opinion           |                     **Modest Buy / Scale-In** |
+
+**Core conclusion:** Realty Income is not a fast grower, but at **~14x forward AFFO** with a **~5.2% monthly dividend yield**, 98.9% occupancy, and a raised 2026 acquisition outlook, O offers one of the cleaner income-oriented margins of safety in the queue. The main risk is not business quality; it is **rates + leverage + slow same-store growth**.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Realty Income Corporation / O
+**Baseline Date:** June 26, 2026
+**T0:** current price **$62.04**, market cap **$57.97B**, reported P/E **50.85x**, EPS **$1.22** `[Actual]`. GAAP P/E is not very useful for REIT valuation because depreciation depresses GAAP earnings; AFFO is the better valuation anchor.
+**T-1:** latest financials are Q1 2026. Realty Income reported net income available to common stockholders of **$311.8M**, or **$0.33/share**, and AFFO/share of **$1.13**, up **6.6%** year over year. It also invested **$2.8B**, with a pro-rata share of **$2.6B**, at an initial weighted average cash yield of **7.1%**. ([PR Newswire][1])
+**Tpf:** current price reflects raised 2026 AFFO/share guidance of **$4.41–$4.44**, up from prior guidance of **$4.38–$4.42**, and raised 2026 investment volume guidance of **$9.5B** versus prior **$8.0B**. ([PR Newswire][1])
+
+**Archetype:** **A/B hybrid — Net-lease REIT + income compounder**
+**Valuation Engine:** **REIT-adapted Engine 1: AFFO / dividend / spread valuation**
+
+---
+
+## Section 1. Macro Context
+
+Realty Income is a long-duration, rate-sensitive REIT. Higher rates pressure valuation multiples and acquisition spreads; lower rates help refinancing, external growth, and REIT rerating. Its business cash flows are more defensive than most real estate because tenants generally operate under long-term net leases and pay property-level expenses, but the stock still behaves partly like a leveraged yield instrument.
+
+**Macro alignment:** **Neutral-to-mild positive.** The rate backdrop is not ideal, but O’s current valuation already reflects a lot of rate skepticism.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                        |                RS2 View |
+| ----------------------------------------------------- | ----------------------: |
+| 5Y survival for large investment-grade net-lease REIT |   **>95%** `[Estimate]` |
+| Sustaining occupancy above 98%                        | **70–85%** `[Estimate]` |
+| Sustaining 2–4% AFFO/share growth                     | **60–75%** `[Estimate]` |
+| Sustaining 5%+ dividend yield with coverage           | **65–80%** `[Estimate]` |
+| Re-rating back to 17–18x AFFO                         | **30–45%** `[Estimate]` |
+| Equity dilution from external growth                  |       **Moderate risk** |
+
+**Base-rate adjustment:** positive for dividend durability and portfolio quality; limited for growth. O is a dependable income asset, not a high-growth compounder.
+
+---
+
+## Section 2. Business Quality
+
+Realty Income owns single-tenant net-lease properties across retail, industrial, and other sectors in the U.S. and Europe. The model is simple: buy properties leased to creditworthy tenants, use long leases and rent escalators, fund growth with debt/equity/private capital, and distribute most AFFO as monthly dividends. As of Q1 2026, the portfolio included **15,571 properties**, **1,786 clients**, **92 industries**, and a weighted average remaining lease term of about **8.7 years**. ([PR Newswire][1])
+
+### Moat Score
+
+| Moat Type                            |       Score |
+| ------------------------------------ | ----------: |
+| Scale / sourcing advantage           |         3/3 |
+| Cost of capital                      |         2/3 |
+| Tenant diversification               |         3/3 |
+| Switching costs                      |       1.5/3 |
+| Brand / dividend reputation          |       2.5/3 |
+| Regulatory / tax structure           |       1.5/3 |
+| Private-capital platform optionality |         2/3 |
+| **Total**                            | **15.5/21** |
+
+**Moat direction:** **Stable-to-slightly widening.** O’s scale, capital relationships, and private-capital vehicles improve sourcing and funding flexibility.
+
+### Financial Health
+
+| Metric                                                    |                     Result |
+| --------------------------------------------------------- | -------------------------: |
+| FY25 total revenue                                        |     **$5.749B** `[Actual]` |
+| FY25 AFFO/share                                           |       **$4.28** `[Actual]` |
+| FY25 dividend payout / AFFO                               |       **75.2%** `[Actual]` |
+| Q1 2026 AFFO/share                                        |       **$1.13** `[Actual]` |
+| Q1 2026 occupancy                                         |       **98.9%** `[Actual]` |
+| Q1 2026 rent recapture                                    |      **103.4%** `[Actual]` |
+| Q1 2026 net debt                                          |    **$29.585B** `[Actual]` |
+| Q1 2026 net debt / annualized pro-forma adjusted EBITDAre |        **5.2x** `[Actual]` |
+| 2026 AFFO/share guidance                                  | **$4.41–$4.44** `[Actual]` |
+| 2026 same-store rent growth guide                         |    **1.0–1.3%** `[Actual]` |
+| 2026 occupancy guide                                      |      **~98.5%** `[Actual]` |
+
+FY25 revenue, AFFO/share, and dividend payout are from the 2025 operating release. ([PR Newswire][2]) Q1 2026 occupancy, rent recapture, leverage, and guidance are from the Q1 release. ([PR Newswire][1])
+
+**Financial health judgment:** **Good, not pristine.** Cash flows are durable, but **5.2x leverage** keeps O sensitive to refinancing and rates.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+For O, **AFFO/share** is the key owner-earnings proxy.
+
+| Item                           |                      Result |
+| ------------------------------ | --------------------------: |
+| Q1 2026 AFFO                   |      **$1.058B** `[Actual]` |
+| Q1 2026 AFFO/share             |        **$1.13** `[Actual]` |
+| 2026 AFFO/share guide midpoint |    **~$4.425** `[Estimate]` |
+| Current P/AFFO                 |     **~14.0x** `[Estimate]` |
+| Latest monthly dividend        | **$0.271/share** `[Actual]` |
+| Annualized dividend            | **$3.252/share** `[Actual]` |
+| Dividend yield                 |      **~5.2%** `[Estimate]` |
+| Dividend / 2026 AFFO payout    |     **~73.5%** `[Estimate]` |
+
+Realty Income raised the monthly dividend to **$0.2710/share**, equal to **$3.252/share annualized**, marking its **135th dividend increase** since NYSE listing; it has also declared **672 consecutive monthly dividends**. ([Realty Income][3])
+
+**Adjusted financials judgment:** Dividend coverage is healthy for an income REIT. The problem is not payout safety today; the problem is whether AFFO/share can grow fast enough to justify a higher multiple.
+
+---
+
+## Section 3. Valuation — REIT-Adapted Engine 1
+
+### AFFO Multiple Framework
+
+| Scenario | AFFO/share | Fair P/AFFO | Value / Share |
+| -------- | ---------: | ----------: | ------------: |
+| Bear     |      $4.20 |       11.5x |       **$48** |
+| Base     |      $4.55 |       15.4x |       **$70** |
+| Bull     |      $5.05 |       18.0x |       **$91** |
+
+**Base IV:** **$70/share** `[Estimate]`
+**Current price:** **$62.04/share** `[Actual]`
+**Margin of Safety:** **11.4%** `[Estimate]`
+
+### Cross-Check
+
+| Metric                       |       Result |
+| ---------------------------- | -----------: |
+| Forward P/AFFO               |   **~14.0x** |
+| AFFO yield                   |    **~7.1%** |
+| Dividend yield               |    **~5.2%** |
+| Dividend payout / AFFO       |   **~73.5%** |
+| Net leverage                 |     **5.2x** |
+| Same-store rent growth guide | **1.0–1.3%** |
+
+**Multiple judgment:** O is reasonably priced. It is not a deep value screaming bargain, but a **14x AFFO** multiple for this level of portfolio durability is attractive if rates do not move materially higher.
+
+### Reverse DCF
+
+At **$62**, the market is pricing O as if AFFO/share growth remains in the **2–3%** range and the fair multiple stays in the low-to-mid teens. That is a conservative but reasonable expectation. `[Estimate]`
+
+**Reverse DCF judgment:** **Not demanding.**
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:** Agree Realty, NNN REIT, W. P. Carey, VICI, Essential Properties, private real estate funds, and insurance capital all compete for net-lease assets. O’s scale helps sourcing, but competition compresses acquisition yields.
+
+**Reflexivity:** If the stock rises, O’s equity cost of capital improves, which can make acquisitions more accretive. If the stock falls, external growth becomes harder and private-capital partnerships become more important.
+
+**Customer behavior:** Tenants value sale-leaseback capital, operational control, and long lease terms. Retail tenant bankruptcies remain the key idiosyncratic risk, but O’s diversification reduces single-tenant damage.
+
+**Private-capital flywheel:** The Apollo and GIC/private-fund structures are important because they can reduce reliance on issuing common equity at unattractive prices. Reuters reported Apollo committed **$1B** for a **49% interest** in a retail-property joint venture expected to own about **500 single-tenant retail properties**. ([Reuters][4])
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                       |
+| -------- | ----------: | ------------: | ---------------------------------------------------------------------- |
+| Bear     |         25% |       **$48** | Rates stay high, tenant stress rises, equity cost stays expensive      |
+| Base     |         50% |       **$70** | AFFO/share grows low-single digits; dividend remains covered           |
+| Bull     |         25% |       **$91** | Rates fall, acquisition spreads widen, private-capital flywheel scales |
+
+**Expected Price:**
+25% × $48 + 50% × $70 + 25% × $91 = **$69.75/share** `[Estimate]`
+
+**Rounded Expected Price:** **$71/share** `[Estimate]`
+**50% CI:** **$58–$78**
+**80% CI:** **$48–$91**
+**MoS:** **11.4%**
+**MoS Judgment:** **Moderate positive margin of safety.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **1–2 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **Positive**
+
+The market is focused on rates, slow same-store growth, and leverage. A patient investor gets paid a **~5.2% dividend yield** while waiting for AFFO growth, private-capital scaling, and possible lower-rate rerating.
+
+**Horizon arbitrage judgment:** **Moderate positive.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |       Score |
+| ------------------------ | ----------: |
+| Business quality         |       2.5/3 |
+| Valuation attractiveness |      2.25/3 |
+| Macro alignment          |       1.5/3 |
+| Thesis clarity           |       2.0/3 |
+| Execution trackability   |      1.75/3 |
+| **Total**                | **10.0/15** |
+
+**Conviction Tier:** **Medium-High**
+**Layer 5 preliminary weight:** **4–6%**
+**Adjustments:**
+
+* Leverage / rate sensitivity: -1.0%
+* Slow same-store growth: -0.5%
+* Dividend durability and yield: +0.5%
+* REIT overlap with AMT: -0.5%
+
+**Layer 5 recommended max weight:** **4.0%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                      |                               Result |
+| ------------------------- | -----------------------------------: |
+| Put/call OI ratio         |            **~0.81–0.82** `[Actual]` |
+| Institutional shares held | **~850M shares** `[Actual/Estimate]` |
+| Short-squeeze risk        |                                  Low |
+| Crowding score            |         **7/15 Medium** `[Estimate]` |
+
+Fintel shows Realty Income’s open-interest put/call ratio around **0.81–0.82**, which is not bearish. ([Fintel][5]) Fintel also reports **1,455 institutional owners** holding about **850.1M shares**. ([Fintel][6])
+
+**Behavioral judgment:** Neutral-to-mildly positive. O is not hated, but the REIT sector still carries rate-related skepticism.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Monthly dividend / net-lease real estate / income and rate-sensitive infrastructure.
+**Expected 3–5Y annualized return:** **8–11%** `[Estimate]`, driven by ~5% dividend yield, 2–4% AFFO growth, and possible small rerating.
+**Overlap:** High with AMT through rate sensitivity; low with AI/semiconductors; low with energy/materials; moderate with consumer/retail credit risk.
+
+**Portfolio fit judgment:** **Good**, but do not overweight O and AMT together unless intentionally building a REIT/yield sleeve.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Weighted upside from current  | **~30%** `[Estimate]` |
+| Bear downside from current    | **~23%** `[Estimate]` |
+| Practical fractional Kelly    | **5–7%** `[Estimate]` |
+| RS2 REIT/rate cap             |              **4.0%** |
+
+**Final recommended max weight:** **4.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Rates and refinancing:** O has **$29.6B net debt** and **5.2x net debt / annualized pro-forma adjusted EBITDAre**, so higher-for-longer rates matter. ([PR Newswire][1])
+2. **Slow organic growth:** same-store rent growth guidance is only **1.0–1.3%**, so most growth must come from acquisitions and capital allocation. ([PR Newswire][1])
+3. **Tenant credit / retail stress:** portfolio diversification helps, but net-lease REITs can still be hit by bankruptcies, vacancies, and lower rent recapture.
+
+### Top 3 Catalysts
+
+1. AFFO/share guidance is raised again or tracks above the **$4.41–$4.44** range.
+2. Private-capital partnerships scale and reduce reliance on common equity issuance.
+3. REIT multiples re-rate if rates fall or credit spreads tighten.
+
+**Highest-impact bear scenario:** Rates stay high, tenant stress rises, acquisition spreads compress, and O remains stuck near a 12x AFFO multiple despite stable dividends.
+
+---
+
+## Section 7.5. Correlation Risk
+
+O’s bear triggers are rates, credit spreads, equity cost of capital, tenant bankruptcies, and REIT factor outflows. It has high correlation with AMT and other yield/infrastructure names, but low correlation with FCX/XOM/FANG commodity risk and lower direct correlation with AI semiconductors.
+
+**Stress correlation estimate:**
+With REITs / rate-sensitive assets: **0.75–0.90** `[Estimate]`
+With AMT: **0.60–0.75** `[Estimate]`
+With energy/materials: **0.15–0.35** `[Estimate]`
+With AI/semiconductors: **0.25–0.45** `[Estimate]`
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                    | Warning Trigger | Re-underwrite Trigger |
+| ---------------------- | --------------: | --------------------: |
+| AFFO/share growth      |             <2% |      flat or negative |
+| Payout ratio           |            >80% |                  >85% |
+| Occupancy              |          <98.5% |                <98.0% |
+| Rent recapture         |           <100% |                  <95% |
+| Net debt / EBITDAre    |           >5.5x |                 >5.8x |
+| Acquisition yield      |           <6.5% |                 <6.0% |
+| Same-store rent growth |           <1.0% |                  flat |
+
+### Pre-Mortem
+
+1. **Wrong because the stock remains a bond proxy.**
+   Early warning: AFFO grows but multiple compresses.
+   Response: require higher yield before adding.
+
+2. **Wrong because external growth is less accretive than expected.**
+   Early warning: investment volume rises but AFFO/share growth does not.
+   Response: reduce fair multiple.
+
+3. **Wrong because tenant stress rises.**
+   Early warning: occupancy below 98.5% and rent recapture below 100%.
+   Response: lower base IV and cap weight.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. O is high quality, but it is still a leveraged REIT with **5.2x net leverage**. ([PR Newswire][1])
+2. Same-store rent growth is only guided at **1.0–1.3%**, so the organic growth engine is slow. ([PR Newswire][1])
+3. AFFO/share guidance of **$4.41–$4.44** implies modest growth, not a high-growth compounder. ([PR Newswire][1])
+4. The dividend is attractive, but dividend growth is likely slow unless AFFO growth improves.
+5. External acquisitions require favorable capital markets; if equity is expensive and debt costs stay high, growth spreads narrow.
+6. Retail tenant bankruptcies can create headline and cash-flow risk even in a diversified portfolio.
+7. O and AMT together create meaningful rate-sensitive portfolio exposure.
+
+### Long vs Short Logic Battle
+
+| Issue                     | Long Score | Short Score | Winner |
+| ------------------------- | ---------: | ----------: | ------ |
+| Dividend durability       |          3 |        0.75 | Long   |
+| Portfolio diversification |          3 |           1 | Long   |
+| Valuation                 |       2.25 |        1.25 | Long   |
+| Leverage / rates          |       1.25 |        2.75 | Short  |
+| Organic growth            |       1.25 |         2.5 | Short  |
+| Acquisition platform      |       2.25 |         1.5 | Long   |
+| Tenant credit             |          2 |        1.75 | Long   |
+
+**Long score:** **15.0**
+**Short score:** **11.5**
+**Judgment:** Long thesis wins, but rate/leverage risk prevents a very-high conviction rating.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                           | Status                    |
+| ------------------------------------ | ------------------------- |
+| Correct engine selected              | Pass — REIT/AFFO Engine 1 |
+| GAAP P/E not overused                | Pass                      |
+| AFFO/share used                      | Pass                      |
+| Dividend coverage included           | Pass                      |
+| Leverage included                    | Pass                      |
+| Rate sensitivity included            | Pass                      |
+| Organic vs external growth separated | Pass                      |
+| Private-capital optionality included | Pass                      |
+| Position sizing included             | Pass                      |
+| Red team included                    | Pass                      |
+| Pre-mortem included                  | Pass                      |
+
+**Model Reliability:** **Medium-High**
+**Key uncertainty:** rate path and accretiveness of external growth.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                           |
+| ----------------- | ----------------------------------------------- |
+| Baseline date     | June 26, 2026                                   |
+| Current price     | $62.04                                          |
+| Base IV           | $70                                             |
+| Expected price    | $71                                             |
+| Margin of Safety  | 11.4%                                           |
+| Core assumption 1 | 2026 AFFO/share around $4.43                    |
+| Core assumption 2 | Fair base multiple around 15–16x AFFO           |
+| Core assumption 3 | Dividend remains covered at ~70–75% of AFFO     |
+| 3M KPI            | AFFO/share guide maintained or raised           |
+| 6M KPI            | Net leverage stays ≤5.3x                        |
+| 12M KPI           | Occupancy stays ≥98.5% and rent recapture ≥100% |
+| Conviction        | Medium-High / 10.0 of 15                        |
+| Top concern       | Rates / leverage                                |
+| Second concern    | Low organic growth                              |
+| Third concern     | Tenant credit                                   |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                      |
+| ----------------------------- | --------------------------------------------- |
+| Investment Attractiveness     | **Medium-High**                               |
+| Current Price Attractiveness  | **Medium-High**                               |
+| Long-Term Holding Suitability | **High for income sleeve**                    |
+| Portfolio Suitability         | **Medium-High; watch AMT overlap**            |
+| Conviction                    | **Medium-High**                               |
+| Recommended Max Weight        | **4.0%**                                      |
+| Entry Strategy                | **Scale-in acceptable; better below ~$58–60** |
+| Execution Opinion             | **Modest Buy / Scale-In**                     |
+
+**One-line summary:** Realty Income is a slow-growth but durable monthly-dividend REIT trading at a reasonable **~14x forward AFFO** with a covered **~5.2% yield**, so RS2 supports a **modest scale-in**, capped by leverage and rate sensitivity.
+
+**Next ticker in queue:** NEE.
+
+[1]: https://www.prnewswire.com/news-releases/realty-income-announces-operating-results-for-the-three-months-ended-march-31-2026-302764639.html "Realty Income Announces Operating Results for the Three Months Ended March 31, 2026"
+[2]: https://www.prnewswire.com/news-releases/realty-income-announces-operating-results-for-the-three-months-and-year-ended-december-31-2025-302696195.html "Realty Income Announces Operating Results for the Three Months and Year Ended December 31, 2025"
+[3]: https://www.realtyincome.com/investors/press-releases/135th-common-stock-monthly-dividend-increase-declared-realty-income "135th Common Stock Monthly Dividend Increase Declared by Realty Income | Realty Income"
+[4]: https://www.reuters.com/business/apollo-global-commits-1-billion-retail-venture-with-commercial-reit-realty-2026-03-19/?utm_source=chatgpt.com "Apollo Global commits $1 billion for retail joint venture with Realty Income"
+[5]: https://fintel.io/sopt/us/o?utm_source=chatgpt.com "O / Realty Income Corporation - Put/Call Ratio, Options ..."
+[6]: https://fintel.io/so/us/o?utm_source=chatgpt.com "O - Realty Income Corporation Stock"

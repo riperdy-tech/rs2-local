@@ -1,0 +1,41 @@
+[api] backend https://api.deepseek.com/v1  model=deepseek-v4-pro  -> reports in api_llm/reports
+[enrich] yfinance MU ...
+[nltk_data] Downloading package punkt_tab to C:\Users\Public\Documents
+[nltk_data]     \ESTsoft\CreatorTemp\defeatbeta\nltk...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[38;5;10m______      __           _    ______      _        
+|  _  \    / _|         | |   | ___ \    | |       
+| | | |___| |_ ___  __ _| |_  | |_/ / ___| |_ __ _ 
+| | | / _ \  _/ _ \/ _` | __| | ___ \/ _ \ __/ _` |
+| |/ /  __/ ||  __/ (_| | |_  | |_/ /  __/ || (_| |
+|___/ \___|_| \___|\__,_|\__| \____/ \___|\__\__,_|[0m
+[1;38;5;10m📈:: Data Update Time ::[0m	2026-07-16T04:51:26Z [1;38;5;10m::[0m
+[1;38;5;10m📈:: Software Version ::[0m	0.0.60      [1;38;5;10m::[0m
+2026-07-16 17:15:31 INFO DuckDBClient MainThread - Cache is up-to-date. Update time: 2026-07-16T04:51:26Z
+[out] C:\Users\riper\Downloads\RS2 Local\api_llm\reports\MU_20260716_171531
+
+[backbone] MU: base_cf $1.03B [owner_earnings] WACC 11% | implied 102.2% vs demonstrated 11.8% | gap 90.4pts
+>> Layers 0, 1, 1.5 — Classification / Macro / Base Rate
+   done in 64.7s -> S1_macro_classify.md
+
+>> Layers 2, 2.5 — Business Quality / Adjusted Financials
+   done in 107.6s -> S2_quality.md
+
+>> Layers 3, 3.5 — Expectations Test / Second-Order
+   done in 59.5s -> S3_valuation.md
+   [valuation] reverse-DCF gap 90.4pts | stance overvalued (achievable low)
+
+>> Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage
+   done in 106.2s -> S4_scenarios.md
+   [valuation] scenario probs {'bear': 0.35, 'base': 0.4, 'bull': 0.25}
+
+>> Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly
+   done in 115.5s -> S5_conviction.md
+
+>> Layers 7, 7.5, 8, 9 — Monitoring / Correlation / Audit / Red Team
+   done in 132.3s -> S6_redteam_audit.md
+
+>> FINAL ASSEMBLY (Sections 0-12) [ctx 32768]
+   done in 159.6s
+[DONE] -> C:\Users\riper\Downloads\RS2 Local\api_llm\reports\MU_20260716_171531\FINAL.md
+   [verdict] MU: method=reverse_dcf stance=overvalued action=warranted conv=6.5 entry=wait_for_pullback (BRAKE: was 'warranted' 6.5)

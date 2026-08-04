@@ -1,0 +1,436 @@
+Proceeding with **#24 OKLO** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #24 — Oklo / OKLO
+
+## Top-Line Execution Summary
+
+| Item                              |                                                      Result |
+| --------------------------------- | ----------------------------------------------------------: |
+| Current Price / T0                |                                       **$51.01** `[Actual]` |
+| Market Cap                        |                                       **$8.69B** `[Actual]` |
+| Reported P/E                      |                    **Negative / not meaningful** `[Actual]` |
+| Revenue                           |            **Pre-commercial / effectively none** `[Actual]` |
+| Q1 2026 Net Loss                  |                                      **-$33.1M** `[Actual]` |
+| Q1 2026 Operating Cash Burn       |                                      **-$17.9M** `[Actual]` |
+| Cash + Marketable Debt Securities |                                      **$2.537B** `[Actual]` |
+| Net Cash / Share                  |                                 **~$14/share** `[Estimate]` |
+| Base Intrinsic Value              |                                  **$38/share** `[Estimate]` |
+| Expected Price                    |                                  **$61/share** `[Estimate]` |
+| Margin of Safety vs Base IV       |                                     **-34.2%** `[Estimate]` |
+| 50% CI                            |                                    **$30–$80** `[Estimate]` |
+| 80% CI                            |                                   **$15–$150** `[Estimate]` |
+| Conviction                        |                     **Low-Medium / 6.5 of 15** `[Estimate]` |
+| Recommended Max Weight            |                                       **1.0%** `[Estimate]` |
+| Entry Strategy                    |           **Speculative option only; better below ~$35–40** |
+| Execution Opinion                 | **Avoid core position / Hold only as small nuclear option** |
+
+**Core conclusion:** OKLO has one of the most exciting thematic setups in the market: advanced nuclear, AI/data-center power demand, Meta support, DOE/NRC momentum, HALEU supply progress, and a large cash balance. But the stock is already valued like a company that will successfully license, build, finance, and scale first-of-a-kind reactors. RS2 sees **positive upside convexity**, but **no base-case margin of safety**.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Oklo Inc. / OKLO
+**Baseline Date:** June 26, 2026
+**T0:** current price **$51.01**, market cap **$8.69B**, EPS **-$0.84**, and P/E **negative / not meaningful** `[Actual]`.
+**T-1:** latest financials are Q1 2026. Oklo reported **$51.2M** of operating expenses, **-$51.2M** loss from operations, **-$33.1M** net loss, and **-$0.19/share** basic and diluted loss. ([SEC][1])
+**Tpf:** current price reflects recent nuclear-sector momentum, Oklo’s PDC topical-report approval, Meta’s 1.2 GW Ohio campus support, and the Centrus HALEU fuel-supply agreement. ([Oklo][2])
+
+**Archetype:** **E. Option-Led / Pre-Revenue Nuclear Developer**
+**Valuation Engine:** **Engine 4 — Expectation-Driven Valuation**, with cash-burn, licensing, construction, fuel, and dilution probability caps.
+
+**Why this engine:** OKLO has no meaningful operating revenue yet, no operating reactor, and no conventional earnings base. The value is almost entirely in future licensing, first-of-a-kind construction, PPAs/prepayments, reactor unit economics, fuel supply, and the probability that the Aurora platform scales.
+
+---
+
+## Section 1. Macro Context
+
+The macro/thematic backdrop is extremely favorable. AI/data-center power demand has made firm, clean power much more valuable, and the U.S. government has been moving aggressively to support nuclear supply chains and advanced reactor deployment. Reuters reported this week that the DOE announced **$17.5B** in conditional loans to support nuclear supply-chain procurement for new reactors, while another DOE initiative is opening federal sites and regulatory support for advanced reactor rollout. ([Reuters][3])
+
+But OKLO is also highly rate- and capital-market-sensitive. It needs approvals, construction execution, project financing, supply-chain reliability, fuel availability, and customer conversion before it can generate material cash flow.
+
+**Macro alignment:** **Very positive for narrative; still risky for execution.**
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                         |                      RS2 View |
+| ------------------------------------------------------ | ----------------------------: |
+| 5Y survival with current cash balance                  |       **75–90%** `[Estimate]` |
+| First advanced nuclear reactor deployed on time/budget | **Low / 15–30%** `[Estimate]` |
+| First Aurora reaches operation by 2028 target          |       **25–40%** `[Estimate]` |
+| NRC/DOE path proceeds without major delay              |       **40–60%** `[Estimate]` |
+| Commercial scale beyond first reactor                  |       **25–45%** `[Estimate]` |
+| Large nuclear startup avoiding major dilution          |       **30–50%** `[Estimate]` |
+| Power-campus model becomes highly valuable             |       **35–55%** `[Estimate]` |
+
+**Base-rate shock check:** Even with strong nuclear tailwinds, the historical base rate for first-of-a-kind nuclear projects is poor. RS2 therefore allows a large bull case but heavily discounts timing, capex, regulatory, and dilution risks.
+
+---
+
+## Section 2. Business Quality
+
+Oklo is developing fast-fission “Aurora powerhouse” reactors and intends to **build, own, and operate** the plants, selling electricity and heat through PPAs rather than selling reactor designs. The company says Aurora is designed for **15–75 MWe** and potentially **100 MWe+** versions, using fresh, recycled, or down-blended nuclear fuel. ([SEC][1])
+
+### Moat Score
+
+| Moat Type                          |     Score | Direction                          |
+| ---------------------------------- | --------: | ---------------------------------- |
+| Technology / reactor design        |     2.5/3 | Unproven but promising             |
+| Regulatory positioning             |       2/3 | Improving                          |
+| Fuel strategy / recycling          |     2.5/3 | Improving                          |
+| Customer demand / data-center pull |     2.5/3 | Widening                           |
+| Switching costs                    |       1/3 | Future, not current                |
+| Network effects                    |       0/3 | None                               |
+| Capital / execution capability     |     1.5/3 | Unproven                           |
+| **Total**                          | **12/21** | **Potential moat, not yet proven** |
+
+**Moat direction:** **Widening on paper, unvalidated in cash flow.**
+The business could become very high quality if Aurora units are licensed, built, and financed repeatedly. Today, however, the moat is mostly technical/regulatory optionality rather than proven operating economics.
+
+### Key Business Milestones
+
+| Milestone                         | Status                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| Prior NRC custom combined license | Denied without prejudice in 2022                                              |
+| Updated licensing path            | In progress                                                                   |
+| DOE path for Aurora-INL           | Positive                                                                      |
+| PDC topical report                | Approved May 2026                                                             |
+| Meta Ohio project                 | Up to 1.2 GW, may come online as early as 2030                                |
+| Switch agreement                  | 12 GW master power agreement, non-binding                                     |
+| HALEU supply                      | Centrus agreement supports up to five Aurora units, deliveries scheduled 2029 |
+| First powerhouse target           | 2028, subject to major execution risk                                         |
+
+The NRC’s own page states the prior Aurora custom combined license application was denied without prejudice in January 2022. ([Nuclear Regulatory Commission][4]) In Q1, Oklo said it is working toward an updated NRC application and that commercial deployment requires approvals for design, construction, and operation. ([SEC][1])
+
+**Quality judgment:** High potential, but still pre-proof.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                                    |                        Result |
+| --------------------------------------- | ----------------------------: |
+| Cash & equivalents                      |        **$1.594B** `[Actual]` |
+| Current marketable debt securities      |        **$614.5M** `[Actual]` |
+| Non-current marketable debt securities  |        **$328.3M** `[Actual]` |
+| Total cash + marketable debt securities |        **$2.537B** `[Actual]` |
+| Total liabilities                       |         **$64.9M** `[Actual]` |
+| Approx. net cash                        |      **~$2.47B** `[Estimate]` |
+| Shares outstanding, Mar. 31             |         **173.9M** `[Actual]` |
+| Net cash/share                          | **~$14.2/share** `[Estimate]` |
+| Q1 R&D                                  |         **$27.0M** `[Actual]` |
+| Q1 G&A                                  |         **$24.2M** `[Actual]` |
+| Q1 net loss                             |        **-$33.1M** `[Actual]` |
+| Q1 operating cash burn                  |        **-$17.9M** `[Actual]` |
+| Q1 PP&E purchases                       |         **$32.8M** `[Actual]` |
+| 2026 expected operating cash use        |       **$80–100M** `[Actual]` |
+| 2026 expected investing cash use        |      **$350–450M** `[Actual]` |
+
+Oklo’s cash runway is strong because it sold **12.38M shares** through the 2025 ATM program at an average net price of **$96.95**, generating **$1.182B** of net proceeds in Q1 2026. ([SEC][1])
+
+**Adjusted financials judgment:** Cash runway is a major positive, but dilution is a core part of the business model. OKLO strengthened the balance sheet at excellent prices, but this also shows that the company depends on capital markets before reactors generate cash.
+
+---
+
+## Section 3. Valuation — Engine 4 Expectation-Driven
+
+### Valuation Bridge
+
+| Component                                 | Value / Share | Confidence |
+| ----------------------------------------- | ------------: | ---------- |
+| Net cash                                  |       **$14** | High       |
+| First Aurora-INL / demonstration option   |        **$5** | Low-Medium |
+| Meta 1.2 GW Ohio option                   |       **$15** | Medium     |
+| Switch / other LOI pipeline option        |        **$7** | Low        |
+| Fuel recycling / HALEU / plutonium option |        **$6** | Low-Medium |
+| Isotopes / Atomic Alchemy option          |        **$3** | Low        |
+| Platform residual / future fleet option   |       **$18** | Low        |
+| Cash burn, dilution, timing drag          |      **-$30** | Medium     |
+| **Base IV**                               | **$38/share** | Low-Medium |
+
+**Base IV:** **$38/share** `[Estimate]`
+**Current price:** **$51.01/share** `[Actual]`
+**Margin of Safety:** **-34.2%** `[Estimate]`
+
+### Why Base IV Is Below Current Price
+
+OKLO’s enterprise value is already roughly **$6.2B** after net cash. That is a large valuation for a company with no commercial reactor, no recurring revenue, and major regulatory/construction milestones still ahead. `[Estimate]`
+
+The key issue is not whether nuclear demand is real. It is whether OKLO can convert that demand into **licensed, operating, financed, cost-competitive powerhouses** before dilution and cost overruns consume too much value.
+
+### Why Expected Value Is Above Base IV
+
+The upside tail is real. Meta’s agreement supports development of a **1.2 GW** Ohio campus that may come online as early as **2030**, and Meta explicitly framed its nuclear agreements with Oklo, TerraPower, Vistra, and Constellation as part of its AI power strategy. ([Facebook][5]) The Centrus agreement also reduces one of the most important bottlenecks: HALEU fuel access. ([World Nuclear News][6])
+
+### Scenario Valuation
+
+| Scenario              | Probability | Value / Share | Assumptions                                                                     |
+| --------------------- | ----------: | ------------: | ------------------------------------------------------------------------------- |
+| Failure / Delay Bear  |         25% |       **$15** | NRC/DOE delays, cost overruns, cash burn/dilution, no commercial proof          |
+| Base                  |         40% |       **$38** | first reactor progresses, but scaling remains slow and expensive                |
+| Bull Execution        |         25% |       **$95** | first Aurora works, Meta campus becomes credible, project finance opens         |
+| Nuclear Platform Bull |         10% |      **$180** | Aurora scales into a true fleet business with high-margin fuel/recycling upside |
+
+**Expected Price:**
+25% × $15 + 40% × $38 + 25% × $95 + 10% × $180 = **$60.7/share** `[Estimate]`
+
+**Rounded Expected Price:** **$61/share**
+**50% CI:** **$30–$80**
+**80% CI:** **$15–$150**
+**MoS vs Base IV:** **-34.2%**
+
+**MoS judgment:** **No base-case margin of safety, but positive expected value due to convexity.**
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:** TerraPower, X-energy, Kairos, NuScale, GE Hitachi, Westinghouse/AP1000, Holtec, Radiant, Newcleo, and large utilities are all competing for nuclear deployment attention, customers, supply chain, labor, fuel, and policy support. Reuters reported that Kairos, TerraPower, and X-energy are already moving next-generation nuclear projects into construction under DOE cost-sharing support, with customers including Google, Meta, and Dow. ([Reuters][7])
+
+**Reflexivity:** OKLO’s stock price matters a lot. A high stock price lets it raise capital with less dilution, fund early site work, and strengthen credibility. A falling stock price could increase dilution, slow execution, and weaken customer/project-finance confidence.
+
+**Customer behavior:** Data centers increasingly want reliable, firm, clean power. That supports OKLO’s TAM, but customers may prefer existing nuclear, gas, or larger advanced-reactor developers with clearer near-term delivery.
+
+**Network dynamics:** No true network effect yet. The future flywheel would be learning-curve effects: first units reduce regulatory, construction, and financing risk for later units.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario       | Probability | Value / Share | Core Assumptions                                                      |
+| -------------- | ----------: | ------------: | --------------------------------------------------------------------- |
+| Bear           |         25% |       **$15** | delays, licensing setbacks, large dilution, no validated economics    |
+| Base           |         40% |       **$38** | first reactor advances, but commercial scale remains uncertain        |
+| Bull Execution |         25% |       **$95** | first plant validates technology; Meta/Ohio becomes financeable       |
+| Platform Bull  |         10% |      **$180** | Aurora becomes a scalable nuclear platform with fuel/recycling upside |
+
+**Expected Price:** **$61/share** `[Estimate]`
+**Base IV:** **$38/share** `[Estimate]`
+**Current price:** **$51.01/share** `[Actual]`
+**Conclusion:** OKLO is an **expected-value speculation**, not a base-case value investment.
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **2030+** `[Estimate]`
+**My horizon:** **2026–2035**
+**Spread:** **Mixed**
+
+The market is already looking far into the future. That means there is not much simple horizon arbitrage. The arbitrage is binary/technical: the market may be underestimating the value of an approved, repeatable Aurora design, but may also be overestimating how quickly that path becomes real.
+
+**Horizon arbitrage judgment:** **Low-to-moderate, but highly asymmetric.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                       |      Score |
+| -------------------------- | ---------: |
+| Business quality potential |      2.0/3 |
+| Valuation attractiveness   |     0.75/3 |
+| Macro alignment            |     2.75/3 |
+| Thesis clarity             |      1.0/3 |
+| Execution trackability     |      0.0/3 |
+| **Total**                  | **6.5/15** |
+
+**Conviction Tier:** **Low-Medium**
+**Recommended Max Weight:** **1.0%**
+
+This is a venture-style public equity. The correct RS2 treatment is a small option sleeve, not a core power/utility position.
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                      |                       Result |
+| ------------------------- | ---------------------------: |
+| Short interest            | **27.22M shares** `[Actual]` |
+| Short % float             |        **19.29%** `[Actual]` |
+| Days to cover             |           **1.9** `[Actual]` |
+| Put/call OI ratio         |    **~0.64–0.67** `[Actual]` |
+| Institutional owners      |           **704** `[Actual]` |
+| Institutional shares held |        **~99.6M** `[Actual]` |
+| Squeeze risk              |                 **Moderate** |
+| Crowding score            |  **13/15 High** `[Estimate]` |
+
+OKLO has high short interest: **27.22M shares**, or **19.29%** of float, as of June 15. ([MarketBeat][8]) Options positioning is bullish, with Fintel showing an OI put/call ratio around **0.64**. ([Fintel][9])
+
+**Behavioral judgment:** This can squeeze hard on good news, but that is not the same as fundamental margin of safety.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** High-risk advanced nuclear / AI-power option.
+**Expected 3–5Y annualized return:** **extremely path-dependent**; plausible outcomes range from **major permanent loss** to **multi-bagger**. `[Estimate]`
+**Overlap:** High with CEG/NEE/AI-power theme; high with PLTR/TSLA/AMD through high-duration narrative risk; low with PG/O/AMT income defensiveness.
+
+**Portfolio fit judgment:** Useful only as a **small convexity sleeve**. CEG is the stronger “nuclear scarcity already producing cash” stock; OKLO is the venture-style nuclear deployment option.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                      Value |
+| ----------------------------- | -------------------------: |
+| Probability of base-or-better |       **75%** `[Estimate]` |
+| Bear downside from current    |      **~70%** `[Estimate]` |
+| Bull upside from current      | **~85–250%+** `[Estimate]` |
+| Practical fractional Kelly    |  **0.5–1.5%** `[Estimate]` |
+| RS2 pre-revenue / FOAK cap    |                   **1.0%** |
+
+**Final recommended max weight:** **1.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Licensing risk:** Oklo still needs regulatory approvals for design, construction, and operation; the company states it is uncertain when, if at all, it will obtain NRC approvals. ([SEC][1])
+2. **First-of-a-kind construction risk:** Oklo itself says early powerhouses, including INL, may face unexpected costs and construction delays, and first reactors will include unique testing-related costs. ([SEC][1])
+3. **Dilution / funding risk:** Oklo has cash, but it still expects **$350–450M** of investing cash use in 2026 and is continuing to pursue capital raising at the corporate and asset level. ([SEC][1])
+
+### Top 3 Catalysts
+
+1. Updated NRC application progress or additional DOE authorization milestones.
+2. Meta/Pike County Ohio project moves from prepayment/support into clearer binding project economics.
+3. HALEU supply and fuel-fabrication milestones reduce one of the largest bottlenecks for deployment.
+
+**Highest-impact bear scenario:** OKLO burns cash and raises more equity while licensing/construction slips, causing the stock to trade closer to cash value plus discounted optionality.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                     |                Warning Trigger |                             Re-underwrite Trigger |
+| ----------------------- | -----------------------------: | ------------------------------------------------: |
+| Cash + securities       |                         <$2.0B |          <$1.5B before first operation visibility |
+| Operating cash burn     |                    >$120M/year |                                       >$180M/year |
+| Investing cash use      |                    >$500M/year |            >$700M/year without milestone progress |
+| NRC/DOE timeline        |                slips >6 months | updated application rejected / delayed materially |
+| First powerhouse target |              slips beyond 2028 |                                 slips beyond 2030 |
+| Meta project            |    unclear funding / economics |                              Meta support weakens |
+| HALEU supply            | deliveries delayed beyond 2029 |                               fuel path uncertain |
+| Share count             |           >10% annual dilution |             repeated large equity raises below IV |
+
+### Pre-Mortem
+
+1. **Wrong because first-of-a-kind nuclear takes longer and costs more.**
+   Early warning: first powerhouse slips beyond 2028.
+   Response: reduce base IV and cut position.
+
+2. **Wrong because customers do not convert LOIs/support into bankable PPAs.**
+   Early warning: no binding PPAs or project-finance structure by 2027.
+   Response: remove much of pipeline optionality.
+
+3. **Wrong because capital markets close.**
+   Early warning: OKLO raises below $40 or project-finance terms are punitive.
+   Response: cap exposure at token size only.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. OKLO has no commercial reactor and no meaningful revenue; current valuation is mostly future optionality.
+2. The company’s prior NRC application was denied without prejudice in 2022, and updated licensing remains unproven. ([Nuclear Regulatory Commission][4])
+3. First-of-a-kind nuclear construction has a poor historical base rate for on-time/on-budget delivery.
+4. The current market cap of **$8.69B** implies the market is already assigning billions to future reactor deployment before commercial proof.
+5. The company expects large investing cash use in 2026 before reactors produce revenue. ([SEC][1])
+6. Non-binding agreements and customer interest are not the same as cash-generating PPAs.
+7. HALEU supply has improved, but deliveries under the Centrus agreement are scheduled to begin in **2029**, and the agreement still needs further definitive contracting for the broader campus buildout. ([World Nuclear News][6])
+
+### Long vs Short Logic Battle
+
+| Issue                      | Long Score | Short Score | Winner |
+| -------------------------- | ---------: | ----------: | ------ |
+| Nuclear / AI power demand  |          3 |         0.5 | Long   |
+| Cash balance               |          3 |        0.75 | Long   |
+| Meta / customer validation |        2.5 |        1.25 | Long   |
+| Licensing risk             |          1 |           3 | Short  |
+| FOAK construction risk     |       0.75 |           3 | Short  |
+| Valuation                  |       0.75 |           3 | Short  |
+| Fuel / supply chain        |        1.5 |        2.25 | Short  |
+
+**Long score:** **12.5**
+**Short score:** **13.75**
+**Red Team result:** **Short thesis wins at the current price**, even though the bull case is very real.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                           | Status                                 |
+| ------------------------------------ | -------------------------------------- |
+| Correct engine selected              | Pass — option-led/pre-revenue Engine 4 |
+| Cash separated from optionality      | Pass                                   |
+| Licensing risk included              | Pass                                   |
+| Prior NRC denial included            | Pass                                   |
+| DOE/NRC positive milestones included | Pass                                   |
+| Meta/HALEU/customer upside included  | Pass                                   |
+| Construction and FOAK risk included  | Pass                                   |
+| Dilution risk included               | Pass                                   |
+| Position sizing capped               | Pass                                   |
+| Red team included                    | Pass                                   |
+| Pre-mortem included                  | Pass                                   |
+
+**Model Reliability:** **Low-Medium**
+**Key uncertainty:** licensing and first deployment economics.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                    |
+| ----------------- | -------------------------------------------------------- |
+| Baseline date     | June 26, 2026                                            |
+| Current price     | $51.01                                                   |
+| Base IV           | $38                                                      |
+| Expected price    | $61                                                      |
+| Margin of Safety  | -34.2%                                                   |
+| Core assumption 1 | Net cash around $14/share                                |
+| Core assumption 2 | First reactor progresses but remains high-risk           |
+| Core assumption 3 | Meta/Ohio and HALEU add real but discounted option value |
+| 3M KPI            | regulatory milestones remain on track                    |
+| 6M KPI            | cash use remains within 2026 framework                   |
+| 12M KPI           | clearer first-powerhouse and binding customer economics  |
+| Conviction        | Low-Medium / 6.5 of 15                                   |
+| Top concern       | licensing / FOAK execution                               |
+| Second concern    | valuation already high                                   |
+| Third concern     | dilution and project-finance risk                        |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                                    |
+| ----------------------------- | ----------------------------------------------------------- |
+| Investment Attractiveness     | **High thematic / Low-Medium fundamental**                  |
+| Current Price Attractiveness  | **Medium-Low**                                              |
+| Long-Term Holding Suitability | **Low as core; Medium as option sleeve**                    |
+| Portfolio Suitability         | **Small convex nuclear/AI-power option only**               |
+| Conviction                    | **Low-Medium**                                              |
+| Recommended Max Weight        | **1.0%**                                                    |
+| Entry Strategy                | **Speculative option only; better below ~$35–40**           |
+| Execution Opinion             | **Avoid core position / Hold only as small nuclear option** |
+
+**One-line summary:** OKLO has genuine nuclear/AI-power upside and a strong cash balance, but at **$51.01** the market already prices in substantial licensing and deployment success before proof, so RS2 caps it at a **1.0% speculative option sleeve**.
+
+**Queue complete: MSFT → OKLO finished.**
+
+[1]: https://www.sec.gov/Archives/edgar/data/1849056/000162828026034095/oklo-20260331.htm "oklo-20260331"
+[2]: https://oklo.com/newsroom/news-details/2026/Oklos-NRC-Principal-Design-Criteria-Topical-Report-Approved-for-Aurora-Powerhouse-in-Idaho/default.aspx "
+	Oklo Inc. - Oklo’s NRC Principal Design Criteria Topical Report Approved for Aurora Powerhouse in Idaho
+"
+[3]: https://www.reuters.com/business/energy/us-announces-175-billion-conditional-loans-nuclear-power-2026-06-23/?utm_source=chatgpt.com "US announces $17.5 billion in loans for nuclear power supply chain"
+[4]: https://www.nrc.gov/reactors/new-reactors/large-lwr/col/aurora-oklo "Aurora – Oklo Application | Nuclear Regulatory Commission"
+[5]: https://about.fb.com/news/2026/01/meta-nuclear-energy-projects-power-american-ai-leadership/ "Meta Announces Nuclear Energy Projects, Unlocking Up to 6.6 GW to Power American Leadership in AI Innovation"
+[6]: https://www.world-nuclear-news.org/articles/centrus-oklo-haleu-agreement-to-support-reactor-deployment "Centrus, Oklo HALEU agreement to support reactor deployment - World Nuclear News"
+[7]: https://www.reuters.com/business/energy/us-cost-sharing-thrusts-next-gen-nuclear-into-construction-phase--reeii-2026-06-23/?utm_source=chatgpt.com "US cost-sharing thrusts next-gen nuclear into construction phase"
+[8]: https://www.marketbeat.com/stocks/NYSE/OKLO/short-interest/?utm_source=chatgpt.com "Oklo (OKLO) Short Interest & Short Float | Updated Jun 2026"
+[9]: https://fintel.io/sopt/us/oklo?utm_source=chatgpt.com "OKLO / Oklo Inc. - Put/Call Ratio, Options Sentiment, ..."

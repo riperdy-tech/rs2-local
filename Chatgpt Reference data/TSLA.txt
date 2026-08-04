@@ -1,0 +1,514 @@
+Proceeding with **#5 TSLA** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #5 — Tesla / TSLA
+
+## Top-Line Execution Summary
+
+| Item                        |                                                  Result |
+| --------------------------- | ------------------------------------------------------: |
+| Current Price / T0          |                                  **$376.22** `[Actual]` |
+| Market Cap                  |                                  **$1.331T** `[Actual]` |
+| Reported P/E                |                                    **~345x** `[Actual]` |
+| TTM GAAP Net Income         |                                **~$3.86B** `[Estimate]` |
+| TTM Free Cash Flow          |                                **~$7.00B** `[Estimate]` |
+| Base Intrinsic Value        |                             **$205/share** `[Estimate]` |
+| Expected Price              |                             **$268/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                                 **-83.5%** `[Estimate]` |
+| 50% CI                      |                              **$170–$450** `[Estimate]` |
+| 80% CI                      |                               **$90–$750** `[Estimate]` |
+| Conviction                  |                     **Medium / 7.0 of 15** `[Estimate]` |
+| Recommended Max Weight      |                                   **1.0%** `[Estimate]` |
+| Entry Strategy              |             **Wait / avoid fresh buy at current price** |
+| Execution Opinion           | **Hold only if already owned; no new buying under RS2** |
+
+**Core conclusion:** Tesla is no longer primarily valued as an automaker. The current price requires major monetization from Robotaxi, FSD, Optimus, or AI infrastructure; the existing auto + energy + services business does not support the valuation on current earnings or FCF.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Tesla / TSLA
+**Baseline Date:** June 25, 2026
+**T0:** Current price **$376.22**, market cap **$1.331T**, EPS **$1.09**, P/E **~345x** `[Actual]`.
+**T-1:** Latest financials are FY26 Q1. Tesla reported Q1 revenue of **$22.39B**, GAAP operating income of **$941M**, GAAP net income attributable to common stockholders of **$477M**, non-GAAP net income of **$1.45B**, operating cash flow of **$3.94B**, and free cash flow of **$1.44B**. 
+**Tpf:** Current price reflects Q1 FY26 results plus announced/ongoing progress in FSD, Robotaxi, Cybercab, Semi, Optimus, and AI compute buildout.
+
+**RS2 classification:** **Blended Archetype — Product-Platform Hybrid + Option-Led High-Beta**
+**Valuation Engine:** **Blended Engine = Engine 3 × 35% + Engine 4 × 65%**
+
+**Why blended engine:**
+
+1. The current operating business is real and large: FY25 revenue was **$94.83B**, but net income fell to **$3.79B**, showing that core auto profitability is not enough to support the current valuation alone. ([SEC][1])
+2. Tesla has real platform elements: FSD subscriptions reached **1.28M**, up **51% YoY**, and cumulative vehicle deliveries reached **9.2M**. 
+3. The market value is dominated by future options: Robotaxi, Optimus, Cybercab, AI compute, and battery/energy scale. These require Engine 4 probability caps, not simple DCF acceptance.
+
+**Model Confidence:** **Medium-Low.** Filing data is strong, but the valuation depends heavily on Tier 4–5 assumptions: autonomy scaling, regulatory approvals, robot economics, Optimus adoption, AI compute ROI, and long-term EV pricing.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable             | TSLA Impact                              |
+| -------------------------- | ---------------------------------------- |
+| Higher long rates          | Strong valuation headwind                |
+| Fed stance                 | Mild-to-moderate headwind                |
+| Strong USD                 | Translation and affordability headwind   |
+| Business cycle             | Auto demand is cyclical                  |
+| Commodity / battery inputs | Mixed: lower lithium helps, tariffs hurt |
+| Credit spreads             | Not an immediate balance-sheet issue     |
+
+Tesla has high macro sensitivity because the stock is long-duration, the auto business is cyclical, and the valuation depends on options whose cash flows are far in the future.
+
+**Regime probabilities:**
+Goldilocks **20%**, Reflation **35%**, Stagflation **25%**, Recession **20%** `[Estimate]`.
+
+**TSLA macro sensitivity score:**
+Interest rate **-2.5**; dollar **-1.0**; liquidity **-3.0**; economic cycle **+2.0**; commodity **-0.5**.
+**Macro alignment:** **Headwind.** Conviction reduced by **-0.5 notch** and entry must be strict.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                               |                        Base Rate | TSLA Adjustment                             |
+| ------------------------------------------------------------ | -------------------------------: | ------------------------------------------- |
+| 5Y survival for large established EV/energy company          |            **>90%** `[Estimate]` | Pass                                        |
+| Auto company sustaining premium margins under EV competition |          **25–40%** `[Estimate]` | Tesla: **35–45%**                           |
+| Robotaxi network reaching national scale within 5Y           |    **Low / 10–20%** `[Estimate]` | Tesla: **25–35%**, due fleet/data advantage |
+| Humanoid robot becoming material profit center within 5Y     | **Very low / <10%** `[Estimate]` | Tesla: **10–15%**, not higher               |
+| Platform transition success rate                             |          **20–30%** `[Estimate]` | Tesla: **30–40%**, but not proven           |
+
+**Base-rate shock check:** The market valuation appears to price Tesla as if autonomy/robotics success probability is already high. RS2 does not allow that without wide confidence intervals and capped position sizing.
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+Tesla designs, manufactures, and sells electric vehicles, energy storage systems, solar products, charging infrastructure, software subscriptions, and related services. It is increasingly positioning itself as a physical AI company through FSD, Robotaxi, Cybercab, Optimus, and in-house AI compute. The current business is understandable; the future AI/robotics economics are highly uncertain.
+
+**Comprehensibility:** **Medium**
+
+### Moat Score
+
+| Moat Type                 |       Score | Direction                                     |
+| ------------------------- | ----------: | --------------------------------------------- |
+| Intangible assets / brand |         3/3 | Mixed                                         |
+| Switching costs           |       1.5/3 | Widening if FSD works                         |
+| Network effects           |         2/3 | Widening in fleet/data, unproven monetization |
+| Cost advantage            |       2.5/3 | Stable                                        |
+| Economies of scale        |         3/3 | Widening                                      |
+| Regulatory barriers       |         1/3 | Mixed                                         |
+| Data / AI moat            |       2.5/3 | Widening, but contested                       |
+| **Total**                 | **15.5/21** | **Wide Moat, but valuation-dependent**        |
+
+**Moat judgment:** Tesla has a wide strategic moat, but the moat is worth far less if autonomy does not convert into high-margin recurring economics.
+
+**Peter Lynch classification:** **Fast Grower / Cyclical / Option-Led hybrid.**
+
+---
+
+## Section 2. Business Quality — Financial Health
+
+| Metric                                |                               Result |
+| ------------------------------------- | -----------------------------------: |
+| FY25 revenue                          |  **$94.83B**, down **3%** `[Actual]` |
+| FY25 automotive revenue               | **$69.53B**, down **10%** `[Actual]` |
+| FY25 energy revenue                   |   **$12.77B**, up **27%** `[Actual]` |
+| FY25 net income to common             |  **$3.79B**, down **46%** `[Actual]` |
+| FY25 diluted EPS                      |                 **$1.08** `[Actual]` |
+| FY25 operating cash flow              |               **$14.75B** `[Actual]` |
+| FY25 capex                            |                **$8.53B** `[Actual]` |
+| FY25 FCF                              |      **~$6.22B** `[Actual/Estimate]` |
+| Q1 FY26 revenue                       |   **$22.39B**, up **16%** `[Actual]` |
+| Q1 FY26 operating margin              |                  **4.2%** `[Actual]` |
+| Q1 FY26 FCF                           |                **$1.44B** `[Actual]` |
+| Q1 FY26 cash + short-term investments |               **$44.74B** `[Actual]` |
+
+FY25 revenue, automotive revenue, energy revenue, and net income are from Tesla’s 2025 10-K. ([SEC][1]) Q1 FY26 financials show revenue growth and improved gross margin, but operating margin remained only **4.2%**. 
+
+**Financial Health Judgment:** **Adequate-to-Good.** Tesla has strong liquidity, but core profitability is weak relative to the current market cap.
+
+### Segment Quality
+
+| Segment                     |             FY25 Revenue |           Gross Margin | Judgment                     |
+| --------------------------- | -----------------------: | ---------------------: | ---------------------------- |
+| Automotive + services       |              **$82.06B** | **16.2% gross margin** | Large but margin-compressed  |
+| Energy generation & storage |              **$12.77B** | **29.8% gross margin** | Stronger margin, fast growth |
+| Software/FSD                | Not separately disclosed |  High potential margin | Monetization still early     |
+
+Energy is the clearest improving segment: FY25 energy gross profit was **$3.80B**, with gross margin rising to **29.8%**. ([SEC][1])
+
+### Capital Allocation Scorecard
+
+| Dimension                          |      Score |
+| ---------------------------------- | ---------: |
+| Buyback efficiency                 |        0/3 |
+| M&A track record                   |      1.5/3 |
+| Capex efficiency                   |      1.5/3 |
+| Dividend/buyback/reinvestment mix  |        2/3 |
+| Guidance accuracy                  |        1/3 |
+| Governance / key-person adjustment |         -1 |
+| **Total**                          | **5.0/15** |
+
+**Capital allocation judgment:** **Weak-to-Adequate.** Tesla’s reinvestment opportunities may be huge, but 2026 capex is expected to exceed **$20B**, driven by AI initiatives, compute infrastructure, data centers, manufacturing, R&D lines, and AI-enabled assets. ([SEC][1])
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                   |                          Result |
+| ---------------------- | ------------------------------: |
+| FY25 R&D               |           **$6.41B** `[Actual]` |
+| FY25 SBC               |           **$2.83B** `[Actual]` |
+| FY25 FCF               | **~$6.22B** `[Actual/Estimate]` |
+| FY25 SBC-adjusted FCF  |        **~$3.39B** `[Estimate]` |
+| TTM FCF                |        **~$7.00B** `[Estimate]` |
+| TTM SBC-adjusted FCF   |         **~$4.0B** `[Estimate]` |
+| P/TTM FCF              |          **~190x** `[Estimate]` |
+| P/SBC-adjusted TTM FCF |          **>300x** `[Estimate]` |
+
+Tesla’s FY25 R&D rose **41%** to **$6.41B**, primarily from AI and other roadmap investments, and FY25 SBC was **$2.83B**. ([SEC][1])
+
+**Adjusted financials judgment:** The current valuation cannot be justified by current FCF. The stock must be valued as core business plus option value.
+
+---
+
+## Section 3. Valuation — Blended Engine 3 + Engine 4
+
+## 3A. Core Business Value
+
+| Component                          |               Value / Share | Method                                        |
+| ---------------------------------- | --------------------------: | --------------------------------------------- |
+| Auto + services core               |        **$55** `[Estimate]` | normalized EBIT × auto/platform multiple      |
+| Energy storage                     |        **$35** `[Estimate]` | growth industrial/energy multiple             |
+| Current FSD subscription economics |        **$10** `[Estimate]` | current 1.28M subscriptions × platform margin |
+| Net cash / liquidity value         |        **$10** `[Estimate]` | cash less debt, conservative                  |
+| **Core value**                     | **$110/share** `[Estimate]` | current monetization only                     |
+
+This core value is deliberately conservative because auto margins remain low and regulatory-credit dependence is not a durable platform margin source.
+
+## 3B. Option Value
+
+| Option                            |  Success Probability | Success Value / Share | Probability-Weighted Value |
+| --------------------------------- | -------------------: | --------------------: | -------------------------: |
+| FSD expansion / software attach   | **35%** `[Estimate]` |                   $90 |                    **$32** |
+| Robotaxi network                  | **25%** `[Estimate]` |                  $220 |                    **$55** |
+| Optimus humanoid robot            | **10%** `[Estimate]` |                  $200 |                    **$20** |
+| AI compute / Dojo / ecosystem     | **15%** `[Estimate]` |                   $80 |                    **$12** |
+| Execution / dilution / capex drag |                    — |                     — |                   **-$24** |
+| **Net option value**              |                    — |                     — |              **$95/share** |
+
+Tesla launched unsupervised Robotaxi rides in Dallas and Houston in April and reports ongoing FSD/Robotaxi progress, but installed capacity and production ramp remain explicitly subject to limitations.  Optimus is still early: Tesla says the first-generation line is designed for **1M robots/year** and a second-generation Texas line is designed for **10M/year** long-term capacity, but these are not proven production economics. 
+
+**Base IV:**
+Core value **$110** + net option value **$95** = **$205/share** `[Estimate]`.
+
+## 3C. Reverse DCF / Reverse Expectations
+
+At **$376/share**, Tesla’s market cap is **~$1.33T**. To justify the price, Tesla likely needs one of the following by the early 2030s:
+
+| Implied Requirement                       |                                          Required Level |
+| ----------------------------------------- | ------------------------------------------------------: |
+| Auto + energy normalized operating income |                                **$35–50B** `[Estimate]` |
+| FSD subscription base                     |                       **8–12M paid users** `[Estimate]` |
+| Robotaxi economics                        | credible multi-city, high-utilization, driverless fleet |
+| Optimus                                   |                material revenue, not prototype capacity |
+| Long-term consolidated operating margin   |                                 **15–25%** `[Estimate]` |
+
+**Reverse DCF judgment:** **Excessive but not impossible.** The valuation is already assuming Tesla succeeds as a physical AI platform, not merely as an EV/energy company.
+
+### Tornado Sensitivity
+
+| Variable                              | -1σ Impact | +1σ Impact |
+| ------------------------------------- | ---------: | ---------: |
+| Robotaxi success probability          |       -35% |       +50% |
+| FSD paid attach rate                  |       -25% |       +35% |
+| Auto gross margin ex-credits          |       -20% |       +22% |
+| Optimus commercialization probability |       -15% |       +30% |
+| Discount rate / liquidity             |       -18% |       +20% |
+
+**Top 3 thesis KPIs:**
+
+1. Robotaxi commercial miles / cities / intervention rate
+2. FSD paid subscriptions and attach rate
+3. Auto gross margin excluding regulatory credits
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+Waymo is the most serious Robotaxi competitor. Waymo disclosed that it served over **1M fully autonomous rides per month** in 2025 and was on a path toward **1M rides per week by the end of 2026**, showing that robotaxi competition is not theoretical. ([Waymo][2])
+
+**Auto competition:**
+BYD, Hyundai/Kia, Volkswagen, GM, Ford, Toyota, and Chinese EV makers continue to pressure pricing, especially outside the U.S. Tesla’s brand and cost base help, but auto gross margin remains below the level needed to support the current valuation.
+
+**Reflexivity:**
+Positive: high stock price supports talent retention, supplier confidence, customer confidence, and access to capital.
+Negative: valuation dependence on Elon Musk, AI/robotics, and retail enthusiasm creates severe downside if milestones slip.
+
+**Customer behavior evolution:**
+Tesla is shifting customers from one-time vehicle buyers toward software/subscription users. The key question is whether FSD subscriptions can move from **1.28M** toward multi-million paid adoption without heavy discounting. 
+
+---
+
+## Section 4. Scenarios
+
+| Scenario       | Probability | Value / Share | Core Assumptions                                                       |
+| -------------- | ----------: | ------------: | ---------------------------------------------------------------------- |
+| Bear           |         30% |       **$90** | Auto margins stay compressed; FSD/Robotaxi adoption underwhelms        |
+| Base           |         40% |      **$205** | Energy grows, FSD adoption rises, Robotaxi remains limited but real    |
+| Bull Execution |         20% |      **$420** | Robotaxi scales in multiple U.S. cities; FSD attach expands materially |
+| Bull Ecosystem |         10% |      **$750** | Robotaxi + Optimus become credible large profit pools                  |
+
+**Expected Price:**
+30% × $90 + 40% × $205 + 20% × $420 + 10% × $750 = **$268/share** `[Estimate]`
+
+**50% CI:** **$170–$450** `[Estimate]`
+**80% CI:** **$90–$750** `[Estimate]`
+Because the CI includes the current price and is very wide, this is a **high price uncertainty** stock.
+
+**Margin of Safety vs Base IV:**
+($205 - $376.22) / $205 = **-83.5%** `[Estimate]`
+
+**MoS Judgment:** **No Margin of Safety.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **5–10 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **Negative**
+
+The market is already paying for long-dated autonomy and robotics value. That means there is **no positive horizon arbitrage** at the current price.
+
+**Horizon arbitrage judgment:** **Negative.** Tesla is not being ignored; it is being aggressively forward-capitalized.
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |      Score |
+| ------------------------ | ---------: |
+| Business quality         |     2.25/3 |
+| Valuation attractiveness |      0.0/3 |
+| Macro alignment          |      1.0/3 |
+| Thesis clarity           |     1.75/3 |
+| Execution trackability   |      2.0/3 |
+| **Total**                | **7.0/15** |
+
+**Conviction Tier:** **Medium**, but current-price attractiveness is low.
+**Layer 5 sizing before adjustments:** **3–5%** for a medium-conviction stock.
+**Adjustments:**
+
+* Engine 4-heavy valuation: reduce
+* Macro headwind: reduce
+* No MoS: reduce
+* High crowding / retail-option intensity: reduce
+* Portfolio overlap with AI/high-beta names: reduce
+
+**Layer 5 recommended max weight:** **1.0%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                    |                                                        Result |
+| ----------------------- | ------------------------------------------------------------: |
+| Short interest          |                                 **~76.95M shares** `[Actual]` |
+| Short % float           | **2.56% to 5.54% depending float source** `[Actual/Estimate]` |
+| Days to cover           |                                       **~1.7–1.9** `[Actual]` |
+| Squeeze risk            |                                               Low-to-moderate |
+| Institutional ownership |                 **~56.8–66.2% depending source** `[Estimate]` |
+| Put/call OI ratio       |                            **~0.74–0.82** `[Actual/Estimate]` |
+| Crowding score          |                                   **13/15 High** `[Estimate]` |
+
+MarketBeat reports **76.95M** shares short, **2.56%** of float, and **1.7** days to cover; Fintel reports the same short-share count but a higher short-float estimate of **5.54%**, showing float-definition sensitivity. ([마켓비트][3]) Options positioning is bullish, with Fintel showing TSLA OI put/call around **0.74**. ([Fintel][4])
+
+**Behavioral judgment:** TSLA remains crowded and sentiment-sensitive. The setup is not a clean contrarian long.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** High-beta physical AI / autonomy satellite.
+**Not a core holding under RS2 at current price.**
+
+**Overlap risk:** Very high with AMD, PLTR, OKLO, CEG, MSFT, and META through AI/compute/long-duration growth exposure.
+**Portfolio role:** Optionality sleeve only.
+**Recommended max exposure:** **1.0%** unless acquired at a materially lower price.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **70%** `[Estimate]` |
+| Probability of bear           |  **30%** `[Estimate]` |
+| Weighted upside from current  | **~36%** `[Estimate]` |
+| Bear downside from current    | **~76%** `[Estimate]` |
+| Practical fractional Kelly    |            **0–1.5%** |
+| RS2 cap                       |              **1.0%** |
+
+Kelly does not support a large position because the downside to core-value support is large.
+**Final recommended max weight:** **1.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Autonomy execution risk:** Robotaxi launches remain geographically limited, with unclear fleet size, utilization, or profitability.
+2. **Auto margin risk:** current auto gross margin is not high enough to support the market valuation; FY25 automotive gross margin was **17.8%**, and automotive + services gross margin was **16.2%**. ([SEC][1])
+3. **Capex/AI investment risk:** Tesla expects 2026 capex above **$20B**, so free cash flow can remain pressured if AI/robotics monetization lags. ([SEC][1])
+
+### Top 3 Catalysts
+
+1. Robotaxi expands beyond initial cities with disclosed fleet size, utilization, safety record, and economics.
+2. FSD subscriptions compound beyond **1.28M** toward multi-million paid adoption.
+3. Energy storage revenue and gross profit continue compounding at high margins.
+
+**Highest-impact bear scenario:** Tesla’s core auto business becomes a lower-margin EV manufacturer while Robotaxi/Optimus remain delayed, causing the market to revalue TSLA closer to industrial/auto multiples.
+
+---
+
+## Section 7.5. Correlation Risk
+
+Tesla has high correlation with AI-optionality, high-beta growth, retail momentum, and long-duration equities. In a risk-off market, TSLA likely correlates strongly with AMD, PLTR, OKLO, CEG, and other speculative AI names.
+
+**Stress correlation estimate:** **0.75–0.90** `[Estimate]`
+**True diversification judgment:** **Low** inside an AI-heavy portfolio; **Medium-Low** even in a broader portfolio because TSLA’s factor risk is extreme.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                         |                      Warning Trigger |                Re-underwrite Trigger |
+| --------------------------- | -----------------------------------: | -----------------------------------: |
+| Robotaxi footprint          | no city expansion / no fleet metrics | limited commercial economics by FY27 |
+| FSD subscriptions           |             <1.5M by next 2 quarters |                  stagnation below 2M |
+| Auto gross margin           |                                 <18% |                 <16% for 2+ quarters |
+| Vehicle inventory           |                      >30 days supply |    sustained production > deliveries |
+| Energy storage gross profit |               growth slows below 15% |               margin falls below 25% |
+| Capex / FCF                 |      capex rises faster than revenue |    FCF remains weak despite AI spend |
+
+### Pre-Mortem
+
+1. **Wrong because Robotaxi never scales economically.**
+   Early warning: city launches remain narrow and Tesla does not disclose utilization or safety economics.
+   Response: remove most Robotaxi option value; reduce/avoid position.
+
+2. **Wrong because auto margins structurally compress.**
+   Early warning: price cuts return and auto gross margin falls below 16%.
+   Response: revalue Tesla closer to auto/industrial core.
+
+3. **Wrong because Optimus remains a capital-intensive prototype story.**
+   Early warning: capacity announcements continue without customer revenue or unit economics.
+   Response: remove Optimus option value.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. TSLA trades at **~345x earnings**, which current auto + energy fundamentals cannot justify.
+2. FY25 revenue declined **3%**, and net income to common fell to **$3.79B**. ([SEC][1])
+3. The majority of valuation depends on Robotaxi, Optimus, and FSD success, but those economics are not yet proven.
+4. Production exceeded deliveries in Q1 FY26, while inventory days rose to **27**, indicating demand/supply tension. 
+5. Competitors are not standing still: Waymo has already scaled fully autonomous ride-hailing more visibly than Tesla. ([Waymo][2])
+6. Capex above **$20B** in 2026 may consume cash before new AI/robotics revenue materializes. ([SEC][1])
+7. Key-person, governance, and sentiment risks are unusually high.
+
+### Long vs Short Logic Battle
+
+| Issue                   | Long Score | Short Score | Winner |
+| ----------------------- | ---------: | ----------: | ------ |
+| Core auto quality       |        1.5 |         2.0 | Short  |
+| Energy storage growth   |        2.5 |         1.0 | Long   |
+| FSD subscription growth |        2.5 |         1.5 | Long   |
+| Robotaxi economics      |        1.5 |         2.5 | Short  |
+| Optimus economics       |        0.5 |         3.0 | Short  |
+| Balance sheet           |        3.0 |         0.5 | Long   |
+| Valuation               |        0.0 |         3.0 | Short  |
+
+**Long score:** **11.5**
+**Short score:** **13.5**
+**Gap:** **-2.0**
+**Red Team result:** Short thesis wins on current price. RS2 requires valuation/position-size downgrade.
+
+**Adversarial data check:** The strongest adversarial argument is not fraud; it is that TSLA is priced as a successful autonomy/robotics platform before the economics are proven.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                       | Status                    |
+| -------------------------------- | ------------------------- |
+| Correct engine selected          | Pass — blended Engine 3/4 |
+| No DCF-only conclusion           | Pass                      |
+| No peer-multiple-only conclusion | Pass                      |
+| No TAM-only conclusion           | Pass                      |
+| Macro included                   | Pass                      |
+| Base rates included              | Pass                      |
+| Option value probability-capped  | Pass                      |
+| Core vs option value separated   | Pass                      |
+| Position sizing included         | Pass                      |
+| Monitoring KPIs included         | Pass                      |
+| Red team included                | Pass                      |
+| Pre-mortem included              | Pass                      |
+| Recalculation required           | No                        |
+
+**Model Reliability:** **Medium-Low**
+**Reason:** large reliance on autonomy/robotics assumptions.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                    |
+| ----------------- | -------------------------------------------------------- |
+| Baseline date     | June 25, 2026                                            |
+| Current price     | $376.22                                                  |
+| Base IV           | $205                                                     |
+| Expected price    | $268                                                     |
+| Margin of Safety  | -83.5%                                                   |
+| Core assumption 1 | Core auto + energy + current software value ≈ $110/share |
+| Core assumption 2 | Net option value ≈ $95/share after probability caps      |
+| Core assumption 3 | Robotaxi probability of major economic success ≈ 25%     |
+| 3M KPI            | Robotaxi fleet/city/utilization disclosure improves      |
+| 6M KPI            | FSD subscriptions continue compounding                   |
+| 12M KPI           | Auto margin stabilizes and energy profit grows           |
+| Conviction        | Medium / 7.0 of 15                                       |
+| Revalidation date | After Q2 FY26 earnings                                   |
+| Top concern       | Valuation depends on unproven option value               |
+| Second concern    | Auto margin compression                                  |
+| Third concern     | Robotaxi/Optimus execution gap                           |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                                   |
+| ----------------------------- | ---------------------------------------------------------- |
+| Investment Attractiveness     | **Medium**                                                 |
+| Current Price Attractiveness  | **Low**                                                    |
+| Long-Term Holding Suitability | **Medium, only for high-risk optionality sleeve**          |
+| Portfolio Suitability         | **Low if already AI/growth heavy**                         |
+| Conviction                    | **Medium**                                                 |
+| Recommended Max Weight        | **1.0%**                                                   |
+| Entry Strategy                | **Wait / no fresh buy at current price**                   |
+| Execution Opinion             | **Hold only if already owned; avoid new buying under RS2** |
+
+**One-line summary:** Tesla has extraordinary option value, but at **$376/share** the market already prices in major autonomy/robotics success while current auto + energy fundamentals support only a much lower base value.
+
+**Next ticker in queue:** HD.
+
+[1]: https://www.sec.gov/Archives/edgar/data/1318605/000162828026003952/tsla-20251231.htm "tsla-20251231"
+[2]: https://waymo.com/blog/2025/12/2025-year-in-review?utm_source=chatgpt.com "Delivering more for our riders in a year of incredible growth"
+[3]: https://www.marketbeat.com/stocks/NASDAQ/TSLA/short-interest/?utm_source=chatgpt.com "Tesla (TSLA) Short Interest & Short Float | Updated Jun 2026"
+[4]: https://fintel.io/sopt/us/tsla?utm_source=chatgpt.com "TSLA / Tesla, Inc. - Put/Call Ratio, Options Sentiment, ..."

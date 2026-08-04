@@ -1,0 +1,474 @@
+Proceeding with **#4 NFLX** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #4 — Netflix / NFLX
+
+## Top-Line Execution Summary
+
+| Item                                  |                                   Result |
+| ------------------------------------- | ---------------------------------------: |
+| Current Price / T0                    |                    **$72.16** `[Actual]` |
+| Market Cap                            |                   **$310.2B** `[Actual]` |
+| Reported P/E                          |                     **22.8x** `[Actual]` |
+| Normalized P/E ex-WBD termination fee |                  **~28.4x** `[Estimate]` |
+| Base Intrinsic Value                  |               **$75/share** `[Estimate]` |
+| Expected Price                        |               **$75/share** `[Estimate]` |
+| Margin of Safety vs Base IV           |                    **3.8%** `[Estimate]` |
+| 50% CI                                |                 **$63–$86** `[Estimate]` |
+| 80% CI                                |                **$45–$105** `[Estimate]` |
+| Conviction                            |       **High / 10.5 of 15** `[Estimate]` |
+| Recommended Max Weight                |                    **4.0%** `[Estimate]` |
+| Entry Strategy                        | **Hold / slow tranche only on weakness** |
+| Execution Opinion                     |       **Hold; Scale-In only below ~$65** |
+
+**Core conclusion:** NFLX is a strong global entertainment platform with improving margins, ad-tier optionality, and high FCF conversion, but after normalizing out the **$2.8B Warner Bros. termination fee**, the valuation is closer to fair than cheap. Netflix reported that Q1 EPS was boosted by the termination fee, while 2026 guidance remains **$50.7–$51.7B revenue** and **31.5% operating margin**. ([SEC][1])
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Netflix / NFLX
+**Baseline Date:** June 25, 2026
+**T0:** current price **$72.16**, market cap **$310.2B**, reported P/E **22.77x**, EPS **$3.17** `[Actual]`.
+**T-1:** latest reported financials: FY26 Q1, quarter ended March 31, 2026. Q1 revenue was **$12.25B**, operating income **$3.96B**, operating margin **32.3%**, net income **$5.28B**, diluted EPS **$1.23**, and FCF **$5.09B**. ([SEC][1])
+**Tpf:** T0 price reflects Q1 2026 earnings, the 2026 guide, and the post-split share structure. Netflix’s Q4 2025 letter notes the 10-for-1 stock split adjustment in EPS. 
+
+**Archetype:** **B. Quality Compounder / Global Media Platform**
+**Valuation Engine:** **Engine 1 — Traditional DCF + Multiples**
+
+**Why this engine:** NFLX has recurring subscription revenue, improving margins, global scale, and material FCF. It is not a pure cyclical, not a hardware-platform hybrid, and not an option-led pre-profit company. The ad business is optionality, but it is now part of monetization rather than a separate binary bet.
+
+**Model Confidence:** **Medium-High**. Financial data is strong; content amortization assumptions, long-term engagement, ad monetization, and competitive intensity remain the main estimation risks.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable |                                       Current Status | NFLX Impact                     |
+| -------------- | ---------------------------------------------------: | ------------------------------- |
+| 10Y Treasury   |                           **~4.38–4.50%** `[Actual]` | Valuation headwind              |
+| Fed stance     | **3.50–3.75% target range, held June 17** `[Actual]` | Mild headwind                   |
+| Inflation      |                                       Still elevated | Consumer discretionary pressure |
+| Credit spreads |                HY OAS around **2.6–2.7%** `[Actual]` | Credit stress low               |
+| USD            |                   Relevant due international revenue | FX headwind if USD strengthens  |
+| Business cycle |                  Late expansion / resilient consumer | Neutral-to-mild tailwind        |
+
+The Fed held the target range at **3.50–3.75%** on June 17, 2026, while the 10Y Treasury was recently around **4.50%** on FRED and around **4.38%** in intraday market reporting. ([연방준비제도][2]) Credit spreads remain contained, with high-yield OAS reported around **2.63–2.71%**. ([YCharts][3])
+
+**Regime probabilities:**
+Goldilocks **20%**, Reflation **35%**, Stagflation **25%**, Recession **20%** `[Estimate]`.
+
+**NFLX macro sensitivity:**
+Interest rate **-1.5**; USD **-1.0**; liquidity **-1.0**; economic cycle **+0.5**; commodity **0.0**.
+**Macro alignment:** **Neutral-to-mild headwind**. Streaming is resilient, but subscription pricing and ad budgets are still consumer/cycle sensitive.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                               |               Base Rate | NFLX Adjustment                               |
+| -------------------------------------------- | ----------------------: | --------------------------------------------- |
+| 5Y survival for global profitable platform   |   **>95%** `[Estimate]` | Pass                                          |
+| Sustaining 10%+ revenue CAGR at $45B+ scale  | **35–50%** `[Estimate]` | Raised to **50–60%** due ads + pricing        |
+| Sustaining margin expansion beyond 30%       | **40–55%** `[Estimate]` | Raised to **55–65%** due management record    |
+| Ad-tier becoming material profit contributor | **25–40%** `[Estimate]` | Raised to **45–55%** after 2025/2026 guidance |
+
+Netflix’s 2025 revenue grew **16%** to **$45.18B**, operating margin reached **29.5%**, and ad revenue grew more than **2.5x** to over **$1.5B**.  The company also expects ad revenue to reach **$3B in 2026**, roughly doubling year over year. ([SEC][1])
+
+**Base-rate shock check:** No shock. The model does not assume NFLX becomes a mega ad platform like Meta or Google; it assumes ads become a meaningful incremental revenue/margin layer.
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+Netflix sells paid streaming entertainment globally, monetizing through subscriptions and a growing advertising-supported tier. It invests in original and licensed content, recommendation technology, live events, games, and ad technology to improve engagement, retention, and monetization. The business is understandable, but content amortization and future viewing behavior require judgment.
+
+**Comprehensibility:** **High**
+
+### Moat Score
+
+| Moat Type                 |     Score | Direction       |
+| ------------------------- | --------: | --------------- |
+| Intangible assets / brand |       3/3 | Stable/Widening |
+| Switching costs           |     1.5/3 | Stable          |
+| Network effects           |       2/3 | Stable          |
+| Cost advantage            |     2.5/3 | Widening        |
+| Economies of scale        |       3/3 | Widening        |
+| Regulatory barriers       |     0.5/3 | Stable          |
+| Data moat                 |     2.5/3 | Widening        |
+| **Total**                 | **15/21** | **Wide Moat**   |
+
+**Moat direction:** **Widening modestly.** Scale, recommendation data, global content distribution, and ad-tech rollout strengthen NFLX’s economics.
+
+**Peter Lynch classification:** **Stalwart / Quality Compounder.**
+
+### Financial Health Scorecard
+
+| Metric                    |                               Result |
+| ------------------------- | -----------------------------------: |
+| FY25 revenue              |   **$45.18B**, up **16%** `[Actual]` |
+| FY25 operating income     |               **$13.33B** `[Actual]` |
+| FY25 operating margin     |                 **29.5%** `[Actual]` |
+| FY25 net income           |               **$10.98B** `[Actual]` |
+| FY25 FCF                  |             **~$9.46B** `[Estimate]` |
+| Q1 FY26 revenue           | **$12.25B**, up **16.2%** `[Actual]` |
+| Q1 FY26 operating margin  |                 **32.3%** `[Actual]` |
+| TTM revenue               |            **~$46.89B** `[Estimate]` |
+| TTM operating income      |            **~$13.94B** `[Estimate]` |
+| TTM reported FCF          |            **~$11.89B** `[Estimate]` |
+| TTM normalized net income |             **~$10.9B** `[Estimate]` |
+| Cash + ST investments     |         **$12.29B** at Q1 `[Actual]` |
+| Total debt                |         **$14.36B** at Q1 `[Actual]` |
+| Net debt                  |      **~$2.12B** `[Actual/Estimate]` |
+
+FY25 financial statement data show revenue of **$45.18B**, operating income of **$13.33B**, net income of **$10.98B**, operating cash flow of **$10.15B**, and capex of **$688M**. ([SEC][4]) Q1 data show revenue, operating income, EPS, operating cash flow, FCF, and diluted shares. ([SEC][1]) Q1 net debt was disclosed at **$2.12B**, based on total debt, cash, and short-term investments. ([Q4cdn][5])
+
+**Financial Health Judgment:** **Excellent.** The balance sheet is no longer the old high-leverage Netflix story; current net debt is low relative to operating income.
+
+### Capital Allocation Scorecard
+
+| Dimension                         |       Score |
+| --------------------------------- | ----------: |
+| Buyback efficiency                |         2/3 |
+| M&A track record                  |         2/3 |
+| Content reinvestment efficiency   |       2.5/3 |
+| Dividend/buyback/reinvestment mix |         2/3 |
+| Guidance accuracy                 |         3/3 |
+| Insider adjustment                |           0 |
+| **Total**                         | **11.5/15** |
+
+Netflix repurchased **$9.13B** of common stock in 2025, after repurchasing **$6.26B** in 2024. ([SEC][4]) Management has also been explicit that its core metrics are revenue growth, operating margin, and growing FCF. ([SEC][1])
+
+**Capital allocation judgment:** **Good.**
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                      |                        Result |
+| ------------------------- | ----------------------------: |
+| FY25 content additions    |        **$17.10B** `[Actual]` |
+| FY25 content amortization |        **$16.42B** `[Actual]` |
+| FY25 content assets, net  |        **$32.78B** `[Actual]` |
+| FY25 SBC                  |          **$368M** `[Actual]` |
+| TTM FCF                   |     **~$11.89B** `[Estimate]` |
+| TTM SBC-adjusted FCF      |      **~$11.5B** `[Estimate]` |
+| Normalized TTM EPS        | **~$2.54/share** `[Estimate]` |
+| Reported TTM EPS          |   **~$3.17/share** `[Actual]` |
+
+Netflix’s 2025 cash-flow statement shows **$17.10B** of additions to content assets and **$16.42B** of content amortization; its content assets were **$32.78B** at year-end 2025. ([SEC][4]) The 2025 filing also identifies content amortization as a judgment-heavy accounting area because it depends on estimated viewing patterns. ([SEC][4])
+
+**Key adjustment:** Q1 FY26 net income includes a **$2.8B Warner Bros. termination fee** recognized in interest and other income, so I normalize TTM EPS down from the reported **~$3.17** to **~$2.54**. ([SEC][1])
+
+---
+
+## Section 3. Valuation — Engine 1
+
+### DCF / Owner-Earnings Assumptions
+
+| Scenario | Starting Normalized EPS |        Growth Path | Discount Rate | Terminal Growth | IV / Share |
+| -------- | ----------------------: | -----------------: | ------------: | --------------: | ---------: |
+| Bear     |    $2.50 `[Assumption]` |          3–6% fade |         10.0% |            2.5% |    **$45** |
+| Base     |    $3.00 `[Assumption]` | 12% fading to 3.5% |          9.0% |            3.0% |    **$75** |
+| Bull     |    $3.20 `[Assumption]` |   15% fading to 4% |          8.5% |           3.25% |   **$105** |
+
+**Base IV:** **$75/share** `[Estimate]`
+**Current price:** **$72.16** `[Actual]`
+**Margin of Safety:** **3.8%** `[Estimate]`
+
+### Multiple Cross-Check
+
+| Metric                       |                  Result |
+| ---------------------------- | ----------------------: |
+| Reported P/E                 |    **22.8x** `[Actual]` |
+| Normalized P/E               | **~28.4x** `[Estimate]` |
+| P/TTM FCF                    | **~26.1x** `[Estimate]` |
+| EV/2026E operating income    | **~19.3x** `[Estimate]` |
+| 2026E operating margin guide |    **31.5%** `[Actual]` |
+
+Netflix guides to **$50.7–$51.7B** of 2026 revenue and a **31.5%** operating margin. ([SEC][1])
+
+**Multiple judgment:** Fair, not cheap. NFLX is cheaper than a hypergrowth platform but no longer meaningfully undervalued once the one-time Q1 fee is removed.
+
+### Reverse DCF
+
+At **$72.16/share**, NFLX requires roughly **8–9% normalized EPS/owner-earnings growth** for 10 years at a **9%** discount rate and **3%** terminal growth. `[Estimate]`
+
+**Judgment:** **Plausible but not easy.** Netflix must keep pricing power, ad revenue growth, and content ROI intact.
+
+### Tornado Sensitivity
+
+| Variable                           | -1σ Impact | +1σ Impact |
+| ---------------------------------- | ---------: | ---------: |
+| Revenue growth                     |       -18% |       +22% |
+| Operating margin                   |       -16% |       +19% |
+| Content amortization / content ROI |       -15% |       +14% |
+| Discount rate                      |       -14% |       +17% |
+| Ad revenue ramp                    |        -8% |       +12% |
+
+**Top 3 thesis KPIs:**
+
+1. Revenue growth
+2. Operating margin
+3. Content amortization / FCF conversion
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+Disney, YouTube, Amazon, Apple, Paramount, TikTok, gaming, and social video compete for both attention and budgets. Netflix’s advantage is global content scale plus one integrated platform, but YouTube remains structurally dangerous because it competes for time spent with a lower-cost creator model.
+
+**Reflexivity:**
+Positive stock reflexivity supports buybacks and talent retention. Negative reflexivity is limited because NFLX is already profitable and has low net debt, but a valuation reset can occur quickly if engagement or pricing weakens.
+
+**Customer behavior evolution:**
+Netflix is shifting from pure subscriber-count growth to monetization per household: pricing, paid sharing, ads, live events, and engagement depth. That is rational, but it also means the market must trust management without quarterly subscriber disclosure.
+
+**Network dynamics:**
+Netflix is not a social network, but it has data-scale and cultural-discovery advantages. The moat is more “global entertainment utility” than true network effect.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                                  |
+| -------- | ----------: | ------------: | --------------------------------------------------------------------------------- |
+| Bear     |         25% |       **$45** | Price increases slow, content ROI deteriorates, ad tier underwhelms               |
+| Base     |         50% |       **$75** | Revenue grows low-teens near term, margin expands gradually, ads scale            |
+| Bull     |         25% |      **$105** | Ads become high-margin layer, global pricing power persists, content ROI improves |
+
+**Expected Price:**
+25% × $45 + 50% × $75 + 25% × $105 = **$75/share** `[Estimate]`
+
+**50% CI:** **$63–$86** `[Estimate]`
+**80% CI:** **$45–$105** `[Estimate]`
+**Margin of Safety:** **3.8%**
+**MoS Judgment:** **Limited / nearly fair value.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **2–3 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **~1–2 years**
+
+There is some horizon arbitrage because the market is watching near-term guidance softness and one-time EPS distortion, but NFLX is not deeply mispriced. The current price already gives Netflix credit for continued margin expansion and ad execution.
+
+**Horizon arbitrage judgment:** **Limited.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |       Score |
+| ------------------------ | ----------: |
+| Business quality         |      2.75/3 |
+| Valuation attractiveness |      1.25/3 |
+| Macro alignment          |      1.75/3 |
+| Thesis clarity           |      2.25/3 |
+| Execution trackability   |       2.5/3 |
+| **Total**                | **10.5/15** |
+
+**Conviction Tier:** **High**, but valuation attractiveness is only modest.
+**Layer 5 recommended max weight:** **4.0%**.
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                |                                               Result |
+| ------------------- | ---------------------------------------------------: |
+| Short interest      |                         **101.6M shares** `[Actual]` |
+| Short % float       |                                 **2.44%** `[Actual]` |
+| Days to cover       |                                   **3.4** `[Actual]` |
+| Put/call OI ratio   |                                 **~0.84** `[Actual]` |
+| Options IV          | **~30–44% range depending date/source** `[Estimate]` |
+| Crowding score      |                         **8/15 Medium** `[Estimate]` |
+| Squeeze probability |                                                  Low |
+
+Short interest is normal, not a major squeeze setup. ([마켓비트][6]) Options data show put/call open interest around **0.84**, which is not fearful enough to create a strong contrarian signal. ([Fintel][7])
+
+**Behavioral judgment:** Neutral. NFLX is neither hated nor euphoric.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Core-quality consumer/media compounder.
+**Expected 3–5Y annualized return:** **6–9%** `[Estimate]`.
+**Portfolio overlap:** Moderate with META because both compete for attention and ad budgets; lower overlap with MSFT/AMD/PLTR/OKLO AI infrastructure.
+**Portfolio fit:** Good diversifier versus pure AI capex names, but still consumer-discretionary/media exposed.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                  Value |
+| ----------------------------- | ---------------------: |
+| Probability of base-or-better |   **75%** `[Estimate]` |
+| Weighted upside from current  |  **~25%** `[Estimate]` |
+| Bear downside from current    |  **~38%** `[Estimate]` |
+| Fractional Kelly output       | **~3–5%** `[Estimate]` |
+| Final RS2 cap                 |               **4.0%** |
+
+Layer 5 and Kelly sizing align.
+**Final recommended max weight:** **4.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Content ROI risk:** content amortization assumptions prove too optimistic or engagement weakens.
+2. **Pricing fatigue:** price increases slow churn-adjusted revenue growth.
+3. **Ad execution risk:** ad revenue reaches scale but does not become high-margin enough to move total company earnings.
+
+### Top 3 Catalysts
+
+1. 2026 revenue lands above the **$50.7–$51.7B** guide.
+2. Operating margin exceeds the **31.5%** target.
+3. Ad revenue surpasses the **$3B** 2026 target and shows operating leverage. ([SEC][1])
+
+**Highest-impact bear scenario:** Netflix’s content cost base rises faster than monetization, compressing FCF despite reported revenue growth.
+
+---
+
+## Section 7.5. Correlation Risk
+
+NFLX’s bear triggers are consumer weakness, pricing fatigue, content ROI deterioration, and ad-budget softness. It has partial overlap with META and HD, but lower overlap with AI-infrastructure names like AMD, PLTR, CEG, and OKLO.
+
+**Stress correlation estimate:** **0.55–0.70** with broad growth equities; **0.65–0.80** with META and other digital ad/attention names. `[Estimate]`
+**True diversification judgment:** **Medium.**
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                         |         Warning Trigger |                 Re-underwrite Trigger |
+| --------------------------- | ----------------------: | ------------------------------------: |
+| Revenue growth              |                <10% YoY |                               <8% YoY |
+| Operating margin            |                    <30% |                                  <28% |
+| FCF conversion              |     FCF <20% of revenue |   FCF declines despite revenue growth |
+| Ad revenue                  | Below $3B 2026 run-rate | Ad growth slows materially after 2026 |
+| Content amortization growth |        > revenue growth |   sustained content ROI deterioration |
+
+### Pre-Mortem
+
+1. **Wrong because content ROI deteriorates.**
+   Early warning: content amortization growth exceeds revenue growth.
+   Response: reduce margin assumptions and IV.
+
+2. **Wrong because pricing power weakens.**
+   Early warning: revenue growth slows below 10% despite price increases and ads.
+   Response: lower terminal growth and multiple.
+
+3. **Wrong because YouTube/social video captures incremental viewing time.**
+   Early warning: engagement growth stalls while competitors gain viewing share.
+   Response: reduce moat score and growth assumptions.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. NFLX’s reported P/E is misleading because Q1 EPS included a **$2.8B** non-operating termination fee.
+2. Normalized P/E is closer to **~28x**, which is not cheap for a business guiding low-teens revenue growth.
+3. Netflix no longer reports subscriber metrics quarterly, reducing external visibility into churn and member growth.
+4. YouTube, TikTok, Disney, Amazon, Apple, and gaming compete aggressively for entertainment time.
+5. Content amortization is judgment-heavy and can flatter earnings if future viewing assumptions prove wrong.
+6. Ad revenue is promising but still small relative to total company revenue.
+7. The stock needs continued margin expansion; a content-spend cycle can pressure that.
+
+### Long vs Short Logic Battle
+
+| Issue                   | Long Score | Short Score | Winner |
+| ----------------------- | ---------: | ----------: | ------ |
+| Global scale            |          3 |           1 | Long   |
+| Pricing power           |        2.5 |         1.5 | Long   |
+| Valuation               |        1.5 |           2 | Short  |
+| Ad optionality          |          2 |         1.5 | Long   |
+| Content accounting risk |        1.5 |         2.5 | Short  |
+| Balance sheet / FCF     |          3 |           1 | Long   |
+
+**Long score:** **13.5**
+**Short score:** **9.5**
+**Gap:** **+4 Long**
+**Judgment:** Solid long thesis, but current valuation limits upside.
+
+**Adversarial data check:** No major current Hindenburg/Muddy Waters-style short thesis found. The strongest bear argument is normalized valuation plus content ROI/accounting risk, not fraud.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                         | Status |
+| ---------------------------------- | ------ |
+| Correct engine selected            | Pass   |
+| DCF-only conclusion avoided        | Pass   |
+| Multiples cross-check included     | Pass   |
+| Macro included                     | Pass   |
+| Base rates included                | Pass   |
+| One-time Q1 fee normalized         | Pass   |
+| Content amortization risk included | Pass   |
+| Position sizing included           | Pass   |
+| Monitoring KPIs included           | Pass   |
+| Red team included                  | Pass   |
+| Pre-mortem included                | Pass   |
+| Recalculation required             | No     |
+
+**Model Reliability:** **Medium-High**
+**Key uncertainty:** content ROI and ad-tier margin contribution.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                         |
+| ----------------- | --------------------------------------------- |
+| Baseline date     | June 25, 2026                                 |
+| Current price     | $72.16                                        |
+| Base IV           | $75                                           |
+| Expected price    | $75                                           |
+| Margin of Safety  | 3.8%                                          |
+| Core assumption 1 | 2026 normalized EPS around $3.00              |
+| Core assumption 2 | Revenue grows low-teens near term, then fades |
+| Core assumption 3 | Operating margin sustains >30%                |
+| 3M KPI            | Q2 revenue and margin meet/exceed guide       |
+| 6M KPI            | Ad revenue run-rate progresses toward $3B     |
+| 12M KPI           | FCF remains >20% of revenue                   |
+| Conviction        | High / 10.5 of 15                             |
+| Revalidation date | After Q2 FY26 earnings, then December 2026    |
+| Top concern       | Normalized valuation not cheap                |
+| Second concern    | Content ROI                                   |
+| Third concern     | Ad-tier execution                             |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                |
+| ----------------------------- | --------------------------------------- |
+| Investment Attractiveness     | **High**                                |
+| Current Price Attractiveness  | **Medium**                              |
+| Long-Term Holding Suitability | **High**                                |
+| Portfolio Suitability         | **Medium-High**                         |
+| Conviction                    | **High**                                |
+| Recommended Max Weight        | **4.0%**                                |
+| Entry Strategy                | **Hold; slow tranche only on weakness** |
+| Execution Opinion             | **Hold / Scale-In below ~$65**          |
+
+**One-line summary:** NFLX is a high-quality global entertainment compounder with improving margins and ad upside, but after normalizing the Q1 one-time fee, the stock is near fair value rather than clearly undervalued.
+
+**Next ticker in queue:** TSLA.
+
+[1]: https://www.sec.gov/Archives/edgar/data/1065280/000106528026000137/ex991_q126.htm "Document"
+[2]: https://www.federalreserve.gov/newsevents/pressreleases/monetary20260617a.htm?utm_source=chatgpt.com "Federal Reserve issues FOMC statement"
+[3]: https://ycharts.com/indicators/us_high_yield_master_ii_optionadjusted_spread?utm_source=chatgpt.com "US High Yield Master II Option-Adjusted Spread (Market ..."
+[4]: https://www.sec.gov/Archives/edgar/data/1065280/000106528026000034/nflx-20251231.htm "nflx-20251231"
+[5]: https://s22.q4cdn.com/959853165/files/doc_financials/2026/q1/FINAL-Q1-26-Shareholder-Letter.pdf?utm_source=chatgpt.com "April 16, 2026 Fellow shareholders, Q1 revenue grew 16 ..."
+[6]: https://www.marketbeat.com/stocks/NASDAQ/NFLX/short-interest/?utm_source=chatgpt.com "Netflix (NFLX) Short Interest Ratio & Short Volume"
+[7]: https://fintel.io/sopt/us/nflx?utm_source=chatgpt.com "NFLX / Netflix, Inc. - Put/Call Ratio, Options Sentiment, ..."

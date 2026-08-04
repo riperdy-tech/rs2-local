@@ -1,0 +1,7 @@
+# Clean research model for LDR deep-research (NO RS2 prompt — would derail search).
+# Capped for the 12GB-RAM / 24GB-VRAM box: force ALL layers onto GPU and bound context
+# so KV cache stays small. Only ever loaded alone (run_rs2 unloads it before rs2-analyst).
+FROM qwen3.6:35b-a3b
+PARAMETER num_gpu 99
+PARAMETER num_ctx 8192
+PARAMETER temperature 0.3

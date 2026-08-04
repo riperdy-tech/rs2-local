@@ -1,0 +1,499 @@
+Proceeding with **#13 LLY** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #13 — Eli Lilly / LLY
+
+## Top-Line Execution Summary
+
+| Item                        |                                                   Result |
+| --------------------------- | -------------------------------------------------------: |
+| Current Price / T0          |                                 **$1,127.69** `[Actual]` |
+| Market Cap                  |                                    **$1.01T** `[Actual]` |
+| Reported P/E                |                                     **40.1x** `[Actual]` |
+| 2026 Non-GAAP EPS Guide     |                             **$35.50–$37.00** `[Actual]` |
+| Base Intrinsic Value        |                            **$1,150/share** `[Estimate]` |
+| Expected Price              |                            **$1,185/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                                    **1.9%** `[Estimate]` |
+| 50% CI                      |                             **$980–$1,350** `[Estimate]` |
+| 80% CI                      |                             **$750–$1,700** `[Estimate]` |
+| Conviction                  |                       **High / 11.0 of 15** `[Estimate]` |
+| Recommended Max Weight      |                                    **4.0%** `[Estimate]` |
+| Entry Strategy              | **Hold / slow tranche only; better below ~$1,000–1,050** |
+| Execution Opinion           |         **Hold / cautious scale-in, not aggressive buy** |
+
+**Core conclusion:** Lilly is one of the strongest growth compounders in global pharma, powered by Mounjaro, Zepbound, Foundayo/orforglipron, and the broader metabolic pipeline. The business quality is very high, but the stock is already priced for substantial GLP-1 execution success, leaving only a **thin RS2 margin of safety**.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Eli Lilly and Company / LLY
+**Baseline Date:** June 25, 2026 market close / June 26, 2026 Taipei time
+**T0:** current price **$1,127.69**, market cap **$1.01T**, EPS **$28.15**, and P/E **40.06x** `[Actual]`.
+**T-1:** latest financials are Q1 2026. Lilly reported Q1 revenue of **$19.799B**, net income of **$7.396B**, reported EPS of **$8.26**, and non-GAAP EPS of **$8.55**. ([Eli Lilly and Company][1])
+**Tpf:** current price reflects Q1 2026 results, raised 2026 guidance, FDA approval of Foundayo/orforglipron, and continued Mounjaro/Zepbound momentum. Lilly raised 2026 revenue guidance to **$82–85B** and non-GAAP EPS guidance to **$35.50–37.00**. ([Eli Lilly and Company][1])
+
+**Archetype:** **B. Quality Compounder with concentrated GLP-1 growth engine**
+**Valuation Engine:** **Engine 1 — Traditional DCF + Multiples**, with pipeline concentration stress test.
+
+**Why this engine:** Lilly is profitable, large-scale, high-margin, and cash-generative, so it is not a pure option-led biotech. However, the valuation depends heavily on future GLP-1 growth and pipeline expansion, so the DCF must include probability and concentration discounts.
+
+**Model Confidence:** **Medium-High.** Current revenue, margin, and guidance data are strong; long-term obesity-market size, pricing pressure, oral GLP-1 uptake, retatrutide success, and payer access remain assumption-heavy.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable    | LLY Impact                                                          |
+| ----------------- | ------------------------------------------------------------------- |
+| Higher rates      | Valuation headwind because LLY is a long-duration growth compounder |
+| Recession risk    | Low direct demand sensitivity; healthcare demand defensive          |
+| Strong USD        | FX translation headwind                                             |
+| Inflation         | Manufacturing/input cost risk, but pricing power remains high       |
+| Healthcare policy | Major long-term risk via drug pricing and payer coverage            |
+
+**Regime probabilities:**
+Goldilocks **20%**, Reflation **30%**, Stagflation **25%**, Recession **25%** `[Estimate]`.
+
+**LLY macro sensitivity score:**
+Interest rates **-1.5**; dollar **-1.0**; liquidity **-1.0**; economic cycle **-0.5**; commodity **0.0**.
+**Macro alignment:** **Neutral.** Lilly is operationally defensive but valuation-sensitive.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                               |                     Base Rate | LLY Adjustment                                  |
+| ------------------------------------------------------------ | ----------------------------: | ----------------------------------------------- |
+| 5Y survival for mega-cap pharma                              |         **>95%** `[Estimate]` | Pass                                            |
+| Sustaining >20% revenue CAGR for 5Y at $80B+ scale           | **Low / 15–25%** `[Estimate]` | Raised to **35–45%**                            |
+| One therapeutic franchise exceeding $50B annual sales        | **Low / 10–20%** `[Estimate]` | Raised to **35–45%** for tirzepatide/oral GLP-1 |
+| Pipeline replacement of future patent cliffs                 |       **40–55%** `[Estimate]` | Raised to **55–65%**                            |
+| Long-term drug-pricing pressure materially impairing margins |       **25–40%** `[Estimate]` | Kept high                                       |
+
+**Base-rate shock check:** Lilly deserves an above-base-rate adjustment because Q1 2026 revenue grew **56%**, with volume up **65%**, but realized prices declined **13%**; that pricing pressure prevents an uncapped bull thesis. ([Eli Lilly and Company][1])
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+Lilly discovers, manufactures, and sells medicines across cardiometabolic health, oncology, immunology, neuroscience, and other therapeutic areas. Its current growth is dominated by Mounjaro for diabetes and Zepbound for obesity, with Foundayo/orforglipron and retatrutide extending the metabolic pipeline. The business is understandable, but valuation depends heavily on GLP-1 market size, pricing, manufacturing capacity, and payer coverage.
+
+**Comprehensibility:** **High**
+
+### Moat Score
+
+| Moat Type                     |     Score | Direction                         |
+| ----------------------------- | --------: | --------------------------------- |
+| Patents / intangible assets   |       3/3 | Widening                          |
+| Switching costs               |       2/3 | Widening                          |
+| Network effects               |     0.5/3 | Limited                           |
+| Cost advantage                |       2/3 | Widening with manufacturing scale |
+| Economies of scale            |       3/3 | Widening                          |
+| Regulatory barriers           |       3/3 | Stable/Widening                   |
+| Data / clinical evidence moat |     2.5/3 | Widening                          |
+| **Total**                     | **16/21** | **Fortress pharmaceutical moat**  |
+
+**Moat direction:** **Widening**, mainly due to GLP-1 clinical leadership, pipeline depth, regulatory approvals, brand recognition, and manufacturing scale.
+
+**Peter Lynch classification:** **Fast Grower / Quality Compounder.**
+
+### Financial Health Scorecard
+
+| Metric                      |                              Result |
+| --------------------------- | ----------------------------------: |
+| FY25 revenue                | **$65.179B**, up **45%** `[Actual]` |
+| FY25 net income             |             **$20.640B** `[Actual]` |
+| FY25 diluted EPS            |               **$22.95** `[Actual]` |
+| FY25 operating cash flow    |             **$16.813B** `[Actual]` |
+| FY25 capex                  |              **$7.841B** `[Actual]` |
+| FY25 FCF                    |            **~$8.97B** `[Estimate]` |
+| Q1 2026 revenue             | **$19.799B**, up **56%** `[Actual]` |
+| Q1 2026 gross margin        |                **81.9%** `[Actual]` |
+| Q1 2026 R&D                 |  **$3.510B**, up **28%** `[Actual]` |
+| Q1 2026 net income          |              **$7.396B** `[Actual]` |
+| Q1 2026 operating cash flow |              **$5.333B** `[Actual]` |
+| Q1 2026 capex               |              **$2.326B** `[Actual]` |
+| Q1 2026 FCF                 |            **~$3.01B** `[Estimate]` |
+| Q1 cash                     |              **$5.282B** `[Actual]` |
+| Q1 total debt               |               **$43.4B** `[Actual]` |
+| Net debt                    |            **~$38.1B** `[Estimate]` |
+
+FY25 revenue, net income, EPS, operating cash flow, and capex are from Lilly’s 2025 10-K. ([Eli Lilly and Company][2]) Q1 cash flow shows **$5.333B** operating cash flow and **$2.326B** capex. ([SEC][3]) Lilly disclosed total debt of **$43.4B** at March 31, 2026. ([SEC][3])
+
+**Financial Health Judgment:** **Excellent growth and earnings quality; adequate leverage.** Debt is manageable, but capex/manufacturing expansion and acquisitions are consuming cash.
+
+### Product Concentration
+
+| Product   |        Q1 2026 Revenue | YoY Growth |
+| --------- | ---------------------: | ---------: |
+| Mounjaro  | **$8.662B** `[Actual]` |  **+125%** |
+| Zepbound  | **$4.160B** `[Actual]` |   **+80%** |
+| Verzenio  | **$1.302B** `[Actual]` |   **+12%** |
+| Jardiance | **$1.114B** `[Actual]` |   **+10%** |
+
+Mounjaro and Zepbound together generated **$12.822B** in Q1 2026, equal to about **65%** of total revenue. ([SEC][3])
+
+**Concentration judgment:** **High.** The concentration is acceptable because the franchise is exceptional, but it must reduce position sizing.
+
+### Capital Allocation Scorecard
+
+| Dimension                             |       Score |
+| ------------------------------------- | ----------: |
+| Buyback efficiency                    |       1.5/3 |
+| M&A / business development            |         2/3 |
+| Capex efficiency                      |       2.5/3 |
+| Dividend / buyback / reinvestment mix |       2.5/3 |
+| Guidance accuracy                     |         3/3 |
+| Insider adjustment                    |           0 |
+| **Total**                             | **11.5/15** |
+
+Lilly repurchased **$2.356B** of stock in Q1 and paid **$1.548B** of dividends. ([SEC][3]) However, buybacks at a $1T valuation are less obviously accretive than capacity expansion, R&D, and pipeline acquisitions.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                           |                                                   Result |
+| ------------------------------ | -------------------------------------------------------: |
+| FY25 R&D                       | **large and rising**; Q1 2026 R&D **$3.510B** `[Actual]` |
+| Q1 2026 early-stage R&D        |                                   **$1.266B** `[Actual]` |
+| Q1 2026 late-stage R&D         |                                   **$2.244B** `[Actual]` |
+| Q1 2026 SBC                    |                                     **$161M** `[Actual]` |
+| Q1 2026 FCF                    |                                 **~$3.01B** `[Estimate]` |
+| Q1 SBC-adjusted FCF            |                                 **~$2.85B** `[Estimate]` |
+| FY25 FCF                       |                                 **~$8.97B** `[Estimate]` |
+| 2026 normalized owner earnings |                                **~$32–34B** `[Estimate]` |
+
+Q1 segment expense disclosure shows early-stage R&D of **$1.266B**, late-stage R&D of **$2.244B**, and marketing/selling/administrative expense of **$2.934B**. ([SEC][3])
+
+**Adjusted financials judgment:** Reported FCF understates normalized earnings power because Lilly is investing heavily in manufacturing capacity, inventory, and pipeline expansion. Still, RS2 cannot ignore the cash burden: capex and acquisitions are real uses of capital.
+
+---
+
+## Section 3. Valuation — Engine 1
+
+### DCF / Owner Earnings Assumptions
+
+| Scenario | Starting EPS / Owner Earnings |        Growth Path | Discount Rate | Terminal Growth | IV / Share |
+| -------- | ----------------------------: | -----------------: | ------------: | --------------: | ---------: |
+| Bear     |         $34.00 `[Assumption]` | 15% fading to 2.5% |          9.0% |            2.5% |   **$750** |
+| Base     |           $36.00 `[Estimate]` | 22% fading to 3.0% |          8.5% |            3.0% | **$1,150** |
+| Bull     |         $38.00 `[Assumption]` | 28% fading to 3.5% |          8.0% |           3.25% | **$1,700** |
+
+**Base IV:** **$1,150/share** `[Estimate]`
+**Current price:** **$1,127.69/share** `[Actual]`
+**Margin of Safety:** **1.9%** `[Estimate]`
+
+### Multiple Cross-Check
+
+| Metric                                          |                  Result |
+| ----------------------------------------------- | ----------------------: |
+| Current P/E                                     |    **40.1x** `[Actual]` |
+| Forward P/E on 2026 non-GAAP EPS guide midpoint | **~31.1x** `[Estimate]` |
+| Price / FY25 FCF                                |  **~112x** `[Estimate]` |
+| Price / Q1 annualized FCF                       |   **~84x** `[Estimate]` |
+| EV / 2026 guided revenue                        | **~12.5x** `[Estimate]` |
+
+**Multiple judgment:** Lilly is expensive on FCF and revenue, but not irrational on forward earnings if 2026–2030 GLP-1 growth continues. The stock is priced for excellence, not priced for disappointment.
+
+### Reverse DCF
+
+At **$1,127.69**, the market effectively requires Lilly to compound EPS/owner earnings at roughly **high-teens CAGR for several years**, then fade gradually while preserving high margins and strong GLP-1 market share. `[Estimate]`
+
+**Judgment:** **Plausible but demanding.** This is not a bubble-level requirement, but it leaves limited room for pricing pressure, manufacturing delay, safety issue, or payer restriction.
+
+### Tornado Sensitivity
+
+| Variable                         | -1σ Impact | +1σ Impact |
+| -------------------------------- | ---------: | ---------: |
+| GLP-1 revenue growth             |       -30% |       +40% |
+| Realized GLP-1 pricing / rebates |       -25% |       +20% |
+| Long-term operating margin       |       -18% |       +22% |
+| Oral GLP-1 / retatrutide success |       -15% |       +28% |
+| Discount rate                    |       -14% |       +17% |
+
+**Top 3 thesis KPIs:**
+
+1. Mounjaro + Zepbound revenue growth and price realization
+2. Foundayo/orforglipron and retatrutide adoption/progress
+3. Performance margin and FCF conversion
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+Novo Nordisk remains Lilly’s most important competitor, but Lilly has gained momentum in GLP-1 injectables and oral GLP-1 development. Amgen, Roche, Pfizer, Viking, and many smaller biotech competitors remain relevant, especially in next-generation obesity and cardiometabolic assets.
+
+**Reflexivity:**
+Positive: Lilly’s high stock price helps finance acquisitions, attract talent, and build manufacturing capacity.
+Negative: if GLP-1 growth slows, the stock can compress sharply because the valuation assumes durable category leadership.
+
+**Customer behavior evolution:**
+The market is moving from supply-constrained early adopters toward broader payer-covered and cash-pay populations. That expands TAM but increases pricing and access sensitivity.
+
+**Network dynamics:**
+No true network effect. Lilly’s moat comes from patents, clinical data, regulatory approvals, manufacturing scale, physician familiarity, and payer access.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                                       |
+| -------- | ----------: | ------------: | -------------------------------------------------------------------------------------- |
+| Bear     |         25% |      **$750** | Pricing pressure accelerates, GLP-1 growth slows, pipeline disappoints                 |
+| Base     |         50% |    **$1,150** | GLP-1 growth remains strong, oral GLP-1 expands category, margins scale                |
+| Bull     |         25% |    **$1,700** | Lilly dominates obesity/diabetes, retatrutide succeeds, oncology/immunology add upside |
+
+**Expected Price:**
+25% × $750 + 50% × $1,150 + 25% × $1,700 = **$1,187.50/share** `[Estimate]`
+
+**Rounded Expected Price:** **$1,185/share** `[Estimate]`
+**50% CI:** **$980–$1,350** `[Estimate]`
+**80% CI:** **$750–$1,700** `[Estimate]`
+**Margin of Safety:** **1.9%**
+**MoS Judgment:** **Limited / near fair value.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **5–7 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **Negative to neutral**
+
+The market is not ignoring Lilly’s future. The stock already capitalizes several years of GLP-1 growth. There is some hidden value if oral GLP-1 and retatrutide expand the market beyond current assumptions, but the base franchise is already well understood.
+
+**Horizon arbitrage judgment:** **Limited.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |       Score |
+| ------------------------ | ----------: |
+| Business quality         |       3.0/3 |
+| Valuation attractiveness |       1.0/3 |
+| Macro alignment          |       2.0/3 |
+| Thesis clarity           |       2.5/3 |
+| Execution trackability   |       2.5/3 |
+| **Total**                | **11.0/15** |
+
+**Conviction Tier:** **High**
+**Layer 5 preliminary weight:** **5–8%**
+**Adjustments:**
+
+* Limited MoS: -1.0%
+* GLP-1 concentration: -1.0%
+* Drug-pricing/regulatory risk: -0.5%
+* Defensive healthcare diversification: +0.5%
+
+**Layer 5 recommended max weight:** **4.0%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                    |                             Result |
+| ----------------------- | ---------------------------------: |
+| Short interest          |        **9.66M shares** `[Actual]` |
+| Short % float           |               **1.03%** `[Actual]` |
+| Days to cover           |                 **3.0** `[Actual]` |
+| Put/call OI ratio       |                **1.22** `[Actual]` |
+| Institutional ownership |            **~82.5%** `[Estimate]` |
+| Squeeze risk            |                                Low |
+| Crowding score          | **10/15 Medium-High** `[Estimate]` |
+
+Short interest is low: MarketBeat reports **9.66M** shares short, **1.03%** of float, and **3.0** days to cover as of June 15, 2026. ([마켓비트][4]) Options positioning is more cautious, with Fintel reporting an open-interest put/call ratio of **1.22**. ([Fintel][5]) Institutional ownership is high, with MarketBeat showing **82.53%** institutional ownership and no insider buying or selling in the past three months. ([마켓비트][6])
+
+**Behavioral judgment:** Not a short-squeeze setup. The stock is institutionally crowded but not euphoric in options.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Core healthcare growth compounder / defensive secular growth.
+**Expected 3–5Y annualized return:** **7–11%** `[Estimate]`, mostly from EPS growth rather than multiple expansion.
+**Portfolio overlap:** Low with energy, industrials, and financials; moderate with other high-multiple quality compounders like MSFT, V, COST; low direct correlation with AMD/TSLA/PLTR AI optionality.
+
+**Portfolio fit judgment:** **High**, especially in a portfolio overloaded with AI/energy cyclicals. But the position should not be oversized because LLY is already a $1T company with one dominant therapeutic franchise.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Weighted upside from current  | **~26%** `[Estimate]` |
+| Bear downside from current    | **~33%** `[Estimate]` |
+| Practical fractional Kelly    | **4–6%** `[Estimate]` |
+| RS2 final cap                 |              **4.0%** |
+
+Kelly supports a moderate position, but GLP-1 concentration and limited MoS cap the final weight.
+**Final recommended max weight:** **4.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Pricing pressure:** Q1 growth was volume-led, but realized prices declined due to Mounjaro and Zepbound. ([Eli Lilly and Company][1])
+2. **Concentration risk:** Mounjaro and Zepbound were about **65%** of Q1 revenue. ([SEC][3])
+3. **Manufacturing / capex burden:** Q1 capex was **$2.326B**, and Lilly continues investing heavily in capacity. ([SEC][3])
+
+### Top 3 Catalysts
+
+1. Full-year 2026 revenue trends toward or above the high end of the **$82–85B** guidance range.
+2. Foundayo/orforglipron adoption validates the oral GLP-1 expansion thesis.
+3. Retatrutide and pipeline data strengthen Lilly’s post-tirzepatide growth runway.
+
+**Highest-impact bear scenario:** GLP-1 demand remains high, but realized prices and payer access deteriorate enough that revenue grows without proportional margin or FCF expansion.
+
+---
+
+## Section 7.5. Correlation Risk
+
+LLY’s bear triggers are drug-specific: pricing pressure, safety signals, manufacturing delays, payer restriction, patent/pipeline disappointment, and regulatory pressure. These are different from AI, energy, and bank risks.
+
+**Stress correlation estimate:**
+With high-multiple quality growth: **0.55–0.70** `[Estimate]`
+With AI/semiconductors: **0.35–0.55** `[Estimate]`
+With energy/financials: **0.20–0.40** `[Estimate]`
+
+**True diversification judgment:** **Medium-High.** LLY diversifies sector exposure but still carries high-multiple growth valuation risk.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                          |          Warning Trigger |       Re-underwrite Trigger |
+| ---------------------------- | -----------------------: | --------------------------: |
+| Mounjaro + Zepbound growth   |                 <40% YoY |                    <25% YoY |
+| Realized price               |             >15% decline |      sustained >20% decline |
+| Gross margin                 |                     <80% |                        <78% |
+| Performance margin           |     below 47% guide path |                        <45% |
+| Foundayo/orforglipron launch | slow prescription uptake |      payer/access rejection |
+| FCF conversion               |   FCF <40% of net income | FCF weak despite EPS growth |
+
+### Pre-Mortem
+
+1. **Wrong because GLP-1 pricing deteriorates faster than volume grows.**
+   Early warning: realized price declines accelerate.
+   Response: lower margin and terminal multiple.
+
+2. **Wrong because oral GLP-1 adoption underwhelms.**
+   Early warning: Foundayo prescriptions and payer coverage lag expectations.
+   Response: remove oral GLP-1 premium.
+
+3. **Wrong because concentration becomes a liability.**
+   Early warning: Mounjaro/Zepbound safety, supply, or competitive issues emerge.
+   Response: revalue using bear/base midpoint and reduce position.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. LLY is a great company, but at **~$1T market cap** and **~40x reported earnings**, the stock is not cheap.
+2. Q1 revenue growth was extraordinary, but realized prices declined due to Mounjaro and Zepbound. ([Eli Lilly and Company][1])
+3. Mounjaro and Zepbound are already **~65%** of quarterly revenue, creating therapeutic concentration risk.
+4. FCF conversion lags earnings because Lilly is investing heavily in manufacturing, inventory, and acquisitions.
+5. Payer pressure, Medicare coverage design, cash-pay discounts, and international reimbursement can compress long-term economics.
+6. If oral GLP-1 uptake is slower than expected, the market may reduce the terminal growth premium.
+7. The stock has already priced in a large part of the obesity-market success story.
+
+### Long vs Short Logic Battle
+
+| Issue               | Long Score | Short Score | Winner |
+| ------------------- | ---------: | ----------: | ------ |
+| GLP-1 leadership    |          3 |           1 | Long   |
+| Revenue growth      |          3 |           1 | Long   |
+| Pipeline depth      |        2.5 |         1.5 | Long   |
+| Valuation           |          1 |         2.5 | Short  |
+| Pricing pressure    |        1.5 |         2.5 | Short  |
+| Manufacturing scale |        2.5 |         1.5 | Long   |
+| Balance sheet / FCF |        1.5 |           2 | Short  |
+
+**Long score:** **15.0**
+**Short score:** **12.0**
+**Gap:** **+3 Long**
+**Judgment:** Solid long thesis, but valuation and concentration prevent very-high conviction.
+
+**Adversarial data check:** No major short-seller fraud thesis found. The serious bear case is not accounting fraud; it is **valuation + GLP-1 pricing/concentration risk**.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                     | Status |
+| ------------------------------ | ------ |
+| Correct engine selected        | Pass   |
+| DCF-only conclusion avoided    | Pass   |
+| Multiples cross-check included | Pass   |
+| Macro included                 | Pass   |
+| Base rates included            | Pass   |
+| GLP-1 concentration included   | Pass   |
+| Pricing pressure included      | Pass   |
+| FCF conversion included        | Pass   |
+| Position sizing included       | Pass   |
+| Monitoring KPIs included       | Pass   |
+| Red team included              | Pass   |
+| Pre-mortem included            | Pass   |
+| Data tier reliance disclosed   | Pass   |
+| Recalculation required         | No     |
+
+**Model Reliability:** **Medium-High**
+**Key uncertainty:** long-term GLP-1 pricing, oral GLP-1 adoption, and pipeline durability.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                               |
+| ----------------- | --------------------------------------------------- |
+| Baseline date     | June 25, 2026                                       |
+| Current price     | $1,127.69                                           |
+| Base IV           | $1,150                                              |
+| Expected price    | $1,185                                              |
+| Margin of Safety  | 1.9%                                                |
+| Core assumption 1 | 2026 non-GAAP EPS around $36/share                  |
+| Core assumption 2 | GLP-1 revenue compounds strongly through 2029       |
+| Core assumption 3 | Performance margin stays near 47–48.5% guide        |
+| 3M KPI            | Q2 revenue/EPS track above guide midpoint           |
+| 6M KPI            | Foundayo/orforglipron adoption and coverage improve |
+| 12M KPI           | FCF conversion improves as capacity scales          |
+| Conviction        | High / 11.0 of 15                                   |
+| Revalidation date | After Q2 2026 earnings                              |
+| Top concern       | Thin MoS                                            |
+| Second concern    | GLP-1 pricing pressure                              |
+| Third concern     | Product concentration                               |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                                 |
+| ----------------------------- | -------------------------------------------------------- |
+| Investment Attractiveness     | **High**                                                 |
+| Current Price Attractiveness  | **Medium**                                               |
+| Long-Term Holding Suitability | **High**                                                 |
+| Portfolio Suitability         | **High as healthcare growth diversifier**                |
+| Conviction                    | **High**                                                 |
+| Recommended Max Weight        | **4.0%**                                                 |
+| Entry Strategy                | **Hold / slow tranche only; better below ~$1,000–1,050** |
+| Execution Opinion             | **Hold / cautious scale-in**                             |
+
+**One-line summary:** Lilly is an elite pharma compounder with unmatched GLP-1 momentum, but at **$1,127.69** the market already prices in substantial obesity-franchise success, leaving only a **thin RS2 margin of safety**.
+
+**Next ticker in queue:** MRNA.
+
+[1]: https://investor.lilly.com/news-releases/news-release-details/lilly-reports-first-quarter-2026-financial-results-raises-full "Lilly reports first-quarter 2026 financial results, raises full year guidance, and highlights momentum of new medicines | Eli Lilly and Company"
+[2]: https://investor.lilly.com/static-files/0d64699c-0cc7-490e-9152-b2ba1de08634 "Form 10-K for ELI Lilly  Co filed 02/12/2026"
+[3]: https://www.sec.gov/Archives/edgar/data/59478/000005947826000045/lly-20260331.htm "lly-20260331"
+[4]: https://www.marketbeat.com/stocks/NYSE/LLY/short-interest/?utm_source=chatgpt.com "Eli Lilly and Company (LLY) Short Interest & Short Float"
+[5]: https://fintel.io/sopt/us/lly?utm_source=chatgpt.com "LLY / Eli Lilly and Company - Put/Call Ratio"
+[6]: https://www.marketbeat.com/stocks/NYSE/LLY/?utm_source=chatgpt.com "Eli Lilly and Company (LLY) Stock Price, News & Analysis"

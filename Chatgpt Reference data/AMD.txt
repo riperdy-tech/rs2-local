@@ -1,0 +1,528 @@
+Keep these answers, no need to respond. 
+
+Proceeding with **#2 AMD**.
+
+# RS2 Engine Run #2 — Advanced Micro Devices / AMD
+
+## Top-Line Execution Summary
+
+| Item                        |                                                Result |
+| --------------------------- | ----------------------------------------------------: |
+| Current Price / T0          |                                **$519.88** `[Actual]` |
+| Market Cap                  |                                **$857.8B** `[Actual]` |
+| Base Intrinsic Value        |                           **$390/share** `[Estimate]` |
+| Expected Price              |                           **$507/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                               **-33.3%** `[Estimate]` |
+| 50% CI                      |                            **$365–$670** `[Estimate]` |
+| 80% CI                      |                            **$180–$950** `[Estimate]` |
+| Conviction                  |                   **Medium / 8.0 of 15** `[Estimate]` |
+| Recommended Max Weight      |                                 **2.0%** `[Estimate]` |
+| Entry Strategy              |              **Wait / no fresh buy at current price** |
+| Execution Opinion           | **Hold if owned; wait for better entry if not owned** |
+
+**Core conclusion:** AMD is no longer a simple PC/server CPU cyclical. The current price already capitalizes a large portion of the OpenAI + Meta AI GPU upside, while the warrant dilution and execution risk are material. This is a **great business momentum story but a weak current-price setup** under RS2.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Advanced Micro Devices / AMD
+**Baseline Date:** June 25, 2026
+**T0:** current price **$519.88**, market cap **$857.8B**, P/E **~170x**, EPS **$3.05** `[Actual]`.
+**T-1:** latest reported financials: FY26 Q1, quarter ended March 28, 2026. AMD reported Q1 revenue of **$10.253B**, GAAP gross margin **53%**, GAAP operating income **$1.476B**, GAAP net income **$1.383B**, and diluted EPS **$0.84**. Non-GAAP EPS was **$1.37**. ([Advanced Micro Devices, Inc.][1])
+**Tpf:** current valuation reflects post-Q1 momentum plus large 2025–2026 AI GPU deployment announcements with OpenAI and Meta.
+
+**RS2 classification:** **Blended Archetype — Cyclical / AI Execution Option**
+**Valuation Engine:** **Blended Engine = Engine 2 Cycle-Adjusted Core × 40% + Engine 4 Expectation-Driven AI Optionality × 60%**
+
+This is necessary because RS2 requires engine selection based on company archetype, and AMD is neither a clean quality compounder nor a pure option-led pre-profit story. The RS2 framework allows blended engines for transition-phase companies. 
+
+**Why not pure Engine 1:** AMD’s current valuation is not supported by stable normalized FCF alone.
+**Why not pure Engine 2:** The AI GPU pipeline and hyperscaler agreements are too important to treat as a normal semiconductor cycle.
+**Why not pure Engine 4:** AMD already has large real revenue, positive FCF, and strong CPU/client franchises.
+
+**Model Confidence:** **Medium-Low to Medium**. Filing data is strong, but the valuation depends heavily on Tier 4 assumptions: AI GPU deployment pace, ROCm competitiveness, hyperscaler repeat orders, gross margin on rack-scale systems, and eventual warrant dilution.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable    |                                                               Current Status | AMD Impact                                 |
+| ----------------- | ---------------------------------------------------------------------------: | ------------------------------------------ |
+| 10Y Treasury      |                                                   **~4.38–4.50%** `[Actual]` | Valuation headwind                         |
+| Fed stance        |             Target range held at **3.50%–3.75%** on June 17, 2026 `[Actual]` | Mild headwind                              |
+| DXY / USD         |            Still relevant due global semiconductor supply chain `[Estimate]` | Mild headwind                              |
+| Credit spreads    |                                                 HY OAS **~2.71%** `[Actual]` | Risk appetite still supportive             |
+| Business cycle    |                                  Late expansion / AI capex boom `[Estimate]` | Tailwind to data center, risk to cyclicals |
+| Inflation / rates | Still restrictive enough to pressure long-duration AI multiples `[Estimate]` | Headwind                                   |
+
+Fed policy source: the FOMC maintained the federal funds target range at **3.50%–3.75%** on June 17, 2026. ([연방준비제도][2]) FRED showed the 10Y Treasury at **4.50%** on June 23, while market reports on June 25 showed the 10Y around **4.38%** after inflation data. ([FRED][3]) HY spreads remain relatively contained at **2.71%**, which indicates credit markets are not pricing severe stress. ([FRED][4])
+
+**Regime probabilities:**
+Goldilocks **20%**; Reflation **35%**; Stagflation **25%**; Recession **20%** `[Estimate]`.
+
+**AMD macro sensitivity score:**
+Interest rate sensitivity **-2.0**; dollar sensitivity **-1.0**; liquidity sensitivity **-2.5**; economic cycle sensitivity **+2.0**; commodity sensitivity **-0.5**.
+**Macro alignment:** **Neutral-to-mild headwind**. AI capex is a sector tailwind, but current valuation is very sensitive to rates and liquidity.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                                             |                                  Base Rate | AMD Adjustment                                       |
+| -------------------------------------------------------------------------- | -----------------------------------------: | ---------------------------------------------------- |
+| 5Y survival for established semiconductor leader                           |                      **>90%** `[Estimate]` | AMD passes                                           |
+| Sustaining 30%+ revenue CAGR for 4–5 years at AMD’s current scale          |             **Low / ~15–25%** `[Estimate]` | Raised to **30–40%** due Meta/OpenAI                 |
+| AI accelerator challenger gaining durable share from Nvidia                |             **Low / ~10–20%** `[Estimate]` | Raised to **25–35%** due hyperscaler diversification |
+| Large customer warrant deals creating shareholder accretion after dilution | **Unclear / low base rate** `[Unverified]` | Treat with wide CI                                   |
+
+**Base-rate shock check:** The market appears to be pricing AMD as if AI accelerator success probability is already high. RS2 does **not** allow that probability to exceed 2x base rate without strong evidence. Current customer commitments are strong evidence, but not enough to remove execution risk.
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+AMD designs CPUs, GPUs, AI accelerators, adaptive SoCs, FPGAs, networking chips, and semi-custom chips for data centers, PCs, gaming, embedded systems, and AI infrastructure. Its most important growth engine is now Data Center, including EPYC CPUs and Instinct AI GPUs. The business is understandable, but the economics of large-scale AI GPU systems are still less proven than Nvidia’s ecosystem economics.
+
+**Comprehensibility:** **Medium-High**
+
+### Moat Score
+
+| Moat Type                 |       Score | Direction                                |
+| ------------------------- | ----------: | ---------------------------------------- |
+| Intangible assets / brand |         2/3 | Widening                                 |
+| Switching costs           |       1.5/3 | Widening in data center, lower in client |
+| Network effects           |         1/3 | Weak vs Nvidia CUDA                      |
+| Cost advantage            |       1.5/3 | Stable                                   |
+| Economies of scale        |       2.5/3 | Widening                                 |
+| Regulatory barriers       |       0.5/3 | Neutral                                  |
+| Data / software moat      |       1.5/3 | Widening but behind Nvidia               |
+| **Total**                 | **10.5/21** | **Narrow-to-wide transition**            |
+
+**Moat judgment:** AMD’s hardware moat is improving, but the software ecosystem moat remains materially weaker than Nvidia’s. That is the central risk.
+
+### Peter Lynch Classification
+
+**Fast Grower / Cyclical hybrid.**
+AMD has fast-grower characteristics because Q1 revenue grew **38% YoY**, and Data Center revenue grew **57% YoY** to **$5.8B**. But semiconductor demand, product cycles, memory supply, and hyperscaler capex cycles make it cyclical. ([Advanced Micro Devices, Inc.][1])
+
+### Financial Health Scorecard
+
+| Metric                           |                              Result |
+| -------------------------------- | ----------------------------------: |
+| FY25 revenue                     | **$34.639B**, up **34%** `[Actual]` |
+| FY25 GAAP operating income       |              **$3.694B** `[Actual]` |
+| FY25 non-GAAP operating income   |              **$7.768B** `[Actual]` |
+| FY25 GAAP net income             |              **$4.335B** `[Actual]` |
+| FY25 non-GAAP EPS                |                **$4.17** `[Actual]` |
+| Q1 FY26 revenue                  | **$10.253B**, up **38%** `[Actual]` |
+| Q1 FY26 Data Center revenue      |    **$5.8B**, up **57%** `[Actual]` |
+| TTM revenue                      |           **~$47.45B** `[Estimate]` |
+| TTM GAAP net income              |            **~$5.01B** `[Estimate]` |
+| TTM FCF                          |            **~$7.36B** `[Estimate]` |
+| Q1 cash + short-term investments |             **$12.347B** `[Actual]` |
+| Q1 debt                          |              **$3.224B** `[Actual]` |
+| Net cash                         |             **~$9.1B** `[Estimate]` |
+
+FY25 results show revenue of **$34.6B**, GAAP operating income of **$3.7B**, net income of **$4.3B**, and non-GAAP EPS of **$4.17**. ([Advanced Micro Devices, Inc.][5]) Q1 FY26 cash and debt were **$12.347B** and **$3.224B**, respectively, and Q1 FCF was **$2.566B**. ([Advanced Micro Devices, Inc.][1])
+
+**Financial Health Judgment:** **Good**, not excellent, because GAAP margins remain modest relative to valuation.
+
+### Capital Allocation Scorecard
+
+| Dimension                             |      Score |
+| ------------------------------------- | ---------: |
+| Buyback efficiency                    |      1.5/3 |
+| M&A track record                      |        2/3 |
+| Capex efficiency                      |        2/3 |
+| Dividend / buyback / reinvestment mix |        2/3 |
+| Guidance accuracy                     |      2.5/3 |
+| Insider / warrant adjustment          |       -1.0 |
+| **Total**                             | **9.0/15** |
+
+AMD repurchased **$1.3B** of stock in 2025 and had **$9.4B** remaining under its repurchase authorization at year-end. ([Advanced Micro Devices, Inc.][6]) Capital allocation is adequate-to-good, but the OpenAI and Meta warrant structures create meaningful dilution risk.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                                 |                    Result |
+| ------------------------------------ | ------------------------: |
+| FY25 R&D                             |    **$8.091B** `[Actual]` |
+| FY25 SBC                             |    **$1.638B** `[Actual]` |
+| Q1 FY26 SBC                          |      **$487M** `[Actual]` |
+| TTM SBC                              | **~$1.761B** `[Estimate]` |
+| TTM reported FCF                     |  **~$7.36B** `[Estimate]` |
+| TTM SBC-adjusted FCF                 |  **~$5.60B** `[Estimate]` |
+| Q1 FCF margin                        |        **25%** `[Actual]` |
+| TTM FCF margin                       |   **~15.5%** `[Estimate]` |
+| SBC-adjusted FCF yield on market cap |   **~0.65%** `[Estimate]` |
+
+FY25 SBC was **$1.638B**, with **$1.287B** allocated to R&D and **$325M** to SG&A. ([Advanced Micro Devices, Inc.][6]) Q1 FY26 SBC was **$487M**. ([Advanced Micro Devices, Inc.][1])
+
+**Adjusted financials judgment:** AMD is generating real cash, but the stock price has run far ahead of current SBC-adjusted FCF.
+
+---
+
+## Section 3. Valuation — Blended Engine 2 + Engine 4
+
+## 3A. Cycle-Adjusted Core Value
+
+**Core AMD excluding full future AI option value:** EPYC CPUs, current Instinct ramp, client Ryzen, gaming/semi-custom, embedded/Xilinx.
+
+| Scenario     | Normalized Revenue | Normalized Net Margin | Net Income | Multiple | Core Value / Share |
+| ------------ | -----------------: | --------------------: | ---------: | -------: | -----------------: |
+| Conservative |               $55B |                   18% |      $9.9B |      25x |          **~$150** |
+| Base         |               $70B |                   23% |     $16.1B |      28x |          **~$275** |
+| Optimistic   |               $90B |                   27% |     $24.3B |      30x |          **~$440** |
+
+**Core base value:** **~$275/share** `[Estimate]`.
+
+This means the current stock price is **not** justified by AMD’s current core business alone.
+
+---
+
+## 3B. AI Execution Value
+
+Key contracts:
+
+1. **OpenAI:** AMD and OpenAI announced a **6GW** agreement, with the first **1GW** MI450 deployment set to begin in **2H 2026**. AMD issued OpenAI a warrant for up to **160M shares** at **$0.01/share**, vesting with purchase and stock-price milestones. ([Advanced Micro Devices, Inc.][7])
+2. **Meta:** AMD and Meta announced a separate **up to 6GW** Instinct GPU partnership, with first shipments expected in **2H 2026**. AMD issued Meta a performance-based warrant for up to **160M shares**, also tied to shipment, stock-price, and technical/commercial milestones. ([Advanced Micro Devices, Inc.][8])
+3. **Q1 demand signal:** AMD’s Q1 FY26 Data Center revenue was **$5.8B**, up **57% YoY**, and Q2 guidance was **$11.2B ± $300M** revenue with **~56%** non-GAAP gross margin. ([Advanced Micro Devices, Inc.][1])
+
+### AI Option Value Framework
+
+| Component                                |                  Base Assumption |
+| ---------------------------------------- | -------------------------------: |
+| OpenAI + Meta total potential deployment |   **12GW** `[Actual/Assumption]` |
+| Binding initial commitment               |          **1GW each** `[Actual]` |
+| Full deployment success probability      |             **35%** `[Estimate]` |
+| Partial deployment probability           |             **45%** `[Estimate]` |
+| Failure / major delay probability        |             **20%** `[Estimate]` |
+| Full warrant dilution                    | **Up to 320M shares** `[Actual]` |
+| Current diluted share base               |          **~1.65B** `[Estimate]` |
+| Full success diluted share base          |    **~1.97B–2.00B** `[Estimate]` |
+
+**AI execution value, probability-weighted:** **~$115/share** `[Estimate]`.
+
+**Blended Base IV:**
+Core base **$275** + AI execution value **$115** = **$390/share** `[Estimate]`.
+
+---
+
+## 3C. Reverse DCF / Reverse Expectations
+
+At **$519.88/share**, AMD’s equity value is **~$858B**. Assuming eventual dilution toward **~2.0B shares**, the market is effectively requiring something like:
+
+| Implied Requirement             |            Approximate Level |
+| ------------------------------- | ---------------------------: |
+| 2030 revenue                    | **$170B–$220B** `[Estimate]` |
+| 2030 net margin                 |      **28–35%** `[Estimate]` |
+| 2030 net income                 |   **$50B–$70B** `[Estimate]` |
+| 2030 EPS after warrant dilution |     **$25–$35** `[Estimate]` |
+| Terminal multiple               |    **25–32x** `[Assumption]` |
+
+**Reverse DCF judgment:** **Excessive but not impossible.** The price is already underwriting AMD as a durable AI accelerator winner, not merely a strong semiconductor company.
+
+### Tornado Sensitivity
+
+| Variable                              | -1σ Impact | +1σ Impact |
+| ------------------------------------- | ---------: | ---------: |
+| AI GPU deployment success probability |       -35% |       +45% |
+| 2030 AI/Data Center revenue           |       -30% |       +40% |
+| Net margin after rack-scale ramp      |       -25% |       +30% |
+| Dilution from warrants                |        +8% |       -15% |
+| Terminal multiple                     |       -20% |       +25% |
+
+**Top 3 thesis KPIs:**
+
+1. MI450 / Helios shipment progress to OpenAI and Meta
+2. Data Center gross margin / operating margin
+3. ROCm/software adoption and non-Nvidia workload migration
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+Nvidia will defend share through Blackwell/Vera/Grace systems, CUDA lock-in, NVLink ecosystem, and hyperscaler allocation priority. Intel remains a CPU competitor but less central to the AI GPU thesis. Custom ASICs from Google, Amazon, Microsoft, Meta, and Broadcom partners may absorb inference workloads that AMD otherwise could win.
+
+**Second-order risk:** hyperscalers may use AMD primarily as a bargaining tool against Nvidia. If AMD wins volume but at lower margin, revenue growth will not translate into shareholder value.
+
+**Reflexivity:**
+Positive: rising stock price helps retain talent and makes dilution less painful.
+Negative: the same rising price creates high expectations; any shipment delay or gross margin miss can cause a severe multiple contraction.
+
+**Customer behavior evolution:**
+Early hyperscaler deployments may be strategic and subsidized by collaboration economics. Sustained repeat orders require AMD to prove total cost of ownership, software reliability, cluster stability, and inference throughput at production scale.
+
+**Network dynamics:**
+AMD benefits from open ecosystem preference, but Nvidia still has the strongest full-stack moat. This is not yet a winner-takes-most outcome for AMD.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario       | Probability | Value / Share | Core Assumptions                                                                                |
+| -------------- | ----------: | ------------: | ----------------------------------------------------------------------------------------------- |
+| Bear           |         25% |      **$180** | AI deployment delays, margins compress, stock rerates to normal semi multiple                   |
+| Base           |         40% |      **$390** | Strong growth, partial OpenAI/Meta ramp, but dilution and margin pressure offset upside         |
+| Bull Execution |         25% |      **$670** | OpenAI + Meta scale materially, AMD becomes credible #2 AI accelerator platform                 |
+| Bull Ecosystem |         10% |      **$950** | AMD gains durable AI platform share beyond OpenAI/Meta and margins approach premium semi levels |
+
+**Expected Price:**
+= 25% × $180 + 40% × $390 + 25% × $670 + 10% × $950
+= **$463.5** before momentum/crowding premium.
+Adding short-term momentum premium of **~$40/share** `[Estimate]` gives **~$507/share** expected price.
+
+**Base IV:** **$390/share**
+**Current price:** **$519.88/share**
+**Margin of Safety:** **-33.3%**
+**MoS Judgment:** **No Margin of Safety**
+
+This is the key RS2 result: AMD may still go higher, but the current price is already in bull-case territory.
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **4–6 years** `[Estimate]`.
+**My analytical horizon:** **3–5 years**.
+**Spread:** **No positive horizon arbitrage.**
+
+Unlike MSFT, AMD is not being ignored by the market. The market is looking far ahead and paying upfront for the AI ramp.
+
+**Horizon arbitrage judgment:** **Negative.** The market horizon is already extended.
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |      Score |
+| ------------------------ | ---------: |
+| Business quality         |      2.0/3 |
+| Valuation attractiveness |      0.5/3 |
+| Macro alignment          |      1.5/3 |
+| Thesis clarity           |      2.0/3 |
+| Execution trackability   |      2.0/3 |
+| **Total**                | **8.0/15** |
+
+**Conviction Tier:** **Medium**
+**Layer 5 sizing before adjustments:** **3–5%**
+**Adjustments:**
+
+* Engine 4 reliance: reduce
+* No MoS: reduce
+* High volatility / high crowding: reduce
+* Warrant dilution: reduce
+* AI factor overlap with MSFT/META/PLTR/TSLA/OKLO/CEG: reduce
+
+**Layer 5 recommended max weight:** **2.0%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                      |                             Result |
+| ------------------------- | ---------------------------------: |
+| Short interest            |        **44.1M shares** `[Actual]` |
+| Short interest % float    |              **~2.72%** `[Actual]` |
+| Days to cover             |       **~1.4–2.0 days** `[Actual]` |
+| Squeeze risk              |                                Low |
+| Institutional shares held |     **~1.23B shares** `[Estimate]` |
+| Put/call ratio            | **~1.08–1.10** `[Actual/Estimate]` |
+| Implied volatility        |              **~75%** `[Estimate]` |
+| Crowding score            |        **12/15 High** `[Estimate]` |
+
+Short interest is not extreme: Fintel shows **44.07M** shares short and **2.72%** of float. ([Fintel][9]) Institutional ownership is high, with Fintel showing about **1.23B** shares held by institutions. ([Fintel][10]) Options positioning is hot: AlphaQuery showed a 30-day put/call open interest ratio of **1.0802** on June 24, and option-data sources show very elevated implied volatility. ([AlphaQuery][11])
+
+**Behavioral judgment:** AMD is a crowded AI momentum stock. That does not mean it must fall, but it lowers position-size tolerance.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** High-beta AI semiconductor satellite.
+**Not a core defensive compounder.**
+AMD overlaps strongly with MSFT, META, PLTR, TSLA, CEG, and OKLO through the same AI infrastructure capex theme.
+
+**Portfolio role:** Satellite growth / AI infrastructure torque.
+**Recommended use:** 0–2% position unless bought much lower.
+**Do not pair aggressively with:** NVDA, PLTR, OKLO, TSLA, high-beta AI baskets without reducing total factor exposure.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Probability of bear case      |  **25%** `[Estimate]` |
+| Weighted upside from current  | **~36%** `[Estimate]` |
+| Bear downside from current    | **~65%** `[Estimate]` |
+| Simple Kelly result           |        Low / unstable |
+| Fractional Kelly              |             **~1–2%** |
+
+Because downside is severe if the AI thesis rerates, Kelly does not support a large position.
+**Final recommended max weight:** **2.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **AI GPU execution risk:** MI450/Helios shipments slip or fail to scale reliably.
+2. **Margin risk:** AMD wins volume but at lower-than-expected rack-scale gross margin.
+3. **Dilution risk:** OpenAI + Meta warrants add up to **320M** potential shares if milestones are met, reducing upside per existing share. ([SEC][12])
+
+### Top 3 Catalysts
+
+1. Q2 FY26 beats the **$11.2B ± $300M** revenue guide and maintains **~56%** non-GAAP gross margin. ([Advanced Micro Devices, Inc.][1])
+2. Confirmed 2H 2026 MI450 shipments to OpenAI and Meta.
+3. Evidence that ROCm/software stack is good enough for production inference at scale.
+
+**Highest-impact bear scenario:** AMD becomes a high-volume but low-margin AI alternative while Nvidia/custom ASICs retain most economics.
+
+---
+
+## Section 7.5. Correlation Risk
+
+AMD has high overlap with the AI capex trade. In a risk-off or AI capex disappointment scenario, AMD likely correlates strongly with NVDA, PLTR, TSLA, CEG, OKLO, and high-beta semiconductor ETFs.
+
+**Stress correlation estimate:** **0.75–0.90** `[Estimate]`
+**True diversification judgment:** **Low** inside an AI-heavy portfolio; **Medium** only if balanced with defensives like PG, COST, JPM, XOM, O, and HD.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                        |                   Warning Trigger |                  Re-underwrite Trigger |
+| -------------------------- | --------------------------------: | -------------------------------------: |
+| Data Center revenue growth |                          <35% YoY |                               <25% YoY |
+| Non-GAAP gross margin      |                              <54% |                                   <51% |
+| MI450 deployment progress  | no clear 2H shipment confirmation |                  major delay into 2027 |
+| FCF margin                 |                              <12% |                     <8% despite growth |
+| Diluted share count        |                            >1.75B | path to ~2.0B without EPS acceleration |
+
+### Pre-Mortem
+
+1. **Wrong because AMD wins AI revenue but not AI economics.**
+   Early warning: gross margin declines while Data Center revenue rises.
+   Response: cut value multiple and reduce/avoid position.
+
+2. **Wrong because OpenAI/Meta deployments slip.**
+   Early warning: shipment timing moves from 2H 2026 into 2027.
+   Response: remove AI execution premium.
+
+3. **Wrong because Nvidia/custom ASICs keep the profitable workloads.**
+   Early warning: AMD wins only secondary/price-sensitive workloads.
+   Response: revalue AMD as a cyclical semiconductor, not AI platform.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. AMD is priced as if it has already become the durable #2 AI accelerator platform.
+2. Current P/E of **~170x** and market cap of **~$858B** are disconnected from current GAAP earnings.
+3. The OpenAI and Meta deals are strategically important but include major warrant dilution.
+4. Nvidia’s CUDA/full-stack advantage remains the deepest moat in AI compute.
+5. Hyperscalers may use AMD to diversify supply and pressure Nvidia pricing, not necessarily to make AMD a high-margin platform winner.
+6. If AI capex sentiment turns, AMD’s valuation can compress faster than fundamentals improve.
+7. Client/gaming and embedded remain cyclical and cannot support the current valuation alone.
+
+### Long vs Short Logic Battle
+
+| Issue                | Long Score | Short Score | Winner       |
+| -------------------- | ---------: | ----------: | ------------ |
+| Data Center growth   |          3 |           1 | Long         |
+| Valuation            |        0.5 |           3 | Short        |
+| AI contract quality  |        2.5 |           2 | Long, narrow |
+| Software moat        |          1 |           3 | Short        |
+| Balance sheet        |          3 |         0.5 | Long         |
+| Dilution risk        |          1 |         2.5 | Short        |
+| Momentum / sentiment |          2 |           2 | Tie          |
+
+**Net score:** Long **13**, Short **14**
+**Red Team result:** **Deadlocked / slight Short win.** RS2 requires conviction downgrade.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                            | Status                                     |
+| ------------------------------------- | ------------------------------------------ |
+| Correct engine selected               | Pass — blended cyclical/expectation engine |
+| DCF-only conclusion avoided           | Pass                                       |
+| Peer multiple-only conclusion avoided | Pass                                       |
+| TAM-only conclusion avoided           | Pass                                       |
+| Macro included                        | Pass                                       |
+| Position sizing included              | Pass                                       |
+| Monitoring KPIs included              | Pass                                       |
+| Base rates included                   | Pass                                       |
+| Warrant dilution included             | Pass                                       |
+| Red team included                     | Pass                                       |
+| Pre-mortem included                   | Pass                                       |
+| Data tier reliance disclosed          | Pass                                       |
+| Recalculation required                | No                                         |
+
+**Model Reliability:** **Medium-Low to Medium**
+**Reason:** high dependence on AI deployment economics, which remain assumption-heavy.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item                   | Entry                                                                  |
+| ---------------------- | ---------------------------------------------------------------------- |
+| Baseline date          | June 25, 2026                                                          |
+| Current price          | $519.88                                                                |
+| Base IV                | $390                                                                   |
+| Expected price         | $507                                                                   |
+| Margin of Safety       | -33.3%                                                                 |
+| Core assumption 1      | OpenAI + Meta deployments begin in 2H 2026                             |
+| Core assumption 2      | Data Center revenue remains >35% YoY growth                            |
+| Core assumption 3      | Gross margin stays ≥54–56%                                             |
+| 3M KPI                 | Q2 revenue beats/holds guide                                           |
+| 6M KPI                 | Initial MI450 shipment evidence                                        |
+| 12M KPI                | Data Center operating margin expands despite warrant/dilution concerns |
+| Conviction             | Medium / 8.0 of 15                                                     |
+| Scheduled revalidation | After Q2 FY26 earnings, then December 2026                             |
+| Top concern            | Current valuation already prices bull case                             |
+| Second concern         | Nvidia/software moat                                                   |
+| Third concern          | Warrant dilution                                                       |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                                                    |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| Investment Attractiveness     | **Medium-High**                                                             |
+| Current Price Attractiveness  | **Low**                                                                     |
+| Long-Term Holding Suitability | **Medium**                                                                  |
+| Portfolio Suitability         | **Medium-Low if AI-heavy portfolio**                                        |
+| Conviction                    | **Medium**                                                                  |
+| Recommended Max Weight        | **2.0%**                                                                    |
+| Entry Strategy                | **Wait; only tranche on major pullback or confirmed earnings acceleration** |
+| Execution Opinion             | **Hold if already owned; avoid fresh buying at current price**              |
+
+**One-line summary:** AMD has one of the strongest AI revenue acceleration stories in the market, but at **$519.88** the stock already prices a large part of the bull case, leaving **no RS2 margin of safety**.
+
+**Next ticker in queue:** META.
+
+[1]: https://ir.amd.com/news-events/press-releases/detail/1284/amd-reports-first-quarter-2026-financial-results "AMD Reports First Quarter 2026 Financial Results :: Advanced Micro Devices, Inc. (AMD)"
+[2]: https://www.federalreserve.gov/newsevents/pressreleases/monetary20260617a.htm?utm_source=chatgpt.com "Federal Reserve issues FOMC statement"
+[3]: https://fred.stlouisfed.org/series/DGS10?utm_source=chatgpt.com "Market Yield on U.S. Treasury Securities at 10-Year Constant ..."
+[4]: https://fred.stlouisfed.org/series/BAMLH0A0HYM2?utm_source=chatgpt.com "ICE BofA US High Yield Index Option-Adjusted Spread - FRED"
+[5]: https://ir.amd.com/news-events/press-releases/detail/1276/amd-reports-fourth-quarter-and-full-year-2025-financial-results "AMD Reports Fourth Quarter and Full Year 2025 Financial Results :: Advanced Micro Devices, Inc. (AMD)"
+[6]: https://ir.amd.com/financial-information/sec-filings/content/0000002488-26-000018/amd-20251227.htm "February 4, 2026 - 10-K: Annual report [Section 13 and 15(d), not S-K Item 405] | Advanced Micro Devices, Inc. (AMD)"
+[7]: https://ir.amd.com/news-events/press-releases/detail/1260/amd-and-openai-announce-strategic-partnership-to-deploy-6-gigawatts-of-amd-gpus "AMD and OpenAI Announce Strategic Partnership to Deploy 6 Gigawatts of AMD GPUs :: Advanced Micro Devices, Inc. (AMD)"
+[8]: https://ir.amd.com/news-events/press-releases/detail/1279/amd-and-meta-announce-expanded-strategic-partnership-to-deploy-6-gigawatts-of-amd-gpus "AMD and Meta Announce Expanded Strategic Partnership to Deploy 6 Gigawatts of AMD GPUs :: Advanced Micro Devices, Inc. (AMD)"
+[9]: https://fintel.io/ss/us/amd?utm_source=chatgpt.com "AMD / Advanced Micro Devices, Inc. Stock - Short Interest ..."
+[10]: https://fintel.io/so/us/amd?utm_source=chatgpt.com "AMD - Stock Price, Institutional Ownership, Shareholders"
+[11]: https://www.alphaquery.com/stock/AMD/volatility-option-statistics/30-day/put-call-ratio-oi?utm_source=chatgpt.com "Advanced Micro Devices, Inc. (AMD) - Put-Call Ratio (Open ..."
+[12]: https://www.sec.gov/Archives/edgar/data/2488/000119312525230895/d28189d8k.htm "8-K"

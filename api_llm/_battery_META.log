@@ -1,0 +1,43 @@
+[api] backend https://api.deepseek.com/v1  model=deepseek-v4-pro  -> reports in api_llm/reports
+[enrich] yfinance META ...
+[nltk_data] Downloading package punkt_tab to C:\Users\Public\Documents
+[nltk_data]     \ESTsoft\CreatorTemp\defeatbeta\nltk...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[38;5;10m______      __           _    ______      _        
+|  _  \    / _|         | |   | ___ \    | |       
+| | | |___| |_ ___  __ _| |_  | |_/ / ___| |_ __ _ 
+| | | / _ \  _/ _ \/ _` | __| | ___ \/ _ \ __/ _` |
+| |/ /  __/ ||  __/ (_| | |_  | |_/ /  __/ || (_| |
+|___/ \___|_| \___|\__,_|\__| \____/ \___|\__\__,_|[0m
+[1;38;5;10m📈:: Data Update Time ::[0m	2026-07-16T04:51:26Z [1;38;5;10m::[0m
+[1;38;5;10m📈:: Software Version ::[0m	0.0.60      [1;38;5;10m::[0m
+2026-07-16 17:15:31 INFO DuckDBClient MainThread - Cache is up-to-date. Update time: 2026-07-16T04:51:26Z
+[out] C:\Users\riper\Downloads\RS2 Local\api_llm\reports\META_20260716_171531
+
+[backbone] META: base_cf $9.38B [owner_earnings] WACC 10% | implied 53.4% vs demonstrated 18.5% | gap 34.9pts
+>> Layers 0, 1, 1.5 — Classification / Macro / Base Rate
+   done in 62.1s -> S1_macro_classify.md
+
+>> Layers 2, 2.5 — Business Quality / Adjusted Financials
+   done in 96.6s -> S2_quality.md
+
+>> Layers 3, 3.5 — Expectations Test / Second-Order
+   done in 74.3s -> S3_valuation.md
+   [valuation] reverse-DCF gap 34.9pts | stance fair (achievable low)
+
+>> Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage
+   done in 61.8s -> S4_scenarios.md
+   [valuation] scenario probs {'bear': 0.2, 'base': 0.55, 'bull': 0.25}
+
+>> Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly
+   done in 90.0s -> S5_conviction.md
+
+>> Layers 7, 7.5, 8, 9 — Monitoring / Correlation / Audit / Red Team
+   done in 131.4s -> S6_redteam_audit.md
+
+>> FINAL ASSEMBLY (Sections 0-12) [ctx 32768]
+   done in 165.0s
+[DONE] -> C:\Users\riper\Downloads\RS2 Local\api_llm\reports\META_20260716_171531\FINAL.md
+   [verdict] META: method=reverse_dcf stance=fair action=of conv=9.5 entry=stage (BRAKE: was 'of' 10.0)
+md
+   [verdict] META: method=reverse_dcf stance=overvalued action=HOLD conv=9.0 entry=stage (BRAKE: was 'HOLD' 9.0)

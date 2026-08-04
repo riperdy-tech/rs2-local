@@ -1,0 +1,966 @@
+#!/usr/bin/env python3
+"""
+run_rs2.py — Python orchestrator for the local RS2 pipeline.
+
+Replaces the manual-data flow of Run-RS2.ps1. For one ticker it:
+  1. (optional) enrich_ticker.py   -> enrich/{T}.json   (yfinance behavioral)
+  2. (optional) research_agent.py  -> research/{T}.md    (AgentWebSearch, Chrome)
+  3. rs2_data.build_data_context   -> verified fed-data payload
+  4. drives the staged rs2-analyst pipeline (6 stages + final assembly) over
+     Ollama's REST API, with thinking on, feeding each stage the fed data +
+     prior-stage results, then writes the report tree.
+
+System prompt (RS2.txt) is baked into the `rs2-analyst` model, so each stage's
+user message = [fed data] + [prior-stage results] + [stage task].
+
+CLI:
+  python run_rs2.py NVDA
+  python run_rs2.py NVDA --no-research          # skip web search
+  python run_rs2.py NVDA --no-enrich --no-research
+  python run_rs2.py NVDA --name "NVIDIA Corporation"
+"""
+import argparse
+import json
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+from datetime import datetime
+from pathlib import Path
+
+import ops                 # telegram alerts + verified VRAM unload barrier (stdlib-only)
+import rs2_data            # local injector
+import valuation_engine    # deterministic IV/MoS math (Engine 4/2 + dcf primitives)
+import valuation_backbone  # deterministic reverse-DCF backbone (owns base_cf/growth/WACC)
+import valuation_io        # LLM-assumption JSON extraction
+
+HERE = Path(__file__).resolve().parent
+CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+
+# INVERTED ARCHITECTURE (AUDIT.md C2): the deterministic reverse-DCF BACKBONE
+# (valuation_backbone.py) owns base_cf/growth/WACC/IV. The model NO LONGER guesses DCF inputs.
+# For a DCF-able name it emits only a believability STANCE on the price-implied growth.
+# Only the cases the backbone returns NULL for (pre-profit option-led / financials) ask the
+# model for value numbers — the one place its numeric judgment is legitimate.
+STANCE_SCHEMA = ('{"valuation_stance":"undervalued|fair|overvalued",'
+                 '"implied_growth_achievable":"low|medium|high","rationale":"<=240 chars"}')
+ENGINE4_SCHEMA = ('{"engine":4,"core_value":<proven-business $/share>,'
+                  '"options":[{"prob":<0-1>,"value":<$/share if it works>}],"drag":<$/share>}')
+ENGINE2_SCHEMA = '{"engine":2,"normalized_eps":<$>,"normal_multiple":<10-25>}'
+PROBS_SCHEMA = '{"bear":0.25,"base":0.50,"bull":0.25}'
+
+STAGES = [
+    ("S1_macro_classify", "Layers 0, 1, 1.5 — Classification / Macro / Base Rate",
+     "Execute LAYER 0, LAYER 1, and LAYER 1.5 ONLY. Determine the ARCHETYPE (Step 0-1) FROM FIRST "
+     "PRINCIPLES using the CLASSIFICATION CONTEXT (GICS sector) — the reverse-triage archetype is "
+     "only a low-confidence hint. DO NOT select a valuation engine: the valuation METHOD is already "
+     "determined by a deterministic backbone and stated in your context (reverse-DCF on owner "
+     "earnings for most names — mid-cycle NORMALIZED for cyclical sectors "
+     "(Energy/Materials/Industrials); justified P/B-ROE for financials). Skip the framework's "
+     "engine-selection steps (0-2..0-4) entirely — no 'Selected Engine' output, no engine "
+     "comparisons. Then full macro context with the 4-regime probability distribution (must sum "
+     "100%) and sensitivity matrix, and the base-rate / historical-pattern check. Use the verified "
+     "MACRO CONTEXT — do not recall macro from memory. STOP after Layer 1.5."),
+    ("S2_quality", "Layers 2, 2.5 — Business Quality / Adjusted Financials",
+     "Execute LAYER 2 and LAYER 2.5 ONLY. Business understanding, 7-type moat score + direction, "
+     "Lynch classification, financial strength scorecard, capital-allocation scorecard, and "
+     "intangibles-adjusted (R&D cap, SBC, leases, adjusted ROIC, owner earnings). Use ONLY the "
+     "fed financial figures. STOP after Layer 2.5."),
+    ("S3_valuation", "Layers 3, 3.5 — Expectations Test / Second-Order",
+     "Execute LAYER 3 and LAYER 3.5 ONLY. The intrinsic value is NOT yours to compute — a deterministic "
+     "BACKBONE (see the VALUATION block) already did it: for most names it shows the cash-flow growth the "
+     "CURRENT PRICE implies vs the growth DEMONSTRATED (the EXPECTATIONS GAP); for FINANCIALS it shows the "
+     "ROE the price implies vs the ROE delivered (the ROE gap).\n"
+     "YOUR job is the analyst judgment the math cannot make: is that price-implied growth (or ROE) "
+     "ACHIEVABLE / SUSTAINABLE? Reason from the moat (Stage 2), the RESEARCH BRIEF (competitive response, "
+     "demand, bear case), end-market TAM, reinvestment runway, unit economics, and any embedded OPTIONALITY "
+     "(a scarce asset or secular tailwind can justify a gap that trailing numbers do not). Then second-order "
+     "effects. Numbers before narrative: anchor every claim to the fed data / brief.\n"
+     "STANCE CALIBRATION (match the VALUATION block): a SMALL gap (≈ ≤5 pts) on a durable franchise is FAIR "
+     "— a modest premium for quality is normal, NOT overvalued. Reserve OVERVALUED for a LARGE gap (~≥12 pts) "
+     "the evidence can't support, OR a smaller gap with clear DETERIORATION (declining guidance, eroding "
+     "moat). A NEGATIVE gap with an intact moat => undervalued. Be disciplined, not reflexively bearish.\n"
+     "ENTRY DISCIPLINE (do not chase): if the VALUATION block shows the price is AT/ABOVE the analyst "
+     "consensus fair value or the realistic MoS is thin (<15%), a great business is still FAIR here — a "
+     "Hold / stage-in-on-weakness, NOT a fresh full BUY. 'undervalued' requires a genuine MoS, not just a "
+     "negative growth gap on a stock already at analyst targets.\n"
+     "At the very END output exactly ONE fenced ```json block:\n"
+     "  • If the VALUATION block shows an EXPECTATIONS MODEL (growth gap OR financial ROE gap):\n"
+     f"```json\n{STANCE_SCHEMA}\n```\n"
+     "  • ONLY if it said 'No DCF model — PRE-PROFIT / OPTION-LED' (Engine 4): value the option bridge "
+     f"instead — ```json\n{ENGINE4_SCHEMA}\n``` (core/options/drag PER SHARE, $; probs base-rate disciplined; "
+     "IV = core + Σ(prob×value) − drag, computed for you).\n"
+     "  • ONLY if it said 'No cash-flow DCF … this is a FINANCIAL' with no deterministic model: value on "
+     f"normalized earning power instead — ```json\n{ENGINE2_SCHEMA}\n``` (normalized_eps = through-cycle "
+     "EPS $/share from the fed data; normal_multiple 10-25 justified by ROE vs cost of equity; "
+     "IV = eps × multiple, computed for you).\n"
+     "STOP after the json block."),
+    ("S4_scenarios", "Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage",
+     "Execute LAYER 4 and LAYER 4.5 ONLY. Frame the three scenarios around the EXPECTATIONS GAP from "
+     "the VALUATION block: bear = the price-implied growth is MISSED (thesis breaks / gap proves too "
+     "rich); base = roughly MET; bull = MET-or-EXCEEDED (the optionality/acceleration plays out). Do the "
+     "Bayesian reasoning — update each scenario's probability from the Stage-1 base rates and the "
+     "research evidence — and the market-implied vs my-horizon arbitrage (does the market's time "
+     "preference misprice this?).\n"
+     "At the very END output exactly one fenced ```json block of probabilities (must sum to 1.0, "
+     "base = highest):\n"
+     f"```json\n{PROBS_SCHEMA}\n```\nSTOP after the json block."),
+    ("S5_conviction", "Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly",
+     "Execute LAYER 5, LAYER 5.5, LAYER 6 (portfolio fit) and LAYER 6.5 (Kelly sizing) ONLY. "
+     "Conviction /15 + decay note + sizing; behavioral & positioning using the fed BEHAVIORAL DATA "
+     "(short interest, ownership, options skew) — tag [Unconfirmed] only where truly absent; "
+     "portfolio fit; Kelly size. CONVICTION DISCIPLINE: 'Valuation attractiveness' must DOCK for a thin "
+     "realistic MoS (<15%) or a price at/above the analyst consensus target — a superb business with no "
+     "margin of safety is a MEDIUM (7-9), not a 12+; reserve 12+ for quality AND a real entry edge. "
+     "If Layer 5 vs 6.5 sizing gap > 20pp, flag. STOP after Layer 6.5."),
+    ("S6_redteam_audit", "Layers 7, 7.5, 8, 9 — Monitoring / Correlation / Audit / Red Team",
+     "Execute LAYER 7, LAYER 7.5, LAYER 8 and LAYER 9 ONLY. Thesis-integrity KPIs + thresholds, "
+     "pre-mortem (3 failure modes + early-warning indicators), decision-journal entry; "
+     "correlation-adjusted risk; the 37-point audit (pass/fail per group A-G); and the Red Team "
+     "(short thesis 5-7 bullets grounded in the RESEARCH BRIEF's short-seller/regulatory items, "
+     "long-vs-short logic combat, adversarial data, killed arguments). STOP after Layer 9."),
+]
+
+FINAL_TASK = (
+    "You now have the complete worked analysis from all prior stages (provided above). Assemble the "
+    "FINAL REPORT exactly per 'FINAL OUTPUT STRUCTURE (v2.0)': SECTION 0 through SECTION 12, fixed "
+    "order, in a SINGLE code block. Do not re-derive — consolidate the numbers already produced. "
+    "Enforce all 14 FINAL MANDATORY RULES. End with SECTION 12 Final Execution Opinion "
+    "(Action, Conviction, Weight %, Strategy). Output in English.\n\n"
+    "AFTER the report code block, output exactly ONE fenced ```json block (machine-read; the "
+    "prose stays for humans):\n"
+    "```json\n{\"stance\": <1-5>, \"thesis_break\": <true|false>}\n```\n"
+    "stance rubric — 5: BUY NOW (fresh full entry justified at today's price); 4: ACCUMULATE ON "
+    "DIPS / stage in (constructive, prefer weakness); 3: HOLD (no strong directional view — let "
+    "the numbers rank it); 2: REDUCE / avoid new money; 1: EXIT / sell. Adjacent phrasings of the "
+    "same view MUST map to the same number. thesis_break: true ONLY for a structural, "
+    "thesis-invalidating event (credible fraud/accounting signs, guidance collapse, moat rupture) "
+    "— it forces an exit review regardless of valuation."
+)
+
+
+# ── Ollama REST ───────────────────────────────────────────────────────────
+API_MODE = False      # --api: route every LLM call to api_llm/api_chat.py (cloud model) instead of Ollama
+
+
+def ollama_chat(content, ctx, think=True, retries=2, temperature=None, timeout=600, max_tokens=None):
+    if API_MODE:
+        import api_llm.api_chat as api_chat
+        return api_chat.api_chat(content, ctx=ctx, think=think, retries=retries,
+                                 temperature=temperature, timeout=timeout, max_tokens=max_tokens)
+    opts = {"num_ctx": ctx}
+    if temperature is not None:
+        opts["temperature"] = temperature  # override the model's baked temp (valuation stages want precision)
+    body = json.dumps({
+        "model": CONFIG["model"],
+        "stream": False,
+        "think": think,
+        "messages": [{"role": "user", "content": content}],
+        "options": opts,
+    }).encode("utf-8")
+    last = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(CONFIG["ollama_endpoint"], data=body,
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                out = json.loads(resp.read().decode("utf-8"))
+            txt = out.get("message", {}).get("content", "")
+            if not txt.strip():
+                # a 200 with empty content (VRAM-pressure failure mode) must retry/raise like any
+                # other error — returning "" let an empty FINAL stage ship a degenerate verdict
+                # as a "success" that overwrote the ticker's real call with no retry
+                raise RuntimeError("Ollama returned 200 with empty message.content")
+            return txt
+        except Exception as e:
+            last = e
+            # transient Ollama 500s happen on context-size reloads / VRAM pressure
+            wait = 8 * (attempt + 1)
+            print(f"   [ollama retry {attempt+1}/{retries} after {wait}s: {str(e)[:80]}]", flush=True)
+            time.sleep(wait)
+    raise last
+
+
+def keep_awake(on=True):
+    """Block Windows SLEEP while a run is active — SYSTEM only, NOT the display. This box exposes no
+    S0/S3 standby (only Hibernate, see `powercfg /a`), so a dark monitor does NOT enter Connected
+    Standby / throttle background apps; the display is therefore left free to power off per the OS
+    idle timeout while the run keeps going. SetThreadExecutionState(ES_SYSTEM_REQUIRED) holds the
+    system awake; released (ES_CONTINUOUS alone) when the run ends. No-op off Windows."""
+    try:
+        import ctypes
+        ES_CONTINUOUS = 0x80000000
+        ES_SYSTEM_REQUIRED = 0x00000001
+        flags = (ES_CONTINUOUS | ES_SYSTEM_REQUIRED) if on else ES_CONTINUOUS
+        ctypes.windll.kernel32.SetThreadExecutionState(flags)
+    except Exception:
+        pass
+
+
+def unload_model(name):
+    """Force-free a model's VRAM and BLOCK until it is provably free. CRITICAL on this box:
+    rs2-analyst and rs2-research are both ~23GB on a 24GB card, so they cannot co-reside.
+
+    The old version POSTed keep_alive:0 and slept 2s. That 200 only means the request
+    finished — ollama tears the llama-server subprocess down asynchronously, and destroying
+    a 23GB CUDA context takes longer than 2s under load. The next load then raced the
+    teardown and OOM'd ('cudaMalloc failed: out of memory'), which LDR wrote into
+    research/{T}.md as if it were research. ops.wait_unloaded polls /api/ps + free VRAM
+    until the release is an observed fact, so the race cannot happen.
+
+    Returns True if the VRAM is confirmed free. A False return means the caller must NOT
+    load the other model on top of it."""
+    if not name or (API_MODE and name == CONFIG.get("model")):   # analyst never loaded in --api mode
+        return True
+    ok, detail = ops.wait_unloaded(
+        CONFIG["ollama_endpoint"], name,
+        need_free_mb=int(CONFIG.get("vram_free_required_mb", 20000)),
+        timeout_s=int(CONFIG.get("vram_unload_timeout_s", 180)))
+    if ok:
+        print(f"[vram] unloaded {name} — {detail}", flush=True)
+    else:
+        print(f"[vram] ::UNLOAD FAILED:: {name} — {detail}", flush=True)
+        ops.notify_telegram(
+            f"[RS2 ops] vram_unload_failed — model={name} {detail}. "
+            f"Loading the other ~23GB model now would OOM; the run is aborting this ticker.")
+    return ok
+
+
+# ── pre-steps (data acquisition) ──────────────────────────────────────────
+def get_assumptions(stage_out, require_key, validator, schema_hint):
+    """Parse the LLM's assumption JSON; one repair re-prompt on failure."""
+    obj = valuation_io.extract_json(stage_out, require_key)
+    if obj is not None and validator(obj):
+        return obj
+    fix = ollama_chat(
+        f"Return ONLY a valid JSON object matching this schema, nothing else:\n{schema_hint}\n\n"
+        f"Extract the numbers from this analysis:\n{stage_out[-4000:]}",
+        8192, think=False)
+    obj = valuation_io.extract_json(fix, require_key)
+    return obj if (obj is not None and validator(obj)) else None
+
+
+# ── INVERTED valuation: deterministic backbone + model judgment (AUDIT.md C2) ──
+def _valid_stance(d):
+    return isinstance(d, dict) and str(d.get("valuation_stance", "")).lower() in (
+        "undervalued", "fair", "overvalued")
+
+
+def _valid_engine4(d):
+    return isinstance(d, dict) and int(d.get("engine", 0) or 0) == 4 and isinstance(
+        d.get("core_value", None), (int, float))
+
+
+def _valid_engine2(d):
+    return (isinstance(d, dict) and int(d.get("engine", 0) or 0) == 2
+            and isinstance(d.get("normalized_eps", None), (int, float))
+            and isinstance(d.get("normal_multiple", None), (int, float)))
+
+
+def _multiple_res(method, inp, iv, price, ticker):
+    """Result for the NULL-backbone cases (Engine 4 option bridge / Engine 2 financial multiple),
+    where the model legitimately supplies per-share value numbers. A light unit-sanity FLAG (not a
+    silent clamp) surfaces an obvious per-share/scale slip for review."""
+    # upside vs price (iv/price - 1) — SAME convention as the reverse-DCF/financial mos_pct; the
+    # old (iv-price)/iv understated MoS for Engine-4/2 names and made the brake tiers misfire
+    mos = ((iv - price) / price) if (iv and price and price > 0) else None
+    flag = None
+    if iv and price and (iv > 20 * price or iv < price / 20):
+        flag = "IV is >20x or <1/20 of price — likely a per-share/unit error in the model inputs"
+    res = {"method": method, "ticker": ticker, "price": price,
+           "iv": round(iv, 2) if iv else None, "mos_pct": round(mos * 100, 1) if mos is not None else None,
+           "inputs": inp, "flag": flag}
+    if iv and mos is not None:
+        block = (f"VALUATION RESULT ({method}):\n- Base IV: ${iv:,.2f}/share\n"
+                 f"- Margin of Safety: {mos*100:+.1f}% vs price ${price:,.2f}"
+                 + (f"  [Unverified: {flag}]" if flag else ""))
+    else:
+        block = f"VALUATION RESULT ({method}): IV [Unverified]"
+    return res, block
+
+
+def _fmt_reverse(res):
+    dg = res["demonstrated_rev_cagr"]
+    gap = res["expectations_gap_pts"]
+    # NB: built line-by-line on purpose — a ternary spanning concatenated f-strings binds to the
+    # WHOLE concatenation, which used to silently drop the header + base-cf line when dg was None.
+    base = ("VALUATION RESULT (reverse-DCF expectations model — the GAP is the signal, not a price target):\n"
+            f"- Base cash flow ${res['base_cf_b']}B ({str(res['base_cf_kind']).replace('_',' ')}), WACC {res['wacc_pct']}%.\n")
+    if dg is not None:
+        base += f"- Price IMPLIES {res['implied_growth']*100:.1f}%/yr growth; DEMONSTRATED {dg*100:.1f}%/yr.\n"
+    else:
+        base += f"- Price IMPLIES {res['implied_growth']*100:.1f}%/yr growth; demonstrated growth n/a.\n"
+    base += f"- EXPECTATIONS GAP: {gap:+} pts.\n" if gap is not None else "- EXPECTATIONS GAP: n/a.\n"
+    # Forward growth + analyst consensus band + entry-timing cue (the "don't chase at highs" discipline)
+    fg, med, rmos = res.get("forward_growth"), res.get("consensus_median"), res.get("realistic_mos_pct")
+    price = res.get("price")
+    if fg is not None:
+        base += f"- FORWARD analyst growth: {fg*100:+.1f}%/yr (the fresh consensus, vs trailing).\n"
+    if med is not None:
+        rich = "AT/ABOVE" if (price and price >= med) else "below"
+        base += (f"- Analyst consensus fair value ~${med} (band ${res.get('consensus_low')}-${res.get('consensus_high')}); "
+                 f"price is {rich} it. Fenced fair value ${res.get('fair_value')} => realistic MoS {rmos:+}%.\n"
+                 if rmos is not None else
+                 f"- Analyst consensus fair value ~${med}; price is {rich} it.\n")
+    if rmos is not None and (rmos < 15):
+        base += ("- ENTRY DISCIPLINE: realistic MoS is thin (<15%) / price near analyst target — this is a "
+                 "DO-NOT-CHASE. A great business here is a Hold / stage-in on weakness, NOT a fresh full BUY.\n")
+    return base + (f"- Model stance: {res['stance'] or 'n/a'} (implied growth achievable: {res['achievable'] or 'n/a'}). "
+                   f"{res.get('rationale') or ''}")
+
+
+def _extract_final(final_text):
+    """Action / conviction(/15) / weight% from FINAL.md SECTION 12 (the model's execution opinion)."""
+    seg = final_text[final_text.rfind("SECTION 12"):] if "SECTION 12" in final_text else final_text
+
+    def f(pat):
+        m = re.search(pat, seg, re.I)
+        return m.group(1).strip() if m else None
+    action = f(r"Action[:\s*]*\*{0,2}([A-Za-z][A-Za-z /&\-]{2,45})")
+    conv = f(r"Conviction[^\n0-9]*([0-9.]+)\s*/\s*15")
+    conv_val = float(conv) if conv else None
+    if conv_val is None:                       # the model sometimes writes conviction as words, not X/15
+        cw = (f(r"Conviction[:\s*]*\*{0,2}([A-Za-z][A-Za-z/ \-]{2,18})") or "").lower()
+        for key, val in (("very high", 13), ("medium/high", 11), ("medium-high", 11), ("high", 12),
+                         ("medium/low", 6), ("medium-low", 6), ("very low", 3), ("low", 4), ("medium", 9)):
+            if key in cw:
+                conv_val = float(val)
+                break
+    weight = f(r"Weight\s*%?[:\s*]*\*{0,2}([0-9.]+)\s*%")
+    return action, conv_val, (float(weight) if weight else None)
+
+
+def band_of(ticker):
+    fs = rs2_data.load_json(Path(CONFIG["screener_data_dir"]) / "factor_scores.json") or {}
+    return ((fs.get("tickers") or {}).get(ticker.upper()) or {}).get("fct_band")
+
+
+def prior_verdict(ticker, exclude_dir=None):
+    """Latest verdict.json for this ticker in the live reports tree — the call a
+    re-analysis anchors to. Excludes the current run's own out_dir."""
+    root = Path(CONFIG["out_reports_dir"])
+    ex = Path(exclude_dir).resolve() if exclude_dir else None
+    for d in sorted(root.glob(f"{ticker.upper()}_*"),
+                    key=lambda p: p.stat().st_mtime, reverse=True):
+        if ex and d.resolve() == ex:
+            continue
+        v = rs2_data.load_json(d / "verdict.json")
+        if v and v.get("action"):
+            return v
+    return None
+
+
+def anchor_block(pv):
+    """Continuity anchor injected into the FINAL prompt (the call-emission point).
+    Root-cause fix for verdict flip noise (audit 2026-07-21): re-analyses were
+    amnesiac — each run re-derived the call from scratch, so borderline names
+    re-rolled every review. Persistence becomes the default; changing the call
+    requires a named material reason (audited via Changed-Because)."""
+    try:
+        days = (datetime.now().date()
+                - datetime.strptime(str(pv.get("date")), "%Y-%m-%d").date()).days
+    except Exception:
+        days = "?"
+    return (
+        "PREVIOUS VERDICT (continuity anchor)\n"
+        f"Your previous analysis of {pv.get('ticker')} ({pv.get('date')}, {days}d ago) concluded — "
+        f"Action: {pv.get('action')} | Conviction: {pv.get('conviction')}/15 | "
+        + (f"Stance: {pv.get('stance_score')}/5 | " if pv.get('stance_score') else "")
+        + f"Weight: {pv.get('recommended_weight_pct')}% | Fair value: ${pv.get('fair_value')} "
+        f"(MoS {pv.get('mos_pct')}%).\n"
+        "CONTINUITY RULE: your DEFAULT is to MAINTAIN that call. Change it ONLY if the worked "
+        "analysis demonstrates a MATERIAL change since that date — new earnings/guidance, a thesis "
+        "event, a large price move, or a fair-value revision beyond ~5%. Different wording or small "
+        "sub-score wobbles are NOT grounds to change the call.\n"
+        "In SECTION 12, immediately after the Action line, output exactly one line:\n"
+        "Changed-Because: none (maintained previous call)\n"
+        "or\n"
+        "Changed-Because: <the specific material change justifying the new call>")
+
+
+def _action_family(s):
+    s = (s or "").upper()
+    if any(w in s for w in ("AVOID", "REDUCE", "SELL", "TRIM", "EXIT", "UNDERWEIGHT")):
+        return "BEAR"
+    if "HOLD" in s or "WAIT" in s or "WATCHLIST" in s or "MONITOR" in s or "DO NOT CHASE" in s:
+        return "HOLD"
+    if any(w in s for w in ("BUY", "ACCUMULAT", "SCALE", "ADD", "OVERWEIGHT", "STARTER", "INITIAT", "ENTER")):
+        return "BULL"
+    return "?"
+
+
+def _pct_of_52wk_high(ticker, price):
+    """price / 52-week high, from enrich/{T}.json (None if not fetched). 1.0 == at the high."""
+    en = rs2_data.load_json(HERE / "enrich" / f"{ticker.upper()}.json") or {}
+    hi = en.get("fifty_two_week_high")
+    try:
+        return (price / hi) if (hi and price and hi > 0) else None
+    except Exception:
+        return None
+
+
+def _dont_chase_brake(action, conv, weight, vr, ticker=None):
+    """Deterministic 'don't chase' brake — the systematic gap vs ChatGPT (RS2 flipped HOLD->BUY on
+    15/39 names; ChatGPT pullback-gated 96%). Graduated on ChatGPT's own margin-of-safety bands:
+      * MoS >= 25% (Strong) AND below the analyst median AND not within 5% of the 52wk high
+            -> genuine bargain, a fresh BUY is fine (no brake).
+      * 15% <= MoS < 25%  (Adequate, or Strong-but-extended) -> STAGE: keep a bull lean but this is
+            'accumulate on weakness', not a full chase; conviction capped ~11, weight trimmed.
+      * MoS < 15% OR price at/above the analyst median OR within ~2% of the 52wk high
+            -> HOLD / do-not-chase: downgrade a BUY, cap conviction into Medium, starter size only.
+    Returns (action, conv, weight, entry_timing, pullback_trigger, brake_applied)."""
+    price = vr.get("price")
+    med = vr.get("consensus_median")
+    rmos = vr.get("realistic_mos_pct")
+    rmos = rmos if rmos is not None else vr.get("mos_pct")
+    at_or_above = bool(price and med and price >= med)
+    p52 = _pct_of_52wk_high(ticker, price) if ticker else None
+    near_high = bool(p52 is not None and p52 >= 0.98)
+    strong = (rmos is not None and rmos >= 25)
+    adequate = (rmos is not None and 15 <= rmos < 25)
+    fam = _action_family(action)
+
+    # tier 1 — genuine bargain: let a BUY chase
+    if strong and not at_or_above and not near_high:
+        return action, conv, weight, ("buy" if fam == "BULL" else "stage"), None, False
+
+    trig = vr.get("consensus_low")
+    if not (trig and price and trig < price):
+        trig = round(price * 0.90, 2) if price else None      # default -10% "buy below $X"
+
+    # tier 2 — adequate-but-not-cheap (and not at highs / above median): STAGE, keep a bull lean
+    if adequate and not at_or_above and not near_high:
+        out_action = action if fam != "BULL" else "Accumulate on weakness (staged)"
+        out_conv = min(conv, 11.0) if conv is not None else conv
+        out_weight = min(weight, 5.0) if weight is not None else weight
+        return out_action, out_conv, out_weight, "stage", trig, True
+
+    # tier 3 requires ESTABLISHED evidence (thin MoS / at-or-above median / near 52wk high). A name
+    # with NO MoS data at all (uncovered, fair value blanked) must pass through un-braked — missing
+    # data is not a valuation judgment, and rewriting those BUYs silently excluded exactly the
+    # names the expectations model finds cheapest.
+    if rmos is None and not at_or_above and not near_high:
+        return action, conv, weight, "stage", None, False
+
+    # tier 3 — thin MoS / at-or-above median / near 52wk high: HOLD, do not chase
+    entry = "wait_for_pullback" if (rmos is not None and rmos < 0) or near_high else "stage"
+    out_action = "Hold / accumulate on weakness (do not chase)" if fam == "BULL" else action
+    out_conv = min(conv, 9.5) if (conv is not None and not (rmos is not None and rmos >= 15)) else conv
+    out_weight = min(weight, 3.0) if weight is not None else weight
+    return out_action, out_conv, out_weight, entry, trig, True
+
+
+STAGE_FILES = ["S1_macro_classify.md", "S2_quality.md", "S3_valuation.md",
+               "S4_scenarios.md", "S5_conviction.md", "S6_redteam_audit.md"]
+MIN_STAGE_CHARS = 400        # a real stage is thousands; 400 only catches empty/error stubs
+MIN_FINAL_CHARS = 2000       # a 13-section report; the OOM stubs were ~200 chars/section
+MIN_RESEARCH_CHARS = 3000    # healthy briefs are 13-28KB; the poisoned ones were 1.0-2.1KB
+
+
+def sanity_check(out_dir, ticker):
+    """Post-analysis audit: prove this run actually produced an analysis before it counts
+    as done. Added 2026-08-04 after whole days of runs completed 'successfully' while every
+    research brief and downstream section was really four copies of a CUDA-OOM error string.
+
+    An exit code of 0 was never evidence of a real result — nothing checked the artefacts.
+    This does, and returns (ok, problems) so the caller can fail the ticker loudly."""
+    p = []
+    t = ticker.upper()
+
+    # 1. the research brief this verdict rests on (catches BOTH a fresh failure and a
+    #    previously-cached poisoned brief that was reused silently on this run)
+    rp = Path(CONFIG["out_research_dir"]) / f"{t}.md"
+    if rp.exists():
+        rtxt = rp.read_text(encoding="utf-8", errors="replace")
+        sig = ops.infra_error(rtxt)
+        if sig:
+            p.append(f"research brief is infra-error text ({sig}) — {rp.name} {len(rtxt)}B")
+        elif len(rtxt) < MIN_RESEARCH_CHARS:
+            p.append(f"research brief suspiciously small: {len(rtxt)}B < {MIN_RESEARCH_CHARS}B")
+
+    # 2. stage outputs
+    for fn in STAGE_FILES:
+        fp = out_dir / fn
+        if not fp.exists():
+            p.append(f"missing stage output {fn}")
+            continue
+        txt = fp.read_text(encoding="utf-8", errors="replace")
+        sig = ops.infra_error(txt)
+        if sig:
+            p.append(f"{fn} is infra-error text ({sig})")
+        elif len(txt.strip()) < MIN_STAGE_CHARS:
+            p.append(f"{fn} nearly empty: {len(txt.strip())}B < {MIN_STAGE_CHARS}B")
+
+    # 3. the final report
+    fp = out_dir / "FINAL.md"
+    if not fp.exists():
+        p.append("missing FINAL.md")
+    else:
+        txt = fp.read_text(encoding="utf-8", errors="replace")
+        sig = ops.infra_error(txt)
+        if sig:
+            p.append(f"FINAL.md is infra-error text ({sig})")
+        elif len(txt.strip()) < MIN_FINAL_CHARS:
+            p.append(f"FINAL.md nearly empty: {len(txt.strip())}B < {MIN_FINAL_CHARS}B")
+
+    # 4. the structured verdict the website overlay actually consumes
+    vp = out_dir / "verdict.json"
+    if not vp.exists():
+        p.append("missing verdict.json")
+    else:
+        try:
+            v = json.loads(vp.read_text(encoding="utf-8-sig"))
+        except Exception as e:
+            p.append(f"verdict.json unparseable: {str(e)[:80]}")
+            v = None
+        if isinstance(v, dict):
+            if not v.get("action"):
+                p.append("verdict.json has no action")
+            s = v.get("stance_score")
+            if not isinstance(s, int) or isinstance(s, bool) or not 1 <= s <= 5:
+                p.append(f"verdict.json stance_score invalid: {s!r}")
+            if v.get("ticker", "").upper() != t:
+                p.append(f"verdict.json ticker mismatch: {v.get('ticker')!r} != {t}")
+    return (not p), p
+
+
+def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False):
+    """Write reports/{T}_{ts}/verdict.json — the structured handoff the orchestrator aggregates
+    into the website overlay. Adapted to the inverted shapes (reverse-DCF gap / financial ROE-gap /
+    option bridge); stance is the headline judgment, action/conviction parsed from FINAL SECTION 12,
+    then passed through the deterministic don't-chase brake."""
+    raw_action, raw_conv, raw_weight = _extract_final(final_text or "")
+    vr = val_res or {}
+    action, conv, weight, entry_timing, pullback, braked = _dont_chase_brake(
+        raw_action, raw_conv, raw_weight, vr, ticker)
+    seg12 = final_text[final_text.rfind("SECTION 12"):] if "SECTION 12" in (final_text or "") \
+        else (final_text or "")
+    cb = re.search(r"Changed-Because[:\s]*\*{0,2}\s*(.+)", seg12, re.I)
+    # Structured stance (1-5) + thesis_break — the machine-read disposition; the prose
+    # action stays for humans. Fallback derives from keywords so old-format finals
+    # still emit a stance (tagged, so the transition is auditable).
+    sj = valuation_io.extract_json(final_text or "", "stance")
+    stance_src = "json"
+    if isinstance(sj, dict) and isinstance(sj.get("stance"), (int, float)) \
+            and not isinstance(sj.get("stance"), bool) and 1 <= sj["stance"] <= 5:
+        # bool is an int subclass: {"stance": true} would otherwise publish 1 = EXIT
+        stance = int(round(sj["stance"]))
+        thesis_break = bool(sj.get("thesis_break"))
+    else:
+        stance = {"BULL": 4, "HOLD": 3, "BEAR": 2}.get(_action_family(action), 3)
+        thesis_break = False
+        stance_src = "fallback_keywords"
+    if braked:
+        # Brake caps land in/next to the powerless middle band (3), so brake
+        # re-tiering can no longer flip portfolio membership by itself.
+        stance = min(stance, 3 if _action_family(action) == "HOLD" else 4)
+    verdict = {
+        "stance_score": stance, "thesis_break": thesis_break, "stance_source": stance_src,
+        **({"exit_review": True} if exit_review else {}),
+        "changed_because": cb.group(1).strip().strip("*").strip()[:300] if cb else None,
+        "ticker": ticker.upper(), "date": datetime.now().strftime("%Y-%m-%d"), "price": price,
+        "method": vr.get("method"), "stance": vr.get("stance"),
+        "expectations_gap_pts": vr.get("expectations_gap_pts") if vr.get("expectations_gap_pts") is not None
+        else vr.get("roe_gap_pts"),
+        "fair_value": vr.get("fair_value"), "mos_pct": vr.get("mos_pct"),
+        "realistic_mos_pct": vr.get("realistic_mos_pct"), "fair_value_method": vr.get("fair_value_method"),
+        "consensus_median": vr.get("consensus_median"), "consensus_stale": vr.get("consensus_stale"),
+        "action": action, "conviction": conv, "recommended_weight_pct": weight,
+        "entry_timing": entry_timing, "pullback_trigger": pullback,
+        "raw_action": raw_action, "raw_conviction": raw_conv, "brake_applied": braked,
+        "band_at_analysis": band_of(ticker), "report": out_dir.name,
+    }
+    # atomic: a torn verdict.json is silently skipped by publish_reports._scan and gets the run's
+    # already-published site bundle DELETED — never leave a half-written one visible
+    vtmp = out_dir / "verdict.json.tmp"
+    vtmp.write_text(json.dumps(verdict, indent=2), encoding="utf-8")
+    vtmp.replace(out_dir / "verdict.json")
+    print(f"   [verdict] {ticker}: method={vr.get('method')} stance={vr.get('stance')} "
+          f"action={action} conv={conv} entry={entry_timing}"
+          + (f" (BRAKE: was '{raw_action}' {raw_conv})" if braked else ""), flush=True)
+    return verdict
+
+
+def _fmt_financial(res):
+    g = res["roe_gap_pts"]
+    base = ("VALUATION RESULT (financial ROE/P-B expectations model — the ROE gap is the signal):\n"
+            f"- Delivered ROE {res['roe']*100:.1f}%; price implies ROE {res['implied_roe']*100:.1f}% "
+            f"(P/B {res['current_pb']}x vs justified {res['justified_pb']}x).\n")
+    if res.get("fair_value") is not None and res.get("mos_pct") is not None:
+        base += (f"- ROE EXPECTATIONS GAP: {g:+} pts; fenced fair value ~${res['fair_value']}/sh "
+                 f"(MoS {res['mos_pct']:+}% vs price).\n")
+    else:
+        base += f"- ROE EXPECTATIONS GAP: {g:+} pts; fair value n/a.\n"
+    med, price, rmos = res.get("consensus_median"), res.get("price"), res.get("realistic_mos_pct")
+    if med is not None:
+        rich = "AT/ABOVE" if (price and price >= med) else "below"
+        base += (f"- Analyst consensus fair value ~${med} (band ${res.get('consensus_low')}-"
+                 f"${res.get('consensus_high')}); price is {rich} it.\n")
+    if rmos is not None and rmos < 15:
+        base += ("- ENTRY DISCIPLINE: realistic MoS is thin (<15%) / price near analyst target — this is a "
+                 "DO-NOT-CHASE. A great franchise here is a Hold / stage-in on weakness, NOT a fresh full BUY.\n")
+    return base + (f"- Model stance: {res['stance'] or 'n/a'} (implied ROE achievable: {res['achievable'] or 'n/a'}). "
+                   f"{res.get('rationale') or ''}")
+
+
+def valuation_result(stage_out, bb, price, ticker):
+    """Inverted valuation. DCF-able -> reverse-DCF backbone owns the numbers; financial -> P/B-ROE
+    backbone owns them; in both cases we parse only the model's believability STANCE (the GAP is the
+    signal). NULL backbone (pre-profit) -> the model supplies Engine-4 value numbers, the one place
+    its numeric judgment is legitimate. Returns (result_dict, markdown_block)."""
+    if bb.get("ok") and bb.get("method") == "financial_pb_roe":
+        st = get_assumptions(stage_out, "valuation_stance", _valid_stance, STANCE_SCHEMA) or {}
+        fv = bb.get("fair_value")
+        res = {"method": "financial_pb_roe", "ticker": ticker, "price": price,
+               "roe": bb["roe"], "implied_roe": bb["implied_roe"], "current_pb": bb["current_pb"],
+               "justified_pb": bb["justified_pb"], "fair_value": fv,
+               # upside vs price (fv/price - 1) — same convention as the reverse-DCF mos_pct;
+               # fair value is consensus-fenced in the backbone, so realistic == fenced mos
+               "mos_pct": bb.get("mos_pct"), "realistic_mos_pct": bb.get("realistic_mos_pct"),
+               "fair_value_method": bb.get("fair_value_method", "financial_pb_roe"),
+               "consensus_low": bb.get("consensus_low"), "consensus_median": bb.get("consensus_median"),
+               "consensus_high": bb.get("consensus_high"), "consensus_stale": bb.get("consensus_stale"),
+               "roe_gap_pts": bb["expectations_gap_pts"],
+               "stance": str(st.get("valuation_stance", "")).lower() or None,
+               "achievable": str(st.get("implied_growth_achievable", "")).lower() or None,
+               "rationale": st.get("rationale")}
+        return res, _fmt_financial(res)
+    if bb.get("ok"):
+        st = get_assumptions(stage_out, "valuation_stance", _valid_stance, STANCE_SCHEMA) or {}
+        res = {"method": "reverse_dcf", "ticker": ticker, "price": price,
+               "base_cf_b": round(bb["base_cf"] / 1e9, 2), "base_cf_kind": bb["base_cf_kind"],
+               "wacc_pct": bb["wacc_pct"], "implied_growth": bb["implied_growth"],
+               "demonstrated_rev_cagr": bb["hist_revenue_cagr_5y"],
+               "expectations_gap_pts": bb["expectations_gap_pts"],
+               # deterministic FORWARD-anchored, consensus-fenced value — never a model number
+               "fair_value": bb.get("fair_value"), "mos_pct": bb.get("mos_pct"),
+               "realistic_mos_pct": bb.get("realistic_mos_pct"), "fair_value_method": bb.get("fair_value_method"),
+               "forward_growth": bb.get("forward_growth"),
+               "consensus_low": bb.get("consensus_low"), "consensus_median": bb.get("consensus_median"),
+               "consensus_high": bb.get("consensus_high"), "consensus_stale": bb.get("consensus_stale"),
+               "stance": str(st.get("valuation_stance", "")).lower() or None,
+               "achievable": str(st.get("implied_growth_achievable", "")).lower() or None,
+               "rationale": st.get("rationale")}
+        return res, _fmt_reverse(res)
+    # NULL backbone -> financial (multiple) or pre-profit (option bridge)
+    sl = (rs2_data.sector_lookup(ticker)[0] or "").lower()
+    if any(k in sl for k in ("financial", "bank", "insurance")):
+        e2 = get_assumptions(stage_out, "normalized_eps", _valid_engine2, ENGINE2_SCHEMA)
+        if e2:
+            iv = valuation_engine.engine2_cycle(e2["normalized_eps"], e2["normal_multiple"])
+            return _multiple_res("engine2_financial", e2, iv, price, ticker)
+    e4 = get_assumptions(stage_out, "core_value", _valid_engine4, ENGINE4_SCHEMA)
+    if e4:
+        iv = valuation_engine.engine4_bridge(e4.get("core_value", 0), e4.get("options", []), e4.get("drag", 0))
+        return _multiple_res("engine4_option", e4, iv, price, ticker)
+    res = {"method": "unvalued", "ticker": ticker, "price": price, "reason": bb.get("reason")}
+    return res, (f"VALUATION RESULT: no model ({bb.get('reason')}) and no parseable Engine-4/2 "
+                 "inputs. IV [Unverified].")
+
+
+def resolve_name(ticker):
+    """Company name for web-research queries. Zero-network first: the screener's
+    financials/{T}.json already carries Name (defeatbeta/yfinance-fed upstream);
+    yfinance only as a fallback for names outside the screener universe."""
+    fin = rs2_data.load_json(Path(CONFIG["screener_data_dir"]) / "financials" / f"{ticker.upper()}.json") or {}
+    name = str(fin.get("Name") or "").strip()
+    if name:
+        return name
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker).info or {}
+        return info.get("longName") or info.get("shortName") or ""
+    except Exception:
+        return ""
+
+
+def run_enrich(ticker):
+    print(f"[enrich] yfinance {ticker} ...", flush=True)
+    r = subprocess.run([sys.executable, str(HERE / "enrich_ticker.py"), ticker],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        print(f"[enrich] WARN: {r.stderr[-300:]}", flush=True)
+
+
+def run_research(ticker, name):
+    """Analyst-grade deep research via LDR (research-venv): iterative search + full-page
+    reads + citations -> research/{T}.md. Runs on a clean model, no Chrome/GPU contention."""
+    rv_py = Path(CONFIG["research_venv_python"])
+    if not rv_py.exists():
+        print("[research] WARN: research-venv not found — skipping deep research.", flush=True)
+        return
+    print(f"[research] deep research (LDR) {ticker} ...", flush=True)
+    cmd = [str(rv_py), str(HERE / "deep_research.py"), ticker]
+    if name:
+        cmd.append(name)
+    # explicit utf-8 (errors=replace): text=True alone decodes the child's utf-8 output via the
+    # ANSI codepage (cp1252) on Windows — the source of the 'â€”' mojibake, and a stray 0x9D/0x9F
+    # byte would raise UnicodeDecodeError and abort the whole ticker run
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    # surface LDR progress lines + any error
+    for line in (r.stdout or "").splitlines():
+        if "[deep_research]" in line:
+            print("   " + line, flush=True)
+    # free the research model's VRAM before RS2 stages load rs2-analyst (no double-load).
+    # Done BEFORE the exit-code check so a failed research run still releases the GPU.
+    freed = unload_model(CONFIG.get("research_model"))
+    # exit 3 = deep_research refused to write an infra-poisoned brief (ollama 500 / OOM).
+    # Analysing on top of that is what silently shipped verdicts built on error text, so
+    # it is fatal for the ticker: orchestrate marks it failed and retries the name.
+    if r.returncode == 3:
+        print(f"[research] ::HARD FAIL:: {ticker} research aborted (infra error) — "
+              f"not analysing on an empty brief.", flush=True)
+        raise RuntimeError(f"deep_research hard-failed for {ticker} (infra error)")
+    if r.returncode != 0:
+        print(f"[research] WARN: {r.stderr[-500:]}", flush=True)
+    if not freed:
+        raise RuntimeError(
+            f"research model VRAM not released for {ticker} — refusing to load "
+            f"{CONFIG.get('model')} on top of it (would OOM)")
+
+
+# ── pipeline ──────────────────────────────────────────────────────────────
+def stage_prompt(data_ctx, accum, task):
+    prior = accum if accum.strip() else "(this is the first stage)"
+    return (f"{data_ctx}\n\n"
+            f"=== PRIOR-STAGE RESULTS (completed; build on these, do not contradict) ===\n{prior}\n\n"
+            f"=== YOUR TASK FOR THIS STAGE ===\n{task}")
+
+
+def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, think, use_anchor):
+    """Final report + verdict emission, shared by the normal pipeline and --refinal."""
+    print(f">> FINAL ASSEMBLY (Sections 0-12) [ctx {CONFIG['final_ctx']}]"
+          + ("  [anchored]" if use_anchor else ""), flush=True)
+    t0 = time.time()
+    anchor = rs2_data.market_anchor(t)
+    if exit_review:
+        anchor += ("\n\nEXIT REVIEW: this name fell out of the quant research list; the reader may "
+                   "still hold it. SECTION 12 must give an explicit HOLD / TRIM / SELL call for a "
+                   "current holder, not a fresh-money buy case.")
+    if val_block:
+        anchor += "\n\n" + val_block + ("\n(Use this deterministic valuation verbatim — the "
+                                        "expectations gap / IV is authoritative; do not recompute it.)")
+    if use_anchor:
+        pv = prior_verdict(t, exclude_dir=out_dir)
+        if pv:
+            anchor += "\n\n" + anchor_block(pv)
+        else:
+            print("   [anchor] no previous verdict found — running unanchored", flush=True)
+    final_prompt = (f"{anchor}\n\n"
+                    f"=== COMPLETE WORKED ANALYSIS (all stages) ===\n{accum}\n\n"
+                    f"=== TASK ===\n{FINAL_TASK}")
+    final = ollama_chat(final_prompt, CONFIG["final_ctx"], think, retries=1, timeout=1200,
+                        max_tokens=16384)   # api backend: 13-section report needs a bigger output cap
+    (out_dir / "FINAL.md").write_text(final, encoding="utf-8")
+    print(f"   done in {time.time()-t0:.1f}s\n[DONE] -> {out_dir / 'FINAL.md'}", flush=True)
+    return emit_verdict(out_dir, t, price, val_res, final, exit_review=exit_review)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("ticker")
+    ap.add_argument("--name", default=None, help="company name for web queries")
+    ap.add_argument("--no-enrich", action="store_true")
+    ap.add_argument("--no-research", action="store_true")
+    ap.add_argument("--no-think", action="store_true")
+    ap.add_argument("--api", action="store_true",
+                    help="use the cloud LLM in api_llm/config.json instead of local Ollama; "
+                         "reports isolated to api_llm/reports (never ingested by the overlay)")
+    ap.add_argument("--valonly", action="store_true",
+                    help="fast: run S1+S3+S4 only (valuation), skip S2/S5/S6/final report")
+    ap.add_argument("--exit-review", action="store_true",
+                    help="this name fell OUT of the quant research list; frame the analysis as a "
+                         "holder's exit review (explicit HOLD/TRIM/SELL call in SECTION 12)")
+    ap.add_argument("--anchor", action="store_true",
+                    help="continuity anchor: show the model its own previous verdict at the final "
+                         "stage; maintaining it becomes the default (root-cause flip fix; A/B phase "
+                         "— not yet enabled in the orchestrator)")
+    ap.add_argument("--refinal", metavar="REPORT_DIR", default=None,
+                    help="A/B instrument: regenerate ONLY the final assembly + verdict from an "
+                         "existing completed report dir; output isolated to ab_reports/ (never "
+                         "ingested by the overlay)")
+    args = ap.parse_args()
+    if args.api:
+        # Cloud-LLM A/B mode: same pipeline, prompts and deterministic backbone; only the model
+        # transport changes. Reports go to api_llm/reports so the orchestrator/overlay (which
+        # aggregate CONFIG out_reports_dir) can never ingest a test verdict.
+        global API_MODE
+        API_MODE = True
+        CONFIG["out_reports_dir"] = str(HERE / "api_llm" / "reports")
+        import api_llm.api_chat as _ac
+        print(f"[api] backend {_ac.CONFIG['base_url']}  model={_ac.CONFIG['model']}  "
+              f"-> reports in api_llm/reports", flush=True)
+    keep_awake(True)   # hold the system awake for the whole run (Modern-Standby teardown guard)
+
+    t = args.ticker.upper()
+    think = not args.no_think
+
+    if args.refinal:
+        # Regenerate ONLY the final call from a frozen, completed analysis — the
+        # A/B instrument for measuring emission variance. No data acquisition, no
+        # stages, no state writes; output goes to ab_reports/ which the
+        # orchestrator/overlay never read. Model left warm for sequential reps.
+        src = Path(args.refinal)
+        if not src.is_dir():
+            src = Path(CONFIG["out_reports_dir"]) / args.refinal
+        if not src.is_dir():
+            sys.exit(f"--refinal: report dir not found: {args.refinal}")
+        val_res = rs2_data.load_json(src / "S3_valuation_inputs.json")
+        val_block = ((src / "S4_valuation_result.md").read_text(encoding="utf-8")
+                     if (src / "S4_valuation_result.md").exists() else None)
+        old_v = rs2_data.load_json(src / "verdict.json") or {}
+        price = (val_res or {}).get("price") or old_v.get("price")
+        exit_review = bool(old_v.get("exit_review"))
+        cap = int(CONFIG.get("stage_carry_char_cap", 4500))
+        accum = ""
+        for sid, title, _task in STAGES:
+            p = src / f"{sid}.md"
+            if not p.exists():
+                sys.exit(f"--refinal: {p.name} missing in {src} (need a full 6-stage report)")
+            out = p.read_text(encoding="utf-8")
+            carry = out if len(out) <= cap else out[:cap] + "\n…[truncated]"
+            extra = ("\n\n" + val_block) if (sid == "S3_valuation" and val_block) else ""
+            accum += f"\n\n----- {title} -----\n{carry}{extra}"
+        arm = "anchor" if args.anchor else "plain"
+        out_dir = HERE / "ab_reports" / f"{t}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{arm}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[refinal] source={src.name} arm={arm} -> {out_dir.name}", flush=True)
+        final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, think,
+                       use_anchor=args.anchor)
+        keep_awake(False)
+        return
+
+    name = args.name if args.name is not None else resolve_name(t)
+
+    # 1-2. acquire data
+    if not args.no_enrich:
+        run_enrich(t)
+    # Warm the OpenBB cache BEFORE anything reads the consensus band (build_data_context's
+    # valuation block AND the verdict backbone) — otherwise a first-ever run fences the prompt's
+    # fair value on the enrich band while the verdict later uses the fresh OpenBB band.
+    try:
+        import openbb_data
+        openbb_data.fetch(t)
+    except Exception as e:
+        print(f"[openbb] cache warm failed (non-fatal): {str(e)[:100]}", flush=True)
+    if not args.no_research:
+        run_research(t, name)   # LDR deep research (no Chrome; runs before GPU inference)
+
+    # 3. assemble fed data
+    data_ctx = rs2_data.build_data_context(t)
+    if args.exit_review:
+        data_ctx += (
+            "\n\n## EXIT REVIEW CONTEXT\n\n"
+            "This name has FALLEN OUT of the quant engine's research list (signal decayed vs the "
+            "universe — a RELATIVE statement, not automatically a sell). The reader may STILL HOLD "
+            "the stock. Purpose of this analysis: a holder's exit review. Do NOT build a fresh-money "
+            "buy case; in SECTION 12 give an explicit HOLD / TRIM / SELL call with the reasoning and "
+            "what would change it.\n")
+    fin = rs2_data.load_json(Path(CONFIG["screener_data_dir"]) / "financials" / f"{t}.json") or {}
+    price = fin.get("Price")
+
+    # 4. output tree
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = Path(CONFIG["out_reports_dir"]) / f"{t}_{ts}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "_fed_data.md").write_text(data_ctx, encoding="utf-8")
+    # snapshot the deep-research brief INTO the run so the report is self-contained (publish_reports.py
+    # prefers this over the shared research/{T}.md, which may be refreshed by a later run).
+    _rb = Path(CONFIG["out_research_dir"]) / f"{t}.md"
+    if _rb.exists():
+        (out_dir / "research.md").write_text(_rb.read_text(encoding="utf-8"), encoding="utf-8")
+    print(f"[out] {out_dir}\n", flush=True)
+
+    cap = int(CONFIG.get("stage_carry_char_cap", 4500))
+    accum = ""
+    bb = valuation_backbone.backbone(t)   # deterministic reverse-DCF backbone (computed once)
+    if bb.get("method") == "financial_pb_roe":
+        bb_msg = (f"FINANCIAL | ROE {bb['roe']*100:.1f}% vs implied {bb['implied_roe']*100:.1f}% | "
+                  f"P/B {bb['current_pb']}x vs justified {bb['justified_pb']}x | gap {bb['expectations_gap_pts']}pts")
+    elif bb.get("ok"):
+        bb_msg = (f"base_cf ${bb['base_cf']/1e9:.2f}B [{bb['base_cf_kind']}] WACC {bb['wacc_pct']}% | "
+                  f"implied {bb['implied_growth']*100:.1f}% vs demonstrated "
+                  f"{(bb.get('hist_revenue_cagr_5y') or 0)*100:.1f}% | gap {bb['expectations_gap_pts']}pts")
+    else:
+        bb_msg = f"NULL ({bb.get('reason')}) -> pre-profit / option-led path"
+    print(f"[backbone] {t}: {bb_msg}", flush=True)
+    val_res = None
+    val_block = None
+    stages = [s for s in STAGES if s[0] in ("S1_macro_classify", "S3_valuation", "S4_scenarios")] if args.valonly else STAGES
+    for sid, title, task in stages:
+        print(f">> {title}", flush=True)
+        t0 = time.time()
+        content = stage_prompt(data_ctx, accum, task)
+        out = ollama_chat(content, CONFIG["stage_ctx"], think)
+        (out_dir / f"{sid}.md").write_text(out, encoding="utf-8")
+        print(f"   done in {time.time()-t0:.1f}s -> {sid}.md", flush=True)
+
+        # ── inverted valuation hooks (deterministic backbone + model judgment) ──
+        extra = ""
+        if sid == "S3_valuation":
+            val_res, val_block = valuation_result(out, bb, price, t)
+            extra = "\n\n" + val_block
+            (out_dir / "S3_valuation_inputs.json").write_text(json.dumps(val_res, indent=2), encoding="utf-8")
+            (out_dir / "S4_valuation_result.md").write_text(val_block, encoding="utf-8")
+            if val_res.get("method") == "reverse_dcf":
+                print(f"   [valuation] reverse-DCF gap {val_res['expectations_gap_pts']}pts | "
+                      f"stance {val_res.get('stance')} (achievable {val_res.get('achievable')})", flush=True)
+            elif val_res.get("method") == "financial_pb_roe":
+                print(f"   [valuation] financial ROE-gap {val_res['roe_gap_pts']}pts | fair "
+                      f"${val_res.get('fair_value')} MoS {val_res.get('mos_pct')}% | stance {val_res.get('stance')}", flush=True)
+            else:
+                print(f"   [valuation] {val_res.get('method')} IV {val_res.get('iv')} "
+                      f"MoS {val_res.get('mos_pct')}%" + (f" [{val_res['flag']}]" if val_res.get('flag') else ""), flush=True)
+        elif sid == "S4_scenarios":
+            probs = get_assumptions(out, "base", valuation_io.valid_scenario_probs, PROBS_SCHEMA)
+            if probs and val_res is not None:
+                val_res["scenario_probs"] = probs
+                (out_dir / "S3_valuation_inputs.json").write_text(json.dumps(val_res, indent=2), encoding="utf-8")
+                print(f"   [valuation] scenario probs {probs}", flush=True)
+        print("", flush=True)
+
+        carry = out if len(out) <= cap else out[:cap] + "\n…[truncated]"
+        accum += f"\n\n----- {title} -----\n{carry}{extra}"
+
+    if args.valonly:
+        (out_dir / "val_summary.json").write_text(json.dumps(val_res or {}, indent=2), encoding="utf-8")
+        if val_res and val_res.get("method") == "reverse_dcf":
+            print(f"[VALONLY DONE] {t}: reverse-DCF gap {val_res['expectations_gap_pts']}pts "
+                  f"stance {val_res.get('stance')} -> {out_dir / 'val_summary.json'}", flush=True)
+        else:
+            print(f"[VALONLY DONE] {t}: {(val_res or {}).get('method')} "
+                  f"IV {(val_res or {}).get('iv')} MoS {(val_res or {}).get('mos_pct')}%", flush=True)
+        unload_model(CONFIG["model"])
+        keep_awake(False)
+        return
+
+    # Final assembly consolidates prior stages — it does NOT need the bulky raw
+    # research/priming blocks again. Compact verified anchor + the engine's
+    # computed VALUATION RESULT (authoritative IV/MoS) + the stage results.
+    final_assembly(t, out_dir, accum, val_block, val_res, price, args.exit_review, think,
+                   use_anchor=args.anchor)
+    unload_model(CONFIG["model"])  # free VRAM so the next ticker's research starts clean
+    keep_awake(False)
+
+    # Prove the run produced a real analysis before it is allowed to count as done.
+    ok, problems = sanity_check(out_dir, t)
+    if not ok:
+        detail = "; ".join(problems)
+        print(f"\n[SANITY] ::FAILED:: {t} — {len(problems)} problem(s): {detail}", flush=True)
+        ops.notify_telegram(
+            f"[RS2 ops] sanity_failed — {t} produced a bad/empty analysis "
+            f"({len(problems)} problem(s)). Report: {out_dir.name}. Ticker will retry.\n{detail[:600]}")
+        # non-zero exit -> orchestrate marks the name failed and re-queues it, exactly like
+        # a watchdog kill, instead of publishing a hollow verdict to the overlay
+        sys.exit(6)
+    print(f"[SANITY] ok — {t}: stages, FINAL.md and verdict.json all present and substantive",
+          flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+    main()

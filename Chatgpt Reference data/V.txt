@@ -1,0 +1,506 @@
+Proceeding with **#12 V** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #12 — Visa / V
+
+## Top-Line Execution Summary
+
+| Item                            |                                       Result |
+| ------------------------------- | -------------------------------------------: |
+| Current Price / T0              |                       **$335.66** `[Actual]` |
+| Market Cap                      |                       **$688.1B** `[Actual]` |
+| Filing-based TTM GAAP EPS       |                **~$11.6/share** `[Estimate]` |
+| Filing-based P/E                |                      **~28.9x** `[Estimate]` |
+| Normalized EPS / Owner Earnings |           **~$12.2–12.5/share** `[Estimate]` |
+| Base Intrinsic Value            |                  **$350/share** `[Estimate]` |
+| Expected Price                  |                  **$356/share** `[Estimate]` |
+| Margin of Safety vs Base IV     |                        **4.1%** `[Estimate]` |
+| 50% CI                          |                   **$305–$395** `[Estimate]` |
+| 80% CI                          |                   **$245–$475** `[Estimate]` |
+| Conviction                      |           **High / 11.5 of 15** `[Estimate]` |
+| Recommended Max Weight          |                        **5.0%** `[Estimate]` |
+| Entry Strategy                  | **2–3 tranche scale-in; better below ~$315** |
+| Execution Opinion               |                          **Scale-In / Hold** |
+
+**Core conclusion:** Visa is a fortress-quality payment network with exceptional margins, capital returns, and secular cash-to-digital conversion tailwinds. The stock is not deeply cheap, but after its 2026 pullback it is reasonably priced for a high-quality compounder.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Visa Inc. / V
+**Baseline Date:** June 25, 2026 market close / June 26, 2026 Taipei time
+**T0:** current price **$335.66**, market cap **$688.1B**, finance-feed P/E **19.55x** `[Actual]`. The finance-feed P/E appears inconsistent with Visa’s filing-based TTM EPS, so I use filing-normalized P/E of **~28–29x** for valuation.
+**T-1:** latest reported financials are fiscal Q2 2026, quarter ended March 31, 2026. Visa reported Q2 net revenue of **$11.23B**, GAAP net income of **$6.02B**, GAAP EPS of **$3.14**, non-GAAP EPS of **$3.31**, payments volume growth of **9%**, total cross-border volume growth of **12%**, and processed transaction growth of **9%**. ([Securities and Exchange Commission][1])
+**Tpf:** current price reflects Q2 2026 results, raised full-year expectations, resilient consumer spending, and the new **$20B** buyback authorization. Reuters noted Visa raised its annual net revenue outlook after Q2 results and announced the new repurchase program. ([Reuters][2])
+
+**Archetype:** **B. Quality Compounder / Global Payment Network**
+**Valuation Engine:** **Engine 1 — Traditional DCF + Multiples**
+
+**Why this engine:**
+
+1. Visa is a mature, asset-light, high-margin, high-ROIC network business.
+2. Its value is driven by payments volume, cross-border volume, processed transactions, pricing, value-added services, and buybacks.
+3. It is not a credit lender, not a bank, and not a speculative fintech option story; most value comes from existing monetization.
+
+**Model Confidence:** **High for business quality; Medium-High for valuation.** The main uncertainties are regulation, interchange litigation, cross-border travel/trade cyclicality, and long-term disruption from real-time payments, stablecoins, or account-to-account systems.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable              | V Impact                             |
+| --------------------------- | ------------------------------------ |
+| Fed funds target            | **3.50–3.75%** `[Actual]`            |
+| 10Y Treasury                | **~4.38%** `[Actual]`                |
+| Consumer spending           | Direct volume driver                 |
+| Cross-border travel / trade | High-margin revenue driver           |
+| USD strength                | FX translation headwind              |
+| Recession risk              | Payment volume and cross-border risk |
+| Credit risk                 | Low direct risk; Visa does not lend  |
+
+The Fed maintained the federal funds target range at **3.50–3.75%** on June 17, 2026. ([Federal Reserve][3]) The U.S. 10-year Treasury yield eased to **4.38%** on June 25, 2026. ([Trading Economics][4])
+
+**Regime probabilities:**
+Goldilocks **20%**, Reflation **35%**, Stagflation **25%**, Recession **20%** `[Estimate]`.
+
+**Visa macro sensitivity score:**
+Interest rates **-1.0**; dollar **-1.0**; liquidity **-0.5**; economic cycle **+1.5**; commodity **0.0**.
+**Macro alignment:** **Neutral.** Visa is economically sensitive, but not credit-sensitive. It benefits from nominal spending growth and global travel, but recessions and FX can pressure growth.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                                   |               Base Rate | Visa Adjustment      |
+| ---------------------------------------------------------------- | ----------------------: | -------------------- |
+| 5Y survival for global payment network                           |   **>95%** `[Estimate]` | Visa passes          |
+| Sustaining high-single-digit to low-double-digit revenue growth  | **45–60%** `[Estimate]` | Raised to **60–70%** |
+| Sustaining operating margin above 60%                            | **50–65%** `[Estimate]` | Raised to **70–80%** |
+| Maintaining premium multiple >25x earnings                       | **35–50%** `[Estimate]` | Raised to **50–60%** |
+| Disruption from alternative rails materially impairing economics | **15–25%** `[Estimate]` | Kept at **20–30%**   |
+
+Visa’s FY25 operational scale supports an above-base-rate quality adjustment: payments volume was **$14.2T**, processed transactions were **257.5B**, and payment credentials were **4.9B**. ([Visa Annual Report][5])
+
+**Base-rate shock check:** No shock. The model assumes Visa remains a high-quality compounder, but does not assume it is immune to regulation or payment-rail disruption.
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+Visa operates a global digital payments network connecting consumers, merchants, financial institutions, fintechs, governments, processors, and acquirers. It earns revenue from service fees, data processing, international transactions, value-added services, and other payment-related infrastructure. The business is highly understandable, with the key uncertainty being regulatory pressure on network fees and long-term competition from alternative payment rails.
+
+**Comprehensibility:** **High**
+
+### Moat Score
+
+| Moat Type                        |       Score | Direction         |
+| -------------------------------- | ----------: | ----------------- |
+| Brand / trust                    |         3/3 | Stable            |
+| Switching costs                  |       2.5/3 | Stable            |
+| Network effects                  |         3/3 | Widening          |
+| Cost advantage                   |         3/3 | Stable/Widening   |
+| Economies of scale               |         3/3 | Widening          |
+| Regulatory barriers              |       1.5/3 | Mixed             |
+| Data / fraud / risk intelligence |       2.5/3 | Widening          |
+| **Total**                        | **18.5/21** | **Fortress Moat** |
+
+**Moat direction:** **Stable-to-widening.** Visa’s network effects, fraud tools, acceptance footprint, issuer/acquirer relationships, and value-added services strengthen the franchise. Regulation is the main narrowing force.
+
+**Peter Lynch classification:** **Stalwart / Quality Compounder.**
+
+### Financial Health Scorecard
+
+| Metric                               |                             Result |
+| ------------------------------------ | ---------------------------------: |
+| FY25 net revenue                     |  **$40.0B**, up **11%** `[Actual]` |
+| FY25 GAAP net income                 |             **$20.06B** `[Actual]` |
+| FY25 GAAP EPS                        |              **$10.20** `[Actual]` |
+| FY25 non-GAAP EPS                    |              **$11.47** `[Actual]` |
+| FY25 FCF                             |             **$21.58B** `[Actual]` |
+| Q2 FY26 net revenue                  | **$11.23B**, up **17%** `[Actual]` |
+| Q2 FY26 GAAP net income              |  **$6.02B**, up **32%** `[Actual]` |
+| Q2 FY26 non-GAAP net income          |  **$6.34B**, up **17%** `[Actual]` |
+| Q2 FY26 non-GAAP EPS                 |   **$3.31**, up **20%** `[Actual]` |
+| Q2 FY26 payments volume growth       |  **9%** constant-dollar `[Actual]` |
+| Q2 FY26 processed transaction growth |                  **9%** `[Actual]` |
+| TTM revenue                          |           **~$43.0B** `[Estimate]` |
+| TTM net income                       |          **~$22.24B** `[Estimate]` |
+| TTM operating margin                 |              **~61%** `[Estimate]` |
+| Cash + investment securities         |             **~$14.2B** `[Actual]` |
+| Debt                                 |    **~$24.0B** `[Actual/Estimate]` |
+| Net debt                             |            **~$9.7B** `[Estimate]` |
+
+FY25 net revenue, net income, EPS, payments volume, processed transactions, and credentials come from Visa’s FY25 annual report. ([Visa Annual Report][5]) Q2 2026 revenue, EPS, volume, cross-border, and processed transaction growth come from the Q2 earnings release. ([Securities and Exchange Commission][1]) Balance-sheet cash, securities, current debt, and long-term debt come from Visa’s Q2 balance sheet. ([Securities and Exchange Commission][1])
+
+**Financial Health Judgment:** **Excellent.** Visa has a very high-margin, high-cash-conversion business with low capital intensity and manageable leverage.
+
+### Capital Allocation Scorecard
+
+| Dimension                             |       Score |
+| ------------------------------------- | ----------: |
+| Buyback efficiency                    |       2.5/3 |
+| M&A track record                      |         2/3 |
+| Capex efficiency                      |         3/3 |
+| Dividend / buyback / reinvestment mix |         3/3 |
+| Guidance / execution consistency      |       2.5/3 |
+| Insider adjustment                    |        -0.5 |
+| **Total**                             | **12.5/15** |
+
+Visa returned **$9.2B** to shareholders in Q2 through buybacks and dividends, repurchased about **25M** shares at an average cost of **$320.66**, and the board authorized a new **$20B** multi-year repurchase program. ([Securities and Exchange Commission][1]) FY25 FCF was **$21.58B**, with **$18.19B** of repurchases and **$4.63B** of dividends. ([S1 Q4cdn][6])
+
+**Capital allocation judgment:** **Good-to-outstanding.** Buybacks around **$320/share** are value-neutral to modestly accretive under my base IV of **$350/share**.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                        |                   Result |
+| --------------------------- | -----------------------: |
+| H1 FY26 operating cash flow |    **$9.79B** `[Actual]` |
+| H1 FY26 capex               |     **$761M** `[Actual]` |
+| H1 FY26 FCF                 | **~$9.03B** `[Estimate]` |
+| FY25 FCF                    |   **$21.58B** `[Actual]` |
+| TTM FCF                     | **~$21.2B** `[Estimate]` |
+| H1 FY26 SBC                 |     **$506M** `[Actual]` |
+| TTM SBC-adjusted FCF        | **~$20.2B** `[Estimate]` |
+| P/TTM FCF                   |  **~32.5x** `[Estimate]` |
+| FCF yield                   |   **~3.1%** `[Estimate]` |
+
+Visa’s H1 FY26 operating cash flow was **$9.79B** and capex was **$761M**. ([Securities and Exchange Commission][1]) FY25 FCF was **$21.58B**, calculated from **$23.06B** operating cash flow minus **$1.48B** capex. ([S1 Q4cdn][6])
+
+**Adjusted financials judgment:** Very clean. SBC is modest relative to FCF, and capex intensity is low. The main adjustment is normalizing litigation provisions and focusing on non-GAAP/owner earnings.
+
+---
+
+## Section 3. Valuation — Engine 1
+
+### DCF / Owner Earnings Assumptions
+
+| Scenario | Starting Owner Earnings / Share |        Growth Path | Discount Rate | Terminal Growth | IV / Share |
+| -------- | ------------------------------: | -----------------: | ------------: | --------------: | ---------: |
+| Bear     |           $11.50 `[Assumption]` |  5% fading to 2.5% |          9.0% |            2.5% |   **$245** |
+| Base     |             $12.40 `[Estimate]` |  9% fading to 3.5% |         7.75% |            3.0% |   **$350** |
+| Bull     |           $13.00 `[Assumption]` | 11% fading to 4.0% |          7.5% |           3.25% |   **$475** |
+
+**Base IV:** **$350/share** `[Estimate]`
+**Current price:** **$335.66/share** `[Actual]`
+**Margin of Safety:** **4.1%** `[Estimate]`
+
+### Multiple Cross-Check
+
+| Metric                    |                  Result |
+| ------------------------- | ----------------------: |
+| Filing-based GAAP P/E     | **~28.9x** `[Estimate]` |
+| Normalized EPS multiple   | **~27.0x** `[Estimate]` |
+| P/TTM FCF                 | **~32.5x** `[Estimate]` |
+| EV / TTM operating income | **~26.5x** `[Estimate]` |
+| Dividend yield            |  **~0.8%** `[Estimate]` |
+| Buyback yield             |   **~3%+** `[Estimate]` |
+
+**Multiple judgment:** Visa deserves a premium, but the valuation is not cheap on cash flow. The current price is acceptable for quality, not a deep bargain.
+
+### Reverse DCF
+
+At **$335.66**, Visa’s stock implies roughly **7–8% long-term owner-earnings growth** using a **7.75–8.0%** discount rate and **3.0%** terminal growth. `[Estimate]`
+
+**Judgment:** **Plausible.** This is not an excessive expectation for Visa if payment volume, cross-border, value-added services, and buybacks remain healthy.
+
+### Tornado Sensitivity
+
+| Variable                     | -1σ Impact | +1σ Impact |
+| ---------------------------- | ---------: | ---------: |
+| Long-term revenue growth     |       -20% |       +25% |
+| Discount rate                |       -18% |       +22% |
+| Cross-border volume growth   |       -15% |       +18% |
+| Regulation / fee compression |       -14% |        +8% |
+| Buyback pace                 |        -7% |        +9% |
+
+**Top 3 thesis KPIs:**
+
+1. Payments volume growth
+2. Cross-border volume growth
+3. Operating margin / client incentives ratio
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+Mastercard remains Visa’s closest global network competitor. American Express competes in premium closed-loop payments; PayPal, Apple Pay, account-to-account systems, real-time payment rails, stablecoins, and fintech platforms compete at the edges of consumer and merchant payment flows.
+
+**Reflexivity:**
+Positive: high stock price allows buybacks to remain a flexible return tool, supports talent retention, and strengthens acquisition currency.
+Negative: if the market begins to treat Visa as a regulated utility rather than a secular growth network, the valuation multiple can compress even if earnings keep growing.
+
+**Customer behavior evolution:**
+Consumers continue shifting from cash to digital payments, while merchants push for lower acceptance costs. Visa’s opportunity is to monetize more flows—commercial payments, money movement, Visa Direct, tokenization, fraud, risk, and value-added services—without over-relying on traditional card fees.
+
+**Network dynamics:**
+Visa has a classic two-sided network: more credentials and acceptance increase network utility, and more transaction data improves risk/fraud tools. That is why the moat score is fortress-level.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                         |
+| -------- | ----------: | ------------: | ------------------------------------------------------------------------ |
+| Bear     |         25% |      **$245** | Regulation compresses fees, recession slows volume, cross-border weakens |
+| Base     |         50% |      **$350** | High-single-digit to low-double-digit EPS/FCF growth continues           |
+| Bull     |         25% |      **$475** | Cross-border, value-added services, Visa Direct, and buybacks outperform |
+
+**Expected Price:**
+25% × $245 + 50% × $350 + 25% × $475 = **$355/share** `[Estimate]`
+Rounded expected price: **$356/share** `[Estimate]`
+
+**50% CI:** **$305–$395** `[Estimate]`
+**80% CI:** **$245–$475** `[Estimate]`
+**Margin of Safety:** **4.1%**
+**MoS Judgment:** **Limited Margin of Safety.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **2–3 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **~1–2 years**
+
+Visa is well understood by the market, so this is not a hidden asset situation. However, the 2026 pullback means the market may be under-crediting the durability of value-added services, commercial payments, and cross-border normalization.
+
+**Horizon arbitrage judgment:** **Limited-to-moderate.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |       Score |
+| ------------------------ | ----------: |
+| Business quality         |       3.0/3 |
+| Valuation attractiveness |       1.5/3 |
+| Macro alignment          |       2.0/3 |
+| Thesis clarity           |       2.5/3 |
+| Execution trackability   |       2.5/3 |
+| **Total**                | **11.5/15** |
+
+**Conviction Tier:** **High**
+**Layer 5 preliminary weight:** **5–8%**
+**Adjustments:**
+
+* Limited MoS: -1.0%
+* Regulation/litigation risk: -0.5%
+* Financial/payment-sector overlap with JPM: -0.5%
+* Low direct AI/commodity overlap: +0.5%
+
+**Layer 5 recommended max weight:** **5.0%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                    |                       Result |
+| ----------------------- | ---------------------------: |
+| Short interest          | **21.36M shares** `[Actual]` |
+| Short % float           |         **1.29%** `[Actual]` |
+| Days to cover           |           **2.9** `[Actual]` |
+| Institutional ownership |      **~90.5%** `[Estimate]` |
+| Squeeze risk            |                          Low |
+| Crowding score          | **8/15 Medium** `[Estimate]` |
+
+Short interest is low: ShortSqueeze reports **21.36M** shares short, **1.29%** of float, and **2.9** days to cover. It also reports institutional ownership around **90.54%**. ([Short Squeeze][7])
+
+**Behavioral judgment:** Neutral. Visa is not a hated contrarian stock, but it is high-quality and institutionally crowded.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Core quality compounder / global digital payments / financial infrastructure.
+**Expected 3–5Y annualized return:** **7–10%** `[Estimate]`, mainly from EPS growth, buybacks, and modest rerating potential.
+**Portfolio overlap:** Moderate with JPM through financial-sector exposure, but Visa has much less credit risk. Low overlap with XOM/FANG/FCX commodities and lower overlap with AMD/TSLA/PLTR AI optionality.
+
+**Portfolio fit judgment:** **High.** Visa is a strong complement to banks and tech because it captures nominal spending without balance-sheet credit exposure.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Weighted upside from current  | **~22%** `[Estimate]` |
+| Bear downside from current    | **~27%** `[Estimate]` |
+| Practical fractional Kelly    | **5–7%** `[Estimate]` |
+| RS2 final cap                 |              **5.0%** |
+
+Layer 5 and Kelly are aligned.
+**Final recommended max weight:** **5.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Regulatory / fee compression:** governments and merchants continue pushing to lower acceptance costs and challenge card-network practices. Visa itself lists increased scrutiny and regulation of the global payments industry as a risk. ([Securities and Exchange Commission][1])
+2. **Cross-border slowdown:** cross-border volume is a high-margin driver; a travel or trade slowdown would pressure revenue mix.
+3. **Alternative rails / technology disruption:** real-time payments, account-to-account transfers, stablecoins, wallets, and fintech platforms can pressure selected use cases.
+
+### Top 3 Catalysts
+
+1. Payments volume continues growing high-single digits.
+2. Cross-border volume remains double-digit.
+3. Value-added services, Visa Direct, commercial payments, agentic commerce, and stablecoin settlement expand the addressable market.
+
+Reuters reported Visa’s cross-border volume rose **12%** in Q2 and that management highlighted AI/agentic commerce and stablecoin opportunities as future growth areas. ([Reuters][2])
+
+**Highest-impact bear scenario:** Visa’s network economics are regulated down faster than value-added services can offset, causing both earnings-growth deceleration and multiple compression.
+
+---
+
+## Section 7.5. Correlation Risk
+
+Visa’s bear triggers are consumer-spending weakness, cross-border slowdown, regulatory intervention, fintech disruption, and broad financial-sector derating. It overlaps with JPM through financial-sector sentiment, but Visa has much lower credit-loss exposure.
+
+**Stress correlation estimate:**
+With JPM/financials: **0.55–0.75** `[Estimate]`
+With AI/semiconductors: **0.35–0.55** `[Estimate]`
+With energy/materials: **0.20–0.40** `[Estimate]`
+
+**True diversification judgment:** **Medium-High.** Visa diversifies energy and AI exposure, but still carries market and consumer-cycle risk.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                               |                 Warning Trigger |         Re-underwrite Trigger |
+| --------------------------------- | ------------------------------: | ----------------------------: |
+| Payments volume growth            |                             <6% |           <5% for 2+ quarters |
+| Cross-border volume growth        |                             <8% |                           <5% |
+| Processed transaction growth      |                             <7% |                           <5% |
+| Client incentives / gross revenue |                rises materially |     sustained margin pressure |
+| Non-GAAP operating margin         |                            <64% |                          <60% |
+| Regulation/litigation             | adverse fee caps or settlements | structural economics impaired |
+
+### Pre-Mortem
+
+1. **Wrong because regulation compresses network economics.**
+   Early warning: new fee caps, adverse litigation outcomes, or mandated routing changes.
+   Response: lower terminal margin and multiple.
+
+2. **Wrong because alternative rails take profitable flows.**
+   Early warning: account-to-account or stablecoin settlement gains share in cross-border/commercial use cases without Visa monetization.
+   Response: lower long-term revenue growth.
+
+3. **Wrong because consumer/cross-border volume weakens.**
+   Early warning: payments growth below 6% and cross-border below 8%.
+   Response: lower growth assumptions and reduce position.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. Visa is a great business, but filing-based valuation is still around **27–29x normalized earnings**, not cheap.
+2. The company is a regulatory target because merchants and governments want lower payment acceptance costs.
+3. Q2 non-GAAP operating expenses rose **17%**, showing that growth investments and marketing are not costless. ([Securities and Exchange Commission][1])
+4. Cross-border growth is high-margin but cyclical and vulnerable to travel/geopolitical shocks.
+5. Real-time payments, stablecoins, account-to-account transfers, and wallets can attack specific payment corridors.
+6. Institutional ownership is high, so the stock can derate with quality-growth factor outflows.
+7. Buybacks help EPS, but at >25x earnings the capital allocation is not as obviously accretive as when the stock was cheaper.
+
+### Long vs Short Logic Battle
+
+| Issue                           | Long Score | Short Score | Winner |
+| ------------------------------- | ---------: | ----------: | ------ |
+| Network moat                    |          3 |         0.5 | Long   |
+| Margin / FCF quality            |          3 |         0.5 | Long   |
+| Secular digital payments growth |        2.5 |           1 | Long   |
+| Valuation                       |       1.25 |           2 | Short  |
+| Regulatory risk                 |        1.5 |         2.5 | Short  |
+| Alternative rails               |          2 |           2 | Tie    |
+| Capital allocation              |        2.5 |         1.5 | Long   |
+
+**Long score:** **15.75**
+**Short score:** **10.0**
+**Gap:** **+5.75 Long**
+**Judgment:** Strong long thesis, but current price provides only limited MoS.
+
+**Adversarial data check:** No major current short-seller fraud thesis found. The serious bear case is regulation and payment-rail disruption, not accounting quality.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                     | Status |
+| ------------------------------ | ------ |
+| Correct engine selected        | Pass   |
+| DCF-only conclusion avoided    | Pass   |
+| Multiples cross-check included | Pass   |
+| Macro included                 | Pass   |
+| Base rates included            | Pass   |
+| Regulation risk included       | Pass   |
+| Alternative rail risk included | Pass   |
+| Core vs optionality separated  | Pass   |
+| Position sizing included       | Pass   |
+| Monitoring KPIs included       | Pass   |
+| Red team included              | Pass   |
+| Pre-mortem included            | Pass   |
+| Data tier reliance disclosed   | Pass   |
+| Recalculation required         | No     |
+
+**Model Reliability:** **Medium-High to High**
+**Key uncertainty:** long-term regulatory and alternative-rail pressure.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                      |
+| ----------------- | ---------------------------------------------------------- |
+| Baseline date     | June 25, 2026                                              |
+| Current price     | $335.66                                                    |
+| Base IV           | $350                                                       |
+| Expected price    | $356                                                       |
+| Margin of Safety  | 4.1%                                                       |
+| Core assumption 1 | Normalized EPS / owner earnings around $12.2–12.5          |
+| Core assumption 2 | Long-term owner-earnings growth around 8–9% fading to 3–4% |
+| Core assumption 3 | Discount rate 7.75%, terminal growth 3.0%                  |
+| 3M KPI            | Payments volume growth remains ≥8%                         |
+| 6M KPI            | Cross-border volume growth remains ≥10%                    |
+| 12M KPI           | Non-GAAP EPS grows low-teens or better                     |
+| Conviction        | High / 11.5 of 15                                          |
+| Revalidation date | After fiscal Q3 2026 earnings                              |
+| Top concern       | Regulation / fee compression                               |
+| Second concern    | Cross-border slowdown                                      |
+| Third concern     | Alternative payment rails                                  |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                     |
+| ----------------------------- | -------------------------------------------- |
+| Investment Attractiveness     | **High**                                     |
+| Current Price Attractiveness  | **Medium-High**                              |
+| Long-Term Holding Suitability | **Very High**                                |
+| Portfolio Suitability         | **High**                                     |
+| Conviction                    | **High**                                     |
+| Recommended Max Weight        | **5.0%**                                     |
+| Entry Strategy                | **2–3 tranche scale-in; better below ~$315** |
+| Execution Opinion             | **Scale-In / Hold**                          |
+
+**One-line summary:** Visa is a fortress-quality global payments compounder trading near fair value with a small positive margin of safety; RS2 supports **scale-in**, but not aggressive lump-sum buying.
+
+**Next ticker in queue:** LLY.
+
+[1]: https://www.sec.gov/Archives/edgar/data/1403161/000140316126000077/q22026earningsrelease.htm "Document"
+[2]: https://www.reuters.com/business/visa-shares-climb-profit-beat-raised-forecast-ease-middle-east-jitters-2026-04-29/?utm_source=chatgpt.com "Visa shares climb as profit beat, raised forecast ease Middle East jitters"
+[3]: https://www.federalreserve.gov/newsevents/pressreleases/monetary20260617a.htm?utm_source=chatgpt.com "Federal Reserve issues FOMC statement"
+[4]: https://tradingeconomics.com/united-states/government-bond-yield?utm_source=chatgpt.com "US 10 Year Treasury Note Yield - Quote - Chart"
+[5]: https://annualreport.visa.com/financials/default.aspx "
+	Visa Inc. - Financials
+"
+[6]: https://s1.q4cdn.com/050606653/files/doc_financials/2025/q4/Visa-Inc-Fourth-Quarter-2025-Financial-Results-Presentation.pdf?utm_source=chatgpt.com "Fiscal Fourth Quarter 2025 Financial Results"
+[7]: https://shortsqueeze.com/shortinterest/stock/V.htm "V - Short Squeeze Stock Short Interest for Visa Incorporated"

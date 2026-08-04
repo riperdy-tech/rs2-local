@@ -1,0 +1,11 @@
+{
+  "_comment": "API-LLM backend for RS2 (run_rs2.py --api). Any OpenAI-compatible /chat/completions endpoint works: OpenRouter (any model incl. GPT/Claude/DeepSeek/Qwen), OpenAI, DeepSeek, Groq, Together, xAI. Put the key in RS2 Local/.secrets.json under the name in api_key_name — never in this file.",
+  "base_url": "https://api.deepseek.com/v1",
+  "model": "deepseek-v4-pro",
+  "api_key_name": "LLM_API_KEY",
+  "temperature": 0.4,
+  "max_tokens": 8192,
+  "_max_tokens_note": "per-stage output cap; run_rs2 overrides to 16384 for the final 13-section report",
+  "extra_headers": {},
+  "_extra_headers_note": "OpenRouter optionally wants HTTP-Referer/X-Title; harmless to leave empty"
+}

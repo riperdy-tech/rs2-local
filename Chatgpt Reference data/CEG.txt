@@ -1,0 +1,444 @@
+Proceeding with **#22 CEG** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #22 — Constellation Energy / CEG
+
+## Top-Line Execution Summary
+
+| Item                              |                                                                Result |
+| --------------------------------- | --------------------------------------------------------------------: |
+| Current Price / T0                |                                                **$268.69** `[Actual]` |
+| Market Cap                        |                                                **$97.05B** `[Actual]` |
+| Reported P/E                      |                                                  **26.7x** `[Actual]` |
+| 2026 Adjusted Operating EPS Guide |                                          **$11.00–$12.00** `[Actual]` |
+| Forward Adjusted P/E              |                                               **~23.4x** `[Estimate]` |
+| Base Intrinsic Value              |                                           **$290/share** `[Estimate]` |
+| Expected Price                    |                                           **$295/share** `[Estimate]` |
+| Margin of Safety vs Base IV       |                                                 **7.3%** `[Estimate]` |
+| 50% CI                            |                                            **$235–$335** `[Estimate]` |
+| 80% CI                            |                                            **$170–$430** `[Estimate]` |
+| Conviction                        |                              **Medium-High / 9.5 of 15** `[Estimate]` |
+| Recommended Max Weight            |                                                 **3.0%** `[Estimate]` |
+| Entry Strategy                    |                **Modest scale-in acceptable; better below ~$245–255** |
+| Execution Opinion                 | **Modest Buy / Scale-In, capped by power-price and integration risk** |
+
+**Core conclusion:** CEG is one of the cleanest public ways to own scarce U.S. nuclear capacity plus dispatchable power exposure in an AI/data-center power-demand cycle. The company is high quality, but this is not a regulated utility: earnings are exposed to power prices, hedging, capacity markets, policy, nuclear operations, and Calpine integration. At **~23x 2026 adjusted EPS**, RS2 sees a **moderate positive setup**, not a huge margin of safety.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Constellation Energy / CEG
+**Baseline Date:** June 26, 2026
+**T0:** current price **$268.69**, market cap **$97.05B**, P/E **26.66x** `[Actual]`.
+**T-1:** latest reported financials are Q1 2026. CEG reported Q1 GAAP EPS of **$4.49**, adjusted operating EPS of **$2.74**, and affirmed full-year 2026 adjusted operating EPS guidance of **$11.00–$12.00**. ([SEC][1])
+**Tpf:** current price reflects the completed Calpine acquisition, rising AI/data-center power demand, higher PJM/NYISO power and capacity prices, and new long-term clean-power deals such as the 15-year Walmart nuclear agreement reported this week. ([Constellation][2])
+
+**Archetype:** **B/C hybrid — scarce power infrastructure compounder + merchant power cyclical**
+**Valuation Engine:** **Engine 2 / Engine 3 hybrid:** cycle-adjusted power valuation plus scarce-asset platform overlay.
+
+**Why this engine:** CEG is not a normal regulated utility like NEE. It owns merchant nuclear, gas, geothermal, hydro, renewables, and retail/customer platforms, so valuation must normalize power prices and capacity prices while separately valuing AI/data-center clean-power optionality.
+
+---
+
+## Section 1. Macro Context
+
+CEG benefits from three strong macro forces: electricity demand growth, clean/reliable-power scarcity, and AI/data-center load growth. Reuters reported that North American data-center power needs are projected to rise from **31 GW in 2025 to 66 GW in 2027**, which explains why power assets have become strategic infrastructure. ([Reuters][3])
+
+The offset is that CEG is more exposed to market power prices than a regulated utility. Q1 reference prices show why earnings can swing: PJM West power rose to **$97.16/MWh** from **$53.69/MWh**, NYISO Central rose to **$112.23/MWh** from **$75.31/MWh**, and PJM capacity prices rose sharply versus the prior year. ([SEC][1])
+
+**Macro alignment:** **Positive, but volatile.** CEG is a direct beneficiary of U.S. power scarcity, but the stock can derate if power prices, capacity prices, or policy support normalize.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                        |                RS2 View |
+| ----------------------------------------------------- | ----------------------: |
+| 5Y survival for largest U.S. nuclear / power producer |   **>95%** `[Estimate]` |
+| Sustaining high nuclear capacity factor               | **70–85%** `[Estimate]` |
+| Sustaining >15% EPS growth through 2029               | **45–60%** `[Estimate]` |
+| Calpine integration delivering expected value         | **55–70%** `[Estimate]` |
+| Power-price / capacity-market upside persisting       | **45–60%** `[Estimate]` |
+| Regulatory intervention against power-price upside    | **25–40%** `[Estimate]` |
+
+The base-rate adjustment is positive because CEG controls scarce existing nuclear and dispatchable capacity, but RS2 does not treat the current power market as permanently protected from political or regulatory pushback.
+
+---
+
+## Section 2. Business Quality
+
+Constellation is the largest U.S. nuclear operator and, after Calpine, one of the largest private-sector power producers. The company says its combined fleet has **55 GW** of capacity across nuclear, natural gas, oil, geothermal, hydro, wind, and solar, enough to power the equivalent of **27 million homes**, while serving about **2.5 million customer accounts**, including **80% of the Fortune 100**. ([SEC][1])
+
+### Moat Score
+
+| Moat Type                              |        Score |
+| -------------------------------------- | -----------: |
+| Scarce nuclear fleet                   |          3/3 |
+| Operating expertise / reliability      |       2.75/3 |
+| Customer platform                      |        2.5/3 |
+| Dispatchable gas / Calpine optionality |          2/3 |
+| Regulatory / permitting barriers       |          3/3 |
+| Cost advantage / nuclear PTC support   |        2.5/3 |
+| AI/data-center clean-power optionality |        2.5/3 |
+| **Total**                              | **18.25/21** |
+
+**Moat direction:** **Widening.** Existing nuclear and dispatchable power assets are becoming more valuable as load growth accelerates and new firm clean power remains difficult to build quickly.
+
+### Financial Health
+
+| Metric                                                 |                    Result |
+| ------------------------------------------------------ | ------------------------: |
+| FY25 GAAP EPS                                          |      **$7.40** `[Actual]` |
+| FY25 adjusted operating EPS                            |      **$9.39** `[Actual]` |
+| Q1 2026 revenue                                        |   **$11.122B** `[Actual]` |
+| Q1 2026 GAAP net income to common                      |    **$1.590B** `[Actual]` |
+| Q1 2026 adjusted operating earnings                    |      **$972M** `[Actual]` |
+| Q1 2026 adjusted operating EPS                         |      **$2.74** `[Actual]` |
+| Q1 2026 operating cash flow                            |      **$425M** `[Actual]` |
+| Q1 2026 capex                                          |    **$1.275B** `[Actual]` |
+| Q1 2026 cash + restricted cash                         |    **$1.171B** `[Actual]` |
+| Q1 2026 short borrowings + long-term debt/current debt | **~$22.47B** `[Estimate]` |
+| Q1 2026 total assets                                   |   **$96.911B** `[Actual]` |
+
+FY25 adjusted EPS was **$9.39**, up from **$8.67** in 2024. ([Constellation][4]) Q1 2026 operating revenue, net income, and balance-sheet data come from the Q1 release tables. ([SEC][1])
+
+**Financial health judgment:** **Good but more leveraged post-Calpine.** The asset base is stronger, but debt and integration complexity are now materially higher.
+
+### Operating Quality
+
+| Metric                                   |                                    Result |
+| ---------------------------------------- | ----------------------------------------: |
+| Q1 nuclear generation                    |                 **44,666 GWh** `[Actual]` |
+| Q1 nuclear capacity factor               | **92.3%**, excluding Salem/STP `[Actual]` |
+| Q1 refueling outage days                 |                         **99** `[Actual]` |
+| Q1 non-refueling outage days             |                          **0** `[Actual]` |
+| Q1 gas/oil/renewables generation         |                 **32,061 GWh** `[Actual]` |
+| Q1 Calpine gas/oil/renewables generation |                 **26,497 GWh** `[Actual]` |
+
+The nuclear fleet produced **44,666 GWh** in Q1, with **zero non-refueling outage days** for operated sites. ([SEC][1]) That operational reliability is a core part of the investment thesis.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+CEG’s GAAP earnings can be noisy because of hedges, decommissioning trust accounting, commodity contract amortization, and acquisition/integration costs. Q1 GAAP net income was **$1.590B**, but adjusted operating earnings were **$972M**, or **$2.74/share**, after major adjustments including fair-value gains, decommissioning-related activity, amortization of acquired commodity contracts, and Calpine merger costs. ([SEC][1])
+
+| Item                              |                       Result |
+| --------------------------------- | ---------------------------: |
+| Q1 GAAP EPS                       |         **$4.49** `[Actual]` |
+| Q1 adjusted operating EPS         |         **$2.74** `[Actual]` |
+| 2026 adjusted operating EPS guide | **$11.00–$12.00** `[Actual]` |
+| Forward adjusted P/E              |      **~23.4x** `[Estimate]` |
+| Q1 diluted shares                 |          **354M** `[Actual]` |
+| Q1 dividends paid                 |         **$155M** `[Actual]` |
+| Quarterly dividend declared       | **$0.4265/share** `[Actual]` |
+
+The company also completed the Calpine deal in January 2026, creating the nation’s largest electricity producer and combining CEG’s nuclear fleet with Calpine’s gas and geothermal assets. ([Constellation][2])
+
+**Adjusted financials judgment:** Use adjusted operating EPS and free-cash-flow-before-growth logic, not raw GAAP earnings alone.
+
+---
+
+## Section 3. Valuation — Cycle / Scarcity Hybrid
+
+### EPS Multiple Framework
+
+| Scenario | Normalized EPS | Fair Multiple | Value / Share |
+| -------- | -------------: | ------------: | ------------: |
+| Bear     |          $9.50 |           18x |      **$170** |
+| Base     |         $13.20 |           22x |      **$290** |
+| Bull     |         $16.50 |           26x |      **$430** |
+
+**Base IV:** **$290/share** `[Estimate]`
+**Current price:** **$268.69/share** `[Actual]`
+**Margin of Safety:** **7.3%** `[Estimate]`
+
+**Why base is above current:** CEG has scarce nuclear assets, Calpine accretion, clean-power contracting upside, and strong AI/data-center demand. The original Calpine transaction materials said the deal was expected to add at least **$2/share** of EPS annually through 2029 and more than **$2B** of annual free cash flow before growth. ([SEC][5])
+
+**Why base is not much higher:** merchant power prices and capacity prices are cyclical/political; Calpine increases gas exposure and debt; and CEG is no longer undiscovered.
+
+### Cross-Check
+
+| Metric               |                   Result |
+| -------------------- | -----------------------: |
+| Reported P/E         |     **26.7x** `[Actual]` |
+| Forward adjusted P/E |  **~23.4x** `[Estimate]` |
+| Market cap           |   **$97.05B** `[Actual]` |
+| Net debt estimate    | **~$21.3B** `[Estimate]` |
+| EV estimate          |  **~$118B** `[Estimate]` |
+| Dividend yield       |   **~0.6%** `[Estimate]` |
+
+This is not an income stock. The return case depends on EPS growth, merchant/contracted power upside, buybacks, and clean-power scarcity.
+
+### Reverse DCF / Reverse Expectations
+
+At **$268.69**, the market is roughly assuming CEG can maintain **low-to-mid-$11 EPS** in 2026, compound meaningfully after Calpine, and avoid severe regulatory/power-price compression. `[Estimate]`
+
+**Judgment:** **Plausible, not conservative.** The current price does not require an extreme bull case, but it does require the power-scarcity thesis to remain intact.
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:** NEE, CEG, Vistra, NRG, Duke, Southern, Entergy, IPPs, private infrastructure funds, hyperscaler-backed power developers, and gas turbine suppliers are all competing to serve data-center load. The bottleneck is not only power generation; it is interconnection, transmission, permits, fuel, dispatchability, reliability, and contract structure.
+
+**Reflexivity:** Higher power prices make CEG’s assets more valuable and can fund reinvestment, uprates, debt reduction, and buybacks. But if customers or regulators perceive excessive profits, political intervention risk rises.
+
+**Customer behavior:** Hyperscalers and large corporates increasingly want firm, clean, 24/7 power rather than generic renewable certificates. That is exactly where CEG’s nuclear fleet is most valuable.
+
+**Network dynamics:** No classic software network effect, but CEG’s customer platform matters. The company’s Q1 release notes a **380 MW** agreement with CyrusOne at Freestone and an exclusive Phase 2 opportunity for an additional **380 MW**. ([SEC][1])
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                                            |
+| -------- | ----------: | ------------: | ------------------------------------------------------------------------------------------- |
+| Bear     |         25% |      **$170** | Power prices normalize, regulatory pressure rises, Calpine integration disappoints          |
+| Base     |         50% |      **$290** | EPS grows through Calpine, nuclear PTC, capacity markets, and contracted clean-power demand |
+| Bull     |         25% |      **$430** | AI/data-center demand drives premium nuclear/gas contracts and scarcity multiple expands    |
+
+**Expected Price:**
+25% × $170 + 50% × $290 + 25% × $430 = **$295/share** `[Estimate]`
+
+**50% CI:** **$235–$335**
+**80% CI:** **$170–$430**
+**MoS:** **7.3%**
+**MoS Judgment:** **Moderate, not large.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **3–5 years** `[Estimate]`
+**My horizon:** **5–7 years**
+**Spread:** **Modestly positive**
+
+The market understands the AI power story, but may still underprice the scarcity of already-operating nuclear capacity and dispatchable gas capacity over a decade-long load-growth cycle. That said, CEG has already rerated heavily since the original nuclear/data-center thesis became mainstream.
+
+**Horizon arbitrage judgment:** **Moderate.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |      Score |
+| ------------------------ | ---------: |
+| Business quality         |     2.75/3 |
+| Valuation attractiveness |     1.75/3 |
+| Macro alignment          |      2.5/3 |
+| Thesis clarity           |     1.75/3 |
+| Execution trackability   |     0.75/3 |
+| **Total**                | **9.5/15** |
+
+**Conviction Tier:** **Medium-High**
+**Layer 5 preliminary weight:** **4–6%**
+**Adjustments:**
+
+* Merchant power volatility: -1.0%
+* Calpine integration/debt: -0.75%
+* Regulatory/political risk: -0.75%
+* AI/data-center scarcity tailwind: +0.5%
+
+**Layer 5 recommended max weight:** **3.0%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item              |                             Result |
+| ----------------- | ---------------------------------: |
+| Short interest    |       **11.38M shares** `[Actual]` |
+| Short % float     |               **3.18%** `[Actual]` |
+| Days to cover     |                 **2.3** `[Actual]` |
+| Put/call OI ratio |                **1.34** `[Actual]` |
+| Squeeze risk      |                    Low-to-moderate |
+| Crowding score    | **10/15 Medium-High** `[Estimate]` |
+
+Short interest is not extreme, but it is higher than many mega-cap compounders: MarketBeat reports **11.38M shares short**, **3.18%** of float, and **2.3 days to cover** as of June 15. ([MarketBeat][6]) Options positioning is cautious, with Fintel showing an open-interest put/call ratio of **1.34**. ([Fintel][7])
+
+**Behavioral judgment:** Mildly contrarian after the pullback, but CEG is still a crowded power-scarcity name.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** AI/data-center power infrastructure / nuclear scarcity / dispatchable generation exposure.
+**Expected 3–5Y annualized return:** **8–12%** `[Estimate]`, but highly dependent on power markets and execution.
+**Overlap:** High with NEE and OKLO through the electricity/nuclear theme; moderate with AMT/data-center infrastructure; low with PG/V/LLY; moderate with energy names through commodity/power sensitivity.
+
+**Portfolio fit judgment:** **Good thematic exposure, but concentration must be controlled.** CEG + NEE + OKLO would create a very large bet on the power-demand/nuclear theme.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                                        |                 Value |
+| -------------------------------------------- | --------------------: |
+| Probability of base-or-better                |  **75%** `[Estimate]` |
+| Weighted upside from current                 | **~34%** `[Estimate]` |
+| Bear downside from current                   | **~37%** `[Estimate]` |
+| Practical fractional Kelly                   | **3–5%** `[Estimate]` |
+| RS2 merchant-power / theme-concentration cap |              **3.0%** |
+
+**Final recommended max weight:** **3.0%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Power-price and capacity-market normalization:** Q1 power and capacity prices were very strong in PJM and NYISO; if these normalize, earnings expectations can compress. ([SEC][1])
+2. **Calpine integration / leverage risk:** Calpine materially expands gas exposure, debt, and operating complexity. The acquisition materials expected investment-grade ratings and a return to target credit metrics by year-end 2027, but that requires execution. ([SEC][5])
+3. **Regulatory/political risk:** if data centers, power prices, or capacity-market reforms become politically sensitive, CEG’s scarcity economics could be capped.
+
+### Top 3 Catalysts
+
+1. Additional long-term nuclear or clean-firm-power PPAs with hyperscalers, retailers, or industrial customers.
+2. Calpine integration proves accretive and helps serve data-center load with firm power.
+3. Nuclear uprates, license renewals, and the Crane restart advance on schedule.
+
+**Highest-impact bear scenario:** CEG remains operationally excellent, but power-market regulation and lower forward prices drive a multiple reset from “scarce AI-power compounder” toward “merchant IPP.”
+
+---
+
+## Section 7.5. Correlation Risk
+
+CEG’s risk factors are electricity prices, capacity markets, nuclear operations, gas spreads, regulatory policy, AI/data-center load growth, and power-sector investor sentiment.
+
+**Stress correlation estimate:**
+With NEE/utility power-demand names: **0.50–0.70** `[Estimate]`
+With OKLO/nuclear theme: **0.55–0.75** `[Estimate]`
+With AMT/data-center infrastructure: **0.35–0.55** `[Estimate]`
+With energy commodities: **0.35–0.55** `[Estimate]`
+With defensives like PG/LLY/V: **0.20–0.40** `[Estimate]`
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                       |     Warning Trigger |                Re-underwrite Trigger |
+| ------------------------- | ------------------: | -----------------------------------: |
+| 2026 adjusted EPS guide   |           below $11 |                         below $10.50 |
+| Nuclear capacity factor   |                <91% |                                 <89% |
+| Non-refueling outage days | meaningful increase |         recurring operational issues |
+| Calpine integration       |      synergy delays | debt/credit metrics miss 2027 target |
+| PJM/NYISO capacity prices |       sharp decline |    structural capacity-market reform |
+| Data-center PPAs          |     fewer new deals | pricing falls below scarcity premium |
+| Debt / credit metrics     |     rating pressure |                       downgrade risk |
+
+### Pre-Mortem
+
+1. **Wrong because power-market upside was politically capped.**
+   Early warning: regulators change capacity-market or co-location rules.
+   Response: lower multiple and bull probability.
+
+2. **Wrong because Calpine added too much complexity.**
+   Early warning: integration costs rise, debt metrics lag, gas fleet underperforms.
+   Response: reduce base IV and position cap.
+
+3. **Wrong because the AI power story was overpaid.**
+   Early warning: new PPAs price below expected premiums or hyperscalers slow commitments.
+   Response: lower terminal multiple.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. CEG is not a regulated utility; merchant power exposure makes earnings less predictable.
+2. The stock trades around **23x 2026 adjusted EPS**, so the market already prices in meaningful growth and scarcity value. ([SEC][1])
+3. Calpine increases debt, gas exposure, integration complexity, and exposure to spark spreads.
+4. Q1 operating cash flow was only **$425M** against **$1.275B** of capex, even though GAAP earnings were strong. ([SEC][1])
+5. Nuclear operations are high fixed-cost, high-consequence assets; unexpected outage risk is always material.
+6. Data-center load growth is real, but the market now widely recognizes it.
+7. If regulators cap co-location economics or capacity prices, the bull thesis weakens.
+
+### Long vs Short Logic Battle
+
+| Issue                 | Long Score | Short Score | Winner       |
+| --------------------- | ---------: | ----------: | ------------ |
+| Nuclear scarcity      |          3 |         0.5 | Long         |
+| AI/data-center demand |       2.75 |           1 | Long         |
+| Calpine strategic fit |       2.25 |        1.75 | Long         |
+| Valuation             |        1.5 |           2 | Slight Short |
+| Merchant price risk   |       1.25 |        2.75 | Short        |
+| Regulatory risk       |       1.25 |         2.5 | Short        |
+| Operating quality     |        2.5 |           1 | Long         |
+
+**Long score:** **14.5**
+**Short score:** **11.5**
+**Judgment:** Long thesis wins, but merchant/regulatory risk prevents a very-high conviction rating.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                       | Status                               |
+| -------------------------------- | ------------------------------------ |
+| Correct engine selected          | Pass — power-cycle / scarcity hybrid |
+| GAAP noise adjusted              | Pass                                 |
+| Adjusted EPS used                | Pass                                 |
+| Calpine integration included     | Pass                                 |
+| Power-price sensitivity included | Pass                                 |
+| Nuclear operations included      | Pass                                 |
+| AI/data-center upside included   | Pass                                 |
+| Regulatory risk included         | Pass                                 |
+| Position sizing included         | Pass                                 |
+| Red team included                | Pass                                 |
+| Pre-mortem included              | Pass                                 |
+
+**Model Reliability:** **Medium.** Business quality is high, but valuation is sensitive to policy, power prices, and long-term PPA economics.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                        |
+| ----------------- | ------------------------------------------------------------ |
+| Baseline date     | June 26, 2026                                                |
+| Current price     | $268.69                                                      |
+| Base IV           | $290                                                         |
+| Expected price    | $295                                                         |
+| Margin of Safety  | 7.3%                                                         |
+| Core assumption 1 | 2026 adjusted operating EPS around $11.50                    |
+| Core assumption 2 | Calpine adds durable EPS/FCF accretion                       |
+| Core assumption 3 | Nuclear clean-firm-power scarcity persists                   |
+| 3M KPI            | Q2 guide maintained or raised                                |
+| 6M KPI            | Calpine integration and debt plan on track                   |
+| 12M KPI           | More long-term data-center / corporate clean-power contracts |
+| Conviction        | Medium-High / 9.5 of 15                                      |
+| Top concern       | Merchant power-price risk                                    |
+| Second concern    | Regulatory intervention                                      |
+| Third concern     | Calpine integration / leverage                               |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                               |
+| ----------------------------- | ------------------------------------------------------ |
+| Investment Attractiveness     | **High business / Medium-High stock**                  |
+| Current Price Attractiveness  | **Medium-High**                                        |
+| Long-Term Holding Suitability | **Medium-High**                                        |
+| Portfolio Suitability         | **Good, but watch NEE/OKLO concentration**             |
+| Conviction                    | **Medium-High**                                        |
+| Recommended Max Weight        | **3.0%**                                               |
+| Entry Strategy                | **Modest scale-in acceptable; better below ~$245–255** |
+| Execution Opinion             | **Modest Buy / Scale-In**                              |
+
+**One-line summary:** CEG is a premium nuclear and dispatchable-power scarcity asset, but because the market already recognizes the AI power thesis and Calpine raises complexity, RS2 supports only a **modest scale-in**, capped at **3.0%**.
+
+**Next ticker in queue:** PLTR.
+
+[1]: https://www.sec.gov/Archives/edgar/data/1868275/000186827526000063/ceg-20260511991.htm "Document"
+[2]: https://www.constellationenergy.com/news/2026/01/constellation-completes-calpine-transaction-powering-americas-clean-energy-future.html "Constellation Completes Calpine Transaction, Powering America's Clean Energy Future"
+[3]: https://www.reuters.com/business/energy/data-center-investors-buy-up-power-developers-race-build--reeii-2026-06-22/?utm_source=chatgpt.com "Data center investors buy up power developers in race to build"
+[4]: https://www.constellationenergy.com/news/2026/02/constellation-reports-fourth-quarter-and-full-year-2025-results.html "Constellation Reports Fourth Quarter and Full Year 2025 Results"
+[5]: https://www.sec.gov/Archives/edgar/data/1868275/000186827525000006/ceg-202501108kxexh992.htm "ceg-202501108kxexh992"
+[6]: https://www.marketbeat.com/stocks/NASDAQ/CEG/short-interest/ "
+	Constellation Energy (CEG) Short Interest & Short Float | Updated Jun 2026
+"
+[7]: https://fintel.io/sopt/us/ceg "CEG / Constellation Energy Corporation - Put/Call Ratio, Options Sentiment, Unusual Options Activity"

@@ -1,0 +1,488 @@
+Proceeding with **#17 FCX** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #17 — Freeport-McMoRan / FCX
+
+## Top-Line Execution Summary
+
+| Item                            |                                                                         Result |
+| ------------------------------- | -----------------------------------------------------------------------------: |
+| Current Price / T0              |                                                          **$62.80** `[Actual]` |
+| Market Cap                      |                                                          **$90.7B** `[Actual]` |
+| Reported P/E                    |                                                           **30.8x** `[Actual]` |
+| 2026E Operating Cash Flow Guide |          **~$8.7B** at $6.00/lb copper, $4,500/oz gold, $25/lb moly `[Actual]` |
+| 2026E Capex Guide               |                                                          **~$4.3B** `[Actual]` |
+| Base Intrinsic Value            |                                                     **$64/share** `[Estimate]` |
+| Expected Price                  |                                                     **$70/share** `[Estimate]` |
+| Margin of Safety vs Base IV     |                                                          **1.9%** `[Estimate]` |
+| 50% CI                          |                                                       **$52–$82** `[Estimate]` |
+| 80% CI                          |                                                      **$38–$105** `[Estimate]` |
+| Conviction                      |                                       **Medium-High / 9.0 of 15** `[Estimate]` |
+| Recommended Max Weight          |                                                          **2.5%** `[Estimate]` |
+| Entry Strategy                  | **Hold / small scale-in only if copper exposure is needed; better below ~$55** |
+| Execution Opinion               |                        **Hold / selective small scale-in, not aggressive buy** |
+
+**Core conclusion:** FCX is a high-quality copper levered asset with powerful long-term electrification, grid, AI power, and supply-scarcity tailwinds. But copper is already around **$6/lb**, gold is around **$4,000/oz**, and Grasberg’s ramp-up has been delayed, so the stock has only a **thin base-case margin of safety** at $62.80. ([Trading Economics][1])
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Freeport-McMoRan / FCX
+**Baseline Date:** June 25–26, 2026
+**T0:** current price **$62.80**, market cap **$90.68B**, P/E **30.84x** `[Actual]`.
+**T-1:** latest reported results are Q1 2026. FCX reported net income attributable to common stock of **$881M**, or **$0.61/share**, adjusted net income of **$830M**, or **$0.57/share**, revenue of **$6.234B**, operating cash flow of **$1.495B**, capex of **$973M**, cash of **$3.737B**, and total debt of **$9.414B**. ([Q4cdn][2])
+**Tpf:** current price reflects strong copper/gold prices, lower-than-normal Grasberg production, revised 2026 guidance, and the market’s willingness to treat copper as a strategic electrification/AI-grid commodity. FCX’s 2026 sales guide is **3.1B lb copper**, **650K oz gold**, and **90M lb molybdenum**, lower than January’s **3.4B lb copper** and **0.8M oz gold** guide because of Grasberg ramp timing. ([Q4cdn][2])
+
+**Archetype:** **C/B hybrid — Commodity Cyclical + Strategic Copper Quality Compounder**
+**Valuation Engine:** **Engine 2 — Cycle-Adjusted Commodity Valuation**, with a strategic-resource quality overlay.
+
+**Why this engine:** FCX’s earnings are driven primarily by copper, gold, molybdenum, production volume, unit costs, capex, and political/operational risk. The company has high-quality, long-lived assets, but this is still a commodity producer; valuing FCX on one year’s earnings or one spot copper price would be misleading.
+
+---
+
+## Section 1. Macro Context
+
+Copper is currently near **$6.03/lb**, down from its June 2026 high but still about **19% higher YoY**; gold is around **$4,019/oz**, down from its January 2026 peak but still materially above year-ago levels. ([Trading Economics][1])
+
+| Macro Variable                   | FCX Impact                                             |
+| -------------------------------- | ------------------------------------------------------ |
+| Copper price near $6/lb          | Strong current cash-flow tailwind                      |
+| Gold near $4,000/oz              | Strong by-product credit tailwind, especially Grasberg |
+| Higher rates                     | Valuation headwind                                     |
+| AI/data-center power demand      | Structural copper demand tailwind                      |
+| China/global construction cycle  | Major cyclical risk                                    |
+| Indonesia/Peru/Chile/U.S. policy | Major operating and political risk                     |
+
+**Regime probabilities:**
+Goldilocks **20%**, Reflation **35%**, Stagflation **30%**, Recession **15%** `[Estimate]`.
+
+**FCX macro sensitivity score:**
+Interest rates **-0.5**; dollar **-1.0**; liquidity **-0.5**; economic cycle **+2.5**; commodity/copper **+3.0**; geopolitical/operational **-2.0**.
+
+**Macro alignment:** **Positive but fragile.** The copper/gold price backdrop is excellent, but spot prices are already high enough that valuation must be cycle-normalized.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                              |               Base Rate | FCX Adjustment                      |
+| ----------------------------------------------------------- | ----------------------: | ----------------------------------- |
+| 5Y survival for major diversified copper producer           |   **>90%** `[Estimate]` | FCX passes                          |
+| Copper producer maintaining premium valuation through cycle | **35–50%** `[Estimate]` | FCX: **50–60%** due copper scarcity |
+| Grasberg returning to full production by end-2027           | **50–65%** `[Estimate]` | FCX: **60–70%**, but not risk-free  |
+| Copper sustaining >$5/lb for 5Y                             | **35–50%** `[Estimate]` | Raised to **45–60%**                |
+| Major political/operational disruption within 5Y            | **20–35%** `[Estimate]` | Kept high                           |
+
+**Base-rate shock check:** FCX deserves a structural premium over a generic miner because copper supply is difficult to grow and demand is strategic. But RS2 does **not** allow valuing FCX as if $6/lb copper is permanently guaranteed.
+
+---
+
+## Section 2. Business Quality
+
+Freeport is one of the world’s largest publicly traded copper producers, with major assets in the U.S., South America, and Indonesia. Its portfolio includes Grasberg, one of the world’s largest copper and gold deposits, Morenci in Arizona, and Cerro Verde in Peru. ([Q4cdn][2])
+
+### Moat Score
+
+| Moat Type                      |     Score | Direction              |
+| ------------------------------ | --------: | ---------------------- |
+| Resource base / reserves       |       3/3 | Widening               |
+| Switching costs                |     0.5/3 | Weak                   |
+| Network effects                |       0/3 | None                   |
+| Cost advantage                 |     2.5/3 | Mixed                  |
+| Economies of scale             |       3/3 | Widening               |
+| Regulatory/permitting barriers |     2.5/3 | Stable                 |
+| Technical/geologic expertise   |     2.5/3 | Widening               |
+| **Total**                      | **14/21** | **Wide resource moat** |
+
+**Moat direction:** **Stable-to-widening.** FCX has a scarce copper asset base, long mine lives, organic growth options, and leaching/technology initiatives. The company says incremental copper from leaching initiatives was **214M lb in 2025** and is targeting about **300M lb in 2026**. ([Q4cdn][2])
+
+**Peter Lynch classification:** **Cyclical / Asset Play / Strategic Resource Compounder.**
+
+### Financial Health Scorecard
+
+| Metric                                  |                         Result |
+| --------------------------------------- | -----------------------------: |
+| FY25 revenue                            |        **$25.915B** `[Actual]` |
+| FY25 net income to common               |         **$2.204B** `[Actual]` |
+| FY25 adjusted net income                |         **$2.558B** `[Actual]` |
+| FY25 operating cash flow                |         **$5.610B** `[Actual]` |
+| FY25 capex                              |         **$4.494B** `[Actual]` |
+| Q1 2026 revenue                         |         **$6.234B** `[Actual]` |
+| Q1 2026 operating cash flow             |         **$1.495B** `[Actual]` |
+| Q1 2026 capex                           |           **$973M** `[Actual]` |
+| Q1 2026 copper sales                    |         **657M lb** `[Actual]` |
+| Q1 2026 gold sales                      |         **121K oz** `[Actual]` |
+| Q1 2026 realized copper price           |        **$5.78/lb** `[Actual]` |
+| Q1 2026 realized gold price             |       **$4,889/oz** `[Actual]` |
+| Q1 2026 consolidated unit net cash cost | **$1.91/lb copper** `[Actual]` |
+| Q1 cash                                 |         **$3.737B** `[Actual]` |
+| Q1 total debt                           |         **$9.414B** `[Actual]` |
+| Q1 net debt ex-PTFI downstream debt     |           **$2.4B** `[Actual]` |
+
+FY25 revenue, net income, operating cash flow, and capex are from FCX’s year-end release. ([Q4cdn][3]) Q1 production, sales, realized prices, unit costs, debt, and cash are from the Q1 release. ([Q4cdn][2])
+
+**Financial Health Judgment:** **Good.** Balance sheet risk is manageable; commodity and operating risk dominate.
+
+### Segment / Asset Quality
+
+| Area                 | RS2 Read                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| U.S. copper          | Long-lived, high strategic value, but higher unit costs                              |
+| South America        | Cerro Verde and El Abra provide scale; permitting and politics matter                |
+| Indonesia / Grasberg | World-class copper/gold asset; highest upside and highest operational/political risk |
+| Molybdenum           | Useful by-product / specialty exposure                                               |
+| Growth projects      | Bagdad, Safford/Lone Star, El Abra, leaching, Kucing Liar                            |
+
+FCX says normal-rate PTFI underground operations can produce about **1.7B lb copper** and **1.3M oz gold** annually and are among the lowest-cost operations globally, but Q1 2026 PTFI production was only **95M lb copper** and **92K oz gold** because of the prior mud-rush disruption. ([Q4cdn][2])
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                              |                  Result |
+| --------------------------------- | ----------------------: |
+| FY25 adjusted EPS                 |    **$1.77** `[Actual]` |
+| Q1 2026 adjusted EPS              |    **$0.57** `[Actual]` |
+| Annualized Q1 adjusted EPS        | **~$2.28** `[Estimate]` |
+| Finance-feed reported EPS         | **~$2.04** `[Estimate]` |
+| 2026E OCF guide                   |   **~$8.7B** `[Actual]` |
+| 2026E capex guide                 |   **~$4.3B** `[Actual]` |
+| 2026E implied FCF at guide prices | **~$4.4B** `[Estimate]` |
+| Market cap / 2026E implied FCF    | **~20.6x** `[Estimate]` |
+| EV / 2026E implied FCF            | **~21.8x** `[Estimate]` |
+
+FCX’s Q1 2026 guide assumes copper at **$6.00/lb**, gold at **$4,500/oz**, and molybdenum at **$25/lb** for the remainder of 2026; under those assumptions, operating cash flow is expected to approximate **$8.7B**, and capex is expected to approximate **$4.3B**. ([Q4cdn][2])
+
+**Adjusted financials judgment:** The stock is not cheap on near-term FCF despite high commodity prices. The long case depends on **volume recovery plus sustained copper strength**, not just today’s spot price.
+
+---
+
+## Section 3. Valuation — Engine 2 Cycle-Adjusted
+
+### Cycle Position
+
+| Variable            |                Current Reading | Judgment                      |
+| ------------------- | -----------------------------: | ----------------------------- |
+| Copper              |                  **~$6.03/lb** | High / near super-cycle level |
+| Gold                |                 **~$4,019/oz** | High                          |
+| Grasberg            |         recovering but delayed | Key swing factor              |
+| Capex               |                **$4.3B 2026E** | Elevated but strategic        |
+| Net debt            | low ex-downstream project debt | Balance-sheet support         |
+| Shareholder returns |           modest current yield | Secondary driver              |
+
+FCX has high operating leverage to copper: the company estimates 2026 operating cash flow changes by about **$220M** for each **$0.10/lb** copper price change for the remainder of 2026. ([Q4cdn][2])
+
+### Cycle-Normalized Valuation
+
+| Scenario | Copper / Operating Backdrop                         | Normalized FCF | Fair EV/FCF | Equity Value / Share |
+| -------- | --------------------------------------------------- | -------------: | ----------: | -------------------: |
+| Bear     | $4.00–4.25 copper, weak Grasberg, lower gold        |      $2.0–2.5B |         16x |              **$38** |
+| Base     | $4.75–5.25 copper, Grasberg recovery by 2027–28     |      $4.8–5.4B |         18x |              **$64** |
+| Bull     | $6.00+ copper, full Grasberg recovery, tight supply |      $7.5–8.5B |         18x |             **$105** |
+
+**Base IV:** **$64/share** `[Estimate]`
+**Current price:** **$62.80/share** `[Actual]`
+**Margin of Safety:** **1.9%** `[Estimate]`
+
+### Multiple Cross-Check
+
+| Metric                                 |                                         Result |
+| -------------------------------------- | ---------------------------------------------: |
+| Reported P/E                           |                           **30.8x** `[Actual]` |
+| Annualized Q1 adjusted EPS multiple    |                        **~27.5x** `[Estimate]` |
+| EV / 2026E implied FCF at guide prices |                        **~21.8x** `[Estimate]` |
+| Market cap / 2026E implied FCF         |                        **~20.6x** `[Estimate]` |
+| Dividend yield                         | **~1% base + variable potential** `[Estimate]` |
+
+**Multiple judgment:** FCX is **not expensive if copper stays structurally above $5.50–6.00/lb and Grasberg normalizes**, but it is not a bargain if copper mean-reverts toward $4.50–5.00/lb.
+
+### Reverse DCF / Reverse Commodity Check
+
+At **$62.80**, the market is roughly pricing FCX as if copper stays structurally elevated, Grasberg recovers, and FCX converts its organic project portfolio into growth without major cost overruns. `[Estimate]`
+
+**Judgment:** Plausible, but not conservative.
+
+### Tornado Sensitivity
+
+| Variable                    | -1σ Impact | +1σ Impact |
+| --------------------------- | ---------: | ---------: |
+| Copper price                |       -35% |       +45% |
+| Grasberg ramp timing        |       -25% |       +30% |
+| Gold by-product credits     |       -15% |       +20% |
+| Capex intensity             |       -12% |       +10% |
+| Political / permitting risk |       -18% |        +8% |
+
+**Top 3 thesis KPIs:**
+
+1. Copper price / inventories
+2. Grasberg production ramp
+3. Unit net cash costs and capex discipline
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:** New copper supply is slow to permit and build, which supports long-term pricing. But high prices can still incentivize brownfield expansions, secondary supply, substitution, and efficiency.
+
+**Reflexivity:** High copper prices improve cash flow, support project sanctioning, and can lower perceived balance-sheet risk. The negative reflexive loop is also real: if copper falls, FCF drops quickly, project economics weaken, and investors can re-rate the stock as a cyclical miner again.
+
+**Customer behavior:** Copper demand is linked to grid investment, EVs, AI/data-center power, industrial electrification, China, and construction. The secular demand case is strong, but demand is not immune to recession or China weakness.
+
+**Network dynamics:** No network effect. FCX’s moat is physical scarcity, permitting barriers, geology, mine engineering, and operating know-how.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                         |
+| -------- | ----------: | ------------: | ------------------------------------------------------------------------ |
+| Bear     |         25% |       **$38** | Copper falls near $4/lb; Grasberg ramp slips; capex remains high         |
+| Base     |         50% |       **$64** | Copper averages $4.75–5.25; Grasberg recovers by 2027–28                 |
+| Bull     |         25% |      **$105** | Copper stays near/above $6; Grasberg normalizes; supply deficit persists |
+
+**Expected Price:**
+25% × $38 + 50% × $64 + 25% × $105 = **$67.75/share** `[Estimate]`
+With strategic copper scarcity premium: **$70/share** `[Estimate]`.
+
+**50% CI:** **$52–$82** `[Estimate]`
+**80% CI:** **$38–$105** `[Estimate]`
+**MoS vs Base IV:** **1.9%**
+**MoS Judgment:** **Thin / almost fair value.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **3–5 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **Minimal**
+
+The market already understands the copper scarcity story. The remaining arbitrage is not hidden demand; it is execution: whether FCX can restore Grasberg, expand U.S./South America output, and benefit from high copper prices without capex/cost leakage.
+
+**Horizon arbitrage judgment:** **Limited.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |      Score |
+| ------------------------ | ---------: |
+| Business quality         |     2.25/3 |
+| Valuation attractiveness |      1.5/3 |
+| Macro alignment          |     2.25/3 |
+| Thesis clarity           |     1.75/3 |
+| Execution trackability   |     1.25/3 |
+| **Total**                | **9.0/15** |
+
+**Conviction Tier:** **Medium-High**
+**Layer 5 preliminary weight:** **3–5%**
+**Adjustments:**
+
+* Commodity cyclicality: -1.0%
+* Grasberg operational risk: -0.75%
+* Indonesia/Peru/Chile political risk: -0.5%
+* Strategic copper scarcity: +0.5%
+
+**Layer 5 recommended max weight:** **2.5%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                    |                       Result |
+| ----------------------- | ---------------------------: |
+| Short interest          | **30.99M shares** `[Actual]` |
+| Short % float           |         **2.17%** `[Actual]` |
+| Days to cover           |           **2.1** `[Actual]` |
+| OI put/call ratio       |          **0.98** `[Actual]` |
+| Institutional ownership |      **~94.2%** `[Estimate]` |
+| Squeeze risk            |                          Low |
+| Crowding score          | **9/15 Medium** `[Estimate]` |
+
+Short interest is not elevated enough to create a squeeze thesis: MarketBeat reports **30.99M** shares short, **2.17%** of float, and **2.1** days to cover as of June 15, 2026. ([마켓비트][4]) Options positioning is neutral, with Fintel showing an open-interest put/call ratio of **0.98**. ([Fintel][5]) Institutional ownership is high at about **94%**, which means FCX can be sensitive to institutional commodity-factor flows. ([Fintel][6])
+
+**Behavioral judgment:** Neutral. This is not a hated contrarian stock; the market is already paying attention to copper scarcity.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Strategic copper / electrification / AI-grid infrastructure commodity exposure.
+**Expected 3–5Y annualized return:** **6–10%** `[Estimate]`, but highly path-dependent on copper and Grasberg.
+**Overlap:** High with XOM/FANG through commodity cyclicality; moderate with CAT/DE through industrial cycle; partial thematic overlap with CEG/OKLO/data-center power; low with PG/V/LLY defensives.
+
+**Portfolio fit judgment:** **Good thematic diversifier versus software/financials, but not a defensive diversifier.** If the portfolio already has XOM + FANG + CAT + DE, FCX adds more cyclical commodity beta.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                                |                 Value |
+| ------------------------------------ | --------------------: |
+| Probability of base-or-better        |  **75%** `[Estimate]` |
+| Weighted upside from current         | **~33%** `[Estimate]` |
+| Bear downside from current           | **~39%** `[Estimate]` |
+| Practical fractional Kelly           | **3–5%** `[Estimate]` |
+| RS2 cyclicality / political-risk cap |              **2.5%** |
+
+Because FCX has high commodity and operational risk, RS2 caps the final allocation below a pure Kelly output.
+
+**Final recommended max weight:** **2.5%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Copper price downside:** FCX has very high sensitivity to copper; 2026 OCF changes by about **$220M** for each **$0.10/lb** copper move for the rest of the year. ([Q4cdn][2])
+2. **Grasberg ramp risk:** FCX now expects Grasberg Block Cave production to be about **65% of capacity** in 2H 2026, **80% by mid-2027**, and approach full capacity by end-2027, lower than prior expectations. ([Q4cdn][2])
+3. **Political / social / regulatory risk:** FCX explicitly highlights political/social risks in Indonesia, Peru, relations with local communities and Indigenous Peoples, operational underground-mining risk, and mine-plan delays. ([Q4cdn][2])
+
+### Top 3 Catalysts
+
+1. Grasberg ramp progresses faster than the revised plan.
+2. Copper remains above **$5.50–6.00/lb** while capex stays controlled.
+3. Bagdad, Safford/Lone Star, El Abra, leaching initiatives, and Kucing Liar add credible long-term production growth. FCX says El Abra could add over **700M lb/year** of copper production, and Kucing Liar reserves are estimated around **8B lb copper** and **8M oz gold**, with initial production expected around 2030. ([Q4cdn][2])
+
+**Highest-impact bear scenario:** Copper falls while Grasberg remains delayed and FCX continues spending heavily on growth projects, compressing FCF and forcing the stock to trade like a high-capex cyclical miner again.
+
+---
+
+## Section 7.5. Correlation Risk
+
+FCX’s main risk factors are copper, China/global industrial activity, mining cost inflation, political risk, and Grasberg execution. It is not a clean diversifier against XOM/FANG/CAT/DE because all can suffer in a global industrial downturn.
+
+**Stress correlation estimate:**
+With energy/materials cyclicals: **0.65–0.85** `[Estimate]`
+With CAT/DE industrial cyclicals: **0.55–0.75** `[Estimate]`
+With AI/semiconductor names: **0.35–0.55** `[Estimate]`
+With PG/V/LLY defensives: **0.20–0.40** `[Estimate]`
+
+**True diversification judgment:** **Medium.** FCX diversifies sector labels but not global-cycle risk.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                    |              Warning Trigger |                Re-underwrite Trigger |
+| ---------------------- | ---------------------------: | -----------------------------------: |
+| Copper price           |                    <$5.25/lb |            <$4.75/lb for 2+ quarters |
+| Grasberg ramp          |      misses 65% 2H 2026 path | full-capacity path slips beyond 2027 |
+| Unit net cash cost     |                    >$2.10/lb |                  >$2.35/lb sustained |
+| 2026 OCF               |                    below $8B |                            below $7B |
+| Capex                  |                       >$4.6B |           >$5B without volume growth |
+| Net debt ex-downstream |                         >$4B |                                 >$5B |
+| Political risk         | delay in IUPK / terms worsen |    major operating-rights impairment |
+
+### Pre-Mortem
+
+1. **Wrong because copper was near a cyclical peak.**
+   Early warning: copper breaks below $5.25/lb and inventories rise.
+   Response: reduce IV toward $50–55.
+
+2. **Wrong because Grasberg ramp takes longer.**
+   Early warning: FCX delays the 80% mid-2027 ramp milestone.
+   Response: cut 2027–28 FCF and reduce position.
+
+3. **Wrong because capex inflation consumes the copper upside.**
+   Early warning: capex moves above $5B without production growth.
+   Response: reduce FCF multiple and expected price.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. FCX trades at **~30.8x reported earnings**, which is not cheap for a cyclical miner.
+2. Copper is already near **$6/lb**, so much of the bull commodity story is visible and partly priced. ([Trading Economics][1])
+3. Q1 production was weak versus last year: consolidated copper production fell to **662M lb** from **868M lb**, and gold production fell to **97K oz** from **287K oz**. ([Q4cdn][2])
+4. Grasberg’s recovery path was revised down, with 2H 2026 production now expected around **65% of capacity** rather than the prior **85%** expectation. ([Q4cdn][2])
+5. 2026 capex of **$4.3B** absorbs about half of guided operating cash flow even under strong commodity assumptions. ([Q4cdn][2])
+6. Political and operational risk in Indonesia and Peru is real, not theoretical. ([Q4cdn][2])
+7. If copper mean-reverts, FCX can fall even if the long-term electrification thesis remains intact.
+
+### Long vs Short Logic Battle
+
+| Issue                    | Long Score | Short Score | Winner |
+| ------------------------ | ---------: | ----------: | ------ |
+| Copper scarcity / demand |          3 |           1 | Long   |
+| Asset quality            |          3 |           1 | Long   |
+| Grasberg long-term value |        2.5 |         1.5 | Long   |
+| Current valuation        |       1.25 |        2.25 | Short  |
+| Operational risk         |       1.25 |        2.75 | Short  |
+| Political risk           |       1.25 |         2.5 | Short  |
+| Balance sheet            |        2.5 |           1 | Long   |
+
+**Long score:** **14.75**
+**Short score:** **12.0**
+**Judgment:** Long thesis wins, but not by enough to justify an aggressive buy.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                                 | Status                                    |
+| ------------------------------------------ | ----------------------------------------- |
+| Correct engine selected                    | Pass — cycle-adjusted commodity valuation |
+| DCF-only conclusion avoided                | Pass                                      |
+| Spot copper price not blindly extrapolated | Pass                                      |
+| Grasberg ramp risk included                | Pass                                      |
+| Capex and FCF conversion included          | Pass                                      |
+| Political/resource risk included           | Pass                                      |
+| Position sizing included                   | Pass                                      |
+| Monitoring KPIs included                   | Pass                                      |
+| Red team included                          | Pass                                      |
+| Pre-mortem included                        | Pass                                      |
+| Recalculation required                     | No                                        |
+
+**Model Reliability:** **Medium.** The valuation is highly sensitive to copper price and Grasberg execution.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                   |
+| ----------------- | ------------------------------------------------------- |
+| Baseline date     | June 25–26, 2026                                        |
+| Current price     | $62.80                                                  |
+| Base IV           | $64                                                     |
+| Expected price    | $70                                                     |
+| Margin of Safety  | 1.9%                                                    |
+| Core assumption 1 | Copper normalizes around $4.75–5.25/lb in base case     |
+| Core assumption 2 | Grasberg approaches full capacity by end-2027           |
+| Core assumption 3 | FCF normalizes around $5B post-ramp                     |
+| 3M KPI            | Grasberg ramp remains on revised plan                   |
+| 6M KPI            | Copper stays above $5.25/lb and costs remain controlled |
+| 12M KPI           | 2027 volume outlook improves                            |
+| Conviction        | Medium-High / 9.0 of 15                                 |
+| Top concern       | Copper price already elevated                           |
+| Second concern    | Grasberg ramp risk                                      |
+| Third concern     | Political/operational risk                              |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| Investment Attractiveness     | **Medium-High**                                                                |
+| Current Price Attractiveness  | **Medium**                                                                     |
+| Long-Term Holding Suitability | **Medium-High for copper exposure**                                            |
+| Portfolio Suitability         | **Medium; watch commodity/cyclical overlap**                                   |
+| Conviction                    | **Medium-High**                                                                |
+| Recommended Max Weight        | **2.5%**                                                                       |
+| Entry Strategy                | **Hold / small scale-in only if copper exposure is needed; better below ~$55** |
+| Execution Opinion             | **Hold / selective small scale-in, not aggressive buy**                        |
+
+**One-line summary:** FCX is one of the cleanest large-cap copper exposure vehicles, but at **$62.80** with copper already near **$6/lb** and Grasberg still ramping back, RS2 sees only a **thin margin of safety**.
+
+**Next ticker in queue:** LIN.
+
+[1]: https://tradingeconomics.com/commodity/copper?utm_source=chatgpt.com "Copper - Price - Chart - Historical Data - News"
+[2]: https://s22.q4cdn.com/529358580/files/doc_news/2026/FCX_260423.pdf "1Q 2026 Exhibit 99.1"
+[3]: https://s22.q4cdn.com/529358580/files/doc_news/2026/FCX_260122.pdf "4Q 2025 Exhibit 99.1"
+[4]: https://www.marketbeat.com/stocks/NYSE/FCX/short-interest/?utm_source=chatgpt.com "Freeport-McMoRan (FCX) Short Interest & Short Float"
+[5]: https://fintel.io/sopt/us/fcx "FCX / Freeport-McMoRan Inc. - Put/Call Ratio, Options Sentiment, Unusual Options Activity"
+[6]: https://fintel.io/so/us/fcx?utm_source=chatgpt.com "FCX - Freeport-McMoRan Inc. Stock"

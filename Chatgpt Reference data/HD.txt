@@ -1,0 +1,488 @@
+Proceeding with **#6 HD** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #6 — Home Depot / HD
+
+## Top-Line Execution Summary
+
+| Item                        |                                   Result |
+| --------------------------- | ---------------------------------------: |
+| Current Price / T0          |                   **$344.98** [Actual] |
+| Market Cap                  |                   **$343.6B** [Actual] |
+| P/E                         |                     **24.5x** [Actual] |
+| FY26E GAAP EPS Guide        |    **$14.23–$14.80** [Actual/Estimate] |
+| Base Intrinsic Value        |              **$330/share** [Estimate] |
+| Expected Price              |              **$329/share** [Estimate] |
+| Margin of Safety vs Base IV |                   **-4.5%** [Estimate] |
+| 50% CI                      |               **$285–$370** [Estimate] |
+| 80% CI                      |               **$230–$430** [Estimate] |
+| Conviction                  | **Medium-High / 9.5 of 15** [Estimate] |
+| Recommended Max Weight      |                    **3.5%** [Estimate] |
+| Entry Strategy              |         **Hold / wait for better entry** |
+| Execution Opinion           |  **Hold; scale-in only below ~$315–325** |
+
+**Core conclusion:** HD is a high-quality housing-linked stalwart with excellent ROIC and dividend durability, but the current price is close to fair value while comparable sales remain weak and housing affordability is still a macro headwind.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** The Home Depot, Inc. / HD
+**Baseline Date:** June 25, 2026
+**T0:** current price **$344.98**, market cap **$343.6B**, P/E **24.5x**, EPS **$14.08** [Actual].
+**T-1:** latest reported financials: fiscal Q1 2026. Home Depot reported Q1 sales of **$41.8B**, up **4.8%**, comparable sales up **0.6%**, U.S. comparable sales up **0.4%**, net earnings of **$3.3B**, and diluted EPS of **$3.30**. ([홈디포 투자자 관계][1])
+**Tpf:** current price reflects the Q1 2026 result and reaffirmed FY26 guidance: total sales growth **2.5–4.5%**, comps **flat to +2%**, operating margin **12.4–12.6%**, adjusted operating margin **12.8–13.0%**, and GAAP EPS growth **flat to +4%** from FY25 EPS of **$14.23**. ([홈디포 투자자 관계][1])
+
+**Archetype:** **A/B hybrid — Stable Incumbent + Quality Compounder, housing-cycle sensitive**
+**Valuation Engine:** **Engine 1 — Traditional DCF + Multiples**
+
+**Why this engine:**
+
+1. HD is a mature cash-generative retailer with strong brand, scale, supplier power, and high ROIC.
+2. It is not a high-beta option-led stock; most value comes from existing cash flows, margins, and capital returns.
+3. It has cyclical housing exposure, but not enough cyclicality to require a pure Engine 2 cycle valuation.
+
+**Model Confidence:** **Medium-High.** Financial disclosure is strong; the largest uncertainty is macro-driven timing of housing turnover and big-ticket renovation recovery.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable                                 | HD Impact                                                 |
+| ---------------------------------------------- | --------------------------------------------------------- |
+| Higher mortgage rates / affordability pressure | Negative for housing turnover and large renovation demand |
+| High but contained credit spreads              | Neutral; balance sheet access remains strong              |
+| Inflation                                      | Mixed: raises ticket, but pressures consumers             |
+| Business cycle                                 | Late-cycle consumer caution is a headwind                 |
+| USD                                            | Small effect; mostly North America                        |
+| Housing legislation / homebuilder sentiment    | Potential long-term tailwind, not immediate proof         |
+
+Management explicitly cited **consumer uncertainty and housing affordability pressure** in Q1. ([홈디포 투자자 관계][1]) Recent housing-related news also points to a sector still recovering from labor shortages, restrictive zoning, high home prices, and high borrowing costs. ([Reuters][2])
+
+**Regime probabilities:**
+Goldilocks **20%**, Reflation **30%**, Stagflation **30%**, Recession **20%** [Estimate].
+
+**HD macro sensitivity score:**
+Interest rates **-2.0**; dollar **-0.5**; liquidity **-0.5**; economic cycle **+1.5**; commodity **-0.5**.
+**Macro alignment:** **Mild Headwind.** The housing cycle is not broken, but the current macro setup is not yet a clean tailwind.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                     |               Base Rate | HD Adjustment              |
+| -------------------------------------------------- | ----------------------: | -------------------------- |
+| 5Y survival for dominant home-improvement retailer |   **>95%** [Estimate] | HD passes                  |
+| Sustaining ROIC >20% over 5Y                       | **60–75%** [Estimate] | Raised to **70–80%**       |
+| Comp sales recovery after housing downturn         | **50–65%** [Estimate] | Kept at **55–65%**         |
+| M&A creating ROIC > WACC after 5Y                  | **25–35%** [Estimate] | SRS/GMS still monitor item |
+
+Home Depot’s trailing twelve-month ROIC was **25.4%** at the end of Q1 2026, down from **31.3%** one year earlier, mainly due higher average equity from paused buybacks and higher debt from acquisition financing. ([홈디포 투자자 관계][3])
+
+**Base-rate shock check:** No shock. The model assumes HD remains a high-quality compounder, but does not assume a sudden housing boom.
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+Home Depot is the world’s largest home-improvement retailer, selling building materials, tools, lawn and garden, décor, repair, maintenance, and professional contractor supplies. It operates large-format stores, e-commerce, supply-chain assets, HD Supply, SRS/GMS-related pro distribution assets, installation services, and tool rental. The business is highly understandable, but same-store sales and big-ticket demand are sensitive to housing turnover, mortgage rates, and consumer confidence.
+
+**Comprehensibility:** **High**
+
+### Moat Score
+
+| Moat Type                 |       Score | Direction       |
+| ------------------------- | ----------: | --------------- |
+| Brand / intangible assets |         3/3 | Stable          |
+| Switching costs           |       1.5/3 | Stable          |
+| Network effects           |         1/3 | Stable          |
+| Cost advantage            |       2.5/3 | Stable          |
+| Economies of scale        |         3/3 | Stable/Widening |
+| Regulatory barriers       |       0.5/3 | Stable          |
+| Data / Pro ecosystem      |         2/3 | Widening        |
+| **Total**                 | **13.5/21** | **Wide Moat**   |
+
+**Moat direction:** **Stable-to-widening**, especially in the Pro segment. Scale, vendor leverage, logistics, brand trust, and store density remain strong.
+
+**Peter Lynch classification:** **Stalwart / cyclical-sensitive retailer.**
+
+### Financial Health Scorecard
+
+| Metric                                            |                                     Result |
+| ------------------------------------------------- | -----------------------------------------: |
+| FY25 sales                                        |        **$164.7B**, up **3.2%** [Actual] |
+| FY25 comps                                        | **+0.3%**, U.S. comps **+0.5%** [Actual] |
+| FY25 net earnings                                 |                      **$14.2B** [Actual] |
+| FY25 diluted EPS                                  |                      **$14.23** [Actual] |
+| FY25 adjusted EPS                                 |                      **$14.69** [Actual] |
+| Q1 FY26 sales                                     |         **$41.8B**, up **4.8%** [Actual] |
+| Q1 FY26 comps                                     |                       **+0.6%** [Actual] |
+| Q1 FY26 diluted EPS                               |                       **$3.30** [Actual] |
+| Q1 FY26 operating income                          |                      **$4.98B** [Actual] |
+| Q1 FY26 gross margin                              |                       **33.0%** [Actual] |
+| TTM ROIC                                          |                       **25.4%** [Actual] |
+| Q1 cash                                           |                       **$1.6B** [Actual] |
+| Q1 short-term debt + current LTD + long-term debt |                   **~$53.5B** [Estimate] |
+
+FY25 sales, earnings, and EPS are from the company’s fiscal 2025 release. ([SEC][4]) Q1 2026 sales and earnings are from Home Depot’s Q1 release. ([홈디포 투자자 관계][1]) Balance sheet and ROIC figures are from the Q1 2026 10-Q. ([홈디포 투자자 관계][3])
+
+**Financial Health Judgment:** **Good.** Operating quality is excellent, but leverage is meaningful and buybacks are paused while debt is reduced.
+
+### Capital Allocation Scorecard
+
+| Dimension                             |       Score |
+| ------------------------------------- | ----------: |
+| Buyback efficiency                    |       1.5/3 |
+| M&A track record                      |         2/3 |
+| Capex efficiency                      |       2.5/3 |
+| Dividend / buyback / reinvestment mix |         2/3 |
+| Guidance accuracy                     |       2.5/3 |
+| Insider adjustment                    |           0 |
+| **Total**                             | **10.5/15** |
+
+Home Depot increased its quarterly dividend to **$2.33/share**, equal to **$9.32 annualized**, and has paid a cash dividend for **157 consecutive quarters**. ([홈디포 투자자 관계][5]) The company also states that buybacks remain paused and are not expected to resume in fiscal 2026 as it reduces debt. ([홈디포 투자자 관계][3])
+
+**Capital allocation judgment:** **Good**, but temporarily less shareholder-return-heavy because debt reduction takes priority.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                   |                                             Result |
+| ---------------------- | -------------------------------------------------: |
+| Q1 operating cash flow |                              **$6.03B** [Actual] |
+| Q1 capex               |                               **$844M** [Actual] |
+| Q1 free cash flow      |                           **~$5.19B** [Estimate] |
+| Q1 SBC                 |                               **$178M** [Actual] |
+| Q1 SBC-adjusted FCF    |                           **~$5.01B** [Estimate] |
+| FY26 capex plan        | **~2.5% of sales / about $4B** [Actual/Estimate] |
+| TTM ROIC               |                               **25.4%** [Actual] |
+
+Q1 operating cash flow, capex, SBC, and financing cash flows are from Home Depot’s Q1 2026 10-Q. ([홈디포 투자자 관계][3]) The company expects about **$4B** of FY26 capex, approximately **2.5%** of projected sales. ([홈디포 투자자 관계][3])
+
+**Adjusted financials judgment:** HD has clean earnings and low SBC distortion. The main adjustment is not accounting-related; it is cycle normalization for housing demand.
+
+---
+
+## Section 3. Valuation — Engine 1
+
+### DCF / Owner Earnings Assumptions
+
+| Scenario | Starting EPS / Owner Earnings |         Growth Path | Discount Rate | Terminal Growth | IV / Share |
+| -------- | ----------------------------: | ------------------: | ------------: | --------------: | ---------: |
+| Bear     |         $14.25 [Assumption] |                1–2% |          9.0% |            2.0% |   **$230** |
+| Base     |         $14.80 [Assumption] |   5–6% fading to 3% |          8.0% |            2.5% |   **$330** |
+| Bull     |         $15.25 [Assumption] | 7–8% fading to 3.5% |          7.5% |            2.5% |   **$430** |
+
+**Base IV:** **$330/share** [Estimate]
+**Current price:** **$344.98** [Actual]
+**Margin of Safety:** **-4.5%** [Estimate]
+
+### Multiple Cross-Check
+
+| Metric                      |                       Result |
+| --------------------------- | ---------------------------: |
+| Current P/E                 |         **24.5x** [Actual] |
+| FY26E GAAP EPS multiple     | **~23.3–24.2x** [Estimate] |
+| FY26E adjusted EPS multiple | **~22.6–23.5x** [Estimate] |
+| Dividend yield              |       **~2.7%** [Estimate] |
+| TTM ROIC                    |         **25.4%** [Actual] |
+
+HD’s valuation is not excessive for quality, but it is not cheap for a retailer guiding flat-to-low-single-digit EPS growth in FY26. The company’s own FY26 guide implies EPS growth of only **flat to +4%**. ([홈디포 투자자 관계][1])
+
+### Reverse DCF
+
+At **$344.98**, the market is implying roughly **5.5–6.5%** long-term owner-earnings growth plus dividend durability. [Estimate]
+**Judgment:** **Plausible but somewhat demanding** unless housing turnover and large-project demand improve within 12–24 months.
+
+### Tornado Sensitivity
+
+| Variable                              | -1σ Impact | +1σ Impact |
+| ------------------------------------- | ---------: | ---------: |
+| Comparable sales growth               |       -18% |       +22% |
+| Operating margin                      |       -15% |       +18% |
+| Housing turnover / big-ticket demand  |       -14% |       +17% |
+| Discount rate                         |       -13% |       +15% |
+| Debt paydown / buyback restart timing |        -8% |       +10% |
+
+**Top 3 thesis KPIs:**
+
+1. Comparable sales growth
+2. Operating margin
+3. Housing turnover / big-ticket Pro demand
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+Lowe’s remains the direct retail competitor, while Amazon and specialty distributors pressure certain categories. HD’s Pro ecosystem, vendor scale, store network, and supply-chain depth reduce competitive risk, but price competition can increase if housing demand stays weak.
+
+**Reflexivity:**
+Positive: a stable stock supports low-cost capital access and investor tolerance during housing-cycle weakness.
+Negative: if the market sees HD as over-levered after acquisitions and without buybacks, the stock can derate despite stable operations.
+
+**Customer behavior evolution:**
+Consumers are still doing smaller projects, but large discretionary renovations remain pressured by affordability and financing costs. Q1 comparable sales were helped by a **2.2%** average-ticket increase but hurt by a **1.3%** decline in comparable customer transactions, which is not a fully healthy demand mix. ([홈디포 투자자 관계][1])
+
+**Network dynamics:**
+The Pro strategy can widen HD’s moat if cross-selling, jobsite delivery, and specialty trade distribution create higher retention and wallet share.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                               |
+| -------- | ----------: | ------------: | ------------------------------------------------------------------------------ |
+| Bear     |         25% |      **$230** | Housing stays weak, comps flat/negative, margin slips below guide              |
+| Base     |         50% |      **$330** | Comps recover slowly, margin stabilizes, debt paydown precedes buyback restart |
+| Bull     |         25% |      **$430** | Housing turnover recovers, Pro strategy accelerates, buybacks resume earlier   |
+
+**Expected Price:**
+25% × $230 + 50% × $330 + 25% × $430 = **$330/share** [Estimate]
+After minor macro headwind adjustment: **$329/share** [Estimate]
+
+**50% CI:** **$285–$370** [Estimate]
+**80% CI:** **$230–$430** [Estimate]
+**MoS:** **-4.5%**
+**MoS Judgment:** **No Margin of Safety, but not materially overvalued.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **2–3 years** [Estimate]
+**My horizon:** **3–5 years**
+**Spread:** **~1–2 years**
+
+The market is not ignoring HD’s long-term quality, but it is also not fully pricing a rapid housing recovery. There is a moderate patience premium if housing turnover normalizes and Pro integration works.
+
+**Horizon arbitrage judgment:** **Limited-to-moderate.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |      Score |
+| ------------------------ | ---------: |
+| Business quality         |     2.75/3 |
+| Valuation attractiveness |      1.0/3 |
+| Macro alignment          |     1.25/3 |
+| Thesis clarity           |     2.25/3 |
+| Execution trackability   |     2.25/3 |
+| **Total**                | **9.5/15** |
+
+**Conviction Tier:** **Medium-High**
+**Layer 5 preliminary weight:** **3–5%**
+**Adjustments:**
+
+* Housing macro headwind: -0.5%
+* No current margin of safety: -0.5%
+* Debt / paused buybacks: -0.5%
+
+**Layer 5 recommended max weight:** **3.5%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                         |                           Result |
+| ---------------------------- | -------------------------------: |
+| Short interest               |     **12.03M shares** [Actual] |
+| Short % float                |             **1.21%** [Actual] |
+| Days to cover                | **~2.0–3.0** [Actual/Estimate] |
+| Put/call open interest ratio |              **0.67** [Actual] |
+| Institutional ownership      |          **~70.9%** [Estimate] |
+| Squeeze risk                 |                              Low |
+| Crowding score               |     **7/15 Medium** [Estimate] |
+
+Short interest is low, with MarketBeat reporting **12.03M** shares short, **1.21%** of float, and about **2.0** days to cover; Fintel similarly reports **1.21%** short float with around **3.0** days to cover. ([마켓비트][6]) Options sentiment is not fearful: Fintel reports an open-interest put/call ratio of **0.67**. ([Fintel][7])
+
+**Behavioral judgment:** Neutral. HD is neither a hated contrarian setup nor a crowded hype stock.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Defensive-quality consumer/housing stalwart with dividend income.
+**Expected 3–5Y annualized return:** **6–8%** [Estimate] from current price, mostly from earnings growth plus dividend.
+**Portfolio overlap:** Moderate with LOW if owned; partial macro overlap with CAT, DE, FCX through cyclicality; low overlap with MSFT/AMD/META AI factor exposure.
+
+**Portfolio fit judgment:** **Good diversifier** versus AI-heavy names, but not a high-upside compounder at the current price.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** [Estimate] |
+| Weighted upside from current  | **~21%** [Estimate] |
+| Bear downside from current    | **~33%** [Estimate] |
+| Practical fractional Kelly    | **3–4%** [Estimate] |
+| RS2 final cap                 |              **3.5%** |
+
+Layer 5 and Kelly sizing align.
+**Final recommended max weight:** **3.5%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Housing-cycle drag:** high affordability pressure keeps big-ticket renovation demand weak.
+2. **Margin pressure:** Q1 gross margin fell to **33.0%** from **33.8%**, partly due GMS inclusion and mix. ([홈디포 투자자 관계][3])
+3. **Debt / capital return delay:** buybacks are paused, and management does not plan to resume repurchases in FY26 while reducing debt. ([홈디포 투자자 관계][3])
+
+### Top 3 Catalysts
+
+1. Comparable sales move toward the high end of the **flat to +2%** FY26 guide.
+2. Operating margin stabilizes within the **12.4–12.6% GAAP** or **12.8–13.0% adjusted** guidance range. ([홈디포 투자자 관계][1])
+3. Housing turnover improves, allowing big-ticket and Pro demand to recover.
+
+**Highest-impact bear scenario:** Housing demand remains weak while acquisition-related debt and margin pressure delay buybacks, forcing a P/E derating.
+
+---
+
+## Section 7.5. Correlation Risk
+
+HD’s bear triggers are housing affordability, weak consumer confidence, high rates, and lower big-ticket renovation demand. It has limited overlap with AI/tech holdings, but meaningful overlap with consumer cyclicals, housing, building products, and industrial cyclicals.
+
+**Stress correlation estimate:** **0.55–0.70** with broad market; **0.70+** with housing/building-related equities. [Estimate]
+**True diversification judgment:** **Medium-High** in an AI-heavy portfolio; **Medium** in a consumer/housing-heavy portfolio.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                     |     Warning Trigger |                     Re-underwrite Trigger |
+| ----------------------- | ------------------: | ----------------------------------------: |
+| Comparable sales        |                 <0% |                  negative for 2+ quarters |
+| U.S. comps              |                 <0% |    worse than total comps for 2+ quarters |
+| Operating margin        |              <12.4% |                                    <12.0% |
+| Comparable transactions |      worse than -2% |                 sustained traffic decline |
+| Big-ticket / Pro demand | no recovery by FY27 | Pro strategy fails to offset DIY weakness |
+| Debt / buybacks         |    no debt progress |              buybacks delayed beyond FY27 |
+
+### Pre-Mortem
+
+1. **Wrong because housing turnover stays depressed longer than expected.**
+   Early warning: comps stay flat/negative despite easier comparisons.
+   Response: reduce IV toward bear/base midpoint.
+
+2. **Wrong because acquisitions dilute margin and ROIC.**
+   Early warning: ROIC continues falling below **25%** and gross margin remains pressured.
+   Response: lower moat/capital-allocation score.
+
+3. **Wrong because Pro strategy does not offset DIY weakness.**
+   Early warning: transaction declines persist and sales growth depends only on ticket/acquisition contribution.
+   Response: lower growth assumption to 2–3%.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. HD trades at **~24.5x** earnings despite FY26 EPS guidance of only **flat to +4%**. ([홈디포 투자자 관계][1])
+2. Q1 comparable sales were only **+0.6%**, and comparable customer transactions declined **1.3%**. ([홈디포 투자자 관계][1])
+3. Sales growth is being helped by acquisitions; GMS contributed **$1.3B** of Q1 sales after being acquired in September 2025. ([홈디포 투자자 관계][3])
+4. Gross margin compressed from **33.8%** to **33.0%** in Q1. ([홈디포 투자자 관계][3])
+5. Buybacks are paused while the company reduces debt, reducing EPS compounding. ([홈디포 투자자 관계][3])
+6. Housing affordability and consumer uncertainty remain explicit management concerns. ([홈디포 투자자 관계][1])
+7. If rates stay high, HD can remain a good company but a mediocre stock.
+
+### Long vs Short Logic Battle
+
+| Issue               | Long Score | Short Score | Winner |
+| ------------------- | ---------: | ----------: | ------ |
+| Business quality    |          3 |           1 | Long   |
+| ROIC                |          3 |           1 | Long   |
+| Valuation           |          1 |         2.5 | Short  |
+| Housing cycle       |        1.5 |         2.5 | Short  |
+| Capital returns     |        1.5 |           2 | Short  |
+| Dividend durability |          3 |         0.5 | Long   |
+| Pro strategy        |          2 |         1.5 | Long   |
+
+**Long score:** **15.0**
+**Short score:** **11.0**
+**Gap:** **+4 Long**
+**Judgment:** Solid long-term business thesis, but current-price upside is capped.
+
+**Adversarial data check:** No major current short-seller fraud thesis found. The best bear case is valuation versus weak housing-cycle growth, not accounting or governance failure.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                                  | Status |
+| ------------------------------------------- | ------ |
+| Correct engine selected                     | Pass   |
+| DCF-only conclusion avoided                 | Pass   |
+| Multiples cross-check included              | Pass   |
+| Macro included                              | Pass   |
+| Base rates included                         | Pass   |
+| Housing-cycle sensitivity included          | Pass   |
+| Capital allocation / buyback pause included | Pass   |
+| Position sizing included                    | Pass   |
+| Monitoring KPIs included                    | Pass   |
+| Red team included                           | Pass   |
+| Pre-mortem included                         | Pass   |
+| Data tier reliance disclosed                | Pass   |
+| Recalculation required                      | No     |
+
+**Model Reliability:** **Medium-High**
+**Key uncertainty:** timing of housing-cycle recovery.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                   |
+| ----------------- | ------------------------------------------------------- |
+| Baseline date     | June 25, 2026                                           |
+| Current price     | $344.98                                                 |
+| Base IV           | $330                                                    |
+| Expected price    | $329                                                    |
+| Margin of Safety  | -4.5%                                                   |
+| Core assumption 1 | FY26 EPS around $14.7–15.0                              |
+| Core assumption 2 | Long-term owner earnings growth around 5–6%             |
+| Core assumption 3 | Operating margin stabilizes near 12.5–13.0%             |
+| 3M KPI            | Q2 comps remain positive                                |
+| 6M KPI            | Operating margin stays within guidance                  |
+| 12M KPI           | Debt reduction supports FY27 buyback restart visibility |
+| Conviction        | Medium-High / 9.5 of 15                                 |
+| Revalidation date | After Q2 FY26 earnings                                  |
+| Top concern       | No margin of safety                                     |
+| Second concern    | Housing affordability pressure                          |
+| Third concern     | Buyback pause / debt load                               |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                            |
+| ----------------------------- | --------------------------------------------------- |
+| Investment Attractiveness     | **Medium-High**                                     |
+| Current Price Attractiveness  | **Medium-Low**                                      |
+| Long-Term Holding Suitability | **High**                                            |
+| Portfolio Suitability         | **Medium-High**, especially as a non-AI diversifier |
+| Conviction                    | **Medium-High**                                     |
+| Recommended Max Weight        | **3.5%**                                            |
+| Entry Strategy                | **Hold; scale-in only below ~$315–325**             |
+| Execution Opinion             | **Hold / Wait**                                     |
+
+**One-line summary:** HD is a durable high-ROIC housing stalwart, but at **~24.5x earnings** with weak comps and no current margin of safety, RS2 favors holding rather than fresh buying.
+
+**Next ticker in queue:** PG.
+
+[1]: https://ir.homedepot.com/news-releases/2026/05-19-2026-110111934 "
+	The Home Depot Announces First Quarter Fiscal 2026 Results; Reaffirms Fiscal 2026 Guidance | The Home Depot
+"
+[2]: https://www.reuters.com/world/us/us-homebuilders-advance-after-congress-passes-affordable-housing-bill-2026-06-24/?utm_source=chatgpt.com "US homebuilders advance after Congress passes affordable housing bill"
+[3]: https://ir.homedepot.com/~/media/Files/H/HomeDepot-IR/reports-and-presentations/quarterly-earnings/2026/hd-q1-2026-10q.pdf "0001628280-26-038247"
+[4]: https://www.sec.gov/Archives/edgar/data/354950/000035495026000026/hd_exhibit991x02012026.htm?utm_source=chatgpt.com "99.1"
+[5]: https://ir.homedepot.com/news-releases/2026/05-21-2026-211314566?utm_source=chatgpt.com "The Home Depot Declares Quarterly Dividend of $2.33"
+[6]: https://www.marketbeat.com/stocks/NYSE/HD/short-interest/?utm_source=chatgpt.com "Home Depot (HD) Short Interest Ratio & Short Volume"
+[7]: https://fintel.io/sopt/us/hd "HD / The Home Depot, Inc. - Put/Call Ratio, Options Sentiment, Unusual Options Activity"

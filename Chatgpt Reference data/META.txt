@@ -1,0 +1,506 @@
+Proceeding with **#3 META**.
+
+# RS2 Engine Run #3 — Meta Platforms / META
+
+## Top-Line Execution Summary
+
+| Item                        |                             Result |
+| --------------------------- | ---------------------------------: |
+| Current Price / T0          |             **$552.22** `[Actual]` |
+| Market Cap                  |             **$1.416T** `[Actual]` |
+| Reported P/E                |              **~20.1x** `[Actual]` |
+| Normalized TTM P/E          |            **~22.6x** `[Estimate]` |
+| Base Intrinsic Value        |        **$620/share** `[Estimate]` |
+| Expected Price              |        **$613/share** `[Estimate]` |
+| Margin of Safety vs Base IV |             **10.9%** `[Estimate]` |
+| 50% CI                      |         **$520–$700** `[Estimate]` |
+| 80% CI                      |         **$390–$820** `[Estimate]` |
+| Conviction                  | **High / 11.5 of 15** `[Estimate]` |
+| Recommended Max Weight      |              **5.5%** `[Estimate]` |
+| Entry Strategy              |           **2–3 tranche scale-in** |
+| Execution Opinion           |                **Scale-In / Hold** |
+
+**Core conclusion:** META remains a high-quality advertising and AI-driven platform compounder at a still-reasonable valuation, but the 2026 capex range of **$125–145B** prevents a “Strong Buy” rating despite the attractive core business.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Meta Platforms / META
+**Baseline Date:** June 25, 2026
+**T0:** current price **$552.22**, market cap **$1.416T**, P/E **~20.1x**, EPS **$27.50** `[Actual]`.
+**T-1:** latest reported financials: FY26 Q1, quarter ended March 31, 2026. Meta reported Q1 revenue of **$56.31B**, operating income of **$22.87B**, operating margin of **41%**, net income of **$26.77B**, and diluted EPS of **$10.44**; however, Q1 EPS included a large tax benefit, and excluding it EPS would have been **$3.13 lower**. ([메타][1])
+**Tpf:** current price reflects Q1 2026 results and the higher 2026 capex outlook of **$125–145B**. ([메타][1])
+
+**RS2 classification:** **B. Quality Compounder with AI/Reality Labs reinvestment drag**
+**Valuation Engine:** **Engine 1 — Traditional DCF + Multiples**, with explicit capex and Reality Labs drag adjustment.
+
+**Why this engine:**
+
+1. Meta’s core Family of Apps business is already highly profitable: FY25 FoA operating income was **$102.47B**, while Q1 FY26 FoA operating income was **$26.90B**. ([메타][2])
+2. Revenue growth remains strong at scale: Q1 FY26 revenue grew **33% YoY**, with ad impressions up **19%** and average price per ad up **12%**. ([메타][1])
+3. The company is not binary or pre-profit; it is an established cash-generative platform, even though AI and Reality Labs create major reinvestment uncertainty.
+
+**Transition status:** Not a pure transition company. META is a quality compounder with high reinvestment intensity. Engine 4 would overstate AI optionality; Engine 1 with explicit capex stress is cleaner.
+
+**Model Confidence:** **Medium-High**. Core advertising data is strong; long-term AI capex ROI and Reality Labs economics remain `[Assumption]`.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable              | META Impact                                                               |
+| --------------------------- | ------------------------------------------------------------------------- |
+| Higher long rates           | Valuation headwind                                                        |
+| Strong USD                  | Mild revenue translation headwind                                         |
+| Credit spreads              | Not a major constraint because Meta has strong liquidity                  |
+| Business cycle              | Ad demand is cyclical, but Meta’s scale and AI targeting partially offset |
+| AI infrastructure inflation | Direct capex headwind                                                     |
+
+**Regime probabilities:**
+Goldilocks **20%**, Reflation **35%**, Stagflation **25%**, Recession **20%** `[Estimate]`.
+
+**META macro sensitivity score:**
+Interest rates **-1.5**; dollar **-1.0**; liquidity **-1.0**; economic cycle **+1.0**; commodity **0.0**.
+
+**Macro alignment:** **Neutral-to-mild headwind**. Ad demand is healthy, but high rates and infrastructure inflation pressure valuation and FCF.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                              |                   Base Rate | META Adjustment                      |
+| ----------------------------------------------------------- | --------------------------: | ------------------------------------ |
+| 5Y survival for mega-cap profitable platform                |       **>95%** `[Estimate]` | META passes                          |
+| Sustaining double-digit revenue CAGR for 5Y at $200B+ scale |     **35–50%** `[Estimate]` | Raised to **50–60%** due AI ad tools |
+| Large AI capex program producing ROIC > WACC                |     **25–40%** `[Estimate]` | Raised to **45–55%**, but not higher |
+| Reality Labs becoming material profit center within 5Y      | **Low / <20%** `[Estimate]` | Kept low                             |
+
+**Base-rate shock check:** The core ad business deserves above-average base-rate treatment. Reality Labs does not. AI capex gets partial credit but cannot be treated as proven high-ROIC capital yet.
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+Meta operates Facebook, Instagram, WhatsApp, Messenger, Threads, and related advertising tools, monetizing user attention primarily through digital ads. The company also invests heavily in AI infrastructure, recommendation systems, messaging monetization, smart glasses, VR/AR, and Reality Labs. The core business is highly understandable; the economic payoff from AI infrastructure and Reality Labs is less certain.
+
+**Comprehensibility:** **High**
+
+### Moat Score
+
+| Moat Type                 |     Score | Direction       |
+| ------------------------- | --------: | --------------- |
+| Intangible assets / brand |     2.5/3 | Stable          |
+| Switching costs           |       2/3 | Stable          |
+| Network effects           |       3/3 | Stable/Widening |
+| Cost advantage            |     2.5/3 | Widening        |
+| Economies of scale        |       3/3 | Widening        |
+| Regulatory barriers       |       1/3 | Mixed           |
+| Data moat                 |       3/3 | Widening        |
+| **Total**                 | **17/21** | **Fortress**    |
+
+**Moat direction:** **Stable-to-widening.** AI-driven ranking, ad targeting, creative automation, and massive social graph/data scale support the moat. Regulation is the main narrowing force.
+
+**Peter Lynch classification:** **Stalwart / Fast Grower hybrid.**
+
+---
+
+## Section 2. Business Quality — Financial Health
+
+### Core Financial Scorecard
+
+| Metric                       |                                 Result |
+| ---------------------------- | -------------------------------------: |
+| FY25 revenue                 |    **$200.97B**, up **22%** `[Actual]` |
+| FY25 operating income        | **$83.28B**, margin **41%** `[Actual]` |
+| FY25 net income              |                 **$60.46B** `[Actual]` |
+| FY25 FCF                     |                 **$43.59B** `[Actual]` |
+| Q1 FY26 revenue              |     **$56.31B**, up **33%** `[Actual]` |
+| Q1 FY26 operating income     | **$22.87B**, margin **41%** `[Actual]` |
+| Q1 FY26 FCF                  |                 **$12.39B** `[Actual]` |
+| TTM revenue                  |             **~$214.96B** `[Estimate]` |
+| TTM operating income         |              **~$88.59B** `[Estimate]` |
+| TTM normalized net income    |              **~$62.56B** `[Estimate]` |
+| TTM FCF                      |              **~$45.64B** `[Estimate]` |
+| Cash + marketable securities |                 **$81.18B** `[Actual]` |
+| Long-term debt               |                 **$58.75B** `[Actual]` |
+| Net cash before leases       |              **~$22.43B** `[Estimate]` |
+
+FY25 data comes from Meta’s full-year 2025 release, and Q1 FY26 data comes from the latest Q1 release. ([메타][2])
+Cash, marketable securities, debt, SBC, and cash-flow data are from the Q1 balance sheet and cash-flow statement. ([메타][1])
+
+**Financial Health Judgment:** **Excellent on operating power; Good on FCF after capex stress.**
+
+The important distortion: reported TTM P/E looks cheap, but Q1 EPS includes an **$8.03B** tax benefit. After normalizing it out, META’s TTM earnings power is closer to **$62.6B**, not the reported **$70.6B** `[Estimate]`. ([메타][1])
+
+### Capital Allocation Scorecard
+
+| Dimension                             |      Score |
+| ------------------------------------- | ---------: |
+| Buyback efficiency                    |        2/3 |
+| M&A track record                      |        2/3 |
+| Capex efficiency                      |      1.5/3 |
+| Dividend / buyback / reinvestment mix |        2/3 |
+| Guidance accuracy                     |      2.5/3 |
+| Governance adjustment                 |       -0.5 |
+| **Total**                             | **9.5/15** |
+
+Meta repurchased **$26.26B** of stock in FY25 and paid **$5.32B** in dividends/dividend equivalents. It had **$25.03B** remaining under its repurchase authorization at year-end. ([메타][2])
+
+**Capital allocation judgment:** **Adequate-to-good.** Buybacks are shareholder-friendly, but the huge AI/Reality Labs capex program lowers near-term confidence in incremental ROIC.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                 |                    Result |
+| -------------------- | ------------------------: |
+| FY25 R&D             |    **$57.37B** `[Actual]` |
+| FY25 SBC             |    **$20.43B** `[Actual]` |
+| Q1 FY26 SBC          |     **$6.03B** `[Actual]` |
+| TTM SBC              | **~$22.31B** `[Estimate]` |
+| TTM reported FCF     | **~$45.64B** `[Estimate]` |
+| TTM SBC-adjusted FCF | **~$23.33B** `[Estimate]` |
+| FY25 capex           |    **$72.22B** `[Actual]` |
+| Q1 FY26 capex        |    **$19.84B** `[Actual]` |
+| 2026 capex guide     |  **$125–145B** `[Actual]` |
+
+R&D rose **31%** in FY25, mostly from higher compensation and infrastructure costs related to AI initiatives. ([SEC][3]) Meta defines FCF as operating cash flow minus purchases of property and equipment and principal payments on finance leases. ([SEC][3])
+
+**Adjusted ROIC view:**
+GAAP ROIC remains strong, but reported FCF is increasingly distorted by growth capex. I do **not** value META on pure reported FCF because 2026 capex likely includes both growth AI infrastructure and maintenance/data-center scaling. I use normalized earnings plus explicit capex-risk haircuts.
+
+---
+
+## Section 3. Valuation — Engine 1
+
+### Valuation Framework
+
+META should be valued as:
+
+**Core Family of Apps value**
+minus **Reality Labs / AI capex drag**
+plus **net cash**
+plus **AI ad-productivity upside**.
+
+### DCF / Earnings Power Assumptions
+
+| Scenario |   Normalized EPS Base |  10Y Growth Path | Discount Rate | Terminal Growth | IV / Share |
+| -------- | --------------------: | ---------------: | ------------: | --------------: | ---------: |
+| Bear     | $20.00 `[Assumption]` |             3–5% |         10.0% |            2.5% |   **$390** |
+| Base     |   $24.40 `[Estimate]` | 10% fading to 4% |          9.0% |            3.0% |   **$620** |
+| Bull     | $27.00 `[Assumption]` | 13% fading to 5% |          8.5% |           3.25% |   **$820** |
+
+**Base IV:** **$620/share** `[Estimate]`
+**Current price:** **$552.22** `[Actual]`
+**MoS:** **10.9%** `[Estimate]`
+
+### Multiple Cross-Check
+
+| Metric                           |                    META |
+| -------------------------------- | ----------------------: |
+| Reported P/E                     |    **20.1x** `[Actual]` |
+| Normalized P/E ex-Q1 tax benefit | **~22.6x** `[Estimate]` |
+| P/TTM FCF                        | **~31.0x** `[Estimate]` |
+| P/Sales                          |  **~6.6x** `[Estimate]` |
+| EV/TTM operating income          | **~15.9x** `[Estimate]` |
+
+**Multiple judgment:** Reasonable for a fortress ad platform, but not obviously cheap after adjusting for capex and tax normalization.
+
+### Reverse DCF
+
+At **$552/share**, the market implies roughly **6–7%** long-term normalized EPS/owner-earnings growth `[Estimate]`, assuming a **9%** discount rate and **3%** terminal growth.
+**Judgment:** **Plausible.** The market is not pricing META as aggressively as AMD; the main risk is whether capex prevents earnings from converting into FCF.
+
+### Tornado Sensitivity
+
+| Variable                  | -1σ Impact | +1σ Impact |
+| ------------------------- | ---------: | ---------: |
+| Long-term capex intensity |       -22% |       +18% |
+| Ad revenue growth         |       -18% |       +22% |
+| Operating margin          |       -15% |       +18% |
+| Discount rate             |       -14% |       +17% |
+| Reality Labs losses       |        -8% |        +7% |
+
+**Top 3 thesis KPIs:**
+
+1. Capex as % of revenue
+2. Ad impression growth × ad price growth
+3. Family of Apps operating margin
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+Google/YouTube, TikTok, Amazon Ads, Apple, Snap, and retail media networks will keep competing for ad budgets. TikTok remains the biggest attention competitor; Amazon Ads is the biggest commerce-intent competitor.
+
+**Reflexivity:**
+Positive stock-price reflexivity helps Meta retain AI talent through SBC and gives management freedom to invest. Negative reflexivity appears if AI capex is viewed as uncontrolled, because the market can rerate META from a high-quality ad compounder into a capital-intensive AI infrastructure spender.
+
+**Customer evolution:**
+Advertisers are increasingly buying automated creative, AI targeting, and performance outcomes rather than manual campaign tools. This helps Meta if AI improves ROAS, but hurts if ad inventory growth outruns advertiser demand.
+
+**Network dynamics:**
+The core network remains strong across Instagram, Facebook, WhatsApp, Messenger, and Threads. WhatsApp monetization remains underdeveloped optionality.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                               |
+| -------- | ----------: | ------------: | ------------------------------------------------------------------------------ |
+| Bear     |         25% |      **$390** | Capex remains excessive, FoA margins compress, Reality Labs drag persists      |
+| Base     |         50% |      **$620** | Ads compound, AI improves targeting, capex eventually moderates                |
+| Bull     |         25% |      **$820** | AI materially lifts ad pricing, WhatsApp monetizes, Reality Labs losses shrink |
+
+**Expected Price:**
+25% × $390 + 50% × $620 + 25% × $820 = **$612.50/share** `[Estimate]`
+
+**50% CI:** **$520–$700** `[Estimate]`
+**80% CI:** **$390–$820** `[Estimate]`
+**Margin of Safety:** **10.9%**
+**MoS Judgment:** **Limited MoS.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **2–3 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **~1–2 years**
+
+There is some horizon arbitrage because the market is heavily focused on 2026–2027 capex and Reality Labs losses. However, the stock is not deeply distressed; META still trades at more than **20x** reported earnings.
+
+**Horizon arbitrage judgment:** **Moderate, not strong.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |       Score |
+| ------------------------ | ----------: |
+| Business quality         |       3.0/3 |
+| Valuation attractiveness |      1.75/3 |
+| Macro alignment          |      1.75/3 |
+| Thesis clarity           |       2.5/3 |
+| Execution trackability   |       2.5/3 |
+| **Total**                | **11.5/15** |
+
+**Conviction Tier:** **High**
+**Layer 5 preliminary weight:** **5–8%**
+**Adjustments:**
+
+* Capex uncertainty: -1%
+* Regulatory/governance risk: -0.5%
+* AI/mega-cap overlap with MSFT/AMD/PLTR/TSLA/OKLO/CEG: -1%
+
+**Layer 5 recommended max weight:** **5.5%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                         |                             Result |
+| ---------------------------- | ---------------------------------: |
+| Short interest               |       **32.27M shares** `[Actual]` |
+| Short % float                |               **1.48%** `[Actual]` |
+| Days to cover                |                 **2.2** `[Actual]` |
+| Put/call open-interest ratio |                **0.46** `[Actual]` |
+| Institutional ownership      |       **High / ~78%** `[Estimate]` |
+| Squeeze risk                 |                                Low |
+| Crowding score               | **10/15 Medium-High** `[Estimate]` |
+
+Short interest is low and not an adversarial signal. ([마켓비트][4]) Options positioning is bullish, with Fintel showing an OI put/call ratio of **0.46**. ([Fintel][5])
+
+**Behavioral judgment:** Investors are not fearful enough for a classic contrarian setup. The stock is quality-at-a-fair-price, not panic value.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Core quality growth / digital advertising / AI monetization compounder.
+**Expected 3–5Y annualized return:** **8–11%** `[Estimate]` from current price under base case.
+**Portfolio overlap:** High with MSFT and AMD through AI infrastructure; moderate with NFLX through digital attention/ads; low with PG/XOM/JPM defensives.
+
+**Portfolio fit judgment:** **High**, but keep AI/mega-cap factor exposure controlled.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                                  |                 Value |
+| -------------------------------------- | --------------------: |
+| Probability of base-or-better          |  **75%** `[Estimate]` |
+| Weighted upside from current           | **~26%** `[Estimate]` |
+| Bear downside from current             | **~29%** `[Estimate]` |
+| Practical fractional Kelly             |              **5–7%** |
+| RS2 cap after overlap/capex adjustment |              **5.5%** |
+
+**Final recommended max weight:** **5.5%**
+
+Layer 5 and Kelly agree directionally. No re-analysis required.
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Capex overbuild:** 2026 capex of **$125–145B** does not generate enough incremental ad revenue or AI product monetization. ([메타][1])
+2. **Reality Labs drag:** Reality Labs reduced 2025 operating profit by **$19.19B**, and Meta expects 2026 losses to remain similar. ([SEC][3])
+3. **Regulatory/legal risk:** Meta disclosed ongoing EU and U.S. regulatory/legal matters that could significantly affect results. ([메타][1])
+
+### Top 3 Catalysts
+
+1. Continued ad growth from both impressions and price.
+2. Evidence that AI tools improve advertiser ROI and pricing power.
+3. Capex guidance stabilizes or future capex intensity declines after the 2026 buildout.
+
+**Highest-impact bear scenario:** Meta becomes a capital-intensive AI infrastructure spender while the incremental monetization accrues slowly, causing FCF compression and multiple derating.
+
+---
+
+## Section 7.5. Correlation Risk
+
+META’s common bear triggers overlap with MSFT, AMD, PLTR, TSLA, OKLO, and CEG: AI capex disappointment, higher rates, mega-cap tech derating, and regulatory scrutiny.
+
+**Stress correlation estimate:** **0.70–0.85** `[Estimate]` with AI/mega-cap growth holdings.
+**True diversification judgment:** **Medium** if paired with HD, PG, COST, JPM, XOM, O, NEE; **Low** if paired mostly with AI growth.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                         |  Warning Trigger |                      Re-underwrite Trigger |
+| --------------------------- | ---------------: | -----------------------------------------: |
+| Capex / revenue             |             >55% |          >60% with no revenue acceleration |
+| FoA operating margin        |             <45% |                       <42% for 2+ quarters |
+| Ad price growth             |              <5% | Flat/negative with impression deceleration |
+| Reality Labs operating loss | >$20B annualized |            No path to lower losses by FY27 |
+| FCF                         | <$35B annualized |            FCF down despite revenue growth |
+
+### Pre-Mortem
+
+1. **Wrong because AI capex does not earn cost of capital.**
+   Early warning: capex rises while ad pricing and FoA margin flatten.
+   Response: lower IV to bear/base midpoint; reduce position.
+
+2. **Wrong because regulation reduces ad targeting quality.**
+   Early warning: EU/U.S. rulings materially restrict data usage or youth-related operations.
+   Response: reduce margin and growth assumptions.
+
+3. **Wrong because Reality Labs remains a permanent $15–20B annual drag.**
+   Early warning: losses stay near 2025 level with no revenue traction.
+   Response: explicitly subtract higher drag PV.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. META’s reported P/E understates true risk because Q1 EPS had an unusually large tax benefit.
+2. The company is guiding to **$125–145B** of 2026 capex, which can crush FCF conversion.
+3. Reality Labs remains a multi-year drag with limited revenue.
+4. Mark Zuckerberg’s voting control lowers outside shareholder governance leverage. Meta discloses that Class B shares have ten votes per share and that Class B holders can control stockholder approvals while Class B remains above the required voting threshold. ([SEC][3])
+5. TikTok, YouTube, Amazon Ads, and Apple privacy/regulation can pressure ad growth.
+6. AI recommendation and creative tools may become table stakes rather than a durable pricing advantage.
+7. The stock is not hated; bullish options positioning limits contrarian upside.
+
+### Long vs Short Logic Battle
+
+| Issue              | Long Score | Short Score | Winner |
+| ------------------ | ---------: | ----------: | ------ |
+| Core ad moat       |          3 |           1 | Long   |
+| Current valuation  |          2 |         1.5 | Long   |
+| Capex ROI          |        1.5 |         2.5 | Short  |
+| Reality Labs       |          1 |         2.5 | Short  |
+| Balance sheet      |          3 |           1 | Long   |
+| AI ad productivity |        2.5 |         1.5 | Long   |
+| Regulatory risk    |        1.5 |           2 | Short  |
+
+**Long score:** 14.5
+**Short score:** 12.0
+**Gap:** **+2.5 Long**
+**Judgment:** Solid long thesis, but not overwhelming. Conviction remains **High**, not Very High.
+
+**Adversarial data check:** No major current Hindenburg/Muddy Waters-style short thesis found. The strongest short thesis is capital allocation/capex discipline, not fraud.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                     | Status |
+| ------------------------------ | ------ |
+| Correct engine selected        | Pass   |
+| DCF-only conclusion avoided    | Pass   |
+| Multiples cross-check included | Pass   |
+| Macro included                 | Pass   |
+| Base rates included            | Pass   |
+| Capex stress included          | Pass   |
+| Reality Labs drag included     | Pass   |
+| SBC-adjusted FCF included      | Pass   |
+| Position sizing included       | Pass   |
+| Monitoring KPIs included       | Pass   |
+| Red team included              | Pass   |
+| Pre-mortem included            | Pass   |
+| Recalculation required         | No     |
+
+**Model Reliability:** **Medium-High**
+**Key uncertainty:** capex ROI from AI infrastructure.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                             |
+| ----------------- | ----------------------------------------------------------------- |
+| Baseline date     | June 25, 2026                                                     |
+| Current price     | $552.22                                                           |
+| Base IV           | $620                                                              |
+| Expected price    | $613                                                              |
+| Margin of Safety  | 10.9%                                                             |
+| Core assumption 1 | Normalized EPS base around $24.40                                 |
+| Core assumption 2 | Revenue growth fades from high-teens/20s toward mid-single digits |
+| Core assumption 3 | Capex intensity moderates after 2026–2027                         |
+| 3M KPI            | Q2 revenue within/above $58–61B guide                             |
+| 6M KPI            | FoA margin remains resilient despite infrastructure spend         |
+| 12M KPI           | FCF recovers or capex guide stabilizes                            |
+| Conviction        | High / 11.5 of 15                                                 |
+| Revalidation date | After Q2 FY26 earnings, then December 2026                        |
+| Top concern       | AI capex ROI                                                      |
+| Second concern    | Reality Labs loss persistence                                     |
+| Third concern     | Regulatory/governance risk                                        |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                               |
+| ----------------------------- | ------------------------------------------------------ |
+| Investment Attractiveness     | **High**                                               |
+| Current Price Attractiveness  | **Medium-High**                                        |
+| Long-Term Holding Suitability | **High**                                               |
+| Portfolio Suitability         | **High, unless AI/mega-cap exposure is already heavy** |
+| Conviction                    | **High**                                               |
+| Recommended Max Weight        | **5.5%**                                               |
+| Entry Strategy                | **2–3 tranche scale-in**                               |
+| Execution Opinion             | **Scale-In / Hold**                                    |
+
+**One-line summary:** META is still a high-quality AI-enhanced ad compounder at a fair-to-attractive price, but 2026 capex and Reality Labs losses cap the position size and prevent a Strong Buy rating.
+
+**Next ticker in queue:** NFLX.
+
+[1]: https://investor.atmeta.com/investor-news/press-release-details/2026/Meta-Reports-First-Quarter-2026-Results/default.aspx "
+	Meta - Meta Reports First Quarter 2026 Results
+"
+[2]: https://investor.atmeta.com/investor-news/press-release-details/2026/Meta-Reports-Fourth-Quarter-and-Full-Year-2025-Results/default.aspx "
+	Meta - Meta Reports Fourth Quarter and Full Year 2025 Results
+"
+[3]: https://www.sec.gov/Archives/edgar/data/1326801/000162828026003942/meta-20251231.htm "meta-20251231"
+[4]: https://www.marketbeat.com/stocks/NASDAQ/META/short-interest/ "
+	Meta Platforms (META) Short Interest & Short Float | Updated Jun 2026
+"
+[5]: https://fintel.io/sopt/us/meta "META / Meta Platforms, Inc. - Put/Call Ratio, Options Sentiment, Unusual Options Activity"

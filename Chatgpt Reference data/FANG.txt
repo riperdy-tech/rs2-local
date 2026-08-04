@@ -1,0 +1,504 @@
+Proceeding with **#10 FANG** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #10 — Diamondback Energy / FANG
+
+## Top-Line Execution Summary
+
+| Item                             |                                     Result |
+| -------------------------------- | -----------------------------------------: |
+| Current Price / T0               |                     **$182.36** `[Actual]` |
+| Market Cap                       |                     **$51.57B** `[Actual]` |
+| Reported P/E                     |                       **~186x** `[Actual]` |
+| Adjusted Q1 EPS                  |                       **$4.23** `[Actual]` |
+| Annualized Adjusted EPS Run-Rate |                   **~$16.92** `[Estimate]` |
+| Base Intrinsic Value             |                **$195/share** `[Estimate]` |
+| Expected Price                   |                **$203/share** `[Estimate]` |
+| Margin of Safety vs Base IV      |                      **6.5%** `[Estimate]` |
+| 50% CI                           |                 **$155–$230** `[Estimate]` |
+| 80% CI                           |                 **$110–$290** `[Estimate]` |
+| Conviction                       |  **Medium-High / 10.0 of 15** `[Estimate]` |
+| Recommended Max Weight           |                      **3.5%** `[Estimate]` |
+| Entry Strategy                   | **Selective scale-in; better under ~$170** |
+| Execution Opinion                |                 **Modest Scale-In / Hold** |
+
+**Core conclusion:** FANG is a high-quality Permian pure-play with strong FCF yield and buyback capacity, but it is more oil-price-sensitive and less diversified than XOM. At **$182.36**, FANG has a **limited positive margin of safety**, attractive shareholder yield, and higher upside torque if WTI stays near or above $70—but it should be sized below XOM because basin concentration and commodity risk are higher.
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Diamondback Energy, Inc. / FANG
+**Baseline Date:** June 25, 2026 market close / June 26, 2026 Taipei time
+**T0:** current price **$182.36**, market cap **$51.57B**, reported P/E **~186x**, reported EPS **$0.98** `[Actual]`. The reported P/E is distorted by non-cash impairment charges, so adjusted earnings and FCF are more relevant.
+**T-1:** latest financials are Q1 2026. Diamondback reported average oil production of **521.0 MBO/d**, total production of **979.4 MBOE/d**, operating cash flow of **$1.8B**, adjusted FCF of **$1.737B**, and adjusted net income attributable to Diamondback of **$1.198B**, or **$4.23/share**. ([Diamondback Energy][1])
+**Tpf:** current price reflects Q1 results, raised 2026 production/capex guidance, and the recent oil-price reversal back toward pre-war levels. Reuters reported June 25 Brent at **$73.49/bbl** and WTI at **$70.10/bbl** after Middle East supply-flow concerns eased. ([Reuters][2])
+
+**Archetype:** **C. Cyclical — High-quality upstream Permian pure-play**
+**Valuation Engine:** **Engine 2 — Cycle-Adjusted Valuation**
+
+**Why this engine:**
+
+1. FANG’s cash flow is directly tied to WTI, NGL, natural gas, differentials, well costs, and production volumes.
+2. The company has quality-compounder traits—low-cost inventory, strong execution, buybacks—but the earnings base is still commodity-cycle driven.
+3. Reported GAAP P/E is misleading because Q1 included a **$1.4B impairment**, so valuation must normalize FCF and adjusted earnings. ([Diamondback Energy][1])
+
+**Model Confidence:** **Medium-High** for current production/cost data; **Medium** for intrinsic value because long-term WTI and well productivity are the dominant assumptions.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable           | FANG Impact                                               |
+| ------------------------ | --------------------------------------------------------- |
+| WTI near **$70/bbl**     | Positive for FCF, not peak-cycle                          |
+| Brent near **$73.5/bbl** | Positive oil backdrop                                     |
+| Higher rates             | Mild valuation headwind                                   |
+| Inflation                | Mixed: nominal oil support, but service-cost pressure     |
+| U.S. shale discipline    | Important positive if peers avoid oversupply              |
+| Basin concentration      | Higher operational/geological risk than integrated majors |
+
+**Regime probabilities:**
+Goldilocks **15%**, Reflation **35%**, Stagflation **30%**, Recession **20%** `[Estimate]`.
+
+**FANG macro sensitivity score:**
+Interest rates **-0.5**; dollar **-1.0**; liquidity **-0.5**; economic cycle **+2.0**; commodity **+3.0**.
+**Macro alignment:** **Neutral-to-mild tailwind**. FANG benefits from current oil levels, but the macro setup is not a no-risk energy boom because oil has already given back war-premium pricing.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                                                    |               Base Rate | FANG Adjustment                     |
+| ----------------------------------------------------------------- | ----------------------: | ----------------------------------- |
+| 5Y survival for investment-grade shale leader                     |   **>90%** `[Estimate]` | FANG passes                         |
+| Sustaining high FCF yield at WTI $65–75                           | **45–60%** `[Estimate]` | Raised to **60–70%**                |
+| Sustaining flat-to-growing oil production without capex inflation | **40–55%** `[Estimate]` | FANG: **55–65%**                    |
+| Large shale M&A integration creating ROIC > WACC                  | **25–35%** `[Estimate]` | FANG: **40–50%**, but still monitor |
+| Pure-play shale avoiding inventory degradation over 5Y            | **45–60%** `[Estimate]` | FANG: **60–70%**                    |
+
+FANG’s quality adjustment is justified by its Midland Basin concentration, low well costs, investment-grade balance sheet, and large inventory. The Q1 investor presentation describes roughly **890,000 net acres** and **8,854 locations economic at $50/bbl**, with investment-grade ratings of **Baa2 / BBB / BBB+**. 
+
+**Base-rate shock check:** No shock. The model assumes FANG is a superior shale operator, but it does not assume permanently high oil prices.
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+Diamondback is an independent oil and natural gas producer focused on unconventional onshore reserves in the Permian Basin, primarily the Midland Basin. It generates value by drilling low-cost horizontal wells, growing production per share, controlling costs, and returning FCF through dividends and buybacks. The business is understandable, but its value is highly sensitive to oil prices, well productivity, and development costs.
+
+**Comprehensibility:** **High**
+
+### Moat Score
+
+| Moat Type                        |       Score | Direction                 |
+| -------------------------------- | ----------: | ------------------------- |
+| Resource base / acreage quality  |         3/3 | Widening after Endeavor   |
+| Switching costs                  |       0.5/3 | Stable                    |
+| Network effects                  |         0/3 | None                      |
+| Cost advantage                   |         3/3 | Widening                  |
+| Economies of scale               |       2.5/3 | Widening                  |
+| Regulatory / permitting barriers |       1.5/3 | Stable                    |
+| Technical / geologic data moat   |         2/3 | Widening                  |
+| **Total**                        | **12.5/21** | **Wide for upstream E&P** |
+
+**Moat direction:** **Widening**, mainly from scale, Midland Basin density, well-cost reductions, and acquisition integration. This is not a consumer/software moat; it is a resource-cost moat.
+
+**Peter Lynch classification:** **Cyclical / Asset Play / Shareholder-yield compounder.**
+
+### Financial Health Scorecard
+
+| Metric                                  |                              Result |
+| --------------------------------------- | ----------------------------------: |
+| 2025 oil/NGL/gas sales                  | **$13.453B**, up **33%** `[Actual]` |
+| 2025 operating cash flow                |              **$8.758B** `[Actual]` |
+| 2025 oil mix                            |    **54% of production** `[Actual]` |
+| Q1 2026 oil production                  |          **521.0 MBO/d** `[Actual]` |
+| Q1 2026 total production                |         **979.4 MBOE/d** `[Actual]` |
+| Q1 realized oil price                   |  **$73.47/bbl** unhedged `[Actual]` |
+| Q1 hedged oil price                     |           **$72.53/bbl** `[Actual]` |
+| Q1 cash operating expense               |           **$11.26/BOE** `[Actual]` |
+| Q1 adjusted EBITDA attributable to FANG |              **$2.704B** `[Actual]` |
+| Q1 adjusted FCF                         |              **$1.737B** `[Actual]` |
+| Consolidated total debt                 |             **$14.068B** `[Actual]` |
+| Consolidated net debt                   |             **$13.894B** `[Actual]` |
+| Shares outstanding                      |              **~281.3M** `[Actual]` |
+
+2025 revenue and production mix come from the 2025 10-K; Q1 production, realized prices, cash costs, FCF, debt, and share count are from the Q1 2026 release. ([Diamondback Energy][3])
+
+**Financial Health Judgment:** **Good-to-Excellent for an upstream producer.** Leverage is meaningful but manageable; FCF generation is strong at current oil prices.
+
+### Capital Allocation Scorecard
+
+| Dimension                                 |       Score |
+| ----------------------------------------- | ----------: |
+| Buyback efficiency                        |         3/3 |
+| M&A track record                          |       2.5/3 |
+| Capex efficiency                          |       2.5/3 |
+| Dividend / buyback / reinvestment mix     |       2.5/3 |
+| Guidance accuracy / operational execution |       2.5/3 |
+| Insider / governance adjustment           |           0 |
+| **Total**                                 | **13.0/15** |
+
+Diamondback repurchased **3.3M shares** in Q1 for **$548M** at a weighted average price of **$167.61/share**, raised its base dividend to **$1.10/share**, and returned **$859M**, equal to about **50% of adjusted FCF**. ([Diamondback Energy][1])
+
+**Capital allocation judgment:** **Outstanding.** FANG’s buybacks were executed below current price and below my base IV estimate, which is value-accretive.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                                        |                                      Result |
+| ------------------------------------------- | ------------------------------------------: |
+| Q1 GAAP net income attributable to FANG     |                         **$25M** `[Actual]` |
+| Q1 GAAP EPS                                 |                        **$0.08** `[Actual]` |
+| Q1 impairment                               |                        **$1.4B** `[Actual]` |
+| Q1 adjusted net income attributable to FANG |                      **$1.198B** `[Actual]` |
+| Q1 adjusted EPS                             |                        **$4.23** `[Actual]` |
+| Q1 adjusted FCF                             |                      **$1.737B** `[Actual]` |
+| Q1 adjusted FCF / share                     |               **~$6.14/share** `[Estimate]` |
+| 2026 FCF at $70 WTI scenario                | **~$6.7B+** `[Estimate / company scenario]` |
+| 2026 FCF at $80 WTI scenario                | **~$7.6B+** `[Estimate / company scenario]` |
+
+The GAAP EPS distortion is material: the company reported only **$25M** of GAAP net income attributable to Diamondback, but adjusted net income attributable to Diamondback was **$1.198B** because GAAP included impairment and other non-cash items. ([Diamondback Energy][1])
+
+**Adjusted financials judgment:** Use FCF and adjusted earnings. GAAP P/E is not economically useful for FANG at T0 because of the impairment distortion.
+
+---
+
+## Section 3. Valuation — Engine 2 Cycle-Adjusted Valuation
+
+### Cycle Position Check
+
+| Variable                   |                        Current Reading | Judgment                   |
+| -------------------------- | -------------------------------------: | -------------------------- |
+| WTI                        |                           **~$70/bbl** | Mid-cycle positive         |
+| FANG realized oil price Q1 |                         **$73.47/bbl** | Strong                     |
+| Oil production             |                          **521 MBO/d** | Strong / above prior guide |
+| 2026 production guide      | **520+ MBO/d oil / 972+ MBOE/d total** | Raised                     |
+| Capex guide                |                             **~$3.9B** | Higher, but tied to growth |
+| Net debt                   |                             **$13.9B** | Manageable but watch       |
+
+Diamondback raised 2026 oil production guidance to **520+ MBO/d** and total production to **972+ MBOE/d**, while raising full-year cash capex to about **$3.9B**. ([Diamondback Energy][1])
+
+### Normalized FCF Valuation
+
+| Scenario | WTI / Operating Backdrop                   |                FCF | EV / FCF Multiple | Equity Value / Share |
+| -------- | ------------------------------------------ | -----------------: | ----------------: | -------------------: |
+| Bear     | $55–60 WTI, cost inflation, lower buybacks | $4.3B `[Estimate]` |             10.5x |             **$110** |
+| Base     | $65–75 WTI, production guide met           | $6.7B `[Estimate]` |             10.3x |             **$195** |
+| Bull     | $80–90 WTI, strong oil + buybacks          | $8.5B `[Estimate]` |             11.2x |             **$290** |
+
+**Base IV:** **$195/share** `[Estimate]`
+**Current price:** **$182.36/share** `[Actual]`
+**Margin of Safety:** **6.5%** `[Estimate]`
+
+The company’s presentation shows 2026 FCF sensitivity of roughly **$5.8B+ at $60 WTI**, **$6.7B+ at $70 WTI**, **$7.6B+ at $80 WTI**, and **$8.5B+ at $90 WTI**, holding activity, production, and operating/well costs constant. 
+
+### Multiple Cross-Check
+
+| Metric                             |                                         Result |
+| ---------------------------------- | ---------------------------------------------: |
+| Reported P/E                       |                           **~186x** `[Actual]` |
+| Annualized adjusted EPS multiple   |                        **~10.8x** `[Estimate]` |
+| EV / base FCF                      |                         **~9.8x** `[Estimate]` |
+| FCF yield on market cap at $70 WTI |                          **~13%** `[Estimate]` |
+| Base dividend yield                |                         **~2.4%** `[Estimate]` |
+| Q1 capital return yield annualized | High but not sustainable linearly `[Estimate]` |
+
+**Multiple judgment:** FANG is not optically cheap on GAAP earnings, but it is reasonably priced on adjusted FCF. The valuation is materially more attractive than COST/TSLA/AMD on cash yield, but much more commodity-sensitive.
+
+### Tornado Sensitivity
+
+| Variable                   | -1σ Impact | +1σ Impact |
+| -------------------------- | ---------: | ---------: |
+| WTI price                  |       -35% |       +45% |
+| Well cost / D&C efficiency |       -18% |       +20% |
+| Oil production growth      |       -15% |       +18% |
+| Buyback execution price    |       -10% |       +13% |
+| Net debt / discount rate   |        -8% |       +10% |
+
+**Top 3 thesis KPIs:**
+
+1. WTI / realized oil price
+2. Oil production per share
+3. Well costs and cash operating expense per BOE
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+EOG, Devon, Permian Resources, ConocoPhillips, Occidental, Exxon, Chevron, and private operators compete for services, acreage, labor, rigs, and completion crews. The main second-order risk is that higher oil prices trigger U.S. shale supply growth, weakening future WTI and narrowing FCF upside.
+
+**Reflexivity:**
+Positive: lower share count through buybacks raises oil production per share and FCF per share if executed below intrinsic value.
+Negative: if oil prices fall, the stock can drop, buybacks may slow, and leverage perception worsens.
+
+**Customer behavior evolution:**
+FANG sells commodities, so it has no customer loyalty moat. The key “customer” behavior is global demand and refinery demand, not direct end-customer retention.
+
+**Network dynamics:**
+No network effect. Value creation depends on acreage quality, drilling execution, capital allocation, and commodity price discipline.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                            |
+| -------- | ----------: | ------------: | --------------------------------------------------------------------------- |
+| Bear     |         25% |      **$110** | WTI falls to $55–60; capex discipline required; buybacks slow               |
+| Base     |         50% |      **$195** | WTI $65–75; 520+ MBO/d oil; FCF supports dividends + opportunistic buybacks |
+| Bull     |         25% |      **$290** | WTI $80–90; FCF/share compounds through buybacks and production growth      |
+
+**Expected Price:**
+25% × $110 + 50% × $195 + 25% × $290 = **$197.5/share** `[Estimate]`
+With execution/buyback quality adjustment: **$203/share** `[Estimate]`
+
+**50% CI:** **$155–$230** `[Estimate]`
+**80% CI:** **$110–$290** `[Estimate]`
+**MoS:** **6.5%**
+**MoS Judgment:** **Limited MoS**, but better than XOM’s current MoS because of higher FCF yield and buyback torque.
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **1–2 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **~2 years**
+
+There is some horizon arbitrage if the market is under-crediting FANG’s per-share compounding through buybacks and production discipline. But that arbitrage only works if WTI avoids a deep downturn.
+
+**Horizon arbitrage judgment:** **Moderate.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |       Score |
+| ------------------------ | ----------: |
+| Business quality         |      2.25/3 |
+| Valuation attractiveness |       2.0/3 |
+| Macro alignment          |       2.0/3 |
+| Thesis clarity           |       2.0/3 |
+| Execution trackability   |      1.75/3 |
+| **Total**                | **10.0/15** |
+
+**Conviction Tier:** **Medium-High**
+**Layer 5 preliminary weight:** **4–6%**
+**Adjustments:**
+
+* Pure-play oil cyclicality: -1.0%
+* Basin concentration: -0.5%
+* High institutional ownership / energy factor overlap: -0.5%
+* Strong FCF yield and buyback execution: +0.5%
+
+**Layer 5 recommended max weight:** **3.5%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                    |                       Result |
+| ----------------------- | ---------------------------: |
+| Short interest          | **10.53M shares** `[Actual]` |
+| Short % float           |         **3.77%** `[Actual]` |
+| Days to cover           |           **5.4** `[Actual]` |
+| Institutional ownership |      **~90.0%** `[Estimate]` |
+| OI put/call ratio       |          **0.63** `[Actual]` |
+| Squeeze risk            |              Low-to-moderate |
+| Crowding score          | **9/15 Medium** `[Estimate]` |
+
+Short interest is elevated versus XOM but not extreme: **3.77%** of float and **5.4 days to cover** as of May 29. ([MarketBeat][4]) Institutional ownership is high at about **90.01%**, which means FANG can move with institutional energy-factor flows. ([MarketBeat][5]) Options positioning is bullish rather than fearful, with Fintel reporting an open-interest put/call ratio of **0.63**. ([Fintel][6])
+
+**Behavioral judgment:** Neutral-to-slightly bullish. This is not a hated contrarian setup, but not an obvious crowding bubble either.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** High-quality U.S. shale / energy FCF yield / commodity inflation hedge.
+**Expected 3–5Y annualized return:** **8–12%** `[Estimate]`, mostly from FCF yield, dividend, buybacks, and moderate production-per-share growth.
+**Portfolio overlap:** High with XOM and FCX through commodity exposure; moderate with CAT/DE through global cyclical exposure; low with MSFT/META/AMD/PLTR AI exposure.
+
+**Portfolio fit judgment:** **Good diversifier versus AI/tech**, but **energy concentration must be capped** if holding XOM plus FANG.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Weighted upside from current  | **~33%** `[Estimate]` |
+| Bear downside from current    | **~40%** `[Estimate]` |
+| Practical fractional Kelly    | **4–6%** `[Estimate]` |
+| RS2 cyclicality cap           |              **3.5%** |
+
+Kelly would allow a moderate allocation, but RS2 caps FANG below XOM because the business is less diversified and more directly exposed to oil price volatility.
+
+**Final recommended max weight:** **3.5%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **WTI downside:** If WTI falls below **$60/bbl**, FCF and buyback capacity compress quickly.
+2. **Service-cost inflation:** higher rig/completion activity can raise well costs and reduce FCF sensitivity.
+3. **Basin concentration:** nearly all core operations are Permian/Midland Basin focused, increasing geographic and regulatory concentration risk.
+
+### Top 3 Catalysts
+
+1. WTI remains near or above **$70/bbl** while FANG executes the raised production guide.
+2. Buybacks continue below intrinsic value, increasing FCF/share and production/share.
+3. Debt falls toward management’s preferred lower range, improving equity value and shareholder-return flexibility.
+
+**Highest-impact bear scenario:** WTI falls to the mid-$50s while FANG has already increased activity, leaving higher capex and lower FCF at the same time.
+
+---
+
+## Section 7.5. Correlation Risk
+
+FANG’s bear triggers overlap heavily with XOM: oil-price downside, recession, OPEC+ supply changes, U.S. shale oversupply, and energy-sector outflows. FANG diversifies AI exposure but does **not** diversify an energy/commodity-heavy portfolio.
+
+**Stress correlation estimate:**
+With XOM / energy equities: **0.75–0.90** `[Estimate]`
+With AI / mega-cap tech: **0.25–0.45** `[Estimate]`
+
+**True diversification judgment:** **Medium-High** in an AI-heavy portfolio; **Low** if combined with oversized XOM/FCX/CAT/DE cyclical exposure.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                      |      Warning Trigger |                       Re-underwrite Trigger |
+| ------------------------ | -------------------: | ------------------------------------------: |
+| WTI                      |             <$65/bbl |                    <$60/bbl for 2+ quarters |
+| Oil production           |           <515 MBO/d |           misses 520+ FY26 guide materially |
+| Cash opex / BOE          |              >$12.00 |                           >$13.00 sustained |
+| Capex                    | >$4.1B FY26 run-rate | growth capex rises without FCF/share growth |
+| Net debt                 |              >$14.5B |                   no path toward lower debt |
+| Buyback price discipline |    buybacks above IV | repurchases continue while FCF deteriorates |
+
+### Pre-Mortem
+
+1. **Wrong because oil price was over-normalized.**
+   Early warning: WTI below $60 and inventories rising.
+   Response: revalue to bear case; reduce position.
+
+2. **Wrong because production growth requires too much capex.**
+   Early warning: capex rises above guide while production/share stagnates.
+   Response: lower FCF multiple and reduce target weight.
+
+3. **Wrong because buybacks lose discipline.**
+   Early warning: buybacks continue aggressively above IV or during FCF compression.
+   Response: downgrade capital allocation score.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. FANG is still a commodity-price vehicle; the “quality shale compounder” thesis fails if WTI falls below $60.
+2. Reported GAAP earnings are messy: Q1 GAAP EPS was only **$0.08** because of impairment, so investors must rely on adjusted metrics. ([Diamondback Energy][1])
+3. Production growth into higher prices can be self-defeating if U.S. shale supply contributes to future oversupply.
+4. The balance sheet has **$13.9B** of consolidated net debt, which is manageable but not trivial. ([Diamondback Energy][1])
+5. Basin concentration increases regulatory, infrastructure, weather, water, and geological risk.
+6. Institutional ownership is very high, so energy-factor outflows can pressure the stock regardless of fundamentals.
+7. The company has reduced emphasis on fixed variable dividends, so shareholder returns may be more discretionary and less predictable.
+
+### Long vs Short Logic Battle
+
+| Issue                 | Long Score | Short Score | Winner |
+| --------------------- | ---------: | ----------: | ------ |
+| Asset quality         |          3 |           1 | Long   |
+| Cost structure        |          3 |           1 | Long   |
+| FCF yield             |        2.5 |         1.5 | Long   |
+| Oil-price sensitivity |        1.5 |           3 | Short  |
+| Balance sheet         |          2 |         1.5 | Long   |
+| Capital allocation    |          3 |           1 | Long   |
+| Basin concentration   |          1 |         2.5 | Short  |
+
+**Long score:** **16.0**
+**Short score:** **11.5**
+**Gap:** **+4.5 Long**
+**Judgment:** Strong operating thesis, but cyclical risk prevents very-high conviction.
+
+**Adversarial data check:** No major current short-seller fraud thesis found. The strongest bear argument is normal commodity cyclicality plus basin concentration, not accounting fraud.
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                     | Status                          |
+| ------------------------------ | ------------------------------- |
+| Correct engine selected        | Pass — cycle-adjusted valuation |
+| DCF-only conclusion avoided    | Pass                            |
+| GAAP P/E distortion identified | Pass                            |
+| Macro included                 | Pass                            |
+| Base rates included            | Pass                            |
+| Commodity sensitivity included | Pass                            |
+| Position sizing included       | Pass                            |
+| Monitoring KPIs included       | Pass                            |
+| Red team included              | Pass                            |
+| Pre-mortem included            | Pass                            |
+| Data tier reliance disclosed   | Pass                            |
+| Recalculation required         | No                              |
+
+**Model Reliability:** **Medium-High**
+**Key uncertainty:** WTI path and FANG’s ability to compound FCF/share through the cycle.
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                                      |
+| ----------------- | ---------------------------------------------------------- |
+| Baseline date     | June 25, 2026                                              |
+| Current price     | $182.36                                                    |
+| Base IV           | $195                                                       |
+| Expected price    | $203                                                       |
+| Margin of Safety  | 6.5%                                                       |
+| Core assumption 1 | Base FCF around $6.7B at ~$70 WTI                          |
+| Core assumption 2 | Oil production remains around 520+ MBO/d                   |
+| Core assumption 3 | Buybacks remain opportunistic and below IV                 |
+| 3M KPI            | WTI remains >$65 and Q2 production hits guide              |
+| 6M KPI            | Capex remains near ~$3.9B annual plan                      |
+| 12M KPI           | FCF/share grows through buybacks and production discipline |
+| Conviction        | Medium-High / 10.0 of 15                                   |
+| Revalidation date | After Q2 2026 earnings                                     |
+| Top concern       | WTI downside                                               |
+| Second concern    | Basin concentration                                        |
+| Third concern     | Capex creep / shale oversupply                             |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                                                       |
+| ----------------------------- | -------------------------------------------------------------- |
+| Investment Attractiveness     | **Medium-High**                                                |
+| Current Price Attractiveness  | **Medium-High**                                                |
+| Long-Term Holding Suitability | **Medium-High for energy sleeve**                              |
+| Portfolio Suitability         | **High as AI/tech diversifier; lower if already energy-heavy** |
+| Conviction                    | **Medium-High**                                                |
+| Recommended Max Weight        | **3.5%**                                                       |
+| Entry Strategy                | **Selective scale-in; better under ~$170**                     |
+| Execution Opinion             | **Modest Scale-In / Hold**                                     |
+
+**One-line summary:** FANG is a high-quality Permian FCF compounder with attractive buyback economics, but because the thesis is still WTI-sensitive and basin-concentrated, RS2 allows only a **modest scale-in**, not a large core position.
+
+**Next ticker in queue:** JPM.
+
+[1]: https://www.diamondbackenergy.com/news-releases/news-release-details/diamondback-energy-inc-announces-first-quarter-2026-financial "Diamondback Energy, Inc. Announces First Quarter 2026 Financial and Operating Results; Increases Base Dividend and Production Guidance | Diamondback Energy, Inc."
+[2]: https://www.reuters.com/business/energy/oil-prices-fall-tankers-exit-strait-hormuz-2026-06-25/?utm_source=chatgpt.com "Oil prices at pre-war levels on rising Middle East supply"
+[3]: https://www.diamondbackenergy.com/node/17326/html "SEC Filing | Diamondback Energy, Inc."
+[4]: https://www.marketbeat.com/stocks/NASDAQ/FANG/short-interest/ "
+	Diamondback Energy (FANG) Short Interest & Short Float | Updated Jun 2026
+"
+[5]: https://www.marketbeat.com/stocks/NASDAQ/FANG/institutional-ownership/?utm_source=chatgpt.com "Diamondback Energy (FANG) Institutional Ownership 2026"
+[6]: https://fintel.io/sopt/us/fang?utm_source=chatgpt.com "FANG / Diamondback Energy, Inc. - Put/Call Ratio, Options ..."

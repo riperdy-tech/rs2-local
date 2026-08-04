@@ -1,0 +1,488 @@
+Proceeding with **#7 PG** using RS2 sequence and data-tag discipline. 
+
+# RS2 Engine Run #7 — Procter & Gamble / PG
+
+## Top-Line Execution Summary
+
+| Item                        |                                   Result |
+| --------------------------- | ---------------------------------------: |
+| Current Price / T0          |                   **$149.85** `[Actual]` |
+| Market Cap                  |                   **$348.9B** `[Actual]` |
+| Reported P/E                |                     **21.9x** `[Actual]` |
+| TTM Core EPS                |                  **~$6.94** `[Estimate]` |
+| Base Intrinsic Value        |              **$145/share** `[Estimate]` |
+| Expected Price              |              **$146/share** `[Estimate]` |
+| Margin of Safety vs Base IV |                   **-3.3%** `[Estimate]` |
+| 50% CI                      |               **$130–$160** `[Estimate]` |
+| 80% CI                      |               **$110–$180** `[Estimate]` |
+| Conviction                  | **Medium-High / 9.5 of 15** `[Estimate]` |
+| Recommended Max Weight      |                    **3.5%** `[Estimate]` |
+| Entry Strategy              |         **Hold / wait for better entry** |
+| Execution Opinion           |   **Hold; scale-in only near ~$135–140** |
+
+**Core conclusion:** PG is a fortress-quality defensive consumer staple, but at **~21.9x earnings** with only **2% fiscal YTD organic sales growth** and **2% fiscal YTD core EPS growth**, the stock is fairly valued rather than undervalued. ([SEC][1])
+
+---
+
+## Section 0. Analysis Overview
+
+**Company / Ticker:** Procter & Gamble / PG
+**Baseline Date:** June 25, 2026
+**T0:** current price **$149.85**, market cap **$348.9B**, P/E **21.9x** `[Actual]`.
+**T-1:** latest reported period is fiscal Q3 2026, quarter ended March 31, 2026. PG reported Q3 net sales of **$21.235B**, diluted EPS of **$1.63**, core EPS of **$1.59**, and organic sales growth of **3%**. ([SEC][1])
+**Tpf:** current price reflects Q3 2026 results, dividend increase, and maintained FY26 sales/EPS/cash return guidance.
+
+**Archetype:** **A. Stable Incumbent / Defensive Quality Compounder**
+**Valuation Engine:** **Engine 1 — Traditional DCF + Multiples**
+
+**Why this engine:**
+
+1. PG sells recurring essential consumer products with relatively stable demand.
+2. Its valuation depends mainly on earnings durability, pricing power, cash conversion, and dividend/buyback return, not binary optionality.
+3. The business is not cyclical enough for Engine 2 and not speculative enough for Engine 4.
+
+**Model Confidence:** **High for current financials; Medium for long-term growth.** PG’s disclosures are strong, but long-term volume growth, private-label pressure, emerging-market FX, and tariff/commodity cost impacts remain estimation risks.
+
+---
+
+## Section 1. Macro Context
+
+| Macro Variable    | PG Impact                                                      |
+| ----------------- | -------------------------------------------------------------- |
+| Higher rates      | Mild valuation headwind                                        |
+| Inflation         | Mixed: pricing power helps, but consumer trade-down risk rises |
+| Strong USD        | FX translation headwind because PG is global                   |
+| Credit spreads    | Low impact; PG has strong credit access                        |
+| Business cycle    | Defensive tailwind in weak/recessionary periods                |
+| Commodity/tariffs | Margin risk                                                    |
+
+**Regime probabilities:**
+Goldilocks **20%**, Reflation **30%**, Stagflation **30%**, Recession **20%** `[Estimate]`.
+
+**PG macro sensitivity score:**
+Interest rate **-1.0**; dollar **-1.0**; liquidity **-0.5**; economic cycle **-0.5**; commodity **-1.0**.
+**Macro alignment:** **Neutral-to-mild tailwind**. PG is defensive if growth slows, but rates/FX/commodities limit upside.
+
+---
+
+## Section 1.5. Base Rate Check
+
+| Base Rate Item                           |               Base Rate | PG Adjustment  |
+| ---------------------------------------- | ----------------------: | -------------- |
+| 5Y survival for mega-cap consumer staple |   **>95%** `[Estimate]` | PG passes      |
+| Sustaining 2–4% organic sales growth     | **60–75%** `[Estimate]` | PG: **70–80%** |
+| Sustaining high-teens/20%+ ROIC profile  | **60–75%** `[Estimate]` | PG: **70–80%** |
+| Sustaining 5%+ EPS CAGR at current size  | **35–50%** `[Estimate]` | PG: **40–55%** |
+
+**Base-rate shock check:** No shock. PG’s defensive quality is above average, but growth base rates remain modest. I do **not** assume high-single-digit organic growth.
+
+---
+
+## Section 2. Business Quality
+
+**3-sentence business overview:**
+P&G sells branded household and personal-care staples across Beauty, Grooming, Health Care, Fabric & Home Care, and Baby, Feminine & Family Care. Its core brands include Tide, Pampers, Gillette, Crest, Oral-B, Pantene, Head & Shoulders, Always, Bounty, Charmin, and related global franchises. The business is highly understandable, with the main uncertainty being volume elasticity and pricing power in a pressured consumer environment.
+
+**Comprehensibility:** **High**
+
+### Moat Score
+
+| Moat Type                  |     Score | Direction     |
+| -------------------------- | --------: | ------------- |
+| Intangible assets / brands |       3/3 | Stable        |
+| Switching costs            |       1/3 | Stable        |
+| Network effects            |     0.5/3 | Stable        |
+| Cost advantage             |     2.5/3 | Stable        |
+| Economies of scale         |       3/3 | Stable        |
+| Regulatory barriers        |     0.5/3 | Stable        |
+| Data / retailer insights   |     1.5/3 | Stable        |
+| **Total**                  | **12/21** | **Wide Moat** |
+
+**Moat direction:** **Stable**, not meaningfully widening. PG has enduring brand/scale advantages, but private label, local brands, retailer power, and price sensitivity prevent fortress-level scoring.
+
+**Peter Lynch classification:** **Slow Grower / Stalwart hybrid.**
+
+### Financial Health Scorecard
+
+| Metric                       |                             Result |
+| ---------------------------- | ---------------------------------: |
+| FY25 net sales               |   **$84.3B**, up **2%** `[Actual]` |
+| FY25 organic sales growth    |                  **2%** `[Actual]` |
+| FY25 core EPS growth         |                  **4%** `[Actual]` |
+| FY25 operating cash flow     |              **$17.8B** `[Actual]` |
+| Q3 FY26 net sales            | **$21.235B**, up **7%** `[Actual]` |
+| Q3 FY26 organic sales growth |                  **3%** `[Actual]` |
+| Q3 FY26 volume               |                 **+2%** `[Actual]` |
+| 9M FY26 net sales            | **$65.828B**, up **4%** `[Actual]` |
+| 9M FY26 organic sales growth |                  **2%** `[Actual]` |
+| 9M FY26 diluted EPS          |    **$5.36**, up **7%** `[Actual]` |
+| 9M FY26 core EPS             |    **$5.46**, up **2%** `[Actual]` |
+| 9M FY26 operating cash flow  |            **$14.425B** `[Actual]` |
+| 9M FY26 adjusted FCF         |            **$11.727B** `[Actual]` |
+| Cash                         |            **$12.306B** `[Actual]` |
+| Total debt                   |          **$37.026B** `[Estimate]` |
+| Net debt                     |          **~$24.72B** `[Estimate]` |
+
+FY25 results show **$84.3B** net sales, **2%** organic sales growth, **4%** core EPS growth, and **$17.8B** operating cash flow. ([Procter & Gamble][2]) Q3 and nine-month FY26 results show the key near-term issue: sales growth improved, but 9M core EPS growth was only **2%**, and 9M gross margin fell **110 bps** to **50.7%**. ([SEC][1])
+
+**Financial Health Judgment:** **Excellent defensive quality, but only modest growth.**
+
+### Capital Allocation Scorecard
+
+| Dimension                             |       Score |
+| ------------------------------------- | ----------: |
+| Buyback efficiency                    |         2/3 |
+| M&A track record                      |         2/3 |
+| Capex efficiency                      |       2.5/3 |
+| Dividend / buyback / reinvestment mix |         3/3 |
+| Guidance accuracy                     |       2.5/3 |
+| Insider adjustment                    |           0 |
+| **Total**                             | **12.0/15** |
+
+PG returned **$3.2B** to shareholders in Q3 FY26 through **$2.5B** of dividends and over **$600M** of repurchases. ([PG 투자자 관계][3]) The company also raised the dividend for the **70th consecutive year** and has paid a dividend for **136 consecutive years**. ([SEC][4])
+
+**Capital allocation judgment:** **Good-to-outstanding.** PG is one of the strongest capital-return machines in the list, but buybacks at ~20–22x earnings are not obviously high-IRR.
+
+---
+
+## Section 2.5. Adjusted Financials
+
+| Item                                |                        Result |
+| ----------------------------------- | ----------------------------: |
+| Q3 FY26 SBC                         |          **$132M** `[Actual]` |
+| 9M FY26 SBC                         |          **$394M** `[Actual]` |
+| 9M FY26 operating cash flow         |       **$14.425B** `[Actual]` |
+| 9M FY26 capital spending            |        **$3.386B** `[Actual]` |
+| 9M FY26 adjusted FCF                |       **$11.727B** `[Actual]` |
+| 9M FY26 adjusted FCF productivity   |            **92%** `[Actual]` |
+| TTM net sales                       |      **~$86.7B** `[Estimate]` |
+| TTM net earnings attributable to PG |      **~$16.6B** `[Estimate]` |
+| TTM core EPS                        |       **~$6.94** `[Estimate]` |
+| TTM adjusted FCF                    | **~$12.8–13.0B** `[Estimate]` |
+
+SBC is small relative to earnings and cash flow, so the main adjustment is not SBC; it is normalized margin/FX/commodity pressure. PG disclosed **$394M** of share-based compensation expense for the first nine months of FY26. ([SEC][1])
+
+**Adjusted financials judgment:** Clean. PG’s accounting quality is high, and adjusted cash conversion is strong.
+
+---
+
+## Section 3. Valuation — Engine 1
+
+### DCF / Owner Earnings Assumptions
+
+| Scenario | Starting EPS / Owner Earnings |         Growth Path | Discount Rate | Terminal Growth | IV / Share |
+| -------- | ----------------------------: | ------------------: | ------------: | --------------: | ---------: |
+| Bear     |          $6.70 `[Assumption]` |                1–2% |          8.5% |            2.0% |   **$110** |
+| Base     |            $6.95 `[Estimate]` | 4.5% fading to 3.0% |          8.0% |            2.5% |   **$145** |
+| Bull     |          $7.20 `[Assumption]` |   6% fading to 3.5% |          7.5% |           2.75% |   **$180** |
+
+**Base IV:** **$145/share** `[Estimate]`
+**Current price:** **$149.85/share** `[Actual]`
+**Margin of Safety:** **-3.3%** `[Estimate]`
+
+### Multiple Cross-Check
+
+| Metric                        |                  Result |
+| ----------------------------- | ----------------------: |
+| Reported P/E                  |    **21.9x** `[Actual]` |
+| TTM core EPS multiple         | **~21.6x** `[Estimate]` |
+| Dividend yield                |  **~2.9%** `[Estimate]` |
+| EV / TTM operating income     | **~18.5x** `[Estimate]` |
+| Organic sales growth, 9M FY26 |       **2%** `[Actual]` |
+| Core EPS growth, 9M FY26      |       **2%** `[Actual]` |
+
+**Multiple judgment:** PG deserves a premium to lower-quality staples, but **~21–22x earnings** is not cheap for low-single-digit organic growth. The dividend is attractive, but not enough to create a strong margin of safety.
+
+### Reverse DCF
+
+At **$149.85/share**, the market implies roughly **4–5% long-term EPS/owner-earnings growth** plus durable dividend growth. `[Estimate]`
+
+**Judgment:** **Plausible but fully priced.** PG can meet this, but there is limited upside unless volume growth accelerates or the market rerates defensives.
+
+### Tornado Sensitivity
+
+| Variable                | -1σ Impact | +1σ Impact |
+| ----------------------- | ---------: | ---------: |
+| Organic sales growth    |       -15% |       +18% |
+| Gross margin            |       -14% |       +16% |
+| Discount rate           |       -13% |       +15% |
+| FX / dollar sensitivity |        -8% |        +8% |
+| Buyback pace            |        -6% |        +7% |
+
+**Top 3 thesis KPIs:**
+
+1. Organic sales growth
+2. Gross margin
+3. Core EPS growth / FCF productivity
+
+---
+
+## Section 3.5. Second-Order Effects
+
+**Competitive response:**
+Private label, Unilever, Colgate-Palmolive, Kimberly-Clark, Reckitt, Church & Dwight, L’Oréal, and local emerging-market brands compete aggressively. PG’s scale and brand equity help, but the main risk is that price-sensitive consumers trade down when PG raises prices.
+
+**Reflexivity:**
+Positive: PG’s defensive stock status supports low-cost debt access and dividend confidence.
+Negative: if investors rotate back toward growth or cyclicals, PG can underperform even if fundamentals remain steady.
+
+**Customer behavior evolution:**
+The market is shifting from pure pricing-led growth back toward volume-led growth. Q3 FY26 was encouraging because organic growth included **2% volume** and **1% price**, but the 9M picture remains modest with volume flat and organic sales up only **2%**. ([SEC][1])
+
+**Network dynamics:**
+No true network effect. PG’s advantage comes from brand trust, shelf space, scale R&D, supply chain, and advertising efficiency.
+
+---
+
+## Section 4. Scenarios
+
+| Scenario | Probability | Value / Share | Core Assumptions                                                     |
+| -------- | ----------: | ------------: | -------------------------------------------------------------------- |
+| Bear     |         25% |      **$110** | Pricing fades, volume weakens, commodity/tariff pressure persists    |
+| Base     |         50% |      **$145** | Organic sales 2–4%, EPS grows 4–5%, dividend/buyback continue        |
+| Bull     |         25% |      **$180** | Volume-led growth improves, gross margin recovers, defensives rerate |
+
+**Expected Price:**
+25% × $110 + 50% × $145 + 25% × $180 = **$145/share** `[Estimate]`
+With defensive-quality premium: **$146/share** `[Estimate]`
+
+**50% CI:** **$130–$160** `[Estimate]`
+**80% CI:** **$110–$180** `[Estimate]`
+**Margin of Safety:** **-3.3%**
+**MoS Judgment:** **No Margin of Safety, but not materially overvalued.**
+
+---
+
+## Section 4.5. Horizon Arbitrage
+
+**Market implied horizon:** **2–3 years** `[Estimate]`
+**My horizon:** **3–5 years**
+**Spread:** **~1–2 years**
+
+The market understands PG’s durability. There is no major hidden long-term optionality, but there is some patience premium if the current investment cycle restores volume share and margin.
+
+**Horizon arbitrage judgment:** **Limited.**
+
+---
+
+## Section 5. Conviction & Position
+
+| Axis                     |      Score |
+| ------------------------ | ---------: |
+| Business quality         |     2.75/3 |
+| Valuation attractiveness |      1.0/3 |
+| Macro alignment          |      2.0/3 |
+| Thesis clarity           |     1.75/3 |
+| Execution trackability   |      2.0/3 |
+| **Total**                | **9.5/15** |
+
+**Conviction Tier:** **Medium-High**
+**Layer 5 preliminary weight:** **3–5%**
+**Adjustments:**
+
+* No MoS: -0.5%
+* Low growth / high multiple: -0.5%
+* Defensive diversification benefit: +0.5%
+
+**Layer 5 recommended max weight:** **3.5%**
+
+---
+
+## Section 5.5. Behavioral & Positioning
+
+| Item                    |                           Result |
+| ----------------------- | -------------------------------: |
+| Short interest          |        Low / normal `[Estimate]` |
+| Put/call OI ratio       |              **0.89** `[Actual]` |
+| Institutional ownership |            **~69%** `[Estimate]` |
+| Dividend yield          |           **~2.9%** `[Estimate]` |
+| Squeeze risk            |                              Low |
+| Crowding score          | **6/15 Medium-Low** `[Estimate]` |
+
+Options positioning is neutral-to-slightly cautious, with an open-interest put/call ratio of **0.89**. ([Fintel][5]) Institutional ownership is high but typical for a mega-cap staple, not a crowding red flag. ([Simply Wall St.][6])
+
+**Behavioral judgment:** Neutral. PG is not a hated contrarian stock and not a hype stock.
+
+---
+
+## Section 6. Portfolio Fit
+
+**Role:** Defensive consumer-staples ballast / dividend compounder.
+**Expected 3–5Y annualized return:** **5–7%** `[Estimate]`, mostly from dividend yield plus low-single-digit EPS growth.
+**Portfolio overlap:** Low with AI/tech names; moderate with COST and HD through consumer exposure; low with energy/industrial cyclicals.
+
+**Portfolio fit judgment:** **High as a stabilizer**, but **medium as a return driver**.
+
+---
+
+## Section 6.5. Kelly Sizing
+
+| Input                         |                 Value |
+| ----------------------------- | --------------------: |
+| Probability of base-or-better |  **75%** `[Estimate]` |
+| Weighted upside from current  | **~11%** `[Estimate]` |
+| Bear downside from current    | **~27%** `[Estimate]` |
+| Practical fractional Kelly    | **2–4%** `[Estimate]` |
+| RS2 final cap                 |              **3.5%** |
+
+Layer 5 and Kelly sizing align.
+**Final recommended max weight:** **3.5%**
+
+---
+
+## Section 7. Risks & Catalysts
+
+### Top 3 Risks
+
+1. **Volume weakness:** FY26 YTD volume is flat despite Q3 improvement; if volume stays weak, pricing-led growth fades. ([SEC][1])
+2. **Gross margin pressure:** FY26 YTD gross margin declined **110 bps** to **50.7%**. ([SEC][1])
+3. **Premium-brand trade-down:** consumers shift toward private label or cheaper competitors if pricing remains high.
+
+### Top 3 Catalysts
+
+1. Organic sales growth improves from **2% YTD** toward **3–4% sustained**.
+2. Gross margin stabilizes and starts recovering.
+3. Defensive rotation plus dividend yield supports multiple stability.
+
+**Highest-impact bear scenario:** PG remains a great company but becomes a low-growth bond proxy trading at a market multiple, causing valuation compression.
+
+---
+
+## Section 7.5. Correlation Risk
+
+PG’s bear triggers are different from AI names: weak volume, private-label competition, FX, commodity/tariff cost pressure, and defensive-factor derating. It has low correlation with AMD/TSLA/PLTR/OKLO and moderate correlation with COST/HD through consumer spending.
+
+**Stress correlation estimate:** **0.40–0.60** with broad market; **0.25–0.45** with high-beta AI names. `[Estimate]`
+**True diversification judgment:** **High** inside an AI-heavy portfolio.
+
+---
+
+## Section 8. Monitoring Rules
+
+| KPI                       |                    Warning Trigger |       Re-underwrite Trigger |
+| ------------------------- | ---------------------------------: | --------------------------: |
+| Organic sales growth      |                                <2% |         <1% for 2+ quarters |
+| Volume growth             |                      flat/negative |    negative for 2+ quarters |
+| Gross margin              |                      down >100 bps | no recovery after 12 months |
+| Core EPS growth           |                                <2% |               flat/negative |
+| Adjusted FCF productivity |                               <85% |                        <80% |
+| Market share              | decline in multiple key categories |          broad share losses |
+
+### Pre-Mortem
+
+1. **Wrong because PG loses premium pricing power.**
+   Early warning: organic growth becomes purely price-driven while volume weakens.
+   Response: lower terminal growth and valuation multiple.
+
+2. **Wrong because private label/local brands gain share.**
+   Early warning: broad market-share losses across Fabric, Baby, Grooming, and Beauty.
+   Response: reduce moat score from Wide to Narrow-Wide.
+
+3. **Wrong because margin pressure persists.**
+   Early warning: commodity, tariff, and mix pressure offset productivity for 3–4 quarters.
+   Response: lower base IV toward $125–130.
+
+---
+
+## Section 9. Red Team
+
+### Short Thesis
+
+1. PG trades at **~21.9x earnings** despite only **2% YTD organic sales growth** and **2% YTD core EPS growth**. ([SEC][1])
+2. Gross margin fell **110 bps** fiscal YTD, showing that pricing and productivity are not fully offsetting cost/mix pressure. ([SEC][1])
+3. The dividend is excellent, but the stock’s total-return setup is only mid-single-digit unless growth accelerates.
+4. Private label and local brands can pressure PG’s premium portfolio.
+5. FX remains a persistent drag/tailwind swing factor because PG is highly global.
+6. Buybacks at current multiples are not highly accretive.
+7. Defensive stocks can derate if rates remain high or investors rotate toward growth/cyclicals.
+
+### Long vs Short Logic Battle
+
+| Issue                     | Long Score | Short Score | Winner |
+| ------------------------- | ---------: | ----------: | ------ |
+| Brand moat                |          3 |           1 | Long   |
+| Cash conversion           |          3 |           1 | Long   |
+| Dividend quality          |          3 |         0.5 | Long   |
+| Valuation                 |          1 |         2.5 | Short  |
+| Organic growth            |        1.5 |           2 | Short  |
+| Margin pressure           |        1.5 |           2 | Short  |
+| Portfolio diversification |        2.5 |           1 | Long   |
+
+**Long score:** **15.5**
+**Short score:** **10.0**
+**Gap:** **+5.5 Long**
+**Judgment:** Strong defensive-quality thesis, but valuation prevents a Buy rating.
+
+**Adversarial data check:** No major current short-seller fraud thesis found. The strongest bear case is “great company, mediocre stock return at this multiple.”
+
+---
+
+## Section 10. Audit Results
+
+| Audit Area                                 | Status |
+| ------------------------------------------ | ------ |
+| Correct engine selected                    | Pass   |
+| DCF-only conclusion avoided                | Pass   |
+| Multiples cross-check included             | Pass   |
+| Macro included                             | Pass   |
+| Base rates included                        | Pass   |
+| Defensive quality separated from valuation | Pass   |
+| Position sizing included                   | Pass   |
+| Monitoring KPIs included                   | Pass   |
+| Red team included                          | Pass   |
+| Pre-mortem included                        | Pass   |
+| Data tier reliance disclosed               | Pass   |
+| Recalculation required                     | No     |
+
+**Model Reliability:** **High for business quality; Medium for return forecast.**
+
+---
+
+## Section 11. Decision Journal Entry
+
+| Item              | Entry                                          |
+| ----------------- | ---------------------------------------------- |
+| Baseline date     | June 25, 2026                                  |
+| Current price     | $149.85                                        |
+| Base IV           | $145                                           |
+| Expected price    | $146                                           |
+| Margin of Safety  | -3.3%                                          |
+| Core assumption 1 | TTM core EPS around $6.94                      |
+| Core assumption 2 | Long-term EPS growth around 4–5%               |
+| Core assumption 3 | Dividend grows low-single to mid-single digits |
+| 3M KPI            | Organic sales remain ≥3%                       |
+| 6M KPI            | Volume remains positive                        |
+| 12M KPI           | Gross margin stabilizes or improves            |
+| Conviction        | Medium-High / 9.5 of 15                        |
+| Revalidation date | After FY26 Q4 earnings                         |
+| Top concern       | No MoS                                         |
+| Second concern    | Low organic growth                             |
+| Third concern     | Gross margin pressure                          |
+
+---
+
+## Section 12. Final Execution Opinion
+
+| Category                      | Judgment                               |
+| ----------------------------- | -------------------------------------- |
+| Investment Attractiveness     | **Medium-High**                        |
+| Current Price Attractiveness  | **Medium-Low**                         |
+| Long-Term Holding Suitability | **High**                               |
+| Portfolio Suitability         | **High as defensive ballast**          |
+| Conviction                    | **Medium-High**                        |
+| Recommended Max Weight        | **3.5%**                               |
+| Entry Strategy                | **Hold; scale-in only near ~$135–140** |
+| Execution Opinion             | **Hold / Wait**                        |
+
+**One-line summary:** PG is a defensive, high-quality dividend compounder, but at **$149.85** the stock is close to fair value and lacks a meaningful RS2 margin of safety.
+
+**Next ticker in queue:** COST.
+
+[1]: https://www.sec.gov/Archives/edgar/data/80424/000008042426000060/pg-20260331.htm "pg-20260331"
+[2]: https://us.pg.com/annualreport2025/introduction-and-fy-results/?utm_source=chatgpt.com "Fiscal Year 2025 Results | P&G 2025 Annual Report"
+[3]: https://www.pginvestor.com/news/news-details/2026/PG-Announces-Fiscal-Year-2026-Third-Quarter-Results/default.aspx "
+	P&G Announces Fiscal Year 2026 Third Quarter Results | Procter & Gamble Investor Relations
+"
+[4]: https://www.sec.gov/Archives/edgar/data/80424/000008042426000056/fy2526q3jfm8-kexhibit991.htm?utm_source=chatgpt.com "Operating cash flow was $4.0 billion, and net earnings ..."
+[5]: https://fintel.io/sopt/us/pg?utm_source=chatgpt.com "PG / The Procter & Gamble Company - Put/Call Ratio"
+[6]: https://simplywall.st/stocks/us/household/nyse-pg/procter-gamble/news/with-69-ownership-of-the-shares-the-procter-gamble-company-n?utm_source=chatgpt.com "With 69% ownership of the shares, The Procter & Gamble ..."

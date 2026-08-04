@@ -1,0 +1,429 @@
+#!/usr/bin/env python3
+"""valuation_backbone.py — deterministic reverse-DCF valuation backbone.
+
+Port of the screener's scripts/build_valuation_models.py into RS2 Local, per-ticker, so the
+local engine uses the SAME sound, reproducible method instead of letting the 3B model guess
+base_cf / growth / WACC (see AUDIT.md C2/H1-H6).
+
+Method (expectations investing):
+  base_cf  = owner earnings (NI + D&A - capex), from SEC fundamentals_history.json.
+             Honest NULL when <= 0 (never a fabricated number) -> caller routes to Engine 4.
+             Cyclicals (energy/materials/industrials) use MID-CYCLE owner earnings (multi-yr avg),
+             because a single trough/peak fiscal year is unrepresentative.
+  WACC     = sector table (mirror of scripts/reverse_config.json).
+  implied  = growth solved so PV(base_cf @ WACC, two-stage 5+5) == MARKET CAP (equity; no
+             net_cash bridge -- the screener's consistent convention).
+  evidence = demonstrated 5y revenue & FCF CAGR; expectations gap = implied - demonstrated rev CAGR.
+
+backbone(ticker) -> dict with ok=True + fields, OR {"ok": False, "reason": ...}.
+Deterministic, reproducible, no LLM / no network. Standalone CLI: python valuation_backbone.py NVDA
+"""
+import json
+import math
+import sys
+from pathlib import Path
+
+import valuation_engine as ve   # dcf_value — identical math to lib/dcf.ts
+import rs2_data                 # sector_lookup, load_json, CONFIG
+
+CONFIG = rs2_data.CONFIG
+SD = Path(CONFIG["screener_data_dir"])
+HERE = Path(__file__).resolve().parent
+
+FWD_GROWTH_CEIL = 0.20     # forward-growth cap for the fair-value DCF (no blind hyper-extrapolation)
+STALE_TARGET_DAYS = 45     # analyst-target band older than this is flagged low-confidence
+
+
+def _iso_age_days(iso):
+    """Age in days of an ISO timestamp string, or None."""
+    if not iso:
+        return None
+    try:
+        from datetime import datetime, timezone
+        s = str(iso).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds() / 86400.0
+    except Exception:
+        return None
+
+
+def _consensus_band(ticker):
+    """Analyst consensus price-target band {low, median, high, n, age_days, stale, source} or None.
+    Prefer the OpenBB cache (richer); fall back to the yfinance enrich file. No network — reads the
+    already-fetched JSON artifacts, keeping the backbone deterministic."""
+    t = ticker.upper()
+    ob = rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json") or {}
+    def _sane(lo, hi):
+        lo, hi = _num(lo), _num(hi)
+        # reject corrupt/degenerate bands (e.g. ATAT high $558 vs $32 price) — too dispersed to fence
+        return bool(lo and hi and lo > 0 and hi >= lo and hi / lo <= 6)
+    c = ob.get("analyst_consensus") or {}
+    lo, med, hi = c.get("target_low"), c.get("target_median") or c.get("target_consensus"), c.get("target_high")
+    if _sane(lo, hi):
+        age = _iso_age_days(ob.get("_fetched_at"))
+        return {"low": _num(lo), "median": _num(med) or (_num(lo) + _num(hi)) / 2, "high": _num(hi),
+                "n": c.get("number_of_analysts"), "age_days": round(age, 1) if age is not None else None,
+                "stale": bool(age is not None and age > STALE_TARGET_DAYS), "source": "openbb"}
+    en = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
+    lo, med, hi = en.get("analyst_target_low"), en.get("analyst_target_median") or en.get("analyst_target_mean"), en.get("analyst_target_high")
+    if _sane(lo, hi):
+        age = _iso_age_days(en.get("_fetched_at"))
+        return {"low": _num(lo), "median": _num(med) or (_num(lo) + _num(hi)) / 2, "high": _num(hi),
+                "n": en.get("analyst_count"), "age_days": round(age, 1) if age is not None else None,
+                "stale": bool(age is not None and age > STALE_TARGET_DAYS), "source": "enrich"}
+    return None
+
+
+def _forward_growth(ticker):
+    """Forward analyst growth as a fraction/yr, plus its source. Priority:
+    OpenBB cached forward_growth (revenue then EPS) -> PEG-implied (pe/peg) -> (None, None).
+    No network — reads the cache the openbb_data step already wrote."""
+    t = ticker.upper()
+    ob = rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json") or {}
+    fg = ob.get("forward_growth") or {}
+    for key in ("revenue_cagr", "eps_cagr"):
+        v = _num(fg.get(key))
+        if v is not None:
+            return v, f"fwd_{key}"
+    m = ob.get("metrics") or {}
+    pe, peg = _num(m.get("pe_ratio")), _num(m.get("peg_ratio"))
+    if pe and peg and pe > 0 and peg > 0:
+        g = (pe / peg) / 100.0            # PEG = PE / growth% -> growth% = PE/PEG
+        if 0 < g < 1.5:
+            return g, "peg_implied"
+    return None, None
+
+TERMINAL_G = 0.025
+STAGE1, FADE = 5, 5
+G_LO, G_HI = -0.50, 1.50          # implied-growth solver bounds (wide; diagnostic, like the screener)
+
+# Mirror of scripts/reverse_config.json sector_wacc (percent). Kept here because the screener's
+# scripts/ are git-tracked but not checked out locally. Resync if the screener table changes.
+SECTOR_WACC = {
+    "Technology": 11, "Healthcare": 10, "Consumer Discretionary": 10, "Consumer Staples": 8,
+    "Industrials": 9, "Financials": 10, "Energy": 11, "Materials": 10, "Utilities": 7,
+    "Real Estate": 8, "Communication Services": 10,
+}
+SECTOR_ALIASES = {  # stocks.csv carries Yahoo sector names; the WACC table uses GICS-ish names
+    "Consumer Cyclical": "Consumer Discretionary", "Consumer Defensive": "Consumer Staples",
+    "Financial Services": "Financials", "Basic Materials": "Materials",
+}
+DEFAULT_WACC = 10.0
+# Commodity / heavy-capex cyclicals whose latest fiscal year is trough/peak distorted -> use
+# mid-cycle owner earnings. Utilities are deliberately EXCLUDED (regulated, steady; latest-FY fine).
+MIDCYCLE_SECTORS = ("energy", "materials", "industrials")
+
+# Balance-sheet financials are ROUTED BY INDUSTRY to the P/B-ROE model (2026-07-11): the old
+# base_cf<=0 trigger almost never fired for insurers/banks (their NI+D&A-capex is usually
+# POSITIVE), so UVE/HG-type names ran the owner-earnings DCF the AUDIT calls structurally
+# invalid for them. Yahoo lumps card networks (V/MA) under "Credit Services" with lenders,
+# so Credit Services deliberately STAYS on the reverse-DCF (asset-light correctness dominates);
+# so do Capital Markets / Asset Management / exchanges (fee businesses).
+PB_ROE_INDUSTRIES = ("bank", "insurance", "mortgage")   # substring match, lowercase Yahoo industry
+PB_ROE_EXCLUDE = ("insurance broker",)                  # fee businesses, not underwriters
+
+
+def _num(v):
+    return v if isinstance(v, (int, float)) and math.isfinite(v) else None
+
+
+def _hist(ticker):
+    h = rs2_data.load_json(SD / "fundamentals_history.json") or {}
+    t = (h.get("tickers") or h).get(ticker.upper())
+    return t if isinstance(t, dict) else None
+
+
+def _owner_earnings(fy):
+    """Owner earnings = NI + D&A - capex for one fiscal-year dict, or None if inputs missing."""
+    ni, da, capex = _num(fy.get("net_income")), _num(fy.get("da")), _num(fy.get("capex"))
+    if None in (ni, da, capex):
+        return None
+    return ni + da - capex
+
+
+def _cagr(first, last, years):
+    if not first or not last or first <= 0 or last <= 0 or years <= 0:
+        return None
+    return (last / first) ** (1 / years) - 1
+
+
+def _growth_evidence(ydata):
+    """(revenue_cagr_5y, fcf_cagr_5y) from up to 6 fiscal years (mirror of the screener)."""
+    yrs = sorted(int(y) for y in ydata.keys())
+    rev = [(y, _num(ydata[str(y)].get("revenue"))) for y in yrs]
+    rev = [(y, v) for y, v in rev if v and v > 0]
+    fcf = [(y, _num(ydata[str(y)].get("fcf"))) for y in yrs]
+    fcf = [(y, v) for y, v in fcf if v and v > 0]
+    rc = fc = None
+    if len(rev) >= 4:
+        (ya, va), (yb, vb) = rev[max(0, len(rev) - 6)], rev[-1]
+        rc = _cagr(va, vb, yb - ya)
+    if len(fcf) >= 4:
+        (ya, va), (yb, vb) = fcf[max(0, len(fcf) - 6)], fcf[-1]
+        fc = _cagr(va, vb, yb - ya)
+    return rc, fc
+
+
+def _solve_implied_growth(base_cf, target_value, wacc):
+    """Bisection for stage-1 g s.t. dcf_value == target_value (market cap). Wide bounds."""
+    if base_cf <= 0 or target_value <= 0:
+        return None
+    f = lambda g: ve.dcf_value(base_cf, g, wacc, TERMINAL_G, STAGE1, FADE)
+    lo_v, hi_v = f(G_LO), f(G_HI)
+    if lo_v is None or hi_v is None:
+        return None
+    if target_value <= lo_v:
+        return G_LO
+    if target_value >= hi_v:
+        return G_HI
+    lo, hi = G_LO, G_HI
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        v = f(mid)
+        if v is None:
+            return None
+        if v < target_value:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def _verdict(gap_pts):
+    if gap_pts is None:
+        return "No growth evidence to compare — judge the implied rate on its own."
+    if gap_pts > 10:
+        return f"Price demands ~{gap_pts:+.0f}pts MORE growth than demonstrated — must believe acceleration."
+    if gap_pts > 5:
+        return f"Price assumes modest acceleration ({gap_pts:+.0f}pts above demonstrated)."
+    if gap_pts >= -5:
+        return "Priced roughly in line with demonstrated growth."
+    return f"Priced {abs(gap_pts):.0f}pts BELOW demonstrated growth — market expects deceleration."
+
+
+def _base_cf(ticker, ydata, sector_l):
+    """Return (base_cf_$, kind). Cyclicals -> mid-cycle avg owner earnings; else latest-FY owner
+    earnings with fcf / ocf-minus-da fallbacks. None base_cf -> honest null upstream."""
+    yrs = sorted(int(y) for y in ydata.keys())
+    fy = ydata[str(yrs[-1])]
+    # cyclical: average owner earnings over the available cycle (trough+peak cancel)
+    if any(c in sector_l for c in MIDCYCLE_SECTORS):
+        owners = [_owner_earnings(ydata[str(y)]) for y in yrs]
+        owners = [o for o in owners if o is not None and o > 0]
+        if len(owners) >= 3:
+            return sum(owners) / len(owners), "midcycle_owner_earnings"
+        # too little history -> fall through to latest-FY logic
+    owner = _owner_earnings(fy)
+    fcf = _num(fy.get("fcf"))
+    ocf, da = _num(fy.get("ocf")), _num(fy.get("da"))
+    if owner is not None and owner > 0:
+        return owner, "owner_earnings"
+    if fcf is not None and fcf > 0:
+        return fcf, "fcf_fallback"
+    if _num(fy.get("capex")) is None and None not in (ocf, da) and (ocf - da) > 0:
+        return ocf - da, "ocf_minus_da_proxy"   # capex tag missing: steady-state proxy ~ D&A
+    return (owner if owner is not None else fcf), "none"
+
+
+FIN_COE = 0.10   # cost of equity for financials (the Financials sector WACC)
+
+
+def _fin_verdict(gap_pts):
+    if gap_pts is None:
+        return "Judge ROE durability on its own."
+    if gap_pts > 4:
+        return f"Price implies ~{gap_pts:+.0f}pts HIGHER ROE than delivered — demands ROE expansion."
+    if gap_pts >= -4:
+        return "Priced roughly in line with the delivered ROE."
+    return f"Priced {abs(gap_pts):.0f}pts BELOW delivered ROE — market doubts ROE durability."
+
+
+def _financial_backbone(t, ydata, price, mcap, shares):
+    """Banks/insurers: a cash-flow DCF is structurally invalid, so value on equity returns.
+    Justified P/B = (ROE - g) / (CoE - g) (Gordon, in P/B space). Invert the CURRENT P/B to the
+    ROE the price implies, and compare to the delivered ROE -> an expectations gap parallel to the
+    reverse-DCF one. Deterministic: no LLM-chosen multiple (the old Engine-2 was unstable, AUDIT M2).
+    The raw Gordon fair value is CONSENSUS-FENCED exactly like the reverse-DCF path (band
+    de-forwarded by one year of CoE; never more bullish than the PV of the analyst median;
+    escapes the band -> snap to median) so a g-near-CoE artifact can't blow up the $ value."""
+    yrs = sorted(int(y) for y in ydata.keys())
+    fy = ydata[str(yrs[-1])]
+    ni, eq = _num(fy.get("net_income")), _num(fy.get("equity"))
+    if not ni or not eq or eq <= 0 or ni <= 0:
+        return {"ok": False, "reason": "no_book_or_earnings", "price": price,
+                "market_cap": mcap, "shares": shares}
+    coe = FIN_COE
+    roe = ni / eq
+    rev_cagr, _ = _growth_evidence(ydata)
+    g = rev_cagr if rev_cagr is not None else 0.03
+    # Sustainable LONG-RUN growth for a mature financial ~ GDP. Cap hard at 4%: a recent revenue
+    # spurt is not perpetual, and g near CoE makes the Gordon P/B explode (JPM 4.8x artifact).
+    g = max(0.0, min(g, 0.04))
+    current_pb = mcap / eq
+    implied_roe = current_pb * (coe - g) + g           # invert justified_pb = (roe-g)/(coe-g)
+    justified_pb = (roe - g) / (coe - g)
+    bvps = (eq / shares) if shares else None
+    fair_value = justified_pb * bvps if (bvps and justified_pb > 0) else None
+    gap_pts = (implied_roe - roe) * 100
+
+    # Consensus fence (same discipline + field names as the reverse-DCF path).
+    band = _consensus_band(t)
+    fv_method = "pb_roe_noband" if fair_value is not None else "blank"
+    if band:
+        disc = 1.0 + coe
+        lo, med, hi = band["low"] / disc, band["median"] / disc, band["high"] / disc
+        if fair_value is not None and lo <= fair_value <= hi:
+            fair_value = min(fair_value, med)          # never more bullish than the PV'd median
+            fv_method = "pb_roe_in_band"
+        else:
+            fair_value, fv_method = med, "pb_roe_consensus_snap"
+    mos = round((fair_value / price - 1) * 100, 1) if (fair_value and price) else None
+    return {
+        "ok": True, "ticker": t, "method": "financial_pb_roe",
+        "price": price, "market_cap": mcap, "shares": shares, "fiscal_year": yrs[-1],
+        "roe": round(roe, 4), "implied_roe": round(implied_roe, 4), "coe": coe,
+        "sustainable_g": round(g, 4), "current_pb": round(current_pb, 2),
+        "justified_pb": round(justified_pb, 2), "book_value_ps": round(bvps, 2) if bvps else None,
+        "fair_value": round(fair_value, 2) if fair_value else None,
+        "mos_pct": mos, "realistic_mos_pct": mos, "fair_value_method": fv_method,
+        "consensus_low": band["low"] if band else None,
+        "consensus_median": band["median"] if band else None,
+        "consensus_high": band["high"] if band else None,
+        "consensus_stale": band["stale"] if band else None,
+        "consensus_age_days": band["age_days"] if band else None,
+        "expectations_gap_pts": round(gap_pts, 1), "verdict": _fin_verdict(gap_pts),
+    }
+
+
+def backbone(ticker):
+    t = ticker.upper()
+    fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
+    price = _num(fin.get("Price"))
+    mcap = _num(fin.get("Market_Cap"))
+    shares = _num(fin.get("Shares_Outstanding"))
+    ydata = _hist(t)
+    if not ydata:
+        return {"ok": False, "reason": "no_fundamentals_history"}
+    if not mcap or mcap <= 0:
+        return {"ok": False, "reason": "no_market_cap"}
+
+    sector, _ind = rs2_data.sector_lookup(t)
+    sl = (sector or "").lower()
+    wacc_pct = SECTOR_WACC.get(SECTOR_ALIASES.get(sector, sector), DEFAULT_WACC)
+    wacc = wacc_pct / 100.0
+
+    # Balance-sheet financials (banks / insurance underwriters / mortgage) -> P/B-ROE model,
+    # ALWAYS — their owner earnings are usually positive but economically meaningless, so the
+    # old base_cf<=0 trigger never fired for them. See PB_ROE_INDUSTRIES note above.
+    ind_l = (_ind or "").lower()
+    if any(k in ind_l for k in PB_ROE_INDUSTRIES) and not any(k in ind_l for k in PB_ROE_EXCLUDE):
+        return _financial_backbone(t, ydata, price, mcap, shares)
+
+    base_cf, kind = _base_cf(t, ydata, sl)
+    if base_cf is None or base_cf <= 0:
+        # SEC fundamentals_history lacks capex/D&A for many foreign filers (SAP/VIK/BWMX/JLHL) or is
+        # stale — a data gap, not a genuinely unvaluable company. Fall back to the fresh yfinance
+        # trailing FCF we already have (financials.json) before giving up.
+        fcf_ttm = _num(fin.get("Free_Cash_Flow_TTM"))
+        if fcf_ttm and fcf_ttm > 0:
+            base_cf, kind = fcf_ttm, "fcf_ttm_yf"
+    if base_cf is None or base_cf <= 0:
+        # Banks/insurers fail owner-earnings DCF by construction -> value on ROE vs P/B instead.
+        # (Payment networks like V/MA have positive owner earnings and stay on the reverse-DCF above.)
+        if any(k in sl for k in ("financial", "bank", "insurance")):
+            return _financial_backbone(t, ydata, price, mcap, shares)
+        return {"ok": False, "reason": "negative_base_cash_flow", "base_cf_kind": kind,
+                "price": price, "market_cap": mcap, "shares": shares}
+
+    implied = _solve_implied_growth(base_cf, mcap, wacc)
+    if implied is None:
+        return {"ok": False, "reason": "solver_failed", "price": price, "market_cap": mcap}
+
+    rev_cagr, fcf_cagr = _growth_evidence(ydata)
+    gap_pts = (implied - rev_cagr) * 100 if rev_cagr is not None else None
+    yrs = sorted(int(y) for y in ydata.keys())
+
+    # DETERMINISTIC fair value — FORWARD-anchored & CONSENSUS-FENCED (replaces the old trailing-5y-CAGR
+    # extrapolation, which blew up 2-12x for post-IPO / hyper-ramp names, e.g. HRMY +1143% MoS).
+    # Growth input: forward analyst growth (fresh) -> else trailing CAGR, capped at FWD_GROWTH_CEIL.
+    # Then FENCE the resulting value inside the analyst target band [low, high]; if it escapes the
+    # band, snap to the consensus median (the raw DCF is malfunctioning, not leaning). With NO band
+    # AND implausible/short trailing history -> BLANK the $ value (keep only the gap signal). The
+    # EXPECTATIONS GAP above remains the headline signal; this is a fenced sanity price, never an LLM number.
+    n_years = len(yrs)
+    g_fwd, g_src = _forward_growth(t)
+    band = _consensus_band(t)
+    g_drive = g_fwd if g_fwd is not None else rev_cagr
+    src = g_src if g_fwd is not None else ("trailing" if rev_cagr is not None else None)
+    fair_value = mos_pct = None
+    fv_method = "blank"
+    if g_drive is not None and price:
+        g_fair = max(-0.20, min(g_drive, FWD_GROWTH_CEIL))
+        fair_mcap = ve.dcf_value(base_cf, g_fair, wacc, TERMINAL_G, stage1_years=STAGE1, fade_years=FADE)
+        if fair_mcap and fair_mcap > 0:
+            raw = price * fair_mcap / mcap
+            if band:
+                # De-forward the analyst band to PRESENT value: consensus targets are 12-month PRICE
+                # TARGETS (~13% above spot = one year of expected return), while our reverse-DCF `raw`
+                # is already a present intrinsic value. Discount the target by one year of the sector
+                # discount rate (CoE proxy) so the fence is a like-for-like present value and MoS
+                # measures cheapness TODAY, not cheapness + a year of ordinary equity drift.
+                disc = 1.0 + wacc
+                lo, hi, med = band["low"] / disc, band["high"] / disc, band["median"] / disc
+                if lo <= raw <= hi:
+                    # Discipline: never MORE bullish than the (present-valued) analyst median.
+                    fair_value = round(max(lo, min(raw, med)), 2)
+                    fv_method = "forward_dcf" if src != "trailing" else "trailing_in_band"
+                else:
+                    fair_value, fv_method = round(med, 2), "consensus_snap"   # raw escaped band -> malfunction
+            else:
+                implausible = (rev_cagr is not None and rev_cagr > 0.25) or n_years < 5
+                if g_fwd is not None and not implausible:
+                    fair_value, fv_method = round(raw, 2), "forward_dcf_noband"
+                # else: no forward anchor + wild/short trailing -> leave blank (gap-only)
+    elif band is not None:                                   # no growth input but analysts cover it
+        fair_value, fv_method = round(band["median"] / (1.0 + wacc), 2), "consensus_only"  # PV of 12-mo target
+    if fair_value and price:
+        mos_pct = round((fair_value / price - 1) * 100, 1)
+
+    return {
+        "ok": True, "ticker": t, "method": "reverse_dcf",
+        "price": price, "market_cap": mcap, "shares": shares,
+        "base_cf": base_cf, "base_cf_kind": kind, "fiscal_year": yrs[-1],
+        "wacc": wacc, "wacc_pct": wacc_pct, "terminal_growth": TERMINAL_G,
+        "stage1_years": STAGE1, "fade_years": FADE,
+        "implied_growth": round(implied, 4), "implied_growth_clamped": implied in (G_LO, G_HI),
+        "hist_revenue_cagr_5y": round(rev_cagr, 4) if rev_cagr is not None else None,
+        "hist_fcf_cagr_5y": round(fcf_cagr, 4) if fcf_cagr is not None else None,
+        "expectations_gap_pts": round(gap_pts, 1) if gap_pts is not None else None,
+        "fair_value": fair_value, "mos_pct": mos_pct, "realistic_mos_pct": mos_pct,
+        "fair_value_method": fv_method, "forward_growth": round(g_fwd, 4) if g_fwd is not None else None,
+        "forward_growth_src": g_src,
+        "consensus_low": band["low"] if band else None,
+        "consensus_median": band["median"] if band else None,
+        "consensus_high": band["high"] if band else None,
+        "consensus_stale": band["stale"] if band else None,
+        "consensus_age_days": band["age_days"] if band else None,
+        "verdict": _verdict(gap_pts),
+    }
+
+
+if __name__ == "__main__":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+    for tk in (sys.argv[1:] or ["NVDA"]):
+        b = backbone(tk)
+        if b.get("method") == "financial_pb_roe":
+            print(f"{tk}: FINANCIAL | ROE {b['roe']*100:.1f}% vs implied {b['implied_roe']*100:.1f}% | "
+                  f"P/B {b['current_pb']}x vs justified {b['justified_pb']}x | fair ${b['fair_value']} | "
+                  f"gap {b['expectations_gap_pts']}pts | {b['verdict']}")
+        elif b.get("ok"):
+            print(f"{tk}: base_cf ${b['base_cf']/1e9:.2f}B [{b['base_cf_kind']}] FY{b['fiscal_year']} | "
+                  f"WACC {b['wacc_pct']}% | implied {b['implied_growth']*100:.1f}% vs demonstrated "
+                  f"{(b['hist_revenue_cagr_5y'] or 0)*100:.1f}% | gap {b['expectations_gap_pts']}pts | {b['verdict']}")
+        else:
+            print(f"{tk}: NULL ({b['reason']}) — pre-profit, route to Engine 4")
