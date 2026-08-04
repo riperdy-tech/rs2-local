@@ -20,6 +20,8 @@ import argparse
 import ctypes
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import time
@@ -354,6 +356,44 @@ def _unload_models():
         log(f"   [vram] {m}: {'freed' if ok else 'NOT FREED'} — {detail}")
 
 
+PARTIAL_GRACE_MIN = 90     # never touch a dir this new — the in-flight run has no verdict.json yet
+
+
+def sweep_partial_reports(grace_min=PARTIAL_GRACE_MIN, dry_run=False):
+    """Delete report dirs that hold no verdict.json — the debris a failed/killed run leaves behind.
+
+    A run writes its stage files as it goes and verdict.json only at the very end, so a crash
+    (final-assembly OOM, watchdog kill, status.py stop) leaves a dir that nothing will ever read:
+    latest_verdict() skips it and publish_reports can't bundle it. They just accumulate — 228 of
+    them, back to 2026-06-25, before this existed.
+
+    TWO guards, because this deletes: (1) a dir newer than grace_min is NEVER touched — the
+    currently-running ticker has no verdict.json yet and must not be swept out from under itself;
+    (2) a dir referenced by analysis_state is never touched, even if unreadable."""
+    try:
+        state = load(STATE, {}) or {}
+    except Exception:
+        return 0, 0      # can't confirm what's referenced -> delete nothing
+    referenced = {e.get("report") for e in state.values() if isinstance(e, dict)}
+    cutoff = time.time() - grace_min * 60
+    removed = freed = 0
+    for d in REPORTS.iterdir():
+        if not d.is_dir() or not re.match(r"^[A-Z][A-Z0-9.\-]*_\d{8}_\d{6}$", d.name):
+            continue
+        if (d / "verdict.json").exists() or d.name in referenced:
+            continue
+        try:
+            if d.stat().st_mtime > cutoff:      # too new — may be the live run
+                continue
+            sz = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+            if not dry_run:
+                shutil.rmtree(d)
+            removed += 1; freed += sz
+        except Exception:
+            continue
+    return removed, freed
+
+
 def _kill_tree(pid):
     """Kill a process AND all its descendants. run_rs2 spawns a research-venv deep_research grandchild;
     Popen.kill would reap only the direct child and orphan the rest. taskkill /T walks the whole tree."""
@@ -634,6 +674,15 @@ def main():
                         "last_price": _price_now(t) or (v or {}).get("price"),
                         **({"exit_reviewed": True} if (is_exit and succeeded) else {})}
             save(STATE, state)          # resumable: persist after every ticker
+            # RECOVERY alert: a failure alerts, so a fix must alert too — otherwise the last thing
+            # you ever hear about a name is that it broke, and you have to go digging to learn it
+            # came good. Only fires when this run followed at least one failed attempt.
+            if succeeded and prev.get("retries", 0) > 0:
+                nfail = prev.get("retries", 0)
+                notify_telegram(f"[RS2 ops] recovered — {t} succeeded on attempt {nfail + 1} "
+                                f"after {nfail} failed attempt(s). Verdict written ({rep}); "
+                                f"no action needed.")
+                log(f"   {t}: RECOVERED on attempt {nfail + 1} (after {nfail} failure(s))")
             if is_exit and succeeded:
                 reviewed_drops.add(t)
             done += 1
@@ -644,6 +693,12 @@ def main():
         save(PROGRESS, {"updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "current": None,
                         "idx": done, "queue_total": done, "done_this_run": done,
                         "failed_this_run": failed, "finished": True})
+
+        # clear the debris failed/killed runs leave behind (dirs with no verdict.json) before
+        # publishing, so it can't accumulate run after run
+        swept, freed = sweep_partial_reports()
+        if swept:
+            log(f"swept {swept} partial report dir(s) with no verdict.json ({freed/1024/1024:.1f} MB)")
 
         overlay = aggregate_overlay(state)
         save(OVERLAY, overlay)
