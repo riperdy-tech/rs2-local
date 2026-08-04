@@ -708,16 +708,21 @@ def run_research(ticker, name):
     # exit 3 = deep_research refused to write an infra-poisoned brief (ollama 500 / OOM).
     # Analysing on top of that is what silently shipped verdicts built on error text, so
     # it is fatal for the ticker: orchestrate marks it failed and retries the name.
+    # sys.exit (not raise): an unhandled exception surfaces as a bare 'exit 1' and the
+    # orchestrator can't say WHY the ticker failed. These codes are mapped in
+    # orchestrate.run_one -> 3 research infra, 7 vram not released.
     if r.returncode == 3:
         print(f"[research] ::HARD FAIL:: {ticker} research aborted (infra error) — "
               f"not analysing on an empty brief.", flush=True)
-        raise RuntimeError(f"deep_research hard-failed for {ticker} (infra error)")
+        keep_awake(False)
+        sys.exit(3)
     if r.returncode != 0:
         print(f"[research] WARN: {r.stderr[-500:]}", flush=True)
     if not freed:
-        raise RuntimeError(
-            f"research model VRAM not released for {ticker} — refusing to load "
-            f"{CONFIG.get('model')} on top of it (would OOM)")
+        print(f"[research] ::HARD FAIL:: {ticker} — research model VRAM not released; "
+              f"refusing to load {CONFIG.get('model')} on top of it (would OOM).", flush=True)
+        keep_awake(False)
+        sys.exit(7)
 
 
 # ── pipeline ──────────────────────────────────────────────────────────────

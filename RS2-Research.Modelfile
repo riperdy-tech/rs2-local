@@ -1,7 +1,24 @@
 # Clean research model for LDR deep-research (NO RS2 prompt — would derail search).
-# Capped for the 12GB-RAM / 24GB-VRAM box: force ALL layers onto GPU and bound context
-# so KV cache stays small. Only ever loaded alone (run_rs2 unloads it before rs2-analyst).
-FROM qwen3.6:35b-a3b
+# This model ONLY searches and summarizes web pages. All reasoning/judgment lives in
+# rs2-analyst (qwen3.6:35b-a3b), which is unchanged — do not "simplify" by pointing
+# deep_research at the analyst: its baked RS2 prompt derails LDR's research prompts.
+#
+# FROM qwen3:14b (was qwen3.6:35b-a3b) — 2026-08-04, after 115 of 250 tickers shipped
+# ollama error text as their research brief. The 35b weights are 22,960 MiB on a
+# 24,576 MiB card: ~790MB of headroom, measured. That is fine on a quiet box (verified
+# loading twice, incl. a full 8192-ctx request) but not during a run, where the real
+# failure chain is:
+#     llama-server GPU discovery watchdog timed out ("context deadline exceeded")
+#     unable to refresh free memory, using old values
+#     system memory total="11.8 GiB" free="2.3 GiB"     <- box thrashing
+#     gpu memory available="22.3 GiB" free="22.8 GiB"   <- STALE reading
+#     alloc_tensor_range: failed to allocate CUDA0 buffer of size 22746292736
+#   -> then the CPU projector retry wants ~23GB against 2.3GB free RAM and dies.
+# With <1GB of margin a single stale reading is fatal. num_gpu is NOT the lever: 42 and
+# 99 both load 100% GPU (ollama ps confirms) and both leave ~790MB free.
+# qwen3:14b is 9.3GB -> ~15GB headroom, which survives a stale reading, and it loads
+# faster so it adds less RAM pressure at the moment discovery is most likely to time out.
+FROM qwen3:14b
 PARAMETER num_gpu 99
 PARAMETER num_ctx 8192
 PARAMETER temperature 0.3

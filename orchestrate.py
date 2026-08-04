@@ -401,7 +401,9 @@ def run_one(t, exit_review=False, timeout_sec=0):
             # sanity check found an empty/error report. Both already alerted via Telegram at
             # the source; name them here so the log says why, not just "FAILED".
             why = {3: "research infra failure (brief not written)",
-                   6: "post-analysis sanity check failed (empty/error report)"}.get(rc, f"exit {rc}")
+                   6: "post-analysis sanity check failed (empty/error report)",
+                   7: "research model VRAM not released (refused to load analyst on top)"}.get(
+                       rc, f"exit {rc}")
             log(f"   {t}: {why}")
         return rc == 0
     except subprocess.TimeoutExpired:
