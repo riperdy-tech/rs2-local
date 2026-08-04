@@ -279,9 +279,22 @@ def do_pause():
 
 def _launch_orchestrator():
     """Spawn orchestrate.py DETACHED so it keeps running after status.py exits (its lockfile prevents a
-    duplicate). Output appended to reports/_orchestrate.log."""
+    duplicate). Output appended to reports/_orchestrate.log.
+
+    Launched through `cmd /c ... >> log 2>&1`, exactly like the scheduled task
+    (register_orchestrator_task.ps1), NOT via Popen(stdout=logf). With DETACHED_PROCESS the
+    orchestrator has no console, so every run_rs2 child it spawns got allocated a BRAND-NEW
+    console window — the per-ticker detail ([enrich], [research], >> Layers, [SANITY]) went
+    there instead of the log, and vanished when the window closed. That is how the traceback
+    behind a 'CLS: exit 1' was lost. A cmd-level redirect is inherited by children, so all
+    child output lands in the log again."""
     try:
         flags = (0x00000008 | 0x08000000) if os.name == "nt" else 0   # DETACHED_PROCESS | NO_WINDOW
+        if os.name == "nt":
+            line = f'""{sys.executable}" "{HERE / "orchestrate.py"}" >> "{REPORTS / "_orchestrate.log"}" 2>&1"'
+            subprocess.Popen(f'cmd.exe /c {line}', cwd=str(HERE),
+                             creationflags=flags, close_fds=True)
+            return True
         logf = open(REPORTS / "_orchestrate.log", "a", encoding="utf-8")
         subprocess.Popen([sys.executable, str(HERE / "orchestrate.py")],
                          stdout=logf, stderr=subprocess.STDOUT, cwd=str(HERE),
