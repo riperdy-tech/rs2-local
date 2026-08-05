@@ -478,6 +478,14 @@ def sanity_check(out_dir, ticker):
             p.append(f"research brief is infra-error text ({sig}) — {rp.name} {len(rtxt)}B")
         elif len(rtxt) < MIN_RESEARCH_CHARS:
             p.append(f"research brief suspiciously small: {len(rtxt)}B < {MIN_RESEARCH_CHARS}B")
+        # ZERO CITATIONS = the search engine returned nothing and the model answered from its own
+        # recall. That is not research, and it is invisible to the error-signature and size checks:
+        # POWL 2026-08-05 produced a clean, 6.6KB, entirely uncited brief while SearXNG was down,
+        # and the verdict built on it (TRIM/EXIT) passed sanity. The brief's own header says
+        # "Cite only the listed sources" — if there are none, the whole run is unsupported.
+        elif not re.search(r"^- https?://", rtxt, re.M):
+            p.append(f"research brief has ZERO source citations ({len(rtxt)}B) — search engine "
+                     f"likely down; verdict would rest on model recall, not research")
 
     # 2. stage outputs
     for fn in STAGE_FILES:

@@ -16,6 +16,7 @@ CLI:  <research-venv-python> deep_research.py NVDA "NVIDIA Corporation"
 import json
 import sys
 import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -75,6 +76,34 @@ def pick_tool():
     return "searxng"
 
 
+def preflight(tool):
+    """Fail FAST if the chosen search engine is unreachable.
+
+    Without this, a dead SearXNG does not error — LDR simply finds nothing and the model answers
+    from its own recall, producing a clean-looking, correctly-sized, entirely UNCITED brief that
+    passes every error check. That is worse than a crash: it is confident, unsupported research
+    that reads as real (POWL, 2026-08-05, while Docker was down). SearXNG is a docker container
+    on this box and has now died twice unattended, so it must be verified, not assumed."""
+    if tool != "searxng":
+        return
+    url = CONFIG["searxng_url"].rstrip("/") + "/search?q=test&format=json"
+    try:
+        with urllib.request.urlopen(url, timeout=20) as r:
+            body = json.loads(r.read().decode("utf-8", "replace"))
+        n = len(body.get("results") or [])
+        if n == 0:
+            raise ResearchInfraError(f"SearXNG at {CONFIG['searxng_url']} returned 0 results for a "
+                                     f"probe query — engine up but not searching")
+        print(f"[deep_research] preflight ok: searxng {n} results", flush=True)
+    except ResearchInfraError:
+        raise
+    except Exception as e:
+        raise ResearchInfraError(
+            f"SearXNG unreachable at {CONFIG['searxng_url']} ({str(e)[:120]}) — refusing to "
+            f"research: an uncited brief built from model recall would look valid. "
+            f"Start Docker Desktop (the searxng container auto-restarts).")
+
+
 def run_topic(query):
     from local_deep_research.api import quick_summary
     tool = pick_tool()
@@ -114,6 +143,8 @@ def build(ticker, name):
     L = [f"# DEEP RESEARCH BRIEF — {name + ' ' if name else ''}({t})",
          f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | iterative deep research "
          f"(full-page reads + citations). Cite only the listed sources.", ""]
+    preflight(pick_tool())   # dead engine -> abort now, before writing anything
+
     failures = []            # infra failures — any one of these voids the whole brief
     for title, qt in TOPICS:
         q = qt.format(subj=subj, yr=yr)
