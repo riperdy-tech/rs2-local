@@ -267,7 +267,17 @@ def build(ticker, name):
             print(f"[deep_research] {t}: cached ({path}), skip", flush=True)
             return path
 
-    subj = f"{name} ({t})" if name else t
+    # A BARE TICKER is an ambiguous search subject and the queries below embed it directly:
+    # "EW competitive position, market share, moat durability" returned Entertainment Weekly,
+    # and "DOCU ..." returned dictionary definitions of "document". Both briefs were fully
+    # CITED, so the citation guard passed them. When no name resolves, at least anchor the
+    # query to the equity with "stock" and say so loudly.
+    if name:
+        subj = f"{name} ({t})"
+    else:
+        subj = f"{t} stock"
+        print(f"[deep_research] {t}: WARNING no company name — searching as {subj!r}; "
+              f"a bare ticker can match the wrong entity", flush=True)
     yr = datetime.now().year
     L = [f"# DEEP RESEARCH BRIEF — {name + ' ' if name else ''}({t})",
          f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | iterative deep research "

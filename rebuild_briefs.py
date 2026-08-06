@@ -45,16 +45,18 @@ import subprocess
 
 import ops
 import rs2_data
+import run_rs2
 
 CONFIG = rs2_data.CONFIG
 HERE = Path(__file__).resolve().parent
 RESEARCH_DIR = Path(CONFIG["out_research_dir"])
 LOG = Path(CONFIG["out_reports_dir"]) / "_rebuild_briefs.log"
 
-# Engines this instance actually relies on. duckduckgo is deliberately NOT here: it is already
-# CAPTCHA-blocked and serves nothing, so alerting on it would fire every single probe.
-SERVING_ENGINES = ("bing", "yep")
-MIN_HEALTHY_RESULTS = 5        # a real query returns ~30; single digits means something is wrong
+# Engines this instance relies on — read from config so this and deep_research.preflight cannot
+# drift apart. yep/duckduckgo are deliberately excluded there: both are chronically blocked and
+# recover on their own, so listing them would warn on nearly every probe until it was ignored.
+SERVING_ENGINES = tuple(CONFIG.get("searxng_serving_engines", ["bing", "yep"]))
+MIN_HEALTHY_RESULTS = int(CONFIG.get("searxng_min_probe_results", 10))
 THROTTLE_SEC = 8               # between tickers — keeps concurrency low enough not to trip blocks
 # Engine blocks here are RATE LIMITS, which expire; they are not permanent bans. The first run
 # aborted after 3 tries / ~7 minutes when yep returned "Suspended: access denied" -- and yep was
@@ -145,13 +147,38 @@ def citations(text):
 
 
 def uncited_tickers():
+    """Briefs that must be rebuilt: UNCITED, or researched from a BARE TICKER.
+
+    Two distinct defects, both invisible to the citation guard in different ways:
+
+    * uncited      -> fluent model recall with no sources. The guard rejects these on read, so
+                      they are inert, but they never self-heal until re-researched.
+    * ticker-only  -> the header reads "BRIEF — (EW)" with no company name, meaning the query
+                      was literally "EW competitive position, market share, moat durability".
+                      EW matched Entertainment Weekly and DOCU matched dictionary definitions of
+                      "document". These are FULLY CITED, so the guard passes them and the
+                      wrong-company research flows straight into the valuation. Strictly more
+                      dangerous than the uncited kind.
+
+    A ticker-only brief only counts if a name is resolvable NOW — otherwise a genuinely
+    nameless ticker would be queued for rebuild on every single run, forever.
+    """
     out = []
     for f in sorted(RESEARCH_DIR.glob("*.md")):
         try:
-            if citations(f.read_text(encoding="utf-8", errors="replace")) == 0:
-                out.append(f.stem)
+            txt = f.read_text(encoding="utf-8", errors="replace")
         except Exception:
             continue
+        if citations(txt) == 0:
+            out.append(f.stem)
+            continue
+        m = re.match(r"# DEEP RESEARCH BRIEF — (.*)\(", txt.split("\n", 1)[0])
+        if m and not m.group(1).strip():
+            try:
+                if run_rs2.resolve_name(f.stem):
+                    out.append(f.stem)
+            except Exception:
+                pass
     return out
 
 
@@ -199,6 +226,11 @@ def wait_for_healthy(probe_idx):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--tickers", default=None,
+                    help="comma-separated tickers to rebuild REGARDLESS of citation count — for "
+                         "briefs that are cited but wrong (e.g. built while only one engine was "
+                         "serving, where EW pulled Entertainment Weekly and DOCU pulled "
+                         "dictionary definitions). The citation guard cannot catch those.")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--status", action="store_true",
                     help="print progress of a running/finished rebuild and exit (read-only)")
@@ -208,7 +240,17 @@ def main():
         show_status()
         return
 
-    todo = uncited_tickers()
+    if args.tickers:
+        todo = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+        # Explicit list: delete the existing brief so deep_research cannot serve it from cache.
+        # These are CITED (the guard passes them), so nothing else would force a refresh.
+        for t in todo:
+            f = RESEARCH_DIR / f"{t}.md"
+            if f.exists():
+                f.unlink()
+        log(f"forced rebuild of {len(todo)} ticker(s); stale briefs deleted")
+    else:
+        todo = uncited_tickers()
     if args.limit:
         todo = todo[:args.limit]
     log(f"rebuild_briefs: {len(todo)} uncited brief(s) to rebuild")
@@ -247,12 +289,19 @@ def main():
             except Exception as e:
                 log(f"  (Telegram alert failed: {str(e)[:80]})")
             break
+        # Resolve via run_rs2, which falls back to yfinance when financials/{T}.json has no Name
+        # -- and only 33% of them do. Doing the lookup inline here (as this script used to) sent
+        # a BARE TICKER as the research subject, so the query was literally "EW competitive
+        # position, market share, moat durability" with nothing to disambiguate it. That is how
+        # EW cited Entertainment Weekly and DOCU cited dictionary definitions of "document".
         name = None
         try:
-            fin = rs2_data.load_json(Path(CONFIG["screener_data_dir"]) / "financials" / f"{t}.json") or {}
-            name = (fin.get("Name") or "").strip() or None
-        except Exception:
-            pass
+            name = run_rs2.resolve_name(t) or None
+        except Exception as e:
+            log(f"  [name] resolve failed for {t}: {str(e)[:60]}")
+        if not name:
+            log(f"  [name] WARNING: no company name for {t} — query will be ticker-only "
+                f"and is liable to match the wrong entity")
         log(f"[{i}/{len(todo)}] {t} — rebuilding")
         try:
             # Spawn deep_research.py under research-venv, exactly as run_rs2.run_research does.
