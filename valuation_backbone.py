@@ -248,6 +248,44 @@ def _midcycle_owner_earnings(ydata):
     return (sum(owners) / len(owners)) if len(owners) >= 3 else None
 
 
+def _midcycle_of_kind(ydata, kind):
+    """Mid-cycle average of the SAME metric the name already uses, or (None, None).
+
+    USED FOR DISCLOSURE ONLY -- it does not set base_cf. Normalizing a cyclical's base year
+    cannot be done reliably from ~10 noisy annual observations, and four approaches were measured
+    against each other before settling on disclosure:
+      * sector whitelist (MIDCYCLE_SECTORS): misses 12 of 39 model-labelled cyclicals incl. MU.
+      * coefficient-of-variation trigger: cyclicals (NOVT 0.28, ESCA 0.27) overlap completely
+        with stable compounders (KO 0.35, AAPL 0.33) -- no threshold separates them.
+      * raw mean: correct for a flat cyclical (MU +85.7 -> +60.8) but wrong for a secular grower,
+        whose decade-average sits far below run-rate (AMD +18.9 -> +44.7, a fabricated
+        overvalued signal).
+      * log-linear trend fit: fixes the growers (AMD -> +7.4) but breaks the cyclicals, because a
+        window starting at a cycle peak reads as secular decline (MU -> +100.0, worse than doing
+        nothing at all).
+    Trend and cycle are not separable at this sample size, so the engine reports BOTH bases and
+    lets the analyst layer judge, rather than silently picking one and being wrong for half the
+    universe. fcf_ttm_yf is a single trailing figure with no history -> (None, None).
+    """
+    yrs = sorted(int(v) for v in ydata.keys())
+    if kind == "owner_earnings":
+        vals = [_owner_earnings(ydata[str(y)]) for y in yrs]
+    elif kind == "fcf_fallback":
+        vals = [_num(ydata[str(y)].get("fcf")) for y in yrs]
+    elif kind == "ocf_minus_da_proxy":
+        vals = []
+        for y in yrs:
+            ocf, da = _num(ydata[str(y)].get("ocf")), _num(ydata[str(y)].get("da"))
+            vals.append(ocf - da if None not in (ocf, da) else None)
+    else:
+        return None, None
+    pairs = [(y, v) for y, v in zip(yrs, vals) if v is not None and v > 0]
+    if len(pairs) < 4:
+        return None, None
+    vs = [v for _, v in pairs]
+    return sum(vs) / len(vs), f"midcycle_{kind}_archetype"
+
+
 def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False):
     """Return (base_cf_$, kind). Equity REITs -> FFO; cyclicals -> mid-cycle avg owner earnings;
     else latest-FY owner earnings with fcf / ocf-minus-da fallbacks. None base_cf -> honest null
@@ -271,9 +309,11 @@ def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False):
     # GROWING company mixes trend with cycle. force_midcycle lets the caller supply the judgment
     # the statistic cannot (see run_rs2: the Stage-1 archetype).
     if force_midcycle:
-        mid = _midcycle_owner_earnings(ydata)
+        # Resolve the metric this name would NATURALLY use, then average that same metric.
+        _, nat_kind = _base_cf(ticker, ydata, sector_l, industry_l, force_midcycle=False)
+        mid, mid_kind = _midcycle_of_kind(ydata, nat_kind)
         if mid is not None:
-            return mid, "midcycle_owner_earnings_archetype"
+            return mid, mid_kind
     # cyclical: average owner earnings over the available cycle (trough+peak cancel)
     if any(c in sector_l for c in MIDCYCLE_SECTORS):
         owners = [_owner_earnings(ydata[str(y)]) for y in yrs]

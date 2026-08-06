@@ -1095,34 +1095,47 @@ def main():
             arch = _archetype(out)
             if arch == "C" and bb.get("ok") and bb.get("base_cf_kind") in _LATEST_FY_KINDS:
                 bb2 = valuation_backbone.backbone(t, force_midcycle=True)
-                if bb2.get("ok") and bb2.get("base_cf_kind", "").startswith("midcycle"):
-                    print(f"   [routing] archetype C (cyclical) — base_cf renormalized "
-                          f"{bb['base_cf_kind']} ${bb['base_cf']/1e9:.2f}B -> mid-cycle "
-                          f"${bb2['base_cf']/1e9:.2f}B; implied {bb['implied_growth']*100:.1f}% -> "
-                          f"{bb2['implied_growth']*100:.1f}%, gap {bb['expectations_gap_pts']} -> "
-                          f"{bb2['expectations_gap_pts']}pts", flush=True)
+                shown = bb2.get("ok") and bb2.get("base_cf_kind", "").startswith("midcycle")
+                if not shown:
+                    # fcf_ttm_yf is a single trailing figure with no history to average; record
+                    # the attempt rather than no-op silently.
                     (out_dir / "routing.json").write_text(json.dumps({
-                        "archetype": arch, "applied": True,
-                        "from": {"kind": bb["base_cf_kind"], "implied_growth": bb["implied_growth"],
-                                 "gap_pts": bb["expectations_gap_pts"]},
-                        "to": {"kind": bb2["base_cf_kind"], "implied_growth": bb2["implied_growth"],
-                               "gap_pts": bb2["expectations_gap_pts"]}}, indent=2), encoding="utf-8")
-                    # The VALUATION block in data_ctx was rendered BEFORE this renormalization, so
-                    # it still shows the single-year figures. Carry the correction forward or the
-                    # model would reason about one set of numbers while the engine scored another.
-                    extra = ("\n\n## VALUATION — CORRECTED FOR CYCLICALITY (supersedes the "
-                             "VALUATION block above)\n"
-                             f"- You classified this as CYCLICAL, so base cash flow is renormalized "
-                             f"from the single fiscal year {bb['fiscal_year']} "
-                             f"(${bb['base_cf']/1e9:.2f}B) to the MID-CYCLE average "
-                             f"(${bb2['base_cf']/1e9:.2f}B). A trough or peak year is not "
-                             "representative earning power.\n"
-                             f"- Price-implied growth is therefore {bb2['implied_growth']*100:.1f}%/yr "
-                             f"(not {bb['implied_growth']*100:.1f}%), and the EXPECTATIONS GAP is "
-                             f"{bb2['expectations_gap_pts']:+.0f} pts (not "
-                             f"{bb['expectations_gap_pts']:+.0f}). {bb2['verdict']}\n"
-                             "- Use THESE figures in Layer 3.")
-                    bb = bb2
+                        "archetype": arch, "disclosed": False, "reason": "no_averageable_history",
+                        "base_cf_kind": bb.get("base_cf_kind")}, indent=2), encoding="utf-8")
+                if shown:
+                    print(f"   [routing] archetype C (cyclical) — DISCLOSING both bases: latest-FY "
+                          f"${bb['base_cf']/1e9:.2f}B (gap {bb['expectations_gap_pts']}pts) vs "
+                          f"mid-cycle ${bb2['base_cf']/1e9:.2f}B (gap "
+                          f"{bb2['expectations_gap_pts']}pts). base_cf UNCHANGED.", flush=True)
+                    (out_dir / "routing.json").write_text(json.dumps({
+                        "archetype": arch, "disclosed": True, "base_cf_changed": False,
+                        "latest_fy": {"kind": bb["base_cf_kind"], "base_cf": bb["base_cf"],
+                                      "implied_growth": bb["implied_growth"],
+                                      "gap_pts": bb["expectations_gap_pts"]},
+                        "midcycle": {"kind": bb2["base_cf_kind"], "base_cf": bb2["base_cf"],
+                                     "implied_growth": bb2["implied_growth"],
+                                     "gap_pts": bb2["expectations_gap_pts"]}}, indent=2),
+                        encoding="utf-8")
+                    # DISCLOSE, do not overwrite. Whether the latest year is a trough/peak (average
+                    # it) or a secular high (do not) cannot be settled from ~10 noisy annual points
+                    # -- see _midcycle_of_kind for the four approaches measured and how each failed.
+                    # So give the analyst layer both numbers and let it judge; every figure the
+                    # engine scores stays exactly as the deterministic backbone computed it.
+                    extra = ("\n\n## CYCLICALITY CHECK (you classified this CYCLICAL)\n"
+                             f"- The VALUATION block's base cash flow is a SINGLE fiscal year "
+                             f"({bb['fiscal_year']}): ${bb['base_cf']/1e9:.2f}B, implying "
+                             f"{bb['implied_growth']*100:.1f}%/yr growth, gap "
+                             f"{bb['expectations_gap_pts']:+.0f}pts.\n"
+                             f"- On a MID-CYCLE average of the same metric it would be "
+                             f"${bb2['base_cf']/1e9:.2f}B, implying {bb2['implied_growth']*100:.1f}%/yr, "
+                             f"gap {bb2['expectations_gap_pts']:+.0f}pts.\n"
+                             "- Neither is automatically right. If the latest year is a cycle TROUGH "
+                             "or PEAK, the mid-cycle figure is the fairer read. If the business has "
+                             "grown SECULARLY (the average is dragged down by a much smaller past), "
+                             "the latest year is the fairer read and the mid-cycle number understates "
+                             "it. Decide which from the business evidence and SAY WHICH YOU USED. "
+                             "The engine scores the single-year figure; argue explicitly if you "
+                             "think that overstates or understates the gap.")
             elif arch:
                 # telemetry only — lets the archetype/route agreement be measured over time
                 (out_dir / "routing.json").write_text(json.dumps({
