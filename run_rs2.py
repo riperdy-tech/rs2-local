@@ -319,7 +319,26 @@ def _extract_final(final_text):
     def f(pat):
         m = re.search(pat, seg, re.I)
         return m.group(1).strip() if m else None
-    action = f(r"Action[:\s*]*\*{0,2}([A-Za-z][A-Za-z /&\-]{2,45})")
+    # The old pattern — [A-Za-z][A-Za-z /&\-]{2,45} — had two defects:
+    #  1. the class excludes DIGITS and '$', so it stopped dead at the price level:
+    #     "Hold / Stage-in on weakness below $195" published as "...below" (5 live names),
+    #     dropping the one number that makes the call actionable;
+    #  2. it was unanchored, so on a name whose SECTION 12 lacked a clean "Action:" line it
+    #     matched the word "action" inside prose — FIX shipped an action of
+    #     "will be severe due to the cyclical nature of t".
+    # Anchor to a LABEL at line start and take the rest of that line, then strip markdown
+    # and trailing [Actual]/[Estimate] tags.
+    # Require a LABEL ("Action" + colon) and take the rest of that line. The colon is what
+    # keeps prose out — SECTION 12 bullets vary wildly ("- Action:", "• Action:", "■ Action:",
+    # "**Action:**"), so anchoring to line-start bullets would drop ~100 bundles.
+    ma = re.search(r"\bAction\b\s*\*{0,2}\s*:\s*(.+?)\s*$", seg, re.I | re.M)
+    action = None
+    if ma:
+        action = re.sub(r"\*+|_{2,}", "", ma.group(1)).strip()
+        action = re.sub(r"\s*\[(?:Actual|Estimate|Assumption|Unconfirmed)[^\]]*\]", "", action, flags=re.I)
+        action = action.split("|")[0]          # drop trailing "| Changed-Because: ..." fields
+        action = action.strip(" .;—-").strip()
+        action = action[:90].strip() or None
     conv = f(r"Conviction[^\n0-9]*([0-9.]+)\s*/\s*15")
     conv_val = float(conv) if conv else None
     if conv_val is None:                       # the model sometimes writes conviction as words, not X/15
@@ -329,8 +348,18 @@ def _extract_final(final_text):
             if key in cw:
                 conv_val = float(val)
                 break
-    weight = f(r"Weight\s*%?[:\s*]*\*{0,2}([0-9.]+)\s*%")
-    return action, conv_val, (float(weight) if weight else None)
+    # Weight may be a single number ("0.0% for new capital") OR a RANGE ("5-7% [Estimate]",
+    # "5 to 7%", en/em dash). The old single-number pattern silently returned None on every
+    # range — 203/1390 bundles, 24 of them live — so the sizing the model actually stated was
+    # dropped on the floor. A range collapses to its MIDPOINT: that is the faithful reading of
+    # the model's intent, and _dont_chase_brake applies min() caps downstream anyway.
+    mw = re.search(r"Weight\s*%?[:\s*]*\*{0,2}([0-9.]+)\s*"
+                   r"(?:(?:[-–—]|to)\s*([0-9.]+)\s*)?%", seg, re.I)
+    weight = None
+    if mw:
+        lo = float(mw.group(1))
+        weight = round((lo + float(mw.group(2))) / 2, 2) if mw.group(2) else lo
+    return action, conv_val, weight
 
 
 def band_of(ticker):
@@ -402,6 +431,39 @@ def _pct_of_52wk_high(ticker, price):
         return None
 
 
+# Deterministic stance cuts, calibrated 2026-08-06 against 241 live verdicts (quartiles of
+# the COMPUTED expectations gap under each model-emitted stance):
+#     undervalued  p25 -33.4  median -11.1  p75  -7.7
+#     fair         p25  -2.6  median  +4.0  p75  +8.9
+#     overvalued   p25 +14.7  median +20.4  p75 +26.8
+# +15 sits just above the overvalued p25 and reproduces today's classification volume
+# (72 vs the model's 76) while removing the instability; -7 is the matching boundary
+# between the undervalued p75 and the fair p25.
+STANCE_OVERVALUED_GAP = 15.0
+STANCE_UNDERVALUED_GAP = -7.0
+
+
+def _stance_from_gap(gap):
+    """Stance from the DETERMINISTIC expectations gap, not the model's free-text opinion.
+
+    Why: the model emits `valuation_stance` as a believability judgment, and it is NOT stable —
+    two consecutive POWL runs on byte-identical inputs returned 'overvalued' (achievable low)
+    and 'fair' (achievable medium) off the SAME computed gap of 28.5pts. That field is
+    load-bearing far downstream: score_factors.apply_llm_overlay treats stance=='overvalued'
+    as BEARISH and demotes the name out of research_now, so a coin flip was moving 55 of 173
+    live names between 'demoted' and 'research_now' (MPWR and TSM swung the full distance).
+    The gap itself is computed from financials and was identical across all three runs, so the
+    gate is anchored to that instead. The model's opinion is preserved as `stance_model`.
+    """
+    if not isinstance(gap, (int, float)):
+        return None
+    if gap >= STANCE_OVERVALUED_GAP:
+        return "overvalued"
+    if gap <= STANCE_UNDERVALUED_GAP:
+        return "undervalued"
+    return "fair"
+
+
 def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     """Deterministic 'don't chase' brake — the systematic gap vs ChatGPT (RS2 flipped HOLD->BUY on
     15/39 names; ChatGPT pullback-gated 96%). Graduated on ChatGPT's own margin-of-safety bands:
@@ -423,8 +485,19 @@ def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     adequate = (rmos is not None and 15 <= rmos < 25)
     fam = _action_family(action)
 
-    # tier 1 — genuine bargain: let a BUY chase
-    if strong and not at_or_above and not near_high:
+    # EXPECTATIONS OVERRIDE (2026-08-06). MoS is measured against fair_value, and for ~78% of
+    # names fair_value is `consensus_snap` — the analyst median. So a fat MoS can mean nothing
+    # more than "trading below Wall Street's target" while the reverse-DCF simultaneously says
+    # the price bakes in growth the company has never delivered. POWL is the worked example:
+    # MoS 36.3% vs consensus, gap +28.5pts (price implies 44.8% growth vs 16.3% demonstrated)
+    # -> tier 1 fired, brake OFF, and the engine emitted a conviction-12 BUY on a name its own
+    # DCF called rich. Keyed on the COMPUTED gap, never on `stance`, which is model-unstable.
+    gap = vr.get("expectations_gap_pts")
+    rich = isinstance(gap, (int, float)) and gap >= STANCE_OVERVALUED_GAP
+
+    # tier 1 — genuine bargain: let a BUY chase. Blocked when the expectations gap says rich:
+    # cheap-vs-consensus is not cheap-vs-fundamentals, and only the latter earns a chase.
+    if strong and not at_or_above and not near_high and not rich:
         return action, conv, weight, ("buy" if fam == "BULL" else "stage"), None, False
 
     trig = vr.get("consensus_low")
@@ -448,7 +521,11 @@ def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     # tier 3 — thin MoS / at-or-above median / near 52wk high: HOLD, do not chase
     entry = "wait_for_pullback" if (rmos is not None and rmos < 0) or near_high else "stage"
     out_action = "Hold / accumulate on weakness (do not chase)" if fam == "BULL" else action
-    out_conv = min(conv, 9.5) if (conv is not None and not (rmos is not None and rmos >= 15)) else conv
+    # A fat MoS normally protects conviction from the cap. It must NOT when the expectations
+    # gap says rich — otherwise a name lands on "do not chase" while still carrying a 12/15,
+    # which is the same contradiction one field over.
+    out_conv = min(conv, 9.5) if (conv is not None and
+                                  (rich or not (rmos is not None and rmos >= 15))) else conv
     out_weight = min(weight, 3.0) if weight is not None else weight
     return out_action, out_conv, out_weight, entry, trig, True
 
@@ -570,7 +647,13 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False)
         **({"exit_review": True} if exit_review else {}),
         "changed_because": cb.group(1).strip().strip("*").strip()[:300] if cb else None,
         "ticker": ticker.upper(), "date": datetime.now().strftime("%Y-%m-%d"), "price": price,
-        "method": vr.get("method"), "stance": vr.get("stance"),
+        "method": vr.get("method"),
+        # Recomputed here as the single source of truth, so repatch_verdicts.py (which replays
+        # emit_verdict over a SAVED S3 val_res carrying the old model stance) gets the
+        # deterministic value too. Falls back to whatever vr held when there is no gap.
+        "stance": _stance_from_gap(vr.get("expectations_gap_pts") if vr.get("expectations_gap_pts")
+                                   is not None else vr.get("roe_gap_pts")) or vr.get("stance"),
+        "stance_model": vr.get("stance_model") or vr.get("stance"),
         "expectations_gap_pts": vr.get("expectations_gap_pts") if vr.get("expectations_gap_pts") is not None
         else vr.get("roe_gap_pts"),
         "fair_value": vr.get("fair_value"), "mos_pct": vr.get("mos_pct"),
@@ -632,7 +715,10 @@ def valuation_result(stage_out, bb, price, ticker):
                "consensus_low": bb.get("consensus_low"), "consensus_median": bb.get("consensus_median"),
                "consensus_high": bb.get("consensus_high"), "consensus_stale": bb.get("consensus_stale"),
                "roe_gap_pts": bb["expectations_gap_pts"],
-               "stance": str(st.get("valuation_stance", "")).lower() or None,
+               # stance is DETERMINISTIC (see _stance_from_gap); the model's own read is kept
+               # alongside as telemetry so the two can be compared, never as a gate.
+               "stance": _stance_from_gap(bb["expectations_gap_pts"]),
+               "stance_model": str(st.get("valuation_stance", "")).lower() or None,
                "achievable": str(st.get("implied_growth_achievable", "")).lower() or None,
                "rationale": st.get("rationale")}
         return res, _fmt_financial(res)
@@ -649,7 +735,10 @@ def valuation_result(stage_out, bb, price, ticker):
                "forward_growth": bb.get("forward_growth"),
                "consensus_low": bb.get("consensus_low"), "consensus_median": bb.get("consensus_median"),
                "consensus_high": bb.get("consensus_high"), "consensus_stale": bb.get("consensus_stale"),
-               "stance": str(st.get("valuation_stance", "")).lower() or None,
+               # stance is DETERMINISTIC (see _stance_from_gap); the model's own read is kept
+               # alongside as telemetry so the two can be compared, never as a gate.
+               "stance": _stance_from_gap(bb["expectations_gap_pts"]),
+               "stance_model": str(st.get("valuation_stance", "")).lower() or None,
                "achievable": str(st.get("implied_growth_achievable", "")).lower() or None,
                "rationale": st.get("rationale")}
         return res, _fmt_reverse(res)
