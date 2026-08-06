@@ -1,10 +1,8 @@
 {
-  "_comment": "RS2 Local — single source of truth for paths + pipeline settings. All paths absolute (Windows).",
-
+  "_comment": "RS2 Local \u2014 single source of truth for paths + pipeline settings. All paths absolute (Windows).",
   "screener_data_dir": "C:/Users/riper/Downloads/Stock Screener/Stock Screener/public/data",
   "mri_outputs_dir": "C:/Users/riper/Downloads/Stock Screener/Macro Regime Indicator/outputs",
   "agentwebsearch_dir": "C:/Users/riper/Downloads/RS2 Local/AgentWebSearch-MCP",
-
   "ollama_endpoint": "http://localhost:11434/api/chat",
   "model": "rs2-analyst",
   "_ctx_note": "Real payload = RS2.txt(~5.2k tok) + fed data(~4k tok) + accumulating prior stages. 16384 overflows late stages, so both run at 24576 (fits w/ generation headroom; ~96% GPU, 4% CPU spill). The 16384/100%-GPU figure applied only to the old manual-data flow.",
@@ -12,18 +10,14 @@
   "final_ctx": 32768,
   "think": true,
   "stage_carry_char_cap": 4500,
-
-  "_watchdog_note": "orchestrate.py kills a single run_rs2 child (and unloads both models) if it exceeds this many minutes, then marks the name failed + retries it — fail-safe against a hung run pinning the GPU indefinitely. Avg is ~11 min/name; 40 leaves ~3.5x headroom for a slow deep-research name. Override per-run with --ticker-timeout-min.",
+  "_watchdog_note": "orchestrate.py kills a single run_rs2 child (and unloads both models) if it exceeds this many minutes, then marks the name failed + retries it \u2014 fail-safe against a hung run pinning the GPU indefinitely. Avg is ~11 min/name; 40 leaves ~3.5x headroom for a slow deep-research name. Override per-run with --ticker-timeout-min.",
   "ticker_timeout_min": 40,
-
   "out_reports_dir": "C:/Users/riper/Downloads/RS2 Local/reports",
   "out_enrich_dir": "C:/Users/riper/Downloads/RS2 Local/enrich",
   "out_research_dir": "C:/Users/riper/Downloads/RS2 Local/research",
-
   "_regime_note": "MRI current_regime.json can be synthetic_sample (future-dated). rs2_data.py only uses its regime probabilities when the file date is within regime_max_age_days of today; otherwise it feeds real macro_state.json and lets the model classify.",
   "regime_max_age_days": 45,
-
-  "_research_note": "Deep-research (LDR) runs in research-venv on a CLEAN model (NOT rs2-analyst — its baked RS2 prompt would contaminate LDR's research prompts). Tavily primary w/ quota guard -> SearXNG fallback (local/unlimited). snippets_only=False = read full pages.",
+  "_research_note": "Deep-research (LDR) runs in research-venv on a CLEAN model (NOT rs2-analyst \u2014 its baked RS2 prompt would contaminate LDR's research prompts). Tavily primary w/ quota guard -> SearXNG fallback (local/unlimited). snippets_only=False = read full pages.",
   "research_venv_python": "C:/Users/riper/Downloads/RS2 Local/research-venv/Scripts/python.exe",
   "research_model": "rs2-research",
   "research_ctx": 8192,
@@ -33,7 +27,16 @@
   "research_max_results": 8,
   "research_cache_days": 7,
   "tavily_calls_per_query_est": 6,
-  "_vram_note": "rs2-analyst and rs2-research are BOTH ~23GB on a 24GB card, so they can never co-reside. The unload is a VERIFIED barrier (ops.wait_unloaded): after keep_alive:0 it polls /api/ps AND nvidia-smi free VRAM until the release is observed, because ollama's 200 only means the request finished — it tears the llama-server subprocess down asynchronously. The old blind time.sleep(2) lost that race and OOM'd the next load. free_required is the floor the next ~23GB load needs; timeout is a hard failure (ticker aborts + Telegram) rather than loading into a half-freed card.",
+  "_vram_note": "rs2-analyst and rs2-research are BOTH ~23GB on a 24GB card, so they can never co-reside. The unload is a VERIFIED barrier (ops.wait_unloaded): after keep_alive:0 it polls /api/ps AND nvidia-smi free VRAM until the release is observed, because ollama's 200 only means the request finished \u2014 it tears the llama-server subprocess down asynchronously. The old blind time.sleep(2) lost that race and OOM'd the next load. free_required is the floor the next ~23GB load needs; timeout is a hard failure (ticker aborts + Telegram) rather than loading into a half-freed card.",
   "vram_free_required_mb": 20000,
-  "vram_unload_timeout_s": 180
+  "vram_unload_timeout_s": 180,
+  "searxng_serving_engines": [
+    "bing",
+    "dogpile news",
+    "gabanza",
+    "yandex",
+    "zapmeta",
+    "dogpile"
+  ],
+  "searxng_min_probe_results": 10
 }

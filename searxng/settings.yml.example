@@ -2,59 +2,68 @@
 # The real file is gitignored because secret_key is an instance secret.
 # Generate one with:  python -c "import secrets; print(secrets.token_hex(32))"
 #
-# ── ENGINE SELECTION (2026-08-06) ────────────────────────────────────────────────────────────
-# The stock engine set left this instance returning ZERO results for real queries while the
-# container itself stayed healthy (HTTP 200). That silent failure is what produced a 100%
-# zero-source rate over 2,676 research subqueries and left 129 of 257 cached briefs as uncited
-# model recall. /search reported:
-#     brave  Suspended: too many requests | duckduckgo CAPTCHA
-#     google Suspended: CAPTCHA           | startpage  CAPTCHA
+# APPLYING CHANGES: this directory IS the container's /etc/searxng (bind-mounted), so edit
+# settings.yml here and `docker restart searxng`. limiter.toml must stay present — the mount
+# covers the whole directory, so a file missing here is missing in the container. If the
+# container is ever recreated from Git Bash, prefix with MSYS_NO_PATHCONV=1 or the mount is
+# mangled into "…/searxng;C" -> "/Program Files/Git/etc/searxng" and silently ignored.
 #
-# Measured per-engine ("realty income dividend 2026"), trusting only probes whose
-# unresponsive_engines came back CLEAN — an unknown engine name silently falls back to the
-# default set and looks like a pass (stract/marginalia fooled a first pass that way):
-#     duckduckgo 10 | bing 10 | yep 20   <- genuinely serving
-#     google, brave, startpage, qwant, mojeek, wikipedia, yahoo, presearch -> 0
+# RS2 Local SearXNG instance.
 #
-# bing and yep ship `disabled: true` in SearXNG defaults, so keep_only ALONE leaves duckduckgo
-# as the only active engine — the one that CAPTCHAs. They must also be enabled explicitly.
-# duckduckgo serves fine queried alone but CAPTCHAs inside the default all-engines burst, so a
-# small engine set helps twice: it drops the blocked engines and cuts the per-query load that
-# provokes the blocking.
+# ENGINE SELECTION (2026-08-07, measured — do not edit from memory, re-probe).
+# The stock engine set returned ZERO results for real queries while the container answered
+# HTTP 200, which is how 2,676 subqueries hit a 100% zero-source rate and 129 of 257 briefs
+# ended up as uncited model recall. Every engine below was probed INDIVIDUALLY against this
+# instance with two realistic finance queries, trusting only probes where the engine under test
+# was absent from unresponsive_engines — an unknown or failed engine silently falls back to the
+# default set and otherwise reads as a pass.
 #
-# The blocked engines are operators refusing automated access; respect that rather than working
-# around it. Re-measure before changing this list.
+# RESULT COUNT IS NOT QUALITY. reloado scored the HIGHEST count of anything tested (62 over two
+# queries) and returns German TV schedules (zdf.de) for "micron memory pricing outlook" — it is
+# excluded. resulthunter (40 -> 0) and privacywall (20 -> 0) flipped between probe rounds and are
+# excluded as unstable. Sample the URLs, not the count, before adding anything here.
 #
-# ── APPLYING CHANGES ─────────────────────────────────────────────────────────────────────────
-# This directory IS the container's /etc/searxng (bind-mounted), so edit settings.yml here and
-#     docker restart searxng
-# is all that is needed. limiter.toml must stay present in this directory: the mount covers the
-# whole of /etc/searxng, so a missing file here is a missing file in the container.
+# SERVING, with what they actually returned for "micron memory pricing outlook 2026":
+#   dogpile news  Yahoo Finance / Benzinga / Yahoo Finance   <- best financial news of the set
+#   gabanza       micron.com / Yahoo Finance
+#   yandex        intellectia / 247wallst / TheStreet
+#   bing          proven; carried the whole rebuild alone while yep and duckduckgo were blocked
+#   zapmeta, dogpile, abcnyheter   Yahoo Finance plus some social noise — usable filler
+#   yep, duckduckgo   blocked at time of writing, but both RECOVER; kept so they rejoin on their own
 #
-# HISTORY: until 2026-08-06 the container did NOT read this directory. The bind mount had been
-# mangled by Git Bash path conversion into
-#     source "…/RS2 Local/searxng;C"  ->  dest "/Program Files/Git/etc/searxng"
-# (which is where the stray "searxng;C" directory in the repo root came from), so /etc/searxng
-# was an anonymous docker volume and every edit here was a silent no-op. If the container is
-# ever recreated from a Git Bash shell, prefix the command with MSYS_NO_PATHCONV=1 or the same
-# mangling returns:
-#     MSYS_NO_PATHCONV=1 docker run -d --name searxng --restart unless-stopped \
-#       -p 8888:8080 -e SEARXNG_BASE_URL=http://localhost:8888/ \
-#       -v "C:\Users\riper\Downloads\RS2 Local\searxng:/etc/searxng" searxng/searxng
-# Verify the mount is clean (no ";C") with:
-#     docker inspect searxng --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
-# Verify search works with:
-#     curl -s "http://localhost:8888/search?q=realty+income+dividend&format=json" | head -c 300
+# Blocked engines are operators refusing automated access; that refusal is respected rather than
+# worked around. Small sets also help twice: fewer blocked engines AND less per-query load, which
+# is itself part of what provokes the blocking.
 use_default_settings:
   engines:
     keep_only:
-      - duckduckgo
       - bing
+      - dogpile news
+      - gabanza
+      - yandex
+      - zapmeta
+      - dogpile
+      - abcnyheter
       - yep
+      - duckduckgo
 engines:
   - name: bing
     disabled: false
+  - name: dogpile news
+    disabled: false
+  - name: gabanza
+    disabled: false
+  - name: yandex
+    disabled: false
+  - name: zapmeta
+    disabled: false
+  - name: dogpile
+    disabled: false
+  - name: abcnyheter
+    disabled: false
   - name: yep
+    disabled: false
+  - name: duckduckgo
     disabled: false
 server:
   secret_key: "REPLACE_ME_WITH_A_RANDOM_64_HEX_STRING"
@@ -62,12 +71,9 @@ server:
   image_proxy: false
 search:
   safe_search: 0
-  # Without an explicit language the instance geo-resolves and returns locale noise useless for
-  # US equity research: "Bunge farm products outlook 2026" led with a YouTube help page and a
-  # zhihu thread; "realty income dividend 2026" with Taiwanese property portals. With en-US the
-  # same queries lead with bunge.com / seekingalpha and stockanalysis.com / realtyincome.com.
-  # Irrelevant sources are nearly as damaging as none — they satisfy the citation guard while
-  # grounding the brief in nothing.
+  # Without this the instance geo-resolves and returns locale noise useless for US equity
+  # research: "Bunge farm products outlook 2026" led with a YouTube help page and a zhihu
+  # thread, "realty income dividend 2026" with Taiwanese property portals.
   default_lang: "en-US"
   formats:
     - html
