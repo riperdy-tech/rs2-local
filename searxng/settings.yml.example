@@ -1,9 +1,63 @@
 # Template for searxng/settings.yml — copy to settings.yml and set your own key.
 # The real file is gitignored because secret_key is an instance secret.
 # Generate one with:  python -c "import secrets; print(secrets.token_hex(32))"
+#
+# ── ENGINE SELECTION (2026-08-06) ────────────────────────────────────────────────────────────
+# The stock engine set left this instance returning ZERO results for real queries while the
+# container itself stayed healthy (HTTP 200). That silent failure is what produced a 100%
+# zero-source rate over 2,676 research subqueries and left 129 of 257 cached briefs as uncited
+# model recall. /search reported:
+#     brave  Suspended: too many requests | duckduckgo CAPTCHA
+#     google Suspended: CAPTCHA           | startpage  CAPTCHA
+#
+# Measured per-engine ("realty income dividend 2026"), trusting only probes whose
+# unresponsive_engines came back CLEAN — an unknown engine name silently falls back to the
+# default set and looks like a pass (stract/marginalia fooled a first pass that way):
+#     duckduckgo 10 | bing 10 | yep 20   <- genuinely serving
+#     google, brave, startpage, qwant, mojeek, wikipedia, yahoo, presearch -> 0
+#
+# bing and yep ship `disabled: true` in SearXNG defaults, so keep_only ALONE leaves duckduckgo
+# as the only active engine — the one that CAPTCHAs. They must also be enabled explicitly.
+# duckduckgo serves fine queried alone but CAPTCHAs inside the default all-engines burst, so a
+# small engine set helps twice: it drops the blocked engines and cuts the per-query load that
+# provokes the blocking.
+#
+# The blocked engines are operators refusing automated access; respect that rather than working
+# around it. Re-measure before changing this list.
+#
+# ── APPLYING CHANGES (important) ─────────────────────────────────────────────────────────────
+# The running container does NOT read this directory. Its /etc/searxng is a docker VOLUME: the
+# intended bind mount was mangled by Git Bash path conversion into
+#     source "…/RS2 Local/searxng;C"  ->  dest "/Program Files/Git/etc/searxng"
+# which is also where the stray "searxng;C" directory in the repo root came from. Either
+# recreate the container with MSYS_NO_PATHCONV=1 and a correct -v flag, or push changes with:
+#     MSYS_NO_PATHCONV=1 docker cp searxng/settings.yml searxng:/etc/searxng/settings.yml
+#     docker restart searxng
+# Verify with:  curl -s "http://localhost:8888/search?q=test+query&format=json" | head -c 300
+use_default_settings:
+  engines:
+    keep_only:
+      - duckduckgo
+      - bing
+      - yep
+engines:
+  - name: bing
+    disabled: false
+  - name: yep
+    disabled: false
 server:
   secret_key: "REPLACE_ME_WITH_A_RANDOM_64_HEX_STRING"
+  limiter: false
+  image_proxy: false
 search:
+  safe_search: 0
+  # Without an explicit language the instance geo-resolves and returns locale noise useless for
+  # US equity research: "Bunge farm products outlook 2026" led with a YouTube help page and a
+  # zhihu thread; "realty income dividend 2026" with Taiwanese property portals. With en-US the
+  # same queries lead with bunge.com / seekingalpha and stockanalysis.com / realtyincome.com.
+  # Irrelevant sources are nearly as damaging as none — they satisfy the citation guard while
+  # grounding the brief in nothing.
+  default_lang: "en-US"
   formats:
     - html
     - json
