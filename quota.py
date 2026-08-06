@@ -17,9 +17,30 @@ CACHE = HERE / "cache"
 CACHE.mkdir(exist_ok=True)
 QF = CACHE / "quota.json"
 
-# Conservative caps (leave headroom under the real free limits)
-TAVILY_MONTHLY_CAP = 900     # real 1000/mo
-FMP_DAILY_CAP = 200          # real ~250/day
+# Conservative caps (leave headroom under the real free limits). Held ~5% under the true limit
+# so a miscount or a retry storm cannot overrun and start returning 4xx mid-brief.
+MONTHLY_CAPS = {
+    "tavily": 900,     # real 1000/mo, genuinely recurring
+    # Brave KILLED its free 2000/mo tier in Feb 2026. New accounts get $5/month of METERED
+    # credits (~1000 queries at $0.003-0.005 each), card required and NO SPENDING CAP -- so an
+    # overrun BILLS rather than erroring. This ledger is the only thing standing between a retry
+    # storm and a surprise invoice; keep it well under and never raise it casually.
+    "brave": 900,
+}
+DAILY_CAPS = {
+    "fmp": 200,        # real ~250/day
+}
+# ONE-TIME grants that NEVER reset. Serper sells prepaid credits, not subscriptions: the 2500
+# free credits are a signup grant, full stop. Metering it monthly would refill a bucket that does
+# not refill -- the ledger would report ~2400 remaining every month while the account sat empty,
+# and every research fallback to serper would fail for a reason nothing on this box could explain.
+# (Purchased Serper credits also expire 6 months after purchase, which this does NOT model; if
+# you ever buy a pack, note the expiry somewhere a human will read.)
+TOTAL_CAPS = {
+    "serper": 2400,    # real 2500, one-time
+}
+TAVILY_MONTHLY_CAP = MONTHLY_CAPS["tavily"]   # kept: referenced elsewhere
+FMP_DAILY_CAP = DAILY_CAPS["fmp"]
 
 
 def _load():
@@ -42,26 +63,36 @@ def _periods():
 
 
 def remaining(api):
-    """How many calls left this period for 'tavily' or 'fmp'."""
+    """How many calls left this period for any capped API (monthly or daily)."""
     mon, day = _periods()
     d = _load()
-    if api == "tavily":
-        used = d.get("tavily", {}).get(mon, 0)
-        return max(0, TAVILY_MONTHLY_CAP - used)
-    if api == "fmp":
-        used = d.get("fmp", {}).get(day, 0)
-        return max(0, FMP_DAILY_CAP - used)
+    if api in MONTHLY_CAPS:
+        return max(0, MONTHLY_CAPS[api] - d.get(api, {}).get(mon, 0))
+    if api in DAILY_CAPS:
+        return max(0, DAILY_CAPS[api] - d.get(api, {}).get(day, 0))
+    if api in TOTAL_CAPS:
+        return max(0, TOTAL_CAPS[api] - d.get(api, {}).get("total", 0))
     return 0
 
 
-def bump(api, n=1):
-    """Record n calls against the current period."""
+def _period_for(api):
     mon, day = _periods()
+    if api in MONTHLY_CAPS:
+        return mon
+    if api in DAILY_CAPS:
+        return day
+    if api in TOTAL_CAPS:
+        return "total"      # never rolls over — a one-time grant must not reset
+    return None
+
+
+def bump(api, n=1):
+    """Record n calls against the current period (or against the lifetime total)."""
     d = _load()
-    if api == "tavily":
-        d.setdefault("tavily", {})[mon] = d.get("tavily", {}).get(mon, 0) + n
-    elif api == "fmp":
-        d.setdefault("fmp", {})[day] = d.get("fmp", {}).get(day, 0) + n
+    period = _period_for(api)
+    if period is None:
+        return
+    d.setdefault(api, {})[period] = d.get(api, {}).get(period, 0) + n
     _save(d)
 
 

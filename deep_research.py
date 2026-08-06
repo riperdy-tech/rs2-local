@@ -65,17 +65,55 @@ def ldr_overrides(tool):
         "search.max_results": int(CONFIG["research_max_results"]),
         "search.engine.web.searxng.default_params.instance_url": CONFIG["searxng_url"],
     }
-    if tool == "tavily":
-        o["search.engine.web.tavily.api_key"] = quota.key("TAVILY_API_KEY")
+    env = KEYED_TOOLS.get(tool)
+    if env:
+        o[f"search.engine.web.{tool}.api_key"] = quota.key(env)
     return o
 
 
+# Keyed providers, and the secret each one reads. All three are first-class LDR engines taking
+# an `api_key` init arg, so adding one is config, not integration.
+KEYED_TOOLS = {"serper": "SERPER_API_KEY", "brave": "BRAVE_API_KEY", "tavily": "TAVILY_API_KEY"}
+
+
+def searches_per_topic():
+    """How many upstream search calls one topic costs — iterations x questions/iteration."""
+    return max(1, int(CONFIG["research_iterations"]) * int(CONFIG["research_questions_per_iter"]))
+
+
+def tool_chain():
+    """Ordered list of search backends to try for a topic, best-effort first.
+
+    SearXNG leads because it is UNMETERED and the paid quotas cannot carry this workload: at
+    16 searches/ticker (2 iterations x 2 questions x 4 topics), the 256-ticker universe costs
+    ~4,100 searches per sweep, and with research_cache_days=7 that is ~17,500/month. The
+    combined paid allowance (serper 2400 + brave 950 + tavily 900 = 4,250) is about ONE sweep.
+    Spending it as the primary would exhaust it in days and then break research entirely.
+
+    So the paid keys are the FALLBACK that removes data breaks: when SearXNG's engines are
+    blocked -- which happens routinely, yep and duckduckgo were both down tonight -- the topic
+    retries on a keyed provider instead of returning zero sources and voiding the brief.
+
+    ORDER: RESETTING quotas before ONE-TIME grants. Tavily and Brave refill monthly, so unspent
+    allowance is simply lost; Serper's 2500 is a one-time signup grant that never comes back
+    (they sell prepaid credits, not subscriptions). Sorting by "most remaining" -- the obvious
+    thing -- would spend the irreplaceable bucket first while use-it-or-lose-it allowance
+    expired unused. Within each class, deepest bucket first.
+    """
+    est = searches_per_topic()
+    monthly, one_time = [], []
+    for tool, env in KEYED_TOOLS.items():
+        if not quota.key(env) or quota.remaining(tool) <= est:
+            continue
+        (one_time if tool in quota.TOTAL_CAPS else monthly).append((quota.remaining(tool), tool))
+    return (["searxng"]
+            + [t for _, t in sorted(monthly, reverse=True)]
+            + [t for _, t in sorted(one_time, reverse=True)])
+
+
 def pick_tool():
-    """Tavily if a whole query's worth of calls fits under the cap, else SearXNG."""
-    est = int(CONFIG["tavily_calls_per_query_est"])
-    if quota.key("TAVILY_API_KEY") and quota.remaining("tavily") > est:
-        return "tavily"
-    return "searxng"
+    """First usable backend — kept for callers that want a single name (preflight)."""
+    return tool_chain()[0]
 
 
 def preflight(tool):
@@ -140,13 +178,58 @@ def preflight(tool):
             f"Start Docker Desktop (the searxng container auto-restarts).")
 
 
+def extract_urls(res):
+    """Source URLs from an LDR result: `sources` first, then the citation block."""
+    urls = []
+    for s in (res.get("sources") or []):
+        u = s.get("url") if isinstance(s, dict) else (s if isinstance(s, str) else None)
+        if u and u not in urls:
+            urls.append(u)
+    if not urls:
+        ff = (res.get("formatted_findings") or "").strip()
+        for u in re.findall(r"https?://[^\s\)\]]+", ff):
+            u = u.rstrip(".,)")
+            if u not in urls:
+                urls.append(u)
+    return urls
+
+
 def run_topic(query):
+    """Run one topic, falling through the tool chain until a backend returns SOURCES.
+
+    This is the no-data-breaks path. A single blocked engine used to void an entire brief:
+    every topic that came back uncited was discarded (correctly — uncited prose is not
+    research), so one bad SearXNG moment cost the whole ticker and it retried from scratch
+    later. Now a topic that yields nothing on SearXNG is retried on a keyed provider, and the
+    brief completes with real citations from whichever backend actually answered. Each topic
+    records which one, so a brief assembled from mixed sources is auditable.
+
+    Returns (tool, res, urls) — the last attempt if every backend failed.
+    """
     from local_deep_research.api import quick_summary
-    tool = pick_tool()
-    res = quick_summary(query, settings_override=ldr_overrides(tool))
-    if tool == "tavily":
-        quota.bump("tavily", int(CONFIG["tavily_calls_per_query_est"]))
-    return tool, res
+    chain = tool_chain()
+    last = (chain[0], {}, [])
+    for i, tool in enumerate(chain):
+        try:
+            res = quick_summary(query, settings_override=ldr_overrides(tool))
+        except Exception as e:
+            if i + 1 >= len(chain):
+                raise
+            print(f"[deep_research]   {tool} raised {str(e)[:80]} — trying {chain[i+1]}", flush=True)
+            continue
+        if tool in KEYED_TOOLS:
+            quota.bump(tool, searches_per_topic())     # charge the meter for what we spent
+        urls = extract_urls(res)
+        sig = ops.infra_error((res.get("summary") or "").strip())
+        if urls and not sig:
+            if i:
+                print(f"[deep_research]   recovered on {tool} ({len(urls)} sources)", flush=True)
+            return tool, res, urls
+        if i + 1 < len(chain):
+            print(f"[deep_research]   {tool} gave {sig or 'zero sources'} — "
+                  f"falling back to {chain[i+1]}", flush=True)
+        last = (tool, res, urls)
+    return last
 
 
 def fresh(path, days):
@@ -196,7 +279,7 @@ def build(ticker, name):
         q = qt.format(subj=subj, yr=yr)
         t0 = time.time()
         try:
-            tool, res = run_topic(q)
+            tool, res, urls = run_topic(q)
         except Exception as e:
             failures.append((title, f"exception: {str(e)[:200]}"))
             print(f"[deep_research] {t} '{title}' ERROR {str(e)[:120]}", flush=True)
@@ -217,18 +300,7 @@ def build(ticker, name):
         # to disk regardless. That is how POWL shipped 11 straight bundles asserting a
         # debt/equity of 4.2, a plant fire and a $500M lawsuit for a net-cash company.
         # citation->URL mapping lives in formatted_findings; sources/all_links_of_system as backup
-        urls = []
-        for s in (res.get("sources") or []):
-            u = s.get("url") if isinstance(s, dict) else (s if isinstance(s, str) else None)
-            if u and u not in urls:
-                urls.append(u)
-        if not urls:
-            # extract URLs from the formatted findings block
-            ff = (res.get("formatted_findings") or "").strip()
-            for u in re.findall(r"https?://[^\s\)\]]+", ff):
-                u = u.rstrip(".,)")
-                if u not in urls:
-                    urls.append(u)
+        # urls came back from run_topic, which already tried every backend in the chain.
 
         # ZERO-SOURCE GUARD: uncited prose is not research. Treat it exactly like an infra
         # failure so the brief is never written and the ticker retries for real, instead of
