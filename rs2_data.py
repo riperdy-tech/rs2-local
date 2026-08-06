@@ -109,6 +109,16 @@ def valuation_block(ticker):
                      "earnings does not apply. Value it on NORMALIZED EARNINGS × a justified P/E, or "
                      "P/B vs ROE (is ROE above cost of equity?). Engine 2 (multiple) framing, not a DCF, "
                      "not an option bridge.")
+        elif b.get("reason") == "reinvestment_negative_fcf":
+            # PROFITABLE but capex > D&A: a reinvestment profile, NOT pre-profit. Must never be
+            # described as "negative earnings / option-led" — that framing sent capex-heavy names
+            # to the Engine-4 option bridge (see valuation_backbone.REGULATED_UTILITY_INDUSTRIES).
+            L.append(f"- No DCF model ({b.get('reason')}): the company IS profitable, but capex "
+                     "exceeds D&A, so owner earnings (NI+D&A−capex) are negative. This is a "
+                     "REINVESTMENT profile (rate-base / capacity build), NOT a pre-profit or "
+                     "option-led company. Do NOT value it as an option bridge. Value it on "
+                     "NORMALIZED mid-cycle earning power × a justified multiple, or on book "
+                     "equity vs ROE, and flag the lower confidence.")
         elif ni is not None and ni <= 0:
             L.append(f"- No DCF model ({b.get('reason')}): negative earnings — PRE-PROFIT / OPTION-LED "
                      "(Archetype E, Engine 4). Value = proven-core value/share + Σ(success_prob × "
@@ -121,8 +131,16 @@ def valuation_block(ticker):
         L.append("")
         return "\n".join(L)
     if b.get("method") == "financial_pb_roe":
-        # FINANCIAL: ROE vs P/B expectations model (deterministic; no cash-flow DCF).
-        L[0] = "## VALUATION — FINANCIAL ROE / P-B EXPECTATIONS MODEL (deterministic; do NOT recompute)"
+        # FINANCIAL (or RATE-REGULATED UTILITY): ROE vs P/B expectations model; no cash-flow DCF.
+        _util = b.get("pb_kind") == "regulated_utility"
+        L[0] = ("## VALUATION — REGULATED-UTILITY ROE / RATE-BASE (P-B) EXPECTATIONS MODEL "
+                "(deterministic; do NOT recompute)" if _util else
+                "## VALUATION — FINANCIAL ROE / P-B EXPECTATIONS MODEL (deterministic; do NOT recompute)")
+        if _util:
+            L.append("- RATE-REGULATED utility: the regulator sets an allowed ROE on a RATE BASE that is "
+                     "essentially book equity, so value is book × the capitalised spread of earned ROE "
+                     "over cost of equity — NOT an owner-earnings DCF (capex exceeds D&A permanently "
+                     "while the rate base grows, which is normal here, not distress).")
         L.append(f"- Delivered ROE [Actual]: {b['roe']*100:.1f}% (FY{b['fiscal_year']}); cost of equity "
                  f"{b['coe']*100:.0f}%, sustainable growth {b['sustainable_g']*100:.1f}%.")
         L.append(f"- Current price = P/B {b['current_pb']}x (book ${b['book_value_ps']}/sh). To pay that, the "

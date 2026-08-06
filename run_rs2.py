@@ -91,7 +91,9 @@ STAGES = [
      "  • ONLY if it said 'No DCF model — PRE-PROFIT / OPTION-LED' (Engine 4): value the option bridge "
      f"instead — ```json\n{ENGINE4_SCHEMA}\n``` (core/options/drag PER SHARE, $; probs base-rate disciplined; "
      "IV = core + Σ(prob×value) − drag, computed for you).\n"
-     "  • ONLY if it said 'No cash-flow DCF … this is a FINANCIAL' with no deterministic model: value on "
+     "  • ONLY if it said 'No cash-flow DCF … this is a FINANCIAL', or 'the company IS profitable, but "
+     "capex exceeds D&A' (a REINVESTMENT profile — profitable, so NOT an option bridge), with no "
+     "deterministic model: value on "
      f"normalized earning power instead — ```json\n{ENGINE2_SCHEMA}\n``` (normalized_eps = through-cycle "
      "EPS $/share from the fed data; normal_multiple 10-25 justified by ROE vs cost of equity; "
      "IV = eps × multiple, computed for you).\n"
@@ -653,7 +655,10 @@ def valuation_result(stage_out, bb, price, ticker):
         return res, _fmt_reverse(res)
     # NULL backbone -> financial (multiple) or pre-profit (option bridge)
     sl = (rs2_data.sector_lookup(ticker)[0] or "").lower()
-    if any(k in sl for k in ("financial", "bank", "insurance")):
+    # A PROFITABLE reinvestment-heavy name is NOT option-led: value it on normalized earning power
+    # (Engine 2), never on the Engine-4 option bridge. Without this the backbone's split reason
+    # would still land these on the option path. See valuation_backbone's reinvestment_negative_fcf.
+    if bb.get("reason") == "reinvestment_negative_fcf" or any(k in sl for k in ("financial", "bank", "insurance")):
         e2 = get_assumptions(stage_out, "normalized_eps", _valid_engine2, ENGINE2_SCHEMA)
         if e2:
             iv = valuation_engine.engine2_cycle(e2["normalized_eps"], e2["normal_multiple"])

@@ -124,6 +124,19 @@ MIDCYCLE_SECTORS = ("energy", "materials", "industrials")
 PB_ROE_INDUSTRIES = ("bank", "insurance", "mortgage")   # substring match, lowercase Yahoo industry
 PB_ROE_EXCLUDE = ("insurance broker",)                  # fee businesses, not underwriters
 
+# RATE-REGULATED utilities are book-value businesses like banks, for the same structural reason:
+# the regulator sets allowed ROE on a RATE BASE that is essentially book equity, and the 1.3-2.0x
+# P/B they trade at IS the capitalised spread of allowed ROE (9.5-11%) over market cost of equity
+# (6-7%). So they belong on the SAME justified-P/B model, not on an owner-earnings DCF: a growing
+# utility funds rate-base expansion with capex > D&A permanently, making NI+D&A-capex structurally
+# negative (measured: 58 of 116 utilities returned negative_base_cash_flow, which then routed them
+# to the Engine-4 OPTION bridge -- the most speculative path for the most predictable businesses).
+# Substring match on the lowercase Yahoo industry: catches "Utilities-Regulated {Electric,Gas,Water}"
+# (76 names) and deliberately EXCLUDES Renewable / Independent Power Producers / Diversified, which
+# are merchant or contracted generators with no rate base to earn on.
+REGULATED_UTILITY_INDUSTRIES = ("regulated",)
+UTIL_COE = 0.07   # market cost of equity for a large regulated utility (= the Utilities sector WACC)
+
 
 def _num(v):
     return v if isinstance(v, (int, float)) and math.isfinite(v) else None
@@ -240,8 +253,9 @@ def _fin_verdict(gap_pts):
     return f"Priced {abs(gap_pts):.0f}pts BELOW delivered ROE — market doubts ROE durability."
 
 
-def _financial_backbone(t, ydata, price, mcap, shares):
-    """Banks/insurers: a cash-flow DCF is structurally invalid, so value on equity returns.
+def _financial_backbone(t, ydata, price, mcap, shares, coe=FIN_COE, pb_kind="financial"):
+    """Banks/insurers (and rate-regulated utilities, pb_kind="regulated_utility"): a cash-flow DCF is
+    structurally invalid, so value on equity returns.
     Justified P/B = (ROE - g) / (CoE - g) (Gordon, in P/B space). Invert the CURRENT P/B to the
     ROE the price implies, and compare to the delivered ROE -> an expectations gap parallel to the
     reverse-DCF one. Deterministic: no LLM-chosen multiple (the old Engine-2 was unstable, AUDIT M2).
@@ -254,7 +268,6 @@ def _financial_backbone(t, ydata, price, mcap, shares):
     if not ni or not eq or eq <= 0 or ni <= 0:
         return {"ok": False, "reason": "no_book_or_earnings", "price": price,
                 "market_cap": mcap, "shares": shares}
-    coe = FIN_COE
     roe = ni / eq
     rev_cagr, _ = _growth_evidence(ydata)
     g = rev_cagr if rev_cagr is not None else 0.03
@@ -281,7 +294,7 @@ def _financial_backbone(t, ydata, price, mcap, shares):
             fair_value, fv_method = med, "pb_roe_consensus_snap"
     mos = round((fair_value / price - 1) * 100, 1) if (fair_value and price) else None
     return {
-        "ok": True, "ticker": t, "method": "financial_pb_roe",
+        "ok": True, "ticker": t, "method": "financial_pb_roe", "pb_kind": pb_kind,
         "price": price, "market_cap": mcap, "shares": shares, "fiscal_year": yrs[-1],
         "roe": round(roe, 4), "implied_roe": round(implied_roe, 4), "coe": coe,
         "sustainable_g": round(g, 4), "current_pb": round(current_pb, 2),
@@ -321,6 +334,12 @@ def backbone(ticker):
     if any(k in ind_l for k in PB_ROE_INDUSTRIES) and not any(k in ind_l for k in PB_ROE_EXCLUDE):
         return _financial_backbone(t, ydata, price, mcap, shares)
 
+    # Rate-regulated utilities: same justified-P/B model, utility cost of equity. See the
+    # REGULATED_UTILITY_INDUSTRIES note above for why an owner-earnings DCF cannot work here.
+    if "utilities" in sl and any(k in ind_l for k in REGULATED_UTILITY_INDUSTRIES):
+        return _financial_backbone(t, ydata, price, mcap, shares,
+                                   coe=UTIL_COE, pb_kind="regulated_utility")
+
     base_cf, kind = _base_cf(t, ydata, sl)
     if base_cf is None or base_cf <= 0:
         # SEC fundamentals_history lacks capex/D&A for many foreign filers (SAP/VIK/BWMX/JLHL) or is
@@ -334,8 +353,18 @@ def backbone(ticker):
         # (Payment networks like V/MA have positive owner earnings and stay on the reverse-DCF above.)
         if any(k in sl for k in ("financial", "bank", "insurance")):
             return _financial_backbone(t, ydata, price, mcap, shares)
-        return {"ok": False, "reason": "negative_base_cash_flow", "base_cf_kind": kind,
-                "price": price, "market_cap": mcap, "shares": shares}
+        # A PROFITABLE company that out-spends its D&A is REINVESTING, not pre-profit. Conflating
+        # the two sent capex-heavy names down the Engine-4 "negative earnings / option-led" path and
+        # told the model they had no earning power. Split the reason so only genuine NI<=0 names
+        # can be described as PRE-PROFIT (see valuation_block in rs2_data.py).
+        fy_last = ydata[str(max(int(y) for y in ydata.keys()))]
+        ni_l, da_l, capex_l = (_num(fy_last.get("net_income")), _num(fy_last.get("da")),
+                               _num(fy_last.get("capex")))
+        reinvesting = bool(ni_l and ni_l > 0 and da_l is not None and capex_l is not None
+                           and capex_l > da_l)
+        return {"ok": False,
+                "reason": "reinvestment_negative_fcf" if reinvesting else "negative_base_cash_flow",
+                "base_cf_kind": kind, "price": price, "market_cap": mcap, "shares": shares}
 
     implied = _solve_implied_growth(base_cf, mcap, wacc)
     if implied is None:
