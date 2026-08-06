@@ -182,15 +182,25 @@ def preflight(tool):
 # dictionary entries or social posts — EW (Edwards Lifesciences) came back citing
 # merriam-webster, dictionary.cambridge, youtube and ew.com (Entertainment Weekly), and it was
 # FULLY CITED, so the citation guard passed it happily.
-JUNK_DOMAINS = ("merriam-webster.", "dictionary.cambridge.", "dictionary.com", "thesaurus.",
-                "wiktionary.", "urbandictionary.", "youtube.", "facebook.", "instagram.",
-                "tiktok.", "pinterest.", "quora.", "zhihu.", "indeed.", "glassdoor.",
-                "britannica.", "wikihow.")
-JUNK_SHARE_REJECT = 0.5    # measured: healthy briefs sit at a median junk share of 0%
+# DICTIONARY sources are never equity research, and their presence is a near-perfect signal that
+# the search matched the TICKER AS AN ENGLISH WORD rather than the company. Measured across 597
+# topics on disk: only 4 (0.7%) cite any dictionary at all, and every one is exactly that failure
+# — COST ("cost"), CDNS ("cadence"), CGNX. EW's wrong-company brief was 40% dictionary.
+DICT_DOMAINS = ("merriam-webster.", "dictionary.cambridge.", "dictionary.com", "thesaurus.",
+                "wiktionary.", "urbandictionary.", "britannica.", "wikihow.",
+                "collinsdictionary.", "vocabulary.com")
+DICT_SHARE_REJECT = 0.15   # 0.7% base rate; 15% catches all four known cases with room to spare
+
+# SOCIAL sources are a DIFFERENT distribution and must not share a threshold: median 0%, p95 11%,
+# max 38%, and the top cases (OKLO, PLTR bear-case) are retail sentiment on speculative names,
+# which is legitimate research. Only reject when they dominate outright.
+SOCIAL_DOMAINS = ("youtube.", "facebook.", "instagram.", "tiktok.", "pinterest.", "quora.",
+                  "zhihu.", "indeed.", "glassdoor.")
+SOCIAL_SHARE_REJECT = 0.5
 
 
-def junk_share(urls):
-    """Fraction of sources that cannot be equity research. Never raises."""
+def _domain_share(urls, pats):
+    """Fraction of sources whose domain matches any pattern. Never raises."""
     if not urls:
         return 0.0
     n = 0
@@ -199,9 +209,20 @@ def junk_share(urls):
             d = urllib.parse.urlparse(u).netloc.lower().replace("www.", "")
         except Exception:
             continue
-        if any(j in d for j in JUNK_DOMAINS):
+        if any(p in d for p in pats):
             n += 1
     return n / len(urls)
+
+
+def source_verdict(urls):
+    """(reject_reason or None, dict_share, social_share) for one topic's sources."""
+    ds = _domain_share(urls, DICT_DOMAINS)
+    ss = _domain_share(urls, SOCIAL_DOMAINS)
+    if ds >= DICT_SHARE_REJECT:
+        return f"{ds*100:.0f}% DICTIONARY sources — the ticker matched an English word, not the company", ds, ss
+    if ss >= SOCIAL_SHARE_REJECT:
+        return f"{ss*100:.0f}% social-media sources — not research", ds, ss
+    return None, ds, ss
 
 
 def extract_urls(res):
@@ -353,18 +374,17 @@ def build(ticker, name):
         # passed every existing check because each of those is a real URL. Reject a topic grounded
         # mostly in domains that cannot be equity research, and treat it exactly like zero
         # sources — void the brief rather than cache confident nonsense.
-        jshare = junk_share(urls)
-        if jshare >= JUNK_SHARE_REJECT:
+        reason, dshare, sshare = source_verdict(urls)
+        if reason:
             doms = ", ".join(sorted({urllib.parse.urlparse(u).netloc.replace("www.", "")
                                      for u in urls})[:6])
-            failures.append((title, f"irrelevant sources — {jshare*100:.0f}% junk domains "
-                                    f"({doms})"))
-            print(f"[deep_research] {t} '{title}' ::IRRELEVANT SOURCES:: {jshare*100:.0f}% junk "
+            failures.append((title, f"irrelevant sources — {reason} ({doms})"))
+            print(f"[deep_research] {t} '{title}' ::IRRELEVANT SOURCES:: {reason} "
                   f"({doms}) — discarded", flush=True)
             continue
-        if jshare > 0:
-            print(f"[deep_research] {t} '{title}' note: {jshare*100:.0f}% of sources are "
-                  f"non-research domains", flush=True)
+        if dshare or sshare:
+            print(f"[deep_research] {t} '{title}' note: sources {dshare*100:.0f}% dictionary, "
+                  f"{sshare*100:.0f}% social", flush=True)
 
         L.append(f"## {title}  _(engine: {tool}, {time.time()-t0:.0f}s)_")
         L.append(summ if summ else "_(no summary returned)_")
