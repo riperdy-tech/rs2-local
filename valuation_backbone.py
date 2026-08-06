@@ -241,7 +241,14 @@ def _ffo_ps_cagr(ydata):
     return (s[-1][1] / s[0][1]) ** (1.0 / yrs) - 1.0 if yrs > 0 else None
 
 
-def _base_cf(ticker, ydata, sector_l, industry_l=""):
+def _midcycle_owner_earnings(ydata):
+    """Mean of positive owner earnings across the available history, or None if too short."""
+    owners = [_owner_earnings(ydata[str(y)]) for y in sorted(int(v) for v in ydata.keys())]
+    owners = [o for o in owners if o is not None and o > 0]
+    return (sum(owners) / len(owners)) if len(owners) >= 3 else None
+
+
+def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False):
     """Return (base_cf_$, kind). Equity REITs -> FFO; cyclicals -> mid-cycle avg owner earnings;
     else latest-FY owner earnings with fcf / ocf-minus-da fallbacks. None base_cf -> honest null
     upstream."""
@@ -256,6 +263,17 @@ def _base_cf(ticker, ydata, sector_l, industry_l=""):
         ni, da = _num(fy.get("net_income")), _num(fy.get("da"))
         if ni is not None and da is not None and (ni + da) > 0:
             return ni + da, "ffo_reit"
+    # The sector whitelist below is a PROXY for "is this company cyclical", and it misses: 12 of
+    # 39 model-labelled cyclicals sit outside it, including MU, whose latest trough year produced
+    # a 97.5% implied growth and an +85.7pt gap. No statistic separates cycle from growth here --
+    # coefficient of variation overlaps completely between cyclicals (NOVT 0.28, ESCA 0.27) and
+    # stable compounders (KO 0.35, AAPL 0.33) -- because averaging raw owner earnings over a
+    # GROWING company mixes trend with cycle. force_midcycle lets the caller supply the judgment
+    # the statistic cannot (see run_rs2: the Stage-1 archetype).
+    if force_midcycle:
+        mid = _midcycle_owner_earnings(ydata)
+        if mid is not None:
+            return mid, "midcycle_owner_earnings_archetype"
     # cyclical: average owner earnings over the available cycle (trough+peak cancel)
     if any(c in sector_l for c in MIDCYCLE_SECTORS):
         owners = [_owner_earnings(ydata[str(y)]) for y in yrs]
@@ -430,7 +448,7 @@ def _financial_backbone(t, ydata, price, mcap, shares, coe=FIN_COE, pb_kind="fin
     }
 
 
-def backbone(ticker):
+def backbone(ticker, force_midcycle=False):
     t = ticker.upper()
     fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
     price = _num(fin.get("Price"))
@@ -460,7 +478,7 @@ def backbone(ticker):
         return _financial_backbone(t, ydata, price, mcap, shares,
                                    coe=UTIL_COE, pb_kind="regulated_utility")
 
-    base_cf, kind = _base_cf(t, ydata, sl, ind_l)
+    base_cf, kind = _base_cf(t, ydata, sl, ind_l, force_midcycle=force_midcycle)
     if base_cf is None or base_cf <= 0:
         # SEC fundamentals_history lacks capex/D&A for many foreign filers (SAP/VIK/BWMX/JLHL) or is
         # stale — a data gap, not a genuinely unvaluable company. Fall back to the fresh yfinance

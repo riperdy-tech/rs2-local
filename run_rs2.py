@@ -264,10 +264,47 @@ def _valid_engine4(d):
         d.get("core_value", None), (int, float))
 
 
+# base_cf kinds derived from a SINGLE fiscal year — these are the ones a cyclical archetype should
+# upgrade to a mid-cycle average. midcycle_* is already averaged and ffo_reit is a REIT measure.
+_LATEST_FY_KINDS = ("owner_earnings", "fcf_fallback", "ocf_minus_da_proxy", "fcf_ttm_yf")
+
+
+def _archetype(stage_text):
+    """Archetype letter (A-F) the model chose in Stage 1, or None.
+
+    Stage 1 already classifies the business and the result was written to the report and then
+    used for NOTHING. It is a better cyclical detector than the sector whitelist it would
+    override: measured over 256 archived runs, 12 of 39 model-labelled cyclicals sit outside
+    MIDCYCLE_SECTORS, including MU. Formats vary ("Archetype: C. Cyclical",
+    "**Selected Archetype:** C. Cyclical"), so match the NAME first and the bare letter second.
+    """
+    seg = stage_text[:6000]
+    # Anchor to the DECLARATION line, never a scan of the justification prose: AAPL's rationale
+    # says "distinct from Stable Incumbent (A) or Option-Led (E) profiles", so a loose name scan
+    # returns A for a name the model actually classified D.
+    m = re.search(r"(?:Selected\s+)?Archetype\b[^\n:]{0,30}:\s*\**\s*([A-F])[.):\s]", seg, re.I)
+    if m:
+        return m.group(1).upper()
+    # Fall back to the name, but only on the declaration LINE itself.
+    m = re.search(r"^.*\bArchetype\b\s*\**\s*:.*$", seg, re.I | re.M)
+    line = m.group(0).lower() if m else ""
+    for letter, name in (("A", "stable incumbent"), ("B", "quality compounder"),
+                         ("D", "product-platform"), ("E", "option-led"),
+                         ("F", "regulatory"), ("C", "cyclical")):
+        if name in line:
+            return letter
+    return None
+
+
 def _valid_engine5(d):
+    # value_if_approved_ps must be STRICTLY POSITIVE. A zero is not a valuation — it is the model
+    # declining to estimate (seen live on OSTX with no research brief), and it sails through an
+    # isinstance check to produce IV = floor only and a -99.4% MoS, i.e. a fabricated screaming
+    # SELL. Rejecting it here falls through to Engine 4 / unvalued, which is the honest outcome.
     return (isinstance(d, dict) and int(d.get("engine", 0) or 0) == 5
             and d.get("phase") in valuation_backbone.PHASE_POS
-            and isinstance(d.get("value_if_approved_ps", None), (int, float)))
+            and isinstance(d.get("value_if_approved_ps", None), (int, float))
+            and d.get("value_if_approved_ps") > 0)
 
 
 def _valid_engine2(d):
@@ -1050,6 +1087,48 @@ def main():
 
         # ── inverted valuation hooks (deterministic backbone + model judgment) ──
         extra = ""
+        if sid == "S1_macro_classify":
+            # CYCLICAL ROUTING. The archetype is a CLASSIFICATION (the model is good at those);
+            # it selects the normalization BASIS only — every number stays deterministic, and the
+            # model never sees or sets a valuation. Guarded to genuinely single-year base_cf kinds
+            # so it can only ever average, never invent.
+            arch = _archetype(out)
+            if arch == "C" and bb.get("ok") and bb.get("base_cf_kind") in _LATEST_FY_KINDS:
+                bb2 = valuation_backbone.backbone(t, force_midcycle=True)
+                if bb2.get("ok") and bb2.get("base_cf_kind", "").startswith("midcycle"):
+                    print(f"   [routing] archetype C (cyclical) — base_cf renormalized "
+                          f"{bb['base_cf_kind']} ${bb['base_cf']/1e9:.2f}B -> mid-cycle "
+                          f"${bb2['base_cf']/1e9:.2f}B; implied {bb['implied_growth']*100:.1f}% -> "
+                          f"{bb2['implied_growth']*100:.1f}%, gap {bb['expectations_gap_pts']} -> "
+                          f"{bb2['expectations_gap_pts']}pts", flush=True)
+                    (out_dir / "routing.json").write_text(json.dumps({
+                        "archetype": arch, "applied": True,
+                        "from": {"kind": bb["base_cf_kind"], "implied_growth": bb["implied_growth"],
+                                 "gap_pts": bb["expectations_gap_pts"]},
+                        "to": {"kind": bb2["base_cf_kind"], "implied_growth": bb2["implied_growth"],
+                               "gap_pts": bb2["expectations_gap_pts"]}}, indent=2), encoding="utf-8")
+                    # The VALUATION block in data_ctx was rendered BEFORE this renormalization, so
+                    # it still shows the single-year figures. Carry the correction forward or the
+                    # model would reason about one set of numbers while the engine scored another.
+                    extra = ("\n\n## VALUATION — CORRECTED FOR CYCLICALITY (supersedes the "
+                             "VALUATION block above)\n"
+                             f"- You classified this as CYCLICAL, so base cash flow is renormalized "
+                             f"from the single fiscal year {bb['fiscal_year']} "
+                             f"(${bb['base_cf']/1e9:.2f}B) to the MID-CYCLE average "
+                             f"(${bb2['base_cf']/1e9:.2f}B). A trough or peak year is not "
+                             "representative earning power.\n"
+                             f"- Price-implied growth is therefore {bb2['implied_growth']*100:.1f}%/yr "
+                             f"(not {bb['implied_growth']*100:.1f}%), and the EXPECTATIONS GAP is "
+                             f"{bb2['expectations_gap_pts']:+.0f} pts (not "
+                             f"{bb['expectations_gap_pts']:+.0f}). {bb2['verdict']}\n"
+                             "- Use THESE figures in Layer 3.")
+                    bb = bb2
+            elif arch:
+                # telemetry only — lets the archetype/route agreement be measured over time
+                (out_dir / "routing.json").write_text(json.dumps({
+                    "archetype": arch, "applied": False,
+                    "base_cf_kind": bb.get("base_cf_kind"),
+                    "method": bb.get("method") or bb.get("reason")}, indent=2), encoding="utf-8")
         if sid == "S3_valuation":
             val_res, val_block = valuation_result(out, bb, price, t)
             extra = "\n\n" + val_block
