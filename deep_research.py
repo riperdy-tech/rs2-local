@@ -178,6 +178,32 @@ def preflight(tool):
             f"Start Docker Desktop (the searxng container auto-restarts).")
 
 
+# Domains that are never equity research. A brief about a company should not be grounded in
+# dictionary entries or social posts — EW (Edwards Lifesciences) came back citing
+# merriam-webster, dictionary.cambridge, youtube and ew.com (Entertainment Weekly), and it was
+# FULLY CITED, so the citation guard passed it happily.
+JUNK_DOMAINS = ("merriam-webster.", "dictionary.cambridge.", "dictionary.com", "thesaurus.",
+                "wiktionary.", "urbandictionary.", "youtube.", "facebook.", "instagram.",
+                "tiktok.", "pinterest.", "quora.", "zhihu.", "indeed.", "glassdoor.",
+                "britannica.", "wikihow.")
+JUNK_SHARE_REJECT = 0.5    # measured: healthy briefs sit at a median junk share of 0%
+
+
+def junk_share(urls):
+    """Fraction of sources that cannot be equity research. Never raises."""
+    if not urls:
+        return 0.0
+    n = 0
+    for u in urls:
+        try:
+            d = urllib.parse.urlparse(u).netloc.lower().replace("www.", "")
+        except Exception:
+            continue
+        if any(j in d for j in JUNK_DOMAINS):
+            n += 1
+    return n / len(urls)
+
+
 def extract_urls(res):
     """Source URLs from an LDR result: `sources` first, then the citation block."""
     urls = []
@@ -321,6 +347,24 @@ def build(ticker, name):
             print(f"[deep_research] {t} '{title}' ::NO SOURCES:: {len(summ)}B of uncited "
                   f"prose discarded — {summ[:120]}", flush=True)
             continue
+
+        # RELEVANCE GUARD. Citations prove the model searched; they do NOT prove it searched for
+        # the right company. EW returned dictionary entries, YouTube and Entertainment Weekly and
+        # passed every existing check because each of those is a real URL. Reject a topic grounded
+        # mostly in domains that cannot be equity research, and treat it exactly like zero
+        # sources — void the brief rather than cache confident nonsense.
+        jshare = junk_share(urls)
+        if jshare >= JUNK_SHARE_REJECT:
+            doms = ", ".join(sorted({urllib.parse.urlparse(u).netloc.replace("www.", "")
+                                     for u in urls})[:6])
+            failures.append((title, f"irrelevant sources — {jshare*100:.0f}% junk domains "
+                                    f"({doms})"))
+            print(f"[deep_research] {t} '{title}' ::IRRELEVANT SOURCES:: {jshare*100:.0f}% junk "
+                  f"({doms}) — discarded", flush=True)
+            continue
+        if jshare > 0:
+            print(f"[deep_research] {t} '{title}' note: {jshare*100:.0f}% of sources are "
+                  f"non-research domains", flush=True)
 
         L.append(f"## {title}  _(engine: {tool}, {time.time()-t0:.0f}s)_")
         L.append(summ if summ else "_(no summary returned)_")
