@@ -116,11 +116,20 @@ def preflight(tool):
                 f"SearXNG at {CONFIG['searxng_url']} returned {n} results (<{min_results}) for "
                 f"a realistic query — engine up but not searching. Blocked engines: "
                 f"{unresp or 'none reported'}")
-        if blocked:
+        # Blocked engines matter only when they cost us RESULTS. Failing on any single blocked
+        # engine was a self-inflicted outage: yep gets rate-limited routinely, bing keeps
+        # serving 9-10 results, and research would have been fine — but the preflight aborted
+        # anyway, so 44 consecutive tickers exited 3 in ~9s each without a single search being
+        # attempted. Only refuse when EVERYTHING that serves is down; otherwise warn and run.
+        if blocked and len(blocked) >= len(serving):
             detail = "; ".join(f"{e}: {unresp[e][:40]}" for e in blocked)
             raise ResearchInfraError(
-                f"SearXNG serving engine(s) blocked ({detail}) — refusing to research on a "
-                f"degraded engine; briefs would be thin or uncited")
+                f"every SearXNG serving engine is blocked ({detail}) — refusing to research; "
+                f"briefs would be thin or uncited")
+        if blocked:
+            print(f"[deep_research] preflight WARNING: "
+                  f"{'; '.join(f'{e}: {unresp[e][:40]}' for e in blocked)} — "
+                  f"{n} results still available, continuing", flush=True)
         print(f"[deep_research] preflight ok: searxng {n} results", flush=True)
     except ResearchInfraError:
         raise
