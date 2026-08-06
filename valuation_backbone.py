@@ -138,6 +138,17 @@ PB_ROE_EXCLUDE = ("insurance broker",)                  # fee businesses, not un
 REGULATED_UTILITY_INDUSTRIES = ("regulated",)
 UTIL_COE = 0.07   # market cost of equity for a large regulated utility (= the Utilities sector WACC)
 
+# Ceiling on the ROE fed to the justified-P/B for a REGULATED utility. A rate-regulated return is
+# bounded by what the commission allows (9.5-11% industry-wide; measured here: median 9.2%, p90
+# 12.5%), so a one-off 24% year is an asset sale or a depressed equity base, NOT rate-base earning
+# power that can be capitalised in perpetuity. Without this the Gordon form explodes: utility CoE
+# is 7% and g caps at 4%, leaving a 3% denominator -- HALF the 6% a bank gets at CoE 10% -- so
+# (ROE-g)/(CoE-g) turned EIX's 24.4% into a 6.8x justified P/B and a +376% MoS, and BIPC's 34.9%
+# into 10.3x and +276%. Both shipped UNFENCED because neither has an analyst band (51 of 56
+# utilities have none), i.e. straight to the verdict as a screaming BUY.
+# 15% is deliberately generous -- well above p90 -- so it binds only on genuine outliers.
+UTIL_ROE_CEIL = 0.15
+
 
 def _num(v):
     return v if isinstance(v, (int, float)) and math.isfinite(v) else None
@@ -466,6 +477,11 @@ def _financial_backbone(t, ydata, price, mcap, shares, coe=FIN_COE, pb_kind="fin
         return {"ok": False, "reason": "no_book_or_earnings", "price": price,
                 "market_cap": mcap, "shares": shares}
     roe = ni / eq
+    # Regulated utilities only: cap the CAPITALISED return at what a regulator plausibly allows.
+    # See UTIL_ROE_CEIL — an unsustainable one-off ROE otherwise explodes the 3% denominator.
+    roe_capped = bool(pb_kind == "regulated_utility" and roe > UTIL_ROE_CEIL)
+    if roe_capped:
+        roe = UTIL_ROE_CEIL
     rev_cagr, _ = _growth_evidence(ydata)
     g = rev_cagr if rev_cagr is not None else 0.03
     # Sustainable LONG-RUN growth for a mature financial ~ GDP. Cap hard at 4%: a recent revenue
@@ -490,10 +506,25 @@ def _financial_backbone(t, ydata, price, mcap, shares, coe=FIN_COE, pb_kind="fin
         else:
             fair_value, fv_method = med, "pb_roe_consensus_snap"
     mos = round((fair_value / price - 1) * 100, 1) if (fair_value and price) else None
+    # An UNFENCED extreme MoS is the P/B model computing a defensible number for a reason it
+    # cannot see. EIX prints +157% because a 15% ROE justifies 3.67x book while it trades at
+    # 1.43x -- the market is pricing wildfire liability, and a return-on-book model has no
+    # channel for contingent claims. 51 of 56 utilities have NO analyst band, so the consensus
+    # fence that normally bounds this path is absent for almost all of them. Flag rather than
+    # clip: clipping would fabricate a number, this tells the reader the model is out of its
+    # depth and lets conviction/sizing dock it.
+    flag = None
+    if fv_method == "pb_roe_noband" and mos is not None and abs(mos) > 60:
+        flag = (f"UNFENCED P/B valuation with an extreme {mos:+.0f}% MoS and no analyst band to "
+                f"bound it — likely something this model cannot see (contingent liabilities, "
+                f"asset-sale ROE, depressed book). Treat the $ value as low confidence.")
     return {
+        "flag": flag,
         "ok": True, "ticker": t, "method": "financial_pb_roe", "pb_kind": pb_kind,
         "price": price, "market_cap": mcap, "shares": shares, "fiscal_year": yrs[-1],
         "roe": round(roe, 4), "implied_roe": round(implied_roe, 4), "coe": coe,
+        # surfaced so a capped name is auditable rather than silently smoothed
+        "roe_capped": roe_capped, "roe_reported": round(ni / eq, 4),
         "sustainable_g": round(g, 4), "current_pb": round(current_pb, 2),
         "justified_pb": round(justified_pb, 2), "book_value_ps": round(bvps, 2) if bvps else None,
         "fair_value": round(fair_value, 2) if fair_value else None,
