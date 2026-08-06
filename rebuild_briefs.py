@@ -12,12 +12,16 @@ happens to apply — and burst concurrency is exactly what CAPTCHA-blocks the en
 here instead is serial, throttled, and watched.
 
 SANITY CHECKS (the point of doing it this way)
-Before every ticker it probes the live search engine and refuses to continue into a degraded
-one, so a mid-run CAPTCHA block cannot quietly refill the disk with fresh garbage:
-  * zero results            -> the failure mode that caused this mess; back off and retry
-  * a SERVING engine blocked -> bing/yep going CAPTCHA or rate-limited is the real warning
-    (duckduckgo is already blocked and is tolerated; it is not in the serving set)
-Backoff is exponential and the run aborts rather than grinding if the engine does not recover.
+Before every ticker it probes the live search engine, so a mid-run block cannot quietly refill
+the disk with fresh garbage. What counts as unhealthy is RESULTS, not unanimity:
+  * too few results             -> the failure mode that caused this mess; back off and retry
+  * ALL serving engines blocked -> nothing left to research with; back off and retry
+  * ONE serving engine blocked  -> warn and continue; losing yep while bing still returns 10+
+    results is survivable, and treating it as fatal stopped the first run at 15/126 for a rate
+    limit that had expired by the time anyone looked
+Backoff is 1/2/4/8/16/32 min (~1h) because these are expiring RATE LIMITS, not bans. If it does
+give up it says so on Telegram — a silent abort is indistinguishable from a hung job, which is
+exactly how the first run looked for three hours.
 
 RESUMABLE. Re-run it freely: anything already carrying citations is skipped, so an interrupted
 run costs nothing. Progress is appended to reports/_rebuild_briefs.log.
@@ -39,6 +43,7 @@ from pathlib import Path
 
 import subprocess
 
+import ops
 import rs2_data
 
 CONFIG = rs2_data.CONFIG
@@ -51,7 +56,15 @@ LOG = Path(CONFIG["out_reports_dir"]) / "_rebuild_briefs.log"
 SERVING_ENGINES = ("bing", "yep")
 MIN_HEALTHY_RESULTS = 5        # a real query returns ~30; single digits means something is wrong
 THROTTLE_SEC = 8               # between tickers — keeps concurrency low enough not to trip blocks
-MAX_CONSECUTIVE_UNHEALTHY = 3  # give up rather than hammer a blocked engine
+# Engine blocks here are RATE LIMITS, which expire; they are not permanent bans. The first run
+# aborted after 3 tries / ~7 minutes when yep returned "Suspended: access denied" -- and yep was
+# serving again well before anyone looked. Be patient enough to ride out a throttle: 6 attempts
+# backing off 1/2/4/8/16/32 min ~= an hour before giving up.
+MAX_CONSECUTIVE_UNHEALTHY = 6
+BACKOFF_BASE_SEC = 60
+# A hung LDR call would otherwise block forever: subprocess.run has no default timeout. A brief
+# takes ~5 min, so 20 is generous while still bounded.
+TICKER_TIMEOUT_SEC = 20 * 60
 
 PROBES = ["realty income dividend 2026", "micron memory pricing outlook",
           "apple iphone demand 2026", "bunge farm products outlook"]
@@ -154,14 +167,24 @@ def engine_health(probe):
 
 
 def wait_for_healthy(probe_idx):
-    """Probe, backing off exponentially. False => give up."""
+    """Probe, backing off exponentially. False => give up.
+
+    Healthy means ENOUGH RESULTS, not every engine happy. The first run aborted at 15/126 because
+    yep was rate-limited, while bing was still returning 10+ results and research could have
+    continued perfectly well — losing one of two serving engines is survivable, losing the
+    results is not. Only a genuine result shortfall (or every serving engine down) stops the run;
+    a single blocked engine is logged as a warning and pressed through.
+    """
     for attempt in range(MAX_CONSECUTIVE_UNHEALTHY):
         n, blocked, note = engine_health(PROBES[probe_idx % len(PROBES)])
-        if n >= MIN_HEALTHY_RESULTS and not blocked:
+        all_down = len(blocked) >= len(SERVING_ENGINES)
+        if n >= MIN_HEALTHY_RESULTS and not all_down:
+            if blocked:
+                log(f"  [health] WARNING: {note} — but {n} results still coming, continuing")
             return True
         why = (f"only {n} results" if n < MIN_HEALTHY_RESULTS else "") + \
-              (f" | SERVING ENGINE BLOCKED {note}" if blocked else "")
-        wait = 60 * (2 ** attempt)
+              (f" | ALL SERVING ENGINES BLOCKED {note}" if all_down else "")
+        wait = BACKOFF_BASE_SEC * (2 ** attempt)
         log(f"  [health] DEGRADED ({why.strip()}) — backing off {wait}s "
             f"(attempt {attempt + 1}/{MAX_CONSECUTIVE_UNHEALTHY})")
         time.sleep(wait)
@@ -197,7 +220,7 @@ def main():
 
     n, blocked, note = engine_health(PROBES[0])
     log(f"start health: {n} results, blocked serving engines: {blocked or 'none'} {note}")
-    if n < MIN_HEALTHY_RESULTS or blocked:
+    if n < MIN_HEALTHY_RESULTS or len(blocked) >= len(SERVING_ENGINES):
         log("ABORT: search engine is not healthy at start — fix it before rebuilding, or the "
             "rebuild just writes fresh garbage")
         sys.exit(2)
@@ -208,8 +231,17 @@ def main():
         f"from the measured average as it goes")
     for i, t in enumerate(todo, 1):
         if not wait_for_healthy(i):
-            log(f"ABORT after {i - 1} ticker(s): engine did not recover. Remaining briefs are "
-                f"untouched; re-run this script when search is healthy again.")
+            msg = (f"rebuild_briefs ABORTED after {i - 1}/{len(todo)} ticker(s): search engine "
+                   f"did not recover. {len(uncited_tickers())} uncited briefs remain. Re-run "
+                   f"`python rebuild_briefs.py` when search is healthy — it resumes.")
+            log("ABORT — " + msg)
+            # A silent abort is how a 10-hour job "hangs": the first run stopped at 15/126 and
+            # simply went quiet, and it read as a stuck process for hours. Say so out loud.
+            try:
+                ops.notify_telegram("[RS2 ops] " + msg)
+                log("  (Telegram alert sent)")
+            except Exception as e:
+                log(f"  (Telegram alert failed: {str(e)[:80]})")
             break
         name = None
         try:
@@ -227,7 +259,8 @@ def main():
             # alone decodes the child's utf-8 through cp1252 on Windows.
             cmd = [str(rv_py), str(HERE / "deep_research.py"), t] + ([name] if name else [])
             r = subprocess.run(cmd, capture_output=True, text=True,
-                               encoding="utf-8", errors="replace")
+                               encoding="utf-8", errors="replace",
+                               timeout=TICKER_TIMEOUT_SEC)
             for line in (r.stdout or "").splitlines():
                 if "[deep_research]" in line:
                     log("    " + line.strip())
@@ -240,6 +273,9 @@ def main():
                 failed += 1
                 log(f"[{i}/{len(todo)}] {t} STILL UNCITED (exit {r.returncode}, {c} citations) "
                     f"— left for a later run")
+        except subprocess.TimeoutExpired:
+            failed += 1
+            log(f"[{i}/{len(todo)}] {t} TIMED OUT after {TICKER_TIMEOUT_SEC//60}min — skipping")
         except Exception as e:
             failed += 1
             log(f"[{i}/{len(todo)}] {t} FAILED — {type(e).__name__}: {str(e)[:120]}")
