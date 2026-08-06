@@ -195,14 +195,26 @@ def valuation_block(ticker):
              f"sector discount rate (WACC) {b['wacc_pct']}%.")
     L.append(f"- The CURRENT price IMPLIES ~{b['implied_growth']*100:.1f}%/yr cash-flow growth for 5yr "
              f"(then fading to {b['terminal_growth']*100:.1f}%). This is what you must BELIEVE to pay today's price.")
+    _reit = b.get("base_cf_kind") == "ffo_reit"
+    if _reit:
+        L.append("- REIT: base cash flow is FFO (net income + D&A), because real-estate depreciation "
+                 "is an accounting fiction for an appreciating asset. CAVEAT — FFO does NOT deduct "
+                 "recurring maintenance capex (AFFO would; the split is not in the filings we hold), "
+                 "so the implied growth above is if anything UNDERSTATED. Treat a marginal negative "
+                 "gap on a REIT as fair, not cheap.")
     dem = []
+    if _reit and b.get("demonstrated_cagr") is not None:
+        dem.append(f"FFO/share {b['demonstrated_cagr']*100:+.1f}%/yr")
     if dg is not None: dem.append(f"revenue {dg*100:+.1f}%/yr")
     if fg is not None: dem.append(f"FCF {fg*100:+.1f}%/yr")
     if dem:
-        L.append(f"- DEMONSTRATED 5yr growth [Actual]: {', '.join(dem)}.")
+        L.append(f"- DEMONSTRATED 5yr growth [Actual]: {', '.join(dem)}."
+                 + (" Revenue growth for a REIT is largely equity-funded acquisition roll-up — the "
+                    "PER-SHARE FFO figure is what an existing holder actually received, and is what "
+                    "the gap is measured against." if _reit else ""))
     if b["expectations_gap_pts"] is not None:
         L.append(f"- EXPECTATIONS GAP: {b['expectations_gap_pts']:+.0f} pts (price-implied minus "
-                 f"demonstrated revenue growth). {b['verdict']}")
+                 f"demonstrated {'FFO/share' if _reit else 'revenue'} growth). {b['verdict']}")
     if b.get("forward_growth") is not None:
         L.append(f"- FORWARD analyst growth [Estimate]: {b['forward_growth']*100:+.1f}%/yr — the FRESH "
                  "consensus expectation (use this, not trailing, to judge achievability).")

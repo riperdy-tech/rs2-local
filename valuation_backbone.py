@@ -216,11 +216,46 @@ def _verdict(gap_pts):
     return f"Priced {abs(gap_pts):.0f}pts BELOW demonstrated growth — market expects deceleration."
 
 
-def _base_cf(ticker, ydata, sector_l):
-    """Return (base_cf_$, kind). Cyclicals -> mid-cycle avg owner earnings; else latest-FY owner
-    earnings with fcf / ocf-minus-da fallbacks. None base_cf -> honest null upstream."""
+def _ffo_ps_series(ydata):
+    """FFO per diluted share by fiscal year. FFO = net income + D&A: real-estate depreciation is
+    an accounting fiction for an appreciating asset, which is exactly why owner earnings
+    (NI+D&A-capex) misprices a REIT. Per SHARE because REIT revenue growth is largely acquisition
+    roll-up funded by issuing equity -- O showed a 28.4% revenue CAGR that no existing holder
+    received. Gains on property sales are NOT backed out (not in fundamentals_history), so this is
+    NAREIT FFO less that adjustment."""
+    out = []
+    for y in sorted(int(v) for v in ydata.keys()):
+        fy = ydata[str(y)]
+        ni, da, sh = _num(fy.get("net_income")), _num(fy.get("da")), _num(fy.get("shares_diluted"))
+        if ni is not None and da is not None and sh and sh > 0:
+            out.append((y, (ni + da) / sh))
+    return out
+
+
+def _ffo_ps_cagr(ydata):
+    """CAGR of FFO/share over the available history, or None."""
+    s = _ffo_ps_series(ydata)
+    if len(s) < 4 or s[0][1] <= 0 or s[-1][1] <= 0:
+        return None
+    yrs = s[-1][0] - s[0][0]
+    return (s[-1][1] / s[0][1]) ** (1.0 / yrs) - 1.0 if yrs > 0 else None
+
+
+def _base_cf(ticker, ydata, sector_l, industry_l=""):
+    """Return (base_cf_$, kind). Equity REITs -> FFO; cyclicals -> mid-cycle avg owner earnings;
+    else latest-FY owner earnings with fcf / ocf-minus-da fallbacks. None base_cf -> honest null
+    upstream."""
     yrs = sorted(int(y) for y in ydata.keys())
     fy = ydata[str(yrs[-1])]
+    # Equity REIT -> FFO. Owner earnings subtract the whole capex line, but a REIT's capex is
+    # mostly ACQUISITION of income-producing property, not maintenance of existing capacity, so
+    # subtracting it understates earning power badly (O landed on an ocf-minus-da proxy of
+    # $1.47B against an FFO several times that). Mortgage REITs are excluded upstream -- they
+    # are lenders and route to the P/B-ROE model.
+    if "reit" in industry_l and "mortgage" not in industry_l:
+        ni, da = _num(fy.get("net_income")), _num(fy.get("da"))
+        if ni is not None and da is not None and (ni + da) > 0:
+            return ni + da, "ffo_reit"
     # cyclical: average owner earnings over the available cycle (trough+peak cancel)
     if any(c in sector_l for c in MIDCYCLE_SECTORS):
         owners = [_owner_earnings(ydata[str(y)]) for y in yrs]
@@ -425,7 +460,7 @@ def backbone(ticker):
         return _financial_backbone(t, ydata, price, mcap, shares,
                                    coe=UTIL_COE, pb_kind="regulated_utility")
 
-    base_cf, kind = _base_cf(t, ydata, sl)
+    base_cf, kind = _base_cf(t, ydata, sl, ind_l)
     if base_cf is None or base_cf <= 0:
         # SEC fundamentals_history lacks capex/D&A for many foreign filers (SAP/VIK/BWMX/JLHL) or is
         # stale — a data gap, not a genuinely unvaluable company. Fall back to the fresh yfinance
@@ -464,7 +499,16 @@ def backbone(ticker):
         return {"ok": False, "reason": "solver_failed", "price": price, "market_cap": mcap}
 
     rev_cagr, fcf_cagr = _growth_evidence(ydata)
-    gap_pts = (implied - rev_cagr) * 100 if rev_cagr is not None else None
+    # For a REIT the implied growth is in FFO terms, so the demonstrated side must be too --
+    # comparing implied FFO growth against a revenue CAGR inflated by equity-funded acquisitions
+    # is apples-to-oranges and was overstating the gap. Falls back to revenue when FFO/share
+    # history is too short.
+    demo_cagr, demo_kind = rev_cagr, "revenue_cagr_5y"
+    if kind == "ffo_reit":
+        f = _ffo_ps_cagr(ydata)
+        if f is not None:
+            demo_cagr, demo_kind = f, "ffo_ps_cagr"
+    gap_pts = (implied - demo_cagr) * 100 if demo_cagr is not None else None
     yrs = sorted(int(y) for y in ydata.keys())
 
     # DETERMINISTIC fair value — FORWARD-anchored & CONSENSUS-FENCED (replaces the old trailing-5y-CAGR
@@ -518,6 +562,9 @@ def backbone(ticker):
         "stage1_years": STAGE1, "fade_years": FADE,
         "implied_growth": round(implied, 4), "implied_growth_clamped": implied in (G_LO, G_HI),
         "hist_revenue_cagr_5y": round(rev_cagr, 4) if rev_cagr is not None else None,
+        # what the gap is actually measured against (FFO/share for REITs, revenue otherwise)
+        "demonstrated_cagr": round(demo_cagr, 4) if demo_cagr is not None else None,
+        "demonstrated_cagr_kind": demo_kind,
         "hist_fcf_cagr_5y": round(fcf_cagr, 4) if fcf_cagr is not None else None,
         "expectations_gap_pts": round(gap_pts, 1) if gap_pts is not None else None,
         "fair_value": fair_value, "mos_pct": mos_pct, "realistic_mos_pct": mos_pct,
