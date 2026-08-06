@@ -250,6 +250,16 @@ def _base_cf(ticker, ydata, sector_l):
 PHASE_POS = {"preclinical": 0.05, "phase1": 0.096, "phase2": 0.152,
              "phase3": 0.496, "filed": 0.853, "approved": 1.0}
 
+# rNPV risk-discounts the WHOLE company by a trial probability, which is only valid when the
+# whole company IS the trial. A biotech already SELLING an approved drug has a commercial base
+# that must not be halved by a phase base rate: validated on MRNA, which the model labelled
+# phase3 despite $1.94B of product revenue, turning a $51.90 value-if-approved into a $29.59 IV
+# and a spurious -46.3% MoS. Above this revenue line the name keeps the Engine-4 option bridge.
+# $50m rather than $10m because below ~$50m, revenue in this sector is typically collaboration
+# and milestone income rather than product sales. Excludes 69 of 480 (SRPT, MRNA, NVAX, LEGN,
+# IONS, ...); the other 411 are genuinely pre-commercial.
+COMMERCIAL_REVENUE_FLOOR = 50e6
+
 # A clinical-stage biotech that runs out of money before approval MUST raise equity, and that
 # dilution is the honest "drag" — not a number the model should invent. Assume it must fund
 # itself to the approval horizon below.
@@ -442,7 +452,8 @@ def backbone(ticker):
                "base_cf_kind": kind, "price": price, "market_cap": mcap, "shares": shares}
         # Pre-profit biotech -> attach the deterministic rNPV scaffolding (Engine 5). Only for
         # genuinely pre-profit names: a reinvesting company has earning power to capitalise.
-        if not reinvesting and "biotech" in ind_l:
+        rev_l = _num(fy_last.get("revenue")) or 0.0
+        if not reinvesting and "biotech" in ind_l and rev_l < COMMERCIAL_REVENUE_FLOOR:
             sc = _clinical_scaffold(ydata, price, mcap, shares)
             if sc:
                 out["rnpv_scaffold"] = sc
