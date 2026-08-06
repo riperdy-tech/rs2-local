@@ -25,15 +25,26 @@
 # The blocked engines are operators refusing automated access; respect that rather than working
 # around it. Re-measure before changing this list.
 #
-# ── APPLYING CHANGES (important) ─────────────────────────────────────────────────────────────
-# The running container does NOT read this directory. Its /etc/searxng is a docker VOLUME: the
-# intended bind mount was mangled by Git Bash path conversion into
-#     source "…/RS2 Local/searxng;C"  ->  dest "/Program Files/Git/etc/searxng"
-# which is also where the stray "searxng;C" directory in the repo root came from. Either
-# recreate the container with MSYS_NO_PATHCONV=1 and a correct -v flag, or push changes with:
-#     MSYS_NO_PATHCONV=1 docker cp searxng/settings.yml searxng:/etc/searxng/settings.yml
+# ── APPLYING CHANGES ─────────────────────────────────────────────────────────────────────────
+# This directory IS the container's /etc/searxng (bind-mounted), so edit settings.yml here and
 #     docker restart searxng
-# Verify with:  curl -s "http://localhost:8888/search?q=test+query&format=json" | head -c 300
+# is all that is needed. limiter.toml must stay present in this directory: the mount covers the
+# whole of /etc/searxng, so a missing file here is a missing file in the container.
+#
+# HISTORY: until 2026-08-06 the container did NOT read this directory. The bind mount had been
+# mangled by Git Bash path conversion into
+#     source "…/RS2 Local/searxng;C"  ->  dest "/Program Files/Git/etc/searxng"
+# (which is where the stray "searxng;C" directory in the repo root came from), so /etc/searxng
+# was an anonymous docker volume and every edit here was a silent no-op. If the container is
+# ever recreated from a Git Bash shell, prefix the command with MSYS_NO_PATHCONV=1 or the same
+# mangling returns:
+#     MSYS_NO_PATHCONV=1 docker run -d --name searxng --restart unless-stopped \
+#       -p 8888:8080 -e SEARXNG_BASE_URL=http://localhost:8888/ \
+#       -v "C:\Users\riper\Downloads\RS2 Local\searxng:/etc/searxng" searxng/searxng
+# Verify the mount is clean (no ";C") with:
+#     docker inspect searxng --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+# Verify search works with:
+#     curl -s "http://localhost:8888/search?q=realty+income+dividend&format=json" | head -c 300
 use_default_settings:
   engines:
     keep_only:
