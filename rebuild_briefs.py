@@ -87,17 +87,28 @@ def show_status():
         print("no rebuild log yet — nothing has been run")
         return
     lines = LOG.read_text(encoding="utf-8", errors="replace").splitlines()
-    last_bar = next((l for l in reversed(lines) if "] " in l and "/" in l and "ETA" in l), None)
-    last_evt = next((l for l in reversed(lines) if re.search(r"\[\d+/\d+\]", l)), None)
-    done = next((l for l in reversed(lines) if l.strip().endswith("remaining on disk")), None)
+
+    def last_idx(pred):
+        for i in range(len(lines) - 1, -1, -1):
+            if pred(lines[i]):
+                return i
+        return -1
+
+    bar_i = last_idx(lambda l: "ETA" in l and "/" in l)
+    evt_i = last_idx(lambda l: re.search(r"\[\d+/\d+\]", l))
+    done_i = last_idx(lambda l: l.strip().endswith("remaining on disk"))
+
     print(f"uncited briefs on disk right now: {len(uncited_tickers())}")
-    if last_evt:
-        print(f"last ticker event : {last_evt}")
-    if last_bar:
-        print(f"last progress     : {last_bar}")
-    if done:
-        print(f"FINISHED          : {done}")
-    elif last_evt:
+    if evt_i >= 0:
+        print(f"last ticker event : {lines[evt_i]}")
+    if bar_i >= 0:
+        print(f"last progress     : {lines[bar_i]}")
+    # The log is APPEND-ONLY across runs, so an old completion line sits above the current run's
+    # events. Compare positions, not mere presence, or a fresh job reports itself FINISHED using
+    # the previous run's summary.
+    if done_i > evt_i:
+        print(f"FINISHED          : {lines[done_i]}")
+    elif evt_i >= 0:
         print("status            : RUNNING (or interrupted — re-run to resume)")
 
 
