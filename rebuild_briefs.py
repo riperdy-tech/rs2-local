@@ -164,6 +164,18 @@ def uncited_tickers():
     nameless ticker would be queued for rebuild on every single run, forever.
     """
     out = []
+    # MISSING briefs. Scanning research/*.md can only ever see files that exist, so a brief that
+    # was deleted (this script deletes before rebuilding) and then not rebuilt — because the run
+    # was interrupted — becomes invisible to its own queue. 11 went missing exactly that way.
+    # Anything with an analysis report but no brief belongs here.
+    have = {f.stem for f in RESEARCH_DIR.glob("*.md")}
+    try:
+        analysed = {d.name.rsplit("_", 2)[0] for d in Path(CONFIG["out_reports_dir"]).glob("*_*")
+                    if d.is_dir()}
+        out.extend(sorted(t for t in analysed - have if run_rs2.resolve_name(t)))
+    except Exception as e:
+        log(f"  [queue] could not scan reports for missing briefs: {str(e)[:60]}")
+
     for f in sorted(RESEARCH_DIR.glob("*.md")):
         try:
             txt = f.read_text(encoding="utf-8", errors="replace")
@@ -244,11 +256,7 @@ def main():
         todo = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
         # Explicit list: delete the existing brief so deep_research cannot serve it from cache.
         # These are CITED (the guard passes them), so nothing else would force a refresh.
-        for t in todo:
-            f = RESEARCH_DIR / f"{t}.md"
-            if f.exists():
-                f.unlink()
-        log(f"forced rebuild of {len(todo)} ticker(s); stale briefs deleted")
+        log(f"forced rebuild of {len(todo)} ticker(s)")
     else:
         todo = uncited_tickers()
     if args.limit:
@@ -303,6 +311,15 @@ def main():
             log(f"  [name] WARNING: no company name for {t} — query will be ticker-only "
                 f"and is liable to match the wrong entity")
         log(f"[{i}/{len(todo)}] {t} — rebuilding")
+        # Delete first. Everything in this queue is KNOWN-BAD, but a ticker-only brief is still
+        # fresh AND cited, so deep_research.build would serve it straight back from cache and
+        # the whole run would no-op ("cached, skip") while reporting success. Losing a known-bad
+        # brief costs nothing: the guard refuses to write a replacement unless it has real
+        # sources, and a missing brief is simply re-researched next time.
+        try:
+            (RESEARCH_DIR / f"{t}.md").unlink(missing_ok=True)
+        except Exception as e:
+            log(f"  [cache] could not clear {t}.md: {str(e)[:60]}")
         try:
             # Spawn deep_research.py under research-venv, exactly as run_rs2.run_research does.
             # LDR (local_deep_research) is installed ONLY in that venv, so importing
