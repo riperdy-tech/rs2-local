@@ -109,6 +109,33 @@ def valuation_block(ticker):
                      "earnings does not apply. Value it on NORMALIZED EARNINGS × a justified P/E, or "
                      "P/B vs ROE (is ROE above cost of equity?). Engine 2 (multiple) framing, not a DCF, "
                      "not an option bridge.")
+        elif b.get("reason") == "reinvestment_negative_fcf":
+            # PROFITABLE but capex > D&A: a reinvestment profile, NOT pre-profit. Must never be
+            # described as "negative earnings / option-led" — that framing sent capex-heavy names
+            # to the Engine-4 option bridge (see valuation_backbone.REGULATED_UTILITY_INDUSTRIES).
+            L.append(f"- No DCF model ({b.get('reason')}): the company IS profitable, but capex "
+                     "exceeds D&A, so owner earnings (NI+D&A−capex) are negative. This is a "
+                     "REINVESTMENT profile (rate-base / capacity build), NOT a pre-profit or "
+                     "option-led company. Do NOT value it as an option bridge. Value it on "
+                     "NORMALIZED mid-cycle earning power × a justified multiple, or on book "
+                     "equity vs ROE, and flag the lower confidence.")
+        elif b.get("rnpv_scaffold"):
+            # Pre-profit clinical biotech -> Engine 5 / rNPV. Show the deterministic scaffolding so
+            # the model supplies ONLY the phase and the value-if-approved (see ENGINE5_SCHEMA).
+            sc = b["rnpv_scaffold"]
+            L.append(f"- No DCF model ({b.get('reason')}): PRE-PROFIT CLINICAL-STAGE BIOTECH — value "
+                     "on **ENGINE 5 / rNPV**, not a DCF and not a free-form option bridge.")
+            L.append(f"- rNPV SCAFFOLD (deterministic, FY{sc['fiscal_year']}): net cash "
+                     f"${sc['net_cash_ps']}/sh"
+                     + (" [SUSPECT — share count looks stale, floor will be ignored]"
+                        if sc["net_cash_ps_suspect"] else "")
+                     + f"; cash burn ${sc['burn_per_yr']/1e6:.0f}M/yr; runway "
+                     + (f"{sc['runway_years']} years." if sc['runway_years'] is not None
+                        else "n/a (not burning cash)."))
+            L.append("- YOU supply only: the LEAD asset's development phase, and the per-share value "
+                     "IF it is approved. The probability of approval (published phase base rates), "
+                     "the net-cash floor and the dilution needed to reach approval are computed for "
+                     "you — do NOT estimate a probability yourself.")
         elif ni is not None and ni <= 0:
             L.append(f"- No DCF model ({b.get('reason')}): negative earnings — PRE-PROFIT / OPTION-LED "
                      "(Archetype E, Engine 4). Value = proven-core value/share + Σ(success_prob × "
@@ -121,8 +148,16 @@ def valuation_block(ticker):
         L.append("")
         return "\n".join(L)
     if b.get("method") == "financial_pb_roe":
-        # FINANCIAL: ROE vs P/B expectations model (deterministic; no cash-flow DCF).
-        L[0] = "## VALUATION — FINANCIAL ROE / P-B EXPECTATIONS MODEL (deterministic; do NOT recompute)"
+        # FINANCIAL (or RATE-REGULATED UTILITY): ROE vs P/B expectations model; no cash-flow DCF.
+        _util = b.get("pb_kind") == "regulated_utility"
+        L[0] = ("## VALUATION — REGULATED-UTILITY ROE / RATE-BASE (P-B) EXPECTATIONS MODEL "
+                "(deterministic; do NOT recompute)" if _util else
+                "## VALUATION — FINANCIAL ROE / P-B EXPECTATIONS MODEL (deterministic; do NOT recompute)")
+        if _util:
+            L.append("- RATE-REGULATED utility: the regulator sets an allowed ROE on a RATE BASE that is "
+                     "essentially book equity, so value is book × the capitalised spread of earned ROE "
+                     "over cost of equity — NOT an owner-earnings DCF (capex exceeds D&A permanently "
+                     "while the rate base grows, which is normal here, not distress).")
         L.append(f"- Delivered ROE [Actual]: {b['roe']*100:.1f}% (FY{b['fiscal_year']}); cost of equity "
                  f"{b['coe']*100:.0f}%, sustainable growth {b['sustainable_g']*100:.1f}%.")
         L.append(f"- Current price = P/B {b['current_pb']}x (book ${b['book_value_ps']}/sh). To pay that, the "
@@ -160,14 +195,26 @@ def valuation_block(ticker):
              f"sector discount rate (WACC) {b['wacc_pct']}%.")
     L.append(f"- The CURRENT price IMPLIES ~{b['implied_growth']*100:.1f}%/yr cash-flow growth for 5yr "
              f"(then fading to {b['terminal_growth']*100:.1f}%). This is what you must BELIEVE to pay today's price.")
+    _reit = b.get("base_cf_kind") == "ffo_reit"
+    if _reit:
+        L.append("- REIT: base cash flow is FFO (net income + D&A), because real-estate depreciation "
+                 "is an accounting fiction for an appreciating asset. CAVEAT — FFO does NOT deduct "
+                 "recurring maintenance capex (AFFO would; the split is not in the filings we hold), "
+                 "so the implied growth above is if anything UNDERSTATED. Treat a marginal negative "
+                 "gap on a REIT as fair, not cheap.")
     dem = []
+    if _reit and b.get("demonstrated_cagr") is not None:
+        dem.append(f"FFO/share {b['demonstrated_cagr']*100:+.1f}%/yr")
     if dg is not None: dem.append(f"revenue {dg*100:+.1f}%/yr")
     if fg is not None: dem.append(f"FCF {fg*100:+.1f}%/yr")
     if dem:
-        L.append(f"- DEMONSTRATED 5yr growth [Actual]: {', '.join(dem)}.")
+        L.append(f"- DEMONSTRATED 5yr growth [Actual]: {', '.join(dem)}."
+                 + (" Revenue growth for a REIT is largely equity-funded acquisition roll-up — the "
+                    "PER-SHARE FFO figure is what an existing holder actually received, and is what "
+                    "the gap is measured against." if _reit else ""))
     if b["expectations_gap_pts"] is not None:
         L.append(f"- EXPECTATIONS GAP: {b['expectations_gap_pts']:+.0f} pts (price-implied minus "
-                 f"demonstrated revenue growth). {b['verdict']}")
+                 f"demonstrated {'FFO/share' if _reit else 'revenue'} growth). {b['verdict']}")
     if b.get("forward_growth") is not None:
         L.append(f"- FORWARD analyst growth [Estimate]: {b['forward_growth']*100:+.1f}%/yr — the FRESH "
                  "consensus expectation (use this, not trailing, to judge achievability).")

@@ -14,6 +14,7 @@ MUST run with the research-venv python (has local_deep_research). Output: resear
 CLI:  <research-venv-python> deep_research.py NVDA "NVIDIA Corporation"
 """
 import json
+import re
 import sys
 import time
 import urllib.request
@@ -130,9 +131,19 @@ def build(ticker, name):
         # the infra-error guard existed are error text on disk with a fresh mtime, so trusting
         # mtime alone would re-serve the poison for research_cache_days AND make the ticker
         # fail sanity on every retry — a name stuck failing with no way to self-heal.
-        cached_sig = ops.infra_error(path.read_text(encoding="utf-8", errors="replace"))
-        if cached_sig:
-            print(f"[deep_research] {t}: cached brief is infra-error text ({cached_sig}) — "
+        cached_txt = path.read_text(encoding="utf-8", errors="replace")
+        cached_sig = ops.infra_error(cached_txt)
+        # A fabricated brief passes infra_error (it is fluent prose, not error text) and is
+        # typically LARGER than a healthy one — median 25KB vs 16KB — so neither the error
+        # signature nor the byte count rejects it. Only the citation test does. Without this
+        # arm the cache re-serves the hallucination for research_cache_days while
+        # run_rs2.sanity_check fails the ticker on every retry: 3 retries x ~10min burned,
+        # no progress, no self-heal.
+        uncited = not re.search(r"^- https?://", cached_txt, re.M)
+        if cached_sig or uncited:
+            why = f"infra-error text ({cached_sig})" if cached_sig else \
+                  f"ZERO source citations ({len(cached_txt)}B of uncited prose)"
+            print(f"[deep_research] {t}: cached brief is {why} — "
                   f"ignoring cache and re-researching", flush=True)
         else:
             print(f"[deep_research] {t}: cached ({path}), skip", flush=True)
@@ -165,30 +176,39 @@ def build(ticker, name):
             failures.append((title, f"{sig}: {summ[:200]}"))
             print(f"[deep_research] {t} '{title}' ::INFRA FAIL:: {sig} — {summ[:120]}", flush=True)
             continue
-        L.append(f"## {title}  _(engine: {tool}, {time.time()-t0:.0f}s)_")
-        L.append(summ if summ else "_(no summary returned)_")
+        # Resolve sources BEFORE committing any prose. LDR happily returns a fluent,
+        # [1][2]-annotated summary when the search leg found nothing usable — that text is
+        # pure model recall, and the old order (append summ, THEN look for urls) wrote it
+        # to disk regardless. That is how POWL shipped 11 straight bundles asserting a
+        # debt/equity of 4.2, a plant fire and a $500M lawsuit for a net-cash company.
         # citation->URL mapping lives in formatted_findings; sources/all_links_of_system as backup
         urls = []
         for s in (res.get("sources") or []):
             u = s.get("url") if isinstance(s, dict) else (s if isinstance(s, str) else None)
             if u and u not in urls:
                 urls.append(u)
-        ff = (res.get("formatted_findings") or "").strip()
-        if urls:
-            L.append("\n**Sources:**")
-            L += [f"- {u}" for u in urls[:15]]
-        elif ff:
+        if not urls:
             # extract URLs from the formatted findings block
-            import re as _re
-            found = []
-            for u in _re.findall(r"https?://[^\s\)\]]+", ff):
+            ff = (res.get("formatted_findings") or "").strip()
+            for u in re.findall(r"https?://[^\s\)\]]+", ff):
                 u = u.rstrip(".,)")
-                if u not in found:
-                    found.append(u)
-            if found:
-                L.append("\n**Sources:**")
-                L += [f"- {u}" for u in found[:15]]
-            urls = found
+                if u not in urls:
+                    urls.append(u)
+
+        # ZERO-SOURCE GUARD: uncited prose is not research. Treat it exactly like an infra
+        # failure so the brief is never written and the ticker retries for real, instead of
+        # caching a hallucination for research_cache_days and failing sanity on every retry.
+        if not urls:
+            failures.append((title, f"zero sources — {len(summ)}B of uncited prose "
+                                    f"(model recall, not research): {summ[:160]}"))
+            print(f"[deep_research] {t} '{title}' ::NO SOURCES:: {len(summ)}B of uncited "
+                  f"prose discarded — {summ[:120]}", flush=True)
+            continue
+
+        L.append(f"## {title}  _(engine: {tool}, {time.time()-t0:.0f}s)_")
+        L.append(summ if summ else "_(no summary returned)_")
+        L.append("\n**Sources:**")
+        L += [f"- {u}" for u in urls[:15]]
         L.append("")
         print(f"[deep_research] {t} '{title}' done via {tool} in {time.time()-t0:.0f}s "
               f"({len(summ)} chars, {len(urls)} sources)", flush=True)

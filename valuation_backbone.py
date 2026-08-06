@@ -124,6 +124,19 @@ MIDCYCLE_SECTORS = ("energy", "materials", "industrials")
 PB_ROE_INDUSTRIES = ("bank", "insurance", "mortgage")   # substring match, lowercase Yahoo industry
 PB_ROE_EXCLUDE = ("insurance broker",)                  # fee businesses, not underwriters
 
+# RATE-REGULATED utilities are book-value businesses like banks, for the same structural reason:
+# the regulator sets allowed ROE on a RATE BASE that is essentially book equity, and the 1.3-2.0x
+# P/B they trade at IS the capitalised spread of allowed ROE (9.5-11%) over market cost of equity
+# (6-7%). So they belong on the SAME justified-P/B model, not on an owner-earnings DCF: a growing
+# utility funds rate-base expansion with capex > D&A permanently, making NI+D&A-capex structurally
+# negative (measured: 58 of 116 utilities returned negative_base_cash_flow, which then routed them
+# to the Engine-4 OPTION bridge -- the most speculative path for the most predictable businesses).
+# Substring match on the lowercase Yahoo industry: catches "Utilities-Regulated {Electric,Gas,Water}"
+# (76 names) and deliberately EXCLUDES Renewable / Independent Power Producers / Diversified, which
+# are merchant or contracted generators with no rate base to earn on.
+REGULATED_UTILITY_INDUSTRIES = ("regulated",)
+UTIL_COE = 0.07   # market cost of equity for a large regulated utility (= the Utilities sector WACC)
+
 
 def _num(v):
     return v if isinstance(v, (int, float)) and math.isfinite(v) else None
@@ -203,11 +216,64 @@ def _verdict(gap_pts):
     return f"Priced {abs(gap_pts):.0f}pts BELOW demonstrated growth — market expects deceleration."
 
 
-def _base_cf(ticker, ydata, sector_l):
-    """Return (base_cf_$, kind). Cyclicals -> mid-cycle avg owner earnings; else latest-FY owner
-    earnings with fcf / ocf-minus-da fallbacks. None base_cf -> honest null upstream."""
+def _ffo_ps_series(ydata):
+    """FFO per diluted share by fiscal year. FFO = net income + D&A: real-estate depreciation is
+    an accounting fiction for an appreciating asset, which is exactly why owner earnings
+    (NI+D&A-capex) misprices a REIT. Per SHARE because REIT revenue growth is largely acquisition
+    roll-up funded by issuing equity -- O showed a 28.4% revenue CAGR that no existing holder
+    received. Gains on property sales are NOT backed out (not in fundamentals_history), so this is
+    NAREIT FFO less that adjustment."""
+    out = []
+    for y in sorted(int(v) for v in ydata.keys()):
+        fy = ydata[str(y)]
+        ni, da, sh = _num(fy.get("net_income")), _num(fy.get("da")), _num(fy.get("shares_diluted"))
+        if ni is not None and da is not None and sh and sh > 0:
+            out.append((y, (ni + da) / sh))
+    return out
+
+
+def _ffo_ps_cagr(ydata):
+    """CAGR of FFO/share over the available history, or None."""
+    s = _ffo_ps_series(ydata)
+    if len(s) < 4 or s[0][1] <= 0 or s[-1][1] <= 0:
+        return None
+    yrs = s[-1][0] - s[0][0]
+    return (s[-1][1] / s[0][1]) ** (1.0 / yrs) - 1.0 if yrs > 0 else None
+
+
+def _midcycle_owner_earnings(ydata):
+    """Mean of positive owner earnings across the available history, or None if too short."""
+    owners = [_owner_earnings(ydata[str(y)]) for y in sorted(int(v) for v in ydata.keys())]
+    owners = [o for o in owners if o is not None and o > 0]
+    return (sum(owners) / len(owners)) if len(owners) >= 3 else None
+
+
+def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False):
+    """Return (base_cf_$, kind). Equity REITs -> FFO; cyclicals -> mid-cycle avg owner earnings;
+    else latest-FY owner earnings with fcf / ocf-minus-da fallbacks. None base_cf -> honest null
+    upstream."""
     yrs = sorted(int(y) for y in ydata.keys())
     fy = ydata[str(yrs[-1])]
+    # Equity REIT -> FFO. Owner earnings subtract the whole capex line, but a REIT's capex is
+    # mostly ACQUISITION of income-producing property, not maintenance of existing capacity, so
+    # subtracting it understates earning power badly (O landed on an ocf-minus-da proxy of
+    # $1.47B against an FFO several times that). Mortgage REITs are excluded upstream -- they
+    # are lenders and route to the P/B-ROE model.
+    if "reit" in industry_l and "mortgage" not in industry_l:
+        ni, da = _num(fy.get("net_income")), _num(fy.get("da"))
+        if ni is not None and da is not None and (ni + da) > 0:
+            return ni + da, "ffo_reit"
+    # The sector whitelist below is a PROXY for "is this company cyclical", and it misses: 12 of
+    # 39 model-labelled cyclicals sit outside it, including MU, whose latest trough year produced
+    # a 97.5% implied growth and an +85.7pt gap. No statistic separates cycle from growth here --
+    # coefficient of variation overlaps completely between cyclicals (NOVT 0.28, ESCA 0.27) and
+    # stable compounders (KO 0.35, AAPL 0.33) -- because averaging raw owner earnings over a
+    # GROWING company mixes trend with cycle. force_midcycle lets the caller supply the judgment
+    # the statistic cannot (see run_rs2: the Stage-1 archetype).
+    if force_midcycle:
+        mid = _midcycle_owner_earnings(ydata)
+        if mid is not None:
+            return mid, "midcycle_owner_earnings_archetype"
     # cyclical: average owner earnings over the available cycle (trough+peak cancel)
     if any(c in sector_l for c in MIDCYCLE_SECTORS):
         owners = [_owner_earnings(ydata[str(y)]) for y in yrs]
@@ -227,6 +293,32 @@ def _base_cf(ticker, ydata, sector_l):
     return (owner if owner is not None else fcf), "none"
 
 
+# Cumulative PROBABILITY OF APPROVAL by development phase — the rNPV risk discount. Compounded
+# from the published BIO/Informa phase-transition rates (P1->P2 63.2%, P2->P3 30.7%, P3->filing
+# 58.1%, filing->approval 85.3%): the phase-1 figure of 9.6% reproduces the widely-published
+# "only ~10-12% of drugs entering Phase 1 are ever approved", which is the cross-check that this
+# table is right. PHASE is the one thing the model supplies (a closed-set classification it is
+# good at); the PROBABILITY is never model-chosen — that is the whole point of the table.
+# preclinical is the weakest entry: ~0.55 preclinical->phase1 applied to the phase-1 LOA.
+PHASE_POS = {"preclinical": 0.05, "phase1": 0.096, "phase2": 0.152,
+             "phase3": 0.496, "filed": 0.853, "approved": 1.0}
+
+# rNPV risk-discounts the WHOLE company by a trial probability, which is only valid when the
+# whole company IS the trial. A biotech already SELLING an approved drug has a commercial base
+# that must not be halved by a phase base rate: validated on MRNA, which the model labelled
+# phase3 despite $1.94B of product revenue, turning a $51.90 value-if-approved into a $29.59 IV
+# and a spurious -46.3% MoS. Above this revenue line the name keeps the Engine-4 option bridge.
+# $50m rather than $10m because below ~$50m, revenue in this sector is typically collaboration
+# and milestone income rather than product sales. Excludes 69 of 480 (SRPT, MRNA, NVAX, LEGN,
+# IONS, ...); the other 411 are genuinely pre-commercial.
+COMMERCIAL_REVENUE_FLOOR = 50e6
+
+# A clinical-stage biotech that runs out of money before approval MUST raise equity, and that
+# dilution is the honest "drag" — not a number the model should invent. Assume it must fund
+# itself to the approval horizon below.
+YEARS_TO_APPROVAL = {"preclinical": 8.0, "phase1": 6.0, "phase2": 4.0,
+                     "phase3": 2.0, "filed": 1.0, "approved": 0.0}
+
 FIN_COE = 0.10   # cost of equity for financials (the Financials sector WACC)
 
 
@@ -240,8 +332,68 @@ def _fin_verdict(gap_pts):
     return f"Priced {abs(gap_pts):.0f}pts BELOW delivered ROE — market doubts ROE durability."
 
 
-def _financial_backbone(t, ydata, price, mcap, shares):
-    """Banks/insurers: a cash-flow DCF is structurally invalid, so value on equity returns.
+def _clinical_scaffold(ydata, price, mcap, shares):
+    """Deterministic rNPV scaffolding for a PRE-PROFIT clinical-stage biotech (Engine 5).
+
+    Engine 4 took core / prob / value / drag as FOUR free model numbers. Three of them the
+    balance sheet can settle: the net-cash FLOOR, and the DILUTION the company must accept to
+    fund itself to approval (cash burn vs runway). The probability comes from PHASE_POS. That
+    leaves the model supplying only the phase (closed set) and the value if the asset works.
+
+    Returns None when the inputs are missing, so the caller keeps today's Engine-4 behaviour.
+    """
+    yrs = sorted(int(y) for y in ydata.keys())
+    fy = ydata[str(yrs[-1])]
+    cash, ocf = _num(fy.get("cash")), _num(fy.get("ocf"))
+    sh = _num(fy.get("shares_diluted")) or shares
+    if not cash or not sh or sh <= 0 or ocf is None or not price or not mcap:
+        return None
+    burn = -ocf if ocf < 0 else 0.0            # positive $/yr; a cash-generative name has none
+    net_cash = cash - (_num(fy.get("lt_debt")) or 0.0)   # most clinical names carry no LT debt
+    net_cash_ps = net_cash / sh
+    # Guard a stale/expired share count: a "floor" above the market price is a data artifact
+    # (e.g. an unrecorded reverse split), not a free lunch. Flag it and refuse to floor on it.
+    suspect = net_cash_ps > price * 2
+    return {
+        "net_cash_ps": round(net_cash_ps, 2),
+        "net_cash_ps_suspect": suspect,
+        "burn_per_yr": round(burn, 0),
+        "runway_years": round(cash / burn, 2) if burn > 0 else None,
+        "shares_diluted": sh,
+        "fiscal_year": yrs[-1],
+    }
+
+
+def rnpv(scaffold, phase, value_if_approved_ps, price):
+    """Engine 5 / rNPV, assembled from the deterministic scaffold + the model's phase & upside.
+
+        IV = net_cash_floor + P(approval | phase) x value_if_approved_ps / (1 + dilution)
+
+    Dilution is the equity the company must issue to fund the burn through to the approval
+    horizon; it scales DOWN what an existing share is worth. Returns None on bad inputs.
+    """
+    if not scaffold or phase not in PHASE_POS:
+        return None
+    v = _num(value_if_approved_ps)
+    if v is None or v < 0 or not price or price <= 0:
+        return None
+    burn, sh = scaffold["burn_per_yr"], scaffold["shares_diluted"]
+    runway = scaffold["runway_years"]
+    years = YEARS_TO_APPROVAL[phase]
+    shortfall = max(0.0, (years - (runway if runway is not None else years)) * burn)
+    dilution = shortfall / (price * sh) if (price * sh) > 0 else 0.0
+    floor = 0.0 if scaffold["net_cash_ps_suspect"] else max(0.0, scaffold["net_cash_ps"])
+    iv = floor + PHASE_POS[phase] * v / (1.0 + dilution)
+    return {"method": "engine5_rnpv", "phase": phase, "pos": PHASE_POS[phase],
+            "value_if_approved_ps": round(v, 2), "net_cash_floor_ps": round(floor, 2),
+            "dilution_pct": round(dilution * 100, 1), "years_to_approval": years,
+            "runway_years": runway, "iv": round(iv, 2),
+            "mos_pct": round((iv / price - 1) * 100, 1)}
+
+
+def _financial_backbone(t, ydata, price, mcap, shares, coe=FIN_COE, pb_kind="financial"):
+    """Banks/insurers (and rate-regulated utilities, pb_kind="regulated_utility"): a cash-flow DCF is
+    structurally invalid, so value on equity returns.
     Justified P/B = (ROE - g) / (CoE - g) (Gordon, in P/B space). Invert the CURRENT P/B to the
     ROE the price implies, and compare to the delivered ROE -> an expectations gap parallel to the
     reverse-DCF one. Deterministic: no LLM-chosen multiple (the old Engine-2 was unstable, AUDIT M2).
@@ -254,7 +406,6 @@ def _financial_backbone(t, ydata, price, mcap, shares):
     if not ni or not eq or eq <= 0 or ni <= 0:
         return {"ok": False, "reason": "no_book_or_earnings", "price": price,
                 "market_cap": mcap, "shares": shares}
-    coe = FIN_COE
     roe = ni / eq
     rev_cagr, _ = _growth_evidence(ydata)
     g = rev_cagr if rev_cagr is not None else 0.03
@@ -281,7 +432,7 @@ def _financial_backbone(t, ydata, price, mcap, shares):
             fair_value, fv_method = med, "pb_roe_consensus_snap"
     mos = round((fair_value / price - 1) * 100, 1) if (fair_value and price) else None
     return {
-        "ok": True, "ticker": t, "method": "financial_pb_roe",
+        "ok": True, "ticker": t, "method": "financial_pb_roe", "pb_kind": pb_kind,
         "price": price, "market_cap": mcap, "shares": shares, "fiscal_year": yrs[-1],
         "roe": round(roe, 4), "implied_roe": round(implied_roe, 4), "coe": coe,
         "sustainable_g": round(g, 4), "current_pb": round(current_pb, 2),
@@ -297,7 +448,7 @@ def _financial_backbone(t, ydata, price, mcap, shares):
     }
 
 
-def backbone(ticker):
+def backbone(ticker, force_midcycle=False):
     t = ticker.upper()
     fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
     price = _num(fin.get("Price"))
@@ -321,7 +472,13 @@ def backbone(ticker):
     if any(k in ind_l for k in PB_ROE_INDUSTRIES) and not any(k in ind_l for k in PB_ROE_EXCLUDE):
         return _financial_backbone(t, ydata, price, mcap, shares)
 
-    base_cf, kind = _base_cf(t, ydata, sl)
+    # Rate-regulated utilities: same justified-P/B model, utility cost of equity. See the
+    # REGULATED_UTILITY_INDUSTRIES note above for why an owner-earnings DCF cannot work here.
+    if "utilities" in sl and any(k in ind_l for k in REGULATED_UTILITY_INDUSTRIES):
+        return _financial_backbone(t, ydata, price, mcap, shares,
+                                   coe=UTIL_COE, pb_kind="regulated_utility")
+
+    base_cf, kind = _base_cf(t, ydata, sl, ind_l, force_midcycle=force_midcycle)
     if base_cf is None or base_cf <= 0:
         # SEC fundamentals_history lacks capex/D&A for many foreign filers (SAP/VIK/BWMX/JLHL) or is
         # stale — a data gap, not a genuinely unvaluable company. Fall back to the fresh yfinance
@@ -334,15 +491,42 @@ def backbone(ticker):
         # (Payment networks like V/MA have positive owner earnings and stay on the reverse-DCF above.)
         if any(k in sl for k in ("financial", "bank", "insurance")):
             return _financial_backbone(t, ydata, price, mcap, shares)
-        return {"ok": False, "reason": "negative_base_cash_flow", "base_cf_kind": kind,
-                "price": price, "market_cap": mcap, "shares": shares}
+        # A PROFITABLE company that out-spends its D&A is REINVESTING, not pre-profit. Conflating
+        # the two sent capex-heavy names down the Engine-4 "negative earnings / option-led" path and
+        # told the model they had no earning power. Split the reason so only genuine NI<=0 names
+        # can be described as PRE-PROFIT (see valuation_block in rs2_data.py).
+        fy_last = ydata[str(max(int(y) for y in ydata.keys()))]
+        ni_l, da_l, capex_l = (_num(fy_last.get("net_income")), _num(fy_last.get("da")),
+                               _num(fy_last.get("capex")))
+        reinvesting = bool(ni_l and ni_l > 0 and da_l is not None and capex_l is not None
+                           and capex_l > da_l)
+        out = {"ok": False,
+               "reason": "reinvestment_negative_fcf" if reinvesting else "negative_base_cash_flow",
+               "base_cf_kind": kind, "price": price, "market_cap": mcap, "shares": shares}
+        # Pre-profit biotech -> attach the deterministic rNPV scaffolding (Engine 5). Only for
+        # genuinely pre-profit names: a reinvesting company has earning power to capitalise.
+        rev_l = _num(fy_last.get("revenue")) or 0.0
+        if not reinvesting and "biotech" in ind_l and rev_l < COMMERCIAL_REVENUE_FLOOR:
+            sc = _clinical_scaffold(ydata, price, mcap, shares)
+            if sc:
+                out["rnpv_scaffold"] = sc
+        return out
 
     implied = _solve_implied_growth(base_cf, mcap, wacc)
     if implied is None:
         return {"ok": False, "reason": "solver_failed", "price": price, "market_cap": mcap}
 
     rev_cagr, fcf_cagr = _growth_evidence(ydata)
-    gap_pts = (implied - rev_cagr) * 100 if rev_cagr is not None else None
+    # For a REIT the implied growth is in FFO terms, so the demonstrated side must be too --
+    # comparing implied FFO growth against a revenue CAGR inflated by equity-funded acquisitions
+    # is apples-to-oranges and was overstating the gap. Falls back to revenue when FFO/share
+    # history is too short.
+    demo_cagr, demo_kind = rev_cagr, "revenue_cagr_5y"
+    if kind == "ffo_reit":
+        f = _ffo_ps_cagr(ydata)
+        if f is not None:
+            demo_cagr, demo_kind = f, "ffo_ps_cagr"
+    gap_pts = (implied - demo_cagr) * 100 if demo_cagr is not None else None
     yrs = sorted(int(y) for y in ydata.keys())
 
     # DETERMINISTIC fair value — FORWARD-anchored & CONSENSUS-FENCED (replaces the old trailing-5y-CAGR
@@ -396,6 +580,9 @@ def backbone(ticker):
         "stage1_years": STAGE1, "fade_years": FADE,
         "implied_growth": round(implied, 4), "implied_growth_clamped": implied in (G_LO, G_HI),
         "hist_revenue_cagr_5y": round(rev_cagr, 4) if rev_cagr is not None else None,
+        # what the gap is actually measured against (FFO/share for REITs, revenue otherwise)
+        "demonstrated_cagr": round(demo_cagr, 4) if demo_cagr is not None else None,
+        "demonstrated_cagr_kind": demo_kind,
         "hist_fcf_cagr_5y": round(fcf_cagr, 4) if fcf_cagr is not None else None,
         "expectations_gap_pts": round(gap_pts, 1) if gap_pts is not None else None,
         "fair_value": fair_value, "mos_pct": mos_pct, "realistic_mos_pct": mos_pct,

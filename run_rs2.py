@@ -48,6 +48,11 @@ STANCE_SCHEMA = ('{"valuation_stance":"undervalued|fair|overvalued",'
 ENGINE4_SCHEMA = ('{"engine":4,"core_value":<proven-business $/share>,'
                   '"options":[{"prob":<0-1>,"value":<$/share if it works>}],"drag":<$/share>}')
 ENGINE2_SCHEMA = '{"engine":2,"normalized_eps":<$>,"normal_multiple":<10-25>}'
+# Engine 5 / rNPV: the model supplies ONLY the development phase (closed set) and the per-share
+# value if the asset is approved. Probability of approval, the net-cash floor and the dilution
+# drag are all computed deterministically (valuation_backbone.PHASE_POS / rnpv).
+ENGINE5_SCHEMA = ('{"engine":5,"phase":"preclinical|phase1|phase2|phase3|filed",'
+                  '"value_if_approved_ps":<$/share if the lead asset is approved>}')
 PROBS_SCHEMA = '{"bear":0.25,"base":0.50,"bull":0.25}'
 
 STAGES = [
@@ -88,10 +93,17 @@ STAGES = [
      "At the very END output exactly ONE fenced ```json block:\n"
      "  • If the VALUATION block shows an EXPECTATIONS MODEL (growth gap OR financial ROE gap):\n"
      f"```json\n{STANCE_SCHEMA}\n```\n"
+     "  • ONLY if it showed an rNPV SCAFFOLD (pre-profit clinical biotech, Engine 5): give the "
+     "development phase of the LEAD asset and the per-share value IF it is approved — "
+     f"```json\n{ENGINE5_SCHEMA}\n``` Do NOT supply a probability: the phase base rate, the "
+     "net-cash floor and the dilution drag are computed for you. Ground the phase in the RESEARCH "
+     "BRIEF; if the lead asset's phase is genuinely unclear, choose the EARLIER phase.\n"
      "  • ONLY if it said 'No DCF model — PRE-PROFIT / OPTION-LED' (Engine 4): value the option bridge "
      f"instead — ```json\n{ENGINE4_SCHEMA}\n``` (core/options/drag PER SHARE, $; probs base-rate disciplined; "
      "IV = core + Σ(prob×value) − drag, computed for you).\n"
-     "  • ONLY if it said 'No cash-flow DCF … this is a FINANCIAL' with no deterministic model: value on "
+     "  • ONLY if it said 'No cash-flow DCF … this is a FINANCIAL', or 'the company IS profitable, but "
+     "capex exceeds D&A' (a REINVESTMENT profile — profitable, so NOT an option bridge), with no "
+     "deterministic model: value on "
      f"normalized earning power instead — ```json\n{ENGINE2_SCHEMA}\n``` (normalized_eps = through-cycle "
      "EPS $/share from the fed data; normal_multiple 10-25 justified by ROE vs cost of equity; "
      "IV = eps × multiple, computed for you).\n"
@@ -252,6 +264,49 @@ def _valid_engine4(d):
         d.get("core_value", None), (int, float))
 
 
+# base_cf kinds derived from a SINGLE fiscal year — these are the ones a cyclical archetype should
+# upgrade to a mid-cycle average. midcycle_* is already averaged and ffo_reit is a REIT measure.
+_LATEST_FY_KINDS = ("owner_earnings", "fcf_fallback", "ocf_minus_da_proxy", "fcf_ttm_yf")
+
+
+def _archetype(stage_text):
+    """Archetype letter (A-F) the model chose in Stage 1, or None.
+
+    Stage 1 already classifies the business and the result was written to the report and then
+    used for NOTHING. It is a better cyclical detector than the sector whitelist it would
+    override: measured over 256 archived runs, 12 of 39 model-labelled cyclicals sit outside
+    MIDCYCLE_SECTORS, including MU. Formats vary ("Archetype: C. Cyclical",
+    "**Selected Archetype:** C. Cyclical"), so match the NAME first and the bare letter second.
+    """
+    seg = stage_text[:6000]
+    # Anchor to the DECLARATION line, never a scan of the justification prose: AAPL's rationale
+    # says "distinct from Stable Incumbent (A) or Option-Led (E) profiles", so a loose name scan
+    # returns A for a name the model actually classified D.
+    m = re.search(r"(?:Selected\s+)?Archetype\b[^\n:]{0,30}:\s*\**\s*([A-F])[.):\s]", seg, re.I)
+    if m:
+        return m.group(1).upper()
+    # Fall back to the name, but only on the declaration LINE itself.
+    m = re.search(r"^.*\bArchetype\b\s*\**\s*:.*$", seg, re.I | re.M)
+    line = m.group(0).lower() if m else ""
+    for letter, name in (("A", "stable incumbent"), ("B", "quality compounder"),
+                         ("D", "product-platform"), ("E", "option-led"),
+                         ("F", "regulatory"), ("C", "cyclical")):
+        if name in line:
+            return letter
+    return None
+
+
+def _valid_engine5(d):
+    # value_if_approved_ps must be STRICTLY POSITIVE. A zero is not a valuation — it is the model
+    # declining to estimate (seen live on OSTX with no research brief), and it sails through an
+    # isinstance check to produce IV = floor only and a -99.4% MoS, i.e. a fabricated screaming
+    # SELL. Rejecting it here falls through to Engine 4 / unvalued, which is the honest outcome.
+    return (isinstance(d, dict) and int(d.get("engine", 0) or 0) == 5
+            and d.get("phase") in valuation_backbone.PHASE_POS
+            and isinstance(d.get("value_if_approved_ps", None), (int, float))
+            and d.get("value_if_approved_ps") > 0)
+
+
 def _valid_engine2(d):
     return (isinstance(d, dict) and int(d.get("engine", 0) or 0) == 2
             and isinstance(d.get("normalized_eps", None), (int, float))
@@ -278,6 +333,22 @@ def _multiple_res(method, inp, iv, price, ticker):
     else:
         block = f"VALUATION RESULT ({method}): IV [Unverified]"
     return res, block
+
+
+def _fmt_rnpv(r):
+    """VALUATION RESULT block for Engine 5 / rNPV (pre-profit clinical biotech)."""
+    lines = [
+        "VALUATION RESULT — ENGINE 5 / rNPV (risk-adjusted, deterministic):",
+        f"- Phase [{r['phase']}] -> probability of approval {r['pos']*100:.1f}% "
+        "(published BIO/Informa phase-transition base rates; NOT a model estimate).",
+        f"- Net-cash floor ${r['net_cash_floor_ps']}/sh; value if approved "
+        f"${r['value_if_approved_ps']}/sh (model).",
+        f"- Runway {r['runway_years']}yr vs ~{r['years_to_approval']}yr to approval -> "
+        f"dilution {r['dilution_pct']}% (equity it must issue to get there).",
+        f"- IV = floor + P(approval) x upside / (1 + dilution) = ${r['iv']}/sh; "
+        f"MoS {r['mos_pct']:+.1f}% vs ${r['price']}.",
+    ]
+    return "\n".join(lines)
 
 
 def _fmt_reverse(res):
@@ -317,7 +388,26 @@ def _extract_final(final_text):
     def f(pat):
         m = re.search(pat, seg, re.I)
         return m.group(1).strip() if m else None
-    action = f(r"Action[:\s*]*\*{0,2}([A-Za-z][A-Za-z /&\-]{2,45})")
+    # The old pattern — [A-Za-z][A-Za-z /&\-]{2,45} — had two defects:
+    #  1. the class excludes DIGITS and '$', so it stopped dead at the price level:
+    #     "Hold / Stage-in on weakness below $195" published as "...below" (5 live names),
+    #     dropping the one number that makes the call actionable;
+    #  2. it was unanchored, so on a name whose SECTION 12 lacked a clean "Action:" line it
+    #     matched the word "action" inside prose — FIX shipped an action of
+    #     "will be severe due to the cyclical nature of t".
+    # Anchor to a LABEL at line start and take the rest of that line, then strip markdown
+    # and trailing [Actual]/[Estimate] tags.
+    # Require a LABEL ("Action" + colon) and take the rest of that line. The colon is what
+    # keeps prose out — SECTION 12 bullets vary wildly ("- Action:", "• Action:", "■ Action:",
+    # "**Action:**"), so anchoring to line-start bullets would drop ~100 bundles.
+    ma = re.search(r"\bAction\b\s*\*{0,2}\s*:\s*(.+?)\s*$", seg, re.I | re.M)
+    action = None
+    if ma:
+        action = re.sub(r"\*+|_{2,}", "", ma.group(1)).strip()
+        action = re.sub(r"\s*\[(?:Actual|Estimate|Assumption|Unconfirmed)[^\]]*\]", "", action, flags=re.I)
+        action = action.split("|")[0]          # drop trailing "| Changed-Because: ..." fields
+        action = action.strip(" .;—-").strip()
+        action = action[:90].strip() or None
     conv = f(r"Conviction[^\n0-9]*([0-9.]+)\s*/\s*15")
     conv_val = float(conv) if conv else None
     if conv_val is None:                       # the model sometimes writes conviction as words, not X/15
@@ -327,8 +417,18 @@ def _extract_final(final_text):
             if key in cw:
                 conv_val = float(val)
                 break
-    weight = f(r"Weight\s*%?[:\s*]*\*{0,2}([0-9.]+)\s*%")
-    return action, conv_val, (float(weight) if weight else None)
+    # Weight may be a single number ("0.0% for new capital") OR a RANGE ("5-7% [Estimate]",
+    # "5 to 7%", en/em dash). The old single-number pattern silently returned None on every
+    # range — 203/1390 bundles, 24 of them live — so the sizing the model actually stated was
+    # dropped on the floor. A range collapses to its MIDPOINT: that is the faithful reading of
+    # the model's intent, and _dont_chase_brake applies min() caps downstream anyway.
+    mw = re.search(r"Weight\s*%?[:\s*]*\*{0,2}([0-9.]+)\s*"
+                   r"(?:(?:[-–—]|to)\s*([0-9.]+)\s*)?%", seg, re.I)
+    weight = None
+    if mw:
+        lo = float(mw.group(1))
+        weight = round((lo + float(mw.group(2))) / 2, 2) if mw.group(2) else lo
+    return action, conv_val, weight
 
 
 def band_of(ticker):
@@ -400,6 +500,39 @@ def _pct_of_52wk_high(ticker, price):
         return None
 
 
+# Deterministic stance cuts, calibrated 2026-08-06 against 241 live verdicts (quartiles of
+# the COMPUTED expectations gap under each model-emitted stance):
+#     undervalued  p25 -33.4  median -11.1  p75  -7.7
+#     fair         p25  -2.6  median  +4.0  p75  +8.9
+#     overvalued   p25 +14.7  median +20.4  p75 +26.8
+# +15 sits just above the overvalued p25 and reproduces today's classification volume
+# (72 vs the model's 76) while removing the instability; -7 is the matching boundary
+# between the undervalued p75 and the fair p25.
+STANCE_OVERVALUED_GAP = 15.0
+STANCE_UNDERVALUED_GAP = -7.0
+
+
+def _stance_from_gap(gap):
+    """Stance from the DETERMINISTIC expectations gap, not the model's free-text opinion.
+
+    Why: the model emits `valuation_stance` as a believability judgment, and it is NOT stable —
+    two consecutive POWL runs on byte-identical inputs returned 'overvalued' (achievable low)
+    and 'fair' (achievable medium) off the SAME computed gap of 28.5pts. That field is
+    load-bearing far downstream: score_factors.apply_llm_overlay treats stance=='overvalued'
+    as BEARISH and demotes the name out of research_now, so a coin flip was moving 55 of 173
+    live names between 'demoted' and 'research_now' (MPWR and TSM swung the full distance).
+    The gap itself is computed from financials and was identical across all three runs, so the
+    gate is anchored to that instead. The model's opinion is preserved as `stance_model`.
+    """
+    if not isinstance(gap, (int, float)):
+        return None
+    if gap >= STANCE_OVERVALUED_GAP:
+        return "overvalued"
+    if gap <= STANCE_UNDERVALUED_GAP:
+        return "undervalued"
+    return "fair"
+
+
 def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     """Deterministic 'don't chase' brake — the systematic gap vs ChatGPT (RS2 flipped HOLD->BUY on
     15/39 names; ChatGPT pullback-gated 96%). Graduated on ChatGPT's own margin-of-safety bands:
@@ -421,8 +554,19 @@ def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     adequate = (rmos is not None and 15 <= rmos < 25)
     fam = _action_family(action)
 
-    # tier 1 — genuine bargain: let a BUY chase
-    if strong and not at_or_above and not near_high:
+    # EXPECTATIONS OVERRIDE (2026-08-06). MoS is measured against fair_value, and for ~78% of
+    # names fair_value is `consensus_snap` — the analyst median. So a fat MoS can mean nothing
+    # more than "trading below Wall Street's target" while the reverse-DCF simultaneously says
+    # the price bakes in growth the company has never delivered. POWL is the worked example:
+    # MoS 36.3% vs consensus, gap +28.5pts (price implies 44.8% growth vs 16.3% demonstrated)
+    # -> tier 1 fired, brake OFF, and the engine emitted a conviction-12 BUY on a name its own
+    # DCF called rich. Keyed on the COMPUTED gap, never on `stance`, which is model-unstable.
+    gap = vr.get("expectations_gap_pts")
+    rich = isinstance(gap, (int, float)) and gap >= STANCE_OVERVALUED_GAP
+
+    # tier 1 — genuine bargain: let a BUY chase. Blocked when the expectations gap says rich:
+    # cheap-vs-consensus is not cheap-vs-fundamentals, and only the latter earns a chase.
+    if strong and not at_or_above and not near_high and not rich:
         return action, conv, weight, ("buy" if fam == "BULL" else "stage"), None, False
 
     trig = vr.get("consensus_low")
@@ -446,7 +590,11 @@ def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     # tier 3 — thin MoS / at-or-above median / near 52wk high: HOLD, do not chase
     entry = "wait_for_pullback" if (rmos is not None and rmos < 0) or near_high else "stage"
     out_action = "Hold / accumulate on weakness (do not chase)" if fam == "BULL" else action
-    out_conv = min(conv, 9.5) if (conv is not None and not (rmos is not None and rmos >= 15)) else conv
+    # A fat MoS normally protects conviction from the cap. It must NOT when the expectations
+    # gap says rich — otherwise a name lands on "do not chase" while still carrying a 12/15,
+    # which is the same contradiction one field over.
+    out_conv = min(conv, 9.5) if (conv is not None and
+                                  (rich or not (rmos is not None and rmos >= 15))) else conv
     out_weight = min(weight, 3.0) if weight is not None else weight
     return out_action, out_conv, out_weight, entry, trig, True
 
@@ -568,7 +716,13 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False)
         **({"exit_review": True} if exit_review else {}),
         "changed_because": cb.group(1).strip().strip("*").strip()[:300] if cb else None,
         "ticker": ticker.upper(), "date": datetime.now().strftime("%Y-%m-%d"), "price": price,
-        "method": vr.get("method"), "stance": vr.get("stance"),
+        "method": vr.get("method"),
+        # Recomputed here as the single source of truth, so repatch_verdicts.py (which replays
+        # emit_verdict over a SAVED S3 val_res carrying the old model stance) gets the
+        # deterministic value too. Falls back to whatever vr held when there is no gap.
+        "stance": _stance_from_gap(vr.get("expectations_gap_pts") if vr.get("expectations_gap_pts")
+                                   is not None else vr.get("roe_gap_pts")) or vr.get("stance"),
+        "stance_model": vr.get("stance_model") or vr.get("stance"),
         "expectations_gap_pts": vr.get("expectations_gap_pts") if vr.get("expectations_gap_pts") is not None
         else vr.get("roe_gap_pts"),
         "fair_value": vr.get("fair_value"), "mos_pct": vr.get("mos_pct"),
@@ -630,7 +784,10 @@ def valuation_result(stage_out, bb, price, ticker):
                "consensus_low": bb.get("consensus_low"), "consensus_median": bb.get("consensus_median"),
                "consensus_high": bb.get("consensus_high"), "consensus_stale": bb.get("consensus_stale"),
                "roe_gap_pts": bb["expectations_gap_pts"],
-               "stance": str(st.get("valuation_stance", "")).lower() or None,
+               # stance is DETERMINISTIC (see _stance_from_gap); the model's own read is kept
+               # alongside as telemetry so the two can be compared, never as a gate.
+               "stance": _stance_from_gap(bb["expectations_gap_pts"]),
+               "stance_model": str(st.get("valuation_stance", "")).lower() or None,
                "achievable": str(st.get("implied_growth_achievable", "")).lower() or None,
                "rationale": st.get("rationale")}
         return res, _fmt_financial(res)
@@ -647,17 +804,36 @@ def valuation_result(stage_out, bb, price, ticker):
                "forward_growth": bb.get("forward_growth"),
                "consensus_low": bb.get("consensus_low"), "consensus_median": bb.get("consensus_median"),
                "consensus_high": bb.get("consensus_high"), "consensus_stale": bb.get("consensus_stale"),
-               "stance": str(st.get("valuation_stance", "")).lower() or None,
+               # stance is DETERMINISTIC (see _stance_from_gap); the model's own read is kept
+               # alongside as telemetry so the two can be compared, never as a gate.
+               "stance": _stance_from_gap(bb["expectations_gap_pts"]),
+               "stance_model": str(st.get("valuation_stance", "")).lower() or None,
                "achievable": str(st.get("implied_growth_achievable", "")).lower() or None,
                "rationale": st.get("rationale")}
         return res, _fmt_reverse(res)
     # NULL backbone -> financial (multiple) or pre-profit (option bridge)
     sl = (rs2_data.sector_lookup(ticker)[0] or "").lower()
-    if any(k in sl for k in ("financial", "bank", "insurance")):
+    # A PROFITABLE reinvestment-heavy name is NOT option-led: value it on normalized earning power
+    # (Engine 2), never on the Engine-4 option bridge. Without this the backbone's split reason
+    # would still land these on the option path. See valuation_backbone's reinvestment_negative_fcf.
+    if bb.get("reason") == "reinvestment_negative_fcf" or any(k in sl for k in ("financial", "bank", "insurance")):
         e2 = get_assumptions(stage_out, "normalized_eps", _valid_engine2, ENGINE2_SCHEMA)
         if e2:
             iv = valuation_engine.engine2_cycle(e2["normalized_eps"], e2["normal_multiple"])
             return _multiple_res("engine2_financial", e2, iv, price, ticker)
+    # Engine 5 / rNPV — pre-profit clinical biotech. Preferred over the Engine-4 bridge when the
+    # backbone built a scaffold: the probability comes from the published phase base-rate table
+    # and the floor/dilution from the balance sheet, so the model supplies only the phase (closed
+    # set) and the value if the asset works, instead of Engine 4's four free numbers.
+    sc = bb.get("rnpv_scaffold")
+    if sc:
+        e5 = get_assumptions(stage_out, "phase", _valid_engine5, ENGINE5_SCHEMA)
+        if e5:
+            r = valuation_backbone.rnpv(sc, e5["phase"], e5["value_if_approved_ps"], price)
+            if r:
+                r.update({"ticker": ticker, "price": price, "inputs": e5})
+                return r, _fmt_rnpv(r)
+
     e4 = get_assumptions(stage_out, "core_value", _valid_engine4, ENGINE4_SCHEMA)
     if e4:
         iv = valuation_engine.engine4_bridge(e4.get("core_value", 0), e4.get("options", []), e4.get("drag", 0))
@@ -911,6 +1087,48 @@ def main():
 
         # ── inverted valuation hooks (deterministic backbone + model judgment) ──
         extra = ""
+        if sid == "S1_macro_classify":
+            # CYCLICAL ROUTING. The archetype is a CLASSIFICATION (the model is good at those);
+            # it selects the normalization BASIS only — every number stays deterministic, and the
+            # model never sees or sets a valuation. Guarded to genuinely single-year base_cf kinds
+            # so it can only ever average, never invent.
+            arch = _archetype(out)
+            if arch == "C" and bb.get("ok") and bb.get("base_cf_kind") in _LATEST_FY_KINDS:
+                bb2 = valuation_backbone.backbone(t, force_midcycle=True)
+                if bb2.get("ok") and bb2.get("base_cf_kind", "").startswith("midcycle"):
+                    print(f"   [routing] archetype C (cyclical) — base_cf renormalized "
+                          f"{bb['base_cf_kind']} ${bb['base_cf']/1e9:.2f}B -> mid-cycle "
+                          f"${bb2['base_cf']/1e9:.2f}B; implied {bb['implied_growth']*100:.1f}% -> "
+                          f"{bb2['implied_growth']*100:.1f}%, gap {bb['expectations_gap_pts']} -> "
+                          f"{bb2['expectations_gap_pts']}pts", flush=True)
+                    (out_dir / "routing.json").write_text(json.dumps({
+                        "archetype": arch, "applied": True,
+                        "from": {"kind": bb["base_cf_kind"], "implied_growth": bb["implied_growth"],
+                                 "gap_pts": bb["expectations_gap_pts"]},
+                        "to": {"kind": bb2["base_cf_kind"], "implied_growth": bb2["implied_growth"],
+                               "gap_pts": bb2["expectations_gap_pts"]}}, indent=2), encoding="utf-8")
+                    # The VALUATION block in data_ctx was rendered BEFORE this renormalization, so
+                    # it still shows the single-year figures. Carry the correction forward or the
+                    # model would reason about one set of numbers while the engine scored another.
+                    extra = ("\n\n## VALUATION — CORRECTED FOR CYCLICALITY (supersedes the "
+                             "VALUATION block above)\n"
+                             f"- You classified this as CYCLICAL, so base cash flow is renormalized "
+                             f"from the single fiscal year {bb['fiscal_year']} "
+                             f"(${bb['base_cf']/1e9:.2f}B) to the MID-CYCLE average "
+                             f"(${bb2['base_cf']/1e9:.2f}B). A trough or peak year is not "
+                             "representative earning power.\n"
+                             f"- Price-implied growth is therefore {bb2['implied_growth']*100:.1f}%/yr "
+                             f"(not {bb['implied_growth']*100:.1f}%), and the EXPECTATIONS GAP is "
+                             f"{bb2['expectations_gap_pts']:+.0f} pts (not "
+                             f"{bb['expectations_gap_pts']:+.0f}). {bb2['verdict']}\n"
+                             "- Use THESE figures in Layer 3.")
+                    bb = bb2
+            elif arch:
+                # telemetry only — lets the archetype/route agreement be measured over time
+                (out_dir / "routing.json").write_text(json.dumps({
+                    "archetype": arch, "applied": False,
+                    "base_cf_kind": bb.get("base_cf_kind"),
+                    "method": bb.get("method") or bb.get("reason")}, indent=2), encoding="utf-8")
         if sid == "S3_valuation":
             val_res, val_block = valuation_result(out, bb, price, t)
             extra = "\n\n" + val_block
