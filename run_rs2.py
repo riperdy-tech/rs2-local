@@ -48,6 +48,11 @@ STANCE_SCHEMA = ('{"valuation_stance":"undervalued|fair|overvalued",'
 ENGINE4_SCHEMA = ('{"engine":4,"core_value":<proven-business $/share>,'
                   '"options":[{"prob":<0-1>,"value":<$/share if it works>}],"drag":<$/share>}')
 ENGINE2_SCHEMA = '{"engine":2,"normalized_eps":<$>,"normal_multiple":<10-25>}'
+# Engine 5 / rNPV: the model supplies ONLY the development phase (closed set) and the per-share
+# value if the asset is approved. Probability of approval, the net-cash floor and the dilution
+# drag are all computed deterministically (valuation_backbone.PHASE_POS / rnpv).
+ENGINE5_SCHEMA = ('{"engine":5,"phase":"preclinical|phase1|phase2|phase3|filed",'
+                  '"value_if_approved_ps":<$/share if the lead asset is approved>}')
 PROBS_SCHEMA = '{"bear":0.25,"base":0.50,"bull":0.25}'
 
 STAGES = [
@@ -88,6 +93,11 @@ STAGES = [
      "At the very END output exactly ONE fenced ```json block:\n"
      "  • If the VALUATION block shows an EXPECTATIONS MODEL (growth gap OR financial ROE gap):\n"
      f"```json\n{STANCE_SCHEMA}\n```\n"
+     "  • ONLY if it showed an rNPV SCAFFOLD (pre-profit clinical biotech, Engine 5): give the "
+     "development phase of the LEAD asset and the per-share value IF it is approved — "
+     f"```json\n{ENGINE5_SCHEMA}\n``` Do NOT supply a probability: the phase base rate, the "
+     "net-cash floor and the dilution drag are computed for you. Ground the phase in the RESEARCH "
+     "BRIEF; if the lead asset's phase is genuinely unclear, choose the EARLIER phase.\n"
      "  • ONLY if it said 'No DCF model — PRE-PROFIT / OPTION-LED' (Engine 4): value the option bridge "
      f"instead — ```json\n{ENGINE4_SCHEMA}\n``` (core/options/drag PER SHARE, $; probs base-rate disciplined; "
      "IV = core + Σ(prob×value) − drag, computed for you).\n"
@@ -254,6 +264,12 @@ def _valid_engine4(d):
         d.get("core_value", None), (int, float))
 
 
+def _valid_engine5(d):
+    return (isinstance(d, dict) and int(d.get("engine", 0) or 0) == 5
+            and d.get("phase") in valuation_backbone.PHASE_POS
+            and isinstance(d.get("value_if_approved_ps", None), (int, float)))
+
+
 def _valid_engine2(d):
     return (isinstance(d, dict) and int(d.get("engine", 0) or 0) == 2
             and isinstance(d.get("normalized_eps", None), (int, float))
@@ -280,6 +296,22 @@ def _multiple_res(method, inp, iv, price, ticker):
     else:
         block = f"VALUATION RESULT ({method}): IV [Unverified]"
     return res, block
+
+
+def _fmt_rnpv(r):
+    """VALUATION RESULT block for Engine 5 / rNPV (pre-profit clinical biotech)."""
+    lines = [
+        "VALUATION RESULT — ENGINE 5 / rNPV (risk-adjusted, deterministic):",
+        f"- Phase [{r['phase']}] -> probability of approval {r['pos']*100:.1f}% "
+        "(published BIO/Informa phase-transition base rates; NOT a model estimate).",
+        f"- Net-cash floor ${r['net_cash_floor_ps']}/sh; value if approved "
+        f"${r['value_if_approved_ps']}/sh (model).",
+        f"- Runway {r['runway_years']}yr vs ~{r['years_to_approval']}yr to approval -> "
+        f"dilution {r['dilution_pct']}% (equity it must issue to get there).",
+        f"- IV = floor + P(approval) x upside / (1 + dilution) = ${r['iv']}/sh; "
+        f"MoS {r['mos_pct']:+.1f}% vs ${r['price']}.",
+    ]
+    return "\n".join(lines)
 
 
 def _fmt_reverse(res):
@@ -752,6 +784,19 @@ def valuation_result(stage_out, bb, price, ticker):
         if e2:
             iv = valuation_engine.engine2_cycle(e2["normalized_eps"], e2["normal_multiple"])
             return _multiple_res("engine2_financial", e2, iv, price, ticker)
+    # Engine 5 / rNPV — pre-profit clinical biotech. Preferred over the Engine-4 bridge when the
+    # backbone built a scaffold: the probability comes from the published phase base-rate table
+    # and the floor/dilution from the balance sheet, so the model supplies only the phase (closed
+    # set) and the value if the asset works, instead of Engine 4's four free numbers.
+    sc = bb.get("rnpv_scaffold")
+    if sc:
+        e5 = get_assumptions(stage_out, "phase", _valid_engine5, ENGINE5_SCHEMA)
+        if e5:
+            r = valuation_backbone.rnpv(sc, e5["phase"], e5["value_if_approved_ps"], price)
+            if r:
+                r.update({"ticker": ticker, "price": price, "inputs": e5})
+                return r, _fmt_rnpv(r)
+
     e4 = get_assumptions(stage_out, "core_value", _valid_engine4, ENGINE4_SCHEMA)
     if e4:
         iv = valuation_engine.engine4_bridge(e4.get("core_value", 0), e4.get("options", []), e4.get("drag", 0))

@@ -240,6 +240,22 @@ def _base_cf(ticker, ydata, sector_l):
     return (owner if owner is not None else fcf), "none"
 
 
+# Cumulative PROBABILITY OF APPROVAL by development phase — the rNPV risk discount. Compounded
+# from the published BIO/Informa phase-transition rates (P1->P2 63.2%, P2->P3 30.7%, P3->filing
+# 58.1%, filing->approval 85.3%): the phase-1 figure of 9.6% reproduces the widely-published
+# "only ~10-12% of drugs entering Phase 1 are ever approved", which is the cross-check that this
+# table is right. PHASE is the one thing the model supplies (a closed-set classification it is
+# good at); the PROBABILITY is never model-chosen — that is the whole point of the table.
+# preclinical is the weakest entry: ~0.55 preclinical->phase1 applied to the phase-1 LOA.
+PHASE_POS = {"preclinical": 0.05, "phase1": 0.096, "phase2": 0.152,
+             "phase3": 0.496, "filed": 0.853, "approved": 1.0}
+
+# A clinical-stage biotech that runs out of money before approval MUST raise equity, and that
+# dilution is the honest "drag" — not a number the model should invent. Assume it must fund
+# itself to the approval horizon below.
+YEARS_TO_APPROVAL = {"preclinical": 8.0, "phase1": 6.0, "phase2": 4.0,
+                     "phase3": 2.0, "filed": 1.0, "approved": 0.0}
+
 FIN_COE = 0.10   # cost of equity for financials (the Financials sector WACC)
 
 
@@ -251,6 +267,65 @@ def _fin_verdict(gap_pts):
     if gap_pts >= -4:
         return "Priced roughly in line with the delivered ROE."
     return f"Priced {abs(gap_pts):.0f}pts BELOW delivered ROE — market doubts ROE durability."
+
+
+def _clinical_scaffold(ydata, price, mcap, shares):
+    """Deterministic rNPV scaffolding for a PRE-PROFIT clinical-stage biotech (Engine 5).
+
+    Engine 4 took core / prob / value / drag as FOUR free model numbers. Three of them the
+    balance sheet can settle: the net-cash FLOOR, and the DILUTION the company must accept to
+    fund itself to approval (cash burn vs runway). The probability comes from PHASE_POS. That
+    leaves the model supplying only the phase (closed set) and the value if the asset works.
+
+    Returns None when the inputs are missing, so the caller keeps today's Engine-4 behaviour.
+    """
+    yrs = sorted(int(y) for y in ydata.keys())
+    fy = ydata[str(yrs[-1])]
+    cash, ocf = _num(fy.get("cash")), _num(fy.get("ocf"))
+    sh = _num(fy.get("shares_diluted")) or shares
+    if not cash or not sh or sh <= 0 or ocf is None or not price or not mcap:
+        return None
+    burn = -ocf if ocf < 0 else 0.0            # positive $/yr; a cash-generative name has none
+    net_cash = cash - (_num(fy.get("lt_debt")) or 0.0)   # most clinical names carry no LT debt
+    net_cash_ps = net_cash / sh
+    # Guard a stale/expired share count: a "floor" above the market price is a data artifact
+    # (e.g. an unrecorded reverse split), not a free lunch. Flag it and refuse to floor on it.
+    suspect = net_cash_ps > price * 2
+    return {
+        "net_cash_ps": round(net_cash_ps, 2),
+        "net_cash_ps_suspect": suspect,
+        "burn_per_yr": round(burn, 0),
+        "runway_years": round(cash / burn, 2) if burn > 0 else None,
+        "shares_diluted": sh,
+        "fiscal_year": yrs[-1],
+    }
+
+
+def rnpv(scaffold, phase, value_if_approved_ps, price):
+    """Engine 5 / rNPV, assembled from the deterministic scaffold + the model's phase & upside.
+
+        IV = net_cash_floor + P(approval | phase) x value_if_approved_ps / (1 + dilution)
+
+    Dilution is the equity the company must issue to fund the burn through to the approval
+    horizon; it scales DOWN what an existing share is worth. Returns None on bad inputs.
+    """
+    if not scaffold or phase not in PHASE_POS:
+        return None
+    v = _num(value_if_approved_ps)
+    if v is None or v < 0 or not price or price <= 0:
+        return None
+    burn, sh = scaffold["burn_per_yr"], scaffold["shares_diluted"]
+    runway = scaffold["runway_years"]
+    years = YEARS_TO_APPROVAL[phase]
+    shortfall = max(0.0, (years - (runway if runway is not None else years)) * burn)
+    dilution = shortfall / (price * sh) if (price * sh) > 0 else 0.0
+    floor = 0.0 if scaffold["net_cash_ps_suspect"] else max(0.0, scaffold["net_cash_ps"])
+    iv = floor + PHASE_POS[phase] * v / (1.0 + dilution)
+    return {"method": "engine5_rnpv", "phase": phase, "pos": PHASE_POS[phase],
+            "value_if_approved_ps": round(v, 2), "net_cash_floor_ps": round(floor, 2),
+            "dilution_pct": round(dilution * 100, 1), "years_to_approval": years,
+            "runway_years": runway, "iv": round(iv, 2),
+            "mos_pct": round((iv / price - 1) * 100, 1)}
 
 
 def _financial_backbone(t, ydata, price, mcap, shares, coe=FIN_COE, pb_kind="financial"):
@@ -362,9 +437,16 @@ def backbone(ticker):
                                _num(fy_last.get("capex")))
         reinvesting = bool(ni_l and ni_l > 0 and da_l is not None and capex_l is not None
                            and capex_l > da_l)
-        return {"ok": False,
-                "reason": "reinvestment_negative_fcf" if reinvesting else "negative_base_cash_flow",
-                "base_cf_kind": kind, "price": price, "market_cap": mcap, "shares": shares}
+        out = {"ok": False,
+               "reason": "reinvestment_negative_fcf" if reinvesting else "negative_base_cash_flow",
+               "base_cf_kind": kind, "price": price, "market_cap": mcap, "shares": shares}
+        # Pre-profit biotech -> attach the deterministic rNPV scaffolding (Engine 5). Only for
+        # genuinely pre-profit names: a reinvesting company has earning power to capitalise.
+        if not reinvesting and "biotech" in ind_l:
+            sc = _clinical_scaffold(ydata, price, mcap, shares)
+            if sc:
+                out["rnpv_scaffold"] = sc
+        return out
 
     implied = _solve_implied_growth(base_cf, mcap, wacc)
     if implied is None:

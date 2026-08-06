@@ -119,6 +119,23 @@ def valuation_block(ticker):
                      "option-led company. Do NOT value it as an option bridge. Value it on "
                      "NORMALIZED mid-cycle earning power × a justified multiple, or on book "
                      "equity vs ROE, and flag the lower confidence.")
+        elif b.get("rnpv_scaffold"):
+            # Pre-profit clinical biotech -> Engine 5 / rNPV. Show the deterministic scaffolding so
+            # the model supplies ONLY the phase and the value-if-approved (see ENGINE5_SCHEMA).
+            sc = b["rnpv_scaffold"]
+            L.append(f"- No DCF model ({b.get('reason')}): PRE-PROFIT CLINICAL-STAGE BIOTECH — value "
+                     "on **ENGINE 5 / rNPV**, not a DCF and not a free-form option bridge.")
+            L.append(f"- rNPV SCAFFOLD (deterministic, FY{sc['fiscal_year']}): net cash "
+                     f"${sc['net_cash_ps']}/sh"
+                     + (" [SUSPECT — share count looks stale, floor will be ignored]"
+                        if sc["net_cash_ps_suspect"] else "")
+                     + f"; cash burn ${sc['burn_per_yr']/1e6:.0f}M/yr; runway "
+                     + (f"{sc['runway_years']} years." if sc['runway_years'] is not None
+                        else "n/a (not burning cash)."))
+            L.append("- YOU supply only: the LEAD asset's development phase, and the per-share value "
+                     "IF it is approved. The probability of approval (published phase base rates), "
+                     "the net-cash floor and the dilution needed to reach approval are computed for "
+                     "you — do NOT estimate a probability yourself.")
         elif ni is not None and ni <= 0:
             L.append(f"- No DCF model ({b.get('reason')}): negative earnings — PRE-PROFIT / OPTION-LED "
                      "(Archetype E, Engine 4). Value = proven-core value/share + Σ(success_prob × "
