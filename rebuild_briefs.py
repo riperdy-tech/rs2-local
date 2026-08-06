@@ -65,6 +65,10 @@ BACKOFF_BASE_SEC = 60
 # A hung LDR call would otherwise block forever: subprocess.run has no default timeout. A brief
 # takes ~5 min, so 20 is generous while still bounded.
 TICKER_TIMEOUT_SEC = 20 * 60
+# Outcome guard: if most briefs are FAILING the run is pointless no matter how healthy the
+# engine probe looks. 10 tickers is enough signal to act on without tripping over a bad patch.
+FAILURE_CHECK_AFTER = 10
+FAILURE_RATE_ABORT = 0.5
 
 PROBES = ["realty income dividend 2026", "micron memory pricing outlook",
           "apple iphone demand 2026", "bunge farm products outlook"]
@@ -280,6 +284,23 @@ def main():
             failed += 1
             log(f"[{i}/{len(todo)}] {t} FAILED — {type(e).__name__}: {str(e)[:120]}")
         log(progress(i, len(todo), started, ok, failed))
+
+        # OUTCOME sanity check, distinct from the engine probe above. The engine can look
+        # perfectly healthy while every brief still fails — that is exactly what a preflight bug
+        # did: 44 consecutive tickers exited 3 in ~9s each, and because failing is FAST the ETA
+        # collapsed from 9h27m to 39min and the bar raced to 44%, which reads as progress. A
+        # human spotted it; nothing in this script did. Stop early instead.
+        if i >= FAILURE_CHECK_AFTER and failed > ok and failed / i >= FAILURE_RATE_ABORT:
+            msg = (f"rebuild_briefs ABORTED at {i}/{len(todo)}: {failed} failures vs {ok} "
+                   f"successes ({100*failed/i:.0f}% failing). The engine probe is passing, so "
+                   f"this is NOT a search outage — check deep_research/ollama before resuming.")
+            log("ABORT — " + msg)
+            try:
+                ops.notify_telegram("[RS2 ops] " + msg)
+                log("  (Telegram alert sent)")
+            except Exception as e:
+                log(f"  (Telegram alert failed: {str(e)[:80]})")
+            break
         time.sleep(THROTTLE_SEC)
 
     log(f"done: {ok} rebuilt, {failed} still failing, "
