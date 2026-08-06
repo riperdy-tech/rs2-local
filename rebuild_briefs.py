@@ -37,10 +37,12 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+import subprocess
+
 import rs2_data
-import deep_research as dr
 
 CONFIG = rs2_data.CONFIG
+HERE = Path(__file__).resolve().parent
 RESEARCH_DIR = Path(CONFIG["out_research_dir"])
 LOG = Path(CONFIG["out_reports_dir"]) / "_rebuild_briefs.log"
 
@@ -53,6 +55,50 @@ MAX_CONSECUTIVE_UNHEALTHY = 3  # give up rather than hammer a blocked engine
 
 PROBES = ["realty income dividend 2026", "micron memory pricing outlook",
           "apple iphone demand 2026", "bunge farm products outlook"]
+
+
+def _hm(seconds):
+    """Compact duration: 4.6min / 1h12m / 3d4h."""
+    s = max(0, int(seconds))
+    if s < 3600:
+        return f"{s/60:.1f}min"
+    if s < 86400:
+        return f"{s//3600}h{(s % 3600)//60:02d}m"
+    return f"{s//86400}d{(s % 86400)//3600:02d}h"
+
+
+def progress(done, total, started, ok, failed, width=30):
+    """One-line bar with elapsed / ETA, sized from the measured average so far."""
+    frac = done / total if total else 0
+    filled = int(width * frac)
+    bar = "#" * filled + "-" * (width - filled)
+    elapsed = time.time() - started
+    avg = elapsed / done if done else 0
+    eta = avg * (total - done)
+    return (f"[{bar}] {done}/{total} {frac*100:3.0f}%  "
+            f"elapsed {_hm(elapsed)}  ETA {_hm(eta)}  avg {_hm(avg)}/brief  "
+            f"ok {ok} fail {failed}")
+
+
+def show_status():
+    """Read the log and report where a running (or finished) rebuild stands. Safe to call at
+    any time from another shell — it only reads."""
+    if not LOG.exists():
+        print("no rebuild log yet — nothing has been run")
+        return
+    lines = LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+    last_bar = next((l for l in reversed(lines) if "] " in l and "/" in l and "ETA" in l), None)
+    last_evt = next((l for l in reversed(lines) if re.search(r"\[\d+/\d+\]", l)), None)
+    done = next((l for l in reversed(lines) if l.strip().endswith("remaining on disk")), None)
+    print(f"uncited briefs on disk right now: {len(uncited_tickers())}")
+    if last_evt:
+        print(f"last ticker event : {last_evt}")
+    if last_bar:
+        print(f"last progress     : {last_bar}")
+    if done:
+        print(f"FINISHED          : {done}")
+    elif last_evt:
+        print("status            : RUNNING (or interrupted — re-run to resume)")
 
 
 def log(msg):
@@ -116,7 +162,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--status", action="store_true",
+                    help="print progress of a running/finished rebuild and exit (read-only)")
     args = ap.parse_args()
+
+    if args.status:
+        show_status()
+        return
 
     todo = uncited_tickers()
     if args.limit:
@@ -126,6 +178,12 @@ def main():
         print(", ".join(todo))
         return
 
+    rv_py = Path(CONFIG["research_venv_python"])
+    if not rv_py.exists():
+        log(f"ABORT: research venv python not found at {rv_py} — LDR lives there, not in this "
+            f"interpreter, and without it every topic fails with ModuleNotFoundError")
+        sys.exit(2)
+
     n, blocked, note = engine_health(PROBES[0])
     log(f"start health: {n} results, blocked serving engines: {blocked or 'none'} {note}")
     if n < MIN_HEALTHY_RESULTS or blocked:
@@ -134,6 +192,9 @@ def main():
         sys.exit(2)
 
     ok = failed = 0
+    started = time.time()
+    log(f"ETA at a nominal 4.5min/brief: ~{_hm(len(todo) * 270)} — the bar below re-estimates "
+        f"from the measured average as it goes")
     for i, t in enumerate(todo, 1):
         if not wait_for_healthy(i):
             log(f"ABORT after {i - 1} ticker(s): engine did not recover. Remaining briefs are "
@@ -147,17 +208,31 @@ def main():
             pass
         log(f"[{i}/{len(todo)}] {t} — rebuilding")
         try:
-            path = dr.build(t, name)
-            c = citations(Path(path).read_text(encoding="utf-8", errors="replace")) if path else 0
-            if c:
+            # Spawn deep_research.py under research-venv, exactly as run_rs2.run_research does.
+            # LDR (local_deep_research) is installed ONLY in that venv, so importing
+            # deep_research in this interpreter fails every topic with ModuleNotFoundError --
+            # which is how the first version of this script "rebuilt" three briefs into
+            # nothing. Explicit utf-8/replace for the same reason run_rs2 does it: text=True
+            # alone decodes the child's utf-8 through cp1252 on Windows.
+            cmd = [str(rv_py), str(HERE / "deep_research.py"), t] + ([name] if name else [])
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
+            for line in (r.stdout or "").splitlines():
+                if "[deep_research]" in line:
+                    log("    " + line.strip())
+            p = RESEARCH_DIR / f"{t}.md"
+            c = citations(p.read_text(encoding="utf-8", errors="replace")) if p.exists() else 0
+            if r.returncode == 0 and c:
                 ok += 1
                 log(f"[{i}/{len(todo)}] {t} OK — {c} citations")
             else:
                 failed += 1
-                log(f"[{i}/{len(todo)}] {t} STILL UNCITED — left for a later run")
+                log(f"[{i}/{len(todo)}] {t} STILL UNCITED (exit {r.returncode}, {c} citations) "
+                    f"— left for a later run")
         except Exception as e:
             failed += 1
             log(f"[{i}/{len(todo)}] {t} FAILED — {type(e).__name__}: {str(e)[:120]}")
+        log(progress(i, len(todo), started, ok, failed))
         time.sleep(THROTTLE_SEC)
 
     log(f"done: {ok} rebuilt, {failed} still failing, "

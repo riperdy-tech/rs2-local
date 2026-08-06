@@ -36,17 +36,48 @@ DONE = re.compile(r"\[deep_research\] (\w+) '(.+?)' done via (\w+) in \d+s "
 STAMP = re.compile(r"^\[orch (\d{2}):(\d{2}):(\d{2})\]")
 
 
-def scan_log(path, since_hours=None):
-    """Zero-source rate per engine from the orchestrate log."""
+MIDNIGHT_JUMP_SEC = 12 * 3600   # a backwards time INCREASE this large is a day rollover, not jitter
+
+
+def tail_days(txt, days):
+    """Slice the log back `days` calendar days, or the whole thing if it is shorter.
+
+    The log carries no dates, only [orch HH:MM:SS] — but walking BACKWARDS the time-of-day
+    decreases within a day and jumps UP when midnight is crossed, so counting those jumps
+    counts days without inventing a date we cannot anchor. A 12h threshold keeps ordinary
+    out-of-order writes from registering as a rollover.
+
+    WHY THIS MATTERS: scanning all history means a FIXED problem alerts forever. 2,676 SearXNG
+    failures from the outage are permanent in this log, so the zero-source rate would read 100%
+    indefinitely after the fix — and an alert that never clears is one you stop reading, which
+    is exactly how the original outage ran for weeks unnoticed. It also hides NEW failures: a
+    fresh outage barely moves a percentage already pinned at 100%.
+    """
+    lines = txt.splitlines()
+    prev = None
+    rollovers = 0
+    for i in range(len(lines) - 1, -1, -1):
+        m = STAMP.match(lines[i])
+        if not m:
+            continue
+        cur = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+        if prev is not None and cur - prev > MIDNIGHT_JUMP_SEC:
+            rollovers += 1
+            if rollovers >= days:
+                return "\n".join(lines[i:])
+        prev = cur
+    return txt
+
+
+def scan_log(path, days=None):
+    """Zero-source rate per engine from the orchestrate log, over the last `days` days
+    (None = all history)."""
     try:
         txt = path.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
         return {}, f"log unreadable: {e}"
-    if since_hours:
-        # the log has no dates, only [orch HH:MM:SS] — take the tail slice by line count
-        # rather than pretend to parse a timestamp we cannot anchor to a day.
-        lines = txt.splitlines()
-        txt = "\n".join(lines[-4000:])
+    if days:
+        txt = tail_days(txt, days)
     by = {}
     for _t, _topic, eng, chars, srcs in DONE.findall(txt):
         d = by.setdefault(eng, {"n": 0, "zero": 0, "chars_when_zero": []})
@@ -77,17 +108,23 @@ def scan_briefs(d):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--since-hours", type=float, default=None)
+    ap.add_argument("--days", type=int, default=7,
+                    help="how many days of log to judge health on (default 7)")
+    ap.add_argument("--all", action="store_true",
+                    help="scan the ENTIRE log — historical forensics, not current health: "
+                         "old outages never age out and will alert forever")
     ap.add_argument("--alert", action="store_true", help="Telegram on threshold breach")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args()
 
+    days = None if a.all else a.days
     log = Path(CONFIG["out_reports_dir"]) / "_orchestrate.log"
-    by, err = scan_log(log, a.since_hours)
+    by, err = scan_log(log, days)
     briefs = scan_briefs(CONFIG["out_research_dir"])
 
     problems = []
-    lines = ["RESEARCH HEALTH", f"  log: {log.name}" + (f" (tail slice)" if a.since_hours else "")]
+    window = "ALL history" if days is None else f"last {days}d"
+    lines = ["RESEARCH HEALTH", f"  log: {log.name}  window: {window}"]
     if err:
         problems.append(err)
         lines.append(f"  !! {err}")
