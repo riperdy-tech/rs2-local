@@ -17,6 +17,7 @@ import json
 import re
 import sys
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -84,17 +85,42 @@ def preflight(tool):
     from its own recall, producing a clean-looking, correctly-sized, entirely UNCITED brief that
     passes every error check. That is worse than a crash: it is confident, unsupported research
     that reads as real (POWL, 2026-08-05, while Docker was down). SearXNG is a docker container
-    on this box and has now died twice unattended, so it must be verified, not assumed."""
+    on this box and has now died twice unattended, so it must be verified, not assumed.
+
+    The probe must look like REAL RESEARCH. The original was `q=test` accepting >=1 result, and
+    it passed for weeks while the instance was effectively dead: every default engine was
+    CAPTCHA'd or rate-limited, real multi-word queries returned nothing, and 2,676 subqueries
+    produced a 100% zero-source rate -- but a one-word probe still scraped together a single
+    result and green-lit the run. A realistic query with a real threshold is the difference
+    between "the container answers" and "the engine can actually research".
+
+    It also inspects unresponsive_engines: results can look adequate while the engines doing the
+    work are being blocked one by one, which is the leading edge of the failure, not the
+    aftermath. Only engines that are supposed to be SERVING count -- a permanently blocked one
+    (duckduckgo here) would otherwise fire on every single probe until it was ignored."""
     if tool != "searxng":
         return
-    url = CONFIG["searxng_url"].rstrip("/") + "/search?q=test&format=json"
+    probe = "realty income dividend 2026"          # multi-word, the shape LDR actually issues
+    min_results = int(CONFIG.get("searxng_min_probe_results", 5))
+    serving = tuple(CONFIG.get("searxng_serving_engines", ["bing", "yep"]))
+    url = (CONFIG["searxng_url"].rstrip("/") + "/search?"
+           + urllib.parse.urlencode({"q": probe, "format": "json"}))
     try:
         with urllib.request.urlopen(url, timeout=20) as r:
             body = json.loads(r.read().decode("utf-8", "replace"))
         n = len(body.get("results") or [])
-        if n == 0:
-            raise ResearchInfraError(f"SearXNG at {CONFIG['searxng_url']} returned 0 results for a "
-                                     f"probe query — engine up but not searching")
+        unresp = {name: msg for name, msg in (body.get("unresponsive_engines") or [])}
+        blocked = [e for e in serving if e in unresp]
+        if n < min_results:
+            raise ResearchInfraError(
+                f"SearXNG at {CONFIG['searxng_url']} returned {n} results (<{min_results}) for "
+                f"a realistic query — engine up but not searching. Blocked engines: "
+                f"{unresp or 'none reported'}")
+        if blocked:
+            detail = "; ".join(f"{e}: {unresp[e][:40]}" for e in blocked)
+            raise ResearchInfraError(
+                f"SearXNG serving engine(s) blocked ({detail}) — refusing to research on a "
+                f"degraded engine; briefs would be thin or uncited")
         print(f"[deep_research] preflight ok: searxng {n} results", flush=True)
     except ResearchInfraError:
         raise
