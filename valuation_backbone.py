@@ -20,6 +20,7 @@ Deterministic, reproducible, no LLM / no network. Standalone CLI: python valuati
 """
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -404,6 +405,23 @@ def _clinical_scaffold(ydata, price, mcap, shares):
     }
 
 
+def norm_phase(p):
+    """Normalize a model-written phase to a PHASE_POS key, or None.
+
+    The closed set is still enforced -- this only absorbs formatting. CRSP emitted "Phase 2",
+    which is the right answer in the wrong shape, and a strict key match threw it away and fell
+    through to the Engine-4 bridge. Handles case, spaces/hyphens/underscores, and roman numerals.
+    """
+    if not isinstance(p, str):
+        return None
+    s = re.sub(r"[\s_\-]+", "", p.strip().lower())
+    for roman, arabic in (("iii", "3"), ("ii", "2"), ("i", "1")):
+        if s == "phase" + roman:
+            s = "phase" + arabic
+            break
+    return s if s in PHASE_POS else None
+
+
 def rnpv(scaffold, phase, value_if_approved_ps, price):
     """Engine 5 / rNPV, assembled from the deterministic scaffold + the model's phase & upside.
 
@@ -412,6 +430,7 @@ def rnpv(scaffold, phase, value_if_approved_ps, price):
     Dilution is the equity the company must issue to fund the burn through to the approval
     horizon; it scales DOWN what an existing share is worth. Returns None on bad inputs.
     """
+    phase = norm_phase(phase) if phase not in PHASE_POS else phase
     if not scaffold or phase not in PHASE_POS:
         return None
     v = _num(value_if_approved_ps)

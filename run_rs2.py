@@ -260,8 +260,20 @@ def _valid_stance(d):
 
 
 def _valid_engine4(d):
-    return isinstance(d, dict) and int(d.get("engine", 0) or 0) == 4 and isinstance(
-        d.get("core_value", None), (int, float))
+    # The OPTIONS entries must be checked too, not just core_value. engine4_bridge does
+    # float(o.get("value", 0)), and a null value there raises TypeError and kills the whole run
+    # (seen live on CRSP: the model emitted an option with value null). Rejecting the payload
+    # here falls through to "unvalued", which is a bad valuation instead of a dead ticker.
+    if not (isinstance(d, dict) and int(d.get("engine", 0) or 0) == 4
+            and isinstance(d.get("core_value", None), (int, float))):
+        return False
+    opts = d.get("options")
+    if opts is None:
+        return True
+    if not isinstance(opts, list):
+        return False
+    return all(isinstance(o, dict) and isinstance(o.get("prob", None), (int, float))
+               and isinstance(o.get("value", None), (int, float)) for o in opts)
 
 
 # base_cf kinds derived from a SINGLE fiscal year — these are the ones a cyclical archetype should
@@ -302,7 +314,7 @@ def _valid_engine5(d):
     # isinstance check to produce IV = floor only and a -99.4% MoS, i.e. a fabricated screaming
     # SELL. Rejecting it here falls through to Engine 4 / unvalued, which is the honest outcome.
     return (isinstance(d, dict) and int(d.get("engine", 0) or 0) == 5
-            and d.get("phase") in valuation_backbone.PHASE_POS
+            and valuation_backbone.norm_phase(d.get("phase")) is not None
             and isinstance(d.get("value_if_approved_ps", None), (int, float))
             and d.get("value_if_approved_ps") > 0)
 
@@ -1068,9 +1080,20 @@ def main():
         bb_msg = (f"FINANCIAL | ROE {bb['roe']*100:.1f}% vs implied {bb['implied_roe']*100:.1f}% | "
                   f"P/B {bb['current_pb']}x vs justified {bb['justified_pb']}x | gap {bb['expectations_gap_pts']}pts")
     elif bb.get("ok"):
+        # Report the SAME series the gap is measured against (FFO/share for REITs), not always
+        # revenue: logging "implied 0.4% vs demonstrated 28.4% | gap -2.2pts" for O was arithmetic
+        # nonsense on its face and would send anyone reading the log chasing a non-existent bug.
+        _demo = bb.get("demonstrated_cagr")
+        if _demo is None:
+            _demo = bb.get("hist_revenue_cagr_5y") or 0
         bb_msg = (f"base_cf ${bb['base_cf']/1e9:.2f}B [{bb['base_cf_kind']}] WACC {bb['wacc_pct']}% | "
                   f"implied {bb['implied_growth']*100:.1f}% vs demonstrated "
-                  f"{(bb.get('hist_revenue_cagr_5y') or 0)*100:.1f}% | gap {bb['expectations_gap_pts']}pts")
+                  f"{_demo*100:.1f}% [{bb.get('demonstrated_cagr_kind', 'revenue_cagr_5y')}] | "
+                  f"gap {bb['expectations_gap_pts']}pts")
+    elif bb.get("reason") == "reinvestment_negative_fcf":
+        bb_msg = f"NULL ({bb.get('reason')}) -> PROFITABLE but capex > D&A: normalized-earnings path"
+    elif bb.get("rnpv_scaffold"):
+        bb_msg = f"NULL ({bb.get('reason')}) -> clinical-stage biotech: Engine 5 / rNPV path"
     else:
         bb_msg = f"NULL ({bb.get('reason')}) -> pre-profit / option-led path"
     print(f"[backbone] {t}: {bb_msg}", flush=True)
@@ -1137,9 +1160,10 @@ def main():
                              "The engine scores the single-year figure; argue explicitly if you "
                              "think that overstates or understates the gap.")
             elif arch:
-                # telemetry only — lets the archetype/route agreement be measured over time
+                # telemetry only — lets the archetype/route agreement be measured over time.
+                # Same "disclosed" key as the branch above so the field is uniform across runs.
                 (out_dir / "routing.json").write_text(json.dumps({
-                    "archetype": arch, "applied": False,
+                    "archetype": arch, "disclosed": False, "reason": "not_a_single_year_base_cf",
                     "base_cf_kind": bb.get("base_cf_kind"),
                     "method": bb.get("method") or bb.get("reason")}, indent=2), encoding="utf-8")
         if sid == "S3_valuation":
