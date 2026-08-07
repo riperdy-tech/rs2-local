@@ -569,8 +569,29 @@ def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     at_or_above = bool(price and med and price >= med)
     p52 = _pct_of_52wk_high(ticker, price) if ticker else None
     near_high = bool(p52 is not None and p52 >= 0.98)
-    strong = (rmos is not None and rmos >= 25)
-    adequate = (rmos is not None and 15 <= rmos < 25)
+    # PERCENTILE TIERS (2026-08-07). These were absolute (>=25 strong, 15-25 adequate) and were
+    # calibrated when fair value was the analyst median for 87% of names, so MoS clustered near
+    # zero and 25% genuinely meant exceptional. With the stability fence the distribution moved
+    # (median -38%, p75 -11%, p90 +30%), and absolute cuts inverted the brake's meaning: tier 1
+    # and 2 stopped firing at all and tier 3 caught everyone, capping every name at conviction
+    # 9.5. Measured live on AAPL and KO — the MODEL differentiated them (KO 'ACCUMULATE ON DIPS'
+    # vs AAPL 'HOLD', both conviction 12.0) and the brake flattened both to 9.5. The
+    # homogenization had simply moved downstream from the prompt into here.
+    #
+    # Tier on the CROSS-SECTION instead, matching the ENTRY DISCIPLINE rule so the prompt and the
+    # brake cannot disagree about what "cheap" means:
+    #     >= p75  cheapest quarter   -> may chase
+    #     >= p33  mid                -> stage
+    #     <  p33  expensive third    -> do not chase
+    # If the calibration is stale, mos_cut() returns None and MoS-based tiering is SKIPPED
+    # entirely — the brake then relies on the gap / at-or-above-median / near-52wk-high evidence.
+    # Falling back to the absolute cuts would reintroduce exactly the bug this removes.
+    _cut75, _cut33, _cut50 = (valuation_backbone.mos_cut(75), valuation_backbone.mos_cut(33),
+                              valuation_backbone.mos_cut(50))
+    strong = (rmos is not None and _cut75 is not None and rmos >= _cut75)
+    adequate = (rmos is not None and _cut33 is not None and _cut75 is not None
+                and _cut33 <= rmos < _cut75)
+    expensive = (rmos is not None and _cut33 is not None and rmos < _cut33)
     fam = _action_family(action)
 
     # EXPECTATIONS OVERRIDE (2026-08-06). MoS is measured against fair_value, and for ~78% of
@@ -607,13 +628,14 @@ def _dont_chase_brake(action, conv, weight, vr, ticker=None):
         return action, conv, weight, "stage", None, False
 
     # tier 3 — thin MoS / at-or-above median / near 52wk high: HOLD, do not chase
-    entry = "wait_for_pullback" if (rmos is not None and rmos < 0) or near_high else "stage"
+    entry = "wait_for_pullback" if expensive or near_high else "stage"
     out_action = "Hold / accumulate on weakness (do not chase)" if fam == "BULL" else action
-    # A fat MoS normally protects conviction from the cap. It must NOT when the expectations
+    # A better-than-median MoS protects conviction from the cap. It must NOT when the expectations
     # gap says rich — otherwise a name lands on "do not chase" while still carrying a 12/15,
-    # which is the same contradiction one field over.
-    out_conv = min(conv, 9.5) if (conv is not None and
-                                  (rich or not (rmos is not None and rmos >= 15))) else conv
+    # which is the same contradiction one field over. Was an absolute `rmos >= 15`, which after
+    # the fence meant ~nothing cleared it and every name got capped.
+    _protected = (rmos is not None and _cut50 is not None and rmos >= _cut50)
+    out_conv = min(conv, 9.5) if (conv is not None and (rich or not _protected)) else conv
     out_weight = min(weight, 3.0) if weight is not None else weight
     return out_action, out_conv, out_weight, entry, trig, True
 
