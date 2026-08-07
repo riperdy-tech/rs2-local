@@ -752,8 +752,20 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False)
         # Brake caps land in/next to the powerless middle band (3), so brake
         # re-tiering can no longer flip portfolio membership by itself.
         stance = min(stance, 3 if _action_family(action) == "HOLD" else 4)
+    # stance vs stance_score measure DIFFERENT AXES and may legitimately disagree:
+    # stance = deterministic valuation judgment (gap vs fundamentals); stance_score = action
+    # disposition (model call, brake-capped). "Overvalued + accumulate-on-dips" is a coherent
+    # position, so agreement is NOT forced — the tension is surfaced instead. 94% of published
+    # convictions are <=10, so a bare number was indistinguishable from a /10 scale; both scales
+    # are now explicit in every verdict (handoff BUGs C and D).
+    _stc = _stance_from_gap(vr.get("expectations_gap_pts") if vr.get("expectations_gap_pts")
+                            is not None else vr.get("roe_gap_pts")) or vr.get("stance")
+    stance_conflict = bool((_stc == "overvalued" and stance >= 4)
+                           or (_stc == "undervalued" and stance <= 2))
     verdict = {
         "stance_score": stance, "thesis_break": thesis_break, "stance_source": stance_src,
+        "conviction_scale": 15, "stance_score_scale": 5,
+        "stance_conflict": stance_conflict,
         **({"exit_review": True} if exit_review else {}),
         "changed_because": cb.group(1).strip().strip("*").strip()[:300] if cb else None,
         "ticker": ticker.upper(), "date": datetime.now().strftime("%Y-%m-%d"), "price": price,
@@ -761,8 +773,7 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False)
         # Recomputed here as the single source of truth, so repatch_verdicts.py (which replays
         # emit_verdict over a SAVED S3 val_res carrying the old model stance) gets the
         # deterministic value too. Falls back to whatever vr held when there is no gap.
-        "stance": _stance_from_gap(vr.get("expectations_gap_pts") if vr.get("expectations_gap_pts")
-                                   is not None else vr.get("roe_gap_pts")) or vr.get("stance"),
+        "stance": _stc,
         "stance_model": vr.get("stance_model") or vr.get("stance"),
         "expectations_gap_pts": vr.get("expectations_gap_pts") if vr.get("expectations_gap_pts") is not None
         else vr.get("roe_gap_pts"),

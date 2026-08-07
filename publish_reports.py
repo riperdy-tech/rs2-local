@@ -234,6 +234,10 @@ def publish(k=DEFAULT_K, only=None, verbose=True):
                     pruned += 1
 
     payload = {"generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+               # scales stated ONCE at the top level: conviction is /15 (94% of values are <=10,
+               # so a bare number silently reads as /10 and overstates every conviction) and
+               # stance_score is /5. Consumers must not guess.
+               "scales": {"conviction": 15, "stance_score": 5},
                "k_full_per_ticker": k, "count": len(index), "tickers": index}
     (OUT / "index.json").write_text(json.dumps(payload, ensure_ascii=False, indent=0), encoding="utf-8")
     if verbose:
