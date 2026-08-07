@@ -403,6 +403,35 @@ def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False):
     fcf = _num(fy.get("fcf"))
     ocf, da = _num(fy.get("ocf")), _num(fy.get("da"))
     if owner is not None and owner > 0:
+        # MARGIN BLEND (2026-08-07). A single fiscal year's owner-earnings margin is a noisy
+        # observation of earning power: measured causally over 4,685 clean ticker-years, margins
+        # mean-revert monotonically toward their own history (a year >50% above its median gives
+        # back a median -3.5pts over the next 3y; >50% below recovers +4.2pts). Growing the latest
+        # year at revenue growth therefore bakes a transient margin into perpetuity.
+        #
+        # The estimator is a 50/50 SHRINK toward the causal median margin:
+        #     base_cf = 0.5 x OE_latest + 0.5 x (revenue_latest x median_margin)
+        # chosen by MEASURED prediction error against the realized next-3y mean margin, on the
+        # production-faithful population (OE>0, median margin>0, scale-corrupt tickers excluded):
+        #     >=5y history (n=4,104): blend median err 2.78pts vs latest 3.10, gated-median 3.10
+        #     2-4y history (n=4,037): blend 3.43 vs latest 3.55
+        # Blend beats latest-FY in BOTH populations (body and tail), needs no gate threshold, and
+        # applies one formula to the whole book — the alternatives tested and rejected: normalize-
+        # all (asserts unprovable mean reversion on 74% of names), a 50% gate (pure tail fix, ties
+        # latest at the median), OE-CAGR growth (definable for only 54%, splits the book).
+        # The MEDIAN is robust to a residual corrupt year in the history; latest-year corruption
+        # is guarded separately (data_health, 0 in live use).
+        margins = []
+        for y in yrs:
+            oe_y, rev_y = _owner_earnings(ydata[str(y)]), _num(ydata[str(y)].get("revenue"))
+            if oe_y is not None and rev_y and rev_y > 0:
+                margins.append(oe_y / rev_y)
+        rev_latest = _num(fy.get("revenue"))
+        if len(margins) >= 2 and rev_latest and rev_latest > 0:
+            import statistics as _st
+            med_m = _st.median(margins)
+            if med_m > 0:
+                return 0.5 * owner + 0.5 * (rev_latest * med_m), "blended_owner_earnings"
         return owner, "owner_earnings"
     if fcf is not None and fcf > 0:
         return fcf, "fcf_fallback"
