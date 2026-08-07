@@ -176,6 +176,49 @@ def _num(v):
     return v if isinstance(v, (int, float)) and math.isfinite(v) else None
 
 
+# ── Ingest guard: share counts ───────────────────────────────────────────────────────────────
+# SEC filings contradict themselves on scale. The same fiscal period is sometimes reported twice
+# with values a clean power of 1000 apart, and the corrupt value usually sits in the LATER filing,
+# so "most recent wins" picks it. The screener's extractor now resolves those contradictions at
+# source, but it CANNOT fix a year where only one (wrong) value was ever filed — BKTI reported
+# shares in thousands through FY2022 with nothing to contradict it. So the number is validated
+# again here, on the way in. Nothing corrupt gets to enter a valuation, whatever upstream says.
+#
+# shares_diluted is the field that matters most: it is 49% of all ~1000x breaks measured (331 of
+# 672 across 451 tickers), and it divides into FFO-per-share, the Engine-5 net-cash floor and the
+# Engine-5 dilution term.
+#
+# The test is CROSS-SOURCE, not magnitude. financials.json Shares_Outstanding comes from a
+# different provider entirely, so agreement is real evidence. Measured on 255 live names: 253
+# agree within 5x, and the 2 that disagree (VTEX, BWMX) are at exactly 0.001x. Zero false
+# positives — AMZN's real 20:1 split appears in BOTH sources and so does not trip it.
+#
+# A magnitude test was evaluated and REJECTED: at a 10x bar it flags NVDA's real $120bn net income
+# (29x its own median), AMZN's split (21.5x), AMD's Xilinx equity (22.3x) and CRM's margin
+# expansion (20.7x). A filter that deletes the best names in the book is worse than the corruption.
+SHARES_SCALE_TOLERANCE = 5.0     # agreement band vs the independent source
+
+
+def _shares_sane(shares_diluted, shares_outstanding):
+    """(value_to_use, was_corrected). Rescales a clean power-of-1000 discrepancy, else passes through.
+
+    Returns the ORIGINAL value when there is no independent reference — an unverifiable number is
+    not the same as a wrong one, and silently discarding it would lose real data.
+    """
+    sd, so = _num(shares_diluted), _num(shares_outstanding)
+    if sd is None or sd <= 0 or so is None or so <= 0:
+        return sd, False
+    ratio = so / sd
+    if 1.0 / SHARES_SCALE_TOLERANCE <= ratio <= SHARES_SCALE_TOLERANCE:
+        return sd, False                      # agrees with the independent source
+    for p in (1e3, 1e6):                      # clean scale error -> correct it
+        if 0.7 * p <= ratio <= 1.4 * p:
+            return sd * p, True
+        if 0.7 * p <= 1.0 / ratio <= 1.4 * p:
+            return sd / p, True
+    return sd, False                          # disagrees but not by a scale factor — leave alone
+
+
 def _hist(ticker):
     h = rs2_data.load_json(SD / "fundamentals_history.json") or {}
     t = (h.get("tickers") or h).get(ticker.upper())
@@ -250,7 +293,7 @@ def _verdict(gap_pts):
     return f"Priced {abs(gap_pts):.0f}pts BELOW demonstrated growth — market expects deceleration."
 
 
-def _ffo_ps_series(ydata):
+def _ffo_ps_series(ydata, _shares_outstanding=None):
     """FFO per diluted share by fiscal year. FFO = net income + D&A: real-estate depreciation is
     an accounting fiction for an appreciating asset, which is exactly why owner earnings
     (NI+D&A-capex) misprices a REIT. Per SHARE because REIT revenue growth is largely acquisition
@@ -260,15 +303,16 @@ def _ffo_ps_series(ydata):
     out = []
     for y in sorted(int(v) for v in ydata.keys()):
         fy = ydata[str(y)]
-        ni, da, sh = _num(fy.get("net_income")), _num(fy.get("da")), _num(fy.get("shares_diluted"))
+        ni, da = _num(fy.get("net_income")), _num(fy.get("da"))
+        sh, _ = _shares_sane(fy.get("shares_diluted"), _shares_outstanding)
         if ni is not None and da is not None and sh and sh > 0:
             out.append((y, (ni + da) / sh))
     return out
 
 
-def _ffo_ps_cagr(ydata):
+def _ffo_ps_cagr(ydata, _shares_outstanding=None):
     """CAGR of FFO/share over the available history, or None."""
-    s = _ffo_ps_series(ydata)
+    s = _ffo_ps_series(ydata, _shares_outstanding)
     if len(s) < 4 or s[0][1] <= 0 or s[-1][1] <= 0:
         return None
     yrs = s[-1][0] - s[0][0]
@@ -423,7 +467,8 @@ def _clinical_scaffold(ydata, price, mcap, shares):
     yrs = sorted(int(y) for y in ydata.keys())
     fy = ydata[str(yrs[-1])]
     cash, ocf = _num(fy.get("cash")), _num(fy.get("ocf"))
-    sh = _num(fy.get("shares_diluted")) or shares
+    sh, _fixed = _shares_sane(fy.get("shares_diluted"), shares)
+    sh = sh or shares
     if not cash or not sh or sh <= 0 or ocf is None or not price or not mcap:
         return None
     burn = -ocf if ocf < 0 else 0.0            # positive $/yr; a cash-generative name has none
@@ -702,7 +747,7 @@ def backbone(ticker, force_midcycle=False):
     # history is too short.
     demo_cagr, demo_kind = rev_cagr, "revenue_cagr_5y"
     if kind == "ffo_reit":
-        f = _ffo_ps_cagr(ydata)
+        f = _ffo_ps_cagr(ydata, shares)
         if f is not None:
             demo_cagr, demo_kind = f, "ffo_ps_cagr"
     gap_pts = (implied - demo_cagr) * 100 if demo_cagr is not None else None
