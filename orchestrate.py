@@ -664,6 +664,12 @@ def main():
 
             cur = bands()
             queue, drops = build_queue(cur, state, args, llm_research_set())
+            # The override must survive EVERY queue rebuild, not just the first. Round-2 pilot
+            # (2026-08-08): the startup log printed "override: queue=3 (MU, UVE, ARWR)" and the
+            # loop then ran STX from a 56-name cadence queue, because this per-boundary rebuild
+            # replaced the overridden queue one minute in. A validation run that silently widens
+            # from 3 names to 56 is a ~7-hour unplanned sweep.
+            queue, drops = apply_ticker_override(queue, drops, args, state, cur)
             # RN names that fell OUT of the list -> one final EXIT review (you may hold them), then
             # retire. WL drops (bench) -> straight to inactive, no review.
             pending_exit = [t for t in drops if args.review_rn_drops
