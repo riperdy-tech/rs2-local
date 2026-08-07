@@ -574,6 +574,28 @@ def main():
         log(f"RN={sum(1 for b in cur.values() if b==RN_BAND)} WL={sum(1 for b in cur.values() if b==WL_BAND)} "
             f"| queue={len(queue)} | drops={len(drops)}")
 
+        # Recalibrate the cross-sectional MoS percentiles ONCE per sweep, before any ticker runs.
+        # ENTRY DISCIPLINE (the prompt) and _dont_chase_brake both rank a name's margin of safety
+        # against the BOOK rather than an absolute bar, because the absolute cut fired on 80% of
+        # names and produced the verdict homogenization. That ranking needs a current distribution:
+        # when the cache goes stale the prompt says "no ranking available" and the brake skips MoS
+        # tiering entirely — safe, but the differentiation silently stops contributing. Refreshing
+        # here is what keeps it alive. Non-fatal: a failed calibration must not block the sweep.
+        try:
+            import valuation_backbone as _vb
+            _uni = sorted({d.name.rsplit("_", 2)[0] for d in REPORTS.glob("*_*") if d.is_dir()})
+            _md = _vb.build_mos_distribution(_uni)
+            if _md:
+                _p = _md["percentiles"]
+                log(f"[mos] calibrated on {_md['n']} names — p33 {_p['33']}% p50 {_p['50']}% "
+                    f"p75 {_p['75']}%")
+            else:
+                log("[mos] ::WARN:: too few valued names to calibrate — ENTRY DISCIPLINE and the "
+                    "brake will fall back to 'no ranking available' this sweep")
+        except Exception as e:
+            log(f"[mos] ::WARN:: calibration failed ({str(e)[:100]}) — percentile ranking will be "
+                f"skipped this sweep")
+
         done = failed = 0
         run_start = time.time()
         last_pull = time.time()          # we pulled just above (unless --no-pull)
