@@ -351,8 +351,12 @@ def _midcycle_of_kind(ydata, kind):
     universe. fcf_ttm_yf is a single trailing figure with no history -> (None, None).
     """
     yrs = sorted(int(v) for v in ydata.keys())
-    if kind == "owner_earnings":
+    if kind in ("owner_earnings", "blended_owner_earnings"):
+        # The mid-cycle counterpart of the BLEND is the plain owner-earnings average: averaging
+        # over the cycle already normalizes the margin, so averaging per-year blends would
+        # shrink toward the median twice.
         vals = [_owner_earnings(ydata[str(y)]) for y in yrs]
+        kind = "owner_earnings"
     elif kind == "fcf_fallback":
         vals = [_num(ydata[str(y)].get("fcf")) for y in yrs]
     elif kind == "ocf_minus_da_proxy":
@@ -369,10 +373,41 @@ def _midcycle_of_kind(ydata, kind):
     return sum(vs) / len(vs), f"midcycle_{kind}_archetype"
 
 
-def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False):
+def _revenue_break(ydata):
+    """Latest PERSISTENT revenue level shift (>40% step confirmed by the later-years median) in
+    the history window: {"year": Y, "ratio": R} or None. DISCLOSURE ONLY — measured across the
+    live blended book (2026-08-08, 22 flagged names): 8 of the 12 material flags are cyclical /
+    COVID / organic-hypergrowth swings, not entity changes (CALM's egg-price cycles fire it twice
+    — trimming there would anchor the margin at the avian-flu boom), 3 are divestiture
+    RESTATEMENT breaks whose post-break rows are internally basis-mixed (WDC 2023: continuing-ops
+    revenue against a consolidated net loss — a margin that ratio-s two different entities), and
+    1 (HQY) is a clean acquisition. Revenue alone cannot tell these apart, so an automatic trim
+    of the margin/averaging window is REJECTED: it would damage more names than it fixes. The
+    break is surfaced to the analyst layer instead; the arithmetic stays untouched."""
+    revs = []
+    for y in sorted(ydata, key=int):
+        r = _num(ydata[str(y)].get("revenue"))
+        if r is not None and r > 0:
+            revs.append((int(y), r))
+    brk = None
+    for i in range(1, len(revs)):
+        step = revs[i][1] / revs[i - 1][1]
+        if step < 0.60 or step > 1.67:
+            later = [r for _, r in revs[i:]]
+            if len(later) >= 2:
+                import statistics as _st
+                med = _st.median(later) / revs[i - 1][1]
+                if med < 0.70 or med > 1.43:
+                    brk = {"year": revs[i][0], "ratio": round(step, 2)}
+    return brk
+
+
+def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False, force_latest=False):
     """Return (base_cf_$, kind). Equity REITs -> FFO; cyclicals -> mid-cycle avg owner earnings;
     else latest-FY owner earnings with fcf / ocf-minus-da fallbacks. None base_cf -> honest null
-    upstream."""
+    upstream. force_latest skips the sector mid-cycle rule and returns the latest-FY basis —
+    DISCLOSURE ONLY (the mirror of force_midcycle, for names the sector whitelist already
+    averaged): it never sets the scored base_cf."""
     yrs = sorted(int(y) for y in ydata.keys())
     fy = ydata[str(yrs[-1])]
     # Equity REIT -> FFO. Owner earnings subtract the whole capex line, but a REIT's capex is
@@ -391,14 +426,14 @@ def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False):
     # stable compounders (KO 0.35, AAPL 0.33) -- because averaging raw owner earnings over a
     # GROWING company mixes trend with cycle. force_midcycle lets the caller supply the judgment
     # the statistic cannot (see run_rs2: the Stage-1 archetype).
-    if force_midcycle:
+    if force_midcycle and not force_latest:
         # Resolve the metric this name would NATURALLY use, then average that same metric.
         _, nat_kind = _base_cf(ticker, ydata, sector_l, industry_l, force_midcycle=False)
         mid, mid_kind = _midcycle_of_kind(ydata, nat_kind)
         if mid is not None:
             return mid, mid_kind
     # cyclical: average owner earnings over the available cycle (trough+peak cancel)
-    if any(c in sector_l for c in MIDCYCLE_SECTORS):
+    if not force_latest and any(c in sector_l for c in MIDCYCLE_SECTORS):
         owners = [_owner_earnings(ydata[str(y)]) for y in yrs]
         owners = [o for o in owners if o is not None and o > 0]
         if len(owners) >= 3:
@@ -706,7 +741,7 @@ def build_mos_distribution(tickers):
     return out
 
 
-def backbone(ticker, force_midcycle=False):
+def backbone(ticker, force_midcycle=False, force_latest=False):
     t = ticker.upper()
     fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
     price = _num(fin.get("Price"))
@@ -736,7 +771,8 @@ def backbone(ticker, force_midcycle=False):
         return _financial_backbone(t, ydata, price, mcap, shares,
                                    coe=UTIL_COE, pb_kind="regulated_utility")
 
-    base_cf, kind = _base_cf(t, ydata, sl, ind_l, force_midcycle=force_midcycle)
+    base_cf, kind = _base_cf(t, ydata, sl, ind_l, force_midcycle=force_midcycle,
+                             force_latest=force_latest)
     if base_cf is None or base_cf <= 0:
         # SEC fundamentals_history lacks capex/D&A for many foreign filers (SAP/VIK/BWMX/JLHL) or is
         # stale — a data gap, not a genuinely unvaluable company. Fall back to the fresh yfinance
@@ -844,10 +880,17 @@ def backbone(ticker, force_midcycle=False):
     if fair_value and price:
         mos_pct = round((fair_value / price - 1) * 100, 1)
 
+    # A margin-median (blend) or multi-year average (midcycle) built across a persistent revenue
+    # level shift spans two business perimeters — surfaced for the analyst layer, never acted on
+    # automatically (see _revenue_break for why an auto-trim is rejected by measurement).
+    rev_break = (_revenue_break(ydata)
+                 if (kind == "blended_owner_earnings" or str(kind).startswith("midcycle")) else None)
+
     return {
         "ok": True, "ticker": t, "method": "reverse_dcf",
         "price": price, "market_cap": mcap, "shares": shares,
         "base_cf": base_cf, "base_cf_kind": kind, "fiscal_year": yrs[-1],
+        "revenue_break": rev_break,
         "wacc": wacc, "wacc_pct": wacc_pct, "terminal_growth": TERMINAL_G,
         "stage1_years": STAGE1, "fade_years": FADE,
         "implied_growth": round(implied, 4), "implied_growth_clamped": implied in (G_LO, G_HI),

@@ -283,35 +283,113 @@ def _valid_engine4(d):
                and isinstance(o.get("value", None), (int, float)) for o in opts)
 
 
-# base_cf kinds derived from a SINGLE fiscal year — these are the ones a cyclical archetype should
-# upgrade to a mid-cycle average. midcycle_* is already averaged and ffo_reit is a REIT measure.
-_LATEST_FY_KINDS = ("owner_earnings", "fcf_fallback", "ocf_minus_da_proxy", "fcf_ttm_yf")
+# base_cf kinds anchored to the LATEST fiscal year — these are the ones a cyclical archetype
+# should see mid-cycle-averaged alongside. midcycle_* is already averaged and ffo_reit is a REIT
+# measure. blended_owner_earnings belongs here: the blend is 0.5x latest-FY OE + 0.5x latest-FY
+# revenue x median margin — BOTH terms scale with the latest year, so a trough/peak year still
+# dominates it. (Regression 2026-08-08: the blend rename silently emptied this gate and the
+# cyclical disclosure stopped firing — MU routing.json logged not_a_single_year_base_cf x6.)
+_LATEST_FY_KINDS = ("owner_earnings", "blended_owner_earnings", "fcf_fallback",
+                    "ocf_minus_da_proxy", "fcf_ttm_yf")
+
+
+# Canonical archetype names (rs2_data.ARCHETYPE_NAMES), hyphen/space tolerant. Order matters:
+# C ("cyclical") LAST because it is the word most likely to appear incidentally next to another
+# name ("B. Quality Compounder (with explicit Cyclical Overlay)").
+_ARCH_NAME_PATS = (
+    ("A", r"stable[\s-]+incumbent"),
+    ("B", r"quality[\s-]+compounder"),
+    ("D", r"product[\s-]+platform"),
+    ("E", r"option[\s-]+led"),
+    ("F", r"(?:pure[\s-]+)?regulatory"),
+    ("C", r"cyclical"),
+)
+# Optional "C. " / "D) " / "C " menu prefix, then optional "(" — anchored so a name later in the
+# line ("...with Quality Compounder characteristics") can never hijack the match.
+_ARCH_PREFIX = r"(?:[A-F]\s*[.):]?\s*)?[(\s]*"
+
+
+def _arch_letter_form(text):
+    """'Archetype X ...' at the start of a value/line -> letter; an adjacent NAME overrides the
+    letter (seen live on MU: '**Archetype Verdict:** **D. Cyclical**' — the letter is a
+    menu-index slip, the name is what the model actually reasoned about -> C)."""
+    m = re.match(r"Archetype\s+([A-F])\b(.{0,50})", text)
+    if not m:
+        return None
+    for L, pat in _ARCH_NAME_PATS:
+        if re.search(pat, m.group(2), re.I):
+            return L
+    return m.group(1)
+
+
+def _arch_value(head):
+    """Archetype letter from a declaration VALUE ('C. Cyclical', 'Archetype C (Cyclical)',
+    'Cyclical', bare 'C'), or None. Letter match is CASE-SENSITIVE so the article 'a' in prose
+    values ('a strong cyclical...') cannot read as archetype A."""
+    head = head.strip()[:80]
+    r = _arch_letter_form(head)
+    if r:
+        return r
+    for L, pat in _ARCH_NAME_PATS:
+        if re.match(_ARCH_PREFIX + pat, head[:60], re.I):
+            return L
+    lm = re.match(r"([A-F])(?=[.):\s]|$)", head)
+    return lm.group(1) if lm else None
 
 
 def _archetype(stage_text):
     """Archetype letter (A-F) the model chose in Stage 1, or None.
 
-    Stage 1 already classifies the business and the result was written to the report and then
-    used for NOTHING. It is a better cyclical detector than the sector whitelist it would
-    override: measured over 256 archived runs, 12 of 39 model-labelled cyclicals sit outside
-    MIDCYCLE_SECTORS, including MU. Formats vary ("Archetype: C. Cyclical",
-    "**Selected Archetype:** C. Cyclical"), so match the NAME first and the bare letter second.
+    Measured over the FULL S1 corpus (1,417 archived stage files, 2026-08-08) against the
+    previous parser: unparsed 162 -> 9 (0.6%; all nine verified prose-only declarations with no
+    canonical name or letter — anything but None there is a guess), zero regressions, and five
+    prior MISparses fixed (CRS B->C, ENS D->C, MU E->C, SNA B->C, TTMI B->C — every one a
+    transition/overlay phrase hijacking the old loose line scan). Tonight's MU repeats: 9/9 C,
+    including two '**Archetype Verdict:** **D. Cyclical**' letter/name contradictions.
+
+    Tiers, most explicit first; every tier is anchored to declaration-shaped text, never a scan
+    of justification prose (AAPL's rationale "distinct from Stable Incumbent (A) or Option-Led
+    (E) profiles" must not read as A):
+      T1  "Archetype [Verdict|Selection|...]: <value>"  — colon after the Archetype label.
+      T2  line-anchored forms: "Archetype C (Cyclical) [Actual]", "Cyclical (Archetype C)",
+          "Classification/Selected/Verdict: <value>". Lines containing "triage" or "reject"
+          are skipped (ARM: "Reverse-triage Archetype A ... is rejected").
+      T3  the survival-probability template ("Probability of a <NAME> ... surviving"), name only.
     """
     seg = stage_text[:6000]
-    # Anchor to the DECLARATION line, never a scan of the justification prose: AAPL's rationale
-    # says "distinct from Stable Incumbent (A) or Option-Led (E) profiles", so a loose name scan
-    # returns A for a name the model actually classified D.
-    m = re.search(r"(?:Selected\s+)?Archetype\b[^\n:]{0,30}:\s*\**\s*([A-F])[.):\s]", seg, re.I)
+    for m in re.finditer(r"\bArchetype\b[^\n:]{0,40}:([^\n]*)", seg, re.I):
+        r = _arch_value(re.sub(r"[*_`]", " ", m.group(1)))
+        if r:
+            return r
+    for ln in seg.splitlines():
+        low = ln.lower()
+        if "triage" in low or "reject" in low:
+            continue
+        if re.search(r"\bArchetype\b[^\n:]{0,40}:", ln, re.I):
+            continue  # T1-shaped: already tried above
+        cl = re.sub(r"[*_`]", " ", ln)
+        cl = re.sub(r"^[\s\-•■#>\d.()\[\]]*", "", cl)
+        cl = re.sub(r"^\[?actual\]?\s*", "", cl, flags=re.I).strip()
+        r = _arch_letter_form(cl)
+        if r:
+            return r
+        m = re.match(r"([A-Za-z /-]{3,40})\(\s*Archetype\s+([A-F])\s*\)", cl)
+        if m:
+            for L, pat in _ARCH_NAME_PATS:
+                if re.search(pat, m.group(1), re.I):
+                    return L
+            return m.group(2)
+        m = re.match(r"(?:(?:first[\s-]principles\s+)?classification|selected|selection|verdict)"
+                     r"\s*[:—-]\s*(.{0,90})", cl, re.I)
+        if m:
+            r = _arch_value(m.group(1))
+            if r:
+                return r
+    m = re.search(r"Probability of (?:a |an )?([^\n]{0,60}?)\s*(?:archetype\s*)?surviving", seg, re.I)
     if m:
-        return m.group(1).upper()
-    # Fall back to the name, but only on the declaration LINE itself.
-    m = re.search(r"^.*\bArchetype\b\s*\**\s*:.*$", seg, re.I | re.M)
-    line = m.group(0).lower() if m else ""
-    for letter, name in (("A", "stable incumbent"), ("B", "quality compounder"),
-                         ("D", "product-platform"), ("E", "option-led"),
-                         ("F", "regulatory"), ("C", "cyclical")):
-        if name in line:
-            return letter
+        for L, pat in _ARCH_NAME_PATS:
+            if re.search(pat, m.group(1), re.I):
+                return L
     return None
 
 
@@ -1185,6 +1263,7 @@ def main():
                           f"{bb2['expectations_gap_pts']}pts). base_cf UNCHANGED.", flush=True)
                     (out_dir / "routing.json").write_text(json.dumps({
                         "archetype": arch, "disclosed": True, "base_cf_changed": False,
+                        "in_use": "latest_fy",
                         "latest_fy": {"kind": bb["base_cf_kind"], "base_cf": bb["base_cf"],
                                       "implied_growth": bb["implied_growth"],
                                       "gap_pts": bb["expectations_gap_pts"]},
@@ -1212,6 +1291,52 @@ def main():
                              "it. Decide which from the business evidence and SAY WHICH YOU USED. "
                              "The engine scores the single-year figure; argue explicitly if you "
                              "think that overstates or understates the gap.")
+            elif arch and bb.get("ok") and str(bb.get("base_cf_kind", "")).startswith("midcycle"):
+                # MIRROR disclosure for names the SECTOR RULE already averaged. Measured
+                # 2026-08-07: 42 live names carry a midcycle base, and for 55% of them the
+                # latest-FY figure is >1.5x the average (HWM $1.8B run-rate vs $0.63B average,
+                # POWL 3.15x) — a secular grower's average is dragged down by a much smaller
+                # past, and the model never saw the single-year basis to argue it. Fires for ANY
+                # parsed archetype: the averaging was imposed by sector, not by the model's
+                # letter, so the model must see both bases regardless of what it classified.
+                bb3 = valuation_backbone.backbone(t, force_latest=True)
+                shown = bb3.get("ok") and bb3.get("base_cf_kind") in _LATEST_FY_KINDS
+                if not shown:
+                    (out_dir / "routing.json").write_text(json.dumps({
+                        "archetype": arch, "disclosed": False, "reason": "no_latest_fy_base",
+                        "base_cf_kind": bb.get("base_cf_kind")}, indent=2), encoding="utf-8")
+                if shown:
+                    print(f"   [routing] mid-cycle base in use — DISCLOSING both bases: mid-cycle "
+                          f"${bb['base_cf']/1e9:.2f}B (gap {bb['expectations_gap_pts']}pts) vs "
+                          f"latest-FY ${bb3['base_cf']/1e9:.2f}B (gap "
+                          f"{bb3['expectations_gap_pts']}pts). base_cf UNCHANGED.", flush=True)
+                    (out_dir / "routing.json").write_text(json.dumps({
+                        "archetype": arch, "disclosed": True, "base_cf_changed": False,
+                        "in_use": "midcycle",
+                        "latest_fy": {"kind": bb3["base_cf_kind"], "base_cf": bb3["base_cf"],
+                                      "implied_growth": bb3["implied_growth"],
+                                      "gap_pts": bb3["expectations_gap_pts"]},
+                        "midcycle": {"kind": bb["base_cf_kind"], "base_cf": bb["base_cf"],
+                                     "implied_growth": bb["implied_growth"],
+                                     "gap_pts": bb["expectations_gap_pts"]}}, indent=2),
+                        encoding="utf-8")
+                    extra = ("\n\n## CYCLICALITY CHECK (mid-cycle base in use)\n"
+                             f"- The VALUATION block's base cash flow is a MID-CYCLE AVERAGE: "
+                             f"${bb['base_cf']/1e9:.2f}B, implying "
+                             f"{bb['implied_growth']*100:.1f}%/yr growth, gap "
+                             f"{bb['expectations_gap_pts']:+.0f}pts.\n"
+                             f"- On the LATEST fiscal year ({bb3['fiscal_year']}) alone it would "
+                             f"be ${bb3['base_cf']/1e9:.2f}B, implying "
+                             f"{bb3['implied_growth']*100:.1f}%/yr, gap "
+                             f"{bb3['expectations_gap_pts']:+.0f}pts.\n"
+                             "- Neither is automatically right. If the business has grown "
+                             "SECULARLY (the average is dragged down by a much smaller past), "
+                             "the latest year is the fairer read and the mid-cycle number "
+                             "understates earning power. If the latest year is a cycle PEAK, "
+                             "the average is the fairer read. Decide which from the business "
+                             "evidence and SAY WHICH YOU USED. The engine scores the mid-cycle "
+                             "figure; argue explicitly if you think that overstates or "
+                             "understates the gap.")
             elif arch:
                 # telemetry only — lets the archetype/route agreement be measured over time.
                 # Same "disclosed" key as the branch above so the field is uniform across runs.

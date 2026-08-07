@@ -469,12 +469,22 @@ def run_one(t, exit_review=False, timeout_sec=0):
         return False
 
 
-def apply_ticker_override(queue, drops, args, state, cur):
+def apply_ticker_override(queue, drops, args, state, cur, ran_ok=frozenset()):
     """--tickers: run an explicit list INSTEAD of the cadence queue (pilot / stratified
     validation). The cadence decides WHEN a name is due; a validation pass decides WHICH
     paths get proven. Names must be tracked (state or current bands) so run_one can update
     their rows. Applied in BOTH the dry-run preview and the real path — the first version
-    lived only in the real path and the dry run silently showed the wrong queue."""
+    lived only in the real path and the dry run silently showed the wrong queue.
+
+    ran_ok: names RESOLVED this sweep — succeeded, or failed enough times to exhaust the
+    same MAX_RETRIES budget the cadence path honors (counted per-sweep in the main loop, NOT
+    from the state row: state retries persist across sweeps, and an explicitly listed name
+    must always get its first attempt even if it exhausted retries in a previous sweep). The
+    cadence queue self-drains (a fresh run stops being due); the override list does not, so
+    without this subtraction the per-boundary rebuild re-serves the same first name forever
+    (2026-08-08: MU ran 8x while UVE/ARWR starved, stopped only by the PAUSED brake). A
+    failed name below the budget stays queued so the transient-death retry still works (DGII
+    precedent)."""
     if not args.tickers:
         return queue, drops
     wanted = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
@@ -483,8 +493,8 @@ def apply_ticker_override(queue, drops, args, state, cur):
     if unknown:
         log(f"--tickers: {len(unknown)} name(s) not tracked in state/bands and skipped: "
             f"{', '.join(unknown)}")
-    q = [t for t in wanted if t in known]
-    log(f"--tickers override: queue={len(q)} ({', '.join(q)})")
+    q = [t for t in wanted if t in known and t not in ran_ok]
+    log(f"--tickers override: queue={len(q)} ({', '.join(q) if q else 'all resolved'})")
     return q, []
 
 
@@ -644,6 +654,8 @@ def main():
         run_start = time.time()
         last_pull = time.time()          # we pulled just above (unless --no-pull)
         reviewed_drops = set()           # RN names already given a one-shot exit review this run
+        ran_ok = set()                   # --tickers: names resolved this sweep (see apply_ticker_override)
+        sweep_fails = {}                 # --tickers: per-sweep failure counts toward MAX_RETRIES
         # ROLLING QUEUE: re-derive priority before EVERY ticker. A new research_now entrant (or a
         # promoted WL name) that appears mid-run jumps ahead of the Watchlist grind at the next
         # ticker boundary (~15-20 min), then WL resumes automatically — same queue, remaining WL
@@ -669,7 +681,7 @@ def main():
             # loop then ran STX from a 56-name cadence queue, because this per-boundary rebuild
             # replaced the overridden queue one minute in. A validation run that silently widens
             # from 3 names to 56 is a ~7-hour unplanned sweep.
-            queue, drops = apply_ticker_override(queue, drops, args, state, cur)
+            queue, drops = apply_ticker_override(queue, drops, args, state, cur, ran_ok=ran_ok)
             # RN names that fell OUT of the list -> one final EXIT review (you may hold them), then
             # retire. WL drops (bench) -> straight to inactive, no review.
             pending_exit = [t for t in drops if args.review_rn_drops
@@ -758,9 +770,16 @@ def main():
             if is_exit and succeeded:
                 reviewed_drops.add(t)
             done += 1
+            if succeeded:
+                ran_ok.add(t)            # --tickers: resolved, do not re-serve this sweep
             if not (ok and v):
                 failed += 1
                 log(f"   {t} FAILED (continuing)")
+                sweep_fails[t] = sweep_fails.get(t, 0) + 1
+                if args.tickers and sweep_fails[t] >= MAX_RETRIES:
+                    ran_ok.add(t)        # retries exhausted THIS sweep — resolve it, loudly
+                    log(f"   {t}: {sweep_fails[t]} failure(s) this sweep — retry budget "
+                        f"exhausted, removed from the --tickers queue")
             time.sleep(15)
         save(PROGRESS, {"updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "current": None,
                         "idx": done, "queue_total": done, "done_this_run": done,

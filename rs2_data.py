@@ -228,6 +228,14 @@ def valuation_block(ticker):
              f"({str(b['base_cf_kind']).replace('_',' ')}, FY{b['fiscal_year']}); "
              f"sector discount rate {b['wacc_pct']}% (a cost-of-equity proxy: base_cf is net of "
              f"interest, i.e. a LEVERED flow, so the rate discounts EQUITY cash flows).")
+    _rb = b.get("revenue_break")
+    if _rb:
+        L.append(f"- CAUTION [Actual]: revenue shows a persistent level shift in FY{_rb['year']} "
+                 f"(x{_rb['ratio']} step vs the prior year) — an acquisition/divestiture, a "
+                 f"reporting-basis restatement, or a cycle extreme. The margin/averaging history "
+                 f"behind the base cash flow spans BOTH sides of that shift, so it may blend two "
+                 f"different business perimeters. Judge from the research brief which side "
+                 f"represents the CURRENT business, and weigh the base cash flow accordingly.")
     L.append(f"- The CURRENT price IMPLIES ~{b['implied_growth']*100:.1f}%/yr cash-flow growth for 5yr "
              f"(then fading to {b['terminal_growth']*100:.1f}%). This is what you must BELIEVE to pay today's price.")
     _reit = b.get("base_cf_kind") == "ffo_reit"
