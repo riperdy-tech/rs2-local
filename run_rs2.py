@@ -429,6 +429,13 @@ def _extract_final(final_text):
         action = action[:90].strip() or None
     conv = f(r"Conviction[^\n0-9]*([0-9.]+)\s*/\s*15")
     conv_val = float(conv) if conv else None
+    if conv_val is None:
+        # The number is not always on the "Conviction" line. The first unanchored-baseline pilot
+        # (ABNB, 2026-08-07) wrote "**Step 12-2. Conviction**\n* **Score:** High (12/15)" — value
+        # on the NEXT line, labelled "Score" — and conviction published as None. The "/15" scale
+        # marker itself is the unambiguous anchor: within SECTION 12 the only X/15 IS conviction.
+        conv = f(r"\b([0-9]{1,2}(?:\.[0-9])?)\s*/\s*15\b")
+        conv_val = float(conv) if conv else None
     if conv_val is None:                       # the model sometimes writes conviction as words, not X/15
         cw = (f(r"Conviction[:\s*]*\*{0,2}([A-Za-z][A-Za-z/ \-]{2,18})") or "").lower()
         for key, val in (("very high", 13), ("medium/high", 11), ("medium-high", 11), ("high", 12),
@@ -443,6 +450,12 @@ def _extract_final(final_text):
     # the model's intent, and _dont_chase_brake applies min() caps downstream anyway.
     mw = re.search(r"Weight\s*%?[:\s*]*\*{0,2}([0-9.]+)\s*"
                    r"(?:(?:[-–—]|to)\s*([0-9.]+)\s*)?%", seg, re.I)
+    if not mw:
+        # Same next-line-label failure as conviction: "Step 12-3. Weight %" followed by
+        # "* **Target Allocation:** 6% ..." — the number is within a short window after the
+        # Weight heading but not on its line. 140 chars bounds the search to that step block.
+        mw = re.search(r"Weight[\s\S]{0,140}?([0-9.]+)\s*"
+                       r"(?:(?:[-–—]|to)\s*([0-9.]+)\s*)?%", seg, re.I)
     weight = None
     if mw:
         lo = float(mw.group(1))
