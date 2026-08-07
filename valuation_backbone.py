@@ -32,6 +32,28 @@ SD = Path(CONFIG["screener_data_dir"])
 HERE = Path(__file__).resolve().parent
 
 FWD_GROWTH_CEIL = 0.20     # forward-growth cap for the fair-value DCF (no blind hyper-extrapolation)
+
+# STABILITY FENCE (2026-08-07). The fair value used to be fenced against the ANALYST BAND: if the
+# DCF landed outside it, snap to the consensus median. Measured across 241 live covered names,
+# that fired for 87% -- 67% snapped UPWARD, because the engine's own DCF says the median name is
+# worth 0.57x the analyst target. So the published "fair value" was the analyst number for
+# essentially the whole book, MoS collapsed to a median of +2.5% (fair value IS the target, minus
+# one year of discounting), and the <15% ENTRY DISCIPLINE / DOCK rules then fired on 80% of names.
+# That is the homogenization: 76% of verdicts landed at conviction 7-9 and 67% shared one action.
+#
+# The fence was originally added for a REAL problem -- trailing-CAGR extrapolation blew up 2-12x on
+# post-IPO / hyper-ramp names (HRMY +1143% MoS). But forward-anchoring and FWD_GROWTH_CEIL landed in
+# the same change and appear to have done the actual work: measured today, the median name's MoS
+# moves only 5.9pts per 1pt of growth input (p90 14.3pts), and the pathology is concentrated in ~13
+# names. Fencing all 247 to control 13 destroyed the signal.
+#
+# So fence on INSTABILITY, measured from our own numbers, instead of on disagreement with analysts:
+# perturb the growth input +/-1pt and see how far the answer moves. A model whose output swings
+# wildly on a 1pt input change is not producing a usable value for that name -- which is a
+# defensible reason to distrust it, unlike "analysts disagree". Verified to catch HRMY, the original
+# bug report, plus BWMX (+9653% MoS), FMX (+2811%), CALM (+833%).
+MOS_SENSITIVITY_MAX = 20.0   # pts of MoS per +/-1pt of growth input
+MOS_EXTREME_MAX = 1.00       # |MoS| above 100% is not a valuation, it is a malfunction
 STALE_TARGET_DAYS = 45     # analyst-target band older than this is flagged low-confidence
 
 
@@ -555,6 +577,56 @@ def _financial_backbone(t, ydata, price, mcap, shares, coe=FIN_COE, pb_kind="fin
     }
 
 
+# ── Cross-sectional MoS calibration ────────────────────────────────────────────────────────
+# "Cheap" only means anything RELATIVE TO THE BOOK. The old rules used an absolute cut (MoS < 15%
+# -> ENTRY DISCIPLINE + conviction DOCK), which fired on 80% of names -- not because 80% of the
+# book was expensive, but because the absolute threshold sat above wherever the distribution
+# happened to live. And where it lives is set by the sector WACC, which is a JUDGEMENT: measured,
+# a 2pt lower WACC moves the median MoS from -38.9% to -13.5%, and 3pts moves it to +6.3%. An
+# absolute threshold on a distribution whose level is an assumption is not a valuation rule.
+# Percentile cuts are invariant to that choice, which is the point.
+MOS_DIST_CACHE = HERE / "cache" / "mos_distribution.json"
+MOS_DIST_MAX_AGE_DAYS = 3
+MOS_CHEAP_PCTL = 33          # bottom third by MoS = the expensive end -> do-not-chase
+
+
+def mos_cut(pctl=MOS_CHEAP_PCTL):
+    """MoS value at the given percentile of the analysed book, or None if not calibrated.
+
+    None is a MEANINGFUL answer, not an error: callers must fall back to stating the raw number
+    without a cheap/expensive judgement rather than silently reverting to an absolute cut that
+    this whole change exists to remove.
+    """
+    d = rs2_data.load_json(MOS_DIST_CACHE) or {}
+    ts = _iso_age_days(d.get("built_at"))
+    if ts is None or ts > MOS_DIST_MAX_AGE_DAYS:
+        return None
+    return (d.get("percentiles") or {}).get(str(pctl))
+
+
+def build_mos_distribution(tickers):
+    """Recompute the cross-sectional MoS percentiles and cache them. Returns the dict written."""
+    vals = []
+    for t in tickers:
+        try:
+            b = backbone(t)
+        except Exception:
+            continue
+        m = b.get("realistic_mos_pct")
+        if isinstance(m, (int, float)):
+            vals.append(float(m))
+    if len(vals) < 30:                      # too thin to calibrate a percentile on
+        return None
+    vals.sort()
+    from datetime import datetime, timezone
+    out = {"built_at": datetime.now(timezone.utc).isoformat(), "n": len(vals),
+           "percentiles": {str(p): round(vals[min(len(vals) - 1, int(len(vals) * p / 100))], 1)
+                           for p in (10, 25, 33, 50, 67, 75, 90)}}
+    MOS_DIST_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    MOS_DIST_CACHE.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    return out
+
+
 def backbone(ticker, force_midcycle=False):
     t = ticker.upper()
     fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
@@ -648,14 +720,28 @@ def backbone(ticker, force_midcycle=False):
     band = _consensus_band(t)
     g_drive = g_fwd if g_fwd is not None else rev_cagr
     src = g_src if g_fwd is not None else ("trailing" if rev_cagr is not None else None)
-    fair_value = mos_pct = None
+    fair_value = mos_pct = fv_sensitivity_pts = None
     fv_method = "blank"
     if g_drive is not None and price:
         g_fair = max(-0.20, min(g_drive, FWD_GROWTH_CEIL))
         fair_mcap = ve.dcf_value(base_cf, g_fair, wacc, TERMINAL_G, stage1_years=STAGE1, fade_years=FADE)
         if fair_mcap and fair_mcap > 0:
             raw = price * fair_mcap / mcap
-            if band:
+            # STABILITY SELF-TEST: how far does the answer move on +/-1pt of growth input?
+            def _fv(gg):
+                fm = ve.dcf_value(base_cf, max(-0.20, min(gg, FWD_GROWTH_CEIL)), wacc,
+                                  TERMINAL_G, stage1_years=STAGE1, fade_years=FADE)
+                return (price * fm / mcap) if (fm and fm > 0) else None
+            _up, _dn = _fv(g_drive + 0.01), _fv(g_drive - 0.01)
+            sens = (abs(_up - _dn) / price * 100.0) if (_up and _dn and price) else None
+            unstable = ((sens is not None and sens > MOS_SENSITIVITY_MAX)
+                        or abs(raw / price - 1.0) > MOS_EXTREME_MAX)
+            fv_sensitivity_pts = round(sens, 1) if sens is not None else None
+            if not unstable:
+                # STABLE -> publish OUR value. This is the number the engine actually computed.
+                fair_value = round(raw, 2)
+                fv_method = "forward_dcf" if src != "trailing" else "trailing_dcf"
+            elif band:
                 # De-forward the analyst band to PRESENT value: consensus targets are 12-month PRICE
                 # TARGETS (~13% above spot = one year of expected return), while our reverse-DCF `raw`
                 # is already a present intrinsic value. Discount the target by one year of the sector
@@ -693,6 +779,8 @@ def backbone(ticker, force_midcycle=False):
         "hist_fcf_cagr_5y": round(fcf_cagr, 4) if fcf_cagr is not None else None,
         "expectations_gap_pts": round(gap_pts, 1) if gap_pts is not None else None,
         "fair_value": fair_value, "mos_pct": mos_pct, "realistic_mos_pct": mos_pct,
+        # how many pts of MoS move per +/-1pt of growth input — the stability fence input
+        "fv_sensitivity_pts": fv_sensitivity_pts,
         "fair_value_method": fv_method, "forward_growth": round(g_fwd, 4) if g_fwd is not None else None,
         "forward_growth_src": g_src,
         "consensus_low": band["low"] if band else None,
@@ -709,6 +797,21 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
+    if "--build-mos-dist" in sys.argv:
+        # Recalibrate the cross-sectional MoS percentiles. MUST be run periodically (the cache
+        # expires after MOS_DIST_MAX_AGE_DAYS) or mos_cut() returns None and the ENTRY DISCIPLINE
+        # line degrades to "no ranking available" — loud by design, never a silent absolute cut.
+        rep = Path(CONFIG["out_reports_dir"])
+        universe = sorted({d.name.rsplit("_", 2)[0] for d in rep.glob("*_*") if d.is_dir()})
+        out = build_mos_distribution(universe)
+        if not out:
+            print("mos distribution: too few valued names to calibrate (need >=30)")
+            sys.exit(1)
+        print(f"mos distribution rebuilt from {out['n']} names -> {MOS_DIST_CACHE}")
+        for k, v in out["percentiles"].items():
+            print(f"   p{k:>2s}  {v:+7.1f}%")
+        sys.exit(0)
+
     for tk in (sys.argv[1:] or ["NVDA"]):
         b = backbone(tk)
         if b.get("method") == "financial_pb_roe":

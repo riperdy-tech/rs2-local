@@ -91,6 +91,40 @@ def sector_lookup(ticker):
 CYCLICAL_SECTORS = ("energy", "materials", "industrials", "utilities")
 
 
+def _entry_discipline(rmos):
+    """ENTRY DISCIPLINE line for a given realistic MoS, keyed on the CROSS-SECTION.
+
+    The old rule was absolute (MoS < 15%) and fired on 80% of the book -- so the prompt instructed
+    "even a superb franchise here is a HOLD / stage-in" for four names in five, and the model
+    complied: 76% of verdicts landed at conviction 7-9, 67% shared one action phrase. That is not
+    a valuation finding, it is a constant.
+
+    It fired that often because the cut was absolute while the DISTRIBUTION's level is set by the
+    sector WACC, which is a judgement (a 2pt lower WACC moves median MoS from -38.9% to -13.5%).
+    A percentile cut is invariant to that: "expensive" now means expensive RELATIVE TO THE BOOK,
+    which is the only sense in which a ranking engine can mean it.
+
+    Returns None when the calibration is missing or stale -- the honest answer is then to state the
+    number and let the analyst judge, NOT to silently fall back to the absolute cut.
+    """
+    import valuation_backbone as vb
+    if rmos is None:
+        return None
+    cut = vb.mos_cut()
+    if cut is None:
+        return ("- ENTRY DISCIPLINE: cross-sectional MoS calibration is stale or missing, so no "
+                "cheap/expensive ranking is available. Judge the margin of safety on its own terms "
+                "and say so explicitly.")
+    if rmos < cut:
+        return (f"- ENTRY DISCIPLINE: this MoS ({rmos:+.0f}%) is in the EXPENSIVE THIRD of the "
+                f"analysed book (cut {cut:+.0f}%). Poor entry edge relative to the alternatives — a "
+                f"DO-NOT-CHASE. Even a superb franchise here is a HOLD / stage-in on weakness, not a "
+                f"fresh full BUY; conviction's valuation component must reflect that.")
+    return (f"- ENTRY EDGE: this MoS ({rmos:+.0f}%) is BETTER than the expensive third of the book "
+            f"(cut {cut:+.0f}%). Judge the entry on the business evidence; do NOT reflexively "
+            f"discount conviction for valuation alone.")
+
+
 def valuation_block(ticker):
     """PRIMARY valuation context (inverted architecture) — the deterministic reverse-DCF
     BACKBONE (expectations investing). Replaces the old forward-DCF priming + analyst-consensus
@@ -180,9 +214,9 @@ def valuation_block(ticker):
             if b.get("consensus_stale"):
                 line += " [targets may be stale — lower confidence]"
             L.append(line)
-            if rmos is not None and rmos < 15:
-                L.append("- ENTRY DISCIPLINE: thin/negative margin of safety at/near the analyst target — even a "
-                         "superb franchise here is a HOLD / stage-in on weakness, not a fresh full BUY.")
+            _ed = _entry_discipline(rmos)
+            if _ed:
+                L.append(_ed)
         L.append("- YOUR JOB (Layer 3): judge whether that implied ROE is SUSTAINABLE given the moat, balance-sheet "
                  "risk (credit/rate cycle), capital return and the research brief — NOT to recompute. A big positive "
                  "ROE gap the franchise can't sustain => overvalued; a negative gap with a durable franchise => "
@@ -230,10 +264,9 @@ def valuation_block(ticker):
         if b.get("consensus_stale"):
             line += " [targets may be stale — lower confidence]"
         L.append(line)
-        if rmos is not None and rmos < 15:
-            L.append("- ENTRY DISCIPLINE: thin/negative margin of safety at/near the analyst target — this is "
-                     "a DO-NOT-CHASE. Even a superb franchise here is a HOLD / stage-in on weakness, not a fresh "
-                     "full BUY; conviction's valuation component must reflect the lack of entry edge.")
+        _ed = _entry_discipline(rmos)
+        if _ed:
+            L.append(_ed)
     L.append("- YOUR JOB (Layer 3): judge whether that price-implied growth is ACHIEVABLE given the moat, research "
              "brief, end-market TAM, reinvestment runway AND any embedded OPTIONALITY (a scarce asset or secular "
              "tailwind — e.g. AI-power demand, a platform call-option — can justify a gap that trailing growth alone "
