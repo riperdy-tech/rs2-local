@@ -199,6 +199,21 @@ SOCIAL_DOMAINS = ("youtube.", "facebook.", "instagram.", "tiktok.", "pinterest."
 SOCIAL_SHARE_REJECT = 0.5
 
 
+# LOW-TRUST sources: topically correct, so no relevance check catches them, but they are
+# synthetic or laundered content rather than research. Measured across 8,835 citations: 12.5%
+# came from these, against 34.4% from reputable finance sources.
+#   support.trustwave.com — a SECURITY VENDOR's support portal serving templated stock-earnings
+#     articles under /expert-time/ (ARGX, AVGO, GOOGL...). A hijacked or abused subdomain running
+#     SEO spam; it appeared in 100 briefs.
+#   the rest are AI-generated finance content farms.
+# Not blocked outright: a single such citation alongside real sources is noise, not poison. They
+# are rejected only when they DOMINATE a topic, which means the real sources never surfaced.
+LOW_TRUST_DOMAINS = ("support.trustwave.com", "pitchgrade.com", "ainvest.com", "koalagains.com",
+                     "geminibrief.com", "artificall.com", "stocksentinel.ai",
+                     "pestel-analysis.com")
+LOW_TRUST_SHARE_REJECT = 0.4
+
+
 def _domain_share(urls, pats):
     """Fraction of sources whose domain matches any pattern. Never raises."""
     if not urls:
@@ -215,14 +230,36 @@ def _domain_share(urls, pats):
 
 
 def source_verdict(urls):
-    """(reject_reason or None, dict_share, social_share) for one topic's sources."""
+    """(reject_reason or None, dict_share, social_share, low_trust_share) for one topic."""
     ds = _domain_share(urls, DICT_DOMAINS)
     ss = _domain_share(urls, SOCIAL_DOMAINS)
+    ls = _domain_share(urls, LOW_TRUST_DOMAINS)
     if ds >= DICT_SHARE_REJECT:
-        return f"{ds*100:.0f}% DICTIONARY sources — the ticker matched an English word, not the company", ds, ss
+        return (f"{ds*100:.0f}% DICTIONARY sources — the ticker matched an English word, "
+                f"not the company"), ds, ss, ls
     if ss >= SOCIAL_SHARE_REJECT:
-        return f"{ss*100:.0f}% social-media sources — not research", ds, ss
-    return None, ds, ss
+        return f"{ss*100:.0f}% social-media sources — not research", ds, ss, ls
+    return None, ds, ss, ls
+
+
+def drop_low_trust(urls):
+    """Remove synthetic / laundered sources, keeping the rest. Returns (kept, dropped).
+
+    These are topically CORRECT, so no relevance check fires — but they are AI content farms and
+    one hijacked subdomain, and they account for 12.5% of all citations on disk. Rejecting the
+    topic outright would have been far worse than the disease: 74 of ~600 topics exceed 40%, and
+    ONE failed topic voids the whole brief, so ~60 tickers would fail forever while the farms
+    resurfaced on every retry. Strip them instead. If real sources remain the brief is fine; if
+    NOTHING remains, the existing zero-source guard voids it, which is the correct outcome.
+    """
+    kept, dropped = [], []
+    for u in urls:
+        try:
+            d = urllib.parse.urlparse(u).netloc.lower().replace("www.", "")
+        except Exception:
+            kept.append(u); continue
+        (dropped if any(p in d for p in LOW_TRUST_DOMAINS) else kept).append(u)
+    return kept, dropped
 
 
 def extract_urls(res):
@@ -362,6 +399,12 @@ def build(ticker, name):
         # ZERO-SOURCE GUARD: uncited prose is not research. Treat it exactly like an infra
         # failure so the brief is never written and the ticker retries for real, instead of
         # caching a hallucination for research_cache_days and failing sanity on every retry.
+        urls, dropped = drop_low_trust(urls)
+        if dropped:
+            print(f"[deep_research] {t} '{title}' dropped {len(dropped)} low-trust source(s) "
+                  f"({', '.join(sorted({urllib.parse.urlparse(u).netloc.replace('www.','') for u in dropped}))[:70]})",
+                  flush=True)
+
         if not urls:
             failures.append((title, f"zero sources — {len(summ)}B of uncited prose "
                                     f"(model recall, not research): {summ[:160]}"))
@@ -374,7 +417,7 @@ def build(ticker, name):
         # passed every existing check because each of those is a real URL. Reject a topic grounded
         # mostly in domains that cannot be equity research, and treat it exactly like zero
         # sources — void the brief rather than cache confident nonsense.
-        reason, dshare, sshare = source_verdict(urls)
+        reason, dshare, sshare, lshare = source_verdict(urls)
         if reason:
             doms = ", ".join(sorted({urllib.parse.urlparse(u).netloc.replace("www.", "")
                                      for u in urls})[:6])
@@ -382,9 +425,9 @@ def build(ticker, name):
             print(f"[deep_research] {t} '{title}' ::IRRELEVANT SOURCES:: {reason} "
                   f"({doms}) — discarded", flush=True)
             continue
-        if dshare or sshare:
+        if dshare or sshare or lshare:
             print(f"[deep_research] {t} '{title}' note: sources {dshare*100:.0f}% dictionary, "
-                  f"{sshare*100:.0f}% social", flush=True)
+                  f"{sshare*100:.0f}% social, {lshare*100:.0f}% low-trust", flush=True)
 
         L.append(f"## {title}  _(engine: {tool}, {time.time()-t0:.0f}s)_")
         L.append(summ if summ else "_(no summary returned)_")
