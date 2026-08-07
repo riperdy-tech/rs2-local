@@ -124,6 +124,11 @@ G_LO, G_HI = -0.50, 1.50          # implied-growth solver bounds (wide; diagnost
 
 # Mirror of scripts/reverse_config.json sector_wacc (percent). Kept here because the screener's
 # scripts/ are git-tracked but not checked out locally. Resync if the screener table changes.
+# NAMING: these are labelled WACC for historical continuity with the screener, but in THIS engine's
+# equity framing they function as a COST-OF-EQUITY proxy — base_cf = NI + D&A - capex is net of
+# interest (a levered flow), discounted and compared against MARKET CAP. Pairing that flow with a
+# true firm-level WACC and enterprise value was tried (2026-08-07), proven to double-count the
+# debt claim, and reverted; see CLAUDE.md "Standard of Proof".
 SECTOR_WACC = {
     "Technology": 11, "Healthcare": 10, "Consumer Discretionary": 10, "Consumer Staples": 8,
     "Industrials": 9, "Financials": 10, "Energy": 11, "Materials": 10, "Utilities": 7,

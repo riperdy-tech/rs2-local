@@ -101,6 +101,35 @@ def audit_series_breaks(tickers, hist):
     return out
 
 
+def audit_financials_feed(tickers):
+    """Integrity of financials/{T}.json and price_history.json — the OTHER feeds.
+
+    Only PROVABLE signatures, measured 2026-08-07 across 258-260 live names before gating:
+      * Market_Cap vs Price x Shares_Outstanding is an exact identity on this feed (measured max
+        deviation 0.0%), so >2% is corruption, not noise.
+      * financials Price vs the last monthly price_history close varies legitimately by timing
+        (median 1.9%, max 37% — real moves since the monthly snapshot), so magnitude is NOT
+        gated; only a ~power-of-1000 ratio (units error) is.
+    """
+    ph = rs2_data.load_json(SD / "price_history.json") or {}
+    prices = ph.get("prices") or {}
+    out = []
+    for t in tickers:
+        fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
+        p_, so, mc = fin.get("Price"), fin.get("Shares_Outstanding"), fin.get("Market_Cap")
+        if p_ and so and mc and p_ > 0 and so > 0 and mc > 0:
+            dev = abs(mc / (p_ * so) - 1)
+            if dev > 0.02:
+                out.append({"ticker": t, "check": "mcap_identity", "market_cap": mc,
+                            "price_x_shares": p_ * so, "deviation_pct": round(dev * 100, 1)})
+        s_ = prices.get(t)
+        if p_ and isinstance(s_, list) and s_ and isinstance(s_[-1], (int, float)) and s_[-1] > 0:
+            if _pow1000(p_, s_[-1]):
+                out.append({"ticker": t, "check": "price_scale", "financials_price": p_,
+                            "price_history_last": s_[-1]})
+    return out
+
+
 def audit_values_in_use(tickers, hist):
     """The components actually feeding each live base_cf — is the year we USE self-consistent?"""
     out = []
@@ -147,9 +176,10 @@ def main():
     shares = audit_shares(tickers, hist)
     breaks = audit_series_breaks(tickers, hist)
     in_use = audit_values_in_use(tickers, hist)
+    feeds = audit_financials_feed(tickers)
     report = {"scope": "all" if a.all else "live", "n_tickers": len(tickers),
               "shares_cross_source": shares, "series_scale_breaks": breaks,
-              "corrupt_values_in_use": in_use}
+              "corrupt_values_in_use": in_use, "financials_feed": feeds}
 
     if a.json:
         print(json.dumps(report, indent=2, default=str))
@@ -163,6 +193,9 @@ def main():
         print(f"  year-over-year ~1000x scale breaks                 : {len(breaks)}"
               f"  ({len({r['ticker'] for r in breaks})} tickers)")
         print(f"  CORRUPT VALUES ACTUALLY FEEDING A LIVE base_cf     : {len(in_use)}   <== the one that matters")
+        print(f"  financials/price feed integrity breaches           : {len(feeds)}")
+        for r in feeds[:6]:
+            print(f"     {r['ticker']:6s} {r['check']}: {r}")
         for r in in_use[:10]:
             print(f"     {r['ticker']:6s} FY{r['fiscal_year']} {r['field']:12s} "
                   f"value {r['value']:>18,.0f}  series median {r['series_median']:>16,.0f}")
@@ -170,7 +203,7 @@ def main():
     # Only corruption reaching a live valuation, or an unresolved cross-source disagreement, is a
     # breach. Historic series breaks are recorded but do not fail the run: the extractor resolves
     # them at source and the ingest guard corrects what it can.
-    problems = len(in_use) + len(shares)
+    problems = len(in_use) + len(shares) + len(feeds)
     if problems:
         msg = (f"[RS2 ops] data_health: {len(in_use)} corrupt value(s) feeding a live valuation, "
                f"{len(shares)} share-count disagreement(s)")

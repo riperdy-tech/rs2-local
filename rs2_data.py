@@ -226,7 +226,8 @@ def valuation_block(ticker):
     dg, fg = b["hist_revenue_cagr_5y"], b["hist_fcf_cagr_5y"]
     L.append(f"- Base cash flow [Actual]: ${b['base_cf']/1e9:.2f}B "
              f"({str(b['base_cf_kind']).replace('_',' ')}, FY{b['fiscal_year']}); "
-             f"sector discount rate (WACC) {b['wacc_pct']}%.")
+             f"sector discount rate {b['wacc_pct']}% (a cost-of-equity proxy: base_cf is net of "
+             f"interest, i.e. a LEVERED flow, so the rate discounts EQUITY cash flows).")
     L.append(f"- The CURRENT price IMPLIES ~{b['implied_growth']*100:.1f}%/yr cash-flow growth for 5yr "
              f"(then fading to {b['terminal_growth']*100:.1f}%). This is what you must BELIEVE to pay today's price.")
     _reit = b.get("base_cf_kind") == "ffo_reit"

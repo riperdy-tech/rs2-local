@@ -142,34 +142,28 @@ D. **Product-Platform Hybrid** — Hardware + Installed base monetization (TSLA,
 E. **Option-Led / High-Beta** — Dominated by future optionality value (PLTR, IONQ, OKLO, SMR, RDW)
 F. **Pure Regulatory / Binary** — Reliant on a single approval event (Pre-approval Biotech)
 
-**Step 0-2. Valuation Engine Selection**
-* Archetypes A, B → **Engine 1** (Traditional DCF + Multiples)
-* Archetype C → **Engine 2** (Cycle-Adjusted Valuation)
-* Archetype D → **Engine 3** (Hybrid: Core + Platform Premium)
-* Archetype E → **Engine 4** (Expectation-Driven Valuation)
-* Archetype F → **Engine 5** (Probability-Weighted Binary)
+**Step 0-2. Valuation Method (determined upstream — you do NOT select an engine)**
+
+The valuation METHOD is chosen by a deterministic backbone before you run, and its numbers are
+fed to you in the VALUATION block. You never pick, blend, or re-derive an engine:
+
+* Most names → reverse-DCF on blended owner earnings (margin-blended toward the causal median)
+* Cyclical sectors (Energy/Materials/Industrials) → mid-cycle owner earnings
+* Equity REITs → FFO and FFO/share
+* Balance-sheet financials & rate-regulated utilities → justified P/B vs ROE
+* Pre-commercial biotech → Engine 5 rNPV (phase base rates; you supply phase + value-if-approved)
+* Other pre-profit → Engine 4 option bridge; profitable reinvestors / financial nulls → Engine 2
 
 **Step 0-3. Archetype Transition Determination (v2.0 New)**
 
-Specify Transition Triggers:
+Specify Transition Triggers (classification signal only — routing stays deterministic):
 
 * Option-Led → Hybrid: Core Revenue > 50%, GM > 30%, FCF+ for 2 consecutive quarters.
 * Hybrid → Quality Compounder: ROIC > WACC for 3 consecutive years, installed base monetization established.
 * Cyclical → Quality: ROIC > WACC for 3 consecutive cycles, margin volatility reduced.
 * Stable → Cyclical: Core market maturity declines, competition intensifies, margin volatility expands.
 
-Processing Transition Companies:
-
-* 50-80% of criteria met: **Blended Engine** (e.g., Engine 4 × 60% + Engine 3 × 40% weighted average)
-* Over 80% met: Apply new Engine.
-* Note the transition period, Conviction -0.5 steps (reflecting uncertainty).
-
-**Step 0-4. Reason for Engine Selection**
-
-* Why this archetype? (Provide 3+ reasons)
-* Why is this engine appropriate?
-* What errors would occur if an alternative engine was used?
-* Is it in transition? (Provide evidence)
+Transition companies: note the transition period and reduce Conviction 0.5 steps (uncertainty).
 
 ════════════════════════════════════════════════════════════════
 ■ LAYER 1. MACRO CONTEXT ANALYSIS
@@ -342,19 +336,17 @@ Correction of GAAP limits. Capitalize R&D, brand, and data assets to calculate r
 
 (Branch based on selected Engine)
 
-**ENGINE 1. Traditional DCF + Multiples (Stable / Quality)**
-* Explicit forecast for 5-10 years; WACC derivation; Terminal Growth ≤ Long-term nominal GDP.
-* Owner Earnings (Buffett) parallel calculation.
-* Multiples: P/E, EV/EBITDA, P/FCF (10-year avg vs Peer median vs PEG).
+**ENGINE 1. Reverse-DCF (computed upstream — judge, don't recompute)**
+The deterministic backbone already computed the price-implied growth and the expectations
+gap. Your Layer-3 job is judging whether that implied growth is ACHIEVABLE.
 
 **ENGINE 2. Cycle-Adjusted Valuation (Cyclical)**
 * Cycle position: Peak / Trough / Mid-cycle earnings estimation.
 * Normalized Valuation: Mid-cycle EPS × Normal multiple; EV/Replacement Cost; P/B vs ROE.
 
-**ENGINE 3. Hybrid Valuation (Product-Platform)**
-* Segment breakdown: Hardware (mfg multiple) vs Platform (recurring multiple).
-* **Platform Feature Score**: Installed base, OTA, recurring monetization, feedback loops, lock-in.
-* **Core Anchor Stack**: Weighting (0.4 EV/Sales + 0.4 EV/GP + 0.2 Peer). Adjustment based on GM%.
+**ENGINE 3. RETIRED** — Product-Platform names run the reverse-DCF; platform optionality is
+judged qualitatively in Layer 3 (achievability of the price-implied growth), never as a
+segment-multiple stack.
 
 **ENGINE 4. Expectation-Driven Valuation (Option-Led)**
 * Damodaran model applied.
@@ -363,8 +355,11 @@ Correction of GAAP limits. Capitalize R&D, brand, and data assets to calculate r
 * **Success Probability Axes**: Tech validation, Demand, Regulatory, Supply chain, Funding.
 * **Reverse DCF**: Back-calculate Revenue/Margin required by current price. Judge as Feasible / Excessive / Unrealistic.
 
-**ENGINE 5. Probability-Weighted Binary (Regulatory)**
-* Success/Failure per-share value scenarios. Expected value calculation. Cash runway focus.
+**ENGINE 5. rNPV — Pre-Commercial Biotech (deterministic scaffold)**
+* IV = net-cash floor + P(approval | phase) × value-if-approved / (1 + dilution-to-approval).
+* P(approval) comes from published phase-transition base rates; the floor and dilution come from
+  the balance sheet. YOU supply only the lead asset's development phase and the per-share value
+  if approved — never a probability.
 
 **3-X. Tornado Sensitivity Chart (v2.0 New)**
 * Impact of ±1σ change in key variables on intrinsic value. Identify Top 3 variables (these become Thesis KPIs).
