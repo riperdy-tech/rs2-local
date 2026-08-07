@@ -202,16 +202,33 @@ SOCIAL_SHARE_REJECT = 0.5
 # LOW-TRUST sources: topically correct, so no relevance check catches them, but they are
 # synthetic or laundered content rather than research. Measured across 8,835 citations: 12.5%
 # came from these, against 34.4% from reputable finance sources.
-#   support.trustwave.com — a SECURITY VENDOR's support portal serving templated stock-earnings
-#     articles under /expert-time/ (ARGX, AVGO, GOOGL...). A hijacked or abused subdomain running
-#     SEO spam; it appeared in 100 briefs.
-#   the rest are AI-generated finance content farms.
-# Not blocked outright: a single such citation alongside real sources is noise, not poison. They
-# are rejected only when they DOMINATE a topic, which means the real sources never surfaced.
+#
+# WHY THIS MATTERS MORE HERE THAN ELSEWHERE: RS2 is itself an AI valuation engine, and the ONLY
+# job of a research brief is to import real-world evidence the model does not already have. A
+# source that is itself model output adds no evidence — it launders one model's opinion into
+# another model's input with the provenance stripped. That is a feedback loop, not research.
+#
+# Every entry below is VERIFIED, not inferred from its name:
+#   support.trustwave.com  a SECURITY VENDOR's support portal serving templated stock-earnings
+#                          articles under /expert-time/ (ARGX, AVGO, GOOGL...) — a hijacked or
+#                          abused subdomain running SEO spam. Appeared in 100 briefs.
+#   koalagains.com         self-describes as "AI-generated investment analysis and scoring" by
+#                          "AI-driven automation"; an automated content-generation platform with
+#                          no human analysts and no disclosed data providers. 151 briefs.
+#   pitchgrade.com, ainvest.com, geminibrief.com, artificall.com, stocksentinel.ai,
+#   pestel-analysis.com    AI-summarised content, not original reporting (confirmed by the
+#                          maintainer, 2026-08-07).
+#
+# ADD NOTHING HERE ON APPEARANCE ALONE. koalagains was originally listed because it merely
+# "looked like" a content farm and co-occurred with ones that were — correct by luck, and it
+# would just as silently have deleted a legitimate publisher from every future brief. Read the
+# site, or confirm with someone who knows the space, before adding a domain.
+#
+# A blocklist is inherently REACTIVE: new AI farms appear constantly and will be cited until
+# someone notices. The per-topic "N% low-trust" log line is the early warning for that.
 LOW_TRUST_DOMAINS = ("support.trustwave.com", "pitchgrade.com", "ainvest.com", "koalagains.com",
                      "geminibrief.com", "artificall.com", "stocksentinel.ai",
                      "pestel-analysis.com")
-LOW_TRUST_SHARE_REJECT = 0.4
 
 
 def _domain_share(urls, pats):
