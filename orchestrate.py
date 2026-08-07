@@ -469,9 +469,32 @@ def run_one(t, exit_review=False, timeout_sec=0):
         return False
 
 
+def apply_ticker_override(queue, drops, args, state, cur):
+    """--tickers: run an explicit list INSTEAD of the cadence queue (pilot / stratified
+    validation). The cadence decides WHEN a name is due; a validation pass decides WHICH
+    paths get proven. Names must be tracked (state or current bands) so run_one can update
+    their rows. Applied in BOTH the dry-run preview and the real path — the first version
+    lived only in the real path and the dry run silently showed the wrong queue."""
+    if not args.tickers:
+        return queue, drops
+    wanted = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+    known = set(state) | set(cur)
+    unknown = [t for t in wanted if t not in known]
+    if unknown:
+        log(f"--tickers: {len(unknown)} name(s) not tracked in state/bands and skipped: "
+            f"{', '.join(unknown)}")
+    q = [t for t in wanted if t in known]
+    log(f"--tickers override: queue={len(q)} ({', '.join(q)})")
+    return q, []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="print the queue, run nothing")
+    ap.add_argument("--tickers", default="",
+                    help="comma-separated tickers to run INSTEAD of the cadence queue (pilot / "
+                         "stratified validation). Names must be tracked in analysis_state or "
+                         "current bands; order is preserved; cadence and due-dates are ignored.")
     ap.add_argument("--unanchored", action="store_true",
                     help="drop the continuity anchor for this sweep — judge every name fresh "
                          "instead of defaulting to its previous call. Use to establish a BASELINE "
@@ -516,6 +539,7 @@ def main():
         cur = bands()
         state = load(STATE, {}) or {}
         queue, drops = build_queue(cur, state, args, llm_research_set())
+        queue, drops = apply_ticker_override(queue, drops, args, state, cur)
         log(f"RN={sum(1 for b in cur.values() if b==RN_BAND)} WL={sum(1 for b in cur.values() if b==WL_BAND)} "
             f"| queue={len(queue)} | drops={len(drops)}"
             + ("   [NOTE: another run holds the lock]" if LOCK.exists() else ""))
@@ -590,6 +614,7 @@ def main():
         else:
             state = {}
         queue, drops = build_queue(cur, state, args, llm_research_set())
+        queue, drops = apply_ticker_override(queue, drops, args, state, cur)
         log(f"RN={sum(1 for b in cur.values() if b==RN_BAND)} WL={sum(1 for b in cur.values() if b==WL_BAND)} "
             f"| queue={len(queue)} | drops={len(drops)}")
 

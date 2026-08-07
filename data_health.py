@@ -130,6 +130,44 @@ def audit_financials_feed(tickers):
     return out
 
 
+def audit_consensus_feed(tickers):
+    """openbb/enrich analyst bands + enrich invariants. Measured 2026-08-07 before gating.
+
+    HARD (provable, all 0 at measurement): band ordering low<=median<=high; non-positive targets;
+    target vs live price at a ~power-of-1000 ratio (units error).
+    SOFT (reported, never gated): float_shares > 1.1x Shares_Outstanding — measured 10 live
+    violations that split into foreign dual-listings where float counts a DIFFERENT share class
+    (ARGX 24.9x, FMX 1.7x, IHG 5.7x — structural, not corruption), one ~10x provider anomaly
+    (KLAC 9.98x) and small staleness overshoots. Mixed population = no single provable signature,
+    and float_shares feeds NOTHING in the valuation path — prose context only.
+    """
+    hard, soft = [], []
+    for t in tickers:
+        fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
+        px, so = fin.get("Price"), fin.get("Shares_Outstanding")
+        for src, d, keys in (("openbb", (rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json") or {}).get("analyst_consensus") or {},
+                              ("target_low", "target_median", "target_high")),
+                             ("enrich", rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {},
+                              ("analyst_target_low", "analyst_target_median", "analyst_target_high"))):
+            lo, med, hi = d.get(keys[0]), d.get(keys[1]), d.get(keys[2])
+            if not lo or not hi:
+                continue
+            if lo <= 0 or hi <= 0:
+                hard.append({"ticker": t, "src": src, "check": "non_positive_target", "low": lo, "high": hi})
+            if med and not (lo <= med <= hi):
+                hard.append({"ticker": t, "src": src, "check": "band_ordering", "low": lo, "median": med, "high": hi})
+            if px and px > 0:
+                for v in (lo, hi):
+                    if _pow1000(v, px):
+                        hard.append({"ticker": t, "src": src, "check": "target_price_scale", "target": v, "price": px})
+        en = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
+        fl = en.get("float_shares")
+        if fl and so and so > 0 and fl > so * 1.10:
+            soft.append({"ticker": t, "check": "float_gt_outstanding", "float": fl, "outstanding": so,
+                         "ratio": round(fl / so, 2)})
+    return hard, soft
+
+
 def audit_values_in_use(tickers, hist):
     """The components actually feeding each live base_cf — is the year we USE self-consistent?"""
     out = []
@@ -177,9 +215,17 @@ def main():
     breaks = audit_series_breaks(tickers, hist)
     in_use = audit_values_in_use(tickers, hist)
     feeds = audit_financials_feed(tickers)
+    cons_hard, cons_soft = audit_consensus_feed(tickers)
+    macro_age = None
+    mp = SD / "macro_state.json"
+    if mp.exists():
+        import time as _t
+        macro_age = round((_t.time() - mp.stat().st_mtime) / 86400, 1)
     report = {"scope": "all" if a.all else "live", "n_tickers": len(tickers),
               "shares_cross_source": shares, "series_scale_breaks": breaks,
-              "corrupt_values_in_use": in_use, "financials_feed": feeds}
+              "corrupt_values_in_use": in_use, "financials_feed": feeds,
+              "consensus_feed": cons_hard, "consensus_feed_warnings": cons_soft,
+              "macro_state_age_days": macro_age}
 
     if a.json:
         print(json.dumps(report, indent=2, default=str))
@@ -196,6 +242,11 @@ def main():
         print(f"  financials/price feed integrity breaches           : {len(feeds)}")
         for r in feeds[:6]:
             print(f"     {r['ticker']:6s} {r['check']}: {r}")
+        print(f"  consensus-band integrity breaches (openbb/enrich)  : {len(cons_hard)}")
+        for r in cons_hard[:6]:
+            print(f"     {r['ticker']:6s} {r['src']} {r['check']}")
+        print(f"  soft warnings (float/dual-listing, not gated)      : {len(cons_soft)}"
+              f"   | macro_state age: {macro_age}d")
         for r in in_use[:10]:
             print(f"     {r['ticker']:6s} FY{r['fiscal_year']} {r['field']:12s} "
                   f"value {r['value']:>18,.0f}  series median {r['series_median']:>16,.0f}")
@@ -203,7 +254,7 @@ def main():
     # Only corruption reaching a live valuation, or an unresolved cross-source disagreement, is a
     # breach. Historic series breaks are recorded but do not fail the run: the extractor resolves
     # them at source and the ingest guard corrects what it can.
-    problems = len(in_use) + len(shares) + len(feeds)
+    problems = len(in_use) + len(shares) + len(feeds) + len(cons_hard)
     if problems:
         msg = (f"[RS2 ops] data_health: {len(in_use)} corrupt value(s) feeding a live valuation, "
                f"{len(shares)} share-count disagreement(s)")
