@@ -368,6 +368,10 @@ COMMERCIAL_REVENUE_FLOOR = 50e6
 # A clinical-stage biotech that runs out of money before approval MUST raise equity, and that
 # dilution is the honest "drag" — not a number the model should invent. Assume it must fund
 # itself to the approval horizon below.
+# Below this much cash, the rNPV dilution term stops being a modelling detail and becomes
+# the whole question — see the going-concern flag in rnpv().
+GOING_CONCERN_RUNWAY_YRS = 0.5
+
 YEARS_TO_APPROVAL = {"preclinical": 8.0, "phase1": 6.0, "phase2": 4.0,
                      "phase3": 2.0, "filed": 1.0, "approved": 0.0}
 
@@ -454,7 +458,20 @@ def rnpv(scaffold, phase, value_if_approved_ps, price):
     dilution = shortfall / (price * sh) if (price * sh) > 0 else 0.0
     floor = 0.0 if scaffold["net_cash_ps_suspect"] else max(0.0, scaffold["net_cash_ps"])
     iv = floor + PHASE_POS[phase] * v / (1.0 + dilution)
-    return {"method": "engine5_rnpv", "phase": phase, "pos": PHASE_POS[phase],
+    # GOING CONCERN. The dilution term assumes the company CAN raise, at roughly today's price.
+    # For a name with weeks of cash that assumption is doing all the work: a failed raise is zero,
+    # and a distressed one is far worse than the modelled dilution. Measured: 147 of 411 Engine-5
+    # biotechs have <0.5yr runway. Surfaced on OSTX, which the engine valued at +122% MoS on 0.02
+    # years of cash — about one week — while its own S3 text said "immediate capital raise
+    # required". Flag rather than haircut: inventing a discount would be a fabricated number, and
+    # the honest statement is that this IV is conditional on financing that may not happen.
+    flag = None
+    if runway is not None and runway < GOING_CONCERN_RUNWAY_YRS and years > 0:
+        flag = (f"GOING CONCERN: {runway:.2f}yr of cash ({runway*12:.1f} months) against a "
+                f"~{years:.0f}yr path to approval. This IV assumes the company can raise "
+                f"{dilution*100:.0f}% dilution worth of equity at roughly today's price; a failed "
+                f"or distressed raise is NOT modelled and would make the equity worth far less.")
+    return {"method": "engine5_rnpv", "phase": phase, "pos": PHASE_POS[phase], "flag": flag,
             "value_if_approved_ps": round(v, 2), "net_cash_floor_ps": round(floor, 2),
             "dilution_pct": round(dilution * 100, 1), "years_to_approval": years,
             "runway_years": runway, "iv": round(iv, 2),
