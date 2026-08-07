@@ -431,8 +431,17 @@ def run_one(t, exit_review=False, timeout_sec=0):
     fail-safe against a hung run_rs2 (network stall in deep-research, a wedged Ollama read, or a
     fatal-error zombie) wedging the queue forever with the heavy engine pinned in VRAM. timeout_sec<=0
     disables the watchdog (unlimited — legacy behaviour)."""
+    # UNANCHORED BASELINE. The continuity anchor injects the PREVIOUS verdict (action, conviction,
+    # stance, weight, fair value, MoS) with "your DEFAULT is to MAINTAIN that call". That is right
+    # for routine refreshes — it was added to stop borderline names re-rolling every review — but
+    # it is exactly wrong when the previous call is known-invalid. Every verdict before 2026-08-07
+    # was produced on fabricated research, a consensus-anchored MoS and the homogenizing prompt, so
+    # anchoring a rebuild to it would RE-DERIVE the old book rather than replace it.
+    # ORCH_UNANCHORED=1 (--unanchored) drops the anchor so each name is judged fresh. Turn it back
+    # OFF once the baseline exists, so continuity resumes from the NEW calls.
+    _unanchored = os.environ.get("ORCH_UNANCHORED") == "1"
     cmd = [PY, str(HERE / "run_rs2.py"), t] \
-        + (["--exit-review"] if exit_review else ["--anchor"])
+        + (["--exit-review"] if exit_review else ([] if _unanchored else ["--anchor"]))
     proc = subprocess.Popen(cmd, cwd=str(HERE))
     try:
         rc = proc.wait(timeout=timeout_sec if timeout_sec > 0 else None)
@@ -463,6 +472,11 @@ def run_one(t, exit_review=False, timeout_sec=0):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="print the queue, run nothing")
+    ap.add_argument("--unanchored", action="store_true",
+                    help="drop the continuity anchor for this sweep — judge every name fresh "
+                         "instead of defaulting to its previous call. Use to establish a BASELINE "
+                         "after a scoring change; leave OFF for routine refreshes, where the "
+                         "anchor is what stops borderline names re-rolling every review.")
     ap.add_argument("--rn-only", action="store_true", help="Research-Now only (skip Watchlist)")
     ap.add_argument("--no-pull", action="store_true")
     ap.add_argument("--no-push", action="store_true")
@@ -484,6 +498,11 @@ def main():
                     help="give a one-shot EXIT review to names that fell OUT of research_now "
                          "(you may hold them), then retire them; WL drops skip straight to inactive")
     args = ap.parse_args()
+
+    if args.unanchored:
+        os.environ["ORCH_UNANCHORED"] = "1"
+        log("UNANCHORED sweep — the continuity anchor is OFF; every name is judged fresh. "
+            "This is a BASELINE pass, not a routine refresh.")
 
     (HERE / "cache").mkdir(exist_ok=True)
 

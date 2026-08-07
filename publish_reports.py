@@ -81,10 +81,25 @@ def _iso_date(ts, fallback):
         return fallback
 
 
+# Verdicts produced BEFORE this timestamp are pre-baseline and must not be read as current
+# analysis. Everything earlier rests on at least one of: fabricated research (the search leg
+# returned zero sources for 2,676 subqueries while briefs were written from model recall), a
+# consensus-anchored fair value (87% of names published the analyst median, so MoS was
+# structurally +2.5% and meaningless), or the homogenizing prompt (an absolute MoS cut fired on
+# 80% of the book and instructed "even a superb franchise here is a HOLD").
+#
+# MARKED, NOT DELETED. The runs are real history and the reasoning is still readable — a reader
+# comparing today's call to last month's should be able to see it. But they must be labelled, or
+# a stale conviction-8 "HOLD / stage-in" is indistinguishable from a current judgement.
+BASELINE_TS = "20260807_120000"
+
+
 def _meta(v, ts, date, folder):
     """Small metadata record for index.json (one per run, always kept)."""
     return {
         "ts": ts, "date": v.get("date") or date,
+        # string compare is safe and total: ts is fixed-width YYYYMMDD_HHMMSS
+        "pre_baseline": ts < BASELINE_TS,
         "action": v.get("action"), "conviction": v.get("conviction"),
         "stance": v.get("stance"), "method": v.get("method"),
         "expectations_gap_pts": v.get("expectations_gap_pts"),
@@ -145,12 +160,48 @@ def _bundle(t, ts, date, folder, v, literals, regexes):
     return bundle
 
 
+def _tracked_tickers():
+    """Tickers the orchestrator actually maintains, from analysis_state.json.
+
+    _scan() walks reports/ directly, so ANY folder with a parseable verdict.json got published —
+    including 21 tickers with no state row at all (NVDA, MSFT, TSLA, PLTR, V, XOM, HD, POWL...).
+    Those are orphans: the orchestrator never refreshes them because build_queue works off the
+    state file, so they sat on the site frozen at whatever date they last ran, indistinguishable
+    from current analysis. A verdict that can never be refreshed must not be served as current.
+
+    POWL is the case that shows why this matters: its state row was deliberately removed during
+    the fabricated-research quarantine, and it has been re-analysed since — so without this filter
+    it silently returns to the site while still being untracked.
+
+    Returns None if the state file is missing or unreadable, which means DO NOT FILTER: publishing
+    a superset is a far smaller failure than silently unpublishing the entire book because one
+    file could not be parsed.
+    """
+    try:
+        st = json.loads((HERE / "cache" / "analysis_state.json").read_text(encoding="utf-8-sig"))
+    except Exception:
+        return None
+    return {t.upper() for t in st} if isinstance(st, dict) and st else None
+
+
 def publish(k=DEFAULT_K, only=None, verbose=True):
     literals, regexes = _secret_patterns()
     runs, corrupt = _scan()
     if only:
         only = {x.upper() for x in only}
         runs = {t: r for t, r in runs.items() if t in only}
+    else:
+        tracked = _tracked_tickers()
+        if tracked:
+            orphans = sorted(set(runs) - tracked)
+            if orphans:
+                runs = {t: r for t, r in runs.items() if t in tracked}
+                if verbose:
+                    print(f"  ! skipped {len(orphans)} UNTRACKED ticker(s) with no "
+                          f"analysis_state row — the orchestrator cannot refresh these, so "
+                          f"publishing them would serve permanently stale verdicts: "
+                          f"{', '.join(orphans[:12])}{' ...' if len(orphans) > 12 else ''}",
+                          flush=True)
     OUT.mkdir(parents=True, exist_ok=True)
 
     index = {}

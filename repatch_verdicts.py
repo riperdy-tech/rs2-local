@@ -89,9 +89,15 @@ def main():
             continue
         before, v = r
         done += 1
-        if before.get("mos_pct") is not None and abs(before["mos_pct"]) > 60:
+        # INVARIANT, not a threshold. The old check counted |MoS| > 60%, which meant something
+        # when fair value was the analyst median for 87% of names and MoS clustered at +2.5%.
+        # With the stability fence the engine publishes its OWN value (median -38%, p10 -77%), so
+        # 60% is ordinary and the counter cried wolf on 67 healthy names. What IS still a
+        # malfunction is |MoS| beyond MOS_EXTREME_MAX — the fence rejects those outright, so this
+        # should always be ZERO. A non-zero count means the fence failed, which is worth knowing.
+        if before.get("mos_pct") is not None and abs(before["mos_pct"]) > vb.MOS_EXTREME_MAX * 100:
             blow_before += 1
-        if v.get("mos_pct") is not None and abs(v["mos_pct"]) > 60:
+        if v.get("mos_pct") is not None and abs(v["mos_pct"]) > vb.MOS_EXTREME_MAX * 100:
             blow_after += 1
         if v.get("brake_applied"):
             braked += 1
