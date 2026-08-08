@@ -509,20 +509,21 @@ Must pass 37 audit points across:
 14. Final output must be in **English**
 15. ENGINE-OWNED FIELDS (field-ownership contract). The stance label, fair value, margin of
     safety and expectations gap are computed by the engine and are ALREADY IN the ENGINE
-    VALUATION header the engine writes into every report. NEVER restate any of them as a
-    labeled value in your sections — no "Stance: ...", no "Fair Value: $...", no
-    "Intrinsic Value: $...", no "MoS: ...%". Refer to them in prose instead ("the engine's
-    stance above", "the authoritative fair value in the header"). A clearly-labeled
-    "scenario-weighted" price from your scenario section remains permitted. A restated or
-    substituted engine field is a rejected report.
+    VALUATION header. You may QUOTE them — attributed and EXACTLY matching the header
+    ("Engine stance: overvalued", "the engine's fair value $178.19") — but you may NEVER
+    print a DIFFERENT value or your own substitute for any of them. A value that contradicts
+    the header, or an unattributed figure presented as the fair value / stance / MoS, is a
+    rejected report. A clearly-labeled "scenario-weighted" price from your scenario section
+    remains permitted.
 16. BASIS JUDGMENT. When a CYCLICALITY CHECK disclosed two bases (latest-FY vs mid-cycle),
     SECTION 3 must contain one explicit sentence beginning "Basis judgment:" naming which
     basis you judge fairer (latest-FY or mid-cycle) and why. Silence is a rejected report.
-17. SINGLE-STATEMENT SIZING. Position size / weight %, conviction, and the action verdict
-    are YOUR judgment fields and appear EXACTLY ONCE, in SECTION 12. No earlier section may
-    state a weight percentage, conviction number, or action label — earlier sections reason
-    toward Section 12 without printing those figures. Sizing figures outside Section 12 are
-    a rejected report.
+17. CONSISTENT SIZING. The Kelly/Layer computations in SECTIONS 5-6.5 are part of your
+    mandated structure — derive there freely. But the FINAL position size, conviction and
+    action are STATED once, in SECTION 12, and every sizing figure derived earlier must be
+    CONSISTENT with Section 12's final statement (deviations explained in Section 12, e.g.
+    "Kelly suggests 6%, capped to 3% by entry discipline"). Contradictory sizing figures
+    across sections are a rejected report.
 18. ENGINE VERDICT vs ANALYST VIEW. SECTION 3 must contain one slot of exactly this form:
     "Engine verdict: <stance copied from the ENGINE VALUATION header>. Analyst view:
     AGREE — <reason>" or "... Analyst view: DISAGREE — <one to three sentences>". This is

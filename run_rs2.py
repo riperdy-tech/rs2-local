@@ -150,17 +150,17 @@ FINAL_TASK = (
     "FIELD-OWNERSHIP CONTRACT — the post-completion auditor rejects the report (and the whole "
     "run repeats) on any breach:\n"
     "A. ENGINE-OWNED FIELDS: stance label, fair value, margin of safety and expectations gap "
-    "are already in the ENGINE VALUATION header the engine writes into the report. NEVER "
-    "restate them as labeled values in your sections (no 'Stance: ...', 'Fair Value: $...', "
-    "'Intrinsic Value: $...', 'MoS: ...%'). Refer to them in prose ('the engine's stance "
-    "above'). A clearly-labeled 'scenario-weighted' price from your scenario section is "
+    "are in the ENGINE VALUATION header. You may QUOTE them attributed and EXACTLY matching "
+    "the header; you may NEVER print a different value or an unattributed substitute for any "
+    "of them. A clearly-labeled 'scenario-weighted' price from your scenario section is "
     "permitted.\n"
     "B. If the analysis contains a CYCLICALITY CHECK (two bases disclosed), SECTION 3 MUST "
     "include one explicit sentence beginning 'Basis judgment:' stating which basis (latest-FY "
     "or mid-cycle) you judge fairer and why.\n"
-    "C. SINGLE-STATEMENT SIZING: weight %, conviction and the action verdict appear EXACTLY "
-    "ONCE, in SECTION 12. No earlier section may print a weight percentage, conviction number "
-    "or action label.\n"
+    "C. CONSISTENT SIZING: Kelly/Layer derivations in Sections 5-6.5 are your mandated "
+    "structure — derive freely there. The FINAL size/conviction/action are STATED once in "
+    "SECTION 12, and every earlier sizing figure must be consistent with it (explain "
+    "deviations in Section 12). Contradictory sizing across sections is a rejection.\n"
     "D. SECTION 3 MUST contain one slot of exactly this form: 'Engine verdict: <stance from "
     "the ENGINE VALUATION header>. Analyst view: AGREE — <reason>' or '... Analyst view: "
     "DISAGREE — <one to three sentences>'. This is the ONLY place to register disagreement "
@@ -1028,6 +1028,15 @@ def deterministic_audit(t, out_dir, val_res, level="full"):
             if st is not None and isinstance(gap_v, (int, float)):
                 rec("verdict.stance_from_gap", st == _stance_from_gap(gap_v),
                     f"stance {st} vs recompute {_stance_from_gap(gap_v)} (gap {gap_v})")
+            # REPORT COMPLETENESS is a TIER-1 fact checked on the FULL file. It must never be
+            # judged by the AI verifier: its evidence pack is head+tail capped, and batch 4
+            # (2026-08-09) lost 15 COMPLETE 20-37K-char reports to phantom "missing Section 12"
+            # rejections — the auditor was reading its own clipped window, zero real truncations.
+            fp0 = out_dir / "FINAL.md"
+            if fp0.exists():
+                _full = fp0.read_text(encoding="utf-8", errors="replace")
+                rec("final.section12_present", "SECTION 12" in _full.upper(),
+                    f"len {len(_full)} chars")
             # FIELD-OWNERSHIP CONTRACT slot (rule 18): the one sanctioned transcription of the
             # engine stance. Deterministically verifiable — no need to spend the AI verifier
             # on it. Only enforced for reports written under the contract (header present).
@@ -1049,18 +1058,19 @@ NOT re-analyze. The engine's VALUATION RESULT and verdict.json are AUTHORITATIVE
 report is the text under audit.
 
 VIOLATIONS (each one fails the report — the FIELD-OWNERSHIP CONTRACT is the standard):
-1. ENGINE-FIELD BREACH: the report restates an engine-owned field as a labeled value anywhere
-   in the model's sections ("Stance: ...", "Fair Value: $...", "Intrinsic Value: $...",
-   "MoS: ...%"), or its prose contradicts the ENGINE VALUATION header (a price level asserted
-   to carry a margin of safety inconsistent with the authoritative fair value, a stance claim
-   conflicting with the authoritative stance). Referring to the header's values in prose is
-   correct behavior, not a breach. (A clearly-labeled SCENARIO-WEIGHTED price from the
+1. ENGINE-FIELD CONTRADICTION: the report states a value for an engine-owned field (stance,
+   fair value, intrinsic value, MoS, gap) that DIFFERS from the ENGINE VALUATION header, or
+   presents an unattributed figure as if it were the official one, or asserts a price level
+   to carry a margin of safety inconsistent with the authoritative fair value. QUOTING the
+   header's values — attributed and exactly matching — is CORRECT behavior, never a breach,
+   regardless of label formatting. (A clearly-labeled SCENARIO-WEIGHTED price from the
    report's own scenario section is PERMITTED.)
-1b. SIZING OUTSIDE SECTION 12: a weight percentage, conviction number, or action label
-   printed in any section other than SECTION 12, or Section 12's figures contradicting an
-   earlier section's reasoning. The "Engine verdict / Analyst view" slot in SECTION 3 is
-   required (AGREE or DISAGREE with reasons) — its absence is a violation; a DISAGREE there
-   is legitimate and never a violation by itself.
+1b. SIZING INCOHERENCE: sizing/conviction figures in different sections that CONTRADICT each
+   other or Section 12's final statement without an explained reconciliation (Kelly/Layer
+   derivations in Sections 5-6.5 are the report's mandated structure and are fine when
+   consistent). A missing Section 12, or a missing "Engine verdict / Analyst view" slot in
+   SECTION 3, is a violation; a DISAGREE in that slot is legitimate and never a violation by
+   itself.
 2. FABRICATION: a company-specific figure that appears in neither the engine data, the data
    context, nor the research brief, and is not arithmetic on them. Figures from model memory
    are fabrication even when plausible.
@@ -1118,7 +1128,10 @@ def ai_audit(t, out_dir, think):
            f"{read('routing.json', 1500)}\n\n=== DATA CONTEXT the run was given (macro/market "
            f"figures in the report trace here) ===\n{read_ht('_fed_data.md', 8000, 12000)}\n\n"
            f"=== RESEARCH BRIEF ===\n{brief}\n\n"
-           f"=== FINAL REPORT UNDER AUDIT ===\n{read('FINAL.md', 18000)}\n")
+           f"=== FINAL REPORT UNDER AUDIT (presented HEAD+TAIL; the marked middle elision is "
+           f"the AUDIT PACKAGING, not the report — NEVER infer truncation or a missing section "
+           f"from it; completeness is verified deterministically outside this audit) ===\n"
+           f"{read_ht('FINAL.md', 12000, 12000)}\n")
     for attempt in (1, 2):
         try:
             out = ollama_chat(ctx if attempt == 1 else
