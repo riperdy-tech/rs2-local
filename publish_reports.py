@@ -130,6 +130,19 @@ def _scan():
         except Exception:
             corrupt.setdefault(t, set()).add(ts)
             continue
+        # audit gate (2026-08-08): an audit-FAILED run must never publish — TSM's overlay row
+        # carried a sanity-failed attempt's verdict (action=None) into the local overlay the
+        # equal_llm real-money basket selects on. No audit.json (pre-audit era) passes through;
+        # a verdict with no action is a sanity-failed shell (sanity exits before the auditor
+        # writes audit.json) and is refused on shape.
+        if not v.get("action"):
+            continue
+        try:
+            aj = json.loads((d / "audit.json").read_text(encoding="utf-8-sig"))
+            if not aj.get("tier1_pass", True) or aj.get("tier2") == "fail":
+                continue
+        except Exception:
+            pass
         runs.setdefault(t, []).append((ts, _iso_date(ts, v.get("date")), d, v))
     for t in runs:
         runs[t].sort(key=lambda r: r[0], reverse=True)

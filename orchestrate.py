@@ -284,11 +284,25 @@ def build_queue(cur, state, args, llm_rn=frozenset()):
     return q, drops
 
 
+def audit_clean(d):
+    """A report dir is publishable only if its post-completion audit did not FAIL. Dirs with no
+    audit.json (pre-audit era, or a crash before the auditor ran) pass through — the audit gate
+    must never retro-invalidate the whole archive. Found live 2026-08-08: TSM's overlay row
+    pointed at a sanity-failed attempt (action=None) because selection was purely
+    newest-verdict-wins; the equal_llm real-money basket selects on these fields."""
+    a = load(d / "audit.json")
+    if not a:
+        return True
+    return bool(a.get("tier1_pass", True)) and a.get("tier2") != "fail"
+
+
 def latest_verdict(t):
     ds = sorted(REPORTS.glob(f"{t}_*"), key=lambda p: p.stat().st_mtime, reverse=True)
     for d in ds:
         v = load(d / "verdict.json")
-        if v:
+        # action-presence is the shape gate for SANITY-failed runs (they exit before the
+        # auditor writes audit.json, so audit_clean alone passes them through)
+        if v and v.get("action") and audit_clean(d):
             return v, d.name
     return None, None
 

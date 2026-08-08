@@ -565,6 +565,11 @@ def prior_verdict(ticker, exclude_dir=None):
                     key=lambda p: p.stat().st_mtime, reverse=True):
         if ex and d.resolve() == ex:
             continue
+        # never anchor to an audit-FAILED run: the anchor's "DEFAULT is to MAINTAIN" framing
+        # would propagate a rejected verdict into every subsequent cadence re-analysis
+        aj = rs2_data.load_json(d / "audit.json")
+        if aj and (not aj.get("tier1_pass", True) or aj.get("tier2") == "fail"):
+            continue
         v = rs2_data.load_json(d / "verdict.json")
         if v and v.get("action"):
             return v
