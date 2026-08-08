@@ -576,6 +576,43 @@ def prior_verdict(ticker, exclude_dir=None):
     return None
 
 
+def retry_feedback(ticker, exclude_dir=None):
+    """If the immediately previous attempt of THIS analysis (same day) was rejected by the
+    post-completion auditor, return a compact block of its violations for the retry's final
+    assembly — otherwise None.
+
+    Without this, retries were pure re-rolls: stochastic slips healed (SAP, attempt 2) but
+    SYSTEMATIC tensions ground the budget down — UVE failed 3/3 on the same stance-relabel
+    class (2026-08-08) because the model's disagreement with the engine reproduces across
+    samples. The feedback restates only rules that are already global; it never carries the
+    previous attempt's judgments, so an unanchored run stays unanchored."""
+    root = Path(CONFIG["out_reports_dir"])
+    ex = Path(exclude_dir).resolve() if exclude_dir else None
+    today = datetime.now().strftime("%Y%m%d")
+    for d in sorted(root.glob(f"{ticker.upper()}_{today}_*"),
+                    key=lambda p: p.stat().st_mtime, reverse=True):
+        if ex and d.resolve() == ex:
+            continue
+        aj = rs2_data.load_json(d / "audit.json")
+        if not aj:
+            continue
+        if aj.get("tier1_pass", True) and aj.get("tier2") != "fail":
+            return None          # last attempt passed — nothing to correct
+        lines = []
+        for v in (aj.get("tier2_violations") or [])[:4]:
+            lines.append(f"- {v.get('type')}: {str(v.get('detail'))[:220]}")
+        for c in (aj.get("tier1") or []):
+            if not c.get("ok") and c.get("check") != "sanity":
+                lines.append(f"- {c.get('check')}: {str(c.get('detail'))[:160]}")
+        if not lines:
+            return None
+        return ("PREVIOUS ATTEMPT REJECTED. The post-completion auditor rejected the previous "
+                "attempt of this exact analysis for the violations below. They are rule "
+                "violations, not judgment guidance — fix the COMPLIANCE failure, keep your own "
+                "analysis:\n" + "\n".join(lines[:6]))
+    return None
+
+
 def anchor_block(pv):
     """Continuity anchor injected into the FINAL prompt (the call-emission point).
     Root-cause fix for verdict flip noise (audit 2026-07-21): re-analyses were
@@ -1355,6 +1392,11 @@ def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, th
             anchor += "\n\n" + anchor_block(pv)
         else:
             print("   [anchor] no previous verdict found — running unanchored", flush=True)
+    fb = retry_feedback(t, exclude_dir=out_dir)
+    if fb:
+        anchor += "\n\n" + fb
+        print("   [retry-feedback] previous attempt's audit violations injected into final "
+              "assembly", flush=True)
     final_prompt = (f"{anchor}\n\n"
                     f"=== COMPLETE WORKED ANALYSIS (all stages) ===\n{accum}\n\n"
                     f"=== TASK ===\n{FINAL_TASK}")
