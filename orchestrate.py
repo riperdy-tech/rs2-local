@@ -115,7 +115,8 @@ def lock_stale_reason():
     return None
 
 
-BAD_HEARTBEATS = {"ollama_down", "stale_factor_scores", "push_failed", "ticker_timeout"}
+BAD_HEARTBEATS = {"ollama_down", "stale_factor_scores", "push_failed", "ticker_timeout",
+                  "data_health_gate"}
 
 
 def notify_telegram(text):
@@ -609,6 +610,20 @@ def main():
             heartbeat("stale_factor_scores", age_h=round(age_h, 1) if age_h is not None else None); return 4
         if age_h is not None:
             log(f"factor_scores fresh ({age_h:.0f}h old).")
+
+        # DATA-HEALTH GATE (operator order 2026-08-08): a sweep must not start on data with
+        # provable corruption reaching a live valuation. Gates ONLY on the reaching-live
+        # counters (data_health --gate-live) — raw source slips the ingest guard corrects
+        # cannot block, so this can never false-trip on a known-corrected feed.
+        dh = subprocess.run([sys.executable, str(HERE / "data_health.py"), "--gate-live", "--alert"],
+                            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if dh.returncode != 0:
+            tail = (dh.stdout or "").strip().splitlines()[-1:] or [""]
+            log(f"data_health GATE BLOCKED the sweep — corruption reaches live valuations "
+                f"({tail[0]}). Run `python data_health.py` for detail. Exit.")
+            heartbeat("data_health_gate")
+            return 10   # 4=stale factors, 5=corrupt state — 10 is the data-health gate
+        log("data_health gate: CLEAR")
 
         cur = bands()
         # STATE is irreplaceable history: corrupt must ABORT, never silently become {} — an empty

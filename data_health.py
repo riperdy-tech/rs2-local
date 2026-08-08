@@ -205,6 +205,12 @@ def main():
     ap.add_argument("--alert", action="store_true", help="Telegram when a provable issue is found")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--all", action="store_true", help="audit the whole corpus, not just live names")
+    ap.add_argument("--gate-live", action="store_true",
+                    help="exit 1 ONLY when corruption actually reaches a live valuation "
+                         "(corrupt values in use / feed breaches / consensus hard breaches / "
+                         "an UNCORRECTED share disagreement). Source slips the ingest guard "
+                         "already corrects do not gate — this is the orchestrate startup gate "
+                         "(operator order 2026-08-08).")
     a = ap.parse_args()
 
     hist = rs2_data.load_json(SD / "fundamentals_history.json") or {}
@@ -254,6 +260,18 @@ def main():
     # Only corruption reaching a live valuation, or an unresolved cross-source disagreement, is a
     # breach. Historic series breaks are recorded but do not fail the run: the extractor resolves
     # them at source and the ingest guard corrects what it can.
+    if a.gate_live:
+        uncorrected = [r for r in shares if not r.get("corrected_to")]
+        gate = len(in_use) + len(feeds) + len(cons_hard) + len(uncorrected)
+        print(f"\n[gate-live] corrupt-in-use {len(in_use)} | feed {len(feeds)} | "
+              f"consensus {len(cons_hard)} | uncorrected-shares {len(uncorrected)} -> "
+              f"{'BLOCK' if gate else 'CLEAR'}")
+        if gate and a.alert:
+            import ops
+            ops.notify_telegram(f"[RS2 ops] data_health GATE: {len(in_use)} corrupt in-use, "
+                                f"{len(feeds)} feed, {len(cons_hard)} consensus, "
+                                f"{len(uncorrected)} uncorrected shares — sweep blocked.")
+        return 1 if gate else 0
     problems = len(in_use) + len(shares) + len(feeds) + len(cons_hard)
     if problems:
         msg = (f"[RS2 ops] data_health: {len(in_use)} corrupt value(s) feeding a live valuation, "

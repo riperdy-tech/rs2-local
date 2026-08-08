@@ -813,6 +813,220 @@ def sanity_check(out_dir, ticker):
     return (not p), p
 
 
+# ── POST-COMPLETION AUDIT (2026-08-08, operator order) ───────────────────────────────────────
+# Every completed ticker is audited before it may count as done: TIER 1 re-derives the
+# deterministic facts and diffs them against what the run recorded (data source, engine
+# arithmetic, routing invariants — "actually knowing it was done correctly", not file sizes);
+# TIER 2 hands the assembled report to the model as a VERIFIER with the authoritative numbers
+# attached. A failed audit exits non-zero, so orchestrate marks the name failed and retries it
+# exactly like a watchdog kill — a bad analysis must never publish.
+
+LABEL_LEDGER = Path(__file__).resolve().parent / "cache" / "label_history.jsonl"
+
+
+def _append_label_ledger(ticker, run_name, label):
+    """Per-run archetype-label telemetry (operator order: watch label wobble as baseline results
+    come out). Append-only ledger; returns (prior_label, changed)."""
+    prior = None
+    try:
+        if LABEL_LEDGER.exists():
+            for ln in LABEL_LEDGER.read_text(encoding="utf-8").splitlines():
+                try:
+                    rec = json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("ticker") == ticker:
+                    prior = rec.get("label")
+    except OSError:
+        pass
+    changed = prior is not None and label is not None and prior != label
+    try:
+        with LABEL_LEDGER.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"ticker": ticker, "run": run_name, "label": label,
+                                 "prior": prior, "changed": changed}) + "\n")
+    except OSError:
+        pass
+    return prior, changed
+
+
+def deterministic_audit(t, out_dir, val_res, level="full"):
+    """TIER 1: re-derive and cross-check everything checkable without a model.
+
+    Returns (ok, checks) where checks is a list of {check, ok, detail}. `level` "valonly"
+    limits to the artefacts a --valonly run produces (no FINAL/verdict)."""
+    checks = []
+
+    def rec(name, ok, detail=""):
+        checks.append({"check": name, "ok": bool(ok), "detail": str(detail)[:300]})
+
+    vr = val_res or {}
+    # 1. BACKBONE REPRODUCIBILITY — recompute the deterministic engine now and diff against
+    #    what the run recorded. base_cf/kind/period must match EXACTLY (they change only when
+    #    the fundamentals files change; a mid-sweep rebuild would make the book internally
+    #    inconsistent and must surface). The gap gets a ±3pt band: market cap moves intraday.
+    method = vr.get("method")
+    if method in ("reverse_dcf", "financial_pb_roe"):
+        bb2 = valuation_backbone.backbone(t)
+        if method == "reverse_dcf" and bb2.get("ok"):
+            same_base = (vr.get("base_cf_b") is not None and bb2.get("base_cf") is not None
+                         and abs(vr["base_cf_b"] - round(bb2["base_cf"] / 1e9, 2)) < 0.011)
+            rec("backbone.base_cf", same_base,
+                f"run {vr.get('base_cf_b')}B vs now {round((bb2.get('base_cf') or 0)/1e9, 2)}B")
+            rec("backbone.kind", vr.get("base_cf_kind") == bb2.get("base_cf_kind"),
+                f"run {vr.get('base_cf_kind')} vs now {bb2.get('base_cf_kind')}")
+            g1, g2 = vr.get("expectations_gap_pts"), bb2.get("expectations_gap_pts")
+            rec("backbone.gap", g1 is None or g2 is None or abs(g1 - g2) <= 3.0,
+                f"run {g1} vs now {g2}")
+        elif method == "financial_pb_roe" and bb2.get("method") == "financial_pb_roe":
+            r1, r2 = vr.get("roe"), bb2.get("roe")
+            rec("backbone.roe", r1 is None or r2 is None or abs(r1 - r2) < 0.005,
+                f"run {r1} vs now {r2}")
+        else:
+            rec("backbone.method", False,
+                f"run method {method} vs now {bb2.get('method') or bb2.get('reason')}")
+
+    # 2. DATA-SOURCE INTEGRITY for THIS ticker (the data_health checks that matter per-run).
+    fin = rs2_data.load_json(Path(rs2_data.CONFIG["screener_data_dir"]) / "financials" / f"{t}.json") or {}
+    price_f, shares_f, mcap_f = (fin.get("Price"), fin.get("Shares_Outstanding"),
+                                 fin.get("Market_Cap"))
+    if all(isinstance(x, (int, float)) and x > 0 for x in (price_f, shares_f, mcap_f)):
+        ident = price_f * shares_f / mcap_f
+        rec("data.mcap_identity", 0.975 <= ident <= 1.025,
+            f"price*shares/mcap = {ident:.3f}")
+    hist = valuation_backbone._hist(t) or {}
+    ydig = {k: v for k, v in hist.items() if str(k).isdigit()}
+    if ydig:
+        latest = ydig[max(ydig, key=int)]
+        import statistics as _st
+        for fld in ("revenue", "net_income", "ocf"):
+            vals = [abs(ydig[y].get(fld)) for y in ydig
+                    if isinstance(ydig[y].get(fld), (int, float)) and ydig[y].get(fld)]
+            lv = latest.get(fld)
+            if len(vals) >= 4 and isinstance(lv, (int, float)) and lv:
+                med = _st.median(vals)
+                rec(f"data.scale.{fld}", valuation_backbone._pow1000_ratio(lv, med) is None,
+                    f"latest {lv:.3g} vs series median {med:.3g}")
+    bb_now = valuation_backbone.backbone(t)
+    if bb_now.get("base_period") == "ttm":
+        rec_t = valuation_backbone._ttm_record(t) or {}
+        thr = str(rec_t.get("through", ""))
+        try:
+            age = (datetime.now() - datetime.strptime(thr, "%Y-%m-%d")).days
+        except ValueError:
+            age = None
+        rec("data.ttm_fresh", age is not None and 0 <= age <= 400, f"through {thr} ({age}d)")
+        rec("data.ttm_anchor",
+            str(rec_t.get("fy_leg_end", ""))[:4] == str(max((int(y) for y in ydig), default=0)),
+            f"fy_leg {rec_t.get('fy_leg_end')} vs history max {max((int(y) for y in ydig), default=None)}")
+
+    # 3. ROUTING COHERENCE — the S1 hook's own invariants.
+    rj = out_dir / "routing.json"
+    arch = None
+    s1p = out_dir / "S1_macro_classify.md"
+    if s1p.exists():
+        arch = _archetype(s1p.read_text(encoding="utf-8", errors="replace"))
+    if rj.exists():
+        try:
+            r = json.loads(rj.read_text(encoding="utf-8"))
+            rec("routing.parseable", True)
+            rec("routing.arch_matches_s1", r.get("archetype") == arch,
+                f"routing {r.get('archetype')} vs re-parse {arch}")
+            if r.get("disclosed"):
+                rec("routing.disclosed_shape",
+                    isinstance(r.get("latest_fy"), dict) and isinstance(r.get("midcycle"), dict)
+                    and r.get("in_use") in ("latest_fy", "midcycle"),
+                    f"in_use={r.get('in_use')}")
+        except json.JSONDecodeError as e:
+            rec("routing.parseable", False, str(e)[:100])
+
+    # 4. LABEL TELEMETRY (never fails the run — it builds the wobble dataset the selector
+    #    decision was deferred for).
+    prior, changed = _append_label_ledger(t, out_dir.name, arch)
+    rec("label.telemetry", True,
+        f"label={arch} prior={prior}{' CHANGED' if changed else ''}")
+
+    if level == "full":
+        # 5. VERDICT ARITHMETIC — identities the emitter must satisfy.
+        vp = out_dir / "verdict.json"
+        if vp.exists():
+            try:
+                v = json.loads(vp.read_text(encoding="utf-8-sig"))
+            except json.JSONDecodeError:
+                v = {}
+            conv = v.get("conviction")
+            rec("verdict.conviction_range",
+                conv is None or (isinstance(conv, (int, float)) and 0 <= conv <= 15), conv)
+            rec("verdict.scales", v.get("conviction_scale") == 15
+                and v.get("stance_score_scale") == 5,
+                f"{v.get('conviction_scale')}/{v.get('stance_score_scale')}")
+            fv, pr, mos = v.get("fair_value"), v.get("price"), v.get("mos_pct")
+            if all(isinstance(x, (int, float)) and x for x in (fv, pr)) and isinstance(mos, (int, float)):
+                rec("verdict.mos_identity", abs(mos - (fv / pr - 1) * 100) <= 0.15,
+                    f"mos {mos} vs (fv/price-1) {round((fv/pr-1)*100, 1)}")
+            st, gap_v = v.get("stance"), v.get("expectations_gap_pts")
+            if st is not None and isinstance(gap_v, (int, float)):
+                rec("verdict.stance_from_gap", st == _stance_from_gap(gap_v),
+                    f"stance {st} vs recompute {_stance_from_gap(gap_v)} (gap {gap_v})")
+
+    ok = all(c["ok"] for c in checks)
+    return ok, checks
+
+
+AI_AUDIT_PROMPT = """You are the POST-COMPLETION AUDITOR for this equity analysis. Verify — do
+NOT re-analyze. The engine's VALUATION RESULT and verdict.json are AUTHORITATIVE data; the final
+report is the text under audit.
+
+Check, in order:
+1. NUMBER FIDELITY: every dollar figure, growth rate, gap, margin-of-safety and conviction in
+   the FINAL REPORT must appear in, or be arithmetically derivable from, the attached engine
+   data. List every number that contradicts the engine data or appears from nowhere.
+2. INTERNAL CONSISTENCY: stance, action, conviction and entry guidance must not contradict each
+   other or the report's own prose.
+3. BASIS JUDGMENT: if a CYCLICALITY CHECK disclosed two bases (latest vs mid-cycle), the report
+   must state WHICH basis it judged fairer and why. Silence on it is a violation.
+4. RESEARCH GROUNDING: factual claims about recent company events must trace to the research
+   brief. List claims that have no supporting brief content.
+
+Output STRICT JSON only, no prose before or after:
+{"pass": true/false, "violations": [{"type": "...", "detail": "..."}], "notes": "..."}
+A report passes only if there are NO material violations. Formatting nits are notes, not
+violations."""
+
+
+def ai_audit(t, out_dir, think):
+    """TIER 2: the model verifies the assembled report against the authoritative engine data.
+    Returns (status, violations) with status in {"pass", "fail", "inconclusive"} — inconclusive
+    (auditor output unparseable twice) does NOT fail the run: the deterministic tier already
+    guards correctness, and an audit-infrastructure hiccup must not block the book."""
+    def read(name, cap):
+        p = out_dir / name
+        return p.read_text(encoding="utf-8", errors="replace")[:cap] if p.exists() else ""
+
+    brief = ""
+    rp = Path(CONFIG["out_research_dir"]) / f"{t}.md"
+    if rp.exists():
+        brief = rp.read_text(encoding="utf-8", errors="replace")[:16000]
+    ctx = (f"{AI_AUDIT_PROMPT}\n\n=== ENGINE VALUATION RESULT (authoritative) ===\n"
+           f"{read('S4_valuation_result.md', 4000)}\n\n=== verdict.json (authoritative) ===\n"
+           f"{read('verdict.json', 2000)}\n\n=== ROUTING/DISCLOSURE ===\n"
+           f"{read('routing.json', 1500)}\n\n=== DATA CONTEXT the run was given (macro/market "
+           f"figures in the report trace here) ===\n{read('_fed_data.md', 18000)}\n\n"
+           f"=== RESEARCH BRIEF ===\n{brief}\n\n"
+           f"=== FINAL REPORT UNDER AUDIT ===\n{read('FINAL.md', 20000)}\n")
+    for attempt in (1, 2):
+        out = ollama_chat(ctx if attempt == 1 else
+                          ctx + "\n\nREMINDER: output ONLY the JSON object.", CONFIG["stage_ctx"], think)
+        m = re.search(r"\{.*\}", out or "", re.S)
+        if m:
+            try:
+                j = json.loads(m.group(0))
+                viols = j.get("violations") or []
+                return ("pass" if j.get("pass") and not viols else "fail"), viols
+            except json.JSONDecodeError:
+                pass
+    return "inconclusive", []
+
+
 def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False):
     """Write reports/{T}_{ts}/verdict.json — the structured handoff the orchestrator aggregates
     into the website overlay. Adapted to the inverted shapes (reverse-DCF gap / financial ROE-gap /
@@ -1094,6 +1308,9 @@ def main():
     ap.add_argument("ticker")
     ap.add_argument("--name", default=None, help="company name for web queries")
     ap.add_argument("--no-enrich", action="store_true")
+    ap.add_argument("--no-audit", action="store_true",
+                    help="skip the post-completion audit (debugging only — every production "
+                         "run must audit; operator order 2026-08-08)")
     ap.add_argument("--no-research", action="store_true")
     ap.add_argument("--no-think", action="store_true")
     ap.add_argument("--api", action="store_true",
@@ -1379,6 +1596,17 @@ def main():
                   f"IV {(val_res or {}).get('iv')} MoS {(val_res or {}).get('mos_pct')}%", flush=True)
         unload_model(CONFIG["model"])
         keep_awake(False)
+        # diagnostic runs still get the deterministic audit (no FINAL/verdict to check)
+        if not args.no_audit:
+            aud_ok, checks = deterministic_audit(t, out_dir, val_res, level="valonly")
+            (out_dir / "audit.json").write_text(json.dumps(
+                {"tier1_pass": aud_ok, "tier1": checks, "tier2": "skipped_valonly"}, indent=2),
+                encoding="utf-8")
+            if not aud_ok:
+                bad = "; ".join(f"{c['check']}: {c['detail']}" for c in checks if not c["ok"])
+                print(f"[AUDIT] ::FAILED:: {t} (valonly tier-1) — {bad}", flush=True)
+                sys.exit(7)
+            print(f"[AUDIT] ok — {t}: {len(checks)} deterministic checks passed", flush=True)
         return
 
     # Final assembly consolidates prior stages — it does NOT need the bulky raw
@@ -1386,12 +1614,12 @@ def main():
     # computed VALUATION RESULT (authoritative IV/MoS) + the stage results.
     final_assembly(t, out_dir, accum, val_block, val_res, price, args.exit_review, think,
                    use_anchor=args.anchor)
-    unload_model(CONFIG["model"])  # free VRAM so the next ticker's research starts clean
-    keep_awake(False)
 
     # Prove the run produced a real analysis before it is allowed to count as done.
     ok, problems = sanity_check(out_dir, t)
     if not ok:
+        unload_model(CONFIG["model"])
+        keep_awake(False)
         detail = "; ".join(problems)
         print(f"\n[SANITY] ::FAILED:: {t} — {len(problems)} problem(s): {detail}", flush=True)
         ops.notify_telegram(
@@ -1402,6 +1630,43 @@ def main():
         sys.exit(6)
     print(f"[SANITY] ok — {t}: stages, FINAL.md and verdict.json all present and substantive",
           flush=True)
+
+    # POST-COMPLETION AUDIT (operator order 2026-08-08): tier-1 re-derives the deterministic
+    # facts; tier-2 has the model VERIFY the assembled report against the authoritative
+    # numbers while it is still loaded. Either failure fails the ticker (exit 7/8) so
+    # orchestrate retries it — a bad analysis must never publish.
+    aud_ok, checks, ai_status, viols = True, [], "skipped", []
+    if not args.no_audit:
+        aud_ok, checks = deterministic_audit(t, out_dir, val_res, level="full")
+        if aud_ok:
+            ai_status, viols = ai_audit(t, out_dir, think)
+    unload_model(CONFIG["model"])  # free VRAM so the next ticker's research starts clean
+    keep_awake(False)
+    if not args.no_audit:
+        (out_dir / "audit.json").write_text(json.dumps(
+            {"tier1_pass": aud_ok, "tier1": checks,
+             "tier2": ai_status, "tier2_violations": viols}, indent=2), encoding="utf-8")
+        if not aud_ok:
+            bad = "; ".join(f"{c['check']}: {c['detail']}" for c in checks if not c["ok"])
+            print(f"\n[AUDIT] ::FAILED:: {t} tier-1 (deterministic) — {bad}", flush=True)
+            ops.notify_telegram(f"[RS2 ops] audit_failed — {t} tier-1 deterministic audit: "
+                                f"{bad[:500]}. Report: {out_dir.name}. Ticker will retry.")
+            sys.exit(7)
+        if ai_status == "fail":
+            vtxt = "; ".join(f"{v.get('type')}: {v.get('detail')}" for v in viols)[:500]
+            print(f"\n[AUDIT] ::FAILED:: {t} tier-2 (AI verifier) — {vtxt}", flush=True)
+            ops.notify_telegram(f"[RS2 ops] audit_failed — {t} tier-2 AI verifier found "
+                                f"material violations: {vtxt}. Report: {out_dir.name}. "
+                                f"Ticker will retry.")
+            sys.exit(8)
+        if ai_status == "inconclusive":
+            print(f"[AUDIT] tier-2 inconclusive (auditor output unparseable) — run passes on "
+                  f"tier-1; logged for review", flush=True)
+            ops.notify_telegram(f"[RS2 ops] audit_inconclusive — {t}: tier-2 auditor output "
+                                f"unparseable twice; run passed on tier-1 only. {out_dir.name}")
+        else:
+            print(f"[AUDIT] ok — {t}: {len(checks)} deterministic checks + AI verifier "
+                  f"({ai_status})", flush=True)
 
 
 if __name__ == "__main__":

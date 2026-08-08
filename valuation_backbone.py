@@ -177,6 +177,21 @@ UTIL_COE = 0.07   # market cost of equity for a large regulated utility (= the U
 UTIL_ROE_CEIL = 0.15
 
 
+def _pow1000_ratio(a, b):
+    """Power-of-1000 step between |a| and |b| if there is one, else None. Same definition as
+    the screener extractor's scale defence (0.7p..1.4p band): one economic quantity cannot be
+    a clean factor-of-1000 from itself, so a hit is provable corruption, never judgement."""
+    if not a or not b:
+        return None
+    r = abs(a) / abs(b)
+    if r < 1:
+        r = 1 / r
+    for p in (1e3, 1e6, 1e9):
+        if 0.7 * p <= r <= 1.4 * p:
+            return p
+    return None
+
+
 def _num(v):
     return v if isinstance(v, (int, float)) and math.isfinite(v) else None
 
@@ -402,23 +417,61 @@ def _revenue_break(ydata):
     return brk
 
 
-def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False, force_latest=False):
-    """Return (base_cf_$, kind). Equity REITs -> FFO; cyclicals -> mid-cycle avg owner earnings;
-    else latest-FY owner earnings with fcf / ocf-minus-da fallbacks. None base_cf -> honest null
-    upstream. force_latest skips the sector mid-cycle rule and returns the latest-FY basis —
-    DISCLOSURE ONLY (the mirror of force_midcycle, for names the sector whitelist already
-    averaged): it never sets the scored base_cf."""
+# fundamentals_ttm.json: trailing-twelve-month flows built at source from 10-Q YTD rows
+# (TTM = FY + YTD_cur − YTD_prior, date-guarded; see the screener's build_fundamentals_history).
+# Loaded lazily and re-read when the file changes — the orchestrator runs for hours across a
+# rebuild.
+_TTM_CACHE = {"mtime": None, "data": {}}
+
+
+def _ttm_record(t):
+    p = SD / "fundamentals_ttm.json"
+    try:
+        mt = p.stat().st_mtime
+    except OSError:
+        return None
+    if _TTM_CACHE["mtime"] != mt:
+        _TTM_CACHE["data"] = (rs2_data.load_json(p) or {}).get("tickers") or {}
+        _TTM_CACHE["mtime"] = mt
+    return _TTM_CACHE["data"].get(t.upper())
+
+
+def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False, force_latest=False,
+             ttm=None):
+    """Return (base_cf_$, kind, period_meta). Equity REITs -> FFO; cyclicals -> mid-cycle avg
+    owner earnings; else LATEST-POINT owner earnings with fcf / ocf-minus-da fallbacks. None
+    base_cf -> honest null upstream. force_latest skips the sector mid-cycle rule and returns
+    the latest-point basis — DISCLOSURE ONLY (the mirror of force_midcycle, for names the
+    sector whitelist already averaged): it never sets the scored base_cf.
+
+    THE LATEST POINT IS TTM WHEN AVAILABLE (2026-08-08). The annual history's newest row is a
+    completed fiscal year, up to ~11 months stale by fiscal calendar; measured live: HWM TTM
+    net income $1,871M = +24% vs its FY leg, and MU's FY2025 base missed a hyper-cycle whose
+    trailing owner earnings run ~18x higher across four internally consistent 10-Qs. `ttm`
+    (validated/gated by the caller) supplies the trailing legs; a field set that cannot form a
+    complete same-period pair falls back to the FY row — periods are NEVER mixed inside one
+    estimator (no TTM owner earnings against FY revenue). Averages (mid-cycle) stay strictly
+    annual: appending a trailing window to a cycle average would double-weight the newest
+    period. kind strings are unchanged; period_meta ({"period","through"}) records which basis
+    the point terms used.
+    """
     yrs = sorted(int(y) for y in ydata.keys())
     fy = ydata[str(yrs[-1])]
+    tf = (ttm or {}).get("fields") or {}
+    t_ni, t_da, t_cx = _num(tf.get("net_income")), _num(tf.get("da")), _num(tf.get("capex"))
+    t_rev, t_fcf = _num(tf.get("revenue")), _num(tf.get("fcf"))
+    ttm_meta = ({"period": "ttm", "through": ttm.get("through")} if ttm else None)
     # Equity REIT -> FFO. Owner earnings subtract the whole capex line, but a REIT's capex is
     # mostly ACQUISITION of income-producing property, not maintenance of existing capacity, so
     # subtracting it understates earning power badly (O landed on an ocf-minus-da proxy of
     # $1.47B against an FFO several times that). Mortgage REITs are excluded upstream -- they
     # are lenders and route to the P/B-ROE model.
     if "reit" in industry_l and "mortgage" not in industry_l:
+        if ttm_meta and t_ni is not None and t_da is not None and (t_ni + t_da) > 0:
+            return t_ni + t_da, "ffo_reit", ttm_meta
         ni, da = _num(fy.get("net_income")), _num(fy.get("da"))
         if ni is not None and da is not None and (ni + da) > 0:
-            return ni + da, "ffo_reit"
+            return ni + da, "ffo_reit", None
     # The sector whitelist below is a PROXY for "is this company cyclical", and it misses: 12 of
     # 39 model-labelled cyclicals sit outside it, including MU, whose latest trough year produced
     # a 97.5% implied growth and an +85.7pt gap. No statistic separates cycle from growth here --
@@ -428,18 +481,29 @@ def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False, force
     # the statistic cannot (see run_rs2: the Stage-1 archetype).
     if force_midcycle and not force_latest:
         # Resolve the metric this name would NATURALLY use, then average that same metric.
-        _, nat_kind = _base_cf(ticker, ydata, sector_l, industry_l, force_midcycle=False)
+        _, nat_kind, _ = _base_cf(ticker, ydata, sector_l, industry_l, force_midcycle=False,
+                                  ttm=ttm)
         mid, mid_kind = _midcycle_of_kind(ydata, nat_kind)
         if mid is not None:
-            return mid, mid_kind
+            return mid, mid_kind, None
     # cyclical: average owner earnings over the available cycle (trough+peak cancel)
     if not force_latest and any(c in sector_l for c in MIDCYCLE_SECTORS):
         owners = [_owner_earnings(ydata[str(y)]) for y in yrs]
         owners = [o for o in owners if o is not None and o > 0]
         if len(owners) >= 3:
-            return sum(owners) / len(owners), "midcycle_owner_earnings"
-        # too little history -> fall through to latest-FY logic
-    owner = _owner_earnings(fy)
+            return sum(owners) / len(owners), "midcycle_owner_earnings", None
+        # too little history -> fall through to latest-point logic
+    owner_fy = _owner_earnings(fy)
+    # TTM owner earnings need the complete NI/D&A/capex trio — no mixed-period trios, no
+    # proxies. A clean power-of-1000 step vs the FY leg means one side is scale-corrupt
+    # (same defence as everywhere else; magnitude-vs-history filters stay banned): distrust
+    # the TTM side, it has one filing behind it vs the FY's reconciled row.
+    owner_ttm = (t_ni + t_da - t_cx) if None not in (t_ni, t_da, t_cx) else None
+    if owner_ttm is not None and owner_fy is not None and _pow1000_ratio(owner_ttm, owner_fy):
+        owner_ttm = None
+    use_ttm = (ttm_meta is not None and owner_ttm is not None
+               and t_rev is not None and t_rev > 0)
+    owner = owner_ttm if use_ttm else owner_fy
     fcf = _num(fy.get("fcf"))
     ocf, da = _num(fy.get("ocf")), _num(fy.get("da"))
     if owner is not None and owner > 0:
@@ -466,18 +530,33 @@ def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False, force
             oe_y, rev_y = _owner_earnings(ydata[str(y)]), _num(ydata[str(y)].get("revenue"))
             if oe_y is not None and rev_y and rev_y > 0:
                 margins.append(oe_y / rev_y)
-        rev_latest = _num(fy.get("revenue"))
+        # The blend's two terms must share one period: TTM owner earnings pair with TTM
+        # revenue, FY with FY. The margin MEDIAN stays annual either way — it is the causal
+        # history the latest point shrinks toward, not a latest-point term.
+        rev_latest = t_rev if use_ttm else _num(fy.get("revenue"))
+        meta = ttm_meta if use_ttm else None
         if len(margins) >= 2 and rev_latest and rev_latest > 0:
             import statistics as _st
             med_m = _st.median(margins)
             if med_m > 0:
-                return 0.5 * owner + 0.5 * (rev_latest * med_m), "blended_owner_earnings"
-        return owner, "owner_earnings"
+                return 0.5 * owner + 0.5 * (rev_latest * med_m), "blended_owner_earnings", meta
+        return owner, "owner_earnings", meta
+    if use_ttm:
+        # A complete TTM view OWNS the latest-point verdict. Trailing owner earnings were
+        # non-positive to reach here; falling back to a stale positive FY figure would
+        # resurrect exactly the one-off-year pathology TTM exists to correct (ARWR: +$30M
+        # milestone FY owner earnings vs −$272M trailing). Trailing FCF may still carry it;
+        # otherwise return the honest null on the TTM basis.
+        if t_fcf is not None and t_fcf > 0:
+            return t_fcf, "fcf_fallback", ttm_meta
+        return owner, "none", ttm_meta
+    if ttm_meta and t_fcf is not None and t_fcf > 0:
+        return t_fcf, "fcf_fallback", ttm_meta
     if fcf is not None and fcf > 0:
-        return fcf, "fcf_fallback"
+        return fcf, "fcf_fallback", None
     if _num(fy.get("capex")) is None and None not in (ocf, da) and (ocf - da) > 0:
-        return ocf - da, "ocf_minus_da_proxy"   # capex tag missing: steady-state proxy ~ D&A
-    return (owner if owner is not None else fcf), "none"
+        return ocf - da, "ocf_minus_da_proxy", None   # capex tag missing: steady-state proxy ~ D&A
+    return (owner if owner is not None else fcf), "none", None
 
 
 # Cumulative PROBABILITY OF APPROVAL by development phase — the rNPV risk discount. Compounded
@@ -771,12 +850,21 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
         return _financial_backbone(t, ydata, price, mcap, shares,
                                    coe=UTIL_COE, pb_kind="regulated_utility")
 
-    base_cf, kind = _base_cf(t, ydata, sl, ind_l, force_midcycle=force_midcycle,
-                             force_latest=force_latest)
-    if base_cf is None or base_cf <= 0:
+    # SEC-derived TTM legs, gated: the TTM must be anchored on the SAME latest fiscal year the
+    # annual history holds (both builders label FY by end-year), or the two files are out of
+    # step and the trailing window cannot be trusted against this history.
+    ttm = _ttm_record(t)
+    if ttm and int(str(ttm.get("fy_leg_end", ""))[:4] or 0) != max(int(y) for y in ydata.keys()):
+        ttm = None
+    base_cf, kind, period_meta = _base_cf(t, ydata, sl, ind_l, force_midcycle=force_midcycle,
+                                          force_latest=force_latest, ttm=ttm)
+    if (base_cf is None or base_cf <= 0) and not (period_meta or {}).get("period") == "ttm":
         # SEC fundamentals_history lacks capex/D&A for many foreign filers (SAP/VIK/BWMX/JLHL) or is
         # stale — a data gap, not a genuinely unvaluable company. Fall back to the fresh yfinance
-        # trailing FCF we already have (financials.json) before giving up.
+        # trailing FCF we already have (financials.json) before giving up. NEVER when a complete
+        # SEC TTM already ruled the trailing period non-positive: Free_Cash_Flow_TTM mirrors the
+        # FY figure for ~75% of names (measured 2026-08-07), so it would resurrect the stale
+        # positive year the SEC TTM just refuted.
         fcf_ttm = _num(fin.get("Free_Cash_Flow_TTM"))
         if fcf_ttm and fcf_ttm > 0:
             base_cf, kind = fcf_ttm, "fcf_ttm_yf"
@@ -788,18 +876,32 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
         # A PROFITABLE company that out-spends its D&A is REINVESTING, not pre-profit. Conflating
         # the two sent capex-heavy names down the Engine-4 "negative earnings / option-led" path and
         # told the model they had no earning power. Split the reason so only genuine NI<=0 names
-        # can be described as PRE-PROFIT (see valuation_block in rs2_data.py).
+        # can be described as PRE-PROFIT (see valuation_block in rs2_data.py). When an
+        # authoritative TTM ruled the base non-positive, the SPLIT must read the same trailing
+        # legs — classifying ARWR as "reinvesting" off its stale milestone-year FY NI would send
+        # a name whose trailing twelve months LOST money down the normalized-earning-power path.
         fy_last = ydata[str(max(int(y) for y in ydata.keys()))]
-        ni_l, da_l, capex_l = (_num(fy_last.get("net_income")), _num(fy_last.get("da")),
-                               _num(fy_last.get("capex")))
+        if (period_meta or {}).get("period") == "ttm":
+            _tfields = (ttm or {}).get("fields") or {}
+            ni_l, da_l, capex_l = (_num(_tfields.get("net_income")), _num(_tfields.get("da")),
+                                   _num(_tfields.get("capex")))
+        else:
+            ni_l, da_l, capex_l = (_num(fy_last.get("net_income")), _num(fy_last.get("da")),
+                                   _num(fy_last.get("capex")))
         reinvesting = bool(ni_l and ni_l > 0 and da_l is not None and capex_l is not None
                            and capex_l > da_l)
         out = {"ok": False,
                "reason": "reinvestment_negative_fcf" if reinvesting else "negative_base_cash_flow",
-               "base_cf_kind": kind, "price": price, "market_cap": mcap, "shares": shares}
+               "base_cf_kind": kind, "price": price, "market_cap": mcap, "shares": shares,
+               "base_period": (period_meta or {}).get("period", "fy"),
+               "base_through": (period_meta or {}).get("through")}
         # Pre-profit biotech -> attach the deterministic rNPV scaffolding (Engine 5). Only for
         # genuinely pre-profit names: a reinvesting company has earning power to capitalise.
-        rev_l = _num(fy_last.get("revenue")) or 0.0
+        # Same TTM-consistency rule as the reason split above (trailing revenue, not a stale FY).
+        if (period_meta or {}).get("period") == "ttm":
+            rev_l = _num(((ttm or {}).get("fields") or {}).get("revenue")) or 0.0
+        else:
+            rev_l = _num(fy_last.get("revenue")) or 0.0
         if not reinvesting and "biotech" in ind_l and rev_l < COMMERCIAL_REVENUE_FLOOR:
             sc = _clinical_scaffold(ydata, price, mcap, shares)
             if sc:
@@ -890,6 +992,8 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
         "ok": True, "ticker": t, "method": "reverse_dcf",
         "price": price, "market_cap": mcap, "shares": shares,
         "base_cf": base_cf, "base_cf_kind": kind, "fiscal_year": yrs[-1],
+        "base_period": (period_meta or {}).get("period", "fy"),
+        "base_through": (period_meta or {}).get("through"),
         "revenue_break": rev_break,
         "wacc": wacc, "wacc_pct": wacc_pct, "terminal_growth": TERMINAL_G,
         "stage1_years": STAGE1, "fade_years": FADE,

@@ -224,8 +224,10 @@ def valuation_block(ticker):
         L.append("")
         return "\n".join(L)
     dg, fg = b["hist_revenue_cagr_5y"], b["hist_fcf_cagr_5y"]
+    _per = (f"TTM through {b['base_through']}" if b.get("base_period") == "ttm"
+            else f"FY{b['fiscal_year']}")
     L.append(f"- Base cash flow [Actual]: ${b['base_cf']/1e9:.2f}B "
-             f"({str(b['base_cf_kind']).replace('_',' ')}, FY{b['fiscal_year']}); "
+             f"({str(b['base_cf_kind']).replace('_',' ')}, {_per}); "
              f"sector discount rate {b['wacc_pct']}% (a cost-of-equity proxy: base_cf is net of "
              f"interest, i.e. a LEVERED flow, so the rate discounts EQUITY cash flows).")
     _rb = b.get("revenue_break")
