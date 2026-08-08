@@ -230,6 +230,35 @@ def valuation_block(ticker):
              f"({str(b['base_cf_kind']).replace('_',' ')}, {_per}); "
              f"sector discount rate {b['wacc_pct']}% (a cost-of-equity proxy: base_cf is net of "
              f"interest, i.e. a LEVERED flow, so the rate discounts EQUITY cash flows).")
+    # Stale/foreign-filer base caution (measured 2026-08-08: 4 of 258 tracked names — TSM/FMX
+    # end FY2024 with no 10-Qs to build TTM from, SAP's USD-unit tags end FY2017, and BWMX's
+    # history rows are local-currency). Deterministic conditions, no name lists.
+    from datetime import datetime as _dt
+    _stale = (b.get("base_period") != "ttm"
+              and (b.get("fiscal_year") or _dt.now().year) <= _dt.now().year - 2)
+    if _stale or b.get("base_cf_kind") == "fcf_ttm_yf":
+        L.append(f"- DATA FRESHNESS CAUTION [Actual]: the SEC annual history for this name ends "
+                 f"FY{b.get('fiscal_year')}"
+                 + (" and the base cash flow rests on a trailing yfinance FCF figure of last "
+                    "resort" if b.get("base_cf_kind") == "fcf_ttm_yf" else "")
+                 + ". Figures may lag the current business materially — weigh the research "
+                   "brief's recent facts more heavily than the historical rows.")
+    # Currency-consistency check: annual-history magnitudes vs the (USD) market cap. A revenue
+    # many times the market cap is not a valuation signal — it is local-currency rows (BWMX:
+    # 16.3x, MXN). Threshold 8x clears every USD-consistent name in the book by a wide margin.
+    _mc = b.get("market_cap")
+    try:
+        _ht = (load_json(Path(CONFIG["screener_data_dir"]) / "fundamentals_history.json") or {})
+        _yd = (_ht.get("tickers") or _ht).get((b.get("ticker") or "").upper()) or {}
+        _ys = sorted(int(y) for y in _yd if str(y).isdigit())
+        _rev_l = (_yd.get(str(_ys[-1])) or {}).get("revenue") if _ys else None
+    except Exception:
+        _rev_l = None
+    if _rev_l and _mc and _mc > 0 and _rev_l / _mc > 8:
+        L.append(f"- CURRENCY CAUTION [Actual]: the annual history's magnitudes are inconsistent "
+                 f"with the USD market cap (latest revenue is {_rev_l/_mc:.0f}x the market cap) — "
+                 f"these rows are almost certainly LOCAL-CURRENCY figures. Do NOT use historical "
+                 f"margins, growth rates or magnitudes from them; rely on the research brief.")
     _rb = b.get("revenue_break")
     if _rb:
         L.append(f"- CAUTION [Actual]: revenue shows a persistent level shift in FY{_rb['year']} "
@@ -419,7 +448,23 @@ def format_financial_data(d, market="US"):
     L.append(f"  Stock-Based Comp     : {fmt(d.get('SBC_Stock_Based_Comp'), market)}")
     L.append(f"  Operating Cash Flow  : {fmt(d.get('Operating_Cash_Flow'), market)}")
     L.append(f"  CapEx                : {fmt(d.get('Capital_Expenditure'), market)}")
-    L.append(f"  Free Cash Flow TTM   : {fmt(d.get('Free_Cash_Flow_TTM'), market)}")
+    # Free_Cash_Flow_TTM (yfinance) mirrors the FY figure for ~75% of names (measured
+    # 2026-08-07) — a model quoting it as "[Actual] TTM FCF" published $1.67B for a name whose
+    # real trailing FCF was $26.2B (MU, caught by the post-completion auditor 2026-08-08).
+    # Prefer the SEC 10-Q-derived TTM when it exists; label the yfinance figure honestly when
+    # it is all we have.
+    _sec_ttm = None
+    try:
+        import valuation_backbone as _vb
+        _rec = _vb._ttm_record(d.get("Ticker") or "")
+        _sec_ttm = ((_rec or {}).get("fields") or {}).get("fcf")
+    except Exception:
+        _sec_ttm = None
+    if _sec_ttm is not None:
+        L.append(f"  Free Cash Flow TTM   : {fmt(_sec_ttm, market)} (SEC 10-Q derived)")
+    else:
+        L.append(f"  Free Cash Flow TTM   : {fmt(d.get('Free_Cash_Flow_TTM'), market)} "
+                 f"(yfinance; often mirrors the FY figure — treat as approximate)")
     L.append("")
     m = d.get("Calculated_Metrics") or {}
     L.append("── CALCULATED METRICS (TTM) ─────────")
@@ -740,12 +785,23 @@ def market_anchor(ticker):
     if not fin:
         return f"VERIFIED ANCHOR — {t}: financials not provided; keep prior-stage numbers."
     m = fin.get("Calculated_Metrics") or {}
+    # Same SEC-TTM preference as format_financial_data: the anchor says "use these exact
+    # figures", so the mislabeled yfinance FCF-TTM must not be one of them when the real
+    # 10-Q-derived figure exists.
+    _fcf_ttm = fin.get("Free_Cash_Flow_TTM")
+    try:
+        import valuation_backbone as _vb
+        _sec = ((_vb._ttm_record(t) or {}).get("fields") or {}).get("fcf")
+        if _sec is not None:
+            _fcf_ttm = _sec
+    except Exception:
+        pass
     return (
         f"VERIFIED ANCHOR (use these exact figures; do not alter) — {t}:\n"
         f"  T0 Price {fmt(fin.get('Price'), market, True)} (as of {fin.get('Data_Fetched_Date')}) | "
         f"Mkt Cap {fmt(fin.get('Market_Cap'), market)} | EV {fmt(fin.get('Enterprise_Value_EV'), market)} | "
         f"Shares {fmt(fin.get('Shares_Outstanding'), 'None', False, 0)}\n"
-        f"  TTM Rev {fmt(m.get('TTM_Revenue'), market)} | FCF TTM {fmt(fin.get('Free_Cash_Flow_TTM'), market)} | "
+        f"  TTM Rev {fmt(m.get('TTM_Revenue'), market)} | FCF TTM {fmt(_fcf_ttm, market)} | "
         f"Gross Margin {_suf(m.get('TTM_Gross_Margin_%'),'None','%',1)} | "
         f"EV/Sales {_suf(m.get('EV_to_Sales'),'None','x',2)} | "
         f"Core Anchor {_suf(m.get('Core_Anchor_Multiple_0.4Sales_0.4GP'),'None','x',2)}"

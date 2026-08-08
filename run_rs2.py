@@ -147,6 +147,16 @@ FINAL_TASK = (
     "order, in a SINGLE code block. Do not re-derive — consolidate the numbers already produced. "
     "Enforce all 14 FINAL MANDATORY RULES. End with SECTION 12 Final Execution Opinion "
     "(Action, Conviction, Weight %, Strategy). Output in English.\n\n"
+    "TWO STRUCTURAL REQUIREMENTS THE POST-COMPLETION AUDITOR REJECTS THE REPORT WITHOUT "
+    "(the whole run repeats on rejection):\n"
+    "A. Wherever the report presents fair value or margin of safety (Sections 4 and 11), the "
+    "PRIMARY figures MUST be the authoritative fair value and MoS quoted verbatim from the "
+    "VALUATION RESULT / VERIFIED ANCHOR. A scenario-weighted or supplementary value may appear "
+    "ONLY alongside them, explicitly labeled 'scenario-weighted'. Never print a different number "
+    "as 'Intrinsic Value' or 'Margin of Safety' in their place.\n"
+    "B. If the analysis contains a CYCLICALITY CHECK (two bases disclosed), SECTION 3 MUST "
+    "include one explicit sentence beginning 'Basis judgment:' stating which basis (latest-FY "
+    "or mid-cycle) you judge fairer and why.\n\n"
     "AFTER the report code block, output exactly ONE fenced ```json block (machine-read; the "
     "prose stays for humans):\n"
     "```json\n{\"stance\": <1-5>, \"thesis_break\": <true|false>}\n```\n"
@@ -976,21 +986,32 @@ AI_AUDIT_PROMPT = """You are the POST-COMPLETION AUDITOR for this equity analysi
 NOT re-analyze. The engine's VALUATION RESULT and verdict.json are AUTHORITATIVE data; the final
 report is the text under audit.
 
-Check, in order:
-1. NUMBER FIDELITY: every dollar figure, growth rate, gap, margin-of-safety and conviction in
-   the FINAL REPORT must appear in, or be arithmetically derivable from, the attached engine
-   data. List every number that contradicts the engine data or appears from nowhere.
-2. INTERNAL CONSISTENCY: stance, action, conviction and entry guidance must not contradict each
-   other or the report's own prose.
-3. BASIS JUDGMENT: if a CYCLICALITY CHECK disclosed two bases (latest vs mid-cycle), the report
-   must state WHICH basis it judged fairer and why. Silence on it is a violation.
-4. RESEARCH GROUNDING: factual claims about recent company events must trace to the research
-   brief. List claims that have no supporting brief content.
+VIOLATIONS (each one fails the report):
+1. COMPETING VALUATION: the report's PROSE contradicts the ENGINE VALUATION header (which the
+   engine writes into the report deterministically — do not flag its absence from the model's
+   own sections): a different figure presented as the fair value / intrinsic value / MoS, a
+   price level asserted to carry a margin of safety inconsistent with the authoritative fair
+   value, or a stance contradicting the authoritative stance. (A clearly-labeled
+   SCENARIO-WEIGHTED or probability-weighted price from the report's own scenario section is
+   PERMITTED and is not a competing valuation.)
+2. FABRICATION: a company-specific figure that appears in neither the engine data, the data
+   context, nor the research brief, and is not arithmetic on them. Figures from model memory
+   are fabrication even when plausible.
+3. MISSING BASIS JUDGMENT: a CYCLICALITY CHECK disclosed two bases (latest vs mid-cycle) and the
+   report never states WHICH basis it judged fairer and why.
+4. INTERNAL CONTRADICTION: stance, action, conviction and entry guidance contradict each other
+   or the report's own prose.
+5. UNGROUNDED EVENT CLAIM: a factual claim about recent company events with no supporting
+   content in the research brief or data context.
+
+NOT violations (record in notes at most): rounding or judgment bands within ~3% of an
+authoritative trigger/level; a different-but-labeled metric (e.g. EV/Sales where the brief used
+P/S); presentation, ordering, or formatting choices; conservative re-statements that do not
+change the figure.
 
 Output STRICT JSON only, no prose before or after:
 {"pass": true/false, "violations": [{"type": "...", "detail": "..."}], "notes": "..."}
-A report passes only if there are NO material violations. Formatting nits are notes, not
-violations."""
+A report passes only if there are NO violations from the list above."""
 
 
 def ai_audit(t, out_dir, think):
@@ -1001,6 +1022,19 @@ def ai_audit(t, out_dir, think):
     def read(name, cap):
         p = out_dir / name
         return p.read_text(encoding="utf-8", errors="replace")[:cap] if p.exists() else ""
+
+    def read_ht(name, head, tail):
+        """Head+tail slice: _fed_data.md carries the FINANCIALS block and VERIFIED ANCHOR at
+        the END (~24K offset of ~27K) — a head-only cap amputated exactly the figures the
+        auditor must verify against, and it called provided data 'memory-based hallucination'
+        twice before this was measured."""
+        p = out_dir / name
+        if not p.exists():
+            return ""
+        t_ = p.read_text(encoding="utf-8", errors="replace")
+        if len(t_) <= head + tail:
+            return t_
+        return t_[:head] + "\n…[middle elided for the auditor]…\n" + t_[-tail:]
 
     brief = ""
     rp = Path(CONFIG["out_research_dir"]) / f"{t}.md"
@@ -1015,9 +1049,9 @@ def ai_audit(t, out_dir, think):
            f"{read('S4_valuation_result.md', 4000)}\n\n=== verdict.json (authoritative) ===\n"
            f"{read('verdict.json', 2000)}\n\n=== ROUTING/DISCLOSURE ===\n"
            f"{read('routing.json', 1500)}\n\n=== DATA CONTEXT the run was given (macro/market "
-           f"figures in the report trace here) ===\n{read('_fed_data.md', 10000)}\n\n"
+           f"figures in the report trace here) ===\n{read_ht('_fed_data.md', 8000, 12000)}\n\n"
            f"=== RESEARCH BRIEF ===\n{brief}\n\n"
-           f"=== FINAL REPORT UNDER AUDIT ===\n{read('FINAL.md', 16000)}\n")
+           f"=== FINAL REPORT UNDER AUDIT ===\n{read('FINAL.md', 18000)}\n")
     for attempt in (1, 2):
         try:
             out = ollama_chat(ctx if attempt == 1 else
@@ -1321,6 +1355,22 @@ def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, th
                     f"=== TASK ===\n{FINAL_TASK}")
     final = ollama_chat(final_prompt, CONFIG["final_ctx"], think, retries=1, timeout=1200,
                         max_tokens=16384)   # api backend: 13-section report needs a bigger output cap
+    # ENGINE-WRITTEN AUTHORITATIVE HEADER (2026-08-08). Four instruction layers (stage prompt,
+    # task compliance note, FINAL_TASK structural requirement, Modelfile rule 15) failed to make
+    # the model quote the deterministic fair value / MoS — measured over proof runs 4-9, zero
+    # mentions every time. Facts the published report MUST carry are therefore TYPED BY THE
+    # ENGINE, not requested from the model; the post-completion auditor polices the prose for
+    # CONTRADICTIONS of this block instead of for its presence.
+    if val_block:
+        vr_ = val_res or {}
+        fv_line = ""
+        if vr_.get("fair_value") is not None or vr_.get("mos_pct") is not None:
+            fv_line = (f"AUTHORITATIVE: fair value ${vr_.get('fair_value')} "
+                       f"({vr_.get('fair_value_method')}) | MoS {vr_.get('mos_pct')}% vs price "
+                       f"${vr_.get('price')} | stance {vr_.get('stance')}\n")
+        final = ("═══ ENGINE VALUATION — deterministic, written by the engine (the analyst "
+                 "prose below may argue with it, but these are the authoritative figures) ═══\n"
+                 + fv_line + val_block.strip() + "\n═══ END ENGINE VALUATION ═══\n\n" + final)
     (out_dir / "FINAL.md").write_text(final, encoding="utf-8")
     print(f"   done in {time.time()-t0:.1f}s\n[DONE] -> {out_dir / 'FINAL.md'}", flush=True)
     return emit_verdict(out_dir, t, price, val_res, final, exit_review=exit_review)
@@ -1471,6 +1521,18 @@ def main():
     val_res = None
     val_block = None
     stages = [s for s in STAGES if s[0] in ("S1_macro_classify", "S3_valuation", "S4_scenarios")] if args.valonly else STAGES
+    # GUARANTEED VRAM RELEASE (2026-08-08): normal paths call _release() at their existing
+    # sites (idempotent); the __main__ wrapper force-unloads on any uncaught exception. Proof
+    # run 7 died at a stage-level empty-content raise, left rs2-analyst resident, and the next
+    # run's research barrier hard-failed on the leaked VRAM.
+    _released = {"done": False}
+
+    def _release():
+        if not _released["done"]:
+            _released["done"] = True
+            unload_model(CONFIG["model"])
+            keep_awake(False)
+
     for sid, title, task in stages:
         print(f">> {title}", flush=True)
         t0 = time.time()
@@ -1617,8 +1679,7 @@ def main():
         else:
             print(f"[VALONLY DONE] {t}: {(val_res or {}).get('method')} "
                   f"IV {(val_res or {}).get('iv')} MoS {(val_res or {}).get('mos_pct')}%", flush=True)
-        unload_model(CONFIG["model"])
-        keep_awake(False)
+        _release()
         # diagnostic runs still get the deterministic audit (no FINAL/verdict to check)
         if not args.no_audit:
             aud_ok, checks = deterministic_audit(t, out_dir, val_res, level="valonly")
@@ -1641,8 +1702,7 @@ def main():
     # Prove the run produced a real analysis before it is allowed to count as done.
     ok, problems = sanity_check(out_dir, t)
     if not ok:
-        unload_model(CONFIG["model"])
-        keep_awake(False)
+        _release()
         detail = "; ".join(problems)
         print(f"\n[SANITY] ::FAILED:: {t} — {len(problems)} problem(s): {detail}", flush=True)
         ops.notify_telegram(
@@ -1674,8 +1734,7 @@ def main():
                            "detail": f"auditor exception: {str(e)[:200]}"})
             ops.notify_telegram(f"[RS2 ops] audit_infra — {t}: auditor raised "
                                 f"{str(e)[:150]}; run passed on artefact checks only.")
-    unload_model(CONFIG["model"])  # free VRAM so the next ticker's research starts clean
-    keep_awake(False)
+    _release()   # free VRAM so the next ticker's research starts clean
     if not args.no_audit:
         (out_dir / "audit.json").write_text(json.dumps(
             {"tier1_pass": aud_ok, "tier1": checks,
@@ -1708,4 +1767,17 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise                     # deliberate exits already released the model at their sites
+    except BaseException:
+        # Uncaught crash anywhere in the pipeline: force-release the analyst model before the
+        # traceback, or the resident instance strands ~22GB and every subsequent run's VRAM
+        # barrier hard-fails until the keep_alive expires (proof runs 7->8, 2026-08-08).
+        try:
+            unload_model(CONFIG["model"])
+            keep_awake(False)
+        except Exception:
+            pass
+        raise

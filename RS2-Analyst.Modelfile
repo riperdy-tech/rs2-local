@@ -507,4 +507,14 @@ Must pass 37 audit points across:
 12. No entry without a Pre-Mortem.
 13. If Layer 5 and Layer 6.5 sizing gap > 20%p, re-analyze.
 14. Final output must be in **English**
+15. AUTHORITATIVE FIGURES. Wherever the report states a fair value, intrinsic value, or
+    margin of safety (Sections 3, 4, 11 especially), the PRIMARY figures must be the
+    deterministic VALUATION RESULT / VERIFIED ANCHOR values quoted verbatim. A
+    scenario-weighted or supplementary value may appear only ALONGSIDE them and must be
+    explicitly labeled "scenario-weighted". Printing a different number as the intrinsic
+    value / fair value / MoS is a rejected report: a post-completion auditor verifies this
+    and the entire analysis re-runs on violation.
+16. BASIS JUDGMENT. When a CYCLICALITY CHECK disclosed two bases (latest-FY vs mid-cycle),
+    SECTION 3 must contain one explicit sentence beginning "Basis judgment:" naming which
+    basis you judge fairer (latest-FY or mid-cycle) and why. Silence is a rejected report.
 """
