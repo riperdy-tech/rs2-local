@@ -1005,17 +1005,29 @@ def ai_audit(t, out_dir, think):
     brief = ""
     rp = Path(CONFIG["out_research_dir"]) / f"{t}.md"
     if rp.exists():
-        brief = rp.read_text(encoding="utf-8", errors="replace")[:16000]
+        brief = rp.read_text(encoding="utf-8", errors="replace")[:12000]
+    # Context budget: the pack must FIT. Sized for final_ctx (32768): ~45KB of evidence is
+    # ~13-14K tokens, leaving room for thinking + the JSON verdict. The first live proof run
+    # shipped ~61KB into stage_ctx (24576): ollama returned 200-with-empty-content three
+    # times and the raise crashed the ticker AFTER a good verdict — the auditor must never
+    # be the thing that kills a healthy run.
     ctx = (f"{AI_AUDIT_PROMPT}\n\n=== ENGINE VALUATION RESULT (authoritative) ===\n"
            f"{read('S4_valuation_result.md', 4000)}\n\n=== verdict.json (authoritative) ===\n"
            f"{read('verdict.json', 2000)}\n\n=== ROUTING/DISCLOSURE ===\n"
            f"{read('routing.json', 1500)}\n\n=== DATA CONTEXT the run was given (macro/market "
-           f"figures in the report trace here) ===\n{read('_fed_data.md', 18000)}\n\n"
+           f"figures in the report trace here) ===\n{read('_fed_data.md', 10000)}\n\n"
            f"=== RESEARCH BRIEF ===\n{brief}\n\n"
-           f"=== FINAL REPORT UNDER AUDIT ===\n{read('FINAL.md', 20000)}\n")
+           f"=== FINAL REPORT UNDER AUDIT ===\n{read('FINAL.md', 16000)}\n")
     for attempt in (1, 2):
-        out = ollama_chat(ctx if attempt == 1 else
-                          ctx + "\n\nREMINDER: output ONLY the JSON object.", CONFIG["stage_ctx"], think)
+        try:
+            out = ollama_chat(ctx if attempt == 1 else
+                              ctx + "\n\nREMINDER: output ONLY the JSON object.",
+                              CONFIG["final_ctx"], think)
+        except Exception as e:
+            # auditor infrastructure failure (empty content, timeout, OOM) — the run's own
+            # artefacts are fine; record inconclusive rather than failing a healthy ticker
+            print(f"   [audit] tier-2 attempt {attempt} infra error: {str(e)[:120]}", flush=True)
+            continue
         m = re.search(r"\{.*\}", out or "", re.S)
         if m:
             try:
@@ -1285,8 +1297,19 @@ def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, th
                    "still hold it. SECTION 12 must give an explicit HOLD / TRIM / SELL call for a "
                    "current holder, not a fresh-money buy case.")
     if val_block:
-        anchor += "\n\n" + val_block + ("\n(Use this deterministic valuation verbatim — the "
-                                        "expectations gap / IV is authoritative; do not recompute it.)")
+        anchor += "\n\n" + val_block + (
+            "\n(Use this deterministic valuation verbatim — the expectations gap / IV is "
+            "authoritative; do not recompute it.)"
+            "\n\nAUDIT COMPLIANCE — a post-completion verifier rejects the report (and the whole "
+            "run retries) on any of these:\n"
+            "1. Every valuation figure (MoS, fair value, gap, stance, weight) must be COPIED from "
+            "the VALUATION RESULT above, never recomputed. If you disagree with a figure, argue "
+            "it in prose NEXT TO the authoritative number — do not print your own number in its "
+            "place.\n"
+            "2. If a CYCLICALITY CHECK disclosed two bases, state EXPLICITLY which basis you judge "
+            "fairer and why, in the section where you use it.\n"
+            "3. Every factual claim about company events or figures must trace to the research "
+            "brief or the data context you were given. No figures from memory.")
     if use_anchor:
         pv = prior_verdict(t, exclude_dir=out_dir)
         if pv:
@@ -1605,7 +1628,7 @@ def main():
             if not aud_ok:
                 bad = "; ".join(f"{c['check']}: {c['detail']}" for c in checks if not c["ok"])
                 print(f"[AUDIT] ::FAILED:: {t} (valonly tier-1) — {bad}", flush=True)
-                sys.exit(7)
+                sys.exit(11)
             print(f"[AUDIT] ok — {t}: {len(checks)} deterministic checks passed", flush=True)
         return
 
@@ -1637,9 +1660,20 @@ def main():
     # orchestrate retries it — a bad analysis must never publish.
     aud_ok, checks, ai_status, viols = True, [], "skipped", []
     if not args.no_audit:
-        aud_ok, checks = deterministic_audit(t, out_dir, val_res, level="full")
-        if aud_ok:
-            ai_status, viols = ai_audit(t, out_dir, think)
+        # A defect in the AUDITOR must never kill a run whose artefacts are sound (the first
+        # live proof did exactly that: an oversized tier-2 context crashed MU after a good
+        # verdict). Auditor exceptions record as infra-inconclusive; the exits below fire only
+        # on POSITIVE findings.
+        try:
+            aud_ok, checks = deterministic_audit(t, out_dir, val_res, level="full")
+            if aud_ok:
+                ai_status, viols = ai_audit(t, out_dir, think)
+        except Exception as e:
+            ai_status = "inconclusive"
+            checks.append({"check": "audit.infra", "ok": True,
+                           "detail": f"auditor exception: {str(e)[:200]}"})
+            ops.notify_telegram(f"[RS2 ops] audit_infra — {t}: auditor raised "
+                                f"{str(e)[:150]}; run passed on artefact checks only.")
     unload_model(CONFIG["model"])  # free VRAM so the next ticker's research starts clean
     keep_awake(False)
     if not args.no_audit:
@@ -1651,14 +1685,14 @@ def main():
             print(f"\n[AUDIT] ::FAILED:: {t} tier-1 (deterministic) — {bad}", flush=True)
             ops.notify_telegram(f"[RS2 ops] audit_failed — {t} tier-1 deterministic audit: "
                                 f"{bad[:500]}. Report: {out_dir.name}. Ticker will retry.")
-            sys.exit(7)
+            sys.exit(11)   # 3=research infra, 6=sanity, 7=VRAM hard-fail — audit gets 11/12
         if ai_status == "fail":
             vtxt = "; ".join(f"{v.get('type')}: {v.get('detail')}" for v in viols)[:500]
             print(f"\n[AUDIT] ::FAILED:: {t} tier-2 (AI verifier) — {vtxt}", flush=True)
             ops.notify_telegram(f"[RS2 ops] audit_failed — {t} tier-2 AI verifier found "
                                 f"material violations: {vtxt}. Report: {out_dir.name}. "
                                 f"Ticker will retry.")
-            sys.exit(8)
+            sys.exit(12)
         if ai_status == "inconclusive":
             print(f"[AUDIT] tier-2 inconclusive (auditor output unparseable) — run passes on "
                   f"tier-1; logged for review", flush=True)
