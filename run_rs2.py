@@ -147,16 +147,25 @@ FINAL_TASK = (
     "order, in a SINGLE code block. Do not re-derive — consolidate the numbers already produced. "
     "Enforce all 14 FINAL MANDATORY RULES. End with SECTION 12 Final Execution Opinion "
     "(Action, Conviction, Weight %, Strategy). Output in English.\n\n"
-    "TWO STRUCTURAL REQUIREMENTS THE POST-COMPLETION AUDITOR REJECTS THE REPORT WITHOUT "
-    "(the whole run repeats on rejection):\n"
-    "A. Wherever the report presents fair value or margin of safety (Sections 4 and 11), the "
-    "PRIMARY figures MUST be the authoritative fair value and MoS quoted verbatim from the "
-    "VALUATION RESULT / VERIFIED ANCHOR. A scenario-weighted or supplementary value may appear "
-    "ONLY alongside them, explicitly labeled 'scenario-weighted'. Never print a different number "
-    "as 'Intrinsic Value' or 'Margin of Safety' in their place.\n"
+    "FIELD-OWNERSHIP CONTRACT — the post-completion auditor rejects the report (and the whole "
+    "run repeats) on any breach:\n"
+    "A. ENGINE-OWNED FIELDS: stance label, fair value, margin of safety and expectations gap "
+    "are already in the ENGINE VALUATION header the engine writes into the report. NEVER "
+    "restate them as labeled values in your sections (no 'Stance: ...', 'Fair Value: $...', "
+    "'Intrinsic Value: $...', 'MoS: ...%'). Refer to them in prose ('the engine's stance "
+    "above'). A clearly-labeled 'scenario-weighted' price from your scenario section is "
+    "permitted.\n"
     "B. If the analysis contains a CYCLICALITY CHECK (two bases disclosed), SECTION 3 MUST "
     "include one explicit sentence beginning 'Basis judgment:' stating which basis (latest-FY "
-    "or mid-cycle) you judge fairer and why.\n\n"
+    "or mid-cycle) you judge fairer and why.\n"
+    "C. SINGLE-STATEMENT SIZING: weight %, conviction and the action verdict appear EXACTLY "
+    "ONCE, in SECTION 12. No earlier section may print a weight percentage, conviction number "
+    "or action label.\n"
+    "D. SECTION 3 MUST contain one slot of exactly this form: 'Engine verdict: <stance from "
+    "the ENGINE VALUATION header>. Analyst view: AGREE — <reason>' or '... Analyst view: "
+    "DISAGREE — <one to three sentences>'. This is the ONLY place to register disagreement "
+    "with the engine's stance; your disagreement flows into conviction and Section 12, never "
+    "into relabeling.\n\n"
     "AFTER the report code block, output exactly ONE fenced ```json block (machine-read; the "
     "prose stays for humans):\n"
     "```json\n{\"stance\": <1-5>, \"thesis_break\": <true|false>}\n```\n"
@@ -1019,6 +1028,17 @@ def deterministic_audit(t, out_dir, val_res, level="full"):
             if st is not None and isinstance(gap_v, (int, float)):
                 rec("verdict.stance_from_gap", st == _stance_from_gap(gap_v),
                     f"stance {st} vs recompute {_stance_from_gap(gap_v)} (gap {gap_v})")
+            # FIELD-OWNERSHIP CONTRACT slot (rule 18): the one sanctioned transcription of the
+            # engine stance. Deterministically verifiable — no need to spend the AI verifier
+            # on it. Only enforced for reports written under the contract (header present).
+            fp2 = out_dir / "FINAL.md"
+            if st is not None and fp2.exists():
+                ftxt = fp2.read_text(encoding="utf-8", errors="replace")
+                if "ENGINE VALUATION" in ftxt and "Engine verdict:" in ftxt:
+                    m = re.search(r"Engine verdict:\s*\**\s*([A-Za-z-]+)", ftxt)
+                    got = (m.group(1).lower() if m else None)
+                    rec("final.engine_verdict_slot", got == str(st).lower(),
+                        f"slot says {got!r} vs authoritative {st!r}")
 
     ok = all(c["ok"] for c in checks)
     return ok, checks
@@ -1028,14 +1048,19 @@ AI_AUDIT_PROMPT = """You are the POST-COMPLETION AUDITOR for this equity analysi
 NOT re-analyze. The engine's VALUATION RESULT and verdict.json are AUTHORITATIVE data; the final
 report is the text under audit.
 
-VIOLATIONS (each one fails the report):
-1. COMPETING VALUATION: the report's PROSE contradicts the ENGINE VALUATION header (which the
-   engine writes into the report deterministically — do not flag its absence from the model's
-   own sections): a different figure presented as the fair value / intrinsic value / MoS, a
-   price level asserted to carry a margin of safety inconsistent with the authoritative fair
-   value, or a stance contradicting the authoritative stance. (A clearly-labeled
-   SCENARIO-WEIGHTED or probability-weighted price from the report's own scenario section is
-   PERMITTED and is not a competing valuation.)
+VIOLATIONS (each one fails the report — the FIELD-OWNERSHIP CONTRACT is the standard):
+1. ENGINE-FIELD BREACH: the report restates an engine-owned field as a labeled value anywhere
+   in the model's sections ("Stance: ...", "Fair Value: $...", "Intrinsic Value: $...",
+   "MoS: ...%"), or its prose contradicts the ENGINE VALUATION header (a price level asserted
+   to carry a margin of safety inconsistent with the authoritative fair value, a stance claim
+   conflicting with the authoritative stance). Referring to the header's values in prose is
+   correct behavior, not a breach. (A clearly-labeled SCENARIO-WEIGHTED price from the
+   report's own scenario section is PERMITTED.)
+1b. SIZING OUTSIDE SECTION 12: a weight percentage, conviction number, or action label
+   printed in any section other than SECTION 12, or Section 12's figures contradicting an
+   earlier section's reasoning. The "Engine verdict / Analyst view" slot in SECTION 3 is
+   required (AGREE or DISAGREE with reasons) — its absence is a violation; a DISAGREE there
+   is legitimate and never a violation by itself.
 2. FABRICATION: a company-specific figure that appears in neither the engine data, the data
    context, nor the research brief, and is not arithmetic on them. Figures from model memory
    are fabrication even when plausible.

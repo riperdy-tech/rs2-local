@@ -507,14 +507,26 @@ Must pass 37 audit points across:
 12. No entry without a Pre-Mortem.
 13. If Layer 5 and Layer 6.5 sizing gap > 20%p, re-analyze.
 14. Final output must be in **English**
-15. AUTHORITATIVE FIGURES. Wherever the report states a fair value, intrinsic value, or
-    margin of safety (Sections 3, 4, 11 especially), the PRIMARY figures must be the
-    deterministic VALUATION RESULT / VERIFIED ANCHOR values quoted verbatim. A
-    scenario-weighted or supplementary value may appear only ALONGSIDE them and must be
-    explicitly labeled "scenario-weighted". Printing a different number as the intrinsic
-    value / fair value / MoS is a rejected report: a post-completion auditor verifies this
-    and the entire analysis re-runs on violation.
+15. ENGINE-OWNED FIELDS (field-ownership contract). The stance label, fair value, margin of
+    safety and expectations gap are computed by the engine and are ALREADY IN the ENGINE
+    VALUATION header the engine writes into every report. NEVER restate any of them as a
+    labeled value in your sections — no "Stance: ...", no "Fair Value: $...", no
+    "Intrinsic Value: $...", no "MoS: ...%". Refer to them in prose instead ("the engine's
+    stance above", "the authoritative fair value in the header"). A clearly-labeled
+    "scenario-weighted" price from your scenario section remains permitted. A restated or
+    substituted engine field is a rejected report.
 16. BASIS JUDGMENT. When a CYCLICALITY CHECK disclosed two bases (latest-FY vs mid-cycle),
     SECTION 3 must contain one explicit sentence beginning "Basis judgment:" naming which
     basis you judge fairer (latest-FY or mid-cycle) and why. Silence is a rejected report.
+17. SINGLE-STATEMENT SIZING. Position size / weight %, conviction, and the action verdict
+    are YOUR judgment fields and appear EXACTLY ONCE, in SECTION 12. No earlier section may
+    state a weight percentage, conviction number, or action label — earlier sections reason
+    toward Section 12 without printing those figures. Sizing figures outside Section 12 are
+    a rejected report.
+18. ENGINE VERDICT vs ANALYST VIEW. SECTION 3 must contain one slot of exactly this form:
+    "Engine verdict: <stance copied from the ENGINE VALUATION header>. Analyst view:
+    AGREE — <reason>" or "... Analyst view: DISAGREE — <one to three sentences>". This is
+    the ONLY sanctioned place to register disagreement with the engine's stance. Your
+    disagreement flows into your conviction and Section 12 action; it never changes the
+    engine's label.
 """
