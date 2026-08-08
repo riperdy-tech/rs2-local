@@ -1708,6 +1708,14 @@ def main():
     ok, problems = sanity_check(out_dir, t)
     if not ok:
         _release()
+        # write the failure marker BEFORE exiting: the verdict.json this run already emitted is
+        # well-formed (emission precedes sanity), and without a marker the publish/anchor/overlay
+        # audit gate cannot tell this dir from a clean one (TSM batch-1: a sanity-failed attempt's
+        # verdict reached the local overlay through exactly this hole)
+        (out_dir / "audit.json").write_text(json.dumps(
+            {"tier1_pass": False,
+             "tier1": [{"check": "sanity", "ok": False, "detail": "; ".join(problems)[:400]}],
+             "tier2": "skipped_sanity_fail"}, indent=2), encoding="utf-8")
         detail = "; ".join(problems)
         print(f"\n[SANITY] ::FAILED:: {t} — {len(problems)} problem(s): {detail}", flush=True)
         ops.notify_telegram(
