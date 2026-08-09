@@ -1172,6 +1172,13 @@ def deterministic_audit(t, out_dir, val_res, level="full"):
                 _full = fp0.read_text(encoding="utf-8", errors="replace")
                 rec("final.section12_present", "SECTION 12" in _full.upper(),
                     f"len {len(_full)} chars")
+                # basis-judgment PRESENCE is tier-1's (full file); the AI verifier judges only
+                # its content from the extracted slot (WDC phantom class, 2026-08-09)
+                rjx = rs2_data.load_json(out_dir / "routing.json")
+                if isinstance(rjx, dict) and rjx.get("disclosed"):
+                    rec("final.basis_judgment_present",
+                        bool(re.search(r"Basis judgment:", _full, re.I)),
+                        "required by rule 16 (two bases disclosed)")
             # FIELD-OWNERSHIP CONTRACT slot (rule 18): the one sanctioned transcription of the
             # engine stance. Deterministically verifiable — no need to spend the AI verifier
             # on it. Only enforced for reports written under the contract (header present).
@@ -1209,8 +1216,10 @@ VIOLATIONS (each one fails the report — the FIELD-OWNERSHIP CONTRACT is the st
 2. FABRICATION: a company-specific figure that appears in neither the engine data, the data
    context, nor the research brief, and is not arithmetic on them. Figures from model memory
    are fabrication even when plausible.
-3. MISSING BASIS JUDGMENT: a CYCLICALITY CHECK disclosed two bases (latest vs mid-cycle) and the
-   report never states WHICH basis it judged fairer and why.
+3. BASIS-JUDGMENT CONTENT: judge only the CONTENT of the extracted "Basis judgment:" slot
+   (does it name a basis and give a reason consistent with the disclosure). Its PRESENCE is
+   verified deterministically outside this audit — NEVER charge a missing slot or section:
+   your report view is head+tail packaged and required slots are provided as extracts.
 4. INTERNAL CONTRADICTION: stance, action, conviction and entry guidance contradict each other
    or the report's own prose.
 5. UNGROUNDED EVENT CLAIM: a factual claim about recent company events with no supporting
@@ -1257,7 +1266,34 @@ def ai_audit(t, out_dir, think):
     # shipped ~61KB into stage_ctx (24576): ollama returned 200-with-empty-content three
     # times and the raise crashed the ticker AFTER a good verdict — the auditor must never
     # be the thing that kills a healthy run.
-    ctx = (f"{AI_AUDIT_PROMPT}\n\n=== ENGINE VALUATION RESULT (authoritative) ===\n"
+    # REQUIRED-SLOT EXTRACTION: rule-verification surfaces (the Engine-verdict slot, the
+    # Basis-judgment sentence) live MID-report and fall into the head+tail elision on long
+    # reports — WDC failed a whole batch to phantom "missing basis judgment" charges while
+    # the sentence sat in the elided middle (2026-08-09). Presence is judged by TIER-1 on
+    # the full file; these excerpts let the verifier judge CONTENT without inferring absence.
+    slots = ""
+    fp_full = out_dir / "FINAL.md"
+    if fp_full.exists():
+        ftxt = fp_full.read_text(encoding="utf-8", errors="replace")
+        exc = []
+        for pat in (r"[^\n]*Engine verdict:[^\n]*(?:\n[^\n]*){0,2}",
+                    r"[^\n]*Basis judgment:[^\n]*(?:\n[^\n]*){0,2}"):
+            m = re.search(pat, ftxt)
+            if m:
+                exc.append(m.group(0)[:600])
+        # every labeled conviction/weight/action line, so cross-section consistency is judged
+        # on the COMPLETE set even when a section falls in the elided middle
+        sizing = [ln.strip()[:160] for ln in ftxt.splitlines()
+                  if re.search(r"(conviction|weight|action)\s*[:|]", ln, re.I)
+                  and re.search(r"\d|BUY|SELL|HOLD|ACCUMULATE|High|Medium|Low", ln)]
+        if sizing:
+            exc.append("ALL conviction/weight/action-bearing lines (complete set, in order):\n"
+                       + "\n".join(sizing[:24]))
+        if exc:
+            slots = ("\n\n=== EXTRACTED REQUIRED SLOTS (pulled from the FULL report — their "
+                     "presence is already verified deterministically; judge only their "
+                     "CONTENT) ===\n" + "\n---\n".join(exc))
+    ctx = (f"{AI_AUDIT_PROMPT}{slots}\n\n=== ENGINE VALUATION RESULT (authoritative) ===\n"
            f"{read('S4_valuation_result.md', 4000)}\n\n=== verdict.json (authoritative) ===\n"
            f"{read('verdict.json', 2000)}\n\n=== ROUTING/DISCLOSURE ===\n"
            f"{read('routing.json', 1500)}\n\n=== DATA CONTEXT the run was given (macro/market "
