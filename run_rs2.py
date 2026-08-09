@@ -21,6 +21,7 @@ CLI:
 """
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -1798,8 +1799,9 @@ def main():
              "tier2": "skipped_sanity_fail"}, indent=2), encoding="utf-8")
         detail = "; ".join(problems)
         print(f"\n[SANITY] ::FAILED:: {t} — {len(problems)} problem(s): {detail}", flush=True)
-        ops.notify_telegram(
-            f"[RS2 ops] sanity_failed — {t} produced a bad/empty analysis "
+        if not os.environ.get("RS2_ORCH_OUTCOMES"):
+            ops.notify_telegram(
+                f"[RS2 ops] sanity_failed — {t} produced a bad/empty analysis "
             f"({len(problems)} problem(s)). Report: {out_dir.name}. Ticker will retry.\n{detail[:600]}")
         # non-zero exit -> orchestrate marks the name failed and re-queues it, exactly like
         # a watchdog kill, instead of publishing a hollow verdict to the overlay
@@ -1835,15 +1837,17 @@ def main():
         if not aud_ok:
             bad = "; ".join(f"{c['check']}: {c['detail']}" for c in checks if not c["ok"])
             print(f"\n[AUDIT] ::FAILED:: {t} tier-1 (deterministic) — {bad}", flush=True)
-            ops.notify_telegram(f"[RS2 ops] audit_failed — {t} tier-1 deterministic audit: "
-                                f"{bad[:500]}. Report: {out_dir.name}. Ticker will retry.")
+            if not os.environ.get("RS2_ORCH_OUTCOMES"):
+                ops.notify_telegram(f"[RS2 ops] audit_failed — {t} tier-1 deterministic audit: "
+                                    f"{bad[:500]}. Report: {out_dir.name}. Ticker will retry.")
             sys.exit(11)   # 3=research infra, 6=sanity, 7=VRAM hard-fail — audit gets 11/12
         if ai_status == "fail":
             vtxt = "; ".join(f"{v.get('type')}: {v.get('detail')}" for v in viols)[:500]
             print(f"\n[AUDIT] ::FAILED:: {t} tier-2 (AI verifier) — {vtxt}", flush=True)
-            ops.notify_telegram(f"[RS2 ops] audit_failed — {t} tier-2 AI verifier found "
-                                f"material violations: {vtxt}. Report: {out_dir.name}. "
-                                f"Ticker will retry.")
+            if not os.environ.get("RS2_ORCH_OUTCOMES"):
+                ops.notify_telegram(f"[RS2 ops] audit_failed — {t} tier-2 AI verifier found "
+                                    f"material violations: {vtxt}. Report: {out_dir.name}. "
+                                    f"Ticker will retry.")
             sys.exit(12)
         if ai_status == "inconclusive":
             print(f"[AUDIT] tier-2 inconclusive (auditor output unparseable) — run passes on "

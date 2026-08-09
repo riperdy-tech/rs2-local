@@ -284,6 +284,28 @@ def build_queue(cur, state, args, llm_rn=frozenset()):
     return q, drops
 
 
+def _fail_reason(t):
+    """Compact failure reason from the newest report dir's audit/sanity record, for the
+    outcome feed. Never raises."""
+    try:
+        ds = sorted(REPORTS.glob(f"{t}_*"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not ds:
+            return "no report dir (infra/timeout)"
+        aj = load(ds[0] / "audit.json")
+        if not aj:
+            return "crashed before audit (infra/timeout)"
+        t1f = [c for c in (aj.get("tier1") or []) if not c.get("ok")]
+        if not aj.get("tier1_pass", True) and t1f:
+            c = t1f[0]
+            return f"{c.get('check')}: {str(c.get('detail'))[:90]}"
+        vs = aj.get("tier2_violations") or []
+        if aj.get("tier2") == "fail" and vs:
+            return f"tier-2 {vs[0].get('type')}: {str(vs[0].get('detail'))[:90]}"
+        return f"tier2={aj.get('tier2')}"
+    except Exception as e:
+        return f"reason unavailable ({str(e)[:40]})"
+
+
 def audit_clean(d):
     """A report dir is publishable only if its post-completion audit did not FAIL. Dirs with no
     audit.json (pre-audit era, or a crash before the auditor ran) pass through — the audit gate
@@ -457,7 +479,11 @@ def run_one(t, exit_review=False, timeout_sec=0):
     _unanchored = os.environ.get("ORCH_UNANCHORED") == "1"
     cmd = [PY, str(HERE / "run_rs2.py"), t] \
         + (["--exit-review"] if exit_review else ([] if _unanchored else ["--anchor"]))
-    proc = subprocess.Popen(cmd, cwd=str(HERE))
+    # RS2_ORCH_OUTCOMES: the orchestrator sends ONE structured outcome message per attempt
+    # (operator order 2026-08-09) — the child suppresses its own per-failure Telegram
+    # duplicates. Standalone runs (no env) keep alerting directly.
+    env = dict(os.environ, RS2_ORCH_OUTCOMES="1")
+    proc = subprocess.Popen(cmd, cwd=str(HERE), env=env)
     try:
         rc = proc.wait(timeout=timeout_sec if timeout_sec > 0 else None)
         if rc != 0:
@@ -801,18 +827,56 @@ def main():
             done += 1
             if succeeded:
                 ran_ok.add(t)            # --tickers: resolved, do not re-serve this sweep
+            exhausted_now = False
             if not (ok and v):
                 failed += 1
                 log(f"   {t} FAILED (continuing)")
                 sweep_fails[t] = sweep_fails.get(t, 0) + 1
                 if args.tickers and sweep_fails[t] >= MAX_RETRIES:
                     ran_ok.add(t)        # retries exhausted THIS sweep — resolve it, loudly
+                    exhausted_now = True
                     log(f"   {t}: {sweep_fails[t]} failure(s) this sweep — retry budget "
                         f"exhausted, removed from the --tickers queue")
+            # STRUCTURED OUTCOME FEED (operator order 2026-08-09): one Telegram message per
+            # completed attempt with the actual result — succeeded / failed+reason+retrying /
+            # exhausted — plus sweep progress, replacing the scattershot per-subsystem alerts
+            # (children suppress their own duplicates via RS2_ORCH_OUTCOMES).
+            try:
+                wanted_n = len([x for x in args.tickers.split(",") if x.strip()]) if args.tickers else None
+                prog = (f"{len(ran_ok & set(state))}/{wanted_n} resolved" if wanted_n
+                        else f"{done} done, {len(queue)} queued")
+                camp = ""
+                cf = HERE / "cache" / "baseline_campaign.json"
+                if cf.exists():
+                    cj = json.loads(cf.read_text(encoding="utf-8"))
+                    camp = f" | baseline {len(cj.get('done', []))}/172"
+                if succeeded:
+                    notify_telegram(f"✅ {t} done — {(v or {}).get('stance') or 'n/a'}, "
+                                    f"conv {(v or {}).get('conviction')} | {prog}{camp}")
+                else:
+                    reason = _fail_reason(t)
+                    tail_ = ("budget exhausted — carried to next batch" if exhausted_now
+                             else f"retrying ({sweep_fails.get(t, 0)}/{MAX_RETRIES})")
+                    notify_telegram(f"❌ {t} attempt failed — {reason} — {tail_} | {prog}{camp}")
+            except Exception as e:
+                log(f"   [outcomes] telegram feed error (non-fatal): {str(e)[:80]}")
             time.sleep(15)
         save(PROGRESS, {"updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "current": None,
                         "idx": done, "queue_total": done, "done_this_run": done,
                         "failed_this_run": failed, "finished": True})
+        # sweep-end summary for the outcome feed (override sweeps name the carryovers)
+        try:
+            if args.tickers:
+                wanted = {x.strip().upper() for x in args.tickers.split(",") if x.strip()}
+                clean = {x for x in wanted if state.get(x, {}).get("ok")}
+                carry = sorted(wanted - clean)
+                notify_telegram(f"🏁 sweep done — {done} attempts | clean {len(clean)}/"
+                                f"{len(wanted)}" + (f" | carryover: {', '.join(carry)}" if carry
+                                                    else " | no carryover"))
+            else:
+                notify_telegram(f"🏁 sweep done — {done} attempts, {failed} failed")
+        except Exception as e:
+            log(f"   [outcomes] sweep summary error (non-fatal): {str(e)[:80]}")
 
         # clear the debris failed/killed runs leave behind (dirs with no verdict.json) before
         # publishing, so it can't accumulate run after run
