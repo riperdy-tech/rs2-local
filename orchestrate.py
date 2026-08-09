@@ -779,6 +779,10 @@ def main():
                 "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "current": t, "current_band": band, "current_started": datetime.now().strftime("%H:%M:%S"),
                 "reason": tag,   # NEW/SHIFT/RE-ADD/RETRY/EARNINGS/due Xd/EXIT-REVIEW — which run category
+                # NAMES resolved (vs attempt counts): clean = succeeded; exhausted = burned the
+                # retry budget this sweep. "failed_this_run" counts TRIES, incl. later-redeemed.
+                "clean_names": sorted(x for x in ran_ok if state.get(x, {}).get("ok")),
+                "exhausted_names": sorted(x for x in ran_ok if not state.get(x, {}).get("ok")),
                 "idx": done + 1, "queue_total": done + remaining, "done_this_run": done, "failed_this_run": failed,
                 "avg_sec_per_ticker": round(per) if per else None,
                 "eta_finish": (datetime.fromtimestamp(time.time() + per * remaining).strftime("%Y-%m-%d %H:%M")

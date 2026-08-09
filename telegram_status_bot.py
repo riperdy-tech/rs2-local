@@ -72,9 +72,13 @@ def compose_status():
     if prog and not prog.get("finished") and alive:
         cur = prog.get("current")
         lines.append(f"▶ running: {cur or '?'} ({prog.get('reason', '')})")
-        lines.append(f"   sweep: {prog.get('done_this_run', 0)} done, "
-                     f"{prog.get('failed_this_run', 0)} failed attempts, "
-                     f"{max((prog.get('queue_total') or 0) - (prog.get('idx') or 0), 0)} queued")
+        lines.append(f"   attempts: {prog.get('done_this_run', 0)} done "
+                     f"({prog.get('failed_this_run', 0)} rejected tries — retries may still "
+                     f"redeem), {max((prog.get('queue_total') or 0) - (prog.get('idx') or 0), 0)} queued")
+        cn, xn = prog.get("clean_names"), prog.get("exhausted_names")
+        if cn is not None:
+            lines.append(f"   names: ✅ {len(cn)} clean" +
+                         (f" | 🛑 exhausted: {', '.join(xn)}" if xn else " | none exhausted"))
         if prog.get("avg_sec_per_ticker"):
             lines.append(f"   pace: ~{round(prog['avg_sec_per_ticker']/60, 1)} min/attempt"
                          + (f" | sweep ETA {prog.get('eta_finish')}" if prog.get("eta_finish")

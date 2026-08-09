@@ -586,6 +586,140 @@ def prior_verdict(ticker, exclude_dir=None):
     return None
 
 
+_STAGE_TAINT = ("fabricat", "ungrounded", "grounding", "research")
+
+
+def _router_source(ticker):
+    """Same-day failed dir whose defects are provably FINAL-LOCAL -> (src_dir, why) or None.
+
+    Routable iff: audit.json present; every failing tier-1 check is a FINAL-content check
+    (engine-verdict slot / section-12 presence — never backbone/data drift); no tier-2
+    violation is stage-tainted (fabrication/grounding classes may ORIGINATE in a stage and
+    would survive a re-assembly); and every stage file exists and clears MIN_STAGE_CHARS.
+    Anything else -> full rerun. The routed retry still faces the COMPLETE sanity + audit
+    gauntlet — this changes how much is regenerated, never what passes."""
+    root = Path(CONFIG["out_reports_dir"])
+    today = datetime.now().strftime("%Y%m%d")
+    for d in sorted(root.glob(f"{ticker.upper()}_{today}_*"),
+                    key=lambda p: p.stat().st_mtime, reverse=True):
+        aj = rs2_data.load_json(d / "audit.json")
+        if not aj:
+            continue
+        if aj.get("tier1_pass", True) and aj.get("tier2") in ("pass", "inconclusive"):
+            return None              # newest attempt passed — nothing to retry
+        t1_bad = [c for c in (aj.get("tier1") or []) if not c.get("ok")]
+        if any(c.get("check") not in ("final.engine_verdict_slot", "final.section12_present")
+               for c in t1_bad):
+            return None              # data/backbone/sanity-level — full rerun
+        viols = aj.get("tier2_violations") or []
+        blob = json.dumps(viols).lower()
+        if any(k in blob for k in _STAGE_TAINT):
+            return None              # possibly stage-originated — full rerun
+        for sid, _title, _task in STAGES:
+            p = d / f"{sid}.md"
+            if not p.exists() or len(p.read_text(encoding="utf-8",
+                                                 errors="replace").strip()) < MIN_STAGE_CHARS:
+                return None          # stage artifacts not reusable
+        return d, ("tier-1 final checks" if t1_bad else "tier-2 final-local violations")
+    return None
+
+
+def _routing_extra_from_json(rj):
+    """Reconstruct the S1 CYCLICALITY CHECK block from routing.json for a re-assembled final
+    (the live run appended it to accum in memory; it is not a stage file)."""
+    if not (isinstance(rj, dict) and rj.get("disclosed")):
+        return ""
+    lf, mc = rj.get("latest_fy") or {}, rj.get("midcycle") or {}
+    if rj.get("in_use") == "midcycle":
+        return ("\n\n## CYCLICALITY CHECK (mid-cycle base in use)\n"
+                f"- The VALUATION block's base cash flow is a MID-CYCLE AVERAGE: "
+                f"${(mc.get('base_cf') or 0)/1e9:.2f}B, implying "
+                f"{(mc.get('implied_growth') or 0)*100:.1f}%/yr growth, gap "
+                f"{(mc.get('gap_pts') or 0):+.0f}pts.\n"
+                f"- On the LATEST fiscal year alone it would be "
+                f"${(lf.get('base_cf') or 0)/1e9:.2f}B, implying "
+                f"{(lf.get('implied_growth') or 0)*100:.1f}%/yr, gap "
+                f"{(lf.get('gap_pts') or 0):+.0f}pts.\n"
+                "- Neither is automatically right. Decide which basis is fairer from the "
+                "business evidence and SAY WHICH YOU USED (Section 3 'Basis judgment:'). "
+                "The engine scores the mid-cycle figure.")
+    return ("\n\n## CYCLICALITY CHECK (you classified this CYCLICAL)\n"
+            f"- The VALUATION block's base cash flow is the LATEST-point basis: "
+            f"${(lf.get('base_cf') or 0)/1e9:.2f}B, implying "
+            f"{(lf.get('implied_growth') or 0)*100:.1f}%/yr, gap "
+            f"{(lf.get('gap_pts') or 0):+.0f}pts.\n"
+            f"- On a MID-CYCLE average it would be ${(mc.get('base_cf') or 0)/1e9:.2f}B, "
+            f"implying {(mc.get('implied_growth') or 0)*100:.1f}%/yr, gap "
+            f"{(mc.get('gap_pts') or 0):+.0f}pts.\n"
+            "- Neither is automatically right. Decide which from the business evidence and "
+            "SAY WHICH YOU USED (Section 3 'Basis judgment:'). The engine scores the "
+            "latest-point figure.")
+
+
+def refinal_retry(t, src, think):
+    """FINAL-ONLY retry (the retry router): reuse the failed attempt's validated stage
+    artifacts, regenerate only the final assembly (with retry_feedback), then face the FULL
+    sanity + audit gauntlet with normal exit semantics. ~3.5-4 min vs ~9.7 for a full rerun;
+    measured 60-70%% of rejections are final-local with valid stages behind them."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = Path(CONFIG["out_reports_dir"]) / f"{t}_{ts}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    copied = ["_fed_data.md", "research.md", "routing.json",
+              "S3_valuation_inputs.json", "S4_valuation_result.md"] \
+        + [f"{sid}.md" for sid, _tt, _tk in STAGES]
+    for fn in copied:
+        p = src / fn
+        if p.exists():
+            (out_dir / fn).write_text(p.read_text(encoding="utf-8", errors="replace"),
+                                      encoding="utf-8")
+    val_res = rs2_data.load_json(src / "S3_valuation_inputs.json")
+    val_block = ((src / "S4_valuation_result.md").read_text(encoding="utf-8")
+                 if (src / "S4_valuation_result.md").exists() else None)
+    price = (val_res or {}).get("price")
+    cap = int(CONFIG.get("stage_carry_char_cap", 4500))
+    extra_s1 = _routing_extra_from_json(rs2_data.load_json(src / "routing.json"))
+    accum = ""
+    for sid, title, _task in STAGES:
+        outtx = (out_dir / f"{sid}.md").read_text(encoding="utf-8", errors="replace")
+        carry = outtx if len(outtx) <= cap else outtx[:cap] + "\n…[truncated]"
+        extra = extra_s1 if sid == "S1_macro_classify" else (
+            ("\n\n" + val_block) if (sid == "S3_valuation" and val_block) else "")
+        accum += f"\n\n----- {title} -----\n{carry}{extra}"
+    print(f"[router] FINAL-ONLY retry from {src.name} -> {out_dir.name}", flush=True)
+    (out_dir / "refinal_from.txt").write_text(src.name, encoding="utf-8")
+    final_assembly(t, out_dir, accum, val_block, val_res, price, False, think,
+                   use_anchor=False)
+    unload_model(CONFIG["model"])
+    keep_awake(False)
+    ok, problems = sanity_check(out_dir, t)
+    if not ok:
+        (out_dir / "audit.json").write_text(json.dumps(
+            {"tier1_pass": False,
+             "tier1": [{"check": "sanity", "ok": False,
+                        "detail": "; ".join(problems)[:400]}],
+             "tier2": "skipped_sanity_fail"}, indent=2), encoding="utf-8")
+        print(f"\n[SANITY] ::FAILED:: {t} (router retry) — {'; '.join(problems)[:200]}",
+              flush=True)
+        sys.exit(6)
+    aud_ok, checks = deterministic_audit(t, out_dir, val_res, level="full")
+    ai_status, viols = ("skipped", [])
+    if aud_ok:
+        ai_status, viols = ai_audit(t, out_dir, think)
+    unload_model(CONFIG["model"])
+    (out_dir / "audit.json").write_text(json.dumps(
+        {"tier1_pass": aud_ok, "tier1": checks, "tier2": ai_status,
+         "tier2_violations": viols, "router": src.name}, indent=2), encoding="utf-8")
+    if not aud_ok:
+        print(f"\n[AUDIT] ::FAILED:: {t} router-retry tier-1", flush=True)
+        sys.exit(11)
+    if ai_status == "fail":
+        print(f"\n[AUDIT] ::FAILED:: {t} router-retry tier-2", flush=True)
+        sys.exit(12)
+    print(f"[AUDIT] ok — {t} (router retry): {len(checks)} checks + verifier ({ai_status})",
+          flush=True)
+    sys.exit(0)
+
+
 def retry_feedback(ticker, exclude_dir=None):
     """If the immediately previous attempt of THIS analysis (same day) was rejected by the
     post-completion auditor, return a compact block of its violations for the retry's final
@@ -1470,6 +1604,9 @@ def main():
     ap.add_argument("--no-audit", action="store_true",
                     help="skip the post-completion audit (debugging only — every production "
                          "run must audit; operator order 2026-08-08)")
+    ap.add_argument("--no-router", action="store_true",
+                    help="force a FULL rerun even when the retry router would reuse the failed "
+                         "attempt's validated stages for a final-only retry")
     ap.add_argument("--no-research", action="store_true")
     ap.add_argument("--no-think", action="store_true")
     ap.add_argument("--api", action="store_true",
@@ -1544,6 +1681,14 @@ def main():
     # 1-2. acquire data
     if not args.no_enrich:
         run_enrich(t)
+    # RETRY ROUTER (2026-08-09): when today's newest attempt failed on provably FINAL-LOCAL
+    # defects with fully valid stage artifacts, regenerate only the final assembly and re-face
+    # the complete audit — never the six stages that already passed. Full-rerun classes
+    # (fabrication/grounding, backbone drift, empty stages) never route.
+    if not (args.no_audit or args.valonly or getattr(args, "no_router", False)):
+        _r = _router_source(t)
+        if _r:
+            refinal_retry(t, _r[0], think)   # exits with normal semantics; never returns
     # Warm the OpenBB cache BEFORE anything reads the consensus band (build_data_context's
     # valuation block AND the verdict backbone) — otherwise a first-ever run fences the prompt's
     # fair value on the enrich band while the verdict later uses the fresh OpenBB band.
@@ -1624,6 +1769,28 @@ def main():
         t0 = time.time()
         content = stage_prompt(data_ctx, accum, task)
         out = ollama_chat(content, CONFIG["stage_ctx"], think)
+        # INLINE STAGE-RETRY (2026-08-09): an empty/near-empty stage is detectable the moment
+        # the call returns — retrying it here costs ~40s; letting it ride to the post-run
+        # sanity check costs the rest of the pipeline plus a full 9.7-min re-attempt (LQDT
+        # batch-6: a 171B S5 completed S6+FINAL before failing). One retry (empties are
+        # stochastic); a second short output fails FAST with the same sanity semantics.
+        if len((out or "").strip()) < MIN_STAGE_CHARS:
+            print(f"   [stage-retry] {sid} returned {len((out or '').strip())}B < "
+                  f"{MIN_STAGE_CHARS}B — inline retry", flush=True)
+            out = ollama_chat(content, CONFIG["stage_ctx"], think)
+            if len((out or "").strip()) < MIN_STAGE_CHARS:
+                (out_dir / f"{sid}.md").write_text(out or "", encoding="utf-8")
+                (out_dir / "audit.json").write_text(json.dumps(
+                    {"tier1_pass": False,
+                     "tier1": [{"check": "sanity", "ok": False,
+                                "detail": f"{sid} empty twice (inline stage-retry exhausted)"}],
+                     "tier2": "skipped_sanity_fail"}, indent=2), encoding="utf-8")
+                _release()
+                print(f"\n[SANITY] ::FAILED-FAST:: {t} — {sid} empty twice", flush=True)
+                if not os.environ.get("RS2_ORCH_OUTCOMES"):
+                    ops.notify_telegram(f"[RS2 ops] sanity_failed — {t}: {sid} empty twice "
+                                        f"(failed fast, no wasted pipeline). Will retry.")
+                sys.exit(6)
         (out_dir / f"{sid}.md").write_text(out, encoding="utf-8")
         print(f"   done in {time.time()-t0:.1f}s -> {sid}.md", flush=True)
 
