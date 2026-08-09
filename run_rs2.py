@@ -1236,10 +1236,40 @@ A report passes only if there are NO violations from the list above."""
 
 
 def ai_audit(t, out_dir, think):
-    """TIER 2: the model verifies the assembled report against the authoritative engine data.
-    Returns (status, violations) with status in {"pass", "fail", "inconclusive"} — inconclusive
-    (auditor output unparseable twice) does NOT fail the run: the deterministic tier already
-    guards correctness, and an audit-infrastructure hiccup must not block the book."""
+    """TIER 2 with VERDICT-STABILITY SAMPLING (operator order 2026-08-09: structural, not
+    tallied). Measured: hard violations (value contradictions) repeat across samples; only
+    judgment-boundary REJECTIONS flip (WDC flipped twice on identical replays). So a PASS is
+    accepted on one sample (fast path), but NO REJECTION may cost a retry unconfirmed: a FAIL
+    triggers a second sample; a split triggers a third; majority decides. Every split appends
+    to cache/verifier_variance.jsonl — the pattern memory for this class."""
+    s1, v1 = _ai_audit_once(t, out_dir, think)
+    if s1 != "fail":
+        return s1, v1
+    s2, v2 = _ai_audit_once(t, out_dir, think)
+    if s2 == "fail":
+        return "fail", v1 or v2
+    s3, v3 = _ai_audit_once(t, out_dir, think)
+    verdicts = [s1, s2, s3]
+    fails = verdicts.count("fail")
+    final = "fail" if fails >= 2 else ("pass" if "pass" in (s2, s3) else "inconclusive")
+    try:
+        with (Path(__file__).resolve().parent / "cache" / "verifier_variance.jsonl").open(
+                "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "ticker": t, "run": out_dir.name, "verdicts": verdicts, "final": final,
+                "first_fail_types": sorted({x.get("type", "")[:40] for x in (v1 or [])}),
+                "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
+    except OSError:
+        pass
+    print(f"   [audit] tier-2 VERDICT SPLIT {verdicts} -> majority {final} "
+          f"(recorded to verifier_variance.jsonl)", flush=True)
+    return final, (v1 if final == "fail" else [])
+
+
+def _ai_audit_once(t, out_dir, think):
+    """One tier-2 sample. Returns (status, violations); inconclusive (output unparseable
+    twice) does NOT fail the run: the deterministic tier already guards correctness, and an
+    audit-infrastructure hiccup must not block the book."""
     def read(name, cap):
         p = out_dir / name
         return p.read_text(encoding="utf-8", errors="replace")[:cap] if p.exists() else ""
