@@ -748,6 +748,17 @@ def retry_feedback(ticker, exclude_dir=None):
         for c in (aj.get("tier1") or []):
             if not c.get("ok") and c.get("check") != "sanity":
                 lines.append(f"- {c.get('check')}: {str(c.get('detail'))[:160]}")
+                # slot mismatch: give the retry the LITERAL compliant sentence — six GRMN
+                # attempts re-derived the same disagreement into the copy-exact half instead
+                # of the DISAGREE half built for it (2026-08-10)
+                if c.get("check") == "final.engine_verdict_slot":
+                    vv = rs2_data.load_json(d / "verdict.json") or {}
+                    st_ = vv.get("stance")
+                    if st_:
+                        lines.append(f"  WRITE THE SLOT EXACTLY AS: 'Engine verdict: {st_}. "
+                                     f"Analyst view: DISAGREE — <your reasons>' if you "
+                                     f"disagree — the first half is a verbatim copy, your "
+                                     f"view lives ONLY after 'Analyst view:'.")
         if not lines:
             return None
         return ("PREVIOUS ATTEMPT REJECTED. The post-completion auditor rejected the previous "
