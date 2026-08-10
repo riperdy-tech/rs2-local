@@ -899,6 +899,16 @@ def main():
         except Exception as e:
             log(f"rs2 publish FAILED (non-fatal): {e}")
 
+        # append this sweep's verdicts to the point-in-time outcome ledger (append-only;
+        # graded by the screener's scripts/grade_rs2_verdicts.py against forward returns)
+        try:
+            import verdict_ledger
+            vl = verdict_ledger.sync()
+            log(f"verdict ledger: +{vl['appended']} appended "
+                f"({vl['appended'] + vl['already_ledgered']} total)")
+        except Exception as e:
+            log(f"verdict ledger sync FAILED (non-fatal): {e}")
+
         push_status = "skipped"
         if not args.no_push:
             git(["add", str(OVERLAY), str(SD / "rs2")])
