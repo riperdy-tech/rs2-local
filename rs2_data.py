@@ -783,6 +783,25 @@ def research_block(ticker):
 
 
 # ── main assembly ─────────────────────────────────────────────────────────
+def _track_record(t):
+    """Calibration feed: what this engine's past calls in THIS deterministic situation
+    actually returned (outcome_feedback). Never fatal — a missing/stale grading serves
+    nothing rather than a stale number."""
+    try:
+        import valuation_backbone as _vb
+        import outcome_feedback
+        gap = (_vb.backbone(t) or {}).get("expectations_gap_pts")
+        # mirrors run_rs2.STANCE_OVERVALUED_GAP / STANCE_UNDERVALUED_GAP (+15 / -7, calibrated
+        # 2026-08-06 against 241 live verdicts). Duplicated deliberately: run_rs2 imports THIS
+        # module, so importing it back would be circular.
+        stance = None
+        if isinstance(gap, (int, float)):
+            stance = "overvalued" if gap >= 15.0 else ("undervalued" if gap <= -7.0 else "fair")
+        return outcome_feedback.track_record_block(stance)
+    except Exception:
+        return ""
+
+
 def build_data_context(ticker):
     t = ticker.upper()
     market = market_for(t)
@@ -814,6 +833,7 @@ def build_data_context(ticker):
         reverse_priming(rev),
         valuation_block(t),          # inverted: deterministic reverse-DCF backbone (replaces
                                      # forward-DCF priming + the analyst-consensus anchor crutch)
+        _track_record(t),            # the engine's OWN graded hit rate in this situation
         forward_priming(eps_traj, analyst),
         overlay_priming(ov),
         macro_block(macro, regime),
