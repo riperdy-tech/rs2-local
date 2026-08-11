@@ -298,6 +298,28 @@ def valuation_block(ticker):
                      f"ticker-years, companies that delivered this go on to compound at the "
                      f"persistence rate shown above (high growth decays hard — >70% growers "
                      f"realize a median 16.5%).")
+        # The QUARTERLY SEQUENCE, not just its median: "is this accelerating or fading?" is the
+        # regime question, and 35.6 -> 34.1 -> 37.8 -> 50.1 tells the opposite story from the
+        # same four numbers reversed. From 10-Q filings, so it cannot go missing the way news
+        # research did on AMD's record quarter (2026-08).
+        try:
+            import valuation_backbone as _vb2
+            _qs = ((_vb2._quarterly_record(b.get("ticker")) or {}).get("quarters") or [])[-6:]
+        except Exception:
+            _qs = []
+        if _qs:
+            _seq = []
+            for _q in _qs:
+                _r = _q.get("revenue")
+                _y = _q.get("yoy_revenue")
+                if _r:
+                    _seq.append(f"{_q['end']}: ${_r/1e9:.2f}B"
+                                + (f" ({_y:+.0f}% YoY)" if _y is not None else ""))
+            if _seq:
+                L.append("   * QUARTERLY TRAJECTORY [Actual] (from 10-Q filings — judge "
+                         "ACCELERATION vs FADE, not just the level):")
+                for _s in _seq:
+                    L.append(f"       {_s}")
         if _lat.get("contested"):
             L.append(f"   * CONTESTED [Actual]: the bases span {_lat.get('mos_low')}% to "
                      f"{_lat.get('mos_high')}% margin of safety — the BASIS CHOICE, not the "

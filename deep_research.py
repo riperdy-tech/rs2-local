@@ -40,6 +40,20 @@ TOPICS = [
      "{subj} end-market demand trends, industry growth drivers and headwinds {yr}"),
 ]
 
+# THESIS-TARGETED topic, added only when the valuation LATTICE says the verdict hinges on the
+# earnings-basis choice (2026-08-11). On those names the generic four topics research the
+# company while the actual open question goes unresearched: for AMZN the entire verdict turns
+# on whether $173B of AI/AWS capex converts into durable earnings, and that question has
+# segment disclosures, backlog figures, management ROI commentary and analyst work published
+# about it. Researching the company and not the question is why the judgment had only filings
+# to reason over.
+CONTESTED_TOPIC = (
+    "Capex Productivity & Returns",
+    "{subj} capital expenditure returns and productivity {yr}: is the current heavy investment "
+    "translating into revenue, margin and free-cash-flow growth, what do management and analysts "
+    "say about payback period, depreciation drag, capacity utilization and return on invested "
+    "capital, and is the spending cycle expected to peak or continue")
+
 
 class ResearchInfraError(RuntimeError):
     """LLM/search infrastructure failed (ollama 500, CUDA OOM, engine unreachable).
@@ -385,8 +399,22 @@ def build(ticker, name):
          f"(full-page reads + citations). Cite only the listed sources.", ""]
     preflight(pick_tool())   # dead engine -> abort now, before writing anything
 
+    # CONTESTED names get the thesis-targeted topic as well: the verdict on them turns on a
+    # SPECIFIC question (does the heavy capex convert?), and that question is researchable.
+    # Read from the engine's own lattice so the trigger cannot drift from what the analyst
+    # layer is actually asked to judge. Never fatal — a lattice failure just means 4 topics.
+    topics = list(TOPICS)
+    try:
+        import valuation_backbone as _vb
+        if ((_vb.backbone(t) or {}).get("lattice") or {}).get("contested"):
+            topics.append(CONTESTED_TOPIC)
+            print(f"[deep_research] {t}: lattice CONTESTED — adding thesis-targeted topic "
+                  f"'{CONTESTED_TOPIC[0]}'", flush=True)
+    except Exception as e:
+        print(f"[deep_research] {t}: lattice check skipped ({str(e)[:70]})", flush=True)
+
     failures = []            # infra failures — any one of these voids the whole brief
-    for title, qt in TOPICS:
+    for title, qt in topics:
         q = qt.format(subj=subj, yr=yr)
         t0 = time.time()
         try:
@@ -460,10 +488,10 @@ def build(ticker, name):
         # downstream verdict for a week and never self-heals. Writing nothing leaves the
         # name due, so the retry re-runs it for real.
         detail = "; ".join(f"{ti}: {er[:120]}" for ti, er in failures)
-        print(f"[deep_research] {t} ::ABORT:: {len(failures)}/{len(TOPICS)} topics hit infra "
+        print(f"[deep_research] {t} ::ABORT:: {len(failures)}/{len(topics)} topics hit infra "
               f"errors — brief NOT written (no poisoned cache). {detail}", flush=True)
         ops.notify_telegram(
-            f"[RS2 ops] research_infra_fail — {t}: {len(failures)}/{len(TOPICS)} topics failed. "
+            f"[RS2 ops] research_infra_fail — {t}: {len(failures)}/{len(topics)} topics failed. "
             f"Brief not written; ticker will retry. {detail[:600]}")
         raise ResearchInfraError(detail)
 

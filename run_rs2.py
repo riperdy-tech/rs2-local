@@ -162,6 +162,11 @@ FINAL_TASK = (
     "structure — derive freely there. The FINAL size/conviction/action are STATED once in "
     "SECTION 12, and every earlier sizing figure must be consistent with it (explain "
     "deviations in Section 12). Contradictory sizing across sections is a rejection.\n"
+    "E. If the VALUATION LATTICE reports CONTESTED, SECTION 3 MUST contain one line of "
+    "exactly this form: 'Regime judgment: <current earnings|owner earnings|mid-cycle> — "
+    "<reasons citing the quarterly trajectory or persistence band>'. That choice — not the "
+    "price — decides the verdict on these names, and the engine publishes the basis you "
+    "name. Omit the line entirely when the lattice is not contested.\n"
     "D. SECTION 3 MUST contain one slot of exactly this form: 'Engine verdict: <stance from "
     "the ENGINE VALUATION header>. Analyst view: AGREE — <reason>' or '... Analyst view: "
     "DISAGREE — <one to three sentences>'. This is the ONLY place to register disagreement "
@@ -688,7 +693,7 @@ def refinal_retry(t, src, think):
     print(f"[router] FINAL-ONLY retry from {src.name} -> {out_dir.name}", flush=True)
     (out_dir / "refinal_from.txt").write_text(src.name, encoding="utf-8")
     final_assembly(t, out_dir, accum, val_block, val_res, price, False, think,
-                   use_anchor=False)
+                   use_anchor=False, bb=valuation_backbone.backbone(t))
     unload_model(CONFIG["model"])
     keep_awake(False)
     ok, problems = sanity_check(out_dir, t)
@@ -827,6 +832,58 @@ def _pct_of_52wk_high(ticker, price):
 # between the undervalued p75 and the fair p25.
 STANCE_OVERVALUED_GAP = 15.0
 STANCE_UNDERVALUED_GAP = -7.0
+
+
+_REGIME_CELLS = (("current_earnings", r"current\s+earnings"),
+                 ("owner_earnings", r"owner\s+earnings"),
+                 ("midcycle", r"mid[\s-]?cycle"))
+
+
+def regime_judgment(final_text):
+    """Which lattice basis the analyst endorsed in SECTION 3, or None.
+
+    Anchored to the declaration line (same lesson as the archetype parser: never scan the
+    justification prose — 'unlike owner earnings, ...' must not read as an endorsement)."""
+    m = re.search(r"Regime judgment\s*[:\-–—]\s*([^\n]{0,120})", final_text or "", re.I)
+    if not m:
+        return None
+    head = re.sub(r"[*_`]", " ", m.group(1))[:60]
+    for cell, pat in _REGIME_CELLS:
+        if re.search(pat, head, re.I):
+            return cell
+    return None
+
+
+def apply_regime_judgment(vr, bb, final_text):
+    """Publish the basis the analyst endorsed, for CONTESTED names only.
+
+    The lattice computes every defensible basis; on contested names the basis choice decides
+    the verdict, so the endorsed cell's fair value / MoS / gap become the published numbers
+    and the original engine default is preserved alongside as `*_engine_default`. Yardstick
+    is unchanged (trailing), so this corrects the BASE only — the axis measured to rank
+    returns monotonically stays exactly as graded. No judgment, no lattice, or not contested
+    -> untouched."""
+    lat = (bb or {}).get("lattice") or {}
+    if not (lat.get("contested") and vr and vr.get("method") == "reverse_dcf"):
+        return vr, None
+    cell_name = regime_judgment(final_text)
+    cell = (lat.get("cells") or {}).get(cell_name or "")
+    if not cell or cell.get("mos_pct") is None:
+        return vr, None
+    vr = dict(vr)
+    vr["base_cf_engine_default"] = vr.get("base_cf_b")
+    vr["mos_engine_default"] = vr.get("realistic_mos_pct")
+    vr["regime_basis"] = cell_name
+    vr["base_cf_b"] = cell.get("base_cf_b")
+    vr["implied_growth"] = cell.get("implied_growth")
+    if cell.get("gap_trailing") is not None:
+        vr["expectations_gap_pts"] = cell["gap_trailing"]
+        vr["stance"] = _stance_from_gap(cell["gap_trailing"])
+    if cell.get("fair_value") is not None:
+        vr["fair_value"] = cell["fair_value"]
+        vr["mos_pct"] = vr["realistic_mos_pct"] = cell["mos_pct"]
+        vr["fair_value_method"] = f"lattice_{cell_name}"
+    return vr, cell_name
 
 
 def _stance_from_gap(gap):
@@ -1190,6 +1247,19 @@ def deterministic_audit(t, out_dir, val_res, level="full"):
                     rec("final.basis_judgment_present",
                         bool(re.search(r"Basis judgment:", _full, re.I)),
                         "required by rule 16 (two bases disclosed)")
+                # REGIME JUDGMENT (rule 19): required, and required to be PARSEABLE, on any
+                # name the lattice flags contested — its choice decides the published verdict,
+                # so an unparseable line silently reverts to the disputed default basis.
+                _bbn = valuation_backbone.backbone(t)
+                if (_bbn.get("lattice") or {}).get("contested"):
+                    _cell = regime_judgment(_full)
+                    rec("final.regime_judgment", _cell is not None,
+                        f"contested lattice (span {_bbn['lattice'].get('mos_low')}.."
+                        f"{_bbn['lattice'].get('mos_high')}) -> parsed basis {_cell!r}")
+                    if _cell:
+                        rec("final.regime_cell_exists",
+                            _cell in (_bbn["lattice"].get("cells") or {}),
+                            f"endorsed {_cell} must be a computed cell")
             # FIELD-OWNERSHIP CONTRACT slot (rule 18): the one sanctioned transcription of the
             # engine stance. Deterministically verifiable — no need to spend the AI verifier
             # on it. Only enforced for reports written under the contract (header present).
@@ -1365,13 +1435,21 @@ def _ai_audit_once(t, out_dir, think):
     return "inconclusive", []
 
 
-def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False):
+def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False, bb=None):
     """Write reports/{T}_{ts}/verdict.json — the structured handoff the orchestrator aggregates
     into the website overlay. Adapted to the inverted shapes (reverse-DCF gap / financial ROE-gap /
     option bridge); stance is the headline judgment, action/conviction parsed from FINAL SECTION 12,
     then passed through the deterministic don't-chase brake."""
     raw_action, raw_conv, raw_weight = _extract_final(final_text or "")
     vr = val_res or {}
+    # CONTESTED names: publish the earnings basis the analyst endorsed in SECTION 3. The brake
+    # and every downstream consumer then see the resolved numbers, not the engine's default
+    # basis — which on these names is precisely the thing under dispute.
+    vr, _regime = apply_regime_judgment(vr, bb, final_text)
+    if _regime:
+        print(f"   [regime] basis '{_regime}' endorsed -> MoS "
+              f"{vr.get('mos_engine_default')} -> {vr.get('realistic_mos_pct')}, stance "
+              f"{vr.get('stance')}", flush=True)
     action, conv, weight, entry_timing, pullback, braked = _dont_chase_brake(
         raw_action, raw_conv, raw_weight, vr, ticker)
     seg12 = final_text[final_text.rfind("SECTION 12"):] if "SECTION 12" in (final_text or "") \
@@ -1422,6 +1500,13 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False)
         else vr.get("roe_gap_pts"),
         "fair_value": vr.get("fair_value"), "mos_pct": vr.get("mos_pct"),
         "realistic_mos_pct": vr.get("realistic_mos_pct"), "fair_value_method": vr.get("fair_value_method"),
+        # CONTESTED-name resolution (rule 19): which earnings basis the analyst endorsed, and
+        # what the engine's default basis would have published — so the swap is auditable and
+        # the ledger can grade basis choices against realized returns.
+        **({"regime_basis": vr["regime_basis"],
+            "mos_engine_default": vr.get("mos_engine_default"),
+            "base_cf_engine_default": vr.get("base_cf_engine_default")}
+           if vr.get("regime_basis") else {}),
         "consensus_median": vr.get("consensus_median"), "consensus_stale": vr.get("consensus_stale"),
         "action": action, "conviction": conv, "recommended_weight_pct": weight,
         "entry_timing": entry_timing, "pullback_trigger": pullback,
@@ -1612,7 +1697,8 @@ def stage_prompt(data_ctx, accum, task):
             f"=== YOUR TASK FOR THIS STAGE ===\n{task}")
 
 
-def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, think, use_anchor):
+def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, think, use_anchor,
+                   bb=None):
     """Final report + verdict emission, shared by the normal pipeline and --refinal."""
     print(f">> FINAL ASSEMBLY (Sections 0-12) [ctx {CONFIG['final_ctx']}]"
           + ("  [anchored]" if use_anchor else ""), flush=True)
@@ -1636,6 +1722,34 @@ def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, th
             "fairer and why, in the section where you use it.\n"
             "3. Every factual claim about company events or figures must trace to the research "
             "brief or the data context you were given. No figures from memory.")
+        # CONTESTED names: the basis choice decides the verdict, and the final assembly does NOT
+        # otherwise carry the lattice (it receives the VALUATION RESULT block + stage summaries,
+        # not the stage data context). Restate the cells and the requirement here or the model
+        # writes no judgment and tier-1 correctly rejects the report (AMZN proof, 2026-08-11).
+        _lat = (bb or {}).get("lattice") or {}
+        if _lat.get("contested"):
+            _lines = []
+            for _k, _lbl in (("current_earnings", "current earnings"),
+                             ("owner_earnings", "owner earnings"),
+                             ("midcycle", "mid-cycle")):
+                _c = (_lat.get("cells") or {}).get(_k)
+                if _c and _c.get("mos_pct") is not None:
+                    _lines.append(f"     - {_lbl}: base ${_c['base_cf_b']:.2f}B, implies "
+                                  f"{_c['implied_growth']*100:.1f}%/yr, MoS {_c['mos_pct']:+.1f}%"
+                                  + (f", gap vs trailing {_c['gap_trailing']:+.0f}pts"
+                                     if _c.get("gap_trailing") is not None else ""))
+            anchor += ("\n\nCONTESTED VALUATION — REGIME JUDGMENT REQUIRED (rule 19). The "
+                       f"earnings bases span {_lat.get('mos_low')}% to {_lat.get('mos_high')}% "
+                       "margin of safety, so the BASIS CHOICE decides this verdict:\n"
+                       + "\n".join(_lines)
+                       + "\n   SECTION 3 MUST contain exactly one line:\n"
+                       "     'Regime judgment: <current earnings|owner earnings|mid-cycle> — "
+                       "<reasons citing the quarterly trajectory or persistence evidence>'\n"
+                       "   The engine PUBLISHES the basis you name (its fair value, MoS and "
+                       "stance become the verdict), so choose from the business evidence: is "
+                       "today's capex building new capacity that is converting into growth, is "
+                       "it the cost of standing still, or is the current period a cycle extreme? "
+                       "A missing or unparseable line is a rejected report.")
     if use_anchor:
         pv = prior_verdict(t, exclude_dir=out_dir)
         if pv:
@@ -1670,7 +1784,7 @@ def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, th
                  + fv_line + val_block.strip() + "\n═══ END ENGINE VALUATION ═══\n\n" + final)
     (out_dir / "FINAL.md").write_text(final, encoding="utf-8")
     print(f"   done in {time.time()-t0:.1f}s\n[DONE] -> {out_dir / 'FINAL.md'}", flush=True)
-    return emit_verdict(out_dir, t, price, val_res, final, exit_review=exit_review)
+    return emit_verdict(out_dir, t, price, val_res, final, exit_review=exit_review, bb=bb)
 
 
 def main():
@@ -2027,7 +2141,7 @@ def main():
     # research/priming blocks again. Compact verified anchor + the engine's
     # computed VALUATION RESULT (authoritative IV/MoS) + the stage results.
     final_assembly(t, out_dir, accum, val_block, val_res, price, args.exit_review, think,
-                   use_anchor=args.anchor)
+                   use_anchor=args.anchor, bb=bb)
 
     # Prove the run produced a real analysis before it is allowed to count as done.
     ok, problems = sanity_check(out_dir, t)

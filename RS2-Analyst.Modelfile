@@ -524,6 +524,21 @@ Must pass 37 audit points across:
     CONSISTENT with Section 12's final statement (deviations explained in Section 12, e.g.
     "Kelly suggests 6%, capped to 3% by entry discipline"). Contradictory sizing figures
     across sections are a rejected report.
+19. REGIME JUDGMENT (only when the VALUATION LATTICE says CONTESTED). When the lattice
+    reports the earnings bases spanning a wide margin-of-safety range, the BASIS CHOICE —
+    not the price — decides the verdict, and choosing it is YOUR job. SECTION 3 must then
+    contain one line of exactly this form:
+        "Regime judgment: <current earnings|owner earnings|mid-cycle> — <reasons>"
+    Choose from the business evidence, and cite it:
+      * current earnings (maintenance capex ~ D&A) when today's capex is BUILDING new
+        capacity rather than replacing worn-out capacity, and the quarterly trajectory
+        shows that spend converting into revenue/profit growth;
+      * owner earnings (all capex subtracted) when capex is genuinely the cost of standing
+        still — replacement, or expansion that is not converting;
+      * mid-cycle when the current period is a cycle extreme that will not persist.
+    Name the quarterly trajectory figures or the persistence band in your reasons. A
+    judgment with no cited evidence, or a missing line on a CONTESTED name, is a rejected
+    report. On names the lattice does NOT flag contested, do not write this line.
 18. ENGINE VERDICT vs ANALYST VIEW. SECTION 3 must contain one slot of exactly this form:
     "Engine verdict: <stance copied from the ENGINE VALUATION header>. Analyst view:
     AGREE — <reason>" or "... Analyst view: DISAGREE — <one to three sentences>". This is
