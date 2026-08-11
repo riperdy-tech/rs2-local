@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import re
+from collections import Counter
 import subprocess
 import sys
 import time
@@ -839,6 +840,181 @@ _REGIME_CELLS = (("current_earnings", r"current\s+earnings"),
                  ("midcycle", r"mid[\s-]?cycle"))
 
 
+REGIME_PROMPT = """You are choosing the EARNINGS BASIS for one company's valuation. This is the
+single decision that determines its published margin of safety. Answer only this question.
+
+The engine has priced the company on every defensible basis. They disagree, so the basis choice
+— not the price — decides the verdict:
+
+{cells}
+
+EVIDENCE (from SEC filings, not news):
+{evidence}
+
+Choose ONE basis:
+* "current earnings" — maintenance capex is roughly D&A; today's heavy capex is BUILDING NEW
+  capacity, and the trajectory shows it converting into revenue/profit growth. This is the basis
+  the market itself capitalizes.
+* "owner earnings" — capex is genuinely the cost of standing still (replacement), or expansion
+  that is NOT converting. The conservative basis.
+* "mid-cycle" — the current period is a cycle EXTREME (peak or trough) that will not persist, so
+  a normalized average is fairer.
+
+Rules:
+- Your reasons MUST be consistent with the basis you choose. If you argue the company is in a
+  structural regime change rather than a cycle extreme, you must NOT choose mid-cycle.
+- The MOST RECENT quarter is the authoritative read on the trend. An older strong quarter does
+  not establish acceleration if the latest one has decelerated or declined.
+- Mid-cycle is ONLY for companies whose CYCLE HISTORY shows real prior declines. Very high
+  growth at the top of a deep boom-bust history is a PEAK (choose mid-cycle); the same growth
+  from a company that has never had a down year is secular (never choose mid-cycle there).
+- Cite specific figures from the evidence above.
+- Judge THIS company's situation, not a general preference.
+
+Output STRICT JSON only, nothing before or after:
+{{"basis": "current earnings"|"owner earnings"|"mid-cycle", "reasons": "<2-3 sentences citing
+figures>", "key_evidence": "<the single figure that decided it>"}}"""
+
+
+def _regime_evidence(t, bb):
+    """Filing-derived evidence pack for the basis decision (compact by design — this call must
+    stay focused; burying it in the 16K-token report is what made it unstable)."""
+    L = []
+    q = (valuation_backbone._quarterly_record(t) or {}).get("quarters") or []
+    if q:
+        L.append("Quarterly trajectory (10-Q filings) — judge ACCELERATION vs FADE:")
+        for r in q[-6:]:
+            if r.get("revenue"):
+                L.append(f"  {r['end']}: revenue ${r['revenue']/1e9:.2f}B"
+                         + (f" ({r['yoy_revenue']:+.0f}% YoY)" if r.get("yoy_revenue") is not None else "")
+                         + (f", net income ${r['net_income']/1e9:.2f}B" if r.get("net_income") else ""))
+    rec = (valuation_backbone._ttm_record(t) or {}).get("fields") or {}
+    if rec:
+        ni, da, cx, ocf = (rec.get("net_income"), rec.get("da"), rec.get("capex"), rec.get("ocf"))
+        if None not in (ni, da, cx):
+            L.append(f"TTM: net income ${ni/1e9:.1f}B, D&A ${da/1e9:.1f}B, capex ${cx/1e9:.1f}B"
+                     + (f", operating cash flow ${ocf/1e9:.1f}B, free cash flow "
+                        f"${(ocf-cx)/1e9:+.1f}B" if ocf else ""))
+            L.append(f"  -> capex is {cx/da:.1f}x D&A "
+                     f"({'far above replacement — expansion' if cx > da*1.5 else 'near replacement level'})")
+    d = bb.get("delivered_growth")
+    if d is not None:
+        cen, opt = valuation_backbone.persistence_growth(d)
+        L.append(f"Delivered growth (median last 4 quarters): {d*100:+.1f}%/yr."
+                 + (f" Measured across 3,115 ticker-years, companies delivering this go on to "
+                    f"compound at a median {cen*100:.1f}%/yr (p75 {opt*100:.1f}%)." if cen else ""))
+    rb = bb.get("revenue_break")
+    if rb:
+        L.append(f"Revenue level shift in FY{rb['year']} (x{rb['ratio']} vs prior year) — the "
+                 f"mid-cycle average spans both perimeters.")
+    # CYCLICALITY EVIDENCE (added 2026-08-11 after the discrimination test): without it the
+    # decision had no way to recognise a cycle extreme, and MU — at +346% YoY, the most violent
+    # supercycle in its history — chose current earnings and cited the 346% itself as proof of
+    # durable expansion. The amplitude of a company's OWN history is what distinguishes "growing"
+    # from "at a peak", so it has to be in front of the decision.
+    yd = {k: v for k, v in (valuation_backbone._hist(t) or {}).items() if str(k).isdigit()}
+    revs = [(int(y), (yd[y] or {}).get("revenue")) for y in yd]
+    revs = sorted([(y, r) for y, r in revs if isinstance(r, (int, float)) and r > 0])
+    if len(revs) >= 5:
+        vals = [r for _, r in revs]
+        downs = [vals[i] / vals[i - 1] - 1 for i in range(1, len(vals))
+                 if vals[i] < vals[i - 1] * 0.95]
+        worst = min(downs) if downs else 0.0
+        # THE CYCLE TEST IS PRIOR DECLINES, NOT LEVEL. A "revenue is 1.8x its own median" line
+        # was tried first and is worthless: it fires for every company that has ever grown, and
+        # it drove the decision to mid-cycle on 6 of 7 names including META and AMZN, which have
+        # ZERO declining years in a decade (measured 2026-08-11). What actually separates a peak
+        # from secular growth is whether this company's revenue has ever fallen, and how far.
+        # Observed clusters in the live book: none (META/AMZN/VRT/PTC/HQY/NHC), mild -14 to -15%
+        # (KO, LRCX), deep -37 to -50% (MU, STX, WDC). The 25% cut sits in the empty gap between
+        # the mild and deep clusters.
+        L.append(f"CYCLE HISTORY ({revs[0][0]}-{revs[-1][0]}, {len(vals)} years): "
+                 f"{len(downs)} year(s) of REVENUE DECLINE, worst {worst*100:+.0f}%.")
+        if not downs:
+            L.append("  -> This company has NEVER had a down year in the record above. It is a "
+                     "SECULAR GROWER, not a cyclical: there is no cycle to average over, and "
+                     "mid-cycle would simply understate a business that has only grown. Do NOT "
+                     "choose mid-cycle. Decide between current earnings and owner earnings on "
+                     "whether the capex is converting.")
+        elif worst <= -0.25:
+            L.append(f"  -> DEEP BOOM-BUST PATTERN: this company's revenue has fallen as much as "
+                     f"{worst*100:.0f}% within this record. High growth at the top of such a "
+                     f"cycle historically does NOT persist — if the latest quarters are unusually "
+                     f"strong, this is a CYCLE PEAK and mid-cycle is the fair basis.")
+        else:
+            L.append(f"  -> Mild historical variation (worst {worst*100:.0f}%): not a deep "
+                     f"cyclical. Mid-cycle is only appropriate if the current period is clearly "
+                     f"extreme for this business.")
+    return "\n".join(L) or "(no filing evidence available)"
+
+
+_REGIME_LABELS = {"current earnings": "current_earnings", "owner earnings": "owner_earnings",
+                  "mid-cycle": "midcycle", "midcycle": "midcycle", "mid cycle": "midcycle"}
+
+
+def regime_decide(t, bb, think, samples=3):
+    """DEDICATED, SAMPLED basis decision for contested names -> (cell, record) or (None, record).
+
+    Measured 2026-08-11 (3 names x 3 repeats): as one line inside the 16K-token final report the
+    judgment was unstable — VRT returned mid-cycle / current-earnings / nothing on identical
+    inputs (47pt MoS swing) and its mid-cycle reasoning argued AGAINST mid-cycle. AMZN also
+    differed between full-pipeline and refinal contexts. A decision worth 80 points of margin of
+    safety cannot be a by-product of report generation, so it gets its own focused call, sampled
+    {samples}x with majority rule. No majority -> None, and the engine's default basis stands
+    (flagged unresolved) rather than publishing a coin flip."""
+    lat = (bb or {}).get("lattice") or {}
+    cells = lat.get("cells") or {}
+    if not cells:
+        return None, {"reason": "no_lattice"}
+    rows = []
+    for k, lbl in (("current_earnings", "current earnings"), ("owner_earnings", "owner earnings"),
+                   ("midcycle", "mid-cycle")):
+        c = cells.get(k)
+        if c and c.get("mos_pct") is not None:
+            rows.append(f"* {lbl}: base ${c['base_cf_b']:.2f}B -> price implies "
+                        f"{c['implied_growth']*100:.1f}%/yr growth, margin of safety "
+                        f"{c['mos_pct']:+.1f}%"
+                        + (f", expectations gap {c['gap_trailing']:+.0f}pts vs trailing growth"
+                           if c.get("gap_trailing") is not None else ""))
+    prompt = REGIME_PROMPT.format(cells="\n".join(rows), evidence=_regime_evidence(t, bb))
+    votes, details = [], []
+    for i in range(samples):
+        try:
+            # think=False deliberately: with thinking ON this focused JSON call returned
+            # 200-with-empty-content on every sample (measured 2026-08-11) — the reasoning
+            # consumed the response. The decision is a closed choice over supplied evidence,
+            # not an open-ended analysis, so it needs no thinking budget.
+            out = ollama_chat(prompt, 8192, False, retries=1, timeout=300)
+        except Exception as e:
+            details.append({"sample": i + 1, "error": str(e)[:120]})
+            continue
+        m = re.search(r"\{.*\}", out or "", re.S)
+        if not m:
+            details.append({"sample": i + 1, "error": "unparseable"})
+            continue
+        try:
+            j = json.loads(m.group(0))
+        except json.JSONDecodeError:
+            details.append({"sample": i + 1, "error": "bad json"})
+            continue
+        cell = _REGIME_LABELS.get(str(j.get("basis", "")).strip().lower())
+        if cell in cells:
+            votes.append(cell)
+            details.append({"sample": i + 1, "basis": cell,
+                            "reasons": str(j.get("reasons", ""))[:300],
+                            "key_evidence": str(j.get("key_evidence", ""))[:160]})
+        else:
+            details.append({"sample": i + 1, "error": f"invalid basis {j.get('basis')!r}"})
+    rec = {"votes": votes, "samples": details, "unanimous": bool(votes) and len(set(votes)) == 1}
+    if not votes:
+        return None, {**rec, "reason": "no_valid_samples"}
+    top, n = Counter(votes).most_common(1)[0]
+    if n * 2 <= len(votes):        # no strict majority
+        return None, {**rec, "reason": "no_majority", "resolved": None}
+    rec["resolved"] = top
+    return top, rec
+
+
 def regime_judgment(final_text):
     """Which lattice basis the analyst endorsed in SECTION 3, or None.
 
@@ -854,7 +1030,7 @@ def regime_judgment(final_text):
     return None
 
 
-def apply_regime_judgment(vr, bb, final_text):
+def apply_regime_judgment(vr, bb, final_text, decided=None):
     """Publish the basis the analyst endorsed, for CONTESTED names only.
 
     The lattice computes every defensible basis; on contested names the basis choice decides
@@ -866,7 +1042,9 @@ def apply_regime_judgment(vr, bb, final_text):
     lat = (bb or {}).get("lattice") or {}
     if not (lat.get("contested") and vr and vr.get("method") == "reverse_dcf"):
         return vr, None
-    cell_name = regime_judgment(final_text)
+    # the DEDICATED sampled decision wins; the in-report line is only a fallback for
+    # replays (repatch/refinal) that have no decision record
+    cell_name = decided or regime_judgment(final_text)
     cell = (lat.get("cells") or {}).get(cell_name or "")
     if not cell or cell.get("mos_pct") is None:
         return vr, None
@@ -1435,7 +1613,8 @@ def _ai_audit_once(t, out_dir, think):
     return "inconclusive", []
 
 
-def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False, bb=None):
+def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False, bb=None,
+                 regime=None):
     """Write reports/{T}_{ts}/verdict.json — the structured handoff the orchestrator aggregates
     into the website overlay. Adapted to the inverted shapes (reverse-DCF gap / financial ROE-gap /
     option bridge); stance is the headline judgment, action/conviction parsed from FINAL SECTION 12,
@@ -1445,7 +1624,7 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False,
     # CONTESTED names: publish the earnings basis the analyst endorsed in SECTION 3. The brake
     # and every downstream consumer then see the resolved numbers, not the engine's default
     # basis — which on these names is precisely the thing under dispute.
-    vr, _regime = apply_regime_judgment(vr, bb, final_text)
+    vr, _regime = apply_regime_judgment(vr, bb, final_text, decided=regime)
     if _regime:
         print(f"   [regime] basis '{_regime}' endorsed -> MoS "
               f"{vr.get('mos_engine_default')} -> {vr.get('realistic_mos_pct')}, stance "
@@ -1698,7 +1877,7 @@ def stage_prompt(data_ctx, accum, task):
 
 
 def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, think, use_anchor,
-                   bb=None):
+                   bb=None, regime=None):
     """Final report + verdict emission, shared by the normal pipeline and --refinal."""
     print(f">> FINAL ASSEMBLY (Sections 0-12) [ctx {CONFIG['final_ctx']}]"
           + ("  [anchored]" if use_anchor else ""), flush=True)
@@ -1727,7 +1906,22 @@ def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, th
         # not the stage data context). Restate the cells and the requirement here or the model
         # writes no judgment and tier-1 correctly rejects the report (AMZN proof, 2026-08-11).
         _lat = (bb or {}).get("lattice") or {}
-        if _lat.get("contested"):
+        if _lat.get("contested") and regime:
+            # The basis was DECIDED by a dedicated sampled call before this report was written
+            # (see regime_decide). The report EXPLAINS it; it does not re-litigate it — that is
+            # what made the judgment unstable when it lived inside the report.
+            _c = (_lat.get("cells") or {}).get(regime) or {}
+            _nice = {"current_earnings": "current earnings", "owner_earnings": "owner earnings",
+                     "midcycle": "mid-cycle"}.get(regime, regime)
+            anchor += (f"\n\nRESOLVED EARNINGS BASIS: {_nice}. This valuation was contested "
+                       f"(bases spanned {_lat.get('mos_low')}% to {_lat.get('mos_high')}% margin "
+                       f"of safety) and the engine resolved it by a dedicated, 3-sample majority "
+                       f"decision. The AUTHORITATIVE figures above already reflect it "
+                       f"(base ${_c.get('base_cf_b')}B, MoS {_c.get('mos_pct')}%). SECTION 3 must "
+                       f"contain the line 'Regime judgment: {_nice} — <why this basis fits THIS "
+                       f"company, citing the quarterly trajectory or capex-vs-D&A evidence>'. Do "
+                       f"NOT choose a different basis; explain the resolved one.")
+        elif _lat.get("contested"):
             _lines = []
             for _k, _lbl in (("current_earnings", "current earnings"),
                              ("owner_earnings", "owner earnings"),
@@ -1784,7 +1978,8 @@ def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, th
                  + fv_line + val_block.strip() + "\n═══ END ENGINE VALUATION ═══\n\n" + final)
     (out_dir / "FINAL.md").write_text(final, encoding="utf-8")
     print(f"   done in {time.time()-t0:.1f}s\n[DONE] -> {out_dir / 'FINAL.md'}", flush=True)
-    return emit_verdict(out_dir, t, price, val_res, final, exit_review=exit_review, bb=bb)
+    return emit_verdict(out_dir, t, price, val_res, final, exit_review=exit_review, bb=bb,
+                        regime=regime)
 
 
 def main():
@@ -1862,8 +2057,10 @@ def main():
         out_dir = HERE / "ab_reports" / f"{t}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{arm}"
         out_dir.mkdir(parents=True, exist_ok=True)
         print(f"[refinal] source={src.name} arm={arm} -> {out_dir.name}", flush=True)
+        # bb carries the lattice, so --refinal exercises the CONTESTED path too — this is the
+        # instrument for measuring regime-judgment stability without re-running six stages
         final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, think,
-                       use_anchor=args.anchor)
+                       use_anchor=args.anchor, bb=valuation_backbone.backbone(t))
         keep_awake(False)
         return
 
@@ -2140,8 +2337,18 @@ def main():
     # Final assembly consolidates prior stages — it does NOT need the bulky raw
     # research/priming blocks again. Compact verified anchor + the engine's
     # computed VALUATION RESULT (authoritative IV/MoS) + the stage results.
+    # CONTESTED: resolve the earnings basis with a dedicated, 3-sample majority decision BEFORE
+    # the report is written. Measured 2026-08-11: embedded in the report the judgment swung
+    # 47pts of MoS across identical inputs; as its own focused call it is auditable, sampled,
+    # and the report can only explain it.
+    _regime_cell = None
+    if (bb.get("lattice") or {}).get("contested"):
+        _regime_cell, _rec = regime_decide(t, bb, think)
+        (out_dir / "regime_decision.json").write_text(json.dumps(_rec, indent=2), encoding="utf-8")
+        _shown = _regime_cell or "NO MAJORITY (engine default stands)"
+        print(f"   [regime] votes {_rec.get('votes')} -> {_shown}", flush=True)
     final_assembly(t, out_dir, accum, val_block, val_res, price, args.exit_review, think,
-                   use_anchor=args.anchor, bb=bb)
+                   use_anchor=args.anchor, bb=bb, regime=_regime_cell)
 
     # Prove the run produced a real analysis before it is allowed to count as done.
     ok, problems = sanity_check(out_dir, t)
