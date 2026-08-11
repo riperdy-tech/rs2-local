@@ -33,6 +33,36 @@ HERE = Path(__file__).resolve().parent
 
 FWD_GROWTH_CEIL = 0.20     # forward-growth cap for the fair-value DCF (no blind hyper-extrapolation)
 
+# GROWTH PERSISTENCE — MEASURED, not assumed (2026-08-11). FWD_GROWTH_CEIL was an invented
+# constant: it stopped hyper-extrapolation but contradicted the gap signal on corroborated
+# accelerators, and letting delivered growth run instead reproduced the malfunction it existed
+# to prevent (MU: +2784% MoS off a 346% supercycle quarter). So the question was measured
+# against the corpus: for every ticker-year that delivered growth g0, what did the company
+# ACTUALLY compound over the next five years? n=3,115 ticker-years, 12y history, 5,600 tickers:
+#     delivered   n     p25    median    p75     p90
+#     15-25%   1092    3.2%     9.4%   16.0%   24.6%
+#     25-40%    811    3.9%    12.1%   21.4%   29.8%
+#     40-70%    619    3.8%    14.5%   27.3%   44.9%
+#       >70%    593    0.1%    16.5%   35.5%   57.3%
+# High growth DOES predict higher forward growth, and decays hard: >70% growers go on to
+# compound at a median 16.5%, not 70%. (lo, hi) = (median, p75) per bucket — the honest central
+# case and a defensible optimistic case, both empirical. Re-derive with tools/growth_persistence.
+GROWTH_PERSISTENCE = ((0.15, (0.094, 0.160)), (0.25, (0.121, 0.214)),
+                      (0.40, (0.145, 0.273)), (0.70, (0.165, 0.355)))
+
+
+def persistence_growth(delivered):
+    """(central, optimistic) forward-5y CAGR empirically consistent with what a company just
+    delivered, or (None, None) below the 15% measurement floor (ordinary growth — the analyst
+    consensus is the better estimate there and needs no persistence haircut)."""
+    if not isinstance(delivered, (int, float)) or delivered < 0.15:
+        return None, None
+    band = GROWTH_PERSISTENCE[0][1]
+    for lo, vals in GROWTH_PERSISTENCE:
+        if delivered >= lo:
+            band = vals
+    return band
+
 # STABILITY FENCE (2026-08-07). The fair value used to be fenced against the ANALYST BAND: if the
 # DCF landed outside it, snap to the consensus median. Measured across 241 live covered names,
 # that fired for 87% -- 67% snapped UPWARD, because the engine's own DCF says the median name is
@@ -422,18 +452,129 @@ def _revenue_break(ydata):
 # Loaded lazily and re-read when the file changes — the orchestrator runs for hours across a
 # rebuild.
 _TTM_CACHE = {"mtime": None, "data": {}}
+_QTR_CACHE = {"mtime": None, "data": {}}
 
 
-def _ttm_record(t):
-    p = SD / "fundamentals_ttm.json"
+def _cached_record(cache, fname, t):
+    p = SD / fname
     try:
         mt = p.stat().st_mtime
     except OSError:
         return None
-    if _TTM_CACHE["mtime"] != mt:
-        _TTM_CACHE["data"] = (rs2_data.load_json(p) or {}).get("tickers") or {}
-        _TTM_CACHE["mtime"] = mt
-    return _TTM_CACHE["data"].get(t.upper())
+    if cache["mtime"] != mt:
+        cache["data"] = (rs2_data.load_json(p) or {}).get("tickers") or {}
+        cache["mtime"] = mt
+    return cache["data"].get(t.upper())
+
+
+def _ttm_record(t):
+    return _cached_record(_TTM_CACHE, "fundamentals_ttm.json", t)
+
+
+def _quarterly_record(t):
+    """Single-quarter sequence with YoY (fundamentals_quarterly.json) — the delivered-growth
+    evidence the regime judgment rests on."""
+    return _cached_record(_QTR_CACHE, "fundamentals_quarterly.json", t)
+
+
+def base_lattice(ydata, ttm, mcap, wacc, price, shares, demo_trail, g_fwd, delivered=None):
+    """Every DEFENSIBLE base for this name, each priced through the same DCF frame.
+
+    Why a lattice instead of one base (measured 2026-08-11 across the 144-name live book):
+      * The engine capitalizes only 53% of the book's actual earnings ($642B base vs $1,212B
+        TTM net income) because owner earnings subtract the WHOLE capex line. For 21 names it
+        capitalizes under half — AMZN $37B vs $135B NI, because $173B of capex is AI/AWS
+        BUILD-OUT, not maintenance. To call the book fair on that base the DCF would have to
+        award ~50x while its frame awards 20-27x: a structural MoS floor, not analysis.
+      * Mid-cycle averaging suppresses the base again through secular step-changes (HWM $0.63B
+        average vs $1.87B current earning power).
+      * The discount rate was tested as the culprit and CLEARED: the book's own pricing implies
+        an 11.8% cost of equity vs the engine's ~10%, i.e. the rate is if anything generous.
+        Recalibrating it would have moved every fair value the WRONG way.
+    No single cell is right for every company, and which one is right is a JUDGMENT about
+    whether today's capex is maintenance or expansion — so the engine computes them all and
+    the analyst layer picks, in the open, with delivered evidence in front of it.
+
+    Cells: current_earnings (maintenance capex ~ D&A, i.e. the market's own basis),
+    owner_earnings (full capex; the conservative extreme), blend (margin-shrunk owner
+    earnings), midcycle (cycle average). Yardsticks per cell: trailing CAGR, forward
+    consensus, delivered TTM-YoY. Deterministic throughout — no model input."""
+    if not (mcap and wacc and price and mcap > 0):
+        return None
+    yrs = sorted(int(y) for y in ydata.keys())
+    fy = ydata[str(yrs[-1])]
+    tf = (ttm or {}).get("fields") or {}
+    bases = {}
+    ni_t, da_t, cx_t = _num(tf.get("net_income")), _num(tf.get("da")), _num(tf.get("capex"))
+    if ni_t is not None and ni_t > 0:
+        bases["current_earnings"] = ni_t
+        if None not in (da_t, cx_t):
+            bases["owner_earnings"] = ni_t + da_t - cx_t
+    else:
+        ni_f, da_f, cx_f = (_num(fy.get("net_income")), _num(fy.get("da")), _num(fy.get("capex")))
+        if ni_f is not None and ni_f > 0:
+            bases["current_earnings"] = ni_f
+            if None not in (da_f, cx_f):
+                bases["owner_earnings"] = ni_f + da_f - cx_f
+    owners = [_owner_earnings(ydata[str(y)]) for y in yrs]
+    owners = [o for o in owners if o is not None and o > 0]
+    if len(owners) >= 3:
+        bases["midcycle"] = sum(owners) / len(owners)
+    out = {}
+    for name, base in bases.items():
+        if not isinstance(base, (int, float)) or base <= 0:
+            continue
+        g_imp = _solve_implied_growth(base, mcap, wacc)
+        if g_imp is None:
+            continue
+        cell = {"base_cf": round(base, 0), "base_cf_b": round(base / 1e9, 2),
+                "implied_growth": round(g_imp, 4)}
+        for lbl, yard in (("trailing", demo_trail), ("forward", g_fwd), ("delivered", delivered)):
+            cell[f"gap_{lbl}"] = (round((g_imp - yard) * 100, 1)
+                                  if isinstance(yard, (int, float)) else None)
+        g_drive = g_fwd if g_fwd is not None else demo_trail
+        if g_drive is not None:
+            g_fair = max(-0.20, min(g_drive, FWD_GROWTH_CEIL))
+            fm = ve.dcf_value(base, g_fair, wacc, TERMINAL_G, stage1_years=STAGE1,
+                              fade_years=FADE)
+            if fm and fm > 0:
+                fv = price * fm / mcap
+                cell["fair_value"] = round(fv, 2)
+                cell["mos_pct"] = round((fv / price - 1) * 100, 1)
+            # PERSISTENCE-BASED growth (replaces the invented 20% cap on names with delivered
+            # evidence). The company's own delivered growth selects an EMPIRICAL forward CAGR
+            # band from GROWTH_PERSISTENCE — what companies that grew this fast actually went
+            # on to compound. Never the delivered rate itself (that reproduced MU's +2784%
+            # malfunction), never above consensus, and the optimistic leg is the measured p75,
+            # not a guess.
+            _cen, _opt = persistence_growth(delivered)
+            if _cen is not None:
+                for lbl, gg in (("persist", _cen), ("persist_opt", _opt)):
+                    g_p = max(-0.20, min(g_drive, gg) if g_drive is not None else gg)
+                    fm2 = ve.dcf_value(base, g_p, wacc, TERMINAL_G, stage1_years=STAGE1,
+                                       fade_years=FADE)
+                    if fm2 and fm2 > 0:
+                        fv2 = price * fm2 / mcap
+                        m2 = round((fv2 / price - 1) * 100, 1)
+                        # same malfunction fence the primary path uses — a lattice cell is not
+                        # exempt from "|MoS| > 100% is not a valuation"
+                        if abs(m2) <= MOS_EXTREME_MAX * 100:
+                            cell[f"fair_value_{lbl}"] = round(fv2, 2)
+                            cell[f"mos_{lbl}_pct"] = m2
+                            cell[f"growth_{lbl}"] = round(g_p, 4)
+        out[name] = cell
+    if not out:
+        return None
+    moss = [v for c in out.values()
+            for k, v in c.items()
+            if k in ("mos_pct", "mos_persist_pct", "mos_persist_opt_pct") and v is not None
+            and abs(v) <= MOS_EXTREME_MAX * 100]
+    span = (round(min(moss), 1), round(max(moss), 1)) if moss else (None, None)
+    return {"cells": out, "mos_low": span[0], "mos_high": span[1],
+            # CONTESTED = the cells disagree enough that the basis choice, not the price,
+            # decides the verdict. 30pts of MoS spread is the operative threshold: below it
+            # every basis tells the same story and there is nothing to judge.
+            "contested": bool(span[0] is not None and (span[1] - span[0]) >= 30.0)}
 
 
 def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False, force_latest=False,
@@ -988,6 +1129,17 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
     rev_break = (_revenue_break(ydata)
                  if (kind == "blended_owner_earnings" or str(kind).startswith("midcycle")) else None)
 
+    # DELIVERED growth: median YoY revenue across the last 4 reported quarters — the regime
+    # evidence, from filings. Not a forecast and not news-dependent (a fresh AMD brief carried
+    # none of its +50% record quarter, 2026-08); it is what the company actually did.
+    delivered = None
+    _qs = ((_quarterly_record(t) or {}).get("quarters") or [])[-4:]
+    _yy = [q["yoy_revenue"] for q in _qs if q.get("yoy_revenue") is not None]
+    if _yy:
+        import statistics as _st2
+        delivered = round(_st2.median(_yy) / 100.0, 4)
+    lattice = base_lattice(ydata, ttm, mcap, wacc, price, shares, demo_cagr, g_fwd, delivered)
+
     return {
         "ok": True, "ticker": t, "method": "reverse_dcf",
         "price": price, "market_cap": mcap, "shares": shares,
@@ -995,6 +1147,9 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
         "base_period": (period_meta or {}).get("period", "fy"),
         "base_through": (period_meta or {}).get("through"),
         "revenue_break": rev_break,
+        "delivered_growth": delivered,
+        "lattice": lattice,
+        "contested": bool((lattice or {}).get("contested")),
         "wacc": wacc, "wacc_pct": wacc_pct, "terminal_growth": TERMINAL_G,
         "stage1_years": STAGE1, "fade_years": FADE,
         "implied_growth": round(implied, 4), "implied_growth_clamped": implied in (G_LO, G_HI),

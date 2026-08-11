@@ -259,6 +259,56 @@ def valuation_block(ticker):
                  f"with the USD market cap (latest revenue is {_rev_l/_mc:.0f}x the market cap) — "
                  f"these rows are almost certainly LOCAL-CURRENCY figures. Do NOT use historical "
                  f"margins, growth rates or magnitudes from them; rely on the research brief.")
+    # ── VALUATION LATTICE ────────────────────────────────────────────────────────────────
+    # Every defensible base priced through the same DCF, plus the empirically-derived growth
+    # persistence band. Shown because no single base is right for every company and the choice
+    # is a JUDGMENT (is today's capex maintenance or expansion?) that belongs to the analyst
+    # layer, in the open, with delivered evidence attached — not to a hardcoded rule.
+    _lat = b.get("lattice") or {}
+    _cells = _lat.get("cells") or {}
+    if _cells:
+        L.append("")
+        L.append("- VALUATION LATTICE [Actual] — the same price judged on each defensible "
+                 "earnings basis:")
+        _labels = {"current_earnings": "current earnings (maintenance capex ~ D&A — the basis "
+                                       "the market capitalizes)",
+                   "owner_earnings": "owner earnings (ALL capex subtracted — growth spend "
+                                     "treated as cost)",
+                   "midcycle": "mid-cycle average (cycle-normalized, historical)"}
+        for _k in ("current_earnings", "owner_earnings", "midcycle"):
+            _c = _cells.get(_k)
+            if not _c:
+                continue
+            _bits = [f"MoS {_c.get('mos_pct')}%" if _c.get("mos_pct") is not None else None,
+                     (f"MoS {_c.get('mos_persist_pct')}% at the measured persistence growth "
+                      f"{(_c.get('growth_persist') or 0)*100:.1f}%/yr")
+                     if _c.get("mos_persist_pct") is not None else None]
+            L.append(f"   * ${_c['base_cf_b']:.2f}B on {_labels[_k]}: implies "
+                     f"{_c['implied_growth']*100:.1f}%/yr; "
+                     + "; ".join(x for x in _bits if x))
+            _g = [f"vs trailing {_c['gap_trailing']:+.0f}pts" if _c.get("gap_trailing") is not None else None,
+                  f"vs forward consensus {_c['gap_forward']:+.0f}pts" if _c.get("gap_forward") is not None else None,
+                  f"vs delivered {_c['gap_delivered']:+.0f}pts" if _c.get("gap_delivered") is not None else None]
+            _g = [x for x in _g if x]
+            if _g:
+                L.append(f"     expectations gap {', '.join(_g)}")
+        if b.get("delivered_growth") is not None:
+            L.append(f"   * DELIVERED [Actual]: median revenue growth of the last 4 reported "
+                     f"quarters = {b['delivered_growth']*100:+.1f}%/yr. Measured across 3,115 "
+                     f"ticker-years, companies that delivered this go on to compound at the "
+                     f"persistence rate shown above (high growth decays hard — >70% growers "
+                     f"realize a median 16.5%).")
+        if _lat.get("contested"):
+            L.append(f"   * CONTESTED [Actual]: the bases span {_lat.get('mos_low')}% to "
+                     f"{_lat.get('mos_high')}% margin of safety — the BASIS CHOICE, not the "
+                     f"price, decides this verdict. Your Section-3 'Regime judgment:' must name "
+                     f"which basis is right for THIS company NOW and why (is current capex "
+                     f"building new capacity or replacing it? is the delivered growth a cycle "
+                     f"peak or a durable regime?). Cite the quarterly evidence.")
+        else:
+            L.append("   * The bases AGREE on direction — the verdict does not hinge on the "
+                     "basis choice.")
+        L.append("")
     _rb = b.get("revenue_break")
     if _rb:
         L.append(f"- CAUTION [Actual]: revenue shows a persistent level shift in FY{_rb['year']} "
