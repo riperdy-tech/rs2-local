@@ -670,7 +670,7 @@ def refinal_retry(t, src, think):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path(CONFIG["out_reports_dir"]) / f"{t}_{ts}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    copied = ["_fed_data.md", "research.md", "routing.json",
+    copied = ["_fed_data.md", "research.md", "routing.json", "regime_decision.json",
               "S3_valuation_inputs.json", "S4_valuation_result.md"] \
         + [f"{sid}.md" for sid, _tt, _tk in STAGES]
     for fn in copied:
@@ -693,8 +693,18 @@ def refinal_retry(t, src, think):
         accum += f"\n\n----- {title} -----\n{carry}{extra}"
     print(f"[router] FINAL-ONLY retry from {src.name} -> {out_dir.name}", flush=True)
     (out_dir / "refinal_from.txt").write_text(src.name, encoding="utf-8")
+    # The router reuses the source run's stages, VALUATION RESULT and header, so it must reuse
+    # its EARNINGS BASIS too. Rebuilding the backbone here reverted to the ENGINE DEFAULT while
+    # every copied artefact described the resolved basis — the auditor then (correctly) rejected
+    # the contradiction, so contested names could NEVER heal via the router and looped until
+    # their budget burned (AMZN, BMY, 2026-08-12).
+    _bb_r = valuation_backbone.backbone(t)
+    _rd_r = rs2_data.load_json(out_dir / "regime_decision.json") or {}
+    if _rd_r.get("resolved"):
+        _bb_r = valuation_backbone.apply_basis(_bb_r, _rd_r["resolved"])
+        print(f"   [router] reusing resolved basis {_rd_r['resolved']}", flush=True)
     final_assembly(t, out_dir, accum, val_block, val_res, price, False, think,
-                   use_anchor=False, bb=valuation_backbone.backbone(t))
+                   use_anchor=False, bb=_bb_r, regime=_rd_r.get("resolved"))
     unload_model(CONFIG["model"])
     keep_awake(False)
     ok, problems = sanity_check(out_dir, t)
