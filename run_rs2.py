@@ -1473,9 +1473,15 @@ VIOLATIONS (each one fails the report — the FIELD-OWNERSHIP CONTRACT is the st
    consistent). A missing Section 12, or a missing "Engine verdict / Analyst view" slot in
    SECTION 3, is a violation; a DISAGREE in that slot is legitimate and never a violation by
    itself.
-2. FABRICATION: a company-specific figure that appears in neither the engine data, the data
-   context, nor the research brief, and is not arithmetic on them. Figures from model memory
-   are fabrication even when plausible.
+2. FABRICATION: a figure that CONTRADICTS a value visible to you in the engine data, the
+   extracted blocks, the data context or the research brief.
+   CRITICAL — YOU SEE A WINDOW, NOT THE WHOLE CONTEXT. The DATA CONTEXT is packaged head+tail
+   with its middle elided; the extracted blocks above exist precisely because they live in that
+   gap. You therefore CANNOT establish that a figure is absent. NEVER flag a figure as
+   fabricated merely because you cannot find it — macro levels (DXY, Treasury yields, credit
+   spreads), short interest, float, days-to-cover, insider/institutional %, put-call ratios and
+   52-week levels ARE supplied to the analyst. Flag only a figure that CONTRADICTS something
+   you can see, or a company-specific claim that is both unfindable AND implausible.
 3. BASIS-JUDGMENT CONTENT: judge only the CONTENT of the extracted "Basis judgment:" slot
    (does it name a basis and give a reason consistent with the disclosure). Its PRESENCE is
    verified deterministically outside this audit — NEVER charge a missing slot or section:
@@ -1580,6 +1586,13 @@ def _ai_audit_once(t, out_dir, think):
                          "context — these ARE provided figures, never treat them as "
                          "fabricated) ===\n"
                          + _t[_i:(_j if _j > 0 else _i + 2500)][:2500])
+        # the MACRO block lives in the same elided gap (~offset 7,400) and produced the same
+        # phantom-fabrication charges against DXY / Treasury yield / credit spreads
+        _m = _t.find("## MACRO")
+        if _m >= 0:
+            _mj = _t.find("\n## ", _m + 5)
+            enrich_ex += ("\n\n=== MACRO BLOCK (extracted; DXY, yields and spreads ARE "
+                          "provided) ===\n" + _t[_m:(_mj if _mj > 0 else _m + 1800)][:1800])
     slots = ""
     fp_full = out_dir / "FINAL.md"
     if fp_full.exists():
