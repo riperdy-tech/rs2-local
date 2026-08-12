@@ -499,7 +499,16 @@ DATA_DISCIPLINE = (
     "Do not assert news that is not in the brief.\n"
     "- Knowledge of events after the data dates below must not inform the analysis "
     "(look-ahead contamination).\n"
+    "- Market-microstructure fields (short interest, float, insider/institutional %, put-call, "
+    "DXY/VIX) ARE supplied in the ENRICHMENT block below when available — use those exact "
+    "values. If a field is absent there, write \"not provided\"; never recall one from memory.\n"
 )
+# NOTE (2026-08-12): an earlier version of this line declared those fields NOT PROVIDED. That
+# was FACTUALLY WRONG — enrich/{T}.json carries short_pct_float, institutional_pct, insider_pct,
+# float_shares, put_call_oi_ratio and dxy_level, and enrichment_block renders them into this
+# very context. The mistake came from trusting an auditor rejection ("fabricated 84.81%
+# institutional ownership") without checking the datum: 84.81 was our own enrich value. See
+# ai_audit for the real bug — the auditor's head+tail evidence window elided the block.
 
 
 def format_financial_data(d, market="US"):
