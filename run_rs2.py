@@ -1309,6 +1309,13 @@ def deterministic_audit(t, out_dir, val_res, level="full"):
     method = vr.get("method")
     if method in ("reverse_dcf", "financial_pb_roe"):
         bb2 = valuation_backbone.backbone(t)
+        # Reproduce the run's EARNINGS BASIS before diffing. backbone() returns the engine
+        # default; on a contested name the run resolved to a lattice cell pre-stage, so a bare
+        # recompute always "drifts" (BMY: run lattice_current_earnings 9.28B vs fresh
+        # blended_owner_earnings 10.34B). The decision is recorded per-run, so replay it.
+        _rd = rs2_data.load_json(out_dir / "regime_decision.json") or {}
+        if _rd.get("resolved"):
+            bb2 = valuation_backbone.apply_basis(bb2, _rd["resolved"])
         if method == "reverse_dcf" and bb2.get("ok"):
             same_base = (vr.get("base_cf_b") is not None and bb2.get("base_cf") is not None
                          and abs(vr["base_cf_b"] - round(bb2["base_cf"] / 1e9, 2)) < 0.011)
