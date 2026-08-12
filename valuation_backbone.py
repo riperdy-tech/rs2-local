@@ -477,6 +477,36 @@ def _quarterly_record(t):
     return _cached_record(_QTR_CACHE, "fundamentals_quarterly.json", t)
 
 
+def apply_basis(bb, cell_name):
+    """Rewrite a backbone result onto the earnings basis the analyst layer endorsed.
+
+    Called BEFORE any stage runs (2026-08-12). The basis decision needs only filings data —
+    the lattice, the quarterly trajectory, TTM figures and cycle history — so it does not have
+    to wait for the report. Deciding it afterwards created a seam: the six stages reasoned on
+    the engine's default basis, the VALUATION RESULT header showed that basis, the model
+    dutifully wrote it into the Engine-verdict slot, and then the verdict switched underneath —
+    after which the tier-1 slot check compared the slot against a value that had changed. The
+    model was doing exactly as told and failing for it. Resolving first removes the seam
+    instead of papering over it: stages, header, prose and verdict all agree by construction."""
+    cell = ((bb.get("lattice") or {}).get("cells") or {}).get(cell_name or "")
+    if not (bb.get("ok") and cell and cell.get("mos_pct") is not None):
+        return bb
+    out = dict(bb)
+    out["base_cf_engine_default"] = bb.get("base_cf")
+    out["mos_engine_default"] = bb.get("realistic_mos_pct")
+    out["regime_basis"] = cell_name
+    out["base_cf"] = cell.get("base_cf")
+    out["base_cf_kind"] = f"lattice_{cell_name}"
+    out["implied_growth"] = cell.get("implied_growth")
+    if cell.get("gap_trailing") is not None:
+        out["expectations_gap_pts"] = cell["gap_trailing"]
+    if cell.get("fair_value") is not None:
+        out["fair_value"] = cell["fair_value"]
+        out["mos_pct"] = out["realistic_mos_pct"] = cell["mos_pct"]
+        out["fair_value_method"] = f"lattice_{cell_name}"
+    return out
+
+
 def base_lattice(ydata, ttm, mcap, wacc, price, shares, demo_trail, g_fwd, delivered=None):
     """Every DEFENSIBLE base for this name, each priced through the same DCF frame.
 

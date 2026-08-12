@@ -1421,13 +1421,6 @@ def deterministic_audit(t, out_dir, val_res, level="full"):
                 # basis-judgment PRESENCE is tier-1's (full file); the AI verifier judges only
                 # its content from the extracted slot (WDC phantom class, 2026-08-09)
                 rjx = rs2_data.load_json(out_dir / "routing.json")
-                if (isinstance(rjx, dict) and rjx.get("disclosed")
-                        and not (_bb_lat := (valuation_backbone.backbone(t).get("lattice") or {})).get("cells")):
-                    # only when the LATTICE is absent: where it exists, the lattice + sampled
-                    # regime decision supersede the older two-base prose disclosure
-                    rec("final.basis_judgment_present",
-                        bool(re.search(r"Basis judgment:", _full, re.I)),
-                        "required by rule 16 (two bases disclosed, no lattice)")
                 # REGIME JUDGMENT (rule 19): required, and required to be PARSEABLE, on any
                 # name the lattice flags contested — its choice decides the published verdict,
                 # so an unparseable line silently reverts to the disputed default basis.
@@ -1482,8 +1475,8 @@ VIOLATIONS (each one fails the report — the FIELD-OWNERSHIP CONTRACT is the st
    spreads), short interest, float, days-to-cover, insider/institutional %, put-call ratios and
    52-week levels ARE supplied to the analyst. Flag only a figure that CONTRADICTS something
    you can see, or a company-specific claim that is both unfindable AND implausible.
-3. BASIS-JUDGMENT CONTENT: judge only the CONTENT of the extracted "Basis judgment:" slot
-   (does it name a basis and give a reason consistent with the disclosure). Its PRESENCE is
+3. REGIME-JUDGMENT CONTENT: when a "Regime judgment:" line is extracted above, judge only its
+   CONTENT (does it name a basis and give a reason consistent with the evidence). PRESENCE is
    verified deterministically outside this audit — NEVER charge a missing slot or section:
    your report view is head+tail packaged and required slots are provided as extracts.
 4. INTERNAL CONTRADICTION: stance, action, conviction and entry guidance contradict each other
@@ -1657,6 +1650,8 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False,
     # CONTESTED names: publish the earnings basis the analyst endorsed in SECTION 3. The brake
     # and every downstream consumer then see the resolved numbers, not the engine's default
     # basis — which on these names is precisely the thing under dispute.
+    # bb is already resolved (apply_basis, pre-stage); this stays only for --refinal replays
+    # over dirs whose bb was not resolved, and is a no-op otherwise.
     vr, _regime = apply_regime_judgment(vr, bb, final_text, decided=regime)
     if _regime:
         print(f"   [regime] basis '{_regime}' endorsed -> MoS "
@@ -2149,6 +2144,20 @@ def main():
     cap = int(CONFIG.get("stage_carry_char_cap", 4500))
     accum = ""
     bb = valuation_backbone.backbone(t)   # deterministic reverse-DCF backbone (computed once)
+    # RESOLVE THE EARNINGS BASIS FIRST. The decision needs only filings data (lattice,
+    # quarterly trajectory, TTM, cycle history), so it must not wait for the report — see
+    # valuation_backbone.apply_basis for why deciding afterwards broke the Engine-verdict slot.
+    _regime_cell, _regime_rec = None, None
+    if (bb.get("lattice") or {}).get("contested") and not args.no_audit:
+        _regime_cell, _regime_rec = regime_decide(t, bb, not args.no_think)
+        if _regime_cell:
+            bb = valuation_backbone.apply_basis(bb, _regime_cell)
+            print(f"   [regime] {_regime_rec.get('votes')} -> {_regime_cell} | "
+                  f"MoS {bb.get('mos_engine_default')} -> {bb.get('realistic_mos_pct')} | "
+                  f"base ${(bb.get('base_cf') or 0)/1e9:.2f}B", flush=True)
+        else:
+            print(f"   [regime] no majority {(_regime_rec or {}).get('votes')} — engine default "
+                  f"basis stands", flush=True)
     if bb.get("method") == "financial_pb_roe":
         bb_msg = (f"FINANCIAL | ROE {bb['roe']*100:.1f}% vs implied {bb['implied_roe']*100:.1f}% | "
                   f"P/B {bb['current_pb']}x vs justified {bb['justified_pb']}x | gap {bb['expectations_gap_pts']}pts")
@@ -2388,16 +2397,9 @@ def main():
     # Final assembly consolidates prior stages — it does NOT need the bulky raw
     # research/priming blocks again. Compact verified anchor + the engine's
     # computed VALUATION RESULT (authoritative IV/MoS) + the stage results.
-    # CONTESTED: resolve the earnings basis with a dedicated, 3-sample majority decision BEFORE
-    # the report is written. Measured 2026-08-11: embedded in the report the judgment swung
-    # 47pts of MoS across identical inputs; as its own focused call it is auditable, sampled,
-    # and the report can only explain it.
-    _regime_cell = None
-    if (bb.get("lattice") or {}).get("contested"):
-        _regime_cell, _rec = regime_decide(t, bb, think)
-        (out_dir / "regime_decision.json").write_text(json.dumps(_rec, indent=2), encoding="utf-8")
-        _shown = _regime_cell or "NO MAJORITY (engine default stands)"
-        print(f"   [regime] votes {_rec.get('votes')} -> {_shown}", flush=True)
+    if _regime_rec is not None:
+        (out_dir / "regime_decision.json").write_text(json.dumps(_regime_rec, indent=2),
+                                                     encoding="utf-8")
     final_assembly(t, out_dir, accum, val_block, val_res, price, args.exit_review, think,
                    use_anchor=args.anchor, bb=bb, regime=_regime_cell)
 

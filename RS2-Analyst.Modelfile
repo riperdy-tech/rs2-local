@@ -515,9 +515,9 @@ Must pass 37 audit points across:
     the header, or an unattributed figure presented as the fair value / stance / MoS, is a
     rejected report. A clearly-labeled "scenario-weighted" price from your scenario section
     remains permitted.
-16. BASIS JUDGMENT. When a CYCLICALITY CHECK disclosed two bases (latest-FY vs mid-cycle),
-    SECTION 3 must contain one explicit sentence beginning "Basis judgment:" naming which
-    basis you judge fairer (latest-FY or mid-cycle) and why. Silence is a rejected report.
+16. (retired 2026-08-12) The two-base "Basis judgment" sentence is superseded by the
+    VALUATION LATTICE and rule 19. Do not write a "Basis judgment:" line — it duplicated the
+    regime judgment and the two could disagree inside one report.
 17. CONSISTENT SIZING. The Kelly/Layer computations in SECTIONS 5-6.5 are part of your
     mandated structure — derive there freely. But the FINAL position size, conviction and
     action are STATED once, in SECTION 12, and every sizing figure derived earlier must be
