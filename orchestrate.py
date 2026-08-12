@@ -306,6 +306,9 @@ def _fail_reason(t):
         return f"reason unavailable ({str(e)[:40]})"
 
 
+AUDIT_ERA = "20260808_120000"   # bundles from this timestamp on MUST carry an audit.json
+
+
 def audit_clean(d):
     """A report dir is publishable only if its post-completion audit did not FAIL. Dirs with no
     audit.json (pre-audit era, or a crash before the auditor ran) pass through — the audit gate
@@ -314,7 +317,16 @@ def audit_clean(d):
     newest-verdict-wins; the equal_llm real-money basket selects on these fields."""
     a = load(d / "audit.json")
     if not a:
-        return True
+        # Pre-audit-era bundles legitimately have no audit.json. A bundle from the audit era
+        # without one is a run that DIED before being checked (killed, crashed, timed out) —
+        # its verdict was written by emit_verdict but never verified, and publishing it puts an
+        # unaudited call on the live site. Measured 2026-08-12: CHEF was killed mid-audit and
+        # its verdict reached the overlay through exactly this hole.
+        try:
+            ts = d.name.split("_", 1)[1]
+        except IndexError:
+            return True
+        return ts < AUDIT_ERA
     return bool(a.get("tier1_pass", True)) and a.get("tier2") != "fail"
 
 
