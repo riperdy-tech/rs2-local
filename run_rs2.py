@@ -595,6 +595,11 @@ def prior_verdict(ticker, exclude_dir=None):
 _STAGE_TAINT = ("fabricat", "ungrounded", "grounding", "research")
 
 
+# Stage artifacts written before this carry the PRE-resolution context (see build_data_context
+# call site) and must never be reused by the retry router. First post-fix run: 20260813_161352.
+CONTEXT_ERA = "20260813_160000"
+
+
 def _router_source(ticker):
     """Same-day failed dir whose defects are provably FINAL-LOCAL -> (src_dir, why) or None.
 
@@ -608,6 +613,15 @@ def _router_source(ticker):
     today = datetime.now().strftime("%Y%m%d")
     for d in sorted(root.glob(f"{ticker.upper()}_{today}_*"),
                     key=lambda p: p.stat().st_mtime, reverse=True):
+        # A retry REUSES the source's stage prose, so a source built before the context/basis
+        # ordering fix carries the engine-DEFAULT figures baked into the model's own writing.
+        # Rebuilding its _fed_data.md cannot help — that would leave the fact sheet arguing
+        # with the copied stages. Such a source is not reusable at all: full rerun. Measured
+        # 2026-08-13: CHEF was routed off a pre-fix dir and inherited "-64% / 27.2%" again,
+        # while a fresh run of the same name passed first attempt. Self-limiting — every
+        # source built from CONTEXT_ERA on is fine.
+        if d.name.split("_", 1)[1] < CONTEXT_ERA:
+            return None
         aj = rs2_data.load_json(d / "audit.json")
         if not aj:
             continue

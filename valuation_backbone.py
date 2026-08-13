@@ -82,8 +82,25 @@ def persistence_growth(delivered):
 # wildly on a 1pt input change is not producing a usable value for that name -- which is a
 # defensible reason to distrust it, unlike "analysts disagree". Verified to catch HRMY, the original
 # bug report, plus BWMX (+9653% MoS), FMX (+2811%), CALM (+833%).
-MOS_SENSITIVITY_MAX = 20.0   # pts of MoS per +/-1pt of growth input
-MOS_EXTREME_MAX = 1.00       # |MoS| above 100% is not a valuation, it is a malfunction
+#
+# REVISED 2026-08-13 — the sensitivity test is retired; ONE absolute plausibility cut remains.
+# Measured across 253 names with a raw reverse-DCF value:
+#   * every genuinely broken name was ALREADY caught by |MoS| alone — BWMX +10282% raw MoS,
+#     FMX +2984, TBPH +670, INVA +404, HRMY +273. Sensitivity added nothing there.
+#   * the 3 it uniquely caught (M +95.5%, NICE +97.2%, FLXS +86.7%) sit inside a dense cluster
+#     it did NOT catch (FSLR +97.3, SITM -97.1, ATAT +90.0, ARM -91.8). FSLR keeps its own
+#     valuation and NICE loses it on a 0.1pt difference — an arbitrary pick, not a diagnosis.
+#   * the cut of 20.0 was p95 of our OWN distribution to the decimal (median 6.0, p90 14.2), so
+#     it fenced ~5% of the book no matter how good the engine became. A percentile cannot ever
+#     retire itself; an absolute cut can, and that is the point of a malfunction test.
+# The raw |MoS| tail runs smoothly (103, 104, 119, 127, 146) and then jumps to 273/404/670 —
+# 150 sits in that gap, the only real discontinuity in the distribution. NOTE this threshold is
+# SHARED with lattice cell admissibility (base_lattice) and repatch_verdicts' filter, which is
+# deliberate: one definition of "malfunction" everywhere. Accepted consequence, measured: CALM,
+# M, PRDO and WILC become CONTESTED (their bases genuinely disagree by >100pts and the second
+# cell was previously hidden), and JOE/KMDA get our own number instead of a consensus snap.
+# fv_sensitivity_pts is still computed and surfaced — useful telemetry, no longer a gate.
+MOS_EXTREME_MAX = 1.50       # |MoS| beyond 150% is not a valuation, it is a malfunction
 STALE_TARGET_DAYS = 45     # analyst-target band older than this is flagged low-confidence
 
 
@@ -1115,15 +1132,15 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
         fair_mcap = ve.dcf_value(base_cf, g_fair, wacc, TERMINAL_G, stage1_years=STAGE1, fade_years=FADE)
         if fair_mcap and fair_mcap > 0:
             raw = price * fair_mcap / mcap
-            # STABILITY SELF-TEST: how far does the answer move on +/-1pt of growth input?
+            # Growth sensitivity — TELEMETRY ONLY since 2026-08-13 (surfaced as
+            # fv_sensitivity_pts); it no longer gates. See MOS_EXTREME_MAX for why.
             def _fv(gg):
                 fm = ve.dcf_value(base_cf, max(-0.20, min(gg, FWD_GROWTH_CEIL)), wacc,
                                   TERMINAL_G, stage1_years=STAGE1, fade_years=FADE)
                 return (price * fm / mcap) if (fm and fm > 0) else None
             _up, _dn = _fv(g_drive + 0.01), _fv(g_drive - 0.01)
             sens = (abs(_up - _dn) / price * 100.0) if (_up and _dn and price) else None
-            unstable = ((sens is not None and sens > MOS_SENSITIVITY_MAX)
-                        or abs(raw / price - 1.0) > MOS_EXTREME_MAX)
+            unstable = abs(raw / price - 1.0) > MOS_EXTREME_MAX
             fv_sensitivity_pts = round(sens, 1) if sens is not None else None
             if not unstable:
                 # STABLE -> publish OUR value. This is the number the engine actually computed.
