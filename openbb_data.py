@@ -196,9 +196,12 @@ def format_block(ticker):
     L = ["## ANALYST-GRADE DATA (OpenBB — SEC / consensus / FMP)", ""]
     c = d.get("analyst_consensus") or {}
     if isinstance(c, dict) and c.get("target_consensus"):
-        L.append(f"- Analyst price target [Estimate]: consensus ${c.get('target_consensus')} "
-                 f"(low ${c.get('target_low')} / high ${c.get('target_high')}), "
-                 f"{c.get('number_of_analysts') or '?'} analysts, rec '{c.get('recommendation')}'.")
+        # Dollar targets deliberately omitted — the VALUATION block is the single place the
+        # consensus band is priced. Coverage and recommendation STAY: measured 2026-08-13,
+        # 114 of 175 names carry no screener analyst-sentiment line, so for two thirds of the
+        # book this is the only place Layer 5.5 learns how many analysts cover the name.
+        L.append(f"- Analyst coverage [Estimate]: {c.get('number_of_analysts') or '?'} analysts, "
+                 f"rec '{c.get('recommendation')}'.")
     ins = d.get("insider_activity") or {}
     if isinstance(ins, dict) and ins.get("recent_count"):
         L.append(f"- Insider activity (SEC, recent {ins['recent_count']}): {ins.get('buys',0)} acquisitions vs "

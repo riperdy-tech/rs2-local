@@ -125,13 +125,16 @@ def _entry_discipline(rmos):
             f"discount conviction for valuation alone.")
 
 
-def valuation_block(ticker):
+def valuation_block(ticker, bb=None):
     """PRIMARY valuation context (inverted architecture) — the deterministic reverse-DCF
     BACKBONE (expectations investing). Replaces the old forward-DCF priming + analyst-consensus
     anchor. The model does NOT set base_cf / growth / WACC and does NOT compute IV; it judges
-    whether the price-IMPLIED growth is ACHIEVABLE. See AUDIT.md C2."""
+    whether the price-IMPLIED growth is ACHIEVABLE. See AUDIT.md C2.
+
+    `bb` is the caller's ALREADY-RESOLVED backbone (apply_basis applied). Pass it on a contested
+    name or this recomputes the engine DEFAULT and the prompt disagrees with the header."""
     import valuation_backbone as vb  # lazy: vb imports rs2_data (avoid circular import)
-    b = vb.backbone(ticker)
+    b = bb if bb is not None else vb.backbone(ticker)
     L = ["## VALUATION — REVERSE-DCF EXPECTATIONS MODEL (deterministic backbone; do NOT recompute)", ""]
     if not b.get("ok"):
         sl = (sector_lookup(ticker)[0] or "").lower()
@@ -666,8 +669,13 @@ def overlay_priming(ov):
         L.append("- Informed demand: POSITIVE (insider net buying without rising short interest) — confirming.")
     if ov.get("informed_demand") == -1:
         L.append("- Informed demand: NEGATIVE (insider selling with elevated/rising short interest) — red flag.")
-    if ov.get("inst_pct") is not None:
-        L.append(f"- Institutional ownership: {ov['inst_pct']*100:.1f}% (screener overlay).")
+    # Institutional ownership deliberately NOT rendered here. DATA_DISCIPLINE directs the model
+    # to the ENRICHMENT block for microstructure ("use those exact values"), so this screener-
+    # snapshot line was a second figure for the same field — a different fetch, hence a small
+    # standing disagreement (median 0.28pt, up to 14pt). The verifier charged the model with
+    # FABRICATION for quoting the enrichment value it was TOLD to use, on 4 of the 12
+    # fabrication charges since the microstructure fix (AMZN 68.12 vs 67.6; BMY 84.87 vs 83.9).
+    # The datum is unchanged in overlay_signals.json — only this duplicate rendering is gone.
     if not L:
         return ""
     return "## Risk Overlay Context\n\n" + "\n".join(L) + "\n\n"
@@ -717,6 +725,17 @@ def macro_block(macro_state, regime):
 
 
 # ── optional Bucket B / C ─────────────────────────────────────────────────
+# The consensus band belongs to exactly ONE block: VALUATION prices it as the fenced
+# "ANALYST CONSENSUS fair value". Dumping the raw yfinance targets here put a SECOND dollar
+# fair-value in the same prompt, and the model wrote it into the ENGINE's fair-value field in
+# 10 of 70 ENGINE-FIELD CONTRADICTION charges (measured 2026-08-13, 9 tickers: ACTG $6.00 vs
+# engine $5.62, ANET $248 vs $78.52, BMY $68 vs $49.68, ...). Suppressed here is the RENDERING
+# only — valuation_backbone._consensus_band still reads these keys from enrich/{T}.json, so the
+# fence, realistic_mos_pct and ENTRY DISCIPLINE are untouched.
+_CONSENSUS_RENDER_SKIP = ("analyst_target_mean", "analyst_target_low",
+                          "analyst_target_high", "analyst_target_median")
+
+
 def enrichment_block(ticker):
     path = Path(CONFIG["out_enrich_dir"]) / f"{ticker.upper()}.json"
     e = load_json(path)
@@ -726,7 +745,7 @@ def enrichment_block(ticker):
                 "[Unconfirmed].\n")
     L = ["## BEHAVIORAL / POSITIONING DATA (verified, yfinance — Layer 5.5 / Layer 1 DXY)", ""]
     for k, v in e.items():
-        if k.startswith("_"):
+        if k.startswith("_") or k in _CONSENSUS_RENDER_SKIP:
             continue
         L.append(f"  - {k}: {v}")
     L.append("")
@@ -833,7 +852,9 @@ def _track_record(t):
         return ""
 
 
-def build_data_context(ticker):
+def build_data_context(ticker, bb=None):
+    """`bb`: the caller's resolved backbone, threaded to valuation_block so a contested name's
+    prompt carries the SAME figures as the FINAL header. None recomputes the engine default."""
     t = ticker.upper()
     market = market_for(t)
     sd = Path(CONFIG["screener_data_dir"])
@@ -862,7 +883,7 @@ def build_data_context(ticker):
         DATA_DISCIPLINE,
         classification_context(t),
         reverse_priming(rev),
-        valuation_block(t),          # inverted: deterministic reverse-DCF backbone (replaces
+        valuation_block(t, bb),      # inverted: deterministic reverse-DCF backbone (replaces
                                      # forward-DCF priming + the analyst-consensus anchor crutch)
         _track_record(t),            # the engine's OWN graded hit rate in this situation
         forward_priming(eps_traj, analyst),

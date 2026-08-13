@@ -28,16 +28,29 @@ HERE = Path(__file__).resolve().parent
 CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
 
 
-def _pct(x, lo=0.0, hi=100.0):
-    """Coerce a fraction(0-1) or percent to a 0-100 percent, sanity-ranged."""
+def _pct(x, lo=0.0, hi=200.0):
+    """Coerce a yfinance ownership/float FRACTION to a percent, sanity-ranged.
+
+    All three callers pass fields yfinance always returns as fractions
+    (shortPercentOfFloat, heldPercentInstitutions, heldPercentInsiders), so the
+    conversion is unconditional. The old `if -1.0 <= v <= 1.0` guard silently passed a
+    fraction ABOVE 1.0 through unmultiplied — and institutional holdings routinely exceed
+    float (13F double-count) — so CHEF's 1.0106 was stored as 1.01, a 100x understatement
+    that then read as a perfectly legal percent. Measured 2026-08-13: 77 of 229 covered
+    names were wrong this way, while DATA_DISCIPLINE tells the model these values are
+    authoritative.
+
+    hi is a UNIT guard, not a cap on reality: institutional % across 243 covered names
+    tops out at 134.7 (p99 121.5, none above 150), whereas a percent-valued input would
+    land at >=1000. Out of range returns None, so a bad unit reads as absent, never wrong.
+    """
     if x is None:
         return None
     try:
         v = float(x)
     except (TypeError, ValueError):
         return None
-    if -1.0 <= v <= 1.0:
-        v *= 100.0
+    v *= 100.0
     if not (lo - 1e-9 <= v <= hi + 1e-9):
         return None
     return round(v, 2)

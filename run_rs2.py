@@ -1301,6 +1301,45 @@ def _append_label_ledger(ticker, run_name, label):
     return prior, changed
 
 
+# WARN-ONLY telemetry (2026-08-13). The tier-2 verifier reads a WINDOW, so by the epistemic
+# rule it may prove CONTRADICTION but never ABSENCE — a report that silently DISCARDS a figure
+# the engine supplied therefore scores clean. Measured on the 5/5 clean run of 2026-08-12:
+# 3 of 5 reports did exactly that (ACTG short float 5.69, ANET 1.23, CHEF 17.56 with 8.63
+# days-to-cover and a 4.96 put/call — a real red flag on a "Quality Compounder", unanalysed).
+# Recorded, NEVER gated: turning this into a failure adds a new retry class, and its rate has
+# to be measured on real runs before that can be justified.
+_SUPPLIED_TOPICS = (
+    ("short_pct_float", r"short (?:interest|%|percent)|% of float"),
+    ("institutional_pct", r"institutional"),
+    ("insider_pct", r"insider (?:ownership|holding)"),
+    ("put_call_oi_ratio", r"put[-/ ]?call"),
+)
+# "Unconfirmed" counts: writing "Short Interest: Unconfirmed" IS a claim of absence. Lines that
+# carry an actual figure are excluded by the digit guard below, so "2.56% [Unconfirmed]" is safe.
+_NOT_PROVIDED = re.compile(r"not provided|unavailable|not supplied|unconfirmed", re.I)
+
+
+def _supplied_but_unused(t, out_dir):
+    """Fields the engine supplied that the report calls unavailable. Telemetry only."""
+    e = rs2_data.load_json(HERE / "enrich" / f"{t.upper()}.json") or {}
+    fp = out_dir / "FINAL.md"
+    if not e or not fp.exists():
+        return []
+    lines = fp.read_text(encoding="utf-8", errors="replace").splitlines()
+    hits = []
+    for field, pat in _SUPPLIED_TOPICS:
+        v = e.get(field)
+        if v is None:
+            continue
+        rx = re.compile(pat, re.I)
+        for ln in lines:
+            # a claim of absence on a line about this field, carrying no figure of its own
+            if rx.search(ln) and _NOT_PROVIDED.search(ln) and not re.search(r"\d", ln.split(":", 1)[-1]):
+                hits.append(f"{field}={v}")
+                break
+    return hits
+
+
 def deterministic_audit(t, out_dir, val_res, level="full"):
     """TIER 1: re-derive and cross-check everything checkable without a model.
 
@@ -1460,6 +1499,12 @@ def deterministic_audit(t, out_dir, val_res, level="full"):
                     got = (m.group(1).lower() if m else None)
                     rec("final.engine_verdict_slot", got == str(st).lower(),
                         f"slot says {got!r} vs authoritative {st!r}")
+
+    # WARN-ONLY: ok is hard-coded True so this can never gate a report (see _supplied_but_unused).
+    _unused = _supplied_but_unused(t, out_dir)
+    if _unused:
+        rec("microstructure.supplied_but_unused", True,
+            "WARN: report calls these unavailable, engine supplied them: " + ", ".join(_unused))
 
     ok = all(c["ok"] for c in checks)
     return ok, checks
@@ -2133,16 +2178,7 @@ def main():
     if not args.no_research:
         run_research(t, name)   # LDR deep research (no Chrome; runs before GPU inference)
 
-    # 3. assemble fed data
-    data_ctx = rs2_data.build_data_context(t)
-    if args.exit_review:
-        data_ctx += (
-            "\n\n## EXIT REVIEW CONTEXT\n\n"
-            "This name has FALLEN OUT of the quant engine's research list (signal decayed vs the "
-            "universe — a RELATIVE statement, not automatically a sell). The reader may STILL HOLD "
-            "the stock. Purpose of this analysis: a holder's exit review. Do NOT build a fresh-money "
-            "buy case; in SECTION 12 give an explicit HOLD / TRIM / SELL call with the reasoning and "
-            "what would change it.\n")
+    # 3. fed data is assembled AFTER the basis is resolved — see below.
     fin = rs2_data.load_json(Path(CONFIG["screener_data_dir"]) / "financials" / f"{t}.json") or {}
     price = fin.get("Price")
 
@@ -2150,7 +2186,6 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path(CONFIG["out_reports_dir"]) / f"{t}_{ts}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "_fed_data.md").write_text(data_ctx, encoding="utf-8")
     # snapshot the deep-research brief INTO the run so the report is self-contained (publish_reports.py
     # prefers this over the shared research/{T}.md, which may be refreshed by a later run).
     _rb = Path(CONFIG["out_research_dir"]) / f"{t}.md"
@@ -2175,6 +2210,27 @@ def main():
         else:
             print(f"   [regime] no majority {(_regime_rec or {}).get('votes')} — engine default "
                   f"basis stands", flush=True)
+
+    # 3. ASSEMBLE FED DATA — here, from the RESOLVED backbone, never earlier. Until 2026-08-13 the
+    # context was built before the basis was decided, so on a contested name the stages read the
+    # engine-DEFAULT figures while the FINAL header carried the resolved ones. CHEF was fed
+    # "fenced fair value $39.17 => realistic MoS -64%", "price IMPLIES ~27.2%/yr" and an
+    # expectations gap of -3pts ("priced in line") through all six stages, then handed a header
+    # saying $15.43 / -85.8% / 45.9% / overvalued — and the verifier charged it with
+    # ENGINE-FIELD CONTRADICTION for quoting the engine's own words (3 attempts, all failed).
+    # The ENTRY DISCIPLINE line is computed from that same stale MoS, so this corrupted the
+    # sharpest-graded field in the verdict, not just the audit.
+    data_ctx = rs2_data.build_data_context(t, bb)
+    if args.exit_review:
+        data_ctx += (
+            "\n\n## EXIT REVIEW CONTEXT\n\n"
+            "This name has FALLEN OUT of the quant engine's research list (signal decayed vs the "
+            "universe — a RELATIVE statement, not automatically a sell). The reader may STILL HOLD "
+            "the stock. Purpose of this analysis: a holder's exit review. Do NOT build a fresh-money "
+            "buy case; in SECTION 12 give an explicit HOLD / TRIM / SELL call with the reasoning and "
+            "what would change it.\n")
+    (out_dir / "_fed_data.md").write_text(data_ctx, encoding="utf-8")
+
     if bb.get("method") == "financial_pb_roe":
         bb_msg = (f"FINANCIAL | ROE {bb['roe']*100:.1f}% vs implied {bb['implied_roe']*100:.1f}% | "
                   f"P/B {bb['current_pb']}x vs justified {bb['justified_pb']}x | gap {bb['expectations_gap_pts']}pts")
