@@ -101,7 +101,8 @@ def main():
             blow_after += 1
         if v.get("brake_applied"):
             braked += 1
-    print(f"\nRepatched {done} verdicts. MoS blowups>60%: {blow_before} -> {blow_after}. "
+    print(f"\nRepatched {done} verdicts. MoS beyond the fence "
+          f"(|MoS|>{vb.MOS_EXTREME_MAX*100:.0f}%, expected 0): {blow_before} -> {blow_after}. "
           f"Brake fired: {braked}.")
 
 
