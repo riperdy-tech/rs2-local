@@ -341,6 +341,21 @@ def latest_verdict(t):
     return None, None
 
 
+# Names whose verdicts must NOT reach the overlay until their data is proven reliable.
+# Operator decision 2026-08-14 (option B): 20-F foreign filers whose statements were
+# ingested in reporting currency against USD quotes — FMX's live row ("undervalued,
+# conviction 13") was the MXN/USD factor, not a valuation. The live overlay rows were
+# pulled the same day (screener commit f7a4d36ff4); this guard keeps any future
+# aggregation from silently re-adding a STALE pre-FX verdict. LIFTING IT IS THE
+# OPERATOR'S CALL, after the post-FX refresh runs come back audit-clean.
+OVERLAY_EXCLUDE = {
+    "FMX": "unreliable-pending-data: pre-FX-ingestion verdict (MXN statements)",
+    "TSM": "unreliable-pending-data: pre-FX-ingestion verdict (TWD statements, FY-only base)",
+    "SAP": "unreliable-pending-data: pre-FX-ingestion verdict (EUR statements)",
+    "BWMX": "unreliable-pending-data: pre-FX-ingestion verdict (MXN statements)",
+}
+
+
 def aggregate_overlay(state):
     """Every ACTIVE name's latest verdict.json -> llm_overlay.json. EXIT-REVIEWED names (left the
     quant list, holder may still own them) are included for EXIT_KEEP_DAYS with an exit_review flag
@@ -349,6 +364,8 @@ def aggregate_overlay(state):
     EXIT_KEEP_DAYS = 30
     tickers = {}
     for t, s in state.items():
+        if t in OVERLAY_EXCLUDE:
+            continue
         is_exit = bool(s.get("exit_reviewed")) and s.get("status") == "inactive"
         if s.get("status") != "active" and not (
                 is_exit and days_since(s.get("last_analyzed")) <= EXIT_KEEP_DAYS):
