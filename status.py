@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """status.py — orchestrator progress dashboard. Run anytime (even days into a backfill):
 
-    python status.py            # one-shot snapshot
-    python status.py --watch    # refresh every 30s
+    python status.py            # live dashboard (commands are letter + ENTER, see footer)
+    python status.py --once     # one-shot snapshot, no live UI
+    python status.py pause|resume|stop   # one action, non-interactive
 
 Reads analysis_state.json (updated after every ticker), orchestrate_progress.json (live current
 ticker + ETA), factor_scores.json (the current RN/WL denominator) and the lockfile. No progress
@@ -202,6 +203,9 @@ def snapshot():
         extra = (f" — ran {hb.get('ran')}, failed {hb.get('failed')}, push {hb.get('push')}"
                  if hb.get("status") == "ok" else "")
         L.append(f"last completed run: {hb.get('status','?')}{_age_str(hb.get('ts'))}{extra}")
+    # book coverage — the rn/wl tallies were computed but no longer displayed; restored 2026-08-15
+    L.append(f"coverage: research_now {rn_done}/{len(rn)} analyzed | "
+             f"watchlist {wl_done}/{len(wl)} | total {total_done}/{len(rn | wl)}")
     L.append("")
     L.append("live activity (log tail — is it progressing through S1..S6 or hung?):")
     tail = log_tail(8)
@@ -229,6 +233,12 @@ def snapshot():
     if ov:
         gen = ov.get("generated_at", "?")
         L.append(f"overlay: {ov.get('count','?')} tickers | generated {gen}{_age_str(gen)}")
+        try:
+            from orchestrate import OVERLAY_EXCLUDE as _excl   # guarded: display-only
+        except Exception:
+            _excl = {}
+        if _excl:
+            L.append("  benched from overlay (operator-gated): " + ", ".join(sorted(_excl)))
     else:
         L.append("overlay: not written yet")
     return "\n".join(L)
@@ -333,18 +343,26 @@ def do_stop():
             "Press r to resume (relaunches + continues from saved progress).")
 
 
-FOOTER = "  keys:   [p] pause (freeze)    [r] resume (unfreeze)    [s] stop (kill+free GPU)    [f] refresh    [q] quit"
+FOOTER = ("  commands (type letter, press ENTER):   p=pause(freeze)   r=resume   "
+          "s=stop(kill+free GPU)   f or bare ENTER=refresh   q=quit")
 
 
 def interactive(refresh=15):
-    """Live dashboard with single-key control. p/r/s act immediately; auto-refreshes every `refresh`s."""
+    """Live dashboard. Commands are TWO-STAGE: type the letter, then press ENTER to execute.
+
+    The previous single-key hotkeys acted the instant a key was hit, so one stray keystroke
+    on the wrong window killed a run and unloaded the models (operator report 2026-08-15).
+    Now nothing executes without ENTER; a mistyped buffer is shown, correctable with
+    backspace, and rejected with a hint instead of acted on. Auto-refresh every `refresh`s;
+    anything half-typed survives the redraw."""
     try:
         import msvcrt
     except ImportError:
         print(snapshot())
-        print("\n(interactive hotkeys are Windows-only — use: python status.py pause|resume|stop)")
+        print("\n(interactive input is Windows-only — use: python status.py pause|resume|stop)")
         return
     msg = ""
+    buf = ""
 
     def render():
         os.system("cls" if os.name == "nt" else "clear")
@@ -353,6 +371,7 @@ def interactive(refresh=15):
         if msg:
             print(f"  » {msg}\n")
         print(FOOTER)
+        print(f"  command> {buf}", end="", flush=True)
 
     render()
     last = time.time()
@@ -361,23 +380,36 @@ def interactive(refresh=15):
             raw = msvcrt.getch()
             if raw in (b"\x00", b"\xe0"):     # arrow / function key -> discard the 2nd byte, ignore
                 msvcrt.getch()
-                ch = ""
+                continue
+            if raw in (b"\r", b"\n"):
+                cmd, buf = buf.strip().lower(), ""
+                if cmd == "q":
+                    print()
+                    break
+                elif cmd == "p":
+                    print("\n  working: pausing (a few seconds)...", flush=True)
+                    msg = do_pause(); render(); last = time.time()
+                elif cmd == "r":
+                    msg = do_resume(); render(); last = time.time()
+                elif cmd == "s":
+                    print("\n  working: stopping current run...", flush=True)
+                    msg = do_stop(); render(); last = time.time()
+                elif cmd in ("", "f"):
+                    msg = ""; render(); last = time.time()
+                else:
+                    msg = f"unknown command {cmd!r} — p / r / s / f / q, then ENTER"
+                    render(); last = time.time()
+            elif raw == b"\x08":              # backspace — edit the pending buffer
+                buf = buf[:-1]
+                print(f"\r  command> {buf} \b", end="", flush=True)
             else:
-                ch = raw.decode("utf-8", "ignore").lower()
-            if ch == "q":
-                break
-            elif ch == "p":
-                print("\n  working: pausing + unloading models (a few seconds)...", flush=True)
-                msg = do_pause(); render(); last = time.time()
-            elif ch == "r":
-                msg = do_resume(); render(); last = time.time()
-            elif ch == "s":
-                print("\n  working: stopping current run...", flush=True)
-                msg = do_stop(); render(); last = time.time()
-            elif ch == "f":
-                msg = ""; render(); last = time.time()
+                ch = raw.decode("utf-8", "ignore")
+                if ch.isprintable():
+                    buf += ch
+                    print(ch, end="", flush=True)
         elif time.time() - last >= refresh:
-            msg = ""; render(); last = time.time()
+            msg = ""
+            render(); last = time.time()
         time.sleep(0.12)
 
 
