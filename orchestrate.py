@@ -349,10 +349,12 @@ def latest_verdict(t):
 # aggregation from silently re-adding a STALE pre-FX verdict. LIFTING IT IS THE
 # OPERATOR'S CALL, after the post-FX refresh runs come back audit-clean.
 OVERLAY_EXCLUDE = {
-    "FMX": "unreliable-pending-data: pre-FX-ingestion verdict (MXN statements)",
-    "TSM": "unreliable-pending-data: pre-FX-ingestion verdict (TWD statements, FY-only base)",
-    "SAP": "unreliable-pending-data: pre-FX-ingestion verdict (EUR statements)",
-    "BWMX": "unreliable-pending-data: pre-FX-ingestion verdict (MXN statements)",
+    # FMX / TSM / SAP lifted by the operator 2026-08-15 after their post-FX refresh runs
+    # came back audit-clean (FMX fair +2.1% own-DCF; SAP -19.6% own-DCF; TSM overvalued
+    # -64% — FY-anchor only, no 10-Qs, disclosed and accepted: the stale-base failure
+    # mode is conservative, it keeps TSM out of buys rather than in).
+    "BWMX": "unreliable-pending-data: post-FX valuation still beyond the malfunction "
+            "fence (consensus_snap) — RS2-side fundamentals remain suspect",
 }
 
 
