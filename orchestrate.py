@@ -942,12 +942,19 @@ def main():
 
         push_status = "skipped"
         if not args.no_push:
-            git(["add", str(OVERLAY), str(SD / "rs2")])
+            # The verdict ledger is appended per-attempt during the sweep; committing it here
+            # keeps the repo's copy current for the grader instead of drifting forever-dirty.
+            git(["add", str(OVERLAY), str(SD / "rs2"), str(SD / "rs2_verdict_log.jsonl")])
             committed, cmsg = git(["commit", "-m", f"chore(llm): RS2 overlay + reports {overlay['generated_at']} ({overlay['count']} names)"])
             if committed:
                 push_status = "failed"
                 for attempt in (1, 2, 3):     # #2 VERIFY the push; reconcile a diverged origin, don't fail silently
                     git(["fetch", "origin", "main"])
+                    # scan.log is written by BOTH the cloud fetch jobs (committed) and any local
+                    # script run (uncommitted noise). A merge refuses to run over a locally-dirty
+                    # file it must update, which killed all 3 push attempts on 2026-08-16 and left
+                    # the SITE OVERLAY STALE. It is a log: origin's version wins, discard ours.
+                    git(["checkout", "--", str(SD / "scan.log")])
                     mok, _ = git(["merge", "-X", "ours", "--no-edit", "origin/main"])
                     if not mok:
                         git(["merge", "--abort"])
