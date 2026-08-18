@@ -125,6 +125,90 @@ def _entry_discipline(rmos):
             f"discount conviction for valuation alone.")
 
 
+def quality_solvency(ticker):
+    """Deterministic earnings-quality + solvency TRIPWIRES (audit 2026-08, C4/C5).
+
+    Quality reads the screener's fundamentals_battery.json (f_score, accruals_ratio,
+    m_score, net_issuance) — computed upstream for years but never loaded here until the
+    2026-08 audit. Solvency computes coverage/leverage from fundamentals_history fields that
+    were ingested-but-unused. Measured incidence on the 2026-08 book was LOW (1/35 BULLs
+    quality-flagged, 0/35 solvency-flagged) — these are cheap insurance against the book's
+    composition changing, NOT a ranking input, and they gate nothing: flags surface in the
+    prompt and in verdict.json for the analyst layer and the human.
+
+    Thresholds (standard, stated in audit/C_findings.md):
+      f_score <= 3 of >=6 checks; accruals_ratio >= +0.10; m_score > -1.78 (Beneish);
+      net_issuance_1y >= +5%; interest coverage < 3x; net_debt/OCF > 4x; OCF <= 0 while
+      net-debt positive.
+    Returns {"quality_flags": [...], "solvency_flags": [...], "facts": {...}}.
+    """
+    import valuation_backbone as vb   # lazy: vb imports this module at top level
+    t = ticker.upper()
+    out = {"quality_flags": [], "solvency_flags": [], "facts": {}}
+
+    bat = ((load_json(Path(CONFIG["screener_data_dir"]) / "fundamentals_battery.json")
+            or {}).get("tickers") or {}).get(t) or {}
+    f, avail = bat.get("f_score"), bat.get("f_score_checks_available") or 0
+    acc, m, iss = bat.get("accruals_ratio"), bat.get("m_score"), bat.get("net_issuance_1y")
+    out["facts"].update({"f_score": f, "f_score_checks": avail, "accruals_ratio": acc,
+                         "m_score": m, "net_issuance_1y": iss})
+    if f is not None and avail >= 6 and f <= 3:
+        out["quality_flags"].append(f"weak F-score {f}/{avail}")
+    if isinstance(acc, (int, float)) and acc >= 0.10:
+        out["quality_flags"].append(f"high accruals {acc:+.3f} (earnings ahead of cash)")
+    if isinstance(m, (int, float)) and m > -1.78:
+        out["quality_flags"].append(f"Beneish M-score {m:.2f} (elevated manipulation zone)")
+    if isinstance(iss, (int, float)) and iss >= 0.05:
+        out["quality_flags"].append(f"net share issuance {iss:+.1%}/yr (active dilution)")
+
+    h = vb._hist(t)
+    if h:
+        fy = h[str(max(int(y) for y in h.keys()))]
+        oi, ie = vb._num(fy.get("operating_income")), vb._num(fy.get("interest_expense"))
+        ltd, cash, ocf = (vb._num(fy.get("lt_debt")), vb._num(fy.get("cash")),
+                          vb._num(fy.get("ocf")))
+        nd = (ltd - cash) if (ltd is not None and cash is not None) else None
+        cov = (oi / ie) if (oi is not None and ie and ie > 0) else None
+        out["facts"].update({"interest_coverage": round(cov, 1) if cov is not None else None,
+                             "net_debt_b": round(nd / 1e9, 2) if nd is not None else None,
+                             "ocf_b": round(ocf / 1e9, 2) if ocf is not None else None})
+        if cov is not None and cov < 3:
+            out["solvency_flags"].append(f"interest coverage {cov:.1f}x")
+        if nd is not None and nd > 0 and ocf is not None:
+            if ocf > 0 and nd / ocf > 4:
+                out["solvency_flags"].append(f"net debt {nd/ocf:.1f}x OCF")
+            elif ocf <= 0:
+                out["solvency_flags"].append("negative OCF while carrying net debt")
+    return out
+
+
+def quality_block(ticker):
+    """Fed-data block for the tripwires. One line when clean; explicit flags when not."""
+    qs = quality_solvency(ticker)
+    fx = qs["facts"]
+
+    def _f(v, suffix=""):
+        return f"{v}{suffix}" if v is not None else "n/a"
+
+    facts = (f"F-score {_f(fx.get('f_score'))}/{_f(fx.get('f_score_checks'))}, "
+             f"accruals {_f(fx.get('accruals_ratio'))}, M-score {_f(fx.get('m_score'))}, "
+             f"issuance-1y {_f(fx.get('net_issuance_1y'))}, "
+             f"coverage {_f(fx.get('interest_coverage'), 'x')}, "
+             f"net debt {_f(fx.get('net_debt_b'), 'B')} vs OCF {_f(fx.get('ocf_b'), 'B')}")
+    flags = qs["quality_flags"] + qs["solvency_flags"]
+    if not flags:
+        return ("## QUALITY & SOLVENCY TRIPWIRES\n"
+                f"- No flags fired ({facts}).\n"
+                "- Deterministic screen; treat as verified. Do not re-derive these ratios.")
+    lines = "\n".join(f"- FLAG: {f}" for f in flags)
+    return ("## QUALITY & SOLVENCY TRIPWIRES\n"
+            f"{lines}\n"
+            f"- Underlying facts: {facts}.\n"
+            "- These are deterministic tripwires, not a verdict: address each flag explicitly "
+            "in business-quality and red-team reasoning (does cash back the earnings? can the "
+            "balance sheet carry the thesis?), and reflect unresolved flags in conviction.")
+
+
 def valuation_block(ticker, bb=None):
     """PRIMARY valuation context (inverted architecture) — the deterministic reverse-DCF
     BACKBONE (expectations investing). Replaces the old forward-DCF priming + analyst-consensus
@@ -891,6 +975,7 @@ def build_data_context(ticker, bb=None):
         macro_block(macro, regime),
         enrichment_block(t),
         openbb_block(t),
+        quality_block(t),            # deterministic earnings-quality + solvency tripwires
         research_block(t),
         news_block(t),
         fin_brief,

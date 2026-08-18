@@ -1780,6 +1780,7 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False,
                             is not None else vr.get("roe_gap_pts")) or vr.get("stance")
     stance_conflict = bool((_stc == "overvalued" and stance >= 4)
                            or (_stc == "undervalued" and stance <= 2))
+    _qs = rs2_data.quality_solvency(ticker)   # deterministic tripwires (audit 2026-08 C4/C5)
     verdict = {
         "stance_score": stance, "thesis_break": thesis_break, "stance_source": stance_src,
         "conviction_scale": 15, "stance_score_scale": 5,
@@ -1809,6 +1810,8 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False,
         "entry_timing": entry_timing, "pullback_trigger": pullback,
         "raw_action": raw_action, "raw_conviction": raw_conv, "brake_applied": braked,
         "band_at_analysis": band_of(ticker), "report": out_dir.name,
+        # surfaced data, never a gate
+        "quality_flags": _qs["quality_flags"], "solvency_flags": _qs["solvency_flags"],
     }
     # atomic: a torn verdict.json is silently skipped by publish_reports._scan and gets the run's
     # already-published site bundle DELETED — never leave a half-written one visible
