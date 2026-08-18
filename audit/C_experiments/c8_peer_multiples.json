@@ -1,0 +1,1489 @@
+{
+  "generated_at": "2026-08-18T04:38:13.943333+00:00",
+  "corpus_files": 10340,
+  "corpus_with_usable_ev_ebit": 2608,
+  "sectors_with_median": {
+    "Healthcare": 20.85,
+    "Basic Materials": 15.51,
+    "Industrials": 21.52,
+    "Financial Services": 10.48,
+    "Consumer Cyclical": 16.87,
+    "Technology": 25.78,
+    "Real Estate": 30.01,
+    "Consumer Defensive": 15.07,
+    "Communication Services": 13.8,
+    "Utilities": 20.78,
+    "Energy": 12.88
+  },
+  "n_book_compared": 148,
+  "n_no_signal": 7,
+  "n_agree": 47,
+  "agree": [
+    "ALKS",
+    "AMAT",
+    "AMD",
+    "AMZN",
+    "ANAB",
+    "ATAT",
+    "ATI",
+    "ATRO",
+    "BMRN",
+    "CASY",
+    "CIEN",
+    "CW",
+    "ESLT",
+    "EW",
+    "EXEL",
+    "FIX",
+    "FSLR",
+    "GLW",
+    "GMED",
+    "GOOG",
+    "GOOGL",
+    "GWRE",
+    "HALO",
+    "HEI",
+    "HRMY",
+    "HWM",
+    "IESC",
+    "INTU",
+    "INVA",
+    "ITT",
+    "JBHT",
+    "MANH",
+    "MOG-B",
+    "MPWR",
+    "NUTX",
+    "POWL",
+    "PSMT",
+    "ROK",
+    "SIMO",
+    "SITM",
+    "SMTC",
+    "STX",
+    "TT",
+    "VICR",
+    "VRT",
+    "WST",
+    "WWD"
+  ],
+  "n_disagree": 8,
+  "disagree": [
+    "ABNB",
+    "BLBD",
+    "DT",
+    "EHC",
+    "KNSA",
+    "MEDP",
+    "MU",
+    "VIK"
+  ],
+  "disagree_detail": {
+    "ABNB": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 38.0,
+      "sector_median": 16.87,
+      "rel": 2.25,
+      "multiple_signal": "rich",
+      "gap_pts": -17.7,
+      "gap_signal": "cheap"
+    },
+    "BLBD": {
+      "sector": "Industrials",
+      "ev_ebit": 10.1,
+      "sector_median": 21.52,
+      "rel": 0.47,
+      "multiple_signal": "cheap",
+      "gap_pts": 15.1,
+      "gap_signal": "rich"
+    },
+    "DT": {
+      "sector": "Technology",
+      "ev_ebit": 47.1,
+      "sector_median": 25.78,
+      "rel": 1.83,
+      "multiple_signal": "rich",
+      "gap_pts": -7.9,
+      "gap_signal": "cheap"
+    },
+    "EHC": {
+      "sector": "Healthcare",
+      "ev_ebit": 13.3,
+      "sector_median": 20.85,
+      "rel": 0.64,
+      "multiple_signal": "cheap",
+      "gap_pts": 29.3,
+      "gap_signal": "rich"
+    },
+    "KNSA": {
+      "sector": "Healthcare",
+      "ev_ebit": 58.1,
+      "sector_median": 20.85,
+      "rel": 2.79,
+      "multiple_signal": "rich",
+      "gap_pts": -63.7,
+      "gap_signal": "cheap"
+    },
+    "MEDP": {
+      "sector": "Healthcare",
+      "ev_ebit": 26.9,
+      "sector_median": 20.85,
+      "rel": 1.29,
+      "multiple_signal": "rich",
+      "gap_pts": -10.4,
+      "gap_signal": "cheap"
+    },
+    "MU": {
+      "sector": "Technology",
+      "ev_ebit": 18.6,
+      "sector_median": 25.78,
+      "rel": 0.72,
+      "multiple_signal": "cheap",
+      "gap_pts": 19.5,
+      "gap_signal": "rich"
+    },
+    "VIK": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 29.7,
+      "sector_median": 16.87,
+      "rel": 1.76,
+      "multiple_signal": "rich",
+      "gap_pts": -11.2,
+      "gap_signal": "cheap"
+    }
+  },
+  "per_ticker": {
+    "AAPL": {
+      "sector": "Technology",
+      "ev_ebit": 29.3,
+      "sector_median": 25.78,
+      "rel": 1.14,
+      "multiple_signal": "inline",
+      "gap_pts": 14.8,
+      "gap_signal": "inline"
+    },
+    "ABBV": {
+      "sector": "Healthcare",
+      "ev_ebit": 23.0,
+      "sector_median": 20.85,
+      "rel": 1.1,
+      "multiple_signal": "inline",
+      "gap_pts": 7.0,
+      "gap_signal": "inline"
+    },
+    "ABNB": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 38.0,
+      "sector_median": 16.87,
+      "rel": 2.25,
+      "multiple_signal": "rich",
+      "gap_pts": -17.7,
+      "gap_signal": "cheap"
+    },
+    "ADI": {
+      "sector": "Technology",
+      "ev_ebit": 46.7,
+      "sector_median": 25.78,
+      "rel": 1.81,
+      "multiple_signal": "rich",
+      "gap_pts": 11.6,
+      "gap_signal": "inline"
+    },
+    "ADSK": {
+      "sector": "Technology",
+      "ev_ebit": 25.8,
+      "sector_median": 25.78,
+      "rel": 1.0,
+      "multiple_signal": "inline",
+      "gap_pts": 9.0,
+      "gap_signal": "inline"
+    },
+    "AGX": {
+      "sector": "Industrials",
+      "ev_ebit": 50.8,
+      "sector_median": 21.52,
+      "rel": 2.36,
+      "multiple_signal": "rich",
+      "gap_pts": 5.4,
+      "gap_signal": "inline"
+    },
+    "AGYS": {
+      "sector": "Technology",
+      "ev_ebit": 64.4,
+      "sector_median": 25.78,
+      "rel": 2.5,
+      "multiple_signal": "rich",
+      "gap_pts": 6.9,
+      "gap_signal": "inline"
+    },
+    "AIT": {
+      "sector": "Industrials",
+      "ev_ebit": 25.5,
+      "sector_median": 21.52,
+      "rel": 1.18,
+      "multiple_signal": "inline",
+      "gap_pts": 4.2,
+      "gap_signal": "inline"
+    },
+    "ALKS": {
+      "sector": "Healthcare",
+      "ev_ebit": 31.6,
+      "sector_median": 20.85,
+      "rel": 1.52,
+      "multiple_signal": "rich",
+      "gap_pts": 30.2,
+      "gap_signal": "rich"
+    },
+    "AMAT": {
+      "sector": "Technology",
+      "ev_ebit": 46.0,
+      "sector_median": 25.78,
+      "rel": 1.79,
+      "multiple_signal": "rich",
+      "gap_pts": 24.0,
+      "gap_signal": "rich"
+    },
+    "AMD": {
+      "sector": "Technology",
+      "ev_ebit": 129.1,
+      "sector_median": 25.78,
+      "rel": 5.01,
+      "multiple_signal": "rich",
+      "gap_pts": 38.7,
+      "gap_signal": "rich"
+    },
+    "AMGN": {
+      "sector": "Healthcare",
+      "ev_ebit": 23.6,
+      "sector_median": 20.85,
+      "rel": 1.13,
+      "multiple_signal": "inline",
+      "gap_pts": 0.4,
+      "gap_signal": "inline"
+    },
+    "AMRX": {
+      "sector": "Healthcare",
+      "ev_ebit": 17.1,
+      "sector_median": 20.85,
+      "rel": 0.82,
+      "multiple_signal": "inline",
+      "gap_pts": 16.2,
+      "gap_signal": "rich"
+    },
+    "AMZN": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 36.2,
+      "sector_median": 16.87,
+      "rel": 2.15,
+      "multiple_signal": "rich",
+      "gap_pts": 29.6,
+      "gap_signal": "rich"
+    },
+    "ANAB": {
+      "sector": "Healthcare",
+      "ev_ebit": 36.2,
+      "sector_median": 20.85,
+      "rel": 1.74,
+      "multiple_signal": "rich",
+      "gap_pts": 45.6,
+      "gap_signal": "rich"
+    },
+    "ANET": {
+      "sector": "Technology",
+      "ev_ebit": 54.7,
+      "sector_median": 25.78,
+      "rel": 2.12,
+      "multiple_signal": "rich",
+      "gap_pts": 7.5,
+      "gap_signal": "inline"
+    },
+    "APH": {
+      "sector": "Technology",
+      "ev_ebit": 35.2,
+      "sector_median": 25.78,
+      "rel": 1.37,
+      "multiple_signal": "rich",
+      "gap_pts": 4.8,
+      "gap_signal": "inline"
+    },
+    "APPF": {
+      "sector": "Technology",
+      "ev_ebit": 39.3,
+      "sector_median": 25.78,
+      "rel": 1.52,
+      "multiple_signal": "rich",
+      "gap_pts": 1.7,
+      "gap_signal": "inline"
+    },
+    "ATAT": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 12.1,
+      "sector_median": 16.87,
+      "rel": 0.72,
+      "multiple_signal": "cheap",
+      "gap_pts": -52.3,
+      "gap_signal": "cheap"
+    },
+    "ATI": {
+      "sector": "Industrials",
+      "ev_ebit": 45.3,
+      "sector_median": 21.52,
+      "rel": 2.1,
+      "multiple_signal": "rich",
+      "gap_pts": 32.0,
+      "gap_signal": "rich"
+    },
+    "ATRC": {
+      "sector": "Healthcare",
+      "ev_ebit": 167.5,
+      "sector_median": 20.85,
+      "rel": 8.03,
+      "multiple_signal": "rich",
+      "gap_pts": 2.7,
+      "gap_signal": "inline"
+    },
+    "ATRO": {
+      "sector": "Industrials",
+      "ev_ebit": 41.0,
+      "sector_median": 21.52,
+      "rel": 1.9,
+      "multiple_signal": "rich",
+      "gap_pts": 16.8,
+      "gap_signal": "rich"
+    },
+    "AVGO": {
+      "sector": "Technology",
+      "ev_ebit": 57.7,
+      "sector_median": 25.78,
+      "rel": 2.24,
+      "multiple_signal": "rich",
+      "gap_pts": 10.7,
+      "gap_signal": "inline"
+    },
+    "AZN": {
+      "sector": "Healthcare",
+      "ev_ebit": 19.0,
+      "sector_median": 20.85,
+      "rel": 0.91,
+      "multiple_signal": "inline",
+      "gap_pts": -7.2,
+      "gap_signal": "cheap"
+    },
+    "BLBD": {
+      "sector": "Industrials",
+      "ev_ebit": 10.1,
+      "sector_median": 21.52,
+      "rel": 0.47,
+      "multiple_signal": "cheap",
+      "gap_pts": 15.1,
+      "gap_signal": "rich"
+    },
+    "BMRN": {
+      "sector": "Healthcare",
+      "ev_ebit": 82.3,
+      "sector_median": 20.85,
+      "rel": 3.95,
+      "multiple_signal": "rich",
+      "gap_pts": 39.8,
+      "gap_signal": "rich"
+    },
+    "BMY": {
+      "sector": "Healthcare",
+      "ev_ebit": 12.1,
+      "sector_median": 20.85,
+      "rel": 0.58,
+      "multiple_signal": "cheap",
+      "gap_pts": -1.5,
+      "gap_signal": "inline"
+    },
+    "CAH": {
+      "sector": "Healthcare",
+      "ev_ebit": 20.3,
+      "sector_median": 20.85,
+      "rel": 0.97,
+      "multiple_signal": "inline",
+      "gap_pts": 6.6,
+      "gap_signal": "inline"
+    },
+    "CART": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 18.2,
+      "sector_median": 16.87,
+      "rel": 1.08,
+      "multiple_signal": "inline",
+      "gap_pts": -8.1,
+      "gap_signal": "cheap"
+    },
+    "CASY": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 32.5,
+      "sector_median": 16.87,
+      "rel": 1.93,
+      "multiple_signal": "rich",
+      "gap_pts": 21.1,
+      "gap_signal": "rich"
+    },
+    "CGAU": {
+      "sector": "Basic Materials",
+      "ev_ebit": 7.9,
+      "sector_median": 15.51,
+      "rel": 0.51,
+      "multiple_signal": "cheap",
+      "gap_pts": -0.4,
+      "gap_signal": "inline"
+    },
+    "CHE": {
+      "sector": "Healthcare",
+      "ev_ebit": 20.5,
+      "sector_median": 20.85,
+      "rel": 0.98,
+      "multiple_signal": "inline",
+      "gap_pts": 9.1,
+      "gap_signal": "inline"
+    },
+    "CHEF": {
+      "sector": "Consumer Defensive",
+      "ev_ebit": 29.1,
+      "sector_median": 15.07,
+      "rel": 1.93,
+      "multiple_signal": "rich",
+      "gap_pts": -2.9,
+      "gap_signal": "inline"
+    },
+    "CIEN": {
+      "sector": "Technology",
+      "ev_ebit": 98.2,
+      "sector_median": 25.78,
+      "rel": 3.81,
+      "multiple_signal": "rich",
+      "gap_pts": 31.3,
+      "gap_signal": "rich"
+    },
+    "CLS": {
+      "sector": "Technology",
+      "ev_ebit": 28.1,
+      "sector_median": 25.78,
+      "rel": 1.09,
+      "multiple_signal": "inline",
+      "gap_pts": 14.6,
+      "gap_signal": "inline"
+    },
+    "CMI": {
+      "sector": "Industrials",
+      "ev_ebit": 23.8,
+      "sector_median": 21.52,
+      "rel": 1.11,
+      "multiple_signal": "inline",
+      "gap_pts": 10.5,
+      "gap_signal": "inline"
+    },
+    "CRM": {
+      "sector": "Technology",
+      "ev_ebit": 18.2,
+      "sector_median": 25.78,
+      "rel": 0.71,
+      "multiple_signal": "cheap",
+      "gap_pts": -3.3,
+      "gap_signal": "inline"
+    },
+    "CSCO": {
+      "sector": "Technology",
+      "ev_ebit": 31.9,
+      "sector_median": 25.78,
+      "rel": 1.24,
+      "multiple_signal": "inline",
+      "gap_pts": 22.4,
+      "gap_signal": "rich"
+    },
+    "CW": {
+      "sector": "Industrials",
+      "ev_ebit": 38.6,
+      "sector_median": 21.52,
+      "rel": 1.79,
+      "multiple_signal": "rich",
+      "gap_pts": 23.8,
+      "gap_signal": "rich"
+    },
+    "DCBO": {
+      "sector": "Technology",
+      "ev_ebit": 22.4,
+      "sector_median": 25.78,
+      "rel": 0.87,
+      "multiple_signal": "inline",
+      "gap_pts": -15.2,
+      "gap_signal": "cheap"
+    },
+    "DELL": {
+      "sector": "Technology",
+      "ev_ebit": 31.2,
+      "sector_median": 25.78,
+      "rel": 1.21,
+      "multiple_signal": "inline",
+      "gap_pts": 20.1,
+      "gap_signal": "rich"
+    },
+    "DLTR": {
+      "sector": "Consumer Defensive",
+      "ev_ebit": 17.9,
+      "sector_median": 15.07,
+      "rel": 1.19,
+      "multiple_signal": "inline",
+      "gap_pts": 17.3,
+      "gap_signal": "rich"
+    },
+    "DOCU": {
+      "sector": "Technology",
+      "ev_ebit": 33.1,
+      "sector_median": 25.78,
+      "rel": 1.28,
+      "multiple_signal": "rich",
+      "gap_pts": 6.9,
+      "gap_signal": "inline"
+    },
+    "DOV": {
+      "sector": "Industrials",
+      "ev_ebit": 21.0,
+      "sector_median": 21.52,
+      "rel": 0.98,
+      "multiple_signal": "inline",
+      "gap_pts": 6.7,
+      "gap_signal": "inline"
+    },
+    "DT": {
+      "sector": "Technology",
+      "ev_ebit": 47.1,
+      "sector_median": 25.78,
+      "rel": 1.83,
+      "multiple_signal": "rich",
+      "gap_pts": -7.9,
+      "gap_signal": "cheap"
+    },
+    "DXCM": {
+      "sector": "Healthcare",
+      "ev_ebit": 30.1,
+      "sector_median": 20.85,
+      "rel": 1.45,
+      "multiple_signal": "rich",
+      "gap_pts": 13.9,
+      "gap_signal": "inline"
+    },
+    "EHC": {
+      "sector": "Healthcare",
+      "ev_ebit": 13.3,
+      "sector_median": 20.85,
+      "rel": 0.64,
+      "multiple_signal": "cheap",
+      "gap_pts": 29.3,
+      "gap_signal": "rich"
+    },
+    "ELMD": {
+      "sector": "Healthcare",
+      "ev_ebit": 24.9,
+      "sector_median": 20.85,
+      "rel": 1.19,
+      "multiple_signal": "inline",
+      "gap_pts": 6.2,
+      "gap_signal": "inline"
+    },
+    "EMBJ": {
+      "sector": "Industrials",
+      "ev_ebit": 26.4,
+      "sector_median": 21.52,
+      "rel": 1.23,
+      "multiple_signal": "inline",
+      "gap_pts": -8.6,
+      "gap_signal": "cheap"
+    },
+    "EMR": {
+      "sector": "Industrials",
+      "ev_ebit": 26.7,
+      "sector_median": 21.52,
+      "rel": 1.24,
+      "multiple_signal": "inline",
+      "gap_pts": 9.7,
+      "gap_signal": "inline"
+    },
+    "EPAC": {
+      "sector": "Industrials",
+      "ev_ebit": 14.0,
+      "sector_median": 21.52,
+      "rel": 0.65,
+      "multiple_signal": "cheap",
+      "gap_pts": 7.9,
+      "gap_signal": "inline"
+    },
+    "ESLT": {
+      "sector": "Industrials",
+      "ev_ebit": 49.9,
+      "sector_median": 21.52,
+      "rel": 2.32,
+      "multiple_signal": "rich",
+      "gap_pts": 33.7,
+      "gap_signal": "rich"
+    },
+    "EW": {
+      "sector": "Healthcare",
+      "ev_ebit": 27.6,
+      "sector_median": 20.85,
+      "rel": 1.33,
+      "multiple_signal": "rich",
+      "gap_pts": 16.4,
+      "gap_signal": "rich"
+    },
+    "EXEL": {
+      "sector": "Healthcare",
+      "ev_ebit": 12.5,
+      "sector_median": 20.85,
+      "rel": 0.6,
+      "multiple_signal": "cheap",
+      "gap_pts": -8.8,
+      "gap_signal": "cheap"
+    },
+    "EXPD": {
+      "sector": "Industrials",
+      "ev_ebit": 19.8,
+      "sector_median": 21.52,
+      "rel": 0.92,
+      "multiple_signal": "inline",
+      "gap_pts": 12.8,
+      "gap_signal": "inline"
+    },
+    "EXPE": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 14.9,
+      "sector_median": 16.87,
+      "rel": 0.89,
+      "multiple_signal": "inline",
+      "gap_pts": -7.4,
+      "gap_signal": "cheap"
+    },
+    "FIX": {
+      "sector": "Industrials",
+      "ev_ebit": 33.5,
+      "sector_median": 21.52,
+      "rel": 1.56,
+      "multiple_signal": "rich",
+      "gap_pts": 24.7,
+      "gap_signal": "rich"
+    },
+    "FSLR": {
+      "sector": "Technology",
+      "ev_ebit": 12.2,
+      "sector_median": 25.78,
+      "rel": 0.47,
+      "multiple_signal": "cheap",
+      "gap_pts": -8.0,
+      "gap_signal": "cheap"
+    },
+    "GD": {
+      "sector": "Industrials",
+      "ev_ebit": 20.1,
+      "sector_median": 21.52,
+      "rel": 0.93,
+      "multiple_signal": "inline",
+      "gap_pts": 9.2,
+      "gap_signal": "inline"
+    },
+    "GEV": {
+      "sector": "Industrials",
+      "ev_ebit": 152.8,
+      "sector_median": 21.52,
+      "rel": 7.1,
+      "multiple_signal": "rich",
+      "gap_pts": 0.3,
+      "gap_signal": "inline"
+    },
+    "GILD": {
+      "sector": "Healthcare",
+      "ev_ebit": 16.1,
+      "sector_median": 20.85,
+      "rel": 0.77,
+      "multiple_signal": "cheap",
+      "gap_pts": -1.6,
+      "gap_signal": "inline"
+    },
+    "GLBE": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 55.7,
+      "sector_median": 16.87,
+      "rel": 3.3,
+      "multiple_signal": "rich",
+      "gap_pts": -5.9,
+      "gap_signal": "inline"
+    },
+    "GLW": {
+      "sector": "Technology",
+      "ev_ebit": 60.9,
+      "sector_median": 25.78,
+      "rel": 2.36,
+      "multiple_signal": "rich",
+      "gap_pts": 38.9,
+      "gap_signal": "rich"
+    },
+    "GMED": {
+      "sector": "Healthcare",
+      "ev_ebit": 16.5,
+      "sector_median": 20.85,
+      "rel": 0.79,
+      "multiple_signal": "cheap",
+      "gap_pts": -21.4,
+      "gap_signal": "cheap"
+    },
+    "GOOG": {
+      "sector": "Communication Services",
+      "ev_ebit": 28.7,
+      "sector_median": 13.8,
+      "rel": 2.08,
+      "multiple_signal": "rich",
+      "gap_pts": 19.5,
+      "gap_signal": "rich"
+    },
+    "GOOGL": {
+      "sector": "Communication Services",
+      "ev_ebit": 28.8,
+      "sector_median": 13.8,
+      "rel": 2.09,
+      "multiple_signal": "rich",
+      "gap_pts": 19.7,
+      "gap_signal": "rich"
+    },
+    "GRMN": {
+      "sector": "Technology",
+      "ev_ebit": 27.0,
+      "sector_median": 25.78,
+      "rel": 1.05,
+      "multiple_signal": "inline",
+      "gap_pts": 14.2,
+      "gap_signal": "inline"
+    },
+    "GSAT": {
+      "sector": "Communication Services",
+      "ev_ebit": 802.0,
+      "sector_median": 13.8,
+      "rel": 58.11,
+      "multiple_signal": "rich",
+      "gap_pts": -6.9,
+      "gap_signal": "inline"
+    },
+    "GWRE": {
+      "sector": "Technology",
+      "ev_ebit": 124.9,
+      "sector_median": 25.78,
+      "rel": 4.85,
+      "multiple_signal": "rich",
+      "gap_pts": 30.5,
+      "gap_signal": "rich"
+    },
+    "HALO": {
+      "sector": "Healthcare",
+      "ev_ebit": 14.7,
+      "sector_median": 20.85,
+      "rel": 0.7,
+      "multiple_signal": "cheap",
+      "gap_pts": -25.5,
+      "gap_signal": "cheap"
+    },
+    "HCSG": {
+      "sector": "Healthcare",
+      "ev_ebit": 9.9,
+      "sector_median": 20.85,
+      "rel": 0.47,
+      "multiple_signal": "cheap",
+      "gap_pts": 2.6,
+      "gap_signal": "inline"
+    },
+    "HEI": {
+      "sector": "Industrials",
+      "ev_ebit": 47.0,
+      "sector_median": 21.52,
+      "rel": 2.19,
+      "multiple_signal": "rich",
+      "gap_pts": 24.0,
+      "gap_signal": "rich"
+    },
+    "HQY": {
+      "sector": "Healthcare",
+      "ev_ebit": 26.8,
+      "sector_median": 20.85,
+      "rel": 1.28,
+      "multiple_signal": "rich",
+      "gap_pts": 2.1,
+      "gap_signal": "inline"
+    },
+    "HRMY": {
+      "sector": "Healthcare",
+      "ev_ebit": 7.0,
+      "sector_median": 20.85,
+      "rel": 0.34,
+      "multiple_signal": "cheap",
+      "gap_pts": -51.6,
+      "gap_signal": "cheap"
+    },
+    "HWM": {
+      "sector": "Industrials",
+      "ev_ebit": 47.4,
+      "sector_median": 21.52,
+      "rel": 2.2,
+      "multiple_signal": "rich",
+      "gap_pts": 40.4,
+      "gap_signal": "rich"
+    },
+    "IDCC": {
+      "sector": "Technology",
+      "ev_ebit": 25.0,
+      "sector_median": 25.78,
+      "rel": 0.97,
+      "multiple_signal": "inline",
+      "gap_pts": -2.1,
+      "gap_signal": "inline"
+    },
+    "IESC": {
+      "sector": "Industrials",
+      "ev_ebit": 30.5,
+      "sector_median": 21.52,
+      "rel": 1.42,
+      "multiple_signal": "rich",
+      "gap_pts": 25.1,
+      "gap_signal": "rich"
+    },
+    "ILMN": {
+      "sector": "Healthcare",
+      "ev_ebit": 36.7,
+      "sector_median": 20.85,
+      "rel": 1.76,
+      "multiple_signal": "rich",
+      "gap_pts": 14.1,
+      "gap_signal": "inline"
+    },
+    "IMAX": {
+      "sector": "Communication Services",
+      "ev_ebit": 31.9,
+      "sector_median": 13.8,
+      "rel": 2.31,
+      "multiple_signal": "rich",
+      "gap_pts": -4.1,
+      "gap_signal": "inline"
+    },
+    "INCY": {
+      "sector": "Healthcare",
+      "ev_ebit": 11.5,
+      "sector_median": 20.85,
+      "rel": 0.55,
+      "multiple_signal": "cheap",
+      "gap_pts": -6.2,
+      "gap_signal": "inline"
+    },
+    "INTU": {
+      "sector": "Technology",
+      "ev_ebit": 16.7,
+      "sector_median": 25.78,
+      "rel": 0.65,
+      "multiple_signal": "cheap",
+      "gap_pts": -17.4,
+      "gap_signal": "cheap"
+    },
+    "INVA": {
+      "sector": "Healthcare",
+      "ev_ebit": 7.7,
+      "sector_median": 20.85,
+      "rel": 0.37,
+      "multiple_signal": "cheap",
+      "gap_pts": -23.1,
+      "gap_signal": "cheap"
+    },
+    "IRMD": {
+      "sector": "Healthcare",
+      "ev_ebit": 38.5,
+      "sector_median": 20.85,
+      "rel": 1.85,
+      "multiple_signal": "rich",
+      "gap_pts": 7.1,
+      "gap_signal": "inline"
+    },
+    "ISRG": {
+      "sector": "Healthcare",
+      "ev_ebit": 39.6,
+      "sector_median": 20.85,
+      "rel": 1.9,
+      "multiple_signal": "rich",
+      "gap_pts": 5.9,
+      "gap_signal": "inline"
+    },
+    "ITT": {
+      "sector": "Industrials",
+      "ev_ebit": 27.6,
+      "sector_median": 21.52,
+      "rel": 1.28,
+      "multiple_signal": "rich",
+      "gap_pts": 18.1,
+      "gap_signal": "rich"
+    },
+    "JBHT": {
+      "sector": "Industrials",
+      "ev_ebit": 29.0,
+      "sector_median": 21.52,
+      "rel": 1.35,
+      "multiple_signal": "rich",
+      "gap_pts": 30.1,
+      "gap_signal": "rich"
+    },
+    "JKHY": {
+      "sector": "Technology",
+      "ev_ebit": 16.5,
+      "sector_median": 25.78,
+      "rel": 0.64,
+      "multiple_signal": "cheap",
+      "gap_pts": -0.4,
+      "gap_signal": "inline"
+    },
+    "JNJ": {
+      "sector": "Healthcare",
+      "ev_ebit": 25.0,
+      "sector_median": 20.85,
+      "rel": 1.2,
+      "multiple_signal": "inline",
+      "gap_pts": 13.0,
+      "gap_signal": "inline"
+    },
+    "JOE": {
+      "sector": "Real Estate",
+      "ev_ebit": 26.3,
+      "sector_median": 30.01,
+      "rel": 0.88,
+      "multiple_signal": "inline",
+      "gap_pts": -20.0,
+      "gap_signal": "cheap"
+    },
+    "KAI": {
+      "sector": "Industrials",
+      "ev_ebit": 26.2,
+      "sector_median": 21.52,
+      "rel": 1.22,
+      "multiple_signal": "inline",
+      "gap_pts": 18.2,
+      "gap_signal": "rich"
+    },
+    "KFY": {
+      "sector": "Industrials",
+      "ev_ebit": 10.0,
+      "sector_median": 21.52,
+      "rel": 0.47,
+      "multiple_signal": "cheap",
+      "gap_pts": 0.9,
+      "gap_signal": "inline"
+    },
+    "KNSA": {
+      "sector": "Healthcare",
+      "ev_ebit": 58.1,
+      "sector_median": 20.85,
+      "rel": 2.79,
+      "multiple_signal": "rich",
+      "gap_pts": -63.7,
+      "gap_signal": "cheap"
+    },
+    "KRT": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 15.3,
+      "sector_median": 16.87,
+      "rel": 0.9,
+      "multiple_signal": "inline",
+      "gap_pts": 2.9,
+      "gap_signal": "inline"
+    },
+    "LAUR": {
+      "sector": "Consumer Defensive",
+      "ev_ebit": 12.4,
+      "sector_median": 15.07,
+      "rel": 0.82,
+      "multiple_signal": "inline",
+      "gap_pts": -6.6,
+      "gap_signal": "inline"
+    },
+    "LHX": {
+      "sector": "Industrials",
+      "ev_ebit": 27.8,
+      "sector_median": 21.52,
+      "rel": 1.29,
+      "multiple_signal": "rich",
+      "gap_pts": -1.8,
+      "gap_signal": "inline"
+    },
+    "LIVN": {
+      "sector": "Healthcare",
+      "ev_ebit": 23.1,
+      "sector_median": 20.85,
+      "rel": 1.11,
+      "multiple_signal": "inline",
+      "gap_pts": 9.1,
+      "gap_signal": "inline"
+    },
+    "LLY": {
+      "sector": "Healthcare",
+      "ev_ebit": 28.9,
+      "sector_median": 20.85,
+      "rel": 1.39,
+      "multiple_signal": "rich",
+      "gap_pts": 13.3,
+      "gap_signal": "inline"
+    },
+    "LQDT": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 27.2,
+      "sector_median": 16.87,
+      "rel": 1.61,
+      "multiple_signal": "rich",
+      "gap_pts": 1.7,
+      "gap_signal": "inline"
+    },
+    "MA": {
+      "sector": "Financial Services",
+      "ev_ebit": 24.2,
+      "sector_median": 10.48,
+      "rel": 2.31,
+      "multiple_signal": "rich",
+      "gap_pts": 0.8,
+      "gap_signal": "inline"
+    },
+    "MAMA": {
+      "sector": "Consumer Defensive",
+      "ev_ebit": 85.0,
+      "sector_median": 15.07,
+      "rel": 5.64,
+      "multiple_signal": "rich",
+      "gap_pts": 4.7,
+      "gap_signal": "inline"
+    },
+    "MANH": {
+      "sector": "Technology",
+      "ev_ebit": 39.8,
+      "sector_median": 25.78,
+      "rel": 1.54,
+      "multiple_signal": "rich",
+      "gap_pts": 18.9,
+      "gap_signal": "rich"
+    },
+    "MCO": {
+      "sector": "Financial Services",
+      "ev_ebit": 23.6,
+      "sector_median": 10.48,
+      "rel": 2.26,
+      "multiple_signal": "rich",
+      "gap_pts": 9.8,
+      "gap_signal": "inline"
+    },
+    "MCRI": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 15.2,
+      "sector_median": 16.87,
+      "rel": 0.9,
+      "multiple_signal": "inline",
+      "gap_pts": -12.2,
+      "gap_signal": "cheap"
+    },
+    "MEDP": {
+      "sector": "Healthcare",
+      "ev_ebit": 26.9,
+      "sector_median": 20.85,
+      "rel": 1.29,
+      "multiple_signal": "rich",
+      "gap_pts": -10.4,
+      "gap_signal": "cheap"
+    },
+    "META": {
+      "sector": "Communication Services",
+      "ev_ebit": 17.4,
+      "sector_median": 13.8,
+      "rel": 1.26,
+      "multiple_signal": "rich",
+      "gap_pts": 6.0,
+      "gap_signal": "inline"
+    },
+    "MNST": {
+      "sector": "Consumer Defensive",
+      "ev_ebit": 33.3,
+      "sector_median": 15.07,
+      "rel": 2.21,
+      "multiple_signal": "rich",
+      "gap_pts": 5.7,
+      "gap_signal": "inline"
+    },
+    "MOG-B": {
+      "sector": "Industrials",
+      "ev_ebit": 27.2,
+      "sector_median": 21.52,
+      "rel": 1.27,
+      "multiple_signal": "rich",
+      "gap_pts": 31.9,
+      "gap_signal": "rich"
+    },
+    "MOV": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 17.8,
+      "sector_median": 16.87,
+      "rel": 1.06,
+      "multiple_signal": "inline",
+      "gap_pts": 3.3,
+      "gap_signal": "inline"
+    },
+    "MPWR": {
+      "sector": "Technology",
+      "ev_ebit": 72.1,
+      "sector_median": 25.78,
+      "rel": 2.8,
+      "multiple_signal": "rich",
+      "gap_pts": 21.3,
+      "gap_signal": "rich"
+    },
+    "MU": {
+      "sector": "Technology",
+      "ev_ebit": 18.6,
+      "sector_median": 25.78,
+      "rel": 0.72,
+      "multiple_signal": "cheap",
+      "gap_pts": 19.5,
+      "gap_signal": "rich"
+    },
+    "NBIX": {
+      "sector": "Healthcare",
+      "ev_ebit": 18.9,
+      "sector_median": 20.85,
+      "rel": 0.91,
+      "multiple_signal": "inline",
+      "gap_pts": -10.5,
+      "gap_signal": "cheap"
+    },
+    "NHC": {
+      "sector": "Healthcare",
+      "ev_ebit": 24.2,
+      "sector_median": 20.85,
+      "rel": 1.16,
+      "multiple_signal": "inline",
+      "gap_pts": 7.2,
+      "gap_signal": "inline"
+    },
+    "NUTX": {
+      "sector": "Healthcare",
+      "ev_ebit": 4.0,
+      "sector_median": 20.85,
+      "rel": 0.19,
+      "multiple_signal": "cheap",
+      "gap_pts": -264.1,
+      "gap_signal": "cheap"
+    },
+    "NVEC": {
+      "sector": "Technology",
+      "ev_ebit": 30.2,
+      "sector_median": 25.78,
+      "rel": 1.17,
+      "multiple_signal": "inline",
+      "gap_pts": 26.0,
+      "gap_signal": "rich"
+    },
+    "PAYC": {
+      "sector": "Technology",
+      "ev_ebit": 14.5,
+      "sector_median": 25.78,
+      "rel": 0.56,
+      "multiple_signal": "cheap",
+      "gap_pts": -4.7,
+      "gap_signal": "inline"
+    },
+    "PAYX": {
+      "sector": "Technology",
+      "ev_ebit": 18.7,
+      "sector_median": 25.78,
+      "rel": 0.72,
+      "multiple_signal": "cheap",
+      "gap_pts": 3.9,
+      "gap_signal": "inline"
+    },
+    "PCTY": {
+      "sector": "Technology",
+      "ev_ebit": 19.6,
+      "sector_median": 25.78,
+      "rel": 0.76,
+      "multiple_signal": "cheap",
+      "gap_pts": -6.5,
+      "gap_signal": "inline"
+    },
+    "PM": {
+      "sector": "Consumer Defensive",
+      "ev_ebit": 21.2,
+      "sector_median": 15.07,
+      "rel": 1.41,
+      "multiple_signal": "rich",
+      "gap_pts": 0.5,
+      "gap_signal": "inline"
+    },
+    "POWL": {
+      "sector": "Industrials",
+      "ev_ebit": 32.6,
+      "sector_median": 21.52,
+      "rel": 1.51,
+      "multiple_signal": "rich",
+      "gap_pts": 28.1,
+      "gap_signal": "rich"
+    },
+    "PSMT": {
+      "sector": "Consumer Defensive",
+      "ev_ebit": 21.7,
+      "sector_median": 15.07,
+      "rel": 1.44,
+      "multiple_signal": "rich",
+      "gap_pts": 21.7,
+      "gap_signal": "rich"
+    },
+    "PTC": {
+      "sector": "Technology",
+      "ev_ebit": 15.7,
+      "sector_median": 25.78,
+      "rel": 0.61,
+      "multiple_signal": "cheap",
+      "gap_pts": -2.6,
+      "gap_signal": "inline"
+    },
+    "QTWO": {
+      "sector": "Technology",
+      "ev_ebit": 44.9,
+      "sector_median": 25.78,
+      "rel": 1.74,
+      "multiple_signal": "rich",
+      "gap_pts": 5.7,
+      "gap_signal": "inline"
+    },
+    "REGN": {
+      "sector": "Healthcare",
+      "ev_ebit": 19.9,
+      "sector_median": 20.85,
+      "rel": 0.95,
+      "multiple_signal": "inline",
+      "gap_pts": -1.9,
+      "gap_signal": "inline"
+    },
+    "RL": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 17.6,
+      "sector_median": 16.87,
+      "rel": 1.05,
+      "multiple_signal": "inline",
+      "gap_pts": 0.7,
+      "gap_signal": "inline"
+    },
+    "RMBS": {
+      "sector": "Technology",
+      "ev_ebit": 39.7,
+      "sector_median": 25.78,
+      "rel": 1.54,
+      "multiple_signal": "rich",
+      "gap_pts": 6.9,
+      "gap_signal": "inline"
+    },
+    "RMD": {
+      "sector": "Healthcare",
+      "ev_ebit": 19.0,
+      "sector_median": 20.85,
+      "rel": 0.91,
+      "multiple_signal": "inline",
+      "gap_pts": -0.2,
+      "gap_signal": "inline"
+    },
+    "RNG": {
+      "sector": "Technology",
+      "ev_ebit": 37.7,
+      "sector_median": 25.78,
+      "rel": 1.46,
+      "multiple_signal": "rich",
+      "gap_pts": -6.6,
+      "gap_signal": "inline"
+    },
+    "ROK": {
+      "sector": "Industrials",
+      "ev_ebit": 30.0,
+      "sector_median": 21.52,
+      "rel": 1.39,
+      "multiple_signal": "rich",
+      "gap_pts": 15.4,
+      "gap_signal": "rich"
+    },
+    "ROP": {
+      "sector": "Technology",
+      "ev_ebit": 21.0,
+      "sector_median": 25.78,
+      "rel": 0.81,
+      "multiple_signal": "inline",
+      "gap_pts": -3.5,
+      "gap_signal": "inline"
+    },
+    "ROST": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 27.3,
+      "sector_median": 16.87,
+      "rel": 1.62,
+      "multiple_signal": "rich",
+      "gap_pts": 9.5,
+      "gap_signal": "inline"
+    },
+    "RTX": {
+      "sector": "Industrials",
+      "ev_ebit": 31.8,
+      "sector_median": 21.52,
+      "rel": 1.48,
+      "multiple_signal": "rich",
+      "gap_pts": 13.5,
+      "gap_signal": "inline"
+    },
+    "SIMO": {
+      "sector": "Technology",
+      "ev_ebit": 41.2,
+      "sector_median": 25.78,
+      "rel": 1.6,
+      "multiple_signal": "rich",
+      "gap_pts": 29.5,
+      "gap_signal": "rich"
+    },
+    "SITM": {
+      "sector": "Technology",
+      "ev_ebit": 21433.0,
+      "sector_median": 25.78,
+      "rel": 831.38,
+      "multiple_signal": "rich",
+      "gap_pts": 79.2,
+      "gap_signal": "rich"
+    },
+    "SMTC": {
+      "sector": "Technology",
+      "ev_ebit": 118.3,
+      "sector_median": 25.78,
+      "rel": 4.59,
+      "multiple_signal": "rich",
+      "gap_pts": 26.2,
+      "gap_signal": "rich"
+    },
+    "SN": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 27.6,
+      "sector_median": 16.87,
+      "rel": 1.63,
+      "multiple_signal": "rich",
+      "gap_pts": 9.5,
+      "gap_signal": "inline"
+    },
+    "STX": {
+      "sector": "Technology",
+      "ev_ebit": 54.5,
+      "sector_median": 25.78,
+      "rel": 2.11,
+      "multiple_signal": "rich",
+      "gap_pts": 42.5,
+      "gap_signal": "rich"
+    },
+    "SYK": {
+      "sector": "Healthcare",
+      "ev_ebit": 25.3,
+      "sector_median": 20.85,
+      "rel": 1.21,
+      "multiple_signal": "inline",
+      "gap_pts": 5.0,
+      "gap_signal": "inline"
+    },
+    "TSM": {
+      "sector": "Technology",
+      "ev_ebit": 26.9,
+      "sector_median": 25.78,
+      "rel": 1.04,
+      "multiple_signal": "inline",
+      "gap_pts": 20.5,
+      "gap_signal": "rich"
+    },
+    "TT": {
+      "sector": "Industrials",
+      "ev_ebit": 27.3,
+      "sector_median": 21.52,
+      "rel": 1.27,
+      "multiple_signal": "rich",
+      "gap_pts": 17.2,
+      "gap_signal": "rich"
+    },
+    "TYL": {
+      "sector": "Technology",
+      "ev_ebit": 35.6,
+      "sector_median": 25.78,
+      "rel": 1.38,
+      "multiple_signal": "rich",
+      "gap_pts": 4.2,
+      "gap_signal": "inline"
+    },
+    "UTHR": {
+      "sector": "Healthcare",
+      "ev_ebit": 14.1,
+      "sector_median": 20.85,
+      "rel": 0.68,
+      "multiple_signal": "cheap",
+      "gap_pts": -4.5,
+      "gap_signal": "inline"
+    },
+    "VICR": {
+      "sector": "Technology",
+      "ev_ebit": 118.0,
+      "sector_median": 25.78,
+      "rel": 4.58,
+      "multiple_signal": "rich",
+      "gap_pts": 47.2,
+      "gap_signal": "rich"
+    },
+    "VIK": {
+      "sector": "Consumer Cyclical",
+      "ev_ebit": 29.7,
+      "sector_median": 16.87,
+      "rel": 1.76,
+      "multiple_signal": "rich",
+      "gap_pts": -11.2,
+      "gap_signal": "cheap"
+    },
+    "VRSK": {
+      "sector": "Industrials",
+      "ev_ebit": 19.2,
+      "sector_median": 21.52,
+      "rel": 0.89,
+      "multiple_signal": "inline",
+      "gap_pts": 16.7,
+      "gap_signal": "rich"
+    },
+    "VRT": {
+      "sector": "Industrials",
+      "ev_ebit": 51.5,
+      "sector_median": 21.52,
+      "rel": 2.39,
+      "multiple_signal": "rich",
+      "gap_pts": 34.6,
+      "gap_signal": "rich"
+    },
+    "VRTX": {
+      "sector": "Healthcare",
+      "ev_ebit": 26.2,
+      "sector_median": 20.85,
+      "rel": 1.26,
+      "multiple_signal": "rich",
+      "gap_pts": 4.3,
+      "gap_signal": "inline"
+    },
+    "WST": {
+      "sector": "Healthcare",
+      "ev_ebit": 33.4,
+      "sector_median": 20.85,
+      "rel": 1.6,
+      "multiple_signal": "rich",
+      "gap_pts": 20.4,
+      "gap_signal": "rich"
+    },
+    "WWD": {
+      "sector": "Industrials",
+      "ev_ebit": 33.2,
+      "sector_median": 21.52,
+      "rel": 1.54,
+      "multiple_signal": "rich",
+      "gap_pts": 27.3,
+      "gap_signal": "rich"
+    }
+  }
+}

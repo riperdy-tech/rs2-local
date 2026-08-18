@@ -1,0 +1,85 @@
+{
+  "generated_at": "2026-08-18T16:28:05.915733+00:00",
+  "n_bundles_with_probs": 2219,
+  "top6_triples": [
+    {
+      "probs": [
+        0.3,
+        0.5,
+        0.2
+      ],
+      "count": 581
+    },
+    {
+      "probs": [
+        0.35,
+        0.45,
+        0.2
+      ],
+      "count": 470
+    },
+    {
+      "probs": [
+        0.25,
+        0.5,
+        0.25
+      ],
+      "count": 388
+    },
+    {
+      "probs": [
+        0.35,
+        0.5,
+        0.15
+      ],
+      "count": 143
+    },
+    {
+      "probs": [
+        0.4,
+        0.45,
+        0.15
+      ],
+      "count": 126
+    },
+    {
+      "probs": [
+        0.3,
+        0.45,
+        0.25
+      ],
+      "count": 121
+    }
+  ],
+  "top6_share": 0.824,
+  "tilt_percentiles": {
+    "10": -0.25,
+    "25": -0.15,
+    "50": -0.1,
+    "75": -0.05,
+    "90": 0.0
+  },
+  "spearman_tilt_vs_30d_excess": {
+    "rho": 0.138,
+    "n": 600
+  },
+  "spearman_tilt_within_mos_terciles": {
+    "mos_low": {
+      "rho": -0.008,
+      "n": 193
+    },
+    "mos_mid": {
+      "rho": 0.172,
+      "n": 193
+    },
+    "mos_high": {
+      "rho": 0.134,
+      "n": 193
+    }
+  },
+  "spearman_tilt_vs_conviction": {
+    "rho": 0.323,
+    "n": 599
+  },
+  "caveat": "Descriptive correlations (short history); the templating measurement is not outcome-dependent and stands on its own."
+}

@@ -17,7 +17,7 @@ Buckets assembled here (Bucket A of the plan):
   MRI current_regime.json -> regime probabilities (only if fresh; else skipped)
 
 Bucket B (enrich/{T}.json) and Bucket C (research/{T}.md) are produced by
-enrich_ticker.py / research_agent.py and folded in by build_data_context().
+enrich_ticker.py / deep_research.py and folded in by build_data_context().
 
 Every missing file/field degrades to "not provided" — never crashes, never
 substitutes a guessed value (RS2 data discipline).

@@ -2,13 +2,15 @@
 """
 run_rs2.py — Python orchestrator for the local RS2 pipeline.
 
-Replaces the manual-data flow of Run-RS2.ps1. For one ticker it:
+For one ticker it:
   1. (optional) enrich_ticker.py   -> enrich/{T}.json   (yfinance behavioral)
-  2. (optional) research_agent.py  -> research/{T}.md    (AgentWebSearch, Chrome)
-  3. rs2_data.build_data_context   -> verified fed-data payload
-  4. drives the staged rs2-analyst pipeline (6 stages + final assembly) over
-     Ollama's REST API, with thinking on, feeding each stage the fed data +
-     prior-stage results, then writes the report tree.
+  2. (optional) deep_research.py   -> research/{T}.md    (LDR + SearXNG/keyed search)
+  3. valuation_backbone.backbone   -> deterministic reverse-DCF scaffold (+ regime
+     decision when the lattice is contested)
+  4. rs2_data.build_data_context   -> verified fed-data payload
+  5. drives the staged rs2-analyst pipeline (5 stages + final assembly) over
+     Ollama's REST API, feeding each stage the fed data + prior-stage results,
+     then emits verdict.json and faces the tier-1/tier-2 audit gauntlet.
 
 System prompt (RS2.txt) is baked into the `rs2-analyst` model, so each stage's
 user message = [fed data] + [prior-stage results] + [stage task].
@@ -55,7 +57,6 @@ ENGINE2_SCHEMA = '{"engine":2,"normalized_eps":<$>,"normal_multiple":<10-25>}'
 # drag are all computed deterministically (valuation_backbone.PHASE_POS / rnpv).
 ENGINE5_SCHEMA = ('{"engine":5,"phase":"preclinical|phase1|phase2|phase3|filed",'
                   '"value_if_approved_ps":<$/share if the lead asset is approved>}')
-PROBS_SCHEMA = '{"bear":0.25,"base":0.50,"bull":0.25}'
 
 STAGES = [
     ("S1_macro_classify", "Layers 0, 1, 1.5 — Classification / Macro / Base Rate",
@@ -89,9 +90,10 @@ STAGES = [
      "the evidence can't support, OR a smaller gap with clear DETERIORATION (declining guidance, eroding "
      "moat). A NEGATIVE gap with an intact moat => undervalued. Be disciplined, not reflexively bearish.\n"
      "ENTRY DISCIPLINE (do not chase): if the VALUATION block shows the price is AT/ABOVE the analyst "
-     "consensus fair value or the realistic MoS is thin (<15%), a great business is still FAIR here — a "
-     "Hold / stage-in-on-weakness, NOT a fresh full BUY. 'undervalued' requires a genuine MoS, not just a "
-     "negative growth gap on a stock already at analyst targets.\n"
+     "consensus fair value, or its ENTRY DISCIPLINE line ranks this name in the EXPENSIVE THIRD of the "
+     "analysed book, a great business is still FAIR here — a Hold / stage-in-on-weakness, NOT a fresh "
+     "full BUY. 'undervalued' requires a genuine entry edge, not just a negative growth gap on a stock "
+     "already at analyst targets.\n"
      "At the very END output exactly ONE fenced ```json block:\n"
      "  • If the VALUATION block shows an EXPECTATIONS MODEL (growth gap OR financial ROE gap):\n"
      f"```json\n{STANCE_SCHEMA}\n```\n"
@@ -110,18 +112,20 @@ STAGES = [
      "EPS $/share from the fed data; normal_multiple 10-25 justified by ROE vs cost of equity; "
      "IV = eps × multiple, computed for you).\n"
      "STOP after the json block."),
-    ("S4_scenarios", "Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage",
-     "Execute LAYER 4 and LAYER 4.5 ONLY. Frame the three scenarios around the EXPECTATIONS GAP from "
-     "the VALUATION block: bear = the price-implied growth is MISSED (thesis breaks / gap proves too "
-     "rich); base = roughly MET; bull = MET-or-EXCEEDED (the optionality/acceleration plays out). Do the "
-     "Bayesian reasoning — update each scenario's probability from the Stage-1 base rates and the "
-     "research evidence — and the market-implied vs my-horizon arbitrage (does the market's time "
-     "preference misprice this?).\n"
-     "At the very END output exactly one fenced ```json block of probabilities (must sum to 1.0, "
-     "base = highest):\n"
-     f"```json\n{PROBS_SCHEMA}\n```\nSTOP after the json block."),
-    ("S5_conviction", "Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly",
-     "Execute LAYER 5, LAYER 5.5, LAYER 6 (portfolio fit) and LAYER 6.5 (Kelly sizing) ONLY. "
+    # S4 retired 2026-08-19 (audit C7+C9): its structured probs were consumed by nothing, and
+    # measured across 2,219 bundles they were 82% template emissions with ~no incremental
+    # outcome-ranking power. Layers 4/4.5 now run inside S5 as prose only — the scenario
+    # REASONING still feeds the final report; no probability JSON is emitted or parsed.
+    ("S5_conviction", "Layers 4, 4.5, 5, 5.5, 6, 6.5 — Scenarios / Conviction / Behavioral / Portfolio / Kelly",
+     "Execute LAYER 4, LAYER 4.5, LAYER 5, LAYER 5.5, LAYER 6 (portfolio fit) and LAYER 6.5 "
+     "(Kelly sizing) ONLY.\n"
+     "First the scenarios (Layers 4, 4.5): frame bear/base/bull around the EXPECTATIONS GAP from "
+     "the VALUATION block — bear = the price-implied growth is MISSED (thesis breaks / gap proves "
+     "too rich); base = roughly MET; bull = MET-or-EXCEEDED (the optionality/acceleration plays "
+     "out) — updating each scenario's plausibility from the Stage-1 base rates and the research "
+     "evidence, plus the market-implied vs my-horizon arbitrage (does the market's time preference "
+     "misprice this?). Prose only — no probability JSON.\n"
+     "Then conviction: "
      "Conviction /15 + decay note + sizing; behavioral & positioning using the fed BEHAVIORAL DATA "
      "(short interest, ownership, options skew) — tag [Unconfirmed] only where truly absent; "
      "portfolio fit; Kelly size.\n"
@@ -497,9 +501,12 @@ def _fmt_reverse(res):
                  f"price is {rich} it. Fenced fair value ${res.get('fair_value')} => realistic MoS {rmos:+}%.\n"
                  if rmos is not None else
                  f"- Analyst consensus fair value ~${med}; price is {rich} it.\n")
-    if rmos is not None and (rmos < 15):
-        base += ("- ENTRY DISCIPLINE: realistic MoS is thin (<15%) / price near analyst target — this is a "
-                 "DO-NOT-CHASE. A great business here is a Hold / stage-in on weakness, NOT a fresh full BUY.\n")
+    # Percentile-keyed, same source as the fed data (rs2_data._entry_discipline) — this block
+    # must never carry a second, absolute definition of "cheap" (the retired <15% cut did, and
+    # the model was receiving both rules at once).
+    _ed = rs2_data._entry_discipline(rmos)
+    if _ed:
+        base += _ed + "\n"
     return base + (f"- Model stance: {res['stance'] or 'n/a'} (implied growth achievable: {res['achievable'] or 'n/a'}). "
                    f"{res.get('rationale') or ''}")
 
@@ -597,7 +604,10 @@ _STAGE_TAINT = ("fabricat", "ungrounded", "grounding", "research")
 
 # Stage artifacts written before this carry the PRE-resolution context (see build_data_context
 # call site) and must never be reused by the retry router. First post-fix run: 20260813_161352.
-CONTEXT_ERA = "20260813_160000"
+# Bumped 2026-08-19: S4 retired and Layers 4/4.5 merged into S5 — a pre-change dir's S5 carries
+# no scenario prose, so a routed re-assembly from it would leave the final's scenario section
+# with nothing to consolidate (fabrication risk). Pre-change sources: full rerun.
+CONTEXT_ERA = "20260819_000000"
 
 
 def _router_source(ticker):
@@ -1111,12 +1121,14 @@ def _stance_from_gap(gap):
 
 def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     """Deterministic 'don't chase' brake — the systematic gap vs ChatGPT (RS2 flipped HOLD->BUY on
-    15/39 names; ChatGPT pullback-gated 96%). Graduated on ChatGPT's own margin-of-safety bands:
-      * MoS >= 25% (Strong) AND below the analyst median AND not within 5% of the 52wk high
-            -> genuine bargain, a fresh BUY is fine (no brake).
-      * 15% <= MoS < 25%  (Adequate, or Strong-but-extended) -> STAGE: keep a bull lean but this is
-            'accumulate on weakness', not a full chase; conviction capped ~11, weight trimmed.
-      * MoS < 15% OR price at/above the analyst median OR within ~2% of the 52wk high
+    15/39 names; ChatGPT pullback-gated 96%). Tiered on the book's OWN MoS cross-section
+    (percentiles from mos_distribution.json — see the PERCENTILE TIERS note below; the original
+    absolute 25/15% bands are retired):
+      * MoS >= p75 AND below the analyst median AND not near the 52wk high AND the expectations
+        gap does not say rich -> genuine bargain, a fresh BUY is fine (no brake).
+      * p33 <= MoS < p75, not at highs/above median -> STAGE: keep a bull lean but this is
+        'accumulate on weakness', not a full chase; conviction capped ~11, weight trimmed.
+      * MoS < p33 OR price at/above the analyst median OR within ~2% of the 52wk high
             -> HOLD / do-not-chase: downgrade a BUY, cap conviction into Medium, starter size only.
     Returns (action, conv, weight, entry_timing, pullback_trigger, brake_applied)."""
     price = vr.get("price")
@@ -1151,10 +1163,12 @@ def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     expensive = (rmos is not None and _cut33 is not None and rmos < _cut33)
     fam = _action_family(action)
 
-    # EXPECTATIONS OVERRIDE (2026-08-06). MoS is measured against fair_value, and for ~78% of
-    # names fair_value is `consensus_snap` — the analyst median. So a fat MoS can mean nothing
-    # more than "trading below Wall Street's target" while the reverse-DCF simultaneously says
-    # the price bakes in growth the company has never delivered. POWL is the worked example:
+    # EXPECTATIONS OVERRIDE (2026-08-06). MoS is measured against fair_value, and at the time
+    # fair_value was `consensus_snap` (the analyst median) for ~78% of names. The 2026-08-13
+    # fence revision changed that — measured 2026-08-19 only 4/155 names snap — but the override
+    # stays: a fat MoS vs a consensus-derived value can still mean nothing more than "trading
+    # below Wall Street's target" while the reverse-DCF simultaneously says the price bakes in
+    # growth the company has never delivered. POWL is the worked example:
     # MoS 36.3% vs consensus, gap +28.5pts (price implies 44.8% growth vs 16.3% demonstrated)
     # -> tier 1 fired, brake OFF, and the engine emitted a conviction-12 BUY on a name its own
     # DCF called rich. Keyed on the COMPUTED gap, never on `stance`, which is model-unstable.
@@ -1198,7 +1212,7 @@ def _dont_chase_brake(action, conv, weight, vr, ticker=None):
 
 
 STAGE_FILES = ["S1_macro_classify.md", "S2_quality.md", "S3_valuation.md",
-               "S4_scenarios.md", "S5_conviction.md", "S6_redteam_audit.md"]
+               "S5_conviction.md", "S6_redteam_audit.md"]
 MIN_STAGE_CHARS = 400        # a real stage is thousands; 400 only catches empty/error stubs
 MIN_FINAL_CHARS = 2000       # a 13-section report; the OOM stubs were ~200 chars/section
 MIN_RESEARCH_CHARS = 3000    # healthy briefs are 13-28KB; the poisoned ones were 1.0-2.1KB
@@ -1822,9 +1836,10 @@ def _fmt_financial(res):
         rich = "AT/ABOVE" if (price and price >= med) else "below"
         base += (f"- Analyst consensus fair value ~${med} (band ${res.get('consensus_low')}-"
                  f"${res.get('consensus_high')}); price is {rich} it.\n")
-    if rmos is not None and rmos < 15:
-        base += ("- ENTRY DISCIPLINE: realistic MoS is thin (<15%) / price near analyst target — this is a "
-                 "DO-NOT-CHASE. A great franchise here is a Hold / stage-in on weakness, NOT a fresh full BUY.\n")
+    # Same single percentile-keyed line as the fed data — see _fmt_reverse.
+    _ed = rs2_data._entry_discipline(rmos)
+    if _ed:
+        base += _ed + "\n"
     return base + (f"- Model stance: {res['stance'] or 'n/a'} (implied ROE achievable: {res['achievable'] or 'n/a'}). "
                    f"{res.get('rationale') or ''}")
 
@@ -2272,7 +2287,7 @@ def main():
     print(f"[backbone] {t}: {bb_msg}", flush=True)
     val_res = None
     val_block = None
-    stages = [s for s in STAGES if s[0] in ("S1_macro_classify", "S3_valuation", "S4_scenarios")] if args.valonly else STAGES
+    stages = [s for s in STAGES if s[0] in ("S1_macro_classify", "S3_valuation")] if args.valonly else STAGES
     # GUARANTEED VRAM RELEASE (2026-08-08): normal paths call _release() at their existing
     # sites (idempotent); the __main__ wrapper force-unloads on any uncaught exception. Proof
     # run 7 died at a stage-level empty-content raise, left rs2-analyst resident, and the next
@@ -2452,12 +2467,6 @@ def main():
             else:
                 print(f"   [valuation] {val_res.get('method')} IV {val_res.get('iv')} "
                       f"MoS {val_res.get('mos_pct')}%" + (f" [{val_res['flag']}]" if val_res.get('flag') else ""), flush=True)
-        elif sid == "S4_scenarios":
-            probs = get_assumptions(out, "base", valuation_io.valid_scenario_probs, PROBS_SCHEMA)
-            if probs and val_res is not None:
-                val_res["scenario_probs"] = probs
-                (out_dir / "S3_valuation_inputs.json").write_text(json.dumps(val_res, indent=2), encoding="utf-8")
-                print(f"   [valuation] scenario probs {probs}", flush=True)
         print("", flush=True)
 
         carry = out if len(out) <= cap else out[:cap] + "\n…[truncated]"

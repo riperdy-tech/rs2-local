@@ -1,0 +1,219 @@
+{
+  "generated_at": "2026-08-18T04:34:11.423475+00:00",
+  "n_book": 159,
+  "n_reverse_dcf": 155,
+  "scenarios": {
+    "baseline": {
+      "mos_percentiles": {
+        "10": -76.4,
+        "25": -63.8,
+        "33": -57.0,
+        "50": -41.7,
+        "67": -29.1,
+        "75": -21.3,
+        "90": 23.5
+      },
+      "n_mos": 155,
+      "tier_cuts": {
+        "p33": -57.0,
+        "p75": -21.3
+      },
+      "spearman_mos_vs_baseline": {
+        "rho": 1.0,
+        "n": 155
+      },
+      "spearman_gap_vs_baseline": {
+        "rho": 1.0,
+        "n": 148
+      },
+      "brake_tier_flips_vs_baseline": {
+        "count": 0,
+        "tickers": []
+      },
+      "fair_value_method_counts": {
+        "forward_dcf": 150,
+        "consensus_snap": 4,
+        "trailing_dcf": 1
+      }
+    },
+    "flat10": {
+      "mos_percentiles": {
+        "10": -78.0,
+        "25": -63.8,
+        "33": -55.7,
+        "50": -41.3,
+        "67": -29.4,
+        "75": -20.3,
+        "90": 14.1
+      },
+      "n_mos": 155,
+      "tier_cuts": {
+        "p33": -55.7,
+        "p75": -20.3
+      },
+      "spearman_mos_vs_baseline": {
+        "rho": 0.975,
+        "n": 155
+      },
+      "spearman_gap_vs_baseline": {
+        "rho": 0.983,
+        "n": 148
+      },
+      "brake_tier_flips_vs_baseline": {
+        "count": 15,
+        "tickers": [
+          "ANET",
+          "AZN",
+          "CIEN",
+          "CMI",
+          "DCBO",
+          "DOCU",
+          "LHX",
+          "META",
+          "NVEC",
+          "PM",
+          "RNG",
+          "ROK",
+          "ROST",
+          "RTX",
+          "SMTC"
+        ]
+      },
+      "fair_value_method_counts": {
+        "forward_dcf": 150,
+        "consensus_snap": 4,
+        "trailing_dcf": 1
+      }
+    },
+    "implied_118": {
+      "mos_percentiles": {
+        "10": -82.5,
+        "25": -70.9,
+        "33": -65.4,
+        "50": -53.1,
+        "67": -44.7,
+        "75": -36.3,
+        "90": -8.7
+      },
+      "n_mos": 155,
+      "tier_cuts": {
+        "p33": -65.4,
+        "p75": -36.3
+      },
+      "spearman_mos_vs_baseline": {
+        "rho": 0.976,
+        "n": 155
+      },
+      "spearman_gap_vs_baseline": {
+        "rho": 0.983,
+        "n": 148
+      },
+      "brake_tier_flips_vs_baseline": {
+        "count": 17,
+        "tickers": [
+          "ABBV",
+          "ANET",
+          "AZN",
+          "BMY",
+          "CIEN",
+          "CMI",
+          "DCBO",
+          "DOCU",
+          "GOOGL",
+          "META",
+          "NVEC",
+          "PM",
+          "RNG",
+          "ROK",
+          "ROST",
+          "RTX",
+          "SMTC"
+        ]
+      },
+      "fair_value_method_counts": {
+        "forward_dcf": 150,
+        "consensus_snap": 4,
+        "trailing_dcf": 1
+      }
+    },
+    "plus2": {
+      "mos_percentiles": {
+        "10": -81.9,
+        "25": -72.3,
+        "33": -66.4,
+        "50": -54.7,
+        "67": -45.9,
+        "75": -38.1,
+        "90": -3.5
+      },
+      "n_mos": 155,
+      "tier_cuts": {
+        "p33": -66.4,
+        "p75": -38.1
+      },
+      "spearman_mos_vs_baseline": {
+        "rho": 0.999,
+        "n": 155
+      },
+      "spearman_gap_vs_baseline": {
+        "rho": 0.999,
+        "n": 148
+      },
+      "brake_tier_flips_vs_baseline": {
+        "count": 3,
+        "tickers": [
+          "BMY",
+          "META",
+          "ROK"
+        ]
+      },
+      "fair_value_method_counts": {
+        "forward_dcf": 150,
+        "consensus_snap": 4,
+        "trailing_dcf": 1
+      }
+    },
+    "minus2": {
+      "mos_percentiles": {
+        "10": -65.7,
+        "25": -48.9,
+        "33": -39.3,
+        "50": -20.4,
+        "67": -1.4,
+        "75": 8.8,
+        "90": 57.1
+      },
+      "n_mos": 154,
+      "tier_cuts": {
+        "p33": -39.3,
+        "p75": 8.8
+      },
+      "spearman_mos_vs_baseline": {
+        "rho": 0.995,
+        "n": 154
+      },
+      "spearman_gap_vs_baseline": {
+        "rho": 0.998,
+        "n": 148
+      },
+      "brake_tier_flips_vs_baseline": {
+        "count": 8,
+        "tickers": [
+          "AGX",
+          "DLTR",
+          "EXPD",
+          "JOE",
+          "MA",
+          "PTC",
+          "ROST",
+          "SAP"
+        ]
+      },
+      "fair_value_method_counts": {
+        "forward_dcf": 150,
+        "consensus_snap": 4,
+        "blank": 1
+      }
+    }
+  }
+}

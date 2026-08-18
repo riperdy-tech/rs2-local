@@ -1,0 +1,52 @@
+{
+  "generated_at": "2026-08-18T04:37:28.750746+00:00",
+  "n_bundles_scanned": 266,
+  "n_bundles_clean_timing": 235,
+  "stages": {
+    "S1_macro_classify.md": {
+      "median_secs": 66.3,
+      "runtime_share_pct": 16.6,
+      "median_bytes": 8250,
+      "median_echo_to_final": 0.1
+    },
+    "S2_quality.md": {
+      "median_secs": 50.5,
+      "runtime_share_pct": 12.6,
+      "median_bytes": 9387,
+      "median_echo_to_final": 0.1
+    },
+    "S3_valuation.md": {
+      "median_secs": 50.6,
+      "runtime_share_pct": 12.7,
+      "median_bytes": 5108,
+      "median_echo_to_final": 0.5
+    },
+    "S4_scenarios.md": {
+      "median_secs": 42.9,
+      "runtime_share_pct": 10.7,
+      "median_bytes": 5906,
+      "median_echo_to_final": 0.1
+    },
+    "S5_conviction.md": {
+      "median_secs": 46.6,
+      "runtime_share_pct": 11.7,
+      "median_bytes": 4048,
+      "median_echo_to_final": 0.2
+    },
+    "S6_redteam_audit.md": {
+      "median_secs": 34.3,
+      "runtime_share_pct": 8.6,
+      "median_bytes": 5129,
+      "median_echo_to_final": 0.2
+    }
+  },
+  "final_assembly_median_secs": 108.8,
+  "mechanical_consumers": {
+    "S1": "routing.json cyclicality disclosure (_archetype)",
+    "S2": "none - context only",
+    "S3": "stance/engine JSON -> valuation_result()",
+    "S4": "scenario probs stored at run_rs2.py:2454 - read by nothing (grep-verified)",
+    "S5": "conviction /15 parsed from SECTION 12",
+    "S6": "none - context only"
+  }
+}

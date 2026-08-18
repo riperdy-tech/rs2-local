@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-08-18T04:37:15.109225+00:00",
+  "benchmark": "IWM",
+  "horizons": {
+    "30": {
+      "n_rows": 600,
+      "n_names": 230,
+      "spearman_all_rows": {
+        "mos_vs_excess": {
+          "rho": 0.404,
+          "n": 579
+        },
+        "gap_vs_excess": {
+          "rho": -0.239,
+          "n": 572
+        },
+        "conviction_vs_excess": {
+          "rho": 0.342,
+          "n": 599
+        }
+      },
+      "spearman_per_ticker_median": {
+        "mos_vs_excess": {
+          "rho": 0.226,
+          "n": 222
+        },
+        "gap_vs_excess": {
+          "rho": -0.268,
+          "n": 216
+        },
+        "conviction_vs_excess": {
+          "rho": 0.289,
+          "n": 229
+        }
+      },
+      "excess_by_action_family": {
+        "?": {
+          "n": 6,
+          "mean_excess": -1.07,
+          "median_excess": 2.63
+        },
+        "BEAR": {
+          "n": 60,
+          "mean_excess": -6.96,
+          "median_excess": -3.46
+        },
+        "BULL": {
+          "n": 67,
+          "mean_excess": 6.04,
+          "median_excess": 6.45
+        },
+        "HOLD": {
+          "n": 467,
+          "mean_excess": -2.09,
+          "median_excess": -3.15
+        }
+      }
+    }
+  },
+  "caveat": "Descriptive only. Short history, correlated repeat verdicts, no significance testing (mirrors the grader's own disclaimer)."
+}

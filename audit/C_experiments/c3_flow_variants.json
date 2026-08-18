@@ -1,0 +1,285 @@
+{
+  "generated_at": "2026-08-18T04:35:23.591072+00:00",
+  "n_reverse_dcf": 155,
+  "variants": {
+    "sbc": {
+      "n_adjusted": 145,
+      "n_missing_data": 5,
+      "missing": [
+        "AZN",
+        "CMI",
+        "EMBJ",
+        "GEV",
+        "PM"
+      ],
+      "n_flow_turns_nonpositive": 5,
+      "nonpositive": [
+        "ALKS",
+        "ANAB",
+        "BMRN",
+        "DOCU",
+        "SITM"
+      ],
+      "cf_ratio_percentiles": {
+        "10": 0.532,
+        "25": 0.716,
+        "50": 0.871,
+        "75": 0.93,
+        "90": 0.958
+      },
+      "spearman_gap": {
+        "rho": 0.903,
+        "n": 138
+      },
+      "spearman_mos": {
+        "rho": 0.894,
+        "n": 145
+      },
+      "brake_tier_flips": {
+        "count": 30,
+        "tickers": [
+          "ADSK",
+          "AMGN",
+          "ANET",
+          "ATRC",
+          "BMY",
+          "CART",
+          "CRM",
+          "DOV",
+          "DT",
+          "EMR",
+          "EXPD",
+          "GOOG",
+          "GOOGL",
+          "IMAX",
+          "IRMD",
+          "LLY",
+          "MEDP",
+          "META",
+          "NUTX",
+          "NVEC",
+          "PTC",
+          "QTWO",
+          "RMD",
+          "RNG",
+          "ROK",
+          "ROST",
+          "SAP",
+          "TSM",
+          "TT",
+          "UFPT"
+        ]
+      },
+      "largest_gap_moves_pts": [
+        [
+          "GWRE",
+          65.5
+        ],
+        [
+          "RNG",
+          44.3
+        ],
+        [
+          "ATRC",
+          38.9
+        ],
+        [
+          "AMZN",
+          32.1
+        ],
+        [
+          "QTWO",
+          22.8
+        ],
+        [
+          "CART",
+          22.7
+        ],
+        [
+          "KNSA",
+          21.6
+        ],
+        [
+          "META",
+          19.8
+        ],
+        [
+          "AMD",
+          19.7
+        ],
+        [
+          "GLBE",
+          19.3
+        ],
+        [
+          "NUTX",
+          16.4
+        ],
+        [
+          "MANH",
+          16.1
+        ],
+        [
+          "ADSK",
+          15.3
+        ],
+        [
+          "DT",
+          14.6
+        ],
+        [
+          "GOOG",
+          13.4
+        ]
+      ]
+    },
+    "dwc": {
+      "n_adjusted": 141,
+      "n_missing_data": 4,
+      "missing": [
+        "BWMX",
+        "IMAX",
+        "JOE",
+        "SAP"
+      ],
+      "n_flow_turns_nonpositive": 10,
+      "nonpositive": [
+        "ALKS",
+        "AMD",
+        "AMRX",
+        "BMRN",
+        "CMI",
+        "ESLT",
+        "GWRE",
+        "KNSA",
+        "MAMA",
+        "SITM"
+      ],
+      "cf_ratio_percentiles": {
+        "10": 0.495,
+        "25": 0.749,
+        "50": 0.964,
+        "75": 1.23,
+        "90": 1.68
+      },
+      "spearman_gap": {
+        "rho": 0.742,
+        "n": 136
+      },
+      "spearman_mos": {
+        "rho": 0.738,
+        "n": 141
+      },
+      "brake_tier_flips": {
+        "count": 43,
+        "tickers": [
+          "ABBV",
+          "AGX",
+          "ANAB",
+          "APPF",
+          "ATAT",
+          "AZN",
+          "CAH",
+          "CGAU",
+          "CIEN",
+          "DCBO",
+          "DOCU",
+          "EMR",
+          "EXPD",
+          "EXPE",
+          "GMED",
+          "GRMN",
+          "INCY",
+          "ISRG",
+          "JBHT",
+          "JKHY",
+          "KRYS",
+          "LHX",
+          "LIVN",
+          "MA",
+          "META",
+          "MNST",
+          "NUTX",
+          "PM",
+          "PSMT",
+          "PTC",
+          "QTWO",
+          "RL",
+          "RMBS",
+          "RNG",
+          "ROP",
+          "ROST",
+          "RTX",
+          "SN",
+          "TSM",
+          "TYL",
+          "UFPT",
+          "UTHR",
+          "VRSK"
+        ]
+      },
+      "largest_gap_moves_pts": [
+        [
+          "ANAB",
+          -76.7
+        ],
+        [
+          "ATI",
+          66.0
+        ],
+        [
+          "GMED",
+          57.7
+        ],
+        [
+          "GLBE",
+          48.0
+        ],
+        [
+          "IESC",
+          47.3
+        ],
+        [
+          "DCBO",
+          43.9
+        ],
+        [
+          "RMBS",
+          39.4
+        ],
+        [
+          "ANET",
+          37.7
+        ],
+        [
+          "LLY",
+          37.2
+        ],
+        [
+          "CHEF",
+          31.7
+        ],
+        [
+          "SIMO",
+          31.3
+        ],
+        [
+          "LIVN",
+          -30.6
+        ],
+        [
+          "PTC",
+          22.0
+        ],
+        [
+          "ITT",
+          20.7
+        ],
+        [
+          "CAH",
+          -19.2
+        ]
+      ]
+    }
+  }
+}

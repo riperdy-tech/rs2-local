@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-08-18T04:37:14.980032+00:00",
+  "n_overlay": 166,
+  "n_battery_missing": 1,
+  "n_history_missing": 0,
+  "family_counts": {
+    "?": 1,
+    "BEAR": 5,
+    "BULL": 35,
+    "HOLD": 125
+  },
+  "c4_quality_by_family": {
+    "?": {
+      "n": 1,
+      "n_flagged": 0,
+      "flagged": {}
+    },
+    "BEAR": {
+      "n": 5,
+      "n_flagged": 1,
+      "flagged": {
+        "ARWR": [
+          "issuance_1y=+11.7%"
+        ]
+      }
+    },
+    "BULL": {
+      "n": 35,
+      "n_flagged": 1,
+      "flagged": {
+        "INVA": [
+          "issuance_1y=+7.4%"
+        ]
+      }
+    },
+    "HOLD": {
+      "n": 125,
+      "n_flagged": 6,
+      "flagged": {
+        "ANET": [
+          "f_score=3/7"
+        ],
+        "IDCC": [
+          "issuance_1y=+16.0%"
+        ],
+        "KNSA": [
+          "issuance_1y=+10.6%"
+        ],
+        "QTWO": [
+          "issuance_1y=+8.3%"
+        ],
+        "SMTC": [
+          "issuance_1y=+23.4%"
+        ],
+        "STX": [
+          "issuance_1y=+5.5%"
+        ]
+      }
+    }
+  },
+  "c5_solvency_by_family": {
+    "?": {
+      "n": 1,
+      "n_flagged": 0,
+      "flagged": {}
+    },
+    "BEAR": {
+      "n": 5,
+      "n_flagged": 0,
+      "flagged": {}
+    },
+    "BULL": {
+      "n": 35,
+      "n_flagged": 0,
+      "flagged": {}
+    },
+    "HOLD": {
+      "n": 125,
+      "n_flagged": 6,
+      "flagged": {
+        "AMGN": [
+          "net_debt/ocf=4.6x"
+        ],
+        "AMRX": [
+          "net_debt/ocf=6.6x"
+        ],
+        "ATRO": [
+          "net_debt/ocf=4.2x"
+        ],
+        "CHEF": [
+          "net_debt/ocf=4.6x"
+        ],
+        "RNG": [
+          "coverage=2.1x"
+        ],
+        "SMTC": [
+          "coverage=0.8x"
+        ]
+      }
+    }
+  }
+}

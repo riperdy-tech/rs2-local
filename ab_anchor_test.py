@@ -29,7 +29,9 @@ DEFAULT = "MEDP,MPWR,AGX,RMBS,DELL,BMRN,GOOGL,ROST"
 sys.path.insert(0, str(HERE))
 from run_rs2 import _action_family, unload_model   # noqa: E402
 
-NEEDED = ("S1_macro_classify.md", "S2_quality.md", "S3_valuation.md", "S4_scenarios.md",
+# S4_scenarios.md retired 2026-08-19 (Layers 4/4.5 merged into S5) — not required, so both
+# pre- and post-change bundles remain usable as A/B sources.
+NEEDED = ("S1_macro_classify.md", "S2_quality.md", "S3_valuation.md",
           "S5_conviction.md", "S6_redteam_audit.md", "verdict.json", "S3_valuation_inputs.json")
 
 

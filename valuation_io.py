@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 valuation_io.py — extract the structured assumption JSON the LLM emits in the
-S3 (valuation_inputs) and S4 (scenario_probs) stages, tolerant of the messy
-output a small model produces. Stdlib only.
+S3 (valuation_inputs) stage, tolerant of the messy output a small model
+produces. Stdlib only.
 
 Strategy:
   1. Prefer a ```json ... ``` fenced block.
@@ -87,13 +87,6 @@ def valid_valuation_inputs(d):
     return isinstance(sc, dict) and any(k in sc for k in ("bear", "base", "bull"))
 
 
-def valid_scenario_probs(d):
-    if not isinstance(d, dict):
-        return False
-    keys = [k for k in ("bear", "base", "bull") if k in d]
-    return len(keys) >= 2 and all(isinstance(d[k], (int, float)) for k in keys)
-
-
 if __name__ == "__main__":
     sample = (
         'Here are my assumptions.\n```json\n'
@@ -104,7 +97,4 @@ if __name__ == "__main__":
     )
     d = extract_json(sample, "engine")
     assert valid_valuation_inputs(d), d
-    print("parsed engine", d["engine"], "scenarios", list(d["scenarios"]))
-    p = extract_json('probs: {"bear":0.25,"base":0.5,"bull":0.25}', "base")
-    assert valid_scenario_probs(p), p
-    print("probs", p, "OK")
+    print("parsed engine", d["engine"], "scenarios", list(d["scenarios"]), "OK")
