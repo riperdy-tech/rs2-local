@@ -54,7 +54,7 @@ Candidate (think off) re-judged yesterday's production audit outcomes:
 - Qwen3.8 quirks seen: Unicode-box tables (`│` can survive the ASCII pipe-split in the action
   extractor — cosmetic, seen once), bolded `**SECTION**` headers at think-off (extractor tolerant).
 
-## GO change-set (pending operator approval — NOT applied)
+## GO change-set (operator approved 2026-08-19 — APPLIED, see completion note at end)
 
 1. `RS2-Analyst.Modelfile`: `FROM qwen3.8:27b-mtp-q4_K_M`; `num_gpu 42 → 99`; header updated
    (swap date, old FROM, one-line revert). Sampling params unchanged.
