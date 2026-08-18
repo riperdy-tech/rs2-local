@@ -2129,7 +2129,11 @@ def main():
     keep_awake(True)   # hold the system awake for the whole run (Modern-Standby teardown guard)
 
     t = args.ticker.upper()
-    think = not args.no_think
+    # config.json "think" gates the default (false since the 2026-08-18 Qwen3.8 swap — thinking
+    # measurably broke the report contract, see api_llm/QWEN38_AB_REPORT_20260818.md);
+    # --no-think still forces it off either way. Before this line existed the config key was
+    # read by nothing and the CLI flag was the only lever.
+    think = (not args.no_think) and bool(CONFIG.get("think", True))
 
     if args.refinal:
         # Regenerate ONLY the final call from a frozen, completed analysis — the
@@ -2215,7 +2219,7 @@ def main():
     # valuation_backbone.apply_basis for why deciding afterwards broke the Engine-verdict slot.
     _regime_cell, _regime_rec = None, None
     if (bb.get("lattice") or {}).get("contested") and not args.no_audit:
-        _regime_cell, _regime_rec = regime_decide(t, bb, not args.no_think)
+        _regime_cell, _regime_rec = regime_decide(t, bb, think)
         if _regime_cell:
             bb = valuation_backbone.apply_basis(bb, _regime_cell)
             print(f"   [regime] {_regime_rec.get('votes')} -> {_regime_cell} | "

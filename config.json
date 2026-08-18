@@ -8,7 +8,7 @@
   "_ctx_note": "Real payload = RS2.txt(~5.2k tok) + fed data(~4k tok) + accumulating prior stages. 16384 overflows late stages, so both run at 24576 (fits w/ generation headroom; ~96% GPU, 4% CPU spill). The 16384/100%-GPU figure applied only to the old manual-data flow.",
   "stage_ctx": 24576,
   "final_ctx": 32768,
-  "think": true,
+  "think": false,
   "stage_carry_char_cap": 4500,
   "_watchdog_note": "orchestrate.py kills a single run_rs2 child (and unloads both models) if it exceeds this many minutes, then marks the name failed + retries it \u2014 fail-safe against a hung run pinning the GPU indefinitely. Avg is ~11 min/name; 40 leaves ~3.5x headroom for a slow deep-research name. Override per-run with --ticker-timeout-min.",
   "ticker_timeout_min": 40,

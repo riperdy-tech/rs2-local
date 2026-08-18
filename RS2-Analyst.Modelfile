@@ -1,30 +1,28 @@
 # ============================================================
 # rs2-analyst  —  Integrated Investment Analysis Engine v2.0
-# Base: mdq100/qwen3.5-flash:35b (MoE, thinking-capable, text-only)
+# Base: qwen3.8:27b-mtp-q4_K_M (27.3B DENSE, MTP speculative decoding, thinking OFF)
 # Tuned to mimic frontier-model (Opus) discipline on RTX 3090 24GB
 # ============================================================
 #
-# FROM mdq100/qwen3.5-flash:35b (was qwen3.6:35b-a3b) — 2026-08-05.
-# Same base model with the VISION TOWER STRIPPED, not a different generation despite
-# the 3.5/3.6 tag names. Verified identical on every text-path hyperparameter via
-# /api/show model_info:
-#     block_count 40 | attention.head_count 16 | context_length 262144
-#     expert_count 256 | expert_used_count 8 | expert_feed_forward_length 512
-# The only delta is qwen3.6's `vision.block_count: 27` encoder, which RS2 never calls
-# (the whole pipeline is text — no stage passes an image). That encoder is the entire
-# 36.0B -> 34.7B parameter drop.
+# FROM qwen3.8:27b-mtp-q4_K_M (was mdq100/qwen3.5-flash:35b) — 2026-08-18.
+# Generation upgrade: Qwen3.8-27B dense (all 27.3B params active per token) replaces the
+# 35B-A3B MoE (3B active). Runs THINKING OFF (config.json "think": false — set in the same
+# change): the dense model's instruct quality needs no monologue, and thinking measurably
+# broke the report contract (MU failed 2/2 thinking runs, 0/1 think-off; see report).
+# The tag's MTP head gives draft-4 speculative decoding: 48.5 tok/s vs 35.8 without (+35%).
 #
-# Why: measured resident footprint on the 24,576 MiB card (nvidia-smi, 100% GPU both):
-#     ctx 24576 (stage_ctx):  qwen3.6 23,873 MiB (703 MiB free) -> flash 21,391 (3,185 free)
-#     ctx 32768 (final_ctx):  qwen3.6 24,041 MiB (535 MiB free) -> flash 21,559 (3,017 free)
-# That is ~2.5GB back, and it pulls final assembly out of the exact <1GB-margin regime
-# that killed the research model (see RS2-Research.Modelfile): one stale GPU free-memory
-# reading during discovery and the CUDA buffer alloc dies. num_gpu is NOT the lever there.
+# Evidence (9-ticker A/B + 14-dir judge replay + high-effort arm, 2026-08-17/18):
+#   api_llm/QWEN38_AB_REPORT_20260818.md — think-off arm avg 10.6 min/name (worst 11.7),
+#   8/9 clean single-attempt audits vs flash 4/9; verdict directions agreed 9/9;
+#   judge replay: 0 new rejections on 7 prior passes, caught 2 flash false-positives.
+# Measured resident footprint (nvidia-smi, q8 KV, 100% GPU): 19.1 GiB @ ctx 32768
+# (vs flash 21.6) — ~5 GiB free, well clear of the <1 GB OOM regime.
 #
-# REVERT: set FROM back to qwen3.6:35b-a3b and re-run
-#   ollama create rs2-analyst -f RS2-Analyst.Modelfile
-# (the 3.6 weights are still on disk). config.json `model` stays "rs2-analyst" either way.
-FROM mdq100/qwen3.5-flash:35b
+# REVERT: set FROM back to mdq100/qwen3.5-flash:35b, num_gpu back to 42, config.json
+# "think" back to true, then:  ollama create rs2-analyst -f RS2-Analyst.Modelfile
+# (flash + qwen3.6 weights still on disk until the first 30d graded cohort clears).
+# config.json `model` stays "rs2-analyst" either way.
+FROM qwen3.8:27b-mtp-q4_K_M
 
 # --- Sampling: deterministic, number-disciplined (NOT creative) ---
 PARAMETER temperature 0.4
@@ -39,13 +37,12 @@ PARAMETER repeat_penalty 1.05
 # per decomposed stage. Final-assembly stage overrides to 24576 at call time
 # (see Run-RS2.ps1) because it must hold all prior stage outputs.
 PARAMETER num_ctx 16384
-# Force all layers onto the GPU (override Ollama's conservative auto-spill that
-# pushed 1 layer to CPU at high ctx). With flash-attention + q8 KV cache (set via
-# OLLAMA_FLASH_ATTENTION=1 / OLLAMA_KV_CACHE_TYPE=q8_0) the full model + 32k-ctx KV
-# fits a 24GB 3090 with ~3GB buffer (measured, see header). If you ever OOM, lower
-# num_ctx or this. 42 is just ">= all": block_count is 40 on this base AND on the old
-# qwen3.6 one, so ollama clamps it — the value did not need to change with the swap.
-PARAMETER num_gpu 42
+# Force all layers onto the GPU. THIS BASE HAS block_count 65 (64 + 1 MTP nextn layer)
+# — the old value 42 was sized for the 40-block MoE and would silently spill ~20 layers
+# to CPU here. 99 is ">= all"; ollama clamps it. Flash-attention + q8 KV assumed
+# (OLLAMA_FLASH_ATTENTION=1 / OLLAMA_KV_CACHE_TYPE=q8_0, persisted at User scope
+# 2026-08-17 after the env-drift incident). Measured @32k ctx: 19.1 GiB, ~5 GiB free.
+PARAMETER num_gpu 99
 
 SYSTEM """
 ════════════════════════════════════════════════════════════════

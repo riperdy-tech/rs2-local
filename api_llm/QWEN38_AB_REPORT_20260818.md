@@ -102,3 +102,7 @@ Findings:
 - Disk: unsloth GGUF (18 GB) + official MTP tag (18 GB) added. `qwen3-coder:latest` (18 GB) is unused
   by RS2 if space is wanted. 3.8-27B is the smallest Qwen3.8 (only 27B + API-only Max exist), so the
   research engine keeps `qwen3:14b`; a Gemma 4 12B research A/B remains an optional follow-up.
+Migration completed 2026-08-19: production rs2-analyst now qwen3.8:27b-mtp-q4_K_M, think off.
+Validation: CAT + MU full production-path runs clean (MU required wiring config.json "think" into
+run_rs2.py:2132 — the key was previously read by nothing; first MU validation ran thinking-on and
+reproduced the known thinking failure, confirming the A/B finding on the production path).
