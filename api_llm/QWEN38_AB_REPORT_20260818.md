@@ -65,6 +65,32 @@ Candidate (think off) re-judged yesterday's production audit outcomes:
 5. Keep `mdq100/qwen3.5-flash:35b` + `qwen3.6:35b-a3b` weights until the first 30d graded cohort
    (`grade_rs2_verdicts.py`) confirms; revert is one Modelfile line either way.
 
+## Addendum (2026-08-18 evening): high-reasoning arm — measured, not worth it
+
+Operator asked whether `reasoning_effort=high` buys quality worth relaxing the 20-min ceiling.
+4-ticker arm (CAT PM MU EXEL), MTP, 48k-ctx test model, uncapped final:
+
+| Ticker | Time (idle box) | Outcome | Verdict vs think-off |
+|---|---|---|---|
+| PM | 36.3 m | clean | identical (HOLD/stage-in, conv 11) |
+| MU | 35.9 m | **sanity-fail** | model dropped the labeled `Action:` line entirely + appended its own post-S12 self-audit — format drift broke extraction; its (unextracted) call was the same direction, conv 7 vs 9 |
+| EXEL | 41.1 m | clean | same direction (ACCUMULATE ON DIPS), conv 12 vs 13 |
+| CAT | (GPU-contended; content valid) | clean | same family ("Accumulate on weakness (staged)") conv 11 = think-off conv 11; identical mid-cycle basis judgment, just denser evidence citations |
+
+Findings:
+- **~36-41 min/name ≈ 3.5× think-off cost, zero verdict-direction changes in 4/4 names**; conviction moved at most 1 point (always downward — mildly useful signal, not worth 3.5×).
+- **Thinking correlates with format-contract violations**: MU is now 2-for-2 failed under thinking
+  (low: truncated at SECTION 5; high: no Action line + freeform self-audit) and 1-for-1 clean without.
+  Think-off remains the only arm with 8/9+ contract compliance.
+- Reasoning quality: high-effort prose cites more supporting numbers for the SAME judgments
+  (see `api_llm/_quality_excerpts.json` for CAT/PM side-by-sides).
+- Conclusion: keep **think-off for the fleet**. If a deep-dive mode is ever wanted for single names,
+  run it manually via the api path — not in the daily pipeline.
+- Incident note: the earlier 12:24 high-arm launch collided with the live daily run (GPU contention,
+  no data loss, daily run completed normally); battery scripts now always run `--no-router`, and any
+  test launch is gated on the orchestrator lock being absent. A Windows-update reboot (21:58) also
+  interrupted one EXEL run (rerun clean); the Ollama env-var fix survived the reboot correctly.
+
 ## Housekeeping state
 
 - `api_llm/config.json` restored to DeepSeek defaults after testing. `api_chat.py` gained additive,
