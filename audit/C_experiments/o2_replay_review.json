@@ -1,0 +1,1546 @@
+{
+  "generated_at": "2026-08-18T17:43:19.685393+00:00",
+  "old_ref": "d33906d (Option 1 commits)",
+  "book_n": 170,
+  "coe_calibration": {
+    "built_at": "2026-08-18T17:41:40.907973+00:00",
+    "n": 138,
+    "aggregate_mcap_b": 30363.6,
+    "aggregate_ttm_ni_b": 1177.1,
+    "implied_coe_pct": 12.07,
+    "level_offset_pts": 1.8
+  },
+  "old_cuts": {
+    "p33": -59.2,
+    "p75": -2.3
+  },
+  "new_cuts": {
+    "p33": -67.3,
+    "p75": -38.5
+  },
+  "new_mos_percentiles": {
+    "10": -82.6,
+    "25": -73.5,
+    "33": -67.3,
+    "50": -54.7,
+    "67": -44.7,
+    "75": -38.5,
+    "90": -4.6
+  },
+  "n_changed": 166,
+  "n_tier_flips": 52,
+  "n_kind_changes": 42,
+  "changes": [
+    {
+      "ticker": "AAPL",
+      "gap": [
+        14.8,
+        19.4
+      ]
+    },
+    {
+      "ticker": "ABBV",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        7.0,
+        12.7
+      ]
+    },
+    {
+      "ticker": "ABNB",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -17.7,
+        -5.3
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "ADI",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        11.6,
+        17.9
+      ]
+    },
+    {
+      "ticker": "ADSK",
+      "gap": [
+        9.0,
+        13.6
+      ]
+    },
+    {
+      "ticker": "AGX",
+      "gap": [
+        5.4,
+        11.1
+      ]
+    },
+    {
+      "ticker": "AGYS",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        6.9,
+        18.3
+      ]
+    },
+    {
+      "ticker": "AIT",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        4.2,
+        9.7
+      ]
+    },
+    {
+      "ticker": "ALKS",
+      "gap": [
+        30.2,
+        36.0
+      ]
+    },
+    {
+      "ticker": "AMAT",
+      "gap": [
+        24.0,
+        29.2
+      ],
+      "tier": [
+        "no_chase",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "AMD",
+      "gap": [
+        38.7,
+        45.3
+      ]
+    },
+    {
+      "ticker": "AMGN",
+      "gap": [
+        0.4,
+        4.8
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "AMRX",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        16.2,
+        27.3
+      ],
+      "tier": [
+        "stage",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "AMZN",
+      "gap": [
+        29.6,
+        35.7
+      ]
+    },
+    {
+      "ticker": "ANAB",
+      "kind": [
+        "fcf_fallback",
+        null
+      ],
+      "ok": [
+        true,
+        false,
+        "negative_base_cash_flow"
+      ],
+      "tier": [
+        "no_chase",
+        "uncovered"
+      ]
+    },
+    {
+      "ticker": "ANET",
+      "gap": [
+        7.5,
+        12.9
+      ]
+    },
+    {
+      "ticker": "APH",
+      "gap": [
+        4.8,
+        9.6
+      ]
+    },
+    {
+      "ticker": "APPF",
+      "gap": [
+        1.7,
+        6.5
+      ]
+    },
+    {
+      "ticker": "ARGX",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        25.1,
+        40.7
+      ]
+    },
+    {
+      "ticker": "ATAT",
+      "gap": [
+        -52.3,
+        -47.8
+      ]
+    },
+    {
+      "ticker": "ATI",
+      "gap": [
+        32.0,
+        38.6
+      ]
+    },
+    {
+      "ticker": "ATRC",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        2.7,
+        48.5
+      ],
+      "tier": [
+        "stage",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "ATRO",
+      "gap": [
+        16.8,
+        22.7
+      ],
+      "tier": [
+        "stage",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "AVGO",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        10.7,
+        21.5
+      ]
+    },
+    {
+      "ticker": "AZN",
+      "gap": [
+        -7.2,
+        -2.7
+      ]
+    },
+    {
+      "ticker": "BLBD",
+      "gap": [
+        15.1,
+        20.8
+      ]
+    },
+    {
+      "ticker": "BMRN",
+      "gap": [
+        39.8,
+        46.2
+      ]
+    },
+    {
+      "ticker": "BMY",
+      "gap": [
+        -1.5,
+        2.5
+      ]
+    },
+    {
+      "ticker": "BWMX",
+      "kind": [
+        "fcf_ttm_yf",
+        "fcf_ttm_yf_sbc"
+      ],
+      "tier": [
+        "uncovered",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "CAH",
+      "gap": [
+        6.6,
+        11.3
+      ]
+    },
+    {
+      "ticker": "CART",
+      "gap": [
+        -8.1,
+        -3.5
+      ]
+    },
+    {
+      "ticker": "CASY",
+      "gap": [
+        21.1,
+        26.8
+      ]
+    },
+    {
+      "ticker": "CGAU",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -0.4,
+        7.1
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "CHE",
+      "gap": [
+        9.1,
+        13.7
+      ]
+    },
+    {
+      "ticker": "CHEF",
+      "gap": [
+        -2.9,
+        3.7
+      ],
+      "tier": [
+        "stage",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "CIEN",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        31.3,
+        42.2
+      ]
+    },
+    {
+      "ticker": "CIX",
+      "gap": [
+        3.6,
+        8.5
+      ],
+      "tier": [
+        "stage",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "CLS",
+      "gap": [
+        14.6,
+        19.8
+      ]
+    },
+    {
+      "ticker": "CMI",
+      "gap": [
+        10.5,
+        16.0
+      ]
+    },
+    {
+      "ticker": "CRM",
+      "gap": [
+        -3.3,
+        0.8
+      ]
+    },
+    {
+      "ticker": "CSCO",
+      "gap": [
+        22.4,
+        27.2
+      ]
+    },
+    {
+      "ticker": "CW",
+      "gap": [
+        23.8,
+        29.9
+      ]
+    },
+    {
+      "ticker": "DCBO",
+      "gap": [
+        -15.2,
+        -10.9
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "DELL",
+      "gap": [
+        20.1,
+        24.8
+      ],
+      "tier": [
+        "no_chase",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "DLTR",
+      "gap": [
+        17.3,
+        23.0
+      ],
+      "tier": [
+        "no_chase",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "DOCU",
+      "gap": [
+        6.9,
+        11.6
+      ]
+    },
+    {
+      "ticker": "DOV",
+      "gap": [
+        6.7,
+        11.6
+      ]
+    },
+    {
+      "ticker": "DT",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -7.9,
+        11.7
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "DXCM",
+      "gap": [
+        13.9,
+        19.4
+      ],
+      "tier": [
+        "stage",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "EHC",
+      "gap": [
+        29.3,
+        34.9
+      ]
+    },
+    {
+      "ticker": "ELMD",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        6.2,
+        19.2
+      ]
+    },
+    {
+      "ticker": "EMBJ",
+      "gap": [
+        -8.6,
+        -3.8
+      ]
+    },
+    {
+      "ticker": "EME",
+      "gap": [
+        28.2,
+        34.8
+      ]
+    },
+    {
+      "ticker": "EMR",
+      "gap": [
+        9.7,
+        14.7
+      ]
+    },
+    {
+      "ticker": "EPAC",
+      "gap": [
+        7.9,
+        13.0
+      ]
+    },
+    {
+      "ticker": "ESLT",
+      "gap": [
+        33.7,
+        40.4
+      ]
+    },
+    {
+      "ticker": "EW",
+      "gap": [
+        16.4,
+        21.4
+      ]
+    },
+    {
+      "ticker": "EXEL",
+      "gap": [
+        -8.8,
+        -4.5
+      ]
+    },
+    {
+      "ticker": "EXPD",
+      "gap": [
+        12.8,
+        18.1
+      ]
+    },
+    {
+      "ticker": "EXPE",
+      "gap": [
+        -7.4,
+        -2.7
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "FIX",
+      "gap": [
+        24.7,
+        31.7
+      ]
+    },
+    {
+      "ticker": "FSLR",
+      "gap": [
+        -8.0,
+        -4.1
+      ]
+    },
+    {
+      "ticker": "GD",
+      "gap": [
+        9.2,
+        14.5
+      ]
+    },
+    {
+      "ticker": "GEV",
+      "gap": [
+        0.3,
+        5.2
+      ]
+    },
+    {
+      "ticker": "GILD",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -1.6,
+        3.8
+      ]
+    },
+    {
+      "ticker": "GLBE",
+      "gap": [
+        -5.9,
+        0.1
+      ]
+    },
+    {
+      "ticker": "GLW",
+      "kind": [
+        "fcf_ttm_yf",
+        "fcf_ttm_yf_sbc"
+      ],
+      "gap": [
+        38.9,
+        49.7
+      ]
+    },
+    {
+      "ticker": "GMAB",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "tier": [
+        "uncovered",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "GMED",
+      "gap": [
+        -21.4,
+        -17.0
+      ]
+    },
+    {
+      "ticker": "GOOG",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        19.5,
+        39.2
+      ]
+    },
+    {
+      "ticker": "GOOGL",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        19.7,
+        39.3
+      ]
+    },
+    {
+      "ticker": "GRC",
+      "gap": [
+        11.5,
+        17.3
+      ],
+      "tier": [
+        "stage",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "GRDN",
+      "tier": [
+        "uncovered",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "GRMN",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        14.2,
+        21.5
+      ]
+    },
+    {
+      "ticker": "GSAT",
+      "kind": [
+        "ocf_minus_da_proxy",
+        "ocf_minus_da_proxy_sbc"
+      ],
+      "gap": [
+        -6.9,
+        -1.6
+      ]
+    },
+    {
+      "ticker": "GWRE",
+      "gap": [
+        30.5,
+        35.9
+      ]
+    },
+    {
+      "ticker": "HALO",
+      "gap": [
+        -25.5,
+        -20.9
+      ]
+    },
+    {
+      "ticker": "HCSG",
+      "gap": [
+        2.6,
+        6.7
+      ],
+      "tier": [
+        "stage",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "HEI",
+      "gap": [
+        24.0,
+        30.7
+      ]
+    },
+    {
+      "ticker": "HQY",
+      "gap": [
+        2.1,
+        6.8
+      ]
+    },
+    {
+      "ticker": "HRMY",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -51.6,
+        -45.6
+      ],
+      "tier": [
+        "uncovered",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "HWM",
+      "gap": [
+        40.4,
+        47.4
+      ]
+    },
+    {
+      "ticker": "IDCC",
+      "gap": [
+        -2.1,
+        2.3
+      ],
+      "tier": [
+        "chase_ok",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "IESC",
+      "gap": [
+        25.1,
+        32.0
+      ]
+    },
+    {
+      "ticker": "IHG",
+      "gap": [
+        1.5,
+        6.1
+      ]
+    },
+    {
+      "ticker": "ILMN",
+      "gap": [
+        14.1,
+        18.9
+      ]
+    },
+    {
+      "ticker": "IMAX",
+      "gap": [
+        -4.1,
+        0.9
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "INCY",
+      "kind": [
+        "ocf_minus_da_proxy",
+        "ocf_minus_da_proxy_sbc"
+      ],
+      "gap": [
+        -6.2,
+        2.2
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "INTU",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -17.4,
+        -8.0
+      ],
+      "tier": [
+        "uncovered",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "INVA",
+      "gap": [
+        -23.1,
+        -20.2
+      ],
+      "tier": [
+        "uncovered",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "IRMD",
+      "gap": [
+        7.1,
+        12.5
+      ],
+      "tier": [
+        "stage",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "ISRG",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        5.9,
+        16.8
+      ],
+      "tier": [
+        "stage",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "ITT",
+      "gap": [
+        18.1,
+        24.0
+      ]
+    },
+    {
+      "ticker": "JBHT",
+      "gap": [
+        30.1,
+        36.4
+      ]
+    },
+    {
+      "ticker": "JKHY",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -0.4,
+        4.3
+      ]
+    },
+    {
+      "ticker": "JNJ",
+      "gap": [
+        13.0,
+        17.7
+      ]
+    },
+    {
+      "ticker": "JOE",
+      "gap": [
+        -20.0,
+        -14.7
+      ]
+    },
+    {
+      "ticker": "KAI",
+      "gap": [
+        18.2,
+        23.9
+      ]
+    },
+    {
+      "ticker": "KFY",
+      "gap": [
+        0.9,
+        5.9
+      ]
+    },
+    {
+      "ticker": "KMDA",
+      "kind": [
+        "ocf_minus_da_proxy",
+        "ocf_minus_da_proxy_sbc"
+      ],
+      "gap": [
+        1.6,
+        6.6
+      ],
+      "tier": [
+        "stage",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "KNSA",
+      "gap": [
+        -63.7,
+        -57.8
+      ]
+    },
+    {
+      "ticker": "KRT",
+      "gap": [
+        2.9,
+        7.5
+      ],
+      "tier": [
+        "stage",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "KRYS",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "tier": [
+        "uncovered",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "LAUR",
+      "gap": [
+        -6.6,
+        -1.3
+      ]
+    },
+    {
+      "ticker": "LHX",
+      "gap": [
+        -1.8,
+        3.6
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "LIVN",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        9.1,
+        19.5
+      ]
+    },
+    {
+      "ticker": "LLY",
+      "kind": [
+        "ocf_minus_da_proxy",
+        "ocf_minus_da_proxy_sbc"
+      ],
+      "gap": [
+        13.3,
+        19.9
+      ],
+      "tier": [
+        "stage",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "LQDT",
+      "gap": [
+        1.7,
+        6.7
+      ]
+    },
+    {
+      "ticker": "LSTR",
+      "gap": [
+        8.7,
+        13.7
+      ],
+      "tier": [
+        "stage",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "MA",
+      "gap": [
+        0.8,
+        5.6
+      ],
+      "tier": [
+        "stage",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "MAMA",
+      "gap": [
+        4.7,
+        11.9
+      ]
+    },
+    {
+      "ticker": "MANH",
+      "gap": [
+        18.9,
+        23.9
+      ]
+    },
+    {
+      "ticker": "MAR",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        0.4,
+        7.3
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "MCO",
+      "gap": [
+        9.8,
+        14.7
+      ]
+    },
+    {
+      "ticker": "MCRI",
+      "gap": [
+        -12.2,
+        -7.6
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "MDT",
+      "gap": [
+        5.2,
+        9.6
+      ]
+    },
+    {
+      "ticker": "MEDP",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -10.4,
+        -4.9
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "META",
+      "gap": [
+        6.0,
+        11.2
+      ],
+      "tier": [
+        "stage",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "MNST",
+      "gap": [
+        5.7,
+        11.7
+      ]
+    },
+    {
+      "ticker": "MOG-B",
+      "gap": [
+        31.9,
+        38.3
+      ]
+    },
+    {
+      "ticker": "MOV",
+      "gap": [
+        3.3,
+        7.7
+      ]
+    },
+    {
+      "ticker": "MPWR",
+      "gap": [
+        21.3,
+        27.1
+      ]
+    },
+    {
+      "ticker": "MU",
+      "gap": [
+        19.5,
+        24.5
+      ],
+      "tier": [
+        "no_chase",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "NBIX",
+      "gap": [
+        -10.5,
+        -6.0
+      ]
+    },
+    {
+      "ticker": "NHC",
+      "gap": [
+        7.2,
+        11.9
+      ],
+      "tier": [
+        "stage",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "NUTX",
+      "gap": [
+        -264.1,
+        -260.8
+      ],
+      "tier": [
+        "uncovered",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "NVEC",
+      "gap": [
+        26.0,
+        30.8
+      ],
+      "tier": [
+        "no_chase",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "NVS",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "tier": [
+        "uncovered",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "P",
+      "gap": [
+        54.5,
+        61.2
+      ]
+    },
+    {
+      "ticker": "PAYC",
+      "gap": [
+        -4.7,
+        -0.4
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "PAYX",
+      "gap": [
+        3.9,
+        8.2
+      ]
+    },
+    {
+      "ticker": "PCTY",
+      "gap": [
+        -6.5,
+        -2.2
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "PM",
+      "gap": [
+        0.5,
+        6.0
+      ],
+      "tier": [
+        "stage",
+        "chase_ok"
+      ]
+    },
+    {
+      "ticker": "POWL",
+      "gap": [
+        28.1,
+        34.8
+      ]
+    },
+    {
+      "ticker": "PSMT",
+      "gap": [
+        21.7,
+        28.5
+      ]
+    },
+    {
+      "ticker": "PTC",
+      "gap": [
+        -2.6,
+        1.5
+      ]
+    },
+    {
+      "ticker": "QTWO",
+      "gap": [
+        5.7,
+        10.3
+      ]
+    },
+    {
+      "ticker": "REGN",
+      "gap": [
+        -1.9,
+        2.5
+      ]
+    },
+    {
+      "ticker": "RL",
+      "kind": [
+        "ocf_minus_da_proxy",
+        "ocf_minus_da_proxy_sbc"
+      ],
+      "gap": [
+        0.7,
+        7.8
+      ]
+    },
+    {
+      "ticker": "RMBS",
+      "gap": [
+        6.9,
+        11.9
+      ]
+    },
+    {
+      "ticker": "RMD",
+      "gap": [
+        -0.2,
+        4.4
+      ],
+      "tier": [
+        "chase_ok",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "RNG",
+      "gap": [
+        -6.6,
+        -2.6
+      ]
+    },
+    {
+      "ticker": "ROK",
+      "gap": [
+        15.4,
+        20.9
+      ]
+    },
+    {
+      "ticker": "ROP",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -3.5,
+        1.7
+      ]
+    },
+    {
+      "ticker": "ROST",
+      "gap": [
+        9.5,
+        14.5
+      ]
+    },
+    {
+      "ticker": "RTX",
+      "gap": [
+        13.5,
+        19.1
+      ]
+    },
+    {
+      "ticker": "SAP",
+      "kind": [
+        "fcf_ttm_yf",
+        "fcf_ttm_yf_sbc"
+      ],
+      "tier": [
+        "uncovered",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "SIMO",
+      "gap": [
+        29.5,
+        34.9
+      ]
+    },
+    {
+      "ticker": "SITM",
+      "gap": [
+        79.2,
+        87.1
+      ]
+    },
+    {
+      "ticker": "SMTC",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        26.2,
+        40.6
+      ]
+    },
+    {
+      "ticker": "SN",
+      "gap": [
+        9.5,
+        14.6
+      ]
+    },
+    {
+      "ticker": "STX",
+      "gap": [
+        42.5,
+        48.2
+      ]
+    },
+    {
+      "ticker": "SYK",
+      "gap": [
+        5.0,
+        9.8
+      ]
+    },
+    {
+      "ticker": "TIGO",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        -5.3,
+        -0.9
+      ]
+    },
+    {
+      "ticker": "TSM",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "gap": [
+        20.5,
+        26.0
+      ]
+    },
+    {
+      "ticker": "TT",
+      "gap": [
+        17.2,
+        23.2
+      ]
+    },
+    {
+      "ticker": "TYL",
+      "gap": [
+        4.2,
+        8.8
+      ]
+    },
+    {
+      "ticker": "UFPT",
+      "kind": [
+        "fcf_fallback",
+        "fcf_fallback_sbc"
+      ],
+      "tier": [
+        "uncovered",
+        "no_chase"
+      ]
+    },
+    {
+      "ticker": "UTHR",
+      "gap": [
+        -4.5,
+        0.1
+      ]
+    },
+    {
+      "ticker": "VICR",
+      "gap": [
+        47.2,
+        53.2
+      ]
+    },
+    {
+      "ticker": "VIK",
+      "kind": [
+        "fcf_ttm_yf",
+        "fcf_ttm_yf_sbc"
+      ],
+      "gap": [
+        -11.2,
+        -5.3
+      ]
+    },
+    {
+      "ticker": "VRSK",
+      "gap": [
+        16.7,
+        22.1
+      ],
+      "tier": [
+        "no_chase",
+        "stage"
+      ]
+    },
+    {
+      "ticker": "VRT",
+      "gap": [
+        34.6,
+        41.7
+      ]
+    },
+    {
+      "ticker": "VRTX",
+      "gap": [
+        4.3,
+        9.1
+      ]
+    },
+    {
+      "ticker": "WST",
+      "gap": [
+        20.4,
+        25.7
+      ]
+    },
+    {
+      "ticker": "WWD",
+      "gap": [
+        27.3,
+        33.6
+      ]
+    }
+  ]
+}

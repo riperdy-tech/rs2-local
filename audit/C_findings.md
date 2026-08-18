@@ -43,6 +43,17 @@ worries about 60–80%+; RS2's structure sits below it by construction.)
 
 ## C3 — Cash-flow definition variants (c3_flow_variants.json)
 
+> **CORRECTION 2026-08-19 (see C10, `c10_sbc_correction.json`).** C3's SBC variant subtracted
+> TTM SBC from EVERY name's base_cf. That was wrong for owner-earnings-derived flows: GAAP net
+> income already expenses SBC, and owner earnings adds back only D&A — so for ~110 of 155
+> names C3 DOUBLE-COUNTED SBC, and its headline (30 tier flips, GWRE +65pts) is an artifact
+> for that population. Verified against the screener builder (`da` = pure D&A XBRL tags;
+> `fcf = ocf − capex` with OCF's SBC add-back). The legitimate adjustment applies only to the
+> **45 FCF-derived names** (fcf_fallback 36, ocf_minus_da_proxy 5, fcf_ttm_yf 4), where real
+> gap moves are ATRC +38.9pts, DT +14.6, GOOG +13.4, ARGX +9.5, ABNB +7.5, and ANAB's "FCF"
+> is entirely SBC (8.2× flow → honest-null route). The original text below is retained
+> unmodified as the record of the error.
+
 **SBC-deducted** (`base_cf − SBC_TTM`, 145/155 names with data):
 - SBC consumes 13% of the median name's flow — and **~47% at the p10** (cf ratio p10 0.532).
 - 5 names' entire positive owner earnings are SBC (ALKS, ANAB, BMRN, **DOCU**, SITM).

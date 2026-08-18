@@ -410,14 +410,9 @@ def _midcycle_of_kind(ydata, kind):
         nothing at all).
     Trend and cycle are not separable at this sample size, so the engine reports BOTH bases and
     lets the analyst layer judge, rather than silently picking one and being wrong for half the
-    universe. fcf_ttm_yf is a single trailing figure with no history -> (None, None), and so
-    are the *_sbc kinds: their per-year SBC is not in the history, so a multi-year average of
-    UNadjusted fcf would silently reintroduce the SBC add-back the point estimate just
-    removed — honest null over a wrong number.
+    universe. fcf_ttm_yf is a single trailing figure with no history -> (None, None).
     """
     yrs = sorted(int(v) for v in ydata.keys())
-    if str(kind).endswith("_sbc"):
-        return None, None
     if kind in ("owner_earnings", "blended_owner_earnings"):
         # The mid-cycle counterpart of the BLEND is the plain owner-earnings average: averaging
         # over the cycle already normalizes the margin, so averaging per-year blends would
@@ -629,35 +624,6 @@ def base_lattice(ydata, ttm, mcap, wacc, price, shares, demo_trail, g_fwd, deliv
             "contested": bool(span[0] is not None and (span[1] - span[0]) >= 30.0)}
 
 
-def _sbc_ttm(ticker):
-    """TTM stock-based comp from the yfinance financials snapshot, or None.
-
-    Used ONLY to correct OCF/FCF-derived base_cf kinds. GAAP net income already expenses SBC,
-    so owner-earnings flows (NI + D&A - capex) need no adjustment — but ocf (and so fcf and
-    the ocf-da proxy) carries the cash-flow-statement SBC add-back, valuing stock comp as
-    free (audit 2026-08 C10; note C3's uniform deduction double-counted the owner-earnings
-    population and was corrected). TTM SBC against a FY fcf leg is a period mismatch,
-    accepted: SBC is a slow-moving run-rate expense and fundamentals_history carries no
-    per-year SBC field (STOP flag stands until upstream re-ingestion)."""
-    fin = rs2_data.load_json(SD / "financials" / f"{ticker.upper()}.json") or {}
-    v = _num(fin.get("SBC_Stock_Based_Comp"))
-    return abs(v) if v is not None else None
-
-
-def _sbc_adjust(ticker, flow, base_kind="fcf_fallback"):
-    """(flow - SBC, kind+"_sbc") for an OCF/FCF-derived flow.
-
-    Returns (None, kind+"_sbc") when expensing SBC consumes the whole flow — the caller must
-    fall through to its next fallback / honest null (a "positive FCF" that is entirely stock
-    comp is not owner cash generation, e.g. ANAB where SBC is 8x fcf). No SBC datum ->
-    unadjusted flow under the base kind (the missing _sbc suffix is the disclosure)."""
-    sbc = _sbc_ttm(ticker)
-    if sbc is None:
-        return flow, base_kind
-    adj = flow - sbc
-    return (adj if adj > 0 else None), base_kind + "_sbc"
-
-
 def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False, force_latest=False,
              ttm=None):
     """Return (base_cf_$, kind, period_meta). Equity REITs -> FFO; cyclicals -> mid-cycle avg
@@ -770,22 +736,14 @@ def _base_cf(ticker, ydata, sector_l, industry_l="", force_midcycle=False, force
         # milestone FY owner earnings vs −$272M trailing). Trailing FCF may still carry it;
         # otherwise return the honest null on the TTM basis.
         if t_fcf is not None and t_fcf > 0:
-            _adj, _k = _sbc_adjust(ticker, t_fcf)
-            if _adj is not None:
-                return _adj, _k, ttm_meta
+            return t_fcf, "fcf_fallback", ttm_meta
         return owner, "none", ttm_meta
     if ttm_meta and t_fcf is not None and t_fcf > 0:
-        _adj, _k = _sbc_adjust(ticker, t_fcf)
-        if _adj is not None:
-            return _adj, _k, ttm_meta
+        return t_fcf, "fcf_fallback", ttm_meta
     if fcf is not None and fcf > 0:
-        _adj, _k = _sbc_adjust(ticker, fcf)
-        if _adj is not None:
-            return _adj, _k, None
+        return fcf, "fcf_fallback", None
     if _num(fy.get("capex")) is None and None not in (ocf, da) and (ocf - da) > 0:
-        _adj, _k = _sbc_adjust(ticker, ocf - da, "ocf_minus_da_proxy")
-        if _adj is not None:                          # capex tag missing: steady-state proxy ~ D&A
-            return _adj, _k, None
+        return ocf - da, "ocf_minus_da_proxy", None   # capex tag missing: steady-state proxy ~ D&A
     return (owner if owner is not None else fcf), "none", None
 
 
@@ -1012,105 +970,6 @@ MOS_DIST_CACHE = HERE / "cache" / "mos_distribution.json"
 MOS_DIST_MAX_AGE_DAYS = 3
 MOS_CHEAP_PCTL = 33          # bottom third by MoS = the expensive end -> do-not-chase
 
-# ── Market-anchored cost-of-equity LEVEL (audit 2026-08, A2) ───────────────────────────────
-# The sector table's LEVEL was a folk constant (~10%): tools/implied_erp.py measured the book
-# pricing ~11.8% CoE, i.e. every published MoS carried ~2pts of unexamined optimism. The fix
-# anchors the LEVEL to the market (Damodaran implied-ERP method: solve the rate at which the
-# book's aggregate TTM earnings, grown per-name and faded to terminal, equal its aggregate
-# market cap) while PRESERVING the sector spreads — C1 measured spreads worth ~15 tier flips
-# of ranking information, and level shifts as ranking-neutral (rho >= 0.995). The offset is a
-# calibration artifact (cache/coe_calibration.json) rebuilt once per sweep alongside the MoS
-# distribution; a missing cache means offset 0 (the raw table), disclosed via the backbone
-# output. No staleness cutoff: rates move slowly and level CONTINUITY beats freshness here.
-COE_CAL_CACHE = HERE / "cache" / "coe_calibration.json"
-COE_CAL_G_LO, COE_CAL_G_HI = -0.05, 0.35     # calibration growth clamp (mirror implied_erp)
-
-
-def coe_offset_pts():
-    """Level offset (pts) to add to every sector rate, or 0.0 when uncalibrated."""
-    d = rs2_data.load_json(COE_CAL_CACHE) or {}
-    v = d.get("level_offset_pts")
-    return float(v) if isinstance(v, (int, float)) else 0.0
-
-
-def _calibration_names(tickers):
-    """Aggregation set for the implied-CoE solve: reverse-DCF names with positive TTM NI."""
-    names = []
-    for t in tickers:
-        try:
-            b = backbone(t)
-        except Exception:
-            continue
-        if not b.get("ok") or b.get("method") != "reverse_dcf":
-            continue
-        tf = (_ttm_record(t) or {}).get("fields") or {}
-        ni = _num(tf.get("net_income"))
-        g = b.get("forward_growth")
-        if g is None:
-            g = b.get("hist_revenue_cagr_5y")
-        if ni and ni > 0 and b.get("market_cap") and g is not None:
-            sector, _ = rs2_data.sector_lookup(t)
-            names.append({"ni": ni, "mcap": b["market_cap"],
-                          "g": max(min(g, COE_CAL_G_HI), COE_CAL_G_LO),
-                          "table_rate": SECTOR_WACC.get(SECTOR_ALIASES.get(sector, sector),
-                                                        DEFAULT_WACC) / 100.0})
-    return names
-
-
-def _agg_value(names, rate_of):
-    tot = 0.0
-    for n in names:
-        r = rate_of(n)
-        if r <= TERMINAL_G:
-            r = TERMINAL_G + 0.005
-        cf, v, g = n["ni"], 0.0, n["g"]
-        for i in range(1, STAGE1 + 1):
-            cf *= 1 + g
-            v += cf / (1 + r) ** i
-        for j in range(1, FADE + 1):
-            gg = g + (TERMINAL_G - g) * j / FADE
-            cf *= 1 + gg
-            v += cf / (1 + r) ** (STAGE1 + j)
-        v += (cf * (1 + TERMINAL_G) / (r - TERMINAL_G)) / (1 + r) ** (STAGE1 + FADE)
-        tot += v
-    return tot
-
-
-def build_coe_calibration(tickers):
-    """Recompute the implied-CoE level anchor and cache it. Returns the dict written, or None.
-
-    Solves (a) the flat rate at which the aggregation set's DCF equals its market cap (the
-    market-implied CoE, reported for the record) and (b) the OFFSET added to the raw sector
-    table that achieves the same aggregate — (b) is what the engine applies, so sector
-    spreads survive. The solver always uses the RAW table (never the anchored rates), so
-    there is no feedback loop between sweeps."""
-    names = _calibration_names(tickers)
-    if len(names) < 30:
-        return None
-    M = sum(n["mcap"] for n in names)
-
-    def _solve(rate_of_mid):
-        lo, hi = -0.06, 0.50
-        for _ in range(80):
-            mid = (lo + hi) / 2
-            if _agg_value(names, rate_of_mid(mid)) > M:
-                lo = mid
-            else:
-                hi = mid
-        return (lo + hi) / 2
-
-    implied = _solve(lambda mid: (lambda n: mid))
-    offset = _solve(lambda mid: (lambda n: n["table_rate"] + mid))
-    from datetime import datetime, timezone
-    out = {"built_at": datetime.now(timezone.utc).isoformat(), "n": len(names),
-           "aggregate_mcap_b": round(M / 1e9, 1),
-           "aggregate_ttm_ni_b": round(sum(n["ni"] for n in names) / 1e9, 1),
-           "implied_coe_pct": round(implied * 100, 2),
-           "level_offset_pts": round(offset * 100, 1)}
-    COE_CAL_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    COE_CAL_CACHE.write_text(json.dumps(out, indent=2), encoding="utf-8")
-    return out
-
 
 def mos_cut(pctl=MOS_CHEAP_PCTL):
     """MoS value at the given percentile of the analysed book, or None if not calibrated.
@@ -1149,63 +1008,6 @@ def build_mos_distribution(tickers):
     return out
 
 
-# ── Relative-valuation cross-check (audit 2026-08, A5) ─────────────────────────────────────
-# A second, independent lens: EV/EBIT vs the sector median across the full screener corpus.
-# C8 measured it feasible from existing data and usefully small as a tripwire (8/148 book
-# names in outright conflict with the expectations gap). It is an error-detection signal for
-# the analyst layer and the verdict record — never an input to fair value.
-EVEBIT_CACHE = HERE / "cache" / "sector_evebit.json"
-EVEBIT_CHEAP_REL, EVEBIT_RICH_REL = 0.80, 1.25   # C8 thresholds
-EVEBIT_MIN_SECTOR_N = 20
-
-
-def build_evebit_calibration():
-    """Median EV/EBIT per sector across the whole corpus -> cache. Returns dict or None."""
-    med, counts = {}, {}
-    fin_dir = SD / "financials"
-    for p in fin_dir.glob("*.json"):
-        t = p.stem.upper()
-        sector, _ = rs2_data.sector_lookup(t)
-        if not sector:
-            continue
-        fin = rs2_data.load_json(p) or {}
-        v = _num((fin.get("Calculated_Metrics") or {}).get("EV_to_EBIT"))
-        if v is not None and 0 < v < 200:
-            med.setdefault(sector, []).append(v)
-    out_med = {}
-    for sec, vals in med.items():
-        if len(vals) >= EVEBIT_MIN_SECTOR_N:
-            vals.sort()
-            out_med[sec] = round(vals[len(vals) // 2], 2)
-            counts[sec] = len(vals)
-    if not out_med:
-        return None
-    from datetime import datetime, timezone
-    out = {"built_at": datetime.now(timezone.utc).isoformat(),
-           "sector_median": out_med, "sector_n": counts}
-    EVEBIT_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    EVEBIT_CACHE.write_text(json.dumps(out, indent=2), encoding="utf-8")
-    return out
-
-
-def _comps_check(ticker, sector):
-    """{ev_ebit, sector_evebit_median, evebit_rel, comps_signal} or {} when either side is
-    missing (no signal is a valid answer — never proxied)."""
-    if not sector:
-        return {}
-    cal = rs2_data.load_json(EVEBIT_CACHE) or {}
-    m = (cal.get("sector_median") or {}).get(sector)
-    fin = rs2_data.load_json(SD / "financials" / f"{ticker.upper()}.json") or {}
-    v = _num((fin.get("Calculated_Metrics") or {}).get("EV_to_EBIT"))
-    if m is None or v is None or v <= 0:
-        return {}
-    rel = round(v / m, 2)
-    sig = ("cheap" if rel < EVEBIT_CHEAP_REL else
-           "rich" if rel > EVEBIT_RICH_REL else "inline")
-    return {"ev_ebit": round(v, 1), "sector_evebit_median": m,
-            "evebit_rel": rel, "comps_signal": sig}
-
-
 def backbone(ticker, force_midcycle=False, force_latest=False):
     t = ticker.upper()
     fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
@@ -1220,8 +1022,7 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
 
     sector, _ind = rs2_data.sector_lookup(t)
     sl = (sector or "").lower()
-    _coe_off = coe_offset_pts()   # market-anchored LEVEL, sector spreads preserved (audit A2)
-    wacc_pct = round(SECTOR_WACC.get(SECTOR_ALIASES.get(sector, sector), DEFAULT_WACC) + _coe_off, 1)
+    wacc_pct = SECTOR_WACC.get(SECTOR_ALIASES.get(sector, sector), DEFAULT_WACC)
     wacc = wacc_pct / 100.0
 
     # Balance-sheet financials (banks / insurance underwriters / mortgage) -> P/B-ROE model,
@@ -1254,9 +1055,7 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
         # positive year the SEC TTM just refuted.
         fcf_ttm = _num(fin.get("Free_Cash_Flow_TTM"))
         if fcf_ttm and fcf_ttm > 0:
-            _adj, _k = _sbc_adjust(t, fcf_ttm, "fcf_ttm_yf")
-            if _adj is not None:
-                base_cf, kind = _adj, _k
+            base_cf, kind = fcf_ttm, "fcf_ttm_yf"
     if base_cf is None or base_cf <= 0:
         # Banks/insurers fail owner-earnings DCF by construction -> value on ROE vs P/B instead.
         # (Payment networks like V/MA have positive owner earnings and stay on the reverse-DCF above.)
@@ -1398,8 +1197,7 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
         "delivered_growth": delivered,
         "lattice": lattice,
         "contested": bool((lattice or {}).get("contested")),
-        "wacc": wacc, "wacc_pct": wacc_pct, "coe_anchor_offset_pts": _coe_off,
-        "terminal_growth": TERMINAL_G,
+        "wacc": wacc, "wacc_pct": wacc_pct, "terminal_growth": TERMINAL_G,
         "stage1_years": STAGE1, "fade_years": FADE,
         "implied_growth": round(implied, 4), "implied_growth_clamped": implied in (G_LO, G_HI),
         "hist_revenue_cagr_5y": round(rev_cagr, 4) if rev_cagr is not None else None,
@@ -1419,7 +1217,6 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
         "consensus_stale": band["stale"] if band else None,
         "consensus_age_days": band["age_days"] if band else None,
         "verdict": _verdict(gap_pts),
-        **_comps_check(t, sector),   # relative-valuation cross-check (audit A5), {} if no data
     }
 
 

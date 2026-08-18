@@ -724,6 +724,19 @@ def main():
         try:
             import valuation_backbone as _vb
             _uni = sorted({d.name.rsplit("_", 2)[0] for d in REPORTS.glob("*_*") if d.is_dir()})
+            # Anchor the cost-of-equity LEVEL to the market FIRST — the MoS distribution below
+            # is computed at these rates, so the order is load-bearing (audit A2).
+            _cc = _vb.build_coe_calibration(_uni)
+            if _cc:
+                log(f"[coe] implied {_cc['implied_coe_pct']}% on {_cc['n']} names — "
+                    f"table offset {_cc['level_offset_pts']:+}pts")
+            else:
+                log("[coe] ::WARN:: too few names to calibrate — raw sector-table level this sweep")
+            _ec = _vb.build_evebit_calibration()
+            if _ec:
+                log(f"[comps] sector EV/EBIT medians rebuilt ({len(_ec['sector_median'])} sectors)")
+            else:
+                log("[comps] ::WARN:: EV/EBIT calibration empty — comps cross-check silent this sweep")
             _md = _vb.build_mos_distribution(_uni)
             if _md:
                 _p = _md["percentiles"]

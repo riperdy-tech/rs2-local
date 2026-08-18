@@ -320,7 +320,9 @@ def _valid_engine4(d):
 # dominates it. (Regression 2026-08-08: the blend rename silently emptied this gate and the
 # cyclical disclosure stopped firing — MU routing.json logged not_a_single_year_base_cf x6.)
 _LATEST_FY_KINDS = ("owner_earnings", "blended_owner_earnings", "fcf_fallback",
-                    "ocf_minus_da_proxy", "fcf_ttm_yf")
+                    "ocf_minus_da_proxy", "fcf_ttm_yf",
+                    # SBC-expensed variants of the OCF/FCF-derived kinds (audit C10)
+                    "fcf_fallback_sbc", "ocf_minus_da_proxy_sbc", "fcf_ttm_yf_sbc")
 
 
 # Canonical archetype names (rs2_data.ARCHETYPE_NAMES), hyphen/space tolerant. Order matters:
@@ -833,7 +835,17 @@ def anchor_block(pv):
         "In SECTION 12, immediately after the Action line, output exactly one line:\n"
         "Changed-Because: none (maintained previous call)\n"
         "or\n"
-        "Changed-Because: <the specific material change justifying the new call>")
+        "Changed-Because: <the specific material change justifying the new call>"
+        # Methodology-churn guard (audit O2, 2026-08-19): a prior verdict computed under the
+        # pre-O2 backbone carries a fair value / MoS from different rules (no SBC expensing on
+        # FCF bases, unanchored ~10% level). Without this note the model invents a business
+        # narrative for a methodology delta — exactly the fabrication class tier-2 rejects.
+        + (("\nNOTE: the valuation methodology changed since that analysis (stock-based comp "
+            "now expensed on FCF-derived bases; discount-rate level anchored to the market's "
+            "implied cost of equity; peer-multiple cross-check added). If today's fair value / "
+            "MoS differs mainly for these reasons, attribute it in Changed-Because to the "
+            "methodology revision — NOT to a change in the business.")
+           if str(pv.get("report", "")).split("_", 1)[-1] < CONTEXT_ERA else ""))
 
 
 def _action_family(s):
@@ -1812,6 +1824,7 @@ def emit_verdict(out_dir, ticker, price, val_res, final_text, exit_review=False,
         "band_at_analysis": band_of(ticker), "report": out_dir.name,
         # surfaced data, never a gate
         "quality_flags": _qs["quality_flags"], "solvency_flags": _qs["solvency_flags"],
+        "comps_signal": vr.get("comps_signal"), "evebit_rel": vr.get("evebit_rel"),
     }
     # atomic: a torn verdict.json is silently skipped by publish_reports._scan and gets the run's
     # already-published site bundle DELETED — never leave a half-written one visible
@@ -1885,6 +1898,8 @@ def valuation_result(stage_out, bb, price, ticker):
                "forward_growth": bb.get("forward_growth"),
                "consensus_low": bb.get("consensus_low"), "consensus_median": bb.get("consensus_median"),
                "consensus_high": bb.get("consensus_high"), "consensus_stale": bb.get("consensus_stale"),
+               # relative-valuation cross-check (audit A5) — error tripwire, never a value input
+               "comps_signal": bb.get("comps_signal"), "evebit_rel": bb.get("evebit_rel"),
                # stance is DETERMINISTIC (see _stance_from_gap); the model's own read is kept
                # alongside as telemetry so the two can be compared, never as a gate.
                "stance": _stance_from_gap(bb["expectations_gap_pts"]),

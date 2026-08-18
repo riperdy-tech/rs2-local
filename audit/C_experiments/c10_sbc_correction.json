@@ -1,0 +1,314 @@
+{
+  "generated_at": "2026-08-18T17:36:13.731783+00:00",
+  "verified_premise": "net_income is GAAP (SBC-expensed); da = pure D&A tags; fcf = ocf - capex with OCF's SBC add-back (build_fundamentals_history.py:75-83,414,601)",
+  "base_cf_kind_census": {
+    "blended_owner_earnings": 75,
+    "fcf_fallback": 36,
+    "midcycle_owner_earnings": 32,
+    "owner_earnings": 14,
+    "ocf_minus_da_proxy": 5,
+    "fcf_ttm_yf": 4,
+    "negative_base_cash_flow": 2,
+    "None": 2
+  },
+  "n_fcf_kind_names": 45,
+  "fcf_kind_detail": {
+    "ABBV": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.052,
+      "gap_base": 7.0,
+      "gap_adj": 8.0,
+      "gap_move_pts": 1.0
+    },
+    "ABNB": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.33,
+      "gap_base": -17.7,
+      "gap_adj": -10.2,
+      "gap_move_pts": 7.5
+    },
+    "ADI": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.07,
+      "gap_base": 11.6,
+      "gap_adj": 13.1,
+      "gap_move_pts": 1.5
+    },
+    "AGYS": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.271,
+      "gap_base": 6.9,
+      "gap_adj": 13.3,
+      "gap_move_pts": 6.4
+    },
+    "AIT": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.016,
+      "gap_base": 4.2,
+      "gap_adj": 4.5,
+      "gap_move_pts": 0.3
+    },
+    "AMRX": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.25,
+      "gap_base": 16.2,
+      "gap_adj": 21.9,
+      "gap_move_pts": 5.7
+    },
+    "ANAB": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 8.181,
+      "gap_base": 45.6,
+      "flow_turns_nonpositive": true
+    },
+    "ARGX": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.365,
+      "gap_base": 25.1,
+      "gap_adj": 34.6,
+      "gap_move_pts": 9.5
+    },
+    "ATRC": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.841,
+      "gap_base": 2.7,
+      "gap_adj": 41.6,
+      "gap_move_pts": 38.9
+    },
+    "AVGO": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.231,
+      "gap_base": 10.7,
+      "gap_adj": 16.2,
+      "gap_move_pts": 5.5
+    },
+    "AZN": {
+      "kind": "fcf_fallback",
+      "sbc": null,
+      "note": "no SBC datum"
+    },
+    "BWMX": {
+      "kind": "fcf_ttm_yf",
+      "sbc_over_cf": 0.0,
+      "gap_base": null
+    },
+    "CGAU": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.135,
+      "gap_base": -0.4,
+      "gap_adj": 2.3,
+      "gap_move_pts": 2.7
+    },
+    "CIEN": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.222,
+      "gap_base": 31.3,
+      "gap_adj": 36.6,
+      "gap_move_pts": 5.3
+    },
+    "DT": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.525,
+      "gap_base": -7.9,
+      "gap_adj": 6.7,
+      "gap_move_pts": 14.6
+    },
+    "ELMD": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.327,
+      "gap_base": 6.2,
+      "gap_adj": 13.9,
+      "gap_move_pts": 7.7
+    },
+    "EMBJ": {
+      "kind": "fcf_fallback",
+      "sbc": null,
+      "note": "no SBC datum"
+    },
+    "GEV": {
+      "kind": "fcf_fallback",
+      "sbc": null,
+      "note": "no SBC datum"
+    },
+    "GILD": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.069,
+      "gap_base": -1.6,
+      "gap_adj": -0.3,
+      "gap_move_pts": 1.3
+    },
+    "GLW": {
+      "kind": "fcf_ttm_yf",
+      "sbc_over_cf": 0.202,
+      "gap_base": 38.9,
+      "gap_adj": 43.8,
+      "gap_move_pts": 4.9
+    },
+    "GMAB": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.111,
+      "gap_base": null
+    },
+    "GOOG": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.468,
+      "gap_base": 19.5,
+      "gap_adj": 32.9,
+      "gap_move_pts": 13.4
+    },
+    "GOOGL": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.468,
+      "gap_base": 19.7,
+      "gap_adj": 33.0,
+      "gap_move_pts": 13.3
+    },
+    "GRMN": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.114,
+      "gap_base": 14.2,
+      "gap_adj": 16.6,
+      "gap_move_pts": 2.4
+    },
+    "GSAT": {
+      "kind": "ocf_minus_da_proxy",
+      "sbc_over_cf": 0.044,
+      "gap_base": -6.9,
+      "gap_adj": -6.0,
+      "gap_move_pts": 0.9
+    },
+    "HRMY": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.129,
+      "gap_base": -51.6,
+      "gap_adj": -49.1,
+      "gap_move_pts": 2.5
+    },
+    "INCY": {
+      "kind": "ocf_minus_da_proxy",
+      "sbc_over_cf": 0.189,
+      "gap_base": -6.2,
+      "gap_adj": -2.4,
+      "gap_move_pts": 3.8
+    },
+    "INTU": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.254,
+      "gap_base": -17.4,
+      "gap_adj": -12.0,
+      "gap_move_pts": 5.4
+    },
+    "ISRG": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.245,
+      "gap_base": 5.9,
+      "gap_adj": 11.4,
+      "gap_move_pts": 5.5
+    },
+    "JKHY": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.039,
+      "gap_base": -0.4,
+      "gap_adj": 0.3,
+      "gap_move_pts": 0.7
+    },
+    "KMDA": {
+      "kind": "ocf_minus_da_proxy",
+      "sbc_over_cf": 0.035,
+      "gap_base": 1.6,
+      "gap_adj": 2.2,
+      "gap_move_pts": 0.6
+    },
+    "KRYS": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.211,
+      "gap_base": null
+    },
+    "LIVN": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.245,
+      "gap_base": 9.1,
+      "gap_adj": 14.4,
+      "gap_move_pts": 5.3
+    },
+    "LLY": {
+      "kind": "ocf_minus_da_proxy",
+      "sbc_over_cf": 0.042,
+      "gap_base": 13.3,
+      "gap_adj": 14.2,
+      "gap_move_pts": 0.9
+    },
+    "MAR": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.09,
+      "gap_base": 0.4,
+      "gap_adj": 2.3,
+      "gap_move_pts": 1.9
+    },
+    "MEDP": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.049,
+      "gap_base": -10.4,
+      "gap_adj": -9.5,
+      "gap_move_pts": 0.9
+    },
+    "NVS": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.062,
+      "gap_base": null
+    },
+    "RL": {
+      "kind": "ocf_minus_da_proxy",
+      "sbc_over_cf": 0.12,
+      "gap_base": 0.7,
+      "gap_adj": 3.1,
+      "gap_move_pts": 2.4
+    },
+    "ROP": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.064,
+      "gap_base": -3.5,
+      "gap_adj": -2.3,
+      "gap_move_pts": 1.2
+    },
+    "SAP": {
+      "kind": "fcf_ttm_yf",
+      "sbc_over_cf": 0.201,
+      "gap_base": null
+    },
+    "SMTC": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.333,
+      "gap_base": 26.2,
+      "gap_adj": 34.9,
+      "gap_move_pts": 8.7
+    },
+    "TIGO": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.013,
+      "gap_base": -5.3,
+      "gap_adj": -5.0,
+      "gap_move_pts": 0.3
+    },
+    "TSM": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.002,
+      "gap_base": 20.5,
+      "gap_adj": 20.6,
+      "gap_move_pts": 0.1
+    },
+    "UFPT": {
+      "kind": "fcf_fallback",
+      "sbc_over_cf": 0.146,
+      "gap_base": null
+    },
+    "VIK": {
+      "kind": "fcf_ttm_yf",
+      "sbc_over_cf": 0.058,
+      "gap_base": -11.2,
+      "gap_adj": -10.1,
+      "gap_move_pts": 1.1
+    }
+  },
+  "conclusion": "C3's uniform SBC subtraction was invalid for owner-earnings kinds (double count). The legitimate SBC fix applies only to the names listed here."
+}

@@ -14,9 +14,11 @@ RS2 is a **well-built expectations-ranking engine** whose signals, measured agai
 disciplines (data-corruption gating, cross-sectional calibration, deterministic brake,
 outcome ledger) exceed common institutional practice. Verdict: **refine, don't rebuild.**
 
-The audit found exactly one **measured ranking distortion** (SBC omission — flips ~21% of
-brake tiers, concentrated in software/growth), one **honesty problem at the level** (the
-7–11% sector table sets every published MoS; the book's measured implied rate is ~11.8%),
+The audit found exactly one **measured ranking distortion** (SBC treated as free money —
+**CORRECTED 2026-08-19:** C3 overstated this by double-counting SBC on owner-earnings names,
+which GAAP NI already expenses; the real defect is confined to the 45 FCF-derived names,
+see C10 and the C3 correction banner in C_findings.md), one **honesty problem at the level**
+(the 7–11% sector table sets every published MoS; the book's measured implied rate is ~12%),
 one **pure waste** (S4's structured output is computed every run and read by nothing —
 10.7% of LLM runtime), and a set of **cheap missing tripwires** (quality battery, solvency,
 peer-multiple cross-check) whose measured incidence today is low because the upstream
@@ -34,7 +36,7 @@ not measurable with current data · **STOP** = blocked pending data/method (CLAU
 
 | # | Candidate change | Effort | Measured value (this book) | Status / evidence |
 |---|---|---|---|---|
-| A1 | **Deduct SBC from `base_cf`** (owner-earnings routes; TTM SBC from financials.json) | M — `_base_cf()` + lattice cells + repatch/re-baseline | **HIGH.** 30/145 tier flips, non-uniform (flatters SBC-heavy names): GWRE gap +65pts, RNG +44, AMZN +32, META +20; 5 names' entire flow is SBC (incl. DOCU) | PROVEN (cross-sectional, C3) + STOP on retrodictive check (no historical SBC field) |
+| A1 | **Deduct SBC from FCF-derived `base_cf` kinds only** — CORRECTED 2026-08-19: C3's original all-names version double-counted SBC on owner-earnings flows (GAAP NI already expenses it); scope re-proven in C10 | S — `_sbc_adjust()` in `_base_cf` + yf fallback | **MEDIUM.** 45 names affected (fcf_fallback/ocf_proxy/fcf_ttm_yf); real gap moves ATRC +38.9pts, DT +14.6, GOOG +13.4, ARGX +9.5; ANAB's all-SBC "FCF" now honest-nulls | PROVEN (C10) + STOP on retrodictive check (no historical SBC field). **APPLIED 2026-08-19** |
 | A2 | **Anchor the rate level to the measured implied CoE** (`tools/implied_erp.py` → level; keep sector spreads) | S–M — one table + re-baseline | **MEDIUM.** Level honesty: median MoS −41.7% → −53.1% (truthful vs 10% folk level); ranking effect modest (ρ 0.976, 17 flips) | PROVEN level effect (C1) |
 | A3 | **Load `fundamentals_battery.json`** (f_score, accruals, M-score, issuance) as verdict tripwire + prompt facts | S — file exists, RS2 just never opens it | **LOW now / insurance.** 1/35 BULLs flagged (INVA +7.4%/yr issuance); incidence rises if screener bands loosen | PROVEN incidence (C4) |
 | A4 | **Solvency tripwire** (coverage <3×, net-debt/OCF >4×) from already-ingested fields | S | **LOW now / insurance.** 0/35 BULLs, 6/125 HOLDs flagged | PROVEN incidence (C5) |
@@ -63,7 +65,15 @@ R1(remove-path), R2, R3, R4, A3, A4 (+A5 if time allows).
 - Does NOT fix: SBC ranking distortion, MoS level honesty.
 
 ### Option 2 — Institutional Core (RECOMMENDED, ~3–5 sessions, still deterministic)
-Option 1 + **A1 (SBC)** + **A2 (implied-ERP level)** + **A5 (comps cross-check)**.
+Option 1 + **A1 (SBC, corrected scope)** + **A2 (implied-ERP level)** + **A5 (comps cross-check)**.
+
+> **STATUS 2026-08-19: APPLIED.** All three landed with the guardrails: full-book replay
+> review in `audit/O2_replay_review.md` (166 names changed a field; 52 brake-tier flips;
+> ANAB route change), implied CoE calibrated at 12.07% → +1.8pt level offset
+> (`cache/coe_calibration.json`), sector EV/EBIT medians cached, live MoS distribution
+> rebuilt under the new methodology (median −51.9%), and the continuity anchor now carries a
+> one-cycle methodology note so `changed_because` cannot fabricate business narratives for
+> methodology deltas. Sweeps remain PAUSED pending human review of the replay table.
 - Effect: fixes the one *measured* ranking distortion (~21% of tiers reseat, in the direction
   every valuation authority endorses); published MoS levels become defensible ("the median
   name prices ~12% CoE against SBC-true flows" is a statement an institution can sign);

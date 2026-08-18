@@ -316,18 +316,38 @@ def valuation_block(ticker, bb=None):
     L.append(f"- Base cash flow [Actual]: ${b['base_cf']/1e9:.2f}B "
              f"({str(b['base_cf_kind']).replace('_',' ')}, {_per}); "
              f"sector discount rate {b['wacc_pct']}% (a cost-of-equity proxy: base_cf is net of "
-             f"interest, i.e. a LEVERED flow, so the rate discounts EQUITY cash flows).")
+             f"interest, i.e. a LEVERED flow, so the rate discounts EQUITY cash flows"
+             + (f"; level market-anchored {b['coe_anchor_offset_pts']:+}pts vs the sector table"
+                if b.get("coe_anchor_offset_pts") else "") + ").")
+    if str(b.get("base_cf_kind", "")).endswith("_sbc"):
+        L.append("- SBC EXPENSED [Actual]: this base cash flow is FCF-derived, and FCF's "
+                 "stock-based-comp add-back has been removed (TTM SBC subtracted) — stock comp "
+                 "is a real expense, not free money. Owner-earnings bases need no such "
+                 "adjustment (GAAP net income already expenses SBC).")
+    if b.get("comps_signal"):
+        _cl = (f"- RELATIVE CROSS-CHECK [Actual]: EV/EBIT {b['ev_ebit']}x vs sector median "
+               f"{b['sector_evebit_median']}x ({b['evebit_rel']}x relative) — {b['comps_signal'].upper()} "
+               f"on comps. A cross-check for error detection, not a fair-value input.")
+        _g = b.get("expectations_gap_pts")
+        if ((b["comps_signal"] == "cheap" and isinstance(_g, (int, float)) and _g >= 15)
+                or (b["comps_signal"] == "rich" and isinstance(_g, (int, float)) and _g <= -7)):
+            _cl += (" CONFLICT: the comps lens and the expectations gap point in OPPOSITE "
+                    "directions — one of them is wrong here (mispriced peer group, or a bad "
+                    "DCF base/growth input). Address the conflict explicitly in the stance "
+                    "rationale; do not average it away.")
+        L.append(_cl)
     # Stale/foreign-filer base caution (measured 2026-08-08: 4 of 258 tracked names — TSM/FMX
     # end FY2024 with no 10-Qs to build TTM from, SAP's USD-unit tags end FY2017, and BWMX's
     # history rows are local-currency). Deterministic conditions, no name lists.
     from datetime import datetime as _dt
     _stale = (b.get("base_period") != "ttm"
               and (b.get("fiscal_year") or _dt.now().year) <= _dt.now().year - 2)
-    if _stale or b.get("base_cf_kind") == "fcf_ttm_yf":
+    _yf_last_resort = str(b.get("base_cf_kind", "")).startswith("fcf_ttm_yf")
+    if _stale or _yf_last_resort:
         L.append(f"- DATA FRESHNESS CAUTION [Actual]: the SEC annual history for this name ends "
                  f"FY{b.get('fiscal_year')}"
                  + (" and the base cash flow rests on a trailing yfinance FCF figure of last "
-                    "resort" if b.get("base_cf_kind") == "fcf_ttm_yf" else "")
+                    "resort" if _yf_last_resort else "")
                  + ". Figures may lag the current business materially — weigh the research "
                    "brief's recent facts more heavily than the historical rows.")
     # Currency-consistency check: annual-history magnitudes vs the (USD) market cap. A revenue
