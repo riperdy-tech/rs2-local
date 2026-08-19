@@ -67,13 +67,22 @@ R1(remove-path), R2, R3, R4, A3, A4 (+A5 if time allows).
 ### Option 2 — Institutional Core (RECOMMENDED, ~3–5 sessions, still deterministic)
 Option 1 + **A1 (SBC, corrected scope)** + **A2 (implied-ERP level)** + **A5 (comps cross-check)**.
 
-> **STATUS 2026-08-19: APPLIED.** All three landed with the guardrails: full-book replay
-> review in `audit/O2_replay_review.md` (166 names changed a field; 52 brake-tier flips;
-> ANAB route change), implied CoE calibrated at 12.07% → +1.8pt level offset
-> (`cache/coe_calibration.json`), sector EV/EBIT medians cached, live MoS distribution
-> rebuilt under the new methodology (median −51.9%), and the continuity anchor now carries a
-> one-cycle methodology note so `changed_because` cannot fabricate business narratives for
-> methodology deltas. Sweeps remain PAUSED pending human review of the replay table.
+> **STATUS 2026-08-19: APPLIED AND LIVE.** All three landed with the guardrails: full-book
+> replay review in `audit/O2_replay_review.md` (166 names changed a field; 52 brake-tier
+> flips; ANAB route change), implied CoE calibrated at ~12.1% → +1.7/+1.8pt level offset
+> (`cache/coe_calibration.json`), sector EV/EBIT medians cached, MoS distribution rebuilt
+> under the new methodology, and the continuity anchor carries a one-cycle methodology note
+> so `changed_because` cannot fabricate business narratives for methodology deltas.
+>
+> **Correction to an earlier claim in this file's history:** sweeps were never paused —
+> `cache/PAUSED` did not exist (the session-start survey reported it present and it was not
+> re-verified). The 08:00 sweep of 2026-08-19 ran on the new code and published at 11:04
+> (13 tickers; `[coe] implied 12.06% → +1.7pts`). The transition was then completed the same
+> evening: all 290 verdicts repatched onto the new methodology (`repatch_verdicts.py`, no
+> LLM) and the overlay regenerated and pushed via `tools/publish_only.py` — 172 names,
+> MoS p33/p50/p75 −67.2/−54.2/−39.4, 134 HOLD / 33 BULL / 4 BEAR, conviction mean 9.7.
+> Repatched rows carry old-methodology prose in FINAL.md until each name's next full run;
+> the ledger's `repatched` flag marks them and the grader already accounts for it.
 - Effect: fixes the one *measured* ranking distortion (~21% of tiers reseat, in the direction
   every valuation authority endorses); published MoS levels become defensible ("the median
   name prices ~12% CoE against SBC-true flows" is a statement an institution can sign);
