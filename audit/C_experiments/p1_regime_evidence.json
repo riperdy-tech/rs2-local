@@ -1,0 +1,446 @@
+{
+  "probe": "P1 regime-evidence un-gating",
+  "samples_per_arm": 3,
+  "n_targets": 29,
+  "n_flips": 3,
+  "n_flips_toward_withheld_evidence": 1,
+  "verdict": "REJECTED \u2014 flips were bidirectional or unsupported by the withheld evidence",
+  "elapsed_s": 1318,
+  "rows": [
+    {
+      "ticker": "ADEA",
+      "old_majority": "midcycle",
+      "new_majority": "midcycle",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 0.1,
+      "ocf_b": 0.2,
+      "old_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical revenue decline of -56%, indicating that the recent surge to $0.18B in Q4 2025 was a cyclical peak rather than secular growth. The most recent quarter (Q2 2"
+      ],
+      "new_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical worst revenue decline of -56%, indicating that the recent +53% YoY growth spike is a cycle peak rather than secular acceleration. The most recent quarter (2"
+      ]
+    },
+    {
+      "ticker": "ANET",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 4.0,
+      "ocf_b": 5.3,
+      "old_reasons": [
+        "The company exhibits secular growth with zero revenue declines in the last 10 years, ruling out mid-cycle normalization. The most recent quarter (2026-06-30) shows acceleration to +38% YoY revenue growth and a net income"
+      ],
+      "new_reasons": [
+        "The company exhibits secular growth with zero revenue declines in the last 10 years, ruling out mid-cycle normalization. The most recent quarter (2026-06-30) shows acceleration to +38% YoY revenue growth and $1.21B net i"
+      ]
+    },
+    {
+      "ticker": "CASY",
+      "old_majority": "owner_earnings",
+      "new_majority": "current_earnings",
+      "flipped": true,
+      "ni_gt_ocf": false,
+      "ni_b": null,
+      "ocf_b": null,
+      "old_reasons": [
+        "The most recent quarter (2026-04-30) shows revenue growth of +14% YoY but net income of only $0.16B, which is a deceleration from the peak of $0.22B in Q3 2025 and below the Q2 2025 level of $0.10B adjusted for scale, in"
+      ],
+      "new_reasons": [
+        "The company exhibits secular growth rather than cyclicality, evidenced by only one year of revenue decline (-5%) in the last decade and a recent quarter (2026-04-30) showing +14% YoY revenue growth with stable net income"
+      ]
+    },
+    {
+      "ticker": "CI",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 7.0,
+      "ocf_b": 10.3,
+      "old_reasons": [
+        "The company exhibits a secular growth profile with zero revenue declines in the last decade, invalidating the mid-cycle basis. The most recent quarter (2026-06-30) shows revenue of $71.67B (+7% YoY) and net income of $1."
+      ],
+      "new_reasons": [
+        "The company has never experienced a revenue decline in the last 10 years, confirming it is a secular grower rather than a cyclical one, which invalidates the mid-cycle basis. The most recent quarter (2026-06-30) shows re"
+      ]
+    },
+    {
+      "ticker": "COHR",
+      "old_majority": "current_earnings",
+      "new_majority": "owner_earnings",
+      "flipped": true,
+      "ni_gt_ocf": true,
+      "ni_b": 0.5,
+      "ocf_b": 0.1,
+      "old_reasons": [
+        "The company is not a deep cyclical (worst historical decline -9%), so mid-cycle normalization is inappropriate. The most recent quarter (2026-03-31) shows revenue growth re-accelerating to +20% YoY with net income of $0."
+      ],
+      "new_reasons": [
+        "Capex of $0.7B absorbs 484% of operating cash flow ($0.1B), resulting in negative free cash flow (-$0.5B) despite positive net income, indicating that expansion is not converting into cash generation. The revenue growth "
+      ]
+    },
+    {
+      "ticker": "CSCO",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 12.0,
+      "ocf_b": 13.0,
+      "old_reasons": [
+        "The company exhibits secular growth characteristics rather than cyclicality, evidenced by a mild historical worst-case revenue decline of only -6% and an accelerating recent trajectory where the most recent quarter (2026"
+      ],
+      "new_reasons": [
+        "The company exhibits mild historical volatility (worst revenue decline -6%) rather than deep cyclicality, making mid-cycle normalization inappropriate. The most recent quarter (2026-04-25) shows accelerating growth (+12%"
+      ]
+    },
+    {
+      "ticker": "DGII",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 0.0,
+      "ocf_b": 0.1,
+      "old_reasons": [
+        "The company exhibits a clear acceleration in revenue growth, rising from +9% YoY in Q3 2025 to +29% YoY in the most recent quarter (Q2 2026), which contradicts the premise of a cyclical peak that would justify mid-cycle "
+      ],
+      "new_reasons": [
+        "The company exhibits mild historical variation with a worst decline of only -11% over 11 years, which does not support the 'mid-cycle' basis reserved for deep boom-bust cycles. The most recent quarter (2026-06-30) shows "
+      ]
+    },
+    {
+      "ticker": "DLTR",
+      "old_majority": "midcycle",
+      "new_majority": "midcycle",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 1.3,
+      "ocf_b": 2.5,
+      "old_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical revenue decline of -41%, indicating that current high growth is likely a cyclical peak rather than secular expansion. The most recent quarter (2026-05-02) s"
+      ],
+      "new_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical revenue decline of -41%, indicating that current high growth is likely cyclical rather than secular. The most recent quarter (2026-05-02) shows decelerating"
+      ]
+    },
+    {
+      "ticker": "DT",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 0.2,
+      "ocf_b": 0.6,
+      "old_reasons": [
+        "The company has never recorded a revenue decline in the 9-year history (2018-2026), confirming it is a secular grower rather than a cyclical, which invalidates the mid-cycle basis. The quarterly trajectory shows sustaine"
+      ],
+      "new_reasons": [
+        "The company has never experienced a revenue decline in the 2018-2026 period, indicating a secular growth profile rather than a cyclical one, which invalidates the mid-cycle basis. The quarterly trajectory shows consisten"
+      ]
+    },
+    {
+      "ticker": "EME",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": true,
+      "ni_b": 1.4,
+      "ocf_b": 1.3,
+      "old_reasons": [
+        "The company exhibits secular growth with zero revenue declines in the last 12 years, invalidating the mid-cycle basis. The most recent quarter (2026-06-30) shows sustained acceleration with revenue at $5.15B (+20% YoY) a"
+      ],
+      "new_reasons": [
+        "The company exhibits secular growth with zero revenue declines in the last 12 years, invalidating a mid-cycle normalization. The most recent quarter (2026-06-30) shows accelerating performance with +20% YoY revenue growt"
+      ]
+    },
+    {
+      "ticker": "FIX",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 1.4,
+      "ocf_b": 2.6,
+      "old_reasons": [
+        "The company has never recorded a revenue decline in the last 10 years, confirming it is a secular grower rather than a cyclical entity, which invalidates the mid-cycle basis. The most recent quarter (2026-06-30) shows re"
+      ],
+      "new_reasons": [
+        "The company exhibits secular growth with zero revenue declines in the last 10 years, ruling out mid-cycle normalization. The most recent quarter (2026-06-30) shows accelerating revenue growth (+50% YoY) and net income ($"
+      ]
+    },
+    {
+      "ticker": "ILMN",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 0.8,
+      "ocf_b": 1.1,
+      "old_reasons": [
+        "The company exhibits mild historical variation with a worst revenue decline of only -9% over 8 years, which does not support the 'mid-cycle' basis reserved for deep boom-bust cyclicals. The most recent quarter (2026-06-2"
+      ],
+      "new_reasons": [
+        "The company is not a deep cyclical, as evidenced by only one year of revenue decline (-9%) in the last 8 years, which disqualifies the mid-cycle basis. The most recent quarter (2026-06-28) shows acceleration with +9% YoY"
+      ]
+    },
+    {
+      "ticker": "INCY",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 1.4,
+      "ocf_b": 1.5,
+      "old_reasons": [
+        "The company exhibits secular growth with zero revenue declines in the last nine years, ruling out mid-cycle normalization. The most recent quarter (2026-03-31) shows revenue of $1.27B (+21% YoY) and net income of $0.30B,"
+      ],
+      "new_reasons": [
+        "The company exhibits secular growth with zero revenue declines in the last 9 years, ruling out mid-cycle normalization. The most recent quarter (2026-03-31) shows revenue acceleration to +21% YoY and stable net income of"
+      ]
+    },
+    {
+      "ticker": "KFY",
+      "old_majority": "current_earnings",
+      "new_majority": "owner_earnings",
+      "flipped": true,
+      "ni_gt_ocf": false,
+      "ni_b": null,
+      "ocf_b": 0.2,
+      "old_reasons": [
+        "The company exhibits mild historical variation with a worst-case revenue decline of only -8%, ruling out mid-cycle normalization as the primary basis. The quarterly trajectory shows consistent acceleration in YoY growth "
+      ],
+      "new_reasons": [
+        "The company exhibits a secular growth pattern with only one mild revenue decline (-8%) in the last decade, ruling out mid-cycle normalization. The quarterly trajectory shows consistent acceleration in YoY revenue growth "
+      ]
+    },
+    {
+      "ticker": "LAUR",
+      "old_majority": "midcycle",
+      "new_majority": "midcycle",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 0.3,
+      "ocf_b": 0.4,
+      "old_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical revenue decline of -63%, indicating that high growth periods are cyclical peaks rather than structural shifts. The most recent quarter (2026-06-30) shows de"
+      ],
+      "new_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical revenue decline of -63%, indicating that current high growth is likely a cyclical peak rather than secular expansion. The most recent quarter (2026-03-31) s"
+      ]
+    },
+    {
+      "ticker": "MDT",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": null,
+      "ocf_b": 5.4,
+      "old_reasons": [
+        "The company exhibits secular growth rather than cyclical behavior, evidenced by only one year of revenue decline (-5%) in a decade and an accelerating revenue trajectory from +2% YoY to +10% YoY. The most recent quarter "
+      ],
+      "new_reasons": [
+        "The company exhibits secular growth rather than cyclical behavior, evidenced by a 10-year history with only one mild revenue decline (-5%) and accelerating YoY revenue growth in the most recent quarter (+10% to $9.81B). "
+      ]
+    },
+    {
+      "ticker": "NVEC",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": true,
+      "ni_b": 0.0,
+      "ocf_b": 0.0,
+      "old_reasons": [
+        "The most recent quarter (2026-06-30) shows a significant acceleration with revenue +81% YoY and the first positive net income ($0.01B), indicating that current spending is converting into growth rather than being a cycli"
+      ],
+      "new_reasons": [
+        "The most recent quarter (2026-06-30) shows a sharp acceleration in revenue growth to +81% YoY and the first positive net income of $0.01B, indicating that recent capacity investments are successfully converting into prof"
+      ]
+    },
+    {
+      "ticker": "NWPX",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 0.0,
+      "ocf_b": 0.1,
+      "old_reasons": [
+        "The company exhibits mild historical variation (worst decline -11%) rather than deep cyclicality, making mid-cycle normalization inappropriate. The most recent quarter (2026-06-30) shows accelerating revenue growth (+20%"
+      ],
+      "new_reasons": [
+        "The company exhibits mild historical variation (worst decline -11%) rather than deep cyclicality, making mid-cycle normalization inappropriate. The most recent quarter (2026-06-30) shows acceleration to +20% YoY revenue "
+      ]
+    },
+    {
+      "ticker": "PAYX",
+      "old_majority": "owner_earnings",
+      "new_majority": "owner_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": null,
+      "ocf_b": 1.1,
+      "old_reasons": [
+        "The most recent quarter (2026-05-31) shows a deceleration in YoY revenue growth to +12% and a decline in net income to $0.42B from the prior quarter's $0.56B, indicating that recent heavy capex is not currently convertin"
+      ],
+      "new_reasons": [
+        "The company exhibits secular growth with zero revenue declines in the last 12 years, ruling out mid-cycle normalization. The most recent quarter (2026-05-31) shows net income of $0.42B on $1.61B revenue, indicating that "
+      ]
+    },
+    {
+      "ticker": "PCTY",
+      "old_majority": "owner_earnings",
+      "new_majority": "owner_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": null,
+      "ocf_b": 0.0,
+      "old_reasons": [
+        "The company is a secular grower with zero revenue decline years, ruling out mid-cycle. However, the most recent quarter (2026-06-30) shows deceleration in both revenue (+11% YoY vs +13% prior) and net income ($0.06B vs $"
+      ],
+      "new_reasons": [
+        "The company exhibits secular growth with zero revenue decline years in the last 12, ruling out mid-cycle normalization. The most recent quarter (2026-03-31) shows net income acceleration to $0.11B despite flat revenue, i"
+      ]
+    },
+    {
+      "ticker": "PRVA",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 0.0,
+      "ocf_b": 0.1,
+      "old_reasons": [
+        "The company is a secular grower with zero revenue declines in the last 7 years, ruling out mid-cycle normalization. The most recent quarter (2026-06-30) shows revenue growth of +21% YoY and positive net income, indicatin"
+      ],
+      "new_reasons": [
+        "The company is a secular grower with zero revenue declines in the last seven years, making mid-cycle averaging inappropriate. The most recent quarter (2026-06-30) shows continued acceleration with +21% YoY revenue growth"
+      ]
+    },
+    {
+      "ticker": "RL",
+      "old_majority": "midcycle",
+      "new_majority": "midcycle",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 1.0,
+      "ocf_b": 1.3,
+      "old_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical revenue decline of -29%, indicating that current high growth is likely a cyclical peak rather than secular expansion. The most recent quarter (2026-06-27) s"
+      ],
+      "new_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical revenue decline of -29%, indicating that current high growth is likely a cycle peak rather than secular expansion. The most recent quarter (2026-03-28) show"
+      ]
+    },
+    {
+      "ticker": "ROK",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 1.2,
+      "ocf_b": 1.7,
+      "old_reasons": [
+        "The company exhibits mild historical variation with a worst-case decline of only -9%, which does not meet the threshold for a deep cyclical extreme, making mid-cycle normalization inappropriate. The most recent quarter ("
+      ],
+      "new_reasons": [
+        "The company exhibits secular growth characteristics rather than cyclical extremes, evidenced by a maximum historical revenue decline of only -9% over the last nine years, which disqualifies the 'mid-cycle' basis. The mos"
+      ]
+    },
+    {
+      "ticker": "ROP",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 2.5,
+      "ocf_b": 2.7,
+      "old_reasons": [
+        "The company exhibits secular growth rather than cyclicality, evidenced by only one minor revenue decline (-10%) in a decade and a consistent upward trajectory in net income reaching $1.17B in the most recent quarter desp"
+      ],
+      "new_reasons": [
+        "The company exhibits mild historical variation (worst decline -10%) rather than deep cyclicality, disqualifying the mid-cycle basis. Capex is minimal ($0.1B, absorbing only 2% of OCF), indicating it is not a cost-of-stan"
+      ]
+    },
+    {
+      "ticker": "SENEA",
+      "old_majority": "owner_earnings",
+      "new_majority": "owner_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": null,
+      "ocf_b": 0.0,
+      "old_reasons": [
+        "The most recent quarter (2026-06-27) shows revenue growth decelerating sharply to +36% YoY from a prior high, but net income actually declined to $0.02B from $0.04B in the previous reported period, indicating that expans"
+      ],
+      "new_reasons": [
+        "The company exhibits mild historical variation (worst decline -6%) rather than a deep cyclical pattern, making mid-cycle normalization inappropriate. The most recent quarter (2026-06-27) shows strong acceleration with +3"
+      ]
+    },
+    {
+      "ticker": "SENEB",
+      "old_majority": "owner_earnings",
+      "new_majority": "owner_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": null,
+      "ocf_b": 0.0,
+      "old_reasons": [
+        "The revenue trajectory shows deceleration and volatility (peaking at +36% YoY in Q2 2026 but dropping to +1% YoY in Q4 2025), indicating that expansion is not consistently converting into stable growth. With a median del"
+      ],
+      "new_reasons": [
+        "The company is not a deep cyclical (worst historical decline only -6%), ruling out mid-cycle normalization. The most recent quarter (2026-06-27) shows revenue growth decelerating to +36% YoY from prior periods, while net"
+      ]
+    },
+    {
+      "ticker": "STX",
+      "old_majority": "midcycle",
+      "new_majority": "midcycle",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": null,
+      "ocf_b": null,
+      "old_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical revenue decline of -37%, indicating that the current high-growth phase (48% YoY) is likely a cyclical peak rather than a secular trend. Although recent quar"
+      ],
+      "new_reasons": [
+        "The company exhibits a deep boom-bust pattern with a historical revenue decline of -37%, indicating that current high growth is likely a cyclical peak rather than secular expansion. Although the most recent quarter shows"
+      ]
+    },
+    {
+      "ticker": "TT",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": false,
+      "ni_b": 2.9,
+      "ocf_b": 3.9,
+      "old_reasons": [
+        "The company exhibits mild historical variation (worst decline -17%) rather than deep boom-bust cycles, making mid-cycle normalization inappropriate. The most recent quarter (2026-06-30) shows revenue acceleration to +11%"
+      ],
+      "new_reasons": [
+        "The company exhibits mild historical variation (worst decline -17%) rather than a deep boom-bust cycle, making mid-cycle normalization inappropriate. The most recent quarter (2026-06-30) shows re-acceleration with revenu"
+      ]
+    },
+    {
+      "ticker": "UFPT",
+      "old_majority": "current_earnings",
+      "new_majority": "current_earnings",
+      "flipped": false,
+      "ni_gt_ocf": true,
+      "ni_b": 0.1,
+      "ocf_b": 0.1,
+      "old_reasons": [
+        "The most recent quarter (2026-06-30) shows a clear acceleration in revenue growth to +15% YoY, breaking the stagnation of the prior five quarters (+3% to +6%), which indicates that recent capacity investments are success"
+      ],
+      "new_reasons": [
+        "The most recent quarter (2026-06-30) shows a clear acceleration in revenue growth to +15% YoY, reversing the prior deceleration trend, which indicates that current spending is building new capacity rather than merely mai"
+      ]
+    }
+  ]
+}

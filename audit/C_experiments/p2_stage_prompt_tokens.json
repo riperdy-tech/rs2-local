@@ -1,0 +1,46 @@
+{
+  "probe": "P2 production stage prompt token budget",
+  "stage_ctx": 24576,
+  "carry_cap_chars": 4500,
+  "n_overflowing": 0,
+  "n_measured": 4,
+  "median_headroom": 6807,
+  "rows": [
+    {
+      "ticker": "GOOG",
+      "prompt_chars": 48190,
+      "prompt_tokens": 17827,
+      "stage_ctx": 24576,
+      "headroom_tokens": 6749,
+      "overflows": false,
+      "chars_per_token": 2.7
+    },
+    {
+      "ticker": "NVDA",
+      "prompt_chars": 49216,
+      "prompt_tokens": 18074,
+      "stage_ctx": 24576,
+      "headroom_tokens": 6502,
+      "overflows": false,
+      "chars_per_token": 2.72
+    },
+    {
+      "ticker": "AAPL",
+      "prompt_chars": 48788,
+      "prompt_tokens": 17769,
+      "stage_ctx": 24576,
+      "headroom_tokens": 6807,
+      "overflows": false,
+      "chars_per_token": 2.75
+    },
+    {
+      "ticker": "CAH",
+      "prompt_chars": 45900,
+      "prompt_tokens": 17090,
+      "stage_ctx": 24576,
+      "headroom_tokens": 7486,
+      "overflows": false,
+      "chars_per_token": 2.69
+    }
+  ]
+}

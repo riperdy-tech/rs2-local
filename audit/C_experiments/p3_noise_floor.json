@@ -1,0 +1,45 @@
+{
+  "probe": "P3 noise floor \u2014 identical prompt repeated",
+  "elapsed_s": 400,
+  "rows": [
+    {
+      "ticker": "COHR",
+      "repeats": 21,
+      "vote_distribution": {
+        "current_earnings": 21
+      },
+      "n_parsed": 21,
+      "modal_3sample_majority": "current_earnings",
+      "n_3sample_windows": 19,
+      "n_windows_differing_from_modal": 0,
+      "decision_instability_pct": 0.0
+    },
+    {
+      "ticker": "CASY",
+      "repeats": 21,
+      "vote_distribution": {
+        "current_earnings": 14,
+        "owner_earnings": 7
+      },
+      "n_parsed": 21,
+      "modal_3sample_majority": "current_earnings",
+      "n_3sample_windows": 19,
+      "n_windows_differing_from_modal": 4,
+      "decision_instability_pct": 21.1
+    },
+    {
+      "ticker": "KFY",
+      "repeats": 21,
+      "vote_distribution": {
+        "current_earnings": 19,
+        "owner_earnings": 2
+      },
+      "n_parsed": 21,
+      "modal_3sample_majority": "current_earnings",
+      "n_3sample_windows": 19,
+      "n_windows_differing_from_modal": 1,
+      "decision_instability_pct": 5.3
+    }
+  ],
+  "interpretation": "If decision_instability_pct is materially above zero, a small number of majority flips in any A/B of this call is inside the noise and cannot be attributed to the change under test."
+}
