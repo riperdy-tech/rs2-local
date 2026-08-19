@@ -18,6 +18,7 @@ import json
 import sys
 from pathlib import Path
 
+import orchestrate            # audit_clean — repatch must target the bundle that publishes
 import run_rs2
 import valuation_backbone as vb
 
@@ -32,7 +33,17 @@ VAL_REFRESH = ("fair_value", "mos_pct", "realistic_mos_pct", "fair_value_method"
 
 
 def latest_dir(t):
+    """The bundle the OVERLAY would publish, so a repatch always lands on the live row.
+
+    Was newest-with-FINAL, which diverges whenever the newest attempt is not audit-clean:
+    orchestrate.latest_verdict skips those, so the repatch updated a bundle nobody reads and
+    the published row stayed on the old methodology (measured 2026-08-19: 8 of 172 overlay
+    names — AZN, EXPE, KNSA, MEDP, MPWR, ROST, JOE, UFPT). Match the publisher's selection
+    first; fall back to newest-with-FINAL when no bundle is audit-clean."""
     ds = sorted(REPORTS.glob(f"{t}_*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for d in ds:
+        if (d / "FINAL.md").exists() and (d / "verdict.json").exists() and orchestrate.audit_clean(d):
+            return d
     for d in ds:
         if (d / "FINAL.md").exists():
             return d
