@@ -73,14 +73,24 @@ def _log_usage(usage):
 def api_chat(content, ctx=None, think=True, retries=2, temperature=None, timeout=600,
              max_tokens=None):
     """POST {base_url}/chat/completions with RS2.txt as system prompt. Returns assistant text."""
-    body = json.dumps({
+    payload = {
         "model": CONFIG["model"],
         "messages": [{"role": "system", "content": _system_prompt()},
                      {"role": "user", "content": content}],
         "temperature": CONFIG.get("temperature", 0.4) if temperature is None else temperature,
-        "max_tokens": max_tokens or CONFIG.get("max_tokens", 8192),
+        # Config max_tokens acts as a FLOOR under caller-passed caps: thinking backends count
+        # reasoning tokens against max_tokens, so run_rs2's final-assembly cap (16384) starves
+        # deep-reasoning arms. For non-thinking clouds (config 8192 < caller 16384) unchanged.
+        "max_tokens": max(max_tokens or 0, CONFIG.get("max_tokens", 8192)),
         "stream": False,
-    }).encode("utf-8")
+    }
+    # Optional (config-driven): thinking-depth control for backends that support it
+    # (Ollama /v1 and OpenAI-style: "low"/"medium"/"high"/"none"). Unset = backend default.
+    # run_rs2 passes think=False on calls where the local model must not think (regime
+    # samples, JSON repair) — mirror that as effort "none", matching production semantics.
+    if CONFIG.get("reasoning_effort"):
+        payload["reasoning_effort"] = CONFIG["reasoning_effort"] if think else "none"
+    body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {_api_key()}"}
     headers.update(CONFIG.get("extra_headers") or {})
     url = CONFIG["base_url"].rstrip("/") + "/chat/completions"
