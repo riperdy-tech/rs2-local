@@ -1572,8 +1572,6 @@ def deterministic_audit(t, out_dir, val_res, level="full"):
                 _full = fp0.read_text(encoding="utf-8", errors="replace")
                 rec("final.section12_present", "SECTION 12" in _full.upper(),
                     f"len {len(_full)} chars")
-                # basis-judgment PRESENCE is tier-1's (full file); the AI verifier judges only
-                # its content from the extracted slot (WDC phantom class, 2026-08-09)
                 rjx = rs2_data.load_json(out_dir / "routing.json")
                 # REGIME JUDGMENT (rule 19): required, and required to be PARSEABLE, on any
                 # name the lattice flags contested — its choice decides the published verdict,

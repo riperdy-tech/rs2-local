@@ -1,5 +1,5 @@
 {
-  "_comment": "RS2 Local \u2014 single source of truth for paths + pipeline settings. All paths absolute (Windows).",
+  "_comment": "RS2 Local — single source of truth for paths + pipeline settings. All paths absolute (Windows).",
   "screener_data_dir": "C:/Users/riper/Downloads/Stock Screener/Stock Screener/public/data",
   "mri_outputs_dir": "C:/Users/riper/Downloads/Stock Screener/Macro Regime Indicator/outputs",
   "agentwebsearch_dir": "C:/Users/riper/Downloads/RS2 Local/AgentWebSearch-MCP",
@@ -10,14 +10,14 @@
   "final_ctx": 32768,
   "think": false,
   "stage_carry_char_cap": 4500,
-  "_watchdog_note": "orchestrate.py kills a single run_rs2 child (and unloads both models) if it exceeds this many minutes, then marks the name failed + retries it \u2014 fail-safe against a hung run pinning the GPU indefinitely. Avg is ~11 min/name; 40 leaves ~3.5x headroom for a slow deep-research name. Override per-run with --ticker-timeout-min.",
+  "_watchdog_note": "orchestrate.py kills a single run_rs2 child (and unloads both models) if it exceeds this many minutes, then marks the name failed + retries it (orchestrate.py:49 MAX_RETRIES=3). CORRECTED 2026-08-20 (the old note's '~11 min/name, 3.5x headroom' was pre-migration). MEASURED over reports/_orchestrate.log (57,723 lines): the watchdog has fired exactly 4 times ever — NOVT x1, and ARGX x3 on 2026-08-18 (13:07:54 / 13:54:28 / 14:38:02), which BURNED THE FULL RETRY BUDGET AND NEVER PUBLISHED: ARGX's newest bundle is still reports/ARGX_20260723_011459. Attempt 3 shows the cause — deep research alone took 1,967s (32.8 min) across four subqueries (1035s / 775s / 98s / 59s via searxng), leaving ~7 min of the 40 for six analyst stages that need ~10. So the binding constraint is NOT analyst generation, it is deep_research latency. STRUCTURAL GAP (unfixed, needs an operator decision): run_rs2.py:2038 calls subprocess.run(cmd, capture_output=True, ...) with NO timeout=, and deep_research.py contains exactly one timeout in the whole file (line 161, a 20s SearXNG preflight probe). The research phase is therefore unbounded, and this ticker-level watchdog is the only thing bounding it. capture_output also buffers the child until exit, so the log shows total silence during research and cannot distinguish a stall from slow-but-healthy work. RAISING THIS NUMBER WEAKENS THE ONLY BOUND ON THE UNBOUNDED PHASE — bound deep_research at source instead. Override per-run with --ticker-timeout-min.",
   "ticker_timeout_min": 40,
   "out_reports_dir": "C:/Users/riper/Downloads/RS2 Local/reports",
   "out_enrich_dir": "C:/Users/riper/Downloads/RS2 Local/enrich",
   "out_research_dir": "C:/Users/riper/Downloads/RS2 Local/research",
   "_regime_note": "MRI current_regime.json can be synthetic_sample (future-dated). rs2_data.py only uses its regime probabilities when the file date is within regime_max_age_days of today; otherwise it feeds real macro_state.json and lets the model classify.",
   "regime_max_age_days": 45,
-  "_research_note": "Deep-research (LDR) runs in research-venv on a CLEAN model (NOT rs2-analyst \u2014 its baked RS2 prompt would contaminate LDR's research prompts). Tavily primary w/ quota guard -> SearXNG fallback (local/unlimited). snippets_only=False = read full pages.",
+  "_research_note": "Deep-research (LDR) runs in research-venv on a CLEAN model (NOT rs2-analyst — its baked RS2 prompt would contaminate LDR's research prompts). Tavily primary w/ quota guard -> SearXNG fallback (local/unlimited). snippets_only=False = read full pages.",
   "research_venv_python": "C:/Users/riper/Downloads/RS2 Local/research-venv/Scripts/python.exe",
   "research_model": "rs2-research",
   "research_ctx": 8192,
@@ -27,7 +27,7 @@
   "research_max_results": 8,
   "research_cache_days": 7,
   "tavily_calls_per_query_est": 6,
-  "_vram_note": "rs2-analyst and rs2-research are BOTH ~23GB on a 24GB card, so they can never co-reside. The unload is a VERIFIED barrier (ops.wait_unloaded): after keep_alive:0 it polls /api/ps AND nvidia-smi free VRAM until the release is observed, because ollama's 200 only means the request finished \u2014 it tears the llama-server subprocess down asynchronously. The old blind time.sleep(2) lost that race and OOM'd the next load. free_required is the floor the next ~23GB load needs; timeout is a hard failure (ticker aborts + Telegram) rather than loading into a half-freed card.",
+  "_vram_note": "rs2-analyst and rs2-research are BOTH ~23GB on a 24GB card, so they can never co-reside. The unload is a VERIFIED barrier (ops.wait_unloaded): after keep_alive:0 it polls /api/ps AND nvidia-smi free VRAM until the release is observed, because ollama's 200 only means the request finished — it tears the llama-server subprocess down asynchronously. The old blind time.sleep(2) lost that race and OOM'd the next load. free_required is the floor the next ~23GB load needs; timeout is a hard failure (ticker aborts + Telegram) rather than loading into a half-freed card.",
   "vram_free_required_mb": 20000,
   "vram_unload_timeout_s": 180,
   "searxng_serving_engines": [
@@ -39,5 +39,5 @@
     "dogpile"
   ],
   "searxng_min_probe_results": 10,
-  "_stage_ctx_note": "Raised 24576 -> 49152 on 2026-08-20. Measured across 921 real requests: median prompt 7,508 tokens, p90 20,182, max 24,851 \u2014 ABOVE the old 24,576 window. 26 completions truncated at exactly n_tokens=24575 and published as successes. 49152 loads fully on GPU at Q4 on this box."
+  "_stage_ctx_note": "Raised 24576 -> 49152 on 2026-08-20. CORRECTED 2026-08-20: the original note's stated cause did not happen. Re-measured over the three Ollama server logs (2,821 'stop processing' lines): 226 completions hit a context wall, bucketed by n_tokens = num_ctx-1 — 177 at 24575 (the old stage window; 08-17 x63, 08-18 x105, 08-19 x9), 45 at 32767, 2 at 8191, 1 at 40959, 1 at 65535. What overflowed was prompt PLUS generation, not the prompt alone; the earlier '26' was a single-log, single-bucket count. The decision to raise stage_ctx stands; the reason recorded for it did not. *** OPEN AND UNADDRESSED: 45 of those truncations are at 32767 = final_ctx-1, and final_ctx is STILL 32768. The session fixed the stage window and left the final window alone. Since 9ba2929 made done_reason=='length' raise, a final-assembly truncation is no longer a silently-published stub — run_rs2.py:2156 passes retries=1, so `for attempt in range(1)` runs ONE attempt with no context escalation, the RuntimeError is unwrapped, and the ticker dies outright and burns a full rerun including deep research. 45 events fell on 2026-08-17/18 alone. This will fire on the first sweep after resume, preferentially on the longest reports. *** Also still unmeasured in both directions: what a stage actually GENERATES at 49,152 with thinking off. rs2-analyst has never run a production sweep at this window."
 }
