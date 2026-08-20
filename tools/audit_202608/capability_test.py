@@ -113,8 +113,16 @@ def build_pack(t):
               f"EPS CAGR {fg.get('eps_cagr')}  (source {fg.get('source')})"]
         en = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
         if en:
-            L.append(f"- Analyst targets: low {en.get('target_low')} / mean {en.get('target_mean')} "
-                     f"/ median {en.get('target_median')} / high {en.get('target_high')}")
+            # KEY BUG, found 2026-08-20 by auditing the reports: these read target_* while
+            # enrich/{T}.json stores analyst_target_*. Every pack built before this fix showed
+            # "low None / mean None" — data we HAD, withheld from the model by a typo, which is
+            # the same defect class as the da-gate in run_rs2. Meanwhile the plausibility guard
+            # was judging the output against those very targets via vb._consensus_band, i.e.
+            # scoring the model on evidence it was never given.
+            L.append(f"- Analyst targets: low {en.get('analyst_target_low')} / "
+                     f"mean {en.get('analyst_target_mean')} / "
+                     f"median {en.get('analyst_target_median')} / "
+                     f"high {en.get('analyst_target_high')}")
             L.append(f"- 52-week range: {en.get('fifty_two_week_low')} - {en.get('fifty_two_week_high')}")
             L.append(f"- Short % float: {en.get('short_percent_float')}  |  "
                      f"Institutions: {en.get('held_percent_institutions')}")
@@ -148,7 +156,40 @@ Produce the full report, SECTION 0 through SECTION 12, per the framework's FINAL
 STRUCTURE. Show your explicit forecast (per-year revenue, margin, capex, D&A or their
 equivalents) and your discount-rate derivation. End with SECTION 12 Final Execution Opinion.
 
+SOURCE EVERY FORECAST DRIVER. For each of revenue growth, margin, capital expenditure and
+discount rate, state where the number came from: a figure in the data pack, a figure you
+retrieved, or your own assumption. Any driver you cannot source is an [Assumption] and must be
+labelled one.
+
+Pay particular attention to periods BEYOND the data you were given. A guidance figure that
+covers only the current year tells you nothing about later years, and quietly extending a
+trend across a decade is the single easiest way to decide a valuation by accident. If the path
+of a driver after the guided period is not established, say so, and show what the valuation
+does across the plausible range instead of picking one silently.
+
 Think carefully before writing. Numbers before narrative."""
+
+# Appended ONLY when the analyst is given search tools (consensus_valuation --tools).
+RESEARCH_ADDENDUM = """
+
+RESEARCH RULES — you have web search available, so DO NOT ASSUME WHAT YOU CAN LOOK UP.
+
+1. When your reasoning needs a fact you do not have, SEARCH FOR IT. Do not substitute an
+   assumption, a trend extrapolation, or a "reasonable" placeholder. This applies especially to
+   forward-looking drivers: guidance for years beyond the data pack, capital-expenditure plans,
+   management commentary on future spending, competitor capacity, regulatory outcomes, and
+   current macro (rates, policy).
+2. Search DURING your reasoning, not after you have decided. A number found to justify a
+   conclusion you already reached is not evidence.
+3. NEVER search to re-source financial-statement figures already in your pack. Revenue, net
+   income, operating cash flow, capital expenditure, free cash flow and share counts come from
+   SEC filings and are authoritative — a web page restating them is less reliable, not more.
+   Search for what the filings CANNOT tell you: the future, and the outside world.
+4. Cite what you retrieve. Every retrieved figure gets its source named inline, and stays
+   [Actual] only if it came from the company or a regulator; a secondary report is [Estimate].
+5. If you search and still cannot establish a number, that is a legitimate finding: mark it
+   [Unconfirmed], state what you could not resolve, and carry the uncertainty into your
+   scenarios rather than burying it in a point estimate."""
 
 
 def _arg(flag, default=None):

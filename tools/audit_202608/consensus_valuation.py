@@ -139,35 +139,68 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     d = OUT / f"{t}_{ts}"
     d.mkdir(parents=True, exist_ok=True)
+    # Save the exact pack. Without it a consensus run is not re-auditable from its own directory
+    # — found when three auditors had to reconstruct it independently to check the reports.
+    (d / "_pack.md").write_text(pack, encoding="utf-8")
     print(f"[consensus] {t} @ ${price} | model={model} | {n} samples -> {d}", flush=True)
+
+    use_tools = "--tools" in sys.argv
+    if use_tools:
+        import analyst_tools
+        # The no-assumption rules only make sense when the model can actually look things up.
+        pack += cap.RESEARCH_ADDENDUM
+        (d / "_pack.md").write_text(pack, encoding="utf-8")
+        print("  [tools ENABLED] search-during-reasoning rules appended; every query and page "
+              "is snapshotted per sample", flush=True)
 
     runs = []
     for i in range(1, n + 1):
         t0 = time.time()
+        resp, meta = {}, {}
         try:
-            body = {"model": model, "stream": False, "think": "high",
-                    "messages": [{"role": "user", "content": pack}],
-                    "options": {"num_ctx": ctx, "num_predict": 49152, "seed": 1000 + i}}
-            import urllib.request
-            req = urllib.request.Request("http://localhost:11434/api/chat",
-                                         data=json.dumps(body).encode(),
-                                         headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=14400) as r:
-                resp = json.loads(r.read().decode())
+            if use_tools:
+                sd_i = d / f"sample{i}_research"
+                rep, think, meta = analyst_tools.chat_with_tools(
+                    model, pack, sd_i, think="high", ctx=ctx, num_predict=49152, seed=1000 + i)
+                resp = {"done_reason": meta.get("done_reason"),
+                        "eval_count": meta.get("generated_tokens")}
+                msg = {}
+            else:
+                body = {"model": model, "stream": False, "think": "high",
+                        "messages": [{"role": "user", "content": pack}],
+                        "options": {"num_ctx": ctx, "num_predict": 49152, "seed": 1000 + i}}
+                import urllib.request
+                req = urllib.request.Request("http://localhost:11434/api/chat",
+                                             data=json.dumps(body).encode(),
+                                             headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=14400) as r:
+                    resp = json.loads(r.read().decode())
+                msg = resp.get("message") or {}
+                rep = msg.get("content") or ""
+                think = msg.get("thinking") or ""
         except Exception as e:
             print(f"  sample {i}: FAILED {str(e)[:90]}", flush=True)
             continue
-        msg = resp.get("message") or {}
-        rep = msg.get("content") or ""
         (d / f"sample{i}.md").write_text(rep, encoding="utf-8")
+        if think:
+            (d / f"sample{i}_thinking.md").write_text(think, encoding="utf-8")
         truncated = resp.get("done_reason") == "length"
+        # EXACT token accounting from the server, not char estimates — this is what settles
+        # where a truncated run actually spent its budget.
+        p_tok, g_tok = resp.get("prompt_eval_count"), resp.get("eval_count")
         ivs = extract_iv(rep, price)
         iv = st.median(ivs) if ivs else None
         ok, why = plausibility(iv, price, t)
         runs.append({"sample": i, "iv": iv, "all_iv_mentions": sorted(set(ivs))[:8],
                      "plausible": ok, "reasons": why, "truncated": truncated,
+                     "done_reason": resp.get("done_reason"),
+                     "prompt_tokens": p_tok, "generated_tokens": g_tok,
+                     "thinking_chars": len(think), "report_chars": len(rep),
+                     "thinking_share_of_output": (round(len(think) / (len(think) + len(rep)), 3)
+                                                  if (think or rep) else None),
                      "chars": len(rep), "secs": round(time.time() - t0)})
         print(f"  sample {i}: IV ${iv if iv else '?'} | plausible={ok}"
+              + f" | gen {g_tok} tok (think {len(think):,}ch / report {len(rep):,}ch)"
               + (f" ({'; '.join(why)})" if why else "")
               + (" | TRUNCATED" if truncated else ""), flush=True)
 
