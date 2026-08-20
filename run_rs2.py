@@ -22,6 +22,7 @@ CLI:
   python run_rs2.py NVDA --name "NVIDIA Corporation"
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -193,6 +194,17 @@ FINAL_TASK = (
 API_MODE = False      # --api: route every LLM call to api_llm/api_chat.py (cloud model) instead of Ollama
 
 
+def call_seed(ticker, site, index=0):
+    """Deterministic per-call seed. Same (seed_base, ticker, site, index) -> same seed, so a rerun
+    of a ticker regenerates identical draws; different sites/indices -> different seeds, so
+    regime's 3-sample majority and the audit's fail-resample stay genuine votes rather than one
+    draw counted three times. 31-bit positive (llama.cpp treats seed as int32; 0 and negatives
+    mean 'random' in some paths, so never emit them)."""
+    base = int(CONFIG.get("seed_base", 20260820))
+    h = hashlib.sha256(f"{base}|{ticker}|{site}|{index}".encode()).digest()
+    return int.from_bytes(h[:4], "big") % 2_147_483_646 + 1
+
+
 def ollama_chat(content, ctx, think=True, retries=2, temperature=None, timeout=600,
                 max_tokens=None, seed=None):
     if API_MODE:
@@ -210,7 +222,10 @@ def ollama_chat(content, ctx, think=True, retries=2, temperature=None, timeout=6
         if temperature is not None:
             opts["temperature"] = temperature  # override the baked temp (valuation wants precision)
         if seed is not None:
-            opts["seed"] = seed          # reproducibility: without it every run is an unrepeatable draw
+            # attempt 0 sends the caller's seed UNMODIFIED - the recorded base must regenerate
+            # the published draw. A retry perturbs deterministically: re-sending the same seed
+            # after a failure walks into the same output, the same reason ctx escalates above.
+            opts["seed"] = seed if attempt == 0 else (seed + attempt * 1_000_003) % 2_147_483_646 + 1
         if max_tokens:
             opts["num_predict"] = max_tokens
         body = json.dumps({
@@ -297,7 +312,7 @@ def unload_model(name):
 
 
 # ── pre-steps (data acquisition) ──────────────────────────────────────────
-def get_assumptions(stage_out, require_key, validator, schema_hint):
+def get_assumptions(stage_out, require_key, validator, schema_hint, ticker=None):
     """Parse the LLM's assumption JSON; one repair re-prompt on failure."""
     obj = valuation_io.extract_json(stage_out, require_key)
     if obj is not None and validator(obj):
@@ -305,7 +320,8 @@ def get_assumptions(stage_out, require_key, validator, schema_hint):
     fix = ollama_chat(
         f"Return ONLY a valid JSON object matching this schema, nothing else:\n{schema_hint}\n\n"
         f"Extract the numbers from this analysis:\n{stage_out[-4000:]}",
-        8192, think=False)
+        8192, think=False,
+        seed=call_seed(ticker, f"json_repair.{require_key}") if ticker else None)
     obj = valuation_io.extract_json(fix, require_key)
     return obj if (obj is not None and validator(obj)) else None
 
@@ -716,6 +732,16 @@ def refinal_retry(t, src, think):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path(CONFIG["out_reports_dir"]) / f"{t}_{ts}"
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Attribution record, written BEFORE any LLM call so it survives every failure exit
+    # (sanity exit 6, watchdog kill, audit exit 11/12). Deliberately NOT in verdict.json:
+    # repatch_verdicts.py replays emit_verdict over the live overlay and would back-stamp
+    # today's seed_base onto verdicts drawn with no seed at all.
+    (out_dir / "run_meta.json").write_text(json.dumps({
+        "seed_base": int(CONFIG.get("seed_base", 20260820)),
+        "model": CONFIG["model"], "api_mode": API_MODE,
+        "stage_ctx": CONFIG["stage_ctx"], "final_ctx": CONFIG["final_ctx"],
+        "think": CONFIG.get("think", False),
+        "started_at": ts}, indent=2), encoding="utf-8")
     copied = ["_fed_data.md", "research.md", "routing.json", "regime_decision.json",
               "S3_valuation_inputs.json", "S4_valuation_result.md"] \
         + [f"{sid}.md" for sid, _tt, _tk in STAGES]
@@ -1074,7 +1100,8 @@ def regime_decide(t, bb, think, samples=3):
             # 200-with-empty-content on every sample (measured 2026-08-11) — the reasoning
             # consumed the response. The decision is a closed choice over supplied evidence,
             # not an open-ended analysis, so it needs no thinking budget.
-            out = ollama_chat(prompt, 8192, False, retries=1, timeout=300)
+            out = ollama_chat(prompt, 8192, False, retries=1, timeout=300,
+                              seed=call_seed(t, "regime_decide", i))
         except Exception as e:
             details.append({"sample": i + 1, "error": str(e)[:120]})
             continue
@@ -1659,13 +1686,13 @@ def ai_audit(t, out_dir, think):
     accepted on one sample (fast path), but NO REJECTION may cost a retry unconfirmed: a FAIL
     triggers a second sample; a split triggers a third; majority decides. Every split appends
     to cache/verifier_variance.jsonl — the pattern memory for this class."""
-    s1, v1 = _ai_audit_once(t, out_dir, think)
+    s1, v1 = _ai_audit_once(t, out_dir, think, sample=1)
     if s1 != "fail":
         return s1, v1
-    s2, v2 = _ai_audit_once(t, out_dir, think)
+    s2, v2 = _ai_audit_once(t, out_dir, think, sample=2)
     if s2 == "fail":
         return "fail", v1 or v2
-    s3, v3 = _ai_audit_once(t, out_dir, think)
+    s3, v3 = _ai_audit_once(t, out_dir, think, sample=3)
     verdicts = [s1, s2, s3]
     fails = verdicts.count("fail")
     final = "fail" if fails >= 2 else ("pass" if "pass" in (s2, s3) else "inconclusive")
@@ -1683,7 +1710,7 @@ def ai_audit(t, out_dir, think):
     return final, (v1 if final == "fail" else [])
 
 
-def _ai_audit_once(t, out_dir, think):
+def _ai_audit_once(t, out_dir, think, sample=1):
     """One tier-2 sample. Returns (status, violations); inconclusive (output unparseable
     twice) does NOT fail the run: the deterministic tier already guards correctness, and an
     audit-infrastructure hiccup must not block the book."""
@@ -1780,7 +1807,8 @@ def _ai_audit_once(t, out_dir, think):
         try:
             out = ollama_chat(ctx if attempt == 1 else
                               ctx + "\n\nREMINDER: output ONLY the JSON object.",
-                              CONFIG["final_ctx"], think)
+                              CONFIG["final_ctx"], think,
+                              seed=call_seed(t, "ai_audit", sample * 10 + attempt))
         except Exception as e:
             # auditor infrastructure failure (empty content, timeout, OOM) — the run's own
             # artefacts are fine; record inconclusive rather than failing a healthy ticker
@@ -1922,7 +1950,8 @@ def valuation_result(stage_out, bb, price, ticker):
     signal). NULL backbone (pre-profit) -> the model supplies Engine-4 value numbers, the one place
     its numeric judgment is legitimate. Returns (result_dict, markdown_block)."""
     if bb.get("ok") and bb.get("method") == "financial_pb_roe":
-        st = get_assumptions(stage_out, "valuation_stance", _valid_stance, STANCE_SCHEMA) or {}
+        st = get_assumptions(stage_out, "valuation_stance", _valid_stance, STANCE_SCHEMA,
+                             ticker=ticker) or {}
         fv = bb.get("fair_value")
         res = {"method": "financial_pb_roe", "ticker": ticker, "price": price,
                "roe": bb["roe"], "implied_roe": bb["implied_roe"], "current_pb": bb["current_pb"],
@@ -1942,7 +1971,8 @@ def valuation_result(stage_out, bb, price, ticker):
                "rationale": st.get("rationale")}
         return res, _fmt_financial(res)
     if bb.get("ok"):
-        st = get_assumptions(stage_out, "valuation_stance", _valid_stance, STANCE_SCHEMA) or {}
+        st = get_assumptions(stage_out, "valuation_stance", _valid_stance, STANCE_SCHEMA,
+                             ticker=ticker) or {}
         res = {"method": "reverse_dcf", "ticker": ticker, "price": price,
                "base_cf_b": round(bb["base_cf"] / 1e9, 2), "base_cf_kind": bb["base_cf_kind"],
                "wacc_pct": bb["wacc_pct"], "implied_growth": bb["implied_growth"],
@@ -1969,7 +1999,8 @@ def valuation_result(stage_out, bb, price, ticker):
     # (Engine 2), never on the Engine-4 option bridge. Without this the backbone's split reason
     # would still land these on the option path. See valuation_backbone's reinvestment_negative_fcf.
     if bb.get("reason") == "reinvestment_negative_fcf" or any(k in sl for k in ("financial", "bank", "insurance")):
-        e2 = get_assumptions(stage_out, "normalized_eps", _valid_engine2, ENGINE2_SCHEMA)
+        e2 = get_assumptions(stage_out, "normalized_eps", _valid_engine2, ENGINE2_SCHEMA,
+                              ticker=ticker)
         if e2:
             iv = valuation_engine.engine2_cycle(e2["normalized_eps"], e2["normal_multiple"])
             return _multiple_res("engine2_financial", e2, iv, price, ticker)
@@ -1979,14 +2010,14 @@ def valuation_result(stage_out, bb, price, ticker):
     # set) and the value if the asset works, instead of Engine 4's four free numbers.
     sc = bb.get("rnpv_scaffold")
     if sc:
-        e5 = get_assumptions(stage_out, "phase", _valid_engine5, ENGINE5_SCHEMA)
+        e5 = get_assumptions(stage_out, "phase", _valid_engine5, ENGINE5_SCHEMA, ticker=ticker)
         if e5:
             r = valuation_backbone.rnpv(sc, e5["phase"], e5["value_if_approved_ps"], price)
             if r:
                 r.update({"ticker": ticker, "price": price, "inputs": e5})
                 return r, _fmt_rnpv(r)
 
-    e4 = get_assumptions(stage_out, "core_value", _valid_engine4, ENGINE4_SCHEMA)
+    e4 = get_assumptions(stage_out, "core_value", _valid_engine4, ENGINE4_SCHEMA, ticker=ticker)
     if e4:
         iv = valuation_engine.engine4_bridge(e4.get("core_value", 0), e4.get("options", []), e4.get("drag", 0))
         return _multiple_res("engine4_option", e4, iv, price, ticker)
@@ -2201,7 +2232,7 @@ def final_assembly(t, out_dir, accum, val_block, val_res, price, exit_review, th
                     f"=== COMPLETE WORKED ANALYSIS (all stages) ===\n{accum}\n\n"
                     f"=== TASK ===\n{FINAL_TASK}")
     final = ollama_chat(final_prompt, CONFIG["final_ctx"], think, retries=1, timeout=1200,
-                        max_tokens=16384)   # api backend: 13-section report needs a bigger output cap
+                        max_tokens=16384, seed=call_seed(t, "final_assembly"))   # api backend: 13-section report needs a bigger output cap
     # ENGINE-WRITTEN AUTHORITATIVE HEADER (2026-08-08). Four instruction layers (stage prompt,
     # task compliance note, FINAL_TASK structural requirement, Modelfile rule 15) failed to make
     # the model quote the deterministic fair value / MoS — measured over proof runs 4-9, zero
@@ -2364,6 +2395,16 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path(CONFIG["out_reports_dir"]) / f"{t}_{ts}"
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Attribution record, written BEFORE any LLM call so it survives every failure exit
+    # (sanity exit 6, watchdog kill, audit exit 11/12). Deliberately NOT in verdict.json:
+    # repatch_verdicts.py replays emit_verdict over the live overlay and would back-stamp
+    # today's seed_base onto verdicts drawn with no seed at all.
+    (out_dir / "run_meta.json").write_text(json.dumps({
+        "seed_base": int(CONFIG.get("seed_base", 20260820)),
+        "model": CONFIG["model"], "api_mode": API_MODE,
+        "stage_ctx": CONFIG["stage_ctx"], "final_ctx": CONFIG["final_ctx"],
+        "think": CONFIG.get("think", False),
+        "started_at": ts}, indent=2), encoding="utf-8")
     # snapshot the deep-research brief INTO the run so the report is self-contained (publish_reports.py
     # prefers this over the shared research/{T}.md, which may be refreshed by a later run).
     _rb = Path(CONFIG["out_research_dir"]) / f"{t}.md"
@@ -2450,7 +2491,8 @@ def main():
         t0 = time.time()
         content = stage_prompt(data_ctx, accum, task)
         try:
-            out = ollama_chat(content, CONFIG["stage_ctx"], think)
+            out = ollama_chat(content, CONFIG["stage_ctx"], think,
+                              seed=call_seed(t, f"stage.{sid}", 0))
         except RuntimeError as e:
             # ollama_chat RAISES on empty content, so the inline stage-retry below never saw it
             # and the whole ticker crashed with exit 1 (17 crashes in one batch, 2026-08-12, all
@@ -2462,7 +2504,8 @@ def main():
             print(f"   [stage-recover] {sid} returned empty under thinking — retrying "
                   f"think=False", flush=True)
             try:
-                out = ollama_chat(content, CONFIG["stage_ctx"], False)
+                out = ollama_chat(content, CONFIG["stage_ctx"], False,
+                                  seed=call_seed(t, f"stage.{sid}", 1))
             except RuntimeError:
                 out = ""
         # INLINE STAGE-RETRY (2026-08-09): an empty/near-empty stage is detectable the moment
@@ -2474,7 +2517,8 @@ def main():
             print(f"   [stage-retry] {sid} returned {len((out or '').strip())}B < "
                   f"{MIN_STAGE_CHARS}B — inline retry", flush=True)
             try:
-                out = ollama_chat(content, CONFIG["stage_ctx"], False)
+                out = ollama_chat(content, CONFIG["stage_ctx"], False,
+                                  seed=call_seed(t, f"stage.{sid}", 2))
             except RuntimeError:
                 out = ""
             if len((out or "").strip()) < MIN_STAGE_CHARS:
