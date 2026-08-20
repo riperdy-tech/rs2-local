@@ -12,7 +12,9 @@
 # CONTEXT: deliberately NOT pinned — the caller sets num_ctx. Production pins 16384, which
 #   silently capped every stage call against a 262144 native window.
 # THINKING LEVEL is a REQUEST parameter, not a Modelfile one: Ollama accepts
-#   true/false/low/medium/high/max. MEASURED: `true` == `low`. Depth tier calls with "max".
+#   true/false/low/medium/high. MEASURED: `true` == `low`; "max" is INVALID — the chat template
+#   validates against ('xhigh','medium','low') and raises, HTTP 500 before a token (ba1b61d).
+#   Template maps 'high' -> 'xhigh', so "high" IS the maximum. Depth tier calls with "high".
 
 FROM C:\Users\riper\.ollama\models\blobs\sha256-2de73110cb254cbf09b54b717578dadff12ef1194e7271527e68202f39ba4bfd
 TEMPLATE "{{ if .System }}<|im_start|>system
