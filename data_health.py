@@ -38,6 +38,7 @@ import argparse
 import json
 import statistics as st
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import rs2_data
@@ -100,6 +101,67 @@ def audit_series_breaks(tickers, hist):
                                 "to_year": s[i][0], "from": s[i-1][1], "to": s[i][1]})
     return out
 
+
+# Coverage baseline: cache/field_coverage.json, rewritten by --update-baseline. A field that goes
+# dead, or drops sharply between builds, is the "silent rot" signature - see audit_field_coverage.
+COVERAGE_BASELINE = HERE / "cache" / "field_coverage.json"
+DEAD_PCT = 2.0          # <=2% of live names carrying a value = effectively dead
+REGRESS_PTS = 10.0      # a drop of >10 points against the last build is a break, not drift
+
+
+def _vendor_coverage(tickers):
+    """Coverage of the per-ticker VENDOR records, which is where the None bug actually lived.
+
+    Measured on keys PRESENT-AND-NON-NULL, because both failure modes matter here: a renamed key
+    vanishes, and a key can also survive while its value goes permanently null."""
+    srcs = {"financials": (SD / "financials", "{t}.json"),
+            "enrich": (HERE / "enrich", "{t}.json"),
+            "openbb": (HERE / "cache", "openbb_{t}.json")}
+    out = {}
+    for label, (d, pat) in srcs.items():
+        seen, live = {}, 0
+        for t in tickers:
+            rec = rs2_data.load_json(d / pat.format(t=t))
+            if not rec:
+                continue
+            live += 1
+            flat = dict(rec)
+            for nest in ("metrics", "Calculated_Metrics", "forward_growth"):
+                if isinstance(rec.get(nest), dict):
+                    flat.update({f"{nest}.{k}": v for k, v in rec[nest].items()})
+            for k, v in flat.items():
+                if isinstance(v, (dict, list)):
+                    continue
+                seen[k] = seen.get(k, 0) + (1 if v is not None else 0)
+        if live:
+            out.update({f"{label}.{k}": round(100.0 * c / live, 1) for k, c in seen.items()})
+    return out
+
+
+def audit_field_coverage(tickers, hist):
+    """Per-field coverage now, versus the last recorded build. Returns (dead, regressed, current).
+
+    dead      - a field carried by <=DEAD_PCT of live names. Either nobody files it (fine, but it
+                should be known) or we stopped reading it (a bug).
+    regressed - coverage fell by more than REGRESS_PTS against the stored baseline. This is the
+                one that catches a rename or an extractor break the day it happens.
+    """
+    cur = {}
+    n = len(tickers) or 1
+    for f in FIELDS:
+        c = sum(1 for t in tickers
+                if any(isinstance((row or {}).get(f), (int, float))
+                       for y, row in (hist.get(t) or {}).items() if str(y).isdigit()))
+        cur[f"fundamentals.{f}"] = round(100.0 * c / n, 1)
+    cur.update(_vendor_coverage(tickers))
+
+    base = rs2_data.load_json(COVERAGE_BASELINE) or {}
+    prev = base.get("coverage") or {}
+    dead = [{"field": k, "pct": v} for k, v in sorted(cur.items()) if v <= DEAD_PCT]
+    regressed = [{"field": k, "was": prev[k], "now": v, "drop": round(prev[k] - v, 1)}
+                 for k, v in sorted(cur.items())
+                 if k in prev and prev[k] - v > REGRESS_PTS]
+    return dead, regressed, cur
 
 def audit_financials_feed(tickers):
     """Integrity of financials/{T}.json and price_history.json — the OTHER feeds.
@@ -211,6 +273,10 @@ def main():
                          "an UNCORRECTED share disagreement). Source slips the ingest guard "
                          "already corrects do not gate — this is the orchestrate startup gate "
                          "(operator order 2026-08-08).")
+    ap.add_argument("--update-baseline", action="store_true",
+                    help="rewrite cache/field_coverage.json from this run. Do this ONLY after "
+                         "confirming the current coverage is correct - it is the reference every "
+                         "later run is compared against.")
     a = ap.parse_args()
 
     hist = rs2_data.load_json(SD / "fundamentals_history.json") or {}
@@ -222,6 +288,7 @@ def main():
     in_use = audit_values_in_use(tickers, hist)
     feeds = audit_financials_feed(tickers)
     cons_hard, cons_soft = audit_consensus_feed(tickers)
+    dead_fields, regressed, coverage_now = audit_field_coverage(tickers, hist)
     macro_age = None
     mp = SD / "macro_state.json"
     if mp.exists():
@@ -231,7 +298,8 @@ def main():
               "shares_cross_source": shares, "series_scale_breaks": breaks,
               "corrupt_values_in_use": in_use, "financials_feed": feeds,
               "consensus_feed": cons_hard, "consensus_feed_warnings": cons_soft,
-              "macro_state_age_days": macro_age}
+              "macro_state_age_days": macro_age,
+              "dead_fields": dead_fields, "coverage_regressions": regressed}
 
     if a.json:
         print(json.dumps(report, indent=2, default=str))
@@ -251,11 +319,29 @@ def main():
         print(f"  consensus-band integrity breaches (openbb/enrich)  : {len(cons_hard)}")
         for r in cons_hard[:6]:
             print(f"     {r['ticker']:6s} {r['src']} {r['check']}")
+        print(f"  fields DEAD across the book (<={DEAD_PCT}% coverage)      : {len(dead_fields)}")
+        for r in dead_fields[:12]:
+            print(f"     {r['field']:44s} {r['pct']:5.1f}%")
+        if not COVERAGE_BASELINE.exists():
+            print(f"  fields REGRESSED vs the last build                  : CHECK INERT"
+                  f"   <== no {COVERAGE_BASELINE.name}; run --update-baseline once to arm it")
+        else:
+            print(f"  fields REGRESSED vs the last build (>{REGRESS_PTS}pt drop)  : {len(regressed)}"
+                  f"   <== a rename or an extractor break")
+        for r in regressed[:12]:
+            print(f"     {r['field']:44s} {r['was']:5.1f}% -> {r['now']:5.1f}%  ({r['drop']:+.1f})")
         print(f"  soft warnings (float/dual-listing, not gated)      : {len(cons_soft)}"
               f"   | macro_state age: {macro_age}d")
         for r in in_use[:10]:
             print(f"     {r['ticker']:6s} FY{r['fiscal_year']} {r['field']:12s} "
                   f"value {r['value']:>18,.0f}  series median {r['series_median']:>16,.0f}")
+
+    if a.update_baseline:
+        COVERAGE_BASELINE.parent.mkdir(parents=True, exist_ok=True)
+        COVERAGE_BASELINE.write_text(json.dumps(
+            {"generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+             "n_tickers": len(tickers), "coverage": coverage_now}, indent=2), encoding="utf-8")
+        print(f"  [baseline] wrote {len(coverage_now)} field coverages to {COVERAGE_BASELINE}")
 
     # Only corruption reaching a live valuation, or an unresolved cross-source disagreement, is a
     # breach. Historic series breaks are recorded but do not fail the run: the extractor resolves

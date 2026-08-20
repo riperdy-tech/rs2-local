@@ -351,9 +351,13 @@ def build_pack(t):
     # ---- SECTION 8 -------------------------------------------------------------------------
     fg = ob.get("forward_growth") or {}
     L += ["## SECTION 8 - CONSENSUS & MULTIPLES   [Aggregator]",
+          # price_to_sales dropped 2026-08-20: measured non-null on 0 of 294 vendor records, so
+          # the line could never print a value. Market cap and revenue are both in this pack;
+          # the model can divide. A field that is structurally always absent is noise, not a
+          # disclosed gap.
           f"- Trailing P/E: {_v(met, 'pe_ratio')}   |   P/B: "
-          f"{_v(met, 'price_to_book')}   |   P/S: {_v(met, 'price_to_sales')}   |   "
-          f"PEG: {_v(met, 'peg_ratio')}   [trailing; the vendor does not state the period]",
+          f"{_v(met, 'price_to_book')}   |   PEG: {_v(met, 'peg_ratio')}   "
+          f"[trailing; the vendor does not state the period]",
           f"- Return on equity: {_v(met, 'return_on_equity')}   |   gross margin: "
           f"{_v(met, 'gross_margin')}   |   operating margin: "
           f"{_v(met, 'operating_margin')}   |   dividend yield: "
