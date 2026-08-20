@@ -182,6 +182,44 @@ def quality_solvency(ticker):
     return out
 
 
+def earnings_composition_block(ticker):
+    """Operating income vs pretax vs tax — i.e. how much of reported profit is NOT operating.
+
+    Added 2026-08-20. `operating_income`, `pretax_income` and `tax_provision` have been ingested
+    all along and printed NOWHERE, while the engine capitalised net income. Measured on the live
+    book: 124 of 244 names carry |non-operating| >= 10% of latest-FY pretax and 50 carry >= 25%.
+    GOOG's is $29.79B (18.8%) — the very item that made its published fair value $702.49.
+
+    Latest fiscal year only: quarterly operating income is not ingested (a known gap), so this is
+    an annual-level tell, not a same-period decomposition of the TTM figure. Stated as such.
+    """
+    import valuation_backbone as vb   # lazy: vb imports this module
+    h = vb._hist(ticker)
+    if not h:
+        return None
+    y = max(int(k) for k in h)
+    fy = h[str(y)]
+    op, pre, tax = (vb._num(fy.get(k)) for k in ("operating_income", "pretax_income", "tax_provision"))
+    ni = vb._num(fy.get("net_income"))
+    if op is None or pre is None:
+        return None
+    nonop = pre - op
+    share = nonop / abs(pre) if pre else None
+    L = ["## EARNINGS COMPOSITION (FY%d, SEC) — what part of profit is NOT operating" % y,
+         f"- Operating income {fmt(op)} | pretax {fmt(pre)} | tax {fmt(tax)} | net income {fmt(ni)}",
+         f"- NON-OPERATING (pretax - operating): {fmt(nonop)}"
+         + (f" = {share*100:+.1f}% of pretax" if share is not None else "")]
+    if share is not None and abs(share) >= 0.10:
+        L.append("- [FLAG] A material share of pretax profit did NOT come from operations. Before "
+                 "capitalising any earnings figure, establish whether this is recurring. "
+                 "Non-operating items (investment marks, one-off gains, asset sales) are not "
+                 "earning power and must not be grown into perpetuity.")
+    L.append("- NOTE: latest fiscal year only — quarterly operating income is not ingested, so a "
+             "recent-quarter distortion may not appear here. Cross-check against the quarterly "
+             "net-income trajectory and TTM net income vs operating cash flow.")
+    return "\n".join(L)
+
+
 def quality_block(ticker):
     """Fed-data block for the tripwires. One line when clean; explicit flags when not."""
     qs = quality_solvency(ticker)
@@ -995,6 +1033,7 @@ def build_data_context(ticker, bb=None):
         macro_block(macro, regime),
         enrichment_block(t),
         openbb_block(t),
+        earnings_composition_block(t),   # how much of profit is NOT operating (GOOG's $702 tell)
         quality_block(t),            # deterministic earnings-quality + solvency tripwires
         research_block(t),
         news_block(t),

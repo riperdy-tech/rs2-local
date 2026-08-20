@@ -31,8 +31,8 @@ PARAMETER top_k 20
 PARAMETER min_p 0
 # presence_penalty default 1.5 punishes repeating [Actual]/[Estimate] tags
 # and fixed section headers RS2 REQUIRES -> drop near 0
-PARAMETER presence_penalty 0.1
-PARAMETER repeat_penalty 1.05
+PARAMETER presence_penalty 0
+PARAMETER repeat_penalty 1.0
 # Context: 16384 keeps whole model on GPU (100%, no CPU spill) and is plenty
 # per decomposed stage. Final-assembly stage overrides to 24576 at call time
 # (see Run-RS2.ps1) because it must hold all prior stage outputs.

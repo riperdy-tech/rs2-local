@@ -193,23 +193,33 @@ FINAL_TASK = (
 API_MODE = False      # --api: route every LLM call to api_llm/api_chat.py (cloud model) instead of Ollama
 
 
-def ollama_chat(content, ctx, think=True, retries=2, temperature=None, timeout=600, max_tokens=None):
+def ollama_chat(content, ctx, think=True, retries=2, temperature=None, timeout=600,
+                max_tokens=None, seed=None):
     if API_MODE:
         import api_llm.api_chat as api_chat
         return api_chat.api_chat(content, ctx=ctx, think=think, retries=retries,
                                  temperature=temperature, timeout=timeout, max_tokens=max_tokens)
-    opts = {"num_ctx": ctx}
-    if temperature is not None:
-        opts["temperature"] = temperature  # override the model's baked temp (valuation stages want precision)
-    body = json.dumps({
-        "model": CONFIG["model"],
-        "stream": False,
-        "think": think,
-        "messages": [{"role": "user", "content": content}],
-        "options": opts,
-    }).encode("utf-8")
     last = None
     for attempt in range(retries):
+        # CONTEXT ESCALATION (2026-08-20). A truncated call retried at the SAME num_ctx walks into
+        # the identical wall: measured 6 of 23 truncations were byte-identical reruns stopping at
+        # the same token. Grow the window on each retry instead. Ceiling 131072 — the model trains
+        # to 262144, but VRAM, not the model, is the binding limit on this box.
+        this_ctx = min(ctx * (2 ** attempt), 131072)
+        opts = {"num_ctx": this_ctx}
+        if temperature is not None:
+            opts["temperature"] = temperature  # override the baked temp (valuation wants precision)
+        if seed is not None:
+            opts["seed"] = seed          # reproducibility: without it every run is an unrepeatable draw
+        if max_tokens:
+            opts["num_predict"] = max_tokens
+        body = json.dumps({
+            "model": CONFIG["model"],
+            "stream": False,
+            "think": think,
+            "messages": [{"role": "user", "content": content}],
+            "options": opts,
+        }).encode("utf-8")
         try:
             req = urllib.request.Request(CONFIG["ollama_endpoint"], data=body,
                                          headers={"Content-Type": "application/json"})
@@ -221,12 +231,22 @@ def ollama_chat(content, ctx, think=True, retries=2, temperature=None, timeout=6
                 # other error — returning "" let an empty FINAL stage ship a degenerate verdict
                 # as a "success" that overwrote the ticker's real call with no retry
                 raise RuntimeError("Ollama returned 200 with empty message.content")
+            # SILENT TRUNCATION (2026-08-20). Ollama returns HTTP 200 for a completion that hit the
+            # context wall; done_reason is the only tell and was checked NOWHERE. Measured: 26 such
+            # completions stopped at exactly n_tokens = 24575 (stage_ctx - 1), cleared the 400-char
+            # floor, were carried into later stages and published as successes. A truncated stage is
+            # a failed stage.
+            if out.get("done_reason") == "length":
+                raise RuntimeError(
+                    f"truncated at the context wall (num_ctx={this_ctx}, done_reason=length) — "
+                    f"output is incomplete, not a usable stage")
             return txt
         except Exception as e:
             last = e
             # transient Ollama 500s happen on context-size reloads / VRAM pressure
             wait = 8 * (attempt + 1)
-            print(f"   [ollama retry {attempt+1}/{retries} after {wait}s: {str(e)[:80]}]", flush=True)
+            print(f"   [ollama retry {attempt+1}/{retries} after {wait}s "
+                  f"(next ctx {min(ctx * (2 ** (attempt+1)), 131072)}): {str(e)[:80]}]", flush=True)
             time.sleep(wait)
     raise last
 
@@ -713,7 +733,7 @@ def refinal_retry(t, src, think):
     accum = ""
     for sid, title, _task in STAGES:
         outtx = (out_dir / f"{sid}.md").read_text(encoding="utf-8", errors="replace")
-        carry = outtx if len(outtx) <= cap else outtx[:cap] + "\n…[truncated]"
+        carry = _carry(outtx, cap)
         extra = extra_s1 if sid == "S1_macro_classify" else (
             ("\n\n" + val_block) if (sid == "S3_valuation" and val_block) else "")
         accum += f"\n\n----- {title} -----\n{carry}{extra}"
@@ -936,13 +956,37 @@ def _regime_evidence(t, bb):
                          + (f", net income ${r['net_income']/1e9:.2f}B" if r.get("net_income") else ""))
     rec = (valuation_backbone._ttm_record(t) or {}).get("fields") or {}
     if rec:
+        # UN-GATED 2026-08-20. This used to be `if None not in (ni, da, cx)`, so ONE missing D&A
+        # blanked net income, capex, OCF and FCF together — and the prompt still asked whether the
+        # capex was converting. Fired on 22 of 88 archived decisions. GOOG decided its basis with
+        # TTM net income $244.2B vs OCF $185.7B withheld: the single most direct one-off tell,
+        # already on disk. Print every field that exists; name the ones that do not.
         ni, da, cx, ocf = (rec.get("net_income"), rec.get("da"), rec.get("capex"), rec.get("ocf"))
-        if None not in (ni, da, cx):
-            L.append(f"TTM: net income ${ni/1e9:.1f}B, D&A ${da/1e9:.1f}B, capex ${cx/1e9:.1f}B"
-                     + (f", operating cash flow ${ocf/1e9:.1f}B, free cash flow "
-                        f"${(ocf-cx)/1e9:+.1f}B" if ocf else ""))
+        bits = []
+        if ni is not None:
+            bits.append(f"net income ${ni/1e9:.1f}B")
+        bits.append(f"D&A ${da/1e9:.1f}B" if da is not None else "D&A NOT REPORTED in our extract")
+        if cx is not None:
+            bits.append(f"capex ${cx/1e9:.1f}B")
+        if ocf is not None:
+            bits.append(f"operating cash flow ${ocf/1e9:.1f}B")
+        if ocf is not None and cx is not None:
+            bits.append(f"free cash flow ${(ocf-cx)/1e9:+.1f}B")
+        if len(bits) > 1:
+            L.append("TTM: " + ", ".join(bits))
+        if ni is not None and ocf is not None:
+            _gap = ni - ocf
+            L.append(f"  -> net income {'EXCEEDS' if _gap > 0 else 'is below'} operating cash flow "
+                     f"by ${abs(_gap)/1e9:.1f}B."
+                     + (" Earnings running ahead of cash generation can indicate non-operating or "
+                        "non-cash income inside the reported figure — check before capitalising it."
+                        if _gap > 0 else ""))
+        if cx is not None and da:
             L.append(f"  -> capex is {cx/da:.1f}x D&A "
                      f"({'far above replacement — expansion' if cx > da*1.5 else 'near replacement level'})")
+        elif cx is not None and ocf:
+            L.append(f"  -> capex absorbs {100*cx/ocf:.0f}% of operating cash flow "
+                     f"(D&A unavailable, so the replacement-vs-expansion split cannot be computed)")
     d = bb.get("delivered_growth")
     if d is not None:
         cen, opt = valuation_backbone.persistence_growth(d)
@@ -1221,6 +1265,20 @@ def _dont_chase_brake(action, conv, weight, vr, ticker=None):
     out_conv = min(conv, 9.5) if (conv is not None and (rich or not _protected)) else conv
     out_weight = min(weight, 3.0) if weight is not None else weight
     return out_action, out_conv, out_weight, entry, trig, True
+
+
+def _carry(text, cap):
+    """Truncate a stage's carry-forward keeping BOTH ends, not just the head.
+
+    Was `text[:cap]`, which deletes whatever the stage concluded — and a stage's conclusion is
+    the part later stages need. Measured 2026-08-20: the cut discards ~35% of stage text, and it
+    always discards the last 35%. Keep 45% head + 55% tail so the framing AND the finding survive.
+    """
+    if len(text) <= cap:
+        return text
+    head = int(cap * 0.45)
+    tail = cap - head
+    return f"{text[:head]}\n…[middle elided]…\n{text[-tail:]}"
 
 
 STAGE_FILES = ["S1_macro_classify.md", "S2_quality.md", "S3_valuation.md",
@@ -2148,7 +2206,29 @@ def main():
                     help="A/B instrument: regenerate ONLY the final assembly + verdict from an "
                          "existing completed report dir; output isolated to ab_reports/ (never "
                          "ingested by the overlay)")
+    ap.add_argument("--ablation", metavar="ARM", default=None,
+                    help="A/B instrument: label this run as an ablation arm and isolate its "
+                         "output to ab_reports/ablation/ARM/ (never ingested by the overlay)")
+    ap.add_argument("--drop-stage", default="",
+                    help="ablation only: comma-separated stage ids to SKIP "
+                         "(e.g. S2_quality,S6_redteam_audit). Requires --ablation.")
     args = ap.parse_args()
+    if args.drop_stage and not args.ablation:
+        ap.error("--drop-stage requires --ablation (a stage-dropped run must never be publishable)")
+    if args.ablation:
+        # Same isolation contract as --api: the orchestrator and overlay only ever read
+        # CONFIG["out_reports_dir"], so redirecting it is what keeps an experimental verdict
+        # off the live site. Dropping the stage from BOTH lists is what makes the run
+        # self-consistent — sanity_check and the tier-1 audit iterate STAGE_FILES.
+        drop = {s.strip() for s in args.drop_stage.split(",") if s.strip()}
+        unknown = drop - {s[0] for s in STAGES}
+        if unknown:
+            ap.error(f"--drop-stage: unknown stage id(s) {sorted(unknown)}")
+        STAGES[:] = [s for s in STAGES if s[0] not in drop]
+        STAGE_FILES[:] = [f for f in STAGE_FILES if f[:-3] not in drop]
+        CONFIG["out_reports_dir"] = str(HERE / "ab_reports" / "ablation" / args.ablation)
+        print(f"[ablation] arm={args.ablation} dropped={sorted(drop) or 'none'} "
+              f"-> {CONFIG['out_reports_dir']}", flush=True)
     if args.api:
         # Cloud-LLM A/B mode: same pipeline, prompts and deterministic backbone; only the model
         # transport changes. Reports go to api_llm/reports so the orchestrator/overlay (which
@@ -2191,7 +2271,7 @@ def main():
             if not p.exists():
                 sys.exit(f"--refinal: {p.name} missing in {src} (need a full 6-stage report)")
             out = p.read_text(encoding="utf-8")
-            carry = out if len(out) <= cap else out[:cap] + "\n…[truncated]"
+            carry = _carry(out, cap)
             extra = ("\n\n" + val_block) if (sid == "S3_valuation" and val_block) else ""
             accum += f"\n\n----- {title} -----\n{carry}{extra}"
         arm = "anchor" if args.anchor else "plain"
@@ -2487,7 +2567,7 @@ def main():
                       f"MoS {val_res.get('mos_pct')}%" + (f" [{val_res['flag']}]" if val_res.get('flag') else ""), flush=True)
         print("", flush=True)
 
-        carry = out if len(out) <= cap else out[:cap] + "\n…[truncated]"
+        carry = _carry(out, cap)
         accum += f"\n\n----- {title} -----\n{carry}{extra}"
 
     if args.valonly:

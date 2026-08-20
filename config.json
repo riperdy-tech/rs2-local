@@ -6,7 +6,7 @@
   "ollama_endpoint": "http://localhost:11434/api/chat",
   "model": "rs2-analyst",
   "_ctx_note": "Real payload = RS2.txt(~5.2k tok) + fed data(~4k tok) + accumulating prior stages. 16384 overflows late stages, so both run at 24576 (fits w/ generation headroom; ~96% GPU, 4% CPU spill). The 16384/100%-GPU figure applied only to the old manual-data flow.",
-  "stage_ctx": 24576,
+  "stage_ctx": 49152,
   "final_ctx": 32768,
   "think": false,
   "stage_carry_char_cap": 4500,
@@ -38,5 +38,6 @@
     "zapmeta",
     "dogpile"
   ],
-  "searxng_min_probe_results": 10
+  "searxng_min_probe_results": 10,
+  "_stage_ctx_note": "Raised 24576 -> 49152 on 2026-08-20. Measured across 921 real requests: median prompt 7,508 tokens, p90 20,182, max 24,851 \u2014 ABOVE the old 24,576 window. 26 completions truncated at exactly n_tokens=24575 and published as successes. 49152 loads fully on GPU at Q4 on this box."
 }
