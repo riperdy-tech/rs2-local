@@ -499,12 +499,18 @@ def main():
     t = (args[0] if args else "GOOG").upper()
     model = _arg("--model", CONFIG["model"])
     ctx = int(_arg("--ctx", CTX))
-    # Ollama accepts true/false/low/medium/high/max. MEASURED 2026-08-20: `true` yields the
-    # same trace length as `low` (1,837 vs 1,770 chars) while medium/high/max give ~50% more
-    # (2,540/2,713/2,652) — so `think: true` is NOT the model's default xhigh. Qwen3.8's own
-    # chat template defaults to xhigh, which Ollama does not expose; "max" is its request for
-    # the model's highest level. Depth tier should use "max".
-    think = _arg("--think", "max")
+    # CORRECTED 2026-08-20 by reading the deployed template, not by inference. The previous
+    # default here was "max" with a comment claiming max requested the model's highest level.
+    # It does not: Qwen3.8's chat template (line 63) validates against ('xhigh','medium','low')
+    # and RAISES on anything else, so `think:"max"` returns HTTP 500 before a token is generated
+    # — measured on rs2-analyst-deep, error `raise_exception('Unexpected reasoning effort max.
+    # Supported types are xhigh (default), medium, and low.')`. Line 60 maps 'high' -> 'xhigh',
+    # so "high" IS the maximum and is the correct value. Verified working: False (0ch thinking),
+    # low (158ch), high (105ch); max 500s.
+    # NOTE this only applies to a model carrying the real template. Production `rs2-analyst` has
+    # a bare `{{ .Prompt }}` template, so it has NO reasoning-effort layer at all and the think
+    # flag cannot reach the model however it is set.
+    think = _arg("--think", "high")
     if think in ("true", "false"):
         think = think == "true"
     label = _arg("--label", f"{model.replace(':','_').replace('/','_')}-{think}")
