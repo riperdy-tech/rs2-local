@@ -107,6 +107,7 @@ def audit_series_breaks(tickers, hist):
 COVERAGE_BASELINE = HERE / "cache" / "field_coverage.json"
 DEAD_PCT = 2.0          # <=2% of live names carrying a value = effectively dead
 REGRESS_PTS = 10.0      # a drop of >10 points against the last build is a break, not drift
+POP_DRIFT_MAX = 0.05    # >5% churn in the live book and coverage is no longer like-for-like
 
 
 def _vendor_coverage(tickers):
@@ -158,10 +159,19 @@ def audit_field_coverage(tickers, hist):
     base = rs2_data.load_json(COVERAGE_BASELINE) or {}
     prev = base.get("coverage") or {}
     dead = [{"field": k, "pct": v} for k, v in sorted(cur.items()) if v <= DEAD_PCT]
-    regressed = [{"field": k, "was": prev[k], "now": v, "drop": round(prev[k] - v, 1)}
-                 for k, v in sorted(cur.items())
-                 if k in prev and prev[k] - v > REGRESS_PTS]
-    return dead, regressed, cur
+
+    # A coverage percentage is only comparable across builds if it was measured over the SAME
+    # names. If the book gained or lost members, a drop can be composition rather than breakage,
+    # and gating on it would false-trip every time a ticker is added. Baselines written before
+    # this carried no ticker list; treat those as not comparable rather than guessing.
+    base_t = set(base.get("tickers") or [])
+    cur_t = set(tickers)
+    comparable = bool(base_t) and bool(cur_t) and \
+        len(base_t ^ cur_t) / max(len(base_t), 1) <= POP_DRIFT_MAX
+    regressed = ([{"field": k, "was": prev[k], "now": v, "drop": round(prev[k] - v, 1)}
+                  for k, v in sorted(cur.items())
+                  if k in prev and prev[k] - v > REGRESS_PTS] if comparable else [])
+    return dead, regressed, cur, comparable
 
 def audit_financials_feed(tickers):
     """Integrity of financials/{T}.json and price_history.json — the OTHER feeds.
@@ -288,7 +298,7 @@ def main():
     in_use = audit_values_in_use(tickers, hist)
     feeds = audit_financials_feed(tickers)
     cons_hard, cons_soft = audit_consensus_feed(tickers)
-    dead_fields, regressed, coverage_now = audit_field_coverage(tickers, hist)
+    dead_fields, regressed, coverage_now, cov_comparable = audit_field_coverage(tickers, hist)
     macro_age = None
     mp = SD / "macro_state.json"
     if mp.exists():
@@ -325,6 +335,10 @@ def main():
         if not COVERAGE_BASELINE.exists():
             print(f"  fields REGRESSED vs the last build                  : CHECK INERT"
                   f"   <== no {COVERAGE_BASELINE.name}; run --update-baseline once to arm it")
+        elif not cov_comparable:
+            print(f"  fields REGRESSED vs the last build                  : NOT COMPARABLE"
+                  f"   <== live book churned >{POP_DRIFT_MAX:.0%} since the baseline; "
+                  f"re-run --update-baseline")
         else:
             print(f"  fields REGRESSED vs the last build (>{REGRESS_PTS}pt drop)  : {len(regressed)}"
                   f"   <== a rename or an extractor break")
@@ -340,7 +354,8 @@ def main():
         COVERAGE_BASELINE.parent.mkdir(parents=True, exist_ok=True)
         COVERAGE_BASELINE.write_text(json.dumps(
             {"generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-             "n_tickers": len(tickers), "coverage": coverage_now}, indent=2), encoding="utf-8")
+             "n_tickers": len(tickers), "tickers": sorted(tickers),
+             "coverage": coverage_now}, indent=2), encoding="utf-8")
         print(f"  [baseline] wrote {len(coverage_now)} field coverages to {COVERAGE_BASELINE}")
 
     # Only corruption reaching a live valuation, or an unresolved cross-source disagreement, is a
@@ -348,15 +363,27 @@ def main():
     # them at source and the ingest guard corrects what it can.
     if a.gate_live:
         uncorrected = [r for r in shares if not r.get("corrected_to")]
-        gate = len(in_use) + len(feeds) + len(cons_hard) + len(uncorrected)
+        # COVERAGE REGRESSION GATES (2026-08-20). A field that loses >10pts of coverage between
+        # builds means the extractor broke or a vendor renamed a key, and a sweep run on it
+        # publishes degraded valuations to the live overlay. DEAD fields deliberately do NOT gate:
+        # many are permanently dead because nobody files them, so gating would block every sweep
+        # forever. Regression only counts when the population is comparable - see
+        # audit_field_coverage.
+        gate = len(in_use) + len(feeds) + len(cons_hard) + len(uncorrected) + len(regressed)
         print(f"\n[gate-live] corrupt-in-use {len(in_use)} | feed {len(feeds)} | "
-              f"consensus {len(cons_hard)} | uncorrected-shares {len(uncorrected)} -> "
+              f"consensus {len(cons_hard)} | uncorrected-shares {len(uncorrected)} | "
+              f"coverage-regressions {len(regressed)}"
+              f"{'' if cov_comparable else ' (not comparable)'} -> "
               f"{'BLOCK' if gate else 'CLEAR'}")
         if gate and a.alert:
             import ops
             ops.notify_telegram(f"[RS2 ops] data_health GATE: {len(in_use)} corrupt in-use, "
                                 f"{len(feeds)} feed, {len(cons_hard)} consensus, "
-                                f"{len(uncorrected)} uncorrected shares — sweep blocked.")
+                                f"{len(uncorrected)} uncorrected shares, "
+                                f"{len(regressed)} coverage regression(s)"
+                                + (": " + ", ".join(f"{r['field']} {r['was']}->{r['now']}"
+                                                    for r in regressed[:3]) if regressed else "")
+                                + " — sweep blocked.")
         return 1 if gate else 0
     problems = len(in_use) + len(shares) + len(feeds) + len(cons_hard)
     if problems:

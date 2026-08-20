@@ -2011,6 +2011,22 @@ def resolve_name(ticker):
         return ""
 
 
+def _kill_research_tree(proc):
+    """Kill the deep_research child AND its descendants. Popen.kill reaps only the direct child;
+    the LDR process spawns its own (searxng fetches, ollama calls), and an orphaned grandchild
+    keeps the GPU and the network busy while the parent is already gone. Mirrors
+    orchestrate._kill_tree, which exists for exactly this reason."""
+    try:
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                       capture_output=True, timeout=30)
+    except Exception:
+        pass
+    try:
+        proc.kill()          # belt and braces if taskkill is unavailable (non-Windows)
+    except Exception:
+        pass
+
+
 def run_enrich(ticker):
     print(f"[enrich] yfinance {ticker} ...", flush=True)
     r = subprocess.run([sys.executable, str(HERE / "enrich_ticker.py"), ticker],
@@ -2033,7 +2049,27 @@ def run_research(ticker, name):
     # explicit utf-8 (errors=replace): text=True alone decodes the child's utf-8 output via the
     # ANSI codepage (cp1252) on Windows — the source of the 'â€”' mojibake, and a stray 0x9D/0x9F
     # byte would raise UnicodeDecodeError and abort the whole ticker run
-    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    # HARD CEILING (2026-08-20). This call had no timeout, and deep_research.py has exactly one
+    # timeout in the entire file (a 20s SearXNG preflight probe), so the research phase was the
+    # only unbounded step in the pipeline and orchestrate's 40-minute ticker watchdog was its only
+    # bound. Measured over 3,437 logged subqueries: phases run p50 320s / p99 525s, and exactly one
+    # of 252 exceeded 15 minutes (ARGX, 1,967s, from a single 1,035s searxng subquery against a p90
+    # of 121s) - and that one was watchdog-killed three times and never published. Bounding here
+    # fails it in 15 minutes with a named cause instead of 40 minutes of silence.
+    timeout_s = int(CONFIG.get("research_timeout_s", 900))
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            encoding="utf-8", errors="replace")
+    timed_out = False
+    try:
+        out, err = proc.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        # TREE kill: the LDR child spawns its own children (searxng fetches, model calls), and
+        # proc.kill() reaps only the direct child and orphans the rest - the same defect
+        # orchestrate._kill_tree exists to avoid. run_rs2 has no such helper, so inline it.
+        _kill_research_tree(proc)
+        out, err = proc.communicate()
+    r = subprocess.CompletedProcess(cmd, proc.returncode, out or "", err or "")
     # surface LDR progress lines + any error
     for line in (r.stdout or "").splitlines():
         if "[deep_research]" in line:
@@ -2047,6 +2083,19 @@ def run_research(ticker, name):
     # sys.exit (not raise): an unhandled exception surfaces as a bare 'exit 1' and the
     # orchestrator can't say WHY the ticker failed. These codes are mapped in
     # orchestrate.run_one -> 3 research infra, 7 vram not released.
+    if timed_out:
+        print(f"[research] ::HARD FAIL:: {ticker} deep research exceeded "
+              f"{timeout_s}s ({timeout_s/60:.0f} min) — killed tree-and-all. Not analysing on a "
+              f"brief we could not build.", flush=True)
+        try:
+            ops.notify_telegram(
+                f"[RS2 ops] research_timeout — {ticker} exceeded {timeout_s}s and was killed. "
+                f"Measured p99 is 525s, so this is a stall or a pathological subquery, not a slow "
+                f"name. Ticker will retry.")
+        except Exception:
+            pass
+        keep_awake(False)
+        sys.exit(3)
     if r.returncode == 3:
         print(f"[research] ::HARD FAIL:: {ticker} research aborted (infra error) — "
               f"not analysing on an empty brief.", flush=True)
