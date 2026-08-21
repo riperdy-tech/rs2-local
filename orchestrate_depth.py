@@ -34,8 +34,10 @@ CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
 STATE = HERE / "cache" / "depth_state.json"
 LOCK = HERE / "cache" / "orchestrate_depth.lock"
-PAUSED = HERE / "cache" / "PAUSED"           # deliberately the SAME file as the old pipeline:
-                                             # one red button stops everything
+# DECOUPLED 2026-08-21: the old pipeline is DROPPED and cache/PAUSED must stay in place
+# FOREVER to hold its still-enabled 08:00 scheduled task down. Depth therefore gets its own
+# red button — create cache/DEPTH_PAUSED to stop this orchestrator at the next boundary.
+PAUSED = HERE / "cache" / "DEPTH_PAUSED"
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 OVERLAY = HERE / "cache" / "depth_overlay.json"
 
@@ -175,6 +177,11 @@ def main():
         return (now - rec.get("finished_at", 0)) > REFRESH_DAYS * 86400
 
     queue = [t for t in book if due(t)]
+    # PRIORITY (operator, 2026-08-21): research_now first, then watchlist, then the rest —
+    # bands from factor_scores.json fct_band, same source the old orchestrator used.
+    fs = (rs2_data.load_json(SD / "factor_scores.json") or {}).get("tickers", {})
+    rank = {"research_now": 0, "watchlist": 1}
+    queue.sort(key=lambda t: (rank.get((fs.get(t) or {}).get("fct_band"), 2), t))
     if limit:
         queue = queue[:limit]
     log(f"book {len(book)} | due {len(queue)}"
