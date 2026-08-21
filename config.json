@@ -51,5 +51,7 @@
   "depth_ctx": 81920,
   "depth_tools": true,
   "depth_ticker_timeout_min": 150,
-  "depth_refresh_days": 7
+  "_depth_cadence_note": "CADENCE (operator-approved 2026-08-21). Daily direction refresh = screener-side price vs stored band (free). Model re-runs are TRIGGER-DRIVEN via depth_triggers.py, all detectors deterministic: 8-K filed after the verdict (SanDisk-class news), 10-Q/10-K filed (quarterly baseline), price moved > depth_move_trigger_pct since the verdict, or verdict older than depth_rotation_days. Priority: triggered first, then never-analysed baseline, then rotation - rotation only runs when no triggered work remains. SEC submissions cached daily per CIK in cache/sec_submissions/. Red button: cache/DEPTH_PAUSED (cache/PAUSED stays forever to hold the dropped pipeline's scheduled task down).",
+  "depth_move_trigger_pct": 8.0,
+  "depth_rotation_days": 90
 }

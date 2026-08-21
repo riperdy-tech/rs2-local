@@ -29,6 +29,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
+import depth_triggers       # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -47,7 +48,8 @@ MAX_RETRIES = 2
 # + 3 x ~40 min + audit slack. A healthy non-tools ticker finishes in ~80; revisit with real
 # tools timings from the shadow run.
 TIMEOUT_MIN = int(CONFIG.get("depth_ticker_timeout_min", 150))
-REFRESH_DAYS = float(CONFIG.get("depth_refresh_days", 7))
+# rotation cadence lives in depth_triggers (depth_rotation_days, default 90);
+# depth_refresh_days is retired - triggers decide re-runs now.
 
 
 def log(msg):
@@ -168,20 +170,40 @@ def main():
         log("stale lock — taking over.")
     st = load_state()
     book = only or live_book()
-    now = time.time()
+
+    # TRIGGER-DRIVEN QUEUE (operator, 2026-08-21). Deterministic detection, model judgment:
+    # depth_triggers checks 8-K / new 10-Q-10-K / big price move / 90d rotation against each
+    # name's newest verdict. Priority contract: TRIGGERED names first, then names with no
+    # verdict yet (the baseline pass), then rotation - and only when no triggered work remains
+    # does rotation run, because triggers ARE in the map and sort ahead by construction.
+    # Within each class: research_now -> watchlist -> rest, then alphabetical.
+    trig = depth_triggers.trigger_map(book)
+    verdicts = depth_triggers.newest_verdicts()
 
     def due(t):
         rec = st.get(t) or {}
-        if not rec.get("ok"):
-            return rec.get("retries", 0) < MAX_RETRIES if rec else True
-        return (now - rec.get("finished_at", 0)) > REFRESH_DAYS * 86400
+        if rec and not rec.get("ok"):
+            return rec.get("retries", 0) < MAX_RETRIES      # failed: retry budget decides
+        kinds = [k for k, _ in trig.get(t, [])]
+        if t not in verdicts:
+            return True                                     # baseline: never analysed
+        return bool(kinds)                                  # verdict exists: only triggers re-run
+
+    def _class(t):
+        kinds = [k for k, _ in trig.get(t, [])]
+        if any(k in ("8k", "filing", "move") for k in kinds):
+            return 0                                        # event-triggered
+        if t not in verdicts:
+            return 1                                        # baseline pass
+        return 2                                            # rotation (staleness cap)
 
     queue = [t for t in book if due(t)]
-    # PRIORITY (operator, 2026-08-21): research_now first, then watchlist, then the rest —
-    # bands from factor_scores.json fct_band, same source the old orchestrator used.
     fs = (rs2_data.load_json(SD / "factor_scores.json") or {}).get("tickers", {})
     rank = {"research_now": 0, "watchlist": 1}
-    queue.sort(key=lambda t: (rank.get((fs.get(t) or {}).get("fct_band"), 2), t))
+    queue.sort(key=lambda t: (_class(t), rank.get((fs.get(t) or {}).get("fct_band"), 2), t))
+    for t in queue[:20]:
+        why = ", ".join(f"{k}:{d}" for k, d in trig.get(t, [])) or               ("baseline" if t not in verdicts else "rotation")
+        log(f"   queued {t}: {why[:110]}")
     if limit:
         queue = queue[:limit]
     log(f"book {len(book)} | due {len(queue)}"
