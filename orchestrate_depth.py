@@ -52,8 +52,18 @@ TIMEOUT_MIN = int(CONFIG.get("depth_ticker_timeout_min", 150))
 # depth_refresh_days is retired - triggers decide re-runs now.
 
 
+DEPTH_LOG = HERE / "cache" / "depth_orchestrate.log"
+
+
 def log(msg):
-    print(f"[depth-orch {datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+    line = f"[depth-orch {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
+    print(line, flush=True)
+    # persistent tail for status.py's live-activity section; append-only, best-effort
+    try:
+        with DEPTH_LOG.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        pass
 
 
 def load_state():

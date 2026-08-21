@@ -53,7 +53,9 @@ FIN_DIR = SD / "financials"                        # per-ticker financials (Next
 
 
 def log(m):
-    print(f"[orch {datetime.now().strftime('%H:%M:%S')}] {m}", flush=True)
+    # full date since 2026-08-21: the dateless [orch HH:MM:SS] lines made the log tail
+    # unreadable across days once runs became sparse (operator request)
+    print(f"[orch {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {m}", flush=True)
 
 
 def load(path, default=None):

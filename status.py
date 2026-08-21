@@ -187,17 +187,53 @@ def depth_snapshot():
     if bad:
         L.append("   failed: " + ", ".join(
             f"{t}({dstate[t].get('why', '?')})" for t in bad[:6]))
-    cdirs = sorted((HERE / "ab_reports" / "consensus").glob("*_*"),
-                   key=lambda d: d.name.split("_", 1)[1], reverse=True)
-    cur = next((d for d in cdirs if not (d / "verdict_depth.json").exists()), None)
-    if cur and alive:
-        t = cur.name.split("_", 1)[0]
-        n_done = len(list(cur.glob("sample*.md"))) - len(list(cur.glob("sample*_thinking.md")))
-        n_done = max(0, n_done)
-        newest = max((f.stat().st_mtime for f in cur.glob("*") if f.is_file()), default=None)
-        mins = int((datetime.now().timestamp() - newest) / 60) if newest else "?"
-        L.append(f"   NOW: {t} - sample {min(n_done + 1, 3)}/3 on the GPU "
-                 f"({mins} min since last artifact; ~36 min/sample with tools)")
+    # current work: the newest VALIDLY-NAMED consensus dir without a verdict. During the
+    # research/enrich phase no consensus dir exists yet, so fall back to the freshest research
+    # brief to name the ticker being worked.
+    _dirpat = _re.compile(r"^([A-Z0-9.\-]+)_(\d{8}_\d{6})$")
+    cdirs = [(m.group(1), m.group(2), d)
+             for d in (HERE / "ab_reports" / "consensus").glob("*_*")
+             if (m := _dirpat.match(d.name))]
+    cdirs.sort(key=lambda x: x[1], reverse=True)
+    cur = next(((t, d) for t, _ts, d in cdirs
+                if not (d / "verdict_depth.json").exists()), None)
+    if alive:
+        if cur:
+            t, d = cur
+            n_done = len([f for f in d.glob("sample*.md")
+                          if _re.match(r"sample\d+\.md$", f.name)])
+            newest = max((f.stat().st_mtime for f in d.rglob("*") if f.is_file()), default=None)
+            mins = f"{int((datetime.now().timestamp() - newest) / 60)}" if newest else "?"
+            L.append(f"   NOW: {t} - sample {min(n_done + 1, 3)}/3 on the GPU "
+                     f"({mins} min since last artifact; ~36 min/sample with tools)")
+        else:
+            briefs = sorted((HERE / "research").glob("*.md"),
+                            key=lambda f: f.stat().st_mtime, reverse=True)
+            if briefs and (datetime.now().timestamp() - briefs[0].stat().st_mtime) < 3600:
+                L.append(f"   NOW: {briefs[0].stem} - research/enrich phase "
+                         f"(brief updated {int((datetime.now().timestamp() - briefs[0].stat().st_mtime)/60)} min ago)")
+            else:
+                L.append("   NOW: between tickers (no active consensus dir)")
+    # live activity: newest artifacts across the depth working set - a true liveness signal,
+    # independent of any log (works for a sweep started before the log file existed)
+    events = []
+    for t, _ts, d in cdirs[:6]:
+        for f in d.rglob("*"):
+            if f.is_file():
+                events.append((f.stat().st_mtime, t, f.name))
+    for f in (HERE / "research").glob("*.md"):
+        events.append((f.stat().st_mtime, f.stem, "research brief"))
+    events.sort(reverse=True)
+    if events:
+        L.append("   live activity (newest artifacts):")
+        for mt, t, name in events[:6]:
+            L.append(f"     {datetime.fromtimestamp(mt).strftime('%m-%d %H:%M')}  {t:6s} {name}")
+    dlog = HERE / "cache" / "depth_orchestrate.log"
+    if dlog.exists():
+        tail = dlog.read_text(encoding="utf-8", errors="replace").splitlines()[-4:]
+        L.append("   orchestrator log tail:")
+        for ln in tail:
+            L.append(f"     {ln[:100]}")
     recent = sorted(verdicts.values(), key=lambda v: v.get("date", ""), reverse=True)[:5]
     for v in recent:
         band = (f"${v['iv_band_low']}-${v['iv_band_high']}"
