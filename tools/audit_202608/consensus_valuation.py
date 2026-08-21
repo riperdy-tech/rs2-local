@@ -76,6 +76,10 @@ IV_PATTERNS = [
     r"\bbase (?:case )?IV\b[^\n]{0,40}?\$\s*([\d,]+(?:\.\d{1,2})?)",
     r"IV \(base\)[^\n]{0,30}?\$\s*([\d,]+(?:\.\d{1,2})?)",
     r"fair value[^\n]{0,80}?\$\s*([\d,]+(?:\.\d{1,2})?)",
+    # "Probability-weighted IV ≈ $190" (AZN s3, 2026-08-22) — a real vote dropped because no
+    # pattern covered bare "IV" plus a connector. Tight on purpose: literal IV, one of ≈/=/:,
+    # then $, so the adjacent "50% CI $170-215" cannot match.
+    r"\bIV\s*[≈=:]\s*\$\s*([\d,]+(?:\.\d{1,2})?)",
 ]
 
 
