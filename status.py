@@ -142,6 +142,74 @@ def verdict_of(rep):
     return load(REPORTS / rep / "verdict.json", {}) or {}
 
 
+def depth_snapshot():
+    """Status of the DEPTH-TIER pipeline (the live one; the sections below describe the DROPPED
+    production pipeline, kept for the record). Reads depth_state.json, depth_ledger.jsonl, the
+    depth lock, and the newest consensus dir for within-ticker progress."""
+    import re as _re
+    dstate = load(HERE / "cache" / "depth_state.json", {}) or {}
+    dlock = HERE / "cache" / "orchestrate_depth.lock"
+    dpause = HERE / "cache" / "DEPTH_PAUSED"
+    ledger = HERE / "cache" / "depth_ledger.jsonl"
+    L = []
+    L.append(f"DEPTH PIPELINE (live)     ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
+    L.append("=" * 60)
+    alive = None
+    if dlock.exists():
+        try:
+            pid = int((json.loads(dlock.read_text()) or {}).get("pid", 0))
+            import ctypes
+            h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+            alive = bool(h)
+            if h:
+                ctypes.windll.kernel32.CloseHandle(h)
+        except Exception:
+            alive = None
+    if dpause.exists():
+        L.append("PAUSED - DEPTH_PAUSED set; sweep stops at the next ticker boundary.")
+    if dlock.exists() and alive:
+        L.append("RUNNING - sweep active")
+    elif dlock.exists():
+        L.append("STALLED - depth lock present but orchestrator PID is dead.")
+    else:
+        L.append("idle - no sweep running")
+    ok = [t for t, r in dstate.items() if r.get("ok")]
+    bad = [t for t, r in dstate.items() if not r.get("ok")]
+    verdicts = {}
+    if ledger.exists():
+        for line in ledger.read_text(encoding="utf-8").splitlines():
+            try:
+                v = json.loads(line)
+                verdicts[v["ticker"]] = v
+            except Exception:
+                pass
+    L.append(f"   done {len(ok)} | failed {len(bad)} | verdicts on file {len(verdicts)}")
+    if bad:
+        L.append("   failed: " + ", ".join(
+            f"{t}({dstate[t].get('why', '?')})" for t in bad[:6]))
+    cdirs = sorted((HERE / "ab_reports" / "consensus").glob("*_*"),
+                   key=lambda d: d.name.split("_", 1)[1], reverse=True)
+    cur = next((d for d in cdirs if not (d / "verdict_depth.json").exists()), None)
+    if cur and alive:
+        t = cur.name.split("_", 1)[0]
+        n_done = len(list(cur.glob("sample*.md"))) - len(list(cur.glob("sample*_thinking.md")))
+        n_done = max(0, n_done)
+        newest = max((f.stat().st_mtime for f in cur.glob("*") if f.is_file()), default=None)
+        mins = int((datetime.now().timestamp() - newest) / 60) if newest else "?"
+        L.append(f"   NOW: {t} - sample {min(n_done + 1, 3)}/3 on the GPU "
+                 f"({mins} min since last artifact; ~36 min/sample with tools)")
+    recent = sorted(verdicts.values(), key=lambda v: v.get("date", ""), reverse=True)[:5]
+    for v in recent:
+        band = (f"${v['iv_band_low']}-${v['iv_band_high']}"
+                if v.get("iv_band_low") is not None else "n/a")
+        L.append(f"   {v['ticker']:6s} {v['direction']:12s} band {band:>16s} vs ${v.get('price')}"
+                 f" | spread {v.get('spread_pct')}% | {v.get('size_hint')}")
+    n_left = max(0, 169 - len(ok))
+    L.append(f"   ETA: ~{n_left} names x ~117 min = {n_left * 117 / 1440:.1f} GPU-days remaining")
+    L.append("")
+    return chr(10).join(L)
+
+
 def snapshot():
     fs = (load(SD / "factor_scores.json", {}) or {}).get("tickers", {})
     cur = {t.upper(): e.get("fct_band") for t, e in fs.items()
@@ -358,7 +426,7 @@ def interactive(refresh=15):
     try:
         import msvcrt
     except ImportError:
-        print(snapshot())
+        print(depth_snapshot() + snapshot())
         print("\n(interactive input is Windows-only — use: python status.py pause|resume|stop)")
         return
     msg = ""
@@ -366,7 +434,7 @@ def interactive(refresh=15):
 
     def render():
         os.system("cls" if os.name == "nt" else "clear")
-        print(snapshot())
+        print(depth_snapshot() + snapshot())
         print()
         if msg:
             print(f"  » {msg}\n")
@@ -427,7 +495,7 @@ def main():
     if args.cmd == "stop":
         print(do_stop()); return
     if args.once or not sys.stdin.isatty():
-        print(snapshot()); return
+        print(depth_snapshot() + snapshot()); return
     interactive(args.refresh)
 
 
