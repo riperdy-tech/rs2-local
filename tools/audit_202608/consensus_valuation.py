@@ -61,6 +61,15 @@ BAND_HIGH_MULT = 1.5        # above 1.5x the PV'd analyst HIGH -> farfetched ($7
 BAND_LOW_DIV = 3.0          # below 1/3 of the PV'd analyst LOW -> farfetched (deliberately loose)
 OCF_MULT_MAX = 40.0         # IV implying >40x TTM operating cash flow ($702 implies 46.3x)
 TOL_PCT = 25.0              # runs disagreeing by more than this (max/min-1) are not converged
+EARLY_TOL_PCT = 15.0        # 2-sample early-stop bar. DELIBERATELY TIGHTER than TOL_PCT: two
+                            # draws agreeing is weaker evidence of stability than three
+                            # (expected 2-sample spread ~1.1x the true scatter vs ~1.7x for
+                            # three), so early publication demands closer agreement. Two samples
+                            # inside 15% -> publish median of 2; anything else -> third sample,
+                            # judged at TOL_PCT.
+NUM_PREDICT = 65536         # output budget per sample. At the old ctx 65,536 the 49,152 cap was
+                            # already the ctx wall (prompt ~16.4K), and one GOOG sample hit it -
+                            # report cut mid-write, vote discarded. ctx 81,920 buys ~16K more.
 
 IV_PATTERNS = [
     r"intrinsic value[^\n]{0,80}?\$\s*([\d,]+(?:\.\d{1,2})?)",
@@ -128,10 +137,13 @@ def plausibility(iv, price, ticker):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "GOOG").upper()
+    adaptive = "--samples" not in sys.argv
     n = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else 3
     model = (sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv
              else "rs2-analyst-deep")
-    ctx = int(sys.argv[sys.argv.index("--ctx") + 1]) if "--ctx" in sys.argv else 65536
+    ctx = int(sys.argv[sys.argv.index("--ctx") + 1]) if "--ctx" in sys.argv else 81920
+    # ctx 81920 VERIFIED 2026-08-21 on rs2-analyst-deep: 22.2 GB resident, fully on GPU,
+    # no CPU spill. Do not raise further without re-probing /api/ps for spill.
 
     fin = rs2_data.load_json(common.SD / "financials" / f"{t}.json") or {}
     price = vb._num(fin.get("Price"))
@@ -142,7 +154,9 @@ def main():
     # Save the exact pack. Without it a consensus run is not re-auditable from its own directory
     # — found when three auditors had to reconstruct it independently to check the reports.
     (d / "_pack.md").write_text(pack, encoding="utf-8")
-    print(f"[consensus] {t} @ ${price} | model={model} | {n} samples -> {d}", flush=True)
+    mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
+            if adaptive else f"{n} samples fixed")
+    print(f"[consensus] {t} @ ${price} | model={model} | {mode} -> {d}", flush=True)
 
     use_tools = "--tools" in sys.argv
     if use_tools:
@@ -154,21 +168,22 @@ def main():
               "is snapshotted per sample", flush=True)
 
     runs = []
-    for i in range(1, n + 1):
+    n_max = 3 if adaptive else n
+    for i in range(1, n_max + 1):
         t0 = time.time()
         resp, meta = {}, {}
         try:
             if use_tools:
                 sd_i = d / f"sample{i}_research"
                 rep, think, meta = analyst_tools.chat_with_tools(
-                    model, pack, sd_i, think="high", ctx=ctx, num_predict=49152, seed=1000 + i)
+                    model, pack, sd_i, think="high", ctx=ctx, num_predict=NUM_PREDICT, seed=1000 + i)
                 resp = {"done_reason": meta.get("done_reason"),
                         "eval_count": meta.get("generated_tokens")}
                 msg = {}
             else:
                 body = {"model": model, "stream": False, "think": "high",
                         "messages": [{"role": "user", "content": pack}],
-                        "options": {"num_ctx": ctx, "num_predict": 49152, "seed": 1000 + i}}
+                        "options": {"num_ctx": ctx, "num_predict": NUM_PREDICT, "seed": 1000 + i}}
                 import urllib.request
                 req = urllib.request.Request("http://localhost:11434/api/chat",
                                              data=json.dumps(body).encode(),
@@ -203,20 +218,46 @@ def main():
               + f" | gen {g_tok} tok (think {len(think):,}ch / report {len(rep):,}ch)"
               + (f" ({'; '.join(why)})" if why else "")
               + (" | TRUNCATED" if truncated else ""), flush=True)
+        # ADAPTIVE EARLY STOP after sample 2: publish on two COMPLETE, PLAUSIBLE samples inside
+        # the tighter bar. Every other outcome - spread beyond EARLY_TOL, an implausible or
+        # truncated or unparseable sample - falls through and buys the 3rd opinion. The bar is
+        # tighter than TOL_PCT on purpose; see EARLY_TOL_PCT.
+        if adaptive and i == 2:
+            g2 = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"]]
+            if len(g2) == 2:
+                sp2 = (max(r["iv"] for r in g2) / min(r["iv"] for r in g2) - 1) * 100
+                if sp2 <= EARLY_TOL_PCT:
+                    print(f"  [adaptive] 2 samples agree within {sp2:.1f}% "
+                          f"(early bar {EARLY_TOL_PCT:.0f}%) — stopping, no 3rd sample",
+                          flush=True)
+                    break
+                print(f"  [adaptive] 2-sample spread {sp2:.1f}% > {EARLY_TOL_PCT:.0f}% — "
+                      f"escalating to 3rd sample", flush=True)
+            else:
+                print(f"  [adaptive] only {len(g2)} usable of 2 — escalating to 3rd sample",
+                      flush=True)
 
     good = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"]]
     ivs = [r["iv"] for r in good]
     spread = (max(ivs) / min(ivs) - 1) * 100 if len(ivs) >= 2 else None
-    converged = bool(spread is not None and spread <= TOL_PCT)
+    early_stop = adaptive and len(runs) == 2 and len(good) == 2
+    # An early-stopped pair must meet the bar it stopped under; a 3-sample set (or a fixed-n
+    # run) is judged at the standard tolerance.
+    eff_tol = EARLY_TOL_PCT if early_stop else TOL_PCT
+    converged = bool(spread is not None and spread <= eff_tol)
     med = st.median(ivs) if ivs else None
     verdict = ("USABLE — plausible and converged" if converged and med else
                "NOT USABLE — runs disagree beyond tolerance" if med and spread is not None else
                "NOT USABLE — no plausible sample")
-    doc = {"ticker": t, "price": price, "model": model, "samples": n,
+    doc = {"ticker": t, "price": price, "model": model,
+           "mode": ("adaptive" if adaptive else f"fixed_{n}"),
+           "samples_run": len(runs), "early_stop": early_stop,
+           "effective_tolerance_pct": eff_tol,
            "generated_at": datetime.now(timezone.utc).isoformat(),
            "runs": runs, "n_plausible": len(good),
            "median_iv": med, "spread_pct": round(spread, 1) if spread is not None else None,
-           "tolerance_pct": TOL_PCT, "converged": converged, "verdict": verdict,
+           "tolerance_pct": TOL_PCT, "early_tolerance_pct": EARLY_TOL_PCT,
+           "converged": converged, "verdict": verdict,
            "median_mos_pct": round((med / price - 1) * 100, 1) if med and price else None}
     (d / "consensus.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")
     print(f"\n[consensus] {verdict}")
