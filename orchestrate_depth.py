@@ -262,6 +262,11 @@ def main():
             save_state(st)
             n = rebuild_overlay()
             log(f"   overlay: {n} verdicts (local cache/depth_overlay.json)")
+            # publish per completion (2026-08-21): at ~2h/ticker a sweep runs for days, and
+            # sweep-end-only publishing left fresh verdicts invisible on the site the whole
+            # time. One small commit per ticker is the lesser cost.
+            if ok:
+                publish_overlay()
             done += 1
     finally:
         try:
