@@ -87,6 +87,37 @@ def rebuild_overlay():
     return len(newest)
 
 
+def publish_overlay():
+    """Copy the local overlay into the screener repo and push. Operator-approved 2026-08-21
+    ("verdict emission and new overlay - approved and push to github"). The stash dance is the
+    standing procedure for that repo: the cloud pushes daily feeds, so always stash -> rebase ->
+    push -> pop. No site component reads this file yet; hosting it is not a display change."""
+    dst = SD / "depth_overlay.json"
+    try:
+        dst.write_text(OVERLAY.read_text(encoding="utf-8"), encoding="utf-8")
+        repo = SD.parent.parent
+        def g(*a):
+            return subprocess.run(["git", "-C", str(repo)] + list(a),
+                                  capture_output=True, text=True, timeout=120)
+        g("stash")
+        g("pull", "--rebase", "origin", "main")
+        g("stash", "pop")
+        g("add", str(dst))
+        c = g("-c", "commit.gpgsign=false", "commit", "-m",
+              "depth_overlay.json: sweep update (band_direction_v1)")
+        if "nothing to commit" in (c.stdout + c.stderr):
+            log("publish: overlay unchanged — nothing to push")
+            return
+        r = g("push", "origin", "main")
+        if r.returncode == 0:
+            log("publish: depth_overlay.json pushed to screener repo")
+        else:
+            log(f"publish ::PUSH FAILED:: {(r.stderr or '')[:150]} — overlay committed locally, "
+                f"push manually")
+    except Exception as e:
+        log(f"publish failed (non-fatal): {str(e)[:120]}")
+
+
 def _kill_tree(pid):
     try:
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
@@ -185,6 +216,8 @@ def main():
             LOCK.unlink()
         except OSError:
             pass
+    if done:
+        publish_overlay()
     log(f"sweep done: {done} processed.")
     return 0
 
