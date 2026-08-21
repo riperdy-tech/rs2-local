@@ -196,6 +196,31 @@ def main():
         except Exception as e:
             print(f"  sample {i}: FAILED {str(e)[:90]}", flush=True)
             continue
+        # EMPTY-REPORT RETRY (found live on ANET s2, 2026-08-22): 118K chars of thinking,
+        # done_reason=stop, ZERO report content - the model reasoned itself to a stop without
+        # emitting the deliverable. One retry with a perturbed seed; a second empty is recorded
+        # and the sample excluded as before (n_basis drops, verdict still emitted).
+        if not (rep or "").strip() and not use_tools:
+            print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
+                  f"one retry, perturbed seed", flush=True)
+            body["options"]["seed"] = 1000 + i + 50000
+            req = urllib.request.Request("http://localhost:11434/api/chat",
+                                         data=json.dumps(body).encode(),
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=14400) as r:
+                resp = json.loads(r.read().decode())
+            msg = resp.get("message") or {}
+            rep = msg.get("content") or ""
+            think = msg.get("thinking") or ""
+        elif not (rep or "").strip() and use_tools:
+            import analyst_tools as _at
+            print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
+                  f"one retry, perturbed seed", flush=True)
+            rep, think, meta = _at.chat_with_tools(
+                model, pack, d / f"sample{i}_research_retry", think="high", ctx=ctx,
+                num_predict=NUM_PREDICT, seed=1000 + i + 50000)
+            resp = {"done_reason": meta.get("done_reason"),
+                    "eval_count": meta.get("generated_tokens")}
         (d / f"sample{i}.md").write_text(rep, encoding="utf-8")
         if think:
             (d / f"sample{i}_thinking.md").write_text(think, encoding="utf-8")
