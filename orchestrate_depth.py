@@ -70,8 +70,21 @@ def save_state(st):
 
 
 def live_book():
-    ov = rs2_data.load_json(SD / "llm_overlay.json") or {}
-    return sorted((ov.get("tickers") or {}).keys())
+    """Universe = the quant screener's research_now + watchlist (factor_scores.json, refreshed
+    weekly by the cloud) UNION every name already carrying a depth verdict (a demoted name keeps
+    refreshing until the operator retires it). CORRECTED 2026-08-21: the first version read the
+    FROZEN llm_overlay.json - the dead pipeline's last snapshot - so new research_now entrants
+    would never have been analyzed."""
+    fs = (rs2_data.load_json(SD / "factor_scores.json") or {}).get("tickers", {})
+    book = {t.upper() for t, e in fs.items()
+            if (e or {}).get("fct_band") in ("research_now", "watchlist")}
+    if LEDGER.exists():
+        for line in LEDGER.read_text(encoding="utf-8").splitlines():
+            try:
+                book.add(json.loads(line)["ticker"])
+            except Exception:
+                continue
+    return sorted(book)
 
 
 def rebuild_overlay():
