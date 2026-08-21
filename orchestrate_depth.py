@@ -197,14 +197,14 @@ def main():
         rec = st.get(t) or {}
         if rec and not rec.get("ok"):
             return rec.get("retries", 0) < MAX_RETRIES      # failed: retry budget decides
-        kinds = [k for k, _ in trig.get(t, [])]
+        kinds = [k for k, _ in trig.get(t, []) if k != "filing_pending"]
         if t not in verdicts:
             return True                                     # baseline: never analysed
-        return bool(kinds)                                  # verdict exists: only triggers re-run
+        return bool(kinds)                                  # verdict exists: only ACTIONABLE triggers
 
     def _class(t):
         kinds = [k for k, _ in trig.get(t, [])]
-        if any(k in ("8k", "filing", "move") for k in kinds):
+        if any(k in ("8k", "filing", "move") for k in kinds):    # filing_pending excluded by name
             return 0                                        # event-triggered
         if t not in verdicts:
             return 1                                        # baseline pass

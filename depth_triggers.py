@@ -119,7 +119,23 @@ def triggers_for(t, verdict):
             out.append(("8k", f"8-K filed {max(eightks)}"))
         if baseline:
             f, dt = max(baseline, key=lambda x: x[1])
-            out.append(("filing", f"{f} filed {dt}"))
+            # DEFER GATE (operator decision 2026-08-21, option A): a 10-Q/10-K trigger is
+            # actionable only once OUR fundamentals reflect that filing - otherwise the run
+            # would build its pack on tables one quarter stale (the cloud rebuild is weekly, so
+            # the gap can reach 6 days). Test: fundamentals_ttm's own per-ticker 'filed' date
+            # vs the SEC filing date. While behind, the trigger is reported as filing_pending -
+            # visible in logs and status, deliberately NOT queueable. Names with no TTM record
+            # (20-F/40-F filers) cannot be measured this way and pass through immediately:
+            # their tables never update from 10-Qs, so deferring would defer forever, and the
+            # tool-enabled run reads the filing itself.
+            ttm = (rs2_data.load_json(SD / "fundamentals_ttm.json") or {}
+                   ).get("tickers", {}).get(t) or {}
+            ours = ttm.get("filed")
+            if ours is None or ours >= dt:
+                out.append(("filing", f"{f} filed {dt}"))
+            else:
+                out.append(("filing_pending", f"{f} filed {dt}; our tables at {ours} - "
+                            f"deferred until the data lands"))
     p0, p1 = verdict.get("price"), _price_now(t)
     if p0 and p1:
         mv = abs(p1 / p0 - 1) * 100
