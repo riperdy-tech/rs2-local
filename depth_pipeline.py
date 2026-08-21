@@ -75,6 +75,16 @@ def run_research(t):
         print("[depth] WARN research-venv missing — proceeding without fresh research", flush=True)
         return
     print(f"[depth] research {t} (cache-aware, bound {RESEARCH_TIMEOUT}s)", flush=True)
+    # UNLOAD THE ANALYST FIRST (bug found live on ABNB, 2026-08-21 15:49). The previous
+    # ticker's analyst model (~22.2GB at ctx 81920) stays resident between children, and the
+    # post-research barrier then demands >=20GB free for the analyst re-load - impossible with
+    # the analyst itself still holding the card. Research (9.3GB) and analyst cannot coexist on
+    # 24GB, so the ticker must START by clearing the card. Best-effort: if the card is already
+    # clear this is a no-op poll.
+    ops.wait_unloaded(
+        CONFIG["ollama_endpoint"], MODEL,
+        need_free_mb=11000,          # enough for the research model + ctx, not the full 20GB
+        timeout_s=int(CONFIG.get("vram_unload_timeout_s", 180)))
     proc = subprocess.Popen([str(rv), str(HERE / "deep_research.py"), t],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                             encoding="utf-8", errors="replace")
