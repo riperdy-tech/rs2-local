@@ -80,6 +80,10 @@ IV_PATTERNS = [
     # pattern covered bare "IV" plus a connector. Tight on purpose: literal IV, one of ≈/=/:,
     # then $, so the adjacent "50% CI $170-215" cannot match.
     r"\bIV\s*[≈=:]\s*\$\s*([\d,]+(?:\.\d{1,2})?)",
+    # "IV (base case, 3-yr): $154" / "IV (probability-weighted): $159" (CIEN s2, 2026-08-22) —
+    # a parenthetical qualifier between IV and the number. Bounded qualifier, no newline, then
+    # an optional connector and $.
+    r"\bIV\s*\([^)\n]{0,40}\)\s*[:=≈]?\s*\$\s*([\d,]+(?:\.\d{1,2})?)",
 ]
 
 
