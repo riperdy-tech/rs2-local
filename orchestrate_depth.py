@@ -126,10 +126,14 @@ def publish_overlay():
         def g(*a):
             return subprocess.run(["git", "-C", str(repo)] + list(a),
                                   capture_output=True, text=True, timeout=120)
+        changed = build_report_bundles()
+        if changed:
+            log(f"report bundles updated: {', '.join(changed[:6])}")
         g("stash")
         g("pull", "--rebase", "origin", "main")
         g("stash", "pop")
         g("add", str(dst))
+        g("add", str(SD / "depth_reports"))
         c = g("-c", "commit.gpgsign=false", "commit", "-m",
               "depth_overlay.json: sweep update (band_direction_v1)")
         if "nothing to commit" in (c.stdout + c.stderr):
@@ -143,6 +147,51 @@ def publish_overlay():
                 f"push manually")
     except Exception as e:
         log(f"publish failed (non-fatal): {str(e)[:120]}")
+
+
+def build_report_bundles():
+    """One JSON per ticker with the newest run's three sample REPORTS (the deliverable prose;
+    thinking traces stay local - they are internal reasoning and ~80KB each). Written into the
+    screener repo at public/data/depth_reports/{T}.json for the site's depth panel."""
+    out_dir = SD / "depth_reports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    newest = {}
+    if LEDGER.exists():
+        for line in LEDGER.read_text(encoding="utf-8").splitlines():
+            try:
+                v = json.loads(line)
+                newest[v["ticker"]] = v
+            except Exception:
+                continue
+    written = []
+    for t, v in newest.items():
+        cd = HERE / "ab_reports" / "consensus" / v.get("consensus_dir", "")
+        cj = cd / "consensus.json"
+        if not cj.exists():
+            continue
+        dst = out_dir / f"{t}.json"
+        try:
+            doc = json.loads(cj.read_text(encoding="utf-8"))
+            samples = []
+            for r in doc.get("runs", []):
+                rep = ""
+                sp = cd / f"sample{r['sample']}.md"
+                if sp.exists():
+                    rep = sp.read_text(encoding="utf-8", errors="replace")
+                samples.append({"sample": r["sample"], "iv": r.get("iv"),
+                                "plausible": r.get("plausible"),
+                                "reasons": r.get("reasons") or [],
+                                "truncated": r.get("truncated"),
+                                "secs": r.get("secs"), "report": rep})
+            bundle = {"ticker": t, "run": v.get("consensus_dir"), "verdict": v,
+                      "samples": samples}
+            txt = json.dumps(bundle)
+            if not dst.exists() or dst.read_text(encoding="utf-8") != txt:
+                dst.write_text(txt, encoding="utf-8")
+                written.append(t)
+        except Exception as e:
+            log(f"report bundle {t} failed (non-fatal): {str(e)[:100]}")
+    return written
 
 
 def _kill_tree(pid):
