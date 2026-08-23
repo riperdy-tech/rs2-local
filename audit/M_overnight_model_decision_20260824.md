@@ -91,7 +91,93 @@ continuity warning exists to defuse. Reading the reports rather than the checkli
 produced false MISSES on line-wrapped phrasing and, here, a false PASS on an incidental word
 match. Every quality claim above was confirmed by reading the report.)*
 
-<!-- PM_REPLICATION -->
+## THE FLAW IN MY OWN BATTERY — 3 of 11 runs never wrote a report
+
+Found while checking whether MTP "thinks less" (it does not — 81% thinking share vs q5's 76%).
+The grader reads report **and** thinking together, which I justified as "a catch reasoned but not
+written up still shows the model found it". That reasoning is wrong for a test of a
+**deliverable**:
+
+| ticker | arm | thinking | report | scored |
+|---|---|---|---|---|
+| CART | q5 | 119,770 | **0** | 3/3 |
+| CART | q5+mtp | 113,595 | 3,923 (stub) | 3/3 |
+| GRDN | q5+mtp | 103,788 | **0** | 3/3 |
+
+**Three real failures counted as passes.** Both implicated names are the THIN-DATA ones, on both
+arms — the model reasons enormously about a company it has little data for, then never writes up.
+That reads as a thin-data pathology, not an MTP one, and it is a bigger operational problem than
+the question this battery was built to answer. (The live sweep is more robust than this harness:
+`consensus_valuation` runs 3 samples and retries an empty report; `capability_test` does neither.)
+
+Quality on runs that actually produced a report:
+
+| ticker | q5 | q5+mtp | |
+|---|---|---|---|
+| GOOG | 4/4 | 4/4, 4/4 | tie |
+| AVGO | 3/3 | 3/3 | tie |
+| GRDN | 3/3 | no valid run | — |
+| CART | no valid run | no valid run | — |
+| **PM** | **2/3, caught the basis break** | **1/3, missed it** | **q5 better** |
+
+
+
+
+---
+
+## RECOMMENDATION — ADOPT Q5+MTP for the sweep. Fix sample loss first; it is the bigger problem.
+
+**Adopt.** `depth_model` = `rs2-analyst-deep-mtp5`, `draft_num_predict` 4. The sweep drops from
+~14 GPU-days to ~8.
+
+The case:
+
+1. **The speed gain is proven and does not depend on luck.** +76% median, +64% to +102% per
+   ticker, and the two distributions do not overlap — the worst MTP run beats the best Q5 run by
+   59%. That is as clean as a 5-name result gets.
+2. **Nothing is given up on quality.** Same weights (Q5_K_M), same prompt (byte-identical), same
+   head that was already in the blob. The only change is that a draft head that shipped with your
+   model is now switched on.
+3. **The one quality signal against it is weak, and weaker still in production.** PM: q5 caught
+   the basis break, MTP missed it — n=1, and replication did not finish inside the window. But
+   the sweep runs **3 samples per name**, so a single-run miss is not a verdict miss; it is one
+   vote of three. This harness runs once and has no retry, which overstates the consequence.
+4. **The thin-data failure is not MTP's.** Both arms produced empty reports on both thin-data
+   names.
+
+**What would reverse this:** PM replication showing the miss repeating (2 of 3 or worse) while q5
+keeps catching it. That evidence does not exist yet — the runs were still going at the deadline.
+Check `ab_reports/capability_test/PM_*pmcheck*` when they land. If the miss repeats, the answer
+becomes "adopt for speed, but hold basis-break names on q5", not "abandon MTP".
+
+### The finding that outranks the model choice
+
+**38% of your 24 published verdicts rest on fewer than 3 usable samples** — ATI on a single
+sample, eight more on two:
+
+```
+ATI n_basis=1/3   AMD ANET AVGO AZN BMRN CIEN CLS FIX  n_basis=2/3
+```
+
+Same pathology this battery hit (3 of 11 runs wrote no deliverable). Every lost sample narrows
+the IV band, and a narrower band **converts `hold` verdicts into directional buy/sell calls** —
+the exact publication bias identified when the band scheme was designed. That is a live
+correctness issue in numbers already on the site, and it is worth more than the ~6 GPU-days MTP
+saves.
+
+Causes seen so far, in order of observed frequency: empty report after enormous thinking
+(2 of 11 here, ANET in the sweep), plausibility-guard rejections, and IV-parser misses (three
+phrasing variants fixed this session). The pre-registered next step stands: if a fourth parser
+variant appears, stop patching regexes and require a machine-readable `FINAL_IV: $N` line.
+
+### Adoption steps
+
+1. `config.json`: `depth_model` -> `rs2-analyst-deep-mtp5` (`depth_ctx` and everything else
+   unchanged).
+2. Clear `cache/DEPTH_PAUSED`, relaunch `orchestrate_depth.py` — the trigger-driven queue and the
+   180-min ceiling are already live, and CW/GOOGL/GRDN retry automatically.
+3. Expect the overlay to mix two models until the next full pass. `run_meta.json` records the
+   model per run, so which verdict came from which is recoverable.
 
 ---
 
