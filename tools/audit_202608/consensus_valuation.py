@@ -150,6 +150,10 @@ def main():
     model = (sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv
              else "rs2-analyst-deep")
     ctx = int(sys.argv[sys.argv.index("--ctx") + 1]) if "--ctx" in sys.argv else 81920
+    # Reasoning effort. Default "high" = the template's xhigh = the model's MAXIMUM and its own
+    # default; "medium" is the neutral baseline that injects no reasoning instruction. Exposed
+    # 2026-08-23 so the medium-vs-xhigh cost/quality question can be measured rather than argued.
+    think = _arg("--think", "high")
     # ctx 81920 VERIFIED 2026-08-21 on rs2-analyst-deep: 22.2 GB resident, fully on GPU,
     # no CPU spill. Do not raise further without re-probing /api/ps for spill.
 
@@ -184,12 +188,12 @@ def main():
             if use_tools:
                 sd_i = d / f"sample{i}_research"
                 rep, think, meta = analyst_tools.chat_with_tools(
-                    model, pack, sd_i, think="high", ctx=ctx, num_predict=NUM_PREDICT, seed=1000 + i)
+                    model, pack, sd_i, think=think, ctx=ctx, num_predict=NUM_PREDICT, seed=1000 + i)
                 resp = {"done_reason": meta.get("done_reason"),
                         "eval_count": meta.get("generated_tokens")}
                 msg = {}
             else:
-                body = {"model": model, "stream": False, "think": "high",
+                body = {"model": model, "stream": False, "think": think,
                         "messages": [{"role": "user", "content": pack}],
                         "options": {"num_ctx": ctx, "num_predict": NUM_PREDICT, "seed": 1000 + i}}
                 import urllib.request
@@ -225,7 +229,7 @@ def main():
             print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
                   f"one retry, perturbed seed", flush=True)
             rep, think, meta = _at.chat_with_tools(
-                model, pack, d / f"sample{i}_research_retry", think="high", ctx=ctx,
+                model, pack, d / f"sample{i}_research_retry", think=think, ctx=ctx,
                 num_predict=NUM_PREDICT, seed=1000 + i + 50000)
             resp = {"done_reason": meta.get("done_reason"),
                     "eval_count": meta.get("generated_tokens")}
@@ -282,7 +286,7 @@ def main():
     verdict = ("USABLE — plausible and converged" if converged and med else
                "NOT USABLE — runs disagree beyond tolerance" if med and spread is not None else
                "NOT USABLE — no plausible sample")
-    doc = {"ticker": t, "price": price, "model": model,
+    doc = {"ticker": t, "price": price, "model": model, "think": think,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "samples_run": len(runs), "early_stop": early_stop,
            "effective_tolerance_pct": eff_tol,
