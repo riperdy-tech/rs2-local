@@ -9,9 +9,10 @@ instead of 3?
 resembling our workload.** The one quantitative effort-ladder datapoint found is +0.43 on a 0–10
 substance scale (agentic coding), against 0.18 run-to-run noise. That is not evidence for a
 valuation engine, and per CLAUDE.md §0 the knob does not move on it. We own the harness that can
-answer it in ~4 runs. (2) **The adaptive 2-escalate rule is already implemented and is being
-switched off by its own caller** — and switching it on is not a free 33%, because a 2-sample band
-is narrower than a 3-sample band *by construction*, which biases the direction verdict.
+answer it in ~4 runs. (2) **3 flat is a deliberate operator decision, not an oversight** — the adaptive 2-escalate rule
+exists and is bypassed because the operator chose 3 after weighing it. That decision now has a
+second, stronger justification it did not have at the time: a 2-sample band is narrower than a
+3-sample band *by construction*, so early-stopping biases the published direction verdict.
 
 ---
 
@@ -72,7 +73,7 @@ branches). Making the depth tier configurable is a `depth_think` config key and 
 
 ---
 
-## 2. Sample count — the rule you asked for already exists, and is disabled
+## 2. Sample count — the rule exists, is deliberately bypassed, and the bias argues for that
 
 `consensus_valuation.py` implements **adaptive 2-escalate**: run 2 samples; if both are plausible,
 complete, and agree within `EARLY_TOL_PCT` (15%), publish the median of 2 and skip the third.
@@ -80,10 +81,12 @@ Anything else buys the third opinion, judged at `TOL_PCT` (25%).
 
 It activates only when `--samples` is **absent** (`adaptive = "--samples" not in sys.argv`).
 
-**`depth_pipeline.run_consensus` passes `--samples 3` on every ticker.** Production has therefore
-never early-stopped. Removing those two argv entries turns the feature on.
+**`depth_pipeline.run_consensus` passes `--samples 3` on every ticker,** so production has never
+early-stopped. **This is a deliberate operator choice, taken after 2-escalate was discussed and
+weighed — not a misconfiguration**, and this document originally mis-framed it as one. Removing
+those two argv entries would turn the feature on; §2 below is the argument for *not* doing so.
 
-### Why that is not a free 33%
+### Why that is not a free 33% — and why 3-flat was the right call
 
 The verdict is **band direction**: price above the whole band → overvalued, below → undervalued,
 inside → hold. The band is `[min(IV), max(IV)]` over usable samples.
@@ -115,10 +118,11 @@ adaptive rule over samples 1–2 and diffs the DIRECTION; (3) sweeps the early b
 reporting for each: how many tickers early-stop, how many flip direction, how many change size
 hint, and GPU-hours saved; (4) names every flipped ticker.
 
-**Decide the bar from that table.** If direction flips are ~0 at the 15% bar, take the saving. If
-they are not, the options are: keep 3 samples; or early-stop but widen the 2-sample band by the
-range ratio (~1.5×) before applying the direction rule, so 2-sample and 3-sample bands are
-comparable — a methodology change requiring operator approval, not a tuning knob.
+**Decide the bar from that table** *if* the question is ever reopened. The prior is now 3-flat,
+and the band-width bias is an affirmative reason for it rather than merely a cost accepted. Should
+it be revisited, the only defensible way to early-stop is to widen the 2-sample band by the range
+ratio (~1.5×) before applying the direction rule, so 2-sample and 3-sample bands are comparable —
+a methodology change requiring operator approval, not a tuning knob.
 
 One archived case is on record here already: **GOOG (`H_model_verification`) would NOT have
 early-stopped** — sample 2 hit the `num_predict` cap and was flagged truncated, leaving one usable
@@ -132,10 +136,30 @@ sample of the first two, which forces escalation. Truncation is itself an escala
 |---|---|---|---|---|
 | 1 | **Turn on adaptive early-stop** (drop `--samples 3`) | Feature exists, tested | ≤33% of analyst time | **Blocked on the band-narrowing measurement above** |
 | 2 | **`xhigh` → `medium`** | None for this task | 3.5× is the high-vs-off gap; medium is between | **Blocked on the 4-run experiment in §1** |
-| 3 | **MTP speculative decoding on the depth model** | Production analyst: **48.5 vs 35.8 tok/s (+35%)** from the MTP tag. `rs2-analyst-deep` is a raw UD-Q5_K_M blob with **no MTP head**. `F_config_findings`: Q5 vs Q4 quality was a wash (8/8 both) | ~+35% throughput | **CONTRADICTED**: `SESSION_SUMMARY` records "Q4 truncates, Q5 does not — 4/6 vs 0/6 on the depth tier" — at the OLD 49,152 budget. Must be re-tested at ctx 81,920 / num_predict 65,536 before it is believed in either direction. |
-| 4 | **The empty-report pathology** | ANET s2: 118K chars of thinking, `done_reason=stop`, **zero report**. `4520df6` now retries once with a perturbed seed | Up to ~80 min per occurrence | Abort a sample once thinking passes a token bound with no report started, rather than paying for the full budget then retrying. Frequency is unmeasured — count `thinking_share_of_output` across the archive. |
-| 5 | **`depth_ctx` 81,920** | Sized as prompt 16.4K + `num_predict` 65,536. Resident 22.2 GB. If real generation is 34–49K, the window is oversized and the KV cache is paying for it | Unquantified | Free to measure: `generated_tokens` p99 across the archive sets the honest ceiling. |
-| 6 | **Tools** | With tools 36–43 min/sample; without, 1,374 s (23 min) | ~-40% if removed | **DO NOT REMOVE.** Tools fixed the invented-capex error that moved GOOG $317/$321/$273 → $204/$178/$149. Bound per-fetch latency instead (`MAX_TOOL_CALLS` is 12 and fetches are serial). |
+| 3 | **MTP speculative decoding on the depth model** | Production analyst: **48.5 vs 35.8 tok/s (+35%)** from the MTP tag. `rs2-analyst-deep` is a raw UD-Q5_K_M blob with **no MTP head**. `F_config_findings`: Q5 vs Q4 quality was a wash (8/8 both) | ~+35% throughput | **Open — re-test.** This row originally cited `SESSION_SUMMARY`'s "Q4 truncates 4/6, Q5 0/6" as a counter-finding; **that is stale.** It was measured at the old 49,152 budget, and the current regime (`num_predict` 65,536, ctx 81,920) truncates **7/93 = 7.5%** overall. The old finding no longer bounds the decision in either direction, so the re-test is the whole question, not a tiebreak. |
+| 4 | **The empty-report pathology** | ANET s2: 118K chars of thinking, `done_reason=stop`, **zero report**. **MEASURED frequency 2/93 = 2.2%** | ~80 min per occurrence, ~2% of names | **Covered.** `4520df6`'s perturbed-seed retry handles it at this rate. Not worth a pre-emptive abort heuristic. |
+| 5 | ~~**`depth_ctx` 81,920 is oversized**~~ | — | — | **RETRACTED — this claim was wrong.** It rested on this document's DERIVED 34–49K generation estimate. Measured: **median 49,999, p90 66,116, p99 96,497, and 46 of 87 samples exceeded the old 49,152 cap.** The window is being used heavily; cutting it would truncate roughly half the sweep. Not a lever — a trap. |
+| 6 | **Tools** | **MEASURED 23.1 tok/s tools-on vs 28.9 tools-off** (−20% on rate, more on wall-clock since tools runs also generate more) | ~-20% rate if removed | **DO NOT REMOVE.** Tools fixed the invented-capex error that moved GOOG $317/$321/$273 → $204/$178/$149. Bound per-fetch latency instead (`MAX_TOOL_CALLS` is 12 and fetches are serial). |
 
-**Ordering:** #1 and #2 are the only two large levers, both are gated on a cheap measurement, and
-neither should move before its measurement exists. #3 is the one that looks free and is not.
+**Ordering, revised after the 2026-08-23 measurements:** **#2 (`medium` vs `xhigh`) is the only
+live, cheap, untested lever left.** #1 is settled — the operator chose 3 flat and the band-width
+bias supports that choice. #3 is genuinely open rather than contradicted, but needs its own run.
+#4 is covered at its measured rate. **#5 was wrong and is withdrawn.**
+
+### Corrections log (2026-08-23)
+
+Three claims in the first version of this document did not survive measurement, and one framing
+was unfair:
+
+1. **`depth_ctx` oversized — WRONG.** Retracted above. The generation window is heavily used.
+2. **MTP blocked by a truncation counter-finding — STALE.** 4/6 vs 0/6 was the old budget; the
+   current rate is 7/93. The re-test instinct was right; the cited evidence was out of date.
+3. **Empty-report frequency "unmeasured" — now 2/93 (2.2%)**, and already covered by the shipped retry.
+4. **"Switched off by its own caller" — unfair framing.** 3-flat was a deliberate, recorded
+   operator decision.
+
+All four traced to the same root cause: this document and `audit/I` both leaned on a DERIVED
+generation estimate (34–49K/sample at 25–30 tok/s) instead of the exact per-sample counts that
+`consensus.json` had been storing all along. The measured figures are median 49,999 at 23.1 tok/s.
+**The estimate was never checked against wall-clock, which would have failed it immediately** —
+34–49K at 25–30 tok/s predicts 19–33 min/sample against 36–43 min measured. Measure first.

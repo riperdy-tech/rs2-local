@@ -24,8 +24,14 @@ with its inputs named). Nothing is quoted from recollection.
 | Depth prompt per sample | **~16.4K tokens** | MEASURED — `consensus_valuation.py` NUM_PREDICT comment |
 | Stage prompt tokens (old pipeline) | 17,090–18,074, 2.7 chars/token | MEASURED — `audit/C_experiments/p2_stage_prompt_tokens.json` |
 | Local throughput | **48.5 tok/s** Q4+MTP, **35.8** Q4 plain | MEASURED — `api_llm/QWEN38_AB_REPORT_20260818.md` |
-| Depth-model throughput (UD-Q5_K_M, think=high) | 25–30 tok/s | **DERIVED** — Q5 weights ~17% larger than Q4 on a bandwidth-bound 3090, no MTP head |
-| Generated tokens per depth sample | **34K–49K** | **DERIVED** — 1,374 s × 25–30 tok/s; upper end corroborated by a GOOG sample hitting the 49,152 cap (H) |
+| Depth-model throughput (UD-Q5_K_M, think=high) | **23.1 tok/s tools-on, 28.9 tools-off** (medians) | **MEASURED** — operator, 2026-08-23, from the run archive. *Supersedes this document's original DERIVED 25–30 tok/s.* |
+| Generated tokens per depth sample | **median 49,999 · p90 66,116 · p99 96,497** (n=87) | **MEASURED** — operator, 2026-08-23. *Supersedes this document's original DERIVED 34K–49K, which was ~30% too low at the median and ~2× too low at p99.* Values above `num_predict` 65,536 are legitimate: on the tools path `analyst_tools.chat_with_tools` **sums `eval_count` across up to 12 tool round-trips**, each separately capped. |
+
+**Consistency check on the two replacements** — they were measured independently and jointly
+reproduce a third quantity measured independently of both: 49,999 tok ÷ 23.1 tok/s = **36.1
+min/sample**, against AAPL's **measured 2,169–2,583 s (36.2–43.1 min)**; ×3 samples = 108 min,
+plus a bounded research phase, against **130 min measured end-to-end**. The original DERIVED
+figures could not have passed this check — 34K–49K at 25–30 tok/s predicts 19–33 min/sample.
 | Cloud tokens per ticker, OLD 6-stage pipeline | 138,013 in (70.1% cache-hit) / 55,449 out (47.6% reasoning), 10 calls | **MEASURED** — `api_llm/usage_log.jsonl`, 9 tickers / 90 calls, deepseek-v4-pro, 2026-07-16 |
 | Live book | 172 tickers | MEASURED — `audit/SCREENER_EXTRACTOR_PACKAGE_20260820.md` |
 | Local power | 300 W (operator figure, GPU) / 400 W (whole box at the wall, upper bound) | operator + bound |
@@ -49,21 +55,26 @@ own measured throughput is the only apples-to-apples form.
 
 Local $/1M generated tokens = (W/1000) × (1e6 / tok_s / 3600) × rate.
 
-| tok/s | W | $0.10/kWh | $0.15 | $0.20 | $0.25 | $0.30 | $0.40 |
-|---|---|---|---|---|---|---|---|
-| 25 (depth, DERIVED) | 300 | 0.33 | 0.50 | **0.67** | 0.83 | 1.00 | 1.33 |
-| 30 (depth, DERIVED) | 300 | 0.28 | 0.42 | **0.56** | 0.69 | 0.83 | 1.11 |
-| 35.8 (MEASURED) | 300 | 0.23 | 0.35 | 0.47 | 0.58 | 0.70 | 0.93 |
-| 25 (depth, DERIVED) | 400 | 0.44 | 0.67 | 0.89 | 1.11 | 1.33 | 1.78 |
+| tok/s | W | $0.10/kWh | $0.15 | $0.20 | $0.25 | $0.30 |
+|---|---|---|---|---|---|---|
+| **23.1 (depth tools-on, MEASURED)** | 300 | 0.36 | 0.54 | **0.72** | 0.90 | 1.08 |
+| **23.1 (depth tools-on, MEASURED)** | 400 | 0.48 | 0.72 | **0.96** | 1.20 | 1.44 |
+| 28.9 (depth tools-off, MEASURED) | 300 | 0.29 | 0.43 | 0.58 | 0.72 | 0.87 |
+| 35.8 (production Q4, MEASURED) | 300 | 0.23 | 0.35 | 0.47 | 0.58 | 0.70 |
 
-Against **$0.66/1M output on V4-Flash off-peak**, the local 3090 at 300 W and 25–30 tok/s costs
-**$0.56–0.67/1M at $0.20/kWh**. That is a tie, not "much cheaper". Break-even tariffs:
+Against **$0.66/1M output on V4-Flash off-peak**, the local 3090 on the production tools path
+(300 W, 23.1 tok/s) costs **$0.72/1M at $0.20/kWh** — now marginally *worse* than Flash at that
+tariff, where the original DERIVED figures put it marginally better. Break-even tariffs:
 
 | | Flash off-peak | Flash peak | Pro off-peak | Pro peak |
 |---|---|---|---|---|
-| 25 tok/s @ 300 W | **$0.20/kWh** | $0.40 | $0.59 | $1.19 |
-| 30 tok/s @ 300 W | **$0.24/kWh** | $0.48 | $0.71 | $1.43 |
-| 30 tok/s @ 400 W | $0.18/kWh | $0.36 | $0.53 | $1.07 |
+| **23.1 tok/s @ 300 W** | **$0.183/kWh** | $0.366 | $0.549 | $1.098 |
+| 23.1 tok/s @ 400 W | $0.137/kWh | $0.274 | $0.412 | $0.823 |
+
+The measured throughput moves break-even **down** from the originally reported $0.20–0.24/kWh to
+**$0.18/kWh at 300 W** — i.e. the crossover sits slightly below typical tariffs rather than
+slightly above. The conclusion is unchanged in kind (it is a wash, not a rout) but the sign at
+$0.20/kWh has flipped in the API's favour.
 
 **Read: below ~$0.20/kWh the local card is the cheaper token source; above it, Flash is. V4-Pro is
 never the cheaper token source at any tariff we would pay.**
@@ -72,19 +83,24 @@ never the cheaper token source at any tariff we would pay.**
 
 ## 3. Per-ticker and whole-book cost
 
-**Depth pipeline** — 3 × (16.4K in / 34–49K out); sample 1 pays cache-miss, samples 2–3 hit the
-cached pack prefix.
+**Depth pipeline** — 3 × (16.4K in / measured out); sample 1 pays cache-miss, samples 2–3 hit the
+cached pack prefix. **Recomputed on the measured token distribution** (the original table used the
+DERIVED 34–49K and therefore understated every API row by 30–90%):
 
-| | per ticker | 172 names |
-|---|---|---|
-| API V4-Flash off-peak | $0.063 – $0.101 | **$10.88 – $17.40** |
-| API V4-Flash peak | $0.127 – $0.202 | $21.75 – $34.80 |
-| API V4-Pro off-peak | $0.190 – $0.304 | $32.64 – $52.20 |
-| API V4-Pro peak | $0.380 – $0.607 | $65.27 – $104.41 |
+| | per ticker @ median | @ p90 | @ p99 | 172 names @ median |
+|---|---|---|---|---|
+| API V4-Flash off-peak | **$0.103** | $0.135 | $0.195 | **$17.69** |
+| API V4-Flash peak | $0.206 | $0.270 | $0.390 | $35.38 |
+| API V4-Pro off-peak | $0.309 | $0.404 | $0.585 | $53.07 |
+| API V4-Pro peak | $0.617 | $0.809 | $1.170 | $106.14 |
 | LOCAL 300 W @ $0.15/kWh | $0.098 | $16.77 |
 | LOCAL 300 W @ $0.20/kWh | $0.130 | $22.36 |
 | LOCAL 300 W @ $0.30/kWh | $0.195 | $33.54 |
 | LOCAL 400 W @ $0.20/kWh | $0.173 | $29.81 |
+
+At the **median** sample the two sides are within a cent or two of each other at $0.15–0.20/kWh.
+The API's exposure is to the **tail**: a p99 name costs it 1.9× a median name, whereas the local
+side's cost is bounded by the watchdog regardless of how many tokens a name generates.
 
 **Old 6-stage pipeline** — both sides MEASURED, and here the local box wins outright, because it
 finished a ticker in 10.6 min: $0.005–0.021/ticker of power against $0.046 (Flash off-peak) or
@@ -156,11 +172,14 @@ API path at all, and three of these gaps are correctness issues, not convenience
 5. **Keep the local card for steady state** (2–3 triggered names/day = 4–6 GPU-h/day) and for
    research, which never leaves the box anyway.
 
-### The one measurement that would replace the only DERIVED input here
+### The measurement that replaced this document's only DERIVED input — DONE 2026-08-23
 
-Generated tokens per depth sample are the sole estimated quantity, and every consensus run already
-records the exact figure from the Ollama server (`consensus_valuation.py` writes `prompt_tokens`,
-`generated_tokens` and `secs` per sample). On the production box:
+Generated tokens per depth sample were the sole estimated quantity here. They have since been
+measured on the box (n=87): **median 49,999 · p90 66,116 · p99 96,497**, with throughput
+**23.1 tok/s tools-on / 28.9 tools-off**. §1–§3 above are recomputed on those figures; the
+originally published DERIVED range (34K–49K at 25–30 tok/s) was too low and its API costs were
+correspondingly understated. Re-run the same measurement after any change to `num_predict`,
+`depth_ctx`, reasoning effort or the tool loop, because every table above is a function of it:
 
 ```
 python - <<'PY'
