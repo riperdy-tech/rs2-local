@@ -157,7 +157,23 @@ this session, q5 and the original xhigh arm included:
 Exact figures, named mechanism, cited the pack's own worked example, stated the remedy, and
 recomputed the CAGRs on the comparable basis. MTP on PM is now 1 miss / 1 excellent catch at n=2.
 The single observation that was the only argument against adoption does not survive replication.
-(Runs 2 and 3 were still going at the deadline; they can only add evidence, not remove this.)
+**Final tally, all runs complete (07:05).** Every PM run this session, on the basis-break catch:
+
+| run | result |
+|---|---|
+| battery q5 | CAUGHT |
+| battery q5+mtp | **MISSED** |
+| replication q5 | CAUGHT |
+| replication mtp #1 | CAUGHT (the most complete catch of any run) |
+| replication mtp #2 | CAUGHT |
+| original xhigh | CAUGHT |
+
+**MTP 2 of 3. Q5 3 of 3 (including the original).** One miss in six runs total, and it belongs to
+MTP — so the difference is not proven absent, only shown to be far smaller than a single
+observation suggested. At n=3 vs n=3 this cannot separate a real 1-in-3 defect from ordinary
+variance; it is enough to say the miss is not systematic, not enough to say the arms are equal.
+If you want that settled, it needs ~10 runs per arm on PM alone (~4 GPU-hours) — and I would spend
+those hours on sample loss instead, which is costing you 38% of published verdicts today.
 
 The remaining honest caveat is the reverse of what I expected: **the same name swings between a
 complete catch and no mention at all, on the same model.** That is the sample-loss/variance theme
