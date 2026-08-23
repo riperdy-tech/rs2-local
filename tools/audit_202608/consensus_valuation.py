@@ -153,7 +153,7 @@ def main():
     # Reasoning effort. Default "high" = the template's xhigh = the model's MAXIMUM and its own
     # default; "medium" is the neutral baseline that injects no reasoning instruction. Exposed
     # 2026-08-23 so the medium-vs-xhigh cost/quality question can be measured rather than argued.
-    think = _arg("--think", "high")
+    think = sys.argv[sys.argv.index("--think") + 1] if "--think" in sys.argv else "high"
     # ctx 81920 VERIFIED 2026-08-21 on rs2-analyst-deep: 22.2 GB resident, fully on GPU,
     # no CPU spill. Do not raise further without re-probing /api/ps for spill.
 
