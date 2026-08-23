@@ -118,7 +118,7 @@ Quality on runs that actually produced a report:
 | AVGO | 3/3 | 3/3 | tie |
 | GRDN | 3/3 | no valid run | — |
 | CART | no valid run | no valid run | — |
-| **PM** | **2/3, caught the basis break** | **1/3, missed it** | **q5 better** |
+| **PM** | **2/3, caught the basis break** | **run 1 missed it; run 2 caught it in full** | **variance, not a gap** |
 
 
 
@@ -145,10 +145,23 @@ The case:
 4. **The thin-data failure is not MTP's.** Both arms produced empty reports on both thin-data
    names.
 
-**What would reverse this:** PM replication showing the miss repeating (2 of 3 or worse) while q5
-keeps catching it. That evidence does not exist yet — the runs were still going at the deadline.
-Check `ab_reports/capability_test/PM_*pmcheck*` when they land. If the miss repeats, the answer
-becomes "adopt for speed, but hold basis-break names on q5", not "abandon MTP".
+**RESOLVED AT 06:55 — the PM miss was run variance, not an MTP defect.** The first replication
+(`PM_20260824_053902_pmcheck-mtp1`) caught the basis break more completely than any other run in
+this session, q5 and the original xhigh arm included:
+
+> `[DQ-1] REVENUE BASIS BREAK 2015→2016: FY2014 $80.106B and FY2015 $73.908B INCLUDE excise
+> taxes; FY2016 $26.685B EXCLUDES them. The 64% "collapse" is a reporting change, NOT a business
+> event [Filed, per pack §0 worked example]. All multi-year revenue trends use FY2016→FY2025
+> (comparable basis).`
+
+Exact figures, named mechanism, cited the pack's own worked example, stated the remedy, and
+recomputed the CAGRs on the comparable basis. MTP on PM is now 1 miss / 1 excellent catch at n=2.
+The single observation that was the only argument against adoption does not survive replication.
+(Runs 2 and 3 were still going at the deadline; they can only add evidence, not remove this.)
+
+The remaining honest caveat is the reverse of what I expected: **the same name swings between a
+complete catch and no mention at all, on the same model.** That is the sample-loss/variance theme
+below, not a model-selection question.
 
 ### The finding that outranks the model choice
 
