@@ -160,6 +160,7 @@ def band_verdict(doc):
          "median_iv": doc.get("median_iv"),
          "spread_pct": doc.get("spread_pct"),
          "flags": sorted({f for r in good for f in (r.get("flags") or [])}),
+         "pack_revision": doc.get("pack_revision", 1),
          "scheme": "band_direction_v1"}
     if not ivs or not price:
         v.update({"direction": "NOT_USABLE", "size_hint": None,

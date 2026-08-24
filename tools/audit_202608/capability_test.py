@@ -57,6 +57,17 @@ NULL = "not available"
 LONE_DEPRECIATION_NAMES = {"GOOG", "GOOGL", "UNP"}
 TIMEOUT = 14400
 
+# Bump ONLY when a change alters what the model is actually told — new data, a corrected
+# declaration, a changed caveat. Do not bump for wording or formatting: every bump re-runs the
+# whole published book at roughly 76 GPU-minutes a name. Verdicts record the revision they were
+# produced under, and depth_triggers queues any name below the current one, so a book cannot end
+# up half-analysed on a superseded pack. A verdict with no stamp counts as revision 1.
+#   1  everything up to 2026-08-24.
+#   2  2026-08-24. SBC series, SECTION 6B debt/investment components, SECTION 12 declarations
+#      computed per ticker instead of hard-coded (four of them had gone false after the
+#      2026-08-23 extractor rebuild), unreviewed-field sensor, SECTION 8/9 fetch-age stamps.
+PACK_REVISION = 2
+
 
 # Keys this pack depends on, by source. Checked per build against sources that are NON-EMPTY, so
 # a missing FILE (a name we have no openbb record for at all) is not reported as drift - only a

@@ -12,6 +12,8 @@ Triggers, per name, measured against its NEWEST depth verdict (cache/depth_ledge
   filing     a 10-Q / 10-K / 20-F / 40-F was filed after the verdict date — the quarterly baseline.
   move       today's price is >MOVE_PCT away from the price the verdict was struck at. Catches
              anything the market noticed, filed or not.
+  pack       the verdict was produced on an older revision of the data pack, so the model was
+             shown different (or wrongly declared) facts. Ranked with rotation, not with events.
   rotation   the verdict is older than ROTATION_DAYS — the staleness cap under everything else.
 
 Priority contract (operator): triggered names run FIRST; baseline rotation only when no
@@ -28,6 +30,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
+import sys  # noqa: E402
+
+sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
+import capability_test as cap  # noqa: E402  (PACK_REVISION — see the pack trigger below)
 import rs2_data  # noqa: E402  (repo root on sys.path when imported by orchestrate_depth)
 
 CONFIG = rs2_data.CONFIG
@@ -141,6 +147,15 @@ def triggers_for(t, verdict):
         mv = abs(p1 / p0 - 1) * 100
         if mv > MOVE_PCT:
             out.append(("move", f"price moved {mv:.1f}% since verdict (${p0} -> ${p1})"))
+    # PACK REVISION. A verdict is only as good as the facts the model was shown, so when the pack
+    # gains data or corrects a declaration, verdicts struck under the old one are superseded.
+    # Without this the book splits: on 2026-08-24 the pack stopped falsely declaring that we hold
+    # no SBC, no debt components and no investments, and the 32 names already analysed would have
+    # kept a verdict formed while being told that data did not exist. Ranked with rotation, not
+    # with events, so the baseline sweep still finishes first.
+    if verdict.get("pack_revision", 1) < cap.PACK_REVISION:
+        out.append(("pack", f"analysed on pack revision "
+                            f"{verdict.get('pack_revision', 1)}; current is {cap.PACK_REVISION}"))
     try:
         age = (datetime.now() - datetime.strptime(vdate, "%Y-%m-%d")).days
         if age > ROTATION_DAYS:

@@ -336,6 +336,7 @@ def main():
                f"NOT CONVERGED — only {len(good)} usable sample(s), spread undefined" if med else
                "NO USABLE SAMPLE — nothing parseable and complete")
     doc = {"ticker": t, "price": price, "model": model, "think": think_level,
+           "pack_revision": cap.PACK_REVISION,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "samples_run": len(runs), "early_stop": early_stop,
            "effective_tolerance_pct": eff_tol,
