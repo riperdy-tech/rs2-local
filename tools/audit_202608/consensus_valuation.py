@@ -8,13 +8,14 @@ diligence into the DATA instead.
 
 That trade only works if (a) and (b) are actually enforced, so this module is those two tests.
 
-GUARD 1 — PLAUSIBILITY. Not "does it match our DCF" (that scaffold is what we are removing) but
-"is this a number a competent analyst could defend". A value fails when it is absurd against
-facts we hold independently of any model:
-    * |MoS| beyond MOS_EXTREME_MAX (150%) — the existing malfunction definition
-    * outside the present-valued analyst target band by a wide multiple, where a band exists
-    * implies a market cap wildly outside its own 52-week trading range
-GOOG's $702.49 fails the first two. That is the bar: farfetched, not merely contrarian.
+GUARD 1 — PLAUSIBILITY. REDESIGNED 2026-08-24 from a deleter into an annotator; see
+audit/N_guard_redesign_study_20260824.md and the docstring of plausibility() below. A sample is
+refused only when it is not a genuine, complete statement of a view — no value parsed, empty
+report, or truncation at the output cap. The four calibrated thresholds (analyst band, OCF
+multiple, 52-week range, |MoS|) still compute and are recorded as FLAGS on the run and on the
+verdict, but they no longer destroy a vote: under band-direction an outlier already widens the
+band, and a wider band already cuts the position size, so rejection was punishing extremity twice
+while deleting the evidence of doubt.
 
 GUARD 2 — TOLERANCE. Run the analysis N times and measure the spread. Report the MEDIAN, and
 flag when the runs disagree by more than TOL. This is the honest replacement for a deterministic
@@ -104,23 +105,45 @@ def extract_iv(report, price):
 
 
 def plausibility(iv, price, ticker):
-    """(ok, [reasons]) — is this value defensible, independent of any model of ours."""
-    bad = []
-    if not iv or not price:
-        return False, ["no value extracted"]
+    """(ok, [reasons], [flags]) — usability is an INTEGRITY question; the calibrated thresholds
+    only ANNOTATE.
+
+    REDESIGNED 2026-08-24, per audit/N_guard_redesign_study_20260824.md. The four thresholds below
+    were fitted to four reference points on ONE ticker on ONE day and then applied to every name.
+    Measured across the first 28 published verdicts they rejected 6 samples: all 6 AGREED with
+    their surviving siblings on DIRECTION, 0 verdict directions changed, and the only live effect
+    was narrowing bands — AVGO's spread fell 64% -> 2% and its size hint rose quarter -> full on
+    evidence that did not support it. Two rejections turned on rounding (AMD at exactly 40.0x
+    against a 40x cap). Against the real outlier signal the tests are near-orthogonal: they caught
+    the single most divergent sample in the corpus and kept the next three.
+
+    Rejection was the right mechanism for a POINT-ESTIMATE system, where one bad number BECAME the
+    published answer. Under band-direction it is not. An outlier widens the band, a wider band
+    raises the spread, and spread already cuts the position-size hint — the scheme penalises
+    extremity proportionally on its own, and deleting a sample destroys the very quantity it uses
+    to express doubt. Checked against the original malfunction: GOOG's $702.49 arriving beside
+    $300 and $333 gives a $300-$702 band containing the $343.54 price -> hold, enormous spread,
+    quarter size. Correct and honest with no guard acting at all.
+
+    What is left is what a threshold cannot judge — whether the sample is a genuine, complete
+    statement of a view. Completeness is enforced by the caller (empty-report retry, and
+    done_reason == "length" for truncation); absolute impossibility is enforced upstream by
+    extract_iv's 0.02x-10x-of-price envelope. So this function refuses one thing: a missing value.
+    """
+    flags = []
+    if not iv or not price or iv <= 0:
+        return False, ["no value extracted"], flags
     mos = iv / price - 1
     if abs(mos) > MOS_EXTREME:
-        bad.append(f"|MoS| {mos*100:+.0f}% exceeds the {MOS_EXTREME*100:.0f}% malfunction bound")
+        flags.append(f"mos_{mos*100:+.0f}pct_beyond_{MOS_EXTREME*100:.0f}pct")
     band = vb._consensus_band(ticker)
     if band and not band.get("stale"):
         wacc = 0.10
         lo, hi = band["low"] / (1 + wacc), band["high"] / (1 + wacc)
         if iv > hi * BAND_HIGH_MULT:
-            bad.append(f"${iv:,.2f} is {iv/hi:.2f}x the PV'd analyst high (${hi:,.2f}) — "
-                       f"above {BAND_HIGH_MULT}x is farfetched, not contrarian")
+            flags.append(f"above_analyst_high_{iv/hi:.2f}x_cap_{BAND_HIGH_MULT}x")
         if iv < lo / BAND_LOW_DIV:
-            bad.append(f"${iv:,.2f} is below 1/{BAND_LOW_DIV:.0f} of the PV'd analyst low "
-                       f"(${lo:,.2f})")
+            flags.append(f"below_analyst_low_{iv/lo:.2f}x_floor_{1/BAND_LOW_DIV:.2f}x")
     # implied multiple on trailing OPERATING CASH FLOW — the test that catches a value built by
     # capitalising non-operating income, because OCF cannot contain a mark-to-market gain.
     _rec = ((rs2_data.load_json(common.SD / "fundamentals_ttm.json") or {})
@@ -141,15 +164,19 @@ def plausibility(iv, price, ticker):
     if ocf and sh and ocf > 0:
         mult = iv / (ocf / sh)
         if mult > OCF_MULT_MAX:
-            bad.append(f"${iv:,.2f} implies {mult:.1f}x TTM operating cash flow "
-                       f"(cap {OCF_MULT_MAX:.0f}x) — earnings-based value not backed by cash")
+            # Annotation only, and this test is why. It compares a FORWARD-LOOKING value to
+            # TRAILING cash flow, so it fires hardest on companies whose cash flow is growing.
+            # Measured: it called AMD's $247 "not backed by cash" at 40.0x while the market was
+            # paying $473.25 — 76.6x — for the same trailing OCF. Deleting on it removed the
+            # bullish tail specifically, biasing high-multiple names toward "overvalued".
+            flags.append(f"ocf_multiple_{mult:.1f}x_cap_{OCF_MULT_MAX:.0f}x")
     en = rs2_data.load_json(HERE / "enrich" / f"{ticker.upper()}.json") or {}
     hi52, lo52 = en.get("fifty_two_week_high"), en.get("fifty_two_week_low")
     if hi52 and iv > hi52 * 2:
-        bad.append(f"${iv:,.2f} is >2x the 52-week high (${hi52:,.2f})")
+        flags.append(f"above_52w_high_{iv/hi52:.2f}x")
     if lo52 and iv < lo52 / 3:
-        bad.append(f"${iv:,.2f} is <1/3 of the 52-week low (${lo52:,.2f})")
-    return (not bad), bad
+        flags.append(f"below_52w_low_{iv/lo52:.2f}x")
+    return True, [], flags
 
 
 def main():
@@ -258,18 +285,19 @@ def main():
         p_tok, g_tok = resp.get("prompt_eval_count"), resp.get("eval_count")
         ivs = extract_iv(rep, price)
         iv = st.median(ivs) if ivs else None
-        ok, why = plausibility(iv, price, t)
+        ok, why, flags = plausibility(iv, price, t)
         runs.append({"sample": i, "iv": iv, "all_iv_mentions": sorted(set(ivs))[:8],
-                     "plausible": ok, "reasons": why, "truncated": truncated,
+                     "plausible": ok, "reasons": why, "flags": flags, "truncated": truncated,
                      "done_reason": resp.get("done_reason"),
                      "prompt_tokens": p_tok, "generated_tokens": g_tok,
                      "thinking_chars": len(think), "report_chars": len(rep),
                      "thinking_share_of_output": (round(len(think) / (len(think) + len(rep)), 3)
                                                   if (think or rep) else None),
                      "chars": len(rep), "secs": round(time.time() - t0)})
-        print(f"  sample {i}: IV ${iv if iv else '?'} | plausible={ok}"
+        print(f"  sample {i}: IV ${iv if iv else '?'} | usable={ok}"
               + f" | gen {g_tok} tok (think {len(think):,}ch / report {len(rep):,}ch)"
               + (f" ({'; '.join(why)})" if why else "")
+              + (f" | flags: {', '.join(flags)}" if flags else "")
               + (" | TRUNCATED" if truncated else ""), flush=True)
         # ADAPTIVE EARLY STOP after sample 2: publish on two COMPLETE, PLAUSIBLE samples inside
         # the tighter bar. Every other outcome - spread beyond EARLY_TOL, an implausible or
@@ -299,9 +327,14 @@ def main():
     eff_tol = EARLY_TOL_PCT if early_stop else TOL_PCT
     converged = bool(spread is not None and spread <= eff_tol)
     med = st.median(ivs) if ivs else None
-    verdict = ("USABLE — plausible and converged" if converged and med else
-               "NOT USABLE — runs disagree beyond tolerance" if med and spread is not None else
-               "NOT USABLE — no plausible sample")
+    # This string is THIS TOOL's own summary of convergence. It is NOT the published verdict —
+    # depth_pipeline.band_verdict() decides direction and ignores it. Reworded 2026-08-24 because
+    # the old third branch read "no plausible sample" and fired whenever spread was undefined,
+    # which on a single-sample run libelled a perfectly good sample as implausible.
+    verdict = ("CONVERGED" if converged and med else
+               "NOT CONVERGED — runs disagree beyond tolerance" if med and spread is not None else
+               f"NOT CONVERGED — only {len(good)} usable sample(s), spread undefined" if med else
+               "NO USABLE SAMPLE — nothing parseable and complete")
     doc = {"ticker": t, "price": price, "model": model, "think": think_level,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "samples_run": len(runs), "early_stop": early_stop,

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """rederive_verdicts.py — recompute published verdicts whose lost votes are recoverable.
 
-WHY. The IV parser gained two patterns after the sweep began (`e602cd4`, `8caae7c`), each added
-because a real vote had been discarded — the report stated a value in a phrasing no pattern
-recognised. Those commits fixed FUTURE runs only. Verdicts already published on the old patterns
-still rest on a smaller sample base than the evidence on disk supports.
+WHY. Two changes fixed FUTURE runs only, leaving already-published verdicts resting on a smaller
+sample base than the evidence on disk supports:
+  * the IV parser gained patterns after the sweep began (`e602cd4`, `8caae7c`), each added
+    because a real vote had been discarded for phrasing no pattern recognised;
+  * the plausibility guard stopped deleting samples on calibrated thresholds (2026-08-24,
+    audit/N_guard_redesign_study_20260824.md).
+Both are recoverable from files already on disk, so re-deriving puts the whole book under ONE
+guard regime instead of splitting it at the date the code changed.
 
 This is a pure re-derivation: it re-parses the STORED sample reports with today's patterns, applies
 the SAME plausibility guard and the SAME band rule, and appends a corrected row to the append-only
@@ -64,7 +68,19 @@ def main():
         touched = False
         for r in doc.get("runs", []):
             if r.get("iv"):
-                continue                       # already had a value
+                # Value already parsed — re-judge it under the CURRENT guard. Added 2026-08-24
+                # with the guard redesign: the six samples the old thresholds deleted are still
+                # sitting in these files with their values intact, and restoring them is exactly
+                # the same class of correction as recovering a parser miss.
+                ok, why, flags = plausibility(r["iv"], price, t)
+                if ok == r.get("plausible") and flags == (r.get("flags") or []):
+                    continue
+                if ok and not r.get("plausible"):
+                    r["recovered_by"] = ("rederive_verdicts: guard redesign 2026-08-24 — "
+                                         "thresholds annotate, no longer delete")
+                r["plausible"], r["reasons"], r["flags"] = ok, why, flags
+                touched = True
+                continue
             sp = d / f"sample{r['sample']}.md"
             if not sp.exists():
                 continue
@@ -72,11 +88,12 @@ def main():
             if not vals:
                 continue                       # genuinely stated no value
             iv = st.median(vals)
-            ok, why = plausibility(iv, price, t)
+            ok, why, flags = plausibility(iv, price, t)
             r["iv"] = iv
             r["all_iv_mentions"] = sorted(set(vals))[:8]
             r["plausible"] = ok
             r["reasons"] = why
+            r["flags"] = flags
             r["recovered_by"] = "rederive_verdicts: parser patterns added after this run"
             touched = True
         if not touched:
@@ -86,6 +103,7 @@ def main():
         doc["median_iv"] = st.median(good) if good else None
         doc["spread_pct"] = (round((max(good) / min(good) - 1) * 100, 1)
                              if len(good) >= 2 else None)
+        doc["n_plausible"] = len(good)
         nv = dp.band_verdict(doc)
         nv["consensus_dir"] = v["consensus_dir"]
         nv["rederived_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -98,6 +116,7 @@ def main():
               f"${nv['iv_band_low']}-${nv['iv_band_high']} | "
               f"spread {v['spread_pct']} -> {nv['spread_pct']} | "
               f"size {v['size_hint']} -> {nv['size_hint']}"
+              + (f"\n     flags: {', '.join(nv['flags'])}" if nv.get("flags") else "")
               + ("   *** DIRECTION WOULD FLIP — SKIPPED, operator decision ***" if flip else ""))
         if flip:
             continue

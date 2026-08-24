@@ -12,8 +12,14 @@ But DIRECTION was unanimous (3/3 below price) even when level scattered. So:
   * price BELOW the whole band               -> "undervalued" (every draw agrees: buy candidate)
   * price INSIDE the band                    -> "hold" — the model's honest uncertainty contains
     the price, so there is no edge either way. A decision, not a refusal.
-Spread maps to POSITION SIZE, not to pass/fail. NOT_USABLE survives only when zero samples are
-plausible (the $702-class malfunction path).
+Spread maps to POSITION SIZE, not to pass/fail. NOT_USABLE survives only when zero samples stated
+a complete, parseable value at all.
+
+GUARD REDESIGN 2026-08-24 (audit/N_guard_redesign_study_20260824.md): the plausibility guard no
+longer deletes samples on calibrated thresholds, because under THIS scheme an outlier already
+widens the band and a wider band already cuts the size hint. Its threshold trips now ride on the
+verdict as `flags`. Measured on the 29 verdicts published before the change: 6 samples restored,
+0 directions changed.
 
 Exit codes match run_rs2 conventions so the orchestrator can say why a ticker failed:
   0 verdict emitted (any direction) | 3 research infra/timeout | 5 consensus produced nothing |
@@ -137,7 +143,12 @@ def run_consensus(t):
 
 
 def band_verdict(doc):
-    """Direction-of-band verdict per the accepted spec. Judges only PLAUSIBLE, COMPLETE samples."""
+    """Direction-of-band verdict per the accepted spec. Judges only USABLE, COMPLETE samples.
+
+    `flags` carries forward the threshold trips that used to DELETE a sample and, since the
+    2026-08-24 guard redesign, only annotate it. They are published so a wide band can be
+    explained rather than merely displayed; they gate nothing.
+    """
     price = doc.get("price")
     good = [r for r in doc.get("runs", []) if r.get("iv") and r.get("plausible")
             and not r.get("truncated")]
@@ -148,6 +159,7 @@ def band_verdict(doc):
          "iv_band_high": ivs[-1] if ivs else None,
          "median_iv": doc.get("median_iv"),
          "spread_pct": doc.get("spread_pct"),
+         "flags": sorted({f for r in good for f in (r.get("flags") or [])}),
          "scheme": "band_direction_v1"}
     if not ivs or not price:
         v.update({"direction": "NOT_USABLE", "size_hint": None,

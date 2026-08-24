@@ -315,18 +315,19 @@ def main():
         truncated = meta.get("finish_reason") == "length"
         ivs = cv.extract_iv(rep, price)
         iv = st.median(ivs) if ivs else None
-        ok, why = cv.plausibility(iv, price, t)
+        ok, why, flags = cv.plausibility(iv, price, t)
         runs.append({"sample": i, "iv": iv, "all_iv_mentions": sorted(set(ivs))[:8],
-                     "plausible": ok, "reasons": why, "truncated": truncated,
+                     "plausible": ok, "reasons": why, "flags": flags, "truncated": truncated,
                      "done_reason": meta.get("finish_reason"),
                      "tool_calls": meta.get("tool_calls"),
                      "thinking_chars": len(think), "report_chars": len(rep),
                      "thinking_share_of_output": (round(len(think) / (len(think) + len(rep)), 3)
                                                   if (think or rep) else None),
                      "chars": len(rep), "secs": round(time.time() - t0)})
-        print(f"  sample {i}: IV ${iv if iv else '?'} | plausible={ok} | "
+        print(f"  sample {i}: IV ${iv if iv else '?'} | usable={ok} | "
               f"{meta.get('tool_calls')} tool calls (think {len(think):,}ch / "
               f"report {len(rep):,}ch)" + (f" ({'; '.join(why)})" if why else "")
+              + (f" | flags: {', '.join(flags)}" if flags else "")
               + (" | TRUNCATED" if truncated else "")
               + f" | {round(time.time()-t0)}s | ${meter['usd']:.3f} cumulative", flush=True)
 
