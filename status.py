@@ -246,14 +246,19 @@ def depth_snapshot():
     # nearly halved run times, overstating the remaining work by ~60%.
     import re as _re2
     dlog = HERE / "cache" / "depth_orchestrate.log"
+    # Only completions on the CURRENT model count. The log spans both eras and the MTP switch
+    # (2026-08-24 ~09:00) nearly halved run times: pre-MTP median 131 min, post-MTP 72. Pooling
+    # them gave 108 and overstated the remaining work by ~50% - the same mistake as the hardcoded
+    # 117, one level less obvious.
+    MTP_SWITCH = datetime(2026, 8, 24, 9, 0)
     mins = []
     if dlog.exists():
         marks = _re2.findall(r"\[depth-orch (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+\[\d+/\d+\]",
                              dlog.read_text(encoding="utf-8", errors="replace"))
         for a, b in zip(marks, marks[1:]):
-            gap = (datetime.strptime(b, "%Y-%m-%d %H:%M:%S")
-                   - datetime.strptime(a, "%Y-%m-%d %H:%M:%S")).total_seconds() / 60
-            if 20 < gap < 240:          # exclude fast failures and overnight idle gaps
+            start = datetime.strptime(a, "%Y-%m-%d %H:%M:%S")
+            gap = (datetime.strptime(b, "%Y-%m-%d %H:%M:%S") - start).total_seconds() / 60
+            if 20 < gap < 240 and start >= MTP_SWITCH:   # exclude failures, idle gaps, old model
                 mins.append(gap)
     mins.sort()
     rate = mins[len(mins) // 2] if len(mins) >= 3 else 70.0
