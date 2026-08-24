@@ -43,3 +43,9 @@ desktop.ini
 # ── local service config carrying an instance secret ──────────────────────
 # searxng/settings.yml holds server.secret_key; commit settings.yml.example instead.
 searxng/settings.yml
+
+# ── cloud-arm (api_llm/deep_api_run.py) run output ────────────────────────
+# 16MB per 28-ticker sweep, nearly all of it reasoning traces; regenerable from
+# the frozen packs. The written-up comparison IS committed; the raw runs are not.
+api_llm/deep_api/
+api_llm/_deep_api_*
