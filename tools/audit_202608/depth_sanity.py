@@ -95,6 +95,14 @@ def audit(ticker, verdict):
     runs = doc.get("runs") or []
     if not runs:
         note(1, "consensus.json missing — cannot audit samples")
+    # A sample that raised before producing a result never gets a runs[] entry, so counting only
+    # recorded runs makes it invisible. EXPE published on ONE sample and the audit reported only
+    # the point band, because samples 2 and 3 died with HTTP 400 and left no trace here.
+    intended = 3
+    if runs and len(runs) < intended:
+        note(2, f"only {len(runs)} of {intended} samples produced ANY result — "
+                f"{intended - len(runs)} raised before recording. Check the sweep log for "
+                f"'sample N: FAILED'; these are invisible in consensus.json.")
     lost = []
     for r in runs:
         usable = r.get("iv") and r.get("plausible") and not r.get("truncated")
@@ -153,7 +161,10 @@ def main():
     if "--all" in sys.argv:
         targets = sorted(verdicts)
     else:
-        args = [a for a in sys.argv[1:] if not a.startswith("--")]
+        # .strip() is load-bearing: piped from a shell on Windows the ticker arrives as "EXPE\r",
+        # which prints identically to "EXPE" but matches nothing, so the audit silently reported
+        # "no verdict on file" for a verdict that was sitting right there in the ledger.
+        args = [a.strip() for a in sys.argv[1:] if not a.startswith("--") and a.strip()]
         targets = [args[0].upper()] if args else [max(verdicts, key=lambda t: verdicts[t]["date"])]
     worst = 0
     for t in targets:
