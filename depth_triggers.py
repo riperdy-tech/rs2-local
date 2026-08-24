@@ -60,17 +60,11 @@ def newest_verdicts():
     return out
 
 
-def _cik(t):
-    # cik_map.json is {"fetched_at": ..., "map": {TICKER: CIK}} — the tickers live one level down.
-    # Read flat, this returned None for EVERY name, and because triggers_for() guards the whole
-    # SEC block with `if cik:`, the 8-K and filing triggers could never fire. Found 2026-08-24:
-    # the depth queue reported 0 event-triggered names across all 171 book names and the
-    # submissions cache was never written. Only `move`, `rotation` and `pack` were ever alive.
-    # tag_coverage_census.py:72 already read this file correctly; only this reader was wrong.
-    cm = rs2_data.load_json(SD / "cik_map.json") or {}
-    cm = cm.get("map") if isinstance(cm.get("map"), dict) else cm
-    c = cm.get(t) or cm.get(t.upper())
-    return str(c).zfill(10) if c else None
+# cik_map.json nests its tickers under a "map" key. A second copy of this reader lived here and
+# read it flat, so it returned None for EVERY name; triggers_for() guards the whole SEC block with
+# `if cik:`, so the 8-K and filing triggers could never fire. Now there is ONE reader, in
+# capability_test, rather than two that can disagree.
+_cik = cap.cik
 
 
 def _submissions(cik):

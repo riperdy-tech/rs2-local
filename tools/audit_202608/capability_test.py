@@ -67,7 +67,13 @@ TIMEOUT = 14400
 #      computed per ticker instead of hard-coded (four of them had gone false after the
 #      2026-08-23 extractor rebuild), unreviewed-field sensor, SECTION 8/9 fetch-age stamps,
 #      and the 1000x filed-series corruption alert.
-PACK_REVISION = 2
+#   3  2026-08-24. The last four hard-coded population counts ("18 live names", "51 live names",
+#      "38 live names", "3,380,466 fact rows") replaced by per-company facts read from sec_facts:
+#      which share tag this column actually carries, our capex against the vendor's, which years
+#      fail the pre-tax identity, and a verified segment-row count. Bumped rather than folded into
+#      2 because one ticker was mid-run and would otherwise have kept revision 2 with the older
+#      pack; it re-runs once at 3 either way.
+PACK_REVISION = 3
 
 
 # Keys this pack depends on, by source. Checked per build against sources that are NON-EMPTY, so
@@ -190,6 +196,175 @@ def _held(h, yrs, key):
     return [y for y in yrs if isinstance((h.get(str(y)) or {}).get(key), (int, float))]
 
 
+_SEC_CACHE = {}
+
+
+def cik(t):
+    """CIK for a ticker. cik_map.json nests the tickers under a "map" key.
+
+    THE ONLY reader of that file outside the screener's own census. It lives here rather than in
+    depth_triggers because a second copy read it flat, returned None for every ticker, and silently
+    disabled the 8-K and filing triggers for the entire life of the depth pipeline.
+    """
+    cm = rs2_data.load_json(SD / "cik_map.json") or {}
+    cm = cm.get("map") if isinstance(cm.get("map"), dict) else cm
+    c = cm.get(t) or cm.get(t.upper())
+    return str(c).zfill(10) if c else None
+
+
+def _sec_facts(t):
+    """Raw SEC companyfacts for one company: ~3-4 MB, ~0.034s to parse, cached per process.
+
+    This is the source our extractor reads. Consulting it directly is what lets the notes below
+    state a fact about THIS company instead of reciting a population count someone measured once
+    and typed in as a string.
+    """
+    if t in _SEC_CACHE:
+        return _SEC_CACHE[t]
+    c = cik(t)
+    p = (SD / "sec_facts" / f"CIK{c}.json") if c else None
+    try:
+        d = json.loads(p.read_text(encoding="utf-8")) if p and p.exists() else {}
+    except Exception:
+        d = {}
+    _SEC_CACHE[t] = d
+    return d
+
+
+def _annual(us, concept):
+    """{fiscal_year: value} for a concept, annual 10-K rows only."""
+    out = {}
+    for rows in ((us.get(concept) or {}).get("units") or {}).values():
+        for r in rows:
+            if r.get("fp") == "FY" and str(r.get("form", "")).startswith("10-K") and r.get("fy"):
+                out[int(r["fy"])] = r["val"]
+    return out
+
+
+_DILUTED = "WeightedAverageNumberOfDilutedSharesOutstanding"
+_BASIC = "WeightedAverageNumberOfSharesOutstandingBasic"
+_UNDIFF = ("WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
+           "WeightedAverageNumberOfSharesOutstandingBasicAndDiluted")
+
+
+def _share_tag_note(t, h, yrs):
+    """Which share count our `wtd-avg shares` column actually carries, FOR THIS COMPANY.
+
+    Replaces "on 18 live names the underlying tag is basic, or an undifferentiated weighted
+    average" - a frozen count, measured once, about 18 companies this reader is probably not.
+    Determined by matching our extracted value against the filed diluted and basic values for the
+    same fiscal year, so it is a demonstration rather than an assertion.
+    """
+    if not yrs:
+        return None
+    us = (_sec_facts(t).get("facts") or {}).get("us-gaap") or {}
+    if not us:
+        return ("- `wtd-avg shares`: we could not verify which share count this column carries - "
+                "we hold no raw filing index for this company. Treat it as UNVERIFIED.")
+    dil, bas = _annual(us, _DILUTED), _annual(us, _BASIC)
+    und = {}
+    for c in _UNDIFF:
+        und.update(_annual(us, c))
+    # Check the newest year that BOTH sides hold. Our history often runs a fiscal year ahead of
+    # the raw 10-K index (measured: 32 of 171 book names), and comparing against a year the index
+    # has not reached yet would report "matches neither" - implying a discrepancy where there is
+    # simply nothing to compare. Verifying the previous year still establishes which tag the
+    # column carries, because the extractor's mapping does not change between years.
+    checkable = [y for y in sorted(yrs, reverse=True)
+                 if isinstance((h.get(str(y)) or {}).get("shares_diluted"), (int, float))
+                 and (h.get(str(y)) or {}).get("shares_diluted")
+                 and (y in dil or y in bas or y in und)]
+    if not checkable:
+        newest = max(list(dil) + list(bas) + list(und), default=None)
+        return (f"- `wtd-avg shares`: UNVERIFIED - our newest fiscal year (FY{max(yrs)}) has no "
+                f"annual 10-K row in our filing index yet"
+                + (f" (newest indexed is FY{newest})" if newest else "")
+                + ". Do not build a dilution rate from this column without checking the filings.")
+    y = checkable[0]
+    ours = h[str(y)]["shares_diluted"]
+    near = lambda v: isinstance(v, (int, float)) and v and abs(ours - v) / abs(v) < 0.005
+    if near(dil.get(y)):
+        return (f"- `wtd-avg shares` VERIFIED DILUTED for FY{y}: our {ours:,.0f} matches the filed "
+                f"diluted count exactly (basic was {bas.get(y, 0):,.0f}).")
+    if near(bas.get(y)):
+        return (f"- **`wtd-avg shares` IS THE BASIC COUNT for FY{y}**, not diluted: our "
+                f"{ours:,.0f} matches the filed basic count. Per-share figures built on it "
+                f"OVERSTATE value because dilution is excluded.")
+    if near(und.get(y)):
+        return (f"- **`wtd-avg shares` is an UNDIFFERENTIATED basic-and-diluted count for FY{y}** "
+                f"({ours:,.0f}) - this company reports one figure for both.")
+    return (f"- `wtd-avg shares` for FY{y} ({ours:,.0f}) matches NEITHER the filed diluted nor the "
+            f"filed basic annual count for that year, so which count it carries is UNVERIFIED. "
+            f"Do not build a dilution rate from this column.")
+
+
+def _capex_note(t, h, yrs, fin):
+    """Our capex against the vendor's, FOR THIS COMPANY, instead of "1.1x to 42x on 51 live
+    names" - a frozen range that today measures 0.64x to 49.05x across the book, both ends
+    outside it, and whose low end contradicts the claim that the vendor definition is broader."""
+    if not yrs:
+        return None
+    ours = (h.get(str(max(yrs))) or {}).get("capex")
+    ven = fin.get("Capital_Expenditure")
+    if not (isinstance(ours, (int, float)) and ours and isinstance(ven, (int, float)) and ven):
+        return None
+    r = abs(ven) / abs(ours)
+    if 0.95 <= r <= 1.05:
+        return (f"- `capex` AGREES with the vendor for this company ({_b(abs(ours))} vs "
+                f"{_b(abs(ven))}), so the definitional gap below does not bite here.")
+    return (f"- **`capex` DISAGREES with the vendor for this company: ours {_b(abs(ours))} "
+            f"(FY{max(yrs)}, property/plant/equipment purchases only) against the vendor's "
+            f"{_b(abs(ven))} — {r:.2f}x.** Ours excludes capitalised software, which for "
+            f"software-heavy companies is a real cash outflow, so the FCF column above is "
+            f"overstated relative to the broader definition. Neither has been chosen for you.")
+
+
+def _pretax_note(h, yrs):
+    """Which fiscal years fail net_income + tax == pretax, FOR THIS COMPANY.
+
+    The effective tax rate stays WITHHELD; this only says where the inputs are provably broken,
+    replacing "contaminated on 38 live names" - anonymous, and measurably stale: 116 of the 171
+    book names carry the domestic-only tag. Presence of that tag was tested as a gate and
+    REJECTED: it misses 14 of the 57 contaminated book names and needlessly condemns 73 that pass.
+    The identity is the better screen but is only NECESSARY, not sufficient - a domestic-only
+    pretax paired with a domestic-only tax is internally consistent and still not consolidated -
+    so it cannot license releasing a rate.
+    """
+    bad = []
+    for y in yrs:
+        r = h.get(str(y)) or {}
+        ni, tx, pt = r.get("net_income"), r.get("tax_provision"), r.get("pretax_income")
+        if not all(isinstance(x, (int, float)) for x in (ni, tx, pt)) or not pt:
+            continue
+        if abs((ni + tx) - pt) / abs(pt) > 0.05:
+            bad.append(y)
+    if not bad:
+        return ("- **Effective tax rate: WITHHELD.** For this company the identity net income + "
+                "tax == pre-tax income HOLDS in every year we can test, but holding is necessary "
+                "and not sufficient - a domestic-only pre-tax paired with a domestic-only tax is "
+                "self-consistent and still not the consolidated figure. Derive a rate yourself if "
+                "you need one, and label it your own assumption.")
+    return (f"- **Effective tax rate: WITHHELD, and for this company the inputs are PROVABLY "
+            f"BROKEN.** Net income + tax does not equal pre-tax income, by more than 5%, in "
+            f"FY{', FY'.join(str(y) for y in bad)}. Our pre-tax field admits a US-domestic-only "
+            f"tag. Do not reconstruct a tax rate from those years.")
+
+
+def _segment_note(t):
+    """Verify the no-segment-data claim against THIS company's own filings rather than reciting
+    a corpus-wide row count."""
+    d = _sec_facts(t)
+    if not d:
+        return ("- **Segment revenue and margin by business line: WE HAVE NONE.** No sum-of-the-"
+                "parts is possible from this pack.")
+    n = sum(len(rows) for ns in (d.get("facts") or {}).values()
+            for c in ns.values() for rows in (c.get("units") or {}).values())
+    return (f"- **Segment revenue and margin by business line: WE HAVE NONE.** Verified for this "
+            f"company: of the {n:,} fact rows we hold for it, ZERO carry a dimension. Segment "
+            f"detail exists in XBRL only as dimensional axes and the companyfacts API strips "
+            f"them, so no sum-of-the-parts is possible from this pack.")
+
+
 def _age(rec):
     """How old the aggregator record actually is, from its own `_fetched_at` stamp.
 
@@ -233,9 +408,15 @@ def build_pack(t):
 
     DELIBERATELY EXCLUDED, each for a measured reason (and each declared in SECTION 12):
       * pretax_income / tax_provision / any effective tax rate — FIELD_SPECS['pretax_income']
-        includes ...BeforeIncomeTaxesDomestic, so 38 live names carry a domestic-only figure. The
-        identity net_income + tax == pretax fails by >5% on 318 of 1,835 rows. A false [Actual]
-        tax rate is worse than none: an invented one at least gets labelled [Assumption].
+        admits ...BeforeIncomeTaxesDomestic, so an unknown subset carries a domestic-only figure.
+        Re-measured 2026-08-24: the identity net_income + tax == pretax fails by >5% on 180 of
+        1,795 book rows (57 of 170 names) and on 6,461 of 39,671 corpus rows (1,762 of 4,606
+        names) — so widening the universe makes it worse, not better. Tag presence was tested as a
+        release gate and REJECTED: 116 book names carry the tag, but it misses 14 of the 57
+        broken names and needlessly condemns 73 that pass. _pretax_note() now reports the failing
+        years per company; the rate itself stays withheld, because the identity holding is
+        necessary and not sufficient. A false [Actual] tax rate is worse than none: an invented
+        one at least gets labelled [Assumption].
       * battery m_score — imputes absent Beneish ratios at 1.0 and a missing TATA term at 0.0,
         then publishes a score, presenting a guess as a measurement.
       * valuation_models.json / factor_scores.json — our own finished valuation and our own
@@ -453,15 +634,8 @@ def build_pack(t):
               "other components we hold are broken out in the DEBT STRUCTURE table below; read "
               "that before computing net debt or enterprise value.",
               "- `wtd-avg shares` is the weighted-average share count as filed and is **NOT SPLIT-"
-              "ADJUSTED**. A single-year step of several times is a stock split, not issuance. On "
-              "18 live names the underlying tag is basic, or an undifferentiated weighted average, "
-              "rather than diluted - and our extract does not record which. Do not compute a "
-              "dilution rate or a per-share history from this column without checking the filings.",
-              "- `capex` in SECTION 5 is purchases of property, plant and equipment only. It "
-              "EXCLUDES capitalised software, which for software-heavy companies is a real cash "
-              "outflow - so the FCF column is overstated for those names relative to a broader "
-              "definition. The vendor's capex figure uses the broader definition and differs from "
-              "ours by 1.1x to 42x on 51 live names. Neither definition has been chosen for you."]
+              "ADJUSTED**. A single-year step of several times is a stock split, not issuance."]
+        L += [x for x in (_share_tag_note(t, h, yrs), _capex_note(t, h, yrs, fin)) if x]
     else:
         L.append(f"{NULL} - no fiscal-year record held.")
     L.append("")
@@ -592,10 +766,7 @@ def build_pack(t):
     L += ["## SECTION 12 - WHAT WE DO NOT HOLD",
           "Declared so you can source it yourself or carry the uncertainty, instead of assuming it.",
           "",
-          "- **Segment revenue and margin by business line: WE HAVE NONE, for any company.** "
-          "Measured across the live book: of 3,380,466 fact rows in the SEC companyfacts source, "
-          "ZERO carry a dimension. Segment detail exists in XBRL only as dimensional axes, and the "
-          "companyfacts API strips them. No sum-of-the-parts is possible from this pack.",
+          _segment_note(t),
           _decl("Marketable securities and short-term investments", h, yrs,
                 ("st_investments", "lt_investments"),
                 held_note="in SECTION 6B. Companies hold much of their liquidity here rather than "
@@ -609,10 +780,7 @@ def build_pack(t):
                 held_note="in the SBC column of SECTION 5.",
                 gap_note="Only the single vendor scalar in SECTION 2, whose period is "
                          "unreliable. Most companies file this every year."),
-          "- **Effective tax rate: DELIBERATELY WITHHELD.** Our pre-tax income field is "
-          "contaminated on 38 live names by a US-domestic-only tag, so a tax rate computed from it "
-          "would be wrong while looking authoritative. If you need one, derive it yourself and "
-          "label it your own assumption.",
+          _pretax_note(h, yrs),
           _decl("Debt components beyond long-term debt", h, yrs,
                 ("debt_current", "short_term_borrowings_separate", "finance_lease_liability",
                  "operating_lease_liability", "borrowings_total", "debt_lt_noncurrent"),
