@@ -190,6 +190,39 @@ def main():
              if v.get("iv_band_low") else "")
           + (f" | size {v['size_hint']}" if v.get("size_hint") else "")
           + f" | {time.time()-t0:.0f}s -> {d / 'verdict_depth.json'}", flush=True)
+    audit_verdict(t)
+
+
+def audit_verdict(t):
+    """Run depth_sanity on the verdict just written, IN THIS PROCESS.
+
+    Until now the only caller of depth_sanity was an interactive watcher script that lived
+    outside the repo and died with its session - while the sweep itself runs detached and
+    outlives any session. So the one component built to catch silent sample loss was itself
+    silent exactly when nobody was watching. Auditing belongs to the pipeline, not to whoever
+    happens to be looking.
+
+    Never fatal: a defect in the auditor must not fail a ticker whose analysis is sound (the same
+    rule the old pipeline learned when an oversized audit context killed a good MU run). A FAIL
+    is recorded and alerted; the verdict still stands and the operator decides.
+    """
+    try:
+        r = subprocess.run(
+            [sys.executable, str(HERE / "tools" / "audit_202608" / "depth_sanity.py"), t],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        out = (r.stdout or "").strip()
+        print(out, flush=True)
+        line = {2: "FAIL", 1: "WARN"}.get(r.returncode, "CLEAN")
+        with (HERE / "cache" / "depth_audit.log").open("a", encoding="utf-8") as fh:
+            fh.write(f"\n=== {t} {datetime.now():%Y-%m-%d %H:%M:%S} [{line}] ===\n{out}\n")
+        if r.returncode == 2:
+            try:
+                ops.notify_telegram(f"[RS2 depth] {t} verdict FAILED sanity audit:\n"
+                                    f"{out[:600]}")
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[depth] audit did not run (non-fatal): {str(e)[:120]}", flush=True)
 
 
 if __name__ == "__main__":
