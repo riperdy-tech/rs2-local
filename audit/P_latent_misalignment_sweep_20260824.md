@@ -112,24 +112,75 @@ book completes before anything is re-run, and no manual list has to be maintaine
 
 ---
 
+## 6. The 8-K and filing triggers had never fired, once
+
+Found on 2026-08-25 while investigating finding 7. `cik_map.json` is
+`{"fetched_at": ..., "map": {TICKER: CIK}}`, and `depth_triggers._cik` read it flat, so it returned
+`None` for **every ticker in the book**. `triggers_for()` guards the whole SEC block with
+`if cik:`, so the 8-K trigger, the 10-Q/10-K filing trigger and the `filing_pending` defer gate
+were dead from the day they were written. Only `move`, `rotation` and the new `pack` trigger were
+ever alive.
+
+This is the event-driven half of the cadence — the SanDisk-investor-day class, where an 8-K changes
+the thesis between scheduled runs. It failed silently because "no CIK" degrades to "no filing
+trigger today" by design, exactly as a genuine SEC outage would.
+
+**Two signals were in plain sight and neither was questioned:** the depth queue printed
+`class 0 event-triggered: 0` across all 171 names, and `cache/sec_submissions` held **0 files**
+despite a docstring claiming ~172 requests a day. `tag_coverage_census.py:72` had always read the
+file correctly; only this reader was wrong.
+
+**Fixed** (`8722bb9`, then `44c627f`): GOOG now resolves and returns 80 filings since 2026-06-01
+including an 8-K on 2026-08-10; the submissions cache populates. `_cik` moved into
+`capability_test` and `depth_triggers` aliases it, so there is one reader instead of two that had
+already disagreed once. Book-wide the fix adds one event-triggered name (PM), so it did not
+disturb the running sweep.
+
+## 7. The remaining hard-coded population counts
+
+**Correction to an earlier draft of this document:** it listed *five* remaining counts including
+"33 unmapped debt tags". That sentence no longer exists — it was removed in `ab5e4c3` when
+SECTION 6B was added. Four remained, not five.
+
+All four are now computed per company (`44c627f`), using `sec_facts` — one file per company, 3–4 MB,
+~0.03s to parse. Book-wide results: `wtd-avg shares` resolves to **141 verified diluted, 7 matching
+neither filed count, 13 whose newest fiscal year the 10-K index has not reached, 10 foreign filers
+with no index** — and **zero** basic or undifferentiated, so the old "18 live names" claim has no
+instance in this book at all. Capex disagrees on **48** names, over a measured range of
+**0.64×–49.05×** against the frozen claim of 1.1×–42×; the 0.64× end also contradicts that
+sentence's own reasoning that the vendor definition is the broader one.
+
+**A proposed fix was tested and rejected.** I proposed releasing the withheld effective tax rate to
+companies lacking the `…BeforeIncomeTaxesDomestic` tag, on the strength of one ticker. Measured
+across the book, that gate **misses 14 of the 57 names whose identity actually fails and needlessly
+condemns 73 of the 116 that pass** — 116 names carry the tag, not the 38 the pack claimed. The
+identity `net_income + tax == pretax` is the better screen but is *necessary, not sufficient*: a
+domestic-only pre-tax paired with a domestic-only tax is self-consistent and still not the
+consolidated figure. **The rate stays withheld.** The pack now names the failing years per company
+— disclosure, not release.
+
+Scale check, since it bears on any future proposal to loosen this: the identity fails on **180 of
+1,795 book rows (57 of 170 names)** but **6,461 of 39,671 corpus rows (1,762 of 4,606 names)**. A
+wider universe is dirtier, not cleaner.
+
 ## What this sweep did NOT find
 
 - No arithmetic error in the band-direction verdict rule, the spread computation or the size
   mapping. Re-derivation of all 29 published verdicts under the corrected guard changed **0**
   directions, which is independent evidence the verdict logic is stable.
-- No further false population counts beyond those in finding 1. The remaining hard-coded counts in
-  SECTION 6 and SECTION 12 (33 unmapped debt tags, 18 non-diluted share tags, 51 capex-definition
-  disagreements, 38 domestic-only pretax tags, 3,380,466 dimensionless fact rows) were **not**
-  re-measured in this pass and remain unverified literals of the same class as finding 1. They
-  describe defects rather than denying data, so a stale count misstates a magnitude rather than
-  hiding a series — lower severity, but the same failure mode. **Open.**
 
 ## Open, and deliberately deferred
 
-- **`SIZE_BUCKETS`** (15%/30% → full/half/quarter) was set before any spread data existed. Median
-  observed spread is 45%, so almost everything lands in "quarter". Re-derive from the full 171-name
-  distribution once the sweep completes — not from the 29 measured so far.
-- **Re-measuring the five hard-coded population counts** above, and converting them to computed
-  values the way `_decl()` now computes the SECTION 12 lines.
+- **`SIZE_BUCKETS` is not an open calibration item — it is dead code with a face.** Corrected
+  2026-08-25: `size_hint` is written and printed and **read by nothing**. Every reference is a
+  display line (`depth_pipeline:204`, `status.py:242`, `depth_sanity:83`). Allocation happens
+  downstream in the ledger strategies, which never see this field, and `publish_overlay` states
+  that no site component reads the overlay yet. Re-deriving the buckets would change a label and
+  nothing else. The real decision is whether to wire it into something or drop it — its only harm
+  path is that it is shown to the operator and *looks* like advice, which is exactly how AVGO came
+  to display `full` off a spread narrowed by a deleted sample.
 - **Refreshing** `enrich/` and `cache/openbb_` inside the depth pipeline, rather than only stating
   their age. Deferred: it adds a network dependency per ticker to a sweep that currently has none.
+- **The 7 share-count mismatches** (e.g. CRM's FY2025 row holding 974,000,000, which is its FY2024
+  basic count). Fiscal-year labelling between our extractor and SEC's `fy` field is the plausible
+  cause; not investigated. The pack reports these as UNVERIFIED rather than asserting a defect.
