@@ -123,8 +123,18 @@ def plausibility(iv, price, ticker):
                        f"(${lo:,.2f})")
     # implied multiple on trailing OPERATING CASH FLOW — the test that catches a value built by
     # capitalising non-operating income, because OCF cannot contain a mark-to-market gain.
-    ttm = ((rs2_data.load_json(common.SD / "fundamentals_ttm.json") or {})
-           .get("tickers", {}).get(ticker.upper(), {}).get("fields") or {})
+    _rec = ((rs2_data.load_json(common.SD / "fundamentals_ttm.json") or {})
+            .get("tickers", {}).get(ticker.upper(), {}) or {})
+    # Same alignment gate as build_pack: a TTM record anchored to a different fiscal year than the
+    # newest annual one is stranded, and dividing by its OCF produces a nonsense ceiling. Measured
+    # 2026-08-24: on LITE, PAYX, PCTY and SENEB the stale-OCF ceiling sits BELOW the share price,
+    # so every defensible valuation would be auto-rejected (PCTY: $35.49 cap on a $153.34 stock).
+    # When the gate fires the fence goes INERT rather than firing on a discarded figure.
+    _hy = [int(y) for y in (rs2_data.load_json(common.SD / "fundamentals_history.json") or {})
+           .get("tickers", {}).get(ticker.upper(), {}) if str(y).isdigit()]
+    _stale = bool(_rec and _hy
+                  and int(str(_rec.get("fy_leg_end", ""))[:4] or 0) != max(_hy))
+    ttm = {} if _stale else (_rec.get("fields") or {})
     ocf = vb._num(ttm.get("ocf"))
     fin = rs2_data.load_json(common.SD / "financials" / f"{ticker.upper()}.json") or {}
     sh = vb._num(fin.get("Shares_Outstanding"))

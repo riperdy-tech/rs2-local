@@ -241,7 +241,25 @@ def depth_snapshot():
         L.append(f"   {v['ticker']:6s} {v['direction']:12s} band {band:>16s} vs ${v.get('price')}"
                  f" | spread {v.get('spread_pct')}% | {v.get('size_hint')}")
     n_left = max(0, 169 - len(ok))
-    L.append(f"   ETA: ~{n_left} names x ~117 min = {n_left * 117 / 1440:.1f} GPU-days remaining")
+    # Rate is MEASURED from the orchestrator log, not hardcoded. The previous version carried a
+    # literal 117 min/ticker - the PRE-MTP rate - and kept quoting it after the model switch
+    # nearly halved run times, overstating the remaining work by ~60%.
+    import re as _re2
+    dlog = HERE / "cache" / "depth_orchestrate.log"
+    mins = []
+    if dlog.exists():
+        marks = _re2.findall(r"\[depth-orch (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+\[\d+/\d+\]",
+                             dlog.read_text(encoding="utf-8", errors="replace"))
+        for a, b in zip(marks, marks[1:]):
+            gap = (datetime.strptime(b, "%Y-%m-%d %H:%M:%S")
+                   - datetime.strptime(a, "%Y-%m-%d %H:%M:%S")).total_seconds() / 60
+            if 20 < gap < 240:          # exclude fast failures and overnight idle gaps
+                mins.append(gap)
+    mins.sort()
+    rate = mins[len(mins) // 2] if len(mins) >= 3 else 70.0
+    src = f"measured median of {len(mins)} completions" if len(mins) >= 3 else "estimate, too few completions"
+    L.append(f"   ETA: ~{n_left} names x {rate:.0f} min ({src}) = "
+             f"{n_left * rate / 1440:.1f} GPU-days remaining")
     L.append("")
     return chr(10).join(L)
 

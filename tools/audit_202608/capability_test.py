@@ -157,6 +157,17 @@ def build_pack(t):
     cm = fin.get("Calculated_Metrics") or {}
     ttm = (rs2_data.load_json(SD / "fundamentals_ttm.json") or {}).get("tickers", {}).get(t) or {}
     f = ttm.get("fields") or {}
+    # TTM ALIGNMENT GATE, ported from the dropped engine (valuation_backbone.py:1244) on
+    # 2026-08-24. A TTM record whose fiscal anchor disagrees with the newest annual year is not
+    # this company's trailing twelve months - it is a stranded old record. Measured: 12 of 171
+    # book names, MDT anchored to 2015 against FY2026. Printing it as "TRAILING TWELVE MONTHS"
+    # states a period that is years wrong, and the plausibility fence divides by its OCF.
+    _yrs = [int(y) for y in (rs2_data.load_json(SD / "fundamentals_history.json") or {})
+            .get("tickers", {}).get(t, {}) if str(y).isdigit()]
+    ttm_stale = bool(ttm and _yrs
+                     and int(str(ttm.get("fy_leg_end", ""))[:4] or 0) != max(_yrs))
+    if ttm_stale:
+        f = {}
     qrec = (rs2_data.load_json(SD / "fundamentals_quarterly.json") or {}).get("tickers", {}).get(t) or {}
     qs = qrec.get("quarters") or []
     h = (rs2_data.load_json(SD / "fundamentals_history.json") or {}).get("tickers", {}).get(t) or {}
@@ -164,7 +175,7 @@ def build_pack(t):
     ob = rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json") or {}
     en = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
     met = ob.get("metrics") or {}
-    fy_end, fy_src = _fy_end(ttm, qs)
+    fy_end, fy_src = _fy_end({} if ttm_stale else ttm, qs)
     drift = _schema_drift({"fin": fin, "ob": ob, "met": met, "en": en,
                            "bat": bat})
     if drift:
@@ -235,6 +246,11 @@ def build_pack(t):
         ni, ocf = f.get("net_income"), f.get("ocf")
         if isinstance(ni, (int, float)) and isinstance(ocf, (int, float)):
             L.append(f"- [Arithmetic] Net income minus operating cash flow: {_b(ni - ocf)}")
+    elif ttm_stale:
+        L.append(f"{NULL} - our TTM record for this name is STRANDED: its fiscal anchor "
+                 f"({ttm.get('fy_leg_end')}) disagrees with the newest annual year we hold "
+                 f"({max(_yrs)}), so it is not this company's trailing twelve months and has been "
+                 f"withheld rather than shown with a wrong period label. Use SECTION 5.")
     else:
         L.append(f"{NULL} - no TTM record. 20-F and 40-F filers file no 10-Q, so no TTM is "
                  f"derivable for them from this source.")
