@@ -178,6 +178,27 @@ def _held(h, yrs, key):
     return [y for y in yrs if isinstance((h.get(str(y)) or {}).get(key), (int, float))]
 
 
+def _age(rec):
+    """How old the aggregator record actually is, from its own `_fetched_at` stamp.
+
+    ADDED 2026-08-24. SECTION 8 and SECTION 9 were labelled "[Aggregator]" with no date, so a
+    price target fetched a month ago read exactly like one fetched this morning. Measured across
+    the 171-name book on the day this was added: median 8 days old, p90 13, max 32. Analyst
+    targets, short interest and the multiples all move inside that window, and the model has no
+    way to discount a number whose age it cannot see. The depth pipeline does not refresh these
+    sources, so the honest fix is to state the age rather than to imply currency.
+    """
+    ts = (rec or {}).get("_fetched_at")
+    if not isinstance(ts, str) or len(ts) < 10:
+        return "fetch date NOT RECORDED - age unknown, treat as potentially stale"
+    try:
+        days = (datetime.now() - datetime.fromisoformat(ts[:19])).days
+    except ValueError:
+        return f"fetched {ts[:10]}"
+    return (f"fetched {ts[:10]}, {days} day(s) ago"
+            + (" - STALE, discount accordingly" if days > 14 else ""))
+
+
 def _decl(label, h, yrs, keys, held_note, gap_note):
     """One SECTION 12 line, decided by what THIS ticker's record actually contains.
 
@@ -470,7 +491,7 @@ def build_pack(t):
 
     # ---- SECTION 8 -------------------------------------------------------------------------
     fg = ob.get("forward_growth") or {}
-    L += ["## SECTION 8 - CONSENSUS & MULTIPLES   [Aggregator]",
+    L += [f"## SECTION 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age(ob)}]",
           # price_to_sales dropped 2026-08-20: measured non-null on 0 of 294 vendor records, so
           # the line could never print a value. Market cap and revenue are both in this pack;
           # the model can divide. A field that is structurally always absent is noise, not a
@@ -490,15 +511,16 @@ def build_pack(t):
         L += [f"- Analyst price targets: low {_v(en, 'analyst_target_low')} / mean "
               f"{_v(en, 'analyst_target_mean')} / median "
               f"{_v(en, 'analyst_target_median')} / high "
-              f"{_v(en, 'analyst_target_high')}   [Aggregator - 12-month sell-side targets]",
+              f"{_v(en, 'analyst_target_high')}   [Aggregator - 12-month sell-side targets, "
+              f"{_age(en)}]",
               f"- 52-week range: {_v(en, 'fifty_two_week_low')} - "
               f"{_v(en, 'fifty_two_week_high')}"]
     L.append("")
 
     # ---- SECTION 9 -------------------------------------------------------------------------
     if en:
-        L += ["## SECTION 9 - POSITIONING   [Aggregator - short interest is semi-monthly "
-              "settlement data; ownership is 13F data lagged by up to a quarter]",
+        L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age(en)} - short interest is "
+              f"semi-monthly settlement data; ownership is 13F data lagged by up to a quarter]",
               f"- Short % of float: {_v(en, 'short_pct_float')}   |   shares short: "
               f"{_n(en.get('shares_short'))}   |   days to cover: "
               f"{_v(en, 'short_ratio_days_to_cover')}   |   month-on-month change: "
