@@ -65,7 +65,8 @@ TIMEOUT = 14400
 #   1  everything up to 2026-08-24.
 #   2  2026-08-24. SBC series, SECTION 6B debt/investment components, SECTION 12 declarations
 #      computed per ticker instead of hard-coded (four of them had gone false after the
-#      2026-08-23 extractor rebuild), unreviewed-field sensor, SECTION 8/9 fetch-age stamps.
+#      2026-08-23 extractor rebuild), unreviewed-field sensor, SECTION 8/9 fetch-age stamps,
+#      and the 1000x filed-series corruption alert.
 PACK_REVISION = 2
 
 
@@ -264,6 +265,34 @@ def build_pack(t):
     ob = rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json") or {}
     en = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
     met = ob.get("metrics") or {}
+
+    # PROVABLE 1000x SCALE CORRUPTION in this company's filed series. Detected with
+    # data_health.audit_series_breaks so there is ONE definition of the test rather than a second
+    # copy here that can drift from it. Imported lazily: depth_triggers imports this module on the
+    # orchestrator's hot path and does not need valuation_backbone dragged in behind it.
+    #
+    # Why the pack has to say this itself. The 2026-08-08 gate in the dropped orchestrator cleared
+    # these breaks whenever they did not reach a live `base_cf` - a quantity THIS pipeline never
+    # computes - while the pack prints the entire year series to the model as filed fact. Measured
+    # 2026-08-24: 3 of the 171 book names carry a provable break, and INCY's published HOLD verdict
+    # was produced from a pack stating $19.094B of long-term debt for FY2018, a 1000x corruption of
+    # roughly $19M. The model had no way to know.
+    try:
+        import data_health as _dh
+        breaks = _dh.audit_series_breaks([t], {t: h}) if h else []
+    except Exception:
+        breaks = []
+    if breaks:
+        L.insert(2, "**DATA INTEGRITY ALERT - THIS COMPANY'S FILED SERIES CONTAINS A PROVABLE "
+                    "SCALE CORRUPTION.** One period is recorded roughly 1000x away from the rest "
+                    "of its own series, which a real restatement does not do. The affected cells "
+                    "are printed below UNCHANGED, because silently patching filed data would hide "
+                    "the defect rather than disclose it. DO NOT use these cells; use the "
+                    "neighbouring years, and say in your report that you excluded them:\n"
+                 + "\n".join(f"  - `{b['field']}` moves from {b['from']:,} in FY{b['from_year']} "
+                             f"to {b['to']:,} in FY{b['to_year']}" for b in breaks))
+        L.insert(3, "")
+
     fy_end, fy_src = _fy_end({} if ttm_stale else ttm, qs)
     drift = _schema_drift({"fin": fin, "ob": ob, "met": met, "en": en,
                            "bat": bat})

@@ -219,6 +219,38 @@ def run_one(t):
     return False, {3: "research_infra", 5: "consensus_failed", 7: "vram"}.get(rc, f"exit_{rc}")
 
 
+def data_health_scan(book):
+    """Report provable filed-series corruption in THIS book at sweep start. WARNS, never blocks.
+
+    The dropped orchestrator gated on `data_health --gate-live`, which exits non-zero only when a
+    corrupt value reaches a live `base_cf`. This pipeline computes no base_cf, so that gate would
+    report CLEAR while corrupt cells went straight into the pack: measured 2026-08-24, it cleared
+    all 12 known 1000x breaks, 3 of them inside this book, and INCY's published verdict was formed
+    on a pack stating $19.094B of long-term debt for FY2018 against a true figure near $19M.
+
+    So the scope is the book and the whole printed series, not one derived quantity. It warns
+    rather than blocks because build_pack now prints an integrity alert on exactly these names -
+    the model is told, and a handful of bad cells is not a reason to refuse to analyse 171
+    companies. This exists so the operator sees the count without reading every pack.
+    """
+    try:
+        import data_health
+        hist = (rs2_data.load_json(SD / "fundamentals_history.json") or {}).get("tickers", {})
+        breaks = data_health.audit_series_breaks(book, hist)
+    except Exception as e:
+        log(f"data-health scan did not run (non-fatal): {str(e)[:120]}")
+        return
+    if not breaks:
+        log("data-health scan: no provable scale corruption in the book.")
+        return
+    names = sorted({b["ticker"] for b in breaks})
+    log(f"data-health scan: {len(breaks)} provable 1000x scale break(s) in {len(names)} book "
+        f"name(s) — {', '.join(names)}. Their packs carry an integrity alert; NOT blocking.")
+    for b in breaks:
+        log(f"   {b['ticker']} {b['field']}: FY{b['from_year']} {b['from']:,} -> "
+            f"FY{b['to_year']} {b['to']:,}")
+
+
 def main():
     args = sys.argv[1:]
     dry = "--dry-run" in args
@@ -242,6 +274,7 @@ def main():
         log("stale lock — taking over.")
     st = load_state()
     book = only or live_book()
+    data_health_scan(book)
 
     # TRIGGER-DRIVEN QUEUE (operator, 2026-08-21). Deterministic detection, model judgment:
     # depth_triggers checks 8-K / new 10-Q-10-K / big price move / 90d rotation against each
