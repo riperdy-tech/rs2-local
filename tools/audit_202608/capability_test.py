@@ -78,6 +78,20 @@ EXPECTED_KEYS = {
 }
 
 
+# Every key we have REVIEWED in a fundamentals_history year row: the ones the pack prints, plus
+# the two it excludes on purpose (pretax_income / tax_provision — see build_pack's docstring).
+# A key outside this set is one the screener started filing that nobody here has looked at.
+REVIEWED_HISTORY_KEYS = frozenset({
+    "revenue", "gross_profit", "operating_income", "net_income", "ocf", "capex", "fcf", "da",
+    "sga", "interest_expense", "sbc", "total_assets", "current_assets", "current_liabilities",
+    "cash", "receivables", "inventory", "ppe_net", "lt_debt", "total_liabilities", "equity",
+    "retained_earnings", "shares_diluted", "debt_lt_noncurrent", "debt_current",
+    "short_term_borrowings_separate", "finance_lease_liability", "operating_lease_liability",
+    "borrowings_total", "st_investments", "lt_investments",
+    "pretax_income", "tax_provision",
+})
+
+
 def _schema_drift(sources):
     """Return ['source: missing key, key'] for every EXPECTED key absent from a NON-EMPTY source.
 
@@ -94,6 +108,23 @@ def _schema_drift(sources):
         if missing:
             out.append(label + ": " + ", ".join(missing))
     return out
+
+
+def _unreviewed_history_fields(h):
+    """Fields the screener now files in fundamentals_history that this pack has never reviewed.
+
+    ADDED 2026-08-24, because drift runs in BOTH directions and we were only watching one. The
+    2026-08-23 extractor rebuild added SBC, the debt components and the investment lines; nothing
+    was missing, so _schema_drift stayed silent, and the pack spent every run since declaring that
+    data it now held did not exist. A disappearing field is a bug we shout about; an APPEARING
+    field was invisible. It is the more dangerous of the two, because the pack keeps working and
+    keeps making a statement that has quietly become false.
+
+    fundamentals_history is also not covered by EXPECTED_KEYS at all — those entries watch the
+    vendor and enrichment sources, not the filed series the valuation actually rests on.
+    """
+    seen = {k for yr in (h or {}).values() if isinstance(yr, dict) for k in yr}
+    return sorted(seen - REVIEWED_HISTORY_KEYS)
 
 
 def _b(v):
@@ -537,6 +568,13 @@ def build_pack(t):
               "were absent from the upstream record, so sections above may be missing data we "
               "actually hold. Treat the affected areas as unreliable rather than empty: "
               + " | ".join(drift), ""]
+    unreviewed = _unreviewed_history_fields(h)
+    if unreviewed:
+        L += ["**UNREVIEWED FIELDS PRESENT IN THE FILED RECORD.** The screener is filing these "
+              "columns and this pack does not print them, so the tables above are INCOMPLETE by "
+              "exactly this much and any 'we do not hold it' line above may be stale: "
+              + ", ".join(f"`{k}`" for k in unreviewed)
+              + ". Weigh your conclusions accordingly and say so in your report.", ""]
     return "\n".join(L)
 
 
