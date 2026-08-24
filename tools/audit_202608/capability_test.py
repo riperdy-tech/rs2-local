@@ -135,6 +135,32 @@ def _row(cells):
     return "| " + " | ".join(cells) + " |"
 
 
+def _held(h, yrs, key):
+    """Years in which THIS ticker holds a numeric value for `key`.
+
+    Every "we do not hold X" line in SECTION 12 is computed through this rather than hard-coded.
+    Four of those declarations went silently false when the screener's extractor was rebuilt on
+    2026-08-23 and began filing SBC, the debt components and the investment lines: the pack went
+    on telling every model that data we now hold for most of the book did not exist. A declaration
+    stated as a literal cannot notice that it has stopped being true.
+    """
+    return [y for y in yrs if isinstance((h.get(str(y)) or {}).get(key), (int, float))]
+
+
+def _decl(label, h, yrs, keys, held_note, gap_note):
+    """One SECTION 12 line, decided by what THIS ticker's record actually contains.
+
+    Emits HELD (with the years covered) or NOT EXTRACTED, so the declaration cannot drift out of
+    agreement with the tables above it the way the hard-coded versions did.
+    """
+    years = sorted({y for k in keys for y in _held(h, yrs, k)})
+    if not years:
+        return f"- **{label}: NOT EXTRACTED for this company.** {gap_note}"
+    span = f"{years[0]}" if len(years) == 1 else f"{years[0]}-{years[-1]}"
+    partial = "" if len(years) == len(yrs) else f" of the {len(yrs)} years in SECTION 5"
+    return (f"- **{label}: HELD**, {len(years)} year(s){partial} ({span}) - {held_note}")
+
+
 def build_pack(t):
     """Every fact we hold that is FILED, or is exact arithmetic on filed values, labelled with its
     source and its period. No judgment is exercised here: no valuation, no basis choice, no
@@ -229,8 +255,8 @@ def build_pack(t):
           f"- Total debt (vendor): {_b(fin.get('Total_Debt'))}   [our filed extract maps LONG-TERM "
           f"debt only, so the two legitimately differ - and neither is a complete debt figure]",
           f"- Stock-based compensation (vendor): {_b(fin.get('SBC_Stock_Based_Comp'))}   [the "
-          f"period is NOT reliably trailing-twelve-months; on most names it is a fiscal year. We "
-          f"hold no per-year SBC series at all - see SECTION 12]", ""]
+          f"period is NOT reliably trailing-twelve-months; on most names it is a fiscal year. "
+          f"Prefer the filed per-year SBC series in SECTION 5 where it is present]", ""]
 
     # ---- SECTION 3 -------------------------------------------------------------------------
     L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [Filed - SEC 10-Q derived; through "
@@ -279,14 +305,20 @@ def build_pack(t):
              f"{len(yrs)} years we hold]")
     if yrs:
         L += [_row(["FY", "revenue", "gross profit", "operating income", "net income", "OCF",
-                    "capex", "FCF", "D&A", "SG&A", "interest expense"]),
-              _row(["---"] * 11)]
+                    "capex", "FCF", "D&A", "SG&A", "interest expense", "SBC"]),
+              _row(["---"] * 12)]
         for y in yrs:
             r = h[str(y)]
             L.append(_row([str(y), _b(r.get("revenue")), _b(r.get("gross_profit")),
                            _b(r.get("operating_income")), _b(r.get("net_income")),
                            _b(r.get("ocf")), _b(r.get("capex")), _b(r.get("fcf")), _b(r.get("da")),
-                           _b(r.get("sga")), _b(r.get("interest_expense"))]))
+                           _b(r.get("sga")), _b(r.get("interest_expense")), _b(r.get("sbc"))]))
+        if _held(h, yrs, "sbc"):
+            L += ["",
+                  "- `SBC` is stock-based compensation as filed, per fiscal year. It is a real "
+                  "expense that is added back in OCF, so an owner-earnings figure that starts from "
+                  "OCF and does not subtract it is overstated. Use this series, not the single "
+                  "vendor scalar in SECTION 2, whose period is unreliable."]
         if t in LONE_DEPRECIATION_NAMES:
             L += ["",
                   f"**D&A WARNING for {t}:** this company files no combined depreciation-and-"
@@ -325,10 +357,9 @@ def build_pack(t):
               "the year-over-year difference of that. Both are exact arithmetic on the two filed "
               "columns beside them, and both are stated because a DCF that omits the change in "
               "working capital has silently assumed it is zero.",
-              "- `long-term debt` is LONG-TERM ONLY. Current portion, short-term borrowings and "
-              "lease liabilities are not mapped by our extractor, so this column UNDERSTATES total "
-              f"debt by an amount that varies by company. 33 live names file a debt tag we do not "
-              f"map at all and therefore show `{NULL}` here despite carrying debt.",
+              "- `long-term debt` is LONG-TERM ONLY, and it is NOT the whole debt picture. The "
+              "other components we hold are broken out in the DEBT STRUCTURE table below; read "
+              "that before computing net debt or enterprise value.",
               "- `wtd-avg shares` is the weighted-average share count as filed and is **NOT SPLIT-"
               "ADJUSTED**. A single-year step of several times is a stock split, not issuance. On "
               "18 live names the underlying tag is basic, or an undifferentiated weighted average, "
@@ -342,6 +373,48 @@ def build_pack(t):
     else:
         L.append(f"{NULL} - no fiscal-year record held.")
     L.append("")
+
+    # ---- SECTION 6B ------------------------------------------------------------------------
+    # Added 2026-08-24. These columns have existed in the upstream record since the extractor
+    # rebuild of 2026-08-23; the pack neither printed them nor knew it held them, and SECTION 12
+    # went on declaring them "NOT EXTRACTED". Measured on the 171-name book at the time of the
+    # fix: the components below sum to a median 30% of long-term debt (p75 66%), and investments
+    # are a median 32% of cash (p75 93%) - large enough to flip the SIGN of net debt, which is
+    # precisely the failure SECTION 12 was warning about while the data sat unread.
+    DEBT_COLS = [("lt_debt", "long-term debt"),
+                 ("debt_lt_noncurrent", "LT debt, noncurrent"),
+                 ("debt_current", "current portion"),
+                 ("short_term_borrowings_separate", "short-term borrowings"),
+                 ("finance_lease_liability", "finance leases"),
+                 ("operating_lease_liability", "operating leases"),
+                 ("borrowings_total", "borrowings total"),
+                 ("st_investments", "short-term investments"),
+                 ("lt_investments", "long-term investments")]
+    present = [(k, lbl) for k, lbl in DEBT_COLS if _held(h, yrs, k)]
+    if present:
+        L.append("## SECTION 6B - DEBT STRUCTURE & INVESTMENTS   [Filed. Columns absent for this "
+                 "company are omitted entirely rather than shown empty]")
+        L += [_row(["FY"] + [lbl for _, lbl in present]), _row(["---"] * (len(present) + 1))]
+        for y in yrs:
+            r = h[str(y)]
+            L.append(_row([str(y)] + [_b(r.get(k)) for k, _ in present]))
+        L += ["",
+              "- **WE DO NOT KNOW WHETHER THESE COLUMNS OVERLAP, SO WE DO NOT SUM THEM.** Which "
+              "XBRL tag produced each number is not recorded (see SECTION 0), and the two "
+              "long-term columns are measurably not interchangeable: across the live book they "
+              "are identical on 72 of the 80 companies that carry both and disagree on 8, in one "
+              "case by a factor of 650 (Marriott files $0.023B under one tag and $14.995B under "
+              "the other). `current portion` and `short-term borrowings` agree on only 10 of the "
+              "35 names carrying both. So a total-debt figure is NOT provided here: adding these "
+              "cells would double-count on most names, and picking one tag per company is a "
+              "judgment call. YOU decide which components belong in your net-debt figure, and say "
+              "which you used.",
+              "- The vendor's own total-debt scalar in SECTION 2 is an independent cross-check "
+              "built on a different definition. Where it disagrees with every column here, treat "
+              "the discrepancy as unresolved rather than picking the number that suits the case.",
+              "- Investments columns are securities held outside `cash`. Omitting them from net "
+              "debt overstates leverage; on this book they run a median 32% of the cash balance."]
+        L.append("")
 
     # ---- SECTION 7 -------------------------------------------------------------------------
     if bat:
@@ -430,19 +503,32 @@ def build_pack(t):
           "Measured across the live book: of 3,380,466 fact rows in the SEC companyfacts source, "
           "ZERO carry a dimension. Segment detail exists in XBRL only as dimensional axes, and the "
           "companyfacts API strips them. No sum-of-the-parts is possible from this pack.",
-          "- **Marketable securities and short-term investments: NOT EXTRACTED.** This is the "
-          "largest known hole. Many companies hold much of their liquidity here rather than in "
-          "cash, so the `cash` column in SECTION 6 and the vendor cash figure in SECTION 2 can "
-          "both understate liquid assets badly - and a net-debt figure built from them can come "
-          "out with the wrong SIGN. The data is filed, and sits in the source we already "
-          "download; our extractor does not map it yet.",
-          "- **Stock-based compensation per year: NOT EXTRACTED.** Only the single vendor scalar "
-          "in SECTION 2, whose period is unreliable. Most companies file this every year.",
+          _decl("Marketable securities and short-term investments", h, yrs,
+                ("st_investments", "lt_investments"),
+                held_note="in SECTION 6B. Companies hold much of their liquidity here rather than "
+                          "in cash, so a net-debt figure built on the `cash` column alone can "
+                          "come out with the wrong SIGN.",
+                gap_note="Many companies hold much of their liquidity here rather than in cash, "
+                         "so the `cash` column in SECTION 6 and the vendor cash figure in "
+                         "SECTION 2 can both understate liquid assets badly. The data is filed "
+                         "and sits in the source we download; it is not mapped for this name."),
+          _decl("Stock-based compensation per year", h, yrs, ("sbc",),
+                held_note="in the SBC column of SECTION 5.",
+                gap_note="Only the single vendor scalar in SECTION 2, whose period is "
+                         "unreliable. Most companies file this every year."),
           "- **Effective tax rate: DELIBERATELY WITHHELD.** Our pre-tax income field is "
           "contaminated on 38 live names by a US-domestic-only tag, so a tax rate computed from it "
           "would be wrong while looking authoritative. If you need one, derive it yourself and "
           "label it your own assumption.",
-          "- **Total debt: PARTIAL.** See the note under SECTION 6.",
+          _decl("Debt components beyond long-term debt", h, yrs,
+                ("debt_current", "short_term_borrowings_separate", "finance_lease_liability",
+                 "operating_lease_liability", "borrowings_total", "debt_lt_noncurrent"),
+                held_note="in SECTION 6B - but WHETHER THEY OVERLAP IS NOT KNOWN, so no total "
+                          "debt is computed for you. Read the note under that table.",
+                gap_note="Current portion, short-term borrowings and lease liabilities are not "
+                         "mapped for this name, so the `long-term debt` column in SECTION 6 "
+                         "understates total debt by an unknown amount. The vendor scalar in "
+                         "SECTION 2 is the only cross-check available here."),
           "- **Which XBRL tag produced each number: NOT RECORDED.** See the continuity warning in "
           "SECTION 0.",
           "- **Analyst Q&A from earnings calls: NOT HELD.** See SECTION 10.", ""]
