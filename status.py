@@ -3,7 +3,7 @@
 
     python status.py            # live dashboard (type a letter, press ENTER; see footer)
     python status.py --once     # one-shot snapshot, no live UI
-    python status.py pause|resume|stop   # one action, non-interactive
+    python status.py start|pause|resume|stop   # one action, non-interactive
 
 Controls the DEPTH pipeline (orchestrate_depth.py / the RS2-Depth-Orchestrator scheduled task).
 
@@ -12,6 +12,8 @@ cache/DEPTH_PAUSED, and the running sweep stops at the next TICKER boundary — 
 name has finished all its samples and written its verdict. A half-analysed ticker has no verdict,
 so the ticker is the clean unit to stop on. RESUME clears the flag and relaunches.
 
+  * start — launch a sweep now (e.g. after the daily data fetch, before the 02:00 run). Refuses
+            if paused or already running.
   * pause — halt after the current ticker; auto-runs blocked until resume. (Come back soon.)
   * stop  — same graceful halt, and free the GPU: models unload once the pipeline is idle
             (immediately if nothing is running). (Done for a while / want the GPU to game.)
@@ -199,6 +201,23 @@ def do_resume():
             "Flag cleared but relaunch FAILED — run `python orchestrate_depth.py` manually.")
 
 
+def do_start():
+    """Manually launch a sweep NOW — e.g. after the daily data fetch lands and before the 02:00
+    scheduled run, so the day's verdicts are ready earlier. Unlike resume it does NOT clear a
+    pause: if DEPTH_PAUSED is set it refuses (a launched sweep would just exit at the flag), and it
+    refuses to start a second sweep over a live one. The sweep itself snapshots membership, builds
+    the trigger queue, and works the due names — identical to a scheduled fire."""
+    if DEPTH_PAUSE.exists():
+        return ("NOT STARTED — DEPTH_PAUSED is set, so a sweep would exit immediately. "
+                "Use `resume` to clear the pause and launch.")
+    if _sweep_running():
+        return "already RUNNING — a sweep is active (lockfile PID alive); not starting a second."
+    ok = _launch_depth()
+    return ("STARTED — depth sweep launched (detached); snapshots membership, builds the trigger "
+            "queue, works due names. Watch the live activity above." if ok else
+            "start FAILED — run `python orchestrate_depth.py` manually.")
+
+
 # ---------------------------------------------------------------- dashboard ----------------------
 
 
@@ -331,8 +350,8 @@ def depth_snapshot():
     return chr(10).join(L)
 
 
-FOOTER = ("  commands (type letter, press ENTER):   p=pause(graceful)   r=resume   "
-          "s=stop(graceful + free GPU)   f or bare ENTER=refresh   q=quit")
+FOOTER = ("  commands (type letter/word, press ENTER):   g=start(run now)   p=pause(graceful)   "
+          "r=resume   s=stop(graceful + free GPU)   f or bare ENTER=refresh   q=quit")
 
 
 def interactive(refresh=15):
@@ -370,6 +389,9 @@ def interactive(refresh=15):
                 if cmd == "q":
                     print()
                     break
+                elif cmd in ("g", "start"):
+                    print("\n  working: launching sweep...", flush=True)
+                    msg = do_start(); render(); last = time.time()
                 elif cmd == "p":
                     print("\n  working: requesting graceful pause...", flush=True)
                     msg = do_pause(); render(); last = time.time()
@@ -381,7 +403,7 @@ def interactive(refresh=15):
                 elif cmd in ("", "f"):
                     msg = ""; render(); last = time.time()
                 else:
-                    msg = f"unknown command {cmd!r} — p / r / s / f / q, then ENTER"
+                    msg = f"unknown command {cmd!r} — g / p / r / s / f / q, then ENTER"
                     render(); last = time.time()
             elif raw == b"\x08":              # backspace — edit the pending buffer
                 buf = buf[:-1]
@@ -400,11 +422,14 @@ def interactive(refresh=15):
 def main():
     ap = argparse.ArgumentParser(
         description="RS2 depth-tier dashboard + graceful pause/resume/stop control.")
-    ap.add_argument("cmd", nargs="?", choices=["status", "pause", "resume", "stop"], default="status",
-                    help="no arg = live dashboard (press p/r/s inside it); or one action non-interactively")
+    ap.add_argument("cmd", nargs="?", choices=["status", "start", "pause", "resume", "stop"],
+                    default="status",
+                    help="no arg = live dashboard (press g/p/r/s inside it); or one action non-interactively")
     ap.add_argument("--once", action="store_true", help="print one snapshot and exit (no live UI)")
     ap.add_argument("--refresh", type=int, default=15, help="live-dashboard auto-refresh seconds (default 15)")
     args = ap.parse_args()
+    if args.cmd == "start":
+        print(do_start()); return
     if args.cmd == "pause":
         print(do_pause()); return
     if args.cmd == "resume":
