@@ -35,6 +35,7 @@ import sys  # noqa: E402
 sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 import capability_test as cap  # noqa: E402  (PACK_REVISION — see the pack trigger below)
 import rs2_data  # noqa: E402  (repo root on sys.path when imported by orchestrate_depth)
+import depth_membership as mem  # noqa: E402  (boundary dwell clocks; see re-entry / exit-review)
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -43,6 +44,20 @@ SUB_CACHE = HERE / "cache" / "sec_submissions"
 
 MOVE_PCT = float(CONFIG.get("depth_move_trigger_pct", 8.0))
 ROTATION_DAYS = float(CONFIG.get("depth_rotation_days", 90))
+# Boundary-dwell constants (DEPTH_ORCHESTRATOR_CADENCE_20260825.md §4). Snapshot-days, not
+# calendar days — one row per sweep, ~daily. All overridable in config.json.
+ENTRY_DWELL = int(CONFIG.get("depth_entry_dwell_days", 5))
+EXIT_REVIEW_DWELL = int(CONFIG.get("depth_exit_review_dwell_days", 3))
+FRESHNESS_DAYS = float(CONFIG.get("depth_reentry_freshness_days", 21))
+COOLDOWN_DAYS = float(CONFIG.get("depth_cooldown_days", 7))
+
+
+def _verdict_age_days(verdict):
+    try:
+        return (datetime.now() - datetime.strptime(
+            verdict.get("date", "1970-01-01"), "%Y-%m-%d")).days
+    except ValueError:
+        return 10 ** 6
 UA = {"User-Agent": "RS2-Local research riperdy@gmail.com"}
 BASELINE_FORMS = {"10-Q", "10-K", "10-K/A", "10-Q/A", "20-F", "40-F"}
 
@@ -157,6 +172,30 @@ def triggers_for(t, verdict):
     if verdict.get("pack_revision", 1) < cap.PACK_REVISION:
         out.append(("pack", f"analysed on pack revision "
                             f"{verdict.get('pack_revision', 1)}; current is {cap.PACK_REVISION}"))
+    # PERSISTENT RE-ENTRY (#5) and EXIT-REVIEW (#7) — boundary-dwell triggers. Both DORMANT until
+    # the membership log holds enough daily rows; each is guarded on its own dwell threshold, so a
+    # thin log simply yields no boundary trigger, never a crash or a false one. Cooldown/freshness
+    # keep them from firing more than once per crossing.
+    rows = mem.snapshots_recorded()
+    age = _verdict_age_days(verdict)
+    # #5: name re-entered the boundary (was OUT earlier in the record, now IN past the entry dwell)
+    # and its verdict is stale. dwell_in < rows proves it was not IN for the whole record = a real
+    # re-entry, not a name that never left.
+    if rows >= ENTRY_DWELL:
+        din = mem.dwell_in(t)
+        if 0 < din < rows and din >= ENTRY_DWELL and age > FRESHNESS_DAYS:
+            out.append(("reentry", f"re-entered RN+WL, in {din}d; verdict {age}d old "
+                                   f"(freshness {FRESHNESS_DAYS:.0f}d)"))
+    # #7: name LEFT the boundary and stayed out past the exit-review dwell, AND we have a stake in
+    # the answer — the verdict is a buy, or we hold it. Cooldown stops a name that dipped out days
+    # after a fresh run from re-running on nothing new.
+    if rows >= EXIT_REVIEW_DWELL:
+        dout = mem.dwell_out(t)
+        favorable = verdict.get("direction") == "undervalued"
+        held = t.upper() in mem.held_names()
+        if dout >= EXIT_REVIEW_DWELL and (favorable or held) and age >= COOLDOWN_DAYS:
+            why = "held" if held else "undervalued verdict"
+            out.append(("exit_review", f"out of RN+WL {dout}d, {why} — diligence re-run"))
     try:
         age = (datetime.now() - datetime.strptime(vdate, "%Y-%m-%d")).days
         if age > ROTATION_DAYS:

@@ -30,6 +30,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
 import depth_triggers       # noqa: E402
+import depth_membership     # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -273,6 +274,15 @@ def main():
             pass
         log("stale lock — taking over.")
     st = load_state()
+    # Record today's RN+WL membership FIRST, so the boundary-dwell clocks (re-entry / exit-review /
+    # retire — DEPTH_ORCHESTRATOR_CADENCE_20260825.md) advance one day on every sweep. Additive and
+    # non-destructive; the dwell triggers stay dormant until enough daily rows accumulate.
+    try:
+        sd_date, sd_n = depth_membership.snapshot()
+        log(f"membership snapshot {sd_date}: {sd_n} in RN+WL | "
+            f"{depth_membership.snapshots_recorded()} daily rows on record")
+    except Exception as e:
+        log(f"membership snapshot failed (non-fatal): {str(e)[:120]}")
     book = only or live_book()
     data_health_scan(book)
 
@@ -296,11 +306,15 @@ def main():
 
     def _class(t):
         kinds = [k for k, _ in trig.get(t, [])]
-        if any(k in ("8k", "filing", "move") for k in kinds):    # filing_pending excluded by name
-            return 0                                        # event-triggered
+        # Priority (DEPTH_ORCHESTRATOR_CADENCE_20260825.md §5): events + exit-review first, then
+        # baseline, then re-entry/promotion, then rotation. filing_pending is excluded by name.
+        if any(k in ("8k", "filing", "move", "exit_review") for k in kinds):
+            return 0                                        # event-triggered + exit-review
         if t not in verdicts:
             return 1                                        # baseline pass
-        return 2                                            # rotation (staleness cap)
+        if "reentry" in kinds:
+            return 2                                        # re-entry / promotion
+        return 3                                            # rotation (staleness cap)
 
     queue = [t for t in book if due(t)]
     fs = (rs2_data.load_json(SD / "factor_scores.json") or {}).get("tickers", {})
