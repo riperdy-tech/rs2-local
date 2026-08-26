@@ -45,11 +45,16 @@ PAUSED = HERE / "cache" / "DEPTH_PAUSED"
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 OVERLAY = HERE / "cache" / "depth_overlay.json"
 # Cross-process mutex for the screener-repo publish. The local sweep here and a concurrent cloud
-# publish (api_llm/publish_cloud_verdicts.py, which calls publish_overlay) push to the SAME working
-# tree. Serialising the git critical section is half the 2026-08-26 race fix (the other half is
-# dropping git stash — see publish_overlay).
+# publish (api_llm/publish_cloud_verdicts.py, which calls publish_overlay) both drive the SAME
+# dedicated publish clone. Serialising the git critical section is half the 2026-08-26 race fix;
+# the other half is publish_overlay's reset-to-origin + JSON-validate + rebase/abort (see it).
 PUBLISH_LOCK = HERE / "cache" / "screener_publish.lock"
 PROGRESS = HERE / "cache" / "depth_progress.json"   # this sweep's queue + position, for status.py
+# Cloud verdict bundles are authored here by api_llm/publish_cloud_verdicts.py — their content lives
+# only in the cloud run dirs, so build_report_bundles (which reads local ab_reports/consensus) cannot
+# regenerate them. Staged OUTSIDE the publish clone so publish_overlay's `checkout -B main origin/main`
+# reset cannot clobber them; publish_overlay copies them in and clears them only after a good push.
+PENDING_REPORTS = HERE / "cache" / "cloud_pending_reports"
 
 MAX_RETRIES = 2
 # Per-ticker budget. Measured: research <=900s (bounded) + 3 tool-enabled samples. Non-tools
@@ -163,69 +168,148 @@ def _publish_lock(timeout=200):
 
 
 def publish_overlay():
-    """Copy the local overlay into the screener repo and push. Operator-approved 2026-08-21.
+    """Copy the local overlay + report bundles into the DEDICATED screener-publish clone and push.
 
-    HARDENED 2026-08-26 (concurrent-publish race). The old flow was
-    `stash -> pull --rebase -> stash pop -> add -> commit -> push`. Two publishers share one
-    working tree (this sweep and api_llm/publish_cloud_verdicts.py). `git stash` scoops up EVERY
-    uncommitted change in the repo — including the other process's just-written report bundles —
-    and on a `stash pop` conflict (depth_overlay.json is fully rewritten by both) those changes are
-    dropped: measured 2026-08-26, all 131 cloud report bundles were lost this way while the overlay
-    still advanced.
+    Operator-approved 2026-08-21; hardened per SWEEP_AUTOMATION_FIX_20260826.md, dedicated-clone
+    design chosen by the operator 2026-08-27. Target is CONFIG['screener_publish_repo'] — a clone of
+    the screener repo used ONLY by the sweep, never the shared dev tree (publishing from the shared
+    tree was the whole 2026-08-26 incident: a `stash`/`pop`/`rebase` dance over another process's
+    uncommitted work committed conflict markers into depth_overlay.json AND rebased a later sweep
+    over a real fix, dropping 131 conviction bundles).
 
-    Fix has two parts: (1) a cross-process lock so only one publisher runs git at a time; (2) NO
-    stash — commit the paths we own first (so they can never be stashed away), then reconcile with
-    `merge -X ours` (our overlay/bundles are always the freshest, rebuilt from the shared ledger)
-    and push, retrying a diverged origin instead of failing. Mirrors orchestrate.py's proven push
-    loop, without the lossy stash."""
-    dst = SD / "depth_overlay.json"
-    repo = SD.parent.parent
+    Invariants enforced here (the doc's acceptance criteria):
+      1. Start from exactly what is published — reset the clone to origin/main each run. The clone is
+         sweep-only, so there is never foreign uncommitted work to protect and no reason to stash.
+      2. Validate every artifact parses as JSON BEFORE staging — a bad overlay/bundle never commits.
+      3. Never commit conflict markers — `git diff --cached --check` gates the commit.
+      4. Reconcile with fetch + rebase that PRESERVES every remote commit; on ANY conflict abort and
+         alert. Never `-X ours`/`-X theirs`/force — those silently drop the other publisher's side.
+      5. Every abort/failure is LOUD (ops.notify_telegram), never a silent no-op that leaves main broken.
+
+    Two producers call this one function (this sweep and api_llm/publish_cloud_verdicts.py); the
+    cross-process _publish_lock serialises the git critical section so only one runs git at a time,
+    which is also why a rebase conflict is rare rather than a per-cycle event.
+    """
+    repo = Path(str(CONFIG.get("screener_publish_repo") or "")).expanduser()
+
+    def abort(msg):
+        log(f"publish ABORT: {msg}")
+        try:
+            ops.notify_telegram(f"[sweep] publish aborted: {msg}")
+        except Exception:
+            pass
+
+    # The sweep must NEVER publish from the shared screener dev tree. Require a configured, valid,
+    # sweep-only clone or refuse to publish — a missing clone is a loud abort, not a silent fallback.
+    if not str(repo) or not (repo / ".git").exists():
+        abort(f"screener_publish_repo is not a git clone: {repo!s}")
+        return
 
     def g(*a):
         return subprocess.run(["git", "-C", str(repo)] + list(a),
                               capture_output=True, text=True, timeout=120)
+
+    # Confirm the clone points at the screener origin — never push the sweep somewhere unexpected.
+    origin = g("remote", "get-url", "origin").stdout.strip()
+    if "stock-screener" not in origin:
+        abort(f"publish clone origin is not stock-screener: {origin!r}")
+        return
+
+    pub_data = repo / "public" / "data"
+    dst = pub_data / "depth_overlay.json"
+    reports_dir = pub_data / "depth_reports"
+
     try:
         with _publish_lock():
+            if g("fetch", "origin", "main").returncode != 0:
+                abort("git fetch origin main failed")
+                return
+
+            # 1. Refuse to run on a tree dirtied by anything other than our own outputs. In a
+            #    dedicated clone this is always clean; the guard catches a broken/co-opted clone.
+            dirty = g("status", "--porcelain", "--",
+                      ":!public/data/depth_overlay.json", ":!public/data/depth_reports").stdout.strip()
+            if dirty:
+                abort("publish clone has unexpected local changes — investigate, not stashing over")
+                return
+
+            # Start from exactly what is published. Discards any prior committed-but-unpushed sweep
+            # commit; harmless because the artifacts below are regenerated fresh from the ledger.
+            if g("checkout", "-B", "main", "origin/main").returncode != 0:
+                abort("could not reset publish clone to origin/main")
+                return
+
+            # 2. Regenerate the artifacts into the clone (producer's existing step).
+            reports_dir.mkdir(parents=True, exist_ok=True)
             dst.write_text(OVERLAY.read_text(encoding="utf-8"), encoding="utf-8")
-            changed = build_report_bundles()
+            changed = build_report_bundles(reports_dir)
             if changed:
-                log(f"report bundles updated: {', '.join(changed[:6])}")
-            # Stage and commit ONLY what this publish owns, BEFORE touching origin. Committed
-            # changes cannot be lost by the reconcile step; that is the whole point.
+                log(f"report bundles updated: {', '.join(changed[:6])}"
+                    + (f" (+{len(changed) - 6} more)" if len(changed) > 6 else ""))
+
+            # Pull in any cloud bundles staged out-of-tree (see PENDING_REPORTS). Copied AFTER the
+            # reset so they survive it; cleared only once the push that carries them succeeds.
+            pending = sorted(PENDING_REPORTS.glob("*.json")) if PENDING_REPORTS.exists() else []
+            for pf in pending:
+                (reports_dir / pf.name).write_text(pf.read_text(encoding="utf-8"), encoding="utf-8")
+            if pending:
+                log(f"cloud bundles staged in: {len(pending)}")
+
+            # 3. Validate BEFORE staging — a bad artifact never reaches a commit (AC#3).
+            bad = []
+            for f in [dst, *sorted(reports_dir.glob("*.json"))]:
+                try:
+                    json.loads(f.read_text(encoding="utf-8"))
+                except Exception as e:
+                    bad.append(f"{f.name}: {str(e)[:60]}")
+            if bad:
+                abort(f"invalid JSON in {len(bad)} file(s): {bad[0]}")
+                return
+
             g("add", str(dst))
-            g("add", str(SD / "depth_reports"))
-            c = g("-c", "commit.gpgsign=false", "commit", "-m",
-                  "depth_overlay.json: sweep update (band_direction_v1)")
-            if "nothing to commit" in (c.stdout + c.stderr):
+            g("add", str(reports_dir))
+
+            # 4. Never commit conflict markers or corruption (AC#1/#3).
+            if g("diff", "--cached", "--check").returncode != 0:
+                abort("conflict markers / corruption in staged content — not committing")
+                return
+            if g("diff", "--cached", "--quiet").returncode == 0:
                 log("publish: overlay unchanged — nothing to push")
                 return
+
+            c = g("-c", "commit.gpgsign=false", "commit", "-m",
+                  "depth_overlay.json: sweep update (band_direction_v1)")
+            if c.returncode != 0:
+                abort(f"commit failed: {(c.stderr or c.stdout).strip()[:80]}")
+                return
+
+            # 5. Push with a race-safe retry that PRESERVES remote commits; abort on conflict (AC#2/#4).
             for attempt in (1, 2, 3, 4, 5):
                 g("fetch", "origin", "main")
-                # -X ours: on a conflict our side wins. depth_overlay.json and the report bundles
-                # are regenerated from the current ledger, so ours is always the superset; other
-                # files merge normally. --no-edit avoids an editor prompt in headless runs.
-                m = g("-c", "merge.gpgsign=false", "merge", "-X", "ours", "--no-edit", "origin/main")
-                if m.returncode != 0:
-                    g("merge", "--abort")
-                    log(f"publish: merge attempt {attempt} blocked — retrying")
-                    time.sleep(4)
-                    continue
-                r = g("push", "origin", "main")
-                if r.returncode == 0:
+                if g("rebase", "origin/main").returncode != 0:
+                    g("rebase", "--abort")
+                    abort(f"rebase conflict against origin/main (attempt {attempt}) — main left unchanged")
+                    return
+                if g("push", "origin", "main").returncode == 0:
+                    for pf in pending:      # committed + pushed — safe to drop the staged copies
+                        try:
+                            pf.unlink()
+                        except OSError:
+                            pass
                     log("publish: depth_overlay.json pushed to screener repo")
                     return
                 log(f"publish: push attempt {attempt} rejected — re-syncing")
                 time.sleep(4)
-            log("publish ::PUSH FAILED:: after 5 attempts — committed locally, push manually")
+            abort("push failed after 5 attempts — main unchanged, next sweep will retry")
     except Exception as e:
-        log(f"publish failed (non-fatal): {str(e)[:120]}")
+        abort(f"unexpected error: {str(e)[:100]}")
 
 
-def build_report_bundles():
+def build_report_bundles(out_dir):
     """One JSON per ticker with the newest run's three sample REPORTS (the deliverable prose;
-    thinking traces stay local - they are internal reasoning and ~80KB each). Written into the
-    screener repo at public/data/depth_reports/{T}.json for the site's depth panel."""
-    out_dir = SD / "depth_reports"
+    thinking traces stay local - they are internal reasoning and ~80KB each). Written into `out_dir`
+    (the screener-publish clone's public/data/depth_reports) as {T}.json for the site's depth panel."""
+    out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     newest = {}
     if LEDGER.exists():

@@ -93,8 +93,11 @@ def protected_local():
 
 
 def write_bundle(t, d, doc, v):
-    """Same schema as orchestrate_depth.build_report_bundles, sourced from the cloud run dir."""
-    out_dir = od.SD / "depth_reports"
+    """Same schema as orchestrate_depth.build_report_bundles, sourced from the cloud run dir.
+    Written to od.PENDING_REPORTS (out-of-tree staging); od.publish_overlay copies these into the
+    dedicated publish clone after its reset and clears them once pushed. Writing them straight into
+    the clone would let publish_overlay's `checkout -B main origin/main` reset clobber them."""
+    out_dir = od.PENDING_REPORTS
     out_dir.mkdir(parents=True, exist_ok=True)
     samples = []
     for r in doc.get("runs", []):
@@ -176,7 +179,7 @@ def main():
     with od.LEDGER.open("a", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
     print(f"ledger: +{len(lines)} cloud verdicts -> {od.LEDGER}")
-    print(f"report bundles written: {bundles} -> {od.SD / 'depth_reports'}")
+    print(f"report bundles written: {bundles} -> {od.PENDING_REPORTS} (staged for publish)")
     print(f"overlay rebuilt: {od.rebuild_overlay()} tickers -> {od.OVERLAY}")
     if push:
         od.publish_overlay()

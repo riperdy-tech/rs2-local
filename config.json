@@ -1,6 +1,8 @@
 {
   "_comment": "RS2 Local — single source of truth for paths + pipeline settings. All paths absolute (Windows).",
   "screener_data_dir": "C:/Users/riper/Downloads/Stock Screener/Stock Screener/public/data",
+  "screener_publish_repo": "C:/Users/riper/Downloads/screener-publish",
+  "_screener_publish_note": "DEDICATED sweep-only shallow clone of stock-screener.git (SWEEP_AUTOMATION_FIX_20260826.md, dedicated-clone design chosen 2026-08-27). orchestrate_depth.publish_overlay() resets it to origin/main each run, regenerates depth_overlay.json + depth_reports, validates JSON, commits, fetch+rebase, pushes; aborts+alerts (ops.notify_telegram) on any conflict/failure. NEVER publish from screener_data_dir (the shared dev tree) — publishing from there was the 2026-08-26 corruption.",
   "mri_outputs_dir": "C:/Users/riper/Downloads/Stock Screener/Macro Regime Indicator/outputs",
   "agentwebsearch_dir": "C:/Users/riper/Downloads/RS2 Local/AgentWebSearch-MCP",
   "ollama_endpoint": "http://localhost:11434/api/chat",
