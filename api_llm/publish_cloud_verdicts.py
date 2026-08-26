@@ -111,7 +111,11 @@ def write_bundle(t, d, doc, v):
     dst = out_dir / f"{t}.json"
     txt = json.dumps(bundle)
     if not dst.exists() or dst.read_text(encoding="utf-8") != txt:
-        dst.write_text(txt, encoding="utf-8")
+        # atomic: this runs BEFORE publish_overlay takes the screener lock, so a concurrent local
+        # sweep's `git add depth_reports` (under that lock) must never see a half-written bundle.
+        tmp = dst.with_name(dst.name + ".tmp")
+        tmp.write_text(txt, encoding="utf-8")
+        tmp.replace(dst)
         return True
     return False
 

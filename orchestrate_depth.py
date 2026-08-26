@@ -15,8 +15,10 @@ wall-clock watchdog with TREE kill + model unload, MAX_RETRIES, atomic state wri
   python orchestrate_depth.py --tickers GOOG,PM --limit 2      # shadow-style bounded run
   python orchestrate_depth.py --limit 20                        # the 20-name shadow
 """
+import contextlib
 import io
 import json
+import os
 import subprocess
 import sys
 import time
@@ -42,6 +44,11 @@ LOCK = HERE / "cache" / "orchestrate_depth.lock"
 PAUSED = HERE / "cache" / "DEPTH_PAUSED"
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 OVERLAY = HERE / "cache" / "depth_overlay.json"
+# Cross-process mutex for the screener-repo publish. The local sweep here and a concurrent cloud
+# publish (api_llm/publish_cloud_verdicts.py, which calls publish_overlay) push to the SAME working
+# tree. Serialising the git critical section is half the 2026-08-26 race fix (the other half is
+# dropping git stash — see publish_overlay).
+PUBLISH_LOCK = HERE / "cache" / "screener_publish.lock"
 PROGRESS = HERE / "cache" / "depth_progress.json"   # this sweep's queue + position, for status.py
 
 MAX_RETRIES = 2
@@ -116,37 +123,100 @@ def rebuild_overlay():
     return len(newest)
 
 
-def publish_overlay():
-    """Copy the local overlay into the screener repo and push. Operator-approved 2026-08-21
-    ("verdict emission and new overlay - approved and push to github"). The stash dance is the
-    standing procedure for that repo: the cloud pushes daily feeds, so always stash -> rebase ->
-    push -> pop. No site component reads this file yet; hosting it is not a display change."""
-    dst = SD / "depth_overlay.json"
+@contextlib.contextmanager
+def _publish_lock(timeout=200):
+    """Serialise the screener-repo git critical section across processes. O_EXCL lockfile; a lock
+    older than `timeout` is stale (each git call caps at 120s, so a healthy publish finishes well
+    inside it) and gets taken over. If it still cannot be acquired we proceed best-effort rather
+    than wedge the pipeline — the merge/push retry below is safe on its own, the lock only removes
+    the interleave that made two publishers race."""
+    got, deadline = False, time.time() + timeout
+    while time.time() < deadline:
+        try:
+            fd = os.open(str(PUBLISH_LOCK), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, f"{os.getpid()} {datetime.now().isoformat()}".encode())
+            os.close(fd)
+            got = True
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - PUBLISH_LOCK.stat().st_mtime
+            except OSError:
+                age = 0
+            if age > timeout:
+                try:
+                    PUBLISH_LOCK.unlink()
+                except OSError:
+                    pass
+                continue
+            time.sleep(2)
+    if not got:
+        log("publish: screener lock not acquired in time — proceeding best-effort")
     try:
-        dst.write_text(OVERLAY.read_text(encoding="utf-8"), encoding="utf-8")
-        repo = SD.parent.parent
-        def g(*a):
-            return subprocess.run(["git", "-C", str(repo)] + list(a),
-                                  capture_output=True, text=True, timeout=120)
-        changed = build_report_bundles()
-        if changed:
-            log(f"report bundles updated: {', '.join(changed[:6])}")
-        g("stash")
-        g("pull", "--rebase", "origin", "main")
-        g("stash", "pop")
-        g("add", str(dst))
-        g("add", str(SD / "depth_reports"))
-        c = g("-c", "commit.gpgsign=false", "commit", "-m",
-              "depth_overlay.json: sweep update (band_direction_v1)")
-        if "nothing to commit" in (c.stdout + c.stderr):
-            log("publish: overlay unchanged — nothing to push")
-            return
-        r = g("push", "origin", "main")
-        if r.returncode == 0:
-            log("publish: depth_overlay.json pushed to screener repo")
-        else:
-            log(f"publish ::PUSH FAILED:: {(r.stderr or '')[:150]} — overlay committed locally, "
-                f"push manually")
+        yield
+    finally:
+        if got:
+            try:
+                PUBLISH_LOCK.unlink()
+            except OSError:
+                pass
+
+
+def publish_overlay():
+    """Copy the local overlay into the screener repo and push. Operator-approved 2026-08-21.
+
+    HARDENED 2026-08-26 (concurrent-publish race). The old flow was
+    `stash -> pull --rebase -> stash pop -> add -> commit -> push`. Two publishers share one
+    working tree (this sweep and api_llm/publish_cloud_verdicts.py). `git stash` scoops up EVERY
+    uncommitted change in the repo — including the other process's just-written report bundles —
+    and on a `stash pop` conflict (depth_overlay.json is fully rewritten by both) those changes are
+    dropped: measured 2026-08-26, all 131 cloud report bundles were lost this way while the overlay
+    still advanced.
+
+    Fix has two parts: (1) a cross-process lock so only one publisher runs git at a time; (2) NO
+    stash — commit the paths we own first (so they can never be stashed away), then reconcile with
+    `merge -X ours` (our overlay/bundles are always the freshest, rebuilt from the shared ledger)
+    and push, retrying a diverged origin instead of failing. Mirrors orchestrate.py's proven push
+    loop, without the lossy stash."""
+    dst = SD / "depth_overlay.json"
+    repo = SD.parent.parent
+
+    def g(*a):
+        return subprocess.run(["git", "-C", str(repo)] + list(a),
+                              capture_output=True, text=True, timeout=120)
+    try:
+        with _publish_lock():
+            dst.write_text(OVERLAY.read_text(encoding="utf-8"), encoding="utf-8")
+            changed = build_report_bundles()
+            if changed:
+                log(f"report bundles updated: {', '.join(changed[:6])}")
+            # Stage and commit ONLY what this publish owns, BEFORE touching origin. Committed
+            # changes cannot be lost by the reconcile step; that is the whole point.
+            g("add", str(dst))
+            g("add", str(SD / "depth_reports"))
+            c = g("-c", "commit.gpgsign=false", "commit", "-m",
+                  "depth_overlay.json: sweep update (band_direction_v1)")
+            if "nothing to commit" in (c.stdout + c.stderr):
+                log("publish: overlay unchanged — nothing to push")
+                return
+            for attempt in (1, 2, 3, 4, 5):
+                g("fetch", "origin", "main")
+                # -X ours: on a conflict our side wins. depth_overlay.json and the report bundles
+                # are regenerated from the current ledger, so ours is always the superset; other
+                # files merge normally. --no-edit avoids an editor prompt in headless runs.
+                m = g("-c", "merge.gpgsign=false", "merge", "-X", "ours", "--no-edit", "origin/main")
+                if m.returncode != 0:
+                    g("merge", "--abort")
+                    log(f"publish: merge attempt {attempt} blocked — retrying")
+                    time.sleep(4)
+                    continue
+                r = g("push", "origin", "main")
+                if r.returncode == 0:
+                    log("publish: depth_overlay.json pushed to screener repo")
+                    return
+                log(f"publish: push attempt {attempt} rejected — re-syncing")
+                time.sleep(4)
+            log("publish ::PUSH FAILED:: after 5 attempts — committed locally, push manually")
     except Exception as e:
         log(f"publish failed (non-fatal): {str(e)[:120]}")
 
