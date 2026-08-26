@@ -46,8 +46,10 @@ FALLBACK LIMITS (--fresh), measured, not assumed:
   python api_llm/deep_api_run.py JKHY
   python api_llm/deep_api_run.py JKHY --samples 3 --effort high --dir JKHY_20260824_114148
   python api_llm/deep_api_run.py NVDA --fresh          # local tier never ran this name
+  python api_llm/deep_api_run.py NVDA --fresh --model deepseek-v4-pro
 """
 import json
+import re
 import statistics as st
 import sys
 import time
@@ -72,11 +74,12 @@ _STDOUT_KEEPALIVE.append(sys.stdout)
 import depth_pipeline as dp          # noqa: E402  band_verdict, SIZE_BUCKETS
 _STDOUT_KEEPALIVE.append(sys.stdout)
 import analyst_tools as at           # noqa: E402  TOOLS schema, search_web, fetch_page
+import capability_test as cap        # noqa: E402  build_pack, TASK, PACK_REVISION
 
 CFG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
 LOCAL_CONSENSUS = ROOT / "ab_reports" / "consensus"     # read-only source of frozen packs
 OUT = HERE / "deep_api"                                 # this arm's only write target
-MODEL = "deepseek-v4-flash"
+MODEL = "deepseek-v4-flash"     # --model overrides; pro is the same API shape at 3x the price
 MAX_TOKENS = cv.NUM_PREDICT             # 65536, same output budget as local
 CALL_TIMEOUT = 1800
 TRANSPORT_RETRIES = 3                   # 429 / transient 5xx only; not an analysis behaviour
@@ -85,6 +88,32 @@ TRANSPORT_RETRIES = 3                   # 429 / transient 5xx only; not an analy
 # Off-peak is half of peak; peak is 01:00-04:00 and 06:00-10:00 UTC, Mon-Fri.
 PRICE = {"deepseek-v4-flash": {"hit": 0.014, "miss": 0.44, "out": 1.32},
          "deepseek-v4-pro": {"hit": 0.044, "miss": 1.32, "out": 3.96}}
+
+# The RS2 analytical framework. The LOCAL tier gets it for free: it is baked into the
+# rs2-analyst-deep Modelfile's SYSTEM block, so every local sample is written under it. The
+# DeepSeek API has no baked system prompt, and the earlier cloud arm sent none - so the model was
+# handed the fact pack + a TASK saying "produce SECTION 0-12 per the framework's FINAL OUTPUT
+# STRUCTURE" while never being shown the framework. Measured 2026-08-26: 127 of 131 published
+# cloud reports omitted every RS2 analytical layer (base rate, moat scoring, scenarios, red team,
+# audit, ...) and produced a fact-pack echo + an IV instead. Attaching the SAME block as an
+# explicit system message makes the cloud transport mirror the local one exactly. Read-only from
+# the engine's Modelfile - nothing here modifies it. Deep and Deep-MTP5 carry a byte-identical
+# block (verified), so the base Deep file is the canonical source.
+_FRAMEWORK_MODELFILE = ROOT / "RS2-Analyst-Deep.Modelfile"
+_FRAMEWORK_CACHE = None
+
+
+def _rs2_framework():
+    """The baked SYSTEM block, extracted and cached (read once, not per sample/tool-round)."""
+    global _FRAMEWORK_CACHE
+    if _FRAMEWORK_CACHE is None:
+        mf = _FRAMEWORK_MODELFILE.read_text(encoding="utf-8")
+        m = re.search(r'SYSTEM\s+"""(.*?)"""', mf, re.S)
+        if not m:
+            raise RuntimeError(f'no SYSTEM """...""" block in {_FRAMEWORK_MODELFILE.name} - '
+                               "cannot attach the RS2 framework to the cloud call")
+        _FRAMEWORK_CACHE = m.group(1).strip()
+    return _FRAMEWORK_CACHE
 
 
 def _off_peak(dt):
@@ -157,7 +186,10 @@ def chat_with_tools_api(pack, out_dir, effort, key, meter):
     reasoning_content must be passed back on EVERY subsequent request or the API returns 400.
     Ollama has no such rule, so this echo exists only to make the cloud transport legal.
     """
-    msgs = [{"role": "user", "content": pack}]
+    # system = the RS2 framework the local tier bakes into its model; user = the pack (+TASK
+    # +addendum, already appended by the caller). This mirrors the local prompt assembly exactly.
+    msgs = [{"role": "system", "content": _rs2_framework()},
+            {"role": "user", "content": pack}]
     snap, calls = [], 0
     t0 = time.time()
     report, thinking, finish = "", "", None
@@ -212,6 +244,7 @@ def chat_with_tools_api(pack, out_dir, effort, key, meter):
     (Path(out_dir) / "_research_snapshot.json").write_text(
         json.dumps({"model": MODEL, "seed": None, "_seed_note": "not sent: undocumented in the "
                     "DeepSeek API reference, so reproducibility is not claimed on this arm",
+                    "rs2_framework_attached": True, "rs2_framework_chars": len(_rs2_framework()),
                     "tool_calls": calls, "elapsed_s": round(time.time() - t0), "calls": snap},
                    indent=2), encoding="utf-8")
     return report, thinking, {"tool_calls": calls, "finish_reason": finish,
@@ -240,18 +273,23 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not args:
         sys.exit("usage: deep_api_run.py TICKER [--samples 3] [--effort high] "
-                 "[--dir NAME | --fresh]")
+                 "[--dir NAME | --fresh] [--model ID]")
     t = args[0].upper()
     n = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else 3
     effort = sys.argv[sys.argv.index("--effort") + 1] if "--effort" in sys.argv else "high"
     fresh = "--fresh" in sys.argv
+    if "--model" in sys.argv:
+        global MODEL
+        MODEL = sys.argv[sys.argv.index("--model") + 1]
+        if MODEL not in PRICE:
+            print(f"[deep-api] WARNING: no published price for '{MODEL}' - spend will read $0.00",
+                  flush=True)
     src, local, brief_age, searx = None, {}, _brief_age_days(t), None
 
     if fresh:
         # FALLBACK PATH. Build the pack from current data exactly as consensus_valuation does -
         # same builder, same TASK, same addendum - so the only difference from a local run is
         # which model reads it and how fresh SECTION 11 is.
-        import capability_test as cap
         searx = _searxng_up()
         pack = cap.build_pack(t) + "\n\n---\n\n" + cap.TASK + cap.RESEARCH_ADDENDUM
         fin = cv.rs2_data.load_json(cv.common.SD / "financials" / f"{t}.json") or {}
@@ -348,6 +386,10 @@ def main():
            "tolerance_pct": cv.TOL_PCT, "early_tolerance_pct": cv.EARLY_TOL_PCT,
            "converged": converged, "verdict": verdict,
            "median_mos_pct": round((med / price - 1) * 100, 1) if med and price else None,
+           # band_verdict carries pack_revision onto the verdict and depth_triggers re-queues
+           # anything below current, so a --fresh run must stamp the revision it actually built
+           # against. A replay inherits the frozen pack's revision (absent = pre-versioning = 1).
+           "pack_revision": cap.PACK_REVISION if fresh else local.get("pack_revision", 1),
            "arm": "cloud_api", "pack_source": "fresh" if fresh else "replay",
            "source_pack_dir": None if fresh else src.name,
            "research_brief_age_days": brief_age, "searxng_up": searx, "usage": meter,
