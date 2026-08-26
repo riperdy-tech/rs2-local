@@ -36,6 +36,7 @@ HERE = Path(__file__).resolve().parent
 CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
 SD = Path(CONFIG["screener_data_dir"])
 DEPTH_STATE = HERE / "cache" / "depth_state.json"
+DEPTH_PROGRESS = HERE / "cache" / "depth_progress.json"
 DEPTH_LOCK = HERE / "cache" / "orchestrate_depth.lock"
 DEPTH_PAUSE = HERE / "cache" / "DEPTH_PAUSED"
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
@@ -221,6 +222,39 @@ def do_start():
 # ---------------------------------------------------------------- dashboard ----------------------
 
 
+def _sweep_progress():
+    """This sweep's position + what's pending. Prefers cache/depth_progress.json (written by the
+    orchestrator per ticker); falls back to parsing the depth log for a sweep that started before
+    the progress file existed. Returns {total, idx, current, pending:[names], active} or None."""
+    p = load(DEPTH_PROGRESS)
+    if p and p.get("total"):
+        idx = int(p.get("idx") or 0)
+        q = [e.get("t") for e in (p.get("queue") or [])]
+        return {"total": int(p["total"]), "idx": idx, "current": p.get("current"),
+                "pending": q[idx:], "active": bool(p.get("active"))}
+    # fallback: parse the log for the newest "[i/N] TICKER", and the queued names after the last
+    # "book … | due …" (only the first 20 are logged, so the named list may be partial).
+    if not DEPTH_LOG.exists():
+        return None
+    text = DEPTH_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
+    # anchor the segment at the sweep's START (its membership-snapshot line, else the book|due line)
+    # so the `queued …` lines — logged just BEFORE book|due — are inside the segment.
+    anchor = max((i for i, ln in enumerate(text) if "membership snapshot" in ln), default=None)
+    if anchor is None:
+        anchor = max((i for i, ln in enumerate(text) if re.search(r"\| due \d+", ln)), default=None)
+    if anchor is None:
+        return None
+    seg = text[anchor:]
+    queued = [m.group(1) for ln in seg if (m := re.search(r"queued (\S+):", ln))]
+    idxs = [(int(m.group(1)), int(m.group(2)), m.group(3))
+            for ln in seg if (m := re.search(r"\[(\d+)/(\d+)\]\s+(\S+)\s*$", ln))]
+    if not idxs:
+        return None
+    idx, total, current = idxs[-1]
+    return {"total": total, "idx": idx, "current": current,
+            "pending": queued[idx:], "active": _sweep_running()}
+
+
 def depth_snapshot():
     """Status of the depth-tier pipeline: the halt/schedule state, current ticker + within-ticker
     sample progress, recent verdicts, live artifacts, and a measured ETA for remaining names."""
@@ -326,11 +360,11 @@ def depth_snapshot():
         L.append(f"   {v['ticker']:6s} {v['direction']:12s} band {band:>16s} vs ${v.get('price')}"
                  f" | spread {v.get('spread_pct')}% | {v.get('size_hint')}")
 
-    # remaining-work ETA — rate MEASURED from the log (current model only), never hardcoded.
-    fs = (load(SD / "factor_scores.json", {}) or {}).get("tickers", {})
-    book_n = len({t for t, e in fs.items()
-                  if (e or {}).get("fct_band") in ("research_now", "watchlist")}) or 170
-    n_left = max(0, book_n - len(ok))
+    # THIS SWEEP's queue + what's pending (NOT book-minus-done — the book is trigger-driven now,
+    # and most names already carry a verdict from the cloud baseline, so "book minus locally-run"
+    # overstated the work by ~130. The real remaining number is the due queue.)
+    sp = _sweep_progress()
+    # per-ticker rate, MEASURED from the log (current model only), never hardcoded.
     MTP_SWITCH = datetime(2026, 8, 24, 9, 0)   # the switch nearly halved run times; don't pool eras
     mins = []
     if DEPTH_LOG.exists():
@@ -343,9 +377,23 @@ def depth_snapshot():
                 mins.append(gap)
     mins.sort()
     rate = mins[len(mins) // 2] if len(mins) >= 3 else 70.0
-    src = f"measured median of {len(mins)} completions" if len(mins) >= 3 else "estimate, too few completions"
-    L.append(f"   ETA: ~{n_left} names x {rate:.0f} min ({src}) = "
-             f"{n_left * rate / 1440:.1f} GPU-days remaining")
+    src = f"median of {len(mins)} runs" if len(mins) >= 3 else "estimate"
+    if sp and sp["total"]:
+        pending_n = max(0, sp["total"] - sp["idx"])
+        L.append(f"   sweep: {sp['idx']}/{sp['total']}"
+                 + (f" · now {sp['current']}" if sp.get("current") else "")
+                 + f" · {pending_n} pending")
+        if sp["pending"]:
+            shown = sp["pending"][:12]
+            L.append("   pending: " + ", ".join(shown)
+                     + (f"  (+{pending_n - len(shown)} more)" if pending_n > len(shown) else ""))
+        elif pending_n:
+            L.append(f"   pending: {pending_n} names (list not in log — next sweep shows them)")
+        L.append(f"   ETA this sweep: ~{pending_n} x {rate:.0f} min ({src}) = "
+                 f"{pending_n * rate / 60:.1f} GPU-hours")
+    else:
+        L.append(f"   no sweep queued (idle). {len(verdicts)} verdicts on file; run `start` to "
+                 f"build the due queue. [{rate:.0f} min/name, {src}]")
     L.append("")
     return chr(10).join(L)
 

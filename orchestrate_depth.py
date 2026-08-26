@@ -42,6 +42,7 @@ LOCK = HERE / "cache" / "orchestrate_depth.lock"
 PAUSED = HERE / "cache" / "DEPTH_PAUSED"
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 OVERLAY = HERE / "cache" / "depth_overlay.json"
+PROGRESS = HERE / "cache" / "depth_progress.json"   # this sweep's queue + position, for status.py
 
 MAX_RETRIES = 2
 # Per-ticker budget. Measured: research <=900s (bounded) + 3 tool-enabled samples. Non-tools
@@ -327,7 +328,25 @@ def main():
         queue = queue[:limit]
     log(f"book {len(book)} | due {len(queue)}"
         + (f" | first: {', '.join(queue[:8])}{'...' if len(queue) > 8 else ''}" if queue else ""))
+
+    # Sweep progress for status.py: the FULL due queue with per-name reasons, plus the position,
+    # updated per ticker. status reads this to show what's pending instead of guessing from the log.
+    def _why(t):
+        return (", ".join(f"{k}:{d}" for k, d in trig.get(t, [])) or
+                ("baseline" if t not in verdicts else "rotation"))
+    queue_why = [{"t": t, "class": _class(t), "why": _why(t)[:120]} for t in queue]
+
+    def write_progress(idx, current, active):
+        try:
+            PROGRESS.write_text(json.dumps({
+                "active": active, "total": len(queue), "idx": idx, "current": current,
+                "queue": queue_why, "updated": datetime.now().isoformat()}, indent=1),
+                encoding="utf-8")
+        except OSError:
+            pass
+
     if dry or not queue:
+        write_progress(0, None, False)
         return 0
 
     LOCK.write_text(json.dumps({"pid": subprocess.os.getpid(),
@@ -339,6 +358,7 @@ def main():
                 log("PAUSED appeared — stopping cleanly at the ticker boundary.")
                 break
             log(f"[{done+1}/{len(queue)}] {t}")
+            write_progress(done + 1, t, True)
             ok, why = run_one(t)
             rec = st.get(t) or {}
             if ok:
@@ -369,6 +389,7 @@ def main():
             LOCK.unlink()
         except OSError:
             pass
+        write_progress(done, None, False)   # sweep ended (finished or paused) — mark inactive
     if done:
         publish_overlay()
     log(f"sweep done: {done} processed.")
