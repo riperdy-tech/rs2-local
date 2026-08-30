@@ -1,0 +1,217 @@
+# .github/workflows/depth-cloud-backstop.yml
+# Depth cloud backstop: keeps the depth overlay moving when the PC is off.
+# Primary = the PC's RS2-Depth-Orchestrator task. This fires only when the
+# overlay is >30h stale AND the PC heartbeat is >90min dead (or on force).
+name: Depth Cloud Backstop
+
+on:
+  schedule:
+    - cron: "5 3 * * *"   # daily 03:05 UTC = 11:05 Taipei
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Skip freshness + PC-alive gates"
+        type: boolean
+        default: false
+      max_tickers:
+        description: "Max tickers this run"
+        default: "6"
+
+concurrency:
+  group: depth-backstop
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - name: Gate on overlay freshness + PC heartbeat
+        id: gate
+        env:
+          SB_URL: ${{ secrets.RS2_SUPABASE_URL }}
+          SB_KEY: ${{ secrets.RS2_SUPABASE_SERVICE_KEY }}
+          TG_TOKEN: ${{ secrets.RS2_TG_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.RS2_TG_CHAT_ID }}
+          GH_RAW_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, urllib.request
+          from datetime import datetime, timezone, timedelta
+
+          def out(run, why):
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"run={'true' if run else 'false'}\n")
+              print(f"backstop gate: {why}")
+
+          if os.environ.get("FORCE") == "true":
+              out(True, "forced by operator"); raise SystemExit
+
+          overlay_h = 9999.0  # fail-open, same policy as the SDF preflight
+          try:
+              # PRIVATE repo: raw fetch needs the PAT header or it 404s and
+              # the gate would silently degrade to heartbeat-only.
+              raw = ("https://raw.githubusercontent.com/riperdy-tech/"
+                     "stock-screener/main/public/data/depth_overlay.json")
+              req = urllib.request.Request(raw, headers={
+                  "Authorization": "Bearer " + os.environ["GH_RAW_TOKEN"]})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  gen = json.load(r)["generated_at"]
+              # generated_at is NAIVE Taipei local time (+08:00), no suffix
+              ts = datetime.fromisoformat(gen).replace(
+                  tzinfo=timezone(timedelta(hours=8)))
+              overlay_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
+          except Exception as e:
+              print(f"overlay read failed ({e}) -> treating as stale")
+
+          hb_min = 9999.0
+          try:
+              url = (os.environ["SB_URL"].rstrip("/")
+                     + "/rest/v1/control_heartbeat?id=eq.rs2-pc&select=updated_at")
+              req = urllib.request.Request(url, headers={
+                  "apikey": os.environ["SB_KEY"],
+                  "Authorization": "Bearer " + os.environ["SB_KEY"]})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  rows = json.load(r)
+              if rows:
+                  hb = datetime.fromisoformat(
+                      rows[0]["updated_at"].replace("Z", "+00:00"))
+                  hb_min = (datetime.now(timezone.utc) - hb).total_seconds() / 60
+          except Exception as e:
+              print(f"heartbeat read failed ({e}) -> treating PC as dead")
+
+          if overlay_h <= 30:
+              out(False, f"overlay fresh ({overlay_h:.1f}h)"); raise SystemExit
+          if hb_min <= 90:
+              out(False, f"overlay stale ({overlay_h:.1f}h) but PC alive "
+                         f"({hb_min:.0f}m) — alerting, not running")
+              try:
+                  tok = os.environ.get("TG_TOKEN"); chat = os.environ.get("TG_CHAT")
+                  if tok and chat:
+                      body = json.dumps({"chat_id": chat, "text":
+                          f"[control-tower] depth overlay stale {overlay_h:.1f}h "
+                          "but the PC heartbeat is LIVE — check the orchestrator "
+                          "locally (status.py). Cloud backstop NOT run."}).encode()
+                      urllib.request.urlopen(urllib.request.Request(
+                          f"https://api.telegram.org/bot{tok}/sendMessage",
+                          data=body, headers={"Content-Type": "application/json"}),
+                          timeout=15)
+              except Exception:
+                  pass
+              raise SystemExit
+          out(True, f"overlay {overlay_h:.1f}h stale, PC dead {hb_min:.0f}m")
+          EOF
+
+  backstop:
+    needs: preflight
+    if: needs.preflight.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: Checkout rs2-local
+        uses: actions/checkout@v4
+        with:
+          path: rs2-local
+
+      - name: Checkout screener data (read)
+        uses: actions/checkout@v4
+        with:
+          repository: riperdy-tech/stock-screener
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          path: screener
+          fetch-depth: 1
+
+      - name: Checkout screener publish clone (write)
+        uses: actions/checkout@v4
+        with:
+          repository: riperdy-tech/stock-screener
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          path: screener-publish
+          fetch-depth: 1
+
+      - name: Checkout rs2-state
+        uses: actions/checkout@v4
+        with:
+          repository: riperdy-tech/rs2-state
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          path: rs2-state
+          fetch-depth: 1
+
+      - name: Seed local state from rs2-state (refuse if ledger missing)
+        working-directory: rs2-local
+        run: |
+          mkdir -p cache
+          if [ ! -s ../rs2-state/cache/depth_ledger.jsonl ]; then
+            echo "::error::rs2-state has no depth_ledger.jsonl — refusing (a partial ledger would wipe the published overlay)"
+            exit 1
+          fi
+          cp ../rs2-state/cache/depth_ledger.jsonl cache/
+          # The PC backs the ledger up mid-append sometimes: guarantee a trailing
+          # newline, or publish_cloud_verdicts appends the first cloud row onto a
+          # torn final line and the merged line propagates through the delta.
+          [ -n "$(tail -c 1 cache/depth_ledger.jsonl)" ] && echo >> cache/depth_ledger.jsonl
+          # Un-imported rows from a PREVIOUS cloud run (PC hasn't synced since)
+          # live only in cloud_pending — seed them too, or this run's overlay
+          # rebuild silently reverts that run's verdicts on the site.
+          if [ -s ../rs2-state/cloud_pending/depth_ledger_delta.jsonl ]; then
+            cat ../rs2-state/cloud_pending/depth_ledger_delta.jsonl >> cache/depth_ledger.jsonl
+          fi
+          cp ../rs2-state/cache/depth_ondemand_ledger.jsonl cache/ 2>/dev/null || true
+          cp ../rs2-state/cache/depth_ondemand.jsonl cache/ 2>/dev/null || true
+
+      - name: Point config at runner paths
+        working-directory: rs2-local
+        run: |
+          python3 - <<'EOF'
+          import json, os
+          from pathlib import Path
+          p = Path("config.json")
+          cfg = json.loads(p.read_text(encoding="utf-8"))
+          ws = os.environ["GITHUB_WORKSPACE"]
+          cfg["screener_data_dir"] = f"{ws}/screener/public/data"
+          cfg["screener_publish_repo"] = f"{ws}/screener-publish"
+          p.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+          print("patched screener_data_dir + screener_publish_repo")
+          EOF
+
+      - name: Write .secrets.json
+        working-directory: rs2-local
+        env:
+          LLM: ${{ secrets.RS2_LLM_API_KEY }}
+          TG_TOKEN: ${{ secrets.RS2_TG_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.RS2_TG_CHAT_ID }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+          json.dump({"LLM_API_KEY": os.environ["LLM"],
+                     "telegram_bot_token": os.environ.get("TG_TOKEN", ""),
+                     "telegram_chat_id": os.environ.get("TG_CHAT", "")},
+                    open(".secrets.json", "w"))
+          EOF
+
+      - name: Git identity for publish + state push
+        run: |
+          git config --global user.name "riperdy-tech"
+          git config --global user.email "riperdy@gmail.com"
+
+      - name: Start SearXNG (best effort — runs degrade soft without it)
+        continue-on-error: true
+        working-directory: rs2-local
+        run: |
+          mkdir -p /tmp/searxng
+          cp searxng/settings.yml.example /tmp/searxng/settings.yml
+          KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+          sed -i "s/secret_key:.*/secret_key: \"$KEY\"/" /tmp/searxng/settings.yml
+          docker run -d --name searxng -p 8888:8080 -v /tmp/searxng:/etc/searxng searxng/searxng
+          sleep 15
+          curl -s -o /dev/null -w "searxng probe: %{http_code}\n" "http://localhost:8888/search?q=test&format=json" || true
+
+      - name: Run backstop driver
+        working-directory: rs2-local
+        env:
+          RS2_STATE_DIR: ${{ github.workspace }}/rs2-state
+          BACKSTOP_MAX_TICKERS: ${{ inputs.max_tickers || '6' }}
+        run: python3 api_llm/cloud_backstop.py
