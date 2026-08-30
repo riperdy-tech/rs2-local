@@ -63,10 +63,41 @@ def compute_delta(before_lines: list, after_lines: list) -> list:
     return [ln for ln in after_lines if ln not in before]
 
 
+def publishable_book(book: set, rows: list) -> set:
+    """Drop tickers whose NEWEST ledger row is local (arm != cloud_api):
+    publish_cloud_verdicts.protected_local() refuses to publish those, so
+    running them is pure API spend (measured: 3 of the 6 oldest were
+    protected). Never-ledgered names stay in."""
+    newest: dict = {}
+    for r in rows:
+        t = r.get("ticker")
+        d = str(r.get("date") or "")
+        if t and d >= newest.get(t, ("", None))[0]:
+            newest[t] = (d, r.get("arm"))
+    return {t for t in book if t not in newest or newest[t][1] == "cloud_api"}
+
+
 def _overlay_count(path: Path) -> int:
     try:
         return len(json.loads(path.read_text(encoding="utf-8")).get("tickers", {}))
     except (OSError, ValueError):
+        return 0
+
+
+def _published_overlay_count(repo: Path) -> int:
+    """Ticker count of origin/main's overlay — fetched NOW, so the guard
+    baseline is what publish_overlay will actually overwrite (the working
+    tree can be stale if the PC published since checkout)."""
+    subprocess.run(["git", "-C", str(repo), "fetch", "origin", "main"],
+                   capture_output=True, text=True, timeout=120)
+    r = subprocess.run(
+        ["git", "-C", str(repo), "show", "origin/main:public/data/depth_overlay.json"],
+        capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        return 0
+    try:
+        return len(json.loads(r.stdout).get("tickers", {}))
+    except ValueError:
         return 0
 
 
@@ -98,7 +129,7 @@ def main() -> int:
         except ValueError:
             pass
 
-    due = select_due(set(od.live_book()), rows, max_tickers)
+    due = select_due(publishable_book(set(od.live_book()), rows), rows, max_tickers)
     if not due:
         print("nothing due")
         return 0
@@ -124,10 +155,16 @@ def main() -> int:
                             f"(rc={pub.returncode})")
         return 1
 
-    published_overlay = (Path(od.CONFIG["screener_publish_repo"])
-                         / "public" / "data" / "depth_overlay.json")
-    old_count = _overlay_count(published_overlay)
+    publish_repo = Path(od.CONFIG["screener_publish_repo"])
+    old_count = _published_overlay_count(publish_repo)
     new_count = _overlay_count(OVERLAY)
+    # FAIL CLOSED: a live published overlay is never empty (182 tickers today).
+    # old_count == 0 means the guard is blind (unreadable/missing overlay) —
+    # publishing blind is exactly the wipe this guard exists to prevent.
+    if old_count == 0:
+        ops.notify_telegram("depth backstop ABORT: cannot read published overlay "
+                            "count — guard blind, NOT publishing")
+        return 1
     if new_count < old_count:
         ops.notify_telegram(f"depth backstop ABORT: rebuilt overlay {new_count} "
                             f"tickers < published {old_count} — ledger seed "
@@ -135,27 +172,39 @@ def main() -> int:
         return 1
 
     od.publish_overlay()
-    pushed = _synced_with_remote(Path(od.CONFIG["screener_publish_repo"]))
+    pushed = _synced_with_remote(publish_repo)
 
     after = _read_lines(LEDGER)
     delta = compute_delta(before, after)
+    delta_ok = True
     if delta:
         pending = state_dir / "cloud_pending"
-        pending.mkdir(exist_ok=True)
+        pending.mkdir(parents=True, exist_ok=True)
         with (pending / "depth_ledger_delta.jsonl").open("a", encoding="utf-8") as f:
             for ln in delta:
                 f.write(ln + "\n")
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        # Every hop checked: a silent failure here means verdicts live on the
+        # site but absent from the PC ledger — the next PC sweep would then
+        # quietly revert them.
         for args in (["add", "-A"], ["commit", "-m", f"cloud backstop delta {ts}"],
                      ["pull", "--rebase"], ["push"]):
-            subprocess.run(["git", "-C", str(state_dir), *args],
-                           capture_output=True, text=True, timeout=120)
+            r = subprocess.run(["git", "-C", str(state_dir), *args],
+                               capture_output=True, text=True, timeout=120)
+            if r.returncode != 0:
+                ops.notify_telegram(
+                    f"depth backstop: rs2-state '{' '.join(args)}' FAILED — delta "
+                    f"NOT delivered to PC (site has rows the PC ledger lacks): "
+                    + (r.stderr or r.stdout).strip()[:200])
+                delta_ok = False
+                break
 
     ops.notify_telegram(
         f"depth cloud backstop: ran {ran}, failed {failed}, "
         f"push {'ok' if pushed else 'ABORTED (see prior alert)'}, "
-        f"{len(delta)} delta rows to rs2-state")
-    return 0 if pushed else 1
+        f"{len(delta)} delta rows to rs2-state"
+        + ("" if delta_ok else " (DELTA DELIVERY FAILED)"))
+    return 0 if (pushed and delta_ok) else 1
 
 
 if __name__ == "__main__":
