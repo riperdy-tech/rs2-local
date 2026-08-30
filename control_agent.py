@@ -154,10 +154,16 @@ def _cmd_bot_restart(args: dict) -> str:
 
 
 def _cmd_state_sync(args: dict) -> str:
-    result = sync_state.main()
-    (CACHE / "state_sync_last.json").write_text(
-        json.dumps({"ts": _now(), "result": result}), encoding="utf-8")
-    return result
+    # Marker written in finally: a raising sync must still stamp the attempt,
+    # or maybe_sync_state's hourly gate re-runs a broken sync every 5 minutes.
+    result = None
+    try:
+        result = sync_state.main()
+        return result
+    finally:
+        (CACHE / "state_sync_last.json").write_text(
+            json.dumps({"ts": _now(), "result": result if result is not None else "raised"}),
+            encoding="utf-8")
 
 
 COMMANDS = {
@@ -198,24 +204,42 @@ def maybe_sync_state() -> None:
 
 
 def _heartbeat_with_alert(snapshot: dict) -> None:
+    """Push the heartbeat; alert on the 3rd consecutive failure. Never raises."""
     marker = CACHE / "control_agent_hbfail.json"
     try:
         control_bus.push_heartbeat("rs2-pc", snapshot)
         marker.unlink(missing_ok=True)
+        return
     except Exception as e:  # noqa: BLE001 — scheduled entry point must not die
         fails = (_read_json(marker) or {}).get("count", 0) + 1
-        marker.write_text(json.dumps({"count": fails}), encoding="utf-8")
         _log(f"heartbeat push failed ({fails}): {e}")
         if fails == 3:
-            ops.notify_telegram("control_agent: 3 consecutive heartbeat failures — "
-                                "control tower is blind to this PC")
+            try:
+                ops.notify_telegram("control_agent: 3 consecutive heartbeat failures — "
+                                    "control tower is blind to this PC")
+            except Exception as alert_err:  # noqa: BLE001
+                _log(f"alert send failed: {alert_err}")
+                fails = 2  # keep the counter below the threshold so the alert retries
+        try:
+            marker.write_text(json.dumps({"count": fails}), encoding="utf-8")
+        except OSError as write_err:
+            _log(f"hbfail marker write failed: {write_err}")
 
 
 def main() -> None:
+    # The heartbeat must go out even when snapshot collection breaks — a
+    # degraded payload still proves the PC is alive, and the push failure
+    # counter (the blindness alert) must keep running either way.
     try:
-        _heartbeat_with_alert(collect_snapshot())
+        snapshot = collect_snapshot()
     except Exception as e:  # noqa: BLE001
         _log(f"snapshot failed: {e}")
+        try:
+            host = socket.gethostname()
+        except OSError:
+            host = ""
+        snapshot = {"ts": _now(), "host": host, "snapshot_error": str(e)[:300]}
+    _heartbeat_with_alert(snapshot)
     try:
         for row in control_bus.fetch_pending_commands():
             cid = row["id"]
