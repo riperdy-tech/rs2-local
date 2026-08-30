@@ -21,6 +21,13 @@ concurrency:
   group: depth-backstop
   cancel-in-progress: false
 
+# Ambient token only checks out rs2-local; all cross-repo work uses
+# CROSS_REPO_PAT. (NOTE: checkout persists that PAT base64-encoded in each
+# clone's .git/config extraheader — never add `set -x` or `git config --list`
+# debugging to this file.)
+permissions:
+  contents: read
+
 jobs:
   preflight:
     runs-on: ubuntu-latest
@@ -67,7 +74,11 @@ jobs:
           except Exception as e:
               print(f"overlay read failed ({e}) -> treating as stale")
 
+          # FAIL CLOSED on heartbeat READ failure: this gate is the only
+          # cloud-side interlock against a concurrently-publishing PC (the
+          # publish lock is PC-local). Unreadable != dead.
           hb_min = 9999.0
+          hb_read_ok = False
           try:
               url = (os.environ["SB_URL"].rstrip("/")
                      + "/rest/v1/control_heartbeat?id=eq.rs2-pc&select=updated_at")
@@ -76,12 +87,34 @@ jobs:
                   "Authorization": "Bearer " + os.environ["SB_KEY"]})
               with urllib.request.urlopen(req, timeout=30) as r:
                   rows = json.load(r)
+              hb_read_ok = True  # empty rows = readable-but-absent = dead
               if rows:
                   hb = datetime.fromisoformat(
                       rows[0]["updated_at"].replace("Z", "+00:00"))
                   hb_min = (datetime.now(timezone.utc) - hb).total_seconds() / 60
           except Exception as e:
-              print(f"heartbeat read failed ({e}) -> treating PC as dead")
+              print(f"heartbeat read FAILED ({e})")
+
+          print(f"gate inputs: overlay_h={overlay_h:.1f} hb_min={hb_min:.0f} "
+                f"hb_read_ok={hb_read_ok}")
+
+          if not hb_read_ok:
+              out(False, "heartbeat UNREADABLE — interlock blind, refusing to "
+                         "run (force to override)")
+              try:
+                  tok = os.environ.get("TG_TOKEN"); chat = os.environ.get("TG_CHAT")
+                  if tok and chat:
+                      body = json.dumps({"chat_id": chat, "text":
+                          "[control-tower] depth backstop preflight: heartbeat "
+                          "UNREADABLE (Supabase?) — backstop refusing to run; "
+                          "dispatch with force=true if the PC is truly dead"}).encode()
+                      urllib.request.urlopen(urllib.request.Request(
+                          f"https://api.telegram.org/bot{tok}/sendMessage",
+                          data=body, headers={"Content-Type": "application/json"}),
+                          timeout=15)
+              except Exception as alert_err:
+                  print(f"alert send failed: {alert_err}")
+              raise SystemExit
 
           if overlay_h <= 30:
               out(False, f"overlay fresh ({overlay_h:.1f}h)"); raise SystemExit
@@ -99,8 +132,8 @@ jobs:
                           f"https://api.telegram.org/bot{tok}/sendMessage",
                           data=body, headers={"Content-Type": "application/json"}),
                           timeout=15)
-              except Exception:
-                  pass
+              except Exception as alert_err:
+                  print(f"alert send failed: {alert_err}")
               raise SystemExit
           out(True, f"overlay {overlay_h:.1f}h stale, PC dead {hb_min:.0f}m")
           EOF
@@ -152,7 +185,9 @@ jobs:
           # The PC backs the ledger up mid-append sometimes: guarantee a trailing
           # newline, or publish_cloud_verdicts appends the first cloud row onto a
           # torn final line and the merged line propagates through the delta.
-          [ -n "$(tail -c 1 cache/depth_ledger.jsonl)" ] && echo >> cache/depth_ledger.jsonl
+          if [ -n "$(tail -c 1 cache/depth_ledger.jsonl)" ]; then
+            echo >> cache/depth_ledger.jsonl
+          fi
           # Un-imported rows from a PREVIOUS cloud run (PC hasn't synced since)
           # live only in cloud_pending — seed them too, or this run's overlay
           # rebuild silently reverts that run's verdicts on the site.

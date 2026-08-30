@@ -32,7 +32,10 @@ sys.path.insert(0, str(ROOT))
 
 LEDGER = ROOT / "cache" / "depth_ledger.jsonl"
 OVERLAY = ROOT / "cache" / "depth_overlay.json"
-PER_TICKER_TIMEOUT_S = 3600
+# 45 min/ticker (median 21, historic max 35): 6 tickers worst-case 270 min +
+# overhead stays under the job's 340-min timeout — 3600 did not (6h of ticker
+# work alone would be killed mid-flight with spend incurred and no alert).
+PER_TICKER_TIMEOUT_S = 2700
 
 
 def _read_lines(p: Path) -> list:
