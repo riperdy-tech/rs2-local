@@ -475,31 +475,46 @@ def main(repo_dir: Path | None = None) -> str:
     repo = Path(repo_dir) if repo_dir else STATE_REPO
     if not (repo / ".git").exists():
         return f"error: {repo} is not a git clone"
-    pull = _git(repo, "pull", "--ff-only")
-    if pull.returncode != 0:
-        return "error: pull failed: " + (pull.stderr or pull.stdout).strip()[:300]
+    # The state clone is DISPOSABLE: every PC-side file is regenerated from
+    # CACHE each run, and the delta import is dedupe-idempotent (a discarded
+    # unpushed truncation just re-imports 0 new rows and re-truncates). So we
+    # never merge/rebase: clear any wedged rebase from a prior life, fetch, and
+    # hard-reset to upstream. A lost push race returns an error and the next
+    # run resets + retries — no state can wedge this permanently.
+    _git(repo, "rebase", "--abort")  # harmless nonzero when no rebase in progress
+    fetch = _git(repo, "fetch")
+    if fetch.returncode != 0:
+        return "error: fetch failed: " + (fetch.stderr or fetch.stdout).strip()[:300]
+    reset = _git(repo, "reset", "--hard", "@{u}")
+    if reset.returncode != 0:
+        return "error: reset failed: " + (reset.stderr or reset.stdout).strip()[:300]
 
     imported = _import_cloud_delta(repo)
 
     (repo / "cache").mkdir(exist_ok=True)
-    (repo / "meta").mkdir(exist_ok=True)
     for name in STATE_FILES:
         src = CACHE / name
         if src.exists():
             shutil.copy2(src, repo / "cache" / name)
-    (repo / "meta" / "last_pc_sync.json").write_text(
-        json.dumps({"ts": datetime.now(timezone.utc).isoformat()}), encoding="utf-8")
 
     _git(repo, "add", "-A")
     if not _git(repo, "status", "--porcelain").stdout.strip():
         return "no changes"
+
+    # meta stamp only when something actually changed — a fresh timestamp every
+    # run would force an hourly commit forever (unbounded repo growth).
+    (repo / "meta").mkdir(exist_ok=True)
+    (repo / "meta" / "last_pc_sync.json").write_text(
+        json.dumps({"ts": datetime.now(timezone.utc).isoformat()}), encoding="utf-8")
+    _git(repo, "add", "-A")
+
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
     commit = _git(repo, "commit", "-m", f"state sync {ts}")
     if commit.returncode != 0:
         return "error: commit failed: " + (commit.stderr or commit.stdout).strip()[:300]
     push = _git(repo, "push")
     if push.returncode != 0:
-        return "error: push failed: " + (push.stderr or push.stdout).strip()[:300]
+        return "error: push failed (next run resets + retries): " + (push.stderr or push.stdout).strip()[:300]
     n = sum(1 for name in STATE_FILES if (CACHE / name).exists())
     msg = f"synced {n} files"
     if imported:
@@ -508,11 +523,12 @@ def main(repo_dir: Path | None = None) -> str:
 
 
 if __name__ == "__main__":
-    print(main())
-    sys.exit(0)
+    result = main()
+    print(result)
+    sys.exit(1 if result.startswith("error") else 0)
 ```
 
-Note for the implementer: the tests always commit meta/last_pc_sync.json (fresh timestamp each run) — the `no changes` branch is reached because the second run within the same second produces an identical file; if the noop test proves flaky on timing, freeze `datetime` via monkeypatch in that test instead of loosening the assertion.
+Note: with the change-gated meta stamp, the `no changes` test needs no datetime tricks — an unchanged second run genuinely produces no diff.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -800,10 +816,16 @@ def _cmd_bot_restart(args: dict) -> str:
 
 
 def _cmd_state_sync(args: dict) -> str:
-    result = sync_state.main()
-    (CACHE / "state_sync_last.json").write_text(
-        json.dumps({"ts": _now(), "result": result}), encoding="utf-8")
-    return result
+    # Marker written in finally: a raising sync must still stamp the attempt,
+    # or maybe_sync_state's hourly gate re-runs a broken sync every 5 minutes.
+    result = None
+    try:
+        result = sync_state.main()
+        return result
+    finally:
+        (CACHE / "state_sync_last.json").write_text(
+            json.dumps({"ts": _now(), "result": result if result is not None else "raised"}),
+            encoding="utf-8")
 
 
 COMMANDS = {
@@ -844,24 +866,42 @@ def maybe_sync_state() -> None:
 
 
 def _heartbeat_with_alert(snapshot: dict) -> None:
+    """Push the heartbeat; alert on the 3rd consecutive failure. Never raises."""
     marker = CACHE / "control_agent_hbfail.json"
     try:
         control_bus.push_heartbeat("rs2-pc", snapshot)
         marker.unlink(missing_ok=True)
+        return
     except Exception as e:  # noqa: BLE001 — scheduled entry point must not die
         fails = (_read_json(marker) or {}).get("count", 0) + 1
-        marker.write_text(json.dumps({"count": fails}), encoding="utf-8")
         _log(f"heartbeat push failed ({fails}): {e}")
         if fails == 3:
-            ops.notify_telegram("control_agent: 3 consecutive heartbeat failures — "
-                                "control tower is blind to this PC")
+            try:
+                ops.notify_telegram("control_agent: 3 consecutive heartbeat failures — "
+                                    "control tower is blind to this PC")
+            except Exception as alert_err:  # noqa: BLE001
+                _log(f"alert send failed: {alert_err}")
+                fails = 2  # keep the counter below the threshold so the alert retries
+        try:
+            marker.write_text(json.dumps({"count": fails}), encoding="utf-8")
+        except OSError as write_err:
+            _log(f"hbfail marker write failed: {write_err}")
 
 
 def main() -> None:
+    # The heartbeat must go out even when snapshot collection breaks — a
+    # degraded payload still proves the PC is alive, and the push failure
+    # counter (the blindness alert) must keep running either way.
     try:
-        _heartbeat_with_alert(collect_snapshot())
+        snapshot = collect_snapshot()
     except Exception as e:  # noqa: BLE001
         _log(f"snapshot failed: {e}")
+        try:
+            host = socket.gethostname()
+        except OSError:
+            host = ""
+        snapshot = {"ts": _now(), "host": host, "snapshot_error": str(e)[:300]}
+    _heartbeat_with_alert(snapshot)
     try:
         for row in control_bus.fetch_pending_commands():
             cid = row["id"]
@@ -948,32 +988,49 @@ cd "/c/Users/riper/Downloads/RS2 Local" && git add control_agent.py tests/test_c
 # Timezone note: this PC is UTC+08:00 (no DST). 22:35 local = 14:35 UTC (weekday
 # SDF primary target); 18:35 local = 10:35 UTC (weekend target).
 
+$ErrorActionPreference = "Stop"
+
 $repo = "C:\Users\riper\Downloads\RS2 Local"
 $py   = "C:\Program Files\Python312\python.exe"
 $gh   = "C:\Program Files\GitHub CLI\gh.exe"
+
+# Pin the principal explicitly (like the sibling scripts): gh.exe auth is
+# user-scoped, so the SDF dispatch must run as this interactive user.
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+  -LogonType Interactive -RunLevel Limited
 
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
   -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 
 # --- RS2-Control-Agent: every 5 minutes, forever -----------------------------
-$agentAction = New-ScheduledTaskAction -Execute "cmd.exe" `
-  -Argument "/c ""$py"" ""$repo\control_agent.py"" >> ""$repo\cache\control_agent_task.log"" 2>&1" `
-  -WorkingDirectory $repo
+# Argument quoting follows register_bot_task.ps1 / register_depth_task.ps1:
+# cmd /c needs the WHOLE payload wrapped in an outer quote pair or the >> redirect
+# is parsed away and the task exits 1 with no log.
+$agentArg = "/c `"`"$py`" `"$repo\control_agent.py`" >> `"$repo\cache\control_agent_task.log`" 2>&1`""
+$agentAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $agentArg -WorkingDirectory $repo
+# NOTE: -RepetitionDuration ([TimeSpan]::MaxValue) and [TimeSpan]::Zero are both
+# rejected on this Windows build (HRESULT 0x80041318), and -RepetitionInterval
+# requires SOME duration at build time. An ABSENT <Duration> means "repeat
+# indefinitely", so build with a placeholder day and null it afterwards.
 $agentTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
   -RepetitionInterval (New-TimeSpan -Minutes 5) `
-  -RepetitionDuration ([TimeSpan]::MaxValue)
+  -RepetitionDuration (New-TimeSpan -Days 1)
+$agentTrigger.Repetition.Duration = $null
+$agentTrigger.Repetition.StopAtDurationEnd = $false
 Register-ScheduledTask -TaskName "RS2-Control-Agent" -Action $agentAction `
-  -Trigger $agentTrigger -Settings $settings -Force
+  -Trigger $agentTrigger -Settings $settings -Principal $principal `
+  -Description "RS2 control tower agent: 5-min heartbeat to Supabase + remote command executor." -Force
 
 # --- RS2-SDF-Dispatch: the SDF PC self-dispatch primary ----------------------
-$sdfArg = "/c ""$gh"" workflow run schedule-data-fetch.yml -R riperdy-tech/stock-screener -f runner=self-hosted >> ""$repo\cache\sdf_dispatch.log"" 2>&1"
+$sdfArg = "/c `"`"$gh`" workflow run schedule-data-fetch.yml -R riperdy-tech/stock-screener -f runner=self-hosted >> `"$repo\cache\sdf_dispatch.log`" 2>&1`""
 $sdfAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $sdfArg -WorkingDirectory $repo
 $sdfTriggers = @(
   (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At "22:35"),
   (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Saturday,Sunday -At "18:35")
 )
 Register-ScheduledTask -TaskName "RS2-SDF-Dispatch" -Action $sdfAction `
-  -Trigger $sdfTriggers -Settings $settings -Force
+  -Trigger $sdfTriggers -Settings $settings -Principal $principal `
+  -Description "SDF PC self-dispatch primary: gh workflow run schedule-data-fetch.yml -f runner=self-hosted (22:35 wd / 18:35 we local)." -Force
 
 Write-Host "Registered RS2-Control-Agent (q5min) and RS2-SDF-Dispatch (22:35 wd / 18:35 we local)."
 ```
@@ -1089,12 +1146,22 @@ export function verifySession(token: string | undefined): { login: string } | nu
     const data = JSON.parse(Buffer.from(payload, "base64url").toString());
     if (typeof data.login !== "string" || typeof data.exp !== "number") return null;
     if (data.exp < Date.now()) return null;
+    // Re-check the allowlist at the gate, not only at issuance: any future
+    // signSession caller stays non-admin, and rotating ADMIN_GITHUB_LOGIN
+    // revokes outstanding sessions. Unset/empty allowlist = deny everyone
+    // (the !allow guard also blocks an empty-login token from matching "").
+    const allow = (process.env.ADMIN_GITHUB_LOGIN || "").toLowerCase();
+    if (!allow || data.login.toLowerCase() !== allow) {
+      return null;
+    }
     return { login: data.login };
   } catch {
     return null;
   }
 }
 
+// Node-runtime only (crypto.createHmac): callable from route handlers and
+// server components — NOT from Edge middleware.
 export function requireAdmin(req: NextRequest): { login: string } | null {
   return verifySession(req.cookies.get(ADMIN_COOKIE)?.value);
 }
@@ -1108,6 +1175,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const state = crypto.randomBytes(16).toString("hex");
@@ -1122,7 +1190,7 @@ export async function GET(request: Request) {
   );
   res.cookies.set("gh_oauth_state", state, {
     httpOnly: true,
-    secure: site.startsWith("https"),
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 600,
     path: "/",
@@ -1139,6 +1207,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE, signSession } from "../../../../../lib/adminAuth";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -1172,7 +1241,9 @@ export async function GET(req: NextRequest) {
   const res = NextResponse.redirect(new URL("/admin", req.url));
   res.cookies.set(ADMIN_COOKIE, signSession(user.login), {
     httpOnly: true,
-    secure: req.nextUrl.protocol === "https:",
+    // Hardcoded intent, not proxy-inferred: behind Vercel the origin protocol
+    // is unreliable, and a 30-day admin cookie must never ship without Secure.
+    secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 30 * 24 * 60 * 60,
     path: "/",
@@ -1236,6 +1307,9 @@ export interface Rhythm {
   workflowFile?: string;
   staleAfterMin: number;
   deadAfterMin: number;
+  /** rhythm's cron only runs Mon-Fri: Sat/Sun/Mon get +48h grace so the
+   *  72h Fri->Mon gap doesn't read as a false "dead" every weekend */
+  weekdaysOnly?: boolean;
   manualRecovery: string;
 }
 
@@ -1290,6 +1364,7 @@ export const RHYTHMS: Rhythm[] = [
     workflowFile: "kis-sync.yml",
     staleAfterMin: 30 * 60,
     deadAfterMin: 55 * 60,
+    weekdaysOnly: true,
     manualRecovery:
       "KIS sync is cloud-native (ubuntu-latest) — a missed run is a GitHub cron delay or a red run. Check the run log first. NEVER dispatch with env=real from here; if trading must stop, flip KIS_HALT below.",
   },
@@ -1300,6 +1375,7 @@ export const RHYTHMS: Rhythm[] = [
     workflowFile: "price-refresh.yml",
     staleAfterMin: 30 * 60,
     deadAfterMin: 55 * 60,
+    weekdaysOnly: true,
     manualRecovery: "Dispatch 'Post-close price refresh' below.",
   },
   {
@@ -1320,10 +1396,19 @@ export function parseStamp(s: string | undefined, naiveTz?: string): Date | null
   return isNaN(d.getTime()) ? null : d;
 }
 
-export function classify(ageMin: number | null, r: Rhythm): RhythmState {
+export function classify(ageMin: number | null, r: Rhythm, now: Date = new Date()): RhythmState {
   if (ageMin === null) return "unknown";
-  if (ageMin >= r.deadAfterMin) return "dead";
-  if (ageMin >= r.staleAfterMin) return "stale";
+  let stale = r.staleAfterMin;
+  let dead = r.deadAfterMin;
+  if (r.weekdaysOnly) {
+    const day = now.getUTCDay(); // 0 Sun .. 6 Sat
+    if (day === 6 || day === 0 || day === 1) {
+      stale += 48 * 60;
+      dead += 48 * 60;
+    }
+  }
+  if (ageMin >= dead) return "dead";
+  if (ageMin >= stale) return "stale";
   return "ok";
 }
 
@@ -1332,7 +1417,8 @@ export interface Dispatchable {
   file: string;
   inputs?: Record<string, string>;
   label: string;
-  danger?: boolean;
+  /** when set, the UI must show this confirm dialog before dispatching */
+  confirm?: string;
 }
 
 export const DISPATCHABLE: Record<string, Dispatchable> = {
@@ -1347,6 +1433,9 @@ export const DISPATCHABLE: Record<string, Dispatchable> = {
     file: "schedule-data-fetch.yml",
     inputs: { runner: "self-hosted" },
     label: "Data fetch (PC runner)",
+    confirm:
+      "Only dispatch while the PC is ON. A self-hosted job queued against an " +
+      "offline runner blocks the data-writers queue (price refresh, weekly analyst).",
   },
   "price-refresh": {
     repo: "riperdy-tech/stock-screener",
@@ -1358,6 +1447,10 @@ export const DISPATCHABLE: Record<string, Dispatchable> = {
     file: "kis-sync.yml",
     inputs: { env: "paper", execute: "false" },
     label: "KIS sync dry-run (paper)",
+    confirm:
+      "Fires a real kis-sync workflow run (paper account, execute=false — no " +
+      "orders). Note: currently guaranteed-red while the paper account is empty " +
+      "(dd_engine zero-peak bug).",
   },
   "overlay-watchdog": {
     repo: "riperdy-tech/stock-screener",
@@ -1373,9 +1466,23 @@ export const DISPATCHABLE: Record<string, Dispatchable> = {
     repo: "riperdy-tech/rs2-local",
     file: "depth-cloud-backstop.yml",
     label: "Depth cloud backstop",
-    danger: true,
+    confirm:
+      "Runs a billable DeepSeek cloud job (~$0.70 for 6 names). Its preflight " +
+      "still skips unless the overlay is stale and the PC is dead.",
   },
 };
+
+// Single source of truth for which KIS_* repo variables the admin surfaces may
+// return — keeps any future sensitive KIS_* variable out of dashboard JSON by
+// construction. Imported by /api/admin/status and /api/admin/kis.
+export const KIS_VAR_ALLOWLIST = [
+  "KIS_ENV",
+  "KIS_LEDGER",
+  "KIS_AUTO_EXECUTE",
+  "KIS_CONFIRM_REAL",
+  "KIS_HALT",
+  "KIS_DD_DISABLE",
+];
 
 // Must exactly match COMMANDS in RS2 Local\control_agent.py.
 // (No "ondemand" — the site's /api/ondemand -> ondemand_queue -> bot bridge
@@ -1421,7 +1528,7 @@ cd "/c/Users/riper/Downloads/Stock Screener/Stock Screener" && git add lib/contr
 // app/api/admin/status/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "../../../../lib/adminAuth";
-import { RHYTHMS, classify, parseStamp } from "../../../../lib/controlTower";
+import { KIS_VAR_ALLOWLIST, RHYTHMS, classify, parseStamp } from "../../../../lib/controlTower";
 import { supabaseAdmin } from "../../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -1454,42 +1561,71 @@ export async function GET(req: NextRequest) {
   if (!requireAdmin(req)) return new NextResponse("Unauthorized", { status: 401 });
 
   const fileKeys = RHYTHMS.filter((r) => r.kind === "file");
-  const [files, runsRaw, varsRaw, hb, cmds] = await Promise.all([
-    Promise.all(fileKeys.map((r) => fetchJson(`${RAW}/${r.file}`))),
-    fetchJson(`${API}/repos/${REPO}/actions/runs?per_page=30`, ghHeaders()),
-    fetchJson(`${API}/repos/${REPO}/actions/variables?per_page=30`, ghHeaders()),
-    supabaseAdmin.from("control_heartbeat").select("*").eq("id", "rs2-pc").maybeSingle(),
-    supabaseAdmin.from("control_commands").select("*").order("id", { ascending: false }).limit(15),
+  const workflowKeys = RHYTHMS.filter((r) => r.kind === "workflow");
+  const [files, wfRuns, runsRaw, varsRaw, hb, cmds] = await Promise.all([
+    // Repos are PRIVATE: raw.githubusercontent 404s without the PAT header.
+    Promise.all(fileKeys.map((r) => fetchJson(`${RAW}/${r.file}`, ghHeaders()))),
+    // Per-workflow latest run: a repo-wide window starves slow rhythms (the
+    // weekly's 8-day threshold outlives 30 repo-wide runs -> permanent "unknown").
+    Promise.all(workflowKeys.map((r) =>
+      fetchJson(`${API}/repos/${REPO}/actions/workflows/${r.workflowFile}/runs?per_page=1`, ghHeaders()))),
+    fetchJson(`${API}/repos/${REPO}/actions/runs?per_page=15`, ghHeaders()),
+    fetchJson(`${API}/repos/${REPO}/actions/variables?per_page=100`, ghHeaders()),
+    supabaseAdmin
+      ? supabaseAdmin.from("control_heartbeat").select("*").eq("id", "rs2-pc").maybeSingle()
+      : Promise.resolve(null),
+    supabaseAdmin
+      ? supabaseAdmin.from("control_commands").select("*").order("id", { ascending: false }).limit(15)
+      : Promise.resolve(null),
   ]);
 
-  const now = Date.now();
+  const nowDate = new Date();
+  const now = nowDate.getTime();
   const fileStamp = new Map<string, string | null>();
   fileKeys.forEach((r, i) => {
     const doc = files[i] as Record<string, unknown> | null;
     fileStamp.set(r.key, doc ? (doc[r.field as string] as string) ?? null : null);
   });
 
-  const runs: any[] = runsRaw?.workflow_runs ?? [];
   const latestByFile = new Map<string, any>();
-  for (const run of runs) {
-    const file = String(run.path || "").split("/").pop() || "";
-    if (!latestByFile.has(file)) latestByFile.set(file, run);
-  }
+  workflowKeys.forEach((r, i) => {
+    const run = wfRuns[i]?.workflow_runs?.[0];
+    if (run) latestByFile.set(r.workflowFile as string, run);
+  });
 
   const hbRow = hb?.data ?? null;
 
   const rhythms = RHYTHMS.map((r) => {
     let lastStamp: string | null = null;
+    let runConclusion: string | null = null;
     if (r.kind === "file") lastStamp = fileStamp.get(r.key) ?? null;
     if (r.kind === "heartbeat") lastStamp = hbRow?.updated_at ?? null;
     if (r.kind === "workflow") {
       const run = latestByFile.get(r.workflowFile || "");
       lastStamp = run?.created_at ?? null;
+      runConclusion = run?.conclusion ?? null;
     }
     const parsed = parseStamp(lastStamp ?? undefined, r.naiveTz);
     const ageMin = parsed ? Math.round((now - parsed.getTime()) / 60000) : null;
-    return { ...r, lastStamp, ageMin, state: classify(ageMin, r) };
+    let state = classify(ageMin, r, nowDate);
+    // Recency alone can hide a red workflow: a fresh-but-failed run must
+    // never render as "ok" on a dashboard fronting real money.
+    if (state === "ok" && runConclusion && runConclusion !== "success") state = "stale";
+    return { ...r, lastStamp, ageMin, state, runConclusion };
   });
+
+  // Distinguish "source unreachable" from "genuinely no data": a Supabase
+  // outage must not read as "PC offline" (whose manualRecovery would send the
+  // operator to power-cycle a healthy machine).
+  const sources = {
+    files: files.every((f: unknown) => f !== null),
+    workflowRuns: wfRuns.every((w: unknown) => w !== null),
+    runs: runsRaw !== null,
+    vars: varsRaw !== null,
+    supabase: !!supabaseAdmin && !(hb as any)?.error,
+  };
+
+  const runs: any[] = runsRaw?.workflow_runs ?? [];
 
   const workflows = runs.slice(0, 15).map((run) => ({
     name: run.name,
@@ -1502,15 +1638,16 @@ export async function GET(req: NextRequest) {
 
   const kisVars: Record<string, string> = {};
   for (const v of varsRaw?.variables ?? []) {
-    if (String(v.name).startsWith("KIS_")) kisVars[v.name] = v.value;
+    if (KIS_VAR_ALLOWLIST.includes(String(v.name))) kisVars[v.name] = v.value;
   }
 
   return NextResponse.json({
-    generatedAt: new Date().toISOString(),
+    generatedAt: nowDate.toISOString(),
     rhythms,
     pc: hbRow,
     workflows,
     kisVars,
+    sources,
     commands: cmds?.data ?? [],
   });
 }
@@ -1526,7 +1663,7 @@ Expected: `401`. (Dev server running, `.env.local` populated per Task 6.)
 
 - [ ] **Step 3: Verify authenticated response**
 
-In the browser (signed in from Task 6), open `http://localhost:3000/api/admin/status`. Expected JSON: 7 rhythms each with `state` ∈ ok/stale/dead/unknown; `pc.payload.host` present (Task 4 agent is live); `kisVars.KIS_LEDGER` = `equal_llm`; `workflows` non-empty. `depth` rhythm's `ageMin` must be plausible (< 600 — proves the +08:00 naive-stamp parse; a value ~480 too high means the suffix was not applied).
+In the browser (signed in from Task 6), open `http://localhost:3000/api/admin/status`. Expected JSON: 7 rhythms each with `state` ∈ ok/stale/dead/unknown; `pc.payload.host` present (Task 4 agent is live); `kisVars.KIS_LEDGER` present (value = whatever the repo variable currently is — verify against `gh variable list`, do not assume); `workflows` non-empty; `sources` all true. `depth` rhythm's `ageMin` must be plausible (< 600 — proves the +08:00 naive-stamp parse; a value ~480 too high means the suffix was not applied).
 
 - [ ] **Step 4: Commit**
 
@@ -1562,9 +1699,19 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   if (!requireAdmin(req)) return new NextResponse("Unauthorized", { status: 401 });
-  const { action } = await req.json();
-  const entry = DISPATCHABLE[action as string];
-  if (!entry) return NextResponse.json({ error: "unknown action" }, { status: 400 });
+  const { action, confirmed } = await req.json();
+  // hasOwnProperty guard: bare bracket access on an object literal lets
+  // prototype keys ("constructor", "__proto__") slip past the whitelist.
+  if (typeof action !== "string" ||
+      !Object.prototype.hasOwnProperty.call(DISPATCHABLE, action)) {
+    return NextResponse.json({ error: "unknown action" }, { status: 400 });
+  }
+  const entry = DISPATCHABLE[action];
+  // Server-side gate: entries carrying a confirm text (queue-blocking or
+  // billable dispatches) require the caller to assert confirmation explicitly.
+  if (entry.confirm && confirmed !== true) {
+    return NextResponse.json({ error: "confirmation required" }, { status: 400 });
+  }
 
   const token = process.env.GH_PAT || process.env.GITHUB_TOKEN;
   const r = await fetch(
@@ -1604,8 +1751,11 @@ export async function POST(req: NextRequest) {
   if (!PC_COMMANDS.has(command)) {
     return NextResponse.json({ error: "unknown command" }, { status: 400 });
   }
+  // Explicit runner REQUIRED: the agent defaults an absent runner to
+  // self-hosted, which must never happen without the caller saying so
+  // (same policy as the dispatch route's confirm gate on sdf-self).
   if (command === "sdf_dispatch" &&
-      !["self-hosted", "ubuntu-latest", undefined].includes(args?.runner)) {
+      !["self-hosted", "ubuntu-latest"].includes(args?.runner)) {
     return NextResponse.json({ error: "bad runner" }, { status: 400 });
   }
   const { data, error } = await supabaseAdmin
@@ -1624,6 +1774,7 @@ export async function POST(req: NextRequest) {
 // app/api/admin/kis/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "../../../../lib/adminAuth";
+import { KIS_VAR_ALLOWLIST } from "../../../../lib/controlTower";
 
 export const dynamic = "force-dynamic";
 
@@ -1640,14 +1791,19 @@ function ghHeaders() {
 
 export async function GET(req: NextRequest) {
   if (!requireAdmin(req)) return new NextResponse("Unauthorized", { status: 401 });
-  const r = await fetch(`https://api.github.com/repos/${REPO}/actions/variables?per_page=30`, {
+  const r = await fetch(`https://api.github.com/repos/${REPO}/actions/variables?per_page=100`, {
     headers: ghHeaders(),
     cache: "no-store",
   });
+  // On the kill-switch panel, "GitHub unreachable" must never read as
+  // "KIS_HALT not set" — fail loudly instead of returning an empty map.
+  if (!r.ok) {
+    return NextResponse.json({ error: `github ${r.status}` }, { status: 502 });
+  }
   const data = await r.json();
   const vars: Record<string, string> = {};
   for (const v of data?.variables ?? []) {
-    if (String(v.name).startsWith("KIS_")) vars[v.name] = v.value;
+    if (KIS_VAR_ALLOWLIST.includes(String(v.name))) vars[v.name] = v.value;
   }
   return NextResponse.json({ vars });
 }
@@ -1764,8 +1920,8 @@ export default function AdminPage() {
 // components/AdminDashboard.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { DISPATCHABLE } from "../lib/controlTower";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DISPATCHABLE, PC_COMMANDS } from "../lib/controlTower";
 
 const STATE_STYLE: Record<string, string> = {
   ok: "bg-emerald-900/40 border-emerald-600 text-emerald-300",
@@ -1785,10 +1941,17 @@ export default function AdminDashboard({ login }: { login: string }) {
   const [status, setStatus] = useState<any>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [authLost, setAuthLost] = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const r = await fetch("/api/admin/status", { cache: "no-store" });
+      if (r.status === 401) {
+        // Session expired/revoked: a frozen board must not impersonate truth.
+        setAuthLost(true);
+        return;
+      }
       if (r.ok) setStatus(await r.json());
     } catch {
       /* keep last snapshot */
@@ -1810,6 +1973,7 @@ export default function AdminDashboard({ login }: { login: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (r.status === 401) setAuthLost(true);
       const data = await r.json().catch(() => ({}));
       setToast(r.ok ? `✓ ${label}` : `✗ ${label}: ${data.error || r.status}`);
     } catch (e: any) {
@@ -1817,11 +1981,31 @@ export default function AdminDashboard({ login }: { login: string }) {
     } finally {
       setBusy(null);
       setTimeout(refresh, 1500);
-      setTimeout(() => setToast(null), 6000);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast(null), 6000);
     }
   }
 
+  if (authLost) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gray-950 text-gray-100">
+        <div className="text-center space-y-4">
+          <p>Session expired — the board stopped updating.</p>
+          <a
+            href="/api/auth/github/login"
+            className="inline-block rounded-lg border border-gray-700 px-6 py-3 text-lg hover:bg-gray-800"
+          >
+            Sign in again
+          </a>
+        </div>
+      </main>
+    );
+  }
+
+  // KIS_HALT may not exist yet as a repo variable (created on first halt):
+  // undefined renders as "not set" and the button offers to halt.
   const halted = status?.kisVars?.KIS_HALT === "true";
+  const haltDisplay = status?.kisVars?.KIS_HALT ?? "not set";
 
   return (
     <main className="min-h-screen bg-gray-950 text-gray-100 p-6 space-y-8">
@@ -1836,6 +2020,16 @@ export default function AdminDashboard({ login }: { login: string }) {
         <div className="rounded border border-gray-600 bg-gray-800 px-4 py-2">{toast}</div>
       )}
 
+      {status?.sources && Object.values(status.sources).some((v) => !v) && (
+        <div className="rounded border border-amber-600 bg-amber-900/30 px-4 py-2 text-sm text-amber-200">
+          Status sources degraded ({Object.entries(status.sources)
+            .filter(([, v]) => !v)
+            .map(([k]) => k)
+            .join(", ")} unreachable) — rhythm cards may read unknown/stale for the wrong
+          reason. Check connectivity before acting on a red card.
+        </div>
+      )}
+
       <section>
         <h2 className="mb-3 text-lg font-semibold">Rhythms</h2>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -1846,6 +2040,16 @@ export default function AdminDashboard({ login }: { login: string }) {
                 <span className="text-xs uppercase">{r.state}</span>
               </div>
               <div className="mt-1 text-sm">{ageLabel(r.ageMin)}</div>
+              {r.runConclusion && r.runConclusion !== "success" && (
+                <div className="mt-1 text-xs font-semibold uppercase">
+                  last run: {r.runConclusion}
+                </div>
+              )}
+              {r.key === "pc" && status?.pc?.payload?.snapshot_error && (
+                <p className="mt-1 text-xs break-words">
+                  snapshot_error: {String(status.pc.payload.snapshot_error)}
+                </p>
+              )}
               {(r.state === "stale" || r.state === "dead") && (
                 <p className="mt-2 text-xs leading-relaxed opacity-90">{r.manualRecovery}</p>
               )}
@@ -1856,20 +2060,37 @@ export default function AdminDashboard({ login }: { login: string }) {
 
       <section>
         <h2 className="mb-3 text-lg font-semibold">Cloud dispatch</h2>
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(DISPATCHABLE).map(([key, d]) => (
-            <button
-              key={key}
-              disabled={busy !== null}
-              onClick={() =>
-                post("/api/admin/dispatch", { action: key }, d.label,
-                  d.danger ? `Dispatch "${d.label}"? This runs a billable cloud job.` : undefined)
-              }
-              className="rounded border border-gray-600 px-3 py-2 text-sm hover:bg-gray-800 disabled:opacity-50"
-            >
-              {d.label}
-            </button>
-          ))}
+        {/* Benign (no-confirm) and guarded dispatches are visually separated:
+            identical buttons in one row produced a real mis-click in testing. */}
+        <div className="flex flex-wrap gap-3">
+          {Object.entries(DISPATCHABLE)
+            .filter(([, d]) => !d.confirm)
+            .map(([key, d]) => (
+              <button
+                key={key}
+                disabled={busy !== null}
+                onClick={() => post("/api/admin/dispatch", { action: key }, d.label)}
+                className="rounded border border-gray-600 px-4 py-3 text-sm hover:bg-gray-800 disabled:opacity-50"
+              >
+                {d.label}
+              </button>
+            ))}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3 border-t border-gray-800 pt-3">
+          {Object.entries(DISPATCHABLE)
+            .filter(([, d]) => !!d.confirm)
+            .map(([key, d]) => (
+              <button
+                key={key}
+                disabled={busy !== null}
+                onClick={() =>
+                  post("/api/admin/dispatch", { action: key, confirmed: true }, d.label, d.confirm)
+                }
+                className="rounded border border-amber-600 px-4 py-3 text-sm text-amber-300 hover:bg-amber-900/30 disabled:opacity-50"
+              >
+                ⚠ {d.label}
+              </button>
+            ))}
         </div>
       </section>
 
@@ -1881,8 +2102,9 @@ export default function AdminDashboard({ login }: { login: string }) {
           </span>
         </h2>
         <div className="flex flex-wrap items-center gap-2">
-          {["depth_pause", "depth_resume", "depth_run_now", "sdf_dispatch", "bot_restart", "state_sync"].map(
-            (c) => (
+          {Array.from(PC_COMMANDS)
+            .filter((c) => c !== "sdf_dispatch")
+            .map((c) => (
               <button
                 key={c}
                 disabled={busy !== null}
@@ -1893,6 +2115,18 @@ export default function AdminDashboard({ login }: { login: string }) {
               </button>
             )
           )}
+          <button
+            disabled={busy !== null}
+            onClick={() =>
+              post("/api/admin/command",
+                { command: "sdf_dispatch", args: { runner: "self-hosted" } },
+                "sdf_dispatch (self-hosted)",
+                "Ask the PC to self-dispatch SDF on its own runner? Only useful while the PC is on.")
+            }
+            className="rounded border border-gray-600 px-3 py-2 text-sm hover:bg-gray-800 disabled:opacity-50"
+          >
+            sdf_dispatch
+          </button>
           <a href="/ondemand" className="ml-2 text-sm text-gray-400 underline">
             on-demand /analyze lives on /ondemand
           </a>
@@ -1903,6 +2137,7 @@ export default function AdminDashboard({ login }: { login: string }) {
               <tr>
                 <th className="px-2 py-1">id</th>
                 <th className="px-2 py-1">command</th>
+                <th className="px-2 py-1">args</th>
                 <th className="px-2 py-1">status</th>
                 <th className="px-2 py-1">result</th>
               </tr>
@@ -1912,6 +2147,9 @@ export default function AdminDashboard({ login }: { login: string }) {
                 <tr key={c.id} className="border-t border-gray-800">
                   <td className="px-2 py-1">{c.id}</td>
                   <td className="px-2 py-1">{c.command}</td>
+                  <td className="px-2 py-1">
+                    {c.args && Object.keys(c.args).length ? JSON.stringify(c.args) : ""}
+                  </td>
                   <td className="px-2 py-1">{c.status}</td>
                   <td className="max-w-md truncate px-2 py-1">{c.result}</td>
                 </tr>
@@ -1924,15 +2162,26 @@ export default function AdminDashboard({ login }: { login: string }) {
       <section>
         <h2 className="mb-3 text-lg font-semibold">KIS (real money)</h2>
         <div className="flex flex-wrap items-center gap-4 rounded-lg border border-gray-700 p-4">
+          {/* "not set" may only be asserted from LOADED data — while status is
+              null the truthful label is "loading", and the button stays off. */}
+          {status === null ? (
+            <div className="text-sm text-gray-400">KIS state loading…</div>
+          ) : (
           <div className="text-sm">
             {Object.entries(status?.kisVars ?? {}).map(([k, v]) => (
               <div key={k}>
                 <span className="text-gray-400">{k}:</span> {String(v)}
               </div>
             ))}
+            {!status?.kisVars?.KIS_HALT && (
+              <div>
+                <span className="text-gray-400">KIS_HALT:</span> {haltDisplay}
+              </div>
+            )}
           </div>
+          )}
           <button
-            disabled={busy !== null}
+            disabled={busy !== null || status === null}
             onClick={() =>
               post("/api/admin/kis", { halt: !halted }, halted ? "resume KIS" : "HALT KIS",
                 halted
@@ -2103,6 +2352,31 @@ def test_compute_delta_only_new_lines():
     before = ['{"run": 1}', '{"run": 2}']
     after = ['{"run": 1}', '{"run": 2}', '{"run": 3}']
     assert cloud_backstop.compute_delta(before, after) == ['{"run": 3}']
+
+
+def test_publishable_book_drops_protected_local():
+    book = {"AAA", "BBB", "CCC", "DDD"}
+    rows = [
+        {"ticker": "AAA", "date": "2026-08-01", "arm": "cloud_api"},
+        {"ticker": "AAA", "date": "2026-08-20"},                      # newest local
+        {"ticker": "BBB", "date": "2026-06-01", "arm": "cloud_api"},  # newest cloud
+        {"ticker": "CCC", "date": "2026-07-01"},                      # local only
+    ]
+    # AAA/CCC protected (newest row local), BBB publishable, DDD never ledgered
+    assert cloud_backstop.publishable_book(book, rows) == {"BBB", "DDD"}
+
+
+def test_overlay_count_fail_closed(tmp_path):
+    ok = tmp_path / "ok.json"
+    ok.write_text('{"tickers": {"A": {}, "B": {}}}', encoding="utf-8")
+    assert cloud_backstop._overlay_count(ok) == 2
+    assert cloud_backstop._overlay_count(tmp_path / "missing.json") == 0
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json", encoding="utf-8")
+    assert cloud_backstop._overlay_count(bad) == 0
+    nokey = tmp_path / "nokey.json"
+    nokey.write_text('{"generated_at": "x"}', encoding="utf-8")
+    assert cloud_backstop._overlay_count(nokey) == 0
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -2151,7 +2425,10 @@ sys.path.insert(0, str(ROOT))
 
 LEDGER = ROOT / "cache" / "depth_ledger.jsonl"
 OVERLAY = ROOT / "cache" / "depth_overlay.json"
-PER_TICKER_TIMEOUT_S = 3600
+# 45 min/ticker (median 21, historic max 35): 6 tickers worst-case 270 min +
+# overhead stays under the job's 340-min timeout — 3600 did not (6h of ticker
+# work alone would be killed mid-flight with spend incurred and no alert).
+PER_TICKER_TIMEOUT_S = 2700
 
 
 def _read_lines(p: Path) -> list:
@@ -2182,10 +2459,45 @@ def compute_delta(before_lines: list, after_lines: list) -> list:
     return [ln for ln in after_lines if ln not in before]
 
 
+def publishable_book(book: set, rows: list) -> set:
+    """Drop tickers whose NEWEST ledger row is local (arm != cloud_api):
+    publish_cloud_verdicts.protected_local() refuses to publish those, so
+    running them is pure API spend (measured: 3 of the 6 oldest were
+    protected). Never-ledgered names stay in."""
+    newest: dict = {}
+    for r in rows:
+        t = r.get("ticker")
+        d = str(r.get("date") or "")
+        if t and d >= newest.get(t, ("", None))[0]:
+            newest[t] = (d, r.get("arm"))
+    return {t for t in book if t not in newest or newest[t][1] == "cloud_api"}
+
+
 def _overlay_count(path: Path) -> int:
     try:
         return len(json.loads(path.read_text(encoding="utf-8")).get("tickers", {}))
     except (OSError, ValueError):
+        return 0
+
+
+def _published_overlay_count(repo: Path) -> int:
+    """Ticker count of origin/main's overlay — fetched NOW, so the guard
+    baseline is what publish_overlay will actually overwrite (the working
+    tree can be stale if the PC published since checkout)."""
+    fetch = subprocess.run(["git", "-C", str(repo), "fetch", "origin", "main"],
+                           capture_output=True, text=True, timeout=120)
+    if fetch.returncode != 0:
+        # git show would silently read the STALE clone-time ref — the exact
+        # baseline this function exists to eliminate. 0 -> fail-closed abort.
+        return 0
+    r = subprocess.run(
+        ["git", "-C", str(repo), "show", "origin/main:public/data/depth_overlay.json"],
+        capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        return 0
+    try:
+        return len(json.loads(r.stdout).get("tickers", {}))
+    except ValueError:
         return 0
 
 
@@ -2217,7 +2529,7 @@ def main() -> int:
         except ValueError:
             pass
 
-    due = select_due(set(od.live_book()), rows, max_tickers)
+    due = select_due(publishable_book(set(od.live_book()), rows), rows, max_tickers)
     if not due:
         print("nothing due")
         return 0
@@ -2243,10 +2555,16 @@ def main() -> int:
                             f"(rc={pub.returncode})")
         return 1
 
-    published_overlay = (Path(od.CONFIG["screener_publish_repo"])
-                         / "public" / "data" / "depth_overlay.json")
-    old_count = _overlay_count(published_overlay)
+    publish_repo = Path(od.CONFIG["screener_publish_repo"])
+    old_count = _published_overlay_count(publish_repo)
     new_count = _overlay_count(OVERLAY)
+    # FAIL CLOSED: a live published overlay is never empty (182 tickers today).
+    # old_count == 0 means the guard is blind (unreadable/missing overlay) —
+    # publishing blind is exactly the wipe this guard exists to prevent.
+    if old_count == 0:
+        ops.notify_telegram("depth backstop ABORT: cannot read published overlay "
+                            "count — guard blind, NOT publishing")
+        return 1
     if new_count < old_count:
         ops.notify_telegram(f"depth backstop ABORT: rebuilt overlay {new_count} "
                             f"tickers < published {old_count} — ledger seed "
@@ -2254,27 +2572,39 @@ def main() -> int:
         return 1
 
     od.publish_overlay()
-    pushed = _synced_with_remote(Path(od.CONFIG["screener_publish_repo"]))
+    pushed = _synced_with_remote(publish_repo)
 
     after = _read_lines(LEDGER)
     delta = compute_delta(before, after)
+    delta_ok = True
     if delta:
         pending = state_dir / "cloud_pending"
-        pending.mkdir(exist_ok=True)
+        pending.mkdir(parents=True, exist_ok=True)
         with (pending / "depth_ledger_delta.jsonl").open("a", encoding="utf-8") as f:
             for ln in delta:
                 f.write(ln + "\n")
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        # Every hop checked: a silent failure here means verdicts live on the
+        # site but absent from the PC ledger — the next PC sweep would then
+        # quietly revert them.
         for args in (["add", "-A"], ["commit", "-m", f"cloud backstop delta {ts}"],
                      ["pull", "--rebase"], ["push"]):
-            subprocess.run(["git", "-C", str(state_dir), *args],
-                           capture_output=True, text=True, timeout=120)
+            r = subprocess.run(["git", "-C", str(state_dir), *args],
+                               capture_output=True, text=True, timeout=120)
+            if r.returncode != 0:
+                ops.notify_telegram(
+                    f"depth backstop: rs2-state '{' '.join(args)}' FAILED — delta "
+                    f"NOT delivered to PC (site has rows the PC ledger lacks): "
+                    + (r.stderr or r.stdout).strip()[:200])
+                delta_ok = False
+                break
 
     ops.notify_telegram(
         f"depth cloud backstop: ran {ran}, failed {failed}, "
         f"push {'ok' if pushed else 'ABORTED (see prior alert)'}, "
-        f"{len(delta)} delta rows to rs2-state")
-    return 0 if pushed else 1
+        f"{len(delta)} delta rows to rs2-state"
+        + ("" if delta_ok else " (DELTA DELIVERY FAILED)"))
+    return 0 if (pushed and delta_ok) else 1
 
 
 if __name__ == "__main__":
@@ -2287,7 +2617,7 @@ if __name__ == "__main__":
 cd "/c/Users/riper/Downloads/RS2 Local" && python -m pytest tests/test_cloud_backstop.py -v
 ```
 
-Expected: 4 passed.
+Expected: 6 passed.
 
 - [ ] **Step 5: Commit + push**
 
@@ -2342,6 +2672,13 @@ concurrency:
   group: depth-backstop
   cancel-in-progress: false
 
+# Ambient token only checks out rs2-local; all cross-repo work uses
+# CROSS_REPO_PAT. (NOTE: checkout persists that PAT base64-encoded in each
+# clone's .git/config extraheader — never add `set -x` or `git config --list`
+# debugging to this file.)
+permissions:
+  contents: read
+
 jobs:
   preflight:
     runs-on: ubuntu-latest
@@ -2356,6 +2693,7 @@ jobs:
           SB_KEY: ${{ secrets.RS2_SUPABASE_SERVICE_KEY }}
           TG_TOKEN: ${{ secrets.RS2_TG_BOT_TOKEN }}
           TG_CHAT: ${{ secrets.RS2_TG_CHAT_ID }}
+          GH_RAW_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
           FORCE: ${{ inputs.force }}
         run: |
           python3 - <<'EOF'
@@ -2372,9 +2710,13 @@ jobs:
 
           overlay_h = 9999.0  # fail-open, same policy as the SDF preflight
           try:
+              # PRIVATE repo: raw fetch needs the PAT header or it 404s and
+              # the gate would silently degrade to heartbeat-only.
               raw = ("https://raw.githubusercontent.com/riperdy-tech/"
                      "stock-screener/main/public/data/depth_overlay.json")
-              with urllib.request.urlopen(raw, timeout=30) as r:
+              req = urllib.request.Request(raw, headers={
+                  "Authorization": "Bearer " + os.environ["GH_RAW_TOKEN"]})
+              with urllib.request.urlopen(req, timeout=30) as r:
                   gen = json.load(r)["generated_at"]
               # generated_at is NAIVE Taipei local time (+08:00), no suffix
               ts = datetime.fromisoformat(gen).replace(
@@ -2383,7 +2725,11 @@ jobs:
           except Exception as e:
               print(f"overlay read failed ({e}) -> treating as stale")
 
+          # FAIL CLOSED on heartbeat READ failure: this gate is the only
+          # cloud-side interlock against a concurrently-publishing PC (the
+          # publish lock is PC-local). Unreadable != dead.
           hb_min = 9999.0
+          hb_read_ok = False
           try:
               url = (os.environ["SB_URL"].rstrip("/")
                      + "/rest/v1/control_heartbeat?id=eq.rs2-pc&select=updated_at")
@@ -2392,12 +2738,34 @@ jobs:
                   "Authorization": "Bearer " + os.environ["SB_KEY"]})
               with urllib.request.urlopen(req, timeout=30) as r:
                   rows = json.load(r)
+              hb_read_ok = True  # empty rows = readable-but-absent = dead
               if rows:
                   hb = datetime.fromisoformat(
                       rows[0]["updated_at"].replace("Z", "+00:00"))
                   hb_min = (datetime.now(timezone.utc) - hb).total_seconds() / 60
           except Exception as e:
-              print(f"heartbeat read failed ({e}) -> treating PC as dead")
+              print(f"heartbeat read FAILED ({e})")
+
+          print(f"gate inputs: overlay_h={overlay_h:.1f} hb_min={hb_min:.0f} "
+                f"hb_read_ok={hb_read_ok}")
+
+          if not hb_read_ok:
+              out(False, "heartbeat UNREADABLE — interlock blind, refusing to "
+                         "run (force to override)")
+              try:
+                  tok = os.environ.get("TG_TOKEN"); chat = os.environ.get("TG_CHAT")
+                  if tok and chat:
+                      body = json.dumps({"chat_id": chat, "text":
+                          "[control-tower] depth backstop preflight: heartbeat "
+                          "UNREADABLE (Supabase?) — backstop refusing to run; "
+                          "dispatch with force=true if the PC is truly dead"}).encode()
+                      urllib.request.urlopen(urllib.request.Request(
+                          f"https://api.telegram.org/bot{tok}/sendMessage",
+                          data=body, headers={"Content-Type": "application/json"}),
+                          timeout=15)
+              except Exception as alert_err:
+                  print(f"alert send failed: {alert_err}")
+              raise SystemExit
 
           if overlay_h <= 30:
               out(False, f"overlay fresh ({overlay_h:.1f}h)"); raise SystemExit
@@ -2415,8 +2783,8 @@ jobs:
                           f"https://api.telegram.org/bot{tok}/sendMessage",
                           data=body, headers={"Content-Type": "application/json"}),
                           timeout=15)
-              except Exception:
-                  pass
+              except Exception as alert_err:
+                  print(f"alert send failed: {alert_err}")
               raise SystemExit
           out(True, f"overlay {overlay_h:.1f}h stale, PC dead {hb_min:.0f}m")
           EOF
@@ -2465,6 +2833,18 @@ jobs:
             exit 1
           fi
           cp ../rs2-state/cache/depth_ledger.jsonl cache/
+          # The PC backs the ledger up mid-append sometimes: guarantee a trailing
+          # newline, or publish_cloud_verdicts appends the first cloud row onto a
+          # torn final line and the merged line propagates through the delta.
+          if [ -n "$(tail -c 1 cache/depth_ledger.jsonl)" ]; then
+            echo >> cache/depth_ledger.jsonl
+          fi
+          # Un-imported rows from a PREVIOUS cloud run (PC hasn't synced since)
+          # live only in cloud_pending — seed them too, or this run's overlay
+          # rebuild silently reverts that run's verdicts on the site.
+          if [ -s ../rs2-state/cloud_pending/depth_ledger_delta.jsonl ]; then
+            cat ../rs2-state/cloud_pending/depth_ledger_delta.jsonl >> cache/depth_ledger.jsonl
+          fi
           cp ../rs2-state/cache/depth_ondemand_ledger.jsonl cache/ 2>/dev/null || true
           cp ../rs2-state/cache/depth_ondemand.jsonl cache/ 2>/dev/null || true
 
@@ -2657,5 +3037,6 @@ cd "/c/Users/riper/Downloads/RS2 Local" && git add docs/CONTROL_TOWER.md && git 
 # Execution order & independence
 
 - Phase A (Tasks 1-5) and Phase B Tasks 6-7 can run in parallel. Task 8 needs 4+7; Task 9 needs 6+7 (and 1 for commands to land); Task 10 needs 8+9. Phase C needs Tasks 3, 11, 12 before 13; Task 14 last.
+- **Deploy ordering (2026-08-30 decision):** Task 10 Step 5 (push screener main → Vercel prod) executes only AFTER Task 13's `depth-cloud-backstop.yml` exists and its gate is verified — the dashboard's registry text and dispatch button reference that workflow, and deploying first would advertise a backstop that doesn't exist yet.
 - Each phase delivers standalone value: A alone = heartbeat + SDF primary fix + state backup; A+B = full remote control tower with manual reroutes; C adds the automatic depth failover.
 
