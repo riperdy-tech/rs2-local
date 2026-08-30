@@ -59,12 +59,19 @@ def main(repo_dir: Path | None = None) -> str:
     repo = Path(repo_dir) if repo_dir else STATE_REPO
     if not (repo / ".git").exists():
         return f"error: {repo} is not a git clone"
-    # --rebase (not --ff-only): after a rejected push the branch is diverged and
-    # ff-only would wedge every later run; PC (cache/) and cloud (cloud_pending/)
-    # write disjoint paths by protocol, so rebase is conflict-free.
-    pull = _git(repo, "pull", "--rebase")
-    if pull.returncode != 0:
-        return "error: pull failed: " + (pull.stderr or pull.stdout).strip()[:300]
+    # The state clone is DISPOSABLE: every PC-side file is regenerated from
+    # CACHE each run, and the delta import is dedupe-idempotent (a discarded
+    # unpushed truncation just re-imports 0 new rows and re-truncates). So we
+    # never merge/rebase: clear any wedged rebase from a prior life, fetch, and
+    # hard-reset to upstream. A lost push race returns an error and the next
+    # run resets + retries — no state can wedge this permanently.
+    _git(repo, "rebase", "--abort")  # harmless nonzero when no rebase in progress
+    fetch = _git(repo, "fetch")
+    if fetch.returncode != 0:
+        return "error: fetch failed: " + (fetch.stderr or fetch.stdout).strip()[:300]
+    reset = _git(repo, "reset", "--hard", "@{u}")
+    if reset.returncode != 0:
+        return "error: reset failed: " + (reset.stderr or reset.stdout).strip()[:300]
 
     imported = _import_cloud_delta(repo)
 
@@ -91,7 +98,7 @@ def main(repo_dir: Path | None = None) -> str:
         return "error: commit failed: " + (commit.stderr or commit.stdout).strip()[:300]
     push = _git(repo, "push")
     if push.returncode != 0:
-        return "error: push failed (next run rebases + retries): " + (push.stderr or push.stdout).strip()[:300]
+        return "error: push failed (next run resets + retries): " + (push.stderr or push.stdout).strip()[:300]
     n = sum(1 for name in STATE_FILES if (CACHE / name).exists())
     msg = f"synced {n} files"
     if imported:
@@ -100,5 +107,6 @@ def main(repo_dir: Path | None = None) -> str:
 
 
 if __name__ == "__main__":
-    print(main())
-    sys.exit(0)
+    result = main()
+    print(result)
+    sys.exit(1 if result.startswith("error") else 0)
