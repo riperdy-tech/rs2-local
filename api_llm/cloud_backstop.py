@@ -88,8 +88,12 @@ def _published_overlay_count(repo: Path) -> int:
     """Ticker count of origin/main's overlay — fetched NOW, so the guard
     baseline is what publish_overlay will actually overwrite (the working
     tree can be stale if the PC published since checkout)."""
-    subprocess.run(["git", "-C", str(repo), "fetch", "origin", "main"],
-                   capture_output=True, text=True, timeout=120)
+    fetch = subprocess.run(["git", "-C", str(repo), "fetch", "origin", "main"],
+                           capture_output=True, text=True, timeout=120)
+    if fetch.returncode != 0:
+        # git show would silently read the STALE clone-time ref — the exact
+        # baseline this function exists to eliminate. 0 -> fail-closed abort.
+        return 0
     r = subprocess.run(
         ["git", "-C", str(repo), "show", "origin/main:public/data/depth_overlay.json"],
         capture_output=True, text=True, timeout=60)
