@@ -53,10 +53,9 @@ PC depth pause/run:  create/delete cache\DEPTH_PAUSED, or schtasks /run /tn RS2-
   (`research_brief_age_days: null`), best-effort SearXNG, no sec_facts
   verification. They exist to keep the overlay moving, not to match local
   quality.
-- **Timezone quirk:** the PC writes `depth_overlay.json.generated_at` as naive
-  Taipei time; a CLOUD-written overlay stamps naive UTC, which the gate reads
-  as 8h older — so after a backstop run the effective re-run threshold is
-  ~22h, not 30h. Fail-safe direction (more eager, never less).
+- **`generated_at` is naive Taipei by convention:** the backstop workflow pins
+  `TZ=Asia/Taipei` on the driver step so a cloud-written overlay stamps the same
+  clock the PC does (without it every consumer reads the overlay 8h older).
 - **`CROSS_REPO_PAT` (rs2-local secrets) is the gh CLI's oauth token** —
   running `gh auth logout` on the PC revokes it and breaks the backstop's
   checkouts. Re-set the secret after any gh re-auth.

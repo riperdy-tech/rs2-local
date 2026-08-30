@@ -1,8 +1,16 @@
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api_llm"))
 import cloud_backstop  # noqa: E402
+
+NOW = datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc)
+
+
+def _row(minutes_ago: float, suffix: str = "+00:00"):
+    ts = NOW - timedelta(minutes=minutes_ago)
+    return [{"updated_at": ts.isoformat().replace("+00:00", suffix)}]
 
 
 def test_newest_dates_takes_max():
@@ -59,3 +67,48 @@ def test_overlay_count_fail_closed(tmp_path):
     nokey = tmp_path / "nokey.json"
     nokey.write_text('{"generated_at": "x"}', encoding="utf-8")
     assert cloud_backstop._overlay_count(nokey) == 0
+
+
+# ---- publish-time PC-alive interlock (TOCTOU re-check) -----------------------
+
+def test_hb_age_min_math():
+    assert cloud_backstop._hb_age_min(_row(45), NOW) == 45
+    assert cloud_backstop._hb_age_min(_row(600), NOW) == 600
+    # Supabase may hand back a Z suffix
+    assert cloud_backstop._hb_age_min(_row(30, "Z"), NOW) == 30
+
+
+def test_hb_age_min_empty_rows_is_absent_not_error():
+    assert cloud_backstop._hb_age_min([], NOW) is None
+
+
+def test_recheck_alive_dead_boundary(monkeypatch):
+    real = cloud_backstop._hb_age_min
+    # freeze "now" at NOW so the 90-min boundary is exact
+    monkeypatch.setattr(cloud_backstop, "_hb_age_min", lambda rows, now: real(rows, NOW))
+
+    def fetch(rows):
+        monkeypatch.setattr(cloud_backstop, "_fetch_hb_rows", lambda: rows)
+
+    fetch(_row(89))
+    assert cloud_backstop._pc_alive_recheck() == "alive"
+    fetch(_row(90))
+    assert cloud_backstop._pc_alive_recheck() == "dead"
+    fetch(_row(5000))
+    assert cloud_backstop._pc_alive_recheck() == "dead"
+    fetch([])
+    assert cloud_backstop._pc_alive_recheck() == "dead", "readable-but-absent = dead"
+
+
+def test_recheck_unreadable_on_fetch_failure(monkeypatch):
+    def boom():
+        raise OSError("supabase unreachable")
+    monkeypatch.setattr(cloud_backstop, "_fetch_hb_rows", boom)
+    assert cloud_backstop._pc_alive_recheck() == "unreadable"
+
+
+def test_recheck_unreadable_on_malformed_row(monkeypatch):
+    monkeypatch.setattr(cloud_backstop, "_fetch_hb_rows", lambda: [{"updated_at": "not-a-date"}])
+    assert cloud_backstop._pc_alive_recheck() == "unreadable"
+    monkeypatch.setattr(cloud_backstop, "_fetch_hb_rows", lambda: [{}])
+    assert cloud_backstop._pc_alive_recheck() == "unreadable"

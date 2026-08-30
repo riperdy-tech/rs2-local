@@ -33,8 +33,16 @@ $agentTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
   -RepetitionDuration (New-TimeSpan -Days 1)
 $agentTrigger.Repetition.Duration = $null
 $agentTrigger.Repetition.StopAtDurationEnd = $false
+# Reboot resilience: the -Once repetition schedule is anchored to registration
+# time, so a crash/reboot can leave the tower blind until the next slot. -AtLogOn
+# fires a pass the moment the interactive session (which every task needs) is
+# back. NOTE: re-running this script re-anchors the -Once start — that is fine.
+$agentTriggers = @(
+  $agentTrigger,
+  (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME")
+)
 Register-ScheduledTask -TaskName "RS2-Control-Agent" -Action $agentAction `
-  -Trigger $agentTrigger -Settings $settings -Principal $principal `
+  -Trigger $agentTriggers -Settings $settings -Principal $principal `
   -Description "RS2 control tower agent: 5-min heartbeat to Supabase + remote command executor." -Force
 
 # --- RS2-SDF-Dispatch: the SDF PC self-dispatch primary ----------------------

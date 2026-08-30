@@ -23,6 +23,7 @@ import json
 import os
 import subprocess
 import sys
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +37,11 @@ OVERLAY = ROOT / "cache" / "depth_overlay.json"
 # overhead stays under the job's 340-min timeout — 3600 did not (6h of ticker
 # work alone would be killed mid-flight with spend incurred and no alert).
 PER_TICKER_TIMEOUT_S = 2700
+# Same threshold the workflow preflight uses. The preflight's verdict is up to
+# ~5h old by publish time (6 tickers x 45 min); the publish lock is PC-LOCAL, so
+# nothing but this re-check stops a woken PC and this job publishing over
+# each other.
+HB_ALIVE_MAX_MIN = 90
 
 
 def _read_lines(p: Path) -> list:
@@ -108,6 +114,49 @@ def _published_overlay_count(repo: Path) -> int:
         return 0
 
 
+def _hb_age_min(rows: list, now: datetime):
+    """Age in minutes of the rs2-pc heartbeat row. None = readable but ABSENT
+    (which is 'dead', not 'unknown' — the row is created on first heartbeat).
+    Raises on a malformed/absent updated_at; the caller maps that to unreadable."""
+    if not rows:
+        return None
+    hb = datetime.fromisoformat(str(rows[0]["updated_at"]).replace("Z", "+00:00"))
+    if hb.tzinfo is None:  # Supabase stamps tz-aware; be explicit anyway
+        hb = hb.replace(tzinfo=timezone.utc)
+    return (now - hb).total_seconds() / 60
+
+
+def _fetch_hb_rows() -> list:
+    """Thin stdlib fetch of the rs2-pc heartbeat row (seam for _hb_age_min)."""
+    url = (os.environ["RS2_SUPABASE_URL"].rstrip("/")
+           + "/rest/v1/control_heartbeat?id=eq.rs2-pc&select=updated_at")
+    key = os.environ["RS2_SUPABASE_SERVICE_KEY"]
+    req = urllib.request.Request(url, headers={
+        "apikey": key, "Authorization": "Bearer " + key})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+
+def _pc_alive_recheck() -> str:
+    """TOCTOU re-check of the preflight's PC-dead verdict, immediately before
+    publishing. -> "alive" | "dead" | "unreadable"."""
+    try:
+        rows = _fetch_hb_rows()
+    except Exception as e:  # noqa: BLE001 — any transport/env failure is 'blind'
+        print(f"interlock re-check: heartbeat read FAILED ({e})")
+        return "unreadable"
+    try:
+        age = _hb_age_min(rows, datetime.now(timezone.utc))
+    except (KeyError, IndexError, TypeError, ValueError) as e:
+        print(f"interlock re-check: heartbeat unparseable ({e})")
+        return "unreadable"
+    if age is None:
+        print("interlock re-check: no heartbeat row — PC dead")
+        return "dead"
+    print(f"interlock re-check: heartbeat age {age:.0f}m")
+    return "alive" if age < HB_ALIVE_MAX_MIN else "dead"
+
+
 def _synced_with_remote(repo: Path) -> bool:
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
                           capture_output=True, text=True).stdout.strip()
@@ -177,6 +226,20 @@ def main() -> int:
                             f"tickers < published {old_count} — ledger seed "
                             "incomplete, NOT publishing")
         return 1
+
+    # TOCTOU: the preflight proved the PC dead hours ago. If it woke since,
+    # its own sweep owns the overlay and the (PC-local) publish lock cannot see
+    # this runner — abort rather than race. Unreadable proceeds on purpose:
+    # the preflight already proved the heartbeat readable at t=0, so a second
+    # failure here is the unlikely case and aborting would burn the whole run.
+    alive = _pc_alive_recheck()
+    if alive == "alive":
+        ops.notify_telegram("depth backstop ABORT: PC came alive mid-run — "
+                            "not publishing (its sweep owns the overlay)")
+        return 1
+    if alive == "unreadable":
+        print("WARNING: heartbeat unreadable at publish time — proceeding "
+              "(preflight proved it readable at t=0)")
 
     od.publish_overlay()
     pushed = _synced_with_remote(publish_repo)

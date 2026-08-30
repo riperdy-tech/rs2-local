@@ -153,6 +153,36 @@ def _cmd_bot_restart(args: dict) -> str:
     return "bot task restarted: " + (r.stdout + r.stderr).strip()[:200]
 
 
+def _sync_fail_alert(result) -> None:
+    """3-strike alarm on state-sync rot (mirrors _heartbeat_with_alert).
+    `result` is None when the sync raised. Never raises.
+
+    A silently rotting rs2-state backup is invisible until the cloud backstop
+    seeds from it — at which point it publishes an overlay built on stale state.
+    """
+    marker = CACHE / "state_sync_fail.json"
+    if not (result is None or str(result).startswith("error")):
+        try:
+            marker.unlink(missing_ok=True)
+        except OSError as unlink_err:
+            _log(f"sync fail marker clear failed: {unlink_err}")
+        return
+    fails = (_read_json(marker) or {}).get("count", 0) + 1
+    _log(f"state sync failed ({fails}): {result}")
+    if fails == 3:
+        try:
+            ops.notify_telegram(
+                "control_agent: 3 consecutive state-sync failures — rs2-state "
+                "backup is rotting; cloud backstop would seed stale data")
+        except Exception as alert_err:  # noqa: BLE001
+            _log(f"sync alert send failed: {alert_err}")
+            fails = 2  # hold below the threshold so the alert retries
+    try:
+        marker.write_text(json.dumps({"count": fails}), encoding="utf-8")
+    except OSError as write_err:
+        _log(f"sync fail marker write failed: {write_err}")
+
+
 def _cmd_state_sync(args: dict) -> str:
     # Marker written in finally: a raising sync must still stamp the attempt,
     # or maybe_sync_state's hourly gate re-runs a broken sync every 5 minutes.
@@ -164,6 +194,7 @@ def _cmd_state_sync(args: dict) -> str:
         (CACHE / "state_sync_last.json").write_text(
             json.dumps({"ts": _now(), "result": result if result is not None else "raised"}),
             encoding="utf-8")
+        _sync_fail_alert(result)
 
 
 COMMANDS = {

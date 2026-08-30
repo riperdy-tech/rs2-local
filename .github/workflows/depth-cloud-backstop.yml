@@ -34,6 +34,9 @@ jobs:
     timeout-minutes: 5
     outputs:
       run: ${{ steps.gate.outputs.run }}
+      # raw PC heartbeat updated_at (empty when unreadable or forced) — the seed
+      # step uses it to prove the rs2-state backup tracked the PC until its death
+      hb_updated: ${{ steps.gate.outputs.hb_updated }}
     steps:
       - name: Gate on overlay freshness + PC heartbeat
         id: gate
@@ -49,12 +52,16 @@ jobs:
           import json, os, urllib.request
           from datetime import datetime, timezone, timedelta
 
-          def out(run, why):
+          def out(run, why, hb_updated=""):
+              # single-line values only: strip whatever Supabase handed back
+              hb_updated = "".join(str(hb_updated).split())
               with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                   f.write(f"run={'true' if run else 'false'}\n")
+                  f.write(f"hb_updated={hb_updated}\n")
               print(f"backstop gate: {why}")
 
           if os.environ.get("FORCE") == "true":
+              # hb_updated stays empty: force bypasses the seed-rot check too
               out(True, "forced by operator"); raise SystemExit
 
           overlay_h = 9999.0  # fail-open, same policy as the SDF preflight
@@ -79,6 +86,7 @@ jobs:
           # publish lock is PC-local). Unreadable != dead.
           hb_min = 9999.0
           hb_read_ok = False
+          hb_raw = ""
           try:
               url = (os.environ["SB_URL"].rstrip("/")
                      + "/rest/v1/control_heartbeat?id=eq.rs2-pc&select=updated_at")
@@ -89,8 +97,8 @@ jobs:
                   rows = json.load(r)
               hb_read_ok = True  # empty rows = readable-but-absent = dead
               if rows:
-                  hb = datetime.fromisoformat(
-                      rows[0]["updated_at"].replace("Z", "+00:00"))
+                  hb_raw = str(rows[0]["updated_at"])
+                  hb = datetime.fromisoformat(hb_raw.replace("Z", "+00:00"))
                   hb_min = (datetime.now(timezone.utc) - hb).total_seconds() / 60
           except Exception as e:
               print(f"heartbeat read FAILED ({e})")
@@ -117,10 +125,10 @@ jobs:
               raise SystemExit
 
           if overlay_h <= 30:
-              out(False, f"overlay fresh ({overlay_h:.1f}h)"); raise SystemExit
+              out(False, f"overlay fresh ({overlay_h:.1f}h)", hb_raw); raise SystemExit
           if hb_min <= 90:
               out(False, f"overlay stale ({overlay_h:.1f}h) but PC alive "
-                         f"({hb_min:.0f}m) — alerting, not running")
+                         f"({hb_min:.0f}m) — alerting, not running", hb_raw)
               try:
                   tok = os.environ.get("TG_TOKEN"); chat = os.environ.get("TG_CHAT")
                   if tok and chat:
@@ -135,7 +143,32 @@ jobs:
               except Exception as alert_err:
                   print(f"alert send failed: {alert_err}")
               raise SystemExit
-          out(True, f"overlay {overlay_h:.1f}h stale, PC dead {hb_min:.0f}m")
+          out(True, f"overlay {overlay_h:.1f}h stale, PC dead {hb_min:.0f}m", hb_raw)
+          EOF
+
+      # A crashed gate is a SILENT backstop outage: no run, and none of the
+      # gate's own Telegram alerts fire (they live inside the step that died).
+      - name: Alert on preflight failure
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.RS2_TG_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.RS2_TG_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, urllib.request
+          tok, chat = os.environ.get("TG_TOKEN"), os.environ.get("TG_CHAT")
+          if not (tok and chat):
+              raise SystemExit("telegram secrets absent — cannot alert")
+          body = json.dumps({"chat_id": chat, "text":
+              "[control-tower] depth backstop PREFLIGHT job FAILED — the gate "
+              "crashed, so the backstop did not run and its own alerts did not "
+              "fire. " + os.environ["RUN_URL"]}).encode()
+          # tok only ever inside the URL: never echoed, never logged
+          urllib.request.urlopen(urllib.request.Request(
+              f"https://api.telegram.org/bot{tok}/sendMessage", data=body,
+              headers={"Content-Type": "application/json"}), timeout=15)
+          print("preflight failure alert sent")
           EOF
 
   backstop:
@@ -172,6 +205,39 @@ jobs:
           token: ${{ secrets.CROSS_REPO_PAT }}
           path: rs2-state
           fetch-depth: 1
+
+      # The backup is only trustworthy if it tracked the PC up to (near) its
+      # last heartbeat. A backup that stopped hours BEFORE the PC died means
+      # sync_state was already broken — seeding it would rebuild the overlay
+      # from stale state and publish that over the live one.
+      - name: Refuse a rotted rs2-state backup
+        if: needs.preflight.outputs.hb_updated != ''
+        env:
+          HB_UPDATED: ${{ needs.preflight.outputs.hb_updated }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+          from datetime import datetime, timezone, timedelta
+          hb = datetime.fromisoformat(os.environ["HB_UPDATED"].replace("Z", "+00:00"))
+          if hb.tzinfo is None:
+              hb = hb.replace(tzinfo=timezone.utc)
+          try:
+              raw = json.load(open("rs2-state/meta/last_pc_sync.json"))["ts"]
+          except Exception as e:
+              print(f"::error::cannot read rs2-state/meta/last_pc_sync.json ({e}) — "
+                    "backup provenance unknown, refusing to seed")
+              raise SystemExit(1)
+          sync = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+          if sync.tzinfo is None:
+              sync = sync.replace(tzinfo=timezone.utc)
+          lag_h = (hb - sync).total_seconds() / 3600
+          print(f"backup lag: last_pc_sync={sync.isoformat()} "
+                f"last_heartbeat={hb.isoformat()} lag={lag_h:.1f}h")
+          if sync < hb - timedelta(hours=2):
+              print("::error::rs2-state backup predates the PC's death by >2h — "
+                    "backup rotted, refusing to seed")
+              raise SystemExit(1)
+          EOF
 
       - name: Seed local state from rs2-state (refuse if ledger missing)
         working-directory: rs2-local
@@ -249,4 +315,37 @@ jobs:
         env:
           RS2_STATE_DIR: ${{ github.workspace }}/rs2-state
           BACKSTOP_MAX_TICKERS: ${{ inputs.max_tickers || '6' }}
+          # generated_at is naive local time by convention (Taipei on the PC);
+          # without this the cloud stamps naive UTC and every consumer reads the
+          # overlay 8h older than it is.
+          TZ: Asia/Taipei
+          # Publish-time TOCTOU re-check: the preflight's "PC dead" verdict is
+          # hours old by the time the driver publishes (_pc_alive_recheck).
+          RS2_SUPABASE_URL: ${{ secrets.RS2_SUPABASE_URL }}
+          RS2_SUPABASE_SERVICE_KEY: ${{ secrets.RS2_SUPABASE_SERVICE_KEY }}
         run: python3 api_llm/cloud_backstop.py
+
+      # Everything after the gate is billable: a crashed job (seed refusal,
+      # driver traceback, 340-min timeout) must never be silent.
+      - name: Alert on backstop failure
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.RS2_TG_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.RS2_TG_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, urllib.request
+          tok, chat = os.environ.get("TG_TOKEN"), os.environ.get("TG_CHAT")
+          if not (tok and chat):
+              raise SystemExit("telegram secrets absent — cannot alert")
+          body = json.dumps({"chat_id": chat, "text":
+              "[control-tower] depth backstop RUN job FAILED — the overlay was "
+              "NOT refreshed (spend may already be incurred). "
+              + os.environ["RUN_URL"]}).encode()
+          # tok only ever inside the URL: never echoed, never logged
+          urllib.request.urlopen(urllib.request.Request(
+              f"https://api.telegram.org/bot{tok}/sendMessage", data=body,
+              headers={"Content-Type": "application/json"}), timeout=15)
+          print("backstop failure alert sent")
+          EOF

@@ -201,3 +201,71 @@ def test_state_sync_stamps_marker_even_when_sync_raises(monkeypatch, tmp_path):
     marker = control_agent._read_json(cache / "state_sync_last.json")
     assert marker["result"] == "raised", "a raising sync must still stamp the hourly gate"
     assert marker["ts"]
+
+
+# ---- state-sync rot alarm ----------------------------------------------------
+
+def _syncfail_count(cache):
+    return (control_agent._read_json(cache / "state_sync_fail.json") or {}).get("count")
+
+
+def _run_sync(monkeypatch, result):
+    """result: a string sync_state.main() returns, or an Exception to raise."""
+    def fake(*a, **k):
+        if isinstance(result, Exception):
+            raise result
+        return result
+    monkeypatch.setattr(control_agent.sync_state, "main", fake)
+    try:
+        control_agent._cmd_state_sync({})
+    except Exception:  # noqa: BLE001 — the raising case re-raises by design
+        pass
+
+
+def test_sync_rot_alert_on_third_consecutive_failure(monkeypatch, tmp_path):
+    cache = _redirect_cache(monkeypatch, tmp_path)
+    alerts = []
+    monkeypatch.setattr(control_agent.ops, "notify_telegram", lambda t: alerts.append(t))
+    counts = []
+    for _ in range(4):
+        _run_sync(monkeypatch, "error: push failed (next run resets + retries): boom")
+        counts.append(_syncfail_count(cache))
+    assert counts == [1, 2, 3, 4]
+    assert len(alerts) == 1
+    assert "3 consecutive state-sync failures" in alerts[0]
+
+
+def test_sync_rot_counts_a_raising_sync(monkeypatch, tmp_path):
+    cache = _redirect_cache(monkeypatch, tmp_path)
+    _run_sync(monkeypatch, OSError("git vanished"))
+    assert _syncfail_count(cache) == 1
+
+
+def test_sync_success_clears_rot_counter(monkeypatch, tmp_path):
+    cache = _redirect_cache(monkeypatch, tmp_path)
+    (cache / "state_sync_fail.json").write_text('{"count": 2}', encoding="utf-8")
+    _run_sync(monkeypatch, "synced 6 files")
+    assert not (cache / "state_sync_fail.json").exists()
+
+
+def test_sync_no_changes_is_not_a_failure(monkeypatch, tmp_path):
+    cache = _redirect_cache(monkeypatch, tmp_path)
+    _run_sync(monkeypatch, "no changes")
+    assert _syncfail_count(cache) is None
+
+
+def test_sync_rot_alert_send_failure_holds_counter(monkeypatch, tmp_path):
+    cache = _redirect_cache(monkeypatch, tmp_path)
+    attempts = []
+
+    def flaky(text):
+        attempts.append(text)
+        if len(attempts) == 1:
+            raise RuntimeError("telegram down")
+
+    monkeypatch.setattr(control_agent.ops, "notify_telegram", flaky)
+    for _ in range(3):
+        _run_sync(monkeypatch, "error: fetch failed: no route")
+    assert len(attempts) == 1 and _syncfail_count(cache) == 2
+    _run_sync(monkeypatch, "error: fetch failed: no route")
+    assert len(attempts) == 2 and _syncfail_count(cache) == 3
