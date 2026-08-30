@@ -1,7 +1,6 @@
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -40,25 +39,19 @@ def test_sync_copies_state_and_pushes(tmp_path, monkeypatch):
     assert "state sync" in log
 
 
-class _FrozenDatetime(datetime):
-    """datetime stand-in whose now() never advances, so the meta timestamp is
-    byte-identical across two runs and the 'no changes' branch is reachable."""
-
-    @classmethod
-    def now(cls, tz=None):
-        return datetime(2026, 8, 30, 12, 0, 0, tzinfo=tz or timezone.utc)
-
-
 def test_sync_noop_when_unchanged(tmp_path, monkeypatch):
     clone = _make_repos(tmp_path)
     cache = tmp_path / "cache"
     cache.mkdir()
     (cache / "depth_ledger.jsonl").write_text("x\n", encoding="utf-8")
     monkeypatch.setattr(sync_state, "CACHE", cache)
-    monkeypatch.setattr(sync_state, "datetime", _FrozenDatetime)
     sync_state.main(repo_dir=clone)
+    meta = clone / "meta" / "last_pc_sync.json"
+    stamp_after_first = meta.read_text(encoding="utf-8")
     out = sync_state.main(repo_dir=clone)
     assert out == "no changes"
+    # the meta stamp is change-gated: an unchanged run must not rewrite it
+    assert meta.read_text(encoding="utf-8") == stamp_after_first
 
 
 def test_cloud_delta_imported_and_truncated(tmp_path, monkeypatch):

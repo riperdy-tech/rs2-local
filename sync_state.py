@@ -59,31 +59,39 @@ def main(repo_dir: Path | None = None) -> str:
     repo = Path(repo_dir) if repo_dir else STATE_REPO
     if not (repo / ".git").exists():
         return f"error: {repo} is not a git clone"
-    pull = _git(repo, "pull", "--ff-only")
+    # --rebase (not --ff-only): after a rejected push the branch is diverged and
+    # ff-only would wedge every later run; PC (cache/) and cloud (cloud_pending/)
+    # write disjoint paths by protocol, so rebase is conflict-free.
+    pull = _git(repo, "pull", "--rebase")
     if pull.returncode != 0:
         return "error: pull failed: " + (pull.stderr or pull.stdout).strip()[:300]
 
     imported = _import_cloud_delta(repo)
 
     (repo / "cache").mkdir(exist_ok=True)
-    (repo / "meta").mkdir(exist_ok=True)
     for name in STATE_FILES:
         src = CACHE / name
         if src.exists():
             shutil.copy2(src, repo / "cache" / name)
-    (repo / "meta" / "last_pc_sync.json").write_text(
-        json.dumps({"ts": datetime.now(timezone.utc).isoformat()}), encoding="utf-8")
 
     _git(repo, "add", "-A")
     if not _git(repo, "status", "--porcelain").stdout.strip():
         return "no changes"
+
+    # meta stamp only when something actually changed — a fresh timestamp every
+    # run would force an hourly commit forever (unbounded repo growth).
+    (repo / "meta").mkdir(exist_ok=True)
+    (repo / "meta" / "last_pc_sync.json").write_text(
+        json.dumps({"ts": datetime.now(timezone.utc).isoformat()}), encoding="utf-8")
+    _git(repo, "add", "-A")
+
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
     commit = _git(repo, "commit", "-m", f"state sync {ts}")
     if commit.returncode != 0:
         return "error: commit failed: " + (commit.stderr or commit.stdout).strip()[:300]
     push = _git(repo, "push")
     if push.returncode != 0:
-        return "error: push failed: " + (push.stderr or push.stdout).strip()[:300]
+        return "error: push failed (next run rebases + retries): " + (push.stderr or push.stdout).strip()[:300]
     n = sum(1 for name in STATE_FILES if (CACHE / name).exists())
     msg = f"synced {n} files"
     if imported:
