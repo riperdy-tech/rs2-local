@@ -17,8 +17,17 @@ when the heartbeat is unreadable). On-demand `/analyze` requests queue in
 Supabase `ondemand_queue` and drain when the PC's Telegram-bot bridge returns.
 
 ## PC-off playbook (PC won't power on)
+0. (2026-09-01) Fastest path: press "☁ PC is off — run everything from cloud"
+   at the top of /admin. One press = cloud data fetch now + KIS sync now (if
+   the US session is open; every repo-var gate still governs) + depth backstop
+   (its preflight decides). Optional — the cron ladders below cover PC-off
+   days automatically even if you never press it.
 1. Open /admin. Expect: "RS2 PC" card stale after 15 min, dead after 60.
 2. Do nothing for SDF/KIS/price/weekly — cloud-native or auto-backstopped.
+   SDF + KIS each run a BACKSTOP LADDER of crons (SDF 9:35/11:35/13:35/16:35,
+   KIS 9:25/11:25/13:25/16:25/18:25 UTC weekdays); GitHub delivers crons
+   0-9h late, so whichever arrival lands in-window does the job and the rest
+   no-op (target-anchored freshness / synced-today dedupe / market gate).
 3. Depth: wait for the daily 03:05 UTC backstop, or press "⚠ Depth cloud
    backstop" (confirm dialog). ~$0.11 and ~21 min per name, max 6/run,
    degraded research (no local brief, stamped `arm: cloud_api`).
