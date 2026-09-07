@@ -12,14 +12,12 @@ as no longer BASELINE work, so publishing here stops the local sweep from queuei
 They return to the local arm only on an 8-K, a 10-Q/10-K, an 8% move, a PACK_REVISION bump, or
 the 90-day rotation.
 
-WHAT IS PUBLISHED. --fresh runs whose ticker's NEWEST ledger verdict is not a LOCAL one - i.e.
-first-time names, and refreshes of names whose current verdict is already cloud (the 2026-08-26
-framework re-run). A name whose newest verdict is LOCAL is protected: cloud never overwrites it.
-EXCEPTION (operator decision 2026-09-07, continuity): --allow-local-overwrite lifts that
-protection. Only the cloud continuity arm (api_llm/cloud_backstop.py) passes it, and only while
-the PC heartbeat is dead: a trigger the PC cannot serve (8-K, filing, 8% move, exit-review on a
-held name) is then served by the cloud, stamped arm: cloud_api, and the local arm re-takes the
-name on its next trigger. Manual publishes keep the protection.
+WHAT IS PUBLISHED. Every --fresh run of the publishable model whose ticker is in the live book.
+OPERATOR DECISION 2026-09-07: local and cloud verdicts are the SAME KIND OF RESULT and are treated
+as such - the newest verdict for a name wins, whichever arm produced it. The earlier rule that a
+LOCAL newest verdict was protected from a cloud publish is retired (it existed while the cloud arm
+was an experiment; the continuity arm, api_llm/cloud_backstop.py, serves the same trigger queue
+the PC does, so a cloud refresh IS the scheduled re-run for that trigger).
 Replay runs (--dir) are excluded by construction: they duplicate names the local arm has done.
 
 REPORT BUNDLES. orchestrate_depth.build_report_bundles() reads ab_reports/consensus/{dir}, which
@@ -77,26 +75,6 @@ def cloud_runs():
     return out
 
 
-def protected_local():
-    """Tickers whose NEWEST ledger verdict is a LOCAL (non-cloud) run - a cloud publish must never
-    overwrite one. A cloud name (newest already arm: cloud_api) is NOT protected: it may be
-    refreshed by a newer cloud run. The earlier local_tickers() protected EVERY ledgered name,
-    which made a published cloud name permanently un-refreshable and blocked the 2026-08-26
-    framework re-run. Newest-per-ticker = last ledger line (append-only chronological order), the
-    same rule orchestrate_depth.rebuild_overlay uses to build the overlay."""
-    newest = {}
-    if od.LEDGER.exists():
-        for l in od.LEDGER.read_text(encoding="utf-8").splitlines():
-            if not l.strip():
-                continue
-            try:
-                v = json.loads(l)
-            except Exception:
-                continue
-            newest[v["ticker"]] = v.get("arm")
-    return {t for t, arm in newest.items() if arm != "cloud_api"}
-
-
 def write_bundle(t, d, doc, v):
     """Same schema as orchestrate_depth.build_report_bundles, sourced from the cloud run dir.
     Written to od.PENDING_REPORTS (out-of-tree staging); od.publish_overlay copies these into the
@@ -132,29 +110,22 @@ def main():
     dry = "--dry-run" in sys.argv
     push = "--push" in sys.argv
     keep_no_brief = "--include-no-brief" in sys.argv
-    allow_local = "--allow-local-overwrite" in sys.argv   # continuity arm only (see docstring)
     runs = cloud_runs()
-    have = set() if allow_local else protected_local()
-    if allow_local:
-        print("continuity mode: local-verdict protection LIFTED (--allow-local-overwrite)")
     # The overlay is keyed to the screener's book. A name outside it (an ad-hoc test run) would
     # add a row nothing tracks, so it is not publishable however good the run was.
     book = set(od.live_book())
-    pub, skip_local, skip_nobrief, skip_book = [], [], [], []
+    pub, skip_nobrief, skip_book = [], [], []
     for t, (d, doc, v) in sorted(runs.items()):
         if t not in book:
             skip_book.append(t)
-            continue
-        if t in have:
-            skip_local.append(t)     # newest verdict is LOCAL - never overwrite it with cloud
             continue
         if doc.get("research_brief_age_days") is None and NO_BRIEF_HELD and not keep_no_brief:
             skip_nobrief.append(t)
             continue
         pub.append((t, d, doc, v))
     print(f"cloud --fresh {PUBLISHABLE_MODEL} runs: {len(runs)} | not in the live book: "
-          f"{len(skip_book)} {skip_book if skip_book else ''} | newest verdict LOCAL (protected): "
-          f"{len(skip_local)} | no-brief held back: {len(skip_nobrief)}")
+          f"{len(skip_book)} {skip_book if skip_book else ''} | no-brief held back: "
+          f"{len(skip_nobrief)}")
     if skip_nobrief:
         print("  held: " + " ".join(skip_nobrief) + "   (--include-no-brief to publish anyway)")
     print(f"TO PUBLISH: {len(pub)}")

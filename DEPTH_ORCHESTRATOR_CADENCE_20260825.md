@@ -153,8 +153,8 @@ order* differs between the arms. What differs is *who* analyses and *how well*:
 | model | local `rs2-analyst-deep-mtp5` (Ollama) | DeepSeek-V4-flash, **off-peak only** (`api_llm/deepseek_offpeak.py`; Mon–Fri 01–04 / 06–10 UTC never runs, `force` cannot override) |
 | queue | `build_queue()` | `build_queue()` — identical, first `BACKSTOP_MAX_TICKERS` (6) per run |
 | research | local brief + SearXNG + sec_facts | no local brief, CI SearXNG best-effort, no sec_facts (degraded by design) |
-| verdict stamp | `arm` absent (local) | `arm: cloud_api`, `published_by: publish_cloud_verdicts.py` |
-| local-verdict protection | n/a | **lifted** (`--allow-local-overwrite`): a trigger on a locally-analysed name is served, not left waiting. The local arm re-takes the name on its next trigger. Manual cloud publishes keep the protection. |
+| verdict stamp | `arm` absent (local) | `arm: cloud_api`, `published_by: publish_cloud_verdicts.py` — provenance only |
+| result status | **Operator 2026-09-07: local and cloud verdicts are the same kind of result and are treated as such.** The newest verdict for a name wins, whichever arm produced it; nothing downstream (overlay, paper books, KIS mirror) distinguishes them. The earlier local-verdict protection in `publish_cloud_verdicts.py` is retired. | same |
 | membership snapshot | one row per sweep-day | one row per sweep-day (same clock, `TZ=Asia/Taipei`) — the dwell clocks (§4) keep advancing |
 | state | `cache/` | seeded from `rs2-state`, handed back after each run: ledger delta (append), `depth_membership.jsonl`, `depth_state.json` (incl. the shared retry budget) |
 
