@@ -55,6 +55,37 @@ def _import_cloud_delta(repo_dir: Path) -> int:
     return len(new)
 
 
+def _import_cloud_membership(repo_dir: Path) -> int:
+    """Merge membership snapshot rows the cloud continuity arm recorded while the PC was off.
+    The dwell clocks (DEPTH_ORCHESTRATOR_CADENCE_20260825.md §4) advance one row per sweep-day;
+    without this merge the PC's next push would overwrite the repo copy with its own file and
+    the cloud days would vanish from every dwell count. Rows are keyed by date; the LOCAL row
+    wins when both have the same date. Returns the number of rows added."""
+    src = repo_dir / "cache" / "depth_membership.jsonl"
+    if not src.exists():
+        return 0
+    def _rows(p: Path) -> dict:
+        out = {}
+        if p.exists():
+            for ln in p.read_text(encoding="utf-8").splitlines():
+                if not ln.strip():
+                    continue
+                try:
+                    out[json.loads(ln)["date"]] = ln
+                except Exception:
+                    continue
+        return out
+    local = CACHE / "depth_membership.jsonl"
+    mine, theirs = _rows(local), _rows(src)
+    new = {d: ln for d, ln in theirs.items() if d not in mine}
+    if not new:
+        return 0
+    mine.update(new)
+    CACHE.mkdir(parents=True, exist_ok=True)
+    local.write_text("\n".join(mine[d] for d in sorted(mine)) + "\n", encoding="utf-8")
+    return len(new)
+
+
 def main(repo_dir: Path | None = None) -> str:
     repo = Path(repo_dir) if repo_dir else STATE_REPO
     if not (repo / ".git").exists():
@@ -74,6 +105,7 @@ def main(repo_dir: Path | None = None) -> str:
         return "error: reset failed: " + (reset.stderr or reset.stdout).strip()[:300]
 
     imported = _import_cloud_delta(repo)
+    imported_mem = _import_cloud_membership(repo)
 
     (repo / "cache").mkdir(exist_ok=True)
     for name in STATE_FILES:
@@ -103,6 +135,8 @@ def main(repo_dir: Path | None = None) -> str:
     msg = f"synced {n} files"
     if imported:
         msg += f", import {imported} cloud rows"
+    if imported_mem:
+        msg += f", merge {imported_mem} cloud membership day(s)"
     return msg
 
 

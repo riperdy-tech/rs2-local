@@ -15,6 +15,11 @@ the 90-day rotation.
 WHAT IS PUBLISHED. --fresh runs whose ticker's NEWEST ledger verdict is not a LOCAL one - i.e.
 first-time names, and refreshes of names whose current verdict is already cloud (the 2026-08-26
 framework re-run). A name whose newest verdict is LOCAL is protected: cloud never overwrites it.
+EXCEPTION (operator decision 2026-09-07, continuity): --allow-local-overwrite lifts that
+protection. Only the cloud continuity arm (api_llm/cloud_backstop.py) passes it, and only while
+the PC heartbeat is dead: a trigger the PC cannot serve (8-K, filing, 8% move, exit-review on a
+held name) is then served by the cloud, stamped arm: cloud_api, and the local arm re-takes the
+name on its next trigger. Manual publishes keep the protection.
 Replay runs (--dir) are excluded by construction: they duplicate names the local arm has done.
 
 REPORT BUNDLES. orchestrate_depth.build_report_bundles() reads ab_reports/consensus/{dir}, which
@@ -127,8 +132,11 @@ def main():
     dry = "--dry-run" in sys.argv
     push = "--push" in sys.argv
     keep_no_brief = "--include-no-brief" in sys.argv
+    allow_local = "--allow-local-overwrite" in sys.argv   # continuity arm only (see docstring)
     runs = cloud_runs()
-    have = protected_local()
+    have = set() if allow_local else protected_local()
+    if allow_local:
+        print("continuity mode: local-verdict protection LIFTED (--allow-local-overwrite)")
     # The overlay is keyed to the screener's book. A name outside it (an ad-hoc test run) would
     # add a row nothing tracks, so it is not publishable however good the run was.
     book = set(od.live_book())

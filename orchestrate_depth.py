@@ -358,6 +358,57 @@ def _kill_tree(pid):
         pass
 
 
+def build_queue(book, st, trig, verdicts, fs, *, dwell_in=None, held=frozenset(), rows=0):
+    """DEPTH_ORCHESTRATOR_CADENCE_20260825.md §3/§5 as ONE pure function: which names run and in
+    what order. Shared by this sweep and the cloud continuity arm (api_llm/cloud_backstop.py) so
+    the PC and the cloud serve the same queue in the same order. Returns [(ticker, class, why)].
+
+    Priority contract: TRIGGERED names first (events + exit-review), then names with no verdict
+    (the baseline pass), then re-entry/promotion, then rotation — rotation only runs when no
+    triggered work remains, because triggers ARE in the map and sort ahead by construction.
+    Within each class: research_now -> watchlist -> rest, then alphabetical.
+
+    Rule #8 entry dwell (spec: LIVE): a never-analysed name runs only after ENTRY_DWELL
+    consecutive snapshot-days inside RN+WL, so a one-day band visitor never earns a billed run.
+    Rule #10 held-exempt: a held name is always analysed. Dormant while the membership log holds
+    fewer than ENTRY_DWELL rows, exactly like the #5/#7 dwell triggers in depth_triggers.
+    `dwell_in`, `held`, `rows` are injected so the function stays pure and testable."""
+    entry_dwell = depth_triggers.ENTRY_DWELL
+
+    def baseline_ready(t):
+        if t in held or dwell_in is None or rows < entry_dwell:
+            return True
+        return dwell_in(t) >= entry_dwell
+
+    def due(t):
+        rec = st.get(t) or {}
+        if rec and not rec.get("ok"):
+            return rec.get("retries", 0) < MAX_RETRIES      # failed: retry budget decides
+        kinds = [k for k, _ in trig.get(t, []) if k != "filing_pending"]
+        if t not in verdicts:
+            return baseline_ready(t)                        # baseline: never analysed (#8)
+        return bool(kinds)                                  # verdict exists: only ACTIONABLE triggers
+
+    def _class(t):
+        kinds = [k for k, _ in trig.get(t, [])]
+        if any(k in ("8k", "filing", "move", "exit_review") for k in kinds):
+            return 0                                        # event-triggered + exit-review
+        if t not in verdicts:
+            return 1                                        # baseline pass
+        if "reentry" in kinds:
+            return 2                                        # re-entry / promotion
+        return 3                                            # rotation (staleness cap)
+
+    def _why(t):
+        return (", ".join(f"{k}:{d}" for k, d in trig.get(t, [])) or
+                ("baseline" if t not in verdicts else "rotation"))
+
+    rank = {"research_now": 0, "watchlist": 1}
+    queue = [t for t in book if due(t)]
+    queue.sort(key=lambda t: (_class(t), rank.get((fs.get(t) or {}).get("fct_band"), 2), t))
+    return [(t, _class(t), _why(t)) for t in queue]
+
+
 def run_one(t):
     """One depth_pipeline child, watchdogged. Returns (ok, why)."""
     proc = subprocess.Popen([sys.executable, str(HERE / "depth_pipeline.py"), t])
@@ -443,41 +494,20 @@ def main():
 
     # TRIGGER-DRIVEN QUEUE (operator, 2026-08-21). Deterministic detection, model judgment:
     # depth_triggers checks 8-K / new 10-Q-10-K / big price move / 90d rotation against each
-    # name's newest verdict. Priority contract: TRIGGERED names first, then names with no
-    # verdict yet (the baseline pass), then rotation - and only when no triggered work remains
-    # does rotation run, because triggers ARE in the map and sort ahead by construction.
-    # Within each class: research_now -> watchlist -> rest, then alphabetical.
+    # name's newest verdict. Priority + membership live in build_queue() so the cloud continuity
+    # arm (api_llm/cloud_backstop.py) serves the SAME queue in the SAME order when this PC is off.
     trig = depth_triggers.trigger_map(book)
     verdicts = depth_triggers.newest_verdicts()
-
-    def due(t):
-        rec = st.get(t) or {}
-        if rec and not rec.get("ok"):
-            return rec.get("retries", 0) < MAX_RETRIES      # failed: retry budget decides
-        kinds = [k for k, _ in trig.get(t, []) if k != "filing_pending"]
-        if t not in verdicts:
-            return True                                     # baseline: never analysed
-        return bool(kinds)                                  # verdict exists: only ACTIONABLE triggers
-
-    def _class(t):
-        kinds = [k for k, _ in trig.get(t, [])]
-        # Priority (DEPTH_ORCHESTRATOR_CADENCE_20260825.md §5): events + exit-review first, then
-        # baseline, then re-entry/promotion, then rotation. filing_pending is excluded by name.
-        if any(k in ("8k", "filing", "move", "exit_review") for k in kinds):
-            return 0                                        # event-triggered + exit-review
-        if t not in verdicts:
-            return 1                                        # baseline pass
-        if "reentry" in kinds:
-            return 2                                        # re-entry / promotion
-        return 3                                            # rotation (staleness cap)
-
-    queue = [t for t in book if due(t)]
     fs = (rs2_data.load_json(SD / "factor_scores.json") or {}).get("tickers", {})
-    rank = {"research_now": 0, "watchlist": 1}
-    queue.sort(key=lambda t: (_class(t), rank.get((fs.get(t) or {}).get("fct_band"), 2), t))
+    ordered = build_queue(book, st, trig, verdicts, fs,
+                          dwell_in=depth_membership.dwell_in,
+                          held=depth_membership.held_names(),
+                          rows=depth_membership.snapshots_recorded())
+    queue = [t for t, _, _ in ordered]
+    cls_of = {t: c for t, c, _ in ordered}
+    why_of = {t: w for t, _, w in ordered}
     for t in queue[:20]:
-        why = ", ".join(f"{k}:{d}" for k, d in trig.get(t, [])) or               ("baseline" if t not in verdicts else "rotation")
-        log(f"   queued {t}: {why[:110]}")
+        log(f"   queued {t}: {why_of[t][:110]}")
     if limit:
         queue = queue[:limit]
     log(f"book {len(book)} | due {len(queue)}"
@@ -485,10 +515,7 @@ def main():
 
     # Sweep progress for status.py: the FULL due queue with per-name reasons, plus the position,
     # updated per ticker. status reads this to show what's pending instead of guessing from the log.
-    def _why(t):
-        return (", ".join(f"{k}:{d}" for k, d in trig.get(t, [])) or
-                ("baseline" if t not in verdicts else "rotation"))
-    queue_why = [{"t": t, "class": _class(t), "why": _why(t)[:120]} for t in queue]
+    queue_why = [{"t": t, "class": cls_of[t], "why": why_of[t][:120]} for t in queue]
 
     def write_progress(idx, current, active):
         try:
