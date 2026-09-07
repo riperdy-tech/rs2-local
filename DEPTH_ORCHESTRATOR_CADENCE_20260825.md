@@ -151,7 +151,7 @@ order* differs between the arms. What differs is *who* analyses and *how well*:
 |---|---|---|
 | runs when | PC on; RS2-Depth-Orchestrator every 4h | PC heartbeat dead >90 min; GitHub cron ladder 10:05/14:05/18:05/22:05 UTC (same 4h rhythm) |
 | model | local `rs2-analyst-deep-mtp5` (Ollama) | DeepSeek-V4-flash, **off-peak only** (`api_llm/deepseek_offpeak.py`; Mon–Fri 01–04 / 06–10 UTC never runs, `force` cannot override) |
-| queue | `build_queue()` | `build_queue()` — identical, first `BACKSTOP_MAX_TICKERS` (6) per run, `BACKSTOP_CONCURRENCY` (3) at a time; search-tool tallies per run gauge upstream throttling |
+| queue | `build_queue()` | `build_queue()` — identical, the WHOLE due queue per run (no count cap: the cloud has no GPU to serialise on), `BACKSTOP_CONCURRENCY` (3) at a time, bounded by the off-peak window and a 300-min start budget so every run reaches its publish step; search-tool tallies per run gauge upstream throttling |
 | research | local brief + SearXNG + sec_facts | no local brief, CI SearXNG best-effort, no sec_facts (degraded by design) |
 | verdict stamp | `arm` absent (local) | `arm: cloud_api`, `published_by: publish_cloud_verdicts.py` — provenance only |
 | result status | **Operator 2026-09-07: local and cloud verdicts are the same kind of result and are treated as such.** The newest verdict for a name wins, whichever arm produced it; nothing downstream (overlay, paper books, KIS mirror) distinguishes them. The earlier local-verdict protection in `publish_cloud_verdicts.py` is retired. | same |

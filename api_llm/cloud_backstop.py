@@ -19,7 +19,13 @@ Flow:
   2. record today's RN+WL membership row (mem.snapshot) — the dwell clocks
      advance one row per sweep-day, cloud or PC
   3. queue = orchestrate_depth.build_queue(...) on the seeded state, exactly
-     as the PC computes it; take the first BACKSTOP_MAX_TICKERS
+     as the PC computes it. The WHOLE due queue is served (operator 2026-09-07:
+     the cloud has no GPU to serialise on, so a count cap is the wrong tool);
+     BACKSTOP_MAX_TICKERS > 0 caps a manual test run. What bounds a run is the
+     off-peak window and the JOB TIME BUDGET (RUN_BUDGET_S): a name starts only
+     if its worst case still ends inside the budget, so the run always reaches
+     its publish step before GitHub's 340-min job kill — a killed run publishes
+     nothing and the spend is lost. Names not started carry to the next rung.
   4. run deep_api_run.py T --fresh, BACKSTOP_CONCURRENCY (3) names at a time
      (operator 2026-09-07: six names in ~45 min instead of ~2h; same cost).
      Each name starts only if its whole worst-case runtime is off-peak; its
@@ -71,6 +77,11 @@ PER_TICKER_TIMEOUT_S = 2700
 # nothing but this re-check stops a woken PC and this job publishing over
 # each other.
 HB_ALIVE_MAX_MIN = 90
+# Job time budget for STARTING names, measured from driver start: the job is
+# killed at 340 min; ~2 min of setup precede the driver; a name started at the
+# budget edge ends by 300 min worst case, leaving ~38 min for publish + handback.
+RUN_BUDGET_S = 300 * 60
+DRIVER_T0 = time.time()
 
 
 def _read_lines(p: Path) -> list:
@@ -173,6 +184,8 @@ def _run_ticker(t: str) -> tuple:
     not interleave in the job log; the caller prints it as one block."""
     if not run_window_ok(datetime.now(timezone.utc), PER_TICKER_TIMEOUT_S):
         return t, "deferred", "peak-rate window", 0, ""
+    if time.time() - DRIVER_T0 + PER_TICKER_TIMEOUT_S > RUN_BUDGET_S:
+        return t, "deferred", "job time budget", 0, ""
     t0 = time.time()
     try:
         r = subprocess.run(
@@ -249,7 +262,7 @@ def _handback_state(state_dir: Path, delta: list, ts: str) -> str:
 
 def main() -> int:
     dry = "--dry-run" in sys.argv
-    max_tickers = int(os.environ.get("BACKSTOP_MAX_TICKERS", "6"))
+    max_tickers = int(os.environ.get("BACKSTOP_MAX_TICKERS", "0"))   # 0 = whole due queue
     concurrency = max(1, int(os.environ.get("BACKSTOP_CONCURRENCY", "3")))
     state_dir = Path(os.environ["RS2_STATE_DIR"]) if not dry else None
 
@@ -289,8 +302,11 @@ def main() -> int:
                              held=mem.held_names(), rows=rows)
     for t, c, why in ordered:
         print(f"   queued {t:6} class {c}: {why[:110]}")
-    due = [t for t, _, _ in ordered][:max_tickers]
-    print(f"book {len(book)} | due {len(ordered)} | this run: {due}")
+    due = [t for t, _, _ in ordered]
+    if max_tickers > 0:
+        due = due[:max_tickers]
+    print(f"book {len(book)} | due {len(ordered)} | this run: {len(due)} "
+          f"({'whole queue' if max_tickers <= 0 else f'capped at {max_tickers}'}) {due}")
     if dry:
         print("--dry-run: nothing run, nothing written.")
         return 0
@@ -319,7 +335,7 @@ def main() -> int:
             t, status, why, secs, out = fut.result()
             if status == "deferred":
                 deferred.append(t)
-                print(f"{t}: deferred — peak-rate window reached before it could start")
+                print(f"{t}: deferred — {why} reached before it could start")
                 continue
             print(f"\n===== {t}: {status} ({why}, {secs}s) =====\n{out.rstrip()}\n===== end {t} =====")
             ok = status == "ok"
@@ -341,13 +357,13 @@ def main() -> int:
             od.save_state(st)
     deferred.sort(key=due.index)
     if deferred:
-        print(f"peak-rate window reached — {len(deferred)} ticker(s) deferred "
-              f"to the next off-peak run: {deferred}")
+        print(f"{len(deferred)} ticker(s) deferred to the next rung (peak window or job "
+              f"time budget): {deferred}")
 
     if not ran:
         if deferred and not failed:
             # Nothing billed, nothing to publish: an expected outcome, not a failure.
-            ops.notify_telegram(f"depth continuity: peak-rate window — 0 run, "
+            ops.notify_telegram(f"depth continuity: window/budget closed — 0 run, "
                                 f"{len(deferred)} deferred ({deferred})")
         else:
             ops.notify_telegram(f"depth continuity: all {len(failed)} runs failed "
@@ -406,8 +422,8 @@ def main() -> int:
 
     ops.notify_telegram(
         f"depth cloud continuity: ran {ran}, failed {failed}, "
-        + (f"deferred (peak window) {deferred}, " if deferred else "")
-        + f"{round((time.time() - run_t0) / 60)} min at concurrency {concurrency}, "
+        + (f"deferred {deferred}, " if deferred else "")
+        + f"{len(ordered)} due, {round((time.time() - run_t0) / 60)} min at concurrency {concurrency}, "
         f"searches {search_tot['searches']} ({search_tot['empty']} empty, "
         f"{search_tot['tool_calls'] - search_tot['snapshotted']} failed), "
         f"push {'ok' if pushed else 'ABORTED (see prior alert)'}, "

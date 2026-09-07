@@ -33,8 +33,10 @@ Supabase `ondemand_queue` and drain when the PC's Telegram-bot bridge returns.
 3. Depth: nothing to do — the continuity ladder (10:05/14:05/18:05/22:05 UTC,
    DeepSeek OFF-PEAK ONLY: a peak-hour arrival, Mon-Fri 01-04/06-10 UTC,
    skips and force cannot override) serves the PC's own trigger queue in the
-   PC's own priority order, max 6 names per run, 3 at a time: ~$0.11 per
-   name, ~45 min per run (measured 2026-09-07 sequential: 128 min for 6).
+   PC's own priority order, the whole due queue per run, 3 at a time: ~$0.11
+   and ~21 min per name (measured 2026-09-07), so ~7 min of wall time per
+   name. Names that cannot finish inside off-peak or the 300-min start
+   budget carry to the next rung.
    "⚠ Depth cloud backstop" (confirm dialog) runs one such pass now. Cloud
    verdicts count exactly like local ones (operator 2026-09-07); `arm:
    cloud_api` is provenance only, and the newest verdict for a name wins.
