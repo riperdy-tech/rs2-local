@@ -326,7 +326,8 @@ jobs:
           # hours old by the time the driver publishes (_pc_alive_recheck).
           RS2_SUPABASE_URL: ${{ secrets.RS2_SUPABASE_URL }}
           RS2_SUPABASE_SERVICE_KEY: ${{ secrets.RS2_SUPABASE_SERVICE_KEY }}
-        run: python3 api_llm/cloud_backstop.py
+        # -u: the driver's own lines must not lag its children's in the job log
+        run: python3 -u api_llm/cloud_backstop.py
 
       # Everything after the gate is billable: a crashed job (seed refusal,
       # driver traceback, 340-min timeout) must never be silent.
