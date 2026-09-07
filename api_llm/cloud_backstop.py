@@ -212,6 +212,13 @@ def main() -> int:
     sd_date, sd_n = mem.snapshot()
     rows = mem.snapshots_recorded()
     print(f"membership snapshot {sd_date}: {sd_n} in RN+WL | {rows} daily rows on record")
+    if sd_n == 0:
+        # FAIL CLOSED: RN+WL is never empty (170 names). An empty row means the
+        # screener checkout is unreadable; handing it back would put every name
+        # "out" for a day and fire exit-review across the book. Not handed back.
+        ops.notify_telegram("depth continuity ABORT: membership snapshot empty — "
+                            "factor_scores.json unreadable on the runner")
+        return 1
 
     # THE PC's QUEUE, computed by the PC's function on the PC's (seeded) state.
     st = od.load_state()
