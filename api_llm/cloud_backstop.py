@@ -10,10 +10,9 @@ agreed cadence. DeepSeek OFF-PEAK ONLY (api_llm/deepseek_offpeak.py).
 
 Degraded mode by design: no local research brief (published with
 --include-no-brief), CI SearXNG only, no sec_facts verification. Rows are
-stamped arm=cloud_api. Continuity lifts publish_cloud_verdicts' local-verdict
-protection (--allow-local-overwrite): a trigger on a locally-analysed name is
-served here rather than left waiting; the local arm re-takes the name on its
-next trigger.
+stamped arm=cloud_api for provenance only: operator decision 2026-09-07, local
+and cloud verdicts are the same kind of result and the newest one wins, whichever
+arm produced it.
 
 Flow:
   1. snapshot the ledger line-set (seeded from rs2-state by the workflow)
@@ -24,8 +23,8 @@ Flow:
   4. run deep_api_run.py T --fresh sequentially, each only if its whole
      worst-case runtime is off-peak; update depth_state.json ok/fail+retries
      exactly like the PC does
-  5. publish_cloud_verdicts.py --include-no-brief --allow-local-overwrite
-     (no --push): ledger append + pending bundles + overlay rebuild
+  5. publish_cloud_verdicts.py --include-no-brief (no --push):
+     ledger append + pending bundles + overlay rebuild
   6. overlay-count guard: rebuilt overlay must not shrink vs the published one
   7. PC-alive TOCTOU re-check, then orchestrate_depth.publish_overlay()
   8. hand state back to rs2-state: new ledger lines appended to
@@ -286,8 +285,7 @@ def main() -> int:
         return 0 if (deferred and not failed and not err) else 1
 
     pub = subprocess.run(
-        [sys.executable, str(API_DIR / "publish_cloud_verdicts.py"),
-         "--include-no-brief", "--allow-local-overwrite"],
+        [sys.executable, str(API_DIR / "publish_cloud_verdicts.py"), "--include-no-brief"],
         cwd=str(ROOT), timeout=600)
     if pub.returncode != 0:
         ops.notify_telegram("depth continuity ABORT: publish_cloud_verdicts failed "

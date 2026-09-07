@@ -35,8 +35,8 @@ Supabase `ondemand_queue` and drain when the PC's Telegram-bot bridge returns.
    skips and force cannot override) serves the PC's own trigger queue in the
    PC's own priority order, max 6 names per run, ~$0.11 and ~21 min per name.
    "⚠ Depth cloud backstop" (confirm dialog) runs one such pass now. Cloud
-   verdicts are degraded research (no local brief, stamped `arm: cloud_api`)
-   and MAY replace a local verdict when its trigger fires while the PC is off.
+   verdicts count exactly like local ones (operator 2026-09-07); `arm:
+   cloud_api` is provenance only, and the newest verdict for a name wins.
 4. On-demand /analyze: requests keep queueing on /ondemand and drain when the
    PC returns. The Telegram bot is down too; alerts still arrive from cloud
    workflows.
@@ -68,10 +68,10 @@ PC depth pause/run:  create/delete cache\DEPTH_PAUSED, or schtasks /run /tn RS2-
 ## Known limits & sharp edges
 - **Interactive-logon tasks:** logout silently stops the heartbeat, the bot
   bridge, and all local rhythms — the tower correctly reads this as "PC off".
-- **Cloud depth verdicts are degraded by design:** no research brief
+- **Cloud depth verdicts run on thinner inputs:** no local research brief
   (`research_brief_age_days: null`), best-effort SearXNG, no sec_facts
-  verification. They exist to keep the overlay moving, not to match local
-  quality.
+  verification. Operator decision 2026-09-07: their RESULTS are treated as
+  equivalent to local ones — the newest verdict wins regardless of arm.
 - **`generated_at` is naive Taipei by convention:** the backstop workflow pins
   `TZ=Asia/Taipei` on the driver step so a cloud-written overlay stamps the same
   clock the PC does (without it every consumer reads the overlay 8h older).
