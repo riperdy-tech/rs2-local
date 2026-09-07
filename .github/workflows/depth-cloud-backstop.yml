@@ -23,8 +23,8 @@ on:
         type: boolean
         default: false
       max_tickers:
-        description: "Max tickers this run"
-        default: "6"
+        description: "Max names this run (0 = the whole due queue)"
+        default: "0"
 
 concurrency:
   group: depth-backstop
@@ -312,7 +312,9 @@ jobs:
         working-directory: rs2-local
         env:
           RS2_STATE_DIR: ${{ github.workspace }}/rs2-state
-          BACKSTOP_MAX_TICKERS: ${{ inputs.max_tickers || '6' }}
+          # 0 = serve the whole due queue (operator 2026-09-07). The run is bounded
+          # by the off-peak window and the driver's 300-min start budget instead.
+          BACKSTOP_MAX_TICKERS: ${{ inputs.max_tickers || '0' }}
           # Names analysed at once (operator 2026-09-07): 3 -> six names in ~45
           # min instead of ~2h at the same cost. Kept at 3, not 6, because every
           # search leaves the runner's ONE IP; the driver counts empty/failed

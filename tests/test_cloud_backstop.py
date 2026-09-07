@@ -276,3 +276,26 @@ def test_search_stats_counts_searches_empty_and_unlogged(tmp_path, monkeypatch):
     os.utime(old, (1, 1))
     st = cloud_backstop._search_stats("DDD", since=1000)
     assert st == {"tool_calls": 6, "snapshotted": 4, "searches": 3, "empty": 1, "samples": 2}
+
+
+def test_run_ticker_defers_when_job_time_budget_is_spent(monkeypatch):
+    monkeypatch.setattr(cloud_backstop, "run_window_ok", lambda now, horizon: True)
+    import time as _time
+    # driver started long enough ago that a worst-case name would overrun the budget
+    monkeypatch.setattr(cloud_backstop, "DRIVER_T0",
+                        _time.time() - (cloud_backstop.RUN_BUDGET_S - cloud_backstop.PER_TICKER_TIMEOUT_S + 1))
+    def boom(*a, **k):
+        raise AssertionError("must not start a name the job cannot finish")
+    monkeypatch.setattr(cloud_backstop.subprocess, "run", boom)
+    assert cloud_backstop._run_ticker("EEE")[1:3] == ("deferred", "job time budget")
+    # one second inside the budget -> allowed to start
+    monkeypatch.setattr(cloud_backstop, "DRIVER_T0",
+                        _time.time() - (cloud_backstop.RUN_BUDGET_S - cloud_backstop.PER_TICKER_TIMEOUT_S - 1))
+    monkeypatch.setattr(cloud_backstop.subprocess, "run",
+                        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout="", stderr=""))
+    assert cloud_backstop._run_ticker("EEE")[1] == "ok"
+
+
+def test_budget_leaves_room_for_publish_under_the_job_kill():
+    # 2 min setup + budget edge + one worst-case name must end before the 340-min job kill
+    assert 2 * 60 + cloud_backstop.RUN_BUDGET_S <= 340 * 60 - 30 * 60
