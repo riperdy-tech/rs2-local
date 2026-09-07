@@ -20,9 +20,14 @@ Flow:
      advance one row per sweep-day, cloud or PC
   3. queue = orchestrate_depth.build_queue(...) on the seeded state, exactly
      as the PC computes it; take the first BACKSTOP_MAX_TICKERS
-  4. run deep_api_run.py T --fresh sequentially, each only if its whole
-     worst-case runtime is off-peak; update depth_state.json ok/fail+retries
-     exactly like the PC does
+  4. run deep_api_run.py T --fresh, BACKSTOP_CONCURRENCY (3) names at a time
+     (operator 2026-09-07: six names in ~45 min instead of ~2h; same cost).
+     Each name starts only if its whole worst-case runtime is off-peak; its
+     output is printed as one block when it finishes; depth_state.json
+     ok/fail+retries is updated exactly like the PC does. Each name's search
+     tool calls are counted (searches / empty result lists) as the gauge for
+     upstream engine throttling of the runner's single IP — the one cost of
+     concurrency that cannot be ruled out by reasoning, so it is measured.
   5. publish_cloud_verdicts.py --include-no-brief (no --push):
      ledger append + pending bundles + overlay rebuild
   6. overlay-count guard: rebuilt overlay must not shrink vs the published one
@@ -41,7 +46,9 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -158,6 +165,58 @@ def _synced_with_remote(repo: Path) -> bool:
     return bool(head) and bool(remote) and remote[0] == head
 
 
+def _run_ticker(t: str) -> tuple:
+    """One deep_api_run child. -> (ticker, status, why, secs, output) with status in
+    {"ok", "fail", "deferred"}. The off-peak check happens HERE, at the moment the name
+    actually starts, so a worker that frees up after the window has closed defers its name
+    instead of billing it at peak. Output is captured (not streamed) so concurrent names do
+    not interleave in the job log; the caller prints it as one block."""
+    if not run_window_ok(datetime.now(timezone.utc), PER_TICKER_TIMEOUT_S):
+        return t, "deferred", "peak-rate window", 0, ""
+    t0 = time.time()
+    try:
+        r = subprocess.run(
+            [sys.executable, str(API_DIR / "deep_api_run.py"), t, "--fresh"],
+            cwd=str(ROOT), timeout=PER_TICKER_TIMEOUT_S, capture_output=True, text=True)
+        out = (r.stdout or "") + (("\n[stderr]\n" + r.stderr) if r.stderr else "")
+        return t, ("ok" if r.returncode == 0 else "fail"), f"exit_{r.returncode}", \
+            round(time.time() - t0), out
+    except subprocess.TimeoutExpired as e:
+        out = e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        return t, "fail", "watchdog_timeout", round(time.time() - t0), out
+
+
+def _search_stats(t: str, since: float) -> dict:
+    """Search-tool tallies for the run dir(s) deep_api_run wrote for `t` after `since` (epoch):
+    tool_calls (all tools, from the per-sample snapshot header), searches (search_web calls
+    that returned), empty (searches whose result list was empty after low-trust filtering).
+    A failed search returns without being snapshotted, so tool_calls - snapshotted is the count
+    of calls that errored or were refused. Empty/failed searches rising under concurrency is
+    the throttle signal; a throttled SearXNG never raises."""
+    stats = {"tool_calls": 0, "snapshotted": 0, "searches": 0, "empty": 0, "samples": 0}
+    for d in (API_DIR / "deep_api").glob(f"{t}_*"):
+        try:
+            if d.stat().st_mtime < since:
+                continue
+        except OSError:
+            continue
+        for snap in d.glob("sample*_research*/_research_snapshot.json"):
+            try:
+                doc = json.loads(snap.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            stats["samples"] += 1
+            stats["tool_calls"] += int(doc.get("tool_calls") or 0)
+            calls = doc.get("calls") or []
+            stats["snapshotted"] += len(calls)
+            for c in calls:
+                if c.get("tool") == "search_web":
+                    stats["searches"] += 1
+                    if not c.get("n_results"):
+                        stats["empty"] += 1
+    return stats
+
+
 def _handback_state(state_dir: Path, delta: list, ts: str) -> str:
     """Hand this run's state back to rs2-state so the PC (sync_state.py) and the
     next cloud run both continue from it: ledger delta rows (append), the
@@ -191,6 +250,7 @@ def _handback_state(state_dir: Path, delta: list, ts: str) -> str:
 def main() -> int:
     dry = "--dry-run" in sys.argv
     max_tickers = int(os.environ.get("BACKSTOP_MAX_TICKERS", "6"))
+    concurrency = max(1, int(os.environ.get("BACKSTOP_CONCURRENCY", "3")))
     state_dir = Path(os.environ["RS2_STATE_DIR"]) if not dry else None
 
     import ops  # noqa: E402  (lazy: keeps unit tests hermetic)
@@ -243,33 +303,46 @@ def main() -> int:
         return 1 if err else 0
 
     # OFF-PEAK ONLY (operator, 2026-09-07): a ticker starts only if its whole
-    # worst-case runtime stays inside DeepSeek's off-peak window. The preflight
-    # checks the same thing at t=0; this re-check matters because 6 tickers can
-    # span 4.5h and GitHub's cron drift can land the job late in the window.
+    # worst-case runtime stays inside DeepSeek's off-peak window (_run_ticker
+    # checks at each start). The preflight checks the same thing at t=0; the
+    # re-check matters because a run can span hours and GitHub's cron drift can
+    # land the job late in the window. CONCURRENCY (operator, 2026-09-07): names
+    # are submitted in queue order to `concurrency` workers; state is written
+    # from this thread only, as each name completes.
     ran, failed, deferred = [], [], []
-    for i, t in enumerate(due):
-        if not run_window_ok(datetime.now(timezone.utc), PER_TICKER_TIMEOUT_S):
-            deferred = due[i:]
-            print(f"peak-rate window reached — {len(deferred)} ticker(s) deferred "
-                  f"to the next off-peak run: {deferred}")
-            break
-        try:
-            r = subprocess.run(
-                [sys.executable, str(API_DIR / "deep_api_run.py"), t, "--fresh"],
-                cwd=str(ROOT), timeout=PER_TICKER_TIMEOUT_S)
-            ok, why = r.returncode == 0, f"exit_{r.returncode}"
-        except subprocess.TimeoutExpired:
-            ok, why = False, "watchdog_timeout"
-        (ran if ok else failed).append(t)
-        # Same state record the PC writes (orchestrate_depth.main), so a name
-        # that fails here spends the SAME retry budget it would spend there.
-        rec = st.get(t) or {}
-        stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        st[t] = ({"ok": True, "finished_at": datetime.now().timestamp(), "date": stamp,
-                  "arm": "cloud_api"} if ok else
-                 {"ok": False, "why": why, "retries": rec.get("retries", 0) + 1,
-                  "date": stamp, "arm": "cloud_api"})
-        od.save_state(st)
+    search_tot = {"searches": 0, "empty": 0, "tool_calls": 0, "snapshotted": 0}
+    run_t0 = time.time()
+    print(f"running up to {concurrency} names concurrently")
+    with ThreadPoolExecutor(max_workers=min(concurrency, len(due))) as pool:
+        futs = {pool.submit(_run_ticker, t): t for t in due}
+        for fut in as_completed(futs):
+            t, status, why, secs, out = fut.result()
+            if status == "deferred":
+                deferred.append(t)
+                print(f"{t}: deferred — peak-rate window reached before it could start")
+                continue
+            print(f"\n===== {t}: {status} ({why}, {secs}s) =====\n{out.rstrip()}\n===== end {t} =====")
+            ok = status == "ok"
+            (ran if ok else failed).append(t)
+            stats = _search_stats(t, run_t0)
+            for k in search_tot:
+                search_tot[k] += stats[k]
+            print(f"{t}: research {stats['tool_calls']} tool calls over {stats['samples']} "
+                  f"samples | {stats['searches']} searches, {stats['empty']} empty, "
+                  f"{stats['tool_calls'] - stats['snapshotted']} unlogged/failed")
+            # Same state record the PC writes (orchestrate_depth.main), so a name
+            # that fails here spends the SAME retry budget it would spend there.
+            rec = st.get(t) or {}
+            stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            st[t] = ({"ok": True, "finished_at": datetime.now().timestamp(), "date": stamp,
+                      "arm": "cloud_api"} if ok else
+                     {"ok": False, "why": why, "retries": rec.get("retries", 0) + 1,
+                      "date": stamp, "arm": "cloud_api"})
+            od.save_state(st)
+    deferred.sort(key=due.index)
+    if deferred:
+        print(f"peak-rate window reached — {len(deferred)} ticker(s) deferred "
+              f"to the next off-peak run: {deferred}")
 
     if not ran:
         if deferred and not failed:
@@ -334,7 +407,10 @@ def main() -> int:
     ops.notify_telegram(
         f"depth cloud continuity: ran {ran}, failed {failed}, "
         + (f"deferred (peak window) {deferred}, " if deferred else "")
-        + f"push {'ok' if pushed else 'ABORTED (see prior alert)'}, "
+        + f"{round((time.time() - run_t0) / 60)} min at concurrency {concurrency}, "
+        f"searches {search_tot['searches']} ({search_tot['empty']} empty, "
+        f"{search_tot['tool_calls'] - search_tot['snapshotted']} failed), "
+        f"push {'ok' if pushed else 'ABORTED (see prior alert)'}, "
         f"{len(delta)} delta rows + membership/state to rs2-state"
         + ("" if not err else " (HANDBACK FAILED)"))
     return 0 if (pushed and not err) else 1
