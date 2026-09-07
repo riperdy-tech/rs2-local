@@ -2,15 +2,22 @@
 # Depth cloud backstop: keeps the depth overlay moving when the PC is off.
 # Primary = the PC's RS2-Depth-Orchestrator task. This fires only when the
 # overlay is >30h stale AND the PC heartbeat is >90min dead (or on force).
+#
+# OFF-PEAK ONLY (operator, 2026-09-07): DeepSeek bills double Mon-Fri 01:00-04:00
+# and 06:00-10:00 UTC (api_llm/deepseek_offpeak.py). The cron sits at the start
+# of the long off-peak stretch (10:00 UTC -> 01:00 UTC next day), so GitHub's
+# 0-9h cron drift still lands inside it. A peak-hour arrival skips in preflight,
+# and the driver stops starting tickers once the window would close. `force`
+# never bypasses this gate.
 name: Depth Cloud Backstop
 
 on:
   schedule:
-    - cron: "5 3 * * *"   # daily 03:05 UTC = 11:05 Taipei
+    - cron: "5 10 * * *"   # daily 10:05 UTC = 18:05 Taipei (off-peak opens 10:00 UTC)
   workflow_dispatch:
     inputs:
       force:
-        description: "Skip freshness + PC-alive gates"
+        description: "Skip freshness + PC-alive gates (never the off-peak gate)"
         type: boolean
         default: false
       max_tickers:
@@ -38,6 +45,9 @@ jobs:
       # step uses it to prove the rs2-state backup tracked the PC until its death
       hb_updated: ${{ steps.gate.outputs.hb_updated }}
     steps:
+      # Only for api_llm/deepseek_offpeak.py + the driver's timeout constant.
+      - uses: actions/checkout@v4
+
       - name: Gate on overlay freshness + PC heartbeat
         id: gate
         env:
@@ -49,8 +59,11 @@ jobs:
           FORCE: ${{ inputs.force }}
         run: |
           python3 - <<'EOF'
-          import json, os, urllib.request
+          import json, os, sys, urllib.request
           from datetime import datetime, timezone, timedelta
+          sys.path.insert(0, "api_llm")
+          from deepseek_offpeak import run_window_ok
+          from cloud_backstop import PER_TICKER_TIMEOUT_S
 
           def out(run, why, hb_updated=""):
               # single-line values only: strip whatever Supabase handed back
@@ -59,6 +72,13 @@ jobs:
                   f.write(f"run={'true' if run else 'false'}\n")
                   f.write(f"hb_updated={hb_updated}\n")
               print(f"backstop gate: {why}")
+
+          # Billing gate FIRST and unconditional: no ticker may start unless its
+          # whole worst-case runtime is off-peak. Force does not bypass this.
+          now = datetime.now(timezone.utc)
+          if not run_window_ok(now, PER_TICKER_TIMEOUT_S):
+              out(False, f"DeepSeek peak-rate window at {now:%a %H:%M} UTC — "
+                         "not running (off-peak only)"); raise SystemExit
 
           if os.environ.get("FORCE") == "true":
               # hb_updated stays empty: force bypasses the seed-rot check too

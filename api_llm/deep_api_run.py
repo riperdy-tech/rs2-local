@@ -85,7 +85,7 @@ CALL_TIMEOUT = 1800
 TRANSPORT_RETRIES = 3                   # 429 / transient 5xx only; not an analysis behaviour
 
 # Published prices per 1M tokens (api-docs.deepseek.com/quick_start/pricing, read 2026-08-24).
-# Off-peak is half of peak; peak is 01:00-04:00 and 06:00-10:00 UTC, Mon-Fri.
+# Off-peak is half of peak; the window itself lives in deepseek_offpeak.py (shared with the gate).
 PRICE = {"deepseek-v4-flash": {"hit": 0.014, "miss": 0.44, "out": 1.32},
          "deepseek-v4-pro": {"hit": 0.044, "miss": 1.32, "out": 3.96}}
 
@@ -116,8 +116,7 @@ def _rs2_framework():
     return _FRAMEWORK_CACHE
 
 
-def _off_peak(dt):
-    return not (dt.weekday() < 5 and (1 <= dt.hour < 4 or 6 <= dt.hour < 10))
+from deepseek_offpeak import off_peak as _off_peak  # noqa: E402  one window definition, shared with the backstop gate
 
 
 def _cost(usage, model, dt):

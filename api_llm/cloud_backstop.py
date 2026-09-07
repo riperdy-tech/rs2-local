@@ -27,6 +27,8 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from deepseek_offpeak import run_window_ok
+
 API_DIR = Path(__file__).resolve().parent
 ROOT = API_DIR.parent
 sys.path.insert(0, str(ROOT))
@@ -191,13 +193,27 @@ def main() -> int:
         return 0
     print(f"backstop running {len(due)} tickers: {due}")
 
-    ran, failed = [], []
-    for t in due:
+    # OFF-PEAK ONLY (operator, 2026-09-07): a ticker starts only if its whole
+    # worst-case runtime stays inside DeepSeek's off-peak window. The preflight
+    # checks the same thing at t=0; this re-check matters because 6 tickers can
+    # span 4.5h and GitHub's cron drift can land the job late in the window.
+    ran, failed, deferred = [], [], []
+    for i, t in enumerate(due):
+        if not run_window_ok(datetime.now(timezone.utc), PER_TICKER_TIMEOUT_S):
+            deferred = due[i:]
+            print(f"peak-rate window reached — {len(deferred)} ticker(s) deferred "
+                  f"to the next off-peak run: {deferred}")
+            break
         r = subprocess.run(
             [sys.executable, str(API_DIR / "deep_api_run.py"), t, "--fresh"],
             cwd=str(ROOT), timeout=PER_TICKER_TIMEOUT_S)
         (ran if r.returncode == 0 else failed).append(t)
 
+    if not ran and deferred and not failed:
+        # Nothing billed, nothing to publish: an expected outcome, not a failure.
+        ops.notify_telegram(f"depth backstop: peak-rate window — 0 run, "
+                            f"{len(deferred)} deferred ({deferred})")
+        return 0
     if not ran:
         ops.notify_telegram(f"depth backstop: all {len(failed)} runs failed "
                             f"({failed}) — nothing to publish")
@@ -271,7 +287,8 @@ def main() -> int:
 
     ops.notify_telegram(
         f"depth cloud backstop: ran {ran}, failed {failed}, "
-        f"push {'ok' if pushed else 'ABORTED (see prior alert)'}, "
+        + (f"deferred (peak window) {deferred}, " if deferred else "")
+        + f"push {'ok' if pushed else 'ABORTED (see prior alert)'}, "
         f"{len(delta)} delta rows to rs2-state"
         + ("" if delta_ok else " (DELTA DELIVERY FAILED)"))
     return 0 if (pushed and delta_ok) else 1

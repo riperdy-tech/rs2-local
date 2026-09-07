@@ -28,7 +28,8 @@ Supabase `ondemand_queue` and drain when the PC's Telegram-bot bridge returns.
    KIS 9:25/11:25/13:25/16:25/18:25 UTC weekdays); GitHub delivers crons
    0-9h late, so whichever arrival lands in-window does the job and the rest
    no-op (target-anchored freshness / synced-today dedupe / market gate).
-3. Depth: wait for the daily 03:05 UTC backstop, or press "⚠ Depth cloud
+3. Depth: wait for the daily 10:05 UTC backstop (DeepSeek OFF-PEAK ONLY — a
+   peak-hour arrival, Mon-Fri 01-04/06-10 UTC, skips; force cannot override), or press "⚠ Depth cloud
    backstop" (confirm dialog). ~$0.11 and ~21 min per name, max 6/run,
    degraded research (no local brief, stamped `arm: cloud_api`).
 4. On-demand /analyze: requests keep queueing on /ondemand and drain when the
