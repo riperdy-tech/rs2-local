@@ -313,6 +313,11 @@ jobs:
         env:
           RS2_STATE_DIR: ${{ github.workspace }}/rs2-state
           BACKSTOP_MAX_TICKERS: ${{ inputs.max_tickers || '6' }}
+          # Names analysed at once (operator 2026-09-07): 3 -> six names in ~45
+          # min instead of ~2h at the same cost. Kept at 3, not 6, because every
+          # search leaves the runner's ONE IP; the driver counts empty/failed
+          # searches per run so upstream throttling shows up in the log.
+          BACKSTOP_CONCURRENCY: "3"
           # generated_at is naive local time by convention (Taipei on the PC);
           # without this the cloud stamps naive UTC and every consumer reads the
           # overlay 8h older than it is.

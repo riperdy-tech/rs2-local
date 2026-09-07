@@ -219,3 +219,60 @@ def test_handback_reports_a_failed_push(tmp_path, monkeypatch):
     _git(clone, "remote", "set-url", "origin", str(tmp_path / "nowhere.git"))
     err = cloud_backstop._handback_state(clone, [], "ts")
     assert err.startswith("rs2-state 'pull --rebase' FAILED") or err.startswith("rs2-state 'push' FAILED")
+
+
+# ── concurrency (operator 2026-09-07: 3 names at a time) ──────────────────────
+
+def test_run_ticker_defers_at_start_when_window_closed(monkeypatch):
+    monkeypatch.setattr(cloud_backstop, "run_window_ok", lambda now, horizon: False)
+    def boom(*a, **k):
+        raise AssertionError("must not bill a name inside the peak window")
+    monkeypatch.setattr(cloud_backstop.subprocess, "run", boom)
+    t, status, why, secs, out = cloud_backstop._run_ticker("AAA")
+    assert (t, status) == ("AAA", "deferred") and out == ""
+
+
+def test_run_ticker_captures_output_and_exit(monkeypatch):
+    monkeypatch.setattr(cloud_backstop, "run_window_ok", lambda now, horizon: True)
+    seen = {}
+    def fake(cmd, **kw):
+        seen["cmd"], seen["kw"] = cmd, kw
+        return subprocess.CompletedProcess(cmd, 3, stdout="line1\nline2\n", stderr="warn\n")
+    monkeypatch.setattr(cloud_backstop.subprocess, "run", fake)
+    t, status, why, secs, out = cloud_backstop._run_ticker("BBB")
+    assert seen["cmd"][1:] == [str(cloud_backstop.API_DIR / "deep_api_run.py"), "BBB", "--fresh"]
+    assert seen["kw"]["capture_output"] and seen["kw"]["timeout"] == cloud_backstop.PER_TICKER_TIMEOUT_S
+    assert status == "fail" and why == "exit_3" and "line2" in out and "[stderr]" in out
+
+
+def test_run_ticker_watchdog_timeout(monkeypatch):
+    monkeypatch.setattr(cloud_backstop, "run_window_ok", lambda now, horizon: True)
+    def slow(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, kw["timeout"], output=b"partial")
+    monkeypatch.setattr(cloud_backstop.subprocess, "run", slow)
+    t, status, why, secs, out = cloud_backstop._run_ticker("CCC")
+    assert status == "fail" and why == "watchdog_timeout" and out == "partial"
+
+
+def test_search_stats_counts_searches_empty_and_unlogged(tmp_path, monkeypatch):
+    monkeypatch.setattr(cloud_backstop, "API_DIR", tmp_path)
+    d = tmp_path / "deep_api" / "DDD_20260907_180000"
+    for i, calls in enumerate(([{"tool": "search_web", "n_results": 5},
+                                {"tool": "search_web", "n_results": 0},
+                                {"tool": "fetch_page"}],
+                               [{"tool": "search_web", "n_results": 2}]), start=1):
+        sd = d / f"sample{i}_research"
+        sd.mkdir(parents=True)
+        # header tool_calls counts every call made; a FAILED search is never snapshotted
+        (sd / "_research_snapshot.json").write_text(
+            json.dumps({"tool_calls": len(calls) + 1, "calls": calls}), encoding="utf-8")
+    # an OLD run dir for the same ticker must be ignored
+    old = tmp_path / "deep_api" / "DDD_20260101_000000"
+    (old / "sample1_research").mkdir(parents=True)
+    (old / "sample1_research" / "_research_snapshot.json").write_text(
+        json.dumps({"tool_calls": 9, "calls": [{"tool": "search_web", "n_results": 0}] * 9}),
+        encoding="utf-8")
+    import os
+    os.utime(old, (1, 1))
+    st = cloud_backstop._search_stats("DDD", since=1000)
+    assert st == {"tool_calls": 6, "snapshotted": 4, "searches": 3, "empty": 1, "samples": 2}
