@@ -112,8 +112,10 @@ Within each class: research_now → watchlist → rest, then alphabetical.
 | Peak earnings week | ~112 → ~1.7-day lag, 1 week/year |
 
 Capacity is not the binding constraint; the single peak earnings week is, and it is tolerable.
-The cloud DeepSeek-V4-flash arm was used ONCE to fill the initial baseline (165/170) and is
-**parked** — it is not part of the steady cadence; it is optional pressure-relief for the peak week.
+The cloud DeepSeek-V4-flash arm was used ONCE to fill the initial baseline (165/170) and was
+**parked** as of this date — not part of the steady cadence, optional pressure-relief for the
+peak week. **Amended 2026-09-07 (§8):** it is now the *continuity arm* — it serves this same queue
+while the PC is off. It still adds no capacity while the PC is on.
 
 ---
 
@@ -128,3 +130,46 @@ The cloud DeepSeek-V4-flash arm was used ONCE to fill the initial baseline (165/
    which begins accumulating on the first scheduled run. They are dormant until 5/3/15 days of
    history exist. Retire (#9) is destructive and must be operator-reviewed before it is un-gated;
    it cannot fire for 15 days regardless.
+
+---
+
+## 8. Continuity arm (amendment, 2026-09-07)
+
+**Operator decision:** "I want DeepSeek AI to run the sweeps (the homework, per agreed schedule)
+even though my PC is off, so it ensures continuity." Measured cause: the PC was off 2026-09-02 →
+09-06, the cadence's trigger queue went unserved, and the old cloud backstop
+(`depth-cloud-backstop.yml`) instead ran an *oldest-verdict-first* sweep of never-analysed names —
+not this spec's queue, not its priority order, and without the entry dwell (#8).
+
+**Rule: the cloud serves THE SAME QUEUE.** §3 run criteria and §5 priority live in one pure
+function, `orchestrate_depth.build_queue()`, called by the PC sweep and by the cloud driver
+(`api_llm/cloud_backstop.py`) on the same inputs (ledger, `depth_state.json`, trigger map,
+membership log, held names, `factor_scores.json`). Nothing in this spec's *when* or *in what
+order* differs between the arms. What differs is *who* analyses and *how well*:
+
+| | PC arm (primary) | cloud continuity arm |
+|---|---|---|
+| runs when | PC on; RS2-Depth-Orchestrator every 4h | PC heartbeat dead >90 min; GitHub cron ladder 10:05/14:05/18:05/22:05 UTC (same 4h rhythm) |
+| model | local `rs2-analyst-deep-mtp5` (Ollama) | DeepSeek-V4-flash, **off-peak only** (`api_llm/deepseek_offpeak.py`; Mon–Fri 01–04 / 06–10 UTC never runs, `force` cannot override) |
+| queue | `build_queue()` | `build_queue()` — identical, first `BACKSTOP_MAX_TICKERS` (6) per run |
+| research | local brief + SearXNG + sec_facts | no local brief, CI SearXNG best-effort, no sec_facts (degraded by design) |
+| verdict stamp | `arm` absent (local) | `arm: cloud_api`, `published_by: publish_cloud_verdicts.py` |
+| local-verdict protection | n/a | **lifted** (`--allow-local-overwrite`): a trigger on a locally-analysed name is served, not left waiting. The local arm re-takes the name on its next trigger. Manual cloud publishes keep the protection. |
+| membership snapshot | one row per sweep-day | one row per sweep-day (same clock, `TZ=Asia/Taipei`) — the dwell clocks (§4) keep advancing |
+| state | `cache/` | seeded from `rs2-state`, handed back after each run: ledger delta (append), `depth_membership.jsonl`, `depth_state.json` (incl. the shared retry budget) |
+
+**Hand-back and merge (PC return).** `sync_state.py` imports the ledger delta (dedupe-append),
+merges membership rows by date (local row wins on the same date), and takes `depth_state.json`
+rows only where the cloud stamped them (`arm: cloud_api`) *and* they are newer than the local row.
+Nothing the PC recorded is ever overwritten by the cloud copy.
+
+**Interlocks unchanged:** ledger-seed non-empty, backup-rot check (last PC sync vs last heartbeat
+≤2h), overlay-count guard (rebuilt ≥ published), publish-time PC-alive re-check, fail-closed on an
+unreadable heartbeat. The old *overlay >30h stale* gate is removed: continuity means every missed
+4h tick is served, not only after the overlay has rotted.
+
+**What this does NOT change:** the PC is primary; the cloud runs zero names while the heartbeat is
+live. Rule #8 entry dwell is now enforced in `build_queue()` for both arms (this spec has listed it
+LIVE since 08-25; the PC code did not gate on it before this change — measured 2026-09-07: four
+one-day entrants ADI/BRC/HNGE/OKTA that the old code would have run are now held for the dwell).
+

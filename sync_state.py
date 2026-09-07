@@ -4,7 +4,8 @@ cloud-backstop ledger deltas back into the local ledger.
 cache/ is gitignored in rs2-local; losing it resets the whole depth queue.
 The cloud depth backstop (rs2-local .github/workflows/depth-cloud-backstop.yml)
 also needs this state to run while the PC is off, and hands its new verdict
-rows back via cloud_pending/depth_ledger_delta.jsonl.
+rows back via cloud_pending/depth_ledger_delta.jsonl, plus the membership rows
+and depth_state.json records it wrote (merged here, never blindly overwritten).
 """
 from __future__ import annotations
 
@@ -86,6 +87,40 @@ def _import_cloud_membership(repo_dir: Path) -> int:
     return len(new)
 
 
+def _import_cloud_state(repo_dir: Path) -> int:
+    """Merge per-ticker ok/fail records the cloud continuity arm wrote to depth_state.json.
+    Only rows the cloud itself stamped (arm == cloud_api) are candidates, and each replaces the
+    local row only if it is NEWER (the "date" stamp is "%Y-%m-%d %H:%M" on both arms, TZ pinned
+    to Taipei in the workflow, so string order is time order). Without this a name the PC failed
+    and the cloud then completed would keep its stale failed record and be re-run locally for
+    nothing; a name the cloud failed would not spend the shared retry budget. Returns rows taken."""
+    src = repo_dir / "cache" / "depth_state.json"
+    if not src.exists():
+        return 0
+    try:
+        theirs = json.loads(src.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return 0
+    local = CACHE / "depth_state.json"
+    try:
+        mine = json.loads(local.read_text(encoding="utf-8-sig"))
+    except Exception:
+        mine = {}
+    taken = 0
+    for t, rec in theirs.items():
+        if not isinstance(rec, dict) or rec.get("arm") != "cloud_api":
+            continue
+        if str(rec.get("date", "")) > str((mine.get(t) or {}).get("date", "")):
+            mine[t] = rec
+            taken += 1
+    if taken:
+        CACHE.mkdir(parents=True, exist_ok=True)
+        tmp = local.with_suffix(".tmp")
+        tmp.write_text(json.dumps(mine, indent=1), encoding="utf-8")
+        tmp.replace(local)
+    return taken
+
+
 def main(repo_dir: Path | None = None) -> str:
     repo = Path(repo_dir) if repo_dir else STATE_REPO
     if not (repo / ".git").exists():
@@ -106,6 +141,7 @@ def main(repo_dir: Path | None = None) -> str:
 
     imported = _import_cloud_delta(repo)
     imported_mem = _import_cloud_membership(repo)
+    imported_st = _import_cloud_state(repo)
 
     (repo / "cache").mkdir(exist_ok=True)
     for name in STATE_FILES:
@@ -137,6 +173,8 @@ def main(repo_dir: Path | None = None) -> str:
         msg += f", import {imported} cloud rows"
     if imported_mem:
         msg += f", merge {imported_mem} cloud membership day(s)"
+    if imported_st:
+        msg += f", take {imported_st} cloud state row(s)"
     return msg
 
 

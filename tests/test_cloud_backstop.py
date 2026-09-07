@@ -1,3 +1,5 @@
+import json
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,29 +15,7 @@ def _row(minutes_ago: float, suffix: str = "+00:00"):
     return [{"updated_at": ts.isoformat().replace("+00:00", suffix)}]
 
 
-def test_newest_dates_takes_max():
-    rows = [
-        {"ticker": "AAA", "date": "2026-08-01"},
-        {"ticker": "AAA", "date": "2026-08-20"},
-        {"ticker": "BBB", "date": "2026-07-15"},
-    ]
-    assert cloud_backstop.newest_dates(rows) == {"AAA": "2026-08-20", "BBB": "2026-07-15"}
 
-
-def test_select_due_oldest_first_never_ledgered_wins():
-    book = {"AAA", "BBB", "CCC", "DDD"}
-    rows = [
-        {"ticker": "AAA", "date": "2026-08-20"},
-        {"ticker": "BBB", "date": "2026-06-01"},
-        {"ticker": "CCC", "date": "2026-07-01"},
-    ]
-    # DDD has no verdict at all -> first; then oldest dates ascending
-    assert cloud_backstop.select_due(book, rows, 3) == ["DDD", "BBB", "CCC"]
-
-
-def test_select_due_respects_n():
-    book = {"AAA", "BBB"}
-    assert len(cloud_backstop.select_due(book, [], 1)) == 1
 
 
 def test_compute_delta_only_new_lines():
@@ -43,17 +23,6 @@ def test_compute_delta_only_new_lines():
     after = ['{"run": 1}', '{"run": 2}', '{"run": 3}']
     assert cloud_backstop.compute_delta(before, after) == ['{"run": 3}']
 
-
-def test_publishable_book_drops_protected_local():
-    book = {"AAA", "BBB", "CCC", "DDD"}
-    rows = [
-        {"ticker": "AAA", "date": "2026-08-01", "arm": "cloud_api"},
-        {"ticker": "AAA", "date": "2026-08-20"},                      # newest local
-        {"ticker": "BBB", "date": "2026-06-01", "arm": "cloud_api"},  # newest cloud
-        {"ticker": "CCC", "date": "2026-07-01"},                      # local only
-    ]
-    # AAA/CCC protected (newest row local), BBB publishable, DDD never ledgered
-    assert cloud_backstop.publishable_book(book, rows) == {"BBB", "DDD"}
 
 
 def test_overlay_count_fail_closed(tmp_path):
@@ -162,3 +131,91 @@ def test_run_window_new_cron_survives_nine_hours_of_drift():
         assert run_window_ok(_utc(2026, 9, 3, 10, 5) + timedelta(hours=drift_h), 2700)
     # and a full 6-ticker worst case (6 x 45 min) fits even from the latest arrival
     assert run_window_ok(_utc(2026, 9, 3, 19, 5), 6 * 2700)
+
+
+def test_ladder_every_arrival_fits_one_ticker_and_the_last_rung_defers_into_peak():
+    # cron 10:05/14:05/18:05/22:05 UTC, weekday (2026-09-03 Thu)
+    for hh in (10, 14, 18, 22):
+        assert run_window_ok(_utc(2026, 9, 3, hh, 5), 2700)
+    # 22:05 + 6 x 45 min would end 02:35 — crosses the 01:00 peak: the driver's per-ticker
+    # re-check defers the tail. Ticker 3 starts 23:35 and ends 00:20 (ok); ticker 4 would start
+    # 00:20 and end 01:05, inside the peak -> the first one refused.
+    assert run_window_ok(_utc(2026, 9, 3, 22, 5) + timedelta(seconds=2 * 2700), 2700)
+    assert not run_window_ok(_utc(2026, 9, 3, 22, 5) + timedelta(seconds=3 * 2700), 2700)
+    # a 22:05 rung drifted 3h lands at 01:05 = peak -> preflight skips (no billing)
+    assert not run_window_ok(_utc(2026, 9, 4, 1, 5), 2700)
+
+
+# ── state handback to rs2-state (continuity: PC + next cloud run continue from it) ──
+
+def _git(repo, *args):
+    return subprocess.run(["git", "-C", str(repo), *args], check=True,
+                          capture_output=True, text=True).stdout
+
+
+def _state_repo(tmp_path):
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "--bare", str(origin)], check=True, capture_output=True)
+    clone = tmp_path / "rs2-state"
+    subprocess.run(["git", "clone", str(origin), str(clone)], check=True, capture_output=True)
+    _git(clone, "config", "user.email", "t@t")
+    _git(clone, "config", "user.name", "t")
+    _git(clone, "commit", "--allow-empty", "-m", "init")
+    _git(clone, "push", "-u", "origin", "HEAD")
+    return clone
+
+
+def _local_state(tmp_path, monkeypatch, membership, state):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "depth_membership.jsonl").write_text(membership, encoding="utf-8")
+    (cache / "depth_state.json").write_text(json.dumps(state), encoding="utf-8")
+    monkeypatch.setattr(cloud_backstop, "MEMBERSHIP", cache / "depth_membership.jsonl")
+    monkeypatch.setattr(cloud_backstop, "STATE", cache / "depth_state.json")
+
+
+def test_handback_pushes_delta_membership_and_state(tmp_path, monkeypatch):
+    clone = _state_repo(tmp_path)
+    mem = '{"date": "2026-09-06", "in": ["AAA"]}\n{"date": "2026-09-07", "in": ["AAA", "BBB"]}\n'
+    st = {"AAA": {"ok": True, "date": "2026-09-07 18:30", "arm": "cloud_api"}}
+    _local_state(tmp_path, monkeypatch, mem, st)
+    err = cloud_backstop._handback_state(clone, ['{"ticker": "AAA", "arm": "cloud_api"}'],
+                                         "2026-09-07 10:30:00Z")
+    assert err == ""
+    # everything reached the REMOTE, not just the working tree
+    def show(f):
+        return _git(clone, "show", f"@{{u}}:{f}")
+    assert show("cloud_pending/depth_ledger_delta.jsonl") == '{"ticker": "AAA", "arm": "cloud_api"}\n'
+    assert show("cache/depth_membership.jsonl") == mem
+    assert json.loads(show("cache/depth_state.json")) == st
+    assert "cloud continuity 2026-09-07 10:30:00Z" in _git(clone, "log", "--oneline")
+
+
+def test_handback_appends_to_an_existing_delta(tmp_path, monkeypatch):
+    clone = _state_repo(tmp_path)
+    (clone / "cloud_pending").mkdir()
+    (clone / "cloud_pending" / "depth_ledger_delta.jsonl").write_text('{"r": 1}\n', encoding="utf-8")
+    _git(clone, "add", "-A"); _git(clone, "commit", "-m", "prior cloud run"); _git(clone, "push")
+    _local_state(tmp_path, monkeypatch, "", {})
+    assert cloud_backstop._handback_state(clone, ['{"r": 2}'], "ts") == ""
+    assert _git(clone, "show", "@{u}:cloud_pending/depth_ledger_delta.jsonl") == '{"r": 1}\n{"r": 2}\n'
+
+
+def test_handback_no_change_makes_no_commit(tmp_path, monkeypatch):
+    clone = _state_repo(tmp_path)
+    (clone / "cache").mkdir()
+    (clone / "cache" / "depth_membership.jsonl").write_text("same\n", encoding="utf-8")
+    (clone / "cache" / "depth_state.json").write_text("{}", encoding="utf-8")
+    _git(clone, "add", "-A"); _git(clone, "commit", "-m", "seed"); _git(clone, "push")
+    _local_state(tmp_path, monkeypatch, "same\n", {})
+    before = _git(clone, "rev-parse", "HEAD")
+    assert cloud_backstop._handback_state(clone, [], "ts") == ""
+    assert _git(clone, "rev-parse", "HEAD") == before
+
+
+def test_handback_reports_a_failed_push(tmp_path, monkeypatch):
+    clone = _state_repo(tmp_path)
+    _local_state(tmp_path, monkeypatch, "row\n", {})
+    _git(clone, "remote", "set-url", "origin", str(tmp_path / "nowhere.git"))
+    err = cloud_backstop._handback_state(clone, [], "ts")
+    assert err.startswith("rs2-state 'pull --rebase' FAILED") or err.startswith("rs2-state 'push' FAILED")
