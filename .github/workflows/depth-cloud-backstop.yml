@@ -1,16 +1,25 @@
 # .github/workflows/depth-cloud-backstop.yml
-# Depth cloud backstop: keeps the depth overlay moving when the PC is off.
-# Primary = the PC's RS2-Depth-Orchestrator task. This fires only when the
-# overlay is >30h stale AND the PC heartbeat is >90min dead (or on force).
+# Depth cloud CONTINUITY arm: serves the PC's depth queue while the PC is off.
+# Primary = the PC's RS2-Depth-Orchestrator task (every 4h). This fires on the
+# same 4h rhythm and runs only when the PC heartbeat is >90min dead (or on
+# force); the driver (api_llm/cloud_backstop.py) then computes the SAME queue
+# the PC would (orchestrate_depth.build_queue, DEPTH_ORCHESTRATOR_CADENCE
+# _20260825.md §3/§5) and serves its head. Operator decision 2026-09-07.
+#
+# OFF-PEAK ONLY (operator, 2026-09-07): DeepSeek bills double Mon-Fri 01:00-04:00
+# and 06:00-10:00 UTC (api_llm/deepseek_offpeak.py). The ladder covers the long
+# off-peak stretch (10:00 UTC -> 01:00 UTC next day); a peak-hour arrival (cron
+# drift can be 0-9h) skips in preflight, and the driver stops starting tickers
+# once the window would close. `force` never bypasses this gate.
 name: Depth Cloud Backstop
 
 on:
   schedule:
-    - cron: "5 3 * * *"   # daily 03:05 UTC = 11:05 Taipei
+    - cron: "5 10,14,18,22 * * *"   # 4h ladder inside off-peak (18:05/22:05/02:05/06:05 Taipei)
   workflow_dispatch:
     inputs:
       force:
-        description: "Skip freshness + PC-alive gates"
+        description: "Skip the PC-alive gate (never the off-peak gate)"
         type: boolean
         default: false
       max_tickers:
@@ -38,19 +47,24 @@ jobs:
       # step uses it to prove the rs2-state backup tracked the PC until its death
       hb_updated: ${{ steps.gate.outputs.hb_updated }}
     steps:
-      - name: Gate on overlay freshness + PC heartbeat
+      # Only for api_llm/deepseek_offpeak.py + the driver's timeout constant.
+      - uses: actions/checkout@v4
+
+      - name: Gate on off-peak window + PC heartbeat
         id: gate
         env:
           SB_URL: ${{ secrets.RS2_SUPABASE_URL }}
           SB_KEY: ${{ secrets.RS2_SUPABASE_SERVICE_KEY }}
           TG_TOKEN: ${{ secrets.RS2_TG_BOT_TOKEN }}
           TG_CHAT: ${{ secrets.RS2_TG_CHAT_ID }}
-          GH_RAW_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
           FORCE: ${{ inputs.force }}
         run: |
           python3 - <<'EOF'
-          import json, os, urllib.request
-          from datetime import datetime, timezone, timedelta
+          import json, os, sys, urllib.request
+          from datetime import datetime, timezone
+          sys.path.insert(0, "api_llm")
+          from deepseek_offpeak import run_window_ok
+          from cloud_backstop import PER_TICKER_TIMEOUT_S
 
           def out(run, why, hb_updated=""):
               # single-line values only: strip whatever Supabase handed back
@@ -60,26 +74,20 @@ jobs:
                   f.write(f"hb_updated={hb_updated}\n")
               print(f"backstop gate: {why}")
 
+          # Billing gate FIRST and unconditional: no ticker may start unless its
+          # whole worst-case runtime is off-peak. Force does not bypass this.
+          now = datetime.now(timezone.utc)
+          if not run_window_ok(now, PER_TICKER_TIMEOUT_S):
+              out(False, f"DeepSeek peak-rate window at {now:%a %H:%M} UTC — "
+                         "not running (off-peak only)"); raise SystemExit
+
           if os.environ.get("FORCE") == "true":
               # hb_updated stays empty: force bypasses the seed-rot check too
               out(True, "forced by operator"); raise SystemExit
 
-          overlay_h = 9999.0  # fail-open, same policy as the SDF preflight
-          try:
-              # PRIVATE repo: raw fetch needs the PAT header or it 404s and
-              # the gate would silently degrade to heartbeat-only.
-              raw = ("https://raw.githubusercontent.com/riperdy-tech/"
-                     "stock-screener/main/public/data/depth_overlay.json")
-              req = urllib.request.Request(raw, headers={
-                  "Authorization": "Bearer " + os.environ["GH_RAW_TOKEN"]})
-              with urllib.request.urlopen(req, timeout=30) as r:
-                  gen = json.load(r)["generated_at"]
-              # generated_at is NAIVE Taipei local time (+08:00), no suffix
-              ts = datetime.fromisoformat(gen).replace(
-                  tzinfo=timezone(timedelta(hours=8)))
-              overlay_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
-          except Exception as e:
-              print(f"overlay read failed ({e}) -> treating as stale")
+          # No overlay-freshness gate any more: continuity means the queue is
+          # served on every 4h tick the PC misses, not only once the overlay
+          # has gone >30h stale. The driver runs nothing when nothing is due.
 
           # FAIL CLOSED on heartbeat READ failure: this gate is the only
           # cloud-side interlock against a concurrently-publishing PC (the
@@ -103,8 +111,7 @@ jobs:
           except Exception as e:
               print(f"heartbeat read FAILED ({e})")
 
-          print(f"gate inputs: overlay_h={overlay_h:.1f} hb_min={hb_min:.0f} "
-                f"hb_read_ok={hb_read_ok}")
+          print(f"gate inputs: hb_min={hb_min:.0f} hb_read_ok={hb_read_ok}")
 
           if not hb_read_ok:
               out(False, "heartbeat UNREADABLE — interlock blind, refusing to "
@@ -124,26 +131,10 @@ jobs:
                   print(f"alert send failed: {alert_err}")
               raise SystemExit
 
-          if overlay_h <= 30:
-              out(False, f"overlay fresh ({overlay_h:.1f}h)", hb_raw); raise SystemExit
           if hb_min <= 90:
-              out(False, f"overlay stale ({overlay_h:.1f}h) but PC alive "
-                         f"({hb_min:.0f}m) — alerting, not running", hb_raw)
-              try:
-                  tok = os.environ.get("TG_TOKEN"); chat = os.environ.get("TG_CHAT")
-                  if tok and chat:
-                      body = json.dumps({"chat_id": chat, "text":
-                          f"[control-tower] depth overlay stale {overlay_h:.1f}h "
-                          "but the PC heartbeat is LIVE — check the orchestrator "
-                          "locally (status.py). Cloud backstop NOT run."}).encode()
-                      urllib.request.urlopen(urllib.request.Request(
-                          f"https://api.telegram.org/bot{tok}/sendMessage",
-                          data=body, headers={"Content-Type": "application/json"}),
-                          timeout=15)
-              except Exception as alert_err:
-                  print(f"alert send failed: {alert_err}")
-              raise SystemExit
-          out(True, f"overlay {overlay_h:.1f}h stale, PC dead {hb_min:.0f}m", hb_raw)
+              out(False, f"PC alive ({hb_min:.0f}m) — its own sweep serves the queue",
+                  hb_raw); raise SystemExit
+          out(True, f"PC dead {hb_min:.0f}m — cloud serves the depth queue", hb_raw)
           EOF
 
       # A crashed gate is a SILENT backstop outage: no run, and none of the
@@ -262,6 +253,13 @@ jobs:
           fi
           cp ../rs2-state/cache/depth_ondemand_ledger.jsonl cache/ 2>/dev/null || true
           cp ../rs2-state/cache/depth_ondemand.jsonl cache/ 2>/dev/null || true
+          # The queue is computed from the PC's state: the membership log drives
+          # the dwell clocks (entry dwell, re-entry, exit-review) and
+          # depth_state.json carries the per-ticker retry budget. Both are
+          # handed back at the end of the run, so consecutive cloud days chain.
+          # Missing = dormant dwell / empty state, exactly as on a fresh PC.
+          cp ../rs2-state/cache/depth_membership.jsonl cache/ 2>/dev/null || true
+          cp ../rs2-state/cache/depth_state.json cache/ 2>/dev/null || true
 
       - name: Point config at runner paths
         working-directory: rs2-local
@@ -310,7 +308,7 @@ jobs:
           sleep 15
           curl -s -o /dev/null -w "searxng probe: %{http_code}\n" "http://localhost:8888/search?q=test&format=json" || true
 
-      - name: Run backstop driver
+      - name: Run continuity driver
         working-directory: rs2-local
         env:
           RS2_STATE_DIR: ${{ github.workspace }}/rs2-state

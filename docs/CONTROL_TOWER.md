@@ -11,9 +11,11 @@ buttons either dispatch whitelisted workflows (GH_PAT) or enqueue PC commands
 in Supabase `control_commands`, which the agent executes within ~5 min. When
 the PC is off: SDF falls back to the GitHub cron backstop (existing,
 freshness-gated), and the depth sweep falls back to
-`depth-cloud-backstop.yml` in rs2-local (DeepSeek arm, state seeded from
-rs2-state, gated on overlay >30h stale AND heartbeat >90 min dead, fail-closed
-when the heartbeat is unreadable). On-demand `/analyze` requests queue in
+`depth-cloud-backstop.yml` in rs2-local — the CONTINUITY arm: DeepSeek serves
+the SAME trigger queue the PC would (`orchestrate_depth.build_queue`, cadence
+spec §8), state seeded from rs2-state and handed back, 4h ladder, gated on
+heartbeat >90 min dead, off-peak only, fail-closed when the heartbeat is
+unreadable. On-demand `/analyze` requests queue in
 Supabase `ondemand_queue` and drain when the PC's Telegram-bot bridge returns.
 
 ## PC-off playbook (PC won't power on)
@@ -28,9 +30,13 @@ Supabase `ondemand_queue` and drain when the PC's Telegram-bot bridge returns.
    KIS 9:25/11:25/13:25/16:25/18:25 UTC weekdays); GitHub delivers crons
    0-9h late, so whichever arrival lands in-window does the job and the rest
    no-op (target-anchored freshness / synced-today dedupe / market gate).
-3. Depth: wait for the daily 03:05 UTC backstop, or press "⚠ Depth cloud
-   backstop" (confirm dialog). ~$0.11 and ~21 min per name, max 6/run,
-   degraded research (no local brief, stamped `arm: cloud_api`).
+3. Depth: nothing to do — the continuity ladder (10:05/14:05/18:05/22:05 UTC,
+   DeepSeek OFF-PEAK ONLY: a peak-hour arrival, Mon-Fri 01-04/06-10 UTC,
+   skips and force cannot override) serves the PC's own trigger queue in the
+   PC's own priority order, max 6 names per run, ~$0.11 and ~21 min per name.
+   "⚠ Depth cloud backstop" (confirm dialog) runs one such pass now. Cloud
+   verdicts are degraded research (no local brief, stamped `arm: cloud_api`)
+   and MAY replace a local verdict when its trigger fires while the PC is off.
 4. On-demand /analyze: requests keep queueing on /ondemand and drain when the
    PC returns. The Telegram bot is down too; alerts still arrive from cloud
    workflows.
@@ -42,8 +48,12 @@ Supabase `ondemand_queue` and drain when the PC's Telegram-bot bridge returns.
    counts as "off" to the tower). Agent resumes within 5 min; card goes green.
 2. The next agent pass (or `python sync_state.py`) imports any cloud
    `cloud_pending/depth_ledger_delta.jsonl` rows into the local ledger and
-   truncates the delta. Verify: tail `cache\depth_ledger.jsonl` for
-   `"arm": "cloud_api"`.
+   truncates the delta, merges the cloud's membership days into
+   `cache\depth_membership.jsonl` (local row wins on a shared date) and takes
+   the cloud's newer `depth_state.json` records (retry budget). Verify: tail
+   `cache\depth_ledger.jsonl` for `"arm": "cloud_api"`; the sync message
+   reads `import N cloud rows, merge N cloud membership day(s), take N cloud
+   state row(s)`.
 3. Nothing else to reconcile: cloud verdicts return to the local arm on the
    usual triggers (8-K, filings, 8% move, pack revision, 90d rotation).
 
@@ -71,6 +81,9 @@ PC depth pause/run:  create/delete cache\DEPTH_PAUSED, or schtasks /run /tn RS2-
 - **Backstop refuses to run when the heartbeat is unreadable** (Supabase
   outage): it Telegram-alerts and waits. If the PC is truly dead too, dispatch
   with `force=true`.
+- **The cloud arm shares the PC's retry budget:** `depth_state.json` is seeded
+  from and handed back to rs2-state, so a name DeepSeek fails twice is skipped
+  by the PC too until its record is cleared (same `MAX_RETRIES=2` rule).
 - One operator account (riperdy-tech) is the only admin; sessions last 30
   days; rotating `ADMIN_GITHUB_LOGIN` or `ADMIN_SESSION_SECRET` in Vercel
   revokes them.
