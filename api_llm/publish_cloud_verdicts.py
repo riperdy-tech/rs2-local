@@ -45,10 +45,15 @@ _STDOUT_KEEPALIVE = [sys.stdout]
 import orchestrate_depth as od     # noqa: E402  rebuild_overlay, publish_overlay, LEDGER, SD
 
 DEEP_API = HERE / "deep_api"
-# Only the arm that was actually validated at scale. deepseek-v4-pro was run on ONE ticker as a
-# cost/quality probe; flash is the model measured over 28 names against the local arm and against
-# itself. A one-ticker probe does not belong in the book.
-PUBLISHABLE_MODEL = "deepseek-v4-flash"
+# The id the cloud arm currently runs (deep_api_run.MODEL). Runs stamped with anything else are
+# held back - that is what kept a one-ticker deepseek-v4-pro cost probe out of the book, and it
+# must be moved in step with MODEL or the arm bills and publishes nothing.
+#
+# This is NOT the validation claim the deepseek-v4-flash pin carried. That model was measured over
+# 28 names against the local arm (DEEPSEEK_V4_FLASH_AB_20260824.md). deepseek-flash (V4.1 Flash)
+# has NOT been through that A/B; DeepSeek's "surpasses V4 Pro" is a vendor benchmark, not a
+# measurement against RS2 bands. Operator decision 2026-09-10: publish now, A/B afterwards.
+PUBLISHABLE_MODEL = "deepseek-flash"
 # A pack with NO SECTION 11 at all is a different animal from one with a stale brief: the model
 # analysed the name with no web research behind it beyond its own tool calls. Held back from the
 # book by default; --include-no-brief overrides.
