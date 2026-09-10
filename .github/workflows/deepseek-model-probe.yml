@@ -1,12 +1,7 @@
-# TEMPORARY probe — delete once the V4.1 Flash model id and prices are recorded.
-# The dev container cannot answer either question: api.deepseek.com and
-# api-docs.deepseek.com are both denied at CONNECT by the egress proxy, and the
-# key lives only in .secrets.json (PC) and in this repo's RS2_LLM_API_KEY secret.
-# A GitHub-hosted runner has both. Reads only:
-#   GET /v1/models   — enumerates the ids the key can actually address. No
-#                      completion is requested, so nothing is billed and the
-#                      off-peak interlock (deepseek_offpeak.py) is not engaged.
-#   the pricing page — primary source for the per-1M rates PRICE[] must carry.
+# TEMPORARY probe — delete once the flash model id and prices are recorded.
+# The dev container cannot answer these: api.deepseek.com and api-docs.deepseek.com
+# are both denied at CONNECT by the egress proxy, and the key lives only in
+# .secrets.json (PC) and in this repo's RS2_LLM_API_KEY secret. A runner has both.
 # Never echoes the key.
 name: DeepSeek model probe
 
@@ -22,29 +17,71 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - name: List the model ids this key can address
+      - uses: actions/checkout@v4        # only for api_llm/deepseek_offpeak.py
+
+      - name: Full /v1/models payload
         env:
           LLM: ${{ secrets.RS2_LLM_API_KEY }}
         run: |
           if [ -z "$LLM" ]; then echo "RS2_LLM_API_KEY is empty"; exit 1; fi
-          code=$(curl -sS -o /tmp/models.json -w '%{http_code}' --max-time 60 \
-                 -H "Authorization: Bearer $LLM" https://api.deepseek.com/v1/models)
-          echo "HTTP $code"
-          echo "--- model ids ---"
-          python3 -c "import json;d=json.load(open('/tmp/models.json'));[print(m['id']) for m in d.get('data',[])]" \
-            || cat /tmp/models.json
+          curl -sS --max-time 60 -H "Authorization: Bearer $LLM" \
+               https://api.deepseek.com/v1/models -o /tmp/models.json
+          python3 -m json.tool /tmp/models.json || cat /tmp/models.json
 
-      - name: Published prices per 1M tokens
+      - name: Models & Pricing page
         run: |
-          curl -sS --max-time 60 https://api-docs.deepseek.com/quick_start/pricing \
-            -o /tmp/pricing.html
-          python3 - <<'EOF'
+          for u in https://api-docs.deepseek.com/quick_start/pricing_details \
+                   https://api-docs.deepseek.com/quick_start/models_and_pricing \
+                   https://api-docs.deepseek.com/quick_start/pricing ; do
+            echo "===== $u ====="
+            curl -sSL --max-time 60 "$u" -o /tmp/p.html || { echo "fetch failed"; continue; }
+            python3 - <<'EOF'
           import html, re
-          t = open('/tmp/pricing.html', encoding='utf-8', errors='replace').read()
-          t = re.sub(r'(?is)<(script|style|svg).*?</\1>', ' ', t)
+          t = open('/tmp/p.html', encoding='utf-8', errors='replace').read()
+          t = re.sub(r'(?is)<(script|style|svg|nav|footer).*?</\1>', ' ', t)
           t = html.unescape(re.sub(r'(?s)<[^>]+>', '\n', t))
           keep = [l.strip() for l in t.splitlines() if l.strip()]
-          print('\n'.join(keep))
+          # the pricing table is the interesting part: keep the title + anything
+          # naming a model or carrying a number
+          print(keep[0] if keep else '(empty)')
+          for l in keep:
+              if re.search(r'deepseek-|\d', l) and len(l) < 200:
+                  print(l)
+          EOF
+          done
+
+      - name: Which flash ids actually answer (off-peak gated, ~1 token each)
+        env:
+          LLM: ${{ secrets.RS2_LLM_API_KEY }}
+        run: |
+          python3 - <<'EOF'
+          import json, sys, urllib.request, urllib.error, os
+          from datetime import datetime, timezone
+          sys.path.insert(0, "api_llm")
+          from deepseek_offpeak import off_peak       # the arm's own interlock
+
+          now = datetime.now(timezone.utc)
+          if not off_peak(now):
+              print(f"peak window at {now:%a %H:%M} UTC - not spending; rerun off-peak")
+              raise SystemExit(0)
+
+          key = os.environ["LLM"]
+          for model in ("deepseek-flash", "deepseek-v4-flash", "deepseek-v4.1-flash"):
+              body = json.dumps({"model": model, "max_tokens": 1,
+                                 "messages": [{"role": "user", "content": "hi"}]}).encode()
+              req = urllib.request.Request(
+                  "https://api.deepseek.com/v1/chat/completions", data=body,
+                  headers={"Content-Type": "application/json",
+                           "Authorization": "Bearer " + key})
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as r:
+                      d = json.load(r)
+                  print(f"{model:24} OK   served_model={d.get('model')!r} "
+                        f"usage={d.get('usage')}")
+              except urllib.error.HTTPError as e:
+                  print(f"{model:24} HTTP {e.code}  {e.read().decode('utf-8','replace')[:200]}")
+              except Exception as e:
+                  print(f"{model:24} ERR  {e}")
           EOF
