@@ -280,9 +280,13 @@ def main():
     if "--model" in sys.argv:
         global MODEL
         MODEL = sys.argv[sys.argv.index("--model") + 1]
-        if MODEL not in PRICE:
-            print(f"[deep-api] WARNING: no published price for '{MODEL}' - spend will read $0.00",
-                  flush=True)
+    # An unpriced model makes _cost return None, and the caller's `or 0.0` then books the whole
+    # run at $0.00 with no error. This checks the DEFAULT MODEL too, not just --model: a vendor
+    # id change is exactly how an unpriced model gets here. Refuse rather than record a spend
+    # figure that is false by construction.
+    if MODEL not in PRICE:
+        sys.exit(f"no published price for '{MODEL}' - add its peak $/1M to PRICE (off-peak is "
+                 f"halved in _cost) before running. Priced: {', '.join(sorted(PRICE))}")
     src, local, brief_age, searx = None, {}, _brief_age_days(t), None
 
     if fresh:
