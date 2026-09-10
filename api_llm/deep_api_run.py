@@ -79,15 +79,24 @@ import capability_test as cap        # noqa: E402  build_pack, TASK, PACK_REVISI
 CFG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
 LOCAL_CONSENSUS = ROOT / "ab_reports" / "consensus"     # read-only source of frozen packs
 OUT = HERE / "deep_api"                                 # this arm's only write target
-MODEL = "deepseek-v4-flash"     # --model overrides; pro is the same API shape at 3x the price
+MODEL = "deepseek-flash"        # --model overrides; the id is unversioned and tracks the latest
 MAX_TOKENS = cv.NUM_PREDICT             # 65536, same output budget as local
 CALL_TIMEOUT = 1800
 TRANSPORT_RETRIES = 3                   # 429 / transient 5xx only; not an analysis behaviour
 
-# Published prices per 1M tokens (api-docs.deepseek.com/quick_start/pricing, read 2026-08-24).
-# Off-peak is half of peak; the window itself lives in deepseek_offpeak.py (shared with the gate).
-PRICE = {"deepseek-v4-flash": {"hit": 0.014, "miss": 0.44, "out": 1.32},
-         "deepseek-v4-pro": {"hit": 0.044, "miss": 1.32, "out": 3.96}}
+# PEAK prices per 1M tokens; _cost halves them off-peak, and the window itself lives in
+# deepseek_offpeak.py (shared with the gate). Source: DeepSeek's V4.1 Flash billing notice to API
+# users, effective 04:00 UTC 2026-09-10, which quotes both columns - peak here halves to exactly
+# its off-peak column ($0.003 / $0.15 / $0.60). Its peak hours (Mon-Fri 01-04, 06-10 UTC) are the
+# ones PEAK_HOURS_UTC already encodes, so that definition needed no change.
+#
+# deepseek-v4-pro is priced AT THE FLASH RATE, not its old one: the same notice routes every Pro
+# request to V4.1 Flash and bills it at Flash's price until V4.1 Pro ships. deepseek-v4-flash is
+# retired - GET /v1/models no longer lists it (measured 2026-09-10) - and is kept only so the cost
+# of an already-published run can still be reconstructed.
+PRICE = {"deepseek-flash": {"hit": 0.006, "miss": 0.30, "out": 1.20},
+         "deepseek-v4-pro": {"hit": 0.006, "miss": 0.30, "out": 1.20},
+         "deepseek-v4-flash": {"hit": 0.014, "miss": 0.44, "out": 1.32}}   # retired 2026-09-10
 
 # The RS2 analytical framework. The LOCAL tier gets it for free: it is baked into the
 # rs2-analyst-deep Modelfile's SYSTEM block, so every local sample is written under it. The
