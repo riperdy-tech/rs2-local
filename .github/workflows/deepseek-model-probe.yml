@@ -1,8 +1,7 @@
-# TEMPORARY probe — delete once the flash model id and prices are recorded.
-# The dev container cannot answer these: api.deepseek.com and api-docs.deepseek.com
-# are both denied at CONNECT by the egress proxy, and the key lives only in
-# .secrets.json (PC) and in this repo's RS2_LLM_API_KEY secret. A runner has both.
-# Never echoes the key.
+# TEMPORARY probe — delete once the flash model id is confirmed.
+# The dev container cannot answer this: api.deepseek.com is denied at CONNECT by
+# the egress proxy, and the key lives only in .secrets.json (PC) and in this
+# repo's RS2_LLM_API_KEY secret. A runner has both. Never echoes the key.
 name: DeepSeek model probe
 
 on:
@@ -21,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4        # only for api_llm/deepseek_offpeak.py
 
-      - name: Full /v1/models payload
+      - name: Addressable model ids
         env:
           LLM: ${{ secrets.RS2_LLM_API_KEY }}
         run: |
@@ -30,29 +29,7 @@ jobs:
                https://api.deepseek.com/v1/models -o /tmp/models.json
           python3 -m json.tool /tmp/models.json || cat /tmp/models.json
 
-      - name: Models & Pricing page
-        run: |
-          for u in https://api-docs.deepseek.com/quick_start/pricing_details \
-                   https://api-docs.deepseek.com/quick_start/models_and_pricing \
-                   https://api-docs.deepseek.com/quick_start/pricing ; do
-            echo "===== $u ====="
-            curl -sSL --max-time 60 "$u" -o /tmp/p.html || { echo "fetch failed"; continue; }
-            python3 - <<'EOF'
-          import html, re
-          t = open('/tmp/p.html', encoding='utf-8', errors='replace').read()
-          t = re.sub(r'(?is)<(script|style|svg|nav|footer).*?</\1>', ' ', t)
-          t = html.unescape(re.sub(r'(?s)<[^>]+>', '\n', t))
-          keep = [l.strip() for l in t.splitlines() if l.strip()]
-          # the pricing table is the interesting part: keep the title + anything
-          # naming a model or carrying a number
-          print(keep[0] if keep else '(empty)')
-          for l in keep:
-              if re.search(r'deepseek-|\d', l) and len(l) < 200:
-                  print(l)
-          EOF
-          done
-
-      - name: Which flash ids actually answer (off-peak gated, ~1 token each)
+      - name: Which ids answer, and what each one serves
         env:
           LLM: ${{ secrets.RS2_LLM_API_KEY }}
         run: |
@@ -68,7 +45,8 @@ jobs:
               raise SystemExit(0)
 
           key = os.environ["LLM"]
-          for model in ("deepseek-flash", "deepseek-v4-flash", "deepseek-v4.1-flash"):
+          for model in ("deepseek-flash", "deepseek-v4-flash",
+                        "deepseek-v4.1-flash", "deepseek-v4-pro"):
               body = json.dumps({"model": model, "max_tokens": 1,
                                  "messages": [{"role": "user", "content": "hi"}]}).encode()
               req = urllib.request.Request(
@@ -78,10 +56,9 @@ jobs:
               try:
                   with urllib.request.urlopen(req, timeout=120) as r:
                       d = json.load(r)
-                  print(f"{model:24} OK   served_model={d.get('model')!r} "
-                        f"usage={d.get('usage')}")
+                  print(f"{model:22} OK    serves={d.get('model')!r}  usage={d.get('usage')}")
               except urllib.error.HTTPError as e:
-                  print(f"{model:24} HTTP {e.code}  {e.read().decode('utf-8','replace')[:200]}")
+                  print(f"{model:22} HTTP {e.code}  {e.read().decode('utf-8','replace')[:200]}")
               except Exception as e:
-                  print(f"{model:24} ERR  {e}")
+                  print(f"{model:22} ERR   {e}")
           EOF
