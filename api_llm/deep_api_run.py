@@ -46,7 +46,7 @@ FALLBACK LIMITS (--fresh), measured, not assumed:
   python api_llm/deep_api_run.py JKHY
   python api_llm/deep_api_run.py JKHY --samples 3 --effort high --dir JKHY_20260824_114148
   python api_llm/deep_api_run.py NVDA --fresh          # local tier never ran this name
-  python api_llm/deep_api_run.py NVDA --fresh --model deepseek-v4-pro
+  python api_llm/deep_api_run.py NVDA --fresh --model deepseek-v4-flash
 """
 import json
 import re
@@ -90,13 +90,19 @@ TRANSPORT_RETRIES = 3                   # 429 / transient 5xx only; not an analy
 # its off-peak column ($0.003 / $0.15 / $0.60). Its peak hours (Mon-Fri 01-04, 06-10 UTC) are the
 # ones PEAK_HOURS_UTC already encodes, so that definition needed no change.
 #
-# deepseek-v4-pro is priced AT THE FLASH RATE, not its old one: the same notice routes every Pro
-# request to V4.1 Flash and bills it at Flash's price until V4.1 Pro ships. deepseek-v4-flash is
-# retired - GET /v1/models no longer lists it (measured 2026-09-10) - and is kept only so the cost
-# of an already-published run can still be reconstructed.
+# deepseek-v4-flash is NOT retired, as a first reading of GET /v1/models suggested. Measured
+# 2026-09-11: it answers 200 and reports serves='deepseek-flash', i.e. it is a live alias onto the
+# new flash model and therefore costs the flash rate, not the 0.014/0.44/1.32 it used to.
+#
+# deepseek-v4-pro is deliberately ABSENT so the guard in main() refuses it instead of guessing. The
+# notice says Pro requests are routed to V4.1 Flash and billed at Flash's price, but that is not in
+# effect here: measured 2026-09-11, deepseek-v4-pro reports serves='deepseek-v4-pro' and bills 84
+# prompt tokens for the same request flash bills 31 for - and the alias above proves DeepSeek does
+# rewrite the model field when it genuinely forwards. So Pro is still being served by Pro. Pricing
+# it at the flash rate would under-report Pro spend ~4x, and its own published rate is stale after
+# the Sept 10 change. Re-measure before running Pro again.
 PRICE = {"deepseek-flash": {"hit": 0.006, "miss": 0.30, "out": 1.20},
-         "deepseek-v4-pro": {"hit": 0.006, "miss": 0.30, "out": 1.20},
-         "deepseek-v4-flash": {"hit": 0.014, "miss": 0.44, "out": 1.32}}   # retired 2026-09-10
+         "deepseek-v4-flash": {"hit": 0.006, "miss": 0.30, "out": 1.20}}   # alias -> deepseek-flash
 
 # The RS2 analytical framework. The LOCAL tier gets it for free: it is baked into the
 # rs2-analyst-deep Modelfile's SYSTEM block, so every local sample is written under it. The
