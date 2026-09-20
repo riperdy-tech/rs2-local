@@ -1,0 +1,52 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/GSAT.md, 8.8 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] GSAT @ $82.36 | deepseek-v4-flash effort=high | 3 samples | pack 34,227ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GSAT_20260826_040357
+    [tool 1] search_web: Amazon Globalstar acquisition $11.6 billion deal price per share terms 2026
+    [tool 2] search_web: Globalstar Amazon merger expected closing date 2027 regulatory approval FCC antitrust
+    [tool 3] search_web: Globalstar stock price before Amazon acquisition announcement April 2026
+    [tool 4] search_web: 10-year Treasury yield Federal Reserve policy August 2026
+    [tool 5] fetch_page: https://arstechnica.com/tech-policy/2026/04/amazon-to-merge-with-globalstar-become-iphon
+    [tool 6] search_web: Globalstar GSAT stock price March 2026 trading level before April 1 Amazon rumor
+    [tool 7] search_web: Federal Reserve interest rate decision July 2026 federal funds rate inflation
+    [tool 8] search_web: Globalstar Amazon merger agreement termination breakup fee Apple consent closing conditi
+    [tool 9] fetch_page: https://www.sec.gov/Archives/edgar/data/1366868/000114036126014528/ef20070409_8k.htm
+    [tool 10] fetch_page: https://finance.yahoo.com/markets/stocks/articles/chase-amazon-driven-rally-globalstar-2
+    [tool 11] search_web: Globalstar 2026 revenue guidance capital expenditure next generation satellite buildout 
+    [tool 12] search_web: Globalstar Apple agreement 2024 prepayment deferred revenue 85% capacity 2041 terms
+    [tool 13] search_web: Globalstar Amazon merger agreement "Per Share Adjustment Amount" definition consideratio
+    [tool 14] fetch_page: https://www.sec.gov/Archives/edgar/data/1366868/000136686826000009/gsat20251231-ex991.ht
+    [tool 15] search_web: Amazon Globalstar merger antitrust review FTC DOJ HSR second request status August 2026
+    [tool 16] search_web: DXY dollar index high yield credit spreads August 2026
+  sample 1: IV $73.31 | usable=True | 16 tool calls (think 128,441ch / report 46,514ch) | 471s | $0.046 cumulative
+    [tool 1] search_web: Amazon Globalstar acquisition $11.6 billion deal terms per share cash or stock closing d
+    [tool 2] search_web: Globalstar Q2 2026 earnings results net loss revenue decline August 2026
+    [tool 3] search_web: Amazon Globalstar merger regulatory review FCC antitrust CFIUS status
+    [tool 4] search_web: 10-year Treasury yield August 2026 Federal Reserve policy
+    [tool 5] search_web: Globalstar Apple agreement satellite capacity prepayment revenue share terms
+    [tool 6] fetch_page: https://europeanbusinessmagazine.com/business/business-amazon-globalstar-takeover-11-bil
+    [tool 7] fetch_page: https://www.aboutamazon.com/news/company-news/amazon-globalstar-apple
+    [tool 8] search_web: Amazon Globalstar shareholder vote merger approval progress summer 2026
+    [tool 9] search_web: Fed funds rate target August 2026 FOMC decision
+    [tool 10] fetch_page: https://investors.globalstar.com/news-releases/news-release-details/globalstar-announces
+    [tool 11] search_web: Amazon stock price August 2026 AMZN share price
+    [tool 12] search_web: Amazon Globalstar merger antitrust FTC DOJ HSR waiting period challenge 2026
+    [tool 13] search_web: Globalstar merger Amazon expected closing date special meeting proxy 2026 2027
+  sample 2: IV $? | usable=False | 13 tool calls (think 95,090ch / report 26,283ch) (no value extracted) | 385s | $0.076 cumulative
+    [tool 1] search_web: Amazon Globalstar acquisition $11.6 billion per share price close date 2026 regulatory a
+    [tool 2] search_web: Globalstar 2026 guidance revenue outlook capex next-generation constellation
+    [tool 3] search_web: Globalstar Apple agreement prepayment deferred revenue ownership percentage 2026
+    [tool 4] search_web: 10 year treasury yield August 2026 Federal Reserve policy stance
+    [tool 5] search_web: Globalstar Band 53 n53 spectrum 2.4 GHz terrestrial value
+    [tool 6] fetch_page: https://www.aboutamazon.com/news/company-news/amazon-globalstar-apple
+    [tool 7] fetch_page: https://www.tradingview.com/news/tradingview:27709a47fb5fc:0-amazon-to-acquire-globalsta
+    [tool 8] search_web: Globalstar Amazon merger shareholder vote approval status August 2026 HSR antitrust
+    [tool 9] search_web: federal funds rate target August 2026 FOMC
+    [tool 10] search_web: DXY dollar index level August 2026
+    [tool 11] search_web: Globalstar merger closing conditions FCC spectrum approval status 2026
+  sample 3: IV $47.0 | usable=True | 11 tool calls (think 103,931ch / report 36,068ch) | 425s | $0.108 cumulative
+
+[deep-api] GSAT: OVERVALUED | band $47.0-$73.31 vs price $82.36 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 8.8d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 380,024 in (279,424 cached) | 127,691 out (92,806 reasoning) | $0.108 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GSAT_20260826_040357\verdict_depth.json

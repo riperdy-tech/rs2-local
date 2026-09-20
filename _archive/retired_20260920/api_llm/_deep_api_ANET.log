@@ -1,0 +1,49 @@
+[deep-api] ANET @ $186.45 | deepseek-v4-flash effort=high | 3 samples | pack 33,261ch from ANET_20260821_233921 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ANET_20260824_233521
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 128.5 | spread 64.9%
+    [tool 1] search_web: 10-year Treasury yield August 2026
+    [tool 2] search_web: Arista Networks 2027 revenue estimate consensus analysts
+    [tool 3] search_web: Arista Networks Q2 2026 earnings call guidance 2027 AI networking commentary
+    [tool 4] search_web: Arista Networks long-term operating margin target 45% business model
+    [tool 5] fetch_page: https://finance.yahoo.com/quote/ANET/analysis/
+    [tool 6] search_web: Arista Networks 2027 revenue estimate "2027" billion analysts forecast
+    [tool 7] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/11/arista-anet-q2-2026-earnings-c
+    [tool 8] fetch_page: https://www.tikr.com/blog/arista-networks-grew-revenue-35-last-quarter-and-generates-4-b
+    [tool 9] search_web: Arista Networks beta 2026 yahoo stock
+    [tool 10] search_web: Damodaran implied equity risk premium 2026
+    [tool 11] search_web: Arista Networks 2027 revenue forecast after Q2 raise 12.6 billion estimates
+    [tool 12] fetch_page: https://www.trefis.com/stock/anet/articles/611895/what-you-are-really-paying-for-in-aris
+    [tool 13] search_web: "Arista" 2027 revenue estimate "$16" OR "$15.5" OR "$15.8" billion analysts
+  sample 1: IV $131.0 | usable=True | 13 tool calls (think 102,990ch / report 30,285ch) | 378s | $0.038 cumulative
+    [tool 1] search_web: Arista Networks 2027 revenue outlook guidance longer-term model TAM management commentar
+    [tool 2] search_web: 10 year treasury yield August 2026 current level
+    [tool 3] search_web: Arista Networks cash and short-term investments marketable securities balance sheet 2025
+    [tool 4] search_web: Arista Networks analyst estimates FY2027 revenue EPS consensus forecast
+    [tool 5] fetch_page: https://www.trefis.com/stock/anet/articles/611895/what-you-are-really-paying-for-in-aris
+    [tool 6] search_web: Arista Networks capitalized software purchases of intangible assets annual 2025 2026 cas
+    [tool 7] search_web: AI networking Ethernet switch market forecast 2027 2028 2030 TAM growth Cisco Broadcom
+    [tool 8] fetch_page: https://www.sec.gov/Archives/edgar/data/1596532/000159653226000174/ex991q226-earningsrel
+    [tool 9] fetch_page: https://finance.yahoo.com/quote/ANET/analysis/
+    [tool 10] fetch_page: https://www.idc.com/resource-center/blog/ethernet-switch-market-size-and-growth-datacent
+    [tool 11] search_web: Arista Networks balance sheet cash marketable securities short-term investments June 30 
+    [tool 12] search_web: Arista Networks 2027 revenue estimate billion consensus stockanalysis FY2027
+    [tool 13] search_web: Arista Networks total addressable market 2027 2028 billion management TAM Ethernet campu
+  sample 2: IV $102.0 | usable=True | 13 tool calls (think 96,936ch / report 26,921ch) | 370s | $0.074 cumulative
+    [tool 1] search_web: Arista Networks third quarter 2026 revenue guidance Q3 2026
+    [tool 2] search_web: Arista Networks 2027 revenue consensus analyst estimate EPS
+    [tool 3] search_web: Arista Networks long-term business model target non-GAAP gross margin operating margin 2
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] search_web: Arista Networks stock-based compensation expense 2024 2025 annual 10-K
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/1596532/000159653226000174/ex991q226-earningsrel
+    [tool 7] fetch_page: https://finance.yahoo.com/quote/ANET/analysis/
+    [tool 8] search_web: Arista Networks ANET 2027 2028 revenue EPS estimates stockanalysis
+    [tool 9] search_web: Arista Networks share repurchase program buyback authorization billion 2025 2026
+    [tool 10] search_web: Arista Networks balance sheet cash and marketable securities June 30 2026 total
+    [tool 11] search_web: Arista Networks AI networking revenue 2026 $3.5 billion 2027 outlook data center switchi
+    [tool 12] fetch_page: https://stockanalysis.com/stocks/anet/forecast/
+    [tool 13] search_web: Arista Networks 10-Q June 30 2026 balance sheet cash equivalents short-term investments 
+  sample 3: IV $132.5 | usable=True | 13 tool calls (think 30,625ch / report 46,397ch) | 244s | $0.096 cumulative
+
+[deep-api] ANET: OVERVALUED | band $102.0-$132.5 vs price $186.45 | size half
+[deep-api] LOCAL said: OVERVALUED | band $97.0-$160.0 | median $128.5
+[deep-api] 16 API calls | 318,569 in (250,752 cached) | 119,473 out (81,270 reasoning) | $0.096 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ANET_20260824_233521\verdict_depth.json

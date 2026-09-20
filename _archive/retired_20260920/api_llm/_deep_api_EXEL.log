@@ -1,0 +1,50 @@
+[deep-api] EXEL @ $53.69 | deepseek-v4-flash effort=high | 3 samples | pack 33,347ch from EXEL_20260823_103501 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\EXEL_20260825_003802
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 45.9 | spread 105.7%
+    [tool 1] search_web: Exelixis 2026 revenue guidance $2.5 billion fiscal year 2026 lowered full year outlook
+    [tool 2] search_web: Exelixis EXEL FY2027 FY2028 revenue consensus estimate analyst forecast
+    [tool 3] search_web: 10-year Treasury yield August 2026
+    [tool 4] fetch_page: https://stockanalysis.com/stocks/exel/forecast/
+    [tool 5] fetch_page: https://www.marketwatch.com/investing/stock/EXEL/analystestimates
+    [tool 6] search_web: zanzalintinib Exelixis launch neuroendocrine tumors peak sales estimate 2026
+    [tool 7] search_web: cabozantinib Cabometyx patent exclusivity expiration 2031 Exelixis loss of exclusivity
+    [tool 8] search_web: Exelixis beta 5-year monthly Seeking Alpha
+    [tool 9] search_web: Exelixis Q2 2026 cash investments marketable securities balance sheet total cash equival
+    [tool 10] search_web: Exelixis zanzalintinib 2026 2027 net product revenue sales forecast ramp
+    [tool 11] search_web: Damodaran implied equity risk premium July 2026 S&P 500
+    [tool 12] search_web: Exelixis second quarter 2026 financial results press release "cash and cash equivalents"
+    [tool 13] search_web: Exelixis total cash and investments 2025 2026 $1.5 billion balance sheet 10-Q
+  sample 1: IV $28.95 | usable=True | 13 tool calls (think 92,483ch / report 25,579ch) | 365s | $0.032 cumulative
+    [tool 1] search_web: Exelixis zanzalintinib approval neuroendocrine tumor 2026 sales launch peak forecast
+    [tool 2] search_web: cabozantinib Cabometyx patent expiration generic entry 2030 2031 Exelixis loss of exclus
+    [tool 3] search_web: Exelixis 2027 revenue guidance zanzalintinib Cabometyx outlook
+    [tool 4] search_web: 10 year treasury yield August 2026 risk free rate
+    [tool 5] search_web: zanzalintinib peak sales estimate analyst billion consensus Exelixis
+    [tool 6] search_web: Exelixis share repurchase authorization amount billion 2026 buyback program
+    [tool 7] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/12/exelixis-exel-q2-2026-earnings
+    [tool 8] fetch_page: https://www.morningstar.com/company-reports/1248641-no-moat-exelixis-focuses-on-developi
+    [tool 9] search_web: Exelixis cash cash equivalents short-term investments balance sheet June 30 2026
+    [tool 10] search_web: Exelixis convertible senior notes total debt 2026 maturity
+    [tool 11] search_web: Exelixis effective tax rate 2025 2026 income tax provision
+    [tool 12] fetch_page: https://seekingalpha.com/article/4891306-exelixis-the-double-backbone-potential-of-cabom
+    [tool 13] fetch_page: https://ir.exelixis.com/news-releases/news-release-details/exelixis-announces-second-qua
+  sample 2: IV $45.1 | usable=True | 13 tool calls (think 103,183ch / report 30,861ch) | 389s | $0.067 cumulative
+    [tool 1] search_web: Exelixis Q2 2026 balance sheet cash cash equivalents short-term investments marketable s
+    [tool 2] search_web: Cabometyx cabozantinib patent expiration loss of exclusivity 2030 US
+    [tool 3] search_web: Exelixis zanzalintinib peak sales forecast net revenue neuroendocrine tumors
+    [tool 4] search_web: 10 year treasury yield August 2026 current
+    [tool 5] search_web: Exelixis 10-Q Q2 2026 "cash and cash equivalents" "short-term investments" "long-term in
+    [tool 6] search_web: Exelixis zanzalintinib blockbuster potential sales estimate $1 billion oncology analysts
+    [tool 7] search_web: Exelixis share repurchase program authorization 2026 buyback billions
+    [tool 8] search_web: Exelixis analyst revenue forecast 2027 2028 2029 consensus estimates
+    [tool 9] fetch_page: https://www.deepvalue.tech/research/exelixis-exel-deep-research-report-waiting-for-a-bet
+    [tool 10] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/12/exelixis-exel-q2-2026-earnings
+    [tool 11] search_web: zanzalintinib FDA approval 2026 launch neuroendocrine tumors sales Q2 2026
+    [tool 12] search_web: Exelixis June 30 2026 "cash, cash equivalents" "short-term investments" "long-term inves
+    [tool 13] search_web: Exelixis revenue estimate 2028 2029 2030 analyst forecast Cabometyx generic erosion zanz
+    [tool 14] search_web: Exelixis stock intrinsic value DCF 2026 seeking alpha zanzalintinib $5 billion peak fair
+  sample 3: IV $51.0 | usable=True | 14 tool calls (think 75,470ch / report 35,216ch) | 336s | $0.098 cumulative
+
+[deep-api] EXEL: OVERVALUED | band $28.95-$51.0 vs price $53.69 | size quarter
+[deep-api] LOCAL said: HOLD | band $35.0-$72.0 | median $45.9
+[deep-api] 16 API calls | 296,116 in (232,448 cached) | 124,624 out (89,881 reasoning) | $0.098 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\EXEL_20260825_003802\verdict_depth.json

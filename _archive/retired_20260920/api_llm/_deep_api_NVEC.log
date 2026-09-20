@@ -1,0 +1,53 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/NVEC.md, 20.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] NVEC @ $109.89 | deepseek-v4-flash effort=high | 3 samples | pack 31,271ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NVEC_20260826_064111
+    [tool 1] search_web: NVE Corporation Q1 fiscal 2027 earnings call transcript June 2026 guidance
+    [tool 2] search_web: NVE Corporation new products 2026 TMR sensor GMR switch
+    [tool 3] search_web: NVE Corporation defense space contract NASA 2026 revenue growth
+    [tool 4] search_web: 10-year treasury yield Federal Reserve policy August 2026
+    [tool 5] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/07/22/nve-nvec-q1-2027-earnings-call
+    [tool 6] search_web: NVE Corporation dividend 2026 quarterly special dividend payout
+    [tool 7] search_web: NVEC NVE Corporation short interest squeeze August 2026
+    [tool 8] search_web: magnetic sensor market size CAGR forecast 2026 2030 automotive industrial
+    [tool 9] fetch_page: https://www.businesswire.com/news/home/20260722458896/en/NVE-Corporation-Reports-First-Q
+    [tool 10] search_web: Federal Reserve FOMC fed funds rate target August September 2026 rate cuts
+    [tool 11] fetch_page: https://www.insidermonkey.com/blog/nve-corporation-nasdaqnvec-q4-2026-earnings-call-tran
+    [tool 12] search_web: NVEC stock analyst price target fair value 2026 overvalued
+    [tool 13] search_web: US CPI inflation rate July 2026 latest reading
+    [tool 14] search_web: dollar index DXY level August 2026 high yield credit spread
+    [tool 15] fetch_page: https://seekingalpha.com/article/4905626-nve-corporation-a-great-niche-but-with-limited-
+  sample 1: IV $56.0 | usable=True | 15 tool calls (think 146,035ch / report 34,584ch) | 538s | $0.049 cumulative
+    [tool 1] search_web: NVE Corporation Q1 fiscal 2027 earnings June 30 2026 revenue $11 million
+    [tool 2] search_web: NVE Corporation fiscal 2027 guidance outlook product sales defense
+    [tool 3] search_web: NVE Corporation Pete Eames successor CEO Dan Baker leadership transition 2026
+    [tool 4] search_web: 10-year Treasury yield current level August 2026
+    [tool 5] search_web: Federal Reserve interest rate policy stance 2026 outlook
+    [tool 6] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/07/22/nve-nvec-q1-2027-earnings-call
+    [tool 7] fetch_page: https://www.tipranks.com/news/company-announcements/nve-corporation-earnings-call-highli
+    [tool 8] fetch_page: https://seekingalpha.com/news/4587889-nve-signals-significantly-higher-defense-sales-in-
+    [tool 9] search_web: NVE Corporation dividend per share history 2025 2026 regular special dividend
+    [tool 10] search_web: NVEC analyst price target estimate fiscal 2027 fiscal 2028 EPS
+    [tool 11] search_web: NVE Corporation fiscal 2026 10-K defense sales percentage product revenue breakdown
+    [tool 12] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-nve-corporation-q4-2
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/724910/000137647426000059/nvec-20251231_10q.htm
+  sample 2: IV $? | usable=False | 13 tool calls (think 30,625ch / report 350ch) (no value extracted) | 109s | $0.061 cumulative
+    [tool 1] search_web: NVE Corporation Q1 fiscal 2027 earnings call transcript guidance June 2026 quarter
+    [tool 2] search_web: NVE Corporation NVEC fiscal 2027 revenue guidance outlook defense orders
+    [tool 3] search_web: 10-year Treasury yield August 2026 current level Fed funds rate
+    [tool 4] search_web: NVEC dividend history 2026 quarterly special dividend NVE Corporation
+    [tool 5] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/07/22/nve-nvec-q1-2027-earnings-call
+    [tool 6] fetch_page: https://seekingalpha.com/news/4587889-nve-signals-significantly-higher-defense-sales-in-
+    [tool 7] search_web: Federal Reserve August 2026 interest rate decision FOMC policy stance
+    [tool 8] search_web: FOMC July 2026 statement fed funds target range current rate
+    [tool 9] search_web: NVE Corporation 10-K fiscal 2026 customer concentration largest customer percentage defe
+    [tool 10] search_web: NVE Corporation "significantly higher defense sales" fiscal 2027 outlook Zacks
+    [tool 11] fetch_page: https://www.sec.gov/Archives/edgar/data/724910/000137647424000214/nvec-20240331.htm
+    [tool 12] fetch_page: https://www.nve.com/earningsreports/may62026
+    [tool 13] search_web: NVE Corporation fiscal 2026 annual report 10-K filed June 2026 customer revenue concentr
+  sample 3: IV $88.0 | usable=True | 13 tool calls (think 77,131ch / report 33,205ch) | 312s | $0.090 cumulative
+
+[deep-api] NVEC: OVERVALUED | band $56.0-$88.0 vs price $109.89 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 20.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 374,883 in (294,400 cached) | 106,068 out (81,714 reasoning) | $0.090 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NVEC_20260826_064111\verdict_depth.json

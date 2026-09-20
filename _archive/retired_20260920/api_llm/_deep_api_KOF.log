@@ -1,0 +1,54 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: ABSENT - pack has no SECTION 11
+[deep-api]   SearXNG: up
+[deep-api] KOF @ $112.19 | deepseek-v4-flash effort=high | 3 samples | pack 13,895ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\KOF_20260825_055839
+    [tool 1] search_web: Coca-Cola FEMSA KOF 2025 full year results revenue net income
+    [tool 2] search_web: Coca-Cola FEMSA 2026 guidance capex outlook
+    [tool 3] search_web: Coca-Cola FEMSA shares outstanding market cap 2026
+    [tool 4] search_web: Banxico Mexico interest rate 2026
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/910631/000129281426000485/kofpr4q25_6k.htm
+    [tool 6] fetch_page: https://www.femsa.com/en/press-room/press-release/coca-cola-femsa-second-quarter-2026-re
+    [tool 7] fetch_page: https://www.riotimesonline.com/femsa-mexico-investment-2026/
+    [tool 8] fetch_page: https://tradingeconomics.com/mexico/interest-rate
+    [tool 9] fetch_page: https://www.sec.gov/Archives/edgar/data/910631/000129281426000485/kofpr4q25_6k.htm
+    [tool 10] search_web: Coca-Cola FEMSA 2025 full year total revenues Ps. million operating income net debt cape
+    [tool 11] search_web: Coca-Cola FEMSA 2026 capex guidance billion pesos investment plan
+    [tool 12] search_web: Coca-Cola FEMSA IEPS tax 2026 Mexico impact bottler guidance
+    [tool 13] fetch_page: https://www.femsa.com/wp-content/uploads/2026/07/PR-2Q26-vf.pdf
+    [tool 14] search_web: "Coca-Cola FEMSA" 4Q25 OR "full year 2025" total revenues "Ps." 292 OR 290 OR 295 millio
+    [tool 15] search_web: Mexico 10 year government bond yield August 2026 Mbono
+    [tool 16] fetch_page: https://seekingalpha.com/article/4917364-coca-cola-femsa-a-bottling-fortress-facing-a-me
+  sample 1: IV $107.595 | usable=True | 16 tool calls (think 47,164ch / report 17,842ch) | 221s | $0.025 cumulative
+    [tool 1] search_web: Coca-Cola FEMSA KOF full year 2025 results revenue net income
+    [tool 2] search_web: Coca-Cola FEMSA 2026 guidance revenue growth capex capital expenditure outlook
+    [tool 3] search_web: Coca-Cola FEMSA shares outstanding 2026 ADR ratio market cap
+    [tool 4] search_web: Coca-Cola FEMSA net debt cash 2025 balance sheet
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/910631/000129281426000485/kofpr4q25_6k.htm
+    [tool 6] fetch_page: https://www.riotimesonline.com/femsa-mexico-investment-2026/
+    [tool 7] fetch_page: https://www.femsa.com/en/press-room/press-release/coca-cola-femsa-reports-fourth-quarter
+    [tool 8] search_web: Coca-Cola FEMSA 2026 guidance revenue growth mid single digit EBITDA margin capex IEPS
+    [tool 9] search_web: Coca-Cola FEMSA KOF ADR price market cap August 2026
+    [tool 10] search_web: "Coca-Cola FEMSA" full year 2025 total revenues "million" pesos operating income adjuste
+    [tool 11] search_web: "Coca-Cola FEMSA" net debt "December 31, 2025" billion pesos cash
+    [tool 12] fetch_page: https://www.sec.gov/Archives/edgar/data/1061736/000110465926019414/tm267282d1_ex99-1.htm
+    [tool 13] search_web: Coca-Cola FEMSA 2024 full year results total revenues 262 billion pesos operating income
+  sample 2: IV $111.0 | usable=True | 13 tool calls (think 57,720ch / report 20,502ch) | 243s | $0.050 cumulative
+    [tool 1] search_web: Coca-Cola FEMSA 2025 full year results revenue net income operating cash flow
+    [tool 2] search_web: Coca-Cola FEMSA 2026 guidance revenue growth EBITDA capex
+    [tool 3] search_web: KOF Coca-Cola FEMSA shares outstanding market cap 2026
+    [tool 4] search_web: Coca-Cola FEMSA dividend per share 2025 2026 ADR
+    [tool 5] fetch_page: https://www.femsa.com/wp-content/uploads/2026/07/PR-2Q26-vf.pdf
+    [tool 6] search_web: Coca-Cola FEMSA 2025 annual results "full year" revenue EBITDA net income capex 20-F
+    [tool 7] search_web: Coca-Cola FEMSA 2026 annual guidance February 2026 FX-neutral revenue EBITDA growth cape
+    [tool 8] fetch_page: https://www.sec.gov/Archives/edgar/data/910631/000129281426000485/kofpr4q25_6k.htm
+    [tool 9] fetch_page: https://www.femsa.com/en/press-room/press-release/femsa-2q-2026-results/
+    [tool 10] fetch_page: https://www.sec.gov/Archives/edgar/data/910631/000129281426000485/kofpr4q25_6k.htm
+    [tool 11] search_web: Coca-Cola FEMSA FY2025 full year revenue "Ps." billion operating cash flow capital expen
+    [tool 12] fetch_page: https://www.sec.gov/Archives/edgar/data/910631/000129281426000485/kofpr4q25_6k.txt
+    [tool 13] search_web: "Coca-Cola FEMSA" 2025 revenue "Ps. 306" OR "Ps. 307" OR "Ps. 308" OR "billion" full yea
+  sample 3: IV $130.0 | usable=True | 13 tool calls (think 49,226ch / report 17,178ch) | 209s | $0.072 cumulative
+
+[deep-api] KOF: HOLD | band $107.595-$130.0 vs price $112.19 | size half
+[deep-api] FALLBACK verdict - cloud model, brief absent, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 17 API calls | 255,900 in (164,352 cached) | 76,879 out (53,576 reasoning) | $0.072 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\KOF_20260825_055839\verdict_depth.json

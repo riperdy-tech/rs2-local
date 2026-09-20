@@ -1,0 +1,54 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: ABSENT - pack has no SECTION 11
+[deep-api]   SearXNG: up
+[deep-api] CTAS @ $207.09 | deepseek-v4-flash effort=high | 3 samples | pack 17,759ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CTAS_20260825_055710
+    [tool 1] search_web: Cintas fiscal 2026 fourth quarter results revenue EPS guidance fiscal 2027
+    [tool 2] search_web: Cintas analyst consensus fiscal 2027 2028 revenue EPS estimates
+    [tool 3] search_web: 10-year Treasury yield August 2026 current
+    [tool 4] search_web: Cintas capital expenditure plans 2026 2027 growth investment guidance
+    [tool 5] fetch_page: https://www.cintas.com/about/newsroom/details/news/2026/07/15/cintas-corporation-announc
+    [tool 6] fetch_page: https://www.trefis.com/data/companies/CTAS
+    [tool 7] search_web: Cintas UniFirst acquisition price per share total value financing synergies debt
+    [tool 8] search_web: Cintas segment revenue fiscal 2026 Uniform Rental Facility Services First Aid Safety Fir
+    [tool 9] search_web: Cintas share buyback fiscal 2026 2027 pace share count
+    [tool 10] fetch_page: https://www.sec.gov/Archives/edgar/data/723254/000072325426000028/R23.htm
+    [tool 11] fetch_page: https://finance.yahoo.com/news/cintas-targets-unifirst-buyout-5-000207254.html
+    [tool 12] fetch_page: https://www.benzinga.com/markets/earnings/26/07/60476883/cintas-says-massive-untapped-ma
+    [tool 13] search_web: UniFirst UNF fiscal 2025 revenue EBITDA net income results
+    [tool 14] search_web: Cintas CTAS analyst price target consensus August 2026
+    [tool 15] search_web: Cintas UniFirst FTC second request merger review status antitrust 2026
+  sample 1: IV $137.0 | usable=True | 15 tool calls (think 88,399ch / report 23,924ch) | 345s | $0.037 cumulative
+    [tool 1] search_web: Cintas fiscal 2026 fourth quarter full year results revenue EPS
+    [tool 2] search_web: Cintas fiscal 2027 guidance revenue growth earnings per share outlook
+    [tool 3] fetch_page: https://www.cintas.com/about/newsroom/details/news/2026/07/15/cintas-corporation-announc
+    [tool 4] fetch_page: https://www.tipranks.com/news/company-announcements/cintas-delivers-record-margins-and-c
+    [tool 5] search_web: Cintas UniFirst acquisition deal value $ billion cost synergies close date
+    [tool 6] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/07/22/cintas-ctas-q4-2026-earnings-c
+    [tool 7] search_web: 10-year Treasury yield August 2026 current level
+    [tool 8] search_web: Cintas CTAS analyst consensus fiscal 2027 fiscal 2028 revenue EPS estimates
+    [tool 9] fetch_page: https://finance.yahoo.com/quote/CTAS/analysis/
+    [tool 10] search_web: Cintas fiscal 2027 capital expenditures 3.5% 4% of revenue guidance UniFirst funding
+    [tool 11] fetch_page: https://www.cintas.com/about/newsroom/details/news/2026/03/11/cintas-to-acquire-unifirst
+    [tool 12] search_web: Cintas price to earnings ratio 2026 forward P/E valuation premium
+    [tool 13] search_web: Damodaran implied equity risk premium July 2026 S&P 500
+    [tool 14] search_web: Cintas fiscal 2028 revenue EPS analyst estimate consensus growth
+  sample 2: IV $103.0 | usable=True | 14 tool calls (think 135,574ch / report 26,788ch) | 456s | $0.082 cumulative
+    [tool 1] search_web: Cintas fiscal 2026 full year guidance revenue EPS organic growth
+    [tool 2] search_web: Cintas fiscal 2026 third quarter results February 2026 revenue
+    [tool 3] search_web: 10 year treasury yield current
+    [tool 4] search_web: Cintas segment revenue uniform rental facility services first aid fire protection fiscal
+    [tool 5] search_web: Cintas UniFirst acquisition deal value expected close date financing
+    [tool 6] search_web: Cintas fiscal 2026 fourth quarter full year results press release operating cash flow ca
+    [tool 7] search_web: Cintas fiscal 2027 guidance revenue EPS organic growth
+    [tool 8] fetch_page: https://www.cintas.com/about/newsroom/details/news/2026/07/15/cintas-corporation-announc
+    [tool 9] fetch_page: https://www.cintas.com/about/newsroom/details/news/2026/03/11/cintas-to-acquire-unifirst
+    [tool 10] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/07/22/cintas-ctas-q4-2026-earnings-c
+    [tool 11] search_web: Cintas CTAS analyst price target consensus 2026
+    [tool 12] search_web: Cintas dividend per share share buyback authorization fiscal 2026
+    [tool 13] search_web: UniFirst revenue fiscal 2025 EBITDA annual
+  sample 3: IV $195.45 | usable=True | 13 tool calls (think 95,798ch / report 22,793ch) | 333s | $0.117 cumulative
+
+[deep-api] CTAS: OVERVALUED | band $103.0-$195.45 vs price $207.09 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief absent, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 19 API calls | 309,290 in (209,408 cached) | 141,801 out (111,549 reasoning) | $0.117 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CTAS_20260825_055710\verdict_depth.json

@@ -1,0 +1,54 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/TIGO.md, 7.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] TIGO @ $93.68 | deepseek-v4-flash effort=high | 3 samples | pack 34,326ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\TIGO_20260826_081501
+    [tool 1] search_web: Millicom TIGO Q2 2026 results revenue EBITDA eFCF guidance raised
+    [tool 2] search_web: Millicom FY2025 annual results net income one-time gains Coltel acquisition adjusted EBI
+    [tool 3] search_web: Millicom net debt leverage ratio Q2 2026 2.5x target
+    [tool 4] search_web: Millicom dividend policy 2026 $1.50 interim dividend annual
+    [tool 5] fetch_page: https://www.globenewswire.com/news-release/2026/08/06/3340028/0/en/millicom-tigo-q2-2026
+    [tool 6] fetch_page: https://www.millicom.com/results/q4-2025-resultss
+    [tool 7] fetch_page: https://www.millicom.com/investors/shareholder-remuneration
+    [tool 8] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/06/millicom-tigo-q2-2026-earnings
+    [tool 9] fetch_page: https://www.investing.com/news/company-news/millicom-q2-2026-slides-record-cash-flow-lif
+    [tool 10] fetch_page: https://www.trefis.com/data/companies/TIGO
+    [tool 11] search_web: Millicom FY2025 full year adjusted EBITDA $2.3 billion net income one-time gains reconci
+    [tool 12] search_web: Millicom Q2 2026 net debt billion leverage ratio total debt
+    [tool 13] search_web: Millicom Chile acquisition 2026 Telefonica or WOM purchase
+    [tool 14] search_web: Millicom Coltel Colombia government stake acquisition price completed 2025
+  sample 1: IV $124.0 | usable=True | 14 tool calls (think 81,547ch / report 21,772ch) | 371s | $0.032 cumulative
+    [tool 1] search_web: Millicom TIGO Q2 2026 results full year 2026 guidance EBITDA eFCF capex raised
+    [tool 2] search_web: Millicom TIGO capital expenditure guidance 2027 2028 capex intensity revenue
+    [tool 3] search_web: Millicom Telefonica Ecuador acquisition consolidation revenue contribution 2026
+    [tool 4] search_web: Millicom Coltel Colombia government stake acquisition closing consolidation 2026
+    [tool 5] fetch_page: https://www.globenewswire.com/news-release/2026/08/06/3340028/0/en/millicom-tigo-q2-2026
+    [tool 6] fetch_page: https://www.stocktitan.net/sec-filings/TIGO/6-k-millicom-international-cellular-sa-curre
+    [tool 7] fetch_page: https://www.millicom.com/results/q1-2026-results
+    [tool 8] search_web: Millicom TIGO capex 2026 guidance "capital expenditure" billion 5G Colombia Ecuador
+    [tool 9] search_web: Millicom TIGO Q2 2026 earnings call transcript capex 2027 guidance Coltel synergies
+    [tool 10] search_web: Millicom TIGO 2027 2028 revenue EBITDA consensus analyst estimates forecast
+    [tool 11] search_web: US 10 year treasury yield August 2026 Federal Reserve rate cut outlook
+    [tool 12] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/06/millicom-tigo-q2-2026-earnings
+    [tool 13] search_web: DXY dollar index August 2026 level Fed funds rate July 2026
+    [tool 14] search_web: Colombia central bank BanRep interest rate 2026 Colombian peso COP exchange rate USD
+  sample 2: IV $115.0 | usable=True | 14 tool calls (think 86,920ch / report 33,133ch) | 418s | $0.065 cumulative
+    [tool 1] search_web: 10 year treasury yield August 2026 Federal Reserve policy stance
+    [tool 2] search_web: Millicom TIGO Q2 2026 results full year guidance revenue EBITDA eFCF $1.1 billion
+    [tool 3] search_web: Millicom capital expenditure guidance 2026 2027 capex intensity fiber Colombia
+    [tool 4] search_web: Millicom TIGO net debt leverage ratio 2026 net debt EBITDA 2.5x
+    [tool 5] fetch_page: https://www.globenewswire.com/news-release/2026/08/06/3340028/0/en/millicom-tigo-q2-2026
+    [tool 6] fetch_page: https://www.corpdev.org/2026/02/06/telefonica-bids-farewell-to-colombia-millicom-closes-
+    [tool 7] search_web: Millicom TIGO analyst consensus 2026 2027 revenue EBITDA EPS estimates
+    [tool 8] search_web: Federal Reserve interest rate decision August 2026 federal funds rate DXY dollar index c
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/06/millicom-tigo-q2-2026-earnings
+    [tool 10] fetch_page: https://finance.yahoo.com/quote/TIGO/analysis/
+    [tool 11] fetch_page: https://www.inderes.dk/en/releases/millicom-tigo-raises-2026-financial-guidance-and-decl
+    [tool 12] fetch_page: https://www.millicom.com/results/q2-2026-results
+    [tool 13] search_web: TIGO Millicom stock forecast consensus 2026 2027 EPS revenue stockanalysis OR marketbeat
+    [tool 14] search_web: Millicom 2027 outlook capex intensity "capital expenditure" target medium term deleverag
+  sample 3: IV $160.0 | usable=True | 14 tool calls (think 92,865ch / report 35,128ch) | 379s | $0.100 cumulative
+
+[deep-api] TIGO: UNDERVALUED | band $115.0-$160.0 vs price $93.68 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 7.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 384,762 in (297,216 cached) | 119,775 out (88,360 reasoning) | $0.100 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\TIGO_20260826_081501\verdict_depth.json

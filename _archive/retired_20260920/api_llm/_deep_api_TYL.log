@@ -1,0 +1,59 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/TYL.md, 18.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] TYL @ $350.73 | deepseek-v4-flash effort=high | 3 samples | pack 36,126ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\TYL_20260826_082742
+    [tool 1] search_web: Tyler Technologies Investor Day 2030 targets revenue adjusted EBITDA 2026
+    [tool 2] search_web: Tyler Technologies second quarter 2026 results press release FY2026 guidance adjusted EP
+    [tool 3] search_web: 10 year Treasury yield August 2026
+    [tool 4] search_web: Tyler Technologies convertible senior notes offering 2026 size coupon
+    [tool 5] fetch_page: https://finance.biggo.com/news/ir_TYL_20260729_c720971ef416
+    [tool 6] fetch_page: https://www.morningstar.com/company-reports/1163836-tyler-technologies-impressive-2030-v
+    [tool 7] fetch_page: https://www.fool.com/investing/2026/07/30/why-tyler-technologies-stock-got-thrashed-on-t
+    [tool 8] fetch_page: https://www.sec.gov/Archives/edgar/data/860731/000086073126000038/tylexhibit991pricingpr
+    [tool 9] search_web: Tyler Technologies 2030 financial targets revenue adjusted EBITDA margin Investor Day Ju
+    [tool 10] search_web: Tyler Technologies full year 2025 results adjusted EBITDA non-GAAP EPS fourth quarter
+    [tool 11] search_web: Federal Reserve interest rate policy August 2026 fed funds
+    [tool 12] search_web: Tyler Technologies organic revenue growth 2026 SaaS backlog bookings ARR outlook
+    [tool 13] fetch_page: https://investors.tylertech.com/news/news-details/2026/June-2026-Investor-News/default.a
+    [tool 14] fetch_page: https://finance.biggo.com/news/US_TYL_2026-07-30
+    [tool 15] fetch_page: https://www.sec.gov/Archives/edgar/data/849395/000119312525224165/d941868dex992.htm
+    [tool 16] search_web: dollar index DXY level August 2026 credit spreads high yield
+  sample 1: IV $348.0 | usable=True | 16 tool calls (think 135,052ch / report 31,087ch) | 505s | $0.049 cumulative
+    [tool 1] search_web: Tyler Technologies Q2 2026 earnings guidance FY2026 revenue EPS raise
+    [tool 2] search_web: Tyler Technologies Investor Day 2030 targets revenue operating margin growth
+    [tool 3] search_web: Tyler Technologies capitalized software development costs 2025 cash flow statement
+    [tool 4] search_web: Tyler Technologies convertible notes offering 2026 amount coupon
+    [tool 5] search_web: Tyler Technologies "2030" targets revenue "$4 billion" OR "$3.5 billion" operating margi
+    [tool 6] fetch_page: https://www.fool.com/investing/2026/07/30/why-tyler-technologies-stock-got-thrashed-on-t
+    [tool 7] search_web: Tyler Technologies Q2 2026 balance sheet cash convertible buyback shares repurchased Jun
+    [tool 8] search_web: 10 year treasury yield August 2026 Fed funds rate DXY
+    [tool 9] fetch_page: https://www.ustreasuryyieldcurve.com/
+    [tool 10] search_web: Tyler Technologies investor day June 2026 "Tyler 2030" revenue target "operating margin"
+    [tool 11] search_web: Tyler Technologies "For The Record" acquisition $212.5 million court reporting software 
+    [tool 12] fetch_page: https://aktien.guide/aktien/Tyler-Technologies-US9022521051
+    [tool 13] search_web: Tyler Technologies 2030 revenue target "$4 billion" OR "4.5 billion" double-digit growth
+    [tool 14] search_web: 10-year Treasury yield level July 2026 percent
+  sample 2: IV $425.0 | usable=True | 14 tool calls (think 158,080ch / report 38,244ch) | 610s | $0.100 cumulative
+    [tool 1] search_web: Tyler Technologies Investor Day 2026 Tyler 2030 targets revenue growth operating margin 
+    [tool 2] search_web: Tyler Technologies Q2 2026 earnings results FY2026 guidance EPS raise July 2026
+    [tool 3] search_web: Tyler Technologies convertible notes offering June 2026 terms conversion price
+    [tool 4] search_web: Tyler Technologies share repurchase program 2026 buyback authorization amount
+    [tool 5] fetch_page: https://www.morningstar.com/company-reports/1163836-tyler-technologies-impressive-2030-v
+    [tool 6] fetch_page: https://www.marketscreener.com/news/tyler-technologies-prices-upsized-1-25-billion-offer
+    [tool 7] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/tyler-technologies-tyl-q2-2026
+    [tool 8] fetch_page: https://www.investing.com/news/company-news/tyler-technologies-q1-2026-slides-arr-growth
+    [tool 9] search_web: Tyler Technologies 2030 target operating margin revenue "$4 billion" OR "25%" Investor D
+    [tool 10] search_web: Tyler Technologies "$1.25 billion" convertible senior notes 2031 conversion price capped
+    [tool 11] search_web: Tyler Technologies For The Record acquisition price 2026 courts technology revenue
+    [tool 12] search_web: 10-year Treasury yield August 2026 Federal Reserve rate cut expectations
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/860731/000086073126000038/tylexhibit991pricingpr
+    [tool 14] fetch_page: https://investors.tylertech.com/news/news-details/2026/Tyler-Technologies-to-Acquire-For
+    [tool 15] search_web: Tyler Technologies Investor Day June 2026 "2030" targets operating margin "20%" OR "22%"
+    [tool 16] search_web: Tyler Technologies 2027 consensus revenue EPS estimate analysts
+    [tool 17] search_web: Tyler Technologies Texas payments contract 2026 revenue impact decline child support
+  sample 3: IV $285.0 | usable=True | 17 tool calls (think 79,997ch / report 41,367ch) | 362s | $0.131 cumulative
+
+[deep-api] TYL: HOLD | band $285.0-$425.0 vs price $350.73 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 450,885 in (341,504 cached) | 157,789 out (120,656 reasoning) | $0.131 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\TYL_20260826_082742\verdict_depth.json

@@ -1,0 +1,73 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ROST.md, 8.8 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ROST @ $239.04 | deepseek-v4-flash effort=high | 3 samples | pack 35,903ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ROST_20260826_073458
+    [tool 1] search_web: 10-year Treasury yield level August 2026
+    [tool 2] search_web: Federal Reserve interest rate policy stance August 2026 FOMC
+    [tool 3] search_web: US CPI inflation rate July 2026 year over year
+    [tool 4] search_web: Ross Stores fiscal 2026 earnings guidance EPS $7.50 capex store openings
+    [tool 5] fetch_page: https://247wallst.com/investing/2026/08/21/ross-jumps-8-on-10-comp-growth-tjx-ticks-up-m
+    [tool 6] search_web: Ross Stores second quarter fiscal 2026 results press release August 2026 revenue EPS
+    [tool 7] search_web: Ross Stores "tariff benefit" guidance raise explanation margin Q2 2026
+    [tool 8] search_web: Ross Stores capital expenditure plans 2026 2027 distribution centers guidance
+    [tool 9] search_web: Ross Stores historical forward PE ratio average 10 year valuation range
+    [tool 10] search_web: Ross Stores fiscal 2027 EPS consensus estimate analyst
+    [tool 11] search_web: US dollar index DXY level August 2026
+    [tool 12] search_web: "Ross Stores" capex "distribution center" 2026 investment billion
+    [tool 13] search_web: Ross Stores long term store count target 3000 Ross Dress for Less dd's
+    [tool 14] search_web: investors.rossstores.com "second quarter" 2026 press release "Raises" outlook August 20 
+  sample 1: EMPTY report after 134,910ch thinking - one retry
+    [tool 1] search_web: 10-year Treasury yield August 2026 level
+    [tool 2] search_web: Federal Reserve FOMC decision July 2026 interest rate
+    [tool 3] search_web: US CPI inflation rate July 2026 report
+    [tool 4] search_web: Ross Stores second quarter fiscal 2027 earnings results August 2026 comps guidance
+    [tool 5] search_web: Ross Stores raises full year 2026 earnings guidance EPS $7.50 $7.74
+    [tool 6] fetch_page: https://seekingalpha.com/pr/20626146-ross-stores-reports-strong-second-quarter-sales-and
+    [tool 7] search_web: Ross Stores Q2 2026 comp store sales 13% operating margin capex store openings buyback
+    [tool 8] search_web: Ross Stores fiscal 2026 guidance $8.61 $8.77 third quarter comp outlook new stores
+    [tool 9] search_web: US dollar index DXY level August 2026
+    [tool 10] search_web: US unemployment rate July 2026 jobs report
+    [tool 11] search_web: Ross Stores capital expenditure 2026 guidance distribution centers new stores
+    [tool 12] search_web: Ross Stores long term store potential dd's DISCOUNTS 3000 stores unit growth target
+    [tool 13] search_web: Ross Stores ROST historical forward P/E average valuation multiple 10 years
+    [tool 14] search_web: IEEPA tariff refunds 2026 retailers import tariffs struck down
+    [tool 15] search_web: Ross Stores operating margin history peak 2015 2016 13 percent
+  sample 1: IV $159.0 | usable=True | 15 tool calls (think 123,543ch / report 26,672ch) | 900s | $0.084 cumulative
+    [tool 1] search_web: 10-year Treasury yield current level
+    [tool 2] search_web: federal funds rate target current Fed policy stance
+    [tool 3] search_web: Ross Stores raises full year guidance EPS $7.50 $7.74 fiscal 2026 revenue
+    [tool 4] search_web: Ross Stores new store openings 2026 2027 capex expansion plans
+    [tool 5] search_web: Ross Stores long term store count target dd's DISCOUNTS 2900 expansion runway
+    [tool 6] search_web: apparel tariffs 2026 impact off-price retailers Ross TJX margin
+    [tool 7] fetch_page: https://investors.rossstores.com/news-releases
+    [tool 8] search_web: Ross Stores Q2 fiscal 2026 results August 2026 sales EPS operating margin gross margin
+    [tool 9] search_web: effective federal funds rate August 2026 EFFR level
+    [tool 10] search_web: US CPI inflation rate July 2026 latest
+    [tool 11] search_web: investment grade credit spreads August 2026 OAS
+    [tool 12] fetch_page: https://investors.rossstores.com/news-releases/news-release-details/ross-stores-reports-
+    [tool 13] fetch_page: https://247wallst.com/investing/2026/08/21/ross-jumps-8-on-10-comp-growth-tjx-ticks-up-m
+    [tool 14] search_web: Ross Stores price target raised analysts August 2026 after Q2
+    [tool 15] search_web: US dollar index DXY August 2026 level
+  sample 2: IV $162.1 | usable=True | 15 tool calls (think 168,766ch / report 27,373ch) | 669s | $0.132 cumulative
+    [tool 1] search_web: Ross Stores second quarter fiscal 2026 results EPS comparable store sales August 2026
+    [tool 2] search_web: Ross Stores full year fiscal 2026 guidance EPS $7.50 $7.74 sales comps raised
+    [tool 3] search_web: Ross Stores investor day 2022 long range plan sales $30 billion operating margin target 
+    [tool 4] search_web: 10 year treasury yield August 2026 federal funds rate Fed policy
+    [tool 5] fetch_page: https://www.just-style.com/news/ross-stores-2026-q2/
+    [tool 6] fetch_page: https://247wallst.com/investing/2026/08/21/ross-jumps-8-on-10-comp-growth-tjx-ticks-up-m
+    [tool 7] search_web: Ross Stores Q3 fiscal 2026 guidance comparable store sales October 2026 comps
+    [tool 8] search_web: Ross Stores long-term growth algorithm 7% 9% annual sales growth store expansion dd's DI
+    [tool 9] search_web: Federal Reserve federal funds rate target range August 2026 FOMC September hike odds inf
+    [tool 10] search_web: DXY dollar index level August 2026 US dollar strength
+    [tool 11] search_web: Ross Stores fiscal 2027 EPS estimates consensus analyst revenue forecast
+    [tool 12] search_web: Ross Stores 2022 investor day financial targets sales growth operating margin 14% store 
+    [tool 13] fetch_page: https://rossstoresinc.gcs-web.com/static-files/3e081264-6b15-4c0d-9c9a-9c3f182b3837
+    [tool 14] fetch_page: https://finance.yahoo.com/quote/ROST/analysis/
+    [tool 15] search_web: Ross Stores capital expenditures fiscal 2026 guidance billion new stores 115 capex
+    [tool 16] search_web: Ross Stores IEEPA tariff refund $253 million Q2 2026 one-time benefit explained
+  sample 3: IV $102.8 | usable=True | 16 tool calls (think 131,760ch / report 27,824ch) | 520s | $0.174 cumulative
+
+[deep-api] ROST: OVERVALUED | band $102.8-$162.1 vs price $239.04 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 8.8d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 18 API calls | 618,854 in (518,144 cached) | 224,780 out (194,040 reasoning) | $0.174 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ROST_20260826_073458\verdict_depth.json

@@ -1,0 +1,59 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/NICE.md, 6.8 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] NICE @ $100.24 | deepseek-v4-flash effort=high | 3 samples | pack 34,648ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NICE_20260826_064015
+    [tool 1] search_web: NICE Ltd Actimize spin-off 2026 completion date status
+    [tool 2] search_web: NICE Q2 2026 results revenue growth cloud revenue guidance Actimize
+    [tool 3] search_web: NICE Ltd 2025 annual results Actimize revenue customer engagement cloud revenue segment
+    [tool 4] search_web: 10-year Treasury yield August 2026 current level
+    [tool 5] fetch_page: https://resources.nice.com/wp-content/uploads/2026/08/Q2-2026-PR-Eng-FINAL.pdf
+    [tool 6] search_web: NICE Actimize sale process bidders $2.5 billion 2026 timeline
+    [tool 7] search_web: NICE fourth quarter 2025 full year results revenue cloud revenue Actimize segment full y
+    [tool 8] search_web: NICE Scott Russell CEO 2026 Barak Eilam leadership transition
+    [tool 9] fetch_page: https://www.tradingview.com/news/marketbeat:594a74ccf094b:0-nice-q2-earnings-call-highli
+    [tool 10] search_web: NICE Q2 2026 press release "cloud backlog" "AI ARR" guidance full year 2026 revenue
+    [tool 11] search_web: NICE Actimize revenue 2025 $ financial crime compliance segment annual revenue estimate
+    [tool 12] search_web: Federal Reserve interest rate August 2026 FOMC policy stance
+    [tool 13] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/12/nice-nice-q2-2026-earnings-cal
+    [tool 14] search_web: NICE non-GAAP effective tax rate 2026 guidance adjusted EPS
+    [tool 15] search_web: NICE NICE analyst revenue estimate 2027 2028 consensus EPS forecast
+    [tool 16] search_web: dollar index DXY August 2026 level
+  sample 1: IV $142.0 | usable=True | 16 tool calls (think 119,342ch / report 33,402ch) | 432s | $0.044 cumulative
+    [tool 1] search_web: NICE Ltd Actimize spin-off status 2026 completed separation
+    [tool 2] search_web: NICE Ltd Q2 2026 results full year 2026 guidance revenue adjusted EPS
+    [tool 3] search_web: 10-year treasury yield August 2026 Federal Reserve interest rate
+    [tool 4] search_web: NICE Ltd 2026 free cash flow guidance capitalized software capex
+    [tool 5] fetch_page: https://www.01net.it/nice-exceeds-revenue-guidance-range-reporting-8-year-over-year-reve
+    [tool 6] fetch_page: https://www.fintechfutures.com/m-a/nice-reportedly-looking-to-sell-actimize-division-for
+    [tool 7] search_web: Federal Reserve September 2026 rate decision cut expectations inflation
+    [tool 8] search_web: NICE Ltd NICE analyst estimates FY2026 FY2027 revenue EPS forecast
+    [tool 9] fetch_page: https://www.nice.com/press-releases/nice-exceeds-revenue-guidance-range-reporting-8-year
+    [tool 10] search_web: NICE Actimize sale $2 billion Reuters Bloomberg 2026
+    [tool 11] search_web: NICE Q2 2026 revenue total cloud revenue annual recurring revenue backlog August 2026
+    [tool 12] search_web: NICE Ltd FY2027 consensus revenue EPS estimate 2027
+    [tool 13] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/12/nice-nice-q2-2026-earnings-cal
+    [tool 14] fetch_page: https://a-teaminsight.com/blog/nice-earnings-call-puts-reported-actimize-sale-update-in-
+    [tool 15] search_web: NICE Ltd medium term targets 2027 2028 cloud revenue growth margin investor
+    [tool 16] search_web: US dollar index DXY August 2026 credit spreads recession probability
+  sample 2: IV $179.0 | usable=True | 16 tool calls (think 114,363ch / report 33,259ch) | 423s | $0.084 cumulative
+    [tool 1] search_web: NICE Ltd second quarter 2026 results revenue guidance full year 2026 EPS
+    [tool 2] search_web: NICE Actimize spin-off 2026 separation tax-free
+    [tool 3] search_web: NICE CXone AI ARR cloud backlog 2026 outcome-based pricing
+    [tool 4] search_web: NICE Cognigy acquisition agentic AI 2025 2026
+    [tool 5] search_web: Scott Russell NICE CEO transition 2026
+    [tool 6] search_web: 10 year treasury yield August 2026
+    [tool 7] search_web: federal funds rate target August 2026 Fed policy
+    [tool 8] search_web: US dollar index DXY August 2026
+    [tool 9] fetch_page: https://www.nice.com/press-releases/nice-exceeds-revenue-guidance-range-reporting-8-year
+    [tool 10] search_web: NICE Actimize sale $2 billion Calcalist revenue EBITDA 2026
+    [tool 11] search_web: NICE Cognigy acquisition purchase price $ million
+    [tool 12] search_web: NICE free cash flow guidance 2026 full year
+    [tool 13] search_web: NICE Ltd analyst estimates 2027 2028 revenue EPS consensus
+    [tool 14] search_web: US inflation CPI August 2026 GDP growth second quarter 2026
+    [tool 15] search_web: high yield credit spreads August 2026 investment grade
+  sample 3: IV $165.0 | usable=True | 15 tool calls (think 120,728ch / report 28,707ch) | 456s | $0.120 cumulative
+
+[deep-api] NICE: UNDERVALUED | band $142.0-$179.0 vs price $100.24 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 6.8d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 357,663 in (258,816 cached) | 146,120 out (112,583 reasoning) | $0.120 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NICE_20260826_064015\verdict_depth.json

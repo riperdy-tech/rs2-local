@@ -1,0 +1,48 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/CRM.md, 8.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] CRM @ $209.17 | deepseek-v4-flash effort=high | 3 samples | pack 35,971ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CRM_20260826_025120
+    [tool 1] search_web: Salesforce fiscal 2026 revenue guidance full year outlook earnings
+    [tool 2] search_web: Salesforce Agentforce annual recurring revenue ARR 2025 2026
+    [tool 3] search_web: 10 year treasury yield current level August 2025
+    [tool 4] search_web: federal reserve interest rate policy outlook 2025 2026 cuts
+    [tool 5] search_web: Salesforce share buyback program authorization $50 billion
+    [tool 6] search_web: Salesforce data center capital expenditure AI infrastructure investment plans
+    [tool 7] search_web: Salesforce research and development expense percentage of revenue annual report
+    [tool 8] search_web: Salesforce effective tax rate GAAP fiscal 2025
+    [tool 9] fetch_page: https://blockspace.media/insight/salesforce-raises-revenue-guidance-agentforce-2027/
+    [tool 10] search_web: Salesforce Q1 fiscal 2027 earnings cRPO remaining performance obligations growth
+  sample 1: IV $311.0 | usable=True | 10 tool calls (think 146,251ch / report 38,179ch) | 583s | $0.052 cumulative
+    [tool 1] search_web: 10-year Treasury yield current level August 2026
+    [tool 2] search_web: Federal Reserve fed funds rate target current August 2026
+    [tool 3] search_web: Salesforce FY2027 revenue guidance operating margin outlook
+    [tool 4] search_web: Salesforce capital expenditure data center AI spending fiscal 2026 2027
+    [tool 5] fetch_page: https://investor.salesforce.com/news/news-details/2026/Salesforce-Delivers-Record-First-
+    [tool 6] search_web: US CPI inflation rate July 2026
+    [tool 7] search_web: dollar index DXY level August 2026
+    [tool 8] search_web: Salesforce Informatica acquisition revenue annual contribution fiscal 2027
+    [tool 9] search_web: Salesforce FY30 targets non-GAAP operating margin investor day 2026
+    [tool 10] search_web: Salesforce stock drop Q4 fiscal 2026 earnings outlook reaction buyback
+    [tool 11] search_web: HubSpot Microsoft Dynamics Salesforce CRM competition enterprise 2026 pricing pressure
+    [tool 12] search_web: US investment grade credit spreads OAS August 2026
+  sample 2: IV $245.9 | usable=True | 12 tool calls (think 152,304ch / report 36,278ch) | 602s | $0.100 cumulative
+    [tool 1] search_web: Salesforce Q1 fiscal 2027 earnings results May 2026 revenue guidance fiscal 2027
+    [tool 2] search_web: 10 year treasury yield level August 2026
+    [tool 3] search_web: Federal Reserve interest rate decision August 2026 federal funds rate
+    [tool 4] search_web: Salesforce Agentforce ARR annual recurring revenue 2026 agentic AI
+    [tool 5] fetch_page: https://azat.tv/en/salesforce-q1-fiscal-2027-earnings-analysis/
+    [tool 6] search_web: Salesforce fiscal 2027 guidance revenue $45.2 billion operating margin GAAP non-GAAP
+    [tool 7] search_web: Salesforce capital expenditure data center AI infrastructure investment 2026 2027 capaci
+    [tool 8] fetch_page: https://investor.salesforce.com/news/news-details/2026/Salesforce-Delivers-Record-First-
+    [tool 9] search_web: Salesforce Q2 fiscal 2027 guidance revenue outlook July 2026 quarter
+    [tool 10] search_web: Salesforce analyst estimates fiscal 2028 2029 revenue growth consensus
+    [tool 11] search_web: Salesforce FY30 targets revenue operating cash flow investor day 2025
+    [tool 12] search_web: Salesforce Informatica acquisition price completed 2026 cloud data management
+    [tool 13] search_web: Salesforce Google Cloud CoreWeave AI infrastructure agreement capacity purchase
+    [tool 14] search_web: US dollar index DXY inflation CPI credit spreads August 2026
+  sample 3: IV $239.0 | usable=True | 14 tool calls (think 99,240ch / report 28,951ch) | 394s | $0.135 cumulative
+
+[deep-api] CRM: UNDERVALUED | band $239.0-$311.0 vs price $209.17 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 8.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 453,909 in (382,464 cached) | 176,573 out (140,667 reasoning) | $0.135 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CRM_20260826_025120\verdict_depth.json

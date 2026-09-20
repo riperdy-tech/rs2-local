@@ -1,0 +1,55 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/UNP.md, 7.0 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] UNP @ $308.05 | deepseek-v4-flash effort=high | 3 samples | pack 36,323ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\UNP_20260826_082855
+    [tool 1] search_web: Union Pacific Norfolk Southern merger terms financing 2026 stock cash consideration
+    [tool 2] search_web: Union Pacific full year 2026 EPS guidance raised after Q2 2026 earnings
+    [tool 3] fetch_page: https://en.wikipedia.org/wiki/Proposed_merger_between_Union_Pacific_and_Norfolk_Southern
+    [tool 4] fetch_page: https://www.up.com/press-releases/financial/2q26-earnings-results-260723
+    [tool 5] search_web: Norfolk Southern 2025 revenue net income shares outstanding market cap
+    [tool 6] search_web: 10 year treasury yield August 2026 Fed interest rate policy
+    [tool 7] search_web: Norfolk Southern fourth quarter 2025 results full year revenue operating income EPS
+    [tool 8] search_web: Federal Reserve rate decision August 2026 fed funds target range Powell
+    [tool 9] fetch_page: https://www.finansavisen.no/borsmeldinger/2026/01/29/12acd17c-4ff7-5a9d-b17a-a5b29cb1165
+    [tool 10] search_web: "fed funds" target range "2026" current rate percent inflation CPI 2026
+    [tool 11] fetch_page: https://tradingeconomics.com/united-states/interest-rate
+    [tool 12] search_web: US inflation rate July 2026 CPI year over year
+    [tool 13] search_web: Norfolk Southern shares outstanding 2025 total debt balance sheet billion
+    [tool 14] search_web: AAR rail traffic 2026 carloads intermodal year to date volumes
+  sample 1: IV $184.0 | usable=True | 14 tool calls (think 83,675ch / report 32,565ch) | 376s | $0.038 cumulative
+    [tool 1] search_web: Union Pacific Norfolk Southern merger STB Surface Transportation Board review status Aug
+    [tool 2] search_web: Union Pacific Norfolk Southern merger deal terms exchange ratio price per share synergie
+    [tool 3] search_web: Union Pacific Q2 2026 earnings call full year 2026 EPS guidance raised capex plan
+    [tool 4] search_web: 10 year treasury yield August 2026 current level
+    [tool 5] fetch_page: https://www.up-nstranscontinental.com/transaction-details/
+    [tool 6] fetch_page: https://www.up.com/press-releases/financial/2q26-earnings-results-260723
+    [tool 7] search_web: Norfolk Southern shares outstanding 2026 merger consideration $85 billion Union Pacific
+    [tool 8] search_web: Federal Reserve funds rate August 2026 FOMC policy stance inflation CPI
+    [tool 9] search_web: Norfolk Southern 2025 annual revenue net income EBITDA net debt shares outstanding
+    [tool 10] search_web: Union Pacific Norfolk Southern merger approval probability analyst odds STB 2026 2027 ti
+    [tool 11] search_web: Union Pacific UNP consensus EPS estimate fiscal 2026 2027 analyst
+    [tool 12] search_web: US CPI inflation rate July 2026 dollar index DXY credit spreads investment grade high yi
+    [tool 13] fetch_page: https://en.wikipedia.org/wiki/Proposed_merger_between_Union_Pacific_and_Norfolk_Southern
+    [tool 14] search_web: Norfolk Southern 2025 full year revenue net income operating income macrotrends
+    [tool 15] search_web: "Union Pacific" 2026 EPS estimate "$13" OR "$13.5" OR "$14" full year consensus forward
+    [tool 16] search_web: CPI inflation July 2026 year over year percent US dollar index level August 2026 credit 
+  sample 2: IV $300.0 | usable=True | 16 tool calls (think 112,602ch / report 38,104ch) | 495s | $0.078 cumulative
+    [tool 1] search_web: Union Pacific Q2 2026 earnings full year 2026 guidance EPS capital expenditure operating
+    [tool 2] search_web: Union Pacific Norfolk Southern merger STB review timeline 2026 approval probability deal
+    [tool 3] search_web: 10 year treasury yield August 2026 Federal Reserve interest rate
+    [tool 4] search_web: Union Pacific 2026 capital expenditure plan guidance billion capex
+    [tool 5] fetch_page: https://investor.unionpacific.com/news-releases/news-release-details/union-pacific-repor
+    [tool 6] search_web: "Union Pacific" 2026 guidance "operating ratio" capex "$" full year EPS raised
+    [tool 7] search_web: Union Pacific UNP consensus EPS estimates 2027 2028 forward PE
+    [tool 8] fetch_page: https://stockanalysis.com/stocks/unp/forecast/
+    [tool 9] fetch_page: https://www.tikr.com/blog/what-union-pacific-q2-earnings-reveal-about-the-norfolk-southe
+    [tool 10] search_web: "Union Pacific" capex 2026 "$3.7 billion" OR "$3.8 billion" OR "$3.9 billion" capital pl
+    [tool 11] search_web: Union Pacific 2026 capital spending guidance "$3.7" OR "$3.8" OR "$3.9" billion railroad
+    [tool 12] fetch_page: https://wwd.com/sourcing-journal/logistics/union-pacific-norfolk-southern-merger-stb-rev
+    [tool 13] search_web: federal funds rate target August 2026 FOMC rate cut expectations
+  sample 3: IV $282.0 | usable=True | 13 tool calls (think 76,521ch / report 28,475ch) | 388s | $0.107 cumulative
+
+[deep-api] UNP: OVERVALUED | band $184.0-$300.0 vs price $308.05 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 7.0d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 18 API calls | 476,124 in (383,616 cached) | 126,906 out (92,800 reasoning) | $0.107 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\UNP_20260826_082855\verdict_depth.json

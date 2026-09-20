@@ -1,0 +1,54 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ROK.md, 18.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ROK @ $437.08 | deepseek-v4-flash effort=high | 3 samples | pack 35,988ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ROK_20260826_072710
+    [tool 1] search_web: 10 year treasury yield current level August 2026
+    [tool 2] search_web: Federal Reserve interest rate decision policy stance August 2026
+    [tool 3] search_web: Rockwell Automation fiscal 2026 guidance organic sales growth adjusted EPS outlook
+    [tool 4] search_web: Rockwell Automation fiscal 2027 EPS consensus estimate analyst
+    [tool 5] search_web: Rockwell Automation ROK 2027 EPS estimate $14 fiscal year consensus
+    [tool 6] search_web: Rockwell Automation 2030 targets revenue operating margin long-term financial framework
+    [tool 7] search_web: Rockwell Automation segment revenue fiscal 2025 Intelligent Devices Software and Control
+    [tool 8] search_web: Rockwell Automation historical forward P/E average valuation multiple
+    [tool 9] fetch_page: https://finance.yahoo.com/quote/ROK/analysis/
+    [tool 10] search_web: Rockwell Automation third quarter fiscal 2026 results adjusted EPS $3.49 orders backlog
+    [tool 11] search_web: DXY dollar index level August 2026 credit spreads high yield
+    [tool 12] fetch_page: https://www.trefis.com/data/companies/rok
+    [tool 13] search_web: "Rockwell" ROK 2027 consensus EPS estimate stockanalysis
+    [tool 14] search_web: Rockwell Automation fiscal 2026 Q3 segment sales Intelligent Devices Software Control Li
+  sample 1: IV $361.0 | usable=True | 14 tool calls (think 94,219ch / report 30,302ch) | 365s | $0.035 cumulative
+    [tool 1] search_web: Rockwell Automation fiscal 2027 guidance organic sales growth EPS outlook
+    [tool 2] search_web: Rockwell Automation Q3 fiscal 2026 results orders backlog book-to-bill organic growth
+    [tool 3] search_web: Rockwell Automation software recurring revenue percentage of total revenue fiscal 2026
+    [tool 4] search_web: 10 year treasury yield August 2026 Federal Reserve interest rate outlook
+    [tool 5] search_web: ISM Manufacturing PMI August 2026 United States manufacturing
+    [tool 6] search_web: Rockwell Automation analyst consensus EPS estimate fiscal 2027 fiscal 2028
+    [tool 7] search_web: Rockwell Automation annual recurring revenue ARR billion software services mix
+    [tool 8] search_web: Rockwell Automation book-to-bill third quarter fiscal 2026 backlog orders
+    [tool 9] search_web: Rockwell Automation research and development expense fiscal 2025 annual report
+    [tool 10] search_web: federal funds rate August 2026 Fed Warsh rate cut expectations
+    [tool 11] fetch_page: https://www.rockwellautomation.com/en-us/company/news/press-releases/Rockwell-Automation
+    [tool 12] fetch_page: https://au.marketscreener.com/quote/stock/ROCKWELL-AUTOMATION-INC-16414086/finances/
+    [tool 13] search_web: Rockwell Automation "annual recurring revenue" ARR fiscal 2026 dollar amount billion
+    [tool 14] search_web: Rockwell Automation 10-K fiscal 2025 R&D expense engineering development costs million
+  sample 2: IV $305.0 | usable=True | 14 tool calls (think 87,262ch / report 27,592ch) | 352s | $0.069 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 24 2026
+    [tool 2] search_web: Federal Reserve fed funds rate August 2026 policy stance
+    [tool 3] search_web: ISM manufacturing PMI July 2026
+    [tool 4] search_web: Rockwell Automation third quarter fiscal 2026 results press release guidance organic sal
+    [tool 5] search_web: Rockwell Automation fiscal 2027 EPS consensus analyst estimates
+    [tool 6] search_web: "10-year Treasury" yield "August 2026" level percent
+    [tool 7] search_web: Rockwell Automation Q3 fiscal 2026 orders book-to-bill backlog double-digit growth segme
+    [tool 8] search_web: Rockwell Automation fiscal 2025 adjusted EPS full year results segments intelligent devi
+    [tool 9] search_web: Rockwell Automation share repurchase dividend 2026 capital allocation buyback authorizat
+    [tool 10] search_web: Rockwell Automation fiscal 2026 initial guidance November 2025 adjusted EPS $11.80 raise
+    [tool 11] fetch_page: https://www.rockwellautomation.com/en-gb/company/news/press-releases/Rockwell-Automation
+    [tool 12] search_web: Rockwell Automation "fiscal 2027" EPS estimate $15 consensus outlook
+    [tool 13] search_web: Rockwell Automation R&D expense fiscal 2025 research and development 10-K
+    [tool 14] search_web: Siemens ABB Emerson Schneider Electric forward P/E 2026 valuation multiples industrial a
+  sample 3: IV $335.0 | usable=True | 14 tool calls (think 101,661ch / report 25,439ch) | 375s | $0.101 cumulative
+
+[deep-api] ROK: OVERVALUED | band $305.0-$361.0 vs price $437.08 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 18.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 364,106 in (281,984 cached) | 122,842 out (94,166 reasoning) | $0.101 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ROK_20260826_072710\verdict_depth.json

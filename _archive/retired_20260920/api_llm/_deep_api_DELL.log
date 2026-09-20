@@ -1,0 +1,49 @@
+[deep-api] DELL @ $437.55 | deepseek-v4-flash effort=high | 3 samples | pack 31,800ch from DELL_20260822_165343 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\DELL_20260825_002118
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 220.0 | spread 86.5%
+    [tool 1] search_web: Dell Technologies fiscal 2027 full year revenue EPS guidance AI server backlog
+    [tool 2] search_web: Dell Q1 FY2027 earnings call Jeff Clarke AI servers demand comments guidance
+    [tool 3] fetch_page: https://www.dell.com/en-us/dt/corporate/newsroom/announcements/detailpage.press-releases
+    [tool 4] fetch_page: https://futurumgroup.com/insights/dell-q1-fy-2027-ai-server-demand-drives-raised-fy-2027
+    [tool 5] fetch_page: https://investors.delltechnologies.com/static-files/b63ffff9-b729-403b-a231-c6af05667759
+    [tool 6] search_web: Dell Technologies analyst estimates fiscal 2028 fiscal 2029 revenue EPS consensus
+    [tool 7] search_web: Dell DELL fiscal 2028 revenue estimate EPS estimate analysts January 2028
+    [tool 8] search_web: 10-year Treasury yield August 2026 current level
+    [tool 9] fetch_page: https://finance.yahoo.com/quote/DELL/analysis/
+    [tool 10] fetch_page: https://ts2.tech/en/dells-51-billion-ai-order-backlog-surpasses-projected-fy27-revenue-s
+    [tool 11] fetch_page: https://www.tikr.com/blog/the-ai-boom-is-making-dell-more-profitable-and-less-profitable
+    [tool 12] search_web: Dell Technologies Q1 FY2027 earnings call transcript David Kennedy margin commentary AI 
+    [tool 13] search_web: Dell Technologies share repurchase authorization dividend fiscal 2027 capital return pro
+  sample 1: IV $181.0 | usable=True | 13 tool calls (think 77,084ch / report 26,018ch) | 364s | $0.031 cumulative
+    [tool 1] search_web: Dell Technologies Q1 fiscal 2027 earnings call full year fiscal 2027 revenue guidance Je
+    [tool 2] search_web: Dell fiscal 2027 revenue guidance analysts forecast FY2028 estimates AI server backlog
+    [tool 3] fetch_page: https://www.dell.com/en-us/dt/corporate/newsroom/announcements/detailpage.press-releases
+    [tool 4] search_web: Dell Technologies FY2028 revenue estimate analyst AI server growth sustainability fiscal
+    [tool 5] search_web: Dell Technologies fiscal 2027 free cash flow guidance adjusted FCF capex working capital
+    [tool 6] search_web: Dell AI server backlog orders Q1 FY2027 $24.4 billion bookings durability pipeline
+    [tool 7] search_web: "Dell" fiscal 2027 "adjusted free cash flow" guidance billion FY27
+    [tool 8] search_web: Dell Technologies total cash and investments net debt June 2026 balance sheet short-term
+    [tool 9] fetch_page: https://www.sec.gov/Archives/edgar/data/1571996/000157199626000021/exhibit991earnings8kq
+    [tool 10] fetch_page: https://stocknow.ai/en/calls/m2bf2omk8cx00704sl86mirm/dell_q1-2027-earnings-call
+    [tool 11] search_web: 10 year treasury yield August 2026 current level
+    [tool 12] search_web: Dell Q1 fiscal 2027 David Kennedy "adjusted free cash flow" FY27 guidance full year cash
+    [tool 13] search_web: Dell Technologies Q1 FY2027 balance sheet cash and cash equivalents short-term investmen
+  sample 2: IV $173.5 | usable=True | 13 tool calls (think 69,437ch / report 20,601ch) | 278s | $0.059 cumulative
+    [tool 1] search_web: Dell Technologies Q1 fiscal 2027 results revenue guidance FY2027 full year
+    [tool 2] search_web: Dell Technologies FY2027 guidance EPS revenue Jeff Clarke AI server backlog
+    [tool 3] search_web: AI server market forecast 2027 2028 2029 growth rate enterprise AI infrastructure
+    [tool 4] search_web: 10 year treasury yield August 2026 current
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/1571996/000157199626000021/exhibit991earnings8kq
+    [tool 6] fetch_page: https://www.tikr.com/blog/the-ai-boom-is-making-dell-more-profitable-and-less-profitable
+    [tool 7] fetch_page: https://investors.delltechnologies.com/static-files/b63ffff9-b729-403b-a231-c6af05667759
+    [tool 8] search_web: Dell Technologies fiscal 2028 revenue EPS analyst estimates consensus
+    [tool 9] search_web: Dell Q1 FY2027 earnings call Q&A AI server margin working capital backlog Jeff Clarke
+    [tool 10] search_web: enterprise AI server spending forecast 2028 2029 Gartner IDC growth percent
+    [tool 11] fetch_page: https://finance.yahoo.com/markets/stocks/articles/dell-technologies-stock-analyst-estima
+    [tool 12] fetch_page: https://ca.finance.yahoo.com/news/dell-technologies-inc-dell-q1-050114129.html
+    [tool 13] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/05/28/dell-dell-q1-2027-earnings-cal
+  sample 3: IV $211.5 | usable=True | 13 tool calls (think 87,287ch / report 25,120ch) | 361s | $0.089 cumulative
+
+[deep-api] DELL: OVERVALUED | band $173.5-$211.5 vs price $437.55 | size half
+[deep-api] LOCAL said: OVERVALUED | band $185.0-$345.0 | median $220.0
+[deep-api] 20 API calls | 376,923 in (300,416 cached) | 106,565 out (79,276 reasoning) | $0.089 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\DELL_20260825_002118\verdict_depth.json

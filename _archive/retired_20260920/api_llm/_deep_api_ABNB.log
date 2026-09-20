@@ -1,0 +1,52 @@
+[deep-api] ABNB @ $185.0 | deepseek-v4-flash effort=high | 3 samples | pack 32,162ch from ABNB_20260823_063318 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ABNB_20260824_230530
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 142.0 | spread 48.0%
+    [tool 1] search_web: Airbnb Q2 2026 earnings call full year 2026 revenue guidance margin "at least"
+    [tool 2] search_web: Airbnb share buyback repurchase 2026 program authorization pace
+    [tool 3] search_web: Airbnb capital expenditure 2026 2027 capex plans asset-light
+    [tool 4] search_web: 10-year treasury yield August 2026
+    [tool 5] fetch_page: https://news.insightanalytics.io/articles/airbnb-q2-fy2026-earnings
+    [tool 6] fetch_page: https://www.perplexity.ai/finance/ABNB/earnings
+    [tool 7] search_web: Airbnb Q3 2026 revenue guidance $4.69 billion outlook bookings
+    [tool 8] search_web: Airbnb analyst estimates 2027 revenue consensus growth forecast
+    [tool 9] fetch_page: https://www.investing.com/news/earnings/airbnb-shares-up-on-q2-beat-6-billion-buyback-an
+    [tool 10] fetch_page: https://finance.yahoo.com/quote/ABNB/analysis/
+    [tool 11] search_web: Airbnb 2026 "capital expenditures" OR "capex" increased spending product development AI 
+    [tool 12] fetch_page: https://rewiremedia.co/2026/08/07/airbnb-q2-2026-earnings-revenue-bookings-growth/
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/abnb/forecast/
+  sample 1: IV $177.0 | usable=True | 13 tool calls (think 50,018ch / report 20,841ch) | 223s | $0.021 cumulative
+    [tool 1] search_web: Airbnb Q2 2026 earnings call full year 2026 revenue growth guidance adjusted EBITDA marg
+    [tool 2] search_web: 10 year treasury yield August 2026 current level
+    [tool 3] search_web: Airbnb analyst estimates 2027 revenue EPS consensus
+    [tool 4] search_web: Airbnb share repurchase program 2026 buyback authorization
+    [tool 5] fetch_page: https://news.airbnb.com/airbnb-q2-2026-financial-results/
+    [tool 6] search_web: Airbnb 2027 revenue estimate stockanalysis consensus forward
+    [tool 7] fetch_page: https://stockanalysis.com/stocks/abnb/forecast/
+    [tool 8] search_web: Airbnb Q2 2026 shareholder letter guidance "revenue growth" "adjusted EBITDA" full year 
+    [tool 9] search_web: Brian Chesky long-term growth 2027 Airbnb commentary "new era" or growth algorithm
+    [tool 10] fetch_page: https://s26.q4cdn.com/656283129/files/doc_financials/2026/q2/Airbnb-Q2-2026-Shareholder-
+    [tool 11] fetch_page: https://allmind.ai/earnings/event/2940564
+    [tool 12] search_web: Airbnb Q2 2026 "low to mid-teens" revenue growth guidance 2026 adjusted EBITDA margin 35
+    [tool 13] search_web: Airbnb stock-based compensation percentage of revenue 2025 2026 SBC
+    [tool 14] search_web: Airbnb effective tax rate 2025 GAAP provision income taxes
+  sample 2: IV $92.0 | usable=True | 14 tool calls (think 107,202ch / report 18,408ch) | 346s | $0.058 cumulative
+    [tool 1] search_web: Airbnb Q2 2026 earnings full year 2026 revenue growth guidance mid-teens adjusted EBITDA
+    [tool 2] search_web: Airbnb capitalized software development costs capital expenditures 2025 fiscal year 10-K
+    [tool 3] search_web: Airbnb stock buyback share repurchase program 2026 authorization billion
+    [tool 4] search_web: Airbnb 2027 2028 revenue growth analyst estimates consensus long term growth rate
+    [tool 5] search_web: 10 year treasury yield August 2026 current
+    [tool 6] search_web: Airbnb stock-based compensation expense fiscal year 2025 annual report
+    [tool 7] fetch_page: https://news.airbnb.com/airbnb-q2-2026-financial-results/
+    [tool 8] search_web: Airbnb 10-K 2025 "capitalized software" OR "internally developed software" cash flow pur
+    [tool 9] search_web: Airbnb stock-based compensation 2023 2024 2025 million annual
+    [tool 10] search_web: Airbnb cash flow statement "capitalized software" purchases of property equipment 2024 2
+    [tool 11] search_web: ABNB 2027 revenue estimate consensus analyst forecast billion
+    [tool 12] search_web: Airbnb net cash marketable securities short-term investments 2025 balance sheet $2.5 bil
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/1559720/000155972026000014/abnb-20260331.htm
+    [tool 14] fetch_page: https://stockanalysis.com/stocks/abnb/financials/cash-flow-statement/
+    [tool 15] fetch_page: https://www.perplexity.ai/finance/ABNB
+  sample 3: IV $107.0 | usable=True | 15 tool calls (think 64,437ch / report 29,096ch) | 270s | $0.084 cumulative
+
+[deep-api] ABNB: OVERVALUED | band $92.0-$177.0 vs price $185.0 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $123.0-$182.0 | median $142.0
+[deep-api] 16 API calls | 279,224 in (209,152 cached) | 101,890 out (76,170 reasoning) | $0.084 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ABNB_20260824_230530\verdict_depth.json

@@ -1,0 +1,38 @@
+[deep-api] GOOG @ $336.88 | deepseek-v4-flash effort=high | 3 samples | pack 32,619ch from GOOG_20260821_093726 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GOOG_20260825_010845
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 295.0 | spread 36.3%
+    [tool 1] search_web: Alphabet 2026 capital expenditure guidance capex $180 billion $190 billion raised
+    [tool 2] search_web: 10 year treasury yield August 2026
+    [tool 3] search_web: Alphabet second quarter 2026 net income $112 billion one-time gain investment revaluatio
+    [tool 4] search_web: Alphabet marketable securities cash balance June 2026 balance sheet
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/1652044/000165204426000066/googexhibit991q22026.
+    [tool 6] search_web: Alphabet Q1 2026 net income gain on equity securities $62 billion one-time
+    [tool 7] search_web: Alphabet 2027 capex guidance estimate "rise significantly" AI infrastructure 2027
+    [tool 8] fetch_page: https://www.sec.gov/Archives/edgar/data/1652044/000165204426000043/googexhibit991q12026.
+    [tool 9] search_web: Alphabet Q2 2026 balance sheet cash marketable securities total debt June 30 2026
+    [tool 10] search_web: Alphabet mandatory convertible preferred stock conversion shares dilution June 2026
+    [tool 11] search_web: Alphabet 2027 capex estimate analysts $250 billion capital expenditure peak 2027 2028
+    [tool 12] search_web: Alphabet effective tax rate 2025 2026 guidance percentage
+    [tool 13] search_web: Alphabet capex normalization timeline AI infrastructure spending peak when declines 2028
+  sample 1: IV $180.0 | usable=True | 13 tool calls (think 162,671ch / report 26,384ch) | 533s | $0.049 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026
+    [tool 2] search_web: Alphabet Q2 2026 net income $112 billion one-time gain investments tax benefit explained
+    [tool 3] search_web: Alphabet capex guidance 2026 2027 CFO Anat Ashkenazi AI infrastructure spending outlook
+    [tool 4] search_web: Alphabet total cash marketable securities short-term investments balance sheet 2026
+    [tool 5] fetch_page: https://s206.q4cdn.com/479360582/files/doc_news/2026/Jul/22/attachments/2026q2-alphabet-
+    [tool 6] fetch_page: https://www.fool.com/investing/2026/08/17/alphabets-reported-112-billion-profit-included
+  sample 2: IV $220.0 | usable=True | 6 tool calls (think 83,747ch / report 24,646ch) | 321s | $0.078 cumulative
+    [tool 1] search_web: Alphabet Q2 2026 earnings call capex guidance full year 2026 2027 capital expenditures
+    [tool 2] search_web: Alphabet effective tax rate 2025 2026 GAAP income tax provision
+    [tool 3] search_web: Alphabet Q2 2026 balance sheet cash cash equivalents marketable securities June 30 2026
+    [tool 4] search_web: 10 year treasury yield August 2026 current level
+    [tool 5] fetch_page: https://www.cnbc.com/2026/07/22/google-earnings-q2-goog-live-updates.html
+    [tool 6] fetch_page: https://macdate.com/en/blog/google-alphabet-q2-2026-earnings-cloud-capex-gemini-20260723
+    [tool 7] search_web: Alphabet 2027 revenue growth consensus estimate EPS forward analyst
+    [tool 8] fetch_page: https://www.gurufocus.com/term/cash-equivalents-marketable-securities/GOOG
+    [tool 9] fetch_page: https://seekingalpha.com/news/4582436-alphabet-signals-2026-capex-180b-190b-while-expect
+  sample 3: IV $267.0 | usable=True | 9 tool calls (think 117,845ch / report 21,746ch) | 395s | $0.113 cumulative
+
+[deep-api] GOOG: OVERVALUED | band $180.0-$267.0 vs price $336.88 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $245.0-$334.0 | median $295.0
+[deep-api] 12 API calls | 335,678 in (291,200 cached) | 154,046 out (128,570 reasoning) | $0.113 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GOOG_20260825_010845\verdict_depth.json

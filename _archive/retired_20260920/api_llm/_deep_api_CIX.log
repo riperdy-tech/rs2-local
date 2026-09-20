@@ -1,0 +1,55 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/CIX.md, 10.1 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] CIX @ $31.89 | deepseek-v4-flash effort=high | 3 samples | pack 31,415ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CIX_20260826_024646
+    [tool 1] search_web: CompX International "second quarter 2026" results net sales Security Products Marine Com
+    [tool 2] search_web: CompX International 10-K 2025 segment revenue "Security Products" "Marine Components"
+    [tool 3] search_web: 10-year Treasury yield August 24 2026 Federal Reserve policy stance
+    [tool 4] search_web: CompX International majority shareholder Valhi Contran insider ownership 87%
+    [tool 5] fetch_page: https://finance.yahoo.com/markets/stocks/articles/compx-reports-second-quarter-2026-2015
+    [tool 6] fetch_page: https://www.valhi.net/news-releases/news-release-details/nl-industries-inc-announces-acq
+    [tool 7] fetch_page: https://csimarket.com/stocks/segments.php?code=CIX
+    [tool 8] search_web: CompX International dividend 2025 special dividend per share declared
+    [tool 9] search_web: CompX CIX analyst price target "$42.34" buy rating
+    [tool 10] search_web: recreational marine industry outlook 2026 boat production powerboat sales forecast
+    [tool 11] search_web: Federal Reserve federal funds rate target range August 2026 CPI inflation July 2026
+    [tool 12] search_web: US dollar index DXY August 2026 high yield credit spreads investment grade
+    [tool 13] search_web: NL Industries Valhi tender offer CompX International $16.25 per share minority
+    [tool 14] search_web: CompX International earnings call transcript 2026 management guidance full year outlook
+  sample 1: IV $22.0 | usable=True | 14 tool calls (think 127,003ch / report 38,177ch) | 497s | $0.045 cumulative
+    [tool 1] search_web: CompX International second quarter 2026 results net sales press release
+    [tool 2] search_web: CompX International 8-K May 2026 material event
+    [tool 3] search_web: CompX International segments Security Products Precision Components revenue 2025 2026
+    [tool 4] search_web: CompX International dividend 2026 quarterly dividend special dividend history
+    [tool 5] search_web: 10-year treasury yield Fed funds rate August 2026
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/1049606/000104960626000012/cix-20260505x8k.htm
+    [tool 7] fetch_page: https://finance.yahoo.com/markets/stocks/articles/compx-reports-second-quarter-2026-2015
+    [tool 8] search_web: CompX International marine components segment acquisition history Valhi
+    [tool 9] search_web: CompX International dividend per share 2026 declared $0.30 quarterly
+    [tool 10] fetch_page: https://www.sec.gov/Archives/edgar/data/1049606/000110465926023463/cix-20251231x10k.htm
+    [tool 11] search_web: Federal Reserve interest rate decision July 2026 fed funds target range inflation CPI
+    [tool 12] search_web: Valhi Inc ownership CompX International percentage common stock 2025
+    [tool 13] search_web: CompX International special dividend 2022 2024 one-time cash distribution per share
+    [tool 14] search_web: CompX International Valhi unsecured promissory note related party payable 10-K 2025
+    [tool 15] search_web: CompX International Security Products segment operating income 2025 Marine Components se
+    [tool 16] search_web: DXY US dollar index level August 2026
+  sample 2: IV $29.0 | usable=True | 16 tool calls (think 112,637ch / report 28,461ch) | 469s | $0.085 cumulative
+    [tool 1] search_web: CompX International second quarter 2026 results net sales outlook guidance
+    [tool 2] search_web: CompX International 2026 full year guidance revenue growth expectations
+    [tool 3] search_web: 10-year Treasury yield August 24 2026
+    [tool 4] search_web: Federal Reserve fed funds rate policy stance August 2026
+    [tool 5] search_web: CompX International controlling shareholder insider ownership float
+    [tool 6] search_web: CompX International dividend history quarterly dividend 2026
+    [tool 7] search_web: CompX International analyst price target buy rating 2026
+    [tool 8] search_web: CompX International security products marine furniture components segment revenue
+    [tool 9] fetch_page: https://www.theglobeandmail.com/investing/markets/stocks/CIX-A/pressreleases/3675763/com
+    [tool 10] fetch_page: https://stockanalysis.com/stocks/cix/dividend/
+    [tool 11] fetch_page: https://pestel-analysis.com/blogs/owners/compx
+    [tool 12] fetch_page: https://finance.yahoo.com/markets/stocks/articles/compx-q1-earnings-rise-y-145900799.htm
+    [tool 13] fetch_page: https://www.kitco.com/news/article/2026-08-24/gold-rallies-after-treasury-buyback-plan-l
+  sample 3: IV $28.5 | usable=True | 13 tool calls (think 63,056ch / report 21,907ch) | 288s | $0.109 cumulative
+
+[deep-api] CIX: OVERVALUED | band $22.0-$29.0 vs price $31.89 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 10.1d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 344,364 in (253,312 cached) | 131,913 out (101,965 reasoning) | $0.109 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CIX_20260826_024646\verdict_depth.json

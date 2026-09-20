@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/EMR.md, 18.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] EMR @ $156.745 | deepseek-v4-flash effort=high | 3 samples | pack 32,658ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\EMR_20260826_031835
+    [tool 1] search_web: Emerson Electric Q3 fiscal 2026 earnings results August 4 2026 adjusted EPS guidance
+    [tool 2] search_web: Emerson fiscal 2027 EPS outlook sales growth guidance automation
+    [tool 3] search_web: Emerson Electric long-term framework investor day 2025 underlying sales growth adjusted 
+    [tool 4] search_web: 10 year treasury yield August 2026 Fed policy rate outlook
+    [tool 5] fetch_page: https://ir.emerson.com/news-events/press-releases/detail/642/emerson-reports-third-quart
+    [tool 6] search_web: Emerson AspenTech acquisition $7.2 billion financing debt commercial paper 2025 leverage
+    [tool 7] search_web: Emerson EMR consensus EPS estimate fiscal 2027 fiscal 2028 analyst
+    [tool 8] search_web: Federal Reserve federal funds rate FOMC August 2026 rate cut pause
+    [tool 9] search_web: US CPI inflation rate July 2026 core inflation
+    [tool 10] search_web: dollar index DXY August 2026 level
+    [tool 11] search_web: Emerson fiscal 2025 segment sales Intelligent Devices Software and Control Discrete Auto
+    [tool 12] fetch_page: https://ir.emerson.com/news-events/press-releases/detail/617/emerson-reports-fourth-quar
+    [tool 13] search_web: Emerson Q3 2026 earnings call transcript Karsanbhai fiscal 2027 pipeline orders software
+    [tool 14] search_web: US high yield credit spread August 2026 investment grade OAS
+    [tool 15] search_web: ISM manufacturing PMI July 2026 United States economic cycle
+  sample 1: IV $112.9 | usable=True | 15 tool calls (think 85,411ch / report 29,471ch) | 322s | $0.035 cumulative
+    [tool 1] search_web: Emerson Electric fiscal 2027 EPS estimate consensus analyst
+    [tool 2] search_web: Emerson Electric AspenTech acquisition remaining stake $265 per share completed
+    [tool 3] search_web: 10-year Treasury yield Federal Reserve policy stance August 2025
+    [tool 4] search_web: Emerson Electric capital expenditure plan capex guidance 2026 2027
+    [tool 5] search_web: Emerson Electric adjusted segment EBITDA margin target 2027 2028 AspenTech software mix
+    [tool 6] search_web: Emerson Electric EMR analyst price target consensus
+    [tool 7] fetch_page: https://ir.emerson.com/news-events/press-releases/detail/642/emerson-reports-third-quart
+    [tool 8] search_web: federal funds rate August 2026 Fed decision
+    [tool 9] search_web: dollar index DXY August 2026
+    [tool 10] search_web: Emerson Electric $11.2 billion project funnel orders backlog 2026
+    [tool 11] search_web: AspenTech annual revenue ARR fiscal 2025 2026 Emerson software segment
+    [tool 12] search_web: Emerson Electric initial fiscal 2027 outlook EPS guidance November 2026
+    [tool 13] search_web: investment grade credit spread OAS August 2026
+  sample 2: IV $163.96 | usable=True | 13 tool calls (think 118,276ch / report 12,301ch) | 419s | $0.070 cumulative
+    [tool 1] search_web: Emerson Electric Q3 fiscal 2026 results August 4 2026 adjusted EPS guidance
+    [tool 2] search_web: Emerson Electric fiscal 2026 guidance sales growth adjusted EPS free cash flow capex
+    [tool 3] search_web: Emerson Electric segment revenue Intelligent Devices Software Control Safety Productivit
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://ir.emerson.com/news-events/press-releases/detail/642/emerson-reports-third-quart
+    [tool 6] fetch_page: https://ir.emerson.com/
+    [tool 7] search_web: Emerson "$12 billion" cumulative free cash flow 2026 to 2028 "$10 billion" cash returns 
+    [tool 8] search_web: Federal Reserve fed funds rate August 2026 decision
+    [tool 9] search_web: US ISM manufacturing PMI August 2026
+    [tool 10] search_web: US CPI inflation rate July 2026 dollar index DXY
+    [tool 11] search_web: Emerson AspenTech ownership stake 2026 software segment growth 2026
+    [tool 12] search_web: Rockwell Automation Eaton Parker Hannifin Honeywell forward PE EV/EBITDA 2026
+    [tool 13] search_web: US inflation rate year over year July 2026 CPI percent
+    [tool 14] search_web: Emerson 10-K 2025 segment net sales "Intelligent Devices" "Software and Control" "Safety
+    [tool 15] search_web: investment grade high yield credit spreads August 2026 OAS
+    [tool 16] search_web: Emerson Q3 2026 earnings call transcript fiscal 2027 outlook commentary
+  sample 3: IV $104.0 | usable=True | 16 tool calls (think 137,244ch / report 33,428ch) | 510s | $0.115 cumulative
+
+[deep-api] EMR: HOLD | band $104.0-$163.96 vs price $156.745 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 442,870 in (358,400 cached) | 142,781 out (114,948 reasoning) | $0.115 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\EMR_20260826_031835\verdict_depth.json

@@ -1,0 +1,55 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/RTX.md, 18.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] RTX @ $209.18 | deepseek-v4-flash effort=high | 3 samples | pack 33,557ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\RTX_20260826_073925
+    [tool 1] search_web: 10 year treasury yield August 2026 current level
+    [tool 2] search_web: Federal Reserve fed funds rate August 2026 policy stance
+    [tool 3] search_web: RTX investor day long-term targets 2027 2028 sales EPS outlook
+    [tool 4] search_web: RTX 2027 consensus EPS estimate analyst forecast
+    [tool 5] search_web: RTX "2027" sales outlook guidance defense backlog growth
+    [tool 6] search_web: US defense budget FY2027 request Congress total national defense
+    [tool 7] search_web: Pratt Whitney GTF powder metal issue 2026 update charges total cost
+    [tool 8] search_web: RTX full year 2025 adjusted EPS results segment operating margin
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/07/24/rtx-rtx-q2-2026-earnings-call-
+    [tool 10] fetch_page: https://www.rtx.com/news/news-center/2026/01/27/rtx-reports-2025-results-and-announces-2
+    [tool 11] search_web: RTX 2027 earnings per share estimate Wall Street consensus $7.60 OR $8.00 OR $8.50
+    [tool 12] search_web: FY2027 Pentagon base budget request $1 trillion procurement research development
+    [tool 13] search_web: RTX share buyback 2026 dividend capital return plan
+  sample 1: IV $185.0 | usable=True | 13 tool calls (think 55,516ch / report 28,237ch) | 287s | $0.028 cumulative
+    [tool 1] search_web: RTX 2026 free cash flow guidance adjusted EPS guidance raise Q2 2026
+    [tool 2] search_web: RTX investor day long-term targets 2028 sales free cash flow growth framework
+    [tool 3] search_web: 10-year Treasury yield August 2026 level
+    [tool 4] search_web: US defense budget FY2027 outlook national defense spending growth
+    [tool 5] search_web: RTX Pratt Whitney GTF recovery 2027 2028 engine deliveries ramp margin
+    [tool 6] search_web: RTX capital expenditure plan 2026 2027 2028 capacity investment aerospace defense
+    [tool 7] search_web: RTX 2027 2028 analyst estimates adjusted EPS revenue consensus outlook
+    [tool 8] search_web: Lockheed Martin Northrop Grumman General Dynamics forward P/E 2026 valuation comparison 
+    [tool 9] fetch_page: https://www.rtx.com/news/news-center/2026/07/23/rtx-reports-q2-2026-results
+    [tool 10] fetch_page: https://quartr.com/companies/rtx-corporation_10904
+    [tool 11] search_web: RTX investment U.S. manufacturing capacity missiles engines billion 2026 2027 announceme
+    [tool 12] search_web: Federal Reserve policy stance August 2026 federal funds rate cut or hold inflation
+    [tool 13] search_web: US dollar index DXY level August 2026
+    [tool 14] fetch_page: https://www.tikr.com/blog/rtx-raised-guidance-three-times-over-in-its-q2-earnings-report
+  sample 2: IV $210.0 | usable=True | 14 tool calls (think 109,038ch / report 30,975ch) | 440s | $0.069 cumulative
+    [tool 1] search_web: RTX 2026 full year guidance adjusted EPS sales free cash flow raised
+    [tool 2] search_web: RTX investor day 2028 targets segment margin organic growth EPS free cash flow
+    [tool 3] search_web: 10 year treasury yield August 2026 level
+    [tool 4] search_web: RTX Corporation credit rating 2026 S&P Moody's A- Baa1
+    [tool 5] search_web: RTX 2028 roadmap targets adjusted EPS free cash flow organic growth capital markets
+    [tool 6] search_web: RTX Q2 2026 earnings call transcript Calio Mitchill free cash flow capex buyback
+    [tool 7] search_web: US defense budget FY2027 request topline growth percent 2026
+    [tool 8] search_web: Pratt Whitney GTF production ramp 2026 2027 shop visits powder metal reserve
+    [tool 9] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-rtx-tops-q2-2026-est
+    [tool 10] search_web: RTX adjusted EPS 2025 actual full year $6.00 results segment operating profit
+    [tool 11] search_web: NATO defense spending target 3.5% GDP 2026 Europe rearmament Germany
+    [tool 12] search_web: RTX capital expenditure plan 2026 2027 billion GTF capacity investment Collins
+    [tool 13] fetch_page: https://www.rtx.com/news/news-center/2026/01/27/rtx-reports-2025-results-and-announces-2
+    [tool 14] fetch_page: https://www.spglobal.com/ratings/en/regulatory/article/-/view/sourceId/101685420
+    [tool 15] search_web: Federal Reserve interest rate August 2026 FOMC fed funds rate cuts
+    [tool 16] search_web: RTX 2026 second half growth slowdown backlog conversion Mitchill Q2 commentary
+  sample 3: IV $185.0 | usable=True | 16 tool calls (think 82,185ch / report 23,590ch) | 351s | $0.102 cumulative
+
+[deep-api] RTX: HOLD | band $185.0-$210.0 vs price $209.18 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 18.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 432,454 in (329,856 cached) | 117,055 out (88,782 reasoning) | $0.102 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\RTX_20260826_073925\verdict_depth.json

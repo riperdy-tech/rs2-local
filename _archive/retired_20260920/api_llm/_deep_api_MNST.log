@@ -1,0 +1,60 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/MNST.md, 8.9 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] MNST @ $47.79 | deepseek-v4-flash effort=high | 3 samples | pack 34,197ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MNST_20260826_061411
+    [tool 1] search_web: Monster Beverage MNST stock split 2026 2-for-1 effective date
+    [tool 2] search_web: 10-year Treasury yield August 2026 current level
+    [tool 3] search_web: Federal Reserve interest rate decision August 2026 fed funds rate target
+    [tool 4] search_web: US dollar index DXY August 2026 level year-to-date
+    [tool 5] search_web: US CPI inflation rate July 2026 year-over-year
+    [tool 6] search_web: high yield credit spread August 2026 investment grade spreads
+    [tool 7] search_web: Monster Beverage Q2 2026 earnings call guidance 2026 full year outlook revenue
+    [tool 8] search_web: energy drink market size CAGR forecast 2030 global growth rate
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/13/monster-mnst-q2-2026-earnings-
+    [tool 10] search_web: Monster Beverage capital expenditures 2026 2027 capacity expansion manufacturing plants
+    [tool 11] search_web: Monster Beverage share repurchase program 2025 2026 buyback authorization billion
+    [tool 12] search_web: Spruce Point Monster Beverage short report allegations 2025
+    [tool 13] fetch_page: https://www.tradingview.com/news/tradingview:63b2460dc474e:0-monster-beverage-corp-2026-
+    [tool 14] search_web: Monster Beverage MNST analyst EPS estimate fiscal 2026 2027 consensus revenue
+    [tool 15] search_web: UK government energy drinks under 16 ban 2026 status caffeine limit EU
+    [tool 16] search_web: Coca-Cola ownership stake Monster Beverage percent distribution agreement 2026
+  sample 1: IV $36.55 | usable=True | 16 tool calls (think 114,310ch / report 32,433ch) | 473s | $0.044 cumulative
+    [tool 1] search_web: Monster Beverage 2-for-1 stock split 2026
+    [tool 2] search_web: Monster Beverage second quarter 2026 financial results net sales net income
+    [tool 3] search_web: Monster Beverage 2026 full year guidance revenue outlook earnings call
+    [tool 4] search_web: 10-year Treasury yield Federal Reserve August 2026
+    [tool 5] search_web: energy drinks market growth forecast 2026 2030 CAGR
+    [tool 6] fetch_page: https://investors.monsterbevcorp.com/news-releases/news-release-details/monster-beverage
+    [tool 7] fetch_page: https://stockanalysis.com/stocks/mnst/
+    [tool 8] search_web: Spruce Point Capital Monster Beverage short report claims 2025
+    [tool 9] search_web: FDA energy drink caffeine regulation 2026 labeling
+    [tool 10] search_web: Federal Reserve fed funds rate CPI inflation dollar index August 2026
+    [tool 11] search_web: aluminum can costs 2026 beverage companies input costs
+    [tool 12] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/13/monster-mnst-q2-2026-earnings-
+    [tool 13] search_web: Monster Beverage alcohol brands segment 2026 acquisition hard seltzer
+    [tool 14] search_web: Monster Beverage MNST 2026 2027 EPS estimate consensus revenue forecast
+    [tool 15] search_web: US inflation CPI July 2026 dollar index DXY
+    [tool 16] search_web: Monster Beverage share repurchase program buyback 2025 2026
+  sample 2: IV $33.5 | usable=True | 16 tool calls (think 149,588ch / report 34,238ch) | 550s | $0.090 cumulative
+    [tool 1] search_web: Monster Beverage stock split 2026 2-for-1 announcement
+    [tool 2] search_web: Monster Beverage special dividend 2024 share buyback program capital return
+    [tool 3] search_web: 10 year treasury yield August 2026 current level
+    [tool 4] search_web: Monster Beverage Q2 2026 earnings results net sales operating income
+    [tool 5] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/13/monster-mnst-q2-2026-earnings-
+    [tool 6] search_web: Monster Beverage special cash dividend 2023 2024 one-time distribution shareholders
+    [tool 7] search_web: FDA energy drink caffeine limit regulation 2026 ruling
+    [tool 8] search_web: global energy drink market CAGR forecast 2026-2031 billion
+    [tool 9] search_web: Monster Beverage MNST consensus EPS estimate fiscal 2026 2027 revenue forecast
+    [tool 10] search_web: DXY dollar index August 2026 level euro dollar
+    [tool 11] search_web: Federal Reserve rate cut decision 2026 fed funds rate current
+    [tool 12] fetch_page: https://www.foodresearchlab.com/insights/regulation-updates/regulations-caffeine-limits-
+    [tool 13] search_web: Monster Beverage MNST historical average forward P/E multiple 5 year range
+    [tool 14] search_web: Spruce Point Monster Beverage short report allegations April 2025 channel
+    [tool 15] search_web: Coca-Cola Monster Beverage ownership stake 2026 percent shares
+    [tool 16] search_web: US energy drink market share 2026 Monster Red Bull Celsius percent
+  sample 3: IV $32.0 | usable=True | 16 tool calls (think 166,367ch / report 31,149ch) | 592s | $0.143 cumulative
+
+[deep-api] MNST: OVERVALUED | band $32.0-$36.55 vs price $47.79 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 8.9d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 422,700 in (332,416 cached) | 182,304 out (147,322 reasoning) | $0.143 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MNST_20260826_061411\verdict_depth.json

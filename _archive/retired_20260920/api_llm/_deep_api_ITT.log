@@ -1,0 +1,73 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ITT.md, 7.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ITT @ $205.25 | deepseek-v4-flash effort=high | 3 samples | pack 34,425ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ITT_20260826_050423
+    [tool 1] search_web: ITT Inc SPX FLOW acquisition price billion deal terms 2025
+    [tool 2] search_web: ITT Inc second quarter 2026 earnings press release adjusted EPS guidance raised full yea
+    [tool 3] search_web: 10 year treasury yield August 2026 Fed funds rate
+    [tool 4] search_web: ITT Inc 2025 10-K segment revenue operating income motion technologies industrial proces
+    [tool 5] fetch_page: https://investors.itt.com/news-releases/news-release-details/itt-reports-2026-second-qua
+    [tool 6] fetch_page: https://www.chemicalprocessing.com/industrynews/news/55361061/itt-closes-4775b-spx-flow-
+    [tool 7] fetch_page: https://www.federalreserve.gov/releases/h15/
+    [tool 8] fetch_page: https://www.sec.gov/Archives/edgar/data/216228/000119312525310571/d848277d424b5.htm
+    [tool 9] search_web: ITT Inc Q2 2026 10-Q balance sheet total debt cash net debt June 2026
+    [tool 10] search_web: ITT 2026 full year guidance adjusted EPS revenue free cash flow outlook SPX FLOW synergi
+    [tool 11] fetch_page: https://www.sec.gov/Archives/edgar/data/216228/000021622826000065/itt-20260704.htm
+    [tool 12] fetch_page: https://finance.yahoo.com/markets/stocks/articles/itt-reports-2026-second-quarter-113000
+    [tool 13] fetch_page: https://www.gurufocus.com/news/9012506/itt-stock-jumps-68-as-organic-orders-accelerate-1
+    [tool 14] search_web: dollar index DXY August 2026 level
+  sample 1: EMPTY report after 42,652ch thinking - one retry
+    [tool 1] search_web: ITT Inc SPX FLOW acquisition price billion financing deal terms 2025
+    [tool 2] search_web: ITT Inc Q2 2026 earnings adjusted EPS full year 2026 guidance revenue
+    [tool 3] search_web: ITT Inc 2025 segment revenue motion technologies connect control technologies flow techn
+    [tool 4] search_web: US 10 year treasury yield August 2026
+    [tool 5] search_web: ITT Inc investor day 2026 long term targets organic growth margin outlook
+    [tool 6] fetch_page: https://investors.itt.com/news-releases/news-release-details/itt-reports-2026-second-qua
+    [tool 7] search_web: ITT 2025 capital markets day 2030 targets EPS $12 organic growth margin free cash flow
+    [tool 8] search_web: ITT Inc Q2 2026 balance sheet cash debt net leverage SPX FLOW term loan
+    [tool 9] search_web: Federal Reserve interest rate decision August 2026 fed funds rate
+    [tool 10] search_web: ISM manufacturing PMI August 2026 industrial cycle
+    [tool 11] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-itt-beats-q2-2026-es
+    [tool 12] fetch_page: https://www.businesswire.com/news/home/20250515118648/en/ITT-Hosts-2025-Capital-Markets-
+    [tool 13] search_web: ITT Inc common stock offering SPX FLOW equity shares issued March 2026
+    [tool 14] search_web: US CPI inflation July 2026 year over year
+    [tool 15] search_web: DXY dollar index August 2026 credit spreads high yield
+  sample 1: IV $125.0 | usable=True | 15 tool calls (think 110,510ch / report 31,013ch) | 688s | $0.057 cumulative
+    [tool 1] search_web: ITT Inc SPX FLOW acquisition price billion deal closed March 2026
+    [tool 2] search_web: ITT 2026 second quarter earnings adjusted EPS guidance raised full year revenue
+    [tool 3] search_web: ITT 10-K 2025 segments Motion Technologies Connect Control Technologies Industrial Proce
+    [tool 4] search_web: ITT Aerospace Contacts acquisition 2026 connectors deal size
+    [tool 5] fetch_page: https://investors.itt.com/news-releases/news-release-details/itt-reports-2026-second-qua
+    [tool 6] search_web: ITT SPX FLOW financing $4.075 billion cash debt term loan equity offering 2025 2026
+    [tool 7] search_web: 10 year treasury yield August 2026 Fed policy rate inflation
+    [tool 8] fetch_page: https://investors.itt.com/results-and-filings/quarterly-results/
+    [tool 9] search_web: ITT 2026 guidance adjusted EPS revenue "million" organic growth 13% full year outlook Au
+    [tool 10] search_web: ITT analyst estimates 2026 2027 EPS adjusted forecast consensus
+    [tool 11] search_web: federal funds rate August 2026 FOMC easing or tightening
+    [tool 12] fetch_page: https://seekingalpha.com/news/4628030-itt-projects-2026-adjusted-eps-of-8_22-at-midpoint
+    [tool 13] search_web: "ITT" 2026 revenue guidance "$5.8 billion" OR "$5.9 billion" OR "$5.7 billion" full year
+    [tool 14] search_web: SPX FLOW 2025 revenue EBITDA margin ITT acquisition synergy $80 million
+  sample 2: IV $152.0 | usable=True | 14 tool calls (think 123,873ch / report 28,707ch) | 509s | $0.095 cumulative
+    [tool 1] search_web: ITT Inc SPX FLOW acquisition purchase price billion cash stock financing
+    [tool 2] search_web: ITT 2026 second quarter earnings press release adjusted EPS guidance raised revenue
+    [tool 3] search_web: 10 year Treasury yield level August 2026
+    [tool 4] search_web: Federal Reserve federal funds rate policy stance August 2026
+    [tool 5] fetch_page: https://finance.yahoo.com/markets/stocks/articles/itt-reports-2026-second-quarter-113000
+    [tool 6] fetch_page: https://markets.ft.com/data/announce/detail?dockey=600-202605060630BIZWIRE_USPRX____2026
+    [tool 7] fetch_page: https://investors.itt.com/news-releases/news-release-details/itt-acquire-spx-flow-signif
+    [tool 8] search_web: ITT SPX FLOW acquisition term loan facility net debt balance sheet after close 2026
+    [tool 9] search_web: ITT 2025 10-K segment revenue Motion Technologies Industrial Process Connect Control Tec
+    [tool 10] search_web: ITT SPX FLOW synergies $80 million cost synergies revenue synergies target
+    [tool 11] search_web: ITT analyst estimates 2027 2028 adjusted EPS consensus
+    [tool 12] search_web: high yield credit spreads OAS level August 2026 DXY dollar index
+    [tool 13] search_web: ITT 10-Q second quarter 2026 balance sheet cash total debt June 2026
+    [tool 14] search_web: ITT 2025 full year revenue by segment Motion Technologies $1.5 billion Industrial Proces
+    [tool 15] search_web: SPX FLOW revenue 2025 EBITDA margin pumps mixers nutrition health
+    [tool 16] search_web: PCE inflation July 2026 year-over-year core
+    [tool 17] search_web: ITT capital expenditures guidance 2026 2027 capex spending plan
+  sample 3: IV $150.0 | usable=True | 17 tool calls (think 130,348ch / report 21,212ch) | 508s | $0.133 cumulative
+
+[deep-api] ITT: OVERVALUED | band $125.0-$152.0 vs price $205.25 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 7.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 20 API calls | 552,397 in (454,656 cached) | 164,675 out (134,689 reasoning) | $0.133 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ITT_20260826_050423\verdict_depth.json

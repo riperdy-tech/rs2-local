@@ -1,0 +1,52 @@
+[deep-api] GRDN @ $37.93 | deepseek-v4-flash effort=high | 3 samples | pack 28,923ch from GRDN_20260824_091715 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GRDN_20260825_011406
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 24.0 | spread 32.5%
+    [tool 1] search_web: 10-year Treasury yield August 2026
+    [tool 2] search_web: Guardian Pharmacy GRDN 2026 guidance adjusted EBITDA revenue raised
+    [tool 3] search_web: Guardian Pharmacy Services long-term growth strategy M&A pipeline 2027 outlook
+    [tool 4] search_web: long-term care pharmacy market growth rate CAGR forecast
+    [tool 5] fetch_page: https://s204.q4cdn.com/996949948/files/doc_presentations/2026/Jan/13/JPM-Conference-Fina
+    [tool 6] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/13/guardian-pharmacy-services-grd
+    [tool 7] search_web: Guardian Pharmacy Services Class B common stock conversion Class A shares outstanding to
+    [tool 8] search_web: Guardian Pharmacy Services Q2 2026 press release second quarter results adjusted EBITDA 
+    [tool 9] search_web: Damodaran implied equity risk premium August 2026
+    [tool 10] search_web: Guardian Pharmacy Services 2027 outlook revenue growth IRA 2028 tranche low double digit
+    [tool 11] fetch_page: https://www.businesswire.com/news/home/20260819530891/en/Guardian-Pharmacy-Services-Inc.
+    [tool 12] search_web: Guardian Pharmacy Services GRDN shares outstanding Class A Class B 10-Q 2026 total weigh
+    [tool 13] search_web: Guardian Pharmacy Services $186M offering $31 per share details Class B conversion share
+    [tool 14] search_web: long-term care pharmacy comparable companies EV/EBITDA multiple BrightSpring PharMerica 
+    [tool 15] search_web: Guardian Pharmacy Services GRDN operating lease liabilities balance sheet 2025 2026
+    [tool 16] search_web: GRDN Guardian Pharmacy 2027 revenue EBITDA analyst estimate consensus
+  sample 1: IV $26.1 | usable=True | 16 tool calls (think 121,053ch / report 25,952ch) | 467s | $0.040 cumulative
+    [tool 1] search_web: Guardian Pharmacy Services GRDN 2026 adjusted EBITDA guidance $120 million raised 2025 a
+    [tool 2] search_web: Guardian Pharmacy Services IPO March 2025 pricing shares proceeds underwriters
+    [tool 3] search_web: Guardian Pharmacy Services long-term growth algorithm organic growth M&A 2027 2028 adjus
+    [tool 4] search_web: 10-year Treasury yield August 2026 current
+    [tool 5] fetch_page: https://s204.q4cdn.com/996949948/files/doc_presentations/2026/Jan/13/JPM-Conference-Fina
+    [tool 6] search_web: Guardian Pharmacy Services IPO 2025 priced $14 per share NYSE GRDN first day trading
+    [tool 7] search_web: Guardian Pharmacy Services full year 2025 adjusted EBITDA $104 million fourth quarter re
+    [tool 8] fetch_page: https://investors.guardianpharmacy.com/news/news-details/2026/Guardian-Pharmacy-Services
+    [tool 9] fetch_page: https://www.renaissancecapital.com/Profile/GRDN/Guardian-Pharmacy/IPO
+    [tool 10] fetch_page: https://www.gurufocus.com/news/9013971/guardian-pharmacy-services-grdn-raises-2026-adjus
+    [tool 11] search_web: Guardian Pharmacy Services second quarter 2026 results press release adjusted EBITDA gui
+    [tool 12] search_web: Guardian Pharmacy Services investor presentation 2026 growth algorithm adjusted EBITDA o
+    [tool 13] search_web: Guardian Pharmacy Services GRDN 2027 2028 revenue adjusted EBITDA estimates consensus fo
+  sample 2: IV $32.86 | usable=True | 13 tool calls (think 100,713ch / report 17,957ch) | 360s | $0.071 cumulative
+    [tool 1] search_web: Guardian Pharmacy Services 2025 full year adjusted EBITDA actual result
+    [tool 2] search_web: Guardian Pharmacy Services Q2 2026 balance sheet cash total debt June 30 2026
+    [tool 3] search_web: Guardian Pharmacy Services investor presentation long-term financial targets revenue gro
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://investors.guardianpharmacy.com/news/news-details/2026/Guardian-Pharmacy-Services
+    [tool 6] search_web: Guardian Pharmacy Services Q2 2026 results raises 2026 adjusted EBITDA guidance $120 mil
+    [tool 7] search_web: GRDN beta Guardian Pharmacy Services stock beta
+    [tool 8] fetch_page: https://www.businesswire.com/news/home/20260311592107/en/Guardian-Pharmacy-Services-Repo
+    [tool 9] fetch_page: https://www.sec.gov/Archives/edgar/data/1802255/000119312526208989/d132626dex991.htm
+    [tool 10] search_web: Guardian Pharmacy Services effective tax rate 2025 provision income taxes
+    [tool 11] fetch_page: https://finance.yahoo.com/healthcare/articles/guardian-pharmacy-services-reports-second-
+    [tool 12] fetch_page: https://stockanalysis.com/stocks/grdn/financials/
+    [tool 13] search_web: Guardian Pharmacy Services 2027 revenue EPS consensus estimate analyst
+  sample 3: IV $24.0 | usable=True | 13 tool calls (think 108,895ch / report 28,840ch) | 426s | $0.107 cumulative
+
+[deep-api] GRDN: OVERVALUED | band $24.0-$32.86 vs price $37.93 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $19.63-$26.0 | median $24.0
+[deep-api] 16 API calls | 346,754 in (267,520 cached) | 133,207 out (107,005 reasoning) | $0.107 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GRDN_20260825_011406\verdict_depth.json

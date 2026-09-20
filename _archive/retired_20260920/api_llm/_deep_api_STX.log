@@ -1,0 +1,55 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/STX.md, 16.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] STX @ $802.72 | deepseek-v4-flash effort=high | 3 samples | pack 32,771ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\STX_20260826_080951
+    [tool 1] search_web: 10-year Treasury yield Fed funds rate August 2026
+    [tool 2] search_web: Seagate fiscal Q1 2027 guidance revenue $4.1 billion
+    [tool 3] search_web: Seagate STX analyst estimates fiscal 2027 2028 revenue EPS consensus
+    [tool 4] search_web: Seagate HAMR exabyte shipments 2027 capacity hyperscaler contracts
+    [tool 5] fetch_page: https://www.techtimes.com/articles/321894/20260728/seagate-shatters-q4-estimates-record-
+    [tool 6] search_web: Seagate fiscal 2027 revenue consensus estimate full year billion
+    [tool 7] search_web: Seagate capex capacity expansion fiscal 2027 HAMR manufacturing investment
+    [tool 8] fetch_page: https://stocktwits.com/news-articles/markets/equity/stx-stock-rallies-as-much-as-9-after
+    [tool 9] search_web: Seagate fiscal 2028 demand visibility hyperscaler contracts locked in
+    [tool 10] search_web: Western Digital HDD capacity expansion 2027 2028 nearline supply tightness
+    [tool 11] search_web: dollar index DXY level August 2026 Fed policy stance inflation
+    [tool 12] fetch_page: https://finance.biggo.com/news/d8fd814f-2cd8-45c4-ab68-2f5308659dee
+    [tool 13] fetch_page: https://www.moomoo.com/news/post/73679128/seagate-earnings-call-gross-margin-is-expected
+    [tool 14] search_web: Seagate share repurchase authorization buyback dividend increase fiscal 2027
+    [tool 15] search_web: nearline HDD exabyte shipment forecast 2027 2028 2029 AI data center demand
+  sample 1: IV $425.0 | usable=True | 15 tool calls (think 89,030ch / report 37,261ch) | 377s | $0.037 cumulative
+    [tool 1] search_web: Seagate Technology fiscal 2027 revenue guidance analyst consensus HAMR capacity
+    [tool 2] search_web: Seagate HAMR capacity expansion capital expenditure plans 2026 2027 fab
+    [tool 3] search_web: HDD nearline exabyte shipment growth forecast 2027 2028 AI data center storage demand
+    [tool 4] search_web: 10 year treasury yield current level Fed policy August 2025
+    [tool 5] fetch_page: https://finance.biggo.com/news/kN7Z1p0B6tLPsnrZfta9
+    [tool 6] fetch_page: https://www.edgen.tech/article/seagate-stx-ai-hdd-soldout-mozaic-margin-thesis-2026
+    [tool 7] search_web: Seagate fiscal 2027 full year EPS estimate non-GAAP $30 analyst
+    [tool 8] search_web: Western Digital Toshiba HDD capacity expansion 2027 2028 supply response nearline
+    [tool 9] search_web: Fed funds rate August 2026 inflation CPI Federal Reserve policy rate
+    [tool 10] search_web: Seagate STX overvalued bear case valuation risk 2026 HDD cycle peak
+    [tool 11] search_web: Seagate Q4 fiscal 2026 results non-GAAP EPS actual HAMR margin record
+    [tool 12] search_web: HDD price increase 2026 nearline per terabyte pricing hyperscaler build-to-order
+  sample 2: IV $244.0 | usable=True | 12 tool calls (think 115,021ch / report 36,735ch) | 479s | $0.072 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026
+    [tool 2] search_web: Seagate fiscal Q1 2027 revenue guidance $4.1 billion
+    [tool 3] search_web: Seagate HAMR capacity expansion capital expenditure fiscal 2027
+    [tool 4] search_web: HDD nearline exabyte shipment forecast 2027 2028 AI data center
+    [tool 5] search_web: Seagate STX stock drop August 2026 reason pullback 1145 to 800
+    [tool 6] search_web: Seagate FY2027 FY2028 consensus EPS revenue analyst estimates
+    [tool 7] search_web: Federal Reserve interest rate decision August September 2026
+    [tool 8] search_web: Western Digital HDD nearline capacity sold out 2026 2027
+    [tool 9] fetch_page: https://www.techtimes.com/articles/321894/20260728/seagate-shatters-q4-estimates-record-
+    [tool 10] search_web: Seagate long-term financial model investor day 2026 revenue growth 20% margin target
+    [tool 11] search_web: federal funds rate target range July 2026 FOMC
+    [tool 12] search_web: DXY dollar index level August 2026
+    [tool 13] fetch_page: https://finance.biggo.com/news/kN7Z1p0B6tLPsnrZfta9
+    [tool 14] fetch_page: https://www.alphaspread.com/security/nasdaq/stx/investor-relations/earnings-call/q4-2026
+    [tool 15] search_web: Seagate fiscal 2028 EPS estimate non-GAAP consensus sell-side
+    [tool 16] search_web: TrendForce HDD nearline demand forecast 2027 2028 exabytes AI storage growth
+  sample 3: IV $190.0 | usable=True | 16 tool calls (think 101,165ch / report 22,412ch) | flags: below_analyst_low_0.30x_floor_0.33x | 365s | $0.105 cumulative
+
+[deep-api] STX: OVERVALUED | band $190.0-$425.0 vs price $802.72 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 16.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 405,750 in (329,600 cached) | 130,216 out (98,095 reasoning) | $0.105 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\STX_20260826_080951\verdict_depth.json

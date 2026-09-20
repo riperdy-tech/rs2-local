@@ -1,0 +1,54 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ATRO.md, 10.1 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ATRO @ $78.0 | deepseek-v4-flash effort=high | 3 samples | pack 32,133ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ATRO_20260826_020844
+    [tool 1] search_web: Astronics Q2 2026 earnings release revenue adjusted EBITDA backlog guidance
+    [tool 2] search_web: Astronics 2025 10-K long-term debt increase term loan revolver 2025
+    [tool 3] search_web: Astronics stockholders equity decreased 2025 deficit additional paid-in capital
+    [tool 4] search_web: Astronics capex capital expenditure plan 2026 2027 capacity expansion
+    [tool 5] fetch_page: https://investors.astronics.com/news-events/press-releases/detail/451/astronics-corporat
+    [tool 6] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/18/astronics-atro-q2-2026-earning
+    [tool 7] search_web: Astronics Class B shares distribution 2025 stockholders equity roll forward 10-K
+    [tool 8] search_web: Astronics Buhler Motor Aviation acquisition price 2025
+    [tool 9] search_web: Astronics ATRO 2027 EPS revenue estimates analyst forecast
+    [tool 10] search_web: 10 year treasury yield August 2026 Federal Reserve rate outlook
+    [tool 11] fetch_page: https://www.gurufocus.com/news/8893678/astronics-announces-20-class-b-stock-distribution
+    [tool 12] search_web: Federal Reserve federal funds rate August 2026 current
+    [tool 13] search_web: Astronics 2027 revenue guidance outlook FLRAA MV-75 backlog conversion
+    [tool 14] search_web: Boeing 737 MAX production rate 2026 2027 Airbus A320 ramp aerospace suppliers
+  sample 1: IV $37.55 | usable=True | 14 tool calls (think 131,544ch / report 29,387ch) | 483s | $0.046 cumulative
+    [tool 1] search_web: Astronics Q2 2026 record backlog bookings 2027 revenue guidance
+    [tool 2] search_web: Astronics investor presentation 2026 long-term targets 2028 revenue margin aerospace def
+    [tool 3] search_web: Astronics 2025 10-K segment revenue Aerospace Test Systems operating income
+    [tool 4] search_web: Astronics Corporation 2025 credit agreement term loan refinancing debt increase
+    [tool 5] fetch_page: https://investors.astronics.com/news-events/press-releases/detail/464/astronics-corporat
+    [tool 6] fetch_page: https://investors.astronics.com/news-events/press-releases/detail/409/astronics-corporat
+    [tool 7] fetch_page: https://aeromorning.com/en/analysis-of-astronics-2025-financial-results-fiscal-year-ende
+    [tool 8] fetch_page: https://investors.astronics.com/news-events/press-releases/detail/451/astronics-corporat
+    [tool 9] search_web: Astronics September 2025 refinancing credit facility convertible notes Bühler Motor Avia
+    [tool 10] search_web: 10 year treasury yield August 2026 current level
+    [tool 11] fetch_page: https://investors.astronics.com/sec-filings/all-sec-filings/content/0000008063-26-000025
+    [tool 12] search_web: Astronics Bühler Motor Aviation purchase price $ million 2025 convertible notes proceeds
+    [tool 13] search_web: ATRO Astronics 2026 2027 EPS estimates analyst consensus revenue forecast
+  sample 2: IV $55.0 | usable=True | 13 tool calls (think 98,835ch / report 22,783ch) | 385s | $0.081 cumulative
+    [tool 1] fetch_page: https://investors.astronics.com/news-events/press-releases/detail/464/astronics-corporat
+    [tool 2] fetch_page: https://www.businesswire.com/news/home/20260512955007/en/Astronics-Corporation-Reports-1
+    [tool 3] search_web: Astronics Corporation 10-K 2025 interest expense long-term debt term loan credit agreeme
+    [tool 4] search_web: 10-year Treasury yield federal reserve policy August 2026
+    [tool 5] search_web: Astronics 2027 outlook revenue guidance aerospace backlog multi-year growth
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/8063/000000806326000021/atro-20251231.htm
+    [tool 7] search_web: Astronics 2027 2028 EPS estimate revenue forecast analyst
+    [tool 8] search_web: Boeing 737 MAX monthly production rate 2026 2027 Airbus A320 75 per month
+    [tool 9] search_web: federal funds rate dollar index DXY August 2026 inflation
+    [tool 10] search_web: Astronics Ballard NG3 AI accelerator announcement
+    [tool 11] fetch_page: https://www.marketscreener.com/quote/stock/ASTRONICS-CORPORATION-8485/news/ASTRONICS-COR
+    [tool 12] search_web: Astronics convertible senior notes 2030 2031 principal amount refinancing September 2025
+    [tool 13] search_web: Astronics investor presentation 2026 long-term targets revenue growth framework
+    [tool 14] search_web: Astronics first quarter 2026 results operating income adjusted EBITDA tax valuation allo
+    [tool 15] search_web: ATRO Astronics 2027 EPS estimate next year forecast after $1.02 billion guidance
+  sample 3: IV $40.0 | usable=True | 15 tool calls (think 124,714ch / report 41,010ch) | 492s | $0.123 cumulative
+
+[deep-api] ATRO: OVERVALUED | band $37.55-$55.0 vs price $78.0 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 10.1d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 404,962 in (291,968 cached) | 146,109 out (114,176 reasoning) | $0.123 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ATRO_20260826_020844\verdict_depth.json

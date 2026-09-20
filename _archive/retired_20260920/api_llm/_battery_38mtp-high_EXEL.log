@@ -1,0 +1,45 @@
+[api] backend http://127.0.0.1:11434/v1  model=rs2-38mtp-hi-api  -> reports in api_llm/reports
+[enrich] yfinance EXEL ...
+[out] C:\Users\riper\Downloads\RS2 Local\api_llm\reports\EXEL_20260818_220558
+
+   [regime] ['current_earnings', 'current_earnings', 'current_earnings'] -> current_earnings | MoS 36.6 -> 60.6 | base $0.86B
+[nltk_data] Downloading package punkt_tab to C:\Users\Public\Documents
+[nltk_data]     \ESTsoft\CreatorTemp\defeatbeta\nltk...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[38;5;10m______      __           _    ______      _        
+|  _  \    / _|         | |   | ___ \    | |       
+| | | |___| |_ ___  __ _| |_  | |_/ / ___| |_ __ _ 
+| | | / _ \  _/ _ \/ _` | __| | ___ \/ _ \ __/ _` |
+| |/ /  __/ ||  __/ (_| | |_  | |_/ /  __/ || (_| |
+|___/ \___|_| \___|\__,_|\__| \____/ \___|\__\__,_|[0m
+[1;38;5;10m📈:: Data Update Time ::[0m	2026-08-18T06:56:50Z [1;38;5;10m::[0m
+[1;38;5;10m📈:: Software Version ::[0m	0.0.60      [1;38;5;10m::[0m
+2026-08-18 22:06:40 INFO DuckDBClient MainThread - Cache is up-to-date. Update time: 2026-08-18T06:56:50Z
+[backbone] EXEL: base_cf $0.86B [lattice_current_earnings] WACC 10% | implied 4.0% vs demonstrated 15.7% [revenue_cagr_5y] | gap -11.7pts
+>> Layers 0, 1, 1.5 — Classification / Macro / Base Rate
+   done in 221.1s -> S1_macro_classify.md
+
+>> Layers 2, 2.5 — Business Quality / Adjusted Financials
+   done in 274.0s -> S2_quality.md
+
+>> Layers 3, 3.5 — Expectations Test / Second-Order
+   done in 206.3s -> S3_valuation.md
+   [valuation] reverse-DCF gap -11.7pts | stance undervalued (achievable high)
+
+>> Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage
+   done in 205.2s -> S4_scenarios.md
+   [valuation] scenario probs {'bear': 0.2, 'base': 0.5, 'bull': 0.3}
+
+>> Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly
+   done in 281.7s -> S5_conviction.md
+
+>> Layers 7, 7.5, 8, 9 — Monitoring / Correlation / Audit / Red Team
+   done in 340.9s -> S6_redteam_audit.md
+
+>> FINAL ASSEMBLY (Sections 0-12) [ctx 32768]
+   done in 592.1s
+[DONE] -> C:\Users\riper\Downloads\RS2 Local\api_llm\reports\EXEL_20260818_220558\FINAL.md
+   [regime] basis 'current_earnings' endorsed -> MoS 60.6 -> 60.6, stance undervalued
+   [verdict] EXEL: method=reverse_dcf stance=undervalued action=ACCUMULATE ON DIPS / STAGE IN (constructive; prefer weakness) — stance 4 conv=12.0 entry=buy
+[SANITY] ok — EXEL: stages, FINAL.md and verdict.json all present and substantive
+[AUDIT] ok — EXEL: 20 deterministic checks + AI verifier (pass)

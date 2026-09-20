@@ -1,0 +1,50 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/TSM.md, 11.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] TSM @ $418.95 | deepseek-v4-flash effort=high | 3 samples | pack 33,416ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\TSM_20260826_082046
+    [tool 1] search_web: TSMC fourth quarter 2025 full year 2025 results revenue net income operating margin cape
+    [tool 2] search_web: TSMC 2026 full year revenue growth guidance USD capital expenditure 2026
+    [tool 3] search_web: TSMC second quarter 2026 earnings results revenue net income gross margin operating marg
+    [tool 4] search_web: TSMC long-term revenue growth target 20-25% CAGR 2030 AI accelerator
+    [tool 5] search_web: 10 year treasury yield August 2026 level
+    [tool 6] search_web: TSMC capex outlook 2027 2028 capex intensity normalization management comments
+    [tool 7] fetch_page: https://www.sec.gov/Archives/edgar/data/1046179/000104617926000451/a2q26e_withguidancexf
+    [tool 8] search_web: TSMC 2025 full year revenue net income NT$ 4Q25 earnings release January 2026
+    [tool 9] search_web: TSMC technology symposium 2026 25% CAGR revenue growth target through 2029
+    [tool 10] search_web: Federal Reserve policy August 2026 interest rate cut stance
+    [tool 11] fetch_page: https://pr.tsmc.com/english/news/3281
+    [tool 12] search_web: TSMC 2026 capital expenditure $60 billion to $64 billion raised guidance reason
+    [tool 13] search_web: TSMC Q2 2026 non-operating income gain NT$95 billion foreign exchange investment gains
+    [tool 14] search_web: US CPI inflation rate July 2026 year over year
+  sample 1: IV $258.0 | usable=True | 14 tool calls (think 86,571ch / report 34,552ch) | 388s | $0.035 cumulative
+    [tool 1] search_web: TSMC 2026 capital expenditure guidance capex billion 2nm fabs
+    [tool 2] search_web: TSMC management revenue CAGR target 20% through 2030 long-term growth guidance
+    [tool 3] search_web: 10 year treasury yield current level August
+    [tool 4] search_web: TSMC Q1 Q2 2025 results revenue gross margin guidance full year 2025
+    [tool 5] fetch_page: https://www.thediligencestack.com/p/the-reordering-to-aihpc-tsmcs-2026
+    [tool 6] search_web: TSMC full year 2025 annual revenue US dollars total
+    [tool 7] search_web: TSMC Q2 2026 results revenue net income gross margin July 16
+    [tool 8] search_web: dollar index DXY level August 2026 Federal Reserve policy stance
+  sample 2: IV $394.0 | usable=True | 8 tool calls (think 125,719ch / report 32,350ch) | 450s | $0.074 cumulative
+    [tool 1] search_web: TSMC second quarter 2026 results revenue net income gross margin operating margin
+    [tool 2] search_web: TSMC third quarter 2026 guidance revenue gross margin
+    [tool 3] search_web: TSMC 2026 capex guidance capital expenditure full year
+    [tool 4] search_web: TSMC 2026 full year revenue growth guidance USD percent
+    [tool 5] search_web: TSMC 2025 full year revenue net income fourth quarter 2025 results
+    [tool 6] search_web: TSMC long term revenue growth guidance 15-20% CAGR 2025 2029 management
+    [tool 7] search_web: 10 year treasury yield August 2026 level
+    [tool 8] search_web: hyperscaler AI capex 2027 outlook Microsoft Amazon Google Meta capital expenditure
+    [tool 9] fetch_page: https://pr.tsmc.com/english/news/3326
+    [tool 10] fetch_page: https://pr.tsmc.com/english/news/3281
+    [tool 11] fetch_page: https://www.thediligencestack.com/p/the-reordering-to-aihpc-tsmcs-2026
+    [tool 12] search_web: TSMC dividend 2026 capital return per share increase
+    [tool 13] fetch_page: https://investor.tsmc.com/english/quarterly-results/2025/q4
+    [tool 14] search_web: TSMC 2025 annual revenue NT$ billion net income full year 2025 total
+    [tool 15] search_web: TSMC effective tax rate 2026 investment tax credit Taiwan
+    [tool 16] search_web: TSMC 2027 capex forecast capital expenditure outlook analysts
+  sample 3: IV $358.0 | usable=True | 16 tool calls (think 88,714ch / report 22,980ch) | 390s | $0.107 cumulative
+
+[deep-api] TSM: OVERVALUED | band $258.0-$394.0 vs price $418.95 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 11.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 335,522 in (269,568 cached) | 137,072 out (105,460 reasoning) | $0.107 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\TSM_20260826_082046\verdict_depth.json

@@ -1,0 +1,43 @@
+[api] backend http://127.0.0.1:11434/v1  model=rs2-38mtp-api  -> reports in api_llm/reports
+[enrich] yfinance CAT ...
+[out] C:\Users\riper\Downloads\RS2 Local\api_llm\reports\CAT_20260817_234729
+
+[nltk_data] Error loading punkt_tab: HTTP Error 503: Backend.max_conn
+[nltk_data]     reached
+[38;5;10m______      __           _    ______      _        
+|  _  \    / _|         | |   | ___ \    | |       
+| | | |___| |_ ___  __ _| |_  | |_/ / ___| |_ __ _ 
+| | | / _ \  _/ _ \/ _` | __| | ___ \/ _ \ __/ _` |
+| |/ /  __/ ||  __/ (_| | |_  | |_/ /  __/ || (_| |
+|___/ \___|_| \___|\__,_|\__| \____/ \___|\__\__,_|[0m
+[1;38;5;10m📈:: Data Update Time ::[0m	2026-08-17T05:20:17Z [1;38;5;10m::[0m
+[1;38;5;10m📈:: Software Version ::[0m	0.0.60      [1;38;5;10m::[0m
+2026-08-17 23:48:29 INFO DuckDBClient MainThread - Cache is up-to-date. Update time: 2026-08-17T05:20:17Z
+[backbone] CAT: base_cf $8.16B [midcycle_owner_earnings] WACC 9% | implied 22.9% vs demonstrated 10.1% [revenue_cagr_5y] | gap 12.8pts
+>> Layers 0, 1, 1.5 — Classification / Macro / Base Rate
+   done in 191.7s -> S1_macro_classify.md
+   [routing] mid-cycle base in use — DISCLOSING both bases: mid-cycle $8.16B (gap 12.8pts) vs latest-FY $10.43B (gap 8.2pts). base_cf UNCHANGED.
+
+>> Layers 2, 2.5 — Business Quality / Adjusted Financials
+   done in 160.0s -> S2_quality.md
+
+>> Layers 3, 3.5 — Expectations Test / Second-Order
+   done in 131.9s -> S3_valuation.md
+   [valuation] reverse-DCF gap 12.8pts | stance fair (achievable medium)
+
+>> Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage
+   done in 147.9s -> S4_scenarios.md
+   [valuation] scenario probs {'bear': 0.28, 'base': 0.47, 'bull': 0.25}
+
+>> Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly
+   done in 189.0s -> S5_conviction.md
+
+>> Layers 7, 7.5, 8, 9 — Monitoring / Correlation / Audit / Red Team
+   done in 196.5s -> S6_redteam_audit.md
+
+>> FINAL ASSEMBLY (Sections 0-12) [ctx 32768]
+   done in 275.4s
+[DONE] -> C:\Users\riper\Downloads\RS2 Local\api_llm\reports\CAT_20260817_234729\FINAL.md
+   [verdict] CAT: method=reverse_dcf stance=fair action=HOLD (no fresh entry at current price)             │ conv=11.0 entry=stage (BRAKE: was 'HOLD (no fresh entry at current price)             │' 11.0)
+[SANITY] ok — CAT: stages, FINAL.md and verdict.json all present and substantive
+[AUDIT] ok — CAT: 18 deterministic checks + AI verifier (pass)

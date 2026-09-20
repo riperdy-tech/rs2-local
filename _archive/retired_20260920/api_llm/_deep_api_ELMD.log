@@ -1,0 +1,57 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ELMD.md, 9.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ELMD @ $39.45 | deepseek-v4-flash effort=high | 3 samples | pack 32,722ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ELMD_20260826_031746
+    [tool 1] search_web: Electromed ELMD fiscal 2027 guidance revenue outlook earnings call
+    [tool 2] search_web: 10-year Treasury yield August 2026 Federal Reserve policy stance
+    [tool 3] search_web: HFCWO high frequency chest wall oscillation airway clearance market size bronchiectasis 
+    [tool 4] search_web: Electromed SmartVest market share HFCWO competition Hillrom Baxter AffloVest
+    [tool 5] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-electromed-q3-2026-b
+    [tool 6] search_web: Electromed ELMD analyst estimates fiscal 2027 revenue EPS price target
+    [tool 7] search_web: Electromed ELMD stock buyback dividend share repurchase 2026
+    [tool 8] search_web: federal funds rate August 2026 Federal Reserve interest rate decision
+    [tool 9] search_web: "Electromed" Q3 fiscal 2026 earnings call transcript Cunniff guidance "fiscal 2026" reve
+    [tool 10] search_web: Electromed $10 million share repurchase authorization approved 2026
+    [tool 11] search_web: Electromed ELMD Q4 fiscal 2026 earnings preview expectations August 25 2026 revenue
+    [tool 12] search_web: Electromed ELMD insider trading purchases sales 2026
+    [tool 13] fetch_page: https://ng.investing.com/news/transcripts/earnings-call-transcript-electromed-beats-q2-2
+    [tool 14] fetch_page: https://finance.yahoo.com/markets/stocks/articles/earnings-watch-electromed-inc-elmd-131
+    [tool 15] search_web: Electromed add sales representatives fiscal 2027 SmartVest expansion plan
+  sample 1: IV $24.5 | usable=True | 15 tool calls (think 51,927ch / report 23,980ch) | 259s | $0.026 cumulative
+    [tool 1] search_web: Electromed Medicare reimbursement HFCWO airway clearance device CMS rate cut 2025 2026
+    [tool 2] search_web: Electromed Q3 fiscal 2026 earnings call transcript guidance full year FY2026 FY2027 reve
+    [tool 3] search_web: 10 year treasury yield August 2026 level
+    [tool 4] search_web: FOMC federal funds rate August 2026 Fed policy stance
+    [tool 5] search_web: Electromed Inc guidance fiscal 2026 fourth quarter revenue outlook management
+    [tool 6] fetch_page: https://finance.yahoo.com/quote/ELMD/earnings/ELMD-Q3-2026-earnings_call-554711.html
+    [tool 7] search_web: "E0483" airway clearance device Medicare DMEPOS fee schedule payment reduction 2025
+    [tool 8] search_web: Electromed 10-K risk factors Medicare reimbursement rate reduction airway clearance impa
+    [tool 9] search_web: Electromed bronchiectasis 800,000 patients HFCWO penetration market opportunity
+    [tool 10] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-electromed-q3-2026-b
+    [tool 11] search_web: Electromed CMS proposed Medicare reimbursement reduction airway clearance 45% 2023 statu
+    [tool 12] search_web: Electromed FY2027 revenue growth guidance outlook double digit sales representatives 202
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/1488917/000143774925027761/elmd20250630_10k.htm
+    [tool 14] search_web: Electromed reimbursement "airway clearance" Medicare final rule E0483 payment cut delaye
+  sample 2: IV $31.8 | usable=True | 14 tool calls (think 83,121ch / report 20,841ch) | 319s | $0.054 cumulative
+    [tool 1] search_web: 10 year treasury yield August 2026 level
+    [tool 2] search_web: Electromed ELMD fiscal 2027 guidance revenue growth sales representatives expansion
+    [tool 3] search_web: HFCWO high frequency chest wall oscillation market size 2026 Electromed market share Sma
+    [tool 4] search_web: Electromed ELMD analyst estimates fiscal 2027 revenue EPS consensus
+    [tool 5] fetch_page: https://www.cantechletter.com/2026/02/this-analyst-just-raised-his-price-target-on-elect
+    [tool 6] fetch_page: https://seekingalpha.com/article/4873694-electromed-some-short-term-gain-but-i-fear-long
+    [tool 7] search_web: Fed funds rate August 2026 FOMC policy stance easing
+    [tool 8] search_web: bronchiectasis prevalence United States HFCWO airway clearance penetration rate patients
+    [tool 9] fetch_page: https://www.globalgrowthinsights.com/market-reports/high-frequency-chest-wall-oscillatio
+    [tool 10] fetch_page: https://in.investing.com/news/transcripts/electromed-at-38th-annual-roth-conference-stra
+    [tool 11] search_web: DXY dollar index level August 2026
+    [tool 12] search_web: Medicare LCD HFCWO airway clearance reimbursement 2025 2026 coverage policy change
+    [tool 13] fetch_page: https://finance.yahoo.com/quote/ELMD/analysis/
+    [tool 14] search_web: Electromed ELMD revenue mix home care hospital distributor segment percentage fiscal 202
+    [tool 15] search_web: "HFCWO" devices market size million 2026 CAGR forecast bronchiectasis cystic fibrosis
+    [tool 16] search_web: Electromed ELMD fiscal 2026 fourth quarter preview August 2026 revenue EPS expectations
+  sample 3: IV $33.4 | usable=True | 16 tool calls (think 97,278ch / report 22,325ch) | 353s | $0.084 cumulative
+
+[deep-api] ELMD: OVERVALUED | band $24.5-$33.4 vs price $39.45 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 9.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 410,134 in (340,096 cached) | 100,609 out (76,496 reasoning) | $0.084 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ELMD_20260826_031746\verdict_depth.json

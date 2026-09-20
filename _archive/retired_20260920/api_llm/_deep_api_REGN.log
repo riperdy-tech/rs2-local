@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/REGN.md, 7.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] REGN @ $829.455 | deepseek-v4-flash effort=high | 3 samples | pack 35,973ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\REGN_20260826_071543
+    [tool 1] search_web: Regeneron second quarter 2026 earnings press release revenue Eylea HD Dupixent guidance
+    [tool 2] search_web: Regeneron FY2025 annual results 10-K Eylea HD net sales Dupixent US net sales Libtayo
+    [tool 3] search_web: Dupixent 2025 global net sales Sanofi 2026 growth COPD indication
+    [tool 4] search_web: 10 year treasury yield August 2026 federal funds rate inflation
+    [tool 5] search_web: Regeneron 2026 guidance R&D expense capital expenditure tax rate full year outlook
+    [tool 6] fetch_page: https://investor.regeneron.com/news-releases/news-release-details/regeneron-reports-four
+    [tool 7] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/07/30/regeneron-regn-q2-2026-earning
+    [tool 8] search_web: Eylea biosimilar market share 2026 Amgen Pavblu Samsung Opuviz erosion US aflibercept
+    [tool 9] search_web: odronextamab FDA approval linvoseltamab PDUFA date Regeneron 2026 pipeline milestones
+    [tool 10] fetch_page: https://investor.regeneron.com/static-files/81b30ae7-65ea-4118-90e1-102ecf9849cf
+    [tool 11] search_web: Regeneron full year 2025 Eylea US net sales $2.7 billion Eylea HD Dupixent US sales tota
+    [tool 12] search_web: Dupixent Q2 2026 net sales Sanofi euro billion second quarter 2026 results
+    [tool 13] search_web: Regeneron DOJ False Claims Act Eylea investigation status 2026 settlement
+    [tool 14] search_web: Eylea HD patent expiry 2032 aflibercept high dose biosimilar protection Regeneron
+  sample 1: IV $820.0 | usable=True | 14 tool calls (think 29,031ch / report 48,299ch) | 321s | $0.026 cumulative
+    [tool 1] search_web: 10 year treasury yield August 2026
+    [tool 2] search_web: Regeneron Q2 2026 earnings results revenue outlook guidance
+    [tool 3] search_web: Dupixent global net sales 2025 full year Sanofi
+    [tool 4] search_web: Regeneron R&D expense 2025 full year
+    [tool 5] fetch_page: https://investor.regeneron.com/news-releases/news-release-details/regeneron-reports-seco
+    [tool 6] search_web: Regeneron full year 2025 EYLEA HD EYLEA 2mg Libtayo net product sales
+    [tool 7] fetch_page: https://finviz.com/news/293129/regeneron-reports-fourth-quarter-and-full-year-2025-finan
+    [tool 8] search_web: "Regeneron" Q2 2026 "EYLEA HD" sales "Dupixent" "$4.3 billion" revenue
+    [tool 9] fetch_page: https://finance.yahoo.com/healthcare/articles/regeneron-regn-q2-2026-earnings-010230918.
+    [tool 10] fetch_page: https://www.reuters.com/business/healthcare-pharmaceuticals/us-fda-approves-regenerons-r
+    [tool 11] search_web: fianlimab Libtayo melanoma phase 3 trial failure May 2026 Regeneron details
+    [tool 12] search_web: Regeneron Q2 2026 earnings call Chris Fenimore 2026 guidance non-GAAP opex capex tax rat
+    [tool 13] search_web: Regeneron garetosmab FDA approval FOP August 2026
+    [tool 14] search_web: Amgen Pavblu biosimilar Eylea market share 2026 erosion
+  sample 2: IV $845.0 | usable=True | 14 tool calls (think 88,470ch / report 34,740ch) | 423s | $0.062 cumulative
+    [tool 1] search_web: Regeneron Q2 2026 earnings results revenue guidance 2026 full year
+    [tool 2] search_web: Regeneron Eylea HD 2026 US net sales biosimilar erosion Pavblu
+    [tool 3] search_web: Dupixent global sales 2025 2026 Sanofi growth outlook $20 billion
+    [tool 4] search_web: 10-year treasury yield Federal Reserve policy August 2026 rate cut
+    [tool 5] fetch_page: https://www.federalreserve.gov/releases/h15/
+    [tool 6] fetch_page: https://www.biospace.com/press-releases/regeneron-reports-second-quarter-2026-financial-
+    [tool 7] search_web: Regeneron 2026 guidance R&D expenses operating expenses non-GAAP 2026 outlook
+    [tool 8] search_web: Regeneron odronextamab FDA approval decision 2026 lymphoma
+    [tool 9] fetch_page: https://investor.regeneron.com/news-releases/news-release-details/regeneron-reports-firs
+    [tool 10] search_web: Regeneron REGN 2027 2028 revenue EPS analyst estimates consensus
+    [tool 11] search_web: Medicare drug price negotiation 2026 Eylea Dupixent IRA negotiated price status
+    [tool 12] search_web: Regeneron share repurchase program 2026 authorization buyback dividend
+    [tool 13] fetch_page: https://investingnews.com/regeneron-reports-first-quarter-2026-financial-and-operating-r
+    [tool 14] fetch_page: https://www.tikr.com/blog/regeneron-eps-set-to-jump-18-in-2027-as-obesity-bet-reframes-t
+    [tool 15] search_web: Eylea selected Medicare drug price negotiation Part B 2027 2028 CMS list
+    [tool 16] search_web: Dupixent COPD indication 2026 2027 peak sales forecast ramp
+  sample 3: IV $917.0 | usable=True | 16 tool calls (think 63,604ch / report 36,651ch) | 372s | $0.092 cumulative
+
+[deep-api] REGN: HOLD | band $820.0-$917.0 vs price $829.455 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 7.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 378,956 in (280,960 cached) | 103,269 out (62,228 reasoning) | $0.092 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\REGN_20260826_071543\verdict_depth.json

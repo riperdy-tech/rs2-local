@@ -1,0 +1,74 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/GRC.md, 7.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] GRC @ $78.09 | deepseek-v4-flash effort=high | 3 samples | pack 32,587ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GRC_20260826_035553
+    [tool 1] search_web: 10 year treasury yield current August 2026
+    [tool 2] search_web: Gorman-Rupp Q2 2026 earnings results guidance full year 2026 net sales
+    [tool 3] search_web: Gorman-Rupp data center cooling pumps growth opportunity
+    [tool 4] search_web: Gorman-Rupp dividend 2026 quarterly per share increase
+    [tool 5] fetch_page: https://www.businesswire.com/news/home/20260723306126/en/Gorman-Rupp-Reports-Second-Quar
+    [tool 6] fetch_page: https://www.ainvest.com/news/gorman-rupp-earnings-disappointment-assessing-operational-e
+    [tool 7] search_web: Federal Reserve interest rate decision August 2026 fed funds rate
+    [tool 8] search_web: Gorman-Rupp GRC analyst EPS estimates 2027 2028 consensus
+    [tool 9] fetch_page: https://stockstory.org/us/stocks/nyse/grc
+    [tool 10] search_web: "Gorman-Rupp" 2026 guidance "net sales" outlook full year million
+    [tool 11] search_web: Gorman-Rupp Fill-Rite acquisition financing term loan interest rate debt 2022
+    [tool 12] search_web: Gorman-Rupp GRC EPS estimate 2026 2027 GAAP adjusted
+    [tool 13] fetch_page: https://finwire.io/news/stock-markets-news/gorman-rupp-nysegrc-reports-sales-below-analy
+    [tool 14] search_web: Gorman-Rupp 2026 outlook guidance adjusted EBITDA operating income CFO succession plan
+    [tool 15] search_web: Gorman-Rupp GRC fully valued overvalued stock analysis 2026
+    [tool 16] search_web: IIJA water infrastructure funding remaining 2026 wastewater state revolving funds outloo
+  sample 1: EMPTY report after 106,050ch thinking - one retry
+    [tool 1] search_web: Gorman-Rupp Q2 2026 earnings results guidance full year outlook
+    [tool 2] search_web: 10-year Treasury yield current August 2026 Fed funds rate
+    [tool 3] search_web: Gorman-Rupp stock surge data center water pumps 2026 re-rating
+    [tool 4] search_web: Gorman-Rupp Fill-Rite acquisition 2022 purchase price revenue synergies debt paydown
+    [tool 5] fetch_page: https://www.businesswire.com/news/home/20260723306126/en/Gorman-Rupp-Reports-Second-Quar
+    [tool 6] fetch_page: https://www.federalreserve.gov/releases/h15/
+    [tool 7] search_web: Gorman-Rupp GRC analyst EPS estimates fiscal 2026 2027 consensus
+    [tool 8] search_web: Gorman-Rupp 2026 guidance revenue EPS outlook management commentary
+    [tool 9] search_web: Gorman-Rupp second quarter 2026 results net sales $186.1 million record net income debt 
+    [tool 10] search_web: Gorman-Rupp Q2 2026 earnings call transcript management outlook 2026 2027
+    [tool 11] search_web: FOMC meeting August 2026 statement federal funds rate decision
+    [tool 12] search_web: US GDP growth Q2 2026 inflation CPI credit spreads HY OAS August 2026
+    [tool 13] fetch_page: https://www.morningstar.com/news/business-wire/20260723306126/gorman-rupp-reports-second
+    [tool 14] search_web: Gorman-Rupp Q2 2026 balance sheet total debt leverage ratio adjusted EBITDA June 30 2026
+    [tool 15] search_web: high yield credit spread OAS August 2026 BBB spread
+  sample 1: IV $36.6 | usable=True | 15 tool calls (think 90,323ch / report 35,147ch) | 805s | $0.071 cumulative
+    [tool 1] search_web: Gorman-Rupp GRC second quarter 2026 earnings results full year guidance
+    [tool 2] search_web: Gorman-Rupp pumps data center cooling opportunity growth 2026
+    [tool 3] search_web: Gorman-Rupp National Pump Company acquisition 2022 purchase price debt
+    [tool 4] search_web: 10-year Treasury yield August 2026 Federal Reserve policy stance
+    [tool 5] search_web: Gorman-Rupp capital expenditure plans 2026 2027 expansion foundry Mansfield
+    [tool 6] fetch_page: https://www.businesswire.com/news/home/20260723306126/en/Gorman-Rupp-Reports-Second-Quar
+    [tool 7] fetch_page: https://grafa.com/en/news/united-states/grc-earns-4q25
+    [tool 8] search_web: Gorman-Rupp full year 2026 guidance net sales EPS outlook
+    [tool 9] search_web: Gorman-Rupp GRC analyst consensus EPS estimate 2026 2027
+    [tool 10] search_web: Gorman-Rupp term loan interest rate SOFR amended refinance 2025 2026
+    [tool 11] search_web: 10-year TIPS real yield August 2026
+    [tool 12] search_web: dollar index DXY high yield credit spread August 2026
+    [tool 13] fetch_page: https://finwire.io/news/stock-markets-news/gorman-rupp-nysegrc-reports-sales-below-analy
+    [tool 14] fetch_page: https://www.mansfieldnewsjournal.com/story/news/local/2026/07/27/gorman-rupp-second-quar
+    [tool 15] search_web: Federal Reserve interest rate decision July August 2026 federal funds rate
+    [tool 16] search_web: ICE BofA high yield OAS spread level 2026
+  sample 2: IV $44.0 | usable=True | 16 tool calls (think 89,075ch / report 27,221ch) | 374s | $0.102 cumulative
+    [tool 1] fetch_page: https://www.businesswire.com/news/home/20260723306126/en/Gorman-Rupp-Reports-Second-Quar
+    [tool 2] search_web: Gorman-Rupp Company 2022 acquisition pump manufacturer debt financing
+    [tool 3] search_web: 10-year Treasury yield August 2026 Federal Reserve policy stance
+    [tool 4] search_web: Gorman-Rupp refinanced credit agreement 2024 2025 term loan interest rate SOFR
+    [tool 5] fetch_page: https://www.gormanrupp.com/hubfs/2024%20Jun%2003%20Refinancing.pdf
+    [tool 6] fetch_page: https://www.gormanrupp.com/hubfs/2022%20Jun%2001%20Fill-Rite.pdf
+    [tool 7] search_web: Federal Reserve federal funds rate August 2026 rate cut decision
+    [tool 8] search_web: Gorman-Rupp full year 2026 guidance revenue EPS outlook
+    [tool 9] search_web: Gorman-Rupp Reports First Quarter 2026 Financial Results businesswire
+    [tool 10] search_web: Gorman-Rupp Reports Second Quarter 2026 Financial Results nasdaq press release net sales
+    [tool 11] search_web: Gorman-Rupp 10-K 2025 reportable segments Water Wastewater Fill-Rite revenue operating i
+    [tool 12] search_web: Gorman-Rupp GRC analyst EPS estimates fiscal 2026 2027 consensus
+    [tool 13] search_web: Gorman-Rupp quarterly dividend 2026 $0.185 per share
+    [tool 14] search_web: DXY dollar index level August 2026 high yield credit spread
+  sample 3: IV $47.6 | usable=True | 14 tool calls (think 83,294ch / report 22,650ch) | 403s | $0.135 cumulative
+
+[deep-api] GRC: OVERVALUED | band $36.6-$47.6 vs price $78.09 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 7.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 19 API calls | 557,065 in (424,320 cached) | 156,186 out (124,022 reasoning) | $0.135 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GRC_20260826_035553\verdict_depth.json

@@ -1,0 +1,60 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/SIMO.md, 9.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] SIMO @ $258.36 | deepseek-v4-flash effort=high | 3 samples | pack 34,231ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\SIMO_20260826_075008
+    [tool 1] search_web: Silicon Motion Q2 2026 earnings results revenue $451 million EPS guidance Q3 2026
+    [tool 2] search_web: Silicon Motion reverse stock split 2026 shares outstanding
+    [tool 3] search_web: Silicon Motion SIMO 2028 revenue estimate $2 billion BofA price target $450
+    [tool 4] search_web: enterprise SSD controller market share 2026 Silicon Motion Phison MonTitan competition
+    [tool 5] search_web: NAND flash memory outlook 2027 prices AI SSD demand forecast shortage
+    [tool 6] search_web: 10-year Treasury yield August 2026 Federal Reserve rate cut expectations
+    [tool 7] fetch_page: https://www.globenewswire.com/news-release/2026/07/29/3335673/9885/en/silicon-motion-ann
+    [tool 8] fetch_page: https://www.fool.com/investing/2026/07/30/why-silicon-motion-stock-jumped-34-today/
+    [tool 9] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-silicon-motion-tops-
+    [tool 10] search_web: Silicon Motion SIMO analyst estimates 2027 2028 revenue EPS consensus
+    [tool 11] search_web: Silicon Motion dividend buyback 2026 capital return policy
+    [tool 12] fetch_page: https://yiazou.com/siliconmotion-structural-inflection-in-enterprise-storage-and-ai-infr
+    [tool 13] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/silicon-motion-simo-q2-2026-ea
+    [tool 14] fetch_page: https://stockanalysis.com/stocks/simo/
+    [tool 15] fetch_page: https://www.wallstreetzen.com/stocks/us/nasdaq/simo/stock-forecast
+    [tool 16] search_web: federal funds rate target range August 2026 current
+    [tool 17] search_web: TrendForce NAND flash 2027 supply demand AI SSD enterprise storage outlook
+  sample 1: IV $126.0 | usable=True | 17 tool calls (think 124,729ch / report 21,702ch) | 485s | $0.041 cumulative
+    [tool 1] search_web: Silicon Motion Q3 2026 guidance revenue outlook earnings call
+    [tool 2] search_web: Silicon Motion SIMO 2026 2027 revenue EPS analyst estimates consensus
+    [tool 3] search_web: 10 year treasury yield August 2026 Fed funds rate FOMC
+    [tool 4] search_web: Silicon Motion ADS ratio ordinary shares outstanding 2025 2026
+    [tool 5] search_web: Silicon Motion SIMO full year 2026 revenue consensus $1.8 billion estimate
+    [tool 6] search_web: Silicon Motion Q2 2026 earnings call transcript MonTitan enterprise automotive Ferri gui
+    [tool 7] search_web: NAND flash controller market 2026 2027 outlook AI data center enterprise SSD demand grow
+    [tool 8] search_web: Silicon Motion competitors Phison Marvell Maxio InnoGrit enterprise SSD controller marke
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/silicon-motion-simo-q2-2026-ea
+    [tool 10] search_web: Silicon Motion Q2 2026 press release record revenue $451 million June 30 2026
+    [tool 11] search_web: Silicon Motion SIMO buyback dividend capital return program 2025 2026
+    [tool 12] search_web: dollar index DXY August 2026 level
+    [tool 13] search_web: Silicon Motion $800 million convertible notes offering August 2026 conversion price dilu
+    [tool 14] search_web: Silicon Motion SIMO 2027 revenue EPS estimates revised after Q2 2026
+    [tool 15] search_web: Silicon Motion Maxio Technology dispute litigation 2026
+    [tool 16] search_web: Silicon Motion research and development expense 2025 annual report 20-F
+  sample 2: IV $208.0 | usable=True | 16 tool calls (think 109,131ch / report 34,799ch) | 459s | $0.078 cumulative
+    [tool 1] search_web: Silicon Motion SIMO Q3 2026 revenue guidance outlook earnings call August 2026
+    [tool 2] search_web: Silicon Motion SIMO 2027 2028 revenue EPS analyst estimates forecast
+    [tool 3] search_web: 10-year Treasury yield level August 2026
+    [tool 4] search_web: Fed funds rate FOMC August 2026 interest rate decision
+    [tool 5] fetch_page: https://www.theglobeandmail.com/investing/markets/stocks/SIMO/pressreleases/3730607/sili
+    [tool 6] search_web: Silicon Motion 2026 revenue guidance "$1.6 billion" OR "$1.7 billion" operating margin t
+    [tool 7] search_web: NAND flash memory price outlook 2026 2027 AI demand supply shortage supercycle
+    [tool 8] search_web: Silicon Motion Phison SSD controller market share 2026 enterprise MonTitan competition
+    [tool 9] search_web: DXY dollar index level August 2026 credit spreads high yield
+    [tool 10] search_web: Silicon Motion shares outstanding 2026 stock split reverse split ADS
+    [tool 11] search_web: Silicon Motion $800 million convertible notes conversion price terms 2029
+    [tool 12] search_web: Bank of America Silicon Motion SIMO price target $450 2028 revenue $2 billion upgrade
+    [tool 13] search_web: Silicon Motion SIMO 2026 full year consensus revenue estimate $1.7 billion
+    [tool 14] search_web: high yield credit spread OAS level August 2026 investment grade
+    [tool 15] search_web: Silicon Motion China revenue exposure US export controls semiconductor 2026
+  sample 3: IV $157.5 | usable=True | 15 tool calls (think 110,995ch / report 33,980ch) | 451s | $0.114 cumulative
+
+[deep-api] SIMO: OVERVALUED | band $126.0-$208.0 vs price $258.36 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 9.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 329,573 in (247,040 cached) | 142,081 out (109,583 reasoning) | $0.114 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\SIMO_20260826_075008\verdict_depth.json

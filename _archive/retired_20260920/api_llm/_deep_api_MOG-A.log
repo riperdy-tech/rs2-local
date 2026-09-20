@@ -1,0 +1,67 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: ABSENT - pack has no SECTION 11
+[deep-api]   SearXNG: up
+[deep-api] MOG-A @ $389.14 | deepseek-v4-flash effort=high | 3 samples | pack 17,809ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MOG-A_20260825_061142
+    [tool 1] search_web: Moog Inc FY2026 guidance revenue EPS free cash flow outlook
+    [tool 2] search_web: Moog Inc third quarter 2026 earnings results Q3 FY2026 net income backlog
+    [tool 3] fetch_page: https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/
+    [tool 4] fetch_page: https://ng.investing.com/news/transcripts/earnings-call-transcript-moog-tops-q3-2026-est
+    [tool 5] fetch_page: https://www.01net.it/moog-inc-achieves-record-third-quarter-2026-results-through-operati
+    [tool 6] fetch_page: https://www.tipranks.com/news/company-announcements/moog-inc-earnings-call-signals-susta
+    [tool 7] fetch_page: https://finance.yahoo.com/quote/MOG-A/earnings/MOG-A-Q3-2026-earnings_call-654463.html
+    [tool 8] search_web: Moog "record third quarter" 2026 press release "free cash flow" "backlog" guidance FY26 
+    [tool 9] search_web: Moog Q3 fiscal 2026 results businesswire "net sales" guidance "adjusted EPS" "$10.60"
+    [tool 10] search_web: Moog FY2026 full year guidance "net sales" range "operating margin" "free cash flow" app
+    [tool 11] search_web: marketscreener Moog "Quarterly Results Q3" FY26
+    [tool 12] fetch_page: https://www.allinvestview.com/earnings/MOG-A/
+    [tool 13] fetch_page: https://www.marketscreener.com/news/moog-quarterly-results-q3-moog-fy26-q3-results-ce7f5
+  sample 1: EMPTY report after 6,328ch thinking - one retry
+    [tool 1] search_web: Moog Inc fiscal 2026 guidance revenue EPS outlook backlog
+    [tool 2] search_web: Moog Q3 fiscal 2026 earnings press release revenue guidance raised
+    [tool 3] fetch_page: https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/
+    [tool 4] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-moog-tops-q3-2026-es
+    [tool 5] search_web: Moog fiscal 2026 full year guidance revenue $4.4 billion adjusted EPS $10.60 free cash f
+    [tool 6] search_web: Moog "backlog" fiscal 2026 record $4.5 billion OR $4.6 billion OR $4.7 billion
+    [tool 7] fetch_page: https://www.stocktitan.net/news/MOG/
+    [tool 8] search_web: Moog third quarter fiscal 2026 results press release "adjusted diluted" EPS $11.65 opera
+    [tool 9] fetch_page: https://www.stocktitan.net/sec-filings/MOG/8-k-moog-inc-reports-material-event-1527efd11
+    [tool 10] fetch_page: https://www.insidermonkey.com/blog/moog-inc-nysemog-a-q2-2026-earnings-call-transcript-1
+    [tool 11] search_web: Moog fiscal 2027 revenue EPS analyst estimate consensus
+    [tool 12] search_web: Moog long range plan multi-year growth targets capital expenditure capacity expansion 20
+    [tool 13] search_web: Moog fiscal 2027 estimate revenue $4.9 billion EPS "12" OR "$13" analysts
+    [tool 14] fetch_page: https://seekingalpha.com/article/4923972-moog-embedded-platforms-and-visible-earnings-gr
+  sample 1: IV $143.0 | usable=True | 14 tool calls (think 72,213ch / report 19,769ch) | 306s | $0.042 cumulative
+    [tool 1] search_web: Moog Inc fiscal 2026 guidance revenue EPS free cash flow outlook
+    [tool 2] search_web: Moog third quarter fiscal 2026 earnings results July 2026 press release
+    [tool 3] fetch_page: https://thebusinesstimes.co.uk/moog-inc-mog-a-q3-2026-earnings-call-transcript/
+    [tool 4] fetch_page: https://www.tipranks.com/news/company-announcements/moog-inc-earnings-call-signals-susta
+    [tool 5] search_web: Moog news release third quarter fiscal 2026 revenue adjusted EPS guidance raised investo
+    [tool 6] search_web: Moog fiscal 2027 outlook 2028 long range plan revenue $5 billion aircraft controls space
+    [tool 7] fetch_page: https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/
+    [tool 8] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-moog-tops-q3-2026-es
+    [tool 9] search_web: "Moog" Q3 fiscal 2026 "guidance" revenue "$4.4" OR "$4.5" billion operating margin free 
+    [tool 10] search_web: Moog FY26 Q3 results net sales segments Aircraft Controls Space and Defense Industrial J
+    [tool 11] fetch_page: https://finance.yahoo.com/markets/stocks/articles/moog-q3-earnings-call-highlights-21035
+    [tool 12] fetch_page: https://www.01net.it/moog-inc-achieves-record-third-quarter-2026-results-through-operati
+    [tool 13] search_web: Moog fiscal 2026 revenue guidance "net sales" full year raised $4.4 billion adjusted ope
+    [tool 14] search_web: Moog Inc balance sheet total debt June 2026 fiscal 2025 long-term debt finance lease 10-
+  sample 2: IV $224.0 | usable=True | 14 tool calls (think 65,468ch / report 28,891ch) | 272s | $0.071 cumulative
+    [tool 1] search_web: Moog Inc fiscal 2026 guidance revenue EPS outlook
+    [tool 2] search_web: Moog Inc backlog defense space growth 2026 2027
+    [tool 3] search_web: Moog Inc capital expenditure plans capacity expansion 2026 2027
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/
+    [tool 6] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-moog-tops-q3-2026-es
+    [tool 7] search_web: Moog MOG-A analyst estimates fiscal 2027 revenue EPS consensus
+    [tool 8] search_web: Moog fiscal 2026 third quarter results press release revenue guidance raised "4.4 billio
+    [tool 9] search_web: Moog Investor Day 2023 long-term targets 2027 revenue operating margin free cash flow
+    [tool 10] search_web: Moog MOG FY2027 revenue growth forecast data center cooling missile defense outlook
+    [tool 11] fetch_page: https://www.businesswire.com/news/home/20230609005102/en/Moog-Inc.-Investor-Day-Highligh
+    [tool 12] fetch_page: https://www.stocktitan.net/sec-filings/MOG/10-q-moog-inc-quarterly-earnings-report-477d3
+    [tool 13] fetch_page: https://www.wallstreetzen.com/stocks/us/nyse/mog.a/stock-forecast
+  sample 3: IV $185.0 | usable=True | 13 tool calls (think 52,161ch / report 25,829ch) | 290s | $0.096 cumulative
+
+[deep-api] MOG-A: OVERVALUED | band $143.0-$224.0 vs price $389.14 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief absent, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 29 API calls | 482,781 in (342,272 cached) | 95,615 out (65,372 reasoning) | $0.096 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MOG-A_20260825_061142\verdict_depth.json

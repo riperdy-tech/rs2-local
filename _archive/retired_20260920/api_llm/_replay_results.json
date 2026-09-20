@@ -1,0 +1,125 @@
+[
+ {
+  "dir": "INVA_20260817_092556",
+  "orig": "fail",
+  "candidate": "pass",
+  "agree": false,
+  "secs": 38.9,
+  "violations": []
+ },
+ {
+  "dir": "ST_20260817_094411",
+  "orig": "fail",
+  "candidate": "pass",
+  "agree": false,
+  "secs": 25.1,
+  "violations": []
+ },
+ {
+  "dir": "CRM_20260817_102429",
+  "orig": "fail",
+  "candidate": "fail",
+  "agree": true,
+  "secs": 26.6,
+  "violations": [
+   "{'type': 'ENGINE-FIELD CONTRADICTION', 'detail': \"The report asserts a positive Margin of Safety (MoS) of 12.9% in Section 4 ('MoS: 12.9% (Adequate)') and Secti"
+  ]
+ },
+ {
+  "dir": "CRM_20260817_103801",
+  "orig": "pass",
+  "candidate": "pass",
+  "agree": true,
+  "secs": 26.8,
+  "violations": []
+ },
+ {
+  "dir": "GSAT_20260817_104204",
+  "orig": "pass",
+  "candidate": "pass",
+  "agree": true,
+  "secs": 32.3,
+  "violations": []
+ },
+ {
+  "dir": "HEI_20260817_110127",
+  "orig": "pass",
+  "candidate": "pass",
+  "agree": true,
+  "secs": 32.9,
+  "violations": []
+ },
+ {
+  "dir": "HWM_20260817_111007",
+  "orig": "fail",
+  "candidate": "fail",
+  "agree": true,
+  "secs": 38.5,
+  "violations": [
+   "{'type': 'SIZING INCOHERENCE', 'detail': \"Section 5 (Conviction & Position Sizing) explicitly states a 'Total Conviction Score' of 12/15. However, Section 12 (F",
+   "{'type': 'FABRICATION', 'detail': \"Section 7.5 (Correlation-Adjusted Risk) cites a 'Mid-Cycle IV ($110)' for the worst-case scenario. This figure contradicts th"
+  ]
+ },
+ {
+  "dir": "HWM_20260817_112252",
+  "orig": "pass",
+  "candidate": "pass",
+  "agree": true,
+  "secs": 27.8,
+  "violations": []
+ },
+ {
+  "dir": "INVA_20260817_113000",
+  "orig": "pass",
+  "candidate": "pass",
+  "agree": true,
+  "secs": 27.1,
+  "violations": []
+ },
+ {
+  "dir": "KO_20260817_114451",
+  "orig": "pass",
+  "candidate": "pass",
+  "agree": true,
+  "secs": 28.4,
+  "violations": []
+ },
+ {
+  "dir": "MU_20260817_120046",
+  "orig": "fail",
+  "candidate": "fail",
+  "agree": true,
+  "secs": 28.4,
+  "violations": [
+   "{'type': 'FABRICATION', 'detail': \"Section 11 states 'IV (Engine Fair Value): Not explicitly stated in Anchor', which directly contradicts the provided ENGINE V",
+   "{'type': 'INTERNAL CONTRADICTION', 'detail': \"Section 5-1 assigns a 'Total Conviction Score' of 9/15 (Medium) and Section 5-3 derives a base sizing weight of 4."
+  ]
+ },
+ {
+  "dir": "MU_20260817_121150",
+  "orig": "pass",
+  "candidate": "pass",
+  "agree": true,
+  "secs": 28.5,
+  "violations": []
+ },
+ {
+  "dir": "ROST_20260817_124405",
+  "orig": "fail",
+  "candidate": "fail",
+  "agree": true,
+  "secs": 32.1,
+  "violations": [
+   "{'type': 'FABRICATION', 'detail': \"Section 9 (Step 9-1) states 'P/E 34.3x [Actual]'. The provided Financial Data Brief lists TTM EPS of $6.61 and Price of $245.",
+   "{'type': 'SIZING INCOHERENCE', 'detail': \"Section 5 (Step 5-1) calculates a 'Total Raw Score' of 15/15 and labels the Conviction Rating as 'High (12-15 Range)'."
+  ]
+ },
+ {
+  "dir": "ROST_20260817_125932",
+  "orig": "fail",
+  "candidate": "pass",
+  "agree": false,
+  "secs": 25.9,
+  "violations": []
+ }
+]

@@ -1,0 +1,53 @@
+[deep-api] CIEN @ $399.47 | deepseek-v4-flash effort=high | 3 samples | pack 31,718ch from CIEN_20260822_103444 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CIEN_20260825_000331
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 154.0 | spread 94.7%
+    [tool 1] search_web: Ciena fiscal Q2 2026 earnings call transcript full year 2026 guidance EPS operating marg
+    [tool 2] search_web: Ciena fiscal 2027 2028 revenue EPS analyst estimates consensus
+    [tool 3] search_web: 10-year treasury yield August 2026 level
+    [tool 4] fetch_page: https://s25.q4cdn.com/550667411/files/doc_financials/2026/q2/Ciena-Fiscal-Q2-2026-Financ
+    [tool 5] fetch_page: https://investor.ciena.com/news/news-details/2026/Ciena-Reports-Fiscal-Second-Quarter-20
+    [tool 6] fetch_page: https://www.chartmill.com/stock/quote/CIEN/analyst-ratings
+    [tool 7] search_web: Ciena Q2 2026 earnings call transcript Gary Smith AI-driven demand multi-year backlog $7
+    [tool 8] search_web: Ciena fiscal 2027 revenue estimate growth outlook AI optical data center interconnect
+    [tool 9] search_web: optical networking market size forecast 2027 2028 AI data center coherent optics growth 
+    [tool 10] fetch_page: https://finance.biggo.com/news/US_CIEN_2026-06-04
+    [tool 11] search_web: "Ciena" Q2 2026 "operating margin" sustainable supply-constrained pricing normalize 2027
+    [tool 12] search_web: Ciena CIEN fiscal 2026 adjusted EPS estimate consensus fiscal 2027 EPS estimate
+    [tool 13] search_web: Ciena cash cash equivalents short-term investments total debt balance sheet 2026 net cas
+    [tool 14] search_web: Ciena effective tax rate fiscal 2025 2026 net operating loss deferred tax
+  sample 1: IV $135.25 | usable=True | 14 tool calls (think 82,475ch / report 28,148ch) | 336s | $0.033 cumulative
+    [tool 1] search_web: Ciena fiscal 2027 revenue consensus analyst estimate
+    [tool 2] search_web: Ciena FY2028 revenue estimate EPS forecast analysts
+    [tool 3] search_web: 10 year treasury yield August 2026
+    [tool 4] search_web: Ciena effective tax rate GAAP fiscal 2025 2026
+    [tool 5] fetch_page: https://www.perplexity.ai/finance/CIEN/earnings
+    [tool 6] search_web: Ciena 2027 revenue estimate fiscal year 2027 2028 sell-side forecast growth rate
+    [tool 7] search_web: Ciena gross margin operating margin guidance fiscal 2026 management
+    [tool 8] fetch_page: https://investor.ciena.com/news/news-details/2026/Ciena-Reports-Fiscal-Second-Quarter-20
+    [tool 9] fetch_page: https://finance.yahoo.com/markets/stocks/articles/cienas-rising-backlog-improve-revenue-
+    [tool 10] search_web: CIEN stockanalysis forecast revenue FY2027 FY2028 estimates next fiscal year
+    [tool 11] search_web: Ciena 10-K fiscal 2025 income tax provision effective tax rate deferred taxes
+    [tool 12] search_web: Ciena total debt convertible notes 2026 balance sheet short term debt
+    [tool 13] fetch_page: https://investor.ciena.com/news/news-details/2026/Ciena-Corporation-Announces-Closing-of
+    [tool 14] fetch_page: https://stockanalysis.com/stocks/cien/forecast/
+    [tool 15] fetch_page: https://www.wallstreetzen.com/stocks/us/nyse/cien/stock-forecast
+  sample 2: IV $133.0 | usable=True | 15 tool calls (think 89,299ch / report 28,914ch) | 338s | $0.066 cumulative
+    [tool 1] search_web: Ciena fiscal 2027 revenue guidance analyst estimates FY2027
+    [tool 2] search_web: Ciena investor day long-term financial model revenue growth operating margin target
+    [tool 3] search_web: Ciena backlog $7 billion optical demand order book 2026
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://investor.ciena.com/news/news-details/2026/Ciena-Reports-Fiscal-Second-Quarter-20
+    [tool 6] search_web: Ciena FY2027 revenue consensus estimate billion EPS sell-side
+    [tool 7] search_web: Ciena long-term financial model fiscal 2027 operating margin target 18% 20%
+    [tool 8] search_web: CIEN FY2027 revenue estimate stockanalysis consensus fiscal 2027
+    [tool 9] fetch_page: https://stockanalysis.com/stocks/cien/forecast/
+    [tool 10] search_web: Ciena adjusted gross margin 45% fiscal 2026 operating leverage SBC
+    [tool 11] search_web: Ciena fiscal 2028 revenue estimate consensus 2029 EPS
+    [tool 12] search_web: Ciena analyst day financial framework revenue growth "operating margin" target 20% 2027 
+    [tool 13] search_web: optical networking market growth forecast AI data center 2027 2028 2030 billion
+    [tool 14] search_web: Ciena non-GAAP effective tax rate adjusted EPS 2026
+  sample 3: IV $102.5 | usable=True | 14 tool calls (think 60,395ch / report 23,237ch) | 288s | $0.090 cumulative
+
+[deep-api] CIEN: OVERVALUED | band $102.5-$135.25 vs price $399.47 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $95.0-$185.0 | median $154.0
+[deep-api] 17 API calls | 334,013 in (262,144 cached) | 109,678 out (80,063 reasoning) | $0.090 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CIEN_20260825_000331\verdict_depth.json

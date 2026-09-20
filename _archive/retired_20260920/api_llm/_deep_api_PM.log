@@ -1,0 +1,51 @@
+[deep-api] PM @ $189.93 | deepseek-v4-flash effort=high | 3 samples | pack 31,853ch from PM_20260821_115100 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\PM_20260825_014016
+[deep-api] local arm said: USABLE — plausible and converged | median IV 189.0 | spread 18.6%
+    [tool 1] search_web: Philip Morris International 2026 capital expenditure guidance capex plan
+    [tool 2] search_web: Philip Morris International 2027 2028 consensus EPS revenue analyst estimates
+    [tool 3] search_web: Philip Morris International effective tax rate 2025 annual report
+    [tool 4] search_web: Philip Morris International 2030 targets net revenue smoke-free majority 6-8% growth
+    [tool 5] search_web: 10 year treasury yield August 20 2026
+    [tool 6] search_web: "Philip Morris" capex "around" OR "approximately" 2026 capital expenditures ZYN IQOS cap
+    [tool 7] search_web: Philip Morris 2026 guidance adjusted EPS $8.26 $8.41 operating cash flow free cash flow
+    [tool 8] search_web: PM stock 2027 EPS estimate Philip Morris forward P/E 2027 2028
+    [tool 9] search_web: ZYN 2026 guidance volume growth IQOS Japan Poland Q2 2026 Philip Morris
+    [tool 10] search_web: Philip Morris $1.47 quarterly dividend 2026 buyback repurchase program authorization
+    [tool 11] fetch_page: https://www.pmi.com/investor-relations/press-releases-and-events/press-releases-overview
+    [tool 12] fetch_page: https://www.tikr.com/blog/philip-morris-q2-earnings-delivered-a-cash-flow-swing-wall-str
+    [tool 13] search_web: Philip Morris 2027 revenue consensus estimate billion EPS analyst 2027
+    [tool 14] search_web: "Philip Morris" 2026 "operating cash flow" guidance "more than" billion capex $1.8
+  sample 1: IV $176.54 | usable=True | 14 tool calls (think 64,861ch / report 33,098ch) | 306s | $0.027 cumulative
+    [tool 1] search_web: Philip Morris International FY2026 adjusted EPS guidance 8.26 8.41 full year outlook
+    [tool 2] search_web: Philip Morris International long term targets 2026-2028 mid-term guidance EPS growth
+    [tool 3] search_web: Philip Morris International capital expenditure plan 2026 2027 smoke-free capacity inves
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] search_web: Philip Morris International net debt total debt cash 2026
+    [tool 6] fetch_page: https://www.pmi.com/content/dam/pmicom/global/docs/investor_relation/March_2026_PMI_Inve
+    [tool 7] fetch_page: https://www.pmi.com/investor-relations/press-releases-and-events/press-releases-overview
+    [tool 8] search_web: Philip Morris Investor Day 2026 2028 targets adjusted EPS growth mid-single digit revenu
+    [tool 9] search_web: Philip Morris 2025 adjusted EBITDA net debt end of 2025 leverage ratio
+    [tool 10] search_web: Philip Morris dividend 2026 quarterly per share increase ZYN US outlook
+    [tool 11] search_web: PMI 2028 targets "adjusted EPS" compound annual growth investor day 2026 "mid-teens" OR 
+    [tool 12] search_web: "Philip Morris" 2025 full year results adjusted EBITDA net debt billion leverage
+    [tool 13] search_web: Philip Morris 2026 organic net revenue growth guidance full year "organic" percent CAGNY
+    [tool 14] search_web: Philip Morris "2030" OR "2028" ambition smoke-free 2/3 net revenue EPS double digit grow
+  sample 2: IV $197.5 | usable=True | 14 tool calls (think 112,794ch / report 19,720ch) | 396s | $0.065 cumulative
+    [tool 1] search_web: 10 year treasury yield August 2026
+    [tool 2] search_web: Philip Morris International PM beta 2026
+    [tool 3] search_web: Philip Morris International 2026 guidance 2027 outlook long-term targets adjusted EPS
+    [tool 4] search_web: Philip Morris International capex guidance capital expenditure plans 2026 2027 2028
+    [tool 5] search_web: Philip Morris International Q2 2026 press release adjusted EPS guidance full year 2026
+    [tool 6] search_web: Philip Morris 2025 full year results net income one-time gain non-cash item $11 billion
+    [tool 7] search_web: Philip Morris International 2024-2026 plan adjusted operating margin 40% target smoke-fr
+    [tool 8] fetch_page: https://www.pmi.com/investor-relations/press-releases-and-events/press-releases-overview
+    [tool 9] fetch_page: https://www.pmi.com/investor-relations/press-releases-and-events/press-releases-overview
+    [tool 10] search_web: Philip Morris "2026-2028" growth targets adjusted EPS CAGR currency-neutral
+    [tool 11] search_web: Philip Morris International 2026 full year guidance operating cash flow capex net revenu
+    [tool 12] fetch_page: https://www.pmi.com/content/dam/pmicom/global/docs/investor_relation/March_2026_PMI_Inve
+    [tool 13] fetch_page: https://www.pmi.com/investor-relations/press-releases-and-events/press-releases-overview
+  sample 3: IV $214.0 | usable=True | 13 tool calls (think 76,068ch / report 22,980ch) | 325s | $0.095 cumulative
+
+[deep-api] PM: HOLD | band $176.54-$214.0 vs price $189.93 | size half
+[deep-api] LOCAL said: HOLD | band $188.0-$223.0 | median $189.0
+[deep-api] 16 API calls | 321,717 in (248,192 cached) | 116,113 out (87,823 reasoning) | $0.095 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\PM_20260825_014016\verdict_depth.json

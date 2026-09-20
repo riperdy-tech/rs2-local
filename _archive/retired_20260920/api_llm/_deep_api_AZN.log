@@ -1,0 +1,53 @@
+[deep-api] AZN @ $166.565 | deepseek-v4-flash effort=high | 3 samples | pack 32,198ch from AZN_20260822_045015 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AZN_20260824_235007
+[deep-api] local arm said: USABLE — plausible and converged | median IV 195.0 | spread 15.8%
+    [tool 1] search_web: AstraZeneca 2030 revenue ambition target investor day $80 billion
+    [tool 2] search_web: AstraZeneca capital expenditure manufacturing investment plan 2026 2027 capex guidance
+    [tool 3] search_web: US 10-year Treasury yield August 2026 current level
+    [tool 4] search_web: AstraZeneca Farxiga patent expiry US 2026 Tagrisso patent expiry 2032
+    [tool 5] fetch_page: https://www.astrazeneca.com/media-centre/press-releases/2024/astrazeneca-to-deliver-80bn
+    [tool 6] fetch_page: https://data.fca.org.uk/artefacts/NSM/RNS/59563de3-5a71-4031-9f0b-61dfc61dc769.html
+    [tool 7] search_web: AstraZeneca Farxiga dapagliflozin patent expiration US 2026 generic entry
+    [tool 8] search_web: AstraZeneca analyst revenue forecast 2027 2028 2029 long term growth estimates
+    [tool 9] fetch_page: https://www.londonstockexchange.com/news-article/AZN/half-year-financial-report/17706075
+    [tool 10] search_web: AstraZeneca 80 billion 2030 revenue ambition "CAGR" 2023 to 2030 investor day details
+    [tool 11] search_web: AstraZeneca Farxiga sales 2025 2026 decline CVRM revenue loss guidance
+    [tool 12] fetch_page: https://www.astrazeneca.com/media-centre/press-releases/2026/h1-and-q2-2026-results.html
+    [tool 13] fetch_page: https://view.news.eu.nasdaq.com/view?id=b83f0119d6f9fb972258fea0e47c59085&lang=en&src=mi
+    [tool 14] search_web: AstraZeneca 2027 revenue consensus forecast billion sell-side estimate
+  sample 1: IV $179.41 | usable=True | 14 tool calls (think 78,260ch / report 29,693ch) | 310s | $0.028 cumulative
+    [tool 1] search_web: AstraZeneca FY2026 full year guidance revenue core EPS growth constant exchange rates
+    [tool 2] search_web: AstraZeneca 2030 revenue ambition $80 billion target
+    [tool 3] search_web: AstraZeneca capital expenditure manufacturing investment plan 2026 2027
+    [tool 4] search_web: US 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://www.astrazeneca.com/media-centre/press-releases/2024/astrazeneca-to-deliver-80bn
+    [tool 6] search_web: AstraZeneca 2030 ambition operating margin core EPS target 2030 financial framework
+    [tool 7] search_web: AstraZeneca full year 2025 results core EPS reported EPS dividend
+    [tool 8] search_web: AstraZeneca research and development spending capex as percentage of revenue 2025 2026
+    [tool 9] fetch_page: https://www.fiercepharma.com/pharma/astrazeneca-sets-sights-25-blockbusters-2030-fuel-80
+    [tool 10] fetch_page: https://docs.publicnow.com/viewDoc.aspx?filename=29177%5CEXT%5CE1F7A2D08C478DE59A3A7797F
+    [tool 11] search_web: AstraZeneca China investigation 2026 update legal risk revenue impact
+    [tool 12] search_web: AstraZeneca Farxiga patent expiry 2028 2030 generic competition key products patent clif
+    [tool 13] search_web: AstraZeneca FY2025 effective tax rate core tax rate 19% reported
+    [tool 14] search_web: AstraZeneca credit rating Moody's S&P A1 A+ bond yield 2026
+    [tool 15] fetch_page: https://quartr.com/companies/astrazeneca_5452
+    [tool 16] search_web: AstraZeneca dividend policy payout ratio 2026 progressive dividend 3.20
+  sample 2: IV $185.35 | usable=True | 16 tool calls (think 49,142ch / report 32,847ch) | 251s | $0.052 cumulative
+    [tool 1] search_web: AstraZeneca 2030 revenue target $80 billion long-term guidance Pascal Soriot
+    [tool 2] search_web: AstraZeneca capital expenditure plans 2026 2027 manufacturing investment guidance
+    [tool 3] search_web: 10 year US Treasury yield August 2026
+    [tool 4] search_web: AstraZeneca core effective tax rate guidance 2026
+    [tool 5] search_web: AstraZeneca half year 2026 results guidance core EPS tax rate capex press release
+    [tool 6] search_web: AstraZeneca announces manufacturing investment capital expenditure 2025 billion UK US Si
+    [tool 7] fetch_page: https://www.astrazeneca.com/media-centre/press-releases/2024/astrazeneca-to-deliver-80bn
+    [tool 8] fetch_page: https://www.astrazeneca.com/media-centre/press-releases/2025/astrazeneca-plans-to-invest
+    [tool 9] fetch_page: https://www.astrazeneca.com/media-centre/press-releases/2026/q2-2026-results.html
+    [tool 10] search_web: AstraZeneca Q2 2026 results total revenue growth core EPS guidance full year 2026
+    [tool 11] fetch_page: https://finance.yahoo.com/healthcare/articles/astrazeneca-q2-earnings-call-highlights-13
+    [tool 12] search_web: AstraZeneca core tax rate guidance 2026 "core tax rate" results
+    [tool 13] search_web: AstraZeneca total debt net debt 2025 annual report balance sheet borrowings
+  sample 3: IV $194.3 | usable=True | 13 tool calls (think 70,427ch / report 26,676ch) | 241s | $0.079 cumulative
+
+[deep-api] AZN: UNDERVALUED | band $179.41-$194.3 vs price $166.565 | size full
+[deep-api] LOCAL said: UNDERVALUED | band $190.0-$220.0 | median $195.0
+[deep-api] 15 API calls | 232,417 in (184,960 cached) | 101,836 out (69,095 reasoning) | $0.079 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AZN_20260824_235007\verdict_depth.json

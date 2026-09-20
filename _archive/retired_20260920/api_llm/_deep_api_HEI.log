@@ -1,0 +1,60 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/HEI.md, 8.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] HEI @ $355.04 | deepseek-v4-flash effort=high | 3 samples | pack 33,337ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\HEI_20260826_042221
+    [tool 1] search_web: 10-year Treasury yield level August 2026
+    [tool 2] search_web: Federal Reserve fed funds rate August 2026 policy stance
+    [tool 3] search_web: HEICO Q2 fiscal 2026 earnings call transcript guidance full year
+    [tool 4] search_web: HEICO Sherwood acquisition 2026 deal size aerospace
+    [tool 5] search_web: HEICO Corporation senior notes debt maturities interest rate 10-K
+    [tool 6] search_web: commercial aviation MRO aftermarket growth forecast 2026 2030
+    [tool 7] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/05/28/heico-hei-q2-2026-earnings-tra
+    [tool 8] search_web: HEICO fiscal 2026 2027 EPS consensus estimate revenue forecast
+    [tool 9] search_web: US CPI inflation July 2026 year over year
+    [tool 10] search_web: US GDP growth Q2 2026 real economic expansion
+    [tool 11] search_web: US dollar index DXY level August 2026
+    [tool 12] search_web: IATA global air passenger traffic forecast 2026 2030 growth
+    [tool 13] fetch_page: https://www.accessnewswire.com/newsroom/en/aerospace-and-defense/heico-corporation-close
+    [tool 14] fetch_page: https://www.tikr.com/blog/is-heico-stock-undervalued-after-q1-2026-earnings-tikrs-base-c
+    [tool 15] search_web: HEICO HEI Zacks consensus EPS estimate fiscal 2027
+    [tool 16] search_web: high yield credit spread OAS August 2026
+    [tool 17] search_web: US defense budget FY2027 outlook national security spending increase
+  sample 1: IV $244.0 | usable=True | 17 tool calls (think 123,642ch / report 31,425ch) | 436s | $0.044 cumulative
+    [tool 1] search_web: 10 year treasury yield level August 2026
+    [tool 2] search_web: HEICO Corporation fiscal 2026 guidance revenue growth outlook management commentary
+    [tool 3] search_web: HEICO long-term growth target 10-15% annual sales growth management
+    [tool 4] search_web: HEICO Sherwood Aviation acquisition 2025 deal size Wencor integration
+    [tool 5] search_web: Federal Reserve interest rate policy August 2026 fed funds rate
+    [tool 6] search_web: HEICO Q2 2026 earnings call transcript Victor Mendelson fiscal 2026 second half outlook
+    [tool 7] search_web: HEICO Electronic Technologies Group defense electronics backlog growth fiscal 2026
+    [tool 8] search_web: HEICO FY2027 EPS estimate consensus analysts revenue forecast
+    [tool 9] search_web: HEICO stock analysis FY2026 FY2027 EPS estimate revenue forecast stockanalysis
+    [tool 10] search_web: aerospace aftermarket MRO parts demand outlook 2026 2027 commercial aviation flight hour
+    [tool 11] search_web: US CPI inflation July 2026 core inflation rate
+    [tool 12] search_web: HEICO historical average P/E valuation premium quality compounder 2026
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/hei/forecast/
+    [tool 14] search_web: "HEICO" long-term "10% to 15%" sales growth goal Mendelson
+    [tool 15] search_web: DXY dollar index level August 2026 credit spreads investment grade
+  sample 2: IV $279.0 | usable=True | 15 tool calls (think 92,520ch / report 33,222ch) | 380s | $0.080 cumulative
+    [tool 1] search_web: HEICO Corporation Q3 fiscal 2026 earnings results August 25 2026
+    [tool 2] search_web: HEICO Sherwood Aviation acquisition details 2025 2026
+    [tool 3] search_web: HEICO earnings call Q2 2026 outlook organic growth acquisition pipeline guidance
+    [tool 4] search_web: 10 year treasury yield August 2026 Fed policy
+    [tool 5] fetch_page: https://avitrader.com/2026/04/08/heico-takes-majority-stake-in-sherwood/
+    [tool 6] search_web: HEICO analyst consensus fiscal 2026 2027 EPS revenue estimates
+    [tool 7] search_web: Fed funds rate August 2026 FOMC stance rate cuts
+    [tool 8] search_web: commercial aerospace MRO aftermarket growth forecast 2026 2030 air traffic
+    [tool 9] search_web: US CPI inflation July 2026 year over year
+    [tool 10] search_web: PMA parts aftermarket penetration rate HEICO market share FAA approved parts
+    [tool 11] fetch_page: https://heico.com/press-releases/
+    [tool 12] fetch_page: https://www.tikr.com/blog/is-heico-stock-undervalued-after-q1-2026-earnings-tikrs-base-c
+    [tool 13] search_web: dollar index DXY August 2026 level
+    [tool 14] search_web: high yield credit spreads August 2026 OAS
+    [tool 15] search_web: US defense budget fiscal 2027 outlook appropriations
+    [tool 16] search_web: HEICO historical valuation P/E ratio average premium 20 year
+  sample 3: IV $255.0 | usable=True | 16 tool calls (think 128,033ch / report 32,918ch) | 490s | $0.122 cumulative
+
+[deep-api] HEI: OVERVALUED | band $244.0-$279.0 vs price $355.04 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 8.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 401,237 in (320,256 cached) | 154,389 out (120,321 reasoning) | $0.122 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\HEI_20260826_042221\verdict_depth.json

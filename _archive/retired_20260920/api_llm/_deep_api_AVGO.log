@@ -1,0 +1,55 @@
+[deep-api] AVGO @ $367.88 | deepseek-v4-flash effort=high | 3 samples | pack 30,985ch from AVGO_20260822_025827 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AVGO_20260824_233911
+[deep-api] local arm said: USABLE — plausible and converged | median IV 218.0 | spread 63.9%
+    [tool 1] search_web: Broadcom fiscal 2026 Q3 guidance revenue September 2026 full year outlook AI semiconduct
+    [tool 2] search_web: Broadcom Hock Tan fiscal 2027 AI revenue target custom accelerators guidance multi-year
+    [tool 3] search_web: 10-year Treasury yield August 2026 current
+    [tool 4] search_web: Broadcom analyst estimates fiscal 2027 fiscal 2028 revenue EPS consensus
+    [tool 5] fetch_page: https://www.cnbc.com/2026/03/04/broadcom-sees-ai-chip-sales-significantly-over-100-billi
+    [tool 6] search_web: Broadcom Q2 fiscal 2026 press release revenue $22.2 billion AI $10.8 billion adjusted EB
+    [tool 7] search_web: Broadcom non-AI semiconductor revenue decline infrastructure software growth fiscal 2026
+    [tool 8] search_web: Broadcom effective tax rate 2025 GAAP non-GAAP Singapore intellectual property
+    [tool 9] fetch_page: https://www.investing.com/analysis/broadcom-ai-revenue-surge-masks-a-vmware-warning-2006
+    [tool 10] search_web: Broadcom fiscal 2026 full year revenue estimate consensus $100 billion Q4 guidance
+    [tool 11] search_web: hyperscaler capital expenditure 2026 2027 Google Microsoft Meta Amazon AI data center sp
+    [tool 12] search_web: Broadcom 2025 annual report effective tax rate provision 10-K
+    [tool 13] fetch_page: https://ts2.tech/en/broadcom-stock-30-billion-ai-bookings-meet-a-370-billion-financing-t
+    [tool 14] search_web: Broadcom consensus fiscal 2027 revenue estimate sell-side $150 billion fiscal 2028
+    [tool 15] search_web: Broadcom second quarter fiscal 2026 operating cash flow capital expenditure GAAP net inc
+  sample 1: IV $239.45 | usable=True | 15 tool calls (think 108,445ch / report 27,550ch) | 375s | $0.034 cumulative
+    [tool 1] search_web: Broadcom fiscal 2026 full year AI semiconductor revenue guidance Hock Tan $50 billion
+    [tool 2] search_web: Broadcom Q3 fiscal 2026 revenue guidance $29.4 billion AI revenue $16 billion
+    [tool 3] search_web: 10 year treasury yield August 2026 current rate
+    [tool 4] search_web: Broadcom fiscal 2027 revenue estimate analyst forecast custom AI accelerator
+    [tool 5] search_web: Broadcom fiscal 2026 full year revenue guidance $100 billion consolidated Hock Tan
+    [tool 6] search_web: Broadcom fiscal 2025 total AI semiconductor revenue $22 billion actual
+    [tool 7] search_web: Broadcom FY2027 FY2028 revenue estimate consensus $150 billion analysts
+    [tool 8] search_web: Broadcom effective tax rate fiscal 2025 non-GAAP cash tax rate
+    [tool 9] search_web: Broadcom fiscal 2025 Q4 AI semiconductor revenue $7.3 billion full year AI revenue
+    [tool 10] search_web: Broadcom fiscal 2027 total revenue estimate $145 billion analyst custom AI accelerator n
+    [tool 11] search_web: Broadcom cash taxes paid fiscal 2025 10-K income tax paid
+    [tool 12] search_web: Broadcom capital expenditure guidance 2026 fabless capex light asset model
+    [tool 13] fetch_page: https://investors.broadcom.com/news-releases/news-release-details/broadcom-inc-announces
+    [tool 14] search_web: Broadcom fiscal 2028 revenue estimate custom AI accelerator market TAM 2030 forecast
+    [tool 15] search_web: Broadcom non-GAAP gross margin fiscal 2026 77% operating margin 67% trajectory
+  sample 2: IV $274.0 | usable=True | 15 tool calls (think 102,658ch / report 22,833ch) | 362s | $0.070 cumulative
+    [tool 1] search_web: Broadcom fiscal 2026 full year revenue guidance AI semiconductor $40 billion outlook
+    [tool 2] search_web: Broadcom Q3 fiscal 2026 guidance revenue $29.4 billion AI backlog hyperscaler
+    [tool 3] search_web: Broadcom AI revenue backlog 2026 custom XPU Google Meta OpenAI $60 billion
+    [tool 4] search_web: 10 year treasury yield August 2026 current rate
+    [tool 5] fetch_page: https://investors.broadcom.com/news-releases/news-release-details/broadcom-inc-announces
+    [tool 6] search_web: Broadcom VMware infrastructure software revenue growth fiscal 2026 guidance
+    [tool 7] search_web: Broadcom dividend increase 2026 share buyback authorization capital return
+    [tool 8] search_web: hyperscaler capital expenditure 2027 Google Microsoft Meta Amazon AI data center billion
+    [tool 9] fetch_page: https://www.broadcom.com/company/news/financial-releases/64371
+    [tool 10] search_web: Broadcom fiscal 2025 annual results revenue $63.9 billion AI semiconductor software segm
+    [tool 11] search_web: Broadcom fiscal 2027 revenue consensus estimate analyst forecast
+    [tool 12] search_web: Broadcom fiscal 2026 revenue guidance $104 billion full year total revenue non-GAAP marg
+    [tool 13] fetch_page: https://investors.broadcom.com/news-releases/news-release-details/broadcom-inc-announces
+    [tool 14] search_web: Broadcom Q2 fiscal 2026 press release non-GAAP EPS $2.44 operating margin 67% cash flow 
+    [tool 15] search_web: Broadcom fiscal 2025 AI semiconductor revenue $20 billion infrastructure software revenu
+  sample 3: IV $335.0 | usable=True | 15 tool calls (think 117,529ch / report 22,653ch) | flags: ocf_multiple_47.4x_cap_40x | 460s | $0.106 cumulative
+
+[deep-api] AVGO: OVERVALUED | band $239.45-$335.0 vs price $367.88 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $213.5-$350.0 | median $218.0
+[deep-api] 15 API calls | 278,270 in (225,152 cached) | 139,830 out (109,937 reasoning) | $0.106 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AVGO_20260824_233911\verdict_depth.json

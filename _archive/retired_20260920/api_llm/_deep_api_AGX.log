@@ -1,0 +1,50 @@
+[deep-api] AGX @ $528.01 | deepseek-v4-flash effort=high | 3 samples | pack 30,988ch from AGX_20260821_174752 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AGX_20260824_231930
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 185.0 | spread 142.9%
+    [tool 1] search_web: Argan AGX backlog $ billion fiscal 2026 record 2027 guidance
+    [tool 2] search_web: Argan Inc AGX fiscal 2027 revenue EPS guidance outlook analyst estimates
+    [tool 3] search_web: Argan AGX earnings call Q1 fiscal 2027 CEO David Watson backlog demand data centers
+    [tool 4] fetch_page: https://tickeron.com/earnings/AGX/
+    [tool 5] fetch_page: https://finance.yahoo.com/markets/stocks/articles/agx-stock-worth-buying-92-152800726.ht
+    [tool 6] fetch_page: https://sg.finance.yahoo.com/quote/AGX/analysis/?p=AGX
+    [tool 7] fetch_page: https://stockanalysis.com/stocks/agx/
+    [tool 8] fetch_page: https://markets.ft.com/data/announce/full?dockey=600-202603261605BIZWIRE_USPRX____202603
+    [tool 9] search_web: AGX Argan 2027 2028 consensus EPS estimate fiscal year revenue forecast analyst
+    [tool 10] fetch_page: https://finance.yahoo.com/quote/AGX/analysis/
+    [tool 11] fetch_page: https://www.investing.com/equities/argan-earnings
+    [tool 12] search_web: Argan Q1 2027 earnings call transcript "David Watson" capacity "new projects" guidance f
+    [tool 13] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/06/05/argan-agx-q1-2027-earnings-cal
+  sample 1: IV $150.0 | usable=True | 13 tool calls (think 69,660ch / report 26,677ch) | flags: below_analyst_low_0.33x_floor_0.33x | 311s | $0.026 cumulative
+    [tool 1] search_web: Argan Inc AGX backlog Q1 fiscal 2027 power projects pipeline
+    [tool 2] search_web: Argan Inc AGX fiscal 2027 guidance revenue earnings outlook CEO Watson
+    [tool 3] search_web: AGX Argan analyst estimates FY2027 FY2028 revenue EPS forecast
+    [tool 4] search_web: US 10-year treasury yield August 2026
+    [tool 5] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-argans-q1-2027-earni
+    [tool 6] fetch_page: https://stockanalysis.com/stocks/agx/forecast/
+    [tool 7] fetch_page: https://seekingalpha.com/article/4912160-argan-inc-agx-q1-2027-earnings-call-transcript
+    [tool 8] search_web: Argan AGX $2.8 billion backlog breakdown gas-fired solar telecom fiscal 2027
+    [tool 9] fetch_page: https://empor.top/us/AGX
+    [tool 10] fetch_page: https://www.tradingview.com/news/zacks:a322a699a094b:0-is-argan-s-2-9b-backlog-the-spark
+    [tool 11] search_web: Argan Q1 2027 earnings call Watson "$2 billion" annual revenue capacity double run rate
+    [tool 12] search_web: EIA US electricity demand forecast 2030 data centers gas-fired capacity additions gigawa
+    [tool 13] search_web: AGX Argan stock drop August 2026 selloff reason
+  sample 2: IV $184.0 | usable=True | 13 tool calls (think 67,529ch / report 28,961ch) | 291s | $0.053 cumulative
+    [tool 1] search_web: Argan Inc AGX Q1 fiscal 2027 backlog record April 30 2026
+    [tool 2] search_web: Argan Inc AGX fiscal 2027 revenue guidance management outlook
+    [tool 3] search_web: Argan Inc AGX analyst estimates FY2027 FY2028 revenue EPS
+    [tool 4] fetch_page: https://www.businesswire.com/news/home/20260604142927/en/Argan-Inc.-Reports-First-Quarte
+    [tool 5] fetch_page: https://stockanalysis.com/stocks/agx/
+    [tool 6] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/06/05/argan-agx-q1-2027-earnings-cal
+    [tool 7] search_web: Argan Inc fiscal 2026 fourth quarter results backlog $2.9 billion cash marketable securi
+    [tool 8] fetch_page: https://www.marketwatch.com/investing/stock/agx/analystestimates
+    [tool 9] search_web: Argan Inc reports fiscal 2026 fourth quarter year end results March 2026 Business Wire b
+    [tool 10] search_web: Argan AGX Q1 2027 earnings call transcript Baugher CFO remarks guidance "net liquidity"
+    [tool 11] fetch_page: https://ca.investing.com/news/transcripts/earnings-call-transcript-argans-q4-2026-eps-so
+    [tool 12] fetch_page: https://finance.yahoo.com/quote/AGX/analysis/
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/agx/forecast/
+    [tool 14] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-argans-q1-2027-earni
+  sample 3: IV $282.0 | usable=True | 14 tool calls (think 85,016ch / report 28,849ch) | 348s | $0.084 cumulative
+
+[deep-api] AGX: OVERVALUED | band $150.0-$282.0 vs price $528.01 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $156.0-$379.0 | median $185.0
+[deep-api] 19 API calls | 349,685 in (284,160 cached) | 102,547 out (69,804 reasoning) | $0.084 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AGX_20260824_231930\verdict_depth.json

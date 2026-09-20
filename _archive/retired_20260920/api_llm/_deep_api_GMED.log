@@ -1,0 +1,52 @@
+[deep-api] GMED @ $85.67 | deepseek-v4-flash effort=high | 3 samples | pack 33,325ch from GMED_20260823_165317 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GMED_20260825_005640
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 109.0 | spread 56.0%
+    [tool 1] search_web: Globus Medical FY2026 guidance revenue EPS adjusted EPS full year
+    [tool 2] search_web: Globus Medical long-term growth targets margin expansion 2027 2028 guidance spine
+    [tool 3] search_web: 10 year treasury yield August 2026 current
+    [tool 4] search_web: Globus Medical Nevro acquisition 2025 deal value revenue contribution
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/1237831/000162828026032164/gmed-q12026ex991.htm
+    [tool 6] fetch_page: https://www.investors.globusmedical.com/static-files/891f4f36-cb09-4614-94b4-769977ad430
+    [tool 7] search_web: Globus Medical Q2 2026 results raises non-GAAP EPS guidance $4.95 to $5.05
+    [tool 8] search_web: Globus Medical 2025 full year adjusted EBITDA non-GAAP EPS results Q4 2025
+    [tool 9] search_web: Globus Medical long-term gross margin mid-70s target adjusted EBITDA margin target spine
+    [tool 10] fetch_page: https://apnews.com/press-release/globenewswire-mobile/globus-medical-reports-fourth-quar
+    [tool 11] fetch_page: https://ng.investing.com/news/transcripts/earnings-call-transcript-globus-medical-tops-r
+    [tool 12] search_web: Globus Medical 2025 10-K total debt borrowings cash balance sheet December 31 2025
+    [tool 13] search_web: Globus Medical 2025 full year adjusted EBITDA margin non-GAAP EPS $4.00 results February
+    [tool 14] search_web: Globus Medical management long-term organic growth target algorithm spine market growth 
+  sample 1: IV $117.53 | usable=True | 14 tool calls (think 97,655ch / report 24,940ch) | 415s | $0.036 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: Globus Medical 2027 2028 revenue EPS analyst consensus estimates
+    [tool 3] search_web: Globus Medical long-term revenue growth target management guidance 2027
+    [tool 4] search_web: Globus Medical stock-based compensation 2025 10-K annual report
+    [tool 5] fetch_page: https://finance.yahoo.com/quote/GMED/analysis/
+    [tool 6] fetch_page: https://www.investors.globusmedical.com/static-files/891f4f36-cb09-4614-94b4-769977ad430
+    [tool 7] search_web: Globus Medical second quarter 2026 results press release revenue net income adjusted EBI
+    [tool 8] fetch_page: https://www.investors.globusmedical.com/news-events/press-releases
+    [tool 9] search_web: Globus Medical Q2 2026 earnings "adjusted EBITDA" guidance "3.18" OR "3.22" million full
+    [tool 10] fetch_page: https://www.sci-tech-today.com/news/globus-medical-q2-2026-earnings/
+    [tool 11] fetch_page: https://stockanalysis.com/stocks/gmed/forecast/
+    [tool 12] fetch_page: https://allmind.ai/earnings/event/2943984
+    [tool 13] search_web: Damodaran implied equity risk premium August 2026 S&P 500
+    [tool 14] search_web: Globus Medical 2028 revenue EPS estimates analyst long-term growth 10% above-market spin
+    [tool 15] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/05/07/globus-medical-gmed-q1-2026-ea
+  sample 2: IV $103.5 | usable=True | 15 tool calls (think 149,349ch / report 23,761ch) | 569s | $0.083 cumulative
+    [tool 1] search_web: Globus Medical FY2026 guidance revenue EPS raised August 2026
+    [tool 2] search_web: Globus Medical Nevro acquisition deal value closing date 2025 2026
+    [tool 3] search_web: Globus Medical long-term growth outlook 2027 2028 organic revenue guidance management co
+    [tool 4] search_web: Globus Medical Q2 2026 earnings call margin expansion adjusted EBITDA operating margin c
+    [tool 5] search_web: 10 year treasury yield August 2026 current rate
+    [tool 6] search_web: spine surgery market growth rate forecast 2026 2027 robotics navigation TAM
+    [tool 7] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-globus-medical-tops-
+    [tool 8] search_web: Globus Medical 2027 revenue growth forecast analyst consensus EPS estimate
+    [tool 9] fetch_page: https://www.investors.globusmedical.com/static-files/891f4f36-cb09-4614-94b4-769977ad430
+    [tool 10] fetch_page: https://finance.yahoo.com/markets/stocks/articles/globus-medical-inc-gmed-q2-050947070.h
+    [tool 11] search_web: Globus Medical effective tax rate 2025 GAAP non-GAAP tax provision
+    [tool 12] search_web: Globus Medical capital expenditure 2026 2027 plans capex guidance buyback share repurcha
+    [tool 13] search_web: Globus Medical 2027 2028 consensus revenue estimate sell-side "GMED"
+  sample 3: IV $93.0 | usable=True | 13 tool calls (think 78,286ch / report 29,028ch) | 363s | $0.113 cumulative
+
+[deep-api] GMED: UNDERVALUED | band $93.0-$117.53 vs price $85.67 | size half
+[deep-api] LOCAL said: HOLD | band $73.7-$115.0 | median $109.0
+[deep-api] 18 API calls | 351,072 in (289,280 cached) | 146,822 out (116,738 reasoning) | $0.113 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GMED_20260825_005640\verdict_depth.json

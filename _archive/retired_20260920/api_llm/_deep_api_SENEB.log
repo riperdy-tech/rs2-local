@@ -1,0 +1,53 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/SENEB.md, 18.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] SENEB @ $195.39 | deepseek-v4-flash effort=high | 3 samples | pack 30,971ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\SENEB_20260826_074525
+    [tool 1] search_web: Seneca Foods Green Giant US frozen business acquisition purchase price B&G Foods March 2
+    [tool 2] search_web: Seneca Foods reports sales and earnings twelve months ended March 31 2026 full year net 
+    [tool 3] search_web: Seneca Foods Class A Class B shares outstanding SENEA SENEB class structure voting right
+    [tool 4] search_web: 10 year treasury yield August 2026 federal funds rate inflation CPI
+    [tool 5] search_web: B&G Foods Green Giant frozen vegetables segment annual net sales margin
+    [tool 6] fetch_page: https://www.globenewswire.com/news-release/2026/06/11/3310797/0/en/seneca-foods-reports-
+    [tool 7] fetch_page: https://www.senecafoods.com/press-release/seneca-foods-announces-purchase-green-giant-us
+    [tool 8] fetch_page: https://bgfoods.com/investor-relations/news/article/16311
+    [tool 9] fetch_page: https://contracts.justia.com/companies/seneca-foods-corporation-1175/contract/68316/
+    [tool 10] fetch_page: https://menafn.com/1111247332/Seneca-Foods-Reports-Sales-And-Earnings-For-The-Quarter-An
+    [tool 11] fetch_page: https://grokipedia.com/page/Seneca_Foods
+    [tool 12] search_web: Seneca Foods first quarter fiscal 2027 results three months ended June 2026 net sales
+    [tool 13] search_web: Federal Reserve federal funds rate target range August 2026 FOMC
+    [tool 14] search_web: US dollar index DXY level August 2026
+  sample 1: IV $150.0 | usable=True | 14 tool calls (think 127,360ch / report 33,864ch) | 499s | $0.042 cumulative
+    [tool 1] search_web: Seneca Foods reports sales and earnings twelve months ended March 31 2026
+    [tool 2] search_web: Seneca Foods Green Giant frozen business acquisition purchase price B&G Foods 2026
+    [tool 3] search_web: Seneca Foods SENEA SENEB Class A Class B shares outstanding dual class
+    [tool 4] search_web: Seneca Foods fiscal 2027 outlook guidance first quarter June 2026 earnings
+    [tool 5] fetch_page: https://www.globenewswire.com/news-release/2026/06/11/3310797/0/en/seneca-foods-reports-
+    [tool 6] fetch_page: https://www.senecafoods.com/press-release/seneca-foods-announces-purchase-green-giant-us
+    [tool 7] fetch_page: https://www.businesswire.com/news/home/20260227602029/en/BG-Foods-Sells-Green-Giant-U.S.
+    [tool 8] fetch_page: https://bgfoods.com/investor-relations/news/article/16311
+    [tool 9] fetch_page: https://menafn.com/1111247332/Seneca-Foods-Reports-Sales-And-Earnings-For-The-Quarter-An
+    [tool 10] fetch_page: https://www.senecafoods.com/press-release/seneca-foods-reports-sales-and-earnings-quarte
+    [tool 11] fetch_page: https://www.stocktitan.net/news/SENEA
+    [tool 12] search_web: Seneca Foods fiscal 2027 first quarter June 27 2026 net sales net earnings balance sheet
+    [tool 13] search_web: B&G Foods Green Giant sale proceeds 8-K Seneca March 2026 purchase price million
+  sample 2: IV $108.3 | usable=True | 13 tool calls (think 39,214ch / report 46,116ch) | 330s | $0.065 cumulative
+    [tool 1] search_web: Seneca Foods SENEA SENEB Class A Class B shares outstanding total market capitalization
+    [tool 2] search_web: Seneca Foods Green Giant frozen business acquisition purchase price B&G Foods 2026
+    [tool 3] search_web: Seneca Foods fiscal 2026 fourth quarter full year results net sales earnings March 31 20
+    [tool 4] search_web: Seneca Foods fiscal 2027 outlook guidance Green Giant synergies
+    [tool 5] search_web: 10-year Treasury yield federal funds rate August 2026
+    [tool 6] fetch_page: https://www.globenewswire.com/news-release/2026/06/11/3310797/0/en/seneca-foods-reports-
+    [tool 7] fetch_page: https://www.senecafoods.com/press-release/seneca-foods-announces-purchase-green-giant-us
+    [tool 8] fetch_page: https://stockanalysis.com/stocks/senea/market-cap/
+    [tool 9] search_web: "Seneca Foods" Class A shares outstanding 10-K 2025 SENEA 4 million SENEB
+    [tool 10] search_web: B&G Foods Green Giant frozen net sales annual revenue $ million divestiture
+    [tool 11] fetch_page: https://www.senecafoods.com/press-release/seneca-foods-reports-sales-and-earnings-quarte
+    [tool 12] search_web: Seneca Foods Green Giant frozen purchase price $ million cash consideration B&G Foods tr
+    [tool 13] fetch_page: https://menafn.com/1111247332/Seneca-Foods-Reports-Sales-And-Earnings-For-The-Quarter-An
+    [tool 14] search_web: Seneca Foods 10-Q June 27 2026 net earnings operating cash flow long-term debt cash bala
+  sample 3: IV $155.0 | usable=True | 14 tool calls (think 80,538ch / report 33,398ch) | 415s | $0.094 cumulative
+
+[deep-api] SENEB: OVERVALUED | band $108.3-$155.0 vs price $195.39 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 343,613 in (271,488 cached) | 115,717 out (79,228 reasoning) | $0.094 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\SENEB_20260826_074525\verdict_depth.json

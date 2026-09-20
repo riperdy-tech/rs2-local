@@ -1,0 +1,58 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ARM.md, 18.4 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ARM @ $243.32 | deepseek-v4-flash effort=high | 3 samples | pack 32,200ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ARM_20260826_015235
+    [tool 1] search_web: Arm Holdings FY2027 full year guidance revenue growth earnings call July 2026
+    [tool 2] search_web: Arm Holdings long-term financial targets 2031 revenue EPS investor event
+    [tool 3] search_web: Arm AGI CPU chip manufacturing TSMC capex 2026
+    [tool 4] search_web: SoftBank selling Arm shares stake overhang 2026
+    [tool 5] search_web: 10-year treasury yield Federal Reserve policy August 2026
+    [tool 6] search_web: Arm Holdings consensus revenue EPS estimates FY2027 FY2028
+    [tool 7] fetch_page: https://seekingalpha.com/article/4939245-arm-holdings-what-the-25-billion-target-actuall
+    [tool 8] fetch_page: https://longportapp.cn/en/topics/38492483
+    [tool 9] fetch_page: https://www.tikr.com/blog/why-arm-holdings-stock-has-a-case-for-190-upside
+    [tool 10] search_web: SoftBank Group owns percent of Arm Holdings 2026 stake
+    [tool 11] search_web: 10 year treasury yield percent today August 2026
+    [tool 12] search_web: Arm Holdings FY2027 FY2028 EPS revenue estimates non-GAAP
+    [tool 13] search_web: Federal Reserve interest rate cut August 2026 fed funds rate
+    [tool 14] search_web: dollar index DXY level August 2026
+    [tool 15] search_web: SoftBank Arm stake sale secondary offering 2026 dilution
+    [tool 16] search_web: stockanalysis.com ARM Holdings estimates FY2027 FY2028 EPS
+    [tool 17] search_web: Arm Qualcomm lawsuit settlement 2026 RISC-V competitive threat
+    [tool 18] search_web: Arm Neoverse data center CPU market share 2026 AI server
+  sample 1: IV $23.5 | usable=True | 18 tool calls (think 85,827ch / report 33,296ch) | flags: below_analyst_low_0.21x_floor_0.33x, below_52w_low_0.23x | 366s | $0.034 cumulative
+    [tool 1] search_web: Arm Holdings fiscal 2027 full year guidance revenue non-GAAP EPS outlook Q1 FY2027 earni
+    [tool 2] search_web: Arm investor day long-term targets 2031 EPS $9 revenue growth non-GAAP operating margin 
+    [tool 3] search_web: 10-year Treasury yield August 2026 Fed funds rate current level
+    [tool 4] search_web: SoftBank Arm stake 90% sale plan 2026 overhang
+    [tool 5] search_web: Arm October 2025 investor day targets revenue CAGR FY2030 data center royalty TAM non-GA
+    [tool 6] search_web: Federal Reserve policy August 2026 rate cut expectations inflation CPI recession odds
+    [tool 7] search_web: Arm Holdings consensus estimates fiscal 2028 revenue EPS analysts
+    [tool 8] search_web: Arm stock-based compensation SBC percentage of revenue declining dilution 2026 2027 guid
+    [tool 9] search_web: "Arm" fiscal 2027 revenue guidance "non-GAAP EPS" full year outlook July 2026 $6 billion
+    [tool 10] search_web: Arm ">$9 EPS" OR "$9 EPS" 2031 target revenue $30 billion investor day financial project
+    [tool 11] search_web: Fed funds target range August 2026 current federal funds rate 4.25 4.50
+    [tool 12] search_web: Arm data center CPU market share 2026 AI server CPU Nvidia Grace AMD EPYC Qualcomm Oryon
+    [tool 13] fetch_page: https://www.investing.com/news/company-news/arm-q4-fy2026-slides-15b-chip-revenue-target
+    [tool 14] fetch_page: https://www.tikr.com/blog/arm-holdings-stock-surges-80-in-2026-as-the-agi-cpu-bets-on-a-
+  sample 2: IV $26.0 | usable=True | 14 tool calls (think 117,931ch / report 31,581ch) | flags: below_analyst_low_0.23x_floor_0.33x, below_52w_low_0.26x | 472s | $0.072 cumulative
+    [tool 1] search_web: Arm Holdings fiscal 2027 full year revenue guidance EPS Q1 FY2027 July 2026
+    [tool 2] search_web: Arm Holdings long-term target 2031 revenue $15 billion non-GAAP EPS $9
+    [tool 3] search_web: 10-year Treasury yield August 2026 Federal Reserve rate DXY
+    [tool 4] search_web: Arm Holdings stock-based compensation percentage of revenue target decline dilution 2026
+    [tool 5] fetch_page: https://in.investing.com/news/company-news/arm-q4-fy2026-slides-15b-chip-revenue-target-
+    [tool 6] search_web: Arm Holdings fiscal 2027 guidance "revenue" "$5.9" OR "$6.0" OR "$6.1" billion full year
+    [tool 7] search_web: Federal Reserve federal funds rate target August 2026
+    [tool 8] search_web: Arm Holdings R&D expense fiscal 2026 20-F annual report operating expenses
+    [tool 9] fetch_page: https://investors.arm.com/static-files/78526857-5997-46eb-9b65-0d3249d83711
+    [tool 10] fetch_page: https://seekingalpha.com/article/4939245-arm-holdings-what-the-25-billion-target-actuall
+    [tool 11] search_web: Arm Holdings fiscal year 2027 full year guidance provided May 2026 Q4 earnings "fiscal 2
+    [tool 12] fetch_page: https://www.tikr.com/blog/arm-holdings-stock-surges-80-in-2026-as-the-agi-cpu-bets-on-a-
+    [tool 13] search_web: "Arm" fiscal 2027 revenue guidance "$5.6 billion" OR "$5.7 billion" OR "$5.8 billion" OR
+    [tool 14] search_web: Arm Holdings FY2031 target $25 billion revenue $9 EPS AGI CPU $15 billion chip revenue
+  sample 3: IV $70.0 | usable=True | 14 tool calls (think 131,141ch / report 35,440ch) | 527s | $0.115 cumulative
+
+[deep-api] ARM: OVERVALUED | band $23.5-$70.0 vs price $243.32 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.4d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 367,010 in (285,312 cached) | 143,641 out (108,366 reasoning) | $0.115 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ARM_20260826_015235\verdict_depth.json

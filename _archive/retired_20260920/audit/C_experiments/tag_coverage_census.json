@@ -1,0 +1,435 @@
+{
+  "scanned": 5600,
+  "book_only": false,
+  "namespaces": {
+    "dei": 5405,
+    "us-gaap": 5384,
+    "ffd": 1840,
+    "ecd": 1824,
+    "srt": 1710,
+    "invest": 769,
+    "ifrs-full": 362,
+    "cef": 29,
+    "rxp": 9,
+    "fnd": 1,
+    "spac": 1
+  },
+  "ifrs_only_tickers": 216,
+  "ifrs_only_sample": [
+    "AAPG",
+    "AAUC",
+    "AG",
+    "AGI",
+    "AGRO",
+    "AGRZ",
+    "AKAN",
+    "AMBP",
+    "AMX",
+    "ANGH",
+    "ANL",
+    "ARBB",
+    "ARBK",
+    "ARIS",
+    "ARQQ",
+    "AS",
+    "ASX",
+    "AU",
+    "AUST",
+    "AZ",
+    "AZN",
+    "BCS",
+    "BEP",
+    "BEPC",
+    "BGSI"
+  ],
+  "fields": {
+    "revenue": {
+      "null_ticker_years": 12733,
+      "total_ticker_years": 48497,
+      "null_pct": 26.3,
+      "top_unmapped_candidates": [
+        {
+          "tag": "us-gaap:ContractWithCustomerLiabilityRevenueRecognized",
+          "tickers": 1077
+        },
+        {
+          "tag": "us-gaap:AvailableForSaleSecuritiesDebtSecurities",
+          "tickers": 1044
+        },
+        {
+          "tag": "us-gaap:BusinessAcquisitionsProFormaRevenue",
+          "tickers": 1039
+        },
+        {
+          "tag": "us-gaap:CostOfRevenue",
+          "tickers": 947
+        },
+        {
+          "tag": "us-gaap:AvailableForSaleSecurities",
+          "tickers": 804
+        },
+        {
+          "tag": "us-gaap:OtherComprehensiveIncomeLossAvailableForSaleSecuritiesAdjustmentNetOfTax",
+          "tickers": 750
+        },
+        {
+          "tag": "us-gaap:PaymentsToAcquireAvailableForSaleSecuritiesDebt",
+          "tickers": 731
+        },
+        {
+          "tag": "us-gaap:ProceedsFromSaleOfAvailableForSaleSecuritiesDebt",
+          "tickers": 691
+        },
+        {
+          "tag": "us-gaap:AvailableForSaleSecuritiesDebtMaturitiesWithinOneYearFairValue",
+          "tickers": 642
+        },
+        {
+          "tag": "us-gaap:SalesRevenueGoodsNet",
+          "tickers": 632
+        },
+        {
+          "tag": "us-gaap:ProceedsFromSaleOfAvailableForSaleSecurities",
+          "tickers": 622
+        },
+        {
+          "tag": "us-gaap:PaymentsToAcquireAvailableForSaleSecurities",
+          "tickers": 602
+        },
+        {
+          "tag": "us-gaap:ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities",
+          "tickers": 592
+        },
+        {
+          "tag": "us-gaap:AvailableForSaleSecuritiesDebtMaturitiesAfterOneThroughFiveYearsFairValue",
+          "tickers": 547
+        },
+        {
+          "tag": "us-gaap:AvailableForSaleSecuritiesAccumulatedGrossUnrealizedGainBeforeTax",
+          "tickers": 521
+        }
+      ]
+    },
+    "net_income": {
+      "null_ticker_years": 1350,
+      "total_ticker_years": 48497,
+      "null_pct": 2.8,
+      "top_unmapped_candidates": [
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+          "tickers": 420
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic",
+          "tickers": 213
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+          "tickers": 206
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign",
+          "tickers": 200
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromEquityMethodInvestments",
+          "tickers": 156
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsPerBasicShare",
+          "tickers": 152
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsPerDilutedShare",
+          "tickers": 146
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperations",
+          "tickers": 144
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromDiscontinuedOperationsNetOfTax",
+          "tickers": 126
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsIncludingPortionAttributableToNoncontrollingInterest",
+          "tickers": 126
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromDiscontinuedOperationsNetOfTaxPerBasicShare",
+          "tickers": 118
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromDiscontinuedOperationsNetOfTaxPerDilutedShare",
+          "tickers": 111
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromDiscontinuedOperationsNetOfTaxAttributableToReportingEntity",
+          "tickers": 103
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsPerBasicAndDilutedShare",
+          "tickers": 57
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromEquityMethodInvestmentsNetOfDividendsOrDistributions",
+          "tickers": 41
+        }
+      ]
+    },
+    "ocf": {
+      "null_ticker_years": 3281,
+      "total_ticker_years": 48497,
+      "null_pct": 6.8,
+      "top_unmapped_candidates": [
+        {
+          "tag": "ifrs-full:CashFlowsFromUsedInOperatingActivities",
+          "tickers": 57
+        },
+        {
+          "tag": "ifrs-full:CashFlowsFromUsedInOperatingActivitiesDiscontinuedOperations",
+          "tickers": 21
+        },
+        {
+          "tag": "ifrs-full:CashFlowsFromUsedInOperatingActivitiesContinuingOperations",
+          "tickers": 19
+        }
+      ]
+    },
+    "capex": {
+      "null_ticker_years": 9988,
+      "total_ticker_years": 48497,
+      "null_pct": 20.6,
+      "top_unmapped_candidates": [
+        {
+          "tag": "us-gaap:PaymentsToAcquireIntangibleAssets",
+          "tickers": 493
+        },
+        {
+          "tag": "us-gaap:PaymentsToAcquireOtherPropertyPlantAndEquipment",
+          "tickers": 181
+        },
+        {
+          "tag": "us-gaap:PaymentsToAcquireOtherProductiveAssets",
+          "tickers": 174
+        },
+        {
+          "tag": "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+          "tickers": 89
+        },
+        {
+          "tag": "ifrs-full:PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities",
+          "tickers": 47
+        },
+        {
+          "tag": "ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets",
+          "tickers": 23
+        }
+      ]
+    },
+    "da": {
+      "null_ticker_years": 13025,
+      "total_ticker_years": 48497,
+      "null_pct": 26.9,
+      "top_unmapped_candidates": [
+        {
+          "tag": "us-gaap:AccumulatedDepreciationDepletionAndAmortizationPropertyPlantAndEquipment",
+          "tickers": 1612
+        },
+        {
+          "tag": "us-gaap:Depreciation",
+          "tickers": 1607
+        },
+        {
+          "tag": "us-gaap:AmortizationOfIntangibleAssets",
+          "tickers": 1262
+        },
+        {
+          "tag": "us-gaap:AmortizationOfFinancingCosts",
+          "tickers": 756
+        },
+        {
+          "tag": "us-gaap:OperatingLeaseRightOfUseAssetAmortizationExpense",
+          "tickers": 681
+        },
+        {
+          "tag": "us-gaap:FinanceLeaseRightOfUseAssetAmortization",
+          "tickers": 505
+        },
+        {
+          "tag": "us-gaap:AdjustmentForAmortization",
+          "tickers": 434
+        },
+        {
+          "tag": "us-gaap:OtherDepreciationAndAmortization",
+          "tickers": 245
+        },
+        {
+          "tag": "us-gaap:DepreciationNonproduction",
+          "tickers": 190
+        },
+        {
+          "tag": "us-gaap:PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization",
+          "tickers": 187
+        },
+        {
+          "tag": "us-gaap:FutureAmortizationExpenseYearOne",
+          "tickers": 169
+        },
+        {
+          "tag": "us-gaap:PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAccumulatedDepreciationAndAmortization",
+          "tickers": 161
+        },
+        {
+          "tag": "us-gaap:PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetBeforeAccumulatedDepreciationAndAmortization",
+          "tickers": 145
+        },
+        {
+          "tag": "ifrs-full:DepreciationRightofuseAssets",
+          "tickers": 142
+        },
+        {
+          "tag": "us-gaap:DefinedBenefitPlanAmortizationOfGainsLosses",
+          "tickers": 133
+        }
+      ]
+    },
+    "operating_income": {
+      "null_ticker_years": 10447,
+      "total_ticker_years": 48497,
+      "null_pct": 21.5,
+      "top_unmapped_candidates": [
+        {
+          "tag": "ifrs-full:ProfitLossFromOperatingActivities",
+          "tickers": 55
+        }
+      ]
+    },
+    "pretax_income": {
+      "null_ticker_years": 11281,
+      "total_ticker_years": 48497,
+      "null_pct": 23.3,
+      "top_unmapped_candidates": [
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic",
+          "tickers": 1046
+        },
+        {
+          "tag": "us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign",
+          "tickers": 922
+        },
+        {
+          "tag": "us-gaap:ForeignCurrencyTransactionGainLossBeforeTax",
+          "tickers": 631
+        },
+        {
+          "tag": "us-gaap:AvailableForSaleDebtSecuritiesAccumulatedGrossUnrealizedLossBeforeTax",
+          "tickers": 571
+        },
+        {
+          "tag": "us-gaap:AvailableForSaleDebtSecuritiesAccumulatedGrossUnrealizedGainBeforeTax",
+          "tickers": 564
+        },
+        {
+          "tag": "us-gaap:AvailableForSaleSecuritiesAccumulatedGrossUnrealizedLossBeforeTax",
+          "tickers": 321
+        },
+        {
+          "tag": "us-gaap:AvailableForSaleSecuritiesAccumulatedGrossUnrealizedGainBeforeTax",
+          "tickers": 318
+        },
+        {
+          "tag": "us-gaap:OtherComprehensiveIncomeUnrealizedHoldingGainLossOnSecuritiesArisingDuringPeriodBeforeTax",
+          "tickers": 288
+        },
+        {
+          "tag": "us-gaap:DiscontinuedOperationIncomeLossFromDiscontinuedOperationBeforeIncomeTax",
+          "tickers": 284
+        },
+        {
+          "tag": "us-gaap:OtherComprehensiveIncomeLossBeforeTax",
+          "tickers": 223
+        },
+        {
+          "tag": "us-gaap:OtherComprehensiveIncomeLossReclassificationAdjustmentFromAOCIForSaleOfSecuritiesBeforeTax",
+          "tickers": 217
+        },
+        {
+          "tag": "us-gaap:OtherComprehensiveIncomeUnrealizedGainLossOnDerivativesArisingDuringPeriodBeforeTax",
+          "tickers": 217
+        },
+        {
+          "tag": "us-gaap:DiscontinuedOperationGainLossFromDisposalOfDiscontinuedOperationBeforeIncomeTax",
+          "tickers": 195
+        },
+        {
+          "tag": "us-gaap:OtherComprehensiveIncomeLossForeignCurrencyTransactionAndTranslationAdjustmentBeforeTax",
+          "tickers": 189
+        },
+        {
+          "tag": "us-gaap:OtherComprehensiveIncomeLossPensionAndOtherPostretirementBenefitPlansNetUnamortizedGainLossArisingDuringPeriodBeforeTax",
+          "tickers": 170
+        }
+      ]
+    },
+    "equity": {
+      "null_ticker_years": 1076,
+      "total_ticker_years": 48497,
+      "null_pct": 2.2,
+      "top_unmapped_candidates": [
+        {
+          "tag": "us-gaap:StockholdersEquityNoteStockSplitConversionRatio1",
+          "tickers": 65
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityOther",
+          "tickers": 46
+        },
+        {
+          "tag": "ifrs-full:Equity",
+          "tickers": 32
+        },
+        {
+          "tag": "ifrs-full:EquityAttributableToOwnersOfParent",
+          "tickers": 24
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityNoteSpinoffTransaction",
+          "tickers": 19
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityNoteStockSplitConversionRatio",
+          "tickers": 12
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityPeriodIncreaseDecrease",
+          "tickers": 9
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterestAdjustedBalance1",
+          "tickers": 8
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityBeforeTreasuryStock",
+          "tickers": 8
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityChangeInReportingEntity",
+          "tickers": 6
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityNoteSubscriptionsReceivable",
+          "tickers": 5
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityOtherShares",
+          "tickers": 3
+        },
+        {
+          "tag": "us-gaap:StockholdersEquityNoteChangesInCapitalStructureSubsequentChangesToNumberOfCommonShares",
+          "tickers": 2
+        }
+      ]
+    }
+  }
+}

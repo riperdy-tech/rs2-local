@@ -1,0 +1,53 @@
+[deep-api] FIX @ $1672.9399 | deepseek-v4-flash effort=high | 3 samples | pack 33,141ch from FIX_20260823_125746 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\FIX_20260825_003925
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 830.0 | spread 240.3%
+    [tool 1] search_web: Comfort Systems USA FIX 2026 full year guidance revenue EPS margin outlook
+    [tool 2] search_web: Comfort Systems USA Q2 2026 earnings call transcript analyst Q&A backlog guidance 2027
+    [tool 3] search_web: Comfort Systems USA analyst estimates 2026 2027 2028 revenue EPS consensus
+    [tool 4] fetch_page: https://www.roic.ai/quote/FIX:UN/transcripts/2026-year/2-quarter
+    [tool 5] fetch_page: https://investors.comfortsystemsusa.com/news-releases/news-release-details/comfort-syste
+    [tool 6] fetch_page: https://investors.comfortsystemsusa.com/earnings-estimates
+    [tool 7] search_web: Comfort Systems Q2 2026 earnings call analyst Q&A 2027 revenue growth data center capaci
+    [tool 8] search_web: hyperscale data center construction spending forecast 2027 2028 growth
+    [tool 9] search_web: 10 year treasury yield August 2026 current level
+    [tool 10] fetch_page: https://www.tradingview.com/news/marketbeat:2dcc6875d094b:0-comfort-systems-usa-q2-earni
+    [tool 11] search_web: FIX stockanalysis.com Comfort Systems USA revenue forecast 2026 2027 2028 EPS
+    [tool 12] search_web: Comfort Systems Q2 2026 transcript "Brian Lane" OR "Bill George" Q&A capacity 2027 modul
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/fix/forecast/
+    [tool 14] fetch_page: https://www.tikr.com/blog/comfort-systems-stock-has-skyrocketed-307-in-12-months-how-the
+  sample 1: IV $980.0 | usable=True | 14 tool calls (think 75,320ch / report 29,987ch) | 374s | $0.030 cumulative
+    [tool 1] search_web: Comfort Systems USA FIX 2026 full year guidance revenue backlog outlook
+    [tool 2] search_web: Comfort Systems USA FIX analyst estimates FY2026 FY2027 revenue EPS forecast
+    [tool 3] search_web: data center construction spending forecast 2026 2027 2028 US hyperscale capacity growth
+    [tool 4] search_web: 10 year treasury yield August 2026 current
+    [tool 5] fetch_page: https://investors.comfortsystemsusa.com/news-releases/news-release-details/comfort-syste
+    [tool 6] fetch_page: https://finance.yahoo.com/quote/FIX/analysis/
+    [tool 7] fetch_page: https://www.jll.com/en-us/insights/market-outlook/data-center-outlook
+    [tool 8] search_web: Comfort Systems USA FIX stockanalysis forecast revenue EPS 2026 2027 2028
+    [tool 9] search_web: Comfort Systems USA data center percentage of revenue 2026 backlog technology
+    [tool 10] search_web: Comfort Systems USA Q2 2026 results press release backlog 14.06 billion net income
+    [tool 11] search_web: equity risk premium expected return 2026 implied ERP market
+    [tool 12] fetch_page: https://stockanalysis.com/stocks/fix/forecast/
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/fix/statistics/
+    [tool 14] fetch_page: https://www.investing.com/analysis/forget-chips-these-3-stocks-are-building-the-ai-data-
+  sample 2: IV $942.0 | usable=True | 14 tool calls (think 77,292ch / report 23,623ch) | 323s | $0.058 cumulative
+    [tool 1] search_web: Comfort Systems USA FIX 2026 full year revenue guidance EPS guidance
+    [tool 2] search_web: Comfort Systems USA backlog data center percentage mix 2026
+    [tool 3] search_web: FIX analyst estimates 2027 2028 revenue EPS long term growth
+    [tool 4] search_web: data center construction market growth forecast 2026 2027 2028 demand
+    [tool 5] search_web: 10 year treasury yield August 2026
+    [tool 6] fetch_page: https://investors.comfortsystemsusa.com/news-releases/news-release-details/comfort-syste
+    [tool 7] fetch_page: https://www.chartmill.com/stock/quote/FIX/analyst-ratings
+    [tool 8] search_web: Comfort Systems USA FIX 2026 consensus EPS full year estimate $44 $45 $50
+    [tool 9] fetch_page: https://www.tikr.com/blog/comfort-systems-stock-beats-q4-estimates-by-39-is-the-1670-str
+    [tool 10] search_web: Comfort Systems USA second quarter 2026 results net income operating cash flow backlog $
+    [tool 11] search_web: Comfort Systems USA 2027 EPS estimate analyst data center bookings 2027 2028
+    [tool 12] search_web: Comfort Systems FIX Q2 2026 press release "net income" operating cash flow June 30 2026
+    [tool 13] search_web: FIX Comfort Systems 2026 EPS consensus estimate raised after Q2 beat $47 $48 full year
+    [tool 14] search_web: Comfort Systems USA capital expenditures 2026 guidance modular facilities investment per
+    [tool 15] search_web: JLL data center outlook 97 GW 2025 2030 US construction spending forecast
+  sample 3: IV $954.0 | usable=True | 15 tool calls (think 85,048ch / report 19,320ch) | 338s | $0.086 cumulative
+
+[deep-api] FIX: OVERVALUED | band $942.0-$980.0 vs price $1672.9399 | size full
+[deep-api] LOCAL said: OVERVALUED | band $310.0-$1055.0 | median $830.0
+[deep-api] 16 API calls | 266,772 in (211,968 cached) | 110,201 out (81,670 reasoning) | $0.086 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\FIX_20260825_003925\verdict_depth.json

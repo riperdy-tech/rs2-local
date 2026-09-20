@@ -1,0 +1,62 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/JOE.md, 18.6 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] JOE @ $68.89 | deepseek-v4-flash effort=high | 3 samples | pack 34,425ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\JOE_20260826_051120
+    [tool 1] search_web: St. Joe Company Q2 2026 earnings call transcript full year 2026 guidance Jorge Gonzalez
+    [tool 2] search_web: St. Joe Company 8-K August 6 2026 SEC filing material event
+    [tool 3] search_web: St. Joe Company acres owned land portfolio Northwest Florida 2025 10-K
+    [tool 4] search_web: St. Joe Company 2025 10-K cash flow additions to real estate land development capital ex
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/745308/000110465926019676/joe-20251231x10k.htm
+    [tool 6] fetch_page: https://ir.joe.com/news-releases/news-release-details/st-joe-company-reports-fourth-quar
+    [tool 7] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/st-joe-joe-q2-2026-earnings-ca
+    [tool 8] fetch_page: https://ir.joe.com/news-releases/news-release-details/st-joe-company-reports-first-quart
+    [tool 9] search_web: St. Joe Company full year 2025 results revenue by segment residential hospitality leasin
+    [tool 10] search_web: St. Joe Company 10-K 2025 investing activities "additions to real estate" OR "land devel
+    [tool 11] search_web: 10-year Treasury yield Fed funds rate August 2026 mortgage rates Florida housing
+    [tool 12] fetch_page: https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000745308&type=8-K&dateb
+    [tool 13] search_web: "St. Joe" JOE fourth quarter full year 2025 earnings release residential $ residential r
+    [tool 14] search_web: St. Joe Company 2025 statement of cash flows "purchases of real estate" OR "development 
+    [tool 15] fetch_page: https://www.stocktitan.net/news/JOE/8-k-st-joe-co-reports-material-event-da9f26c099a5.ht
+    [tool 16] fetch_page: https://www.federalreserve.gov/releases/h15/
+  sample 1: IV $34.0 | usable=True | 16 tool calls (think 90,840ch / report 30,682ch) | 410s | $0.035 cumulative
+    [tool 1] search_web: St. Joe Company Q2 2026 earnings results guidance full year 2026 residential lot sales
+    [tool 2] search_web: St. Joe Company land bank acres 2026 annual report 10-K developable land NAV
+    [tool 3] search_web: St. Joe Company 8-K August 6 2026 SEC filing material event
+    [tool 4] search_web: 10 year treasury yield August 2026 Federal Reserve interest rate policy
+    [tool 5] search_web: St. Joe Company analyst price target consensus 2026
+    [tool 6] search_web: Florida Panhandle housing market 2026 Panama City Beach lot sales home prices
+    [tool 7] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/st-joe-joe-q2-2026-earnings-ca
+    [tool 8] fetch_page: https://www.businesswire.com/news/home/20260729363522/en/The-St.-Joe-Company-Reports-Sec
+    [tool 9] fetch_page: https://ir.joe.com/news-releases/news-release-details/st-joe-company-reports-first-quart
+    [tool 10] fetch_page: https://www.fool.com/coverage/filings/2026/05/23/a-modest-trim-from-fairholme-why-joe-is
+    [tool 11] search_web: Federal Reserve August 2026 FOMC rate decision fed funds target policy stance
+    [tool 12] search_web: St. Joe Company share repurchase program "$100 million" buyback 2026
+    [tool 13] fetch_page: https://ng.investing.com/news/transcripts/earnings-call-transcript-the-st-joe-company-po
+    [tool 14] search_web: "St. Joe" Company 2026 full year guidance revenue forecast homesites residential segment
+    [tool 15] search_web: fed funds rate target range July 2026 FOMC unchanged 4.25 4.50
+    [tool 16] search_web: "St. Joe Company" 10-K 2025 real estate inventory book value net operating loss deferred
+    [tool 17] search_web: hurricane Florida Panhandle 2025 2026 storm damage Bay County Walton County
+    [tool 18] search_web: St. Joe Company property insurance costs Florida commercial hospitality 2026
+  sample 2: IV $62.5 | usable=True | 18 tool calls (think 76,060ch / report 28,261ch) | 379s | $0.063 cumulative
+    [tool 1] search_web: 10-year Treasury yield level August 2026
+    [tool 2] search_web: Federal Reserve policy stance interest rates August 2026
+    [tool 3] search_web: St. Joe Company Q2 2026 earnings results segments residential hospitality
+    [tool 4] search_web: St. Joe Company 2026 guidance lot sales residential revenue outlook
+    [tool 5] fetch_page: https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm
+    [tool 6] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/st-joe-joe-q2-2026-earnings-ca
+    [tool 7] search_web: St. Joe Company 8-K August 6 2026 material event
+    [tool 8] search_web: St. Joe Company total acres land holdings Northwest Florida 2026
+    [tool 9] fetch_page: https://www.smartkarma.com/insights/primer-st-joe-co-the-joe-us-aug-2026
+    [tool 10] search_web: St. Joe Company full year 2026 guidance revenue net income outlook management
+    [tool 11] search_web: St. Joe Company NAV per share land value estimate 2026 analyst
+    [tool 12] search_web: Florida Panhandle Bay County Walton County housing market 2026 lot sales demand
+    [tool 13] fetch_page: https://ng.investing.com/news/transcripts/earnings-call-transcript-the-st-joe-company-po
+    [tool 14] search_web: "St. Joe" JOE stock analyst rating price target 2026 buy sell
+    [tool 15] search_web: 30-year fixed mortgage rate August 2026
+    [tool 16] search_web: St. Joe Company 2026 capital expenditures community development utility infrastructure p
+  sample 3: IV $59.0 | usable=True | 16 tool calls (think 66,803ch / report 35,344ch) | 325s | $0.088 cumulative
+
+[deep-api] JOE: OVERVALUED | band $34.0-$62.5 vs price $68.89 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.6d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 353,739 in (268,032 cached) | 101,807 out (70,527 reasoning) | $0.088 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\JOE_20260826_051120\verdict_depth.json

@@ -1,0 +1,37 @@
+  ...250 scanned
+  ...500 scanned
+  ...750 scanned
+  ...1000 scanned
+  ...1250 scanned
+  ...1500 scanned
+  ...1750 scanned
+  ...2000 scanned
+  ...2250 scanned
+  ...2500 scanned
+  ...2750 scanned
+  ...3000 scanned
+  ...3250 scanned
+  ...3500 scanned
+  ...3750 scanned
+  ...4000 scanned
+  ...4250 scanned
+  ...4500 scanned
+  ...4750 scanned
+  ...5000 scanned
+  ...5250 scanned
+  ...5500 scanned
+
+scanned 5600 tickers | namespaces: {'dei': 5405, 'us-gaap': 5384, 'ffd': 1840, 'ecd': 1824}
+IFRS-only filers (no us-gaap at all): 216
+
+field              null ticker-yrs   of total   top unmapped candidate tags
+revenue                     12,733      26.3%   ContractWithCustomerLiabilityReven(1077), AvailableForSaleSecuritiesDebtSecu(1044)
+net_income                   1,350       2.8%   IncomeLossFromContinuingOperations(420), IncomeLossFromContinuingOperations(213)
+ocf                          3,281       6.8%   CashFlowsFromUsedInOperatingActivi(57), CashFlowsFromUsedInOperatingActivi(21)
+capex                        9,988      20.6%   PaymentsToAcquireIntangibleAssets(493), PaymentsToAcquireOtherPropertyPlan(181)
+da                          13,025      26.9%   AccumulatedDepreciationDepletionAn(1612), Depreciation(1607)
+operating_income            10,447      21.5%   ProfitLossFromOperatingActivities(55)
+pretax_income               11,281      23.3%   IncomeLossFromContinuingOperations(1046), IncomeLossFromContinuingOperations(922)
+equity                       1,076       2.2%   StockholdersEquityNoteStockSplitCo(65), StockholdersEquityOther(46)
+
+-> C:\Users\riper\Downloads\RS2 Local\audit\C_experiments\tag_coverage_census.json

@@ -1,0 +1,54 @@
+[deep-api] ADSK @ $251.29 | deepseek-v4-flash effort=high | 3 samples | pack 31,704ch from ADSK_20260821_155157 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ADSK_20260824_230530
+[deep-api] local arm said: USABLE — plausible and converged | median IV 256.0 | spread 3.9%
+    [tool 1] search_web: 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: Autodesk FY2027 revenue guidance free cash flow guidance full year
+    [tool 3] search_web: Autodesk MaintainX acquisition $3.6 billion financing cash stock terms closing
+    [tool 4] search_web: Autodesk capitalized software development costs fiscal 2025 2026 annual
+    [tool 5] fetch_page: https://www.streetbrief.co/article/autodesk-bofa-conference-ai-story-dividend-3-6-billio
+    [tool 6] search_web: Autodesk FY2027 full year guidance revenue growth "free cash flow" billion raised
+    [tool 7] search_web: Autodesk long-term financial framework operating margin target 40% growth model 2028
+    [tool 8] fetch_page: https://investors.autodesk.com/news-releases/news-release-details/autodesk-inc-announces
+    [tool 9] search_web: Autodesk 10-K capitalized software development costs FY2026 FY2025 millions statement of
+    [tool 10] search_web: Autodesk investor day long-term model revenue growth 10% non-GAAP operating margin 40% f
+    [tool 11] fetch_page: https://finviz.com/news/357930/autodesk-inc-announces-fiscal-2027-first-quarter-results
+    [tool 12] fetch_page: https://quartr.com/events/autodesk-inc-adsk-investor-day-2025_3sEOyOrm
+    [tool 13] search_web: Autodesk MaintainX acquisition closing completed status debt financing August 2026
+    [tool 14] search_web: Autodesk share repurchase program authorization 2026 buyback billions
+  sample 1: IV $180.0 | usable=True | 14 tool calls (think 86,107ch / report 22,693ch) | 365s | $0.030 cumulative
+    [tool 1] search_web: Autodesk Q1 fiscal 2027 results revenue guidance EPS free cash flow raised
+    [tool 2] search_web: Autodesk MaintainX acquisition $3.6 billion financing debt close date revenue
+    [tool 3] search_web: Autodesk long-term financial model target revenue growth non-GAAP operating margin 2028
+    [tool 4] search_web: 10-year Treasury yield August 2026 current
+    [tool 5] fetch_page: https://investors.autodesk.com/news-releases/news-release-details/autodesk-inc-announces
+    [tool 6] fetch_page: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-pl
+    [tool 7] fetch_page: https://www.ainvest.com/news/autodesk-soars-9-45-q2-revenue-surge-ai-success-2508/
+    [tool 8] fetch_page: https://rallies.ai/news/autodesk-tops-q1-targets-raises-fy27-guidance-and-buys-maintainx
+    [tool 9] search_web: Autodesk fiscal 2027 full year guidance revenue $8 billion non-GAAP EPS operating margin
+    [tool 10] search_web: Autodesk 41% non-GAAP operating margin fiscal 2029 long-term target
+    [tool 11] search_web: Autodesk Q1 fiscal 2027 8-K exhibit 99.1 press release guidance free cash flow operating
+    [tool 12] search_web: Autodesk fiscal 2026 fourth quarter results non-GAAP EPS operating margin full year
+    [tool 13] fetch_page: https://finviz.com/news/357930/autodesk-inc-announces-fiscal-2027-first-quarter-results
+    [tool 14] fetch_page: https://adsknews.autodesk.com/en/pressrelease/autodesk-inc-announces-fiscal-2026-fourth-
+    [tool 15] fetch_page: https://finance.yahoo.com/news/autodesk-q4-earnings-call-highlights-022243089.html
+  sample 2: IV $250.0 | usable=True | 15 tool calls (think 75,044ch / report 29,693ch) | 309s | $0.058 cumulative
+    [tool 1] search_web: Autodesk fiscal 2027 full year guidance revenue non-GAAP EPS free cash flow
+    [tool 2] search_web: Autodesk MaintainX acquisition $3.6 billion financing cash debt funding
+    [tool 3] search_web: 10 year treasury yield August 2026
+    [tool 4] search_web: Autodesk long-term growth model 2026 targets revenue growth operating margin AI
+    [tool 5] fetch_page: https://investors.autodesk.com/news-releases/news-release-details/autodesk-inc-announces
+    [tool 6] search_web: Autodesk Q2 fiscal 2027 results revenue guidance raised July 2026 non-GAAP EPS
+    [tool 7] fetch_page: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-pl
+    [tool 8] fetch_page: https://investors.autodesk.com/node/35981/pdf
+    [tool 9] search_web: Autodesk MaintainX acquisition closed completed August 2026
+    [tool 10] search_web: Autodesk fiscal 2027 full year guidance "7.9" OR "8.0" OR "8.1" billion revenue non-GAAP
+    [tool 11] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/02/26/autodesk-adsk-q4-2026-earnings
+    [tool 12] search_web: Autodesk Q1 fiscal 2027 earnings call transcript full year guidance 8.4 billion operatin
+    [tool 13] search_web: Autodesk Investor Day November 2025 long-term financial model targets revenue growth ope
+    [tool 14] search_web: Autodesk $3.6 billion debt financing MaintainX senior notes offering amount June 2026
+    [tool 15] fetch_page: https://adsknews.autodesk.com/en/pressrelease/autodesk-inc-announces-fiscal-2027-first-q
+  sample 3: IV $200.0 | usable=True | 15 tool calls (think 100,450ch / report 28,451ch) | 479s | $0.093 cumulative
+
+[deep-api] ADSK: OVERVALUED | band $180.0-$250.0 vs price $251.29 | size quarter
+[deep-api] LOCAL said: UNDERVALUED | band $255.0-$265.0 | median $256.0
+[deep-api] 18 API calls | 316,748 in (255,488 cached) | 118,291 out (87,162 reasoning) | $0.093 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ADSK_20260824_230530\verdict_depth.json

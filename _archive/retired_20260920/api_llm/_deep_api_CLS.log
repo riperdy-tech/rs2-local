@@ -1,0 +1,54 @@
+[deep-api] CLS @ $301.36 | deepseek-v4-flash effort=high | 3 samples | pack 33,722ch from CLS_20260822_122948 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CLS_20260825_000936
+[deep-api] local arm said: USABLE — plausible and converged | median IV 190.0 | spread 96.6%
+    [tool 1] search_web: Celestica CLS second quarter 2026 results revenue guidance $20.5 billion adjusted EPS $1
+    [tool 2] search_web: Celestica 2026 2027 capital expenditure plans AI data center capacity expansion guidance
+    [tool 3] search_web: Celestica $3 billion equity offering shares outstanding 2026
+    [tool 4] fetch_page: https://corporate.celestica.com/news-releases/news-release-details/celestica-announces-s
+    [tool 5] fetch_page: https://corporate.celestica.com/news-releases/news-release-details/celestica-announces-3
+    [tool 6] fetch_page: https://corporate.celestica.com/news-releases/news-release-details/celestica-announces-p
+    [tool 7] fetch_page: https://www.tipranks.com/news/company-announcements/celestica-launches-3-billion-equity-
+    [tool 8] search_web: Celestica equity offering pricing $ per share how many shares $3 billion treasury offeri
+    [tool 9] search_web: Celestica Q2 2026 earnings call 2027 outlook AI infrastructure growth beyond 2026 revenu
+    [tool 10] fetch_page: https://finance.yahoo.com/markets/stocks/articles/celestica-q2-earnings-call-points-1400
+    [tool 11] fetch_page: https://www.perplexity.ai/finance/CLS.TO/earnings
+    [tool 12] search_web: Celestica 2026 capex plans "$1.0 billion" OR "$1.2 billion" OR "$800 million" capital ex
+    [tool 13] search_web: 10-year Treasury yield August 2026 current
+    [tool 14] search_web: Celestica CLS 2027 2028 revenue EPS analyst estimates consensus forecast
+    [tool 15] search_web: hyperscaler AI capex 2026 2027 2028 growth forecast data center spending outlook deceler
+  sample 1: IV $245.0 | usable=True | 15 tool calls (think 59,639ch / report 29,734ch) | 393s | $0.024 cumulative
+    [tool 1] search_web: Celestica Q2 2026 earnings results full year 2026 revenue guidance adjusted EPS
+    [tool 2] search_web: Celestica 2027 capital expenditure plan AI data center capacity guidance
+    [tool 3] search_web: Celestica $3 billion equity offering secondary offering shares 2026
+    [tool 4] search_web: Celestica SEC settlement $75 million disclosure
+    [tool 5] fetch_page: https://corporate.celestica.com/news-releases/news-release-details/celestica-announces-s
+    [tool 6] fetch_page: https://corporate.celestica.com/news-releases/news-release-details/celestica-announces-3
+    [tool 7] fetch_page: https://finance.yahoo.com/markets/stocks/articles/celestica-q2-earnings-call-points-1400
+    [tool 8] search_web: Celestica $3 billion offering priced shares per share August 2026 treasury offering
+    [tool 9] search_web: Celestica Q3 2026 guidance revenue adjusted EPS third quarter outlook
+    [tool 10] search_web: Celestica SEC investigation bribery FCPA settlement fine
+    [tool 11] search_web: 10 year treasury yield August 21 2026
+    [tool 12] fetch_page: https://corporate.celestica.com/static-files/3f82636d-2990-46aa-af30-3b7ddbc66b60
+    [tool 13] search_web: hyperscaler capex 2027 2028 forecast Microsoft Amazon Google Meta AI infrastructure spen
+    [tool 14] search_web: Celestica $3 billion equity offering closed completed 2026 shares outstanding
+  sample 2: IV $? | usable=False | 14 tool calls (think 72,682ch / report 21,311ch) (no value extracted) | 424s | $0.050 cumulative
+    [tool 1] search_web: Celestica Q2 2026 earnings call guidance 2027 revenue outlook capex plans
+    [tool 2] search_web: Celestica CLS analyst estimates FY2026 FY2027 revenue EPS consensus
+    [tool 3] search_web: hyperscaler AI capex 2026 2027 forecast Microsoft Google Meta Amazon data center spendin
+    [tool 4] search_web: 10-year treasury yield August 2026
+    [tool 5] fetch_page: https://corporate.celestica.com/news-releases/news-release-details/celestica-announces-s
+    [tool 6] fetch_page: https://finance.yahoo.com/markets/stocks/articles/celestica-q2-earnings-call-points-1400
+    [tool 7] search_web: Celestica CLS 2027 EPS estimate adjusted earnings analyst target price
+    [tool 8] search_web: Celestica $3 billion equity offering share count 2026 dilution AI infrastructure capacit
+    [tool 9] search_web: Celestica effective tax rate 2025 2026 GAAP income tax provision
+    [tool 10] search_web: Celestica CLS 2027 revenue consensus $34 billion EPS $19 adjusted
+    [tool 11] search_web: hyperscaler capex 2027 forecast growth rate data center AI infrastructure spending growt
+    [tool 12] search_web: Celestica top customer concentration percentage of revenue 2025 10-K largest customer
+    [tool 13] fetch_page: https://corporate.celestica.com/static-files/e09fb4b0-9225-4e81-b179-ca88e20cefe8
+    [tool 14] search_web: Celestica $3 billion offering completed August 2026 shares outstanding after offering
+    [tool 15] search_web: Celestica 2027 EPS estimate consensus "2027" adjusted earnings per share forecast
+  sample 3: IV $223.0 | usable=True | 15 tool calls (think 115,362ch / report 19,774ch) | 433s | $0.086 cumulative
+
+[deep-api] CLS: OVERVALUED | band $223.0-$245.0 vs price $301.36 | size full
+[deep-api] LOCAL said: OVERVALUED | band $119.0-$234.0 | median $190.0
+[deep-api] 16 API calls | 244,162 in (195,584 cached) | 111,575 out (84,675 reasoning) | $0.086 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CLS_20260825_000936\verdict_depth.json

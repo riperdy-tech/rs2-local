@@ -1,0 +1,46 @@
+[api] backend http://127.0.0.1:11434/v1  model=rs2-flash-api  -> reports in api_llm/reports
+[enrich] yfinance MU ...
+[out] C:\Users\riper\Downloads\RS2 Local\api_llm\reports\MU_20260818_014944
+
+   [regime] ['midcycle', 'midcycle', 'midcycle'] -> midcycle | MoS -43.3 -> -92.5 | base $2.72B
+[nltk_data] Downloading package punkt_tab to C:\Users\Public\Documents
+[nltk_data]     \ESTsoft\CreatorTemp\defeatbeta\nltk...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[38;5;10m______      __           _    ______      _        
+|  _  \    / _|         | |   | ___ \    | |       
+| | | |___| |_ ___  __ _| |_  | |_/ / ___| |_ __ _ 
+| | | / _ \  _/ _ \/ _` | __| | ___ \/ _ \ __/ _` |
+| |/ /  __/ ||  __/ (_| | |_  | |_/ /  __/ || (_| |
+|___/ \___|_| \___|\__,_|\__| \____/ \___|\__\__,_|[0m
+[1;38;5;10m📈:: Data Update Time ::[0m	2026-08-17T05:20:17Z [1;38;5;10m::[0m
+[1;38;5;10m📈:: Software Version ::[0m	0.0.60      [1;38;5;10m::[0m
+2026-08-18 01:52:02 INFO DuckDBClient MainThread - Cache is up-to-date. Update time: 2026-08-17T05:20:17Z
+[backbone] MU: base_cf $2.72B [lattice_midcycle] WACC 11% | implied 76.5% vs demonstrated 11.8% [revenue_cagr_5y] | gap 64.7pts
+>> Layers 0, 1, 1.5 — Classification / Macro / Base Rate
+   done in 66.5s -> S1_macro_classify.md
+
+>> Layers 2, 2.5 — Business Quality / Adjusted Financials
+   done in 48.3s -> S2_quality.md
+
+>> Layers 3, 3.5 — Expectations Test / Second-Order
+   done in 66.8s -> S3_valuation.md
+   [valuation] reverse-DCF gap 64.7pts | stance overvalued (achievable low)
+
+>> Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage
+   done in 43.4s -> S4_scenarios.md
+   [valuation] scenario probs {'bear': 0.35, 'base': 0.45, 'bull': 0.2}
+
+>> Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly
+   done in 64.0s -> S5_conviction.md
+
+>> Layers 7, 7.5, 8, 9 — Monitoring / Correlation / Audit / Red Team
+   done in 51.5s -> S6_redteam_audit.md
+
+>> FINAL ASSEMBLY (Sections 0-12) [ctx 32768]
+   done in 82.5s
+[DONE] -> C:\Users\riper\Downloads\RS2 Local\api_llm\reports\MU_20260818_014944\FINAL.md
+   [regime] basis 'midcycle' endorsed -> MoS -92.5 -> -92.5, stance overvalued
+   [verdict] MU: method=reverse_dcf stance=overvalued action=HOLD / STAGE-IN ON WEAKNESS conv=9.5 entry=wait_for_pullback (BRAKE: was 'HOLD / STAGE-IN ON WEAKNESS' 10.0)
+[SANITY] ok — MU: stages, FINAL.md and verdict.json all present and substantive
+
+[AUDIT] ::FAILED:: MU tier-2 (AI verifier) — ENGINE-FIELD CONTRADICTION: Report Section 0 and Section 3.5 state Model Stance MoS is -5% (labeled [Actual] and 'Engine verdict... creating a negative MoS of -5%'). This contradicts the AUTHORITATIVE ENGINE VALUATION HEADER ('MoS -92.5%') and verdict.json ('mos_pct: -92.5'). The report asserts an unattributed figure (-5%) as the official stance MoS, differing from the authoritative header value.; INTERNAL CONTRADICTION: Section 10 Audit Results claims 'Valuation Figures: Copied exactly from ENG

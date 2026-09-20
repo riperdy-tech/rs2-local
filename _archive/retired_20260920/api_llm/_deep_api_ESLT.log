@@ -1,0 +1,55 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ESLT.md, 8.8 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ESLT @ $741.33 | deepseek-v4-flash effort=high | 3 samples | pack 30,698ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ESLT_20260826_032433
+    [tool 1] search_web: Elbit Systems 2026 guidance mid-teens revenue growth backlog $32 billion Q2 2026
+    [tool 2] search_web: 10-year Treasury yield August 2026 Fed rate cut expectations
+    [tool 3] search_web: Elbit Systems $300 million capex plan 2026 production capacity expansion
+    [tool 4] search_web: NATO 3.5% GDP defense spending target Europe rearmament 2026 defense budgets outlook
+    [tool 5] fetch_page: https://www.elbitsystems.com/news/elbit-systems-reports-second-quarter-2026-results
+    [tool 6] search_web: Elbit Systems FY2026 FY2027 EPS revenue consensus analyst estimates
+    [tool 7] search_web: Elbit Systems effective tax rate 2025 2026 elevated headwind Israeli tax
+    [tool 8] search_web: Elbit Systems full year 2025 results revenue backlog December 31 2025 $28 billion
+    [tool 9] search_web: Elbit Systems dividend per share 2026 annual dividend policy
+    [tool 10] search_web: Rheinmetall SAAB Thales BAE L3Harris forward P/E valuation 2026
+    [tool 11] search_web: Federal Reserve FOMC August 2026 interest rate decision policy stance
+    [tool 12] fetch_page: https://www.elbitsystems.com/news/elbit-systems-reports-fourth-quarter-and-full-year-202
+    [tool 13] fetch_page: https://multiples.vc/insights/defense-companies-valuation-europe-vs-us
+    [tool 14] search_web: Elbit Systems 2025 secondary offering shares issued acquisition stock dilution
+  sample 1: IV $495.0 | usable=True | 14 tool calls (think 77,522ch / report 35,380ch) | 370s | $0.034 cumulative
+    [tool 1] search_web: Elbit Systems Q2 2026 results press release operating income net income backlog margin
+    [tool 2] search_web: Elbit Systems ESLT analyst estimates 2027 2028 revenue EPS consensus
+    [tool 3] search_web: 10-year Treasury yield August 2026 Federal Reserve interest rate policy
+    [tool 4] search_web: NATO Europe defense spending 2026 2027 percent GDP target rearmament outlook
+    [tool 5] search_web: Elbit Systems operating margin target long-term plan 2028 margin expansion
+    [tool 6] fetch_page: https://www.elbitsystems.com/news/elbit-systems-reports-second-quarter-2026-results
+    [tool 7] fetch_page: https://stockanalysis.com/stocks/eslt/forecast/
+    [tool 8] search_web: Israel sovereign credit rating Moody's S&P Fitch 2026 outlook defense economy
+    [tool 9] search_web: L3Harris BAE Systems Thales Rheinmetall forward P/E 2026 valuation multiples defense
+    [tool 10] search_web: Damodaran implied equity risk premium July 2026 current ERP
+    [tool 11] search_web: Elbit Systems 20-F 2025 cash and cash equivalents short-term bank deposits total debt ba
+    [tool 12] search_web: Elbit Systems $300 million capex 2026 production capacity expansion multi-year plan
+    [tool 13] search_web: L3Harris forward P/E 2026 2027 valuation Northrop Lockheed RTX defense multiples
+    [tool 14] search_web: Federal funds rate August 2026 real yields dollar index credit spreads market regime
+  sample 2: IV $337.5 | usable=True | 14 tool calls (think 93,347ch / report 24,673ch) | 381s | $0.067 cumulative
+    [tool 1] search_web: 10 year treasury yield August 2026 level
+    [tool 2] search_web: Federal Reserve interest rate decision August 2026 Fed funds rate
+    [tool 3] search_web: dollar index DXY level August 2026
+    [tool 4] search_web: Elbit Systems 2026 guidance revenue growth capex $300 million margin target
+    [tool 5] search_web: Elbit Systems Q2 2026 results press release backlog $32 billion operating margin
+    [tool 6] search_web: Elbit Systems analyst estimates 2027 2028 EPS revenue forecast
+    [tool 7] search_web: NATO 3.5% GDP defense spending 2026 European rearmament budgets duration
+    [tool 8] fetch_page: https://en.globes.co.il/en/article-elbit-systems-beats-analysts-backlog-reaches-new-peak
+    [tool 9] fetch_page: https://www.ynetnews.com/business/article/hjrmm9yuzl
+    [tool 10] search_web: Elbit Systems earnings call transcript Q2 2026 Butzi Machlis guidance "mid-teens" 2026 m
+    [tool 11] search_web: Elbit Systems dividend per share 2025 2026 payout ratio
+    [tool 12] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-elbit-systems-tops-q
+    [tool 13] search_web: Elbit Systems fiscal 2026 full year guidance revenue growth capex $300 million operating
+    [tool 14] search_web: "Elbit" 2027 revenue estimate consensus billion EPS
+    [tool 15] search_web: Israel war status August 2026 ceasefire Gaza Lebanon Iran defense exports
+  sample 3: IV $270.0 | usable=True | 15 tool calls (think 104,061ch / report 34,100ch) | 436s | $0.102 cumulative
+
+[deep-api] ESLT: OVERVALUED | band $270.0-$495.0 vs price $741.33 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 8.8d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 360,084 in (277,888 cached) | 124,554 out (92,304 reasoning) | $0.102 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ESLT_20260826_032433\verdict_depth.json

@@ -1,0 +1,57 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/BWMX.md, 11.4 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] BWMX @ $16.05 | deepseek-v4-flash effort=high | 3 samples | pack 28,666ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\BWMX_20260826_021526
+    [tool 1] search_web: BeFra Betterware second quarter 2026 results revenue net income EBITDA
+    [tool 2] search_web: Betterware de Mexico 2025 full year results revenue net income 2025 annual
+    [tool 3] search_web: Betterware BWMX 2026 financial guidance revenue growth EBITDA outlook
+    [tool 4] search_web: Betterware Tupperware Latin America acquisition price financing 2026
+    [tool 5] fetch_page: https://www.businesswire.com/news/home/20260723077464/en/BeFra-Reports-Second-Quarter-20
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/0001788257/000121390026047138/ea028745401ex99-1.
+    [tool 7] fetch_page: https://www.sec.gov/Archives/edgar/data/1788257/000121390026020857/ea0278472-ex991.htm
+    [tool 8] fetch_page: https://www.directsellingnews.com/2026/07/27/befra-reports-q2-2026-financial-results/
+    [tool 9] fetch_page: https://www.businesswire.com/news/home/20260602629361/en/Betterware-de-Mxico-Completes-A
+    [tool 10] search_web: BWMX Betterware dividend 2026 dividend per share MXN annual
+    [tool 11] search_web: Betterware BeFra Q2 2026 balance sheet cash total debt net debt June 2026
+    [tool 12] search_web: Banxico interest rate decision 2026 Mexico policy rate
+    [tool 13] search_web: US 10-year treasury yield August 2026 Fed policy rate
+    [tool 14] search_web: BWMX Betterware analyst estimates 2027 revenue EPS forward
+  sample 1: IV $24.6 | usable=True | 14 tool calls (think 64,404ch / report 30,334ch) | 347s | $0.028 cumulative
+    [tool 1] fetch_page: https://www.businesswire.com/news/home/20260723077464/en/BeFra-Reports-Second-Quarter-20
+    [tool 2] fetch_page: https://www.befra.com/news-events/press-releases/detail/99/befra-reports-first-quarter-2
+    [tool 3] search_web: BeFra Betterware 2026 full year financial guidance revenue growth Tupperware
+    [tool 4] search_web: Betterware de Mexico 2025 full year results revenue net income EBITDA
+    [tool 5] fetch_page: https://www.gurufocus.com/news/8975941/befra-reports-second-quarter-2026-results
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/1788257/000121390026020857/ea0278472-ex991.htm
+    [tool 7] fetch_page: https://www.directsellingnews.com/2026/07/27/befra-reports-q2-2026-financial-results/
+    [tool 8] fetch_page: https://www.benzinga.com/news/26/07/60658464/betterware-de-mexico-sapi-q2-2026-earnings-
+    [tool 9] search_web: BeFra "2026 guidance" updated Tupperware revenue EBITDA million pesos
+    [tool 10] search_web: Banxico interest rate decision August 2026
+    [tool 11] search_web: US 10-year Treasury yield USDMXN exchange rate August 2026
+    [tool 12] fetch_page: https://www.businesswire.com/news/home/20260723077464/en/BeFra-Reports-Second-Quarter-20
+    [tool 13] search_web: "BeFra" Q2 2026 updated guidance net revenue "18" OR "17" OR "19" billion pesos EBITDA
+    [tool 14] search_web: USD MXN exchange rate peso August 21 2026
+    [tool 15] search_web: Mexico 10 year government bond yield 2026
+  sample 2: IV $27.5 | usable=True | 15 tool calls (think 89,038ch / report 26,461ch) | 411s | $0.062 cumulative
+    [tool 1] search_web: Betterware de Mexico BeFra full year 2025 results revenue net income
+    [tool 2] search_web: Betterware de Mexico 2024 annual results revenue net income Jafra
+    [tool 3] search_web: BeFra Tupperware Latin America acquisition price terms 2026
+    [tool 4] search_web: Betterware de Mexico 2026 financial guidance revenue EBITDA capex outlook
+    [tool 5] search_web: Betterware de Mexico balance sheet total debt cash June 2026
+    [tool 6] search_web: Betterware de Mexico dividend 2026 quarterly per share
+    [tool 7] search_web: 10 year treasury yield August 2026 Fed interest rate
+    [tool 8] search_web: USD MXN exchange rate August 2026 Banxico interest rate Mexico
+    [tool 9] fetch_page: https://www.businessforhome.org/2026/02/betterware-q4-2025-earnings/
+    [tool 10] fetch_page: https://www.investing.com/news/company-news/befra-completes-acquisition-of-tupperware-la
+    [tool 11] search_web: BeFra reports second quarter 2026 results net revenue EBITDA net income Tupperware
+    [tool 12] search_web: Betterware de Mexico 2022 full year results Jafra acquisition revenue net income
+    [tool 13] search_web: BWMX Betterware analyst estimates 2026 2027 EPS revenue consensus
+    [tool 14] search_web: Tupperware Latin America annual revenue 2024 2025 million Brazil Mexico
+    [tool 15] search_web: Betterware de Mexico capex depreciation 2025 annual report
+    [tool 16] search_web: Mexico direct selling industry growth 2025 2026 AMED
+  sample 3: IV $23.729999999999997 | usable=True | 16 tool calls (think 117,438ch / report 31,763ch) | 464s | $0.099 cumulative
+
+[deep-api] BWMX: UNDERVALUED | band $23.729999999999997-$27.5 vs price $16.05 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 11.4d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 292,602 in (206,464 cached) | 119,352 out (86,860 reasoning) | $0.099 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\BWMX_20260826_021526\verdict_depth.json

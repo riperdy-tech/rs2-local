@@ -1,0 +1,58 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/NVS.md, 10.1 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] NVS @ $158.86 | deepseek-v4-flash effort=high | 3 samples | pack 31,084ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NVS_20260826_064141
+    [tool 1] search_web: Novartis full year 2025 results net sales core operating income FY2025
+    [tool 2] search_web: Novartis Q2 2026 results net sales core operating income guidance reaffirmed
+    [tool 3] search_web: 10 year treasury yield current August 2026
+    [tool 4] search_web: Federal Reserve fed funds rate policy August 2026
+    [tool 5] fetch_page: https://www.novartis.com/sites/novartiscom/files/q4-2025-media-release-en.pdf
+    [tool 6] search_web: Novartis 20-F 2025 purchases of property plant and equipment depreciation amortization f
+    [tool 7] search_web: Novartis medium term outlook 2027 2028 sales growth core operating income margin guidanc
+    [tool 8] fetch_page: https://www.novartis.com/news/media-releases/novartis-delivered-high-single-digit-sales-
+    [tool 9] fetch_page: https://www.novartis.com/news/media-releases/novartis-delivered-sales-growth-q2-and-furt
+    [tool 10] search_web: Novartis CEO succession 2026 Vas Narasimhan Ronny Gal transition
+    [tool 11] search_web: Medicare drug price negotiation second cycle 2027 maximum fair price list Cosentyx Jakav
+    [tool 12] search_web: Novartis share buyback program 2026 size billion dividend payout
+    [tool 13] search_web: Novartis credit rating Moody's S&P 2025 net debt financial position
+  sample 1: IV $197.0 | usable=True | 13 tool calls (think 92,383ch / report 28,225ch) | 388s | $0.039 cumulative
+    [tool 1] search_web: Novartis FY2025 full year results net sales 2025 billion
+    [tool 2] search_web: Novartis 2026 guidance reaffirmed low single digit sales growth core operating income
+    [tool 3] search_web: 10 year treasury yield August 2026 level
+    [tool 4] search_web: Federal Reserve interest rate decision August 2026 fed funds rate
+    [tool 5] fetch_page: https://www.novartis.com/news/media-releases/novartis-delivered-high-single-digit-sales-
+    [tool 6] search_web: Novartis investor day 2026 long term guidance 2030 net sales growth target core margin
+    [tool 7] search_web: Kisqali ribociclib patent expiration United States 2029 2030 loss of exclusivity
+    [tool 8] search_web: Novartis share buyback program 2026 USD billion dividend 2026
+    [tool 9] fetch_page: https://www.novartis.com/news/media-releases/novartis-projects-5-6-cc-sales-cagr-2025-20
+    [tool 10] search_web: Cosentyx biosimilar United States entry date 2027 Amgen settlement
+    [tool 11] search_web: US dollar index DXY level August 2026
+    [tool 12] search_web: Novartis Roche stake sale 21 billion share buyback announcement
+    [tool 13] search_web: Cosentyx secukinumab biosimilar United States launch 2027 patent settlement
+    [tool 14] fetch_page: https://www.drugpatentwatch.com/p/tradename/kisqali
+    [tool 15] search_web: Novartis core tax rate 2026 guidance effective tax rate percent
+    [tool 16] search_web: US CPI inflation report July 2026 year over year
+  sample 2: IV $209.0 | usable=True | 16 tool calls (think 73,777ch / report 23,722ch) | 301s | $0.068 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 level
+    [tool 2] search_web: Federal Reserve policy stance August 2026 interest rate cuts outlook
+    [tool 3] search_web: Novartis mid-term guidance 2028 sales CAGR core operating income margin target
+    [tool 4] search_web: Novartis full year 2025 results net sales free cash flow capital expenditure
+    [tool 5] search_web: Novartis 2026 full year guidance low single digit sales growth core operating income dec
+    [tool 6] search_web: Novartis share buyback program 2026 dividend per share increase
+    [tool 7] fetch_page: https://www.novartis.com/investors/financial-data/annual-results
+    [tool 8] search_web: Novartis new share buyback program 2025 2027 USD billion executed
+    [tool 9] search_web: federal funds rate target range August 2026 FOMC
+    [tool 10] search_web: dollar index DXY level August 2026
+    [tool 11] search_web: US CPI inflation rate July 2026 year over year
+    [tool 12] search_web: Novartis pipeline 2026 2027 readouts remibrutinib Fabhalta pelacarsen Kisqali
+    [tool 13] fetch_page: https://www.syneticx.com/blog/Novartis.html
+    [tool 14] search_web: Novartis USD 10 billion buyback 2025 2026 program authorization executed status
+    [tool 15] search_web: Novartis analyst consensus 2027 2028 EPS estimates sell-side
+    [tool 16] search_web: Cosentyx patent expiry biosimilar entry US Europe 2029
+    [tool 17] search_web: Entresto Europe patent expiry generic competition 2026 2027
+  sample 3: IV $152.3 | usable=True | 17 tool calls (think 79,255ch / report 33,300ch) | 339s | $0.099 cumulative
+
+[deep-api] NVS: HOLD | band $152.3-$209.0 vs price $158.86 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 10.1d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 399,143 in (294,016 cached) | 111,413 out (81,239 reasoning) | $0.099 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NVS_20260826_064141\verdict_depth.json
