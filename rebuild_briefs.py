@@ -45,7 +45,10 @@ import subprocess
 
 import ops
 import rs2_data
-import run_rs2
+# NOTE: this file used to `import run_rs2` for ONE helper - `resolve_name`, which is a one-line
+# passthrough to `rs2_data.resolve_name` (run_rs2.py:2029 -> 2034). Calling the real owner
+# directly removes the last live code dependency on the retired v2.0 generation. Behaviour is
+# identical because it is the same function one hop away.
 
 CONFIG = rs2_data.CONFIG
 HERE = Path(__file__).resolve().parent
@@ -143,7 +146,8 @@ def log(msg):
 
 
 def citations(text):
-    return len(re.findall(r"^- https?://", text, re.M))
+    # '- https://...' (pre-2026-08-29) or '- [3, 7] https://...' (numbered source lines)
+    return len(re.findall(r"^- (?:\[[0-9, ]+\] )?https?://", text, re.M))
 
 
 def uncited_tickers():
@@ -172,7 +176,7 @@ def uncited_tickers():
     try:
         analysed = {d.name.rsplit("_", 2)[0] for d in Path(CONFIG["out_reports_dir"]).glob("*_*")
                     if d.is_dir()}
-        out.extend(sorted(t for t in analysed - have if run_rs2.resolve_name(t)))
+        out.extend(sorted(t for t in analysed - have if rs2_data.resolve_name(t)))
     except Exception as e:
         log(f"  [queue] could not scan reports for missing briefs: {str(e)[:60]}")
 
@@ -187,7 +191,7 @@ def uncited_tickers():
         m = re.match(r"# DEEP RESEARCH BRIEF — (.*)\(", txt.split("\n", 1)[0])
         if m and not m.group(1).strip():
             try:
-                if run_rs2.resolve_name(f.stem):
+                if rs2_data.resolve_name(f.stem):
                     out.append(f.stem)
             except Exception:
                 pass
@@ -297,14 +301,14 @@ def main():
             except Exception as e:
                 log(f"  (Telegram alert failed: {str(e)[:80]})")
             break
-        # Resolve via run_rs2, which falls back to yfinance when financials/{T}.json has no Name
+        # Resolve via rs2_data.resolve_name, which falls back to yfinance when financials/{T}.json has no Name
         # -- and only 33% of them do. Doing the lookup inline here (as this script used to) sent
         # a BARE TICKER as the research subject, so the query was literally "EW competitive
         # position, market share, moat durability" with nothing to disambiguate it. That is how
         # EW cited Entertainment Weekly and DOCU cited dictionary definitions of "document".
         name = None
         try:
-            name = run_rs2.resolve_name(t) or None
+            name = rs2_data.resolve_name(t) or None
         except Exception as e:
             log(f"  [name] resolve failed for {t}: {str(e)[:60]}")
         if not name:
@@ -349,7 +353,8 @@ def main():
         except Exception as e:
             failed += 1
             log(f"[{i}/{len(todo)}] {t} FAILED — {type(e).__name__}: {str(e)[:120]}")
-        log(progress(i, len(todo), started, ok, failed))
+        bar = progress(i, len(todo), started, ok, failed)
+        log(bar)
 
         # OUTCOME sanity check, distinct from the engine probe above. The engine can look
         # perfectly healthy while every brief still fails — that is exactly what a preflight bug

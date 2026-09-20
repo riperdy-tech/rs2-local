@@ -23,11 +23,20 @@ AI contradiction audit) before anything publishes.
 
 | Level | Entry point | What it does |
 |---|---|---|
-| Sweep | `orchestrate.py` | queue by band/cadence → data-health gate → MoS calibration → per-ticker runs → overlay/publish/ledger → git push. **Never run directly** — a bare run pushes to the live site; use `tools/run_batch.py` (forces `--no-push`, lock guard, git-SHA receipt). |
-| Per ticker | `run_rs2.py` | enrich (yfinance) → OpenBB cache → deep research (`deep_research.py`, LDR + SearXNG/keyed search) → backbone (+ LLM regime decision when the lattice is contested) → 5 LLM stages → final assembly → `verdict.json` (+ brake, quality/solvency tripwires) → sanity → tier-1 → tier-2 audits. |
+| Sweep | `orchestrate_depth.py` | the LIVE depth-tier pipeline: research (cached, bounded) → seeded samples with tools → plausibility guard → band-direction verdict → overlay/publish. |
+| Per ticker | `depth_pipeline.py` | research → consensus (`tools/audit_202608/consensus_valuation.py`) → fiduciary contract gate → `verdict_depth.json` + ledger, then `depth_sanity` audits it in-process. |
 
-Scheduling: Windows task "RS2-Orchestrator" (`register_orchestrator_task.ps1`). Pause with
-`cache/PAUSED`; monitor with `status.py` / `telegram_status_bot.py`.
+Monitoring: `status.py` / `telegram_status_bot.py`. A powered-off PC is covered by the cloud
+backstop (`api_llm/cloud_backstop.py`, GitHub Actions), which imports `orchestrate_depth` — the
+same live pipeline, not a second one.
+
+### Retired: the v2.0 generation
+
+`orchestrate.py`, `run_rs2.py`, `valuation_io.py`, `verdict_ledger.py`, `tools/publish_only.py`,
+`tools/run_batch.py` and `register_orchestrator_task.ps1` moved to `_archive/retired_20260920/`
+on 2026-09-20, along with the `RS2.txt` framework they were built on. The "RS2-Orchestrator"
+task that ran them is disabled. Nothing live imports them, and
+`tools/audit_202608/tests/test_group_b_decoupling.py` enforces that.
 
 ## LLM stages
 

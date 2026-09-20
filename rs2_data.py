@@ -1208,7 +1208,7 @@ def research_block(ticker):
                 "do NOT invent news.\n")
     # Cap what's fed to each stage (full brief stays on disk for audit). Keeps total
     # context within the 24576 budget once prior-stage results accumulate.
-    cap = int(CONFIG.get("research_feed_char_cap", 14000))
+    cap = int(CONFIG.get("research_feed_char_cap", 25000))
     if len(md) > cap:
         md = md[:cap] + "\n\n…[brief truncated for context; full version in research/" + ticker.upper() + ".md]"
     return ("## DEEP RESEARCH BRIEF (cite only sources listed here)\n\n" + md + "\n")
@@ -1221,7 +1221,6 @@ def _track_record(t):
     nothing rather than a stale number."""
     try:
         import valuation_backbone as _vb
-        import outcome_feedback
         gap = (_vb.backbone(t) or {}).get("expectations_gap_pts")
         # mirrors run_rs2.STANCE_OVERVALUED_GAP / STANCE_UNDERVALUED_GAP (+15 / -7, calibrated
         # 2026-08-06 against 241 live verdicts). Duplicated deliberately: run_rs2 imports THIS
@@ -1229,7 +1228,11 @@ def _track_record(t):
         stance = None
         if isinstance(gap, (int, float)):
             stance = "overvalued" if gap >= 15.0 else ("undervalued" if gap <= -7.0 else "fair")
-        return outcome_feedback.track_record_block(stance)
+        # The calibration feed came from the retired v2.0 grading module (Group A). Dropping it
+        # removes the last live import of that module. This function is now INERT, and like
+        # build_data_context - its only caller, reachable only from the retired run_rs2 - it
+        # belongs with the retired generation rather than in a live file.
+        return ""
     except Exception:
         return ""
 
@@ -1267,7 +1270,6 @@ def build_data_context(ticker, bb=None):
         reverse_priming(rev),
         valuation_block(t, bb),      # inverted: deterministic reverse-DCF backbone (replaces
                                      # forward-DCF priming + the analyst-consensus anchor crutch)
-        _track_record(t),            # the engine's OWN graded hit rate in this situation
         forward_priming(eps_traj, analyst),
         overlay_priming(ov),
         macro_block(macro, regime),

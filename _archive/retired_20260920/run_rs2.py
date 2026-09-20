@@ -2027,19 +2027,11 @@ def valuation_result(stage_out, bb, price, ticker):
 
 
 def resolve_name(ticker):
-    """Company name for web-research queries. Zero-network first: the screener's
-    financials/{T}.json already carries Name (defeatbeta/yfinance-fed upstream);
-    yfinance only as a fallback for names outside the screener universe."""
-    fin = rs2_data.load_json(Path(CONFIG["screener_data_dir"]) / "financials" / f"{ticker.upper()}.json") or {}
-    name = str(fin.get("Name") or "").strip()
-    if name:
-        return name
-    try:
-        import yfinance as yf
-        info = yf.Ticker(ticker).info or {}
-        return info.get("longName") or info.get("shortName") or ""
-    except Exception:
-        return ""
+    """Company name for web-research queries — shared impl in rs2_data (2026-08-29: the
+    financials/{T}.json Name field this used to read is empty across the entire corpus, so this
+    silently hit yfinance for every call; rs2_data adds the stocks.csv tier and is also used by
+    depth_pipeline, which previously passed NO name and searched bare tickers)."""
+    return rs2_data.resolve_name(ticker)
 
 
 def _kill_research_tree(proc):

@@ -5,9 +5,14 @@ Drop-in replacement for run_rs2.ollama_chat: same signature, same return (the as
 text), so every stage / retry / final-assembly call routes here unchanged when --api is set.
 
 Differences vs the local rs2-analyst handled HERE, not in run_rs2:
-  * RS2.txt is BAKED into the local Ollama model as its system prompt (Modelfile); an API
-    model has no such baking, so RS2.txt is loaded once and sent as the system message on
-    every call — the stages assume the framework is already in the model's head.
+  * The framework prompt is BAKED into the local Ollama model (Modelfile); an API model has no
+    such baking, so it is loaded once and sent as the system message on every call — the stages
+    assume the framework is already in the model's head.
+    SINGLE SOURCE: prompts/charter_v3.0.md is the same text the local model bakes. Until
+    2026-09-20 this file read RS2.txt — the v2.0 framework — while the local model had already
+    moved to the Charter v3.0. Every cloud depth verdict was therefore produced under a different
+    framework than every local one, and both were written to the same cache/depth_ledger.jsonl
+    (cloud rows stamped `arm: cloud_api`). test_charter_single_source.py fails if they drift again.
   * `ctx`/`think` are Ollama-isms: API models manage their own context (ctx ignored) and
     reasoning models do their own thinking (think ignored; reasoning_content, if a provider
     returns it, is discarded — only the final answer text is used, matching Ollama's
@@ -26,6 +31,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent          # .../RS2 Local/api_llm
 ROOT = HERE.parent                              # .../RS2 Local
 CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+# The underwriting framework. Single source of truth, shared with the local model's Modelfile —
+# see the module docstring and test_charter_single_source.py.
+CHARTER = ROOT / "prompts" / "charter_v3.0.md"
 _SYSTEM = None
 _KEY = None
 
@@ -33,7 +41,7 @@ _KEY = None
 def _system_prompt():
     global _SYSTEM
     if _SYSTEM is None:
-        _SYSTEM = (ROOT / "RS2.txt").read_text(encoding="utf-8", errors="ignore")
+        _SYSTEM = CHARTER.read_text(encoding="utf-8", errors="ignore")
     return _SYSTEM
 
 

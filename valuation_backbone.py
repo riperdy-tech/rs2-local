@@ -100,7 +100,11 @@ def persistence_growth(delivered):
 # M, PRDO and WILC become CONTESTED (their bases genuinely disagree by >100pts and the second
 # cell was previously hidden), and JOE/KMDA get our own number instead of a consensus snap.
 # fv_sensitivity_pts is still computed and surfaced — useful telemetry, no longer a gate.
-MOS_EXTREME_MAX = 1.50       # |MoS| beyond 150% is not a valuation, it is a malfunction
+# Malfunction fence under convention (A): mos = IV/price - 1. ONE-SIDED: IV/price - 1 >= -1, so
+# it can only trip ABOVE 2.5x price and never on the downside. The "|MoS|" phrasing this line
+# used to carry was inaccurate. An independent literal of consensus_valuation.MOS_EXTREME, not a
+# shared definition.
+MOS_EXTREME_MAX = 1.50
 STALE_TARGET_DAYS = 45     # analyst-target band older than this is flagged low-confidence
 
 
@@ -981,6 +985,8 @@ def _financial_backbone(t, ydata, price, mcap, shares, coe=FIN_COE, pb_kind="fin
     # clip: clipping would fabricate a number, this tells the reader the model is out of its
     # depth and lets conviction/sizing dock it.
     flag = None
+    # UNITS: `mos` here is already a PERCENT (multiplied by 100), unlike MOS_EXTREME_MAX above
+    # which is a RATIO (1.50). 60 percent is intended - do not "tidy" this to 1.5.
     if fv_method == "pb_roe_noband" and mos is not None and abs(mos) > 60:
         flag = (f"UNFENCED P/B valuation with an extreme {mos:+.0f}% MoS and no analyst band to "
                 f"bound it — likely something this model cannot see (contingent liabilities, "

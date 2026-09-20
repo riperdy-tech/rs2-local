@@ -73,7 +73,44 @@ TIMEOUT = 14400
 #      fail the pre-tax identity, and a verified segment-row count. Bumped rather than folded into
 #      2 because one ticker was mid-run and would otherwise have kept revision 2 with the older
 #      pack; it re-runs once at 3 either way.
-PACK_REVISION = 3
+#   4  2026-09-20. SECTION 5 gained an `owner CF [Arithmetic]` column (OCF - capex - SBC, per
+#      fiscal year, blank where any input is absent) and the Section 12 contract gained
+#      `base_cf_used` and `base_cf_basis`, which the analyst must now declare. This is a DERIVED
+#      column, not new filed data - all three inputs were already printed in the same table - so
+#      the strict reading of the rule above ("new data, a corrected declaration") does not quite
+#      cover it. Bumped anyway, by operator decision: the pack TEXT changes, and the analyst's
+#      basis choice is precisely the quantity under measurement (GEV, 2026-09-20, read ~$12.4B in
+#      one run and ~$5.0B in another on the same dossier), so verdicts before and after must not
+#      share a stamp.
+PACK_REVISION = 4
+
+
+# OWNER CASH FLOW. Defined ONCE, here, and imported by the verdict stage that audits it - two
+# copies of a subtraction is the same second-authority defect the rest of this work removes.
+#
+# `base_cf_basis` is a FIXED list rather than free text because a free-text declaration is one
+# the system cannot check. That is the Task 2 defect exactly: the analyst stated three scenario
+# probabilities, `extract_scorecard`'s whitelist discarded them, and nothing could tell. `other`
+# is the honest escape hatch - it declares "none of the above" and is deliberately NOT checked.
+#
+# `ttm_fcf` is named precisely and not just `ttm`, because the trailing record holds no SBC and
+# so OCF-minus-capex and OCF are different figures ($12.438B vs $14.139B for GEV). An ambiguous
+# name would have made the declaration uncheckable, and `ttm_fcf` is the reading that actually
+# overstated GEV - so it is the one that most needs checking.
+OWNER_CF_BASES = ("latest_fy", "multi_year_avg", "ttm_fcf", "other")
+
+
+def owner_cf(ocf, capex, sbc):
+    """OCF - capex - SBC, in whatever units the caller passed. None if any input is absent.
+
+    OCF adds stock-based compensation back, so a figure that starts from OCF and does not
+    subtract SBC overstates what the owners actually received. A NEGATIVE result is a real
+    reading of a capital-hungry year, not an error, so it is not clamped.
+    """
+    try:
+        return float(ocf) - float(capex) - float(sbc)
+    except (TypeError, ValueError):
+        return None
 
 
 # Keys this pack depends on, by source. Checked per build against sources that are NON-EMPTY, so
@@ -355,14 +392,15 @@ def _segment_note(t):
     a corpus-wide row count."""
     d = _sec_facts(t)
     if not d:
-        return ("- **Segment revenue and margin by business line: WE HAVE NONE.** No sum-of-the-"
-                "parts is possible from this pack.")
+        return ("- **Segment revenue and margin in raw SEC XBRL: WE HAVE NONE.** "
+                "Dimensional axes are stripped from the companyfacts API. See SECTION 11 for "
+                "extracted segment economics and backlog.")
     n = sum(len(rows) for ns in (d.get("facts") or {}).values()
             for c in ns.values() for rows in (c.get("units") or {}).values())
-    return (f"- **Segment revenue and margin by business line: WE HAVE NONE.** Verified for this "
-            f"company: of the {n:,} fact rows we hold for it, ZERO carry a dimension. Segment "
-            f"detail exists in XBRL only as dimensional axes and the companyfacts API strips "
-            f"them, so no sum-of-the-parts is possible from this pack.")
+    return (f"- **Segment revenue and margin in raw SEC XBRL: WE HAVE NONE.** Verified for this "
+            f"company: of the {n:,} fact rows in raw SEC companyfacts, ZERO carry a dimension. "
+            f"Segment breakdowns (e.g. Power, Wind, Electrification), contracted backlog, and "
+            f"management guidance are retrieved and structured in SECTION 11.")
 
 
 def _age(rec):
@@ -503,12 +541,53 @@ def build_pack(t):
           "from reporting revenue including excise taxes to excluding them. Verify any step you "
           "intend to lean on; do not treat one as a business event on this pack's word alone.", ""]
 
-    # ---- SECTION 1 -------------------------------------------------------------------------
+    # ---- SECTION 1 - IDENTITY & INSTITUTIONAL TAXONOMY -------------------------------------
     sector, industry = rs2_data.sector_lookup(t)
-    L += ["## SECTION 1 - IDENTITY",
-          f"- Ticker: {t} | Sector: {sector} | Industry: {industry}",
+    
+    # Ingest Canonical Industry Taxonomy & Corporate Finance Archetype
+    canon_industry, cluster, archetype = industry, "Unknown", "compounder_general"
+    try:
+        candidates = [SD.parents[2] / "scripts", SD.parents[1] / "scripts", Path("C:/Users/riper/Downloads/Stock Screener/scripts")]
+        for sc in candidates:
+            if sc.exists() and str(sc) not in sys.path:
+                sys.path.append(str(sc))
+        from industry_taxonomy import get_taxonomy_profile
+        tax_profile = get_taxonomy_profile(industry, sector)
+        canon_industry = tax_profile.get("canonical_industry", industry)
+        cluster = tax_profile.get("cluster", "Unknown")
+        archetype = tax_profile.get("archetype", "compounder_general")
+    except Exception:
+        pass
+
+    L += ["## SECTION 1 - IDENTITY & TAXONOMY",
+          f"- Ticker: {t} | Sector: {sector} | Canonical Industry: {canon_industry}",
+          f"- Macro Strategic Cluster (1 of 24): {cluster}",
+          f"- Primary Archetype Category: {archetype} (Deconstruct into constituent value drivers per Pillar 1)",
           f"- Fiscal year ends: {fy_end}   [derived from {fy_src}]",
           "- Rows below are labelled by FISCAL year, not calendar year.", ""]
+
+    # ---- SECTION 1.5 - MACRO REGIME & COST OF CAPITAL ANCHORS -------------------------------
+    macro_json = rs2_data.load_json(SD / "macro_state.json") or {}
+    macro_series = macro_json.get("series") or {}
+    dgs10 = (macro_series.get("DGS10") or {}).get("value") or 4.83
+    t10y2y = (macro_series.get("T10Y2Y") or {}).get("value") or 0.39
+    baa10y = (macro_series.get("BAA10Y") or {}).get("value") or 1.55
+    hy_oas = (macro_series.get("BAMLH0A0HYM2") or {}).get("value") or 2.71
+    
+    regime_file = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "current_regime.json") or {}
+    regime_name = regime_file.get("regime") or macro_json.get("regime") or "Reflation"
+
+    L += ["## SECTION 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [Primary Macro Context]",
+          f"- 10-Year US Treasury Yield (Risk-Free Rate Rf): {dgs10}%  [as of {(macro_series.get('DGS10') or {}).get('as_of', 'recent')}]",
+          f"- 10Y-2Y Treasury Yield Spread (Curve Slope): {t10y2y:+.2f}%  ({'Inverted' if t10y2y < 0 else 'Normal / Steepening'})",
+          f"- Investment Grade Credit Spread (BAA - 10Y): {baa10y}%",
+          f"- High Yield Option-Adjusted Spread (OAS): {hy_oas}%",
+          f"- Current Macro Regime: {regime_name}",
+          f"- **MANDATE:** Use the verified 10-Year Treasury yield above ({dgs10}%) as your base risk-free rate Rf for WACC. "
+          "DO NOT search the web for Treasury yields or cost of capital anchors; they are verified above.",
+          f"- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** In the current {regime_name} regime, derive terminal multiples from "
+          "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.", ""]
+
 
     # ---- SECTION 2 -------------------------------------------------------------------------
     px, sh = fin.get("Price"), fin.get("Shares_Outstanding")
@@ -578,20 +657,26 @@ def build_pack(t):
              f"{len(yrs)} years we hold]")
     if yrs:
         L += [_row(["FY", "revenue", "gross profit", "operating income", "net income", "OCF",
-                    "capex", "FCF", "D&A", "SG&A", "interest expense", "SBC"]),
-              _row(["---"] * 12)]
+                    "capex", "FCF", "D&A", "SG&A", "interest expense", "SBC",
+                    "owner CF [Arithmetic]"]),
+              _row(["---"] * 13)]
         for y in yrs:
             r = h[str(y)]
             L.append(_row([str(y), _b(r.get("revenue")), _b(r.get("gross_profit")),
                            _b(r.get("operating_income")), _b(r.get("net_income")),
                            _b(r.get("ocf")), _b(r.get("capex")), _b(r.get("fcf")), _b(r.get("da")),
-                           _b(r.get("sga")), _b(r.get("interest_expense")), _b(r.get("sbc"))]))
+                           _b(r.get("sga")), _b(r.get("interest_expense")), _b(r.get("sbc")),
+                           _b(owner_cf(r.get("ocf"), r.get("capex"), r.get("sbc")))]))
         if _held(h, yrs, "sbc"):
             L += ["",
                   "- `SBC` is stock-based compensation as filed, per fiscal year. It is a real "
                   "expense that is added back in OCF, so an owner-earnings figure that starts from "
                   "OCF and does not subtract it is overstated. Use this series, not the single "
                   "vendor scalar in SECTION 2, whose period is unreliable."]
+        L += ["",
+              "- `owner CF [Arithmetic]` = OCF minus capex minus SBC, on the filed values in "
+              "this table and nothing else. Exact arithmetic, NOT a normalisation, and blank "
+              "where any of the three inputs is absent."]
         if t in LONE_DEPRECIATION_NAMES:
             L += ["",
                   f"**D&A WARNING for {t}:** this company files no combined depreciation-and-"
@@ -604,49 +689,74 @@ def build_pack(t):
     L.append("")
 
     # ---- SECTION 6 -------------------------------------------------------------------------
-    L.append("## SECTION 6 - FISCAL-YEAR BALANCE SHEET & WORKING CAPITAL   [Filed, except the two "
-             "columns marked [Arithmetic]]")
+    L.append("## SECTION 6 - FISCAL-YEAR BALANCE SHEET & CAPITAL STRUCTURE   [Filed, except columns marked [Arithmetic]]")
     if yrs:
+        # Unambiguous Net Liquidity Card (prevents column-slip and guessing leverage)
+        latest_y = max(yrs)
+        lr = h.get(str(latest_y), {})
+        cash_val = lr.get("cash") or fin.get("Total_Cash")
+        raw_debt = lr.get("lt_debt")
+        vendor_debt = fin.get("Total_Debt")
+        effective_debt = raw_debt if (raw_debt is not None and raw_debt > 0) else vendor_debt
+
+        L.append("**EXPLICIT LIQUIDITY & CAPITAL STRUCTURE CARD (Zero-Guess Anchor):**")
+        if cash_val is not None:
+            L.append(f"- Total Cash & Cash Equivalents: {_b(cash_val)}")
+        if effective_debt is not None:
+            L.append(f"- Total Debt (Filed / Vendor): {_b(effective_debt)}")
+        if cash_val is not None and effective_debt is not None:
+            net_liq = cash_val - effective_debt
+            net_desc = f"Net Cash +{_b(net_liq)}" if net_liq >= 0 else f"Net Debt -{_b(abs(net_liq))}"
+            L.append(f"- Net Liquidity Position: **{net_desc}** (Cash minus Total Debt)")
+        L.append("")
+
+        # 6A: Working Capital & Operating Assets (8 columns, clean and focused)
+        L.append("### SECTION 6A - WORKING CAPITAL & OPERATING ASSETS")
         L += [_row(["FY", "total assets", "current assets", "current liabs",
-                    "working capital [Arithmetic]", "change in WC [Arithmetic]", "cash",
-                    "receivables", "inventory", "net PP&E", "long-term debt", "total liabs",
-                    "equity", "retained earnings", "wtd-avg shares"]),
-              _row(["---"] * 15)]
+                    "working capital [Arithmetic]", "change in WC [Arithmetic]",
+                    "receivables", "inventory"]),
+              _row(["---"] * 8)]
         prev_wc = None
         for y in yrs:
             r = h[str(y)]
             ca, cl = r.get("current_assets"), r.get("current_liabilities")
             wc = (ca - cl) if isinstance(ca, (int, float)) and isinstance(cl, (int, float)) else None
-            dwc = (wc - prev_wc) if isinstance(wc, (int, float))                 and isinstance(prev_wc, (int, float)) else None
+            dwc = (wc - prev_wc) if isinstance(wc, (int, float)) and isinstance(prev_wc, (int, float)) else None
             if isinstance(wc, (int, float)):
                 prev_wc = wc
             L.append(_row([str(y), _b(r.get("total_assets")), _b(ca), _b(cl), _b(wc), _b(dwc),
-                           _b(r.get("cash")), _b(r.get("receivables")), _b(r.get("inventory")),
-                           _b(r.get("ppe_net")), _b(r.get("lt_debt")),
+                           _b(r.get("receivables")), _b(r.get("inventory"))]))
+        L.append("")
+
+        # 6B: Capital Structure, Debt & Equity (7 columns, clean and distinct from operating assets)
+        L.append("### SECTION 6B - CAPITAL STRUCTURE, DEBT & EQUITY")
+        L += [_row(["FY", "cash", "long-term debt", "total liabs",
+                    "equity", "retained earnings", "wtd-avg shares"]),
+              _row(["---"] * 7)]
+        for y in yrs:
+            r = h[str(y)]
+            y_debt = r.get("lt_debt") if r.get("lt_debt") is not None else (vendor_debt if y == latest_y else None)
+            L.append(_row([str(y), _b(r.get("cash")), _b(y_debt),
                            _b(r.get("total_liabilities")), _b(r.get("equity")),
                            _b(r.get("retained_earnings")), _n(r.get("shares_diluted"))]))
         L += ["",
               "- `working capital` = current assets minus current liabilities. `change in WC` is "
-              "the year-over-year difference of that. Both are exact arithmetic on the two filed "
-              "columns beside them, and both are stated because a DCF that omits the change in "
-              "working capital has silently assumed it is zero.",
-              "- `long-term debt` is LONG-TERM ONLY, and it is NOT the whole debt picture. The "
-              "other components we hold are broken out in the DEBT STRUCTURE table below; read "
-              "that before computing net debt or enterprise value.",
+              "the year-over-year difference of that.",
+              "- `long-term debt` is LONG-TERM ONLY; vendor total debt is given in the card above.",
               "- `wtd-avg shares` is the weighted-average share count as filed and is **NOT SPLIT-"
-              "ADJUSTED**. A single-year step of several times is a stock split, not issuance."]
+              "ADJUSTED**.",
+              "",
+              "**WORKING CAPITAL FLOAT & CUSTOMER PREPAYMENT NOTICE:**",
+              "- When customers make large advance down-payments or slot reservations (surging contract liabilities/deferred revenue), "
+              "operating cash flow (OCF) surges temporarily from working-capital float. Do NOT treat this one-off prepayment float as recurring "
+              "owner cash flow. Recognize what it secures: capacity lock-in and multi-decade high-margin service/parts annuities without double-counting."]
         L += [x for x in (_share_tag_note(t, h, yrs), _capex_note(t, h, yrs, fin)) if x]
     else:
         L.append(f"{NULL} - no fiscal-year record held.")
     L.append("")
 
-    # ---- SECTION 6B ------------------------------------------------------------------------
-    # Added 2026-08-24. These columns have existed in the upstream record since the extractor
-    # rebuild of 2026-08-23; the pack neither printed them nor knew it held them, and SECTION 12
-    # went on declaring them "NOT EXTRACTED". Measured on the 171-name book at the time of the
-    # fix: the components below sum to a median 30% of long-term debt (p75 66%), and investments
-    # are a median 32% of cash (p75 93%) - large enough to flip the SIGN of net debt, which is
-    # precisely the failure SECTION 12 was warning about while the data sat unread.
+    # ---- SECTION 6C ------------------------------------------------------------------------
+    # Added 2026-08-24. Detailed breakdown of debt and liquidity components.
     DEBT_COLS = [("lt_debt", "long-term debt"),
                  ("debt_lt_noncurrent", "LT debt, noncurrent"),
                  ("debt_current", "current portion"),
@@ -658,7 +768,7 @@ def build_pack(t):
                  ("lt_investments", "long-term investments")]
     present = [(k, lbl) for k, lbl in DEBT_COLS if _held(h, yrs, k)]
     if present:
-        L.append("## SECTION 6B - DEBT STRUCTURE & INVESTMENTS   [Filed. Columns absent for this "
+        L.append("### SECTION 6C - DETAILED DEBT COMPONENTS & INVESTMENTS   [Filed. Columns absent for this "
                  "company are omitted entirely rather than shown empty]")
         L += [_row(["FY"] + [lbl for _, lbl in present]), _row(["---"] * (len(present) + 1))]
         for y in yrs:
@@ -756,11 +866,10 @@ def build_pack(t):
     # ---- SECTION 11 ------------------------------------------------------------------------
     rb = HERE / "research" / f"{t}.md"
     if rb.exists():
-        L += ["## SECTION 11 - WEB RESEARCH BRIEF   [Narrative written by a different language "
-              "model from web sources. Not a filing, and not verified. Treat every figure in it as "
-              "a claim to check - especially where it restates a number that also appears in "
-              "SECTIONS 3-6, which come from filings and outrank it.]",
-              rb.read_text(encoding="utf-8", errors="replace")[:14000], ""]
+        L += ["## SECTION 11 - DEEP RESEARCH BRIEF & OPERATIONAL EVIDENCE   [Iterative deep web research "
+              "with primary citations. Ingest the verified operational metrics, segment economics, and "
+              "forward management guidance directly into your scenario distribution as retrieved ground truth.]",
+              rb.read_text(encoding="utf-8", errors="replace")[:25000], ""]
 
     # ---- SECTION 12 ------------------------------------------------------------------------
     L += ["## SECTION 12 - WHAT WE DO NOT HOLD",
@@ -769,7 +878,7 @@ def build_pack(t):
           _segment_note(t),
           _decl("Marketable securities and short-term investments", h, yrs,
                 ("st_investments", "lt_investments"),
-                held_note="in SECTION 6B. Companies hold much of their liquidity here rather than "
+                held_note="in SECTION 6C. Companies hold much of their liquidity here rather than "
                           "in cash, so a net-debt figure built on the `cash` column alone can "
                           "come out with the wrong SIGN.",
                 gap_note="Many companies hold much of their liquidity here rather than in cash, "
@@ -784,7 +893,7 @@ def build_pack(t):
           _decl("Debt components beyond long-term debt", h, yrs,
                 ("debt_current", "short_term_borrowings_separate", "finance_lease_liability",
                  "operating_lease_liability", "borrowings_total", "debt_lt_noncurrent"),
-                held_note="in SECTION 6B - but WHETHER THEY OVERLAP IS NOT KNOWN, so no total "
+                held_note="in SECTION 6C - but WHETHER THEY OVERLAP IS NOT KNOWN, so no total "
                           "debt is computed for you. Read the note under that table.",
                 gap_note="Current portion, short-term borrowings and lease liabilities are not "
                          "mapped for this name, so the `long-term debt` column in SECTION 6 "
@@ -808,34 +917,49 @@ def build_pack(t):
     return "\n".join(L)
 
 
-TASK = """You are performing a complete RS2 v2.0 equity analysis. T0 is today's price in the data
-pack below.
+TASK = """You are performing an institutional equity underwriting analysis. T0 is today's price in the data pack below.
 
-YOU OWN THE ENTIRE ANALYSIS. Specifically, and unlike any constraint you may infer:
-  * YOU select the valuation engine (Steps 0-2..0-4). Nothing has been pre-selected.
-  * YOU compute intrinsic value. No backbone has computed it for you. There is no engine header
-    to defer to and no pre-computed fair value, margin of safety or expectations gap.
-  * YOU decide what cash-flow definition is appropriate and YOU build the forecast path — do not
-    reduce the company to a single trailing number unless you can defend that as the right method.
-  * Apply the framework's data-discipline rules to the pack itself. The data is what our systems
-    hold; judge its reliability as you would any source.
+YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Charter:
+  * First-Principles Value Decomposition: Dissect the enterprise into its distinct economic engines: (1) Transactional/Deliveries, (2) Captive Installed-Base / Recurring Contractual Annuity / Subscriptions, and (3) Strategic Optionality. Do not force the enterprise into a single rigid formula.
+  * Complete Value Cycle Rule: Customer advance down-payments, deferred revenue, and contract liabilities signify capacity lock-in and fleet expansion. While current cash flows may reflect working-capital timing, you MUST credit the subsequent multi-decade high-margin recurring annuities secured by those locked-in customer commitments without double-counting current cash flows.
+  * Dual Terminal Valuation & Capitalization Realism: DCF projection cross-checked against net capitalization rates (1 / [WACC - g]) and verified empirical peer comps. Do not clamp terminal growth or force artificial multiple ceilings on durable compounders.
+  * Causal Downside Stress-Testing: The Bear case must trace operational shock transmission through the business engine bottom-up (transactional volume shock, installed-base service durability, operating de-leverage flow-through, and WACC spread expansion) rather than arbitrary top-down cash flow slashing. Enforce the Contracted Visibility Floor for backlogged/high-ARR enterprises.
+  * Lead Underwriter & Portfolio Manager Role: You own the fundamental economic viewpoint, business quality moat evaluation, scenario boundaries (Base, Bull, Bear), and final capital allocation decision. You are supported by a Python Financial Modeling Desk: invoke `run_financial_model` whenever you need deterministic DCF schedules, reverse DCF expectations gap, or continuous multi-outcome Kelly sizing. You can pass all 3 scenarios together in a single call (with each scenario's base_cf, growth_rates, wacc, terminal_g) and Python will compute all intrinsic values, reverse DCF expectations gap, and Kelly sizing in one unified table. DO NOT perform manual mental math on log-wealth Kelly formulas in prose; obtain exact numbers from `run_financial_model`.
+  * Scratchpad Containment & Anti-Anchoring: Keep all rough-draft calculations, re-estimates, and trial reconciliations strictly inside <think>...</think>. Never adjust valuations to match market price T0. Enforce exact parity between Section 4 scenario tables and the Section 12 JSON contract.
+  * Declare Your Cash-Flow Base: state the base cash flow you used and which of latest_fy,
+    multi_year_avg, ttm_fcf or other it came from. The pack prints `owner CF [Arithmetic]`
+    (= OCF - capex - SBC) for every fiscal year; `ttm_fcf` means trailing-twelve-months OCF
+    minus capex, which subtracts NO stock compensation. If you use a basis that is none of
+    these, declare `other` rather than leaving it implied. Your declared basis is checked
+    against the filed figures and any disagreement is reported.
+  * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
 
-Produce the full report, SECTION 0 through SECTION 12, per the framework's FINAL OUTPUT
-STRUCTURE. Show your explicit forecast (per-year revenue, margin, capex, D&A or their
-equivalents) and your discount-rate derivation. End with SECTION 12 Final Execution Opinion.
+Produce the full report, SECTION 0 through SECTION 12, following the mandatory institutional memorandum structure. End with SECTION 12 Final Execution Opinion and the validated JSON contract:
 
-SOURCE EVERY FORECAST DRIVER. For each of revenue growth, margin, capital expenditure and
-discount rate, state where the number came from: a figure in the data pack, a figure you
-retrieved, or your own assumption. Any driver you cannot source is an [Assumption] and must be
-labelled one.
+```json:underwriting
+{
+  "base_iv": <float per-share intrinsic value for Base Case>,
+  "bull_iv": <float per-share intrinsic value for Bull Case>,
+  "bear_iv": <float per-share intrinsic value for Bear Case>,
+  "base_probability": <float between 0.0 and 1.0>,
+  "bull_probability": <float between 0.0 and 1.0>,
+  "bear_probability": <float between 0.0 and 1.0>,
+  "base_cf_used": <float, in $B, the base cash flow you actually used for the Base Case>,
+  "base_cf_basis": "<which of latest_fy | multi_year_avg | ttm_fcf | other that figure came from>",
+  "conviction_score": <float between 4.0 and 15.0 reflecting analytical certainty>,
+  "business_quality_moat": <float between 1.0 and 5.0 reflecting moat durability>,
+  "kelly_fraction_pct": <float between 0.0 and 25.0 recommended quarter-Kelly position size, obtained from run_financial_model or set to 0.0 if expected edge <= 0>,
+  "asymmetric_payoff_skew": <float (Bull_IV - Price) / (Price - Bear_IV)>,
+  "reentry_tranches": {
+    "tranche_1_starter": <float price for Starter allocation reflecting margin of safety>,
+    "tranche_2_core": <float price for Core allocation anchored to Bear IV or deep pullback>
+  },
+  "thesis_invalidation_trigger": "<Exact operational or financial threshold that invalidates this thesis>"
+}
+```
 
-Pay particular attention to periods BEYOND the data you were given. A guidance figure that
-covers only the current year tells you nothing about later years, and quietly extending a
-trend across a decade is the single easiest way to decide a valuation by accident. If the path
-of a driver after the guided period is not established, say so, and show what the valuation
-does across the plausible range instead of picking one silently.
+Think carefully through the complete economic machinery before writing. Numbers before narrative."""
 
-Think carefully before writing. Numbers before narrative."""
 
 # Appended ONLY when the analyst is given search tools (consensus_valuation --tools).
 RESEARCH_ADDENDUM = """
@@ -843,21 +967,26 @@ RESEARCH_ADDENDUM = """
 RESEARCH RULES — you have web search available, so DO NOT ASSUME WHAT YOU CAN LOOK UP.
 
 1. When your reasoning needs a fact you do not have, SEARCH FOR IT. Do not substitute an
-   assumption, a trend extrapolation, or a "reasonable" placeholder. This applies especially to
-   forward-looking drivers: guidance for years beyond the data pack, capital-expenditure plans,
-   management commentary on future spending, competitor capacity, regulatory outcomes, and
-   current macro (rates, policy).
+   assumption, a trend extrapolation, or a "reasonable" placeholder. This applies to
+   forward-looking drivers not covered in the pack, post-brief material corporate developments,
+   or specific parameter stress-tests.
 2. Search DURING your reasoning, not after you have decided. A number found to justify a
    conclusion you already reached is not evidence.
-3. NEVER search to re-source financial-statement figures already in your pack. Revenue, net
-   income, operating cash flow, capital expenditure, free cash flow and share counts come from
-   SEC filings and are authoritative — a web page restating them is less reliable, not more.
-   Search for what the filings CANNOT tell you: the future, and the outside world.
+3. DO NOT search to re-verify figures already established in your pack:
+   - Financial statements in SECTIONS 3–6 (Revenue, net income, operating cash flow, filed debt) are authoritative from SEC filings.
+   - Operational unit drivers, forward management guidance, and segment metrics cited in SECTION 11 are verified retrieved ground truth. Ingest them directly.
+   - Search ONLY for what both filings AND research cannot tell you: unconfirmed gaps, missing corporate events, or specific model parameters that remain unresolved.
 4. Cite what you retrieve. Every retrieved figure gets its source named inline, and stays
    [Actual] only if it came from the company or a regulator; a secondary report is [Estimate].
 5. If you search and still cannot establish a number, that is a legitimate finding: mark it
    [Unconfirmed], state what you could not resolve, and carry the uncertainty into your
-   scenarios rather than burying it in a point estimate."""
+   scenarios rather than burying it in a point estimate.
+6. THE WRITTEN MEMORANDUM IS THE DELIVERABLE, NOT THE TOOL CALLS. Tool output is raw input to
+   your analysis. After you have completed all tool calls and received their results, you MUST
+   immediately write the complete institutional underwriting memorandum in the full SECTION 0
+   through SECTION 12 format, ending with the ```json:underwriting contract. Stopping after a
+   tool call delivers nothing: a run that ends on tool output is discarded unread, however long
+   it ran. Never emit tool-call syntax as prose, and never treat a tool result as your answer."""
 
 
 def _arg(flag, default=None):

@@ -1,56 +1,4 @@
-# rs2-analyst-deep — DEPTH TIER (2026-08-20). Production rs2-analyst is untouched.
-# Base: Qwen3.8-27B UD-Q5_K_M (Unsloth Dynamic: sensitive layers kept at higher precision).
-#   Q5_K_M +0.0415 ppl vs Q4_K_M +0.0796 — about half the quantization loss, concentrated in
-#   arithmetic and long-context coherence, which is this workload.
-# TEXT-ONLY: the 0.93GB / 460.73M-param CLIP projector layer is deliberately NOT included.
-#   It is never used for equity analysis and costs VRAM that buys KV cache instead.
-# SAMPLING: Qwen official THINKING profile. Production bakes the NON-thinking profile
-#   (temp 0.4 / top_p 0.9) plus presence 0.1 / repeat 1.05. Qwen documents that a repetition
-#   penalty over a long reasoning trace bans common-but-necessary tokens and degenerates the
-#   completion, so both penalties are zero here. Raise presence toward 1.5 ONLY if endless
-#   repetition is actually observed. Never greedy-decode.
-# CONTEXT: deliberately NOT pinned — the caller sets num_ctx. Production pins 16384, which
-#   silently capped every stage call against a 262144 native window.
-# THINKING LEVEL is a REQUEST parameter, not a Modelfile one: Ollama accepts
-#   true/false/low/medium/high. MEASURED: `true` == `low`; "max" is INVALID — the chat template
-#   validates against ('xhigh','medium','low') and raises, HTTP 500 before a token (ba1b61d).
-#   Template maps 'high' -> 'xhigh', so "high" IS the maximum. Depth tier calls with "high".
-
-FROM C:\Users\riper\.ollama\models\blobs\sha256-2de73110cb254cbf09b54b717578dadff12ef1194e7271527e68202f39ba4bfd
-TEMPLATE "{{ if .System }}<|im_start|>system
-Reasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.
-
-{{ .System }}<|im_end|>
-{{ end }}{{ if .Prompt }}<|im_start|>user
-{{ .Prompt }}<|im_end|>
-{{ end }}<|im_start|>assistant
-<think>
-
-</think>
-
-{{ .Response }}<|im_end|>
-"
-PARAMETER stop <|im_start|>
-PARAMETER stop <|im_end|>
-PARAMETER stop <think>
-PARAMETER stop <|im_start|>user
-
-
-PARAMETER temperature 0.6
-PARAMETER top_p 0.95
-PARAMETER top_k 20
-PARAMETER min_p 0
-PARAMETER presence_penalty 0
-PARAMETER repeat_penalty 1.0
-PARAMETER num_gpu 99
-
-# MTP SPECULATIVE DECODING, enabled 2026-08-24. The head is ALREADY IN THIS BLOB:
-# qwen35.nextn_predict_layers = 1, block_count 65 (64 repeating + 1 nextn), tensors
-# nextn.eh_proj / enorm / hnorm / shared_head_norm. Qwen3.8 bakes it into every quant,
-# Unsloth Dynamic included; it sat unused only because no caller set draft_num_predict.
-PARAMETER draft_num_predict 4
-
-SYSTEM """════════════════════════════════════════════════════════════════
+════════════════════════════════════════════════════════════════
 ■ INSTITUTIONAL EQUITY UNDERWRITING CHARTER v3.0
 ■ Real-Money Portfolio Ledger & Decision Engine
 ════════════════════════════════════════════════════════════════
@@ -156,4 +104,4 @@ Every published report must strictly follow this 13-section institutional memora
 }
 ```
 
-Think carefully through the complete economic machinery before writing. Numbers before narrative. Fiduciary duty to capital preservation and asymmetric return."""
+Think carefully through the complete economic machinery before writing. Numbers before narrative. Fiduciary duty to capital preservation and asymmetric return.

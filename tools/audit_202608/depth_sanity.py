@@ -43,6 +43,7 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 # collected first closes the buffer out from under the other, and every print then raises
 # "I/O operation on closed file". Importing it is enough to get utf-8 output.
 from consensus_valuation import extract_iv  # noqa: E402
+from fiduciary_gate import contract_base  # noqa: E402  (single owner for the contract base)
 
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 CONS = HERE / "ab_reports" / "consensus"
@@ -85,11 +86,57 @@ def audit(ticker, verdict):
     # --- the verdict must follow from its own band -------------------------------------------
     if lo is not None and hi is not None and price:
         expect = "overvalued" if price > hi else "undervalued" if price < lo else "hold"
-        if expect != direction:
+        # Asymmetric compounder hold check:
+        sc = verdict.get("scorecard") or {}
+        moat = sc.get("median_quality_moat") or sc.get("business_quality_moat")
+        skew = sc.get("asymmetric_payoff_skew")
+        if expect == "overvalued" and direction == "hold" and moat and float(moat) >= 4.0 and skew and float(skew) >= 2.0:
+            pass  # Allowed asymmetric compounder override
+        elif expect != direction and not (direction == "hold" and verdict.get("spread_pct") and verdict.get("spread_pct") > 25.0):
             note(2, f"direction '{direction}' contradicts its band: price ${price} vs "
                     f"${lo}-${hi} implies '{expect}'")
     elif direction != "NOT_USABLE":
         note(2, "no band, but a direction was published")
+
+    # --- strict non-convergence gate audit ---------------------------------------------------
+    spread = verdict.get("spread_pct")
+    flags = verdict.get("flags") or []
+    tol = 25.0
+    if spread is not None and spread > tol and direction == "undervalued":
+        note(2, f"illegal directional buy under high dispersion (spread {spread}% > {tol}%) — violates non-convergence gate")
+    if "HIGH_DISPERSION_QUARANTINE" in flags and direction == "undervalued":
+        note(2, f"directional buy published with HIGH_DISPERSION_QUARANTINE flag")
+
+    # --- fiduciary scorecard validation -----------------------------------------------------
+    sc = verdict.get("scorecard") or {}
+    if sc:
+        # CONTRACT BASE, resolved exactly as depth_pipeline.contract_base() does: `base_iv` is the
+        # medoid sample's own base and owns MoS/Kelly; `median_iv` is the cross-sample DISPERSION
+        # statistic and is a fallback only for verdicts predating 2026-09-20. Reading the median
+        # as the base flagged every coherent contract whose median sat the other side of the price
+        # — precisely GEV's shape, where the medoid's base was $1,037.88 and the median $934.54.
+        # `or lo` is the auditor's OWN tolerance for a ledger row carrying no IV at all. It stays
+        # HERE, at the call site, and is deliberately NOT folded into the rule: the rule has one
+        # owner, imported above, because a second definition is a second policy.
+        base = contract_base(sc) or lo
+        bull = sc.get("median_bull_iv")
+        bear = sc.get("median_bear_iv")
+        if bull is not None and base is not None and bull < (base - 0.05):
+            note(2, f"fiduciary contract failure: Bull IV (${bull}) < Base IV (${base}) — scenario monotonicity violated")
+        if bear is not None and base is not None and bear > (base + 0.05):
+            note(2, f"fiduciary contract failure: Bear IV (${bear}) > Base IV (${base}) — scenario monotonicity violated")
+        if bear is not None and bull is not None and bear > bull:
+            note(2, f"fiduciary contract failure: Bear IV (${bear}) > Bull IV (${bull}) — scenario monotonicity violated")
+        kelly = sc.get("median_kelly_fraction_pct") or sc.get("kelly_fraction_pct")
+        if kelly is not None and kelly > 0 and base is not None and price is not None and base <= price:
+            note(2, f"fiduciary contract failure: Kelly fraction {kelly}% > 0 on non-positive margin of safety (Base ${base} <= Price ${price})")
+
+    # --- lost-sample sizing penalty check ----------------------------------------------------
+    samples_run = verdict.get("samples_run") or doc.get("samples_run")
+    early_stop = verdict.get("early_stop") or doc.get("early_stop")
+    if samples_run == 3 and n == 2 and not early_stop:
+        if verdict.get("size_hint") == "full":
+            note(1, "lost sample: size hint 'full' published despite lost sample — should be capped at half")
 
     # --- sample accounting -------------------------------------------------------------------
     runs = doc.get("runs") or []
@@ -98,7 +145,7 @@ def audit(ticker, verdict):
     # A sample that raised before producing a result never gets a runs[] entry, so counting only
     # recorded runs makes it invisible. EXPE published on ONE sample and the audit reported only
     # the point band, because samples 2 and 3 died with HTTP 400 and left no trace here.
-    intended = 3
+    intended = 2 if doc.get("early_stop") else (doc.get("samples_run") or 3)
     if runs and len(runs) < intended:
         note(2, f"only {len(runs)} of {intended} samples produced ANY result — "
                 f"{intended - len(runs)} raised before recording. Check the sweep log for "
@@ -141,8 +188,12 @@ def audit(ticker, verdict):
         note(1, "single surviving sample — the band is a POINT, so the published spread is "
                 "unknowable and the size hint rests on one opinion")
     elif n == 2:
-        note(1, "two surviving samples — band is ~1/3 narrower than a 3-sample band would be, "
-                "which biases the verdict toward a directional call over 'hold'")
+        if doc.get("early_stop"):
+            note(0, f"two surviving samples — tight early convergence (spread {verdict.get('spread_pct')}%, "
+                    f"early bar {doc.get('early_tolerance_pct', 15):.0f}%)")
+        else:
+            note(1, "two surviving samples — band is ~1/3 narrower than a 3-sample band would be, "
+                    "which biases the verdict toward a directional call over 'hold'")
 
     # --- did the guard remove an opinion that agreed with the survivors? ---------------------
     rejected = [r for r in runs if r.get("iv") and not r.get("plausible")]
@@ -157,14 +208,27 @@ def audit(ticker, verdict):
 
 
 def main():
+    global LEDGER
+    argv = list(sys.argv[1:])
+    # --ledger PATH: audit against an alternate ledger (on-demand verdicts live in
+    # cache/depth_ondemand_ledger.jsonl — see depth_ondemand.py). Pop the flag AND its value
+    # here: the ticker filter below drops "--flags" but would happily parse the PATH VALUE as
+    # the ticker.
+    if "--ledger" in argv:
+        i = argv.index("--ledger")
+        if i + 1 >= len(argv):
+            print("--ledger needs a path")
+            return 2
+        LEDGER = Path(argv[i + 1])
+        del argv[i:i + 2]
     verdicts = newest_verdicts()
-    if "--all" in sys.argv:
+    if "--all" in argv:
         targets = sorted(verdicts)
     else:
         # .strip() is load-bearing: piped from a shell on Windows the ticker arrives as "EXPE\r",
         # which prints identically to "EXPE" but matches nothing, so the audit silently reported
         # "no verdict on file" for a verdict that was sitting right there in the ledger.
-        args = [a.strip() for a in sys.argv[1:] if not a.startswith("--") and a.strip()]
+        args = [a.strip() for a in argv if not a.startswith("--") and a.strip()]
         targets = [args[0].upper()] if args else [max(verdicts, key=lambda t: verdicts[t]["date"])]
     worst = 0
     for t in targets:
