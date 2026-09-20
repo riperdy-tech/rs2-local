@@ -323,11 +323,16 @@ def _growth_evidence(ydata):
     return rc, fc
 
 
-def _solve_implied_growth(base_cf, target_value, wacc):
-    """Bisection for stage-1 g s.t. dcf_value == target_value (market cap). Wide bounds."""
+def _solve_implied_growth(base_cf, target_value, wacc, g_term=None):
+    """Bisection for stage-1 g s.t. dcf_value == target_value (market cap). Wide bounds.
+
+    `g_term` defaults to the engine's TERMINAL_G, so existing callers are unchanged; backbone()
+    passes the long-run growth anchor's rate when one is available.
+    """
     if base_cf <= 0 or target_value <= 0:
         return None
-    f = lambda g: ve.dcf_value(base_cf, g, wacc, TERMINAL_G, STAGE1, FADE)
+    term = TERMINAL_G if g_term is None else g_term
+    f = lambda g: ve.dcf_value(base_cf, g, wacc, term, STAGE1, FADE)
     lo_v, hi_v = f(G_LO), f(G_HI)
     if lo_v is None or hi_v is None:
         return None
@@ -997,7 +1002,23 @@ def _financial_backbone(t, ydata, price, mcap, shares, coe=FIN_COE, pb_kind="fin
         "consensus_stale": band["stale"] if band else None,
         "consensus_age_days": band["age_days"] if band else None,
         "expectations_gap_pts": round(gap_pts, 1), "verdict": _fin_verdict(gap_pts),
+        # Sector-LEVEL anchored context. `_comps_check` was only ever called on the reverse-DCF
+        # return, so banks, insurers, mortgage names and regulated utilities — the archetypes
+        # MOST sensitive to the discount rate — received no anchored context at all. The anchor
+        # legs are sector-level and therefore valid on this route; the EV/EBIT leg is NOT, and
+        # is deliberately excluded: an enterprise-value multiple is meaningless for a
+        # balance-sheet business.
+        **_anchor_band_only(rs2_data.sector_lookup(t)[0]),
     }
+
+
+def _anchor_band_only(sector):
+    """The sector-level anchor fields, without the EV/EBIT legs.
+
+    A separate function so a route that cannot support EV/EBIT still gets the anchored band,
+    and so the exclusion is explicit rather than an omission.
+    """
+    return rs2_data.anchor_multiple_bands(sector)
 
 
 # ── Cross-sectional MoS calibration ────────────────────────────────────────────────────────
@@ -1026,11 +1047,88 @@ COE_CAL_CACHE = HERE / "cache" / "coe_calibration.json"
 COE_CAL_G_LO, COE_CAL_G_HI = -0.05, 0.35     # calibration growth clamp (mirror implied_erp)
 
 
+# A cached offset is only valid under the growth assumption it was SOLVED with. Freshness was
+# deliberately not gated here ("level continuity beats freshness"); CONSISTENCY is a different
+# requirement. An offset solved at 2.5% perpetuity and applied while the engine values at 3.5%
+# does not achieve the aggregate it claims to — it lands the book at a level nobody chose.
+COE_CAL_G_TERMINAL_TOL = 1e-6
+
+
+def _coe_cache_applicable(d, g_term):
+    """(applicable, reason) for a cached calibration under the terminal growth now in force."""
+    if not isinstance(d.get("level_offset_pts"), (int, float)):
+        return False, "no_cached_offset"
+    stamped = d.get("terminal_g")
+    if not isinstance(stamped, (int, float)):
+        # Written before the stamp existed: its assumption is unknown, so it cannot be trusted.
+        return False, "cache_predates_terminal_g_stamp"
+    if abs(float(stamped) - float(g_term)) > COE_CAL_G_TERMINAL_TOL:
+        return False, f"cache_solved_at_terminal_g={float(stamped):.4f}_engine_runs_{g_term:.4f}"
+    return True, "cache_matches"
+
+
 def coe_offset_pts():
-    """Level offset (pts) to add to every sector rate, or 0.0 when uncalibrated."""
+    """Level offset (pts) to add to every sector rate, or 0.0 when uncalibrated.
+
+    ANCHOR-FIRST (2026-09). MRI now publishes an EXTERNAL, measured market cost-of-equity
+    level (risk-free curve + a measured equity risk premium) as an additive artifact. When a
+    fresh, undegraded one is present it sets the LEVEL, and the offset that lands the raw
+    sector table on that level is what this returns. Sector spreads are untouched, which is
+    the whole point: they carry the ranking information (C1) while the level is what was
+    unsourced.
+
+    Fallback is the self-referential calibration, unchanged: it reverse-solves the level from
+    RS2's OWN book, using RS2's own terminal growth and sector table, with no external rate
+    input at all. That remains the answer when no anchor is present, but it is strictly weaker
+    evidence -- it cannot disagree with the market it is derived from.
+
+    The cache is applied ONLY when it was solved under the terminal growth now in force;
+    otherwise the raw sector table is used (offset 0) and coe_level_source() says why. Silently
+    applying an offset solved under a different perpetual rate is the same failure this whole
+    change exists to remove: a derived number outliving its assumption.
+    """
+    anchor_level, _anchor_src = rs2_data.anchor_level_cost_of_equity_pct()
+    if anchor_level is not None:
+        table_mean = sum(SECTOR_WACC.values()) / len(SECTOR_WACC)
+        return round(anchor_level - table_mean, 1)
     d = rs2_data.load_json(COE_CAL_CACHE) or {}
-    v = d.get("level_offset_pts")
-    return float(v) if isinstance(v, (int, float)) else 0.0
+    g_term, _g_src = terminal_g()
+    applicable, _reason = _coe_cache_applicable(d, g_term)
+    return float(d["level_offset_pts"]) if applicable else 0.0
+
+
+def coe_level_source():
+    """Which evidence set the discount-rate LEVEL, for the record (never silently)."""
+    anchor_level, anchor_src = rs2_data.anchor_level_cost_of_equity_pct()
+    if anchor_level is not None:
+        return f"mri_anchor(level={anchor_level:.2f}%)"
+    d = rs2_data.load_json(COE_CAL_CACHE) or {}
+    g_term, _g_src = terminal_g()
+    applicable, reason = _coe_cache_applicable(d, g_term)
+    if applicable:
+        return (
+            f"self_referential_calibration(offset={d['level_offset_pts']}pts,"
+            f"terminal_g={g_term:.4f},{anchor_src})"
+        )
+    return f"raw_sector_table(calibration_not_applicable:{reason};{anchor_src})"
+
+
+def terminal_g():
+    """(terminal_g, source) — perpetual growth for the DCF, anchor-first.
+
+    A perpetual growth rate must not exceed the economy's nominal trend, and MRI now measures
+    that trend from observed potential output plus the market's long-run inflation expectation.
+    When that anchor is fresh and undegraded it drives the DCF; otherwise the engine keeps its
+    own 0.025 constant exactly as before.
+
+    This rate feeds _solve_implied_growth(), so a wrong value shifts EVERY issuer's
+    expectations_gap_pts in the same direction -- which is precisely why it is now sourced,
+    versioned and revisable rather than assumed.
+    """
+    value, source = rs2_data.anchor_terminal_g()
+    if value is None:
+        return TERMINAL_G, f"engine_constant({source})"
+    return value, source
 
 
 def _calibration_names(tickers):
@@ -1057,21 +1155,33 @@ def _calibration_names(tickers):
     return names
 
 
-def _agg_value(names, rate_of):
+def _agg_value(names, rate_of, g_term=None):
+    """Aggregate DCF over the calibration set at the rates `rate_of` returns.
+
+    `g_term` MUST be the same perpetual growth the engine values names with. It defaulted to the
+    module constant TERMINAL_G, which was correct only while the engine also used TERMINAL_G:
+    once backbone() started taking the rate from the long-run growth anchor, this solved "what
+    rate makes the aggregate match market cap assuming 2.5% perpetual growth" while the engine
+    answered "assuming 3.5%". The offset it produced was then mis-levelled by construction, and
+    the docstring's own claim -- that the offset is the one achieving the same aggregate -- was
+    false. Leaving it parameterised rather than re-reading the global keeps the solver honest for
+    any caller that passes a rate explicitly.
+    """
+    term = TERMINAL_G if g_term is None else g_term
     tot = 0.0
     for n in names:
         r = rate_of(n)
-        if r <= TERMINAL_G:
-            r = TERMINAL_G + 0.005
+        if r <= term:
+            r = term + 0.005
         cf, v, g = n["ni"], 0.0, n["g"]
         for i in range(1, STAGE1 + 1):
             cf *= 1 + g
             v += cf / (1 + r) ** i
         for j in range(1, FADE + 1):
-            gg = g + (TERMINAL_G - g) * j / FADE
+            gg = g + (term - g) * j / FADE
             cf *= 1 + gg
             v += cf / (1 + r) ** (STAGE1 + j)
-        v += (cf * (1 + TERMINAL_G) / (r - TERMINAL_G)) / (1 + r) ** (STAGE1 + FADE)
+        v += (cf * (1 + term) / (r - term)) / (1 + r) ** (STAGE1 + FADE)
         tot += v
     return tot
 
@@ -1083,17 +1193,23 @@ def build_coe_calibration(tickers):
     market-implied CoE, reported for the record) and (b) the OFFSET added to the raw sector
     table that achieves the same aggregate — (b) is what the engine applies, so sector
     spreads survive. The solver always uses the RAW table (never the anchored rates), so
-    there is no feedback loop between sweeps."""
+    there is no feedback loop between sweeps.
+
+    The solver uses terminal_g() — the SAME rate backbone() values names with — so the offset
+    actually achieves the aggregate it claims to. `terminal_g()` falls back to TERMINAL_G when
+    no anchor is present, which is byte-identical to the previous behaviour.
+    """
     names = _calibration_names(tickers)
     if len(names) < 30:
         return None
     M = sum(n["mcap"] for n in names)
+    _g_term, _g_src = terminal_g()
 
     def _solve(rate_of_mid):
         lo, hi = -0.06, 0.50
         for _ in range(80):
             mid = (lo + hi) / 2
-            if _agg_value(names, rate_of_mid(mid)) > M:
+            if _agg_value(names, rate_of_mid(mid), _g_term) > M:
                 lo = mid
             else:
                 hi = mid
@@ -1106,7 +1222,9 @@ def build_coe_calibration(tickers):
            "aggregate_mcap_b": round(M / 1e9, 1),
            "aggregate_ttm_ni_b": round(sum(n["ni"] for n in names) / 1e9, 1),
            "implied_coe_pct": round(implied * 100, 2),
-           "level_offset_pts": round(offset * 100, 1)}
+           "level_offset_pts": round(offset * 100, 1),
+           # Recorded so a cached offset can be traced to the growth assumption that produced it.
+           "terminal_g": _g_term, "terminal_g_source": _g_src}
     COE_CAL_CACHE.parent.mkdir(parents=True, exist_ok=True)
     COE_CAL_CACHE.write_text(json.dumps(out, indent=2), encoding="utf-8")
     return out
@@ -1190,20 +1308,31 @@ def build_evebit_calibration():
 
 def _comps_check(ticker, sector):
     """{ev_ebit, sector_evebit_median, evebit_rel, comps_signal} or {} when either side is
-    missing (no signal is a valid answer — never proxied)."""
+    missing (no signal is a valid answer — never proxied).
+
+    Extended with MRI's regime-conditional band for this sector when one is published. The two
+    legs are kept SEPARATE and labelled rather than merged, because they are different objects:
+    `anchor_ntm_pe` is a market-observed multiple distribution (may be null when MRI has no
+    valuation panel), while `anchor_arithmetic_check.justified_pe` is a Gordon cross-check off
+    the cost-of-capital and growth anchors. Merging them would let an arithmetic identity
+    masquerade as a market observation.
+    """
+    anchor_band = rs2_data.anchor_multiple_bands(sector)
     if not sector:
-        return {}
+        return dict(anchor_band) if anchor_band else {}
     cal = rs2_data.load_json(EVEBIT_CACHE) or {}
     m = (cal.get("sector_median") or {}).get(sector)
     fin = rs2_data.load_json(SD / "financials" / f"{ticker.upper()}.json") or {}
     v = _num((fin.get("Calculated_Metrics") or {}).get("EV_to_EBIT"))
     if m is None or v is None or v <= 0:
-        return {}
+        return dict(anchor_band) if anchor_band else {}
     rel = round(v / m, 2)
     sig = ("cheap" if rel < EVEBIT_CHEAP_REL else
            "rich" if rel > EVEBIT_RICH_REL else "inline")
-    return {"ev_ebit": round(v, 1), "sector_evebit_median": m,
-            "evebit_rel": rel, "comps_signal": sig}
+    out = {"ev_ebit": round(v, 1), "sector_evebit_median": m,
+           "evebit_rel": rel, "comps_signal": sig}
+    out.update(anchor_band)
+    return out
 
 
 def backbone(ticker, force_midcycle=False, force_latest=False):
@@ -1223,6 +1352,7 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
     _coe_off = coe_offset_pts()   # market-anchored LEVEL, sector spreads preserved (audit A2)
     wacc_pct = round(SECTOR_WACC.get(SECTOR_ALIASES.get(sector, sector), DEFAULT_WACC) + _coe_off, 1)
     wacc = wacc_pct / 100.0
+    _t_g, _t_g_src = terminal_g()   # long-run growth anchor when present, else 0.025
 
     # Balance-sheet financials (banks / insurance underwriters / mortgage) -> P/B-ROE model,
     # ALWAYS — their owner earnings are usually positive but economically meaningless, so the
@@ -1297,7 +1427,7 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
                 out["rnpv_scaffold"] = sc
         return out
 
-    implied = _solve_implied_growth(base_cf, mcap, wacc)
+    implied = _solve_implied_growth(base_cf, mcap, wacc, _t_g)
     if implied is None:
         return {"ok": False, "reason": "solver_failed", "price": price, "market_cap": mcap}
 
@@ -1330,14 +1460,14 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
     fv_method = "blank"
     if g_drive is not None and price:
         g_fair = max(-0.20, min(g_drive, FWD_GROWTH_CEIL))
-        fair_mcap = ve.dcf_value(base_cf, g_fair, wacc, TERMINAL_G, stage1_years=STAGE1, fade_years=FADE)
+        fair_mcap = ve.dcf_value(base_cf, g_fair, wacc, _t_g, stage1_years=STAGE1, fade_years=FADE)
         if fair_mcap and fair_mcap > 0:
             raw = price * fair_mcap / mcap
             # Growth sensitivity — TELEMETRY ONLY since 2026-08-13 (surfaced as
             # fv_sensitivity_pts); it no longer gates. See MOS_EXTREME_MAX for why.
             def _fv(gg):
                 fm = ve.dcf_value(base_cf, max(-0.20, min(gg, FWD_GROWTH_CEIL)), wacc,
-                                  TERMINAL_G, stage1_years=STAGE1, fade_years=FADE)
+                                  _t_g, stage1_years=STAGE1, fade_years=FADE)
                 return (price * fm / mcap) if (fm and fm > 0) else None
             _up, _dn = _fv(g_drive + 0.01), _fv(g_drive - 0.01)
             sens = (abs(_up - _dn) / price * 100.0) if (_up and _dn and price) else None
@@ -1399,7 +1529,8 @@ def backbone(ticker, force_midcycle=False, force_latest=False):
         "lattice": lattice,
         "contested": bool((lattice or {}).get("contested")),
         "wacc": wacc, "wacc_pct": wacc_pct, "coe_anchor_offset_pts": _coe_off,
-        "terminal_growth": TERMINAL_G,
+        "coe_level_source": coe_level_source(),
+        "terminal_growth": _t_g, "terminal_growth_source": _t_g_src,
         "stage1_years": STAGE1, "fade_years": FADE,
         "implied_growth": round(implied, 4), "implied_growth_clamped": implied in (G_LO, G_HI),
         "hist_revenue_cagr_5y": round(rev_cagr, 4) if rev_cagr is not None else None,

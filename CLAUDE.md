@@ -89,4 +89,25 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ---
 
+## 5. Testing — the canonical invocation
+
+No single venv covers this repo, so the interpreter matters:
+
+| Environment | Has | Use for |
+| --- | --- | --- |
+| **System Python 3.12** (`C:\Program Files\Python312\python.exe`) | pytest, pandas, numpy | **The test suite.** `research-venv` has NO pytest. |
+| `research-venv` | pandas, numpy, trafilatura, typer | the deep-research (LDR) subprocesses |
+
+```bash
+"C:\Program Files\Python312\python.exe" -m pytest tests tools/audit_202608/tests -q
+```
+
+`tests/test_sync_state.py` shells out to `git clone` of a local bare repo. Under a restrictive
+sandbox (including the DSH file sandbox) that fails with
+`sh.exe: couldn't create signal pipe, Win32 error 5` — an environment restriction on named
+pipes, not a code defect; with normal file access it passes. If exactly those tests fail and
+everything else is green, check the sandbox before touching `sync_state.py`.
+
+---
+
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

@@ -87,6 +87,51 @@ def sector_lookup(ticker):
     return _SECTOR_CACHE.get(t, (None, None))
 
 
+_NAME_CACHE = None
+
+def resolve_name(ticker):
+    """Company name for web-research queries. A bare ticker is an ambiguous search subject:
+    "CART stock" researched the industrial-carts market and "EW ..." Entertainment Weekly, so
+    every research spawn must carry the name when one exists.
+
+    Zero-network first: financials/{T}.json Name (legacy schema — measured 2026-08-29: 0 of
+    6,885 files on disk still carry it, kept for a schema that restores it), then the screener's
+    stocks.csv universe (cached, has every listed symbol's Name). yfinance only as a last resort
+    for names outside the screener universe — before the stocks.csv tier existed, the dead
+    financials tier sent EVERY call to the network."""
+    global _NAME_CACHE
+    t = ticker.upper()
+    fin = load_json(Path(CONFIG["screener_data_dir"]) / "financials" / f"{t}.json") or {}
+    name = str(fin.get("Name") or "").strip()
+    if name:
+        return name
+    if _NAME_CACHE is None:
+        _NAME_CACHE = {}
+        try:
+            import csv
+            path = Path(CONFIG["screener_data_dir"]) / "stocks.csv"
+            with open(path, "r", encoding="utf-8", newline="") as f:
+                r = csv.DictReader(f)
+                syc = next((c for c in r.fieldnames if c.lower() == "symbol"), None)
+                nc = next((c for c in r.fieldnames if c.lower() == "name"), None)
+                for row in r:
+                    sym = (row.get(syc) or "").upper()
+                    nm = (row.get(nc) or "").strip()
+                    if sym and nm:
+                        _NAME_CACHE[sym] = nm
+        except Exception:
+            _NAME_CACHE = {}
+    name = _NAME_CACHE.get(t, "")
+    if name:
+        return name
+    try:
+        import yfinance as yf
+        info = yf.Ticker(t).info or {}
+        return info.get("longName") or info.get("shortName") or ""
+    except Exception:
+        return ""
+
+
 # Sectors where the reverse-triage archetype tends to mislabel cyclicals as quality/platform.
 CYCLICAL_SECTORS = ("energy", "materials", "industrials", "utilities")
 
@@ -834,6 +879,201 @@ def _fresh(date_str, max_age_days):
         except ValueError:
             continue
     return False
+
+
+# ── MRI capital-market anchors (v0.2) ────────────────────────────────────────────────────────
+# The anchors are ADDITIVE MRI artifacts: external, measured levels for the equity cost of
+# capital and long-run nominal growth, replacing constants this engine had to assume. They are
+# read every time and NEVER cached into config.json, so re-running MRI is enough to pick up a
+# new vintage. Consumption is anchor-first with an explicit fallback (see valuation_backbone
+# terminal_g() / coe_offset_pts()); a missing, unreadable, stale or degraded anchor changes
+# nothing, and the backbone records which path it took.
+ANCHOR_FILES = {
+    "cost_of_capital": "cost_of_capital_anchor.json",
+    "long_run_growth": "long_run_growth_anchor.json",
+    "sector_multiple_bands": "sector_multiple_bands.json",
+    "repair_package": "rs2_repair_package.json",
+}
+
+_ANCHOR_CACHE = None
+
+# Sector vocabulary bridge. RS2 carries Yahoo/GICS-style sector names (stocks.csv "Sector":
+# "Technology", "Healthcare", "Financial Services", ...) while MRI publishes snake_case sector
+# ids ("information_technology", "health_care", "financials"). Those two sets have NO value in
+# common, so a lookup that passes one straight into the other matches nothing and the anchor
+# band silently never appears -- a dead feature that looks like a data gap. The bridge is
+# explicit and total, and mri_sector_id() normalises the residual cases rather than guessing.
+MRI_SECTOR_IDS = {
+    "basic materials": "materials",
+    "communication services": "communication_services",
+    "consumer cyclical": "consumer_discretionary",
+    "consumer defensive": "consumer_staples",
+    "energy": "energy",
+    "financial services": "financials",
+    "financials": "financials",
+    "healthcare": "health_care",
+    "health care": "health_care",
+    "industrials": "industrials",
+    "materials": "materials",
+    "real estate": "real_estate",
+    "technology": "information_technology",
+    "information technology": "information_technology",
+    "utilities": "utilities",
+    # Yahoo uses these two for "we do not know"; they must NOT be mapped onto a real sector.
+    "": None,
+    "unknown": None,
+    "none": None,
+}
+
+
+def mri_sector_id(sector):
+    """Map a sector label from ANY source RS2 holds to MRI's snake_case anchor id.
+
+    Returns None for an unknown or empty label. None is a real answer here: an unmapped sector
+    means "no anchored band for this name", which the caller reports as an absent signal rather
+    than attaching another sector's band.
+    """
+    if not sector:
+        return None
+    key = " ".join(str(sector).strip().lower().replace("/", " ").replace("-", " ").split())
+    if key in MRI_SECTOR_IDS:
+        return MRI_SECTOR_IDS[key]
+    snake = key.replace(" ", "_")
+    return snake or None
+
+
+
+def anchors_dir():
+    """Where the anchors live. Defaults to mri_outputs_dir (MRI writes them into outputs/)."""
+    return Path(CONFIG.get("anchors_dir") or CONFIG["mri_outputs_dir"])
+
+
+def load_anchors(force=False):
+    """{name: payload} for whichever anchor artifacts exist. Missing files are simply absent.
+
+    Reads are cheap and the payloads are small, but the whole set is cached per process because
+    backbone() is called once per ticker and would otherwise re-read them hundreds of times.
+    """
+    global _ANCHOR_CACHE
+    if _ANCHOR_CACHE is None or force:
+        d = anchors_dir()
+        _ANCHOR_CACHE = {name: load_json(d / fname) for name, fname in ANCHOR_FILES.items()}
+    return _ANCHOR_CACHE
+
+
+def anchor_age_days(payload):
+    """Age in days of an anchor payload, from its own `asof`. None when undatable.
+
+    Datable by `asof` (the observation date the anchor describes), NOT `built_at`: an anchor
+    built today off two-month-old inputs is two months old in substance, and the payload says so.
+    """
+    if not isinstance(payload, dict):
+        return None
+    asof = payload.get("asof")
+    if not asof:
+        return None
+    try:
+        dt = datetime.strptime(str(asof)[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+    return (datetime.now() - dt).days
+
+
+def usable_anchor(name, max_age_days=None):
+    """The anchor payload when it is present, undegraded, datable and not stale; else None.
+
+    Returning None is the whole interface: every caller then keeps its existing constant. This is
+    the same discipline as mos_cut() returning None -- "we could not measure it" must not silently
+    become "we measured the default".
+    """
+    payload = load_anchors().get(name)
+    if not isinstance(payload, dict):
+        return None
+    # `degraded` means at least one leg of the anchor could not be measured. Consuming a degraded
+    # anchor's measured legs would be fine; consuming its nulls as if they were numbers is not, so
+    # the caller checks the specific field it needs and this gate only rejects the whole payload
+    # when the consumer asked for it to be clean.
+    if max_age_days is None:
+        max_age_days = CONFIG.get("anchor_max_age_days", 75)
+    age = anchor_age_days(payload)
+    if age is None or not (0 <= age <= max_age_days):
+        return None
+    return payload
+
+
+def anchor_level_cost_of_equity_pct():
+    """(level_pct, source) — the cost of EQUITY level in percent, or (None, reason).
+
+    Reads `implied_cost_of_equity`, which MRI solves from whichever equity aggregate it has —
+    an index aggregate or a screener universe. The BASIS travels in the source string, because
+    a universe-implied rate is weaker evidence than an index-implied one and the caller should
+    be able to see which it got.
+
+    Falls back to nothing: the observed 10y is a RISK-FREE rate, and returning it as a "cost of
+    equity" would understate the discount rate by the whole equity premium.
+    """
+    payload = usable_anchor("cost_of_capital")
+    if payload is None:
+        return None, "no_usable_cost_of_capital_anchor"
+    coe = payload.get("implied_cost_of_equity")
+    basis = payload.get("erp_basis") or "unknown"
+    asof = payload.get("asof")
+    if isinstance(coe, (int, float)) and coe > 0:
+        return float(coe) * 100.0, f"anchor_implied_coe({basis},{asof})"
+    rf = (payload.get("risk_free") or {}).get("nominal_10y")
+    if isinstance(rf, (int, float)) and rf > 0:
+        return None, f"anchor_has_no_implied_erp_risk_free_only({asof})"
+    return None, "anchor_cost_of_capital_legs_unavailable"
+
+
+def anchor_terminal_g():
+    """(terminal_g, source) — the long-run nominal growth anchor's suggestion, or (None, reason)."""
+    payload = usable_anchor("long_run_growth")
+    if payload is None:
+        return None, "no_usable_long_run_growth_anchor"
+    if payload.get("degraded"):
+        return None, f"long_run_growth_anchor_degraded({payload.get('asof')})"
+    value = payload.get("terminal_g_suggestion")
+    if not isinstance(value, (int, float)):
+        return None, "long_run_growth_anchor_has_no_suggestion"
+    return float(value), f"anchor_long_run_growth({payload.get('asof')})"
+
+
+def anchor_multiple_bands(sector=None):
+    """Sector bands from the anchor, or {} when the market-observed leg is unavailable.
+
+    A payload with `panel_source: unavailable` carries null quantiles and only the arithmetic
+    Gordon leg. Those are different objects, so the caller gets them labelled rather than merged.
+
+    `sector` may be given in RS2's own vocabulary: it is bridged through mri_sector_id() so the
+    lookup cannot silently miss every name (see MRI_SECTOR_IDS).
+    """
+    payload = usable_anchor("sector_multiple_bands")
+    if payload is None:
+        return {}
+    wanted = mri_sector_id(sector) if sector is not None else None
+    bands = {}
+    for band in payload.get("bands") or []:
+        if not isinstance(band, dict):
+            continue
+        sid = band.get("sector_id")
+        if sid and (sector is None or sid == wanted):
+            bands[sid] = band
+    if sector is None:
+        return {"panel_source": payload.get("panel_source"), "bands": bands}
+    entry = bands.get(wanted)
+    if entry is None:
+        return {}
+    return {
+        "anchor_panel_source": payload.get("panel_source"),
+        "anchor_regime_state": entry.get("regime_state"),
+        "anchor_ntm_pe": entry.get("ntm_pe") or {},
+        "anchor_ntm_pe_n": entry.get("n_obs"),
+        "anchor_conditioning_level": entry.get("conditioning_level") or [],
+        "anchor_arithmetic_check": entry.get("arithmetic_check") or {},
+        "anchor_asof": payload.get("asof"),
+    }
+
 
 
 def macro_block(macro_state, regime):
