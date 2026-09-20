@@ -50,29 +50,55 @@ def test_owner_cf_can_be_negative():
 
 # ---- Part A: the pack prints it, quietly and symmetrically -----------------------------
 
-@pytest.fixture(scope="module")
-def gev_pack():
+@pytest.fixture
+def gev_pack(screener_data_stub):
+    # `screener_data_stub` (conftest) redirects the data directory to a committed GEV slice.
+    # Without it this fixture read the operator's `Downloads` path and the tests below passed
+    # only on the machine that wrote them. Function scope, not module: the stub is per-test.
     return cap.build_pack("GEV")
 
 
+def _require_section5(pack):
+    """Skip when the pack carries no fiscal-year table.
+
+    The committed fixture (`conftest.screener_data_stub`) reproduces SECTION 5 from real GEV data,
+    but the SEC companyfacts path is deeper than that slice covers: with the data directory
+    redirected, `_sec_facts()` still returns empty and the table renders as "all 0 years we
+    hold". These tests assert on the CONTENT of that table, so on a machine without the filings
+    they would fail - or, worse, pass vacuously against an empty table.
+
+    HERMETICITY IS NOT ACHIEVED HERE. This is an explicit, visible dependency, which is the
+    honest alternative to a test that reports success while measuring nothing - the failure mode
+    this suite has already produced twice.
+    """
+    if "## SECTION 5" not in pack:
+        pytest.skip("pack has no SECTION 5 - screener data unavailable")
+    sec5 = pack.split("## SECTION 5")[1].split("## SECTION 6")[0]
+    if not any(l.strip().startswith("| 20") for l in sec5.splitlines()):
+        pytest.skip("no fiscal-year rows in SECTION 5 - screener sec_facts unavailable")
+    return sec5
+
+
 def test_the_pack_prints_the_owner_cash_flow_column(gev_pack):
+    _require_section5(gev_pack)
     assert "owner CF [Arithmetic]" in gev_pack
 
 
 def test_the_column_sits_in_the_section_5_table(gev_pack):
     # Named for the section whose inputs it uses, so its provenance is unambiguous.
-    sec5 = gev_pack.split("## SECTION 5")[1].split("## SECTION 6")[0]
+    sec5 = _require_section5(gev_pack)
     assert "owner CF [Arithmetic]" in sec5
 
 
 def test_the_arithmetic_line_is_not_a_headline(gev_pack):
     # The quiet requirement, pinned. A callout would make one basis salient.
+    _require_section5(gev_pack)
     head = "\n".join(gev_pack.splitlines()[:60])
     assert "owner CF" not in head
 
 
 def test_the_section_5_header_and_separator_have_equal_widths(gev_pack):
-    sec5 = gev_pack.split("## SECTION 5")[1].split("\n")
+    sec5 = _require_section5(gev_pack).split("\n")
     header = next(l for l in sec5 if "OCF" in l and "capex" in l)
     sep = next(l for l in sec5 if set(l.strip()) <= set("-| "))
     cols = lambda line: len([c for c in line.split("|") if c.strip()])
@@ -80,7 +106,7 @@ def test_the_section_5_header_and_separator_have_equal_widths(gev_pack):
 
 
 def test_every_fiscal_year_row_has_the_same_width_as_the_header(gev_pack):
-    sec5 = gev_pack.split("## SECTION 5")[1].split("## SECTION 6")[0].splitlines()
+    sec5 = _require_section5(gev_pack).splitlines()
     header = next(l for l in sec5 if "OCF" in l and "capex" in l)
     sep = sec5.index(next(l for l in sec5 if set(l.strip()) <= set("-| ")))
     # The table is contiguous and terminated by a blank line; the note bullets that follow it are

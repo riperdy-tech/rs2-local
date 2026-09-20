@@ -132,9 +132,14 @@ def audit(ticker, verdict):
             note(2, f"fiduciary contract failure: Kelly fraction {kelly}% > 0 on non-positive margin of safety (Base ${base} <= Price ${price})")
 
     # --- lost-sample sizing penalty check ----------------------------------------------------
-    samples_run = verdict.get("samples_run") or doc.get("samples_run")
     early_stop = verdict.get("early_stop") or doc.get("early_stop")
-    if samples_run == 3 and n == 2 and not early_stop:
+    # `samples_attempted` (iterations the loop ENTERED) is the honest denominator; `samples_run`
+    # is only what got recorded, so keying on it made this rule blind to the loss it exists for.
+    # The fallback preserves the old meaning for snapshots written before the field existed.
+    samples_attempted = (doc.get("samples_attempted") or verdict.get("samples_attempted")
+                         or (2 if early_stop else (verdict.get("samples_run")
+                                                  or doc.get("samples_run"))))
+    if samples_attempted == 3 and n == 2 and not early_stop:
         if verdict.get("size_hint") == "full":
             note(1, "lost sample: size hint 'full' published despite lost sample — should be capped at half")
 
@@ -145,7 +150,12 @@ def audit(ticker, verdict):
     # A sample that raised before producing a result never gets a runs[] entry, so counting only
     # recorded runs makes it invisible. EXPE published on ONE sample and the audit reported only
     # the point band, because samples 2 and 3 died with HTTP 400 and left no trace here.
-    intended = 2 if doc.get("early_stop") else (doc.get("samples_run") or 3)
+    # `intended` must therefore be how many samples were TRIED, not how many were recorded -
+    # deriving it from `samples_run` made `len(runs) < intended` false by construction and
+    # silenced this check entirely. Older snapshots lack the field, so fall back to the previous
+    # meaning: an adaptive early stop legitimately tried 2, anything else planned 3.
+    intended = (doc.get("samples_attempted")
+                or (2 if doc.get("early_stop") else 3))
     if runs and len(runs) < intended:
         note(2, f"only {len(runs)} of {intended} samples produced ANY result — "
                 f"{intended - len(runs)} raised before recording. Check the sweep log for "

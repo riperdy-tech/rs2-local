@@ -1,0 +1,150 @@
+{
+ "Annual_Income_Statement": [
+  {
+   "BasicEPS": 17.92,
+   "Date": "2025-12-31",
+   "DilutedEPS": 17.69,
+   "GrossProfit": 7535000000.0,
+   "NetIncome": 4884000000.0,
+   "OperatingIncome": 1389000000.0,
+   "TotalRevenue": 38068000000.0
+  },
+  {
+   "BasicEPS": 5.65,
+   "Date": "2024-12-31",
+   "DilutedEPS": 5.58,
+   "GrossProfit": 6085000000.0,
+   "NetIncome": 1552000000.0,
+   "OperatingIncome": 471000000.0,
+   "TotalRevenue": 34935000000.0
+  },
+  {
+   "BasicEPS": -1.6,
+   "Date": "2023-12-31",
+   "DilutedEPS": -1.6,
+   "GrossProfit": 4818000000.0,
+   "NetIncome": -438000000.0,
+   "OperatingIncome": -923000000.0,
+   "TotalRevenue": 33239000000.0
+  },
+  {
+   "BasicEPS": -10.06,
+   "Date": "2022-12-31",
+   "DilutedEPS": -10.06,
+   "GrossProfit": 3458000000.0,
+   "NetIncome": -2736000000.0,
+   "OperatingIncome": -2881000000.0,
+   "TotalRevenue": 29654000000.0
+  },
+  {
+   "BasicEPS": -2.33,
+   "Date": "2021-12-31",
+   "DilutedEPS": -2.33,
+   "GrossProfit": 4945000000.0,
+   "NetIncome": -633000000.0,
+   "OperatingIncome": -884000000.0,
+   "TotalRevenue": 33006000000.0
+  }
+ ],
+ "Calculated_Metrics": {
+  "Beta": 0.967,
+  "Core_Anchor_Multiple_0.4Sales_0.4GP": 14.124255140508748,
+  "Depreciation_Amortization": 853000000.0,
+  "Dividend_Yield": 0.21,
+  "EBITDA": 2242000000.0,
+  "EPS_TTM": 34.87,
+  "EV_to_EBIT": 136.22734716805326,
+  "EV_to_Gross_Profit": 29.373105350872997,
+  "EV_to_Sales": 5.937532500398869,
+  "FCF_Margin_%": 8.968501462518432,
+  "Forward_EPS_Estimate": 25.27552,
+  "Held_Percent_Institutions": 0.81725997,
+  "Monthly_MA_20": 713.1271083374024,
+  "PE_5Y_Avg": 27.235735,
+  "Payout_Ratio": 0.0573,
+  "Price_to_Book": 21.154026,
+  "Rule_of_40": 30.86850146251843,
+  "Short_Percent_Float": 0.0298,
+  "TTM_Gross_Margin_%": 20.214180385331304,
+  "TTM_Revenue": 41367000000.0,
+  "YoY_Revenue_Growth_%": 21.9
+ },
+ "Capital_Expenditure": -1277000000.0,
+ "Data_Fetched_Date": "2026-09-10 15:23",
+ "Enterprise_Value_EV": 245617906944.0,
+ "Free_Cash_Flow_TTM": 3710000000.0,
+ "Market_Cap": 253293906944.0,
+ "Market_Cap_vendor": null,
+ "Monthly_Closes": [
+  300.3905944824219,
+  332.7140197753906,
+  327.7920837402344,
+  371.5900573730469,
+  334.0204162597656,
+  304.2239074707031,
+  369.81890869140625,
+  471.7030944824219,
+  527.721435546875,
+  658.7940673828125,
+  611.5811767578125,
+  613.5068969726562,
+  584.0576782226562,
+  598.66064453125,
+  652.3611450195312,
+  725.560302734375,
+  872.6261596679688,
+  872.4542236328125,
+  1082.9066162109375,
+  967.8255004882812,
+  1174.8599853515625,
+  990.2899780273438,
+  898.530029296875,
+  951.04
+ ],
+ "Next_Earnings_Date": "2026-07-22",
+ "Operating_Cash_Flow": 4987000000.0,
+ "Price": 951.04,
+ "Quarterly_Income_Statement": [
+  {
+   "BasicEPS": 2.49,
+   "Date": "2026-06-30",
+   "DilutedEPS": 2.47,
+   "GrossProfit": 2361000000.0,
+   "NetIncome": 668000000.0,
+   "OperatingIncome": 655000000.0,
+   "TotalRevenue": 11104000000.0
+  },
+  {
+   "BasicEPS": 17.65,
+   "Date": "2026-03-31",
+   "DilutedEPS": 17.44,
+   "GrossProfit": 1781000000.0,
+   "NetIncome": 4745000000.0,
+   "OperatingIncome": 179000000.0,
+   "TotalRevenue": 9338000000.0
+  },
+  {
+   "BasicEPS": 13.56,
+   "Date": "2025-12-31",
+   "DilutedEPS": 13.39,
+   "GrossProfit": 2322000000.0,
+   "NetIncome": 3664000000.0,
+   "OperatingIncome": 602000000.0,
+   "TotalRevenue": 10956000000.0
+  },
+  {
+   "BasicEPS": 1.66,
+   "Date": "2025-09-30",
+   "DilutedEPS": 1.64,
+   "GrossProfit": 1898000000.0,
+   "NetIncome": 452000000.0,
+   "OperatingIncome": 367000000.0,
+   "TotalRevenue": 9969000000.0
+  }
+ ],
+ "SBC_Stock_Based_Comp": null,
+ "Shares_Outstanding": 266333600.0,
+ "Ticker": "GEV",
+ "Total_Cash": 8848000000.0,
+ "Total_Debt": 1172000000.0
+}

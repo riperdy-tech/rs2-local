@@ -627,6 +627,31 @@ def rescue_status(meta):
     }
 
 
+def run_progress(n_max, attempted, recorded, adaptive, broke_early):
+    """Sample bookkeeping for consensus.json. Pure, so the derivation is testable.
+
+    `early_stop` must describe WHAT THE LOOP DID, not what got recorded. The previous
+    derivation - `adaptive and len(runs) == 2 and len(good) == 2` - cannot tell "the loop
+    stopped at n=2 because the pair agreed" apart from "the loop ran 3 times and one sample
+    raised before recording". Both leave len(runs) == 2, so a LOST sample was published as a
+    legitimate early stop: judged against the tighter early bar, sized 'full', audited clean.
+
+    `samples_attempted` is what makes the loss visible, because loss is
+    `samples_run < samples_attempted`. Comparing against `samples_intended` instead would flag
+    every real early stop as a loss - the plan is always 3 in adaptive mode even when the loop
+    legitimately stops at 2.
+    """
+    attempted = int(attempted or 0)
+    recorded = int(recorded or 0)
+    return {
+        "samples_intended": int(n_max or 0),
+        "samples_attempted": attempted,
+        "samples_run": recorded,
+        "samples_lost": max(0, attempted - recorded),
+        "early_stop": bool(adaptive and broke_early),
+    }
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "GOOG").upper()
@@ -673,7 +698,10 @@ def main():
 
     runs = []
     n_max = 3 if adaptive else n
+    attempted = 0        # iterations ENTERED - the only honest denominator for sample loss
+    broke_early = False  # set only by the adaptive early-stop branch below
     for i in range(1, n_max + 1):
+        attempted = i
         t0 = time.time()
         resp, meta = {}, {}
         try:
@@ -814,6 +842,7 @@ def main():
                     print(f"  [adaptive] 2 samples agree within {sp2:.1f}% "
                           f"(early bar {EARLY_TOL_PCT:.0f}%) — stopping, no 3rd sample",
                           flush=True)
+                    broke_early = True
                     break
                 print(f"  [adaptive] 2-sample spread {sp2:.1f}% > {EARLY_TOL_PCT:.0f}% — "
                       f"escalating to 3rd sample", flush=True)
@@ -824,7 +853,8 @@ def main():
     good = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"]]
     ivs = [r["iv"] for r in good]
     spread = (max(ivs) / min(ivs) - 1) * 100 if len(ivs) >= 2 else None
-    early_stop = adaptive and len(runs) == 2 and len(good) == 2
+    progress = run_progress(n_max, attempted, len(runs), adaptive, broke_early)
+    early_stop = progress["early_stop"]
     # An early-stopped pair must meet the bar it stopped under; a 3-sample set (or a fixed-n
     # run) is judged at the standard tolerance.
     eff_tol = EARLY_TOL_PCT if early_stop else TOL_PCT
@@ -849,6 +879,9 @@ def main():
            "pack_revision": cap.PACK_REVISION,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "samples_run": len(runs), "early_stop": early_stop,
+           "samples_intended": progress["samples_intended"],
+           "samples_attempted": progress["samples_attempted"],
+           "samples_lost": progress["samples_lost"],
            "effective_tolerance_pct": eff_tol,
            "generated_at": datetime.now(timezone.utc).isoformat(),
            "runs": runs, "n_plausible": len(good),

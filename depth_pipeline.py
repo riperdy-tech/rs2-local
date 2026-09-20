@@ -403,9 +403,15 @@ def band_verdict(doc):
     # LOST-SAMPLE SIZING PENALTY:
     # If a sample was dropped (e.g. truncation/crash), the band is artificially narrowed.
     # Cap size to 'half'; 'full' size strictly requires complete 3/3 samples (or an early stop at n=2).
-    samples_run = doc.get("samples_run") or len(doc.get("runs", []))
+    # `samples_run` is only what got RECORDED, so a sample that raised before recording made this
+    # count 2 and the rule could never fire - the loss it exists to punish was the one thing it
+    # could not see. `samples_attempted` is the honest denominator; the fallback keeps older
+    # snapshots behaving exactly as before.
     early_stop = doc.get("early_stop", False)
-    if samples_run == 3 and len(ivs) == 2 and not early_stop:
+    samples_attempted = (doc.get("samples_attempted")
+                         or (2 if early_stop
+                             else (doc.get("samples_run") or len(doc.get("runs", [])))))
+    if samples_attempted == 3 and len(ivs) == 2 and not early_stop:
         if size == "full":
             size = "half"
             reason_notes.append("sample lost — size capped at half")
