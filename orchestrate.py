@@ -31,9 +31,10 @@ from pathlib import Path
 
 import ops               # shared telegram + verified VRAM unload barrier (stdlib-only)
 import publish_reports
+import paths
 
 HERE = Path(__file__).resolve().parent
-CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+CONFIG = paths.load_config()   # STOCKS_ROOT contract: paths.py owns the peer-repo locations
 SD = Path(CONFIG["screener_data_dir"])
 REPO = SD.parent.parent                      # .../Stock Screener/Stock Screener
 FACTOR = SD / "factor_scores.json"

@@ -31,9 +31,10 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+import paths
 
 HERE = Path(__file__).resolve().parent
-CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+CONFIG = paths.load_config()   # STOCKS_ROOT contract: paths.py owns the peer-repo locations
 SD = Path(CONFIG["screener_data_dir"])
 DEPTH_STATE = HERE / "cache" / "depth_state.json"
 DEPTH_PROGRESS = HERE / "cache" / "depth_progress.json"

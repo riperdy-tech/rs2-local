@@ -30,6 +30,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+import paths
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -37,7 +38,7 @@ except Exception:
     pass
 
 HERE = Path(__file__).resolve().parent
-CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+CONFIG = paths.load_config()   # STOCKS_ROOT contract: paths.py owns the peer-repo locations
 REPORTS = Path(CONFIG["out_reports_dir"])
 LEDGER = Path(CONFIG["screener_data_dir"]) / "rs2_verdict_log.jsonl"
 

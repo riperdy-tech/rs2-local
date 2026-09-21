@@ -39,9 +39,10 @@ import rs2_data            # local injector
 import valuation_engine    # deterministic IV/MoS math (Engine 4/2 + dcf primitives)
 import valuation_backbone  # deterministic reverse-DCF backbone (owns base_cf/growth/WACC)
 import valuation_io        # LLM-assumption JSON extraction
+import paths
 
 HERE = Path(__file__).resolve().parent
-CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+CONFIG = paths.load_config()   # STOCKS_ROOT contract: paths.py owns the peer-repo locations
 
 # INVERTED ARCHITECTURE (AUDIT.md C2): the deterministic reverse-DCF BACKBONE
 # (valuation_backbone.py) owns base_cf/growth/WACC/IV. The model NO LONGER guesses DCF inputs.

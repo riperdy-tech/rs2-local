@@ -29,9 +29,10 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+import paths
 
 HERE = Path(__file__).resolve().parent
-CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+CONFIG = paths.load_config()   # STOCKS_ROOT contract: paths.py owns the peer-repo locations
 
 ARCHETYPE_NAMES = {
     "A": "Stable Incumbent",

@@ -21,9 +21,10 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+import paths
 
 HERE = Path(__file__).resolve().parent
-CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+CONFIG = paths.load_config()   # STOCKS_ROOT contract: paths.py owns the peer-repo locations
 SD = Path(CONFIG["screener_data_dir"])
 REPORTS = Path(CONFIG["out_reports_dir"])
 RESEARCH = Path(CONFIG["out_research_dir"])
