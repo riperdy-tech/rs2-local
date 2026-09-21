@@ -49,6 +49,38 @@ def notify_telegram(text):
         return False
 
 
+# ── side-job registry ─────────────────────────────────────────────────────
+# Long-running scripts OUTSIDE the depth orchestrator (rebuild_briefs, one-off research runs)
+# were invisible to the status.py dashboard: it is wired to the orchestrator's lockfile and
+# progress artifacts only, so a 4-hour rebuild showed as "idle" while holding the GPU
+# (observed 2026-08-29). Any script that wants to appear writes cache/jobs/{name}.json via
+# job_heartbeat() per unit of work and removes it via job_done() on exit; status.py renders
+# every file whose PID is alive. Cheap file I/O only — the dashboard refresh loop must not
+# spawn PowerShell (see status.py's _task_info caching note).
+JOBS_DIR = HERE / "cache" / "jobs"
+
+
+def job_heartbeat(name, progress):
+    """Register/refresh this process in the side-job registry. Best-effort, never raises."""
+    import os
+    from datetime import datetime
+    try:
+        JOBS_DIR.mkdir(parents=True, exist_ok=True)
+        (JOBS_DIR / f"{name}.json").write_text(json.dumps({
+            "pid": os.getpid(), "name": name, "progress": str(progress)[:200],
+            "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def job_done(name):
+    """Remove this job from the registry. Best-effort, never raises."""
+    try:
+        (JOBS_DIR / f"{name}.json").unlink()
+    except Exception:
+        pass
+
+
 # ── VRAM / Ollama state ───────────────────────────────────────────────────
 def gpu_free_mb():
     """Free VRAM in MiB per the driver, or None if nvidia-smi is unavailable.

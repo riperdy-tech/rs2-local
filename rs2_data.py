@@ -1026,6 +1026,58 @@ def anchor_level_cost_of_equity_pct():
     return None, "anchor_cost_of_capital_legs_unavailable"
 
 
+def _coc_leg_source(payload, leg):
+    """Source string for ONE leg of the cost-of-capital anchor.
+
+    The BASIS and the VINTAGE travel, for the same reason they do on the level accessor: a
+    universe-implied rate is weaker evidence than an index-implied one. A payload flagged
+    `degraded` also says so here — `degraded` means at least one leg could not be measured, not
+    that every leg is unusable, so a present leg is still consumed but never silently.
+    """
+    parts = [f"cost_of_capital:{leg}", payload.get("erp_basis") or "unknown",
+             str(payload.get("asof"))]
+    if payload.get("degraded"):
+        parts.append("degraded")
+    return "(" + ",".join(parts) + ")"
+
+
+def anchor_risk_free_rate():
+    """(rate, source) — the nominal 10-year risk-free rate as a FRACTION, or (None, reason).
+
+    UNIT: a FRACTION (0.0494). `anchor_level_cost_of_equity_pct()` returns PERCENT by name and by
+    value; this one does not, and the payload stores fractions, so they pass through unscaled.
+    Stated in the first line because a caller reading 0.0494 as a percent is 100x out.
+
+    No fallback of any kind. A substituted constant is the defect this accessor exists to end:
+    the depth tier is handed a risk-free rate with no equity risk premium and told to derive the
+    rest itself, and one such invented call was worth +30% of the AMD answer against a 25%
+    tolerance. Absent here therefore means absent downstream, loudly.
+    """
+    payload = usable_anchor("cost_of_capital")
+    if payload is None:
+        return None, "no_usable_cost_of_capital_anchor"
+    rf = (payload.get("risk_free") or {}).get("nominal_10y")
+    if not isinstance(rf, (int, float)) or rf <= 0:
+        return None, "anchor_has_no_risk_free_leg"
+    return float(rf), _coc_leg_source(payload, "nominal_10y")
+
+
+def anchor_mature_erp():
+    """(erp, source) — the implied mature-market equity risk premium as a FRACTION, or (None, reason).
+
+    NEVER derived from the level. The level is Rf + ERP, so reading the premium back out of it
+    would be circular, and would quietly relabel one measurement as another — which is the class
+    of error the whole anchor contract exists to make visible.
+    """
+    payload = usable_anchor("cost_of_capital")
+    if payload is None:
+        return None, "no_usable_cost_of_capital_anchor"
+    erp = payload.get("implied_erp")
+    if not isinstance(erp, (int, float)) or erp <= 0:
+        return None, f"anchor_has_no_implied_erp({payload.get('asof')})"
+    return float(erp), _coc_leg_source(payload, "implied_erp")
+
+
 def anchor_terminal_g():
     """(terminal_g, source) — the long-run nominal growth anchor's suggestion, or (None, reason)."""
     payload = usable_anchor("long_run_growth")

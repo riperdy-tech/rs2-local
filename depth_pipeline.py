@@ -447,20 +447,36 @@ def band_verdict(doc):
         v["reason"] = f"{v['reason']}; {note}" if v.get("reason") else note
 
     # LOW-EFFORT RESCUE (2026-09-20) — ANNOTATION ONLY. The harness forces a memorandum turn at
-    # `think: "low"` when a run ends on a tool-call stub or exhausts both tool budgets, so a
-    # rescued sample was reasoned at a different effort level from its siblings. That status was
-    # persisted per sample but never reached runs[]/consensus.json, so a band could mix the two
-    # and still read as clean - a false-confidence defect in the verdict itself. Only samples
-    # actually USED matter: a rescued sample that was implausible or truncated never reached the
-    # band, and its rescue status is irrelevant to the published number.
+    # `think: "low"` when a run ends on a tool-call stub, so a rescued sample was reasoned at a
+    # different effort level from its siblings. That status was persisted per sample but never
+    # reached runs[]/consensus.json, so a band could mix the two and still read as clean - a
+    # false-confidence defect in the verdict itself. Only samples actually USED matter: a rescued
+    # sample that was implausible or truncated never reached the band, and its rescue status is
+    # irrelevant to the published number. The note used to claim "or an exhausted budget" as well;
+    # the predicate never checked that key, and the budget path does not lower the effort anyway.
     rescued = [r.get("sample") for r in good
                if r.get("stub_rejected") or r.get("forced_report")]
     if rescued:
         v.setdefault("flags", []).append("LOW_EFFORT_RESCUE")
         v["flags"] = sorted(set(v["flags"]))
         note = (f"low-effort rescue: sample(s) {', '.join(str(s) for s in rescued)} ended on a "
-                f"tool-call stub or an exhausted budget and were written at REDUCED reasoning "
-                f"effort — not comparable to a normal sample")
+                f"tool-call stub and were written at REDUCED reasoning effort (`think: \"low\"`) "
+                f"— not comparable to a normal sample")
+        v["reason"] = f"{v['reason']}; {note}" if v.get("reason") else note
+
+    # FORCED REPORT (2026-09-21) — ANNOTATION ONLY, and deliberately a SEPARATE flag from
+    # LOW_EFFORT_RESCUE. When both tool budgets are reached the harness forces the memorandum at
+    # the SAME `think` level, and `analyst_tools.py:513` tags that turn `budget_exhausted`. So the
+    # sample is NOT lower-effort - but it was cut short rather than concluding, which is a
+    # provenance a reader has to be able to see. Reading only `forced_report` left this path
+    # invisible, so a forced report published exactly like a sample that had finished naturally.
+    forced = [r.get("sample") for r in good if r.get("budget_exhausted")]
+    if forced:
+        v.setdefault("flags", []).append("FORCED_REPORT")
+        v["flags"] = sorted(set(v["flags"]))
+        note = (f"forced report: sample(s) {', '.join(str(s) for s in forced)} reached the "
+                f"tool-budget ceiling and had the memorandum forced at the configured reasoning "
+                f"effort — cut short rather than concluding")
         v["reason"] = f"{v['reason']}; {note}" if v.get("reason") else note
 
     v.update({"direction": d, "size_hint": size,

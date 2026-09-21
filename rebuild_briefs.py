@@ -269,6 +269,7 @@ def main():
     if args.dry_run:
         print(", ".join(todo))
         return
+    ops.job_heartbeat("rebuild_briefs", f"starting: {len(todo)} brief(s) queued")
 
     rv_py = Path(CONFIG["research_venv_python"])
     if not rv_py.exists():
@@ -355,6 +356,7 @@ def main():
             log(f"[{i}/{len(todo)}] {t} FAILED — {type(e).__name__}: {str(e)[:120]}")
         bar = progress(i, len(todo), started, ok, failed)
         log(bar)
+        ops.job_heartbeat("rebuild_briefs", bar)   # status.py side-jobs panel
 
         # OUTCOME sanity check, distinct from the engine probe above. The engine can look
         # perfectly healthy while every brief still fails — that is exactly what a preflight bug
@@ -376,6 +378,7 @@ def main():
 
     log(f"done: {ok} rebuilt, {failed} still failing, "
         f"{len(uncited_tickers())} uncited brief(s) remaining on disk")
+    ops.job_done("rebuild_briefs")
 
 
 if __name__ == "__main__":

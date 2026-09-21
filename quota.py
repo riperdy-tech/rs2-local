@@ -26,6 +26,14 @@ MONTHLY_CAPS = {
     # overrun BILLS rather than erroring. This ledger is the only thing standing between a retry
     # storm and a surprise invoice; keep it well under and never raise it casually.
     "brave": 900,
+    # Exa's free tier grants $10/month of credits that expire at month end (no rollover), so it
+    # is a recurring monthly bucket like Tavily, not a one-time grant. Costing ONE LDR search:
+    # $7/1k search ($0.007) + contents on all 8 results ($1/1k pages PER content type, and LDR
+    # asks for text+highlights+summary) = 8 x 3 x $0.001 = $0.024. Total ~$0.031, so $10 buys
+    # ~320 searches -- held ~5% under at 300. Contents dominate the bill 3:1, but they are NOT
+    # optional here: the Exa engine never scrapes (see deep_research.ldr_overrides), so cutting
+    # them would buy volume by silently degrading every Exa brief to snippets.
+    "exa": 300,
 }
 DAILY_CAPS = {
     "fmp": 200,        # real ~250/day

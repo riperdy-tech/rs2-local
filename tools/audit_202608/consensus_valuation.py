@@ -606,15 +606,22 @@ def owner_cf_basis_check(ticker, scorecard, years=None, ttm_fcf=_UNSET):
 
 
 def rescue_status(meta):
-    """(stub_rejected, forced_report) for ONE sample, from a `chat_with_tools` meta dict.
+    """(stub_rejected, forced_report, budget_exhausted) for ONE sample, from a `chat_with_tools`
+    meta dict.
 
-    Both paths change the reasoning effort of the sample they rescue, so a band built from a
-    rescued sample and a normal one is mixing two conditions:
+    THREE markers. The distinction between the last two is the point, and an earlier version of
+    this docstring got it wrong:
 
-      * `stub_rejected` — the terminal turn was a tool-call envelope rather than a report, so
-        the harness forced a memorandum turn at `think: "low"`, `num_predict` 32768.
-      * `forced_report` — a turn produced by a forced-report path (both tool budgets exhausted,
-        or the budget gate tripped).
+      * `stub_rejected` — the terminal turn was a tool-call envelope rather than a report, so the
+        harness forced a memorandum turn at `think: "low"`, `num_predict` 32768.
+      * `forced_report` — a turn carrying that same stub-retry marker (`analyst_tools.py:452`).
+        This runs at `think: "low"`, so it is the marker that means the sample was reasoned at a
+        DIFFERENT effort level from its siblings.
+      * `budget_exhausted` — a turn produced because both tool budgets were reached
+        (`analyst_tools.py:513`). That path forces the memorandum at the SAME `think` level, so it
+        is a different PROVENANCE, not a reduced-effort one. The old docstring claimed
+        `forced_report` covered "both tool budgets exhausted"; it does not. Reading only that key
+        left a forced report publishing as though it had concluded naturally.
 
     Tolerates absent/None/malformed `turns`: the on-disk snapshots predate `turns` entirely, so
     absence is the normal case, not an error.
@@ -624,6 +631,8 @@ def rescue_status(meta):
     return {
         "stub_rejected": bool(meta.get("stub_rejected")),
         "forced_report": any(bool(t.get("forced_report")) for t in turns if isinstance(t, dict)),
+        "budget_exhausted": any(bool(t.get("budget_exhausted")) for t in turns
+                                if isinstance(t, dict)),
     }
 
 
@@ -816,6 +825,7 @@ def main():
                      "plausible": ok, "reasons": why, "flags": flags, "truncated": truncated,
                      "stub_rejected": rescue["stub_rejected"],
                      "forced_report": rescue["forced_report"],
+                     "budget_exhausted": rescue["budget_exhausted"],
                      "done_reason": resp.get("done_reason"),
                      "prompt_tokens": p_tok, "generated_tokens": g_tok,
                      "eval_rate": eval_rate, "eval_duration_s": eval_dur_s,

@@ -47,14 +47,23 @@ def test_forced_report_is_false_when_no_turn_was_forced():
 
 
 def test_absent_and_empty_meta_are_both_clear():
-    assert rescue_status(None) == {"stub_rejected": False, "forced_report": False}
-    assert rescue_status({}) == {"stub_rejected": False, "forced_report": False}
+    # Asserts the individual MARKERS, not exact-dict equality: an exact-dict assertion on a
+    # returned contract breaks the moment a marker is added, which is exactly what happened when
+    # `budget_exhausted` was added. The intent is "nothing is reported as rescued".
+    for meta in (None, {}):
+        st = rescue_status(meta)
+        assert st["stub_rejected"] is False
+        assert st["forced_report"] is False
+        assert st["budget_exhausted"] is False
 
 
 def test_turns_being_absent_none_or_malformed_does_not_raise():
     # The snapshot on disk predates `turns` entirely, so absence is the NORMAL case.
     for meta in ({"turns": None}, {"turns": []}, {"turns": [None, "x", 7]}):
-        assert rescue_status(meta) == {"stub_rejected": False, "forced_report": False}
+        st = rescue_status(meta)
+        assert st["stub_rejected"] is False
+        assert st["forced_report"] is False
+        assert st["budget_exhausted"] is False
 
 
 # ---- band_verdict: the flag ------------------------------------------------------------
@@ -108,3 +117,67 @@ def test_the_flag_does_not_move_direction_or_size(monkeypatch):
     assert rescued["direction"] == clean["direction"]
     assert rescued["size_hint"] == clean["size_hint"]
     assert rescued["kelly_fraction_pct"] == clean["kelly_fraction_pct"]
+
+
+# ---- the SECOND forced path: budgets exhausted (review I1) ------------------------------
+# `analyst_tools.py` tags two different rescued turns:
+#   :452 `forced_report: True`     - the stub-rejection retry, `think: "low"`, num_predict 32768
+#   :513 `budget_exhausted: True`  - both tool budgets reached, forced at the SAME `think`
+# Only the first was ever read, so a budget-exhausted sample published as if it had concluded
+# naturally. They are NOT the same condition: only `forced_report` lowers the reasoning effort,
+# so lumping the budget path into `LOW_EFFORT_RESCUE` would make that flag's name false. It gets
+# its own flag instead, and the docstring that claimed `forced_report` covered the budget path
+# was corrected.
+
+def test_budget_exhausted_is_read_from_any_turn():
+    meta = {"turns": [{"turn": 1}, {"turn": 2, "budget_exhausted": True}, {"turn": 3}]}
+    assert rescue_status(meta)["budget_exhausted"] is True
+
+
+def test_budget_exhausted_is_false_when_no_turn_exhausted_its_budget():
+    meta = {"turns": [{"turn": 1}, {"turn": 2, "forced_report": True}]}
+    assert rescue_status(meta)["budget_exhausted"] is False
+
+
+def test_the_two_forced_paths_do_not_imply_each_other():
+    only_stub_retry = rescue_status({"turns": [{"forced_report": True}]})
+    assert only_stub_retry["forced_report"] is True
+    assert only_stub_retry["budget_exhausted"] is False
+    only_budget = rescue_status({"turns": [{"budget_exhausted": True}]})
+    assert only_budget["forced_report"] is False
+    assert only_budget["budget_exhausted"] is True
+
+
+def test_budget_exhausted_is_clear_on_absent_and_malformed_meta():
+    for meta in (None, {}, {"turns": None}, {"turns": []}, {"turns": [None, "x", 7]}):
+        assert rescue_status(meta)["budget_exhausted"] is False
+
+
+def test_a_budget_exhausted_used_sample_raises_its_own_flag():
+    v = dp.band_verdict(_doc([_run(1, budget_exhausted=True), _run(2)]))
+    assert "FORCED_REPORT" in v["flags"]
+    assert "budget" in (v.get("reason") or "").lower()
+
+
+def test_a_budget_exhausted_sample_does_not_claim_low_effort():
+    """The distinction, pinned: budgets exhausted is not reduced reasoning effort."""
+    v = dp.band_verdict(_doc([_run(1, budget_exhausted=True), _run(2)]))
+    assert "LOW_EFFORT_RESCUE" not in (v.get("flags") or [])
+
+
+def test_a_budget_exhausted_sample_that_was_NOT_used_does_not_raise():
+    v = dp.band_verdict(_doc([_run(1, budget_exhausted=True, plausible=False), _run(2)]))
+    assert "FORCED_REPORT" not in (v.get("flags") or [])
+
+
+def test_legacy_runs_without_budget_exhausted_do_not_raise():
+    v = dp.band_verdict(_doc([_run(1), _run(2)]))
+    assert "FORCED_REPORT" not in (v.get("flags") or [])
+
+
+def test_the_forced_report_flag_does_not_move_direction_or_size():
+    clean = dp.band_verdict(_doc([_run(1), _run(2)]))
+    forced = dp.band_verdict(_doc([_run(1, budget_exhausted=True), _run(2)]))
+    assert forced["direction"] == clean["direction"]
+    assert forced["size_hint"] == clean["size_hint"]
+    assert forced["kelly_fraction_pct"] == clean["kelly_fraction_pct"]

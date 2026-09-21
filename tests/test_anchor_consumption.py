@@ -348,3 +348,103 @@ def test_a_cache_predating_the_stamp_is_refused(monkeypatch):
     monkeypatch.setattr(vb, "terminal_g", lambda: (0.035, "matching"))
     assert vb.coe_offset_pts() == 0.0
     assert "cache_predates_terminal_g_stamp" in vb.coe_level_source()
+
+
+# ---------------------------------------------------------------------------------------------
+# The two components of the modelled cost of equity (WACC spec v1.1 §14, §15).
+#
+# The payload already carried both fields and NOTHING read them, which is how the depth tier came
+# to be handed a risk-free rate with no equity risk premium and told to derive the rest itself.
+# These accessors are the governed source that replaces the model's own choice.
+# ---------------------------------------------------------------------------------------------
+
+def _cost_of_capital_payload(anchor_dir, monkeypatch, **overrides):
+    """Write a cost_of_capital anchor in the real payload's shape. Returns nothing.
+
+    Inline rather than a shared fixture because the neighbours do it the same way and each test
+    needs to vary one field; a fixture would have to grow an override argument anyway.
+    """
+    today = date.today().isoformat()
+    payload = {
+        "anchor_id": "cost_of_capital",
+        "asof": today,
+        "built_at": f"{today}T00:00:00Z",
+        "risk_free": {"nominal_10y": 0.0494, "real_10y": 0.0261, "breakeven_10y": 0.0233},
+        "implied_erp": 0.0424,
+        "implied_cost_of_equity": 0.0918,
+        "erp_basis": "universe",
+        "erp_source": "implied",
+        "degraded": False,
+    }
+    payload.update(overrides)
+    (anchor_dir / rs2_data.ANCHOR_FILES["cost_of_capital"]).write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+    monkeypatch.setattr(rs2_data, "_ANCHOR_CACHE", None)
+
+
+def test_risk_free_and_erp_are_FRACTIONS_not_percent(anchor_dir, monkeypatch):
+    """UNIT IS THE TRAP, so it gets its own test.
+
+    `anchor_level_cost_of_equity_pct()` returns PERCENT (9.18) while `anchor_terminal_g()` returns
+    a FRACTION (0.035). An accessor that copies the wrong neighbour hands back a rate 100x out, and
+    nothing downstream would notice — a 4.94 fraction or a 0.0494 percent both look like a number.
+    Pinned against the real payload values, so unit drift fails here rather than in a valuation.
+    """
+    _cost_of_capital_payload(anchor_dir, monkeypatch)
+    rf, rf_src = rs2_data.anchor_risk_free_rate()
+    erp, erp_src = rs2_data.anchor_mature_erp()
+    assert rf == pytest.approx(0.0494), "risk-free is not a fraction"
+    assert erp == pytest.approx(0.0424), "ERP is not a fraction"
+    # The basis and the vintage travel, exactly as they do on the level accessor.
+    assert "cost_of_capital" in rf_src and "cost_of_capital" in erp_src
+    assert "universe" in erp_src
+    assert date.today().isoformat() in rf_src
+
+
+def test_a_missing_anchor_yields_none_and_never_a_default(tmp_path, monkeypatch):
+    """A substituted constant here is the defect the whole accessor exists to end."""
+    monkeypatch.setitem(rs2_data.CONFIG, "anchors_dir", str(tmp_path))
+    monkeypatch.setattr(rs2_data, "_ANCHOR_CACHE", None)
+    rf, rf_src = rs2_data.anchor_risk_free_rate()
+    erp, erp_src = rs2_data.anchor_mature_erp()
+    assert rf is None and erp is None
+    assert rf_src == "no_usable_cost_of_capital_anchor"
+    assert erp_src == "no_usable_cost_of_capital_anchor"
+
+
+def test_an_anchor_without_an_erp_leg_does_not_fabricate_one(anchor_dir, monkeypatch):
+    """The level is Rf + ERP; inferring the ERP back out of the level would be circular."""
+    _cost_of_capital_payload(anchor_dir, monkeypatch, implied_erp=None, erp_source="unavailable")
+    rf, _ = rs2_data.anchor_risk_free_rate()
+    erp, erp_src = rs2_data.anchor_mature_erp()
+    assert rf == pytest.approx(0.0494), "a present risk-free leg must still be usable"
+    assert erp is None
+    assert "erp" in erp_src
+
+
+def test_a_risk_free_only_payload_does_not_borrow_the_level_as_an_erp(anchor_dir, monkeypatch):
+    """The sibling accessor refuses this payload as a cost of equity (no implied ERP). The ERP
+    accessor must refuse it too, rather than reading the (absent) field as zero."""
+    _cost_of_capital_payload(
+        anchor_dir, monkeypatch, implied_erp=None, implied_cost_of_equity=None,
+        erp_source="unavailable",
+    )
+    assert rs2_data.anchor_level_cost_of_equity_pct()[0] is None
+    assert rs2_data.anchor_mature_erp()[0] is None
+
+
+def test_a_degraded_anchor_discloses_itself_but_keeps_a_measured_leg(anchor_dir, monkeypatch):
+    """`degraded` means ONE leg could not be measured, not that all of them are unusable.
+
+    `usable_anchor`'s own contract is that the caller inspects the specific field it needs, so a
+    present and numeric leg IS consumed — and the degradation is named in the source string so the
+    reader can see it. Suppressing a measured value would lose real data; swallowing the flag
+    would hide a known-bad payload. Both are worse than saying so.
+    """
+    _cost_of_capital_payload(anchor_dir, monkeypatch, degraded=True)
+    rf, rf_src = rs2_data.anchor_risk_free_rate()
+    erp, erp_src = rs2_data.anchor_mature_erp()
+    assert rf == pytest.approx(0.0494)
+    assert erp == pytest.approx(0.0424)
+    assert "degraded" in rf_src and "degraded" in erp_src
