@@ -28,8 +28,11 @@ import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
-SCR = Path(r"C:\Users\riper\Downloads\Stock Screener\Stock Screener")
+# The screener repo root, via the path contract - see paths.py.
+SCR = Path(rs2_data.CONFIG["screener_data_dir"]).parents[1]
 HERE = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(HERE))
+import rs2_data  # noqa: E402  CONFIG, via the path contract
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 OUT = HERE / "audit" / "C_experiments" / "tag_coverage_census.json"
 

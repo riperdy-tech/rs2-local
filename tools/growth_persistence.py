@@ -1,10 +1,10 @@
 """How much of a high-growth year actually persists? Measured across the full corpus:
 for every ticker-year with revenue growth g0, what was the REALIZED 5y forward CAGR?"""
 import sys, io, json
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-sys.path.insert(0, r"C:\Users\riper\Downloads\RS2 Local")
-import rs2_data
 from pathlib import Path
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import rs2_data
 import statistics as st
 
 SD = Path(rs2_data.CONFIG["screener_data_dir"])

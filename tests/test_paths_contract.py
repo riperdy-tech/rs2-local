@@ -194,6 +194,41 @@ def test_load_config_tolerates_a_byte_order_mark(tmp_path, monkeypatch):
     assert paths.load_config(cfg_path)["depth_samples"] == 3
 
 
+# ---- paths INSIDE this repo --------------------------------------------------------------------
+
+def test_self_paths_derive_from_the_repo_root():
+    """These were absolute too, so a folder move left the pipeline writing reports into a
+    directory that no longer existed. Derived, they cannot be wrong."""
+    assert paths.resolve_self("out_reports_dir") == paths.HERE / "reports"
+    assert paths.resolve_self("out_enrich_dir") == paths.HERE / "enrich"
+    assert paths.resolve_self("out_research_dir") == paths.HERE / "research"
+    assert paths.resolve_self("research_venv_python") == (
+        paths.HERE / "research-venv" / "Scripts" / "python.exe")
+
+
+def test_a_pinned_self_path_still_wins(tmp_path):
+    """For the case where reports genuinely live off-repo, on another drive."""
+    pinned = {"out_reports_dir": str(tmp_path / "D_drive_reports")}
+
+    assert paths.resolve_self("out_reports_dir", pinned) == tmp_path / "D_drive_reports"
+
+
+def test_load_config_resolves_self_paths_too(tmp_path, monkeypatch):
+    for var in ("SCREENER_DATA_DIR", "SCREENER_PUBLISH_REPO", "MRI_OUTPUTS_DIR"):
+        monkeypatch.setenv(var, str(tmp_path / "peer"))
+    monkeypatch.delenv("MRI_ANCHORS_DIR", raising=False)
+
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"out_reports_dir": None, "research_venv_python": None}),
+                        encoding="utf-8")
+
+    cfg = paths.load_config(cfg_path)
+
+    assert cfg["out_reports_dir"] == str(paths.HERE / "reports")
+    assert cfg["research_venv_python"] == str(
+        paths.HERE / "research-venv" / "Scripts" / "python.exe")
+
+
 def test_stocks_root_defaults_to_the_repo_parent(monkeypatch):
     """The default is today's location, which is what makes this contract a no-op on arrival."""
     monkeypatch.delenv("STOCKS_ROOT", raising=False)

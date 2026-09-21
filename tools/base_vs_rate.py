@@ -1,13 +1,14 @@
 import sys, io, json
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-sys.path.insert(0, r"C:\Users\riper\Downloads\RS2 Local")
-import rs2_data, valuation_backbone as vb
 from pathlib import Path
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import rs2_data, valuation_backbone as vb
 import statistics as st
 
 SD = Path(rs2_data.CONFIG["screener_data_dir"])
 TTM = (rs2_data.load_json(SD / "fundamentals_ttm.json") or {}).get("tickers", {})
-camp = json.load(open(r"C:\Users\riper\Downloads\RS2 Local\cache\baseline_campaign.json"))
+camp = json.load(open(Path(__file__).resolve().parents[1] / "cache"
+                / "baseline_campaign.json"))
 RF = 0.0465
 
 rows = []

@@ -8,7 +8,9 @@
 # Remove later:  Unregister-ScheduledTask -TaskName "RS2-Orchestrator" -Confirm:$false
 
 $ErrorActionPreference = "Stop"
-$root = "C:\Users\riper\Downloads\RS2 Local"
+# The repo root, derived so a folder move needs no edit here: re-running this
+# script from its new location re-registers the task against the new path.
+$root = $PSScriptRoot
 $py   = "C:\Program Files\Python312\python.exe"
 $log  = "$root\reports\_orchestrate.log"
 $name = "RS2-Orchestrator"

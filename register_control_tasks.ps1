@@ -6,7 +6,9 @@
 
 $ErrorActionPreference = "Stop"
 
-$repo = "C:\Users\riper\Downloads\RS2 Local"
+# The repo root, derived so a folder move needs no edit here: re-running this
+# script from its new location re-registers the task against the new path.
+$repo = $PSScriptRoot
 $py   = "C:\Program Files\Python312\python.exe"
 $gh   = "C:\Program Files\GitHub CLI\gh.exe"
 

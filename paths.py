@@ -136,6 +136,34 @@ def resolve(key, config=None, required=True):
     )
 
 
+# Keys naming a location INSIDE this repo. They were absolute too, which means they break on a
+# move exactly like the peer paths do — a folder rename would leave the pipeline writing reports
+# into a directory that no longer exists. They are derived from HERE instead, so they cannot be
+# wrong. An explicit config.json value still wins, for the case where reports or the research venv
+# genuinely live off-repo (a different drive, say).
+_SELF_PATHS = {
+    "agentwebsearch_dir": "AgentWebSearch-MCP",
+    "out_reports_dir": "reports",
+    "out_enrich_dir": "enrich",
+    "out_research_dir": "research",
+    "research_venv_python": "research-venv/Scripts/python.exe",
+}
+
+
+def resolve_self(key, config=None):
+    """Resolve a path inside this repo: an explicit config.json value, else derived from HERE.
+
+    No existence probe and no error: `reports/` and friends are created on demand, and
+    `research-venv` is checked by its own caller, which already reports a useful message when the
+    interpreter is missing.
+    """
+    if config:
+        pinned = str(config.get(key) or "").strip()
+        if pinned:
+            return Path(pinned).expanduser()
+    return HERE / _SELF_PATHS[key]
+
+
 def load_config(path=None):
     """Read config.json and overlay the resolved cross-repo paths onto it.
 
@@ -150,6 +178,9 @@ def load_config(path=None):
 
     for key in ("screener_data_dir", "screener_publish_repo", "mri_outputs_dir", "anchors_dir"):
         config[key] = str(resolve(key, config))
+
+    for key in _SELF_PATHS:
+        config[key] = str(resolve_self(key, config))
 
     return config
 
