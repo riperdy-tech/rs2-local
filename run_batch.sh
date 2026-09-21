@@ -3,7 +3,8 @@
 # enrich + deterministic valuation pipeline, NO web research (news doesn't affect
 # IV/MoS; keeps the long batch robust). Resumable: skips a ticker that already
 # has a FINAL.md. One failure does not stop the batch.
-cd "C:/Users/riper/Downloads/RS2 Local" || exit 1
+# The repo root, derived: these helpers live at it, so a folder move needs no edit.
+cd "$(cd "$(dirname "$0")" && pwd)" || exit 1
 
 TICKERS="MSFT AMD META NFLX TSLA HD PG COST XOM FANG JPM V LLY MRNA CAT DE FCX LIN AMT O NEE CEG PLTR OKLO"
 

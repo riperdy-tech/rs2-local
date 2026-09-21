@@ -9,10 +9,11 @@
 #   * exit trap                -> kill our children + unload models on any exit/interrupt.
 # Resumable: research is cached per ticker; FINAL.md newer than the marker = ticker done.
 set -u
-cd "C:/Users/riper/Downloads/RS2 Local" || exit 1
+# The repo root, derived: these helpers live at it, so a folder move needs no edit.
+cd "$(cd "$(dirname "$0")" && pwd)" || exit 1
 SET="NVDA GOOG GEV MSFT AMD META NFLX TSLA HD PG COST XOM FANG JPM V LLY MRNA CAT DE FCX LIN AMT O NEE CEG PLTR OKLO"
 PY="C:/Program Files/Python312/python.exe"
-RV="C:/Users/riper/Downloads/RS2 Local/research-venv/Scripts/python.exe"
+RV="$(pwd)/research-venv/Scripts/python.exe"
 MARK=cache/_val_start
 LOCK=cache/validate.lock
 

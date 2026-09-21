@@ -3,7 +3,8 @@
 # financial routing, pre-profit→Engine4, cyclical→Engine1-DCF, mid-cycle + analyst-
 # consensus anchors). Always re-runs (new timestamp dir); 25s sleep between stocks
 # to avoid sustained-load Ollama 500s. Fault-tolerant.
-cd "C:/Users/riper/Downloads/RS2 Local" || exit 1
+# The repo root, derived: these helpers live at it, so a folder move needs no edit.
+cd "$(cd "$(dirname "$0")" && pwd)" || exit 1
 SET="MSFT AMD META NFLX TSLA HD PG COST XOM FANG JPM V LLY MRNA CAT DE FCX LIN AMT O NEE CEG PLTR OKLO"
 # resume marker: skip any ticker already re-run in this fix-era (report newer than this)
 MARK="2026-06-26 23:30:00"   # final-code cutoff: re-run anything older, skip completed-after

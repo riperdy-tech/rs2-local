@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-cd "C:/Users/riper/Downloads/RS2 Local" || exit 1
+# The repo root, derived: these helpers live at it, so a folder move needs no edit.
+cd "$(cd "$(dirname "$0")" && pwd)" || exit 1
 SET="MSFT AMD META NFLX TSLA HD PG COST XOM FANG JPM V LLY MRNA CAT DE FCX LIN AMT O NEE CEG PLTR OKLO"
 MARK="2026-06-26 23:35:00"
 for t in $SET; do
