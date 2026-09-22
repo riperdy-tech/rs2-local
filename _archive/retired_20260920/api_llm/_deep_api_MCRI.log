@@ -1,0 +1,57 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/MCRI.md, 7.8 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] MCRI @ $126.09 | deepseek-v4-flash effort=high | 3 samples | pack 33,097ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MCRI_20260826_055642
+    [tool 1] search_web: Monarch Casino Resort second quarter 2026 results revenue net income
+    [tool 2] search_web: Monarch Casino Resort 2026 guidance 2027 outlook capital expenditure plans
+    [tool 3] search_web: 10-year Treasury yield Federal Reserve policy August 2026
+    [tool 4] search_web: MCRI Monarch Casino analyst estimates 2026 2027 revenue EPS consensus
+    [tool 5] search_web: Black Hawk Colorado casino market revenue 2026 Ameristar competition
+    [tool 6] search_web: Monarch Casino Atlantis Reno sale divestiture Black Hawk single property
+    [tool 7] search_web: MCRI Monarch Casino share repurchase authorization dividend increase 2026
+    [tool 8] search_web: Federal Reserve federal funds rate August 2026 FOMC stance
+    [tool 9] search_web: Colorado Division of Gaming Black Hawk casino total win 2026 market share
+    [tool 10] fetch_page: https://www.hiddentrails.com/first-dry/Monarch-Casino-Resort-Inc-MCRI-Q1-2026-Earnings-E
+    [tool 11] fetch_page: https://uk.finance.yahoo.com/quote/MCRI/analysis/
+    [tool 12] search_web: Monarch Casino sells Atlantis Casino Resort Spa Reno completed sale price
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/907242/000110465926087556/mcri-20260630x10q.htm
+    [tool 14] fetch_page: https://www.gurufocus.com/news/8807120/monarch-casino-resort-reports-record-first-quarte
+    [tool 15] fetch_page: https://sbg.colorado.gov/industry-statistics-gaming
+  sample 1: IV $98.0 | usable=True | 15 tool calls (think 123,762ch / report 25,557ch) | 448s | $0.040 cumulative
+    [tool 1] search_web: Monarch Casino Resort Atlantis Reno Black Hawk Colorado two properties company overview
+    [tool 2] search_web: 10-year Treasury yield current level federal funds rate Fed policy stance
+    [tool 3] search_web: Monarch Casino Resort Q2 2026 earnings call management guidance 2026 2027 capex
+    [tool 4] search_web: Monarch Casino Resort Black Hawk Colorado land lease related party Farahi family ownersh
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/907242/000110465926087556/mcri-20260630x10q.htm
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/907242/000110465926018717/mcri-20251231x10k.htm
+    [tool 7] fetch_page: https://www.globenewswire.com/news-release/2026/07/20/3330139/0/en/monarch-casino-resort
+    [tool 8] search_web: Colorado limited gaming revenue 2025 2026 Black Hawk Gilpin County casino monthly revenu
+    [tool 9] search_web: MCRI Monarch Casino 2026 2027 earnings estimate EPS revenue consensus analyst forecast
+    [tool 10] search_web: DXY dollar index level credit spreads high yield current macro August 2026
+    [tool 11] search_web: Monarch Casino MCRI stock buyback program authorization dividend increase 2025 2026
+    [tool 12] search_web: regional gaming casino stocks EV/EBITDA valuation multiples 2026 PENN Boyd Churchill Dow
+    [tool 13] search_web: Colorado iGaming online casino legislation bill 2026 legal status
+    [tool 14] search_web: Reno Nevada casino market revenue 2025 2026 Atlantis trends hotel occupancy
+  sample 2: IV $97.0 | usable=True | 14 tool calls (think 142,215ch / report 29,049ch) | 559s | $0.086 cumulative
+    [tool 1] search_web: Monarch Casino Resort Atlantis Reno sale 2025 proceeds Reno Land Inc
+    [tool 2] search_web: Monarch Casino Resort second quarter 2026 earnings results revenue July 2026
+    [tool 3] search_web: 10 year treasury yield August 2026 Federal Reserve rate cut
+    [tool 4] search_web: Colorado Proposition JJ gaming tax rate increase impact Monarch Casino margins 2025
+    [tool 5] fetch_page: https://www.globenewswire.com/news-release/2026/07/20/3330139/0/en/monarch-casino-resort
+    [tool 6] fetch_page: https://monarchcasino.com/press-release-20260204
+    [tool 7] search_web: Monarch Casino 2025 10-K fourth quarter 2024 unusual charge one-time expense gross profi
+    [tool 8] search_web: Federal Reserve interest rate decision August 2026 FOMC policy stance
+    [tool 9] fetch_page: https://ibebet.com/monarch-casino-resort-record-q2-2026-earnings/
+    [tool 10] search_web: FOMC July 2026 federal funds rate target range 4.25 4.50 percent statement
+    [tool 11] search_web: US dollar index DXY level August 2026
+    [tool 12] search_web: Black Hawk Colorado casino gaming revenue 2025 market growth Monarch market share
+    [tool 13] search_web: regional casino stocks EV/EBITDA multiples 2026 Boyd Gaming Penn Entertainment Red Rock 
+    [tool 14] search_web: Colorado online casino iGaming legalization bill 2026 status Black Hawk casinos oppositi
+    [tool 15] search_web: Colorado economy 2026 Denver unemployment consumer spending forecast
+    [tool 16] search_web: Monarch Casino PCL Construction litigation appeal ruling 2026 status judgment
+  sample 3: IV $116.0 | usable=True | 16 tool calls (think 132,709ch / report 31,783ch) | 557s | $0.128 cumulative
+
+[deep-api] MCRI: OVERVALUED | band $97.0-$116.0 vs price $126.09 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 7.8d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 414,392 in (329,216 cached) | 162,772 out (132,013 reasoning) | $0.128 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MCRI_20260826_055642\verdict_depth.json

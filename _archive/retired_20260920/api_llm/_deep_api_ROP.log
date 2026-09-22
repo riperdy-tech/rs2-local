@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ROP.md, 18.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ROP @ $411.79 | deepseek-v4-flash effort=high | 3 samples | pack 34,052ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ROP_20260826_073426
+    [tool 1] search_web: Roper Technologies Indicor industrial businesses sale CD&R divestiture
+    [tool 2] search_web: Roper Technologies Q2 2026 earnings results full year guidance revenue free cash flow
+    [tool 3] search_web: 10 year Treasury yield August 2026
+    [tool 4] search_web: Federal Reserve policy stance rate decision August 2026
+    [tool 5] search_web: Roper Technologies Outgo acquisition fleet payments 2024 2025
+    [tool 6] fetch_page: https://www.ropertech.com/news-releases/news-release-details/roper-technologies-announce
+    [tool 7] fetch_page: https://www.cdr.com/news/cdr-to-acquire-majority-stake-in-roper-technologies-industrial-
+    [tool 8] search_web: FOMC July 29 2026 statement federal funds rate target range decision
+    [tool 9] search_web: US dollar index DXY level August 2026
+    [tool 10] search_web: US investment grade corporate credit spreads August 2026
+    [tool 11] fetch_page: https://www.ropertech.com/news-releases/news-release-details/roper-technologies-announce
+    [tool 12] fetch_page: https://www.ainvest.com/news/roper-technologies-management-3-2-billion-buyback-reset-260
+    [tool 13] search_web: "Roper Technologies" second quarter 2026 results revenue organic growth adjusted DEPS pr
+    [tool 14] search_web: US CPI inflation rate July 2026 year over year
+    [tool 15] search_web: US GDP growth Q2 2026 annualized real GDP
+  sample 1: IV $488.0 | usable=True | 15 tool calls (think 97,530ch / report 19,038ch) | 428s | $0.032 cumulative
+    [tool 1] search_web: Roper Technologies Q2 2026 earnings press release full year guidance free cash flow
+    [tool 2] search_web: Roper Technologies 2026 guidance organic revenue growth free cash flow raise
+    [tool 3] search_web: Roper Technologies acquisitions 2025 2026 M&A pipeline vertical software
+    [tool 4] search_web: 10 year treasury yield August 2026 federal funds rate
+    [tool 5] fetch_page: https://www.ropertech.com/news-releases/news-release-details/roper-technologies-announce
+    [tool 6] fetch_page: https://www.ropertech.com/node/18691/pdf
+    [tool 7] search_web: Roper Technologies 2027 outlook organic growth analyst estimates FY2027 EPS
+    [tool 8] search_web: Federal Reserve interest rate decision August 2026 fed funds target range
+    [tool 9] search_web: Roper Technologies full year 2026 free cash flow guidance billion adjusted DEPS organic 
+    [tool 10] search_web: Roper Technologies CentralReach acquisition price 2025
+    [tool 11] search_web: Roper Technologies Q2 2026 earnings call transcript buyback M&A pipeline organic growth 
+    [tool 12] search_web: Roper Technologies net debt EBITDA leverage ratio 2026 balance sheet
+    [tool 13] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-roper-technologies-t
+    [tool 14] fetch_page: https://www.ainvest.com/news/roper-technologies-management-3-2-billion-buyback-reset-260
+    [tool 15] fetch_page: https://www.tikr.com/blog/roper-stock-has-lost-38-from-its-highs-is-the-selloff-a-buying
+  sample 2: IV $600.5 | usable=True | 15 tool calls (think 83,047ch / report 30,915ch) | 424s | $0.063 cumulative
+    [tool 1] search_web: Roper Technologies second quarter 2026 results press release revenue guidance
+    [tool 2] search_web: Roper Technologies FY2026 full year guidance adjusted EPS adjusted EBITDA organic growth
+    [tool 3] search_web: Roper Technologies share repurchase 2026 shares outstanding buyback
+    [tool 4] search_web: 10 year treasury yield August 2026 Fed funds rate
+    [tool 5] fetch_page: https://www.ropertech.com/news-releases/news-release-details/roper-technologies-announce
+    [tool 6] search_web: Fed funds rate target range August 2026 FOMC
+    [tool 7] search_web: Roper Technologies 2027 EPS estimate consensus analyst forecast
+    [tool 8] search_web: Roper Technologies Indicor minority investment stake Outgo beneficial interest
+    [tool 9] fetch_page: https://finance.yahoo.com/markets/stocks/articles/roper-technologies-announces-second-qu
+    [tool 10] fetch_page: https://www.sec.gov/Archives/edgar/data/882835/000088283526000019/rop-20260331.htm
+    [tool 11] fetch_page: https://www.tikr.com/blog/roper-technologies-stock-prediction-where-analysts-see-the-sto
+    [tool 12] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/04/23/roper-rop-q1-2026-earnings-cal
+    [tool 13] search_web: Roper Technologies Q2 2026 earnings call organic revenue growth AI commentary Neil Hunn
+    [tool 14] search_web: US CPI inflation rate July 2026 year over year
+  sample 3: IV $510.0 | usable=True | 14 tool calls (think 128,782ch / report 35,054ch) | 507s | $0.108 cumulative
+
+[deep-api] ROP: UNDERVALUED | band $488.0-$600.5 vs price $411.79 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 18.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 399,005 in (307,712 cached) | 129,827 out (100,611 reasoning) | $0.108 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ROP_20260826_073426\verdict_depth.json

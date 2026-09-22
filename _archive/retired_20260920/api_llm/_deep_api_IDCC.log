@@ -1,0 +1,58 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/IDCC.md, 18.6 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] IDCC @ $342.42 | deepseek-v4-flash effort=high | 3 samples | pack 36,170ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\IDCC_20260826_043428
+    [tool 1] search_web: InterDigital convertible senior notes conversion price maturity 2026
+    [tool 2] search_web: InterDigital share repurchase program 2026 diluted share count buyback
+    [tool 3] search_web: InterDigital $1 billion ARR by 2030 target annualized recurring revenue
+    [tool 4] search_web: InterDigital raises 2026 revenue guidance Q2 2026 earnings $85 million
+    [tool 5] search_web: InterDigital Disney DOJ antitrust Statement of Interest status 2026
+    [tool 6] search_web: InterDigital Amazon arbitration video patent licensing 2026 status ruling
+    [tool 7] search_web: 10 year treasury yield August 2026 Fed funds rate outlook
+    [tool 8] search_web: InterDigital R&D expense 2024 2025 annual research development costs 10-K
+    [tool 9] fetch_page: https://ir.interdigital.com/news-events/press-releases/news-details/2026/InterDigital-An
+    [tool 10] fetch_page: https://ipwatchdog.com/2025/10/08/doj-statement-disney-case-interdigital-urges-caution-a
+    [tool 11] search_web: InterDigital 3.50% Senior Convertible Notes due 2027 principal amount $460 million conve
+    [tool 12] search_web: InterDigital Q2 2026 earnings call transcript 2027 outlook commentary
+    [tool 13] search_web: InterDigital share repurchase authorization buyback 2025 2026 shares outstanding
+    [tool 14] search_web: US inflation CPI July 2026 consumer price index
+    [tool 15] search_web: InterDigital 2027 2028 revenue EPS analyst estimates forward
+    [tool 16] search_web: high yield credit spreads August 2026 dollar index DXY
+  sample 1: IV $208.0 | usable=True | 16 tool calls (think 106,604ch / report 29,780ch) | 417s | $0.038 cumulative
+    [tool 1] search_web: InterDigital convertible senior notes maturity 2026 2027 shares diluted outstanding
+    [tool 2] search_web: InterDigital Q2 2026 earnings results raise full year 2026 revenue guidance $85 million
+    [tool 3] search_web: DOJ Statement of Interest InterDigital Disney antitrust case SEP licensing 2026 status
+    [tool 4] search_web: 10-year Treasury yield August 2026 Federal Reserve policy stance DXY dollar index
+    [tool 5] search_web: InterDigital Q2 2026 earnings call transcript guidance 2027 outlook ARR streaming cloud
+    [tool 6] fetch_page: https://www.globenewswire.com/news-release/2024/07/03/2907957/24691/en/interdigital-anno
+    [tool 7] search_web: InterDigital 10-K 2025 convertible notes due 2026 2027 conversion price shares
+    [tool 8] search_web: InterDigital Q2 2026 earnings call transcript full year guidance cash flow R&D 2027
+    [tool 9] search_web: InterDigital $600 million 0.25% convertible notes 2022 due 2026
+    [tool 10] fetch_page: https://ir.interdigital.com/news-events/press-releases/news-details/2026/InterDigital-An
+    [tool 11] fetch_page: https://finance.yahoo.com/markets/stocks/articles/interdigital-idcc-q2-2026-earnings-024
+    [tool 12] fetch_page: https://ir.interdigital.com/news-events/press-releases/news-details/2026/InterDigital-An
+    [tool 13] search_web: InterDigital Disney antitrust case 2026 summary judgment ruling DOJ SEP licensing FRAND
+    [tool 14] search_web: InterDigital Amazon arbitration binding license terms 2026 outcome video patents
+    [tool 15] search_web: Federal Reserve August 2026 FOMC rates decision dot plot inflation outlook
+  sample 2: IV $195.0 | usable=True | 15 tool calls (think 148,104ch / report 34,829ch) | 587s | $0.084 cumulative
+    [tool 1] search_web: InterDigital convertible senior notes due 2026 conversion price outstanding
+    [tool 2] search_web: InterDigital $1 billion ARR target 2030 licensing
+    [tool 3] search_web: InterDigital DOJ Disney antitrust case status 2026
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] search_web: InterDigital 1.75% convertible senior notes due 2026 principal amount conversion rate
+    [tool 6] search_web: InterDigital Q2 2026 earnings call transcript guidance 2026 Amazon arbitration
+    [tool 7] fetch_page: https://ir.interdigital.com/news-events/press-releases/news-details/2026/InterDigital-An
+    [tool 8] search_web: Fed funds rate inflation August 2026 FOMC
+    [tool 9] fetch_page: https://www.sec.gov/Archives/edgar/data/1285819/000143774925017211/ex_818789.htm
+    [tool 10] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/07/30/interdigital-idcc-q2-2026-earn
+    [tool 11] search_web: dollar index DXY level August 2026
+    [tool 12] search_web: InterDigital IDCC analyst estimates 2027 revenue EPS consensus
+    [tool 13] search_web: InterDigital share repurchase authorization 2026 dividend increase
+    [tool 14] search_web: US CPI inflation rate July 2026 credit spreads high yield
+    [tool 15] search_web: InterDigital Disney antitrust motion to dismiss 2026 Amazon arbitration outcome
+  sample 3: IV $188.0 | usable=True | 15 tool calls (think 179,847ch / report 26,849ch) | 562s | $0.134 cumulative
+
+[deep-api] IDCC: OVERVALUED | band $188.0-$208.0 vs price $342.42 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 18.6d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 411,688 in (310,272 cached) | 165,519 out (134,109 reasoning) | $0.134 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\IDCC_20260826_043428\verdict_depth.json

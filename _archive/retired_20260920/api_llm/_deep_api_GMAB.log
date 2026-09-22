@@ -1,0 +1,59 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/GMAB.md, 10.2 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] GMAB @ $33.45 | deepseek-v4-flash effort=high | 3 samples | pack 31,545ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GMAB_20260826_035413
+    [tool 1] search_web: Genmab A/S shares outstanding ADS ratio 2026 ordinary shares
+    [tool 2] search_web: Genmab full year 2026 guidance total revenue royalties operating profit raised H1 2026 r
+    [tool 3] search_web: Genmab Darzalex royalty rate percentage Janssen agreement expiration 20-F
+    [tool 4] search_web: Genmab Merus acquisition completed 2025 deal value $3 billion debt financing
+    [tool 5] search_web: daratumumab Darzalex biosimilar entry timeline patent expiry 2030 2031 2032
+    [tool 6] fetch_page: https://ir.genmab.com/news-releases/news-release-details/genmab-announces-financial-resu
+    [tool 7] fetch_page: https://www.biospace.com/genmab-and-janssen-head-to-arbitration-table-over-darzalex-roya
+    [tool 8] search_web: 10-year Treasury yield August 2026 Federal Reserve policy
+    [tool 9] search_web: Genmab 2027 2028 revenue consensus EPS analyst estimates
+    [tool 10] search_web: petosemtamab phase 3 results 2026 head neck squamous cell carcinoma colorectal
+    [tool 11] search_web: Genmab effective tax rate 2025 annual report IFRS
+    [tool 12] fetch_page: https://fred.stlouisfed.org/series/DGS10
+    [tool 13] fetch_page: https://ir.genmab.com/news-releases/news-release-details/genmab-announces-financial-resu
+    [tool 14] search_web: Genmab first half 2026 EPKINLY Tivdak net product sales DARZALEX royalty
+    [tool 15] search_web: Genmab 2027 outlook R&D investment debt repayment leverage plan
+    [tool 16] search_web: rinatabart sesutecan Rina-S phase 3 ovarian cancer 2026 Genmab ProfoundBio
+  sample 1: IV $29.0 | usable=True | 16 tool calls (think 150,238ch / report 29,981ch) | 587s | $0.049 cumulative
+    [tool 1] search_web: Genmab Merus acquisition 2025 deal value financing
+    [tool 2] search_web: Genmab GMAB ADR ratio ordinary shares outstanding 2026
+    [tool 3] search_web: Genmab Darzalex royalty agreement Janssen expiry patent step-down 2027
+    [tool 4] search_web: Genmab first half 2026 results revenue guidance operating profit
+    [tool 5] search_web: Epkinly epcoritamab 2025 global sales Genmab AbbVie profit share agreement
+    [tool 6] search_web: petosemtamab Merus Phase 3 head and neck squamous cell carcinoma data 2026
+    [tool 7] search_web: Darzalex daratumumab global sales 2025 Johnson & Johnson billion
+    [tool 8] search_web: 10 year treasury yield August 2026 federal funds rate
+    [tool 9] fetch_page: https://ir.genmab.com/news-releases/news-release-details/genmab-announces-financial-resu
+    [tool 10] fetch_page: https://ir.genmab.com/news-releases/news-release-details/genmab-commences-binding-arbitr
+    [tool 11] search_web: Genmab ADR "ratio" depositary shares 9 ordinary shares GMAB
+    [tool 12] search_web: Genmab 2027 2028 consensus revenue EPS analyst estimates growth
+    [tool 13] search_web: Epkinly epcoritamab full year 2025 sales 468 million 2026
+    [tool 14] search_web: federal funds rate target August 2026 FOMC
+    [tool 15] search_web: daratumumab biosimilar Europe 2027 2028 patent expiry SPC Genmab royalty
+  sample 2: IV $13.3 | usable=True | 15 tool calls (think 186,425ch / report 28,279ch) | 674s | $0.102 cumulative
+    [tool 1] search_web: Genmab DARZALEX daratumumab royalty rate percentage Janssen royalty agreement
+    [tool 2] search_web: daratumumab biosimilar US entry timing patent expiry 2029 2030 J&J settlement 2034
+    [tool 3] search_web: Genmab 2026 full year guidance revenue royalties operating profit H1 2026 results
+    [tool 4] search_web: Genmab Merus acquisition deal value 2025 financing debt issuance bonds
+    [tool 5] search_web: Kesimpta ofatumumab 2025 global sales Genmab royalty Novartis
+    [tool 6] search_web: Epkinly epcoritamab 2025 sales Genmab AbbVie 50/50 profit share structure royalty
+    [tool 7] search_web: petosemtamab Phase 3 LiGEr-1 LiGEr-2 head and neck squamous cell carcinoma data readout 
+    [tool 8] search_web: daratumumab US biosimilar launch date 2032 2034 J&J settlements Samsung Bioepis Sandoz F
+    [tool 9] fetch_page: https://ir.genmab.com/news-releases/news-release-details/genmab-announces-financial-resu
+    [tool 10] search_web: 10-year treasury yield Fed funds rate August 2026 macro outlook
+    [tool 11] search_web: Genmab dividend per share 2025 2026 dividend policy announcement
+    [tool 12] fetch_page: https://www.drugpatentwatch.com/p/biologics/ingredient/daratumumab
+    [tool 13] fetch_page: https://www.biospace.com/press-releases/genmab-announces-financial-results-for-the-first
+    [tool 14] fetch_page: https://www.sec.gov/Archives/edgar/data/1434265/000143426526000076/genmabinterimreportq1
+    [tool 15] search_web: Genmab 2027 2028 revenue consensus estimate analyst forecast EPS
+    [tool 16] search_web: DARZALEX daratumumab 2026 sales guidance J&J second quarter 2026 results worldwide
+  sample 3: IV $21.41 | usable=True | 16 tool calls (think 106,755ch / report 17,686ch) | 435s | $0.136 cumulative
+
+[deep-api] GMAB: OVERVALUED | band $13.3-$29.0 vs price $33.45 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 10.2d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 343,442 in (270,592 cached) | 178,738 out (150,332 reasoning) | $0.136 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GMAB_20260826_035413\verdict_depth.json

@@ -1,0 +1,113 @@
+{
+  "generated_at": "2026-09-20T10:30:09.110539+00:00",
+  "anchor_state": {
+    "coe_level_pct": null,
+    "coe_source": "anchor_has_no_measured_erp_risk_free_only(2026-09-20)",
+    "terminal_g": 0.035,
+    "terminal_g_source": "anchor_long_run_growth(2026-09-20)",
+    "anchors_dir": "C:\\Users\\riper\\Downloads\\Stock Screener\\Macro Regime Indicator\\outputs",
+    "files_present": {
+      "cost_of_capital": true,
+      "long_run_growth": true,
+      "sector_multiple_bands": true,
+      "repair_package": true
+    }
+  },
+  "arms": {
+    "pre_anchor": {
+      "terminal_g": 0.025,
+      "coe_offset_pts": 1.7
+    },
+    "anchor_g": {
+      "terminal_g": 0.035,
+      "coe_offset_pts": 1.7
+    },
+    "coherent": {
+      "terminal_g": 0.035,
+      "coe_offset_pts": 2.4
+    }
+  },
+  "n_book": 170,
+  "n_reverse_dcf": 165,
+  "baseline_arm": "pre_anchor",
+  "scenarios": {
+    "anchor_g": {
+      "mos_percentiles": {
+        "10": -81.0,
+        "25": -67.3,
+        "33": -63.0,
+        "50": -52.3,
+        "67": -41.4,
+        "75": -34.8,
+        "90": -13.3
+      },
+      "n_mos": 165,
+      "tier_cuts": {
+        "p33": -63.0,
+        "p75": -34.8
+      },
+      "spearman_mos_vs_pre_anchor": {
+        "rho": 1.0,
+        "n": 165
+      },
+      "spearman_gap_vs_pre_anchor": {
+        "rho": 1.0,
+        "n": 159
+      },
+      "brake_tier_flips_vs_pre_anchor": {
+        "count": 1,
+        "tickers": [
+          "HQY"
+        ]
+      },
+      "mos_delta_pts": {
+        "median": 3.5,
+        "p25": 2.3999999999999915,
+        "p75": 4.700000000000003
+      },
+      "fair_value_method_counts": {
+        "forward_dcf": 159,
+        "consensus_snap": 4,
+        "trailing_dcf": 2
+      }
+    },
+    "coherent": {
+      "mos_percentiles": {
+        "10": -82.6,
+        "25": -70.0,
+        "33": -66.0,
+        "50": -56.3,
+        "67": -46.0,
+        "75": -39.8,
+        "90": -20.3
+      },
+      "n_mos": 165,
+      "tier_cuts": {
+        "p33": -66.0,
+        "p75": -39.8
+      },
+      "spearman_mos_vs_pre_anchor": {
+        "rho": 1.0,
+        "n": 165
+      },
+      "spearman_gap_vs_pre_anchor": {
+        "rho": 1.0,
+        "n": 159
+      },
+      "brake_tier_flips_vs_pre_anchor": {
+        "count": 0,
+        "tickers": []
+      },
+      "mos_delta_pts": {
+        "median": -0.3999999999999986,
+        "p25": -0.6000000000000014,
+        "p75": -0.29999999999999716
+      },
+      "fair_value_method_counts": {
+        "forward_dcf": 161,
+        "consensus_snap": 2,
+        "trailing_dcf": 2
+      }
+    }
+  }
+}

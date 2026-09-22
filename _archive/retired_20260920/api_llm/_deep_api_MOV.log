@@ -1,0 +1,57 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/MOV.md, 7.8 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] MOV @ $34.81 | deepseek-v4-flash effort=high | 3 samples | pack 34,984ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MOV_20260826_062226
+    [tool 1] search_web: Movado Group fiscal 2027 guidance full year outlook revenue operating margin
+    [tool 2] search_web: Movado Group Inc dividend per share 2026 quarterly dividend history
+    [tool 3] search_web: Movado Group Levi & Korsinsky investigation securities fraud 2026 restatement
+    [tool 4] search_web: 10 year treasury yield August 2026 Federal Reserve policy rate
+    [tool 5] fetch_page: https://www.federalreserve.gov/releases/h15/
+    [tool 6] search_web: "Movado" "fiscal 2027" guidance "net sales" outlook 2026 earnings call
+    [tool 7] search_web: Movado Group stock dividend yield 2026 ex-dividend date 35 cents
+    [tool 8] fetch_page: https://investors.movadogroup.com/news/news-details/2026/Movado-Group-Inc--Announces-Fou
+    [tool 9] fetch_page: https://stockanalysis.com/stocks/mov/
+    [tool 10] search_web: Movado Group Portnoy Law Firm investigation 2026 reason stock decline Dubai
+    [tool 11] search_web: Movado Kate Spade New York watch licensing partnership terms revenue opportunity 2026
+    [tool 12] search_web: Swiss watch exports 2026 luxury watch market growth outlook accessible luxury
+    [tool 13] search_web: Movado Group share repurchase buyback program 2026 authorization
+  sample 1: IV $35.5 | usable=True | 13 tool calls (think 104,449ch / report 35,092ch) | 404s | $0.042 cumulative
+    [tool 1] search_web: Movado Group restatement investigation internal controls
+    [tool 2] search_web: Movado Group fiscal 2027 guidance revenue EPS outlook
+    [tool 3] search_web: Movado Group quarterly dividend per share 2025 2026
+    [tool 4] search_web: Movado Group tariff Swiss watches import duty exposure
+    [tool 5] fetch_page: https://nationaljeweler.com/articles/13820-movado-to-restate-years-of-financials-due-to-
+    [tool 6] fetch_page: https://s205.q4cdn.com/374447251/files/doc_news/Movado-Group-Inc--Announces-First-Quarte
+    [tool 7] search_web: Swiss watch exports 2026 growth Federation of the Swiss Watch Industry
+    [tool 8] search_web: 10 year treasury yield federal reserve policy rate August 2026
+    [tool 9] search_web: Movado Group restatement Dubai impact millions sales reduction
+    [tool 10] search_web: federal funds rate FOMC August 2026 rate cut expectations
+    [tool 11] search_web: dollar index DXY August 2026 level
+    [tool 12] search_web: Movado Group share repurchase authorization buyback 2026
+    [tool 13] fetch_page: https://www.aol.com/finance/movado-mov-q4-2026-earnings-155810300.html
+    [tool 14] fetch_page: https://movadogroupinc.gcs-web.com/static-files/7067d781-0438-4359-b2a0-9d9e54cae0d5
+    [tool 15] search_web: US GDP growth inflation August 2026 recession status
+    [tool 16] search_web: Movado Group MOV analyst EPS estimates fiscal 2027 2028 consensus
+  sample 2: IV $29.0 | usable=True | 16 tool calls (think 81,990ch / report 32,838ch) | 344s | $0.076 cumulative
+    [tool 1] search_web: Movado Group restatement securities fraud investigation Levi Korsinsky
+    [tool 2] search_web: Movado Group fiscal 2027 guidance net sales earnings outlook
+    [tool 3] search_web: Movado Group dividend per share quarterly 2026 buyback authorization
+    [tool 4] search_web: 10 year treasury yield current Fed policy rates
+    [tool 5] fetch_page: https://www.accessnewswire.com/newsroom/en/business-and-professional-services/levi-and-k
+    [tool 6] fetch_page: https://www.businesswire.com/news/home/20260527355048/en/Movado-Group-Inc.-Announces-Fir
+    [tool 7] fetch_page: https://investors.movadogroup.com/stock-info/dividend-history/default.aspx
+    [tool 8] fetch_page: https://tradingeconomics.com/united-states/government-bond-yield
+    [tool 9] fetch_page: https://investors.movadogroup.com/news/news-details/2026/Movado-Group-Inc--Announces-Fou
+    [tool 10] search_web: Movado Group first quarter fiscal 2027 results gross margin 57.3% adjusted EPS 0.32
+    [tool 11] search_web: Movado Group Dubai restatement amount impact fiscal 2024 2023 2022 net sales reduction
+    [tool 12] search_web: Movado Group 0.40 dividend increase June 2026
+    [tool 13] fetch_page: https://s205.q4cdn.com/374447251/files/doc_news/Movado-Group-Inc--Announces-First-Quarte
+    [tool 14] search_web: MOV Movado Group consensus EPS estimate fiscal 2027 fiscal 2028 analysts
+    [tool 15] search_web: Movado Group Coach license expiration 2027 Tommy Hilfiger Calvin Klein licensing portfol
+    [tool 16] search_web: Swiss watch exports 2026 FH Federation luxury watch industry growth
+  sample 3: IV $36.0 | usable=True | 16 tool calls (think 85,743ch / report 40,054ch) | 404s | $0.110 cumulative
+
+[deep-api] MOV: HOLD | band $29.0-$36.0 vs price $34.81 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 7.8d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 461,796 in (349,312 cached) | 124,966 out (87,343 reasoning) | $0.110 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MOV_20260826_062226\verdict_depth.json

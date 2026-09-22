@@ -1,0 +1,28 @@
+{
+ "ticker": "GEV",
+ "source_dir": "C:\\Users\\riper\\Downloads\\Stock Screener\\Stock Screener\\public\\data",
+ "whole": [
+  {
+   "rel": "financials/GEV.json",
+   "fixture": "financials__GEV.json"
+  }
+ ],
+ "sliced": [
+  {
+   "rel": "fundamentals_history.json",
+   "fixture": "fundamentals_history.json"
+  },
+  {
+   "rel": "fundamentals_ttm.json",
+   "fixture": "fundamentals_ttm.json"
+  },
+  {
+   "rel": "fundamentals_quarterly.json",
+   "fixture": "fundamentals_quarterly.json"
+  },
+  {
+   "rel": "fundamentals_battery.json",
+   "fixture": "fundamentals_battery.json"
+  }
+ ]
+}

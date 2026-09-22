@@ -1,0 +1,51 @@
+[deep-api] CMI @ $593.24 | deepseek-v4-flash effort=high | 3 samples | pack 29,716ch from CMI_20260823_085553 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CMI_20260825_001933
+[deep-api] local arm said: USABLE — plausible and converged | median IV 460.5 | spread 9.0%
+    [tool 1] search_web: Cummins Q2 2026 earnings results full year 2026 guidance revenue growth EBITDA margin ra
+    [tool 2] search_web: Cummins second quarter 2026 press release record sales $9.5 billion net income capex
+    [tool 3] search_web: 10-year Treasury yield August 2026 level
+    [tool 4] fetch_page: https://investor.cummins.com/news/detail/701/cummins-reports-strong-second-quarter-2026-
+    [tool 5] search_web: Cummins full year 2026 guidance EPS 24 to 26 EBITDA margin revenue 10% 13% capital expen
+    [tool 6] search_web: Cummins 2026 Analyst Day raised 2030 financial targets revenue EBITDA margin EPS
+    [tool 7] search_web: Cummins 2026 full year EPS guidance capital expenditures capex dollars
+    [tool 8] fetch_page: https://www.tikr.com/blog/cummins-analyst-day-raises-2030-revenue-target-to-50-billion-h
+    [tool 9] search_web: Cummins FY2026 EPS guidance "diluted EPS" outlook 2026 raise August 2026
+    [tool 10] fetch_page: https://d1io3yog0oux5.cloudfront.net/_ed8cc3355f260da3a23d8599b48bba16/cummins/db/784/83
+    [tool 11] search_web: Cummins Inc credit rating Moody's S&P A2 A 2026 total debt net debt balance sheet
+    [tool 12] search_web: Cummins 2026 adjusted diluted EPS guidance full year "EPS" outlook 24 to 26 OR 25 to 27
+    [tool 13] search_web: Cummins 10-Q June 30 2026 balance sheet cash and cash equivalents total debt long-term d
+    [tool 14] search_web: data center power demand generator set backlog Cummins 2027 2028 sustainability order bo
+  sample 1: IV $477.0 | usable=True | 14 tool calls (think 129,496ch / report 20,322ch) | 464s | $0.044 cumulative
+    [tool 1] search_web: Cummins Q2 2026 earnings full year guidance raised revenue growth EBITDA margin EPS
+    [tool 2] search_web: Cummins 2026 capital expenditure guidance capex data center power generation investment 
+    [tool 3] search_web: Cummins data center power demand outlook 2027 generator backlog hyperscaler multi-gigawa
+    [tool 4] search_web: 10-year treasury yield August 2026 current level
+    [tool 5] fetch_page: https://www.cummins.com/en-ame/news/releases/2026/05/05/cummins-delivered-strong-operati
+    [tool 6] fetch_page: https://www.tradingkey.com/news/earnings/262076296-tradingkey
+    [tool 7] search_web: Cummins 2026 EPS consensus analyst estimate full year earnings per share
+    [tool 8] search_web: Cummins data center power demand durability 2027 2028 management comments "not a cyclica
+    [tool 9] search_web: Cummins Accelera 2026 losses hydrogen electrolyzer business reduced investment outlook
+    [tool 10] fetch_page: https://investor.cummins.com/news/detail/701/cummins-reports-strong-second-quarter-2026-
+    [tool 11] fetch_page: https://www.tikr.com/blog/cummins-raised-its-2026-outlook-after-q1-earnings-beat-heres-w
+    [tool 12] search_web: Cummins 2026 Analyst Day raised 2030 financial targets revenue EBITDA margin power syste
+    [tool 13] search_web: Cummins CMI 2027 EPS estimate revenue growth forecast analyst
+  sample 2: IV $459.0 | usable=True | 13 tool calls (think 83,917ch / report 21,362ch) | 326s | $0.077 cumulative
+    [tool 1] search_web: Cummins Q2 2026 full year guidance revenue growth EBITDA margin raised
+    [tool 2] search_web: Cummins 2026 capital expenditure plan capex outlook investors
+    [tool 3] fetch_page: https://investor.cummins.com/news/detail/701/cummins-reports-strong-second-quarter-2026-
+    [tool 4] search_web: Cummins 2026 Analyst Day May 21 New York long-term targets 2030 power data center Accele
+    [tool 5] fetch_page: https://www.cummins.com/en-ame/news/releases/2026/05/21/cummins-raises-2030-financial-ta
+    [tool 6] search_web: Cummins 2030 financial targets revenue $46 billion EBITDA margin Analyst Day 2026
+    [tool 7] fetch_page: https://www.tikr.com/blog/cummins-analyst-day-raises-2030-revenue-target-to-50-billion-h
+    [tool 8] search_web: 10 year treasury yield August 2026 current level
+    [tool 9] search_web: Cummins CMI consensus EPS estimates 2026 2027 2028 analyst forecast
+    [tool 10] search_web: data center generator demand 2027 outlook diesel generator order cancellations risk hype
+    [tool 11] search_web: Cummins CMI 2027 2028 EPS estimate consensus forward
+    [tool 12] search_web: North America Class 8 heavy duty truck production forecast 2027 2028 outlook
+    [tool 13] fetch_page: https://www.actresearch.net/resources/blog/class-8-truck-sales-forecast-2027
+    [tool 14] search_web: Cummins capex as percent of sales capital expenditures 2026 2027 capacity investment Ana
+  sample 3: IV $448.0 | usable=True | 14 tool calls (think 102,638ch / report 26,250ch) | 400s | $0.113 cumulative
+
+[deep-api] CMI: OVERVALUED | band $448.0-$477.0 vs price $593.24 | size full
+[deep-api] LOCAL said: OVERVALUED | band $434.0-$473.0 | median $460.5
+[deep-api] 21 API calls | 458,449 in (372,992 cached) | 138,087 out (111,079 reasoning) | $0.113 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CMI_20260825_001933\verdict_depth.json

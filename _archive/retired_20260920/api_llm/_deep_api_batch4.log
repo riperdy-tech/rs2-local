@@ -1,0 +1,75 @@
+[batch] start NICE
+[batch] start NVEC
+[batch] start P
+[batch] done P exit=0 [deep-api] P: OVERVALUED | band $22.0-$31.5 vs price $108.55 | size quarter
+[batch] start PAYC
+[batch] done NVEC exit=0 [deep-api] NVEC: OVERVALUED | band $71.0-$78.5 vs price $109.89 | size full
+[batch] start PAYX
+[batch] done NICE exit=0 [deep-api] NICE: UNDERVALUED | band $121.7-$213.8 vs price $100.24 | size quarter
+[batch] start POWL
+[batch] done PAYC exit=0 [deep-api] PAYC: UNDERVALUED | band $242.0-$295.0 vs price $229.07 | size half
+[batch] start PSMT
+[batch] done PAYX exit=0 [deep-api] PAYX: HOLD | band $44.5-$139.0 vs price $124.48 | size quarter
+[batch] start PTC
+[batch] done POWL exit=0 [deep-api] POWL: OVERVALUED | band $90.0-$149.0 vs price $188.75 | size quarter
+[batch] start QTWO
+[batch] done PSMT exit=0 [deep-api] PSMT: OVERVALUED | band $74.0-$118.0 vs price $173.825 | size quarter
+[batch] start REGN
+[batch] done QTWO exit=0 [deep-api] QTWO: OVERVALUED | band $52.8-$56.0 vs price $64.53 | size full
+[batch] start RL
+[batch] done PTC exit=0 [deep-api] PTC: OVERVALUED | band $122.0-$142.9 vs price $154.68 | size half
+[batch] start RMBS
+[batch] done REGN exit=0 [deep-api] REGN: OVERVALUED | band $648.2-$781.25 vs price $825.0 | size half
+[batch] start RNG
+[batch] done RMBS exit=0 [deep-api] RMBS: OVERVALUED | band $43.07-$52.0 vs price $91.24 | size half
+[batch] start ROK
+[batch] done RL exit=0 [deep-api] RL: OVERVALUED | band $225.0-$326.0 vs price $372.59 | size quarter
+[batch] start ROP
+[batch] done RNG exit=0 [deep-api] RNG: UNDERVALUED | band $67.0-$92.2 vs price $66.47 | size quarter
+[batch] start ROST
+[batch] done ROK exit=0 [deep-api] ROK: OVERVALUED | band $175.0-$295.0 vs price $437.08 | size quarter
+[batch] start RTX
+[batch] done ROP exit=0 [deep-api] ROP: HOLD | band $411.79-$462.0 vs price $411.79 | size full
+[batch] start SENEB
+[batch] done RTX exit=0 [deep-api] RTX: HOLD | band $132.0-$248.215 vs price $208.84 | size quarter
+[batch] start SITM
+[batch] done ROST exit=0 [deep-api] ROST: OVERVALUED | band $146.5-$180.0 vs price $239.04 | size half
+[batch] start SMTC
+[batch] done SENEB exit=0 [deep-api] SENEB: HOLD | band $183.0-$280.0 vs price $195.39 | size quarter
+[batch] start SN
+[batch] done SITM exit=0 [deep-api] SITM: HOLD | band $94.0-$614.83 vs price $614.83 | size quarter
+[batch] start SPHR
+[batch] done SMTC exit=0 [deep-api] SMTC: OVERVALUED | band $16.9-$39.125 vs price $124.09 | size quarter
+[batch] start SYK
+[batch] done SN exit=0 [deep-api] SN: OVERVALUED | band $93.6-$132.0 vs price $180.76 | size quarter
+[batch] start TIGO
+[batch] done SPHR exit=0 [deep-api] SPHR: OVERVALUED | band $38.0-$50.5 vs price $158.36 | size quarter
+[batch] start TT
+[batch] done SYK exit=0 [deep-api] SYK: UNDERVALUED | band $367.6-$377.0 vs price $329.45 | size full
+[batch] start TYL
+[batch] done TT exit=0 [deep-api] TT: HOLD | band $254.0-$510.0 vs price $453.43 | size quarter
+[batch] start UNP
+[batch] done TIGO exit=0 [deep-api] TIGO: HOLD | band $73.0-$135.0 vs price $93.68 | size quarter
+[batch] start UVE
+[batch] done TYL exit=0 [deep-api] TYL: HOLD | band $303.0-$451.0 vs price $350.73 | size quarter
+[batch] start VICR
+[batch] done UNP exit=0 [deep-api] UNP: OVERVALUED | band $140.0-$283.6 vs price $308.05 | size quarter
+[batch] start WST
+[batch] done UVE exit=0 [deep-api] UVE: UNDERVALUED | band $50.0-$70.0 vs price $43.92 | size quarter
+[batch] start WWD
+[batch] done VICR exit=0 [deep-api] VICR: OVERVALUED | band $116.0-$132.0 vs price $200.54 | size full
+[batch] start AWI
+[batch] done WST exit=0 [deep-api] WST: OVERVALUED | band $139.0-$190.0 vs price $353.08 | size quarter
+[batch] start CTAS
+[batch] done AWI exit=0 [deep-api] AWI: OVERVALUED | band $121.0-$160.0 vs price $178.54 | size quarter
+[batch] start IEX
+[batch] done WWD exit=0 [deep-api] WWD: OVERVALUED | band $219.5-$232.4 vs price $343.26 | size full
+[batch] start KOF
+[batch] done KOF exit=0 [deep-api] KOF: HOLD | band $107.595-$130.0 vs price $112.19 | size half
+[batch] start LITE
+[batch] done IEX exit=0 [deep-api] IEX: OVERVALUED | band $156.0-$183.15 vs price $234.39 | size half
+[batch] start MOG-A
+[batch] done CTAS exit=0 [deep-api] CTAS: OVERVALUED | band $103.0-$195.45 vs price $207.09 | size quarter
+[batch] done MOG-A exit=0 [deep-api] MOG-A: OVERVALUED | band $143.0-$224.0 vs price $389.14 | size quarter
+[batch] done LITE exit=0 [deep-api] LITE: OVERVALUED | band $225.0-$482.0 vs price $866.71 | size quarter
+[batch] ALL DONE

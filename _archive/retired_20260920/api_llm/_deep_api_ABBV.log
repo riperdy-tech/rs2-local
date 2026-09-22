@@ -1,0 +1,57 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ABBV.md, 6.1 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ABBV @ $264.96 | deepseek-v4-flash effort=high | 3 samples | pack 31,782ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ABBV_20260826_012953
+    [tool 1] search_web: 10-year Treasury yield August 2026
+    [tool 2] search_web: AbbVie Skyrizi Rinvoq peak sales consensus 2030 estimate
+    [tool 3] search_web: AbbVie 2027 2028 revenue consensus analyst estimates
+    [tool 4] search_web: AbbVie Apogee Therapeutics acquisition price deal terms 2026
+    [tool 5] search_web: Medicare drug price negotiation 2027 2028 cycle Vraylar Rinvoq selected drugs
+    [tool 6] search_web: CMS Medicare negotiation 2027 selected drugs list Vraylar Ozempic maximum fair price
+    [tool 7] search_web: CMS Medicare negotiation 2028 selected drugs 15 list announced January 2026
+    [tool 8] search_web: Skyrizi Rinvoq Vraylar patent expiry loss of exclusivity timeline
+    [tool 9] search_web: AbbVie Q2 2026 earnings call guidance R&D investment margin 2027 long-term growth algori
+    [tool 10] search_web: Federal Reserve interest rate decision August 2026 policy stance
+    [tool 11] fetch_page: https://www.cardinalhealth.com/en/services/specialty-physician-practice/resources/health
+    [tool 12] fetch_page: https://www.roic.ai/quote/ABBV:UN/transcripts/2026-year/2-quarter
+    [tool 13] search_web: "IPAY 2027" selected drugs list 15 drugs maximum fair price January 2025 announcement
+  sample 1: IV $206.0 | usable=True | 13 tool calls (think 136,779ch / report 25,533ch) | 541s | $0.045 cumulative
+    [tool 1] search_web: AbbVie Q2 2026 earnings press release full year 2026 guidance adjusted EPS revenue outlo
+    [tool 2] search_web: AbbVie Skyrizi Rinvoq combined 2026 sales guidance immunology growth
+    [tool 3] search_web: AbbVie Apogee Therapeutics acquisition price per share deal value 2026
+    [tool 4] search_web: 10 year treasury yield August 2026 fed funds rate current
+    [tool 5] search_web: Federal Reserve federal funds rate target range August 2026 FOMC policy stance
+    [tool 6] search_web: Medicare drug price negotiation 2027 list Vraylar Skyrizi Rinvoq IRA maximum fair price
+    [tool 7] search_web: Skyrizi patent expiration 2033 biosimilar Humira Rinvoq loss of exclusivity date
+    [tool 8] search_web: AbbVie 2027 adjusted EPS consensus revenue forecast analyst estimates
+    [tool 9] fetch_page: https://www.prnewswire.com/news-releases/abbvie-reports-second-quarter-2026-financial-re
+    [tool 10] search_web: CMS Medicare negotiation selected drugs IPAY 2027 list fifteen drugs Vraylar Austedo Lin
+    [tool 11] search_web: AbbVie dividend 2026 quarterly per share increase consecutive years
+    [tool 12] search_web: AbbVie pipeline 2026 2027 catalysts tavapadon telisotuzumab vedotin ABBV-383 launches FD
+    [tool 13] fetch_page: https://atiadvisory.com/resources/medicare-negotiation-15-drugs-2027/
+    [tool 14] search_web: AbbVie 2025 full year Skyrizi sales $19 billion Rinvoq sales annual report
+    [tool 15] search_web: ABBV 2027 EPS estimate forward P/E stockanalysis
+    [tool 16] search_web: core PCE inflation rate July 2026 CPI report
+  sample 2: IV $210.0 | usable=True | 16 tool calls (think 75,029ch / report 35,477ch) | 330s | $0.076 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: federal funds rate August 2026 Fed policy stance
+    [tool 3] search_web: AbbVie 2027 revenue EPS consensus estimate analyst
+    [tool 4] search_web: AbbVie Q2 2026 earnings adjusted EPS revenue guidance raised
+    [tool 5] search_web: Skyrizi risankizumab US patent expiry biosimilar entry date
+    [tool 6] search_web: Rinvoq upadacitinib patent expiry LOE biosimilar
+    [tool 7] search_web: AbbVie Apogee Therapeutics acquisition terms price 2026
+    [tool 8] search_web: Medicare drug price negotiation 2028 list Skyrizi Rinvoq selected
+    [tool 9] fetch_page: https://www.cms.gov/initiatives/medicare-prescription-drug-affordability/overview/medica
+    [tool 10] search_web: AbbVie pipeline 2026 tavapadon emraclidine telisotuzumab approval status
+    [tool 11] search_web: AbbVie 2026 dividend increase annual raise percentage
+    [tool 12] search_web: "AbbVie" long-term growth outlook 2028 2029 EPS algorithm Skyrizi Rinvoq peak sales
+    [tool 13] search_web: Medicare drug price negotiation third cycle 2028 selected drugs list names
+    [tool 14] search_web: Skyrizi Rinvoq 2026 full year sales guidance AbbVie product level
+    [tool 15] search_web: AbbVie 2027 adjusted EPS estimate consensus $16
+    [tool 16] search_web: AbbVie Q2 2026 Skyrizi sales Rinvoq sales Botox Vraylar segment results
+  sample 3: IV $184.0 | usable=True | 16 tool calls (think 72,878ch / report 20,116ch) | 327s | $0.103 cumulative
+
+[deep-api] ABBV: OVERVALUED | band $184.0-$210.0 vs price $264.96 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 6.1d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 383,601 in (294,784 cached) | 123,599 out (94,763 reasoning) | $0.103 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ABBV_20260826_012953\verdict_depth.json

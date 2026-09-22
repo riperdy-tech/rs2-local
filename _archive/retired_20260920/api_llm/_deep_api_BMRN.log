@@ -1,0 +1,53 @@
+[deep-api] BMRN @ $69.33 | deepseek-v4-flash effort=high | 3 samples | pack 33,354ch from BMRN_20260822_065009 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\BMRN_20260824_235153
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 86.5 | spread 30.7%
+    [tool 1] search_web: 10 year treasury yield August 2026 current rate
+    [tool 2] search_web: BioMarin Amicus Therapeutics acquisition deal value financing cash consideration 2025
+    [tool 3] search_web: BioMarin 2027 revenue guidance long-term outlook VOXZOGO peak sales estimate
+    [tool 4] fetch_page: https://www.biospace.com/business/biomarin-abandons-gene-therapy-roctavian-cuts-revenue-
+    [tool 5] search_web: BioMarin Amicus acquisition financing debt bridge loan term loan $4.8 billion how funded
+    [tool 6] search_web: BioMarin VOXZOGO ITC patent case December 2026 exclusion order Ascendis Yuviwel
+    [tool 7] search_web: BioMarin Q2 2026 10-Q total debt cash balance sheet June 30 2026 term loan
+    [tool 8] search_web: Amicus Therapeutics 2025 revenue GALAFOLD Pombiliti Opfolda annual revenue run rate
+    [tool 9] search_web: BioMarin 2027 2028 revenue estimates analysts Amicus GALAFOLD Voxzogo forecast
+    [tool 10] fetch_page: https://investors.biomarin.com/news/news-details/2026/BioMarin-Reports-Second-Quarter-20
+    [tool 11] fetch_page: https://finance.yahoo.com/healthcare/articles/biomarin-pharmaceutical-q2-earnings-call-2
+    [tool 12] search_web: BioMarin "cash and cash equivalents" "June 30, 2026" balance sheet 10-Q total
+    [tool 13] search_web: BioMarin Q2 2026 operating cash flow six months "cash provided by operating activities"
+    [tool 14] search_web: BioMarin BMRN beta 5 year monthly biotech cost of equity
+  sample 1: IV $127.0 | usable=True | 14 tool calls (think 124,200ch / report 28,755ch) | 456s | $0.043 cumulative
+    [tool 1] search_web: BioMarin Amicus Therapeutics acquisition deal value closing date financing 2025
+    [tool 2] search_web: BioMarin Q2 2026 earnings call transcript 2027 revenue guidance long-term outlook Alexan
+    [tool 3] search_web: 10-year Treasury yield August 2026 current
+    [tool 4] search_web: BioMarin capital expenditure guidance 2026 2027 manufacturing capex plans
+    [tool 5] fetch_page: https://www.biomarin.com/news/press-releases/biomarin-reports-second-quarter-2026-financ
+    [tool 6] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-biomarin-q2-2026-bea
+    [tool 7] fetch_page: https://www.prnewswire.com/news-releases/biomarin-reports-second-quarter-2026-financial-
+    [tool 8] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/05/04/biomarin-bmrn-q1-2026-earnings
+    [tool 9] search_web: BioMarin VOXZOGO ITC case exclusion order December 2026 decision status
+    [tool 10] search_web: BioMarin debt financing Amicus acquisition term loan bonds 2026 total debt balance
+    [tool 11] fetch_page: https://investors.biomarin.com/financials/quarterly-results/default.aspx
+    [tool 12] search_web: ITC investigation 337 Ascendis BioMarin Yuviwel TransCon CNP exclusion order initial det
+    [tool 13] search_web: BioMarin 10-Q June 30 2026 total debt cash balance sheet term loan drawn
+    [tool 14] search_web: Ascendis Yuviwel launch United States July 2026 VOXZOGO competition achondroplasia
+  sample 2: IV $90.0 | usable=True | 14 tool calls (think 73,505ch / report 29,599ch) | 258s | $0.073 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026
+    [tool 2] search_web: BioMarin BMRN 2027 2028 revenue growth analyst estimates long-term outlook
+    [tool 3] search_web: BioMarin VOXZOGO ITC patent case December 2026 exclusion order decision
+    [tool 4] search_web: BioMarin BMRN beta 5-year monthly cost of equity
+    [tool 5] fetch_page: https://valueinvesting.io/BMRN/valuation/wacc
+    [tool 6] search_web: BioMarin BMRN 2026 2027 revenue estimate VOXZOGO Amicus acquisition accretion long-term 
+    [tool 7] search_web: BioMarin Amicus Therapeutics acquisition deal value cost synergies 2025 2026
+    [tool 8] search_web: Ascendis Yuviwel weekly vosoritide VOXZOGO competition BioMarin market share 2026 2027
+    [tool 9] search_web: BioMarin BMRN total debt convertible notes 2026 balance sheet cash Amicus financing
+    [tool 10] search_web: BioMarin long-term revenue growth target 2027 2028 $5 billion VOXZOGO peak sales forecas
+    [tool 11] fetch_page: https://investors.biomarin.com/news/news-details/2026/BioMarin-Reports-Second-Quarter-20
+    [tool 12] fetch_page: https://www.biopharmadive.com/news/biomarin-investor-day-reorganization-voxzogo-guidance
+    [tool 13] search_web: BioMarin Q2 2026 balance sheet cash debt total 10-Q June 30 2026
+    [tool 14] search_web: BioMarin full year 2026 guidance non-GAAP operating margin EPS revenue range raise
+    [tool 15] search_web: BMRN 2027 revenue estimate consensus next year sales forecast
+  sample 3: IV $109.0 | usable=True | 15 tool calls (think 90,373ch / report 24,381ch) | 347s | $0.104 cumulative
+
+[deep-api] BMRN: UNDERVALUED | band $90.0-$127.0 vs price $69.33 | size quarter
+[deep-api] LOCAL said: UNDERVALUED | band $75.0-$98.0 | median $86.5
+[deep-api] 17 API calls | 335,337 in (262,016 cached) | 130,648 out (98,747 reasoning) | $0.104 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\BMRN_20260824_235153\verdict_depth.json

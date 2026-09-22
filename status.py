@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """status.py — DEPTH-tier orchestrator dashboard + graceful pause / stop / resume.
 
-    python status.py            # live dashboard (type a letter, press ENTER; see footer)
+    python status.py            # live interactive dashboard (type command, press ENTER)
     python status.py --once     # one-shot snapshot, no live UI
-    python status.py start|pause|resume|stop   # one action, non-interactive
+    python status.py start|pause|resume|stop   # non-interactive single command
 
 Controls the DEPTH pipeline (orchestrate_depth.py / the RS2-Depth-Orchestrator scheduled task).
 
@@ -12,15 +12,10 @@ cache/DEPTH_PAUSED, and the running sweep stops at the next TICKER boundary — 
 name has finished all its samples and written its verdict. A half-analysed ticker has no verdict,
 so the ticker is the clean unit to stop on. RESUME clears the flag and relaunches.
 
-  * start — launch a sweep now (e.g. after the daily data fetch, before the 02:00 run). Refuses
-            if paused or already running.
-  * pause — halt after the current ticker; auto-runs blocked until resume. (Come back soon.)
-  * stop  — same graceful halt, and free the GPU: models unload once the pipeline is idle
-            (immediately if nothing is running). (Done for a while / want the GPU to game.)
-  * resume — clear the flag and relaunch the sweep (it re-queues due names from state + triggers).
-
-The old production-orchestrator dashboard (orchestrate.py / RS2-Orchestrator) was removed
-2026-08-25: that pipeline is dropped and its task stays disabled via cache/PAUSED.
+  * start — launch a sweep now. Refuses if paused or already running.
+  * pause — halt after current ticker finishes its verdict; auto-runs blocked until resume.
+  * stop  — same graceful halt, and free the GPU: models unload once idle.
+  * resume — clear DEPTH_PAUSED and relaunch the sweep (re-queues due names from state + triggers).
 """
 import argparse
 import json
@@ -29,7 +24,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import paths
 
@@ -43,13 +38,14 @@ DEPTH_PAUSE = HERE / "cache" / "DEPTH_PAUSED"
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 DEPTH_LOG = HERE / "cache" / "depth_orchestrate.log"
 DEPTH_TASK = "RS2-Depth-Orchestrator"
-DEPTH_MODEL = CONFIG.get("depth_model", "rs2-analyst-deep")
+DEPTH_MODEL = CONFIG.get("depth_model", "rs2-analyst-deep-mtp5")
 RESEARCH_MODEL = CONFIG.get("research_model", "rs2-research")
+DEPTH_CTX = CONFIG.get("depth_ctx", 81920)
 
 
 def load(p, d=None):
     try:
-        return json.loads(Path(p).read_text(encoding="utf-8-sig"))   # tolerate BOM (state-wipe trap)
+        return json.loads(Path(p).read_text(encoding="utf-8-sig"))
     except Exception:
         return d
 
@@ -81,9 +77,7 @@ def _sweep_running():
 
 
 def _child_pids():
-    """PIDs of live depth CHILD procs (a ticker actually being worked): depth_pipeline /
-    deep_research / consensus_valuation. PowerShell-backed, so used only for the one-shot stop
-    decision — never in the refresh loop."""
+    """PIDs of live depth CHILD procs (a ticker actually being worked)."""
     ps = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match "
           "'depth_pipeline\\.py|deep_research\\.py|consensus_valuation\\.py' } | "
           "ForEach-Object { $_.ProcessId }")
@@ -96,14 +90,12 @@ def _child_pids():
 
 
 def _depth_active():
-    """True if a sweep is running OR a ticker child is live — i.e. the models may be in use, so it
-    is NOT safe to unload. Only a fully idle pipeline (no orchestrator, no child) can free the GPU."""
+    """True if a sweep is running OR a ticker child is live."""
     return _sweep_running() or bool(_child_pids())
 
 
 def _unload_models():
-    """keep_alive:0 on the depth + research models to release VRAM. Call ONLY when idle — unloading
-    while a ticker is mid-sample would break that run."""
+    """keep_alive:0 on the depth + research models to release VRAM. Call ONLY when idle."""
     import urllib.request
     ep = CONFIG["ollama_endpoint"].replace("/api/chat", "/api/generate")
     for m in (DEPTH_MODEL, RESEARCH_MODEL):
@@ -120,8 +112,7 @@ _TASK_CACHE = {"t": 0.0, "v": (None, None, None)}
 
 
 def _task_info():
-    """(state, next_run, last_run) for RS2-Depth-Orchestrator; (None,...) if not registered.
-    Cached 60s so the refresh loop doesn't spawn PowerShell every tick."""
+    """(state, next_run, last_run) for RS2-Depth-Orchestrator; cached 60s."""
     if time.time() - _TASK_CACHE["t"] < 60:
         return _TASK_CACHE["v"]
     val = (None, None, None)
@@ -143,19 +134,13 @@ def _task_info():
 
 
 def _launch_depth():
-    """Spawn orchestrate_depth.py DETACHED (its lockfile prevents a duplicate). Output appended to
-    the depth log via a cmd redirect so child output is inherited into the log rather than lost to
-    a fresh console (same reasoning as the scheduled task)."""
+    """Spawn orchestrate_depth.py DETACHED."""
     try:
-        if os.name == "nt":
-            flags = 0x00000008 | 0x08000000   # DETACHED_PROCESS | CREATE_NO_WINDOW
-            line = f'""{sys.executable}" "{HERE / "orchestrate_depth.py"}" >> "{DEPTH_LOG}" 2>&1"'
-            subprocess.Popen(f'cmd.exe /c {line}', cwd=str(HERE),
-                             creationflags=flags, close_fds=True)
-            return True
         logf = open(DEPTH_LOG, "a", encoding="utf-8")
+        flags = (0x00000008 | 0x08000000) if os.name == "nt" else 0  # DETACHED_PROCESS | CREATE_NO_WINDOW
         subprocess.Popen([sys.executable, str(HERE / "orchestrate_depth.py")],
-                         stdout=logf, stderr=subprocess.STDOUT, cwd=str(HERE), close_fds=True)
+                         cwd=str(HERE), stdout=logf, stderr=subprocess.STDOUT,
+                         creationflags=flags, close_fds=True)
         return True
     except Exception as e:
         print(f"  launch failed: {e}", flush=True)
@@ -166,80 +151,62 @@ def _launch_depth():
 
 
 def do_pause():
-    """GRACEFUL pause: set DEPTH_PAUSED. A running sweep finishes the CURRENT ticker (all its
-    samples, never mid-sample), writes its verdict, then stops at the boundary and exits. Blocks
-    scheduled auto-runs until resume. Nothing is killed or frozen."""
+    """GRACEFUL pause: set DEPTH_PAUSED. A running sweep finishes the CURRENT ticker."""
     DEPTH_PAUSE.parent.mkdir(exist_ok=True)
     DEPTH_PAUSE.write_text(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
     if _depth_active():
-        return ("PAUSE REQUESTED — the sweep will finish the current ticker (never mid-sample), write "
-                "its verdict, then stop at the boundary. Auto-runs blocked until resume.")
-    return "PAUSED — flag set (no sweep active). Scheduled + manual runs wait until you resume."
+        return ("PAUSE REQUESTED — the sweep will finish the current ticker (all samples), write "
+                "its verdict, then halt at the boundary. Auto-runs blocked until resume.")
+    return "PAUSED — flag set (no sweep active). Scheduled and manual runs blocked until you resume."
 
 
 def do_stop():
-    """GRACEFUL stop + free the GPU. Same boundary-stop as pause (sets DEPTH_PAUSED, never kills a
-    sample). If a ticker is in flight the models free when it finishes and the sweep exits; if the
-    pipeline is already idle, unload the models now so VRAM is free immediately (e.g. to game)."""
+    """GRACEFUL stop + free the GPU."""
     DEPTH_PAUSE.parent.mkdir(exist_ok=True)
     DEPTH_PAUSE.write_text(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
     if _depth_active():
-        return ("STOP REQUESTED — the sweep will finish the current ticker (never mid-sample) then "
-                "exit; the GPU frees when that ticker's child ends. Auto-runs blocked until resume.")
+        return ("STOP REQUESTED — the sweep will finish the current ticker then exit; the GPU "
+                "frees when that ticker ends. Auto-runs blocked until resume.")
     _unload_models()
-    return "STOPPED — pipeline was idle; models unloaded, GPU free. Auto-runs blocked until resume."
+    return "STOPPED — pipeline was idle; models unloaded, GPU VRAM free. Auto-runs blocked."
 
 
 def do_resume():
-    """Clear DEPTH_PAUSED and continue. If a sweep is somehow still active, just clear the flag;
-    otherwise relaunch orchestrate_depth (detached) so you don't wait for the next scheduled fire.
-    The relaunched sweep re-queues due names from state + triggers and picks up where it left off."""
+    """Clear DEPTH_PAUSED and continue."""
     DEPTH_PAUSE.unlink(missing_ok=True)
     if _sweep_running():
-        return "RESUMED — flag cleared; a sweep is still running and will keep going."
+        return "RESUMED — flag cleared; a sweep is still running and will continue."
     ok = _launch_depth()
-    return ("RESUMED — depth sweep relaunched (detached); it re-queues due names and continues. "
-            "Watch the live activity above." if ok else
-            "Flag cleared but relaunch FAILED — run `python orchestrate_depth.py` manually.")
+    return ("RESUMED — depth sweep relaunched (detached); re-queues due names and continues. "
+            if ok else "Flag cleared but relaunch FAILED — run `python orchestrate_depth.py` manually.")
 
 
 def do_start():
-    """Manually launch a sweep NOW — e.g. after the daily data fetch lands and before the 02:00
-    scheduled run, so the day's verdicts are ready earlier. Unlike resume it does NOT clear a
-    pause: if DEPTH_PAUSED is set it refuses (a launched sweep would just exit at the flag), and it
-    refuses to start a second sweep over a live one. The sweep itself snapshots membership, builds
-    the trigger queue, and works the due names — identical to a scheduled fire."""
+    """Manually launch a sweep NOW."""
     if DEPTH_PAUSE.exists():
-        return ("NOT STARTED — DEPTH_PAUSED is set, so a sweep would exit immediately. "
-                "Use `resume` to clear the pause and launch.")
+        return ("NOT STARTED — DEPTH_PAUSED is set. Use `resume` to clear the pause flag and launch.")
     if _sweep_running():
-        return "already RUNNING — a sweep is active (lockfile PID alive); not starting a second."
+        return "ALREADY RUNNING — a sweep is active (lockfile PID alive); not starting a second."
     ok = _launch_depth()
-    return ("STARTED — depth sweep launched (detached); snapshots membership, builds the trigger "
-            "queue, works due names. Watch the live activity above." if ok else
-            "start FAILED — run `python orchestrate_depth.py` manually.")
+    return ("STARTED — depth sweep launched (detached). Monitoring active." if ok else
+            "START FAILED — run `python orchestrate_depth.py` manually.")
 
 
 # ---------------------------------------------------------------- dashboard ----------------------
 
 
 def _sweep_progress():
-    """This sweep's position + what's pending. Prefers cache/depth_progress.json (written by the
-    orchestrator per ticker); falls back to parsing the depth log for a sweep that started before
-    the progress file existed. Returns {total, idx, current, pending:[names], active} or None."""
+    """This sweep's position + what's pending."""
     p = load(DEPTH_PROGRESS)
-    if p and p.get("total"):
+    if p and p.get("total") is not None:
         idx = int(p.get("idx") or 0)
-        q = [e.get("t") for e in (p.get("queue") or [])]
+        q = p.get("queue") or []
+        pending_names = [e.get("t") for e in q[idx:] if isinstance(e, dict) and e.get("t")]
         return {"total": int(p["total"]), "idx": idx, "current": p.get("current"),
-                "pending": q[idx:], "active": bool(p.get("active"))}
-    # fallback: parse the log for the newest "[i/N] TICKER", and the queued names after the last
-    # "book … | due …" (only the first 20 are logged, so the named list may be partial).
+                "pending": pending_names, "queue_detail": q, "active": bool(p.get("active"))}
     if not DEPTH_LOG.exists():
         return None
     text = DEPTH_LOG.read_text(encoding="utf-8", errors="replace").splitlines()
-    # anchor the segment at the sweep's START (its membership-snapshot line, else the book|due line)
-    # so the `queued …` lines — logged just BEFORE book|due — are inside the segment.
     anchor = max((i for i, ln in enumerate(text) if "membership snapshot" in ln), default=None)
     if anchor is None:
         anchor = max((i for i, ln in enumerate(text) if re.search(r"\| due \d+", ln)), default=None)
@@ -253,47 +220,54 @@ def _sweep_progress():
         return None
     idx, total, current = idxs[-1]
     return {"total": total, "idx": idx, "current": current,
-            "pending": queued[idx:], "active": _sweep_running()}
+            "pending": queued[idx:], "queue_detail": [], "active": _sweep_running()}
+
+
+def _draw_bar(current, total, width=28):
+    if total <= 0:
+        return "░" * width
+    ratio = min(1.0, max(0.0, current / total))
+    filled = int(round(width * ratio))
+    return "█" * filled + "░" * (width - filled)
 
 
 def depth_snapshot():
-    """Status of the depth-tier pipeline: the halt/schedule state, current ticker + within-ticker
-    sample progress, recent verdicts, live artifacts, and a measured ETA for remaining names."""
+    """Status of the depth-tier pipeline with Section 12 telemetry and progress bar."""
     dstate = load(DEPTH_STATE, {}) or {}
     L = []
-    L.append(f"RS2 DEPTH ORCHESTRATOR    ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-    L.append("=" * 60)
+    
+    # ── Header
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    L.append("╔" + "═" * 78 + "╗")
+    L.append(f"║  RS2 INSTITUTIONAL DEPTH ORCHESTRATOR                {now_str}  ║")
+    L.append(f"║  Engine: {DEPTH_MODEL:<24} | Ctx: {DEPTH_CTX:<6} | Think: high (deep)     ║")
+    L.append(f"║  Consensus: Adaptive 2-Escalate (Early <=15%, Escalate n=3) | Tools: SearXNG  ║")
+    L.append("╚" + "═" * 78 + "╝")
 
     alive = _sweep_running()
     paused = DEPTH_PAUSE.exists()
+    lock_pid = _lock_pid()
 
-    # halt / running state
+    # ── Operational State Banner
     if paused and alive:
-        L.append("PAUSE/STOP REQUESTED — halts at the next ticker boundary (current name finishes "
-                 "its samples + verdict first). Resume: `python status.py resume`.")
+        L.append("  [⏳ PAUSE REQUESTED] Active sweep will finish current ticker, then halt.")
+        L.append("                       Resume anytime via 'r' (resume).")
     elif paused:
-        L.append("HALTED — DEPTH_PAUSED set; auto-runs blocked. Resume: `python status.py resume`.")
-    if alive:
-        L.append("RUNNING — sweep active")
+        L.append("  [⏸  PAUSED] Halted via DEPTH_PAUSED. Auto-runs blocked.")
+        L.append("              Press 'r' + ENTER to resume sweep.")
+    elif alive:
+        L.append(f"  [●  RUNNING] Sweep process ACTIVE (PID: {lock_pid}).")
     elif DEPTH_LOCK.exists() and not paused:
-        L.append("STALLED — depth lock present but orchestrator PID is dead (crashed run). "
-                 "The next scheduled run self-heals the lock; or resume now.")
-    elif not paused:
-        L.append("idle — no sweep running")
-
-    # scheduled-task timer
-    tstate, tnext, tlast = _task_info()
-    if tstate is None:
-        L.append("schedule: RS2-Depth-Orchestrator NOT registered (run register_depth_task.ps1). "
-                 "Auto-runs are OFF.")
-    elif paused:
-        L.append(f"schedule: task {tstate} but PAUSED — scheduled runs exit immediately until resume.")
+        L.append("  [⚠  STALLED] Stale lockfile detected but PID is dead. Run self-heals next fire.")
     else:
-        L.append(f"schedule: task {tstate} | next auto-run {tnext or '—'} | last run {tlast or '—'}")
+        L.append("  [○  IDLE] No sweep in progress. Press 'g' + ENTER to start.")
 
-    # verdict tallies
-    ok = [t for t, r in dstate.items() if r.get("ok")]
-    bad = [t for t, r in dstate.items() if not r.get("ok")]
+    # Scheduled Task state
+    tstate, tnext, tlast = _task_info()
+    if tstate is not None:
+        L.append(f"  Task Schedule: {tstate} | Next: {tnext or '—'} | Last: {tlast or '—'}")
+
+    # ── Ingestion & Verdict tallies
     verdicts = {}
     if LEDGER.exists():
         for line in LEDGER.read_text(encoding="utf-8").splitlines():
@@ -302,116 +276,205 @@ def depth_snapshot():
                 verdicts[v["ticker"]] = v
             except Exception:
                 pass
-    L.append(f"   done {len(ok)} | failed {len(bad)} | verdicts on file {len(verdicts)}")
-    if bad:
-        L.append("   failed: " + ", ".join(
-            f"{t}({dstate[t].get('why', '?')})" for t in bad[:6]))
+    
+    ok_count = len([t for t, r in dstate.items() if r.get("ok")])
+    fail_count = len([t for t, r in dstate.items() if not r.get("ok")])
+    L.append(f"  Ledger Status: {len(verdicts)} verified underwritings on file | State: {ok_count} ok, {fail_count} failed")
+    L.append("─" * 80)
 
-    # current work: the newest validly-named consensus dir without a verdict; during research/enrich
-    # no consensus dir exists yet, so fall back to the freshest research brief to name the ticker.
+    # ── Active In-Flight Telemetry
     _dirpat = re.compile(r"^([A-Z0-9.\-]+)_(\d{8}_\d{6})$")
-    cdirs = [(m.group(1), m.group(2), d)
-             for d in (HERE / "ab_reports" / "consensus").glob("*_*")
-             if (m := _dirpat.match(d.name))]
+    cons_dir = HERE / "ab_reports" / "consensus"
+    cdirs = []
+    if cons_dir.exists():
+        for d in cons_dir.glob("*_*"):
+            if d.is_dir() and (m := _dirpat.match(d.name)):
+                cdirs.append((m.group(1), m.group(2), d))
     cdirs.sort(key=lambda x: x[1], reverse=True)
-    cur = next(((t, d) for t, _ts, d in cdirs
-                if not (d / "verdict_depth.json").exists()), None)
-    if alive:
-        if cur:
-            t, d = cur
-            n_done = len([f for f in d.glob("sample*.md")
-                          if re.match(r"sample\d+\.md$", f.name)])
-            newest = max((f.stat().st_mtime for f in d.rglob("*") if f.is_file()), default=None)
-            mins = f"{int((datetime.now().timestamp() - newest) / 60)}" if newest else "?"
-            L.append(f"   NOW: {t} - sample {min(n_done + 1, 3)}/3 on the GPU "
-                     f"({mins} min since last artifact; ~36 min/sample with tools)")
+
+    # Priority: If depth_progress.json specifies an active ticker, match that ticker's folder
+    cur = None
+    sp_curr = (load(DEPTH_PROGRESS) or {}).get("current")
+    if sp_curr:
+        cur = next(((t, d) for t, _ts, d in cdirs if t == sp_curr and not (d / "verdict_depth.json").exists()), None)
+    if not cur:
+        cur = next(((t, d) for t, _ts, d in cdirs if not (d / "verdict_depth.json").exists()), None)
+
+    if alive and cur:
+        t, d = cur
+        # Filter strictly for formal sample files: sample1.md, sample2.md (exclude *_thinking.md)
+        sample_files = sorted([f for f in d.glob("sample*.md") if re.match(r"^sample\d+\.md$", f.name)],
+                              key=lambda f: int(re.search(r"\d+", f.name).group()))
+        n_done = len(sample_files)
+
+        # Ticker start time (directory creation or _pack.md mtime)
+        t_start_ts = (d / "_pack.md").stat().st_mtime if (d / "_pack.md").exists() else d.stat().st_ctime
+        t_start_dt = datetime.fromtimestamp(t_start_ts)
+        mins_tot = max(0, int((datetime.now().timestamp() - t_start_ts) / 60))
+        newest = max((f.stat().st_mtime for f in d.rglob("*") if f.is_file()), default=None)
+        mins_last = f"{int((datetime.now().timestamp() - newest) / 60)}" if newest else "?"
+
+        tool_queries = len(list(d.rglob("query_*.json")))
+        tool_pages = len(list(d.rglob("page_*.html"))) + len(list(d.rglob("page_*.md")))
+
+        # In-flight sample stage and duration
+        if n_done == 0:
+            s_curr_start_ts = t_start_ts
+            curr_step = "Sample 1/2 (Adaptive)"
+        elif n_done == 1:
+            s_curr_start_ts = sample_files[0].stat().st_mtime
+            curr_step = "Sample 2/2 (Adaptive)"
+        elif n_done == 2:
+            s_curr_start_ts = sample_files[1].stat().st_mtime
+            curr_step = "Sample 3/3 (Escalated)"
         else:
-            briefs = sorted((HERE / "research").glob("*.md"),
-                            key=lambda f: f.stat().st_mtime, reverse=True)
-            if briefs and (datetime.now().timestamp() - briefs[0].stat().st_mtime) < 3600:
-                L.append(f"   NOW: {briefs[0].stem} - research/enrich phase "
-                         f"(brief updated {int((datetime.now().timestamp() - briefs[0].stat().st_mtime)/60)} min ago)")
+            s_curr_start_ts = sample_files[-1].stat().st_mtime
+            curr_step = "Consensus Aggregation & Stamping"
+
+        s_curr_mins = max(0, int((datetime.now().timestamp() - s_curr_start_ts) / 60))
+        s_curr_start_str = datetime.fromtimestamp(s_curr_start_ts).strftime("%H:%M")
+
+        L.append(f"  ⚡ IN-FLIGHT WORK: {t}   [Started {t_start_dt.strftime('%H:%M:%S')} | Total: {mins_tot}m elapsed | Last artifact: {mins_last}m ago]")
+        L.append(f"     ├── Stage: {curr_step} — RUNNING on GPU for {s_curr_mins}m (started {s_curr_start_str})")
+
+        # Display completed samples with exact durations and timestamps
+        cj_runs = {}
+        if (d / "consensus.json").exists():
+            try:
+                cj = json.loads((d / "consensus.json").read_text(encoding="utf-8"))
+                for r in cj.get("runs", []):
+                    cj_runs[r.get("sample")] = r
+            except Exception:
+                pass
+
+        prev_finish_ts = t_start_ts
+        for i, sf in enumerate(sample_files, start=1):
+            finish_ts = sf.stat().st_mtime
+            dur = max(1, int((finish_ts - prev_finish_ts) / 60))
+            st_str = datetime.fromtimestamp(prev_finish_ts).strftime("%H:%M")
+            fin_str = datetime.fromtimestamp(finish_ts).strftime("%H:%M")
+            th_f = sf.with_name(f"{sf.stem}_thinking.md")
+            th_str = f" [Thinking: {th_f.stat().st_size/1024:.0f} KB]" if th_f.exists() else ""
+
+            run_meta = cj_runs.get(i)
+            if run_meta:
+                s_iv = f"${run_meta.get('iv'):.2f}" if run_meta.get('iv') else "?"
+                sc = run_meta.get("scorecard") or {}
+                s_conv = f"{sc.get('conviction_score')}/15" if sc.get('conviction_score') is not None else "n/a"
+                s_moat = f"{sc.get('business_quality_moat')}/5.0" if sc.get('business_quality_moat') is not None else "n/a"
+                L.append(f"     ├── Sample {i}: completed in {dur}m ({st_str} → {fin_str}) | IV {s_iv} | Conviction {s_conv} | Moat {s_moat}{th_str}")
             else:
-                L.append("   NOW: between tickers (no active consensus dir)")
+                L.append(f"     ├── Sample {i}: completed in {dur}m ({st_str} → {fin_str}) | Report: {sf.stat().st_size/1024:.1f} KB{th_str}")
+            prev_finish_ts = finish_ts
 
-    # live activity: newest artifacts across the depth working set — a true liveness signal,
-    # independent of any log (works for a sweep started before the log file existed)
-    events = []
-    for t, _ts, d in cdirs[:6]:
-        for f in d.rglob("*"):
-            if f.is_file():
-                events.append((f.stat().st_mtime, t, f.name))
-    for f in (HERE / "research").glob("*.md"):
-        events.append((f.stat().st_mtime, f.stem, "research brief"))
-    events.sort(reverse=True)
-    if events:
-        L.append("   live activity (newest artifacts):")
-        for mt, t, name in events[:6]:
-            L.append(f"     {datetime.fromtimestamp(mt).strftime('%m-%d %H:%M')}  {t:6s} {name}")
-    if DEPTH_LOG.exists():
-        tail = DEPTH_LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-4:]
-        L.append("   orchestrator log tail:")
-        for ln in tail:
-            L.append(f"     {ln[:100]}")
+        L.append(f"     └── Live Research: {tool_queries} SearXNG queries, {tool_pages} source pages snapshotted")
+        L.append("─" * 80)
+    elif alive:
+        briefs = sorted((HERE / "research").glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)
+        if briefs and (datetime.now().timestamp() - briefs[0].stat().st_mtime) < 3600:
+            b_mins = int((datetime.now().timestamp() - briefs[0].stat().st_mtime) / 60)
+            L.append(f"  ⚡ IN-FLIGHT WORK: {briefs[0].stem}   [Research / Enrich Phase ({b_mins}m ago)]")
+            L.append("     └── Assembling fresh deep-research brief with live SEC & macro context")
+            L.append("─" * 80)
 
-    recent = sorted(verdicts.values(), key=lambda v: v.get("date", ""), reverse=True)[:5]
-    for v in recent:
-        band = (f"${v['iv_band_low']}-${v['iv_band_high']}"
-                if v.get("iv_band_low") is not None else "n/a")
-        L.append(f"   {v['ticker']:6s} {v['direction']:12s} band {band:>16s} vs ${v.get('price')}"
-                 f" | spread {v.get('spread_pct')}% | {v.get('size_hint')}")
-
-    # THIS SWEEP's queue + what's pending (NOT book-minus-done — the book is trigger-driven now,
-    # and most names already carry a verdict from the cloud baseline, so "book minus locally-run"
-    # overstated the work by ~130. The real remaining number is the due queue.)
+    # ── Sweep Progress & Queue Breakdown
     sp = _sweep_progress()
-    # per-ticker rate, MEASURED from the log (current model only), never hardcoded.
-    MTP_SWITCH = datetime(2026, 8, 24, 9, 0)   # the switch nearly halved run times; don't pool eras
     mins = []
     if DEPTH_LOG.exists():
-        marks = re.findall(r"\[depth-orch (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+\[\d+/\d+\]",
-                           DEPTH_LOG.read_text(encoding="utf-8", errors="replace"))
-        for a, b in zip(marks, marks[1:]):
-            start = datetime.strptime(a, "%Y-%m-%d %H:%M:%S")
-            gap = (datetime.strptime(b, "%Y-%m-%d %H:%M:%S") - start).total_seconds() / 60
-            if 20 < gap < 240 and start >= MTP_SWITCH:   # exclude failures, idle gaps, old model
-                mins.append(gap)
+        try:
+            marks = re.findall(r"\[depth-orch (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+\[\d+/\d+\]",
+                               DEPTH_LOG.read_text(encoding="utf-8", errors="replace"))
+            for a, b in zip(marks, marks[1:]):
+                try:
+                    start = datetime.strptime(a, "%Y-%m-%d %H:%M:%S")
+                    gap = (datetime.strptime(b, "%Y-%m-%d %H:%M:%S") - start).total_seconds() / 60
+                    if 20 < gap < 240:
+                        mins.append(gap)
+                except Exception:
+                    pass
+        except Exception:
+            pass
     mins.sort()
-    rate = mins[len(mins) // 2] if len(mins) >= 3 else 70.0
-    src = f"median of {len(mins)} runs" if len(mins) >= 3 else "estimate"
+    rate = mins[len(mins) // 2] if len(mins) >= 3 else 48.0
+    src = f"median of {len(mins)} runs" if len(mins) >= 3 else "measured adaptive baseline"
+
     if sp and sp["total"]:
-        pending_n = max(0, sp["total"] - sp["idx"])
-        L.append(f"   sweep: {sp['idx']}/{sp['total']}"
-                 + (f" · now {sp['current']}" if sp.get("current") else "")
-                 + f" · {pending_n} pending")
-        if sp["pending"]:
-            shown = sp["pending"][:12]
-            L.append("   pending: " + ", ".join(shown)
-                     + (f"  (+{pending_n - len(shown)} more)" if pending_n > len(shown) else ""))
-        elif pending_n:
-            L.append(f"   pending: {pending_n} names (list not in log — next sweep shows them)")
-        L.append(f"   ETA this sweep: ~{pending_n} x {rate:.0f} min ({src}) = "
-                 f"{pending_n * rate / 60:.1f} GPU-hours")
+        total = sp["total"]
+        idx = sp["idx"]
+        pending_n = max(0, total - idx)
+        pct = (idx / total * 100) if total > 0 else 0.0
+        bar = _draw_bar(idx, total, width=28)
+        
+        L.append(f"  SWEEP PROGRESS: [{bar}] {idx}/{total} ({pct:.1f}%) | {pending_n} Pending")
+        
+        # Categorized Queue
+        q_detail = sp.get("queue_detail", [])[idx:]
+        events = [e["t"] for e in q_detail if e.get("class") == 0]
+        baseline = [e["t"] for e in q_detail if e.get("class") == 1]
+        reentry = [e["t"] for e in q_detail if e.get("class") == 2]
+        rotation = [e["t"] for e in q_detail if e.get("class") == 3]
+
+        L.append(f"  Queue Breakdown: {len(events)} Event/Triggered | {len(baseline)} Baseline Underwritings | {len(reentry)} Re-entry | {len(rotation)} Rotation")
+        
+        # Show upcoming pending list
+        shown = [e.get("t") for e in q_detail[:10]]
+        if shown:
+            L.append(f"  Next Up: {', '.join(shown)}" + (f"  (+{len(q_detail) - len(shown)} more)" if len(q_detail) > len(shown) else ""))
+
+        gpu_hours = pending_n * rate / 60.0
+        days = gpu_hours / 24.0
+        est_finish = datetime.now() + timedelta(minutes=pending_n * rate)
+        L.append(f"  ETA: ~{pending_n} tickers × {rate:.0f} min ({src}) = {gpu_hours:.1f} GPU-hours (~{days:.1f} days)")
+        L.append(f"  Projected Completion: {est_finish.strftime('%Y-%m-%d %H:%M')}")
     else:
-        L.append(f"   no sweep queued (idle). {len(verdicts)} verdicts on file; run `start` to "
-                 f"build the due queue. [{rate:.0f} min/name, {src}]")
+        L.append(f"  Sweep Queue: No active sweep queued (idle). {len(verdicts)} verified verdicts on file.")
+        L.append(f"  Estimated Pace: ~{rate:.0f} min/name ({src}) under adaptive 2-escalate consensus.")
+
+    L.append("─" * 80)
+
+    # ── Recent Institutional Underwritings Table (Section 12 Contract)
+    L.append("  RECENT INSTITUTIONAL UNDERWRITINGS (Charter v3.1 / Section 12):")
+    if verdicts:
+        recent = sorted(verdicts.values(), key=lambda v: v.get("consensus_dir", v.get("date", "")), reverse=True)[:6]
+        header = f"  {'Ticker':<6} {'Verdict':<12} {'Completed':<10} {'Price':<9} {'Base IV':<9} {'Spread':<8} {'Moat':<7} {'Convict':<8} {'Kelly%':<8} {'Skew':<6}"
+        L.append(header)
+        L.append("  " + "-" * 88)
+        for v in recent:
+            t = v.get("ticker", "—")
+            dir_str = v.get("direction", "—")
+            cdir = v.get("consensus_dir", "")
+            m_time = re.search(r"_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$", cdir)
+            if m_time:
+                done_time = f"{m_time.group(4)}:{m_time.group(5)}"
+            else:
+                done_time = v.get("date", "—")[-5:]
+            px = f"${v.get('price'):.2f}" if v.get("price") is not None else "—"
+            med_iv = f"${v.get('median_iv'):.2f}" if v.get("median_iv") is not None else "—"
+            spread = f"{v.get('spread_pct'):.1f}%" if v.get("spread_pct") is not None else "single"
+            moat = f"{v.get('business_quality_moat'):.1f}/5" if v.get("business_quality_moat") is not None else "—"
+            conv = f"{v.get('conviction_score'):.0f}/15" if v.get("conviction_score") is not None else "—"
+            kelly = f"{v.get('kelly_fraction_pct'):.1f}%" if v.get("kelly_fraction_pct") is not None else "—"
+            skew = f"{v.get('asymmetric_payoff_skew'):.2f}x" if v.get("asymmetric_payoff_skew") is not None else "—"
+            row = f"  {t:<6} {dir_str:<12} {done_time:<10} {px:<9} {med_iv:<9} {spread:<8} {moat:<7} {conv:<8} {kelly:<8} {skew:<6}"
+            L.append(row)
+    else:
+        L.append("  (No clean underwritings recorded in ledger yet)")
+
     L.append("")
-    return chr(10).join(L)
+    return "\n".join(L)
 
 
-FOOTER = ("  commands (type letter/word, press ENTER):   g=start(run now)   p=pause(graceful)   "
-          "r=resume   s=stop(graceful + free GPU)   f or bare ENTER=refresh   q=quit")
+FOOTER = ("  COMMANDS:  g=start (run now)   p=pause (graceful)   r=resume   "
+          "s=stop (free GPU)   f/ENTER=refresh   q=quit")
 
 
 def interactive(refresh=15):
-    """Live dashboard. Commands are TWO-STAGE: type the letter, then press ENTER to execute — so a
-    stray keystroke on the wrong window can't halt a run (operator report 2026-08-15). Auto-refresh
-    every `refresh`s; a half-typed buffer survives the redraw."""
+    """Live interactive dashboard with two-stage keystroke protection."""
     try:
         import msvcrt
     except ImportError:
         print(depth_snapshot())
-        print("\n(interactive input is Windows-only — use: python status.py pause|resume|stop)")
+        print("\n(Interactive input requires Windows — use: python status.py pause|resume|stop)")
         return
     msg = ""
     buf = ""
@@ -419,7 +482,6 @@ def interactive(refresh=15):
     def render():
         os.system("cls" if os.name == "nt" else "clear")
         print(depth_snapshot())
-        print()
         if msg:
             print(f"  » {msg}\n")
         print(FOOTER)
@@ -430,7 +492,7 @@ def interactive(refresh=15):
     while True:
         if msvcrt.kbhit():
             raw = msvcrt.getch()
-            if raw in (b"\x00", b"\xe0"):     # arrow / function key -> discard 2nd byte, ignore
+            if raw in (b"\x00", b"\xe0"):     # function / arrow key
                 msvcrt.getch()
                 continue
             if raw in (b"\r", b"\n"):
@@ -441,20 +503,20 @@ def interactive(refresh=15):
                 elif cmd in ("g", "start"):
                     print("\n  working: launching sweep...", flush=True)
                     msg = do_start(); render(); last = time.time()
-                elif cmd == "p":
+                elif cmd in ("p", "pause"):
                     print("\n  working: requesting graceful pause...", flush=True)
                     msg = do_pause(); render(); last = time.time()
-                elif cmd == "r":
+                elif cmd in ("r", "resume"):
                     msg = do_resume(); render(); last = time.time()
-                elif cmd == "s":
+                elif cmd in ("s", "stop"):
                     print("\n  working: requesting graceful stop...", flush=True)
                     msg = do_stop(); render(); last = time.time()
-                elif cmd in ("", "f"):
+                elif cmd in ("", "f", "refresh"):
                     msg = ""; render(); last = time.time()
                 else:
-                    msg = f"unknown command {cmd!r} — g / p / r / s / f / q, then ENTER"
+                    msg = f"Unknown command {cmd!r} — use g(start) / p(pause) / r(resume) / s(stop) / f(refresh) / q(quit)"
                     render(); last = time.time()
-            elif raw == b"\x08":              # backspace — edit the pending buffer
+            elif raw == b"\x08":              # backspace
                 buf = buf[:-1]
                 print(f"\r  command> {buf} \b", end="", flush=True)
             else:

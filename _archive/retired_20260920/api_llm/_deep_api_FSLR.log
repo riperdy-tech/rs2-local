@@ -1,0 +1,58 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/FSLR.md, 9.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] FSLR @ $214.28 | deepseek-v4-flash effort=high | 3 samples | pack 35,436ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\FSLR_20260826_033932
+    [tool 1] search_web: First Solar 45X production tax credit per watt 2026 guidance $2.1 billion
+    [tool 2] search_web: First Solar Q2 2026 earnings call transcript Mark Widmar guidance 2027 backlog
+    [tool 3] search_web: First Solar manufacturing capacity GW 2026 Louisiana Alabama Ohio India utilization
+    [tool 4] search_web: First Solar 2027 2028 revenue EPS consensus analyst estimates
+    [tool 5] search_web: First Solar de-bookings Jefferies downgrade class action lawsuit 2026 tariff
+    [tool 6] search_web: 10 year treasury yield August 2026 Federal Reserve policy stance
+    [tool 7] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-first-solar-tops-q2-
+    [tool 8] search_web: 45X advanced manufacturing credit phase down 2030 2031 2032 2033 solar module cell
+    [tool 9] search_web: First Solar Lightsource bp contract termination solar glass supply issue 2025 2026
+    [tool 10] search_web: First Solar India 3.4 GW plant utilization 2026 Vietnam Malaysia shutdown export
+    [tool 11] fetch_page: https://www.law.cornell.edu/uscode/text/26/45X
+    [tool 12] fetch_page: https://finance.yahoo.com/quote/FSLR/earnings/FSLR-Q2-2026-earnings_call-658589.html
+    [tool 13] search_web: First Solar 45X credits full year 2025 generated billion 10-K
+    [tool 14] fetch_page: https://www.esgdive.com/news/industry-trade-policy-headwinds-push-first-solar-boost-us-p
+    [tool 15] fetch_page: https://finance.yahoo.com/quote/FSLR/analysis/
+  sample 1: IV $139.0 | usable=True | 15 tool calls (think 122,581ch / report 27,644ch) | 482s | $0.041 cumulative
+    [tool 1] search_web: First Solar 45X tax credits recognized 2025 actual amount earnings
+    [tool 2] search_web: One Big Beautiful Bill Act 45X advanced manufacturing production credit phase out 2030 s
+    [tool 3] search_web: First Solar Q2 2026 earnings call transcript 2027 outlook shipment guidance
+    [tool 4] search_web: First Solar 2026 shipments GW guidance capacity Ohio Alabama Louisiana India
+    [tool 5] search_web: 10 year treasury yield August 2026 Fed funds rate
+    [tool 6] fetch_page: https://www.bakerbotts.com/thought-leadership/publications/2025/july/one-big-beautiful-b
+    [tool 7] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-first-solar-tops-q2-
+    [tool 8] search_web: Section 232 solar tariff 2026 status modules cells 50 percent Trump
+    [tool 9] search_web: First Solar 2027 EPS estimate consensus analyst downgrade guidance cliff
+    [tool 10] search_web: Federal Reserve August 2026 rate decision Fed funds rate stance
+    [tool 11] search_web: 45X solar cell module credit phase out 2030 75 percent 2031 50 2032 25 schedule
+    [tool 12] fetch_page: https://www.wallstreetzen.com/stocks/us/nasdaq/fslr/stock-forecast
+    [tool 13] search_web: First Solar Q4 2025 earnings results 2025 shipments gigawatts 45X credits recognized ful
+    [tool 14] search_web: First Solar backlog net bookings Q1 2026 Q2 2026 de-bookings trajectory
+    [tool 15] search_web: First Solar class action lawsuit 2026 status securities tariff disclosures
+  sample 2: IV $146.0 | usable=True | 15 tool calls (think 162,147ch / report 29,894ch) | 587s | $0.092 cumulative
+    [tool 1] search_web: First Solar Q2 2026 earnings call transcript Mark Widmar guidance 2026 net sales gross p
+    [tool 2] search_web: Section 45X advanced manufacturing production credit phase down schedule 2030 2031 2032 
+    [tool 3] search_web: First Solar capacity expansion plans 2027 2028 Louisiana Alabama India GW capex guidance
+    [tool 4] search_web: First Solar 45X manufacturing tax credit accounting treatment cost of sales revenue reco
+    [tool 5] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-first-solar-tops-q2-
+    [tool 6] fetch_page: https://www.firstsolar.com/en/About-Us/Economic-Impact-Study
+    [tool 7] search_web: First Solar 10-K 45X credit "increase to net sales" OR "component of net sales" OR "cost
+    [tool 8] search_web: 10 year treasury yield August 2026 Fed policy rate outlook
+    [tool 9] fetch_page: https://finance.yahoo.com/quote/FSLR/earnings/FSLR-Q2-2026-earnings_call-658589.html
+    [tool 10] search_web: First Solar FSLR 2027 2028 revenue EPS analyst estimates consensus forecast
+    [tool 11] search_web: solar module average selling price 2026 per watt US market tariff Section 201 AD CVD Chi
+    [tool 12] search_web: First Solar class action lawsuit 2026 securities tariff disclosure status dismissed moti
+    [tool 13] fetch_page: https://www.energea.com/us-solar-panel-tariffs-history-impact/
+    [tool 14] fetch_page: https://www.tradingview.com/news/stockstory:7ac9ce498094b:0-fslr-q1-deep-dive-technology
+    [tool 15] search_web: "First Solar" 2026 guidance full year EPS net sales gross profit capex operating expense
+    [tool 16] search_web: First Solar 10-K 2025 "advanced manufacturing production credit" "net sales" accounting 
+  sample 3: IV $109.0 | usable=True | 16 tool calls (think 119,630ch / report 22,898ch) | 453s | $0.128 cumulative
+
+[deep-api] FSLR: OVERVALUED | band $109.0-$146.0 vs price $214.28 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 9.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 361,415 in (279,168 cached) | 163,908 out (134,372 reasoning) | $0.128 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\FSLR_20260826_033932\verdict_depth.json

@@ -1,0 +1,59 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/FMX.md, 11.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] FMX @ $121.13 | deepseek-v4-flash effort=high | 3 samples | pack 29,553ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\FMX_20260826_033542
+    [tool 1] search_web: FEMSA fourth quarter full year 2025 results consolidated total revenue operating income
+    [tool 2] search_web: FEMSA 2026 guidance capex capital expenditures operating income outlook
+    [tool 3] search_web: FEMSA dividend policy payout ratio buyback program 2026
+    [tool 4] search_web: FEMSA net debt leverage ratio 2026 balance sheet
+    [tool 5] search_web: 10 year treasury yield August 2026 Fed policy
+    [tool 6] fetch_page: https://www.femsa.com/wp-content/uploads/2026/04/1Q-FEMSA-eng.pdf
+    [tool 7] search_web: FEMSA 4Q25 results press release full year 2025 total revenues Ps operating income net i
+    [tool 8] search_web: USD MXN exchange rate August 2026 peso
+    [tool 9] fetch_page: https://femsa.gcs-web.com/static-files/9b4c0af3-4fcc-4e57-bcac-dd80d1f57ddd
+    [tool 10] fetch_page: https://femsa.gcs-web.com/static-files/818b8e3a-d696-4550-8d79-28c406ec11e8
+    [tool 11] search_web: FEMSA second quarter 2026 results press release revenue operating income net income July
+    [tool 12] fetch_page: https://www.stocktitan.net/news/FMX/femsa-announces-second-quarter-2026-vtwf4u4sd6zz.htm
+    [tool 13] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-femsa-sees-q4-recove
+    [tool 14] search_web: FMX FEMSA analyst estimates 2026 2027 EPS revenue consensus forecast
+  sample 1: IV $126.05 | usable=True | 14 tool calls (think 90,833ch / report 29,875ch) | 440s | $0.034 cumulative
+    [tool 1] search_web: FEMSA fourth quarter 2025 full year results revenue operating income net income
+    [tool 2] search_web: FEMSA 2026 capex guidance capital expenditures plan billion pesos
+    [tool 3] search_web: Coca-Cola FEMSA Brazil acquisition 2025 announcement value bottling
+    [tool 4] search_web: FEMSA new reporting structure 2026 Coca-Cola FEMSA separation OXXO
+    [tool 5] fetch_page: https://www.femsa.com/en/press-room/press-release/femsa-2q-2026-results/
+    [tool 6] fetch_page: https://femsa.gcs-web.com/news-releases/news-release-details/femsa-announces-fourth-quar
+    [tool 7] search_web: 10 year US Treasury yield August 2026
+    [tool 8] search_web: Banxico interest rate decision 2026 Mexico policy rate
+    [tool 9] search_web: FEMSA FY2025 full year results revenues 840 billion net majority income 2025
+    [tool 10] search_web: FEMSA 2026 full year guidance capital expenditures net income 2026
+    [tool 11] search_web: federal funds rate August 2026 Fed FOMC
+    [tool 12] search_web: USD MXN peso exchange rate August 2026
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/1061736/000110465926019414/tm267282d1_ex99-1.htm
+    [tool 14] fetch_page: https://femsa.gcs-web.com/static-files/818b8e3a-d696-4550-8d79-28c406ec11e8
+    [tool 15] search_web: US inflation CPI August 2026 year over year
+    [tool 16] search_web: Mexico inflation 2026 Banxico CPI forecast GDP growth
+  sample 2: IV $103.0 | usable=True | 16 tool calls (think 55,734ch / report 17,364ch) | 290s | $0.054 cumulative
+    [tool 1] search_web: FEMSA fourth quarter 2025 full year results revenue operating income MXN
+    [tool 2] search_web: FEMSA Q2 2026 results revenue operating income guidance second half subdued
+    [tool 3] search_web: FEMSA 2026 capital expenditure guidance capex MXN billion OXXO new stores
+    [tool 4] search_web: Banxico interest rate decision August 2026 monetary policy rate
+    [tool 5] search_web: US 10 year treasury yield August 2026 Federal Reserve policy
+    [tool 6] search_web: USD MXN exchange rate August 2026 peso
+    [tool 7] fetch_page: https://femsa.gcs-web.com/news-releases/news-release-details/femsa-announces-fourth-quar
+    [tool 8] search_web: FEMSA Valora acquisition European convenience stores deal size
+    [tool 9] search_web: FEMSA dividend per share 2026 buyback program ordinary dividend MXN
+    [tool 10] search_web: FMX FEMSA consensus EPS estimates 2026 2027 analyst forecast
+    [tool 11] search_web: FEMSA Farmacias de Similares pharmacy acquisition stake 2025
+    [tool 12] search_web: Federal Reserve funds rate target August 2026
+    [tool 13] fetch_page: https://finsee.ai/earnings/fmx/2026/q2/en/
+    [tool 14] search_web: FEMSA full year 2025 results revenues MXN 840 billion net income EPS 2025
+    [tool 15] search_web: FEMSA Proximity Americas OXXO segment revenue 2025 stores number
+    [tool 16] search_web: FEMSA ownership stake Coca-Cola FEMSA KOF percentage 2025
+    [tool 17] search_web: FEMSA Salud Farmacias pharmacy retail expansion 2025 2026
+  sample 3: IV $122.0 | usable=True | 17 tool calls (think 120,062ch / report 32,591ch) | 525s | $0.094 cumulative
+
+[deep-api] FMX: HOLD | band $103.0-$126.05 vs price $121.13 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 11.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 346,012 in (280,832 cached) | 117,109 out (88,536 reasoning) | $0.094 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\FMX_20260826_033542\verdict_depth.json

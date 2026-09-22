@@ -1,0 +1,51 @@
+[deep-api] GD @ $386.07 | deepseek-v4-flash effort=high | 3 samples | pack 29,704ch from GD_20260823_015853 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GD_20260825_005217
+[deep-api] local arm said: USABLE — plausible and converged | median IV 422.0 | spread 24.6%
+    [tool 1] search_web: General Dynamics raises 2026 full-year guidance EPS revenue outlook Q2 2026
+    [tool 2] search_web: General Dynamics capital expenditure plans 2026 2027 submarine shipyard capacity expansi
+    [tool 3] search_web: 10-year Treasury yield August 2026 current level
+    [tool 4] search_web: General Dynamics backlog 2026 defense demand outlook long-term growth submarines Gulfstr
+    [tool 5] fetch_page: https://www.gd.com/Articles/2026/07/29/general-dynamics-reports-second-quarter-2026-fina
+    [tool 6] fetch_page: https://www.govconwire.com/articles/general-dynamics-q2-2026-earnings-results
+    [tool 7] fetch_page: https://www.spglobal.com/ratings/en/regulatory/article/-/view/sourceId/101685417
+    [tool 8] search_web: General Dynamics Electric Boat submarine capacity investment billions capex guidance 202
+    [tool 9] search_web: FY2027 defense budget submarine Columbia Virginia class production rate 2.3 per year Nav
+    [tool 10] fetch_page: https://www.gd.com/Articles/2026/07/29/general_dynamics_-electric_boat_awarded_construct
+    [tool 11] search_web: General Dynamics 2026 free cash flow guidance operating cash flow conversion net income 
+    [tool 12] search_web: General Dynamics Gulfstream G800 G700 delivery ramp 2026 2027 aerospace backlog outlook
+    [tool 13] fetch_page: https://research.aardvarklabs.co/research/gd/earnings/2025-q4/gd-2025-q4-recap
+    [tool 14] fetch_page: https://www.corporatejetinvestor.com/news/gulfstream-strongest-order/
+  sample 1: IV $452.0 | usable=True | 14 tool calls (think 71,597ch / report 30,532ch) | 301s | $0.029 cumulative
+    [tool 1] search_web: General Dynamics raises 2026 full-year guidance revenue EPS outlook second quarter 2026
+    [tool 2] search_web: General Dynamics capital expenditures 2026 2027 investment plan submarine Gulfstream mun
+    [tool 3] search_web: 10 year treasury yield August 2026 current
+    [tool 4] search_web: General Dynamics GD beta 5 year Yahoo Finance 2026
+    [tool 5] search_web: General Dynamics effective tax rate 2025 2026 filings
+    [tool 6] fetch_page: https://www.gd.com/Articles/2026/07/29/general-dynamics-reports-second-quarter-2026-fina
+    [tool 7] fetch_page: https://www.govconwire.com/articles/general-dynamics-q2-2026-earnings-results
+    [tool 8] search_web: "General Dynamics" beta stock five year monthly 2026
+    [tool 9] search_web: General Dynamics credit rating S&P Moody's long term A2 A+ 2026
+    [tool 10] search_web: General Dynamics GD beta 0.5 stockanalysis.com investing.com
+    [tool 11] search_web: General Dynamics 2025 10-K effective tax rate 15% 16%
+    [tool 12] search_web: General Dynamics Q2 2026 earnings call capital expenditures 2026 full year guidance cape
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/GD/
+    [tool 14] fetch_page: https://www.spglobal.com/ratings/en/regulatory/article/-/view/sourceId/101685417
+  sample 2: IV $404.0 | usable=True | 14 tool calls (think 95,081ch / report 30,382ch) | 389s | $0.062 cumulative
+    [tool 1] search_web: General Dynamics full year 2026 guidance revenue EPS outlook raised
+    [tool 2] search_web: General Dynamics Technologies segment GDIT spin-off 2026 status
+    [tool 3] search_web: General Dynamics backlog 2026 total backlog $130 billion Q2
+    [tool 4] fetch_page: https://www.gd.com/Articles/2026/07/29/general-dynamics-reports-second-quarter-2026-fina
+    [tool 5] search_web: General Dynamics GDIT separation spin-off Technologies segment decision 2026 announcemen
+    [tool 6] fetch_page: https://www.govconwire.com/articles/general-dynamics-q2-2026-earnings-results
+    [tool 7] search_web: General Dynamics 2025 segment results Aerospace Marine Combat Systems revenue operating 
+    [tool 8] fetch_page: https://investorrelations.gd.com/news/press-release-details/2026/General-Dynamics-Report
+    [tool 9] search_web: US defense budget FY2027 proposal request growth billion topline
+    [tool 10] search_web: 10 year Treasury yield August 2026 current level
+    [tool 11] fetch_page: https://www.csis.org/analysis/unpacking-15-trillion-fy-2027-defense-budget-topline
+    [tool 12] search_web: General Dynamics GD beta 5 year average stock beta
+    [tool 13] search_web: Gulfstream G700 G800 deliveries 2026 2027 production outlook General Dynamics Aerospace
+  sample 3: IV $357.72 | usable=True | 13 tool calls (think 69,511ch / report 18,219ch) | 296s | $0.088 cumulative
+
+[deep-api] GD: HOLD | band $357.72-$452.0 vs price $386.07 | size half
+[deep-api] LOCAL said: HOLD | band $353.0-$440.0 | median $422.0
+[deep-api] 17 API calls | 292,298 in (238,208 cached) | 113,460 out (84,301 reasoning) | $0.088 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GD_20260825_005217\verdict_depth.json

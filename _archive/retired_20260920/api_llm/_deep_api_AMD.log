@@ -1,0 +1,53 @@
+[deep-api] AMD @ $464.175 | deepseek-v4-flash effort=high | 3 samples | pack 30,813ch from AMD_20260821_193429 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AMD_20260824_232207
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 195.0 | spread 76.4%
+    [tool 1] search_web: AMD Q3 2026 revenue guidance full year 2026 outlook data center segment
+    [tool 2] search_web: AMD 2027 revenue analyst estimate consensus data center AI accelerator MI450 Helios
+    [tool 3] search_web: AMD long-term financial model gross margin target non-GAAP 2027 2028 Lisa Su
+    [tool 4] search_web: AMD capital expenditure plans 2026 2027 capex fab investment wafer supply
+    [tool 5] fetch_page: https://www.thelec.net/news/articleView.html?idxno=12851
+    [tool 6] fetch_page: https://www.reuters.com/business/amd-forecasts-upbeat-revenue-ai-data-center-demand-beat
+    [tool 7] search_web: 10 year treasury yield August 2026 current
+    [tool 8] search_web: AMD long-term financial model 2027 2028 revenue growth operating margin target investor
+    [tool 9] fetch_page: https://ir.amd.com/news-events/press-releases/detail/1266/amd-unveils-strategy-to-lead-t
+    [tool 10] search_web: AMD FY2026 FY2027 revenue consensus estimate sell-side EPS billion
+    [tool 11] search_web: AMD equity risk premium ERP current August 2026 implied
+    [tool 12] search_web: AMD full year 2026 revenue consensus estimate $48 billion OR $50 billion OR $49 billion
+    [tool 13] search_web: AMD non-GAAP gross margin Q2 2026 Q3 2026 guidance 60%
+    [tool 14] search_web: AMD 2027 consensus revenue estimate non-GAAP EPS forecast analysts $13 billion quarter
+  sample 1: IV $181.0 | usable=True | 14 tool calls (think 95,916ch / report 27,574ch) | 399s | $0.034 cumulative
+    [tool 1] search_web: AMD Q3 2026 revenue guidance data center segment double
+    [tool 2] search_web: AMD 2027 revenue growth guidance Helios MI450 ramp
+    [tool 3] search_web: AMD capital expenditures 2026 2027 fabless capex plan ZT Systems
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://seekingalpha.com/news/4625547-amd-expects-q3-2026-revenue-of-about-13b-as-it-tar
+    [tool 6] search_web: AMD Financial Analyst Day November 2025 long-term financial targets revenue model
+    [tool 7] search_web: AMD FY2026 full year revenue consensus estimate data center AI revenue
+    [tool 8] search_web: AMD non-GAAP gross margin operating margin 2026 2027 target
+    [tool 9] fetch_page: https://ir.amd.com/news-events/press-releases/detail/1266/amd-unveils-strategy-to-lead-t
+    [tool 10] fetch_page: https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-202
+    [tool 11] search_web: AMD fiscal 2026 revenue consensus estimate $46 billion OR $48 billion OR $50 billion
+    [tool 12] search_web: AMD balance sheet net cash total debt June 2026 cash and marketable securities
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/amd/financials/balance-sheet/
+    [tool 14] search_web: AMD 2026 2027 2028 revenue EPS consensus estimates analysts
+    [tool 15] search_web: AMD stock beta 5 year 2026
+  sample 2: IV $217.0 | usable=True | 15 tool calls (think 57,154ch / report 25,304ch) | 260s | $0.059 cumulative
+    [tool 1] search_web: AMD third quarter 2026 revenue guidance $13 billion data center
+    [tool 2] search_web: AMD full year 2026 revenue guidance consensus analyst estimate
+    [tool 3] search_web: AMD 2027 2028 revenue growth forecast Helios MI450 AI accelerator ramp analyst estimates
+    [tool 4] search_web: AMD capital expenditure 2026 2027 fabless TSMC prepayments capacity supply agreements
+    [tool 5] fetch_page: https://www.fool.com/investing/2026/08/23/amd-is-investing-more-than-xx-billion-in-taiwa
+    [tool 6] search_web: AMD Q2 2026 earnings call transcript Lisa Su Jean Hu guidance gross margin 2026 2027 com
+    [tool 7] search_web: 10 year treasury yield August 2026 current rate
+    [tool 8] search_web: AMD 2027 fiscal year revenue consensus estimate data center growth
+    [tool 9] fetch_page: https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-202
+    [tool 10] fetch_page: https://docs.publicnow.com/34B84600098B107FDD8A9E38BFC4C08D21656616
+    [tool 11] fetch_page: https://www.moneytimes.com/articles/60719/20260804/three-companies-beat-earnings-this-we
+    [tool 12] search_web: AMD fiscal 2026 revenue estimate $48 billion consensus EPS 2026 2027 estimate
+    [tool 13] search_web: "AMD" Q2 2026 earnings call "2027" data center revenue "more than double" Lisa Su
+    [tool 14] search_web: Damodaran implied equity risk premium 2026 August
+  sample 3: IV $94.0 | usable=True | 14 tool calls (think 54,640ch / report 22,844ch) | flags: below_analyst_low_0.28x_floor_0.33x | 242s | $0.084 cumulative
+
+[deep-api] AMD: OVERVALUED | band $94.0-$217.0 vs price $464.175 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $140.0-$247.0 | median $195.0
+[deep-api] 15 API calls | 258,767 in (187,776 cached) | 101,275 out (73,069 reasoning) | $0.084 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AMD_20260824_232207\verdict_depth.json

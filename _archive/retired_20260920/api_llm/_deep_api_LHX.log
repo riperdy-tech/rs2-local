@@ -1,0 +1,57 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/LHX.md, 18.6 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] LHX @ $266.73 | deepseek-v4-flash effort=high | 3 samples | pack 35,524ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\LHX_20260826_053029
+    [tool 1] search_web: L3Harris Technologies free cash flow guidance fiscal 2026 2027
+    [tool 2] search_web: L3Harris Technologies fiscal 2027 2028 revenue EPS consensus analyst estimates
+    [tool 3] search_web: 10 year treasury yield current level August 2026
+    [tool 4] search_web: US defense budget fiscal 2027 outlook increase decrease Congress
+    [tool 5] search_web: L3Harris share repurchase buyback 2026 debt paydown capital allocation
+    [tool 6] fetch_page: https://investors.l3harris.com/news/news-details/2026/L3Harris-Technologies-Reports-Stro
+    [tool 7] fetch_page: https://www.l3harris.com/newsroom/press-release/2026/07/l3harris-technologies-reports-ro
+    [tool 8] fetch_page: https://investors.l3harris.com/news/news-details/2026/L3Harris-Technologies-Reports-Robu
+    [tool 9] fetch_page: https://www.csis.org/analysis/unpacking-15-trillion-fy-2027-defense-budget-topline
+    [tool 10] search_web: L3Harris LHX fiscal 2027 earnings per share estimate ending January 2028 consensus
+    [tool 11] search_web: Federal Reserve interest rate decision August 2026 Fed funds target
+    [tool 12] search_web: L3Harris 2028 financial framework targets revenue EPS free cash flow
+    [tool 13] search_web: defense stocks forward P/E Lockheed Martin Northrop Grumman RTX General Dynamics August 
+    [tool 14] search_web: L3Harris debt maturity refinancing 2026 interest expense credit rating
+  sample 1: IV $319.0 | usable=True | 14 tool calls (think 199,762ch / report 29,661ch) | 689s | $0.069 cumulative
+    [tool 1] search_web: L3Harris FY2026 guidance revenue EPS free cash flow raised July 2026
+    [tool 2] search_web: L3Harris Aerojet Rocketdyne spin-off divestiture completed 2026
+    [tool 3] search_web: L3Harris fourth quarter fiscal 2025 full year results revenue January 2026
+    [tool 4] search_web: L3Harris investor day long-term targets revenue growth margin free cash flow
+    [tool 5] search_web: 10-year Treasury yield August 2026 current level
+    [tool 6] search_web: US defense budget FY2027 request Pentagon total defense spending growth
+    [tool 7] search_web: L3Harris Golden Dome contract award space missile defense
+    [tool 8] search_web: L3Harris second quarter fiscal 2026 results record backlog raised guidance July 2026
+    [tool 9] fetch_page: https://www.l3harris.com/newsroom/press-release/2026/07/l3harris-technologies-reports-ro
+    [tool 10] fetch_page: https://www.l3harris.com/newsroom/press-release/2026/01/l3harris-technologies-reports-st
+    [tool 11] fetch_page: https://www.fool.com/investing/2026/07/30/why-l3harris-technologies-stock-is-plummeting-
+    [tool 12] search_web: L3Harris Missile Solutions IPO AXYV S-1 valuation proceeds debt reduction
+    [tool 13] search_web: L3Harris investor overview 2025 targets 2027 2028 segment operating margin free cash flo
+    [tool 14] search_web: Federal Reserve interest rate decision August 2026 fed funds rate inflation CPI
+    [tool 15] search_web: high yield credit spread OAS August 2026 investment grade spreads
+    [tool 16] search_web: defense stocks forward P/E 2026 L3Harris Lockheed Martin Northrop Grumman RTX valuation
+  sample 2: IV $314.0 | usable=True | 16 tool calls (think 103,167ch / report 40,299ch) | 400s | $0.106 cumulative
+    [tool 1] search_web: L3Harris 2026 guidance revenue EPS free cash flow raised outlook
+    [tool 2] search_web: L3Harris long-term financial framework 2027 2028 targets margin segment operating margin
+    [tool 3] search_web: 10 year treasury yield August 2026
+    [tool 4] search_web: Federal Reserve interest rate decision August 2026 monetary policy stance
+    [tool 5] search_web: Department of Defense fiscal 2027 budget request Golden Dome missile defense funding
+    [tool 6] fetch_page: https://www.ainvest.com/news/l3harris-earnings-revenue-beat-eps-strategic-shifts-toll-26
+    [tool 7] search_web: L3Harris Missile Solutions IPO postponed stock drop
+    [tool 8] search_web: L3Harris 2027 2028 analyst estimates revenue EPS consensus
+    [tool 9] search_web: L3Harris net debt leverage ratio target 2026 free cash flow debt reduction
+    [tool 10] search_web: defense stocks selloff August 2026 L3Harris Lockheed Northrop reason budget
+    [tool 11] fetch_page: https://www.barrons.com/articles/l3-harris-stock-price-defense-selloff-487135c8
+    [tool 12] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/04/30/l3harris-lhx-q1-2026-earnings-
+    [tool 13] fetch_page: https://www.defense-aerospace.com/the-fy2027-request-1-5-trillion-and-what-it-actually-b
+    [tool 14] search_web: L3Harris 2028 framework organic revenue growth 8% cash flow 15% LHX NeXT targets 2027
+    [tool 15] search_web: Northrop Grumman Lockheed Martin General Dynamics forward P/E EV/EBITDA valuation 2026 c
+  sample 3: IV $260.0 | usable=True | 15 tool calls (think 130,606ch / report 35,120ch) | 477s | $0.147 cumulative
+
+[deep-api] LHX: HOLD | band $260.0-$319.0 vs price $266.73 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 18.6d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 426,526 in (328,704 cached) | 186,538 out (150,048 reasoning) | $0.147 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\LHX_20260826_053029\verdict_depth.json

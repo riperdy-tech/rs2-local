@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/RMBS.md, 18.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] RMBS @ $91.24 | deepseek-v4-flash effort=high | 3 samples | pack 34,288ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\RMBS_20260826_072033
+    [tool 1] search_web: Rambus Q2 2026 earnings call guidance Q3 2026 revenue non-GAAP EPS outlook
+    [tool 2] search_web: Rambus RMBS FY2027 revenue EPS analyst consensus estimate 2027
+    [tool 3] search_web: Rambus DOJ antitrust investigation grand jury subpoena 2026 update
+    [tool 4] search_web: Rambus segment revenue products memory interface chips royalties licensing FY2025
+    [tool 5] search_web: 10-year Treasury yield August 2026 Fed funds rate
+    [tool 6] search_web: Rambus MRDIMM DDR5 memory interface market share AI server 2026 2027 outlook
+    [tool 7] fetch_page: https://s202.q4cdn.com/680194126/files/doc_financials/2026/q2/Earnings-Call-Webcast-Deck
+    [tool 8] fetch_page: https://finance.yahoo.com/quote/RMBS/analysis/
+    [tool 9] fetch_page: https://moatmap.ai/deep-dive/RMBS
+    [tool 10] fetch_page: https://www.quiverquant.com/news/Rambus+slides+as+investors+weigh+DOJ+antitrust+subpoena
+    [tool 11] fetch_page: https://www.tikr.com/blog/rambus-stock-surged-98-in-a-month-then-q1-2026-earnings-sent-i
+    [tool 12] fetch_page: https://www.mlex.com/mlex/articles/2471162/rambus-targeted-in-us-doj-criminal-antitrust-
+    [tool 13] search_web: Rambus Q2 2026 earnings call transcript MRDIMM licensing billings full year 2026 outlook
+    [tool 14] search_web: Rambus CFO change 2026 Sumeet Gagneja Desmond Lynch
+    [tool 15] search_web: Federal Reserve rate cut expectations September 2026 FOMC
+    [tool 16] search_web: Rambus Q1 2026 10-Q DOJ grand jury subpoena customer concentration five customers
+  sample 1: IV $62.150000000000006 | usable=True | 16 tool calls (think 80,632ch / report 26,075ch) | 326s | $0.037 cumulative
+    [tool 1] search_web: 10 year treasury yield current August 2026
+    [tool 2] search_web: Fed funds rate Federal Reserve policy stance August 2026
+    [tool 3] search_web: Rambus Q2 2026 earnings results guidance Q3 fiscal 2026 revenue
+    [tool 4] fetch_page: https://www.businesswire.com/news/home/20260727350508/en/Rambus-Reports-Second-Quarter-2
+    [tool 5] search_web: Rambus DOJ antitrust investigation grand jury subpoena 2026 status
+    [tool 6] search_web: Rambus CFO departure 2026 chief financial officer exit
+    [tool 7] fetch_page: https://www.stocktitan.net/sec-filings/RMBS/8-k-rambus-inc-reports-material-event-6ef426
+    [tool 8] search_web: Rambus Q2 2026 licensing billings product revenue royalty segment results press release
+    [tool 9] search_web: Rambus analyst estimates fiscal 2027 revenue EPS forecast
+    [tool 10] fetch_page: https://www.rambus.com/first-quarter-2026-financial-results/
+    [tool 11] search_web: Rambus Q3 2026 guidance outlook product revenue margin operating expense
+    [tool 12] search_web: Rambus stock falls Q2 2026 earnings reaction margin guidance why
+    [tool 13] fetch_page: https://www.perplexity.ai/finance/RMBS
+    [tool 14] search_web: Rambus DDR5 RDIMM chipset market share Montage Technology competition 2026
+    [tool 15] search_web: DDR5 server memory interface chip market size AI data center TAM forecast 2027 2028
+  sample 2: IV $40.0 | usable=True | 15 tool calls (think 84,768ch / report 32,343ch) | 397s | $0.069 cumulative
+    [tool 1] search_web: Rambus Q2 2026 earnings call Q3 2026 guidance full year 2026 outlook revenue
+    [tool 2] search_web: Rambus DOJ antitrust investigation 2026 grand jury subpoena memory interface chips
+    [tool 3] search_web: 10-year Treasury yield August 2026 Fed funds rate policy stance
+    [tool 4] search_web: Rambus analyst estimates 2026 2027 2028 revenue EPS consensus
+    [tool 5] fetch_page: https://seekingalpha.com/article/4926014-rambus-inc-rmbs-q2-2026-earnings-call-transcrip
+    [tool 6] search_web: Rambus MRDIMM DDR5 RCD market share 2026 Montage Technology Renesas competition AI serve
+    [tool 7] search_web: Rambus CFO exit Sumeet Gagneja 2026 supply chain disruption first quarter
+    [tool 8] fetch_page: https://www.stocktitan.net/sec-filings/RMBS/8-k-rambus-inc-reports-material-event-6ef426
+    [tool 9] fetch_page: https://finance.yahoo.com/quote/RMBS/analysis/
+    [tool 10] search_web: Rambus Q3 2026 guidance non-GAAP EPS revenue outlook "Q3 2026"
+    [tool 11] fetch_page: https://s202.q4cdn.com/680194126/files/doc_financials/2026/q2/Earnings-Call-Webcast-Deck
+    [tool 12] fetch_page: https://finance.biggo.com/news/US_RMBS_2026-07-27
+    [tool 13] search_web: Rambus FY2026 FY2027 consensus revenue EPS estimates Wall Street
+  sample 3: IV $64.3 | usable=True | 13 tool calls (think 86,876ch / report 35,842ch) | 403s | $0.102 cumulative
+
+[deep-api] RMBS: OVERVALUED | band $40.0-$64.3 vs price $91.24 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 412,404 in (304,768 cached) | 115,396 out (82,833 reasoning) | $0.102 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\RMBS_20260826_072033\verdict_depth.json

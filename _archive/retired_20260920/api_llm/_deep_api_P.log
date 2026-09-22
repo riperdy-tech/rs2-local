@@ -1,0 +1,58 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/P.md, 7.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] P @ $108.55 | deepseek-v4-flash effort=high | 3 samples | pack 33,307ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\P_20260826_065024
+    [tool 1] search_web: Everpure Q1 fiscal 2027 results revenue guidance raised
+    [tool 2] search_web: 10-year Treasury yield August 2026 level
+    [tool 3] search_web: Pure Storage subscription ARR fiscal 2026 annual recurring revenue
+    [tool 4] search_web: Pure Storage hyperscaler AI deal 300MW revenue ramp 2026 2027
+    [tool 5] search_web: Jana Partners Everpure Pure Storage activist stake 2026
+    [tool 6] search_web: Fed funds rate target August 2026 Federal Reserve policy
+    [tool 7] fetch_page: https://www.prnewswire.com/news-releases/everpure-announces-first-quarter-fiscal-2027-fi
+    [tool 8] search_web: Everpure fiscal 2027 full year revenue guidance billion non-GAAP operating margin
+    [tool 9] search_web: US dollar index DXY level August 2026
+    [tool 10] search_web: AI storage market size forecast 2026 2030 billion enterprise storage
+    [tool 11] search_web: Everpure Pure Storage FY2028 revenue consensus analyst estimate billion
+    [tool 12] search_web: Pure Storage second hyperscaler design win 2026 details QLC flash AI
+    [tool 13] fetch_page: https://www.tikr.com/blog/everpure-stock-rises-after-q1-2027-earnings-beat-what-a-129-ta
+    [tool 14] fetch_page: https://techrevolt.news/articles/everpure-wins-second-top-five-hyperscaler-deal-as-ai-gr
+    [tool 15] search_web: NetApp fiscal 2026 revenue growth operating margin valuation
+    [tool 16] search_web: Jana Partners Everpure demands board margin buyback what activist wants
+    [tool 17] search_web: NAND flash price increase 2026 AI demand memory cost storage vendors
+  sample 1: IV $55.0 | usable=True | 17 tool calls (think 98,955ch / report 28,630ch) | 395s | $0.038 cumulative
+    [tool 1] search_web: Pure Storage Q1 fiscal 2027 results raises full year fiscal 2027 revenue guidance
+    [tool 2] search_web: Pure Storage fiscal 2026 subscription ARR recurring revenue Evergreen
+    [tool 3] search_web: Pure Storage hyperscaler AI storage deal 2026 Meta OpenAI
+    [tool 4] search_web: 10-year Treasury yield August 2026 Fed funds rate
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/1474432/000147443226000046/pstg-ex991q1fy2027xpr
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/1474432/000147443226000015/pstg-ex991q4fy2026.ht
+    [tool 7] search_web: Federal Reserve fed funds target range August 2026 rate decision
+    [tool 8] search_web: Pure Storage Everpure FY2027 FY2028 revenue EPS analyst estimates consensus 2026
+    [tool 9] search_web: NetApp valuation EV to revenue forward P/E 2026
+    [tool 10] search_web: IDC external enterprise storage systems market forecast growth AI 2026 2027
+    [tool 11] search_web: Pure Storage fiscal 2026 annual report R&D expense research and development
+    [tool 12] search_web: Pure Storage OpenAI storage deal talks Reuters 2025 size
+    [tool 13] search_web: Everpure P stock Q2 fiscal 2027 earnings preview August 2026
+    [tool 14] fetch_page: https://www.blocksandfiles.com/flash/2026/04/02/everpure-says-its-outpacing-rivals-in-re
+  sample 2: IV $55.0 | usable=True | 14 tool calls (think 90,091ch / report 31,869ch) | 388s | $0.072 cumulative
+    [tool 1] search_web: Pure Storage Q1 fiscal 2027 results revenue guidance June 2026
+    [tool 2] search_web: Pure Storage fiscal 2027 revenue guidance outlook raised hyperscaler
+    [tool 3] search_web: Pure Storage analyst price target consensus August 2026
+    [tool 4] search_web: 10-year Treasury yield August 2026
+    [tool 5] search_web: Federal Reserve policy stance interest rates 2026
+    [tool 6] fetch_page: https://www.prnewswire.com/news-releases/everpure-announces-first-quarter-fiscal-2027-fi
+    [tool 7] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-pure-storage-sees-st
+    [tool 8] search_web: Pure Storage Moab hyperscaler AI storage deal revenue billions 2026
+    [tool 9] search_web: Pure Storage subscription revenue ARR fiscal 2026 recurring revenue percentage
+    [tool 10] search_web: Pure Storage non-GAAP operating margin guidance fiscal 2027 long-term model
+    [tool 11] search_web: US dollar index DXY level August 2026
+    [tool 12] search_web: Pure Storage research and development expense fiscal 2026 10-K annual
+    [tool 13] search_web: Pure Storage top four hyperscaler customer concentration revenue disclosure 2026
+    [tool 14] search_web: NetApp fiscal 2027 guidance revenue growth AI storage outlook
+    [tool 15] search_web: hyperscaler capital expenditure 2026 AI infrastructure growth Microsoft Amazon Google Me
+  sample 3: IV $22.25 | usable=True | 15 tool calls (think 114,495ch / report 29,478ch) | 439s | $0.107 cumulative
+
+[deep-api] P: OVERVALUED | band $22.25-$55.0 vs price $108.55 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 7.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 331,714 in (246,528 cached) | 131,400 out (98,964 reasoning) | $0.107 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\P_20260826_065024\verdict_depth.json

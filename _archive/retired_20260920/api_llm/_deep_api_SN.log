@@ -1,0 +1,54 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/SN.md, 9.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] SN @ $180.76 | deepseek-v4-flash effort=high | 3 samples | pack 32,901ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\SN_20260826_080107
+    [tool 1] search_web: 10-year Treasury yield August 2026 level
+    [tool 2] search_web: Federal Reserve FOMC July 2026 interest rate decision stance
+    [tool 3] search_web: US dollar index DXY level August 2026
+    [tool 4] search_web: SharkNinja Q2 2026 earnings release guidance raised $7.4 billion
+    [tool 5] search_web: SharkNinja 2027 revenue outlook long-term growth target international
+    [tool 6] search_web: Grizzly Research SharkNinja short report governance allegations
+    [tool 7] search_web: SharkNinja effective tax rate 2025 10-K
+    [tool 8] search_web: SharkNinja research and development expense fiscal 2025
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/12/sharkninja-sn-q2-2026-earnings
+    [tool 10] search_web: SharkNinja international net sales percentage of total 2025 2026
+    [tool 11] search_web: SharkNinja tariffs 2026 Section 301 refund gross margin impact
+    [tool 12] search_web: SharkNinja SN fiscal 2025 annual report research development expense 10-K
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/1957132/000195713226000009/exhibit991pressreleas
+    [tool 14] fetch_page: https://finance.yahoo.com/news/sharkninja-down-grizzly-research-disclosed-150625748.html
+    [tool 15] search_web: Breville Group De'Longhi forward PE ratio 2026 consumer appliances valuation
+  sample 1: IV $136.66500000000002 | usable=True | 15 tool calls (think 77,427ch / report 33,278ch) | 366s | $0.033 cumulative
+    [tool 1] search_web: SharkNinja SN fiscal 2027 revenue EPS consensus analyst estimate
+    [tool 2] search_web: Grizzly Research SharkNinja short report governance allegations 2026
+    [tool 3] search_web: SharkNinja ICR conference 2026 long-term growth algorithm international targets
+    [tool 4] search_web: US 10 year treasury yield Fed policy August 2026
+    [tool 5] search_web: SharkNinja tariff impact gross margin 2026 guidance outlook
+    [tool 6] fetch_page: https://finance.yahoo.com/news/sharkninja-down-grizzly-research-disclosed-150625748.html
+    [tool 7] fetch_page: https://stockanalysis.com/stocks/sn/forecast/
+    [tool 8] fetch_page: https://thebusinesstimes.co.uk/sharkninja-inc-sn-presents-at-icr-conference-2026-transcr
+    [tool 9] fetch_page: https://grizzlyreports.com/we-believe-sharkninja-inc-nyse-sn-is-a-china-hustle-based-on-
+    [tool 10] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/12/sharkninja-sn-q2-2026-earnings
+    [tool 11] search_web: SharkNinja share repurchase buyback authorization capital return 2026
+    [tool 12] search_web: Fed funds rate CPI inflation rate August 2026 Federal Reserve stance
+    [tool 13] search_web: De'Longhi Helen of Troy Hamilton Beach forward P/E valuation 2026
+  sample 2: IV $129.0 | usable=True | 13 tool calls (think 109,994ch / report 39,632ch) | 442s | $0.077 cumulative
+    [tool 1] search_web: SharkNinja long-term financial targets net sales growth EBITDA margin 2028 2030 investor
+    [tool 2] search_web: SharkNinja SN FY2027 revenue EPS consensus analyst estimates
+    [tool 3] search_web: Grizzly Research SharkNinja short thesis governance allegations
+    [tool 4] search_web: 10 year treasury yield August 2026 level
+    [tool 5] search_web: SharkNinja Q2 2026 earnings call tariffs gross margin 2026 guidance transcript
+    [tool 6] fetch_page: https://www.theglobeandmail.com/investing/markets/stocks/SN/pressreleases/3805948/sharkn
+    [tool 7] fetch_page: https://finance.yahoo.com/quote/SN/analysis/
+    [tool 8] fetch_page: https://grizzlyreports.com/we-believe-sharkninja-inc-nyse-sn-is-a-china-hustle-based-on-
+    [tool 9] search_web: Federal Reserve FOMC interest rate decision August 2026 fed funds rate
+    [tool 10] search_web: US CPI inflation rate July 2026 year over year
+    [tool 11] search_web: dollar index DXY August 2026 level
+    [tool 12] search_web: SharkNinja SN 2027 2028 revenue EPS forecast stockanalysis
+    [tool 13] search_web: SharkNinja effective tax rate 2025 10-K income tax provision
+    [tool 14] search_web: SharkNinja share repurchase authorization buyback program 2026
+  sample 3: IV $135.0 | usable=True | 14 tool calls (think 79,705ch / report 38,497ch) | 363s | $0.108 cumulative
+
+[deep-api] SN: OVERVALUED | band $129.0-$136.66500000000002 vs price $180.76 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 9.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 363,991 in (258,560 cached) | 125,545 out (90,330 reasoning) | $0.108 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\SN_20260826_080107\verdict_depth.json

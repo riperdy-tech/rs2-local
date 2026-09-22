@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/RMD.md, 15.3 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] RMD @ $231.52 | deepseek-v4-flash effort=high | 3 samples | pack 32,722ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\RMD_20260826_072050
+    [tool 1] search_web: ResMed Q4 fiscal 2026 earnings call FY2027 guidance revenue growth non-GAAP EPS
+    [tool 2] search_web: ResMed fiscal 2027 outlook Astral suspension $75 million revenue headwind EPS
+    [tool 3] search_web: 10 year treasury yield August 2026
+    [tool 4] search_web: Federal Reserve federal funds rate FOMC August 2026 policy stance
+    [tool 5] fetch_page: https://www.thecerbatgem.com/2026/08/11/resmed-q4-earnings-call-highlights.html
+    [tool 6] search_web: federal funds rate target range current August 2026
+    [tool 7] search_web: ResMed GLP-1 Zepbound sleep apnea 2026 tailwind commentary
+    [tool 8] search_web: ResMed MatrixCare sale price divestiture 2026
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/14/resmed-rmd-q4-2026-earnings-ca
+    [tool 10] search_web: ResMed analyst estimates fiscal 2027 fiscal 2028 revenue EPS consensus
+    [tool 11] search_web: ResMed market share CPAP masks Philips re-entry 2026 competition
+    [tool 12] search_web: ResMed tariffs Mexico manufacturing medical devices 2026 impact
+    [tool 13] search_web: DXY dollar index level August 2026 direction
+    [tool 14] search_web: US CPI inflation rate July 2026 core PCE
+    [tool 15] search_web: ResMed five-year outlook high single digit revenue growth EPS growth targets
+    [tool 16] search_web: Philips Respironics sleep apnea market 2026 re-entry ResMed US share recovery
+  sample 1: IV $232.5 | usable=True | 16 tool calls (think 97,751ch / report 34,413ch) | 402s | $0.039 cumulative
+    [tool 1] search_web: ResMed Q4 fiscal 2026 earnings call guidance fiscal 2027 revenue growth 5% 7%
+    [tool 2] search_web: ResMed Astral ventilator suspension field safety corrective action 2026 revenue headwind
+    [tool 3] search_web: 10 year Treasury yield August 2026
+    [tool 4] search_web: ResMed MatrixCare sale 2026 private equity divestiture
+    [tool 5] search_web: GLP-1 Zepbound tirzepatide sleep apnea CPAP demand ResMed impact 2026
+    [tool 6] fetch_page: https://www.massdevice.com/resmed-q4-beats-on-earnings-guides-below-consensus-for-new-fi
+    [tool 7] fetch_page: https://finance.yahoo.com/healthcare/articles/resmed-inc-rmd-q4-2026-051247200.html
+    [tool 8] search_web: MatrixCare ResMed annual revenue 2025 post-acute software
+    [tool 9] search_web: Philips sleep apnea re-entry US market share 2026 DreamStation ResMed competition
+    [tool 10] search_web: FOMC August 2026 federal funds rate decision inflation
+    [tool 11] fetch_page: https://investor.resmed.com/news-events/press-releases/detail/427/resmed-inc-announces-r
+    [tool 12] search_web: ResMed research and development expense fiscal year 2026 annual report
+    [tool 13] search_web: ResMed fiscal 2026 non-GAAP EPS full year $10.7 revenue guidance fiscal 2027
+  sample 2: IV $252.0 | usable=True | 13 tool calls (think 151,441ch / report 23,429ch) | 533s | $0.083 cumulative
+    [tool 1] search_web: 10 year treasury yield August 2026 Fed rate cut outlook
+    [tool 2] search_web: ResMed FY2027 guidance revenue growth Astral headwind EPS outlook
+    [tool 3] search_web: ResMed effective tax rate fiscal 2026 10-K Australia US
+    [tool 4] search_web: GLP-1 weight loss drugs sleep apnea CPAP demand ResMed impact 2026
+    [tool 5] fetch_page: https://ng.investing.com/news/transcripts/earnings-call-transcript-resmed-beats-eps-in-q
+    [tool 6] search_web: ResMed consensus FY2027 FY2028 non-GAAP EPS analyst estimates
+    [tool 7] search_web: Philips Respironics FDA consent decree CPAP market share 2026 re-entry ResMed
+    [tool 8] search_web: dollar index DXY August 2026 level
+    [tool 9] fetch_page: https://investor.resmed.com/news-events/press-releases/detail/427/resmed-inc-announces-r
+    [tool 10] search_web: Zepbound obstructive sleep apnea CPAP utilization impact 2026 GLP-1 prescriptions OSA
+    [tool 11] search_web: ResMed 10-K 2025 effective income tax rate provision
+    [tool 12] search_web: corporate bond credit spreads high yield August 2026
+    [tool 13] search_web: Philips Respironics US sleep apnea market return 2026 ResMed share impact
+    [tool 14] search_web: ResMed global CPAP market share 2026 sleep apnea device market size
+    [tool 15] search_web: ResMed RMD analyst estimates fiscal 2028 EPS revenue consensus
+  sample 3: IV $245.0 | usable=True | 15 tool calls (think 89,893ch / report 27,406ch) | 367s | $0.116 cumulative
+
+[deep-api] RMD: UNDERVALUED | band $232.5-$252.0 vs price $231.52 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 15.3d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 395,305 in (300,032 cached) | 141,471 out (111,533 reasoning) | $0.116 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\RMD_20260826_072050\verdict_depth.json

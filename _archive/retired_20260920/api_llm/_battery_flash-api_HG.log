@@ -1,0 +1,9 @@
+[api] backend http://127.0.0.1:11434/v1  model=rs2-flash-api  -> reports in api_llm/reports
+[enrich] yfinance HG ...
+[router] FINAL-ONLY retry from HG_20260818_021504 -> HG_20260818_032212
+>> FINAL ASSEMBLY (Sections 0-12) [ctx 32768]
+   [retry-feedback] previous attempt's audit violations injected into final assembly
+   done in 77.5s
+[DONE] -> C:\Users\riper\Downloads\RS2 Local\api_llm\reports\HG_20260818_032212\FINAL.md
+   [verdict] HG: method=financial_pb_roe stance=undervalued action=HOLD / STAGE-IN ON WEAKNESS (Accumulate on dips) conv=11.0 entry=stage
+[AUDIT] ok — HG (router retry): 14 checks + verifier (pass)

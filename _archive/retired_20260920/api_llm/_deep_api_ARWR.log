@@ -1,0 +1,58 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ARWR.md, 17.9 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ARWR @ $87.11 | deepseek-v4-flash effort=high | 3 samples | pack 32,950ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ARWR_20260826_020616
+    [tool 1] search_web: Arrowhead REDEMPLO plozasiran FDA approval status 2026 severe hypertriglyceridemia
+    [tool 2] search_web: Arrowhead Sarepta plozasiran collaboration deal terms upfront milestone royalties 2025
+    [tool 3] search_web: plozasiran SHASTA-3 SHASTA-4 phase 3 results triglyceride reduction SHTG
+    [tool 4] search_web: Arrowhead Pharmaceuticals obesity program collaboration 2026 pipeline
+    [tool 5] search_web: Arrowhead Sarepta plozasiran license agreement press release $500 million upfront $250 m
+    [tool 6] search_web: Arrowhead Novartis collaboration September 2025 CNS program $200 million upfront details
+    [tool 7] search_web: Arrowhead REDEMPLO FCS launch sales first quarters 2026 commercial performance
+    [tool 8] search_web: Arrowhead cash position June 2026 balance sheet guidance cash runway
+    [tool 9] fetch_page: https://www.nasdaq.com/press-release/arrowhead-pharmaceuticals-reports-fiscal-2026-third
+    [tool 10] fetch_page: https://investorrelations.sarepta.com/news-releases/news-release-details/sarepta-therape
+    [tool 11] fetch_page: https://ir.arrowheadpharma.com/news-releases/news-release-details/arrowhead-pharmaceutic
+    [tool 12] search_web: Arrowhead "sale of future royalties" liability 2025 Sarepta royalty monetization
+    [tool 13] search_web: Arrowhead Pharmaceuticals credit facility 2026 drawn debt $180 million
+    [tool 14] search_web: Arrowhead fiscal 2026 full year guidance revenue REDEMPLO sales cash runway
+    [tool 15] search_web: Ionis Arrowhead plozasiran patent litigation status 2026 update
+  sample 1: IV $56.5 | usable=True | 15 tool calls (think 117,660ch / report 23,792ch) | 517s | $0.038 cumulative
+    [tool 1] search_web: 10-year Treasury yield Federal Reserve policy August 2026
+    [tool 2] search_web: Arrowhead Pharmaceuticals REDEMPLO plozasiran FDA approval FCS launch 2026
+    [tool 3] search_web: Arrowhead Pharmaceuticals Sarepta collaboration 2025 upfront milestones ARO-DUX4 terms
+    [tool 4] search_web: Arrowhead plozasiran SHASTA-3 SHASTA-4 severe hypertriglyceridemia sNDA priority review 
+    [tool 5] fetch_page: https://ir.arrowheadpharma.com/news-releases/news-release-details/arrowhead-pharmaceutic
+    [tool 6] search_web: Arrowhead Pharmaceuticals Sanofi plozasiran commercialization agreement ex-US rights hyp
+    [tool 7] search_web: Arrowhead INHBE obesity program phase 1 data 2026 visceral adiposity
+    [tool 8] search_web: Arrowhead Ionis patent litigation plozasiran 9,593,333 status 2026
+    [tool 9] fetch_page: https://arrowheadpharma.com/en-us/newsroom/arrowhead-pharmaceuticals-announces-fda-appro
+    [tool 10] fetch_page: https://www.aol.com/articles/arrowhead-arwr-q1-2026-earnings-132545810.html
+    [tool 11] search_web: ARWR Arrowhead analyst consensus revenue estimate FY2027 FY2028
+    [tool 12] search_web: Tryngolza olezarsen Ionis 2025 2026 sales FCS launch revenue
+    [tool 13] fetch_page: https://investozora.com/us-debt-money-impact/
+    [tool 14] search_web: REDEMPLO plozasiran list price cost per year WAC FCS treatment
+    [tool 15] search_web: Arrowhead Pharmaceuticals cash investments June 2026 balance sheet runway
+    [tool 16] search_web: Ionis Tryngolza severe hypertriglyceridemia sHTG FDA approval 2026 label expansion date
+  sample 2: IV $47.0 | usable=True | 16 tool calls (think 108,869ch / report 25,628ch) | 428s | $0.072 cumulative
+    [tool 1] search_web: Arrowhead Pharmaceuticals fiscal 2025 second quarter revenue $543 million milestone what
+    [tool 2] search_web: REDEMPLO plozasiran FDA approval indication 2025 2026 severe hypertriglyceridemia famili
+    [tool 3] search_web: Arrowhead Pharmaceuticals ARO-INHBE obesity weight loss phase 1 2 data results
+    [tool 4] search_web: Arrowhead Pharmaceuticals cash runway balance sheet fiscal 2026 guidance
+    [tool 5] search_web: Arrowhead Pharmaceuticals Ionis plozasiran patent litigation declaratory judgment 2026
+    [tool 6] fetch_page: https://ts2.tech/en/arwr-stock-arrowhead-pharmaceuticals-hits-new-high-as-fda-approval-a
+    [tool 7] search_web: Arrowhead Pharmaceuticals Sanofi license agreement plozasiran China rights deal
+    [tool 8] search_web: Arrowhead REDEMPLO first quarter commercial sales plozasiran FCS launch revenue
+    [tool 9] search_web: Arrowhead Pharmaceuticals fiscal 2026 fourth quarter guidance revenue outlook operating 
+    [tool 10] search_web: 10-year Treasury yield August 2026 Federal Reserve interest rate policy
+    [tool 11] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-arrowhead-beats-reve
+    [tool 12] search_web: Arrowhead Pharmaceuticals fiscal 2025 second quarter revenue collaboration income upfron
+    [tool 13] search_web: Arrowhead zodasiran phase 3 ARCH Lp(a) topline results 2026
+    [tool 14] search_web: Arrowhead fazirsiran Takeda AATD SEQUOIA phase 3 status 2026
+    [tool 15] search_web: Federal Reserve FOMC August 2026 fed funds rate decision cuts
+  sample 3: IV $73.0 | usable=True | 15 tool calls (think 67,942ch / report 32,482ch) | 299s | $0.098 cumulative
+
+[deep-api] ARWR: OVERVALUED | band $47.0-$73.0 vs price $87.11 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 17.9d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 344,460 in (265,728 cached) | 119,765 out (90,854 reasoning) | $0.098 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ARWR_20260826_020616\verdict_depth.json

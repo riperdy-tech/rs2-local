@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/CASY.md, 18.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] CASY @ $835.74 | deepseek-v4-flash effort=high | 3 samples | pack 33,728ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CASY_20260826_023131
+    [tool 1] search_web: Casey's General Stores Q4 fiscal 2026 earnings call FY2027 guidance EPS capex
+    [tool 2] search_web: Casey's General Stores Fikes CEFCO acquisition stores purchase price synergies
+    [tool 3] search_web: Casey's General Stores FY2027 FY2028 EPS analyst consensus estimates
+    [tool 4] search_web: 10-year treasury yield August 2026 Fed funds rate
+    [tool 5] fetch_page: https://www.investing.com/analysis/caseys-stock-strong-earnings-results-and-fy2027-guida
+    [tool 6] fetch_page: https://www.marketwatch.com/investing/stock/casy/analystestimates
+    [tool 7] search_web: Casey's General Stores Investor Day June 2026 long-term targets store growth algorithm
+    [tool 8] search_web: Casey's General Stores FY2027 guidance new stores 80 capital expenditures buyback
+    [tool 9] fetch_page: https://www.tradingview.com/news/tradingview:259e66d16d980:0-casey-s-general-stores-host
+    [tool 10] search_web: Casey's Q4 fiscal 2026 FY2027 EPS guidance "diluted EPS" OR "same-store sales" inside ma
+    [tool 11] search_web: "Casey's" FY2027 guidance EBITDA capex "700" OR "725" OR "675" million new stores 80 85
+    [tool 12] search_web: Casey's General Stores buyback dividend fiscal 2027 capital return plan
+    [tool 13] search_web: Casey's General Stores Q4 fiscal 2026 "fiscal 2027" guidance EPS EBITDA store additions 
+    [tool 14] search_web: CASY Casey's General Stores FY2027 FY2028 EPS forecast estimates stockanalysis
+    [tool 15] search_web: Federal Reserve federal funds rate August 2026 FOMC decision easing
+    [tool 16] search_web: US high yield credit spread August 2026 investment grade spreads
+  sample 1: IV $382.0 | usable=True | 16 tool calls (think 91,663ch / report 29,592ch) | 381s | $0.034 cumulative
+    [tool 1] search_web: Casey's General Stores fiscal 2027 guidance EPS store openings capex
+    [tool 2] search_web: Casey's General Stores Fikes acquisition purchase price CEFCO stores
+    [tool 3] search_web: Casey's General Stores Q4 fiscal 2026 earnings results operating income gross profit
+    [tool 4] search_web: Casey's General Stores store count fiscal 2026 long term growth target 2030
+    [tool 5] fetch_page: https://investor.caseys.com/news-releases/news-release-details/caseys-announces-fourth-q
+    [tool 6] fetch_page: https://www.businesswire.com/news/home/20260609792833/en/Caseys-Announces-Fourth-Quarter
+    [tool 7] fetch_page: https://www.investing.com/analysis/caseys-stock-strong-earnings-results-and-fy2027-guida
+    [tool 8] search_web: Casey's General Stores fiscal 2027 outlook EBITDA growth 8% to 10% inside same-store sal
+    [tool 9] fetch_page: https://ts2.tech/en/caseys-general-stores-gains-as-fuel-margins-pizza-sales-buybacks-pus
+    [tool 10] search_web: Casey's General Stores fiscal 2026 full year operating income EBITDA $1.8 billion gross 
+    [tool 11] search_web: Casey's General Stores fiscal 2027 EPS estimate consensus analyst
+    [tool 12] search_web: Federal Reserve interest rate decision August 2026 inflation CPI federal funds rate
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/0000726958/000072695826000033/ex991q42026pressre
+    [tool 14] search_web: Casey's General Stores investor day June 2026 three-year strategic plan store growth tar
+  sample 2: IV $356.0 | usable=True | 14 tool calls (think 77,778ch / report 30,052ch) | 401s | $0.068 cumulative
+    [tool 1] search_web: Casey's General Stores fiscal 2027 guidance EPS store openings capex
+    [tool 2] search_web: Casey's General Stores Fikes acquisition purchase price stores 2025
+    [tool 3] search_web: Casey's General Stores store count long-term growth target 350 stores
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://investor.caseys.com/news-releases/news-release-details/caseys-announces-fourth-q
+    [tool 6] fetch_page: https://investor.caseys.com/news-releases/news-release-details/caseys-announces-new-thre
+    [tool 7] search_web: Federal Reserve interest rate decision August 2026 fed funds rate
+    [tool 8] search_web: Casey's General Stores inside gross margin fuel margin fiscal 2027 guidance
+    [tool 9] search_web: Casey's General Stores Q4 2026 earnings call transcript fiscal 2027 guidance EBITDA
+    [tool 10] search_web: Casey's new three-year strategic plan June 2026 store count target 3000
+    [tool 11] fetch_page: https://www.trefis.com/data/companies/CASY
+    [tool 12] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/06/10/caseys-casy-q4-2026-earnings-c
+    [tool 13] search_web: Casey's Fikes Wholesale fuel distribution acquisition 2026 second transaction
+    [tool 14] search_web: Casey's General Stores fiscal 2027 capex guidance store openings 120
+  sample 3: IV $497.5 | usable=True | 14 tool calls (think 87,533ch / report 28,455ch) | 430s | $0.098 cumulative
+
+[deep-api] CASY: OVERVALUED | band $356.0-$497.5 vs price $835.74 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 16 API calls | 447,254 in (354,688 cached) | 113,601 out (82,918 reasoning) | $0.098 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CASY_20260826_023131\verdict_depth.json

@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/DLTR.md, 18.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] DLTR @ $131.48 | deepseek-v4-flash effort=high | 3 samples | pack 35,663ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\DLTR_20260826_030747
+    [tool 1] search_web: Dollar Tree fiscal 2026 guidance full year sales EPS outlook Q1 2026 earnings call
+    [tool 2] search_web: Dollar Tree investor day 2025 long-term targets 2028 revenue operating margin store grow
+    [tool 3] search_web: 10 year treasury yield August 2026 Fed funds rate outlook
+    [tool 4] search_web: Dollar Tree tariff impact 2026 Section 61 China tariffs retail cost
+    [tool 5] fetch_page: https://corporate.dollartree.com/news-media/press-releases/detail/306/dollar-tree-inc-re
+    [tool 6] fetch_page: https://www.reuters.com/business/retail-consumer/dollar-tree-forecasts-soft-annual-sales
+    [tool 7] search_web: Dollar Tree Investor Day September 2025 2028 targets adjusted EPS net sales operating ma
+    [tool 8] search_web: Federal Reserve rate decision July August 2026 interest rate cut pause
+    [tool 9] search_web: "Dollar Tree" investor day October 2025 2028 financial targets net sales adjusted EPS
+    [tool 10] search_web: Dollar Tree fourth quarter fiscal 2025 results March 2026 full year adjusted EPS initial
+    [tool 11] search_web: FOMC July 2026 statement interest rate decision outcome
+    [tool 12] search_web: Dollar Tree capital expenditure guidance 2026 2027 store growth multi-price conversion p
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/16732/000001673225000105/exhibit991-q42025.htm
+    [tool 14] fetch_page: https://corporate.dollartree.com/news-media/press-releases/detail/298/dollar-tree-to-out
+  sample 1: IV $100.0 | usable=True | 14 tool calls (think 62,245ch / report 33,716ch) | 293s | $0.030 cumulative
+    [tool 1] search_web: Dollar Tree Investor Day 2026 long-term financial targets store growth multi-price
+    [tool 2] search_web: Dollar Tree Q1 fiscal 2026 earnings full year guidance EPS capex 2026 outlook
+    [tool 3] search_web: 10 year Treasury yield federal reserve interest rates August 2026
+    [tool 4] search_web: Dollar Tree FY2027 FY2028 analyst EPS estimates consensus
+    [tool 5] fetch_page: https://corporate.dollartree.com/news-media/press-releases/detail/298/dollar-tree-to-out
+    [tool 6] fetch_page: https://corporate.dollartree.com/news-media/press-releases/detail/306/dollar-tree-inc-re
+    [tool 7] fetch_page: https://www.federalreserve.gov/releases/h15/
+    [tool 8] fetch_page: https://corporate.dollartree.com/_assets/_bf3e7a6267cd27d18bf5dda546df7f92/dollartreeinf
+    [tool 9] search_web: Dollar Tree Investor Day 2025 store growth target 2028 net sales capital expenditure out
+    [tool 10] search_web: Dollar Tree fiscal 2026 capex capital expenditures guidance earnings call
+    [tool 11] search_web: Dollar Tree 2026 analyst estimates fiscal 2027 EPS forecast buyback share count
+    [tool 12] search_web: Dollar Tree tariff refunds 2026 China tariffs impact margins
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/dltr/forecast/
+    [tool 14] fetch_page: https://www.reuters.com/business/retail-consumer/dollar-tree-raises-its-annual-profit-fo
+    [tool 15] search_web: Dollar Tree Investor Day October 2025 summary new stores per year sales growth 8 to 10 p
+  sample 2: IV $114.05 | usable=True | 15 tool calls (think 90,858ch / report 34,987ch) | 382s | $0.069 cumulative
+    [tool 1] search_web: Dollar Tree fiscal 2026 full year guidance revenue EPS outlook Q1 2026 earnings call
+    [tool 2] search_web: Dollar Tree 3.0 multi-price format rollout 2026 store count comp lift margin expansion
+    [tool 3] search_web: Dollar Tree capex capital expenditures guidance 2026 2027 store openings remodels
+    [tool 4] search_web: 10 year treasury yield federal reserve policy August 2026
+    [tool 5] search_web: China tariffs 2026 current status US retail imports impact discount stores
+    [tool 6] search_web: Dollar Tree China sourcing exposure percentage imports tariffs
+    [tool 7] fetch_page: https://corporate.dollartree.com/news-media/press-releases/detail/306/dollar-tree-inc-re
+    [tool 8] fetch_page: https://corporate.dollartree.com/_assets/_bf3e7a6267cd27d18bf5dda546df7f92/dollartreeinf
+    [tool 9] fetch_page: https://www.ainvest.com/news/dollar-tree-bear-neutral-unwind-buy-calls-selective-buy-260
+    [tool 10] fetch_page: https://finance.yahoo.com/markets/stocks/articles/dollar-tree-likely-lift-full-150206243
+    [tool 11] search_web: Dollar Tree Investor Day October 2025 long-term targets operating margin net sales growt
+    [tool 12] search_web: Dollar Tree Q2 fiscal 2026 earnings results August 2026
+    [tool 13] search_web: Dollar Tree consensus EPS estimate fiscal 2026 fiscal 2027 analyst
+    [tool 14] search_web: fed funds rate inflation CPI July 2026
+    [tool 15] search_web: Dollar General Five Below Q2 2026 earnings comps results
+  sample 3: IV $157.0 | usable=True | 15 tool calls (think 85,860ch / report 26,190ch) | 326s | $0.099 cumulative
+
+[deep-api] DLTR: HOLD | band $100.0-$157.0 vs price $131.48 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 433,707 in (327,168 cached) | 111,262 out (78,722 reasoning) | $0.099 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\DLTR_20260826_030747\verdict_depth.json

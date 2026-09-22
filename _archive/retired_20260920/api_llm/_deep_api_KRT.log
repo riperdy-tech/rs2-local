@@ -1,0 +1,59 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/KRT.md, 10.0 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] KRT @ $49.0 | deepseek-v4-flash effort=high | 3 samples | pack 32,183ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\KRT_20260826_052238
+    [tool 1] search_web: 10-year Treasury yield August 2026 level
+    [tool 2] search_web: Federal Reserve interest rate policy July August 2026 fed funds rate
+    [tool 3] search_web: Karat Packaging KRT Q2 2026 earnings call transcript guidance full year 2026 net sales
+    [tool 4] search_web: Karat Packaging KRT dividend per share 2026 quarterly
+    [tool 5] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/13/karat-packaging-krt-q2-2026-ea
+    [tool 6] search_web: US inflation rate July 2026 CPI GDP growth second quarter 2026
+    [tool 7] search_web: Karat Packaging CBP anti-dumping countervailing duty investigation 2026 update
+    [tool 8] search_web: Karat Packaging KRT capital expenditure expansion 2026 2027 paper bag plant facility
+    [tool 9] search_web: Karat Packaging KRT analyst EPS estimate 2026 2027 consensus forecast
+    [tool 10] search_web: William Blair Karat Packaging Outperform price target KRT June 2026
+    [tool 11] search_web: US GDP growth second quarter 2026 annualized BEA
+    [tool 12] search_web: "Karat Packaging" 10-K 2025 risk factors customs duty investigation penalties
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/krt/forecast/
+    [tool 14] search_web: Graphic Packaging Amcor EV/EBITDA valuation multiple 2026 packaging sector
+    [tool 15] search_web: foodservice disposable packaging market growth forecast 2026 2030 US
+    [tool 16] search_web: Karat Packaging Q1 2026 results EPS adjusted EBITDA margin guidance
+  sample 1: IV $41.0 | usable=True | 16 tool calls (think 105,960ch / report 31,272ch) | 426s | $0.038 cumulative
+    [tool 1] search_web: Karat Packaging Q2 2026 earnings call transcript guidance 2026 full year
+    [tool 2] search_web: Karat Packaging dividend per share 2026 quarterly
+    [tool 3] search_web: Karat Packaging CBP anti-dumping countervailing duty investigation status
+    [tool 4] search_web: Karat Packaging William Blair outperform price target 2026
+    [tool 5] search_web: 10 year treasury yield August 2026 Federal Reserve interest rate
+    [tool 6] search_web: Karat Packaging 2027 outlook revenue growth capex distribution center expansion
+    [tool 7] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/13/karat-packaging-krt-q2-2026-ea
+    [tool 8] search_web: Karat Packaging Q2 2026 net income tariff refund IEEPA one-time gain 27 million
+    [tool 9] search_web: Federal funds rate August 2026 FOMC decision
+    [tool 10] search_web: Karat Packaging 2026 2027 revenue EPS analyst estimates consensus
+    [tool 11] search_web: Karat Packaging e-commerce online sales percentage of revenue 2026 growth
+    [tool 12] search_web: Karat Packaging 10-K 2025 risk factors customs CBP penalties tariffs China sourcing
+    [tool 13] search_web: dollar index DXY level August 2026
+    [tool 14] search_web: US CPI inflation rate July 2026 core
+    [tool 15] search_web: US high yield credit spread August 2026 investment grade
+    [tool 16] search_web: "Karat Packaging" customs AD/CVD evasion penalty risk China imports
+    [tool 17] search_web: foodservice packaging market growth rate 2026 2027 forecast
+    [tool 18] search_web: Karat Packaging balance sheet June 30 2026 total debt cash short-term investments
+  sample 2: IV $36.5 | usable=True | 18 tool calls (think 147,841ch / report 32,767ch) | 578s | $0.084 cumulative
+    [tool 1] search_web: Karat Packaging 2026 full year guidance net sales growth gross margin
+    [tool 2] search_web: Karat Packaging Q2 2026 earnings call transcript guidance 2027
+    [tool 3] search_web: Karat Packaging KRT dividend per share 2026 quarterly
+    [tool 4] search_web: 10-year Treasury yield August 2026 Federal Reserve policy stance
+    [tool 5] search_web: Karat Packaging CBP anti-dumping countervailing duty investigation update 2026
+    [tool 6] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/13/karat-packaging-krt-q2-2026-ea
+    [tool 7] fetch_page: https://www.globenewswire.com/news-release/2026/05/07/3290564/0/en/karat-packaging-repor
+    [tool 8] search_web: Karat Packaging capital expenditures 2026 warehouse expansion capex plan
+    [tool 9] search_web: Karat Packaging analyst estimates 2026 2027 EPS William Blair price target
+    [tool 10] fetch_page: https://stockanalysis.com/stocks/krt/forecast/
+    [tool 11] search_web: Karat Packaging customs investigation 2026 Form 10-K risk anti-dumping countervailing du
+    [tool 12] search_web: US inflation rate July 2026 federal funds rate Kevin Warsh
+    [tool 13] search_web: "Karat Packaging" adjusted EBITDA 2025 full year margin reconciliation
+  sample 3: IV $44.6 | usable=True | 13 tool calls (think 101,231ch / report 31,590ch) | 428s | $0.119 cumulative
+
+[deep-api] KRT: OVERVALUED | band $36.5-$44.6 vs price $49.0 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 10.0d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 362,846 in (281,600 cached) | 149,707 out (116,988 reasoning) | $0.119 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\KRT_20260826_052238\verdict_depth.json

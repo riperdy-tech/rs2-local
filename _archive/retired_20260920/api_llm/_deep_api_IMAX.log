@@ -1,0 +1,59 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/IMAX.md, 18.6 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] IMAX @ $52.74 | deepseek-v4-flash effort=high | 3 samples | pack 33,993ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\IMAX_20260826_044538
+    [tool 1] search_web: IMAX Corporation fourth quarter 2025 results full year revenue screen count installed ba
+    [tool 2] search_web: IMAX 2026 full year guidance global box office $1.4 billion reaffirmed H1 progress
+    [tool 3] search_web: IMAX China privatization offer delisting IMAX Corporation status 2025 2026
+    [tool 4] search_web: IMAX revenue by segment technology products services content solutions theater business 
+    [tool 5] search_web: 10 year treasury yield current level Federal Reserve policy stance August 2026
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/921582/000162828026011693/imax-q42025epr.htm
+    [tool 7] fetch_page: https://fred.stlouisfed.org/series/DGS10
+    [tool 8] search_web: IMAX second quarter 2026 results revenue by segment content solutions technology signing
+    [tool 9] search_web: IMAX capitalized software development costs investing activities capital expenditures de
+    [tool 10] search_web: IMAX 2027 2028 outlook screen growth target analyst estimates EPS revenue forecast
+    [tool 11] fetch_page: https://www.imax.com/pr/imax-corporation-reports-second-quarter-2026-results
+    [tool 12] search_web: IMAX 10-K 2025 cash flow investing activities "purchases of property and equipment" "cap
+    [tool 13] search_web: Federal Reserve interest rate decision 2026 federal funds rate current
+    [tool 14] search_web: IMAX 2027 2028 box office slate outlook Hollywood theatrical window streamers
+    [tool 15] fetch_page: https://www.deepvalue.tech/research/imax-corporation-imax-deep-research-report-priced-fo
+  sample 1: IV $38.0 | usable=True | 15 tool calls (think 107,367ch / report 28,342ch) | 454s | $0.038 cumulative
+    [tool 1] search_web: 10-year Treasury yield current level August 2026
+    [tool 2] search_web: Federal Reserve monetary policy stance August 2026 fed funds rate cuts
+    [tool 3] search_web: IMAX Corporation Q2 2026 earnings call installed base screen count full year 2026 guidan
+    [tool 4] search_web: IMAX FY2025 annual results segment revenue technology products services content solution
+    [tool 5] fetch_page: https://www.imax.com/pr/imax-corporation-reports-second-quarter-2026-results
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/921582/000162828026011693/imax-q42025epr.htm
+    [tool 7] search_web: IMAX 2500 screens target 2028 long-term growth strategy installed base expansion
+    [tool 8] search_web: IMAX Corporation debt convertible notes 2026 net cash balance sheet
+    [tool 9] fetch_page: https://investors.imax.com/static-files/88e688a8-1f51-4aef-9228-40fbe1841e51
+    [tool 10] search_web: IMAX systems in operation 2026 backlog 1900 2000 screens installed base number
+    [tool 11] search_web: IMAX share repurchase buyback authorization 2026 shareholder returns
+    [tool 12] search_web: IMAX stock analyst estimates FY2026 FY2027 revenue EPS forecast consensus
+    [tool 13] fetch_page: https://imaxcorporation.gcs-web.com/news-releases/news-release-details/imax-announces-10
+    [tool 14] fetch_page: https://finance.yahoo.com/quote/IMAX/analysis/
+    [tool 15] search_web: IMAX China Holding 1970.HK market cap 2026 IMAX Corporation stake 71%
+    [tool 16] search_web: IMAX screens in operation end of 2025 systems 2000 signings backlog 10-K
+  sample 2: IV $38.0 | usable=True | 16 tool calls (think 88,567ch / report 23,414ch) | 368s | $0.067 cumulative
+    [tool 1] search_web: US 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: IMAX Q2 2026 earnings results segment revenue content solutions technology sales screen 
+    [tool 3] search_web: IMAX China privatization buyout status 2026 IMAX Corporation stake
+    [tool 4] search_web: IMAX 2026 global box office $1.4 billion guidance progress first half
+    [tool 5] fetch_page: https://investors.imax.com/news-releases/news-release-details/imax-corporation-reports-s
+    [tool 6] search_web: IMAX 2026 guidance "160" OR "180" new theater installations global box office $1.4 billi
+    [tool 7] search_web: IMAX China 1970.HK share price market cap July 2026
+    [tool 8] search_web: Federal Reserve interest rate decision August 2026 FOMC stance
+    [tool 9] fetch_page: https://www.imax.com/pr/imax-corporation-reports-second-quarter-2026-results
+    [tool 10] search_web: IMAX fourth quarter full year 2025 results record global box office screens installed 20
+    [tool 11] search_web: IMAX Corporation analyst consensus FY2026 FY2027 EPS revenue estimates
+    [tool 12] search_web: US dollar index DXY level August 2026
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/921582/000162828026011693/imax-q42025epr.htm
+    [tool 14] search_web: IMAX total theater network screen count worldwide 2026 systems in operation
+    [tool 15] search_web: high yield credit spread OAS August 2026
+    [tool 16] search_web: IMAX research and development expense 2025 annual report
+  sample 3: IV $34.0 | usable=True | 16 tool calls (think 77,077ch / report 30,143ch) | 369s | $0.093 cumulative
+
+[deep-api] IMAX: OVERVALUED | band $34.0-$38.0 vs price $52.74 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 18.6d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 362,987 in (288,256 cached) | 113,462 out (85,229 reasoning) | $0.093 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\IMAX_20260826_044538\verdict_depth.json

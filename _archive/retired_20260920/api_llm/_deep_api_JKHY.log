@@ -1,0 +1,43 @@
+[deep-api] JKHY @ $166.2 | deepseek-v4-flash effort=high | 3 samples | pack 31,106ch from JKHY_20260824_114148 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\JKHY_20260825_012936
+[deep-api] local arm said: USABLE — plausible and converged | median IV 188.0 | spread 3.8%
+    [tool 1] search_web: Jack Henry Associates fiscal 2026 fourth quarter results August 2026 revenue full year
+    [tool 2] search_web: Jack Henry fiscal 2027 guidance revenue growth non-GAAP margin outlook
+    [tool 3] search_web: 10 year treasury yield August 2026
+    [tool 4] search_web: Jack Henry deconversion revenue what is it recurring non-recurring
+    [tool 5] fetch_page: https://www.zacks.com/stock/news/2976998/jkhy-q4-earnings-beat-revenues-rise-on-processi
+    [tool 6] fetch_page: https://finance.yahoo.com/markets/stocks/articles/jack-henry-associates-jkhy-5-011257219
+    [tool 7] search_web: Jack Henry fiscal 2026 10-K capital expenditures capitalized software development costs 
+    [tool 8] search_web: Jack Henry effective tax rate fiscal 2026 2025
+    [tool 9] fetch_page: https://www.prnewswire.com/news-releases/jack-henry--associates-inc-reports-fourth-quart
+    [tool 10] search_web: Jack Henry JKHY long term earnings growth consensus 2028 2029 analyst estimates
+  sample 1: IV $168.0 | usable=True | 10 tool calls (think 83,798ch / report 23,567ch) | 309s | $0.027 cumulative
+    [tool 1] search_web: Jack Henry fiscal 2027 guidance revenue growth operating margin targets
+    [tool 2] search_web: Jack Henry annual capitalized software development costs total capital expenditures 10-K
+    [tool 3] search_web: 10-year Treasury yield August 2026 current level
+    [tool 4] fetch_page: https://finance.yahoo.com/markets/stocks/articles/jack-henry-associates-apos-fiscal-1853
+    [tool 5] search_web: Jack Henry 10-K fiscal 2025 cash flow statement "capitalized software" purchases of prop
+    [tool 6] fetch_page: https://seekingalpha.com/news/4635160-jack-henry-forecasts-fiscal-2027-gaap-eps-of-7_33-
+    [tool 7] search_web: Jack Henry fourth quarter fiscal 2026 results revenue net income press release August 20
+    [tool 8] fetch_page: https://www.prnewswire.com/news-releases/jack-henry--associates-inc-reports-fourth-quart
+    [tool 9] search_web: Jack Henry JKHY beta 5 year monthly stock beta current value
+    [tool 10] search_web: Damodaran implied equity risk premium August 2026 current
+  sample 2: IV $200.0 | usable=True | 10 tool calls (think 115,186ch / report 18,380ch) | 395s | $0.063 cumulative
+    [tool 1] search_web: Jack Henry fiscal 2026 guidance non-GAAP revenue growth margin expansion Q3 earnings
+    [tool 2] search_web: Jack Henry fiscal 2027 revenue growth margin guidance long-term outlook
+    [tool 3] search_web: Jack Henry capitalized software development costs fiscal 2025 cash flow statement
+    [tool 4] search_web: 10 year treasury yield August 2026 current level
+    [tool 5] fetch_page: https://www.tradingkey.com/news/transcripts/262118917-tradingkey
+    [tool 6] fetch_page: https://www.sec.gov/Archives/edgar/data/779152/000077915225000055/jkhy-20250630.htm
+    [tool 7] fetch_page: https://seekingalpha.com/news/4635160-jack-henry-forecasts-fiscal-2027-gaap-eps-of-7_33-
+    [tool 8] search_web: Jack Henry fiscal 2026 fourth quarter press release operating cash flow free cash flow $
+    [tool 9] search_web: Jack Henry fiscal 2025 10-K "purchases of property and equipment" "capitalized software"
+    [tool 10] fetch_page: https://www.prnewswire.com/news-releases/jack-henry--associates-inc-reports-fourth-quart
+    [tool 11] search_web: "Jack Henry" fiscal 2025 cash flow "capitalized software" 2025 OR 2024 "purchases of pro
+    [tool 12] search_web: Jack Henry fiscal 2026 annual report 10-K depreciation amortization "capitalized softwar
+    [tool 13] search_web: Jack Henry Investor Day fiscal 2028 long-term targets margin revenue growth algorithm
+  sample 3: IV $161.5 | usable=True | 13 tool calls (think 105,832ch / report 28,916ch) | 400s | $0.101 cumulative
+
+[deep-api] JKHY: HOLD | band $161.5-$200.0 vs price $166.2 | size half
+[deep-api] LOCAL said: UNDERVALUED | band $182.0-$189.0 | median $188.0
+[deep-api] 18 API calls | 444,801 in (393,600 cached) | 131,499 out (104,966 reasoning) | $0.101 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\JKHY_20260825_012936\verdict_depth.json

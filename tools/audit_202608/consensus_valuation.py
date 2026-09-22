@@ -40,13 +40,17 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+elif hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 import common  # noqa: E402
 common.enable_json_cache()
 import capability_test as cap  # noqa: E402
 import rs2_data  # noqa: E402
 import valuation_backbone as vb  # noqa: E402
+from fiduciary_gate import validate_fiduciary_contract  # noqa: E402
 
 OUT = HERE / "ab_reports" / "consensus"
 # THRESHOLDS — calibrated against four reference points on GOOG @ $343.54, not invented:
@@ -57,10 +61,18 @@ OUT = HERE / "ab_reports" / "consensus"
 # ASYMMETRIC BY DESIGN. Sell-side targets skew optimistic and this book is structurally bearish
 # (median MoS -51.8%), so being far BELOW analysts is ordinary and being far ABOVE them is the
 # farfetched direction. A symmetric band would have rejected the $205 benchmark.
-MOS_EXTREME = 1.50          # existing shared definition of "malfunction, not a valuation"
+#
+# Malfunction fence, written in convention (A): mos = IV/price - 1. It is ONE-SIDED BY
+# CONSTRUCTION - |IV/price - 1| cannot exceed 1 on the downside, since IV/price - 1 >= -1 - so it
+# trips only when IV > 2.5x price. Measured 2026-09-20: all six published trips are positive and
+# a recorded -99.4% MoS passed it untouched. A downside fence must be written separately; this
+# constant cannot supply one, and nothing here should be read as symmetric.
+# NOT a shared definition: valuation_backbone.MOS_EXTREME_MAX is an independent literal holding
+# the same value, and the two are free to drift.
+MOS_EXTREME = 1.50
 BAND_HIGH_MULT = 1.5        # above 1.5x the PV'd analyst HIGH -> farfetched ($702 is 1.63x)
 BAND_LOW_DIV = 3.0          # below 1/3 of the PV'd analyst LOW -> farfetched (deliberately loose)
-OCF_MULT_MAX = 40.0         # IV implying >40x TTM operating cash flow ($702 implies 46.3x)
+OCF_MULT_MAX = 75.0         # Informative annotation flag; catches truly detached trailing multiples (>75x)
 TOL_PCT = 25.0              # runs disagreeing by more than this (max/min-1) are not converged
 EARLY_TOL_PCT = 15.0        # 2-sample early-stop bar. DELIBERATELY TIGHTER than TOL_PCT: two
                             # draws agreeing is weaker evidence of stability than three
@@ -104,7 +116,125 @@ def extract_iv(report, price):
     return vals
 
 
+def extract_scorecard(report, price):
+    """Extracts the complete 4-KPI Institutional Decision Vector from the report.
+    Prioritizes the structured ```json:underwriting block; falls back to narrative regex."""
+    card = {
+        "base_iv": None,
+        "bull_iv": None,
+        "bear_iv": None,
+        # The JSON copy loop below is driven by THIS dict, so a key the model emits but that is
+        # absent here is discarded unrecoverably - `parsed` goes out of scope and this whitelist
+        # is the function's only return. TASK asks for all three; measured 2026-09-20, GEV's
+        # sample 2 emitted 0.4 / 0.35 / 0.25 and every one was dropped, which is why the
+        # fiduciary validator's probability leg always ran on hardcoded defaults.
+        "base_probability": None,
+        "bull_probability": None,
+        "bear_probability": None,
+        # The Task 2 lesson applies to every later field: this whitelist IS the schema, so a
+        # field the model emits but that is absent here is dropped unrecoverably.
+        "base_cf_used": None,
+        "base_cf_basis": None,
+        "conviction_score": None,
+        "business_quality_moat": None,
+        "kelly_fraction_pct": None,
+        "asymmetric_payoff_skew": None,
+        "reentry_tranches": {"tranche_1_starter": None, "tranche_2_core": None},
+        "thesis_invalidation_trigger": None
+    }
+    
+    # 1. Primary: Structured JSON block from Section 12
+    jm = re.search(r"```json:underwriting\s*(\{.*?\})\s*```", report, re.DOTALL)
+    if not jm:
+        jm = re.search(r"```json\s*(\{\s*\"base_iv\".*?\})\s*```", report, re.DOTALL)
+    if jm:
+        try:
+            parsed = json.loads(jm.group(1))
+            for k in card:
+                if k in parsed and parsed[k] is not None:
+                    card[k] = parsed[k]
+            if card["base_iv"] and price and 0.02 * price <= card["base_iv"] <= 10 * price:
+                return card
+        except Exception:
+            pass
+
+    # 2. Fallback: Narrative extraction
+    ivs = extract_iv(report, price)
+    if ivs:
+        card["base_iv"] = st.median(ivs)
+
+    # Bull IV
+    bull_m = re.search(r"\bbull(?:-case)?(?:\s*IV)?\s*[:=≈]?\s*\$\s*([\d,]+(?:\.\d{1,2})?)", report, re.I)
+    if bull_m:
+        try:
+            bv = float(bull_m.group(1).replace(",", ""))
+            if price and 0.02 * price <= bv <= 15 * price:
+                card["bull_iv"] = bv
+        except Exception:
+            pass
+
+    # Bear IV
+    bear_m = re.search(r"\bbear(?:-case)?(?:\s*IV)?\s*[:=≈]?\s*\$\s*([\d,]+(?:\.\d{1,2})?)", report, re.I)
+    if bear_m:
+        try:
+            brv = float(bear_m.group(1).replace(",", ""))
+            if price and 0.01 * price <= brv <= 10 * price:
+                card["bear_iv"] = brv
+        except Exception:
+            pass
+
+    # Conviction Score (out of 15)
+    conv_m = re.search(r"\bCONVICTION:\s*(?:[A-Z]+\s*)?\(?(\d+(?:\.\d+)?)\s*/\s*15", report, re.I)
+    if conv_m:
+        try:
+            card["conviction_score"] = float(conv_m.group(1))
+        except Exception:
+            pass
+
+    # Business Quality / Moat Score (1 to 5)
+    moat_m = re.search(r"\b(?:Business Quality|Moat(?: Score)?)\s*[:=≈]\s*([1-5](?:\.\d+)?)\s*/\s*5", report, re.I)
+    if moat_m:
+        try:
+            card["business_quality_moat"] = float(moat_m.group(1))
+        except Exception:
+            pass
+
+    # Kelly fraction
+    kelly_m = re.search(r"\bKelly\s*f\*?\s*=?\s*(\d+(?:\.\d+)?)\%?", report, re.I)
+    if kelly_m:
+        try:
+            card["kelly_fraction_pct"] = float(kelly_m.group(1))
+        except Exception:
+            pass
+
+    # Re-entry Tranches
+    t1_m = re.search(r"≤\s*\$?([\d,]+(?:\.\d{1,2})?)\s*(?:with KPI|.*?starter)", report, re.I)
+    if t1_m:
+        try:
+            card["reentry_tranches"]["tranche_1_starter"] = float(t1_m.group(1).replace(",", ""))
+        except Exception:
+            pass
+    t2_m = re.search(r"≤\s*\$?([\d,]+(?:\.\d{1,2})?)\s*\((?:base|core)", report, re.I)
+    if t2_m:
+        try:
+            card["reentry_tranches"]["tranche_2_core"] = float(t2_m.group(1).replace(",", ""))
+        except Exception:
+            pass
+
+    # Invalidation Trigger
+    inv_m = re.search(r"\bINVALIDATION(?:\s*\([^)]*\))?\s*:(.*?)(?:\n\s*[A-Z0-9_-]+:|\n\s*════|\Z)", report, re.I | re.DOTALL)
+    if inv_m:
+        card["thesis_invalidation_trigger"] = re.sub(r"\s+", " ", inv_m.group(1)).strip()
+
+    # Derived Asymmetric Payoff Skew
+    if price and card["bull_iv"] and card["bear_iv"] and (price - card["bear_iv"]) > 0:
+        card["asymmetric_payoff_skew"] = round((card["bull_iv"] - price) / (price - card["bear_iv"]), 2)
+
+    return card
+
+
 def plausibility(iv, price, ticker):
+
     """(ok, [reasons], [flags]) — usability is an INTEGRITY question; the calibrated thresholds
     only ANNOTATE.
 
@@ -179,13 +309,365 @@ def plausibility(iv, price, ticker):
     return True, [], flags
 
 
+def continue_report(model, pack, partial_report, ctx=81920, timeout=1800, seed=None, draft_num_predict=None):
+    """Rescues a truncated memorandum by issuing a continuation turn to Ollama.
+    Reclaims 40k+ tokens of headroom by feeding the pack + partial report as assistant turn."""
+    cutoff_snippet = partial_report[-250:].strip()
+    continuation_prompt = (
+        "Your institutional memorandum was truncated at the context wall mid-sentence.\n\n"
+        f"The cutoff point was:\n\"... {cutoff_snippet}\"\n\n"
+        "CONTINUATION INSTRUCTIONS:\n"
+        "1. Pick up IMMEDIATELY from that exact unfinished sentence and complete it seamlessly.\n"
+        "2. Complete any remaining analysis sections (Valuation Triad, Balance Sheet Audit, Risks, Milestones).\n"
+        "3. Conclude with Section 12: Machine Contract containing the complete ```json:underwriting block with all fields:\n"
+        "   - base_iv, bull_iv, bear_iv\n"
+        "   - conviction_score (out of 15)\n"
+        "   - business_quality_moat (1 to 5)\n"
+        "   - kelly_fraction_pct\n"
+        "   - asymmetric_payoff_skew\n"
+        "   - reentry_tranches: {tranche_1_starter, tranche_2_core}\n"
+        "   - thesis_invalidation_trigger\n\n"
+        "Do NOT repeat the prior sections. Proceed directly with the continuation."
+    )
+    messages = [
+        {"role": "user", "content": pack},
+        {"role": "assistant", "content": partial_report},
+        {"role": "user", "content": continuation_prompt}
+    ]
+    opts = {
+        "num_ctx": ctx,
+        "num_predict": 32768,
+        "temperature": 0.6,
+        "repeat_penalty": 1.05,
+        "presence_penalty": 0.05
+    }
+    if seed is not None:
+        opts["seed"] = seed
+    if draft_num_predict is not None:
+        opts["draft_num_predict"] = draft_num_predict
+
+    body = {
+        "model": model,
+        "stream": False,
+        "think": "high",
+        "messages": messages,
+        "options": opts
+    }
+    import urllib.request
+    req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
+                                 data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            resp = json.loads(r.read().decode())
+        msg = resp.get("message") or {}
+        rep_cont = msg.get("content") or ""
+        think_cont = msg.get("thinking") or ""
+        done_reason = resp.get("done_reason")
+        gen_tok = resp.get("eval_count") or 0
+        return rep_cont, think_cont, {"done_reason": done_reason, "generated_tokens": gen_tok}
+    except Exception as e:
+        print(f"  [continue_report error]: {e}", flush=True)
+        return "", "", {"done_reason": "error", "error": str(e)}
+
+
+def select_medoid_scorecard(
+    runs: list,
+    price: float,
+    eff_tol: float = TOL_PCT
+) -> tuple:
+    """Select the Medoid (Central Anchor Sample) from valid runs and compute consensus dispersion.
+
+    Eliminates independent column medians by identifying the single most central sample
+    whose Base IV and Moat are closest to the multi-sample medians. The complete, coherent
+    Section 12 contract is taken directly from this sample.
+
+    FIELD OWNERSHIP (fixed 2026-09-20). The returned summary carries TWO distinct IVs and they
+    must never be used interchangeably:
+      * `base_iv`   — the medoid's own base case. The CONTRACT BASE. Owns MoS and Kelly sizing.
+      * `median_iv` — cross-sample median. A DISPERSION statistic for the band, never a base.
+    Before this, the summary exposed only `median_iv` while drawing bull/bear/conviction/Kelly
+    from the medoid, which is the same cross-sample field mixing the medoid rule exists to stop.
+
+    Returns:
+        (medoid_scorecard, consensus_summary)
+    """
+    good = [r for r in runs if r.get("iv") and r.get("plausible") and not r.get("truncated")]
+    if not good:
+        return {}, {
+            "median_iv": None, "median_bull_iv": None, "median_bear_iv": None,
+            "iv_band_low": None, "iv_band_high": None, "spread_pct": None,
+            "converged": False, "medoid_sample": None, "n_basis": 0,
+            "median_conviction_score": None, "median_quality_moat": None,
+            "median_kelly_fraction_pct": None, "asymmetric_payoff_skew": None,
+            "reentry_tranches": None, "thesis_invalidation_triggers": [],
+            "base_probability": None, "bull_probability": None, "bear_probability": None,
+            "probabilities_defaulted": True,
+            "base_cf_used": None, "base_cf_basis": None
+        }
+
+    ivs = [r["iv"] for r in good]
+    spread = (max(ivs) / min(ivs) - 1) * 100 if len(ivs) >= 2 else None
+    converged = bool(spread is not None and spread <= eff_tol)
+    med_iv = st.median(ivs)
+
+    # Validate each run's scorecard through the fiduciary validator
+    valid_candidates = []
+    for r in good:
+        raw_card = r.get("scorecard") or {"base_iv": r.get("iv")}
+        is_val, san_card, issues = validate_fiduciary_contract(raw_card, price)
+        if is_val:
+            valid_candidates.append({
+                "sample": r.get("sample"),
+                "iv": r.get("iv"),
+                "card": san_card,
+                "issues": issues,
+                "moat": san_card.get("business_quality_moat")
+            })
+
+    if not valid_candidates:
+        # Fallback if no full scorecard validated: synthesize baseline card from med_iv
+        fb_card = {"base_iv": med_iv}
+        _, san_fb, _ = validate_fiduciary_contract(fb_card, price)
+        summary = {
+            "median_iv": med_iv,
+            "base_iv": san_fb.get("base_iv"),
+            "median_bull_iv": None,
+            "median_bear_iv": None,
+            "iv_band_low": min(ivs),
+            "iv_band_high": max(ivs),
+            "spread_pct": round(spread, 1) if spread is not None else None,
+            "converged": converged,
+            "medoid_sample": good[0].get("sample"),
+            "n_basis": len(good),
+            "median_conviction_score": None,
+            "median_quality_moat": None,
+            "median_kelly_fraction_pct": None,
+            "asymmetric_payoff_skew": None,
+            "reentry_tranches": None,
+            "thesis_invalidation_triggers": [],
+            "base_probability": san_fb.get("base_probability"),
+            "bull_probability": san_fb.get("bull_probability"),
+            "bear_probability": san_fb.get("bear_probability"),
+            "probabilities_defaulted": san_fb.get("probabilities_defaulted", True),
+            "base_cf_used": san_fb.get("base_cf_used"),
+            "base_cf_basis": san_fb.get("base_cf_basis")
+        }
+        return san_fb, summary
+
+    moats = [c["moat"] for c in valid_candidates if c["moat"] is not None]
+    med_moat = st.median(moats) if moats else 3.0
+
+    # Distance function to find the Medoid sample closest to consensus
+    def dist_to_center(c):
+        d_iv = ((c["card"]["base_iv"] - med_iv) / med_iv) ** 2 if med_iv else 0.0
+        d_moat = ((c["moat"] - med_moat) / med_moat) ** 2 if (c["moat"] and med_moat) else 0.0
+        return d_iv + d_moat
+
+    chosen = min(valid_candidates, key=dist_to_center)
+    medoid_card = chosen["card"]
+
+    summary = {
+        "median_iv": med_iv,
+        # CONTRACT BASE — the medoid's OWN base_iv, and the number that owns MoS and Kelly.
+        # Added 2026-09-20 after GEV published "Kelly 8.98%" beside "MoS -1.7%": the medoid was
+        # sample 2 (base $1,037.88, so its Kelly was legal) while `median_iv` was the three-sample
+        # median ($934.54), and `depth_pipeline` computed MoS from the median but carried sample
+        # 2's Kelly. RS2.txt line 352 defines MoS = (IV Base - Price) / IV Base with Kelly in the
+        # same step, so both must read from ONE sample. `median_iv` remains the cross-sample
+        # dispersion statistic and is NOT a base for sizing.
+        "base_iv": medoid_card.get("base_iv"),
+        "median_bull_iv": medoid_card.get("bull_iv"),
+        "median_bear_iv": medoid_card.get("bear_iv"),
+        "iv_band_low": min(ivs),
+        "iv_band_high": max(ivs),
+        "spread_pct": round(spread, 1) if spread is not None else None,
+        "converged": converged,
+        "medoid_sample": chosen["sample"],
+        "n_basis": len(good),
+        "median_conviction_score": medoid_card.get("conviction_score"),
+        "median_quality_moat": medoid_card.get("business_quality_moat"),
+        "median_kelly_fraction_pct": medoid_card.get("kelly_fraction_pct"),
+        "asymmetric_payoff_skew": medoid_card.get("asymmetric_payoff_skew"),
+        "reentry_tranches": medoid_card.get("reentry_tranches"),
+        "thesis_invalidation_triggers": [medoid_card.get("thesis_invalidation_trigger")] if medoid_card.get("thesis_invalidation_trigger") else [],
+        # Carried so depth_pipeline's CONTRACT_PASSTHROUGH can reach the validator with them -
+        # its three probability entries were dead code while this summary omitted these keys -
+        # and so a reader of consensus.json can see whether the probability-weighted edge test
+        # was runnable. `probabilities_defaulted` is published for the same reason.
+        "base_probability": medoid_card.get("base_probability"),
+        "bull_probability": medoid_card.get("bull_probability"),
+        "bear_probability": medoid_card.get("bear_probability"),
+        "probabilities_defaulted": medoid_card.get("probabilities_defaulted"),
+        "base_cf_used": medoid_card.get("base_cf_used"),
+        "base_cf_basis": medoid_card.get("base_cf_basis")
+    }
+    return medoid_card, summary
+
+
+OWNER_CF_TOL_PCT = 10.0        # a declaration within this of the figure it names is accepted
+
+# Distinguishes "the caller supplied no trailing figure, go and load one" from "we hold none".
+# A bare None cannot carry both meanings.
+_UNSET = object()
+
+
+def owner_cf_by_year(ticker):
+    """{year: owner cash flow in $B} for every year where all three filed inputs are present.
+
+    Empty when we hold nothing for the name. This feeds an annotation, so it must never raise:
+    absence is not a defect.
+    """
+    import capability_test as cap
+    try:
+        hist = ((rs2_data.load_json(common.SD / "fundamentals_history.json") or {})
+                .get("tickers", {}).get(str(ticker).upper(), {}) or {})
+        out = {}
+        for y, row in hist.items():
+            if not (isinstance(row, dict) and str(y).isdigit()):
+                continue
+            v = cap.owner_cf(row.get("ocf"), row.get("capex"), row.get("sbc"))
+            if v is not None:
+                out[int(y)] = v / 1e9
+        return out
+    except Exception:
+        return {}
+
+
+def ttm_fcf_by_ticker(ticker):
+    """Trailing twelve months OCF minus capex, in $B, or None when we hold no usable record.
+
+    The trailing record carries OCF and capex but NO SBC (verified for GEV: its fields are
+    capex, fcf, net_income, ocf, revenue). This figure therefore subtracts no stock compensation
+    and is structurally higher than an owner cash flow - $12.438B against $3.453B for GEV.
+    SECTION 5's SBC caveat already warns about exactly this reading; making the number checkable
+    is what lets us SEE the analyst reach for it instead of only cautioning against it.
+    """
+    try:
+        ttm = ((rs2_data.load_json(common.SD / "fundamentals_ttm.json") or {})
+               .get("tickers", {}).get(str(ticker).upper(), {}) or {})
+        f = ttm.get("fields") or {}
+        ocf, capex = f.get("ocf"), f.get("capex")
+        if ocf is None or capex is None:
+            return None
+        return (float(ocf) - float(capex)) / 1e9
+    except Exception:
+        return None
+
+
+def owner_cf_basis_check(ticker, scorecard, years=None, ttm_fcf=_UNSET):
+    """(note | None) — text when the declared base cash flow does not match the basis it names.
+
+    ANNOTATION ONLY, in the same family as the other flags: it never changes direction, size, or
+    whether a sample is usable (guard redesign 2026-08-24).
+
+    Why this exists. The analyst was measured switching between readings of the same accounts
+    without saying so — GEV, 2026-09-20, same dossier and same $951.04 price, one run near
+    $12.4B and another near $5.0B. Declaring the basis turns an invisible disagreement into a
+    checkable claim. `other` is the honest escape hatch and is deliberately NOT checked; every
+    other basis in the list IS verified, `ttm_fcf` included, because the trailing reading is the
+    one that actually overstated GEV.
+    """
+    sc = scorecard or {}
+    claim = sc.get("base_cf_used")
+    basis = str(sc.get("base_cf_basis") or "").strip().lower()
+    if claim is None or not basis:
+        return None
+    if basis == "other":
+        return None
+    import capability_test as cap
+    if basis not in cap.OWNER_CF_BASES:
+        return (f"declared base cash flow basis '{basis}' is not one of "
+                f"{', '.join(cap.OWNER_CF_BASES)}")
+    try:
+        claim = float(claim)
+    except (TypeError, ValueError):
+        return "declared base cash flow is not a number"
+    if basis == "ttm_fcf":
+        target = ttm_fcf_by_ticker(ticker) if ttm_fcf is _UNSET else ttm_fcf
+        label = "trailing twelve months free cash flow (OCF minus capex)"
+    else:
+        if years is None:
+            years = owner_cf_by_year(ticker)
+        if not years:
+            return None
+        if basis == "latest_fy":
+            latest = max(years)
+            target, label = years[latest], f"the latest fiscal year (FY{latest})"
+        else:
+            target = sum(years.values()) / len(years)
+            label = f"the multi-year average across {len(years)} years"
+    if not target:
+        return None
+    if abs(claim - target) / abs(target) * 100.0 > OWNER_CF_TOL_PCT:
+        return (f"declared base cash flow ${claim:,.2f}B as {label}, but that figure is "
+                f"${target:,.2f}B")
+    return None
+
+
+def rescue_status(meta):
+    """(stub_rejected, forced_report, budget_exhausted) for ONE sample, from a `chat_with_tools`
+    meta dict.
+
+    THREE markers. The distinction between the last two is the point, and an earlier version of
+    this docstring got it wrong:
+
+      * `stub_rejected` — the terminal turn was a tool-call envelope rather than a report, so the
+        harness forced a memorandum turn at `think: "low"`, `num_predict` 32768.
+      * `forced_report` — a turn carrying that same stub-retry marker (`analyst_tools.py:452`).
+        This runs at `think: "low"`, so it is the marker that means the sample was reasoned at a
+        DIFFERENT effort level from its siblings.
+      * `budget_exhausted` — a turn produced because both tool budgets were reached
+        (`analyst_tools.py:513`). That path forces the memorandum at the SAME `think` level, so it
+        is a different PROVENANCE, not a reduced-effort one. The old docstring claimed
+        `forced_report` covered "both tool budgets exhausted"; it does not. Reading only that key
+        left a forced report publishing as though it had concluded naturally.
+
+    Tolerates absent/None/malformed `turns`: the on-disk snapshots predate `turns` entirely, so
+    absence is the normal case, not an error.
+    """
+    meta = meta or {}
+    turns = meta.get("turns") or []
+    return {
+        "stub_rejected": bool(meta.get("stub_rejected")),
+        "forced_report": any(bool(t.get("forced_report")) for t in turns if isinstance(t, dict)),
+        "budget_exhausted": any(bool(t.get("budget_exhausted")) for t in turns
+                                if isinstance(t, dict)),
+    }
+
+
+def run_progress(n_max, attempted, recorded, adaptive, broke_early):
+    """Sample bookkeeping for consensus.json. Pure, so the derivation is testable.
+
+    `early_stop` must describe WHAT THE LOOP DID, not what got recorded. The previous
+    derivation - `adaptive and len(runs) == 2 and len(good) == 2` - cannot tell "the loop
+    stopped at n=2 because the pair agreed" apart from "the loop ran 3 times and one sample
+    raised before recording". Both leave len(runs) == 2, so a LOST sample was published as a
+    legitimate early stop: judged against the tighter early bar, sized 'full', audited clean.
+
+    `samples_attempted` is what makes the loss visible, because loss is
+    `samples_run < samples_attempted`. Comparing against `samples_intended` instead would flag
+    every real early stop as a loss - the plan is always 3 in adaptive mode even when the loop
+    legitimately stops at 2.
+    """
+    attempted = int(attempted or 0)
+    recorded = int(recorded or 0)
+    return {
+        "samples_intended": int(n_max or 0),
+        "samples_attempted": attempted,
+        "samples_run": recorded,
+        "samples_lost": max(0, attempted - recorded),
+        "early_stop": bool(adaptive and broke_early),
+    }
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "GOOG").upper()
     adaptive = "--samples" not in sys.argv
     n = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else 3
     model = (sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv
-             else "rs2-analyst-deep")
+             else "rs2-analyst-deep-mtp5")
     ctx = int(sys.argv[sys.argv.index("--ctx") + 1]) if "--ctx" in sys.argv else 81920
     # Reasoning effort. Default "high" = the template's xhigh = the model's MAXIMUM and its own
     # default; "medium" is the neutral baseline that injects no reasoning instruction. Exposed
@@ -196,6 +678,7 @@ def main():
     # argument, and ollama rejected it instantly with HTTP 400. EXPE lost 2 of 3 samples to
     # this before it was caught. The bug was invisible while the value was hard-coded "high".
     think_level = sys.argv[sys.argv.index("--think") + 1] if "--think" in sys.argv else "high"
+    draft_num_predict = int(sys.argv[sys.argv.index("--draft-num-predict") + 1]) if "--draft-num-predict" in sys.argv else None
     # ctx 81920 VERIFIED 2026-08-21 on rs2-analyst-deep: 22.2 GB resident, fully on GPU,
     # no CPU spill. Do not raise further without re-probing /api/ps for spill.
 
@@ -210,7 +693,8 @@ def main():
     (d / "_pack.md").write_text(pack, encoding="utf-8")
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
             if adaptive else f"{n} samples fixed")
-    print(f"[consensus] {t} @ ${price} | model={model} | {mode} -> {d}", flush=True)
+    dnp_str = f" | draft_num_predict={draft_num_predict}" if draft_num_predict is not None else ""
+    print(f"[consensus] {t} @ ${price} | model={model}{dnp_str} | {mode} -> {d}", flush=True)
 
     use_tools = "--tools" in sys.argv
     if use_tools:
@@ -223,7 +707,10 @@ def main():
 
     runs = []
     n_max = 3 if adaptive else n
+    attempted = 0        # iterations ENTERED - the only honest denominator for sample loss
+    broke_early = False  # set only by the adaptive early-stop branch below
     for i in range(1, n_max + 1):
+        attempted = i
         t0 = time.time()
         resp, meta = {}, {}
         try:
@@ -231,19 +718,30 @@ def main():
                 sd_i = d / f"sample{i}_research"
                 rep, think, meta = analyst_tools.chat_with_tools(
                     model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT,
-                    seed=1000 + i)
+                    seed=1000 + i, draft_num_predict=draft_num_predict)
                 resp = {"done_reason": meta.get("done_reason"),
-                        "eval_count": meta.get("generated_tokens")}
+                        "eval_count": meta.get("generated_tokens"),
+                        "eval_rate": meta.get("eval_rate"),
+                        "eval_duration_s": meta.get("eval_duration_s")}
                 msg = {}
             else:
+                opts = {
+                    "num_ctx": ctx,
+                    "num_predict": NUM_PREDICT,
+                    "repeat_penalty": 1.05,
+                    "presence_penalty": 0.05,
+                    "seed": 1000 + i
+                }
+                if draft_num_predict is not None:
+                    opts["draft_num_predict"] = draft_num_predict
                 body = {"model": model, "stream": False, "think": think_level,
                         "messages": [{"role": "user", "content": pack}],
-                        "options": {"num_ctx": ctx, "num_predict": NUM_PREDICT, "seed": 1000 + i}}
+                        "options": opts}
                 import urllib.request
-                req = urllib.request.Request("http://localhost:11434/api/chat",
+                req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
                                              data=json.dumps(body).encode(),
                                              headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=14400) as r:
+                with urllib.request.urlopen(req, timeout=7200) as r:
                     resp = json.loads(r.read().decode())
                 msg = resp.get("message") or {}
                 rep = msg.get("content") or ""
@@ -259,10 +757,10 @@ def main():
             print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
                   f"one retry, perturbed seed", flush=True)
             body["options"]["seed"] = 1000 + i + 50000
-            req = urllib.request.Request("http://localhost:11434/api/chat",
+            req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
                                          data=json.dumps(body).encode(),
                                          headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=14400) as r:
+            with urllib.request.urlopen(req, timeout=7200) as r:
                 resp = json.loads(r.read().decode())
             msg = resp.get("message") or {}
             rep = msg.get("content") or ""
@@ -273,29 +771,72 @@ def main():
                   f"one retry, perturbed seed", flush=True)
             rep, think, meta = _at.chat_with_tools(
                 model, pack, d / f"sample{i}_research_retry", think=think_level, ctx=ctx,
-                num_predict=NUM_PREDICT, seed=1000 + i + 50000)
+                num_predict=NUM_PREDICT, seed=1000 + i + 50000, draft_num_predict=draft_num_predict)
             resp = {"done_reason": meta.get("done_reason"),
-                    "eval_count": meta.get("generated_tokens")}
+                    "eval_count": meta.get("generated_tokens"),
+                    "eval_rate": meta.get("eval_rate"),
+                    "eval_duration_s": meta.get("eval_duration_s")}
         (d / f"sample{i}.md").write_text(rep, encoding="utf-8")
         if think:
             (d / f"sample{i}_thinking.md").write_text(think, encoding="utf-8")
         truncated = resp.get("done_reason") == "length"
+
+        # STATE-PRESERVING SESSION CONTINUATION (Problem D resolution):
+        # If truncated mid-report (e.g. context wall in Sections 4-10) with substantial content,
+        # do NOT discard the sample. Reclaim 40k+ tokens of headroom by feeding pack + partial report
+        # as assistant turn and requesting immediate completion through Section 12.
+        if truncated and len((rep or "").strip()) > 1500:
+            print(f"  sample {i}: TRUNCATED mid-report at {len(rep):,}ch — triggering State-Preserving Continuation...", flush=True)
+            rep_cont, think_cont, meta_cont = continue_report(
+                model=model, pack=pack, partial_report=rep,
+                ctx=ctx, timeout=1800, seed=1000 + i + 100,
+                draft_num_predict=draft_num_predict)
+            if rep_cont and rep_cont.strip():
+                rep = rep.rstrip() + "\n\n" + rep_cont.strip()
+                (d / f"sample{i}.md").write_text(rep, encoding="utf-8")
+                if think_cont:
+                    think = (think + "\n\n--- CONTINUATION THINKING ---\n\n" + think_cont) if think else think_cont
+                    (d / f"sample{i}_thinking.md").write_text(think, encoding="utf-8")
+                if meta_cont.get("done_reason") == "stop":
+                    truncated = False
+                    resp["done_reason"] = "stop"
+                    resp["eval_count"] = (resp.get("eval_count") or 0) + (meta_cont.get("generated_tokens") or 0)
+                    print(f"  sample {i}: Continuation SUCCESSFUL (rescued {len(rep_cont):,}ch, total {len(rep):,}ch, done_reason=stop)", flush=True)
         # EXACT token accounting from the server, not char estimates — this is what settles
         # where a truncated run actually spent its budget.
         p_tok, g_tok = resp.get("prompt_eval_count"), resp.get("eval_count")
+        eval_rate = resp.get("eval_rate")
+        eval_dur_s = resp.get("eval_duration_s")
+        scorecard = extract_scorecard(rep, price)
         ivs = extract_iv(rep, price)
-        iv = st.median(ivs) if ivs else None
+        iv = scorecard.get("base_iv") or (st.median(ivs) if ivs else None)
         ok, why, flags = plausibility(iv, price, t)
-        runs.append({"sample": i, "iv": iv, "all_iv_mentions": sorted(set(ivs))[:8],
+        # The declared cash-flow basis is CHECKED, not taken on trust - a self-reported value
+        # nothing verifies is exactly the Task 2 defect. Annotation only: a flag and a reason.
+        cf_note = owner_cf_basis_check(t, scorecard)
+        if cf_note:
+            flags = list(flags) + ["base_cf_basis_mismatch"]
+            why = list(why) + [cf_note]
+        # Carry the harness rescue status onto the sample. Without this the four-key copy out of
+        # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort
+        # with normal siblings with no consumer able to tell.
+        rescue = rescue_status(meta)
+        runs.append({"sample": i, "iv": iv, "scorecard": scorecard, "all_iv_mentions": sorted(set(ivs))[:8],
                      "plausible": ok, "reasons": why, "flags": flags, "truncated": truncated,
+                     "stub_rejected": rescue["stub_rejected"],
+                     "forced_report": rescue["forced_report"],
+                     "budget_exhausted": rescue["budget_exhausted"],
                      "done_reason": resp.get("done_reason"),
                      "prompt_tokens": p_tok, "generated_tokens": g_tok,
+                     "eval_rate": eval_rate, "eval_duration_s": eval_dur_s,
                      "thinking_chars": len(think), "report_chars": len(rep),
                      "thinking_share_of_output": (round(len(think) / (len(think) + len(rep)), 3)
                                                   if (think or rep) else None),
                      "chars": len(rep), "secs": round(time.time() - t0)})
+        rate_str = f" | {eval_rate} tok/s ({eval_dur_s}s)" if eval_rate else ""
         print(f"  sample {i}: IV ${iv if iv else '?'} | usable={ok}"
               + f" | gen {g_tok} tok (think {len(think):,}ch / report {len(rep):,}ch)"
+              + rate_str
               + (f" ({'; '.join(why)})" if why else "")
               + (f" | flags: {', '.join(flags)}" if flags else "")
               + (" | TRUNCATED" if truncated else ""), flush=True)
@@ -311,6 +852,7 @@ def main():
                     print(f"  [adaptive] 2 samples agree within {sp2:.1f}% "
                           f"(early bar {EARLY_TOL_PCT:.0f}%) — stopping, no 3rd sample",
                           flush=True)
+                    broke_early = True
                     break
                 print(f"  [adaptive] 2-sample spread {sp2:.1f}% > {EARLY_TOL_PCT:.0f}% — "
                       f"escalating to 3rd sample", flush=True)
@@ -321,38 +863,53 @@ def main():
     good = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"]]
     ivs = [r["iv"] for r in good]
     spread = (max(ivs) / min(ivs) - 1) * 100 if len(ivs) >= 2 else None
-    early_stop = adaptive and len(runs) == 2 and len(good) == 2
+    progress = run_progress(n_max, attempted, len(runs), adaptive, broke_early)
+    early_stop = progress["early_stop"]
     # An early-stopped pair must meet the bar it stopped under; a 3-sample set (or a fixed-n
     # run) is judged at the standard tolerance.
     eff_tol = EARLY_TOL_PCT if early_stop else TOL_PCT
     converged = bool(spread is not None and spread <= eff_tol)
     med = st.median(ivs) if ivs else None
-    # This string is THIS TOOL's own summary of convergence. It is NOT the published verdict —
-    # depth_pipeline.band_verdict() decides direction and ignores it. Reworded 2026-08-24 because
-    # the old third branch read "no plausible sample" and fired whenever spread was undefined,
-    # which on a single-sample run libelled a perfectly good sample as implausible.
+
+    # Medoid Consensus Aggregation (eliminates Frankenstein independent medians)
+    medoid_card, scorecard_summary = select_medoid_scorecard(runs, price, eff_tol)
+    med_conviction = scorecard_summary.get("median_conviction_score")
+    med_quality = scorecard_summary.get("median_quality_moat")
+    med_kelly = scorecard_summary.get("median_kelly_fraction_pct")
+    med_bull = scorecard_summary.get("median_bull_iv")
+    med_bear = scorecard_summary.get("median_bear_iv")
+    med_skew = scorecard_summary.get("asymmetric_payoff_skew")
+
     verdict = ("CONVERGED" if converged and med else
                "NOT CONVERGED — runs disagree beyond tolerance" if med and spread is not None else
                f"NOT CONVERGED — only {len(good)} usable sample(s), spread undefined" if med else
                "NO USABLE SAMPLE — nothing parseable and complete")
     doc = {"ticker": t, "price": price, "model": model, "think": think_level,
+           "draft_num_predict": draft_num_predict,
            "pack_revision": cap.PACK_REVISION,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "samples_run": len(runs), "early_stop": early_stop,
+           "samples_intended": progress["samples_intended"],
+           "samples_attempted": progress["samples_attempted"],
+           "samples_lost": progress["samples_lost"],
            "effective_tolerance_pct": eff_tol,
            "generated_at": datetime.now(timezone.utc).isoformat(),
            "runs": runs, "n_plausible": len(good),
            "median_iv": med, "spread_pct": round(spread, 1) if spread is not None else None,
            "tolerance_pct": TOL_PCT, "early_tolerance_pct": EARLY_TOL_PCT,
            "converged": converged, "verdict": verdict,
+           "scorecard": scorecard_summary,
            "median_mos_pct": round((med / price - 1) * 100, 1) if med and price else None}
     (d / "consensus.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")
     print(f"\n[consensus] {verdict}")
     if med:
         print(f"  median IV ${med:,.2f} vs price ${price:,.2f} -> MoS {doc['median_mos_pct']:+.1f}%"
               + (f" | spread {spread:.1f}% (tolerance {TOL_PCT}%)" if spread is not None else ""))
+        if med_conviction:
+            print(f"  conviction: {med_conviction}/15 | quality: {med_quality}/5 | Kelly: {med_kelly}% | skew: {med_skew}")
     print(f"  -> {d/'consensus.json'}")
 
 
 if __name__ == "__main__":
+
     main()

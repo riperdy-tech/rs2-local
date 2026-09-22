@@ -1,0 +1,55 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ANAB.md, 18.4 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ANAB @ $57.74 | deepseek-v4-flash effort=high | 3 samples | pack 31,634ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ANAB_20260826_014921
+    [tool 1] search_web: AnaptysBio First Tracks Biotherapeutics spin-off status 2026 separation details
+    [tool 2] search_web: AnaptysBio Jemperli royalty rate GSK percentage collaboration agreement
+    [tool 3] search_web: GSK Jemperli dostarlimab 2025 full year sales royalty revenue
+    [tool 4] search_web: AnaptysBio 2026 guidance royalty revenue operating expenses cash runway
+    [tool 5] fetch_page: https://www.anaptysbio.com/financial-collaborations/financials/
+    [tool 6] fetch_page: https://ir.anaptysbio.com/news-releases/news-release-details/anaptys-announces-first-qua
+    [tool 7] fetch_page: https://www.biospace.com/press-releases/anaptys-provides-update-on-business-separation-a
+    [tool 8] search_web: AnaptysBio Tesaro GSK Delaware Chancery litigation Jemperli collaboration breach trial r
+    [tool 9] search_web: GSK Zejula niraparib 2025 sales patent expiry loss of exclusivity
+    [tool 10] search_web: Jemperli GSK Q2 2026 sales quarterly growth dostarlimab
+    [tool 11] search_web: AnaptysBio post-spin royalty company dividend buyback capital return shareholders 2026
+    [tool 12] search_web: 10-year treasury yield August 2026 Federal Reserve policy
+    [tool 13] fetch_page: https://www.biospace.com/press-releases/anaptys-announces-first-quarter-2026-financial-r
+    [tool 14] fetch_page: https://ir.anaptysbio.com/news-releases/news-release-details/delaware-chancery-court-rul
+    [tool 15] fetch_page: https://ir.anaptysbio.com/news-releases/news-release-details/anaptys-announces-100-milli
+  sample 1: IV $6.545 | usable=True | 15 tool calls (think 126,510ch / report 32,202ch) | flags: below_analyst_low_0.10x_floor_0.33x, ocf_multiple_42.5x_cap_40x | 473s | $0.043 cumulative
+    [tool 1] search_web: AnaptysBio First Tracks Biotherapeutics spin-off completed status August 2026
+    [tool 2] search_web: AnaptysBio Jemperli royalty GSK Tesaro litigation Delaware ruling 2026
+    [tool 3] search_web: AnaptysBio Q2 2026 financial results royalty revenue
+    [tool 4] search_web: AnaptysBio rosnilimab Phase 2 results 2026 RA
+    [tool 5] fetch_page: https://ir.anaptysbio.com/news-releases/news-release-details/anaptys-completes-separatio
+    [tool 6] search_web: AnaptysBio Sagard $675 million royalty financing Jemperli term loan terms interest
+    [tool 7] search_web: AnaptysBio Jemperli royalty rate percentage net sales GSK
+    [tool 8] fetch_page: https://www.anaptysbio.com/financial-collaborations/financials/
+    [tool 9] search_web: AnaptysBio Sagard original 2024 Jemperli royalty monetization $250 million 80% royalties
+    [tool 10] search_web: AnaptysBio spin-off First Tracks retained equity cash distribution April 2026 details
+    [tool 11] fetch_page: https://finance.yahoo.com/news/anaptysbio-announces-agreement-monetize-portion-203700349
+    [tool 12] fetch_page: https://www.sec.gov/Archives/edgar/data/1370053/000137005321000063/anab-20211025.htm
+    [tool 13] search_web: AnaptysBio imsidolimab Vanda GPP NDA approval 2026 royalty
+  sample 2: IV $65.0 | usable=True | 13 tool calls (think 63,169ch / report 27,191ch) | flags: ocf_multiple_422.4x_cap_40x | 302s | $0.065 cumulative
+    [tool 1] search_web: AnaptysBio First Tracks Biotherapeutics spin-off completed 2026
+    [tool 2] search_web: AnaptysBio Jemperli royalty rate GSK dostarlimab percentage royalty
+    [tool 3] search_web: AnaptysBio Q2 2026 financial results second quarter 2026
+    [tool 4] search_web: GSK Jemperli dostarlimab sales 2025 full year 2026 growth
+    [tool 5] fetch_page: https://ir.anaptysbio.com/news-releases/news-release-details/anaptys-completes-separatio
+    [tool 6] fetch_page: https://finviz.com/news/178763/anaptys-announces-intent-to-separate-biopharma-operations
+    [tool 7] fetch_page: https://www.gsk.com/media/g0lnid23/fy-2025-results-announcement.pdf
+    [tool 8] fetch_page: https://www.biospace.com/press-releases/anaptys-completes-separation-of-first-tracks-bio
+    [tool 9] search_web: AnaptysBio first quarter 2026 financial results business update May 2026
+    [tool 10] search_web: GSK Jemperli dostarlimab 2025 full year sales million oncology growth
+    [tool 11] search_web: AnaptysBio Tesaro GSK litigation Jemperli Delaware ruling 2026
+    [tool 12] fetch_page: https://www.anaptysbio.com/press-release/anaptys-announces-first-quarter-2026-financial-
+    [tool 13] search_web: "Jemperli" 2025 sales "£" OR "GBP" full year GSK annual results oncology
+    [tool 14] search_web: AnaptysBio second quarter 2026 financial results August 2026
+    [tool 15] search_web: Vanda imsidolimab generalized pustular psoriasis BLA FDA approval 2026
+  sample 3: IV $61.0 | usable=True | 15 tool calls (think 77,678ch / report 35,912ch) | flags: ocf_multiple_396.4x_cap_40x | 381s | $0.098 cumulative
+
+[deep-api] ANAB: HOLD | band $6.545-$65.0 vs price $57.74 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.4d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 384,491 in (283,520 cached) | 111,496 out (78,793 reasoning) | $0.098 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ANAB_20260826_014921\verdict_depth.json

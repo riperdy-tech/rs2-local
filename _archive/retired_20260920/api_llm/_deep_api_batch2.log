@@ -1,0 +1,57 @@
+[batch] start AAPL
+[batch] start ABNB
+[batch] start ADSK
+[batch] done ABNB exit=0 [deep-api] ABNB: OVERVALUED | band $92.0-$177.0 vs price $185.0 | size quarter
+[batch] start AGX
+[batch] done AAPL exit=0 [deep-api] AAPL: OVERVALUED | band $165.0-$237.0 vs price $316.83 | size quarter
+[batch] start AMD
+[batch] done ADSK exit=0 [deep-api] ADSK: OVERVALUED | band $180.0-$250.0 vs price $251.29 | size quarter
+[batch] start AMZN
+[batch] done AGX exit=0 [deep-api] AGX: OVERVALUED | band $150.0-$282.0 vs price $528.01 | size quarter
+[batch] start ANET
+[batch] done AMD exit=0 [deep-api] AMD: OVERVALUED | band $94.0-$217.0 vs price $464.175 | size quarter
+[batch] start ATI
+[batch] done AMZN exit=0 [deep-api] AMZN: OVERVALUED | band $175.0-$260.0 vs price $265.84 | size quarter
+[batch] start AVGO
+[batch] done ATI exit=0 [deep-api] ATI: OVERVALUED | band $60.0-$94.65 vs price $215.99 | size quarter
+[batch] start AZN
+[batch] done ANET exit=0 [deep-api] ANET: OVERVALUED | band $102.0-$132.5 vs price $186.45 | size half
+[batch] start BMRN
+[batch] done AVGO exit=0 [deep-api] AVGO: OVERVALUED | band $239.45-$335.0 vs price $367.88 | size quarter
+[batch] start CART
+[batch] done AZN exit=0 [deep-api] AZN: UNDERVALUED | band $179.41-$194.3 vs price $166.565 | size full
+[batch] start CIEN
+[batch] done BMRN exit=0 [deep-api] BMRN: UNDERVALUED | band $90.0-$127.0 vs price $69.33 | size quarter
+[batch] start CLS
+[batch] done CIEN exit=0 [deep-api] CIEN: OVERVALUED | band $102.5-$135.25 vs price $399.47 | size quarter
+[batch] start CMI
+[batch] done CART exit=0 [deep-api] CART: UNDERVALUED | band $66.2-$80.0 vs price $50.67 | size half
+[batch] start DELL
+[batch] done CLS exit=0 [deep-api] CLS: OVERVALUED | band $223.0-$245.0 vs price $301.36 | size full
+[batch] start EMBJ
+[batch] done DELL exit=0 [deep-api] DELL: OVERVALUED | band $173.5-$211.5 vs price $437.55 | size half
+[batch] start EXEL
+[batch] done CMI exit=0 [deep-api] CMI: OVERVALUED | band $448.0-$477.0 vs price $593.24 | size full
+[batch] start FIX
+[batch] done EMBJ exit=0 [deep-api] EMBJ: OVERVALUED | band $52.0-$58.0 vs price $77.75 | size full
+[batch] start GD
+[batch] done EXEL exit=0 [deep-api] EXEL: OVERVALUED | band $28.95-$51.0 vs price $53.69 | size quarter
+[batch] start GEV
+[batch] done FIX exit=0 [deep-api] FIX: OVERVALUED | band $942.0-$980.0 vs price $1672.9399 | size full
+[batch] start GMED
+[batch] done GD exit=0 [deep-api] GD: HOLD | band $357.72-$452.0 vs price $386.07 | size half
+[batch] start GOOG
+[batch] done GEV exit=0 [deep-api] GEV: OVERVALUED | band $451.0-$673.5 vs price $966.01 | size quarter
+[batch] start GRDN
+[batch] done GMED exit=0 [deep-api] GMED: UNDERVALUED | band $93.0-$117.53 vs price $85.67 | size half
+[batch] start INCY
+[batch] done GOOG exit=0 [deep-api] GOOG: OVERVALUED | band $180.0-$267.0 vs price $336.88 | size quarter
+[batch] start JKHY
+[batch] done GRDN exit=0 [deep-api] GRDN: OVERVALUED | band $24.0-$32.86 vs price $37.93 | size quarter
+[batch] start KFY
+[batch] done INCY exit=0 [deep-api] INCY: OVERVALUED | band $33.09-$102.875 vs price $127.81 | size quarter
+[batch] start PM
+[batch] done JKHY exit=0 [deep-api] JKHY: HOLD | band $161.5-$200.0 vs price $166.2 | size half
+[batch] done KFY exit=0 [deep-api] KFY: UNDERVALUED | band $88.0-$108.0 vs price $85.06 | size half
+[batch] done PM exit=0 [deep-api] PM: HOLD | band $176.54-$214.0 vs price $189.93 | size half
+[batch] ALL DONE

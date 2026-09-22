@@ -1,0 +1,60 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ILMN.md, 18.6 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ILMN @ $219.4 | deepseek-v4-flash effort=high | 3 samples | pack 33,210ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ILMN_20260826_044515
+    [tool 1] search_web: 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: Illumina Q2 2026 earnings press release revenue guidance FY2026 raised
+    [tool 3] search_web: Illumina 2027 2028 revenue EPS consensus estimates analysts
+    [tool 4] search_web: Illumina 2025 10-K long-term debt convertible notes total debt balance sheet
+    [tool 5] search_web: Illumina China unreliable entity list revenue impact 2025 2026 Greater China
+    [tool 6] search_web: Illumina long-term operating margin target model 25% management 2026
+    [tool 7] fetch_page: https://investor.illumina.com/news-releases/news-release-details/illumina-reports-financ
+    [tool 8] search_web: Illumina investor day 2025 long-term financial targets revenue growth operating margin 2
+    [tool 9] search_web: Federal Reserve FOMC August 2026 interest rate decision fed funds rate
+    [tool 10] search_web: Illumina share repurchase authorization buyback 2025 2026 program size
+    [tool 11] search_web: Illumina GRAIL divestiture completed 2024 remaining stake sold status 2026
+    [tool 12] search_web: Illumina sequencing market share 2025 2026 MGI Oxford Nanopore PacBio competitive positi
+    [tool 13] fetch_page: https://investor.illumina.com/static-files/393df851-e597-4564-b113-6bb5b80e9003
+    [tool 14] search_web: Illumina Q2 2026 sequencing instruments revenue growth consumables segment results
+    [tool 15] search_web: DXY dollar index level August 2026
+    [tool 16] search_web: Illumina raises full year 2026 guidance non-GAAP EPS operating margin July 2026
+    [tool 17] search_web: Illumina insider selling buying activity 2026 CEO Thaysen shares
+  sample 1: IV $118.0 | usable=True | 17 tool calls (think 142,620ch / report 35,585ch) | 582s | $0.048 cumulative
+    [tool 1] search_web: Illumina convertible senior notes total debt 10-K 2025 balance sheet
+    [tool 2] search_web: Illumina research and development expense fiscal 2025 10-K
+    [tool 3] search_web: Illumina Q2 2026 earnings call guidance full year 2026 2027 revenue operating margin
+    [tool 4] search_web: US 10-year Treasury yield August 2026 Fed funds rate
+    [tool 5] fetch_page: https://investor.illumina.com/news-releases/news-release-details/illumina-reports-financ
+    [tool 6] fetch_page: https://emea.illumina.com/company/news-center/press-releases/2026/5dc3da71-77d9-4286-8c2
+    [tool 7] fetch_page: https://investor.illumina.com/static-files/196c9273-89fd-430a-af6c-33075524d7a6
+    [tool 8] fetch_page: https://www.prnewswire.com/news-releases/illumina-reports-financial-results-for-second-q
+    [tool 9] search_web: Illumina 0% convertible senior notes due 2026 principal balance outstanding
+    [tool 10] search_web: Federal Reserve fed funds rate August 2026 FOMC decision
+    [tool 11] search_web: Illumina Element Biosciences MGI competition market share 2026 sequencing
+    [tool 12] search_web: Illumina 10-K 2025 term notes 2026 2027 2028 principal operating leases debt footnote
+    [tool 13] search_web: Illumina share repurchase authorization 2026 buyback program billion
+    [tool 14] search_web: Illumina 2027 2028 revenue growth analyst consensus estimates
+    [tool 15] search_web: Illumina China unreliable entities list 2026 revenue impact approval instrument purchase
+  sample 2: IV $89.0 | usable=True | 15 tool calls (think 137,652ch / report 32,830ch) | 580s | $0.093 cumulative
+    [tool 1] search_web: Illumina Q2 2026 earnings call transcript full year 2026 revenue EPS guidance raise
+    [tool 2] search_web: Illumina long-term growth algorithm revenue growth target investor day
+    [tool 3] search_web: 10-year treasury yield August 2026 level
+    [tool 4] search_web: Federal Reserve interest rate decision July 2026 FOMC fed funds target
+    [tool 5] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/03/illumina-ilmn-q2-2026-earnings
+    [tool 6] search_web: Illumina investor day 2025 long-range targets 2028 revenue growth operating margin
+    [tool 7] search_web: Illumina ILMN fiscal 2027 revenue EPS consensus estimate
+    [tool 8] search_web: Illumina 10-K 2025 total debt convertible senior notes term loan balance sheet
+    [tool 9] fetch_page: https://investor.illumina.com/static-files/393df851-e597-4564-b113-6bb5b80e9003
+    [tool 10] search_web: Illumina China unreliable entity list 2026 status revenue impact Greater China
+    [tool 11] search_web: Element Biosciences AVITI Illumina competition 2026 market share MGI sequencing
+    [tool 12] search_web: dollar index DXY level August 2026 high yield credit spreads
+    [tool 13] search_web: Illumina investor day November 2025 long-term targets revenue growth operating margin 20
+    [tool 14] search_web: Illumina effective tax rate 2025 2026 provision normalized
+    [tool 15] search_web: Illumina analyst price target after Q2 2026 earnings raise mean
+    [tool 16] search_web: US GDP growth inflation CPI July 2026 recession odds economy
+  sample 3: IV $83.0 | usable=True | 16 tool calls (think 91,270ch / report 24,234ch) | 397s | $0.123 cumulative
+
+[deep-api] ILMN: OVERVALUED | band $83.0-$118.0 vs price $219.4 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.6d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 436,648 in (359,424 cached) | 156,077 out (123,614 reasoning) | $0.123 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ILMN_20260826_044515\verdict_depth.json

@@ -1,0 +1,55 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/HRMY.md, 18.6 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] HRMY @ $38.15 | deepseek-v4-flash effort=high | 3 samples | pack 33,647ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\HRMY_20260826_042924
+    [tool 1] search_web: Harmony Biosciences WAKIX pitolisant patent litigation AET Pharma Sandoz ANDA generic en
+    [tool 2] search_web: Harmony Biosciences 2026 revenue guidance WAKIX $1 billion reaffirm
+    [tool 3] search_web: Harmony Biosciences BP-205 orexin-2 agonist Phase 1 data narcolepsy
+    [tool 4] search_web: 10 year treasury yield Fed policy August 2026 interest rates
+    [tool 5] fetch_page: https://ir.harmonybiosciences.com/news-releases/news-release-details/harmony-biosciences
+    [tool 6] search_web: Harmony Biosciences WAKIX settlement Lupin AET generic entry date 2030 terms
+    [tool 7] search_web: Harmony Biosciences pitolisant GR Prader-Willi syndrome idiopathic hypersomnia Phase 3 P
+    [tool 8] search_web: Harmony Biosciences convertible notes 2026 maturity debt refinancing
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/11/harmony-biosciences-hrmy-q2-20
+    [tool 10] search_web: Harmony Biosciences WAKIX narcolepsy market share 2025 patients Xywav Sunosi Jazz Axsome
+    [tool 11] search_web: Harmony Biosciences Novitium license agreement amorphous pitolisant royalty WAKIX
+    [tool 12] search_web: Harmony Biosciences share repurchase buyback authorization 2025 2026
+    [tool 13] search_web: Harmony Biosciences analyst estimates 2027 2028 revenue EPS forecast
+    [tool 14] search_web: Federal Reserve federal funds rate August 2026 inflation CPI
+  sample 1: IV $54.5 | usable=True | 14 tool calls (think 72,997ch / report 25,324ch) | 344s | $0.030 cumulative
+    [tool 1] search_web: 10 year treasury yield August 2026 current level
+    [tool 2] search_web: Federal Reserve interest rate decision July 2026 fed funds rate
+    [tool 3] search_web: Harmony Biosciences WAKIX patent litigation AET Sandoz ANDA 2026 status generic pitolisa
+    [tool 4] search_web: Harmony Biosciences EPX-100 Phase 3 Lennox-Gastaut 2026 timeline results
+    [tool 5] search_web: Harmony Biosciences BP-205 orexin-2 agonist Phase 1 data 2026 narcolepsy
+    [tool 6] search_web: Harmony Biosciences 2027 revenue estimate 2028 consensus analyst
+    [tool 7] search_web: WAKIX pitolisant narcolepsy market share 2026 Xywav Jazz Axsome competition
+    [tool 8] search_web: Harmony Biosciences R&D expense 2025 2026 research development costs
+    [tool 9] fetch_page: https://stockanalysis.com/stocks/hrmy/forecast/
+    [tool 10] fetch_page: https://ir.harmonybiosciences.com/news-releases/news-release-details/harmony-biosciences
+    [tool 11] fetch_page: https://www.biospace.com/press-releases/harmony-biosciences-announces-record-q2-2026-rev
+    [tool 12] search_web: Harmony Biosciences WAKIX patients on therapy 2026 narcolepsy market size billion
+    [tool 13] search_web: Harmony Biosciences CFO Glenn Reicin departure July 2026 interim Mollichella
+  sample 2: IV $44.5 | usable=True | 13 tool calls (think 62,039ch / report 21,652ch) | 294s | $0.054 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: Harmony Biosciences WAKIX pitolisant patent litigation AET Sandoz generic status 2026
+    [tool 3] search_web: Harmony Biosciences 2027 revenue estimates analyst peak sales WAKIX
+    [tool 4] search_web: Harmony Biosciences BP1.15205 orexin-2 agonist phase 1 data BP-205 2026
+    [tool 5] search_web: Harmony Biosciences settles generic litigation AET Sandoz 920 patent 2030 terms
+    [tool 6] search_web: Harmony Biosciences Bioprojet royalty obligation WAKIX pitolisant license
+    [tool 7] search_web: Harmony Biosciences EPX-100 Dravet clemizole phase 3 status 2026
+    [tool 8] search_web: Harmony Biosciences CFO Glenn Reicin departure July 2026 interim
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/11/harmony-biosciences-hrmy-q2-20
+    [tool 10] search_web: Harmony Biosciences 10-K Bioprojet royalty percentage WAKIX license agreement
+    [tool 11] search_web: Harmony Biosciences next-generation pitolisant formulation 2026 PHN-151 HBS-102
+    [tool 12] search_web: Xywav generic entry 2026 narcolepsy market share WAKIX Jazz competition
+    [tool 13] search_web: FOMC Fed funds rate August 2026 decision federal reserve policy stance
+    [tool 14] search_web: Harmony Biosciences HRMY 2027 2028 revenue EPS estimates stockanalysis
+    [tool 15] search_web: Takeda TAK-861 orexin 2 agonist phase 3 narcolepsy results 2026
+    [tool 16] search_web: Harmony Biosciences Novitium license agreement amorphous pitolisant royalty 2025
+  sample 3: IV $46.9 | usable=True | 16 tool calls (think 75,570ch / report 23,292ch) | 307s | $0.080 cumulative
+
+[deep-api] HRMY: UNDERVALUED | band $44.5-$54.5 vs price $38.15 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 18.6d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 385,749 in (305,408 cached) | 91,733 out (66,626 reasoning) | $0.080 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\HRMY_20260826_042924\verdict_depth.json

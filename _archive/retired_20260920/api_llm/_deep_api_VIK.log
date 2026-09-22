@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/VIK.md, 10.2 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] VIK @ $92.79 | deepseek-v4-flash effort=high | 3 samples | pack 30,119ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\VIK_20260826_084254
+    [tool 1] search_web: 10-year Treasury yield level August 2026
+    [tool 2] search_web: Federal Reserve interest rate decision policy stance August 2026
+    [tool 3] search_web: Viking Holdings capex newbuild vessel orders 2026 2027 fleet expansion plan
+    [tool 4] search_web: Viking Holdings 2026 full year guidance revenue EPS outlook
+    [tool 5] fetch_page: https://www.spglobal.com/ratings/en/regulatory/article/-/view/type/HTML/id/3528486
+    [tool 6] search_web: Viking Holdings Q2 2026 results June 30 2026 revenue net income EPS
+    [tool 7] search_web: Viking Holdings committed shipbuilding capital expenditures billion newbuild program
+    [tool 8] search_web: Torstein Hagen Viking Holdings stake ownership percentage 2026
+    [tool 9] search_web: Viking Holdings Q2 2026 earnings call transcript guidance 2026 2027 bookings river level
+    [tool 10] search_web: Viking Holdings 2025 annual report capital expenditures vessel construction cash flow st
+    [tool 11] search_web: US CPI inflation rate July 2026 fed funds rate target range
+    [tool 12] search_web: US dollar index DXY level August 2026 credit spreads high yield
+    [tool 13] search_web: Viking Holdings Q2 2026 press release full year 2026 guidance adjusted EBITDA adjusted E
+    [tool 14] fetch_page: https://www.seatrade-cruise.com/finance-legal-regulatory/how-viking-s-post-ipo-ownership
+    [tool 15] search_web: Viking Holdings analyst estimates FY2027 revenue EPS EBITDA 2027 2028 consensus
+    [tool 16] search_web: cruise industry newbuild capacity 2027 2028 supply growth Royal Caribbean Carnival Norwe
+    [tool 17] search_web: US GDP growth rate second quarter 2026 real GDP
+    [tool 18] search_web: Viking Cruises S&P Global Ratings upgrade 2026 credit rating BB+
+  sample 1: IV $66.25 | usable=True | 18 tool calls (think 81,779ch / report 36,463ch) | 369s | $0.034 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 level
+    [tool 2] search_web: Federal Reserve interest rate decision August 2026 fed funds
+    [tool 3] search_web: Viking Holdings 2025 annual report capex purchases of property and equipment cash flow
+    [tool 4] search_web: Viking Holdings full year 2026 guidance revenue EPS bookings
+    [tool 5] search_web: Viking Holdings new ship order book deliveries 2027 2028 fleet expansion
+    [tool 6] fetch_page: https://ir.viking.com/news-events/press-releases/detail/222/viking-reports-fourth-quarte
+    [tool 7] fetch_page: https://www.gurufocus.com/news/3068181/viking-holdings-ltd-vik-expands-fleet-with-new-ri
+    [tool 8] search_web: US dollar index DXY August 2026 level euro
+    [tool 9] search_web: cruise industry capacity growth 2027 2028 newbuild deliveries oversupply river cruise Eu
+    [tool 10] fetch_page: https://cdn6.benzinga.com/insights/news/26/05/52559861/viking-holdings-reports-q1-2026-r
+    [tool 11] search_web: Viking Holdings capital expenditures 2024 2025 million purchases property equipment 20-F
+    [tool 12] search_web: US CPI inflation rate July 2026 year over year
+    [tool 13] search_web: high yield credit spreads August 2026 OAS
+  sample 2: IV $79.0 | usable=True | 13 tool calls (think 127,464ch / report 35,668ch) | 481s | $0.077 cumulative
+    [tool 1] search_web: Viking Holdings 2026 full year guidance revenue adjusted EPS outlook
+    [tool 2] search_web: Viking Cruises new ship order book 2026 2027 2028 capital expenditure fleet expansion pl
+    [tool 3] search_web: 10-year treasury yield current level August 2026 Fed funds rate policy stance
+    [tool 4] fetch_page: https://ir.viking.com/financial/financial-results
+    [tool 5] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-viking-beats-q2-2026
+    [tool 6] fetch_page: https://www.federalreserve.gov/releases/h15/
+    [tool 7] search_web: "Viking" Q2 2026 earnings press release "full year 2026" guidance adjusted net income OR
+    [tool 8] search_web: Viking Holdings Q2 2026 earnings call transcript Torstein Hagen Leah Talactac bookings 2
+    [tool 9] search_web: Viking Holdings capex 2025 2026 2027 ship deliveries Viking Vela Viking Libra newbuild p
+    [tool 10] fetch_page: https://seekingalpha.com/article/4938286-viking-holdings-ltd-vik-q2-2026-earnings-call-t
+    [tool 11] fetch_page: https://www.spglobal.com/ratings/en/regulatory/article/-/view/type/HTML/id/3528486
+    [tool 12] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/05/14/viking-vik-q1-2026-earnings-ca
+    [tool 13] search_web: "Viking" second quarter 2026 results press release revenue "adjusted EBITDA" guidance "n
+  sample 3: IV $98.0 | usable=True | 13 tool calls (think 44,003ch / report 30,263ch) | 237s | $0.116 cumulative
+
+[deep-api] VIK: HOLD | band $66.25-$98.0 vs price $92.79 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 10.2d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 344,581 in (270,336 cached) | 121,558 out (85,152 reasoning) | $0.116 | PEAK
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\VIK_20260826_084254\verdict_depth.json

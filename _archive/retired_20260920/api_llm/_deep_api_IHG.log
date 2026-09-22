@@ -1,0 +1,57 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/IHG.md, 7.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] IHG @ $159.91 | deepseek-v4-flash effort=high | 3 samples | pack 33,220ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\IHG_20260826_044414
+    [tool 1] search_web: US 10-year Treasury yield level August 2026
+    [tool 2] search_web: Federal Reserve interest rate policy stance August 2026 federal funds rate
+    [tool 3] search_web: IHG Hotels full year 2025 results adjusted operating profit adjusted EPS free cash flow 
+    [tool 4] search_web: IHG half year 2026 results adjusted EPS net debt dividend shareholder returns
+    [tool 5] search_web: IHG medium term growth targets net system growth RevPAR fee margin 2030
+    [tool 6] search_web: IHG full year 2025 adjusted earnings per share cents adjusted operating profit $1.1 bill
+    [tool 7] search_web: IHG 2025 free cash flow shareholder returns buyback $1 billion net debt end 2025
+    [tool 8] search_web: IHG net debt EBITDA leverage target policy 2025 2026
+    [tool 9] search_web: CMA hotels data sharing investigation IHG Hilton Marriott Accor update 2026
+    [tool 10] search_web: Hilton Marriott Wyndham forward P/E EV/EBITDA valuation August 2026
+    [tool 11] fetch_page: https://www.ihgplc.com/en/news-and-media/news-releases/2026/full-year-results-for-the-ye
+    [tool 12] search_web: Hilton Worldwide EV/EBITDA forward P/E August 2026
+    [tool 13] search_web: IHG InterContinental Hotels credit rating Moody's S&P investment grade
+    [tool 14] search_web: hotel industry RevPAR forecast 2026 2027 STR Deloitte US travel outlook
+  sample 1: IV $155.0 | usable=True | 14 tool calls (think 86,674ch / report 23,216ch) | 340s | $0.032 cumulative
+    [tool 1] search_web: 10 year treasury yield August 2026
+    [tool 2] search_web: Federal Reserve interest rate decision August 2026 fed funds rate
+    [tool 3] search_web: US dollar index DXY August 2026 level
+    [tool 4] search_web: IHG full year 2025 results operating profit adjusted EPS fee revenue net system growth b
+    [tool 5] search_web: IHG half year results 30 June 2026 adjusted EPS net debt buyback
+    [tool 6] search_web: IHG growth algorithm net system growth 3-5% fee margin target capital markets day
+    [tool 7] search_web: CMA investigation IHG Hilton Marriott hotel data sharing 2026 status
+    [tool 8] search_web: IHG EPS consensus forecast 2027 2028 analyst estimates
+    [tool 9] fetch_page: https://www.ihgplc.com/en/news-and-media/news-releases/2026/half-year-results-for-the-si
+    [tool 10] fetch_page: https://www.ihgplc.com/en/news-and-media/news-releases/2026/full-year-results-for-the-ye
+    [tool 11] fetch_page: https://www.ihgplc.com/en/investors/analyst-consensus
+    [tool 12] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/18/ihg-ihg-q2-2026-earnings-call-
+    [tool 13] search_web: IHG net debt adjusted EBITDA target 2.0 2.5x capital allocation policy investment grade
+    [tool 14] search_web: CMA hotel chains investigation IHG STR CoStar update July August 2026
+    [tool 15] search_web: IHG share buyback 2027 programme outlook leverage net debt
+    [tool 16] search_web: IHG US Air Force lodging program 50 year 23 installations 2027
+  sample 2: IV $113.0 | usable=True | 16 tool calls (think 152,587ch / report 30,507ch) | 537s | $0.080 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026
+    [tool 2] search_web: Federal Reserve interest rate decision August 2026 fed funds rate
+    [tool 3] search_web: US CPI inflation rate July 2026
+    [tool 4] search_web: IHG full year 2025 results fee revenue operating profit net system growth
+    [tool 5] search_web: IHG medium term growth algorithm guidance net system growth 3-5% fee revenue growth
+    [tool 6] fetch_page: https://www.ihgplc.com/en/news-and-media/news-releases/2026/half-year-results-for-the-si
+    [tool 7] search_web: UK CMA investigation hotel data sharing Hilton Marriott IHG status 2026
+    [tool 8] search_web: IHG 2026 2027 consensus EPS estimates analyst forecast
+    [tool 9] search_web: US dollar index DXY August 2026 level
+    [tool 10] search_web: US high yield credit spread August 2026 OAS
+    [tool 11] search_web: IHG consensus adjusted EPS 2026 2027 LSEG 13 August 2026 revenue estimate
+    [tool 12] search_web: IHG full year results 2025 fee revenue $1.9 billion adjusted EPS dividend buyback net de
+    [tool 13] search_web: Marriott Hilton forward P/E valuation 2026 comparison
+    [tool 14] search_web: IHG Greater China Q2 2026 RevPAR demand weakness hotel performance
+    [tool 15] search_web: STR hotel forecast 2027 RevPAR supply demand growth US
+  sample 3: IV $135.0 | usable=True | 15 tool calls (think 75,954ch / report 33,735ch) | 326s | $0.108 cumulative
+
+[deep-api] IHG: OVERVALUED | band $113.0-$155.0 vs price $159.91 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 7.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 353,131 in (265,344 cached) | 132,232 out (102,370 reasoning) | $0.108 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\IHG_20260826_044414\verdict_depth.json

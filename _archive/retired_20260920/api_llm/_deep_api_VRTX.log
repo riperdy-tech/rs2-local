@@ -1,0 +1,55 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/VRTX.md, 18.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] VRTX @ $548.05 | deepseek-v4-flash effort=high | 3 samples | pack 33,639ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\VRTX_20260826_084725
+    [tool 1] search_web: 10-year Treasury yield current level August 2026 Federal Reserve policy stance
+    [tool 2] search_web: Vertex Pharmaceuticals Crinetics Pharmaceuticals acquisition deal value terms 2026
+    [tool 3] search_web: Vertex Pharmaceuticals capital expenditure manufacturing expansion plan 2026 2027
+    [tool 4] search_web: Vertex povetacicept RUBY-3 IgA nephropathy phase 3 data readout timing peak sales
+    [tool 5] search_web: Vertex VX-880 type 1 diabetes phase 3 program 2026 suzetrigine neuropathic pain status
+    [tool 6] search_web: Vertex Pharmaceuticals 2026 revenue guidance raised cystic fibrosis franchise peak poten
+    [tool 7] search_web: Federal Reserve interest rate cut September 2026 fed funds rate inflation CPI
+    [tool 8] search_web: DXY dollar index high yield credit spread August 2026 level
+    [tool 9] fetch_page: https://investors.vrtx.com/news-releases/news-release-details/vertex-provides-pipeline-a
+    [tool 10] search_web: Vertex ALYFTREK Trikafta patent expiration 2037 Europe generic competition cystic fibros
+    [tool 11] search_web: Journavx sales 2026 CASGEVY sickle cell patients treated 2026 quarterly revenue
+    [tool 12] search_web: Vertex VX-880 completed enrollment type 1 diabetes 2026 pivotal phase 3 status
+    [tool 13] search_web: Vertex suzetrigine Journavx second quarter 2026 sales revenue million
+  sample 1: IV $484.0 | usable=True | 13 tool calls (think 167,177ch / report 25,986ch) | 657s | $0.054 cumulative
+    [tool 1] search_web: Vertex Pharmaceuticals 2027 revenue guidance outlook pipeline analyst estimates
+    [tool 2] search_web: Vertex Crinetics Pharmaceuticals acquisition deal value terms 2026
+    [tool 3] search_web: 10-year Treasury yield federal funds rate August 2026
+    [tool 4] search_web: Vertex povetacicept IgA nephropathy Phase 3 data readout timing 2026
+    [tool 5] search_web: Vertex suzetrigine chronic pain Phase 3 2026 results neuropathic pain
+    [tool 6] search_web: Vertex VX-880 VX-264 type 1 diabetes Phase 3 2026 status
+    [tool 7] search_web: Trikafta patent expiration Vertex elexacaftor 2037 market exclusivity
+    [tool 8] search_web: Vertex CASGEVY JOURNAVX 2026 sales quarterly
+    [tool 9] fetch_page: https://news.vrtx.com/news-releases/news-release-details/vertex-reports-second-quarter-2
+    [tool 10] search_web: Vertex share repurchase program 2026 buyback authorization
+    [tool 11] search_web: Federal Reserve rate decision August 2026 inflation CPI
+    [tool 12] search_web: Vertex capex capital expenditures manufacturing facilities 2026 2027 guidance
+    [tool 13] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/10/vertex-vrtx-q2-2026-earnings-c
+    [tool 14] search_web: Vertex Crinetics $85 per share acquisition cash stock financing close date
+    [tool 15] search_web: federal funds rate target range FOMC 2026 current level
+  sample 2: IV $542.0 | usable=True | 15 tool calls (think 31,780ch / report 45,001ch) | 316s | $0.092 cumulative
+    [tool 1] search_web: Vertex Pharmaceuticals second quarter 2026 results full year 2026 revenue guidance non-G
+    [tool 2] search_web: Vertex Pharmaceuticals Crinetics Pharmaceuticals acquisition definitive agreement price 
+    [tool 3] search_web: Vertex vanzacaftor triple combination cystic fibrosis FDA approval submission status 202
+    [tool 4] search_web: povetacicept IgA nephropathy phase 3 topline results 2026 NDA filing Vertex
+    [tool 5] search_web: 10 year treasury yield August 2026 Federal Reserve interest rate cut
+    [tool 6] fetch_page: https://news.vrtx.com/news-releases/news-release-details/vertex-reports-second-quarter-2
+    [tool 7] search_web: Federal Reserve FOMC August 2026 federal funds rate target range policy stance
+    [tool 8] search_web: Journavx suzetrigine 2026 second quarter sales Vertex acute pain launch
+    [tool 9] search_web: Vertex Pharmaceuticals 2027 2028 revenue consensus analyst estimate CF growth
+    [tool 10] search_web: Trikafta Vertex IRA Medicare drug price negotiation selected list 2028
+    [tool 11] fetch_page: https://www.businesswire.com/news/home/20260803535433/en/Vertex-Reports-Second-Quarter-2
+    [tool 12] search_web: CMS 15 drugs selected third cycle Medicare negotiation January 2026 list Trikafta Entres
+    [tool 13] search_web: Vertex VX-880 VX-264 type 1 diabetes islet cell 2026 clinical update phase 3
+    [tool 14] search_web: dollar index DXY August 2026 level
+    [tool 15] search_web: Vertex Pharmaceuticals R&D expense 2025 full year operating expenses
+  sample 3: IV $370.0 | usable=True | 15 tool calls (think 106,965ch / report 32,982ch) | 547s | $0.167 cumulative
+
+[deep-api] VRTX: OVERVALUED | band $370.0-$542.0 vs price $548.05 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 362,544 in (281,728 cached) | 143,402 out (106,119 reasoning) | $0.167 | PEAK
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\VRTX_20260826_084725\verdict_depth.json

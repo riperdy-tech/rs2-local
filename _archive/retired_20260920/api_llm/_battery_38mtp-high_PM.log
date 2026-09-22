@@ -1,0 +1,44 @@
+[api] backend http://127.0.0.1:11434/v1  model=rs2-38mtp-hi-api  -> reports in api_llm/reports
+[enrich] yfinance PM ...
+[out] C:\Users\riper\Downloads\RS2 Local\api_llm\reports\PM_20260818_200814
+
+[nltk_data] Downloading package punkt_tab to C:\Users\Public\Documents
+[nltk_data]     \ESTsoft\CreatorTemp\defeatbeta\nltk...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[38;5;10m______      __           _    ______      _        
+|  _  \    / _|         | |   | ___ \    | |       
+| | | |___| |_ ___  __ _| |_  | |_/ / ___| |_ __ _ 
+| | | / _ \  _/ _ \/ _` | __| | ___ \/ _ \ __/ _` |
+| |/ /  __/ ||  __/ (_| | |_  | |_/ /  __/ || (_| |
+|___/ \___|_| \___|\__,_|\__| \____/ \___|\__\__,_|[0m
+[1;38;5;10m📈:: Data Update Time ::[0m	2026-08-18T06:56:50Z [1;38;5;10m::[0m
+[1;38;5;10m📈:: Software Version ::[0m	0.0.60      [1;38;5;10m::[0m
+2026-08-18 20:08:21 INFO DuckDBClient MainThread - Cache is up-to-date. Update time: 2026-08-18T06:56:50Z
+[backbone] PM: base_cf $11.75B [blended_owner_earnings] WACC 8% | implied 7.8% vs demonstrated 7.2% [revenue_cagr_5y] | gap 0.5pts
+>> Layers 0, 1, 1.5 — Classification / Macro / Base Rate
+   done in 280.6s -> S1_macro_classify.md
+
+>> Layers 2, 2.5 — Business Quality / Adjusted Financials
+   done in 246.9s -> S2_quality.md
+
+>> Layers 3, 3.5 — Expectations Test / Second-Order
+   done in 256.2s -> S3_valuation.md
+   [valuation] reverse-DCF gap 0.5pts | stance fair (achievable medium)
+
+>> Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage
+   done in 169.2s -> S4_scenarios.md
+   [valuation] scenario probs {'bear': 0.25, 'base': 0.5, 'bull': 0.25}
+
+>> Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly
+   done in 182.7s -> S5_conviction.md
+
+>> Layers 7, 7.5, 8, 9 — Monitoring / Correlation / Audit / Red Team
+   done in 377.9s -> S6_redteam_audit.md
+
+>> FINAL ASSEMBLY (Sections 0-12) [ctx 32768]
+   [retry-feedback] previous attempt's audit violations injected into final assembly
+   done in 466.5s
+[DONE] -> C:\Users\riper\Downloads\RS2 Local\api_llm\reports\PM_20260818_200814\FINAL.md
+   [verdict] PM: method=reverse_dcf stance=fair action=HOLD / ACCUMULATE ON DIPS (stage-in on weakness). NOT a fresh full BUY at T0 $190.39 — the conv=11.0 entry=stage (BRAKE: was 'HOLD / ACCUMULATE ON DIPS (stage-in on weakness). NOT a fresh full BUY at T0 $190.39 — the' 11.0)
+[SANITY] ok — PM: stages, FINAL.md and verdict.json all present and substantive
+[AUDIT] ok — PM: 18 deterministic checks + AI verifier (pass)

@@ -1,0 +1,57 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/MOG-B.md, 7.8 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] MOG-B @ $397.1 | deepseek-v4-flash effort=high | 3 samples | pack 33,916ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MOG-B_20260826_061630
+    [tool 1] search_web: Moog fiscal 2026 full year guidance sales adjusted EPS free cash flow Q3 2026
+    [tool 2] search_web: Moog segment results fiscal 2025 commercial aircraft military space defense industrial r
+    [tool 3] search_web: Moog 12-month backlog $3.3 billion defense commercial aerospace record
+    [tool 4] search_web: Moog data center cooling liquid cooling growth opportunity industrial segment
+    [tool 5] search_web: Moog MOG fiscal 2027 EPS estimate consensus analyst forecast
+    [tool 6] search_web: Moog material weakness internal controls commercial aircraft aftermarket service revenue
+    [tool 7] search_web: 10 year treasury yield August 2026 Federal Reserve policy stance rate cuts
+    [tool 8] search_web: Moog investor day long term financial targets operating margin free cash flow 2024 2025
+    [tool 9] fetch_page: https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/
+    [tool 10] fetch_page: https://www.moog.com/content/dam/moog/literature/Corporate/Investors/investor_day-2024/G
+    [tool 11] search_web: "Moog" fiscal 2027 revenue EPS estimate 2027 adjusted EPS outlook
+    [tool 12] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-moog-tops-q3-2026-es
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/mog.b/
+    [tool 14] search_web: Moog long-term financial model "operating margin" target 12.5% free cash flow conversion
+  sample 1: IV $220.0 | usable=True | 14 tool calls (think 79,645ch / report 35,604ch) | 375s | $0.034 cumulative
+    [tool 1] search_web: Moog Inc fiscal Q3 2026 press release sales guidance EPS 4.3 billion 10.20
+    [tool 2] search_web: Moog fiscal 2027 guidance outlook sales EPS backlog
+    [tool 3] search_web: Moog segment revenue fiscal 2025 aircraft controls space and defense industrial systems
+    [tool 4] search_web: Moog Inc effective tax rate fiscal 2025 10-K
+    [tool 5] search_web: Moog Inc long-term financial targets operating margin free cash flow investor day
+    [tool 6] search_web: Moog fiscal 2025 10-K segment sales Space and Defense Military Aircraft Commercial Aircr
+    [tool 7] search_web: Moog MOG analyst estimates fiscal 2027 EPS revenue consensus
+    [tool 8] search_web: Moog capital expenditures plans fiscal 2027 capacity expansion defense
+    [tool 9] search_web: 10 year treasury yield today federal funds rate August 2026
+    [tool 10] search_web: US defense budget fiscal year 2027 request Congress NDAA outlook
+    [tool 11] fetch_page: https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/
+    [tool 12] fetch_page: https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/
+    [tool 13] search_web: federal funds rate August 2026 FOMC target range
+    [tool 14] search_web: Moog data center liquid cooling revenue market
+    [tool 15] search_web: Moog material weakness internal controls aftermarket service revenue remediation 2026
+  sample 2: IV $220.0 | usable=True | 15 tool calls (think 105,653ch / report 37,567ch) | 408s | $0.073 cumulative
+    [tool 1] search_web: Moog Inc fiscal Q3 2026 earnings press release raised guidance sales EPS free cash flow
+    [tool 2] search_web: Moog fiscal 2026 guidance EPS 10.60 adjusted sales 4.3 billion tariff
+    [tool 3] search_web: 10-year Treasury yield August 2026
+    [tool 4] search_web: Federal Reserve interest rate policy August 2026 fed funds
+    [tool 5] fetch_page: https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/
+    [tool 6] search_web: Moog Inc fiscal 2027 revenue EPS consensus analyst estimates
+    [tool 7] search_web: Moog long-term financial targets 2027 operating margin ROIC free cash flow conversion in
+    [tool 8] search_web: US inflation rate GDP growth July 2026 economic outlook
+    [tool 9] fetch_page: https://stockanalysis.com/stocks/mog.b/forecast/
+    [tool 10] search_web: Moog segments fiscal 2025 commercial aircraft military aircraft space defense industrial
+    [tool 11] search_web: US defense budget fiscal 2027 total request Congress
+    [tool 12] search_web: US GDP growth rate 2026 second quarter annualized
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/mog-b/forecast/
+    [tool 14] search_web: Moog Inc fiscal 2025 10-K segment revenue Aircraft Controls Space Defense Industrial Sys
+    [tool 15] search_web: Moog Class A Class B shares voting rights dual class structure Moog family control
+    [tool 16] search_web: Boeing 787 production rate 2026 2027 Airbus A320 monthly rate aerospace aftermarket grow
+  sample 3: IV $228.0 | usable=True | 16 tool calls (think 101,585ch / report 33,064ch) | 400s | $0.109 cumulative
+
+[deep-api] MOG-B: OVERVALUED | band $220.0-$228.0 vs price $397.1 | size full
+[deep-api] FALLBACK verdict - cloud model, brief 7.8d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 420,585 in (318,464 cached) | 127,161 out (91,864 reasoning) | $0.109 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MOG-B_20260826_061630\verdict_depth.json

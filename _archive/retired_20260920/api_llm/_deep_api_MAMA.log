@@ -1,0 +1,61 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/MAMA.md, 1.2 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] MAMA @ $16.44 | deepseek-v4-flash effort=high | 3 samples | pack 34,808ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MAMA_20260826_054637
+    [tool 1] search_web: Mama's Creations fiscal 2027 guidance revenue adjusted EBITDA outlook
+    [tool 2] search_web: Mama's Creations Crown 1 Foods acquisition price financing 2026
+    [tool 3] search_web: Mama's Creations $100 million offering gross proceeds 2026 convertible
+    [tool 4] search_web: 10-year treasury yield August 2026 Fed interest rate outlook
+    [tool 5] fetch_page: https://finance.yahoo.com/news/mama-creations-investor-day-nae-202420585.html
+    [tool 6] fetch_page: https://finance.yahoo.com/markets/stocks/articles/mama-creations-reports-first-quarter-2
+    [tool 7] fetch_page: https://finance.yahoo.com/markets/stocks/articles/mama-creations-announces-pricing-100-0
+    [tool 8] search_web: Fed funds rate August 2026 FOMC policy stance inflation
+    [tool 9] fetch_page: https://www.stocktitan.net/sec-filings/MAMA/8-k-mama-s-creations-inc-reports-material-ev
+    [tool 10] search_web: "Mama's Creations" first quarter fiscal 2027 results press release cash balance June 8 2
+    [tool 11] search_web: Mama's Creations MAMA analyst estimates fiscal 2027 fiscal 2028 revenue EPS consensus
+    [tool 12] search_web: deli prepared foods market size growth forecast 2026 2030
+    [tool 13] fetch_page: https://www.globenewswire.com/news-release/2026/06/08/3308454/36226/en/mama-s-creations-
+    [tool 14] search_web: Mama's Creations shares outstanding market cap after offering August 2026
+    [tool 15] search_web: Mama's Creations William Blair OR Roth OR Lake Street initiation target price 2026
+  sample 1: IV $7.5 | usable=True | 15 tool calls (think 119,623ch / report 34,597ch) | 453s | $0.042 cumulative
+    [tool 1] search_web: Mama's Creations MAMA fiscal 2027 guidance revenue adjusted EBITDA outlook
+    [tool 2] search_web: Mama's Creations Crown 1 Foods acquisition price revenue contribution
+    [tool 3] search_web: 10 year treasury yield August 2026
+    [tool 4] search_web: Federal Reserve policy stance interest rates August 2026
+    [tool 5] search_web: Mama's Creations Q1 fiscal 2027 earnings call transcript Adam Michaels guidance
+    [tool 6] search_web: Mama's Creations MAMA analyst estimates FY2027 FY2028 revenue EPS forecast
+    [tool 7] fetch_page: https://ir.mamascreations.com/mamas-creations-acquires-fresh-protein-manufacturer-crown-
+    [tool 8] fetch_page: https://finance.yahoo.com/markets/stocks/articles/mamas-creations-reports-first-quarter-
+    [tool 9] fetch_page: https://www.marketwatch.com/investing/stock/mama/analystestimates
+    [tool 10] fetch_page: https://finance.yahoo.com/markets/stocks/articles/mamas-mama-q1-2027-earnings-222818980.
+    [tool 11] search_web: US CPI inflation rate August 2026 GDP growth
+    [tool 12] search_web: credit spreads high yield August 2026
+    [tool 13] fetch_page: https://stocknow.ai/en/calls/duocdj3rfuomfo2cna7z1ol2/mama_q1-2027-earnings-call
+    [tool 14] fetch_page: https://www.earningsiq.co/articles/mamas_creations_mama_q1_2027_new_item_launches_drive_
+    [tool 15] search_web: "Mama's Creations" fiscal 2027 full year revenue guidance "$" million 2026
+    [tool 16] fetch_page: https://finance.yahoo.com/quote/MAMA/analysis/
+    [tool 17] search_web: Mama's Creations Costco percentage of revenue customer concentration Walmart
+    [tool 18] search_web: fresh deli prepared foods market growth 2026 private label competition Reser's Landec
+  sample 2: IV $6.3 | usable=True | 18 tool calls (think 128,680ch / report 32,280ch) | 466s | $0.087 cumulative
+    [tool 1] search_web: Mama's Creations Crown 1 Foods acquisition price revenue contribution
+    [tool 2] search_web: Mama's Creations fiscal 2027 guidance revenue EBITDA outlook
+    [tool 3] search_web: MAMA Mamas Creations analyst estimates fiscal 2027 2028 revenue EPS
+    [tool 4] search_web: US 10-year Treasury yield August 2026 Fed policy
+    [tool 5] fetch_page: https://www.globenewswire.com/news-release/2025/09/02/3142699/36226/en/mama-s-creations-
+    [tool 6] fetch_page: https://finance.yahoo.com/markets/stocks/articles/mamas-creations-reports-first-quarter-
+    [tool 7] search_web: Mama's Creations Q4 fiscal 2026 earnings call transcript FY2027 revenue guidance 2026
+    [tool 8] search_web: Mama's Creations customer concentration Costco Walmart percentage of revenue 10-K
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/04/15/mamas-creations-mama-earnings-
+    [tool 10] search_web: Mama's Creations private placement institutional investors shares issued Crown acquisiti
+    [tool 11] search_web: Federal Reserve interest rate decision August 2026 federal funds rate
+    [tool 12] search_web: Mama's Creations Costco percentage of revenue customer concentration 2025 2026 10-K annu
+    [tool 13] search_web: MAMA Mama's Creations consensus estimates fiscal 2027 revenue $ million EPS next fiscal 
+    [tool 14] search_web: dollar index DXY August 2026 US inflation CPI July 2026
+    [tool 15] search_web: Mama's Creations 10-K "Costco" "percent" OR "accounted for" customer concentration fisca
+    [tool 16] fetch_page: https://www.sec.gov/Archives/edgar/data/1520358/000149315225012528/ex99-1.htm
+  sample 3: IV $13.5 | usable=True | 16 tool calls (think 86,842ch / report 28,790ch) | flags: ocf_multiple_52.7x_cap_40x | 407s | $0.117 cumulative
+
+[deep-api] MAMA: OVERVALUED | band $6.3-$13.5 vs price $16.44 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 1.2d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 376,770 in (283,776 cached) | 143,213 out (111,154 reasoning) | $0.117 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MAMA_20260826_054637\verdict_depth.json

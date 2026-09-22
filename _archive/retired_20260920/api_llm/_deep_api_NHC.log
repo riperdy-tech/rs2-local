@@ -1,0 +1,59 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/NHC.md, 16.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] NHC @ $233.4 | deepseek-v4-flash effort=high | 3 samples | pack 29,283ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NHC_20260826_063618
+    [tool 1] search_web: National HealthCare Corporation NHC Q2 2026 earnings call guidance 2026 outlook revenue
+    [tool 2] search_web: NHC National Health Investors NHI lease December 2026 expiration rent reset litigation s
+    [tool 3] search_web: 10-year Treasury yield August 2026 Fed funds rate
+    [tool 4] search_web: skilled nursing facility Medicare payment update FY2027 market basket rate
+    [tool 5] fetch_page: https://www.morningstar.com/news/business-wire/20260807142918/nhc-reports-second-quarter
+    [tool 6] fetch_page: https://skillednursingnews.com/2025/09/skilled-nursing-operator-national-healthcare-corp
+    [tool 7] search_web: Federal Reserve interest rate decision July 2026 rate cut policy statement
+    [tool 8] search_web: National HealthCare NHC capital expenditure acquisition pipeline 2026 development plans 
+    [tool 9] fetch_page: https://www.stocktitan.net/sec-filings/NHC/10-q-national-healthcare-corp-quarterly-earni
+    [tool 10] search_web: National HealthCare NHC annual rent expense National Health Investors master lease 10-K 
+    [tool 11] search_web: Land Buildings NHC 38% EBITDA hit fair market rent 64% higher lease analysis
+    [tool 12] search_web: NHC purchase NHI facilities 2026 acquisition National HealthCare buy skilled nursing ass
+    [tool 13] fetch_page: https://landandbuildings.com/wp-content/uploads/2025/06/LandB-NHC-Press-Release-6-17-25.
+    [tool 14] fetch_page: https://www.businesswire.com/news/home/20260701143198/en/NHC-Completes-Acquisition-of-Th
+    [tool 15] fetch_page: https://markets.ft.com/data/announce/detail?dockey=600-202608070700BIZWIRE_USPRX____2026
+  sample 1: IV $144.0 | usable=True | 15 tool calls (think 82,052ch / report 26,527ch) | 330s | $0.032 cumulative
+    [tool 1] search_web: National HealthCare Corporation NHC Q2 2026 earnings guidance full year 2026
+    [tool 2] search_web: NHC National Health Investors master lease December 2026 rent reset dispute
+    [tool 3] search_web: Land and Buildings NHC National HealthCare activist stake strategic alternatives 2026
+    [tool 4] search_web: 10 year Treasury yield August 2026 Fed funds rate
+    [tool 5] fetch_page: https://quartr.com/events/national-healthcare-corporation-nhc-q2-2026_F1w2fbBZ
+    [tool 6] search_web: National HealthCare NHC adjusted EPS guidance 2026 $9.60 10-Q August 2026
+    [tool 7] search_web: NHC 10-K 2025 rent expense National Health Investors annual rent skilled nursing facilit
+    [tool 8] search_web: Federal Reserve FOMC August 2026 rate decision fed funds target range
+    [tool 9] fetch_page: https://www.sec.gov/Archives/edgar/data/1047335/000143774926005910/nhc20251231_10k.htm
+    [tool 10] search_web: NHC $560 million acquisition 32 skilled nursing facilities National Health Investors NHI
+    [tool 11] search_web: NHC National HealthCare financing $560 million acquisition debt credit facility 2026
+    [tool 12] search_web: US inflation CPI July 2026 year over year
+    [tool 13] fetch_page: https://investors.nhireit.com/news/news-details/2026/NHI-Announces-Sale-of-NHC-Portfolio
+    [tool 14] fetch_page: https://www.rateinflation.com/inflation-rate/usa-inflation-rate/
+    [tool 15] search_web: NHC rent expense NHI 2025 annual rent million 10-K lease obligations
+    [tool 16] search_web: skilled nursing facility PPS FY2027 final rule Medicare payment update percent 2026
+  sample 2: IV $178.0 | usable=True | 16 tool calls (think 69,569ch / report 25,153ch) | 303s | $0.059 cumulative
+    [tool 1] search_web: NHC National HealthCare Corporation NHI master lease 2026 rent reset litigation settleme
+    [tool 2] search_web: National HealthCare Corporation Q2 2026 earnings call guidance full year 2026 revenue EP
+    [tool 3] search_web: 10-year Treasury yield August 2026 Fed funds rate
+    [tool 4] search_web: National HealthCare Corporation NHC stock 2026 why surge double activist Land & Building
+    [tool 5] fetch_page: https://skillednursingnews.com/2025/09/skilled-nursing-operator-national-healthcare-corp
+    [tool 6] search_web: National HealthCare Corporation NHC second quarter 2026 results August 2026 press releas
+    [tool 7] search_web: Federal Reserve federal funds rate August 2026 FOMC cut
+    [tool 8] search_web: NHI NHC master lease rent per year 38 facilities below market National Health Investors 
+    [tool 9] fetch_page: https://www.businesswire.com/news/home/20260807142918/en/NHC-Reports-Second-Quarter-2026
+    [tool 10] fetch_page: https://landandbuildings.com/wp-content/uploads/2025/06/LandB-NHC-Press-Release-6-17-25.
+    [tool 11] search_web: NHI NHC new master lease agreement 2026 signed rent resolution status
+    [tool 12] search_web: NHC National HealthCare NHI lawsuit court 2026 injunction lease cure
+    [tool 13] fetch_page: https://www.hklaw.com/en/news/pressreleases/2026/07/holland-knight-advises-national-heal
+    [tool 14] fetch_page: https://www.sec.gov/Archives/edgar/data/877860/000087786026000135/nhi-20260331.htm
+    [tool 15] fetch_page: https://www.mcknightsseniorliving.com/news/tread-carefully-in-negotiating-with-national-
+    [tool 16] search_web: NHC NHI $560 million portfolio acquisition July 2026 financing terms close rent replaced
+  sample 3: IV $126.0 | usable=True | 16 tool calls (think 54,981ch / report 37,298ch) | 335s | $0.086 cumulative
+
+[deep-api] NHC: OVERVALUED | band $126.0-$178.0 vs price $233.4 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 16.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 360,428 in (267,648 cached) | 96,635 out (64,739 reasoning) | $0.086 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NHC_20260826_063618\verdict_depth.json

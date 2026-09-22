@@ -1,0 +1,53 @@
+[deep-api] CART @ $50.67 | deepseek-v4-flash effort=high | 3 samples | pack 30,033ch from CART_20260822_090714 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CART_20260824_235909
+[deep-api] local arm said: USABLE — plausible and converged | median IV 68.0 | spread 18.3%
+    [tool 1] search_web: Instacart Maplebear Q2 2026 earnings press release FY2026 guidance adjusted EBITDA reven
+    [tool 2] search_web: Maplebear CART balance sheet cash marketable securities short-term investments total deb
+    [tool 3] search_web: Instacart Maplebear net operating loss carryforward deferred tax asset NOL
+    [tool 4] fetch_page: https://finance.yahoo.com/markets/stocks/articles/instacart-maplebear-inc-q2-2026-031553
+    [tool 5] search_web: Maplebear Instacart Q2 2026 earnings revenue $1.04 billion adjusted EBITDA guidance full
+    [tool 6] search_web: Instacart Maplebear 10-K 2025 net operating loss carryforwards tax attributes Section 38
+    [tool 7] fetch_page: https://investors.instacart.com/news-releases/news-release-details/instacart-announces-s
+    [tool 8] search_web: Maplebear Instacart share repurchase program 2026 buyback authorization $1 billion
+    [tool 9] search_web: 10 year treasury yield August 2026 level
+    [tool 10] fetch_page: https://investors.instacart.com/static-files/e052f585-2444-4c73-8687-a73efadc9820
+    [tool 11] search_web: Instacart Q4 2025 full year results GTV revenue adjusted EBITDA $1.0 billion 2025
+    [tool 12] search_web: Maplebear Instacart cash and cash equivalents short-term investments total debt June 30 
+    [tool 13] fetch_page: https://www.prnewswire.com/news-releases/instacart-announces-second-quarter-2026-financi
+    [tool 14] fetch_page: https://www.sec.gov/Archives/edgar/data/1579091/000157909126000032/q12026pressrelease.ht
+  sample 1: IV $66.2 | usable=True | 14 tool calls (think 62,444ch / report 24,240ch) | 335s | $0.025 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: Instacart Maplebear full year 2025 adjusted EBITDA annual results
+    [tool 3] search_web: Instacart Q2 2026 earnings results revenue adjusted EBITDA guidance full year 2026
+    [tool 4] search_web: Instacart share repurchase authorization buyback 2026 program size
+    [tool 5] search_web: Instacart CART analyst estimates 2026 2027 2028 revenue adjusted EBITDA consensus
+    [tool 6] fetch_page: https://investors.instacart.com/news-releases/news-release-details/instacart-announces-s
+    [tool 7] fetch_page: https://investors.instacart.com/news-releases/news-release-details/instacart-announces-f
+    [tool 8] search_web: Instacart Q2 2026 adjusted EBITDA $313 million guidance full year 2026 outlook EBITDA ma
+    [tool 9] search_web: Maplebear Instacart full year 2025 adjusted EBITDA $1.1 billion fourth quarter 2025 resu
+    [tool 10] fetch_page: https://www.prnewswire.com/news-releases/instacart-announces-second-quarter-2026-financi
+    [tool 11] fetch_page: https://www.alphaspread.com/market-news/earnings/instacart-parent-maplebear-reports-stro
+    [tool 12] search_web: Instacart Maplebear fourth quarter full year 2025 results adjusted EBITDA $1.1 billion f
+    [tool 13] search_web: CART Instacart 2026 fiscal year revenue consensus estimate adjusted EBITDA forecast 2027
+  sample 2: IV $68.66 | usable=True | 13 tool calls (think 85,939ch / report 31,530ch) | 384s | $0.055 cumulative
+    [tool 1] search_web: Instacart Maplebear Q2 2026 earnings results revenue adjusted EBITDA guidance
+    [tool 2] search_web: Instacart Maplebear 2026 full year guidance adjusted EBITDA margin revenue outlook
+    [tool 3] search_web: 10-year Treasury yield August 2026 current
+    [tool 4] search_web: Instacart capitalized software purchases 2025 10-K capex total capital expenditures
+    [tool 5] fetch_page: https://investors.instacart.com/news-releases/news-release-details/instacart-announces-s
+    [tool 6] search_web: Instacart Q2 2026 balance sheet cash marketable securities cash and investments buyback
+    [tool 7] search_web: Instacart Maplebear 2026 guidance adjusted EBITDA $1.3 billion full year outlook revenue
+    [tool 8] fetch_page: https://investors.instacart.com/static-files/9c645070-fde7-4f49-bac8-a0439d67ab7f
+    [tool 9] search_web: Instacart Maplebear full year 2025 adjusted EBITDA $1.07 billion fourth quarter results
+    [tool 10] search_web: Instacart Maplebear Q2 2026 cash and cash equivalents marketable securities $2.5 billion
+    [tool 11] fetch_page: https://www.sec.gov/Archives/edgar/data/1579091/000157909126000040/q22026pressrelease.ht
+    [tool 12] search_web: Instacart FY2025 full year adjusted EBITDA 2025 annual results Maplebear
+    [tool 13] search_web: Instacart Maplebear 2023 operating loss $2.1 billion charge one-time impairment legal se
+    [tool 14] search_web: Instacart Maplebear stock-based compensation 2025 10-K million
+    [tool 15] search_web: Instacart Maplebear share repurchase program authorization 2026 buyback $2 billion share
+    [tool 16] search_web: online grocery delivery market growth forecast 2026 2030 CAGR penetration US
+  sample 3: IV $80.0 | usable=True | 16 tool calls (think 147,592ch / report 27,786ch) | 609s | $0.099 cumulative
+
+[deep-api] CART: UNDERVALUED | band $66.2-$80.0 vs price $50.67 | size half
+[deep-api] LOCAL said: UNDERVALUED | band $57.5-$68.0 | median $68.0
+[deep-api] 18 API calls | 345,710 in (293,760 cached) | 129,637 out (99,521 reasoning) | $0.099 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CART_20260824_235909\verdict_depth.json

@@ -1,0 +1,51 @@
+[deep-api] EMBJ @ $77.75 | deepseek-v4-flash effort=high | 3 samples | pack 30,031ch from EMBJ_20260822_185519 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\EMBJ_20260825_003027
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 69.5 | spread 26.2%
+    [tool 1] search_web: Embraer 2026 guidance revenue adjusted EBIT margin free cash flow target full year
+    [tool 2] search_web: Embraer long-term targets EBIT margin 10% investor day 2027 guidance outlook
+    [tool 3] search_web: Embraer capital expenditure plan 2026 2027 capex guidance aircraft production capacity
+    [tool 4] search_web: US 10-year treasury yield August 2026
+    [tool 5] fetch_page: https://embraer.com/media-center/en/?mediatype=News&detail=28090-Embraer-sets-second-qua
+    [tool 6] fetch_page: https://brazilstockguide.com/insights/embraer-q2-results-free-cash-flow-guidance/
+    [tool 7] fetch_page: https://www.aerotime.aero/articles/embraer-financial-results-2025
+    [tool 8] search_web: Embraer "new financial targets" 2026 announced multi-year 2027 2028 adjusted EBIT margin
+    [tool 9] search_web: Embraer 2025 full year adjusted free cash flow actual R$ million annual report
+    [tool 10] search_web: Embraer net debt 2025 gross debt cash end of year USD billion
+    [tool 11] search_web: Embraer EMBJ EPS consensus estimate 2027 2028 analysts
+    [tool 12] search_web: Damodaran implied equity risk premium July 2026 Brazil country risk premium
+    [tool 13] search_web: Embraer EMBJ beta 5-year monthly stockanalysis beta
+    [tool 14] search_web: Embraer 2024 adjusted free cash flow excluding Eve full year $ million
+    [tool 15] search_web: Embraer 2030 target revenue $12 billion EBIT margin double digit long term plan 2033
+  sample 1: IV $52.0 | usable=True | 15 tool calls (think 140,550ch / report 31,409ch) | 558s | $0.041 cumulative
+    [tool 1] search_web: Embraer FY2025 full year results free cash flow 2026 guidance revenue EBIT margin delive
+    [tool 2] search_web: Embraer long-term financial targets 2030 revenue EBIT margin strategic plan guidance bey
+    [tool 3] search_web: Embraer capital expenditure plan 2026 2027 2028 investment guidance aerospace ramp up
+    [tool 4] search_web: 10 year US Treasury yield August 2026 current level
+    [tool 5] fetch_page: http://embraer.com/media-center/en/?mediatype=NEWS&detail=28090
+    [tool 6] fetch_page: https://markets.ft.com/data/announce/detail?dockey=600-202603060506PR_NEWS_USPRX____SP02
+    [tool 7] search_web: Embraer FY2025 adjusted free cash flow excluding Eve full year results 2025
+    [tool 8] search_web: Embraer mid-term targets 2027 2028 revenue growth EBITDA margin outlook capital markets 
+    [tool 9] search_web: Embraer credit rating S&P Moody's Fitch 2026 outlook Ba1 BB
+    [tool 10] search_web: Embraer effective tax rate 2025 2026 adjusted income tax provision
+    [tool 11] fetch_page: https://www.embraer.com/media-center/en/?mediatype=NEWS&detail=24126
+    [tool 12] search_web: Embraer S&P upgrade credit rating BB 2024 2025 Moody's Ba1 leverage
+    [tool 13] search_web: Embraer 2030 vision targets revenue US$ 10 billion adjusted EBIT margin roadmap
+  sample 2: IV $58.0 | usable=True | 13 tool calls (think 119,045ch / report 27,535ch) | 428s | $0.077 cumulative
+    [tool 1] search_web: US 10-year Treasury yield August 2026 current rate
+    [tool 2] search_web: Embraer 2027 guidance revenue outlook EBIT margin long-term targets
+    [tool 3] search_web: Embraer capex capital expenditure plan production ramp 2026 2027 2028 investment
+    [tool 4] search_web: Embraer net debt 2026 gross debt cash leverage
+    [tool 5] search_web: Embraer ADR ratio shares outstanding ERJ EMBJ common shares 2026
+    [tool 6] fetch_page: https://embraer.com/media-center/en/?mediatype=News&detail=28090-Embraer-sets-second-qua
+    [tool 7] fetch_page: https://ts2.tech/en/embraer-nyseembj-gains-5-7-after-tax-and-tariff-relief-account-for-9
+    [tool 8] search_web: Embraer medium-term financial targets 2027 2028 2029 revenue margin free cash flow plan
+    [tool 9] search_web: Embraer 2025 full year capex investments property plant equipment intangible assets tota
+    [tool 10] search_web: Embraer effective tax rate 2026 adjusted net income guidance normalized tax rate
+    [tool 11] search_web: Embraer EMBJ analyst estimates 2027 2028 2029 revenue EPS forecast
+    [tool 12] search_web: Embraer bonds yield cost of debt 2026 USD notes
+    [tool 13] search_web: Embraer long-term margin targets EBITDA EBIT 2030 strategy production leveling 100 aircr
+  sample 3: IV $54.5 | usable=True | 13 tool calls (think 79,967ch / report 23,584ch) | 322s | $0.106 cumulative
+
+[deep-api] EMBJ: OVERVALUED | band $52.0-$58.0 vs price $77.75 | size full
+[deep-api] LOCAL said: HOLD | band $65.0-$82.0 | median $69.5
+[deep-api] 14 API calls | 251,647 in (196,608 cached) | 140,063 out (110,060 reasoning) | $0.106 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\EMBJ_20260825_003027\verdict_depth.json

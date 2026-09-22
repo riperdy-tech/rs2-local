@@ -1,0 +1,52 @@
+   [pack] ::SCHEMA DRIFT:: NVDA - expected keys absent upstream: enrich/{T}.json: fifty_two_week_low, fifty_two_week_high
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/NVDA.md, 17.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] NVDA @ $214.72 | deepseek-v4-pro effort=high | 3 samples | pack 35,544ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NVDA_20260824_220213
+    [tool 1] search_web: NVIDIA Q2 fiscal 2027 revenue guidance May 2026 earnings call
+    [tool 2] search_web: 10-year Treasury yield August 2026
+    [tool 3] search_web: AI accelerator data center TAM forecast 2030 billion
+    [tool 4] search_web: hyperscaler capex 2026 2027 forecast AI data center spending
+    [tool 5] search_web: NVIDIA fiscal 2027 full year revenue estimate analysts FY2028 FY2029
+    [tool 6] fetch_page: https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-
+    [tool 7] search_web: AI accelerator market size 2026 2030 forecast data center GPU TAM
+    [tool 8] search_web: implied equity risk premium Damodaran August 2026
+    [tool 9] search_web: NVIDIA fiscal 2027 full year revenue consensus estimate analysts $ billion
+    [tool 10] search_web: NVIDIA Vera Rubin ramp fiscal 2028 data center revenue outlook
+  sample 1: IV $125.0 | usable=True | 10 tool calls (think 86,093ch / report 17,491ch) | 607s | $0.091 cumulative
+    [tool 1] search_web: NVIDIA Q2 fiscal 2027 guidance revenue outlook May 2026 earnings call
+    [tool 2] search_web: NVIDIA fiscal 2027 full year consensus revenue EPS estimate
+    [tool 3] search_web: 10 year treasury yield August 2026
+    [tool 4] search_web: NVIDIA 10-K fiscal 2026 cash cash equivalents marketable securities balance sheet
+    [tool 5] fetch_page: https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-
+    [tool 6] fetch_page: https://www.reuters.com/business/retail-consumer/nvidia-forecasts-quarterly-revenue-abov
+    [tool 7] search_web: NVIDIA fiscal 2027 revenue estimate full year $380 billion consensus
+    [tool 8] search_web: NVIDIA fiscal 2028 revenue consensus estimate analyst forecast
+    [tool 9] search_web: NVIDIA fiscal 2027 capital expenditures guidance capex spending
+    [tool 10] search_web: NVIDIA data center AI market TAM 2030 forecast long term growth
+    [tool 11] fetch_page: https://www.trefis.com/stock/nvda/articles-v3/612241/nvidia-looks-expensive-until-you-as
+    [tool 12] search_web: "fiscal 2028" NVIDIA revenue estimate $ billion analysts
+    [tool 13] search_web: NVIDIA beta 5 year monthly S&P 500 2026
+    [tool 14] fetch_page: https://www.morningstar.com/stocks/nvidia-raising-fair-value-agentic-ai-drives-1-trillio
+    [tool 15] search_web: Damodaran implied equity risk premium July 2026
+  sample 2: IV $89.53 | usable=True | 15 tool calls (think 118,055ch / report 12,650ch) | 673s | $0.206 cumulative
+    [tool 1] search_web: NVIDIA Q2 fiscal 2027 revenue guidance May 2026
+    [tool 2] search_web: NVIDIA fiscal 2027 full year revenue guidance management commentary
+    [tool 3] search_web: 10-year Treasury yield August 2026
+    [tool 4] fetch_page: https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-
+    [tool 5] fetch_page: https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-fourth-quarter
+    [tool 6] search_web: NVIDIA fiscal 2027 consensus revenue estimate full year analysts
+    [tool 7] search_web: hyperscaler AI capex 2027 2028 2029 forecast data center spending
+    [tool 8] search_web: Damodaran implied equity risk premium August 2026
+    [tool 9] search_web: AI accelerator market size 2030 forecast data center GPU TAM
+    [tool 10] search_web: NVIDIA free cash flow fiscal 2026 stock based compensation buyback
+    [tool 11] search_web: NVIDIA revenue 2028 2029 2030 analyst forecast estimate billion
+    [tool 12] search_web: NVIDIA bear case 2027 competition AMD custom ASIC market share erosion
+    [tool 13] search_web: NVDA beta 5 year monthly 2026
+    [tool 14] search_web: NVIDIA long term operating margin gross margin forecast analyst 2028
+  sample 3: IV $144.0 | usable=True | 14 tool calls (think 146,627ch / report 10,381ch) | 851s | $0.345 cumulative
+
+[deep-api] NVDA: OVERVALUED | band $89.53-$144.0 vs price $214.72 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 17.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 19 API calls | 399,914 in (318,464 cached) | 143,390 out (127,216 reasoning) | $0.345 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NVDA_20260824_220213\verdict_depth.json

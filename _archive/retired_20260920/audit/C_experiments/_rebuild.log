@@ -1,0 +1,19 @@
+Universe: 6875 tickers | with CIK: 6550
+  ... 500 tickers processed
+  ... 1000 tickers processed
+  ... 1500 tickers processed
+  ... 2000 tickers processed
+  ... 2500 tickers processed
+  ... 3000 tickers processed
+  ... 3500 tickers processed
+  ... 4000 tickers processed
+  ... 4500 tickers processed
+  ... 5000 tickers processed
+  ... 5500 tickers processed
+
+Tickers with history: 5600 | battery: 5351 | ttm: 4479
+No zip entry: 182 | no usable annual history: 768
+Written: fundamentals_history.json (28,063,731 bytes)
+Written: fundamentals_battery.json (2,570,114 bytes)
+Written: fundamentals_ttm.json (864,641 bytes)
+Written: fundamentals_quarterly.json (4,241,431 bytes) — 3763 tickers

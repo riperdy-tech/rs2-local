@@ -1,0 +1,52 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/MU.md, 8.8 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] MU @ $966.78 | deepseek-v4-flash effort=high | 3 samples | pack 35,792ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MU_20260826_062859
+    [tool 1] search_web: Micron fiscal Q4 2026 guidance revenue gross margin capex June 2026 earnings call
+    [tool 2] search_web: Micron fiscal 2027 revenue EPS analyst estimates forecast HBM sold out
+    [tool 3] search_web: DRAM HBM supply demand balance 2027 2028 forecast oversupply risk memory market
+    [tool 4] search_web: 10 year treasury yield Federal Reserve policy August 2026
+    [tool 5] fetch_page: https://analysis-atlas.com/research/micron-hbm-supercycle-2026/
+    [tool 6] search_web: Micron fiscal 2027 capex plan capacity expansion HBM4 DRAM wafer starts billion
+    [tool 7] search_web: SK Hynix Samsung HBM capacity expansion 2027 2028 DRAM supply response memory prices
+    [tool 8] search_web: "10-year Treasury" yield level 2026 rate cuts inflation credit spreads market regime
+    [tool 9] fetch_page: https://www.trendforce.com/news/2026/03/19/news-micron-ramps-fy26-capex-to-25b-signs-fir
+    [tool 10] search_web: Federal Reserve interest rate decision August 2026 federal funds rate inflation
+    [tool 11] search_web: Micron DRAM price fixing antitrust class action lawsuit 2026 status damages
+    [tool 12] search_web: US dollar index DXY August 2026 level dollar strength
+  sample 1: IV $303.0 | usable=True | 12 tool calls (think 127,905ch / report 34,647ch) | 483s | $0.044 cumulative
+    [tool 1] search_web: 10 year treasury yield level August 2026
+    [tool 2] search_web: FOMC federal funds rate August 2026 policy stance
+    [tool 3] search_web: DRAM contract price forecast 2027 2028 oversupply HBM
+    [tool 4] search_web: memory semiconductor market size forecast 2028 DRAM NAND HBM revenue
+    [tool 5] search_web: Micron fiscal 2027 capex guidance capital expenditure HBM4 fab
+    [tool 6] search_web: Micron FY2027 revenue EPS consensus analyst estimates
+    [tool 7] search_web: SK Hynix market cap 2026 earnings HBM share
+    [tool 8] search_web: Micron DRAM antitrust class action lawsuit 2026 status
+    [tool 9] search_web: Michael Burry Micron short position 2026
+    [tool 10] search_web: SK Hynix market capitalization trillion won 2026 stock
+    [tool 11] search_web: hyperscaler capex 2027 Microsoft Amazon Google Meta AI infrastructure forecast
+    [tool 12] search_web: CXMT China DRAM capacity expansion 2026 2027 supply
+    [tool 13] search_web: US dollar index DXY level August 2026
+    [tool 14] search_web: high yield credit spreads OAS August 2026
+    [tool 15] search_web: Micron Q4 fiscal 2026 guidance revenue outlook September earnings
+    [tool 16] search_web: memory supercycle 2028 DRAM oversupply downturn predictions bear case
+  sample 2: IV $235.0 | usable=True | 16 tool calls (think 93,654ch / report 35,515ch) | 396s | $0.080 cumulative
+    [tool 1] search_web: Micron fiscal Q4 2026 guidance revenue forecast August 2026
+    [tool 2] search_web: 10 year treasury yield August 2026 current level
+    [tool 3] search_web: Micron capex plan fiscal 2026 2027 fab expansion HBM capacity
+    [tool 4] search_web: DRAM HBM pricing 2026 2027 supply shortage demand forecast
+    [tool 5] search_web: Federal Reserve interest rate policy August 2026 stance inflation
+    [tool 6] search_web: SK Hynix Samsung HBM DRAM capacity expansion 2027 2028 oversupply risk
+    [tool 7] search_web: Micron analyst fiscal 2027 EPS estimates sell-side price target
+    [tool 8] search_web: China DRAM CXMT competition memory pricing threat 2026
+    [tool 9] fetch_page: https://parameter.io/micron-mu-stock-slides-8-9-despite-strong-revenue-and-profit-outloo
+    [tool 10] search_web: DXY dollar index level August 2026
+    [tool 11] search_web: Micron Samsung SK Hynix DRAM price fixing antitrust lawsuit 2026 status class action
+    [tool 12] search_web: high yield credit spread OAS August 2026 credit conditions
+  sample 3: IV $600.0 | usable=True | 12 tool calls (think 95,306ch / report 40,372ch) | 397s | $0.112 cumulative
+
+[deep-api] MU: OVERVALUED | band $235.0-$600.0 vs price $966.78 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 8.8d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 13 API calls | 420,928 in (345,088 cached) | 140,936 out (102,983 reasoning) | $0.112 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MU_20260826_062859\verdict_depth.json

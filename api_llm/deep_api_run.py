@@ -49,7 +49,6 @@ FALLBACK LIMITS (--fresh), measured, not assumed:
   python api_llm/deep_api_run.py NVDA --fresh --model deepseek-v4-pro
 """
 import json
-import re
 import statistics as st
 import sys
 import time
@@ -99,20 +98,24 @@ PRICE = {"deepseek-v4-flash": {"hit": 0.014, "miss": 0.44, "out": 1.32},
 # explicit system message makes the cloud transport mirror the local one exactly. Read-only from
 # the engine's Modelfile - nothing here modifies it. Deep and Deep-MTP5 carry a byte-identical
 # block (verified), so the base Deep file is the canonical source.
-_FRAMEWORK_MODELFILE = ROOT / "RS2-Analyst-Deep.Modelfile"
+# The framework TEXT now comes from the ONE source the cloud chat arm and the local model use.
+# It used to be extracted from RS2-Analyst-Deep.Modelfile's SYSTEM block, and that file was
+# archived on 2026-09-20 - at which point this arm raised FileNotFoundError on its first call.
+# Nothing caught it: no test imported this module, and the census that cleared the archival only
+# inspected .py imports. A data path is not an import.
+CHARTER = ROOT / "prompts" / "charter_v3.0.md"
 _FRAMEWORK_CACHE = None
 
 
 def _rs2_framework():
-    """The baked SYSTEM block, extracted and cached (read once, not per sample/tool-round)."""
+    """The charter text, read once and cached (read once, not per sample/tool-round)."""
     global _FRAMEWORK_CACHE
     if _FRAMEWORK_CACHE is None:
-        mf = _FRAMEWORK_MODELFILE.read_text(encoding="utf-8")
-        m = re.search(r'SYSTEM\s+"""(.*?)"""', mf, re.S)
-        if not m:
-            raise RuntimeError(f'no SYSTEM """...""" block in {_FRAMEWORK_MODELFILE.name} - '
-                               "cannot attach the RS2 framework to the cloud call")
-        _FRAMEWORK_CACHE = m.group(1).strip()
+        if not CHARTER.exists():
+            raise RuntimeError(
+                f"framework text missing: {CHARTER} does not exist - regenerate it with "
+                f"scratch/extract_charter.py. The cloud deep arm cannot run without it.")
+        _FRAMEWORK_CACHE = CHARTER.read_text(encoding="utf-8", errors="ignore").strip()
     return _FRAMEWORK_CACHE
 
 

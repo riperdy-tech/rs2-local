@@ -1,0 +1,55 @@
+[deep-api] ATI @ $215.99 | deepseek-v4-flash effort=high | 3 samples | pack 32,127ch from ATI_20260822_011150 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ATI_20260824_233709
+[deep-api] local arm said: NOT USABLE — no plausible sample | median IV 81.0 | spread 84.2%
+    [tool 1] search_web: ATI Inc 2027 outlook guidance revenue capital expenditure plans specialty metals
+    [tool 2] search_web: ATI Q2 2026 earnings call capital expenditures 2026 2027 new capacity nickel titanium
+    [tool 3] search_web: 10-year treasury yield August 2026
+    [tool 4] search_web: ATI Inc analyst estimates 2027 2028 EPS revenue consensus
+    [tool 5] fetch_page: https://ir.atimaterials.com/news-events/news-details/2026/ATI-Announces-Second-Quarter-2
+    [tool 6] search_web: ATI 2027 targets revenue $5 billion adjusted earnings increase 60% 2023 2027 organic gro
+    [tool 7] search_web: ATI capital expenditures 2026 2027 guidance percent of sales elevated investment phase
+    [tool 8] fetch_page: https://www.prnewswire.com/news-releases/ati-targets-2027-revenue-exceeding-5-billion-on
+    [tool 9] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-ati-tops-q2-2026-est
+    [tool 10] search_web: ATI investor day 2026 long term 2030 targets adjusted EBITDA margin free cash flow
+    [tool 11] search_web: "ATI" Q2 2026 earnings call transcript capex "capital expenditures" 2026 2027 "million" 
+    [tool 12] search_web: ATI Inc total debt 2026 balance sheet long-term debt notes maturity net debt leverage
+    [tool 13] fetch_page: https://ir.atimaterials.com/news-events/news-details/2026/ATI-Announces-Fourth-Quarter-a
+    [tool 14] fetch_page: https://ir.atimaterials.com/news-events/news-details/2026/ATI-Announces-First-Quarter-20
+  sample 1: IV $86.0 | usable=True | 14 tool calls (think 63,534ch / report 21,350ch) | 256s | $0.025 cumulative
+    [tool 1] search_web: ATI Inc 2026 full year guidance adjusted EBITDA midpoint raised Q2 2026 revenue guidance
+    [tool 2] search_web: ATI Inc capital expenditure guidance 2026 2027 nickel titanium capacity expansion invest
+    [tool 3] search_web: ATI Inc 2027 revenue target $5 billion organic growth adjusted earnings 60% increase
+    [tool 4] search_web: ATI Inc total debt net debt 2026 balance sheet cash
+    [tool 5] fetch_page: https://ir.atimaterials.com/news-events/news-details/2026/ATI-Announces-Second-Quarter-2
+    [tool 6] fetch_page: https://www.stocktitan.net/news/ATI/ati-targets-2027-revenue-exceeding-5-billion-on-plat
+    [tool 7] search_web: ATI Inc 2026 capex guidance "capital expenditures" million 2026 2027 investor day
+    [tool 8] search_web: 10 year treasury yield August 2026 current level
+    [tool 9] fetch_page: https://ir.atimaterials.com/news-events/news-details/2026/ATI-Announces-Fourth-Quarter-a
+    [tool 10] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-ati-tops-q2-2026-est
+    [tool 11] search_web: ATI Inc multi-year capital program 2026 2028 growth capex total investment nickel titani
+    [tool 12] search_web: Damodaran implied equity risk premium August 2026
+    [tool 13] search_web: ATI Inc 2027 outlook EBITDA $1.35 billion exit rate 2027 growth commentary Q2 2026 call
+    [tool 14] search_web: ATI Inc second quarter 2026 10-Q total debt cash balance sheet June 2026
+    [tool 15] search_web: ATI Inc 2028 2029 long-term growth forecast aerospace specialty metals analyst
+    [tool 16] search_web: ATI Inc capital expenditures 2027 2028 elevated "gross capex" plan outlook normalization
+  sample 2: IV $94.65 | usable=True | 16 tool calls (think 81,996ch / report 20,647ch) | 296s | $0.057 cumulative
+    [tool 1] search_web: ATI Inc Q2 2026 earnings call transcript capex 2026 2027 capacity nickel titanium
+    [tool 2] search_web: ATI Inc 10-K 2025 total debt long-term debt cash and cash equivalents balance sheet
+    [tool 3] search_web: 10 year treasury yield August 2026 current level
+    [tool 4] search_web: ATI Inc analyst estimates 2027 2028 revenue EPS forecast
+    [tool 5] fetch_page: https://www.theglobeandmail.com/investing/markets/stocks/ATI/pressreleases/3836776/ati-a
+    [tool 6] search_web: ATI Inc 2026 free cash flow guidance capex million full year 2027 investment
+    [tool 7] search_web: ATI Inc 2027 revenue target $5 billion organic growth capacity investment jet engines de
+    [tool 8] search_web: ATI Inc December 2025 balance sheet total debt $1.7 billion cash $417 million current po
+    [tool 9] search_web: ATI Inc effective tax rate 2025 2026 income tax provision
+    [tool 10] search_web: ATI Inc ATI stock consensus 2027 EPS estimate revenue forecast sell-side
+    [tool 11] fetch_page: https://www.sec.gov/Archives/edgar/data/1018963/000162828026028589/form8-kq12026ex991.ht
+    [tool 12] fetch_page: https://www.perplexity.ai/finance/ATI
+    [tool 13] search_web: ATI Inc stockanalysis consensus 2027 2028 revenue EBITDA estimates forecast
+    [tool 14] search_web: ATI Inc capital expenditure 2027 2028 plan nickel VIM furnace titanium expansion investm
+    [tool 15] search_web: ATI Inc fiscal 2025 annual effective tax rate income tax expense $126 million
+  sample 3: IV $60.0 | usable=True | 15 tool calls (think 46,541ch / report 27,948ch) | 224s | $0.081 cumulative
+
+[deep-api] ATI: OVERVALUED | band $60.0-$94.65 vs price $215.99 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $57.0-$105.0 | median $81.0
+[deep-api] 18 API calls | 353,751 in (275,584 cached) | 93,584 out (66,233 reasoning) | $0.081 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ATI_20260824_233709\verdict_depth.json

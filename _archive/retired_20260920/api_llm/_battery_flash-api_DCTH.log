@@ -1,0 +1,43 @@
+[api] backend http://127.0.0.1:11434/v1  model=rs2-flash-api  -> reports in api_llm/reports
+[enrich] yfinance DCTH ...
+[out] C:\Users\riper\Downloads\RS2 Local\api_llm\reports\DCTH_20260818_035400
+
+[nltk_data] Downloading package punkt_tab to C:\Users\Public\Documents
+[nltk_data]     \ESTsoft\CreatorTemp\defeatbeta\nltk...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[38;5;10m______      __           _    ______      _        
+|  _  \    / _|         | |   | ___ \    | |       
+| | | |___| |_ ___  __ _| |_  | |_/ / ___| |_ __ _ 
+| | | / _ \  _/ _ \/ _` | __| | ___ \/ _ \ __/ _` |
+| |/ /  __/ ||  __/ (_| | |_  | |_/ /  __/ || (_| |
+|___/ \___|_| \___|\__,_|\__| \____/ \___|\__\__,_|[0m
+[1;38;5;10m📈:: Data Update Time ::[0m	2026-08-17T05:20:17Z [1;38;5;10m::[0m
+[1;38;5;10m📈:: Software Version ::[0m	0.0.60      [1;38;5;10m::[0m
+2026-08-18 03:54:05 INFO DuckDBClient MainThread - Cache is up-to-date. Update time: 2026-08-17T05:20:17Z
+[backbone] DCTH: base_cf $0.02B [fcf_fallback] WACC 10% | implied 18.9% vs demonstrated 121.3% [revenue_cagr_5y] | gap -102.4pts
+>> Layers 0, 1, 1.5 — Classification / Macro / Base Rate
+   done in 54.4s -> S1_macro_classify.md
+
+>> Layers 2, 2.5 — Business Quality / Adjusted Financials
+   done in 52.8s -> S2_quality.md
+
+>> Layers 3, 3.5 — Expectations Test / Second-Order
+   done in 53.6s -> S3_valuation.md
+   [valuation] reverse-DCF gap -102.4pts | stance undervalued (achievable high)
+
+>> Layers 4, 4.5 — Scenarios (Bayesian) / Horizon Arbitrage
+   done in 33.5s -> S4_scenarios.md
+   [valuation] scenario probs {'bear': 0.25, 'base': 0.5, 'bull': 0.25}
+
+>> Layers 5, 5.5, 6, 6.5 — Conviction / Behavioral / Portfolio / Kelly
+   done in 67.4s -> S5_conviction.md
+
+>> Layers 7, 7.5, 8, 9 — Monitoring / Correlation / Audit / Red Team
+   done in 48.7s -> S6_redteam_audit.md
+
+>> FINAL ASSEMBLY (Sections 0-12) [ctx 32768]
+   done in 78.8s
+[DONE] -> C:\Users\riper\Downloads\RS2 Local\api_llm\reports\DCTH_20260818_035400\FINAL.md
+   [verdict] DCTH: method=reverse_dcf stance=undervalued action=Stage-in on weakness (Hold / Accumulate) conv=12.0 entry=stage
+[SANITY] ok — DCTH: stages, FINAL.md and verdict.json all present and substantive
+[AUDIT] ok — DCTH: 18 deterministic checks + AI verifier (pass)

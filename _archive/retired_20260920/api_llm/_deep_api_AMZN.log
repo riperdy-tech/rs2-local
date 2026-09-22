@@ -1,0 +1,52 @@
+[deep-api] AMZN @ $265.84 | deepseek-v4-flash effort=high | 3 samples | pack 33,646ch from AMZN_20260821_213954 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AMZN_20260824_232444
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 234.0 | spread 162.5%
+    [tool 1] search_web: Amazon Q2 2026 net income $62 billion one-time gain what drove blowout earnings July 30 
+    [tool 2] search_web: Amazon 2026 capital expenditure guidance $220 billion Q2 2026 earnings call Brian Olsavs
+    [tool 3] search_web: 10 year treasury yield August 2026 current level
+    [tool 4] search_web: Amazon AWS Q2 2026 segment operating income AWS revenue growth 37%
+    [tool 5] fetch_page: https://www.digitalapplied.com/blog/amazon-q2-2026-earnings-ads-aws-anthropic-gain
+    [tool 6] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/amazon-amzn-q2-2026-earnings-c
+    [tool 7] search_web: Amazon 2027 capital expenditure outlook capex as percentage of revenue decline after 202
+    [tool 8] search_web: Amazon revenue forecast 2026 2027 2028 2029 analyst consensus long-term growth estimates
+    [tool 9] search_web: Amazon Q1 2026 operating income $ billion segment results North America International AW
+    [tool 10] search_web: Amazon 2027 capex analyst expectations AI infrastructure spending peak 2026 decline 2027
+    [tool 11] search_web: Amazon credit rating S&P Moody's 2026 AA debt cost of borrowing
+    [tool 12] search_web: Amazon FY2026 full year EPS estimate consensus reported Anthropic gain one-time normaliz
+  sample 1: IV $260.0 | usable=True | 12 tool calls (think 106,300ch / report 24,695ch) | 380s | $0.035 cumulative
+    [tool 1] search_web: Amazon Q2 2026 earnings net income $62 billion one-time gain what drove
+    [tool 2] search_web: Amazon capital expenditures 2026 guidance $220 billion 2027 capex outlook AI infrastruct
+    [tool 3] search_web: Amazon FY2026 FY2027 revenue EPS analyst consensus estimates
+    [tool 4] search_web: 10-year treasury yield August 2026 Federal Reserve interest rate policy
+    [tool 5] fetch_page: https://ir.aboutamazon.com/news-release/news-release-details/2026/Amazon-com-Announces-S
+    [tool 6] fetch_page: https://www.cnbc.com/2026/07/30/amazon-amzn-q2-earnings-report-2026.html
+    [tool 7] search_web: Amazon Q2 2026 net income 62.6 billion Rivian investment gain tax benefit non-operating 
+    [tool 8] search_web: Amazon 2027 capex forecast consensus capital expenditures estimate AI data center
+    [tool 9] search_web: Amazon fiscal 2026 full year revenue estimate consensus billion analysts
+    [tool 10] search_web: Amazon 2025 full year AWS revenue operating income segment results FY2025
+    [tool 11] search_web: Amazon effective tax rate 2025 2026 provision for income taxes
+    [tool 12] search_web: Amazon stock 5 year forward revenue growth CAGR estimate long term analysts 2027 2028 20
+    [tool 13] fetch_page: https://ir.aboutamazon.com/news-release/news-release-details/2026/Amazon-com-Announces-F
+    [tool 14] search_web: "Amazon" FY2027 revenue consensus estimate 2027 full year sales forecast stockanalysis
+    [tool 15] search_web: Amazon 2025 AWS operating income full year segment North America International operating
+  sample 2: IV $175.0 | usable=True | 15 tool calls (think 59,226ch / report 25,095ch) | 265s | $0.060 cumulative
+    [tool 1] search_web: Amazon Q2 2026 net income $62.6 billion one-time gain explanation earnings
+    [tool 2] search_web: Amazon 2026 capital expenditure guidance $220 billion AI data centers
+    [tool 3] search_web: Amazon Q2 2026 earnings call Andy Jassy capex 2027 data center spending outlook
+    [tool 4] search_web: Amazon Q2 2026 net income surge $62 billion investment gain Anthropic stake revaluation
+    [tool 5] fetch_page: https://www.fool.com/investing/2026/08/07/amazon-ceo-andy-jassy-just-made-a-shocking-tri
+    [tool 6] search_web: Amazon Q2 2026 results press release operating income AWS revenue net income June 30 202
+    [tool 7] fetch_page: https://www.sec.gov/Archives/edgar/data/1018724/000101872426000024/amzn-20260630xex991.h
+    [tool 8] search_web: 10-year Treasury yield August 2026 current level
+    [tool 9] search_web: Amazon FY2026 FY2027 consensus revenue EPS estimates analysts August 2026
+    [tool 10] search_web: Amazon 2027 capital expenditure forecast analysts estimate after $220 billion 2026
+    [tool 11] search_web: Amazon FY2026 FY2027 revenue EPS estimates stockanalysis.com consensus
+    [tool 12] search_web: Microsoft Alphabet 2026 capex AI spending data center capacity cloud demand
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/amzn/forecast/
+    [tool 14] search_web: Amazon capex peak 2027 normalization analysts "2027" capital spending decline after 2026
+    [tool 15] search_web: Amazon AWS full year 2025 revenue $144 billion operating income segment
+  sample 3: IV $207.5 | usable=True | 15 tool calls (think 46,860ch / report 27,795ch) | 221s | $0.083 cumulative
+
+[deep-api] AMZN: OVERVALUED | band $175.0-$260.0 vs price $265.84 | size quarter
+[deep-api] LOCAL said: HOLD | band $104.0-$273.0 | median $234.0
+[deep-api] 16 API calls | 353,103 in (300,928 cached) | 104,712 out (74,615 reasoning) | $0.083 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AMZN_20260824_232444\verdict_depth.json

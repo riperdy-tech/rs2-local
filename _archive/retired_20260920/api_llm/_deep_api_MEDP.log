@@ -1,0 +1,59 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/MEDP.md, 10.1 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] MEDP @ $620.75 | deepseek-v4-flash effort=high | 3 samples | pack 33,256ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MEDP_20260826_060846
+    [tool 1] search_web: Medpace Q2 2026 earnings raises full year 2026 guidance revenue EPS
+    [tool 2] search_web: Medpace Q2 2026 backlog net new business awards book to bill conversion rate
+    [tool 3] search_web: 10 year treasury yield current federal reserve funds rate August 2026
+    [tool 4] search_web: CRO contract research organization market growth forecast 2026 2030 clinical trial outso
+    [tool 5] fetch_page: https://investor.medpace.com/news-releases/news-release-details/medpace-holdings-inc-rep
+    [tool 6] search_web: federal reserve interest rate decision August 2026 fed funds target range
+    [tool 7] search_web: Medpace FY2027 revenue EPS analyst estimates consensus 2027 outlook
+    [tool 8] search_web: Medpace securities class action lawsuit status 2026 book to bill cancellation rate alleg
+    [tool 9] search_web: Medpace backlog total dollars June 30 2026 billion
+    [tool 10] search_web: Medpace 2026 EPS guidance raised full year diluted earnings per share
+    [tool 11] search_web: Medpace share repurchase authorization buyback 2026 board approved
+    [tool 12] search_web: biotech venture capital funding 2026 clinical trial starts pharma R&D spending outlook
+    [tool 13] search_web: dollar index DXY level August 2026
+    [tool 14] search_web: US credit spreads high yield investment grade August 2026
+    [tool 15] search_web: Medpace stock drop May 2026 Q1 net book to bill 0.88 cancellations
+    [tool 16] search_web: MEDP Medpace 2026 2027 EPS revenue estimates stockanalysis
+  sample 1: IV $300.0 | usable=True | 16 tool calls (think 133,734ch / report 27,679ch) | 504s | $0.044 cumulative
+    [tool 1] search_web: Medpace Q2 2026 earnings call full year 2026 guidance revenue EPS raised
+    [tool 2] search_web: 10-year Treasury yield August 2026 current level
+    [tool 3] search_web: Federal Reserve interest rate decision 2026 federal funds rate current
+    [tool 4] search_web: Medpace securities fraud class action lawsuit 2026 status dismissal motion book-to-bill
+    [tool 5] fetch_page: https://investor.medpace.com/news-releases/news-release-details/medpace-holdings-inc-rep
+    [tool 6] search_web: Medpace backlog book-to-bill second quarter 2026 record net bookings billion
+    [tool 7] search_web: CRO industry outlook 2027 clinical trial demand IQVIA ICON biotech funding
+    [tool 8] search_web: Medpace 2027 revenue EPS consensus analyst estimate
+    [tool 9] fetch_page: https://www.benzinga.com/markets/earnings/26/07/60650999/medpace-q2-beat-2026-outlook
+    [tool 10] search_web: US CPI inflation rate July 2026 year over year
+    [tool 11] search_web: DXY US dollar index August 2026 level
+    [tool 12] search_web: biotech venture capital funding 2026 clinical trials rebound pharma R&D spending outlook
+    [tool 13] fetch_page: https://www.tikr.com/blog/medpace-stock-is-down-32-from-its-52-week-high-a-2026-valuatio
+    [tool 14] search_web: US GDP growth second quarter 2026 annualized
+    [tool 15] search_web: high yield credit spreads August 2026 OAS level
+    [tool 16] search_web: Medpace share repurchase authorization 2026 buyback program
+  sample 2: IV $358.5 | usable=True | 16 tool calls (think 27,273ch / report 32,606ch) | 251s | $0.063 cumulative
+    [tool 1] search_web: Medpace Q2 2026 results revenue guidance raised full year 2026
+    [tool 2] search_web: Medpace second quarter 2026 earnings call transcript backlog net new business awards boo
+    [tool 3] search_web: Medpace 2027 revenue guidance outlook analyst estimates
+    [tool 4] search_web: 10-year Treasury yield August 2026 current level
+    [tool 5] search_web: Federal Reserve policy August 2026 federal funds rate cuts
+    [tool 6] fetch_page: https://investor.medpace.com/news-releases/news-release-details/medpace-holdings-inc-rep
+    [tool 7] search_web: Medpace 2026 EPS guidance adjusted EBITDA tax rate full year
+    [tool 8] search_web: Medpace dividend share buyback authorization 2025 2026 capital return
+    [tool 9] search_web: Medpace securities class action lawsuit 2026 status book-to-bill cancellation
+    [tool 10] search_web: biotech funding 2026 venture capital clinical trials CRO demand outlook
+    [tool 11] fetch_page: https://www.benzinga.com/markets/earnings/26/07/60650999/medpace-q2-beat-2026-outlook
+    [tool 12] search_web: Medpace Q2 2026 diluted EPS guidance earnings per share full year 2026
+    [tool 13] search_web: DXY dollar index August 2026 level
+    [tool 14] search_web: US CPI inflation rate July 2026 latest
+    [tool 15] search_web: clinical research organization CRO market growth forecast 2026 2030 pharmaceutical R&D s
+  sample 3: IV $396.0 | usable=True | 15 tool calls (think 116,806ch / report 37,920ch) | 451s | $0.103 cumulative
+
+[deep-api] MEDP: OVERVALUED | band $300.0-$396.0 vs price $620.75 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 10.1d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 405,906 in (326,016 cached) | 125,603 out (93,334 reasoning) | $0.103 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MEDP_20260826_060846\verdict_depth.json

@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/JBHT.md, 18.6 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] JBHT @ $275.45 | deepseek-v4-flash effort=high | 3 samples | pack 34,546ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\JBHT_20260826_050535
+    [tool 1] search_web: J.B. Hunt Q2 2026 earnings release full year 2026 guidance capex
+    [tool 2] search_web: 10-year Treasury yield August 2026 Fed funds rate
+    [tool 3] search_web: J.B. Hunt BNSF intermodal dispute 2026 payment historic periods
+    [tool 4] search_web: intermodal volume forecast 2027 AAR rail traffic outlook freight recession recovery
+    [tool 5] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-jb-hunt-tops-q2-2026
+    [tool 6] search_web: J.B. Hunt analyst EPS estimates 2026 2027 2028 consensus forward
+    [tool 7] fetch_page: https://finance.yahoo.com/quote/JBHT/analysis/
+    [tool 8] search_web: J.B. Hunt Q2 2026 press release net earnings $181 million revenue $3.5 billion intermoda
+    [tool 9] fetch_page: https://www.sec.gov/Archives/edgar/data/728535/000143774926023629/ex_987956.htm
+    [tool 10] fetch_page: https://stockanalysis.com/stocks/jbht/forecast/
+    [tool 11] search_web: Federal Reserve interest rate decision August 2026 rate cut hold policy stance
+    [tool 12] search_web: DAT Truckload Rate Index 2026 spot rates forecast 2027 dry van contract rates recovery
+    [tool 13] fetch_page: https://www.actresearch.net/resources/blog/trucking-industry-forecast-for-2026
+    [tool 14] search_web: J.B. Hunt 2026 capital expenditures guidance net capex equipment tractors containers
+  sample 1: IV $191.0 | usable=True | 14 tool calls (think 56,955ch / report 25,333ch) | 271s | $0.028 cumulative
+    [tool 1] search_web: 10-year Treasury yield current level August 2026
+    [tool 2] search_web: J.B. Hunt Q2 2026 earnings call guidance full year 2026 capex EPS outlook
+    [tool 3] search_web: J.B. Hunt BNSF intermodal dispute payment owed 2026 historical revenue
+    [tool 4] search_web: freight market 2026 truckload spot rates recovery DAT dry van capacity
+    [tool 5] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-jb-hunt-tops-q2-2026
+    [tool 6] fetch_page: https://www.freightwaves.com/news/bnsf-jbhunt-intermoda-dispute
+    [tool 7] search_web: Federal Reserve interest rate decision 2026 fed funds rate July September 2026
+    [tool 8] search_web: J.B. Hunt 2027 EPS estimate consensus analyst forecast
+    [tool 9] search_web: "J.B. Hunt" Q2 2026 earnings call transcript intermodal volume pricing Shelley Simpson B
+    [tool 10] search_web: J.B. Hunt BNSF arbitration 2025 2026 resolved payment $100 million settlement
+    [tool 11] search_web: J.B. Hunt 2026 capital expenditure guidance $600 million $800 million
+    [tool 12] search_web: J.B. Hunt JBHT Zacks consensus EPS estimate 2026 2027
+    [tool 13] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/07/22/jb-hunt-jbht-q2-2026-earnings-
+    [tool 14] search_web: DXY dollar index CPI inflation rate July 2026 credit spreads high yield
+    [tool 15] search_web: intermodal rail volumes 2026 IANA truckload capacity tightening ELD enforcement
+  sample 2: IV $200.0 | usable=True | 15 tool calls (think 76,021ch / report 32,051ch) | 325s | $0.057 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: Federal Reserve interest rate policy August 2026 rate cuts
+    [tool 3] search_web: Cass Freight Index July 2026 shipments expenditures
+    [tool 4] search_web: J.B. Hunt Q2 2026 earnings call guidance 2026 capex 2027
+    [tool 5] search_web: J.B. Hunt BNSF intermodal dispute settlement 2016 2017 payment
+    [tool 6] search_web: J.B. Hunt 2026 capital expenditure guidance $600 million $800 million
+    [tool 7] search_web: J.B. Hunt 2026 2027 EPS estimates analyst consensus
+    [tool 8] search_web: truckload spot rates 2026 DAT dry van contract rates recovery
+    [tool 9] search_web: AAR rail intermodal traffic July 2026 volume growth
+    [tool 10] search_web: JBHT intermodal operating margin 2026 recovery J.B. Hunt segments
+    [tool 11] search_web: JBHT fiscal 2026 fiscal 2027 EPS estimate Zacks Trefis
+    [tool 12] search_web: US CPI inflation rate July 2026 year over year
+    [tool 13] search_web: dollar index DXY August 2026 level
+    [tool 14] search_web: high yield credit spreads August 2026 OAS
+    [tool 15] search_web: J.B. Hunt 2027 outlook intermodal growth target management commentary
+  sample 3: IV $115.0 | usable=True | 15 tool calls (think 76,674ch / report 21,140ch) | 278s | $0.082 cumulative
+
+[deep-api] JBHT: OVERVALUED | band $115.0-$200.0 vs price $275.45 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.6d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 16 API calls | 411,778 in (333,184 cached) | 94,892 out (67,798 reasoning) | $0.082 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\JBHT_20260826_050535\verdict_depth.json

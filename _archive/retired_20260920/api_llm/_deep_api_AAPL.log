@@ -1,0 +1,51 @@
+[deep-api] AAPL @ $316.83 | deepseek-v4-flash effort=high | 3 samples | pack 33,535ch from AAPL_20260821_134609 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AAPL_20260824_230530
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 185.0 | spread 29.1%
+    [tool 1] search_web: Apple Q4 fiscal 2026 guidance revenue growth gross margin operating expenses earnings ca
+    [tool 2] search_web: 10-year Treasury yield August 2026
+    [tool 3] fetch_page: https://www.apple.com/newsroom/2026/07/apple-reports-third-quarter-results/
+    [tool 4] search_web: Apple fiscal 2027 revenue consensus estimate EPS analyst forecast
+    [tool 5] fetch_page: https://finance.yahoo.com/quote/AAPL/analysis/
+    [tool 6] search_web: Apple Q3 2026 earnings call transcript Kevan Parekh guidance September quarter gross mar
+    [tool 7] fetch_page: https://www.digitalapplied.com/blog/apple-q3-fy26-earnings-record-quarter-weak-guidance
+    [tool 8] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-apple-beats-q3-2026-
+    [tool 9] search_web: Apple Q3 2026 balance sheet cash marketable securities total debt net cash
+    [tool 10] search_web: Apple fiscal year 2027 revenue estimate billion EPS forecast
+    [tool 11] fetch_page: https://www.markets.com/analysis/apple-stock-forecast
+    [tool 12] fetch_page: https://www.stockmarketnerd.com/p/apple-q3-2026-earnings-review
+    [tool 13] search_web: Apple FY2027 consensus revenue $ billion 2027 estimate analysts
+    [tool 14] search_web: Apple capex plan 2027 AI data center build or rent strategy commentary
+  sample 1: IV $237.0 | usable=True | 14 tool calls (think 99,591ch / report 25,786ch) | 364s | $0.035 cumulative
+    [tool 1] search_web: 10 year treasury yield August 2026
+    [tool 2] search_web: Apple capital expenditure 2026 2027 AI data centers spending plan
+    [tool 3] search_web: Apple cash and marketable securities total debt June 2026 balance sheet
+    [tool 4] search_web: Apple effective tax rate fiscal 2025 2026
+    [tool 5] fetch_page: https://www.apple.com/newsroom/pdfs/fy2026q3/FY26_Q3_Consolidated_Financial_Statements.p
+    [tool 6] fetch_page: https://www.datacenterdynamics.com/en/news/apple-anticipates-substantial-capex-growth-wi
+    [tool 7] search_web: Apple Q3 2026 third quarter results June 2026 cash marketable securities long-term debt
+    [tool 8] search_web: Apple fiscal 2026 capital expenditures data center AI infrastructure $14 billion forecas
+    [tool 9] search_web: Apple Q3 fiscal 2026 earnings tax rate provision net income pre-tax income
+    [tool 10] fetch_page: https://www.apple.com/newsroom/2026/07/apple-reports-third-quarter-results/
+    [tool 11] fetch_page: https://www.stockmarketnerd.com/p/apple-q3-2026-earnings-review
+    [tool 12] fetch_page: https://www.tradingkey.com/analysis/stocks/us-stocks/261560213-magnificent-seven-stocks-
+    [tool 13] search_web: Apple effective tax rate fiscal 2025 16% 15% provision for income taxes 10-K
+    [tool 14] search_web: Apple fiscal 2027 revenue consensus estimate EPS Wall Street forecast
+  sample 2: IV $184.35 | usable=True | 14 tool calls (think 91,070ch / report 31,021ch) | 352s | $0.070 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 current rate
+    [tool 2] search_web: Apple cash and marketable securities balance sheet June 2026 quarter
+    [tool 3] search_web: Apple capital expenditure plans 2026 2027 AI data center spending guidance
+    [tool 4] search_web: Apple FY2027 revenue EPS consensus estimate analysts
+    [tool 5] fetch_page: https://www.apple.com/newsroom/pdfs/fy2026q3/FY26_Q3_Consolidated_Financial_Statements.p
+    [tool 6] fetch_page: https://finance.yahoo.com/quote/AAPL/analysis/
+    [tool 7] fetch_page: https://www.apple.com/newsroom/2026/07/apple-reports-third-quarter-results/
+    [tool 8] fetch_page: https://www.marketwatch.com/investing/stock/aapl/analystestimates
+    [tool 9] fetch_page: https://www.alpha-sense.com/resources/research-articles/big-tech-ai-capex-earnings/?trk=
+    [tool 10] search_web: Apple June 2026 balance sheet cash marketable securities total debt billion 10-Q
+    [tool 11] search_web: AAPL stockanalysis forecast revenue estimate 2026 2027 2028
+    [tool 12] fetch_page: https://stockanalysis.com/stocks/aapl/forecast/
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/aapl/financials/balance-sheet/
+  sample 3: IV $165.0 | usable=True | 13 tool calls (think 72,589ch / report 24,239ch) | 280s | $0.100 cumulative
+
+[deep-api] AAPL: OVERVALUED | band $165.0-$237.0 vs price $316.83 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $172.0-$222.0 | median $185.0
+[deep-api] 20 API calls | 431,080 in (348,160 cached) | 119,526 out (89,996 reasoning) | $0.100 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AAPL_20260824_230530\verdict_depth.json

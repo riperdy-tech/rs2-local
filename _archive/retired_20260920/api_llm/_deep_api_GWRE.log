@@ -1,0 +1,54 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/GWRE.md, 18.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] GWRE @ $189.19 | deepseek-v4-flash effort=high | 3 samples | pack 33,998ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GWRE_20260826_040501
+    [tool 1] search_web: Guidewire Software third quarter fiscal 2026 results press release revenue guidance ARR
+    [tool 2] search_web: 10-year treasury yield August 24 2026 Fed policy rate
+    [tool 3] search_web: Guidewire Software fiscal 2027 revenue EPS analyst estimates consensus
+    [tool 4] search_web: Guidewire Software convertible senior notes due 2027 2029 debt balance sheet
+    [tool 5] search_web: Guidewire Software FY2026 non-GAAP operating margin guidance cloud subscription
+    [tool 6] fetch_page: https://www.guidewire.com/about/press-center/press-releases/20260604/guidewire-announces
+    [tool 7] fetch_page: https://ir.guidewire.com/news-releases/news-release-details/guidewire-software-inc-price
+    [tool 8] search_web: federal funds rate August 2026 Fed meeting decision rate cut
+    [tool 9] search_web: GWRE stock analyst estimates fiscal 2027 revenue 1.7 billion EPS
+    [tool 10] search_web: Guidewire 2029 convertible senior notes $600 million 1.25% conversion price
+    [tool 11] search_web: Guidewire long-term operating margin target Rule of 40 non-GAAP 2028 2030
+    [tool 12] search_web: Guidewire total addressable market P&C insurance core systems TAM size billion
+    [tool 13] search_web: GWRE price target August 2026 analyst ratings stockanalysis
+  sample 1: IV $149.835 | usable=True | 13 tool calls (think 64,534ch / report 42,644ch) | 345s | $0.032 cumulative
+    [tool 1] search_web: Guidewire Software fourth quarter fiscal 2026 results revenue guidance fiscal 2027
+    [tool 2] search_web: Guidewire Q3 fiscal 2026 press release non-GAAP operating margin ARR raised outlook
+    [tool 3] search_web: 10 year treasury yield August 2026 current
+    [tool 4] search_web: Guidewire Software long-term financial model non-GAAP operating margin target investor d
+    [tool 5] fetch_page: https://www.guidewire.com/about/press-center/press-releases/20260604/guidewire-announces
+    [tool 6] search_web: Guidewire Software fiscal 2027 revenue consensus estimate EPS
+    [tool 7] search_web: Guidewire Duck Creek Sapiens P&C core systems market share competition 2026
+    [tool 8] search_web: Guidewire Software stock-based compensation percentage of revenue fiscal 2026 dilution
+    [tool 9] search_web: Guidewire GWRE fiscal 2027 revenue estimate $1.69 billion non-GAAP EPS consensus
+    [tool 10] search_web: Guidewire Software convertible senior notes outstanding 2026 2028 debt
+    [tool 11] search_web: Guidewire stock drop after Q3 fiscal 2026 earnings ARR guidance deceleration valuation
+    [tool 12] search_web: Fed funds rate August 2026 FOMC policy stance inflation
+    [tool 13] search_web: Guidewire number of P&C insurer customers cloud platform top 10 market share claims 2026
+    [tool 14] search_web: "Guidewire" convertible senior notes 2031 $600 million due interest rate
+    [tool 15] search_web: Guidewire fiscal 2027 ARR revenue growth estimate analyst 2027
+  sample 2: IV $75.0 | usable=True | 15 tool calls (think 143,325ch / report 28,294ch) | 506s | $0.077 cumulative
+    [tool 1] search_web: Guidewire Software fiscal 2027 revenue guidance outlook
+    [tool 2] search_web: Guidewire Software long-term operating margin target non-GAAP model investor day
+    [tool 3] search_web: 10 year Treasury yield August 2026 Federal Reserve policy
+    [tool 4] search_web: Guidewire Software convertible notes debt structure 2025 2026
+    [tool 5] fetch_page: https://www.guidewire.com/about/press-center/press-releases/20260604/guidewire-announces
+    [tool 6] fetch_page: https://valueandopportunity.com/2026/02/23/some-thoughts-on-vibe-coding-saas-vs-ai-10-mo
+    [tool 7] fetch_page: https://fred.stlouisfed.org/series/DGS10
+    [tool 8] search_web: Guidewire fourth quarter fiscal 2026 earnings report date September 2026
+    [tool 9] search_web: federal funds rate target August 2026 FOMC decision
+    [tool 10] search_web: Guidewire 1.25% convertible senior notes due 2029 2030 maturity principal amount
+    [tool 11] search_web: Guidewire vs Duck Creek P&C core systems market share 2026
+    [tool 12] search_web: DXY dollar index level August 2026
+    [tool 13] search_web: Guidewire Software FY2027 revenue consensus estimate analyst
+    [tool 14] search_web: Guidewire Software shares outstanding buyback August 2026
+  sample 3: IV $87.0 | usable=True | 14 tool calls (think 170,691ch / report 30,318ch) | 608s | $0.129 cumulative
+
+[deep-api] GWRE: OVERVALUED | band $75.0-$149.835 vs price $189.19 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 435,454 in (353,152 cached) | 163,853 out (127,882 reasoning) | $0.129 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GWRE_20260826_040501\verdict_depth.json

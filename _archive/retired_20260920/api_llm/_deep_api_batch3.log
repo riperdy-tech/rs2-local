@@ -1,0 +1,201 @@
+[batch] start MAMA
+[batch] start MCO
+[batch] start MCRI
+[batch] start MEDP
+[batch] done MCO exit=0 [deep-api] MCO: OVERVALUED | band $245.0-$410.0 vs price $503.32 | size quarter
+[batch] start MNST
+[batch] done MAMA exit=0 [deep-api] MAMA: OVERVALUED | band $6.1-$9.2 vs price $16.44 | size quarter
+[batch] start MPWR
+[batch] done MEDP exit=0 [deep-api] MEDP: OVERVALUED | band $270.0-$360.0 vs price $620.75 | size quarter
+[batch] start MU
+[batch] done MCRI exit=0 [deep-api] MCRI: OVERVALUED | band $88.0-$103.0 vs price $126.09 | size half
+[batch] start NBIX
+[batch] done MPWR exit=0 [deep-api] MPWR: OVERVALUED | band $400.0-$611.0 vs price $1316.28 | size quarter
+[batch] start NHC
+[batch] done MU exit=0 [deep-api] MU: OVERVALUED | band $497.05-$781.5 vs price $966.78 | size quarter
+[batch] start NVS
+[batch] done MNST exit=0 [deep-api] MNST: OVERVALUED | band $30.509999999999998-$43.1 vs price $47.79 | size quarter
+[batch] start PCTY
+[batch] done NBIX exit=0 [deep-api] NBIX: OVERVALUED | band $119.0-$135.8 vs price $152.57 | size full
+[batch] start RMD
+[batch] done NHC exit=0 [deep-api] NHC: OVERVALUED | band $107.0-$113.0 vs price $233.4 | size full
+[batch] start SAP
+[batch] done NVS exit=0 [deep-api] NVS: HOLD | band $136.0-$188.5 vs price $158.86 | size quarter
+[batch] start SIMO
+[batch] done RMD exit=0 [deep-api] RMD: UNDERVALUED | band $245.26-$273.0 vs price $231.52 | size full
+[batch] start STX
+[batch] done PCTY exit=0 [deep-api] PCTY: HOLD | band $146.1-$157.5 vs price $152.63 | size full
+[batch] start TSM
+[batch] done SAP exit=0 [deep-api] SAP: UNDERVALUED | band $240.0-$262.8 vs price $218.8 | size full
+[batch] start UTHR
+[batch] done UTHR exit=0 [deep-api] UTHR: UNDERVALUED | band $514.0-$778.0 vs price $513.12 | size quarter
+[batch] start VIK
+[batch] done TSM exit=0 [deep-api] TSM: OVERVALUED | band $287.0-$405.0 vs price $418.95 | size quarter
+[batch] start VRTX
+[batch] done STX exit=0 [deep-api] STX: OVERVALUED | band $160.0-$328.0 vs price $789.47 | size quarter
+[batch] start ABBV
+[batch] done SIMO exit=0 [deep-api] SIMO: OVERVALUED | band $138.0-$240.15 vs price $258.36 | size quarter
+[batch] start AGYS
+[batch] done VIK exit=0 [deep-api] VIK: OVERVALUED | band $45.6-$73.0 vs price $92.79 | size quarter
+[batch] start AIT
+[batch] done VRTX exit=0 [deep-api] VRTX: OVERVALUED | band $254.0-$544.0 vs price $548.05 | size quarter
+[batch] start ALKS
+[batch] done AGYS exit=0 [deep-api] AGYS: OVERVALUED | band $48.0-$86.7 vs price $113.8 | size quarter
+[batch] start AMAT
+[batch] done ABBV exit=0 [deep-api] ABBV: HOLD | band $207.0-$266.8 vs price $264.96 | size half
+[batch] start AMGN
+[batch] done AIT exit=0 [deep-api] AIT: OVERVALUED | band $255.0-$310.0 vs price $337.3 | size half
+[batch] start AMRX
+[batch] done ALKS exit=0 [deep-api] ALKS: OVERVALUED | band $28.0-$39.0 vs price $48.22 | size quarter
+[batch] start ANAB
+[batch] done AMAT exit=0 [deep-api] AMAT: OVERVALUED | band $164.6-$201.0 vs price $492.32 | size half
+[batch] start APH
+[batch] done AMGN exit=0 [deep-api] AMGN: HOLD | band $410.0-$566.0 vs price $439.33 | size quarter
+[batch] start APPF
+[batch] done AMRX exit=0 [deep-api] AMRX: HOLD | band $12.28-$22.4 vs price $17.91 | size quarter
+[batch] start ARGX
+[batch] done APPF exit=0 [deep-api] APPF: OVERVALUED | band $147.035-$198.0 vs price $224.4 | size quarter
+[batch] start ARM
+[batch] done ANAB exit=0 [deep-api] ANAB: HOLD | band $49.0-$65.0 vs price $57.74 | size quarter
+[batch] start ARWR
+[batch] done APH exit=0 [deep-api] APH: OVERVALUED | band $101.0-$121.0 vs price $157.01 | size half
+[batch] start ATAT
+[batch] done ARGX exit=0 [deep-api] ARGX: HOLD | band $845.0-$1359.0 vs price $1039.78 | size quarter
+[batch] start ATRO
+[batch] done ARM exit=0 [deep-api] ARM: OVERVALUED | band $7.64-$18.02 vs price $243.32 | size quarter
+[batch] start BLBD
+[batch] done ARWR exit=0 [deep-api] ARWR: OVERVALUED | band $27.5-$43.0 vs price $87.11 | size quarter
+[batch] start BMY
+[batch] done ATRO exit=0 [deep-api] ATRO: OVERVALUED | band $36.35-$52.0 vs price $78.0 | size quarter
+[batch] start BWMX
+[batch] done BLBD exit=0 [deep-api] BLBD: UNDERVALUED | band $76.35-$96.0 vs price $61.89 | size half
+[batch] start CAAP
+[batch] done ATAT exit=0 [deep-api] ATAT: UNDERVALUED | band $41.3-$52.65 vs price $34.75 | size half
+[batch] start CAH
+[batch] done BMY exit=0 [deep-api] BMY: HOLD | band $56.7-$96.0 vs price $67.01 | size quarter
+[batch] start CASY
+[batch] done BWMX exit=0 [deep-api] BWMX: UNDERVALUED | band $26.5-$46.1 vs price $16.05 | size quarter
+[batch] start CGNX
+[batch] done CAAP exit=0 [deep-api] CAAP: HOLD | band $20.619999999999997-$32.5 vs price $23.46 | size quarter
+[batch] start CHE
+[batch] done CASY exit=0 [deep-api] CASY: OVERVALUED | band $440.0-$640.37 vs price $835.74 | size quarter
+[batch] start CHEF
+[batch] done CAH exit=0 [deep-api] CAH: UNDERVALUED | band $263.0-$339.0 vs price $229.19 | size half
+[batch] start CIX
+[batch] done CHE exit=0 [deep-api] CHE: UNDERVALUED | band $568.0-$626.0 vs price $540.57 | size full
+[batch] start CRM
+[batch] done CGNX exit=0 [deep-api] CGNX: OVERVALUED | band $23.68-$32.66 vs price $60.54 | size quarter
+[batch] start CSCO
+[batch] done CIX exit=0 [deep-api] CIX: HOLD | band $31.05-$35.0 vs price $31.12 | size full
+[batch] start CW
+[batch] done CHEF exit=0 [deep-api] CHEF: OVERVALUED | band $70.0-$75.0 vs price $110.61 | size full
+[batch] start DCBO
+[batch] done CSCO exit=0 [deep-api] CSCO: OVERVALUED | band $75.08-$80.0 vs price $111.04 | size full
+[batch] start DGII
+[batch] done CRM exit=0 [deep-api] CRM: UNDERVALUED | band $218.5-$272.0 vs price $209.17 | size half
+[batch] start DLTR
+[batch] done CW exit=0 [deep-api] CW: OVERVALUED | band $297.0-$386.0 vs price $634.99 | size half
+[batch] start DOV
+[batch] done DCBO exit=0 [deep-api] DCBO: UNDERVALUED | band $32.37-$35.79 vs price $24.69 | size full
+[batch] start DT
+[batch] done DGII exit=0 [deep-api] DGII: OVERVALUED | band $54.25-$66.0 vs price $74.91 | size half
+[batch] start DXCM
+[batch] done DLTR exit=0 [deep-api] DLTR: OVERVALUED | band $92.0-$128.5 vs price $131.48 | size quarter
+[batch] start ELMD
+[batch] done DOV exit=0 [deep-api] DOV: OVERVALUED | band $157.0-$181.0 vs price $201.92 | size half
+[batch] start EMR
+[batch] done DT exit=0 [deep-api] DT: OVERVALUED | band $35.305-$40.7 vs price $49.12 | size half
+[batch] start ESLT
+[batch] done ELMD exit=0 [deep-api] ELMD: OVERVALUED | band $31.0-$33.5 vs price $39.45 | size full
+[batch] start EW
+[batch] done DXCM exit=0 [deep-api] DXCM: OVERVALUED | band $59.75-$72.0 vs price $92.34 | size half
+[batch] start EXPD
+[batch] done EMR exit=0 [deep-api] EMR: OVERVALUED | band $89.0-$106.0 vs price $156.46 | size half
+[batch] start FLXS
+[batch] done ESLT exit=0 [deep-api] ESLT: HOLD | band $270.0-$780.5 vs price $741.33 | size quarter
+[batch] start FMX
+[batch] done EW exit=0 [deep-api] EW: OVERVALUED | band $70.0-$78.0 vs price $89.79 | size full
+[batch] start FSLR
+[batch] done EXPD exit=0 [deep-api] EXPD: OVERVALUED | band $109.0-$115.0 vs price $187.81 | size full
+[batch] start GILD
+[batch] done FLXS exit=0 [deep-api] FLXS: HOLD | band $60.0-$117.0 vs price $81.748 | size quarter
+[batch] start GLBE
+[batch] done FMX exit=0 [deep-api] FMX: HOLD | band $109.8-$171.0 vs price $121.98 | size quarter
+[batch] start GMAB
+[batch] done FSLR exit=0 [deep-api] FSLR: OVERVALUED | band $92.4-$169.0 vs price $214.28 | size quarter
+[batch] start GRC
+[batch] done GILD exit=0 [deep-api] GILD: HOLD | band $68.05-$160.0 vs price $146.12 | size quarter
+[batch] start GRMN
+[batch] done GLBE exit=0 [deep-api] GLBE: HOLD | band $35.1-$65.03 vs price $40.55 | size quarter
+[batch] start GSAT
+[batch] done GMAB exit=0 [deep-api] GMAB: HOLD | band $4.88-$34.0 vs price $33.45 | size quarter
+[batch] start GWRE
+[batch] done GRMN exit=0 [deep-api] GRMN: OVERVALUED | band $204.0-$216.0 vs price $296.75 | size full
+[batch] start HALO
+[batch] done GRC exit=0 [deep-api] GRC: OVERVALUED | band $36.37-$52.0 vs price $78.09 | size quarter
+[batch] start HCSG
+[batch] done GSAT exit=0 [deep-api] GSAT: HOLD | band $79.0-$82.7 vs price $82.36 | size full
+[batch] start HEI
+[batch] done HALO exit=0 [deep-api] HALO: HOLD | band $75.0-$166.0 vs price $107.36 | size quarter
+[batch] start HG
+[batch] done GWRE exit=0 [deep-api] GWRE: OVERVALUED | band $94.0-$135.0 vs price $189.19 | size quarter
+[batch] start HQY
+[batch] done HCSG exit=0 [deep-api] HCSG: HOLD | band $21.855-$30.8 vs price $22.77 | size quarter
+[batch] start HRMY
+[batch] done HRMY exit=0 [deep-api] HRMY: HOLD | band $33.9-$54.2 vs price $38.15 | size quarter
+[batch] start IDCC
+[batch] done HEI exit=0 [deep-api] HEI: OVERVALUED | band $156.7-$263.5 vs price $355.04 | size quarter
+[batch] start IESC
+[batch] done HQY exit=0 [deep-api] HQY: OVERVALUED | band $88.0-$99.8 vs price $105.405 | size full
+[batch] start IHG
+[batch] done HG exit=0 [deep-api] HG: HOLD | band $34.96-$60.0 vs price $34.96 | size quarter
+[batch] start ILMN
+[batch] done IDCC exit=0 [deep-api] IDCC: OVERVALUED | band $144.0-$186.0 vs price $342.42 | size half
+[batch] start IMAX
+[batch] done IHG exit=0 [deep-api] IHG: OVERVALUED | band $90.0-$134.0 vs price $159.91 | size quarter
+[batch] start INTU
+[batch] done IESC exit=0 [deep-api] IESC: OVERVALUED | band $166.0-$679.5 vs price $685.04 | size quarter
+[batch] start IRMD
+[batch] done ILMN exit=0 [deep-api] ILMN: OVERVALUED | band $75.4-$105.0 vs price $219.4 | size quarter
+[batch] start ISRG
+[batch] done IMAX exit=0 [deep-api] IMAX: OVERVALUED | band $26.53-$36.0 vs price $52.74 | size quarter
+[batch] start ITT
+[batch] done INTU exit=0 [deep-api] INTU: UNDERVALUED | band $420.8-$489.0 vs price $369.58 | size half
+[batch] start JBHT
+[batch] done IRMD exit=0 [deep-api] IRMD: HOLD | band $41.0-$87.85 vs price $87.85 | size quarter
+[batch] start JNJ
+[batch] done ISRG exit=0 [deep-api] ISRG: OVERVALUED | band $155.0-$230.0 vs price $376.84 | size quarter
+[batch] start JOE
+[batch] done JNJ exit=0 [deep-api] JNJ: OVERVALUED | band $204.0-$243.0 vs price $270.24 | size half
+[batch] start KMDA
+[batch] done JBHT exit=0 [deep-api] JBHT: OVERVALUED | band $94.0-$139.0 vs price $275.45 | size quarter
+[batch] start KO
+[batch] done ITT exit=0 [deep-api] ITT: OVERVALUED | band $118.0-$137.7 vs price $205.37 | size half
+[batch] start KRT
+[batch] done KMDA exit=0 [deep-api] KMDA: HOLD | band $7.4-$9.7 vs price $8.24 | size quarter
+[batch] start LAUR
+[batch] done JOE exit=0 [deep-api] JOE: OVERVALUED | band $57.0-$61.644999999999996 vs price $68.89 | size full
+[batch] start LHX
+[batch] done KRT exit=0 [deep-api] KRT: OVERVALUED | band $15.5-$38.86 vs price $48.905 | size quarter
+[batch] start LQDT
+[batch] done KO exit=0 [deep-api] KO: OVERVALUED | band $60.0-$91.0 vs price $91.1 | size quarter
+[batch] start M
+[batch] done LHX exit=0 [deep-api] LHX: HOLD | band $249.0-$309.0 vs price $266.73 | size half
+[batch] start MA
+[batch] done LAUR exit=0 [deep-api] LAUR: UNDERVALUED | band $44.5-$49.7 vs price $37.46 | size full
+[batch] start MANH
+[batch] done LQDT exit=0 [deep-api] LQDT: OVERVALUED | band $21.9-$30.0 vs price $43.27 | size quarter
+[batch] start MAR
+[batch] done M exit=0 [deep-api] M: HOLD | band $20.76-$29.92 vs price $22.82 | size quarter
+[batch] start MDT
+[batch] done MA exit=0 [deep-api] MA: HOLD | band $578.0-$697.0 vs price $580.63 | size half
+[batch] start META
+[batch] done MANH exit=0 [deep-api] MANH: OVERVALUED | band $90.0-$120.0 vs price $214.56 | size quarter
+[batch] start MOG-B
+[batch] done MDT exit=0 [deep-api] MDT: HOLD | band $87.25-$120.85 vs price $93.35 | size quarter
+[batch] start MOV
+[batch] done MAR exit=0 [deep-api] MAR: OVERVALUED | band $85.0-$189.0 vs price $356.39 | size quarter
+[batch] done META exit=0 [deep-api] META: OVERVALUED | band $376.0-$461.0 vs price $553.28 | size half
+[batch] done MOV exit=0 [deep-api] MOV: HOLD | band $32.0-$38.0 vs price $34.81 | size half
+[batch] done MOG-B exit=0 [deep-api] MOG-B: OVERVALUED | band $196.0-$207.0 vs price $397.1 | size full
+[batch] ALL DONE

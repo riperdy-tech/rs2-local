@@ -1,0 +1,56 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/ALKS.md, 18.4 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] ALKS @ $48.83 | deepseek-v4-flash effort=high | 3 samples | pack 34,359ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ALKS_20260826_012955
+    [tool 1] search_web: Alkermes full year 2025 results LYBALVI VIVITROL ARISTADA net sales by product
+    [tool 2] search_web: Alkermes Avadel acquisition purchase price LUMRYZ financing term loan
+    [tool 3] search_web: Alkermes 2026 full year financial guidance revenue non-GAAP EPS LUMRYZ
+    [tool 4] search_web: Alkermes second quarter 2026 results non-GAAP EPS LUMRYZ net sales debt
+    [tool 5] fetch_page: https://seekingalpha.com/article/4926514-alkermes-plc-alks-q2-2026-earnings-call-transcr
+    [tool 6] search_web: Alkermes alixorexton ALKS 2680 Phase 3 narcolepsy pivotal program 2026 timeline readout
+    [tool 7] search_web: Alkermes ALKS 7290 orexin ADHD Phase 1b data results 2026
+    [tool 8] search_web: 10 year treasury yield fed funds rate August 2026
+    [tool 9] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/05/05/alkermes-alks-q1-2026-earnings
+    [tool 10] search_web: Alkermes 2025 fourth quarter results LYBALVI 345 VIVITROL ARISTADA manufacturing royalty
+    [tool 11] search_web: Alkermes 2026 non-GAAP EPS guidance adjusted EPS full year
+    [tool 12] search_web: Federal Reserve policy stance September 2026 rate cuts inflation
+    [tool 13] fetch_page: https://investor.alkermes.com/static-files/e5e72ca7-b6cc-46ac-a03d-56d248c43a37
+    [tool 14] search_web: Alkermes Q2 2026 press release LUMRYZ net sales adjusted EBITDA non-GAAP EPS guidance ra
+    [tool 15] search_web: US GDP inflation unemployment August 2026 economic outlook
+    [tool 16] search_web: Alkermes term loan 1.525 billion SOFR interest rate 2031
+  sample 1: IV $34.8 | usable=True | 16 tool calls (think 141,604ch / report 26,518ch) | 522s | $0.047 cumulative
+    [tool 1] search_web: Alkermes 2026 full year guidance revenue non-GAAP EPS outlook
+    [tool 2] search_web: Alkermes Avadel acquisition financing debt term loan $2.4 billion
+    [tool 3] search_web: Alkermes LYBALVI Aristada Vivitrol net sales 2025 royalty revenue
+    [tool 4] search_web: Alkermes alixorexton ALKS 2680 Phase 3 narcolepsy data readout timing orexin
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/1520262/000119312526068512/alks-ex99_1.htm
+    [tool 6] fetch_page: https://investor.alkermes.com/static-files/5f9eb70d-a7bd-42a7-8617-42c30f63e5b4
+    [tool 7] fetch_page: https://investor.alkermes.com/news-releases/news-release-details/alkermes-plc-completes-
+    [tool 8] search_web: 10 year treasury yield August 2026 Federal Reserve policy
+    [tool 9] search_web: LUMRYZ net sales 2024 2025 Avadel sodium oxybate narcolepsy market share
+    [tool 10] search_web: Takeda TAK-861 orexin Phase 3 narcolepsy results 2025 2026
+    [tool 11] search_web: Alkermes 2027 2028 EPS estimate analyst revenue forecast LUMRYZ peak sales
+    [tool 12] search_web: US inflation rate GDP growth second quarter 2026
+    [tool 13] fetch_page: https://es.tradingview.com/news/marketbeat:86b055d10094b:0-alkermes-q2-earnings-call-hig
+    [tool 14] search_web: INVEGA SUSTENNA patent expiry generic paliperidone palmitate J&J 2026
+  sample 2: IV $? | usable=False | 14 tool calls (think 99,154ch / report 23,601ch) (no value extracted) | 435s | $0.081 cumulative
+    [tool 1] search_web: Alkermes Avadel Pharmaceuticals acquisition price financing debt 2026
+    [tool 2] search_web: Alkermes 2026 full year revenue guidance LUMRYZ LYBALVI VIVITROL ARISTADA
+    [tool 3] search_web: LUMRYZ net sales 2025 Avadel sodium oxybate narcolepsy revenue
+    [tool 4] search_web: Alkermes alixorexton ALKS 2680 narcolepsy Phase 3 timeline FDA filing
+    [tool 5] search_web: Alkermes Q2 2026 results LYBALVI net sales ARISTADA royalty revenue guidance
+    [tool 6] search_web: Alkermes alixorexton Phase 3 narcolepsy topline data 2026 NDA submission 2027
+    [tool 7] search_web: Alkermes second quarter 2026 balance sheet cash debt term loan 10-Q
+    [tool 8] search_web: 10-year Treasury yield August 2026 Fed funds rate federal reserve policy
+    [tool 9] fetch_page: https://investor.alkermes.com/static-files/e5e72ca7-b6cc-46ac-a03d-56d248c43a37
+    [tool 10] search_web: federal funds target range August 2026 FOMC rate cut inflation CPI
+    [tool 11] search_web: Alkermes ARISTADA 2026 net sales guidance royalty revenue 2026 full year outlook
+    [tool 12] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/02/25/alkermes-alks-q4-2025-earnings
+    [tool 13] search_web: alixorexton Phase 3 Brilliance narcolepsy topline data 2027 NDA filing expected
+    [tool 14] search_web: Alkermes ALKS 7290 orexin ADHD Phase 1b data 2026
+  sample 3: IV $43.3 | usable=True | 14 tool calls (think 79,003ch / report 32,245ch) | 400s | $0.112 cumulative
+
+[deep-api] ALKS: OVERVALUED | band $34.8-$43.3 vs price $48.83 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 18.4d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 412,254 in (325,248 cached) | 136,550 out (106,586 reasoning) | $0.112 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\ALKS_20260826_012955\verdict_depth.json

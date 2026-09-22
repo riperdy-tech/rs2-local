@@ -1,0 +1,55 @@
+[deep-api] INCY @ $127.81 | deepseek-v4-flash effort=high | 3 samples | pack 32,515ch from INCY_20260824_103945 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\INCY_20260825_011909
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 140.0 | spread 71.1%
+    [tool 1] search_web: Incyte full year 2026 guidance raised revenue product sales
+    [tool 2] search_web: Jakafi ruxolitinib US patent expiry 2028 loss of exclusivity Incyte
+    [tool 3] search_web: Incyte capital expenditures 2025 2026 spending guidance
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/879169/000087916926000006/incy-q42025xexx991.htm
+    [tool 6] search_web: Incyte Q2 2026 results total revenue $1.67 billion product sales Jakafi Opzelura
+    [tool 7] search_web: ruxolitinib Jakafi Medicare drug price negotiation Inflation Reduction Act selected
+    [tool 8] search_web: Incyte acquires phase 3 hematology asset 2026 business development deal
+    [tool 9] fetch_page: https://www.biospace.com/press-releases/incyte-reports-second-quarter-2026-financial-res
+    [tool 10] search_web: Incyte Vega Therapeutics acquisition terms upfront consideration VGA039 $
+    [tool 11] search_web: Incyte 10-K 2025 "purchases of property" equipment capital expenditures cash flow
+    [tool 12] search_web: Jakafi ruxolitinib composition of matter patent expiration date 2028 extended
+    [tool 13] search_web: Incyte cash flow 2025 "capital expenditures" OR "purchases of property" millions annual 
+    [tool 14] search_web: Incyte povorcitinib hidradenitis suppurativa phase 3 results 2026
+    [tool 15] search_web: Incyte royalty revenue Novartis Jakafi 2025 2026 ex-US
+    [tool 16] search_web: Incyte INCY analyst revenue estimate 2027 2028 consensus forecast
+  sample 1: IV $90.55 | usable=True | 16 tool calls (think 135,291ch / report 25,368ch) | 515s | $0.047 cumulative
+    [tool 1] search_web: Incyte Q2 2026 earnings full year 2026 guidance revenue raised
+    [tool 2] search_web: Incyte Jakafi ruxolitinib patent expiry generic competition 2028
+    [tool 3] search_web: Incyte 2025 annual report capital expenditures capex R&D spend
+    [tool 4] search_web: 10 year treasury yield current August 2026
+    [tool 5] fetch_page: https://investor.incyte.com/news-releases/news-release-details/incyte-reports-fourth-qua
+    [tool 6] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-incyte-q2-2026-beats
+    [tool 7] fetch_page: https://www.sec.gov/Archives/edgar/data/879169/000087916926000010/incy-20251231.htm
+    [tool 8] search_web: Incyte full year 2025 product revenue breakdown Jakafi Opzelura Iclusig Niktimvo royalti
+    [tool 9] search_web: JAKAFI ruxolitinib composition of matter patent expiration 2028 2027 drugpatentwatch
+    [tool 10] search_web: Incyte 2027 2028 revenue EPS estimates analyst forecast consensus
+    [tool 11] search_web: Incyte share repurchase program authorization 2025 2026 buyback billions
+    [tool 12] fetch_page: https://www.biopharmawatch.com/news/INCY/incyte-reports-q4-full-year-2025-results
+    [tool 13] fetch_page: https://finance.yahoo.com/markets/stocks/articles/earnings-beat-incyte-corporation-just-
+    [tool 14] search_web: Incyte 10-K 2025 "purchases of property and equipment" cash flow statements capex millio
+    [tool 15] search_web: Incyte Opzelura 2025 full year net product revenue Jakafi 2025 full year revenue billion
+  sample 2: IV $33.09 | usable=True | 15 tool calls (think 95,132ch / report 29,526ch) | 426s | $0.083 cumulative
+    [tool 1] search_web: Incyte second quarter 2026 results press release net product revenue full year 2026 guid
+    [tool 2] search_web: Incyte 2024 financial results one-time charge in-process R&D Escient acquisition net los
+    [tool 3] search_web: Incyte Jakafi ruxolitinib US patent expiry generic entry 2027 2028 Opzelura patents
+    [tool 4] search_web: 10-year treasury yield current August 2026
+    [tool 5] search_web: Incyte Reports Second Quarter 2026 Financial Results press release SEC exhibit net produ
+    [tool 6] search_web: Incyte CMS settlement one-time benefit second quarter 2026 amount Medicare drug price ne
+    [tool 7] search_web: Incyte acquired phase III hematology asset business development 2026 CD19 antibody
+    [tool 8] search_web: Incyte Escient EP262 EP547 chronic spontaneous urticaria prurigo nodularis results 2026
+    [tool 9] fetch_page: https://www.sec.gov/Archives/edgar/data/879169/000087916926000053/incy-q22026xexx991.htm
+    [tool 10] fetch_page: https://investor.incyte.com/news-releases/news-release-details/incyte-acquire-vega-thera
+    [tool 11] search_web: Incyte fourth quarter full year 2025 financial results press release SEC exx991 Jakafi O
+    [tool 12] search_web: Incyte Vega Therapeutics latarcibart VGA039 acquisition upfront payment $ million milest
+    [tool 13] search_web: Incyte povorcitinib FDA approval hidradenitis suppurativa 2026 NDA status prurigo nodula
+    [tool 14] search_web: Incyte effective tax rate 2025 annual report GAAP provision income taxes
+  sample 3: IV $102.875 | usable=True | 14 tool calls (think 64,083ch / report 31,943ch) | 325s | $0.109 cumulative
+
+[deep-api] INCY: OVERVALUED | band $33.09-$102.875 vs price $127.81 | size quarter
+[deep-api] LOCAL said: HOLD | band $90.0-$154.0 | median $140.0
+[deep-api] 15 API calls | 300,738 in (230,016 cached) | 138,907 out (105,059 reasoning) | $0.109 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\INCY_20260825_011909\verdict_depth.json

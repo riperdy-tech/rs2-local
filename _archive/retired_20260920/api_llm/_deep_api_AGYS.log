@@ -1,0 +1,58 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/AGYS.md, 18.4 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] AGYS @ $113.8 | deepseek-v4-flash effort=high | 3 samples | pack 35,385ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AGYS_20260826_012954
+    [tool 1] search_web: Agilysys fiscal 2027 revenue guidance raised Q1 earnings
+    [tool 2] search_web: Agilysys Marriott International property management system agreement hotels
+    [tool 3] search_web: Agilysys AGYS analyst estimates fiscal 2027 fiscal 2028 revenue EPS forecast
+    [tool 4] search_web: 10-year treasury yield federal reserve policy August 2026
+    [tool 5] fetch_page: https://www.businesswire.com/news/home/20260727378799/en/Agilysys-Announces-Record-Reven
+    [tool 6] fetch_page: https://www.agilysys.com/en/news/agilysys-announces-agreement-with-marriott-internationa
+    [tool 7] search_web: Pomerantz Agilysys investigation class action status dismissed 2026
+    [tool 8] search_web: Agilysys recurring revenue percentage subscription fiscal 2026 annual report
+    [tool 9] fetch_page: https://seekingalpha.com/news/4619095-agilysys-targets-368m-373m-fy-2027-revenue-and-at-
+    [tool 10] fetch_page: https://www.marketwatch.com/investing/stock/agys/analystestimates
+    [tool 11] fetch_page: https://www.agilysys.com/en/news/agilysys-announces-16th-consecutive-record-revenue-quar
+    [tool 12] fetch_page: https://www.ibtimes.com.au/agilysys-shares-surge-record-revenue-2027-guidance-1869167
+    [tool 13] search_web: "Agilysys" Q1 fiscal 2027 press release "subscription revenue" guidance "$368" OR "$373"
+    [tool 14] search_web: AGYS stockanalysis.com revenue forecast fiscal 2028 EPS estimate
+  sample 1: IV $78.0 | usable=True | 14 tool calls (think 45,336ch / report 16,964ch) | 259s | $0.022 cumulative
+    [tool 1] search_web: Agilysys fiscal 2027 first quarter results revenue guidance raised
+    [tool 2] search_web: Agilysys Marriott property management system PMS agreement deployment
+    [tool 3] search_web: 10 year Treasury yield August 2026
+    [tool 4] search_web: Federal Reserve interest rate policy August 2026 FOMC
+    [tool 5] fetch_page: https://www.businesswire.com/news/home/20260727378799/en/Agilysys-Announces-Record-Reven
+    [tool 6] fetch_page: https://www.agilysys.com/en/news/agilysys-announces-agreement-with-marriott-internationa
+    [tool 7] search_web: dollar index DXY level August 2026
+    [tool 8] search_web: high yield credit spreads August 2026
+    [tool 9] search_web: Agilysys fiscal 2027 guidance $365 million $370 million revenue subscription growth at l
+    [tool 10] search_web: Agilysys fiscal 2026 subscription revenue percent of total revenue annual
+    [tool 11] search_web: Agilysys research and development expense fiscal 2026 10-K
+    [tool 12] search_web: Pomerantz Agilysys investigation lawsuit status resolution 2026
+    [tool 13] fetch_page: https://www.macrotrends.net/stocks/charts/AGYS/agilysys/research-development-expenses
+    [tool 14] fetch_page: https://www.tipranks.com/news/the-fly/agilysys-raises-fy27-revenue-view-to-368m-373m-fro
+    [tool 15] search_web: Agilysys AGYS analyst estimates fiscal 2027 fiscal 2028 revenue EPS consensus
+    [tool 16] search_web: US inflation rate CPI GDP growth third quarter 2026
+  sample 2: IV $64.2 | usable=True | 16 tool calls (think 121,162ch / report 21,343ch) | 460s | $0.059 cumulative
+    [tool 1] search_web: Agilysys fiscal 2027 full year guidance revenue raised Q1 2027
+    [tool 2] search_web: Agilysys Marriott PMS property management system agreement details contract
+    [tool 3] search_web: 10 year treasury yield Fed policy August 2026
+    [tool 4] search_web: Agilysys Pomerantz investigation status 2026 securities class action update
+    [tool 5] fetch_page: https://www.agilysys.com/en/news/agilysys-announces-agreement-with-marriott-internationa
+    [tool 6] search_web: Agilysys Q1 FY2027 earnings call transcript Marriott PMS ramp subscription revenue
+    [tool 7] search_web: Agilysys AGYS stock drop decline 2025 reason Q4 fiscal 2025 results
+    [tool 8] search_web: Agilysys research and development product development expense fiscal 2026
+    [tool 9] fetch_page: https://news.alphastreet.com/agilysys-inc-agys-q1-2027-earnings-call-transcript/
+    [tool 10] fetch_page: https://www.macrotrends.net/stocks/charts/AGYS/agilysys/research-development-expenses
+    [tool 11] search_web: Agilysys acquisition 2025 fiscal year cash used investing activities
+    [tool 12] search_web: Agilysys AGYS analyst estimates fiscal 2027 fiscal 2028 revenue EPS consensus
+    [tool 13] search_web: Agilysys acquires company fiscal 2025 $145 million business combination name
+    [tool 14] fetch_page: https://stockanalysis.com/stocks/agys/
+    [tool 15] search_web: Agilysys Marriott revenue contribution fiscal 2026 2027 timing rollout properties live
+    [tool 16] search_web: "Agilysys" Q1 fiscal 2027 earnings call transcript "Ramesh" subscription growth adjusted
+  sample 3: IV $63.0 | usable=True | 16 tool calls (think 55,241ch / report 27,127ch) | 217s | $0.081 cumulative
+
+[deep-api] AGYS: OVERVALUED | band $63.0-$78.0 vs price $113.8 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 18.4d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 416,249 in (338,816 cached) | 92,727 out (69,835 reasoning) | $0.081 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\AGYS_20260826_012954\verdict_depth.json

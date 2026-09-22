@@ -26,13 +26,16 @@ from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+elif hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
 import depth_triggers       # noqa: E402
 import depth_membership     # noqa: E402
+import depth_ondemand       # noqa: E402  (queue drained at ticker boundaries; stdlib-only)
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -43,6 +46,9 @@ LOCK = HERE / "cache" / "orchestrate_depth.lock"
 # red button — create cache/DEPTH_PAUSED to stop this orchestrator at the next boundary.
 PAUSED = HERE / "cache" / "DEPTH_PAUSED"
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
+# On-demand one-shots (depth_ondemand.py). Published to DEDICATED site paths
+# (ondemand_index.json + ondemand_reports/), never the overlay/rankings/paper machinery.
+OD_LEDGER = HERE / "cache" / "depth_ondemand_ledger.jsonl"
 OVERLAY = HERE / "cache" / "depth_overlay.json"
 # Cross-process mutex for the screener-repo publish. The local sweep here and a concurrent cloud
 # publish (api_llm/publish_cloud_verdicts.py, which calls publish_overlay) both drive the SAME
@@ -218,6 +224,8 @@ def publish_overlay():
     pub_data = repo / "public" / "data"
     dst = pub_data / "depth_overlay.json"
     reports_dir = pub_data / "depth_reports"
+    od_index = pub_data / "ondemand_index.json"
+    od_reports = pub_data / "ondemand_reports"
 
     try:
         with _publish_lock():
@@ -228,7 +236,8 @@ def publish_overlay():
             # 1. Refuse to run on a tree dirtied by anything other than our own outputs. In a
             #    dedicated clone this is always clean; the guard catches a broken/co-opted clone.
             dirty = g("status", "--porcelain", "--",
-                      ":!public/data/depth_overlay.json", ":!public/data/depth_reports").stdout.strip()
+                      ":!public/data/depth_overlay.json", ":!public/data/depth_reports",
+                      ":!public/data/ondemand_index.json", ":!public/data/ondemand_reports").stdout.strip()
             if dirty:
                 abort("publish clone has unexpected local changes — investigate, not stashing over")
                 return
@@ -246,6 +255,9 @@ def publish_overlay():
             if changed:
                 log(f"report bundles updated: {', '.join(changed[:6])}"
                     + (f" (+{len(changed) - 6} more)" if len(changed) > 6 else ""))
+            od_changed = build_ondemand_bundles(od_reports, od_index)
+            if od_changed:
+                log(f"on-demand bundles updated: {', '.join(od_changed[:6])}")
 
             # Pull in any cloud bundles staged out-of-tree (see PENDING_REPORTS). Copied AFTER the
             # reset so they survive it; cleared only once the push that carries them succeeds.
@@ -257,7 +269,9 @@ def publish_overlay():
 
             # 3. Validate BEFORE staging — a bad artifact never reaches a commit (AC#3).
             bad = []
-            for f in [dst, *sorted(reports_dir.glob("*.json"))]:
+            od_files = ([od_index] if od_index.exists() else []) + \
+                       (sorted(od_reports.glob("*.json")) if od_reports.exists() else [])
+            for f in [dst, *sorted(reports_dir.glob("*.json")), *od_files]:
                 try:
                     json.loads(f.read_text(encoding="utf-8"))
                 except Exception as e:
@@ -268,6 +282,10 @@ def publish_overlay():
 
             g("add", str(dst))
             g("add", str(reports_dir))
+            if od_index.exists():
+                g("add", str(od_index))
+            if od_reports.exists():
+                g("add", str(od_reports))
 
             # 4. Never commit conflict markers or corruption (AC#1/#3).
             if g("diff", "--cached", "--check").returncode != 0:
@@ -278,7 +296,7 @@ def publish_overlay():
                 return
 
             c = g("-c", "commit.gpgsign=false", "commit", "-m",
-                  "depth_overlay.json: sweep update (band_direction_v1)")
+                  "depth artifacts: sweep/on-demand update (band_direction_v1)")
             if c.returncode != 0:
                 abort(f"commit failed: {(c.stderr or c.stdout).strip()[:80]}")
                 return
@@ -335,18 +353,96 @@ def build_report_bundles(out_dir):
                 if sp.exists():
                     rep = sp.read_text(encoding="utf-8", errors="replace")
                 samples.append({"sample": r["sample"], "iv": r.get("iv"),
+                                "scorecard": r.get("scorecard"),
                                 "plausible": r.get("plausible"),
                                 "reasons": r.get("reasons") or [],
                                 "truncated": r.get("truncated"),
                                 "secs": r.get("secs"), "report": rep})
             bundle = {"ticker": t, "run": v.get("consensus_dir"), "verdict": v,
-                      "samples": samples}
+                      "samples": samples, "scorecard": doc.get("scorecard")}
             txt = json.dumps(bundle)
             if not dst.exists() or dst.read_text(encoding="utf-8") != txt:
                 dst.write_text(txt, encoding="utf-8")
                 written.append(t)
         except Exception as e:
             log(f"report bundle {t} failed (non-fatal): {str(e)[:100]}")
+    # Prune any report bundle not present in newest
+    for f in list(out_dir.glob("*.json")):
+        if f.stem not in newest:
+            try:
+                f.unlink()
+            except OSError:
+                pass
+    return written
+
+
+def build_ondemand_bundles(bundles_dir, index_path):
+    """Site artifacts for ON-DEMAND verdicts (operator order 2026-08-30): one bundle per
+    ticker (newest run, same schema as build_report_bundles so the site reuses its viewer)
+    plus ondemand_index.json listing EVERY on-demand verdict newest-first. Dedicated paths —
+    the overlay/rankings/paper-portfolio consumers never read them, which is the entire
+    isolation story of the on-demand feature. Returns changed ticker list."""
+    bundles_dir = Path(bundles_dir)
+    bundles_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    if OD_LEDGER.exists():
+        for line in OD_LEDGER.read_text(encoding="utf-8").splitlines():
+            try:
+                rows.append(json.loads(line))
+            except Exception:
+                continue
+    written = []
+    newest = {}
+    for v in rows:
+        newest[v["ticker"]] = v
+    for t, v in newest.items():
+        cd = HERE / "ab_reports" / "consensus" / v.get("consensus_dir", "")
+        cj = cd / "consensus.json"
+        if not cj.exists():
+            continue
+        dst = bundles_dir / f"{t}.json"
+        try:
+            doc = json.loads(cj.read_text(encoding="utf-8"))
+            samples = []
+            for r in doc.get("runs", []):
+                rep = ""
+                sp = cd / f"sample{r['sample']}.md"
+                if sp.exists():
+                    rep = sp.read_text(encoding="utf-8", errors="replace")
+                samples.append({"sample": r["sample"], "iv": r.get("iv"),
+                                "scorecard": r.get("scorecard"),
+                                "plausible": r.get("plausible"),
+                                "reasons": r.get("reasons") or [],
+                                "truncated": r.get("truncated"),
+                                "secs": r.get("secs"), "report": rep})
+            bundle = {"ticker": t, "run": v.get("consensus_dir"), "verdict": v,
+                      "samples": samples, "scorecard": doc.get("scorecard")}
+            txt = json.dumps(bundle)
+            if not dst.exists() or dst.read_text(encoding="utf-8") != txt:
+                dst.write_text(txt, encoding="utf-8")
+                written.append(t)
+        except Exception as e:
+            log(f"on-demand bundle {t} failed (non-fatal): {str(e)[:100]}")
+    # Index: every row newest-first, verdict fields only (requested_at/source live in the
+    # queue file, not the ledger). Skip the write when `requests` is unchanged — a fresh
+    # generated_at on every sweep publish would dirty the index and defeat the
+    # `diff --cached --quiet` no-op check in publish_overlay.
+    reqs = [{k: v.get(k) for k in ("ticker", "date", "direction", "iv_band_low",
+                                   "iv_band_high", "price", "size_hint", "spread_pct",
+                                   "consensus_dir")}
+            for v in reversed(rows)]
+    index_path = Path(index_path)
+    old_reqs = None
+    if index_path.exists():
+        try:
+            old_reqs = json.loads(index_path.read_text(encoding="utf-8")).get("requests")
+        except Exception:
+            old_reqs = None
+    if reqs and reqs != old_reqs:
+        index_path.write_text(json.dumps({
+            "generated_at": datetime.now().isoformat(),
+            "count": len(reqs), "requests": reqs}), encoding="utf-8")
+        written.append("_index")
     return written
 
 
@@ -358,18 +454,44 @@ def _kill_tree(pid):
         pass
 
 
-def run_one(t):
-    """One depth_pipeline child, watchdogged. Returns (ok, why)."""
-    proc = subprocess.Popen([sys.executable, str(HERE / "depth_pipeline.py"), t])
-    try:
-        rc = proc.wait(timeout=TIMEOUT_MIN * 60)
-    except subprocess.TimeoutExpired:
-        log(f"::WATCHDOG:: {t} exceeded {TIMEOUT_MIN} min — killing tree + unloading models")
-        _kill_tree(proc.pid)
-        for m in (CONFIG.get("depth_model", "rs2-analyst-deep"), CONFIG.get("research_model")):
-            ops.wait_unloaded(CONFIG["ollama_endpoint"], m,
-                              need_free_mb=0, timeout_s=120)
-        return False, "watchdog_timeout"
+SAMPLE_TIMEOUT_MIN = int(CONFIG.get("depth_sample_timeout_min", 120))
+
+
+def run_one(t, ondemand=False):
+    """One depth_pipeline child, watchdogged by sample progress. Returns (ok, why).
+    Kills the process tree ONLY if no sample has completed within SAMPLE_TIMEOUT_MIN (120 min),
+    ensuring legitimate multi-sample runs are never terminated by an arbitrary total wall clock."""
+    proc = subprocess.Popen([sys.executable, str(HERE / "depth_pipeline.py"), t]
+                            + (["--ondemand"] if ondemand else []))
+    last_progress = time.time()
+
+    def _sample_progress_probe():
+        c_dirs = list((HERE / "ab_reports" / "consensus").glob(f"{t}_*"))
+        if not c_dirs:
+            return 0
+        latest_dir = max(c_dirs, key=lambda p: p.stat().st_mtime)
+        mtimes = [p.stat().st_mtime for p in latest_dir.glob("sample*.md") if not p.name.endswith("_thinking.md")]
+        return max(mtimes) if mtimes else latest_dir.stat().st_mtime
+
+    last_checkpoint = _sample_progress_probe()
+
+    while True:
+        try:
+            rc = proc.wait(timeout=15)
+            break
+        except subprocess.TimeoutExpired:
+            current_checkpoint = _sample_progress_probe()
+            if current_checkpoint > last_checkpoint:
+                last_checkpoint = current_checkpoint
+                last_progress = time.time()
+            elif time.time() - last_progress > SAMPLE_TIMEOUT_MIN * 60:
+                log(f"::WATCHDOG:: {t} made no sample progress for {SAMPLE_TIMEOUT_MIN} min — killing tree + unloading models")
+                _kill_tree(proc.pid)
+                for m in (CONFIG.get("depth_model", "rs2-analyst-deep"), CONFIG.get("research_model")):
+                    ops.wait_unloaded(CONFIG["ollama_endpoint"], m,
+                                      need_free_mb=0, timeout_s=120)
+                return False, "watchdog_timeout"
+
     if rc == 0:
         return True, "ok"
     return False, {3: "research_infra", 5: "consensus_failed", 7: "vram"}.get(rc, f"exit_{rc}")
@@ -413,6 +535,13 @@ def main():
     limit = int(args[args.index("--limit") + 1]) if "--limit" in args else None
     only = (args[args.index("--tickers") + 1].upper().split(",")
             if "--tickers" in args else None)
+
+    # Publish-only mode: regenerate + push site artifacts and exit. Used by the on-demand
+    # idle runner (depth_ondemand.drain), which cannot import this module (stdout rebind).
+    # Runs BEFORE the PAUSED/lock checks — publishing needs no GPU and has _publish_lock.
+    if "--publish-only" in args:
+        publish_overlay()
+        return 0
 
     if PAUSED.exists() and not dry:
         log(f"PAUSED file present ({PAUSED}) — exiting. Remove it to run.")
@@ -499,16 +628,49 @@ def main():
         except OSError:
             pass
 
-    if dry or not queue:
+    # ON-DEMAND requests keep an otherwise-empty sweep alive: without the pending() check a
+    # scheduled fire with nothing due would return here and strand queued requests for hours
+    # (the idle runner only spawns at request time — if it crashed, this is the backstop).
+    if dry or (not queue and not depth_ondemand.pending()):
         write_progress(0, None, False)
         return 0
 
     LOCK.write_text(json.dumps({"pid": subprocess.os.getpid(),
                                 "ts": datetime.now().isoformat()}), encoding="utf-8")
+
+    def drain_ondemand(done):
+        """Run every queued on-demand request NOW (they jump the remaining sweep queue).
+        Deliberately NO save_state (a one-shot must not create retry debt in due()) and NO
+        overlay rebuild — the MAIN ledger/overlay is untouched, so rankings and the paper
+        book never see these. publish_overlay IS called after a success (2026-08-30): it
+        ships the verdict to the site's DEDICATED on-demand section (ondemand_index.json +
+        ondemand_reports/), which nothing in the book machinery reads."""
+        while not PAUSED.exists():
+            req = depth_ondemand.take_next()
+            if not req:
+                break
+            t = req["ticker"]
+            log(f"[on-demand] {t} (requested {req['requested_at']}, {req['source']})")
+            write_progress(done, f"{t} (on-demand)", True)
+            ok, why = run_one(t, ondemand=True)
+            if ok:
+                publish_overlay()
+            else:
+                log(f"   [on-demand] {t} FAILED ({why}) — request consumed (one-shot)")
+                try:
+                    ops.notify_telegram(f"[RS2 on-demand] {t} FAILED ({why}). "
+                                        f"Re-send the request to retry.")
+                except Exception:
+                    pass
+
     try:
         done = 0
         for t in queue:
             if PAUSED.exists():
+                log("PAUSED appeared — stopping cleanly at the ticker boundary.")
+                break
+            drain_ondemand(done)
+            if PAUSED.exists():      # pause may have arrived during a long on-demand run
                 log("PAUSED appeared — stopping cleanly at the ticker boundary.")
                 break
             log(f"[{done+1}/{len(queue)}] {t}")
@@ -538,6 +700,10 @@ def main():
             if ok:
                 publish_overlay()
             done += 1
+        # Requests that arrived during the final ticker (or when the due-queue was empty and
+        # only on-demand work brought us here).
+        if not PAUSED.exists():
+            drain_ondemand(done)
     finally:
         try:
             LOCK.unlink()

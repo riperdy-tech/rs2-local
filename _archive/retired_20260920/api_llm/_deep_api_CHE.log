@@ -1,0 +1,58 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/CHE.md, 18.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] CHE @ $540.57 | deepseek-v4-flash effort=high | 3 samples | pack 34,185ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CHE_20260826_023316
+    [tool 1] search_web: 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: Federal Reserve interest rate decision August 2026 FOMC easing
+    [tool 3] search_web: Chemed Q2 2026 results press release July 28 2026 guidance EPS VITAS
+    [tool 4] search_web: Chemed 2027 EPS estimate consensus analyst forecast
+    [tool 5] search_web: Barington Capital Chemed activist campaign strategic review 2026
+    [tool 6] fetch_page: https://www.globenewswire.com/news-release/2026/07/28/3334743/0/en/chemed-reports-second
+    [tool 7] search_web: fed funds rate target range August 2026
+    [tool 8] search_web: hospice Medicare payment rate update FY 2027 final rule
+    [tool 9] search_web: Chemed VITAS Medicare cap exposure Florida 2026
+    [tool 10] fetch_page: https://www.chemed.com/news-releases/news-release-details/chemed-reports-second-quarter-
+    [tool 11] fetch_page: https://www.cms.gov/newsroom/fact-sheets/fiscal-year-2027-hospice-wage-index-payment-rat
+    [tool 12] search_web: US inflation rate CPI August 2026 core inflation
+    [tool 13] search_web: DXY dollar index level August 2026
+  sample 1: IV $387.05 | usable=True | 13 tool calls (think 67,733ch / report 24,459ch) | 346s | $0.028 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 current level
+    [tool 2] search_web: Chemed Corporation Q2 2026 earnings results July 28 2026 guidance adjusted EPS
+    [tool 3] search_web: Chemed VITAS 2026 guidance average daily census Medicare cap admissions
+    [tool 4] search_web: CMS hospice payment rate update FY 2027 proposed rule
+    [tool 5] search_web: Barington Capital Chemed activist campaign strategic review 2026
+    [tool 6] search_web: Chemed share repurchase authorization 2026 buyback
+    [tool 7] search_web: Chemed Roto-Rooter segment revenue 2025 franchise acquisition
+    [tool 8] search_web: hospice industry growth 2026 labor costs Medicare spending outlook
+    [tool 9] fetch_page: https://www.biospace.com/press-releases/chemed-reports-second-quarter-2026-results
+    [tool 10] search_web: "Chemed" 2026 adjusted EPS guidance "$25.25" OR "$24.25" full year
+    [tool 11] search_web: VITAS Healthcare revenue 2025 full year Chemed segment $1.9 billion Roto-Rooter segment
+    [tool 12] search_web: FOMC Federal Reserve interest rate decision August 2026
+    [tool 13] search_web: Chemed fourth quarter 2025 results VITAS full year 2025 revenue Roto-Rooter full year 20
+    [tool 14] search_web: Chemed CHE analyst 2027 EPS estimate forward
+    [tool 15] search_web: Chemed CHE historical average PE ratio 10 year valuation
+    [tool 16] search_web: US CPI inflation July 2026 latest reading
+    [tool 17] search_web: high yield credit spreads August 2026
+    [tool 18] search_web: US dollar index DXY August 2026 level
+  sample 2: IV $600.0 | usable=True | 18 tool calls (think 96,078ch / report 31,266ch) | 378s | $0.063 cumulative
+    [tool 1] search_web: Chemed Q2 2026 results adjusted EPS guidance full year 2026 VITAS Roto-Rooter
+    [tool 2] search_web: Chemed CHE 2027 EPS estimate consensus analyst forecast
+    [tool 3] search_web: CMS hospice payment rate update FY 2026 FY 2027 increase VITAS Medicare
+    [tool 4] search_web: 10-year Treasury yield August 2026 Federal Reserve policy stance
+    [tool 5] search_web: Chemed VITAS Florida Medicare cap exposure 2026 CMS refund
+    [tool 6] search_web: Barington Capital Chemed activist July 2026 strategic review cost cuts
+    [tool 7] fetch_page: https://www.globenewswire.com/news-release/2026/07/28/3334743/0/en/chemed-reports-second
+    [tool 8] fetch_page: https://www.marketwatch.com/investing/stock/CHE/analystestimates
+    [tool 9] search_web: federal funds rate August 2026 FOMC decision target range
+    [tool 10] search_web: Chemed VITAS Roto-Rooter segment revenue 2025 full year hospice plumbing split
+    [tool 11] search_web: Chemed dividend increase 2026 share repurchase authorization
+    [tool 12] fetch_page: https://www.biospace.com/press-releases/chemed-reports-second-quarter-2026-results
+    [tool 13] search_web: Chemed CHE EPS estimates 2026 2027 stockanalysis consensus
+    [tool 14] search_web: "VITAS" full year 2025 net patient revenue Chemed hospice admissions
+    [tool 15] search_web: US dollar index DXY August 2026 level
+  sample 3: IV $670.0 | usable=True | 15 tool calls (think 68,763ch / report 28,703ch) | 356s | $0.092 cumulative
+
+[deep-api] CHE: HOLD | band $387.05-$670.0 vs price $540.57 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 321,582 in (235,136 cached) | 107,556 out (78,493 reasoning) | $0.092 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\CHE_20260826_023316\verdict_depth.json

@@ -1,0 +1,55 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/MPWR.md, 10.1 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] MPWR @ $1316.28 | deepseek-v4-flash effort=high | 3 samples | pack 34,559ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MPWR_20260826_062253
+    [tool 1] search_web: 10-year treasury yield current level August 2025
+    [tool 2] search_web: Fed policy stance interest rate cuts 2025 federal funds rate outlook
+    [tool 3] search_web: Monolithic Power Systems MPWR Q2 2025 earnings call guidance 2026 capacity $6 billion
+    [tool 4] search_web: Spruce Point Capital Monolithic Power Systems short report
+    [tool 5] fetch_page: https://www.sprucepointcap.com/research/monolithic-power-systems-inc
+    [tool 6] search_web: Monolithic Power Systems class action lawsuit NVIDIA power modules defect 2026
+    [tool 7] search_web: MPWR Q3 2026 revenue guidance $1.14 billion enterprise data 130% growth
+    [tool 8] search_web: AI data center power management market size forecast 2030 power per GPU increasing
+    [tool 9] search_web: Monolithic Power Systems Q4 2024 net income $1.4 billion one-time gain tax benefit
+    [tool 10] search_web: MPWR Monolithic Power Systems 2027 2028 revenue estimate analyst forecast
+    [tool 11] search_web: Monolithic Power Systems fabless backend test capacity expansion capex Malaysia China in
+    [tool 12] search_web: AI server power management IC market share MPS vs TI Broadcom Infineon 2025 2026
+    [tool 13] fetch_page: https://sg.finance.yahoo.com/quote/MPWR/analysis/
+    [tool 14] fetch_page: https://tickeron.com/earnings/MPWR/
+  sample 1: IV $718.0 | usable=True | 14 tool calls (think 75,051ch / report 28,664ch) | flags: ocf_multiple_42.9x_cap_40x | 303s | $0.033 cumulative
+    [tool 1] search_web: 10-year treasury yield August 2026 Fed policy rate
+    [tool 2] search_web: Monolithic Power Systems Q3 2026 guidance full year 2026 enterprise data growth 130%
+    [tool 3] search_web: Monolithic Power Systems MPWR 2027 revenue EPS analyst estimates forecast
+    [tool 4] search_web: Monolithic Power Systems Spruce Point short report claims inventory NVIDIA
+    [tool 5] fetch_page: https://stockanalysis.com/stocks/mpwr/forecast/
+    [tool 6] search_web: Monolithic Power Systems securities fraud lawsuit May 2026 Judge Robart ruling NVIDIA po
+    [tool 7] search_web: hyperscaler AI capex 2027 2028 data center spending forecast Microsoft Amazon Google Met
+    [tool 8] search_web: Federal Reserve interest rate decision July 2026 fed funds rate range inflation
+    [tool 9] fetch_page: https://www.morningstar.com/company-reports/1251372-monolithic-power-we-maintain-our-val
+    [tool 10] search_web: Monolithic Power Systems Q2 2026 earnings call transcript capacity $6 billion gross marg
+    [tool 11] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-monolithic-power-sys
+    [tool 12] search_web: Monolithic Power Systems Blackwell NVIDIA Infineon Renesas power delivery competition 20
+    [tool 13] fetch_page: https://www.theglobeandmail.com/investing/markets/stocks/MPWR/pressreleases/3566351/mono
+    [tool 14] search_web: MPWR Rubin NVIDIA power management 2026 share gain AMD accelerator server content per ra
+  sample 2: IV $677.5 | usable=True | 14 tool calls (think 62,915ch / report 31,684ch) | flags: ocf_multiple_40.5x_cap_40x | 305s | $0.061 cumulative
+    [tool 1] search_web: Monolithic Power Systems MPWR Q3 2026 guidance $1.14 billion revenue
+    [tool 2] search_web: Monolithic Power Systems MPWR 2027 2028 revenue EPS analyst estimates
+    [tool 3] search_web: Spruce Point Capital Monolithic Power Systems MPWR report short thesis
+    [tool 4] search_web: Monolithic Power Systems NVIDIA power module defect lawsuit 2026
+    [tool 5] search_web: Monolithic Power Systems capacity expansion $6 billion capex manufacturing 2026
+    [tool 6] search_web: Monolithic Power Systems Q4 2024 net income tax benefit $1.4 billion
+    [tool 7] search_web: 10-year treasury yield August 2026 Fed funds rate
+    [tool 8] search_web: AI data center power management market size 2028 800V architecture server power
+    [tool 9] fetch_page: https://www.sprucepointcap.com/research/monolithic-power-systems-inc
+    [tool 10] fetch_page: https://www.ktmc.com/new-cases/monolithic-power-systems-inc/
+    [tool 11] search_web: Fed funds rate FOMC August 2026 rate cut decision
+    [tool 12] fetch_page: https://stockanalysis.com/stocks/mpwr/forecast/
+    [tool 13] search_web: Monolithic Power Systems deferred tax material weakness internal controls audit 2025
+    [tool 14] fetch_page: https://www.nb.com/global/insights/the-800-volt-gorilla-inside-ai-data-centers
+    [tool 15] search_web: Monolithic Power Systems Q2 2026 earnings transcript enterprise data growth 130% full ye
+  sample 3: IV $850.0 | usable=True | 15 tool calls (think 110,035ch / report 39,363ch) | flags: ocf_multiple_50.8x_cap_40x | 426s | $0.098 cumulative
+
+[deep-api] MPWR: OVERVALUED | band $677.5-$850.0 vs price $1316.28 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 10.1d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 358,535 in (277,248 cached) | 118,491 out (83,908 reasoning) | $0.098 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\MPWR_20260826_062253\verdict_depth.json

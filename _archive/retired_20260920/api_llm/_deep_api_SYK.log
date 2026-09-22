@@ -1,0 +1,58 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/SYK.md, 18.8 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] SYK @ $329.45 | deepseek-v4-flash effort=high | 3 samples | pack 35,555ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\SYK_20260826_081329
+    [tool 1] search_web: 10 year treasury yield August 2026 level
+    [tool 2] search_web: Stryker Q2 2026 earnings guidance 2026 adjusted EPS $14.95 $15.10 operating margin capex
+    [tool 3] search_web: Stryker 2025 adjusted operating margin percent full year
+    [tool 4] search_web: Stryker effective tax rate 2025 2026
+    [tool 5] fetch_page: https://www.panabee.com/news/stryker-earnings-q3-2026
+    [tool 6] search_web: Stryker AVS acquisition 2026 peripheral vascular closed Q2
+    [tool 7] search_web: Stryker cyberattack March 2026 litigation securities lawsuit status settlement
+    [tool 8] search_web: Stryker Mako robotic system installed base units 2026 knee hip
+    [tool 9] search_web: Stryker 2026 capital expenditures guidance capex billion
+    [tool 10] search_web: Stryker 2025 full year adjusted operating margin adjusted EPS results press release
+    [tool 11] search_web: Stryker research development spending 2025 annual report percent revenue
+    [tool 12] search_web: Fed funds rate August 2026 Federal Reserve policy stance inflation
+    [tool 13] fetch_page: https://www.tradingview.com/news/tradingview:92a43deba7295:0-stryker-reports-2025-operat
+    [tool 14] search_web: Stryker 10-K 2025 income tax provision effective tax rate percentage
+    [tool 15] search_web: Stryker 2027 EPS estimate consensus analyst
+    [tool 16] search_web: credit spreads high yield August 2026 recession probability US economy
+  sample 1: IV $272.0 | usable=True | 16 tool calls (think 72,507ch / report 29,191ch) | 327s | $0.033 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026 level
+    [tool 2] search_web: Fed funds rate August 2026 Federal Reserve policy stance
+    [tool 3] search_web: Stryker Q2 2026 earnings results organic sales growth guidance FY2026
+    [tool 4] search_web: Stryker 2025 full year results adjusted EPS adjusted operating margin
+    [tool 5] search_web: Stryker full year 2025 adjusted EPS $13.03 $13.04 record results
+    [tool 6] search_web: Stryker cybersecurity incident 2026 financial impact production disruption cost
+    [tool 7] search_web: Stryker AVS acquisition peripheral vascular closed 2026 purchase price
+    [tool 8] search_web: Stryker Mako robotic system installed base 2026 units worldwide
+    [tool 9] fetch_page: https://www.sec.gov/Archives/edgar/data/310764/000031076426000006/sykex991earningsq42025
+    [tool 10] search_web: Stryker long-term financial targets organic growth adjusted operating margin 2027 2028
+    [tool 11] search_web: Stryker 2026 dividend increase share repurchase authorization capital deployment
+    [tool 12] search_web: orthopedics medical device market growth forecast 2026 2030 CAGR aging population
+    [tool 13] fetch_page: https://www.sec.gov/Archives/edgar/data/310764/000031076426000025/sykex991earningsq12026
+    [tool 14] search_web: Stryker credit rating Moody's S&P 2026 A2 A3 outlook
+    [tool 15] search_web: Stryker Q1 2026 earnings cyber attack costs operating income impact $100 million
+    [tool 16] search_web: Stryker share repurchase buyback 2024 2025 annual report treasury stock
+  sample 2: IV $315.0 | usable=True | 16 tool calls (think 67,746ch / report 27,194ch) | 317s | $0.061 cumulative
+    [tool 1] search_web: 10 year treasury yield today level
+    [tool 2] search_web: FOMC federal funds rate decision 2026 current policy stance
+    [tool 3] search_web: DXY dollar index level inflation CPI latest report
+    [tool 4] search_web: Stryker Q2 2026 earnings press release full year guidance adjusted EPS
+    [tool 5] search_web: Stryker AVS acquisition peripheral vascular 2026 deal value
+    [tool 6] search_web: Stryker annual research and development expense 2025 10-K million
+    [tool 7] search_web: Stryker long-term growth algorithm organic sales EPS growth targets 2027
+    [tool 8] search_web: Stryker SYK consensus EPS estimates 2027 2028 revenue
+    [tool 9] search_web: Stryker cybersecurity incident 2026 Handala impact revenue litigation
+    [tool 10] search_web: Stryker free cash flow guidance 2026 capital expenditures dividend buyback
+    [tool 11] search_web: orthopedic devices market growth forecast 2030 CAGR medtech
+    [tool 12] search_web: Stryker adjusted operating margin 2026 guidance expansion basis points
+    [tool 13] search_web: Stryker share repurchases dividends paid 2025 2026 billion
+    [tool 14] search_web: Stryker 2027 organic growth outlook Mako installed base robot installations
+  sample 3: IV $310.0 | usable=True | 14 tool calls (think 59,316ch / report 22,020ch) | 275s | $0.082 cumulative
+
+[deep-api] SYK: OVERVALUED | band $272.0-$315.0 vs price $329.45 | size half
+[deep-api] FALLBACK verdict - cloud model, brief 18.8d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 14 API calls | 380,804 in (299,136 cached) | 93,326 out (64,303 reasoning) | $0.082 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\SYK_20260826_081329\verdict_depth.json

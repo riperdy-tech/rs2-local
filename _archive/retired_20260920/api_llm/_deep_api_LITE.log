@@ -1,0 +1,54 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: ABSENT - pack has no SECTION 11
+[deep-api]   SearXNG: up
+[deep-api] LITE @ $866.71 | deepseek-v4-flash effort=high | 3 samples | pack 18,314ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\LITE_20260825_060957
+    [tool 1] search_web: Lumentum fiscal Q4 2026 results revenue guidance fiscal 2027
+    [tool 2] search_web: Lumentum earnings call datacom AI optical transceiver growth fiscal 2027 outlook
+    [tool 3] fetch_page: https://investor.lumentum.com/financial-news-releases/news-details/2026/Lumentum-Announc
+    [tool 4] search_web: Lumentum analyst estimates fiscal 2027 fiscal 2028 revenue EPS consensus
+    [tool 5] search_web: 10-year Treasury yield August 2026
+    [tool 6] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-lumentum-tops-q4-202
+    [tool 7] search_web: Lumentum target financial model $2 billion quarterly revenue margin 2027
+    [tool 8] search_web: Lumentum capex capital expenditures capacity expansion fiscal 2027
+    [tool 9] fetch_page: https://www.benzinga.com/analyst-stock-ratings/price-target/26/08/61151276/lumentum-post
+    [tool 10] fetch_page: https://www.aol.com/articles/lumentum-sees-incredibly-strong-2027-122012000.html
+    [tool 11] search_web: Lumentum shares outstanding diluted share count August 2026 convertible conversion
+    [tool 12] fetch_page: https://www.spglobal.com/ratings/en/regulatory/article/-/view/type/HTML/id/3553946
+    [tool 13] search_web: Lumentum fiscal 2027 revenue consensus estimate $5.5 billion EPS analysts after Q4 resul
+    [tool 14] search_web: Lumentum 10-K fiscal 2026 diluted shares outstanding convertible notes remaining
+  sample 1: IV $468.0 | usable=True | 14 tool calls (think 117,064ch / report 29,101ch) | 397s | $0.042 cumulative
+    [tool 1] search_web: Lumentum Holdings fiscal Q4 2026 results revenue guidance fiscal 2027
+    [tool 2] search_web: Lumentum fiscal 2026 goodwill impairment acquisition asset jump balance sheet
+    [tool 3] search_web: Lumentum datacom optical AI demand revenue growth 2026 2027 outlook
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://investor.lumentum.com/financial-news-releases/news-details/2026/Lumentum-Announc
+    [tool 6] search_web: Lumentum fiscal 2026 net loss impairment charge acquisition 2026 what happened
+    [tool 7] search_web: Lumentum capex fiscal 2027 guidance capital expenditures capacity expansion fab
+    [tool 8] search_web: Lumentum fiscal 2027 revenue estimate consensus analyst EPS full year
+    [tool 9] search_web: Lumentum long-term target model $1.25 billion quarterly revenue operating margin target 
+    [tool 10] search_web: Lumentum earnings call transcript August 2026 fiscal 2027 demand OCS CPO capacity
+    [tool 11] search_web: optical transceiver market 2027 2028 datacenter AI demand growth forecast 1.6T 3.2T
+    [tool 12] fetch_page: https://www.benzinga.com/analyst-stock-ratings/price-target/26/08/61151276/lumentum-post
+    [tool 13] search_web: Lumentum LITE analyst price target consensus August 2026
+    [tool 14] search_web: Lumentum Greensboro fab indium phosphide Japan capacity expansion capex dollars 2026 202
+  sample 2: IV $482.0 | usable=True | 14 tool calls (think 69,161ch / report 27,222ch) | 275s | $0.070 cumulative
+    [tool 1] search_web: Lumentum Holdings fiscal 2027 revenue guidance outlook 800G 1.6T datacom
+    [tool 2] search_web: Lumentum Q4 fiscal 2026 earnings June 2026 quarter revenue results
+    [tool 3] search_web: Lumentum impairment charge goodwill 2026 net loss $6.9 billion
+    [tool 4] search_web: Lumentum capital expenditures capacity expansion datacom laser 2026 2027
+    [tool 5] search_web: datacom optical transceiver market forecast 2026 2030 LightCounting 1.6T
+    [tool 6] search_web: 10-year Treasury yield August 2026 current level
+    [tool 7] fetch_page: https://www.sec.gov/Archives/edgar/data/1633978/000162828026055726/lite_ex991xq4fy26.htm
+    [tool 8] search_web: Lumentum fiscal 2027 full year guidance revenue growth "fiscal 2027" outlook August 2026
+    [tool 9] search_web: Lumentum FY2027 capex guidance capital expenditure fiscal 2027
+    [tool 10] search_web: Lumentum analyst price target consensus 2026 datacom optical
+    [tool 11] search_web: Lumentum earnings call August 11 2026 transcript fiscal 2027 revenue growth demand
+    [tool 12] search_web: Lumentum "target model" non-GAAP operating margin 40% revenue target investor day
+    [tool 13] search_web: Lumentum LITE fiscal 2027 2028 revenue consensus estimate analyst
+    [tool 14] search_web: Lumentum convertible notes equitization 2026 remaining debt structure shares outstanding
+  sample 3: IV $225.0 | usable=True | 14 tool calls (think 96,768ch / report 23,389ch) | 351s | $0.102 cumulative
+
+[deep-api] LITE: OVERVALUED | band $225.0-$482.0 vs price $866.71 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief absent, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 248,056 in (161,408 cached) | 124,301 out (94,346 reasoning) | $0.102 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\LITE_20260825_060957\verdict_depth.json

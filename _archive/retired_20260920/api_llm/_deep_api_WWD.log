@@ -1,0 +1,60 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/WWD.md, 18.7 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] WWD @ $343.26 | deepseek-v4-flash effort=high | 3 samples | pack 34,587ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\WWD_20260826_085223
+    [tool 1] search_web: Woodward WWD Q3 fiscal 2026 earnings call transcript guidance capex free cash flow backl
+    [tool 2] search_web: Woodward WWD fiscal 2027 fiscal 2028 EPS estimates analyst consensus
+    [tool 3] search_web: 10 year treasury yield August 2026 Federal Reserve policy rate
+    [tool 4] search_web: CFM LEAP engine production rate 2027 2028 narrowbody Airbus A320 Boeing 737 output ramp
+    [tool 5] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/woodward-wwd-q3-2026-earnings-
+    [tool 6] search_web: Woodward FY2025 segment revenue aerospace industrial backlog book-to-bill
+    [tool 7] search_web: Woodward WWD industrial segment gas turbine hydrogen data center power demand 2026
+    [tool 8] search_web: HEICO TransDigm Curtiss-Wright Moog forward P/E valuation August 2026 aerospace supplier
+    [tool 9] fetch_page: https://finance.yahoo.com/markets/stocks/articles/woodwards-q3-beat-raised-outlook-16370
+    [tool 10] search_web: FOMC September 2026 federal funds rate target decision cut
+    [tool 11] search_web: Section 301 tariffs expiry 2026 aerospace defense parts import duties
+    [tool 12] search_web: Woodward WWD shares fall outlook 2027 deceleration valuation concerns
+    [tool 13] fetch_page: https://www.tradingview.com/news/stockstory:391c69a30094b:0-why-woodward-wwd-shares-are-
+    [tool 14] search_web: federal funds rate target range August 2026 current
+    [tool 15] search_web: US dollar index DXY level August 2026
+    [tool 16] search_web: US CPI inflation rate July 2026 headline core
+  sample 1: IV $200.0 | usable=True | 16 tool calls (think 157,327ch / report 28,248ch) | 581s | $0.076 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026
+    [tool 2] search_web: Federal Reserve interest rate decision August 2026 federal funds rate
+    [tool 3] search_web: Woodward WWD fiscal 2026 third quarter earnings release guidance capex free cash flow
+    [tool 4] fetch_page: https://www.sec.gov/Archives/edgar/data/108312/000119312525296204/wwd-20250930.htm
+    [tool 5] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/woodward-wwd-q3-2026-earnings-
+    [tool 6] search_web: Woodward "third quarter fiscal 2026" results aerospace industrial segment sales operatin
+    [tool 7] search_web: US CPI inflation rate July 2026 year-over-year
+    [tool 8] search_web: Woodward WWD fiscal 2027 revenue EPS estimate consensus
+    [tool 9] search_web: Woodward WWD fiscal 2027 revenue estimate EPS estimate stockanalysis
+    [tool 10] search_web: Woodward WWD backlog total backlog September 2025
+    [tool 11] search_web: Woodward Inc credit rating S&P Moody's investment grade
+    [tool 12] search_web: Boeing 737 MAX monthly production rate 2026 2027 Airbus A320neo rate increase
+    [tool 13] fetch_page: https://www.woodward.com/press-release/woodward-reports-record-sales-earnings-for-fiscal
+    [tool 14] fetch_page: https://ir.woodward.com/financials/quarterly-results/default.aspx
+    [tool 15] search_web: Woodward WWD stock price drop shares fall Q3 fiscal 2026 outlook why
+    [tool 16] search_web: Woodward WWD analyst price target 2026 upside revised after Q3
+  sample 2: IV $178.0 | usable=True | 16 tool calls (think 115,684ch / report 29,574ch) | 493s | $0.157 cumulative
+    [tool 1] search_web: Woodward WWD Q3 fiscal 2026 earnings call stock fell guidance outlook September 2026
+    [tool 2] search_web: Woodward WWD fiscal 2027 revenue EPS guidance analyst estimates commercial aerospace
+    [tool 3] search_web: Woodward WWD 10-K 2025 aerospace industrial segment revenue backlog Boeing Airbus LEAP
+    [tool 4] search_web: 10 year treasury yield August 2026 Fed funds rate inflation outlook
+    [tool 5] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-woodward-tops-q3-eps
+    [tool 6] fetch_page: https://finance.yahoo.com/markets/stocks/articles/woodwards-q3-beat-raised-outlook-16370
+    [tool 7] search_web: Woodward fiscal 2027 outlook mid-term targets revenue growth 2027 2028 analyst
+    [tool 8] search_web: Woodward WWD capital expenditure capacity expansion 2026 2027 investment plan aerospace 
+    [tool 9] fetch_page: https://www.woodward.com/press-release/woodward-reports-third-quarter-fiscal-year-2026-r
+    [tool 10] search_web: Woodward WWD fiscal 2027 EPS estimate $12 analyst consensus 2027 2028 forecast
+    [tool 11] search_web: Boeing 737 MAX production rate 2027 Airbus A320 narrowbody delivery forecast 2027 2028 L
+    [tool 12] search_web: Fed rate decision August 2026 federal funds rate dollar index DXY credit spreads
+    [tool 13] fetch_page: https://www.fool.com/earnings/call-transcripts/2026/08/07/woodward-wwd-q3-2026-earnings-
+    [tool 14] search_web: US dollar index DXY August 2026 level
+    [tool 15] search_web: Woodward WWD research and development expense fiscal 2025 2026 million
+    [tool 16] search_web: TransDigm HEICO Howmet RTX Curtiss-Wright P/E multiple 2026 aerospace supplier valuation
+  sample 3: IV $245.0 | usable=True | 16 tool calls (think 85,086ch / report 29,008ch) | 382s | $0.224 cumulative
+
+[deep-api] WWD: OVERVALUED | band $178.0-$245.0 vs price $343.26 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 18.7d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 15 API calls | 505,699 in (393,216 cached) | 145,678 out (114,662 reasoning) | $0.224 | PEAK
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\WWD_20260826_085223\verdict_depth.json

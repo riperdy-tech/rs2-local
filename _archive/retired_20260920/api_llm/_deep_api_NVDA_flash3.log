@@ -1,0 +1,53 @@
+   [pack] ::SCHEMA DRIFT:: NVDA - expected keys absent upstream: enrich/{T}.json: fifty_two_week_low, fifty_two_week_high
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/NVDA.md, 17.5 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] NVDA @ $214.72 | deepseek-v4-flash effort=high | 3 samples | pack 35,544ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NVDA_20260824_224159
+    [tool 1] search_web: NVIDIA Q2 fiscal 2027 revenue guidance May 2026 earnings call
+    [tool 2] search_web: NVIDIA second quarter fiscal 2027 earnings results August 2026 revenue
+    [tool 3] search_web: 10-year Treasury yield August 2026
+    [tool 4] search_web: NVIDIA fiscal 2027 full year revenue consensus estimate $ billion
+    [tool 5] search_web: NVIDIA non-GAAP gross margin Q2 fiscal 2027 guidance 77%
+    [tool 6] search_web: hyperscaler AI capex 2026 2027 Microsoft Amazon Google Meta combined capex guidance
+    [tool 7] search_web: NVIDIA Rubin ramp second half 2026 demand data center commentary Jensen Huang
+    [tool 8] search_web: NVDA fiscal 2027 revenue estimate $370 billion OR $380 billion OR $400 billion consensus
+    [tool 9] search_web: NVIDIA Q1 fiscal 2027 earnings call Colette Kress commentary H2 2026 growth guidance ful
+    [tool 10] search_web: NVIDIA data center TAM $5 trillion 2030 management target Jensen Huang
+    [tool 11] search_web: NVIDIA China export controls 2026 data center revenue zero H20 status
+    [tool 12] fetch_page: https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-
+    [tool 13] fetch_page: https://financefeeds.com/nvidia-nvda-stock-prediction-340-bull-135-bear/
+  sample 1: IV $301.79499999999996 | usable=True | 13 tool calls (think 62,031ch / report 32,905ch) | flags: ocf_multiple_58.2x_cap_40x | 278s | $0.030 cumulative
+    [tool 1] search_web: NVIDIA Q2 fiscal 2027 revenue guidance gross margin outlook
+    [tool 2] search_web: NVIDIA fiscal 2027 revenue estimate consensus analysts full year
+    [tool 3] search_web: hyperscaler capital expenditure 2026 2027 Microsoft Amazon Google Meta AI capex
+    [tool 4] search_web: 10 year treasury yield August 2026 current level
+    [tool 5] search_web: NVIDIA fiscal 2027 full year revenue consensus $ estimate analysts
+    [tool 6] search_web: NVIDIA Q1 2027 earnings call transcript Jensen Huang Blackwell demand Rubin China
+    [tool 7] search_web: NVIDIA fiscal 2028 2029 revenue estimate consensus outlook
+    [tool 8] search_web: NVIDIA gross margin 2027 2028 forecast memory HBM cost pressure
+    [tool 9] fetch_page: https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-
+    [tool 10] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-nvidia-q1-2027-beats
+    [tool 11] fetch_page: https://s201.q4cdn.com/141608511/files/doc_financials/2027/q1/NVDA-Q1-2027-Earnings-Call
+    [tool 12] fetch_page: https://finance.yahoo.com/quote/NVDA/analysis/
+    [tool 13] search_web: NVIDIA FY2027 revenue consensus $380 billion OR $400 billion analysts estimate full year
+    [tool 14] search_web: NVIDIA Colette Kress CFO commentary Q1 FY2027 free cash flow data center growth capacity
+  sample 2: IV $186.0 | usable=True | 14 tool calls (think 60,136ch / report 30,005ch) | 250s | $0.060 cumulative
+    [tool 1] search_web: NVIDIA Q2 fiscal 2027 revenue guidance May 2026 earnings call
+    [tool 2] search_web: NVIDIA fiscal 2027 fiscal 2028 revenue consensus analyst estimate
+    [tool 3] search_web: NVIDIA capital expenditures supply chain prepayments 2026 2027 commitment
+    [tool 4] search_web: 10 year treasury yield August 2026
+    [tool 5] fetch_page: https://finance.yahoo.com/quote/NVDA/analysis/
+    [tool 6] search_web: NVIDIA gross margin guidance fiscal 2027 Rubin non-GAAP 73%
+    [tool 7] search_web: hyperscaler capex 2026 2027 2028 Microsoft Amazon Google Meta AI infrastructure forecast
+    [tool 8] search_web: NVIDIA long-term supply agreements prepayments TSMC memory $16.5 billion 2024 2025 2026
+    [tool 9] fetch_page: https://www.trefis.com/stock/nvda/articles-v3/612241/nvidia-looks-expensive-until-you-as
+    [tool 10] search_web: NVDA fiscal 2027 full year revenue estimate $380 billion analyst
+    [tool 11] search_web: NVIDIA effective tax rate fiscal 2026 cash tax rate 2027
+    [tool 12] fetch_page: https://stockanalysis.com/stocks/nvda/forecast/
+    [tool 13] search_web: NVIDIA data center market share 2026 competition custom ASIC Broadcom Marvell share loss
+  sample 3: IV $147.0 | usable=True | 13 tool calls (think 92,974ch / report 21,082ch) | 331s | $0.091 cumulative
+
+[deep-api] NVDA: HOLD | band $147.0-$301.79499999999996 vs price $214.72 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 17.5d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 16 API calls | 304,706 in (213,376 cached) | 105,077 out (73,794 reasoning) | $0.091 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\NVDA_20260824_224159\verdict_depth.json

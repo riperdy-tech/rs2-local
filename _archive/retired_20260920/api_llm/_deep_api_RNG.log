@@ -1,0 +1,51 @@
+[deep-api] FALLBACK MODE - no local run replayed.
+[deep-api]   research brief: research/RNG.md, 15.3 days old (only the LOCAL model can refresh it)
+[deep-api]   SearXNG: up
+[deep-api] RNG @ $66.71 | deepseek-v4-flash effort=high | 3 samples | pack 35,909ch from current data -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\RNG_20260826_072710
+    [tool 1] search_web: RingCentral full year 2026 guidance revenue free cash flow raised Q2 2026
+    [tool 2] search_web: 10 year treasury yield current level August 2026
+    [tool 3] search_web: RingCentral share repurchase buyback program 2026
+    [tool 4] search_web: RingCentral medium term targets SBC 3-4% of revenue GAAP operating margin 20% 2026
+    [tool 5] fetch_page: https://www.ringcentral.com/whyringcentral/company/pressreleases/ringcentral-announces-s
+    [tool 6] search_web: RingCentral Q2 2026 earnings call transcript SBC reduction free cash flow per share 2026
+    [tool 7] search_web: Federal Reserve interest rate decision August 2026 fed funds rate stance
+    [tool 8] search_web: US inflation CPI July 2026 year over year
+    [tool 9] search_web: RingCentral AI ARR revenue growth RingCX 2026 Agentic AI
+    [tool 10] search_web: Microsoft Teams Phone market share UCaaS 2026 RingCentral Five9 competition
+    [tool 11] fetch_page: https://au.investing.com/news/transcripts/ringcentral-at-morgan-stanley-tmt-aidriven-tra
+    [tool 12] search_web: dollar index DXY level August 2026
+    [tool 13] search_web: credit spreads high yield investment grade August 2026
+  sample 1: IV $78.0 | usable=True | 13 tool calls (think 118,170ch / report 34,892ch) | 475s | $0.042 cumulative
+    [tool 1] search_web: RingCentral full year 2026 guidance revenue free cash flow per share
+    [tool 2] search_web: RingCentral medium-term financial targets revenue growth SBC 3-4% revenue GAAP operating
+    [tool 3] search_web: RingCentral convertible notes 2026 maturity refinancing term loan interest rate
+    [tool 4] search_web: RingCentral share repurchase program 2026 buyback shares outstanding
+    [tool 5] search_web: 10 year treasury yield August 2026 Fed funds rate
+    [tool 6] search_web: RingCentral Q2 2026 earnings call transcript free cash flow guidance operating margin
+    [tool 7] fetch_page: https://www.ringcentral.com/whyringcentral/company/pressreleases/ringcentral-expands-and
+    [tool 8] fetch_page: https://www.ringcentral.com/whyringcentral/company/pressreleases/ringcentral-announces-s
+    [tool 9] search_web: RingCentral net revenue retention 2025 2026 subscription retention rate
+    [tool 10] search_web: RingCentral effective tax rate 2025 deferred tax asset net operating loss carryforward
+    [tool 11] search_web: Federal Reserve policy August 2026 rate cut easing stance dot plot
+    [tool 12] search_web: RingCentral long term growth outlook 2027 2028 mid single digit revenue growth guidance
+  sample 2: IV $63.0 | usable=True | 12 tool calls (think 101,421ch / report 30,520ch) | 407s | $0.074 cumulative
+    [tool 1] search_web: RingCentral second quarter 2026 results revenue guidance free cash flow per share
+    [tool 2] search_web: RingCentral convertible notes due 2026 refinancing term loan debt maturity
+    [tool 3] search_web: 10 year treasury yield today federal reserve policy rate
+    [tool 4] search_web: RingCentral share repurchase buyback 2026 shares outstanding decline
+    [tool 5] search_web: RingCentral analyst estimates fiscal 2027 revenue EPS outlook
+    [tool 6] fetch_page: https://www.tipranks.com/news/company-announcements/ringcentral-earnings-call-highlights
+    [tool 7] fetch_page: https://www.ringcentral.com/whyringcentral/company/pressreleases/ringcentral-expands-and
+    [tool 8] search_web: federal funds rate target August 2026 FOMC
+    [tool 9] search_web: unified communications as a service UCaaS market size growth forecast 2026 2031 CAGR
+    [tool 10] search_web: RingCentral Q2 2026 earnings call transcript guidance 2027 outlook GAAP operating margin
+    [tool 11] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-ringcentral-tops-q2-
+    [tool 12] search_web: 10 year TIPS real yield August 2026
+    [tool 13] search_web: Microsoft Teams Phone RingCentral UCaaS market share competition 2026
+    [tool 14] search_web: RingCentral full year 2026 non-GAAP EPS guidance diluted share count
+  sample 3: IV $85.375 | usable=True | 14 tool calls (think 125,871ch / report 41,998ch) | flags: above_analyst_high_1.57x_cap_1.5x | 490s | $0.117 cumulative
+
+[deep-api] RNG: HOLD | band $63.0-$85.375 vs price $66.71 | size quarter
+[deep-api] FALLBACK verdict - cloud model, brief 15.3d old, SearXNG up. Not equivalent to a local depth verdict.
+[deep-api] 12 API calls | 377,083 in (307,840 cached) | 150,452 out (113,796 reasoning) | $0.117 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\RNG_20260826_072710\verdict_depth.json

@@ -1,0 +1,49 @@
+[deep-api] GEV @ $966.01 | deepseek-v4-flash effort=high | 3 samples | pack 31,198ch from GEV_20260823_145701 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GEV_20260825_005612
+[deep-api] local arm said: NOT USABLE — runs disagree beyond tolerance | median IV 425.0 | spread 135.8%
+    [tool 1] search_web: GE Vernova Q2 2026 earnings guidance raised revenue free cash flow adjusted EBITDA
+    [tool 2] search_web: GE Vernova 2027 2028 long-term targets adjusted EBITDA margin free cash flow investor da
+    [tool 3] search_web: GE Vernova analyst consensus 2027 2028 revenue EBITDA estimates
+    [tool 4] search_web: 10-year treasury yield current August 2026
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/1996810/000199681026000147/gevpressrelease2q26.h
+    [tool 6] fetch_page: https://www.gevernova.com/news/press-releases/ge-vernova-raises-multi-year-financial-out
+    [tool 7] search_web: GE Vernova full year 2025 results revenue $38 billion adjusted EBITDA margin free cash f
+    [tool 8] search_web: GE Vernova cumulative free cash flow 2025 2028 $22 billion target maintained raised 2026
+    [tool 9] search_web: GE Vernova 2027 2028 revenue adjusted EBITDA consensus estimate $52 billion 20% margin
+    [tool 10] fetch_page: https://www.gevernova.com/news/articles/ge-vernova-releases-fourth-quarter-full-year-202
+    [tool 11] fetch_page: https://www.tikr.com/blog/ge-vernova-orders-hit-18-billion-in-one-quarter-and-analysts-a
+    [tool 12] search_web: GE Vernova cash tax rate 2026 2027 effective tax rate guidance CFO Ken Parks
+    [tool 13] search_web: GE Vernova Q2 2026 call cumulative free cash flow 2025 2028 $24 billion working capital 
+  sample 1: IV $451.0 | usable=True | 13 tool calls (think 77,844ch / report 30,319ch) | 293s | $0.032 cumulative
+    [tool 1] search_web: GE Vernova Q2 2026 raises full year guidance revenue free cash flow adjusted EBITDA marg
+    [tool 2] search_web: GE Vernova 2027 2028 revenue growth targets long term margin framework backlog 200 billi
+    [tool 3] search_web: GE Vernova capital expenditure plans capex 2026 2027 guidance investor day
+    [tool 4] search_web: 10 year treasury yield August 2026 current US risk free rate
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/1996810/000199681026000147/gevpressrelease2q26.h
+    [tool 6] search_web: GE Vernova investor update 2026 2028 targets 20% adjusted EBITDA margin $52 billion reve
+    [tool 7] search_web: GE Vernova total debt long-term debt lease liabilities balance sheet 2026
+    [tool 8] search_web: GE Vernova analyst estimates 2027 2028 revenue EPS consensus
+    [tool 9] fetch_page: https://www.gevernova.com/news/press-releases/ge-vernova-raises-multi-year-financial-out
+    [tool 10] search_web: IEA data center electricity demand forecast 2026 2030 growth AI power consumption
+    [tool 11] search_web: GE Vernova 2025 full year adjusted EBITDA results December 2025
+    [tool 12] search_web: GE Vernova 2026 2027 adjusted EPS estimate analyst consensus earnings per share
+    [tool 13] search_web: GE Vernova effective tax rate 2025 GAAP income tax provision
+    [tool 14] search_web: GE Vernova 10-Q 2026 total debt finance leases current portion borrowings
+    [tool 15] search_web: GE Vernova raises cumulative free cash flow guidance 2025 2028 $22 billion 2026 update
+  sample 2: IV $673.5 | usable=True | 15 tool calls (think 75,431ch / report 55,909ch) | 418s | $0.067 cumulative
+    [tool 1] search_web: 10-year Treasury yield August 2026
+    [tool 2] search_web: GE Vernova Q2 2026 adjusted EBITDA guidance full year 2026 free cash flow guidance
+    [tool 3] search_web: GE Vernova 2028 EBITDA margin target investor day long-term framework
+    [tool 4] search_web: GE Vernova 2027 2028 revenue EPS consensus analyst estimates
+    [tool 5] fetch_page: https://www.sec.gov/Archives/edgar/data/1996810/000199681026000147/gevpressrelease2q26.h
+    [tool 6] fetch_page: https://www.gevernova.com/news/press-releases/ge-vernova-raises-multi-year-financial-out
+    [tool 7] search_web: GE Vernova Q4 2025 net income tax benefit one-time gain earnings quality
+    [tool 8] search_web: GE Vernova capital expenditure capacity expansion gas turbine factory 2026 2027 capex pl
+    [tool 9] search_web: GE Vernova first quarter 2026 net income $4.7 billion tax benefit valuation allowance
+    [tool 10] search_web: GE Vernova GE Hitachi nuclear BWRX-300 stake value HALEU optionality
+    [tool 11] fetch_page: https://www.sec.gov/Archives/edgar/data/1996810/000199681026000063/gevpressrelease1q26.h
+  sample 3: IV $480.0 | usable=True | 11 tool calls (think 113,842ch / report 16,808ch) | 360s | $0.106 cumulative
+
+[deep-api] GEV: OVERVALUED | band $451.0-$673.5 vs price $966.01 | size quarter
+[deep-api] LOCAL said: OVERVALUED | band $400.0-$943.0 | median $425.0
+[deep-api] 16 API calls | 372,589 in (287,488 cached) | 128,980 out (90,632 reasoning) | $0.106 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\GEV_20260825_005612\verdict_depth.json

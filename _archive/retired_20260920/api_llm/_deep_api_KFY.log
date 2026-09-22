@@ -1,0 +1,50 @@
+[deep-api] KFY @ $85.06 | deepseek-v4-flash effort=high | 3 samples | pack 33,315ch from KFY_20260824_125155 -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\KFY_20260825_013501
+[deep-api] local arm said: USABLE — plausible and converged | median IV 98.0 | spread 35.4%
+    [tool 1] search_web: Korn Ferry fiscal 2027 guidance revenue EPS outlook Q4 2026 earnings call
+    [tool 2] search_web: Korn Ferry AMS acquisition $1.1 billion financing closing synergies 2026
+    [tool 3] search_web: Korn Ferry CEO transition Gary Burnison new CEO 2026 2027
+    [tool 4] search_web: 10 year treasury yield August 2026 level
+    [tool 5] fetch_page: https://ir.kornferry.com/news-events/press-releases/detail/724/korn-ferry-announces-defi
+    [tool 6] fetch_page: https://www.kornferry.com/about-us/press/korn-ferry-announces-fourth-quarter-and-full-ye
+    [tool 7] fetch_page: https://www.marketscreener.com/news/korn-ferry-fiscal-q1-adjusted-earnings-revenue-rise-
+    [tool 8] fetch_page: https://finance.yahoo.com/markets/stocks/articles/korn-ferry-tops-fourth-quarter-1248089
+    [tool 9] fetch_page: https://www.sahmcapital.com/news/content/what-korn-ferry-kfys-fiscal-2026-q4-earnings-an
+    [tool 10] search_web: Korn Ferry Q4 fiscal 2026 earnings call transcript segment Executive Search Consulting D
+    [tool 11] search_web: Korn Ferry KFY consensus revenue EPS estimates fiscal 2027 fiscal 2028 analyst
+    [tool 12] search_web: Korn Ferry AMS acquisition regulatory approval close status August 2026
+    [tool 13] search_web: Korn Ferry fiscal 2026 full year segment revenue Executive Search Consulting Digital RPO
+    [tool 14] search_web: Korn Ferry dividend per share quarterly 2026 buyback authorization
+  sample 1: IV $88.0 | usable=True | 14 tool calls (think 101,264ch / report 29,141ch) | 400s | $0.034 cumulative
+    [tool 1] search_web: Korn Ferry AMS acquisition Alexander Mann Solutions deal value financing closing date 20
+    [tool 2] search_web: Korn Ferry fiscal 2027 guidance revenue EPS outlook AMS acquisition
+    [tool 3] search_web: 10 year Treasury yield August 2026
+    [tool 4] search_web: Korn Ferry AMS annual revenue EBITDA margin recruitment process outsourcing
+    [tool 5] fetch_page: https://www.kornferry.com/about-us/press/korn-ferry-announces-definitive-agreement-to-ac
+    [tool 6] search_web: Korn Ferry Q4 fiscal 2026 earnings call transcript guidance fiscal 2027 EPS accretion AM
+    [tool 7] fetch_page: https://www.investing.com/news/transcripts/earnings-call-transcript-korn-ferry-beats-q4-
+    [tool 8] search_web: Korn Ferry dividend 2026 quarterly dividend per share increase
+    [tool 9] search_web: Korn Ferry fiscal 2027 revenue outlook guidance mid single digit organic growth margin
+    [tool 10] search_web: Korn Ferry Q4 2026 earnings call "fiscal 2027" full year guidance fee revenue adjusted E
+    [tool 11] search_web: Korn Ferry KFY analyst EPS estimate fiscal 2027 2028 consensus
+    [tool 12] fetch_page: https://www.sahmcapital.com/news/content/korn-ferry-q4-2026-earnings-call-complete-trans
+    [tool 13] fetch_page: https://www.marketwatch.com/investing/stock/kfy/analystestimates
+  sample 2: IV $96.6 | usable=True | 13 tool calls (think 93,433ch / report 17,955ch) | 335s | $0.064 cumulative
+    [tool 1] search_web: Korn Ferry AMS acquisition $1.1 billion announcement closing date financing
+    [tool 2] search_web: Korn Ferry Q4 fiscal 2026 earnings guidance FY2027 revenue outlook
+    [tool 3] search_web: 10 year treasury yield August 2026
+    [tool 4] search_web: Korn Ferry KFY analyst estimates fiscal 2027 fiscal 2028 revenue EPS
+    [tool 5] fetch_page: https://www.kornferry.com/about-us/press/korn-ferry-announces-definitive-agreement-to-ac
+    [tool 6] fetch_page: https://finance.yahoo.com/quote/KFY/analysis/
+    [tool 7] fetch_page: https://www.benzinga.com/news/26/06/60051061/korn-ferry-q4-2026-earnings-call-complete-t
+    [tool 8] search_web: Korn Ferry fiscal 2027 full year guidance adjusted EBITDA fee revenue outlook
+    [tool 9] search_web: KFY stock analysis consensus FY2027 FY2028 revenue EPS estimates stockanalysis.com
+    [tool 10] search_web: Damodaran implied equity risk premium 2026
+    [tool 11] search_web: executive search recruitment process outsourcing industry growth outlook 2026 2027 AI di
+    [tool 12] fetch_page: https://ir.kornferry.com/news-events/press-releases/detail/723/korn-ferry-announces-four
+    [tool 13] fetch_page: https://stockanalysis.com/stocks/kfy/forecast/
+  sample 3: IV $108.0 | usable=True | 13 tool calls (think 76,113ch / report 40,476ch) | 315s | $0.096 cumulative
+
+[deep-api] KFY: UNDERVALUED | band $88.0-$108.0 vs price $85.06 | size half
+[deep-api] LOCAL said: UNDERVALUED | band $96.0-$130.0 | median $98.0
+[deep-api] 16 API calls | 304,553 in (240,128 cached) | 121,689 out (90,257 reasoning) | $0.096 | off-peak
+[deep-api] -> C:\Users\riper\Downloads\RS2 Local\api_llm\deep_api\KFY_20260825_013501\verdict_depth.json
