@@ -134,3 +134,58 @@ def test_recovers_from_cloud_race_and_dirty_index(tmp_path, monkeypatch):
         ["git", "-C", str(clone), "show", "@{u}:cloud_pending/depth_ledger_delta.jsonl"],
         capture_output=True, text=True, check=True).stdout
     assert pushed == ""  # truncation reached the remote
+
+
+def test_cloud_membership_merged_by_date_local_wins(tmp_path, monkeypatch):
+    clone = _make_repos(tmp_path)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "depth_ledger.jsonl").write_text("x\n", encoding="utf-8")
+    # local record: 09-05 and 09-06 (PC then went off)
+    (cache / "depth_membership.jsonl").write_text(
+        '{"date": "2026-09-05", "in": ["AAA"]}\n{"date": "2026-09-06", "in": ["AAA", "LOCAL"]}\n',
+        encoding="utf-8")
+    # cloud record handed back: its copy of 09-06 (different, must LOSE) + 09-07 + 09-08 it swept
+    (clone / "cache").mkdir()
+    (clone / "cache" / "depth_membership.jsonl").write_text(
+        '{"date": "2026-09-06", "in": ["AAA", "CLOUD"]}\n{"date": "2026-09-07", "in": ["AAA"]}\n'
+        '{"date": "2026-09-08", "in": ["BBB"]}\n', encoding="utf-8")
+    _git(clone, "add", "-A"); _git(clone, "commit", "-m", "cloud continuity"); _git(clone, "push")
+    monkeypatch.setattr(sync_state, "CACHE", cache)
+    out = sync_state.main(repo_dir=clone)
+    assert "merge 2 cloud membership day(s)" in out
+    merged = [json.loads(l) for l in (cache / "depth_membership.jsonl").read_text(
+        encoding="utf-8").splitlines()]
+    assert [r["date"] for r in merged] == ["2026-09-05", "2026-09-06", "2026-09-07", "2026-09-08"]
+    assert merged[1]["in"] == ["AAA", "LOCAL"]          # same date: local row wins
+    # and the merged file is what went back up, so the cloud days are not lost on the next seed
+    up = subprocess.run(["git", "-C", str(clone), "show", "@{u}:cache/depth_membership.jsonl"],
+                        capture_output=True, text=True, check=True).stdout
+    assert up == (cache / "depth_membership.jsonl").read_text(encoding="utf-8")
+
+
+def test_cloud_state_rows_taken_only_when_cloud_stamped_and_newer(tmp_path, monkeypatch):
+    clone = _make_repos(tmp_path)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "depth_ledger.jsonl").write_text("x\n", encoding="utf-8")
+    (cache / "depth_state.json").write_text(json.dumps({
+        "AAA": {"ok": False, "retries": 1, "date": "2026-09-05 10:00"},   # PC failed it
+        "BBB": {"ok": True, "date": "2026-09-06 12:00"},
+        "CCC": {"ok": True, "date": "2026-09-06 12:00"}}), encoding="utf-8")
+    (clone / "cache").mkdir()
+    (clone / "cache" / "depth_state.json").write_text(json.dumps({
+        "AAA": {"ok": True, "date": "2026-09-07 18:30", "arm": "cloud_api"},   # cloud completed it
+        "BBB": {"ok": False, "retries": 1, "date": "2026-09-01 00:00", "arm": "cloud_api"},  # older
+        "CCC": {"ok": False, "date": "2026-09-08 00:00"},                      # not cloud-stamped
+        "DDD": {"ok": False, "retries": 1, "date": "2026-09-07 19:00", "arm": "cloud_api"}}),
+        encoding="utf-8")
+    _git(clone, "add", "-A"); _git(clone, "commit", "-m", "cloud continuity"); _git(clone, "push")
+    monkeypatch.setattr(sync_state, "CACHE", cache)
+    out = sync_state.main(repo_dir=clone)
+    assert "take 2 cloud state row(s)" in out
+    st = json.loads((cache / "depth_state.json").read_text(encoding="utf-8"))
+    assert st["AAA"] == {"ok": True, "date": "2026-09-07 18:30", "arm": "cloud_api"}
+    assert st["BBB"]["ok"] is True                       # older cloud row ignored
+    assert st["CCC"]["ok"] is True                       # PC's own row copied through: ignored
+    assert st["DDD"]["retries"] == 1                     # cloud failure spends the shared budget
