@@ -37,6 +37,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(HERE))
+from pack_data_sanity import check_pack_data_sanity
 
 import rs2_data  # noqa: E402
 

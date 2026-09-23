@@ -53,6 +53,7 @@ import rs2_data  # noqa: E402
 import valuation_backbone as vb  # noqa: E402
 from fiduciary_gate import validate_fiduciary_contract  # noqa: E402
 from research_brief_guard import check_research_brief  # noqa: E402
+from pack_data_sanity import check_pack_data_sanity  # noqa: E402
 
 OUT = HERE / "ab_reports" / "consensus"
 # THRESHOLDS — calibrated against four reference points on GOOG @ $343.54, not invented:
