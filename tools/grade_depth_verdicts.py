@@ -2,6 +2,8 @@
 """tools/grade_depth_verdicts.py — TRK-06: forward-return grading of the depth ledger.
 
 Phase 2 (stocks-workspace/docs/review_2026-09-22/PHASE_2_DEPTH_SCOREBOARD.md), item P2.1.
+Fixed per the Phase 2 approval review (reports/PHASE_2_APPROVAL.md) fix list B1-B4 — see each
+function's docstring for which item it closes.
 
 Nothing has ever graded a `band_direction_v1` verdict. This closes that gap for the depth
 lane the same way `stock-screener/scripts/grade_rs2_verdicts.py` closed it for the retired
@@ -13,7 +15,7 @@ carries a 5-row fixture whose expected outputs were computed once by hand and on
 the actual screener grader against the same fixture, and asserts this module's copies agree with
 it byte-for-byte wherever both apply.
 
-Two deliberate departures from the copied original, both required by the Phase 2 design:
+Deliberate departures from the copied original, all required by the Phase 2 design:
 
 1. THE 3-DAY HORIZON-SHORTFALL GUARD. `grade_rs2_verdicts.py:grade_rows` has none (a defect
    the offline grader `scripts/grade_verdicts_offline.py` already fixed for the retired lane;
@@ -24,25 +26,37 @@ Two deliberate departures from the copied original, both required by the Phase 2
    exit is more than `EXIT_TARGET_TOLERANCE_DAYS` short of `date + h`.
 2. A DIFFERENT CARRIED-FIELD LIST. The depth ledger schema (`band_direction_v1`) is not the
    retired lane's schema, so the fields riding along on each graded row are the depth ledger's
-   own, plus nomination context joined from two screener artifacts (below) and `actionable`
-   recomputed live via `depth_gates.assess` (P1.3 — the single owner of that judgment; a ledger
-   row is never trusted to carry its own stale copy).
+   own, plus nomination context joined from `factor_signal_log.jsonl` (B1, below) and
+   `actionable`/`analyst_valid` recomputed live via `depth_gates` (single owner of both
+   judgments; a ledger row is never trusted to carry its own stale copy).
+3. DEDUPE (B3). One verdict is counted once: cross-ledger exact duplicates collapse to one row
+   by fixed precedence, and within-ledger rederivation chains keep every line (annotated) but
+   exclude every superseded one from stats/cuts/correlations. See `dedupe_rows`.
 
-Ledgers graded (each row tagged `ledger_source`), default all four:
+Ledgers graded (each row tagged `_ledger_source`, kept as `ledger_source` on output), default
+all four:
     production  cache/depth_ledger.jsonl
     archive     _archive/retired_20260920/cache/depth_ledger_legacy_pre_charter3.jsonl
     ondemand    cache/depth_ondemand_ledger.jsonl
     test        cache/depth_test_ledger.jsonl
-Row key: (ticker, date, consensus_dir) — this is already unique per run directory, so no ledger
-ever needs deduping against itself or another. A row carrying a `supersedes` key (the legacy
-ledger's in-place-corrected rows) is graded on its own current fields like any other row, and
-tagged `superseded_prior_version: true` so a reader can see it was rederived.
+Row key: (ticker, date, consensus_dir). This is NOT already unique — see `dedupe_rows` (B3):
+the same verdict can be logged into more than one ledger (an exact-triple duplicate), and an
+in-place rederivation of one verdict appends a NEW line sharing (ticker, date, consensus_dir)
+with the line(s) it replaces. Both cases are handled before grading, never left to double-count.
 
-Nomination context (sector, cluster, nominated_doors, z_momentum, z_value, z_exp_gap from
-`factor_scores_dual_door.json` `profiles`; fct_band/fct_rank from the nearest
-`factor_signal_log.jsonl` run) is joined ONLY when the source is within 10 calendar days of the
-verdict date (the profiles file has one `generated_at`; the signal log has one row per run, so
-the NEAREST run's `snapshot_date` is used) — outside that window the join is None, never guessed.
+Nomination context (B1 — Phase 2 approval review, replacing the old, dead-on-arrival join
+against `factor_scores_dual_door.json`, which is no longer read at all): `nomination_run_id`,
+`nomination_engine`, `fct_band`, `fct_rank`, `fct_composite`, `fct_nominated_doors`, `z_momentum`
+(`fct_z.momentum`), `z_value` (`fct_z.value`), `z_exp_gap` (`fct_z.exp_gap`), `cluster`, `sector`
+are joined from the screener's append-only `public/data/factor_signal_log.jsonl`, read via `git
+show` from the DEDICATED `screener_publish_repo` clone (`paths.py`) — NEVER from the working
+tree and NEVER from `screener_data_dir` (that dev checkout is stale and is not read by this
+module at all). Network mode runs `git fetch origin main` first; `--offline` runs only `git
+show`. Any git failure leaves every nomination field `None` for every row, stated in the
+caveats. For a verdict dated D, the join uses the LATEST run whose `run_id` (a UTC timestamp,
+`YYYYMMDDTHHMMSSZ`) falls on a date `<= D` and `>= D - 10` days — never a run after D. A run
+from before the P2.3 schema addition has no `fct_nominated_doors`/`fct_z`: those stay `None`
+(reason `pre_P2.3_log_row`), while `fct_band`/`fct_rank`/`fct_composite` still populate.
 
 Outputs:
     cache/depth_outcome_prices.json   own price cache (ticker series + IWM/SPY/QQQ + cluster ETFs)
@@ -60,7 +74,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
+from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -75,10 +91,9 @@ import yfinance as yf
 HERE = Path(__file__).resolve().parent.parent   # repo root (this file lives in tools/)
 sys.path.insert(0, str(HERE))
 import paths          # noqa: E402
-import depth_gates    # noqa: E402  (single owner of `actionable` — P1.3)
+import depth_gates    # noqa: E402  (single owner of `actionable`/`analyst_valid` — P1.3, B2)
 
 CONFIG = paths.load_config()
-SD = Path(CONFIG["screener_data_dir"])
 
 CACHE = HERE / "cache"
 # Ledger source paths live in data, not in code: the archive entry's basename is checked by
@@ -95,8 +110,7 @@ LEDGERS = {name: HERE / rel for name, rel in json.loads(
 PRICE_CACHE_JSON = CACHE / "depth_outcome_prices.json"
 OUTCOMES_JSON = CACHE / "depth_outcomes.json"
 REPORT_MD = HERE / "reports" / "depth_outcomes_report.md"
-DUAL_DOOR_JSON = SD / "factor_scores_dual_door.json"
-FACTOR_SIGNAL_LOG = SD / "factor_signal_log.jsonl"
+FACTOR_SIGNAL_LOG_PATH = "public/data/factor_signal_log.jsonl"   # inside screener_publish_repo
 MRI_CURRENT_REGIME = Path(CONFIG["mri_outputs_dir"]) / "current_regime.json"
 
 BENCHMARKS = ["IWM", "SPY", "QQQ"]
@@ -111,14 +125,20 @@ NOMINATION_WINDOW_DAYS = 10   # HARD RULE: nomination facts outside this window 
 EXIT_TARGET_TOLERANCE_DAYS = 3   # the horizon-shortfall guard (see module docstring, point 1)
 MIN_BUCKET_N = 10   # "do not summarise a bucket with n < 10" (operator ruling 2026-09-23)
 
-# Ledger fields carried onto every graded row, verbatim from the source ledger. `actionable` is
-# deliberately NOT in this list — it is recomputed below via depth_gates.assess, never trusted
-# from a stale stamp (most of today's rows predate P1.2/P1.3 and never had one).
+# Ledger fields carried onto every graded row, verbatim from the source ledger. `actionable` and
+# `analyst_valid` are deliberately NOT in this list — both are recomputed below via depth_gates,
+# never trusted from a stale stamp (most of today's rows predate P1.2/P1.3 and never had one).
 CARRY_FIELDS = (
     "direction", "size_hint", "spread_pct", "n_basis", "early_stop", "conviction_score",
     "business_quality_moat", "kelly_fraction_pct", "mos_vs_median_pct", "mos_vs_base_pct",
     "pack_revision", "arm", "run_source", "gate_version", "entry_timing", "momentum_view",
 )
+
+# Cross-ledger dedupe precedence (B3) — lower sorts first, i.e. is KEPT. The quarantine label is
+# the deliberate, later classification of a verdict already in another ledger, so `test` (which
+# carries `quarantined_at`/`quarantine_reason` on the six 2026-09-18 names shared with `archive`)
+# outranks the plain archival copy.
+_LEDGER_PRECEDENCE = {"test": 0, "production": 1, "ondemand": 2, "archive": 3}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -193,6 +213,12 @@ def close_on_or_before(cache, ticker, target, window=7):
     return None, None
 
 
+def _cache_last_date(cache, ticker):
+    """The most recent ISO date this ticker's cached series reaches, or None with no series."""
+    days = cache.get(ticker)
+    return max(days) if days else None
+
+
 def spearman(pairs):
     """Spearman rho via rank-then-pearson (no scipy). pairs = [(x, y), ...]."""
     xs = pd.Series([p[0] for p in pairs], dtype=float)
@@ -203,8 +229,93 @@ def spearman(pairs):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Nomination context — joined from two screener artifacts, 10-day window, never guessed.
+# Dedupe (B3, Phase 2 approval review) — one verdict counted once.
 # ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def dedupe_rows(rows):
+    """(deduped_rows, cross_ledger_dropped). Two passes over ledger rows already tagged
+    `_ledger_source`, applied BEFORE grading:
+
+    1. ACROSS ledgers: rows sharing the exact (ticker, date, consensus_dir) triple are the same
+       verdict logged into more than one ledger (measured: six 2026-09-18 names in both `archive`
+       and `test`, byte-identical apart from the `test` ledger's later quarantine stamps). Keep
+       ONE, by the fixed precedence `_LEDGER_PRECEDENCE`; the kept row records the ledgers it was
+       ALSO found in as `also_in`, and the others are dropped (not graded at all — they are not a
+       second verdict, they are the same line twice).
+    2. WITHIN a single ledger: the archive ledger corrects a verdict in place by APPENDING a new
+       line that shares (ticker, date, consensus_dir) with the line(s) it replaces (measured: KFY
+       2026-08-24 and ATI 2026-08-24, each a chain of 2-3 lines). Every line in such a chain is
+       KEPT (never dropped — each was a real analyst output at the time), but only the LAST line
+       written for that triple (append-only, so file order is temporal order) is the current
+       verdict; every earlier line in the chain is tagged `superseded_by` (the successor's
+       `rederived_at` if it has one, else its `consensus_dir`) and must be excluded from every
+       stat/cut/correlation downstream — annotated, never silently dropped (non-negotiable 3).
+
+    A row missing `consensus_dir` entirely is never grouped with anything else (grouped alone),
+    so an absent key can never cause an accidental collapse.
+    """
+    groups = {}
+    for i, r in enumerate(rows):
+        cd = r.get("consensus_dir")
+        key = (r["ticker"], r["date"], cd) if cd else (r["ticker"], r["date"], f"__none__{i}")
+        groups.setdefault(key, []).append(r)
+
+    out = []
+    cross_ledger_dropped = 0
+    for members in groups.values():
+        if len(members) == 1:
+            m = dict(members[0])
+            m["also_in"] = []
+            m["superseded_by"] = None
+            out.append(m)
+            continue
+
+        sources = {m["_ledger_source"] for m in members}
+        if len(sources) > 1:
+            ordered = sorted(members, key=lambda m: _LEDGER_PRECEDENCE.get(m["_ledger_source"], 99))
+            kept = dict(ordered[0])
+            kept["also_in"] = sorted({m["_ledger_source"] for m in ordered[1:]})
+            kept["superseded_by"] = None
+            out.append(kept)
+            cross_ledger_dropped += len(ordered) - 1
+        else:
+            # Append-only chain: each earlier row is superseded by the NEXT one written for this
+            # triple (file order is temporal order), not just the final one — a 3-line chain
+            # (measured: ATI 2026-08-24) tags row 1 -> row 2, row 2 -> row 3, never both -> row 3.
+            last_idx = len(members) - 1
+            for i, m in enumerate(members):
+                mm = dict(m)
+                mm["also_in"] = []
+                if i == last_idx:
+                    mm["superseded_by"] = None
+                else:
+                    nxt = members[i + 1]
+                    mm["superseded_by"] = nxt.get("rederived_at") or nxt.get("consensus_dir")
+                out.append(mm)
+    return out, cross_ledger_dropped
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Nomination context (B1) — factor_signal_log.jsonl via the DEDICATED publish clone, git-read
+# only, never the working tree, never screener_data_dir. 10-day window, never guessed.
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+NOM_REASON_NO_RUN = "no_run_within_10d_before"
+NOM_REASON_NOT_IN_RUN = "not_in_signal_log_run"
+NOM_REASON_PRE_P23 = "pre_P2.3_log_row"
+NOM_REASON_LOG_UNAVAILABLE = "signal_log_unavailable"
+
+NOMINATION_FIELDS = (
+    "nomination_run_id", "nomination_engine", "fct_band", "fct_rank", "fct_composite",
+    "fct_nominated_doors", "z_momentum", "z_value", "z_exp_gap", "cluster", "sector",
+)
+
+
+def _empty_nomination(reason):
+    d = {k: None for k in NOMINATION_FIELDS}
+    d["nomination_reason"] = reason
+    return d
+
 
 def _load_json(path):
     try:
@@ -214,87 +325,124 @@ def _load_json(path):
         return None
 
 
-def load_dual_door_profiles():
-    """(profiles: dict|None, generated_at: str|None) from factor_scores_dual_door.json."""
-    doc = _load_json(DUAL_DOOR_JSON)
-    if not doc:
-        return None, None
-    return (doc.get("profiles") or None), doc.get("generated_at")
+def load_factor_signal_log(offline):
+    """(runs: list[dict], error: str|None) from `public/data/factor_signal_log.jsonl`, read via
+    `git show` from the DEDICATED `screener_publish_repo` clone — never the working tree, never
+    `screener_data_dir` (that dev checkout is stale), and NEVER a write to the clone. Network mode
+    fetches `origin/main` first; `--offline` reads whatever `origin/main` already points at
+    locally. ANY git failure (no clone, fetch failure, show failure, unreadable output) returns
+    ([], reason) — the caller must then leave every nomination field `None` for every row and
+    state the reason in the caveats, never partially trust what git did return.
+    """
+    repo = Path(str(CONFIG.get("screener_publish_repo") or "")).expanduser()
+    if not str(repo) or not (repo / ".git").exists():
+        return [], f"screener_publish_repo is not a git clone: {repo!s}"
 
+    if not offline:
+        r = subprocess.run(["git", "-C", str(repo), "fetch", "origin", "main"],
+                           capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            return [], f"git fetch origin main failed: {(r.stderr or r.stdout).strip()[:200]}"
 
-def load_factor_signal_runs():
-    """Every factor_signal_log.jsonl row: {run_id, snapshot_date, engine, signals: [...]}."""
-    return read_jsonl(FACTOR_SIGNAL_LOG)
+    r = subprocess.run(["git", "-C", str(repo), "show", f"origin/main:{FACTOR_SIGNAL_LOG_PATH}"],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        return [], (f"git show origin/main:{FACTOR_SIGNAL_LOG_PATH} failed: "
+                    f"{(r.stderr or r.stdout).strip()[:200]}")
 
-
-def dual_door_context(ticker, verdict_date, profiles, generated_at):
-    """sector/cluster/nominated_doors/z_momentum/z_value/z_exp_gap for one verdict, or all None
-    if the profiles file is missing, unparseable, more than NOMINATION_WINDOW_DAYS from the
-    verdict date, or simply has no profile for this ticker."""
-    empty = {"sector": None, "cluster": None, "nominated_doors": None,
-             "z_momentum": None, "z_value": None, "z_exp_gap": None}
-    if not profiles or not generated_at:
-        return empty
-    try:
-        gen_date = date.fromisoformat(str(generated_at)[:10])
-        vd = date.fromisoformat(verdict_date)
-    except (ValueError, TypeError):
-        return empty
-    if abs((vd - gen_date).days) > NOMINATION_WINDOW_DAYS:
-        return empty
-    prof = profiles.get(ticker)
-    if not prof:
-        return empty
-    return {"sector": prof.get("sector"), "cluster": prof.get("cluster"),
-            "nominated_doors": prof.get("nominated_doors"),
-            "z_momentum": prof.get("z_momentum"), "z_value": prof.get("z_value"),
-            "z_exp_gap": prof.get("z_exp_gap")}
-
-
-def factor_signal_context(ticker, verdict_date, runs):
-    """fct_band/fct_rank for one verdict from the NEAREST factor_signal_log.jsonl run within
-    NOMINATION_WINDOW_DAYS of the verdict date (there is no single `generated_at` here — every
-    row is its own dated snapshot), or None/None if no run qualifies or the ticker was not a
-    research_now/watchlist signal in that run."""
-    empty = {"fct_band": None, "fct_rank": None}
-    if not runs:
-        return empty
-    try:
-        vd = date.fromisoformat(verdict_date)
-    except (ValueError, TypeError):
-        return empty
-    best_row, best_diff = None, None
-    for row in runs:
-        sd = row.get("snapshot_date")
-        if not sd:
+    runs = []
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if not line:
             continue
         try:
-            rd = date.fromisoformat(str(sd)[:10])
-        except ValueError:
+            runs.append(json.loads(line))
+        except json.JSONDecodeError:
             continue
-        diff = abs((vd - rd).days)
-        if diff > NOMINATION_WINDOW_DAYS:
+    return runs, None
+
+
+def _run_id_date(run_id):
+    """UTC date from a run_id 'YYYYMMDDTHHMMSSZ', or None if unparseable/missing."""
+    try:
+        return datetime.strptime(run_id, "%Y%m%dT%H%M%SZ").date()
+    except (ValueError, TypeError):
+        return None
+
+
+def _run_id_dt(run_id):
+    try:
+        return datetime.strptime(run_id, "%Y%m%dT%H%M%SZ")
+    except (ValueError, TypeError):
+        return None
+
+
+def nomination_context(ticker, verdict_date, runs):
+    """Nomination facts for one verdict, joined from factor_signal_log.jsonl rows (B1): the
+    LATEST run whose run_id UTC date is <= verdict_date and >= verdict_date - NOMINATION_WINDOW_
+    DAYS. NEVER a run after the verdict. `nomination_reason` is None on a full hit, else one of:
+      NOM_REASON_NO_RUN       — no run qualifies within the window at all
+      NOM_REASON_NOT_IN_RUN   — a qualifying run exists but the ticker is not one of its signals
+      NOM_REASON_PRE_P23      — the chosen run predates fct_nominated_doors/fct_z (those two stay
+                                 None; fct_band/fct_rank/fct_composite still populate if present)
+    """
+    try:
+        vd = date.fromisoformat(verdict_date)
+    except (ValueError, TypeError):
+        return _empty_nomination(NOM_REASON_NO_RUN)
+
+    best_run, best_date, best_dt = None, None, None
+    for row in runs:
+        rd = _run_id_date(row.get("run_id"))
+        if rd is None or rd > vd:
             continue
-        if best_diff is None or diff < best_diff:
-            best_diff, best_row = diff, row
-    if best_row is None:
-        return empty
-    for sig in (best_row.get("signals") or []):
-        if sig.get("symbol") == ticker:
-            return {"fct_band": sig.get("fct_band"), "fct_rank": sig.get("fct_rank")}
-    return empty
+        if (vd - rd).days > NOMINATION_WINDOW_DAYS:
+            continue
+        rdt = _run_id_dt(row.get("run_id"))
+        if best_dt is None or (rdt or datetime.min) > best_dt:
+            best_date, best_dt, best_run = rd, (rdt or datetime.min), row
+    if best_run is None:
+        return _empty_nomination(NOM_REASON_NO_RUN)
+
+    sig = None
+    for s in (best_run.get("signals") or []):
+        if s.get("symbol") == ticker:
+            sig = s
+            break
+    if sig is None:
+        return _empty_nomination(NOM_REASON_NOT_IN_RUN)
+
+    has_p23 = ("fct_nominated_doors" in sig) or ("fct_z" in sig)
+    fct_z = sig.get("fct_z") or {}
+    return {
+        "nomination_run_id": best_run.get("run_id"),
+        "nomination_engine": best_run.get("engine"),
+        "fct_band": sig.get("fct_band"),
+        "fct_rank": sig.get("fct_rank"),
+        "fct_composite": sig.get("fct_composite"),
+        "fct_nominated_doors": sig.get("fct_nominated_doors"),
+        "z_momentum": fct_z.get("momentum"),
+        "z_value": fct_z.get("value"),
+        "z_exp_gap": fct_z.get("exp_gap"),
+        "cluster": sig.get("cluster"),
+        "sector": sig.get("sector"),
+        "nomination_reason": None if has_p23 else NOM_REASON_PRE_P23,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 # Grading
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
-def grade_rows(rows, cache, horizons, profiles, generated_at, signal_runs):
+def grade_rows(rows, cache, horizons, signal_runs, offline=False, signal_log_error=None):
     """Per-verdict forward returns for the depth ledger. Returns (graded, pending_count, missing).
 
     Structurally the copied grade_rows (see module docstring) plus: the 3-day horizon-shortfall
-    guard, the depth ledger's own carried fields, `actionable` recomputed via depth_gates.assess,
-    and joined nomination context.
+    guard, the depth ledger's own carried fields, `actionable`/`analyst_valid` recomputed via
+    depth_gates, joined nomination context (B1), and the C3 offline-cache-shortfall -> pending
+    reclassification. `rows` must already be deduped (B3, `dedupe_rows`) — each row's `also_in`
+    and `superseded_by` (defaulting to [] / None if absent) are carried straight onto every
+    graded row for that verdict.
     """
     today = date.today()
     graded = []
@@ -304,8 +452,11 @@ def grade_rows(rows, cache, horizons, profiles, generated_at, signal_runs):
         t = r["ticker"]
         d = r["date"]
         actionable, reasons = depth_gates.assess(r)
-        nom = dual_door_context(t, d, profiles, generated_at)
-        sig = factor_signal_context(t, d, signal_runs)
+        valid = depth_gates.analyst_valid(r)
+        if signal_log_error is not None:
+            nom = _empty_nomination(NOM_REASON_LOG_UNAVAILABLE)
+        else:
+            nom = nomination_context(t, d, signal_runs)
         for h in horizons:
             target_d = date.fromisoformat(d) + timedelta(days=h)
             if target_d > today:
@@ -316,9 +467,18 @@ def grade_rows(rows, cache, horizons, profiles, generated_at, signal_runs):
                 missing["entry"].append((t, d, h))
                 continue
             d1, p1 = close_on_or_before(cache, t, target_d.isoformat())
+            if p1 is None:
+                # C3: offline, the cache simply has not caught up to this target date yet — that
+                # is "not yet resolved" (pending), never "missing" / delisted-looking.
+                last = _cache_last_date(cache, t)
+                if offline and last is not None and last < target_d.isoformat():
+                    pending += 1
+                    continue
+                missing["exit"].append((t, d, h))
+                continue
             # exit must postdate entry (a name delisted right after the verdict would
             # otherwise "exit" at its entry fill and score a fake 0% return)
-            if p1 is None or d1 <= d0:
+            if d1 <= d0:
                 missing["exit"].append((t, d, h))
                 continue
             # THE GUARD (point 1 in the module docstring): an exit resolved more than
@@ -345,11 +505,12 @@ def grade_rows(rows, cache, horizons, profiles, generated_at, signal_runs):
             row_out = {"ticker": t, "date": d,
                        "consensus_dir": r.get("consensus_dir"),
                        "ledger_source": r.get("_ledger_source"),
-                       "superseded_prior_version": bool(r.get("supersedes")),
-                       "actionable": actionable, "actionable_reasons": reasons}
+                       "also_in": r.get("also_in") or [],
+                       "superseded_by": r.get("superseded_by"),
+                       "actionable": actionable, "actionable_reasons": reasons,
+                       "analyst_valid": valid}
             row_out.update({k: r.get(k) for k in CARRY_FIELDS})
             row_out.update(nom)
-            row_out.update(sig)
             row_out.update(g)
             graded.append(row_out)
     return graded, pending, missing
@@ -391,16 +552,23 @@ def bucket_stats(members):
 
 def cut(graded, keyfn, label, multi=False):
     """Group graded records by keyfn -> {bucket_label: stats}. keyfn returning None excludes the
-    row (missing nomination context is not guessed into a bucket). If multi, keyfn returns an
-    iterable of labels and the row is counted in every one of them (e.g. nominated_doors, where
-    one ticker can hold more than one door)."""
+    row (missing nomination context is not guessed into a bucket) and counts it in `n_missing`.
+    If multi, keyfn returns an iterable of labels and the row is counted in every one of them
+    (e.g. fct_nominated_doors, where one ticker can hold more than one door).
+
+    B4 (Phase 2 approval review): the result ALWAYS carries `n_missing`/`n_total`, and — when
+    `buckets` is empty — a `reason` string, so the caller can render "n = 0 — reason" instead of
+    silently omitting the cut."""
     groups = {}
+    n_missing = 0
+    n_total = len(graded)
     for g in graded:
         keys = keyfn(g)
-        if not multi:
-            keys = [keys] if keys is not None else []
-        elif keys is None:
+        if keys is None:
+            n_missing += 1
             keys = []
+        elif not multi:
+            keys = [keys]
         for k in keys:
             if k is None:
                 continue
@@ -410,16 +578,29 @@ def cut(graded, keyfn, label, multi=False):
         s = bucket_stats(groups[k])
         if s:
             out[k] = s
-    return {"cut": label, "buckets": out}
+    result = {"cut": label, "buckets": out, "n_missing": n_missing, "n_total": n_total}
+    if not out:
+        result["reason"] = (f"no graded row has a usable value for this cut "
+                            f"({n_missing} of {n_total} missing the field)" if n_total
+                            else "no graded rows")
+    return result
 
 
 def tercile_cut(graded, field, label, predicate=None):
     """Split rows with a non-None `field` (and passing `predicate`, if given) into terciles by
     that field's value within this exact subset, then bucket_stats each third. Rows failing the
-    predicate or missing the field are excluded, never forced into a bucket."""
-    subset = [g for g in graded if g.get(field) is not None and (predicate is None or predicate(g))]
+    predicate or missing the field are excluded, never forced into a bucket.
+
+    B4: always carries `n_missing` (of the predicate-eligible rows) / `n_total`, and a `reason`
+    when there are too few usable rows to split into thirds."""
+    n_total = len(graded)
+    eligible = [g for g in graded if predicate is None or predicate(g)]
+    subset = [g for g in eligible if g.get(field) is not None]
+    n_missing = len(eligible) - len(subset)
     if len(subset) < 3:
-        return {"cut": label, "buckets": {}}
+        return {"cut": label, "buckets": {}, "n_missing": n_missing, "n_total": n_total,
+                "reason": (f"fewer than 3 rows with a usable {field} "
+                          f"({len(subset)} usable of {len(eligible)} eligible, {n_total} total)")}
     vals = pd.Series([g[field] for g in subset], dtype=float)
     q1, q2 = vals.quantile(1 / 3), vals.quantile(2 / 3)
     groups = {"T1_low": [], "T2_mid": [], "T3_high": []}
@@ -436,7 +617,7 @@ def tercile_cut(graded, field, label, predicate=None):
         s = bucket_stats(groups[k])
         if s:
             out[k] = s
-    return {"cut": label, "buckets": out}
+    return {"cut": label, "buckets": out, "n_missing": n_missing, "n_total": n_total}
 
 
 def spread_bucket(g):
@@ -459,7 +640,7 @@ def build_cuts(gh):
         cut(gh, lambda g: g["size_hint"], "size_hint"),
         tercile_cut(gh, "conviction_score", "conviction tercile"),
         tercile_cut(gh, "mos_vs_base_pct", "mos_vs_base_pct tercile"),
-        cut(gh, lambda g: g.get("nominated_doors"), "nominated_doors", multi=True),
+        cut(gh, lambda g: g.get("fct_nominated_doors"), "nominated_doors", multi=True),
         tercile_cut(gh, "z_momentum", "z_momentum tercile (momentum ablation, undervalued only)",
                     predicate=lambda g: g["direction"] == "undervalued"),
         cut(gh, lambda g: g.get("arm"), "arm"),
@@ -496,10 +677,11 @@ def regime_string():
     return f"{label} (as of {doc.get('date', 'unknown date')})"
 
 
-def build_caveats(rows, graded):
+def build_caveats(rows, graded, cross_ledger_dropped, signal_log_error):
+    """B1/B2/B3: every caveat here is computed from the actual counts, never hard-coded, and
+    never omitted regardless of how many rows are graded."""
     dates = sorted({r["date"] for r in rows})
     total = len(graded)
-    pre_gate = sum(1 for g in graded if not g["actionable"] and "pre_v3.1_gates" in g["actionable_reasons"])
     L = []
     if dates:
         L.append(f"Ledger window: {dates[0]} -> {dates[-1]} ({len(dates)} distinct verdict dates).")
@@ -507,25 +689,35 @@ def build_caveats(rows, graded):
     L.append("Repeat verdicts on one name are correlated observations, not independent samples "
               "— t-statistics above ignore this overlap and are labelled accordingly; read "
               "name-weighted stats first.")
-    with_nom = sum(1 for g in graded if g.get("sector") is not None)
-    if total:
-        L.append(f"Nomination context (sector/cluster/nominated_doors/z_momentum/z_value/"
-                 f"z_exp_gap from factor_scores_dual_door.json; fct_band/fct_rank from "
-                 f"factor_signal_log.jsonl) joined for {with_nom} of {total} graded "
-                 f"verdict-horizons (10-day window of the source artifact's own date) — the "
-                 "sector/cluster/nominated_doors/z_momentum cuts below reflect only that subset, "
-                 "and are empty when it is zero.")
-    if total:
-        pct = round(pre_gate / total * 100, 1)
-        scope = "ALL of them" if pre_gate == total else f"{pre_gate} of {total} ({pct}%)"
-        L.append(f"PRE-CURRENT-GATES: {scope} graded verdict-horizons come from ledger rows "
-                 "stamped before Charter v3.1 gating (gate_version absent or < "
-                 f"{depth_gates.GATE_VERSION}) — today that is all of them. NO CONCLUSION ABOUT "
-                 "THE CURRENT ANALYST MAY BE DRAWN FROM THESE ROWS; they were produced under the "
-                 "retired, invalid analyst. This grader exists so it is ready for valid verdicts "
-                 "after Phase 4.")
+
+    superseded = sum(1 for g in graded if g.get("superseded_by"))
+    L.append(f"Deduping (B3): {cross_ledger_dropped} cross-ledger duplicate row(s) collapsed "
+             f"into one kept row each (precedence test > production > ondemand > archive; the "
+             f"dropped ledger(s) are recorded on the kept row's `also_in`). {superseded} graded "
+             f"verdict-horizon(s) are superseded rederivations — kept in `graded`, tagged "
+             f"`superseded_by`, and EXCLUDED from every stat/cut/correlation below.")
+
+    if signal_log_error:
+        L.append("Nomination context (factor_signal_log.jsonl via the screener_publish_repo "
+                 f"clone) is UNAVAILABLE this run: {signal_log_error} — every nomination field "
+                 "is None for every graded row.")
+    elif total:
+        reasons = Counter(g["nomination_reason"] for g in graded if g.get("nomination_reason"))
+        hit = total - sum(reasons.values())
+        reason_txt = ", ".join(f"{k}={v}" for k, v in sorted(reasons.items())) or "none"
+        L.append(f"Nomination join (factor_signal_log.jsonl, latest run within "
+                 f"{NOMINATION_WINDOW_DAYS} days on-or-before the verdict date, never after): "
+                 f"{hit} of {total} graded verdict-horizons joined; reasons for the rest: "
+                 f"{reason_txt}.")
     else:
-        L.append("No graded verdict-horizons yet — nothing to report a pre-current-gates share for.")
+        L.append("Nomination join: no graded verdict-horizons yet.")
+
+    k = sum(1 for g in graded if g.get("analyst_valid"))
+    L.append(f"Analyst validity: {k} of {total} graded verdict-horizons come from the valid "
+             f"analyst (depth_gates.FIRST_VALID_PACK_REVISION="
+             f"{depth_gates.FIRST_VALID_PACK_REVISION!r}).")
+    if k == 0:
+        L.append("NO CONCLUSION ABOUT THE ANALYST MAY BE DRAWN FROM THESE ROWS.")
     return L
 
 
@@ -561,16 +753,30 @@ def main():
             rs = [r for r in rs if r.get("date", "") >= args.since]
         per_ledger_counts[name] = len(rs)
         rows.extend(rs)
-    print(f"{len(rows)} ledger rows across {len(ledger_names)} ledger(s): "
+    raw_row_count = len(rows)
+    print(f"{raw_row_count} ledger rows across {len(ledger_names)} ledger(s): "
           + ", ".join(f"{k}={v}" for k, v in per_ledger_counts.items()))
     if not rows:
         print("No ledger rows — nothing to grade.")
         return 0
 
+    rows, cross_ledger_dropped = dedupe_rows(rows)
+    superseded_raw = sum(1 for r in rows if r.get("superseded_by"))
+    print(f"after dedup (B3): {len(rows)} verdict rows "
+          f"({cross_ledger_dropped} cross-ledger duplicate(s) collapsed, "
+          f"{superseded_raw} rederivation(s) superseded — kept, tagged, excluded from stats)")
+
     tickers = sorted({r["ticker"] for r in rows})
 
+    # C2: --offline must NEVER touch the network — a missing price cache is a hard failure with
+    # a clear message, not a silent fallback to fetch_history().
     cache = {}
-    if args.offline and PRICE_CACHE_JSON.exists():
+    if args.offline:
+        if not PRICE_CACHE_JSON.exists():
+            print(f"--offline set but {PRICE_CACHE_JSON} does not exist — refusing to touch the "
+                  f"network. Run once without --offline first to build the price cache.",
+                  file=sys.stderr)
+            return 1
         cache = json.loads(PRICE_CACHE_JSON.read_text(encoding="utf-8"))
         print(f"offline: {len(cache)} cached series")
     else:
@@ -584,27 +790,32 @@ def main():
         print(f"NO PRICE SERIES for {len(no_series)} names (delisted/renamed? report them, "
               f"never drop silently): {', '.join(no_series)}")
 
-    profiles, generated_at = load_dual_door_profiles()
-    signal_runs = load_factor_signal_runs()
+    signal_runs, signal_log_error = load_factor_signal_log(offline=args.offline)
+    if signal_log_error:
+        print(f"nomination context UNAVAILABLE: {signal_log_error}")
 
-    graded, pending, missing = grade_rows(rows, cache, horizons, profiles, generated_at, signal_runs)
-    print(f"graded {len(graded)} verdict-horizons | pending {pending} | "
+    graded, pending, missing = grade_rows(rows, cache, horizons, signal_runs,
+                                          offline=args.offline, signal_log_error=signal_log_error)
+    distinct_total = sum(1 for g in graded if not g.get("superseded_by"))
+    print(f"graded {len(graded)} verdict-horizons ({distinct_total} distinct, "
+          f"{len(graded) - distinct_total} superseded) | pending {pending} | "
           f"missing entry {len(missing['entry'])} / exit {len(missing['exit'])}")
 
     per_horizon = {}
     gradeable_counts = {}
     for h in horizons:
-        gh = [g for g in graded if g["horizon_days"] == h]
+        gh_all = [g for g in graded if g["horizon_days"] == h]
+        gh = [g for g in gh_all if not g.get("superseded_by")]   # B3: stats exclude superseded
         by_source = {}
         for g in gh:
             by_source[g["ledger_source"]] = by_source.get(g["ledger_source"], 0) + 1
-        gradeable_counts[str(h)] = {"total": len(gh), "by_ledger_source": by_source}
-        if not gh:
-            continue
+        gradeable_counts[str(h)] = {"total": len(gh), "total_incl_superseded": len(gh_all),
+                                    "by_ledger_source": by_source}
+        # B4: every cut/horizon is rendered even with zero rows — no `if not gh: continue`.
         per_horizon[str(h)] = {"all": bucket_stats(gh), "cuts": build_cuts(gh),
                                "spearman_vs_excess_iwm": spearman_block(gh)}
 
-    caveats = build_caveats(rows, graded)
+    caveats = build_caveats(rows, graded, cross_ledger_dropped, signal_log_error)
 
     payload = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -612,12 +823,16 @@ def main():
         "benchmarks": BENCHMARKS,
         "cluster_etf_proxies": CLUSTER_ETFS,
         "caveats": caveats,
+        "ledger_rows_raw": raw_row_count,
         "ledger_rows": len(rows),
         "ledger_row_counts": per_ledger_counts,
+        "cross_ledger_duplicates_dropped": cross_ledger_dropped,
         "graded_verdict_horizons": len(graded),
+        "distinct_verdict_horizons": distinct_total,
         "pending_verdict_horizons": pending,
         "missing": {k: len(v) for k, v in missing.items()},
         "tickers_without_price_series": no_series,
+        "signal_log_error": signal_log_error,
         "gradeable_counts_per_horizon": gradeable_counts,
         "per_horizon": per_horizon,
         "graded": graded,
@@ -628,21 +843,26 @@ def main():
     L = ["# Depth Verdict Outcome Report (TRK-06)", "",
          f"Generated: {payload['generated_at']}  |  Benchmarks: IWM (primary), SPY, QQQ", ""]
     L += ["## Caveats", ""] + [f"- {c}" for c in caveats] + [""]
-    L += [f"Ledger rows: {len(rows)} ("
-          + ", ".join(f"{k}={v}" for k, v in per_ledger_counts.items()) + "). "
-          f"Graded verdict-horizons: {len(graded)}; pending: {pending}; "
-          f"missing entry/exit: {len(missing['entry'])}/{len(missing['exit'])}.", ""]
-    L += ["## Gradeable counts per horizon and ledger_source", ""]
+    L += [f"Ledger rows: {raw_row_count} raw ("
+          + ", ".join(f"{k}={v}" for k, v in per_ledger_counts.items())
+          + f") -> {len(rows)} after dedup (B3). "
+          f"Graded verdict-horizons: {len(graded)} ({distinct_total} distinct); "
+          f"pending: {pending}; missing entry/exit: "
+          f"{len(missing['entry'])}/{len(missing['exit'])}.", ""]
+    L += ["## Gradeable counts per horizon and ledger_source (distinct, excludes superseded)", ""]
     for h in horizons:
         gc = gradeable_counts[str(h)]
         by_src = ", ".join(f"{k}={v}" for k, v in gc["by_ledger_source"].items()) or "none"
-        L.append(f"- {h}d: total={gc['total']} ({by_src})")
+        L.append(f"- {h}d: total={gc['total']} incl_superseded={gc['total_incl_superseded']} "
+                 f"({by_src})")
     L.append("")
     for h in horizons:
-        ph = per_horizon.get(str(h))
-        if not ph:
-            continue
+        ph = per_horizon[str(h)]
         a = ph["all"]
+        if a is None:
+            L += [f"## {h}-day horizon", "", "n = 0 — no graded verdict-horizon at this horizon "
+                                             "(all pending, missing, or superseded).", ""]
+            continue
         note = " (n<10, inconclusive)" if a["inconclusive"] else ""
         L += [f"## {h}-day horizon",
               "",
@@ -652,10 +872,11 @@ def main():
               f"(median {a['namewt_median_excess_iwm_pct']}%, "
               f"{a['namewt_pct_beat_iwm']}% of names beat IWM)", ""]
         for c in ph["cuts"]:
+            L += [f"### {c['cut']}", ""]
             if not c["buckets"]:
+                L += [f"n = 0 — {c.get('reason', 'no data')}", ""]
                 continue
-            L += [f"### {c['cut']}", "",
-                  "| Bucket | n | names | mean ret | mean xIWM | med xIWM | %>IWM | t (ign. overlap) | "
+            L += ["| Bucket | n | names | mean ret | mean xIWM | med xIWM | %>IWM | t (ign. overlap) | "
                   "name-wt xIWM | name-wt med | name-wt %>IWM |",
                   "|---|---|---|---|---|---|---|---|---|---|---|"]
             for name, s in c["buckets"].items():
@@ -667,6 +888,8 @@ def main():
                          f"| {s['namewt_mean_excess_iwm_pct']}% "
                          f"| {s['namewt_median_excess_iwm_pct']}% "
                          f"| {s['namewt_pct_beat_iwm']}% |")
+            L.append(f"(n_missing={c.get('n_missing', 0)} of {c.get('n_total', 0)} rows lack "
+                     f"this field, excluded above)")
             L.append("")
         sp = ph["spearman_vs_excess_iwm"]
         L += [f"Spearman vs excess-IWM: conviction={sp['conviction']}  "

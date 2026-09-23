@@ -212,32 +212,47 @@ the retired lane's offline grader) skips — never truncates — a horizon whose
 more than 3 calendar days short of its target.
 
 Grades every row across four ledgers (`production`, `archive` — the pre-Charter-v3.1 legacy
-ledger under `_archive/`, `ondemand`, `test`), each tagged `ledger_source`. `actionable` is
-recomputed live via `depth_gates.assess` on every row, never trusted from a ledger stamp — most
-rows on record predate P1.2/P1.3 and never had one. Nomination context (sector, cluster,
-`nominated_doors`, `z_momentum`, `z_value`, `z_exp_gap` from the screener's
-`factor_scores_dual_door.json` profiles; `fct_band`/`fct_rank` from the nearest
-`factor_signal_log.jsonl` run) is joined only within 10 calendar days of the verdict date —
-outside that window, or with no matching artifact, every one of those fields is `None`, never
-guessed.
+ledger under `_archive/`, `ondemand`, `test`), each tagged `ledger_source`. Before grading, rows
+go through `dedupe_rows` (P2-fix B3) so one verdict is never counted twice: an exact
+(ticker, date, consensus_dir) triple logged into more than one ledger collapses to a single row
+by fixed precedence (`test` > `production` > `ondemand` > `archive` — the quarantine label is
+the deliberate, later classification), recording the dropped ledgers as `also_in`; a
+within-ledger rederivation chain (the archive ledger corrects a verdict in place by appending a
+new line sharing the same triple) keeps every line but tags every one but the last
+`superseded_by` its successor, excluded from every stat/cut/correlation while staying visible in
+`graded`. `actionable` and `analyst_valid` are recomputed live via `depth_gates` on every row,
+never trusted from a ledger stamp. Nomination context (`nomination_run_id`, `nomination_engine`,
+`fct_band`, `fct_rank`, `fct_composite`, `fct_nominated_doors`, `z_momentum`, `z_value`,
+`z_exp_gap`, `cluster`, `sector`) is joined from the screener's append-only
+`public/data/factor_signal_log.jsonl`, read via `git show` from the DEDICATED
+`screener_publish_repo` clone (never the working tree, never `screener_data_dir`) — the LATEST
+run whose `run_id` falls on or before the verdict date and within 10 days of it, never a run
+after the verdict. Any git failure blanks every nomination field and is stated in the caveats.
 
 Outputs `cache/depth_outcome_prices.json` (its own price cache: every graded ticker plus
 IWM/SPY/QQQ and a 17-ETF sector/industry cluster proxy set), `cache/depth_outcomes.json` (graded
 rows, per-horizon cuts — direction, spread bucket, size, conviction/`mos_vs_base_pct`/`z_momentum`
 terciles, nominated doors, arm, pack revision, sector, cluster, ledger source — Spearman
 correlations, and a generated `caveats` block), and `reports/depth_outcomes_report.md`. A bucket
-under 10 verdicts is still shown, flagged `inconclusive`, never silently dropped. The caveats block
-states, from the data, how many graded rows are pre-current-gates (`gate_version` absent or < the
-current `depth_gates.GATE_VERSION`) — as of Phase 2 that is all of them, so no conclusion about the
-CURRENT analyst may be drawn from anything this grader reports yet; it exists so it is ready for
-valid verdicts after Phase 4.
+under 10 verdicts is still shown, flagged `inconclusive`, never silently dropped, and every cut in
+the work order's list always renders — an empty one prints `n = 0` with the reason (missing field
+count included) instead of being silently omitted. The caveats block states, from the data: the
+dedupe counts, the nomination-join hit count and reasons, and how many graded rows come from the
+valid analyst per `depth_gates.analyst_valid` (gated on `depth_gates.FIRST_VALID_PACK_REVISION`,
+`None` until the Phase 4 ruling sets it — until then NO CONCLUSION ABOUT THE ANALYST may be drawn
+from anything this grader reports).
 
-`orchestrate_depth.main()` re-runs it `--offline` (no network) at the end of every sweep,
-non-fatal and logged (`run_offline_grader()`); `publish_overlay()` copies `depth_outcomes.json` to
-the site as `public/data/depth_outcomes.json` alongside the overlay, when present, JSON-validated
-before staging like every other publish artifact. A weekly network refresh (Sunday 09:00) is
-prepared as `register_grader_task.ps1` (mirrors `register_depth_task.ps1`) but is NOT
-registered — registering a Windows Scheduled Task is a machine change and needs operator approval.
+`orchestrate_depth.main()` re-runs it `--offline` (no network) right before the sweep's final
+publish (non-fatal, logged, `run_offline_grader()`), so the site's copy carries that sweep's fresh
+verdicts instead of lagging a cycle behind. `--offline` never touches the network: a missing price
+cache is a hard failure, and a horizon whose exit date is beyond the offline cache's reach counts
+as pending, never missing/"delisted?". `publish_overlay()` copies `depth_outcomes.json` to the
+site as `public/data/depth_outcomes.json` alongside the overlay — validated BEFORE copying, and,
+being an optional scoreboard artifact, never able to block the overlay publish: an invalid or
+missing source is skipped (logged) and the clone's own copy is left exactly as published. A weekly
+network refresh (Sunday 09:00, 1-hour execution limit, no wake) is prepared as
+`register_grader_task.ps1` (mirrors `register_depth_task.ps1`) but is NOT registered — registering
+a Windows Scheduled Task is a machine change and needs operator approval.
 
 ## Where the truth lives
 
