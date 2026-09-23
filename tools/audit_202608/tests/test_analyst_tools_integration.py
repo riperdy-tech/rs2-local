@@ -29,6 +29,7 @@ def test_dispatch_financial_model_tool():
         "base_cf": 3.8,
         "shares_diluted": 0.274,
         "wacc": 0.085,
+        "terminal_g": 0.025,
         "demonstrated_cagr_5y": 7.5,
     }
     snap = []

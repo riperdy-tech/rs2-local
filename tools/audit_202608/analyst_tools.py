@@ -100,16 +100,104 @@ TOOLS = [{
         "name": "run_financial_model",
         "description": (
             "Invoke the Python Financial Modeling Analyst Desk to execute deterministic calculations: "
-            "1. Unbundled DCF: computes exact per-share intrinsic value with optional separate capitalization "
-            "of installed-base recurring annuity streams. "
-            "2. Reverse DCF expectations gap: computes what 5-year growth the market is pricing in at T0 vs demonstrated 5y CAGR. "
-            "3. Mathematical continuous Kelly sizing: derives exact quarter-Kelly and full Kelly log-wealth position sizes across your scenario distribution (Base/Bull/Bear). "
-            "Call this whenever you have scenario assumptions and need exact arithmetic rather than estimating in prose."
+            "1. Three-Stage DCF: computes exact per-share intrinsic value across Stage 1 (explicit growth), "
+            "Stage 2 (linear fade over fade_years to terminal_g), and Stage 3 (dual terminal value: Gordon growth "
+            "and exit multiple, both properly discounted to t=0). Enforces valuation frames ('equity' discounts FCFE "
+            "at cost_of_equity with nonzero net_debt refused; 'firm' discounts FCFF at true_wacc requiring net_debt "
+            "and shares_diluted) and verifies rate pairing via rate_engine. Refuses SBC double-deduction. Reconciles "
+            "implied terminal EV/FCF multiple against sector_multiple_band. "
+            "2. Reverse DCF: solves market-implied growth under (a) analyst's own structure and (b) neutral reference "
+            "structure (coe_anchor, 10-year linear fade to terminal_g_anchor) returning implied 10-year CAGR and base-rate table percentile. "
+            "3. Mathematical continuous Kelly sizing: derives exact quarter-Kelly and full Kelly log-wealth position sizes across scenarios. "
+            "4. Blend mode: calculates weighted combination of named desk valuation legs."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "price": {"type": "number", "description": "Current market price T0 from Section 2."},
+                "mode": {"type": "string", "enum": ["dcf", "blend"], "description": "Calculation mode: 'dcf' (default) or 'blend'."},
+                "valuation_frame": {
+                    "type": "string",
+                    "enum": ["equity", "firm"],
+                    "description": "Valuation frame: 'equity' (default) discounts FCFE at cost_of_equity; nonzero net_debt is refused. 'firm' discounts FCFF at true_wacc; requires net_debt and shares_diluted."
+                },
+                "rate_type": {
+                    "type": "string",
+                    "enum": ["cost_of_equity", "true_wacc", "cost_of_equity_proxy"],
+                    "description": "Semantic discount rate type. Must match valuation_frame (equity -> cost_of_equity; firm -> true_wacc)."
+                },
+                "explicit_growth": {
+                    "type": "array",
+                    "description": "List of explicit annual growth rates for Stage 1 (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]).",
+                    "items": {"type": "number"}
+                },
+                "growth_rates": {
+                    "type": "array",
+                    "description": "Alias for explicit_growth.",
+                    "items": {"type": "number"}
+                },
+                "fade_years": {
+                    "type": "integer",
+                    "description": "Duration of Stage 2 linear fade in years (integer >= 0). Fades linearly from the last explicit rate to terminal_g."
+                },
+                "terminal_g": {
+                    "type": "number",
+                    "description": "REQUIRED for DCF. Long-term nominal terminal growth rate as decimal (e.g. 0.025 for 2.5%, 0.035 for 3.5%). The silent default was removed in Phase 4; calls without it are refused."
+                },
+                "terminal_exit_multiple": {"type": "number", "description": "Optional exit multiple on final projected cash flow (e.g. 16.0 for 16x)."},
+                "sector_multiple_band": {
+                    "type": "object",
+                    "description": "MRI sector multiple band {low, mid, high, metric} used for reconciliation of implied terminal EV/FCF multiple.",
+                    "properties": {
+                        "low": {"type": "number"},
+                        "mid": {"type": "number"},
+                        "high": {"type": "number"},
+                        "metric": {"type": "string"}
+                    }
+                },
+                "sbc_treatment": {
+                    "type": "string",
+                    "enum": ["deducted_in_cf", "add_back_dilution"],
+                    "description": "SBC policy declaration. If 'deducted_in_cf', sbc_dilution may NOT also be passed (double deduction refused)."
+                },
+                "sbc_dilution": {
+                    "type": "number",
+                    "description": "Share dilution from SBC when sbc_treatment is 'add_back_dilution'. Must NOT be passed if sbc_treatment is 'deducted_in_cf'."
+                },
+                "base_cf": {"type": "number", "description": "Base owner cash flow / FCF (in $B or per-share, matching units)."},
+                "wacc": {"type": "number", "description": "Cost of capital / discount rate as decimal, e.g. 0.085 for 8.5%."},
+                "annuity_flow": {"type": "number", "description": "Separate annual services / installed-base recurring annuity cash flow (if unbundled)."},
+                "annuity_cap_rate": {"type": "number", "description": "Capitalization rate for annuity flow (e.g. 0.075 for 7.5%)."},
+                "net_debt": {"type": "number", "description": "Total net debt in $B. Must be 0 or omitted in equity frame; required in firm frame."},
+                "shares_diluted": {"type": "number", "description": "Diluted share count in billions. Required in firm frame."},
+                "demonstrated_cagr_5y": {"type": "number", "description": "Historical 5-year revenue CAGR in percent from Section 7."},
+                "coe_anchor": {"type": "number", "description": "Cost of equity anchor decimal for neutral reference reverse DCF."},
+                "terminal_g_anchor": {"type": "number", "description": "Long-run terminal growth anchor decimal for neutral reference reverse DCF."},
+                "base_rate_table": {
+                    "type": "object",
+                    "description": "Base rate table {p50, p90, share_ge_10, share_ge_20, share_ge_30} for implied CAGR percentile ranking.",
+                    "properties": {
+                        "p50": {"type": "number"},
+                        "p90": {"type": "number"},
+                        "share_ge_10": {"type": "number"},
+                        "share_ge_20": {"type": "number"},
+                        "share_ge_30": {"type": "number"}
+                    }
+                },
+                "legs": {
+                    "type": "array",
+                    "description": "Named valuation legs for blend mode: [{'name': 'Gordon DCF', 'weight': 0.6, 'iv': 150.0, 'source': 'desk'}, ...]. Weights must sum to 1.0.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "weight": {"type": "number"},
+                            "iv": {"type": "number"},
+                            "source": {"type": "string"}
+                        },
+                        "required": ["name", "weight", "iv"]
+                    }
+                },
                 "scenarios": {
                     "type": "array",
                     "description": (
@@ -128,27 +216,15 @@ TOOLS = [{
                             "iv": {"type": "number", "description": "Optional pre-computed intrinsic value"},
                             "base_cf": {"type": "number", "description": "Base FCF in $B for this scenario"},
                             "growth_rates": {"type": "array", "items": {"type": "number"}, "description": "5-year growth rates"},
+                            "explicit_growth": {"type": "array", "items": {"type": "number"}},
+                            "fade_years": {"type": "integer"},
                             "wacc": {"type": "number", "description": "Discount rate as decimal"},
-                            "terminal_g": {"type": "number", "description": "Terminal growth as decimal"},
+                            "terminal_g": {"type": "number", "description": "REQUIRED. Terminal growth as decimal"},
                             "terminal_exit_multiple": {"type": "number"}
                         },
                         "required": ["name", "prob"]
                     }
-                },
-                "base_cf": {"type": "number", "description": "Base owner cash flow / FCF (in $B or per-share, matching units)."},
-                "growth_rates": {
-                    "type": "array",
-                    "description": "List of 5 annual growth rates, e.g. [0.12, 0.10, 0.08, 0.06, 0.05].",
-                    "items": {"type": "number"}
-                },
-                "wacc": {"type": "number", "description": "Cost of capital / discount rate as decimal, e.g. 0.085 for 8.5%."},
-                "terminal_exit_multiple": {"type": "number", "description": "Exit multiple on year-5 cash flow (e.g. 16.0 for 16x)."},
-                "terminal_g": {"type": "number", "description": "Long-term terminal growth rate as decimal (default 0.025)."},
-                "annuity_flow": {"type": "number", "description": "Separate annual services / installed-base recurring annuity cash flow (if unbundled)."},
-                "annuity_cap_rate": {"type": "number", "description": "Capitalization rate for annuity flow (e.g. 0.075 for 7.5%)."},
-                "net_debt": {"type": "number", "description": "Total net debt (Debt minus cash/marketable securities) in $B."},
-                "shares_diluted": {"type": "number", "description": "Diluted share count in billions."},
-                "demonstrated_cagr_5y": {"type": "number", "description": "Historical 5-year revenue CAGR in percent (e.g. 7.5 for 7.5%) from Section 7."}
+                }
             },
             "required": ["price"]
         }

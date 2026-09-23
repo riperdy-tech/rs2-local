@@ -19,9 +19,11 @@ def test_unbundled_dcf_basic():
         base_cf=10.0,
         growth_rates=[0.10, 0.10, 0.10, 0.10, 0.10],
         wacc=0.10,
+        terminal_g=0.025,
         terminal_exit_multiple=15.0,
         net_debt=5.0,
         shares_diluted=1.0,
+        valuation_frame="firm",
     )
     assert res["per_share_iv"] > 0
     assert res["dcf_pv"] > 0
@@ -35,6 +37,7 @@ def test_unbundled_dcf_with_annuity():
         base_cf=10.0,
         growth_rates=[0.10, 0.10, 0.10, 0.10, 0.10],
         wacc=0.10,
+        terminal_g=0.025,
         terminal_exit_multiple=15.0,
         annuity_flow=2.0,
         annuity_cap_rate=0.08,
@@ -53,6 +56,7 @@ def test_reverse_dcf_expectations_gap():
         shares_diluted=1.0,
         base_cf=5.0,
         wacc=0.09,
+        terminal_g=0.025,
         demonstrated_cagr_5y=8.0,
     )
     assert "implied_growth_next_5y_pct" in res
@@ -103,6 +107,7 @@ def test_execute_financial_model_dispatch():
         "base_cf": 3.8,
         "shares_diluted": 0.274,
         "wacc": 0.085,
+        "terminal_g": 0.025,
         "demonstrated_cagr_5y": 7.5,
     }
     out = execute_financial_model(payload)
@@ -113,7 +118,7 @@ def test_execute_financial_model_dispatch():
 
 def test_unbundled_dcf_boundary_conditions():
     # Negative base cash flow
-    res_neg = unbundled_dcf(base_cf=-2.0, growth_rates=[0.1], wacc=0.1)
+    res_neg = unbundled_dcf(base_cf=-2.0, growth_rates=[0.1], wacc=0.1, terminal_g=0.025)
     assert "error" in res_neg
 
     # WACC <= terminal growth rate
@@ -132,6 +137,7 @@ def test_batch_scenario_dcf_execution():
         "price": 951.04,
         "shares_diluted": 0.266,
         "net_debt": -9.6,  # Net cash
+        "valuation_frame": "firm",
         "demonstrated_cagr_5y": 8.7,
         "scenarios": [
             {
@@ -169,4 +175,270 @@ def test_batch_scenario_dcf_execution():
     assert "kelly_sizing" in out
     assert "payoff_skew" in out
     assert "reverse_dcf" in out
+
+
+# ── Phase 4 Decision D1: Three-Stage DCF, Dual Terminal, Frames, SBC, Multiple Band ──
+
+def test_three_stage_dcf_with_fade():
+    """Verify hand-computed three-stage DCF with linear fade per D1.
+    Parameters:
+      base_cf = 100.0, explicit = [0.10, 0.10], fade_years = 2, terminal_g = 0.04,
+      wacc = 0.10, shares = 10.0, net_debt = 0.0, frame = 'equity'.
+    Hand calculation:
+      Stage 1:
+        Year 1 (g=0.10): CF1 = 110.0, PV1 = 100.0
+        Year 2 (g=0.10): CF2 = 121.0, PV2 = 100.0
+      Stage 2 (fade over 2 years from 0.10 to 0.04):
+        Year 3 (i=1, g=0.07): CF3 = 121.0 * 1.07 = 129.47, PV3 = 129.47 / 1.1^3 = 97.2727
+        Year 4 (i=2, g=0.04): CF4 = 129.47 * 1.04 = 134.6488, PV4 = 134.6488 / 1.1^4 = 91.9669
+      Discrete DCF PV = 100.0 + 100.0 + 97.2727 + 91.9669 = 389.2396
+      Stage 3 (Gordon Terminal Value at t=4):
+        CF5 = 134.6488 * 1.04 = 140.034752
+        TV_nominal = 140.034752 / (0.10 - 0.04) = 2333.912533
+        TV_pv = 2333.912533 / 1.1^4 = 1594.093664
+      Enterprise Value = 389.2396 + 1594.093664 = 1983.3333
+      Equity Value = 1983.3333
+      Per-share IV = 1983.3333 / 10.0 = 198.33
+      Implied terminal EV/FCF multiple = TV_nominal / CF4 = 1.04 / 0.06 = 17.3333x
+      Terminal share of value = 1594.093664 / 1983.3333 = 0.8037 (80.37%)
+    """
+    res = unbundled_dcf(
+        base_cf=100.0,
+        explicit_growth=[0.10, 0.10],
+        fade_years=2,
+        terminal_g=0.04,
+        wacc=0.10,
+        shares_diluted=10.0,
+        valuation_frame="equity",
+    )
+    assert not res.get("error")
+    assert res["dcf_pv"] == pytest.approx(389.24, 0.01)
+    assert res["terminal_value_nominal"] == pytest.approx(2333.91, 0.01)
+    assert res["terminal_value_pv"] == pytest.approx(1594.09, 0.01)
+    assert res["enterprise_value"] == pytest.approx(1983.33, 0.02)
+    assert res["per_share_iv"] == pytest.approx(198.33, 0.01)
+    assert res["implied_terminal_ev_fcf_gordon"] == pytest.approx(17.33, 0.01)
+    assert res["terminal_share_of_value"] == pytest.approx(0.8037, 0.001)
+    assert res["growth_rates_applied"] == [0.10, 0.10, 0.07, 0.04]
+
+
+def test_dual_terminal_gordon_and_exit_legs():
+    """Verify both Gordon and Exit Multiple legs are calculated, discounted, and returned per D1."""
+    res = unbundled_dcf(
+        base_cf=10.0,
+        explicit_growth=[0.08, 0.08, 0.08, 0.08, 0.08],
+        fade_years=0,
+        wacc=0.09,
+        terminal_g=0.025,
+        terminal_exit_multiple=18.0,
+        net_debt=2.0,
+        shares_diluted=1.0,
+        valuation_frame="firm",
+    )
+    assert not res.get("error")
+    assert "gordon_terminal" in res
+    assert "exit_multiple_terminal" in res
+    assert res["per_share_iv_gordon"] > 0
+    assert res["per_share_iv_exit"] > 0
+    assert res["gordon_terminal"]["terminal_value_pv"] > 0
+    assert res["exit_multiple_terminal"]["terminal_value_pv"] > 0
+    # Both terminal values must be discounted to t=0
+    n = 5
+    disc_factor = (1.0 + 0.09) ** n
+    assert res["gordon_terminal"]["terminal_value_pv"] == pytest.approx(
+        res["gordon_terminal"]["terminal_value_nominal"] / disc_factor, 0.01
+    )
+    assert res["exit_multiple_terminal"]["terminal_value_pv"] == pytest.approx(
+        res["exit_multiple_terminal"]["terminal_value_nominal"] / disc_factor, 0.01
+    )
+
+
+def test_undiscounted_tv_regression_cat():
+    """Regression test against undiscounted TV (the CAT audit defect).
+    In CAT, nominal TV was added directly to discrete PV without discounting,
+    producing an erroneous ~$440 (or here ~$510.69) instead of the true discounted ~$263 (or here ~$348.46).
+    The tool MUST discount TV to t=0.
+    """
+    res = unbundled_dcf(
+        base_cf=10.0,
+        explicit_growth=[0.08, 0.08, 0.08, 0.08, 0.08],
+        fade_years=0,
+        wacc=0.09,
+        terminal_g=0.025,
+        net_debt=25.0,
+        shares_diluted=0.50,
+        valuation_frame="firm",
+    )
+    assert not res.get("error")
+    # Correct discounted values
+    assert res["per_share_iv"] == pytest.approx(348.46, 0.02)
+    assert res["terminal_value_pv"] == pytest.approx(150.59, 0.02)
+    assert res["terminal_value_nominal"] == pytest.approx(231.70, 0.02)
+
+    # Verify that enterprise_value used discounted TV, NOT nominal TV
+    assert res["enterprise_value"] == pytest.approx(res["dcf_pv"] + res["terminal_value_pv"], 0.01)
+    erroneous_ev = res["dcf_pv"] + res["terminal_value_nominal"]
+    erroneous_iv = (erroneous_ev - 25.0) / 0.50
+    assert erroneous_iv == pytest.approx(510.69, 0.02)
+    assert res["enterprise_value"] < erroneous_ev
+    assert res["per_share_iv"] < erroneous_iv
+
+
+def test_valuation_frame_equity_refuses_nonzero_net_debt():
+    """Valuation frame 'equity' discounts FCFE at CoE and strictly refuses nonzero net debt."""
+    res_bad = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        net_debt=10.0,
+        valuation_frame="equity",
+    )
+    assert "error" in res_bad
+    assert "refuses nonzero net_debt" in res_bad["error"]
+
+    # net_debt == 0.0 or None must succeed
+    res_zero = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        net_debt=0.0,
+        valuation_frame="equity",
+    )
+    assert not res_zero.get("error")
+
+    res_none = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        net_debt=None,
+        valuation_frame="equity",
+    )
+    assert not res_none.get("error")
+
+
+def test_valuation_frame_firm_requires_net_debt_and_shares():
+    """Valuation frame 'firm' discounts FCFF at WACC and requires net_debt and shares_diluted."""
+    res_missing_debt = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        net_debt=None,
+        shares_diluted=1.0,
+        valuation_frame="firm",
+    )
+    assert "error" in res_missing_debt
+    assert "requires net_debt" in res_missing_debt["error"]
+
+    res_missing_shares = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        net_debt=5.0,
+        shares_diluted=0.0,
+        valuation_frame="firm",
+    )
+    assert "error" in res_missing_shares
+    assert "positive shares_diluted" in res_missing_shares["error"]
+
+
+def test_missing_terminal_g_refused():
+    """terminal_g is required; calls without it are refused with a structured error."""
+    res = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=None,
+    )
+    assert "error" in res
+    assert "terminal_g is required" in res["error"]
+
+
+def test_rate_pairing_check():
+    """Verify rate_engine.check_pairing is wired and returns structured FrameMismatch errors."""
+    # Equity frame with true_wacc rate_type -> FrameMismatch
+    res_eq_mismatch = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        valuation_frame="equity",
+        rate_type="true_wacc",
+    )
+    assert "error" in res_eq_mismatch
+    assert "FrameMismatch" in res_eq_mismatch["error"]
+
+    # Firm frame with cost_of_equity rate_type -> FrameMismatch
+    res_firm_mismatch = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        net_debt=2.0,
+        shares_diluted=1.0,
+        valuation_frame="firm",
+        rate_type="cost_of_equity",
+    )
+    assert "error" in res_firm_mismatch
+    assert "FrameMismatch" in res_firm_mismatch["error"]
+
+
+def test_sbc_double_deduction_refused():
+    """sbc_treatment='deducted_in_cf' may not also pass sbc_dilution (double deduction refused)."""
+    res_double = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        sbc_treatment="deducted_in_cf",
+        sbc_dilution=0.05,
+    )
+    assert "error" in res_double
+    assert "double deduction refused" in res_double["error"]
+
+    # Valid single treatment: add_back_dilution with dilution factor
+    res_valid = unbundled_dcf(
+        base_cf=5.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        shares_diluted=1.0,
+        sbc_treatment="add_back_dilution",
+        sbc_dilution=0.05,  # 5% share dilution
+    )
+    assert not res_valid.get("error")
+    assert res_valid["shares_diluted"] == pytest.approx(1.05, 0.001)
+
+
+def test_sector_multiple_band_inside_outside():
+    """Verify reconciliation of Gordon and Exit leg implied multiples against sector_multiple_band."""
+    # Gordon implied multiple: (1 + 0.04) / (0.10 - 0.04) = 17.33x
+    band_inside = {"low": 15.0, "mid": 17.5, "high": 20.0, "metric": "EV/FCF"}
+    res_in = unbundled_dcf(
+        base_cf=100.0,
+        explicit_growth=[0.10],
+        wacc=0.10,
+        terminal_g=0.04,
+        terminal_exit_multiple=18.0,
+        sector_multiple_band=band_inside,
+    )
+    assert res_in["multiple_in_band_gordon"] is True
+    assert res_in["multiple_in_band_exit"] is True
+
+    band_outside = {"low": 10.0, "mid": 12.0, "high": 15.0, "metric": "EV/FCF"}
+    res_out = unbundled_dcf(
+        base_cf=100.0,
+        explicit_growth=[0.10],
+        wacc=0.10,
+        terminal_g=0.04,
+        terminal_exit_multiple=18.0,
+        sector_multiple_band=band_outside,
+    )
+    assert res_out["multiple_in_band_gordon"] is False
+    assert res_out["multiple_in_band_exit"] is False
+
 
