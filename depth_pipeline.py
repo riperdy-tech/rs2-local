@@ -423,8 +423,26 @@ def band_verdict(doc):
     spread = v["spread_pct"] if v["spread_pct"] is not None else 0.0
     reason_notes = []
 
-    if price > ivs[-1]:
-        d = "overvalued"        # every plausible draw values it below the price
+    med_iv = doc.get("median_iv")
+    if med_iv is None and ivs:
+        import statistics as _st
+        med_iv = _st.median(ivs)
+
+    min_mos = depth_gates.MIN_MOS_FOR_DIRECTION
+    if (
+        med_iv is not None
+        and price > 0
+        and (med_iv - price) / price >= min_mos
+        and price < ivs[0]
+    ):
+        d = "undervalued"
+    elif (
+        med_iv is not None
+        and price > 0
+        and (price - med_iv) / price >= min_mos
+        and price > ivs[-1]
+    ):
+        d = "overvalued"
         # Asymmetric Compounder Moat Override (Charter v3.0 / Anti-Vacuum Principle):
         # A wide-moat compounder (moat >= 4.0, skew >= 2.0x, positive Kelly) trading near Base IV (<= 10%)
         # represents durable compounding with massive asymmetric upside; do not label cigar-butt "overvalued".
@@ -435,10 +453,16 @@ def band_verdict(doc):
             if price <= 1.10 * ivs[-1]:
                 d = "hold"
                 reason_notes.append(f"fairly valued with asymmetric upside (moat {moat}/5, skew {skew}x) — hold/starter tranche")
-    elif price < ivs[0]:
-        d = "undervalued"       # every plausible draw values it above the price
+    elif price > ivs[-1]:
+        moat = scorecard.get("median_quality_moat") or scorecard.get("business_quality_moat")
+        skew = scorecard.get("asymmetric_payoff_skew")
+        kelly = scorecard.get("median_kelly_fraction_pct") or scorecard.get("kelly_fraction_pct")
+        if moat and float(moat) >= 4.0 and skew and float(skew) >= 2.0 and kelly and float(kelly) > 0:
+            if price <= 1.10 * ivs[-1]:
+                reason_notes.append(f"fairly valued with asymmetric upside (moat {moat}/5, skew {skew}x) — hold/starter tranche")
+        d = "hold"
     else:
-        d = "hold"              # price inside the model's honest uncertainty — no edge
+        d = "hold"
 
     # STRICT NON-CONVERGENCE GATE:
     # If the models fundamentally disagree beyond tolerance (spread > 25%), capital cannot be committed.
@@ -448,6 +472,17 @@ def band_verdict(doc):
             reason_notes.append(f"high dispersion (spread {spread:.1f}% > {tol:.0f}%) — model disagreement prohibits capital allocation")
         v.setdefault("flags", []).append("HIGH_DISPERSION_QUARANTINE")
         v["flags"] = sorted(set(v["flags"]))
+
+    # Report verdict mismatch flag (P4 T2 / D7)
+    rep_label = scorecard.get("verdict_label")
+    if rep_label:
+        rep_norm = str(rep_label).strip().lower()
+        if rep_norm == "fair":
+            rep_norm = "hold"
+        if rep_norm != d:
+            v.setdefault("flags", []).append("report_verdict_mismatch")
+            v["flags"] = sorted(set(v["flags"]))
+            reason_notes.append(f"report verdict '{rep_label}' disagrees with recorded direction '{d}'")
 
     size = next(lbl for cap, lbl in SIZE_BUCKETS if spread <= cap)
 

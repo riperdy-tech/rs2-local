@@ -34,6 +34,7 @@ _DIRECTIONS = ("undervalued", "hold", "overvalued")
 # for an unmarked run (P1.2); "test" is reserved for anything that stamps itself as such.
 _NON_PRODUCTION_SOURCES = ("manual", "test")
 HIGH_DISPERSION_TOL_PCT = 25.0
+MIN_MOS_FOR_DIRECTION = 0.10
 
 
 def assess(v):

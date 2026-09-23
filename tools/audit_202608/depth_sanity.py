@@ -86,16 +86,39 @@ def audit(ticker, verdict):
 
     # --- the verdict must follow from its own band -------------------------------------------
     if lo is not None and hi is not None and price:
-        expect = "overvalued" if price > hi else "undervalued" if price < lo else "hold"
-        # Asymmetric compounder hold check:
+        med_iv = verdict.get("median_iv")
         sc = verdict.get("scorecard") or {}
+        if med_iv is None:
+            med_iv = sc.get("median_iv") or sc.get("base_iv")
+        min_mos = getattr(depth_gates, "MIN_MOS_FOR_DIRECTION", 0.10)
+
+        mos_below_floor = False
+        if med_iv is not None and price > 0:
+            if price < lo and (med_iv - price) / price < min_mos:
+                mos_below_floor = True
+            elif price > hi and (price - med_iv) / price < min_mos:
+                mos_below_floor = True
+
         moat = sc.get("median_quality_moat") or sc.get("business_quality_moat")
         skew = sc.get("asymmetric_payoff_skew")
-        if expect == "overvalued" and direction == "hold" and moat and float(moat) >= 4.0 and skew and float(skew) >= 2.0:
-            pass  # Allowed asymmetric compounder override
-        elif expect != direction and not (direction == "hold" and verdict.get("spread_pct") and verdict.get("spread_pct") > depth_gates.HIGH_DISPERSION_TOL_PCT):
-            note(2, f"direction '{direction}' contradicts its band: price ${price} vs "
-                    f"${lo}-${hi} implies '{expect}'")
+        compounder_override = (
+            price > hi and moat and float(moat) >= 4.0 and skew and float(skew) >= 2.0
+        )
+        high_disp = (
+            verdict.get("spread_pct") is not None
+            and verdict.get("spread_pct") > depth_gates.HIGH_DISPERSION_TOL_PCT
+        )
+
+        expect = "overvalued" if price > hi else "undervalued" if price < lo else "hold"
+
+        if direction == "undervalued" and price >= lo:
+            note(2, f"direction 'undervalued' contradicts its band: price ${price} vs ${lo}-${hi} implies '{expect}'")
+        elif direction == "overvalued" and price <= hi:
+            note(2, f"direction 'overvalued' contradicts its band: price ${price} vs ${lo}-${hi} implies '{expect}'")
+        elif direction == "hold" and (price < lo or price > hi):
+            if not (high_disp or compounder_override or mos_below_floor):
+                note(2, f"direction '{direction}' contradicts its band: price ${price} vs "
+                        f"${lo}-${hi} implies '{expect}'")
     elif direction != "NOT_USABLE":
         note(2, "no band, but a direction was published")
 

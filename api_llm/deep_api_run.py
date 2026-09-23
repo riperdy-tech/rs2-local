@@ -353,10 +353,11 @@ def main():
         if think:
             (d / f"sample{i}_thinking.md").write_text(think, encoding="utf-8")
         truncated = meta.get("finish_reason") == "length"
-        ivs = cv.extract_iv(rep, price)
-        iv = st.median(ivs) if ivs else None
+        scorecard = cv.extract_scorecard(rep, price=price, ticker=t)
+        iv = scorecard.get("base_iv")
         ok, why, flags = cv.plausibility(iv, price, t)
-        runs.append({"sample": i, "iv": iv, "all_iv_mentions": sorted(set(ivs))[:8],
+        runs.append({"sample": i, "iv": iv, "scorecard": scorecard,
+                     "all_iv_mentions": [iv] if iv is not None else [],
                      "plausible": ok, "reasons": why, "flags": flags, "truncated": truncated,
                      "done_reason": meta.get("finish_reason"),
                      "tool_calls": meta.get("tool_calls"),
@@ -376,6 +377,7 @@ def main():
     spread = (max(ivs) / min(ivs) - 1) * 100 if len(ivs) >= 2 else None
     converged = bool(spread is not None and spread <= cv.TOL_PCT)
     med = st.median(ivs) if ivs else None
+    medoid_card, _ = cv.select_medoid_scorecard(runs, med, price)
     verdict = ("USABLE - plausible and converged" if converged and med else
                "NOT USABLE - runs disagree beyond tolerance" if med and spread is not None else
                "NOT USABLE - no plausible sample")
@@ -384,6 +386,7 @@ def main():
            "effective_tolerance_pct": cv.TOL_PCT,
            "generated_at": datetime.now(timezone.utc).isoformat(),
            "runs": runs, "n_plausible": len(good), "median_iv": med,
+           "scorecard": medoid_card,
            "spread_pct": round(spread, 1) if spread is not None else None,
            "tolerance_pct": cv.TOL_PCT, "early_tolerance_pct": cv.EARLY_TOL_PCT,
            "converged": converged, "verdict": verdict,
