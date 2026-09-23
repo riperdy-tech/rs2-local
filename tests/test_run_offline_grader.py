@@ -84,6 +84,10 @@ def test_orchestrate_depth_main_runs_grader_before_final_publish(tmp_path, monke
     monkeypatch.setattr(od.depth_triggers, "trigger_map", lambda book: {})
     monkeypatch.setattr(od.depth_triggers, "newest_verdicts", lambda: {})
     monkeypatch.setattr(od, "data_health_scan", lambda book: None)
+    # P4.5/DEP-13: main() now runs thesis_monitor.run() right after the membership snapshot —
+    # stub it so this test never touches the real cache/depth_thesis.json.
+    monkeypatch.setattr(od.thesis_monitor, "run",
+                        lambda: {"evaluated": 0, "breached": 0, "intact": 0, "unknown": 0})
     # Bypass the due-queue business logic entirely — this test is about call ORDER, not
     # membership/trigger rules, which are covered elsewhere (tests/test_depth_queue.py etc.).
     monkeypatch.setattr(od, "build_queue", lambda *a, **k: [("FAKE1", "triggered", "test")])

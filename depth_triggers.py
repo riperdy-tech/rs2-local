@@ -14,6 +14,13 @@ Triggers, per name, measured against its NEWEST depth verdict (cache/depth_ledge
              anything the market noticed, filed or not.
   pack       the verdict was produced on an older revision of the data pack, so the model was
              shown different (or wrongly declared) facts. Ranked with rotation, not with events.
+  thesis_break   (P4.5/DEP-13) thesis_monitor.py found a checkable invalidation_rule currently
+             satisfied against fresh data. Source: cache/depth_thesis.json.
+  momentum_flip  (P4.5/DEP-13) a wait_for_momentum name's momentum_flip_condition is currently
+             met. Source: cache/depth_thesis.json.
+  earnings_window  (P4.10) the next earnings print is within EARNINGS_WINDOW_TRADING_DAYS.
+             NON-queueable, like filing_pending — nothing new to read until the print lands; the
+             `filing` trigger above covers the post-print re-run. Source: enrich/{T}.json.
   rotation   the verdict is older than ROTATION_DAYS — the staleness cap under everything else.
 
 Priority contract (operator): triggered names run FIRST; baseline rotation only when no
@@ -25,7 +32,7 @@ SEC etiquette: submissions JSON is fetched at most once per UTC day per CIK
 import json
 import time
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -43,9 +50,19 @@ CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 SUB_CACHE = HERE / "cache" / "sec_submissions"
+# P4.5/DEP-13: the thesis monitor's own output (thesis_monitor.py, owner). Read-only here.
+THESIS_CACHE = HERE / "cache" / "depth_thesis.json"
+# P4.10/DEP-02: enrich_ticker.py's on-demand output, which now also carries next_earnings_date.
+ENRICH_DIR = Path(CONFIG["out_enrich_dir"])
 
 MOVE_PCT = float(CONFIG.get("depth_move_trigger_pct", 8.0))
 ROTATION_DAYS = float(CONFIG.get("depth_rotation_days", 90))
+# P4.10 — the earnings_window trigger fires when the next print is within this many TRADING
+# (weekday) days. Non-queueable (like filing_pending — see orchestrate_depth.build_queue's
+# NON_QUEUEABLE set): it is visible in `why` but never by itself makes a name due, because the
+# analyst has nothing new to read until the print actually lands — the existing `filing` trigger
+# covers that post-print re-run.
+EARNINGS_WINDOW_TRADING_DAYS = int(CONFIG.get("depth_earnings_window_trading_days", 5))
 # Boundary-dwell constants (DEPTH_ORCHESTRATOR_CADENCE_20260825.md §4). Snapshot-days, not
 # calendar days — one row per sweep, ~daily. All overridable in config.json.
 ENTRY_DWELL = int(CONFIG.get("depth_entry_dwell_days", 5))
@@ -120,6 +137,36 @@ def _filings_since(cik, since_date):
     return [(f, dt) for f, dt in zip(forms, dates) if dt > since_date]
 
 
+def _thesis_record(t):
+    """{...} row for `t` from cache/depth_thesis.json (thesis_monitor.run()'s own output), or
+    None — best-effort, like every other cached artifact this module reads: a missing/corrupt
+    file degrades to 'no thesis trigger today', never a crash or a fabricated one."""
+    doc = rs2_data.load_json(THESIS_CACHE) or {}
+    return (doc.get("tickers") or {}).get(t)
+
+
+def _trading_days_until(target_date_str, today=None):
+    """Weekday count from `today` (exclusive) to `target_date_str` (YYYY-MM-DD, inclusive), or
+    None if unparseable or already past. No market-holiday calendar — the same simplification
+    ROTATION_DAYS/ENTRY_DWELL already accept elsewhere in this module (calendar/snapshot days,
+    not exchange-calendar-exact); a 5-trading-day window does not need holiday precision."""
+    if not target_date_str:
+        return None
+    try:
+        target = datetime.strptime(str(target_date_str)[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+    today = today or datetime.now().date()
+    if target < today:
+        return None
+    n, d = 0, today
+    while d < target:
+        d += timedelta(days=1)
+        if d.weekday() < 5:
+            n += 1
+    return n
+
+
 def _price_now(t):
     """(price: float, source: str) or (None, None).
     Tries price_now.quote() first; falls back to financials/{t}.json vendor quote.
@@ -171,6 +218,16 @@ def triggers_for(t, verdict):
             else:
                 out.append(("filing_pending", f"{f} filed {dt}; our tables at {ours} - "
                             f"deferred until the data lands"))
+    # P4.10/DEP-02 — EARNINGS WINDOW. Non-queueable (like filing_pending above): the print has
+    # not happened yet, so there is nothing new for the analyst to read; it exists to make the
+    # upcoming print visible in logs/status. The `filing` trigger above already covers the
+    # post-print re-run once the 10-Q/10-K actually lands. No CIK needed — sourced from
+    # enrich/{T}.json (enrich_ticker.py's next_earnings_date), not the SEC submissions feed.
+    en = rs2_data.load_json(ENRICH_DIR / f"{t}.json") or {}
+    ned = en.get("next_earnings_date")
+    td = _trading_days_until(ned)
+    if td is not None and td <= EARNINGS_WINDOW_TRADING_DAYS:
+        out.append(("earnings_window", f"next print {ned} ({td} trading day(s) out)"))
     p0 = verdict.get("price")
     p1, src = _price_now(t)
     if p0 and p1:
@@ -187,6 +244,21 @@ def triggers_for(t, verdict):
     if verdict.get("pack_revision", 1) < cap.PACK_REVISION:
         out.append(("pack", f"analysed on pack revision "
                             f"{verdict.get('pack_revision', 1)}; current is {cap.PACK_REVISION}"))
+    # P4.5/DEP-13 — THESIS_BREAK and MOMENTUM_FLIP, read from thesis_monitor.py's own output
+    # (cache/depth_thesis.json). Deterministic reads of an already-computed record — same
+    # "detection is deterministic, judgment is the model's" split as every other trigger here;
+    # the mechanical rule-check happened in thesis_monitor, this only surfaces its verdict.
+    thesis = _thesis_record(t)
+    if thesis:
+        if thesis.get("thesis_status") == "breached":
+            fired = [c.get("metric") for c in (thesis.get("checks") or [])
+                     if c.get("breached") is True]
+            out.append(("thesis_break", "invalidation rule breached: "
+                        + (", ".join(fired) if fired else "see cache/depth_thesis.json")))
+        if thesis.get("momentum_flip_met"):
+            out.append(("momentum_flip", f"entry_timing flip condition met (was "
+                        f"{verdict.get('entry_timing')}, now "
+                        f"{thesis.get('entry_timing_now')})"))
     # PERSISTENT RE-ENTRY (#5) and EXIT-REVIEW (#7) — boundary-dwell triggers. Both DORMANT until
     # the membership log holds enough daily rows; each is guarded on its own dwell threshold, so a
     # thin log simply yields no boundary trigger, never a crash or a false one. Cooldown/freshness

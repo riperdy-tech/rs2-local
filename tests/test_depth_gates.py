@@ -141,6 +141,14 @@ def test_non_production_row_test():
     assert reasons == ["non_production_row"]
 
 
+def test_non_production_row_gate_test():
+    """B4 (Phase 4 amendments): the Phase 4 gate run (RS2_RUN_SOURCE=gate_test) must never be
+    actionable, even if a copy of its row ever reached the production ledger by some other path."""
+    actionable, reasons = dg.assess(_clean(run_source="gate_test"))
+    assert actionable is False
+    assert reasons == ["non_production_row"]
+
+
 # ---- multiple reasons compound, in the fixed order ------------------------------------------
 
 def test_reasons_compound_in_order():
@@ -199,6 +207,9 @@ def test_rebuild_overlay_on_3row_fixture(tmp_path, monkeypatch):
     overlay = tmp_path / "depth_overlay.json"
     monkeypatch.setattr(od, "LEDGER", ledger)
     monkeypatch.setattr(od, "OVERLAY", overlay)
+    # P4.5/DEP-13: rebuild_overlay() now reads cache/depth_thesis.json too — isolate from the
+    # real one (a nonexistent path here means every thesis field publishes explicit None).
+    monkeypatch.setattr(od, "THESIS_CACHE", tmp_path / "depth_thesis.json")
 
     count = od.rebuild_overlay()
     assert count == 3
@@ -225,6 +236,14 @@ def test_rebuild_overlay_on_3row_fixture(tmp_path, monkeypatch):
     assert "not_usable" in ccc["actionable_reasons"]
     assert ccc["status"] == "not_usable"
     assert ccc["direction"] is None       # the sentinel string never reaches the published row
+
+    # P4.5/DEP-13: with no cache/depth_thesis.json record for any of these tickers, every thesis
+    # field publishes as an explicit None — present, never silently omitted.
+    for row in (aaa, bbb, ccc):
+        assert row["thesis_status"] is None
+        assert row["thesis_checks"] is None
+        assert row["entry_timing_now"] is None
+        assert row["thesis_asof"] is None
 
 
 # ---- B3 (Phase 4 amendment): pre_valid_analyst reason, gated on FIRST_VALID_PACK_REVISION ----

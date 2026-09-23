@@ -106,3 +106,40 @@ def test_why_strings():
     assert why["RN1"] == "8k:8-K filed 2026-09-01, move:9%"
     assert why["BASE"] == "baseline"
     assert why["ROT"] == "rotation:95d"
+
+
+# ---- P4.5/DEP-13: thesis_break (class 0) and momentum_flip (class 2) -------------------------
+
+def test_thesis_break_is_class_0_like_an_event_trigger():
+    rows = q(["RN1"], trig={"RN1": [("thesis_break", "gross_margin_pct < 30")]},
+             verdicts={"RN1": V})
+    assert tickers(rows) == ["RN1"]
+    assert rows[0][1] == 0
+
+
+def test_momentum_flip_is_class_2_like_reentry():
+    rows = q(["RN1"], trig={"RN1": [("momentum_flip", "flip met")]}, verdicts={"RN1": V})
+    assert tickers(rows) == ["RN1"]
+    assert rows[0][1] == 2
+
+
+def test_thesis_break_outranks_momentum_flip_on_the_same_name():
+    rows = q(["RN1"], trig={"RN1": [("momentum_flip", "flip met"),
+                                    ("thesis_break", "breach")]},
+             verdicts={"RN1": V})
+    assert rows[0][1] == 0
+
+
+# ---- P4.10: earnings_window is visible but NON-queueable, like filing_pending ------------------
+
+def test_earnings_window_alone_is_not_due():
+    rows = q(["RN1"], trig={"RN1": [("earnings_window", "next print in 3d")]},
+             verdicts={"RN1": V})
+    assert rows == []
+
+
+def test_earnings_window_alongside_an_actionable_trigger_still_runs_and_keeps_the_why():
+    rows = q(["RN1"], trig={"RN1": [("earnings_window", "next print in 3d"), ("move", "9%")]},
+             verdicts={"RN1": V})
+    assert tickers(rows) == ["RN1"]
+    assert "earnings_window" in rows[0][2] and "move" in rows[0][2]

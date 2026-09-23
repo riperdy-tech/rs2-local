@@ -204,6 +204,10 @@ def test_orchestrate_depth_main_ignore_factor_guard_bypasses(tmp_path, monkeypat
     monkeypatch.setattr(od.depth_triggers, "trigger_map", lambda book: {})
     monkeypatch.setattr(od.depth_triggers, "newest_verdicts", lambda: {})
     monkeypatch.setattr(od, "data_health_scan", lambda book: None)
+    # P4.5/DEP-13: main() now runs thesis_monitor.run() right after the membership snapshot —
+    # stub it so this test never touches the real cache/depth_thesis.json.
+    monkeypatch.setattr(od.thesis_monitor, "run",
+                        lambda: {"evaluated": 0, "breached": 0, "intact": 0, "unknown": 0})
     monkeypatch.setattr(dm, "check_factor_scores", lambda **kw: (False, "should be ignored"))
     monkeypatch.setattr(sys, "argv", ["orchestrate_depth.py", "--ignore-factor-guard", "--dry-run"])
 

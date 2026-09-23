@@ -38,6 +38,7 @@ import depth_triggers       # noqa: E402
 import depth_membership     # noqa: E402
 import depth_ondemand       # noqa: E402  (queue drained at ticker boundaries; stdlib-only)
 import screener_refresh     # noqa: E402  (P4.-1 — refresh the publish clone before reading SD)
+import thesis_monitor       # noqa: E402  (P4.5/DEP-13 — --monitor mode, no GPU, no analyst)
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -56,6 +57,9 @@ LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 # (ondemand_index.json + ondemand_reports/), never the overlay/rankings/paper machinery.
 OD_LEDGER = HERE / "cache" / "depth_ondemand_ledger.jsonl"
 OVERLAY = HERE / "cache" / "depth_overlay.json"
+# P4.5/DEP-13 — the thesis monitor's own output (thesis_monitor.run()), merged into every overlay
+# row by rebuild_overlay(). Owned by thesis_monitor.py; this module only reads it.
+THESIS_CACHE = HERE / "cache" / "depth_thesis.json"
 # TRK-06 (P2.1): the grader's own output, copied into the publish clone alongside the overlay
 # when present. Optional — a fresh checkout or one that predates the grader's first run has none
 # yet, and publish_overlay() must not fail over a file that simply doesn't exist.
@@ -138,6 +142,11 @@ def rebuild_overlay():
     `direction: null, status: "not_usable"` instead of leaking that sentinel into the site's
     direction field; every other row publishes `status: "ok"`. Top level gains `actionable_count`
     and `gate_version` (the ruleset this rebuild judged every row against).
+
+    P4.5/DEP-13: also merges the thesis monitor's own output (cache/depth_thesis.json, written by
+    thesis_monitor.run()) onto every row — `thesis_status`, `thesis_checks`, `entry_timing_now`,
+    `thesis_asof`. Explicit keys, None when the ticker has no thesis record (never evaluated, or
+    the monitor has not run yet) — same "annotate, always present" rule as `actionable` above.
     """
     newest = {}
     if LEDGER.exists():
@@ -147,6 +156,10 @@ def rebuild_overlay():
                 newest[v["ticker"]] = v
             except Exception:
                 continue
+
+    thesis_doc = rs2_data.load_json(THESIS_CACHE) or {}
+    thesis_tickers = thesis_doc.get("tickers") or {}
+    thesis_asof = thesis_doc.get("asof")
 
     actionable_count = 0
     for v in newest.values():
@@ -161,6 +174,11 @@ def rebuild_overlay():
             v["status"] = "not_usable"
         else:
             v["status"] = "ok"
+        th = thesis_tickers.get(v.get("ticker"))
+        v["thesis_status"] = th.get("thesis_status") if th else None
+        v["thesis_checks"] = th.get("checks") if th else None
+        v["entry_timing_now"] = th.get("entry_timing_now") if th else None
+        v["thesis_asof"] = thesis_asof if th else None
 
     OVERLAY.write_text(json.dumps(
         {"generated_at": datetime.now().isoformat(), "scheme": "band_direction_v1",
@@ -547,22 +565,32 @@ def build_queue(book, st, trig, verdicts, fs, *, dwell_in=None, held=frozenset()
             return True
         return dwell_in(t) >= entry_dwell
 
+    # P4.5/DEP-13: thesis_break and momentum_flip are QUEUEABLE (they demand a fresh analyst run,
+    # unlike filing_pending/earnings_window below). P4.10: earnings_window is NON-queueable, like
+    # filing_pending — it is visible in `why` but never by itself makes a name due; the `filing`
+    # trigger already covers the post-print re-run once the print actually lands.
+    NON_QUEUEABLE = ("filing_pending", "earnings_window")
+
     def due(t):
         rec = st.get(t) or {}
         if rec and not rec.get("ok"):
             return rec.get("retries", 0) < MAX_RETRIES      # failed: retry budget decides
-        kinds = [k for k, _ in trig.get(t, []) if k != "filing_pending"]
+        kinds = [k for k, _ in trig.get(t, []) if k not in NON_QUEUEABLE]
         if t not in verdicts:
             return baseline_ready(t)                        # baseline: never analysed (#8)
         return bool(kinds)                                  # verdict exists: only ACTIONABLE triggers
 
     def _class(t):
         kinds = [k for k, _ in trig.get(t, [])]
-        if any(k in ("8k", "filing", "move", "exit_review") for k in kinds):
+        # thesis_break (P4.5/DEP-13): an invalidation rule fired — same urgency as an event
+        # trigger, so it runs with class 0.
+        if any(k in ("8k", "filing", "move", "exit_review", "thesis_break") for k in kinds):
             return 0                                        # event-triggered + exit-review
         if t not in verdicts:
             return 1                                        # baseline pass
-        if "reentry" in kinds:
+        # momentum_flip (P4.5/DEP-13): a wait_for_momentum name's flip condition fired — same
+        # class as re-entry/promotion, not urgent enough for class 0 (no financial rule broke).
+        if "reentry" in kinds or "momentum_flip" in kinds:
             return 2                                        # re-entry / promotion
         return 3                                            # rotation (staleness cap)
 
@@ -676,6 +704,33 @@ def run_offline_grader():
         log(f"offline grader did not run (non-fatal): {str(e)[:120]}")
 
 
+def run_monitor(no_publish=False, paused_bypass=False):
+    """P4.5/DEP-13 — `--monitor` mode: run thesis_monitor.run() (screener data is refreshed by
+    the caller, main(), before this is invoked), then rebuild the local overlay and publish it —
+    NO GPU, NO analyst.
+
+    `paused_bypass=True` is the one case (`--monitor --no-publish` while cache/DEPTH_PAUSED
+    exists) allowed to run at all while paused; it is restricted to writing
+    cache/depth_thesis.json and printing a summary — no overlay rebuild, no publish — so a halted
+    system gets a diagnostic read with zero other footprint.
+    """
+    summary = thesis_monitor.run()
+    log(f"thesis monitor: {summary['evaluated']} actionable name(s) evaluated — "
+        f"{summary['breached']} breached, {summary['intact']} intact, "
+        f"{summary['unknown']} unknown -> {thesis_monitor.THESIS_CACHE}")
+    if paused_bypass:
+        log("PAUSED + --no-publish: restricted run — cache/depth_thesis.json only, no overlay "
+            "rebuild, no publish.")
+        return 0
+    n = rebuild_overlay()
+    log(f"overlay: {n} verdicts (local cache/depth_overlay.json)")
+    if no_publish:
+        log("--no-publish: overlay not pushed.")
+    else:
+        publish_overlay()
+    return 0
+
+
 def main():
     global SCREENER_DATA_COMMIT
     args = sys.argv[1:]
@@ -684,6 +739,10 @@ def main():
     only = (args[args.index("--tickers") + 1].upper().split(",")
             if "--tickers" in args else None)
     ignore_factor_guard = "--ignore-factor-guard" in args
+    # B4 (Phase 4 amendments): the gate run must not reach production. --no-publish suppresses
+    # every publish_overlay() call below (no site push) without changing anything else — the
+    # local ledger/overlay cache still gets written exactly as normal, just never pushed.
+    no_publish = "--no-publish" in args
 
     # Publish-only mode: regenerate + push site artifacts and exit. Used by the on-demand
     # idle runner (depth_ondemand.drain), which cannot import this module (stdout rebind).
@@ -713,6 +772,19 @@ def main():
         return 1
     SCREENER_DATA_COMMIT = refreshed
     log(f"screener data refreshed -> {SCREENER_DATA_COMMIT}")
+
+    # P4.5/DEP-13 — --monitor: refresh (above) + thesis monitor + overlay + publish. NO GPU, NO
+    # analyst, none of the membership/trigger-queue/LOCK machinery below. Normally refuses under
+    # cache/DEPTH_PAUSED exactly like the sweep does; `--monitor --no-publish` is the one
+    # combination allowed to run while paused, and it is restricted to writing
+    # cache/depth_thesis.json only (no local overlay rebuild, no publish) — a read of the book
+    # with zero footprint beyond that one file, safe to run during a halt.
+    if "--monitor" in args:
+        if PAUSED.exists() and not no_publish:
+            log(f"PAUSED file present ({PAUSED}) — exiting. Remove it to run "
+                f"(or use --monitor --no-publish).")
+            return 0
+        return run_monitor(no_publish=no_publish, paused_bypass=PAUSED.exists())
 
     if PAUSED.exists() and not dry:
         log(f"PAUSED file present ({PAUSED}) — exiting. Remove it to run.")
@@ -760,6 +832,20 @@ def main():
             log(f"membership snapshot {sd_date}: skipped (factor guard)")
     except Exception as e:
         log(f"membership snapshot failed (non-fatal): {str(e)[:120]}")
+
+    # P4.5/DEP-13 — thesis monitor, right after the membership snapshot and BEFORE the trigger
+    # map below: depth_triggers.triggers_for() reads cache/depth_thesis.json for the
+    # thesis_break/momentum_flip triggers, so this sweep's own queue must see the freshest
+    # evaluation, not a cycle-old one. NO GPU, NO analyst; non-fatal (a thesis-monitor defect
+    # must never block the sweep it starts).
+    try:
+        th_summary = thesis_monitor.run()
+        log(f"thesis monitor: {th_summary['evaluated']} actionable name(s) — "
+            f"{th_summary['breached']} breached, {th_summary['intact']} intact, "
+            f"{th_summary['unknown']} unknown")
+    except Exception as e:
+        log(f"thesis monitor failed (non-fatal): {str(e)[:120]}")
+
     book = only or live_book()
     data_health_scan(book)
 
@@ -824,7 +910,8 @@ def main():
             write_progress(done, f"{t} (on-demand)", True)
             ok, why = run_one(t, ondemand=True)
             if ok:
-                publish_overlay()
+                if not no_publish:
+                    publish_overlay()
             else:
                 log(f"   [on-demand] {t} FAILED ({why}) — request consumed (one-shot)")
                 try:
@@ -869,7 +956,7 @@ def main():
             # publish per completion (2026-08-21): at ~2h/ticker a sweep runs for days, and
             # sweep-end-only publishing left fresh verdicts invisible on the site the whole
             # time. One small commit per ticker is the lesser cost.
-            if ok:
+            if ok and not no_publish:
                 publish_overlay()
             done += 1
         # Requests that arrived during the final ticker (or when the due-queue was empty and
@@ -888,7 +975,8 @@ def main():
         # cycle behind. Scoped to the case where this final publish actually runs — the sweep
         # already published per-ticker during the loop above.
         run_offline_grader()
-        publish_overlay()
+        if not no_publish:
+            publish_overlay()
     log(f"sweep done: {done} processed.")
     return 0
 
