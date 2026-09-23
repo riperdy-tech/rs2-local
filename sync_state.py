@@ -26,6 +26,8 @@ STATE_FILES = [
     "depth_membership.jsonl",
     "depth_overlay.json",
     "depth_ondemand.jsonl",
+    "depth_test_ledger.jsonl",
+    "depth_ledger_events.jsonl",
 ]
 DELTA = Path("cloud_pending") / "depth_ledger_delta.jsonl"
 
