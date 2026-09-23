@@ -162,6 +162,39 @@ def analyst_targets(info):
     }
 
 
+def next_earnings_date(cal):
+    """(date: 'YYYY-MM-DD' | None) — the nearest FUTURE earnings date out of yfinance's
+    `Ticker.calendar`. yfinance has returned this as a dict ({'Earnings Date': [date, ...]})
+    since its 2024 rewrite; some cached/older responses instead return a DataFrame with an
+    'Earnings Date' row. Both shapes are handled; anything else, or no future date in it, is
+    None — never guessed. A past date in the calendar (the company already reported and yfinance
+    has not rolled the field forward yet) is dropped, not surfaced as upcoming.
+    """
+    if cal is None:
+        return None
+    try:
+        if isinstance(cal, dict):
+            raw = cal.get("Earnings Date") or []
+        elif hasattr(cal, "loc") and "Earnings Date" in getattr(cal, "index", []):
+            raw = list(cal.loc["Earnings Date"])
+        else:
+            return None
+    except Exception:
+        return None
+    today = datetime.now(timezone.utc).date()
+    parsed = []
+    for d in raw if isinstance(raw, (list, tuple)) else [raw]:
+        if d is None:
+            continue
+        try:
+            dd = d if hasattr(d, "year") else datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
+        except Exception:
+            continue
+        parsed.append(dd)
+    future = sorted(d for d in parsed if d >= today)
+    return future[0].isoformat() if future else None
+
+
 def enrich(ticker):
     t = ticker.upper()
     tk = yf.Ticker(t)
@@ -169,12 +202,18 @@ def enrich(ticker):
         info = tk.info or {}
     except Exception:
         info = {}
+    try:
+        cal = tk.calendar
+    except Exception:
+        cal = None
     data = {"_ticker": t, "_fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     data.update(short_and_ownership(info))
     data["short_mom_change_pct"] = short_mom_change(data)
     data.update(options_skew(tk))
     data.update(dxy())
     data.update(analyst_targets(info))
+    # P4.10/DEP-02: next_earnings_date feeds depth_triggers.py's earnings_window trigger.
+    data["next_earnings_date"] = next_earnings_date(cal)
     return data
 
 
