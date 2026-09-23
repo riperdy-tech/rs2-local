@@ -6,7 +6,8 @@ Provides exact arithmetic mid-stream for RS2 depth underwritings:
 2. reverse_dcf_expectations_gap: Solves for market-implied growth at T0 price vs demonstrated CAGR.
 3. continuous_multi_outcome_kelly: Multi-scenario log-wealth optimization (strictly 0.0% if edge <= 0).
 4. calculate_payoff_skew: Mathematical upside/downside ratio.
-5. execute_financial_model: Master dispatcher and formatter for LLM function calling.
+5. blend: Weighted combination of named desk valuation legs.
+6. execute_financial_model: Master dispatcher and formatter for LLM function calling.
 """
 
 from __future__ import annotations
@@ -651,11 +652,106 @@ def calculate_payoff_skew(
     return round(upside / downside, 2)
 
 
+def blend(legs: List[Dict[str, Any]], price: Optional[float] = None) -> Dict[str, Any]:
+    """Calculate weighted blend of named desk valuation legs per Phase 4 Decision D6.
+
+    Takes named legs (each a prior desk result id or per-share value with its source)
+    and weights summing to 1. Returns blended per-share IV and echoes the legs.
+    """
+    if not legs or not isinstance(legs, list):
+        return {"error": "blend requires a non-empty list of leg dicts"}
+
+    total_weight = 0.0
+    parsed_legs = []
+
+    for idx, leg in enumerate(legs):
+        if not isinstance(leg, dict):
+            return {"error": f"Leg {idx} must be a dictionary"}
+        name = str(leg.get("name") or leg.get("label") or f"Leg {idx+1}")
+
+        if "weight" not in leg or leg["weight"] is None:
+            return {"error": f"Leg '{name}' missing required 'weight'"}
+        try:
+            w = float(leg["weight"])
+        except (ValueError, TypeError):
+            return {"error": f"Leg '{name}' has non-numeric weight '{leg['weight']}'"}
+        if w < 0:
+            return {"error": f"Leg '{name}' has negative weight {w}"}
+
+        val = leg.get("iv")
+        if val is None:
+            val = leg.get("per_share_iv")
+        if val is None:
+            val = leg.get("value")
+        if val is None:
+            return {"error": f"Leg '{name}' missing intrinsic value ('iv', 'per_share_iv', or 'value')"}
+        try:
+            v = float(val)
+        except (ValueError, TypeError):
+            return {"error": f"Leg '{name}' has non-numeric intrinsic value '{val}'"}
+
+        source = leg.get("source") or leg.get("result_id") or "desk"
+        total_weight += w
+
+        leg_rec: Dict[str, Any] = {
+            "name": name,
+            "weight": w,
+            "weight_pct": round(w * 100.0, 2),
+            "per_share_iv": round(v, 2),
+            "source": str(source),
+        }
+        if "result_id" in leg:
+            leg_rec["result_id"] = str(leg["result_id"])
+        if "id" in leg:
+            leg_rec["id"] = str(leg["id"])
+        parsed_legs.append(leg_rec)
+
+    if abs(total_weight - 1.0) > 0.001:
+        return {"error": f"Blend weights must sum to 1.0 (got {total_weight:.4f})"}
+
+    blended_iv = sum(l["weight"] * l["per_share_iv"] for l in parsed_legs)
+    blended_iv_rounded = round(blended_iv, 2)
+
+    res: Dict[str, Any] = {
+        "mode": "blend",
+        "blended_per_share_iv": blended_iv_rounded,
+        "per_share_iv": blended_iv_rounded,
+        "weights_sum": round(total_weight, 4),
+        "legs": parsed_legs,
+    }
+
+    if price is not None and float(price) > 0:
+        p = float(price)
+        res["price"] = round(p, 2)
+        res["mos_pct"] = round(((blended_iv_rounded - p) / p) * 100.0, 2)
+
+    return res
+
+
 def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
     """Master tool dispatcher called by Qwen or automation harness.
-    Supports single DCF or batch multi-scenario DCF in a single round trip."""
+    Supports single DCF, batch multi-scenario DCF, or blend mode in a single round trip."""
     price = float(params.get("price") or 0)
     result: Dict[str, Any] = {"price": price}
+
+    scenarios = params.get("scenarios") or []
+    base_cf = params.get("base_cf")
+
+    # 0. Blend Mode Execution (if mode == 'blend' or ('legs' in params and not scenarios and not base_cf))
+    if params.get("mode") == "blend" or ("legs" in params and not scenarios and not base_cf):
+        legs = params.get("legs")
+        if not legs:
+            return {"error": "mode 'blend' requires non-empty 'legs' list"}
+        blend_res = blend(legs=legs, price=price if price > 0 else None)
+        if blend_res.get("error"):
+            return blend_res
+        result.update(blend_res)
+        return result
+
+    if "legs" in params and params["legs"]:
+        blend_res = blend(legs=params["legs"], price=price if price > 0 else None)
+        if not blend_res.get("error"):
+            result["blend"] = blend_res
 
     val_frame = params.get("valuation_frame", "equity")
     rate_type = params.get("rate_type")
@@ -667,7 +763,6 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
     top_net_debt = float(params["net_debt"]) if params.get("net_debt") is not None else (0.0 if val_frame == "equity" else None)
     top_shares = float(params.get("shares_diluted", 1.0))
 
-    scenarios = params.get("scenarios") or []
     scenario_dcfs = []
 
     # 1. Batch Scenario DCF Execution (if scenarios provide DCF parameters)
@@ -783,6 +878,19 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
     """Format the financial model calculation into a clean markdown table for Qwen."""
     lines = ["### FINANCIAL MODELING DESK REPORT (Deterministic Python Verification)\n"]
     price = res.get("price", 0.0)
+
+    # Blend Valuation Output
+    b = res.get("blend") if "blend" in res else (res if res.get("mode") == "blend" else None)
+    if b and not b.get("error"):
+        lines.append("**Valuation Blend Summary (Deterministic Weighted Desk Legs):**")
+        lines.append("| Leg Name | Weight | Per-Share IV | Source |")
+        lines.append("|---|---|---|---|")
+        for leg in b.get("legs", []):
+            lines.append(f"| **{leg.get('name')}** | {leg.get('weight_pct', 0.0):.1f}% | ${leg.get('per_share_iv', 0.0):.2f} | {leg.get('source')} |")
+        lines.append(f"\n- Blended Intrinsic Value: **${b.get('blended_per_share_iv', 0.0):.2f}** per share")
+        if "mos_pct" in b:
+            lines.append(f"- Margin of Safety vs Price (${b.get('price'):.2f}): **{b.get('mos_pct'):+.1f}%**")
+        lines.append("")
 
     # Scenario DCF Summary Table
     if "scenario_dcfs" in res and res["scenario_dcfs"]:

@@ -10,7 +10,9 @@ from financial_model_tool import (
     reverse_dcf_expectations_gap,
     continuous_multi_outcome_kelly,
     calculate_payoff_skew,
+    blend,
     execute_financial_model,
+    format_model_results_markdown,
     _neutral_reference_dcf,
 )
 
@@ -579,6 +581,85 @@ def test_reverse_dcf_base_rate_percentile_bands():
         base_rate_table=base_rates,
     )
     assert rev_high["neutral_reference_structure"]["percentile_band"] == "> p90"
+
+
+def test_blend_arithmetic_exact():
+    """Verify exact weighted blend of named desk valuation legs and price margin of safety."""
+    legs_2 = [
+        {"name": "Gordon DCF", "weight": 0.60, "iv": 150.0, "source": "desk_call_1"},
+        {"name": "Exit Multiple", "weight": 0.40, "iv": 200.0, "source": "desk_call_2"},
+    ]
+    res_2 = blend(legs=legs_2, price=160.0)
+    assert not res_2.get("error")
+    assert res_2["blended_per_share_iv"] == 170.0
+    assert res_2["per_share_iv"] == 170.0
+    assert res_2["weights_sum"] == pytest.approx(1.0, 0.0001)
+    assert res_2["mos_pct"] == pytest.approx(6.25, 0.01)
+    assert len(res_2["legs"]) == 2
+    assert res_2["legs"][0]["source"] == "desk_call_1"
+    assert res_2["legs"][1]["source"] == "desk_call_2"
+
+    legs_3 = [
+        {"name": "Base DCF", "weight": 0.50, "per_share_iv": 100.0, "result_id": "snap_1"},
+        {"name": "Bull DCF", "weight": 0.30, "per_share_iv": 120.0, "result_id": "snap_2"},
+        {"name": "Bear DCF", "weight": 0.20, "per_share_iv": 80.0, "result_id": "snap_3"},
+    ]
+    res_3 = blend(legs=legs_3)
+    assert not res_3.get("error")
+    assert res_3["blended_per_share_iv"] == 102.0
+    assert res_3["per_share_iv"] == 102.0
+    assert res_3["legs"][0]["result_id"] == "snap_1"
+
+
+def test_blend_weights_not_summing_to_one_refused():
+    """Blend weights must sum to 1.0; deviations and negative weights are refused."""
+    legs_under = [
+        {"name": "Leg A", "weight": 0.50, "iv": 100.0},
+        {"name": "Leg B", "weight": 0.40, "iv": 100.0},
+    ]
+    res_under = blend(legs=legs_under)
+    assert "error" in res_under
+    assert "must sum to 1.0" in res_under["error"]
+
+    legs_neg = [
+        {"name": "Leg A", "weight": 1.10, "iv": 100.0},
+        {"name": "Leg B", "weight": -0.10, "iv": 100.0},
+    ]
+    res_neg = blend(legs=legs_neg)
+    assert "error" in res_neg
+    assert "negative weight" in res_neg["error"]
+
+
+def test_blend_missing_or_invalid_legs():
+    """Verify validation on empty legs and missing IV values."""
+    assert "error" in blend([])
+    assert "error" in blend([{"name": "No IV", "weight": 1.0}])
+
+
+def test_blend_dispatch_via_execute_financial_model():
+    """Verify blend mode dispatch and markdown formatting in execute_financial_model."""
+    params = {
+        "mode": "blend",
+        "price": 160.0,
+        "legs": [
+            {"name": "Gordon DCF", "weight": 0.60, "iv": 150.0, "source": "desk_call_1"},
+            {"name": "Exit Multiple", "weight": 0.40, "iv": 200.0, "source": "desk_call_2"},
+        ],
+    }
+    res = execute_financial_model(params)
+    assert not res.get("error")
+    assert res["mode"] == "blend"
+    assert res["blended_per_share_iv"] == 170.0
+    assert res["per_share_iv"] == 170.0
+    assert res["mos_pct"] == pytest.approx(6.25, 0.01)
+
+    md = format_model_results_markdown(res)
+    assert "Valuation Blend Summary" in md
+    assert "Gordon DCF" in md
+    assert "Exit Multiple" in md
+    assert "$170.00" in md
+    assert "+6.2%" in md
+
 
 
 
