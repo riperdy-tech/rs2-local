@@ -40,3 +40,21 @@ def _cache_must_stay_untouched():
             "the real cache/ directory.",
             pytrace=False,
         )
+
+
+@pytest.fixture(autouse=True)
+def _risk_bucket_is_deterministic_in_tests(monkeypatch):
+    """P4.9/C1 — depth_pipeline.band_verdict() calls risk_bucket(), which reads the MRI shock
+    register LIVE off disk (CONFIG["mri_outputs_dir"]/shock_register.json) to see whether
+    elevated_volatility_ahead is active right now. A test must never depend on that: today's
+    real reading changes with market conditions, so an un-mocked band_verdict() test would pass
+    or fail depending on the state of the world outside the test, not on the code under test.
+
+    Every test defaults to the neutral, non-restricting reading ('full', None) — exactly as if
+    the risk component were absent from the P4.9 min(). A test that wants to exercise the risk
+    component itself (an active flag capping to 'half', or an unreadable register producing
+    None + risk_flag_unavailable) re-applies its own `monkeypatch.setattr(dp, "risk_bucket", ...)`
+    in its own body, which simply overrides this default for that one test.
+    """
+    import depth_pipeline as dp
+    monkeypatch.setattr(dp, "risk_bucket", lambda: ("full", None))

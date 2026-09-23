@@ -122,7 +122,10 @@ def test_size_is_capped_when_a_sample_was_lost():
             {"sample": 1, "iv": 12.49, "plausible": True, "truncated": False},
             {"sample": 2, "iv": 13.96, "plausible": True, "truncated": False},
         ],
-        "scorecard": {"median_iv": 13.2},
+        # P4.9: median_conviction_score set (full) so the lost-sample penalty (dispersion
+        # "full" -> "half") is the thing actually observed here, not an unrelated "quarter"
+        # from a missing conviction score dragging size down before the penalty even applies.
+        "scorecard": {"median_iv": 13.2, "median_conviction_score": 12.0},
     }
     v = band_verdict(doc)
     assert v["size_hint"] != "full", f"lost sample must cap size, got {v['size_hint']!r}"

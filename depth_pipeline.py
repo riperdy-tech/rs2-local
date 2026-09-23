@@ -79,6 +79,71 @@ RESEARCH_TIMEOUT = int(CONFIG.get("research_timeout_s", 900))
 # tunes these when real sweep data exists; they are a sizing suggestion, never a gate.
 SIZE_BUCKETS = ((15.0, "full"), (30.0, "half"), (10**9, "quarter"))
 
+# P4.9/C1 — size_hint = min(dispersion, mos, conviction, risk). Bucket rank so "min" means the
+# most CONSERVATIVE bucket among the components that are actually available; a None component
+# (data unavailable, e.g. the shock register could not be read) is excluded, never treated as
+# either extreme.
+_BUCKET_RANK = {"quarter": 0, "half": 1, "full": 2}
+
+
+def _min_bucket(*buckets):
+    available = [b for b in buckets if b is not None]
+    if not available:
+        return None
+    return min(available, key=lambda b: _BUCKET_RANK[b])
+
+
+def mos_bucket(mos_vs_base_pct):
+    """P4.9 — mos_vs_base_pct >= 25 -> full, >= 10 -> half, else quarter (covers None too: an
+    absent MoS gets the conservative bucket, the same treatment a negative MoS gets)."""
+    if mos_vs_base_pct is not None and mos_vs_base_pct >= 25:
+        return "full"
+    if mos_vs_base_pct is not None and mos_vs_base_pct >= 10:
+        return "half"
+    return "quarter"
+
+
+def conviction_bucket(conviction_score):
+    """P4.9 — conviction_score >= 11 -> full, >= 8 -> half, else quarter (covers None too)."""
+    if conviction_score is not None and conviction_score >= 11:
+        return "full"
+    if conviction_score is not None and conviction_score >= 8:
+        return "half"
+    return "quarter"
+
+
+def risk_flag_active(flag_id="elevated_volatility_ahead"):
+    """(active: bool | None) — the MRI shock register's named risk flag (P4.9/C1), read fresh
+    via rs2_data/paths from CONFIG["mri_outputs_dir"]/shock_register.json at call time — never
+    the stale `active_shocks_at_verdict` pack-build snapshot, which carries `shocks`
+    (shock_id/severity/direction), not `risk_flags`.
+
+    None — never False — when the register file is unreadable/missing, or the flag is not
+    published there: absence of data is not evidence the flag is inactive, and must not be
+    read as "risk off".
+    """
+    reg = rs2_data.load_json(Path(CONFIG["mri_outputs_dir"]) / "shock_register.json")
+    if not reg:
+        return None
+    flags = reg.get("risk_flags") or []
+    flag = next((f for f in flags if isinstance(f, dict) and f.get("id") == flag_id), None)
+    if flag is None:
+        return None
+    return bool(flag.get("active"))
+
+
+def risk_bucket():
+    """(bucket: 'half' | 'full' | None, flag: 'risk_flag_unavailable' | None) — P4.9/C1.
+
+    'half' when elevated_volatility_ahead is active; 'full' when confirmed inactive; None with
+    flag 'risk_flag_unavailable' when the register cannot be read — explicitly NOT 'full', so a
+    missing/broken feed never silently sizes up a position.
+    """
+    active = risk_flag_active()
+    if active is None:
+        return None, "risk_flag_unavailable"
+    return ("half" if active else "full"), None
+
 # MODE INSTABILITY — how far the CONTRACT BASE may move between two analyses of the same name
 # before the newer verdict is annotated unstable. Mirrors TOL_PCT because both answer "is this
 # the same answer twice?", but they measure perpendicular axes: TOL_PCT looks ACROSS SAMPLES
@@ -480,7 +545,7 @@ def band_verdict(doc):
         v.update({"direction": "NOT_USABLE", "size_hint": None,
                   # Present-and-None rather than absent: a consumer must be able to tell
                   # "no prior to compare" from "this key was never written".
-                  "instability": None,
+                  "instability": None, "size_components": None,
                   "fiduciary_verdict": "NOT_APPLICABLE",
                   "fiduciary_violations": [], "fiduciary_amendments": [],
                   "reason": "zero plausible complete samples — malfunction path, not a verdict"})
@@ -565,7 +630,32 @@ def band_verdict(doc):
             v["flags"] = sorted(set(v["flags"]))
             reason_notes.append(f"report verdict '{rep_label}' disagrees with recorded direction '{d}'")
 
-    size = next(lbl for cap, lbl in SIZE_BUCKETS if spread <= cap)
+    # P4.9/C1 — size_hint = min(dispersion, mos, conviction, risk). `cbase` moves up here (was
+    # computed further down) so mos_vs_base_pct can feed the mos component; the same value is
+    # reused, not recomputed, for the published `mos_vs_base_pct` field below.
+    cbase = contract_base(scorecard)
+    mos_vs_base_pct_val = round((cbase / price - 1) * 100, 1) if cbase else None
+
+    dispersion_bucket = next(lbl for cap, lbl in SIZE_BUCKETS if spread <= cap)
+    mb = mos_bucket(mos_vs_base_pct_val)
+    conviction_val = scorecard.get("median_conviction_score")
+    cb = conviction_bucket(conviction_val)
+    rb, risk_flag = risk_bucket()
+    if risk_flag:
+        v.setdefault("flags", []).append(risk_flag)
+        v["flags"] = sorted(set(v["flags"]))
+
+    v["size_components"] = {
+        "dispersion": {"bucket": dispersion_bucket, "spread_pct": spread,
+                       "source": "SIZE_BUCKETS"},
+        "mos": {"bucket": mb, "mos_vs_base_pct": mos_vs_base_pct_val,
+               "source": "mos_vs_base_pct"},
+        "conviction": {"bucket": cb, "conviction_score": conviction_val,
+                       "source": "scorecard.median_conviction_score"},
+        "risk": {"bucket": rb, "elevated_volatility_ahead": risk_flag_active(),
+                "source": "mri_outputs_dir/shock_register.json:risk_flags"},
+    }
+    size = _min_bucket(dispersion_bucket, mb, cb, rb)
 
     # LOST-SAMPLE SIZING PENALTY:
     # If a sample was dropped (e.g. truncation/crash), the band is artificially narrowed.
@@ -589,8 +679,6 @@ def band_verdict(doc):
 
     if reason_notes:
         v["reason"] = "; ".join(reason_notes)
-
-    cbase = contract_base(scorecard)
 
     # MODE INSTABILITY (2026-09-20) — ANNOTATION ONLY. Direction, size and Kelly below are
     # computed from THIS run alone and this detector must not move any of them. Both sides go
@@ -656,7 +744,8 @@ def band_verdict(doc):
               "mos_vs_median_pct": round((v["median_iv"] / price - 1) * 100, 1)
               if v["median_iv"] else None,
               # Fiduciary MoS: measured against the CONTRACT base, the same IV that owns Kelly.
-              "mos_vs_base_pct": round((cbase / price - 1) * 100, 1) if cbase else None})
+              # Same value the mos_bucket component above was computed from — single owner.
+              "mos_vs_base_pct": mos_vs_base_pct_val})
     return fiduciary_verdict_gate(v, price)
 
 

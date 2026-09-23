@@ -186,6 +186,7 @@ def test_gate_passes_coherent_contract_and_preserves_kelly():
         "base_iv": 1037.88, "median_iv": 934.535, "median_bull_iv": 1228.67,
         "median_bear_iv": 588.96, "median_kelly_fraction_pct": 8.98,
         "median_quality_moat": 4.0, "asymmetric_payoff_skew": 0.77,
+        "median_conviction_score": 12.0,
         "reentry_tranches": {"tranche_1_starter": 951.04, "tranche_2_core": 750.0},
         "invalidation_rules": VALID_INVALIDATION_RULES,
     })
@@ -194,7 +195,15 @@ def test_gate_passes_coherent_contract_and_preserves_kelly():
     assert v["fiduciary_violations"] == []
     assert v["kelly_fraction_pct"] == 8.98        # legal: base $1,037.88 > price $951.04
     assert v["direction"] == "hold"               # price still inside the band
-    assert v["size_hint"] == "half"               # third sample lost -> capped
+    # P4.9: size_hint = min(dispersion, mos, conviction, risk). Dispersion alone (spread 24.9%)
+    # would allow "half", and conviction 12/15 -> "full", but MoS is (1037.88/951.04-1) = 9.1%,
+    # under the 10% half-bucket floor -> mos_bucket "quarter" is the binding constraint here,
+    # not the lost third sample.
+    assert v["size_hint"] == "quarter"
+    assert v["size_components"]["mos"]["bucket"] == "quarter"
+    assert v["size_components"]["dispersion"]["bucket"] == "half"
+    assert v["size_components"]["conviction"]["bucket"] == "full"
+    assert v["size_components"]["risk"]["bucket"] == "full"
 
 
 def test_mos_is_restated_against_the_contract_base():
