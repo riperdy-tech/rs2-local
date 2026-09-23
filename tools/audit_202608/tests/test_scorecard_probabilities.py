@@ -30,6 +30,16 @@ import pytest
 from tools.audit_202608.consensus_valuation import extract_scorecard, select_medoid_scorecard
 from tools.audit_202608.fiduciary_gate import validate_fiduciary_contract
 
+# P4.4 — a minimal, checkable invalidation_rules pair, so a card under test does not
+# incidentally trip the new "thesis cannot be falsified" contract FAIL (Kelly clamp to 0.0%)
+# when the test is really about the probability-simplex logic.
+VALID_INVALIDATION_RULES = [
+    {"metric": "mom_12_1", "comparator": "<", "threshold": -20.0,
+     "window": "next reported quarter", "source": "momentum_state.json"},
+    {"metric": "revenue_yoy_pct", "comparator": "<", "threshold": 0.0,
+     "window": "next reported quarter", "source": "fundamentals_quarterly.json"},
+]
+
 
 # ---- extraction ------------------------------------------------------------------------
 
@@ -156,7 +166,8 @@ def test_non_numeric_probability_is_unusable():
 def test_absent_probabilities_are_defaulted_without_a_defect_issue():
     # No probabilities supplied at all is ordinary absence (legacy rows, callers that never had
     # them) - not a defect. The clamp message discloses the skipped leg where it matters.
-    card = {"base_iv": 100.0, "bull_iv": 150.0, "bear_iv": 80.0}
+    card = {"base_iv": 100.0, "bull_iv": 150.0, "bear_iv": 80.0,
+            "invalidation_rules": VALID_INVALIDATION_RULES}
     ok, san, issues = validate_fiduciary_contract(card, 100.0)
     assert san["probabilities_defaulted"] is True
     assert issues == []
@@ -190,6 +201,7 @@ def test_defaulted_priors_clamp_on_base_vs_price_without_quoting_an_invented_ret
 def test_defaulted_priors_do_not_clamp_when_the_base_has_margin_of_safety():
     # base 120 > price 100, so the deterministic leg does not fire. With no probabilities the
     # expected-return leg must not be able to invent a negative edge either way.
-    card = {"base_iv": 120.0, "bull_iv": 160.0, "bear_iv": 80.0, "kelly_fraction_pct": 8.0}
+    card = {"base_iv": 120.0, "bull_iv": 160.0, "bear_iv": 80.0, "kelly_fraction_pct": 8.0,
+            "invalidation_rules": VALID_INVALIDATION_RULES}
     ok, san, _ = validate_fiduciary_contract(card, 100.0)
     assert san["kelly_fraction_pct"] == 8.0

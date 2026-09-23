@@ -1,6 +1,16 @@
 import pytest
 from tools.audit_202608.consensus_valuation import select_medoid_scorecard
 
+# P4.4 — a minimal, checkable invalidation_rules pair, so these otherwise-clean samples do not
+# incidentally trip the new "thesis cannot be falsified" contract FAIL (which clamps Kelly to
+# 0.0%) and silently change which sample the distance function selects as medoid.
+VALID_INVALIDATION_RULES = [
+    {"metric": "mom_12_1", "comparator": "<", "threshold": -20.0,
+     "window": "next reported quarter", "source": "momentum_state.json"},
+    {"metric": "revenue_yoy_pct", "comparator": "<", "threshold": 0.0,
+     "window": "next reported quarter", "source": "fundamentals_quarterly.json"},
+]
+
 def test_medoid_selection_preserves_sample_integrity():
     price = 100.0
     runs = [
@@ -12,7 +22,8 @@ def test_medoid_selection_preserves_sample_integrity():
                 "conviction_score": 11.0, "business_quality_moat": 4.0,
                 "kelly_fraction_pct": 12.0, "asymmetric_payoff_skew": 2.50,
                 "reentry_tranches": {"tranche_1_starter": 95.0, "tranche_2_core": 80.0},
-                "thesis_invalidation_trigger": "Trigger 1"
+                "thesis_invalidation_trigger": "Trigger 1",
+                "invalidation_rules": VALID_INVALIDATION_RULES,
             }
         },
         {
@@ -23,7 +34,8 @@ def test_medoid_selection_preserves_sample_integrity():
                 "conviction_score": 12.0, "business_quality_moat": 4.2,
                 "kelly_fraction_pct": 14.0, "asymmetric_payoff_skew": 3.00,
                 "reentry_tranches": {"tranche_1_starter": 100.0, "tranche_2_core": 85.0},
-                "thesis_invalidation_trigger": "Trigger 2"
+                "thesis_invalidation_trigger": "Trigger 2",
+                "invalidation_rules": VALID_INVALIDATION_RULES,
             }
         },
         {
@@ -34,7 +46,8 @@ def test_medoid_selection_preserves_sample_integrity():
                 "conviction_score": 14.0, "business_quality_moat": 4.5,
                 "kelly_fraction_pct": 25.0, "asymmetric_payoff_skew": 20.0,
                 "reentry_tranches": {"tranche_1_starter": 150.0, "tranche_2_core": 120.0},
-                "thesis_invalidation_trigger": "Trigger 3"
+                "thesis_invalidation_trigger": "Trigger 3",
+                "invalidation_rules": VALID_INVALIDATION_RULES,
             }
         }
     ]

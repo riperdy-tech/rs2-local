@@ -18,6 +18,26 @@ Enforces:
 """
 from typing import Dict, Any, Tuple, List, Optional
 import copy
+import sys
+from pathlib import Path
+
+# P4.4 — the `invalidation_rules` / `momentum_break_rule` / `momentum_flip_condition` metric
+# vocabulary has ONE owner: capability_test.py's MOMENTUM_METRICS/FINANCIAL_METRICS, which TASK's
+# printed text is itself built from (P4.4). Imported, never restated, so the prompt and this
+# validator can never drift apart. The sys.path bootstrap is self-contained so this module keeps
+# working regardless of how IT was imported (bare `fiduciary_gate` from depth_pipeline.py/
+# status.py after their own sys.path insert, or package-qualified `tools.audit_202608.
+# fiduciary_gate` from a test that only put the repo root on sys.path).
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+import capability_test as _cap  # noqa: E402
+
+MOMENTUM_METRICS = _cap.MOMENTUM_METRICS
+FINANCIAL_METRICS = _cap.FINANCIAL_METRICS
+_METRIC_VOCABULARY = set(MOMENTUM_METRICS) | set(FINANCIAL_METRICS)
+_COMPARATORS = ("<", "<=", ">", ">=")
+_ENTRY_TIMINGS = ("buy_now", "wait_for_momentum", "avoid")
 
 
 def contract_base(scorecard):
@@ -248,5 +268,76 @@ def validate_fiduciary_contract(
             card["conviction_score"] = round(min(15.0, max(1.0, float(card["conviction_score"]))), 1)
         except (ValueError, TypeError):
             pass
+
+    # 8. P4.4 — invalidation_rules must be a structured, checkable list. `checkable` means the
+    # rule's `metric` is in the metric vocabulary (MOMENTUM_METRICS | FINANCIAL_METRICS, the
+    # single source imported above); a rule missing any of the four required keys, or whose
+    # comparator is not one of `_COMPARATORS`, cannot be evaluated and is dropped from the
+    # sanitized list. Some (but not all) uncheckable is annotated `invalidation_partially_checkable`,
+    # never silently dropped.
+    #
+    # THE CONTRACT IS FAIL when none of the supplied rules are checkable, when momentum_break_rule
+    # / momentum_flip_condition name a metric outside SCR-10, or when entry_timing is outside its
+    # three values — a thesis nobody can falsify, or a momentum rule that cannot be evaluated, is
+    # an incomplete underwriting proposal. This is the SAME "fail closed" mechanism as the Kelly
+    # edge clamp above (`is_valid` stays True — these are contract-QUALITY defects, not structural
+    # ones like an inverted scenario, and must not pull an otherwise-coherent sample out of medoid
+    # candidacy): Kelly is force-clamped to 0.0% and the issue text is recognised by
+    # `depth_pipeline.fiduciary_verdict_gate`'s `"Clamped Kelly" in i` test, which turns it into a
+    # violation and publishes `fiduciary_verdict: FAIL` — loud, capital sized to zero.
+    raw_rules = card.get("invalidation_rules")
+    rules_not_a_list = raw_rules is not None and not isinstance(raw_rules, list)
+    rules = raw_rules if isinstance(raw_rules, list) else []
+
+    sanitized_rules, checkable_count, uncheckable_count = [], 0, 0
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        has_shape = (
+            rule.get("metric") is not None
+            and rule.get("comparator") in _COMPARATORS
+            and rule.get("threshold") is not None
+            and rule.get("window") is not None
+            and rule.get("source") is not None
+        )
+        if not has_shape:
+            continue
+        if rule["metric"] in _METRIC_VOCABULARY:
+            checkable_count += 1
+        else:
+            uncheckable_count += 1
+        sanitized_rules.append(dict(rule))
+    card["invalidation_rules"] = sanitized_rules
+    card["invalidation_partially_checkable"] = uncheckable_count > 0
+    if uncheckable_count > 0:
+        issues.append(f"invalidation_partially_checkable: {uncheckable_count} of "
+                      f"{len(sanitized_rules)} rule(s) use a metric outside the vocabulary")
+
+    thesis_defects = []
+    if rules_not_a_list:
+        thesis_defects.append("invalidation_rules is not a list")
+    if checkable_count == 0:
+        thesis_defects.append("zero checkable invalidation_rules — a thesis that cannot be "
+                              "falsified is an incomplete underwriting proposal")
+    # momentum_break_rule / momentum_flip_condition must name an SCR-10 (momentum) metric when
+    # supplied — checked only when present; P4.2 requiring the field is a pack/TASK concern, not
+    # this validator's.
+    for field_name in ("momentum_break_rule", "momentum_flip_condition"):
+        rule = card.get(field_name)
+        if isinstance(rule, dict) and rule.get("metric") is not None:
+            if rule["metric"] not in MOMENTUM_METRICS:
+                thesis_defects.append(f"{field_name}.metric {rule['metric']!r} is not an "
+                                      f"SCR-10 momentum metric")
+
+    entry_timing = card.get("entry_timing")
+    if entry_timing is not None and entry_timing not in _ENTRY_TIMINGS:
+        thesis_defects.append(f"entry_timing {entry_timing!r} is not one of {_ENTRY_TIMINGS}")
+
+    if thesis_defects:
+        why = "; ".join(thesis_defects)
+        prior_kelly = card.get("kelly_fraction_pct")
+        issues.append(f"Clamped Kelly fraction from {prior_kelly}% to 0.0% — contract FAIL "
+                      f"({why})")
+        card["kelly_fraction_pct"] = 0.0
 
     return True, card, issues

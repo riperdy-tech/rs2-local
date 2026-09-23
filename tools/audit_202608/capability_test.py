@@ -1624,6 +1624,19 @@ def build_pack(t, price_override=None, include_research=True):
     return PackText("\n".join(L), macro_degraded=macro_degraded, flags=LAST_PACK_FLAGS)
 
 
+# P4.4 — single source for the `invalidation_rules` / `momentum_flip_condition` /
+# `momentum_break_rule` metric vocabulary. TASK's text below is built by interpolating these
+# tuples so the prompt and `fiduciary_gate.validate_fiduciary_contract` can never drift apart;
+# `fiduciary_gate` imports them from here rather than restating the list.
+MOMENTUM_METRICS = (
+    "mom_12_1", "mom_6m", "mom_1m", "high_52w_distance", "above_below_200d_mean",
+    "rs_vs_cluster_etf_3m", "rs_vs_iwm_3m", "realised_vol_60d", "mom_z_sector", "mom_break",
+)
+FINANCIAL_METRICS = (
+    "revenue_yoy_pct", "gross_margin_pct", "operating_margin_pct", "net_income", "ocf", "fcf",
+    "net_issuance_1y", "filing_8k_count",
+)
+
 TASK = """You are performing an institutional equity underwriting analysis. T0 is today's price in the data pack below.
 
 YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Charter:
@@ -1696,11 +1709,8 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
 ```
 
 METRIC VOCABULARY for `invalidation_rules` (at least one FINANCIAL and at least one PRICE/MOMENTUM rule are required; anything outside both lists must be declared `source: "unverifiable"`):
-  - MOMENTUM metrics (the SCR-10 field names, exactly as printed in SECTION 2.5): mom_12_1, mom_6m,
-    mom_1m, high_52w_distance, above_below_200d_mean, rs_vs_cluster_etf_3m, rs_vs_iwm_3m,
-    realised_vol_60d, mom_z_sector, mom_break.
-  - FINANCIAL metrics: revenue_yoy_pct, gross_margin_pct, operating_margin_pct, net_income, ocf,
-    fcf, net_issuance_1y, filing_8k_count.
+  - MOMENTUM metrics (the SCR-10 field names, exactly as printed in SECTION 2.5): """ + ", ".join(MOMENTUM_METRICS) + """.
+  - FINANCIAL metrics: """ + ", ".join(FINANCIAL_METRICS) + """.
 
 Think carefully through the complete economic machinery before writing. Numbers before narrative."""
 

@@ -1,6 +1,16 @@
 import pytest
 from depth_pipeline import band_verdict
 
+# P4.4 — a minimal, checkable invalidation_rules pair, so a scorecard under test does not
+# incidentally trip the new "thesis cannot be falsified" contract FAIL when the test is really
+# about something else (lost-sample sizing, MoS restatement, ...).
+VALID_INVALIDATION_RULES = [
+    {"metric": "mom_12_1", "comparator": "<", "threshold": -20.0,
+     "window": "next reported quarter", "source": "momentum_state.json"},
+    {"metric": "revenue_yoy_pct", "comparator": "<", "threshold": 0.0,
+     "window": "next reported quarter", "source": "fundamentals_quarterly.json"},
+]
+
 def test_non_converged_spread_blocks_undervalued_buy():
     # Like DXC: Price 11.07, IVs [17.4, 45.0], spread 158.6% -> Must NOT be "undervalued" buy!
     doc = {
@@ -27,7 +37,7 @@ def test_lost_sample_caps_size_to_half():
             {"sample": 2, "iv": 12.49, "plausible": True, "truncated": False},
             {"sample": 3, "iv": 13.96, "plausible": True, "truncated": False},
         ],
-        "scorecard": {"median_iv": 13.2}
+        "scorecard": {"median_iv": 13.2, "invalidation_rules": VALID_INVALIDATION_RULES}
     }
     v = band_verdict(doc)
     assert v["direction"] == "undervalued"
@@ -111,6 +121,7 @@ def test_gate_passes_coherent_contract_and_preserves_kelly():
         "median_bear_iv": 588.96, "median_kelly_fraction_pct": 8.98,
         "median_quality_moat": 4.0, "asymmetric_payoff_skew": 0.77,
         "reentry_tranches": {"tranche_1_starter": 951.04, "tranche_2_core": 750.0},
+        "invalidation_rules": VALID_INVALIDATION_RULES,
     })
     v = band_verdict(doc)
     assert v["fiduciary_verdict"] == "PASS"
