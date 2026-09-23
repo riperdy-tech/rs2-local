@@ -582,7 +582,10 @@ def stamp_and_route(v, t, run_source, quote=None):
     else:
         v.setdefault("price_asof", None)
         v.setdefault("price_source", None)
-        v.setdefault("price_asof_reason", "live price capture is P1.5 — quote unavailable")
+        # C10 (Phase 1 approval review): the old text ("live price capture is P1.5") read as if
+        # the feature did not exist yet — it does; this branch is reached only when
+        # price_now.quote() genuinely returned nothing.
+        v.setdefault("price_asof_reason", "live price quote unavailable")
     v["gate_version"] = GATE_VERSION
     v["pipeline_commit"] = _pipeline_commit()
 
