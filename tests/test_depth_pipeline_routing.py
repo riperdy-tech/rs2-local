@@ -170,7 +170,7 @@ def test_main_manual_invocation_only_grows_test_ledger(tmp_path, monkeypatch):
 
     consensus_dir = tmp_path / "FLXS_20260923_120000"
     consensus_dir.mkdir()
-    doc = {"ticker": "FLXS"}
+    doc = {"ticker": "FLXS", "price": 100.0}  # matches quote["price"] — C7's assert requires it
     monkeypatch.setattr(dp, "run_consensus",
                         lambda t, samples=None, price_quote=None: (consensus_dir, doc))
     monkeypatch.setattr(dp, "band_verdict", lambda doc: {
@@ -199,3 +199,32 @@ def test_main_manual_invocation_only_grows_test_ledger(tmp_path, monkeypatch):
     assert "NOT the production ledger" in notified[0] and "FLXS" in notified[0]
     # the verdict file main() writes landed under tmp_path, not cache/
     assert (consensus_dir / "verdict_depth.json").exists()
+
+
+# ---- C7 (Phase 1 approval review): depth_pipeline asserts the consensus subprocess actually ---
+# ---- priced against OUR live quote, not a silently-abandoned --price ---------------------------
+
+def test_main_asserts_consensus_price_matches_quote(tmp_path, monkeypatch):
+    """If the consensus subprocess ever returns a price that does not match the live quote
+    depth_pipeline passed it, main() must fail loudly (assert), never stamp and ledger a
+    verdict priced against a number nobody chose."""
+    monkeypatch.delenv("RS2_RUN_SOURCE", raising=False)
+    monkeypatch.setattr(sys, "argv", ["depth_pipeline.py", "FLXS"])
+    monkeypatch.setitem(dp.CONFIG, "out_research_dir", str(tmp_path / "research"))
+    monkeypatch.setattr(dp, "LEDGER", tmp_path / "depth_ledger.jsonl")
+    monkeypatch.setattr(dp, "TEST_LEDGER", tmp_path / "depth_test_ledger.jsonl")
+    monkeypatch.setattr(dp, "OD_LEDGER", tmp_path / "depth_ondemand_ledger.jsonl")
+
+    monkeypatch.setattr(dp.price_now, "quote", lambda t: {"price": 100.0, "asof": "2026-09-23",
+                                                           "source": "yfinance"})
+    monkeypatch.setattr(dp, "run_research", lambda t: None)
+
+    consensus_dir = tmp_path / "FLXS_20260923_120000"
+    consensus_dir.mkdir()
+    # MISMATCH: doc carries a different price than the quote depth_pipeline passed in.
+    doc = {"ticker": "FLXS", "price": 999.0}
+    monkeypatch.setattr(dp, "run_consensus",
+                        lambda t, samples=None, price_quote=None: (consensus_dir, doc))
+
+    with pytest.raises(AssertionError):
+        dp.main()

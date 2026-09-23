@@ -621,6 +621,14 @@ def main():
     if "--no-research" not in sys.argv:
         run_research(t)
     d, doc = run_consensus(t, samples=samples, price_quote=quote)
+    # C7 (Phase 1 approval review): confirm the consensus subprocess actually valued the ticker
+    # against OUR live quote, not a silently-abandoned --price (consensus_valuation.py used to
+    # swallow a bad --price and fall back to the vendor quote — fixed to fail loudly instead,
+    # but this is the belt to that suspenders: never stamp a verdict priced against a number we
+    # never chose).
+    assert doc.get("price") == quote["price"], (
+        f"[depth] {t}: consensus price {doc.get('price')} != quoted price {quote['price']} "
+        "— --price was not honoured by the consensus subprocess")
     v = band_verdict(doc)
     v["consensus_dir"] = d.name
     if ondemand:

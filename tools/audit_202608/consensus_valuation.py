@@ -725,11 +725,16 @@ def main():
     if "--price" in sys.argv:
         try:
             px_val = float(sys.argv[sys.argv.index("--price") + 1])
-            asof_val = (sys.argv[sys.argv.index("--price-asof") + 1]
-                        if "--price-asof" in sys.argv else None)
-            price_override = {"price": px_val, "asof": asof_val}
-        except (IndexError, ValueError):
-            pass
+        except (IndexError, ValueError) as e:
+            # C7 (Phase 1 approval review): this used to swallow a bad --price and silently
+            # fall back to fin.get("Price") (the vendor quote). The caller (depth_pipeline)
+            # passes its OWN live price_now.quote() here specifically to override the vendor
+            # number — a silent fallback would value the ticker against a price nobody chose.
+            print(f"[consensus] ::HARD FAIL:: --price could not be parsed ({e})", flush=True)
+            raise
+        asof_val = (sys.argv[sys.argv.index("--price-asof") + 1]
+                    if "--price-asof" in sys.argv else None)
+        price_override = {"price": px_val, "asof": asof_val}
     price = price_override["price"] if price_override else vb._num(fin.get("Price"))
     pack_text = cap.build_pack(t, price_override=price_override)
     pack_macro_degraded = bool(getattr(pack_text, "macro_degraded", False)
