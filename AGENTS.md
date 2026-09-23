@@ -32,7 +32,7 @@ compared to enterprise value" — textbook-correct in general, and wrong here, b
 so bridging to enterprise value subtracted the debt claim twice. The argument sounded rigorous and
 was never checked against the definition of the input. Measure first. Every time.
 
-## 1. Valuation doctrine — Charter v3.0 (the v3.1 revision is the Phase 4 target)
+## 1. Valuation doctrine — Charter v3.1
 
 This governs prompt engineering, valuation logic, research synthesis and execution models in this
 repository. It is the repository-specific half of the standard above.

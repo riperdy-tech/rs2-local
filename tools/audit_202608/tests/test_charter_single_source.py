@@ -36,7 +36,7 @@ def test_cloud_arm_carries_v3_and_not_the_retired_v2_framework():
     import api_chat
 
     prompt = api_chat._system_prompt()
-    assert "INSTITUTIONAL EQUITY UNDERWRITING CHARTER v3.0" in prompt
+    assert "INSTITUTIONAL EQUITY UNDERWRITING CHARTER v3.1" in prompt
     # The v2.0 engine's header. If this ever reappears, the cloud arm has been pointed back at
     # RS2.txt and the two halves of the tier disagree again.
     assert "INTEGRATED INVESTMENT ANALYSIS ENGINE" not in prompt
@@ -68,7 +68,7 @@ def test_cloud_deep_arm_carries_v3_and_not_the_retired_v2_framework():
     import deep_api_run
 
     prompt = deep_api_run._rs2_framework()
-    assert "INSTITUTIONAL EQUITY UNDERWRITING CHARTER v3.0" in prompt
+    assert "INSTITUTIONAL EQUITY UNDERWRITING CHARTER v3.1" in prompt
     assert "INTEGRATED INVESTMENT ANALYSIS ENGINE" not in prompt
 
 
