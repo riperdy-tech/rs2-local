@@ -269,10 +269,15 @@ def run_research(t):
     return True
 
 
-def run_consensus(t, samples=None, price_quote=None, no_research=False):
+def run_consensus(t, samples=None, price_quote=None, no_research=False, prior_base=None):
     """consensus_valuation.py as a subprocess (stdout inherited, so progress is visible live).
     Returns the newest consensus.json for the ticker, written by this invocation.
-    Defaults to adaptive 2-escalate consensus (early-stops at n=2 if spread <= 15%, else n=3)."""
+    Defaults to adaptive 2-escalate consensus (early-stops at n=2 if spread <= 15%, else n=3).
+
+    `prior_base` (P4.7/B2): the prior verdict's contract base, forwarded to consensus_valuation's
+    `--prior-base` only when the caller has already confirmed that prior is
+    `depth_gates.analyst_valid` — None otherwise, never guessed here.
+    """
     before = {p.name for p in (HERE / "ab_reports" / "consensus").glob(f"{t}_*")}
     cmd = [sys.executable, str(HERE / "tools" / "audit_202608" / "consensus_valuation.py"),
            t, "--model", MODEL, "--ctx", str(CTX), "--think", "high"]
@@ -286,6 +291,8 @@ def run_consensus(t, samples=None, price_quote=None, no_research=False):
         cmd.append("--tools")
     if no_research:
         cmd.append("--no-research")
+    if prior_base is not None:
+        cmd.extend(["--prior-base", str(prior_base)])
     r = subprocess.run(cmd)
     if r.returncode != 0:
         print(f"[depth] consensus subprocess exit {r.returncode}", flush=True)
@@ -581,6 +588,11 @@ def band_verdict(doc):
     # GEV's real row (top-level base_iv absent, median 517.745, scorecard base 549.77) reported a
     # 0.0% move on a run that had in fact moved 44.6%. Rows preceding the scorecard fall back to
     # the median, which is the documented legacy rule inside contract_base.
+    #
+    # B2's analyst_valid gate applies to the EARLY-STOP prior comparison above (consensus_valuation
+    # --prior-base, resolved in main() before this run), a separate mechanism from this ANNOTATION,
+    # which is unchanged: it compares against whatever the newest ledger row is, exactly as it has
+    # since 2026-09-20 (test_mode_instability.py).
     prior_card = (prior or {}).get("scorecard") or prior
     v["instability"] = iv_instability(cbase, contract_base(prior_card))
     if v["instability"] and v["instability"]["unstable"]:
@@ -776,17 +788,29 @@ def main():
     ondemand = "--ondemand" in sys.argv
     samples = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else None
     t0 = time.time()
+
+    # P4.7/B2 — resolve the prior verdict BEFORE consensus runs, so a valid one can tighten the
+    # early-stop bar. Looked up again (unchanged) inside band_verdict for the instability
+    # annotation, which needs the SAME "analyst_valid" gate for the same reason (B2): the old
+    # analyst's verdicts must never be compared against as if they were a stable prior mode.
+    prior_for_run = _prior_verdict(t, (LEDGER, OD_LEDGER))
+    prior_base_for_consensus = None
+    if prior_for_run and depth_gates.analyst_valid(prior_for_run):
+        prior_base_for_consensus = contract_base(prior_for_run.get("scorecard") or prior_for_run)
+
     research_ok = True
     if "--no-research" not in sys.argv:
         research_ok = run_research(t)
     consensus_no_research = (not bool(research_ok)) or ("--no-research" in sys.argv)
     if consensus_no_research:
         try:
-            d, doc = run_consensus(t, samples=samples, price_quote=quote, no_research=True)
+            d, doc = run_consensus(t, samples=samples, price_quote=quote, no_research=True,
+                                   prior_base=prior_base_for_consensus)
         except TypeError:
             d, doc = run_consensus(t, samples=samples, price_quote=quote)
     else:
-        d, doc = run_consensus(t, samples=samples, price_quote=quote)
+        d, doc = run_consensus(t, samples=samples, price_quote=quote,
+                               prior_base=prior_base_for_consensus)
     # C7 (Phase 1 approval review): confirm the consensus subprocess actually valued the ticker
     # against OUR live quote, not a silently-abandoned --price (consensus_valuation.py used to
     # swallow a bad --price and fall back to the vendor quote — fixed to fail loudly instead,

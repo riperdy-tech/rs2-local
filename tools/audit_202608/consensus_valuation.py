@@ -83,6 +83,11 @@ EARLY_TOL_PCT = 15.0        # 2-sample early-stop bar. DELIBERATELY TIGHTER than
                             # three), so early publication demands closer agreement. Two samples
                             # inside 15% -> publish median of 2; anything else -> third sample,
                             # judged at TOL_PCT.
+BEAR_TOL_PCT = 40.0         # P4.7 — 2-sample early-stop ALSO requires the bear-IV spread inside
+                            # this bar (base-IV spread alone missed GEV-shaped disagreement where
+                            # the base cases were close but the downside cases were not).
+BEAR_TOL_PCT_NOTE = ("initial value carried from PHASE_4_ANALYST.md P4.7, not yet re-derived "
+                      "from the P4.0 dispersion battery's bear-IV spread distribution")
 NUM_PREDICT = 65536         # output budget per sample. At the old ctx 65,536 the 49,152 cap was
                             # already the ctx wall (prompt ~16.4K), and one GOOG sample hit it -
                             # report cut mid-write, vote discarded. ctx 81,920 buys ~16K more.
@@ -1008,6 +1013,41 @@ def _save_evidence_store(store_dir, query_cache, url_cache):
     (store_dir / "url_cache.json").write_text(json.dumps(url_cache, indent=2), encoding="utf-8")
 
 
+def early_stop_check(g2, prior_base=None):
+    """P4.7/B2 — pure decision for the adaptive 2-sample early stop. No I/O, no printing.
+
+    `g2`: the two usable (plausible, complete) sample dicts, each carrying `iv` and `scorecard`.
+    `prior_base`: the prior verdict's contract base (float), or None/falsy to skip that leg —
+    depth_pipeline.main() passes None whenever there is no prior, or the only prior predates the
+    analyst Phase 4 ruled valid (B2; see depth_gates.analyst_valid).
+
+    Returns {stop, sp2, bear_sp2, bear_ok, prior_delta_pct, prior_ok}. `stop` is True only when
+    the base-IV spread is <= EARLY_TOL_PCT AND the bear-IV spread is confirmed <= BEAR_TOL_PCT
+    (a missing bear_iv on either sample fails closed: `bear_ok` False, same treatment as an
+    unusable base sample) AND, when a prior was supplied, the 2-sample median sits within 25%
+    of it.
+    """
+    ivs = [r["iv"] for r in g2]
+    sp2 = (max(ivs) / min(ivs) - 1) * 100
+
+    bear_vals = [(r.get("scorecard") or {}).get("bear_iv") for r in g2]
+    bear_sp2 = None
+    if all(v is not None for v in bear_vals) and min(bear_vals):
+        bear_sp2 = (max(bear_vals) / min(bear_vals) - 1) * 100
+    bear_ok = bear_sp2 is not None and bear_sp2 <= BEAR_TOL_PCT
+
+    med2 = st.median(ivs)
+    prior_delta_pct = None
+    prior_ok = True
+    if prior_base is not None and prior_base:
+        prior_delta_pct = abs(med2 - prior_base) / prior_base * 100
+        prior_ok = prior_delta_pct <= 25.0
+
+    return {"stop": sp2 <= EARLY_TOL_PCT and bear_ok and prior_ok,
+            "sp2": sp2, "bear_sp2": bear_sp2, "bear_ok": bear_ok,
+            "prior_delta_pct": prior_delta_pct, "prior_ok": prior_ok}
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "GOOG").upper()
@@ -1059,6 +1099,19 @@ def main():
             print("[consensus] ::HARD FAIL:: --temperature 0 is refused — Qwen's thinking "
                   "sampling profile must not be greedy-decoded, never temperature 0.", flush=True)
             raise ValueError("temperature 0 is refused: Qwen thinking mode must not be greedy")
+
+    # P4.7/B2 — the prior verdict's contract base, passed by depth_pipeline.main() ONLY when
+    # that prior is depth_gates.analyst_valid(prior); absent here for every other case (no prior,
+    # an invalid-analyst prior, or a standalone/battery invocation). Used only to tighten the
+    # 2-sample early-stop bar below; `doc["prior_base"]` stamps the value actually used, or the
+    # sentinel string "none_valid" when none was supplied — never a fabricated float.
+    prior_base = None
+    if "--prior-base" in sys.argv:
+        try:
+            prior_base = float(sys.argv[sys.argv.index("--prior-base") + 1])
+        except (IndexError, ValueError) as e:
+            print(f"[consensus] ::HARD FAIL:: --prior-base could not be parsed ({e})", flush=True)
+            raise
 
     fin = rs2_data.load_json(common.SD / "financials" / f"{t}.json") or {}
     price_override = None
@@ -1339,14 +1392,27 @@ def main():
         if adaptive and i == 2:
             g2 = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"]]
             if len(g2) == 2:
-                sp2 = (max(r["iv"] for r in g2) / min(r["iv"] for r in g2) - 1) * 100
-                if sp2 <= EARLY_TOL_PCT:
-                    print(f"  [adaptive] 2 samples agree within {sp2:.1f}% "
-                          f"(early bar {EARLY_TOL_PCT:.0f}%) — stopping, no 3rd sample",
-                          flush=True)
+                d2 = early_stop_check(g2, prior_base)
+                if d2["stop"]:
+                    extra = []
+                    if d2["bear_sp2"] is not None:
+                        extra.append(f"bear spread {d2['bear_sp2']:.1f}% "
+                                     f"(bar {BEAR_TOL_PCT:.0f}%)")
+                    if d2["prior_delta_pct"] is not None:
+                        extra.append(f"prior delta {d2['prior_delta_pct']:.1f}% (bar 25%)")
+                    print(f"  [adaptive] 2 samples agree within {d2['sp2']:.1f}% "
+                          f"(early bar {EARLY_TOL_PCT:.0f}%)"
+                          + (f", {', '.join(extra)}" if extra else "")
+                          + " — stopping, no 3rd sample", flush=True)
                     broke_early = True
                     break
-                print(f"  [adaptive] 2-sample spread {sp2:.1f}% > {EARLY_TOL_PCT:.0f}% — "
+
+                bear_str = "n/a" if d2["bear_sp2"] is None else f"{d2['bear_sp2']:.1f}%"
+                why2 = [f"base spread {d2['sp2']:.1f}%/{EARLY_TOL_PCT:.0f}%",
+                       f"bear spread {bear_str}/{BEAR_TOL_PCT:.0f}%"]
+                if d2["prior_delta_pct"] is not None:
+                    why2.append(f"prior delta {d2['prior_delta_pct']:.1f}%/25%")
+                print(f"  [adaptive] early-stop bar not met ({'; '.join(why2)}) — "
                       f"escalating to 3rd sample", flush=True)
             else:
                 print(f"  [adaptive] only {len(g2)} usable of 2 — escalating to 3rd sample",
@@ -1395,6 +1461,10 @@ def main():
            "no_early_stop": no_early_stop,
            "evidence_store_dir": str(evidence_store_dir) if evidence_store_dir is not None else None,
            "samples_run": len(runs), "early_stop": early_stop,
+           # P4.7/B2 — the prior base actually used for the early-stop's prior-delta leg, or the
+           # sentinel "none_valid" when depth_pipeline chose not to supply one (no prior, or the
+           # only prior predates the analyst Phase 4 ruled valid).
+           "prior_base": prior_base if prior_base is not None else "none_valid",
            "samples_intended": progress["samples_intended"],
            "samples_attempted": progress["samples_attempted"],
            "samples_lost": progress["samples_lost"],

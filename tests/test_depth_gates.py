@@ -99,6 +99,29 @@ def test_high_dispersion_does_not_fire_on_overvalued():
     assert reasons == []
 
 
+def test_mode_instability():
+    v = _clean(instability={"prior_iv": 934.535, "current_iv": 517.745, "delta_pct": -44.6,
+                            "unstable": True})
+    actionable, reasons = dg.assess(v)
+    assert actionable is False
+    assert reasons == ["mode_instability"]
+
+
+def test_mode_instability_does_not_fire_when_stable():
+    v = _clean(instability={"prior_iv": 100.0, "current_iv": 105.0, "delta_pct": 5.0,
+                            "unstable": False})
+    actionable, reasons = dg.assess(v)
+    assert actionable is True
+    assert reasons == []
+
+
+def test_mode_instability_does_not_fire_when_absent():
+    """No prior to compare (first-ever analysis) — `instability` is None, not a defect."""
+    actionable, reasons = dg.assess(_clean(instability=None))
+    assert actionable is True
+    assert reasons == []
+
+
 def test_non_production_row_manual():
     actionable, reasons = dg.assess(_clean(run_source="manual"))
     assert actionable is False

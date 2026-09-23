@@ -53,6 +53,7 @@ def assess(v):
       5. `direction == overvalued` and `kelly_fraction_pct > 0` -> "kelly_on_overvalued"
       6. `direction == undervalued` and `spread_pct > 25`      -> "high_dispersion"
       7. `run_source in {manual, test}`                        -> "non_production_row"
+      8. `instability.unstable is True`                        -> "mode_instability"
 
     Symmetric dispersion for `overvalued` is Phase 4 P4.8 — deliberately not added here.
     """
@@ -87,6 +88,10 @@ def assess(v):
 
     if v.get("run_source") in _NON_PRODUCTION_SOURCES:
         reasons.append("non_production_row")
+
+    instability = v.get("instability")
+    if isinstance(instability, dict) and instability.get("unstable") is True:
+        reasons.append("mode_instability")
 
     return (not reasons), reasons
 
