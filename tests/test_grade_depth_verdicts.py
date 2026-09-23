@@ -707,10 +707,85 @@ def test_spread_bucket_boundaries():
 def test_build_cuts_always_returns_every_cut_including_momentum_ablation():
     labels = [c["cut"] for c in g.build_cuts([])]
     assert "z_momentum tercile (momentum ablation, undervalued only)" in labels
-    assert len(labels) == 13   # every cut in the work order's list, even on zero rows
+    # C2 (Phase 4 amendment) added entry_timing, momentum_view, m tercile.
+    assert "entry_timing" in labels
+    assert "momentum_view" in labels
+    assert "m tercile" in labels
+    assert len(labels) == 16   # every cut in the work order's list, even on zero rows
     for c in g.build_cuts([]):
         assert c["buckets"] == {}
         assert "reason" in c
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# C2 (Phase 4 amendment) — P4.3's entry_timing/momentum_view/m and P4.9's size_hint/
+# size_components carried onto graded rows; new cuts on entry_timing, momentum_view, m tercile.
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def _p4_3_rows():
+    """The byte-agreement fixture (ROWS) plus P4.3/P4.9 fields, so grading is exercised on real
+    price data without perturbing the byte-agreement EXPECTED values above (only new keys are
+    added to each row's dict; every carried field already checked there is untouched)."""
+    extra = {
+        "AAA": {"entry_timing": "buy_now", "momentum_view": "confirming", "m": 1.2,
+                "size_components": {"dispersion": {"bucket": "full"}}},
+        "BBB": {"entry_timing": "avoid", "momentum_view": "contradicting", "m": -1.5,
+                "size_components": {"dispersion": {"bucket": "quarter"}}},
+        "CCC": {"entry_timing": "wait_for_momentum", "momentum_view": "neutral", "m": 0.0},
+        "DDD": {"entry_timing": "buy_now", "momentum_view": "confirming", "m": 0.8},
+        "EEE": {"entry_timing": "wait_for_momentum", "momentum_view": "neutral", "m": -0.3},
+    }
+    return [dict(r, **extra[r["ticker"]]) for r in ROWS]
+
+
+def test_m_and_size_components_are_carried_onto_graded_rows():
+    graded, _, _ = _grade(rows=_p4_3_rows())
+    by_ticker = {row["ticker"]: row for row in graded}
+    assert by_ticker["AAA"]["m"] == 1.2
+    assert by_ticker["AAA"]["size_components"] == {"dispersion": {"bucket": "full"}}
+    assert by_ticker["BBB"]["m"] == -1.5
+    assert by_ticker["CCC"]["m"] == 0.0   # 0.0 is a value, not an absence
+
+
+def test_entry_timing_and_momentum_view_already_carried_and_now_cut():
+    graded, _, _ = _grade(rows=_p4_3_rows())
+    by_ticker = {row["ticker"]: row for row in graded}
+    assert by_ticker["AAA"]["entry_timing"] == "buy_now"
+    assert by_ticker["AAA"]["momentum_view"] == "confirming"
+
+    entry_cut = g.cut(graded, lambda r: r.get("entry_timing"), "entry_timing")
+    # DDD is excluded by the 3-day horizon-shortfall guard (pending, not graded), so only AAA
+    # carries "buy_now" among the graded rows.
+    assert set(entry_cut["buckets"]) == {"avoid", "buy_now", "wait_for_momentum"}
+    assert entry_cut["buckets"]["buy_now"]["n_verdicts"] == 1      # AAA
+    assert entry_cut["buckets"]["buy_now"]["inconclusive"] is True   # n=1 < MIN_BUCKET_N=10
+
+    mom_cut = g.cut(graded, lambda r: r.get("momentum_view"), "momentum_view")
+    assert set(mom_cut["buckets"]) == {"confirming", "contradicting", "neutral"}
+
+
+def test_m_tercile_cut_splits_and_flags_inconclusive():
+    graded, _, _ = _grade(rows=_p4_3_rows())
+    result = g.tercile_cut(graded, "m", "m tercile")
+    assert result["cut"] == "m tercile"
+    assert set(result["buckets"]) <= {"T1_low", "T2_mid", "T3_high"}
+    for bucket in result["buckets"].values():
+        assert bucket["inconclusive"] is True   # every bucket here has n << MIN_BUCKET_N
+
+
+def test_m_tercile_cut_reports_reason_below_3_rows():
+    graded, _, _ = _grade(rows=_p4_3_rows()[:2])   # only AAA, BBB carry m -> still >= 3? no: 2
+    result = g.tercile_cut(graded, "m", "m tercile")
+    assert result["buckets"] == {}
+    assert "reason" in result
+
+
+def test_entry_timing_and_m_appear_in_build_cuts_output():
+    graded, _, _ = _grade(rows=_p4_3_rows())
+    cuts = {c["cut"]: c for c in g.build_cuts(graded)}
+    assert cuts["entry_timing"]["buckets"]
+    assert cuts["momentum_view"]["buckets"]
+    assert cuts["m tercile"]["buckets"] or "reason" in cuts["m tercile"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════

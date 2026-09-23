@@ -132,6 +132,10 @@ CARRY_FIELDS = (
     "direction", "size_hint", "spread_pct", "n_basis", "early_stop", "conviction_score",
     "business_quality_moat", "kelly_fraction_pct", "mos_vs_median_pct", "mos_vs_base_pct",
     "pack_revision", "arm", "run_source", "gate_version", "entry_timing", "momentum_view",
+    # C2 (Phase 4 amendment) — P4.3's `m` and P4.9's `size_components`, so the strongest graded
+    # cut in the retired lane (entry_timing) can be measured on the new analyst from day one,
+    # and size_hint's composite inputs are auditable per row, not just the final bucket.
+    "m", "size_components",
 )
 
 # Cross-ledger dedupe precedence (B3) — lower sorts first, i.e. is KEPT. The quarantine label is
@@ -643,6 +647,13 @@ def build_cuts(gh):
         cut(gh, lambda g: g.get("fct_nominated_doors"), "nominated_doors", multi=True),
         tercile_cut(gh, "z_momentum", "z_momentum tercile (momentum ablation, undervalued only)",
                     predicate=lambda g: g["direction"] == "undervalued"),
+        # C2 (Phase 4 amendment) — entry_timing was the strongest graded cut in the retired lane
+        # (+8.59% buy vs -5.22% wait_for_pullback excess at 30 days); momentum_view and m (P4.3)
+        # measured on the new analyst from day one, via the same n<10 inconclusive convention
+        # every other cut already gets from bucket_stats/tercile_cut.
+        cut(gh, lambda g: g.get("entry_timing"), "entry_timing"),
+        cut(gh, lambda g: g.get("momentum_view"), "momentum_view"),
+        tercile_cut(gh, "m", "m tercile"),
         cut(gh, lambda g: g.get("arm"), "arm"),
         cut(gh, lambda g: g.get("pack_revision"), "pack_revision"),
         cut(gh, lambda g: g.get("sector"), "sector"),
