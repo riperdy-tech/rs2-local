@@ -33,6 +33,7 @@ elif hasattr(sys.stdout, "buffer"):
 
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
+import depth_gates          # noqa: E402  (single owner of `actionable` — P1.3)
 import depth_triggers       # noqa: E402
 import depth_membership     # noqa: E402
 import depth_ondemand       # noqa: E402  (queue drained at ticker boundaries; stdlib-only)
@@ -119,7 +120,16 @@ def live_book():
 
 def rebuild_overlay():
     """Newest verdict per ticker from the append-only ledger -> cache/depth_overlay.json.
-    LOCAL artifact. The site is switched to it by the operator, never by this script."""
+    LOCAL artifact. The site is switched to it by the operator, never by this script.
+
+    P1.3: gate ON READ. Every published row is judged by `depth_gates.assess()` and gains
+    `actionable`, `actionable_reasons`, `gate_version` — ADDED, never used to drop the row
+    (non-negotiable 3: annotate, never silently gate). A row whose `direction` is the
+    band_verdict() malfunction sentinel "NOT_USABLE" (zero plausible complete samples) publishes
+    `direction: null, status: "not_usable"` instead of leaking that sentinel into the site's
+    direction field; every other row publishes `status: "ok"`. Top level gains `actionable_count`
+    and `gate_version` (the ruleset this rebuild judged every row against).
+    """
     newest = {}
     if LEDGER.exists():
         for line in LEDGER.read_text(encoding="utf-8").splitlines():
@@ -128,9 +138,26 @@ def rebuild_overlay():
                 newest[v["ticker"]] = v
             except Exception:
                 continue
+
+    actionable_count = 0
+    for v in newest.values():
+        actionable, reasons = depth_gates.assess(v)
+        v["actionable"] = actionable
+        v["actionable_reasons"] = reasons
+        v["gate_version"] = v.get("gate_version")  # explicit key on every row, even if None
+        if actionable:
+            actionable_count += 1
+        if v.get("direction") == "NOT_USABLE":
+            v["direction"] = None
+            v["status"] = "not_usable"
+        else:
+            v["status"] = "ok"
+
     OVERLAY.write_text(json.dumps(
         {"generated_at": datetime.now().isoformat(), "scheme": "band_direction_v1",
-         "count": len(newest), "tickers": newest}, indent=1), encoding="utf-8")
+         "count": len(newest), "actionable_count": actionable_count,
+         "gate_version": depth_gates.GATE_VERSION,
+         "tickers": newest}, indent=1), encoding="utf-8")
     return len(newest)
 
 
