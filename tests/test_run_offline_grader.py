@@ -78,6 +78,8 @@ def test_orchestrate_depth_main_runs_grader_before_final_publish(tmp_path, monke
     monkeypatch.setattr(od, "OVERLAY", tmp_path / "depth_overlay.json")
     monkeypatch.setattr(od, "DEPTH_LOG", tmp_path / "depth_orchestrate.log")
     monkeypatch.setattr(od.depth_membership, "LOG", tmp_path / "depth_membership.jsonl")
+    # P4.-1: stub the screener data refresh main() now runs first — never touch real git here.
+    monkeypatch.setattr(od.screener_refresh, "refresh_screener_data", lambda: (True, "deadbeef"))
 
     monkeypatch.setattr(od.depth_triggers, "trigger_map", lambda book: {})
     monkeypatch.setattr(od.depth_triggers, "newest_verdicts", lambda: {})

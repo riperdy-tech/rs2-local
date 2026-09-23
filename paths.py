@@ -22,13 +22,20 @@ resolves today is the path that was hardcoded yesterday. That is deliberate — 
 decision of 2026-09-22 was contract first, move second, so that relocating the folders later is a
 configuration change rather than a code change.
 
-THE PROBE ACCEPTS TWO LAYOUTS. Today the screener and the MRI sit inside a non-repo wrapper
-folder named `Stock Screener`; after the planned move they are siblings named `stock-screener` and
-`macro-regime-indicator`. Both spellings are listed for each key, in that order, and the first one
-that EXISTS wins. This is what lets the move happen without a code change in between. When
-neither exists, `resolve()` raises and names every candidate it tried — a missing peer repo is a
-real failure and must not degrade into a silently-empty data directory, which would look to the
-pipeline like a book with no names in it.
+THE PROBE ACCEPTS TWO LAYOUTS. Today the MRI sits inside a non-repo wrapper folder named
+`Stock Screener`; after the planned move it is a sibling named `macro-regime-indicator`. Both
+spellings are listed, in that order, and the first one that EXISTS wins. This is what lets the move
+happen without a code change in between. When neither exists, `resolve()` raises and names every
+candidate it tried — a missing peer repo is a real failure and must not degrade into a
+silently-empty data directory, which would look to the pipeline like a book with no names in it.
+
+`screener_data_dir` is DERIVED, not probed (P4.-1, 2026-09-24): it is always
+`<screener_publish_repo>/public/data`, the SAME dedicated, sweep-refreshed clone
+`orchestrate_depth.publish_overlay()` writes to (see `screener_refresh.py`) — never the shared
+`stock-screener` dev checkout, which a concurrent session can leave on a stale branch with no
+signal to any reader. Its own env override (`SCREENER_DATA_DIR`) and a config-pinned value still
+win first, exactly like every other key; only the final fallback changed, from a probe of its own
+two candidate spellings to `screener_publish_repo`'s resolution.
 
 Nothing here is cached: `load_config()` resolves on every call, so a moved folder or a changed
 environment variable takes effect on the next process start without a stale value surviving in
@@ -45,12 +52,9 @@ HERE = Path(__file__).resolve().parent          # the rs2-local repo root
 
 # Ordered candidates per key, relative to STOCKS_ROOT: (current nested layout, post-move layout).
 # `screener_publish_repo` has one spelling because the dedicated publish clone is already a
-# sibling and the move does not rename it.
+# sibling and the move does not rename it. `screener_data_dir` has none — it is DERIVED from
+# `screener_publish_repo` in resolve() below, never probed for itself (P4.-1).
 _CANDIDATES = {
-    "screener_data_dir": (
-        "Stock Screener/Stock Screener/public/data",
-        "stock-screener/public/data",
-    ),
     "screener_publish_repo": (
         "screener-publish",
     ),
@@ -112,7 +116,8 @@ def _candidate_list(key, root):
 
 
 def resolve(key, config=None, required=True):
-    """Resolve one cross-repo path. See the module docstring for the precedence rules."""
+    """Resolve one cross-repo path. See the module docstring for the precedence rules and for why
+    `screener_data_dir` is derived rather than probed."""
     env = _from_env(key)
     if env is not None:
         return env
@@ -121,6 +126,10 @@ def resolve(key, config=None, required=True):
         pinned = str(config.get(key) or "").strip()
         if pinned:
             return Path(pinned).expanduser()
+
+    if key == "screener_data_dir":
+        pub = resolve("screener_publish_repo", config, required=required)
+        return (pub / "public" / "data") if pub is not None else None
 
     root = stocks_root()
 

@@ -51,9 +51,13 @@ sys.path.insert(0, str(HERE))
 
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
+import screener_refresh     # noqa: E402  (P4.-1 — refresh the publish clone before draining)
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
+# P4.-1: set by drain() after a successful refresh, threaded into every spawned
+# depth_pipeline.py child's env (_run_one) so it stamps the sha instead of re-refreshing itself.
+SCREENER_DATA_COMMIT = None
 QUEUE = HERE / "cache" / "depth_ondemand.jsonl"
 QLOCK = HERE / "cache" / "depth_ondemand.queue.lock"
 OD_LEDGER = HERE / "cache" / "depth_ondemand_ledger.jsonl"
@@ -215,7 +219,11 @@ def _run_one(t):
     orchestrate_depth.run_one, NOT an import: orchestrate_depth rebinds sys.stdout at import
     (the double-wrap 'I/O operation on closed file' trap depth_sanity documents), and its
     log() would interleave into the sweep log status.py parses. Returns (ok, why)."""
-    proc = subprocess.Popen([sys.executable, str(HERE / "depth_pipeline.py"), t, "--ondemand"])
+    env = {**os.environ}
+    if SCREENER_DATA_COMMIT:
+        env["RS2_SCREENER_DATA_COMMIT"] = SCREENER_DATA_COMMIT
+    proc = subprocess.Popen([sys.executable, str(HERE / "depth_pipeline.py"), t, "--ondemand"],
+                            env=env)
     try:
         rc = proc.wait(timeout=TIMEOUT_MIN * 60)
     except subprocess.TimeoutExpired:
@@ -230,12 +238,14 @@ def _run_one(t):
         return False, "watchdog_timeout"
     if rc == 0:
         return True, "ok"
-    return False, {3: "research_infra", 5: "consensus_failed", 7: "vram"}.get(rc, f"exit_{rc}")
+    return False, {3: "research_infra", 5: "consensus_failed", 7: "vram",
+                   9: "screener_data_stale"}.get(rc, f"exit_{rc}")
 
 
 def drain():
     """Idle runner: hold the orchestrator lock, work the queue serially, release. If a real
     sweep holds the lock we exit — its boundary drain owns the queue."""
+    global SCREENER_DATA_COMMIT
     pid = _lock_alive()
     if pid:
         _log(f"sweep/runner already active (pid {pid}) — its boundary drain handles the queue.")
@@ -244,6 +254,21 @@ def drain():
         _log("stale orchestrator lock — taking over.")
     ORCH_LOCK.write_text(json.dumps({"pid": os.getpid(), "ts": datetime.now().isoformat(),
                                      "ondemand": True}), encoding="utf-8")
+
+    # P4.-1: refresh screener_publish_repo to origin/main BEFORE analysing anything — every
+    # ticker this drain runs reads screener_data_dir, now the SAME clone. A refresh failure
+    # refuses the whole drain (queued requests survive; take_next() never popped them).
+    ok, refreshed = screener_refresh.refresh_screener_data()
+    if not ok:
+        _log(f"screener data refresh refused: {refreshed} — not draining.")
+        try:
+            ORCH_LOCK.unlink()
+        except OSError:
+            pass
+        return 1
+    SCREENER_DATA_COMMIT = refreshed
+    _log(f"screener data refreshed -> {SCREENER_DATA_COMMIT}")
+
     done = 0
     try:
         while True:

@@ -37,9 +37,14 @@ import depth_gates          # noqa: E402  (single owner of `actionable` — P1.3
 import depth_triggers       # noqa: E402
 import depth_membership     # noqa: E402
 import depth_ondemand       # noqa: E402  (queue drained at ticker boundaries; stdlib-only)
+import screener_refresh     # noqa: E402  (P4.-1 — refresh the publish clone before reading SD)
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
+# P4.-1: the sha main() refreshed screener_publish_repo to, threaded into every spawned
+# depth_pipeline.py child's env (run_one) and stamped in PROGRESS. None until main() sets it —
+# a child spawned some other way (a stray manual run) must stamp None, never fabricate one.
+SCREENER_DATA_COMMIT = None
 STATE = HERE / "cache" / "depth_state.json"
 LOCK = HERE / "cache" / "orchestrate_depth.lock"
 # DECOUPLED 2026-08-21: the old pipeline is DROPPED and cache/PAUSED must stay in place
@@ -579,9 +584,12 @@ def run_one(t, ondemand=False):
     """One depth_pipeline child, watchdogged by sample progress. Returns (ok, why).
     Kills the process tree ONLY if no sample has completed within SAMPLE_TIMEOUT_MIN (120 min),
     ensuring legitimate multi-sample runs are never terminated by an arbitrary total wall clock."""
+    env = {**os.environ, "RS2_RUN_SOURCE": "orchestrator"}
+    if SCREENER_DATA_COMMIT:
+        env["RS2_SCREENER_DATA_COMMIT"] = SCREENER_DATA_COMMIT
     proc = subprocess.Popen([sys.executable, str(HERE / "depth_pipeline.py"), t]
                             + (["--ondemand"] if ondemand else []),
-                            env={**os.environ, "RS2_RUN_SOURCE": "orchestrator"})
+                            env=env)
     last_progress = time.time()
 
     def _sample_progress_probe():
@@ -612,7 +620,8 @@ def run_one(t, ondemand=False):
                 return False, "watchdog_timeout"
     if rc == 0:
         return True, "ok"
-    return False, {3: "research_infra", 5: "consensus_failed", 7: "vram", 8: "price_unavailable"}.get(rc, f"exit_{rc}")
+    return False, {3: "research_infra", 5: "consensus_failed", 7: "vram", 8: "price_unavailable",
+                   9: "screener_data_stale"}.get(rc, f"exit_{rc}")
 
 
 def data_health_scan(book):
@@ -668,6 +677,7 @@ def run_offline_grader():
 
 
 def main():
+    global SCREENER_DATA_COMMIT
     args = sys.argv[1:]
     dry = "--dry-run" in args
     limit = int(args[args.index("--limit") + 1]) if "--limit" in args else None
@@ -681,6 +691,28 @@ def main():
     if "--publish-only" in args:
         publish_overlay()
         return 0
+
+    # P4.-1: refresh screener_publish_repo to origin/main BEFORE anything below reads SD
+    # (paths.py now resolves screener_data_dir to this same clone) — the factor guard, the
+    # book, membership, triggers, data-health, the pack, all of it. Runs on --dry-run too (dry
+    # runs read the same data); --publish-only above is the only mode that touches no screener
+    # data at all and is the only one that skips it. A refresh failure REFUSES the whole sweep,
+    # loudly, exactly like the factor guard below — never analyse against data nobody has
+    # verified is current.
+    ok, refreshed = screener_refresh.refresh_screener_data()
+    if not ok:
+        log(f"screener data refresh refused: {refreshed}")
+        try:
+            PROGRESS.write_text(json.dumps({
+                "active": False,
+                "blocked_reason": f"screener_data_refresh: {refreshed}",
+                "updated": datetime.now().isoformat(),
+            }, indent=1), encoding="utf-8")
+        except OSError:
+            pass
+        return 1
+    SCREENER_DATA_COMMIT = refreshed
+    log(f"screener data refreshed -> {SCREENER_DATA_COMMIT}")
 
     if PAUSED.exists() and not dry:
         log(f"PAUSED file present ({PAUSED}) — exiting. Remove it to run.")
@@ -760,6 +792,7 @@ def main():
         try:
             PROGRESS.write_text(json.dumps({
                 "active": active, "total": len(queue), "idx": idx, "current": current,
+                "screener_data_commit": SCREENER_DATA_COMMIT,
                 "queue": queue_why, "updated": datetime.now().isoformat()}, indent=1),
                 encoding="utf-8")
         except OSError:

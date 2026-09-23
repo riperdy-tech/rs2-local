@@ -28,16 +28,18 @@ import paths
 
 def test_the_current_nested_layout_resolves(tmp_path, monkeypatch):
     monkeypatch.delenv("SCREENER_DATA_DIR", raising=False)
+    monkeypatch.delenv("SCREENER_PUBLISH_REPO", raising=False)
     monkeypatch.delenv("MRI_OUTPUTS_DIR", raising=False)
     monkeypatch.delenv("MRI_ANCHORS_DIR", raising=False)
     monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
 
-    (tmp_path / "Stock Screener" / "Stock Screener" / "public" / "data").mkdir(parents=True)
     (tmp_path / "Stock Screener" / "Macro Regime Indicator" / "outputs").mkdir(parents=True)
     (tmp_path / "screener-publish").mkdir()
 
+    # screener_data_dir is DERIVED (P4.-1): <screener_publish_repo>/public/data, never its own
+    # probe — it resolves the same regardless of the dev-checkout layout's nested/sibling split.
     assert paths.resolve("screener_data_dir") == (
-        tmp_path / "Stock Screener" / "Stock Screener" / "public" / "data")
+        tmp_path / "screener-publish" / "public" / "data")
     assert paths.resolve("mri_outputs_dir") == (
         tmp_path / "Stock Screener" / "Macro Regime Indicator" / "outputs")
     assert paths.resolve("screener_publish_repo") == tmp_path / "screener-publish"
@@ -104,13 +106,14 @@ def test_a_pinned_config_value_beats_the_probe(tmp_path, monkeypatch):
 def test_an_empty_or_null_config_value_does_not_count_as_pinned(tmp_path, monkeypatch):
     """config.json ships these keys as null. `null` and `""` mean "resolve it", not "use ''"."""
     monkeypatch.delenv("SCREENER_DATA_DIR", raising=False)
+    monkeypatch.delenv("SCREENER_PUBLISH_REPO", raising=False)
     monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
-    probe_hit = tmp_path / "stock-screener" / "public" / "data"
-    probe_hit.mkdir(parents=True)
+    derived_hit = tmp_path / "screener-publish" / "public" / "data"
+    (tmp_path / "screener-publish").mkdir(parents=True)
 
     for pinned in ({"screener_data_dir": None}, {"screener_data_dir": ""},
                    {"screener_data_dir": "   "}):
-        assert paths.resolve("screener_data_dir", pinned) == probe_hit
+        assert paths.resolve("screener_data_dir", pinned) == derived_hit
 
 
 def test_anchors_dir_reads_its_own_variable_before_the_shared_one(tmp_path, monkeypatch):
@@ -129,42 +132,86 @@ def test_the_post_move_sibling_layout_resolves(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
 
-    (tmp_path / "stock-screener" / "public" / "data").mkdir(parents=True)
     (tmp_path / "macro-regime-indicator" / "outputs").mkdir(parents=True)
     (tmp_path / "screener-publish").mkdir()
 
-    assert paths.resolve("screener_data_dir") == tmp_path / "stock-screener" / "public" / "data"
+    assert paths.resolve("screener_data_dir") == (
+        tmp_path / "screener-publish" / "public" / "data")
     assert paths.resolve("mri_outputs_dir") == (
         tmp_path / "macro-regime-indicator" / "outputs")
     assert paths.resolve("screener_publish_repo") == tmp_path / "screener-publish"
 
 
-def test_the_nested_layout_wins_while_both_exist(tmp_path, monkeypatch):
+def test_the_nested_mri_layout_wins_while_both_exist(tmp_path, monkeypatch):
     """During the move both spellings can be on disk. The current one is listed first and wins, so
-    a half-finished move never silently reads a freshly-created empty sibling."""
-    monkeypatch.delenv("SCREENER_DATA_DIR", raising=False)
+    a half-finished move never silently reads a freshly-created empty sibling. screener_data_dir
+    no longer has a candidate list of its own (P4.-1) — this precedence rule now only applies to
+    mri_outputs_dir (and anchors_dir, which shares its candidates)."""
+    monkeypatch.delenv("MRI_OUTPUTS_DIR", raising=False)
     monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
-    nested = tmp_path / "Stock Screener" / "Stock Screener" / "public" / "data"
+    nested = tmp_path / "Stock Screener" / "Macro Regime Indicator" / "outputs"
     nested.mkdir(parents=True)
-    (tmp_path / "stock-screener" / "public" / "data").mkdir(parents=True)
+    (tmp_path / "macro-regime-indicator" / "outputs").mkdir(parents=True)
 
-    assert paths.resolve("screener_data_dir") == nested
+    assert paths.resolve("mri_outputs_dir") == nested
+
+
+def test_screener_data_dir_ignores_the_old_dev_checkout_candidates(tmp_path, monkeypatch):
+    """P4.-1: even when the old shared stock-screener dev checkout exists on disk (either
+    spelling), screener_data_dir must never resolve to it — only to
+    <screener_publish_repo>/public/data. This is the whole point of the change: a stale dev
+    checkout must be invisible to every rs2 consumer, not merely deprioritised."""
+    monkeypatch.delenv("SCREENER_DATA_DIR", raising=False)
+    monkeypatch.delenv("SCREENER_PUBLISH_REPO", raising=False)
+    monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
+    (tmp_path / "Stock Screener" / "Stock Screener" / "public" / "data").mkdir(parents=True)
+    (tmp_path / "stock-screener" / "public" / "data").mkdir(parents=True)
+    (tmp_path / "screener-publish").mkdir()
+
+    assert paths.resolve("screener_data_dir") == (
+        tmp_path / "screener-publish" / "public" / "data")
 
 
 # ---- 4. an unresolvable location is fatal and self-explaining ---------------------------------
 
 def test_an_unresolvable_key_raises_and_names_every_candidate(tmp_path, monkeypatch):
+    monkeypatch.delenv("MRI_OUTPUTS_DIR", raising=False)
+    monkeypatch.delenv("MRI_ANCHORS_DIR", raising=False)
+    monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
+
+    with pytest.raises(FileNotFoundError) as excinfo:
+        paths.resolve("mri_outputs_dir")
+
+    msg = str(excinfo.value)
+    assert "MRI_OUTPUTS_DIR" in msg
+    assert str(tmp_path) in msg
+    assert "Stock Screener" in msg and "macro-regime-indicator" in msg
+    assert "do not guess" in msg
+
+
+def test_screener_data_dir_unresolvable_names_the_real_root_cause(tmp_path, monkeypatch):
+    """screener_data_dir is derived from screener_publish_repo (P4.-1): when that clone cannot
+    be found, the raised message must name screener_publish_repo — the actual missing thing —
+    not screener_data_dir's own (now unused) candidate paths."""
     monkeypatch.delenv("SCREENER_DATA_DIR", raising=False)
+    monkeypatch.delenv("SCREENER_PUBLISH_REPO", raising=False)
     monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
 
     with pytest.raises(FileNotFoundError) as excinfo:
         paths.resolve("screener_data_dir")
 
     msg = str(excinfo.value)
-    assert "SCREENER_DATA_DIR" in msg
-    assert str(tmp_path) in msg
-    assert "Stock Screener" in msg and "stock-screener" in msg
+    assert "SCREENER_PUBLISH_REPO" in msg
+    assert "screener-publish" in msg
     assert "do not guess" in msg
+
+
+def test_screener_data_dir_required_false_returns_none_when_publish_repo_missing(tmp_path, monkeypatch):
+    monkeypatch.delenv("SCREENER_DATA_DIR", raising=False)
+    monkeypatch.delenv("SCREENER_PUBLISH_REPO", raising=False)
+    monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
+
+    assert paths.resolve("screener_data_dir", required=False) is None
 
 
 def test_required_false_returns_none_instead_of_raising(tmp_path, monkeypatch):

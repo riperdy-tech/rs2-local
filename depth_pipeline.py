@@ -23,7 +23,8 @@ verdict as `flags`. Measured on the 29 verdicts published before the change: 6 s
 
 Exit codes match run_rs2 conventions so the orchestrator can say why a ticker failed:
   0 verdict emitted (any direction) | 3 research infra/timeout | 5 consensus produced nothing |
-  7 VRAM not released.
+  7 VRAM not released | 8 live price unavailable | 9 screener data refresh refused (P4.-1,
+  standalone runs only).
 
   python depth_pipeline.py GOOG
 """
@@ -48,6 +49,7 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
 import price_now            # noqa: E402  (P1.5 live price at verdict time)
+import screener_refresh     # noqa: E402  (P4.-1 — refresh the publish clone on a standalone run)
 from fiduciary_gate import contract_base, validate_fiduciary_contract  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
@@ -556,7 +558,30 @@ def _pipeline_commit():
     return None
 
 
-def stamp_and_route(v, t, run_source, quote=None):
+def _screener_data_commit(run_source):
+    """(ok, sha_or_reason) — the screener-publish clone's commit sha this run's screener data
+    came from (P4.-1).
+
+    `orchestrator` and `ondemand` runs are spawned by a caller that already refreshed the clone
+    (orchestrate_depth.main / depth_ondemand.drain) and passes the sha via the
+    RS2_SCREENER_DATA_COMMIT env var — read it, never re-refresh (that would re-fetch per
+    ticker for no reason and re-take a lock the parent already cleared). A standalone run
+    (`manual` / `manual_production` — no such spawner: a bare or `--production` invocation)
+    refreshes it HERE, first, and REFUSES to proceed if that refresh fails — never analysing
+    against screener data nobody has verified is current. A `cloud` run's spawner
+    (api_llm/cloud_backstop.py) does its own git fetch outside this contract; if it did not set
+    the env var the sha is None here, never fabricated (same rule as pipeline_commit,
+    research_brief_asof).
+    """
+    env_sha = os.environ.get("RS2_SCREENER_DATA_COMMIT")
+    if env_sha:
+        return True, env_sha
+    if run_source in ("manual", "manual_production"):
+        return screener_refresh.refresh_screener_data()
+    return True, None
+
+
+def stamp_and_route(v, t, run_source, quote=None, screener_data_commit=None):
     """Attach the P1.2/P1.5 provenance fields to verdict dict `v` (in place) and pick which ledger it
     belongs in. Returns (ledger_path, notice_or_None) — `notice` is the loud manual-run warning,
     non-None only when `run_source` resolved to "manual" (unmarked: no --ondemand, no
@@ -568,6 +593,7 @@ def stamp_and_route(v, t, run_source, quote=None):
     v["run_source"] = run_source
     v["arm"] = "local"
     v["pack_source"] = "fresh"
+    v["screener_data_commit"] = screener_data_commit   # P4.-1 — explicit key even when None
     brief_asof, brief_age_days = _research_brief_provenance(t)
     v["research_brief_asof"] = brief_asof
     v["research_brief_age_days"] = brief_age_days
@@ -608,6 +634,17 @@ def main():
               "[--samples N]")
         sys.exit(2)
 
+    # P4.-1: screener data provenance, resolved BEFORE anything reads SD (research, consensus,
+    # the pack all read it). A standalone run refreshes here and REFUSES on failure; a spawned
+    # run reads the sha its spawner already refreshed. Ahead of the live-price check below —
+    # both are "refuse to analyse on data nobody has verified" gates, this one first because a
+    # stale screener_data_dir would make every downstream read wrong, not just the price.
+    run_source = _run_source()
+    ok, screener_data_commit = _screener_data_commit(run_source)
+    if not ok:
+        print(f"::HARD FAIL:: screener data refresh refused: {screener_data_commit}", flush=True)
+        sys.exit(9)
+
     # LIVE PRICE AT VERDICT TIME (P1.5): obtain the quote before research; hard-fail on None.
     quote = price_now.quote(t)
     if not quote or quote.get("price") is None:
@@ -621,7 +658,6 @@ def main():
     # OD_LEDGER, which nothing downstream reads (see depth_ondemand.py).
     ondemand = "--ondemand" in sys.argv
     samples = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else None
-    run_source = _run_source()
     t0 = time.time()
     if "--no-research" not in sys.argv:
         run_research(t)
@@ -643,7 +679,8 @@ def main():
     # A bare `python depth_pipeline.py TICKER` (no --ondemand/--production, no RS2_RUN_SOURCE)
     # resolves to "manual" and is routed to the test ledger, loudly — exactly how the six n=1
     # rows tools/ledger_quarantine.py moved got into the production ledger in the first place.
-    ledger, notice = stamp_and_route(v, t, run_source, quote=quote)
+    ledger, notice = stamp_and_route(v, t, run_source, quote=quote,
+                                     screener_data_commit=screener_data_commit)
     if notice:
         print(notice, flush=True)
         try:

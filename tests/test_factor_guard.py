@@ -154,6 +154,9 @@ def test_orchestrate_depth_main_refuses_bad_engine(tmp_path, monkeypatch):
     monkeypatch.setattr(od, "PROGRESS", progress_file)
     monkeypatch.setattr(od, "DEPTH_LOG", tmp_path / "depth_orchestrate.log")
     monkeypatch.setattr(od, "STATE", tmp_path / "depth_state.json")
+    # P4.-1: the screener data refresh now runs before the factor guard — stub it so this test
+    # never touches real git, same isolation every other seam here already gets.
+    monkeypatch.setattr(od.screener_refresh, "refresh_screener_data", lambda: (True, "deadbeef"))
     monkeypatch.setattr(dm, "check_factor_scores", lambda **kw: (False, "engine mismatch: test error"))
     notified = []
     monkeypatch.setattr(od.ops, "notify_telegram", lambda msg: notified.append(msg))
@@ -174,6 +177,7 @@ def test_orchestrate_depth_main_tickers_does_not_bypass(tmp_path, monkeypatch):
     monkeypatch.setattr(od, "PROGRESS", progress_file)
     monkeypatch.setattr(od, "DEPTH_LOG", tmp_path / "depth_orchestrate.log")
     monkeypatch.setattr(od, "STATE", tmp_path / "depth_state.json")
+    monkeypatch.setattr(od.screener_refresh, "refresh_screener_data", lambda: (True, "deadbeef"))
     monkeypatch.setattr(dm, "check_factor_scores", lambda **kw: (False, "stale factor_scores: 55h > 48h"))
     monkeypatch.setattr(od.ops, "notify_telegram", lambda msg: None)
     monkeypatch.setattr(sys, "argv", ["orchestrate_depth.py", "--tickers", "AAPL", "--dry-run"])
@@ -195,6 +199,7 @@ def test_orchestrate_depth_main_ignore_factor_guard_bypasses(tmp_path, monkeypat
     monkeypatch.setattr(od, "PROGRESS", progress_file)
     monkeypatch.setattr(od, "DEPTH_LOG", tmp_path / "depth_orchestrate.log")
     monkeypatch.setattr(od, "STATE", tmp_path / "depth_state.json")
+    monkeypatch.setattr(od.screener_refresh, "refresh_screener_data", lambda: (True, "deadbeef"))
     monkeypatch.setattr(dm, "LOG", tmp_path / "depth_membership.jsonl")
     monkeypatch.setattr(od.depth_triggers, "trigger_map", lambda book: {})
     monkeypatch.setattr(od.depth_triggers, "newest_verdicts", lambda: {})

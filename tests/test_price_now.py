@@ -197,6 +197,9 @@ def test_orchestrator_rc_map_has_price_unavailable(monkeypatch):
 def test_depth_pipeline_main_exits_8_on_none_price(monkeypatch, capsys):
     monkeypatch.setattr(price_now, "quote", lambda t: None)
     monkeypatch.setattr(sys, "argv", ["depth_pipeline.py", "AAPL"])
+    # P4.-1: this bare invocation resolves run_source="manual", which would otherwise refresh
+    # the real screener_publish_repo before reaching the price check this test is about.
+    monkeypatch.setattr(dp.screener_refresh, "refresh_screener_data", lambda: (True, "deadbeef"))
 
     with pytest.raises(SystemExit) as exc:
         dp.main()
