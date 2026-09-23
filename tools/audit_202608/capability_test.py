@@ -29,6 +29,7 @@ Output: ab_reports/capability_test/{TICKER}_{ts}/ — isolated, never ingested b
   python tools/audit_202608/capability_test.py GOOG
 """
 import json
+import re
 import sys
 import time
 import urllib.request
@@ -37,9 +38,12 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE / "tools"))   # base_rates.py / growth_persistence.py (D11)
 from pack_data_sanity import check_pack_data_sanity
 
 import rs2_data  # noqa: E402
+import base_rates  # noqa: E402
+import growth_persistence  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -97,10 +101,65 @@ TIMEOUT = 14400
 #      second, as a contested headline with its margin, e.g. "headline goldilocks (margin
 #      0.044 — contested)". Not a new PACK_REVISION: no revision-5 verdict exists yet to
 #      distinguish from (ledgers hold {3, 4}; the sweep is paused).
-PACK_REVISION = 5
+#   6  2026-09-24 (Phase 4 T3, PHASE_4_PACK_SPEC.md D3/D4/D8/D9/D10/D11, AMENDMENTS B1/C1/C3/E2/E3,
+#      ANALYST P4.0a §12 fields, P4.2 §12 fields). Every change alters what the model is told:
+#        - SECTION 1.5 gained the `COE ANCHOR for this name` line (rf + sector loading x implied
+#          ERP) with the +-150bp mandate, and the `Long-run nominal growth anchor for terminal_g`
+#          line from long_run_growth_anchor.json (D3).
+#        - NEW SECTION 1.6 "STATE OF THE WORLD [dated facts, not a forecast]": the full 5-way MRI
+#          regime probability vector with headline+margin, active shocks from the S4 register (or
+#          "none active"), the `elevated_volatility_ahead` risk flag, the dated rf/real/breakeven
+#          10y legs, and an inflation-trend line printed only when the anchor carries one (D10/E3).
+#        - NEW SECTION 2.5 "PRICE ACTION (facts, not a valuation input)": momentum facts read from
+#          factor_scores.json's per-ticker `fct_momentum_state`/`fct_z` ONLY — never the screener's
+#          band, rank, door, composite or falling_knife label (P4.1 as amended by B1/C3). Fields
+#          this pack cannot source yet (200d mean/slope, RS vs cluster ETF/IWM, 60d realised vol,
+#          mom_break) print `not available` rather than being invented.
+#        - NEW "GROWTH BASE RATES" block (financials area): the company's size-bucket 5y/10y
+#          sustained-growth base rates, measured fresh from fundamentals_history.json (new module
+#          `tools/base_rates.py`, cached per file sha within the run), plus the conditional "given
+#          the growth just delivered" table from `tools/growth_persistence.py`, plus the p90
+#          evidence mandate and the survivorship caveat (D11/E2).
+#        - NEW "GUIDANCE & CONSENSUS" block: parses a fenced ```guidance``` table out of the
+#          research brief when present (new format: `metric | period | value | source | date`),
+#          else states plainly that research did not return dated guidance (D4).
+#        - SECTION 11's header reverts to "Written by another model, not verified — every figure
+#          is a claim to check against the filings above; cite the filing when you rely on it."
+#          Every "verified ... ground truth / ingest directly" phrase is removed from the pack and
+#          from RESEARCH_ADDENDUM (D8).
+#        - A "DATA WARNINGS" block (T2's `pack_data_sanity` checks) now prints at the TOP of
+#          SECTION 2, and the shares-outstanding line states its source and as-of date explicitly
+#          (D9).
+#        - NEW "SECTION 8.5 - PEER CONTEXT [Aggregator, context not an anchor]": cluster peers'
+#          trailing P/E and EV/EBITDA from stocks.json (this pack STATES which of the two fields
+#          is actually usable before printing either — measured 2026-09-24: `peRatio` is 0 for
+#          every one of 6,949 names on file and `stocks.json` carries no EV/EBITDA field at all, so
+#          both currently print `not available` with the reason stated, not silently), and the MRI
+#          sector trailing-P/E band from `sector_multiple_bands.json` via
+#          `rs2_data.anchor_multiple_bands`. SECTION 8/9 fetch-age stamps now show `STALE (n days)`
+#          past 45 days and SUPPRESS the values themselves to `not available (stale)` rather than
+#          merely flagging them (P4.10).
+#        - TASK's SECTION 12 JSON contract gained every field the harness already whitelists but
+#          the prompt never asked for: `coe_used`, `coe_source`, `coe_adjustment_reason`,
+#          `valuation_frame`, `terminal_method`, `terminal_multiple_or_g`, `fade_years`,
+#          `stage1_growth_path`, `guidance_deviation_reason`, `cycle_evidence`, `verdict_label`
+#          (P4.0a) and `momentum_view`, `entry_timing`, `momentum_flip_condition`,
+#          `momentum_break_rule`, `invalidation_rules` with the metric vocabulary (P4.2). TASK now
+#          instructs that ALL valuation arithmetic runs through `run_financial_model` (three-stage,
+#          both terminal legs, neutral reverse DCF), base IV must be a desk result, the desk's
+#          neutral reverse-DCF implied CAGR and its base-rate band must be printed and argued
+#          against, and a cyclical treatment requires `cycle_evidence`.
+PACK_REVISION = 6
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
+# Rule 11 (verdict stamping, C1 of the amendments + P4.3 prep): consensus_valuation.main() reads
+# these two after a FRESH build_pack() call and copies them onto consensus.json as
+# `active_shocks_at_verdict` and `momentum_state` — the exact §1.6/§2.5 blocks this pack printed,
+# same T2-whitelisting pattern as LAST_PACK_MACRO_DEGRADED above. Unknown (None) after a frozen
+# `--pack-file` run, which does not call build_pack() at all.
+LAST_PACK_ACTIVE_SHOCKS = []
+LAST_PACK_MOMENTUM_STATE = {}
 
 
 class PackText(str):
@@ -460,6 +519,71 @@ def _age(rec):
             + (" - STALE, discount accordingly" if days > 14 else ""))
 
 
+# P4.10 staleness suppression: past this many days, SECTION 8/9 no longer merely FLAGS an
+# aggregator value as old (_age() above, at the 14-day "discount accordingly" bar) - it withholds
+# the value entirely. `_age()` returns only a display string; a caller that needs to threshold
+# against 45 days cannot recover the day count from it without re-parsing, hence this pair.
+STALE_SUPPRESS_DAYS = 45
+STALE_NULL = "not available (stale)"
+
+
+def _age_days(rec):
+    """Integer days since `_fetched_at`, or None when undatable. Companion to _age()."""
+    ts = (rec or {}).get("_fetched_at")
+    if not isinstance(ts, str) or len(ts) < 10:
+        return None
+    try:
+        return (datetime.now() - datetime.fromisoformat(ts[:19])).days
+    except ValueError:
+        return None
+
+
+def _age_label(rec):
+    """_age()'s string, with `- STALE (n days)` appended once the record crosses the P4.10
+    suppression threshold (distinct from _age()'s own 14-day "discount accordingly" note)."""
+    days = _age_days(rec)
+    base = _age(rec)
+    if days is not None and days > STALE_SUPPRESS_DAYS:
+        return f"{base} - STALE ({days} days)"
+    return base
+
+
+def _sv(d, k, is_stale):
+    """_v(d, k), or STALE_NULL when `is_stale` — the P4.10 value-suppression twin of _v()."""
+    return STALE_NULL if is_stale else _v(d, k)
+
+
+def _parse_guidance_block(text):
+    """Rows from a fenced ```guidance block in a research brief: pipe-delimited lines
+    `metric | period | value | source | date` (Phase 4 D4 — this pack defines the format; T4
+    makes the research template emit it). [] when `text` holds no such block.
+
+    A header row (literal column names) is skipped BY NAME, not by position, so a real metric
+    that happens to be named e.g. "source revenue" is never silently dropped.
+    """
+    if not text:
+        return []
+    m = re.search(r"```guidance\s*\n(.*?)```", text, re.DOTALL)
+    if not m:
+        return []
+    rows = []
+    for line in m.group(1).splitlines():
+        line = line.strip().strip("|").strip()
+        if not line or line.startswith("#") or set(line) <= {"-", " ", "|"}:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) != 5:
+            continue
+        metric, period, value, source, date = parts
+        if metric.lower() == "metric" and period.lower() == "period":
+            continue   # header row
+        if not (metric and period and value):
+            continue
+        rows.append({"metric": metric, "period": period, "value": value,
+                     "source": source or NULL, "date": date or NULL})
+    return rows
+
+
 def _decl(label, h, yrs, keys, held_note, gap_note):
     """One SECTION 12 line, decided by what THIS ticker's record actually contains.
 
@@ -686,6 +810,28 @@ def build_pack(t, price_override=None, include_research=True):
     else:
         load_line = f"- Sector Cost of Equity Loading: {NULL} (unmapped sector: {sector or 'none'})"
 
+    # D3 (PHASE_4_PACK_SPEC.md): COE ANCHOR for this name = rf + sector loading x implied ERP —
+    # the single number `coe_used` is measured against (+-150bp), not just its separate legs above.
+    if rf_pct is not None and anchor_load_val is not None and erp_pct is not None:
+        coe_anchor_pct = rf_pct + anchor_load_val * erp_pct
+        _coe_asof_str = str(anchor_asof) if anchor_asof else NULL
+        coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + loading "
+                            f"{anchor_load_val:.3f}x x implied ERP {erp_pct:.2f}% = "
+                            f"{coe_anchor_pct:.2f}%  (asof {_coe_asof_str}, source: MRI cost-of-capital anchor)")
+    else:
+        coe_anchor_pct = None
+        coe_anchor_line = f"- COE ANCHOR for this name: {NULL}"
+
+    # D3: the long-run nominal growth anchor terminal_g must be built from, per P1.6/anchor_terminal_g().
+    lrg_payload = rs2_data.usable_anchor("long_run_growth")
+    terminal_g_val, terminal_g_src = rs2_data.anchor_terminal_g()
+    if terminal_g_val is not None:
+        tg_asof = lrg_payload.get("asof") if lrg_payload else None
+        terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: "
+                            f"{terminal_g_val*100:.2f}%  (asof {tg_asof or NULL})")
+    else:
+        terminal_g_line = f"- Long-run nominal growth anchor for terminal_g: {NULL}  ({terminal_g_src})"
+
     # Anchor metadata
     reasons_str = "; ".join(str(r) for r in anchor_reasons) if anchor_reasons else "none"
     degraded_str = str(anchor_degraded) if anchor_degraded is not None else NULL
@@ -715,6 +861,9 @@ def build_pack(t, price_override=None, include_research=True):
     # C13 (Phase 1 approval review): no silent default — a missing config key must raise,
     # never quietly substitute a hidden constant that duplicates config.json's own value.
     regime_fresh = bool(regime_date and rs2_data._fresh(regime_date, CONFIG["regime_max_age_days"]))
+    # Defined here, not only inside the "fresh" branch below, so SECTION 1.6's regime vector
+    # (printed regardless of freshness) can read it without a NameError on a stale/absent regime.
+    probs = {}
 
     if not regime_file or not regime_date:
         regime_headline = None
@@ -757,6 +906,8 @@ def build_pack(t, price_override=None, include_research=True):
           erp_line,
           coe_line,
           load_line,
+          coe_anchor_line,
+          terminal_g_line,
           t10y2y_line,
           baa_line,
           hy_line,
@@ -765,6 +916,18 @@ def build_pack(t, price_override=None, include_research=True):
     if rf_pct is not None:
         L.append(f"- **MANDATE:** Use the verified 10-Year Treasury yield above ({rf_pct:.2f}%) as your base risk-free rate Rf for WACC. "
                  "DO NOT search the web for Treasury yields or cost of capital anchors; they are verified above.")
+
+    # D3: the +-150bp CoE mandate. Printed unconditionally (an instruction, not a data line) —
+    # when the anchor itself is unavailable this run, the second sentence tells the model exactly
+    # what to do instead rather than leaving the mandate dangling against a missing number.
+    if coe_anchor_pct is not None:
+        L.append(f"- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above "
+                 f"({coe_anchor_pct:.2f}%), or declare `coe_source: \"own\"` with a "
+                 f"`coe_adjustment_reason`. Vendor beta (SECTION 2) is context only, never the input.")
+    else:
+        L.append("- **COE MANDATE:** the COE ANCHOR above is not available this run — declare "
+                 "`coe_source: \"own\"` with a `coe_adjustment_reason` for whatever `coe_used` you "
+                 "choose. Vendor beta (SECTION 2) is context only, never the input.")
 
     # B6 (Phase 1 approval review): the mandate no longer conditions on the regime LABEL.
     # Operator ruling: the label is demoted and must not drive any numeric output — it was
@@ -788,9 +951,93 @@ def build_pack(t, price_override=None, include_research=True):
         or not regime_fresh
     )
 
+    # ---- SECTION 1.6 - STATE OF THE WORLD [dated facts, not a forecast] --------------------
+    # D10 (PHASE_4_PACK_SPEC.md) / E3 (AMENDMENTS.md): everything here is a dated fact from the
+    # MRI, never a forecast and never invented — a missing source prints NULL/omits its line,
+    # it is never defaulted.
+    shock_reg = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "shock_register.json") or {}
+    shock_asof = shock_reg.get("asof")
+
+    L16 = ["## SECTION 1.6 - STATE OF THE WORLD   [dated facts, not a forecast]", ""]
+
+    if regime_file and regime_date and regime_fresh:
+        vec5 = [f"{k} {probs[k]:.3f}" if k in probs else f"{k} {NULL}"
+                for k in ("goldilocks", "reflation", "stagflation", "recession", "tightening")]
+        margin_v = regime_file.get("headline_margin")
+        margin_txt = f"{float(margin_v):.3f}" if isinstance(margin_v, (int, float)) else NULL
+        L16.append(f"- MRI regime probability vector (as of {regime_date}): [{', '.join(vec5)}] | "
+                  f"headline {regime_headline or NULL} (margin {margin_txt} - contested)")
+    elif regime_file and regime_date:
+        L16.append(f"- MRI regime probability vector: {NULL} (stale: {regime_date})")
+    else:
+        L16.append(f"- MRI regime probability vector: {NULL}")
+
+    shocks = shock_reg.get("shocks") or []
+    active_shocks = [s for s in shocks if isinstance(s, dict) and s.get("active")]
+    if not shock_reg:
+        L16.append(f"- Active shocks (S4 register): {NULL}")
+    elif active_shocks:
+        for s in active_shocks:
+            L16.append(f"- ACTIVE SHOCK: `{s.get('shock_id', NULL)}` | severity "
+                      f"{s.get('severity', NULL)} | direction {s.get('direction', NULL)} | onset "
+                      f"{s.get('onset_date') or NULL}  (as of {shock_asof or NULL})")
+    else:
+        L16.append(f"- Active shocks (S4 register): none active  (as of {shock_asof or NULL})")
+
+    risk_flags = shock_reg.get("risk_flags") or []
+    evf = next((f for f in risk_flags if isinstance(f, dict)
+               and f.get("id") == "elevated_volatility_ahead"), None)
+    if evf is not None:
+        evf_state = "ACTIVE" if evf.get("active") else "inactive"
+        L16.append(f"- Risk flag `elevated_volatility_ahead`: {evf_state} - "
+                  f"{evf.get('meaning') or NULL}  (as of {shock_asof or NULL})")
+    else:
+        L16.append(f"- Risk flag `elevated_volatility_ahead`: {NULL}")
+
+    _rate_asof = str(anchor_asof) if anchor_asof else NULL
+    L16.append(f"- Nominal 10-Year Treasury yield: "
+              + (f"{rf_pct:.2f}%  (as of {_rate_asof})" if rf_pct is not None else NULL))
+    L16.append(f"- Real 10-Year Treasury yield: "
+              + (f"{real_pct:.2f}%  (as of {_rate_asof})" if real_pct is not None else NULL))
+    L16.append(f"- 10-Year breakeven inflation: "
+              + (f"{be_pct:.2f}%  (as of {_rate_asof})" if be_pct is not None else NULL))
+
+    # Inflation trend — printed ONLY when the anchor itself carries one. Never invented.
+    infl = (coc_payload or {}).get("inflation") if coc_payload else None
+    if isinstance(infl, dict) and (isinstance(infl.get("cpi_yoy"), (int, float))
+                                   or isinstance(infl.get("pce_yoy"), (int, float))):
+        parts = []
+        if isinstance(infl.get("cpi_yoy"), (int, float)):
+            parts.append(f"CPI YoY {infl['cpi_yoy']*100:.2f}%")
+        if isinstance(infl.get("pce_yoy"), (int, float)):
+            parts.append(f"PCE YoY {infl['pce_yoy']*100:.2f}%")
+        L16.append(f"- Inflation trend: {', '.join(parts)}  (as of {_rate_asof})")
+    # else: line omitted entirely — the anchor carries no inflation-trend leg this run.
+
+    L16.append("")
+    L += L16
 
     # ---- SECTION 2 -------------------------------------------------------------------------
     px, sh = fin.get("Price"), fin.get("Shares_Outstanding")
+
+    # D9 (PHASE_4_PACK_SPEC.md): T2's pack-data-sanity checks, printed as a DATA WARNINGS block
+    # at the TOP of SECTION 2 — before the figures they warn about, not after. Explicit params,
+    # not `ticker=t` alone: this function's own ticker-resolution path reads
+    # `rs2_data.CONFIG["screener_data_dir"]` directly, which a test's `cap.SD` monkeypatch does
+    # not reach, so passing the values this pack already loaded is what keeps it test-isolated.
+    _dsh = sh if isinstance(sh, (int, float)) and sh else None
+    if _dsh is None and h:
+        _hy = [int(y) for y in h if str(y).isdigit()]
+        if _hy:
+            _dsh = (h.get(str(max(_hy))) or {}).get("shares_diluted")
+    data_warnings = check_pack_data_sanity(
+        ticker=t, price=px, market_cap=fin.get("Market_Cap"),
+        diluted_shares=_dsh, ttm_fields=f, quarterly_rows=qs)
+    if data_warnings:
+        L += ["## DATA WARNINGS   [T2 sanity checks — read before trusting SECTION 2's figures]"]
+        L += [f"- {w['message']}" for w in data_warnings]
+        L.append("")
+
     if price_override is not None:
         if isinstance(price_override, dict):
             live_px = price_override.get("price")
@@ -806,7 +1053,8 @@ def build_pack(t, price_override=None, include_research=True):
         price_line = f"- Price: ${px}" if px is not None else f"- Price: {NULL}"
     L += [f"## SECTION 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
           price_line,
-          f"- Shares outstanding: {_n(sh)}"
+          f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
+          f"{_v(fin, 'Data_Fetched_Date')}]"
           + ("   <- ZERO on file. No per-share value is derivable for this name."
              if sh == 0 else ""),
           f"- Market cap: {_b(fin.get('Market_Cap'))}",
@@ -822,6 +1070,70 @@ def build_pack(t, price_override=None, include_research=True):
           f"- Stock-based compensation (vendor): {_b(fin.get('SBC_Stock_Based_Comp'))}   [the "
           f"period is NOT reliably trailing-twelve-months; on most names it is a fiscal year. "
           f"Prefer the filed per-year SBC series in SECTION 5 where it is present]", ""]
+
+    # ---- SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [P4.1, amended by B1] ---
+    # Reads ONLY the price-fact fields off factor_scores.json's per-ticker `fct_momentum_state` /
+    # `fct_z` — never `fct_band`, `fct_rank`, `fct_composite`, `fct_nominated_doors` or
+    # `falling_knife_detail`. Those are the screener's own opinion, and B1's decision is that the
+    # analyst must never see it here: showing "research_now, rank 3" invites the analyst to agree,
+    # which erodes the independent second opinion the divergence engine exists to record.
+    fs_all = rs2_data.load_json(SD / "factor_scores.json") or {}
+    fs_row = (fs_all.get("tickers") or {}).get(t) or {}
+    mom = fs_row.get("fct_momentum_state") or {}
+    fs_flags = fs_row.get("fct_flags") or []
+    fs_z = fs_row.get("fct_z") or {}
+    price_asof_25 = _v(fin, "Data_Fetched_Date")
+
+    def _mpct(v):
+        return f"{v*100:+.1f}%" if isinstance(v, (int, float)) else NULL
+
+    def _mz(v):
+        return f"{v:+.3f}" if isinstance(v, (int, float)) else NULL
+
+    # `momentum_proxy_monthly` (fct_flags) is the screener's own marker that `high_52w_proxy` is
+    # a MONTHLY proxy rather than a daily reading — the only granularity our momentum source
+    # currently carries. A `high_52w` daily field (absent today) would take priority when present.
+    if "high_52w" in mom:
+        high52_val, high52_label = mom.get("high_52w"), "daily"
+    else:
+        high52_val = mom.get("high_52w_proxy")
+        high52_label = ("monthly proxy" if "momentum_proxy_monthly" in fs_flags
+                        else "monthly proxy (unlabelled by the source)")
+    shifts = [lbl for lbl, key in (("regime_shift_up", "regime_shift_up"),
+                                   ("regime_shift_down", "regime_shift_down"))
+             if mom.get(key)]
+    L += [f"## SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [Arithmetic on price "
+          f"history, as of {price_asof_25}]",
+          f"- 12-1 month return: {_mpct(mom.get('mom_12_1'))}",
+          f"- 6-month return: {_mpct(mom.get('mom_6m'))}",
+          f"- 1-month return: {_mpct(mom.get('mom_1m'))}",
+          f"- Distance from 52-week high ({high52_label}): {_mpct(high52_val)}",
+          f"- Above/below 200-day mean, and its slope: {NULL}",
+          f"- Relative strength vs cluster ETF, 3-month: {NULL}",
+          f"- Relative strength vs IWM, 3-month: {NULL}",
+          f"- Realised volatility, 60-day: {NULL}",
+          f"- Regime-shift flags: {', '.join(shifts) if shifts else 'none'}",
+          f"- mom_break: {NULL}",
+          f"- Sector-neutral momentum z: {_mz(mom.get('mom_z_sector'))}",
+          f"- Universe momentum z: {_mz(fs_z.get('momentum'))}",
+          "",
+          "These are facts about price and are not a valuation input.", ""]
+
+    # Rule 11 (verdict stamping): the exact §2.5 block this pack printed, for
+    # consensus_valuation.main() to copy onto consensus.json as `momentum_state`.
+    global LAST_PACK_MOMENTUM_STATE, LAST_PACK_ACTIVE_SHOCKS
+    LAST_PACK_MOMENTUM_STATE = {
+        "price_asof": price_asof_25,
+        "mom_12_1": mom.get("mom_12_1"), "mom_6m": mom.get("mom_6m"), "mom_1m": mom.get("mom_1m"),
+        "high_52w_distance": high52_val, "high_52w_basis": high52_label,
+        "above_below_200d_mean": None, "rs_vs_cluster_etf_3m": None, "rs_vs_iwm_3m": None,
+        "realised_vol_60d": None,
+        "regime_shift_up": bool(mom.get("regime_shift_up")) if "regime_shift_up" in mom else None,
+        "regime_shift_down": bool(mom.get("regime_shift_down")) if "regime_shift_down" in mom else None,
+        "mom_break": None,
+        "mom_z_sector": mom.get("mom_z_sector"), "mom_z_universe": fs_z.get("momentum"),
+    }
+    LAST_PACK_ACTIVE_SHOCKS = active_shocks
 
     # ---- SECTION 3 -------------------------------------------------------------------------
     L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [Filed - SEC 10-Q derived; through "
@@ -900,6 +1212,61 @@ def build_pack(t, price_override=None, include_research=True):
     else:
         L.append(f"{NULL} - no fiscal-year record held.")
     L.append("")
+
+    # ---- GROWTH BASE RATES   [D11 / AMENDMENTS.md E2] --------------------------------------
+    # Measured fresh from our OWN fundamentals_history.json corpus at pack build (base_rates.py,
+    # cached per data-file sha within this run), not a hard-coded snapshot of the one-off
+    # measurement the orchestrator published in E2 — this stays current with the corpus.
+    latest_rev = h.get(str(max(yrs)), {}).get("revenue") if yrs else None
+    size_label, br_table = base_rates.base_rate_table(latest_rev, sd=SD)
+    L.append("## GROWTH BASE RATES   [Measured from our own fundamentals_history.json corpus]")
+    if size_label:
+        L.append(f"- Latest annual revenue: {_b(latest_rev)} (FY{max(yrs)})  ->  size bucket "
+                 f"{size_label}")
+        for hz in (5, 10):
+            row = br_table.get(hz)
+            if row:
+                L.append(f"- {hz}y sustained growth, this size bucket (n={row['n']}): "
+                         f">=10%/yr {row['share_ge_10']}%, >=20%/yr {row['share_ge_20']}%, "
+                         f">=30%/yr {row['share_ge_30']}%, median {row['p50']}%, p90 {row['p90']}%")
+            else:
+                L.append(f"- {hz}y sustained growth, this size bucket: {NULL}")
+    else:
+        L.append(f"- Latest annual revenue: {_b(latest_rev) if latest_rev is not None else NULL}"
+                 f"  -  no usable size bucket for base rates this run.")
+
+    g0 = None
+    if yrs:
+        y_last = max(yrs)
+        if (y_last - 1) in yrs:
+            rlast = h.get(str(y_last), {}).get("revenue")
+            rprev = h.get(str(y_last - 1), {}).get("revenue")
+            if isinstance(rlast, (int, float)) and isinstance(rprev, (int, float)) and rprev > 0:
+                g0 = rlast / rprev - 1
+    if g0 is not None:
+        g_lbl, g_stats = growth_persistence.persistence_for_growth(g0, sd=SD)
+        if g_lbl and g_stats:
+            L.append(f"- Given the growth just delivered ({g0*100:+.1f}% YoY revenue, FY{max(yrs)}, "
+                     f"bucket {g_lbl}): realized next-5y revenue CAGR across the corpus "
+                     f"(n={g_stats['n']}) - p25 {g_stats['p25']}%, median {g_stats['median']}%, "
+                     f"p75 {g_stats['p75']}%, p90 {g_stats['p90']}%")
+        elif g_lbl:
+            L.append(f"- Given the growth just delivered ({g0*100:+.1f}% YoY revenue, bucket "
+                     f"{g_lbl}): {NULL} (fewer than 30 corpus observations in this bucket)")
+        else:
+            L.append(f"- Given the growth just delivered ({g0*100:+.1f}% YoY revenue): outside the "
+                     f"measured bucket range (15-25%, 25-40%, 40-70%, >70%) - no conditional table "
+                     f"applies.")
+    else:
+        L.append(f"- Given the growth just delivered: {NULL} (no consecutive-year revenue pair on "
+                 f"file)")
+    L += ["- **MANDATE:** stage-1 or fade growth above the p90 for this size bucket requires dated, "
+          "company-specific evidence (e.g. signed capacity/backlog contracts, disclosed AI-demand "
+          "commitments) - a growth rate alone is not evidence. This is a flag, not a veto.",
+          "- Survivorship caveat: this sample holds only companies that still exist today - failed "
+          "and delisted companies are absent - so every rate above is biased upward. Source: our "
+          "own screener corpus (fundamentals_history.json), not a published third-party table.",
+          ""]
 
     # ---- SECTION 6 -------------------------------------------------------------------------
     L.append("## SECTION 6 - FISCAL-YEAR BALANCE SHEET & CAPITAL STRUCTURE   [Filed, except columns marked [Arithmetic]]")
@@ -1027,43 +1394,107 @@ def build_pack(t, price_override=None, include_research=True):
               "publishes a score, which would present a guess as a measurement.", ""]
 
     # ---- SECTION 8 -------------------------------------------------------------------------
+    # P4.10 staleness: past STALE_SUPPRESS_DAYS the header shows "STALE (n days)" AND the values
+    # themselves are suppressed to STALE_NULL, rather than merely flagged (_age()'s 14-day note).
     fg = ob.get("forward_growth") or {}
-    L += [f"## SECTION 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age(ob)}]",
+    ob_stale = bool((_age_days(ob) or 0) > STALE_SUPPRESS_DAYS)
+    en_stale = bool((_age_days(en) or 0) > STALE_SUPPRESS_DAYS)
+    L += [f"## SECTION 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age_label(ob)}]",
           # price_to_sales dropped 2026-08-20: measured non-null on 0 of 294 vendor records, so
           # the line could never print a value. Market cap and revenue are both in this pack;
           # the model can divide. A field that is structurally always absent is noise, not a
           # disclosed gap.
-          f"- Trailing P/E: {_v(met, 'pe_ratio')}   |   P/B: "
-          f"{_v(met, 'price_to_book')}   |   PEG: {_v(met, 'peg_ratio')}   "
+          f"- Trailing P/E: {_sv(met, 'pe_ratio', ob_stale)}   |   P/B: "
+          f"{_sv(met, 'price_to_book', ob_stale)}   |   PEG: {_sv(met, 'peg_ratio', ob_stale)}   "
           f"[trailing; the vendor does not state the period]",
-          f"- Return on equity: {_v(met, 'return_on_equity')}   |   gross margin: "
-          f"{_v(met, 'gross_margin')}   |   operating margin: "
-          f"{_v(met, 'operating_margin')}   |   dividend yield: "
-          f"{_v(met, 'dividend_yield')}   [vendor-computed, expressed as fractions not "
+          f"- Return on equity: {_sv(met, 'return_on_equity', ob_stale)}   |   gross margin: "
+          f"{_sv(met, 'gross_margin', ob_stale)}   |   operating margin: "
+          f"{_sv(met, 'operating_margin', ob_stale)}   |   dividend yield: "
+          f"{_sv(met, 'dividend_yield', ob_stale)}   [vendor-computed, expressed as fractions not "
           f"percents]",
-          f"- Consensus forward growth: revenue {_v(fg, 'revenue_cagr')}, EPS "
-          f"{_v(fg, 'eps_cagr')}   (source {_v(fg, 'source')})   [Estimate - sell-side "
+          f"- Consensus forward growth: revenue {_sv(fg, 'revenue_cagr', ob_stale)}, EPS "
+          f"{_sv(fg, 'eps_cagr', ob_stale)}   (source {_v(fg, 'source')})   [Estimate - sell-side "
           f"consensus. Establish the horizon before treating either as a multi-year CAGR.]"]
     if en:
-        L += [f"- Analyst price targets: low {_v(en, 'analyst_target_low')} / mean "
-              f"{_v(en, 'analyst_target_mean')} / median "
-              f"{_v(en, 'analyst_target_median')} / high "
-              f"{_v(en, 'analyst_target_high')}   [Aggregator - 12-month sell-side targets, "
-              f"{_age(en)}]",
-              f"- 52-week range: {_v(en, 'fifty_two_week_low')} - "
-              f"{_v(en, 'fifty_two_week_high')}"]
+        L += [f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
+              f"{_sv(en, 'analyst_target_mean', en_stale)} / median "
+              f"{_sv(en, 'analyst_target_median', en_stale)} / high "
+              f"{_sv(en, 'analyst_target_high', en_stale)}   [Aggregator - 12-month sell-side "
+              f"targets, {_age_label(en)}]",
+              f"- 52-week range: {_sv(en, 'fifty_two_week_low', en_stale)} - "
+              f"{_sv(en, 'fifty_two_week_high', en_stale)}"]
+    L.append("")
+
+    # ---- SECTION 8.5 - PEER CONTEXT [Aggregator, context not an anchor]   [P4.10] -----------
+    L.append("## SECTION 8.5 - PEER CONTEXT   [Aggregator, context not an anchor]")
+    fs_cluster = fs_row.get("cluster")
+    stocks_list = rs2_data.load_json(SD / "stocks.json") or []
+    peer_pe = []
+    if fs_cluster and isinstance(stocks_list, list):
+        peer_syms = {sym for sym, row in (fs_all.get("tickers") or {}).items()
+                    if isinstance(row, dict) and row.get("cluster") == fs_cluster}
+        for row in stocks_list:
+            if not isinstance(row, dict) or row.get("symbol") not in peer_syms:
+                continue
+            pe = row.get("peRatio")
+            # Measured 2026-09-24: `peRatio` is a real field in stocks.json, but it reads 0 for
+            # every one of 6,949 names on file - a P/E of exactly 0.0 for every company is not a
+            # filed value, it is an unpopulated sentinel (the same structural-absence pattern
+            # already documented for `price_to_sales` above). A filed zero is a value; a field
+            # that is 0 on 100% of the corpus is not one, so it is excluded here rather than
+            # printed as a real trailing P/E of zero.
+            if isinstance(pe, (int, float)) and pe > 0:
+                peer_pe.append(pe)
+    ev_ebitda_field_exists = bool(stocks_list) and any(
+        "ebitda" in str(k).lower() for row in stocks_list[:1] if isinstance(row, dict)
+        for k in list(row.keys()) + list((row.get("metrics") or {}).keys()))
+    L.append(f"- Fields checked in `stocks.json`: trailing P/E (`peRatio`) - "
+             + ("present but measured 0 for every one of "
+                f"{len(stocks_list):,} names on file, so it carries no usable signal here"
+                if stocks_list else NULL)
+             + "; EV/EBITDA - "
+             + ("a field of that name exists" if ev_ebitda_field_exists
+                else "no field of that name exists in `stocks.json`'s per-ticker record")
+             + ". Only fields found usable are printed as values below.")
+    pe_n = len(peer_pe)
+    if pe_n:
+        pe_sorted = sorted(peer_pe)
+        pe_med = (pe_sorted[pe_n // 2] if pe_n % 2
+                 else (pe_sorted[pe_n // 2 - 1] + pe_sorted[pe_n // 2]) / 2)
+        L.append(f"- Cluster peers' trailing P/E (n={pe_n}): median {pe_med:.1f}x | p25 "
+                 f"{pe_sorted[int(pe_n * .25)]:.1f}x | p75 {pe_sorted[int(pe_n * .75)]:.1f}x")
+    else:
+        L.append(f"- Cluster peers' trailing P/E: {NULL}")
+    L.append(f"- Cluster peers' EV/EBITDA: {NULL}")
+    peer_band = rs2_data.anchor_multiple_bands(sector)
+    if peer_band:
+        ntm = peer_band.get("anchor_ntm_pe") or {}
+        rstate = peer_band.get("anchor_regime_state")
+        rstate_str = (", ".join(f"{k} {v}" for k, v in rstate.items())
+                     if isinstance(rstate, dict) else (rstate or NULL))
+        L.append(f"- MRI sector trailing-P/E band ({mri_sec}): median "
+                 f"{ntm.get('median', NULL)}x | p25 {ntm.get('p25', NULL)}x | p75 "
+                 f"{ntm.get('p75', NULL)}x   [regime state: {rstate_str}, as of "
+                 f"{peer_band.get('anchor_asof', NULL)}]")
+    else:
+        L.append(f"- MRI sector trailing-P/E band: {NULL}")
     L.append("")
 
     # ---- SECTION 9 -------------------------------------------------------------------------
     if en:
-        L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age(en)} - short interest is "
-              f"semi-monthly settlement data; ownership is 13F data lagged by up to a quarter]",
-              f"- Short % of float: {_v(en, 'short_pct_float')}   |   shares short: "
-              f"{_n(en.get('shares_short'))}   |   days to cover: "
-              f"{_v(en, 'short_ratio_days_to_cover')}   |   month-on-month change: "
-              f"{_v(en, 'short_mom_change_pct')}",
-              f"- Institutional ownership: {_v(en, 'institutional_pct')}%   |   insider: "
-              f"{_v(en, 'insider_pct')}%", ""]
+        if en_stale:
+            L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age_label(en)}]",
+                  f"- {STALE_NULL} - record older than {STALE_SUPPRESS_DAYS} days; values "
+                  f"suppressed rather than shown potentially wrong.", ""]
+        else:
+            L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age_label(en)} - short interest is "
+                  f"semi-monthly settlement data; ownership is 13F data lagged by up to a quarter]",
+                  f"- Short % of float: {_v(en, 'short_pct_float')}   |   shares short: "
+                  f"{_n(en.get('shares_short'))}   |   days to cover: "
+                  f"{_v(en, 'short_ratio_days_to_cover')}   |   month-on-month change: "
+                  f"{_v(en, 'short_mom_change_pct')}",
+                  f"- Institutional ownership: {_v(en, 'institutional_pct')}%   |   insider: "
+                  f"{_v(en, 'insider_pct')}%", ""]
 
     # ---- SECTION 10 ------------------------------------------------------------------------
     tr = ob.get("earnings_transcript") or ob.get("transcript_excerpt")
@@ -1076,23 +1507,39 @@ def build_pack(t, price_override=None, include_research=True):
               "guidance beyond the current year, this excerpt cannot settle it.**",
               str(tr)[:12000], ""]
 
-    # ---- SECTION 11 ------------------------------------------------------------------------
+    # ---- research brief load (shared by GUIDANCE & CONSENSUS and SECTION 11) ---------------
     rb = HERE / "research" / f"{t}.md"
+    rb_text, brief_ok = None, False
     if include_research and rb.exists():
         rb_text = rb.read_text(encoding="utf-8", errors="replace")
         try:
             from research_brief_guard import check_research_brief
-            brief_ok, reason = check_research_brief(t, brief_text=rb_text)
+            brief_ok, brief_reason = check_research_brief(t, brief_text=rb_text)
         except Exception:
-            brief_ok = True
-        if brief_ok:
-            L += ["## SECTION 11 - DEEP RESEARCH BRIEF & OPERATIONAL EVIDENCE   [Iterative deep web research "
-                  "with primary citations. Ingest the verified operational metrics, segment economics, and "
-                  "forward management guidance directly into your scenario distribution as retrieved ground truth.]",
-                  rb_text[:25000], ""]
-        else:
-            print(f"   [pack] WARN research brief failed company verification for {t} ({reason}) — omitting Section 11",
+            brief_ok, brief_reason = True, None
+        if not brief_ok:
+            print(f"   [pack] WARN research brief failed company verification for {t} "
+                  f"({brief_reason}) — omitting GUIDANCE & CONSENSUS and SECTION 11",
                   file=sys.stderr, flush=True)
+
+    # ---- GUIDANCE & CONSENSUS   [D4] ---------------------------------------------------------
+    guidance_rows = _parse_guidance_block(rb_text) if (rb_text and brief_ok) else []
+    L.append("## GUIDANCE & CONSENSUS   [parsed from the research brief's machine-readable block]")
+    if guidance_rows:
+        L += [_row(["metric", "period", "value", "source", "date"]), _row(["---"] * 5)]
+        for gr in guidance_rows:
+            L.append(_row([gr["metric"], gr["period"], gr["value"], gr["source"], gr["date"]]))
+    else:
+        L.append(f"{NULL} — research did not return dated guidance")
+    L += ["- **MANDATE:** stage-1 years 1-2 start from guidance/consensus above when available; a "
+          "deviation requires `guidance_deviation_reason` in the SECTION 12 contract.", ""]
+
+    # ---- SECTION 11 - DEEP RESEARCH BRIEF   [D8] -------------------------------------------
+    if rb_text is not None and brief_ok:
+        L += ["## SECTION 11 - DEEP RESEARCH BRIEF   [Written by another model, not verified - "
+              "every figure is a claim to check against the filings above; cite the filing when "
+              "you rely on it.]",
+              rb_text[:25000], ""]
 
     # ---- SECTION 12 ------------------------------------------------------------------------
     L += ["## SECTION 12 - WHAT WE DO NOT HOLD",
@@ -1158,13 +1605,25 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
     minus capex, which subtracts NO stock compensation. If you use a basis that is none of
     these, declare `other` rather than leaving it implied. Your declared basis is checked
     against the filed figures and any disagreement is reported.
+  * All Valuation Arithmetic Through The Desk: every intrinsic value you publish MUST come from
+    `run_financial_model` — the three-stage DCF (explicit stage-1 growth, a declared linear fade
+    over `fade_years` to `terminal_g`, and a dual terminal value computed BOTH as Gordon growth
+    and as an exit multiple, both properly discounted). `base_iv` in the JSON contract below MUST
+    equal a desk `per_share_iv` (or a desk `blend` of named legs) within 1% — do not hand-compute
+    or eyeball a value and then declare it. Also call the desk's reverse DCF under the NEUTRAL
+    reference structure (anchor `coe_used`, 10-year linear fade to the terminal_g anchor from
+    SECTION 1.5) — print its implied 10-year CAGR and the GROWTH BASE RATES percentile band it
+    falls in, and argue explicitly why your own forecast differs from what the market is already
+    pricing in. A mid-cycle or margin-mean-reversion (cyclical) treatment requires `cycle_evidence`
+    — at least one dated, industry-specific indicator (pricing, inventory, capacity, order
+    trends); a growth rate alone is not evidence.
   * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
 
 Produce the full report, SECTION 0 through SECTION 12, following the mandatory institutional memorandum structure. End with SECTION 12 Final Execution Opinion and the validated JSON contract:
 
 ```json:underwriting
 {
-  "base_iv": <float per-share intrinsic value for Base Case>,
+  "base_iv": <float per-share intrinsic value for Base Case — MUST equal a desk per_share_iv/blend within 1%>,
   "bull_iv": <float per-share intrinsic value for Bull Case>,
   "bear_iv": <float per-share intrinsic value for Bear Case>,
   "base_probability": <float between 0.0 and 1.0>,
@@ -1180,9 +1639,34 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
     "tranche_1_starter": <float price for Starter allocation reflecting margin of safety>,
     "tranche_2_core": <float price for Core allocation anchored to Bear IV or deep pullback>
   },
-  "thesis_invalidation_trigger": "<Exact operational or financial threshold that invalidates this thesis>"
+  "thesis_invalidation_trigger": "<Exact operational or financial threshold that invalidates this thesis>",
+  "coe_used": <float, decimal cost of equity/capital you actually used in run_financial_model, e.g. 0.0936>,
+  "coe_source": "<anchor | anchor_adjusted | own — anchor/anchor_adjusted when coe_used is within +-150bp of SECTION 1.5's COE ANCHOR, own otherwise>",
+  "coe_adjustment_reason": "<string, required when coe_source is not \"anchor\" — why coe_used departs from the anchor>",
+  "valuation_frame": "<equity | firm — equity discounts FCFE at cost of equity with net_debt refused; firm discounts FCFF at true WACC and requires net_debt + shares_diluted>",
+  "terminal_method": "<gordon | exit_multiple | dual_reconciled>",
+  "terminal_multiple_or_g": <float — the terminal growth rate (decimal) or exit multiple actually used>,
+  "fade_years": <integer >= 0 — length of the Stage-2 linear fade to terminal_g, as passed to run_financial_model>,
+  "stage1_growth_path": [<float, float, float, float, float>],
+  "guidance_deviation_reason": "<string or null — required when stage-1 years 1-2 deviate from the GUIDANCE & CONSENSUS block above by more than 25% relative>",
+  "cycle_evidence": "<string or null — required when you apply a cyclical / mid-cycle / margin-mean-reversion treatment; a growth rate alone is not evidence>",
+  "verdict_label": "<undervalued | hold | overvalued — your own stated verdict, checked against the recorded direction>",
+  "momentum_view": "<confirming | neutral | contradicting — does SECTION 2.5's price action confirm, sit neutral to, or contradict your valuation call?>",
+  "entry_timing": "<buy_now | wait_for_momentum | avoid>",
+  "momentum_flip_condition": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
+  "momentum_break_rule": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
+  "invalidation_rules": [
+    {"metric": "<name from the metric vocabulary below>", "comparator": "< | <= | > | >=", "threshold": <float>, "window": "<string, e.g. 'next reported quarter'>", "source": "<where this is checked, e.g. 'fundamentals_quarterly.json'; use \"unverifiable\" if the metric is outside both vocabularies>"}
+  ]
 }
 ```
+
+METRIC VOCABULARY for `invalidation_rules` (at least one FINANCIAL and at least one PRICE/MOMENTUM rule are required; anything outside both lists must be declared `source: "unverifiable"`):
+  - MOMENTUM metrics (the SCR-10 field names, exactly as printed in SECTION 2.5): mom_12_1, mom_6m,
+    mom_1m, high_52w_distance, above_below_200d_mean, rs_vs_cluster_etf_3m, rs_vs_iwm_3m,
+    realised_vol_60d, mom_z_sector, mom_break.
+  - FINANCIAL metrics: revenue_yoy_pct, gross_margin_pct, operating_margin_pct, net_income, ocf,
+    fcf, net_issuance_1y, filing_8k_count.
 
 Think carefully through the complete economic machinery before writing. Numbers before narrative."""
 
@@ -1200,7 +1684,7 @@ RESEARCH RULES — you have web search available, so DO NOT ASSUME WHAT YOU CAN 
    conclusion you already reached is not evidence.
 3. DO NOT search to re-verify figures already established in your pack:
    - Financial statements in SECTIONS 3–6 (Revenue, net income, operating cash flow, filed debt) are authoritative from SEC filings.
-   - Operational unit drivers, forward management guidance, and segment metrics cited in SECTION 11 are verified retrieved ground truth. Ingest them directly.
+   - Operational unit drivers, forward management guidance, and segment metrics cited in SECTION 11 are claims made by another model, not verified — cite the filing when you rely on one, and check it against the filings above when you can.
    - Search ONLY for what both filings AND research cannot tell you: unconfirmed gaps, missing corporate events, or specific model parameters that remain unresolved.
 4. Cite what you retrieve. Every retrieved figure gets its source named inline, and stays
    [Actual] only if it came from the company or a regulator; a secondary report is [Estimate].
