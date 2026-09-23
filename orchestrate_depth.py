@@ -619,6 +619,24 @@ def data_health_scan(book):
             f"FY{b['to_year']} {b['to']:,}")
 
 
+GRADER_TIMEOUT_SEC = 300
+
+
+def run_offline_grader():
+    """TRK-06 (P2.1): re-run tools/grade_depth_verdicts.py --offline at the end of every sweep so
+    cache/depth_outcomes.json stays current between the weekly network run (register_grader_task.ps1,
+    operator-approval pending) without this sweep itself touching the network. Non-fatal and
+    logged only — a grading hiccup must never fail or block a sweep that already completed."""
+    try:
+        r = subprocess.run([sys.executable, str(HERE / "tools" / "grade_depth_verdicts.py"),
+                            "--offline"], capture_output=True, text=True,
+                           timeout=GRADER_TIMEOUT_SEC)
+        tail = (r.stdout or r.stderr or "").strip().splitlines()
+        log(f"offline grader rc={r.returncode}" + (f": {tail[-1][:160]}" if tail else ""))
+    except Exception as e:
+        log(f"offline grader did not run (non-fatal): {str(e)[:120]}")
+
+
 def main():
     args = sys.argv[1:]
     dry = "--dry-run" in args
@@ -804,6 +822,7 @@ def main():
     if done:
         publish_overlay()
     log(f"sweep done: {done} processed.")
+    run_offline_grader()
     return 0
 
 
