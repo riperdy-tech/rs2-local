@@ -27,6 +27,7 @@ sys.stdout = _ORIG_STDOUT
     (["depth_pipeline.py", "AAPL", "--ondemand"], {}, "ondemand"),
     (["depth_pipeline.py", "AAPL"], {"RS2_RUN_SOURCE": "orchestrator"}, "orchestrator"),
     (["depth_pipeline.py", "AAPL"], {"RS2_RUN_SOURCE": "cloud"}, "cloud"),
+    (["depth_pipeline.py", "AAPL"], {"RS2_RUN_SOURCE": "gate_test"}, "gate_test"),
     (["depth_pipeline.py", "AAPL", "--production"], {}, "manual_production"),
     (["depth_pipeline.py", "AAPL"], {}, "manual"),
     # --ondemand wins even with an env marker set (a spawner passing both is unambiguous: the
@@ -56,6 +57,7 @@ def _synthetic_verdict():
     ("cloud", "LEDGER"),
     ("manual_production", "LEDGER"),
     ("manual", "TEST_LEDGER"),
+    ("gate_test", "TEST_LEDGER"),
 ])
 def test_stamp_and_route_targets_the_right_ledger(monkeypatch, tmp_path, run_source, expected_ledger):
     monkeypatch.setitem(dp.CONFIG, "out_research_dir", str(tmp_path))
@@ -67,6 +69,8 @@ def test_stamp_and_route_targets_the_right_ledger(monkeypatch, tmp_path, run_sou
         assert "NOT the production ledger" in notice
         assert "FLXS" in notice
     else:
+        # B4: gate_test routes like manual (TEST_LEDGER) but is a marked, intentional run — no
+        # loud "unmarked manual run" notice.
         assert notice is None
 
 
@@ -273,6 +277,58 @@ def test_main_exits_9_on_screener_refresh_refusal(monkeypatch, capsys):
     assert exc.value.code == 9
     assert called == []
     assert "screener data refresh refused: dirty clone" in capsys.readouterr().out
+
+
+def test_main_gate_test_run_writes_only_test_ledger_and_never_publishes(tmp_path, monkeypatch):
+    """B4 (Phase 4 amendments): the Phase 4 gate run — RS2_RUN_SOURCE=gate_test, --no-publish —
+    must write ONLY TEST_LEDGER, never LEDGER or OD_LEDGER, and depth_pipeline.main() must never
+    call orchestrate_depth.publish_overlay (it doesn't import that function at all; asserted here
+    as a regression guard so a future change that wires one in has to gate it on --no-publish by
+    construction). Runs main() for real, end to end, with model/consensus stubbed exactly like
+    test_main_manual_invocation_only_grows_test_ledger."""
+    monkeypatch.setenv("RS2_RUN_SOURCE", "gate_test")
+    monkeypatch.delenv("RS2_SCREENER_DATA_COMMIT", raising=False)
+    monkeypatch.setattr(sys, "argv", ["depth_pipeline.py", "FLXS", "--no-publish"])
+    monkeypatch.setitem(dp.CONFIG, "out_research_dir", str(tmp_path / "research"))
+
+    ledger = tmp_path / "depth_ledger.jsonl"
+    test_ledger = tmp_path / "depth_test_ledger.jsonl"
+    od_ledger = tmp_path / "depth_ondemand_ledger.jsonl"
+    monkeypatch.setattr(dp, "LEDGER", ledger)
+    monkeypatch.setattr(dp, "TEST_LEDGER", test_ledger)
+    monkeypatch.setattr(dp, "OD_LEDGER", od_ledger)
+
+    quote = {"price": 100.0, "asof": "2026-09-24", "source": "yfinance"}
+    monkeypatch.setattr(dp.price_now, "quote", lambda t: quote)
+    monkeypatch.setattr(dp, "run_research", lambda t: None)
+
+    consensus_dir = tmp_path / "FLXS_20260924_120000"
+    consensus_dir.mkdir()
+    doc = {"ticker": "FLXS", "price": 100.0}
+    monkeypatch.setattr(dp, "run_consensus",
+                        lambda t, samples=None, price_quote=None, no_research=False,
+                        prior_base=None: (consensus_dir, doc))
+    monkeypatch.setattr(dp, "band_verdict", lambda doc: {
+        "ticker": "FLXS", "price": 100.0, "date": "2026-09-24", "direction": "hold",
+        "entry_timing": None, "invalidation_rules": None})
+    monkeypatch.setattr(dp, "audit_verdict", lambda t, ledger: None)
+    monkeypatch.setattr(dp.ops, "notify_telegram", lambda msg: None)
+
+    # publish_overlay lives in orchestrate_depth.py, not imported by depth_pipeline.py at all —
+    # if it ever is, this import + assert is the tripwire.
+    import orchestrate_depth as od
+    published = []
+    monkeypatch.setattr(od, "publish_overlay", lambda: published.append(1))
+
+    dp.main()
+
+    assert not ledger.exists() or ledger.read_text(encoding="utf-8") == ""
+    assert not od_ledger.exists() or od_ledger.read_text(encoding="utf-8") == ""
+    rows = [json.loads(ln) for ln in test_ledger.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "FLXS"
+    assert rows[0]["run_source"] == "gate_test"
+    assert published == []
 
 
 def test_main_asserts_consensus_price_matches_quote(tmp_path, monkeypatch):

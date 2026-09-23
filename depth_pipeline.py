@@ -751,14 +751,21 @@ def band_verdict(doc):
 
 def _run_source():
     """Resolution order (P1.2): --ondemand always wins (it is an explicit, unambiguous request);
-    then the env marker a spawner sets (RS2_RUN_SOURCE=orchestrator|cloud); then --production for
-    an operator-invoked production run; anything else is an unmarked manual run and is routed to
-    the test ledger, never the production one."""
+    then the env marker a spawner sets (RS2_RUN_SOURCE=orchestrator|cloud|gate_test); then
+    --production for an operator-invoked production run; anything else is an unmarked manual run
+    and is routed to the test ledger, never the production one.
+
+    B4 (Phase 4 amendments): RS2_RUN_SOURCE=gate_test is the Phase 4 gate run's own marker — kept
+    distinct from the unmarked "manual" case (rather than falling through to it) so the ledger
+    row and its NOTICE text say what actually ran, even though both route to TEST_LEDGER.
+    """
     if "--ondemand" in sys.argv:
         return "ondemand"
     env_src = os.environ.get("RS2_RUN_SOURCE")
     if env_src in ("orchestrator", "cloud"):
         return env_src
+    if env_src == "gate_test":
+        return "gate_test"
     if "--production" in sys.argv:
         return "manual_production"
     return "manual"
@@ -853,17 +860,28 @@ def stamp_and_route(v, t, run_source, quote=None, screener_data_commit=None):
         return OD_LEDGER, None
     if run_source in ("orchestrator", "cloud", "manual_production"):
         return LEDGER, None
+    if run_source == "gate_test":
+        # B4: the Phase 4 gate run. Routed like manual (TEST_LEDGER, never LEDGER) but this is an
+        # intentional, marked run — not the accidental-unmarked-invocation case the NOTICE below
+        # warns about — so no loud notice fires for it.
+        return TEST_LEDGER, None
     notice = (f"[depth] ::NOTICE:: manual run (no --ondemand, no --production, no "
               f"RS2_RUN_SOURCE) — {t} written to {TEST_LEDGER.name}, NOT the production ledger")
     return TEST_LEDGER, notice
 
 
 def main():
+    # B4: --no-publish is accepted here for interface symmetry with orchestrate_depth.py's flag
+    # of the same name. This module never calls publish_overlay (that lives in
+    # orchestrate_depth.py and is only ever invoked by the sweep) so the flag is a documented
+    # no-op — it exists so a caller can pass the same flag to both without depth_pipeline.py
+    # refusing it, and so a future publish call added here would have to be gated on it by
+    # construction rather than by remembering to add the check.
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "").upper()
     if not t:
         print("usage: depth_pipeline.py TICKER [--no-research] [--ondemand] [--production] "
-              "[--samples N]")
+              "[--samples N] [--no-publish]")
         sys.exit(2)
 
     # P4.-1: screener data provenance, resolved BEFORE anything reads SD (research, consensus,

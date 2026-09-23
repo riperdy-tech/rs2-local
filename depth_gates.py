@@ -31,8 +31,12 @@ FIRST_VALID_PACK_REVISION = None
 
 _DIRECTIONS = ("undervalued", "hold", "overvalued")
 # `run_source` values that never belong in the live book. "manual" is depth_pipeline.py's default
-# for an unmarked run (P1.2); "test" is reserved for anything that stamps itself as such.
-_NON_PRODUCTION_SOURCES = ("manual", "test")
+# for an unmarked run (P1.2); "test" is reserved for anything that stamps itself as such;
+# "gate_test" is the Phase 4 gate run (B4, Phase 4 amendments) — RS2_RUN_SOURCE=gate_test routes
+# like manual to the test ledger, and this row-level gate must treat it as non-production too, so
+# a gate-run verdict can never become actionable even if a copy of the row ever reached the
+# production ledger by some other path.
+_NON_PRODUCTION_SOURCES = ("manual", "test", "gate_test")
 HIGH_DISPERSION_TOL_PCT = 25.0
 MIN_MOS_FOR_DIRECTION = 0.10
 
