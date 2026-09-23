@@ -32,10 +32,13 @@ $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\cmd.exe" -A
 
 $t = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 9:00am
 
-# StartWhenAvailable = catch up if the PC was off at 09:00 Sunday; no execution time limit (a
-# fresh network fetch across the whole ledger can take a while); IgnoreNew = never double-start.
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -DontStopOnIdleEnd `
-    -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+# StartWhenAvailable = catch up if the PC was off at 09:00 Sunday; 1-hour execution time limit
+# (C10, Phase 2 approval review: a price fetch + grading pass is minutes, not hours — unlike the
+# orchestrator's multi-hour LLM sweep, an unbounded limit here would only hide a real hang); no
+# WakeToRun — a grading pass is not worth waking the PC for, unlike the depth sweep itself;
+# IgnoreNew = never double-start.
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
+    -ExecutionTimeLimit ([TimeSpan]::FromHours(1)) -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 
 Register-ScheduledTask -TaskName $name -Action $action -Trigger $t `
