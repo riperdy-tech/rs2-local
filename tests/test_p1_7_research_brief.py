@@ -82,12 +82,16 @@ def test_depth_pipeline_run_research_stale_brief_adds_force(monkeypatch, tmp_pat
 
 
 def test_consensus_valuation_snapshots_research_brief_and_asof(tmp_path, monkeypatch):
-    """P1.7: consensus_valuation copies research/{T}.md to <run dir>/_research_brief.md
+    """P1.7: consensus_valuation.snapshot_research_brief copies research/{T}.md to
+    <run dir>/_research_brief.md and reports its asof.
 
-    and records research_brief_asof in consensus.json.
+    Calls the PRODUCTION function directly (C4, Phase 1 approval review) — the prior version of
+    this test re-implemented the snapshotting block inline and never called consensus_valuation
+    at all, so a regression in the real code would not have failed it.
     """
     sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
     import rs2_data
+    import consensus_valuation as cv
 
     research_dir = tmp_path / "research"
     research_dir.mkdir(parents=True)
@@ -97,24 +101,65 @@ def test_consensus_valuation_snapshots_research_brief_and_asof(tmp_path, monkeyp
 
     out_runs = tmp_path / "runs"
     out_runs.mkdir(parents=True)
-
-    monkeypatch.setitem(rs2_data.CONFIG, "out_research_dir", str(research_dir))
-
-    # Test the snapshotting block logic directly
     run_dir = out_runs / "FLXS_20260923_120000"
     run_dir.mkdir(parents=True)
 
-    r_dir = rs2_data.CONFIG.get("out_research_dir") or "research"
-    r_dir_path = Path(r_dir)
-    if not r_dir_path.is_absolute():
-        r_dir_path = HERE / r_dir_path
-    r_file = r_dir_path / "FLXS.md"
-    research_brief_asof = None
-    if r_file.exists():
-        mtime = r_file.stat().st_mtime
-        research_brief_asof = datetime.fromtimestamp(mtime).isoformat()
-        shutil.copyfile(r_file, run_dir / "_research_brief.md")
+    monkeypatch.setitem(rs2_data.CONFIG, "out_research_dir", str(research_dir))
+    monkeypatch.setitem(rs2_data.CONFIG, "research_max_age_days", 14)
+
+    asof, age_days, stale = cv.snapshot_research_brief("FLXS", run_dir)
 
     assert (run_dir / "_research_brief.md").exists()
     assert (run_dir / "_research_brief.md").read_text(encoding="utf-8") == brief_content
-    assert research_brief_asof is not None
+    assert asof is not None
+    assert age_days is not None and age_days < 1  # just written
+    assert stale is False
+
+
+def test_consensus_valuation_flags_stale_brief_beyond_the_ceiling(tmp_path, monkeypatch):
+    """C4 (Phase 1 approval review): a brief older than research_max_age_days must be flagged
+    stale — the real gap the review found, since depth_pipeline's --no-research path skips the
+    only place (run_research's --force decision) that ever checked this before."""
+    sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
+    import rs2_data
+    import consensus_valuation as cv
+
+    research_dir = tmp_path / "research"
+    research_dir.mkdir(parents=True)
+    brief_file = research_dir / "FLXS.md"
+    brief_file.write_text("# stale brief\n", encoding="utf-8")
+    old = time.time() - 20 * 86400  # 20 days old
+    os.utime(brief_file, (old, old))
+
+    run_dir = tmp_path / "runs" / "FLXS_20260923_120000"
+    run_dir.mkdir(parents=True)
+
+    monkeypatch.setitem(rs2_data.CONFIG, "out_research_dir", str(research_dir))
+    monkeypatch.setitem(rs2_data.CONFIG, "research_max_age_days", 14)
+
+    asof, age_days, stale = cv.snapshot_research_brief("FLXS", run_dir)
+
+    assert age_days > 14
+    assert stale is True
+    # still copied and dated — staleness annotates, never silently gates (non-negotiable 3)
+    assert (run_dir / "_research_brief.md").exists()
+    assert asof is not None
+
+
+def test_consensus_valuation_no_brief_is_not_stale(tmp_path, monkeypatch):
+    """Absent brief means absent provenance, never a fabricated staleness verdict."""
+    sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
+    import rs2_data
+    import consensus_valuation as cv
+
+    monkeypatch.setitem(rs2_data.CONFIG, "out_research_dir", str(tmp_path / "no_research_dir"))
+    monkeypatch.setitem(rs2_data.CONFIG, "research_max_age_days", 14)
+    run_dir = tmp_path / "runs" / "FLXS_20260923_120000"
+    run_dir.mkdir(parents=True)
+
+    asof, age_days, stale = cv.snapshot_research_brief("FLXS", run_dir)
+
+    assert asof is None
+    assert age_days is None
+    assert stale is False
+    assert not (run_dir / "_research_brief.md").exists()

@@ -661,6 +661,44 @@ def run_progress(n_max, attempted, recorded, adaptive, broke_early):
     }
 
 
+def snapshot_research_brief(t, run_dir):
+    """Copy research/{T}.md into `run_dir` (P1.7) and report its provenance:
+    (asof ISO string or None, age_days or None, stale bool).
+
+    `stale` is True when the brief is older than research_max_age_days — enforced HERE, where
+    the brief is actually consumed (read into the pack), on every calling path (C4, Phase 1
+    approval review). The age ceiling used to live only inside depth_pipeline.run_research's
+    --force decision, which deep_research.fresh()'s own 7-day cache rule pre-empts (14 > 7, so
+    it could almost never fire) — and depth_pipeline's --no-research path skips run_research
+    entirely, consuming whatever brief happens to be on disk at ANY age. Never a silent read:
+    the caller rides `stale` onto the verdict as a flag, same as pack_macro_degraded.
+
+    Split out of main() so this is testable against a synthetic brief file without spawning the
+    research/consensus subprocesses (mirrors depth_pipeline.stamp_and_route).
+    """
+    r_dir = rs2_data.CONFIG.get("out_research_dir") or "research"
+    research_dir = Path(r_dir)
+    if not research_dir.is_absolute():
+        research_dir = HERE / research_dir
+    research_file = research_dir / f"{t}.md"
+    asof, age_days = None, None
+    if research_file.exists():
+        try:
+            mtime = research_file.stat().st_mtime
+            asof = datetime.fromtimestamp(mtime).isoformat()
+            age_days = round((time.time() - mtime) / 86400, 2)
+            import shutil
+            shutil.copyfile(research_file, run_dir / "_research_brief.md")
+        except Exception as e:
+            print(f"  [consensus] WARN could not copy research brief: {e}", flush=True)
+    max_age_days = float(rs2_data.CONFIG["research_max_age_days"])
+    stale = bool(age_days is not None and age_days > max_age_days)
+    if stale:
+        print(f"  [consensus] WARN research brief is {age_days:.1f}d old "
+              f"(> {max_age_days:.0f}d) — flagging stale_research_brief", flush=True)
+    return asof, age_days, stale
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "GOOG").upper()
@@ -704,22 +742,9 @@ def main():
     # — found when three auditors had to reconstruct it independently to check the reports.
     (d / "_pack.md").write_text(pack, encoding="utf-8")
 
-    # Snapshot research brief into run dir (P1.7)
-    import rs2_data
-    r_dir = rs2_data.CONFIG.get("out_research_dir") or "research"
-    research_dir = Path(r_dir)
-    if not research_dir.is_absolute():
-        research_dir = HERE / research_dir
-    research_file = research_dir / f"{t}.md"
-    research_brief_asof = None
-    if research_file.exists():
-        try:
-            mtime = research_file.stat().st_mtime
-            research_brief_asof = datetime.fromtimestamp(mtime).isoformat()
-            import shutil
-            shutil.copyfile(research_file, d / "_research_brief.md")
-        except Exception as e:
-            print(f"  [consensus] WARN could not copy research brief: {e}", flush=True)
+    # Snapshot research brief into run dir (P1.7); C4: age ceiling enforced where consumed.
+    research_brief_asof, research_brief_age_days, research_brief_stale = \
+        snapshot_research_brief(t, d)
 
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
             if adaptive else f"{n} samples fixed")
@@ -849,6 +874,8 @@ def main():
             why = list(why) + [cf_note]
         if pack_macro_degraded and "macro_degraded" not in flags:
             flags = list(flags) + ["macro_degraded"]
+        if research_brief_stale and "stale_research_brief" not in flags:
+            flags = list(flags) + ["stale_research_brief"]
         # Carry the harness rescue status onto the sample. Without this the four-key copy out of
         # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort
         # with normal siblings with no consumer able to tell.
@@ -920,6 +947,7 @@ def main():
            "draft_num_predict": draft_num_predict,
            "pack_revision": cap.PACK_REVISION,
            "research_brief_asof": research_brief_asof,
+           "research_brief_age_days": research_brief_age_days,
            "price_asof": price_override.get("asof") if price_override else None,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "samples_run": len(runs), "early_stop": early_stop,
