@@ -693,7 +693,10 @@ def main():
         except (IndexError, ValueError):
             pass
     price = price_override["price"] if price_override else vb._num(fin.get("Price"))
-    pack = cap.build_pack(t, price_override=price_override) + "\n\n---\n\n" + cap.TASK
+    pack_text = cap.build_pack(t, price_override=price_override)
+    pack_macro_degraded = bool(getattr(pack_text, "macro_degraded", False)
+                               or getattr(cap, "LAST_PACK_MACRO_DEGRADED", False))
+    pack = pack_text + "\n\n---\n\n" + cap.TASK
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     d = OUT / f"{t}_{ts}"
     d.mkdir(parents=True, exist_ok=True)
@@ -826,6 +829,8 @@ def main():
         if cf_note:
             flags = list(flags) + ["base_cf_basis_mismatch"]
             why = list(why) + [cf_note]
+        if pack_macro_degraded and "macro_degraded" not in flags:
+            flags = list(flags) + ["macro_degraded"]
         # Carry the harness rescue status onto the sample. Without this the four-key copy out of
         # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort
         # with normal siblings with no consumer able to tell.

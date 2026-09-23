@@ -82,7 +82,34 @@ TIMEOUT = 14400
 #      basis choice is precisely the quantity under measurement (GEV, 2026-09-20, read ~$12.4B in
 #      one run and ~$5.0B in another on the same dossier), so verdicts before and after must not
 #      share a stamp.
-PACK_REVISION = 4
+#   5  2026-09-23. SECTION 1.5 never invents a macro number: replaced or-defaults with None;
+#      sourced block anchor-first from MRI capital-market anchors (nominal and real 10y, breakeven,
+#      implied ERP, implied CoE, sector loading, metadata) with macro_state.json series as
+#      secondary source; regime date freshness gate (<= 45 days); regime label demoted and full
+#      probability vector + headline margin printed per operator ruling; mandate line conditional
+#      on present Rf; pack-level flag macro_degraded carried onto consensus runs when inputs missing.
+PACK_REVISION = 5
+
+LAST_PACK_MACRO_DEGRADED = False
+LAST_PACK_FLAGS = []
+
+
+class PackText(str):
+    macro_degraded: bool = False
+    flags: list = []
+
+    def __new__(cls, content, macro_degraded=False, flags=None):
+        obj = str.__new__(cls, content)
+        obj.macro_degraded = bool(macro_degraded)
+        obj.flags = list(flags or [])
+        return obj
+
+    def __add__(self, other):
+        res = PackText(super().__add__(other),
+                       macro_degraded=self.macro_degraded,
+                       flags=self.flags)
+        return res
+
 
 
 # OWNER CASH FLOW. Defined ONCE, here, and imported by the verdict stage that audits it - two
@@ -567,26 +594,182 @@ def build_pack(t, price_override=None):
           "- Rows below are labelled by FISCAL year, not calendar year.", ""]
 
     # ---- SECTION 1.5 - MACRO REGIME & COST OF CAPITAL ANCHORS -------------------------------
+    coc_payload = rs2_data.usable_anchor("cost_of_capital")
+    anchor_asof = coc_payload.get("asof") if coc_payload else None
+    anchor_degraded = coc_payload.get("degraded") if coc_payload else None
+    anchor_reasons = (coc_payload.get("provenance") or {}).get("degradation_reasons") if coc_payload else []
+
+    # Accessors for MRI anchors:
+    # 1) Nominal 10-year
+    anchor_rf_val, anchor_rf_src = rs2_data.anchor_risk_free_rate()
+    # 2) Real 10-year
+    anchor_real_val, anchor_real_src = rs2_data.anchor_real_10y()
+    # 3) Breakeven 10-year
+    anchor_be_val, anchor_be_src = rs2_data.anchor_breakeven_10y()
+    # 4) Implied ERP
+    anchor_erp_val, anchor_erp_src = rs2_data.anchor_mature_erp()
+    # 5) Implied cost of equity
+    anchor_coe_val, anchor_coe_src = rs2_data.anchor_level_cost_of_equity_pct()
+    # 6) Sector loading
+    anchor_load_val, anchor_load_src = rs2_data.anchor_sector_loading(sector)
+
+    # Secondary macro source: macro_state.json
     macro_json = rs2_data.load_json(SD / "macro_state.json") or {}
     macro_series = macro_json.get("series") or {}
-    dgs10 = (macro_series.get("DGS10") or {}).get("value") or 4.83
-    t10y2y = (macro_series.get("T10Y2Y") or {}).get("value") or 0.39
-    baa10y = (macro_series.get("BAA10Y") or {}).get("value") or 1.55
-    hy_oas = (macro_series.get("BAMLH0A0HYM2") or {}).get("value") or 2.71
-    
+    dgs10_series = macro_series.get("DGS10") or {}
+    dgs10_sec = dgs10_series.get("value")
+    t10y2y_series = macro_series.get("T10Y2Y") or {}
+    t10y2y = t10y2y_series.get("value")
+    baa10y_series = macro_series.get("BAA10Y") or {}
+    baa10y = baa10y_series.get("value")
+    hy_oas_series = macro_series.get("BAMLH0A0HYM2") or {}
+    hy_oas = hy_oas_series.get("value")
+
+    # 1) Nominal 10-Year (anchor first, secondary fallback)
+    if anchor_rf_val is not None:
+        rf_pct = anchor_rf_val * 100.0
+        rf_line = f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {rf_pct:.2f}%  [MRI anchor, as of {anchor_asof or 'recent'}]"
+    elif dgs10_sec is not None:
+        rf_pct = float(dgs10_sec)
+        rf_line = f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {rf_pct:.2f}%  [macro_state.json (secondary), as of {dgs10_series.get('as_of', 'recent')}]"
+    else:
+        rf_pct = None
+        rf_line = f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {NULL}"
+
+    # 2) Real 10-Year
+    if anchor_real_val is not None:
+        real_pct = anchor_real_val * 100.0
+        real_line = f"- Real 10-Year US Treasury Yield: {real_pct:.2f}%  [MRI anchor]"
+    else:
+        real_pct = None
+        real_line = f"- Real 10-Year US Treasury Yield: {NULL}"
+
+    # 3) Breakeven 10-Year
+    if anchor_be_val is not None:
+        be_pct = anchor_be_val * 100.0
+        be_line = f"- 10-Year Breakeven Inflation Rate: {be_pct:.2f}%  [MRI anchor]"
+    else:
+        be_pct = None
+        be_line = f"- 10-Year Breakeven Inflation Rate: {NULL}"
+
+    # 4) Implied ERP
+    if anchor_erp_val is not None:
+        erp_pct = anchor_erp_val * 100.0
+        erp_line = f"- Implied Equity Risk Premium (ERP): {erp_pct:.2f}%  [MRI anchor]"
+    else:
+        erp_pct = None
+        erp_line = f"- Implied Equity Risk Premium (ERP): {NULL}"
+
+    # 5) Implied Cost of Equity
+    if anchor_coe_val is not None:
+        coe_pct = float(anchor_coe_val)
+        coe_line = f"- Implied Cost of Equity: {coe_pct:.2f}%  [MRI anchor]"
+    else:
+        coe_pct = None
+        coe_line = f"- Implied Cost of Equity: {NULL}"
+
+    # 6) Sector Loading
+    mri_sec = rs2_data.mri_sector_id(sector)
+    if mri_sec is not None and anchor_load_val is not None:
+        load_line = f"- Sector Cost of Equity Loading ({mri_sec}): {anchor_load_val:.3f}x  [MRI anchor]"
+    elif mri_sec is not None:
+        load_line = f"- Sector Cost of Equity Loading ({mri_sec}): {NULL}"
+    else:
+        load_line = f"- Sector Cost of Equity Loading: {NULL} (unmapped sector: {sector or 'none'})"
+
+    # Anchor metadata
+    reasons_str = "; ".join(str(r) for r in anchor_reasons) if anchor_reasons else "none"
+    degraded_str = str(anchor_degraded) if anchor_degraded is not None else NULL
+    asof_str = str(anchor_asof) if anchor_asof else NULL
+    anchor_meta_line = f"- MRI Capital-Market Anchors Status: as of {asof_str} | degraded: {degraded_str} | reasons: {reasons_str}"
+
+    # Secondary macro series lines
+    if t10y2y is not None:
+        slope = 'Inverted' if float(t10y2y) < 0 else 'Normal / Steepening'
+        t10y2y_line = f"- 10Y-2Y Treasury Yield Spread (Curve Slope) [macro_state.json]: {float(t10y2y):+.2f}%  ({slope})  [as of {t10y2y_series.get('as_of', 'recent')}]"
+    else:
+        t10y2y_line = f"- 10Y-2Y Treasury Yield Spread (Curve Slope) [macro_state.json]: {NULL}"
+
+    if baa10y is not None:
+        baa_line = f"- Investment Grade Credit Spread (BAA - 10Y) [macro_state.json]: {float(baa10y):.2f}%  [as of {baa10y_series.get('as_of', 'recent')}]"
+    else:
+        baa_line = f"- Investment Grade Credit Spread (BAA - 10Y) [macro_state.json]: {NULL}"
+
+    if hy_oas is not None:
+        hy_line = f"- High Yield Option-Adjusted Spread (OAS) [macro_state.json]: {float(hy_oas):.2f}%  [as of {hy_oas_series.get('as_of', 'recent')}]"
+    else:
+        hy_line = f"- High Yield Option-Adjusted Spread (OAS) [macro_state.json]: {NULL}"
+
+    # Regime line
     regime_file = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "current_regime.json") or {}
-    regime_name = regime_file.get("regime") or macro_json.get("regime") or "Reflation"
+    regime_date = regime_file.get("date")
+    regime_fresh = bool(regime_date and rs2_data._fresh(regime_date, CONFIG.get("regime_max_age_days", 45)))
+
+    if not regime_file or not regime_date:
+        regime_headline = None
+        regime_line = f"- Current Macro Regime: {NULL}"
+    elif not regime_fresh:
+        regime_headline = None
+        regime_line = f"- Current Macro Regime: {NULL} (stale: {regime_date})"
+    else:
+        regime_headline = regime_file.get("season_headline") or regime_file.get("reported_regime") or regime_file.get("dominant_regime") or regime_file.get("regime")
+        margin = regime_file.get("headline_margin")
+        posterior = regime_file.get("season_posterior") or {}
+        probs = {}
+        if posterior:
+            for k, v in posterior.items():
+                p_val = v.get("probability") if isinstance(v, dict) else v
+                if isinstance(p_val, (int, float)):
+                    probs[k] = float(p_val)
+        elif regime_file.get("regime_probabilities"):
+            for k, v in (regime_file.get("regime_probabilities") or {}).items():
+                if isinstance(v, (int, float)):
+                    probs[k] = float(v)
+
+        vec_items = [f"{k} {v:.3f}" for k, v in sorted(probs.items(), key=lambda x: -x[1])]
+        vec_str = ", ".join(vec_items) if vec_items else ""
+        margin_str = f" | headline margin: {float(margin):.3f}" if isinstance(margin, (int, float)) else ""
+        prob_str = f" | Probabilities: [{vec_str}]" if vec_str else ""
+        regime_line = f"- Current Macro Regime: {regime_headline}{prob_str}{margin_str}  [as of {regime_date}]"
 
     L += ["## SECTION 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [Primary Macro Context]",
-          f"- 10-Year US Treasury Yield (Risk-Free Rate Rf): {dgs10}%  [as of {(macro_series.get('DGS10') or {}).get('as_of', 'recent')}]",
-          f"- 10Y-2Y Treasury Yield Spread (Curve Slope): {t10y2y:+.2f}%  ({'Inverted' if t10y2y < 0 else 'Normal / Steepening'})",
-          f"- Investment Grade Credit Spread (BAA - 10Y): {baa10y}%",
-          f"- High Yield Option-Adjusted Spread (OAS): {hy_oas}%",
-          f"- Current Macro Regime: {regime_name}",
-          f"- **MANDATE:** Use the verified 10-Year Treasury yield above ({dgs10}%) as your base risk-free rate Rf for WACC. "
-          "DO NOT search the web for Treasury yields or cost of capital anchors; they are verified above.",
-          f"- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** In the current {regime_name} regime, derive terminal multiples from "
-          "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.", ""]
+          anchor_meta_line,
+          rf_line,
+          real_line,
+          be_line,
+          erp_line,
+          coe_line,
+          load_line,
+          t10y2y_line,
+          baa_line,
+          hy_line,
+          regime_line]
+
+    if rf_pct is not None:
+        L.append(f"- **MANDATE:** Use the verified 10-Year Treasury yield above ({rf_pct:.2f}%) as your base risk-free rate Rf for WACC. "
+                 "DO NOT search the web for Treasury yields or cost of capital anchors; they are verified above.")
+
+    if regime_fresh and regime_headline:
+        L.append(f"- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** In the current {regime_headline} regime, derive terminal multiples from "
+                 "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.")
+    else:
+        L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
+                 "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.")
+    L.append("")
+
+    macro_degraded = bool(
+        rf_pct is None
+        or real_pct is None
+        or be_pct is None
+        or erp_pct is None
+        or coe_pct is None
+        or anchor_load_val is None
+        or t10y2y is None
+        or baa10y is None
+        or hy_oas is None
+        or bool(anchor_degraded)
+        or not regime_fresh
+    )
 
 
     # ---- SECTION 2 -------------------------------------------------------------------------
@@ -927,7 +1110,10 @@ def build_pack(t, price_override=None):
               "exactly this much and any 'we do not hold it' line above may be stale: "
               + ", ".join(f"`{k}`" for k in unreviewed)
               + ". Weigh your conclusions accordingly and say so in your report.", ""]
-    return "\n".join(L)
+    global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS
+    LAST_PACK_MACRO_DEGRADED = macro_degraded
+    LAST_PACK_FLAGS = ["macro_degraded"] if macro_degraded else []
+    return PackText("\n".join(L), macro_degraded=macro_degraded, flags=LAST_PACK_FLAGS)
 
 
 TASK = """You are performing an institutional equity underwriting analysis. T0 is today's price in the data pack below.

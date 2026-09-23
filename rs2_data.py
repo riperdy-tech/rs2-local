@@ -1063,6 +1063,28 @@ def anchor_risk_free_rate():
     return float(rf), _coc_leg_source(payload, "nominal_10y")
 
 
+def anchor_real_10y():
+    """(rate, source) — the real 10-year risk-free rate as a FRACTION, or (None, reason)."""
+    payload = usable_anchor("cost_of_capital")
+    if payload is None:
+        return None, "no_usable_cost_of_capital_anchor"
+    rf = (payload.get("risk_free") or {}).get("real_10y")
+    if not isinstance(rf, (int, float)):
+        return None, "anchor_has_no_real_10y_leg"
+    return float(rf), _coc_leg_source(payload, "real_10y")
+
+
+def anchor_breakeven_10y():
+    """(rate, source) — the 10-year breakeven inflation rate as a FRACTION, or (None, reason)."""
+    payload = usable_anchor("cost_of_capital")
+    if payload is None:
+        return None, "no_usable_cost_of_capital_anchor"
+    rf = (payload.get("risk_free") or {}).get("breakeven_10y")
+    if not isinstance(rf, (int, float)):
+        return None, "anchor_has_no_breakeven_leg"
+    return float(rf), _coc_leg_source(payload, "breakeven_10y")
+
+
 def anchor_mature_erp():
     """(erp, source) — the implied mature-market equity risk premium as a FRACTION, or (None, reason).
 
@@ -1126,6 +1148,21 @@ def anchor_multiple_bands(sector=None):
         "anchor_arithmetic_check": entry.get("arithmetic_check") or {},
         "anchor_asof": payload.get("asof"),
     }
+
+
+def anchor_sector_loading(sector):
+    """(loading, source) — the sector cost-of-equity loading for this sector, or (None, reason)."""
+    payload = usable_anchor("cost_of_capital")
+    if payload is None:
+        return None, "no_usable_cost_of_capital_anchor"
+    sec_id = mri_sector_id(sector)
+    if not sec_id:
+        return None, f"unmapped_sector({sector})"
+    loadings = payload.get("sector_loadings") or {}
+    val = loadings.get(sec_id)
+    if not isinstance(val, (int, float)):
+        return None, f"no_loading_for_sector({sec_id})"
+    return float(val), _coc_leg_source(payload, f"sector_loading:{sec_id}")
 
 
 
