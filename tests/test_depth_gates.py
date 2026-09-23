@@ -227,6 +227,51 @@ def test_rebuild_overlay_on_3row_fixture(tmp_path, monkeypatch):
     assert ccc["direction"] is None       # the sentinel string never reaches the published row
 
 
+# ---- B3 (Phase 4 amendment): pre_valid_analyst reason, gated on FIRST_VALID_PACK_REVISION ----
+
+def test_pre_valid_analyst_inert_while_first_valid_pack_revision_is_none(monkeypatch):
+    """Behaviour must be UNCHANGED while the ruling has not happened yet — every row would
+    otherwise become non-actionable the instant this reason existed, before any gate ran."""
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", None)
+    v = _clean(pack_revision=5)
+    actionable, reasons = dg.assess(v)
+    assert actionable is True
+    assert reasons == []
+
+
+def test_pre_valid_analyst_fires_below_the_ruled_floor(monkeypatch):
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", 5)
+    v = _clean(pack_revision=4)   # below the floor -> not analyst_valid
+    actionable, reasons = dg.assess(v)
+    assert actionable is False
+    assert reasons == ["pre_valid_analyst"]
+
+
+def test_pre_valid_analyst_silent_at_or_above_the_ruled_floor(monkeypatch):
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", 5)
+    v = _clean(pack_revision=5)
+    actionable, reasons = dg.assess(v)
+    assert actionable is True
+    assert reasons == []
+
+
+def test_pre_valid_analyst_fires_on_a_row_with_no_pack_revision_at_all(monkeypatch):
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", 5)
+    v = _clean()
+    assert "pack_revision" not in v
+    actionable, reasons = dg.assess(v)
+    assert actionable is False
+    assert reasons == ["pre_valid_analyst"]
+
+
+def test_pre_valid_analyst_compounds_with_other_reasons(monkeypatch):
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", 5)
+    v = _clean(pack_revision=4, n_basis=1)
+    actionable, reasons = dg.assess(v)
+    assert actionable is False
+    assert reasons == ["single_sample", "pre_valid_analyst"]
+
+
 # ---- analyst_valid() — P2-fix B2: keyed on FIRST_VALID_PACK_REVISION, not gate_version alone ----
 
 def test_analyst_valid_false_while_first_valid_pack_revision_is_none(monkeypatch):

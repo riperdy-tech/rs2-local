@@ -54,10 +54,17 @@ def assess(v):
       6. `direction in {undervalued, overvalued}` and `spread_pct > 25` -> "high_dispersion"
       7. `run_source in {manual, test}`                        -> "non_production_row"
       8. `instability.unstable is True`                        -> "mode_instability"
+      9. `FIRST_VALID_PACK_REVISION is set` and not `analyst_valid(v)` -> "pre_valid_analyst"
 
     P4.8: symmetric dispersion — `high_dispersion` fires for `overvalued` too, not only
     `undervalued`. band_verdict already demotes both directions to `hold` on write when the
     spread exceeds tolerance, so this mainly guards legacy rows written before that fix.
+
+    B3 (Phase 4 amendment): reason 9 turns validity into an actionability gate, but only once
+    the Phase 4 gate itself has set `FIRST_VALID_PACK_REVISION` — this module never sets it.
+    While it is None, `analyst_valid()` is False for EVERY row (nothing is valid yet), so gating
+    on it unconditionally would make every past and future verdict non-actionable before the
+    ruling has even happened; behaviour is therefore unchanged while it is None.
     """
     v = v or {}
     reasons = []
@@ -95,6 +102,9 @@ def assess(v):
     instability = v.get("instability")
     if isinstance(instability, dict) and instability.get("unstable") is True:
         reasons.append("mode_instability")
+
+    if FIRST_VALID_PACK_REVISION is not None and not analyst_valid(v):
+        reasons.append("pre_valid_analyst")
 
     return (not reasons), reasons
 
