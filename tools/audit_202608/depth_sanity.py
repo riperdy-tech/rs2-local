@@ -44,6 +44,8 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 # "I/O operation on closed file". Importing it is enough to get utf-8 output.
 from consensus_valuation import extract_iv  # noqa: E402
 from fiduciary_gate import contract_base  # noqa: E402  (single owner for the contract base)
+import depth_gates  # noqa: E402  (single owner of gate rules / assess / GATE_VERSION)
+from depth_gates import assess, GATE_VERSION, HIGH_DISPERSION_TOL_PCT  # noqa: E402
 
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 CONS = HERE / "ab_reports" / "consensus"
@@ -92,7 +94,7 @@ def audit(ticker, verdict):
         skew = sc.get("asymmetric_payoff_skew")
         if expect == "overvalued" and direction == "hold" and moat and float(moat) >= 4.0 and skew and float(skew) >= 2.0:
             pass  # Allowed asymmetric compounder override
-        elif expect != direction and not (direction == "hold" and verdict.get("spread_pct") and verdict.get("spread_pct") > 25.0):
+        elif expect != direction and not (direction == "hold" and verdict.get("spread_pct") and verdict.get("spread_pct") > depth_gates.HIGH_DISPERSION_TOL_PCT):
             note(2, f"direction '{direction}' contradicts its band: price ${price} vs "
                     f"${lo}-${hi} implies '{expect}'")
     elif direction != "NOT_USABLE":
@@ -104,7 +106,7 @@ def audit(ticker, verdict):
     # "overvalued" call commits capital (short/avoid) exactly as an "undervalued" one does.
     spread = verdict.get("spread_pct")
     flags = verdict.get("flags") or []
-    tol = 25.0
+    tol = depth_gates.HIGH_DISPERSION_TOL_PCT
     if spread is not None and spread > tol and direction in ("undervalued", "overvalued"):
         note(2, f"illegal directional call under high dispersion (spread {spread}% > {tol}%, "
                 f"direction {direction}) — violates non-convergence gate")

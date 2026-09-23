@@ -60,9 +60,9 @@ OD_LEDGER = HERE / "cache" / "depth_ondemand_ledger.jsonl"
 # n=1 rows to, and never reaches live_book/overlay/triggers.
 TEST_LEDGER = HERE / "cache" / "depth_test_ledger.jsonl"
 
-# Contract/gate schema version this pipeline writes. Rows without a gate_version are version 1
-# (pre-P1.2). Bump this whenever a field `depth_gates.assess()` reads changes meaning.
-GATE_VERSION = 2
+# Contract/gate schema version this pipeline writes. Single owner is depth_gates.py (P1.3).
+import depth_gates  # noqa: E402
+GATE_VERSION = depth_gates.GATE_VERSION
 
 # ---- spec constants (operator-accepted 2026-08-21) ------------------------------------------
 SAMPLES = int(CONFIG.get("depth_samples", 3))       # 3 flat — cost accepted
