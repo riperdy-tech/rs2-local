@@ -51,6 +51,10 @@ LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 # (ondemand_index.json + ondemand_reports/), never the overlay/rankings/paper machinery.
 OD_LEDGER = HERE / "cache" / "depth_ondemand_ledger.jsonl"
 OVERLAY = HERE / "cache" / "depth_overlay.json"
+# TRK-06 (P2.1): the grader's own output, copied into the publish clone alongside the overlay
+# when present. Optional — a fresh checkout or one that predates the grader's first run has none
+# yet, and publish_overlay() must not fail over a file that simply doesn't exist.
+OUTCOMES = HERE / "cache" / "depth_outcomes.json"
 # Cross-process mutex for the screener-repo publish. The local sweep here and a concurrent cloud
 # publish (api_llm/publish_cloud_verdicts.py, which calls publish_overlay) both drive the SAME
 # dedicated publish clone. Serialising the git critical section is half the 2026-08-26 race fix;
@@ -250,6 +254,7 @@ def publish_overlay():
 
     pub_data = repo / "public" / "data"
     dst = pub_data / "depth_overlay.json"
+    outcomes_dst = pub_data / "depth_outcomes.json"
     reports_dir = pub_data / "depth_reports"
     od_index = pub_data / "ondemand_index.json"
     od_reports = pub_data / "ondemand_reports"
@@ -263,7 +268,8 @@ def publish_overlay():
             # 1. Refuse to run on a tree dirtied by anything other than our own outputs. In a
             #    dedicated clone this is always clean; the guard catches a broken/co-opted clone.
             dirty = g("status", "--porcelain", "--",
-                      ":!public/data/depth_overlay.json", ":!public/data/depth_reports",
+                      ":!public/data/depth_overlay.json", ":!public/data/depth_outcomes.json",
+                      ":!public/data/depth_reports",
                       ":!public/data/ondemand_index.json", ":!public/data/ondemand_reports").stdout.strip()
             if dirty:
                 abort("publish clone has unexpected local changes — investigate, not stashing over")
@@ -278,6 +284,8 @@ def publish_overlay():
             # 2. Regenerate the artifacts into the clone (producer's existing step).
             reports_dir.mkdir(parents=True, exist_ok=True)
             dst.write_text(OVERLAY.read_text(encoding="utf-8"), encoding="utf-8")
+            if OUTCOMES.exists():
+                outcomes_dst.write_text(OUTCOMES.read_text(encoding="utf-8"), encoding="utf-8")
             changed = build_report_bundles(reports_dir)
             if changed:
                 log(f"report bundles updated: {', '.join(changed[:6])}"
@@ -298,7 +306,8 @@ def publish_overlay():
             bad = []
             od_files = ([od_index] if od_index.exists() else []) + \
                        (sorted(od_reports.glob("*.json")) if od_reports.exists() else [])
-            for f in [dst, *sorted(reports_dir.glob("*.json")), *od_files]:
+            outcomes_files = [outcomes_dst] if outcomes_dst.exists() else []
+            for f in [dst, *outcomes_files, *sorted(reports_dir.glob("*.json")), *od_files]:
                 try:
                     json.loads(f.read_text(encoding="utf-8"))
                 except Exception as e:
@@ -308,6 +317,8 @@ def publish_overlay():
                 return
 
             g("add", str(dst))
+            if outcomes_dst.exists():
+                g("add", str(outcomes_dst))
             g("add", str(reports_dir))
             if od_index.exists():
                 g("add", str(od_index))

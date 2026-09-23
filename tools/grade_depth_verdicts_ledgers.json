@@ -1,0 +1,6 @@
+{
+  "production": "cache/depth_ledger.jsonl",
+  "archive": "_archive/retired_20260920/cache/depth_ledger_legacy_pre_charter3.jsonl",
+  "ondemand": "cache/depth_ondemand_ledger.jsonl",
+  "test": "cache/depth_test_ledger.jsonl"
+}
