@@ -88,6 +88,45 @@ def test_quote_fallback_to_fast_info(monkeypatch):
     assert q["source"] == "yfinance_fast_info"
 
 
+def test_quote_newest_bar_nan_falls_back_to_fast_info(monkeypatch):
+    """B4/C9 (Phase 1 approval review): today's shape — yfinance's newest bar (09-22) is NaN
+    while an older bar (09-21) has a valid close. The old code dropped the NaN row and silently
+    reported the 09-21 close as current. It must now refuse that stale close and fall back to
+    fast_info, stamped with the NEWEST row's own session date (09-22), not `now` (09-23) and
+    not the older valid close's date."""
+    now = datetime(2026, 9, 23, 12, 0, 0, tzinfo=timezone.utc)
+    dates = pd.to_datetime(["2026-09-21", "2026-09-22"])
+    hist = pd.DataFrame({"Close": [100.0, float("nan")]}, index=dates)
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = hist
+    mock_ticker.fast_info = DummyFastInfo(last_price=104.16)
+    monkeypatch.setattr(price_now.yf, "Ticker", lambda t: mock_ticker)
+
+    q = price_now.quote("AAPL", now_dt=now)
+    assert q is not None
+    assert q["price"] == 104.16
+    assert q["source"] == "yfinance_fast_info"
+    assert q["asof"] == "2026-09-22"          # the NaN bar's own session date
+    assert q["asof"] != "2026-09-21"          # never the older valid close's date
+    assert q["asof_basis"] == "fast_info_unverified"
+
+
+def test_quote_newest_bar_nan_refuses_without_fast_info(monkeypatch):
+    """Same NaN-newest-bar shape, but no fast_info available: refuse rather than fall back to
+    the stale 09-21 close."""
+    now = datetime(2026, 9, 23, 12, 0, 0, tzinfo=timezone.utc)
+    dates = pd.to_datetime(["2026-09-21", "2026-09-22"])
+    hist = pd.DataFrame({"Close": [100.0, float("nan")]}, index=dates)
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = hist
+    mock_ticker.fast_info = None
+    monkeypatch.setattr(price_now.yf, "Ticker", lambda t: mock_ticker)
+
+    assert price_now.quote("AAPL", now_dt=now) is None
+
+
 def test_quote_network_failure_returns_none(monkeypatch):
     def _raise(t):
         raise ConnectionError("no network")
