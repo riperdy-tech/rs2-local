@@ -16,9 +16,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import paths
+
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache"
-STATE_REPO = Path("C:/Users/riper/Downloads/rs2-state")
+STATE_REPO = Path(paths.load_config()["rs2_state_dir"])
 STATE_FILES = [
     "depth_ledger.jsonl",
     "depth_ondemand_ledger.jsonl",

@@ -43,6 +43,23 @@ def test_the_current_nested_layout_resolves(tmp_path, monkeypatch):
     assert paths.resolve("screener_publish_repo") == tmp_path / "screener-publish"
 
 
+def test_rs2_state_dir_resolves_as_a_sibling(tmp_path, monkeypatch):
+    """rs2-state has always been a flat sibling, never nested under the old `Stock Screener`
+    wrapper - only one candidate spelling, unlike the keys that moved."""
+    monkeypatch.delenv("RS2_STATE_DIR", raising=False)
+    monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
+    (tmp_path / "rs2-state").mkdir()
+
+    assert paths.resolve("rs2_state_dir") == tmp_path / "rs2-state"
+
+
+def test_rs2_state_dir_env_override_is_used_verbatim(tmp_path, monkeypatch):
+    monkeypatch.setenv("STOCKS_ROOT", str(tmp_path))
+    monkeypatch.setenv("RS2_STATE_DIR", str(tmp_path / "typo" / "nowhere"))
+
+    assert paths.resolve("rs2_state_dir") == tmp_path / "typo" / "nowhere"
+
+
 def test_anchors_default_to_the_mri_outputs_directory(tmp_path, monkeypatch):
     """The anchors are additive artifacts written BESIDE the other MRI outputs."""
     monkeypatch.delenv("MRI_ANCHORS_DIR", raising=False)

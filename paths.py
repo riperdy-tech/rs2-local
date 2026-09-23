@@ -58,6 +58,9 @@ _CANDIDATES = {
         "Stock Screener/Macro Regime Indicator/outputs",
         "macro-regime-indicator/outputs",
     ),
+    "rs2_state_dir": (
+        "rs2-state",
+    ),
 }
 
 # Per-key environment overrides. `anchors_dir` deliberately reads MRI_ANCHORS_DIR first and then
@@ -69,6 +72,7 @@ _ENV = {
     "screener_publish_repo": ("SCREENER_PUBLISH_REPO",),
     "mri_outputs_dir": ("MRI_OUTPUTS_DIR",),
     "anchors_dir": ("MRI_ANCHORS_DIR", "MRI_OUTPUTS_DIR"),
+    "rs2_state_dir": ("RS2_STATE_DIR",),
 }
 
 
@@ -176,7 +180,8 @@ def load_config(path=None):
     cfg_path = Path(path) if path else (HERE / "config.json")
     config = json.loads(cfg_path.read_text(encoding="utf-8-sig"))
 
-    for key in ("screener_data_dir", "screener_publish_repo", "mri_outputs_dir", "anchors_dir"):
+    for key in ("screener_data_dir", "screener_publish_repo", "mri_outputs_dir", "anchors_dir",
+                "rs2_state_dir"):
         config[key] = str(resolve(key, config))
 
     for key in _SELF_PATHS:
@@ -188,6 +193,7 @@ def load_config(path=None):
 if __name__ == "__main__":
     cfg = load_config()
     print(f"STOCKS_ROOT = {stocks_root()}")
-    for k in ("screener_data_dir", "screener_publish_repo", "mri_outputs_dir", "anchors_dir"):
+    for k in ("screener_data_dir", "screener_publish_repo", "mri_outputs_dir", "anchors_dir",
+              "rs2_state_dir"):
         p = Path(cfg[k])
         print(f"{k:24s} = {cfg[k]}  {'(exists)' if p.exists() else '(MISSING)'}")
