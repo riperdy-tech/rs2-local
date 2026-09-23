@@ -22,8 +22,10 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-import ops    # local (stdlib): telegram + infra-error signatures
-import quota  # local (stdlib)
+import ops       # local (stdlib): telegram + infra-error signatures
+import quota     # local (stdlib)
+import rs2_data  # local (stdlib-only import path: json/os/sys/datetime/pathlib/paths) — sector
+                  # and industry lookup for the header line (P4 T4 / D4, D8, E3)
 
 HERE = Path(__file__).resolve().parent
 CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
@@ -40,7 +42,19 @@ TOPICS = [
      "extract exact forward revenue guidance targets, segment EBITDA margins, contracted backlog/visibility, "
      "and planned capital expenditures (capex). "
      "Also explicitly identify any one-time non-operating gains/losses, M&A remeasurement gains, divestitures, or tax windfalls that distort trailing GAAP net income, and report normalized operating EBITDA and net income alongside reported figures. "
-     "Tabulate all forward targets, operational metrics, and normalized earnings into a structured Operational Evidence Table with primary source citations."),
+     "Tabulate all forward targets, operational metrics, and normalized earnings into a structured Operational Evidence Table with primary source citations. "
+     "Then, separately, present the latest management guidance and sell-side consensus (only figures you "
+     "can date and source) as a fenced code block labeled ```guidance, one line per metric in the exact "
+     "form `metric | period | value | source | date` — output an empty ```guidance``` block if no dated, "
+     "sourced figure can be verified."),
+    ("What Changed in the Last 12 Months",
+     "{subj} — what changed in the last 12 months, for the company AND its industry: new products, "
+     "management changes, M&A, regulatory shifts, demand shocks, pricing moves, and competitive entries "
+     "or exits, each dated. For the company's single most important growth driver, cite at least 3 "
+     "sources dated within the last 30 days. Separately, assess AI exposure where relevant: if {subj} "
+     "is a supplier, infrastructure provider, platform, or a heavy AI capex spender/adopter, state its "
+     "AI revenue share, AI-related capital expenditure, and customer concentration risk; if AI exposure "
+     "is not material to this business, say so plainly instead of forcing an answer."),
     ("Bear Case / Short Thesis / Regulatory",
      "{subj} bear case, key risks, short-seller or activist concerns, and regulatory/legal exposure {yr}"),
     ("Industry Demand & End-Markets",
@@ -572,11 +586,18 @@ def build(ticker, name, force=False):
         print(f"[deep_research] {t}: WARNING no company name — searching as {subj!r}; "
               f"a bare ticker can match the wrong entity", flush=True)
     yr = datetime.now().year
-    L = [f"# DEEP RESEARCH BRIEF — {name + ' ' if name else ''}({t})",
+    # D8 / E3: a fixed, machine-parseable header line so the harness guard can match the
+    # company on an exact ticker + legal-name pair instead of scanning free text for it
+    # (research_brief_guard.py prefers this when present).
+    _, industry = rs2_data.sector_lookup(t)
+    L = [f"Company: {name or 'Unknown'} | Ticker: {t} | Industry: {industry or 'Unknown'}",
+         f"# DEEP RESEARCH BRIEF — {name + ' ' if name else ''}({t})",
          f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | iterative deep research "
          f"(full-page reads + citations). Cite only the listed sources. Sections are researched "
          f"independently; where numeric claims conflict between sections, treat both as "
-         f"unconfirmed.", ""]
+         f"unconfirmed. Every figure below is a claim made by another model from web sources, "
+         f"not a verified fact — check it against the filings in the pack before relying on it.",
+         ""]
     preflight(pick_tool())   # dead engine -> abort now, before writing anything
 
     # CONTESTED names get the thesis-targeted topic as well: the verdict on them turns on a

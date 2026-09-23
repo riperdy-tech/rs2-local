@@ -12,6 +12,32 @@ import re
 from pathlib import Path
 import rs2_data
 
+# The fixed header line deep_research.py now writes as the brief's first line (P4 T4 / D4, D8,
+# E3): "Company: <legal name> | Ticker: <T> | Industry: <industry>". Only searched near the top
+# of the brief (not the whole text) so a coincidental later occurrence never counts as the header.
+_HEADER_RE = re.compile(
+    r"^Company:\s*(?P<name>.+?)\s*\|\s*Ticker:\s*(?P<ticker>[A-Za-z][A-Za-z.\-]{0,9})\s*\|\s*"
+    r"Industry:\s*(?P<industry>.+?)\s*$",
+    re.MULTILINE)
+
+
+def _header_company_match(brief_text: str, ticker: str, company_name: str | None) -> bool:
+    """True when the brief's own header line names this exact ticker and legal name.
+
+    An exact match here is the strong signal deep_research.py was asked to provide, so it is
+    sufficient on its own (no sector/industry word needed) — unlike a name match found by
+    scanning the free-text body, which still had to fall back to the industry-word check.
+    """
+    if not company_name:
+        return False
+    m = _HEADER_RE.search(brief_text[:500])
+    if not m:
+        return False
+    if m.group("ticker").strip().upper() != ticker.upper():
+        return False
+    norm = lambda s: re.sub(r"\s+", " ", s.strip()).lower()
+    return norm(m.group("name")) == norm(company_name)
+
 
 def check_research_brief(
     ticker: str,
@@ -43,6 +69,13 @@ def check_research_brief(
 
     if company_name is None:
         company_name = rs2_data.resolve_name(t)
+
+    # 0. Header check (preferred): the brief's own "Company: ... | Ticker: ... | Industry: ..."
+    # line, when present, names the exact ticker and legal name deep_research.py resolved before
+    # ever starting a search — that is stronger evidence than anything found later in free text,
+    # so an exact match there is sufficient and skips the sector/industry word check below.
+    if _header_company_match(brief_text, t, company_name):
+        return True, None
 
     # 1. Company check: brief text must contain ticker or legal name
     has_ticker = bool(re.search(rf"\b{re.escape(t)}\b", brief_text, re.IGNORECASE))
