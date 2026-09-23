@@ -11,6 +11,7 @@ from financial_model_tool import (
     continuous_multi_outcome_kelly,
     calculate_payoff_skew,
     execute_financial_model,
+    _neutral_reference_dcf,
 )
 
 def test_unbundled_dcf_basic():
@@ -440,5 +441,144 @@ def test_sector_multiple_band_inside_outside():
     )
     assert res_out["multiple_in_band_gordon"] is False
     assert res_out["multiple_in_band_exit"] is False
+
+
+def test_reverse_dcf_missing_terminal_g_refused():
+    """reverse DCF requires terminal_g; missing terminal_g returns structured error."""
+    res = reverse_dcf_expectations_gap(
+        current_price=100.0,
+        shares_diluted=1.0,
+        base_cf=5.0,
+        wacc=0.09,
+        terminal_g=None,
+    )
+    assert "error" in res
+    assert "terminal_g is required" in res["error"]
+
+
+def test_reverse_dcf_own_structure_recovers_known_growth():
+    """Forward DCF at known growth rate must be recovered by reverse DCF own structure."""
+    target_g = 0.12
+    base_cf = 10.0
+    wacc = 0.09
+    terminal_g = 0.03
+    fade_years = 4
+    stage1_years = 5
+    shares = 2.0
+
+    forward = unbundled_dcf(
+        base_cf=base_cf,
+        explicit_growth=[target_g] * stage1_years,
+        fade_years=fade_years,
+        wacc=wacc,
+        terminal_g=terminal_g,
+        shares_diluted=shares,
+    )
+    assert not forward.get("error")
+    target_iv = forward["per_share_iv"]
+
+    # Reverse solve
+    rev = reverse_dcf_expectations_gap(
+        current_price=target_iv,
+        shares_diluted=shares,
+        base_cf=base_cf,
+        wacc=wacc,
+        terminal_g=terminal_g,
+        fade_years=fade_years,
+        stage1_years=stage1_years,
+    )
+    assert not rev.get("error")
+    solved_g_pct = rev["own_structure"]["solved_growth_pct"]
+    assert solved_g_pct == pytest.approx(target_g * 100.0, abs=0.05)
+    assert rev["implied_growth_next_5y_pct"] == pytest.approx(target_g * 100.0, abs=0.05)
+
+
+def test_reverse_dcf_neutral_structure_recovers_known_growth():
+    """Forward neutral reference DCF at known growth must be recovered by reverse DCF neutral structure."""
+    known_initial_g = 0.15
+    coe_anchor = 0.095
+    terminal_g_anchor = 0.03
+    base_cf = 8.0
+    shares = 1.5
+
+    iv, cf_10, expected_10y_cagr = _neutral_reference_dcf(
+        base_cf=base_cf,
+        g=known_initial_g,
+        coe_anchor=coe_anchor,
+        terminal_g_anchor=terminal_g_anchor,
+        shares_diluted=shares,
+    )
+
+    rev = reverse_dcf_expectations_gap(
+        current_price=iv,
+        shares_diluted=shares,
+        base_cf=base_cf,
+        wacc=coe_anchor,
+        terminal_g=terminal_g_anchor,
+        coe_anchor=coe_anchor,
+        terminal_g_anchor=terminal_g_anchor,
+    )
+    assert not rev.get("error")
+    nr = rev["neutral_reference_structure"]
+    assert nr["solved_initial_growth_pct"] == pytest.approx(known_initial_g * 100.0, abs=0.05)
+    assert nr["implied_10y_cagr_pct"] == pytest.approx(expected_10y_cagr * 100.0, abs=0.05)
+
+
+def test_reverse_dcf_base_rate_percentile_bands():
+    """Verify classification into < p50, p50 - p90, and > p90 given base_rate_table."""
+    base_rates = {
+        "p50": 0.08,
+        "p90": 0.16,
+        "share_ge_10": 0.35,
+        "share_ge_20": 0.15,
+        "share_ge_30": 0.05,
+    }
+    coe_anchor = 0.09
+    terminal_g_anchor = 0.025
+    base_cf = 10.0
+    shares = 1.0
+
+    # 1. Low growth case: initial g = 0.03 -> 10y CAGR will be < 0.08 (p50)
+    iv_low, _, _ = _neutral_reference_dcf(base_cf, 0.03, coe_anchor, terminal_g_anchor, shares_diluted=shares)
+    rev_low = reverse_dcf_expectations_gap(
+        current_price=iv_low,
+        shares_diluted=shares,
+        base_cf=base_cf,
+        wacc=coe_anchor,
+        terminal_g=terminal_g_anchor,
+        coe_anchor=coe_anchor,
+        terminal_g_anchor=terminal_g_anchor,
+        base_rate_table=base_rates,
+    )
+    assert rev_low["neutral_reference_structure"]["percentile_band"] == "< p50"
+
+    # 2. Mid growth case: initial g = 0.16 -> 10y CAGR will be between 0.08 and 0.16
+    iv_mid, _, _ = _neutral_reference_dcf(base_cf, 0.16, coe_anchor, terminal_g_anchor, shares_diluted=shares)
+    rev_mid = reverse_dcf_expectations_gap(
+        current_price=iv_mid,
+        shares_diluted=shares,
+        base_cf=base_cf,
+        wacc=coe_anchor,
+        terminal_g=terminal_g_anchor,
+        coe_anchor=coe_anchor,
+        terminal_g_anchor=terminal_g_anchor,
+        base_rate_table=base_rates,
+    )
+    assert rev_mid["neutral_reference_structure"]["percentile_band"] == "p50 - p90"
+
+    # 3. High growth case: initial g = 0.35 -> 10y CAGR will be > 0.16 (p90)
+    iv_high, _, _ = _neutral_reference_dcf(base_cf, 0.35, coe_anchor, terminal_g_anchor, shares_diluted=shares)
+    rev_high = reverse_dcf_expectations_gap(
+        current_price=iv_high,
+        shares_diluted=shares,
+        base_cf=base_cf,
+        wacc=coe_anchor,
+        terminal_g=terminal_g_anchor,
+        coe_anchor=coe_anchor,
+        terminal_g_anchor=terminal_g_anchor,
+        base_rate_table=base_rates,
+    )
+    assert rev_high["neutral_reference_structure"]["percentile_band"] == "> p90"
+
 
 

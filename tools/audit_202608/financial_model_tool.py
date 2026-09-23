@@ -294,33 +294,39 @@ def unbundled_dcf(
     return res
 
 
-def _two_stage_dcf_for_reverse(
+def _neutral_reference_dcf(
     base_cf: float,
     g: float,
-    wacc: float,
-    terminal_g: float = 0.025,
-    stage1_years: int = 5,
-    fade_years: int = 5,
-) -> Optional[float]:
-    """Two-stage DCF value used for expectations gap bisection."""
-    if wacc <= terminal_g:
-        return None
-    pv = 0.0
-    cf = base_cf
-    year = 0
-    for _ in range(stage1_years):
-        year += 1
-        cf *= (1.0 + g)
-        pv += cf / ((1.0 + wacc) ** year)
-    for i in range(1, fade_years + 1):
-        year += 1
-        g_t = g + (terminal_g - g) * (i / fade_years)
-        cf *= (1.0 + g_t)
-        pv += cf / ((1.0 + wacc) ** year)
-    terminal_cf = cf * (1.0 + terminal_g)
-    terminal_val = terminal_cf / (wacc - terminal_g)
-    pv += terminal_val / ((1.0 + wacc) ** year)
-    return pv
+    coe_anchor: float,
+    terminal_g_anchor: float,
+    net_debt: float = 0.0,
+    shares_diluted: float = 1.0,
+) -> Tuple[float, float, float]:
+    """Calculate DCF under the neutral reference structure:
+    - Initial growth rate g
+    - 10-year linear fade from g to terminal_g_anchor:
+      year i (1..10): g_i = g + (terminal_g_anchor - g) * (i / 10.0)
+    - Discount rate: coe_anchor
+    - Terminal Gordon growth at terminal_g_anchor discounted to t=0
+    Returns (per_share_iv, final_cf_10, implied_10y_cagr).
+    """
+    if coe_anchor <= terminal_g_anchor:
+        return 0.0, 0.0, 0.0
+    cf = float(base_cf)
+    pv_total = 0.0
+    for i in range(1, 11):
+        g_i = g + (terminal_g_anchor - g) * (i / 10.0)
+        cf *= (1.0 + g_i)
+        pv_total += cf / ((1.0 + coe_anchor) ** i)
+    cf_10 = cf
+    cf_11 = cf_10 * (1.0 + terminal_g_anchor)
+    tv_nominal = cf_11 / (coe_anchor - terminal_g_anchor)
+    tv_pv = tv_nominal / ((1.0 + coe_anchor) ** 10)
+    ev = pv_total + tv_pv
+    eq = ev - net_debt
+    per_share_iv = eq / shares_diluted
+    cagr_10y = ((cf_10 / float(base_cf)) ** (1.0 / 10.0)) - 1.0
+    return per_share_iv, cf_10, cagr_10y
 
 
 def reverse_dcf_expectations_gap(
@@ -328,49 +334,194 @@ def reverse_dcf_expectations_gap(
     shares_diluted: float,
     base_cf: float,
     wacc: float,
-    terminal_g: float = 0.025,
+    terminal_g: Optional[float] = None,
     demonstrated_cagr_5y: Optional[float] = None,
+    fade_years: int = 0,
+    stage1_years: int = 5,
+    terminal_exit_multiple: Optional[float] = None,
+    net_debt: float = 0.0,
+    valuation_frame: str = "equity",
+    annuity_flow: float = 0.0,
+    annuity_cap_rate: Optional[float] = None,
+    coe_anchor: Optional[float] = None,
+    terminal_g_anchor: Optional[float] = None,
+    base_rate_table: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Solve for 5-year growth implied by current market cap and compare to demonstrated history."""
-    if current_price <= 0 or shares_diluted <= 0 or base_cf <= 0 or wacc <= terminal_g:
+    """Solve for market-implied growth per Phase 4 Decision D2:
+    (a) under caller's own structure (solve constant stage-1 growth equating IV to price, holding fade/terminal/rate)
+    (b) under neutral reference structure (rate = coe_anchor, 10-year linear fade to terminal_g_anchor) returning
+        implied 10-year CAGR, and percentile band when base_rate_table is passed.
+    """
+    if terminal_g is None:
+        return {"error": "terminal_g is required for reverse DCF (the silent default was removed in Phase 4)"}
+    terminal_g = float(terminal_g)
+
+    if current_price <= 0 or shares_diluted <= 0 or base_cf <= 0 or wacc <= 0:
         return {"error": "Invalid inputs for reverse DCF (price, shares, base_cf, and wacc must be positive)"}
+    if wacc <= terminal_g:
+        return {"error": f"wacc ({wacc}) must be greater than terminal_g ({terminal_g})"}
 
     target_mcap = current_price * shares_diluted
 
-    # Bisection search between -50% and +150% growth
-    lo, hi = -0.50, 1.50
+    # Structure (a): Own Structure solver
+    def _eval_own(g: float) -> Optional[float]:
+        r = unbundled_dcf(
+            base_cf=base_cf,
+            explicit_growth=[g] * stage1_years,
+            wacc=wacc,
+            terminal_g=terminal_g,
+            terminal_exit_multiple=terminal_exit_multiple,
+            annuity_flow=annuity_flow,
+            annuity_cap_rate=annuity_cap_rate,
+            net_debt=net_debt,
+            shares_diluted=shares_diluted,
+            fade_years=fade_years,
+            valuation_frame=valuation_frame,
+        )
+        if r.get("error"):
+            return None
+        return r.get("per_share_iv")
+
+    lo, hi = -0.90, 2.00
+    for _ in range(5):
+        val_lo = _eval_own(lo)
+        if val_lo is not None and val_lo > current_price:
+            lo -= 0.50
+        else:
+            break
+    for _ in range(10):
+        val_hi = _eval_own(hi)
+        if val_hi is not None and val_hi < current_price:
+            hi += 1.00
+        else:
+            break
+
     implied_g = None
-    
-    val_lo = _two_stage_dcf_for_reverse(base_cf, lo, wacc, terminal_g)
-    val_hi = _two_stage_dcf_for_reverse(base_cf, hi, wacc, terminal_g)
-    
-    if val_lo is not None and target_mcap < val_lo:
-        implied_g = lo
-    elif val_hi is not None and target_mcap > val_hi:
-        implied_g = hi
-    else:
-        for _ in range(60):
-            mid = (lo + hi) / 2.0
-            val_mid = _two_stage_dcf_for_reverse(base_cf, mid, wacc, terminal_g)
-            if val_mid is None:
-                break
-            if abs(val_mid - target_mcap) < 0.01 * target_mcap:
-                implied_g = mid
-                break
-            if val_mid < target_mcap:
-                lo = mid
-            else:
-                hi = mid
-        if implied_g is None:
-            implied_g = (lo + hi) / 2.0
+    for _ in range(70):
+        mid = (lo + hi) / 2.0
+        val_mid = _eval_own(mid)
+        if val_mid is None:
+            break
+        if abs(val_mid - current_price) < 0.0001 * current_price:
+            implied_g = mid
+            break
+        if val_mid < current_price:
+            lo = mid
+        else:
+            hi = mid
+    if implied_g is None:
+        implied_g = (lo + hi) / 2.0
 
     implied_g_pct = round(implied_g * 100.0, 2)
     res: Dict[str, Any] = {
+        "current_price": round(current_price, 2),
+        "shares_diluted": shares_diluted,
         "target_market_cap": round(target_mcap, 2),
-        "implied_growth_next_5y_pct": implied_g_pct,
         "assumed_wacc_pct": round(wacc * 100.0, 2),
         "terminal_growth_pct": round(terminal_g * 100.0, 2),
+        "own_structure": {
+            "implied_stage1_growth_pct": implied_g_pct,
+            "solved_growth_pct": implied_g_pct,
+            "stage1_years": stage1_years,
+            "fade_years": fade_years,
+            "terminal_g_pct": round(terminal_g * 100.0, 2),
+            "discount_rate_pct": round(wacc * 100.0, 2),
+            "valuation_frame": valuation_frame,
+        },
+        "implied_growth_next_5y_pct": implied_g_pct,
     }
+
+    # Structure (b): Neutral Reference Structure solver
+    if coe_anchor is not None and terminal_g_anchor is not None:
+        c_anchor = float(coe_anchor)
+        g_anchor = float(terminal_g_anchor)
+        if c_anchor <= g_anchor:
+            res["neutral_reference_structure"] = {
+                "error": f"coe_anchor ({c_anchor}) must be greater than terminal_g_anchor ({g_anchor})"
+            }
+        else:
+            def _eval_neutral(g: float) -> float:
+                iv, _, _ = _neutral_reference_dcf(
+                    base_cf=base_cf,
+                    g=g,
+                    coe_anchor=c_anchor,
+                    terminal_g_anchor=g_anchor,
+                    net_debt=net_debt if valuation_frame == "firm" else 0.0,
+                    shares_diluted=shares_diluted,
+                )
+                return iv
+
+            n_lo, n_hi = -0.90, 2.00
+            for _ in range(5):
+                if _eval_neutral(n_lo) > current_price:
+                    n_lo -= 0.50
+                else:
+                    break
+            for _ in range(10):
+                if _eval_neutral(n_hi) < current_price:
+                    n_hi += 1.00
+                else:
+                    break
+
+            neutral_g = None
+            for _ in range(70):
+                mid = (n_lo + n_hi) / 2.0
+                val_mid = _eval_neutral(mid)
+                if abs(val_mid - current_price) < 0.0001 * current_price:
+                    neutral_g = mid
+                    break
+                if val_mid < current_price:
+                    n_lo = mid
+                else:
+                    n_hi = mid
+            if neutral_g is None:
+                neutral_g = (n_lo + n_hi) / 2.0
+
+            _, final_cf_10, cagr_10y = _neutral_reference_dcf(
+                base_cf=base_cf,
+                g=neutral_g,
+                coe_anchor=c_anchor,
+                terminal_g_anchor=g_anchor,
+                net_debt=net_debt if valuation_frame == "firm" else 0.0,
+                shares_diluted=shares_diluted,
+            )
+            cagr_10y_pct = round(cagr_10y * 100.0, 2)
+            neutral_res: Dict[str, Any] = {
+                "coe_anchor_pct": round(c_anchor * 100.0, 2),
+                "terminal_g_anchor_pct": round(g_anchor * 100.0, 2),
+                "fade_years": 10,
+                "solved_initial_growth_pct": round(neutral_g * 100.0, 2),
+                "implied_10y_cagr_pct": cagr_10y_pct,
+            }
+
+            # Base rate table percentile ranking
+            if base_rate_table and isinstance(base_rate_table, dict):
+                def _norm_pct(v):
+                    if v is None:
+                        return None
+                    vf = float(v)
+                    return vf * 100.0 if 0.0 < vf <= 1.0 else vf
+
+                p50 = _norm_pct(base_rate_table.get("p50"))
+                p90 = _norm_pct(base_rate_table.get("p90"))
+
+                if p50 is not None and p90 is not None:
+                    if cagr_10y_pct < p50:
+                        band = "< p50"
+                        band_desc = f"Below median (< {p50:.1f}%)"
+                    elif cagr_10y_pct < p90:
+                        band = "p50 - p90"
+                        band_desc = f"Between median ({p50:.1f}%) and 90th percentile ({p90:.1f}%)"
+                    else:
+                        band = "> p90"
+                        band_desc = f"Above 90th percentile (> {p90:.1f}%)"
+
+                    neutral_res["percentile_band"] = band
+                    neutral_res["percentile_band_desc"] = band_desc
+                    neutral_res["base_rate_table"] = base_rate_table
+                    res["percentile_band"] = band
+
+            res["neutral_reference_structure"] = neutral_res
 
     if demonstrated_cagr_5y is not None:
         gap = round(implied_g_pct - demonstrated_cagr_5y, 2)
@@ -591,13 +742,24 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
     if price > 0 and top_shares > 0 and rev_cf is not None and rev_wacc is not None:
         term_g = params.get("terminal_g") or (scenarios[0].get("terminal_g") if scenarios else None)
         if term_g is not None:
+            rev_coe_anchor = params.get("coe_anchor") or params.get("anchor_coe")
+            rev_term_anchor = params.get("terminal_g_anchor") or params.get("anchor_terminal_g")
+            rev_base_rates = params.get("base_rate_table")
             result["reverse_dcf"] = reverse_dcf_expectations_gap(
                 current_price=price,
                 shares_diluted=top_shares,
                 base_cf=float(rev_cf),
                 wacc=float(rev_wacc),
                 terminal_g=float(term_g),
+                fade_years=fade_years,
+                stage1_years=len(growth_rates) if growth_rates else 5,
+                terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
+                net_debt=top_net_debt if top_net_debt is not None else 0.0,
+                valuation_frame=val_frame,
                 demonstrated_cagr_5y=float(params["demonstrated_cagr_5y"]) if params.get("demonstrated_cagr_5y") is not None else None,
+                coe_anchor=float(rev_coe_anchor) if rev_coe_anchor is not None else None,
+                terminal_g_anchor=float(rev_term_anchor) if rev_term_anchor is not None else None,
+                base_rate_table=rev_base_rates,
             )
 
     # 4. Continuous Kelly sizing and Payoff Skew if scenarios have valid IVs and probs
@@ -661,10 +823,17 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
     if "reverse_dcf" in res and not res["reverse_dcf"].get("error"):
         r = res["reverse_dcf"]
         lines.append("**Reverse DCF Expectations Gap (What's Priced in at T0):**")
-        lines.append(f"- Implied 5-Year Growth: **{r['implied_growth_next_5y_pct']:+.1f}%**")
+        lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **{r.get('implied_growth_next_5y_pct', 0.0):+.1f}%**")
         if "expectations_gap_pts" in r:
-            lines.append(f"- Demonstrated 5Y Historical CAGR: {r['demonstrated_cagr_5y_pct']:+.1f}% -> Expectations Gap: **{r['expectations_gap_pts']:+.1f} points**")
-            lines.append(f"- Assessment: *{r['assessment']}*\n")
+            lines.append(f"  * Demonstrated 5Y Historical CAGR: {r['demonstrated_cagr_5y_pct']:+.1f}% -> Expectations Gap: **{r['expectations_gap_pts']:+.1f} points**")
+            lines.append(f"  * Assessment: *{r['assessment']}*")
+        if "neutral_reference_structure" in r and not r["neutral_reference_structure"].get("error"):
+            nr = r["neutral_reference_structure"]
+            lines.append(f"- Structure (b) [Neutral Reference]: CoE Anchor: {nr['coe_anchor_pct']:.1f}% | Terminal g Anchor: {nr['terminal_g_anchor_pct']:.1f}% | 10-Year Linear Fade")
+            lines.append(f"  * Solved Initial Growth: **{nr['solved_initial_growth_pct']:+.1f}%** -> Implied 10-Year CAGR: **{nr['implied_10y_cagr_pct']:+.1f}%**")
+            if "percentile_band" in nr:
+                lines.append(f"  * Base Rate Distribution: **{nr['percentile_band']}** ({nr.get('percentile_band_desc', '')})")
+        lines.append("")
 
     if "kelly_sizing" in res and not res["kelly_sizing"].get("error"):
         k = res["kelly_sizing"]
