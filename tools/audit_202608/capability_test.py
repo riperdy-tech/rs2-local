@@ -88,6 +88,14 @@ TIMEOUT = 14400
 #      secondary source; regime date freshness gate (<= 45 days); regime label demoted and full
 #      probability vector + headline margin printed per operator ruling; mandate line conditional
 #      on present Rf; pack-level flag macro_degraded carried onto consensus runs when inputs missing.
+#      AMENDED same day (B6, Phase 1 approval review): the regime demotion was incomplete — the
+#      capitalization mandate still conditioned its terminal-multiple instruction on the regime
+#      LABEL ("In the current {headline} regime, derive terminal multiples..."), with a headline
+#      margin as thin as 0.044. The mandate text is now unconditional (label removed entirely),
+#      and the "Current Macro Regime" line prints the probability vector FIRST and the label
+#      second, as a contested headline with its margin, e.g. "headline goldilocks (margin
+#      0.044 — contested)". Not a new PACK_REVISION: no revision-5 verdict exists yet to
+#      distinguish from (ledgers hold {3, 4}; the sweep is paused).
 PACK_REVISION = 5
 
 LAST_PACK_MACRO_DEGRADED = False
@@ -728,9 +736,15 @@ def build_pack(t, price_override=None):
 
         vec_items = [f"{k} {v:.3f}" for k, v in sorted(probs.items(), key=lambda x: -x[1])]
         vec_str = ", ".join(vec_items) if vec_items else ""
-        margin_str = f" | headline margin: {float(margin):.3f}" if isinstance(margin, (int, float)) else ""
-        prob_str = f" | Probabilities: [{vec_str}]" if vec_str else ""
-        regime_line = f"- Current Macro Regime: {regime_headline}{prob_str}{margin_str}  [as of {regime_date}]"
+        prob_str = f"Probabilities: [{vec_str}]" if vec_str else ""
+        # B6 (Phase 1 approval review): the vector prints FIRST and the label second, as a
+        # contested headline with its margin — never an unqualified regime name. Operator
+        # ruling: the label is demoted and may no longer drive any numeric output.
+        margin_str = f"margin {float(margin):.3f} — contested" if isinstance(margin, (int, float)) else "contested"
+        headline_str = f"headline {regime_headline} ({margin_str})" if regime_headline else ""
+        parts = [p for p in (prob_str, headline_str) if p]
+        regime_line = (f"- Current Macro Regime: {' | '.join(parts)}  [as of {regime_date}]"
+                       if parts else f"- Current Macro Regime: {NULL}")
 
     L += ["## SECTION 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [Primary Macro Context]",
           anchor_meta_line,
@@ -749,12 +763,12 @@ def build_pack(t, price_override=None):
         L.append(f"- **MANDATE:** Use the verified 10-Year Treasury yield above ({rf_pct:.2f}%) as your base risk-free rate Rf for WACC. "
                  "DO NOT search the web for Treasury yields or cost of capital anchors; they are verified above.")
 
-    if regime_fresh and regime_headline:
-        L.append(f"- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** In the current {regime_headline} regime, derive terminal multiples from "
-                 "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.")
-    else:
-        L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
-                 "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.")
+    # B6 (Phase 1 approval review): the mandate no longer conditions on the regime LABEL.
+    # Operator ruling: the label is demoted and must not drive any numeric output — it was
+    # doing exactly that here, as the conditioning clause of the terminal-multiple instruction,
+    # on a headline margin as thin as 0.044.
+    L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
+             "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.")
     L.append("")
 
     macro_degraded = bool(

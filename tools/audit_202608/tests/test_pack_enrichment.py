@@ -106,14 +106,23 @@ def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_s
     assert "- Investment Grade Credit Spread (BAA - 10Y) [macro_state.json]: 1.40%" in pack
     assert "- High Yield Option-Adjusted Spread (OAS) [macro_state.json]: 2.68%" in pack
 
-    # Probability vector and headline margin printed per operator ruling:
-    assert "Current Macro Regime: goldilocks | Probabilities: [" in pack
+    # B6 (Phase 1 approval review): the probability vector prints FIRST and the label second,
+    # as a contested headline with its margin — never an unqualified regime name.
+    assert "Current Macro Regime: Probabilities: [" in pack
     assert "goldilocks 0.287" in pack
     assert "reflation 0.243" in pack
-    assert "headline margin: 0.044" in pack
+    assert "headline goldilocks (margin 0.044 — contested)" in pack
 
     # Mandate line present when Rf is present:
     assert "- **MANDATE:** Use the verified 10-Year Treasury yield above (5.01%)" in pack
+
+    # B6: the capitalization mandate no longer conditions on the regime LABEL — it must be the
+    # SAME unconditional text regardless of the (contested) headline above.
+    assert ("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
+            "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force "
+            "artificial multiple caps.") in pack
+    assert "In the current" not in pack
+    assert "goldilocks regime" not in pack
 
 
 def test_pack_section_1_5_stale_regime_yields_stale_notice(screener_data_stub, monkeypatch):
