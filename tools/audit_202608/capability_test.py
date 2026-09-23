@@ -1429,30 +1429,63 @@ def build_pack(t, price_override=None, include_research=True):
     L.append("## SECTION 8.5 - PEER CONTEXT   [Aggregator, context not an anchor]")
     fs_cluster = fs_row.get("cluster")
     stocks_list = rs2_data.load_json(SD / "stocks.json") or []
-    peer_pe = []
+    peer_syms = set()
     if fs_cluster and isinstance(stocks_list, list):
         peer_syms = {sym for sym, row in (fs_all.get("tickers") or {}).items()
                     if isinstance(row, dict) and row.get("cluster") == fs_cluster}
+    # `peRatio` is a real field in stocks.json, but measured 2026-09-24: it reads 0 for every
+    # one of 6,949 names on file - a P/E of exactly 0.0 for every company is not a filed value,
+    # it is an unpopulated sentinel (the same structural-absence pattern already documented for
+    # `price_to_sales` above), so it is never used. Compute trailing P/E ourselves instead, from
+    # fields that DO carry real values: top-level `price` / `metrics.epsTtm` (trailing EPS) -
+    # measured populated for 5,984 of 6,949 names, positive (usable) for 3,423.
+    eps_field_exists = bool(stocks_list) and any(
+        isinstance(row, dict) and isinstance((row.get("metrics") or {}).get("epsTtm"), (int, float))
+        for row in stocks_list[:200])
+    peer_pe, pe_source = [], None
+    if peer_syms and eps_field_exists:
         for row in stocks_list:
             if not isinstance(row, dict) or row.get("symbol") not in peer_syms:
                 continue
-            pe = row.get("peRatio")
-            # Measured 2026-09-24: `peRatio` is a real field in stocks.json, but it reads 0 for
-            # every one of 6,949 names on file - a P/E of exactly 0.0 for every company is not a
-            # filed value, it is an unpopulated sentinel (the same structural-absence pattern
-            # already documented for `price_to_sales` above). A filed zero is a value; a field
-            # that is 0 on 100% of the corpus is not one, so it is excluded here rather than
-            # printed as a real trailing P/E of zero.
-            if isinstance(pe, (int, float)) and pe > 0:
-                peer_pe.append(pe)
+            price = row.get("price")
+            eps = (row.get("metrics") or {}).get("epsTtm")
+            # Excludes non-positive earnings: a P/E on a loss-making peer is not a comparable
+            # multiple, and `0.0` here would be indistinguishable from the dead `peRatio` field.
+            if (isinstance(price, (int, float)) and price > 0
+                    and isinstance(eps, (int, float)) and eps > 0):
+                peer_pe.append(price / eps)
+        pe_source = "price / trailing EPS (`metrics.epsTtm`), `stocks.json`"
+    elif peer_syms:
+        # `epsTtm` itself absent from this corpus's schema - fall back to the screener's own
+        # fundamentals history: each peer's latest fiscal-year net income / diluted shares
+        # against its current price from stocks.json.
+        fh_tickers = (rs2_data.load_json(SD / "fundamentals_history.json") or {}).get("tickers") or {}
+        price_by_sym = {row.get("symbol"): row.get("price") for row in stocks_list
+                        if isinstance(row, dict)}
+        for sym in peer_syms:
+            years = fh_tickers.get(sym) or {}
+            if not isinstance(years, dict) or not years:
+                continue
+            yr_row = years.get(max(years, key=str)) or {}
+            ni, sh, price = yr_row.get("net_income"), yr_row.get("shares_diluted"), price_by_sym.get(sym)
+            if (isinstance(ni, (int, float)) and ni > 0
+                    and isinstance(sh, (int, float)) and sh > 0
+                    and isinstance(price, (int, float)) and price > 0):
+                peer_pe.append(price / (ni / sh))
+        if peer_pe:
+            pe_source = ("price / (latest fiscal-year net income / diluted shares), "
+                        "`fundamentals_history.json`")
     ev_ebitda_field_exists = bool(stocks_list) and any(
         "ebitda" in str(k).lower() for row in stocks_list[:1] if isinstance(row, dict)
         for k in list(row.keys()) + list((row.get("metrics") or {}).keys()))
-    L.append(f"- Fields checked in `stocks.json`: trailing P/E (`peRatio`) - "
-             + ("present but measured 0 for every one of "
-                f"{len(stocks_list):,} names on file, so it carries no usable signal here"
-                if stocks_list else NULL)
-             + "; EV/EBITDA - "
+    pe_field_note = (
+        f"present but measured 0 for every one of {len(stocks_list):,} names on file, so it "
+        f"carries no usable signal (trailing P/E below is computed instead from "
+        + (pe_source if pe_source else "price / trailing EPS or fundamentals history; not "
+                                       "available - neither source had usable data")
+        + ")") if stocks_list else NULL
+    L.append(f"- Fields checked in `stocks.json`: trailing P/E (`peRatio`) - {pe_field_note}; "
+             f"EV/EBITDA - "
              + ("a field of that name exists" if ev_ebitda_field_exists
                 else "no field of that name exists in `stocks.json`'s per-ticker record")
              + ". Only fields found usable are printed as values below.")
@@ -1461,8 +1494,9 @@ def build_pack(t, price_override=None, include_research=True):
         pe_sorted = sorted(peer_pe)
         pe_med = (pe_sorted[pe_n // 2] if pe_n % 2
                  else (pe_sorted[pe_n // 2 - 1] + pe_sorted[pe_n // 2]) / 2)
-        L.append(f"- Cluster peers' trailing P/E (n={pe_n}): median {pe_med:.1f}x | p25 "
-                 f"{pe_sorted[int(pe_n * .25)]:.1f}x | p75 {pe_sorted[int(pe_n * .75)]:.1f}x")
+        L.append(f"- Cluster peers' trailing P/E (n={pe_n}, source: {pe_source}): median "
+                 f"{pe_med:.1f}x | p25 {pe_sorted[int(pe_n * .25)]:.1f}x | p75 "
+                 f"{pe_sorted[int(pe_n * .75)]:.1f}x")
     else:
         L.append(f"- Cluster peers' trailing P/E: {NULL}")
     L.append(f"- Cluster peers' EV/EBITDA: {NULL}")
