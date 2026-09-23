@@ -78,6 +78,33 @@ def test_factor_guard_missing_generated_at(tmp_path):
     assert "missing 'generated_at'" in reason
 
 
+# ---- C11 (Phase 1 approval review): future-dated generated_at must be refused, not accepted -----
+# ---- as freshness (age_h < 0 used to be < any max_age_h and so PASS the check) ------------------
+
+def test_factor_guard_future_generated_at_rejected(make_factor_file):
+    p = make_factor_file(engine="dual_door_dynamic_macro_v2_cluster_guarded", age_hours=-2.0)
+    ok, reason = dm.check_factor_scores(factor_path=p, max_age_h=48)
+    assert not ok
+    assert "future" in reason
+
+
+def test_factor_guard_tolerates_small_clock_skew(make_factor_file):
+    """A few minutes in the future is ordinary clock drift between this machine and the
+    screener writer, not a bogus file — must still pass."""
+    p = make_factor_file(engine="dual_door_dynamic_macro_v2_cluster_guarded", age_hours=-0.05)
+    ok, reason = dm.check_factor_scores(factor_path=p, max_age_h=48)
+    assert ok
+    assert reason is None
+
+
+def test_factor_guard_rejects_just_beyond_clock_skew_tolerance(make_factor_file):
+    beyond = -(dm.CLOCK_SKEW_TOLERANCE_MIN / 60.0) - 0.01  # just past the tolerance boundary
+    p = make_factor_file(engine="dual_door_dynamic_macro_v2_cluster_guarded", age_hours=beyond)
+    ok, reason = dm.check_factor_scores(factor_path=p, max_age_h=48)
+    assert not ok
+    assert "future" in reason
+
+
 def test_factor_guard_good(make_factor_file):
     p = make_factor_file(engine="dual_door_dynamic_macro_v2_cluster_guarded", age_hours=5.0)
     ok, reason = dm.check_factor_scores(factor_path=p, max_age_h=48)

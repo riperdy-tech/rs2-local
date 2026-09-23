@@ -30,6 +30,12 @@ SD = Path(CONFIG["screener_data_dir"])
 LOG = HERE / "cache" / "depth_membership.jsonl"
 IN_BANDS = ("research_now", "watchlist")
 REQUIRED_FACTOR_ENGINE = "dual_door_dynamic_macro_v2_cluster_guarded"
+# C11 (Phase 1 approval review): how far into the future a generated_at may read before the
+# guard refuses it as bogus rather than as ordinary clock drift between this machine and the
+# screener writer. A future-dated generated_at used to make age_h negative, which is < any
+# max_age_h and so PASSED the freshness check — accepting a file that cannot have been produced
+# yet at all.
+CLOCK_SKEW_TOLERANCE_MIN = 5
 
 
 def check_factor_scores(factor_path=None, max_age_h=None, now_dt=None):
@@ -66,6 +72,9 @@ def check_factor_scores(factor_path=None, max_age_h=None, now_dt=None):
 
     now = now_dt if now_dt is not None else datetime.now(timezone.utc)
     age_h = (now - dt).total_seconds() / 3600.0
+    if age_h < -(CLOCK_SKEW_TOLERANCE_MIN / 60.0):
+        return False, (f"factor_scores.json generated_at is in the future: {gen_at} "
+                       f"(age {age_h:.2f}h relative to now {now.isoformat()})")
     if age_h > max_age_h:
         return False, f"stale factor_scores.json: age {age_h:.1f}h > {max_age_h}h (generated_at {gen_at})"
 
