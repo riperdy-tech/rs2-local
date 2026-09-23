@@ -199,6 +199,46 @@ file's mtime under `cache/` before each test and fails the test if any file's mt
 file was added or removed — the backstop against a test writing into production `cache/` state,
 present and future, not only the specific tests that caused that class of defect.
 
+## Grading the depth ledger — `tools/grade_depth_verdicts.py` (TRK-06, P2.1)
+
+Nothing graded a `band_direction_v1` verdict until this. The honest-measurement rules (entry =
+first close on/after the verdict date; exit = last close on/before date+h; benchmarks on the same
+actual dates; a horizon graded only once fully elapsed) are COPIED, not imported, from the
+screener's `scripts/grade_rs2_verdicts.py` — the zero-import rule (`../AGENTS.md`) means nothing
+in this repo imports a sibling repo's code, so a fixture test
+(`tests/test_grade_depth_verdicts.py`) proves the copies agree byte-for-byte on a shared sample
+instead. One addition beyond the copied original: a **3-day horizon-shortfall guard** (mirroring
+the retired lane's offline grader) skips — never truncates — a horizon whose resolved exit lands
+more than 3 calendar days short of its target.
+
+Grades every row across four ledgers (`production`, `archive` — the pre-Charter-v3.1 legacy
+ledger under `_archive/`, `ondemand`, `test`), each tagged `ledger_source`. `actionable` is
+recomputed live via `depth_gates.assess` on every row, never trusted from a ledger stamp — most
+rows on record predate P1.2/P1.3 and never had one. Nomination context (sector, cluster,
+`nominated_doors`, `z_momentum`, `z_value`, `z_exp_gap` from the screener's
+`factor_scores_dual_door.json` profiles; `fct_band`/`fct_rank` from the nearest
+`factor_signal_log.jsonl` run) is joined only within 10 calendar days of the verdict date —
+outside that window, or with no matching artifact, every one of those fields is `None`, never
+guessed.
+
+Outputs `cache/depth_outcome_prices.json` (its own price cache: every graded ticker plus
+IWM/SPY/QQQ and a 17-ETF sector/industry cluster proxy set), `cache/depth_outcomes.json` (graded
+rows, per-horizon cuts — direction, spread bucket, size, conviction/`mos_vs_base_pct`/`z_momentum`
+terciles, nominated doors, arm, pack revision, sector, cluster, ledger source — Spearman
+correlations, and a generated `caveats` block), and `reports/depth_outcomes_report.md`. A bucket
+under 10 verdicts is still shown, flagged `inconclusive`, never silently dropped. The caveats block
+states, from the data, how many graded rows are pre-current-gates (`gate_version` absent or < the
+current `depth_gates.GATE_VERSION`) — as of Phase 2 that is all of them, so no conclusion about the
+CURRENT analyst may be drawn from anything this grader reports yet; it exists so it is ready for
+valid verdicts after Phase 4.
+
+`orchestrate_depth.main()` re-runs it `--offline` (no network) at the end of every sweep,
+non-fatal and logged (`run_offline_grader()`); `publish_overlay()` copies `depth_outcomes.json` to
+the site as `public/data/depth_outcomes.json` alongside the overlay, when present, JSON-validated
+before staging like every other publish artifact. A weekly network refresh (Sunday 09:00) is
+prepared as `register_grader_task.ps1` (mirrors `register_depth_task.ps1`) but is NOT
+registered — registering a Windows Scheduled Task is a machine change and needs operator approval.
+
 ## Where the truth lives
 
 - `CLAUDE.md` — standard of proof (read it first)
