@@ -191,7 +191,7 @@ def search_web(query, why="", snap=None, n=6, query_cache=None):
             if is_near_duplicate(query, prev_q):
                 rec = {"query": query, "why": why, "n_results": len(prev_res), "results": prev_res,
                        "refetch_warning": looks_like_refetch(query),
-                       "deduplicated_from": prev_q}
+                       "deduplicated_from": prev_q, "cache_hit": True}
                 if snap is not None:
                     snap.append({"tool": "search_web", "ts": time.strftime("%H:%M:%S"),
                                  "dedup": True, **rec})
@@ -218,7 +218,7 @@ def search_web(query, why="", snap=None, n=6, query_cache=None):
         if len(out) >= n:
             break
     rec = {"query": query, "why": why, "n_results": len(out), "results": out,
-           "refetch_warning": looks_like_refetch(query)}
+           "refetch_warning": looks_like_refetch(query), "cache_hit": False}
     if query_cache is not None:
         query_cache[query] = out
     if snap is not None:
@@ -242,7 +242,9 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None):
         if snap is not None:
             snap.append({"tool": "fetch_page", "ts": time.strftime("%H:%M:%S"), "url": url,
                          "chars": rec.get("chars"), "text": rec.get("text", ""), "cached": True})
-        return rec
+        # A copy, not the stored `rec` itself — `cache_hit` marks the RETURN value for this call
+        # (P4.0b hit/miss accounting) and must never leak into what is persisted in url_cache.
+        return {**rec, "cache_hit": True}
     try:
         req = urllib.request.Request(url, headers=UA)
         with urllib.request.urlopen(req, timeout=40) as r:
@@ -266,7 +268,7 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None):
     if snap is not None:
         snap.append({"tool": "fetch_page", "ts": time.strftime("%H:%M:%S"),
                      "url": url, "chars": len(txt), "text": txt[:cap], "cached": False})
-    return rec
+    return {**rec, "cache_hit": False}
 
 
 def dispatch_tool(name, args, snap=None, query_cache=None, url_cache=None):
@@ -357,15 +359,27 @@ def _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
 
 
 def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predict=49152,
-                    seed=None, timeout=14400, verbose=True, draft_num_predict=None):
+                    seed=None, timeout=14400, verbose=True, draft_num_predict=None,
+                    temperature=None, query_cache=None, url_cache=None):
     """Ollama chat with the search tools available. Returns (report, thinking, meta).
 
     Snapshots every tool call to out_dir/_research_snapshot.json so the run stays reproducible
     and auditable against exactly what the model saw.
+
+    `query_cache`/`url_cache` (P4.0b): when given, these are the CALLER's dicts — e.g. a frozen
+    evidence store shared by every sample of a dispersion-battery run — and are mutated in place,
+    so the caller can persist them after this call returns. Omitted (the default), fresh empty
+    dicts are used exactly as before this option existed: no behaviour change for every existing
+    caller. `meta["evidence_hits"]`/`["evidence_misses"]` count how many search_web/fetch_page
+    calls this turn resolved from THAT dict (hit) versus actually went to the network for (miss) —
+    it is meaningful whether or not an external cache was supplied, since even the fresh per-call
+    dict dedupes within a single sample's own tool calls.
     """
     msgs = [{"role": "user", "content": content}]
     snap, calls, turns = [], 0, []
-    q_cache, u_cache = {}, {}
+    q_cache = query_cache if query_cache is not None else {}
+    u_cache = url_cache if url_cache is not None else {}
+    evidence_hits, evidence_misses = 0, 0
     opts = {
         "num_ctx": ctx,
         "num_predict": num_predict,
@@ -376,6 +390,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         opts["seed"] = seed
     if draft_num_predict is not None:
         opts["draft_num_predict"] = draft_num_predict
+    if temperature is not None:
+        opts["temperature"] = temperature
     t0 = time.time()
     final_report, final_think, done_reason = "", "", None
     stub_rejected = False
@@ -527,6 +543,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
                 raise
             else:
+                if name in ("search_web", "fetch_page") and isinstance(result, dict) \
+                        and "cache_hit" in result:
+                    if result["cache_hit"]:
+                        evidence_hits += 1
+                    else:
+                        evidence_misses += 1
                 if name == "run_financial_model" and isinstance(result, dict) and "result" in result:
                     call_rec.update(result)
                 elif isinstance(result, dict):
@@ -569,6 +591,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                        "generated_tokens": gen_tokens,
                                        "eval_duration_s": round(eval_duration_total / 1e9, 2),
                                        "eval_rate": eval_rate,
+                                       "evidence_hits": evidence_hits,
+                                       "evidence_misses": evidence_misses,
                                        "elapsed_s": round(time.time() - t0)}
 
 

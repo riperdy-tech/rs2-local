@@ -28,6 +28,7 @@ output usable at all.
 
   python tools/audit_202608/consensus_valuation.py GOOG --samples 3
 """
+import hashlib
 import io
 import json
 import re
@@ -309,7 +310,8 @@ def plausibility(iv, price, ticker):
     return True, [], flags
 
 
-def continue_report(model, pack, partial_report, ctx=81920, timeout=1800, seed=None, draft_num_predict=None):
+def continue_report(model, pack, partial_report, ctx=81920, timeout=1800, seed=None,
+                    draft_num_predict=None, temperature=None):
     """Rescues a truncated memorandum by issuing a continuation turn to Ollama.
     Reclaims 40k+ tokens of headroom by feeding the pack + partial report as assistant turn."""
     cutoff_snippet = partial_report[-250:].strip()
@@ -337,7 +339,7 @@ def continue_report(model, pack, partial_report, ctx=81920, timeout=1800, seed=N
     opts = {
         "num_ctx": ctx,
         "num_predict": 32768,
-        "temperature": 0.6,
+        "temperature": temperature if temperature is not None else 0.6,
         "repeat_penalty": 1.05,
         "presence_penalty": 0.05
     }
@@ -699,6 +701,31 @@ def snapshot_research_brief(t, run_dir):
     return asof, age_days, stale
 
 
+def _load_evidence_store(store_dir):
+    """(query_cache, url_cache) loaded from `store_dir`'s JSON files, or empty dicts when the
+    store does not exist yet (its first sample). P4.0b: a battery shares ONE evidence store per
+    name across every sample of a run, so sample k sees exactly what sample 1 saw for the same
+    query/URL — `analyst_tools.search_web`/`fetch_page` already dedupe against whatever dict they
+    are given; this just makes that dict persistent and shared instead of per-call and ephemeral.
+    """
+    store_dir = Path(store_dir)
+    store_dir.mkdir(parents=True, exist_ok=True)
+    qc_path, uc_path = store_dir / "query_cache.json", store_dir / "url_cache.json"
+    query_cache = json.loads(qc_path.read_text(encoding="utf-8")) if qc_path.exists() else {}
+    url_cache = json.loads(uc_path.read_text(encoding="utf-8")) if uc_path.exists() else {}
+    return query_cache, url_cache
+
+
+def _save_evidence_store(store_dir, query_cache, url_cache):
+    """Persist the (possibly grown) evidence-store dicts back to `store_dir`. Called after every
+    sample, not only at the end, so a battery interrupted mid-run still leaves whatever evidence
+    it already gathered on disk for the next attempt to reuse."""
+    store_dir = Path(store_dir)
+    store_dir.mkdir(parents=True, exist_ok=True)
+    (store_dir / "query_cache.json").write_text(json.dumps(query_cache, indent=2), encoding="utf-8")
+    (store_dir / "url_cache.json").write_text(json.dumps(url_cache, indent=2), encoding="utf-8")
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "GOOG").upper()
@@ -720,6 +747,37 @@ def main():
     # ctx 81920 VERIFIED 2026-08-21 on rs2-analyst-deep: 22.2 GB resident, fully on GPU,
     # no CPU spill. Do not raise further without re-probing /api/ps for spill.
 
+    # P4.0b — frozen-evidence dispersion battery options ------------------------------------
+    # `--no-early-stop`: the battery needs FULL samples for dispersion, so the adaptive
+    # 2-escalate break (below, `if adaptive and i == 2`) must never fire. Passing --samples
+    # already sets adaptive False (unchanged, above); this makes that intent explicit and
+    # covers the case where the caller wants a fixed default of 3 with no early stop too.
+    no_early_stop = "--no-early-stop" in sys.argv
+    adaptive = adaptive and not no_early_stop
+    # `--out-dir`: the battery must never write into ab_reports/consensus (shared with
+    # production runs) or any ledger — it gets its own isolated root instead of OUT.
+    out_root = Path(sys.argv[sys.argv.index("--out-dir") + 1]) if "--out-dir" in sys.argv else OUT
+    # `--pack-file`: reuse a saved _pack.md verbatim (see the pack-building block below).
+    pack_file_arg = (Path(sys.argv[sys.argv.index("--pack-file") + 1])
+                     if "--pack-file" in sys.argv else None)
+    # `--evidence-store`: a persistent query/URL cache shared by every sample of this run.
+    evidence_store_dir = (Path(sys.argv[sys.argv.index("--evidence-store") + 1])
+                          if "--evidence-store" in sys.argv else None)
+    # `--temperature`: overrides the Modelfile's `PARAMETER temperature 0.6`. Refused at
+    # exactly 0 — Qwen's THINKING sampling profile (RS2-Analyst-Deep-MTP5.Modelfile's SAMPLING
+    # note) warns explicitly against greedy decoding over a long reasoning trace.
+    temperature = None
+    if "--temperature" in sys.argv:
+        try:
+            temperature = float(sys.argv[sys.argv.index("--temperature") + 1])
+        except (IndexError, ValueError) as e:
+            print(f"[consensus] ::HARD FAIL:: --temperature could not be parsed ({e})", flush=True)
+            raise
+        if temperature == 0:
+            print("[consensus] ::HARD FAIL:: --temperature 0 is refused — Qwen's thinking "
+                  "sampling profile must not be greedy-decoded, never temperature 0.", flush=True)
+            raise ValueError("temperature 0 is refused: Qwen thinking mode must not be greedy")
+
     fin = rs2_data.load_json(common.SD / "financials" / f"{t}.json") or {}
     price_override = None
     if "--price" in sys.argv:
@@ -736,12 +794,23 @@ def main():
                     if "--price-asof" in sys.argv else None)
         price_override = {"price": px_val, "asof": asof_val}
     price = price_override["price"] if price_override else vb._num(fin.get("Price"))
-    pack_text = cap.build_pack(t, price_override=price_override)
-    pack_macro_degraded = bool(getattr(pack_text, "macro_degraded", False)
-                               or getattr(cap, "LAST_PACK_MACRO_DEGRADED", False))
-    pack = pack_text + "\n\n---\n\n" + cap.TASK
+    if pack_file_arg is not None:
+        # P4.0b frozen-evidence battery: reuse a saved _pack.md VERBATIM instead of rebuilding,
+        # so every sample of a battery run — and every arm compared against it — sees a
+        # byte-identical pack. Whatever the frozen file already contains (TASK, and
+        # RESEARCH_ADDENDUM if it was built with --tools in mind) rides through unchanged.
+        pack = pack_file_arg.read_text(encoding="utf-8")
+        pack_macro_degraded = False  # unknown: the pack was not rebuilt this run
+        pack_source = f"frozen:{pack_file_arg}"
+    else:
+        pack_text = cap.build_pack(t, price_override=price_override)
+        pack_macro_degraded = bool(getattr(pack_text, "macro_degraded", False)
+                                   or getattr(cap, "LAST_PACK_MACRO_DEGRADED", False))
+        pack = pack_text + "\n\n---\n\n" + cap.TASK
+        pack_source = "fresh"
+    pack_sha256 = hashlib.sha256(pack.encode("utf-8")).hexdigest()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    d = OUT / f"{t}_{ts}"
+    d = out_root / f"{t}_{ts}"
     d.mkdir(parents=True, exist_ok=True)
     # Save the exact pack. Without it a consensus run is not re-auditable from its own directory
     # — found when three auditors had to reconstruct it independently to check the reports.
@@ -759,11 +828,28 @@ def main():
     use_tools = "--tools" in sys.argv
     if use_tools:
         import analyst_tools
-        # The no-assumption rules only make sense when the model can actually look things up.
-        pack += cap.RESEARCH_ADDENDUM
-        (d / "_pack.md").write_text(pack, encoding="utf-8")
-        print("  [tools ENABLED] search-during-reasoning rules appended; every query and page "
-              "is snapshotted per sample", flush=True)
+        if pack_file_arg is None:
+            # The no-assumption rules only make sense when the model can actually look things up.
+            pack += cap.RESEARCH_ADDENDUM
+            (d / "_pack.md").write_text(pack, encoding="utf-8")
+            pack_sha256 = hashlib.sha256(pack.encode("utf-8")).hexdigest()
+            print("  [tools ENABLED] search-during-reasoning rules appended; every query and page "
+                  "is snapshotted per sample", flush=True)
+        else:
+            # Frozen pack reused verbatim — a battery pack is built with --tools already in
+            # mind, so the addendum (if needed) was baked in when it was built, not here.
+            print("  [tools ENABLED] frozen pack reused verbatim; every query and page is "
+                  "snapshotted per sample", flush=True)
+
+    # P4.0b evidence store: one query/URL cache shared by every sample of THIS run. Loaded once
+    # here so sample 1 already sees anything a prior (interrupted) attempt gathered; saved again
+    # after every sample below so an interruption never loses what was already fetched.
+    evidence_query_cache, evidence_url_cache = {}, {}
+    if evidence_store_dir is not None:
+        evidence_query_cache, evidence_url_cache = _load_evidence_store(evidence_store_dir)
+        print(f"  [evidence-store] loaded {len(evidence_query_cache)} cached quer"
+              f"{'y' if len(evidence_query_cache) == 1 else 'ies'}, "
+              f"{len(evidence_url_cache)} cached page(s) from {evidence_store_dir}", flush=True)
 
     runs = []
     n_max = 3 if adaptive else n
@@ -773,12 +859,19 @@ def main():
         attempted = i
         t0 = time.time()
         resp, meta = {}, {}
+        # P4.0b: hits/misses against the shared evidence store, accumulated across both the
+        # initial chat_with_tools call and the empty-report retry (below) for THIS sample.
+        sample_es_hits, sample_es_misses = 0, 0
         try:
             if use_tools:
                 sd_i = d / f"sample{i}_research"
                 rep, think, meta = analyst_tools.chat_with_tools(
                     model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT,
-                    seed=1000 + i, draft_num_predict=draft_num_predict)
+                    seed=1000 + i, draft_num_predict=draft_num_predict, temperature=temperature,
+                    query_cache=evidence_query_cache if evidence_store_dir is not None else None,
+                    url_cache=evidence_url_cache if evidence_store_dir is not None else None)
+                sample_es_hits += meta.get("evidence_hits") or 0
+                sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
                         "eval_count": meta.get("generated_tokens"),
                         "eval_rate": meta.get("eval_rate"),
@@ -794,6 +887,8 @@ def main():
                 }
                 if draft_num_predict is not None:
                     opts["draft_num_predict"] = draft_num_predict
+                if temperature is not None:
+                    opts["temperature"] = temperature
                 body = {"model": model, "stream": False, "think": think_level,
                         "messages": [{"role": "user", "content": pack}],
                         "options": opts}
@@ -831,7 +926,12 @@ def main():
                   f"one retry, perturbed seed", flush=True)
             rep, think, meta = _at.chat_with_tools(
                 model, pack, d / f"sample{i}_research_retry", think=think_level, ctx=ctx,
-                num_predict=NUM_PREDICT, seed=1000 + i + 50000, draft_num_predict=draft_num_predict)
+                num_predict=NUM_PREDICT, seed=1000 + i + 50000, draft_num_predict=draft_num_predict,
+                temperature=temperature,
+                query_cache=evidence_query_cache if evidence_store_dir is not None else None,
+                url_cache=evidence_url_cache if evidence_store_dir is not None else None)
+            sample_es_hits += meta.get("evidence_hits") or 0
+            sample_es_misses += meta.get("evidence_misses") or 0
             resp = {"done_reason": meta.get("done_reason"),
                     "eval_count": meta.get("generated_tokens"),
                     "eval_rate": meta.get("eval_rate"),
@@ -850,7 +950,7 @@ def main():
             rep_cont, think_cont, meta_cont = continue_report(
                 model=model, pack=pack, partial_report=rep,
                 ctx=ctx, timeout=1800, seed=1000 + i + 100,
-                draft_num_predict=draft_num_predict)
+                draft_num_predict=draft_num_predict, temperature=temperature)
             if rep_cont and rep_cont.strip():
                 rep = rep.rstrip() + "\n\n" + rep_cont.strip()
                 (d / f"sample{i}.md").write_text(rep, encoding="utf-8")
@@ -885,6 +985,10 @@ def main():
         # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort
         # with normal siblings with no consumer able to tell.
         rescue = rescue_status(meta)
+        # P4.0b: persist the evidence store after every sample (not only at the end) so an
+        # interrupted battery run never loses evidence it already gathered.
+        if evidence_store_dir is not None:
+            _save_evidence_store(evidence_store_dir, evidence_query_cache, evidence_url_cache)
         runs.append({"sample": i, "iv": iv, "scorecard": scorecard, "all_iv_mentions": sorted(set(ivs))[:8],
                      "plausible": ok, "reasons": why, "flags": flags, "truncated": truncated,
                      "stub_rejected": rescue["stub_rejected"],
@@ -896,6 +1000,8 @@ def main():
                      "thinking_chars": len(think), "report_chars": len(rep),
                      "thinking_share_of_output": (round(len(think) / (len(think) + len(rep)), 3)
                                                   if (think or rep) else None),
+                     "evidence_store_hits": sample_es_hits if evidence_store_dir is not None else None,
+                     "evidence_store_misses": sample_es_misses if evidence_store_dir is not None else None,
                      "chars": len(rep), "secs": round(time.time() - t0)})
         rate_str = f" | {eval_rate} tok/s ({eval_dur_s}s)" if eval_rate else ""
         print(f"  sample {i}: IV ${iv if iv else '?'} | usable={ok}"
@@ -950,11 +1056,15 @@ def main():
                "NO USABLE SAMPLE — nothing parseable and complete")
     doc = {"ticker": t, "price": price, "model": model, "think": think_level,
            "draft_num_predict": draft_num_predict,
+           "temperature": temperature,
            "pack_revision": cap.PACK_REVISION,
+           "pack_source": pack_source, "pack_sha256": pack_sha256,
            "research_brief_asof": research_brief_asof,
            "research_brief_age_days": research_brief_age_days,
            "price_asof": price_override.get("asof") if price_override else None,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
+           "no_early_stop": no_early_stop,
+           "evidence_store_dir": str(evidence_store_dir) if evidence_store_dir is not None else None,
            "samples_run": len(runs), "early_stop": early_stop,
            "samples_intended": progress["samples_intended"],
            "samples_attempted": progress["samples_attempted"],
