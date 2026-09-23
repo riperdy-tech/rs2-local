@@ -438,7 +438,7 @@ def _decl(label, h, yrs, keys, held_note, gap_note):
     return (f"- **{label}: HELD**, {len(years)} year(s){partial} ({span}) - {held_note}")
 
 
-def build_pack(t):
+def build_pack(t, price_override=None):
     """Every fact we hold that is FILED, or is exact arithmetic on filed values, labelled with its
     source and its period. No judgment is exercised here: no valuation, no basis choice, no
     normalisation, no composite of our own. Where a series is known to be defective the pack says
@@ -591,8 +591,21 @@ def build_pack(t):
 
     # ---- SECTION 2 -------------------------------------------------------------------------
     px, sh = fin.get("Price"), fin.get("Shares_Outstanding")
+    if price_override is not None:
+        if isinstance(price_override, dict):
+            live_px = price_override.get("price")
+            live_asof = price_override.get("asof")
+        else:
+            live_px = float(price_override)
+            live_asof = None
+        asof_str = f", as of {live_asof}" if live_asof else ""
+        vdate = _v(fin, 'Data_Fetched_Date')
+        vpx = f"${px}" if px is not None else NULL
+        price_line = f"- Price: ${live_px} [live quote{asof_str}]   [vendor quote: {vpx} as of {vdate}]"
+    else:
+        price_line = f"- Price: ${px}" if px is not None else f"- Price: {NULL}"
     L += [f"## SECTION 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
-          f"- Price: ${px}" if px is not None else f"- Price: {NULL}",
+          price_line,
           f"- Shares outstanding: {_n(sh)}"
           + ("   <- ZERO on file. No per-share value is derivable for this name."
              if sh == 0 else ""),

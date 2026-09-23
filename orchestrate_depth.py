@@ -573,7 +573,7 @@ def run_one(t, ondemand=False):
                 return False, "watchdog_timeout"
     if rc == 0:
         return True, "ok"
-    return False, {3: "research_infra", 5: "consensus_failed", 7: "vram"}.get(rc, f"exit_{rc}")
+    return False, {3: "research_infra", 5: "consensus_failed", 7: "vram", 8: "price_unavailable"}.get(rc, f"exit_{rc}")
 
 
 def data_health_scan(book):

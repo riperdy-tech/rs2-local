@@ -47,6 +47,7 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
+import price_now            # noqa: E402  (P1.5 live price at verdict time)
 from fiduciary_gate import contract_base, validate_fiduciary_contract  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
@@ -211,13 +212,17 @@ def run_research(t):
         sys.exit(3)
 
 
-def run_consensus(t, samples=None):
+def run_consensus(t, samples=None, price_quote=None):
     """consensus_valuation.py as a subprocess (stdout inherited, so progress is visible live).
     Returns the newest consensus.json for the ticker, written by this invocation.
     Defaults to adaptive 2-escalate consensus (early-stops at n=2 if spread <= 15%, else n=3)."""
     before = {p.name for p in (HERE / "ab_reports" / "consensus").glob(f"{t}_*")}
     cmd = [sys.executable, str(HERE / "tools" / "audit_202608" / "consensus_valuation.py"),
            t, "--model", MODEL, "--ctx", str(CTX), "--think", "high"]
+    if price_quote and price_quote.get("price") is not None:
+        cmd.extend(["--price", str(price_quote["price"])])
+        if price_quote.get("asof"):
+            cmd.extend(["--price-asof", str(price_quote["asof"])])
     if samples is not None:
         cmd.extend(["--samples", str(samples)])
     if TOOLS:
@@ -538,8 +543,8 @@ def _pipeline_commit():
     return None
 
 
-def stamp_and_route(v, t, run_source):
-    """Attach the P1.2 provenance fields to verdict dict `v` (in place) and pick which ledger it
+def stamp_and_route(v, t, run_source, quote=None):
+    """Attach the P1.2/P1.5 provenance fields to verdict dict `v` (in place) and pick which ledger it
     belongs in. Returns (ledger_path, notice_or_None) — `notice` is the loud manual-run warning,
     non-None only when `run_source` resolved to "manual" (unmarked: no --ondemand, no
     --production, no recognised RS2_RUN_SOURCE).
@@ -553,11 +558,16 @@ def stamp_and_route(v, t, run_source):
     brief_asof, brief_age_days = _research_brief_provenance(t)
     v["research_brief_asof"] = brief_asof
     v["research_brief_age_days"] = brief_age_days
-    # Live price at verdict time is P1.5 — not yet captured here, so these are explicit absences,
-    # not a fabricated value. `price` above remains the pack's vendor-quote figure.
-    v["price_asof"] = None
-    v["price_source"] = None
-    v["price_asof_reason"] = "live price capture is P1.5 — not yet implemented"
+    # Live price at verdict time is P1.5 — from price_now.quote(t).
+    if quote and quote.get("price") is not None:
+        v["price"] = quote["price"]
+        v["price_asof"] = quote.get("asof")
+        v["price_source"] = quote.get("source")
+        v.pop("price_asof_reason", None)
+    else:
+        v.setdefault("price_asof", None)
+        v.setdefault("price_source", None)
+        v.setdefault("price_asof_reason", "live price capture is P1.5 — quote unavailable")
     v["gate_version"] = GATE_VERSION
     v["pipeline_commit"] = _pipeline_commit()
 
@@ -577,6 +587,13 @@ def main():
         print("usage: depth_pipeline.py TICKER [--no-research] [--ondemand] [--production] "
               "[--samples N]")
         sys.exit(2)
+
+    # LIVE PRICE AT VERDICT TIME (P1.5): obtain the quote before research; hard-fail on None.
+    quote = price_now.quote(t)
+    if not quote or quote.get("price") is None:
+        print("::HARD FAIL:: live price unavailable", flush=True)
+        sys.exit(8)
+
     # ON-DEMAND (2026-08-30): identical analysis, DIFFERENT ledger. A row in the main ledger
     # is a membership event — live_book() unions ledger tickers forever, rebuild_overlay
     # publishes the newest row unfiltered to the site, and rotation re-queues it every 90d.
@@ -588,17 +605,17 @@ def main():
     t0 = time.time()
     if "--no-research" not in sys.argv:
         run_research(t)
-    d, doc = run_consensus(t, samples=samples)
+    d, doc = run_consensus(t, samples=samples, price_quote=quote)
     v = band_verdict(doc)
     v["consensus_dir"] = d.name
     if ondemand:
         v["ondemand"] = True
 
-    # ---- provenance on every row + ledger routing (P1.2) ---------------------------------------
+    # ---- provenance on every row + ledger routing (P1.2/P1.5) -----------------------------------
     # A bare `python depth_pipeline.py TICKER` (no --ondemand/--production, no RS2_RUN_SOURCE)
     # resolves to "manual" and is routed to the test ledger, loudly — exactly how the six n=1
     # rows tools/ledger_quarantine.py moved got into the production ledger in the first place.
-    ledger, notice = stamp_and_route(v, t, run_source)
+    ledger, notice = stamp_and_route(v, t, run_source, quote=quote)
     if notice:
         print(notice, flush=True)
         try:

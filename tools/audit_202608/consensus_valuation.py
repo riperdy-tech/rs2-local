@@ -683,8 +683,17 @@ def main():
     # no CPU spill. Do not raise further without re-probing /api/ps for spill.
 
     fin = rs2_data.load_json(common.SD / "financials" / f"{t}.json") or {}
-    price = vb._num(fin.get("Price"))
-    pack = cap.build_pack(t) + "\n\n---\n\n" + cap.TASK
+    price_override = None
+    if "--price" in sys.argv:
+        try:
+            px_val = float(sys.argv[sys.argv.index("--price") + 1])
+            asof_val = (sys.argv[sys.argv.index("--price-asof") + 1]
+                        if "--price-asof" in sys.argv else None)
+            price_override = {"price": px_val, "asof": asof_val}
+        except (IndexError, ValueError):
+            pass
+    price = price_override["price"] if price_override else vb._num(fin.get("Price"))
+    pack = cap.build_pack(t, price_override=price_override) + "\n\n---\n\n" + cap.TASK
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     d = OUT / f"{t}_{ts}"
     d.mkdir(parents=True, exist_ok=True)
@@ -887,6 +896,7 @@ def main():
     doc = {"ticker": t, "price": price, "model": model, "think": think_level,
            "draft_num_predict": draft_num_predict,
            "pack_revision": cap.PACK_REVISION,
+           "price_asof": price_override.get("asof") if price_override else None,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "samples_run": len(runs), "early_stop": early_stop,
            "samples_intended": progress["samples_intended"],

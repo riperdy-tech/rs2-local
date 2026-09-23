@@ -32,10 +32,12 @@ HERE = Path(__file__).resolve().parent
 
 import sys  # noqa: E402
 
+sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 import capability_test as cap  # noqa: E402  (PACK_REVISION — see the pack trigger below)
 import rs2_data  # noqa: E402  (repo root on sys.path when imported by orchestrate_depth)
 import depth_membership as mem  # noqa: E402  (boundary dwell clocks; see re-entry / exit-review)
+import price_now  # noqa: E402  (live price capture; vendor quote is fallback — P1.5)
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -119,9 +121,20 @@ def _filings_since(cik, since_date):
 
 
 def _price_now(t):
+    """(price: float, source: str) or (None, None).
+    Tries price_now.quote() first; falls back to financials/{t}.json vendor quote.
+    """
+    try:
+        q = price_now.quote(t)
+        if q and q.get("price") is not None:
+            return float(q["price"]), q.get("source", "yfinance")
+    except Exception:
+        pass
     fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
     v = fin.get("Price")
-    return float(v) if isinstance(v, (int, float)) else None
+    if isinstance(v, (int, float)):
+        return float(v), "vendor_quote"
+    return None, None
 
 
 def triggers_for(t, verdict):
@@ -158,11 +171,13 @@ def triggers_for(t, verdict):
             else:
                 out.append(("filing_pending", f"{f} filed {dt}; our tables at {ours} - "
                             f"deferred until the data lands"))
-    p0, p1 = verdict.get("price"), _price_now(t)
+    p0 = verdict.get("price")
+    p1, src = _price_now(t)
     if p0 and p1:
         mv = abs(p1 / p0 - 1) * 100
         if mv > MOVE_PCT:
-            out.append(("move", f"price moved {mv:.1f}% since verdict (${p0} -> ${p1})"))
+            src_str = f" [{src}]" if src else ""
+            out.append(("move", f"price moved {mv:.1f}% since verdict (${p0} -> ${p1}{src_str})"))
     # PACK REVISION. A verdict is only as good as the facts the model was shown, so when the pack
     # gains data or corrects a declaration, verdicts struck under the old one are superseded.
     # Without this the book splits: on 2026-08-24 the pack stopped falsely declaring that we hold
