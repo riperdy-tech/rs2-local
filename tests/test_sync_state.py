@@ -164,6 +164,33 @@ def test_cloud_membership_merged_by_date_local_wins(tmp_path, monkeypatch):
     assert up == (cache / "depth_membership.jsonl").read_text(encoding="utf-8")
 
 
+def test_corrected_membership_row_not_merged_back(tmp_path, monkeypatch):
+    """A row removed locally by a logged membership_correction must not return from the
+    state repo, and the corrected local file must be what goes back up."""
+    clone = _make_repos(tmp_path)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "depth_membership.jsonl").write_text(
+        '{"date": "2026-09-22", "in": ["AAA"]}\n', encoding="utf-8")
+    (cache / "depth_ledger_events.jsonl").write_text(
+        json.dumps({"action": "membership_correction", "file": "depth_membership.jsonl",
+                    "removed": [{"date": "2026-09-23", "n_in": 1}]}) + "\n", encoding="utf-8")
+    (clone / "cache").mkdir()
+    (clone / "cache" / "depth_membership.jsonl").write_text(
+        '{"date": "2026-09-22", "in": ["AAA"]}\n{"date": "2026-09-23", "in": ["WRONG"]}\n'
+        '{"date": "2026-09-24", "in": ["CLOUD"]}\n', encoding="utf-8")
+    _git(clone, "add", "-A"); _git(clone, "commit", "-m", "bad row"); _git(clone, "push")
+    monkeypatch.setattr(sync_state, "CACHE", cache)
+    out = sync_state.main(repo_dir=clone)
+    assert "merge 1 cloud membership day(s)" in out     # only the genuine cloud day
+    dates = [json.loads(l)["date"] for l in (cache / "depth_membership.jsonl").read_text(
+        encoding="utf-8").splitlines()]
+    assert dates == ["2026-09-22", "2026-09-24"]
+    up = subprocess.run(["git", "-C", str(clone), "show", "@{u}:cache/depth_membership.jsonl"],
+                        capture_output=True, text=True, check=True).stdout
+    assert "WRONG" not in up
+
+
 def test_cloud_state_rows_taken_only_when_cloud_stamped_and_newer(tmp_path, monkeypatch):
     clone = _make_repos(tmp_path)
     cache = tmp_path / "cache"

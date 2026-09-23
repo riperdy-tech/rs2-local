@@ -60,6 +60,29 @@ def _import_cloud_delta(repo_dir: Path) -> int:
     return len(new)
 
 
+def _corrected_membership_dates() -> set:
+    """Dates a membership_correction event in the local events log deliberately removed.
+    Without this, a row deleted locally is still in the state repo, looks like a cloud day
+    the PC missed, and is merged straight back in."""
+    events = CACHE / "depth_ledger_events.jsonl"
+    out = set()
+    if not events.exists():
+        return out
+    for ln in events.read_text(encoding="utf-8").splitlines():
+        if not ln.strip():
+            continue
+        try:
+            ev = json.loads(ln)
+        except Exception:
+            continue
+        if ev.get("action") != "membership_correction":
+            continue
+        for r in ev.get("removed") or []:
+            if isinstance(r, dict) and r.get("date"):
+                out.add(r["date"])
+    return out
+
+
 def _import_cloud_membership(repo_dir: Path) -> int:
     """Merge membership snapshot rows the cloud continuity arm recorded while the PC was off.
     The dwell clocks (DEPTH_ORCHESTRATOR_CADENCE_20260825.md §4) advance one row per sweep-day;
@@ -82,7 +105,8 @@ def _import_cloud_membership(repo_dir: Path) -> int:
         return out
     local = CACHE / "depth_membership.jsonl"
     mine, theirs = _rows(local), _rows(src)
-    new = {d: ln for d, ln in theirs.items() if d not in mine}
+    removed = _corrected_membership_dates()
+    new = {d: ln for d, ln in theirs.items() if d not in mine and d not in removed}
     if not new:
         return 0
     mine.update(new)
