@@ -32,8 +32,6 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 from fiduciary_gate import contract_base  # noqa: E402
-import depth_gates  # noqa: E402  (single owner of gate rules — P1.3 / ITEM G)
-from depth_gates import assess, GATE_VERSION, HIGH_DISPERSION_TOL_PCT  # noqa: E402
 
 CONFIG = paths.load_config()   # STOCKS_ROOT contract: paths.py owns the peer-repo locations
 SD = Path(CONFIG["screener_data_dir"])

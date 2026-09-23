@@ -5,8 +5,10 @@ Verifies:
    - HIGH_DISPERSION_TOL_PCT (25.0)
    - GATE_VERSION (2)
    - assess(v)
-2. depth_sanity, status.py, depth_pipeline, and orchestrate_depth all import/read
-   from depth_gates rather than duplicating constants.
+2. depth_sanity and orchestrate_depth read from depth_gates (qualified — C1, Phase 1 approval
+   review: depth_sanity's and status.py's bare `from depth_gates import assess, GATE_VERSION,
+   HIGH_DISPERSION_TOL_PCT` re-exports were dead weight, confirmed unused by AST, and removed;
+   depth_pipeline reads GATE_VERSION from depth_gates; status.py does not use gate rules at all).
 3. depth_sanity.audit() dynamically respects depth_gates.HIGH_DISPERSION_TOL_PCT.
 """
 import sys
@@ -33,15 +35,16 @@ def test_single_owner_constants_and_functions():
     assert dg.HIGH_DISPERSION_TOL_PCT == 25.0
     assert callable(dg.assess)
 
-    # depth_sanity imports from depth_gates
-    assert ds.HIGH_DISPERSION_TOL_PCT is dg.HIGH_DISPERSION_TOL_PCT
-    assert ds.GATE_VERSION is dg.GATE_VERSION
-    assert ds.assess is dg.assess
+    # depth_sanity reads depth_gates qualified (C1: the bare re-export was unused, removed)
+    assert ds.depth_gates is dg
+    assert ds.depth_gates.HIGH_DISPERSION_TOL_PCT is dg.HIGH_DISPERSION_TOL_PCT
 
-    # status imports from depth_gates
-    assert status.GATE_VERSION is dg.GATE_VERSION
-    assert status.HIGH_DISPERSION_TOL_PCT is dg.HIGH_DISPERSION_TOL_PCT
-    assert status.assess is dg.assess
+    # status.py does not use gate rules at all (C1: assess/GATE_VERSION/HIGH_DISPERSION_TOL_PCT
+    # were imported and never referenced — confirmed unused by AST and removed)
+    assert not hasattr(status, "assess")
+    assert not hasattr(status, "GATE_VERSION")
+    assert not hasattr(status, "HIGH_DISPERSION_TOL_PCT")
+    assert not hasattr(status, "depth_gates")
 
     # depth_pipeline reads GATE_VERSION from depth_gates
     assert dp.GATE_VERSION is dg.GATE_VERSION

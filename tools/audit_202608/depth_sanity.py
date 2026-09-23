@@ -44,8 +44,7 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 # "I/O operation on closed file". Importing it is enough to get utf-8 output.
 from consensus_valuation import extract_iv  # noqa: E402
 from fiduciary_gate import contract_base  # noqa: E402  (single owner for the contract base)
-import depth_gates  # noqa: E402  (single owner of gate rules / assess / GATE_VERSION)
-from depth_gates import assess, GATE_VERSION, HIGH_DISPERSION_TOL_PCT  # noqa: E402
+import depth_gates  # noqa: E402  (single owner of gate rules; HIGH_DISPERSION_TOL_PCT below)
 
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 CONS = HERE / "ab_reports" / "consensus"
