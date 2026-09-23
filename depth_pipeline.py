@@ -368,7 +368,7 @@ def band_verdict(doc):
          "pack_revision": doc.get("pack_revision", 1),
          "scheme": "band_direction_v1"}
 
-    # Attach Institutional Scorecard Underwriting Contract (Charter v3.1 / Section 12)
+    # Attach Institutional Scorecard Underwriting Contract (Charter v3.0 / Section 12)
     scorecard = doc.get("scorecard") or {}
     v.update({
         "scorecard": scorecard,
@@ -401,7 +401,7 @@ def band_verdict(doc):
 
     if price > ivs[-1]:
         d = "overvalued"        # every plausible draw values it below the price
-        # Asymmetric Compounder Moat Override (Charter v3.1 / Anti-Vacuum Principle):
+        # Asymmetric Compounder Moat Override (Charter v3.0 / Anti-Vacuum Principle):
         # A wide-moat compounder (moat >= 4.0, skew >= 2.0x, positive Kelly) trading near Base IV (<= 10%)
         # represents durable compounding with massive asymmetric upside; do not label cigar-butt "overvalued".
         moat = scorecard.get("median_quality_moat") or scorecard.get("business_quality_moat")

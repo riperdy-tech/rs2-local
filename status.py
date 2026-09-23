@@ -437,7 +437,7 @@ def depth_snapshot():
     L.append("─" * 80)
 
     # ── Recent Institutional Underwritings Table (Section 12 Contract)
-    L.append("  RECENT INSTITUTIONAL UNDERWRITINGS (Charter v3.1 / Section 12):")
+    L.append("  RECENT INSTITUTIONAL UNDERWRITINGS (Charter v3.0 / Section 12):")
     if verdicts:
         recent = sorted(verdicts.values(), key=lambda v: v.get("consensus_dir", v.get("date", "")), reverse=True)[:6]
         header = f"  {'Ticker':<6} {'Verdict':<12} {'Completed':<10} {'Price':<9} {'Median IV':<9} {'Base IV':<9} {'Spread':<8} {'Moat':<7} {'Convict':<8} {'Kelly%':<8} {'Skew':<6}"

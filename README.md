@@ -86,6 +86,119 @@ Corpus integrity is a blocking sweep gate: `data_health.py --gate-live`.
 full-text site bundles (`publish_reports.py`) → append-only `rs2_verdict_log.jsonl` ledger →
 graded weekly by the screener's `grade_rs2_verdicts.py` (30/91/182/365d vs IWM/SPY/QQQ).
 
+## Verdict provenance and gating (P1.2/P1.3/P1.5)
+
+Every depth verdict (`verdict_depth.json`, each ledger row) carries, stamped by
+`depth_pipeline.stamp_and_route()`:
+
+- `run_source` — how the run was invoked, resolved by `depth_pipeline._run_source()`:
+  `--ondemand` always wins; then the `RS2_RUN_SOURCE` env var a spawner sets
+  (`orchestrator` | `cloud`); then `--production` for an operator-invoked production run;
+  anything else is `manual` — a bare, unmarked `python depth_pipeline.py TICKER`.
+- `arm` — always `"local"` today (this is the local-Ollama pipeline).
+- `pack_source` — always `"fresh"` today.
+- `research_brief_asof` / `research_brief_age_days` — the mtime of `research/{T}.md` at verdict
+  time, or both `None` if the brief does not exist. Never fabricated.
+- `price_asof` / `price_source` / `price_asof_basis` — from `price_now.quote()` (below).
+  `price_asof_basis: "fast_info_unverified"` marks a quote that fell back to an unsettled
+  `fast_info` price rather than a verified daily close; it is absent (`None`) for a verified
+  close. `price_asof_reason` explains a missing quote on the rare path where one is genuinely
+  unavailable after `main()`'s own hard-fail check.
+- `gate_version` — the schema version this verdict was stamped with (see `depth_gates.py`).
+- `pipeline_commit` — `git rev-parse --short HEAD` at verdict time, best-effort, `None` on
+  failure.
+
+### Live price at verdict time — `price_now.py` (P1.5)
+
+`price_now.quote(ticker)` fetches a live quote via yfinance and runs before research on every
+`depth_pipeline.py` invocation; if it returns nothing, `main()` hard-fails with **exit code 8**
+("live price unavailable") before any research or model work starts. It refuses a quote older
+than 4 calendar days, and checks the *newest* daily-close row before dropping NaNs: if that row
+is NaN (today's session, unsettled) or dated later than the newest row with a usable close, it
+refuses the older close and falls back to `fast_info.last_price` instead, stamped with the
+newest row's own session date and `asof_basis: "fast_info_unverified"` — never silently serving
+a stale close. `yfinance` is imported lazily inside the function so importing `price_now` never
+requires it (the cloud continuity arm has no install step for it). Returns `None` on any network
+failure or unparseable quote.
+
+### Gate on read, not on write — `depth_gates.py` (P1.3)
+
+`depth_gates.assess(v)` is the single owner of what makes a published verdict `actionable`. It
+never mutates or drops a ledger row (non-negotiable 3: annotate, never silently gate) — it
+judges one on read and returns `(actionable: bool, reasons: list[str])`, evaluating every
+applicable reason so a row can carry more than one at once:
+
+1. `direction` not one of `undervalued`/`hold`/`overvalued` -> `not_usable`
+2. `gate_version` absent or `< GATE_VERSION` (currently 2) -> `pre_v3.1_gates`
+3. `n_basis == 1` -> `single_sample`
+4. `fiduciary_verdict == "FAIL"` -> `fiduciary_fail`
+5. `direction == overvalued` and `kelly_fraction_pct > 0` -> `kelly_on_overvalued`
+6. `direction == undervalued` and `spread_pct > 25` -> `high_dispersion`
+7. `run_source` in `{manual, test}` -> `non_production_row`
+
+`orchestrate_depth.rebuild_overlay()` runs every ledger row's newest-per-ticker through
+`assess()` and adds `actionable` / `actionable_reasons` / `gate_version` to each row, plus
+top-level `actionable_count` and `gate_version` on `cache/depth_overlay.json` — additive only,
+the row itself is never dropped. A verdict whose `direction` is the malfunction sentinel
+`NOT_USABLE` (zero plausible complete samples) publishes `direction: null, status: "not_usable"`
+instead of leaking that sentinel; every other row publishes `status: "ok"`.
+
+### Ledgers and the events log
+
+Three append-only ledgers under `cache/`, routed by `run_source` in `stamp_and_route()`:
+
+| File | Written when |
+|---|---|
+| `depth_ledger.jsonl` | `run_source` is `orchestrator`, `cloud`, or `manual_production` (`--production`) — the production book |
+| `depth_ondemand_ledger.jsonl` | `run_source == "ondemand"` (`--ondemand`) — nothing downstream reads it (see `depth_ondemand.py`) |
+| `depth_test_ledger.jsonl` | `run_source == "manual"` — a bare, unmarked invocation with no `--ondemand`/`--production`/`RS2_RUN_SOURCE`; a loud Telegram notice fires so it is never mistaken for a production row |
+
+`cache/depth_ledger_events.jsonl` is a separate append-only log of operator/administrative
+actions on the ledger: quarantine events (`tools/ledger_quarantine.py`) and
+`membership_correction` events — a membership row deliberately removed from
+`cache/depth_membership.jsonl`, honoured by `sync_state._corrected_membership_dates()` so the
+corrected local file, not the pre-correction `rs2-state` copy, wins the next sync (see below).
+
+### Factor guard — `--ignore-factor-guard`, `factor_max_age_h`
+
+`depth_membership.check_factor_scores()` refuses to snapshot membership — and
+`orchestrate_depth.main()` refuses to run at all — unless `factor_scores.json`'s `engine` is
+exactly `dual_door_dynamic_macro_v2_cluster_guarded` and its `generated_at` is no older than
+`CONFIG["factor_max_age_h"]` and no more than 5 minutes (clock-skew tolerance) in the future; a
+future-dated file is refused rather than passing on a negative age. `--ignore-factor-guard` on
+`orchestrate_depth.py` bypasses both the sweep-level refusal and the membership-snapshot guard —
+deliberate recovery only, never a default.
+
+### Research brief staleness — `research_max_age_days`, `deep_research.py --force`
+
+`consensus_valuation.snapshot_research_brief()` reads `CONFIG["research_max_age_days"]` and
+compares it against the on-disk `research/{T}.md`'s age on every path that consumes the brief,
+including `depth_pipeline.py --no-research` (which skips `run_research` entirely and reads
+whatever brief is already on disk, at any age). A brief older than the ceiling never blocks the
+run — it rides onto the verdict as a `stale_research_brief` per-sample flag (non-negotiable 3:
+annotate, never gate), which `band_verdict` aggregates into the published verdict's `flags`.
+`deep_research.py --force` skips the cache-freshness check and rebuilds the brief
+unconditionally; `deep_research.fresh()`'s own 7-day `research_cache_days` rule already rebuilds
+anything older than that, so `--force` only matters on a brief the 7-day rule already refused to
+reuse.
+
+### `rs2-state` backup — `rs2_state_dir` / `RS2_STATE_DIR`
+
+`paths.py` resolves `rs2_state_dir` (candidate `rs2-state`, env override `RS2_STATE_DIR`) as a
+**required** key in `load_config()` — every rs2-local entry point raises if the backup store
+cannot be found, not only `sync_state.py`. `sync_state.py` is what actually reads/writes it: it
+imports cloud-arm membership and verdict deltas, runs the same `audit_verdict()` every local
+append path calls against each imported row, and honours `membership_correction` events (above)
+so a locally corrected row is never re-imported from the stale `rs2-state` copy.
+
+### Suite guard — repo-root `conftest.py`
+
+A repo-root `conftest.py` (the common ancestor of `tests/` and `tools/audit_202608/tests/`, so
+it loads for the canonical `pytest tests tools/audit_202608/tests` invocation) snapshots every
+file's mtime under `cache/` before each test and fails the test if any file's mtime changed or a
+file was added or removed — the backstop against a test writing into production `cache/` state,
+present and future, not only the specific tests that caused that class of defect.
+
 ## Where the truth lives
 
 - `CLAUDE.md` — standard of proof (read it first)

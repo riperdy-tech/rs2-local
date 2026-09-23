@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""depth_gates.py — SINGLE OWNER of what makes a depth verdict `actionable` (Charter v3.1, P1.3).
+"""depth_gates.py — SINGLE OWNER of what makes a depth verdict `actionable` (Charter v3.0, P1.3).
 
 Phase 1 (stocks-workspace/docs/review_2026-09-22/PHASE_1_INTEGRITY_HYGIENE.md), item P1.3.
 
 GATE ON READ, NOT ON WRITE. Nothing here deletes a ledger row or mutates a verdict — it only
 judges one, exactly like non-negotiable 3 (annotate, never silently gate) requires. Today's
-ledger holds test rows, pre-Charter-v3.1 rows, and rows today's own dispersion/fiduciary bars
-would reject; those rows stay in the ledger (the append-only record) and simply publish with
+ledger holds test rows, rows with `gate_version` absent or < 2 (published as reason
+`pre_v3.1_gates` — the string is a published contract value and is kept even though the current
+charter is v3.0, see AGENTS.md §1), and rows today's own dispersion/fiduciary bars would reject;
+those rows stay in the ledger (the append-only record) and simply publish with
 `actionable: false` and the reasons why, so a consumer can filter without the row disappearing.
 
 `GATE_VERSION` moved here from `depth_pipeline.py` (P1.2): that module still WRITES the field on

@@ -32,7 +32,7 @@ compared to enterprise value" — textbook-correct in general, and wrong here, b
 so bridging to enterprise value subtracted the debt claim twice. The argument sounded rigorous and
 was never checked against the definition of the input. Measure first. Every time.
 
-## 1. Valuation doctrine — Charter v3.1
+## 1. Valuation doctrine — Charter v3.0 (the v3.1 revision is the Phase 4 target)
 
 This governs prompt engineering, valuation logic, research synthesis and execution models in this
 repository. It is the repository-specific half of the standard above.
@@ -90,6 +90,8 @@ contract.
 | Per ticker | `depth_pipeline.py` | bounded research, adaptive 2-escalate consensus, medoid scorecard, fiduciary contract gate, sanity audit |
 | Consensus | `tools/audit_202608/consensus_valuation.py` | seeded samples with tools; early-stops at n=2 when the pair agrees within 15%, else escalates to a third |
 | Research tools | `tools/audit_202608/analyst_tools.py` | SearXNG search during reasoning, every query and page snapshotted into the run directory |
+| Gate on read | `depth_gates.py` | single owner of what makes a published verdict `actionable`; annotates the ledger row, never mutates or drops it |
+| Live price | `price_now.py` | live quote at verdict time via yfinance, staleness-refusing; `depth_pipeline.main()` hard-fails (exit code 8) without one |
 
 Valuation support remains deterministic Python: `valuation_backbone.py` solves the growth the
 market price implies and is consumed as evidence, not as the published number.
@@ -104,6 +106,8 @@ is blind. Do not "fix" that branch into a warning — being blind is exactly the
 
 Scheduling is the Windows task "RS2-Depth-Orchestrator" (`register_depth_task.ps1`), every four
 hours. Pause with `cache/DEPTH_PAUSED`; monitor with `status.py` or `telegram_status_bot.py`.
+`DEPTH_PAUSED` does **not** stop the cloud continuity arm (`api_llm/cloud_backstop.py`, GitHub
+Actions) — it gates only on off-peak hours and PC heartbeat and reads nothing under `cache/`.
 
 The pre-Charter five-stage pipeline (`run_rs2.py`, `orchestrate.py` and their Modelfiles) is
 retired under `_archive/retired_20260920/`. It is history, not a fallback — do not restore a path
