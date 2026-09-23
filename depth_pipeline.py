@@ -29,6 +29,7 @@ Exit codes match run_rs2 conventions so the orchestrator can say why a ticker fa
 """
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -53,6 +54,14 @@ SD = Path(CONFIG["screener_data_dir"])
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
 # On-demand one-shots land here instead — invisible to live_book/overlay/triggers by design.
 OD_LEDGER = HERE / "cache" / "depth_ondemand_ledger.jsonl"
+# A run with no recognised provenance (no --ondemand, no RS2_RUN_SOURCE, no --production) is not
+# a production verdict — it lands here, same file tools/ledger_quarantine.py moved the six manual
+# n=1 rows to, and never reaches live_book/overlay/triggers.
+TEST_LEDGER = HERE / "cache" / "depth_test_ledger.jsonl"
+
+# Contract/gate schema version this pipeline writes. Rows without a gate_version are version 1
+# (pre-P1.2). Bump this whenever a field `depth_gates.assess()` reads changes meaning.
+GATE_VERSION = 2
 
 # ---- spec constants (operator-accepted 2026-08-21) ------------------------------------------
 SAMPLES = int(CONFIG.get("depth_samples", 3))       # 3 flat — cost accepted
@@ -488,11 +497,85 @@ def band_verdict(doc):
     return fiduciary_verdict_gate(v, price)
 
 
+def _run_source():
+    """Resolution order (P1.2): --ondemand always wins (it is an explicit, unambiguous request);
+    then the env marker a spawner sets (RS2_RUN_SOURCE=orchestrator|cloud); then --production for
+    an operator-invoked production run; anything else is an unmarked manual run and is routed to
+    the test ledger, never the production one."""
+    if "--ondemand" in sys.argv:
+        return "ondemand"
+    env_src = os.environ.get("RS2_RUN_SOURCE")
+    if env_src in ("orchestrator", "cloud"):
+        return env_src
+    if "--production" in sys.argv:
+        return "manual_production"
+    return "manual"
+
+
+def _research_brief_provenance(t):
+    """(research_brief_asof ISO string, age_days) from research/{T}.md's mtime, or (None, None)
+    if the brief does not exist — never a fabricated freshness."""
+    path = Path(CONFIG["out_research_dir"]) / f"{t.upper()}.md"
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None, None
+    asof = datetime.fromtimestamp(mtime).isoformat()
+    age_days = round((time.time() - mtime) / 86400, 2)
+    return asof, age_days
+
+
+def _pipeline_commit():
+    """`git rev-parse --short HEAD`, best-effort. None on any failure — never fabricated."""
+    try:
+        r = subprocess.run(["git", "-C", str(HERE), "rev-parse", "--short", "HEAD"],
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            sha = r.stdout.strip()
+            return sha or None
+    except Exception:
+        pass
+    return None
+
+
+def stamp_and_route(v, t, run_source):
+    """Attach the P1.2 provenance fields to verdict dict `v` (in place) and pick which ledger it
+    belongs in. Returns (ledger_path, notice_or_None) — `notice` is the loud manual-run warning,
+    non-None only when `run_source` resolved to "manual" (unmarked: no --ondemand, no
+    --production, no recognised RS2_RUN_SOURCE).
+
+    Split out of `main()` so routing/stamping is testable against a synthetic verdict without
+    spawning the research/consensus subprocesses (tests/test_depth_pipeline_routing.py).
+    """
+    v["run_source"] = run_source
+    v["arm"] = "local"
+    v["pack_source"] = "fresh"
+    brief_asof, brief_age_days = _research_brief_provenance(t)
+    v["research_brief_asof"] = brief_asof
+    v["research_brief_age_days"] = brief_age_days
+    # Live price at verdict time is P1.5 — not yet captured here, so these are explicit absences,
+    # not a fabricated value. `price` above remains the pack's vendor-quote figure.
+    v["price_asof"] = None
+    v["price_source"] = None
+    v["price_asof_reason"] = "live price capture is P1.5 — not yet implemented"
+    v["gate_version"] = GATE_VERSION
+    v["pipeline_commit"] = _pipeline_commit()
+
+    if run_source == "ondemand":
+        return OD_LEDGER, None
+    if run_source in ("orchestrator", "cloud", "manual_production"):
+        return LEDGER, None
+    notice = (f"[depth] ::NOTICE:: manual run (no --ondemand, no --production, no "
+              f"RS2_RUN_SOURCE) — {t} written to {TEST_LEDGER.name}, NOT the production ledger")
+    return TEST_LEDGER, notice
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "").upper()
     if not t:
-        print("usage: depth_pipeline.py TICKER [--no-research] [--ondemand] [--samples N]")
+        print("usage: depth_pipeline.py TICKER [--no-research] [--ondemand] [--production] "
+              "[--samples N]")
         sys.exit(2)
     # ON-DEMAND (2026-08-30): identical analysis, DIFFERENT ledger. A row in the main ledger
     # is a membership event — live_book() unions ledger tickers forever, rebuild_overlay
@@ -501,6 +584,7 @@ def main():
     # OD_LEDGER, which nothing downstream reads (see depth_ondemand.py).
     ondemand = "--ondemand" in sys.argv
     samples = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else None
+    run_source = _run_source()
     t0 = time.time()
     if "--no-research" not in sys.argv:
         run_research(t)
@@ -509,8 +593,21 @@ def main():
     v["consensus_dir"] = d.name
     if ondemand:
         v["ondemand"] = True
+
+    # ---- provenance on every row + ledger routing (P1.2) ---------------------------------------
+    # A bare `python depth_pipeline.py TICKER` (no --ondemand/--production, no RS2_RUN_SOURCE)
+    # resolves to "manual" and is routed to the test ledger, loudly — exactly how the six n=1
+    # rows tools/ledger_quarantine.py moved got into the production ledger in the first place.
+    ledger, notice = stamp_and_route(v, t, run_source)
+    if notice:
+        print(notice, flush=True)
+        try:
+            ops.notify_telegram(notice)
+        except Exception:
+            pass
+
     (d / "verdict_depth.json").write_text(json.dumps(v, indent=2), encoding="utf-8")
-    ledger = OD_LEDGER if ondemand else LEDGER
+
     ledger.parent.mkdir(exist_ok=True)
     with ledger.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(v) + "\n")
@@ -534,10 +631,10 @@ def main():
                 + f" | {time.time()-t0:.0f}s")
         except Exception:
             pass
-    audit_verdict(t, ondemand)
+    audit_verdict(t, ledger)
 
 
-def audit_verdict(t, ondemand=False):
+def audit_verdict(t, ledger=LEDGER):
     """Run depth_sanity on the verdict just written, IN THIS PROCESS.
 
     Until now the only caller of depth_sanity was an interactive watcher script that lived
@@ -549,13 +646,16 @@ def audit_verdict(t, ondemand=False):
     Never fatal: a defect in the auditor must not fail a ticker whose analysis is sound (the same
     rule the old pipeline learned when an oversized audit context killed a good MU run). A FAIL
     is recorded and alerted; the verdict still stands and the operator decides.
+
+    `ledger`: the ledger this verdict was actually appended to (P1.2 routes on `run_source`, so
+    it is not always the production LEDGER). Every append path is audited against ITS OWN ledger
+    (P1.8) — without the override sanity would audit the ticker's stale production-ledger row, or
+    report "no verdict on file", for anything written to OD_LEDGER or TEST_LEDGER.
     """
     try:
-        # --ledger: an on-demand verdict lives in OD_LEDGER; without the override sanity
-        # would audit the ticker's STALE main-ledger row (or report "no verdict on file").
         r = subprocess.run(
             [sys.executable, str(HERE / "tools" / "audit_202608" / "depth_sanity.py"), t]
-            + (["--ledger", str(OD_LEDGER)] if ondemand else []),
+            + (["--ledger", str(ledger)] if ledger != LEDGER else []),
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
         out = (r.stdout or "").strip()
         print(out, flush=True)

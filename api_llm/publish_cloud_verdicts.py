@@ -43,6 +43,7 @@ sys.path.insert(0, str(ROOT / "tools" / "audit_202608"))
 
 _STDOUT_KEEPALIVE = [sys.stdout]
 import orchestrate_depth as od     # noqa: E402  rebuild_overlay, publish_overlay, LEDGER, SD
+import depth_pipeline as dp        # noqa: E402  GATE_VERSION (single owner, P1.2)
 
 DEEP_API = HERE / "deep_api"
 # Only the arm that was actually validated at scale. deepseek-v4-pro was run on ONE ticker as a
@@ -151,7 +152,9 @@ def main():
                     "research_brief_age_days": doc.get("research_brief_age_days"),
                     "pack_revision": doc.get("pack_revision", 1),
                     "published_by": "api_llm/publish_cloud_verdicts.py",
-                    "published_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+                    "published_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "run_source": "cloud",
+                    "gate_version": dp.GATE_VERSION})
         rec.setdefault("date", datetime.now().strftime("%Y-%m-%d"))
         lines.append(json.dumps(rec))
         bundles += write_bundle(t, d, doc, rec)

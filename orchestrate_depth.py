@@ -514,7 +514,8 @@ def run_one(t, ondemand=False):
     Kills the process tree ONLY if no sample has completed within SAMPLE_TIMEOUT_MIN (120 min),
     ensuring legitimate multi-sample runs are never terminated by an arbitrary total wall clock."""
     proc = subprocess.Popen([sys.executable, str(HERE / "depth_pipeline.py"), t]
-                            + (["--ondemand"] if ondemand else []))
+                            + (["--ondemand"] if ondemand else []),
+                            env={**os.environ, "RS2_RUN_SOURCE": "orchestrator"})
     last_progress = time.time()
 
     def _sample_progress_probe():
@@ -706,11 +707,13 @@ def main():
             rec = st.get(t) or {}
             if ok:
                 st[t] = {"ok": True, "finished_at": time.time(),
-                         "date": datetime.now().strftime("%Y-%m-%d %H:%M")}
+                         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                         "run_source": "orchestrator"}
             else:
                 st[t] = {"ok": False, "why": why,
                          "retries": rec.get("retries", 0) + 1,
-                         "date": datetime.now().strftime("%Y-%m-%d %H:%M")}
+                         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                         "run_source": "orchestrator"}
                 log(f"   {t} FAILED ({why}) — retries {st[t]['retries']}/{MAX_RETRIES}")
                 if st[t]["retries"] >= MAX_RETRIES:
                     try:
