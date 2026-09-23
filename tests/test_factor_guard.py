@@ -125,6 +125,8 @@ def test_snapshot_ignore_factor_guard_override(tmp_path, make_factor_file, monke
 def test_orchestrate_depth_main_refuses_bad_engine(tmp_path, monkeypatch):
     progress_file = tmp_path / "depth_progress.json"
     monkeypatch.setattr(od, "PROGRESS", progress_file)
+    monkeypatch.setattr(od, "DEPTH_LOG", tmp_path / "depth_orchestrate.log")
+    monkeypatch.setattr(od, "STATE", tmp_path / "depth_state.json")
     monkeypatch.setattr(dm, "check_factor_scores", lambda **kw: (False, "engine mismatch: test error"))
     notified = []
     monkeypatch.setattr(od.ops, "notify_telegram", lambda msg: notified.append(msg))
@@ -143,6 +145,8 @@ def test_orchestrate_depth_main_refuses_bad_engine(tmp_path, monkeypatch):
 def test_orchestrate_depth_main_tickers_does_not_bypass(tmp_path, monkeypatch):
     progress_file = tmp_path / "depth_progress.json"
     monkeypatch.setattr(od, "PROGRESS", progress_file)
+    monkeypatch.setattr(od, "DEPTH_LOG", tmp_path / "depth_orchestrate.log")
+    monkeypatch.setattr(od, "STATE", tmp_path / "depth_state.json")
     monkeypatch.setattr(dm, "check_factor_scores", lambda **kw: (False, "stale factor_scores: 55h > 48h"))
     monkeypatch.setattr(od.ops, "notify_telegram", lambda msg: None)
     monkeypatch.setattr(sys, "argv", ["orchestrate_depth.py", "--tickers", "AAPL", "--dry-run"])
@@ -154,8 +158,20 @@ def test_orchestrate_depth_main_tickers_does_not_bypass(tmp_path, monkeypatch):
 
 
 def test_orchestrate_depth_main_ignore_factor_guard_bypasses(tmp_path, monkeypatch):
+    # ignore_factor_guard=True makes main() fall through the guard and run the rest of the
+    # dry-run path for real: it hits depth_membership.snapshot() (writes dm.LOG),
+    # depth_triggers.trigger_map()/newest_verdicts() (yfinance + SEC), and data_health_scan()
+    # (scans fundamentals_history.json for the whole book). All are isolated/stubbed here — this
+    # is the exact test the review found writing a wrong-engine row into the real
+    # cache/depth_membership.jsonl and appending to cache/depth_orchestrate.log (B2).
     progress_file = tmp_path / "depth_progress.json"
     monkeypatch.setattr(od, "PROGRESS", progress_file)
+    monkeypatch.setattr(od, "DEPTH_LOG", tmp_path / "depth_orchestrate.log")
+    monkeypatch.setattr(od, "STATE", tmp_path / "depth_state.json")
+    monkeypatch.setattr(dm, "LOG", tmp_path / "depth_membership.jsonl")
+    monkeypatch.setattr(od.depth_triggers, "trigger_map", lambda book: {})
+    monkeypatch.setattr(od.depth_triggers, "newest_verdicts", lambda: {})
+    monkeypatch.setattr(od, "data_health_scan", lambda book: None)
     monkeypatch.setattr(dm, "check_factor_scores", lambda **kw: (False, "should be ignored"))
     monkeypatch.setattr(sys, "argv", ["orchestrate_depth.py", "--ignore-factor-guard", "--dry-run"])
 
