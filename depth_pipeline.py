@@ -304,7 +304,10 @@ CONTRACT_PASSTHROUGH = (
     "terminal_method", "terminal_multiple_or_g", "fade_years",
     "stage1_growth_path", "guidance_deviation_reason", "cycle_evidence",
     "verdict_label", "desk_calls", "desk_iv_match",
-    "desk_reverse_neutral_cagr", "coe_minus_anchor"
+    "desk_reverse_neutral_cagr", "coe_minus_anchor",
+    # P4.2 momentum mandate (Section 12 contract)
+    "momentum_view", "entry_timing", "momentum_flip_condition",
+    "momentum_break_rule", "invalidation_rules",
 )
 
 
@@ -436,6 +439,16 @@ def band_verdict(doc):
         "desk_iv_match": scorecard.get("desk_iv_match"),
         "desk_reverse_neutral_cagr": scorecard.get("desk_reverse_neutral_cagr"),
         "coe_minus_anchor": scorecard.get("coe_minus_anchor"),
+        "momentum_view": scorecard.get("momentum_view"),
+        "entry_timing": scorecard.get("entry_timing"),
+        "momentum_flip_condition": scorecard.get("momentum_flip_condition"),
+        "momentum_break_rule": scorecard.get("momentum_break_rule"),
+        "invalidation_rules": scorecard.get("invalidation_rules"),
+        # Rule 11: doc-level (not scorecard/medoid-level) — the §1.6/§2.5 blocks the pack build
+        # actually printed to the analyst, copied straight from consensus.json (T2 whitelisting
+        # pattern: the harness records them, the model never declares them).
+        "momentum_state": doc.get("momentum_state"),
+        "active_shocks_at_verdict": doc.get("active_shocks_at_verdict"),
     })
 
     if not ivs or not price:

@@ -156,6 +156,12 @@ def extract_scorecard(report, price):
         "guidance_deviation_reason": None,
         "cycle_evidence": None,
         "verdict_label": None,
+        # P4.2 declared inputs (Section 12 contract, momentum mandate)
+        "momentum_view": None,
+        "entry_timing": None,
+        "momentum_flip_condition": None,
+        "momentum_break_rule": None,
+        "invalidation_rules": None,
         # Harness-filled per sample from tool snapshot (not declared by model)
         "desk_calls": None,
         "desk_iv_match": None,
@@ -181,6 +187,10 @@ def extract_scorecard(report, price):
                 card["terminal_method"] = str(card["terminal_method"]).strip().lower()
             if card.get("valuation_frame"):
                 card["valuation_frame"] = str(card["valuation_frame"]).strip().lower()
+            if card.get("momentum_view"):
+                card["momentum_view"] = str(card["momentum_view"]).strip().lower()
+            if card.get("entry_timing"):
+                card["entry_timing"] = str(card["entry_timing"]).strip().lower()
             if card["base_iv"] and price and 0.02 * price <= card["base_iv"] <= 10 * price:
                 return card
         except Exception:
@@ -442,6 +452,8 @@ def select_medoid_scorecard(
             "valuation_frame": None, "terminal_method": None, "terminal_multiple_or_g": None,
             "fade_years": None, "stage1_growth_path": None, "guidance_deviation_reason": None,
             "cycle_evidence": None, "verdict_label": None,
+            "momentum_view": None, "entry_timing": None, "momentum_flip_condition": None,
+            "momentum_break_rule": None, "invalidation_rules": None,
             "desk_calls": None, "desk_iv_match": None,
             "desk_reverse_neutral_cagr": None, "coe_minus_anchor": None,
         }
@@ -504,6 +516,11 @@ def select_medoid_scorecard(
             "guidance_deviation_reason": san_fb.get("guidance_deviation_reason"),
             "cycle_evidence": san_fb.get("cycle_evidence"),
             "verdict_label": san_fb.get("verdict_label"),
+            "momentum_view": san_fb.get("momentum_view"),
+            "entry_timing": san_fb.get("entry_timing"),
+            "momentum_flip_condition": san_fb.get("momentum_flip_condition"),
+            "momentum_break_rule": san_fb.get("momentum_break_rule"),
+            "invalidation_rules": san_fb.get("invalidation_rules"),
             "desk_calls": san_fb.get("desk_calls"),
             "desk_iv_match": san_fb.get("desk_iv_match"),
             "desk_reverse_neutral_cagr": san_fb.get("desk_reverse_neutral_cagr"),
@@ -584,6 +601,11 @@ def select_medoid_scorecard(
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
+        "momentum_view": medoid_card.get("momentum_view"),
+        "entry_timing": medoid_card.get("entry_timing"),
+        "momentum_flip_condition": medoid_card.get("momentum_flip_condition"),
+        "momentum_break_rule": medoid_card.get("momentum_break_rule"),
+        "invalidation_rules": medoid_card.get("invalidation_rules"),
         "desk_calls": medoid_card.get("desk_calls"),
         "desk_iv_match": medoid_card.get("desk_iv_match"),
         "desk_reverse_neutral_cagr": medoid_card.get("desk_reverse_neutral_cagr"),
@@ -1062,12 +1084,17 @@ def main():
         pack = pack_file_arg.read_text(encoding="utf-8")
         pack_macro_degraded = False  # unknown: the pack was not rebuilt this run
         pack_source = f"frozen:{pack_file_arg}"
+        pack_active_shocks, pack_momentum_state = None, None  # unknown: not rebuilt this run
     else:
         pack_text = cap.build_pack(t, price_override=price_override)
         pack_macro_degraded = bool(getattr(pack_text, "macro_degraded", False)
                                    or getattr(cap, "LAST_PACK_MACRO_DEGRADED", False))
         pack = pack_text + "\n\n---\n\n" + cap.TASK
         pack_source = "fresh"
+        # Rule 11 (verdict stamping, C1 + P4.3 prep): the exact §1.6/§2.5 blocks THIS pack build
+        # printed, so consensus.json (below) can record what the analyst actually saw.
+        pack_active_shocks = list(getattr(cap, "LAST_PACK_ACTIVE_SHOCKS", []) or [])
+        pack_momentum_state = dict(getattr(cap, "LAST_PACK_MOMENTUM_STATE", {}) or {})
     pack_sha256 = hashlib.sha256(pack.encode("utf-8")).hexdigest()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     d = out_root / f"{t}_{ts}"
@@ -1358,6 +1385,11 @@ def main():
            "research_brief_age_days": research_brief_age_days,
            "research_brief_stale": research_brief_stale,
            "research_wrong_company": research_wrong_company,
+           # Rule 11: the §1.6 active-shock list and the exact §2.5 momentum_state block this
+           # pack build printed to the analyst — None on a frozen `--pack-file` reuse, since no
+           # build_pack() call ran this time to know what it would have printed.
+           "active_shocks_at_verdict": pack_active_shocks,
+           "momentum_state": pack_momentum_state,
            "price_asof": price_override.get("asof") if price_override else None,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "no_early_stop": no_early_stop,
