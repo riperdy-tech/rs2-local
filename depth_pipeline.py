@@ -91,6 +91,21 @@ SIZE_BUCKETS = ((15.0, "full"), (30.0, "half"), (10**9, "quarter"))
 INSTABILITY_TOL_PCT = 25.0
 
 
+def compute_m(median_iv, price, iv_band_low, iv_band_high):
+    """P4.3 — m = (median_iv - price) / ((iv_band_high - iv_band_low) / 2): the price's position
+    relative to the plausible-IV band, in half-widths (0 = at the median, +1 = at the band's high
+    edge, -1 = at the low edge). None when any input is missing, or when the band half-width is
+    0 — a single converged point has no dispersion to normalise by, and 0/0 is undefined, not
+    zero. Pure. No I/O.
+    """
+    if median_iv is None or price is None or iv_band_low is None or iv_band_high is None:
+        return None
+    half_width = (iv_band_high - iv_band_low) / 2
+    if half_width == 0:
+        return None
+    return (median_iv - price) / half_width
+
+
 def iv_instability(current_iv, prior_iv, tol_pct=INSTABILITY_TOL_PCT):
     """(None | {prior_iv, current_iv, delta_pct, unstable}) — pure. No I/O, no judgment.
 
@@ -408,6 +423,9 @@ def band_verdict(doc):
          "flags": sorted({f for r in good for f in (r.get("flags") or [])}),
          "pack_revision": doc.get("pack_revision", 1),
          "scheme": "band_direction_v1"}
+    # P4.3 — m: the price's position within the plausible-IV band, in half-widths. Computed here
+    # (not left to ivs[0]/ivs[-1] above) because the NOT_USABLE path below has no band either.
+    v["m"] = compute_m(v["median_iv"], price, v["iv_band_low"], v["iv_band_high"])
 
     # Attach Institutional Scorecard Underwriting Contract (Charter v3.0 / Section 12)
     scorecard = doc.get("scorecard") or {}

@@ -440,9 +440,11 @@ def depth_snapshot():
     L.append("  RECENT INSTITUTIONAL UNDERWRITINGS (Charter v3.0 / Section 12):")
     if verdicts:
         recent = sorted(verdicts.values(), key=lambda v: v.get("consensus_dir", v.get("date", "")), reverse=True)[:6]
-        header = f"  {'Ticker':<6} {'Verdict':<12} {'Completed':<10} {'Price':<9} {'Median IV':<9} {'Base IV':<9} {'Spread':<8} {'Moat':<7} {'Convict':<8} {'Kelly%':<8} {'Skew':<6}"
+        header = (f"  {'Ticker':<6} {'Verdict':<12} {'Completed':<10} {'Price':<9} {'Median IV':<9} "
+                  f"{'Base IV':<9} {'Spread':<8} {'Moat':<7} {'Convict':<8} {'Kelly%':<8} {'Skew':<6} "
+                  f"{'Entry':<17} {'Momentum':<13}")
         L.append(header)
-        L.append("  " + "-" * 88)
+        L.append("  " + "-" * 120)
         for v in recent:
             t = v.get("ticker", "—")
             dir_str = v.get("direction", "—")
@@ -461,7 +463,11 @@ def depth_snapshot():
             conv = f"{v.get('conviction_score'):.0f}/15" if v.get("conviction_score") is not None else "—"
             kelly = f"{v.get('kelly_fraction_pct'):.1f}%" if v.get("kelly_fraction_pct") is not None else "—"
             skew = f"{v.get('asymmetric_payoff_skew'):.2f}x" if v.get("asymmetric_payoff_skew") is not None else "—"
-            row = f"  {t:<6} {dir_str:<12} {done_time:<10} {px:<9} {med_iv:<9} {base_iv:<9} {spread:<8} {moat:<7} {conv:<8} {kelly:<8} {skew:<6}"
+            # P4.3 — entry_timing and momentum_view (Charter v3.1 momentum mandate) on the dashboard.
+            entry = v.get("entry_timing") or "—"
+            mom = v.get("momentum_view") or "—"
+            row = (f"  {t:<6} {dir_str:<12} {done_time:<10} {px:<9} {med_iv:<9} {base_iv:<9} "
+                  f"{spread:<8} {moat:<7} {conv:<8} {kelly:<8} {skew:<6} {entry:<17} {mom:<13}")
             L.append(row)
     else:
         L.append("  (No clean underwritings recorded in ledger yet)")
