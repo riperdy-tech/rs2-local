@@ -3,6 +3,7 @@
 Exercises `_run_source()` and `stamp_and_route()` directly against synthetic verdicts/argv/env,
 never the real research/consensus subprocesses or the real cache/ ledgers.
 """
+import json
 import sys
 import time
 from pathlib import Path
@@ -118,3 +119,61 @@ def test_research_brief_asof_present_when_brief_exists(monkeypatch, tmp_path):
 
 def test_gate_version_is_two():
     assert dp.GATE_VERSION == 2
+
+
+# ---- end-to-end main(): the manual-invocation gate never demonstrated for real (B7, Phase 1 --
+# ---- approval review, "gate 4 evidence") ------------------------------------------------------
+
+def test_main_manual_invocation_only_grows_test_ledger(tmp_path, monkeypatch):
+    """`python depth_pipeline.py FLXS` (no --ondemand, no --production, no RS2_RUN_SOURCE) —
+    invoked exactly the way a manual run is invoked — must write ONLY to TEST_LEDGER, never to
+    LEDGER or OD_LEDGER. Runs depth_pipeline.main() for real, end to end, but every subprocess-
+    or GPU-touching seam (price_now.quote, run_research, run_consensus, band_verdict,
+    audit_verdict) is stubbed, and LEDGER/TEST_LEDGER/OD_LEDGER — and the verdict file main()
+    writes — are all redirected under tmp_path. Never runs the real research/consensus pipeline."""
+    monkeypatch.delenv("RS2_RUN_SOURCE", raising=False)
+    monkeypatch.setattr(sys, "argv", ["depth_pipeline.py", "FLXS"])
+    monkeypatch.setitem(dp.CONFIG, "out_research_dir", str(tmp_path / "research"))
+
+    ledger = tmp_path / "depth_ledger.jsonl"
+    test_ledger = tmp_path / "depth_test_ledger.jsonl"
+    od_ledger = tmp_path / "depth_ondemand_ledger.jsonl"
+    monkeypatch.setattr(dp, "LEDGER", ledger)
+    monkeypatch.setattr(dp, "TEST_LEDGER", test_ledger)
+    monkeypatch.setattr(dp, "OD_LEDGER", od_ledger)
+
+    quote = {"price": 100.0, "asof": "2026-09-23", "source": "yfinance"}
+    monkeypatch.setattr(dp.price_now, "quote", lambda t: quote)
+    monkeypatch.setattr(dp, "run_research", lambda t: None)
+
+    consensus_dir = tmp_path / "FLXS_20260923_120000"
+    consensus_dir.mkdir()
+    doc = {"ticker": "FLXS"}
+    monkeypatch.setattr(dp, "run_consensus",
+                        lambda t, samples=None, price_quote=None: (consensus_dir, doc))
+    monkeypatch.setattr(dp, "band_verdict", lambda doc: {
+        "ticker": "FLXS", "price": 100.0, "date": "2026-09-23", "direction": "hold"})
+
+    audited = []
+    monkeypatch.setattr(dp, "audit_verdict", lambda t, ledger: audited.append((t, ledger)))
+    notified = []
+    monkeypatch.setattr(dp.ops, "notify_telegram", lambda msg: notified.append(msg))
+
+    dp.main()
+
+    # only TEST_LEDGER grows
+    assert not ledger.exists() or ledger.read_text(encoding="utf-8") == ""
+    assert not od_ledger.exists() or od_ledger.read_text(encoding="utf-8") == ""
+    test_rows = [ln for ln in test_ledger.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(test_rows) == 1
+    row = json.loads(test_rows[0])
+    assert row["ticker"] == "FLXS"
+    assert row["run_source"] == "manual"
+
+    # audited against the SAME ledger the row actually landed in
+    assert audited == [("FLXS", test_ledger)]
+    # the loud manual-run warning fired
+    assert len(notified) == 1
+    assert "NOT the production ledger" in notified[0] and "FLXS" in notified[0]
+    # the verdict file main() writes landed under tmp_path, not cache/
+    assert (consensus_dir / "verdict_depth.json").exists()
