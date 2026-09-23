@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""research_brief_guard.py — Harness verification for research briefs (Charter v3.1 / Phase 4 D8).
+
+The brief must name the company (ticker or legal name) AND the industry or sector word.
+A mismatch flags `research_wrong_company`, refuses snapshotting as valid, and triggers
+re-generation or fallback to --no-research semantics.
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+import rs2_data
+
+
+def check_research_brief(
+    ticker: str,
+    brief_text: str | None = None,
+    company_name: str | None = None,
+    sector: str | None = None,
+    industry: str | None = None,
+) -> tuple[bool, str | None]:
+    """(ok: bool, reason: str | None)
+
+    Checks:
+      1. Brief contains ticker or legal company name.
+      2. Brief contains at least one word from the sector or industry.
+    """
+    t = ticker.upper()
+    if brief_text is None:
+        r_dir = rs2_data.CONFIG.get("out_research_dir") or "research"
+        r_path = Path(r_dir)
+        if not r_path.is_absolute():
+            here = Path(__file__).resolve().parents[2]
+            r_path = here / r_path
+        brief_file = r_path / f"{t}.md"
+        if not brief_file.exists():
+            return True, None
+        brief_text = brief_file.read_text(encoding="utf-8", errors="replace")
+
+    if not brief_text or not brief_text.strip():
+        return True, None
+
+    if company_name is None:
+        company_name = rs2_data.resolve_name(t)
+
+    # 1. Company check: brief text must contain ticker or legal name
+    has_ticker = bool(re.search(rf"\b{re.escape(t)}\b", brief_text, re.IGNORECASE))
+    has_name = False
+    if company_name:
+        clean_name = company_name.strip()
+        has_name = bool(re.search(rf"\b{re.escape(clean_name)}\b", brief_text, re.IGNORECASE))
+        if not has_name:
+            # Strip legal corporate suffixes like Inc., Corp., Ltd., Co., LLC, PLC, Class A
+            base_name = re.sub(
+                r",?\s*(?:Inc\.?|Corp(?:oration)?\.?|Ltd\.?|Co\.?|LLC|PLC|Class\s+[A-Z])\s*$",
+                "", clean_name, flags=re.IGNORECASE
+            ).strip()
+            if base_name and len(base_name) >= 3:
+                has_name = bool(re.search(rf"\b{re.escape(base_name)}\b", brief_text, re.IGNORECASE))
+
+    if not (has_ticker or has_name):
+        return False, f"brief text does not contain ticker '{t}' or company name '{company_name}'"
+
+    # 2. Industry or Sector check: brief text must contain an industry or sector word
+    if sector is None or industry is None:
+        sec_lookup, ind_lookup = rs2_data.sector_lookup(t)
+        if sector is None:
+            sector = sec_lookup
+        if industry is None:
+            industry = ind_lookup
+
+    words_to_check = set()
+    stop_words = {"and", "the", "for", "with", "other", "services", "general", "non", "all", "etc"}
+    for source in (sector, industry):
+        if source:
+            for w in re.findall(r"[A-Za-z]{3,}", source.lower()):
+                if w not in stop_words:
+                    words_to_check.add(w)
+                    if w.endswith("ies"):
+                        words_to_check.add(w[:-3] + "y")
+                    elif w.endswith("s"):
+                        words_to_check.add(w[:-1])
+            if "technology" in source.lower():
+                words_to_check.add("tech")
+            if "semiconductor" in source.lower():
+                words_to_check.add("semi")
+                words_to_check.add("semis")
+
+    if words_to_check:
+        has_sec_ind = any(re.search(rf"\b{re.escape(w)}\b", brief_text, re.IGNORECASE) for w in words_to_check)
+        if not has_sec_ind:
+            return False, f"brief text does not contain sector '{sector}' or industry '{industry}' words (checked: {sorted(words_to_check)})"
+
+    return True, None

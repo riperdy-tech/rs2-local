@@ -52,6 +52,7 @@ import capability_test as cap  # noqa: E402
 import rs2_data  # noqa: E402
 import valuation_backbone as vb  # noqa: E402
 from fiduciary_gate import validate_fiduciary_contract  # noqa: E402
+from research_brief_guard import check_research_brief  # noqa: E402
 
 OUT = HERE / "ab_reports" / "consensus"
 # THRESHOLDS — calibrated against four reference points on GOOG @ $343.54, not invented:
@@ -901,7 +902,18 @@ def extract_desk_snapshot_metrics(
     }
 
 
-def snapshot_research_brief(t, run_dir):
+class ResearchSnapshot(tuple):
+    def __new__(cls, asof, age_days, stale, wrong_company=False):
+        return super().__new__(cls, (asof, age_days, stale))
+
+    def __init__(self, asof, age_days, stale, wrong_company=False):
+        self.asof = asof
+        self.age_days = age_days
+        self.stale = stale
+        self.wrong_company = wrong_company
+
+
+def snapshot_research_brief(t, run_dir, validate=False):
     """Copy research/{T}.md into `run_dir` (P1.7) and report its provenance:
     (asof ISO string or None, age_days or None, stale bool).
 
@@ -922,21 +934,30 @@ def snapshot_research_brief(t, run_dir):
         research_dir = HERE / research_dir
     research_file = research_dir / f"{t}.md"
     asof, age_days = None, None
+    wrong_company = False
     if research_file.exists():
         try:
-            mtime = research_file.stat().st_mtime
-            asof = datetime.fromtimestamp(mtime).isoformat()
-            age_days = round((time.time() - mtime) / 86400, 2)
-            import shutil
-            shutil.copyfile(research_file, run_dir / "_research_brief.md")
+            brief_text = research_file.read_text(encoding="utf-8", errors="replace")
+            if validate:
+                ok, reason = check_research_brief(t, brief_text=brief_text)
+                if not ok:
+                    print(f"  [consensus] WARN research brief failed company verification ({reason}) "
+                          "— NOT snapshotted as valid (flagging research_wrong_company)", flush=True)
+                    wrong_company = True
+            if not wrong_company:
+                mtime = research_file.stat().st_mtime
+                asof = datetime.fromtimestamp(mtime).isoformat()
+                age_days = round((time.time() - mtime) / 86400, 2)
+                import shutil
+                shutil.copyfile(research_file, run_dir / "_research_brief.md")
         except Exception as e:
             print(f"  [consensus] WARN could not copy research brief: {e}", flush=True)
     max_age_days = float(rs2_data.CONFIG["research_max_age_days"])
     stale = bool(age_days is not None and age_days > max_age_days)
-    if stale:
+    if stale and not wrong_company:
         print(f"  [consensus] WARN research brief is {age_days:.1f}d old "
               f"(> {max_age_days:.0f}d) — flagging stale_research_brief", flush=True)
-    return asof, age_days, stale
+    return ResearchSnapshot(asof, age_days, stale, wrong_company=wrong_company)
 
 
 def _load_evidence_store(store_dir):
@@ -1050,13 +1071,20 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     d = out_root / f"{t}_{ts}"
     d.mkdir(parents=True, exist_ok=True)
+    # Snapshot research brief into run dir (P1.7); C4: age ceiling enforced where consumed; D8: company check.
+    r_snap = snapshot_research_brief(t, d, validate=True)
+    research_brief_asof, research_brief_age_days, research_brief_stale = r_snap
+    research_wrong_company = getattr(r_snap, "wrong_company", False)
+    no_research_arg = "--no-research" in sys.argv
+
+    if research_wrong_company or no_research_arg:
+        # Proceed with --no-research semantics: strip Section 11 from pack
+        pack = re.sub(r"## SECTION 11 - DEEP RESEARCH BRIEF.*?(?=## SECTION 12|\Z)", "", pack, flags=re.DOTALL)
+        pack_sha256 = hashlib.sha256(pack.encode("utf-8")).hexdigest()
+
     # Save the exact pack. Without it a consensus run is not re-auditable from its own directory
     # — found when three auditors had to reconstruct it independently to check the reports.
     (d / "_pack.md").write_text(pack, encoding="utf-8")
-
-    # Snapshot research brief into run dir (P1.7); C4: age ceiling enforced where consumed.
-    research_brief_asof, research_brief_age_days, research_brief_stale = \
-        snapshot_research_brief(t, d)
 
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
             if adaptive else f"{n} samples fixed")
@@ -1240,6 +1268,9 @@ def main():
             flags = list(flags) + ["macro_degraded"]
         if research_brief_stale and "stale_research_brief" not in flags:
             flags = list(flags) + ["stale_research_brief"]
+        if research_wrong_company and "research_wrong_company" not in flags:
+            flags = list(flags) + ["research_wrong_company"]
+            why = list(why) + ["research brief failed company verification (research_wrong_company)"]
         # Carry the harness rescue status onto the sample. Without this the four-key copy out of
         # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort
         # with normal siblings with no consumer able to tell.
@@ -1324,6 +1355,8 @@ def main():
            "pack_source": pack_source, "pack_sha256": pack_sha256,
            "research_brief_asof": research_brief_asof,
            "research_brief_age_days": research_brief_age_days,
+           "research_brief_stale": research_brief_stale,
+           "research_wrong_company": research_wrong_company,
            "price_asof": price_override.get("asof") if price_override else None,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "no_early_stop": no_early_stop,

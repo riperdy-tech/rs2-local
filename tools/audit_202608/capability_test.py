@@ -473,7 +473,7 @@ def _decl(label, h, yrs, keys, held_note, gap_note):
     return (f"- **{label}: HELD**, {len(years)} year(s){partial} ({span}) - {held_note}")
 
 
-def build_pack(t, price_override=None):
+def build_pack(t, price_override=None, include_research=True):
     """Every fact we hold that is FILED, or is exact arithmetic on filed values, labelled with its
     source and its period. No judgment is exercised here: no valuation, no basis choice, no
     normalisation, no composite of our own. Where a series is known to be defective the pack says
@@ -1077,11 +1077,21 @@ def build_pack(t, price_override=None):
 
     # ---- SECTION 11 ------------------------------------------------------------------------
     rb = HERE / "research" / f"{t}.md"
-    if rb.exists():
-        L += ["## SECTION 11 - DEEP RESEARCH BRIEF & OPERATIONAL EVIDENCE   [Iterative deep web research "
-              "with primary citations. Ingest the verified operational metrics, segment economics, and "
-              "forward management guidance directly into your scenario distribution as retrieved ground truth.]",
-              rb.read_text(encoding="utf-8", errors="replace")[:25000], ""]
+    if include_research and rb.exists():
+        rb_text = rb.read_text(encoding="utf-8", errors="replace")
+        try:
+            from research_brief_guard import check_research_brief
+            brief_ok, reason = check_research_brief(t, brief_text=rb_text)
+        except Exception:
+            brief_ok = True
+        if brief_ok:
+            L += ["## SECTION 11 - DEEP RESEARCH BRIEF & OPERATIONAL EVIDENCE   [Iterative deep web research "
+                  "with primary citations. Ingest the verified operational metrics, segment economics, and "
+                  "forward management guidance directly into your scenario distribution as retrieved ground truth.]",
+                  rb_text[:25000], ""]
+        else:
+            print(f"   [pack] WARN research brief failed company verification for {t} ({reason}) — omitting Section 11",
+                  file=sys.stderr, flush=True)
 
     # ---- SECTION 12 ------------------------------------------------------------------------
     L += ["## SECTION 12 - WHAT WE DO NOT HOLD",

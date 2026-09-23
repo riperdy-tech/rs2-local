@@ -51,6 +51,7 @@ import rs2_data             # noqa: E402
 import price_now            # noqa: E402  (P1.5 live price at verdict time)
 import screener_refresh     # noqa: E402  (P4.-1 — refresh the publish clone on a standalone run)
 from fiduciary_gate import contract_base, validate_fiduciary_contract  # noqa: E402
+from research_brief_guard import check_research_brief  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -156,42 +157,7 @@ def _kill_tree(proc):
         pass
 
 
-def run_research(t):
-    """deep_research.py in the research venv — self-caching (research_cache_days), infra-error
-    aware (exit 3), bounded here exactly like run_rs2.run_research. Frees the research model's
-    VRAM before the analyst loads."""
-    rv = Path(CONFIG["research_venv_python"])
-    if not rv.exists():
-        print("[depth] WARN research-venv missing — proceeding without fresh research", flush=True)
-        return
-    print(f"[depth] research {t} (cache-aware, bound {RESEARCH_TIMEOUT}s)", flush=True)
-    # UNLOAD THE ANALYST FIRST (bug found live on ABNB, 2026-08-21 15:49). The previous
-    # ticker's analyst model (~22.2GB at ctx 81920) stays resident between children, and the
-    # post-research barrier then demands >=20GB free for the analyst re-load - impossible with
-    # the analyst itself still holding the card. Research (9.3GB) and analyst cannot coexist on
-    # 24GB, so the ticker must START by clearing the card. Best-effort: if the card is already
-    # clear this is a no-op poll.
-    ops.wait_unloaded(
-        CONFIG["ollama_endpoint"], MODEL,
-        need_free_mb=11000,          # enough for the research model + ctx, not the full 20GB
-        timeout_s=int(CONFIG.get("vram_unload_timeout_s", 180)))
-    # COMPANY NAME IS MANDATORY CONTEXT, not garnish (2026-08-29). This spawn passed only the
-    # ticker, so every depth brief searched as a bare "{T} stock" — deep_research printed its
-    # "WARNING no company name" on every single run — and CART's moat section came back about
-    # the industrial-carts market instead of Instacart. run_rs2 always passed the name; depth
-    # didn't. Resolution is zero-network (screener stocks.csv, cached in rs2_data).
-    name = rs2_data.resolve_name(t)
-    if not name:
-        print(f"[depth] WARN no company name for {t} — research will search the bare ticker",
-              flush=True)
-    brief_asof, brief_age_days = _research_brief_provenance(t)
-    # C13 (Phase 1 approval review): no silent default — a missing config key must raise,
-    # never quietly substitute a hidden constant that duplicates config.json's own value.
-    max_age = float(CONFIG["research_max_age_days"])
-    force = bool(brief_age_days is not None and brief_age_days > max_age)
-    if force:
-        print(f"[depth] research brief for {t} is {brief_age_days:.1f}d old (> {max_age:.0f}d) — forcing refresh",
-              flush=True)
+def _invoke_deep_research(t, name, rv, force=False):
     cmd = [str(rv), str(HERE / "deep_research.py"), t]
     if force:
         cmd.append("--force")
@@ -227,7 +193,68 @@ def run_research(t):
         sys.exit(3)
 
 
-def run_consensus(t, samples=None, price_quote=None):
+def run_research(t):
+    """deep_research.py in the research venv — self-caching (research_cache_days), infra-error
+    aware (exit 3), bounded here exactly like run_rs2.run_research. Frees the research model's
+    VRAM before the analyst loads."""
+    rv = Path(CONFIG["research_venv_python"])
+    if not rv.exists():
+        print("[depth] WARN research-venv missing — proceeding without fresh research", flush=True)
+        return False
+    print(f"[depth] research {t} (cache-aware, bound {RESEARCH_TIMEOUT}s)", flush=True)
+    # UNLOAD THE ANALYST FIRST (bug found live on ABNB, 2026-08-21 15:49). The previous
+    # ticker's analyst model (~22.2GB at ctx 81920) stays resident between children, and the
+    # post-research barrier then demands >=20GB free for the analyst re-load - impossible with
+    # the analyst itself still holding the card. Research (9.3GB) and analyst cannot coexist on
+    # 24GB, so the ticker must START by clearing the card. Best-effort: if the card is already
+    # clear this is a no-op poll.
+    ops.wait_unloaded(
+        CONFIG["ollama_endpoint"], MODEL,
+        need_free_mb=11000,          # enough for the research model + ctx, not the full 20GB
+        timeout_s=int(CONFIG.get("vram_unload_timeout_s", 180)))
+    # COMPANY NAME IS MANDATORY CONTEXT, not garnish (2026-08-29). This spawn passed only the
+    # ticker, so every depth brief searched as a bare "{T} stock" — deep_research printed its
+    # "WARNING no company name" on every single run — and CART's moat section came back about
+    # the industrial-carts market instead of Instacart. run_rs2 always passed the name; depth
+    # didn't. Resolution is zero-network (screener stocks.csv, cached in rs2_data).
+    name = rs2_data.resolve_name(t)
+    if not name:
+        print(f"[depth] WARN no company name for {t} — research will search the bare ticker",
+              flush=True)
+    brief_asof, brief_age_days = _research_brief_provenance(t)
+    # C13 (Phase 1 approval review): no silent default — a missing config key must raise,
+    # never quietly substitute a hidden constant that duplicates config.json's own value.
+    max_age = float(CONFIG["research_max_age_days"])
+    force = bool(brief_age_days is not None and brief_age_days > max_age)
+
+    # Initial check if cached brief already exists and is for the wrong company
+    if not force and brief_asof is not None:
+        valid_now, reason = check_research_brief(t)
+        if not valid_now:
+            print(f"[depth] existing research brief failed company verification: {reason} — forcing refresh",
+                  flush=True)
+            force = True
+
+    if force:
+        print(f"[depth] research brief for {t} requires refresh — forcing refresh",
+              flush=True)
+
+    _invoke_deep_research(t, name, rv, force=force)
+
+    # D8 verification: check that generated brief names company and sector/industry
+    valid_brief, reason = check_research_brief(t)
+    if not valid_brief:
+        print(f"[depth] WARN research brief for {t} failed company verification: {reason} — re-invoking deep_research.py with --force once", flush=True)
+        _invoke_deep_research(t, name, rv, force=True)
+        valid_brief, reason = check_research_brief(t)
+        if not valid_brief:
+            print(f"[depth] WARN research brief for {t} still failed company verification: {reason} — proceeding with --no-research semantics", flush=True)
+            return False
+
+    return True
+
+
+def run_consensus(t, samples=None, price_quote=None, no_research=False):
     """consensus_valuation.py as a subprocess (stdout inherited, so progress is visible live).
     Returns the newest consensus.json for the ticker, written by this invocation.
     Defaults to adaptive 2-escalate consensus (early-stops at n=2 if spread <= 15%, else n=3)."""
@@ -242,6 +269,8 @@ def run_consensus(t, samples=None, price_quote=None):
         cmd.extend(["--samples", str(samples)])
     if TOOLS:
         cmd.append("--tools")
+    if no_research:
+        cmd.append("--no-research")
     r = subprocess.run(cmd)
     if r.returncode != 0:
         print(f"[depth] consensus subprocess exit {r.returncode}", flush=True)
@@ -716,9 +745,17 @@ def main():
     ondemand = "--ondemand" in sys.argv
     samples = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else None
     t0 = time.time()
+    research_ok = True
     if "--no-research" not in sys.argv:
-        run_research(t)
-    d, doc = run_consensus(t, samples=samples, price_quote=quote)
+        research_ok = run_research(t)
+    consensus_no_research = (not bool(research_ok)) or ("--no-research" in sys.argv)
+    if consensus_no_research:
+        try:
+            d, doc = run_consensus(t, samples=samples, price_quote=quote, no_research=True)
+        except TypeError:
+            d, doc = run_consensus(t, samples=samples, price_quote=quote)
+    else:
+        d, doc = run_consensus(t, samples=samples, price_quote=quote)
     # C7 (Phase 1 approval review): confirm the consensus subprocess actually valued the ticker
     # against OUR live quote, not a silently-abandoned --price (consensus_valuation.py used to
     # swallow a bad --price and fall back to the vendor quote — fixed to fail loudly instead,
