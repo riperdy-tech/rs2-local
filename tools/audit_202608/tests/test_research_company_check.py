@@ -40,6 +40,17 @@ Material handling carts with durable caster wheels dominate factory floors.
     assert "does not contain sector" in reason or "industry" in reason
 
 
+def test_check_research_brief_name_match_needs_no_industry_word():
+    # GEV's real brief talks about power, grid and turbines, never "industrial machinery".
+    brief = """# DEEP RESEARCH BRIEF — GE Vernova Inc. (GEV)
+Gas turbine orders and grid equipment backlog drive the power segment.
+"""
+    ok, reason = check_research_brief("GEV", brief_text=brief, company_name="GE Vernova Inc.",
+                                      sector="Industrials", industry="Specialty Industrial Machinery")
+    assert ok is True
+    assert reason is None
+
+
 def test_snapshot_research_brief_refuses_invalid_brief(tmp_path, monkeypatch):
     import rs2_data
     r_dir = tmp_path / "research"
