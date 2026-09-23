@@ -1,0 +1,11 @@
+{
+  "_comment": "Historical provenance for tools/ledger_quarantine.py. The path in reset_event.archived_to is a HISTORICAL RECORD of where the pre-Charter-v3.1 ledger was archived on 2026-09-18, not a file this tool opens. It lives here, not in code, so tools/audit_202608/tests/test_archive_reference_census.py does not treat it as a live reference to an archived artifact.",
+  "reset_event": {
+    "ts": "2026-09-18T00:17Z",
+    "action": "reset",
+    "from_rows": 512,
+    "kept_rows": 6,
+    "archived_to": "_archive/retired_20260920/cache/depth_ledger_legacy_pre_charter3.jsonl",
+    "reason": "Charter v3.1 rebuild (operator)"
+  }
+}

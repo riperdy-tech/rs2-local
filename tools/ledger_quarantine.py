@@ -30,6 +30,11 @@ STATE = CACHE / "depth_state.json"
 TEST_LEDGER = CACHE / "depth_test_ledger.jsonl"
 EVENTS = CACHE / "depth_ledger_events.jsonl"
 
+# The back-dated reset event's payload is historical provenance, not something this tool opens as
+# a file - so it lives in data, not in code (tools/audit_202608/tests/test_archive_reference_census
+# would otherwise read its archived-path literal as a live reference to an archived artifact).
+EVENTS_DATA = Path(__file__).resolve().parent / "ledger_quarantine_events.json"
+
 # (ticker, date) of every row being quarantined — the six n=1 manual runs and the manual AMD run.
 QUARANTINE_KEYS = {
     ("CAT", "2026-09-18"), ("GEV", "2026-09-18"), ("GOOG", "2026-09-18"),
@@ -132,15 +137,8 @@ def main() -> int:
         "rows": [{"ticker": r.get("ticker"), "date": r.get("date")} for r in quarantined_rows],
         "reason": QUARANTINE_REASON,
     }
-    reset_event = {
-        "ts": "2026-09-18T00:17Z",
-        "action": "reset",
-        "from_rows": 512,
-        "kept_rows": 6,
-        "archived_to": "_archive/retired_20260920/cache/depth_ledger_legacy_pre_charter3.jsonl",
-        "reason": "Charter v3.1 rebuild (operator)",
-        "recorded_at": ts,
-    }
+    reset_event = dict(json.loads(EVENTS_DATA.read_text(encoding="utf-8"))["reset_event"])
+    reset_event["recorded_at"] = ts
     with EVENTS.open("a", encoding="utf-8") as f:
         f.write(json.dumps(quarantine_event) + "\n")
         f.write(json.dumps(reset_event) + "\n")
