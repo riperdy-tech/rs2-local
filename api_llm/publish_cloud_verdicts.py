@@ -43,7 +43,6 @@ sys.path.insert(0, str(ROOT / "tools" / "audit_202608"))
 
 _STDOUT_KEEPALIVE = [sys.stdout]
 import orchestrate_depth as od     # noqa: E402  rebuild_overlay, publish_overlay, LEDGER, SD
-import depth_pipeline as dp        # noqa: E402  GATE_VERSION (single owner, P1.2)
 
 DEEP_API = HERE / "deep_api"
 # Only the arm that was actually validated at scale. deepseek-v4-pro was run on ONE ticker as a
@@ -147,14 +146,18 @@ def main():
     lines, bundles = [], 0
     for t, d, doc, v in pub:
         rec = dict(v)
+        # B1 (Phase 1 approval review): never stamp today's GATE_VERSION here. `rec = dict(v)`
+        # already carries the verdict's OWN gate_version (or its absence) from the cloud run
+        # file - these are historical runs that were never put through depth_gates.assess() at
+        # write time, and stamping the current version on them made 99 of 104 2026-08-26 runs
+        # read as actionable: true. A missing gate_version reads as pre_v3.1_gates (depth_gates.py).
         rec.update({"arm": "cloud_api", "model": doc.get("model"),
                     "pack_source": "fresh",
                     "research_brief_age_days": doc.get("research_brief_age_days"),
                     "pack_revision": doc.get("pack_revision", 1),
                     "published_by": "api_llm/publish_cloud_verdicts.py",
                     "published_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "run_source": "cloud",
-                    "gate_version": dp.GATE_VERSION})
+                    "run_source": "cloud"})
         rec.setdefault("date", datetime.now().strftime("%Y-%m-%d"))
         lines.append(json.dumps(rec))
         bundles += write_bundle(t, d, doc, rec)
