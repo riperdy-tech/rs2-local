@@ -17,7 +17,7 @@ under cache/. It renders no opinion and touches no verdict, overlay, or Modelfil
   held_names()      union of open positions across all paper_ledgers scopes
 """
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -29,11 +29,53 @@ CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
 LOG = HERE / "cache" / "depth_membership.jsonl"
 IN_BANDS = ("research_now", "watchlist")
+REQUIRED_FACTOR_ENGINE = "dual_door_dynamic_macro_v2_cluster_guarded"
 
 
-def _current_book():
+def check_factor_scores(factor_path=None, max_age_h=None, now_dt=None):
+    """Require engine == 'dual_door_dynamic_macro_v2_cluster_guarded' and
+    generated_at age <= CONFIG['factor_max_age_h'].
+    Returns (ok: bool, reason: str or None)."""
+    p = Path(factor_path) if factor_path is not None else (SD / "factor_scores.json")
+    if not p.exists():
+        return False, f"factor_scores.json not found at {p}"
+    try:
+        data = rs2_data.load_json(p)
+    except Exception as e:
+        return False, f"failed to read {p}: {e}"
+    if not isinstance(data, dict):
+        return False, f"factor_scores.json root is not an object ({p})"
+
+    engine = data.get("engine")
+    if engine != REQUIRED_FACTOR_ENGINE:
+        return False, f"engine mismatch: expected '{REQUIRED_FACTOR_ENGINE}', got '{engine}'"
+
+    gen_at = data.get("generated_at")
+    if not gen_at:
+        return False, "factor_scores.json missing 'generated_at'"
+
+    try:
+        dt = datetime.fromisoformat(str(gen_at).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    except Exception as e:
+        return False, f"unparseable generated_at '{gen_at}': {e}"
+
+    if max_age_h is None:
+        max_age_h = CONFIG.get("factor_max_age_h", 48)
+
+    now = now_dt if now_dt is not None else datetime.now(timezone.utc)
+    age_h = (now - dt).total_seconds() / 3600.0
+    if age_h > max_age_h:
+        return False, f"stale factor_scores.json: age {age_h:.1f}h > {max_age_h}h (generated_at {gen_at})"
+
+    return True, None
+
+
+def _current_book(factor_path=None):
     """Today's RN+WL set from the screener's factor_scores.json (uppercased)."""
-    fs = (rs2_data.load_json(SD / "factor_scores.json") or {}).get("tickers", {})
+    p = Path(factor_path) if factor_path is not None else (SD / "factor_scores.json")
+    fs = (rs2_data.load_json(p) or {}).get("tickers", {})
     return sorted({t.upper() for t, e in fs.items()
                    if (e or {}).get("fct_band") in IN_BANDS})
 
@@ -53,15 +95,20 @@ def _read():
     return out
 
 
-def snapshot(today=None):
+def snapshot(today=None, factor_path=None, ignore_factor_guard=False):
     """Append today's RN+WL membership. Idempotent: at most one row per calendar day — a second
     call on the same date OVERWRITES that day's row (a re-run mid-day sees the latest bands),
     never appends a duplicate that would corrupt the consecutive-day dwell counts.
 
     `today` is injectable for tests only; production passes None (Date.now is fine here — this is
-    not a workflow script). Returns (date, n_in)."""
+    not a workflow script). Returns (date, n_in) or (date, None) if the factor guard fails."""
     today = today or datetime.now().strftime("%Y-%m-%d")
-    book = _current_book()
+    if not ignore_factor_guard:
+        ok, reason = check_factor_scores(factor_path=factor_path)
+        if not ok:
+            print(f"[membership {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] membership snapshot skipped: {reason}", flush=True)
+            return today, None
+    book = _current_book(factor_path=factor_path)
     rows = _read()
     LOG.parent.mkdir(parents=True, exist_ok=True)
     # rewrite, replacing any existing row for `today`, preserving order

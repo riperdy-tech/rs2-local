@@ -614,6 +614,7 @@ def main():
     limit = int(args[args.index("--limit") + 1]) if "--limit" in args else None
     only = (args[args.index("--tickers") + 1].upper().split(",")
             if "--tickers" in args else None)
+    ignore_factor_guard = "--ignore-factor-guard" in args
 
     # Publish-only mode: regenerate + push site artifacts and exit. Used by the on-demand
     # idle runner (depth_ondemand.drain), which cannot import this module (stdout rebind).
@@ -636,14 +637,36 @@ def main():
         except Exception:
             pass
         log("stale lock — taking over.")
+
+    if not ignore_factor_guard:
+        ok, reason = depth_membership.check_factor_scores()
+        if not ok:
+            log(f"factor guard refused: {reason}")
+            try:
+                ops.notify_telegram(f"[RS2 ops] depth sweep refused: {reason}")
+            except Exception:
+                pass
+            try:
+                PROGRESS.write_text(json.dumps({
+                    "active": False,
+                    "blocked_reason": reason,
+                    "updated": datetime.now().isoformat(),
+                }, indent=1), encoding="utf-8")
+            except OSError:
+                pass
+            return 1
+
     st = load_state()
     # Record today's RN+WL membership FIRST, so the boundary-dwell clocks (re-entry / exit-review /
     # retire — DEPTH_ORCHESTRATOR_CADENCE_20260825.md) advance one day on every sweep. Additive and
     # non-destructive; the dwell triggers stay dormant until enough daily rows accumulate.
     try:
-        sd_date, sd_n = depth_membership.snapshot()
-        log(f"membership snapshot {sd_date}: {sd_n} in RN+WL | "
-            f"{depth_membership.snapshots_recorded()} daily rows on record")
+        sd_date, sd_n = depth_membership.snapshot(ignore_factor_guard=ignore_factor_guard)
+        if sd_n is not None:
+            log(f"membership snapshot {sd_date}: {sd_n} in RN+WL | "
+                f"{depth_membership.snapshots_recorded()} daily rows on record")
+        else:
+            log(f"membership snapshot {sd_date}: skipped (factor guard)")
     except Exception as e:
         log(f"membership snapshot failed (non-fatal): {str(e)[:120]}")
     book = only or live_book()
