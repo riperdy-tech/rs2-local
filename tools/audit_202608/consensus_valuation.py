@@ -141,7 +141,24 @@ def extract_scorecard(report, price):
         "kelly_fraction_pct": None,
         "asymmetric_payoff_skew": None,
         "reentry_tranches": {"tranche_1_starter": None, "tranche_2_core": None},
-        "thesis_invalidation_trigger": None
+        "thesis_invalidation_trigger": None,
+        # P4.0a declared inputs (Section 12 contract)
+        "coe_used": None,
+        "coe_source": None,
+        "coe_adjustment_reason": None,
+        "valuation_frame": None,
+        "terminal_method": None,
+        "terminal_multiple_or_g": None,
+        "fade_years": None,
+        "stage1_growth_path": None,
+        "guidance_deviation_reason": None,
+        "cycle_evidence": None,
+        "verdict_label": None,
+        # Harness-filled per sample from tool snapshot (not declared by model)
+        "desk_calls": None,
+        "desk_iv_match": None,
+        "desk_reverse_neutral_cagr": None,
+        "coe_minus_anchor": None,
     }
     
     # 1. Primary: Structured JSON block from Section 12
@@ -154,6 +171,14 @@ def extract_scorecard(report, price):
             for k in card:
                 if k in parsed and parsed[k] is not None:
                     card[k] = parsed[k]
+            if card.get("verdict_label"):
+                card["verdict_label"] = str(card["verdict_label"]).strip().lower()
+            if card.get("coe_source"):
+                card["coe_source"] = str(card["coe_source"]).strip().lower()
+            if card.get("terminal_method"):
+                card["terminal_method"] = str(card["terminal_method"]).strip().lower()
+            if card.get("valuation_frame"):
+                card["valuation_frame"] = str(card["valuation_frame"]).strip().lower()
             if card["base_iv"] and price and 0.02 * price <= card["base_iv"] <= 10 * price:
                 return card
         except Exception:
@@ -230,6 +255,11 @@ def extract_scorecard(report, price):
     # Derived Asymmetric Payoff Skew
     if price and card["bull_iv"] and card["bear_iv"] and (price - card["bear_iv"]) > 0:
         card["asymmetric_payoff_skew"] = round((card["bull_iv"] - price) / (price - card["bear_iv"]), 2)
+
+    # Verdict label fallback
+    vm = re.search(r"\bVERDICT(?:\s*LABEL)?\s*[:=≈]?\s*(undervalued|hold|overvalued|fair)\b", report, re.I)
+    if vm and not card.get("verdict_label"):
+        card["verdict_label"] = vm.group(1).lower()
 
     return card
 
@@ -405,7 +435,13 @@ def select_medoid_scorecard(
             "reentry_tranches": None, "thesis_invalidation_triggers": [],
             "base_probability": None, "bull_probability": None, "bear_probability": None,
             "probabilities_defaulted": True,
-            "base_cf_used": None, "base_cf_basis": None
+            "base_cf_used": None, "base_cf_basis": None,
+            "coe_used": None, "coe_source": None, "coe_adjustment_reason": None,
+            "valuation_frame": None, "terminal_method": None, "terminal_multiple_or_g": None,
+            "fade_years": None, "stage1_growth_path": None, "guidance_deviation_reason": None,
+            "cycle_evidence": None, "verdict_label": None,
+            "desk_calls": None, "desk_iv_match": None,
+            "desk_reverse_neutral_cagr": None, "coe_minus_anchor": None,
         }
 
     ivs = [r["iv"] for r in good]
@@ -453,7 +489,22 @@ def select_medoid_scorecard(
             "bear_probability": san_fb.get("bear_probability"),
             "probabilities_defaulted": san_fb.get("probabilities_defaulted", True),
             "base_cf_used": san_fb.get("base_cf_used"),
-            "base_cf_basis": san_fb.get("base_cf_basis")
+            "base_cf_basis": san_fb.get("base_cf_basis"),
+            "coe_used": san_fb.get("coe_used"),
+            "coe_source": san_fb.get("coe_source"),
+            "coe_adjustment_reason": san_fb.get("coe_adjustment_reason"),
+            "valuation_frame": san_fb.get("valuation_frame"),
+            "terminal_method": san_fb.get("terminal_method"),
+            "terminal_multiple_or_g": san_fb.get("terminal_multiple_or_g"),
+            "fade_years": san_fb.get("fade_years"),
+            "stage1_growth_path": san_fb.get("stage1_growth_path"),
+            "guidance_deviation_reason": san_fb.get("guidance_deviation_reason"),
+            "cycle_evidence": san_fb.get("cycle_evidence"),
+            "verdict_label": san_fb.get("verdict_label"),
+            "desk_calls": san_fb.get("desk_calls"),
+            "desk_iv_match": san_fb.get("desk_iv_match"),
+            "desk_reverse_neutral_cagr": san_fb.get("desk_reverse_neutral_cagr"),
+            "coe_minus_anchor": san_fb.get("coe_minus_anchor"),
         }
         return san_fb, summary
 
@@ -502,7 +553,22 @@ def select_medoid_scorecard(
         "bear_probability": medoid_card.get("bear_probability"),
         "probabilities_defaulted": medoid_card.get("probabilities_defaulted"),
         "base_cf_used": medoid_card.get("base_cf_used"),
-        "base_cf_basis": medoid_card.get("base_cf_basis")
+        "base_cf_basis": medoid_card.get("base_cf_basis"),
+        "coe_used": medoid_card.get("coe_used"),
+        "coe_source": medoid_card.get("coe_source"),
+        "coe_adjustment_reason": medoid_card.get("coe_adjustment_reason"),
+        "valuation_frame": medoid_card.get("valuation_frame"),
+        "terminal_method": medoid_card.get("terminal_method"),
+        "terminal_multiple_or_g": medoid_card.get("terminal_multiple_or_g"),
+        "fade_years": medoid_card.get("fade_years"),
+        "stage1_growth_path": medoid_card.get("stage1_growth_path"),
+        "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
+        "cycle_evidence": medoid_card.get("cycle_evidence"),
+        "verdict_label": medoid_card.get("verdict_label"),
+        "desk_calls": medoid_card.get("desk_calls"),
+        "desk_iv_match": medoid_card.get("desk_iv_match"),
+        "desk_reverse_neutral_cagr": medoid_card.get("desk_reverse_neutral_cagr"),
+        "coe_minus_anchor": medoid_card.get("coe_minus_anchor"),
     }
     return medoid_card, summary
 
@@ -660,6 +726,161 @@ def run_progress(n_max, attempted, recorded, adaptive, broke_early):
         "samples_run": recorded,
         "samples_lost": max(0, attempted - recorded),
         "early_stop": bool(adaptive and broke_early),
+    }
+
+
+def resolve_anchor_coe(ticker=None):
+    """Resolve anchor CoE for a ticker as a decimal fraction (e.g. 0.0878)."""
+    try:
+        rf, _ = rs2_data.anchor_risk_free_rate()
+        erp, _ = rs2_data.anchor_mature_erp()
+        if rf is not None and erp is not None:
+            loading = 1.0
+            if ticker:
+                sec, _ = rs2_data.sector_lookup(ticker)
+                if sec:
+                    l, _ = rs2_data.anchor_sector_loading(sec)
+                    if l is not None:
+                        loading = l
+            return float(rf) + float(loading) * float(erp)
+        level_pct, _ = rs2_data.anchor_level_cost_of_equity_pct()
+        if level_pct is not None:
+            return float(level_pct) / 100.0
+    except Exception:
+        pass
+    return None
+
+
+def extract_desk_snapshot_metrics(
+    snapshot=None,
+    base_iv=None,
+    coe_used=None,
+    ticker=None,
+    coe_anchor=None,
+):
+    """Inspects run_financial_model tool calls from a sample's research snapshot.
+
+    Returns dict with:
+        desk_calls: int (count of run_financial_model calls)
+        desk_iv_match: bool (True if base_iv within 1% of any desk per_share_iv or blend result)
+        desk_reverse_neutral_cagr: float or None (from neutral reverse DCF call if made)
+        coe_minus_anchor: float or None (coe_used - anchor_coe)
+    """
+    calls = []
+    if isinstance(snapshot, list):
+        calls = snapshot
+    elif isinstance(snapshot, dict):
+        calls = snapshot.get("calls", [])
+    elif isinstance(snapshot, (str, Path)):
+        p = Path(snapshot)
+        if p.is_dir():
+            p = p / "_research_snapshot.json"
+        if p.exists():
+            try:
+                calls = json.loads(p.read_text(encoding="utf-8")).get("calls", [])
+            except Exception:
+                calls = []
+
+    model_calls = [c for c in calls if isinstance(c, dict) and c.get("tool") == "run_financial_model"]
+    desk_calls = len(model_calls)
+
+    desk_ivs = []
+    reverse_neutral_cagr = None
+    desk_anchor_from_params = None
+
+    for c in model_calls:
+        params = c.get("params") or {}
+        if isinstance(params, dict):
+            a_p = params.get("coe_anchor") or params.get("anchor_coe")
+            if a_p is not None and desk_anchor_from_params is None:
+                desk_anchor_from_params = a_p
+
+        res = c.get("result") or c
+        if isinstance(res, dict):
+            # 1. Blend
+            b = res.get("blend") if isinstance(res.get("blend"), dict) else (res if res.get("mode") == "blend" else None)
+            if b and isinstance(b, dict):
+                for k in ("blended_per_share_iv", "per_share_iv"):
+                    if b.get(k) is not None:
+                        try:
+                            desk_ivs.append(float(b[k]))
+                        except (ValueError, TypeError):
+                            pass
+            # 2. DCF model
+            dcf = res.get("dcf_model")
+            if isinstance(dcf, dict):
+                for k in ("per_share_iv", "per_share_iv_gordon", "per_share_iv_exit"):
+                    if dcf.get(k) is not None:
+                        try:
+                            desk_ivs.append(float(dcf[k]))
+                        except (ValueError, TypeError):
+                            pass
+            # 3. Scenario DCFs
+            scs = res.get("scenario_dcfs")
+            if isinstance(scs, list):
+                for sc in scs:
+                    if isinstance(sc, dict):
+                        d = sc.get("dcf", {})
+                        if isinstance(d, dict):
+                            for k in ("per_share_iv", "per_share_iv_gordon", "per_share_iv_exit"):
+                                if d.get(k) is not None:
+                                    try:
+                                        desk_ivs.append(float(d[k]))
+                                    except (ValueError, TypeError):
+                                        pass
+                        if sc.get("iv") is not None:
+                            try:
+                                desk_ivs.append(float(sc["iv"]))
+                            except (ValueError, TypeError):
+                                pass
+            # 4. Top-level per_share_iv
+            if res.get("per_share_iv") is not None:
+                try:
+                    desk_ivs.append(float(res["per_share_iv"]))
+                except (ValueError, TypeError):
+                    pass
+            # 5. Reverse DCF
+            rev = res.get("reverse_dcf")
+            if isinstance(rev, dict):
+                neutral = rev.get("neutral_reference_structure")
+                if isinstance(neutral, dict):
+                    cagr = neutral.get("implied_10y_cagr_pct")
+                    if cagr is not None and reverse_neutral_cagr is None:
+                        try:
+                            reverse_neutral_cagr = float(cagr)
+                        except (ValueError, TypeError):
+                            pass
+
+    desk_iv_match = False
+    if desk_calls > 0 and desk_ivs and base_iv is not None:
+        try:
+            biv = float(base_iv)
+            desk_iv_match = any(div > 0 and (abs(biv - div) / div) <= 0.010001 for div in desk_ivs)
+        except (ValueError, TypeError):
+            desk_iv_match = False
+
+    eff_anchor = coe_anchor if coe_anchor is not None else desk_anchor_from_params
+    if eff_anchor is None and ticker:
+        eff_anchor = resolve_anchor_coe(ticker)
+
+    diff_coe = None
+    if coe_used is not None and eff_anchor is not None:
+        try:
+            cu = float(coe_used)
+            ea = float(eff_anchor)
+            if cu > 1.0:
+                cu /= 100.0
+            if ea > 1.0:
+                ea /= 100.0
+            diff_coe = round(cu - ea, 6)
+        except (ValueError, TypeError):
+            pass
+
+    return {
+        "desk_calls": desk_calls,
+        "desk_iv_match": desk_iv_match,
+        "desk_reverse_neutral_cagr": reverse_neutral_cagr,
+        "coe_minus_anchor": diff_coe,
     }
 
 
@@ -971,6 +1192,21 @@ def main():
         ivs = extract_iv(rep, price)
         iv = scorecard.get("base_iv") or (st.median(ivs) if ivs else None)
         ok, why, flags = plausibility(iv, price, t)
+
+        # Harness-filled per sample from tool snapshot (P4.0a)
+        snapshot_dir = None
+        if use_tools:
+            snapshot_dir = d / f"sample{i}_research"
+            if not (snapshot_dir / "_research_snapshot.json").exists():
+                snapshot_dir = d / f"sample{i}_research_retry"
+        desk_info = extract_desk_snapshot_metrics(
+            snapshot=snapshot_dir,
+            base_iv=iv,
+            coe_used=scorecard.get("coe_used"),
+            ticker=t,
+        )
+        scorecard.update(desk_info)
+
         # The declared cash-flow basis is CHECKED, not taken on trust - a self-reported value
         # nothing verifies is exactly the Task 2 defect. Annotation only: a flag and a reason.
         cf_note = owner_cf_basis_check(t, scorecard)
@@ -1002,6 +1238,10 @@ def main():
                                                   if (think or rep) else None),
                      "evidence_store_hits": sample_es_hits if evidence_store_dir is not None else None,
                      "evidence_store_misses": sample_es_misses if evidence_store_dir is not None else None,
+                     "desk_calls": desk_info["desk_calls"],
+                     "desk_iv_match": desk_info["desk_iv_match"],
+                     "desk_reverse_neutral_cagr": desk_info["desk_reverse_neutral_cagr"],
+                     "coe_minus_anchor": desk_info["coe_minus_anchor"],
                      "chars": len(rep), "secs": round(time.time() - t0)})
         rate_str = f" | {eval_rate} tok/s ({eval_dur_s}s)" if eval_rate else ""
         print(f"  sample {i}: IV ${iv if iv else '?'} | usable={ok}"

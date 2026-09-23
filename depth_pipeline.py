@@ -268,8 +268,15 @@ CONTRACT_FIELD_MAP = (
     ("median_quality_moat", "business_quality_moat"),
     ("median_conviction_score", "conviction_score"),
 )
-CONTRACT_PASSTHROUGH = ("reentry_tranches", "asymmetric_payoff_skew",
-                        "base_probability", "bull_probability", "bear_probability")
+CONTRACT_PASSTHROUGH = (
+    "reentry_tranches", "asymmetric_payoff_skew",
+    "base_probability", "bull_probability", "bear_probability",
+    "coe_used", "coe_source", "coe_adjustment_reason", "valuation_frame",
+    "terminal_method", "terminal_multiple_or_g", "fade_years",
+    "stage1_growth_path", "guidance_deviation_reason", "cycle_evidence",
+    "verdict_label", "desk_calls", "desk_iv_match",
+    "desk_reverse_neutral_cagr", "coe_minus_anchor"
+)
 
 
 # contract_base() was defined HERE as well until 2026-09-20. It now lives in fiduciary_gate.py
@@ -385,6 +392,21 @@ def band_verdict(doc):
         "converged": doc.get("converged"),
         "early_stop": doc.get("early_stop"),
         "mode": doc.get("mode"),
+        "coe_used": scorecard.get("coe_used"),
+        "coe_source": scorecard.get("coe_source"),
+        "coe_adjustment_reason": scorecard.get("coe_adjustment_reason"),
+        "valuation_frame": scorecard.get("valuation_frame"),
+        "terminal_method": scorecard.get("terminal_method"),
+        "terminal_multiple_or_g": scorecard.get("terminal_multiple_or_g"),
+        "fade_years": scorecard.get("fade_years"),
+        "stage1_growth_path": scorecard.get("stage1_growth_path"),
+        "guidance_deviation_reason": scorecard.get("guidance_deviation_reason"),
+        "cycle_evidence": scorecard.get("cycle_evidence"),
+        "verdict_label": scorecard.get("verdict_label"),
+        "desk_calls": scorecard.get("desk_calls"),
+        "desk_iv_match": scorecard.get("desk_iv_match"),
+        "desk_reverse_neutral_cagr": scorecard.get("desk_reverse_neutral_cagr"),
+        "coe_minus_anchor": scorecard.get("coe_minus_anchor"),
     })
 
     if not ivs or not price:
