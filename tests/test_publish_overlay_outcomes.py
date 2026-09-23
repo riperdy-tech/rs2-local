@@ -1,8 +1,15 @@
 """tests/test_publish_overlay_outcomes.py — TRK-06 (P2.1) addition to orchestrate_depth.py:
 publish_overlay() now copies cache/depth_outcomes.json into the publish clone alongside the
-overlay, validates it as JSON before staging, and stages it — but only when it exists (a fresh
-checkout or one that predates the grader's first run has none yet, and publishing must not fail
-over that).
+overlay, validates it as JSON BEFORE copying, and stages it — but only when it exists and parses
+(a fresh checkout or one that predates the grader's first run has none yet, and publishing must
+not fail over that).
+
+C1 (Phase 2 approval review): depth_outcomes.json is an OPTIONAL scoreboard artifact and must
+NEVER be able to block the money-path overlay publish. Before this fix, an invalid source file
+was copied in anyway and then caught by the general validate-before-stage loop, which aborted
+the WHOLE publish (overlay included) — an optional artifact blocking the verdict path. Now an
+invalid/missing source is skipped (logged) and the clone's own copy of depth_outcomes.json is
+left exactly as published (`git checkout --`), and the overlay publish proceeds and commits.
 
 A real local git origin/clone (same pattern as tests/test_sync_state.py) rather than mocked git
 calls: publish_overlay()'s own logic (dirty-check exclusions, git add, diff --cached --check,
@@ -96,9 +103,9 @@ def test_publish_overlay_skips_outcomes_when_absent(tmp_path, monkeypatch):
     assert (clone / "public" / "data" / "depth_overlay.json").exists()
 
 
-def test_publish_overlay_aborts_on_invalid_outcomes_json(tmp_path, monkeypatch):
-    """A corrupt depth_outcomes.json must abort the whole publish (AC#3: a bad artifact never
-    reaches a commit) exactly like a corrupt overlay would — never partially publish."""
+def test_publish_overlay_skips_invalid_outcomes_but_still_publishes_overlay(tmp_path, monkeypatch):
+    """C1: a corrupt depth_outcomes.json must NOT block the money path — the overlay commit and
+    push still happen, and the corrupt source is simply never copied into the clone."""
     clone = _make_publish_clone(tmp_path)
     _isolate(monkeypatch, tmp_path, clone)
     outcomes = tmp_path / "depth_outcomes.json"
@@ -107,7 +114,32 @@ def test_publish_overlay_aborts_on_invalid_outcomes_json(tmp_path, monkeypatch):
 
     od.publish_overlay()
 
-    # Nothing committed: the only commit on main is still the throwaway "init" one.
     log = subprocess.run(["git", "-C", str(clone), "log", "--oneline"],
                          capture_output=True, text=True, check=True).stdout
-    assert "depth artifacts" not in log
+    assert "depth artifacts" in log
+    assert (clone / "public" / "data" / "depth_overlay.json").exists()
+    # The invalid source was never copied in — the clone has no outcomes file at all (it never
+    # published one before this run).
+    assert not (clone / "public" / "data" / "depth_outcomes.json").exists()
+
+
+def test_publish_overlay_invalid_outcomes_leaves_previously_published_copy_untouched(tmp_path, monkeypatch):
+    """C1: when the clone already carries a previously-published (valid) depth_outcomes.json and
+    this run's source is invalid, the clone's copy is left exactly as published — never
+    overwritten with garbage, never staged stale."""
+    clone = _make_publish_clone(tmp_path)
+    _isolate(monkeypatch, tmp_path, clone)
+    outcomes = tmp_path / "depth_outcomes.json"
+
+    # First run: a valid outcomes file publishes normally.
+    outcomes.write_text(json.dumps({"graded_verdict_horizons": 4, "caveats": []}),
+                        encoding="utf-8")
+    monkeypatch.setattr(od, "OUTCOMES", outcomes)
+    od.publish_overlay()
+    dst = clone / "public" / "data" / "depth_outcomes.json"
+    assert json.loads(dst.read_text(encoding="utf-8"))["graded_verdict_horizons"] == 4
+
+    # Second run: source goes corrupt — the clone's published copy must be untouched.
+    outcomes.write_text("{not valid json", encoding="utf-8")
+    od.publish_overlay()
+    assert json.loads(dst.read_text(encoding="utf-8"))["graded_verdict_horizons"] == 4

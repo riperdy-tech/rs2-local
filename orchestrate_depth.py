@@ -226,6 +226,12 @@ def publish_overlay():
     Two producers call this one function (this sweep and api_llm/publish_cloud_verdicts.py); the
     cross-process _publish_lock serialises the git critical section so only one runs git at a time,
     which is also why a rebase conflict is rare rather than a per-cycle event.
+
+    C1 (Phase 2 approval review): `cache/depth_outcomes.json` (TRK-06's grader output) is an
+    OPTIONAL scoreboard artifact, never a dependency of the money-path overlay. It is validated
+    BEFORE copying, separately from invariant 2 above — invalid or missing, the copy is skipped
+    (logged) and the clone's own copy is left exactly as published (`git checkout --`), never
+    staged stale. It can never abort this function the way a bad overlay/bundle still does.
     """
     repo = Path(str(CONFIG.get("screener_publish_repo") or "")).expanduser()
 
@@ -284,8 +290,28 @@ def publish_overlay():
             # 2. Regenerate the artifacts into the clone (producer's existing step).
             reports_dir.mkdir(parents=True, exist_ok=True)
             dst.write_text(OVERLAY.read_text(encoding="utf-8"), encoding="utf-8")
+            # C1 (Phase 2 approval review): depth_outcomes.json is an OPTIONAL scoreboard
+            # artifact, never a dependency of the money-path overlay. Validate it BEFORE
+            # copying — if it is missing or fails to parse, skip the copy (logged warning) and
+            # discard any local diff on the clone's own copy so it is left exactly as published
+            # (the clone was already reset to origin/main above, so this is a no-op unless
+            # something upstream left a stale working-tree change). The grader
+            # (tools/grade_depth_verdicts.py) writes its own outputs directly with write_text,
+            # but publish_overlay only ever reads OUTCOMES once, atomically, here.
+            outcomes_ok = False
             if OUTCOMES.exists():
+                try:
+                    json.loads(OUTCOMES.read_text(encoding="utf-8"))
+                    outcomes_ok = True
+                except Exception as e:
+                    log(f"skipping depth_outcomes.json publish: invalid JSON in source "
+                        f"({str(e)[:100]}) — overlay publish continues")
+            else:
+                log("skipping depth_outcomes.json publish: source missing — overlay publish continues")
+            if outcomes_ok:
                 outcomes_dst.write_text(OUTCOMES.read_text(encoding="utf-8"), encoding="utf-8")
+            else:
+                g("checkout", "--", "public/data/depth_outcomes.json")
             changed = build_report_bundles(reports_dir)
             if changed:
                 log(f"report bundles updated: {', '.join(changed[:6])}"
@@ -303,11 +329,13 @@ def publish_overlay():
                 log(f"cloud bundles staged in: {len(pending)}")
 
             # 3. Validate BEFORE staging — a bad artifact never reaches a commit (AC#3).
+            # depth_outcomes.json is DELIBERATELY excluded here (C1): it was already validated
+            # (or skipped and left as the published version) above, and — being optional — must
+            # never be able to abort the overlay publish even if something upstream corrupted it.
             bad = []
             od_files = ([od_index] if od_index.exists() else []) + \
                        (sorted(od_reports.glob("*.json")) if od_reports.exists() else [])
-            outcomes_files = [outcomes_dst] if outcomes_dst.exists() else []
-            for f in [dst, *outcomes_files, *sorted(reports_dir.glob("*.json")), *od_files]:
+            for f in [dst, *sorted(reports_dir.glob("*.json")), *od_files]:
                 try:
                     json.loads(f.read_text(encoding="utf-8"))
                 except Exception as e:
