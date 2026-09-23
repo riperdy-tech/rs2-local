@@ -510,33 +510,47 @@ def band_verdict(doc):
         and price > ivs[-1]
     ):
         d = "overvalued"
-        # Asymmetric Compounder Moat Override (Charter v3.0 / Anti-Vacuum Principle):
-        # A wide-moat compounder (moat >= 4.0, skew >= 2.0x, positive Kelly) trading near Base IV (<= 10%)
-        # represents durable compounding with massive asymmetric upside; do not label cigar-butt "overvalued".
-        moat = scorecard.get("median_quality_moat") or scorecard.get("business_quality_moat")
-        skew = scorecard.get("asymmetric_payoff_skew")
-        kelly = scorecard.get("median_kelly_fraction_pct") or scorecard.get("kelly_fraction_pct")
-        if moat and float(moat) >= 4.0 and skew and float(skew) >= 2.0 and kelly and float(kelly) > 0:
-            if price <= 1.10 * ivs[-1]:
-                d = "hold"
-                reason_notes.append(f"fairly valued with asymmetric upside (moat {moat}/5, skew {skew}x) — hold/starter tranche")
     elif price > ivs[-1]:
-        moat = scorecard.get("median_quality_moat") or scorecard.get("business_quality_moat")
-        skew = scorecard.get("asymmetric_payoff_skew")
-        kelly = scorecard.get("median_kelly_fraction_pct") or scorecard.get("kelly_fraction_pct")
-        if moat and float(moat) >= 4.0 and skew and float(skew) >= 2.0 and kelly and float(kelly) > 0:
-            if price <= 1.10 * ivs[-1]:
-                reason_notes.append(f"fairly valued with asymmetric upside (moat {moat}/5, skew {skew}x) — hold/starter tranche")
         d = "hold"
     else:
         d = "hold"
 
-    # STRICT NON-CONVERGENCE GATE:
-    # If the models fundamentally disagree beyond tolerance (spread > 25%), capital cannot be committed.
+    # P4.8 — Asymmetric Compounder info (Charter v3.0 / Anti-Vacuum Principle), INFORMATION
+    # ONLY. A wide-moat compounder (moat >= 4.0, skew >= 2.0x, positive Kelly) trading within
+    # 10% above the top of the band is flagged `compounder_near_fair_value`, carrying the
+    # moat/skew/kelly values, but no longer RELABELS a unanimous `overvalued` as `hold`: its
+    # inputs are the same model's self-reports; it relabelled up to 10% above the band, which
+    # lands in SCR-04's `hold` branch and erases the disagreement the divergence engine exists
+    # to record; and it is price-anchoring at the verdict layer, which the charter forbids at
+    # the projection layer (charter_v3.0.md:59). `is None`, never `or`: 0.0 is a real value on
+    # all three fields (a zero-moat, zero-skew, or zero-Kelly reading), not an absence to fall
+    # through past.
+    if price > ivs[-1] and price <= 1.10 * ivs[-1]:
+        moat = scorecard.get("median_quality_moat")
+        if moat is None:
+            moat = scorecard.get("business_quality_moat")
+        skew = scorecard.get("asymmetric_payoff_skew")
+        kelly = scorecard.get("median_kelly_fraction_pct")
+        if kelly is None:
+            kelly = scorecard.get("kelly_fraction_pct")
+        if (moat is not None and skew is not None and kelly is not None
+                and float(moat) >= 4.0 and float(skew) >= 2.0 and float(kelly) > 0):
+            v.setdefault("flags", []).append("compounder_near_fair_value")
+            v["flags"] = sorted(set(v["flags"]))
+            reason_notes.append(f"compounder near fair value (moat {moat}/5, skew {skew}x, "
+                                f"Kelly {kelly}%) — informational, direction unchanged")
+
+    # P4.8 — STRICT NON-CONVERGENCE GATE, SYMMETRIC: if the models fundamentally disagree
+    # beyond tolerance, capital cannot be committed in EITHER direction. Previously only
+    # `undervalued` was pulled back to `hold`; an `overvalued` call on the identical
+    # disagreement published unchanged — the same "model disagreement prohibits capital
+    # allocation" the gate exists to enforce, just unguarded on the sell side.
     if spread > tol:
-        if d == "undervalued":
+        if d in ("undervalued", "overvalued"):
+            withheld = d
             d = "hold"
-            reason_notes.append(f"high dispersion (spread {spread:.1f}% > {tol:.0f}%) — model disagreement prohibits capital allocation")
+            reason_notes.append(f"high dispersion (spread {spread:.1f}% > {tol:.0f}%) — model "
+                                f"disagreement prohibits capital allocation ({withheld} withheld)")
         v.setdefault("flags", []).append("HIGH_DISPERSION_QUARANTINE")
         v["flags"] = sorted(set(v["flags"]))
 

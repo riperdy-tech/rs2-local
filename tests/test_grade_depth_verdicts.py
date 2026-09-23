@@ -227,9 +227,10 @@ def test_actionable_recomputed_per_row():
     assert aaa["actionable"] is True
     assert aaa["actionable_reasons"] == []
 
-    bbb = by_ticker["BBB"]      # gate_version=1 (<2) AND run_source=manual
+    bbb = by_ticker["BBB"]      # gate_version=1 (<2), overvalued+spread_pct=40 (P4.8 symmetric
+                                # dispersion), AND run_source=manual
     assert bbb["actionable"] is False
-    assert bbb["actionable_reasons"] == ["pre_v3.1_gates", "non_production_row"]
+    assert bbb["actionable_reasons"] == ["pre_v3.1_gates", "high_dispersion", "non_production_row"]
 
     ccc = by_ticker["CCC"]      # n_basis == 1
     assert ccc["actionable"] is False

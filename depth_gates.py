@@ -51,11 +51,13 @@ def assess(v):
       3. `n_basis == 1`                                        -> "single_sample"
       4. `fiduciary_verdict == "FAIL"`                         -> "fiduciary_fail"
       5. `direction == overvalued` and `kelly_fraction_pct > 0` -> "kelly_on_overvalued"
-      6. `direction == undervalued` and `spread_pct > 25`      -> "high_dispersion"
+      6. `direction in {undervalued, overvalued}` and `spread_pct > 25` -> "high_dispersion"
       7. `run_source in {manual, test}`                        -> "non_production_row"
       8. `instability.unstable is True`                        -> "mode_instability"
 
-    Symmetric dispersion for `overvalued` is Phase 4 P4.8 — deliberately not added here.
+    P4.8: symmetric dispersion — `high_dispersion` fires for `overvalued` too, not only
+    `undervalued`. band_verdict already demotes both directions to `hold` on write when the
+    spread exceeds tolerance, so this mainly guards legacy rows written before that fix.
     """
     v = v or {}
     reasons = []
@@ -83,7 +85,8 @@ def assess(v):
         reasons.append("kelly_on_overvalued")
 
     spread = v.get("spread_pct")
-    if direction == "undervalued" and spread is not None and spread > HIGH_DISPERSION_TOL_PCT:
+    if (direction in ("undervalued", "overvalued") and spread is not None
+            and spread > HIGH_DISPERSION_TOL_PCT):
         reasons.append("high_dispersion")
 
     if v.get("run_source") in _NON_PRODUCTION_SOURCES:

@@ -27,6 +27,26 @@ def test_non_converged_spread_blocks_undervalued_buy():
     assert "high dispersion" in v["reason"].lower() or "quarantine" in v["reason"].lower()
     assert "HIGH_DISPERSION_QUARANTINE" in v["flags"]
 
+
+def test_p4_8_non_converged_spread_blocks_overvalued_sell_too():
+    # P4.8 — symmetric dispersion. Price 200, IVs [80, 150] (spread 87.5%, past the 25% tol),
+    # median 100: the MoS-floor rule alone would call this "overvalued" — model disagreement on
+    # the sell side must withhold capital exactly as it does on the buy side.
+    doc = {
+        "ticker": "OVERDISP", "price": 200.0, "samples_run": 3, "converged": False,
+        "spread_pct": 87.5, "median_iv": 100.0, "tolerance_pct": 25.0,
+        "runs": [
+            {"sample": 1, "iv": 80.0, "plausible": True, "truncated": False},
+            {"sample": 2, "iv": 150.0, "plausible": True, "truncated": False},
+        ],
+        "scorecard": {"median_iv": 100.0, "invalidation_rules": VALID_INVALIDATION_RULES}
+    }
+    v = band_verdict(doc)
+    assert v["direction"] == "hold"
+    assert "overvalued withheld" in v["reason"].lower()
+    assert "HIGH_DISPERSION_QUARANTINE" in v["flags"]
+
+
 def test_lost_sample_caps_size_to_half():
     # Like GTE: 1 sample lost, 2 surviving agree within 11.8% -> Must NOT be "full" size!
     doc = {
@@ -44,10 +64,15 @@ def test_lost_sample_caps_size_to_half():
     assert v["size_hint"] in ["half", "quarter"]
     assert v["size_hint"] != "full"
 
-def test_asymmetric_moat_override_prevents_false_overvalued():
-    # High quality compounder: Price 102, Base IVs [98, 100], Moat 4.5, Skew 3.5x, Kelly 15%
+def test_asymmetric_compounder_is_flagged_but_no_longer_overrides_direction():
+    # P4.8 removed the moat override as a DIRECTION change (it erased the disagreement the
+    # divergence engine exists to record, and is price-anchoring at the verdict layer). High
+    # quality compounder: Price 110, Base IVs [98, 100], median_iv 99, MoS exactly at the 10%
+    # floor (110-99)/110 = 10.0%, price within 10% above the top of the band (110 == 1.10*100)
+    # -> the direction the MoS-floor rule alone would produce is "overvalued", and it MUST STAY
+    # "overvalued" — only the info flag/reason fire.
     doc = {
-        "ticker": "CMPD", "price": 102.0, "samples_run": 2, "converged": True,
+        "ticker": "CMPD", "price": 110.0, "samples_run": 2, "converged": True,
         "spread_pct": 2.0, "median_iv": 99.0, "early_stop": True,
         "runs": [
             {"sample": 1, "iv": 98.0, "plausible": True, "truncated": False},
@@ -56,13 +81,54 @@ def test_asymmetric_moat_override_prevents_false_overvalued():
         "scorecard": {
             "median_iv": 99.0, "median_bull_iv": 180.0, "median_bear_iv": 85.0,
             "median_quality_moat": 4.5, "asymmetric_payoff_skew": 3.5,
-            "median_kelly_fraction_pct": 15.0
+            "median_kelly_fraction_pct": 15.0,
+            "invalidation_rules": VALID_INVALIDATION_RULES,
         }
     }
     v = band_verdict(doc)
-    # Nominally 102 > max(98, 100) would be "overvalued", but asymmetric moat override makes it "hold"
-    assert v["direction"] == "hold"
-    assert "asymmetric" in v["reason"].lower()
+    assert v["direction"] == "overvalued"
+    assert "compounder_near_fair_value" in v["flags"]
+    assert "compounder near fair value" in v["reason"].lower()
+
+
+def test_compounder_flag_does_not_fire_more_than_10pct_above_the_band():
+    doc = {
+        "ticker": "CMPD2", "price": 130.0, "samples_run": 2, "converged": True,
+        "spread_pct": 2.0, "median_iv": 99.0, "early_stop": True,
+        "runs": [
+            {"sample": 1, "iv": 98.0, "plausible": True, "truncated": False},
+            {"sample": 2, "iv": 100.0, "plausible": True, "truncated": False},
+        ],
+        "scorecard": {
+            "median_iv": 99.0, "median_quality_moat": 4.5, "asymmetric_payoff_skew": 3.5,
+            "median_kelly_fraction_pct": 15.0,
+            "invalidation_rules": VALID_INVALIDATION_RULES,
+        }
+    }
+    v = band_verdict(doc)
+    assert v["direction"] == "overvalued"
+    assert "compounder_near_fair_value" not in (v.get("flags") or [])
+
+
+def test_compounder_flag_uses_is_none_not_or_zero_kelly_still_flags():
+    # A real zero-Kelly reading must not silently fall through to `kelly_fraction_pct` via `or`
+    # (0.0 is a value). It also must not qualify for the flag (kelly > 0 is part of the test).
+    doc = {
+        "ticker": "CMPD3", "price": 110.0, "samples_run": 2, "converged": True,
+        "spread_pct": 2.0, "median_iv": 99.0, "early_stop": True,
+        "runs": [
+            {"sample": 1, "iv": 98.0, "plausible": True, "truncated": False},
+            {"sample": 2, "iv": 100.0, "plausible": True, "truncated": False},
+        ],
+        "scorecard": {
+            "median_iv": 99.0, "median_quality_moat": 4.5, "asymmetric_payoff_skew": 3.5,
+            "median_kelly_fraction_pct": 0.0, "kelly_fraction_pct": 15.0,
+            "invalidation_rules": VALID_INVALIDATION_RULES,
+        }
+    }
+    v = band_verdict(doc)
+    assert v["direction"] == "overvalued"
+    assert "compounder_near_fair_value" not in (v.get("flags") or [])
 
 
 # ---------------------------------------------------------------------------------------------

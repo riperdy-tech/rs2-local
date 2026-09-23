@@ -92,9 +92,16 @@ def test_high_dispersion():
     assert reasons == ["high_dispersion"]
 
 
-def test_high_dispersion_does_not_fire_on_overvalued():
-    """Symmetric dispersion for overvalued is Phase 4 P4.8 — explicitly not added here."""
+def test_high_dispersion_fires_on_overvalued_too():
+    """P4.8 — symmetric dispersion: an overvalued call under the identical model disagreement
+    that would quarantine an undervalued one must not publish actionable unguarded."""
     actionable, reasons = dg.assess(_clean(direction="overvalued", spread_pct=90.0))
+    assert actionable is False
+    assert reasons == ["high_dispersion"]
+
+
+def test_high_dispersion_does_not_fire_on_hold():
+    actionable, reasons = dg.assess(_clean(direction="hold", spread_pct=90.0))
     assert actionable is True
     assert reasons == []
 
