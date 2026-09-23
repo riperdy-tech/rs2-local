@@ -56,6 +56,18 @@ def _import_cloud_delta(repo_dir: Path) -> int:
         with ledger.open("a", encoding="utf-8") as f:
             for ln in new:
                 f.write(ln + "\n")
+        # B5 (Phase 1 approval review, folded from P1.8): "every ledger append path calls
+        # audit_verdict" was false here. Same function the PC append path (depth_pipeline.main())
+        # calls, against the same local ledger these rows just landed in. Never fatal to the
+        # sync — a bad row is audited and flagged, not dropped.
+        import depth_pipeline as dp  # lazy: keeps this module's import footprint light
+        for ln in new:
+            try:
+                t = json.loads(ln).get("ticker")
+            except ValueError:
+                continue
+            if t:
+                dp.audit_verdict(t, ledger)
     delta_path.write_text("", encoding="utf-8")
     return len(new)
 

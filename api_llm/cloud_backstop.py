@@ -282,6 +282,15 @@ def main() -> int:
     # dwell clocks (spec §4) count sweep-days, and a PC-off day the cloud sweeps
     # is a sweep-day. Handed back to rs2-state below so it survives.
     sd_date, sd_n = mem.snapshot()
+    if sd_n is None:
+        # FAIL CLOSED (B5, Phase 1 approval review): mem.snapshot() returns
+        # (date, None) when the factor guard refused the book (wrong engine or
+        # stale factor_scores.json) and writes nothing in that case. This used
+        # to fall through untouched to the `sd_n == 0` check below and be
+        # treated as success, serving the wrong-engine book to the cloud arm.
+        ops.notify_telegram("depth continuity ABORT: membership snapshot refused — "
+                            "factor guard rejected the book (wrong engine or stale)")
+        return 1
     rows = mem.snapshots_recorded()
     print(f"membership snapshot {sd_date}: {sd_n} in RN+WL | {rows} daily rows on record")
     if sd_n == 0:

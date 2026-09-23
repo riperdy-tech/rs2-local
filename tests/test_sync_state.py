@@ -74,6 +74,36 @@ def test_cloud_delta_imported_and_truncated(tmp_path, monkeypatch):
     assert "import 1 cloud rows" in out
 
 
+def test_cloud_delta_import_audits_new_rows(tmp_path, monkeypatch):
+    """B5 (Phase 1 approval review, folded from P1.8): 'every ledger append path calls
+    audit_verdict' was false for sync_state._import_cloud_delta. Same function the PC append
+    path (depth_pipeline.main()) calls, against the same local ledger the delta rows just
+    landed in — and only for the newly-imported rows, never for the ones already on file."""
+    import depth_pipeline
+    calls = []
+    monkeypatch.setattr(depth_pipeline, "audit_verdict", lambda t, ledger: calls.append((t, ledger)))
+
+    clone = _make_repos(tmp_path)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "depth_ledger.jsonl").write_text('{"ticker": "AAA", "run": "AAA_1"}\n',
+                                              encoding="utf-8")
+    pending = clone / "cloud_pending"
+    pending.mkdir()
+    (pending / "depth_ledger_delta.jsonl").write_text(
+        '{"ticker": "AAA", "run": "AAA_1"}\n{"ticker": "BBB", "run": "BBB_2"}\n',
+        encoding="utf-8")
+    _git(clone, "add", "-A")
+    _git(clone, "commit", "-m", "cloud delta")
+    _git(clone, "push")
+    monkeypatch.setattr(sync_state, "CACHE", cache)
+
+    out = sync_state.main(repo_dir=clone)
+
+    assert "import 1 cloud rows" in out
+    assert calls == [("BBB", cache / "depth_ledger.jsonl")]  # only the NEW row, not AAA
+
+
 def test_recovers_from_cloud_race_and_dirty_index(tmp_path, monkeypatch):
     """The wedge the disposable-clone reset exists to prevent.
 

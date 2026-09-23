@@ -25,6 +25,15 @@ import orchestrate_depth as od               # noqa: E402
 import publish_cloud_verdicts as pcv         # noqa: E402
 
 
+def _stub_audit(monkeypatch):
+    """Real dp.audit_verdict shells out to depth_sanity.py and appends to the real
+    cache/depth_audit.log — never allowed to run for real in a test (repo-root conftest.py
+    fails any test that changes a cache/ mtime). Records the (ticker, ledger) calls instead."""
+    calls = []
+    monkeypatch.setattr(pcv.dp, "audit_verdict", lambda t, ledger: calls.append((t, ledger)))
+    return calls
+
+
 def _make_run(tmp_path, ticker="ABBV", direction="undervalued", spread_pct=5.0):
     """A synthetic cloud run dir shaped exactly like a real 2026-08-26 flash run
     (api_llm/deep_api/ABBV_20260826_012953/verdict_depth.json): pack_source fresh, pack_revision
@@ -57,6 +66,7 @@ def test_2026_08_26_cloud_verdict_is_not_actionable(tmp_path, monkeypatch):
     monkeypatch.setattr(od, "OVERLAY", tmp_path / "depth_overlay.json")
     monkeypatch.setattr(od, "PENDING_REPORTS", tmp_path / "cloud_pending_reports")
     monkeypatch.setattr(sys, "argv", ["publish_cloud_verdicts.py"])
+    _stub_audit(monkeypatch)
 
     pcv.main()
 
@@ -74,3 +84,25 @@ def test_2026_08_26_cloud_verdict_is_not_actionable(tmp_path, monkeypatch):
     assert ov["actionable_count"] == 0
     assert ov["tickers"]["ABBV"]["actionable"] is False
     assert ov["tickers"]["ABBV"]["actionable_reasons"] == ["pre_v3.1_gates"]
+
+
+def test_publish_audits_every_appended_row(tmp_path, monkeypatch):
+    """B5 (Phase 1 approval review, folded from P1.8): 'every ledger append path calls
+    audit_verdict' was false for this path. Each published cloud verdict must now be audited
+    against the SAME ledger file its row was appended to, with the same function the PC append
+    path (depth_pipeline.main()) uses."""
+    d1, doc1, v1 = _make_run(tmp_path, ticker="ABBV")
+    d2, doc2, v2 = _make_run(tmp_path, ticker="MU")
+
+    monkeypatch.setattr(pcv, "cloud_runs", lambda: {"ABBV": (d1, doc1, v1), "MU": (d2, doc2, v2)})
+    monkeypatch.setattr(od, "live_book", lambda: {"ABBV", "MU"})
+    ledger_path = tmp_path / "depth_ledger.jsonl"
+    monkeypatch.setattr(od, "LEDGER", ledger_path)
+    monkeypatch.setattr(od, "OVERLAY", tmp_path / "depth_overlay.json")
+    monkeypatch.setattr(od, "PENDING_REPORTS", tmp_path / "cloud_pending_reports")
+    monkeypatch.setattr(sys, "argv", ["publish_cloud_verdicts.py"])
+    calls = _stub_audit(monkeypatch)
+
+    pcv.main()
+
+    assert sorted(calls) == [("ABBV", ledger_path), ("MU", ledger_path)]

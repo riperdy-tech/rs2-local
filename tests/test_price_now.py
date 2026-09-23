@@ -18,6 +18,7 @@ Verifies:
    - Uses price_now.quote() with vendor quote as recorded fallback
 """
 import sys
+import types
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -43,6 +44,17 @@ class DummyFastInfo:
         self.last_price = last_price
 
 
+def _install_fake_yfinance(monkeypatch, ticker_factory):
+    """B5 (Phase 1 approval review): price_now.quote() now does `import yfinance as yf`
+    INSIDE the function (lazy — so importing price_now never needs yfinance installed, which
+    the cloud continuity runner does not have). There is no more module-level `price_now.yf`
+    attribute to monkeypatch, so install the fake Ticker factory into sys.modules instead; the
+    lazy import picks up this module without a real yfinance import."""
+    fake = types.ModuleType("yfinance")
+    fake.Ticker = ticker_factory
+    monkeypatch.setitem(sys.modules, "yfinance", fake)
+
+
 def test_quote_fresh_history(monkeypatch):
     now = datetime(2026, 9, 23, 12, 0, 0, tzinfo=timezone.utc)
     dates = pd.to_datetime(["2026-09-21", "2026-09-22"])
@@ -50,7 +62,7 @@ def test_quote_fresh_history(monkeypatch):
 
     mock_ticker = MagicMock()
     mock_ticker.history.return_value = hist
-    monkeypatch.setattr(price_now.yf, "Ticker", lambda t: mock_ticker)
+    _install_fake_yfinance(monkeypatch, lambda t: mock_ticker)
 
     q = price_now.quote("AAPL", now_dt=now)
     assert q is not None
@@ -68,7 +80,7 @@ def test_quote_stale_history_refused(monkeypatch):
     mock_ticker = MagicMock()
     mock_ticker.history.return_value = hist
     mock_ticker.fast_info = None
-    monkeypatch.setattr(price_now.yf, "Ticker", lambda t: mock_ticker)
+    _install_fake_yfinance(monkeypatch, lambda t: mock_ticker)
 
     q = price_now.quote("AAPL", now_dt=now)
     assert q is None
@@ -79,7 +91,7 @@ def test_quote_fallback_to_fast_info(monkeypatch):
     mock_ticker = MagicMock()
     mock_ticker.history.return_value = pd.DataFrame()
     mock_ticker.fast_info = DummyFastInfo(last_price=155.75)
-    monkeypatch.setattr(price_now.yf, "Ticker", lambda t: mock_ticker)
+    _install_fake_yfinance(monkeypatch, lambda t: mock_ticker)
 
     q = price_now.quote("AAPL", now_dt=now)
     assert q is not None
@@ -101,7 +113,7 @@ def test_quote_newest_bar_nan_falls_back_to_fast_info(monkeypatch):
     mock_ticker = MagicMock()
     mock_ticker.history.return_value = hist
     mock_ticker.fast_info = DummyFastInfo(last_price=104.16)
-    monkeypatch.setattr(price_now.yf, "Ticker", lambda t: mock_ticker)
+    _install_fake_yfinance(monkeypatch, lambda t: mock_ticker)
 
     q = price_now.quote("AAPL", now_dt=now)
     assert q is not None
@@ -122,7 +134,7 @@ def test_quote_newest_bar_nan_refuses_without_fast_info(monkeypatch):
     mock_ticker = MagicMock()
     mock_ticker.history.return_value = hist
     mock_ticker.fast_info = None
-    monkeypatch.setattr(price_now.yf, "Ticker", lambda t: mock_ticker)
+    _install_fake_yfinance(monkeypatch, lambda t: mock_ticker)
 
     assert price_now.quote("AAPL", now_dt=now) is None
 
@@ -131,7 +143,7 @@ def test_quote_network_failure_returns_none(monkeypatch):
     def _raise(t):
         raise ConnectionError("no network")
 
-    monkeypatch.setattr(price_now.yf, "Ticker", _raise)
+    _install_fake_yfinance(monkeypatch, _raise)
     assert price_now.quote("AAPL") is None
 
 

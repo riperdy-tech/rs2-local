@@ -43,6 +43,9 @@ sys.path.insert(0, str(ROOT / "tools" / "audit_202608"))
 
 _STDOUT_KEEPALIVE = [sys.stdout]
 import orchestrate_depth as od     # noqa: E402  rebuild_overlay, publish_overlay, LEDGER, SD
+import depth_pipeline as dp        # noqa: E402  audit_verdict — B5 (Phase 1 approval review):
+# "every ledger append path calls audit_verdict" was false for this path (P1.8 review). Same
+# function the PC append path (depth_pipeline.main()) calls, same ledger the row was written to.
 
 DEEP_API = HERE / "deep_api"
 # Only the arm that was actually validated at scale. deepseek-v4-pro was run on ONE ticker as a
@@ -164,6 +167,8 @@ def main():
     with od.LEDGER.open("a", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
     print(f"ledger: +{len(lines)} cloud verdicts -> {od.LEDGER}")
+    for t, _, _, _ in pub:
+        dp.audit_verdict(t, od.LEDGER)
     print(f"report bundles written: {bundles} -> {od.PENDING_REPORTS} (staged for publish)")
     print(f"overlay rebuilt: {od.rebuild_overlay()} tickers -> {od.OVERLAY}")
     if push:

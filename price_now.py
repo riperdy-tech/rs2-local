@@ -9,7 +9,6 @@ unparseable quote.
 """
 import math
 from datetime import datetime, timezone
-import yfinance as yf
 
 MAX_STALENESS_DAYS = 4
 
@@ -23,6 +22,12 @@ def quote(ticker: str, now_dt: datetime | None = None) -> dict | None:
     t = str(ticker).strip().upper()
     now = now_dt if now_dt is not None else datetime.now(timezone.utc)
     now_date = now.date()
+
+    # B5 (Phase 1 approval review): import yfinance lazily, here, not at module
+    # level. depth_triggers imports price_now, and the cloud continuity runner
+    # has no yfinance install step — a top-level import crashed the arm before
+    # this fix.
+    import yfinance as yf
 
     try:
         tk = yf.Ticker(t)

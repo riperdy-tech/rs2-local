@@ -18,6 +18,38 @@ def _row(minutes_ago: float, suffix: str = "+00:00"):
 
 
 
+# ── membership snapshot refusal (B5, Phase 1 approval review) ─────────────────
+
+def test_main_aborts_when_membership_snapshot_refused(tmp_path, monkeypatch):
+    """sd_n is None means the factor guard refused the book (wrong engine or stale
+    factor_scores.json) — depth_membership.snapshot() writes NOTHING in that case. This used
+    to fall through untouched to the `sd_n == 0` check and be treated as success, serving the
+    wrong-engine book to the cloud arm. Must abort with a clear message, nonzero exit, before
+    doing anything else (no queue built, no ticker run, no handback)."""
+    ledger = tmp_path / "depth_ledger.jsonl"
+    ledger.write_text('{"ticker": "AAA"}\n', encoding="utf-8")
+    monkeypatch.setattr(cloud_backstop, "LEDGER", ledger)
+    monkeypatch.setenv("RS2_STATE_DIR", str(tmp_path / "rs2-state"))
+    monkeypatch.setattr(sys, "argv", ["cloud_backstop.py"])
+
+    import depth_membership as dm
+    import ops
+
+    monkeypatch.setattr(dm, "snapshot", lambda *a, **k: ("2026-09-23", None))
+    snapshots_recorded_called = []
+    monkeypatch.setattr(dm, "snapshots_recorded", lambda: snapshots_recorded_called.append(1) or 0)
+    notified = []
+    monkeypatch.setattr(ops, "notify_telegram", lambda msg: notified.append(msg))
+
+    rc = cloud_backstop.main()
+
+    assert rc == 1
+    assert len(notified) == 1
+    assert "factor guard" in notified[0]
+    assert not snapshots_recorded_called  # returned before any further work
+    assert ledger.read_text(encoding="utf-8") == '{"ticker": "AAA"}\n'  # untouched
+
+
 def test_compute_delta_only_new_lines():
     before = ['{"run": 1}', '{"run": 2}']
     after = ['{"run": 1}', '{"run": 2}', '{"run": 3}']
