@@ -172,6 +172,10 @@ def audit(ticker, verdict):
                 f"'sample N: FAILED'; these are invisible in consensus.json.")
     lost = []
     for r in runs:
+        r_flags = r.get("flags") or []
+        desk_flags = [f for f in r_flags if f in ("desk_not_used", "iv_not_desk_backed")]
+        if desk_flags:
+            note(1, f"sample {r.get('sample')}: desk verification flag ({', '.join(desk_flags)})")
         usable = r.get("iv") and r.get("plausible") and not r.get("truncated")
         sp = d / f"sample{r['sample']}.md"
         body = sp.read_text(encoding="utf-8", errors="replace") if sp.exists() else ""

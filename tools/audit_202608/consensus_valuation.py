@@ -460,7 +460,8 @@ def select_medoid_scorecard(
                 "iv": r.get("iv"),
                 "card": san_card,
                 "issues": issues,
-                "moat": san_card.get("business_quality_moat")
+                "moat": san_card.get("business_quality_moat"),
+                "flags": list(r.get("flags") or []),
             })
 
     if not valid_candidates:
@@ -517,7 +518,23 @@ def select_medoid_scorecard(
         d_moat = ((c["moat"] - med_moat) / med_moat) ** 2 if (c["moat"] and med_moat) else 0.0
         return d_iv + d_moat
 
-    chosen = min(valid_candidates, key=dist_to_center)
+    # D6/P4.11: Exclude flagged samples (desk_not_used, iv_not_desk_backed) from medoid candidacy
+    # when at least one clean sample exists.
+    def _is_clean_candidate(c):
+        c_flags = c.get("flags") or []
+        if "desk_not_used" in c_flags or "iv_not_desk_backed" in c_flags:
+            return False
+        c_card = c.get("card") or {}
+        if c_card.get("desk_calls") == 0:
+            return False
+        if c_card.get("desk_iv_match") is False:
+            return False
+        return True
+
+    clean_candidates = [c for c in valid_candidates if _is_clean_candidate(c)]
+    eligible_candidates = clean_candidates if clean_candidates else valid_candidates
+
+    chosen = min(eligible_candidates, key=dist_to_center)
     medoid_card = chosen["card"]
 
     summary = {
@@ -1206,6 +1223,12 @@ def main():
             ticker=t,
         )
         scorecard.update(desk_info)
+        if desk_info["desk_calls"] == 0:
+            flags = list(flags) + ["desk_not_used"]
+            why = list(why) + ["desk not used (0 financial model calls)"]
+        if not desk_info["desk_iv_match"]:
+            flags = list(flags) + ["iv_not_desk_backed"]
+            why = list(why) + [f"base IV ${iv} not backed by any desk calculation within 1%"]
 
         # The declared cash-flow basis is CHECKED, not taken on trust - a self-reported value
         # nothing verifies is exactly the Task 2 defect. Annotation only: a flag and a reason.
