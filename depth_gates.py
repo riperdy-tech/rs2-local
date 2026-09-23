@@ -22,6 +22,13 @@ from __future__ import annotations
 
 GATE_VERSION = 2
 
+# P2-fix B2 (Phase 2 approval review): the ledger's `gate_version` alone does not prove a verdict
+# came from a VALID analyst — depth_pipeline stamps gate_version=2 on every verdict it writes
+# today, including ones produced before Phase 4 rules the current analyst valid. FIRST_VALID_
+# PACK_REVISION is the single switch that turns validity on: it stays None (nothing is valid)
+# until the Phase 4 ruling sets it to the first PACK_REVISION whose verdicts count.
+FIRST_VALID_PACK_REVISION = None
+
 _DIRECTIONS = ("undervalued", "hold", "overvalued")
 # `run_source` values that never belong in the live book. "manual" is depth_pipeline.py's default
 # for an unmarked run (P1.2); "test" is reserved for anything that stamps itself as such.
@@ -81,3 +88,25 @@ def assess(v):
         reasons.append("non_production_row")
 
     return (not reasons), reasons
+
+
+def analyst_valid(v):
+    """True only if `v` was produced by the analyst Phase 4 has ruled valid.
+
+    False whenever FIRST_VALID_PACK_REVISION is None (the ruling has not happened yet — NOTHING
+    is valid). Once set, True only if `v`'s `pack_revision` is an int >= FIRST_VALID_PACK_REVISION
+    AND `gate_version` is an int >= GATE_VERSION. A missing or non-int value on either field is
+    False, never guessed. This is independent of `assess()`: a row can be gate-actionable (passes
+    every dispersion/fiduciary bar) and still not analyst_valid (predates the Phase 4 ruling), and
+    the reverse is also possible.
+    """
+    if FIRST_VALID_PACK_REVISION is None:
+        return False
+    v = v or {}
+    pr = v.get("pack_revision")
+    gv = v.get("gate_version")
+    if not isinstance(pr, int) or isinstance(pr, bool):
+        return False
+    if not isinstance(gv, int) or isinstance(gv, bool):
+        return False
+    return pr >= FIRST_VALID_PACK_REVISION and gv >= GATE_VERSION

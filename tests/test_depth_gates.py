@@ -195,3 +195,38 @@ def test_rebuild_overlay_on_3row_fixture(tmp_path, monkeypatch):
     assert "not_usable" in ccc["actionable_reasons"]
     assert ccc["status"] == "not_usable"
     assert ccc["direction"] is None       # the sentinel string never reaches the published row
+
+
+# ---- analyst_valid() — P2-fix B2: keyed on FIRST_VALID_PACK_REVISION, not gate_version alone ----
+
+def test_analyst_valid_false_while_first_valid_pack_revision_is_none(monkeypatch):
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", None)
+    v = {"pack_revision": 5, "gate_version": GV}   # today's real depth_pipeline stamp
+    assert dg.analyst_valid(v) is False
+
+
+def test_analyst_valid_true_at_or_above_the_ruled_floor(monkeypatch):
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", 5)
+    assert dg.analyst_valid({"pack_revision": 5, "gate_version": GV}) is True
+    assert dg.analyst_valid({"pack_revision": 6, "gate_version": GV}) is True
+
+
+def test_analyst_valid_false_below_the_ruled_floor(monkeypatch):
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", 5)
+    assert dg.analyst_valid({"pack_revision": 4, "gate_version": GV}) is False
+
+
+def test_analyst_valid_false_below_current_gate_version(monkeypatch):
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", 5)
+    assert dg.analyst_valid({"pack_revision": 5, "gate_version": GV - 1}) is False
+
+
+def test_analyst_valid_false_on_missing_or_non_int_values(monkeypatch):
+    monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", 5)
+    assert dg.analyst_valid({"pack_revision": None, "gate_version": GV}) is False
+    assert dg.analyst_valid({"pack_revision": 5, "gate_version": None}) is False
+    assert dg.analyst_valid({"gate_version": GV}) is False
+    assert dg.analyst_valid({"pack_revision": 5}) is False
+    assert dg.analyst_valid({"pack_revision": "5", "gate_version": GV}) is False
+    assert dg.analyst_valid({}) is False
+    assert dg.analyst_valid(None) is False
