@@ -68,7 +68,9 @@ def check_factor_scores(factor_path=None, max_age_h=None, now_dt=None):
         return False, f"unparseable generated_at '{gen_at}': {e}"
 
     if max_age_h is None:
-        max_age_h = CONFIG.get("factor_max_age_h", 48)
+        # C13 (Phase 1 approval review): no silent default — a missing config key must raise,
+        # never quietly substitute a hidden constant that duplicates config.json's own value.
+        max_age_h = CONFIG["factor_max_age_h"]
 
     now = now_dt if now_dt is not None else datetime.now(timezone.utc)
     age_h = (now - dt).total_seconds() / 3600.0

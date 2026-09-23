@@ -183,7 +183,9 @@ def run_research(t):
         print(f"[depth] WARN no company name for {t} — research will search the bare ticker",
               flush=True)
     brief_asof, brief_age_days = _research_brief_provenance(t)
-    max_age = float(CONFIG.get("research_max_age_days", 14))
+    # C13 (Phase 1 approval review): no silent default — a missing config key must raise,
+    # never quietly substitute a hidden constant that duplicates config.json's own value.
+    max_age = float(CONFIG["research_max_age_days"])
     force = bool(brief_age_days is not None and brief_age_days > max_age)
     if force:
         print(f"[depth] research brief for {t} is {brief_age_days:.1f}d old (> {max_age:.0f}d) — forcing refresh",

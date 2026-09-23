@@ -711,7 +711,9 @@ def build_pack(t, price_override=None):
     # Regime line
     regime_file = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "current_regime.json") or {}
     regime_date = regime_file.get("date")
-    regime_fresh = bool(regime_date and rs2_data._fresh(regime_date, CONFIG.get("regime_max_age_days", 45)))
+    # C13 (Phase 1 approval review): no silent default — a missing config key must raise,
+    # never quietly substitute a hidden constant that duplicates config.json's own value.
+    regime_fresh = bool(regime_date and rs2_data._fresh(regime_date, CONFIG["regime_max_age_days"]))
 
     if not regime_file or not regime_date:
         regime_headline = None

@@ -1343,7 +1343,9 @@ def build_data_context(ticker, bb=None):
 
     regime = load_json(Path(CONFIG["mri_outputs_dir"]) / "current_regime.json")
     if regime:
-        regime["_fresh"] = _fresh(regime.get("date"), CONFIG.get("regime_max_age_days", 45))
+        # C13 (Phase 1 approval review): no silent default — a missing config key must raise,
+        # never quietly substitute a hidden constant that duplicates config.json's own value.
+        regime["_fresh"] = _fresh(regime.get("date"), CONFIG["regime_max_age_days"])
 
     if fin:
         fin_brief = format_financial_data(fin, market)
