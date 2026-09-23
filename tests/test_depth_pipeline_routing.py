@@ -87,6 +87,28 @@ def test_stamp_and_route_adds_every_new_field(monkeypatch, tmp_path):
     assert v["gate_version"] == dp.GATE_VERSION
 
 
+def test_price_asof_basis_copied_when_present(monkeypatch, tmp_path):
+    """C9 follow-on (Phase 1 approval review): stamp_and_route must carry quote['asof_basis']
+    onto the verdict as price_asof_basis when price_now set one (the fast_info-unverified
+    fallback marker)."""
+    monkeypatch.setitem(dp.CONFIG, "out_research_dir", str(tmp_path))
+    v = _synthetic_verdict()
+    quote = {"price": 104.16, "asof": "2026-09-22", "source": "yfinance_fast_info",
+             "asof_basis": "fast_info_unverified"}
+    dp.stamp_and_route(v, "FLXS", "orchestrator", quote=quote)
+    assert v["price_asof_basis"] == "fast_info_unverified"
+
+
+def test_price_asof_basis_absent_means_absent(monkeypatch, tmp_path):
+    """A verified daily close carries no basis note at all — must never be invented."""
+    monkeypatch.setitem(dp.CONFIG, "out_research_dir", str(tmp_path))
+    v = _synthetic_verdict()
+    quote = {"price": 102.5, "asof": "2026-09-22", "source": "yfinance"}
+    assert "asof_basis" not in quote  # confirms the fixture shape
+    dp.stamp_and_route(v, "FLXS", "orchestrator", quote=quote)
+    assert v["price_asof_basis"] is None
+
+
 def test_price_asof_and_source_are_none_not_fabricated(monkeypatch, tmp_path):
     """P1.5 is not implemented yet — these must be explicit None with a reason, never a value."""
     monkeypatch.setitem(dp.CONFIG, "out_research_dir", str(tmp_path))

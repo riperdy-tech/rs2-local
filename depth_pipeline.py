@@ -574,6 +574,10 @@ def stamp_and_route(v, t, run_source, quote=None):
         v["price"] = quote["price"]
         v["price_asof"] = quote.get("asof")
         v["price_source"] = quote.get("source")
+        # C9 follow-on (Phase 1 approval review): carry the fast_info-unverified marker onto
+        # the verdict when price_now set one — None (not fabricated) when the quote came from
+        # a verified daily close and carries no basis note at all.
+        v["price_asof_basis"] = quote.get("asof_basis")
         v.pop("price_asof_reason", None)
     else:
         v.setdefault("price_asof", None)
