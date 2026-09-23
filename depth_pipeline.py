@@ -182,7 +182,18 @@ def run_research(t):
     if not name:
         print(f"[depth] WARN no company name for {t} — research will search the bare ticker",
               flush=True)
-    proc = subprocess.Popen([str(rv), str(HERE / "deep_research.py"), t] + ([name] if name else []),
+    brief_asof, brief_age_days = _research_brief_provenance(t)
+    max_age = float(CONFIG.get("research_max_age_days", 14))
+    force = bool(brief_age_days is not None and brief_age_days > max_age)
+    if force:
+        print(f"[depth] research brief for {t} is {brief_age_days:.1f}d old (> {max_age:.0f}d) — forcing refresh",
+              flush=True)
+    cmd = [str(rv), str(HERE / "deep_research.py"), t]
+    if force:
+        cmd.append("--force")
+    if name:
+        cmd.append(name)
+    proc = subprocess.Popen(cmd,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                             encoding="utf-8", errors="replace")
     timed_out = False

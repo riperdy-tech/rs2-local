@@ -39,3 +39,68 @@ def test_dispatch_financial_model_tool():
     assert res["kelly_sizing"]["quarter_kelly_pct"] == 0.0
     assert len(snap) == 1
     assert snap[0]["tool"] == "run_financial_model"
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._body = json.dumps(payload).encode()
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_dispatched_tool_call_snapshotted_before_execution_even_if_raised(monkeypatch, tmp_path):
+    """P1.7: every dispatched call is appended and saved before execution.
+
+    If tool dispatch raises mid-call, the call record must still be in the log on disk.
+    """
+    resp = {
+        "message": {
+            "content": "",
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "search_web",
+                        "arguments": {"query": "Flexsteel Q4 2026 earnings"}
+                    }
+                }
+            ]
+        },
+        "done_reason": "stop",
+        "eval_count": 10,
+        "eval_duration": 100_000_000,
+    }
+
+    monkeypatch.setattr(at.urllib.request, "urlopen", lambda *a, **k: _FakeResponse(resp))
+
+    def fake_dispatch(*args, **kwargs):
+        # Verify that BEFORE dispatch executes, the call is already in _research_snapshot.json on disk
+        snap_file = tmp_path / "_research_snapshot.json"
+        assert snap_file.exists(), "Snapshot file must exist on disk before tool executes"
+        data = json.loads(snap_file.read_text(encoding="utf-8"))
+        assert data["tool_calls"] == 1
+        assert len(data["calls"]) == 1
+        assert data["calls"][0]["tool"] == "search_web"
+        assert data["calls"][0]["params"] == {"query": "Flexsteel Q4 2026 earnings"}
+        raise RuntimeError("Simulated mid-call failure during tool execution")
+
+    monkeypatch.setattr(at, "dispatch_tool", fake_dispatch)
+
+    with pytest.raises(RuntimeError, match="Simulated mid-call failure"):
+        at.chat_with_tools("fake-model", "test prompt", tmp_path, verbose=False)
+
+    # After the raise, the snapshot must STILL exist on disk with the error recorded
+    snap_file = tmp_path / "_research_snapshot.json"
+    assert snap_file.exists()
+    snapshot = json.loads(snap_file.read_text(encoding="utf-8"))
+    assert snapshot["tool_calls"] == 1
+    assert len(snapshot["calls"]) == 1
+    assert snapshot["calls"][0]["tool"] == "search_web"
+    assert "error" in snapshot["calls"][0]
+

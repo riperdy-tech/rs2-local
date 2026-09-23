@@ -181,6 +181,11 @@ def looks_like_refetch(query):
 
 def search_web(query, why="", snap=None, n=6, query_cache=None):
     """SearXNG JSON search -> compact result list. Deduplicates against prior queries."""
+    if not query or not query.strip():
+        rec = {"query": query, "why": why, "error": "empty query", "results": []}
+        if snap is not None:
+            snap.append({"tool": "search_web", "ts": time.strftime("%H:%M:%S"), **rec})
+        return rec
     if query_cache is not None:
         for prev_q, prev_res in query_cache.items():
             if is_near_duplicate(query, prev_q):
@@ -198,7 +203,10 @@ def search_web(query, why="", snap=None, n=6, query_cache=None):
         with urllib.request.urlopen(req, timeout=30) as r:
             data = json.loads(r.read().decode("utf-8", "replace"))
     except Exception as e:
-        return {"query": query, "error": f"search failed: {str(e)[:120]}", "results": []}
+        rec = {"query": query, "why": why, "error": f"search failed: {str(e)[:120]}", "results": []}
+        if snap is not None:
+            snap.append({"tool": "search_web", "ts": time.strftime("%H:%M:%S"), **rec})
+        return rec
     out = []
     for res in (data.get("results") or []):
         u = res.get("url") or ""
@@ -333,6 +341,21 @@ def turn_metrics(resp):
     }
 
 
+def _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap):
+    """Persist snapshot immediately so tool calls are recorded before execution."""
+    try:
+        p = Path(out_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        (p / "_research_snapshot.json").write_text(
+            json.dumps({"model": model, "seed": seed, "tool_calls": calls,
+                        "stub_rejected": stub_rejected,
+                        "turns": turns,
+                        "elapsed_s": round(time.time() - t0), "calls": snap}, indent=2),
+            encoding="utf-8")
+    except Exception:
+        pass
+
+
 def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predict=49152,
                     seed=None, timeout=14400, verbose=True, draft_num_predict=None):
     """Ollama chat with the search tools available. Returns (report, thinking, meta).
@@ -463,29 +486,54 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     args = json.loads(args)
                 except Exception:
                     args = {}
-            if name in ("search_web", "fetch_page"):
-                search_calls += 1
-                if search_calls > MAX_SEARCH_CALLS:
-                    result = {
-                        "status": "search_quota_met",
-                        "message": (
-                            f"Web search budget completed ({MAX_SEARCH_CALLS} calls). "
-                            "Do not search again. Formulate your scenario drivers and invoke "
-                            "run_financial_model to compute intrinsic values and Kelly sizing, "
-                            "then proceed to write your memorandum."
-                        )
-                    }
+
+            # P1.7: Append every dispatched call BEFORE it executes and persist immediately to disk
+            call_rec = {
+                "tool": name,
+                "call_index": calls,
+                "ts": time.strftime("%H:%M:%S"),
+                "params": args,
+            }
+            snap.append(call_rec)
+            _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
+
+            result = None
+            try:
+                if name in ("search_web", "fetch_page"):
+                    search_calls += 1
+                    if search_calls > MAX_SEARCH_CALLS:
+                        result = {
+                            "status": "search_quota_met",
+                            "message": (
+                                f"Web search budget completed ({MAX_SEARCH_CALLS} calls). "
+                                "Do not search again. Formulate your scenario drivers and invoke "
+                                "run_financial_model to compute intrinsic values and Kelly sizing, "
+                                "then proceed to write your memorandum."
+                            )
+                        }
+                    else:
+                        result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache)
+                elif name == "run_financial_model":
+                    model_calls += 1
+                    if model_calls > MAX_MODEL_CALLS:
+                        result = {"error": f"financial model call budget exhausted ({MAX_MODEL_CALLS}); "
+                                           f"use computed results and finalize memorandum"}
+                    else:
+                        result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache)
                 else:
-                    result = dispatch_tool(name, args, snap=snap, query_cache=q_cache, url_cache=u_cache)
-            elif name == "run_financial_model":
-                model_calls += 1
-                if model_calls > MAX_MODEL_CALLS:
-                    result = {"error": f"financial model call budget exhausted ({MAX_MODEL_CALLS}); "
-                                       f"use computed results and finalize memorandum"}
-                else:
-                    result = dispatch_tool(name, args, snap=snap, query_cache=q_cache, url_cache=u_cache)
+                    result = {"error": f"unknown tool {name}"}
+            except Exception as e:
+                call_rec["error"] = f"dispatch error: {type(e).__name__}: {str(e)[:120]}"
+                _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
+                raise
             else:
-                result = {"error": f"unknown tool {name}"}
+                if name == "run_financial_model" and isinstance(result, dict) and "result" in result:
+                    call_rec.update(result)
+                elif isinstance(result, dict):
+                    call_rec.update(result)
+                elif result is not None:
+                    call_rec["result"] = result
+                _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
 
             if verbose:
                 q = args.get("query") or args.get("url") or (f"price={args.get('price')}" if name == 'run_financial_model' else "")
@@ -513,13 +561,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                           "budget_exhausted": True})
             break
 
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
-    (Path(out_dir) / "_research_snapshot.json").write_text(
-        json.dumps({"model": model, "seed": seed, "tool_calls": calls,
-                    "stub_rejected": stub_rejected,
-                    "turns": turns,
-                    "elapsed_s": round(time.time() - t0), "calls": snap}, indent=2),
-        encoding="utf-8")
+    _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
     eval_rate = round(gen_tokens / (eval_duration_total / 1e9), 2) if eval_duration_total > 0 else 0
     return final_report, final_think, {"tool_calls": calls, "done_reason": done_reason,
                                        "stub_rejected": stub_rejected,

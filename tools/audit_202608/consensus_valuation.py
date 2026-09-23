@@ -703,6 +703,24 @@ def main():
     # Save the exact pack. Without it a consensus run is not re-auditable from its own directory
     # — found when three auditors had to reconstruct it independently to check the reports.
     (d / "_pack.md").write_text(pack, encoding="utf-8")
+
+    # Snapshot research brief into run dir (P1.7)
+    import rs2_data
+    r_dir = rs2_data.CONFIG.get("out_research_dir") or "research"
+    research_dir = Path(r_dir)
+    if not research_dir.is_absolute():
+        research_dir = HERE / research_dir
+    research_file = research_dir / f"{t}.md"
+    research_brief_asof = None
+    if research_file.exists():
+        try:
+            mtime = research_file.stat().st_mtime
+            research_brief_asof = datetime.fromtimestamp(mtime).isoformat()
+            import shutil
+            shutil.copyfile(research_file, d / "_research_brief.md")
+        except Exception as e:
+            print(f"  [consensus] WARN could not copy research brief: {e}", flush=True)
+
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
             if adaptive else f"{n} samples fixed")
     dnp_str = f" | draft_num_predict={draft_num_predict}" if draft_num_predict is not None else ""
@@ -901,6 +919,7 @@ def main():
     doc = {"ticker": t, "price": price, "model": model, "think": think_level,
            "draft_num_predict": draft_num_predict,
            "pack_revision": cap.PACK_REVISION,
+           "research_brief_asof": research_brief_asof,
            "price_asof": price_override.get("asof") if price_override else None,
            "mode": ("adaptive" if adaptive else f"fixed_{n}"),
            "samples_run": len(runs), "early_stop": early_stop,

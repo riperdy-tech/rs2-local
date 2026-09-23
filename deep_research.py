@@ -532,11 +532,11 @@ def fresh(path, days, ticker=None):
         return False
 
 
-def build(ticker, name):
+def build(ticker, name, force=False):
     t = ticker.upper()
     out_dir = Path(CONFIG["out_research_dir"]); out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{t}.md"
-    if fresh(path, int(CONFIG["research_cache_days"]), ticker=ticker):
+    if not force and fresh(path, int(CONFIG["research_cache_days"]), ticker=ticker):
         # A cached brief is only reusable if it is actually research. Briefs written before
         # the infra-error guard existed are error text on disk with a fresh mtime, so trusting
         # mtime alone would re-serve the poison for research_cache_days AND make the ticker
@@ -704,11 +704,13 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-    if len(sys.argv) < 2:
-        print("usage: deep_research.py <TICKER> [Company Name]", file=sys.stderr)
+    force = "--force" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    if not args:
+        print("usage: deep_research.py <TICKER> [Company Name] [--force]", file=sys.stderr)
         sys.exit(1)
     try:
-        build(sys.argv[1].upper(), " ".join(sys.argv[2:]).strip())
+        build(args[0].upper(), " ".join(args[1:]).strip(), force=force)
     except ResearchInfraError as e:
         # exit 3 = infra failure, brief deliberately not written. run_rs2.run_research
         # treats this as fatal for the ticker so nothing is analysed on an empty brief.
