@@ -77,6 +77,30 @@ service-annuity durability). If the model's bear case is wildly disconnected fro
 pessimistic institutional bears in the market, inspect the scenario assumptions for catastrophic
 bias rather than accepting the number.
 
+### Timing, momentum, and current-world awareness (Phase 4, mandates 7–8)
+
+Value decides *whether* to own a business; price action decides *when* — the analyst must
+reconcile both and may ignore neither. Every verdict states `momentum_view`
+(`confirming|neutral|contradicting`) against the pack's price-only SECTION 2.5 (never the
+screener's own opinion — no nomination door, rank or band is shown to the model) and
+`entry_timing` (`buy_now|wait_for_momentum|avoid`), each backed by a checkable
+`momentum_flip_condition`/`momentum_break_rule`. The model's own knowledge stops at its training
+cutoff; SECTION 1.6 ("state of the world" — MRI regime, active shocks, rates, inflation, the news
+theme summary) and the research brief carry what happened since. The brief is another model's
+unverified output: every figure in it is a claim to check against the filings, and the filings
+win on conflict (`research_wrong_company` refuses a brief about the wrong company outright).
+
+### The desk is mandatory for the answer
+
+`base_iv` must equal a `run_financial_model` per-share result (or a named desk `blend`) within
+1% — no undisclosed "judgement" IV. The desk runs a three-stage DCF (explicit growth from
+guidance/consensus, a declared `fade_years` fade, then `terminal_g`, which is now a **required**
+parameter — no silent default), returns both terminal legs (Gordon and exit multiple) reconciled
+against the MRI sector band, and enforces the valuation frame (`equity`/FCFE at cost of equity vs.
+`firm`/FCFF at WACC — a frame mismatch is a structured refusal, not a silent miscalculation). Cost
+of equity must sit within ±150 bp of the pack's SECTION 1.5 anchor or declare `coe_source: "own"`
+with a reason.
+
 ## 2. Architecture
 
 The depth tier is production. The model produces its own valuation from the static data the pack
@@ -92,6 +116,9 @@ contract.
 | Research tools | `tools/audit_202608/analyst_tools.py` | SearXNG search during reasoning, every query and page snapshotted into the run directory |
 | Gate on read | `depth_gates.py` | single owner of what makes a published verdict `actionable`; annotates the ledger row, never mutates or drops it |
 | Live price | `price_now.py` | live quote at verdict time via yfinance, staleness-refusing; `depth_pipeline.main()` hard-fails (exit code 8) without one |
+| Screener data refresh | `screener_refresh.py` | resets the dedicated publish clone to `origin/main` before every entry point reads it; refuses the whole run on failure; stamps `screener_data_commit` |
+| Thesis monitor | `thesis_monitor.py` | re-checks each actionable verdict's `invalidation_rules` against current data; writes `cache/depth_thesis.json`; feeds the `thesis_break`/`momentum_flip` triggers; also runs standalone via `--monitor` (no GPU) |
+| Desk | `tools/audit_202608/financial_model_tool.py` | the only place valuation arithmetic runs: three-stage DCF, dual terminal, frame-checked, both reverse-DCF structures, named `blend` legs |
 
 Valuation support remains deterministic Python: `valuation_backbone.py` solves the growth the
 market price implies and is consumed as evidence, not as the published number.

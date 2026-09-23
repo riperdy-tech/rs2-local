@@ -86,6 +86,22 @@ Corpus integrity is a blocking sweep gate: `data_health.py --gate-live`.
 full-text site bundles (`publish_reports.py`) → append-only `rs2_verdict_log.jsonl` ledger →
 graded weekly by the screener's `grade_rs2_verdicts.py` (30/91/182/365d vs IWM/SPY/QQQ).
 
+## Pack revision 6 — the desk is mandatory (Phase 4, charter v3.1)
+
+`tools/audit_202608/capability_test.PACK_REVISION = 6` bundles Phase 4's pack and charter changes
+into one revision (bumping it re-triggers every name in the book). `base_iv` must now equal a
+`tools/audit_202608/financial_model_tool.py` desk result (three-stage DCF, declared `fade_years`,
+required `terminal_g`, dual terminal reconciled against the MRI sector band, frame-checked
+`equity`/`firm`) within 1%, or a named desk `blend` — samples with `desk_calls == 0` or an
+unmatched IV are excluded from medoid candidacy. The pack gained SECTION 1.5's `COE ANCHOR`
+(±150 bp mandate), SECTION 1.6 "state of the world", SECTION 2.5 price-only momentum facts (no
+screener opinion shown to the model), a GROWTH BASE RATES block (`tools/base_rates.py`), a
+GUIDANCE & CONSENSUS block, SECTION 8.5 peer P/E context, and a DATA WARNINGS block
+(`tools/audit_202608/pack_data_sanity.py`). Every verdict now carries `coe_used`/`coe_source`,
+`terminal_method`, `momentum_view`/`entry_timing`/`invalidation_rules`, and `m` (the price's
+position in the IV band, in half-widths). Full detail:
+`stocks-workspace/docs/system-map/03_RS2_DEPTH.md` (DEP-04/DEP-06/DEP-07/DEP-07b).
+
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
 Every depth verdict (`verdict_depth.json`, each ledger row) carries, stamped by
@@ -93,8 +109,15 @@ Every depth verdict (`verdict_depth.json`, each ledger row) carries, stamped by
 
 - `run_source` — how the run was invoked, resolved by `depth_pipeline._run_source()`:
   `--ondemand` always wins; then the `RS2_RUN_SOURCE` env var a spawner sets
-  (`orchestrator` | `cloud`); then `--production` for an operator-invoked production run;
-  anything else is `manual` — a bare, unmarked `python depth_pipeline.py TICKER`.
+  (`orchestrator` | `cloud` | `gate_test` — the Phase 4 gate run's own marker, kept distinct
+  from plain `manual` so the ledger row says what actually ran, though both route to the test
+  ledger); then `--production` for an operator-invoked production run; anything else is `manual`
+  — a bare, unmarked `python depth_pipeline.py TICKER`.
+- `screener_data_commit` (P4.−1) — the resolved SHA of the screener-publish clone this verdict's
+  pack was built from, stamped by `screener_refresh.refresh_screener_data()` at the start of every
+  entry point that reads screener data (the sweep, `depth_ondemand.drain()`, a standalone
+  `depth_pipeline.py` invocation). A refresh failure refuses the run rather than analysing against
+  unverified data.
 - `arm` — always `"local"` today (this is the local-Ollama pipeline).
 - `pack_source` — always `"fresh"` today.
 - `research_brief_asof` / `research_brief_age_days` — the mtime of `research/{T}.md` at verdict
@@ -133,8 +156,14 @@ applicable reason so a row can carry more than one at once:
 3. `n_basis == 1` -> `single_sample`
 4. `fiduciary_verdict == "FAIL"` -> `fiduciary_fail`
 5. `direction == overvalued` and `kelly_fraction_pct > 0` -> `kelly_on_overvalued`
-6. `direction == undervalued` and `spread_pct > 25` -> `high_dispersion`
-7. `run_source` in `{manual, test}` -> `non_production_row`
+6. `direction` in `{undervalued, overvalued}` and `spread_pct > 25` -> `high_dispersion`
+   (**symmetric** since P4.8 — previously undervalued-only)
+7. `run_source` in `{manual, test, gate_test}` -> `non_production_row`
+8. `instability.unstable is True` -> `mode_instability` (P4.7 — annotation-only at the verdict
+   layer, an actionability gate here)
+9. `FIRST_VALID_PACK_REVISION` is set and `not analyst_valid(v)` -> `pre_valid_analyst` (Phase 4
+   B3 — the switch that turns Phase 4 validity on; `None` until the Phase 4 gate sets it, so this
+   reason never fires before the ruling)
 
 `orchestrate_depth.rebuild_overlay()` runs every ledger row's newest-per-ticker through
 `assess()` and adds `actionable` / `actionable_reasons` / `gate_version` to each row, plus
@@ -151,7 +180,7 @@ Three append-only ledgers under `cache/`, routed by `run_source` in `stamp_and_r
 |---|---|
 | `depth_ledger.jsonl` | `run_source` is `orchestrator`, `cloud`, or `manual_production` (`--production`) — the production book |
 | `depth_ondemand_ledger.jsonl` | `run_source == "ondemand"` (`--ondemand`) — nothing downstream reads it (see `depth_ondemand.py`) |
-| `depth_test_ledger.jsonl` | `run_source == "manual"` — a bare, unmarked invocation with no `--ondemand`/`--production`/`RS2_RUN_SOURCE`; a loud Telegram notice fires so it is never mistaken for a production row |
+| `depth_test_ledger.jsonl` | `run_source == "manual"` — a bare, unmarked invocation with no `--ondemand`/`--production`/`RS2_RUN_SOURCE`; a loud Telegram notice fires so it is never mistaken for a production row. `run_source == "gate_test"` (`RS2_RUN_SOURCE=gate_test`, the Phase 4 gate run) routes here too, kept as its own value rather than folded into `manual` |
 
 `cache/depth_ledger_events.jsonl` is a separate append-only log of operator/administrative
 actions on the ledger: quarantine events (`tools/ledger_quarantine.py`) and
@@ -253,6 +282,34 @@ missing source is skipped (logged) and the clone's own copy is left exactly as p
 network refresh (Sunday 09:00, 1-hour execution limit, no wake) is prepared as
 `register_grader_task.ps1` (mirrors `register_depth_task.ps1`) but is NOT registered — registering
 a Windows Scheduled Task is a machine change and needs operator approval.
+
+## Screener data refresh — `screener_refresh.py` (P4.−1)
+
+`paths.py` now resolves `screener_data_dir` to `<screener_publish_repo>/public/data` — the SAME
+dedicated clone `publish_overlay()` writes to — instead of the shared `stock-screener` dev
+checkout another session can leave on a stale branch with no signal to a reader. Every entry
+point that reads screener data (`orchestrate_depth.main()`, `depth_ondemand.drain()`, a
+standalone `depth_pipeline.py`) calls `screener_refresh.refresh_screener_data()` first, which
+resets that clone to `origin/main` under the same `cache/screener_publish.lock` critical section
+`publish_overlay()` uses. On any failure the caller refuses to run rather than analyse against
+unverified data. On success it returns the resolved SHA, stamped on every verdict as
+`screener_data_commit`.
+
+## Thesis monitor — `thesis_monitor.py` (DEP-13, P4.5)
+
+For every ledger row `depth_gates.assess` marks `actionable`, re-evaluates each checkable
+`invalidation_rules` entry against current quarterly fundamentals, TTM fields, the battery,
+`momentum_state.json` and 8-K count since the verdict. Writes `cache/depth_thesis.json`
+(`{asof, tickers: {T: {thesis_status: intact|breached|unknown, checks, entry_timing_now,
+momentum_flip_met, evaluated_at}}}`) — never a ledger row. `orchestrate_depth.rebuild_overlay()`
+merges the result onto each overlay row; `depth_triggers.triggers_for()` reads it for the new
+`thesis_break` (class 0) and `momentum_flip` (class 2) triggers. Runs at the start of every sweep,
+right after the membership snapshot and before the trigger map, and standalone via
+`orchestrate_depth.py --monitor` (refresh + monitor + overlay + publish, no GPU, no analyst) —
+meant to be scheduled daily via `register_monitor_task.ps1`, which exists but is **not
+registered** (a Windows Scheduled Task change stays operator approval). `--monitor --no-publish`
+is the one mode allowed to run under `cache/DEPTH_PAUSED`, restricted to writing
+`cache/depth_thesis.json` only.
 
 ## Where the truth lives
 
