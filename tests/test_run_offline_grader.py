@@ -60,3 +60,42 @@ def test_run_offline_grader_invokes_the_right_script_with_offline_flag(monkeypat
     assert captured["cmd"][0] == sys.executable
     assert captured["cmd"][1].endswith(str(Path("tools") / "grade_depth_verdicts.py"))
     assert captured["cmd"][2] == "--offline"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# C5 (Phase 2 approval review): run_offline_grader() must run BEFORE the final publish_overlay()
+# in main(), only when that publish actually runs, so the site's depth_outcomes.json carries
+# this sweep's fresh verdicts instead of lagging a cycle behind.
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_orchestrate_depth_main_runs_grader_before_final_publish(tmp_path, monkeypatch):
+    order = []
+    monkeypatch.setattr(od, "PROGRESS", tmp_path / "depth_progress.json")
+    monkeypatch.setattr(od, "STATE", tmp_path / "depth_state.json")
+    monkeypatch.setattr(od, "LOCK", tmp_path / "depth_lock.json")
+    monkeypatch.setattr(od, "PAUSED", tmp_path / "DEPTH_PAUSED_nonexistent")
+    monkeypatch.setattr(od, "LEDGER", tmp_path / "no_ledger.jsonl")
+    monkeypatch.setattr(od, "OVERLAY", tmp_path / "depth_overlay.json")
+    monkeypatch.setattr(od, "DEPTH_LOG", tmp_path / "depth_orchestrate.log")
+    monkeypatch.setattr(od.depth_membership, "LOG", tmp_path / "depth_membership.jsonl")
+
+    monkeypatch.setattr(od.depth_triggers, "trigger_map", lambda book: {})
+    monkeypatch.setattr(od.depth_triggers, "newest_verdicts", lambda: {})
+    monkeypatch.setattr(od, "data_health_scan", lambda book: None)
+    # Bypass the due-queue business logic entirely — this test is about call ORDER, not
+    # membership/trigger rules, which are covered elsewhere (tests/test_depth_queue.py etc.).
+    monkeypatch.setattr(od, "build_queue", lambda *a, **k: [("FAKE1", "triggered", "test")])
+    monkeypatch.setattr(od, "run_one", lambda t, ondemand=False: (True, ""))
+    monkeypatch.setattr(od.depth_ondemand, "pending", lambda: [])
+    monkeypatch.setattr(od.depth_ondemand, "take_next", lambda: None)
+    monkeypatch.setattr(od.ops, "notify_telegram", lambda *a, **k: None)
+    monkeypatch.setattr(od, "run_offline_grader", lambda: order.append("grader"))
+    monkeypatch.setattr(od, "publish_overlay", lambda: order.append("publish"))
+
+    monkeypatch.setattr(sys, "argv",
+                        ["orchestrate_depth.py", "--ignore-factor-guard", "--tickers", "FAKE1"])
+    rc = od.main()
+    assert rc == 0
+    # publish_overlay() also runs once per completed ticker inside the sweep loop (unrelated to
+    # C5) — what matters here is that the grader runs immediately before the FINAL publish.
+    assert order[-2:] == ["grader", "publish"]

@@ -651,10 +651,12 @@ GRADER_TIMEOUT_SEC = 300
 
 
 def run_offline_grader():
-    """TRK-06 (P2.1): re-run tools/grade_depth_verdicts.py --offline at the end of every sweep so
-    cache/depth_outcomes.json stays current between the weekly network run (register_grader_task.ps1,
-    operator-approval pending) without this sweep itself touching the network. Non-fatal and
-    logged only — a grading hiccup must never fail or block a sweep that already completed."""
+    """TRK-06 (P2.1): re-run tools/grade_depth_verdicts.py --offline so cache/depth_outcomes.json
+    stays current between the weekly network run (register_grader_task.ps1, operator-approval
+    pending) without this sweep itself touching the network. Called from main() right before the
+    final publish_overlay() (C5, Phase 2 approval review) so the site's copy carries this sweep's
+    verdicts instead of lagging a cycle behind. Non-fatal and logged only — a grading hiccup must
+    never fail or block a sweep that already completed."""
     try:
         r = subprocess.run([sys.executable, str(HERE / "tools" / "grade_depth_verdicts.py"),
                             "--offline"], capture_output=True, text=True,
@@ -848,9 +850,13 @@ def main():
             pass
         write_progress(done, None, False)   # sweep ended (finished or paused) — mark inactive
     if done:
+        # C5 (Phase 2 approval review): re-grade BEFORE the final publish, not after, so the
+        # site's depth_outcomes.json carries this sweep's fresh verdicts instead of lagging one
+        # cycle behind. Scoped to the case where this final publish actually runs — the sweep
+        # already published per-ticker during the loop above.
+        run_offline_grader()
         publish_overlay()
     log(f"sweep done: {done} processed.")
-    run_offline_grader()
     return 0
 
 
