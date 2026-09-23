@@ -99,13 +99,22 @@ def audit(ticker, verdict):
         note(2, "no band, but a direction was published")
 
     # --- strict non-convergence gate audit ---------------------------------------------------
+    # P1.8: symmetric. A directional call in EITHER direction under high dispersion is illegal —
+    # the gate exists because the model draws disagree too much to commit capital, and an
+    # "overvalued" call commits capital (short/avoid) exactly as an "undervalued" one does.
     spread = verdict.get("spread_pct")
     flags = verdict.get("flags") or []
     tol = 25.0
-    if spread is not None and spread > tol and direction == "undervalued":
-        note(2, f"illegal directional buy under high dispersion (spread {spread}% > {tol}%) — violates non-convergence gate")
-    if "HIGH_DISPERSION_QUARANTINE" in flags and direction == "undervalued":
-        note(2, f"directional buy published with HIGH_DISPERSION_QUARANTINE flag")
+    if spread is not None and spread > tol and direction in ("undervalued", "overvalued"):
+        note(2, f"illegal directional call under high dispersion (spread {spread}% > {tol}%, "
+                f"direction {direction}) — violates non-convergence gate")
+    if "HIGH_DISPERSION_QUARANTINE" in flags and direction in ("undervalued", "overvalued"):
+        note(2, f"directional call ({direction}) published with HIGH_DISPERSION_QUARANTINE flag")
+
+    # --- provenance (P1.2) --------------------------------------------------------------------
+    if not verdict.get("run_source"):
+        note(1, "run_source missing — provenance unknown (pre-P1.2 row, or a writer that never "
+                "adopted it)")
 
     # --- fiduciary scorecard validation -----------------------------------------------------
     sc = verdict.get("scorecard") or {}
