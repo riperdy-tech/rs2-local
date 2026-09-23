@@ -29,6 +29,9 @@ from pathlib import Path
 import paths
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
+from fiduciary_gate import contract_base  # noqa: E402
+
 CONFIG = paths.load_config()   # STOCKS_ROOT contract: paths.py owns the peer-repo locations
 SD = Path(CONFIG["screener_data_dir"])
 DEPTH_STATE = HERE / "cache" / "depth_state.json"
@@ -436,7 +439,7 @@ def depth_snapshot():
     L.append("  RECENT INSTITUTIONAL UNDERWRITINGS (Charter v3.1 / Section 12):")
     if verdicts:
         recent = sorted(verdicts.values(), key=lambda v: v.get("consensus_dir", v.get("date", "")), reverse=True)[:6]
-        header = f"  {'Ticker':<6} {'Verdict':<12} {'Completed':<10} {'Price':<9} {'Base IV':<9} {'Spread':<8} {'Moat':<7} {'Convict':<8} {'Kelly%':<8} {'Skew':<6}"
+        header = f"  {'Ticker':<6} {'Verdict':<12} {'Completed':<10} {'Price':<9} {'Median IV':<9} {'Base IV':<9} {'Spread':<8} {'Moat':<7} {'Convict':<8} {'Kelly%':<8} {'Skew':<6}"
         L.append(header)
         L.append("  " + "-" * 88)
         for v in recent:
@@ -450,12 +453,14 @@ def depth_snapshot():
                 done_time = v.get("date", "—")[-5:]
             px = f"${v.get('price'):.2f}" if v.get("price") is not None else "—"
             med_iv = f"${v.get('median_iv'):.2f}" if v.get("median_iv") is not None else "—"
+            base_iv_val = contract_base(v.get("scorecard"))
+            base_iv = f"${base_iv_val:.2f}" if base_iv_val is not None else "—"
             spread = f"{v.get('spread_pct'):.1f}%" if v.get("spread_pct") is not None else "single"
             moat = f"{v.get('business_quality_moat'):.1f}/5" if v.get("business_quality_moat") is not None else "—"
             conv = f"{v.get('conviction_score'):.0f}/15" if v.get("conviction_score") is not None else "—"
             kelly = f"{v.get('kelly_fraction_pct'):.1f}%" if v.get("kelly_fraction_pct") is not None else "—"
             skew = f"{v.get('asymmetric_payoff_skew'):.2f}x" if v.get("asymmetric_payoff_skew") is not None else "—"
-            row = f"  {t:<6} {dir_str:<12} {done_time:<10} {px:<9} {med_iv:<9} {spread:<8} {moat:<7} {conv:<8} {kelly:<8} {skew:<6}"
+            row = f"  {t:<6} {dir_str:<12} {done_time:<10} {px:<9} {med_iv:<9} {base_iv:<9} {spread:<8} {moat:<7} {conv:<8} {kelly:<8} {skew:<6}"
             L.append(row)
     else:
         L.append("  (No clean underwritings recorded in ledger yet)")
