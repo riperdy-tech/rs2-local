@@ -175,6 +175,11 @@ def extract_scorecard(report, price):
         "catalysts": None,
         "bull_below_price_reason": None,
         "bear_above_price_reason": None,
+        # E12 (pack revision 8): shares, net debt, bull/bear deviation
+        "shares_basis": None,
+        "shares_reason": None,
+        "net_debt_reason": None,
+        "scenario_deviation_reason": None,
         # Harness-filled per sample from tool snapshot (not declared by model)
         "desk_calls": None,
         "desk_iv_match": None,
@@ -632,6 +637,11 @@ def select_medoid_scorecard(
         "years12_ratio": medoid_card.get("years12_ratio"),
         "base_to_civ": medoid_card.get("base_to_civ"),
         "consensus_implied_value": medoid_card.get("consensus_implied_value"),
+        # E12 stamps
+        **{k: medoid_card.get(k) for k in ("bull_years12_ratio", "bear_years12_ratio", "base_shares_ratio",
+                                           "bull_shares_ratio", "bear_shares_ratio", "desk_frame",
+                                           "desk_net_debt", "shares_basis", "shares_reason",
+                                           "net_debt_reason", "scenario_deviation_reason")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -885,6 +895,144 @@ def consensus_ratios(scorecard, enrich_data=None, pack_text=None):
     except (ValueError, TypeError, ZeroDivisionError):
         pass
     return out
+
+
+def _num_b(v):
+    """A dollar or share figure in billions (the desk takes billions; raw counts are converted)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return x / 1e9 if abs(x) > 1e6 else x
+
+
+def _pack_shares_b(pack_text):
+    m = re.search(r"[-*]?\s*Shares outstanding:\s*([0-9,]+(?:\.[0-9]+)?)", pack_text or "", re.I)
+    return _num_b(m.group(1).replace(",", "")) if m else None
+
+
+def _pack_net_debt_b(pack_text):
+    """SECTION 6's NET DEBT default in $B (negative = net cash), or None."""
+    m = re.search(r"NET DEBT \(default net_debt for the firm frame\):[^\n]*?= (-?)\$(-?[\d.,]+)B", pack_text or "")
+    if not m:
+        return None
+    v = float(m.group(2).replace(",", ""))
+    return -abs(v) if m.group(1) or m.group(2).startswith("-") else v
+
+
+def _desk_scenario_inputs(calls, target_iv):
+    """Inputs behind a published value: the latest desk scenario (or plain DCF) whose per-share
+    value is within 1% of target_iv, with the call's top-level inputs filled in."""
+    try:
+        tgt = float(target_iv)
+    except (TypeError, ValueError):
+        return None
+
+    def close(v):
+        try:
+            return float(v) > 0 and abs(float(v) - tgt) / float(v) <= 0.010001
+        except (TypeError, ValueError):
+            return False
+
+    for c in reversed([c for c in (calls or []) if c.get("tool") == "run_financial_model"]):
+        params = c.get("params") or {}
+        res = c.get("result") if isinstance(c.get("result"), dict) else c
+        top = {k: params.get(k) for k in ("explicit_growth", "growth_rates", "shares_diluted", "net_debt",
+                                          "valuation_frame", "discount_rate", "wacc", "base_cf")}
+        scs = res.get("scenario_dcfs") or res.get("scenarios") or []
+        for sc in scs if isinstance(scs, list) else []:
+            if not isinstance(sc, dict):
+                continue
+            d = sc.get("dcf") or {}
+            if any(close(x) for x in (d.get("per_share_iv"), d.get("per_share_iv_gordon"),
+                                      d.get("per_share_iv_exit"), sc.get("iv"))):
+                p_sc = next((s for s in (params.get("scenarios") or [])
+                             if isinstance(s, dict) and s.get("name") == sc.get("name")), {})
+                out = dict(top)
+                out.update({k: v for k, v in p_sc.items() if v is not None})
+                # The growth the desk actually applied to THIS scenario. Scenarios pass it as
+                # growth_rates while the top level's explicit_growth is the base path, so a merge
+                # alone reported the base path for bull and bear (dry run on AMD, 2026-09-25).
+                applied = d.get("explicit_growth") or p_sc.get("explicit_growth") or p_sc.get("growth_rates")
+                if applied:
+                    out["explicit_growth"] = applied
+                out["name"] = sc.get("name")
+                return out
+        d = res.get("dcf_model") or {}
+        if isinstance(d, dict) and any(close(d.get(k)) for k in ("per_share_iv", "per_share_iv_gordon",
+                                                                 "per_share_iv_exit")):
+            out = dict(top)
+            if d.get("explicit_growth"):
+                out["explicit_growth"] = d["explicit_growth"]
+            return out
+    return None
+
+
+def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, price=None):
+    """E12 per-sample checks and stamps: the share count and net debt behind each published
+    scenario, and bull/bear years 1-2 against the consensus EPS high/low path. Returns
+    (flags, stamps)."""
+    import consensus_reference
+    sc = scorecard or {}
+    calls = []
+    try:
+        p = Path(snapshot_dir) / "_research_snapshot.json" if snapshot_dir else None
+        if p and p.exists():
+            calls = json.loads(p.read_text(encoding="utf-8")).get("calls") or []
+    except Exception:
+        calls = []
+    stamps = {"bull_years12_ratio": None, "bear_years12_ratio": None, "base_shares_ratio": None,
+              "bull_shares_ratio": None, "bear_shares_ratio": None, "desk_frame": None, "desk_net_debt": None}
+    flags = []
+    pack_sh = _pack_shares_b(pack_text)
+    est = (enrich_data or {}).get("estimates") or {}
+    e0, e1 = (est.get("0y") or {}).get("eps") or {}, (est.get("+1y") or {}).get("eps") or {}
+    prior = e0.get("year_ago")
+    cum = {"bull": e1.get("high"), "bear": e1.get("low")}
+    for role in ("base", "bull", "bear"):
+        inp = _desk_scenario_inputs(calls, sc.get(f"{role}_iv"))
+        if not inp:
+            continue
+        g = inp.get("explicit_growth") or inp.get("growth_rates")
+        if role != "base" and isinstance(g, list) and len(g) >= 2 and isinstance(prior, (int, float)) \
+                and prior > 0 and isinstance(cum[role], (int, float)) and cum[role] > 0:
+            try:
+                stamps[f"{role}_years12_ratio"] = round((1 + float(g[0])) * (1 + float(g[1]))
+                                                        / (cum[role] / prior), 3)
+            except (TypeError, ValueError):
+                pass
+        sh = _num_b(inp.get("shares_diluted"))
+        if pack_sh and sh:
+            stamps[f"{role}_shares_ratio"] = round(sh / pack_sh, 3)
+        if role == "base":
+            stamps["desk_frame"] = inp.get("valuation_frame")
+            stamps["desk_net_debt"] = _num_b(inp.get("net_debt"))
+
+    def _has(field):
+        v = str(sc.get(field) or "").strip()
+        return bool(v) and v.lower() not in ("null", "none")
+
+    ratios = [stamps[f"{r}_shares_ratio"] for r in ("base", "bull", "bear") if stamps[f"{r}_shares_ratio"]]
+    if any(abs(r - 1) > 0.01 for r in ratios) and not _has("shares_reason"):
+        flags.append("shares_off_pack_without_reason")
+    if (stamps["bear_shares_ratio"] or 0) > 1.01:
+        flags.append("dilution_in_bear")
+    nd_default = _pack_net_debt_b(pack_text)
+    if stamps["desk_frame"] == "firm" and nd_default is not None and stamps["desk_net_debt"] is not None \
+            and not _has("net_debt_reason") \
+            and abs(stamps["desk_net_debt"] - nd_default) > max(0.1, 0.05 * abs(nd_default)):
+        flags.append("net_debt_off_default_without_reason")
+    # carriable (Fable): the model's own label against the 10% rule on its own base, per sample
+    try:
+        b, lbl = float(sc.get("base_iv")), str(sc.get("verdict_label") or "").strip().lower()
+        if lbl and price:
+            m = b / float(price) - 1
+            rule = "undervalued" if m >= 0.10 else "overvalued" if m <= -0.10 else "hold"
+            if lbl != rule:
+                flags.append("report_verdict_mismatch_sample")
+    except (TypeError, ValueError):
+        pass
+    return flags, stamps
 
 
 def check_sample_harness_rules(
@@ -1884,6 +2032,12 @@ def main():
         # E10: the consensus ratios go on every sample, whatever reason the model wrote.
         if isinstance(scorecard, dict):
             scorecard.update(consensus_ratios(scorecard, en_for_checks, pack))
+            # E12: shares, net debt and bull/bear against the pack, per scenario
+            e12_flags, e12_stamps = scenario_checks(snapshot_dir, scorecard, en_for_checks, pack, price)
+            scorecard.update(e12_stamps)
+            for f in e12_flags:
+                if f not in flags:
+                    flags = list(flags) + [f]
 
         # Carry the harness rescue status onto the sample. Without this the four-key copy out of
         # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort

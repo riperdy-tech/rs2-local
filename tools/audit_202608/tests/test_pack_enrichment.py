@@ -170,8 +170,8 @@ def _slice(pack, header, next_prefix="## "):
     return pack[i:j if j != -1 else len(pack)]
 
 
-def test_pack_revision_is_7():
-    assert cap.PACK_REVISION == 7   # E10 (2026-09-24): growth of the cash flow, consensus-implied value
+def test_pack_revision_is_8():
+    assert cap.PACK_REVISION == 8   # E12 (2026-09-25): shares, net debt, bull/bear anchors; E11 news text
 
 
 def test_no_ground_truth_phrase_anywhere(screener_data_stub):

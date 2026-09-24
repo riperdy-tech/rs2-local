@@ -539,6 +539,11 @@ def band_verdict(doc):
         "years12_ratio": scorecard.get("years12_ratio"),
         "base_to_civ": scorecard.get("base_to_civ"),
         "consensus_implied_value": scorecard.get("consensus_implied_value"),
+        # Phase 4 E12: shares, net debt and bull/bear against the pack
+        **{k: scorecard.get(k) for k in ("bull_years12_ratio", "bear_years12_ratio", "base_shares_ratio",
+                                         "bull_shares_ratio", "bear_shares_ratio", "desk_frame",
+                                         "desk_net_debt", "shares_basis", "shares_reason",
+                                         "net_debt_reason", "scenario_deviation_reason")},
         "momentum_view": scorecard.get("momentum_view"),
         "entry_timing": scorecard.get("entry_timing"),
         "momentum_flip_condition": scorecard.get("momentum_flip_condition"),

@@ -161,7 +161,11 @@ TIMEOUT = 14400
 #   Base years 1-2 start from consensus EPS growth; SECTION 8 prints the CONSENSUS-IMPLIED VALUE;
 #   EARNINGS QUALITY no longer pushes the base to an older year. A revision-6 pack and a
 #   revision-7 pack give the analyst different instructions and must never be graded as one.
-PACK_REVISION = 7
+# Revision 8 (Phase 4 E12, 2026-09-25): SECTION 6 prints one NET DEBT default (cash and short-term
+#   investments); the TASK pins the share count, net debt and bull/bear years 1-2; the contract
+#   gains shares_basis, shares_reason, net_debt_reason, scenario_deviation_reason; RECENT COMPANY
+#   NEWS carries the opening text of the top stories (E11).
+PACK_REVISION = 8
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -2058,10 +2062,18 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             L.append(f"- Total Cash & Cash Equivalents: {_b(cash_val)}")
         if effective_debt is not None:
             L.append(f"- Total Debt (Filed / Vendor): {_b(effective_debt)}")
+        sti_val = lr.get("st_investments")
         if cash_val is not None and effective_debt is not None:
-            net_liq = cash_val - effective_debt
+            _sti = sti_val if isinstance(sti_val, (int, float)) else 0.0
+            net_liq = cash_val + _sti - effective_debt
             net_desc = f"Net Cash +{_b(net_liq)}" if net_liq >= 0 else f"Net Debt -{_b(abs(net_liq))}"
-            L.append(f"- Net Liquidity Position: **{net_desc}** (Cash minus Total Debt)")
+            L.append(f"- Net Liquidity Position: **{net_desc}** (Cash + short-term investments minus Total Debt)")
+            # E12: one filed figure, used as net_debt in the firm frame (four samples had used four)
+            _sti_txt = _b(sti_val) if isinstance(sti_val, (int, float)) else "$0.000B (none filed)"
+            L.append(f"- [Arithmetic] NET DEBT (default net_debt for the firm frame): total debt "
+                     f"{_b(effective_debt)} \u2212 cash {_b(cash_val)} \u2212 short-term investments "
+                     f"{_sti_txt} = {'-' if net_liq > 0 else ''}{_b(abs(net_liq))} (negative = net cash). "
+                     f"Use it as net_debt in the firm frame unless net_debt_reason says why.")
         L.append("")
 
         # 6A: Working Capital & Operating Assets (8 columns, clean and focused)
@@ -2555,7 +2567,7 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
   * Lead Underwriter & Portfolio Manager Role: You own the fundamental economic viewpoint, business quality moat evaluation, scenario boundaries (Base, Bull, Bear), and final capital allocation decision. You are supported by a Python Financial Modeling Desk: invoke `run_financial_model` whenever you need deterministic DCF schedules, reverse DCF expectations gap, or continuous multi-outcome Kelly sizing. You can pass all 3 scenarios together in a single call (with each scenario's base_cf, growth_rates, wacc, terminal_g) and Python will compute all intrinsic values, reverse DCF expectations gap, and Kelly sizing in one unified table. DO NOT perform manual mental math on log-wealth Kelly formulas in prose; obtain exact numbers from `run_financial_model`.
   * One model, stated once: run Bear, Base and Bull together in ONE `run_financial_model` call. If you later change any input and run again, the memorandum must include a 'Model revisions' list giving, for every changed input, the old value, the new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden. The harness records every run you make and flags unexplained swings.
   * Scratchpad Containment & Anti-Anchoring: Keep all rough-draft calculations, re-estimates, and trial reconciliations strictly inside <think>...</think>. Never adjust valuations to match market price T0. Enforce exact parity between Section 4 scenario tables and the Section 12 JSON contract.
-  * Declare Your Cash-Flow Base: Declare your cash-flow base. The default is SECTION 3's OWNER EARNINGS line (base_cf_basis "owner_earnings_default"); if you use another base, say why in base_cf_reason. The pack prints `owner CF [Arithmetic]`
+  * Declare Your Cash-Flow Base: Declare your cash-flow base. The default is SECTION 3's OWNER EARNINGS line (base_cf_basis "owner_earnings_default"); if you use another base, say why in base_cf_reason. Start from the default; do not run a trial base through the desk. The pack prints `owner CF [Arithmetic]`
     (= OCF - capex - SBC) for every fiscal year; `ttm_fcf` means trailing-twelve-months OCF
     minus capex, which subtracts NO stock compensation. If you use a basis that is none of
     these, declare `other` rather than leaving it implied. Your declared basis is checked
@@ -2573,7 +2585,8 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
     — at least one dated, industry-specific indicator (pricing, inventory, capacity, order
     trends); a growth rate alone is not evidence.
   * Explain The Recent Move First: start from the CATALYST BRIEF, RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions. For each development say whether you accept or dispute it and why, and how it enters your Bull, Base and Bear numbers; add any development you find yourself and fetch the articles you rely on. Record them in `catalysts`.
-  * Scenarios Anchored To Expectations: Stage-1 growth rates are growth of the CASH FLOW you value (base_cf), not of revenue: revenue growth leaves out margin change. Base years 1-2 start from SECTION 8's consensus EPS growth (current FY, then next FY) or the company's guidance converted to earnings growth; if consensus EPS growth is unusable (a negative base, or a recovery off a trough above +150%), use revenue growth plus your stated margin path and say so in guidance_deviation_reason. From year 3 growth follows revenue again: fade from next-FY consensus revenue growth toward the GROWTH BASE RATES median by year 5; anything above its p90 needs the MANDATE's dated evidence. Bull and Bear years 1-2 sit near the consensus EPS high and low unless you say why. SECTION 8's CONSENSUS-IMPLIED VALUE is what the consensus path is worth at our discount rate; a Base IV more than a quarter away from it needs guidance_deviation_reason. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
+  * Scenarios Anchored To Expectations: Stage-1 growth rates are growth of the CASH FLOW you value (base_cf), not of revenue: revenue growth leaves out margin change. Base years 1-2 start from SECTION 8's consensus EPS growth (current FY, then next FY) or the company's guidance converted to earnings growth; if consensus EPS growth is unusable (a negative base, or a recovery off a trough above +150%), use revenue growth plus your stated margin path and say so in guidance_deviation_reason. From year 3 growth follows revenue again: fade from next-FY consensus revenue growth toward the GROWTH BASE RATES median by year 5; anything above its p90 needs the MANDATE's dated evidence. Bull and Bear years 1-2 follow the consensus EPS high and low path: cumulative growth over years 1-2 reaches next-FY EPS high (low) from last FY's EPS; say why in scenario_deviation_reason if not. SECTION 8's CONSENSUS-IMPLIED VALUE is what the consensus path is worth at our discount rate; a Base IV more than a quarter away from it needs guidance_deviation_reason. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
+  * Share Count And Net Debt: Use SECTION 2's share count in every scenario. A contingent instrument (warrants or earn-outs that vest on milestones) may be added only in the scenarios where it vests (pass shares_diluted per scenario), with shares_basis "diluted_plus_contingent" and shares_reason naming the instrument and its vesting condition; never in a scenario whose premise is that it does not vest. In the firm frame use SECTION 6's NET DEBT as net_debt unless net_debt_reason says why.
   * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
 
 Produce the full report, SECTION 0 through SECTION 12, following the mandatory institutional memorandum structure. End with SECTION 12 Final Execution Opinion and the validated JSON contract:
@@ -2589,6 +2602,10 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "catalysts": [{"date": "<YYYY-MM-DD>", "event": "<what happened>", "direction": "<bull | bear>", "estimates_moved": "<how consensus estimates moved with it, or 'no visible change'>", "scenario": "<which scenario it supports and how it moves the numbers>"}],
   "bull_below_price_reason": "<string or null — required when bull_iv < today's price>",
   "bear_above_price_reason": "<string or null — required when bear_iv > today's price>",
+  "shares_basis": "<diluted | diluted_plus_contingent — SECTION 2's count, or plus a contingent instrument in the scenarios where it vests>",
+  "shares_reason": "<string or null — required when any scenario's share count differs from SECTION 2's: the instrument and its vesting condition>",
+  "net_debt_reason": "<string or null — required when the firm frame's net_debt differs from SECTION 6's NET DEBT>",
+  "scenario_deviation_reason": "<string or null — required when Bull or Bear years 1-2 leave the consensus EPS high/low path>",
   "base_cf_used": <float, in $B, the base cash flow you actually used for the Base Case>,
   "base_cf_basis": "<owner_earnings_default | latest_fy | multi_year_avg | ttm_fcf | other — which base that figure is>",
   "base_cf_reason": "<string or null — required when base_cf_basis is not owner_earnings_default: why that base is more representative>",
