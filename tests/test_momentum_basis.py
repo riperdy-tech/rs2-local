@@ -308,12 +308,12 @@ def test_pipeline_momentum_basis_structural_requirements_missing(monkeypatch):
     assert v["position_basis"] == "none"
     assert "position_basis_mismatch:direction" in v["flags"]
 
-    # 2. momentum_view not confirming
+    # 2. momentum_view 'contradicting' is EXPECTED for a momentum position on an overvalued call
+    #    (the uptrend contradicts the valuation call by definition) and must not block the basis.
     sc2 = dict(base_sc, momentum_view="contradicting")
     doc2 = _pipeline_doc(price=100.0, base_iv=80.0, direction_spread=2.0, scorecard_extra=sc2)
     v2 = dp.band_verdict(doc2)
-    assert v2["position_basis"] == "none"
-    assert "position_basis_mismatch:momentum_view" in v2["flags"]
+    assert "position_basis_mismatch:momentum_view" not in v2.get("flags", [])
 
     # 3. entry_timing not buy_now
     sc3 = dict(base_sc, entry_timing="wait_for_momentum")

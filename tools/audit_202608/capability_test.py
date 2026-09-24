@@ -1822,7 +1822,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 gap = ocf - denom
                 if denom > 0 and gap > 0 and (gap / denom) > 0.25:
                     pct = (gap / denom) * 100.0
-                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 customer prepayments, deposits or collection timing. It recurs only while advance bookings keep growing: count it as recurring owner cash flow only if you show it is structural to the business (deposits that grow with bookings), and never extrapolate a one-off swing. A base built on TTM OCF or FCF includes it.")
+                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 customer prepayments, deposits or collection timing. It recurs only while advance bookings keep growing: count it as recurring owner cash flow only if you show it is structural to the business (deposits that grow with bookings), and never extrapolate a one-off swing. A base built on TTM OCF or FCF (including the CASH BASIS line) includes it; the OWNER EARNINGS default does not.")
         else:
             missing = []
             if not isinstance(ni, (int, float)):
@@ -1840,11 +1840,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if isinstance(fy_oi, (int, float)) and isinstance(fy_ni, (int, float)):
                 if fy_oi > 0 and fy_ni > fy_oi:
                     L.append(
-                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
                     )
                 elif fy_oi <= 0 and fy_ni > 0:
                     L.append(
-                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
                     )
         L.append("")
     else:
@@ -1880,12 +1880,15 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
             oe = ni + da - capex
             L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Use this as base_cf unless base_cf_reason states why another base is more representative.")
+            _sbc_fy = (h.get(str(latest_yr)) or {}).get("sbc") if latest_yr is not None else None
+            if isinstance(ocf, (int, float)) and isinstance(_sbc_fy, (int, float)):
+                L.append(f"- [Arithmetic] CASH BASIS (alternative base_cf): TTM operating cash flow {_b(ocf)} \u2212 TTM capex {_b(capex)} \u2212 stock compensation (FY{latest_yr}) {_b(_sbc_fy)} = {_b(ocf - capex - _sbc_fy)}. Includes working-capital swings; declare base_cf_basis \"other\" with base_cf_reason if you use it.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
                 gap = ocf - denom
                 if denom > 0 and gap > 0 and (gap / denom) > 0.25:
                     pct = (gap / denom) * 100.0
-                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 customer prepayments, deposits or collection timing. It recurs only while advance bookings keep growing: count it as recurring owner cash flow only if you show it is structural to the business (deposits that grow with bookings), and never extrapolate a one-off swing. A base built on TTM OCF or FCF includes it.")
+                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 customer prepayments, deposits or collection timing. It recurs only while advance bookings keep growing: count it as recurring owner cash flow only if you show it is structural to the business (deposits that grow with bookings), and never extrapolate a one-off swing. A base built on TTM OCF or FCF (including the CASH BASIS line) includes it; the OWNER EARNINGS default does not.")
         else:
             missing = []
             if not isinstance(ni, (int, float)):
@@ -1903,11 +1906,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if isinstance(fy_oi, (int, float)) and isinstance(fy_ni, (int, float)):
                 if fy_oi > 0 and fy_ni > fy_oi:
                     L.append(
-                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
                     )
                 elif fy_oi <= 0 and fy_ni > 0:
                     L.append(
-                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
                     )
         L.append("")
 
@@ -2574,7 +2577,7 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "verdict_label": "<undervalued | hold | overvalued — your own stated verdict, checked against the recorded direction>",
   "momentum_view": "<confirming | neutral | contradicting — does SECTION 2.5's price action confirm, sit neutral to, or contradict your valuation call?>",
   "entry_timing": "<buy_now | wait_for_momentum | avoid>",
-  "position_basis": "<value | momentum | none — mandate 7: value only when undervalued; momentum when your honest direction is hold or overvalued but the business is in a strong, fundamentally backed uptrend (entry_timing buy_now); otherwise none>",
+  "position_basis": "<value | momentum | none — mandate 7: value only when undervalued; momentum when your honest direction is hold or overvalued but the business is in a strong, fundamentally backed uptrend (entry_timing buy_now) - e.g. estimates rising or guidance raised; momentum_view then usually reads 'contradicting', which is expected; otherwise none>",
   "momentum_evidence": "<string or null — required when position_basis is momentum: the dated facts from the GUIDANCE block or the filings that back the trend (guidance raised, backlog or orders growth, estimates rising)>",
   "momentum_flip_condition": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
   "momentum_break_rule": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},

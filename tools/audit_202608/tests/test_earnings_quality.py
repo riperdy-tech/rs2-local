@@ -17,7 +17,8 @@ def test_earnings_quality_triggers_on_gev_fixture(screener_data_stub):
     expected = (
         "- EARNINGS QUALITY: in FY2025 net income ($4.884B) exceeded operating income ($1.388B) \u2014 "
         "non-operating gains, tax benefits or discontinued operations; an earnings-based base "
-        "(including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+        "(including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, "
+        "prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
     )
     assert expected in pack
     sec3 = pack.split("SECTION 3")[1].split("SECTION 4")[0]
@@ -62,7 +63,8 @@ def test_earnings_quality_negative_or_zero_operating_income_triggers(screener_da
     expected_neg = (
         "- EARNINGS QUALITY: in FY2025 net income ($1.000B) was positive while operating income was not ($-0.500B) \u2014 "
         "non-operating gains, tax benefits or discontinued operations; an earnings-based base "
-        "(including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+        "(including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, "
+        "prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
     )
     assert expected_neg in pack_neg
 
@@ -74,7 +76,8 @@ def test_earnings_quality_negative_or_zero_operating_income_triggers(screener_da
     expected_zero = (
         "- EARNINGS QUALITY: in FY2025 net income ($1.000B) was positive while operating income was not ($0.000B) \u2014 "
         "non-operating gains, tax benefits or discontinued operations; an earnings-based base "
-        "(including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+        "(including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, "
+        "prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
     )
     assert expected_zero in pack_zero
 

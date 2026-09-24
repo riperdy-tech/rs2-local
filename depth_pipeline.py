@@ -686,8 +686,6 @@ def band_verdict(doc):
         structural_unmet = None
         if d not in ("hold", "overvalued"):
             structural_unmet = "direction"
-        elif mom_view != "confirming":
-            structural_unmet = "momentum_view"
         elif ent_timing != "buy_now":
             structural_unmet = "entry_timing"
         elif not has_ev:

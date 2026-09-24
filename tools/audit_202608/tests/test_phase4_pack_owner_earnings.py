@@ -84,7 +84,7 @@ def test_cash_flow_quality_line_at_26_pct_and_not_at_24_pct(screener_data_stub, 
         "or collection timing. It recurs only while advance bookings keep growing: count it as "
         "recurring owner cash flow only if you show it is structural to the business (deposits "
         "that grow with bookings), and never extrapolate a one-off swing. A base built on TTM OCF "
-        "or FCF includes it."
+        "or FCF (including the CASH BASIS line) includes it; the OWNER EARNINGS default does not."
     )
     assert expected_quality_26 in pack_26
 
