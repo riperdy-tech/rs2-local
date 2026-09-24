@@ -171,6 +171,10 @@ def extract_scorecard(report, price):
         # P4 E5b momentum basis
         "position_basis": None,
         "momentum_evidence": None,
+        # Item 4: market-engagement and scenario keys
+        "catalysts": None,
+        "bull_below_price_reason": None,
+        "bear_above_price_reason": None,
         # Harness-filled per sample from tool snapshot (not declared by model)
         "desk_calls": None,
         "desk_iv_match": None,
@@ -206,6 +210,10 @@ def extract_scorecard(report, price):
                 card["momentum_evidence"] = str(card["momentum_evidence"]).strip()
             if card.get("base_cf_reason"):
                 card["base_cf_reason"] = str(card["base_cf_reason"]).strip()
+            if card.get("bull_below_price_reason"):
+                card["bull_below_price_reason"] = str(card["bull_below_price_reason"]).strip()
+            if card.get("bear_above_price_reason"):
+                card["bear_above_price_reason"] = str(card["bear_above_price_reason"]).strip()
             if card["base_iv"] and price and 0.02 * price <= card["base_iv"] <= 10 * price:
                 return card
         except Exception:
@@ -472,6 +480,7 @@ def select_medoid_scorecard(
             "position_basis": None, "momentum_evidence": None,
             "desk_calls": None, "desk_iv_match": None,
             "desk_reverse_neutral_cagr": None, "coe_minus_anchor": None,
+            "catalysts": None, "bull_below_price_reason": None, "bear_above_price_reason": None,
         }
 
     ivs = [r["iv"] for r in good]
@@ -543,6 +552,9 @@ def select_medoid_scorecard(
             "desk_iv_match": san_fb.get("desk_iv_match"),
             "desk_reverse_neutral_cagr": san_fb.get("desk_reverse_neutral_cagr"),
             "coe_minus_anchor": san_fb.get("coe_minus_anchor"),
+            "catalysts": san_fb.get("catalysts"),
+            "bull_below_price_reason": san_fb.get("bull_below_price_reason"),
+            "bear_above_price_reason": san_fb.get("bear_above_price_reason"),
         }
         return san_fb, summary
 
@@ -630,6 +642,9 @@ def select_medoid_scorecard(
         "desk_iv_match": medoid_card.get("desk_iv_match"),
         "desk_reverse_neutral_cagr": medoid_card.get("desk_reverse_neutral_cagr"),
         "coe_minus_anchor": medoid_card.get("coe_minus_anchor"),
+        "catalysts": medoid_card.get("catalysts"),
+        "bull_below_price_reason": medoid_card.get("bull_below_price_reason"),
+        "bear_above_price_reason": medoid_card.get("bear_above_price_reason"),
     }
     return medoid_card, summary
 
@@ -823,6 +838,111 @@ def check_base_cf_default_reason(scorecard: dict | None) -> list[str]:
             if b_reason is None or str(b_reason).strip() == "" or str(b_reason).strip().lower() in ("null", "none"):
                 flags.append("base_cf_off_default_without_reason")
     return flags
+
+
+def check_sample_harness_rules(
+    scorecard, price, desk_info=None, enrich_data=None, momentum_state=None
+):
+    """Evaluates Item 4 harness checks per sample:
+    - scenario_order_violation: implausible if not (bear_iv <= base_iv <= bull_iv) with all 3 present
+    - scenario_not_desk_backed:bull / :bear: flag if IV not within 1% of any desk per-share output
+    - bull_below_price_without_reason: flag if bull_iv < price and bull_below_price_reason is empty
+    - bear_above_price_without_reason: flag if bear_iv > price and bear_above_price_reason is empty
+    - bull_below_street_low_without_reason: flag if bull_iv < analyst_target_low and bull_below_price_reason is empty
+    - catalysts_missing: flag if catalysts empty/None and (|mom_1m| >= 0.10 or |mom_6m| >= 0.25)
+
+    Returns:
+        (is_implausible, [reasons], [flags])
+    """
+    flags = []
+    reasons = []
+    implausible = False
+
+    sc = scorecard or {}
+    base_iv = sc.get("base_iv")
+    bull_iv = sc.get("bull_iv")
+    bear_iv = sc.get("bear_iv")
+
+    # 1. scenario_order_violation when not (bear_iv <= base_iv <= bull_iv) with all three present
+    if base_iv is not None and bull_iv is not None and bear_iv is not None:
+        try:
+            b_iv = float(base_iv)
+            u_iv = float(bull_iv)
+            d_iv = float(bear_iv)
+            if not (d_iv <= b_iv <= u_iv):
+                implausible = True
+                flags.append("scenario_order_violation")
+                reasons.append("scenarios out of order (bear <= base <= bull required)")
+        except (ValueError, TypeError):
+            pass
+
+    # 2. scenario_not_desk_backed:bull / :bear
+    desk_ivs = (desk_info or {}).get("desk_per_share_ivs") or []
+
+    def _matches_any_desk(target):
+        if target is None:
+            return True
+        try:
+            t_val = float(target)
+            if t_val <= 0:
+                return False
+            for d_val in desk_ivs:
+                if d_val > 0 and (abs(t_val - d_val) / d_val) <= 0.010001:
+                    return True
+            return False
+        except (ValueError, TypeError):
+            return False
+
+    if bull_iv is not None and not _matches_any_desk(bull_iv):
+        flags.append("scenario_not_desk_backed:bull")
+    if bear_iv is not None and not _matches_any_desk(bear_iv):
+        flags.append("scenario_not_desk_backed:bear")
+
+    # 3. bull_below_price_without_reason & bear_above_price_without_reason
+    bull_reason = str(sc.get("bull_below_price_reason") or "").strip()
+    if bull_reason.lower() in ("null", "none"):
+        bull_reason = ""
+    bear_reason = str(sc.get("bear_above_price_reason") or "").strip()
+    if bear_reason.lower() in ("null", "none"):
+        bear_reason = ""
+
+    if bull_iv is not None and price is not None:
+        try:
+            if float(bull_iv) < float(price) and not bull_reason:
+                flags.append("bull_below_price_without_reason")
+        except (ValueError, TypeError):
+            pass
+
+    if bear_iv is not None and price is not None:
+        try:
+            if float(bear_iv) > float(price) and not bear_reason:
+                flags.append("bear_above_price_without_reason")
+        except (ValueError, TypeError):
+            pass
+
+    # 4. bull_below_street_low_without_reason
+    en = enrich_data or {}
+    street_low = en.get("analyst_target_low")
+    if street_low is not None and bull_iv is not None and not bull_reason:
+        try:
+            if float(bull_iv) < float(street_low):
+                flags.append("bull_below_street_low_without_reason")
+        except (ValueError, TypeError):
+            pass
+
+    # 5. catalysts_missing
+    mom = momentum_state or {}
+    cats = sc.get("catalysts")
+    has_cats = bool(isinstance(cats, list) and len(cats) > 0)
+    m1 = mom.get("mom_1m") if isinstance(mom, dict) else None
+    m6 = mom.get("mom_6m") if isinstance(mom, dict) else None
+    m1_known = isinstance(m1, (int, float))
+    m6_known = isinstance(m6, (int, float))
+    if (m1_known or m6_known) and not has_cats:
+        if (m1_known and abs(m1) >= 0.10) or (m6_known and abs(m6) >= 0.25):
+            flags.append("catalysts_missing")
+
+    return implausible, reasons, flags
 
 
 def _evaluate_contract_mismatches(inputs: dict, sc: dict) -> list[str]:
@@ -1203,6 +1323,7 @@ def extract_desk_snapshot_metrics(
         "desk_share_flags": share_flags,
         "desk_share_implausible": share_implausible,
         "desk_share_reason": share_reason,
+        "desk_per_share_ivs": desk_ivs,
     }
 
 
@@ -1659,6 +1780,23 @@ def main():
             flags = list(flags) + [f"desk_input_revisions_{len(desk_runs)}_swing_{desk_swing:.2f}x"]
         if research_calls >= 5 and (repeat_calls / research_calls) > 0.15:
             flags = list(flags) + [f"research_repeats_{repeat_calls}_of_{research_calls}"]
+
+        en_for_checks = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
+        order_imp, rule_reasons, rule_flags = check_sample_harness_rules(
+            scorecard=scorecard,
+            price=price,
+            desk_info=desk_info,
+            enrich_data=en_for_checks,
+            momentum_state=pack_momentum_state,
+        )
+        if order_imp:
+            ok = False
+        for r in rule_reasons:
+            if r not in why:
+                why = list(why) + [r]
+        for f in rule_flags:
+            if f not in flags:
+                flags = list(flags) + [f]
 
         # Carry the harness rescue status onto the sample. Without this the four-key copy out of
         # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort

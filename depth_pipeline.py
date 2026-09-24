@@ -399,6 +399,8 @@ CONTRACT_PASSTHROUGH = (
     # P4 E5b momentum basis
     "position_basis", "momentum_evidence",
     "base_cf_reason",
+    # Item 4 market-engagement and scenario keys
+    "catalysts", "bull_below_price_reason", "bear_above_price_reason",
 )
 
 
@@ -549,6 +551,9 @@ def band_verdict(doc):
         "momentum_state": doc.get("momentum_state"),
         "active_shocks_at_verdict": doc.get("active_shocks_at_verdict"),
         "base_cf_reason": scorecard.get("base_cf_reason"),
+        "catalysts": scorecard.get("catalysts"),
+        "bull_below_price_reason": scorecard.get("bull_below_price_reason"),
+        "bear_above_price_reason": scorecard.get("bear_above_price_reason"),
     })
 
     if not ivs or not price:
