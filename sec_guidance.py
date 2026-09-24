@@ -23,6 +23,10 @@ PAT_OUTLOOK = re.compile(
     r'\b(outlook|guidance|expects?|expected to|reaffirm\w*|rais(es|ed|ing)|backlog|remaining performance obligations?|book-to-bill|bookings|orders)\b',
     re.IGNORECASE,
 )
+PAT_FORWARD = re.compile(
+    r'\b(outlook|guidance|expects?|expected to|reaffirm\w*|rais(es|ed|ing))\b',
+    re.IGNORECASE,
+)
 PAT_SAFE_HARBOR = re.compile(
     r'forward-looking statements|safe harbor|risks and uncertainties|undertakes no (intent|obligation)',
     re.IGNORECASE,
@@ -201,42 +205,41 @@ def guidance_excerpt(text: str, cap: int = 3000) -> str:
     if not text:
         return ""
 
-    lines = []
-    seen = set()
-    total_len = 0
-
     lead = text[:400].strip()
-    if lead:
-        line = f"- {lead}"
-        if len(line) <= cap:
-            lines.append(line)
-            seen.add(lead)
-            total_len = len(line)
-        else:
-            return ""
+    if lead and len(f"- {lead}") > cap:
+        return ""
 
-    sents = re.split(r'(?<=[.;])\s+(?=[A-Z•])', text)
-    for s in sents:
+    # Candidates in document order. Forward-looking sentences (outlook, guidance, expects,
+    # reaffirms, raises) are selected BEFORE backlog/orders/bookings sentences: measured
+    # 2026-09-24, DXC's and GEV's releases list segment bookings and orders first, and the
+    # document-order fill spent the whole cap on them — DXC's full-year guidance line was cut
+    # mid-word and GEV's raised guidance never appeared. The output is still in document order.
+    cands, seen = [], set()
+    for idx, s in enumerate(re.split(r'(?<=[.;])\s+(?=[A-Z•])', text)):
         s = s.strip()
-        if not s:
+        if (not s or s in seen or len(s) >= 700 or not PAT_OUTLOOK.search(s)
+                or not re.search(r'\d', s) or PAT_SAFE_HARBOR.search(s)):
             continue
-        if s in seen:
-            continue
-        if len(s) >= 700:
-            continue
-        if not PAT_OUTLOOK.search(s):
-            continue
-        if not re.search(r'\d', s):
-            continue
-        if PAT_SAFE_HARBOR.search(s):
-            continue
-
-        line = f"- {s}"
-        new_total = total_len + (1 if lines else 0) + len(line)
-        if new_total > cap:
-            break
-        lines.append(line)
         seen.add(s)
-        total_len = new_total
+        cands.append((idx, s, 0 if PAT_FORWARD.search(s) else 1))
 
+    # The lead is dropped when a selected-anyway sentence already carries its opening words
+    # (DXC's release headline repeated as its first bullet).
+    lead_key = re.sub(r"\s+", " ", lead[:120]) if lead else ""
+    lead_dup = bool(lead_key) and any(lead_key[:80] in re.sub(r"\s+", " ", s) for _, s, _ in cands)
+    budget = cap - (0 if (not lead or lead_dup) else len(f"- {lead}") + 1)
+
+    chosen = []
+    for group in (0, 1):
+        for idx, s, g in cands:
+            if g != group:
+                continue
+            line_len = len(f"- {s}") + 1
+            if line_len > budget:
+                continue
+            chosen.append((idx, s))
+            budget -= line_len
+
+    lines = [] if (not lead or lead_dup) else [f"- {lead}"]
+    lines += [f"- {s}" for _, s in sorted(chosen)]
     return "\n".join(lines)

@@ -236,3 +236,27 @@ def test_fetch_failure_yields_sec_fetch_failed_and_build_pack_succeeds(monkeypat
     # build_pack succeeds and contains graceful degraded message
     pack = cap.build_pack("TEST")
     assert "COMPANY'S OWN WORDS: not available — SEC fetch failed" in pack
+
+
+def test_excerpt_prefers_forward_looking_sentences_when_the_cap_is_tight():
+    """Measured 2026-09-24: DXC's and GEV's releases list bookings/orders first and the
+    document-order fill spent the cap on them, cutting the full-year guidance. Forward-looking
+    sentences are selected first; the output stays in document order."""
+    import sec_guidance
+    text = ("Headline of the release for the quarter. "
+            + " ".join(f"Segment {i} bookings of $1.{i} billion increased {i}% year-over-year." for i in range(9))
+            + " Full year fiscal 2027 guidance: total revenue in the range of $12.10 billion and $12.35 billion.")
+    out = sec_guidance.guidance_excerpt(text, cap=700)
+    assert "guidance: total revenue in the range of $12.10 billion" in out
+    assert len(out) <= 700
+    body = out.splitlines()
+    idx_guid = next(i for i, l in enumerate(body) if "guidance" in l)
+    assert all("bookings" in l for l in body[1:idx_guid])     # earlier bookings lines stay before it
+
+
+def test_excerpt_drops_a_lead_that_a_kept_sentence_repeats():
+    import sec_guidance
+    sent = ("DXC Technology Reports First Quarter Fiscal Year 2027 Results with bookings of $3.0 "
+            "billion up 5% and we are maintaining our full-year guidance of $12.1 billion.")
+    out = sec_guidance.guidance_excerpt(sent + " Other text without numbers here.", cap=3000)
+    assert out.count("DXC Technology Reports First Quarter") == 1
