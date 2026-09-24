@@ -535,6 +535,10 @@ def band_verdict(doc):
         "desk_iv_match": scorecard.get("desk_iv_match"),
         "desk_reverse_neutral_cagr": scorecard.get("desk_reverse_neutral_cagr"),
         "coe_minus_anchor": scorecard.get("coe_minus_anchor"),
+        # Phase 4 E10: how far the base sits from consensus, stamped whatever reason was given
+        "years12_ratio": scorecard.get("years12_ratio"),
+        "base_to_civ": scorecard.get("base_to_civ"),
+        "consensus_implied_value": scorecard.get("consensus_implied_value"),
         "momentum_view": scorecard.get("momentum_view"),
         "entry_timing": scorecard.get("entry_timing"),
         "momentum_flip_condition": scorecard.get("momentum_flip_condition"),

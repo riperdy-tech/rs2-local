@@ -111,3 +111,25 @@ def test_the_pack_prints_the_reference_with_estimates(screener_data_stub, monkey
     line = next(l for l in pack.splitlines() if "CONSENSUS-IMPLIED VALUE" in l)
     # a value when the fixture holds every input, otherwise the named missing input - never silence
     assert "per share" in line or "not available —" in line
+
+
+def test_ratios_are_stamped_even_when_a_reason_silences_the_flags():
+    sc = {"base_iv": 378.92, "stage1_growth_path": [0.469, 0.731, 0.5, 0.35, 0.25],
+          "guidance_deviation_reason": "any sentence at all"}
+    r = cv.consensus_ratios(sc, {"estimates": AMD_EST}, _probe_pack())
+    assert r == {"years12_ratio": 0.681, "base_to_civ": 0.729, "consensus_implied_value": 520.02}
+    assert cv.consensus_ratios({}, None, None) == {"years12_ratio": None, "base_to_civ": None,
+                                                   "consensus_implied_value": None}
+
+
+def test_the_medoid_summary_and_the_verdict_carry_the_ratios():
+    stamp = {"years12_ratio": 0.681, "base_to_civ": 0.729, "consensus_implied_value": 520.02}
+    runs = [{"sample": n, "iv": iv, "plausible": True, "truncated": False,
+             "scorecard": dict(stamp, base_iv=iv)} for n, iv in ((1, 379.0), (2, 380.0), (3, 381.0))]
+    _, summary = cv.select_medoid_scorecard(runs, 614.61)
+    assert {k: summary[k] for k in stamp} == stamp
+    import depth_pipeline as dp
+    doc = {"ticker": "AMD", "price": 614.61, "samples_run": 3, "converged": True, "spread_pct": 0.5,
+           "median_iv": 380.0, "runs": runs, "scorecard": dict(summary, invalidation_rules=[])}
+    v = dp.band_verdict(doc)
+    assert {k: v.get(k) for k in stamp} == stamp

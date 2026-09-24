@@ -628,6 +628,10 @@ def select_medoid_scorecard(
         "terminal_multiple_or_g": medoid_card.get("terminal_multiple_or_g"),
         "fade_years": medoid_card.get("fade_years"),
         "stage1_growth_path": medoid_card.get("stage1_growth_path"),
+        # E10: carried whatever reason the model wrote (see consensus_ratios)
+        "years12_ratio": medoid_card.get("years12_ratio"),
+        "base_to_civ": medoid_card.get("base_to_civ"),
+        "consensus_implied_value": medoid_card.get("consensus_implied_value"),
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -854,6 +858,33 @@ def _pack_reference(pack_text):
     m = _P90_COND_RE.search(t) or _P90_SIZE_RE.search(t)
     p90 = float(m.group(1)) / 100.0 if m else None
     return civ, p90
+
+
+def consensus_ratios(scorecard, enrich_data=None, pack_text=None):
+    """E10 ratios stamped on every sample WHATEVER reason the model wrote (Fable check,
+    2026-09-24: a model that always fills guidance_deviation_reason would otherwise hide how far
+    its base sits from consensus):
+    - years12_ratio: (1+g1)(1+g2) / ((1+c1)(1+c2)) on consensus EPS growth;
+    - base_to_civ: base IV / the pack's CONSENSUS-IMPLIED VALUE.
+    Each is None when it cannot be computed."""
+    import consensus_reference
+    sc = scorecard or {}
+    civ, _ = _pack_reference(pack_text)
+    out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": civ}
+    path = sc.get("stage1_growth_path") or []
+    c1, c2, _ = consensus_reference.consensus_earnings_growth((enrich_data or {}).get("estimates"))
+    try:
+        if c1 is not None and len(path) >= 2:
+            out["years12_ratio"] = round((1 + float(path[0])) * (1 + float(path[1]))
+                                         / ((1 + c1) * (1 + c2)), 3)
+    except (ValueError, TypeError, ZeroDivisionError):
+        pass
+    try:
+        if civ and sc.get("base_iv") is not None:
+            out["base_to_civ"] = round(float(sc["base_iv"]) / civ, 3)
+    except (ValueError, TypeError, ZeroDivisionError):
+        pass
+    return out
 
 
 def check_sample_harness_rules(
@@ -1850,6 +1881,9 @@ def main():
         for f in rule_flags:
             if f not in flags:
                 flags = list(flags) + [f]
+        # E10: the consensus ratios go on every sample, whatever reason the model wrote.
+        if isinstance(scorecard, dict):
+            scorecard.update(consensus_ratios(scorecard, en_for_checks, pack))
 
         # Carry the harness rescue status onto the sample. Without this the four-key copy out of
         # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort

@@ -156,7 +156,11 @@ TIMEOUT = 14400
 #          both terminal legs, neutral reverse DCF), base IV must be a desk result, the desk's
 #          neutral reverse-DCF implied CAGR and its base-rate band must be printed and argued
 #          against, and a cyclical treatment requires `cycle_evidence`.
-PACK_REVISION = 6
+# Revision 7 (Phase 4 E10, 2026-09-24): stage-1 growth is growth of the CASH FLOW, not revenue;
+#   Base years 1-2 start from consensus EPS growth; SECTION 8 prints the CONSENSUS-IMPLIED VALUE;
+#   EARNINGS QUALITY no longer pushes the base to an older year. A revision-6 pack and a
+#   revision-7 pack give the analyst different instructions and must never be graded as one.
+PACK_REVISION = 7
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
