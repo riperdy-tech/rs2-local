@@ -2487,6 +2487,8 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
     pricing in. A mid-cycle or margin-mean-reversion (cyclical) treatment requires `cycle_evidence`
     — at least one dated, industry-specific indicator (pricing, inventory, capacity, order
     trends); a growth rate alone is not evidence.
+  * Explain The Recent Move First: SECTION 2.5 shows how far the price moved; RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions show what changed. Before you value the business, name the dated catalyst(s) behind the move and whether analysts' estimates moved with them, fetch the articles you rely on, and say which scenario each supports. Record them in `catalysts`.
+  * Scenarios Anchored To Expectations: Base stage-1 years 1-2 start from the company's guidance or SECTION 8's consensus average; Bull and Bear years 1-2 sit near the consensus high and low unless you say why. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
   * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
 
 Produce the full report, SECTION 0 through SECTION 12, following the mandatory institutional memorandum structure. End with SECTION 12 Final Execution Opinion and the validated JSON contract:
@@ -2499,6 +2501,9 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "base_probability": <float between 0.0 and 1.0>,
   "bull_probability": <float between 0.0 and 1.0>,
   "bear_probability": <float between 0.0 and 1.0>,
+  "catalysts": [{"date": "<YYYY-MM-DD>", "event": "<what happened>", "direction": "<bull | bear>", "estimates_moved": "<how consensus estimates moved with it, or 'no visible change'>", "scenario": "<which scenario it supports and how it moves the numbers>"}],
+  "bull_below_price_reason": "<string or null — required when bull_iv < today's price>",
+  "bear_above_price_reason": "<string or null — required when bear_iv > today's price>",
   "base_cf_used": <float, in $B, the base cash flow you actually used for the Base Case>,
   "base_cf_basis": "<owner_earnings_default | latest_fy | multi_year_avg | ttm_fcf | other — which base that figure is>",
   "base_cf_reason": "<string or null — required when base_cf_basis is not owner_earnings_default: why that base is more representative>",
