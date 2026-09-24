@@ -44,6 +44,7 @@ from pack_data_sanity import check_pack_data_sanity
 import rs2_data  # noqa: E402
 import base_rates  # noqa: E402
 import growth_persistence  # noqa: E402
+import world_news  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -596,6 +597,37 @@ def _decl(label, h, yrs, keys, held_note, gap_note):
     span = f"{years[0]}" if len(years) == 1 else f"{years[0]}-{years[-1]}"
     partial = "" if len(years) == len(yrs) else f" of the {len(yrs)} years in SECTION 5"
     return (f"- **{label}: HELD**, {len(years)} year(s){partial} ({span}) - {held_note}")
+
+
+# ── SECTION 1.6 WORLD NEWS block (P4 D10) — shared by the live and point-in-time branches ───
+# Formats a world_news.digest() result (or None). Never invents a headline: an unreadable/empty
+# digest prints a stated reason, exactly like every other SECTION 1.6 line.
+def _world_news_lines(wn, asof_date):
+    if asof_date is not None:
+        if not wn or not wn.get("top"):
+            fpd = (wn or {}).get("first_partition_date")
+            reason = (f"the news history starts {fpd}" if fpd else
+                     "the MRI news history's start date could not be determined this run")
+            return [f"- WORLD NEWS: {ASOF_NULL} — {reason}"]
+    elif not wn or not wn.get("top"):
+        reason = (f"no qualifying headlines in the last {wn['window_days']} days" if wn else
+                 "MRI news feed unavailable this run (no live digest and no usable cache)")
+        return [f"- WORLD NEWS: {NULL} — {reason}"]
+
+    stale_days = wn.get("stale_days")
+    prefix = (f"STALE ({int(stale_days)} days) — "
+             if isinstance(stale_days, (int, float)) and stale_days > 3 else "")
+    lines = [f"- {prefix}WORLD NEWS, last {wn['window_days']} days — one-line AI summaries of "
+            f"dated headlines from the MRI news feed (context, not verified facts; check anything "
+            f"you rely on). {wn['n_considered']} items considered, newest classified "
+            f"{wn.get('newest_classified') or NULL}:"]
+    for row in wn["top"]:
+        lines.append(f"  - {row['date']} | {row['source']} | {row['summary']}  "
+                     f"(severity {row['severity']:.2f})")
+    lines.append("- Structural themes in the news (same feed):")
+    for row in wn["themes"]:
+        lines.append(f"  - {row['date']} | {row['secular_theme']} | {row['summary']}")
+    return lines
 
 
 # ── Point-in-time (as-of) pack helpers — Phase 4 E4.3, time-travel trial ────────────────────
@@ -1170,6 +1202,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if infl.get("pce_yoy") is not None:
                 parts.append(f"PCE YoY {infl['pce_yoy']*100:.2f}%")
             L16.append(f"- Inflation trend: {', '.join(parts)}  (point-in-time)")
+
+        # WORLD NEWS (P4 D10): read-only from the MRI news feed's `origin/run-history` branch
+        # (world_news.py) — never today's news leaking into a past briefing; see _world_news_lines.
+        wn = world_news.digest(asof=asof_date)
+        L16.extend(_world_news_lines(wn, asof_date))
+
         L16.append("")
         L += L16
     else:
@@ -1401,7 +1439,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         # ---- SECTION 1.6 - STATE OF THE WORLD [dated facts, not a forecast] --------------------
         # D10 (PHASE_4_PACK_SPEC.md) / E3 (AMENDMENTS.md): everything here is a dated fact from the
         # MRI, never a forecast and never invented — a missing source prints NULL/omits its line,
-        # it is never defaulted.
+        # it is never defaulted. The WORLD NEWS block below (D10's "news-theme summary", added
+        # 2026-09-24) sources differently from the rest of this section: the MRI's local duckdb
+        # store carries no news, so it reads the macro repo's `origin/run-history` branch instead,
+        # read-only, via world_news.py — see that module's docstring and _world_news_lines above.
         shock_reg = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "shock_register.json") or {}
         shock_asof = shock_reg.get("asof")
 
@@ -1460,6 +1501,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 parts.append(f"PCE YoY {infl['pce_yoy']*100:.2f}%")
             L16.append(f"- Inflation trend: {', '.join(parts)}  (as of {_rate_asof})")
         # else: line omitted entirely — the anchor carries no inflation-trend leg this run.
+
+        wn = world_news.digest()
+        L16.extend(_world_news_lines(wn, None))
 
         L16.append("")
         L += L16

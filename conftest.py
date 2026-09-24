@@ -58,3 +58,24 @@ def _risk_bucket_is_deterministic_in_tests(monkeypatch):
     """
     import depth_pipeline as dp
     monkeypatch.setattr(dp, "risk_bucket", lambda: ("full", None))
+
+
+@pytest.fixture(autouse=True)
+def _world_news_is_unreachable_by_default(tmp_path, monkeypatch):
+    """P4 D10 — every `capability_test.build_pack()` call now asks `world_news.digest()` for
+    SECTION 1.6's WORLD NEWS block, which resolves the real macro-regime-indicator repo and, in
+    live mode, does a real `git fetch`/`git show` against it plus a write to
+    cache/world_news_digest.json. A test must never depend on any of that: today's real feed
+    changes, an offline sandbox has no network, and an un-mocked write would trip
+    `_cache_must_stay_untouched` above exactly like the depth-membership row B2 already found.
+
+    Every test defaults to no resolvable MRI repo, which makes digest() return None — the pack's
+    own honest "not available" line — with no network call and no file I/O outside tmp_path. A
+    test that wants to exercise the real WORLD NEWS block re-applies its own
+    `monkeypatch.setattr(world_news, ...)` in its own body (see
+    tools/audit_202608/tests/test_world_news.py), which simply overrides this default for that one
+    test.
+    """
+    import world_news
+    monkeypatch.setattr(world_news, "_mri_repo", lambda: None)
+    monkeypatch.setattr(world_news, "CACHE_PATH", tmp_path / "world_news_digest.json")
