@@ -27,7 +27,7 @@ CLI:  python rs2_data.py NVDA      # prints the assembled data context
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import paths
 
@@ -1164,6 +1164,284 @@ def anchor_sector_loading(sector):
         return None, f"no_loading_for_sector({sec_id})"
     return float(val), _coc_leg_source(payload, f"sector_loading:{sec_id}")
 
+
+
+# ── Point-in-time (as-of) MRI accessors — Phase 4 E4.3, time-travel trial ─────────────────────
+# Everything above this line reads MRI's LATEST snapshot artifacts (current_regime.json, the
+# *_anchor.json files) — correct for a live pack, wrong for a point-in-time one. A point-in-time
+# pack must see only what the MRI store held AS OF A PAST DATE, never today's vintage of any of
+# it. These accessors are read-only queries against MRI's own duckdb store (macro_engine.duckdb)
+# — never a JSON snapshot, which carries no history — and every one degrades to a stated reason
+# exactly like the accessors above: an as-of value this store cannot reconstruct is reported
+# absent, never approximated from today's number.
+
+def mri_duckdb_path():
+    """Path to MRI's duckdb store, or None when the MRI repo root or the file cannot be found."""
+    try:
+        import paths as _paths
+        mri_dir = _paths.resolve("mri_dir", CONFIG, required=False)
+    except Exception:
+        return None
+    if mri_dir is None:
+        return None
+    p = Path(mri_dir) / "data" / "macro_engine.duckdb"
+    return p if p.exists() else None
+
+
+def _mri_query(sql, params=None):
+    """Run one read-only SQL query against the MRI duckdb store. [] on any failure (no store,
+    duckdb not installed, a locked file, a bad query) — a query failure here is an absent input
+    to the pack, not a reason to crash the whole build.
+    """
+    path = mri_duckdb_path()
+    if path is None:
+        return []
+    try:
+        import duckdb
+    except ImportError:
+        return []
+    try:
+        con = duckdb.connect(str(path), read_only=True)
+        try:
+            return con.execute(sql, params or []).fetchall()
+        finally:
+            con.close()
+    except Exception:
+        return []
+
+
+# The exact series MRI's own cost-of-capital anchor reads for these three legs (config/
+# anchors.yaml risk_free.{nominal_10y,real_10y,breakeven_10y}), all FRED, all quoted in percent.
+_ASOF_RISK_FREE_SERIES = {
+    "nominal_10y": "DGS10",
+    "real_10y": "DFII10",
+    "breakeven_10y": "T10YIE",
+}
+
+
+def asof_risk_free_legs(asof):
+    """{'nominal_10y': (fraction, source)|None, 'real_10y': ..., 'breakeven_10y': ...} as they
+    stood on `asof` — the latest FRED observation on or before that date, from MRI's permanent
+    `raw_observations` table. A single-series latest-on-or-before read needs nothing beyond the
+    raw series MRI already stores forever, unlike the implied-ERP/CoE legs below. Each leg is
+    independently None with a reason when its series carries no observation at/before `asof`.
+    """
+    out = {}
+    for leg, series_id in _ASOF_RISK_FREE_SERIES.items():
+        rows = _mri_query(
+            "SELECT date, value FROM raw_observations WHERE series_id = ? AND date <= ? "
+            "AND value IS NOT NULL ORDER BY date DESC LIMIT 1",
+            [series_id, str(asof)[:10]])
+        if not rows:
+            out[leg] = None
+            continue
+        obs_date, value = rows[0]
+        out[leg] = (float(value) / 100.0, f"asof_raw_observations({series_id},{obs_date})")
+    return out
+
+
+def asof_secondary_macro_series(asof):
+    """{'t10y2y': (value, date)|None, 'baa10y': ..., 'hy_oas': ...} as they stood on `asof` — the
+    same three FRED series `macro_state.json` (the live pack's secondary macro source) carries,
+    read straight from `raw_observations`. Unlike the risk-free legs above these three are
+    already quoted in the percentage-point spread units the live pack prints directly (verified
+    2026-09-24: `macro_state.json`'s T10Y2Y/BAA10Y values equal the raw FRED reading with no
+    /100 scaling) — so no unit conversion is applied here.
+    """
+    out = {}
+    for leg, series_id in (("t10y2y", "T10Y2Y"), ("baa10y", "BAA10Y"),
+                           ("hy_oas", "BAMLH0A0HYM2")):
+        rows = _mri_query(
+            "SELECT date, value FROM raw_observations WHERE series_id = ? AND date <= ? "
+            "AND value IS NOT NULL ORDER BY date DESC LIMIT 1",
+            [series_id, str(asof)[:10]])
+        out[leg] = (float(rows[0][1]), str(rows[0][0])[:10]) if rows else None
+    return out
+
+
+_ASOF_INFLATION_SERIES = {"cpi_yoy": "CPIAUCSL", "pce_yoy": "PCEPI"}
+
+
+def asof_inflation_trend(asof):
+    """{'cpi_yoy': fraction|None, 'pce_yoy': fraction|None} as they stood on `asof` — the same
+    year-over-year index-level computation MRI's own cost-of-capital anchor uses
+    (macro_engine/anchors/cost_of_capital.py `yoy_change`): the latest monthly index level at or
+    before `asof`, divided by the latest level at or before 12 months earlier, minus one. Both
+    keys are None (not omitted) when either leg cannot be measured, matching the live pack's own
+    "print the line only when both legs are absent" convention at the call site.
+    """
+    out = {}
+    for leg, series_id in _ASOF_INFLATION_SERIES.items():
+        rows = _mri_query(
+            "SELECT date, value FROM raw_observations WHERE series_id = ? AND date <= ? "
+            "AND value IS NOT NULL ORDER BY date DESC LIMIT 1", [series_id, str(asof)[:10]])
+        if not rows:
+            out[leg] = None
+            continue
+        latest_date, latest_val = rows[0]
+        prior_cutoff = (latest_date - timedelta(days=365))
+        prior_rows = _mri_query(
+            "SELECT date, value FROM raw_observations WHERE series_id = ? AND date <= ? "
+            "AND value IS NOT NULL ORDER BY date DESC LIMIT 1", [series_id, str(prior_cutoff)[:10]])
+        if not prior_rows or not latest_val or not prior_rows[0][1]:
+            out[leg] = None
+            continue
+        prior_val = prior_rows[0][1]
+        out[leg] = (float(latest_val) / float(prior_val) - 1.0) if prior_val else None
+    return out
+
+
+def asof_cost_of_capital(asof):
+    """The cost-of-capital anchor's legs as they were knowable on `asof`, shaped like the live
+    `cost_of_capital_anchor.json` fields `capability_test.build_pack` consumes.
+
+    Two different sources, by leg:
+      * risk_free (nominal/real/breakeven 10y) — reconstructed directly from FRED observations
+        (`asof_risk_free_legs` above): a single-series read, always answerable back to 1962-2003
+        depending on the series.
+      * implied ERP / implied cost of equity / sector loadings — the OUTPUT of MRI's anchor-
+        building pipeline (an equity-side aggregate DCF solve plus a sector-ETF beta regression;
+        macro_engine/anchors/cost_of_capital.py), not a single series read. MEASURED 2026-09-24:
+        `SELECT min(as_of) FROM anchor_runs` = 2026-05-29 — MRI persisted no snapshot of this
+        pipeline's output before that date, so there is nothing to query for an earlier `asof`.
+        Re-running the pipeline retroactively is a full anchor build, not a read-only query, and
+        is out of scope here. These three legs are therefore None whenever no `anchor_runs` row
+        covers `asof` — never silently substituted with today's anchor.
+    """
+    legs = asof_risk_free_legs(asof)
+    out = {
+        "asof": str(asof)[:10],
+        "risk_free": {k: (v[0] if v else None) for k, v in legs.items()},
+        "risk_free_source": {k: (v[1] if v else None) for k, v in legs.items()},
+        "implied_erp": None, "implied_cost_of_equity": None, "sector_loadings": {},
+        "erp_source": "unavailable", "degraded": True,
+        "degradation_reasons": [
+            f"{k}_unavailable_at_or_before({str(asof)[:10]})" for k, v in legs.items() if v is None
+        ],
+        "anchor_run_asof": None,
+    }
+    rows = _mri_query(
+        "SELECT as_of, cost_of_capital_json, degraded FROM anchor_runs "
+        "WHERE as_of <= ? ORDER BY as_of DESC LIMIT 1", [str(asof)[:10]])
+    if not rows:
+        out["degradation_reasons"].append(
+            f"no_anchor_run_stored_at_or_before({str(asof)[:10]}) — MRI's anchor_runs table holds "
+            "nothing before 2026-05-29; implied ERP/CoE/sector-loading were never persisted for "
+            "this date")
+        return out
+    run_asof, coc_json, run_degraded = rows[0]
+    import json as _json
+    try:
+        payload = _json.loads(coc_json) if isinstance(coc_json, str) else (coc_json or {})
+    except Exception:
+        payload = {}
+    erp = payload.get("implied_erp")
+    coe = payload.get("implied_cost_of_equity")
+    if isinstance(erp, (int, float)):
+        out["implied_erp"] = float(erp)
+        out["erp_source"] = payload.get("erp_source") or "anchor_run"
+    if isinstance(coe, (int, float)):
+        # PERCENT, matching anchor_level_cost_of_equity_pct()'s own convention — the stored JSON
+        # leg (like the live file) is a fraction.
+        out["implied_cost_of_equity"] = float(coe) * 100.0
+    out["sector_loadings"] = payload.get("sector_loadings") or {}
+    out["anchor_run_asof"] = str(run_asof)
+    out["degraded"] = bool(run_degraded)
+    if str(run_asof) != str(asof)[:10]:
+        out["degradation_reasons"].append(
+            f"nearest_anchor_run_is_from({run_asof})_not({str(asof)[:10]})")
+    return out
+
+
+def asof_terminal_g(asof):
+    """(terminal_g, source) — the long-run nominal growth anchor's suggestion at `asof`, or
+    (None, reason). Same anchor_runs-availability constraint as the ERP/CoE legs above."""
+    rows = _mri_query(
+        "SELECT as_of, long_run_growth_json FROM anchor_runs WHERE as_of <= ? "
+        "ORDER BY as_of DESC LIMIT 1", [str(asof)[:10]])
+    if not rows:
+        return None, f"no_anchor_run_stored_at_or_before({str(asof)[:10]})"
+    run_asof, lrg_json = rows[0]
+    import json as _json
+    try:
+        payload = _json.loads(lrg_json) if isinstance(lrg_json, str) else (lrg_json or {})
+    except Exception:
+        payload = {}
+    value = payload.get("terminal_g_suggestion")
+    if not isinstance(value, (int, float)):
+        return None, f"anchor_run({run_asof})_has_no_terminal_g_suggestion"
+    return float(value), f"asof_anchor_run({run_asof})"
+
+
+def asof_regime_vector(asof, max_age_days=None):
+    """The MRI 5-way regime probability vector as it stood on `asof`:
+    {'date', 'probabilities' (5 keys), 'headline', 'headline_probability', 'margin'}, or None
+    when no evaluation covers `asof` within `max_age_days` (default
+    `CONFIG['regime_max_age_days']` — the same freshness bar the live pack applies to
+    `current_regime.json`).
+
+    Sourced from `historical_regime_timeline` (the evaluation date and its validity) and
+    `regime_scores` (the full per-regime probability — the timeline table stores only the top
+    two).
+    """
+    if max_age_days is None:
+        max_age_days = CONFIG.get("regime_max_age_days", 45)
+    rows = _mri_query(
+        "SELECT date, valid FROM historical_regime_timeline WHERE date <= ? "
+        "ORDER BY date DESC LIMIT 1", [str(asof)[:10]])
+    if not rows:
+        return None
+    ev_date, valid = rows[0]
+    try:
+        age = (datetime.strptime(str(asof)[:10], "%Y-%m-%d")
+               - datetime.strptime(str(ev_date)[:10], "%Y-%m-%d")).days
+    except ValueError:
+        return None
+    if age < 0 or age > max_age_days or not valid:
+        return None
+    prob_rows = _mri_query(
+        "SELECT regime_id, probability FROM regime_scores WHERE date = ? "
+        "AND probability IS NOT NULL", [ev_date])
+    probs = {rid: float(p) for rid, p in prob_rows if isinstance(p, (int, float))}
+    if not probs:
+        return None
+    headline = max(probs, key=probs.get)
+    sorted_p = sorted(probs.values(), reverse=True)
+    margin = (sorted_p[0] - sorted_p[1]) if len(sorted_p) >= 2 else None
+    return {"date": str(ev_date)[:10], "probabilities": probs, "headline": headline,
+            "headline_probability": probs[headline], "margin": margin}
+
+
+def asof_shock_register(asof):
+    """Shock-register state as it stood on `asof`: {'asof', 'shocks': [...active shocks...],
+    'elevated_volatility_ahead': bool}, or None when the register holds no row at/before `asof`.
+
+    `elevated_volatility_ahead` is RECOMPUTED by the documented rule (MRI config/shocks.yaml
+    risk_flags: "`active` is computed live from the register — severity >= 1 on
+    `source_shock`"=volatility_shock), not read from a stored flag: the duckdb `shock_register`
+    table carries the raw per-shock rows the live JSON's `risk_flags` block is itself derived
+    from, not a separate flag row.
+    """
+    rows = _mri_query(
+        "SELECT date FROM shock_register WHERE date <= ? ORDER BY date DESC LIMIT 1",
+        [str(asof)[:10]])
+    if not rows:
+        return None
+    reg_date = rows[0][0]
+    shock_rows = _mri_query(
+        "SELECT shock_id, severity, direction, onset_date, active, state FROM shock_register "
+        "WHERE date = ?", [reg_date])
+    shocks = []
+    vol_severity = None
+    for shock_id, severity, direction, onset_date, active, state in shock_rows:
+        if shock_id == "volatility_shock" and isinstance(severity, (int, float)):
+            vol_severity = severity
+        if active:
+            shocks.append({"shock_id": shock_id, "severity": severity, "direction": direction,
+                           "onset_date": str(onset_date)[:10] if onset_date else None,
+                           "state": state})
+    return {"asof": str(reg_date)[:10], "shocks": shocks,
+            "elevated_volatility_ahead": bool(vol_severity is not None and vol_severity >= 1)}
 
 
 def macro_block(macro_state, regime):

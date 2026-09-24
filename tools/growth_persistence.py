@@ -25,7 +25,7 @@ def bucket_for_growth(g0):
     return None
 
 
-def realized_forward_buckets(sd=None):
+def realized_forward_buckets(sd=None, max_fiscal_year=None):
     """{label: [realized 5y forward revenue CAGR, ...]} across the full corpus — the same
     measurement the standalone report prints, exposed here as data for callers that need the
     raw table (base_rates.py, capability_test.py's GROWTH BASE RATES block) rather than the
@@ -35,12 +35,18 @@ def realized_forward_buckets(sd=None):
     `rs2_data.CONFIG["screener_data_dir"]` directly. A caller with its own resolved/patchable
     directory (`capability_test.SD`, test-monkeypatched) should always pass it — re-resolving
     here would read the REAL screener directory under a test fixture regardless of the patch.
+
+    `max_fiscal_year`: point-in-time restriction (Phase 4 E4.3) — fiscal years after this one are
+    excluded from EVERY ticker's series before any (start-year, +5y) pair is formed, so a trial
+    pack's conditional table cannot see a year that would not yet have been filed as of the
+    trial's `asof` date. None (the default) computes the full corpus, unchanged behaviour.
     """
     SD = Path(sd) if sd is not None else Path(rs2_data.CONFIG["screener_data_dir"])
     H = (rs2_data.load_json(SD / "fundamentals_history.json") or {}).get("tickers", {})
     buckets = {}
     for t, yd in H.items():
-        ys = sorted(int(y) for y in yd if str(y).isdigit())
+        ys = sorted(int(y) for y in yd if str(y).isdigit()
+                    and (max_fiscal_year is None or int(y) <= max_fiscal_year))
         revs = {}
         for y in ys:
             r = (yd.get(str(y)) or {}).get("revenue")
@@ -61,12 +67,12 @@ def realized_forward_buckets(sd=None):
     return buckets
 
 
-def persistence_table(sd=None):
+def persistence_table(sd=None, max_fiscal_year=None):
     """{label: {n, p25, median, p75, p90}} (percent, 1dp) for each bucket carrying at least 30
     corpus observations. A bucket below that floor is omitted rather than shown on a sample too
-    thin to trust — the same floor the standalone report has always applied. `sd`: see
-    realized_forward_buckets()."""
-    buckets = realized_forward_buckets(sd)
+    thin to trust — the same floor the standalone report has always applied. `sd`,
+    `max_fiscal_year`: see realized_forward_buckets()."""
+    buckets = realized_forward_buckets(sd, max_fiscal_year=max_fiscal_year)
     out = {}
     for lbl in ("15-25%", "25-40%", "40-70%", ">70%"):
         v = sorted(buckets.get(lbl, []))
@@ -78,18 +84,18 @@ def persistence_table(sd=None):
     return out
 
 
-def persistence_for_growth(g0, sd=None):
+def persistence_for_growth(g0, sd=None, max_fiscal_year=None):
     """(label, stats|None) for the bucket containing delivered growth g0 (a fraction).
 
     `label` is None when g0 falls outside every bucket. `stats` is None when the bucket has
     fewer than 30 corpus observations (see persistence_table) — label is still returned so the
-    caller can say WHICH bucket it was, even with no usable table for it. `sd`: see
-    realized_forward_buckets().
+    caller can say WHICH bucket it was, even with no usable table for it. `sd`, `max_fiscal_year`:
+    see realized_forward_buckets().
     """
     lbl = bucket_for_growth(g0)
     if lbl is None:
         return None, None
-    return lbl, persistence_table(sd).get(lbl)
+    return lbl, persistence_table(sd, max_fiscal_year=max_fiscal_year).get(lbl)
 
 
 def _print_report():

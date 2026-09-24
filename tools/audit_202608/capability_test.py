@@ -598,7 +598,168 @@ def _decl(label, h, yrs, keys, held_note, gap_note):
     return (f"- **{label}: HELD**, {len(years)} year(s){partial} ({span}) - {held_note}")
 
 
-def build_pack(t, price_override=None, include_research=True):
+# ── Point-in-time (as-of) pack helpers — Phase 4 E4.3, time-travel trial ────────────────────
+# A conservative filing lag applied to every fundamentals cutoff below: the period end date
+# itself is not enough, because a period that ended just before `asof` may not have been FILED
+# yet. 45 days matches the anchor/regime freshness gates already used elsewhere in this pack
+# (CONFIG["regime_max_age_days"], CONFIG["anchor_max_age_days"]) and covers the SEC's own filing
+# deadlines for every filer size (10-K: 60/75/90 days; 10-Q: 40/45 days) except the slowest
+# non-accelerated 10-K filers, which is the honest, stated trade-off of picking ONE conservative
+# number instead of a per-company filer-status lookup this pack does not have.
+POINT_IN_TIME_FILING_LAG_DAYS = 45
+ASOF_NULL = "not available (point-in-time)"
+
+
+def _parse_asof(asof):
+    """A `datetime.date` for `asof`, which may already be one, or a "YYYY-MM-DD" string."""
+    if isinstance(asof, datetime):
+        return asof.date()
+    from datetime import date as _date
+    if isinstance(asof, _date):
+        return asof
+    return datetime.strptime(str(asof)[:10], "%Y-%m-%d").date()
+
+
+def _fye_month_day(t):
+    """(month, day) of this company's fiscal year end, from TODAY's `fundamentals_ttm.json`.
+
+    This is the ONLY use a point-in-time pack makes of a same-day snapshot file: not the VALUE
+    of anything filed, only the recurring calendar pattern of WHEN this company's fiscal year
+    closes (e.g. NVDA closes in late January, not December) — a structural fact about the
+    company's reporting calendar that is, for essentially every filer, unchanged year over year
+    and so carries no look-ahead about what happened in the period being restricted. Falls back
+    to a calendar (Dec 31) fiscal year end when no current record is held for this ticker at all.
+    """
+    from datetime import date as _date
+    rec = (rs2_data.load_json(SD / "fundamentals_ttm.json") or {}).get("tickers", {}).get(t) or {}
+    fy_end = rec.get("fy_leg_end")
+    if isinstance(fy_end, str) and len(fy_end) >= 10:
+        try:
+            d = _date.fromisoformat(fy_end[:10])
+            return d.month, d.day
+        except ValueError:
+            pass
+    return 12, 31
+
+
+def _fy_end_date_for(year, month, day):
+    """`date(year, month, day)`, clamped to the last real day of `month` (handles Feb 29 in a
+    non-leap fiscal-label year, and any other month/day combination that cannot exist)."""
+    import calendar
+    from datetime import date as _date
+    last_day = calendar.monthrange(year, month)[1]
+    return _date(year, month, min(day, last_day))
+
+
+def _last_allowed_fiscal_year(cutoff_date, month, day):
+    """The greatest fiscal-year label Y such that this company's FY-end date for label Y
+    (approximated as `date(Y, month, day)`, from `_fye_month_day`) falls at or before
+    `cutoff_date`. `fundamentals_history.json` keys its rows by this same label convention
+    (verified against `fy_leg_end`: NVDA's FY2026 row is keyed "2026" for a period ending
+    2026-01-25) — this function inverts that same convention rather than assuming a calendar
+    year end for every company (Dec-31 alone would incorrectly exclude an already-filed
+    January-fiscal-year-end company like NVDA from its own most recent completed year).
+    """
+    y = cutoff_date.year + 1
+    while _fy_end_date_for(y, month, day) > cutoff_date:
+        y -= 1
+    return y
+
+
+def _asof_price_lookup(t, asof_date, lookback_days=400):
+    """{'price', 'asof' (the actual trading-day date used), 'series' ({iso_date: close}, every
+    close STRICTLY on or before `asof_date` — the single filter point that makes every SCR-10
+    computation below provably unable to read a future close)}, or None when no close is found
+    within `lookback_days` before `asof_date` (network failure, an unlisted/delisted ticker, or
+    a `lookback_days` window too short for this ticker's history).
+
+    Reuses `tools/grade_depth_verdicts.py`'s own price fetch/cache machinery verbatim (same
+    `fetch_history`/`close_on_or_before` this pipeline's grader already uses to price a verdict's
+    forward return) rather than a second yfinance client — the brief's "grader's price fetch/
+    cache approach". A network fetch of HISTORICAL prices is explicitly permitted at pack build
+    time (point-in-time restriction is about not reading data dated after `asof`, not about
+    avoiding the network); this function never fetches or reads anything dated after `asof`.
+    """
+    try:
+        import grade_depth_verdicts as gdv
+    except Exception:
+        return None
+    from datetime import timedelta as _td
+    start = (asof_date - _td(days=lookback_days)).isoformat()
+    cache = {}
+    try:
+        gdv.fetch_history([t], start, cache)
+    except Exception:
+        return None
+    asof_iso = asof_date.isoformat()
+    # The one filter point: every date after `asof_date` is discarded here, before any SCR-10
+    # figure is computed from this series, regardless of how far `fetch_history` itself reached.
+    series = {d: c for d, c in (cache.get(t) or {}).items() if d <= asof_iso}
+    if not series:
+        return None
+    close_date, close = gdv.close_on_or_before(
+        {t: series}, t, asof_iso, window=10)
+    if close is None:
+        return None
+    return {"price": close, "asof": close_date, "series": series}
+
+
+def _series_close_on_or_before(series, target_iso, window=10):
+    """`gdv.close_on_or_before`'s exact rule, applied to an already-fetched {date: close} dict
+    directly (no second network round-trip): the close on the last trading day on/before
+    `target_iso`, within `window` calendar days. (None, None) when nothing qualifies."""
+    from datetime import date as _date, timedelta as _td
+    t0 = _date.fromisoformat(target_iso)
+    for back in range(0, window + 1):
+        key = (t0 - _td(days=back)).isoformat()
+        if key in series:
+            return key, series[key]
+    return None, None
+
+
+def _scr10_from_series(series, asof_iso):
+    """SECTION 2.5's price-fact fields, recomputed directly from historical closes ending at
+    `asof_iso` (PHASE_4_PACK_SPEC.md D10 / the E4.3 brief: "52-week range and SCR-10-style price
+    facts ... recomputed from monthly/daily closes ending at asof"), never from
+    `factor_scores.json` (a same-day snapshot with no history). Every field is None when the
+    reference close it needs is not in `series` (a lookback window too short, or too new a
+    listing) — never approximated.
+
+    `mom_12_1`: the standard 12-1 momentum window (12 months back to 1 month back, skipping the
+    most recent month) — NOT `mom_6m`/`mom_1m`'s own simple "today vs N months back".
+    """
+    close_asof_date, close_asof = _series_close_on_or_before(series, asof_iso)
+    if close_asof is None:
+        return {}
+    from datetime import date as _date, timedelta as _td
+
+    def _months_back(months):
+        d = _date.fromisoformat(asof_iso)
+        # Calendar months back via day-count approximation (30.44 days/mo average) — consistent
+        # with how mom_6m/mom_1m are described ("N-month return"), not a banker's exact
+        # month-boundary rule this pack has no other use for.
+        return (d - _td(days=round(months * 30.4375))).isoformat()
+
+    def _ret(months):
+        _, base = _series_close_on_or_before(series, _months_back(months))
+        return (close_asof / base - 1.0) if base else None
+
+    _, close_1m = _series_close_on_or_before(series, _months_back(1))
+    _, close_12m = _series_close_on_or_before(series, _months_back(12))
+    mom_12_1 = (close_1m / close_12m - 1.0) if (close_1m and close_12m) else None
+
+    window_start = (_date.fromisoformat(asof_iso) - _td(days=365)).isoformat()
+    high_52w = max((c for d, c in series.items() if window_start <= d <= asof_iso), default=None)
+    high_52w_dist = (close_asof / high_52w - 1.0) if high_52w else None
+
+    return {
+        "mom_12_1": mom_12_1, "mom_6m": _ret(6), "mom_1m": _ret(1),
+        "high_52w_distance": high_52w_dist, "high_52w_basis": "daily (recomputed, point-in-time)",
+        "price_asof": close_asof_date,
+    }
+
+
+def build_pack(t, price_override=None, include_research=True, asof=None):
     """Every fact we hold that is FILED, or is exact arithmetic on filed values, labelled with its
     source and its period. No judgment is exercised here: no valuation, no basis choice, no
     normalisation, no composite of our own. Where a series is known to be defective the pack says
@@ -619,8 +780,44 @@ def build_pack(t, price_override=None, include_research=True):
         then publishes a score, presenting a guess as a measurement.
       * valuation_models.json / factor_scores.json — our own finished valuation and our own
         ranking. Handing either over makes the analysis circular.
+
+    `asof` (Phase 4 E4.3, the time-travel trial): a date (or "YYYY-MM-DD" string). When given,
+    EVERY input is restricted to what was knowable on that date — see the point-in-time helpers
+    above `build_pack` and the header this prints. `include_research` is forced off regardless of
+    what is passed: research is unconditionally OFF in point-in-time mode (a live web brief could
+    only leak the future). None (the default) is unchanged, live-pack behaviour.
     """
+    # Declared exactly once, here, for the whole function: two separate `global X` statements
+    # either side of X's first assignment raise a SyntaxError even when each is individually
+    # valid for its own branch (SECTION 2.5 below assigns both names in either an asof branch
+    # or a live branch, never both).
+    global LAST_PACK_MOMENTUM_STATE, LAST_PACK_ACTIVE_SHOCKS
+    asof_date = _parse_asof(asof) if asof is not None else None
+    asof_cutoff = None
+    last_allowed_fy = None
+    asof_omitted = []   # every input dropped for point-in-time reasons, printed in SECTION 12
+    if asof_date is not None:
+        from datetime import timedelta as _td
+        asof_cutoff = asof_date - _td(days=POINT_IN_TIME_FILING_LAG_DAYS)
+        _fye_m, _fye_d = _fye_month_day(t)
+        last_allowed_fy = _last_allowed_fiscal_year(asof_cutoff, _fye_m, _fye_d)
+        include_research = False
+
     L = [f"# DATA PACK - {t}", ""]
+    if asof_date is not None:
+        L += [f"**POINT-IN-TIME BRIEFING — as of {asof_date.isoformat()}; you must not use "
+              f"knowledge of events after this date.**",
+              f"- Fundamentals below are restricted to periods whose end date is on or before "
+              f"{asof_cutoff.isoformat()} ({POINT_IN_TIME_FILING_LAG_DAYS}-day conservative "
+              f"filing lag before {asof_date.isoformat()}) — a period not yet filed by that date "
+              f"cannot appear. This company's own fiscal calendar (month/day of its fiscal year "
+              f"end — never a filed VALUE) decides which fiscal-year labels qualify; the "
+              f"cross-company GROWTH BASE RATES corpus below instead applies one uniform "
+              f"calendar (Dec 31) fiscal year end to all ~6,900 constituents, a stated "
+              f"simplification for a population this size.",
+              f"- Any input this pack cannot honestly restrict to {asof_date.isoformat()} is "
+              f"OMITTED and printed as `{ASOF_NULL}` — never today's value.",
+              ""]
 
     fin = rs2_data.load_json(SD / "financials" / f"{t}.json") or {}
     cm = fin.get("Calculated_Metrics") or {}
@@ -635,7 +832,9 @@ def build_pack(t, price_override=None, include_research=True):
             .get("tickers", {}).get(t, {}) if str(y).isdigit()]
     ttm_stale = bool(ttm and _yrs
                      and int(str(ttm.get("fy_leg_end", ""))[:4] or 0) != max(_yrs))
-    if ttm_stale:
+    if ttm_stale or asof_date is not None:
+        # asof mode: TODAY's TTM snapshot is not a point-in-time figure at all — see the
+        # point-in-time TTM recomputation (from allowed quarters only) further below.
         f = {}
     qrec = (rs2_data.load_json(SD / "fundamentals_quarterly.json") or {}).get("tickers", {}).get(t) or {}
     qs = qrec.get("quarters") or []
@@ -644,6 +843,61 @@ def build_pack(t, price_override=None, include_research=True):
     ob = rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json") or {}
     en = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
     met = ob.get("metrics") or {}
+
+    asof_ttm_recomputed = None   # set below, in asof mode, from the allowed quarters only
+    if asof_date is not None:
+        cutoff_iso = asof_cutoff.isoformat()
+        qs_allowed = [r for r in qs if isinstance(r.get("end"), str) and r["end"] <= cutoff_iso]
+        if len(qs) != len(qs_allowed):
+            asof_omitted.append(
+                f"fundamentals_quarterly.json: {len(qs) - len(qs_allowed)} quarter(s) ending "
+                f"after {cutoff_iso} excluded (SECTION 4)")
+        qs = qs_allowed
+        h_allowed = {y: v for y, v in h.items()
+                    if str(y).isdigit() and int(y) <= last_allowed_fy}
+        if len(h) != len(h_allowed):
+            asof_omitted.append(
+                f"fundamentals_history.json: fiscal year(s) after FY{last_allowed_fy} excluded "
+                f"(SECTIONs 5/6/6A/6B/6C, GROWTH BASE RATES)")
+        h = h_allowed
+        # TTM (SECTION 3): revenue/net income are recomputable as the sum of the trailing 4
+        # ALLOWED quarters; OCF/capex/FCF/D&A are NOT — fundamentals_quarterly.json carries only
+        # revenue/gross_profit/net_income per quarter (verified 2026-09-24: no ocf/capex/fcf/da
+        # field exists at quarterly granularity anywhere in this file), so those four are omitted
+        # rather than sourced from the single, un-restrictable TODAY snapshot.
+        last4 = qs[-4:]
+        if len(last4) == 4:
+            rev4 = [q.get("revenue") for q in last4]
+            ni4 = [q.get("net_income") for q in last4]
+            if all(isinstance(x, (int, float)) for x in rev4 + ni4):
+                asof_ttm_recomputed = {
+                    "revenue": sum(rev4), "net_income": sum(ni4),
+                    "through": last4[-1].get("end"),
+                }
+        if asof_ttm_recomputed is None:
+            asof_omitted.append(
+                "TTM revenue/net income (SECTION 3): fewer than 4 quarters end on or before "
+                f"{cutoff_iso}")
+        asof_omitted.append(
+            "TTM operating cash flow / capex / FCF / D&A (SECTION 3): fundamentals_quarterly.json "
+            "carries no ocf/capex/fcf/da field at quarterly granularity, so these cannot be "
+            "recomputed for any as-of date")
+        if bat:
+            asof_omitted.append("fundamentals_battery.json (SECTION 7, quality/solvency "
+                                "measures): same-day snapshot, no stored history to restrict")
+        bat = {}
+        if ob:
+            asof_omitted.append("openbb cache (SECTION 8 consensus & multiples, SECTION 10 "
+                                "earnings transcript): same-day snapshot, no stored history")
+        ob = {}
+        met = {}
+        if en:
+            asof_omitted.append("enrich/*.json (SECTION 8 analyst targets/52-week range, "
+                                "SECTION 9 positioning): same-day snapshot, no stored history")
+        en = {}
+        asof_omitted.append("SECTION 8.5 peer context: stocks.json is a same-day snapshot; "
+                            "reconstructing it would need an as-of price+EPS fetch for every "
+                            "cluster peer, not attempted this run")
 
     # PROVABLE 1000x SCALE CORRUPTION in this company's filed series. Detected with
     # data_health.audit_series_breaks so there is ONE definition of the test rather than a second
@@ -672,7 +926,7 @@ def build_pack(t, price_override=None, include_research=True):
                              f"to {b['to']:,} in FY{b['to_year']}" for b in breaks))
         L.insert(3, "")
 
-    fy_end, fy_src = _fy_end({} if ttm_stale else ttm, qs)
+    fy_end, fy_src = _fy_end({} if (ttm_stale or asof_date is not None) else ttm, qs)
     drift = _schema_drift({"fin": fin, "ob": ob, "met": met, "en": en,
                            "bat": bat})
     if drift:
@@ -726,299 +980,503 @@ def build_pack(t, price_override=None, include_research=True):
           f"- Fiscal year ends: {fy_end}   [derived from {fy_src}]",
           "- Rows below are labelled by FISCAL year, not calendar year.", ""]
 
-    # ---- SECTION 1.5 - MACRO REGIME & COST OF CAPITAL ANCHORS -------------------------------
-    coc_payload = rs2_data.usable_anchor("cost_of_capital")
-    anchor_asof = coc_payload.get("asof") if coc_payload else None
-    anchor_degraded = coc_payload.get("degraded") if coc_payload else None
-    anchor_reasons = (coc_payload.get("provenance") or {}).get("degradation_reasons") if coc_payload else []
+    # ---- SECTION 1.5 / 1.6 - MACRO REGIME, COST OF CAPITAL, STATE OF THE WORLD --------------
+    if asof_date is not None:
+        # Point-in-time reconstruction (Phase 4 E4.3) — read-only queries against MRI's own
+        # duckdb store, never today's *_anchor.json/current_regime.json/shock_register.json
+        # snapshots. See rs2_data.asof_* for what each leg can and cannot be reconstructed from.
+        coc = rs2_data.asof_cost_of_capital(asof_date)
+        rf_v, real_v, be_v = (coc["risk_free"].get(k) for k in
+                              ("nominal_10y", "real_10y", "breakeven_10y"))
+        rf_pct = rf_v * 100.0 if rf_v is not None else None
+        real_pct = real_v * 100.0 if real_v is not None else None
+        be_pct = be_v * 100.0 if be_v is not None else None
+        erp_pct = coc["implied_erp"] * 100.0 if coc["implied_erp"] is not None else None
+        coe_pct = coc["implied_cost_of_equity"]   # already percent (asof_cost_of_capital's convention)
+        mri_sec = rs2_data.mri_sector_id(sector)
+        anchor_load_val = coc["sector_loadings"].get(mri_sec) if mri_sec else None
+        terminal_g_val, terminal_g_src = rs2_data.asof_terminal_g(asof_date)
 
-    # Accessors for MRI anchors:
-    # 1) Nominal 10-year
-    anchor_rf_val, anchor_rf_src = rs2_data.anchor_risk_free_rate()
-    # 2) Real 10-year
-    anchor_real_val, anchor_real_src = rs2_data.anchor_real_10y()
-    # 3) Breakeven 10-year
-    anchor_be_val, anchor_be_src = rs2_data.anchor_breakeven_10y()
-    # 4) Implied ERP
-    anchor_erp_val, anchor_erp_src = rs2_data.anchor_mature_erp()
-    # 5) Implied cost of equity
-    anchor_coe_val, anchor_coe_src = rs2_data.anchor_level_cost_of_equity_pct()
-    # 6) Sector loading
-    anchor_load_val, anchor_load_src = rs2_data.anchor_sector_loading(sector)
+        rf_src = coc["risk_free_source"].get("nominal_10y")
+        rf_line = (f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {rf_pct:.2f}%  "
+                   f"[point-in-time, {rf_src}]" if rf_pct is not None else
+                   f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {ASOF_NULL}")
+        real_line = (f"- Real 10-Year US Treasury Yield: {real_pct:.2f}%  [point-in-time, "
+                    f"{coc['risk_free_source'].get('real_10y')}]" if real_pct is not None
+                    else f"- Real 10-Year US Treasury Yield: {ASOF_NULL}")
+        be_line = (f"- 10-Year Breakeven Inflation Rate: {be_pct:.2f}%  [point-in-time, "
+                  f"{coc['risk_free_source'].get('breakeven_10y')}]" if be_pct is not None
+                  else f"- 10-Year Breakeven Inflation Rate: {ASOF_NULL}")
+        erp_line = (f"- Implied Equity Risk Premium (ERP): {erp_pct:.2f}%  [point-in-time MRI "
+                   f"anchor run, asof {coc.get('anchor_run_asof')}]" if erp_pct is not None else
+                   f"- Implied Equity Risk Premium (ERP): {ASOF_NULL}  (no MRI anchor snapshot "
+                   f"stored at or before this date)")
+        coe_line = (f"- Implied Cost of Equity: {coe_pct:.2f}%  [point-in-time MRI anchor run, "
+                   f"asof {coc.get('anchor_run_asof')}]" if coe_pct is not None else
+                   f"- Implied Cost of Equity: {ASOF_NULL}  (no MRI anchor snapshot stored at or "
+                   f"before this date)")
+        if mri_sec is not None and anchor_load_val is not None:
+            load_line = (f"- Sector Cost of Equity Loading ({mri_sec}): {anchor_load_val:.3f}x  "
+                        f"[point-in-time MRI anchor run]")
+        elif mri_sec is not None:
+            load_line = f"- Sector Cost of Equity Loading ({mri_sec}): {ASOF_NULL}"
+        else:
+            load_line = f"- Sector Cost of Equity Loading: {ASOF_NULL} (unmapped sector: {sector or 'none'})"
 
-    # Secondary macro source: macro_state.json
-    macro_json = rs2_data.load_json(SD / "macro_state.json") or {}
-    macro_series = macro_json.get("series") or {}
-    dgs10_series = macro_series.get("DGS10") or {}
-    dgs10_sec = dgs10_series.get("value")
-    t10y2y_series = macro_series.get("T10Y2Y") or {}
-    t10y2y = t10y2y_series.get("value")
-    baa10y_series = macro_series.get("BAA10Y") or {}
-    baa10y = baa10y_series.get("value")
-    hy_oas_series = macro_series.get("BAMLH0A0HYM2") or {}
-    hy_oas = hy_oas_series.get("value")
+        if rf_pct is not None and anchor_load_val is not None and erp_pct is not None:
+            coe_anchor_pct = rf_pct + anchor_load_val * erp_pct
+            coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + loading "
+                                f"{anchor_load_val:.3f}x x implied ERP {erp_pct:.2f}% = "
+                                f"{coe_anchor_pct:.2f}%  (point-in-time, asof "
+                                f"{coc.get('anchor_run_asof')})")
+        else:
+            coe_anchor_pct = None
+            coe_anchor_line = f"- COE ANCHOR for this name: {ASOF_NULL}"
 
-    # 1) Nominal 10-Year (anchor first, secondary fallback)
-    if anchor_rf_val is not None:
-        rf_pct = anchor_rf_val * 100.0
-        rf_line = f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {rf_pct:.2f}%  [MRI anchor, as of {anchor_asof or 'recent'}]"
-    elif dgs10_sec is not None:
-        rf_pct = float(dgs10_sec)
-        rf_line = f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {rf_pct:.2f}%  [macro_state.json (secondary), as of {dgs10_series.get('as_of', 'recent')}]"
+        if terminal_g_val is not None:
+            terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: "
+                                f"{terminal_g_val*100:.2f}%  (point-in-time MRI anchor run)")
+        else:
+            terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: {ASOF_NULL}  "
+                               f"({terminal_g_src})")
+
+        sec_series = rs2_data.asof_secondary_macro_series(asof_date)
+        t10y2y = sec_series["t10y2y"][0] if sec_series["t10y2y"] else None
+        baa10y = sec_series["baa10y"][0] if sec_series["baa10y"] else None
+        hy_oas = sec_series["hy_oas"][0] if sec_series["hy_oas"] else None
+        if t10y2y is not None:
+            slope = "Inverted" if t10y2y < 0 else "Normal / Steepening"
+            t10y2y_line = (f"- 10Y-2Y Treasury Yield Spread (Curve Slope) [point-in-time, MRI "
+                          f"raw_observations]: {t10y2y:+.2f}%  ({slope})  (as of "
+                          f"{sec_series['t10y2y'][1]})")
+        else:
+            t10y2y_line = f"- 10Y-2Y Treasury Yield Spread (Curve Slope): {ASOF_NULL}"
+        if baa10y is not None:
+            baa_line = (f"- Investment Grade Credit Spread (BAA - 10Y) [point-in-time, MRI "
+                       f"raw_observations]: {baa10y:.2f}%  (as of {sec_series['baa10y'][1]})")
+        else:
+            baa_line = f"- Investment Grade Credit Spread (BAA - 10Y): {ASOF_NULL}"
+        if hy_oas is not None:
+            hy_line = (f"- High Yield Option-Adjusted Spread (OAS) [point-in-time, MRI "
+                      f"raw_observations]: {hy_oas:.2f}%  (as of {sec_series['hy_oas'][1]})")
+        else:
+            hy_line = f"- High Yield Option-Adjusted Spread (OAS): {ASOF_NULL}"
+
+        regime = rs2_data.asof_regime_vector(asof_date)
+        probs = regime["probabilities"] if regime else {}
+        regime_headline = regime["headline"] if regime else None
+        regime_fresh = regime is not None
+        if regime is None:
+            regime_line = f"- Current Macro Regime: {ASOF_NULL}"
+        else:
+            vec_items = [f"{k} {v:.3f}" for k, v in sorted(probs.items(), key=lambda x: -x[1])]
+            margin_str = (f"margin {regime['margin']:.3f} — contested"
+                         if regime.get("margin") is not None else "contested")
+            regime_line = (f"- Current Macro Regime: Probabilities: [{', '.join(vec_items)}] | "
+                          f"headline {regime_headline} ({margin_str})  [point-in-time, as of "
+                          f"{regime['date']}]")
+
+        anchor_meta_line = (f"- MRI Capital-Market Anchors Status: point-in-time reconstruction "
+                            f"as of {asof_date.isoformat()} | anchor run used: "
+                            f"{coc.get('anchor_run_asof') or ASOF_NULL} | degraded: "
+                            f"{coc['degraded']} | reasons: "
+                            f"{'; '.join(coc['degradation_reasons']) or 'none'}")
+
+        L += ["## SECTION 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [Primary Macro Context, "
+              "point-in-time]",
+              anchor_meta_line, rf_line, real_line, be_line, erp_line, coe_line, load_line,
+              coe_anchor_line, terminal_g_line, t10y2y_line, baa_line, hy_line, regime_line]
+
+        if rf_pct is not None:
+            L.append(f"- **MANDATE:** Use the verified 10-Year Treasury yield above "
+                     f"({rf_pct:.2f}%) as your base risk-free rate Rf for WACC. DO NOT search "
+                     "the web for Treasury yields or cost of capital anchors; they are verified "
+                     "above.")
+        if coe_anchor_pct is not None:
+            L.append(f"- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above "
+                     f"({coe_anchor_pct:.2f}%), or declare `coe_source: \"own\"` with a "
+                     f"`coe_adjustment_reason`. Vendor beta (SECTION 2) is context only, never "
+                     "the input.")
+        else:
+            L.append("- **COE MANDATE:** the COE ANCHOR above is not available this run — "
+                     "declare `coe_source: \"own\"` with a `coe_adjustment_reason` for whatever "
+                     "`coe_used` you choose. Vendor beta (SECTION 2) is context only, never the "
+                     "input.")
+        L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
+                 "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not "
+                 "force artificial multiple caps.")
+        L.append("")
+
+        macro_degraded = bool(
+            rf_pct is None or real_pct is None or be_pct is None or erp_pct is None
+            or coe_pct is None or anchor_load_val is None or t10y2y is None or baa10y is None
+            or hy_oas is None or coc["degraded"] or not regime_fresh
+        )
+
+        shock_state = rs2_data.asof_shock_register(asof_date)
+        L16 = ["## SECTION 1.6 - STATE OF THE WORLD   [dated facts, not a forecast, "
+              "point-in-time]", ""]
+        if regime is not None:
+            vec5 = [f"{k} {probs[k]:.3f}" if k in probs else f"{k} {ASOF_NULL}"
+                    for k in ("goldilocks", "reflation", "stagflation", "recession", "tightening")]
+            margin_txt = f"{regime['margin']:.3f}" if regime.get("margin") is not None else ASOF_NULL
+            L16.append(f"- MRI regime probability vector (as of {regime['date']}): "
+                      f"[{', '.join(vec5)}] | headline {regime_headline or ASOF_NULL} (margin "
+                      f"{margin_txt} - contested)")
+        else:
+            L16.append(f"- MRI regime probability vector: {ASOF_NULL}")
+
+        if shock_state is None:
+            L16.append(f"- Active shocks (S4 register): {ASOF_NULL}")
+        elif shock_state["shocks"]:
+            for s in shock_state["shocks"]:
+                L16.append(f"- ACTIVE SHOCK: `{s['shock_id']}` | severity {s['severity']} | "
+                          f"direction {s['direction']} | onset {s['onset_date'] or ASOF_NULL}  "
+                          f"(as of {shock_state['asof']})")
+        else:
+            L16.append(f"- Active shocks (S4 register): none active  (as of "
+                      f"{shock_state['asof']})")
+
+        if shock_state is None:
+            L16.append(f"- Risk flag `elevated_volatility_ahead`: {ASOF_NULL}")
+        else:
+            evf_state = "ACTIVE" if shock_state["elevated_volatility_ahead"] else "inactive"
+            # `meaning` is static narrative metadata (config/shocks.yaml risk_flags), not a
+            # per-date measurement — reproduced verbatim rather than recomputed.
+            L16.append(f"- Risk flag `elevated_volatility_ahead`: {evf_state} - Expect higher "
+                      "market turbulence over the next 3 months. No evidence of lower returns "
+                      f"or deeper drawdowns.  (as of {shock_state['asof']})")
+
+        L16.append("- Nominal 10-Year Treasury yield: "
+                  + (f"{rf_pct:.2f}%  (point-in-time)" if rf_pct is not None else ASOF_NULL))
+        L16.append("- Real 10-Year Treasury yield: "
+                  + (f"{real_pct:.2f}%  (point-in-time)" if real_pct is not None else ASOF_NULL))
+        L16.append("- 10-Year breakeven inflation: "
+                  + (f"{be_pct:.2f}%  (point-in-time)" if be_pct is not None else ASOF_NULL))
+        infl = rs2_data.asof_inflation_trend(asof_date)
+        if infl.get("cpi_yoy") is not None or infl.get("pce_yoy") is not None:
+            parts = []
+            if infl.get("cpi_yoy") is not None:
+                parts.append(f"CPI YoY {infl['cpi_yoy']*100:.2f}%")
+            if infl.get("pce_yoy") is not None:
+                parts.append(f"PCE YoY {infl['pce_yoy']*100:.2f}%")
+            L16.append(f"- Inflation trend: {', '.join(parts)}  (point-in-time)")
+        L16.append("")
+        L += L16
     else:
-        rf_pct = None
-        rf_line = f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {NULL}"
+        coc_payload = rs2_data.usable_anchor("cost_of_capital")
+        anchor_asof = coc_payload.get("asof") if coc_payload else None
+        anchor_degraded = coc_payload.get("degraded") if coc_payload else None
+        anchor_reasons = (coc_payload.get("provenance") or {}).get("degradation_reasons") if coc_payload else []
 
-    # 2) Real 10-Year
-    if anchor_real_val is not None:
-        real_pct = anchor_real_val * 100.0
-        real_line = f"- Real 10-Year US Treasury Yield: {real_pct:.2f}%  [MRI anchor]"
-    else:
-        real_pct = None
-        real_line = f"- Real 10-Year US Treasury Yield: {NULL}"
+        # Accessors for MRI anchors:
+        # 1) Nominal 10-year
+        anchor_rf_val, anchor_rf_src = rs2_data.anchor_risk_free_rate()
+        # 2) Real 10-year
+        anchor_real_val, anchor_real_src = rs2_data.anchor_real_10y()
+        # 3) Breakeven 10-year
+        anchor_be_val, anchor_be_src = rs2_data.anchor_breakeven_10y()
+        # 4) Implied ERP
+        anchor_erp_val, anchor_erp_src = rs2_data.anchor_mature_erp()
+        # 5) Implied cost of equity
+        anchor_coe_val, anchor_coe_src = rs2_data.anchor_level_cost_of_equity_pct()
+        # 6) Sector loading
+        anchor_load_val, anchor_load_src = rs2_data.anchor_sector_loading(sector)
 
-    # 3) Breakeven 10-Year
-    if anchor_be_val is not None:
-        be_pct = anchor_be_val * 100.0
-        be_line = f"- 10-Year Breakeven Inflation Rate: {be_pct:.2f}%  [MRI anchor]"
-    else:
-        be_pct = None
-        be_line = f"- 10-Year Breakeven Inflation Rate: {NULL}"
+        # Secondary macro source: macro_state.json
+        macro_json = rs2_data.load_json(SD / "macro_state.json") or {}
+        macro_series = macro_json.get("series") or {}
+        dgs10_series = macro_series.get("DGS10") or {}
+        dgs10_sec = dgs10_series.get("value")
+        t10y2y_series = macro_series.get("T10Y2Y") or {}
+        t10y2y = t10y2y_series.get("value")
+        baa10y_series = macro_series.get("BAA10Y") or {}
+        baa10y = baa10y_series.get("value")
+        hy_oas_series = macro_series.get("BAMLH0A0HYM2") or {}
+        hy_oas = hy_oas_series.get("value")
 
-    # 4) Implied ERP
-    if anchor_erp_val is not None:
-        erp_pct = anchor_erp_val * 100.0
-        erp_line = f"- Implied Equity Risk Premium (ERP): {erp_pct:.2f}%  [MRI anchor]"
-    else:
-        erp_pct = None
-        erp_line = f"- Implied Equity Risk Premium (ERP): {NULL}"
+        # 1) Nominal 10-Year (anchor first, secondary fallback)
+        if anchor_rf_val is not None:
+            rf_pct = anchor_rf_val * 100.0
+            rf_line = f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {rf_pct:.2f}%  [MRI anchor, as of {anchor_asof or 'recent'}]"
+        elif dgs10_sec is not None:
+            rf_pct = float(dgs10_sec)
+            rf_line = f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {rf_pct:.2f}%  [macro_state.json (secondary), as of {dgs10_series.get('as_of', 'recent')}]"
+        else:
+            rf_pct = None
+            rf_line = f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {NULL}"
 
-    # 5) Implied Cost of Equity
-    if anchor_coe_val is not None:
-        coe_pct = float(anchor_coe_val)
-        coe_line = f"- Implied Cost of Equity: {coe_pct:.2f}%  [MRI anchor]"
-    else:
-        coe_pct = None
-        coe_line = f"- Implied Cost of Equity: {NULL}"
+        # 2) Real 10-Year
+        if anchor_real_val is not None:
+            real_pct = anchor_real_val * 100.0
+            real_line = f"- Real 10-Year US Treasury Yield: {real_pct:.2f}%  [MRI anchor]"
+        else:
+            real_pct = None
+            real_line = f"- Real 10-Year US Treasury Yield: {NULL}"
 
-    # 6) Sector Loading
-    mri_sec = rs2_data.mri_sector_id(sector)
-    if mri_sec is not None and anchor_load_val is not None:
-        load_line = f"- Sector Cost of Equity Loading ({mri_sec}): {anchor_load_val:.3f}x  [MRI anchor]"
-    elif mri_sec is not None:
-        load_line = f"- Sector Cost of Equity Loading ({mri_sec}): {NULL}"
-    else:
-        load_line = f"- Sector Cost of Equity Loading: {NULL} (unmapped sector: {sector or 'none'})"
+        # 3) Breakeven 10-Year
+        if anchor_be_val is not None:
+            be_pct = anchor_be_val * 100.0
+            be_line = f"- 10-Year Breakeven Inflation Rate: {be_pct:.2f}%  [MRI anchor]"
+        else:
+            be_pct = None
+            be_line = f"- 10-Year Breakeven Inflation Rate: {NULL}"
 
-    # D3 (PHASE_4_PACK_SPEC.md): COE ANCHOR for this name = rf + sector loading x implied ERP —
-    # the single number `coe_used` is measured against (+-150bp), not just its separate legs above.
-    if rf_pct is not None and anchor_load_val is not None and erp_pct is not None:
-        coe_anchor_pct = rf_pct + anchor_load_val * erp_pct
-        _coe_asof_str = str(anchor_asof) if anchor_asof else NULL
-        coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + loading "
-                            f"{anchor_load_val:.3f}x x implied ERP {erp_pct:.2f}% = "
-                            f"{coe_anchor_pct:.2f}%  (asof {_coe_asof_str}, source: MRI cost-of-capital anchor)")
-    else:
-        coe_anchor_pct = None
-        coe_anchor_line = f"- COE ANCHOR for this name: {NULL}"
+        # 4) Implied ERP
+        if anchor_erp_val is not None:
+            erp_pct = anchor_erp_val * 100.0
+            erp_line = f"- Implied Equity Risk Premium (ERP): {erp_pct:.2f}%  [MRI anchor]"
+        else:
+            erp_pct = None
+            erp_line = f"- Implied Equity Risk Premium (ERP): {NULL}"
 
-    # D3: the long-run nominal growth anchor terminal_g must be built from, per P1.6/anchor_terminal_g().
-    lrg_payload = rs2_data.usable_anchor("long_run_growth")
-    terminal_g_val, terminal_g_src = rs2_data.anchor_terminal_g()
-    if terminal_g_val is not None:
-        tg_asof = lrg_payload.get("asof") if lrg_payload else None
-        terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: "
-                            f"{terminal_g_val*100:.2f}%  (asof {tg_asof or NULL})")
-    else:
-        terminal_g_line = f"- Long-run nominal growth anchor for terminal_g: {NULL}  ({terminal_g_src})"
+        # 5) Implied Cost of Equity
+        if anchor_coe_val is not None:
+            coe_pct = float(anchor_coe_val)
+            coe_line = f"- Implied Cost of Equity: {coe_pct:.2f}%  [MRI anchor]"
+        else:
+            coe_pct = None
+            coe_line = f"- Implied Cost of Equity: {NULL}"
 
-    # Anchor metadata
-    reasons_str = "; ".join(str(r) for r in anchor_reasons) if anchor_reasons else "none"
-    degraded_str = str(anchor_degraded) if anchor_degraded is not None else NULL
-    asof_str = str(anchor_asof) if anchor_asof else NULL
-    anchor_meta_line = f"- MRI Capital-Market Anchors Status: as of {asof_str} | degraded: {degraded_str} | reasons: {reasons_str}"
+        # 6) Sector Loading
+        mri_sec = rs2_data.mri_sector_id(sector)
+        if mri_sec is not None and anchor_load_val is not None:
+            load_line = f"- Sector Cost of Equity Loading ({mri_sec}): {anchor_load_val:.3f}x  [MRI anchor]"
+        elif mri_sec is not None:
+            load_line = f"- Sector Cost of Equity Loading ({mri_sec}): {NULL}"
+        else:
+            load_line = f"- Sector Cost of Equity Loading: {NULL} (unmapped sector: {sector or 'none'})"
 
-    # Secondary macro series lines
-    if t10y2y is not None:
-        slope = 'Inverted' if float(t10y2y) < 0 else 'Normal / Steepening'
-        t10y2y_line = f"- 10Y-2Y Treasury Yield Spread (Curve Slope) [macro_state.json]: {float(t10y2y):+.2f}%  ({slope})  [as of {t10y2y_series.get('as_of', 'recent')}]"
-    else:
-        t10y2y_line = f"- 10Y-2Y Treasury Yield Spread (Curve Slope) [macro_state.json]: {NULL}"
+        # D3 (PHASE_4_PACK_SPEC.md): COE ANCHOR for this name = rf + sector loading x implied ERP —
+        # the single number `coe_used` is measured against (+-150bp), not just its separate legs above.
+        if rf_pct is not None and anchor_load_val is not None and erp_pct is not None:
+            coe_anchor_pct = rf_pct + anchor_load_val * erp_pct
+            _coe_asof_str = str(anchor_asof) if anchor_asof else NULL
+            coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + loading "
+                                f"{anchor_load_val:.3f}x x implied ERP {erp_pct:.2f}% = "
+                                f"{coe_anchor_pct:.2f}%  (asof {_coe_asof_str}, source: MRI cost-of-capital anchor)")
+        else:
+            coe_anchor_pct = None
+            coe_anchor_line = f"- COE ANCHOR for this name: {NULL}"
 
-    if baa10y is not None:
-        baa_line = f"- Investment Grade Credit Spread (BAA - 10Y) [macro_state.json]: {float(baa10y):.2f}%  [as of {baa10y_series.get('as_of', 'recent')}]"
-    else:
-        baa_line = f"- Investment Grade Credit Spread (BAA - 10Y) [macro_state.json]: {NULL}"
+        # D3: the long-run nominal growth anchor terminal_g must be built from, per P1.6/anchor_terminal_g().
+        lrg_payload = rs2_data.usable_anchor("long_run_growth")
+        terminal_g_val, terminal_g_src = rs2_data.anchor_terminal_g()
+        if terminal_g_val is not None:
+            tg_asof = lrg_payload.get("asof") if lrg_payload else None
+            terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: "
+                                f"{terminal_g_val*100:.2f}%  (asof {tg_asof or NULL})")
+        else:
+            terminal_g_line = f"- Long-run nominal growth anchor for terminal_g: {NULL}  ({terminal_g_src})"
 
-    if hy_oas is not None:
-        hy_line = f"- High Yield Option-Adjusted Spread (OAS) [macro_state.json]: {float(hy_oas):.2f}%  [as of {hy_oas_series.get('as_of', 'recent')}]"
-    else:
-        hy_line = f"- High Yield Option-Adjusted Spread (OAS) [macro_state.json]: {NULL}"
+        # Anchor metadata
+        reasons_str = "; ".join(str(r) for r in anchor_reasons) if anchor_reasons else "none"
+        degraded_str = str(anchor_degraded) if anchor_degraded is not None else NULL
+        asof_str = str(anchor_asof) if anchor_asof else NULL
+        anchor_meta_line = f"- MRI Capital-Market Anchors Status: as of {asof_str} | degraded: {degraded_str} | reasons: {reasons_str}"
 
-    # Regime line
-    regime_file = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "current_regime.json") or {}
-    regime_date = regime_file.get("date")
-    # C13 (Phase 1 approval review): no silent default — a missing config key must raise,
-    # never quietly substitute a hidden constant that duplicates config.json's own value.
-    regime_fresh = bool(regime_date and rs2_data._fresh(regime_date, CONFIG["regime_max_age_days"]))
-    # Defined here, not only inside the "fresh" branch below, so SECTION 1.6's regime vector
-    # (printed regardless of freshness) can read it without a NameError on a stale/absent regime.
-    probs = {}
+        # Secondary macro series lines
+        if t10y2y is not None:
+            slope = 'Inverted' if float(t10y2y) < 0 else 'Normal / Steepening'
+            t10y2y_line = f"- 10Y-2Y Treasury Yield Spread (Curve Slope) [macro_state.json]: {float(t10y2y):+.2f}%  ({slope})  [as of {t10y2y_series.get('as_of', 'recent')}]"
+        else:
+            t10y2y_line = f"- 10Y-2Y Treasury Yield Spread (Curve Slope) [macro_state.json]: {NULL}"
 
-    if not regime_file or not regime_date:
-        regime_headline = None
-        regime_line = f"- Current Macro Regime: {NULL}"
-    elif not regime_fresh:
-        regime_headline = None
-        regime_line = f"- Current Macro Regime: {NULL} (stale: {regime_date})"
-    else:
-        regime_headline = regime_file.get("season_headline") or regime_file.get("reported_regime") or regime_file.get("dominant_regime") or regime_file.get("regime")
-        margin = regime_file.get("headline_margin")
-        posterior = regime_file.get("season_posterior") or {}
+        if baa10y is not None:
+            baa_line = f"- Investment Grade Credit Spread (BAA - 10Y) [macro_state.json]: {float(baa10y):.2f}%  [as of {baa10y_series.get('as_of', 'recent')}]"
+        else:
+            baa_line = f"- Investment Grade Credit Spread (BAA - 10Y) [macro_state.json]: {NULL}"
+
+        if hy_oas is not None:
+            hy_line = f"- High Yield Option-Adjusted Spread (OAS) [macro_state.json]: {float(hy_oas):.2f}%  [as of {hy_oas_series.get('as_of', 'recent')}]"
+        else:
+            hy_line = f"- High Yield Option-Adjusted Spread (OAS) [macro_state.json]: {NULL}"
+
+        # Regime line
+        regime_file = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "current_regime.json") or {}
+        regime_date = regime_file.get("date")
+        # C13 (Phase 1 approval review): no silent default — a missing config key must raise,
+        # never quietly substitute a hidden constant that duplicates config.json's own value.
+        regime_fresh = bool(regime_date and rs2_data._fresh(regime_date, CONFIG["regime_max_age_days"]))
+        # Defined here, not only inside the "fresh" branch below, so SECTION 1.6's regime vector
+        # (printed regardless of freshness) can read it without a NameError on a stale/absent regime.
         probs = {}
-        if posterior:
-            for k, v in posterior.items():
-                p_val = v.get("probability") if isinstance(v, dict) else v
-                if isinstance(p_val, (int, float)):
-                    probs[k] = float(p_val)
-        elif regime_file.get("regime_probabilities"):
-            for k, v in (regime_file.get("regime_probabilities") or {}).items():
-                if isinstance(v, (int, float)):
-                    probs[k] = float(v)
 
-        vec_items = [f"{k} {v:.3f}" for k, v in sorted(probs.items(), key=lambda x: -x[1])]
-        vec_str = ", ".join(vec_items) if vec_items else ""
-        prob_str = f"Probabilities: [{vec_str}]" if vec_str else ""
-        # B6 (Phase 1 approval review): the vector prints FIRST and the label second, as a
-        # contested headline with its margin — never an unqualified regime name. Operator
-        # ruling: the label is demoted and may no longer drive any numeric output.
-        margin_str = f"margin {float(margin):.3f} — contested" if isinstance(margin, (int, float)) else "contested"
-        headline_str = f"headline {regime_headline} ({margin_str})" if regime_headline else ""
-        parts = [p for p in (prob_str, headline_str) if p]
-        regime_line = (f"- Current Macro Regime: {' | '.join(parts)}  [as of {regime_date}]"
-                       if parts else f"- Current Macro Regime: {NULL}")
+        if not regime_file or not regime_date:
+            regime_headline = None
+            regime_line = f"- Current Macro Regime: {NULL}"
+        elif not regime_fresh:
+            regime_headline = None
+            regime_line = f"- Current Macro Regime: {NULL} (stale: {regime_date})"
+        else:
+            regime_headline = regime_file.get("season_headline") or regime_file.get("reported_regime") or regime_file.get("dominant_regime") or regime_file.get("regime")
+            margin = regime_file.get("headline_margin")
+            posterior = regime_file.get("season_posterior") or {}
+            probs = {}
+            if posterior:
+                for k, v in posterior.items():
+                    p_val = v.get("probability") if isinstance(v, dict) else v
+                    if isinstance(p_val, (int, float)):
+                        probs[k] = float(p_val)
+            elif regime_file.get("regime_probabilities"):
+                for k, v in (regime_file.get("regime_probabilities") or {}).items():
+                    if isinstance(v, (int, float)):
+                        probs[k] = float(v)
 
-    L += ["## SECTION 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [Primary Macro Context]",
-          anchor_meta_line,
-          rf_line,
-          real_line,
-          be_line,
-          erp_line,
-          coe_line,
-          load_line,
-          coe_anchor_line,
-          terminal_g_line,
-          t10y2y_line,
-          baa_line,
-          hy_line,
-          regime_line]
+            vec_items = [f"{k} {v:.3f}" for k, v in sorted(probs.items(), key=lambda x: -x[1])]
+            vec_str = ", ".join(vec_items) if vec_items else ""
+            prob_str = f"Probabilities: [{vec_str}]" if vec_str else ""
+            # B6 (Phase 1 approval review): the vector prints FIRST and the label second, as a
+            # contested headline with its margin — never an unqualified regime name. Operator
+            # ruling: the label is demoted and may no longer drive any numeric output.
+            margin_str = f"margin {float(margin):.3f} — contested" if isinstance(margin, (int, float)) else "contested"
+            headline_str = f"headline {regime_headline} ({margin_str})" if regime_headline else ""
+            parts = [p for p in (prob_str, headline_str) if p]
+            regime_line = (f"- Current Macro Regime: {' | '.join(parts)}  [as of {regime_date}]"
+                           if parts else f"- Current Macro Regime: {NULL}")
 
-    if rf_pct is not None:
-        L.append(f"- **MANDATE:** Use the verified 10-Year Treasury yield above ({rf_pct:.2f}%) as your base risk-free rate Rf for WACC. "
-                 "DO NOT search the web for Treasury yields or cost of capital anchors; they are verified above.")
+        L += ["## SECTION 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [Primary Macro Context]",
+              anchor_meta_line,
+              rf_line,
+              real_line,
+              be_line,
+              erp_line,
+              coe_line,
+              load_line,
+              coe_anchor_line,
+              terminal_g_line,
+              t10y2y_line,
+              baa_line,
+              hy_line,
+              regime_line]
 
-    # D3: the +-150bp CoE mandate. Printed unconditionally (an instruction, not a data line) —
-    # when the anchor itself is unavailable this run, the second sentence tells the model exactly
-    # what to do instead rather than leaving the mandate dangling against a missing number.
-    if coe_anchor_pct is not None:
-        L.append(f"- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above "
-                 f"({coe_anchor_pct:.2f}%), or declare `coe_source: \"own\"` with a "
-                 f"`coe_adjustment_reason`. Vendor beta (SECTION 2) is context only, never the input.")
-    else:
-        L.append("- **COE MANDATE:** the COE ANCHOR above is not available this run — declare "
-                 "`coe_source: \"own\"` with a `coe_adjustment_reason` for whatever `coe_used` you "
-                 "choose. Vendor beta (SECTION 2) is context only, never the input.")
+        if rf_pct is not None:
+            L.append(f"- **MANDATE:** Use the verified 10-Year Treasury yield above ({rf_pct:.2f}%) as your base risk-free rate Rf for WACC. "
+                     "DO NOT search the web for Treasury yields or cost of capital anchors; they are verified above.")
 
-    # B6 (Phase 1 approval review): the mandate no longer conditions on the regime LABEL.
-    # Operator ruling: the label is demoted and must not drive any numeric output — it was
-    # doing exactly that here, as the conditioning clause of the terminal-multiple instruction,
-    # on a headline margin as thin as 0.044.
-    L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
-             "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.")
-    L.append("")
+        # D3: the +-150bp CoE mandate. Printed unconditionally (an instruction, not a data line) —
+        # when the anchor itself is unavailable this run, the second sentence tells the model exactly
+        # what to do instead rather than leaving the mandate dangling against a missing number.
+        if coe_anchor_pct is not None:
+            L.append(f"- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above "
+                     f"({coe_anchor_pct:.2f}%), or declare `coe_source: \"own\"` with a "
+                     f"`coe_adjustment_reason`. Vendor beta (SECTION 2) is context only, never the input.")
+        else:
+            L.append("- **COE MANDATE:** the COE ANCHOR above is not available this run — declare "
+                     "`coe_source: \"own\"` with a `coe_adjustment_reason` for whatever `coe_used` you "
+                     "choose. Vendor beta (SECTION 2) is context only, never the input.")
 
-    macro_degraded = bool(
-        rf_pct is None
-        or real_pct is None
-        or be_pct is None
-        or erp_pct is None
-        or coe_pct is None
-        or anchor_load_val is None
-        or t10y2y is None
-        or baa10y is None
-        or hy_oas is None
-        or bool(anchor_degraded)
-        or not regime_fresh
-    )
+        # B6 (Phase 1 approval review): the mandate no longer conditions on the regime LABEL.
+        # Operator ruling: the label is demoted and must not drive any numeric output — it was
+        # doing exactly that here, as the conditioning clause of the terminal-multiple instruction,
+        # on a headline margin as thin as 0.044.
+        L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
+                 "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.")
+        L.append("")
 
-    # ---- SECTION 1.6 - STATE OF THE WORLD [dated facts, not a forecast] --------------------
-    # D10 (PHASE_4_PACK_SPEC.md) / E3 (AMENDMENTS.md): everything here is a dated fact from the
-    # MRI, never a forecast and never invented — a missing source prints NULL/omits its line,
-    # it is never defaulted.
-    shock_reg = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "shock_register.json") or {}
-    shock_asof = shock_reg.get("asof")
+        macro_degraded = bool(
+            rf_pct is None
+            or real_pct is None
+            or be_pct is None
+            or erp_pct is None
+            or coe_pct is None
+            or anchor_load_val is None
+            or t10y2y is None
+            or baa10y is None
+            or hy_oas is None
+            or bool(anchor_degraded)
+            or not regime_fresh
+        )
 
-    L16 = ["## SECTION 1.6 - STATE OF THE WORLD   [dated facts, not a forecast]", ""]
+        # ---- SECTION 1.6 - STATE OF THE WORLD [dated facts, not a forecast] --------------------
+        # D10 (PHASE_4_PACK_SPEC.md) / E3 (AMENDMENTS.md): everything here is a dated fact from the
+        # MRI, never a forecast and never invented — a missing source prints NULL/omits its line,
+        # it is never defaulted.
+        shock_reg = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "shock_register.json") or {}
+        shock_asof = shock_reg.get("asof")
 
-    if regime_file and regime_date and regime_fresh:
-        vec5 = [f"{k} {probs[k]:.3f}" if k in probs else f"{k} {NULL}"
-                for k in ("goldilocks", "reflation", "stagflation", "recession", "tightening")]
-        margin_v = regime_file.get("headline_margin")
-        margin_txt = f"{float(margin_v):.3f}" if isinstance(margin_v, (int, float)) else NULL
-        L16.append(f"- MRI regime probability vector (as of {regime_date}): [{', '.join(vec5)}] | "
-                  f"headline {regime_headline or NULL} (margin {margin_txt} - contested)")
-    elif regime_file and regime_date:
-        L16.append(f"- MRI regime probability vector: {NULL} (stale: {regime_date})")
-    else:
-        L16.append(f"- MRI regime probability vector: {NULL}")
+        L16 = ["## SECTION 1.6 - STATE OF THE WORLD   [dated facts, not a forecast]", ""]
 
-    shocks = shock_reg.get("shocks") or []
-    active_shocks = [s for s in shocks if isinstance(s, dict) and s.get("active")]
-    if not shock_reg:
-        L16.append(f"- Active shocks (S4 register): {NULL}")
-    elif active_shocks:
-        for s in active_shocks:
-            L16.append(f"- ACTIVE SHOCK: `{s.get('shock_id', NULL)}` | severity "
-                      f"{s.get('severity', NULL)} | direction {s.get('direction', NULL)} | onset "
-                      f"{s.get('onset_date') or NULL}  (as of {shock_asof or NULL})")
-    else:
-        L16.append(f"- Active shocks (S4 register): none active  (as of {shock_asof or NULL})")
+        if regime_file and regime_date and regime_fresh:
+            vec5 = [f"{k} {probs[k]:.3f}" if k in probs else f"{k} {NULL}"
+                    for k in ("goldilocks", "reflation", "stagflation", "recession", "tightening")]
+            margin_v = regime_file.get("headline_margin")
+            margin_txt = f"{float(margin_v):.3f}" if isinstance(margin_v, (int, float)) else NULL
+            L16.append(f"- MRI regime probability vector (as of {regime_date}): [{', '.join(vec5)}] | "
+                      f"headline {regime_headline or NULL} (margin {margin_txt} - contested)")
+        elif regime_file and regime_date:
+            L16.append(f"- MRI regime probability vector: {NULL} (stale: {regime_date})")
+        else:
+            L16.append(f"- MRI regime probability vector: {NULL}")
 
-    risk_flags = shock_reg.get("risk_flags") or []
-    evf = next((f for f in risk_flags if isinstance(f, dict)
-               and f.get("id") == "elevated_volatility_ahead"), None)
-    if evf is not None:
-        evf_state = "ACTIVE" if evf.get("active") else "inactive"
-        L16.append(f"- Risk flag `elevated_volatility_ahead`: {evf_state} - "
-                  f"{evf.get('meaning') or NULL}  (as of {shock_asof or NULL})")
-    else:
-        L16.append(f"- Risk flag `elevated_volatility_ahead`: {NULL}")
+        shocks = shock_reg.get("shocks") or []
+        active_shocks = [s for s in shocks if isinstance(s, dict) and s.get("active")]
+        if not shock_reg:
+            L16.append(f"- Active shocks (S4 register): {NULL}")
+        elif active_shocks:
+            for s in active_shocks:
+                L16.append(f"- ACTIVE SHOCK: `{s.get('shock_id', NULL)}` | severity "
+                          f"{s.get('severity', NULL)} | direction {s.get('direction', NULL)} | onset "
+                          f"{s.get('onset_date') or NULL}  (as of {shock_asof or NULL})")
+        else:
+            L16.append(f"- Active shocks (S4 register): none active  (as of {shock_asof or NULL})")
 
-    _rate_asof = str(anchor_asof) if anchor_asof else NULL
-    L16.append(f"- Nominal 10-Year Treasury yield: "
-              + (f"{rf_pct:.2f}%  (as of {_rate_asof})" if rf_pct is not None else NULL))
-    L16.append(f"- Real 10-Year Treasury yield: "
-              + (f"{real_pct:.2f}%  (as of {_rate_asof})" if real_pct is not None else NULL))
-    L16.append(f"- 10-Year breakeven inflation: "
-              + (f"{be_pct:.2f}%  (as of {_rate_asof})" if be_pct is not None else NULL))
+        risk_flags = shock_reg.get("risk_flags") or []
+        evf = next((f for f in risk_flags if isinstance(f, dict)
+                   and f.get("id") == "elevated_volatility_ahead"), None)
+        if evf is not None:
+            evf_state = "ACTIVE" if evf.get("active") else "inactive"
+            L16.append(f"- Risk flag `elevated_volatility_ahead`: {evf_state} - "
+                      f"{evf.get('meaning') or NULL}  (as of {shock_asof or NULL})")
+        else:
+            L16.append(f"- Risk flag `elevated_volatility_ahead`: {NULL}")
 
-    # Inflation trend — printed ONLY when the anchor itself carries one. Never invented.
-    infl = (coc_payload or {}).get("inflation") if coc_payload else None
-    if isinstance(infl, dict) and (isinstance(infl.get("cpi_yoy"), (int, float))
-                                   or isinstance(infl.get("pce_yoy"), (int, float))):
-        parts = []
-        if isinstance(infl.get("cpi_yoy"), (int, float)):
-            parts.append(f"CPI YoY {infl['cpi_yoy']*100:.2f}%")
-        if isinstance(infl.get("pce_yoy"), (int, float)):
-            parts.append(f"PCE YoY {infl['pce_yoy']*100:.2f}%")
-        L16.append(f"- Inflation trend: {', '.join(parts)}  (as of {_rate_asof})")
-    # else: line omitted entirely — the anchor carries no inflation-trend leg this run.
+        _rate_asof = str(anchor_asof) if anchor_asof else NULL
+        L16.append(f"- Nominal 10-Year Treasury yield: "
+                  + (f"{rf_pct:.2f}%  (as of {_rate_asof})" if rf_pct is not None else NULL))
+        L16.append(f"- Real 10-Year Treasury yield: "
+                  + (f"{real_pct:.2f}%  (as of {_rate_asof})" if real_pct is not None else NULL))
+        L16.append(f"- 10-Year breakeven inflation: "
+                  + (f"{be_pct:.2f}%  (as of {_rate_asof})" if be_pct is not None else NULL))
 
-    L16.append("")
-    L += L16
+        # Inflation trend — printed ONLY when the anchor itself carries one. Never invented.
+        infl = (coc_payload or {}).get("inflation") if coc_payload else None
+        if isinstance(infl, dict) and (isinstance(infl.get("cpi_yoy"), (int, float))
+                                       or isinstance(infl.get("pce_yoy"), (int, float))):
+            parts = []
+            if isinstance(infl.get("cpi_yoy"), (int, float)):
+                parts.append(f"CPI YoY {infl['cpi_yoy']*100:.2f}%")
+            if isinstance(infl.get("pce_yoy"), (int, float)):
+                parts.append(f"PCE YoY {infl['pce_yoy']*100:.2f}%")
+            L16.append(f"- Inflation trend: {', '.join(parts)}  (as of {_rate_asof})")
+        # else: line omitted entirely — the anchor carries no inflation-trend leg this run.
+
+        L16.append("")
+        L += L16
 
     # ---- SECTION 2 -------------------------------------------------------------------------
-    px, sh = fin.get("Price"), fin.get("Shares_Outstanding")
+    asof_price_data = None
+    if asof_date is not None:
+        # asof mode owns its own price sourcing entirely — any `price_override` the caller
+        # passed is not consulted, because it carries no history to recompute SCR-10 from.
+        asof_price_data = _asof_price_lookup(t, asof_date)
+        if asof_price_data is None:
+            asof_omitted.append(
+                f"price (SECTION 2/2.5): no historical close found on or near "
+                f"{asof_date.isoformat()} (network fetch failed or no listing that far back)")
+        px = asof_price_data["price"] if asof_price_data else None
+        sh = None
+        if h:
+            _hy_asof = [int(y) for y in h if str(y).isdigit()]
+            if _hy_asof:
+                sh = (h.get(str(max(_hy_asof))) or {}).get("shares_diluted")
+        if sh is None:
+            asof_omitted.append(
+                "shares outstanding (SECTION 2): no shares_diluted held for any allowed fiscal "
+                "year — TODAY's vendor share count is not point-in-time and was not used")
+        mcap = (px * sh) if (isinstance(px, (int, float)) and isinstance(sh, (int, float))) else None
+    else:
+        px, sh = fin.get("Price"), fin.get("Shares_Outstanding")
 
     # D9 (PHASE_4_PACK_SPEC.md): T2's pack-data-sanity checks, printed as a DATA WARNINGS block
     # at the TOP of SECTION 2 — before the figures they warn about, not after. Explicit params,
@@ -1031,14 +1489,32 @@ def build_pack(t, price_override=None, include_research=True):
         if _hy:
             _dsh = (h.get(str(max(_hy))) or {}).get("shares_diluted")
     data_warnings = check_pack_data_sanity(
-        ticker=t, price=px, market_cap=fin.get("Market_Cap"),
+        ticker=t, price=px, market_cap=(mcap if asof_date is not None else fin.get("Market_Cap")),
         diluted_shares=_dsh, ttm_fields=f, quarterly_rows=qs)
     if data_warnings:
         L += ["## DATA WARNINGS   [T2 sanity checks — read before trusting SECTION 2's figures]"]
         L += [f"- {w['message']}" for w in data_warnings]
         L.append("")
 
-    if price_override is not None:
+    if asof_date is not None:
+        price_line = (f"- Price: ${px} [point-in-time close, as of "
+                      f"{asof_price_data['asof']}]" if px is not None else f"- Price: {ASOF_NULL}")
+        L += [f"## SECTION 2 - MARKET   [point-in-time, as of {asof_date.isoformat()}]",
+              price_line,
+              f"- Shares outstanding: {_n(sh)}   [source: shares_diluted, "
+              f"FY{max((int(y) for y in h if str(y).isdigit()), default=NULL)} "
+              f"(fundamentals_history.json) — the most recent allowed fiscal year, not TODAY's "
+              f"vendor share count]" if sh is not None else f"- Shares outstanding: {ASOF_NULL}",
+              f"- Market cap: {_b(mcap) if mcap is not None else ASOF_NULL}",
+              f"- Beta: {ASOF_NULL}   [same-day vendor snapshot, no stored history]",
+              "",
+              f"- Total cash (vendor): {ASOF_NULL}   [same-day vendor snapshot; see SECTION 6 for "
+              f"the filed, fiscal-year-restricted `cash` series]",
+              f"- Total debt (vendor): {ASOF_NULL}   [same-day vendor snapshot; see SECTION 6 for "
+              f"the filed, fiscal-year-restricted `long-term debt` series]",
+              f"- Stock-based compensation (vendor): {ASOF_NULL}   [same-day vendor snapshot; "
+              f"prefer the filed per-year SBC series in SECTION 5]", ""]
+    elif price_override is not None:
         if isinstance(price_override, dict):
             live_px = price_override.get("price")
             live_asof = price_override.get("asof")
@@ -1049,115 +1525,199 @@ def build_pack(t, price_override=None, include_research=True):
         vdate = _v(fin, 'Data_Fetched_Date')
         vpx = f"${px}" if px is not None else NULL
         price_line = f"- Price: ${live_px} [live quote{asof_str}]   [vendor quote: {vpx} as of {vdate}]"
+        L += [f"## SECTION 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
+              price_line,
+              f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
+              f"{_v(fin, 'Data_Fetched_Date')}]"
+              + ("   <- ZERO on file. No per-share value is derivable for this name."
+                 if sh == 0 else ""),
+              f"- Market cap: {_b(fin.get('Market_Cap'))}",
+              f"- Beta: {_v(cm, 'Beta')}   [Aggregator - the vendor does not state its window or "
+              f"benchmark. No RS2 code consumes beta; it is here only if you want to build your own "
+              f"cost of equity.]",
+              "",
+              "**The three figures below are the VENDOR's restatement of the last annual report - not "
+              "live, and not our SEC extract. The filed series is in SECTION 6.**",
+              f"- Total cash (vendor): {_b(fin.get('Total_Cash'))}",
+              f"- Total debt (vendor): {_b(fin.get('Total_Debt'))}   [our filed extract maps LONG-TERM "
+              f"debt only, so the two legitimately differ - and neither is a complete debt figure]",
+              f"- Stock-based compensation (vendor): {_b(fin.get('SBC_Stock_Based_Comp'))}   [the "
+              f"period is NOT reliably trailing-twelve-months; on most names it is a fiscal year. "
+              f"Prefer the filed per-year SBC series in SECTION 5 where it is present]", ""]
     else:
         price_line = f"- Price: ${px}" if px is not None else f"- Price: {NULL}"
-    L += [f"## SECTION 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
-          price_line,
-          f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
-          f"{_v(fin, 'Data_Fetched_Date')}]"
-          + ("   <- ZERO on file. No per-share value is derivable for this name."
-             if sh == 0 else ""),
-          f"- Market cap: {_b(fin.get('Market_Cap'))}",
-          f"- Beta: {_v(cm, 'Beta')}   [Aggregator - the vendor does not state its window or "
-          f"benchmark. No RS2 code consumes beta; it is here only if you want to build your own "
-          f"cost of equity.]",
-          "",
-          "**The three figures below are the VENDOR's restatement of the last annual report - not "
-          "live, and not our SEC extract. The filed series is in SECTION 6.**",
-          f"- Total cash (vendor): {_b(fin.get('Total_Cash'))}",
-          f"- Total debt (vendor): {_b(fin.get('Total_Debt'))}   [our filed extract maps LONG-TERM "
-          f"debt only, so the two legitimately differ - and neither is a complete debt figure]",
-          f"- Stock-based compensation (vendor): {_b(fin.get('SBC_Stock_Based_Comp'))}   [the "
-          f"period is NOT reliably trailing-twelve-months; on most names it is a fiscal year. "
-          f"Prefer the filed per-year SBC series in SECTION 5 where it is present]", ""]
+        L += [f"## SECTION 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
+              price_line,
+              f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
+              f"{_v(fin, 'Data_Fetched_Date')}]"
+              + ("   <- ZERO on file. No per-share value is derivable for this name."
+                 if sh == 0 else ""),
+              f"- Market cap: {_b(fin.get('Market_Cap'))}",
+              f"- Beta: {_v(cm, 'Beta')}   [Aggregator - the vendor does not state its window or "
+              f"benchmark. No RS2 code consumes beta; it is here only if you want to build your own "
+              f"cost of equity.]",
+              "",
+              "**The three figures below are the VENDOR's restatement of the last annual report - not "
+              "live, and not our SEC extract. The filed series is in SECTION 6.**",
+              f"- Total cash (vendor): {_b(fin.get('Total_Cash'))}",
+              f"- Total debt (vendor): {_b(fin.get('Total_Debt'))}   [our filed extract maps LONG-TERM "
+              f"debt only, so the two legitimately differ - and neither is a complete debt figure]",
+              f"- Stock-based compensation (vendor): {_b(fin.get('SBC_Stock_Based_Comp'))}   [the "
+              f"period is NOT reliably trailing-twelve-months; on most names it is a fiscal year. "
+              f"Prefer the filed per-year SBC series in SECTION 5 where it is present]", ""]
 
     # ---- SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [P4.1, amended by B1] ---
-    # Reads ONLY the price-fact fields off factor_scores.json's per-ticker `fct_momentum_state` /
-    # `fct_z` — never `fct_band`, `fct_rank`, `fct_composite`, `fct_nominated_doors` or
-    # `falling_knife_detail`. Those are the screener's own opinion, and B1's decision is that the
-    # analyst must never see it here: showing "research_now, rank 3" invites the analyst to agree,
-    # which erodes the independent second opinion the divergence engine exists to record.
-    fs_all = rs2_data.load_json(SD / "factor_scores.json") or {}
-    fs_row = (fs_all.get("tickers") or {}).get(t) or {}
-    mom = fs_row.get("fct_momentum_state") or {}
-    fs_flags = fs_row.get("fct_flags") or []
-    fs_z = fs_row.get("fct_z") or {}
-    price_asof_25 = _v(fin, "Data_Fetched_Date")
+    if asof_date is not None:
+        # D10/E4.3: recomputed directly from historical closes ending at `asof`, never from
+        # factor_scores.json (a same-day snapshot with no history).
+        scr10 = (_scr10_from_series(asof_price_data["series"], asof_date.isoformat())
+                 if asof_price_data else {})
 
-    def _mpct(v):
-        return f"{v*100:+.1f}%" if isinstance(v, (int, float)) else NULL
+        def _mpct(v):
+            return f"{v*100:+.1f}%" if isinstance(v, (int, float)) else ASOF_NULL
 
-    def _mz(v):
-        return f"{v:+.3f}" if isinstance(v, (int, float)) else NULL
-
-    # `momentum_proxy_monthly` (fct_flags) is the screener's own marker that `high_52w_proxy` is
-    # a MONTHLY proxy rather than a daily reading — the only granularity our momentum source
-    # currently carries. A `high_52w` daily field (absent today) would take priority when present.
-    if "high_52w" in mom:
-        high52_val, high52_label = mom.get("high_52w"), "daily"
+        L += [f"## SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [recomputed from "
+              f"historical closes, as of {asof_date.isoformat()}]",
+              f"- 12-1 month return: {_mpct(scr10.get('mom_12_1'))}",
+              f"- 6-month return: {_mpct(scr10.get('mom_6m'))}",
+              f"- 1-month return: {_mpct(scr10.get('mom_1m'))}",
+              f"- Distance from 52-week high (daily, recomputed): "
+              f"{_mpct(scr10.get('high_52w_distance'))}",
+              f"- Above/below 200-day mean, and its slope: {ASOF_NULL}",
+              f"- Relative strength vs cluster ETF, 3-month: {ASOF_NULL}",
+              f"- Relative strength vs IWM, 3-month: {ASOF_NULL}",
+              f"- Realised volatility, 60-day: {ASOF_NULL}",
+              f"- Regime-shift flags: {ASOF_NULL} (factor_scores.json is a same-day snapshot)",
+              f"- mom_break: {ASOF_NULL}",
+              f"- Sector-neutral momentum z: {ASOF_NULL}",
+              f"- Universe momentum z: {ASOF_NULL}",
+              "",
+              "These are facts about price and are not a valuation input.", ""]
+        LAST_PACK_MOMENTUM_STATE = {
+            "price_asof": scr10.get("price_asof"),
+            "mom_12_1": scr10.get("mom_12_1"), "mom_6m": scr10.get("mom_6m"),
+            "mom_1m": scr10.get("mom_1m"),
+            "high_52w_distance": scr10.get("high_52w_distance"),
+            "high_52w_basis": scr10.get("high_52w_basis"),
+            "above_below_200d_mean": None, "rs_vs_cluster_etf_3m": None, "rs_vs_iwm_3m": None,
+            "realised_vol_60d": None, "regime_shift_up": None, "regime_shift_down": None,
+            "mom_break": None, "mom_z_sector": None, "mom_z_universe": None,
+        }
+        LAST_PACK_ACTIVE_SHOCKS = (rs2_data.asof_shock_register(asof_date) or {}).get("shocks", [])
     else:
-        high52_val = mom.get("high_52w_proxy")
-        high52_label = ("monthly proxy" if "momentum_proxy_monthly" in fs_flags
-                        else "monthly proxy (unlabelled by the source)")
-    shifts = [lbl for lbl, key in (("regime_shift_up", "regime_shift_up"),
-                                   ("regime_shift_down", "regime_shift_down"))
-             if mom.get(key)]
-    L += [f"## SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [Arithmetic on price "
-          f"history, as of {price_asof_25}]",
-          f"- 12-1 month return: {_mpct(mom.get('mom_12_1'))}",
-          f"- 6-month return: {_mpct(mom.get('mom_6m'))}",
-          f"- 1-month return: {_mpct(mom.get('mom_1m'))}",
-          f"- Distance from 52-week high ({high52_label}): {_mpct(high52_val)}",
-          f"- Above/below 200-day mean, and its slope: {NULL}",
-          f"- Relative strength vs cluster ETF, 3-month: {NULL}",
-          f"- Relative strength vs IWM, 3-month: {NULL}",
-          f"- Realised volatility, 60-day: {NULL}",
-          f"- Regime-shift flags: {', '.join(shifts) if shifts else 'none'}",
-          f"- mom_break: {NULL}",
-          f"- Sector-neutral momentum z: {_mz(mom.get('mom_z_sector'))}",
-          f"- Universe momentum z: {_mz(fs_z.get('momentum'))}",
-          "",
-          "These are facts about price and are not a valuation input.", ""]
+        # Reads ONLY the price-fact fields off factor_scores.json's per-ticker
+        # `fct_momentum_state` / `fct_z` — never `fct_band`, `fct_rank`, `fct_composite`,
+        # `fct_nominated_doors` or `falling_knife_detail`. Those are the screener's own opinion,
+        # and B1's decision is that the analyst must never see it here: showing "research_now,
+        # rank 3" invites the analyst to agree, which erodes the independent second opinion the
+        # divergence engine exists to record.
+        fs_all = rs2_data.load_json(SD / "factor_scores.json") or {}
+        fs_row = (fs_all.get("tickers") or {}).get(t) or {}
+        mom = fs_row.get("fct_momentum_state") or {}
+        fs_flags = fs_row.get("fct_flags") or []
+        fs_z = fs_row.get("fct_z") or {}
+        price_asof_25 = _v(fin, "Data_Fetched_Date")
 
-    # Rule 11 (verdict stamping): the exact §2.5 block this pack printed, for
-    # consensus_valuation.main() to copy onto consensus.json as `momentum_state`.
-    global LAST_PACK_MOMENTUM_STATE, LAST_PACK_ACTIVE_SHOCKS
-    LAST_PACK_MOMENTUM_STATE = {
-        "price_asof": price_asof_25,
-        "mom_12_1": mom.get("mom_12_1"), "mom_6m": mom.get("mom_6m"), "mom_1m": mom.get("mom_1m"),
-        "high_52w_distance": high52_val, "high_52w_basis": high52_label,
-        "above_below_200d_mean": None, "rs_vs_cluster_etf_3m": None, "rs_vs_iwm_3m": None,
-        "realised_vol_60d": None,
-        "regime_shift_up": bool(mom.get("regime_shift_up")) if "regime_shift_up" in mom else None,
-        "regime_shift_down": bool(mom.get("regime_shift_down")) if "regime_shift_down" in mom else None,
-        "mom_break": None,
-        "mom_z_sector": mom.get("mom_z_sector"), "mom_z_universe": fs_z.get("momentum"),
-    }
-    LAST_PACK_ACTIVE_SHOCKS = active_shocks
+        def _mpct(v):
+            return f"{v*100:+.1f}%" if isinstance(v, (int, float)) else NULL
+
+        def _mz(v):
+            return f"{v:+.3f}" if isinstance(v, (int, float)) else NULL
+
+        # `momentum_proxy_monthly` (fct_flags) is the screener's own marker that `high_52w_proxy`
+        # is a MONTHLY proxy rather than a daily reading — the only granularity our momentum
+        # source currently carries. A `high_52w` daily field (absent today) would take priority.
+        if "high_52w" in mom:
+            high52_val, high52_label = mom.get("high_52w"), "daily"
+        else:
+            high52_val = mom.get("high_52w_proxy")
+            high52_label = ("monthly proxy" if "momentum_proxy_monthly" in fs_flags
+                            else "monthly proxy (unlabelled by the source)")
+        shifts = [lbl for lbl, key in (("regime_shift_up", "regime_shift_up"),
+                                       ("regime_shift_down", "regime_shift_down"))
+                 if mom.get(key)]
+        L += [f"## SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [Arithmetic on price "
+              f"history, as of {price_asof_25}]",
+              f"- 12-1 month return: {_mpct(mom.get('mom_12_1'))}",
+              f"- 6-month return: {_mpct(mom.get('mom_6m'))}",
+              f"- 1-month return: {_mpct(mom.get('mom_1m'))}",
+              f"- Distance from 52-week high ({high52_label}): {_mpct(high52_val)}",
+              f"- Above/below 200-day mean, and its slope: {NULL}",
+              f"- Relative strength vs cluster ETF, 3-month: {NULL}",
+              f"- Relative strength vs IWM, 3-month: {NULL}",
+              f"- Realised volatility, 60-day: {NULL}",
+              f"- Regime-shift flags: {', '.join(shifts) if shifts else 'none'}",
+              f"- mom_break: {NULL}",
+              f"- Sector-neutral momentum z: {_mz(mom.get('mom_z_sector'))}",
+              f"- Universe momentum z: {_mz(fs_z.get('momentum'))}",
+              "",
+              "These are facts about price and are not a valuation input.", ""]
+
+    if asof_date is None:
+        # Rule 11 (verdict stamping): the exact §2.5 block this pack printed, for
+        # consensus_valuation.main() to copy onto consensus.json as `momentum_state`. (asof mode
+        # sets both globals itself, inside the branch above, from the recomputed SCR-10 facts.
+        # `global` for both names is declared once, at the top of this function — see there for
+        # why: two `global X` statements either side of X's first assignment raise a SyntaxError
+        # even when each is individually valid for its own branch.)
+        LAST_PACK_MOMENTUM_STATE = {
+            "price_asof": price_asof_25,
+            "mom_12_1": mom.get("mom_12_1"), "mom_6m": mom.get("mom_6m"),
+            "mom_1m": mom.get("mom_1m"),
+            "high_52w_distance": high52_val, "high_52w_basis": high52_label,
+            "above_below_200d_mean": None, "rs_vs_cluster_etf_3m": None, "rs_vs_iwm_3m": None,
+            "realised_vol_60d": None,
+            "regime_shift_up": bool(mom.get("regime_shift_up")) if "regime_shift_up" in mom else None,
+            "regime_shift_down": bool(mom.get("regime_shift_down")) if "regime_shift_down" in mom else None,
+            "mom_break": None,
+            "mom_z_sector": mom.get("mom_z_sector"), "mom_z_universe": fs_z.get("momentum"),
+        }
+        LAST_PACK_ACTIVE_SHOCKS = active_shocks
 
     # ---- SECTION 3 -------------------------------------------------------------------------
-    L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [Filed - SEC 10-Q derived; through "
-             f"{_v(ttm, 'through')}, filed {_v(ttm, 'filed')}]")
-    if f:
-        L += [f"- Revenue: {_b(f.get('revenue'))}",
-              f"- Net income: {_b(f.get('net_income'))}",
-              f"- Operating cash flow: {_b(f.get('ocf'))}",
-              f"- Capital expenditure: {_b(f.get('capex'))}",
-              f"- Free cash flow: {_b(f.get('fcf'))}",
-              "- Depreciation & amortisation: not carried in the TTM extract for ANY name (the TTM "
-              "build maps five fields only). Use the fiscal-year series in SECTION 5."]
-        ni, ocf = f.get("net_income"), f.get("ocf")
-        if isinstance(ni, (int, float)) and isinstance(ocf, (int, float)):
-            L.append(f"- [Arithmetic] Net income minus operating cash flow: {_b(ni - ocf)}")
-    elif ttm_stale:
-        L.append(f"{NULL} - our TTM record for this name is STRANDED: its fiscal anchor "
-                 f"({ttm.get('fy_leg_end')}) disagrees with the newest annual year we hold "
-                 f"({max(_yrs)}), so it is not this company's trailing twelve months and has been "
-                 f"withheld rather than shown with a wrong period label. Use SECTION 5.")
+    if asof_date is not None:
+        L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [point-in-time: revenue/net income "
+                 f"recomputed from the 4 trailing allowed quarters]")
+        if asof_ttm_recomputed:
+            L += [f"- Revenue: {_b(asof_ttm_recomputed['revenue'])}   [Arithmetic, sum of the 4 "
+                  f"quarters through {asof_ttm_recomputed['through']}]",
+                  f"- Net income: {_b(asof_ttm_recomputed['net_income'])}   [Arithmetic, same "
+                  f"window]",
+                  f"- Operating cash flow: {ASOF_NULL}   [fundamentals_quarterly.json carries no "
+                  f"ocf field]",
+                  f"- Capital expenditure: {ASOF_NULL}   [fundamentals_quarterly.json carries no "
+                  f"capex field]",
+                  f"- Free cash flow: {ASOF_NULL}   [fundamentals_quarterly.json carries no fcf "
+                  f"field]",
+                  "- Depreciation & amortisation: not carried in the TTM extract for ANY name."]
+        else:
+            L.append(f"{ASOF_NULL} - fewer than 4 quarters end on or before "
+                     f"{asof_cutoff.isoformat()}.")
+        L.append("")
     else:
-        L.append(f"{NULL} - no TTM record. 20-F and 40-F filers file no 10-Q, so no TTM is "
-                 f"derivable for them from this source.")
-    L.append("")
+        L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [Filed - SEC 10-Q derived; through "
+                 f"{_v(ttm, 'through')}, filed {_v(ttm, 'filed')}]")
+    if asof_date is None:
+        if f:
+            L += [f"- Revenue: {_b(f.get('revenue'))}",
+                  f"- Net income: {_b(f.get('net_income'))}",
+                  f"- Operating cash flow: {_b(f.get('ocf'))}",
+                  f"- Capital expenditure: {_b(f.get('capex'))}",
+                  f"- Free cash flow: {_b(f.get('fcf'))}",
+                  "- Depreciation & amortisation: not carried in the TTM extract for ANY name (the TTM "
+                  "build maps five fields only). Use the fiscal-year series in SECTION 5."]
+            ni, ocf = f.get("net_income"), f.get("ocf")
+            if isinstance(ni, (int, float)) and isinstance(ocf, (int, float)):
+                L.append(f"- [Arithmetic] Net income minus operating cash flow: {_b(ni - ocf)}")
+        elif ttm_stale:
+            L.append(f"{NULL} - our TTM record for this name is STRANDED: its fiscal anchor "
+                     f"({ttm.get('fy_leg_end')}) disagrees with the newest annual year we hold "
+                     f"({max(_yrs)}), so it is not this company's trailing twelve months and has been "
+                     f"withheld rather than shown with a wrong period label. Use SECTION 5.")
+        else:
+            L.append(f"{NULL} - no TTM record. 20-F and 40-F filers file no 10-Q, so no TTM is "
+                     f"derivable for them from this source.")
+        L.append("")
 
     # ---- SECTION 4 -------------------------------------------------------------------------
     L.append(f"## SECTION 4 - QUARTERLY   [Filed - 10-Q; all {len(qs)} quarters we hold, oldest "
@@ -1218,8 +1778,10 @@ def build_pack(t, price_override=None, include_research=True):
     # cached per data-file sha within this run), not a hard-coded snapshot of the one-off
     # measurement the orchestrator published in E2 — this stays current with the corpus.
     latest_rev = h.get(str(max(yrs)), {}).get("revenue") if yrs else None
-    size_label, br_table = base_rates.base_rate_table(latest_rev, sd=SD)
-    L.append("## GROWTH BASE RATES   [Measured from our own fundamentals_history.json corpus]")
+    size_label, br_table = base_rates.base_rate_table(latest_rev, sd=SD, max_fiscal_year=last_allowed_fy)
+    L.append("## GROWTH BASE RATES   [Measured from our own fundamentals_history.json corpus"
+            + (f", restricted to fiscal years <= {last_allowed_fy} across the whole corpus "
+               "(point-in-time)]" if asof_date is not None else "]"))
     if size_label:
         L.append(f"- Latest annual revenue: {_b(latest_rev)} (FY{max(yrs)})  ->  size bucket "
                  f"{size_label}")
@@ -1244,7 +1806,8 @@ def build_pack(t, price_override=None, include_research=True):
             if isinstance(rlast, (int, float)) and isinstance(rprev, (int, float)) and rprev > 0:
                 g0 = rlast / rprev - 1
     if g0 is not None:
-        g_lbl, g_stats = growth_persistence.persistence_for_growth(g0, sd=SD)
+        g_lbl, g_stats = growth_persistence.persistence_for_growth(
+            g0, sd=SD, max_fiscal_year=last_allowed_fy)
         if g_lbl and g_stats:
             L.append(f"- Given the growth just delivered ({g0*100:+.1f}% YoY revenue, FY{max(yrs)}, "
                      f"bucket {g_lbl}): realized next-5y revenue CAGR across the corpus "
@@ -1373,174 +1936,195 @@ def build_pack(t, price_override=None, include_research=True):
         L.append("")
 
     # ---- SECTION 7 -------------------------------------------------------------------------
-    if bat:
-        L += [f"## SECTION 7 - FILING-DERIVED QUALITY MEASURES   [Arithmetic on filed values; each "
-              f"line states its window; fiscal year {_v(bat, 'fiscal_year')}]",
-              f"- Piotroski F-score: {_v(bat, 'f_score')} out of "
-              f"{_v(bat, 'f_score_checks_available')} checks WE WERE ABLE TO EVALUATE (the "
-              f"denominator is what our data supported, not the standard 9)",
-              f"- Accruals ratio: {_v(bat, 'accruals_ratio')}   (accrual share of earnings; "
-              f"more positive means more of the reported profit is not yet cash)",
-              f"- Net share issuance, 1 year: {_pct(bat.get('net_issuance_1y'))}   |   3-year "
-              f"CAGR: {_pct(bat.get('net_issuance_3y_cagr'))}   (negative = net buyback)",
-              f"- Operating margin, latest: {_pct(bat.get('op_margin_latest'))}   |   median over "
-              f"{_v(bat, 'op_margin_years')} years: {_pct(bat.get('op_margin_10y_median'))}",
-              f"- Revenue CAGR, trailing 5 fiscal years: {_pct(bat.get('revenue_cagr_5y'))}",
-              f"- Years of history available: {_v(bat, 'years_available')}",
-              f"- Share-count split suspected in the series: "
-              f"{_v(bat, 'share_count_split_suspected')}",
-              "",
-              "The Beneish M-score is deliberately omitted: it imputes absent inputs and then "
-              "publishes a score, which would present a guess as a measurement.", ""]
+    if asof_date is None:
+        if bat:
+            L += [f"## SECTION 7 - FILING-DERIVED QUALITY MEASURES   [Arithmetic on filed values; each "
+                  f"line states its window; fiscal year {_v(bat, 'fiscal_year')}]",
+                  f"- Piotroski F-score: {_v(bat, 'f_score')} out of "
+                  f"{_v(bat, 'f_score_checks_available')} checks WE WERE ABLE TO EVALUATE (the "
+                  f"denominator is what our data supported, not the standard 9)",
+                  f"- Accruals ratio: {_v(bat, 'accruals_ratio')}   (accrual share of earnings; "
+                  f"more positive means more of the reported profit is not yet cash)",
+                  f"- Net share issuance, 1 year: {_pct(bat.get('net_issuance_1y'))}   |   3-year "
+                  f"CAGR: {_pct(bat.get('net_issuance_3y_cagr'))}   (negative = net buyback)",
+                  f"- Operating margin, latest: {_pct(bat.get('op_margin_latest'))}   |   median over "
+                  f"{_v(bat, 'op_margin_years')} years: {_pct(bat.get('op_margin_10y_median'))}",
+                  f"- Revenue CAGR, trailing 5 fiscal years: {_pct(bat.get('revenue_cagr_5y'))}",
+                  f"- Years of history available: {_v(bat, 'years_available')}",
+                  f"- Share-count split suspected in the series: "
+                  f"{_v(bat, 'share_count_split_suspected')}",
+                  "",
+                  "The Beneish M-score is deliberately omitted: it imputes absent inputs and then "
+                  "publishes a score, which would present a guess as a measurement.", ""]
 
-    # ---- SECTION 8 -------------------------------------------------------------------------
-    # P4.10 staleness: past STALE_SUPPRESS_DAYS the header shows "STALE (n days)" AND the values
-    # themselves are suppressed to STALE_NULL, rather than merely flagged (_age()'s 14-day note).
-    fg = ob.get("forward_growth") or {}
-    ob_stale = bool((_age_days(ob) or 0) > STALE_SUPPRESS_DAYS)
-    en_stale = bool((_age_days(en) or 0) > STALE_SUPPRESS_DAYS)
-    L += [f"## SECTION 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age_label(ob)}]",
-          # price_to_sales dropped 2026-08-20: measured non-null on 0 of 294 vendor records, so
-          # the line could never print a value. Market cap and revenue are both in this pack;
-          # the model can divide. A field that is structurally always absent is noise, not a
-          # disclosed gap.
-          f"- Trailing P/E: {_sv(met, 'pe_ratio', ob_stale)}   |   P/B: "
-          f"{_sv(met, 'price_to_book', ob_stale)}   |   PEG: {_sv(met, 'peg_ratio', ob_stale)}   "
-          f"[trailing; the vendor does not state the period]",
-          f"- Return on equity: {_sv(met, 'return_on_equity', ob_stale)}   |   gross margin: "
-          f"{_sv(met, 'gross_margin', ob_stale)}   |   operating margin: "
-          f"{_sv(met, 'operating_margin', ob_stale)}   |   dividend yield: "
-          f"{_sv(met, 'dividend_yield', ob_stale)}   [vendor-computed, expressed as fractions not "
-          f"percents]",
-          f"- Consensus forward growth: revenue {_sv(fg, 'revenue_cagr', ob_stale)}, EPS "
-          f"{_sv(fg, 'eps_cagr', ob_stale)}   (source {_v(fg, 'source')})   [Estimate - sell-side "
-          f"consensus. Establish the horizon before treating either as a multi-year CAGR.]"]
-    if en:
-        L += [f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
-              f"{_sv(en, 'analyst_target_mean', en_stale)} / median "
-              f"{_sv(en, 'analyst_target_median', en_stale)} / high "
-              f"{_sv(en, 'analyst_target_high', en_stale)}   [Aggregator - 12-month sell-side "
-              f"targets, {_age_label(en)}]",
-              f"- 52-week range: {_sv(en, 'fifty_two_week_low', en_stale)} - "
-              f"{_sv(en, 'fifty_two_week_high', en_stale)}"]
-    L.append("")
+        # ---- SECTION 8 -------------------------------------------------------------------------
+        # P4.10 staleness: past STALE_SUPPRESS_DAYS the header shows "STALE (n days)" AND the values
+        # themselves are suppressed to STALE_NULL, rather than merely flagged (_age()'s 14-day note).
+        fg = ob.get("forward_growth") or {}
+        ob_stale = bool((_age_days(ob) or 0) > STALE_SUPPRESS_DAYS)
+        en_stale = bool((_age_days(en) or 0) > STALE_SUPPRESS_DAYS)
+        L += [f"## SECTION 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age_label(ob)}]",
+              # price_to_sales dropped 2026-08-20: measured non-null on 0 of 294 vendor records, so
+              # the line could never print a value. Market cap and revenue are both in this pack;
+              # the model can divide. A field that is structurally always absent is noise, not a
+              # disclosed gap.
+              f"- Trailing P/E: {_sv(met, 'pe_ratio', ob_stale)}   |   P/B: "
+              f"{_sv(met, 'price_to_book', ob_stale)}   |   PEG: {_sv(met, 'peg_ratio', ob_stale)}   "
+              f"[trailing; the vendor does not state the period]",
+              f"- Return on equity: {_sv(met, 'return_on_equity', ob_stale)}   |   gross margin: "
+              f"{_sv(met, 'gross_margin', ob_stale)}   |   operating margin: "
+              f"{_sv(met, 'operating_margin', ob_stale)}   |   dividend yield: "
+              f"{_sv(met, 'dividend_yield', ob_stale)}   [vendor-computed, expressed as fractions not "
+              f"percents]",
+              f"- Consensus forward growth: revenue {_sv(fg, 'revenue_cagr', ob_stale)}, EPS "
+              f"{_sv(fg, 'eps_cagr', ob_stale)}   (source {_v(fg, 'source')})   [Estimate - sell-side "
+              f"consensus. Establish the horizon before treating either as a multi-year CAGR.]"]
+        if en:
+            L += [f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
+                  f"{_sv(en, 'analyst_target_mean', en_stale)} / median "
+                  f"{_sv(en, 'analyst_target_median', en_stale)} / high "
+                  f"{_sv(en, 'analyst_target_high', en_stale)}   [Aggregator - 12-month sell-side "
+                  f"targets, {_age_label(en)}]",
+                  f"- 52-week range: {_sv(en, 'fifty_two_week_low', en_stale)} - "
+                  f"{_sv(en, 'fifty_two_week_high', en_stale)}"]
+        L.append("")
 
-    # ---- SECTION 8.5 - PEER CONTEXT [Aggregator, context not an anchor]   [P4.10] -----------
-    L.append("## SECTION 8.5 - PEER CONTEXT   [Aggregator, context not an anchor]")
-    fs_cluster = fs_row.get("cluster")
-    stocks_list = rs2_data.load_json(SD / "stocks.json") or []
-    peer_syms = set()
-    if fs_cluster and isinstance(stocks_list, list):
-        peer_syms = {sym for sym, row in (fs_all.get("tickers") or {}).items()
-                    if isinstance(row, dict) and row.get("cluster") == fs_cluster}
-    # `peRatio` is a real field in stocks.json, but measured 2026-09-24: it reads 0 for every
-    # one of 6,949 names on file - a P/E of exactly 0.0 for every company is not a filed value,
-    # it is an unpopulated sentinel (the same structural-absence pattern already documented for
-    # `price_to_sales` above), so it is never used. Compute trailing P/E ourselves instead, from
-    # fields that DO carry real values: top-level `price` / `metrics.epsTtm` (trailing EPS) -
-    # measured populated for 5,984 of 6,949 names, positive (usable) for 3,423.
-    eps_field_exists = bool(stocks_list) and any(
-        isinstance(row, dict) and isinstance((row.get("metrics") or {}).get("epsTtm"), (int, float))
-        for row in stocks_list[:200])
-    peer_pe, pe_source = [], None
-    if peer_syms and eps_field_exists:
-        for row in stocks_list:
-            if not isinstance(row, dict) or row.get("symbol") not in peer_syms:
-                continue
-            price = row.get("price")
-            eps = (row.get("metrics") or {}).get("epsTtm")
-            # Excludes non-positive earnings: a P/E on a loss-making peer is not a comparable
-            # multiple, and `0.0` here would be indistinguishable from the dead `peRatio` field.
-            if (isinstance(price, (int, float)) and price > 0
-                    and isinstance(eps, (int, float)) and eps > 0):
-                peer_pe.append(price / eps)
-        pe_source = "price / trailing EPS (`metrics.epsTtm`), `stocks.json`"
-    elif peer_syms:
-        # `epsTtm` itself absent from this corpus's schema - fall back to the screener's own
-        # fundamentals history: each peer's latest fiscal-year net income / diluted shares
-        # against its current price from stocks.json.
-        fh_tickers = (rs2_data.load_json(SD / "fundamentals_history.json") or {}).get("tickers") or {}
-        price_by_sym = {row.get("symbol"): row.get("price") for row in stocks_list
-                        if isinstance(row, dict)}
-        for sym in peer_syms:
-            years = fh_tickers.get(sym) or {}
-            if not isinstance(years, dict) or not years:
-                continue
-            yr_row = years.get(max(years, key=str)) or {}
-            ni, sh, price = yr_row.get("net_income"), yr_row.get("shares_diluted"), price_by_sym.get(sym)
-            if (isinstance(ni, (int, float)) and ni > 0
-                    and isinstance(sh, (int, float)) and sh > 0
-                    and isinstance(price, (int, float)) and price > 0):
-                peer_pe.append(price / (ni / sh))
-        if peer_pe:
-            pe_source = ("price / (latest fiscal-year net income / diluted shares), "
-                        "`fundamentals_history.json`")
-    ev_ebitda_field_exists = bool(stocks_list) and any(
-        "ebitda" in str(k).lower() for row in stocks_list[:1] if isinstance(row, dict)
-        for k in list(row.keys()) + list((row.get("metrics") or {}).keys()))
-    pe_field_note = (
-        f"present but measured 0 for every one of {len(stocks_list):,} names on file, so it "
-        f"carries no usable signal (trailing P/E below is computed instead from "
-        + (pe_source if pe_source else "price / trailing EPS or fundamentals history; not "
-                                       "available - neither source had usable data")
-        + ")") if stocks_list else NULL
-    L.append(f"- Fields checked in `stocks.json`: trailing P/E (`peRatio`) - {pe_field_note}; "
-             f"EV/EBITDA - "
-             + ("a field of that name exists" if ev_ebitda_field_exists
-                else "no field of that name exists in `stocks.json`'s per-ticker record")
-             + ". Only fields found usable are printed as values below.")
-    pe_n = len(peer_pe)
-    if pe_n:
-        pe_sorted = sorted(peer_pe)
-        pe_med = (pe_sorted[pe_n // 2] if pe_n % 2
-                 else (pe_sorted[pe_n // 2 - 1] + pe_sorted[pe_n // 2]) / 2)
-        L.append(f"- Cluster peers' trailing P/E (n={pe_n}, source: {pe_source}): median "
-                 f"{pe_med:.1f}x | p25 {pe_sorted[int(pe_n * .25)]:.1f}x | p75 "
-                 f"{pe_sorted[int(pe_n * .75)]:.1f}x")
-    else:
-        L.append(f"- Cluster peers' trailing P/E: {NULL}")
-    L.append(f"- Cluster peers' EV/EBITDA: {NULL}")
-    peer_band = rs2_data.anchor_multiple_bands(sector)
-    if peer_band:
-        ntm = peer_band.get("anchor_ntm_pe") or {}
-        rstate = peer_band.get("anchor_regime_state")
-        rstate_str = (", ".join(f"{k} {v}" for k, v in rstate.items())
-                     if isinstance(rstate, dict) else (rstate or NULL))
-        L.append(f"- MRI sector trailing-P/E band ({mri_sec}): median "
-                 f"{ntm.get('median', NULL)}x | p25 {ntm.get('p25', NULL)}x | p75 "
-                 f"{ntm.get('p75', NULL)}x   [regime state: {rstate_str}, as of "
-                 f"{peer_band.get('anchor_asof', NULL)}]")
-    else:
-        L.append(f"- MRI sector trailing-P/E band: {NULL}")
-    L.append("")
-
-    # ---- SECTION 9 -------------------------------------------------------------------------
-    if en:
-        if en_stale:
-            L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age_label(en)}]",
-                  f"- {STALE_NULL} - record older than {STALE_SUPPRESS_DAYS} days; values "
-                  f"suppressed rather than shown potentially wrong.", ""]
+        # ---- SECTION 8.5 - PEER CONTEXT [Aggregator, context not an anchor]   [P4.10] -----------
+        L.append("## SECTION 8.5 - PEER CONTEXT   [Aggregator, context not an anchor]")
+        fs_cluster = fs_row.get("cluster")
+        stocks_list = rs2_data.load_json(SD / "stocks.json") or []
+        peer_syms = set()
+        if fs_cluster and isinstance(stocks_list, list):
+            peer_syms = {sym for sym, row in (fs_all.get("tickers") or {}).items()
+                        if isinstance(row, dict) and row.get("cluster") == fs_cluster}
+        # `peRatio` is a real field in stocks.json, but measured 2026-09-24: it reads 0 for every
+        # one of 6,949 names on file - a P/E of exactly 0.0 for every company is not a filed value,
+        # it is an unpopulated sentinel (the same structural-absence pattern already documented for
+        # `price_to_sales` above), so it is never used. Compute trailing P/E ourselves instead, from
+        # fields that DO carry real values: top-level `price` / `metrics.epsTtm` (trailing EPS) -
+        # measured populated for 5,984 of 6,949 names, positive (usable) for 3,423.
+        eps_field_exists = bool(stocks_list) and any(
+            isinstance(row, dict) and isinstance((row.get("metrics") or {}).get("epsTtm"), (int, float))
+            for row in stocks_list[:200])
+        peer_pe, pe_source = [], None
+        if peer_syms and eps_field_exists:
+            for row in stocks_list:
+                if not isinstance(row, dict) or row.get("symbol") not in peer_syms:
+                    continue
+                price = row.get("price")
+                eps = (row.get("metrics") or {}).get("epsTtm")
+                # Excludes non-positive earnings: a P/E on a loss-making peer is not a comparable
+                # multiple, and `0.0` here would be indistinguishable from the dead `peRatio` field.
+                if (isinstance(price, (int, float)) and price > 0
+                        and isinstance(eps, (int, float)) and eps > 0):
+                    peer_pe.append(price / eps)
+            pe_source = "price / trailing EPS (`metrics.epsTtm`), `stocks.json`"
+        elif peer_syms:
+            # `epsTtm` itself absent from this corpus's schema - fall back to the screener's own
+            # fundamentals history: each peer's latest fiscal-year net income / diluted shares
+            # against its current price from stocks.json.
+            fh_tickers = (rs2_data.load_json(SD / "fundamentals_history.json") or {}).get("tickers") or {}
+            price_by_sym = {row.get("symbol"): row.get("price") for row in stocks_list
+                            if isinstance(row, dict)}
+            for sym in peer_syms:
+                years = fh_tickers.get(sym) or {}
+                if not isinstance(years, dict) or not years:
+                    continue
+                yr_row = years.get(max(years, key=str)) or {}
+                ni, sh, price = yr_row.get("net_income"), yr_row.get("shares_diluted"), price_by_sym.get(sym)
+                if (isinstance(ni, (int, float)) and ni > 0
+                        and isinstance(sh, (int, float)) and sh > 0
+                        and isinstance(price, (int, float)) and price > 0):
+                    peer_pe.append(price / (ni / sh))
+            if peer_pe:
+                pe_source = ("price / (latest fiscal-year net income / diluted shares), "
+                            "`fundamentals_history.json`")
+        ev_ebitda_field_exists = bool(stocks_list) and any(
+            "ebitda" in str(k).lower() for row in stocks_list[:1] if isinstance(row, dict)
+            for k in list(row.keys()) + list((row.get("metrics") or {}).keys()))
+        pe_field_note = (
+            f"present but measured 0 for every one of {len(stocks_list):,} names on file, so it "
+            f"carries no usable signal (trailing P/E below is computed instead from "
+            + (pe_source if pe_source else "price / trailing EPS or fundamentals history; not "
+                                           "available - neither source had usable data")
+            + ")") if stocks_list else NULL
+        L.append(f"- Fields checked in `stocks.json`: trailing P/E (`peRatio`) - {pe_field_note}; "
+                 f"EV/EBITDA - "
+                 + ("a field of that name exists" if ev_ebitda_field_exists
+                    else "no field of that name exists in `stocks.json`'s per-ticker record")
+                 + ". Only fields found usable are printed as values below.")
+        pe_n = len(peer_pe)
+        if pe_n:
+            pe_sorted = sorted(peer_pe)
+            pe_med = (pe_sorted[pe_n // 2] if pe_n % 2
+                     else (pe_sorted[pe_n // 2 - 1] + pe_sorted[pe_n // 2]) / 2)
+            L.append(f"- Cluster peers' trailing P/E (n={pe_n}, source: {pe_source}): median "
+                     f"{pe_med:.1f}x | p25 {pe_sorted[int(pe_n * .25)]:.1f}x | p75 "
+                     f"{pe_sorted[int(pe_n * .75)]:.1f}x")
         else:
-            L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age_label(en)} - short interest is "
-                  f"semi-monthly settlement data; ownership is 13F data lagged by up to a quarter]",
-                  f"- Short % of float: {_v(en, 'short_pct_float')}   |   shares short: "
-                  f"{_n(en.get('shares_short'))}   |   days to cover: "
-                  f"{_v(en, 'short_ratio_days_to_cover')}   |   month-on-month change: "
-                  f"{_v(en, 'short_mom_change_pct')}",
-                  f"- Institutional ownership: {_v(en, 'institutional_pct')}%   |   insider: "
-                  f"{_v(en, 'insider_pct')}%", ""]
+            L.append(f"- Cluster peers' trailing P/E: {NULL}")
+        L.append(f"- Cluster peers' EV/EBITDA: {NULL}")
+        peer_band = rs2_data.anchor_multiple_bands(sector)
+        if peer_band:
+            ntm = peer_band.get("anchor_ntm_pe") or {}
+            rstate = peer_band.get("anchor_regime_state")
+            rstate_str = (", ".join(f"{k} {v}" for k, v in rstate.items())
+                         if isinstance(rstate, dict) else (rstate or NULL))
+            L.append(f"- MRI sector trailing-P/E band ({mri_sec}): median "
+                     f"{ntm.get('median', NULL)}x | p25 {ntm.get('p25', NULL)}x | p75 "
+                     f"{ntm.get('p75', NULL)}x   [regime state: {rstate_str}, as of "
+                     f"{peer_band.get('anchor_asof', NULL)}]")
+        else:
+            L.append(f"- MRI sector trailing-P/E band: {NULL}")
+        L.append("")
 
-    # ---- SECTION 10 ------------------------------------------------------------------------
-    tr = ob.get("earnings_transcript") or ob.get("transcript_excerpt")
-    if tr:
-        L += ["## SECTION 10 - EARNINGS CALL EXCERPT   [Verbatim management speech - an assertion "
-              "by the company, not an audited fact]",
-              "**This excerpt is capped at ingest and is prepared remarks only. The analyst Q&A - "
-              "where guidance gets challenged, and where forward capital-spending plans are "
-              "usually pinned down - is NOT in our data for any name. If your valuation turns on "
-              "guidance beyond the current year, this excerpt cannot settle it.**",
-              str(tr)[:12000], ""]
+        # ---- SECTION 9 -------------------------------------------------------------------------
+        if en:
+            if en_stale:
+                L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age_label(en)}]",
+                      f"- {STALE_NULL} - record older than {STALE_SUPPRESS_DAYS} days; values "
+                      f"suppressed rather than shown potentially wrong.", ""]
+            else:
+                L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age_label(en)} - short interest is "
+                      f"semi-monthly settlement data; ownership is 13F data lagged by up to a quarter]",
+                      f"- Short % of float: {_v(en, 'short_pct_float')}   |   shares short: "
+                      f"{_n(en.get('shares_short'))}   |   days to cover: "
+                      f"{_v(en, 'short_ratio_days_to_cover')}   |   month-on-month change: "
+                      f"{_v(en, 'short_mom_change_pct')}",
+                      f"- Institutional ownership: {_v(en, 'institutional_pct')}%   |   insider: "
+                      f"{_v(en, 'insider_pct')}%", ""]
 
+        # ---- SECTION 10 ------------------------------------------------------------------------
+        tr = ob.get("earnings_transcript") or ob.get("transcript_excerpt")
+        if tr:
+            L += ["## SECTION 10 - EARNINGS CALL EXCERPT   [Verbatim management speech - an assertion "
+                  "by the company, not an audited fact]",
+                  "**This excerpt is capped at ingest and is prepared remarks only. The analyst Q&A - "
+                  "where guidance gets challenged, and where forward capital-spending plans are "
+                  "usually pinned down - is NOT in our data for any name. If your valuation turns on "
+                  "guidance beyond the current year, this excerpt cannot settle it.**",
+                  str(tr)[:12000], ""]
+
+    else:
+        # Phase 4 E4.3: SECTIONs 7-10 read same-day vendor/battery snapshots
+        # (fundamentals_battery.json, the openbb cache, enrich/*.json) with no stored history —
+        # none of them can be honestly restricted to an as-of date, so all four are OMITTED here
+        # rather than shown with today's values under a point-in-time label. See SECTION 12 for
+        # the full list of what was omitted and why.
+        L += ["## SECTION 7 - FILING-DERIVED QUALITY MEASURES   [" + ASOF_NULL + "]",
+              "- fundamentals_battery.json is a same-day snapshot with no stored history to "
+              "restrict to this as-of date.", ""]
+        L += ["## SECTION 8 - CONSENSUS & MULTIPLES   [" + ASOF_NULL + "]",
+              "- the openbb cache (trailing multiples, consensus forward growth, analyst price "
+              "targets) is a same-day snapshot with no stored history.", ""]
+        L += ["## SECTION 8.5 - PEER CONTEXT   [" + ASOF_NULL + "]",
+              "- reconstructing peer point-in-time price/EPS would need an as-of network fetch "
+              "for every cluster peer; not attempted this run.", ""]
+        L += ["## SECTION 9 - POSITIONING   [" + ASOF_NULL + "]",
+              "- enrich/*.json (short interest, institutional/insider ownership) is a same-day "
+              "snapshot with no stored history.", ""]
+        L += ["## SECTION 10 - EARNINGS CALL EXCERPT   [" + ASOF_NULL + "]",
+              "- the openbb cache carries no historical transcript archive.", ""]
     # ---- research brief load (shared by GUIDANCE & CONSENSUS and SECTION 11) ---------------
     rb = HERE / "research" / f"{t}.md"
     rb_text, brief_ok = None, False
@@ -1563,6 +2147,9 @@ def build_pack(t, price_override=None, include_research=True):
         L += [_row(["metric", "period", "value", "source", "date"]), _row(["---"] * 5)]
         for gr in guidance_rows:
             L.append(_row([gr["metric"], gr["period"], gr["value"], gr["source"], gr["date"]]))
+    elif asof_date is not None:
+        L.append("not available (point-in-time trial) — research is unconditionally OFF in "
+                 "point-in-time mode")
     else:
         L.append(f"{NULL} — research did not return dated guidance")
     L += ["- **MANDATE:** stage-1 years 1-2 start from guidance/consensus above when available; a "
@@ -1618,9 +2205,17 @@ def build_pack(t, price_override=None, include_research=True):
               "exactly this much and any 'we do not hold it' line above may be stale: "
               + ", ".join(f"`{k}`" for k in unreviewed)
               + ". Weigh your conclusions accordingly and say so in your report.", ""]
+    if asof_date is not None and asof_omitted:
+        L += [f"**POINT-IN-TIME OMISSIONS (as of {asof_date.isoformat()}).** Every input this "
+              f"pack could not honestly restrict to this date, omitted rather than shown with "
+              f"today's value:"]
+        L += [f"  - {reason}" for reason in asof_omitted]
+        L.append("")
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS
     LAST_PACK_MACRO_DEGRADED = macro_degraded
     LAST_PACK_FLAGS = ["macro_degraded"] if macro_degraded else []
+    if asof_date is not None:
+        LAST_PACK_FLAGS.append("point_in_time")
     return PackText("\n".join(L), macro_degraded=macro_degraded, flags=LAST_PACK_FLAGS)
 
 

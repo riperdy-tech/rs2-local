@@ -65,17 +65,24 @@ def _quantile(sorted_vals, p):
     return sorted_vals[idx]
 
 
-def _compute_table(path):
+def _compute_table(path, max_fiscal_year=None):
     """{size_label: {horizon: {n, share_ge_10, share_ge_20, share_ge_30, p50, p90}}}, measured
     fresh from `fundamentals_history.json` at `path`: for every (ticker, start-year) with revenue
     at the start year and `horizon` years later, the realized CAGR, bucketed by the start-year's
-    size."""
+    size.
+
+    `max_fiscal_year`: point-in-time restriction (Phase 4 E4.3) — fiscal years after this one are
+    excluded from EVERY ticker's series before any (start-year, horizon) pair is formed, so a
+    trial pack's base-rate corpus cannot see a year that would not yet have been filed as of the
+    trial's `asof` date. None (the default) computes the full corpus, unchanged behaviour.
+    """
     hist = (rs2_data.load_json(path) or {}).get("tickers", {})
     buckets = {}   # (size_label, horizon) -> [cagr, ...]
     for t, yd in (hist or {}).items():
         if not isinstance(yd, dict):
             continue
-        ys = sorted(int(y) for y in yd if str(y).isdigit())
+        ys = sorted(int(y) for y in yd if str(y).isdigit()
+                    and (max_fiscal_year is None or int(y) <= max_fiscal_year))
         revs = {}
         for y in ys:
             r = (yd.get(str(y)) or {}).get("revenue")
@@ -109,24 +116,28 @@ def _compute_table(path):
     return out
 
 
-def base_rate_table(revenue, sd=None):
+def base_rate_table(revenue, sd=None, max_fiscal_year=None):
     """(size_label, {5: {...}, 10: {...}}) for the size bucket containing `revenue`.
 
     `sd`: the screener-data directory to read from, or None to resolve it here (see
     `_history_path`'s docstring — a caller with its own resolved/patchable directory should
     always pass it).
 
+    `max_fiscal_year`: point-in-time restriction (Phase 4 E4.3), threaded straight to
+    `_compute_table`. None computes the full corpus, unchanged behaviour.
+
     (None, {}) when `revenue` is absent/non-positive (no size to bucket by) or the corpus data
-    file cannot be read. Cached per data-file sha256 within this process — a batch of pack builds
-    measures the corpus once, not once per ticker.
+    file cannot be read. Cached per (data-file sha256, max_fiscal_year) within this process — a
+    batch of pack builds at the same as-of date measures the corpus once, not once per ticker.
     """
     path = _history_path(sd)
     sha = _file_sha(path)
     if sha is None:
         return None, {}
-    if sha not in _CACHE:
-        _CACHE[sha] = _compute_table(path)
+    cache_key = (sha, max_fiscal_year)
+    if cache_key not in _CACHE:
+        _CACHE[cache_key] = _compute_table(path, max_fiscal_year=max_fiscal_year)
     size_label = _size_bucket(revenue)
     if size_label is None:
         return None, {}
-    return size_label, _CACHE[sha].get(size_label, {})
+    return size_label, _CACHE[cache_key].get(size_label, {})

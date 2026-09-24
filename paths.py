@@ -65,6 +65,13 @@ _CANDIDATES = {
     "rs2_state_dir": (
         "rs2-state",
     ),
+    # P4 E4.3 (time-travel trial): the MRI repo ROOT, not its outputs/ subdirectory — the
+    # point-in-time reconstruction reads outputs/../data/macro_engine.duckdb directly (read-only),
+    # which mri_outputs_dir cannot derive on its own since the two are siblings, not nested.
+    "mri_dir": (
+        "Stock Screener/Macro Regime Indicator",
+        "macro-regime-indicator",
+    ),
 }
 
 # Per-key environment overrides. `anchors_dir` deliberately reads MRI_ANCHORS_DIR first and then
@@ -77,6 +84,7 @@ _ENV = {
     "mri_outputs_dir": ("MRI_OUTPUTS_DIR",),
     "anchors_dir": ("MRI_ANCHORS_DIR", "MRI_OUTPUTS_DIR"),
     "rs2_state_dir": ("RS2_STATE_DIR",),
+    "mri_dir": ("MRI_DIR",),
 }
 
 
@@ -192,6 +200,15 @@ def load_config(path=None):
     for key in ("screener_data_dir", "screener_publish_repo", "mri_outputs_dir", "anchors_dir",
                 "rs2_state_dir"):
         config[key] = str(resolve(key, config))
+
+    # mri_dir (P4 E4.3, point-in-time pack mode) is resolved on demand, NOT eagerly here: unlike
+    # the four peer paths above, most callers of load_config() never touch the MRI duckdb store,
+    # and making it required would fail every one of them on a machine/test fixture that has no
+    # reason to have ever heard of it. rs2_data.mri_duckdb_path() calls resolve("mri_dir", ...,
+    # required=False) itself and reports a clear absence at the point of actual use instead.
+    mri_dir = resolve("mri_dir", config, required=False)
+    if mri_dir is not None:
+        config["mri_dir"] = str(mri_dir)
 
     for key in _SELF_PATHS:
         config[key] = str(resolve_self(key, config))
