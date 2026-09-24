@@ -105,3 +105,122 @@ def test_dispatched_tool_call_snapshotted_before_execution_even_if_raised(monkey
     assert snapshot["calls"][0]["tool"] == "search_web"
     assert "error" in snapshot["calls"][0]
 
+
+def test_research_tools_returns_search_and_fetch_only():
+    rtools = at.research_tools()
+    assert len(rtools) == 2
+    names = [t["function"]["name"] for t in rtools]
+    assert names == ["search_web", "fetch_page"]
+    assert "run_financial_model" not in names
+
+
+def test_chat_with_tools_defaults_and_signature():
+    import inspect
+    sig = inspect.signature(at.chat_with_tools)
+    assert sig.parameters["tools"].default is None
+    assert sig.parameters["max_search_calls"].default == 25
+    assert sig.parameters["max_model_calls"].default == 5
+
+
+def test_chat_with_tools_honours_new_parameters(monkeypatch, tmp_path):
+    """Test research-only tools, 14-call budget, 0 desk calls."""
+    recorded_requests = []
+
+    turn = 0
+    def fake_urlopen(req, timeout=None):
+        nonlocal turn
+        body = json.loads(req.data.decode("utf-8"))
+        recorded_requests.append(body)
+        turn += 1
+        if turn == 1:
+            # Model calls search_web twice
+            resp = {
+                "message": {
+                    "content": "",
+                    "tool_calls": [
+                        {"function": {"name": "search_web", "arguments": {"query": f"AMD catalyst {i}"}}}
+                        for i in range(14)
+                    ]
+                },
+                "done_reason": "stop",
+                "eval_count": 50,
+                "eval_duration": 100_000_000,
+            }
+        else:
+            # Final deliverable
+            resp = {
+                "message": {
+                    "content": '```json:catalysts\n{"asof": "2026-09-24", "events": []}\n```',
+                },
+                "done_reason": "stop",
+                "eval_count": 80,
+                "eval_duration": 150_000_000,
+            }
+        return _FakeResponse(resp)
+
+    monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(at, "dispatch_tool", lambda name, args, **kwargs: {"results": []})
+
+    out_dir = tmp_path / "chat_run"
+    report, thinking, meta = at.chat_with_tools(
+        "test-model", "test prompt", out_dir,
+        tools=at.research_tools(), max_search_calls=14, max_model_calls=0,
+        verbose=False,
+    )
+
+    # First turn should have received only research tools
+    first_req_tools = [t["function"]["name"] for t in recorded_requests[0]["tools"]]
+    assert first_req_tools == ["search_web", "fetch_page"]
+    assert "run_financial_model" not in first_req_tools
+
+    # All 14 search calls executed, exhausting search budget (since max_search_calls=14, max_model_calls=0)
+    # Next turn forces the final answer because all budgets are exhausted
+    assert meta["tool_calls"] == 14
+    assert "json:catalysts" in report
+
+
+def test_chat_with_tools_zero_desk_calls_refuses_financial_model(monkeypatch, tmp_path):
+    """When max_model_calls=0, run_financial_model is refused with budget exhausted."""
+    turn = 0
+    def fake_urlopen(req, timeout=None):
+        nonlocal turn
+        turn += 1
+        if turn == 1:
+            resp = {
+                "message": {
+                    "content": "",
+                    "tool_calls": [
+                        {"function": {"name": "run_financial_model", "arguments": {"price": 100}}}
+                    ]
+                },
+                "done_reason": "stop",
+                "eval_count": 20,
+                "eval_duration": 50_000_000,
+            }
+        else:
+            resp = {
+                "message": {
+                    "content": "Final memorandum after desk refusal",
+                },
+                "done_reason": "stop",
+                "eval_count": 20,
+                "eval_duration": 50_000_000,
+            }
+        return _FakeResponse(resp)
+
+    monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
+    out_dir = tmp_path / "desk_run"
+
+    # With max_model_calls=0, even if TOOLS has run_financial_model
+    report, thinking, meta = at.chat_with_tools(
+        "test-model", "test prompt", out_dir,
+        tools=at.TOOLS, max_search_calls=25, max_model_calls=0,
+        verbose=False,
+    )
+    # Snapshot should show error: financial model call budget exhausted (0)
+    snap_file = out_dir / "_research_snapshot.json"
+    assert snap_file.exists()
+    snap = json.loads(snap_file.read_text(encoding="utf-8"))
+    assert "budget exhausted (0)" in snap["calls"][0]["error"]
+
+

@@ -235,6 +235,11 @@ TOOLS = [{
 }]
 
 
+def research_tools():
+    """Return the TOOLS entries for search_web and fetch_page only."""
+    return [t for t in TOOLS if t.get("function", {}).get("name") in ("search_web", "fetch_page")]
+
+
 def _normalize_tokens(q):
     """Normalize query into sorted keywords to detect redundant/rephrased searches."""
     tokens = set(re.findall(r"\b[a-z0-9]{3,}\b", (q or "").lower()))
@@ -701,7 +706,8 @@ def _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
 
 def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predict=49152,
                     seed=None, timeout=14400, verbose=True, draft_num_predict=None,
-                    temperature=None, query_cache=None, url_cache=None):
+                    temperature=None, query_cache=None, url_cache=None,
+                    tools=None, max_search_calls=25, max_model_calls=5):
     """Ollama chat with the search tools available. Returns (report, thinking, meta).
 
     Snapshots every tool call to out_dir/_research_snapshot.json so the run stays reproducible
@@ -743,8 +749,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     search_calls = 0
     model_calls = 0
     desk_validation_errors = 0
-    MAX_SEARCH_CALLS = 25
-    MAX_MODEL_CALLS = 5
+    eff_tools = TOOLS if tools is None else tools
 
     sample_search_queries = []
     sample_fetched_urls = set()
@@ -756,15 +761,15 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         active_msgs = _compact_history(msgs, meta_msgs)
 
         # If search budget is exhausted, only expose financial modeling tool
-        active_tools = TOOLS
-        if search_calls >= MAX_SEARCH_CALLS:
-            active_tools = [t for t in TOOLS if t["function"]["name"] == "run_financial_model"]
-        if model_calls >= MAX_MODEL_CALLS or desk_validation_errors > 6:
+        active_tools = eff_tools
+        if search_calls >= max_search_calls:
+            active_tools = [t for t in eff_tools if t["function"]["name"] == "run_financial_model"]
+        if model_calls >= max_model_calls or desk_validation_errors > 6:
             active_tools = [t for t in active_tools if t["function"]["name"] != "run_financial_model"]
 
         body = {"model": model, "stream": False, "think": think, "messages": active_msgs,
                 "options": opts}
-        if active_tools and (search_calls < MAX_SEARCH_CALLS or (model_calls < MAX_MODEL_CALLS and desk_validation_errors <= 6)):
+        if active_tools and (search_calls < max_search_calls or (model_calls < max_model_calls and desk_validation_errors <= 6)):
             body["tools"] = active_tools
 
         req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
@@ -781,7 +786,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         tcs = msg.get("tool_calls") or []
         if not tcs:
             final_report = msg.get("content") or ""
-            if not report_is_deliverable(final_report):
+            is_stub = not report_is_deliverable(final_report) if max_model_calls > 0 else not bool(_TOOL_CALL_BLOCK.sub("", final_report or "").strip())
+            if is_stub:
                 # BOTH live failure shapes land here, and the old test (`not content.strip()`)
                 # only caught the first:
                 #   ANET s2 / BFH s3 — reasoned to a stop and emitted NOTHING.
@@ -792,17 +798,21 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 stub_rejected = bool((final_report or "").strip())
                 if verbose and stub_rejected:
                     print(f"    [harness] terminal turn was a {len(final_report)}-char stub, not a "
-                          f"report — forcing the memorandum turn instead of accepting it",
+                          f"report — forcing the deliverable turn instead of accepting it",
                           flush=True)
-                msgs.append({"role": "user", "content":
-                             "You have completed your research and reasoning. Write the complete "
-                             "institutional memorandum and Section 12 machine contract NOW. Do not search again."})
+                retry_prompt = (
+                    "You have completed your research and reasoning. Write the complete "
+                    "institutional memorandum and Section 12 machine contract NOW. Do not search again."
+                    if max_model_calls > 0 else
+                    "You have completed your research and reasoning. Provide your findings NOW. Do not search again."
+                )
+                msgs.append({"role": "user", "content": retry_prompt})
                 meta_msgs.append(None)
                 active_msgs_retry = _compact_history(msgs, meta_msgs)
                 opts_retry = dict(opts)
-                opts_retry["num_predict"] = 32768
-                body = {"model": model, "stream": False, "think": "low", "messages": active_msgs_retry,
-                        "options": opts_retry}
+                opts_retry["num_predict"] = 32768 if max_model_calls > 0 else opts.get("num_predict", 16384)
+                body = {"model": model, "stream": False, "think": "low" if max_model_calls > 0 else think,
+                        "messages": active_msgs_retry, "options": opts_retry}
                 req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
                                              headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -856,28 +866,32 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         sample_fetched_urls.add(u)
 
                     search_calls += 1
-                    if search_calls > MAX_SEARCH_CALLS:
+                    if search_calls > max_search_calls:
+                        msg_text = (
+                            f"Web search budget completed ({max_search_calls} calls). "
+                            "Do not search again. Formulate your scenario drivers and invoke "
+                            "run_financial_model to compute intrinsic values and Kelly sizing, "
+                            "then proceed to write your memorandum."
+                            if max_model_calls > 0 else
+                            f"Web search budget completed ({max_search_calls} calls). "
+                            "Do not search again. Conclude your research and provide your findings now."
+                        )
                         result = {
                             "status": "search_quota_met",
-                            "message": (
-                                f"Web search budget completed ({MAX_SEARCH_CALLS} calls). "
-                                "Do not search again. Formulate your scenario drivers and invoke "
-                                "run_financial_model to compute intrinsic values and Kelly sizing, "
-                                "then proceed to write your memorandum."
-                            )
+                            "message": msg_text,
                         }
                     else:
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache)
                 elif name == "run_financial_model":
-                    if model_calls >= MAX_MODEL_CALLS or desk_validation_errors > 6:
-                        result = {"error": f"financial model call budget exhausted ({MAX_MODEL_CALLS}); "
+                    if model_calls >= max_model_calls or desk_validation_errors > 6:
+                        result = {"error": f"financial model call budget exhausted ({max_model_calls}); "
                                            f"use computed results and finalize memorandum"}
                     else:
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache)
                         if isinstance(result, dict) and result.get("validation_error") is True:
                             desk_validation_errors += 1
                             if desk_validation_errors > 6:
-                                result = {"error": f"financial model call budget exhausted ({MAX_MODEL_CALLS}); "
+                                result = {"error": f"financial model call budget exhausted ({max_model_calls}); "
                                                    f"use computed results and finalize memorandum"}
                         else:
                             model_calls += 1
@@ -916,11 +930,15 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             msgs.append({"role": "tool", "content": json.dumps(result)[:12000]})
             meta_msgs.append({"name": name, "args": args, "result": result, "call_index": calls})
 
-        if search_calls >= MAX_SEARCH_CALLS and (model_calls >= MAX_MODEL_CALLS or desk_validation_errors > 6):
+        if search_calls >= max_search_calls and (model_calls >= max_model_calls or desk_validation_errors > 6):
             # ALL BUDGETS REACHED -> force the answer, never just break.
-            msgs.append({"role": "user", "content":
-                         "Tool budgets are exhausted. Write the complete institutional memorandum "
-                         "and Section 12 machine contract NOW from what you have. Do not search again."})
+            exhausted_prompt = (
+                "Tool budgets are exhausted. Write the complete institutional memorandum "
+                "and Section 12 machine contract NOW from what you have. Do not search again."
+                if max_model_calls > 0 else
+                "Tool budgets are exhausted. Conclude your research and provide your findings NOW from what you have. Do not search again."
+            )
+            msgs.append({"role": "user", "content": exhausted_prompt})
             meta_msgs.append(None)
             active_msgs_exhausted = _compact_history(msgs, meta_msgs)
             body = {"model": model, "stream": False, "think": think, "messages": active_msgs_exhausted,
