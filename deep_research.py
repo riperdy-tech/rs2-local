@@ -28,7 +28,11 @@ import rs2_data  # local (stdlib-only import path: json/os/sys/datetime/pathlib/
                   # and industry lookup for the header line (P4 T4 / D4, D8, E3)
 
 HERE = Path(__file__).resolve().parent
-CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+# paths.load_config(), not a raw json read: since 2026-09-22 the repo-local path keys in
+# config.json are null and only load_config() resolves them. The raw read left
+# CONFIG["out_research_dir"] as None and every brief build crashed at Path(None) — no brief was
+# written after 2026-09-21.
+CONFIG = rs2_data.CONFIG
 
 # RS2-aligned research topics (LDR expands each into sub-questions + iterates)
 TOPICS = [
