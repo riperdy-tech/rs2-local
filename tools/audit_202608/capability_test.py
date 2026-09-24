@@ -1809,7 +1809,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 gap = ocf - denom
                 if denom > 0 and gap > 0 and (gap / denom) > 0.25:
                     pct = (gap / denom) * 100.0
-                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 often customer prepayments or collection timing \u2014 and does not recur; a base built on TTM OCF or FCF includes it.")
+                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 customer prepayments, deposits or collection timing. It recurs only while advance bookings keep growing: count it as recurring owner cash flow only if you show it is structural to the business (deposits that grow with bookings), and never extrapolate a one-off swing. A base built on TTM OCF or FCF includes it.")
         else:
             missing = []
             if not isinstance(ni, (int, float)):
@@ -1872,7 +1872,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 gap = ocf - denom
                 if denom > 0 and gap > 0 and (gap / denom) > 0.25:
                     pct = (gap / denom) * 100.0
-                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 often customer prepayments or collection timing \u2014 and does not recur; a base built on TTM OCF or FCF includes it.")
+                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 customer prepayments, deposits or collection timing. It recurs only while advance bookings keep growing: count it as recurring owner cash flow only if you show it is structural to the business (deposits that grow with bookings), and never extrapolate a one-off swing. A base built on TTM OCF or FCF includes it.")
         else:
             missing = []
             if not isinstance(ni, (int, float)):

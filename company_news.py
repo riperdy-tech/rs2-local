@@ -70,6 +70,32 @@ def _clean_company_name(company, ticker):
     return cleaned if cleaned else (s or str(ticker).upper())
 
 
+_GENERIC_NAME_WORDS = {
+    "advanced", "american", "united", "general", "first", "national", "international", "global",
+    "holdings", "holding", "group", "technology", "technologies", "systems", "energy", "mining",
+    "resources", "company", "corporation", "the", "and", "new", "north", "south", "east", "west",
+}
+
+
+def _name_token(clean_company):
+    """The first distinctive word of the company name (>= 4 letters, not generic), e.g.
+    'Lindblad Expeditions Holdings' -> 'Lindblad', 'Advanced Micro Devices' -> 'Micro'."""
+    for w in re.findall(r"[A-Za-z][A-Za-z&'-]+", clean_company or ""):
+        if len(w) >= 4 and w.lower() not in _GENERIC_NAME_WORDS:
+            return w
+    return None
+
+
+def _mostly_non_latin(text):
+    """True when more than 30% of the letters are outside the Latin script blocks (CJK, Cyrillic,
+    Arabic, ...): the analyst reads English, and those rows were unrelated noise when measured."""
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return False
+    non_latin = sum(1 for c in letters if ord(c) > 0x024F)
+    return non_latin / len(letters) > 0.30
+
+
 def _query_searxng(searx_url, query, timeout=60):
     params = {
         "q": query,
@@ -103,10 +129,10 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
     unresponsive_engines = []
     errors = []
 
-    for q in queries:
+    for qi, q in enumerate(queries):
         try:
             data = _query_searxng(endpoint, q, timeout=timeout)
-            raw_results.extend(data.get("results") or [])
+            raw_results.extend({**r, "_query_index": qi} for r in (data.get("results") or []))
             for eng in data.get("unresponsive_engines") or []:
                 if eng not in unresponsive_engines:
                     unresponsive_engines.append(eng)
@@ -118,6 +144,7 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
     seen_urls = set()
     seen_titles = set()
     raw_rows = []
+    name_token = _name_token(clean_comp)
 
     for res in raw_results:
         u = str(res.get("url") or "").strip()
@@ -125,6 +152,13 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
             continue
         title = re.sub(r"\s+", " ", str(res.get("title") or "")).strip()[:150]
         if not title:
+            continue
+        if _mostly_non_latin(title):
+            continue
+        if res.get("_query_index") == 1 and name_token and not re.search(
+                rf"\b{re.escape(name_token)}", title + " " + str(res.get("content") or ""), re.I):
+            # the "<TICKER> stock" query matches ticker collisions (LIND -> Linde Bangladesh);
+            # its rows must name the company. The quoted-name query's rows are already matched.
             continue
         norm_url = u.lower().rstrip("/")
         norm_title = title.lower()
