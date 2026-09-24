@@ -132,6 +132,7 @@ CARRY_FIELDS = (
     "direction", "size_hint", "spread_pct", "n_basis", "early_stop", "conviction_score",
     "business_quality_moat", "kelly_fraction_pct", "mos_vs_median_pct", "mos_vs_base_pct",
     "pack_revision", "arm", "run_source", "gate_version", "entry_timing", "momentum_view",
+    "position_basis",
     # C2 (Phase 4 amendment) — P4.3's `m` and P4.9's `size_components`, so the strongest graded
     # cut in the retired lane (entry_timing) can be measured on the new analyst from day one,
     # and size_hint's composite inputs are auditable per row, not just the final bucket.
@@ -653,6 +654,7 @@ def build_cuts(gh):
         # every other cut already gets from bucket_stats/tercile_cut.
         cut(gh, lambda g: g.get("entry_timing"), "entry_timing"),
         cut(gh, lambda g: g.get("momentum_view"), "momentum_view"),
+        cut(gh, lambda g: g.get("position_basis"), "position_basis"),
         tercile_cut(gh, "m", "m tercile"),
         cut(gh, lambda g: g.get("arm"), "arm"),
         cut(gh, lambda g: g.get("pack_revision"), "pack_revision"),

@@ -41,6 +41,7 @@ Usage:
   python tools/dispersion_battery.py --names GEV --samples 1 --arm A --dry-run
 """
 import argparse
+from collections import Counter
 import json
 import statistics as st
 import subprocess
@@ -55,6 +56,7 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 
 import rs2_data                     # noqa: E402
 import capability_test as cap       # noqa: E402
+import momentum_basis               # noqa: E402
 
 CONSENSUS_SCRIPT = HERE / "tools" / "audit_202608" / "consensus_valuation.py"
 DEFAULT_MODEL = rs2_data.CONFIG.get("depth_model", "rs2-analyst-deep-mtp5")
@@ -147,18 +149,20 @@ def sample_direction(iv, price):
     return "hold"
 
 
-def summarize_run(name, doc):
+def summarize_run(name, doc, momentum_state=None):
     price = doc.get("price")
     runs = doc.get("runs") or []
     per_sample = []
     for r in runs:
         sc = r.get("scorecard") or {}
+        pos_basis = sc.get("position_basis") if sc.get("position_basis") is not None else r.get("position_basis")
         per_sample.append({
             "sample": r.get("sample"),
             "base_iv": r.get("iv"),
             "bull_iv": sc.get("bull_iv"),
             "bear_iv": sc.get("bear_iv"),
             "direction": sample_direction(r.get("iv"), price),
+            "position_basis": pos_basis,
             "secs": r.get("secs"),
             "truncated": r.get("truncated"),
             "forced_report": r.get("forced_report"),
@@ -177,6 +181,15 @@ def summarize_run(name, doc):
                 if r.get("iv") and r.get("plausible") and not r.get("truncated")]
     spread_first_two = ((max(first_two) / min(first_two) - 1) * 100
                         if len(first_two) == 2 else None)
+
+    votes = doc.get("position_basis_votes")
+    if votes is None:
+        votes = dict(Counter(s["position_basis"] or "none" for s in per_sample))
+
+    median_iv = doc.get("median_iv")
+    rev_yoy = momentum_basis.revenue_ttm_yoy(name)
+    mom_elig = momentum_basis.eligibility(momentum_state, rev_yoy, median_iv, price)
+
     res = {
         "ticker": name, "price": price,
         "pack_source": doc.get("pack_source"), "pack_sha256": doc.get("pack_sha256"),
@@ -185,7 +198,9 @@ def summarize_run(name, doc):
         "spread_pct_first_two": (round(spread_first_two, 1)
                                  if spread_first_two is not None else None),
         "direction_agreement": direction_agreement, "directions": directions,
-        "median_iv": doc.get("median_iv"), "converged": doc.get("converged"),
+        "median_iv": median_iv, "converged": doc.get("converged"),
+        "position_basis_votes": votes,
+        "momentum_eligibility": mom_elig,
         "samples": per_sample,
     }
     if "failfast" in doc:
@@ -201,6 +216,7 @@ def run_name(name, args, out_root):
     consensus_out = name_dir / f"arm_{args.arm}"
 
     pack, reused = build_frozen_pack(name, pack_path)
+    mom_state = None if reused else getattr(cap, "LAST_PACK_MOMENTUM_STATE", None)
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
     eff_temp = args.temperature if args.temperature is not None else ARM_TEMPERATURE.get(args.arm)
@@ -214,13 +230,14 @@ def run_name(name, args, out_root):
               f"({len(pack):,} chars) | evidence store: {evidence_dir}", flush=True)
         print("  " + " ".join(_quote(c) for c in cmd), flush=True)
         return {"ticker": name, "dry_run": True, "pack_path": str(pack_path),
-                "pack_reused": reused, "evidence_store": str(evidence_dir), "command": cmd}
+                "pack_reused": reused, "evidence_store": str(evidence_dir), "command": cmd,
+                "momentum_state": mom_state}
 
     existing = _existing_complete_run(consensus_out, name, args.samples)
     if existing is not None:
         print(f"[dispersion] {name}: already complete ({existing.get('samples_run')} samples) "
               "— skipping", flush=True)
-        return summarize_run(name, existing)
+        return summarize_run(name, existing, momentum_state=mom_state)
 
     print(f"[dispersion] {name}: running arm {args.arm}"
           + (f" (temperature {eff_temp})" if eff_temp is not None else "") + " ...", flush=True)
@@ -235,7 +252,7 @@ def run_name(name, args, out_root):
         print(f"[dispersion] {name}: consensus produced no complete run", flush=True)
         return {"ticker": name, "error": "no complete consensus run produced"}
     print(f"[dispersion] {name}: done in {time.time() - t0:.0f}s", flush=True)
-    return summarize_run(name, doc)
+    return summarize_run(name, doc, momentum_state=mom_state)
 
 
 def main():

@@ -707,11 +707,12 @@ def test_spread_bucket_boundaries():
 def test_build_cuts_always_returns_every_cut_including_momentum_ablation():
     labels = [c["cut"] for c in g.build_cuts([])]
     assert "z_momentum tercile (momentum ablation, undervalued only)" in labels
-    # C2 (Phase 4 amendment) added entry_timing, momentum_view, m tercile.
+    # C2 (Phase 4 amendment) added entry_timing, momentum_view, m tercile; E5b added position_basis.
     assert "entry_timing" in labels
     assert "momentum_view" in labels
+    assert "position_basis" in labels
     assert "m tercile" in labels
-    assert len(labels) == 16   # every cut in the work order's list, even on zero rows
+    assert len(labels) == 17   # every cut in the work order's list, even on zero rows
     for c in g.build_cuts([]):
         assert c["buckets"] == {}
         assert "reason" in c
@@ -728,12 +729,17 @@ def _p4_3_rows():
     added to each row's dict; every carried field already checked there is untouched)."""
     extra = {
         "AAA": {"entry_timing": "buy_now", "momentum_view": "confirming", "m": 1.2,
+                "position_basis": "value",
                 "size_components": {"dispersion": {"bucket": "full"}}},
         "BBB": {"entry_timing": "avoid", "momentum_view": "contradicting", "m": -1.5,
+                "position_basis": "momentum",
                 "size_components": {"dispersion": {"bucket": "quarter"}}},
-        "CCC": {"entry_timing": "wait_for_momentum", "momentum_view": "neutral", "m": 0.0},
-        "DDD": {"entry_timing": "buy_now", "momentum_view": "confirming", "m": 0.8},
-        "EEE": {"entry_timing": "wait_for_momentum", "momentum_view": "neutral", "m": -0.3},
+        "CCC": {"entry_timing": "wait_for_momentum", "momentum_view": "neutral", "m": 0.0,
+                "position_basis": "none"},
+        "DDD": {"entry_timing": "buy_now", "momentum_view": "confirming", "m": 0.8,
+                "position_basis": "value"},
+        "EEE": {"entry_timing": "wait_for_momentum", "momentum_view": "neutral", "m": -0.3,
+                "position_basis": "none"},
     }
     return [dict(r, **extra[r["ticker"]]) for r in ROWS]
 
@@ -752,6 +758,8 @@ def test_entry_timing_and_momentum_view_already_carried_and_now_cut():
     by_ticker = {row["ticker"]: row for row in graded}
     assert by_ticker["AAA"]["entry_timing"] == "buy_now"
     assert by_ticker["AAA"]["momentum_view"] == "confirming"
+    assert by_ticker["AAA"]["position_basis"] == "value"
+    assert by_ticker["BBB"]["position_basis"] == "momentum"
 
     entry_cut = g.cut(graded, lambda r: r.get("entry_timing"), "entry_timing")
     # DDD is excluded by the 3-day horizon-shortfall guard (pending, not graded), so only AAA
@@ -762,6 +770,9 @@ def test_entry_timing_and_momentum_view_already_carried_and_now_cut():
 
     mom_cut = g.cut(graded, lambda r: r.get("momentum_view"), "momentum_view")
     assert set(mom_cut["buckets"]) == {"confirming", "contradicting", "neutral"}
+
+    pos_cut = g.cut(graded, lambda r: r.get("position_basis"), "position_basis")
+    assert set(pos_cut["buckets"]) == {"value", "momentum", "none"}
 
 
 def test_m_tercile_cut_splits_and_flags_inconclusive():
@@ -785,6 +796,7 @@ def test_entry_timing_and_m_appear_in_build_cuts_output():
     cuts = {c["cut"]: c for c in g.build_cuts(graded)}
     assert cuts["entry_timing"]["buckets"]
     assert cuts["momentum_view"]["buckets"]
+    assert cuts["position_basis"]["buckets"]
     assert cuts["m tercile"]["buckets"] or "reason" in cuts["m tercile"]
 
 

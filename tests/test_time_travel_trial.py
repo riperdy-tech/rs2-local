@@ -314,3 +314,20 @@ def test_grade_name_missing_price_data_leaves_return_none():
     assert row["return_pct"] is None
     assert row["excess_vs_iwm_pct"] is None
     assert row["hit"] is None
+    assert "position_basis" in row
+
+
+def test_write_markdown_includes_position_basis(tmp_path):
+    args = _Args()
+    args.asof = "2026-03-31"
+    args.horizon_end = "2026-06-30"
+    rows = [{
+        "ticker": "GEV", "direction": "undervalued", "base_iv": 130.0, "price_at_asof": 100.0,
+        "mos_pct": 30.0, "momentum_view": "confirming", "entry_timing": "buy_now",
+        "position_basis": "value", "return_pct": 30.0, "excess_vs_iwm_pct": 25.0, "hit": True,
+    }]
+    ttt.write_markdown(tmp_path, args, rows)
+    md = (tmp_path / "trial_summary.md").read_text(encoding="utf-8")
+    assert "position_basis" in md
+    assert "| value |" in md
+

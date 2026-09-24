@@ -351,3 +351,47 @@ def test_main_skips_names_with_errors_in_overall_metrics(monkeypatch, tmp_path):
     assert summary["overall"]["n_names"] == 1
     assert summary["overall"]["share_spread_le_15pct_first_two_samples"] == 100.0
     assert summary["results"][0]["error"] == "consensus subprocess exit 5"
+
+
+# ---- P4 E5b: position_basis, votes, and momentum_eligibility ---------------------------------
+
+def test_summarize_run_records_position_basis_and_eligibility(monkeypatch):
+    mom_state = {
+        "mom_z_universe": 0.8, "mom_6m": 0.25, "high_52w_distance": -0.05,
+        "regime_shift_down": False,
+    }
+    monkeypatch.setattr(db.momentum_basis, "revenue_ttm_yoy", lambda name: 0.15)
+    doc = {
+        "ticker": "NVDA", "price": 100.0, "median_iv": 110.0, "samples_run": 2,
+        "pack_source": "frozen:x", "pack_sha256": "abc", "temperature": None,
+        "spread_pct": 5.0, "converged": True,
+        "runs": [
+            {"sample": 1, "iv": 110.0, "scorecard": {"position_basis": "momentum"},
+             "plausible": True, "truncated": False, "secs": 10},
+            {"sample": 2, "iv": 110.0, "scorecard": {"position_basis": "none"},
+             "plausible": True, "truncated": False, "secs": 11},
+        ],
+    }
+    out = db.summarize_run("NVDA", doc, momentum_state=mom_state)
+    assert out["samples"][0]["position_basis"] == "momentum"
+    assert out["samples"][1]["position_basis"] == "none"
+    assert out["position_basis_votes"] == {"momentum": 1, "none": 1}
+    assert out["momentum_eligibility"]["eligible"] is True
+
+
+def test_run_name_keeps_momentum_state_when_built_none_when_reused(monkeypatch, tmp_path):
+    mock_mom = {"mom_z_universe": 0.7, "mom_6m": 0.2}
+    monkeypatch.setattr(db.cap, "LAST_PACK_MOMENTUM_STATE", mock_mom)
+    _stub_build_pack(monkeypatch)
+
+    out_dir = tmp_path / "out"
+    # 1. Fresh pack built -> dry_run returns momentum_state == mock_mom
+    res1 = db.run_name("AMD", _Args(samples=1, dry_run=True), out_dir)
+    assert res1["pack_reused"] is False
+    assert res1.get("momentum_state") == mock_mom
+
+    # 2. Pack file now exists -> second call reuses from disk -> momentum_state is None
+    res2 = db.run_name("AMD", _Args(samples=1, dry_run=True), out_dir)
+    assert res2["pack_reused"] is True
+    assert res2.get("momentum_state") is None
+

@@ -234,6 +234,7 @@ def grade_name(name, asof_iso, horizon_iso, price_cache, doc):
         "erp_asof": doc.get("erp_asof"),
         "momentum_view": verdict.get("momentum_view"),
         "entry_timing": verdict.get("entry_timing"),
+        "position_basis": verdict.get("position_basis"),
         "entry_date": d0, "entry_price": p0,
         "exit_date": d1, "exit_price": p1,
         "return_pct": round(ret * 100, 2) if ret is not None else None,
@@ -258,20 +259,21 @@ def write_markdown(out_root, args, rows):
              f"Model: `{args.model}` | samples/name: {args.samples} | research OFF "
              "(point-in-time pack mode)", "",
              "| ticker | direction | base IV | price@asof | MoS | momentum_view | "
-             "entry_timing | 3mo return | excess vs IWM | hit |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+             "entry_timing | position_basis | 3mo return | excess vs IWM | hit |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     scored = [r for r in rows if isinstance(r, dict) and r.get("hit") is not None]
     hits = sum(1 for r in scored if r["hit"])
     for r in rows:
         if not isinstance(r, dict) or "error" in r:
             t = r.get("ticker", "?") if isinstance(r, dict) else "?"
             lines.append(f"| {t} | ERROR: {r.get('error') if isinstance(r, dict) else r} | | | "
-                         "| | | | | |")
+                         "| | | | | | |")
             continue
         lines.append(
             f"| {r['ticker']} | {r.get('direction')} | "
             f"{r.get('base_iv')} | {r.get('price_at_asof')} | "
             f"{r.get('mos_pct')} | {r.get('momentum_view')} | {r.get('entry_timing')} | "
+            f"{r.get('position_basis')} | "
             f"{r.get('return_pct')} | {r.get('excess_vs_iwm_pct')} | "
             f"{'HIT' if r.get('hit') else ('MISS' if r.get('hit') is False else 'n/a')} |")
     lines += ["", f"**Hit table**: {hits}/{len(scored)} directional calls beat/lagged IWM as "

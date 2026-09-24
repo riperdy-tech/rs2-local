@@ -15,6 +15,7 @@ def test_dashboard_shows_entry_timing_and_momentum_view(tmp_path, monkeypatch):
         "consensus_dir": "MOMS_20260924_120000", "price": 100.0, "median_iv": 130.0,
         "spread_pct": 5.0, "scorecard": {"base_iv": 128.0},
         "entry_timing": "wait_for_momentum", "momentum_view": "contradicting",
+        "position_basis": "value",
     }
     ledger.write_text(json.dumps(row) + "\n", encoding="utf-8")
 
@@ -29,8 +30,10 @@ def test_dashboard_shows_entry_timing_and_momentum_view(tmp_path, monkeypatch):
 
     out = st.depth_snapshot()
     assert "Entry" in out
+    assert "Basis" in out
     assert "Momentum" in out
     assert "wait_for_momentum" in out
+    assert "value" in out
     assert "contradicting" in out
 
 
