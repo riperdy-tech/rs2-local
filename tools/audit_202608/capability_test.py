@@ -840,6 +840,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
     last_allowed_fy = None
     asof_omitted = []   # every input dropped for point-in-time reasons, printed in SECTION 12
     _ref_oe = None      # the OWNER EARNINGS default, for SECTION 8's CONSENSUS-IMPLIED VALUE (E10)
+    _ref_da = _ref_capex = None   # FY D&A and TTM capex, for the reference's EPS-levels method
     if asof_date is not None:
         from datetime import timedelta as _td
         asof_cutoff = asof_date - _td(days=POINT_IN_TIME_FILING_LAG_DAYS)
@@ -1823,6 +1824,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
             oe = ni + da - capex
             _ref_oe = oe
+            _ref_da, _ref_capex = da, capex
             L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
@@ -1887,6 +1889,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
             oe = ni + da - capex
             _ref_oe = oe
+            _ref_da, _ref_capex = da, capex
             L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             _sbc_fy = (h.get(str(latest_yr)) or {}).get("sbc") if latest_yr is not None else None
             if isinstance(ocf, (int, float)) and isinstance(_sbc_fy, (int, float)):
@@ -2251,20 +2254,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 _ref = consensus_reference.build(
                     _ref_oe, est, _coe, terminal_g_val,
                     sh if isinstance(sh, (int, float)) and sh > 0 else None,
-                    _med / 100.0 if isinstance(_med, (int, float)) else None)
-                if _ref["value"] is not None:
-                    _path = " / ".join(f"{g * 100:+.1f}%" for g in _ref["path"])
-                    L.append(
-                        f"- [Arithmetic] CONSENSUS-IMPLIED VALUE (reference, not a forecast): "
-                        f"${_ref['value']:,.2f} per share \u2014 the analysts' own earnings path at our "
-                        f"discount rate. Owner-earnings base {_b(_ref_oe)}; cash-flow growth years 1-5 "
-                        f"{_path} (years 1-2 = consensus EPS growth; from year 3, next-FY revenue growth "
-                        f"fading to the GROWTH BASE RATES median); then a 5-year fade to the terminal-growth "
-                        f"anchor {terminal_g_val * 100:.2f}%; discounted at the COE ANCHOR {coe_anchor_pct:.2f}%. "
-                        f"A Base IV more than a quarter away from it (below 0.75x or above 1.33x) needs "
-                        f"guidance_deviation_reason.")
-                else:
-                    L.append(f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_ref['reason']}")
+                    _med / 100.0 if isinstance(_med, (int, float)) else None,
+                    da=_ref_da if isinstance(_ref_da, (int, float)) else None,
+                    capex=_ref_capex if isinstance(_ref_capex, (int, float)) else None)
+                L.append(consensus_reference.pack_line(_ref, _ref_oe, _coe or 0.0, terminal_g_val or 0.0, _b))
         if _civ_na and asof_date is None:
             L.append(f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}")
         if en:

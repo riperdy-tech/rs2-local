@@ -133,3 +133,49 @@ def test_the_medoid_summary_and_the_verdict_carry_the_ratios():
            "median_iv": 380.0, "runs": runs, "scorecard": dict(summary, invalidation_rules=[])}
     v = dp.band_verdict(doc)
     assert {k: v.get(k) for k in stamp} == stamp
+
+
+MU_EST = {"0y": {"revenue": {"analysts": 30, "growth": 2.4782},
+                 "eps": {"avg": 73.57183, "analysts": 30, "growth": 7.8748, "year_ago": 8.29}},
+          "+1y": {"revenue": {"analysts": 30, "growth": 0.908},
+                  "eps": {"avg": 159.12122, "analysts": 30, "growth": 1.1628, "year_ago": 73.57183}}}
+LIND_EST = {"0y": {"revenue": {"analysts": 6, "growth": 0.1334},
+                   "eps": {"avg": 0.18083, "analysts": 6, "growth": 4.4444, "year_ago": -0.0525}},
+            "+1y": {"revenue": {"analysts": 6, "growth": 0.1025},
+                    "eps": {"avg": 0.56485, "analysts": 6, "growth": 2.1237, "year_ago": 0.18083}}}
+
+
+def test_mu_trough_uses_consensus_eps_levels():
+    """Fable check: MU's +787% is a trough recovery, not a growth rate; levels are well defined."""
+    r = cref.build(5e9, MU_EST, 0.10, 0.0375, 1.12e9, 0.12, da=8e9, capex=14e9)
+    assert r["method"] == "levels" and r["value"] and r["value"] > 0
+    assert r["flows"][0] == 73.57183 * 1.12e9 + 8e9 - 14e9
+    assert r["flows"][1] == 159.12122 * 1.12e9 + 8e9 - 14e9
+    line = cref.pack_line(r, 5e9, 0.10, 0.0375, lambda v: f"${v / 1e9:.3f}B")
+    assert line.startswith("- [Arithmetic] CONSENSUS-IMPLIED VALUE (reference, not a forecast): $")
+    assert "Consensus EPS growth is unusable (EPS growth +787% for 0y is off a trough" in line
+
+
+def test_lind_negative_base_uses_levels_and_the_harness_reads_it():
+    r = cref.build(-2e7, LIND_EST, 0.11, 0.0375, 5.5e7, 0.08, da=6e7, capex=5e7)
+    assert r["method"] == "levels" and r["value"] > 0
+    line = cref.pack_line(r, -2e7, 0.11, 0.0375, lambda v: f"${v / 1e9:.3f}B")
+    civ, _ = cv._pack_reference(line)
+    assert civ == round(r["value"], 2)
+
+
+def test_levels_need_a_positive_next_year_and_the_inputs():
+    bad = {k: {"eps": dict(v["eps"], avg=-0.5)} for k, v in LIND_EST.items()}
+    r = cref.build(1e7, bad, 0.11, 0.0375, 5.5e7, 0.08, da=6e7, capex=5e7)
+    assert r["value"] is None and "no positive next-FY EPS level" in r["reason"]
+    r = cref.build(1e7, LIND_EST, 0.11, 0.0375, 5.5e7, 0.08)            # no D&A / capex
+    assert r["value"] is None and "D&A or capex missing" in r["reason"]
+
+
+def test_no_revenue_estimate_fades_from_the_median_not_from_eps_growth():
+    """Fable check: FSM has no next-FY revenue estimate; the old fallback started the fade at EPS
+    growth, the more generous choice exactly when data was thinner."""
+    est = {"0y": {"eps": {"analysts": 5, "growth": 1.1183, "year_ago": 0.66}},
+           "+1y": {"eps": {"analysts": 5, "growth": 0.2668, "year_ago": 1.398}}}
+    r = cref.build(4e8, est, 0.10, 0.0375, 3.07e8, 0.08)
+    assert r["method"] == "growth" and [round(g, 4) for g in r["path"][2:]] == [0.08, 0.08, 0.08]
