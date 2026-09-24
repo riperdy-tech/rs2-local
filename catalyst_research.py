@@ -355,73 +355,101 @@ def run(ticker: str, force: bool = False) -> dict:
 _run_live = run
 
 
+# Rendered brief cap. E9 first said 3,000 characters, set before any real brief existed. The first
+# real one (AMD, 2026-09-24) rendered 5,400 characters, 4,300 of them outside the mechanisms, so
+# 3,000 could only be met by cutting the mechanisms to nothing - and the mechanism is the reason the
+# brief exists (AMD's Muse -> EPYC CPU link sits in one). 5,000 characters is about 1,300 tokens
+# in a ~30k-character pack and a 49k-token window.
+BRIEF_CAP = 5000
+
+# What gets cut when a brief is over the cap, least useful to the valuation first. Each tier
+# shortens the longest texts in its group, never below the group's floor. The last tier is a
+# safety net for pathological briefs (many events, very long fields).
+_CUT_ORDER = (
+    (("open_questions",), 60),
+    (("narrative", "bear_narrative"), 250),
+    (("event", "estimates_moved"), 80),
+    (("mechanism",), 150),
+    (("open_questions", "narrative", "bear_narrative", "event", "estimates_moved", "mechanism"), 20),
+)
+
+
+def _fit(texts: list[str], budget: int, floor: int) -> list[str]:
+    """Shorten the longest texts first so the total fits `budget`, none below `floor` characters.
+
+    The cut level is found by bisection over a bounded range, so this always terminates. (The
+    trim loop it replaces re-appended "..." to what it cut, stopped shrinking at ~18 characters
+    and spun forever on AMD's brief.) Returns the texts unchanged when they already fit; when
+    even `floor` does not fit, every text is cut to `floor`.
+    """
+    if not texts or sum(len(t) for t in texts) <= budget:
+        return list(texts)
+    lo, hi = floor, max(len(t) for t in texts)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if sum(min(len(t), mid) for t in texts) <= budget:
+            lo = mid
+        else:
+            hi = mid - 1
+    return [t if len(t) <= lo else t[:max(lo - 1, 0)].rstrip() + "…" for t in texts]
+
+
 def render(brief: dict | None) -> list[str]:
-    """Render catalyst brief to pack markdown lines (<= 3,000 chars). Truncate mechanisms first."""
+    """Render the catalyst brief as pack lines, at most BRIEF_CAP characters, every event kept.
+
+    Over the cap, text is cut in _CUT_ORDER: open questions first, mechanisms last.
+    """
     if not brief or brief.get("error"):
         reason = brief.get("error") if brief and brief.get("error") else "not available"
         return [f"## CATALYST BRIEF   [not available — {reason}]"]
 
-    asof = brief.get("asof") or "unknown"
+    asof = str(brief.get("asof") or "unknown")[:10]
     pages_read = brief.get("pages_read", 0)
-    narrative = brief.get("narrative") or ""
-    bear_narrative = brief.get("bear_narrative") or ""
-    events = brief.get("events") or []
-    open_questions = brief.get("open_questions") or []
     flags = brief.get("flags") or []
 
     hdr = f"## CATALYST BRIEF   [discovery run by the analyst model on {asof}; {pages_read} pages read; claims from third-party sources, not verified facts — events marked (unverified) cite no page the run read]"
-    line_bull = f"- What the price is betting on: {narrative}"
-    line_bear = f"- Strongest bear argument: {bear_narrative}"
+    flags_line = f"- Flags: {', '.join(str(f) for f in flags)}" if flags else None
 
-    # Build initial event lines
-    event_data = []
-    for e in events:
+    # Fixed-width parts of each event line are bounded here so only the cuttable texts can grow.
+    skel = []
+    texts = {"narrative": [str(brief.get("narrative") or "")],
+             "bear_narrative": [str(brief.get("bear_narrative") or "")],
+             "event": [], "mechanism": [], "estimates_moved": [],
+             "open_questions": [str(q) for q in (brief.get("open_questions") or [])]}
+    for e in brief.get("events") or []:
         if not isinstance(e, dict):
             continue
-        d = e.get("date") or "undated"
-        dirn = e.get("direction") or "unknown"
-        ev = e.get("event") or ""
-        mech = e.get("mechanism") or ""
-        est_m = e.get("estimates_moved") or "no visible change"
-        dom = extract_domain(e.get("source_url") or "")
-        unv = "" if e.get("verified") else " (unverified)"
-        event_data.append({
-            "date": d, "direction": dirn, "event": ev, "mechanism": mech,
-            "estimates_moved": est_m, "domain": dom, "unverified": unv,
-        })
+        skel.append({"date": str(e.get("date") or "undated")[:10],
+                     "direction": str(e.get("direction") or "unknown")[:8],
+                     "domain": extract_domain(e.get("source_url") or "")[:40],
+                     "unverified": "" if e.get("verified") else " (unverified)"})
+        texts["event"].append(str(e.get("event") or ""))
+        texts["mechanism"].append(str(e.get("mechanism") or ""))
+        texts["estimates_moved"].append(str(e.get("estimates_moved") or "no visible change"))
 
-    oq_line = f"- Open questions: {'; '.join(str(q) for q in open_questions)}"
-    flags_line = f"- Flags: {', '.join(flags)}" if flags else None
-
-    def _assemble(mechs):
-        lines = [hdr, line_bull, line_bear]
-        for ed, m in zip(event_data, mechs):
-            lines.append(
-                f"- {ed['date']} | {ed['direction']} | {ed['event']} — {m} (estimates: {ed['estimates_moved']}) [{ed['domain']}]{ed['unverified']}"
-            )
-        lines.append(oq_line)
+    def _assemble(tx):
+        lines = [hdr,
+                 f"- What the price is betting on: {tx['narrative'][0]}",
+                 f"- Strongest bear argument: {tx['bear_narrative'][0]}"]
+        for i, s in enumerate(skel):
+            lines.append(f"- {s['date']} | {s['direction']} | {tx['event'][i]} — {tx['mechanism'][i]} "
+                         f"(estimates: {tx['estimates_moved'][i]}) [{s['domain']}]{s['unverified']}")
+        lines.append(f"- Open questions: {'; '.join(tx['open_questions']) or 'none'}")
         if flags_line:
             lines.append(flags_line)
         return lines
 
-    mechs = [ed["mechanism"] for ed in event_data]
-    lines = _assemble(mechs)
-
-    # Check total characters and truncate mechanism if > 3000
-    total_len = len("\n".join(lines))
-    if total_len > 3000 and mechs:
-        excess = total_len - 3000
-        # Reduce mechanisms iteratively
-        while len("\n".join(lines)) > 3000:
-            max_idx = max(range(len(mechs)), key=lambda i: len(mechs[i]))
-            if len(mechs[max_idx]) <= 15:
-                break
-            # Trim longest mechanism
-            curr = mechs[max_idx]
-            trim_amount = min(50, len(curr) - 15)
-            mechs[max_idx] = curr[:-trim_amount].rstrip() + "..."
-            lines = _assemble(mechs)
-
+    lines = _assemble(texts)
+    for keys, floor in _CUT_ORDER:
+        excess = len("\n".join(lines)) - BRIEF_CAP
+        if excess <= 0:
+            break
+        group = [t for k in keys for t in texts[k]]
+        fitted = _fit(group, sum(len(t) for t in group) - excess, floor)
+        for k in keys:
+            n = len(texts[k])
+            texts[k], fitted = fitted[:n], fitted[n:]
+        lines = _assemble(texts)
     return lines
 
 

@@ -256,8 +256,19 @@ def test_flags_at_edges(monkeypatch, tmp_path):
     assert "recent_move_unexplained" not in b_44d["flags"]
 
 
-def test_render_under_3000_chars_and_keeps_all_events():
-    """Render must stay <= 3,000 chars by truncating mechanism text first, and never drop events."""
+def _render_with_deadline(brief, seconds=10):
+    """render() in a daemon thread, so a regression to an endless loop fails instead of hanging."""
+    import threading
+    out = {}
+    th = threading.Thread(target=lambda: out.setdefault("lines", cr.render(brief)), daemon=True)
+    th.start()
+    th.join(seconds)
+    assert not th.is_alive(), f"render() did not finish within {seconds}s"
+    return out["lines"]
+
+
+def test_render_fits_cap_and_keeps_all_events():
+    """Over-long mechanisms are cut to fit BRIEF_CAP and no event is dropped."""
     events = []
     for i in range(5):
         events.append({
@@ -278,13 +289,83 @@ def test_render_under_3000_chars_and_keeps_all_events():
         "open_questions": ["Question 1", "Question 2"],
         "flags": ["flag_a", "flag_b"],
     }
-    rendered = cr.render(brief)
+    rendered = _render_with_deadline(brief)
     full_text = "\n".join(rendered)
-    assert len(full_text) <= 3000
+    assert len(full_text) <= cr.BRIEF_CAP
 
     # Ensure every single event is retained
     for i in range(5):
         assert f"Major industry event {i}" in full_text
+
+
+def _amd_shaped_brief():
+    """Field sizes of the first real brief (AMD, 2026-09-24): the old renderer never returned on it."""
+    events = []
+    for i, (ev_len, mech_len) in enumerate([(275, 233), (452, 246), (216, 310), (235, 269)]):
+        events.append({
+            "date": f"2026-0{7 + i // 2}-1{i}",
+            "direction": "bear" if i == 3 else "bull",
+            "event": (f"EVENT{i} " + "e" * ev_len)[:ev_len],
+            "mechanism": (f"MECH{i}-START " + "m" * mech_len)[:mech_len - 8] + f" END{i}ME",
+            "estimates_moved": "estimates rose about 18% over 90 days, 33 up and 3 down revisions " + "x" * 40,
+            "source_url": f"https://www.example{i}.com/news/article-{i}",
+            "verified": True,
+        })
+    return {
+        "asof": "2026-09-24", "pages_read": 4,
+        "narrative": "N" * 679, "bear_narrative": "B" * 405, "events": events,
+        "open_questions": [f"OQ{i} " + "q" * n for i, n in enumerate([258, 185, 206, 206, 153, 224])],
+        "flags": [],
+    }
+
+
+def test_render_amd_shaped_brief_returns_and_cuts_open_questions_before_mechanisms():
+    """Regression: the AMD brief hung the old renderer. Now it fits, with every mechanism whole."""
+    brief = _amd_shaped_brief()
+    full_text = "\n".join(_render_with_deadline(brief))
+    assert len(full_text) <= cr.BRIEF_CAP
+    for e in brief["events"]:
+        assert e["mechanism"] in full_text          # mechanisms untouched
+    assert "N" * 679 in full_text and "B" * 405 in full_text   # narrative and bear untouched
+    oq_line = next(l for l in full_text.splitlines() if l.startswith("- Open questions:"))
+    assert "…" in oq_line                           # the open questions took the cut
+    for i in range(6):
+        assert f"OQ{i}" in oq_line                  # but each question is still named
+
+
+def test_render_pathological_brief_fits_and_keeps_every_event():
+    """Twelve events with huge fields: the cut reaches every tier and still keeps all events."""
+    events = [{"date": f"2026-09-{i + 10}", "direction": "bull", "event": f"EV{i:02d} " + "e" * 2000,
+               "mechanism": f"MC{i:02d} " + "m" * 2000, "estimates_moved": "s" * 2000,
+               "source_url": f"https://site{i}.com/a", "verified": i % 2 == 0} for i in range(12)]
+    brief = {"asof": "2026-09-24", "pages_read": 12, "narrative": "n" * 5000, "bear_narrative": "b" * 5000,
+             "events": events, "open_questions": ["q" * 3000] * 5, "flags": ["recent_move_unexplained"]}
+    full_text = "\n".join(_render_with_deadline(brief))
+    assert len(full_text) <= cr.BRIEF_CAP
+    for i in range(12):
+        assert f"EV{i:02d}" in full_text and f"MC{i:02d}" in full_text
+    assert "(unverified)" in full_text and "- Flags: recent_move_unexplained" in full_text
+
+
+def test_render_short_brief_is_untouched():
+    brief = _amd_shaped_brief()
+    brief["open_questions"] = ["Is the Q3 guide conservative?"]
+    brief["narrative"], brief["bear_narrative"] = "Short bull.", "Short bear."
+    full_text = "\n".join(cr.render(brief))
+    assert "…" not in full_text
+    assert "- Open questions: Is the Q3 guide conservative?" in full_text
+    assert "- Open questions: none" in "\n".join(cr.render(dict(brief, open_questions=[])))
+
+
+def test_fit_cuts_longest_first_and_respects_budget_and_floor():
+    texts = ["a" * 100, "b" * 40, "c" * 10]
+    out = cr._fit(texts, 90, 5)
+    assert sum(len(t) for t in out) <= 90
+    assert out[2] == "c" * 10                        # short text below the cut level untouched
+    assert out[0].endswith("…") and len(out[0]) <= 40
+    assert cr._fit(texts, 1000, 5) == texts          # already fits: unchanged
+    floor_only = cr._fit(texts, 3, 20)               # budget impossible: everything at the floor
+    assert [len(t) for t in floor_only] == [20, 20, 10]
 
 
 def test_render_error():
