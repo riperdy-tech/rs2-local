@@ -165,7 +165,12 @@ TIMEOUT = 14400
 #   investments); the TASK pins the share count, net debt and bull/bear years 1-2; the contract
 #   gains shares_basis, shares_reason, net_debt_reason, scenario_deviation_reason; RECENT COMPANY
 #   NEWS carries the opening text of the top stories (E11).
-PACK_REVISION = 8
+# Revision 9 (Phase 4 E13, 2026-09-25): SECTION 1.5 prints the DEFAULT EXIT MULTIPLE (the net
+#   capitalization rate at the anchors) and the desk returns the terminal growth an exit multiple
+#   implies; the equity frame is the default, because every flow the pack prints is after interest
+#   and the pack anchors a cost of equity; the firm frame needs interest_addback and wacc_reason;
+#   the contract gains terminal_multiple_reason, interest_addback and wacc_reason.
+PACK_REVISION = 9
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -256,6 +261,22 @@ REVIEWED_HISTORY_KEYS = frozenset({
     "borrowings_total", "st_investments", "lt_investments",
     "pretax_income", "tax_provision",
 })
+
+
+def _default_exit_multiple_line(coe_anchor_pct, terminal_g):
+    """Phase 4 E13: the exit multiple consistent with the anchors, (1 + g) / (COE - g). The desk
+    fades the flow to terminal_g before the terminal, so any other multiple asserts another g."""
+    if coe_anchor_pct is None or terminal_g is None or coe_anchor_pct / 100.0 <= float(terminal_g):
+        return ("- DEFAULT EXIT MULTIPLE: not available (an anchor is missing); the desk prints "
+                "implied_terminal_ev_fcf_gordon at your rate.")
+    r, g = coe_anchor_pct / 100.0, float(terminal_g)
+    return (f"- [Arithmetic] DEFAULT EXIT MULTIPLE (net capitalization rate at the anchors): "
+            f"(1 + {g * 100:.2f}%) / ({r * 100:.2f}% \u2212 {g * 100:.2f}%) = {(1 + g) / (r - g):.2f}\u00d7 "
+            f"the final-year cash flow: the multiple consistent with the terminal_g anchor. At another "
+            f"rate (the Bear's wider rate) the desk prints the scenario's own as "
+            f"implied_terminal_ev_fcf_gordon. A multiple whose implied terminal growth "
+            f"(exit_implied_terminal_g) is more than 0.5 points from the anchor needs "
+            f"terminal_multiple_reason.")
 
 
 def _schema_drift(sources):
@@ -1170,6 +1191,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
                  "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not "
                  "force artificial multiple caps.")
+        L.append(_default_exit_multiple_line(coe_anchor_pct, terminal_g_val))
         L.append("")
 
         macro_degraded = bool(
@@ -1444,6 +1466,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         # on a headline margin as thin as 0.044.
         L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
                  "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.")
+        L.append(_default_exit_multiple_line(coe_anchor_pct, terminal_g_val))
         L.append("")
 
         macro_degraded = bool(
@@ -1833,7 +1856,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             oe = ni + da - capex
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
-            L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Use this as base_cf unless base_cf_reason states why another base is more representative.")
+            L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Net income is after interest, so this is an equity flow: value it in the equity frame. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
                 gap = ocf - denom
@@ -1898,10 +1921,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             oe = ni + da - capex
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
-            L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Use this as base_cf unless base_cf_reason states why another base is more representative.")
+            L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Net income is after interest, so this is an equity flow: value it in the equity frame. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             _sbc_fy = (h.get(str(latest_yr)) or {}).get("sbc") if latest_yr is not None else None
             if isinstance(ocf, (int, float)) and isinstance(_sbc_fy, (int, float)):
-                L.append(f"- [Arithmetic] CASH BASIS (alternative base_cf): TTM operating cash flow {_b(ocf)} \u2212 TTM capex {_b(capex)} \u2212 stock compensation (FY{latest_yr}) {_b(_sbc_fy)} = {_b(ocf - capex - _sbc_fy)}. Includes working-capital swings; declare base_cf_basis \"other\" with base_cf_reason if you use it.")
+                L.append(f"- [Arithmetic] CASH BASIS (alternative base_cf): TTM operating cash flow {_b(ocf)} \u2212 TTM capex {_b(capex)} \u2212 stock compensation (FY{latest_yr}) {_b(_sbc_fy)} = {_b(ocf - capex - _sbc_fy)}. Includes working-capital swings and, like every flow here, is after interest; declare base_cf_basis \"other\" with base_cf_reason if you use it.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
                 gap = ocf - denom
@@ -2068,12 +2091,16 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             net_liq = cash_val + _sti - effective_debt
             net_desc = f"Net Cash +{_b(net_liq)}" if net_liq >= 0 else f"Net Debt -{_b(abs(net_liq))}"
             L.append(f"- Net Liquidity Position: **{net_desc}** (Cash + short-term investments minus Total Debt)")
-            # E12: one filed figure, used as net_debt in the firm frame (four samples had used four)
+            # E12: one filed figure, used as net_debt in the firm frame (four samples had used four).
+            # E13: the equity frame is the default; the firm frame needs a pre-interest flow.
             _sti_txt = _b(sti_val) if isinstance(sti_val, (int, float)) else "$0.000B (none filed)"
-            L.append(f"- [Arithmetic] NET DEBT (default net_debt for the firm frame): total debt "
+            L.append(f"- [Arithmetic] NET DEBT (net_debt for the firm frame, which needs a pre-interest flow): total debt "
                      f"{_b(effective_debt)} \u2212 cash {_b(cash_val)} \u2212 short-term investments "
                      f"{_sti_txt} = {'-' if net_liq > 0 else ''}{_b(abs(net_liq))} (negative = net cash). "
-                     f"Use it as net_debt in the firm frame unless net_debt_reason says why.")
+                     f"The equity frame (the default) takes no net_debt: the pack's flows are after interest, "
+                     f"so the debt's cost is already in them, and cash counts through the interest it earns "
+                     f"(which understates a very large cash pile; say so if it matters). In the firm frame use "
+                     f"it as net_debt unless net_debt_reason says why.")
         L.append("")
 
         # 6A: Working Capital & Operating Assets (8 columns, clean and focused)
@@ -2587,6 +2614,8 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
   * Explain The Recent Move First: start from the CATALYST BRIEF, RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions. For each development say whether you accept or dispute it and why, and how it enters your Bull, Base and Bear numbers; add any development you find yourself and fetch the articles you rely on. Record them in `catalysts`.
   * Scenarios Anchored To Expectations: Stage-1 growth rates are growth of the CASH FLOW you value (base_cf), not of revenue: revenue growth leaves out margin change. Base years 1-2 start from SECTION 8's consensus EPS growth (current FY, then next FY) or the company's guidance converted to earnings growth; if consensus EPS growth is unusable (a negative base, or a recovery off a trough above +150%), use revenue growth plus your stated margin path and say so in guidance_deviation_reason. From year 3 growth follows revenue again: fade from next-FY consensus revenue growth toward the GROWTH BASE RATES median by year 5; anything above its p90 needs the MANDATE's dated evidence. When SECTION 8 shows 3 or more analysts for next FY, Bull and Bear years 1-2 follow the consensus EPS high and low path: cumulative growth over years 1-2 reaches next-FY EPS high (low) from last FY's EPS; say why in scenario_deviation_reason if not. With fewer analysts there is no consensus range: state your own Bull and Bear years 1-2 and why. SECTION 8's CONSENSUS-IMPLIED VALUE is what the consensus path is worth at our discount rate; a Base IV more than a quarter away from it needs guidance_deviation_reason. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
   * Share Count And Net Debt: Use SECTION 2's share count in every scenario. A contingent instrument (warrants or earn-outs that vest on milestones) may be added only in the scenarios where it vests (pass shares_diluted per scenario), with shares_basis "diluted_plus_contingent" and shares_reason naming the instrument and its vesting condition; never in a scenario whose premise is that it does not vest. In the firm frame use SECTION 6's NET DEBT as net_debt unless net_debt_reason says why.
+  * Valuation Frame: Use the equity frame (valuation_frame "equity", rate_type "cost_of_equity", no net_debt). Every flow this pack prints (OWNER EARNINGS, CASH BASIS, owner CF, FCF) is after interest, an equity flow, and SECTION 1.5 anchors a cost of equity, not a WACC. The firm frame is the exception and needs all three of: a pre-interest flow (add back after-tax interest expense from SECTION 5 and give the amount in interest_addback, in $B); a WACC built from the COE ANCHOR, a cost of debt from filed interest over debt, a tax rate and weights from SECTION 6, stated in wacc_reason; and SECTION 6's NET DEBT. An after-interest flow in the firm frame counts the debt twice.
+  * Terminal Multiple: The exit multiple defaults to SECTION 1.5's DEFAULT EXIT MULTIPLE (at a scenario's other rate, the desk's implied_terminal_ev_fcf_gordon for that scenario): the flow has already faded to terminal_g, so any other multiple asserts another terminal growth. The desk returns it as exit_implied_terminal_g; if it is more than 0.5 points from the terminal_g anchor, give terminal_multiple_reason with dated peer EV/FCF evidence. A P/E ratio is not an EV/FCF multiple, and this pack holds no EV/FCF peer data.
   * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
 
 Produce the full report, SECTION 0 through SECTION 12, following the mandatory institutional memorandum structure. End with SECTION 12 Final Execution Opinion and the validated JSON contract:
@@ -2606,6 +2635,9 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "shares_reason": "<string or null — required when any scenario's share count differs from SECTION 2's: the instrument and its vesting condition>",
   "net_debt_reason": "<string or null — required when the firm frame's net_debt differs from SECTION 6's NET DEBT>",
   "scenario_deviation_reason": "<string or null — required when Bull or Bear years 1-2 leave the consensus EPS high/low path>",
+  "terminal_multiple_reason": "<string or null — required when an exit multiple's implied terminal growth is more than 0.5 points from the terminal_g anchor: the dated peer EV/FCF evidence>",
+  "interest_addback": <float or null — firm frame only: the after-tax interest expense in $B added to the after-interest flow>,
+  "wacc_reason": "<string or null — firm frame only: the COE ANCHOR, the cost of debt (filed interest / debt), the tax rate and the weights behind your WACC>",
   "base_cf_used": <float, in $B, the base cash flow you actually used for the Base Case>,
   "base_cf_basis": "<owner_earnings_default | latest_fy | multi_year_avg | ttm_fcf | other — which base that figure is>",
   "base_cf_reason": "<string or null — required when base_cf_basis is not owner_earnings_default: why that base is more representative>",
@@ -2621,7 +2653,7 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "coe_used": <float, decimal cost of equity/capital you actually used in run_financial_model, e.g. 0.0936>,
   "coe_source": "<anchor | anchor_adjusted | own — anchor/anchor_adjusted when coe_used is within +-150bp of SECTION 1.5's COE ANCHOR, own otherwise>",
   "coe_adjustment_reason": "<string, required when coe_source is not \"anchor\" — why coe_used departs from the anchor>",
-  "valuation_frame": "<equity | firm — equity discounts FCFE at cost of equity with net_debt refused; firm discounts FCFF at true WACC and requires net_debt + shares_diluted>",
+  "valuation_frame": "<equity | firm — equity (the default) discounts the pack's after-interest flows at the cost of equity with net_debt refused; firm discounts a pre-interest flow (interest_addback) at a WACC built from the COE ANCHOR (wacc_reason) and requires SECTION 6's NET DEBT + shares_diluted>",
   "terminal_method": "<gordon | exit_multiple | dual_reconciled>",
   "terminal_multiple_or_g": <float — the terminal growth rate (decimal) or exit multiple actually used>,
   "fade_years": <integer >= 0 — length of the Stage-2 linear fade to terminal_g, as passed to run_financial_model>,

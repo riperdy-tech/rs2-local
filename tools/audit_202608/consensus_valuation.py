@@ -180,6 +180,10 @@ def extract_scorecard(report, price):
         "shares_reason": None,
         "net_debt_reason": None,
         "scenario_deviation_reason": None,
+        # E13 (pack revision 9): terminal multiple and valuation frame
+        "terminal_multiple_reason": None,
+        "interest_addback": None,
+        "wacc_reason": None,
         # Harness-filled per sample from tool snapshot (not declared by model)
         "desk_calls": None,
         "desk_iv_match": None,
@@ -642,7 +646,9 @@ def select_medoid_scorecard(
                                            "bull_shares_ratio", "bear_shares_ratio", "desk_frame",
                                            "desk_net_debt", "shares_basis", "shares_reason",
                                            "net_debt_reason", "scenario_deviation_reason",
-                                           "bull_bear_anchor")},
+                                           "bull_bear_anchor", "base_exit_g_gap_bp", "bull_exit_g_gap_bp",
+                                           "bear_exit_g_gap_bp", "base_exit_to_gordon_multiple",
+                                           "terminal_multiple_reason", "interest_addback", "wacc_reason")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -914,11 +920,63 @@ def _pack_shares_b(pack_text):
 
 def _pack_net_debt_b(pack_text):
     """SECTION 6's NET DEBT default in $B (negative = net cash), or None."""
-    m = re.search(r"NET DEBT \(default net_debt for the firm frame\):[^\n]*?= (-?)\$(-?[\d.,]+)B", pack_text or "")
+    m = re.search(r"NET DEBT \((?:default )?net_debt for the firm frame[^)]*\):[^\n]*?= (-?)\$(-?[\d.,]+)B", pack_text or "")
     if not m:
         return None
     v = float(m.group(2).replace(",", ""))
     return -abs(v) if m.group(1) or m.group(2).startswith("-") else v
+
+
+def _fnum(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pack_terminal_g(pack_text):
+    """SECTION 1.5's terminal_g anchor as a decimal, or None."""
+    m = re.search(r"Long-run nominal growth anchor for terminal_g:\s*([\d.]+)%", pack_text or "")
+    return float(m.group(1)) / 100.0 if m else None
+
+
+def _pack_interest_expense_b(pack_text):
+    """The latest filed interest expense in SECTION 5's fiscal-year table, in $B, or None."""
+    lines = (pack_text or "").splitlines()
+    for i, ln in enumerate(lines):
+        if ln.startswith("| FY |") and "interest expense" in ln:
+            cols = [c.strip() for c in ln.strip().strip("|").split("|")]
+            k = cols.index("interest expense")
+            val = None
+            for row in lines[i + 2:]:
+                if not row.startswith("|"):
+                    break
+                cells = [c.strip() for c in row.strip().strip("|").split("|")]
+                m = re.match(r"\$(-?[\d.,]+)B", cells[k]) if len(cells) > k else None
+                if m:
+                    val = float(m.group(1).replace(",", ""))
+            return val
+    return None
+
+
+def _desk_terminal(d, close):
+    """E13: which terminal leg a published value came from, with the multiple and rate behind it."""
+    ex = (d.get("exit_multiple_terminal") or {}).get("exit_multiple")
+    exit_hit = bool(ex) and d.get("per_share_iv_exit") is not None and close(d.get("per_share_iv_exit"))
+    return {"leg": "exit" if exit_hit else ("gordon" if close(d.get("per_share_iv_gordon")) else None),
+            "exit_multiple": ex, "gordon_multiple": d.get("implied_terminal_ev_fcf_gordon"),
+            "terminal_g": d.get("terminal_g"), "rate": d.get("discount_rate_applied")}
+
+
+def _rate_of(inp, dt):
+    """The discount rate behind a desk scenario: the desk's own record, the call's inputs, or the
+    rate the Gordon multiple implies, M = (1 + g) / (r - g), for calls recorded before E13."""
+    for v in (dt.get("rate"), inp.get("wacc"), inp.get("discount_rate")):
+        x = _fnum(v)
+        if x is not None:
+            return x / 100.0 if x > 1.0 else x
+    g, m = _fnum(dt.get("terminal_g")), _fnum(dt.get("gordon_multiple"))
+    return (1.0 + g) / m + g if g is not None and m else None
 
 
 def _desk_scenario_inputs(calls, target_iv, role=None):
@@ -941,7 +999,8 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
         params = c.get("params") or {}
         res = c.get("result") if isinstance(c.get("result"), dict) else c
         top = {k: params.get(k) for k in ("explicit_growth", "growth_rates", "shares_diluted", "net_debt",
-                                          "valuation_frame", "discount_rate", "wacc", "base_cf")}
+                                          "valuation_frame", "discount_rate", "wacc", "base_cf",
+                                          "terminal_exit_multiple", "terminal_g")}
         scs = res.get("scenario_dcfs") or res.get("scenarios") or []
         scs = scs if isinstance(scs, list) else []
         if role:
@@ -964,6 +1023,7 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
                 if applied:
                     out["explicit_growth"] = applied
                 out["name"] = sc.get("name")
+                out["_desk"] = _desk_terminal(d, close)
                 return out
         d = res.get("dcf_model") or {}
         if isinstance(d, dict) and any(close(d.get(k)) for k in ("per_share_iv", "per_share_iv_gordon",
@@ -971,6 +1031,7 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
             out = dict(top)
             if d.get("explicit_growth"):
                 out["explicit_growth"] = d["explicit_growth"]
+            out["_desk"] = _desk_terminal(d, close)
             return out
     return None
 
@@ -990,8 +1051,10 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         calls = []
     stamps = {"bull_years12_ratio": None, "bear_years12_ratio": None, "base_shares_ratio": None,
               "bull_shares_ratio": None, "bear_shares_ratio": None, "desk_frame": None, "desk_net_debt": None,
-              "bull_bear_anchor": None}
+              "bull_bear_anchor": None, "base_exit_g_gap_bp": None, "bull_exit_g_gap_bp": None,
+              "bear_exit_g_gap_bp": None, "base_exit_to_gordon_multiple": None}
     flags = []
+    g_anchor = _pack_terminal_g(pack_text)
     pack_sh = _pack_shares_b(pack_text)
     est = (enrich_data or {}).get("estimates") or {}
     e0, e1 = (est.get("0y") or {}).get("eps") or {}, (est.get("+1y") or {}).get("eps") or {}
@@ -1021,10 +1084,36 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         if role == "base":
             stamps["desk_frame"] = inp.get("valuation_frame")
             stamps["desk_net_debt"] = _num_b(inp.get("net_debt"))
+        # E13: the terminal growth a published exit leg asserts, at this scenario's own rate, against
+        # the anchor (the call's own terminal_g when the pack has none)
+        dt = inp.get("_desk") or {}
+        if dt.get("leg") == "exit" and _fnum(dt.get("exit_multiple")):
+            m_x = _fnum(dt["exit_multiple"])
+            g_ref = g_anchor if g_anchor is not None else _fnum(dt.get("terminal_g"))
+            r = _rate_of(inp, dt)
+            if g_ref is not None and r is not None:
+                stamps[f"{role}_exit_g_gap_bp"] = round(((m_x * r - 1.0) / (m_x + 1.0) - g_ref) * 10000)
+            if role == "base" and _fnum(dt.get("gordon_multiple")):
+                stamps["base_exit_to_gordon_multiple"] = round(m_x / _fnum(dt["gordon_multiple"]), 3)
 
     def _has(field):
         v = str(sc.get(field) or "").strip()
         return bool(v) and v.lower() not in ("null", "none")
+
+    gap = stamps["base_exit_g_gap_bp"]
+    if gap is not None and abs(gap) > 50 and not _has("terminal_multiple_reason"):
+        flags.append("exit_multiple_off_default_without_reason")
+    # E13 (f): the equity frame is the default; a firm frame needs a pre-interest flow and a WACC build
+    if stamps["desk_frame"] == "firm":
+        addback = _num_b(sc.get("interest_addback"))
+        if not addback or addback <= 0:
+            flags.append("firm_frame_on_equity_flow")
+        else:
+            filed = _pack_interest_expense_b(pack_text)
+            if filed is not None and addback > filed * 1.01:
+                flags.append("interest_addback_above_filed")
+        if not _has("wacc_reason"):
+            flags.append("firm_frame_without_wacc_reason")
 
     ratios = [stamps[f"{r}_shares_ratio"] for r in ("base", "bull", "bear") if stamps[f"{r}_shares_ratio"]]
     if any(abs(r - 1) > 0.01 for r in ratios) and not _has("shares_reason"):

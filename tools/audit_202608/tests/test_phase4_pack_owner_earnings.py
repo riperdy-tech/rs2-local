@@ -19,6 +19,7 @@ def test_owner_earnings_arithmetic_on_fixture(screener_data_stub):
         'D&A (FY2025) $0.853B \u2212 TTM capex $1.701B = $8.681B. '
         'Stock compensation is already expensed in net income, so it is counted once '
         '(sbc_treatment "deducted_in_cf"); working-capital swings are excluded. '
+        'Net income is after interest, so this is an equity flow: value it in the equity frame. '
         'Use this as base_cf unless base_cf_reason states why another base is more representative.'
     )
     assert expected in pack

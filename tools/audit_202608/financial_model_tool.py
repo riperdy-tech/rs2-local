@@ -247,7 +247,12 @@ def unbundled_dcf(
         per_share_iv_exit = eq_exit / effective_shares
         tv_share_exit = (tv_pv_exit / ev_exit) if ev_exit > 0 else 0.0
         implied_terminal_ev_fcf_exit = exit_mult
+        # Phase 4 E13: the terminal growth this multiple asserts at this rate, g = (M*r - 1) / (M + 1).
+        # The flow has already faded to terminal_g, so any other multiple states another growth
+        # (FIX s2: 16x at 8.98% implies 2.57% against the 3.75% anchor).
+        exit_implied_terminal_g = (exit_mult * rate - 1.0) / (exit_mult + 1.0)
     else:
+        exit_implied_terminal_g = None
         exit_mult = None
         tv_nominal_exit = None
         tv_pv_exit = None
@@ -307,6 +312,7 @@ def unbundled_dcf(
         "shares_diluted": round(effective_shares, 4),
         "valuation_frame": frame,
         "rate_type": rate_type_norm,
+        "discount_rate_applied": round(rate, 4),
         "gordon_terminal": {
             "per_share_iv": round(per_share_iv_gordon, 2),
             "terminal_value_nominal": round(tv_nominal_gordon, 2),
@@ -330,8 +336,10 @@ def unbundled_dcf(
             "equity_value": round(eq_exit, 2),
             "terminal_share_of_value": round(tv_share_exit, 4),
             "exit_multiple": exit_mult,
+            "implied_terminal_g": round(exit_implied_terminal_g, 4),
             "in_band": exit_in_band,
         }
+        res["exit_implied_terminal_g"] = round(exit_implied_terminal_g, 4)
 
     if sector_multiple_band is not None:
         res["sector_multiple_band"] = sector_multiple_band
@@ -982,6 +990,14 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
             iv = d.get("per_share_iv", 0.0)
             mos_str = f"{((iv - price) / price) * 100.0:+.1f}%" if price > 0 else "N/A"
             lines.append(f"| **{name}** | **${iv}** | {mos_str} | ${d.get('enterprise_value')}B | ${d.get('equity_value')}B | {d.get('terminal_method')} |")
+        # Phase 4 E13: what each exit multiple asserts about terminal growth, next to the Gordon leg
+        for item in res["scenario_dcfs"]:
+            d = item.get("dcf", {})
+            if d.get("exit_implied_terminal_g") is not None:
+                lines.append(f"- {item.get('name', 'Scenario')}: {d.get('terminal_method')} implies terminal g "
+                             f"{d['exit_implied_terminal_g'] * 100:.2f}% vs {d.get('terminal_g', 0) * 100:.2f}% in the "
+                             f"Gordon leg (Gordon ${d.get('per_share_iv_gordon')}, implied multiple "
+                             f"{d.get('implied_terminal_ev_fcf_gordon')}x)")
         lines.append("")
 
     # Single DCF Output
@@ -991,7 +1007,10 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
         lines.append(f"- Intrinsic Value: **${d['per_share_iv']}** per share")
         if "per_share_iv_exit" in d and d.get("per_share_iv_exit") is not None:
             lines.append(f"  * Gordon Terminal Leg: **${d.get('per_share_iv_gordon')}** (implied terminal multiple: {d.get('implied_terminal_ev_fcf_gordon')}x EV/FCF, TV share: {d.get('gordon_terminal', {}).get('terminal_share_of_value', 0)*100:.1f}%)")
-            lines.append(f"  * Exit Multiple Leg: **${d.get('per_share_iv_exit')}** ({d.get('terminal_method')}, TV share: {d.get('terminal_share_of_value_exit', 0)*100:.1f}%)")
+            _g_exit = d.get("exit_implied_terminal_g")
+            _g_note = (f", implies terminal g {_g_exit * 100:.2f}% vs {d.get('terminal_g', 0) * 100:.2f}% in the Gordon leg"
+                       if _g_exit is not None else "")
+            lines.append(f"  * Exit Multiple Leg: **${d.get('per_share_iv_exit')}** ({d.get('terminal_method')}{_g_note}, TV share: {d.get('terminal_share_of_value_exit', 0)*100:.1f}%)")
         else:
             lines.append(f"  * Gordon Terminal Value PV: ${d['terminal_value_pv']}B ({d['terminal_method']}, implied terminal multiple: {d.get('implied_terminal_ev_fcf_gordon')}x EV/FCF, TV share: {d.get('terminal_share_of_value', 0)*100:.1f}%)")
         if d.get("sector_multiple_band"):

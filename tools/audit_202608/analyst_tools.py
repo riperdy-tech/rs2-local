@@ -141,7 +141,7 @@ TOOLS = [{
                 "valuation_frame": {
                     "type": "string",
                     "enum": ["equity", "firm"],
-                    "description": "Valuation frame: 'equity' (default) discounts FCFE at cost_of_equity; nonzero net_debt is refused. 'firm' discounts FCFF at true_wacc; requires net_debt and shares_diluted."
+                    "description": "Valuation frame: 'equity' (the default) discounts FCFE at cost_of_equity; nonzero net_debt is refused. Every flow the pack prints (owner earnings, cash basis, FCF) is after interest, an equity flow, and the pack anchors a cost of equity, not a WACC. 'firm' discounts FCFF at true_wacc: only with a pre-interest flow (after-tax interest added back; interest_addback in the contract), a WACC built from the COE ANCHOR (wacc_reason), SECTION 6's NET DEBT and shares_diluted."
                 },
                 "rate_type": {
                     "type": "string",
@@ -166,7 +166,7 @@ TOOLS = [{
                     "type": "number",
                     "description": "REQUIRED for DCF. Long-term nominal terminal growth rate as decimal (e.g. 0.025 for 2.5%, 0.035 for 3.5%). The silent default was removed in Phase 4; calls without it are refused."
                 },
-                "terminal_exit_multiple": {"type": "number", "description": "Optional exit multiple on final projected cash flow (e.g. 16.0 for 16x)."},
+                "terminal_exit_multiple": {"type": "number", "description": "Exit multiple on the final projected cash flow. Default: the net-cap-rate multiple (1 + terminal_g) / (rate - terminal_g), printed in SECTION 1.5 at the anchors. The desk returns the terminal growth any other multiple implies (exit_implied_terminal_g)."},
                 "sector_multiple_band": {
                     "type": "object",
                     "description": "MRI sector multiple band {low, mid, high, metric} used for reconciliation of implied terminal EV/FCF multiple.",

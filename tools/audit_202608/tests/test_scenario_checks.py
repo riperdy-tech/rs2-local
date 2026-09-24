@@ -95,7 +95,7 @@ def test_no_snapshot_means_no_stamps_and_no_crash(tmp_path):
 def test_the_pack_prints_one_net_debt_default(screener_data_stub):
     import capability_test as cap
     pack = str(cap.build_pack("GEV"))
-    line = next(l for l in pack.splitlines() if "NET DEBT (default net_debt for the firm frame)" in l)
+    line = next(l for l in pack.splitlines() if "NET DEBT (net_debt for the firm frame" in l)
     assert "short-term investments" in line and cv._pack_net_debt_b(pack) is not None
 
 
