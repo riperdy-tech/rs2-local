@@ -29,6 +29,61 @@ if str(_REPO_ROOT) not in sys.path:
 import rate_engine
 
 
+def _validate_required_dcf_inputs(
+    terminal_g: Any,
+    shares_diluted: Any,
+    fade_years: Any,
+    sbc_treatment: Any,
+    sbc_dilution: Any = None,
+) -> Optional[Dict[str, Any]]:
+    """Validate required DCF inputs per Phase 4 (no silent defaults)."""
+    missing = []
+    if terminal_g is None:
+        missing.append("terminal_g")
+
+    if shares_diluted is None:
+        missing.append("shares_diluted")
+    else:
+        try:
+            sd = float(shares_diluted)
+            if sd <= 0 or math.isnan(sd):
+                missing.append("shares_diluted")
+        except (ValueError, TypeError):
+            missing.append("shares_diluted")
+
+    if fade_years is None or type(fade_years) is bool:
+        missing.append("fade_years")
+    elif not isinstance(fade_years, int) or fade_years < 0:
+        missing.append("fade_years")
+
+    if sbc_treatment is None:
+        missing.append("sbc_treatment")
+    else:
+        sbc_norm = str(sbc_treatment).strip().lower()
+        if sbc_norm not in ("deducted_in_cf", "dilution", "add_back_dilution"):
+            missing.append("sbc_treatment")
+        elif sbc_norm in ("dilution", "add_back_dilution"):
+            if sbc_dilution is None:
+                missing.append("sbc_dilution")
+            else:
+                try:
+                    s_dil = float(sbc_dilution)
+                    if s_dil <= 0 or math.isnan(s_dil):
+                        missing.append("sbc_dilution")
+                except (ValueError, TypeError):
+                    missing.append("sbc_dilution")
+
+    if missing:
+        comma_list = ", ".join(missing)
+        term_phrase = " (terminal_g is required)" if "terminal_g" in missing else ""
+        return {
+            "error": f"missing required inputs: {comma_list}{term_phrase} (no silent defaults since Phase 4)",
+            "missing": missing,
+            "validation_error": True,
+        }
+    return None
+
+
 def unbundled_dcf(
     base_cf: float,
     growth_rates: Optional[List[float]] = None,
@@ -38,8 +93,8 @@ def unbundled_dcf(
     annuity_flow: float = 0.0,
     annuity_cap_rate: Optional[float] = None,
     net_debt: Optional[float] = None,
-    shares_diluted: float = 1.0,
-    fade_years: int = 0,
+    shares_diluted: Optional[float] = None,
+    fade_years: Optional[int] = None,
     explicit_growth: Optional[List[float]] = None,
     discount_rate: Optional[float] = None,
     valuation_frame: str = "equity",
@@ -57,9 +112,20 @@ def unbundled_dcf(
     - SBC treatment single declaration; double deduction refused
     - Implied terminal EV/FCF multiple and reconciliation against sector_multiple_band
     """
-    if terminal_g is None:
-        return {"error": "terminal_g is required (the silent default was removed in Phase 4)"}
+    v_err = _validate_required_dcf_inputs(
+        terminal_g=terminal_g,
+        shares_diluted=shares_diluted,
+        fade_years=fade_years,
+        sbc_treatment=sbc_treatment,
+        sbc_dilution=sbc_dilution,
+    )
+    if v_err is not None:
+        return v_err
+
     terminal_g = float(terminal_g)
+    fade_years = int(fade_years)
+    effective_shares = float(shares_diluted)
+    sbc_norm = str(sbc_treatment).strip().lower()
 
     # Resolve rates
     rates = explicit_growth if explicit_growth is not None else growth_rates
@@ -74,11 +140,6 @@ def unbundled_dcf(
 
     if base_cf <= 0:
         return {"error": "base_cf must be positive for standard DCF"}
-
-    if fade_years is None:
-        fade_years = 0
-    if not isinstance(fade_years, int) or fade_years < 0:
-        return {"error": "fade_years must be an integer >= 0"}
 
     # Valuation frame enforcement (D1)
     frame = str(valuation_frame or "equity").strip().lower()
@@ -97,7 +158,7 @@ def unbundled_dcf(
         claim_enum = rate_engine.CLAIM_FIRM
         if net_debt is None:
             return {"error": "valuation_frame 'firm' requires net_debt to bridge enterprise value to equity value"}
-        if shares_diluted is None or float(shares_diluted) <= 0:
+        if effective_shares <= 0:
             return {"error": "valuation_frame 'firm' requires positive shares_diluted"}
         effective_net_debt = float(net_debt)
         if rate_type is None:
@@ -114,25 +175,15 @@ def unbundled_dcf(
         return {"error": f"FrameMismatch: {str(exc)}"}
 
     # SBC treatment (D1)
-    if sbc_treatment is not None:
-        sbc_norm = str(sbc_treatment).strip().lower()
-        if sbc_norm not in ("deducted_in_cf", "add_back_dilution"):
-            return {"error": f"unknown sbc_treatment '{sbc_treatment}'; allowed values are 'deducted_in_cf' and 'add_back_dilution'"}
-        if sbc_norm == "deducted_in_cf":
-            if sbc_dilution is not None and sbc_dilution != 0.0:
-                return {"error": "double deduction refused: sbc_treatment is 'deducted_in_cf', so sbc_dilution may not also be passed"}
-
-    effective_shares = float(shares_diluted) if shares_diluted is not None else 1.0
-    if effective_shares <= 0:
-        return {"error": "shares_diluted must be positive"}
-
-    if sbc_treatment is not None and str(sbc_treatment).strip().lower() == "add_back_dilution":
-        if sbc_dilution is not None and float(sbc_dilution) > 0:
-            sd = float(sbc_dilution)
-            if sd < 1.0:
-                effective_shares = effective_shares * (1.0 + sd)
-            else:
-                effective_shares = effective_shares + sd
+    if sbc_norm == "deducted_in_cf":
+        if sbc_dilution is not None and float(sbc_dilution) != 0.0:
+            return {"error": "double deduction refused: sbc_treatment is 'deducted_in_cf', so sbc_dilution may not also be passed"}
+    elif sbc_norm in ("dilution", "add_back_dilution"):
+        sd = float(sbc_dilution)
+        if sd < 1.0:
+            effective_shares = effective_shares * (1.0 + sd)
+        else:
+            effective_shares = effective_shares + sd
 
     if rate <= terminal_g:
         return {"error": f"wacc ({rate}) must be greater than terminal_g ({terminal_g})"}
@@ -378,6 +429,7 @@ def reverse_dcf_expectations_gap(
             shares_diluted=shares_diluted,
             fade_years=fade_years,
             valuation_frame=valuation_frame,
+            sbc_treatment="deducted_in_cf",
         )
         if r.get("error"):
             return None
@@ -755,13 +807,13 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
 
     val_frame = params.get("valuation_frame", "equity")
     rate_type = params.get("rate_type")
-    fade_years = int(params.get("fade_years", 0))
+    fade_years = params.get("fade_years")
     sector_multiple_band = params.get("sector_multiple_band")
     sbc_treatment = params.get("sbc_treatment")
     sbc_dilution = params.get("sbc_dilution")
 
     top_net_debt = float(params["net_debt"]) if params.get("net_debt") is not None else (0.0 if val_frame == "equity" else None)
-    top_shares = float(params.get("shares_diluted", 1.0))
+    top_shares = params.get("shares_diluted")
 
     scenario_dcfs = []
 
@@ -773,33 +825,36 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
             s_wacc = sc.get("wacc") if sc.get("wacc") is not None else sc.get("discount_rate")
             s_term_g = sc.get("terminal_g") if sc.get("terminal_g") is not None else params.get("terminal_g")
             if s_cf is not None and s_gr and s_wacc is not None:
-                if s_term_g is None:
-                    return {"error": "terminal_g is required for all DCF scenarios (the silent default was removed in Phase 4)"}
+                s_shares = sc.get("shares_diluted") if sc.get("shares_diluted") is not None else top_shares
+                s_fade = sc.get("fade_years") if sc.get("fade_years") is not None else fade_years
+                s_sbc = sc.get("sbc_treatment") if sc.get("sbc_treatment") is not None else sbc_treatment
+                s_sbc_dil = sc.get("sbc_dilution") if sc.get("sbc_dilution") is not None else sbc_dilution
+
                 sc_frame = sc.get("valuation_frame", val_frame)
                 sc_net_debt = float(sc["net_debt"]) if sc.get("net_debt") is not None else top_net_debt
                 dcf_res = unbundled_dcf(
                     base_cf=float(s_cf),
                     growth_rates=[float(g) for g in s_gr],
                     wacc=float(s_wacc),
-                    terminal_g=float(s_term_g),
+                    terminal_g=float(s_term_g) if s_term_g is not None else None,
                     terminal_exit_multiple=float(sc["terminal_exit_multiple"]) if sc.get("terminal_exit_multiple") else (float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None),
                     annuity_flow=float(sc.get("annuity_flow", params.get("annuity_flow", 0.0))),
                     annuity_cap_rate=float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate") else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None),
                     net_debt=sc_net_debt,
-                    shares_diluted=float(sc.get("shares_diluted", top_shares)),
-                    fade_years=int(sc.get("fade_years", fade_years)),
+                    shares_diluted=s_shares,
+                    fade_years=s_fade,
                     valuation_frame=sc_frame,
                     rate_type=sc.get("rate_type", rate_type),
                     sector_multiple_band=sc.get("sector_multiple_band", sector_multiple_band),
-                    sbc_treatment=sc.get("sbc_treatment", sbc_treatment),
-                    sbc_dilution=sc.get("sbc_dilution", sbc_dilution),
+                    sbc_treatment=s_sbc,
+                    sbc_dilution=s_sbc_dil,
                 )
                 if not dcf_res.get("error"):
                     sc["iv"] = dcf_res["per_share_iv"]
                     sc["dcf_details"] = dcf_res
                     scenario_dcfs.append({"name": sc.get("name"), "dcf": dcf_res})
                 else:
-                    return {"error": f"scenario '{sc.get('name')}' DCF error: {dcf_res['error']}"}
+                    return dcf_res
 
     if scenario_dcfs:
         result["scenario_dcfs"] = scenario_dcfs
@@ -809,13 +864,11 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
     growth_rates = params.get("explicit_growth") if params.get("explicit_growth") is not None else params.get("growth_rates")
     wacc = params.get("wacc") if params.get("wacc") is not None else params.get("discount_rate")
     if base_cf is not None and growth_rates and wacc is not None:
-        if params.get("terminal_g") is None:
-            return {"error": "terminal_g is required (the silent default was removed in Phase 4)"}
         result["dcf_model"] = unbundled_dcf(
             base_cf=float(base_cf),
             growth_rates=[float(g) for g in growth_rates],
             wacc=float(wacc),
-            terminal_g=float(params["terminal_g"]),
+            terminal_g=float(params["terminal_g"]) if params.get("terminal_g") is not None else None,
             terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
             annuity_flow=float(params.get("annuity_flow", 0.0)),
             annuity_cap_rate=float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None,
@@ -829,33 +882,59 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
             sbc_dilution=sbc_dilution,
         )
         if result["dcf_model"].get("error"):
-            return {"error": result["dcf_model"]["error"]}
+            return result["dcf_model"]
 
     # 3. Reverse DCF expectations gap if parameters supplied (or inferred from Base scenario)
     rev_cf = base_cf or (scenarios[0].get("base_cf") if scenarios else None)
     rev_wacc = wacc or (scenarios[0].get("wacc") if scenarios else None)
-    if price > 0 and top_shares > 0 and rev_cf is not None and rev_wacc is not None:
+    rev_shares = None
+    if top_shares is not None:
+        try:
+            s_val = float(top_shares)
+            if s_val > 0:
+                rev_shares = s_val
+        except (ValueError, TypeError):
+            rev_shares = None
+    elif scenarios:
+        base_sc = next((s for s in scenarios if "base" in str(s.get("name", "")).lower()), scenarios[0])
+        s_base = base_sc.get("shares_diluted")
+        if s_base is not None:
+            try:
+                s_val = float(s_base)
+                if s_val > 0:
+                    rev_shares = s_val
+            except (ValueError, TypeError):
+                rev_shares = None
+
+    if price > 0 and rev_cf is not None and rev_wacc is not None:
         term_g = params.get("terminal_g") or (scenarios[0].get("terminal_g") if scenarios else None)
         if term_g is not None:
-            rev_coe_anchor = params.get("coe_anchor") or params.get("anchor_coe")
-            rev_term_anchor = params.get("terminal_g_anchor") or params.get("anchor_terminal_g")
-            rev_base_rates = params.get("base_rate_table")
-            result["reverse_dcf"] = reverse_dcf_expectations_gap(
-                current_price=price,
-                shares_diluted=top_shares,
-                base_cf=float(rev_cf),
-                wacc=float(rev_wacc),
-                terminal_g=float(term_g),
-                fade_years=fade_years,
-                stage1_years=len(growth_rates) if growth_rates else 5,
-                terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
-                net_debt=top_net_debt if top_net_debt is not None else 0.0,
-                valuation_frame=val_frame,
-                demonstrated_cagr_5y=float(params["demonstrated_cagr_5y"]) if params.get("demonstrated_cagr_5y") is not None else None,
-                coe_anchor=float(rev_coe_anchor) if rev_coe_anchor is not None else None,
-                terminal_g_anchor=float(rev_term_anchor) if rev_term_anchor is not None else None,
-                base_rate_table=rev_base_rates,
-            )
+            if rev_shares is None:
+                result["reverse_dcf"] = {
+                    "skipped": True,
+                    "note": "reverse DCF skipped: explicit shares_diluted required (no defaulted share count since Phase 4)",
+                }
+            else:
+                rev_coe_anchor = params.get("coe_anchor") or params.get("anchor_coe")
+                rev_term_anchor = params.get("terminal_g_anchor") or params.get("anchor_terminal_g")
+                rev_base_rates = params.get("base_rate_table")
+                rev_fade = int(fade_years) if fade_years is not None else 0
+                result["reverse_dcf"] = reverse_dcf_expectations_gap(
+                    current_price=price,
+                    shares_diluted=rev_shares,
+                    base_cf=float(rev_cf),
+                    wacc=float(rev_wacc),
+                    terminal_g=float(term_g),
+                    fade_years=rev_fade,
+                    stage1_years=len(growth_rates) if growth_rates else 5,
+                    terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
+                    net_debt=top_net_debt if top_net_debt is not None else 0.0,
+                    valuation_frame=val_frame,
+                    demonstrated_cagr_5y=float(params["demonstrated_cagr_5y"]) if params.get("demonstrated_cagr_5y") is not None else None,
+                    coe_anchor=float(rev_coe_anchor) if rev_coe_anchor is not None else None,
+                    terminal_g_anchor=float(rev_term_anchor) if rev_term_anchor is not None else None,
+                    base_rate_table=rev_base_rates,
+                )
 
     # 4. Continuous Kelly sizing and Payoff Skew if scenarios have valid IVs and probs
     valid_scenarios = [s for s in scenarios if s.get("iv") is not None and s.get("prob") is not None]
@@ -930,8 +1009,11 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
 
     if "reverse_dcf" in res and not res["reverse_dcf"].get("error"):
         r = res["reverse_dcf"]
-        lines.append("**Reverse DCF Expectations Gap (What's Priced in at T0):**")
-        lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **{r.get('implied_growth_next_5y_pct', 0.0):+.1f}%**")
+        if r.get("skipped"):
+            lines.append(f"**Reverse DCF:** {r.get('note', 'Skipped')}\n")
+        else:
+            lines.append("**Reverse DCF Expectations Gap (What's Priced in at T0):**")
+            lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **{r.get('implied_growth_next_5y_pct', 0.0):+.1f}%**")
         if "expectations_gap_pts" in r:
             lines.append(f"  * Demonstrated 5Y Historical CAGR: {r['demonstrated_cagr_5y_pct']:+.1f}% -> Expectations Gap: **{r['expectations_gap_pts']:+.1f} points**")
             lines.append(f"  * Assessment: *{r['assessment']}*")

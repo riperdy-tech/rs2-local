@@ -26,6 +26,8 @@ def test_unbundled_dcf_basic():
         terminal_exit_multiple=15.0,
         net_debt=5.0,
         shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="firm",
     )
     assert res["per_share_iv"] > 0
@@ -46,6 +48,8 @@ def test_unbundled_dcf_with_annuity():
         annuity_cap_rate=0.08,
         net_debt=0.0,
         shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
     )
     # Annuity PV = 2.0 / 0.08 = 25.0
     assert res["annuity_pv"] == pytest.approx(25.0, 0.01)
@@ -121,12 +125,30 @@ def test_execute_financial_model_dispatch():
 
 def test_unbundled_dcf_boundary_conditions():
     # Negative base cash flow
-    res_neg = unbundled_dcf(base_cf=-2.0, growth_rates=[0.1], wacc=0.1, terminal_g=0.025)
+    res_neg = unbundled_dcf(
+        base_cf=-2.0,
+        growth_rates=[0.1],
+        wacc=0.1,
+        terminal_g=0.025,
+        shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
+    )
     assert "error" in res_neg
+    assert "base_cf must be positive" in res_neg["error"]
 
     # WACC <= terminal growth rate
-    res_wacc = unbundled_dcf(base_cf=5.0, growth_rates=[0.05], wacc=0.02, terminal_g=0.025)
+    res_wacc = unbundled_dcf(
+        base_cf=5.0,
+        growth_rates=[0.05],
+        wacc=0.02,
+        terminal_g=0.025,
+        shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
+    )
     assert "error" in res_wacc
+    assert "must be greater than terminal_g" in res_wacc["error"]
 
 def test_calculate_payoff_skew_zero_downside():
     # Price equals bear_iv -> downside = 0
@@ -139,6 +161,8 @@ def test_batch_scenario_dcf_execution():
     payload = {
         "price": 951.04,
         "shares_diluted": 0.266,
+        "fade_years": 0,
+        "sbc_treatment": "deducted_in_cf",
         "net_debt": -9.6,  # Net cash
         "valuation_frame": "firm",
         "demonstrated_cagr_5y": 8.7,
@@ -212,6 +236,7 @@ def test_three_stage_dcf_with_fade():
         terminal_g=0.04,
         wacc=0.10,
         shares_diluted=10.0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="equity",
     )
     assert not res.get("error")
@@ -236,6 +261,7 @@ def test_dual_terminal_gordon_and_exit_legs():
         terminal_exit_multiple=18.0,
         net_debt=2.0,
         shares_diluted=1.0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="firm",
     )
     assert not res.get("error")
@@ -270,6 +296,7 @@ def test_undiscounted_tv_regression_cat():
         terminal_g=0.025,
         net_debt=25.0,
         shares_diluted=0.50,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="firm",
     )
     assert not res.get("error")
@@ -295,6 +322,9 @@ def test_valuation_frame_equity_refuses_nonzero_net_debt():
         wacc=0.09,
         terminal_g=0.025,
         net_debt=10.0,
+        shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="equity",
     )
     assert "error" in res_bad
@@ -307,6 +337,9 @@ def test_valuation_frame_equity_refuses_nonzero_net_debt():
         wacc=0.09,
         terminal_g=0.025,
         net_debt=0.0,
+        shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="equity",
     )
     assert not res_zero.get("error")
@@ -317,6 +350,9 @@ def test_valuation_frame_equity_refuses_nonzero_net_debt():
         wacc=0.09,
         terminal_g=0.025,
         net_debt=None,
+        shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="equity",
     )
     assert not res_none.get("error")
@@ -331,6 +367,8 @@ def test_valuation_frame_firm_requires_net_debt_and_shares():
         terminal_g=0.025,
         net_debt=None,
         shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="firm",
     )
     assert "error" in res_missing_debt
@@ -343,10 +381,12 @@ def test_valuation_frame_firm_requires_net_debt_and_shares():
         terminal_g=0.025,
         net_debt=5.0,
         shares_diluted=0.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="firm",
     )
     assert "error" in res_missing_shares
-    assert "positive shares_diluted" in res_missing_shares["error"]
+    assert "shares_diluted" in res_missing_shares["error"]
 
 
 def test_missing_terminal_g_refused():
@@ -369,6 +409,9 @@ def test_rate_pairing_check():
         explicit_growth=[0.05],
         wacc=0.09,
         terminal_g=0.025,
+        shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="equity",
         rate_type="true_wacc",
     )
@@ -383,6 +426,8 @@ def test_rate_pairing_check():
         terminal_g=0.025,
         net_debt=2.0,
         shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         valuation_frame="firm",
         rate_type="cost_of_equity",
     )
@@ -397,6 +442,8 @@ def test_sbc_double_deduction_refused():
         explicit_growth=[0.05],
         wacc=0.09,
         terminal_g=0.025,
+        shares_diluted=1.0,
+        fade_years=0,
         sbc_treatment="deducted_in_cf",
         sbc_dilution=0.05,
     )
@@ -410,6 +457,7 @@ def test_sbc_double_deduction_refused():
         wacc=0.09,
         terminal_g=0.025,
         shares_diluted=1.0,
+        fade_years=0,
         sbc_treatment="add_back_dilution",
         sbc_dilution=0.05,  # 5% share dilution
     )
@@ -426,6 +474,9 @@ def test_sector_multiple_band_inside_outside():
         explicit_growth=[0.10],
         wacc=0.10,
         terminal_g=0.04,
+        shares_diluted=10.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         terminal_exit_multiple=18.0,
         sector_multiple_band=band_inside,
     )
@@ -438,6 +489,9 @@ def test_sector_multiple_band_inside_outside():
         explicit_growth=[0.10],
         wacc=0.10,
         terminal_g=0.04,
+        shares_diluted=10.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
         terminal_exit_multiple=18.0,
         sector_multiple_band=band_outside,
     )
@@ -475,6 +529,7 @@ def test_reverse_dcf_own_structure_recovers_known_growth():
         wacc=wacc,
         terminal_g=terminal_g,
         shares_diluted=shares,
+        sbc_treatment="deducted_in_cf",
     )
     assert not forward.get("error")
     target_iv = forward["per_share_iv"]
@@ -659,6 +714,168 @@ def test_blend_dispatch_via_execute_financial_model():
     assert "Exit Multiple" in md
     assert "$170.00" in md
     assert "+6.2%" in md
+
+
+# ── Phase 4 FIX 1: Required DCF inputs & no silent defaults ──
+
+def test_required_inputs_all_missing_returns_single_error():
+    """All missing required inputs returned at once with validation_error: True."""
+    res = unbundled_dcf(
+        base_cf=10.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+    )
+    assert res.get("validation_error") is True
+    assert res.get("missing") == ["terminal_g", "shares_diluted", "fade_years", "sbc_treatment"]
+    assert "terminal_g is required" in res["error"]
+    assert "missing required inputs: terminal_g, shares_diluted, fade_years, sbc_treatment (terminal_g is required) (no silent defaults since Phase 4)" == res["error"]
+
+
+def test_each_required_input_individually_missing():
+    """Each required input missing returns validation_error: True and identifies missing input."""
+    base_args = {
+        "base_cf": 10.0,
+        "explicit_growth": [0.05],
+        "wacc": 0.09,
+        "terminal_g": 0.025,
+        "shares_diluted": 1.0,
+        "fade_years": 0,
+        "sbc_treatment": "deducted_in_cf",
+    }
+
+    # Missing terminal_g
+    args = dict(base_args)
+    del args["terminal_g"]
+    r_tg = unbundled_dcf(**args)
+    assert r_tg.get("validation_error") is True
+    assert r_tg.get("missing") == ["terminal_g"]
+    assert "terminal_g is required" in r_tg["error"]
+
+    # Missing shares_diluted
+    args = dict(base_args)
+    del args["shares_diluted"]
+    r_sd = unbundled_dcf(**args)
+    assert r_sd.get("validation_error") is True
+    assert r_sd.get("missing") == ["shares_diluted"]
+
+    # Missing fade_years
+    args = dict(base_args)
+    del args["fade_years"]
+    r_fy = unbundled_dcf(**args)
+    assert r_fy.get("validation_error") is True
+    assert r_fy.get("missing") == ["fade_years"]
+
+    # Missing sbc_treatment
+    args = dict(base_args)
+    del args["sbc_treatment"]
+    r_sbc = unbundled_dcf(**args)
+    assert r_sbc.get("validation_error") is True
+    assert r_sbc.get("missing") == ["sbc_treatment"]
+
+
+def test_sbc_dilution_mode_validation():
+    """'dilution' without sbc_dilution is refused; with sbc_dilution it succeeds and dilutes shares."""
+    # Refused without sbc_dilution
+    res_bad = unbundled_dcf(
+        base_cf=10.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="dilution",
+    )
+    assert res_bad.get("validation_error") is True
+    assert "sbc_dilution" in res_bad["missing"]
+
+    # Succeeded with sbc_dilution
+    res_good = unbundled_dcf(
+        base_cf=10.0,
+        explicit_growth=[0.05],
+        wacc=0.09,
+        terminal_g=0.025,
+        shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="dilution",
+        sbc_dilution=0.04,  # 4% dilution
+    )
+    assert not res_good.get("error")
+    assert res_good["shares_diluted"] == pytest.approx(1.04, 0.001)
+
+
+def test_old_amd_call_9_params_refused():
+    """Old AMD call-9 params (omitted shares_diluted, omitted sbc_treatment) refused with validation_error."""
+    params = {
+        "price": 160.0,
+        "base_cf": 6.765,
+        "growth_rates": [0.20, 0.15, 0.12, 0.10, 0.08],
+        "fade_years": 5,
+        "wacc": 0.095,
+        "terminal_g": 0.03,
+        # omitted shares_diluted, omitted sbc_treatment
+    }
+    res = execute_financial_model(params)
+    assert res.get("validation_error") is True
+    assert "shares_diluted" in res["missing"]
+    assert "sbc_treatment" in res["missing"]
+    assert "no silent defaults since Phase 4" in res["error"]
+
+
+def test_reverse_dcf_never_uses_defaulted_share_count():
+    """Reverse DCF path must not run on a defaulted share count: explicit shares_diluted required."""
+    payload_sc_no_shares = {
+        "price": 100.0,
+        "scenarios": [
+            {
+                "name": "Base",
+                "prob": 1.0,
+                "base_cf": 5.0,
+                "growth_rates": [0.10, 0.08],
+                "wacc": 0.09,
+                "terminal_g": 0.025,
+                "fade_years": 0,
+                "sbc_treatment": "deducted_in_cf",
+                # shares_diluted omitted
+            }
+        ],
+    }
+    res = execute_financial_model(payload_sc_no_shares)
+    assert res.get("error") is not None
+
+    payload_sc_with_shares = {
+        "price": 100.0,
+        "scenarios": [
+            {
+                "name": "Base",
+                "prob": 1.0,
+                "base_cf": 5.0,
+                "growth_rates": [0.10, 0.08],
+                "wacc": 0.09,
+                "terminal_g": 0.025,
+                "fade_years": 0,
+                "sbc_treatment": "deducted_in_cf",
+                "shares_diluted": 1.635,
+            }
+        ],
+    }
+    res_ok = execute_financial_model(payload_sc_with_shares)
+    assert not res_ok.get("error")
+    assert "reverse_dcf" in res_ok
+    assert not res_ok["reverse_dcf"].get("skipped")
+    assert res_ok["reverse_dcf"]["shares_diluted"] == 1.635
+
+    # If reverse DCF parameters supplied without shares_diluted:
+    payload_rev_skip = {
+        "price": 100.0,
+        "base_cf": 5.0,
+        "wacc": 0.09,
+        "terminal_g": 0.025,
+    }
+    res_skip = execute_financial_model(payload_rev_skip)
+    assert "reverse_dcf" in res_skip
+    assert res_skip["reverse_dcf"].get("skipped") is True
+    assert "explicit shares_diluted required" in res_skip["reverse_dcf"]["note"]
+
 
 
 
