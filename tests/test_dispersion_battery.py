@@ -25,13 +25,14 @@ import dispersion_battery as db  # noqa: E402
 class _Args:
     """Minimal stand-in for the argparse.Namespace run_name() reads."""
     def __init__(self, arm="A", samples=3, temperature=None, dry_run=False,
-                model="m", ctx=1000):
+                model=None, ctx=1000, failfast_street=False):
         self.arm = arm
         self.samples = samples
         self.temperature = temperature
         self.dry_run = dry_run
         self.model = model
         self.ctx = ctx
+        self.failfast_street = failfast_street
 
 
 def _stub_build_pack(monkeypatch, calls=None):
@@ -67,14 +68,37 @@ def test_consensus_command_explicit_temperature_overrides_arm_default():
     assert cmd[i + 1] == "0.5"
 
 
-# ---- arm C refuses loudly (P4.6 not built in this phase) --------------------------------------
+# ---- arm C: charter v3.1 model, no temperature override, passes --failfast-street ------------
 
-def test_main_refuses_arm_c(monkeypatch, capsys):
-    monkeypatch.setattr(sys, "argv",
-                        ["dispersion_battery.py", "--names", "GEV", "--samples", "1", "--arm", "C"])
-    with pytest.raises(SystemExit):
-        db.main()
-    assert "HARD FAIL" in capsys.readouterr().out
+def test_consensus_command_arm_c_defaults_to_v31_model_and_no_temperature():
+    cmd = db.consensus_command("GEV", 3, "C", None, Path("p.md"), Path("ev"), Path("out"))
+    assert "--temperature" not in cmd
+    i = cmd.index("--model")
+    assert cmd[i + 1] == "rs2-analyst-deep-mtp5-v31"
+
+
+def test_consensus_command_explicit_model_overrides_arm_c():
+    cmd = db.consensus_command("GEV", 3, "C", None, Path("p.md"), Path("ev"), Path("out"), model="custom-model")
+    i = cmd.index("--model")
+    assert cmd[i + 1] == "custom-model"
+
+
+def test_consensus_command_passes_failfast_street():
+    cmd = db.consensus_command("GEV", 3, "A", None, Path("p.md"), Path("ev"), Path("out"), failfast_street=True)
+    assert "--failfast-street" in cmd
+
+
+def test_dry_run_arm_c_resolves_v31_and_passes_failfast_street(monkeypatch, tmp_path, capsys):
+    _stub_build_pack(monkeypatch)
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "dispersion_battery.py", "--names", "GEV", "--samples", "1", "--arm", "C",
+        "--failfast-street", "--out", str(out_dir), "--dry-run"])
+    db.main()
+    out = capsys.readouterr().out
+    assert "rs2-analyst-deep-mtp5-v31" in out
+    assert "--failfast-street" in out
+    assert "--temperature" not in out
 
 
 # ---- --dry-run: builds pack + evidence dir, prints the command, runs nothing -------------------
@@ -256,6 +280,30 @@ def test_summarize_run_direction_agreement_true_when_all_samples_match():
     out = db.summarize_run("GEV", doc)
     assert out["direction_agreement"] is True
     assert out["spread_pct_first_two"] == pytest.approx((122 / 118 - 1) * 100, abs=0.05)
+
+
+def test_summarize_run_records_failfast_and_new_metrics():
+    doc = {
+        "ticker": "GEV", "price": 100.0, "samples_run": 1,
+        "pack_source": "frozen:x", "pack_sha256": "abc", "temperature": None,
+        "spread_pct": None, "median_iv": 30.0, "converged": False,
+        "failfast": {
+            "sample": 1, "iv": 30.0, "street_low_disc": 80.0, "street_high_disc": 120.0,
+            "ratio_to_low": 0.375, "ratio_to_high": 0.25,
+            "rule": "sample 1 below 0.5x discounted street low or above 2x discounted street high",
+        },
+        "runs": [
+            {"sample": 1, "iv": 30.0, "scorecard": {}, "plausible": True, "truncated": False,
+             "secs": 10, "research_calls": 6, "repeat_calls": 2, "desk_runs": [30.0], "desk_swing": None},
+        ],
+    }
+    out = db.summarize_run("GEV", doc)
+    assert out.get("failfast") == doc["failfast"]
+    s0 = out["samples"][0]
+    assert s0["research_calls"] == 6
+    assert s0["repeat_calls"] == 2
+    assert s0["desk_runs"] == [30.0]
+    assert s0["desk_swing"] is None
 
 
 # ---- main(): overall battery_summary.json aggregation ------------------------------------------

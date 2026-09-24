@@ -1075,6 +1075,7 @@ def main():
     # already sets adaptive False (unchanged, above); this makes that intent explicit and
     # covers the case where the caller wants a fixed default of 3 with no early stop too.
     no_early_stop = "--no-early-stop" in sys.argv
+    failfast_street = "--failfast-street" in sys.argv
     adaptive = adaptive and not no_early_stop
     # `--out-dir`: the battery must never write into ab_reports/consensus (shared with
     # production runs) or any ledger — it gets its own isolated root instead of OUT.
@@ -1202,6 +1203,7 @@ def main():
     n_max = 3 if adaptive else n
     attempted = 0        # iterations ENTERED - the only honest denominator for sample loss
     broke_early = False  # set only by the adaptive early-stop branch below
+    failfast_record = None
     for i in range(1, n_max + 1):
         attempted = i
         t0 = time.time()
@@ -1400,6 +1402,32 @@ def main():
               + (f" ({'; '.join(why)})" if why else "")
               + (f" | flags: {', '.join(flags)}" if flags else "")
               + (" | TRUNCATED" if truncated else ""), flush=True)
+
+        # FAILFAST ON STREET RANGE (after sample 1 only)
+        if failfast_street and i == 1:
+            if ok and iv is not None:
+                band = vb._consensus_band(t)
+                band_stale = band.get("stale") if isinstance(band, dict) else getattr(band, "stale", False)
+                band_low = band.get("low") if isinstance(band, dict) else getattr(band, "low", None)
+                band_high = band.get("high") if isinstance(band, dict) else getattr(band, "high", None)
+                if band and not band_stale and band_low is not None and band_high is not None:
+                    wacc = 0.10
+                    lo_d = band_low / (1 + wacc)
+                    hi_d = band_high / (1 + wacc)
+                    if iv < 0.5 * lo_d or iv > 2.0 * hi_d:
+                        failfast_record = {
+                            "sample": 1,
+                            "iv": round(iv, 2),
+                            "street_low_disc": round(lo_d, 2),
+                            "street_high_disc": round(hi_d, 2),
+                            "ratio_to_low": round(iv / lo_d, 3),
+                            "ratio_to_high": round(iv / hi_d, 3),
+                            "rule": "sample 1 below 0.5x discounted street low or above 2x discounted street high",
+                        }
+                        print(f"  [failfast] sample 1 IV ${iv:.2f} outside street range "
+                              f"[0.5x lo={0.5*lo_d:.2f}, 2x hi={2.0*hi_d:.2f}] — stopping sampling",
+                              flush=True)
+                        break
         # ADAPTIVE EARLY STOP after sample 2: publish on two COMPLETE, PLAUSIBLE samples inside
         # the tighter bar. Every other outcome - spread beyond EARLY_TOL, an implausible or
         # truncated or unparseable sample - falls through and buys the 3rd opinion. The bar is
@@ -1453,10 +1481,14 @@ def main():
     med_bear = scorecard_summary.get("median_bear_iv")
     med_skew = scorecard_summary.get("asymmetric_payoff_skew")
 
-    verdict = ("CONVERGED" if converged and med else
-               "NOT CONVERGED — runs disagree beyond tolerance" if med and spread is not None else
-               f"NOT CONVERGED — only {len(good)} usable sample(s), spread undefined" if med else
-               "NO USABLE SAMPLE — nothing parseable and complete")
+    if failfast_record is not None:
+        converged = False
+        verdict = "FAILFAST — sample 1 outside street range"
+    else:
+        verdict = ("CONVERGED" if converged and med else
+                   "NOT CONVERGED — runs disagree beyond tolerance" if med and spread is not None else
+                   f"NOT CONVERGED — only {len(good)} usable sample(s), spread undefined" if med else
+                   "NO USABLE SAMPLE — nothing parseable and complete")
     doc = {"ticker": t, "price": price, "model": model, "think": think_level,
            "draft_num_predict": draft_num_predict,
            "temperature": temperature,
@@ -1491,6 +1523,8 @@ def main():
            "converged": converged, "verdict": verdict,
            "scorecard": scorecard_summary,
            "median_mos_pct": round((med / price - 1) * 100, 1) if med and price else None}
+    if failfast_record is not None:
+        doc["failfast"] = failfast_record
     (d / "consensus.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")
     print(f"\n[consensus] {verdict}")
     if med:

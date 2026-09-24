@@ -22,10 +22,9 @@ keeps every run inside THIS script's own `--out` root — never `ab_reports/cons
 `cache/`.
 
 Arms (PHASE_4_ANALYST.md P4.0b): A = current settings (Modelfile's own temperature, no
-override); B = `--temperature 0.3`; C = anchor CoE supplied + desk mandatory, which depends on
-P4.6 (rate engine wired) — not built in this phase. Selecting `--arm C` refuses loudly rather
-than silently running arm A under arm C's label (a STOP condition, not a threshold tweak —
-rs2-local/AGENTS.md §0).
+override); B = `--temperature 0.3`; C = charter v3.1 model + pack rev 6 (CoE anchor and desk
+mandate are in the pack): default model for arm C is rs2-analyst-deep-mtp5-v31 unless --model is
+given; no temperature override.
 
 RESUMABLE, at the granularity consensus_valuation.py's own architecture allows: it commits to a
 brand-new timestamped run directory on every invocation and writes consensus.json only once a
@@ -63,9 +62,8 @@ DEFAULT_CTX = int(rs2_data.CONFIG.get("depth_ctx", 81920))
 
 # Arm presets. None means "pass no --temperature override" — the consensus subprocess then runs
 # at the Modelfile's own PARAMETER temperature 0.6 (RS2-Analyst-Deep-MTP5.Modelfile).
-ARM_TEMPERATURE = {"A": None, "B": 0.3}
-ARM_C_BLOCKED = ("arm C (anchor CoE supplied + desk mandatory) needs P4.6, which P4.0b does not "
-                 "build. Run arm A or B, or land P4.6 first.")
+ARM_TEMPERATURE = {"A": None, "B": 0.3, "C": None}
+DEFAULT_MODEL_ARM_C = "rs2-analyst-deep-mtp5-v31"
 
 
 def _quote(s):
@@ -95,14 +93,17 @@ def build_frozen_pack(name, pack_path):
 
 
 def consensus_command(name, samples, arm, temperature, pack_path, evidence_dir, consensus_out,
-                      model=DEFAULT_MODEL, ctx=DEFAULT_CTX):
+                      model=None, ctx=DEFAULT_CTX, failfast_street=False):
     """The exact consensus_valuation.py command line for one name's battery run."""
+    eff_model = model or (DEFAULT_MODEL_ARM_C if arm == "C" else DEFAULT_MODEL)
     cmd = [sys.executable, str(CONSENSUS_SCRIPT), name,
-           "--model", model, "--ctx", str(ctx), "--think", "high", "--tools",
+           "--model", eff_model, "--ctx", str(ctx), "--think", "high", "--tools",
            "--samples", str(samples), "--no-early-stop",
            "--pack-file", str(pack_path),
            "--evidence-store", str(evidence_dir),
            "--out-dir", str(consensus_out)]
+    if failfast_street:
+        cmd.append("--failfast-street")
     eff_temp = temperature if temperature is not None else ARM_TEMPERATURE.get(arm)
     if eff_temp is not None:
         cmd += ["--temperature", str(eff_temp)]
@@ -123,7 +124,7 @@ def _existing_complete_run(consensus_out, name, samples):
             doc = json.loads(cj.read_text(encoding="utf-8"))
         except Exception:
             continue
-        if (doc.get("samples_run") or 0) >= samples:
+        if (doc.get("samples_run") or 0) >= samples or "failfast" in doc:
             if best is None or doc.get("generated_at", "") > best.get("generated_at", ""):
                 best = doc
     return best
@@ -165,6 +166,10 @@ def summarize_run(name, doc):
             "stub_rejected": r.get("stub_rejected"),
             "evidence_store_hits": r.get("evidence_store_hits"),
             "evidence_store_misses": r.get("evidence_store_misses"),
+            "research_calls": r.get("research_calls"),
+            "repeat_calls": r.get("repeat_calls"),
+            "desk_runs": r.get("desk_runs"),
+            "desk_swing": r.get("desk_swing"),
         })
     directions = [s["direction"] for s in per_sample if s["direction"] is not None]
     direction_agreement = bool(directions) and len(set(directions)) == 1
@@ -172,7 +177,7 @@ def summarize_run(name, doc):
                 if r.get("iv") and r.get("plausible") and not r.get("truncated")]
     spread_first_two = ((max(first_two) / min(first_two) - 1) * 100
                         if len(first_two) == 2 else None)
-    return {
+    res = {
         "ticker": name, "price": price,
         "pack_source": doc.get("pack_source"), "pack_sha256": doc.get("pack_sha256"),
         "temperature": doc.get("temperature"),
@@ -183,6 +188,9 @@ def summarize_run(name, doc):
         "median_iv": doc.get("median_iv"), "converged": doc.get("converged"),
         "samples": per_sample,
     }
+    if "failfast" in doc:
+        res["failfast"] = doc["failfast"]
+    return res
 
 
 def run_name(name, args, out_root):
@@ -196,8 +204,10 @@ def run_name(name, args, out_root):
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
     eff_temp = args.temperature if args.temperature is not None else ARM_TEMPERATURE.get(args.arm)
+    eff_failfast = getattr(args, "failfast_street", False)
     cmd = consensus_command(name, args.samples, args.arm, args.temperature, pack_path,
-                            evidence_dir, consensus_out, model=args.model, ctx=args.ctx)
+                            evidence_dir, consensus_out, model=args.model, ctx=args.ctx,
+                            failfast_street=eff_failfast)
 
     if args.dry_run:
         print(f"[dry-run] {name}: pack {'reused' if reused else 'built'} at {pack_path} "
@@ -235,18 +245,17 @@ def main():
     ap.add_argument("--samples", type=int, default=3)
     ap.add_argument("--arm", required=True, choices=["A", "B", "C"])
     ap.add_argument("--temperature", type=float, default=None,
-                    help="override the arm's default temperature (arm A: none, arm B: 0.3)")
+                    help="override the arm's default temperature (arm A: none, arm B: 0.3, arm C: none)")
+    ap.add_argument("--failfast-street", action="store_true",
+                    help="fail fast after sample 1 if outside discounted street range")
     ap.add_argument("--out", type=Path, default=None)
-    ap.add_argument("--model", default=DEFAULT_MODEL)
+    ap.add_argument("--model", default=None,
+                    help="model override (default: rs2-analyst-deep-mtp5-v31 for arm C, config depth_model for arms A/B)")
     ap.add_argument("--ctx", type=int, default=DEFAULT_CTX)
     ap.add_argument("--dry-run", action="store_true",
                     help="build packs and evidence-store dirs, print the consensus_valuation "
                          "command lines, run nothing")
     args = ap.parse_args()
-
-    if args.arm == "C":
-        print(f"[dispersion] ::HARD FAIL:: {ARM_C_BLOCKED}", flush=True)
-        raise SystemExit(ARM_C_BLOCKED)
 
     names = [x.strip().upper() for x in args.names.split(",") if x.strip()]
     if not names:
