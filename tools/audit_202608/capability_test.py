@@ -1820,6 +1820,19 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 missing.append("TTM capex")
             missing_str = ", ".join(missing)
             L.append(f"- OWNER EARNINGS (default base_cf): not available (point-in-time) \u2014 {missing_str} missing")
+        if latest_yr is not None:
+            latest_rec = h.get(str(latest_yr)) or {}
+            fy_oi = latest_rec.get("operating_income")
+            fy_ni = latest_rec.get("net_income")
+            if isinstance(fy_oi, (int, float)) and isinstance(fy_ni, (int, float)):
+                if fy_oi > 0 and fy_ni > fy_oi:
+                    L.append(
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+                    )
+                elif fy_oi <= 0 and fy_ni > 0:
+                    L.append(
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+                    )
         L.append("")
     else:
         L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [Filed - SEC 10-Q derived; through "
@@ -1870,6 +1883,19 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 missing.append("TTM capex")
             missing_str = ", ".join(missing)
             L.append(f"- OWNER EARNINGS (default base_cf): not available \u2014 {missing_str} missing; declare your base and why.")
+        if latest_yr is not None:
+            latest_rec = h.get(str(latest_yr)) or {}
+            fy_oi = latest_rec.get("operating_income")
+            fy_ni = latest_rec.get("net_income")
+            if isinstance(fy_oi, (int, float)) and isinstance(fy_ni, (int, float)):
+                if fy_oi > 0 and fy_ni > fy_oi:
+                    L.append(
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+                    )
+                elif fy_oi <= 0 and fy_ni > 0:
+                    L.append(
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items before relying on it."
+                    )
         L.append("")
 
     # ---- SECTION 4 -------------------------------------------------------------------------
