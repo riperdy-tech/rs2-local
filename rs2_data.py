@@ -1324,10 +1324,15 @@ def asof_cost_of_capital(asof):
         "SELECT as_of, cost_of_capital_json, degraded FROM anchor_runs "
         "WHERE as_of <= ? ORDER BY as_of DESC LIMIT 1", [str(asof)[:10]])
     if not rows:
+        # No hardcoded date here on purpose: MRI's earliest anchor_runs snapshot happens to sit
+        # after several trial asof dates this pack is built for, and printing that date into the
+        # pack itself would leak a fact dated later than `asof` into a point-in-time briefing —
+        # exactly the class of contamination this whole mode exists to prevent. The docstring
+        # above states the measured date for a human reader; the pack never does.
         out["degradation_reasons"].append(
             f"no_anchor_run_stored_at_or_before({str(asof)[:10]}) — MRI's anchor_runs table holds "
-            "nothing before 2026-05-29; implied ERP/CoE/sector-loading were never persisted for "
-            "this date")
+            "no snapshot at or before this date; implied ERP/CoE/sector-loading were never "
+            "persisted this far back")
         return out
     run_asof, coc_json, run_degraded = rows[0]
     import json as _json
