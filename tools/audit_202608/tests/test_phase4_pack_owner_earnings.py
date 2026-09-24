@@ -29,6 +29,18 @@ def test_owner_earnings_missing_input_lines(screener_data_stub, monkeypatch):
     """Missing input line accurately reports which inputs are missing."""
     ttm_path = cap.SD / "fundamentals_ttm.json"
     ttm_data = rs2_data.load_json(ttm_path)
+    # E14: a filed fiscal-year figure or the vendor's capex now fills a missing TTM input (see
+    # test_owner_earnings_fallback.py). Remove them so this test still sees the "not available" line.
+    h_path = cap.SD / "fundamentals_history.json"
+    h_data = rs2_data.load_json(h_path)
+    for yr in h_data["tickers"]["GEV"]:
+        h_data["tickers"]["GEV"][yr]["capex"] = None
+        h_data["tickers"]["GEV"][yr]["net_income"] = None
+    h_path.write_text(json.dumps(h_data), encoding="utf-8")
+    fin_path = cap.SD / "financials" / "GEV.json"
+    fin = rs2_data.load_json(fin_path)
+    fin["Capital_Expenditure"] = None
+    fin_path.write_text(json.dumps(fin), encoding="utf-8")
 
     # 1. Missing capex
     orig_capex = ttm_data["tickers"]["GEV"]["fields"]["capex"]

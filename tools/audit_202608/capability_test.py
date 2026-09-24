@@ -1916,15 +1916,38 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         ni = f.get("net_income") if f else None
         capex = f.get("capex") if f else None
         ocf = f.get("ocf") if f else None
+        # E14 (2026-09-25): labelled fallbacks, so 20-F/40-F filers (no TTM) and companies whose
+        # capex tag our filed extract does not map (oil-and-gas and IFRS capex) still get a default
+        # base and SECTION 8's reference. Live path only: the vendor figure is today's.
+        ni_src, capex_src = "TTM net income", "TTM capex"
+        oe_src = ["ttm", "ttm"]
+        _fy_rec = (h.get(str(latest_yr)) or {}) if latest_yr is not None else {}
+        if not isinstance(ni, (int, float)) and isinstance(_fy_rec.get("net_income"), (int, float)):
+            ni, ni_src, oe_src[0] = _fy_rec["net_income"], f"FY{latest_yr} net income (no TTM held)", "fy"
+        if not isinstance(capex, (int, float)):
+            _ven_capex = fin.get("Capital_Expenditure")
+            if isinstance(_fy_rec.get("capex"), (int, float)):
+                capex, capex_src, oe_src[1] = _fy_rec["capex"], f"FY{latest_yr} capex (no TTM capex held)", "fy"
+            elif isinstance(_ven_capex, (int, float)) and _ven_capex < 0:
+                # yfinance reports capex as a negative cash flow (FCF = OCF + capex). A positive
+                # figure would mean that convention changed under us, so it is refused.
+                capex, oe_src[1] = -float(_ven_capex), "vendor"
+                capex_src = (f"vendor latest-annual capex (financials, fetched "
+                             f"{str(fin.get('Data_Fetched_Date') or NULL)[:10]}; our filed extract maps no "
+                             f"capex tag for this company)")
+        # Stamped on every verdict (owner_earnings_source); printed only when a fallback was used,
+        # so a pack built from TTM inputs is byte-identical to revision 9's.
+        oe_tag = ("" if oe_src == ["ttm", "ttm"]
+                  else f" (owner_earnings_source: {oe_src[0]}_ni+{oe_src[1]}_capex)")
 
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
             oe = ni + da - capex
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
-            L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Net income is after interest, so this is an equity flow: value it in the equity frame. Use this as base_cf unless base_cf_reason states why another base is more representative.")
+            L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): {ni_src} {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 {capex_src} {_b(capex)} = {_b(oe)}{oe_tag}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Net income is after interest, so this is an equity flow: value it in the equity frame. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             _sbc_fy = (h.get(str(latest_yr)) or {}).get("sbc") if latest_yr is not None else None
             if isinstance(ocf, (int, float)) and isinstance(_sbc_fy, (int, float)):
-                L.append(f"- [Arithmetic] CASH BASIS (alternative base_cf): TTM operating cash flow {_b(ocf)} \u2212 TTM capex {_b(capex)} \u2212 stock compensation (FY{latest_yr}) {_b(_sbc_fy)} = {_b(ocf - capex - _sbc_fy)}. Includes working-capital swings and, like every flow here, is after interest; declare base_cf_basis \"other\" with base_cf_reason if you use it.")
+                L.append(f"- [Arithmetic] CASH BASIS (alternative base_cf): TTM operating cash flow {_b(ocf)} \u2212 {capex_src} {_b(capex)} \u2212 stock compensation (FY{latest_yr}) {_b(_sbc_fy)} = {_b(ocf - capex - _sbc_fy)}. Includes working-capital swings and, like every flow here, is after interest; declare base_cf_basis \"other\" with base_cf_reason if you use it.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
                 gap = ocf - denom
