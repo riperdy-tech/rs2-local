@@ -231,7 +231,10 @@ def run(ticker: str, force: bool = False) -> dict:
             out_dir=run_dir,
             think="high",
             ctx=81920,
-            num_predict=16384,
+            # The final turn thinks before it writes: 10,184 (AMD) and 12,952 (GEV) tokens on
+            # 2026-09-24, and MU used all of the old 16,384 without writing the brief. A ~17k
+            # prompt plus 32,768 still fits the 81,920 window.
+            num_predict=32768,
             tools=analyst_tools.research_tools(),
             max_search_calls=14,
             max_model_calls=0,
@@ -258,6 +261,17 @@ def run(ticker: str, force: bool = False) -> dict:
         except Exception:
             pass
         return res
+
+    # Keep the model's final text: without it a "no parseable brief" cannot be diagnosed.
+    try:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "_report.md").write_text(report or "", encoding="utf-8")
+        (run_dir / "_thinking.md").write_text(thinking or "", encoding="utf-8")
+    except Exception:
+        pass
+    turns = meta.get("turns") or []
+    final_turn = {"done_reason": meta.get("done_reason"),
+                  "length_recovery": any(tu.get("length_recovery") for tu in turns)}
 
     # Read fetched URLs from run snapshot
     snap_path = run_dir / "_research_snapshot.json"
@@ -356,6 +370,7 @@ def run(ticker: str, force: bool = False) -> dict:
         "search_calls": search_calls or meta.get("tool_calls", 0),
         "elapsed_s": round(time.time() - t0, 1),
         "error": parse_error,
+        "final_turn": final_turn,
     }
 
     try:

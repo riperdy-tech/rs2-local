@@ -573,3 +573,21 @@ def test_get_cached_brief_uses_a_fresh_brief_from_just_before_midnight(monkeypat
     assert cr.get_cached_brief("ABC")["narrative"] == "today"             # today's always wins
     assert cr.get_cached_brief("ABC", asof=yesterday)["narrative"] == "late run"   # explicit date
     assert cr.get_cached_brief("ABC", asof="2020-01-01") is None
+
+
+def test_run_saves_final_text_and_final_turn(monkeypatch, tmp_path):
+    """The model's final text is kept next to the snapshot, and the brief says how the final turn
+    ended - MU's lost run (2026-09-24) left nothing to diagnose it from."""
+    report = 'Findings.\n```json:catalysts\n{"asof": "2026-09-24", "narrative": "n", "bear_narrative": "b", "events": []}\n```'
+    monkeypatch.setattr(cr, "run", cr._run_live)
+    monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cr, "discovery_context", lambda t: {
+        "ticker": t, "company": t, "asof": "2026-09-24", "mom_1m": 0.01, "facts": "facts"})
+    monkeypatch.setattr(cr.analyst_tools, "chat_with_tools", lambda *a, **k: (
+        report, "the thinking", {"tool_calls": 3, "done_reason": "stop",
+                                 "turns": [{"turn": 1}, {"turn": 2, "length_recovery": True}]}))
+    b = cr.run("T9", force=True)
+    run_dir = tmp_path / "T9_2026-09-24_run"
+    assert (run_dir / "_report.md").read_text(encoding="utf-8") == report
+    assert (run_dir / "_thinking.md").read_text(encoding="utf-8") == "the thinking"
+    assert b["final_turn"] == {"done_reason": "stop", "length_recovery": True}

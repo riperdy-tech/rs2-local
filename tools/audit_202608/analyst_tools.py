@@ -23,6 +23,7 @@ TWO RULES, both enforced here rather than trusted to the prompt:
 
 Local SearXNG only (config searxng_url) — unmetered, no API key, no per-call cost.
 """
+import html
 import io
 import json
 import re
@@ -46,6 +47,13 @@ SEARX = rs2_data.CONFIG.get("searxng_url", "http://localhost:8888")
 OLLAMA = "http://127.0.0.1:11434/api/chat"
 MAX_TOOL_CALLS = 25          # balanced research budget; deduplication eliminates redundant query loops
 UA = {"User-Agent": "Mozilla/5.0 (RS2 analyst research)"}
+# SEC EDGAR refuses requests that do not declare a contact (its fair-access policy), so every
+# sec.gov fetch with UA failed with HTTP 403 - including the filings the pack tells the analyst to
+# check. sec.gov fetches use the declared identity sec_guidance already uses.
+try:
+    from sec_guidance import UA as SEC_UA  # noqa: E402
+except Exception:
+    SEC_UA = UA
 
 # Content farms and aggregator spam. Mirrors deep_research.py's low-trust stripping — a search
 # result is only as good as its source, and these restate numbers without filing provenance.
@@ -329,8 +337,10 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None):
         # A copy, not the stored `rec` itself — `cache_hit` marks the RETURN value for this call
         # (P4.0b hit/miss accounting) and must never leak into what is persisted in url_cache.
         return {**rec, "cache_hit": True}
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    is_sec = host == "sec.gov" or host.endswith(".sec.gov")
     try:
-        req = urllib.request.Request(url, headers=UA)
+        req = urllib.request.Request(url, headers=SEC_UA if is_sec else UA)
         with urllib.request.urlopen(req, timeout=40) as r:
             raw = r.read(1_500_000).decode("utf-8", "replace")
     except Exception as e:
@@ -342,9 +352,15 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None):
                          "chars": 0, "text": "", "cached": False,
                          "error": f"fetch failed: {str(e)[:120]}"})
         return {"url": url, "error": f"fetch failed: {str(e)[:120]}"}
+    if is_sec and "<DOCUMENT>" in raw:
+        # A full EDGAR submission (.txt) opens with an SGML filing header that would fill most
+        # of the `cap` characters the model is shown. Start at the first document instead.
+        raw = raw[raw.index("<DOCUMENT>"):]
     txt = re.sub(r"(?is)<(script|style|nav|footer|header)[^>]*>.*?</\1>", " ", raw)
     txt = re.sub(r"(?s)<[^>]+>", " ", txt)
-    txt = re.sub(r"&[a-z]+;", " ", txt)
+    # Decode every entity. The old named-only strip left numeric ones (&#160; &#8226; &#58;) in
+    # the text - EDGAR filings are full of them - and dropped real characters such as "&".
+    txt = html.unescape(txt)
     txt = re.sub(r"\s+", " ", txt).strip()
     rec = {"url": url, "chars": len(txt), "text": txt[:cap]}
     if url_cache is not None:
@@ -757,6 +773,39 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     repeat_calls = 0
     desk_runs = []
 
+    def _recover_cut_off_brief():
+        """Discovery mode only (no desk). If the final turn hit num_predict before the
+        json:catalysts block, ask once for the block alone with thinking off. MU 2026-09-24:
+        the final turn spent all 16,384 tokens thinking and the whole run was lost as "no
+        parseable brief". Valuation runs keep their own truncation path (continue_report)."""
+        nonlocal final_report, final_think, done_reason, gen_tokens, eval_duration_total
+        if max_model_calls > 0 or done_reason != "length" or "```json" in (final_report or ""):
+            return
+        if verbose:
+            print("    [harness] final turn cut off at the length limit before the brief - asking "
+                  "for the json:catalysts block alone", flush=True)
+        msgs.append({"role": "assistant", "content": final_report or ""})
+        meta_msgs.append(None)
+        msgs.append({"role": "user", "content": (
+            "Your answer was cut off by the length limit before the ```json:catalysts block. Do not "
+            "deliberate further. Write ONLY the ```json:catalysts block now, exactly as specified in "
+            "the first message, from the research above.")})
+        meta_msgs.append(None)
+        body = {"model": model, "stream": False, "think": False,
+                "messages": _compact_history(msgs, meta_msgs),
+                "options": dict(opts, num_predict=8192)}
+        req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            resp = json.loads(r.read().decode())
+        fm = resp.get("message") or {}
+        final_report = ((final_report or "") + "\n\n" + (fm.get("content") or "")).strip()
+        final_think += fm.get("thinking") or ""
+        done_reason = resp.get("done_reason")
+        gen_tokens += resp.get("eval_count") or 0
+        eval_duration_total += resp.get("eval_duration") or 0
+        turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "length_recovery": True})
+
     while True:
         active_msgs = _compact_history(msgs, meta_msgs)
 
@@ -825,6 +874,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 eval_duration_total += resp.get("eval_duration") or 0
                 turns.append({"turn": len(turns) + 1, **turn_metrics(resp),
                               "forced_report": True})
+            _recover_cut_off_brief()
             break
         msgs.append({"role": "assistant", "content": msg.get("content") or "",
                      "tool_calls": tcs})
@@ -955,6 +1005,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             eval_duration_total += resp.get("eval_duration") or 0
             turns.append({"turn": len(turns) + 1, **turn_metrics(resp),
                           "budget_exhausted": True})
+            _recover_cut_off_brief()
             break
 
     _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
