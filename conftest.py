@@ -98,6 +98,13 @@ def _world_news_is_unreachable_by_default(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _company_news_reads_no_articles_in_tests(monkeypatch):
+    """E11: company_news reads the top stories over the network; tests never do."""
+    import company_news
+    monkeypatch.setattr(company_news, "_read_article", lambda url, title, name_token: (None, None))
+
+
+@pytest.fixture(autouse=True)
 def _company_news_returns_empty_by_default(monkeypatch):
     """P4 Item 2 — tests default to company_news.fetch returning an empty result
     with no network and no cache write unless a test overrides it."""

@@ -12,6 +12,7 @@ Item 2 of Phase 4 Amendments (E8 design):
 """
 import json
 import re
+import sys
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -109,19 +110,85 @@ def _query_searxng(searx_url, query, timeout=60):
         return json.loads(resp.read().decode("utf-8", "replace"))
 
 
+READ_TOP = 5          # the most recent stories whose opening text goes into the pack (E11)
+EXCERPT_CHARS = 600
+
+
+# Page furniture that fetch_page's tag stripping leaves in (Yahoo, newswires, publisher banners)
+_FURNITURE = ("skip to", "something went wrong", "sign in", "subscribe", "cookie", "accessibility statement",
+              "advertiser disclosure", "preferred source", "all rights reserved", "javascript")
+_SENTENCE = re.compile(r"(?:^|(?<=[.!?]) )([A-Z0-9\"\u201c'][^.!?]{40,500}[.!?])")
+
+
+def _excerpt(text, title, name_token, chars=EXCERPT_CHARS):
+    """About `chars` characters from the story's lede: the first real sentence (12+ words) that
+    names the company or shares two words with the headline. Page furniture before it (Yahoo
+    opens with "Oops, something went wrong / Skip to navigation...") has no such sentence. None
+    when no sentence qualifies or the text is a subscription wall."""
+    try:
+        sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
+        import analyst_tools
+    except Exception:
+        return None
+    t = re.sub(r"\s+", " ", text or "").strip()
+    want = analyst_tools._title_tokens(title)
+    name = (name_token or "").lower()
+    for m in _SENTENCE.finditer(t):
+        sent = m.group(1)
+        if len(sent.split()) < 12 or any(j in sent.lower() for j in _FURNITURE):
+            continue
+        if (name and name in sent.lower()) or len(want & analyst_tools._title_tokens(sent)) >= 2:
+            ex = t[m.start(1):m.start(1) + chars].strip()
+            if len(ex) >= 150 and not analyst_tools._looks_paywalled(ex):
+                return ex
+            return None
+    return None
+
+
+def _read_article(url, title, name_token):
+    """(excerpt, url actually read) for one story, or (None, None). analyst_tools.fetch_page with
+    the headline as the known title, so a blocked page falls back to a legitimate free copy."""
+    try:
+        sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
+        import analyst_tools
+        res = analyst_tools.fetch_page(url, known_urls={url: title})
+    except Exception:
+        return None, None
+    if not isinstance(res, dict) or res.get("error"):
+        return None, None
+    ex = _excerpt(res.get("text"), title, name_token)
+    return (ex, res.get("url") or url) if ex else (None, None)
+
+
+def _add_excerpts(out, name_token):
+    """Read the READ_TOP most recent rows in place; marks the result so a cached day is read once."""
+    for r in (out.get("rows") or [])[:READ_TOP]:
+        if r.get("excerpt"):
+            continue
+        ex, src = _read_article(r.get("url") or "", r.get("title") or "", name_token)
+        if ex:
+            r["excerpt"], r["read_from"] = ex, src
+    out["excerpts_read"] = True
+    return out
+
+
 def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
     t = str(ticker).upper()
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     cdir = Path(cache_dir) if cache_dir is not None else CACHE_DIR
     cache_file = cdir / f"{t}_{today}.json"
 
+    clean_comp = _clean_company_name(company, t)
     if cache_file.exists():
         try:
-            return json.loads(cache_file.read_text(encoding="utf-8"))
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            if not cached.get("excerpts_read") and READ_TOP:
+                cached = _add_excerpts(cached, _name_token(clean_comp))
+                cache_file.write_text(json.dumps(cached, indent=2), encoding="utf-8")
+            return cached
         except Exception:
             pass
 
-    clean_comp = _clean_company_name(company, t)
     queries = [f'"{clean_comp}"', f"{t} stock"]
 
     endpoint = searx_url or rs2_data.CONFIG.get("searxng_url", SEARX_DEFAULT)
@@ -192,6 +259,8 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
         "unresponsive_engines": unresponsive_engines,
         "errors": errors,
     }
+    if READ_TOP:
+        _add_excerpts(out, name_token)
 
     try:
         cdir.mkdir(parents=True, exist_ok=True)

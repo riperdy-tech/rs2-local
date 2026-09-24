@@ -32,6 +32,7 @@ import json
 import re
 import sys
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -1759,7 +1760,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         m6 = LAST_PACK_MOMENTUM_STATE.get("mom_6m") if LAST_PACK_MOMENTUM_STATE else None
         mom_1m_str = f"{m1*100:+.1f}%" if isinstance(m1, (int, float)) else NULL
         mom_6m_str = f"{m6*100:+.1f}%" if isinstance(m6, (int, float)) else NULL
-        L += [f"## RECENT COMPANY NEWS   [SearXNG news search (Reuters, Bing News), last 30 days, fetched {cnews_date}; headlines are third-party claims \u2014 open an article before relying on it]",
+        L += [f"## RECENT COMPANY NEWS   [SearXNG news search (Reuters, Bing News), last 30 days, fetched {cnews_date}; third-party claims \u2014 the five most recent carry their opening text, read by code from the page shown after the arrow]",
               f"- The stock moved {mom_1m_str} in 1 month and {mom_6m_str} in 6 months (SECTION 2.5)."]
         news_rows = cnews.get("rows") or []
         if news_rows:
@@ -1770,6 +1771,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 u = nr.get("url") or ""
                 snip = nr.get("snippet") or ""
                 L.append(f"- {d_str} | {src} | {tit} | {u} | {snip}")
+                if nr.get("excerpt"):
+                    _rf = urllib.parse.urlparse(nr.get("read_from") or u).hostname or "?"
+                    L.append(f"  > read from {_rf[4:] if _rf.startswith('www.') else _rf}: {nr['excerpt']}")
         else:
             unresp = cnews.get("unresponsive_engines") or []
             errs = cnews.get("errors") or []

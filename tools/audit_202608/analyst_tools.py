@@ -406,9 +406,17 @@ def _slug_query(url):
     return " ".join(words[:12]) if len(words) >= 3 else None
 
 
+STRONG_PAYWALL_MARKERS = ("active subscription", "subscribe now", "subscription(s)", "log in to read",
+                          "sign in to read", "subscribers only", "this content is for subscribers")
+
+
 def _looks_paywalled(text):
+    """A short page with paywall wording, or any page whose opening is a subscription wall (a
+    long page can still be one: The Hindu's copy of the Muse story, 2026-09-25)."""
     t = (text or "")
-    return len(t) < 2500 and any(m in t.lower() for m in PAYWALL_MARKERS)
+    low = t.lower()
+    return ((len(t) < 2500 and any(m in low for m in PAYWALL_MARKERS))
+            or any(m in low[:2000] for m in STRONG_PAYWALL_MARKERS))
 
 
 def _searx(query, n=10):
