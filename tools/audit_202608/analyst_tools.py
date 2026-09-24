@@ -742,6 +742,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
     search_calls = 0
     model_calls = 0
+    desk_validation_errors = 0
     MAX_SEARCH_CALLS = 25
     MAX_MODEL_CALLS = 5
 
@@ -758,10 +759,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         active_tools = TOOLS
         if search_calls >= MAX_SEARCH_CALLS:
             active_tools = [t for t in TOOLS if t["function"]["name"] == "run_financial_model"]
+        if model_calls >= MAX_MODEL_CALLS or desk_validation_errors > 6:
+            active_tools = [t for t in active_tools if t["function"]["name"] != "run_financial_model"]
 
         body = {"model": model, "stream": False, "think": think, "messages": active_msgs,
                 "options": opts}
-        if active_tools and calls < (MAX_SEARCH_CALLS + MAX_MODEL_CALLS):
+        if active_tools and (search_calls < MAX_SEARCH_CALLS or (model_calls < MAX_MODEL_CALLS and desk_validation_errors <= 6)):
             body["tools"] = active_tools
 
         req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
@@ -866,12 +869,18 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     else:
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache)
                 elif name == "run_financial_model":
-                    model_calls += 1
-                    if model_calls > MAX_MODEL_CALLS:
+                    if model_calls >= MAX_MODEL_CALLS or desk_validation_errors > 6:
                         result = {"error": f"financial model call budget exhausted ({MAX_MODEL_CALLS}); "
                                            f"use computed results and finalize memorandum"}
                     else:
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache)
+                        if isinstance(result, dict) and result.get("validation_error") is True:
+                            desk_validation_errors += 1
+                            if desk_validation_errors > 6:
+                                result = {"error": f"financial model call budget exhausted ({MAX_MODEL_CALLS}); "
+                                                   f"use computed results and finalize memorandum"}
+                        else:
+                            model_calls += 1
                 else:
                     result = {"error": f"unknown tool {name}"}
             except Exception as e:
@@ -907,7 +916,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             msgs.append({"role": "tool", "content": json.dumps(result)[:12000]})
             meta_msgs.append({"name": name, "args": args, "result": result, "call_index": calls})
 
-        if search_calls >= MAX_SEARCH_CALLS and model_calls >= MAX_MODEL_CALLS:
+        if search_calls >= MAX_SEARCH_CALLS and (model_calls >= MAX_MODEL_CALLS or desk_validation_errors > 6):
             # ALL BUDGETS REACHED -> force the answer, never just break.
             msgs.append({"role": "user", "content":
                          "Tool budgets are exhausted. Write the complete institutional memorandum "
@@ -943,6 +952,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                        "research_calls": research_calls,
                                        "repeat_calls": repeat_calls,
                                        "desk_runs": desk_runs,
+                                       "desk_validation_errors": desk_validation_errors,
                                        "elapsed_s": round(time.time() - t0)}
 
 

@@ -143,6 +143,7 @@ def extract_scorecard(report, price):
         # field the model emits but that is absent here is dropped unrecoverably.
         "base_cf_used": None,
         "base_cf_basis": None,
+        "base_cf_reason": None,
         "conviction_score": None,
         "business_quality_moat": None,
         "kelly_fraction_pct": None,
@@ -203,6 +204,8 @@ def extract_scorecard(report, price):
                 card["position_basis"] = str(card["position_basis"]).strip().lower()
             if card.get("momentum_evidence"):
                 card["momentum_evidence"] = str(card["momentum_evidence"]).strip()
+            if card.get("base_cf_reason"):
+                card["base_cf_reason"] = str(card["base_cf_reason"]).strip()
             if card["base_iv"] and price and 0.02 * price <= card["base_iv"] <= 10 * price:
                 return card
         except Exception:
@@ -699,7 +702,7 @@ def owner_cf_basis_check(ticker, scorecard, years=None, ttm_fcf=_UNSET):
     basis = str(sc.get("base_cf_basis") or "").strip().lower()
     if claim is None or not basis:
         return None
-    if basis == "other":
+    if basis in ("other", "owner_earnings_default"):
         return None
     import capability_test as cap
     if basis not in cap.OWNER_CF_BASES:
@@ -809,12 +812,108 @@ def resolve_anchor_coe(ticker=None):
     return None
 
 
+def check_base_cf_default_reason(scorecard: dict | None) -> list[str]:
+    """Flag base_cf_off_default_without_reason when base_cf_basis is not owner_earnings_default and reason is empty."""
+    flags = []
+    sc = scorecard or {}
+    b_basis = sc.get("base_cf_basis")
+    b_reason = sc.get("base_cf_reason")
+    if b_basis is not None and str(b_basis).strip() != "":
+        if str(b_basis).strip().lower() != "owner_earnings_default":
+            if b_reason is None or str(b_reason).strip() == "" or str(b_reason).strip().lower() in ("null", "none"):
+                flags.append("base_cf_off_default_without_reason")
+    return flags
+
+
+def _evaluate_contract_mismatches(inputs: dict, sc: dict) -> list[str]:
+    mismatches = []
+    if not isinstance(sc, dict) or not isinstance(inputs, dict):
+        return mismatches
+
+    def _to_float(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+
+    def _to_int(v):
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
+
+    # 1. base_cf_used (±2% relative)
+    c_cf = _to_float(sc.get("base_cf_used"))
+    d_cf = _to_float(inputs.get("base_cf"))
+    if c_cf is not None and d_cf is not None:
+        if c_cf != 0:
+            if (abs(c_cf - d_cf) / abs(c_cf)) > 0.020001:
+                mismatches.append("base_cf_used")
+        elif abs(d_cf) > 1e-6:
+            mismatches.append("base_cf_used")
+    elif c_cf is not None or d_cf is not None:
+        mismatches.append("base_cf_used")
+
+    # 2. stage1_growth_path (same length, each within 0.01 absolute)
+    c_path = sc.get("stage1_growth_path")
+    d_path = inputs.get("stage1_growth_path")
+    if c_path is not None and d_path is not None:
+        if not isinstance(c_path, (list, tuple)) or not isinstance(d_path, (list, tuple)):
+            mismatches.append("stage1_growth_path")
+        elif len(c_path) != len(d_path):
+            mismatches.append("stage1_growth_path")
+        else:
+            for cg, dg in zip(c_path, d_path):
+                cg_val = _to_float(cg)
+                dg_val = _to_float(dg)
+                if cg_val is None or dg_val is None:
+                    mismatches.append("stage1_growth_path")
+                    break
+                if abs(cg_val) > 1.0 and abs(dg_val) <= 1.0:
+                    cg_val /= 100.0
+                elif abs(dg_val) > 1.0 and abs(cg_val) <= 1.0:
+                    dg_val /= 100.0
+                if abs(cg_val - dg_val) > 0.010001:
+                    mismatches.append("stage1_growth_path")
+                    break
+    elif c_path is not None or d_path is not None:
+        mismatches.append("stage1_growth_path")
+
+    # 3. fade_years (exact)
+    c_fade = _to_int(sc.get("fade_years"))
+    d_fade = _to_int(inputs.get("fade_years"))
+    if c_fade is not None and d_fade is not None:
+        if c_fade != d_fade:
+            mismatches.append("fade_years")
+    elif c_fade is not None or d_fade is not None:
+        mismatches.append("fade_years")
+
+    # 4. coe_used vs the call's wacc/discount rate (±0.0005)
+    c_coe = _to_float(sc.get("coe_used"))
+    d_wacc = _to_float(inputs.get("wacc"))
+    if c_coe is not None and d_wacc is not None:
+        cu = c_coe / 100.0 if c_coe > 1.0 else c_coe
+        cr = d_wacc / 100.0 if d_wacc > 1.0 else d_wacc
+        if abs(cu - cr) > 0.0005001:
+            mismatches.append("coe_used")
+    elif c_coe is not None or d_wacc is not None:
+        mismatches.append("coe_used")
+
+    return mismatches
+
+
 def extract_desk_snapshot_metrics(
     snapshot=None,
     base_iv=None,
     coe_used=None,
     ticker=None,
     coe_anchor=None,
+    scorecard=None,
+    pack=None,
 ):
     """Inspects run_financial_model tool calls from a sample's research snapshot.
 
@@ -823,6 +922,11 @@ def extract_desk_snapshot_metrics(
         desk_iv_match: bool (True if base_iv within 1% of any desk per_share_iv or blend result)
         desk_reverse_neutral_cagr: float or None (from neutral reverse DCF call if made)
         coe_minus_anchor: float or None (coe_used - anchor_coe)
+        desk_matched_inputs: dict or None (inputs of desk call matching base_iv)
+        desk_contract_flags: list of str
+        desk_share_flags: list of str
+        desk_share_implausible: bool
+        desk_share_reason: str or None
     """
     calls = []
     if isinstance(snapshot, list):
@@ -842,9 +946,34 @@ def extract_desk_snapshot_metrics(
     model_calls = [c for c in calls if isinstance(c, dict) and c.get("tool") == "run_financial_model"]
     desk_calls = len(model_calls)
 
+    def _parse_float(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+
+    def _parse_int(v):
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
+
+    def _parse_growth(g):
+        if g is None or not isinstance(g, (list, tuple)):
+            return None
+        try:
+            return [float(x) for x in g]
+        except (ValueError, TypeError):
+            return None
+
     desk_ivs = []
     reverse_neutral_cagr = None
     desk_anchor_from_params = None
+    candidates = []
 
     for c in model_calls:
         params = c.get("params") or {}
@@ -855,48 +984,133 @@ def extract_desk_snapshot_metrics(
 
         res = c.get("result") or c
         if isinstance(res, dict):
+            p_cf = params.get("base_cf")
+            p_growth = params.get("explicit_growth") if params.get("explicit_growth") is not None else params.get("growth_rates")
+            p_fade = params.get("fade_years")
+            p_wacc = params.get("wacc") if params.get("wacc") is not None else params.get("discount_rate")
+            p_shares = params.get("shares_diluted")
+
             # 1. Blend
-            b = res.get("blend") if isinstance(res.get("blend"), dict) else (res if res.get("mode") == "blend" else None)
+            b = res.get("blend") if isinstance(res.get("blend"), dict) else (res if res.get("mode") == "blend" or params.get("mode") == "blend" else None)
             if b and isinstance(b, dict):
                 for k in ("blended_per_share_iv", "per_share_iv"):
-                    if b.get(k) is not None:
-                        try:
-                            desk_ivs.append(float(b[k]))
-                        except (ValueError, TypeError):
-                            pass
+                    v = _parse_float(b.get(k))
+                    if v is not None and v > 0:
+                        desk_ivs.append(v)
+                        candidates.append({
+                            "iv": v,
+                            "inputs": {
+                                "mode": "blend",
+                                "base_cf": None,
+                                "stage1_growth_path": None,
+                                "fade_years": None,
+                                "wacc": None,
+                                "shares_diluted": None,
+                            }
+                        })
+
             # 2. DCF model
             dcf = res.get("dcf_model")
-            if isinstance(dcf, dict):
+            if isinstance(dcf, dict) and not dcf.get("error"):
+                dcf_ivs = []
                 for k in ("per_share_iv", "per_share_iv_gordon", "per_share_iv_exit"):
-                    if dcf.get(k) is not None:
-                        try:
-                            desk_ivs.append(float(dcf[k]))
-                        except (ValueError, TypeError):
-                            pass
+                    v = _parse_float(dcf.get(k))
+                    if v is not None and v > 0:
+                        desk_ivs.append(v)
+                        dcf_ivs.append(v)
+                for v in dcf_ivs:
+                    candidates.append({
+                        "iv": v,
+                        "inputs": {
+                            "base_cf": _parse_float(p_cf),
+                            "stage1_growth_path": _parse_growth(p_growth),
+                            "fade_years": _parse_int(p_fade),
+                            "wacc": _parse_float(p_wacc),
+                            "shares_diluted": _parse_float(p_shares),
+                        }
+                    })
+
             # 3. Scenario DCFs
-            scs = res.get("scenario_dcfs")
+            scs = res.get("scenario_dcfs") or []
+            param_scs = params.get("scenarios") or []
             if isinstance(scs, list):
                 for sc in scs:
                     if isinstance(sc, dict):
-                        d = sc.get("dcf", {})
-                        if isinstance(d, dict):
+                        sc_name = sc.get("name")
+                        p_sc = next((s for s in param_scs if isinstance(s, dict) and s.get("name") == sc_name), {})
+                        d = sc.get("dcf") or {}
+
+                        sc_cf = sc.get("base_cf") if sc.get("base_cf") is not None else (p_sc.get("base_cf") if p_sc.get("base_cf") is not None else p_cf)
+                        sc_g = sc.get("explicit_growth") or p_sc.get("explicit_growth") or sc.get("growth_rates") or p_sc.get("growth_rates") or p_growth
+                        sc_fade = sc.get("fade_years") if sc.get("fade_years") is not None else (p_sc.get("fade_years") if p_sc.get("fade_years") is not None else p_fade)
+                        sc_wacc = sc.get("wacc") or p_sc.get("wacc") or sc.get("discount_rate") or p_sc.get("discount_rate") or p_wacc
+                        sc_shares = sc.get("shares_diluted") if sc.get("shares_diluted") is not None else (p_sc.get("shares_diluted") if p_sc.get("shares_diluted") is not None else p_shares)
+
+                        ivs_found = []
+                        if isinstance(d, dict) and not d.get("error"):
                             for k in ("per_share_iv", "per_share_iv_gordon", "per_share_iv_exit"):
-                                if d.get(k) is not None:
-                                    try:
-                                        desk_ivs.append(float(d[k]))
-                                    except (ValueError, TypeError):
-                                        pass
-                        if sc.get("iv") is not None:
-                            try:
-                                desk_ivs.append(float(sc["iv"]))
-                            except (ValueError, TypeError):
-                                pass
-            # 4. Top-level per_share_iv
-            if res.get("per_share_iv") is not None:
-                try:
-                    desk_ivs.append(float(res["per_share_iv"]))
-                except (ValueError, TypeError):
-                    pass
+                                v = _parse_float(d.get(k))
+                                if v is not None and v > 0:
+                                    ivs_found.append(v)
+                        v_iv = _parse_float(sc.get("iv"))
+                        if v_iv is not None and v_iv > 0 and v_iv not in ivs_found:
+                            ivs_found.append(v_iv)
+
+                        for v in ivs_found:
+                            desk_ivs.append(v)
+                            candidates.append({
+                                "iv": v,
+                                "inputs": {
+                                    "base_cf": _parse_float(sc_cf),
+                                    "stage1_growth_path": _parse_growth(sc_g),
+                                    "fade_years": _parse_int(sc_fade),
+                                    "wacc": _parse_float(sc_wacc),
+                                    "shares_diluted": _parse_float(sc_shares),
+                                }
+                            })
+
+            # Raw scenarios if scenario_dcfs not present
+            raw_scs = res.get("scenarios")
+            if raw_scs and isinstance(raw_scs, list) and not scs:
+                for sc in raw_scs:
+                    if isinstance(sc, dict):
+                        sc_name = sc.get("name")
+                        p_sc = next((s for s in param_scs if isinstance(s, dict) and s.get("name") == sc_name), {})
+                        sc_cf = sc.get("base_cf") if sc.get("base_cf") is not None else (p_sc.get("base_cf") if p_sc.get("base_cf") is not None else p_cf)
+                        sc_g = sc.get("explicit_growth") or p_sc.get("explicit_growth") or sc.get("growth_rates") or p_sc.get("growth_rates") or p_growth
+                        sc_fade = sc.get("fade_years") if sc.get("fade_years") is not None else (p_sc.get("fade_years") if p_sc.get("fade_years") is not None else p_fade)
+                        sc_wacc = sc.get("wacc") or p_sc.get("wacc") or sc.get("discount_rate") or p_sc.get("discount_rate") or p_wacc
+                        sc_shares = sc.get("shares_diluted") if sc.get("shares_diluted") is not None else (p_sc.get("shares_diluted") if p_sc.get("shares_diluted") is not None else p_shares)
+                        v_iv = _parse_float(sc.get("iv"))
+                        if v_iv is not None and v_iv > 0:
+                            desk_ivs.append(v_iv)
+                            candidates.append({
+                                "iv": v_iv,
+                                "inputs": {
+                                    "base_cf": _parse_float(sc_cf),
+                                    "stage1_growth_path": _parse_growth(sc_g),
+                                    "fade_years": _parse_int(sc_fade),
+                                    "wacc": _parse_float(sc_wacc),
+                                    "shares_diluted": _parse_float(sc_shares),
+                                }
+                            })
+
+            # 4. Top-level per_share_iv (if not blend and not dcf)
+            if res.get("mode") != "blend" and params.get("mode") != "blend" and not dcf and not scs and not raw_scs:
+                v_top = _parse_float(res.get("per_share_iv"))
+                if v_top is not None and v_top > 0:
+                    desk_ivs.append(v_top)
+                    candidates.append({
+                        "iv": v_top,
+                        "inputs": {
+                            "base_cf": _parse_float(p_cf),
+                            "stage1_growth_path": _parse_growth(p_growth),
+                            "fade_years": _parse_int(p_fade),
+                            "wacc": _parse_float(p_wacc),
+                            "shares_diluted": _parse_float(p_shares),
+                        }
+                    })
+
             # 5. Reverse DCF
             rev = res.get("reverse_dcf")
             if isinstance(rev, dict):
@@ -910,12 +1124,57 @@ def extract_desk_snapshot_metrics(
                             pass
 
     desk_iv_match = False
-    if desk_calls > 0 and desk_ivs and base_iv is not None:
+    matching_candidates = []
+    if desk_calls > 0 and candidates and base_iv is not None:
         try:
             biv = float(base_iv)
-            desk_iv_match = any(div > 0 and (abs(biv - div) / div) <= 0.010001 for div in desk_ivs)
+            for cand in candidates:
+                if cand["iv"] > 0 and (abs(biv - cand["iv"]) / cand["iv"]) <= 0.010001:
+                    desk_iv_match = True
+                    matching_candidates.append(cand)
         except (ValueError, TypeError):
             desk_iv_match = False
+
+    desk_matched_inputs = None
+    contract_flags = []
+    if matching_candidates:
+        biv = float(base_iv)
+        if scorecard:
+            scored = []
+            for cand in matching_candidates:
+                mismatches = _evaluate_contract_mismatches(cand["inputs"], scorecard)
+                scored.append((len(mismatches), abs(cand["iv"] - biv), mismatches, cand))
+            scored.sort(key=lambda x: (x[0], x[1]))
+            best = scored[0]
+            desk_matched_inputs = best[3]["inputs"]
+            for field in best[2]:
+                contract_flags.append(f"desk_contract_mismatch:{field}")
+        else:
+            desk_matched_inputs = matching_candidates[0]["inputs"]
+
+    share_flags = []
+    share_implausible = False
+    share_reason = None
+
+    if desk_matched_inputs and pack:
+        m_sh = re.search(r"[-*]?\s*Shares outstanding:\s*([0-9,]+(?:\.[0-9]+)?)", pack, re.I)
+        if m_sh:
+            try:
+                n_val = float(m_sh.group(1).replace(",", ""))
+                if n_val > 0:
+                    pack_shares_b = n_val / 1e9
+                    call_shares = desk_matched_inputs.get("shares_diluted")
+                    if call_shares is not None and call_shares > 0:
+                        ratio = max(call_shares, pack_shares_b) / min(call_shares, pack_shares_b)
+                        ratio_r = round(ratio, 2)
+                        if ratio > 1.250001:
+                            share_flags.append(f"desk_share_count_mismatch_{ratio_r:.2f}x")
+                            share_implausible = True
+                            share_reason = "desk share count off by more than 25% (units or omission)"
+                        elif ratio >= 1.10:
+                            share_flags.append(f"desk_share_count_mismatch_{ratio_r:.2f}x")
+            except (ValueError, TypeError):
+                pass
 
     eff_anchor = coe_anchor if coe_anchor is not None else desk_anchor_from_params
     if eff_anchor is None and ticker:
@@ -939,6 +1198,11 @@ def extract_desk_snapshot_metrics(
         "desk_iv_match": desk_iv_match,
         "desk_reverse_neutral_cagr": reverse_neutral_cagr,
         "coe_minus_anchor": diff_coe,
+        "desk_matched_inputs": desk_matched_inputs,
+        "desk_contract_flags": contract_flags,
+        "desk_share_flags": share_flags,
+        "desk_share_implausible": share_implausible,
+        "desk_share_reason": share_reason,
     }
 
 
@@ -1344,6 +1608,8 @@ def main():
             base_iv=iv,
             coe_used=scorecard.get("coe_used"),
             ticker=t,
+            scorecard=scorecard,
+            pack=pack,
         )
         scorecard.update(desk_info)
         if desk_info["desk_calls"] == 0:
@@ -1352,6 +1618,23 @@ def main():
         if not desk_info["desk_iv_match"]:
             flags = list(flags) + ["iv_not_desk_backed"]
             why = list(why) + [f"base IV ${iv} not backed by any desk calculation within 1%"]
+
+        for f in desk_info.get("desk_contract_flags", []):
+            if f not in flags:
+                flags = list(flags) + [f]
+
+        for f in desk_info.get("desk_share_flags", []):
+            if f not in flags:
+                flags = list(flags) + [f]
+        if desk_info.get("desk_share_implausible"):
+            ok = False
+            r_msg = desk_info.get("desk_share_reason") or "desk share count off by more than 25% (units or omission)"
+            if r_msg not in why:
+                why = list(why) + [r_msg]
+
+        for f in check_base_cf_default_reason(scorecard):
+            if f not in flags:
+                flags = list(flags) + [f]
 
         # The declared cash-flow basis is CHECKED, not taken on trust - a self-reported value
         # nothing verifies is exactly the Task 2 defect. Annotation only: a flag and a reason.
@@ -1402,6 +1685,8 @@ def main():
                      "desk_iv_match": desk_info["desk_iv_match"],
                      "desk_reverse_neutral_cagr": desk_info["desk_reverse_neutral_cagr"],
                      "coe_minus_anchor": desk_info["coe_minus_anchor"],
+                     "desk_matched_inputs": desk_info.get("desk_matched_inputs"),
+                     "desk_validation_errors": meta.get("desk_validation_errors", 0),
                      "research_calls": research_calls,
                      "repeat_calls": repeat_calls,
                      "desk_runs": desk_runs,

@@ -398,6 +398,7 @@ CONTRACT_PASSTHROUGH = (
     "momentum_break_rule", "invalidation_rules",
     # P4 E5b momentum basis
     "position_basis", "momentum_evidence",
+    "base_cf_reason",
 )
 
 
@@ -547,6 +548,7 @@ def band_verdict(doc):
         # pattern: the harness records them, the model never declares them).
         "momentum_state": doc.get("momentum_state"),
         "active_shocks_at_verdict": doc.get("active_shocks_at_verdict"),
+        "base_cf_reason": scorecard.get("base_cf_reason"),
     })
 
     if not ivs or not price:

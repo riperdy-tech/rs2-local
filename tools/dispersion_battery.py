@@ -174,6 +174,8 @@ def summarize_run(name, doc, momentum_state=None):
             "repeat_calls": r.get("repeat_calls"),
             "desk_runs": r.get("desk_runs"),
             "desk_swing": r.get("desk_swing"),
+            "desk_validation_errors": r.get("desk_validation_errors", 0),
+            "flags": r.get("flags") or [],
         })
     directions = [s["direction"] for s in per_sample if s["direction"] is not None]
     direction_agreement = bool(directions) and len(set(directions)) == 1
