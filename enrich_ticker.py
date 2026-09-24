@@ -18,6 +18,7 @@ become null (RS2 then tags them [Unconfirmed]). Never fabricates.
 CLI:  python enrich_ticker.py NVDA
 """
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -201,6 +202,113 @@ def next_earnings_date(cal):
     return future[0].isoformat() if future else None
 
 
+def _extract_val(obj, period, candidate_cols, as_int=False):
+    """Safely extracts a numeric value for a given period and column candidate names
+    from a pandas DataFrame or dict. Returns None for missing/non-finite values."""
+    if obj is None:
+        return None
+    val = None
+    if hasattr(obj, "loc") and hasattr(obj, "columns") and hasattr(obj, "index"):
+        if period not in obj.index:
+            return None
+        col_map = {str(c).lower().replace("_", "").replace(" ", ""): c for c in obj.columns}
+        for cand in candidate_cols:
+            norm = cand.lower().replace("_", "").replace(" ", "")
+            if norm in col_map:
+                try:
+                    val = obj.loc[period, col_map[norm]]
+                    if hasattr(val, "iloc"):
+                        val = val.iloc[0]
+                    break
+                except Exception:
+                    pass
+    elif isinstance(obj, dict):
+        if period in obj and isinstance(obj[period], dict):
+            p_dict = obj[period]
+            col_map = {str(c).lower().replace("_", "").replace(" ", ""): c for c in p_dict}
+            for cand in candidate_cols:
+                norm = cand.lower().replace("_", "").replace(" ", "")
+                if norm in col_map:
+                    val = p_dict[col_map[norm]]
+                    break
+        else:
+            col_map = {str(c).lower().replace("_", "").replace(" ", ""): c for c in obj}
+            for cand in candidate_cols:
+                norm = cand.lower().replace("_", "").replace(" ", "")
+                if norm in col_map:
+                    c_dict = obj[col_map[norm]]
+                    if isinstance(c_dict, dict) and period in c_dict:
+                        val = c_dict[period]
+                        break
+
+    if val is None:
+        return None
+    try:
+        if hasattr(val, "item"):
+            val = val.item()
+        f = float(val)
+        if not math.isfinite(f):
+            return None
+        if as_int:
+            return int(round(f))
+        return f
+    except (TypeError, ValueError):
+        return None
+
+
+def consensus_estimates(tk):
+    """Read estimates from yfinance's earnings_estimate, revenue_estimate,
+    eps_trend and eps_revisions for periods '0y' and '+1y'.
+    Every missing or non-finite value is null; any exception leaves estimates null.
+    """
+    try:
+        earn = getattr(tk, "earnings_estimate", None)
+        rev = getattr(tk, "revenue_estimate", None)
+        trend = getattr(tk, "eps_trend", None)
+        revs = getattr(tk, "eps_revisions", None)
+
+        if earn is None and rev is None and trend is None and revs is None:
+            return None
+
+        out = {}
+        for p in ["0y", "+1y"]:
+            out[p] = {
+                "revenue": {
+                    "avg": _extract_val(rev, p, ["avg", "average"]),
+                    "low": _extract_val(rev, p, ["low"]),
+                    "high": _extract_val(rev, p, ["high"]),
+                    "analysts": _extract_val(rev, p, ["numberOfAnalysts", "analysts", "numAnalysts"], as_int=True),
+                    "growth": _extract_val(rev, p, ["growth"]),
+                    "year_ago": _extract_val(rev, p, ["yearAgoRevenue", "yearAgo", "year_ago"]),
+                },
+                "eps": {
+                    "avg": _extract_val(earn, p, ["avg", "average"]),
+                    "low": _extract_val(earn, p, ["low"]),
+                    "high": _extract_val(earn, p, ["high"]),
+                    "analysts": _extract_val(earn, p, ["numberOfAnalysts", "analysts", "numAnalysts"], as_int=True),
+                    "growth": _extract_val(earn, p, ["growth"]),
+                    "year_ago": _extract_val(earn, p, ["yearAgoEps", "yearAgo", "year_ago"]),
+                },
+                "eps_trend": {
+                    "current": _extract_val(trend, p, ["current"]),
+                    "d7": _extract_val(trend, p, ["7daysAgo", "7days", "d7"]),
+                    "d30": _extract_val(trend, p, ["30daysAgo", "30days", "d30"]),
+                    "d60": _extract_val(trend, p, ["60daysAgo", "60days", "d60"]),
+                    "d90": _extract_val(trend, p, ["90daysAgo", "90days", "d90"]),
+                },
+                "eps_revisions": {
+                    "up7": _extract_val(revs, p, ["upLast7days", "up7days", "up7"], as_int=True),
+                    "up30": _extract_val(revs, p, ["upLast30days", "up30days", "up30"], as_int=True),
+                    "down7": _extract_val(revs, p, ["downLast7days", "downLast7Days", "down7days", "down7"], as_int=True),
+                    "down30": _extract_val(revs, p, ["downLast30days", "down30days", "down30"], as_int=True),
+                },
+            }
+        has_any = any(v is not None for p_data in out.values() for sec in p_data.values() for v in sec.values())
+        return out if has_any else None
+    except Exception:
+        return None
+
+
 def enrich(ticker):
     t = ticker.upper()
     tk = yf.Ticker(t)
@@ -220,6 +328,10 @@ def enrich(ticker):
     data.update(analyst_targets(info))
     # P4.10/DEP-02: next_earnings_date feeds depth_triggers.py's earnings_window trigger.
     data["next_earnings_date"] = next_earnings_date(cal)
+    try:
+        data["estimates"] = consensus_estimates(tk)
+    except Exception:
+        data["estimates"] = None
     return data
 
 

@@ -2093,10 +2093,56 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
               f"{_sv(met, 'gross_margin', ob_stale)}   |   operating margin: "
               f"{_sv(met, 'operating_margin', ob_stale)}   |   dividend yield: "
               f"{_sv(met, 'dividend_yield', ob_stale)}   [vendor-computed, expressed as fractions not "
-              f"percents]",
-              f"- Consensus forward growth: revenue {_sv(fg, 'revenue_cagr', ob_stale)}, EPS "
-              f"{_sv(fg, 'eps_cagr', ob_stale)}   (source {_v(fg, 'source')})   [Estimate - sell-side "
-              f"consensus. Establish the horizon before treating either as a multi-year CAGR.]"]
+              f"percents]"]
+        est = en.get("estimates") if en else None
+        if en_stale:
+            L.append("- CONSENSUS ESTIMATES: not available \u2014 stale (> 45 days)")
+        elif not en:
+            L.append("- CONSENSUS ESTIMATES: not available \u2014 enrich record missing")
+        elif not est or not isinstance(est, dict):
+            L.append("- CONSENSUS ESTIMATES: not available \u2014 yfinance estimates unavailable")
+        else:
+            en_date = (en.get("_fetched_at") or "")[:10] or "unknown"
+            L.append(f"- CONSENSUS ESTIMATES   [yfinance, fetched {en_date}; sell-side estimates, not company guidance]")
+            L.append(_row(["period", "revenue avg", "low", "high", "analysts", "growth", "EPS avg", "low", "high", "growth"]))
+            L.append(_row(["---"] * 10))
+            p0 = est.get("0y") or {}
+            p1 = est.get("+1y") or {}
+            for p_lbl, p_data in [("current FY", p0), ("next FY", p1)]:
+                rev = p_data.get("revenue") or {}
+                eps = p_data.get("eps") or {}
+                r_avg = _b(rev.get("avg"))
+                r_low = _b(rev.get("low"))
+                r_high = _b(rev.get("high"))
+                n_analysts = rev.get("analysts") if rev.get("analysts") is not None else eps.get("analysts")
+                r_analysts = _n(n_analysts)
+                r_growth = _pct(rev.get("growth"))
+                e_avg = f"${eps.get('avg'):.2f}" if isinstance(eps.get("avg"), (int, float)) else NULL
+                e_low = f"${eps.get('low'):.2f}" if isinstance(eps.get("low"), (int, float)) else NULL
+                e_high = f"${eps.get('high'):.2f}" if isinstance(eps.get("high"), (int, float)) else NULL
+                e_growth = _pct(eps.get("growth"))
+                L.append(_row([p_lbl, r_avg, r_low, r_high, r_analysts, r_growth, e_avg, e_low, e_high, e_growth]))
+
+            trend = p1.get("eps_trend") or {}
+            now_val = f"${trend.get('current'):.2f}" if isinstance(trend.get("current"), (int, float)) else NULL
+            d30_val = f"${trend.get('d30'):.2f}" if isinstance(trend.get("d30"), (int, float)) else NULL
+            d60_val = f"${trend.get('d60'):.2f}" if isinstance(trend.get("d60"), (int, float)) else NULL
+            d90_val = f"${trend.get('d90'):.2f}" if isinstance(trend.get("d90"), (int, float)) else NULL
+            cur_num = trend.get("current")
+            d90_num = trend.get("d90")
+            if isinstance(cur_num, (int, float)) and isinstance(d90_num, (int, float)) and d90_num != 0:
+                pct_90 = (cur_num - d90_num) / abs(d90_num) * 100.0
+                pct_str = f"({pct_90:+.1f}% in 90 days)"
+            else:
+                pct_str = "(change unknown in 90 days)"
+            L.append(f"- Next-FY EPS estimate trend: now {now_val} | 30 days ago {d30_val} | 60 days ago {d60_val} | 90 days ago {d90_val}  {pct_str}")
+
+            revs = p1.get("eps_revisions") or {}
+            up30 = _n(revs.get("up30"))
+            down30 = _n(revs.get("down30"))
+            up7 = _n(revs.get("up7"))
+            down7 = _n(revs.get("down7"))
+            L.append(f"- Estimate revisions, last 30 days (next FY): {up30} up / {down30} down  (last 7 days: {up7} up / {down7} down)")
         if en:
             L += [f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
                   f"{_sv(en, 'analyst_target_mean', en_stale)} / median "
