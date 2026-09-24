@@ -2173,6 +2173,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             for p_lbl, p_data in [("current FY", p0), ("next FY", p1)]:
                 rev = p_data.get("revenue") or {}
                 eps = p_data.get("eps") or {}
+                # 0 analysts = no estimate: yfinance then reports avg/low/high as 0, which must print
+                # as an absence, never as a $0.000B forecast (FSM next-FY revenue, 2026-09-24).
+                if rev.get("analysts") == 0:
+                    rev = {}
+                if eps.get("analysts") == 0:
+                    eps = {}
                 r_avg = _b(rev.get("avg"))
                 r_low = _b(rev.get("low"))
                 r_high = _b(rev.get("high"))
