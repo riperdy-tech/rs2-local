@@ -26,6 +26,7 @@ Local SearXNG only (config searxng_url) — unmetered, no API key, no per-call c
 import io
 import json
 import re
+import statistics
 import sys
 import time
 import urllib.parse
@@ -70,7 +71,9 @@ TOOLS = [{
             "from SEC filings and are authoritative. Web restatements of those are less "
             "reliable, not more. "
             "If a number you need for an assumption is missing from the pack, SEARCH FOR IT "
-            "rather than assuming a value."),
+            "rather than assuming a value."
+            " Your earlier tool results stay in the conversation as compact notes marked [call N]. "
+            "Read them before searching; do not repeat a search you have already run or re-fetch a page you have already read."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -419,6 +422,197 @@ def turn_metrics(resp):
     }
 
 
+def compact_tool_note(name, args, result, call_index) -> str:
+    """Format a compact note for an earlier tool result to preserve context without bloat."""
+    # Check for budget/quota messages first — kept verbatim
+    if isinstance(result, dict):
+        status = result.get("status")
+        msg = str(result.get("message") or "")
+        err = str(result.get("error") or "")
+        if status == "search_quota_met" or "search_quota_met" in msg or "search_quota_met" in err:
+            return json.dumps(result)
+        if "budget exhausted" in msg.lower() or "budget exhausted" in err.lower():
+            return json.dumps(result)
+    elif isinstance(result, str):
+        if "search_quota_met" in result or "budget exhausted" in result.lower():
+            return result
+
+    if name == "search_web":
+        q = (args or {}).get("query", "") if isinstance(args, dict) else ""
+        prefix = f'[call {call_index}] search: "{q}" -> '
+        if isinstance(result, dict) and result.get("error"):
+            return f"{prefix}{result['error']}"
+
+        is_dedup = bool(isinstance(result, dict) and (
+            result.get("deduplicated_from") or result.get("cache_hit") or result.get("dedup")
+        ))
+        res_list = (result.get("results") or []) if isinstance(result, dict) else []
+        res_lines = []
+        for r in res_list[:4]:
+            t = (r.get("title") or "").strip()
+            u = (r.get("url") or "").strip()
+            s = (r.get("snippet") or "").strip()[:220]
+            res_lines.append(f"{t} | {u} | {s}")
+
+        if res_lines:
+            note = f"{prefix}\n" + "\n".join(res_lines)
+        else:
+            note = prefix.rstrip()
+        if is_dedup:
+            note += " (repeat of an earlier search)"
+        return note
+
+    elif name == "fetch_page":
+        u = (args or {}).get("url", "") if isinstance(args, dict) else ""
+        prefix = f"[call {call_index}] page: {u} -> "
+        if isinstance(result, dict) and (result.get("error") or result.get("refused")):
+            err = result.get("error") or result.get("refused")
+            return f"{prefix}{err}"
+        txt = (result.get("text", "") if isinstance(result, dict) else str(result or ""))[:1500]
+        return f"{prefix}{txt}"
+
+    elif name == "run_financial_model":
+        if isinstance(result, dict) and result.get("error"):
+            compact = {"error": result["error"]}
+        elif isinstance(result, dict):
+            compact = {}
+            if "mode" in result:
+                compact["mode"] = result["mode"]
+            elif isinstance(args, dict) and "mode" in args:
+                compact["mode"] = args["mode"]
+            else:
+                compact["mode"] = "blend" if "blend" in result else "dcf"
+
+            # Per-share values
+            if "scenario_dcfs" in result and isinstance(result["scenario_dcfs"], list):
+                scs = {}
+                for sc in result["scenario_dcfs"]:
+                    if isinstance(sc, dict):
+                        sc_name = sc.get("name", "Scenario")
+                        dcf = sc.get("dcf") or {}
+                        iv = dcf.get("per_share_iv")
+                        if iv is not None:
+                            scs[sc_name] = iv
+                if scs:
+                    compact["scenarios"] = scs
+            elif "scenarios" in result and isinstance(result["scenarios"], list):
+                scs = {}
+                for sc in result["scenarios"]:
+                    if isinstance(sc, dict) and sc.get("iv") is not None:
+                        scs[sc.get("name", "Scenario")] = sc.get("iv")
+                if scs:
+                    compact["scenarios"] = scs
+
+            if "dcf_model" in result and isinstance(result["dcf_model"], dict):
+                dcf = result["dcf_model"]
+                if dcf.get("per_share_iv") is not None:
+                    compact["per_share_iv"] = dcf.get("per_share_iv")
+
+            b = result.get("blend") if isinstance(result.get("blend"), dict) else (result if result.get("mode") == "blend" else None)
+            if b and isinstance(b, dict):
+                b_iv = b.get("blended_per_share_iv") if b.get("blended_per_share_iv") is not None else b.get("per_share_iv")
+                if b_iv is not None:
+                    compact["blend_iv"] = b_iv
+
+            if "reverse_dcf" in result and isinstance(result["reverse_dcf"], dict):
+                rd = result["reverse_dcf"]
+                rev_dict = {}
+                if rd.get("implied_stage1_growth_pct") is not None:
+                    rev_dict["implied_stage1_growth_pct"] = rd.get("implied_stage1_growth_pct")
+                neutral = rd.get("neutral_reference_structure")
+                if isinstance(neutral, dict) and neutral.get("implied_10y_cagr_pct") is not None:
+                    rev_dict["neutral_10y_cagr_pct"] = neutral.get("implied_10y_cagr_pct")
+                if rev_dict:
+                    compact["reverse_dcf"] = rev_dict
+
+            if "kelly_sizing" in result and isinstance(result["kelly_sizing"], dict):
+                k = result["kelly_sizing"]
+                k_dict = {}
+                if k.get("quarter_kelly_pct") is not None:
+                    k_dict["quarter_kelly_pct"] = k.get("quarter_kelly_pct")
+                if k.get("recommendation") is not None:
+                    k_dict["recommendation"] = k.get("recommendation")
+                if k_dict:
+                    compact["kelly"] = k_dict
+        else:
+            compact = {"raw": str(result)[:200]}
+
+        json_str = json.dumps(compact, separators=(',', ':'))
+        if len(json_str) > 1200:
+            json_str = json_str[:1200]
+        return f"[call {call_index}] model: {json_str}"
+
+    return str(result)[:500]
+
+
+def _compact_history(msgs, meta, budget_chars=36000):
+    """Tool messages BEFORE the last assistant tool-call turn become their compact note.
+    Latest round stays full. If total chars of all compact notes exceed budget_chars,
+    shrink oldest search/page notes first to header-only until under budget. Model notes never shrunk.
+    """
+    last_asst_idx = -1
+    for idx in range(len(msgs) - 1, -1, -1):
+        if msgs[idx].get("role") == "assistant" and msgs[idx].get("tool_calls"):
+            last_asst_idx = idx
+            break
+
+    compact_notes = {}
+    for idx, m in enumerate(msgs):
+        if m.get("role") == "tool" and last_asst_idx != -1 and idx < last_asst_idx:
+            m_info = meta[idx] if meta and idx < len(meta) else None
+            if isinstance(m_info, dict):
+                name = m_info.get("name", "")
+                args = m_info.get("args") or {}
+                result = m_info.get("result")
+                call_idx = m_info.get("call_index", idx)
+            elif isinstance(m_info, (list, tuple)) and len(m_info) == 4:
+                name, args, result, call_idx = m_info
+            else:
+                name, args, result, call_idx = "", {}, m.get("content", ""), idx
+            compact_notes[idx] = compact_tool_note(name, args, result, call_idx)
+
+    total_chars = sum(len(note) for note in compact_notes.values())
+    if total_chars > budget_chars:
+        # Shrink the OLDEST search/page notes first to header-only until under budget
+        for idx in sorted(compact_notes.keys()):
+            if total_chars <= budget_chars:
+                break
+            m_info = meta[idx] if meta and idx < len(meta) else None
+            if isinstance(m_info, dict):
+                name = m_info.get("name", "")
+                args = m_info.get("args") or {}
+                call_idx = m_info.get("call_index", idx)
+            elif isinstance(m_info, (list, tuple)) and len(m_info) == 4:
+                name, args, _, call_idx = m_info
+            else:
+                name, args, call_idx = "", {}, idx
+
+            if name == "search_web":
+                q = (args or {}).get("query", "")
+                header_only = f'[call {call_idx}] search: "{q}" (results shown earlier)'
+                diff = len(compact_notes[idx]) - len(header_only)
+                if diff > 0:
+                    compact_notes[idx] = header_only
+                    total_chars -= diff
+            elif name == "fetch_page":
+                u = (args or {}).get("url", "")
+                header_only = f'[call {call_idx}] page: {u} (read earlier)'
+                diff = len(compact_notes[idx]) - len(header_only)
+                if diff > 0:
+                    compact_notes[idx] = header_only
+                    total_chars -= diff
+
+    active_msgs = []
+    for idx, m in enumerate(msgs):
+        if idx in compact_notes:
+            new_m = dict(m)
+            new_m["content"] = compact_notes[idx]
+            active_msgs.append(new_m)
+        else:
+            active_msgs.append(m)
+    return active_msgs
+
+
 def _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap):
     """Persist snapshot immediately so tool calls are recorded before execution."""
     try:
@@ -452,6 +646,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     dict dedupes within a single sample's own tool calls.
     """
     msgs = [{"role": "user", "content": content}]
+    meta_msgs = [None]
     snap, calls, turns = [], 0, []
     q_cache = query_cache if query_cache is not None else {}
     u_cache = url_cache if url_cache is not None else {}
@@ -480,25 +675,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     MAX_MODEL_CALLS = 5
 
     while True:
-        # Ephemeral Context Compaction:
-        # Compact tool payloads from turns prior to the most recent assistant tool call.
-        # The model has already read and digested them into its reasoning trace (<think>).
-        # Pruning the raw JSON/HTML keeps context window lean and prevents attention dilution.
-        last_asst_idx = -1
-        for idx in range(len(msgs) - 1, -1, -1):
-            if msgs[idx].get("role") == "assistant" and msgs[idx].get("tool_calls"):
-                last_asst_idx = idx
-                break
-
-        active_msgs = []
-        for idx, m in enumerate(msgs):
-            if m.get("role") == "tool" and last_asst_idx != -1 and idx < last_asst_idx:
-                active_msgs.append({
-                    "role": "tool",
-                    "content": "[Retrieved research digested into analyst thinking trace; pruned for context efficiency]"
-                })
-            else:
-                active_msgs.append(m)
+        active_msgs = _compact_history(msgs, meta_msgs)
 
         # If search budget is exhausted, only expose financial modeling tool
         active_tools = TOOLS
@@ -540,15 +717,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 msgs.append({"role": "user", "content":
                              "You have completed your research and reasoning. Write the complete "
                              "institutional memorandum and Section 12 machine contract NOW. Do not search again."})
-                active_msgs_retry = []
-                for idx, m in enumerate(msgs):
-                    if m.get("role") == "tool" and last_asst_idx != -1 and idx < last_asst_idx:
-                        active_msgs_retry.append({
-                            "role": "tool",
-                            "content": "[Retrieved research digested into analyst thinking trace; pruned for context efficiency]"
-                        })
-                    else:
-                        active_msgs_retry.append(m)
+                meta_msgs.append(None)
+                active_msgs_retry = _compact_history(msgs, meta_msgs)
                 opts_retry = dict(opts)
                 opts_retry["num_predict"] = 32768
                 body = {"model": model, "stream": False, "think": "low", "messages": active_msgs_retry,
@@ -568,6 +738,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             break
         msgs.append({"role": "assistant", "content": msg.get("content") or "",
                      "tool_calls": tcs})
+        meta_msgs.append(None)
         for tc in tcs:
             calls += 1
             fn = (tc.get("function") or {})
@@ -637,13 +808,16 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 q = args.get("query") or args.get("url") or (f"price={args.get('price')}" if name == 'run_financial_model' else "")
                 print(f"    [tool {calls}] {name}: {str(q)[:88]}", flush=True)
             msgs.append({"role": "tool", "content": json.dumps(result)[:12000]})
+            meta_msgs.append({"name": name, "args": args, "result": result, "call_index": calls})
 
         if search_calls >= MAX_SEARCH_CALLS and model_calls >= MAX_MODEL_CALLS:
             # ALL BUDGETS REACHED -> force the answer, never just break.
             msgs.append({"role": "user", "content":
                          "Tool budgets are exhausted. Write the complete institutional memorandum "
                          "and Section 12 machine contract NOW from what you have. Do not search again."})
-            body = {"model": model, "stream": False, "think": think, "messages": msgs,
+            meta_msgs.append(None)
+            active_msgs_exhausted = _compact_history(msgs, meta_msgs)
+            body = {"model": model, "stream": False, "think": think, "messages": active_msgs_exhausted,
                     "options": opts}
             req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
                                          headers={"Content-Type": "application/json"})
