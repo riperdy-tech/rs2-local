@@ -167,6 +167,9 @@ def extract_scorecard(report, price):
         "momentum_flip_condition": None,
         "momentum_break_rule": None,
         "invalidation_rules": None,
+        # P4 E5b momentum basis
+        "position_basis": None,
+        "momentum_evidence": None,
         # Harness-filled per sample from tool snapshot (not declared by model)
         "desk_calls": None,
         "desk_iv_match": None,
@@ -196,6 +199,10 @@ def extract_scorecard(report, price):
                 card["momentum_view"] = str(card["momentum_view"]).strip().lower()
             if card.get("entry_timing"):
                 card["entry_timing"] = str(card["entry_timing"]).strip().lower()
+            if card.get("position_basis"):
+                card["position_basis"] = str(card["position_basis"]).strip().lower()
+            if card.get("momentum_evidence"):
+                card["momentum_evidence"] = str(card["momentum_evidence"]).strip()
             if card["base_iv"] and price and 0.02 * price <= card["base_iv"] <= 10 * price:
                 return card
         except Exception:
@@ -459,6 +466,7 @@ def select_medoid_scorecard(
             "cycle_evidence": None, "verdict_label": None,
             "momentum_view": None, "entry_timing": None, "momentum_flip_condition": None,
             "momentum_break_rule": None, "invalidation_rules": None,
+            "position_basis": None, "momentum_evidence": None,
             "desk_calls": None, "desk_iv_match": None,
             "desk_reverse_neutral_cagr": None, "coe_minus_anchor": None,
         }
@@ -526,6 +534,8 @@ def select_medoid_scorecard(
             "momentum_flip_condition": san_fb.get("momentum_flip_condition"),
             "momentum_break_rule": san_fb.get("momentum_break_rule"),
             "invalidation_rules": san_fb.get("invalidation_rules"),
+            "position_basis": san_fb.get("position_basis"),
+            "momentum_evidence": san_fb.get("momentum_evidence"),
             "desk_calls": san_fb.get("desk_calls"),
             "desk_iv_match": san_fb.get("desk_iv_match"),
             "desk_reverse_neutral_cagr": san_fb.get("desk_reverse_neutral_cagr"),
@@ -611,6 +621,8 @@ def select_medoid_scorecard(
         "momentum_flip_condition": medoid_card.get("momentum_flip_condition"),
         "momentum_break_rule": medoid_card.get("momentum_break_rule"),
         "invalidation_rules": medoid_card.get("invalidation_rules"),
+        "position_basis": medoid_card.get("position_basis"),
+        "momentum_evidence": medoid_card.get("momentum_evidence"),
         "desk_calls": medoid_card.get("desk_calls"),
         "desk_iv_match": medoid_card.get("desk_iv_match"),
         "desk_reverse_neutral_cagr": medoid_card.get("desk_reverse_neutral_cagr"),
@@ -1462,6 +1474,12 @@ def main():
                       flush=True)
 
     good = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"]]
+    pb_votes = {}
+    for r in good:
+        sc = r.get("scorecard") or {}
+        pb = sc.get("position_basis")
+        pb_str = str(pb).strip().lower() if pb else "none"
+        pb_votes[pb_str] = pb_votes.get(pb_str, 0) + 1
     ivs = [r["iv"] for r in good]
     spread = (max(ivs) / min(ivs) - 1) * 100 if len(ivs) >= 2 else None
     progress = run_progress(n_max, attempted, len(runs), adaptive, broke_early)
@@ -1521,6 +1539,7 @@ def main():
            "median_iv": med, "spread_pct": round(spread, 1) if spread is not None else None,
            "tolerance_pct": TOL_PCT, "early_tolerance_pct": EARLY_TOL_PCT,
            "converged": converged, "verdict": verdict,
+           "position_basis_votes": pb_votes,
            "scorecard": scorecard_summary,
            "median_mos_pct": round((med / price - 1) * 100, 1) if med and price else None}
     if failfast_record is not None:

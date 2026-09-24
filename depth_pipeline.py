@@ -50,6 +50,7 @@ import ops                  # noqa: E402
 import rs2_data             # noqa: E402
 import price_now            # noqa: E402  (P1.5 live price at verdict time)
 import screener_refresh     # noqa: E402  (P4.-1 — refresh the publish clone on a standalone run)
+import momentum_basis       # noqa: E402  (P4 E5b momentum basis)
 from fiduciary_gate import contract_base, validate_fiduciary_contract  # noqa: E402
 from research_brief_guard import check_research_brief  # noqa: E402
 
@@ -395,6 +396,8 @@ CONTRACT_PASSTHROUGH = (
     # P4.2 momentum mandate (Section 12 contract)
     "momentum_view", "entry_timing", "momentum_flip_condition",
     "momentum_break_rule", "invalidation_rules",
+    # P4 E5b momentum basis
+    "position_basis", "momentum_evidence",
 )
 
 
@@ -534,6 +537,11 @@ def band_verdict(doc):
         "momentum_flip_condition": scorecard.get("momentum_flip_condition"),
         "momentum_break_rule": scorecard.get("momentum_break_rule"),
         "invalidation_rules": scorecard.get("invalidation_rules"),
+        # P4 E5b momentum basis
+        "position_basis": None,
+        "position_basis_declared": scorecard.get("position_basis"),
+        "position_basis_votes": doc.get("position_basis_votes"),
+        "momentum_evidence": scorecard.get("momentum_evidence"),
         # Rule 11: doc-level (not scorecard/medoid-level) — the §1.6/§2.5 blocks the pack build
         # actually printed to the analyst, copied straight from consensus.json (T2 whitelisting
         # pattern: the harness records them, the model never declares them).
@@ -548,6 +556,10 @@ def band_verdict(doc):
                   "instability": None, "size_components": None,
                   "fiduciary_verdict": "NOT_APPLICABLE",
                   "fiduciary_violations": [], "fiduciary_amendments": [],
+                  "position_basis": "none",
+                  "position_basis_declared": scorecard.get("position_basis"),
+                  "position_basis_votes": doc.get("position_basis_votes"),
+                  "momentum_evidence": scorecard.get("momentum_evidence"),
                   "reason": "zero plausible complete samples — malfunction path, not a verdict"})
         return v
 
@@ -636,6 +648,69 @@ def band_verdict(doc):
     cbase = contract_base(scorecard)
     mos_vs_base_pct_val = round((cbase / price - 1) * 100, 1) if cbase else None
 
+    # P4 E5b — position_basis resolution & size cap
+    declared_pb = scorecard.get("position_basis")
+    if declared_pb is not None:
+        declared_pb = str(declared_pb).strip().lower()
+    v["position_basis_declared"] = declared_pb
+    v["position_basis_votes"] = doc.get("position_basis_votes")
+
+    final_pb = "none"
+    if declared_pb == "value":
+        if d == "undervalued":
+            final_pb = "value"
+        else:
+            final_pb = "none"
+            v.setdefault("flags", []).append("position_basis_mismatch:value_requires_undervalued")
+            v["flags"] = sorted(set(v["flags"]))
+            reason_notes.append("position basis value requires direction undervalued")
+    elif declared_pb == "momentum":
+        mom_view = scorecard.get("momentum_view")
+        if mom_view is not None:
+            mom_view = str(mom_view).strip().lower()
+        ent_timing = scorecard.get("entry_timing")
+        if ent_timing is not None:
+            ent_timing = str(ent_timing).strip().lower()
+        mom_ev = scorecard.get("momentum_evidence")
+        has_ev = bool(mom_ev and isinstance(mom_ev, str) and mom_ev.strip())
+        mbr = scorecard.get("momentum_break_rule")
+        has_mbr = bool(isinstance(mbr, dict) and mbr.get("metric"))
+
+        structural_unmet = None
+        if d not in ("hold", "overvalued"):
+            structural_unmet = "direction"
+        elif mom_view != "confirming":
+            structural_unmet = "momentum_view"
+        elif ent_timing != "buy_now":
+            structural_unmet = "entry_timing"
+        elif not has_ev:
+            structural_unmet = "momentum_evidence"
+        elif not has_mbr:
+            structural_unmet = "momentum_break_rule"
+
+        if structural_unmet:
+            final_pb = "none"
+            v.setdefault("flags", []).append(f"position_basis_mismatch:{structural_unmet}")
+            v["flags"] = sorted(set(v["flags"]))
+            reason_notes.append(f"position basis momentum structural requirement unmet: {structural_unmet}")
+        else:
+            ticker_name = doc.get("ticker") or ""
+            rev_yoy = momentum_basis.revenue_ttm_yoy(ticker_name)
+            elig = momentum_basis.eligibility(v.get("momentum_state"), rev_yoy, cbase, price)
+            v["momentum_eligibility"] = elig
+            if elig.get("eligible"):
+                final_pb = "momentum"
+            else:
+                final_pb = "none"
+                ff = elig.get("first_failure")
+                v.setdefault("flags", []).append(f"momentum_basis_ineligible:{ff}")
+                v["flags"] = sorted(set(v["flags"]))
+                reason_notes.append(f"momentum basis ineligible: {ff}")
+    else:
+        final_pb = "none"
+
+    v["position_basis"] = final_pb
+
     dispersion_bucket = next(lbl for cap, lbl in SIZE_BUCKETS if spread <= cap)
     mb = mos_bucket(mos_vs_base_pct_val)
     conviction_val = scorecard.get("median_conviction_score")
@@ -645,17 +720,33 @@ def band_verdict(doc):
         v.setdefault("flags", []).append(risk_flag)
         v["flags"] = sorted(set(v["flags"]))
 
-    v["size_components"] = {
-        "dispersion": {"bucket": dispersion_bucket, "spread_pct": spread,
-                       "source": "SIZE_BUCKETS"},
-        "mos": {"bucket": mb, "mos_vs_base_pct": mos_vs_base_pct_val,
-               "source": "mos_vs_base_pct"},
-        "conviction": {"bucket": cb, "conviction_score": conviction_val,
-                       "source": "scorecard.median_conviction_score"},
-        "risk": {"bucket": rb, "elevated_volatility_ahead": risk_flag_active(),
-                "source": "mri_outputs_dir/shock_register.json:risk_flags"},
-    }
-    size = _min_bucket(dispersion_bucket, mb, cb, rb)
+    if final_pb == "momentum":
+        basis_bucket = "half" if d == "hold" else "quarter"
+        v["size_components"] = {
+            "dispersion": {"bucket": dispersion_bucket, "spread_pct": spread,
+                           "source": "SIZE_BUCKETS"},
+            "mos": {"bucket": mb, "mos_vs_base_pct": mos_vs_base_pct_val,
+                    "source": "mos_vs_base_pct", "replaced_by_basis": True},
+            "basis": {"bucket": basis_bucket, "position_basis": "momentum",
+                      "source": "PHASE_4_AMENDMENTS E5b"},
+            "conviction": {"bucket": cb, "conviction_score": conviction_val,
+                           "source": "scorecard.median_conviction_score"},
+            "risk": {"bucket": rb, "elevated_volatility_ahead": risk_flag_active(),
+                     "source": "mri_outputs_dir/shock_register.json:risk_flags"},
+        }
+        size = _min_bucket(dispersion_bucket, basis_bucket, cb, rb)
+    else:
+        v["size_components"] = {
+            "dispersion": {"bucket": dispersion_bucket, "spread_pct": spread,
+                           "source": "SIZE_BUCKETS"},
+            "mos": {"bucket": mb, "mos_vs_base_pct": mos_vs_base_pct_val,
+                    "source": "mos_vs_base_pct"},
+            "conviction": {"bucket": cb, "conviction_score": conviction_val,
+                           "source": "scorecard.median_conviction_score"},
+            "risk": {"bucket": rb, "elevated_volatility_ahead": risk_flag_active(),
+                     "source": "mri_outputs_dir/shock_register.json:risk_flags"},
+        }
+        size = _min_bucket(dispersion_bucket, mb, cb, rb)
 
     # LOST-SAMPLE SIZING PENALTY:
     # If a sample was dropped (e.g. truncation/crash), the band is artificially narrowed.

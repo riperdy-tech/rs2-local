@@ -2337,6 +2337,8 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "verdict_label": "<undervalued | hold | overvalued — your own stated verdict, checked against the recorded direction>",
   "momentum_view": "<confirming | neutral | contradicting — does SECTION 2.5's price action confirm, sit neutral to, or contradict your valuation call?>",
   "entry_timing": "<buy_now | wait_for_momentum | avoid>",
+  "position_basis": "<value | momentum | none — mandate 7: value only when undervalued; momentum when your honest direction is hold or overvalued but the business is in a strong, fundamentally backed uptrend (entry_timing buy_now); otherwise none>",
+  "momentum_evidence": "<string or null — required when position_basis is momentum: the dated facts from the GUIDANCE block or the filings that back the trend (guidance raised, backlog or orders growth, estimates rising)>",
   "momentum_flip_condition": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
   "momentum_break_rule": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
   "invalidation_rules": [
