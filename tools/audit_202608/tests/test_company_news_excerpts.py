@@ -63,3 +63,14 @@ def test_the_pack_prints_the_excerpt_under_its_headline(screener_data_stub, monk
     pack = str(cap.build_pack("GEV"))
     assert "- 2026-09-24 | reuters, reuters.com | GE Vernova wins order |" in pack
     assert "  > read from aol.com: GE Vernova said on Thursday it won a 2 GW gas turbine order" in pack
+
+
+def test_non_english_pages_do_not_become_excerpts():
+    de = ("Die UGI-Aktie steigt nach der Kaufempfehlung von Jefferies deutlich an, und die Anleger freuen sich "
+          "über die neue Dividendenstärke des Versorgers, der in sechzehn Ländern Flüssiggas verkauft und "
+          "seine Bilanz weiter stärkt.")
+    assert company_news._excerpt(de, "Jefferies upgrades UGI to buy from hold", "UGI Aktie") is None
+    en = ("Jefferies upgraded UGI Corporation to buy from hold on Tuesday, saying the gas utility's "
+          "balance sheet repair and its steady dividend make the shares attractive at the current price, "
+          "and it set a price target of $43 for the stock.")
+    assert company_news._excerpt(en, "Jefferies upgrades UGI to buy from hold", None) is not None

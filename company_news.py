@@ -139,10 +139,21 @@ def _excerpt(text, title, name_token, chars=EXCERPT_CHARS):
             continue
         if (name and name in sent.lower()) or len(want & analyst_tools._title_tokens(sent)) >= 2:
             ex = t[m.start(1):m.start(1) + chars].strip()
-            if len(ex) >= 150 and not analyst_tools._looks_paywalled(ex):
+            if len(ex) >= 150 and not analyst_tools._looks_paywalled(ex) and _mostly_english(ex):
                 return ex
             return None
     return None
+
+
+_EN_COMMON = set("the and of to in is for on with that as by at from are was it this be has have will "
+                 "its an or said which their".split())
+
+
+def _mostly_english(text):
+    """The analyst reads English. German and Indonesian pages pass the Latin-script filter; they
+    fail this one (UGI, 2026-09-25: ad-hoc-news.de and a jawapos.com food-tourism page)."""
+    words = re.findall(r"[a-z']+", (text or "").lower())
+    return len(words) >= 20 and sum(w in _EN_COMMON for w in words) / len(words) >= 0.12
 
 
 def _read_article(url, title, name_token):
