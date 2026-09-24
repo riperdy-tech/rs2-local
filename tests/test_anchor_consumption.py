@@ -448,3 +448,74 @@ def test_a_degraded_anchor_discloses_itself_but_keeps_a_measured_leg(anchor_dir,
     assert rf == pytest.approx(0.0494)
     assert erp == pytest.approx(0.0424)
     assert "degraded" in rf_src and "degraded" in erp_src
+
+
+# ---------------------------------------------------------------------------------------------
+# Blume-adjusted sector loading for the Cost of Equity anchor (Phase 4 D3).
+# Formula: adj = 0.67 * raw + 0.33 (shrinking toward 1.0).
+# ---------------------------------------------------------------------------------------------
+
+def test_coe_loading_formula_on_known_values(anchor_dir, monkeypatch):
+    """Blume adjustment: adj = 0.67 * raw + 0.33.
+
+    Known values:
+      - raw 1.0   -> 1.000 (unit beta invariant)
+      - raw 0.0   -> 0.330
+      - raw 0.365 (Consumer Staples) -> 0.57455
+      - raw 0.868 (Industrials)      -> 0.91156
+      - raw 1.373 (Technology)       -> 1.24991
+    raw_loading and anchor_sector_loading must remain strictly unaltered.
+    """
+    loadings = {
+        "unit": 1.0,
+        "zero": 0.0,
+        "consumer_staples": 0.365,
+        "industrials": 0.868,
+        "information_technology": 1.373,
+    }
+    _cost_of_capital_payload(anchor_dir, monkeypatch, sector_loadings=loadings)
+
+    # 1.0 -> 1.0
+    monkeypatch.setattr(rs2_data, "mri_sector_id", lambda s: s)
+    adj, raw, src = rs2_data.coe_loading("unit")
+    assert raw == pytest.approx(1.0)
+    assert adj == pytest.approx(1.0)
+    assert "sector_loading:unit" in src
+
+    # 0.0 -> 0.33
+    adj, raw, src = rs2_data.coe_loading("zero")
+    assert raw == pytest.approx(0.0)
+    assert adj == pytest.approx(0.33)
+
+    # 0.365 -> 0.57455
+    adj, raw, src = rs2_data.coe_loading("consumer_staples")
+    assert raw == pytest.approx(0.365)
+    assert adj == pytest.approx(0.67 * 0.365 + 0.33)
+    assert round(adj, 3) == 0.575
+
+    # 0.868 -> 0.91156
+    adj, raw, src = rs2_data.coe_loading("industrials")
+    assert raw == pytest.approx(0.868)
+    assert adj == pytest.approx(0.67 * 0.868 + 0.33)
+    assert round(adj, 3) == 0.912
+
+    # 1.373 -> 1.24991
+    adj, raw, src = rs2_data.coe_loading("information_technology")
+    assert raw == pytest.approx(1.373)
+    assert adj == pytest.approx(0.67 * 1.373 + 0.33)
+    assert round(adj, 3) == 1.250
+
+    # anchor_sector_loading must remain raw and unchanged!
+    raw_sec, src_sec = rs2_data.anchor_sector_loading("consumer_staples")
+    assert raw_sec == pytest.approx(0.365)
+    assert raw_sec == raw_sec  # not adjusted
+
+
+def test_coe_loading_missing_or_unmapped(anchor_dir, monkeypatch):
+    """When loading is missing or sector unmapped, returns (None, None, reason)."""
+    _cost_of_capital_payload(anchor_dir, monkeypatch, sector_loadings={})
+    adj, raw, src = rs2_data.coe_loading("UnknownSectorXYZ")
+    assert adj is None
+    assert raw is None
+    assert "unmapped_sector" in src or "no_loading_for_sector" in src
+

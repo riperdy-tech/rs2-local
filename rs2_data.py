@@ -1165,6 +1165,18 @@ def anchor_sector_loading(sector):
     return float(val), _coc_leg_source(payload, f"sector_loading:{sec_id}")
 
 
+def coe_loading(sector):
+    """(adj_loading, raw_loading, source) — Blume-adjusted loading (0.67 * raw + 0.33),
+    raw sector loading, and source label. Returns (None, None, reason) when unavailable.
+    """
+    raw, src = anchor_sector_loading(sector)
+    if raw is None:
+        return None, None, src
+    adj = 0.67 * raw + 0.33
+    return adj, raw, src
+
+
+
 
 # ── Point-in-time (as-of) MRI accessors — Phase 4 E4.3, time-travel trial ─────────────────────
 # Everything above this line reads MRI's LATEST snapshot artifacts (current_regime.json, the
@@ -1462,13 +1474,14 @@ def asof_coe_anchor(ticker, asof):
 
     Components:
       - rf(asof): nominal 10y on or before asof from MRI raw_observations (asof_cost_of_capital);
-      - sector_loading: CURRENT anchor's loading for ticker's sector (anchor_sector_loading);
+      - sector_loading: CURRENT anchor's loading for ticker's sector, Blume-adjusted (coe_loading);
       - ERP(asof): latest Damodaran annual implied ERP <= asof - 30 days (asof_damodaran_erp).
 
     Returns dict with keys:
-      'coe_anchor_asof': float (in percent, e.g. 7.97) | None,
+      'coe_anchor_asof': float (in percent, e.g. 8.16) | None,
       'rf': float (in percent, e.g. 4.30) | None,
-      'sector_loading': float (e.g. 0.868) | None,
+      'sector_loading': float (e.g. 0.912) | None,
+      'raw_sector_loading': float (e.g. 0.868) | None,
       'erp': float (in percent, e.g. 4.23) | None,
       'erp_source': str | None,
       'sector': str | None,
@@ -1484,17 +1497,17 @@ def asof_coe_anchor(ticker, asof):
     erp_v, erp_src = asof_damodaran_erp(asof)
     erp_pct = float(erp_v) * 100.0 if erp_v is not None else None
 
-    loading_v, _ = anchor_sector_loading(sector)
-    loading = float(loading_v) if loading_v is not None else None
+    adj_loading, raw_loading, _ = coe_loading(sector)
 
     coe_anchor = None
-    if rf_pct is not None and loading is not None and erp_pct is not None:
-        coe_anchor = round(rf_pct + loading * erp_pct, 2)
+    if rf_pct is not None and adj_loading is not None and erp_pct is not None:
+        coe_anchor = round(rf_pct + adj_loading * erp_pct, 2)
 
     return {
         "coe_anchor_asof": coe_anchor,
         "rf": round(rf_pct, 2) if rf_pct is not None else None,
-        "sector_loading": round(loading, 3) if loading is not None else None,
+        "sector_loading": round(adj_loading, 3) if adj_loading is not None else None,
+        "raw_sector_loading": round(raw_loading, 3) if raw_loading is not None else None,
         "erp": round(erp_pct, 2) if erp_pct is not None else None,
         "erp_source": erp_src,
         "sector": sector,

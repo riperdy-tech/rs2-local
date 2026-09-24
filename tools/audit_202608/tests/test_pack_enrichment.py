@@ -118,6 +118,10 @@ def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_s
     # Mandate line present when Rf is present:
     assert "- **MANDATE:** Use the verified 10-Year Treasury yield above (5.01%)" in pack
 
+    # Live COE ANCHOR shows adjusted loading and raw loading:
+    assert "- COE ANCHOR for this name: rf 5.01% + adjusted loading 0.912× (Blume: 0.67 × raw 0.868 + 0.33) × implied ERP 4.35% = 8.98%" in pack
+    assert "- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above (8.98%)" in pack
+
     # B6: the capitalization mandate no longer conditions on the regime LABEL — it must be the
     # SAME unconditional text regardless of the (contested) headline above.
     assert ("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "

@@ -350,8 +350,8 @@ def test_asof_coe_anchor_reconstruction_in_pack(screener_data_stub, monkeypatch)
     pack = cap.build_pack("GEV", asof="2026-03-31")
     sec15 = pack.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
 
-    # COE ANCHOR: 4.30 + 0.868 * 4.23 = 7.97%
-    assert "- COE ANCHOR for this name: rf 4.30% + loading 0.868x x implied ERP 4.23% = 7.97%" in sec15
+    # COE ANCHOR: rf 4.30% + adj loading 0.912 (Blume: 0.67 * 0.868 + 0.33) * ERP 4.23% = 8.16%
+    assert "- COE ANCHOR for this name: rf 4.30% + adjusted loading 0.912× (Blume: 0.67 × raw 0.868 + 0.33) × implied ERP 4.23% = 8.16%" in sec15
 
     # Structural parameter labels must be present
     assert "sector loading from the current anchor (structural parameter; small look-ahead risk, accepted for this trial)" in sec15
@@ -359,7 +359,25 @@ def test_asof_coe_anchor_reconstruction_in_pack(screener_data_stub, monkeypatch)
     assert "from the current anchor (structural parameter; small look-ahead risk, accepted for this trial)" in sec15
 
     # COE MANDATE line must be stamped exactly as in live mode
-    assert "- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above (7.97%)" in sec15
+    assert "- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above (8.16%)" in sec15
+
+
+def test_asof_coe_anchor_uses_adjusted_loading(screener_data_stub, monkeypatch):
+    """asof_coe_anchor directly returns the Blume-adjusted loading and anchor calculation."""
+    monkeypatch.setattr(rs2_data, "asof_cost_of_capital", lambda asof: {
+        "asof": str(asof), "risk_free": {"nominal_10y": 0.043},
+    })
+    monkeypatch.setattr(rs2_data, "asof_damodaran_erp",
+                        lambda asof: (0.0423, "Damodaran ERP"))
+    monkeypatch.setattr(rs2_data, "anchor_sector_loading",
+                        lambda sector: (0.868, "mri_anchor:sector_loadings:industrials"))
+
+    res = rs2_data.asof_coe_anchor("GEV", "2026-03-31")
+    # 4.30 + (0.67 * 0.868 + 0.33) * 4.23 = 8.16% (NOT 7.97%)
+    assert res["coe_anchor_asof"] == 8.16
+    assert res["sector_loading"] == 0.912
+    assert res["raw_sector_loading"] == 0.868
+
 
 
 def test_asof_coe_anchor_missing_pieces_degrades_and_omits_mandate(screener_data_stub, monkeypatch):

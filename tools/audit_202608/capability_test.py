@@ -1036,10 +1036,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         else:
             load_line = f"- Sector Cost of Equity Loading: {ASOF_NULL} (unmapped sector: {sector or 'none'})"
 
-        if rf_pct is not None and anchor_load_val is not None and erp_pct is not None:
-            coe_anchor_pct = rf_pct + anchor_load_val * erp_pct
-            coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + loading "
-                                f"{anchor_load_val:.3f}x x implied ERP {erp_pct:.2f}% = "
+        adj_load_val, raw_load_val, _ = rs2_data.coe_loading(sector)
+        if rf_pct is not None and adj_load_val is not None and erp_pct is not None:
+            coe_anchor_pct = rf_pct + adj_load_val * erp_pct
+            coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + adjusted loading "
+                                f"{adj_load_val:.3f}× (Blume: 0.67 × raw {raw_load_val:.3f} + 0.33) × implied ERP {erp_pct:.2f}% = "
                                 f"{coe_anchor_pct:.2f}%  (asof {asof_date.isoformat()}, {erp_src}; "
                                 f"{_STRUCTURAL_LOADING_LABEL})")
         else:
@@ -1255,13 +1256,14 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         else:
             load_line = f"- Sector Cost of Equity Loading: {NULL} (unmapped sector: {sector or 'none'})"
 
-        # D3 (PHASE_4_PACK_SPEC.md): COE ANCHOR for this name = rf + sector loading x implied ERP —
+        # D3 (PHASE_4_PACK_SPEC.md): COE ANCHOR for this name = rf + Blume-adjusted sector loading x implied ERP —
         # the single number `coe_used` is measured against (+-150bp), not just its separate legs above.
-        if rf_pct is not None and anchor_load_val is not None and erp_pct is not None:
-            coe_anchor_pct = rf_pct + anchor_load_val * erp_pct
+        adj_load_val, raw_load_val, _ = rs2_data.coe_loading(sector)
+        if rf_pct is not None and adj_load_val is not None and erp_pct is not None:
+            coe_anchor_pct = rf_pct + adj_load_val * erp_pct
             _coe_asof_str = str(anchor_asof) if anchor_asof else NULL
-            coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + loading "
-                                f"{anchor_load_val:.3f}x x implied ERP {erp_pct:.2f}% = "
+            coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + adjusted loading "
+                                f"{adj_load_val:.3f}× (Blume: 0.67 × raw {raw_load_val:.3f} + 0.33) × implied ERP {erp_pct:.2f}% = "
                                 f"{coe_anchor_pct:.2f}%  (asof {_coe_asof_str}, source: MRI cost-of-capital anchor)")
         else:
             coe_anchor_pct = None
