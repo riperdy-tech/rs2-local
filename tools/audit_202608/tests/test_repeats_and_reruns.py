@@ -74,7 +74,7 @@ def test_repeat_calls_jaccard_and_url(monkeypatch, tmp_path):
 
     monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
 
-    def fake_dispatch(name, args, snap=None, query_cache=None, url_cache=None):
+    def fake_dispatch(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None):
         if name == "search_web":
             return {"results": [{"title": "T", "url": "U", "snippet": "S"}]}
         elif name == "fetch_page":

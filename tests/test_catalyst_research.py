@@ -622,3 +622,28 @@ def test_run_repairs_an_unescaped_quote_in_the_brief(monkeypatch, tmp_path):
     b = cr.run("T8", force=True)
     assert b["error"] is None and b["narrative"] == 'The "AI-first" pivot' and len(b["events"]) == 1
     assert b["final_turn"]["json_repaired"] is True
+
+
+def test_a_corrected_fetch_verifies_the_address_the_model_cites(monkeypatch, tmp_path):
+    """fetch_page may open the search's address for a garbled one; an event citing either counts."""
+    good = "https://www.fool.com/investing/2026/09/14/why-did-ge-vernova-stock-fall-today/"
+    bad = "https://www.fool.com/investing/2026-09-14/why-did-ge-vernova-stock-fall-today/"
+    ev = [{"date": "2026-09-14", "event": f"E{i}", "mechanism": "m", "direction": "bear",
+           "estimates_moved": "none", "source_url": bad} for i in range(3)]
+    block = json.dumps({"asof": "2026-09-24", "narrative": "n", "bear_narrative": "b", "events": ev})
+    report = "```json:catalysts" + chr(10) + block + chr(10) + "```"
+
+    def fake_chat(*a, **k):
+        out_dir = k.get("out_dir"); out_dir.mkdir(parents=True, exist_ok=True)
+        snap = {"calls": [{"tool": "fetch_page", "url": good, "corrected_from": bad, "chars": 50,
+                           "text": "GE Vernova fell"}]}
+        (out_dir / "_research_snapshot.json").write_text(json.dumps(snap), encoding="utf-8")
+        return report, "", {"tool_calls": 1}
+
+    monkeypatch.setattr(cr, "run", cr._run_live)
+    monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cr, "discovery_context", lambda t: {
+        "ticker": t, "company": t, "asof": "2026-09-24", "mom_1m": 0.01, "facts": "facts"})
+    monkeypatch.setattr(cr.analyst_tools, "chat_with_tools", fake_chat)
+    b = cr.run("T7", force=True)
+    assert all(e["verified"] for e in b["events"]) and "unverified_events:3" not in b["flags"]

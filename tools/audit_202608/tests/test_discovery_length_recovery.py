@@ -88,3 +88,26 @@ def test_valuation_mode_never_gets_the_discovery_recovery(monkeypatch, tmp_path)
     at.chat_with_tools("m", "prompt", tmp_path, max_search_calls=0, max_model_calls=5, verbose=False)
     assert all(b.get("think") is not False for b in bodies)
     assert all("json:catalysts" not in b["messages"][-1]["content"] for b in bodies)
+
+
+def test_search_result_urls_reach_later_fetches(monkeypatch, tmp_path):
+    """chat_with_tools hands every URL search_web returned to fetch_page (its 404 fix needs them)."""
+    good = "https://www.fool.com/investing/2026/09/14/why-did-ge-vernova-stock-fall-today/"
+    _fake_ollama(monkeypatch, [
+        {"message": {"content": "", "tool_calls": [{"function": {"name": "search_web", "arguments": {"query": "q"}}}]},
+         "done_reason": "stop"},
+        {"message": {"content": "", "tool_calls": [{"function": {"name": "fetch_page", "arguments": {"url": good}}}]},
+         "done_reason": "stop"},
+        _resp("done\n" + BLOCK)])
+    seen = {}
+
+    def fake_dispatch(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None):
+        if name == "search_web":
+            return {"query": "q", "results": [{"title": "t", "url": good, "snippet": "s"}]}
+        seen["known"] = list(known_urls or [])
+        return {"url": args["url"], "chars": 4, "text": "text"}
+
+    monkeypatch.setattr(at, "dispatch_tool", fake_dispatch)
+    at.chat_with_tools("m", "prompt", tmp_path, tools=at.research_tools(), max_search_calls=5,
+                       max_model_calls=0, verbose=False)
+    assert seen["known"] == [good]

@@ -329,6 +329,8 @@ def run(ticker: str, force: bool = False) -> dict:
                     u = call.get("url") or (call.get("params") or {}).get("url") or ""
                     if chars > 0 and text and not err and u:
                         fetched_urls.add(normalize_url(u))
+                        if call.get("corrected_from"):   # the model may cite the address it asked for
+                            fetched_urls.add(normalize_url(call["corrected_from"]))
         except Exception:
             pass
 

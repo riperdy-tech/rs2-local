@@ -27,6 +27,7 @@ import html
 import io
 import json
 import re
+import ssl
 import statistics
 import sys
 import time
@@ -54,6 +55,15 @@ try:
     from sec_guidance import UA as SEC_UA  # noqa: E402
 except Exception:
     SEC_UA = UA
+# Certificate verification with Mozilla's root bundle (certifi) plus the Windows store. The
+# Windows store alone missed roots some sites chain to: cnn.com failed with "unable to get local
+# issuer certificate" in the E9 discovery runs. Verification stays on.
+try:
+    import certifi
+    _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+    _SSL_CTX.load_default_certs()
+except Exception:
+    _SSL_CTX = None
 
 # Content farms and aggregator spam. Mirrors deep_research.py's low-trust stripping — a search
 # result is only as good as its source, and these restate numbers without filing provenance.
@@ -318,7 +328,28 @@ def search_web(query, why="", snap=None, n=6, query_cache=None):
     return rec
 
 
-def fetch_page(url, snap=None, cap=9000, url_cache=None):
+def _same_article(url, known_urls):
+    """A URL from this run's search results with the same host and the same article slug (last
+    path segment, at least 12 characters), or None. The model copies URLs from memory and
+    garbles them: 7 of 86 fetches in the E9 discovery runs were 404s, all on URLs no search
+    returned, such as fool.com/investing/2026-09-14/<slug> for the returned
+    fool.com/investing/2026/09/14/<slug>."""
+    def parts(u):
+        p = urllib.parse.urlparse(u or "")
+        host = (p.hostname or "").lower()
+        host = host[4:] if host.startswith("www.") else host
+        segs = [s for s in p.path.split("/") if s]
+        return host, (segs[-1] if segs else "")
+    host, slug = parts(url)
+    if len(slug) < 12:
+        return None
+    for k in known_urls or ():
+        if k and k.rstrip("/") != url.rstrip("/") and parts(k) == (host, slug):
+            return k
+    return None
+
+
+def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None):
     if any(bad in url for bad in LOW_TRUST):
         if snap is not None:
             snap.append({"tool": "fetch_page", "ts": time.strftime("%H:%M:%S"), "url": url,
@@ -341,9 +372,16 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None):
     is_sec = host == "sec.gov" or host.endswith(".sec.gov")
     try:
         req = urllib.request.Request(url, headers=SEC_UA if is_sec else UA)
-        with urllib.request.urlopen(req, timeout=40) as r:
+        with urllib.request.urlopen(req, timeout=40, context=_SSL_CTX) as r:
             raw = r.read(1_500_000).decode("utf-8", "replace")
     except Exception as e:
+        alt = _same_article(url, known_urls) if getattr(e, "code", None) == 404 else None
+        if alt:
+            res = fetch_page(alt, snap, cap=cap, url_cache=url_cache)
+            if not res.get("error"):
+                return {**res, "corrected_from": url,
+                        "note": f"{url} does not exist (HTTP 404); this is the same article at the "
+                                f"address your search returned. Copy URLs exactly from search results."}
         # A FAILED fetch is still a tool result the model was served, and the run directory is
         # meant to explain the model's behaviour after the fact. Without this the audit trail
         # shows the model going quiet with no record of why.
@@ -371,12 +409,12 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None):
     return {**rec, "cache_hit": False}
 
 
-def dispatch_tool(name, args, snap=None, query_cache=None, url_cache=None):
+def dispatch_tool(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None):
     """Unified dispatcher for all analyst tools."""
     if name == "search_web":
         return search_web(args.get("query", ""), args.get("why", ""), snap, query_cache=query_cache)
     elif name == "fetch_page":
-        return fetch_page(args.get("url", ""), snap, url_cache=url_cache)
+        return fetch_page(args.get("url", ""), snap, url_cache=url_cache, known_urls=known_urls)
     elif name == "run_financial_model":
         import financial_model_tool as fmt
         res = fmt.execute_financial_model(args)
@@ -772,6 +810,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     research_calls = 0
     repeat_calls = 0
     desk_runs = []
+    seen_result_urls = []   # every URL search_web returned this run, for fetch_page's 404 fix
 
     def _recover_cut_off_brief():
         """Discovery mode only (no desk). If the final turn hit num_predict before the
@@ -931,7 +970,11 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                             "message": msg_text,
                         }
                     else:
-                        result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache)
+                        result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache,
+                                               known_urls=seen_result_urls)
+                        if name == "search_web" and isinstance(result, dict):
+                            seen_result_urls.extend(r.get("url") for r in (result.get("results") or [])
+                                                    if isinstance(r, dict) and r.get("url"))
                 elif name == "run_financial_model":
                     if model_calls >= max_model_calls or desk_validation_errors > 6:
                         result = {"error": f"financial model call budget exhausted ({max_model_calls}); "

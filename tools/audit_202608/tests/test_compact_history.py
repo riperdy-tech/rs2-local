@@ -309,7 +309,7 @@ def test_three_request_paths_use_compacted_history(monkeypatch, tmp_path):
     monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
 
     # Mock dispatch_tool to avoid network
-    def fake_dispatch(name, args, snap=None, query_cache=None, url_cache=None):
+    def fake_dispatch(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None):
         if name == "search_web":
             return {"results": [{"title": "T1", "url": "U1", "snippet": "S1"}]}
         elif name == "fetch_page":
@@ -370,7 +370,7 @@ def test_path3_all_budgets_exhausted_uses_compacted_history(monkeypatch, tmp_pat
 
     monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
 
-    def fake_dispatch(name, args, snap=None, query_cache=None, url_cache=None):
+    def fake_dispatch(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None):
         if name == "search_web":
             return {"results": [{"title": "T", "url": "U", "snippet": "S"}]}
         return {"mode": "dcf", "dcf_model": {"per_share_iv": 50.0}}
