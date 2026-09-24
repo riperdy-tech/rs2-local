@@ -55,6 +55,7 @@ def screener_data_stub(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cap, "SD", sd)
     monkeypatch.setattr(common, "SD", sd)
+    monkeypatch.setattr(cap, "HERE", tmp_path)
     # `_sec_facts` memoizes per process keyed on TICKER ONLY, so a lookup made before this stub
     # applied is served from the cache afterwards - the test then reads whichever directory was
     # in effect at that moment and the redirect silently does nothing. Clearing it is also the

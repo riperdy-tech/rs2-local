@@ -49,7 +49,8 @@ import price_now  # noqa: E402  (live price capture; vendor quote is fallback â€
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
 LEDGER = HERE / "cache" / "depth_ledger.jsonl"
-SUB_CACHE = HERE / "cache" / "sec_submissions"
+import sec_guidance
+SUB_CACHE = sec_guidance.SUB_CACHE
 # P4.5/DEP-13: the thesis monitor's own output (thesis_monitor.py, owner). Read-only here.
 THESIS_CACHE = HERE / "cache" / "depth_thesis.json"
 # P4.10/DEP-02: enrich_ticker.py's on-demand output, which now also carries next_earnings_date.
@@ -77,7 +78,7 @@ def _verdict_age_days(verdict):
             verdict.get("date", "1970-01-01"), "%Y-%m-%d")).days
     except ValueError:
         return 10 ** 6
-UA = {"User-Agent": "RS2-Local research riperdy@gmail.com"}
+UA = sec_guidance.UA
 BASELINE_FORMS = {"10-Q", "10-K", "10-K/A", "10-Q/A", "20-F", "40-F"}
 
 
@@ -100,31 +101,8 @@ def newest_verdicts():
 # capability_test, rather than two that can disagree.
 _cik = cap.cik
 
-
-def _submissions(cik):
-    """SEC submissions JSON, cached per UTC day. None on any failure â€” a missing feed must
-    degrade to 'no filing trigger today', never to a crash or a fabricated trigger."""
-    SUB_CACHE.mkdir(parents=True, exist_ok=True)
-    p = SUB_CACHE / f"CIK{cik}.json"
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if p.exists():
-        try:
-            d = json.loads(p.read_text(encoding="utf-8"))
-            if d.get("_fetched_utc", "")[:10] == today:
-                return d
-        except Exception:
-            pass
-    try:
-        req = urllib.request.Request(
-            f"https://data.sec.gov/submissions/CIK{cik}.json", headers=UA)
-        with urllib.request.urlopen(req, timeout=30) as r:
-            d = json.loads(r.read().decode("utf-8", "replace"))
-        d["_fetched_utc"] = datetime.now(timezone.utc).isoformat()
-        p.write_text(json.dumps(d), encoding="utf-8")
-        time.sleep(0.15)          # stay far under SEC's 10 req/s ceiling
-        return d
-    except Exception:
-        return None
+# P4 D4b: _submissions moved to sec_guidance.py; alias kept for existing callers and tests.
+_submissions = sec_guidance._submissions
 
 
 def _filings_since(cik, since_date):

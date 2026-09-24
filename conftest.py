@@ -58,3 +58,20 @@ def _risk_bucket_is_deterministic_in_tests(monkeypatch):
     """
     import depth_pipeline as dp
     monkeypatch.setattr(dp, "risk_bucket", lambda: ("full", None))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_sec_guidance_in_tests(monkeypatch, tmp_path):
+    """P4 D4b: Isolate sec_guidance caches from production cache/ and disable unmocked network calls in tests."""
+    import urllib.error
+    import sec_guidance
+    import depth_triggers
+    monkeypatch.setattr(sec_guidance, "SEC_8K_CACHE", tmp_path / "sec_8k")
+    monkeypatch.setattr(sec_guidance, "SUB_CACHE", tmp_path / "sec_submissions")
+    monkeypatch.setattr(depth_triggers, "SUB_CACHE", tmp_path / "sec_submissions")
+
+    def _no_network_urlopen(*args, **kwargs):
+        raise urllib.error.URLError("Network disabled in tests")
+
+    monkeypatch.setattr(sec_guidance.urllib.request, "urlopen", _no_network_urlopen)
+

@@ -42,6 +42,7 @@ sys.path.insert(0, str(HERE / "tools"))   # base_rates.py / growth_persistence.p
 from pack_data_sanity import check_pack_data_sanity
 
 import rs2_data  # noqa: E402
+import sec_guidance  # noqa: E402
 import base_rates  # noqa: E402
 import growth_persistence  # noqa: E402
 
@@ -120,9 +121,11 @@ TIMEOUT = 14400
 #          `tools/base_rates.py`, cached per file sha within the run), plus the conditional "given
 #          the growth just delivered" table from `tools/growth_persistence.py`, plus the p90
 #          evidence mandate and the survivorship caveat (D11/E2).
-#        - NEW "GUIDANCE & CONSENSUS" block: parses a fenced ```guidance``` table out of the
-#          research brief when present (new format: `metric | period | value | source | date`),
-#          else states plainly that research did not return dated guidance (D4).
+#        - "GUIDANCE & CONSENSUS" block: company's own earnings release from SEC EDGAR (newest
+#          8-K or 8-K/A with Item 2.02, EX-99.1/EX-99.01/EX-99 exhibit text, verbatim dated
+#          guidance excerpt, STALE flag past 120 days), followed by research-brief rows when
+#          present (fenced ```guidance``` table: `metric | period | value | source | date`),
+#          or states plainly when unavailable (D4/D4b).
 #        - SECTION 11's header reverts to "Written by another model, not verified — every figure
 #          is a claim to check against the filings above; cite the filing when you rely on it."
 #          Every "verified ... ground truth / ingest directly" phrase is removed from the pack and
@@ -2150,9 +2153,37 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                   f"({brief_reason}) — omitting GUIDANCE & CONSENSUS and SECTION 11",
                   file=sys.stderr, flush=True)
 
-    # ---- GUIDANCE & CONSENSUS   [D4] ---------------------------------------------------------
+    # ---- GUIDANCE & CONSENSUS   [D4/D4b] -----------------------------------------------------
+    L.append("## GUIDANCE & CONSENSUS   [company's own earnings release from SEC EDGAR, then research-brief claims]")
+
+    asof_str = asof_date.isoformat() if asof_date is not None else None
+    pack_date = asof_str if asof_str is not None else datetime.now().strftime("%Y-%m-%d")
+    c = cik(t)
+    if not c:
+        L.append("COMPANY'S OWN WORDS: not available — no CIK")
+    else:
+        rel = sec_guidance.latest_earnings_release(c, asof=asof_str)
+        if not rel:
+            reason = getattr(sec_guidance.latest_earnings_release, "last_reason", None) or f"no 8-K Item 2.02 on or before {pack_date}"
+            L.append(f"COMPANY'S OWN WORDS: not available — {reason}")
+        else:
+            fdate = rel.get("filing_date", "")
+            try:
+                age_days = (datetime.strptime(pack_date, "%Y-%m-%d") - datetime.strptime(fdate, "%Y-%m-%d")).days
+            except Exception:
+                age_days = 0
+            stale_prefix = f"STALE ({age_days} days) — " if age_days > 120 else ""
+            words_hdr = (f"{stale_prefix}COMPANY'S OWN WORDS — latest earnings release "
+                         f"(SEC 8-K Item 2.02, filed {rel['filing_date']}, {rel['url']}). "
+                         f"The company's statement, not a verified forecast:")
+            L.append(words_hdr)
+            excerpt = sec_guidance.guidance_excerpt(rel.get("text", ""))
+            if excerpt:
+                L.append(excerpt)
+
+    L.append("")
+    L.append("Research-brief rows (claims by another model, check before relying):")
     guidance_rows = _parse_guidance_block(rb_text) if (rb_text and brief_ok) else []
-    L.append("## GUIDANCE & CONSENSUS   [parsed from the research brief's machine-readable block]")
     if guidance_rows:
         L += [_row(["metric", "period", "value", "source", "date"]), _row(["---"] * 5)]
         for gr in guidance_rows:

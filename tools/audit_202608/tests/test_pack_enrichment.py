@@ -263,7 +263,7 @@ def test_guidance_block_parses_fenced_table(tmp_path, monkeypatch, screener_data
     assert "revenue" in guidance
     assert "$39.5B" in guidance
     assert "FY2026" in guidance
-    assert "not available" not in guidance
+    assert "research did not return dated guidance" not in guidance
 
 
 def test_guidance_block_parser_skips_header_row_and_separators():
