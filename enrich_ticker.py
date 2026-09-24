@@ -24,8 +24,14 @@ from pathlib import Path
 
 import yfinance as yf
 
+import paths
+
 HERE = Path(__file__).resolve().parent
-CONFIG = json.loads((HERE / "config.json").read_text(encoding="utf-8"))
+# paths.load_config(), not a raw json read: since 2026-09-22 the repo-local path keys in
+# config.json are null and only load_config() resolves them. The raw read left
+# CONFIG["out_enrich_dir"] as None and every CLI run crashed at Path(None) — no enrich file was
+# written after the reorganisation (the same defect deep_research.py had).
+CONFIG = paths.load_config()
 
 
 def _pct(x, lo=0.0, hi=200.0):
