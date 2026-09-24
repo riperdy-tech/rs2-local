@@ -548,3 +548,28 @@ def test_dispersion_battery_wires_discovery(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "would run discovery for" not in out
 
+
+
+def test_get_cached_brief_uses_a_fresh_brief_from_just_before_midnight(monkeypatch, tmp_path):
+    """The pack is built in another process after the discovery run. A brief written at 23:59
+    must still be found at 00:01, but a stale one from yesterday must not be."""
+    import os
+    import time as _time
+    monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    prev = tmp_path / f"ABC_{yesterday}.json"
+    prev.write_text(json.dumps({"asof": yesterday, "narrative": "late run"}), encoding="utf-8")
+    assert cr.get_cached_brief("abc")["narrative"] == "late run"          # written just now
+
+    old = _time.time() - 7 * 3600
+    os.utime(prev, (old, old))
+    assert cr.get_cached_brief("ABC") is None                             # 7 hours old: stale
+
+    (tmp_path / f"ABC_{today}.json").write_text(json.dumps({"asof": today, "narrative": "today"}),
+                                                encoding="utf-8")
+    assert cr.get_cached_brief("ABC")["narrative"] == "today"             # today's always wins
+    assert cr.get_cached_brief("ABC", asof=yesterday)["narrative"] == "late run"   # explicit date
+    assert cr.get_cached_brief("ABC", asof="2020-01-01") is None

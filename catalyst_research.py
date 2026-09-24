@@ -8,7 +8,7 @@ are reacting to and why it matters.
 End-product: a cached CATALYST BRIEF embedded directly into the pack after RECENT COMPANY NEWS.
 """
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import re
@@ -148,15 +148,30 @@ def discovery_context(ticker: str) -> dict:
 
 
 def get_cached_brief(ticker: str, asof: str = None) -> dict | None:
-    """Load cached brief for ticker and date without running model."""
+    """Load the cached brief for ticker and date without running the model.
+
+    With no `asof`: today's brief, else yesterday's if it was written in the last 6 hours. The
+    pack is built in a separate process after the discovery run, so without the fallback a run
+    whose discovery ends just before midnight would build its pack without the brief.
+    """
     t = str(ticker).upper()
-    date_str = asof or datetime.now().strftime("%Y-%m-%d")
-    cache_file = CACHE_DIR / f"{t}_{date_str}.json"
-    if cache_file.exists():
+    if asof:
+        candidates = [CACHE_DIR / f"{t}_{asof}.json"]
+    else:
+        now = datetime.now()
+        candidates = [CACHE_DIR / f"{t}_{now.strftime('%Y-%m-%d')}.json"]
+        prev = CACHE_DIR / f"{t}_{(now - timedelta(days=1)).strftime('%Y-%m-%d')}.json"
         try:
-            return json.loads(cache_file.read_text(encoding="utf-8"))
-        except Exception:
-            return None
+            if time.time() - prev.stat().st_mtime < 6 * 3600:
+                candidates.append(prev)
+        except OSError:
+            pass
+    for cache_file in candidates:
+        if cache_file.exists():
+            try:
+                return json.loads(cache_file.read_text(encoding="utf-8"))
+            except Exception:
+                return None
     return None
 
 
@@ -359,7 +374,7 @@ _run_live = run
 # real one (AMD, 2026-09-24) rendered 5,400 characters, 4,300 of them outside the mechanisms, so
 # 3,000 could only be met by cutting the mechanisms to nothing - and the mechanism is the reason the
 # brief exists (AMD's Muse -> EPYC CPU link sits in one). 5,000 characters is about 1,300 tokens
-# in a ~30k-character pack and a 49k-token window.
+# next to a 55-65k-character pack in the analyst's 81,920-token window.
 BRIEF_CAP = 5000
 
 # What gets cut when a brief is over the cap, least useful to the valuation first. Each tier
