@@ -263,6 +263,20 @@ REVIEWED_HISTORY_KEYS = frozenset({
 })
 
 
+def _reference_outside_fence(value, band):
+    """Phase 4 E15: ("above" | "below", (fence_low, fence_high)) when a CONSENSUS-IMPLIED VALUE lies
+    outside the harness's frozen fail-fast fence, else (None, fence or None). Same band and the same
+    10% discount as consensus_valuation's fail-fast: 0.5x the discounted street low, 2x the
+    discounted street high. A stale or missing band fences nothing."""
+    if not band or band.get("stale") or not isinstance(value, (int, float)):
+        return None, None
+    lo, hi = band.get("low"), band.get("high")
+    if not (isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and lo > 0 and hi > 0):
+        return None, None
+    fence = (0.5 * lo / 1.10, 2.0 * hi / 1.10)
+    return ("above" if value > fence[1] else "below" if value < fence[0] else None), fence
+
+
 def _default_exit_multiple_line(coe_anchor_pct, terminal_g):
     """Phase 4 E13: the exit multiple consistent with the anchors, (1 + g) / (COE - g). The desk
     fades the flow to terminal_g before the terminal, so any other multiple asserts another g."""
@@ -2323,7 +2337,23 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                     _med / 100.0 if isinstance(_med, (int, float)) else None,
                     da=_ref_da if isinstance(_ref_da, (int, float)) else None,
                     capex=_ref_capex if isinstance(_ref_capex, (int, float)) else None)
-                L.append(consensus_reference.pack_line(_ref, _ref_oe, _coe or 0.0, terminal_g_val or 0.0, _b))
+                # E15: outside the fail-fast fence the reference is not a credible summary of the
+                # consensus (spot commodity earnings carried forward as a perpetuity): say which
+                # side, print the fence, never the number
+                try:
+                    import valuation_backbone as _vb
+                    _band = _vb._consensus_band(t)
+                except Exception:
+                    _band = None
+                _side, _fence = _reference_outside_fence((_ref or {}).get("value"), _band)
+                if _side:
+                    L.append(f"- CONSENSUS-IMPLIED VALUE: not used — the consensus path carried forward at our "
+                             f"discount rate lands {_side} the fence [${_fence[0]:,.2f}, ${_fence[1]:,.2f}] built "
+                             f"from the street's targets (0.5× the lowest and 2× the highest analyst target, each "
+                             f"discounted by 10%), so it is not a credible summary of the consensus "
+                             f"(reference_status: outside_fence_{_side}).")
+                else:
+                    L.append(consensus_reference.pack_line(_ref, _ref_oe, _coe or 0.0, terminal_g_val or 0.0, _b))
         if _civ_na and asof_date is None:
             L.append(f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}")
         if en:

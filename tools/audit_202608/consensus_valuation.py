@@ -649,7 +649,7 @@ def select_medoid_scorecard(
                                            "bull_bear_anchor", "base_exit_g_gap_bp", "bull_exit_g_gap_bp",
                                            "bear_exit_g_gap_bp", "base_exit_to_gordon_multiple",
                                            "terminal_multiple_reason", "interest_addback", "wacc_reason",
-                                           "owner_earnings_source")},
+                                           "owner_earnings_source", "consensus_reference_status")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -960,6 +960,18 @@ def _pack_interest_expense_b(pack_text):
     return None
 
 
+def _pack_reference_status(pack_text):
+    """E15: "used", "outside_fence_above" / "outside_fence_below", "not_available", or None when the
+    pack prints no CONSENSUS-IMPLIED VALUE line at all (the point-in-time path, older packs)."""
+    t = pack_text or ""
+    if _CIV_RE.search(t):
+        return "used"
+    m = re.search(r"reference_status: (outside_fence_(?:above|below))", t)
+    if m:
+        return m.group(1)
+    return "not_available" if "CONSENSUS-IMPLIED VALUE: not available" in t else None
+
+
 def _pack_owner_earnings_source(pack_text):
     """E14: where the pack's OWNER EARNINGS default came from - "ttm_filed", a fallback token
     such as "fy_ni+vendor_capex", or None when the pack prints no default."""
@@ -1064,7 +1076,8 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
               "bull_shares_ratio": None, "bear_shares_ratio": None, "desk_frame": None, "desk_net_debt": None,
               "bull_bear_anchor": None, "base_exit_g_gap_bp": None, "bull_exit_g_gap_bp": None,
               "bear_exit_g_gap_bp": None, "base_exit_to_gordon_multiple": None,
-              "owner_earnings_source": _pack_owner_earnings_source(pack_text)}
+              "owner_earnings_source": _pack_owner_earnings_source(pack_text),
+              "consensus_reference_status": _pack_reference_status(pack_text)}
     flags = []
     g_anchor = _pack_terminal_g(pack_text)
     pack_sh = _pack_shares_b(pack_text)

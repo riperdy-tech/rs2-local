@@ -547,7 +547,7 @@ def band_verdict(doc):
                                          "bull_bear_anchor", "base_exit_g_gap_bp", "bull_exit_g_gap_bp",
                                          "bear_exit_g_gap_bp", "base_exit_to_gordon_multiple",
                                          "terminal_multiple_reason", "interest_addback", "wacc_reason",
-                                         "owner_earnings_source")},
+                                         "owner_earnings_source", "consensus_reference_status")},
         "momentum_view": scorecard.get("momentum_view"),
         "entry_timing": scorecard.get("entry_timing"),
         "momentum_flip_condition": scorecard.get("momentum_flip_condition"),
