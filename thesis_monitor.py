@@ -23,6 +23,8 @@ Writes cache/depth_thesis.json:
                                "current_value", "breached": bool|None}, ...],
                    "entry_timing_now": "buy_now"|"wait_for_momentum"|"avoid"|None,
                    "momentum_flip_met": bool,
+                   "momentum_exit": bool,
+                   "momentum_exit_reason": str (when fired),
                    "evaluated_at": ISO timestamp}}}
 
 `thesis_status` is "breached" if ANY checkable invalidation_rule's condition is currently
@@ -31,9 +33,9 @@ satisfied (the invalidation FIRED); "intact" if at least one rule was evaluated 
 current data) — never guessed either way.
 
 `orchestrate_depth.rebuild_overlay()` merges `thesis_status`, `checks` (as `thesis_checks`),
-`entry_timing_now` and this doc's `asof` (as `thesis_asof`) onto every overlay row.
+`entry_timing_now`, `momentum_exit`, `momentum_exit_reason` and this doc's `asof` (as `thesis_asof`) onto every overlay row.
 `depth_triggers.triggers_for()` reads this file for the `thesis_break` (a breach — class 0, same
-urgency as an event trigger) and `momentum_flip` (a wait_for_momentum name's flip condition met —
+urgency as an event trigger), `momentum_exit` (class 0) and `momentum_flip` (a wait_for_momentum name's flip condition met —
 class 2, same as re-entry) triggers (DEP-02).
 
   python thesis_monitor.py [--dry-run]     (prints; --dry-run does not write the cache file)
@@ -52,6 +54,7 @@ import rs2_data                # noqa: E402
 import depth_gates              # noqa: E402  (single owner of `actionable` — P1.3)
 import depth_triggers           # noqa: E402  (newest_verdicts, _cik, _filings_since — reused, no new network code)
 import capability_test as cap   # noqa: E402  (MOMENTUM_METRICS / FINANCIAL_METRICS single source — P4.4)
+import momentum_basis            # noqa: E402  (P4 E5b system exit for momentum basis positions)
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -169,10 +172,26 @@ def _eval_condition(rule, fin, mom):
         return None
 
 
+class EvaluationResult(tuple):
+    """4-tuple subclass (thesis_status, checks, entry_timing_now, momentum_flip_met)
+    preserving full backward compatibility for tuple unpacking while carrying
+    `momentum_exit` and `momentum_exit_reason` attributes (P4 E5b)."""
+    def __new__(cls, thesis_status, checks, entry_timing_now, momentum_flip_met,
+                momentum_exit=False, momentum_exit_reason=None):
+        inst = super().__new__(cls, (thesis_status, checks, entry_timing_now, momentum_flip_met))
+        inst.thesis_status = thesis_status
+        inst.checks = checks
+        inst.entry_timing_now = entry_timing_now
+        inst.momentum_flip_met = momentum_flip_met
+        inst.momentum_exit = momentum_exit
+        inst.momentum_exit_reason = momentum_exit_reason
+        return inst
+
+
 def evaluate_ticker(verdict, fin=None, mom=None):
     """(thesis_status, checks, entry_timing_now, momentum_flip_met) for one verdict, given its
     current financial/momentum snapshots. Pure — no I/O, so a test can hand it synthetic
-    snapshots directly.
+    snapshots directly. Returns EvaluationResult (a 4-tuple with momentum_exit attributes).
 
     `thesis_status`: 'breached' if any CHECKABLE `invalidation_rules` entry's condition is
     currently satisfied (metric outside the vocabulary is skipped — not checkable, per P4.5);
@@ -182,8 +201,9 @@ def evaluate_ticker(verdict, fin=None, mom=None):
     `entry_timing_now`: a copy of the verdict's own `entry_timing`, flipped to `buy_now` when the
     name is `wait_for_momentum` and its `momentum_flip_condition` is met, or to `avoid` when the
     name is `buy_now` and its `momentum_break_rule` fires — the momentum-break rules protecting
-    the exit (PHASE_4_AMENDMENTS.md E5). Both are annotations only; this module changes no ledger
-    row, only cache/depth_thesis.json.
+    the exit (PHASE_4_AMENDMENTS.md E5). When the verdict's position_basis == "momentum", also
+    flipped to `avoid` if momentum_basis.system_exit fires (E5b). Both are annotations only;
+    this module changes no ledger row, only cache/depth_thesis.json.
     """
     fin = fin or {}
     mom = mom or {}
@@ -228,7 +248,37 @@ def evaluate_ticker(verdict, fin=None, mom=None):
     if entry_timing == "buy_now" and _eval_condition(brk, fin, mom) is True:
         entry_timing_now = "avoid"
 
-    return thesis_status, checks, entry_timing_now, momentum_flip_met
+    momentum_exit = False
+    momentum_exit_reason = None
+    if verdict.get("position_basis") == "momentum":
+        exit_fired, exit_reason = momentum_basis.system_exit(mom)
+        if exit_fired:
+            momentum_exit = True
+            momentum_exit_reason = exit_reason
+            entry_timing_now = "avoid"
+
+    return EvaluationResult(
+        thesis_status, checks, entry_timing_now, momentum_flip_met,
+        momentum_exit=momentum_exit, momentum_exit_reason=momentum_exit_reason,
+    )
+
+
+def build_ticker_record(verdict, fin=None, mom=None):
+    """Build the dictionary stored in cache/depth_thesis.json tickers[T]. Always writes
+    momentum_exit: false when not fired or not a momentum position; gains
+    momentum_exit: true and momentum_exit_reason when fired (P4 E5b)."""
+    res = evaluate_ticker(verdict, fin=fin, mom=mom)
+    rec = {
+        "thesis_status": res.thesis_status,
+        "checks": res.checks,
+        "entry_timing_now": res.entry_timing_now,
+        "momentum_flip_met": res.momentum_flip_met,
+        "momentum_exit": res.momentum_exit,
+        "evaluated_at": datetime.now().isoformat(),
+    }
+    if res.momentum_exit_reason is not None:
+        rec["momentum_exit_reason"] = res.momentum_exit_reason
+    return rec
 
 
 # ---- orchestration (I/O) -------------------------------------------------------------------
@@ -252,13 +302,9 @@ def run(dry_run=False):
         since = v.get("date") or "1970-01-01"
         fin = _financial_snapshot(t, cik, since)
         mom = _momentum_snapshot(t)
-        status, checks, entry_timing_now, flip_met = evaluate_ticker(v, fin, mom)
-        counts[status] += 1
-        tickers_out[t] = {
-            "thesis_status": status, "checks": checks,
-            "entry_timing_now": entry_timing_now, "momentum_flip_met": flip_met,
-            "evaluated_at": datetime.now().isoformat(),
-        }
+        rec = build_ticker_record(v, fin, mom)
+        counts[rec["thesis_status"]] += 1
+        tickers_out[t] = rec
 
     doc = {"asof": asof, "tickers": tickers_out}
     if not dry_run:

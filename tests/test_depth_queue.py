@@ -130,6 +130,13 @@ def test_thesis_break_outranks_momentum_flip_on_the_same_name():
     assert rows[0][1] == 0
 
 
+def test_momentum_exit_is_class_0_like_thesis_break():
+    rows = q(["RN1"], trig={"RN1": [("momentum_exit", "mom_6m < 0")]},
+             verdicts={"RN1": V})
+    assert tickers(rows) == ["RN1"]
+    assert rows[0][1] == 0
+
+
 # ---- P4.10: earnings_window is visible but NON-queueable, like filing_pending ------------------
 
 def test_earnings_window_alone_is_not_due():

@@ -348,3 +348,53 @@ def test_seeded_flip_end_to_end(isolated, monkeypatch):
     row = summary["doc"]["tickers"]["FLIP"]
     assert row["momentum_flip_met"] is True
     assert row["entry_timing_now"] == "buy_now"
+
+
+# ---- P4 E5b: momentum exit for momentum-basis positions --------------------------------------
+
+def test_momentum_exit_fired_on_negative_6m():
+    v = {"position_basis": "momentum", "entry_timing": "buy_now"}
+    res = tm.evaluate_ticker(v, fin={}, mom={"mom_6m": -0.01, "high_52w_distance": 0.0})
+    assert res.momentum_exit is True
+    assert "mom_6m" in (res.momentum_exit_reason or "")
+    assert res.entry_timing_now == "avoid"
+    # Backward compatible 4-tuple unpacking
+    status, checks, timing_now, flip_met = res
+    assert timing_now == "avoid"
+
+
+def test_momentum_exit_fired_on_high_52w_below_threshold():
+    v = {"position_basis": "momentum", "entry_timing": "buy_now"}
+    res = tm.evaluate_ticker(v, fin={}, mom={"mom_6m": 0.10, "high_52w_distance": -0.26})
+    assert res.momentum_exit is True
+    assert "high_52w_distance" in (res.momentum_exit_reason or "")
+    assert res.entry_timing_now == "avoid"
+
+
+def test_momentum_exit_not_fired_when_within_thresholds():
+    v = {"position_basis": "momentum", "entry_timing": "buy_now"}
+    res = tm.evaluate_ticker(v, fin={}, mom={"mom_6m": 0.01, "high_52w_distance": -0.24})
+    assert res.momentum_exit is False
+    assert res.momentum_exit_reason is None
+    assert res.entry_timing_now == "buy_now"
+
+
+def test_non_momentum_verdict_never_gets_momentum_exit_true():
+    v = {"position_basis": "value", "entry_timing": "buy_now"}
+    res = tm.evaluate_ticker(v, fin={}, mom={"mom_6m": -0.10, "high_52w_distance": -0.30})
+    assert res.momentum_exit is False
+    assert res.momentum_exit_reason is None
+    assert res.entry_timing_now == "buy_now"
+
+
+def test_build_ticker_record_always_writes_momentum_exit():
+    v_val = {"position_basis": "value", "entry_timing": "buy_now"}
+    rec_val = tm.build_ticker_record(v_val, fin={}, mom={"mom_6m": -0.01})
+    assert rec_val["momentum_exit"] is False
+    assert "momentum_exit_reason" not in rec_val
+
+    v_mom = {"position_basis": "momentum", "entry_timing": "buy_now"}
+    rec_mom = tm.build_ticker_record(v_mom, fin={}, mom={"mom_6m": -0.01})
+    assert rec_mom["momentum_exit"] is True
+    assert "momentum_exit_reason" in rec_mom
+

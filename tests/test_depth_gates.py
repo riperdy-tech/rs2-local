@@ -244,6 +244,36 @@ def test_rebuild_overlay_on_3row_fixture(tmp_path, monkeypatch):
         assert row["thesis_checks"] is None
         assert row["entry_timing_now"] is None
         assert row["thesis_asof"] is None
+        assert row["momentum_exit"] is None
+        assert row["momentum_exit_reason"] is None
+
+
+def test_rebuild_overlay_merges_momentum_exit(tmp_path, monkeypatch):
+    ledger = tmp_path / "depth_ledger.jsonl"
+    ledger.write_text(json.dumps({
+        "ticker": "MMM", "direction": "hold", "gate_version": GV, "n_basis": 2,
+        "fiduciary_verdict": "PASS", "position_basis": "momentum", "run_source": "orchestrator",
+        "date": "2026-09-22"}) + "\n", encoding="utf-8")
+    overlay = tmp_path / "depth_overlay.json"
+    thesis = tmp_path / "depth_thesis.json"
+    thesis.write_text(json.dumps({
+        "asof": "2026-09-24",
+        "tickers": {"MMM": {
+            "thesis_status": "intact", "checks": [], "entry_timing_now": "avoid",
+            "momentum_flip_met": False, "momentum_exit": True,
+            "momentum_exit_reason": "mom_6m < 0 (-0.02)"}}}), encoding="utf-8")
+    monkeypatch.setattr(od, "LEDGER", ledger)
+    monkeypatch.setattr(od, "OVERLAY", overlay)
+    monkeypatch.setattr(od, "THESIS_CACHE", thesis)
+
+    count = od.rebuild_overlay()
+    assert count == 1
+    published = json.loads(overlay.read_text(encoding="utf-8"))
+    mmm = published["tickers"]["MMM"]
+    assert mmm["momentum_exit"] is True
+    assert mmm["momentum_exit_reason"] == "mom_6m < 0 (-0.02)"
+    assert mmm["entry_timing_now"] == "avoid"
+
 
 
 # ---- B3 (Phase 4 amendment): pre_valid_analyst reason, gated on FIRST_VALID_PACK_REVISION ----

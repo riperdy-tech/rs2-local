@@ -179,6 +179,8 @@ def rebuild_overlay():
         v["thesis_checks"] = th.get("checks") if th else None
         v["entry_timing_now"] = th.get("entry_timing_now") if th else None
         v["thesis_asof"] = thesis_asof if th else None
+        v["momentum_exit"] = th.get("momentum_exit") if th else None
+        v["momentum_exit_reason"] = th.get("momentum_exit_reason") if th else None
 
     OVERLAY.write_text(json.dumps(
         {"generated_at": datetime.now().isoformat(), "scheme": "band_direction_v1",
@@ -583,8 +585,8 @@ def build_queue(book, st, trig, verdicts, fs, *, dwell_in=None, held=frozenset()
     def _class(t):
         kinds = [k for k, _ in trig.get(t, [])]
         # thesis_break (P4.5/DEP-13): an invalidation rule fired — same urgency as an event
-        # trigger, so it runs with class 0.
-        if any(k in ("8k", "filing", "move", "exit_review", "thesis_break") for k in kinds):
+        # trigger, so it runs with class 0. Same for momentum_exit (P4 E5b).
+        if any(k in ("8k", "filing", "move", "exit_review", "thesis_break", "momentum_exit") for k in kinds):
             return 0                                        # event-triggered + exit-review
         if t not in verdicts:
             return 1                                        # baseline pass

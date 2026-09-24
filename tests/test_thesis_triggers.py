@@ -94,3 +94,30 @@ def test_thesis_record_for_a_different_ticker_does_not_leak(tmp_path):
 def test_corrupt_thesis_cache_degrades_quietly(tmp_path):
     (tmp_path / "depth_thesis.json").write_text("{not json", encoding="utf-8")
     assert "thesis_break" not in _kinds("AAA", _verdict())  # no crash
+
+
+# ---- P4 E5b: momentum_exit trigger -----------------------------------------------------------
+
+def test_momentum_exit_trigger_fires_when_thesis_record_has_momentum_exit_true(tmp_path):
+    (tmp_path / "depth_thesis.json").write_text(json.dumps({
+        "asof": TODAY, "tickers": {"AAA": {
+            "thesis_status": "unknown", "checks": [],
+            "entry_timing_now": "avoid", "momentum_flip_met": False,
+            "momentum_exit": True, "momentum_exit_reason": "mom_6m < 0 (-0.01)"}}}), encoding="utf-8")
+    kinds = _kinds("AAA", _verdict(position_basis="momentum", entry_timing="buy_now"))
+    assert "momentum_exit" in kinds
+    # Check trigger detail
+    trigs = dt.triggers_for("AAA", _verdict(position_basis="momentum", entry_timing="buy_now"))
+    exit_trig = [t for t in trigs if t[0] == "momentum_exit"][0]
+    assert "mom_6m < 0" in exit_trig[1]
+
+
+def test_momentum_exit_trigger_absent_when_false(tmp_path):
+    (tmp_path / "depth_thesis.json").write_text(json.dumps({
+        "asof": TODAY, "tickers": {"AAA": {
+            "thesis_status": "unknown", "checks": [],
+            "entry_timing_now": "buy_now", "momentum_flip_met": False,
+            "momentum_exit": False}}}), encoding="utf-8")
+    kinds = _kinds("AAA", _verdict(position_basis="momentum", entry_timing="buy_now"))
+    assert "momentum_exit" not in kinds
+

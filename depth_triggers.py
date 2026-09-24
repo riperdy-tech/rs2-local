@@ -16,6 +16,8 @@ Triggers, per name, measured against its NEWEST depth verdict (cache/depth_ledge
              shown different (or wrongly declared) facts. Ranked with rotation, not with events.
   thesis_break   (P4.5/DEP-13) thesis_monitor.py found a checkable invalidation_rule currently
              satisfied against fresh data. Source: cache/depth_thesis.json.
+  momentum_exit  (P4 E5b) thesis_monitor.py system_exit fired on a momentum-basis position.
+             Source: cache/depth_thesis.json.
   momentum_flip  (P4.5/DEP-13) a wait_for_momentum name's momentum_flip_condition is currently
              met. Source: cache/depth_thesis.json.
   earnings_window  (P4.10) the next earnings print is within EARNINGS_WINDOW_TRADING_DAYS.
@@ -233,6 +235,9 @@ def triggers_for(t, verdict):
                      if c.get("breached") is True]
             out.append(("thesis_break", "invalidation rule breached: "
                         + (", ".join(fired) if fired else "see cache/depth_thesis.json")))
+        if thesis.get("momentum_exit"):
+            reason = thesis.get("momentum_exit_reason")
+            out.append(("momentum_exit", f"momentum exit fired: {reason}" if reason else "momentum exit fired"))
         if thesis.get("momentum_flip_met"):
             out.append(("momentum_flip", f"entry_timing flip condition met (was "
                         f"{verdict.get('entry_timing')}, now "
