@@ -991,11 +991,25 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         rf_pct = rf_v * 100.0 if rf_v is not None else None
         real_pct = real_v * 100.0 if real_v is not None else None
         be_pct = be_v * 100.0 if be_v is not None else None
-        erp_pct = coc["implied_erp"] * 100.0 if coc["implied_erp"] is not None else None
+
+        # ERP(asof): latest Damodaran annual implied ERP whose year-end <= asof - 30 days
+        erp_v, erp_src = rs2_data.asof_damodaran_erp(asof_date)
+        erp_pct = erp_v * 100.0 if erp_v is not None else None
         coe_pct = coc["implied_cost_of_equity"]   # already percent (asof_cost_of_capital's convention)
+
         mri_sec = rs2_data.mri_sector_id(sector)
-        anchor_load_val = coc["sector_loadings"].get(mri_sec) if mri_sec else None
-        terminal_g_val, terminal_g_src = rs2_data.asof_terminal_g(asof_date)
+        # sector_loading: CURRENT anchor's loading for name's MRI sector id (structural parameter)
+        anchor_load_val, _ = rs2_data.anchor_sector_loading(sector)
+        # terminal_g anchor: CURRENT long_run_growth_anchor value (structural parameter)
+        terminal_g_val, terminal_g_src = rs2_data.anchor_terminal_g()
+
+        _STRUCTURAL_LOADING_LABEL = (
+            "sector loading from the current anchor (structural parameter; small look-ahead risk, "
+            "accepted for this trial)"
+        )
+        _STRUCTURAL_TERMINAL_G_LABEL = (
+            "from the current anchor (structural parameter; small look-ahead risk, accepted for this trial)"
+        )
 
         rf_src = coc["risk_free_source"].get("nominal_10y")
         rf_line = (f"- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): {rf_pct:.2f}%  "
@@ -1007,17 +1021,16 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         be_line = (f"- 10-Year Breakeven Inflation Rate: {be_pct:.2f}%  [point-in-time, "
                   f"{coc['risk_free_source'].get('breakeven_10y')}]" if be_pct is not None
                   else f"- 10-Year Breakeven Inflation Rate: {ASOF_NULL}")
-        erp_line = (f"- Implied Equity Risk Premium (ERP): {erp_pct:.2f}%  [point-in-time MRI "
-                   f"anchor run, asof {coc.get('anchor_run_asof')}]" if erp_pct is not None else
-                   f"- Implied Equity Risk Premium (ERP): {ASOF_NULL}  (no MRI anchor snapshot "
-                   f"stored at or before this date)")
+        erp_line = (f"- Implied Equity Risk Premium (ERP): {erp_pct:.2f}%  [{erp_src}]"
+                    if erp_pct is not None else
+                    f"- Implied Equity Risk Premium (ERP): {ASOF_NULL}")
         coe_line = (f"- Implied Cost of Equity: {coe_pct:.2f}%  [point-in-time MRI anchor run, "
                    f"asof {coc.get('anchor_run_asof')}]" if coe_pct is not None else
                    f"- Implied Cost of Equity: {ASOF_NULL}  (no MRI anchor snapshot stored at or "
                    f"before this date)")
         if mri_sec is not None and anchor_load_val is not None:
             load_line = (f"- Sector Cost of Equity Loading ({mri_sec}): {anchor_load_val:.3f}x  "
-                        f"[point-in-time MRI anchor run]")
+                        f"[{_STRUCTURAL_LOADING_LABEL}]")
         elif mri_sec is not None:
             load_line = f"- Sector Cost of Equity Loading ({mri_sec}): {ASOF_NULL}"
         else:
@@ -1027,15 +1040,15 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             coe_anchor_pct = rf_pct + anchor_load_val * erp_pct
             coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + loading "
                                 f"{anchor_load_val:.3f}x x implied ERP {erp_pct:.2f}% = "
-                                f"{coe_anchor_pct:.2f}%  (point-in-time, asof "
-                                f"{coc.get('anchor_run_asof')})")
+                                f"{coe_anchor_pct:.2f}%  (asof {asof_date.isoformat()}, {erp_src}; "
+                                f"{_STRUCTURAL_LOADING_LABEL})")
         else:
             coe_anchor_pct = None
             coe_anchor_line = f"- COE ANCHOR for this name: {ASOF_NULL}"
 
         if terminal_g_val is not None:
             terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: "
-                                f"{terminal_g_val*100:.2f}%  (point-in-time MRI anchor run)")
+                                f"{terminal_g_val*100:.2f}%  [{_STRUCTURAL_TERMINAL_G_LABEL}]")
         else:
             terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: {ASOF_NULL}  "
                                f"({terminal_g_src})")
@@ -1097,11 +1110,6 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                      f"({coe_anchor_pct:.2f}%), or declare `coe_source: \"own\"` with a "
                      f"`coe_adjustment_reason`. Vendor beta (SECTION 2) is context only, never "
                      "the input.")
-        else:
-            L.append("- **COE MANDATE:** the COE ANCHOR above is not available this run — "
-                     "declare `coe_source: \"own\"` with a `coe_adjustment_reason` for whatever "
-                     "`coe_used` you choose. Vendor beta (SECTION 2) is context only, never the "
-                     "input.")
         L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
                  "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not "
                  "force artificial multiple caps.")

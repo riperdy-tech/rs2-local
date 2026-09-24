@@ -58,6 +58,7 @@ def _fake_mri_asof(monkeypatch, degraded=True):
                                        "onset_date": "2026-03-05", "state": "active"}],
         "elevated_volatility_ahead": False,
     })
+    monkeypatch.setattr(rs2_data, "asof_damodaran_erp", lambda asof: (None, "fake_unavailable"))
     monkeypatch.setattr(rs2_data, "asof_inflation_trend", lambda asof: {"cpi_yoy": 0.033,
                                                                         "pce_yoy": 0.035})
 
@@ -290,3 +291,120 @@ def test_series_close_on_or_before_matches_grade_depth_verdicts_semantics():
     assert (d, c) == ("2026-03-27", 102.0)
     d2, c2 = cap._series_close_on_or_before(series, "2026-03-31", window=1)
     assert (d2, c2) == (None, None)   # nothing within a 1-day window of 2026-03-31
+
+
+# ── point-in-time CoE anchor reconstruction (Phase 4 E4.3) ──────────────────────────
+
+def test_damodaran_annual_erp_picks_correct_year_by_asof():
+    """ERP(asof) picks Dec-31 of the prior year when asof >= 30 days into the new year;
+    picks two years back when within the first 30 days."""
+    # 2026-03-31: >= 30 days into 2026 -> 2025-12-31 value (0.0423)
+    erp, label = rs2_data.asof_damodaran_erp("2026-03-31")
+    assert erp == pytest.approx(0.0423, abs=1e-5)
+    assert label == "Damodaran implied ERP, year-end 2025 (published ~Jan 2026)"
+
+    # 2026-01-15: within first 30 days of 2026 -> 2024-12-31 value (0.0433)
+    erp2, label2 = rs2_data.asof_damodaran_erp("2026-01-15")
+    assert erp2 == pytest.approx(0.0433, abs=1e-5)
+    assert label2 == "Damodaran implied ERP, year-end 2024 (published ~Jan 2025)"
+
+    # 2026-01-30: exactly 30 days into 2026 -> cutoff 2025-12-31 -> 2025-12-31 value (0.0423)
+    erp3, label3 = rs2_data.asof_damodaran_erp("2026-01-30")
+    assert erp3 == pytest.approx(0.0423, abs=1e-5)
+    assert label3 == "Damodaran implied ERP, year-end 2025 (published ~Jan 2026)"
+
+
+def test_asof_coe_anchor_reconstruction_in_pack(screener_data_stub, monkeypatch):
+    """When Rf, ERP, and sector loading are available, the pack stamps the COE ANCHOR
+    and the +-150bp COE MANDATE with the required structural labels."""
+    _fake_asof_price_lookup(monkeypatch)
+    # Provide working fakes: Rf 4.30%, Damodaran ERP 4.23%, loading 0.868 (Industrials for GEV)
+    monkeypatch.setattr(rs2_data, "asof_cost_of_capital", lambda asof: {
+        "asof": str(asof), "risk_free": {"nominal_10y": 0.043, "real_10y": 0.02,
+                                         "breakeven_10y": 0.023},
+        "risk_free_source": {"nominal_10y": "asof_raw_observations(DGS10,2026-03-31)",
+                             "real_10y": "fake", "breakeven_10y": "fake"},
+        "implied_erp": None, "implied_cost_of_equity": None, "sector_loadings": {},
+        "erp_source": "unavailable", "degraded": True,
+        "degradation_reasons": ["no_anchor_run_stored_at_or_before(fake)"],
+        "anchor_run_asof": None,
+    })
+    monkeypatch.setattr(rs2_data, "asof_damodaran_erp",
+                        lambda asof: (0.0423, "Damodaran implied ERP, year-end 2025 (published ~Jan 2026)"))
+    monkeypatch.setattr(rs2_data, "anchor_sector_loading",
+                        lambda sector: (0.868, "mri_anchor:sector_loadings:industrials"))
+    monkeypatch.setattr(rs2_data, "anchor_terminal_g",
+                        lambda: (0.0375, "anchor_long_run_growth(2026-09-23)"))
+    monkeypatch.setattr(rs2_data, "asof_secondary_macro_series",
+                        lambda asof: {"t10y2y": (0.25, str(asof)), "baa10y": (1.4, str(asof)), "hy_oas": (3.0, str(asof))})
+    monkeypatch.setattr(rs2_data, "asof_regime_vector", lambda asof, max_age_days=None: {
+        "date": str(asof), "probabilities": {"goldilocks": 0.29, "reflation": 0.22,
+                                             "stagflation": 0.18, "recession": 0.17, "tightening": 0.13},
+        "headline": "goldilocks", "headline_probability": 0.29, "margin": 0.07,
+    })
+    monkeypatch.setattr(rs2_data, "asof_shock_register", lambda asof: {
+        "asof": str(asof), "shocks": [], "elevated_volatility_ahead": False,
+    })
+    monkeypatch.setattr(rs2_data, "asof_inflation_trend", lambda asof: {"cpi_yoy": 0.033, "pce_yoy": 0.035})
+
+    pack = cap.build_pack("GEV", asof="2026-03-31")
+    sec15 = pack.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
+
+    # COE ANCHOR: 4.30 + 0.868 * 4.23 = 7.97%
+    assert "- COE ANCHOR for this name: rf 4.30% + loading 0.868x x implied ERP 4.23% = 7.97%" in sec15
+
+    # Structural parameter labels must be present
+    assert "sector loading from the current anchor (structural parameter; small look-ahead risk, accepted for this trial)" in sec15
+    assert "Damodaran implied ERP, year-end 2025 (published ~Jan 2026)" in sec15
+    assert "from the current anchor (structural parameter; small look-ahead risk, accepted for this trial)" in sec15
+
+    # COE MANDATE line must be stamped exactly as in live mode
+    assert "- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above (7.97%)" in sec15
+
+
+def test_asof_coe_anchor_missing_pieces_degrades_and_omits_mandate(screener_data_stub, monkeypatch):
+    """If Rf, ERP, or sector loading is missing, COE ANCHOR prints 'not available (point-in-time)'
+    and the COE MANDATE is omitted."""
+    _fake_asof_price_lookup(monkeypatch)
+    _fake_mri_asof(monkeypatch)
+
+    # 1. Missing Rf:
+    monkeypatch.setattr(rs2_data, "asof_cost_of_capital", lambda asof: {
+        "asof": str(asof), "risk_free": {"nominal_10y": None, "real_10y": 0.02, "breakeven_10y": 0.023},
+        "risk_free_source": {"nominal_10y": None, "real_10y": "fake", "breakeven_10y": "fake"},
+        "implied_erp": None, "implied_cost_of_equity": None, "sector_loadings": {},
+        "erp_source": "unavailable", "degraded": True, "degradation_reasons": [], "anchor_run_asof": None,
+    })
+    monkeypatch.setattr(rs2_data, "asof_damodaran_erp",
+                        lambda asof: (0.0423, "Damodaran implied ERP, year-end 2025 (published ~Jan 2026)"))
+    monkeypatch.setattr(rs2_data, "anchor_sector_loading", lambda sector: (0.868, "src"))
+
+    pack_no_rf = cap.build_pack("GEV", asof="2026-03-31")
+    sec15_no_rf = pack_no_rf.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
+    assert "- COE ANCHOR for this name: not available (point-in-time)" in sec15_no_rf
+    assert "COE MANDATE" not in sec15_no_rf
+
+    # 2. Missing ERP:
+    monkeypatch.setattr(rs2_data, "asof_cost_of_capital", lambda asof: {
+        "asof": str(asof), "risk_free": {"nominal_10y": 0.043, "real_10y": 0.02, "breakeven_10y": 0.023},
+        "risk_free_source": {"nominal_10y": "src", "real_10y": "fake", "breakeven_10y": "fake"},
+        "implied_erp": None, "implied_cost_of_equity": None, "sector_loadings": {},
+        "erp_source": "unavailable", "degraded": True, "degradation_reasons": [], "anchor_run_asof": None,
+    })
+    monkeypatch.setattr(rs2_data, "asof_damodaran_erp", lambda asof: (None, "unavailable"))
+
+    pack_no_erp = cap.build_pack("GEV", asof="2026-03-31")
+    sec15_no_erp = pack_no_erp.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
+    assert "- COE ANCHOR for this name: not available (point-in-time)" in sec15_no_erp
+    assert "COE MANDATE" not in sec15_no_erp
+
+    # 3. Missing sector loading:
+    monkeypatch.setattr(rs2_data, "asof_damodaran_erp",
+                        lambda asof: (0.0423, "Damodaran implied ERP, year-end 2025 (published ~Jan 2026)"))
+    monkeypatch.setattr(rs2_data, "anchor_sector_loading", lambda sector: (None, "unmapped"))
+
+    pack_no_load = cap.build_pack("GEV", asof="2026-03-31")
+    sec15_no_load = pack_no_load.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
+    assert "- COE ANCHOR for this name: not available (point-in-time)" in sec15_no_load
+    assert "COE MANDATE" not in sec15_no_load
+

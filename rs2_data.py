@@ -1358,6 +1358,150 @@ def asof_cost_of_capital(asof):
     return out
 
 
+_DAMODARAN_ERP_CACHE = None
+
+
+def load_damodaran_erp_history(force=False):
+    """Load annual Damodaran implied ERP series: {date(YYYY, 12, 31): float(erp)}.
+
+    Reads from MRI's data/anchors/erp_history.csv (or anchors_dir/erp_history.csv),
+    falling back to the latest entry in cost_of_capital_anchor.json erp_history block.
+    """
+    global _DAMODARAN_ERP_CACHE
+    if _DAMODARAN_ERP_CACHE is not None and not force:
+        return _DAMODARAN_ERP_CACHE
+
+    import csv
+    from datetime import date as _date
+
+    history = {}
+    csv_candidates = []
+    try:
+        import paths as _paths
+        mri_dir = _paths.resolve("mri_dir", CONFIG, required=False)
+        if mri_dir:
+            csv_candidates.append(Path(mri_dir) / "data" / "anchors" / "erp_history.csv")
+    except Exception:
+        pass
+    try:
+        csv_candidates.append(anchors_dir() / "erp_history.csv")
+    except Exception:
+        pass
+
+    for path in csv_candidates:
+        if path and path.exists():
+            try:
+                with open(path, "r", encoding="utf-8-sig") as f:
+                    r = csv.DictReader(f)
+                    for row in r:
+                        d_str = (row.get("date") or "").strip()
+                        v_str = (row.get("erp") or "").strip()
+                        if d_str and v_str:
+                            try:
+                                d = _date.fromisoformat(d_str[:10])
+                                v = float(v_str)
+                                history[d] = v
+                            except (ValueError, TypeError):
+                                continue
+                if history:
+                    break
+            except Exception:
+                pass
+
+    if not history:
+        # Fallback to cost_of_capital_anchor.json erp_history block if csv not found
+        try:
+            payload = usable_anchor("cost_of_capital") or load_anchors().get("cost_of_capital")
+            if isinstance(payload, dict):
+                eh = payload.get("erp_history") or {}
+                end_str = eh.get("end")
+                latest_val = eh.get("latest")
+                if end_str and isinstance(latest_val, (int, float)):
+                    d = _date.fromisoformat(str(end_str)[:10])
+                    history[d] = float(latest_val)
+        except Exception:
+            pass
+
+    _DAMODARAN_ERP_CACHE = history
+    return history
+
+
+def asof_damodaran_erp(asof):
+    """The latest Damodaran annual implied ERP whose year-end is <= asof - 30 days.
+
+    Damodaran publishes early January (e.g. for asof 2026-03-31 that is the 2025-12-31 value
+    0.0423 from erp_history).
+    Returns (erp_fraction, source_label) or (None, reason).
+    """
+    from datetime import date as _date, timedelta as _td
+    if isinstance(asof, datetime):
+        asof_d = asof.date()
+    elif isinstance(asof, _date):
+        asof_d = asof
+    else:
+        try:
+            asof_d = _date.fromisoformat(str(asof)[:10])
+        except Exception:
+            return None, f"invalid_asof_date({asof})"
+
+    cutoff = asof_d - _td(days=30)
+    history = load_damodaran_erp_history()
+    eligible = [d for d in history if d <= cutoff]
+    if not eligible:
+        return None, f"no_damodaran_erp_on_or_before({cutoff.isoformat()})"
+    best_date = max(eligible)
+    val = history[best_date]
+    y = best_date.year
+    source_label = f"Damodaran implied ERP, year-end {y} (published ~Jan {y+1})"
+    return val, source_label
+
+
+def asof_coe_anchor(ticker, asof):
+    """Reconstruct the as-of Cost of Equity (CoE) anchor for `ticker` on `asof`:
+    rf(asof) + sector_loading * ERP(asof).
+
+    Components:
+      - rf(asof): nominal 10y on or before asof from MRI raw_observations (asof_cost_of_capital);
+      - sector_loading: CURRENT anchor's loading for ticker's sector (anchor_sector_loading);
+      - ERP(asof): latest Damodaran annual implied ERP <= asof - 30 days (asof_damodaran_erp).
+
+    Returns dict with keys:
+      'coe_anchor_asof': float (in percent, e.g. 7.97) | None,
+      'rf': float (in percent, e.g. 4.30) | None,
+      'sector_loading': float (e.g. 0.868) | None,
+      'erp': float (in percent, e.g. 4.23) | None,
+      'erp_source': str | None,
+      'sector': str | None,
+      'mri_sector': str | None,
+    """
+    sector, _ = sector_lookup(ticker)
+    mri_sec = mri_sector_id(sector)
+
+    coc = asof_cost_of_capital(asof)
+    rf_v = (coc.get("risk_free") or {}).get("nominal_10y")
+    rf_pct = float(rf_v) * 100.0 if rf_v is not None else None
+
+    erp_v, erp_src = asof_damodaran_erp(asof)
+    erp_pct = float(erp_v) * 100.0 if erp_v is not None else None
+
+    loading_v, _ = anchor_sector_loading(sector)
+    loading = float(loading_v) if loading_v is not None else None
+
+    coe_anchor = None
+    if rf_pct is not None and loading is not None and erp_pct is not None:
+        coe_anchor = round(rf_pct + loading * erp_pct, 2)
+
+    return {
+        "coe_anchor_asof": coe_anchor,
+        "rf": round(rf_pct, 2) if rf_pct is not None else None,
+        "sector_loading": round(loading, 3) if loading is not None else None,
+        "erp": round(erp_pct, 2) if erp_pct is not None else None,
+        "erp_source": erp_src,
+        "sector": sector,
+        "mri_sector": mri_sec,
+    }
+
+
 def asof_terminal_g(asof):
     """(terminal_g, source) — the long-run nominal growth anchor's suggestion at `asof`, or
     (None, reason). Same anchor_runs-availability constraint as the ERP/CoE legs above."""

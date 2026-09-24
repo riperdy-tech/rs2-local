@@ -72,15 +72,15 @@ def _quote(s):
     return f'"{s}"' if " " in s else s
 
 
-def build_asof_pack(name, asof_date, pack_path):
+def build_asof_pack(name, asof_date, pack_path, force=False):
     """Write capability_test.build_pack(name, asof=asof_date) + TASK to `pack_path`, unless a
-    pack is already there (reused verbatim — resumable at the name level, same discipline as
-    tools/dispersion_battery.py's build_frozen_pack). Returns (pack_text, reused).
+    pack is already there and force=False (reused verbatim — resumable at the name level, same
+    discipline as tools/dispersion_battery.py's build_frozen_pack). Returns (pack_text, reused).
 
     NO OLLAMA CALL: build_pack() reads static data files plus one historical-price network fetch
     (no model inference) — safe under --dry-run.
     """
-    if pack_path.exists():
+    if pack_path.exists() and not force:
         return pack_path.read_text(encoding="utf-8"), True
     pack_text = cap.build_pack(name, asof=asof_date)
     pack = pack_text + "\n\n---\n\n" + cap.TASK
@@ -131,7 +131,16 @@ def run_name(name, asof_date, args, out_root):
     pack_path = name_dir / "_pack.md"
     consensus_out = name_dir / "consensus"
 
-    pack, reused = build_asof_pack(name, asof_date, pack_path)
+    force = getattr(args, "force_pack", False)
+    pack, reused = build_asof_pack(name, asof_date, pack_path, force=force)
+
+    coe_data = rs2_data.asof_coe_anchor(name, asof_date)
+    coe_components = {
+        "rf": coe_data.get("rf"),
+        "sector_loading": coe_data.get("sector_loading"),
+        "erp": coe_data.get("erp"),
+        "erp_source": coe_data.get("erp_source"),
+    }
 
     px_data = cap._asof_price_lookup(name, asof_date)
     if px_data is None:
@@ -144,12 +153,19 @@ def run_name(name, asof_date, args, out_root):
 
     if args.dry_run:
         print(f"[dry-run] {name}: pack {'reused' if reused else 'built'} at {pack_path} "
-              f"({len(pack):,} chars) | as-of close ${px_data['price']} ({px_data['asof']})",
+              f"({len(pack):,} chars) | as-of close ${px_data['price']} ({px_data['asof']}) | "
+              f"CoE anchor {coe_data['coe_anchor_asof']}% "
+              f"(rf {coe_data['rf']}%, load {coe_data['sector_loading']}x, erp {coe_data['erp']}%)",
               flush=True)
         print("  " + " ".join(_quote(c) for c in cmd), flush=True)
         return {"ticker": name, "dry_run": True, "pack_path": str(pack_path),
                 "pack_chars": len(pack), "pack_reused": reused,
                 "asof_price": px_data["price"], "asof_price_date": px_data["asof"],
+                "coe_anchor_asof": coe_data["coe_anchor_asof"],
+                "coe_anchor_components": coe_components,
+                "rf_asof": coe_data["rf"],
+                "sector_loading": coe_data["sector_loading"],
+                "erp_asof": coe_data["erp"],
                 "command": cmd}
 
     existing = _existing_complete_run(consensus_out, name, args.samples)
@@ -157,6 +173,11 @@ def run_name(name, asof_date, args, out_root):
         print(f"[time-travel] {name}: already complete ({existing.get('samples_run')} "
               "samples) — skipping", flush=True)
         existing["ticker"] = name
+        existing["coe_anchor_asof"] = coe_data["coe_anchor_asof"]
+        existing["coe_anchor_components"] = coe_components
+        existing["rf_asof"] = coe_data["rf"]
+        existing["sector_loading"] = coe_data["sector_loading"]
+        existing["erp_asof"] = coe_data["erp"]
         return existing
 
     print(f"[time-travel] {name}: running (as-of price ${px_data['price']}, "
@@ -173,6 +194,11 @@ def run_name(name, asof_date, args, out_root):
         return {"ticker": name, "error": "no complete consensus run produced"}
     print(f"[time-travel] {name}: done in {time.time() - t0:.0f}s", flush=True)
     doc["ticker"] = name
+    doc["coe_anchor_asof"] = coe_data["coe_anchor_asof"]
+    doc["coe_anchor_components"] = coe_components
+    doc["rf_asof"] = coe_data["rf"]
+    doc["sector_loading"] = coe_data["sector_loading"]
+    doc["erp_asof"] = coe_data["erp"]
     return doc
 
 
@@ -201,6 +227,11 @@ def grade_name(name, asof_iso, horizon_iso, price_cache, doc):
         "base_iv": doc.get("median_iv"),
         "price_at_asof": doc.get("price"),
         "mos_pct": doc.get("median_mos_pct"),
+        "coe_anchor_asof": doc.get("coe_anchor_asof"),
+        "coe_anchor_components": doc.get("coe_anchor_components"),
+        "rf_asof": doc.get("rf_asof"),
+        "sector_loading": doc.get("sector_loading"),
+        "erp_asof": doc.get("erp_asof"),
         "momentum_view": verdict.get("momentum_view"),
         "entry_timing": verdict.get("entry_timing"),
         "entry_date": d0, "entry_price": p0,
@@ -260,6 +291,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true",
                     help="build packs, fetch as-of prices, print the consensus_valuation "
                          "command lines, run nothing")
+    ap.add_argument("--force-pack", action="store_true",
+                    help="rebuild packs even if already cached on disk")
     args = ap.parse_args()
 
     names = [x.strip().upper() for x in args.names.split(",") if x.strip()]
