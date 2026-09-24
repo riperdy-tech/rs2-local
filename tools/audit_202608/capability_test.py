@@ -1949,7 +1949,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
               "**WORKING CAPITAL FLOAT & CUSTOMER PREPAYMENT NOTICE:**",
               "- When customers make large advance down-payments or slot reservations (surging contract liabilities/deferred revenue), "
               "operating cash flow (OCF) surges temporarily from working-capital float. Do NOT treat this one-off prepayment float as recurring "
-              "owner cash flow. Recognize what it secures: capacity lock-in and multi-decade high-margin service/parts annuities without double-counting."]
+              "owner cash flow. Credit what it secures (capacity lock-in, a service or parts annuity) ONLY where the filings show the "
+              "backlog or installed base behind it - cite the filing and the figure (charter v3.1 mandate 2)."]
         L += [x for x in (_share_tag_note(t, h, yrs), _capex_note(t, h, yrs, fin)) if x]
     else:
         L.append(f"{NULL} - no fiscal-year record held.")
@@ -2321,7 +2322,7 @@ TASK = """You are performing an institutional equity underwriting analysis. T0 i
 
 YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Charter:
   * First-Principles Value Decomposition: Dissect the enterprise into its distinct economic engines: (1) Transactional/Deliveries, (2) Captive Installed-Base / Recurring Contractual Annuity / Subscriptions, and (3) Strategic Optionality. Do not force the enterprise into a single rigid formula.
-  * Complete Value Cycle Rule: Customer advance down-payments, deferred revenue, and contract liabilities signify capacity lock-in and fleet expansion. While current cash flows may reflect working-capital timing, you MUST credit the subsequent multi-decade high-margin recurring annuities secured by those locked-in customer commitments without double-counting current cash flows.
+  * Complete Value Cycle Rule: Customer advances, deferred revenue and contract liabilities can signal capacity lock-in. One-off prepayment float is not recurring cash flow. Credit a multi-year recurring annuity ONLY where the filings show the contracted backlog or installed base that secures it (cite the filing and the figure); a supplier purchase commitment is not customer revenue.
   * Dual Terminal Valuation & Capitalization Realism: DCF projection cross-checked against net capitalization rates (1 / [WACC - g]) and verified empirical peer comps. Do not clamp terminal growth or force artificial multiple ceilings on durable compounders.
   * Causal Downside Stress-Testing: The Bear case must trace operational shock transmission through the business engine bottom-up (transactional volume shock, installed-base service durability, operating de-leverage flow-through, and WACC spread expansion) rather than arbitrary top-down cash flow slashing. Enforce the Contracted Visibility Floor for backlogged/high-ARR enterprises.
   * Lead Underwriter & Portfolio Manager Role: You own the fundamental economic viewpoint, business quality moat evaluation, scenario boundaries (Base, Bull, Bear), and final capital allocation decision. You are supported by a Python Financial Modeling Desk: invoke `run_financial_model` whenever you need deterministic DCF schedules, reverse DCF expectations gap, or continuous multi-outcome Kelly sizing. You can pass all 3 scenarios together in a single call (with each scenario's base_cf, growth_rates, wacc, terminal_g) and Python will compute all intrinsic values, reverse DCF expectations gap, and Kelly sizing in one unified table. DO NOT perform manual mental math on log-wealth Kelly formulas in prose; obtain exact numbers from `run_financial_model`.
