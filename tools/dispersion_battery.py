@@ -57,6 +57,7 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 import rs2_data                     # noqa: E402
 import capability_test as cap       # noqa: E402
 import momentum_basis               # noqa: E402
+import catalyst_research            # noqa: E402
 
 CONSENSUS_SCRIPT = HERE / "tools" / "audit_202608" / "consensus_valuation.py"
 DEFAULT_MODEL = rs2_data.CONFIG.get("depth_model", "rs2-analyst-deep-mtp5")
@@ -217,6 +218,12 @@ def run_name(name, args, out_root):
     evidence_dir = name_dir / "_evidence"
     consensus_out = name_dir / f"arm_{args.arm}"
 
+    if not getattr(args, "no_discovery", False):
+        if getattr(args, "dry_run", False):
+            print(f"would run discovery for {name}", flush=True)
+        else:
+            catalyst_research.run(name)
+
     pack, reused = build_frozen_pack(name, pack_path)
     mom_state = None if reused else getattr(cap, "LAST_PACK_MOMENTUM_STATE", None)
     evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -274,6 +281,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true",
                     help="build packs and evidence-store dirs, print the consensus_valuation "
                          "command lines, run nothing")
+    ap.add_argument("--no-discovery", action="store_true",
+                    help="skip discovery run before building frozen pack")
     args = ap.parse_args()
 
     names = [x.strip().upper() for x in args.names.split(",") if x.strip()]

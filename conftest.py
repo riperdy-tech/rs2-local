@@ -110,3 +110,25 @@ def _company_news_returns_empty_by_default(monkeypatch):
         "unresponsive_engines": [],
         "errors": [],
     })
+
+
+@pytest.fixture(autouse=True)
+def _catalyst_research_returns_no_brief_by_default(monkeypatch):
+    """P4 Item 4 — an autouse fixture (next to the existing ones) makes catalyst_research.run
+    return a fixed 'no brief' result with no model call and no cache write unless a test overrides it."""
+    import catalyst_research
+    monkeypatch.setattr(catalyst_research, "run", lambda ticker, force=False: {
+        "ticker": str(ticker).upper(),
+        "asof": "2026-09-24",
+        "model": "rs2-analyst-deep-mtp5",
+        "narrative": None,
+        "bear_narrative": None,
+        "events": [],
+        "open_questions": [],
+        "flags": ["too_few_events"],
+        "pages_read": 0,
+        "search_calls": 0,
+        "elapsed_s": 0.0,
+        "error": "no brief",
+    })
+

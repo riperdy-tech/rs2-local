@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 import json
 from pathlib import Path
+import sys
 import pytest
 
 import catalyst_research as cr
@@ -105,6 +106,7 @@ def test_parse_catalyst_brief_blocks(monkeypatch, tmp_path):
     # 3. invalid / missing block
     report_missing = "I could not find structured data."
 
+    monkeypatch.setattr(cr, "run", cr._run_live)
     monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(cr, "discovery_context", lambda t: {
         "ticker": t, "company": t, "asof": "2026-09-24", "mom_1m": 0.05, "facts": "facts"
@@ -150,6 +152,7 @@ def test_url_verification(monkeypatch, tmp_path):
 }
 ```
 """
+    monkeypatch.setattr(cr, "run", cr._run_live)
     monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(cr, "discovery_context", lambda t: {
         "ticker": t, "company": t, "asof": "2026-09-24", "mom_1m": 0.02, "facts": "facts"
@@ -190,6 +193,7 @@ def test_flags_at_edges(monkeypatch, tmp_path):
     - 2 events -> too_few_events; 3 events -> not
     - mom_1m 0.10 with newest event 46 days old -> recent_move_unexplained; 44 days -> not
     """
+    monkeypatch.setattr(cr, "run", cr._run_live)
     monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
     today = datetime(2026, 9, 24).date()
 
@@ -352,3 +356,114 @@ def test_task_bullet_text_replaced():
         "you find yourself and fetch the articles you rely on. Record them in `catalysts`."
     )
     assert expected_bullet in cap.TASK
+
+
+def test_depth_pipeline_wires_discovery(tmp_path, monkeypatch):
+    """depth_pipeline calls catalyst_research.run before consensus and survives failure with flag;
+    --no-discovery skips it."""
+    import depth_pipeline as dp
+
+    order = []
+    monkeypatch.delenv("RS2_RUN_SOURCE", raising=False)
+    monkeypatch.delenv("RS2_SCREENER_DATA_COMMIT", raising=False)
+    monkeypatch.setitem(dp.CONFIG, "out_research_dir", str(tmp_path / "research"))
+    monkeypatch.setattr(dp.screener_refresh, "refresh_screener_data", lambda: (True, "deadbeef"))
+    monkeypatch.setattr(dp.price_now, "quote", lambda t: {"price": 100.0, "asof": "2026-09-24", "source": "yfinance"})
+    monkeypatch.setattr(dp, "run_research", lambda t: (order.append("research"), True)[1])
+    monkeypatch.setattr(dp, "audit_verdict", lambda t, ledger: None)
+    monkeypatch.setattr(dp.ops, "notify_telegram", lambda msg: None)
+    monkeypatch.setattr(dp, "LEDGER", tmp_path / "depth_ledger.jsonl")
+    monkeypatch.setattr(dp, "TEST_LEDGER", tmp_path / "depth_test_ledger.jsonl")
+    monkeypatch.setattr(dp, "OD_LEDGER", tmp_path / "depth_ondemand_ledger.jsonl")
+
+    consensus_dir = tmp_path / "TEST_20260924_120000"
+    consensus_dir.mkdir(exist_ok=True)
+    doc = {
+        "ticker": "TEST",
+        "price": 100.0,
+        "runs": [{"iv": 120.0, "plausible": True, "truncated": False, "flags": []}],
+        "median_iv": 120.0,
+        "spread_pct": 5.0,
+    }
+    monkeypatch.setattr(dp, "run_consensus", lambda *a, **k: (order.append("consensus"), (consensus_dir, doc))[1])
+
+    # Case 1: discovery fails with error -> recorded on verdict as discovery_failed:<reason> and never stops run
+    order.clear()
+    monkeypatch.setattr(cr, "run", lambda t: (order.append("discovery"), {"ticker": t, "error": "simulated discovery timeout"})[1])
+    monkeypatch.setattr(sys, "argv", ["depth_pipeline.py", "TEST"])
+    dp.main()
+
+    assert order == ["research", "discovery", "consensus"]
+    v_path = consensus_dir / "verdict_depth.json"
+    assert v_path.exists()
+    v1 = json.loads(v_path.read_text(encoding="utf-8"))
+    assert "discovery_failed:simulated discovery timeout" in v1.get("flags", [])
+
+    # Case 2: discovery raises an exception -> recorded on verdict and never stops run
+    order.clear()
+    def failing_run(t):
+        order.append("discovery")
+        raise RuntimeError("unexpected network crash")
+    monkeypatch.setattr(cr, "run", failing_run)
+    monkeypatch.setattr(sys, "argv", ["depth_pipeline.py", "TEST"])
+    dp.main()
+
+    assert order == ["research", "discovery", "consensus"]
+    v2 = json.loads(v_path.read_text(encoding="utf-8"))
+    assert any("discovery_failed:unexpected network crash" in f for f in v2.get("flags", []))
+
+    # Case 3: --no-discovery skips discovery call
+    order.clear()
+    monkeypatch.setattr(cr, "run", lambda t: order.append("discovery_should_not_run"))
+    monkeypatch.setattr(sys, "argv", ["depth_pipeline.py", "TEST", "--no-discovery"])
+    dp.main()
+
+    assert order == ["research", "consensus"]
+    v3 = json.loads(v_path.read_text(encoding="utf-8"))
+    assert not any("discovery_failed" in f for f in v3.get("flags", []))
+
+
+def test_dispersion_battery_wires_discovery(tmp_path, monkeypatch, capsys):
+    """tools/dispersion_battery calls run before building pack, skips on --dry-run / --no-discovery."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+    import dispersion_battery as db
+
+    order = []
+    monkeypatch.setattr(cr, "run", lambda name: order.append(("discovery", name)))
+    monkeypatch.setattr(db, "build_frozen_pack", lambda name, path: (order.append(("pack", name)), ("pack content", False))[1])
+    monkeypatch.setattr(db, "_existing_complete_run", lambda *a, **k: {"samples_run": 1})
+
+    class MockArgs:
+        def __init__(self, arm="A", samples=1, dry_run=False, no_discovery=False):
+            self.arm = arm
+            self.samples = samples
+            self.dry_run = dry_run
+            self.no_discovery = no_discovery
+            self.temperature = None
+            self.model = None
+            self.ctx = 81920
+            self.failfast_street = False
+
+    # 1. Normal run: calls discovery before pack
+    order.clear()
+    db.run_name("GEV", MockArgs(dry_run=False, no_discovery=False), tmp_path)
+    assert order == [("discovery", "GEV"), ("pack", "GEV")]
+
+    # 2. --dry-run: skips discovery run and prints "would run discovery for <name>"
+    order.clear()
+    capsys.readouterr()
+    res_dry = db.run_name("GEV", MockArgs(dry_run=True, no_discovery=False), tmp_path)
+    assert order == [("pack", "GEV")]
+    out = capsys.readouterr().out
+    assert "would run discovery for GEV" in out
+    assert res_dry.get("dry_run") is True
+
+    # 3. --no-discovery: skips discovery run and does not print "would run discovery for"
+    order.clear()
+    capsys.readouterr()
+    db.run_name("GEV", MockArgs(dry_run=False, no_discovery=True), tmp_path)
+    assert order == [("pack", "GEV")]
+    out = capsys.readouterr().out
+    assert "would run discovery for" not in out
+

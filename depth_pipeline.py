@@ -978,7 +978,7 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "").upper()
     if not t:
-        print("usage: depth_pipeline.py TICKER [--no-research] [--ondemand] [--production] "
+        print("usage: depth_pipeline.py TICKER [--no-research] [--no-discovery] [--ondemand] [--production] "
               "[--samples N] [--no-publish]")
         sys.exit(2)
 
@@ -1021,6 +1021,20 @@ def main():
     if "--no-research" not in sys.argv:
         research_ok = run_research(t)
     consensus_no_research = (not bool(research_ok)) or ("--no-research" in sys.argv)
+
+    # Phase 4 E9: discovery run before consensus. Live runs call catalyst_research.run(t)
+    # after research and BEFORE run_consensus; a failure is recorded on the verdict as
+    # flag discovery_failed:<reason> and never stops the run. --no-discovery skips it.
+    discovery_failed_flag = None
+    if "--no-discovery" not in sys.argv:
+        try:
+            import catalyst_research
+            brief = catalyst_research.run(t)
+            if brief and brief.get("error"):
+                discovery_failed_flag = f"discovery_failed:{brief['error']}"
+        except Exception as e:
+            discovery_failed_flag = f"discovery_failed:{str(e)[:120]}"
+
     if consensus_no_research:
         try:
             d, doc = run_consensus(t, samples=samples, price_quote=quote, no_research=True,
@@ -1042,6 +1056,10 @@ def main():
     v["consensus_dir"] = d.name
     if ondemand:
         v["ondemand"] = True
+    if discovery_failed_flag:
+        v.setdefault("flags", []).append(discovery_failed_flag)
+        v["flags"] = sorted(set(v["flags"]))
+
 
     # ---- provenance on every row + ledger routing (P1.2/P1.5) -----------------------------------
     # A bare `python depth_pipeline.py TICKER` (no --ondemand/--production, no RS2_RUN_SOURCE)

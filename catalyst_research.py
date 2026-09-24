@@ -352,6 +352,9 @@ def run(ticker: str, force: bool = False) -> dict:
     return res
 
 
+_run_live = run
+
+
 def render(brief: dict | None) -> list[str]:
     """Render catalyst brief to pack markdown lines (<= 3,000 chars). Truncate mechanisms first."""
     if not brief or brief.get("error"):
