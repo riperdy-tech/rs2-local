@@ -48,6 +48,7 @@ import growth_persistence  # noqa: E402
 import world_news  # noqa: E402
 import company_news  # noqa: E402
 import catalyst_research  # noqa: E402
+import consensus_reference  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -834,6 +835,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
     asof_cutoff = None
     last_allowed_fy = None
     asof_omitted = []   # every input dropped for point-in-time reasons, printed in SECTION 12
+    _ref_oe = None      # the OWNER EARNINGS default, for SECTION 8's CONSENSUS-IMPLIED VALUE (E10)
     if asof_date is not None:
         from datetime import timedelta as _td
         asof_cutoff = asof_date - _td(days=POINT_IN_TIME_FILING_LAG_DAYS)
@@ -1816,6 +1818,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
 
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
             oe = ni + da - capex
+            _ref_oe = oe
             L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
@@ -1840,11 +1843,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if isinstance(fy_oi, (int, float)) and isinstance(fy_ni, (int, float)):
                 if fy_oi > 0 and fy_ni > fy_oi:
                     L.append(
-                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; recurring items (interest earned on cash, equity-method income) are real owner earnings, so keep the OWNER EARNINGS default for them. Only a one-off (a gain on a sale, a tax-allowance release, discontinued operations) inflates it: find it in the filings, subtract that amount from the default and state it in base_cf_reason. Do not switch to an older fiscal year or to another base because of this line alone."
                     )
                 elif fy_oi <= 0 and fy_ni > 0:
                     L.append(
-                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; recurring items (interest earned on cash, equity-method income) are real owner earnings, so keep the OWNER EARNINGS default for them. Only a one-off (a gain on a sale, a tax-allowance release, discontinued operations) inflates it: find it in the filings, subtract that amount from the default and state it in base_cf_reason. Do not switch to an older fiscal year or to another base because of this line alone."
                     )
         L.append("")
     else:
@@ -1879,6 +1882,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
 
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
             oe = ni + da - capex
+            _ref_oe = oe
             L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             _sbc_fy = (h.get(str(latest_yr)) or {}).get("sbc") if latest_yr is not None else None
             if isinstance(ocf, (int, float)) and isinstance(_sbc_fy, (int, float)):
@@ -1906,11 +1910,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if isinstance(fy_oi, (int, float)) and isinstance(fy_ni, (int, float)):
                 if fy_oi > 0 and fy_ni > fy_oi:
                     L.append(
-                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) exceeded operating income ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; recurring items (interest earned on cash, equity-method income) are real owner earnings, so keep the OWNER EARNINGS default for them. Only a one-off (a gain on a sale, a tax-allowance release, discontinued operations) inflates it: find it in the filings, subtract that amount from the default and state it in base_cf_reason. Do not switch to an older fiscal year or to another base because of this line alone."
                     )
                 elif fy_oi <= 0 and fy_ni > 0:
                     L.append(
-                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; an earnings-based base (including the OWNER EARNINGS default) may be inflated. Check the filings for one-off items; if they inflate it, prefer the CASH BASIS line or normalise the one-offs. Do not fall back to an older fiscal year."
+                        f"- EARNINGS QUALITY: in FY{latest_yr} net income ({_b(fy_ni)}) was positive while operating income was not ({_b(fy_oi)}) \u2014 non-operating gains, tax benefits or discontinued operations; recurring items (interest earned on cash, equity-method income) are real owner earnings, so keep the OWNER EARNINGS default for them. Only a one-off (a gain on a sale, a tax-allowance release, discontinued operations) inflates it: find it in the filings, subtract that amount from the default and state it in base_cf_reason. Do not switch to an older fiscal year or to another base because of this line alone."
                     )
         L.append("")
 
@@ -1993,6 +1997,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                  f"  -  no usable size bucket for base rates this run.")
 
     g0 = None
+    g_stats = None
     if yrs:
         y_last = max(yrs)
         if (y_last - 1) in yrs:
@@ -2173,12 +2178,16 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
               f"{_sv(met, 'dividend_yield', ob_stale)}   [vendor-computed, expressed as fractions not "
               f"percents]"]
         est = en.get("estimates") if en else None
+        _civ_na = None   # why SECTION 8 has no CONSENSUS-IMPLIED VALUE (E10)
         if en_stale:
             L.append("- CONSENSUS ESTIMATES: not available \u2014 stale (> 45 days)")
+            _civ_na = "consensus estimates stale"
         elif not en:
             L.append("- CONSENSUS ESTIMATES: not available \u2014 enrich record missing")
+            _civ_na = "no consensus estimates"
         elif not est or not isinstance(est, dict):
             L.append("- CONSENSUS ESTIMATES: not available \u2014 yfinance estimates unavailable")
+            _civ_na = "no consensus estimates"
         else:
             en_date = (en.get("_fetched_at") or "")[:10] or "unknown"
             L.append(f"- CONSENSUS ESTIMATES   [yfinance, fetched {en_date}; sell-side estimates, not company guidance]")
@@ -2227,6 +2236,33 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             up7 = _n(revs.get("up7"))
             down7 = _n(revs.get("down7"))
             L.append(f"- Estimate revisions, last 30 days (next FY): {up30} up / {down30} down  (last 7 days: {up7} up / {down7} down)")
+            # ---- CONSENSUS-IMPLIED VALUE   [Phase 4 E10] ---------------------------------------
+            # What the analysts' own earnings path is worth at our discount rate, computed the same
+            # way for every name (tools/consensus_reference.py). Not a forecast and not a target.
+            if asof_date is None:
+                _med = (g_stats or {}).get("median") if g_stats else None
+                if _med is None:
+                    _med = ((br_table or {}).get(5) or {}).get("p50")
+                _coe = coe_anchor_pct / 100.0 if isinstance(coe_anchor_pct, (int, float)) else None
+                _ref = consensus_reference.build(
+                    _ref_oe, est, _coe, terminal_g_val,
+                    sh if isinstance(sh, (int, float)) and sh > 0 else None,
+                    _med / 100.0 if isinstance(_med, (int, float)) else None)
+                if _ref["value"] is not None:
+                    _path = " / ".join(f"{g * 100:+.1f}%" for g in _ref["path"])
+                    L.append(
+                        f"- [Arithmetic] CONSENSUS-IMPLIED VALUE (reference, not a forecast): "
+                        f"${_ref['value']:,.2f} per share \u2014 the analysts' own earnings path at our "
+                        f"discount rate. Owner-earnings base {_b(_ref_oe)}; cash-flow growth years 1-5 "
+                        f"{_path} (years 1-2 = consensus EPS growth; from year 3, next-FY revenue growth "
+                        f"fading to the GROWTH BASE RATES median); then a 5-year fade to the terminal-growth "
+                        f"anchor {terminal_g_val * 100:.2f}%; discounted at the COE ANCHOR {coe_anchor_pct:.2f}%. "
+                        f"A Base IV more than a quarter away from it (below 0.75x or above 1.33x) needs "
+                        f"guidance_deviation_reason.")
+                else:
+                    L.append(f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_ref['reason']}")
+        if _civ_na and asof_date is None:
+            L.append(f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}")
         if en:
             L += [f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
                   f"{_sv(en, 'analyst_target_mean', en_stale)} / median "
@@ -2536,7 +2572,7 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
     — at least one dated, industry-specific indicator (pricing, inventory, capacity, order
     trends); a growth rate alone is not evidence.
   * Explain The Recent Move First: start from the CATALYST BRIEF, RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions. For each development say whether you accept or dispute it and why, and how it enters your Bull, Base and Bear numbers; add any development you find yourself and fetch the articles you rely on. Record them in `catalysts`.
-  * Scenarios Anchored To Expectations: Base stage-1 years 1-2 start from the company's guidance or SECTION 8's consensus average; Bull and Bear years 1-2 sit near the consensus high and low unless you say why. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
+  * Scenarios Anchored To Expectations: Stage-1 growth rates are growth of the CASH FLOW you value (base_cf), not of revenue: revenue growth leaves out margin change. Base years 1-2 start from SECTION 8's consensus EPS growth (current FY, then next FY) or the company's guidance converted to earnings growth; if consensus EPS growth is unusable (a negative base, or a recovery off a trough above +150%), use revenue growth plus your stated margin path and say so in guidance_deviation_reason. From year 3 growth follows revenue again: fade from next-FY consensus revenue growth toward the GROWTH BASE RATES median by year 5; anything above its p90 needs the MANDATE's dated evidence. Bull and Bear years 1-2 sit near the consensus EPS high and low unless you say why. SECTION 8's CONSENSUS-IMPLIED VALUE is what the consensus path is worth at our discount rate; a Base IV more than a quarter away from it needs guidance_deviation_reason. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
   * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
 
 Produce the full report, SECTION 0 through SECTION 12, following the mandatory institutional memorandum structure. End with SECTION 12 Final Execution Opinion and the validated JSON contract:
@@ -2571,8 +2607,8 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "terminal_method": "<gordon | exit_multiple | dual_reconciled>",
   "terminal_multiple_or_g": <float — the terminal growth rate (decimal) or exit multiple actually used>,
   "fade_years": <integer >= 0 — length of the Stage-2 linear fade to terminal_g, as passed to run_financial_model>,
-  "stage1_growth_path": [<float, float, float, float, float>],
-  "guidance_deviation_reason": "<string or null — required when stage-1 years 1-2 deviate from the GUIDANCE & CONSENSUS block above by more than 25% relative>",
+  "stage1_growth_path": [<5 annual growth rates of base_cf - cash flow, not revenue; years 1-2 normally consensus EPS growth>],
+  "guidance_deviation_reason": "<string or null — required when Base years 1-2 cash-flow growth is more than a quarter away from consensus EPS growth, or the Base IV more than a quarter away from SECTION 8's CONSENSUS-IMPLIED VALUE>",
   "cycle_evidence": "<string or null — required when you apply a cyclical / mid-cycle / margin-mean-reversion treatment; a growth rate alone is not evidence>",
   "verdict_label": "<undervalued | hold | overvalued — your own stated verdict, checked against the recorded direction>",
   "momentum_view": "<confirming | neutral | contradicting — does SECTION 2.5's price action confirm, sit neutral to, or contradict your valuation call?>",

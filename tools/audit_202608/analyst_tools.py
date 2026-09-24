@@ -150,7 +150,7 @@ TOOLS = [{
                 },
                 "explicit_growth": {
                     "type": "array",
-                    "description": "List of explicit annual growth rates for Stage 1 (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]).",
+                    "description": "Annual growth of base_cf - the owner cash flow being valued - for each Stage 1 year (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). Not revenue growth: revenue growth leaves out margin change. Years 1-2 normally follow consensus EPS growth (SECTION 8).",
                     "items": {"type": "number"}
                 },
                 "growth_rates": {
@@ -237,8 +237,8 @@ TOOLS = [{
                             "prob": {"type": "number"},
                             "iv": {"type": "number", "description": "Optional pre-computed intrinsic value"},
                             "base_cf": {"type": "number", "description": "Base FCF in $B for this scenario"},
-                            "growth_rates": {"type": "array", "items": {"type": "number"}, "description": "5-year growth rates"},
-                            "explicit_growth": {"type": "array", "items": {"type": "number"}},
+                            "growth_rates": {"type": "array", "items": {"type": "number"}, "description": "5 annual growth rates of base_cf (cash flow, not revenue)"},
+                            "explicit_growth": {"type": "array", "items": {"type": "number"}, "description": "5 annual growth rates of base_cf (cash flow, not revenue)"},
                             "fade_years": {"type": "integer"},
                             "wacc": {"type": "number", "description": "Discount rate as decimal"},
                             "terminal_g": {"type": "number", "description": "REQUIRED. Terminal growth as decimal"},

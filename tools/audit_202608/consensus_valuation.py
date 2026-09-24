@@ -840,8 +840,24 @@ def check_base_cf_default_reason(scorecard: dict | None) -> list[str]:
     return flags
 
 
+_CIV_RE = re.compile(r"CONSENSUS-IMPLIED VALUE \(reference, not a forecast\): \$([\d,]+\.\d+) per share")
+_P90_COND_RE = re.compile(r"realized next-5y revenue CAGR[^\n]*?p90 (-?[\d.]+)%")
+_P90_SIZE_RE = re.compile(r"5y sustained growth, this size bucket[^\n]*?p90 (-?[\d.]+)%")
+
+
+def _pack_reference(pack_text):
+    """(consensus-implied value per share, years-3-5 p90 as a fraction) printed in this pack, or
+    None for either. Read from the text so frozen battery packs are checked the same way."""
+    t = pack_text or ""
+    m = _CIV_RE.search(t)
+    civ = float(m.group(1).replace(",", "")) if m else None
+    m = _P90_COND_RE.search(t) or _P90_SIZE_RE.search(t)
+    p90 = float(m.group(1)) / 100.0 if m else None
+    return civ, p90
+
+
 def check_sample_harness_rules(
-    scorecard, price, desk_info=None, enrich_data=None, momentum_state=None
+    scorecard, price, desk_info=None, enrich_data=None, momentum_state=None, pack_text=None
 ):
     """Evaluates Item 4 harness checks per sample:
     - scenario_order_violation: implausible if not (bear_iv <= base_iv <= bull_iv) with all 3 present
@@ -850,6 +866,12 @@ def check_sample_harness_rules(
     - bear_above_price_without_reason: flag if bear_iv > price and bear_above_price_reason is empty
     - bull_below_street_low_without_reason: flag if bull_iv < analyst_target_low and bull_below_price_reason is empty
     - catalysts_missing: flag if catalysts empty/None and (|mom_1m| >= 0.10 or |mom_6m| >= 0.25)
+    - years12_off_consensus_earnings (E10): Base years 1-2 cash-flow growth more than a quarter
+      away from consensus EPS growth, (1+g1)(1+g2) vs (1+c1)(1+c2), without guidance_deviation_reason
+    - base_far_from_consensus_implied (E10): base IV outside 0.75x-1.33x of the pack's
+      CONSENSUS-IMPLIED VALUE without guidance_deviation_reason
+    - years35_above_base_rate_p90 (E10, information): years 3-5 average growth above the pack's
+      conditional (else size-bucket) p90
 
     Returns:
         (is_implausible, [reasons], [flags])
@@ -927,6 +949,36 @@ def check_sample_harness_rules(
         try:
             if float(bull_iv) < float(street_low):
                 flags.append("bull_below_street_low_without_reason")
+        except (ValueError, TypeError):
+            pass
+
+    # 6. E10: the base case against consensus EARNINGS and the consensus-implied value. The AMD probe
+    #    grew a cash-flow base at consensus REVENUE growth and valued "consensus" at half of it.
+    import consensus_reference
+    gdr = str(sc.get("guidance_deviation_reason") or "").strip()
+    if gdr.lower() in ("null", "none"):
+        gdr = ""
+    path = sc.get("stage1_growth_path") or []
+    c1, c2, _ = consensus_reference.consensus_earnings_growth(en.get("estimates"))
+    if c1 is not None and len(path) >= 2 and not gdr:
+        try:
+            ratio = (1 + float(path[0])) * (1 + float(path[1])) / ((1 + c1) * (1 + c2))
+            if not consensus_reference.NEAR_LOW <= ratio <= consensus_reference.NEAR_HIGH:
+                flags.append("years12_off_consensus_earnings")
+        except (ValueError, TypeError, ZeroDivisionError):
+            pass
+    civ, p90 = _pack_reference(pack_text)
+    if civ and base_iv is not None and not gdr:
+        try:
+            if not consensus_reference.FAR_LOW <= float(base_iv) / civ <= consensus_reference.FAR_HIGH:
+                flags.append("base_far_from_consensus_implied")
+        except (ValueError, TypeError, ZeroDivisionError):
+            pass
+    if p90 is not None and len(path) >= 5:
+        try:
+            g35 = ((1 + float(path[2])) * (1 + float(path[3])) * (1 + float(path[4]))) ** (1 / 3) - 1
+            if g35 > p90:
+                flags.append("years35_above_base_rate_p90")
         except (ValueError, TypeError):
             pass
 
@@ -1788,6 +1840,7 @@ def main():
             desk_info=desk_info,
             enrich_data=en_for_checks,
             momentum_state=pack_momentum_state,
+            pack_text=pack,
         )
         if order_imp:
             ok = False
