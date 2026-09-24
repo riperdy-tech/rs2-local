@@ -196,7 +196,7 @@ class PackText(str):
 # so OCF-minus-capex and OCF are different figures ($12.438B vs $14.139B for GEV). An ambiguous
 # name would have made the declaration uncheckable, and `ttm_fcf` is the reading that actually
 # overstated GEV - so it is the one that most needs checking.
-OWNER_CF_BASES = ("latest_fy", "multi_year_avg", "ttm_fcf", "other")
+OWNER_CF_BASES = ("owner_earnings_default", "latest_fy", "multi_year_avg", "ttm_fcf", "other")
 
 
 def owner_cf(ocf, capex, sbc):
@@ -910,6 +910,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                     "revenue": sum(rev4), "net_income": sum(ni4),
                     "through": last4[-1].get("end"),
                 }
+                capex4 = [q.get("capex") for q in last4]
+                if all(isinstance(x, (int, float)) for x in capex4):
+                    asof_ttm_recomputed["capex"] = sum(capex4)
+                ocf4 = [q.get("ocf") for q in last4]
+                if all(isinstance(x, (int, float)) for x in ocf4):
+                    asof_ttm_recomputed["ocf"] = sum(ocf4)
         if asof_ttm_recomputed is None:
             asof_omitted.append(
                 "TTM revenue/net income (SECTION 3): fewer than 4 quarters end on or before "
@@ -1751,11 +1757,37 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         else:
             L.append(f"{ASOF_NULL} - fewer than 4 quarters end on or before "
                      f"{asof_cutoff.isoformat()}.")
+
+        hy = [int(y) for y in h if str(y).isdigit()] if h else []
+        latest_yr = max(hy) if hy else None
+        da = (h.get(str(latest_yr)) or {}).get("da") if latest_yr is not None else None
+        ni = asof_ttm_recomputed.get("net_income") if asof_ttm_recomputed else None
+        capex = asof_ttm_recomputed.get("capex") if asof_ttm_recomputed else None
+        ocf = asof_ttm_recomputed.get("ocf") if asof_ttm_recomputed else None
+
+        if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
+            oe = ni + da - capex
+            L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Use this as base_cf unless base_cf_reason states why another base is more representative.")
+            if isinstance(ocf, (int, float)):
+                denom = ni + da
+                gap = ocf - denom
+                if denom > 0 and gap > 0 and (gap / denom) > 0.25:
+                    pct = (gap / denom) * 100.0
+                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 often customer prepayments or collection timing \u2014 and does not recur; a base built on TTM OCF or FCF includes it.")
+        else:
+            missing = []
+            if not isinstance(ni, (int, float)):
+                missing.append("TTM net income")
+            if not isinstance(da, (int, float)):
+                missing.append("D&A")
+            if not isinstance(capex, (int, float)):
+                missing.append("TTM capex")
+            missing_str = ", ".join(missing)
+            L.append(f"- OWNER EARNINGS (default base_cf): not available (point-in-time) \u2014 {missing_str} missing")
         L.append("")
     else:
         L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [Filed - SEC 10-Q derived; through "
                  f"{_v(ttm, 'through')}, filed {_v(ttm, 'filed')}]")
-    if asof_date is None:
         if f:
             L += [f"- Revenue: {_b(f.get('revenue'))}",
                   f"- Net income: {_b(f.get('net_income'))}",
@@ -1775,6 +1807,33 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         else:
             L.append(f"{NULL} - no TTM record. 20-F and 40-F filers file no 10-Q, so no TTM is "
                      f"derivable for them from this source.")
+
+        hy = [int(y) for y in h if str(y).isdigit()] if h else []
+        latest_yr = max(hy) if hy else None
+        da = (h.get(str(latest_yr)) or {}).get("da") if latest_yr is not None else None
+        ni = f.get("net_income") if f else None
+        capex = f.get("capex") if f else None
+        ocf = f.get("ocf") if f else None
+
+        if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
+            oe = ni + da - capex
+            L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Use this as base_cf unless base_cf_reason states why another base is more representative.")
+            if isinstance(ocf, (int, float)):
+                denom = ni + da
+                gap = ocf - denom
+                if denom > 0 and gap > 0 and (gap / denom) > 0.25:
+                    pct = (gap / denom) * 100.0
+                    L.append(f"- CASH-FLOW QUALITY: TTM operating cash flow exceeds net income + D&A by {_b(gap)} ({round(pct):.0f}%). That gap is working capital \u2014 often customer prepayments or collection timing \u2014 and does not recur; a base built on TTM OCF or FCF includes it.")
+        else:
+            missing = []
+            if not isinstance(ni, (int, float)):
+                missing.append("TTM net income")
+            if not isinstance(da, (int, float)):
+                missing.append("D&A")
+            if not isinstance(capex, (int, float)):
+                missing.append("TTM capex")
+            missing_str = ", ".join(missing)
+            L.append(f"- OWNER EARNINGS (default base_cf): not available \u2014 {missing_str} missing; declare your base and why.")
         L.append("")
 
     # ---- SECTION 4 -------------------------------------------------------------------------
@@ -2329,8 +2388,7 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
   * Lead Underwriter & Portfolio Manager Role: You own the fundamental economic viewpoint, business quality moat evaluation, scenario boundaries (Base, Bull, Bear), and final capital allocation decision. You are supported by a Python Financial Modeling Desk: invoke `run_financial_model` whenever you need deterministic DCF schedules, reverse DCF expectations gap, or continuous multi-outcome Kelly sizing. You can pass all 3 scenarios together in a single call (with each scenario's base_cf, growth_rates, wacc, terminal_g) and Python will compute all intrinsic values, reverse DCF expectations gap, and Kelly sizing in one unified table. DO NOT perform manual mental math on log-wealth Kelly formulas in prose; obtain exact numbers from `run_financial_model`.
   * One model, stated once: run Bear, Base and Bull together in ONE `run_financial_model` call. If you later change any input and run again, the memorandum must include a 'Model revisions' list giving, for every changed input, the old value, the new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden. The harness records every run you make and flags unexplained swings.
   * Scratchpad Containment & Anti-Anchoring: Keep all rough-draft calculations, re-estimates, and trial reconciliations strictly inside <think>...</think>. Never adjust valuations to match market price T0. Enforce exact parity between Section 4 scenario tables and the Section 12 JSON contract.
-  * Declare Your Cash-Flow Base: state the base cash flow you used and which of latest_fy,
-    multi_year_avg, ttm_fcf or other it came from. The pack prints `owner CF [Arithmetic]`
+  * Declare Your Cash-Flow Base: Declare your cash-flow base. The default is SECTION 3's OWNER EARNINGS line (base_cf_basis "owner_earnings_default"); if you use another base, say why in base_cf_reason. The pack prints `owner CF [Arithmetic]`
     (= OCF - capex - SBC) for every fiscal year; `ttm_fcf` means trailing-twelve-months OCF
     minus capex, which subtracts NO stock compensation. If you use a basis that is none of
     these, declare `other` rather than leaving it implied. Your declared basis is checked
@@ -2360,7 +2418,8 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "bull_probability": <float between 0.0 and 1.0>,
   "bear_probability": <float between 0.0 and 1.0>,
   "base_cf_used": <float, in $B, the base cash flow you actually used for the Base Case>,
-  "base_cf_basis": "<which of latest_fy | multi_year_avg | ttm_fcf | other that figure came from>",
+  "base_cf_basis": "<owner_earnings_default | latest_fy | multi_year_avg | ttm_fcf | other — which base that figure is>",
+  "base_cf_reason": "<string or null — required when base_cf_basis is not owner_earnings_default: why that base is more representative>",
   "conviction_score": <float between 4.0 and 15.0 reflecting analytical certainty>,
   "business_quality_moat": <float between 1.0 and 5.0 reflecting moat durability>,
   "kelly_fraction_pct": <float between 0.0 and 25.0 recommended quarter-Kelly position size, obtained from run_financial_model or set to 0.0 if expected edge <= 0>,
