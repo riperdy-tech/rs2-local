@@ -73,4 +73,16 @@ def test_non_english_pages_do_not_become_excerpts():
     en = ("Jefferies upgraded UGI Corporation to buy from hold on Tuesday, saying the gas utility's "
           "balance sheet repair and its steady dividend make the shares attractive at the current price, "
           "and it set a price target of $43 for the stock.")
-    assert company_news._excerpt(en, "Jefferies upgrades UGI to buy from hold", None) is not None
+    assert company_news._excerpt(en, "Jefferies upgrades UGI to buy from hold", "UGI") is not None
+
+
+
+def test_a_multi_company_headline_cannot_bring_another_companys_paragraph():
+    """Fable pre-(b) F2: LIND's news carried Royal Caribbean's fleet paragraph from a roundup."""
+    title = "Analysts Conflicted on These Consumer Cyclical Names: Royal Caribbean (RCL), On Holding (ONON)"
+    rcl = ("The company operates cruises under the Royal Caribbean International, Celebrity Cruises, and "
+           "Silversea Cruises brands, which comprise a range of itineraries across the world's oceans.")
+    assert company_news._excerpt(rcl, title, "Lindblad") is None
+    lind = ("Lindblad Expeditions said on Tuesday it completed the acquisition of White Desert Antarctica, "
+            "adding luxury Antarctic camps and flights to its expedition travel portfolio.")
+    assert company_news._excerpt(lind, "Lindblad buys White Desert", "Lindblad") is not None

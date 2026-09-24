@@ -133,11 +133,16 @@ def _excerpt(text, title, name_token, chars=EXCERPT_CHARS):
     t = re.sub(r"\s+", " ", text or "").strip()
     want = analyst_tools._title_tokens(title)
     name = (name_token or "").lower()
+    # Fable pre-(b) F2: two headline words were enough, so a multi-company headline let a Royal
+    # Caribbean paragraph into LIND's news. The two-word rule now applies only when the headline
+    # itself names the company; otherwise the sentence must.
+    headline_names_it = bool(name) and re.search(rf"\b{re.escape(name)}", (title or "").lower()) is not None
     for m in _SENTENCE.finditer(t):
         sent = m.group(1)
         if len(sent.split()) < 12 or any(j in sent.lower() for j in _FURNITURE):
             continue
-        if (name and name in sent.lower()) or len(want & analyst_tools._title_tokens(sent)) >= 2:
+        names_it = bool(name) and re.search(rf"\b{re.escape(name)}", sent.lower()) is not None
+        if names_it or (headline_names_it and len(want & analyst_tools._title_tokens(sent)) >= 2):
             ex = t[m.start(1):m.start(1) + chars].strip()
             if len(ex) >= 150 and not analyst_tools._looks_paywalled(ex) and _mostly_english(ex):
                 return ex
@@ -176,7 +181,7 @@ def _add_excerpts(out, name_token):
     for r in (out.get("rows") or [])[:READ_TOP]:
         if r.get("excerpt"):
             continue
-        ex, src = _read_article(r.get("url") or "", r.get("title") or "", name_token)
+        ex, src = _read_article(r.get("url") or "", r.get("title") or "", name_token or out.get("ticker"))
         if ex:
             r["excerpt"], r["read_from"] = ex, src
     out["excerpts_read"] = True

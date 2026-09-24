@@ -641,7 +641,8 @@ def select_medoid_scorecard(
         **{k: medoid_card.get(k) for k in ("bull_years12_ratio", "bear_years12_ratio", "base_shares_ratio",
                                            "bull_shares_ratio", "bear_shares_ratio", "desk_frame",
                                            "desk_net_debt", "shares_basis", "shares_reason",
-                                           "net_debt_reason", "scenario_deviation_reason")},
+                                           "net_debt_reason", "scenario_deviation_reason",
+                                           "bull_bear_anchor")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -920,9 +921,11 @@ def _pack_net_debt_b(pack_text):
     return -abs(v) if m.group(1) or m.group(2).startswith("-") else v
 
 
-def _desk_scenario_inputs(calls, target_iv):
+def _desk_scenario_inputs(calls, target_iv, role=None):
     """Inputs behind a published value: the latest desk scenario (or plain DCF) whose per-share
-    value is within 1% of target_iv, with the call's top-level inputs filled in."""
+    value is within 1% of target_iv, with the call's top-level inputs filled in. With `role`
+    ("base"/"bull"/"bear"), a scenario of that name is preferred, so a bull and a base with the
+    same value are not confused."""
     try:
         tgt = float(target_iv)
     except (TypeError, ValueError):
@@ -940,7 +943,11 @@ def _desk_scenario_inputs(calls, target_iv):
         top = {k: params.get(k) for k in ("explicit_growth", "growth_rates", "shares_diluted", "net_debt",
                                           "valuation_frame", "discount_rate", "wacc", "base_cf")}
         scs = res.get("scenario_dcfs") or res.get("scenarios") or []
-        for sc in scs if isinstance(scs, list) else []:
+        scs = scs if isinstance(scs, list) else []
+        if role:
+            scs = sorted(scs, key=lambda x: 0 if isinstance(x, dict)
+                         and str(x.get("name") or "").lower().startswith(role) else 1)
+        for sc in scs:
             if not isinstance(sc, dict):
                 continue
             d = sc.get("dcf") or {}
@@ -982,15 +989,22 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
     except Exception:
         calls = []
     stamps = {"bull_years12_ratio": None, "bear_years12_ratio": None, "base_shares_ratio": None,
-              "bull_shares_ratio": None, "bear_shares_ratio": None, "desk_frame": None, "desk_net_debt": None}
+              "bull_shares_ratio": None, "bear_shares_ratio": None, "desk_frame": None, "desk_net_debt": None,
+              "bull_bear_anchor": None}
     flags = []
     pack_sh = _pack_shares_b(pack_text)
     est = (enrich_data or {}).get("estimates") or {}
     e0, e1 = (est.get("0y") or {}).get("eps") or {}, (est.get("+1y") or {}).get("eps") or {}
     prior = e0.get("year_ago")
     cum = {"bull": e1.get("high"), "bear": e1.get("low")}
+    # Fable pre-(b) F1: one or two analysts give no range (LAMR, LIND: high = low = average)
+    if (e1.get("analysts") or 0) < 3 or e1.get("high") == e1.get("low"):
+        cum = {"bull": None, "bear": None}
+        stamps["bull_bear_anchor"] = f"no consensus range ({e1.get('analysts') or 0} analysts)"
+    else:
+        stamps["bull_bear_anchor"] = "consensus high/low"
     for role in ("base", "bull", "bear"):
-        inp = _desk_scenario_inputs(calls, sc.get(f"{role}_iv"))
+        inp = _desk_scenario_inputs(calls, sc.get(f"{role}_iv"), role=role)
         if not inp:
             continue
         g = inp.get("explicit_growth") or inp.get("growth_rates")
