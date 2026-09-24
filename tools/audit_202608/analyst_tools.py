@@ -804,7 +804,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     "You have completed your research and reasoning. Write the complete "
                     "institutional memorandum and Section 12 machine contract NOW. Do not search again."
                     if max_model_calls > 0 else
-                    "You have completed your research and reasoning. Provide your findings NOW. Do not search again."
+                    "You have completed your research and reasoning. Provide your findings NOW, ending with the ```json:catalysts block exactly as specified. Do not search again."
                 )
                 msgs.append({"role": "user", "content": retry_prompt})
                 meta_msgs.append(None)
@@ -874,7 +874,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                             "then proceed to write your memorandum."
                             if max_model_calls > 0 else
                             f"Web search budget completed ({max_search_calls} calls). "
-                            "Do not search again. Conclude your research and provide your findings now."
+                            "Do not search again. Conclude your research and provide your findings now, ending with the ```json:catalysts block exactly as specified."
                         )
                         result = {
                             "status": "search_quota_met",
@@ -936,7 +936,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 "Tool budgets are exhausted. Write the complete institutional memorandum "
                 "and Section 12 machine contract NOW from what you have. Do not search again."
                 if max_model_calls > 0 else
-                "Tool budgets are exhausted. Conclude your research and provide your findings NOW from what you have. Do not search again."
+                "Tool budgets are exhausted. Conclude your research and provide your findings NOW from what you have, ending with the ```json:catalysts block exactly as specified. Do not search again."
             )
             msgs.append({"role": "user", "content": exhausted_prompt})
             meta_msgs.append(None)
