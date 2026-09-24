@@ -95,3 +95,18 @@ def _world_news_is_unreachable_by_default(tmp_path, monkeypatch):
     import world_news
     monkeypatch.setattr(world_news, "_mri_repo", lambda: None)
     monkeypatch.setattr(world_news, "CACHE_PATH", tmp_path / "world_news_digest.json")
+
+
+@pytest.fixture(autouse=True)
+def _company_news_returns_empty_by_default(monkeypatch):
+    """P4 Item 2 — tests default to company_news.fetch returning an empty result
+    with no network and no cache write unless a test overrides it."""
+    import company_news
+    monkeypatch.setattr(company_news, "fetch", lambda company, ticker: {
+        "ticker": str(ticker).upper(),
+        "company": company,
+        "date": "2026-09-24",
+        "rows": [],
+        "unresponsive_engines": [],
+        "errors": [],
+    })

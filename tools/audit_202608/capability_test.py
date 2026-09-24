@@ -46,6 +46,7 @@ import sec_guidance  # noqa: E402
 import base_rates  # noqa: E402
 import growth_persistence  # noqa: E402
 import world_news  # noqa: E402
+import company_news  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -1737,6 +1738,41 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             "mom_z_sector": mom.get("mom_z_sector"), "mom_z_universe": fs_z.get("momentum"),
         }
         LAST_PACK_ACTIVE_SHOCKS = active_shocks
+
+    # ---- RECENT COMPANY NEWS   [Item 2] ----------------------------------------------------
+    if asof_date is not None:
+        L += ["## RECENT COMPANY NEWS   [not available (point-in-time) \u2014 the news search cannot be restricted to the briefing date]",
+              ""]
+    else:
+        company_for_news = rs2_data.resolve_name(t) or t
+        cnews = company_news.fetch(company_for_news, t)
+        cnews_date = cnews.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        m1 = LAST_PACK_MOMENTUM_STATE.get("mom_1m") if LAST_PACK_MOMENTUM_STATE else None
+        m6 = LAST_PACK_MOMENTUM_STATE.get("mom_6m") if LAST_PACK_MOMENTUM_STATE else None
+        mom_1m_str = f"{m1*100:+.1f}%" if isinstance(m1, (int, float)) else NULL
+        mom_6m_str = f"{m6*100:+.1f}%" if isinstance(m6, (int, float)) else NULL
+        L += [f"## RECENT COMPANY NEWS   [SearXNG news search (Reuters, Bing News), last 30 days, fetched {cnews_date}; headlines are third-party claims \u2014 open an article before relying on it]",
+              f"- The stock moved {mom_1m_str} in 1 month and {mom_6m_str} in 6 months (SECTION 2.5)."]
+        news_rows = cnews.get("rows") or []
+        if news_rows:
+            for nr in news_rows:
+                d_str = nr.get("date") or "undated"
+                src = nr.get("source") or "unknown"
+                tit = nr.get("title") or ""
+                u = nr.get("url") or ""
+                snip = nr.get("snippet") or ""
+                L.append(f"- {d_str} | {src} | {tit} | {u} | {snip}")
+        else:
+            unresp = cnews.get("unresponsive_engines") or []
+            errs = cnews.get("errors") or []
+            details = []
+            if unresp:
+                details.append(f"unresponsive engines: {', '.join(unresp)}")
+            if errs:
+                details.append(f"errors: {'; '.join(errs)}")
+            err_str = "; ".join(details) if details else "no news returned"
+            L.append(f"- no news returned ({err_str})")
+        L.append("")
 
     # ---- SECTION 3 -------------------------------------------------------------------------
     if asof_date is not None:
