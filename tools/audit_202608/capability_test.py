@@ -47,6 +47,7 @@ import base_rates  # noqa: E402
 import growth_persistence  # noqa: E402
 import world_news  # noqa: E402
 import company_news  # noqa: E402
+import catalyst_research  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -1774,6 +1775,18 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             L.append(f"- no news returned ({err_str})")
         L.append("")
 
+    # ---- CATALYST BRIEF   [Phase 4 E9] ----------------------------------------------
+    if asof_date is not None:
+        L += ["## CATALYST BRIEF   [not available (point-in-time) — the discovery run searches today's web]",
+              ""]
+    else:
+        brief_today = catalyst_research.get_cached_brief(t)
+        if brief_today is not None:
+            L += catalyst_research.render(brief_today)
+        else:
+            L += ["## CATALYST BRIEF   [not available — no discovery run today]"]
+        L.append("")
+
     # ---- SECTION 3 -------------------------------------------------------------------------
     if asof_date is not None:
         L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [point-in-time: revenue/net income "
@@ -2519,7 +2532,7 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
     pricing in. A mid-cycle or margin-mean-reversion (cyclical) treatment requires `cycle_evidence`
     — at least one dated, industry-specific indicator (pricing, inventory, capacity, order
     trends); a growth rate alone is not evidence.
-  * Explain The Recent Move First: SECTION 2.5 shows how far the price moved; RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions show what changed. Before you value the business, name the dated catalyst(s) behind the move and whether analysts' estimates moved with them, fetch the articles you rely on, and say which scenario each supports. Record them in `catalysts`.
+  * Explain The Recent Move First: start from the CATALYST BRIEF, RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions. For each development say whether you accept or dispute it and why, and how it enters your Bull, Base and Bear numbers; add any development you find yourself and fetch the articles you rely on. Record them in `catalysts`.
   * Scenarios Anchored To Expectations: Base stage-1 years 1-2 start from the company's guidance or SECTION 8's consensus average; Bull and Bear years 1-2 sit near the consensus high and low unless you say why. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
   * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
 
