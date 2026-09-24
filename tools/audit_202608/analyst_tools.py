@@ -613,6 +613,77 @@ def _compact_history(msgs, meta, budget_chars=36000):
     return active_msgs
 
 
+def extract_desk_run_value(args, result) -> float | None:
+    """Extract one base per-share value from a run_financial_model call result.
+    - single DCF -> its per_share_iv
+    - batch scenarios -> scenario whose name contains "base" (case-insensitive), else median of scenarios' per_share_iv
+    - blend mode and reverse-DCF-only calls are NOT valuations -> skipped (None)
+    - errors skipped (None)
+    """
+    if not isinstance(result, dict) or result.get("error"):
+        return None
+    if isinstance(args, dict) and args.get("mode") == "blend":
+        return None
+    if result.get("mode") == "blend":
+        return None
+
+    # Batch scenarios
+    scs = result.get("scenario_dcfs")
+    if scs and isinstance(scs, list):
+        base_iv = None
+        all_ivs = []
+        for item in scs:
+            if isinstance(item, dict):
+                name = str(item.get("name") or "")
+                d = item.get("dcf") or {}
+                iv = d.get("per_share_iv")
+                if iv is not None:
+                    try:
+                        iv_f = float(iv)
+                        all_ivs.append(iv_f)
+                        if "base" in name.lower() and base_iv is None:
+                            base_iv = iv_f
+                    except (ValueError, TypeError):
+                        pass
+        if base_iv is not None:
+            return base_iv
+        if all_ivs:
+            return float(statistics.median(all_ivs))
+
+    raw_scs = result.get("scenarios")
+    if raw_scs and isinstance(raw_scs, list):
+        base_iv = None
+        all_ivs = []
+        for item in raw_scs:
+            if isinstance(item, dict):
+                name = str(item.get("name") or "")
+                iv = item.get("iv")
+                if iv is not None:
+                    try:
+                        iv_f = float(iv)
+                        all_ivs.append(iv_f)
+                        if "base" in name.lower() and base_iv is None:
+                            base_iv = iv_f
+                    except (ValueError, TypeError):
+                        pass
+        if base_iv is not None:
+            return base_iv
+        if all_ivs:
+            return float(statistics.median(all_ivs))
+
+    # Single DCF
+    dcf = result.get("dcf_model")
+    if isinstance(dcf, dict):
+        iv = dcf.get("per_share_iv")
+        if iv is not None:
+            try:
+                return float(iv)
+            except (ValueError, TypeError):
+                pass
+
+    return None
+
+
 def _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap):
     """Persist snapshot immediately so tool calls are recorded before execution."""
     try:
@@ -673,6 +744,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     model_calls = 0
     MAX_SEARCH_CALLS = 25
     MAX_MODEL_CALLS = 5
+
+    sample_search_queries = []
+    sample_fetched_urls = set()
+    research_calls = 0
+    repeat_calls = 0
+    desk_runs = []
 
     while True:
         active_msgs = _compact_history(msgs, meta_msgs)
@@ -763,6 +840,18 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             result = None
             try:
                 if name in ("search_web", "fetch_page"):
+                    research_calls += 1
+                    if name == "search_web":
+                        q = (args or {}).get("query", "")
+                        if any(is_near_duplicate(q, prev_q, threshold=0.50) for prev_q in sample_search_queries):
+                            repeat_calls += 1
+                        sample_search_queries.append(q)
+                    elif name == "fetch_page":
+                        u = (args or {}).get("url", "")
+                        if u in sample_fetched_urls:
+                            repeat_calls += 1
+                        sample_fetched_urls.add(u)
+
                     search_calls += 1
                     if search_calls > MAX_SEARCH_CALLS:
                         result = {
@@ -796,8 +885,16 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         evidence_hits += 1
                     else:
                         evidence_misses += 1
-                if name == "run_financial_model" and isinstance(result, dict) and "result" in result:
-                    call_rec.update(result)
+                if name == "run_financial_model":
+                    dv = extract_desk_run_value(args, result)
+                    if dv is not None:
+                        desk_runs.append(dv)
+                    if isinstance(result, dict) and "result" in result:
+                        call_rec.update(result)
+                    elif isinstance(result, dict):
+                        call_rec.update(result)
+                    elif result is not None:
+                        call_rec["result"] = result
                 elif isinstance(result, dict):
                     call_rec.update(result)
                 elif result is not None:
@@ -843,6 +940,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                        "eval_rate": eval_rate,
                                        "evidence_hits": evidence_hits,
                                        "evidence_misses": evidence_misses,
+                                       "research_calls": research_calls,
+                                       "repeat_calls": repeat_calls,
+                                       "desk_runs": desk_runs,
                                        "elapsed_s": round(time.time() - t0)}
 
 

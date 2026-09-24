@@ -1352,6 +1352,17 @@ def main():
         if research_wrong_company and "research_wrong_company" not in flags:
             flags = list(flags) + ["research_wrong_company"]
             why = list(why) + ["research brief failed company verification (research_wrong_company)"]
+
+        research_calls = meta.get("research_calls", 0)
+        repeat_calls = meta.get("repeat_calls", 0)
+        desk_runs = meta.get("desk_runs") or []
+        desk_swing = (round(max(desk_runs) / min(desk_runs), 2)
+                      if len(desk_runs) >= 2 and min(desk_runs) > 0 else None)
+        if len(desk_runs) >= 2 and desk_swing is not None and desk_swing > 1.25:
+            flags = list(flags) + [f"desk_input_revisions_{len(desk_runs)}_swing_{desk_swing:.2f}x"]
+        if research_calls >= 5 and (repeat_calls / research_calls) > 0.15:
+            flags = list(flags) + [f"research_repeats_{repeat_calls}_of_{research_calls}"]
+
         # Carry the harness rescue status onto the sample. Without this the four-key copy out of
         # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort
         # with normal siblings with no consumer able to tell.
@@ -1377,6 +1388,10 @@ def main():
                      "desk_iv_match": desk_info["desk_iv_match"],
                      "desk_reverse_neutral_cagr": desk_info["desk_reverse_neutral_cagr"],
                      "coe_minus_anchor": desk_info["coe_minus_anchor"],
+                     "research_calls": research_calls,
+                     "repeat_calls": repeat_calls,
+                     "desk_runs": desk_runs,
+                     "desk_swing": desk_swing,
                      "chars": len(rep), "secs": round(time.time() - t0)})
         rate_str = f" | {eval_rate} tok/s ({eval_dur_s}s)" if eval_rate else ""
         print(f"  sample {i}: IV ${iv if iv else '?'} | usable={ok}"
