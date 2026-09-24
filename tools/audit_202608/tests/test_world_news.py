@@ -457,7 +457,8 @@ def test_asof_pack_world_news_not_available_with_first_partition_date(screener_d
     monkeypatch.setattr(world_news, "digest", _fake)
     pack = cap.build_pack("GEV", asof="2026-03-31")
     sec16 = _slice(pack, "SECTION 1.6 - STATE OF THE WORLD")
-    assert "- WORLD NEWS: not available (point-in-time) — the news history starts 2026-07-27" in sec16
+    assert "- WORLD NEWS: not available (point-in-time) — the news history does not reach back to this date" in sec16
+    assert "2026-07-27" not in sec16          # no post-asof date, even as metadata
     # Wired correctly: digest() was called WITH the asof date, not live (None).
     assert calls == [cap._parse_asof("2026-03-31")]
 
@@ -470,5 +471,5 @@ def test_asof_pack_world_news_renders_when_rows_present(screener_data_stub, monk
     pack = cap.build_pack("GEV", asof="2026-03-31")
     sec16 = _slice(pack, "SECTION 1.6 - STATE OF THE WORLD")
     assert "- WORLD NEWS, last 14 days" in sec16
-    assert "not available (point-in-time) — the news history starts" not in sec16
+    assert "the news history does not reach back to this date" not in sec16
     assert "Iran rejects US demands over the Strait of Hormuz blockade" in sec16

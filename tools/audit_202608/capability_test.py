@@ -608,9 +608,10 @@ def _decl(label, h, yrs, keys, held_note, gap_note):
 def _world_news_lines(wn, asof_date):
     if asof_date is not None:
         if not wn or not wn.get("top"):
-            fpd = (wn or {}).get("first_partition_date")
-            reason = (f"the news history starts {fpd}" if fpd else
-                     "the MRI news history's start date could not be determined this run")
+            # No date is printed here: the feed's first partition is AFTER asof on every trial
+            # date to date, and a point-in-time pack must carry no date later than asof — even
+            # metadata tells the model that time has passed (2026-09-24 leakage scan).
+            reason = "the news history does not reach back to this date"
             return [f"- WORLD NEWS: {ASOF_NULL} — {reason}"]
     elif not wn or not wn.get("top"):
         reason = (f"no qualifying headlines in the last {wn['window_days']} days" if wn else
