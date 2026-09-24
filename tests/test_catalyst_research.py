@@ -590,4 +590,35 @@ def test_run_saves_final_text_and_final_turn(monkeypatch, tmp_path):
     run_dir = tmp_path / "T9_2026-09-24_run"
     assert (run_dir / "_report.md").read_text(encoding="utf-8") == report
     assert (run_dir / "_thinking.md").read_text(encoding="utf-8") == "the thinking"
-    assert b["final_turn"] == {"done_reason": "stop", "length_recovery": True}
+    assert b["final_turn"] == {"done_reason": "stop", "length_recovery": True, "json_repaired": False}
+
+
+def test_loads_lenient_repairs_what_the_model_breaks():
+    """DXC 2026-09-24: one unescaped quote ("Expecting ',' delimiter" at char 4240) lost the brief."""
+    assert cr._loads_lenient('{"a": 1}') == ({"a": 1}, False)
+    obj, rep = cr._loads_lenient('{"event": "DXC\'s "AI-first" plan fell flat", "n": 1}')
+    assert rep and obj == {"event": 'DXC\'s "AI-first" plan fell flat', "n": 1}
+    obj, rep = cr._loads_lenient('{"events": [{"a": 1} {"b": 2}], "x": "y" "z": 3}')
+    assert rep and obj == {"events": [{"a": 1}, {"b": 2}], "x": "y", "z": 3}
+    obj, rep = cr._loads_lenient('{"events": [1, 2,], "q": ["a",],}')
+    assert rep and obj == {"events": [1, 2], "q": ["a"]}
+    obj, rep = cr._loads_lenient('{"a": "line1\nline2"}')
+    assert rep and obj == {"a": "line1\nline2"}
+    with pytest.raises(json.JSONDecodeError):
+        cr._loads_lenient("not json at all")
+    with pytest.raises(json.JSONDecodeError):               # bounded: gives up, never spins
+        cr._loads_lenient('{"a": "' + '" x ' * 200 + '"')
+
+
+def test_run_repairs_an_unescaped_quote_in_the_brief(monkeypatch, tmp_path):
+    report = ('```json:catalysts\n{"asof": "2026-09-24", "narrative": "The "AI-first" pivot", '
+              '"bear_narrative": "b", "events": [{"date": "2026-09-01", "event": "Guide cut", '
+              '"mechanism": "m", "direction": "bear", "estimates_moved": "down", "source_url": ""}]}\n```')
+    monkeypatch.setattr(cr, "run", cr._run_live)
+    monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cr, "discovery_context", lambda t: {
+        "ticker": t, "company": t, "asof": "2026-09-24", "mom_1m": 0.01, "facts": "facts"})
+    monkeypatch.setattr(cr.analyst_tools, "chat_with_tools", lambda *a, **k: (report, "", {"tool_calls": 1}))
+    b = cr.run("T8", force=True)
+    assert b["error"] is None and b["narrative"] == 'The "AI-first" pivot' and len(b["events"]) == 1
+    assert b["final_turn"]["json_repaired"] is True

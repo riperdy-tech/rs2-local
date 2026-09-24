@@ -147,6 +147,43 @@ def discovery_context(ticker: str) -> dict:
     }
 
 
+def _loads_lenient(text: str):
+    """json.loads, then bounded repairs for the ways the model breaks its own JSON.
+
+    DXC 2026-09-24 lost its whole brief to "Expecting ',' delimiter" at character 4240, the
+    usual sign of an unescaped double quote inside a string. The repairs cover control
+    characters inside strings, trailing commas, a missing comma between two values, and an
+    unescaped quote (escape the last quote before the error, then retry). Returns
+    (obj, repaired). Raises the original error when at most 40 repairs do not give valid JSON.
+    """
+    try:
+        return json.loads(text), False
+    except json.JSONDecodeError as e:
+        first = e
+    s = re.sub(r",\s*([}\]])", r"\1", text)
+    for _ in range(40):
+        try:
+            return json.loads(s, strict=False), True
+        except json.JSONDecodeError as e:
+            if not e.msg.startswith(("Expecting ',' delimiter", "Expecting ':' delimiter")):
+                break
+            pos = e.pos
+            j = pos - 1
+            while j >= 0 and s[j].isspace():
+                j -= 1
+            if (e.msg.startswith("Expecting ','") and j >= 0 and s[j] in '}]"'
+                    and pos < len(s) and s[pos] in '{["'):
+                s = s[:j + 1] + "," + s[j + 1:]        # two values with no comma between
+                continue
+            q = s.rfind('"', 0, pos)
+            while q > 0 and s[q - 1] == "\\":
+                q = s.rfind('"', 0, q - 1)
+            if q <= 0:
+                break
+            s = s[:q] + "\\" + s[q:]                   # a quote that ended a string too early
+    raise first
+
+
 def get_cached_brief(ticker: str, asof: str = None) -> dict | None:
     """Load the cached brief for ticker and date without running the model.
 
@@ -271,7 +308,8 @@ def run(ticker: str, force: bool = False) -> dict:
         pass
     turns = meta.get("turns") or []
     final_turn = {"done_reason": meta.get("done_reason"),
-                  "length_recovery": any(tu.get("length_recovery") for tu in turns)}
+                  "length_recovery": any(tu.get("length_recovery") for tu in turns),
+                  "json_repaired": False}
 
     # Read fetched URLs from run snapshot
     snap_path = run_dir / "_research_snapshot.json"
@@ -303,7 +341,7 @@ def run(ticker: str, force: bool = False) -> dict:
     parse_error = None
     if m:
         try:
-            parsed = json.loads(m.group(1).strip())
+            parsed, final_turn["json_repaired"] = _loads_lenient(m.group(1).strip())
         except Exception as e:
             parse_error = f"no parseable brief: {str(e)[:100]}"
     else:
