@@ -23,6 +23,7 @@ TWO RULES, both enforced here rather than trusted to the prompt:
 
 Local SearXNG only (config searxng_url) — unmetered, no API key, no per-call cost.
 """
+import difflib
 import html
 import io
 import json
@@ -349,8 +350,118 @@ def _same_article(url, known_urls):
     return None
 
 
-def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None):
+# --- Blocked or paywalled page -> the same story from a free, legitimate copy -----------------
+# A third of the E9 discovery fetches were refused (HTTP 401/403: Barron's, Seeking Alpha,
+# Forbes, ...), and AMD's run lost the Muse story that way. News is rarely exclusive to one
+# paywalled page: it is syndicated under licence (Yahoo Finance, MSN, AOL, Nasdaq, Morningstar,
+# AP) or reported by other outlets. On a refusal the harness searches the headline and opens such
+# a copy. It never circumvents a paywall: no crawler impersonation, no archive or mirror sites.
+# A near-verbatim copy on a host that is neither a licensed syndicator nor the same publisher is
+# skipped, because that is usually a scraped mirror of the paywalled piece.
+SYNDICATION_HOSTS = ("finance.yahoo.com", "yahoo.com", "msn.com", "aol.com", "nasdaq.com",
+                     "morningstar.com", "apnews.com")
+NOT_ARTICLES = ("youtube.com", "facebook.com", "linkedin.com", "twitter.com", "x.com",
+                "instagram.com", "tiktok.com", "reddit.com", "wikipedia.org", "archive.ph",
+                "archive.today", "archive.is", "12ft.io", "removepaywall")
+PAYWALL_MARKERS = ("subscribe to continue", "subscribe to read", "subscribers only", "for subscribers",
+                   "already a subscriber", "to continue reading", "sign in to continue",
+                   "log in to continue", "create a free account to", "premium article")
+_TITLE_STOP = set("the and for its has have had are was were with from that this into over after than "
+                  "amid will would could may might not but new says said stock stocks shares news why "
+                  "how what today report reports inc corp com".split())
+
+
+def _host(u):
+    h = (urllib.parse.urlparse(u or "").hostname or "").lower()
+    return h[4:] if h.startswith("www.") else h
+
+
+def _publisher(h):
+    parts = h.split(".")
+    if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "ac", "gov"):
+        return parts[-3]
+    return parts[-2] if len(parts) >= 2 else h
+
+
+def _title_tokens(t):
+    """Content words of a headline, lightly stemmed so "signs"/"signed" and "deals"/"deal" match."""
+    words = {w for w in re.findall(r"[a-z0-9]+", (t or "").lower().replace("'s", ""))
+             if len(w) >= 3 and w not in _TITLE_STOP and not w.isdigit()}
+    return {re.sub(r"(ing|ed|es|s)$", "", w) if len(w) > 4 else w for w in words}
+
+
+def _norm_title(t):
+    t = re.sub(r"\s*(\.\.\.|…)\s*$", "", (t or "").lower())
+    return re.sub(r"\s+[-|]\s+[^-|]+$", "", t).strip()      # drop a trailing ' - Site Name'
+
+
+def _slug_query(url):
+    """Search words from a URL's article slug, for a URL no search returned."""
+    segs = [s for s in urllib.parse.urlparse(url or "").path.split("/") if s]
+    if not segs:
+        return None
+    slug = re.sub(r"\.(html?|php|aspx?)$", "", max(segs, key=len))
+    words = [w for w in re.split(r"[-_]+", slug)
+             if w and not w.isdigit() and not (len(w) >= 6 and re.search(r"\d", w) and re.search(r"[a-z]", w))]
+    return " ".join(words[:12]) if len(words) >= 3 else None
+
+
+def _looks_paywalled(text):
+    t = (text or "")
+    return len(t) < 2500 and any(m in t.lower() for m in PAYWALL_MARKERS)
+
+
+def _searx(query, n=10):
+    url = f"{SEARX}/search?" + urllib.parse.urlencode({"q": query, "format": "json"})
+    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
+        data = json.loads(r.read().decode("utf-8", "replace"))
+    return [{"url": x.get("url") or "", "title": x.get("title") or ""} for x in (data.get("results") or [])][:n]
+
+
+def _alternate_copy(url, title, cap, url_cache, snap):
+    q = (title or "").strip() or _slug_query(url)
+    if not q:
+        return None
+    try:
+        results = _searx(q)
+    except Exception:
+        return None
+    host, want = _host(url), _title_tokens(q)
+    cands = []
+    for r in results:
+        u, t = r["url"], r["title"]
+        h = _host(u)
+        if not u or h == host or any(bad in u for bad in LOW_TRUST) \
+                or any(h == d or h.endswith("." + d) or d in u for d in NOT_ARTICLES):
+            continue
+        common = want & _title_tokens(t)
+        overlap = len(common) / max(1, min(len(want), len(_title_tokens(t))))
+        # Same story: 3+ shared headline words, or 2 covering half the original headline. Two
+        # shared words alone are often just the company name (a DXC headline matched a generic
+        # DXC price-target page).
+        if overlap < 0.3 or not (len(common) >= 3 or (len(common) == 2 and len(want) <= 4)):
+            continue
+        syndicated = any(h == s or h.endswith("." + s) for s in SYNDICATION_HOSTS)
+        verbatim = difflib.SequenceMatcher(None, _norm_title(q), _norm_title(t)).ratio() >= 0.9
+        if verbatim and not syndicated and _publisher(h) != _publisher(host):
+            continue                                     # near-verbatim copy on an unknown host
+        cands.append((overlap, u, t))
+    for _, u, t in sorted(cands, key=lambda c: -c[0])[:3]:
+        res = fetch_page(u, snap, cap=cap, url_cache=url_cache, _fallback=False)
+        if not res.get("error") and (res.get("chars") or 0) >= 2000 and not _looks_paywalled(res.get("text")):
+            return {**res, "alternate_for": url, "alternate_query": q,
+                    "note": (f"{url} is not readable to us (blocked or paywalled). This is the same story "
+                             f"from {_host(u)}: \"{t[:120]}\".")}
+    return None
+
+
+def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None, _fallback=True):
     if any(bad in url for bad in LOW_TRUST):
+        if _fallback:
+            copy = _alternate_copy(url, (known_urls or {}).get(url) if isinstance(known_urls, dict) else None,
+                                   cap, url_cache, snap)
+            if copy:
+                return copy
         if snap is not None:
             snap.append({"tool": "fetch_page", "ts": time.strftime("%H:%M:%S"), "url": url,
                          "chars": 0, "text": "", "cached": False,
@@ -375,13 +486,19 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None):
         with urllib.request.urlopen(req, timeout=40, context=_SSL_CTX) as r:
             raw = r.read(1_500_000).decode("utf-8", "replace")
     except Exception as e:
-        alt = _same_article(url, known_urls) if getattr(e, "code", None) == 404 else None
+        code = getattr(e, "code", None)
+        alt = _same_article(url, known_urls) if code == 404 else None
         if alt:
-            res = fetch_page(alt, snap, cap=cap, url_cache=url_cache)
+            res = fetch_page(alt, snap, cap=cap, url_cache=url_cache, _fallback=False)
             if not res.get("error"):
                 return {**res, "corrected_from": url,
                         "note": f"{url} does not exist (HTTP 404); this is the same article at the "
                                 f"address your search returned. Copy URLs exactly from search results."}
+        if _fallback and code in (401, 402, 403, 404, 451):
+            copy = _alternate_copy(url, (known_urls or {}).get(url) if isinstance(known_urls, dict) else None,
+                                   cap, url_cache, snap)
+            if copy:
+                return copy
         # A FAILED fetch is still a tool result the model was served, and the run directory is
         # meant to explain the model's behaviour after the fact. Without this the audit trail
         # shows the model going quiet with no record of why.
@@ -400,6 +517,11 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None):
     # the text - EDGAR filings are full of them - and dropped real characters such as "&".
     txt = html.unescape(txt)
     txt = re.sub(r"\s+", " ", txt).strip()
+    if _fallback and _looks_paywalled(txt):
+        copy = _alternate_copy(url, (known_urls or {}).get(url) if isinstance(known_urls, dict) else None,
+                               cap, url_cache, snap)
+        if copy:
+            return {**copy, "paywalled_teaser": txt[:600]}
     rec = {"url": url, "chars": len(txt), "text": txt[:cap]}
     if url_cache is not None:
         url_cache[url] = rec
@@ -810,7 +932,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     research_calls = 0
     repeat_calls = 0
     desk_runs = []
-    seen_result_urls = []   # every URL search_web returned this run, for fetch_page's 404 fix
+    seen_result_urls = {}   # url -> title for every result search_web returned this run (fetch_page fallbacks)
 
     def _recover_cut_off_brief():
         """Discovery mode only (no desk). If the final turn hit num_predict before the
@@ -973,8 +1095,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache,
                                                known_urls=seen_result_urls)
                         if name == "search_web" and isinstance(result, dict):
-                            seen_result_urls.extend(r.get("url") for r in (result.get("results") or [])
-                                                    if isinstance(r, dict) and r.get("url"))
+                            for r in (result.get("results") or []):
+                                if isinstance(r, dict) and r.get("url"):
+                                    seen_result_urls.setdefault(r["url"], r.get("title") or "")
                 elif name == "run_financial_model":
                     if model_calls >= max_model_calls or desk_validation_errors > 6:
                         result = {"error": f"financial model call budget exhausted ({max_model_calls}); "

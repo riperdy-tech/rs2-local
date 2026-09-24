@@ -147,14 +147,53 @@ def discovery_context(ticker: str) -> dict:
     }
 
 
+def _open_containers(s: str, end: int) -> list:
+    """The JSON objects/arrays still open at s[:end], outermost first (strings are skipped)."""
+    stack, in_str, esc = [], False, False
+    for c in s[:end]:
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c in "{[":
+            stack.append(c)
+        elif c in "}]" and stack:
+            stack.pop()
+    return stack
+
+
+def _llm_fix_json(model: str, block: str, err: str) -> str:
+    """Last resort for a brief the deterministic repairs cannot parse: the model re-emits the same
+    content as valid JSON, thinking off. It sees only the broken block and the parser's error."""
+    body = {"model": model, "stream": False, "think": False,
+            "options": {"num_ctx": 32768, "num_predict": 12288, "temperature": 0},
+            "messages": [{"role": "user", "content": (
+                "The JSON below does not parse (" + err + "). Return the same content as valid JSON: "
+                "fix only the syntax (brackets, commas, quotes inside strings - escape them), change no "
+                "wording, add or drop nothing. Output only the JSON.\n\n" + block)}]}
+    req = analyst_tools.urllib.request.Request(analyst_tools.OLLAMA, data=json.dumps(body).encode(),
+                                               headers={"Content-Type": "application/json"})
+    with analyst_tools.urllib.request.urlopen(req, timeout=900) as r:
+        out = (json.loads(r.read().decode()).get("message") or {}).get("content") or ""
+    m = re.search(r"```(?:json[^\n]*)?\s*\n(.*?)```", out, re.DOTALL)
+    return (m.group(1) if m else out).strip()
+
+
 def _loads_lenient(text: str):
     """json.loads, then bounded repairs for the ways the model breaks its own JSON.
 
     DXC 2026-09-24 lost its whole brief to "Expecting ',' delimiter" at character 4240, the
-    usual sign of an unescaped double quote inside a string. The repairs cover control
-    characters inside strings, trailing commas, a missing comma between two values, and an
-    unescaped quote (escape the last quote before the error, then retry). Returns
-    (obj, repaired). Raises the original error when at most 40 repairs do not give valid JSON.
+    usual sign of an unescaped double quote inside a string; GEV's closed a list with the
+    wrong bracket. The repairs cover control characters inside strings, trailing commas, a
+    stray or wrong closing bracket, a block cut off mid-way, a missing comma between two
+    values, and an unescaped quote (escape the last quote before the error, then retry).
+    Returns (obj, repaired). Raises the original error when at most 40 repairs do not give
+    valid JSON.
     """
     try:
         return json.loads(text), False
@@ -165,9 +204,25 @@ def _loads_lenient(text: str):
         try:
             return json.loads(s, strict=False), True
         except json.JSONDecodeError as e:
+            pos = e.pos
+            stack = _open_containers(s, pos)
+            ch = s[pos] if pos < len(s) else ""
+            if ch in "}]" and stack:
+                want = "]" if stack[-1] == "[" else "}"
+                if ch != want:
+                    # GEV 2026-09-24 closed its list with `"}]` for `"]}`: a stray closer is dropped,
+                    # a container left open is closed.
+                    s = s[:pos] + s[pos + 1:] if s[pos + 1:].lstrip()[:1] == want else s[:pos] + want + s[pos:]
+                    continue
+            if e.msg.startswith("Unterminated string") and not s[pos:].rstrip().endswith('"'):
+                s = s.rstrip() + '"'                  # cut off inside a string
+                continue
+            if stack and not s[pos:].strip():
+                # Cut off mid-block: close whatever is still open.
+                s = s.rstrip() + "".join("]" if c == "[" else "}" for c in reversed(stack))
+                continue
             if not e.msg.startswith(("Expecting ',' delimiter", "Expecting ':' delimiter")):
                 break
-            pos = e.pos
             j = pos - 1
             while j >= 0 and s[j].isspace():
                 j -= 1
@@ -329,8 +384,9 @@ def run(ticker: str, force: bool = False) -> dict:
                     u = call.get("url") or (call.get("params") or {}).get("url") or ""
                     if chars > 0 and text and not err and u:
                         fetched_urls.add(normalize_url(u))
-                        if call.get("corrected_from"):   # the model may cite the address it asked for
-                            fetched_urls.add(normalize_url(call["corrected_from"]))
+                        for asked in (call.get("corrected_from"), call.get("alternate_for")):
+                            if asked:   # the model may cite the address it asked for
+                                fetched_urls.add(normalize_url(asked))
         except Exception:
             pass
 
@@ -342,10 +398,21 @@ def run(ticker: str, force: bool = False) -> dict:
     parsed = None
     parse_error = None
     if m:
+        block = m.group(1).strip()
         try:
-            parsed, final_turn["json_repaired"] = _loads_lenient(m.group(1).strip())
+            parsed, final_turn["json_repaired"] = _loads_lenient(block)
         except Exception as e:
             parse_error = f"no parseable brief: {str(e)[:100]}"
+            try:
+                fixed, _ = _loads_lenient(_llm_fix_json(model, block, str(e)[:200]))
+                # Accept only a syntax fix: every event the fix returns must be in the original text.
+                evs = fixed.get("events") if isinstance(fixed, dict) else None
+                if isinstance(evs, list) and all(
+                        isinstance(ev, dict) and str(ev.get("event") or "")[:30] in block for ev in evs):
+                    parsed, parse_error = fixed, None
+                    final_turn["json_llm_fixed"] = True
+            except Exception:
+                pass
     else:
         parse_error = "no parseable brief"
 

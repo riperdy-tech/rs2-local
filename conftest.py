@@ -132,3 +132,14 @@ def _catalyst_research_returns_no_brief_by_default(monkeypatch):
         "error": "no brief",
     })
 
+
+
+@pytest.fixture(autouse=True)
+def _no_model_json_fix_in_tests(monkeypatch):
+    """catalyst_research._llm_fix_json calls the real model. No test may reach it by accident; a
+    test that needs it replaces this stub."""
+    import catalyst_research
+
+    def _refuse(*a, **k):
+        raise RuntimeError("no model calls in tests")
+    monkeypatch.setattr(catalyst_research, "_llm_fix_json", _refuse)

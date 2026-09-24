@@ -647,3 +647,41 @@ def test_a_corrected_fetch_verifies_the_address_the_model_cites(monkeypatch, tmp
     monkeypatch.setattr(cr.analyst_tools, "chat_with_tools", fake_chat)
     b = cr.run("T7", force=True)
     assert all(e["verified"] for e in b["events"]) and "unverified_events:3" not in b["flags"]
+
+
+def test_loads_lenient_brackets_and_cut_off_blocks():
+    """GEV 2026-09-24 closed its open_questions list with a wrong bracket: `"}]` for `"]}`."""
+    obj, rep = cr._loads_lenient('{"a": 1, "open_questions": ["x", "y?"}]' + chr(10) + '}')
+    assert rep and obj == {"a": 1, "open_questions": ["x", "y?"]}
+    obj, rep = cr._loads_lenient('{"events": [{"a": 1}')                      # cut off
+    assert rep and obj == {"events": [{"a": 1}]}
+    obj, rep = cr._loads_lenient('{"narrative": "abc')                           # cut off in a string
+    assert rep and obj == {"narrative": "abc"}
+    obj, rep = cr._loads_lenient('{"q": ["a" }')                                 # list left open
+    assert rep and obj == {"q": ["a"]}
+
+
+def _run_with_block(monkeypatch, tmp_path, block, llm_fix):
+    report = "```json:catalysts" + chr(10) + block + chr(10) + "```"
+    monkeypatch.setattr(cr, "run", cr._run_live)
+    monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cr, "discovery_context", lambda t: {
+        "ticker": t, "company": t, "asof": "2026-09-24", "mom_1m": 0.01, "facts": "facts"})
+    monkeypatch.setattr(cr.analyst_tools, "chat_with_tools", lambda *a, **k: (report, "", {"tool_calls": 1}))
+    monkeypatch.setattr(cr, "_llm_fix_json", llm_fix)
+    return cr.run("T6", force=True)
+
+
+def test_run_asks_the_model_to_fix_json_the_repairs_cannot(monkeypatch, tmp_path):
+    broken = '{narrative: "n", "events": [{"event": "Guidance raised", "date": "2026-09-01"}]}'
+    good = '{"narrative": "n", "events": [{"event": "Guidance raised", "date": "2026-09-01"}]}'
+    b = _run_with_block(monkeypatch, tmp_path, broken, lambda model, block, err: good)
+    assert b["error"] is None and b["events"][0]["event"] == "Guidance raised"
+    assert b["final_turn"]["json_llm_fixed"] is True
+
+
+def test_a_json_fix_that_invents_an_event_is_refused(monkeypatch, tmp_path):
+    broken = '{narrative: "n", "events": [{"event": "Guidance raised", "date": "2026-09-01"}]}'
+    invented = '{"narrative": "n", "events": [{"event": "Takeover bid at a 40% premium", "date": "2026-09-02"}]}'
+    b = _run_with_block(monkeypatch, tmp_path, broken, lambda model, block, err: invented)
+    assert b["error"].startswith("no parseable brief") and b["events"] == []
