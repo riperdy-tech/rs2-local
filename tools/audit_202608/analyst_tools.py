@@ -475,6 +475,18 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None, _fallb
                          "chars": 0, "text": "", "cached": False,
                          "refused": "low-trust source"})
         return {"url": url, "error": "low-trust source refused"}
+    # E16: '…' means the address was shortened or masked where the model saw it (UGI (b) s1 retried
+    # a masked signed link five times against an "'ascii' codec" error); other non-ASCII characters
+    # are percent-encoded so the request can be made at all.
+    if any(ord(ch) > 127 for ch in url):
+        if "…" in url:
+            if snap is not None:
+                snap.append({"tool": "fetch_page", "ts": time.strftime("%H:%M:%S"), "url": url,
+                             "chars": 0, "text": "", "cached": False, "refused": "shortened or masked URL"})
+            return {"url": url, "error": "refused: this address contains '…', so it was shortened or masked "
+                                         "where you saw it and cannot be fetched. Use a full address copied "
+                                         "exactly from a search result."}
+        url = urllib.parse.quote(url, safe=":/?#[]@!$&'()*+,;=%~")
     if url_cache is not None and url in url_cache:
         # A cache HIT still means the model was served this page, so it belongs in the audit trail.
         # Returning here without appending under-recorded GEV sample 1 by 6 of its 28 tool calls —
@@ -937,6 +949,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
     sample_search_queries = []
     sample_fetched_urls = set()
+    sample_fetch_outcome = {}   # E16: url -> what its first fetch in this sample gave
     research_calls = 0
     repeat_calls = 0
     desk_runs = []
@@ -1083,6 +1096,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         if u in sample_fetched_urls:
                             repeat_calls += 1
                         sample_fetched_urls.add(u)
+                    prior_fetch = sample_fetch_outcome.get(u) if name == "fetch_page" else None
 
                     search_calls += 1
                     if search_calls > max_search_calls:
@@ -1099,9 +1113,18 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                             "status": "search_quota_met",
                             "message": msg_text,
                         }
+                    elif prior_fetch is not None:
+                        # E16: the same page again gives the same text, the same failure fails again
+                        result = {"url": u, "note": f"already fetched in this sample: {prior_fetch}. Fetching "
+                                                    "it again returns exactly the same, so it adds nothing. Use "
+                                                    "what you have, or search for a different source."}
                     else:
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache,
                                                known_urls=seen_result_urls)
+                        if name == "fetch_page" and isinstance(result, dict):
+                            sample_fetch_outcome[u] = (
+                                f"it failed ({str(result.get('error'))[:160]})" if result.get("error")
+                                else f"you read its first {len(result.get('text') or ''):,} characters")
                         if name == "search_web" and isinstance(result, dict):
                             for r in (result.get("results") or []):
                                 if isinstance(r, dict) and r.get("url"):
