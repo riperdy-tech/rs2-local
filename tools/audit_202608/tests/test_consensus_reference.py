@@ -185,3 +185,37 @@ def test_no_revenue_estimate_fades_from_the_median_not_from_eps_growth():
            "+1y": {"eps": {"analysts": 5, "growth": 0.2668, "year_ago": 1.398}}}
     r = cref.build(4e8, est, 0.10, 0.0375, 3.07e8, 0.08)
     assert r["method"] == "growth" and [round(g, 4) for g in r["path"][2:]] == [0.08, 0.08, 0.08]
+
+
+def test_next_fy_revenue_growth_and_flag():
+    # Helper on a table like the one in MO_pack.md (+0.9% -> 0.009)
+    table_pack = (
+        "- CONSENSUS ESTIMATES   [yfinance, fetched 2026-09-26; sell-side estimates, not company guidance]\n"
+        "| period | revenue avg | low | high | analysts | growth | EPS avg | low | high | EPS analysts | growth |\n"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+        "| current FY | $20.577B | $20.429B | $20.801B | 12 | +2.2% | $5.68 | $5.63 | $5.72 | 12 | +4.7% |\n"
+        "| next FY | $20.759B | $20.525B | $21.116B | 12 | +0.9% | $5.86 | $5.67 | $6.09 | 14 | +3.3% |\n"
+    )
+    assert cv.next_fy_revenue_growth(table_pack) == 0.009
+
+    # On a pack without the table -> None
+    assert cv.next_fy_revenue_growth("No table here") is None
+
+    # Flag fires for years 3-5 of 0.030/0.028/0.025 against 0.009
+    sc_fire = {"base_iv": 50.0, "stage1_growth_path": [0.02, 0.01, 0.030, 0.028, 0.025]}
+    f1 = cv.check_sample_harness_rules(sc_fire, 50.0, desk_info={"desk_per_share_ivs": [50.0]},
+                                       pack_text=table_pack)[2]
+    assert "years35_above_revenue_cap" in f1
+
+    # Flag does not fire for 0.009/0.009/0.009
+    sc_quiet1 = {"base_iv": 50.0, "stage1_growth_path": [0.02, 0.01, 0.009, 0.009, 0.009]}
+    f2 = cv.check_sample_harness_rules(sc_quiet1, 50.0, desk_info={"desk_per_share_ivs": [50.0]},
+                                       pack_text=table_pack)[2]
+    assert "years35_above_revenue_cap" not in f2
+
+    # Flag does not fire for 0.013/0.012/0.012
+    sc_quiet2 = {"base_iv": 50.0, "stage1_growth_path": [0.02, 0.01, 0.013, 0.012, 0.012]}
+    f3 = cv.check_sample_harness_rules(sc_quiet2, 50.0, desk_info={"desk_per_share_ivs": [50.0]},
+                                       pack_text=table_pack)[2]
+    assert "years35_above_revenue_cap" not in f3
+

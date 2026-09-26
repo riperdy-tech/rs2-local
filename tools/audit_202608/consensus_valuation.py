@@ -945,6 +945,31 @@ def _pack_reference(pack_text):
     return civ, p90
 
 
+def next_fy_revenue_growth(pack_text: str) -> float | None:
+    """Read next-FY consensus revenue growth from the CONSENSUS ESTIMATES table in pack_text.
+
+    The table row '| next FY |' carries revenue growth in its sixth cell (e.g. '+0.9%').
+    Returns the rate as a float fraction (e.g. 0.009), or None if unavailable or unparseable.
+    """
+    if not pack_text:
+        return None
+    for line in pack_text.splitlines():
+        line_clean = line.strip()
+        if not line_clean.startswith("|"):
+            continue
+        cells = [c.strip() for c in line_clean.split("|")]
+        # cells: ['', 'next FY', 'revenue avg', 'low', 'high', 'analysts', 'growth', ...]
+        if len(cells) > 6 and cells[1].lower() == "next fy":
+            growth_str = cells[6]
+            m = re.search(r"([+-]?\d+(?:\.\d+)?)\s*%", growth_str)
+            if m:
+                try:
+                    return round(float(m.group(1)) / 100.0, 6)
+                except (ValueError, TypeError):
+                    pass
+    return None
+
+
 def consensus_ratios(scorecard, enrich_data=None, pack_text=None):
     """E10 ratios stamped on every sample WHATEVER reason the model wrote (Fable check,
     2026-09-24: a model that always fills guidance_deviation_reason would otherwise hide how far
@@ -1269,6 +1294,8 @@ def check_sample_harness_rules(
       CONSENSUS-IMPLIED VALUE without guidance_deviation_reason
     - years35_above_base_rate_p90 (E10, information): years 3-5 average growth above the pack's
       conditional (else size-bucket) p90
+    - years35_above_revenue_cap: flag if any of Base years 3-5 growth exceeds next-FY consensus
+      revenue growth by more than 0.005
 
     Returns:
         (is_implausible, [reasons], [flags])
@@ -1388,6 +1415,13 @@ def check_sample_harness_rules(
             g35 = ((1 + float(path[2])) * (1 + float(path[3])) * (1 + float(path[4]))) ** (1 / 3) - 1
             if g35 > p90:
                 flags.append("years35_above_base_rate_p90")
+        except (ValueError, TypeError):
+            pass
+    rev_cap = next_fy_revenue_growth(pack_text)
+    if rev_cap is not None and len(path) >= 5:
+        try:
+            if any(float(path[i]) - rev_cap > 0.005 for i in (2, 3, 4)):
+                flags.append("years35_above_revenue_cap")
         except (ValueError, TypeError):
             pass
 

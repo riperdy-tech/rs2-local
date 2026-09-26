@@ -14,7 +14,10 @@ characters of the label, and a desk message leads with its summary.
 """
 import json
 import sys
+import urllib.error
 from pathlib import Path
+
+import pytest
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
@@ -51,7 +54,10 @@ def _fake_ollama(monkeypatch, responses):
 
     def fake_urlopen(req, timeout=None):
         bodies.append(json.loads(req.data.decode()))
-        return _R(queue.pop(0))
+        item = queue.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return _R(item)
 
     monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
     return bodies
@@ -80,8 +86,8 @@ def _dispatch(monkeypatch, results):
     return seen
 
 
-def _run(tmp_path, **kw):
-    return at.chat_with_tools("m", "pack", tmp_path, ctx=81920, verbose=False,
+def _run(tmp_path, content="pack", **kw):
+    return at.chat_with_tools("m", content, tmp_path, ctx=81920, verbose=False,
                               max_search_calls=kw.pop("max_search_calls", 25), **kw)
 
 
@@ -108,7 +114,7 @@ def test_gpor_s2_shape_full_thinking_retry_then_normal_continuation(monkeypatch,
         _resp(MEMO, prompt=31000),                              # normal report turn
     ])
     seen = _dispatch(monkeypatch, [DESK_OK])
-    report, _, meta = _run(tmp_path)
+    report, _, meta = _run(tmp_path, content="pack " * 18000)
     assert len(bodies) == 3
     retry_req = bodies[1]
     assert retry_req["messages"][-1] == {"role": "user", "content": at.WINDOW_RETRY_PROMPT}
@@ -327,3 +333,111 @@ def test_num_batch_reaches_every_request_and_is_absent_by_default(monkeypatch, t
     bodies = _fake_ollama(monkeypatch, [_resp("", done="length"), _resp("", done="length")])
     _run(tmp_path)
     assert all("num_batch" not in b["options"] for b in bodies)
+
+
+# ---- F1 server error (HTTP 5xx) handling -----------------------------------------------------
+
+def test_f1_turn_1_raises_500_retries_and_continues(monkeypatch, tmp_path):
+    # 1. turn 1 raises 500 with no tool call and no desk result -> the next request carries WINDOW_RETRY_PROMPT,
+    # at the configured think level, and the run continues normally; the turn record has server_error: True, http_status: 500.
+    err500 = urllib.error.HTTPError("http://127.0.0.1:11434/api/chat", 500, "Internal Server Error", {}, None)
+    bodies = _fake_ollama(monkeypatch, [
+        err500,
+        _resp("", prompt=1000, tool_calls=_desk_call()),
+        _resp(MEMO, prompt=1000),
+    ])
+    seen = _dispatch(monkeypatch, [DESK_OK])
+    report, _, meta = _run(tmp_path)
+    assert len(bodies) == 3
+    retry_req = bodies[1]
+    assert retry_req["messages"][-1] == {"role": "user", "content": at.WINDOW_RETRY_PROMPT}
+    assert retry_req["think"] == "high"
+    assert [s[0] for s in seen] == ["run_financial_model"]
+    assert report == MEMO
+    assert meta["turns"][0].get("server_error") is True
+    assert meta["turns"][0].get("http_status") == 500
+    assert meta["window_retry_used"] is True
+    assert meta["failure"] is None
+
+
+def test_f1_500_after_desk_result_forces_report(monkeypatch, tmp_path):
+    # 2. a 500 after a desk result -> the next request is the forced report (no tools, configured think).
+    err500 = urllib.error.HTTPError("http://127.0.0.1:11434/api/chat", 500, "Internal Server Error", {}, None)
+    bodies = _fake_ollama(monkeypatch, [
+        _resp("", tool_calls=_desk_call()),
+        err500,
+        _resp(MEMO),
+    ])
+    _dispatch(monkeypatch, [DESK_OK])
+    report, _, meta = _run(tmp_path)
+    assert len(bodies) == 3
+    forced_req = bodies[2]
+    assert "tools" not in forced_req
+    assert forced_req["think"] == "high"
+    assert report == MEMO
+    assert meta["turns"][1].get("server_error") is True
+    assert meta["turns"][1].get("http_status") == 500
+    assert meta["turns"][2].get("forced_report") is True
+    assert meta["failure"] is None
+
+
+def test_f1_two_500s_stops_with_server_error_and_empty_report(monkeypatch, tmp_path):
+    # 3. two 500s in one sample -> no third request is made; meta["failure"] == "server_error"; the report is empty.
+    err500_1 = urllib.error.HTTPError("http://127.0.0.1:11434/api/chat", 500, "Internal Server Error", {}, None)
+    err500_2 = urllib.error.HTTPError("http://127.0.0.1:11434/api/chat", 503, "Service Unavailable", {}, None)
+    bodies = _fake_ollama(monkeypatch, [
+        err500_1,
+        err500_2,
+    ])
+    report, _, meta = _run(tmp_path)
+    assert len(bodies) == 2
+    assert meta["failure"] == "server_error"
+    assert report == ""
+
+
+def test_f1_non_5xx_httperror_still_raises(monkeypatch, tmp_path):
+    # 4. a non-5xx HTTPError (e.g. 404) still raises.
+    err404 = urllib.error.HTTPError("http://127.0.0.1:11434/api/chat", 404, "Not Found", {}, None)
+    _fake_ollama(monkeypatch, [err404])
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        _run(tmp_path)
+    assert exc_info.value.code == 404
+
+
+# ---- F2 window edge capping rule -------------------------------------------------------------
+
+def test_f2_num_predict_capping_and_turn_record_keys(monkeypatch, tmp_path):
+    # Tests: a request's num_predict equals min(configured, ctx - est - 2048) for a large prompt
+    # and the configured value for a small one; the turn record carries both keys; never below 1024.
+
+    # 1. Small prompt: num_predict equals configured value
+    bodies1 = _fake_ollama(monkeypatch, [_resp(MEMO)])
+    _, _, meta1 = at.chat_with_tools("m", "short", tmp_path, ctx=81920, num_predict=49152, verbose=False)
+    assert len(bodies1) == 1
+    t0 = meta1["turns"][0]
+    assert "est_prompt_tokens" in t0 and "num_predict" in t0
+    assert t0["num_predict"] == 49152
+    assert bodies1[0]["options"]["num_predict"] == 49152
+
+    # 2. Large prompt: num_predict equals min(configured, ctx - est - 2048)
+    large_prompt = "x" * 15000
+    bodies2 = _fake_ollama(monkeypatch, [_resp(MEMO)])
+    ctx2 = 10000
+    _, _, meta2 = at.chat_with_tools("m", large_prompt, tmp_path, ctx=ctx2, num_predict=49152, verbose=False)
+    assert len(bodies2) == 1
+    t1 = meta2["turns"][0]
+    assert "est_prompt_tokens" in t1 and "num_predict" in t1
+    expected_np2 = ctx2 - t1["est_prompt_tokens"] - 2048
+    assert t1["num_predict"] == expected_np2
+    assert bodies2[0]["options"]["num_predict"] == expected_np2
+
+    # 3. Huge prompt: never below 1024
+    huge_prompt = "x" * 60000
+    bodies3 = _fake_ollama(monkeypatch, [_resp(MEMO)])
+    ctx3 = 10000
+    _, _, meta3 = at.chat_with_tools("m", huge_prompt, tmp_path, ctx=ctx3, num_predict=49152, verbose=False)
+    assert len(bodies3) == 1
+    t2 = meta3["turns"][0]
+    assert t2["num_predict"] == 1024
+    assert bodies3[0]["options"]["num_predict"] == 1024
+

@@ -192,7 +192,8 @@ def audit(ticker, verdict):
     if runs and len(runs) < intended:
         note(2, f"only {len(runs)} of {intended} samples produced ANY result — "
                 f"{intended - len(runs)} raised before recording. Check the sweep log for "
-                f"'sample N: FAILED'; these are invisible in consensus.json.")
+                f"'sample N: FAILED'; they are counted in consensus.json's samples_lost "
+                f"and flagged SAMPLE_FAILED:lost:<n> on the verdict.")
     lost = []
     for r in runs:
         r_flags = r.get("flags") or []

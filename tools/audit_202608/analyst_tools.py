@@ -32,6 +32,7 @@ import ssl
 import statistics
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -642,7 +643,8 @@ TOOL_MESSAGE_MAX_CHARS = 12000
 # prompt would leave less than this many tokens of the window. Search and desk notes stay: they
 # are the evidence the report cites. The largest full-thinking report turn in batch (b) generated
 # 39,031 tokens (FSM s2); forced reports now run at full thinking too.
-REPORT_ROOM_TOKENS = 42000
+# 42,000 + the 2,048-token edge margin of F2, so the report keeps the same guaranteed room
+REPORT_ROOM_TOKENS = 44048
 
 
 def truncate_long_strings(obj, limit=ARG_MAX_CHARS, path=""):
@@ -1121,7 +1123,15 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     failure = None
     window_retry_used = False
     window_retry_pending = False
+    server_errors = 0
     chars_per_token = [None]   # measured on the previous request, for the report-room rule
+
+    def _turn_options(base_opts, msgs_sent):
+        cpt = chars_per_token[0] if chars_per_token[0] is not None else 3.0
+        est = int(len(json.dumps(msgs_sent)) / cpt)
+        np_req = base_opts.get("num_predict", num_predict)
+        eff_np = max(1024, min(np_req, ctx - est - 2048))
+        return dict(base_opts, num_predict=eff_np), est, eff_np
 
     def _history():
         """(active messages, page notes shortened). The report-room rule: when the next prompt
@@ -1138,10 +1148,17 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         return am, 0
 
     def _post(body):
+        nonlocal server_errors
         req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            resp = json.loads(r.read().decode())
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                resp = json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code >= 500:
+                server_errors += 1
+                return {"message": {}, "done_reason": "server_error", "http_status": e.code}
+            raise
         if resp.get("prompt_eval_count"):
             chars_per_token[0] = len(json.dumps(body["messages"])) / resp["prompt_eval_count"]
         return resp
@@ -1158,9 +1175,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         msgs.append({"role": "user", "content": retry_prompt})
         meta_msgs.append(None)
         active_msgs_retry, shrunk = _history()
-        opts_retry = opts if max_model_calls > 0 else dict(opts, num_predict=opts.get("num_predict", 16384))
+        base_opts_retry = opts if max_model_calls > 0 else dict(opts, num_predict=opts.get("num_predict", 16384))
+        req_opts, est, eff_np = _turn_options(base_opts_retry, active_msgs_retry)
         body = {"model": model, "stream": False, "think": think,
-                "messages": active_msgs_retry, "options": opts_retry}
+                "messages": active_msgs_retry, "options": req_opts}
         resp = _post(body)
         fm = resp.get("message") or {}
         final_report = fm.get("content") or ""
@@ -1168,11 +1186,25 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         done_reason = resp.get("done_reason")
         gen_tokens += resp.get("eval_count") or 0
         eval_duration_total += resp.get("eval_duration") or 0
-        if max_model_calls > 0 and not report_is_deliverable(final_report):
-            failure = "report_not_delivered"
-        turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
-                      "forced_report": True,
-                      **({"page_notes_to_headers": shrunk} if shrunk else {})})
+        if resp.get("done_reason") == "server_error":
+            if failure is None:
+                failure = "server_error"
+            final_report = ""
+        elif max_model_calls > 0 and not report_is_deliverable(final_report):
+            if failure is None:
+                failure = "report_not_delivered"
+        turn_rec = {"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
+                    "forced_report": True,
+                    "est_prompt_tokens": est, "num_predict": eff_np,
+                    **({"page_notes_to_headers": shrunk} if shrunk else {})}
+        if resp.get("done_reason") == "server_error":
+            turn_rec["server_error"] = True
+            turn_rec["http_status"] = resp.get("http_status")
+        turns.append(turn_rec)
+        if server_errors >= 2:
+            if failure is None:
+                failure = "server_error"
+            final_report = ""
 
     def _recover_cut_off_brief():
         """Discovery mode only (no desk). If the final turn hit num_predict before the
@@ -1191,13 +1223,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             "deliberate further. Write ONLY the ```json:catalysts block now, exactly as specified in "
             "the first message, from the research above.")})
         meta_msgs.append(None)
+        msgs_recovery = _compact_history(msgs, meta_msgs)
+        req_opts, est, eff_np = _turn_options(opts, msgs_recovery)
         body = {"model": model, "stream": False, "think": think,
-                "messages": _compact_history(msgs, meta_msgs),
-                "options": opts}
-        req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            resp = json.loads(r.read().decode())
+                "messages": msgs_recovery,
+                "options": req_opts}
+        resp = _post(body)
         fm = resp.get("message") or {}
         final_report = ((final_report or "") + "\n\n" + (fm.get("content") or "")).strip()
         final_think += fm.get("thinking") or ""
@@ -1206,11 +1237,21 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         eval_duration_total += resp.get("eval_duration") or 0
         if "```json" not in (final_report or ""):
             failure = "brief_not_delivered"
-        turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
-                      "length_recovery": True})
+        turn_rec = {"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
+                    "length_recovery": True,
+                    "est_prompt_tokens": est, "num_predict": eff_np}
+        if resp.get("done_reason") == "server_error":
+            turn_rec["server_error"] = True
+            turn_rec["http_status"] = resp.get("http_status")
+        turns.append(turn_rec)
+        if server_errors >= 2:
+            if failure is None:
+                failure = "server_error"
+            final_report = ""
 
     while True:
         active_msgs, shrunk = _history()
+        req_opts, est, eff_np = _turn_options(opts, active_msgs)
 
         # If search budget is exhausted, only expose financial modeling tool
         active_tools = eff_tools
@@ -1220,7 +1261,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             active_tools = [t for t in active_tools if t["function"]["name"] != "run_financial_model"]
 
         body = {"model": model, "stream": False, "think": think, "messages": active_msgs,
-                "options": opts}
+                "options": req_opts}
         if active_tools and (search_calls < max_search_calls or (model_calls < max_model_calls and desk_validation_errors <= 6)):
             body["tools"] = active_tools
 
@@ -1230,11 +1271,22 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         gen_tokens += resp.get("eval_count") or 0
         eval_duration_total += resp.get("eval_duration") or 0
         turn_rec = {"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
+                    "est_prompt_tokens": est, "num_predict": eff_np,
                     **({"page_notes_to_headers": shrunk} if shrunk else {})}
         if window_retry_pending:
             turn_rec["window_retry"] = True
             window_retry_pending = False
+        if resp.get("done_reason") == "server_error":
+            turn_rec["server_error"] = True
+            turn_rec["http_status"] = resp.get("http_status")
         turns.append(turn_rec)
+
+        if server_errors >= 2:
+            if failure is None:
+                failure = "server_error"
+            final_report = ""
+            break
+
         if msg.get("thinking"):
             final_think += msg["thinking"]
         tcs = msg.get("tool_calls") or []
@@ -1243,7 +1295,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             is_stub = not report_is_deliverable(final_report) if max_model_calls > 0 else not bool(_TOOL_CALL_BLOCK.sub("", final_report or "").strip())
             # Phase 4 window fix: a tool turn that ran out of room (length) with no tool call, no report and
             # no desk result yet gets one full-thinking retry.
-            if (is_stub and not window_retry_used and done_reason == "length"
+            if (is_stub and not window_retry_used and done_reason in ("length", "server_error")
                     and body.get("tools") and max_model_calls > 0 and model_calls == 0
                     and desk_validation_errors <= 6):
                 if verbose:
@@ -1254,7 +1306,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 window_retry_used = True
                 window_retry_pending = True
                 continue
-            if is_stub and window_retry_used and done_reason == "length" and model_calls == 0:
+            if is_stub and window_retry_used and done_reason in ("length", "server_error") and model_calls == 0:
                 failure = "window_exhausted_twice"
                 final_report = ""
                 break
@@ -1413,8 +1465,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             msgs.append({"role": "user", "content": exhausted_prompt})
             meta_msgs.append(None)
             active_msgs_exhausted, shrunk = _history()
+            req_opts, est, eff_np = _turn_options(opts, active_msgs_exhausted)
             body = {"model": model, "stream": False, "think": think, "messages": active_msgs_exhausted,
-                    "options": opts}
+                    "options": req_opts}
             resp = _post(body)
             fm = resp.get("message") or {}
             final_report = fm.get("content") or ""
@@ -1422,9 +1475,24 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             done_reason = resp.get("done_reason")
             gen_tokens += resp.get("eval_count") or 0
             eval_duration_total += resp.get("eval_duration") or 0
-            turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
-                          "budget_exhausted": True,
-                          **({"page_notes_to_headers": shrunk} if shrunk else {})})
+            turn_rec = {"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
+                        "budget_exhausted": True,
+                        "est_prompt_tokens": est, "num_predict": eff_np,
+                        **({"page_notes_to_headers": shrunk} if shrunk else {})}
+            if resp.get("done_reason") == "server_error":
+                turn_rec["server_error"] = True
+                turn_rec["http_status"] = resp.get("http_status")
+            turns.append(turn_rec)
+            if server_errors >= 2:
+                if failure is None:
+                    failure = "server_error"
+                final_report = ""
+                break
+            if resp.get("done_reason") == "server_error":
+                if failure is None:
+                    failure = "server_error"
+                final_report = ""
+                break
             _recover_cut_off_brief()
             if max_model_calls > 0 and not report_is_deliverable(final_report) and failure is None:
                 failure = "report_not_delivered"
