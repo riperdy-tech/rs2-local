@@ -67,7 +67,8 @@ def assess(v):
          `street_fence.low` on an overvalued call                 -> "outside_street_fence"
      11. `|mos_vs_base_pct| > 150`                               -> "mos_beyond_150pct"
      12. a basis sample flagged `desk_not_used` / `iv_not_desk_backed` -> "desk_not_used"
-     13. a basis sample written at reduced effort (`LOW_EFFORT_RESCUE`) -> "low_effort_rescue"
+     13. a sample written at reduced thinking (`LOW_EFFORT_RESCUE`);
+         from 2026-09-27 such a sample is never a basis sample, so this guards rows written before that -> "low_effort_rescue"
      14. any flag starting with `SAMPLE_FAILED`               -> "sample_failed"
      15. any flag starting with `discovery_failed`            -> "discovery_failed"
 

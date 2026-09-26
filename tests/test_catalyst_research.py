@@ -685,3 +685,27 @@ def test_a_json_fix_that_invents_an_event_is_refused(monkeypatch, tmp_path):
     invented = '{"narrative": "n", "events": [{"event": "Takeover bid at a 40% premium", "date": "2026-09-02"}]}'
     b = _run_with_block(monkeypatch, tmp_path, broken, lambda model, block, err: invented)
     assert b["error"].startswith("no parseable brief") and b["events"] == []
+
+
+def test_news_step_passes_failure_name_on(monkeypatch, tmp_path):
+    report = "no json block in this response at all"
+    monkeypatch.setattr(cr, "run", cr._run_live)
+    monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cr, "discovery_context", lambda t: {
+        "ticker": t, "company": t, "asof": "2026-09-24", "mom_1m": 0.01, "facts": "facts"})
+    monkeypatch.setattr(cr.analyst_tools, "chat_with_tools",
+                        lambda *a, **k: (report, "", {"tool_calls": 0, "failure": "brief_not_delivered"}))
+    b = cr.run("T9", force=True)
+    assert b["error"] == "brief_not_delivered"
+
+
+def test_news_step_passes_failure_name_on_json_syntax_error(monkeypatch, tmp_path):
+    report = "```json:catalysts\n{unparseable json\n```"
+    monkeypatch.setattr(cr, "run", cr._run_live)
+    monkeypatch.setattr(cr, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cr, "discovery_context", lambda t: {
+        "ticker": t, "company": t, "asof": "2026-09-24", "mom_1m": 0.01, "facts": "facts"})
+    monkeypatch.setattr(cr.analyst_tools, "chat_with_tools",
+                        lambda *a, **k: (report, "", {"tool_calls": 0, "failure": "brief_not_delivered"}))
+    b = cr.run("T10", force=True)
+    assert b["error"] == "brief_not_delivered"

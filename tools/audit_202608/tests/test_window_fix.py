@@ -89,11 +89,11 @@ def _run(tmp_path, **kw):
 
 def test_the_retry_text_is_the_frozen_ruling():
     assert at.WINDOW_RETRY_PROMPT.startswith(
-        "Your previous turn used the whole context window deliberating before any tool call, "
+        "Your previous turn ran out of room deliberating before any tool call, "
         "and that reasoning is lost."
     )
     assert at.WINDOW_RETRY_PROMPT.endswith(
-        "Then reason from its output, research and re-run it as your analysis requires."
+        "listing each change in 'Model revisions' with the evidence that moved it."
     )
 
 

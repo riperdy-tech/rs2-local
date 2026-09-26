@@ -623,15 +623,16 @@ def turn_metrics(resp):
     }
 
 
-# Operator ruling 2026-09-27: reduced thinking is not a result. If a turn hits the context window
-# deliberating before any tool call and with no desk result, give one full-thinking retry with
-# normal options and tools rather than a desk-only low-effort turn.
+# Operator ruling 2026-09-27: reduced thinking is not a result. The retry fires on done_reason == "length",
+# which at the 98,304 window is usually the 65,536-token output cap, not the window. If a turn runs out of
+# room deliberating before any tool call and with no desk result, give one full-thinking retry with normal
+# options and tools rather than a desk-only low-effort turn.
 WINDOW_RETRY_PROMPT = (
-    "Your previous turn used the whole context window deliberating before any tool call, and that "
-    "reasoning is lost. Do not compute values in your reasoning: run_financial_model does the "
-    "arithmetic. Call it now with your Base, Bull and Bear inputs; if you have not settled them, start "
-    "from the pack's printed defaults and revise after. Then reason from its output, research and "
-    "re-run it as your analysis requires.")
+    "Your previous turn ran out of room deliberating before any tool call, and that reasoning is "
+    "lost. Do not compute values in your reasoning: run_financial_model does the arithmetic. Call it "
+    "now with Base, Bull and Bear as the TASK sets them. This first call is a starting point, not "
+    "your answer: research what the TASK asks, then re-run the desk, listing each change in 'Model "
+    "revisions' with the evidence that moved it.")
 # UGI s3 and LAMR s1 wrote essays of up to 30,523 characters into sector_multiple_band.metric. The
 # arguments stayed in every later prompt, and the desk echoed them into every scenario, which
 # pushed Bear past the 12,000-character cut of the tool message in 3 of 85 desk calls.
@@ -639,8 +640,9 @@ ARG_MAX_CHARS = 300
 TOOL_MESSAGE_MAX_CHARS = 12000
 # Narrow report-room rule: older page notes shrink to headers, oldest first, only when the next
 # prompt would leave less than this many tokens of the window. Search and desk notes stay: they
-# are the evidence the report cites.
-REPORT_ROOM_TOKENS = 36000
+# are the evidence the report cites. The largest full-thinking report turn in batch (b) generated
+# 39,031 tokens (FSM s2); forced reports now run at full thinking too.
+REPORT_ROOM_TOKENS = 42000
 
 
 def truncate_long_strings(obj, limit=ARG_MAX_CHARS, path=""):
@@ -1238,13 +1240,13 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         if not tcs:
             final_report = msg.get("content") or ""
             is_stub = not report_is_deliverable(final_report) if max_model_calls > 0 else not bool(_TOOL_CALL_BLOCK.sub("", final_report or "").strip())
-            # Phase 4 window fix: a tool turn that hit the window with no tool call, no report and
+            # Phase 4 window fix: a tool turn that ran out of room (length) with no tool call, no report and
             # no desk result yet gets one full-thinking retry.
             if (is_stub and not window_retry_used and done_reason == "length"
                     and body.get("tools") and max_model_calls > 0 and model_calls == 0
                     and desk_validation_errors <= 6):
                 if verbose:
-                    print("    [harness] turn hit the context window with no tool call and no desk "
+                    print("    [harness] turn ran out of room (length) with no tool call and no desk "
                           "result - one full-thinking retry", flush=True)
                 msgs.append({"role": "user", "content": WINDOW_RETRY_PROMPT})
                 meta_msgs.append(None)
@@ -1423,6 +1425,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                           "budget_exhausted": True,
                           **({"page_notes_to_headers": shrunk} if shrunk else {})})
             _recover_cut_off_brief()
+            if max_model_calls > 0 and not report_is_deliverable(final_report) and failure is None:
+                failure = "report_not_delivered"
             break
 
     _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)

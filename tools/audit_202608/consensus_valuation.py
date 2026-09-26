@@ -90,7 +90,7 @@ BEAR_TOL_PCT_NOTE = ("initial value carried from PHASE_4_ANALYST.md P4.7, not ye
                       "from the P4.0 dispersion battery's bear-IV spread distribution")
 NUM_PREDICT = 65536         # output budget per sample. At the old ctx 65,536 the 49,152 cap was
                             # already the ctx wall (prompt ~16.4K), and one GOOG sample hit it -
-                            # report cut mid-write, vote discarded. ctx 81,920 buys ~16K more.
+                            # report cut mid-write, vote discarded. ctx raised to 98,304 on 2026-09-27, measured on the RTX 3090.
 
 IV_PATTERNS = [
     r"intrinsic value[^\n]{0,80}?\$\s*([\d,]+(?:\.\d{1,2})?)",
@@ -385,8 +385,8 @@ def plausibility(iv, price, ticker):
     return True, [], flags
 
 
-def continue_report(model, pack, partial_report, ctx=81920, timeout=1800, seed=None,
-                    draft_num_predict=None, temperature=None):
+def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=None,
+                    draft_num_predict=None, temperature=None, think="high"):
     """Rescues a truncated memorandum by issuing a continuation turn to Ollama.
     Reclaims 40k+ tokens of headroom by feeding the pack + partial report as assistant turn."""
     cutoff_snippet = partial_report[-250:].strip()
@@ -426,7 +426,7 @@ def continue_report(model, pack, partial_report, ctx=81920, timeout=1800, seed=N
     body = {
         "model": model,
         "stream": False,
-        "think": "high",
+        "think": think,
         "messages": messages,
         "options": opts
     }
@@ -1928,7 +1928,7 @@ def main():
     n = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else 3
     model = (sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv
              else "rs2-analyst-deep-mtp5")
-    ctx = int(sys.argv[sys.argv.index("--ctx") + 1]) if "--ctx" in sys.argv else 81920
+    ctx = int(sys.argv[sys.argv.index("--ctx") + 1]) if "--ctx" in sys.argv else 98304
     # Reasoning effort. Default "high" = the template's xhigh = the model's MAXIMUM and its own
     # default; "medium" is the neutral baseline that injects no reasoning instruction. Exposed
     # 2026-08-23 so the medium-vs-xhigh cost/quality question can be measured rather than argued.
@@ -1939,7 +1939,7 @@ def main():
     # this before it was caught. The bug was invisible while the value was hard-coded "high".
     think_level = sys.argv[sys.argv.index("--think") + 1] if "--think" in sys.argv else "high"
     draft_num_predict = int(sys.argv[sys.argv.index("--draft-num-predict") + 1]) if "--draft-num-predict" in sys.argv else None
-    # ctx 81920 VERIFIED 2026-08-21 on rs2-analyst-deep: 22.2 GB resident, fully on GPU,
+    # ctx raised to 98,304 on 2026-09-27, measured on the RTX 3090: 23.6 GB resident, fully on GPU,
     # no CPU spill. Do not raise further without re-probing /api/ps for spill.
 
     # P4.0b — frozen-evidence dispersion battery options ------------------------------------
@@ -2082,6 +2082,7 @@ def main():
         t0 = time.time()
         resp, meta = {}, {}
         sample_retried = False
+        report_continued = None
         # P4.0b: hits/misses against the shared evidence store, accumulated across both the
         # initial chat_with_tools call and the empty-report retry (below) for THIS sample.
         sample_es_hits, sample_es_misses = 0, 0
@@ -2127,40 +2128,49 @@ def main():
         except Exception as e:
             print(f"  sample {i}: FAILED {str(e)[:90]}", flush=True)
             continue
+        first_meta = meta
         # EMPTY-REPORT RETRY (found live on ANET s2, 2026-08-22): 118K chars of thinking,
         # done_reason=stop, ZERO report content - the model reasoned itself to a stop without
         # emitting the deliverable. One retry with a perturbed seed; a second empty is recorded
         # and the sample excluded as before (n_basis drops, verdict still emitted).
         if not (rep or "").strip() and not use_tools:
-            sample_retried = True
-            print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
-                  f"one retry, perturbed seed", flush=True)
-            body["options"]["seed"] = 1000 + i + 50000
-            req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
-                                         data=json.dumps(body).encode(),
-                                         headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=7200) as r:
-                resp = json.loads(r.read().decode())
-            msg = resp.get("message") or {}
-            rep = msg.get("content") or ""
-            think = msg.get("thinking") or ""
+            try:
+                sample_retried = True
+                print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
+                      f"one retry, perturbed seed", flush=True)
+                body["options"]["seed"] = 1000 + i + 50000
+                req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
+                                             data=json.dumps(body).encode(),
+                                             headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=7200) as r:
+                    resp = json.loads(r.read().decode())
+                msg = resp.get("message") or {}
+                rep = msg.get("content") or ""
+                think = msg.get("thinking") or ""
+            except Exception as e:
+                print(f"  sample {i}: RETRY FAILED {str(e)[:90]}", flush=True)
+                continue
         elif not (rep or "").strip() and use_tools:
-            sample_retried = True
-            import analyst_tools as _at
-            print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
-                  f"one retry, perturbed seed", flush=True)
-            rep, think, meta = _at.chat_with_tools(
-                model, pack, d / f"sample{i}_research_retry", think=think_level, ctx=ctx,
-                num_predict=NUM_PREDICT, seed=1000 + i + 50000, draft_num_predict=draft_num_predict,
-                temperature=temperature,
-                query_cache=evidence_query_cache if evidence_store_dir is not None else None,
-                url_cache=evidence_url_cache if evidence_store_dir is not None else None)
-            sample_es_hits += meta.get("evidence_hits") or 0
-            sample_es_misses += meta.get("evidence_misses") or 0
-            resp = {"done_reason": meta.get("done_reason"),
-                    "eval_count": meta.get("generated_tokens"),
-                    "eval_rate": meta.get("eval_rate"),
-                    "eval_duration_s": meta.get("eval_duration_s")}
+            try:
+                sample_retried = True
+                import analyst_tools as _at
+                print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
+                      f"one retry, perturbed seed", flush=True)
+                rep, think, meta = _at.chat_with_tools(
+                    model, pack, d / f"sample{i}_research_retry", think=think_level, ctx=ctx,
+                    num_predict=NUM_PREDICT, seed=1000 + i + 50000, draft_num_predict=draft_num_predict,
+                    temperature=temperature,
+                    query_cache=evidence_query_cache if evidence_store_dir is not None else None,
+                    url_cache=evidence_url_cache if evidence_store_dir is not None else None)
+                sample_es_hits += meta.get("evidence_hits") or 0
+                sample_es_misses += meta.get("evidence_misses") or 0
+                resp = {"done_reason": meta.get("done_reason"),
+                        "eval_count": meta.get("generated_tokens"),
+                        "eval_rate": meta.get("eval_rate"),
+                        "eval_duration_s": meta.get("eval_duration_s")}
+            except Exception as e:
+                print(f"  sample {i}: RETRY FAILED {str(e)[:90]}", flush=True)
+                continue
         (d / f"sample{i}.md").write_text(rep, encoding="utf-8")
         if think:
             (d / f"sample{i}_thinking.md").write_text(think, encoding="utf-8")
@@ -2175,7 +2185,13 @@ def main():
             rep_cont, think_cont, meta_cont = continue_report(
                 model=model, pack=pack, partial_report=rep,
                 ctx=ctx, timeout=1800, seed=1000 + i + 100,
-                draft_num_predict=draft_num_predict, temperature=temperature)
+                draft_num_predict=draft_num_predict, temperature=temperature,
+                think=think_level)
+            report_continued = {
+                "chars_rescued": len(rep_cont) if rep_cont else 0,
+                "done_reason": (meta_cont or {}).get("done_reason"),
+                "think": think_level,
+            }
             if rep_cont and rep_cont.strip():
                 rep = rep.rstrip() + "\n\n" + rep_cont.strip()
                 (d / f"sample{i}.md").write_text(rep, encoding="utf-8")
@@ -2200,9 +2216,14 @@ def main():
         # Harness-filled per sample from tool snapshot (P4.0a)
         snapshot_dir = None
         if use_tools:
-            snapshot_dir = d / f"sample{i}_research"
-            if not (snapshot_dir / "_research_snapshot.json").exists():
+            if sample_retried:
                 snapshot_dir = d / f"sample{i}_research_retry"
+                if not (snapshot_dir / "_research_snapshot.json").exists():
+                    snapshot_dir = d / f"sample{i}_research"
+            else:
+                snapshot_dir = d / f"sample{i}_research"
+                if not (snapshot_dir / "_research_snapshot.json").exists():
+                    snapshot_dir = d / f"sample{i}_research_retry"
         desk_info = extract_desk_snapshot_metrics(
             snapshot=snapshot_dir,
             base_iv=iv,
@@ -2291,10 +2312,13 @@ def main():
         # `meta` above drops it, and a band can mix a sample written at reduced reasoning effort
         # with normal siblings with no consumer able to tell.
         rescue = rescue_status(meta)
+        first_rescue = rescue_status(first_meta)
         # P4.0b: persist the evidence store after every sample (not only at the end) so an
         # interrupted battery run never loses evidence it already gathered.
         if evidence_store_dir is not None:
             _save_evidence_store(evidence_store_dir, evidence_query_cache, evidence_url_cache)
+        first_attempt_failure = (first_rescue["failure"] or "empty_report") if sample_retried else None
+        window_retry_used = bool(first_rescue["window_retry_used"] or rescue["window_retry_used"])
         failed_reason = rescue["failure"] if rescue.get("failure") is not None else ("empty_report" if not (rep or "").strip() else None)
         runs.append({"sample": i, "iv": iv, "scorecard": scorecard, "all_iv_mentions": sorted(set(ivs))[:8],
                      "plausible": ok, "reasons": why, "flags": flags, "truncated": truncated,
@@ -2303,8 +2327,10 @@ def main():
                      "budget_exhausted": rescue["budget_exhausted"],
                      "desk_recovery_used": rescue["desk_recovery_used"],
                      "reduced_thinking": rescue["reduced_thinking"],
-                     "window_retry_used": rescue["window_retry_used"],
+                     "window_retry_used": window_retry_used,
                      "sample_retried": sample_retried,
+                     "first_attempt_failure": first_attempt_failure,
+                     "report_continued": report_continued,
                      "failed_reason": failed_reason,
                      "report_turn_headroom_tokens": (meta or {}).get("report_turn_headroom_tokens"),
                      "done_reason": resp.get("done_reason"),

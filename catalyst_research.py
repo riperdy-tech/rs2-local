@@ -402,7 +402,7 @@ def run(ticker: str, force: bool = False) -> dict:
         try:
             parsed, final_turn["json_repaired"] = _loads_lenient(block)
         except Exception as e:
-            parse_error = f"no parseable brief: {str(e)[:100]}"
+            parse_error = meta["failure"] if meta.get("failure") else f"no parseable brief: {str(e)[:100]}"
             try:
                 fixed, _ = _loads_lenient(_llm_fix_json(model, block, str(e)[:200]))
                 # Accept only a syntax fix: every event the fix returns must be in the original text.
@@ -414,7 +414,7 @@ def run(ticker: str, force: bool = False) -> dict:
             except Exception:
                 pass
     else:
-        parse_error = "no parseable brief"
+        parse_error = meta["failure"] if meta.get("failure") else "no parseable brief"
 
     narrative = None
     bear_narrative = None

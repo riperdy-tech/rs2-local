@@ -285,7 +285,7 @@ def run_research(t):
         return False
     print(f"[depth] research {t} (cache-aware, bound {RESEARCH_TIMEOUT}s)", flush=True)
     # UNLOAD THE ANALYST FIRST (bug found live on ABNB, 2026-08-21 15:49). The previous
-    # ticker's analyst model (~22.2GB at ctx 81920) stays resident between children, and the
+    # ticker's analyst model (~23.6 GB at ctx 98,304) stays resident between children, and the
     # post-research barrier then demands >=20GB free for the analyst re-load - impossible with
     # the analyst itself still holding the card. Research (9.3GB) and analyst cannot coexist on
     # 24GB, so the ticker must START by clearing the card. Best-effort: if the card is already
@@ -932,6 +932,12 @@ def band_verdict(doc):
     retried = [r.get("sample") for r in good if r.get("window_retry_used")]
     if retried:
         v.setdefault("flags", []).append("WINDOW_RETRY")
+        v["flags"] = sorted(set(v["flags"]))
+
+    # REPORT CONTINUED — ANNOTATION ONLY.
+    continued = [r.get("sample") for r in good if r.get("report_continued")]
+    if continued:
+        v.setdefault("flags", []).append("REPORT_CONTINUED")
         v["flags"] = sorted(set(v["flags"]))
 
     # FORCED REPORT (2026-09-21) — ANNOTATION ONLY, and deliberately a SEPARATE flag from

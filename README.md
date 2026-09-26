@@ -152,7 +152,7 @@ judges one on read and returns `(actionable: bool, reasons: list[str])`, evaluat
 applicable reason so a row can carry more than one at once:
 
 1. `direction` not one of `undervalued`/`hold`/`overvalued` -> `not_usable`
-2. `gate_version` absent or `< GATE_VERSION` (currently 2) -> `pre_v3.1_gates`
+2. `gate_version` absent or `< GATE_VERSION` (currently 4) -> `pre_v3.1_gates`
 3. `n_basis == 1` -> `single_sample`
 4. `fiduciary_verdict == "FAIL"` -> `fiduciary_fail`
 5. `direction == overvalued` and `kelly_fraction_pct > 0` -> `kelly_on_overvalued`
@@ -164,6 +164,14 @@ applicable reason so a row can carry more than one at once:
 9. `FIRST_VALID_PACK_REVISION` is set and `not analyst_valid(v)` -> `pre_valid_analyst` (Phase 4
    B3 — the switch that turns Phase 4 validity on; `None` until the Phase 4 gate sets it, so this
    reason never fires before the ruling)
+10. `median_iv` above `street_fence.high` on an undervalued call, or below
+    `street_fence.low` on an overvalued call -> `outside_street_fence`
+11. `|mos_vs_base_pct| > 150` -> `mos_beyond_150pct`
+12. a basis sample flagged `desk_not_used` / `iv_not_desk_backed` -> `desk_not_used`
+13. a sample written at reduced thinking (`LOW_EFFORT_RESCUE`); from 2026-09-27 such a sample is
+    never a basis sample, so this guards rows written before that -> `low_effort_rescue`
+14. any flag starting with `SAMPLE_FAILED` -> `sample_failed`
+15. any flag starting with `discovery_failed` -> `discovery_failed`
 
 `orchestrate_depth.rebuild_overlay()` runs every ledger row's newest-per-ticker through
 `assess()` and adds `actionable` / `actionable_reasons` / `gate_version` to each row, plus
