@@ -57,7 +57,10 @@ def test_select_medoid_excludes_flagged_samples_when_clean_sample_exists():
     assert medoid["base_iv"] == 105.0
 
 
-def test_select_medoid_falls_back_when_all_samples_are_flagged():
+def test_no_desk_backed_sample_means_no_basis():
+    # Phase 4 (b) GPOR joint review: a sample whose base IV no desk call produced is not a basis
+    # sample. The old fallback picked a medoid among hand-computed samples; now there is none, and
+    # the verdict has no basis (non-actionable through the existing single/no-sample gates).
     price = 100.0
     runs = [
         {
@@ -81,9 +84,24 @@ def test_select_medoid_falls_back_when_all_samples_are_flagged():
             }
         }
     ]
-    # No clean candidate exists -> fall back to selecting between valid candidates
     medoid, summary = select_medoid_scorecard(runs, price)
-    assert summary["medoid_sample"] in (1, 2)
+    assert summary["medoid_sample"] is None and summary["n_basis"] == 0 and medoid == {}
+
+
+def test_a_desk_less_sample_leaves_the_band_and_the_spread():
+    # GPOR (b): s1 $409.92 desk-backed, s2 $425.00 with zero tool calls -> one basis sample
+    runs = [
+        {"sample": 1, "iv": 409.92, "plausible": True, "truncated": False, "flags": [],
+         "scorecard": {"base_iv": 409.92, "bull_iv": 584.0, "bear_iv": 299.0, "business_quality_moat": 3.0,
+                       "desk_calls": 4, "desk_iv_match": True}},
+        {"sample": 2, "iv": 425.0, "plausible": True, "truncated": False,
+         "flags": ["desk_not_used", "iv_not_desk_backed"],
+         "scorecard": {"base_iv": 425.0, "bull_iv": 600.0, "bear_iv": 310.0, "business_quality_moat": 3.0,
+                       "desk_calls": 0, "desk_iv_match": False}},
+    ]
+    medoid, summary = select_medoid_scorecard(runs, 156.22)
+    assert summary["n_basis"] == 1 and summary["medoid_sample"] == 1 and medoid["base_iv"] == 409.92
+    assert summary["spread_pct"] is None and summary["iv_band_high"] == 409.92
 
 
 def test_depth_sanity_warns_on_flagged_sample(tmp_path, monkeypatch):

@@ -469,7 +469,8 @@ def select_medoid_scorecard(
     Returns:
         (medoid_scorecard, consensus_summary)
     """
-    good = [r for r in runs if r.get("iv") and r.get("plausible") and not r.get("truncated")]
+    good = [r for r in runs if r.get("iv") and r.get("plausible") and not r.get("truncated")
+            and desk_backed(r)]
     if not good:
         return {}, {
             "median_iv": None, "median_bull_iv": None, "median_bear_iv": None,
@@ -1823,6 +1824,15 @@ def _save_evidence_store(store_dir, query_cache, url_cache):
     (store_dir / "url_cache.json").write_text(json.dumps(url_cache, indent=2), encoding="utf-8")
 
 
+def desk_backed(run):
+    """A sample whose base IV no desk call produced is not a basis sample (GPOR (b) s2: zero tool
+    calls, a hand-computed $425 inside 3.7% of the desk-backed $410 made the spread look like
+    agreement). It stays in `runs` with its IV and flags; it is left out of the band, the median,
+    the spread and n_basis."""
+    fl = run.get("flags") or []
+    return "desk_not_used" not in fl and "iv_not_desk_backed" not in fl
+
+
 def early_stop_check(g2, prior_base=None):
     """P4.7/B2 — pure decision for the adaptive 2-sample early stop. No I/O, no printing.
 
@@ -2291,7 +2301,7 @@ def main():
         # truncated or unparseable sample - falls through and buys the 3rd opinion. The bar is
         # tighter than TOL_PCT on purpose; see EARLY_TOL_PCT.
         if adaptive and i == 2:
-            g2 = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"]]
+            g2 = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"] and desk_backed(r)]
             if len(g2) == 2:
                 d2 = early_stop_check(g2, prior_base)
                 if d2["stop"]:
@@ -2319,7 +2329,7 @@ def main():
                 print(f"  [adaptive] only {len(g2)} usable of 2 — escalating to 3rd sample",
                       flush=True)
 
-    good = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"]]
+    good = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"] and desk_backed(r)]
     pb_votes = {}
     for r in good:
         sc = r.get("scorecard") or {}

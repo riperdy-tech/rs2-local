@@ -72,6 +72,20 @@ def fake_ollama(monkeypatch):
     return seen
 
 
+def _desk_backed(monkeypatch):
+    """The fake memorandum never calls the desk. A sample without a desk calculation is not
+    usable (Phase 4 usability rule, 2026-09-26), so tests about the stopping rules mark the
+    fake samples desk-backed."""
+    real = cv.extract_desk_snapshot_metrics
+
+    def fake(*a, **k):
+        out = real(*a, **k)
+        out.update(desk_calls=1, desk_iv_match=True)
+        return out
+
+    monkeypatch.setattr(cv, "extract_desk_snapshot_metrics", fake)
+
+
 def _out_run_dir(out_dir, ticker="GEV"):
     dirs = list(out_dir.glob(f"{ticker}_*"))
     assert len(dirs) == 1, f"expected exactly one run dir, found {dirs}"
@@ -178,6 +192,7 @@ def test_adaptive_mode_early_stops_at_two_agreeing_samples(
     """Baseline: confirms the fake harness DOES trigger the existing early-stop path (both
     samples parse to the same base_iv, well inside the 15% early bar) — the contrast case for
     the next test."""
+    _desk_backed(monkeypatch)
     out_dir = tmp_path / "out"
     monkeypatch.setattr(sys, "argv",
                         ["consensus_valuation.py", "GEV", "--price", "100", "--out-dir", str(out_dir)])
@@ -188,10 +203,25 @@ def test_adaptive_mode_early_stops_at_two_agreeing_samples(
     assert doc["samples_run"] == 2
 
 
+def test_samples_without_the_desk_never_stop_early(
+        monkeypatch, tmp_path, fake_ollama, screener_data_stub):
+    """The same agreeing samples, but with no desk calculation behind them: they are not usable,
+    so two of them agreeing is not a reason to stop."""
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv",
+                        ["consensus_valuation.py", "GEV", "--price", "100", "--out-dir", str(out_dir)])
+    cv.main()
+    assert len(fake_ollama) == 3
+    doc = json.loads((_out_run_dir(out_dir) / "consensus.json").read_text(encoding="utf-8"))
+    assert doc["early_stop"] is False
+    assert doc["samples_run"] == 3
+
+
 def test_no_early_stop_runs_every_requested_sample(
         monkeypatch, tmp_path, fake_ollama, screener_data_stub):
     """Same agreeing samples as above, but --no-early-stop must force the full 3 — the battery
     needs full samples for dispersion, even when the first two would have been enough to stop."""
+    _desk_backed(monkeypatch)
     out_dir = tmp_path / "out"
     monkeypatch.setattr(sys, "argv", [
         "consensus_valuation.py", "GEV", "--price", "100", "--no-early-stop",

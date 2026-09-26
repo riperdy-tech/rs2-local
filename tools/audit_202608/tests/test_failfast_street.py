@@ -146,6 +146,15 @@ def test_failfast_stops_after_sample_1_above_2_0x(monkeypatch, tmp_path):
 def test_failfast_continues_inside_band(monkeypatch, tmp_path):
     """When sample 1 IV is inside [0.5 * lo_d, 2.0 * hi_d], sampling continues."""
     memo = _make_memo(base_iv=120.0)  # inside [50.0, 400.0]
+    real = cv.extract_desk_snapshot_metrics
+
+    def desk_backed(*a, **k):
+        # the fake memo never calls the desk; a desk-less sample is not usable and cannot converge
+        out = real(*a, **k)
+        out.update(desk_calls=1, desk_iv_match=True)
+        return out
+
+    monkeypatch.setattr(cv, "extract_desk_snapshot_metrics", desk_backed)
     monkeypatch.setattr(urllib.request, "urlopen",
                         lambda req, timeout=None: _FakeResponse(_ollama_payload(memo)))
     monkeypatch.setattr(cv.vb, "_consensus_band",
