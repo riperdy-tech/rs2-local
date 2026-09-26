@@ -377,7 +377,9 @@ def main():
     spread = (max(ivs) / min(ivs) - 1) * 100 if len(ivs) >= 2 else None
     converged = bool(spread is not None and spread <= cv.TOL_PCT)
     med = st.median(ivs) if ivs else None
-    medoid_card, _ = cv.select_medoid_scorecard(runs, med, price)
+    # by keyword: the positional call passed the median as the price and the price as the
+    # tolerance, so every run converged and the fiduciary checks read the wrong price
+    medoid_card, _ = cv.select_medoid_scorecard(runs, price=price)
     verdict = ("USABLE - plausible and converged" if converged and med else
                "NOT USABLE - runs disagree beyond tolerance" if med and spread is not None else
                "NOT USABLE - no plausible sample")
