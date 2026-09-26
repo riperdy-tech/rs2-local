@@ -170,8 +170,8 @@ def _slice(pack, header, next_prefix="## "):
     return pack[i:j if j != -1 else len(pack)]
 
 
-def test_pack_revision_is_9():
-    assert cap.PACK_REVISION == 9   # E13 (2026-09-25): default exit multiple, equity frame default
+def test_pack_revision_is_10():
+    assert cap.PACK_REVISION == 10   # E18 + terminal-g pin + small fixes (operator ruling 2026-09-26)
 
 
 def test_no_ground_truth_phrase_anywhere(screener_data_stub):

@@ -867,6 +867,32 @@ _P90_COND_RE = re.compile(r"realized next-5y revenue CAGR[^\n]*?p90 (-?[\d.]+)%"
 _P90_SIZE_RE = re.compile(r"5y sustained growth, this size bucket[^\n]*?p90 (-?[\d.]+)%")
 
 
+_LEVELS_RE = re.compile(r"Consensus cash-flow levels: year 1 \$(-?[\d.,]+)B, year 2 \$(-?[\d.,]+)B")
+_RANGE_RE = re.compile(r"Bull year 2 \$(-?[\d.,]+)B and Bear year 2 \$(-?[\d.,]+)B")
+
+
+def _pack_levels(pack_text):
+    """E18: the consensus year-1 and year-2 cash-flow levels ($B) the pack prints, and the Bull and
+    Bear year-2 levels when there is a consensus range. {} for a pack printing none (revision <= 9)."""
+    t = pack_text or ""
+    out = {}
+    m = _LEVELS_RE.search(t)
+    if m:
+        out["year1"], out["year2"] = (float(x.replace(",", "")) for x in m.groups())
+    m = _RANGE_RE.search(t)
+    if m:
+        out["bull2"], out["bear2"] = (float(x.replace(",", "")) for x in m.groups())
+    return out
+
+
+def _year2_flow(base_cf, path):
+    """base_cf ($B) grown two years along path, or None."""
+    try:
+        return float(base_cf) * (1 + float(path[0])) * (1 + float(path[1]))
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
 def _pack_reference(pack_text):
     """(consensus-implied value per share, years-3-5 p90 as a fraction) printed in this pack, or
     None for either. Read from the text so frozen battery packs are checked the same way."""
@@ -891,8 +917,13 @@ def consensus_ratios(scorecard, enrich_data=None, pack_text=None):
     out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": civ}
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth((enrich_data or {}).get("estimates"))
+    lv = _pack_levels(pack_text)
+    y2 = _year2_flow(sc.get("base_cf_used"), path)
     try:
-        if c1 is not None and len(path) >= 2:
+        if lv.get("year2") and y2 is not None:
+            # E18: Base year-2 cash flow against the pack's year-2 level, whatever base was declared
+            out["years12_ratio"] = round(y2 / lv["year2"], 3)
+        elif c1 is not None and len(path) >= 2:
             out["years12_ratio"] = round((1 + float(path[0])) * (1 + float(path[1]))
                                          / ((1 + c1) * (1 + c2)), 3)
     except (ValueError, TypeError, ZeroDivisionError):
@@ -1091,12 +1122,18 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         stamps["bull_bear_anchor"] = f"no consensus range ({e1.get('analysts') or 0} analysts)"
     else:
         stamps["bull_bear_anchor"] = "consensus high/low"
+    lv = _pack_levels(pack_text)
     for role in ("base", "bull", "bear"):
         inp = _desk_scenario_inputs(calls, sc.get(f"{role}_iv"), role=role)
         if not inp:
             continue
         g = inp.get("explicit_growth") or inp.get("growth_rates")
-        if role != "base" and isinstance(g, list) and len(g) >= 2 and isinstance(prior, (int, float)) \
+        y2 = _year2_flow(_num_b(inp.get("base_cf")), g) if isinstance(g, list) else None
+        if role != "base" and lv.get(f"{role}2") and y2 is not None:
+            # E18: the scenario's year-2 cash flow against the pack's Bull/Bear year-2 level
+            stamps[f"{role}_years12_ratio"] = round(y2 / lv[f"{role}2"], 3)
+        elif role != "base" and not lv.get(f"{role}2") and isinstance(g, list) and len(g) >= 2 \
+                and isinstance(prior, (int, float)) \
                 and prior > 0 and isinstance(cum[role], (int, float)) and cum[role] > 0:
             try:
                 stamps[f"{role}_years12_ratio"] = round((1 + float(g[0])) * (1 + float(g[1]))
@@ -1267,7 +1304,14 @@ def check_sample_harness_rules(
         gdr = ""
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth(en.get("estimates"))
-    if c1 is not None and len(path) >= 2 and not gdr:
+    lv = _pack_levels(pack_text)
+    y2 = _year2_flow(sc.get("base_cf_used"), path)
+    if lv.get("year2") and y2 is not None and not gdr:
+        # E18: the year-2 LEVEL is the anchor, whatever base the sample declared (ADI (b): a TTM
+        # base on the rate path and a fiscal-year base on its own path were 68% apart)
+        if abs(y2 / lv["year2"] - 1) > consensus_reference.LEVEL_TOL:
+            flags.append("years12_off_consensus_earnings")
+    elif not lv.get("year2") and c1 is not None and len(path) >= 2 and not gdr:
         try:
             ratio = (1 + float(path[0])) * (1 + float(path[1])) / ((1 + c1) * (1 + c2))
             if not consensus_reference.NEAR_LOW <= ratio <= consensus_reference.NEAR_HIGH:
