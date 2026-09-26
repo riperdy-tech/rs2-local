@@ -72,12 +72,20 @@ def test_the_matching_net_income_confirms_the_label_year():
     assert cap._vendor_fy_end_for(WSE_FIN, None, 2026) == (None, None)
 
 
-def test_a_match_in_another_year_is_a_conflict_never_a_relabel():
-    # CX: our filed FY2024 net income is the vendor's FY2025 figure to the dollar
-    cx = {"Annual_Income_Statement": [{"Date": "2025-12-31", "NetIncome": 960000000.0},
-                                      {"Date": "2024-12-31", "NetIncome": 939000000.0}]}
-    assert cap._vendor_fy_end_for(cx, 960000000, 2024) == (None, date(2025, 12, 31))
-    assert cap._vendor_fy_end_for(cx, 939000000, 2024) == (date(2024, 12, 31), None)
+CX_FIN = {"Annual_Income_Statement": [{"Date": "2025-12-31", "NetIncome": 960000000.0},
+                                      {"Date": "2024-12-31", "NetIncome": 939000000.0},
+                                      {"Date": "2023-12-31", "NetIncome": 182000000.0}]}
+
+
+def test_one_coincidental_match_in_another_year_leaves_the_label_standing():
+    # CX: our consolidated FY2024 ($960M) equals the vendor's attributable FY2025; FY2023 does not shift
+    assert cap._vendor_fy_end_for(CX_FIN, 960000000, 2024, prev_net_income=199000000) == (None, None)
+
+
+def test_the_same_shift_in_two_consecutive_years_is_a_conflict():
+    # our FY2024 = the vendor's 2025 and our FY2023 = the vendor's 2024: the label is in doubt (review R4)
+    assert cap._vendor_fy_end_for(CX_FIN, 960000000, 2024, prev_net_income=939000000) == (None, date(2025, 12, 31))
+    assert cap._vendor_fy_end_for(CX_FIN, 939000000, 2024, prev_net_income=182000000) == (date(2024, 12, 31), None)
 
 
 # ---- B1: the vendor's capex ------------------------------------------------------------------
@@ -132,7 +140,14 @@ def test_a_ttm_window_outside_the_fence_prints_its_side_and_no_number():
 
 # ---- B1/B3 in the pack: not verified, and an unknown year end ---------------------------------
 
-def _gev_pack(monkeypatch, fye, year_ago):
+class _FixedNow(__import__("datetime").datetime):
+    """Review R6: the pack's clock pinned to 2026-09-26, so the date-dependent cases never expire."""
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 9, 26, 12, 0, tzinfo=tz)
+
+
+def _gev_pack(monkeypatch, fye, year_ago, fin_edit=None, ttm_edit=None, hist_edit=None):
     import rs2_data
     en = {"_ticker": "GEV", "_fetched_at": "2026-09-24T12:00:00",
           "estimates": {"0y": {"eps": {"avg": 20.0, "low": 18.0, "high": 22.0, "analysts": 25, "growth": 0.13,
@@ -141,9 +156,22 @@ def _gev_pack(monkeypatch, fye, year_ago):
                         "+1y": {"eps": {"avg": 24.0, "low": 21.0, "high": 27.0, "analysts": 23, "growth": 0.20},
                                 "revenue": {"avg": 45e9, "analysts": 22, "growth": 0.10}}}}
     orig = rs2_data.load_json
-    monkeypatch.setattr(rs2_data, "load_json", lambda p: en if str(p).endswith("GEV.json") and "enrich" in str(p)
-                        else orig(p))
+
+    def fake(p):
+        s = str(p)
+        if s.endswith("GEV.json") and "enrich" in s:
+            return en
+        out = orig(p)
+        if fin_edit and s.endswith("GEV.json") and "financials" in s:
+            out = fin_edit(json.loads(json.dumps(out)))
+        if ttm_edit and s.endswith("fundamentals_ttm.json"):
+            out = ttm_edit(json.loads(json.dumps(out)))
+        if hist_edit and s.endswith("fundamentals_history.json"):
+            out = hist_edit(json.loads(json.dumps(out)))
+        return out
+    monkeypatch.setattr(rs2_data, "load_json", fake)
     monkeypatch.setattr(cap, "_fye_month_day", lambda t, with_source=False: fye if with_source else fye[:2])
+    monkeypatch.setattr(cap, "datetime", _FixedNow)
     return str(cap.build_pack("GEV"))
 
 
@@ -153,11 +181,12 @@ def _ref_line(pack):
 
 @pytest.mark.usefixtures("screener_data_stub")
 def test_a_filed_year_over_12_months_old_needs_a_matching_vintage(monkeypatch):
-    months = (date.today().year - 2025) * 12 + date.today().month - 8        # FY2025 ended 1 August
-    if not 12 < months <= 15:
-        pytest.skip("the fixture's FY2025 must have ended 12-15 months ago for this case")
+    # FY2025 ended 1 August 2025: 13.8 months before the pinned 2026-09-26
     unverified = _ref_line(_gev_pack(monkeypatch, (8, 1, "ttm"), 30.0e9))
     assert "not available" in unverified and "not verified" in unverified
+    assert "does not match its filed revenue within 2%" in unverified
+    unknown = _ref_line(_gev_pack(monkeypatch, (8, 1, "ttm"), None))         # review R2
+    assert "not verified" in unknown and "year-ago revenue is not available" in unknown
     # the fixture holds no growth base-rate median, so an accepted year still prints "not available",
     # for that reason and not for the vintage
     aligned = _ref_line(_gev_pack(monkeypatch, (8, 1, "ttm"), 38068000000))
@@ -168,3 +197,60 @@ def test_a_filed_year_over_12_months_old_needs_a_matching_vintage(monkeypatch):
 def test_an_unknown_year_end_builds_no_reference(monkeypatch):
     line = _ref_line(_gev_pack(monkeypatch, (12, 31, "default"), 38068000000))
     assert "the fiscal year end is unknown" in line
+
+
+# ---- R1, R3, R5, R7 ----------------------------------------------------------------------------
+
+def _byc(pack):
+    return next(l for l in pack.splitlines() if "BASE-YEAR CHECK" in l)
+
+
+@pytest.mark.usefixtures("screener_data_stub")
+def test_the_base_year_check_across_a_split_is_withheld(monkeypatch):
+    # APH's shape: SECTION 2's share count is twice the filed diluted count
+    line = _byc(_gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000,
+                          fin_edit=lambda f: dict(f, Shares_Outstanding=552e6)))
+    assert line.startswith("- BASE-YEAR CHECK: not available") and "differ by more than 15%" in line
+    assert "cannot be shown to be on one basis" in line                                  # R3
+
+
+@pytest.mark.usefixtures("screener_data_stub")
+def test_no_share_count_is_said_plainly_and_does_not_crash(monkeypatch):
+    def drop(f):
+        f.pop("Shares_Outstanding", None)
+        return f
+    line = _byc(_gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000, fin_edit=drop))    # R1
+    assert "SECTION 2 holds no share count" in line
+
+
+@pytest.mark.usefixtures("screener_data_stub")
+def test_a_failed_vintage_is_said_as_unproven_not_as_different(monkeypatch):
+    line = _byc(_gev_pack(monkeypatch, (12, 31, "ttm"), 30.0e9))
+    assert "does not match FY2025's filed revenue within 2%" in line
+    assert "cannot be shown to be on one basis" in line and "are not on one basis" not in line
+
+
+@pytest.mark.usefixtures("screener_data_stub")
+def test_a_refused_vendor_capex_says_why(monkeypatch):
+    def no_ttm_capex(d):
+        d["tickers"]["GEV"]["fields"].pop("capex", None)
+        return d
+
+    def rupees(f):
+        return dict(f, FX={"statement_currency": "INR", "converted": False,
+                           "flag": "unreviewed_currency_mismatch"})
+    def no_fy_capex(d):
+        d["tickers"]["GEV"]["2025"].pop("capex", None)
+        return d
+    pack = _gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000, fin_edit=rupees, ttm_edit=no_ttm_capex,
+                     hist_edit=no_fy_capex)
+    line = next(l for l in pack.splitlines() if l.startswith("- OWNER EARNINGS (default base_cf)"))
+    assert "not available" in line and "the vendor's capex is not used" in line and "INR" in line   # R5
+
+
+def test_the_window_line_points_to_the_base_year_check_only_when_it_printed():
+    ref = cr.build(3.732 * B, EST, 0.1045, 0.0375, 0.48 * B, 0.096, stub_months=10.8)
+    win = cr.window_check(ref, 3.732 * B, 3.732 * B * 1.655 ** 0.5 * 1.56, 2)
+    fmt = lambda v: f"${v / 1e9:.3f}B"  # noqa: E731
+    assert "The BASE-YEAR CHECK shows" in cr.window_line(win, ref, 1.0 * B, "2026-06-30", fmt)
+    assert "BASE-YEAR" not in cr.window_line(win, ref, 1.0 * B, "2026-06-30", fmt, base_year_check=False)  # R7

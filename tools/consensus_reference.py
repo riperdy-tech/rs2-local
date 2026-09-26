@@ -265,7 +265,7 @@ def fence_window(win, side, fence):
     return dict(win, ttm_value=None, ttm_levels=None, fence_side=side, fence=fence)
 
 
-def window_line(win, ref, ttm_base, through, fmt_b):
+def window_line(win, ref, ttm_base, through, fmt_b, base_year_check=True):
     """SECTION 8's BASE WINDOW CHECK, printed only when the windows are more than WINDOW_TOL apart.
     The prefixes are fixed: the harness parses the gap, the TTM reference and its year-2 level."""
     if not (win and win["flag"]):
@@ -286,9 +286,12 @@ def window_line(win, ref, ttm_base, through, fmt_b):
             f"current-FY EPS growth for the {win['quarters']} quarter(s) between them is "
             f"{fmt_b(win['expected_ttm'])}. One of the two windows holds items the other does not (a one-off "
             f"gain or charge, a capex swing). {alt}; on the fiscal-year window ${ref['value']:,.2f} (the "
-            f"CONSENSUS-IMPLIED VALUE above). The BASE-YEAR CHECK shows the analysts' own year-ago EPS against "
-            f"the filed year. Name in base_cf_reason the window you judge representative, and anchor to its "
-            f"reference and year-2 level.")
+            f"CONSENSUS-IMPLIED VALUE above)."
+            # review R7: point to the BASE-YEAR CHECK only where it printed its numbers
+            + (" The BASE-YEAR CHECK shows the analysts' own year-ago EPS against the filed year." if base_year_check
+               else "")
+            + " Name in base_cf_reason the window you judge representative, and anchor to its reference and "
+              "year-2 level.")
 
 
 def pack_line(ref, base_cf, coe, terminal_g, fmt_b):

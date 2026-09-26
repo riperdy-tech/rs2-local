@@ -752,28 +752,36 @@ def _vendor_annual_dates(fin):
     return sorted(out, reverse=True)
 
 
-def _vendor_fy_end_for(fin, net_income, year):
-    """Review B3: (date, conflict). `date` is the vendor's annual statement dated in `year` whose
+def _vendor_fy_end_for(fin, net_income, year, prev_net_income=None):
+    """Review B3/R4: (date, conflict). `date` is the vendor's annual statement dated in `year` whose
     net income matches our filed FY`year`'s within the vintage tolerance, which confirms the label
-    year. `conflict` is the date of a statement from ANOTHER year that matches while none from
-    `year` does: the match may confirm a label, never move it (CX: our filed FY2024 net income,
-    $960M, is the vendor's FY2025 figure to the dollar). (None, None) when nothing matches."""
+    year. `conflict` is the date of a statement from another year when the SAME shift matches in
+    two consecutive years (FY`year` and FY`year`-1) and no same-year statement matches: only then
+    is our label in doubt. One coincidental match (CX: our consolidated FY2024 net income, $960M,
+    equals the vendor's attributable FY2025 figure) leaves the label standing, and the age rules
+    decide. (None, None) otherwise."""
     from datetime import date as _date
-    if not isinstance(net_income, (int, float)) or net_income == 0:
-        return None, None
-    same, other = None, None
-    for r in fin.get("Annual_Income_Statement") or []:
-        v = r.get("NetIncome")
-        try:
-            d = _date.fromisoformat(str(r.get("Date"))[:10])
-        except ValueError:
-            continue
-        if isinstance(v, (int, float)) and abs(v / net_income - 1) <= consensus_reference.VINTAGE_TOL:
-            if d.year == year:
-                same = same or d
-            else:
-                other = other or d
-    return (same, None) if same else (None, other)
+
+    def _matches(ni):
+        out = []
+        if not isinstance(ni, (int, float)) or ni == 0:
+            return out
+        for r in fin.get("Annual_Income_Statement") or []:
+            v = r.get("NetIncome")
+            try:
+                d = _date.fromisoformat(str(r.get("Date"))[:10])
+            except ValueError:
+                continue
+            if isinstance(v, (int, float)) and abs(v / ni - 1) <= consensus_reference.VINTAGE_TOL:
+                out.append(d)
+        return out
+    now = _matches(net_income)
+    same = next((d for d in now if d.year == year), None)
+    if same:
+        return same, None
+    before = {d.year for d in _matches(prev_net_income)}
+    shifted = next((d for d in now if d.year != year and (d.year - 1) in before), None)
+    return None, shifted
 
 
 def _vendor_capex_usable(fin, fy_end):
@@ -950,6 +958,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
     _ref_fy = None      # E18: the last full fiscal year's base and its age, for the reference
     _ref_fy_na = None   # E18: why that fiscal year cannot anchor the consensus path
     _aligned = None     # E18: the vendor's estimates start from the filed fiscal year (vintage test)
+    _byc_printed = False  # the BASE-YEAR CHECK line printed its numbers (the window line points to it)
     if asof_date is not None:
         from datetime import timedelta as _td
         asof_cutoff = asof_date - _td(days=POINT_IN_TIME_FILING_LAG_DAYS)
@@ -2011,7 +2020,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         _fye_mm = _fye_dd = _fye_src = _fy_end_dt = _fye_conflict = None
         if latest_yr is not None:
             _fye_mm, _fye_dd, _fye_src = _fye_month_day(t, with_source=True)
-            _vend, _fye_conflict = ((_vendor_fy_end_for(fin, _fy_rec.get("net_income"), int(latest_yr)))
+            _vend, _fye_conflict = ((_vendor_fy_end_for(fin, _fy_rec.get("net_income"), int(latest_yr),
+                                                         (h.get(str(int(latest_yr) - 1)) or {}).get("net_income")))
                                     if _fye_src != "ttm" else (None, None))
             _fy_end_dt = _vend or _fy_end_date_for(int(latest_yr), _fye_mm, _fye_dd)
         _ven_capex_ok, _ven_capex_why = _vendor_capex_usable(fin, _fy_end_dt)
@@ -2058,8 +2068,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if _fye_src == "default":
                 _ref_fy_na = "the fiscal year end is unknown (no TTM record and no dated vendor statement)"
             elif _fye_conflict is not None:
-                _ref_fy_na = (f"the label year cannot be confirmed: the vendor's statement with FY{latest_yr}'s "
-                              f"net income is dated {_fye_conflict.isoformat()}")
+                _ref_fy_na = (f"the label year cannot be confirmed: the vendor's statements with FY{latest_yr}'s "
+                              f"and FY{int(latest_yr) - 1}'s net income are dated a year apart from ours "
+                              f"({_fye_conflict.isoformat()})")
             elif _stub < 0:
                 _ref_fy_na = f"FY{latest_yr} ends {_fy_end_dt.isoformat()}, after today"
             elif _age > consensus_reference.STALE_MONTHS:
@@ -2068,8 +2079,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             elif _stub > 12 and _aligned is not True:
                 # review B1: a failed or unknown vintage test is "not verified", never "rolled"
                 _ref_fy_na = (f"not verified: FY{latest_yr} ended {_stub:.0f} months ago and the vendor's "
-                              f"year-ago revenue does not match its filed revenue within 2%, so the year "
-                              f"consensus starts from cannot be checked")
+                              + ("year-ago revenue does not match its filed revenue within 2%" if _aligned is False
+                                 else "year-ago revenue is not available")
+                              + ", so the year consensus starts from cannot be checked")
             else:
                 _ref_fy = {"stub": _stub,
                            "label": f"FY{latest_yr}, the last full fiscal year, ended {_fy_end_dt.isoformat()}",
@@ -2113,6 +2125,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if not isinstance(capex, (int, float)):
                 missing.append("TTM capex")
             missing_str = ", ".join(missing)
+            _vc_x = fin.get("Capital_Expenditure")
+            if (not isinstance(capex, (int, float)) and not _ven_capex_ok and isinstance(_vc_x, (int, float))
+                    and _vc_x < 0):
+                missing_str += f" (the vendor's capex is not used: {_ven_capex_why})"
             L.append(f"- OWNER EARNINGS (default base_cf): not available \u2014 {missing_str} missing; declare your base and why.")
         if latest_yr is not None:
             latest_rec = h.get(str(latest_yr)) or {}
@@ -2459,12 +2475,14 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                             if _aligned is False else
                             f"the vendor's year-ago revenue is not available to check against FY{latest_yr}'s "
                             f"filed revenue" if _aligned is None else
+                            "SECTION 2 holds no share count" if not (isinstance(sh, (int, float)) and sh > 0) else
                             f"our filed FY{latest_yr} diluted share count ({_fy_sh_x / 1e9:.3f}B) and SECTION 2's "
                             f"({sh / 1e9:.3f}B) differ by more than 15% (a split, ADS units or share classes)")
-                         + ", so the vendor's year-ago EPS and ours are not on one basis.")
+                         + ", so the vendor's year-ago EPS and ours cannot be shown to be on one basis.")
             elif (isinstance(_ya, (int, float)) and _ya > 0 and isinstance(_fy_ni_x, (int, float))
                     and isinstance(_fy_sh_x, (int, float)) and _fy_sh_x > 0 and _fy_ni_x != 0):
                 _fy_eps = _fy_ni_x / _fy_sh_x
+                _byc_printed = True
                 L.append(f"- [Arithmetic] BASE-YEAR CHECK: consensus measures current-FY EPS growth from a "
                          f"year-ago EPS of ${_ya:.2f}; our filed FY{latest_yr} EPS is ${_fy_eps:.2f} (net income / "
                          f"diluted shares), {(_ya / _fy_eps - 1) * 100:+.0f}% apart. A large gap means the "
@@ -2529,7 +2547,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                     if _win and _win.get("ttm_value") is not None:
                         _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
                         _win = consensus_reference.fence_window(_win, _wside, _wfence)
-                    _wl = consensus_reference.window_line(_win, _ref, _ref_oe, _fy.get("through"), _b)
+                    _wl = consensus_reference.window_line(_win, _ref, _ref_oe, _fy.get("through"), _b,
+                                                          base_year_check=_byc_printed)
                     if _wl:
                         L.append(_wl)
         if _civ_na and asof_date is None:
