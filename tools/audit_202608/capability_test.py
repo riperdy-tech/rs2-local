@@ -752,20 +752,28 @@ def _vendor_annual_dates(fin):
     return sorted(out, reverse=True)
 
 
-def _vendor_fy_end_for(fin, net_income):
-    """Review B3: the date of the vendor's annual statement whose net income matches our filed
-    fiscal year's within the vintage tolerance, which confirms the label year; else None."""
+def _vendor_fy_end_for(fin, net_income, year):
+    """Review B3: (date, conflict). `date` is the vendor's annual statement dated in `year` whose
+    net income matches our filed FY`year`'s within the vintage tolerance, which confirms the label
+    year. `conflict` is the date of a statement from ANOTHER year that matches while none from
+    `year` does: the match may confirm a label, never move it (CX: our filed FY2024 net income,
+    $960M, is the vendor's FY2025 figure to the dollar). (None, None) when nothing matches."""
     from datetime import date as _date
     if not isinstance(net_income, (int, float)) or net_income == 0:
-        return None
+        return None, None
+    same, other = None, None
     for r in fin.get("Annual_Income_Statement") or []:
         v = r.get("NetIncome")
+        try:
+            d = _date.fromisoformat(str(r.get("Date"))[:10])
+        except ValueError:
+            continue
         if isinstance(v, (int, float)) and abs(v / net_income - 1) <= consensus_reference.VINTAGE_TOL:
-            try:
-                return _date.fromisoformat(str(r.get("Date"))[:10])
-            except ValueError:
-                return None
-    return None
+            if d.year == year:
+                same = same or d
+            else:
+                other = other or d
+    return (same, None) if same else (None, other)
 
 
 def _vendor_capex_usable(fin, fy_end):
@@ -2000,11 +2008,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         # Review B3/B1 (2026-09-27): the fiscal year end (TTM record, else the vendor's dated
         # statements, the matching net income confirming the label year), and whether the vendor's
         # capex may stand in for a filed one
-        _fye_mm = _fye_dd = _fye_src = _fy_end_dt = None
+        _fye_mm = _fye_dd = _fye_src = _fy_end_dt = _fye_conflict = None
         if latest_yr is not None:
             _fye_mm, _fye_dd, _fye_src = _fye_month_day(t, with_source=True)
-            _fy_end_dt = ((_vendor_fy_end_for(fin, _fy_rec.get("net_income")) if _fye_src != "ttm" else None)
-                          or _fy_end_date_for(int(latest_yr), _fye_mm, _fye_dd))
+            _vend, _fye_conflict = ((_vendor_fy_end_for(fin, _fy_rec.get("net_income"), int(latest_yr)))
+                                    if _fye_src != "ttm" else (None, None))
+            _fy_end_dt = _vend or _fy_end_date_for(int(latest_yr), _fye_mm, _fye_dd)
         _ven_capex_ok, _ven_capex_why = _vendor_capex_usable(fin, _fy_end_dt)
         if not isinstance(ni, (int, float)) and isinstance(_fy_rec.get("net_income"), (int, float)):
             ni, ni_src, oe_src[0] = _fy_rec["net_income"], f"FY{latest_yr} net income (no TTM held)", "fy"
@@ -2048,6 +2057,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                                                            _fy_rec.get("revenue"))
             if _fye_src == "default":
                 _ref_fy_na = "the fiscal year end is unknown (no TTM record and no dated vendor statement)"
+            elif _fye_conflict is not None:
+                _ref_fy_na = (f"the label year cannot be confirmed: the vendor's statement with FY{latest_yr}'s "
+                              f"net income is dated {_fye_conflict.isoformat()}")
             elif _stub < 0:
                 _ref_fy_na = f"FY{latest_yr} ends {_fy_end_dt.isoformat()}, after today"
             elif _age > consensus_reference.STALE_MONTHS:

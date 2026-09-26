@@ -67,9 +67,17 @@ def test_no_dates_at_all_is_reported_as_the_default(monkeypatch):
 
 
 def test_the_matching_net_income_confirms_the_label_year():
-    assert cap._vendor_fy_end_for(WSE_FIN, 498700000) == date(2026, 3, 31)
-    assert cap._vendor_fy_end_for(WSE_FIN, 498700000 * 1.03) is None           # outside 2%
-    assert cap._vendor_fy_end_for(WSE_FIN, None) is None
+    assert cap._vendor_fy_end_for(WSE_FIN, 498700000, 2026) == (date(2026, 3, 31), None)
+    assert cap._vendor_fy_end_for(WSE_FIN, 498700000 * 1.03, 2026) == (None, None)       # outside 2%
+    assert cap._vendor_fy_end_for(WSE_FIN, None, 2026) == (None, None)
+
+
+def test_a_match_in_another_year_is_a_conflict_never_a_relabel():
+    # CX: our filed FY2024 net income is the vendor's FY2025 figure to the dollar
+    cx = {"Annual_Income_Statement": [{"Date": "2025-12-31", "NetIncome": 960000000.0},
+                                      {"Date": "2024-12-31", "NetIncome": 939000000.0}]}
+    assert cap._vendor_fy_end_for(cx, 960000000, 2024) == (None, date(2025, 12, 31))
+    assert cap._vendor_fy_end_for(cx, 939000000, 2024) == (date(2024, 12, 31), None)
 
 
 # ---- B1: the vendor's capex ------------------------------------------------------------------
