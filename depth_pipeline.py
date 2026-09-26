@@ -765,7 +765,10 @@ def band_verdict(doc):
     elif basis == "momentum":
         src = source.get("scorecard") or {}
         if source.get("sample") != scorecard.get("medoid_sample"):
-            # the momentum block travels with the basis it belongs to
+            # the momentum block travels with the basis it belongs to; the medoid's own view and
+            # timing stay on the row, so the mixing is visible
+            v["medoid_momentum_view"] = v.get("momentum_view")
+            v["medoid_entry_timing"] = v.get("entry_timing")
             for k in MOMENTUM_BLOCK:
                 v[k] = src.get(k)
             reason_notes.append(f"momentum basis and its break rule from sample {source.get('sample')}; "

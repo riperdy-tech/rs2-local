@@ -59,6 +59,8 @@ def test_aph_resolves_to_momentum_from_the_valid_vote(monkeypatch):
     # the break rule and flip condition travel with the basis they belong to
     assert v["momentum_break_rule"] == BREAK
     assert v["momentum_flip_condition"]["window_days"] == 365
+    assert v["momentum_view"] == "contradicting" and v["medoid_momentum_view"] == "confirming"
+    assert v["medoid_entry_timing"] == "buy_now"
     assert v["momentum_eligibility"]["eligible"] is True
     assert v["size_hint"] == "half" and v["size_components"]["basis"]["bucket"] == "half"
 
