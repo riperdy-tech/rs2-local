@@ -802,6 +802,9 @@ def rescue_status(meta):
         "forced_report": any(bool(t.get("forced_report")) for t in turns if isinstance(t, dict)),
         "budget_exhausted": any(bool(t.get("budget_exhausted")) for t in turns
                                 if isinstance(t, dict)),
+        # Phase 4 window fix: the desk-only recovery turn ran (its report is then forced)
+        "desk_recovery_used": any(bool(t.get("desk_recovery")) for t in turns
+                                  if isinstance(t, dict)),
     }
 
 
@@ -2244,6 +2247,8 @@ def main():
                      "stub_rejected": rescue["stub_rejected"],
                      "forced_report": rescue["forced_report"],
                      "budget_exhausted": rescue["budget_exhausted"],
+                     "desk_recovery_used": rescue["desk_recovery_used"],
+                     "report_turn_headroom_tokens": (meta or {}).get("report_turn_headroom_tokens"),
                      "done_reason": resp.get("done_reason"),
                      "prompt_tokens": p_tok, "generated_tokens": g_tok,
                      "eval_rate": eval_rate, "eval_duration_s": eval_dur_s,

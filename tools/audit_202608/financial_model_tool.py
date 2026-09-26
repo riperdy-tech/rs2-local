@@ -342,7 +342,11 @@ def unbundled_dcf(
         res["exit_implied_terminal_g"] = round(exit_implied_terminal_g, 4)
 
     if sector_multiple_band is not None:
-        res["sector_multiple_band"] = sector_multiple_band
+        # Phase 4 window fix: echo the band and a short label only; in_band used the full band above
+        res["sector_multiple_band"] = (
+            {k: (str(v)[:80] if k == "metric" else v) for k, v in sector_multiple_band.items()
+             if k in ("low", "mid", "high", "metric")}
+            if isinstance(sector_multiple_band, dict) else sector_multiple_band)
         res["multiple_in_band_gordon"] = gordon_in_band
         if has_exit:
             res["multiple_in_band_exit"] = exit_in_band

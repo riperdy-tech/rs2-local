@@ -849,6 +849,14 @@ def band_verdict(doc):
                 f"— not comparable to a normal sample")
         v["reason"] = f"{v['reason']}; {note}" if v.get("reason") else note
 
+    # DESK RECOVERY (Phase 4 window fix) — ANNOTATION ONLY. The sample hit the context window with
+    # no desk result, got one desk-only turn on the pack's printed defaults, then a forced report:
+    # a copy of the reference, not independent judgment. Its forced report is LOW_EFFORT_RESCUE too.
+    recovered = [r.get("sample") for r in good if r.get("desk_recovery_used")]
+    if recovered:
+        v.setdefault("flags", []).append("DESK_RECOVERY")
+        v["flags"] = sorted(set(v["flags"]))
+
     # FORCED REPORT (2026-09-21) — ANNOTATION ONLY, and deliberately a SEPARATE flag from
     # LOW_EFFORT_RESCUE. When both tool budgets are reached the harness forces the memorandum at
     # the SAME `think` level, and `analyst_tools.py:513` tags that turn `budget_exhausted`. So the

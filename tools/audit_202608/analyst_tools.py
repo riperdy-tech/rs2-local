@@ -174,7 +174,7 @@ TOOLS = [{
                         "low": {"type": "number"},
                         "mid": {"type": "number"},
                         "high": {"type": "number"},
-                        "metric": {"type": "string"}
+                        "metric": {"type": "string", "description": "Short label, at most 300 characters."}
                     }
                 },
                 "sbc_treatment": {
@@ -623,6 +623,140 @@ def turn_metrics(resp):
     }
 
 
+# Phase 4 (b) window fix (joint ruling with Fable, 2026-09-26).
+# GPOR s2 spent its whole first turn, 53,338 tokens, deliberating inside the 81,920-token window;
+# the rescue then ran with no tools, so its base IV was computed by hand. The recovery gives the
+# desk back, once, before the forced report. The text is frozen in PHASE_4_AMENDMENTS.md.
+DESK_RECOVERY_PROMPT = (
+    "Your previous turn ran out of room before any tool call. Do not deliberate. Call "
+    "run_financial_model once, now, with Base, Bull and Bear: the base you declared or the pack's "
+    "OWNER EARNINGS default; Base years 1\u20132 from SECTION 8's consensus EPS growth and the "
+    "printed years 3\u20135 fade; Bull and Bear years 1\u20132 on the consensus EPS high and low; "
+    "the COE ANCHOR, the terminal-g anchor, 5 fade years, the DEFAULT EXIT MULTIPLE or none; the "
+    "Bear rate +150 bp. Nothing else in this turn.")
+DESK_RECOVERY_NUM_PREDICT = 16384
+DESK_RECOVERY_TURNS = 2        # the recovery call, and one retry if the desk rejects it
+# UGI s3 and LAMR s1 wrote essays of up to 30,523 characters into sector_multiple_band.metric. The
+# arguments stayed in every later prompt, and the desk echoed them into every scenario, which
+# pushed Bear past the 12,000-character cut of the tool message in 3 of 85 desk calls.
+ARG_MAX_CHARS = 300
+TOOL_MESSAGE_MAX_CHARS = 12000
+# Narrow report-room rule: older page notes shrink to headers, oldest first, only when the next
+# prompt would leave less than this many tokens of the window. Search and desk notes stay: they
+# are the evidence the report cites.
+REPORT_ROOM_TOKENS = 36000
+
+
+def truncate_long_strings(obj, limit=ARG_MAX_CHARS, path=""):
+    """(copy of obj, [{field, original_length}]) with every string longer than `limit` cut to it.
+    Applied to desk arguments before dispatch; numbers are untouched."""
+    cuts = []
+    if isinstance(obj, str):
+        if len(obj) > limit:
+            cuts.append({"field": path or "(value)", "original_length": len(obj)})
+            return obj[:limit], cuts
+        return obj, cuts
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            out[k], c = truncate_long_strings(v, limit, f"{path}.{k}" if path else str(k))
+            cuts += c
+        return out, cuts
+    if isinstance(obj, list):
+        out = []
+        for i, v in enumerate(obj):
+            nv, c = truncate_long_strings(v, limit, f"{path}[{i}]")
+            out.append(nv)
+            cuts += c
+        return out, cuts
+    return obj, cuts
+
+
+def _shorten_strings(obj, limit=ARG_MAX_CHARS):
+    if isinstance(obj, str):
+        return obj if len(obj) <= limit else f"{obj[:limit]} [{len(obj) - limit} characters omitted]"
+    if isinstance(obj, dict):
+        return {k: _shorten_strings(v, limit) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_shorten_strings(v, limit) for v in obj]
+    return obj
+
+
+def _shorten_tool_calls(tool_calls, limit=ARG_MAX_CHARS):
+    """A copy of an assistant turn's tool_calls with long string arguments shortened for the
+    prompt; the stored history keeps what the model wrote."""
+    out = []
+    for tc in tool_calls or []:
+        if not isinstance(tc, dict):
+            out.append(tc)
+            continue
+        fn = dict(tc.get("function") or {})
+        args = fn.get("arguments")
+        if isinstance(args, str):
+            try:
+                fn["arguments"] = json.dumps(_shorten_strings(json.loads(args), limit))
+            except Exception:
+                fn["arguments"] = _shorten_strings(args, limit)
+        elif isinstance(args, (dict, list)):
+            fn["arguments"] = _shorten_strings(args, limit)
+        out.append(dict(tc, function=fn))
+    return out
+
+
+def _desk_summary(args, result):
+    """The numbers a desk call exists to produce, per scenario, then reverse DCF and Kelly."""
+    sc_args = [x for x in ((args or {}).get("scenarios") or []) if isinstance(x, dict)]
+    probs = {x.get("name"): x.get("probability") for x in sc_args}
+    rows = []
+    items = result.get("scenario_dcfs") if isinstance(result.get("scenario_dcfs"), list) else None
+    if items is None and isinstance(result.get("dcf_model"), dict):
+        items = [{"name": "Base", "dcf": result["dcf_model"]}]
+    for sc in items or []:
+        if not isinstance(sc, dict):
+            continue
+        d = sc.get("dcf") or {}
+        row = {"name": sc.get("name"), "probability": probs.get(sc.get("name")),
+               "per_share_iv": d.get("per_share_iv"), "gordon_leg": d.get("per_share_iv_gordon"),
+               "exit_leg": d.get("per_share_iv_exit"),
+               "exit_implied_terminal_g": d.get("exit_implied_terminal_g"),
+               "terminal_method": d.get("terminal_method")}
+        rows.append({k: v for k, v in row.items() if v is not None})
+    out = {}
+    if rows:
+        out["scenarios"] = rows
+    rd = result.get("reverse_dcf")
+    if isinstance(rd, dict):
+        neutral = rd.get("neutral_reference_structure") or {}
+        out["reverse_dcf"] = {k: v for k, v in {
+            "implied_growth_next_5y_pct": rd.get("implied_growth_next_5y_pct"),
+            "neutral_10y_cagr_pct": neutral.get("implied_10y_cagr_pct") if isinstance(neutral, dict) else None,
+            "expectations_gap_pts": rd.get("expectations_gap_pts")}.items() if v is not None}
+    k = result.get("kelly_sizing")
+    if isinstance(k, dict):
+        out["kelly"] = {kk: k.get(kk) for kk in ("expected_iv", "expected_return_pct",
+                                                 "quarter_kelly_pct", "recommendation")
+                        if k.get(kk) is not None}
+    return out
+
+
+def tool_message(name, args, result, limit=TOOL_MESSAGE_MAX_CHARS):
+    """(content, cut) for one tool result. A desk result leads with its summary, then the markdown
+    report, then the details, so the cut can only ever drop details. `cut` is
+    {chars, cut_at} when the cut fired, else None."""
+    if (name == "run_financial_model" and isinstance(result, dict)
+            and not result.get("error") and not result.get("validation_error")):
+        ordered = {"summary": _desk_summary(args, result)}
+        if "markdown_report" in result:
+            ordered["markdown_report"] = result["markdown_report"]
+        ordered["details"] = {k: v for k, v in result.items() if k != "markdown_report"}
+        full = json.dumps(ordered)
+    else:
+        full = json.dumps(result)
+    if len(full) > limit:
+        return full[:limit], {"chars": len(full), "cut_at": limit}
+    return full, None
+
+
 def compact_tool_note(name, args, result, call_index) -> str:
     """Format a compact note for an earlier tool result to preserve context without bloat."""
     # Check for budget/quota messages first — kept verbatim
@@ -746,10 +880,15 @@ def compact_tool_note(name, args, result, call_index) -> str:
     return str(result)[:500]
 
 
-def _compact_history(msgs, meta, budget_chars=36000):
+def _compact_history(msgs, meta, budget_chars=36000, shrink_page_chars=0, stats=None):
     """Tool messages BEFORE the last assistant tool-call turn become their compact note.
     Latest round stays full. If total chars of all compact notes exceed budget_chars,
     shrink oldest search/page notes first to header-only until under budget. Model notes never shrunk.
+
+    `shrink_page_chars` (Phase 4 report-room rule): additionally shrink PAGE notes only, oldest
+    first, to header-only until that many characters are saved; `stats["page_notes_to_headers"]`
+    counts them. Every assistant turn's tool-call arguments reach the prompt with long strings
+    shortened (the stored history keeps what the model wrote).
     """
     last_asst_idx = -1
     for idx in range(len(msgs) - 1, -1, -1):
@@ -803,12 +942,38 @@ def _compact_history(msgs, meta, budget_chars=36000):
                     compact_notes[idx] = header_only
                     total_chars -= diff
 
+    shrunk_pages = 0
+    if shrink_page_chars > 0:
+        saved = 0
+        for idx in sorted(compact_notes.keys()):
+            if saved >= shrink_page_chars:
+                break
+            m_info = meta[idx] if meta and idx < len(meta) else None
+            if isinstance(m_info, dict):
+                name, args, call_idx = m_info.get("name", ""), m_info.get("args") or {}, m_info.get("call_index", idx)
+            elif isinstance(m_info, (list, tuple)) and len(m_info) == 4:
+                name, args, _, call_idx = m_info
+            else:
+                continue
+            if name != "fetch_page":
+                continue
+            header_only = f'[call {call_idx}] page: {(args or {}).get("url", "")} (read earlier)'
+            diff = len(compact_notes[idx]) - len(header_only)
+            if diff > 0:
+                compact_notes[idx] = header_only
+                saved += diff
+                shrunk_pages += 1
+    if stats is not None:
+        stats["page_notes_to_headers"] = shrunk_pages
+
     active_msgs = []
     for idx, m in enumerate(msgs):
         if idx in compact_notes:
             new_m = dict(m)
             new_m["content"] = compact_notes[idx]
             active_msgs.append(new_m)
+        elif m.get("role") == "assistant" and m.get("tool_calls"):
+            active_msgs.append(dict(m, tool_calls=_shorten_tool_calls(m["tool_calls"])))
         else:
             active_msgs.append(m)
     return active_msgs
@@ -954,6 +1119,58 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     repeat_calls = 0
     desk_runs = []
     seen_result_urls = {}   # url -> title for every result search_web returned this run (fetch_page fallbacks)
+    in_recovery = False     # the desk-only recovery turn(s) are running
+    recovery_turns = 0
+    chars_per_token = [None]   # measured on the previous request, for the report-room rule
+
+    def _history():
+        """(active messages, page notes shortened). The report-room rule: when the next prompt
+        would leave less than REPORT_ROOM_TOKENS of the window, older page notes shrink to headers,
+        oldest first."""
+        am = _compact_history(msgs, meta_msgs)
+        cpt = chars_per_token[0]
+        if cpt:
+            over = len(json.dumps(am)) / cpt - (ctx - REPORT_ROOM_TOKENS)
+            if over > 0:
+                st_ = {}
+                am = _compact_history(msgs, meta_msgs, shrink_page_chars=int(over * cpt) + 1, stats=st_)
+                return am, st_.get("page_notes_to_headers", 0)
+        return am, 0
+
+    def _post(body):
+        req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            resp = json.loads(r.read().decode())
+        if resp.get("prompt_eval_count"):
+            chars_per_token[0] = len(json.dumps(body["messages"])) / resp["prompt_eval_count"]
+        return resp
+
+    def _force_report():
+        """The forced memorandum turn: no tools, think low for valuation."""
+        nonlocal final_report, final_think, done_reason, gen_tokens, eval_duration_total
+        retry_prompt = (
+            "You have completed your research and reasoning. Write the complete "
+            "institutional memorandum and Section 12 machine contract NOW. Do not search again."
+            if max_model_calls > 0 else
+            "You have completed your research and reasoning. Provide your findings NOW, ending with the ```json:catalysts block exactly as specified. Do not search again."
+        )
+        msgs.append({"role": "user", "content": retry_prompt})
+        meta_msgs.append(None)
+        active_msgs_retry, shrunk = _history()
+        opts_retry = dict(opts)
+        opts_retry["num_predict"] = 32768 if max_model_calls > 0 else opts.get("num_predict", 16384)
+        body = {"model": model, "stream": False, "think": "low" if max_model_calls > 0 else think,
+                "messages": active_msgs_retry, "options": opts_retry}
+        resp = _post(body)
+        fm = resp.get("message") or {}
+        final_report = fm.get("content") or ""
+        final_think += fm.get("thinking") or ""
+        done_reason = resp.get("done_reason")
+        gen_tokens += resp.get("eval_count") or 0
+        eval_duration_total += resp.get("eval_duration") or 0
+        turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "forced_report": True,
+                      **({"page_notes_to_headers": shrunk} if shrunk else {})})
 
     def _recover_cut_off_brief():
         """Discovery mode only (no desk). If the final turn hit num_predict before the
@@ -989,7 +1206,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "length_recovery": True})
 
     while True:
-        active_msgs = _compact_history(msgs, meta_msgs)
+        active_msgs, shrunk = _history()
 
         # If search budget is exhausted, only expose financial modeling tool
         active_tools = eff_tools
@@ -1000,24 +1217,42 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
         body = {"model": model, "stream": False, "think": think, "messages": active_msgs,
                 "options": opts}
-        if active_tools and (search_calls < max_search_calls or (model_calls < max_model_calls and desk_validation_errors <= 6)):
+        if in_recovery:
+            body["think"] = "low"
+            body["options"] = dict(opts, num_predict=DESK_RECOVERY_NUM_PREDICT)
+            body["tools"] = [t for t in eff_tools if t["function"]["name"] == "run_financial_model"]
+        elif active_tools and (search_calls < max_search_calls or (model_calls < max_model_calls and desk_validation_errors <= 6)):
             body["tools"] = active_tools
 
-        req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            resp = json.loads(r.read().decode())
+        resp = _post(body)
         msg = resp.get("message") or {}
         done_reason = resp.get("done_reason")
         gen_tokens += resp.get("eval_count") or 0
         eval_duration_total += resp.get("eval_duration") or 0
-        turns.append({"turn": len(turns) + 1, **turn_metrics(resp)})
+        turns.append({"turn": len(turns) + 1, **turn_metrics(resp),
+                      **({"desk_recovery": True} if in_recovery else {}),
+                      **({"page_notes_to_headers": shrunk} if shrunk else {})})
         if msg.get("thinking"):
             final_think += msg["thinking"]
         tcs = msg.get("tool_calls") or []
         if not tcs:
             final_report = msg.get("content") or ""
             is_stub = not report_is_deliverable(final_report) if max_model_calls > 0 else not bool(_TOOL_CALL_BLOCK.sub("", final_report or "").strip())
+            # Phase 4 window fix: a tool turn that hit the window with no tool call, no report and
+            # no desk result yet gets the desk back once (DESK_RECOVERY_PROMPT). A sample that
+            # already has a desk result goes to the forced report, which can cite it (GPOR s1).
+            if (is_stub and not in_recovery and recovery_turns == 0 and done_reason == "length"
+                    and body.get("tools") and max_model_calls > 0 and model_calls == 0
+                    and desk_validation_errors <= 6):
+                if verbose:
+                    print("    [harness] turn hit the context window with no tool call and no desk "
+                          "result - one desk-only recovery turn", flush=True)
+                msgs.append({"role": "user", "content": DESK_RECOVERY_PROMPT})
+                meta_msgs.append(None)
+                in_recovery = True
+                recovery_turns = 1
+                continue
+            in_recovery = False
             if is_stub:
                 # BOTH live failure shapes land here, and the old test (`not content.strip()`)
                 # only caught the first:
@@ -1031,31 +1266,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     print(f"    [harness] terminal turn was a {len(final_report)}-char stub, not a "
                           f"report — forcing the deliverable turn instead of accepting it",
                           flush=True)
-                retry_prompt = (
-                    "You have completed your research and reasoning. Write the complete "
-                    "institutional memorandum and Section 12 machine contract NOW. Do not search again."
-                    if max_model_calls > 0 else
-                    "You have completed your research and reasoning. Provide your findings NOW, ending with the ```json:catalysts block exactly as specified. Do not search again."
-                )
-                msgs.append({"role": "user", "content": retry_prompt})
-                meta_msgs.append(None)
-                active_msgs_retry = _compact_history(msgs, meta_msgs)
-                opts_retry = dict(opts)
-                opts_retry["num_predict"] = 32768 if max_model_calls > 0 else opts.get("num_predict", 16384)
-                body = {"model": model, "stream": False, "think": "low" if max_model_calls > 0 else think,
-                        "messages": active_msgs_retry, "options": opts_retry}
-                req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
-                                             headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=timeout) as r:
-                    resp = json.loads(r.read().decode())
-                fm = resp.get("message") or {}
-                final_report = fm.get("content") or ""
-                final_think += fm.get("thinking") or ""
-                done_reason = resp.get("done_reason")
-                gen_tokens += resp.get("eval_count") or 0
-                eval_duration_total += resp.get("eval_duration") or 0
-                turns.append({"turn": len(turns) + 1, **turn_metrics(resp),
-                              "forced_report": True})
+                _force_report()
             _recover_cut_off_brief()
             break
         msgs.append({"role": "assistant", "content": msg.get("content") or "",
@@ -1071,6 +1282,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     args = json.loads(args)
                 except Exception:
                     args = {}
+            arg_cuts = []
+            if name == "run_financial_model":
+                args, arg_cuts = truncate_long_strings(args)
 
             # P1.7: Append every dispatched call BEFORE it executes and persist immediately to disk
             call_rec = {
@@ -1079,12 +1293,16 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 "ts": time.strftime("%H:%M:%S"),
                 "params": args,
             }
+            if arg_cuts:
+                call_rec["arg_truncated"] = arg_cuts
             snap.append(call_rec)
             _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
 
             result = None
             try:
-                if name in ("search_web", "fetch_page"):
+                if in_recovery and name != "run_financial_model":
+                    result = {"error": "only run_financial_model is available in this turn"}
+                elif name in ("search_web", "fetch_page"):
                     research_calls += 1
                     if name == "search_web":
                         q = (args or {}).get("query", "")
@@ -1174,8 +1392,21 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             if verbose:
                 q = args.get("query") or args.get("url") or (f"price={args.get('price')}" if name == 'run_financial_model' else "")
                 print(f"    [tool {calls}] {name}: {str(q)[:88]}", flush=True)
-            msgs.append({"role": "tool", "content": json.dumps(result)[:12000]})
+            content, cut = tool_message(name, args, result)
+            if cut:
+                call_rec["tool_result_truncated"] = cut
+                _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
+            msgs.append({"role": "tool", "content": content})
             meta_msgs.append({"name": name, "args": args, "result": result, "call_index": calls})
+
+        if in_recovery:
+            # the desk answered: the forced report, which can now cite it. Rejected: one retry.
+            if model_calls == 0 and recovery_turns < DESK_RECOVERY_TURNS and desk_validation_errors <= 6:
+                recovery_turns += 1
+                continue
+            in_recovery = False
+            _force_report()
+            break
 
         if search_calls >= max_search_calls and (model_calls >= max_model_calls or desk_validation_errors > 6):
             # ALL BUDGETS REACHED -> force the answer, never just break.
@@ -1187,13 +1418,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             )
             msgs.append({"role": "user", "content": exhausted_prompt})
             meta_msgs.append(None)
-            active_msgs_exhausted = _compact_history(msgs, meta_msgs)
+            active_msgs_exhausted, shrunk = _history()
             body = {"model": model, "stream": False, "think": think, "messages": active_msgs_exhausted,
                     "options": opts}
-            req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
-                                         headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                resp = json.loads(r.read().decode())
+            resp = _post(body)
             fm = resp.get("message") or {}
             final_report = fm.get("content") or ""
             final_think += fm.get("thinking") or ""
@@ -1201,7 +1429,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             gen_tokens += resp.get("eval_count") or 0
             eval_duration_total += resp.get("eval_duration") or 0
             turns.append({"turn": len(turns) + 1, **turn_metrics(resp),
-                          "budget_exhausted": True})
+                          "budget_exhausted": True,
+                          **({"page_notes_to_headers": shrunk} if shrunk else {})})
             _recover_cut_off_brief()
             break
 
@@ -1219,6 +1448,11 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                        "repeat_calls": repeat_calls,
                                        "desk_runs": desk_runs,
                                        "desk_validation_errors": desk_validation_errors,
+                                       # ctx minus the prompt of the turn that delivered the report
+                                       "report_turn_headroom_tokens": (
+                                           ctx - turns[-1]["prompt_tokens"]
+                                           if turns and isinstance(turns[-1].get("prompt_tokens"), int)
+                                           else None),
                                        "elapsed_s": round(time.time() - t0)}
 
 

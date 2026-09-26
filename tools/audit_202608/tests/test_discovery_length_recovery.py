@@ -83,8 +83,10 @@ def test_complete_final_turn_is_not_touched(monkeypatch, tmp_path):
 
 
 def test_valuation_mode_never_gets_the_discovery_recovery(monkeypatch, tmp_path):
+    # valuation keeps its own path: the desk-only recovery turn, then the forced report
     bodies = _fake_ollama(monkeypatch, [_resp("partial memo", done="length"),
-                                        _resp("still partial", done="length")])
+                                        _resp("still partial", done="length"),
+                                        _resp("forced memo")])
     at.chat_with_tools("m", "prompt", tmp_path, max_search_calls=0, max_model_calls=5, verbose=False)
     assert all(b.get("think") is not False for b in bodies)
     assert all("json:catalysts" not in b["messages"][-1]["content"] for b in bodies)
