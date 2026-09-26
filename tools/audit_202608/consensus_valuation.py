@@ -2330,6 +2330,10 @@ def main():
                       flush=True)
 
     good = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"] and desk_backed(r)]
+    # the verdict writer (depth_pipeline.band_verdict) judges exactly these samples; this module
+    # is the single owner of which samples count
+    for r in runs:
+        r["basis"] = any(r is g for g in good)
     pb_votes = {}
     for r in good:
         sc = r.get("scorecard") or {}

@@ -51,6 +51,7 @@ import rs2_data             # noqa: E402
 import price_now            # noqa: E402  (P1.5 live price at verdict time)
 import screener_refresh     # noqa: E402  (P4.-1 — refresh the publish clone on a standalone run)
 import momentum_basis       # noqa: E402  (P4 E5b momentum basis)
+import valuation_backbone as vb  # noqa: E402  (Phase 4 street fence on every row)
 from fiduciary_gate import contract_base, validate_fiduciary_contract  # noqa: E402
 from research_brief_guard import check_research_brief  # noqa: E402
 
@@ -480,6 +481,15 @@ def fiduciary_verdict_gate(v, price):
     return v
 
 
+def _is_basis(r):
+    """consensus_valuation stamps `basis` on every run (Phase 4: a sample with no desk calculation
+    behind its base IV is not a basis sample). A doc written before the stamp, or by the cloud
+    arm, falls back to the rule that applied when it was written."""
+    if "basis" in r:
+        return bool(r["basis"])
+    return bool(r.get("iv") and r.get("plausible") and not r.get("truncated"))
+
+
 def band_verdict(doc):
     """Direction-of-band verdict per the accepted spec, enriched with the Section 12 Underwriting Contract.
     Judges only USABLE, COMPLETE samples.
@@ -489,8 +499,11 @@ def band_verdict(doc):
     explained rather than merely displayed; they gate nothing.
     """
     price = doc.get("price")
-    good = [r for r in doc.get("runs", []) if r.get("iv") and r.get("plausible")
-            and not r.get("truncated")]
+    good = [r for r in doc.get("runs", []) if _is_basis(r)]
+    # a sample left out only for want of a desk calculation stays visible on the row
+    excluded = [f"desk_less_sample_excluded:{r.get('sample')}" for r in doc.get("runs", [])
+                if r.get("basis") is False and r.get("iv") and r.get("plausible")
+                and not r.get("truncated")]
     ivs = sorted(r["iv"] for r in good)
     v = {"ticker": doc["ticker"], "price": price, "date": datetime.now().strftime("%Y-%m-%d"),
          "model": doc.get("model"), "samples_run": doc.get("samples_run") or len(doc.get("runs", [])),
@@ -498,7 +511,7 @@ def band_verdict(doc):
          "iv_band_high": ivs[-1] if ivs else None,
          "median_iv": doc.get("median_iv"),
          "spread_pct": doc.get("spread_pct"),
-         "flags": sorted({f for r in good for f in (r.get("flags") or [])}),
+         "flags": sorted({f for r in good for f in (r.get("flags") or [])} | set(excluded)),
          "pack_revision": doc.get("pack_revision", 1),
          "scheme": "band_direction_v1"}
     # P4.3 — m: the price's position within the plausible-IV band, in half-widths. Computed here
@@ -967,6 +980,11 @@ def stamp_and_route(v, t, run_source, quote=None, screener_data_commit=None):
         v.setdefault("price_asof_reason", "live price quote unavailable")
     v["gate_version"] = GATE_VERSION
     v["pipeline_commit"] = _pipeline_commit()
+    # Phase 4 (b), FSM: the street fence travels on the row so depth_gates can judge it on read.
+    # No fence is an information flag, never a gate.
+    v["street_fence"] = vb.street_fence(t)
+    if v["street_fence"] is None:
+        v["flags"] = sorted(set(v.get("flags") or []) | {"no_street_fence"})
 
     if run_source == "ondemand":
         return OD_LEDGER, None

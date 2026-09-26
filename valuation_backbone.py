@@ -150,6 +150,28 @@ def _consensus_band(ticker):
     return None
 
 
+def street_fence(ticker):
+    """Phase 4 (b), FSM: the street fence a production verdict is stamped with, so depth_gates can
+    judge the row on read. The same rule as consensus_valuation's fail-fast and the E15 pack
+    fence: 0.5x the lowest and 2x the highest analyst target, each discounted one year at 10%.
+    None when there is no sane, fresh target band; a stale band fences nothing.
+
+    Returns {low, high, n_targets, asof, age_days, source}."""
+    band = _consensus_band(ticker)
+    if not band or band.get("stale"):
+        return None
+    lo, hi = band.get("low"), band.get("high")
+    if not (isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and lo > 0 and hi > 0):
+        return None
+    age = band.get("age_days")
+    asof = None
+    if age is not None:
+        from datetime import datetime, timedelta, timezone
+        asof = (datetime.now(timezone.utc) - timedelta(days=age)).strftime("%Y-%m-%d")
+    return {"low": round(0.5 * lo / 1.10, 2), "high": round(2.0 * hi / 1.10, 2),
+            "n_targets": band.get("n"), "asof": asof, "age_days": age, "source": band.get("source")}
+
+
 def _forward_growth(ticker):
     """Forward analyst growth as a fraction/yr, plus its source. Priority:
     OpenBB cached forward_growth (revenue then EPS) -> PEG-implied (pe/peg) -> (None, None).

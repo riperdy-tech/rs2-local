@@ -192,8 +192,8 @@ def test_research_brief_asof_present_when_brief_exists(monkeypatch, tmp_path):
 
 # ---- GATE_VERSION is a real, importable single owner (P1.2; moves to depth_gates.py in P1.3) --
 
-def test_gate_version_is_two():
-    assert dp.GATE_VERSION == 2
+def test_gate_version_is_three():
+    assert dp.GATE_VERSION == 3
 
 
 # ---- end-to-end main(): the manual-invocation gate never demonstrated for real (B7, Phase 1 --

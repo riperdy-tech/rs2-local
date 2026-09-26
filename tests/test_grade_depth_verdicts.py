@@ -35,6 +35,8 @@ sys.path.insert(0, str(HERE / "tools"))
 import grade_depth_verdicts as g  # noqa: E402
 import depth_gates  # noqa: E402
 
+GV = depth_gates.GATE_VERSION   # a row written under the current gate
+
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 # Fixture — see module docstring. Round numbers throughout so hand verification is trivial.
@@ -45,7 +47,7 @@ ROWS = [
      "direction": "undervalued", "size_hint": "half", "spread_pct": 10.0, "n_basis": 2,
      "early_stop": False, "conviction_score": 8.0, "business_quality_moat": 3.0,
      "kelly_fraction_pct": 5.0, "mos_vs_median_pct": 12.0, "mos_vs_base_pct": 9.0,
-     "pack_revision": 3, "gate_version": 2, "fiduciary_verdict": "PASS",
+     "pack_revision": 3, "gate_version": GV, "fiduciary_verdict": "PASS",
      "run_source": "orchestrator"},
     {"ticker": "BBB", "date": "2026-01-06", "consensus_dir": "BBB_20260106_1",
      "direction": "overvalued", "size_hint": "quarter", "spread_pct": 40.0, "n_basis": 3,
@@ -57,20 +59,20 @@ ROWS = [
      "direction": "hold", "size_hint": "starter", "spread_pct": 5.0, "n_basis": 1,
      "early_stop": True, "conviction_score": 5.0, "business_quality_moat": 4.0,
      "kelly_fraction_pct": 1.0, "mos_vs_median_pct": 0.0, "mos_vs_base_pct": 0.0,
-     "pack_revision": 3, "gate_version": 2, "fiduciary_verdict": "PASS",
+     "pack_revision": 3, "gate_version": GV, "fiduciary_verdict": "PASS",
      "run_source": "orchestrator"},
     # DDD: cache runs dry at 2026-02-02, 5 calendar days short of the 30d target (2026-02-07).
     {"ticker": "DDD", "date": "2026-01-08", "consensus_dir": "DDD_20260108_1",
      "direction": "undervalued", "size_hint": "full", "spread_pct": 34.5, "n_basis": 2,
      "early_stop": False, "conviction_score": 9.0, "business_quality_moat": 3.5,
      "kelly_fraction_pct": 11.0, "mos_vs_median_pct": 30.0, "mos_vs_base_pct": 25.0,
-     "pack_revision": 3, "gate_version": 2, "fiduciary_verdict": "PASS",
+     "pack_revision": 3, "gate_version": GV, "fiduciary_verdict": "PASS",
      "run_source": "orchestrator"},
     {"ticker": "EEE", "date": "2026-01-09", "consensus_dir": "EEE_20260109_1",
      "direction": "undervalued", "size_hint": "half", "spread_pct": 33.0, "n_basis": 2,
      "early_stop": False, "conviction_score": 6.0, "business_quality_moat": 2.5,
      "kelly_fraction_pct": 3.0, "mos_vs_median_pct": 15.0, "mos_vs_base_pct": 11.0,
-     "pack_revision": 3, "gate_version": 2, "fiduciary_verdict": "PASS",
+     "pack_revision": 3, "gate_version": GV, "fiduciary_verdict": "PASS",
      "run_source": "orchestrator"},
 ]
 
@@ -162,7 +164,7 @@ def test_guard_4_days_short_is_not_graded():
 def test_c6_weekend_entry_date_rolls_forward_to_monday():
     # 2026-01-10 is a Saturday; entry must resolve to the next trading day, Monday 2026-01-12.
     rows = [{"ticker": "FFF", "date": "2026-01-10", "consensus_dir": "FFF_1",
-             "direction": "hold", "pack_revision": 3, "gate_version": 2,
+             "direction": "hold", "pack_revision": 3, "gate_version": GV,
              "run_source": "orchestrator"}]
     prices = {"FFF": {"2026-01-12": 100.00, "2026-02-09": 110.00},
               "IWM": {"2026-01-12": 50.00, "2026-02-09": 52.00},
@@ -181,7 +183,7 @@ def test_c6_exit_resolving_to_entry_date_is_missing_not_fake_zero_return():
     # target's backward window reaches back to the entry date itself. Must be "missing exit",
     # never a fabricated 0% return from entry==exit.
     rows = [{"ticker": "GGG", "date": "2026-01-12", "consensus_dir": "GGG_1",
-             "direction": "hold", "pack_revision": 3, "gate_version": 2,
+             "direction": "hold", "pack_revision": 3, "gate_version": GV,
              "run_source": "orchestrator"}]
     prices = {"GGG": {"2026-01-12": 50.00},
               "IWM": {"2026-01-12": 50.00, "2026-01-17": 50.00},
@@ -194,7 +196,7 @@ def test_c6_exit_resolving_to_entry_date_is_missing_not_fake_zero_return():
 
 def test_c6_missing_benchmark_price_excludes_row_never_fabricates():
     rows = [{"ticker": "HHH", "date": "2026-01-13", "consensus_dir": "HHH_1",
-             "direction": "hold", "pack_revision": 3, "gate_version": 2,
+             "direction": "hold", "pack_revision": 3, "gate_version": GV,
              "run_source": "orchestrator"}]
     prices = {"HHH": {"2026-01-13": 60.00, "2026-02-12": 66.00},
               "IWM": {"2026-01-13": 50.00, "2026-02-12": 52.00},
@@ -207,7 +209,7 @@ def test_c6_missing_benchmark_price_excludes_row_never_fabricates():
 
 def test_c6_missing_entry_price_series_never_dropped_silently():
     rows = [{"ticker": "III", "date": "2026-01-14", "consensus_dir": "III_1",
-             "direction": "hold", "pack_revision": 3, "gate_version": 2,
+             "direction": "hold", "pack_revision": 3, "gate_version": GV,
              "run_source": "orchestrator"}]
     prices = {"IWM": {"2026-01-14": 50.00}, "SPY": {"2026-01-14": 400.00},
               "QQQ": {"2026-01-14": 300.00}}   # III has no series at all
@@ -227,7 +229,7 @@ def test_actionable_recomputed_per_row():
     assert aaa["actionable"] is True
     assert aaa["actionable_reasons"] == []
 
-    bbb = by_ticker["BBB"]      # gate_version=1 (<2), overvalued+spread_pct=40 (P4.8 symmetric
+    bbb = by_ticker["BBB"]      # gate_version=1 (<GV), overvalued+spread_pct=40 (P4.8 symmetric
                                 # dispersion), AND run_source=manual
     assert bbb["actionable"] is False
     assert bbb["actionable_reasons"] == ["pre_v3.1_gates", "high_dispersion", "non_production_row"]
@@ -242,7 +244,7 @@ def test_actionable_recomputed_per_row():
 
 
 def test_analyst_valid_false_by_default_first_valid_pack_revision_unset():
-    # Every ROWS entry has pack_revision=3 / gate_version in {1,2}; with
+    # Every ROWS entry has pack_revision=3 / gate_version in {1, GV}; with
     # FIRST_VALID_PACK_REVISION still None (no Phase 4 ruling yet), NOTHING is valid.
     graded, _, _ = _grade()
     assert all(row["analyst_valid"] is False for row in graded)
@@ -252,7 +254,7 @@ def test_analyst_valid_true_once_ruling_sets_the_floor(monkeypatch):
     monkeypatch.setattr(depth_gates, "FIRST_VALID_PACK_REVISION", 3)
     graded, _, _ = _grade()
     by_ticker = {row["ticker"]: row for row in graded}
-    # AAA/CCC/EEE: pack_revision=3 (>=3), gate_version=2 (>=GATE_VERSION) -> valid.
+    # AAA/CCC/EEE: pack_revision=3 (>=3), gate_version=GV (>=GATE_VERSION) -> valid.
     assert by_ticker["AAA"]["analyst_valid"] is True
     assert by_ticker["CCC"]["analyst_valid"] is True
     assert by_ticker["EEE"]["analyst_valid"] is True
@@ -368,9 +370,9 @@ def test_dedupe_superseded_row_excluded_from_stats_in_grade_rows_output():
     filter it out — proved here by checking the tag survives end-to-end through grade_rows."""
     rows = _tag([
         {"ticker": "KFY", "date": "2026-01-05", "consensus_dir": "KFY_X", "direction": "hold",
-         "pack_revision": 3, "gate_version": 2, "run_source": "orchestrator", "n_basis": 2},
+         "pack_revision": 3, "gate_version": GV, "run_source": "orchestrator", "n_basis": 2},
         {"ticker": "KFY", "date": "2026-01-05", "consensus_dir": "KFY_X", "direction": "hold",
-         "pack_revision": 3, "gate_version": 2, "run_source": "orchestrator", "n_basis": 3,
+         "pack_revision": 3, "gate_version": GV, "run_source": "orchestrator", "n_basis": 3,
          "rederived_at": "T2"},
     ], "archive")
     deduped, dropped = g.dedupe_rows(rows)
@@ -948,9 +950,9 @@ def test_main_offline_dedup_collapses_duplicate_and_tags_supersession(tmp_path, 
     # KFY: a 2-line rederivation chain sharing (ticker, date, consensus_dir), both gradeable.
     rows += [
         {"ticker": "KFY", "date": "2026-01-05", "consensus_dir": "KFY_X", "direction": "hold",
-         "pack_revision": 3, "gate_version": 2, "run_source": "orchestrator", "n_basis": 2},
+         "pack_revision": 3, "gate_version": GV, "run_source": "orchestrator", "n_basis": 2},
         {"ticker": "KFY", "date": "2026-01-05", "consensus_dir": "KFY_X", "direction": "hold",
-         "pack_revision": 3, "gate_version": 2, "run_source": "orchestrator", "n_basis": 3,
+         "pack_revision": 3, "gate_version": GV, "run_source": "orchestrator", "n_basis": 3,
          "rederived_at": "T2"},
     ]
     outcomes, report = _isolate_main(monkeypatch, tmp_path, rows)
@@ -984,7 +986,7 @@ def test_main_offline_c3_exit_beyond_cache_is_pending_not_missing(tmp_path, monk
     """C3: in --offline mode a horizon whose exit date is beyond the cache's last date is
     pending, never counted as missing/'delisted?'."""
     rows = [{"ticker": "JJJ", "date": "2026-01-05", "consensus_dir": "JJJ_1",
-             "direction": "hold", "pack_revision": 3, "gate_version": 2,
+             "direction": "hold", "pack_revision": 3, "gate_version": GV,
              "run_source": "orchestrator"}]
     outcomes, report = _isolate_main(monkeypatch, tmp_path, rows)
     # The offline cache for JJJ (and the benchmarks) stops at 2026-01-20 — well short of the

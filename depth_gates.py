@@ -20,7 +20,9 @@ under different rules and cannot be judged against today's bar — it fails clos
 """
 from __future__ import annotations
 
-GATE_VERSION = 2
+# 3 (Phase 4 (b), 2026-09-26): reasons 10-13. FSM's "undervalued" at 5.6x the price passed every
+# v2 reason; only its gate-test provenance kept it out of the book.
+GATE_VERSION = 3
 
 # P2-fix B2 (Phase 2 approval review): the ledger's `gate_version` alone does not prove a verdict
 # came from a VALID analyst — depth_pipeline stamps gate_version=2 on every verdict it writes
@@ -39,6 +41,8 @@ _DIRECTIONS = ("undervalued", "hold", "overvalued")
 _NON_PRODUCTION_SOURCES = ("manual", "test", "gate_test")
 HIGH_DISPERSION_TOL_PCT = 25.0
 MIN_MOS_FOR_DIRECTION = 0.10
+# the sanity audit's MOS_EXTREME (consensus_valuation), which annotates a sample, read here as a gate
+MOS_BEYOND_PCT = 150.0
 
 
 def assess(v):
@@ -59,6 +63,17 @@ def assess(v):
       7. `run_source in {manual, test}`                        -> "non_production_row"
       8. `instability.unstable is True`                        -> "mode_instability"
       9. `FIRST_VALID_PACK_REVISION is set` and not `analyst_valid(v)` -> "pre_valid_analyst"
+     10. `median_iv` above `street_fence.high` on an undervalued call, or below
+         `street_fence.low` on an overvalued call                 -> "outside_street_fence"
+     11. `|mos_vs_base_pct| > 150`                               -> "mos_beyond_150pct"
+     12. a basis sample flagged `desk_not_used` / `iv_not_desk_backed` -> "desk_not_used"
+     13. a basis sample written at reduced effort (`LOW_EFFORT_RESCUE`) -> "low_effort_rescue"
+
+    Reasons 10-13 (GATE_VERSION 3, Phase 4 (b)): the sanity audit already flagged FSM's samples
+    (MoS +442%, 4.9x the analyst high) and kept them, as designed, but no gate read the flags. A
+    row without a `street_fence` gets no fence reason; depth_pipeline stamps the information flag
+    `no_street_fence` on it instead. Since the desk-backed rule a desk-less sample is not a basis
+    sample, so reason 12 guards rows from before that rule and any path that skips it.
 
     P4.8: symmetric dispersion — `high_dispersion` fires for `overvalued` too, not only
     `undervalued`. band_verdict already demotes both directions to `hold` on write when the
@@ -110,7 +125,30 @@ def assess(v):
     if FIRST_VALID_PACK_REVISION is not None and not analyst_valid(v):
         reasons.append("pre_valid_analyst")
 
+    fence = v.get("street_fence")
+    med = v.get("median_iv")
+    if isinstance(fence, dict) and _is_num(med):
+        hi, lo = fence.get("high"), fence.get("low")
+        if ((direction == "undervalued" and _is_num(hi) and med > hi)
+                or (direction == "overvalued" and _is_num(lo) and med < lo)):
+            reasons.append("outside_street_fence")
+
+    mos = v.get("mos_vs_base_pct")
+    if _is_num(mos) and abs(mos) > MOS_BEYOND_PCT:
+        reasons.append("mos_beyond_150pct")
+
+    flags = v.get("flags") or []
+    if "desk_not_used" in flags or "iv_not_desk_backed" in flags:
+        reasons.append("desk_not_used")
+
+    if "LOW_EFFORT_RESCUE" in flags:
+        reasons.append("low_effort_rescue")
+
     return (not reasons), reasons
+
+
+def _is_num(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
 
 
 def analyst_valid(v):
