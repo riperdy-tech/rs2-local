@@ -490,6 +490,65 @@ def _is_basis(r):
     return bool(r.get("iv") and r.get("plausible") and not r.get("truncated"))
 
 
+MOMENTUM_BLOCK = ("momentum_view", "entry_timing", "momentum_flip_condition", "momentum_break_rule",
+                  "momentum_evidence")
+
+
+def _basis_vote(sc, d):
+    """(vote, unmet) for one sample's declared position_basis at direction `d`: its basis when the
+    declaration is valid, else (None, the requirement it misses). Declaring nothing is a vote for
+    none."""
+    pb = (sc or {}).get("position_basis")
+    pb = str(pb).strip().lower() if pb is not None else None
+    if pb == "value":
+        return ("value", None) if d == "undervalued" else (None, "value_requires_undervalued")
+    if pb == "momentum":
+        mbr = sc.get("momentum_break_rule")
+        ev = sc.get("momentum_evidence")
+        if d not in ("hold", "overvalued"):
+            return None, "direction"
+        if str(sc.get("entry_timing") or "").strip().lower() != "buy_now":
+            return None, "entry_timing"
+        if not (isinstance(ev, str) and ev.strip()):
+            return None, "momentum_evidence"
+        if not (isinstance(mbr, dict) and mbr.get("metric")):
+            return None, "momentum_break_rule"
+        return "momentum", None
+    return "none", None
+
+
+def resolve_position_basis(good, medoid_sample, d):
+    """APH (b): the basis comes from the VALID declarations of every basis sample, majority, with
+    the medoid breaking a tie; it used to come from the medoid's declaration alone, so APH's valid
+    momentum vote was dropped when the medoid declared value at hold.
+
+    Returns (basis, source_run, invalid): the run whose declaration carries the basis (the medoid
+    when it voted for it, else the voter nearest the medoid's IV), and [(sample, requirement)] for
+    every invalid declaration."""
+    votes, invalid = {}, []
+    for r in good:
+        vote, unmet = _basis_vote(r.get("scorecard") or {}, d)
+        if vote is None:
+            invalid.append((r.get("sample"), unmet))
+        else:
+            votes.setdefault(vote, []).append(r)
+    if not votes:
+        return "none", None, invalid
+    top = max(len(rs) for rs in votes.values())
+    tied = [b for b, rs in votes.items() if len(rs) == top]
+    medoid = next((r for r in good if r.get("sample") == medoid_sample), None)
+    medoid_vote = next((b for b, rs in votes.items() if medoid is not None and medoid in rs), None)
+    basis = tied[0] if len(tied) == 1 else (medoid_vote if medoid_vote in tied else "none")
+    voters = votes.get(basis) or []
+    if medoid is not None and medoid in voters:
+        source = medoid
+    elif voters and medoid is not None and medoid.get("iv"):
+        source = min(voters, key=lambda r: abs((r.get("iv") or 0) - medoid["iv"]))
+    else:
+        source = voters[0] if voters else None
+    return basis, source, invalid
+
+
 def band_verdict(doc):
     """Direction-of-band verdict per the accepted spec, enriched with the Section 12 Underwriting Contract.
     Judges only USABLE, COMPLETE samples.
@@ -689,59 +748,41 @@ def band_verdict(doc):
     v["position_basis_declared"] = declared_pb
     v["position_basis_votes"] = doc.get("position_basis_votes")
 
+    # APH (b): resolved from every basis sample's valid declaration, not the medoid's alone. A run
+    # without per-sample scorecards (older docs) votes with the medoid's summary, as before.
+    voters = good if any(r.get("scorecard") for r in good) else [
+        {"sample": scorecard.get("medoid_sample"), "iv": contract_base(scorecard), "scorecard": scorecard}]
+    basis, source, invalid = resolve_position_basis(voters, scorecard.get("medoid_sample"), d)
+    for smp, unmet in invalid:
+        v.setdefault("flags", []).append(f"position_basis_mismatch:{unmet}")
+        v["flags"] = sorted(set(v["flags"]))
+        reason_notes.append(f"position basis of sample {smp} invalid: {unmet}")
+    v["position_basis_source_sample"] = source.get("sample") if source else None
+
     final_pb = "none"
-    if declared_pb == "value":
-        if d == "undervalued":
-            final_pb = "value"
+    if basis == "value":
+        final_pb = "value"
+    elif basis == "momentum":
+        src = source.get("scorecard") or {}
+        if source.get("sample") != scorecard.get("medoid_sample"):
+            # the momentum block travels with the basis it belongs to
+            for k in MOMENTUM_BLOCK:
+                v[k] = src.get(k)
+            reason_notes.append(f"momentum basis and its break rule from sample {source.get('sample')}; "
+                                f"the medoid (sample {scorecard.get('medoid_sample')}) did not declare it")
+        ticker_name = doc.get("ticker") or ""
+        rev_yoy = momentum_basis.revenue_ttm_yoy(ticker_name)
+        elig = momentum_basis.eligibility(v.get("momentum_state"), rev_yoy, cbase, price)
+        # revision 10 (APH (b)): the price facts were a week older than T0 and z passed by 3.5 bp
+        elig = dict(elig, momentum_asof=(v.get("momentum_state") or {}).get("price_asof"))
+        v["momentum_eligibility"] = elig
+        if elig.get("eligible"):
+            final_pb = "momentum"
         else:
-            final_pb = "none"
-            v.setdefault("flags", []).append("position_basis_mismatch:value_requires_undervalued")
+            ff = elig.get("first_failure")
+            v.setdefault("flags", []).append(f"momentum_basis_ineligible:{ff}")
             v["flags"] = sorted(set(v["flags"]))
-            reason_notes.append("position basis value requires direction undervalued")
-    elif declared_pb == "momentum":
-        mom_view = scorecard.get("momentum_view")
-        if mom_view is not None:
-            mom_view = str(mom_view).strip().lower()
-        ent_timing = scorecard.get("entry_timing")
-        if ent_timing is not None:
-            ent_timing = str(ent_timing).strip().lower()
-        mom_ev = scorecard.get("momentum_evidence")
-        has_ev = bool(mom_ev and isinstance(mom_ev, str) and mom_ev.strip())
-        mbr = scorecard.get("momentum_break_rule")
-        has_mbr = bool(isinstance(mbr, dict) and mbr.get("metric"))
-
-        structural_unmet = None
-        if d not in ("hold", "overvalued"):
-            structural_unmet = "direction"
-        elif ent_timing != "buy_now":
-            structural_unmet = "entry_timing"
-        elif not has_ev:
-            structural_unmet = "momentum_evidence"
-        elif not has_mbr:
-            structural_unmet = "momentum_break_rule"
-
-        if structural_unmet:
-            final_pb = "none"
-            v.setdefault("flags", []).append(f"position_basis_mismatch:{structural_unmet}")
-            v["flags"] = sorted(set(v["flags"]))
-            reason_notes.append(f"position basis momentum structural requirement unmet: {structural_unmet}")
-        else:
-            ticker_name = doc.get("ticker") or ""
-            rev_yoy = momentum_basis.revenue_ttm_yoy(ticker_name)
-            elig = momentum_basis.eligibility(v.get("momentum_state"), rev_yoy, cbase, price)
-            # revision 10 (APH (b)): the price facts were a week older than T0 and z passed by 3.5 bp
-            elig = dict(elig, momentum_asof=(v.get("momentum_state") or {}).get("price_asof"))
-            v["momentum_eligibility"] = elig
-            if elig.get("eligible"):
-                final_pb = "momentum"
-            else:
-                final_pb = "none"
-                ff = elig.get("first_failure")
-                v.setdefault("flags", []).append(f"momentum_basis_ineligible:{ff}")
-                v["flags"] = sorted(set(v["flags"]))
-                reason_notes.append(f"momentum basis ineligible: {ff}")
-    else:
-        final_pb = "none"
+            reason_notes.append(f"momentum basis ineligible: {ff}")
 
     v["position_basis"] = final_pb
 
