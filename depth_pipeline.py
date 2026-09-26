@@ -716,6 +716,8 @@ def band_verdict(doc):
             ticker_name = doc.get("ticker") or ""
             rev_yoy = momentum_basis.revenue_ttm_yoy(ticker_name)
             elig = momentum_basis.eligibility(v.get("momentum_state"), rev_yoy, cbase, price)
+            # revision 10 (APH (b)): the price facts were a week older than T0 and z passed by 3.5 bp
+            elig = dict(elig, momentum_asof=(v.get("momentum_state") or {}).get("price_asof"))
             v["momentum_eligibility"] = elig
             if elig.get("eligible"):
                 final_pb = "momentum"

@@ -65,9 +65,9 @@ def test_section_8_consensus_estimates_table_and_trend_revisions(screener_data_s
 
     # The new CONSENSUS ESTIMATES header and table must be present
     assert "- CONSENSUS ESTIMATES   [yfinance, fetched 2026-09-24; sell-side estimates, not company guidance]" in sec8
-    assert "| period | revenue avg | low | high | analysts | growth | EPS avg | low | high | growth |" in sec8
-    assert "| current FY | $50.876B | $48.339B | $52.660B | 49 | +46.9% | $7.58 | $7.00 | $8.20 | +81.7% |" in sec8
-    assert "| next FY | $88.077B | $61.257B | $116.095B | 52 | +73.1% | $15.57 | $9.60 | $20.25 | +105.5% |" in sec8
+    assert "| period | revenue avg | low | high | analysts | growth | EPS avg | low | high | EPS analysts | growth |" in sec8
+    assert "| current FY | $50.876B | $48.339B | $52.660B | 49 | +46.9% | $7.58 | $7.00 | $8.20 | 49 | +81.7% |" in sec8
+    assert "| next FY | $88.077B | $61.257B | $116.095B | 52 | +73.1% | $15.57 | $9.60 | $20.25 | 50 | +105.5% |" in sec8
 
     # Trend line
     assert "- Next-FY EPS estimate trend: now $15.57 | 30 days ago $15.36 | 60 days ago $13.49 | 90 days ago $13.16  (+18.3% in 90 days)" in sec8

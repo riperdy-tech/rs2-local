@@ -381,3 +381,15 @@ def test_pipeline_value_basis_and_undervalued_sizing_unchanged(monkeypatch):
     assert v_uv["size_hint"] == "full"
     assert "basis" not in v_uv["size_components"]
     assert "replaced_by_basis" not in v_uv["size_components"]["mos"]
+
+
+def test_momentum_eligibility_carries_the_price_facts_date(monkeypatch):
+    # revision 10 (APH (b)): the price facts were a week older than T0 and z passed by 3.5 bp
+    monkeypatch.setattr(mb, "revenue_ttm_yoy", lambda t: 0.20)
+    sc = {"position_basis": "momentum", "momentum_view": "confirming", "entry_timing": "buy_now",
+          "momentum_evidence": "Guidance raised",
+          "momentum_break_rule": {"metric": "mom_6m", "comparator": "<", "threshold": 0.0}}
+    state = dict(_clean_state(), price_asof="2026-09-17")
+    v = dp.band_verdict(_pipeline_doc(price=100.0, base_iv=100.0, direction_spread=2.0, scorecard_extra=sc,
+                                      momentum_state=state))
+    assert v["momentum_eligibility"]["momentum_asof"] == "2026-09-17"

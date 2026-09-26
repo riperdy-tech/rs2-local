@@ -81,20 +81,20 @@ def _require_section5(pack):
 
 def test_the_pack_prints_the_owner_cash_flow_column(gev_pack):
     _require_section5(gev_pack)
-    assert "owner CF [Arithmetic]" in gev_pack
+    assert "cash basis [Arithmetic]" in gev_pack
 
 
 def test_the_column_sits_in_the_section_5_table(gev_pack):
     # Named for the section whose inputs it uses, so its provenance is unambiguous.
     sec5 = _require_section5(gev_pack)
-    assert "owner CF [Arithmetic]" in sec5
+    assert "cash basis [Arithmetic]" in sec5
 
 
 def test_the_arithmetic_line_is_not_a_headline(gev_pack):
     # The quiet requirement, pinned. A callout would make one basis salient.
     _require_section5(gev_pack)
     head = "\n".join(gev_pack.splitlines()[:60])
-    assert "owner CF" not in head
+    assert "cash basis [Arithmetic]" not in head
 
 
 def test_the_section_5_header_and_separator_have_equal_widths(gev_pack):
