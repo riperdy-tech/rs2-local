@@ -32,6 +32,19 @@ that already held part of that fiscal year, overstating the year-1 flow by about
 +29% on ADI, +35% on AMD, +26% on APH, +9% on LAMR. Fable's E10 ruling that this and end-of-year
 discounting "roughly cancel" was wrong for fast growers. Consensus EPS growth is non-GAAP while
 the base is GAAP owner earnings; D&A added back absorbs most of that gap.
+
+The whole-book test of E18 (2026-09-26, 176 names) failed, and Fable ruled:
+- The period comes from the consensus VINTAGE, not the calendar. The vendor's year-ago revenue for
+  the current year names the fiscal year its estimates start from. When the latest filed fiscal
+  year ended more than 12 months ago and the vendor has moved past it (EPAC, PSMT and MU showed it
+  had not: their year-ago revenue is the filed year's to the dollar), years 1-2 are the EPS levels,
+  valued at the end of the unfiled year. History older than 15 months is "stale", not a reference.
+- A fiscal-year base that is not positive (LIVN) goes to the EPS levels too, as LIND does.
+- The E18/old ratio followed the base WINDOW (rank correlation 0.975), not the period: net-income
+  one-offs and capex swings land in the fiscal year or in the TTM. Neither window is right for every
+  name (GOOG's TTM holds equity mark-ups, BMRN's an acquired-IPR&D charge), so when the TTM differs
+  from the fiscal-year base grown by consensus for the quarters between them by more than 15%, both
+  references are printed and the analyst names the window; nothing is chosen by rule.
 """
 
 EPS_GROWTH_MAX = 1.5   # above +150% an EPS growth rate is a recovery off a trough, not a cash-flow rate
@@ -40,6 +53,9 @@ NEAR_LOW, NEAR_HIGH = 0.75, 1.33    # years 1-2 tolerance vs consensus earnings 
 FAR_LOW, FAR_HIGH = NEAR_LOW, NEAR_HIGH   # one rule: more than a quarter away from consensus needs a reason
 LEVEL_TOL = 0.15       # E18: a year-2 cash flow more than 15% from the printed level needs a reason
 RANGE_MIN_ANALYSTS = 3  # E12 F1: fewer analysts give no range (high = low = average)
+WINDOW_TOL = 0.15       # whole-book test: FY and TTM windows further apart than this print both references
+STALE_MONTHS = 15       # whole-book test: history older than this builds no reference
+VINTAGE_TOL = 0.02      # the vendor's year-ago revenue against the filed fiscal year
 
 
 def consensus_earnings_growth(estimates):
@@ -143,19 +159,29 @@ def range_levels(estimates, flow2):
     return flow2 * hi / avg, flow2 * lo / avg, int(n)
 
 
+def vintage_aligned(estimates, fy_revenue):
+    """True when the vendor's current-year estimates start from the filed fiscal year (its year-ago
+    revenue is that year's revenue), False when they start from a later year, None if unknown."""
+    ya = (((estimates or {}).get("0y") or {}).get("revenue") or {}).get("year_ago")
+    if not (isinstance(ya, (int, float)) and isinstance(fy_revenue, (int, float)) and fy_revenue > 0):
+        return None
+    return abs(ya / fy_revenue - 1) <= VINTAGE_TOL
+
+
 def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex=None,
-          stub_months=None, base_label=None):
+          stub_months=None, base_label=None, levels_reason=None):
     """Everything the pack prints: {'value', 'method', 'path', 'flows', 'c1', 'c2', 'reason',
-    'levels', 'range', 'stub_months', 'base_label'}.
+    'levels', 'range', 'stub_months', 'base_label', 'levels_reason'}.
     method "growth": years 1-2 at consensus EPS growth on the owner-earnings base.
-    method "levels": consensus EPS growth unusable, so years 1-2 are consensus EPS x diluted
-    shares + D&A - capex. `value` is None, with a reason, when neither can be computed.
+    method "levels": years 1-2 are consensus EPS x diluted shares + D&A - capex, when consensus EPS
+    growth is unusable, when the base is not positive, or when `levels_reason` says why the base
+    cannot carry the consensus rates. `value` is None, with a reason, when neither can be computed.
     E18: with `stub_months` (months since the base fiscal year ended), the value is taken at that
     fiscal year end and rolled forward to today at coe."""
     c1, c2, why = consensus_earnings_growth(estimates)
     out = {"value": None, "method": None, "path": None, "flows": None, "c1": c1, "c2": c2,
            "reason": None, "growth_unusable": why, "levels": None, "range": None,
-           "stub_months": stub_months, "base_label": base_label}
+           "stub_months": stub_months, "base_label": base_label, "levels_reason": None}
     missing = [n for n, v in (("cost-of-equity anchor", coe), ("terminal-growth anchor", terminal_g),
                               ("diluted shares", shares), ("growth base-rate median", median_5y))
                if v is None]
@@ -164,23 +190,26 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
         return out
     rev_g2 = revenue_growth_next_fy(estimates)
     roll = (1 + coe) ** (stub_months / 12) if stub_months else 1.0
-    if why is None:
-        if base_cf is None:
-            out["reason"] = "owner-earnings base missing"
-        elif base_cf <= 0:
-            out["reason"] = "owner-earnings base is not positive"
-        else:
-            out["path"] = reference_path(c1, c2, rev_g2, median_5y)
-            out["method"] = "growth"
-            v = reference_value(base_cf, out["path"], coe, terminal_g, shares)
-            if v is None:
-                out["reason"] = "cost of equity not above terminal growth"
-            else:
-                out["value"] = v * roll
-                f1 = base_cf * (1 + c1)
-                out["levels"] = (f1, f1 * (1 + c2))
-                out["range"] = range_levels(estimates, out["levels"][1])
+    if why is None and levels_reason is None and base_cf is None:
+        out["reason"] = "owner-earnings base missing"
         return out
+    if why is None and levels_reason is None and base_cf <= 0:
+        # whole-book test (LIVN): a loss year cannot carry growth rates; the EPS levels can
+        levels_reason = "the fiscal-year owner-earnings base is not positive"
+    if why is None and levels_reason is None:
+        out["path"] = reference_path(c1, c2, rev_g2, median_5y)
+        out["method"] = "growth"
+        v = reference_value(base_cf, out["path"], coe, terminal_g, shares)
+        if v is None:
+            out["reason"] = "cost of equity not above terminal growth"
+        else:
+            out["value"] = v * roll
+            f1 = base_cf * (1 + c1)
+            out["levels"] = (f1, f1 * (1 + c2))
+            out["range"] = range_levels(estimates, out["levels"][1])
+        return out
+    out["levels_reason"] = levels_reason
+    why = why or levels_reason
     levels = consensus_eps_levels(estimates)
     if levels is None or da is None or capex is None:
         out["reason"] = why + ("" if levels else "; no positive next-FY EPS level") + \
@@ -195,6 +224,44 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     if out["value"] is None:
         out["reason"] = why + "; next-FY cash flow from EPS levels is not positive"
     return out
+
+
+def window_check(ref, fy_base, ttm_base, quarters):
+    """The FY and TTM owner-earnings windows against each other, net of the consensus growth for
+    the `quarters` of the current fiscal year the TTM holds: gap = TTM / (FY x (1+c1)^(q/4)) - 1.
+    {'gap', 'quarters', 'expected_ttm', 'flag'}, plus the TTM window's reference and levels (the
+    fiscal-year ones scaled by 1+gap: the same period, the other window's base) when flagged.
+    None when the reference is not on the growth method or an input is missing."""
+    if (ref.get("method") != "growth" or not ref.get("value") or not isinstance(fy_base, (int, float))
+            or fy_base <= 0 or not isinstance(ttm_base, (int, float)) or quarters is None
+            or not isinstance(ref.get("c1"), (int, float))):
+        return None
+    expected = fy_base * (1 + ref["c1"]) ** (quarters / 4)
+    gap = ttm_base / expected - 1
+    out = {"gap": gap, "quarters": quarters, "expected_ttm": expected, "flag": abs(gap) > WINDOW_TOL,
+           "ttm_value": None, "ttm_levels": None}
+    if out["flag"] and ttm_base > 0:
+        out["ttm_value"] = ref["value"] * (1 + gap)
+        out["ttm_levels"] = tuple(x * (1 + gap) for x in ref["levels"])
+    return out
+
+
+def window_line(win, ref, ttm_base, through, fmt_b):
+    """SECTION 8's BASE WINDOW CHECK, printed only when the windows are more than WINDOW_TOL apart.
+    The prefixes are fixed: the harness parses the gap, the TTM reference and its year-2 level."""
+    if not (win and win["flag"]):
+        return None
+    alt = (f"On the TTM window the consensus path is worth ${win['ttm_value']:,.2f} per share, year-2 "
+           f"cash-flow level {fmt_b(win['ttm_levels'][1])}"
+           if win["ttm_value"] is not None else "The TTM window's owner earnings are not positive")
+    return (f"- [Arithmetic] BASE WINDOW CHECK: base_window_gap {win['gap'] * 100:+.0f}%. TTM owner earnings "
+            f"(through {through}) are {fmt_b(ttm_base)}; the fiscal-year base grown by the consensus "
+            f"current-FY EPS growth for the {win['quarters']} quarter(s) between them is "
+            f"{fmt_b(win['expected_ttm'])}. One of the two windows holds items the other does not (a one-off "
+            f"gain or charge, a capex swing). {alt}; on the fiscal-year window ${ref['value']:,.2f} (the "
+            f"CONSENSUS-IMPLIED VALUE above). The BASE-YEAR CHECK shows the analysts' own year-ago EPS against "
+            f"the filed year. Name in base_cf_reason the window you judge representative, and anchor to its "
+            f"reference and year-2 level.")
 
 
 def pack_line(ref, base_cf, coe, terminal_g, fmt_b):
@@ -228,7 +295,10 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b):
                 f"growth; from year 3, next-FY revenue growth fading toward the GROWTH BASE RATES median, "
                 f"never above next-FY revenue growth)" + tail + lv_txt)
     g35 = " / ".join(f"{g * 100:+.1f}%" for g in ref["path"][2:])
-    return (head + f"Consensus EPS growth is unusable ({ref['growth_unusable']}), so years 1-2 are "
-            f"consensus EPS x diluted shares + D&A - capex: {fmt_b(ref['flows'][0])}, "
+    why = (f"Years 1-2 are consensus EPS x diluted shares + D&A - capex because {ref['levels_reason']}"
+           if ref.get("levels_reason") else
+           f"Consensus EPS growth is unusable ({ref['growth_unusable']}), so years 1-2 are "
+           f"consensus EPS x diluted shares + D&A - capex")
+    return (head + f"{why}: {fmt_b(ref['flows'][0])}, "
             f"{fmt_b(ref['flows'][1])}; years 3-5 growth {g35} (next-FY revenue growth fading toward the "
             f"GROWTH BASE RATES median, never above next-FY revenue growth)" + tail + lv_txt)

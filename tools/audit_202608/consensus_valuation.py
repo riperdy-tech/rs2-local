@@ -652,7 +652,8 @@ def select_medoid_scorecard(
                                            "bear_exit_g_gap_bp", "base_exit_to_gordon_multiple",
                                            "terminal_multiple_reason", "interest_addback", "wacc_reason",
                                            "owner_earnings_source", "consensus_reference_status",
-                                           "terminal_g_gap_bp", "terminal_reason")},
+                                           "terminal_g_gap_bp", "terminal_reason", "base_window_gap",
+                                           "reference_window_used")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -891,6 +892,42 @@ def _pack_levels(pack_text):
     return out
 
 
+_WINDOW_RE = re.compile(r"BASE WINDOW CHECK: base_window_gap ([+\-]?\d+)%")
+_WINDOW_ALT_RE = re.compile(r"On the TTM window the consensus path is worth \$([\d,]+\.\d+) per share, "
+                            r"year-2 cash-flow level \$(-?[\d.,]+)B")
+
+
+def _pack_window(pack_text):
+    """Whole-book test: the BASE WINDOW CHECK the pack prints when the fiscal-year and TTM windows
+    are more than 15% apart: {'gap', 'ttm_value', 'ttm_year2'}, or {} when none is printed."""
+    t = pack_text or ""
+    m = _WINDOW_RE.search(t)
+    if not m:
+        return {}
+    out = {"gap": int(m.group(1)) / 100.0, "ttm_value": None, "ttm_year2": None}
+    m = _WINDOW_ALT_RE.search(t)
+    if m:
+        out["ttm_value"] = float(m.group(1).replace(",", ""))
+        out["ttm_year2"] = float(m.group(2).replace(",", ""))
+    return out
+
+
+def reference_window(scorecard, pack_text):
+    """(reference value, year-2 level $B, window) a sample is checked against. With a BASE WINDOW
+    CHECK printed, the window whose reference is nearer the sample's base IV (Fable, 2026-09-26: the
+    analyst names the window, the harness checks against the nearer reference); else the fiscal-year
+    reference and level."""
+    civ, _ = _pack_reference(pack_text)
+    y2 = _pack_levels(pack_text).get("year2")
+    win = _pack_window(pack_text)
+    iv = (scorecard or {}).get("base_iv")
+    if win.get("ttm_value") and civ and isinstance(iv, (int, float)) and iv > 0:
+        import math
+        if abs(math.log(iv / win["ttm_value"])) < abs(math.log(iv / civ)):
+            return win["ttm_value"], win["ttm_year2"], "ttm"
+    return civ, y2, "fy"
+
+
 def _year2_flow(base_cf, path):
     """base_cf ($B) grown two years along path, or None."""
     try:
@@ -919,16 +956,18 @@ def consensus_ratios(scorecard, enrich_data=None, pack_text=None):
     Each is None when it cannot be computed."""
     import consensus_reference
     sc = scorecard or {}
-    civ, _ = _pack_reference(pack_text)
-    out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": civ}
+    civ, lv2, window = reference_window(sc, pack_text)
+    win = _pack_window(pack_text)
+    out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": civ,
+           "base_window_gap": win.get("gap"), "reference_window_used": window if win else None}
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth((enrich_data or {}).get("estimates"))
-    lv = _pack_levels(pack_text)
     y2 = _year2_flow(sc.get("base_cf_used"), path)
     try:
-        if lv.get("year2") and y2 is not None:
-            # E18: Base year-2 cash flow against the pack's year-2 level, whatever base was declared
-            out["years12_ratio"] = round(y2 / lv["year2"], 3)
+        if lv2 and y2 is not None:
+            # E18: Base year-2 cash flow against the pack's year-2 level (of the window the base is
+            # nearer, when the pack prints both), whatever base was declared
+            out["years12_ratio"] = round(y2 / lv2, 3)
         elif c1 is not None and len(path) >= 2:
             out["years12_ratio"] = round((1 + float(path[0])) * (1 + float(path[1]))
                                          / ((1 + c1) * (1 + c2)), 3)
@@ -1318,21 +1357,26 @@ def check_sample_harness_rules(
         gdr = ""
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth(en.get("estimates"))
-    lv = _pack_levels(pack_text)
+    civ, lv2, _window = reference_window(sc, pack_text)
     y2 = _year2_flow(sc.get("base_cf_used"), path)
-    if lv.get("year2") and y2 is not None and not gdr:
+    if lv2 and y2 is not None and not gdr:
         # E18: the year-2 LEVEL is the anchor, whatever base the sample declared (ADI (b): a TTM
         # base on the rate path and a fiscal-year base on its own path were 68% apart)
-        if abs(y2 / lv["year2"] - 1) > consensus_reference.LEVEL_TOL:
+        if abs(y2 / lv2 - 1) > consensus_reference.LEVEL_TOL:
             flags.append("years12_off_consensus_earnings")
-    elif not lv.get("year2") and c1 is not None and len(path) >= 2 and not gdr:
+    elif not lv2 and c1 is not None and len(path) >= 2 and not gdr:
         try:
             ratio = (1 + float(path[0])) * (1 + float(path[1])) / ((1 + c1) * (1 + c2))
             if not consensus_reference.NEAR_LOW <= ratio <= consensus_reference.NEAR_HIGH:
                 flags.append("years12_off_consensus_earnings")
         except (ValueError, TypeError, ZeroDivisionError):
             pass
-    civ, p90 = _pack_reference(pack_text)
+    _, p90 = _pack_reference(pack_text)
+    if _pack_window(pack_text):
+        _bcr = str(sc.get("base_cf_reason") or "").strip()
+        if not _bcr or _bcr.lower() in ("null", "none"):
+            # whole-book test: with both windows printed, the analyst names the one it uses
+            flags.append("base_window_without_reason")
     if civ and base_iv is not None and not gdr:
         try:
             if not consensus_reference.FAR_LOW <= float(base_iv) / civ <= consensus_reference.FAR_HIGH:

@@ -47,7 +47,9 @@ def test_reference_value_matches_the_closed_form():
     # no growth and no terminal growth: a perpetuity, base / coe
     assert abs(cref.reference_value(100.0, [0, 0, 0, 0, 0], 0.10, 0.0, 10.0) - 100.0) < 1e-9
     assert cref.reference_value(100.0, [0.1] * 5, 0.03, 0.03, 10.0) is None     # coe must exceed g
-    assert cref.build(-5.0, AMD_EST, 0.1, 0.03, 10.0, 0.1)["reason"] == "owner-earnings base is not positive"
+    # whole-book test (LIVN): a base that is not positive goes to the EPS levels, which need D&A and capex
+    assert cref.build(-5.0, AMD_EST, 0.1, 0.03, 10.0, 0.1)["reason"] == (
+        "the fiscal-year owner-earnings base is not positive; D&A or capex missing")
     assert "cost-of-equity anchor missing" in cref.build(5.0, AMD_EST, None, 0.03, 10.0, 0.1)["reason"]
 
 
@@ -117,9 +119,11 @@ def test_ratios_are_stamped_even_when_a_reason_silences_the_flags():
     sc = {"base_iv": 378.92, "stage1_growth_path": [0.469, 0.731, 0.5, 0.35, 0.25],
           "guidance_deviation_reason": "any sentence at all"}
     r = cv.consensus_ratios(sc, {"estimates": AMD_EST}, _probe_pack())
-    assert r == {"years12_ratio": 0.681, "base_to_civ": 0.729, "consensus_implied_value": 520.02}
+    assert r == {"years12_ratio": 0.681, "base_to_civ": 0.729, "consensus_implied_value": 520.02,
+                 "base_window_gap": None, "reference_window_used": None}
     assert cv.consensus_ratios({}, None, None) == {"years12_ratio": None, "base_to_civ": None,
-                                                   "consensus_implied_value": None}
+                                                   "consensus_implied_value": None,
+                                                   "base_window_gap": None, "reference_window_used": None}
 
 
 def test_the_medoid_summary_and_the_verdict_carry_the_ratios():
