@@ -90,7 +90,10 @@ def ldr_overrides(tool):
         "llm.provider": "ollama",
         "llm.model": CONFIG["research_model"],
         "llm.ollama.url": CONFIG["ollama_endpoint"].replace("/api/chat", ""),
-        "llm.ollama.enable_thinking": False,            # faster across LDR's many calls
+        # Operator ruling 2026-09-27: thinking ON ("I don't know why it should be toggled off, it
+        # shouldn't"). It was off for speed across LDR's many calls; research_ctx was raised with it,
+        # because the thinking shares the window with the page being summarised.
+        "llm.ollama.enable_thinking": True,
         # Pin LDR's ollama context to the research model's cap. Research = search +
         # summarize pages; it does NOT need rs2-analyst's 24k. 8192 = 100% GPU / 0 spill
         # on this 12GB-RAM / 24GB-VRAM box, while still fitting a full page per call.
@@ -470,7 +473,7 @@ def flag_consistency(t, sections):
         req = urllib.request.Request(
             CONFIG["ollama_endpoint"],
             data=json.dumps({
-                "model": CONFIG["research_model"], "stream": False,
+                "model": CONFIG["research_model"], "stream": False, "think": True,
                 "options": {"num_ctx": int(CONFIG.get("research_ctx", 8192))},
                 "messages": [{"role": "user", "content": prompt}],
             }).encode("utf-8"),

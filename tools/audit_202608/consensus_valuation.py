@@ -386,7 +386,7 @@ def plausibility(iv, price, ticker):
 
 
 def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=None,
-                    draft_num_predict=None, temperature=None, think="high"):
+                    draft_num_predict=None, temperature=None, think="high", num_batch=None):
     """Rescues a truncated memorandum by issuing a continuation turn to Ollama.
     Reclaims 40k+ tokens of headroom by feeding the pack + partial report as assistant turn."""
     cutoff_snippet = partial_report[-250:].strip()
@@ -413,6 +413,7 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
     ]
     opts = {
         "num_ctx": ctx,
+        **({"num_batch": num_batch} if num_batch else {}),
         "num_predict": 32768,
         "temperature": temperature if temperature is not None else 0.6,
         "repeat_penalty": 1.05,
@@ -1939,6 +1940,8 @@ def main():
     # this before it was caught. The bug was invisible while the value was hard-coded "high".
     think_level = sys.argv[sys.argv.index("--think") + 1] if "--think" in sys.argv else "high"
     draft_num_predict = int(sys.argv[sys.argv.index("--draft-num-predict") + 1]) if "--draft-num-predict" in sys.argv else None
+    # GPU memory margin at 98,304 (config depth_num_batch, 2026-09-27); None = Ollama's default
+    num_batch = int(sys.argv[sys.argv.index("--num-batch") + 1]) if "--num-batch" in sys.argv else None
     # ctx raised to 98,304 on 2026-09-27, measured on the RTX 3090: 23.6 GB resident, fully on GPU,
     # no CPU spill. Do not raise further without re-probing /api/ps for spill.
 
@@ -2090,7 +2093,7 @@ def main():
             if use_tools:
                 sd_i = d / f"sample{i}_research"
                 rep, think, meta = analyst_tools.chat_with_tools(
-                    model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT,
+                    model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT, num_batch=num_batch,
                     seed=1000 + i, draft_num_predict=draft_num_predict, temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None)
@@ -2104,6 +2107,7 @@ def main():
             else:
                 opts = {
                     "num_ctx": ctx,
+                    **({"num_batch": num_batch} if num_batch else {}),
                     "num_predict": NUM_PREDICT,
                     "repeat_penalty": 1.05,
                     "presence_penalty": 0.05,
@@ -2157,7 +2161,7 @@ def main():
                 print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
                       f"one retry, perturbed seed", flush=True)
                 rep, think, meta = _at.chat_with_tools(
-                    model, pack, d / f"sample{i}_research_retry", think=think_level, ctx=ctx,
+                    model, pack, d / f"sample{i}_research_retry", think=think_level, ctx=ctx, num_batch=num_batch,
                     num_predict=NUM_PREDICT, seed=1000 + i + 50000, draft_num_predict=draft_num_predict,
                     temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
@@ -2186,7 +2190,7 @@ def main():
                 model=model, pack=pack, partial_report=rep,
                 ctx=ctx, timeout=1800, seed=1000 + i + 100,
                 draft_num_predict=draft_num_predict, temperature=temperature,
-                think=think_level)
+                think=think_level, num_batch=num_batch)
             report_continued = {
                 "chars_rescued": len(rep_cont) if rep_cont else 0,
                 "done_reason": (meta_cont or {}).get("done_reason"),

@@ -1066,7 +1066,7 @@ def _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
 def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predict=49152,
                     seed=None, timeout=14400, verbose=True, draft_num_predict=None,
                     temperature=None, query_cache=None, url_cache=None,
-                    tools=None, max_search_calls=25, max_model_calls=5):
+                    tools=None, max_search_calls=25, max_model_calls=5, num_batch=None):
     """Ollama chat with the search tools available. Returns (report, thinking, meta).
 
     Snapshots every tool call to out_dir/_research_snapshot.json so the run stays reproducible
@@ -1089,6 +1089,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     evidence_hits, evidence_misses = 0, 0
     opts = {
         "num_ctx": ctx,
+        **({"num_batch": num_batch} if num_batch else {}),
         "num_predict": num_predict,
         "repeat_penalty": 1.05,
         "presence_penalty": 0.05

@@ -316,3 +316,14 @@ def test_the_loop_shrinks_pages_only_when_the_report_room_runs_short(monkeypatch
     bodies, meta = run(ctx=at.REPORT_ROOM_TOKENS + 100)   # the next prompt would eat the report's room
     assert "(read earlier)" in json.dumps(bodies[2]["messages"])
     assert meta["turns"][2].get("page_notes_to_headers") == 1
+
+
+# ---- window option A: the processing batch (2026-09-27) --------------------------------------
+
+def test_num_batch_reaches_every_request_and_is_absent_by_default(monkeypatch, tmp_path):
+    bodies = _fake_ollama(monkeypatch, [_resp("", done="length"), _resp("", done="length")])
+    _run(tmp_path, num_batch=256)
+    assert bodies and all(b["options"]["num_batch"] == 256 for b in bodies)
+    bodies = _fake_ollama(monkeypatch, [_resp("", done="length"), _resp("", done="length")])
+    _run(tmp_path)
+    assert all("num_batch" not in b["options"] for b in bodies)

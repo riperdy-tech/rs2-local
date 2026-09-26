@@ -72,6 +72,7 @@ GATE_VERSION = depth_gates.GATE_VERSION
 # ---- spec constants (operator-accepted 2026-08-21) ------------------------------------------
 SAMPLES = int(CONFIG.get("depth_samples", 3))       # 3 flat — cost accepted
 MODEL = CONFIG.get("depth_model", "rs2-analyst-deep-mtp5")
+NUM_BATCH = CONFIG.get("depth_num_batch")               # None = Ollama's default (512)
 CTX = int(CONFIG.get("depth_ctx", 81920))           # 98,304 measured 2026-09-27: fully on GPU, 738 MiB free at 97k tokens (81,920 left 1,442)
 TOOLS = bool(CONFIG.get("depth_tools", True))       # search-during-reasoning, approved
 RESEARCH_TIMEOUT = int(CONFIG.get("research_timeout_s", 900))
@@ -348,6 +349,8 @@ def run_consensus(t, samples=None, price_quote=None, no_research=False, prior_ba
     before = {p.name for p in (HERE / "ab_reports" / "consensus").glob(f"{t}_*")}
     cmd = [sys.executable, str(HERE / "tools" / "audit_202608" / "consensus_valuation.py"),
            t, "--model", MODEL, "--ctx", str(CTX), "--think", "high"]
+    if NUM_BATCH:
+        cmd.extend(["--num-batch", str(int(NUM_BATCH))])
     if price_quote and price_quote.get("price") is not None:
         cmd.extend(["--price", str(price_quote["price"])])
         if price_quote.get("asof"):
