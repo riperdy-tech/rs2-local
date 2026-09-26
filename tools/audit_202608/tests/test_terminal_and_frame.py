@@ -75,7 +75,7 @@ def test_the_batch_table_prints_each_scenarios_implied_growth():
 def test_the_pack_line_gives_the_multiple_consistent_with_the_anchors():
     import capability_test as cap
     line = cap._default_exit_multiple_line(8.98, 0.0375)
-    assert "(1 + 3.75%) / (8.98% − 3.75%) = 19.84×" in line and "terminal_multiple_reason" in line
+    assert "(1 + 3.75%) / (8.98% − 3.75%) = 19.84×" in line and "terminal_reason" in line
     assert "not available" in cap._default_exit_multiple_line(None, 0.0375)
     assert "not available" in cap._default_exit_multiple_line(3.0, 0.0375)       # rate below g
 
@@ -86,9 +86,9 @@ def test_the_pack_prints_the_default_exit_multiple_and_the_frame_rule(screener_d
     assert "DEFAULT EXIT MULTIPLE" in pack
     assert "Net income is after interest, so this is an equity flow" in pack
     assert "The equity frame (the default) takes no net_debt" in pack
-    for field in ('"terminal_multiple_reason":', '"interest_addback":', '"wacc_reason":'):
+    for field in ('"terminal_reason":', '"interest_addback":', '"wacc_reason":'):
         assert field in cap.TASK
-    assert "* Valuation Frame:" in cap.TASK and "* Terminal Multiple:" in cap.TASK
+    assert "* Valuation Frame:" in cap.TASK and "* Terminal Growth And Multiple:" in cap.TASK
 
 
 def test_fix_s2_the_16x_exit_leg_is_flagged_without_a_reason(tmp_path):
@@ -169,3 +169,31 @@ def test_the_scorecard_keeps_the_new_contract_fields():
     card = cv.extract_scorecard(report, 100.0)
     assert card["terminal_multiple_reason"] == "peer EV/FCF" and card["interest_addback"] == 0.3
     assert card["wacc_reason"] == "COE 8.98%"
+
+
+def _dcf_g(wacc, terminal_g):
+    kw = dict(FLOW, wacc=wacc, valuation_frame="equity", rate_type="cost_of_equity")
+    kw["terminal_g"] = terminal_g
+    return fmt.unbundled_dcf(**kw)
+
+
+def test_au_s1_terminal_growth_below_the_anchor_needs_a_reason(tmp_path):
+    # revision 10: AU (b) s1 cut terminal_g to 2.5% against the 3.75% anchor; E13 pinned only the
+    # exit multiple, so the 35% spread came from a knob nothing stamped
+    d = _dcf_g(0.0893, 0.025)
+    snap = _snapshot(tmp_path, d)
+    flags, st = cv.scenario_checks(snap, {"base_iv": d["per_share_iv"]}, None, PACK, 98.64)
+    assert st["terminal_g_gap_bp"] == -125 and "terminal_g_off_anchor_without_reason" in flags
+    flags, _ = cv.scenario_checks(snap, {"base_iv": d["per_share_iv"], "terminal_reason": "dated evidence"},
+                                  None, PACK, 98.64)
+    assert "terminal_g_off_anchor_without_reason" not in flags
+
+
+def test_terminal_growth_at_the_anchor_is_clean_and_the_old_field_name_still_counts(tmp_path):
+    d = _dcf_g(0.0893, 0.0375)
+    flags, st = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv"]}, None, PACK, 98.64)
+    assert st["terminal_g_gap_bp"] == 0 and "terminal_g_off_anchor_without_reason" not in flags
+    x = _dcf(0.0898, 16.0)
+    flags, _ = cv.scenario_checks(_snapshot(tmp_path, x), {"base_iv": 1650.07, "terminal_multiple_reason": "peer data"},
+                                  None, PACK, 1643.39)
+    assert "exit_multiple_off_default_without_reason" not in flags

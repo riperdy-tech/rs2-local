@@ -181,7 +181,8 @@ def extract_scorecard(report, price):
         "net_debt_reason": None,
         "scenario_deviation_reason": None,
         # E13 (pack revision 9): terminal multiple and valuation frame
-        "terminal_multiple_reason": None,
+        "terminal_multiple_reason": None,   # revision 9 name; revision 10 asks for terminal_reason
+        "terminal_reason": None,
         "interest_addback": None,
         "wacc_reason": None,
         # Harness-filled per sample from tool snapshot (not declared by model)
@@ -649,7 +650,8 @@ def select_medoid_scorecard(
                                            "bull_bear_anchor", "base_exit_g_gap_bp", "bull_exit_g_gap_bp",
                                            "bear_exit_g_gap_bp", "base_exit_to_gordon_multiple",
                                            "terminal_multiple_reason", "interest_addback", "wacc_reason",
-                                           "owner_earnings_source", "consensus_reference_status")},
+                                           "owner_earnings_source", "consensus_reference_status",
+                                           "terminal_g_gap_bp", "terminal_reason")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -1108,6 +1110,7 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
               "bull_bear_anchor": None, "base_exit_g_gap_bp": None, "bull_exit_g_gap_bp": None,
               "bear_exit_g_gap_bp": None, "base_exit_to_gordon_multiple": None,
               "owner_earnings_source": _pack_owner_earnings_source(pack_text),
+              "terminal_g_gap_bp": None,
               "consensus_reference_status": _pack_reference_status(pack_text)}
     flags = []
     g_anchor = _pack_terminal_g(pack_text)
@@ -1149,6 +1152,9 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         # E13: the terminal growth a published exit leg asserts, at this scenario's own rate, against
         # the anchor (the call's own terminal_g when the pack has none)
         dt = inp.get("_desk") or {}
+        if role == "base" and g_anchor is not None and _fnum(dt.get("terminal_g")) is not None:
+            # revision 10: terminal_g itself is pinned to the anchor (AU (b) s1 cut it to 2.5%)
+            stamps["terminal_g_gap_bp"] = round((_fnum(dt["terminal_g"]) - g_anchor) * 10000)
         if dt.get("leg") == "exit" and _fnum(dt.get("exit_multiple")):
             m_x = _fnum(dt["exit_multiple"])
             g_ref = g_anchor if g_anchor is not None else _fnum(dt.get("terminal_g"))
@@ -1163,8 +1169,12 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         return bool(v) and v.lower() not in ("null", "none")
 
     gap = stamps["base_exit_g_gap_bp"]
-    if gap is not None and abs(gap) > 50 and not _has("terminal_multiple_reason"):
+    terminal_reason = _has("terminal_reason") or _has("terminal_multiple_reason")
+    if gap is not None and abs(gap) > 50 and not terminal_reason:
         flags.append("exit_multiple_off_default_without_reason")
+    tg = stamps["terminal_g_gap_bp"]
+    if tg is not None and abs(tg) > 50 and not terminal_reason:
+        flags.append("terminal_g_off_anchor_without_reason")
     # E13 (f): the equity frame is the default; a firm frame needs a pre-interest flow and a WACC build
     if stamps["desk_frame"] == "firm":
         addback = _num_b(sc.get("interest_addback"))
