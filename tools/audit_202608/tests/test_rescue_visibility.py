@@ -20,7 +20,7 @@ This is an ANNOTATION. It must not move direction or size.
 import pytest
 
 import depth_pipeline as dp
-from tools.audit_202608.consensus_valuation import rescue_status
+from tools.audit_202608.consensus_valuation import rescue_status, counts_as_result
 
 
 @pytest.fixture(autouse=True)
@@ -181,3 +181,132 @@ def test_the_forced_report_flag_does_not_move_direction_or_size():
     assert forced["direction"] == clean["direction"]
     assert forced["size_hint"] == clean["size_hint"]
     assert forced["kelly_fraction_pct"] == clean["kelly_fraction_pct"]
+
+
+# ---- full thinking & failure flags (operator ruling 2026-09-27) -------------------------
+
+def test_rescue_status_thinking_and_failure():
+    # 6. rescue_status: stamped turns all equal to think_configured -> reduced_thinking False;
+    # one "low" -> True; unstamped legacy turns with forced_report -> True; failure passes through.
+    meta_equal = {
+        "think_configured": "high",
+        "turns": [{"turn": 1, "think": "high"}, {"turn": 2, "think": "high"}],
+        "failure": None,
+    }
+    st_equal = rescue_status(meta_equal)
+    assert st_equal["reduced_thinking"] is False
+    assert st_equal["failure"] is None
+
+    meta_low = {
+        "think_configured": "high",
+        "turns": [{"turn": 1, "think": "high"}, {"turn": 2, "think": "low"}],
+        "failure": "window_exhausted_twice",
+    }
+    st_low = rescue_status(meta_low)
+    assert st_low["reduced_thinking"] is True
+    assert st_low["failure"] == "window_exhausted_twice"
+
+    meta_legacy_forced = {
+        "turns": [{"turn": 1}, {"turn": 2, "forced_report": True}],
+    }
+    st_legacy_forced = rescue_status(meta_legacy_forced)
+    assert st_legacy_forced["reduced_thinking"] is True
+
+    meta_legacy_clean = {
+        "turns": [{"turn": 1}, {"turn": 2}],
+    }
+    assert rescue_status(meta_legacy_clean)["reduced_thinking"] is False
+
+
+def test_counts_as_result_rules():
+    # 7. counts_as_result: False for reduced_thinking, for failed_reason, and for a desk-less run;
+    # True for a clean run.
+    clean = {"iv": 100.0, "plausible": True, "truncated": False, "flags": []}
+    assert counts_as_result(clean) is True
+
+    reduced = dict(clean, reduced_thinking=True)
+    assert counts_as_result(reduced) is False
+
+    failed = dict(clean, failed_reason="window_exhausted_twice")
+    assert counts_as_result(failed) is False
+
+    failed_empty = dict(clean, failed_reason="empty_report")
+    assert counts_as_result(failed_empty) is False
+
+    desk_less = dict(clean, flags=["desk_not_used"])
+    assert counts_as_result(desk_less) is False
+
+    desk_less2 = dict(clean, flags=["iv_not_desk_backed"])
+    assert counts_as_result(desk_less2) is False
+
+    implausible = dict(clean, plausible=False)
+    assert counts_as_result(implausible) is False
+
+    truncated = dict(clean, truncated=True)
+    assert counts_as_result(truncated) is False
+
+    no_iv = dict(clean, iv=None)
+    assert counts_as_result(no_iv) is False
+
+
+def test_band_verdict_full_thinking_and_failed_sample_flags():
+    # 8. band_verdict: a doc with a reduced_thinking run and a clean run -> LOW_EFFORT_RESCUE flag,
+    # the reduced run not in n_basis; a run with failed_reason -> SAMPLE_FAILED:<n>:<reason> flag;
+    # samples_lost: 1 -> SAMPLE_FAILED:lost:1.
+    doc_reduced = _doc([
+        _run(1, iv=100.0, basis=False, reduced_thinking=True),
+        _run(2, iv=105.0, basis=True),
+    ])
+    v_reduced = dp.band_verdict(doc_reduced)
+    assert "LOW_EFFORT_RESCUE" in v_reduced["flags"]
+    assert v_reduced["n_basis"] == 1
+    assert "excluded from the band" in (v_reduced.get("reason") or "")
+
+    doc_failed = _doc([
+        _run(1, iv=None, plausible=False, basis=False, failed_reason="window_exhausted_twice"),
+        _run(2, iv=100.0, basis=True),
+        _run(3, iv=105.0, basis=True),
+    ])
+    v_failed = dp.band_verdict(doc_failed)
+    assert "SAMPLE_FAILED:1:window_exhausted_twice" in v_failed["flags"]
+    assert "sample failed: sample 1 (window_exhausted_twice)" in (v_failed.get("reason") or "")
+
+    doc_lost = _doc([
+        _run(1, iv=100.0, basis=True),
+        _run(2, iv=105.0, basis=True),
+    ])
+    doc_lost["samples_lost"] = 1
+    v_lost = dp.band_verdict(doc_lost)
+    assert "SAMPLE_FAILED:lost:1" in v_lost["flags"]
+    assert "lost:1" in (v_lost.get("reason") or "")
+
+
+def test_band_verdict_window_retry_flag():
+    # WINDOW_RETRY annotation flag for basis samples with window_retry_used
+    doc = _doc([
+        _run(1, iv=100.0, basis=True, window_retry_used=True),
+        _run(2, iv=105.0, basis=True),
+    ])
+    v = dp.band_verdict(doc)
+    assert "WINDOW_RETRY" in v["flags"]
+
+
+def test_an_all_failed_run_is_named_on_the_not_usable_row(capsys):
+    # Review fix: the annotations used to run after the NOT_USABLE return, so the worst case (every
+    # sample not a result) carried no SAMPLE_FAILED flag, note or line.
+    doc = _doc([
+        _run(1, iv=None, plausible=False, basis=False, reduced_thinking=False,
+             failed_reason="window_exhausted_twice"),
+        _run(2, iv=100.0, basis=False, reduced_thinking=True, failed_reason=None),
+    ])
+    v = dp.band_verdict(doc)
+    assert v["direction"] == "NOT_USABLE"
+    assert "SAMPLE_FAILED:1:window_exhausted_twice" in v["flags"] and "LOW_EFFORT_RESCUE" in v["flags"]
+    assert v["reason"].startswith("zero plausible complete samples")
+    assert "sample failed: sample 1 (window_exhausted_twice)" in v["reason"]
+    assert "SAMPLE FAILED - sample 1 (window_exhausted_twice) (not a result)" in capsys.readouterr().out
+
+
+def test_a_legacy_rescue_keeps_its_old_note():
+    v = dp.band_verdict(_doc([_run(1, forced_report=True), _run(2)]))
+    assert "LOW_EFFORT_RESCUE" in v["flags"] and "not comparable to a normal sample" in v["reason"]

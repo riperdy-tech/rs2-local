@@ -469,8 +469,7 @@ def select_medoid_scorecard(
     Returns:
         (medoid_scorecard, consensus_summary)
     """
-    good = [r for r in runs if r.get("iv") and r.get("plausible") and not r.get("truncated")
-            and desk_backed(r)]
+    good = [r for r in runs if counts_as_result(r)]
     if not good:
         return {}, {
             "median_iv": None, "median_bull_iv": None, "median_bear_iv": None,
@@ -779,33 +778,31 @@ def rescue_status(meta):
     """(stub_rejected, forced_report, budget_exhausted) for ONE sample, from a `chat_with_tools`
     meta dict.
 
-    THREE markers. The distinction between the last two is the point, and an earlier version of
-    this docstring got it wrong:
-
-      * `stub_rejected` — the terminal turn was a tool-call envelope rather than a report, so the
-        harness forced a memorandum turn at `think: "low"`, `num_predict` 32768.
-      * `forced_report` — a turn carrying that same stub-retry marker (`analyst_tools.py:452`).
-        This runs at `think: "low"`, so it is the marker that means the sample was reasoned at a
-        DIFFERENT effort level from its siblings.
-      * `budget_exhausted` — a turn produced because both tool budgets were reached
-        (`analyst_tools.py:513`). That path forces the memorandum at the SAME `think` level, so it
-        is a different PROVENANCE, not a reduced-effort one. The old docstring claimed
-        `forced_report` covered "both tool budgets exhausted"; it does not. Reading only that key
-        left a forced report publishing as though it had concluded naturally.
+    From 2026-09-27 a forced report runs at the configured think level, so `forced_report` alone
+    no longer means reduced effort; `reduced_thinking` does.
 
     Tolerates absent/None/malformed `turns`: the on-disk snapshots predate `turns` entirely, so
     absence is the normal case, not an error.
     """
     meta = meta or {}
-    turns = meta.get("turns") or []
+    turns = [t for t in (meta.get("turns") or []) if isinstance(t, dict)]
+    stub_rejected = bool(meta.get("stub_rejected"))
+    forced_report = any(bool(t.get("forced_report")) for t in turns)
+    budget_exhausted = any(bool(t.get("budget_exhausted")) for t in turns)
+    desk_recovery_used = any(bool(t.get("desk_recovery")) for t in turns)
+    window_retry_used = any(bool(t.get("window_retry")) for t in turns)
+    if any("think" in t for t in turns):
+        reduced_thinking = any("think" in t and t["think"] != meta.get("think_configured") for t in turns)
+    else:
+        reduced_thinking = bool(stub_rejected or forced_report or desk_recovery_used)
     return {
-        "stub_rejected": bool(meta.get("stub_rejected")),
-        "forced_report": any(bool(t.get("forced_report")) for t in turns if isinstance(t, dict)),
-        "budget_exhausted": any(bool(t.get("budget_exhausted")) for t in turns
-                                if isinstance(t, dict)),
-        # Phase 4 window fix: the desk-only recovery turn ran (its report is then forced)
-        "desk_recovery_used": any(bool(t.get("desk_recovery")) for t in turns
-                                  if isinstance(t, dict)),
+        "stub_rejected": stub_rejected,
+        "forced_report": forced_report,
+        "budget_exhausted": budget_exhausted,
+        "desk_recovery_used": desk_recovery_used,
+        "window_retry_used": window_retry_used,
+        "reduced_thinking": reduced_thinking,
+        "failure": meta.get("failure"),
     }
 
 
@@ -1882,6 +1879,13 @@ def desk_backed(run):
     return "desk_not_used" not in fl and "iv_not_desk_backed" not in fl
 
 
+def counts_as_result(run):
+    """Operator ruling 2026-09-27: a sample written at reduced thinking, or one whose harness run
+    failed, is not a result. It stays in `runs` with its record; it never enters the band."""
+    return (bool(run.get("iv")) and bool(run.get("plausible")) and not run.get("truncated")
+            and desk_backed(run) and not run.get("reduced_thinking") and not run.get("failed_reason"))
+
+
 def early_stop_check(g2, prior_base=None):
     """P4.7/B2 — pure decision for the adaptive 2-sample early stop. No I/O, no printing.
 
@@ -2077,6 +2081,7 @@ def main():
         attempted = i
         t0 = time.time()
         resp, meta = {}, {}
+        sample_retried = False
         # P4.0b: hits/misses against the shared evidence store, accumulated across both the
         # initial chat_with_tools call and the empty-report retry (below) for THIS sample.
         sample_es_hits, sample_es_misses = 0, 0
@@ -2127,6 +2132,7 @@ def main():
         # emitting the deliverable. One retry with a perturbed seed; a second empty is recorded
         # and the sample excluded as before (n_basis drops, verdict still emitted).
         if not (rep or "").strip() and not use_tools:
+            sample_retried = True
             print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
                   f"one retry, perturbed seed", flush=True)
             body["options"]["seed"] = 1000 + i + 50000
@@ -2139,6 +2145,7 @@ def main():
             rep = msg.get("content") or ""
             think = msg.get("thinking") or ""
         elif not (rep or "").strip() and use_tools:
+            sample_retried = True
             import analyst_tools as _at
             print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
                   f"one retry, perturbed seed", flush=True)
@@ -2288,12 +2295,17 @@ def main():
         # interrupted battery run never loses evidence it already gathered.
         if evidence_store_dir is not None:
             _save_evidence_store(evidence_store_dir, evidence_query_cache, evidence_url_cache)
+        failed_reason = rescue["failure"] if rescue.get("failure") is not None else ("empty_report" if not (rep or "").strip() else None)
         runs.append({"sample": i, "iv": iv, "scorecard": scorecard, "all_iv_mentions": sorted(set(ivs))[:8],
                      "plausible": ok, "reasons": why, "flags": flags, "truncated": truncated,
                      "stub_rejected": rescue["stub_rejected"],
                      "forced_report": rescue["forced_report"],
                      "budget_exhausted": rescue["budget_exhausted"],
                      "desk_recovery_used": rescue["desk_recovery_used"],
+                     "reduced_thinking": rescue["reduced_thinking"],
+                     "window_retry_used": rescue["window_retry_used"],
+                     "sample_retried": sample_retried,
+                     "failed_reason": failed_reason,
                      "report_turn_headroom_tokens": (meta or {}).get("report_turn_headroom_tokens"),
                      "done_reason": resp.get("done_reason"),
                      "prompt_tokens": p_tok, "generated_tokens": g_tok,
@@ -2352,7 +2364,7 @@ def main():
         # truncated or unparseable sample - falls through and buys the 3rd opinion. The bar is
         # tighter than TOL_PCT on purpose; see EARLY_TOL_PCT.
         if adaptive and i == 2:
-            g2 = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"] and desk_backed(r)]
+            g2 = [r for r in runs if counts_as_result(r)]
             if len(g2) == 2:
                 d2 = early_stop_check(g2, prior_base)
                 if d2["stop"]:
@@ -2380,7 +2392,7 @@ def main():
                 print(f"  [adaptive] only {len(g2)} usable of 2 — escalating to 3rd sample",
                       flush=True)
 
-    good = [r for r in runs if r["iv"] and r["plausible"] and not r["truncated"] and desk_backed(r)]
+    good = [r for r in runs if counts_as_result(r)]
     # the verdict writer (depth_pipeline.band_verdict) judges exactly these samples; this module
     # is the single owner of which samples count
     for r in runs:

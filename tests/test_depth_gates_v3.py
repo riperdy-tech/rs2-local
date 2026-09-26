@@ -33,8 +33,20 @@ def _v3(v):
     return [r for r in dg.assess(v)[1] if r in V3]
 
 
-def test_gate_version_is_three():
-    assert dg.GATE_VERSION == 3
+def test_gate_version_is_four():
+    assert dg.GATE_VERSION == 4
+
+
+def test_sample_failed_reason():
+    v = _clean(flags=["SAMPLE_FAILED:1:window_exhausted_twice"])
+    assert dg.assess(v) == (False, ["sample_failed"])
+    assert "sample_failed" not in dg.assess(_clean(flags=[]))[1]
+
+
+def test_discovery_failed_reason():
+    v = _clean(flags=["discovery_failed:brief_not_delivered"])
+    assert dg.assess(v) == (False, ["discovery_failed"])
+    assert "discovery_failed" not in dg.assess(_clean(flags=[]))[1]
 
 
 # ---- one case per new reason --------------------------------------------------------------

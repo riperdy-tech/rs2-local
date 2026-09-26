@@ -59,9 +59,10 @@ def test_cut_off_final_turn_gets_one_block_only_recovery(monkeypatch, tmp_path):
     assert "```json:catalysts" in report
     assert len(bodies) == 3                     # final turn, forced retry of the empty stub, recovery
     rec = bodies[-1]
-    assert rec["think"] is False and rec["options"]["num_predict"] == 8192
+    assert rec["think"] == "high" and rec["options"]["num_predict"] == 32768
     assert "cut off by the length limit" in rec["messages"][-1]["content"]
     assert meta["turns"][-1].get("length_recovery") is True
+    assert meta["failure"] is None
 
 
 def test_cut_off_partial_text_is_kept_and_block_appended(monkeypatch, tmp_path):
@@ -71,7 +72,20 @@ def test_cut_off_partial_text_is_kept_and_block_appended(monkeypatch, tmp_path):
         "m", "prompt", tmp_path, tools=at.research_tools(), max_search_calls=0, max_model_calls=0,
         verbose=False)
     assert report.startswith("Findings so far") and report.endswith("```")
-    assert len(bodies) == 2 and bodies[-1]["think"] is False
+    assert len(bodies) == 2 and bodies[-1]["think"] == "high"
+    assert meta["failure"] is None
+
+
+def test_discovery_rescue_still_no_block_sets_failure(monkeypatch, tmp_path):
+    bodies = _fake_ollama(monkeypatch, [
+        _resp("Findings so far", done="length"),
+        _resp("Still no json block here", done="stop"),
+    ])
+    report, _, meta = at.chat_with_tools(
+        "m", "prompt", tmp_path, tools=at.research_tools(), max_search_calls=0, max_model_calls=0,
+        verbose=False)
+    assert meta["failure"] == "brief_not_delivered"
+    assert bodies[-1]["think"] == "high"
 
 
 def test_complete_final_turn_is_not_touched(monkeypatch, tmp_path):
@@ -83,12 +97,10 @@ def test_complete_final_turn_is_not_touched(monkeypatch, tmp_path):
 
 
 def test_valuation_mode_never_gets_the_discovery_recovery(monkeypatch, tmp_path):
-    # valuation keeps its own path: the desk-only recovery turn, then the forced report
     bodies = _fake_ollama(monkeypatch, [_resp("partial memo", done="length"),
                                         _resp("still partial", done="length"),
                                         _resp("forced memo")])
     at.chat_with_tools("m", "prompt", tmp_path, max_search_calls=0, max_model_calls=5, verbose=False)
-    assert all(b.get("think") is not False for b in bodies)
     assert all("json:catalysts" not in b["messages"][-1]["content"] for b in bodies)
 
 

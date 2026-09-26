@@ -623,19 +623,15 @@ def turn_metrics(resp):
     }
 
 
-# Phase 4 (b) window fix (joint ruling with Fable, 2026-09-26).
-# GPOR s2 spent its whole first turn, 53,338 tokens, deliberating inside the 81,920-token window;
-# the rescue then ran with no tools, so its base IV was computed by hand. The recovery gives the
-# desk back, once, before the forced report. The text is frozen in PHASE_4_AMENDMENTS.md.
-DESK_RECOVERY_PROMPT = (
-    "Your previous turn ran out of room before any tool call. Do not deliberate. Call "
-    "run_financial_model once, now, with Base, Bull and Bear: the base you declared or the pack's "
-    "OWNER EARNINGS default; Base years 1\u20132 from SECTION 8's consensus EPS growth and the "
-    "printed years 3\u20135 fade; Bull and Bear years 1\u20132 on the consensus EPS high and low; "
-    "the COE ANCHOR, the terminal-g anchor, 5 fade years, the DEFAULT EXIT MULTIPLE or none; the "
-    "Bear rate +150 bp. Nothing else in this turn.")
-DESK_RECOVERY_NUM_PREDICT = 16384
-DESK_RECOVERY_TURNS = 2        # the recovery call, and one retry if the desk rejects it
+# Operator ruling 2026-09-27: reduced thinking is not a result. If a turn hits the context window
+# deliberating before any tool call and with no desk result, give one full-thinking retry with
+# normal options and tools rather than a desk-only low-effort turn.
+WINDOW_RETRY_PROMPT = (
+    "Your previous turn used the whole context window deliberating before any tool call, and that "
+    "reasoning is lost. Do not compute values in your reasoning: run_financial_model does the "
+    "arithmetic. Call it now with your Base, Bull and Bear inputs; if you have not settled them, start "
+    "from the pack's printed defaults and revise after. Then reason from its output, research and "
+    "re-run it as your analysis requires.")
 # UGI s3 and LAMR s1 wrote essays of up to 30,523 characters into sector_multiple_band.metric. The
 # arguments stayed in every later prompt, and the desk echoed them into every scenario, which
 # pushed Bear past the 12,000-character cut of the tool message in 3 of 85 desk calls.
@@ -1119,8 +1115,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     repeat_calls = 0
     desk_runs = []
     seen_result_urls = {}   # url -> title for every result search_web returned this run (fetch_page fallbacks)
-    in_recovery = False     # the desk-only recovery turn(s) are running
-    recovery_turns = 0
+    failure = None
+    window_retry_used = False
+    window_retry_pending = False
     chars_per_token = [None]   # measured on the previous request, for the report-room rule
 
     def _history():
@@ -1147,8 +1144,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         return resp
 
     def _force_report():
-        """The forced memorandum turn: no tools, think low for valuation."""
-        nonlocal final_report, final_think, done_reason, gen_tokens, eval_duration_total
+        """The forced memorandum turn: no tools, same think level."""
+        nonlocal final_report, final_think, done_reason, gen_tokens, eval_duration_total, failure
         retry_prompt = (
             "You have completed your research and reasoning. Write the complete "
             "institutional memorandum and Section 12 machine contract NOW. Do not search again."
@@ -1158,9 +1155,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         msgs.append({"role": "user", "content": retry_prompt})
         meta_msgs.append(None)
         active_msgs_retry, shrunk = _history()
-        opts_retry = dict(opts)
-        opts_retry["num_predict"] = 32768 if max_model_calls > 0 else opts.get("num_predict", 16384)
-        body = {"model": model, "stream": False, "think": "low" if max_model_calls > 0 else think,
+        opts_retry = opts if max_model_calls > 0 else dict(opts, num_predict=opts.get("num_predict", 16384))
+        body = {"model": model, "stream": False, "think": think,
                 "messages": active_msgs_retry, "options": opts_retry}
         resp = _post(body)
         fm = resp.get("message") or {}
@@ -1169,15 +1165,17 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         done_reason = resp.get("done_reason")
         gen_tokens += resp.get("eval_count") or 0
         eval_duration_total += resp.get("eval_duration") or 0
-        turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "forced_report": True,
+        if max_model_calls > 0 and not report_is_deliverable(final_report):
+            failure = "report_not_delivered"
+        turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
+                      "forced_report": True,
                       **({"page_notes_to_headers": shrunk} if shrunk else {})})
 
     def _recover_cut_off_brief():
         """Discovery mode only (no desk). If the final turn hit num_predict before the
-        json:catalysts block, ask once for the block alone with thinking off. MU 2026-09-24:
-        the final turn spent all 16,384 tokens thinking and the whole run was lost as "no
-        parseable brief". Valuation runs keep their own truncation path (continue_report)."""
-        nonlocal final_report, final_think, done_reason, gen_tokens, eval_duration_total
+        json:catalysts block, ask once for the block alone at configured think level. Valuation
+        runs keep their own truncation path (continue_report)."""
+        nonlocal final_report, final_think, done_reason, gen_tokens, eval_duration_total, failure
         if max_model_calls > 0 or done_reason != "length" or "```json" in (final_report or ""):
             return
         if verbose:
@@ -1190,9 +1188,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             "deliberate further. Write ONLY the ```json:catalysts block now, exactly as specified in "
             "the first message, from the research above.")})
         meta_msgs.append(None)
-        body = {"model": model, "stream": False, "think": False,
+        body = {"model": model, "stream": False, "think": think,
                 "messages": _compact_history(msgs, meta_msgs),
-                "options": dict(opts, num_predict=8192)}
+                "options": opts}
         req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -1203,7 +1201,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         done_reason = resp.get("done_reason")
         gen_tokens += resp.get("eval_count") or 0
         eval_duration_total += resp.get("eval_duration") or 0
-        turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "length_recovery": True})
+        if "```json" not in (final_report or ""):
+            failure = "brief_not_delivered"
+        turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
+                      "length_recovery": True})
 
     while True:
         active_msgs, shrunk = _history()
@@ -1217,11 +1218,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
         body = {"model": model, "stream": False, "think": think, "messages": active_msgs,
                 "options": opts}
-        if in_recovery:
-            body["think"] = "low"
-            body["options"] = dict(opts, num_predict=DESK_RECOVERY_NUM_PREDICT)
-            body["tools"] = [t for t in eff_tools if t["function"]["name"] == "run_financial_model"]
-        elif active_tools and (search_calls < max_search_calls or (model_calls < max_model_calls and desk_validation_errors <= 6)):
+        if active_tools and (search_calls < max_search_calls or (model_calls < max_model_calls and desk_validation_errors <= 6)):
             body["tools"] = active_tools
 
         resp = _post(body)
@@ -1229,9 +1226,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         done_reason = resp.get("done_reason")
         gen_tokens += resp.get("eval_count") or 0
         eval_duration_total += resp.get("eval_duration") or 0
-        turns.append({"turn": len(turns) + 1, **turn_metrics(resp),
-                      **({"desk_recovery": True} if in_recovery else {}),
-                      **({"page_notes_to_headers": shrunk} if shrunk else {})})
+        turn_rec = {"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
+                    **({"page_notes_to_headers": shrunk} if shrunk else {})}
+        if window_retry_pending:
+            turn_rec["window_retry"] = True
+            window_retry_pending = False
+        turns.append(turn_rec)
         if msg.get("thinking"):
             final_think += msg["thinking"]
         tcs = msg.get("tool_calls") or []
@@ -1239,20 +1239,22 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             final_report = msg.get("content") or ""
             is_stub = not report_is_deliverable(final_report) if max_model_calls > 0 else not bool(_TOOL_CALL_BLOCK.sub("", final_report or "").strip())
             # Phase 4 window fix: a tool turn that hit the window with no tool call, no report and
-            # no desk result yet gets the desk back once (DESK_RECOVERY_PROMPT). A sample that
-            # already has a desk result goes to the forced report, which can cite it (GPOR s1).
-            if (is_stub and not in_recovery and recovery_turns == 0 and done_reason == "length"
+            # no desk result yet gets one full-thinking retry.
+            if (is_stub and not window_retry_used and done_reason == "length"
                     and body.get("tools") and max_model_calls > 0 and model_calls == 0
                     and desk_validation_errors <= 6):
                 if verbose:
                     print("    [harness] turn hit the context window with no tool call and no desk "
-                          "result - one desk-only recovery turn", flush=True)
-                msgs.append({"role": "user", "content": DESK_RECOVERY_PROMPT})
+                          "result - one full-thinking retry", flush=True)
+                msgs.append({"role": "user", "content": WINDOW_RETRY_PROMPT})
                 meta_msgs.append(None)
-                in_recovery = True
-                recovery_turns = 1
+                window_retry_used = True
+                window_retry_pending = True
                 continue
-            in_recovery = False
+            if is_stub and window_retry_used and done_reason == "length" and model_calls == 0:
+                failure = "window_exhausted_twice"
+                final_report = ""
+                break
             if is_stub:
                 # BOTH live failure shapes land here, and the old test (`not content.strip()`)
                 # only caught the first:
@@ -1300,9 +1302,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
             result = None
             try:
-                if in_recovery and name != "run_financial_model":
-                    result = {"error": "only run_financial_model is available in this turn"}
-                elif name in ("search_web", "fetch_page"):
+                if name in ("search_web", "fetch_page"):
                     research_calls += 1
                     if name == "search_web":
                         q = (args or {}).get("query", "")
@@ -1399,15 +1399,6 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             msgs.append({"role": "tool", "content": content})
             meta_msgs.append({"name": name, "args": args, "result": result, "call_index": calls})
 
-        if in_recovery:
-            # the desk answered: the forced report, which can now cite it. Rejected: one retry.
-            if model_calls == 0 and recovery_turns < DESK_RECOVERY_TURNS and desk_validation_errors <= 6:
-                recovery_turns += 1
-                continue
-            in_recovery = False
-            _force_report()
-            break
-
         if search_calls >= max_search_calls and (model_calls >= max_model_calls or desk_validation_errors > 6):
             # ALL BUDGETS REACHED -> force the answer, never just break.
             exhausted_prompt = (
@@ -1428,7 +1419,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             done_reason = resp.get("done_reason")
             gen_tokens += resp.get("eval_count") or 0
             eval_duration_total += resp.get("eval_duration") or 0
-            turns.append({"turn": len(turns) + 1, **turn_metrics(resp),
+            turns.append({"turn": len(turns) + 1, **turn_metrics(resp), "think": body["think"],
                           "budget_exhausted": True,
                           **({"page_notes_to_headers": shrunk} if shrunk else {})})
             _recover_cut_off_brief()
@@ -1453,7 +1444,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                            ctx - turns[-1]["prompt_tokens"]
                                            if turns and isinstance(turns[-1].get("prompt_tokens"), int)
                                            else None),
-                                       "elapsed_s": round(time.time() - t0)}
+                                       "elapsed_s": round(time.time() - t0),
+                                       "think_configured": think,
+                                       "failure": failure,
+                                       "window_retry_used": window_retry_used}
 
 
 if __name__ == "__main__":

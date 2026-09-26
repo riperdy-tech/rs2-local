@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # own test, tests/test_depth_queue.py). Keep it, restore ours.
 _ORIG_STDOUT = sys.stdout
 import depth_pipeline as dp  # noqa: E402
+import depth_gates  # noqa: E402
 _WRAPPER_KEEPALIVE = sys.stdout
 sys.stdout = _ORIG_STDOUT
 
@@ -193,7 +194,7 @@ def test_research_brief_asof_present_when_brief_exists(monkeypatch, tmp_path):
 # ---- GATE_VERSION is a real, importable single owner (P1.2; moves to depth_gates.py in P1.3) --
 
 def test_gate_version_is_three():
-    assert dp.GATE_VERSION == 3
+    assert dp.GATE_VERSION == depth_gates.GATE_VERSION
 
 
 # ---- end-to-end main(): the manual-invocation gate never demonstrated for real (B7, Phase 1 --

@@ -72,7 +72,7 @@ GATE_VERSION = depth_gates.GATE_VERSION
 # ---- spec constants (operator-accepted 2026-08-21) ------------------------------------------
 SAMPLES = int(CONFIG.get("depth_samples", 3))       # 3 flat — cost accepted
 MODEL = CONFIG.get("depth_model", "rs2-analyst-deep-mtp5")
-CTX = int(CONFIG.get("depth_ctx", 81920))           # VRAM-verified 22.2GB full GPU
+CTX = int(CONFIG.get("depth_ctx", 81920))           # 98,304 measured 2026-09-27: fully on GPU, 738 MiB free at 97k tokens (81,920 left 1,442)
 TOOLS = bool(CONFIG.get("depth_tools", True))       # search-during-reasoning, approved
 RESEARCH_TIMEOUT = int(CONFIG.get("research_timeout_s", 900))
 
@@ -487,7 +487,44 @@ def _is_basis(r):
     arm, falls back to the rule that applied when it was written."""
     if "basis" in r:
         return bool(r["basis"])
-    return bool(r.get("iv") and r.get("plausible") and not r.get("truncated"))
+    return bool(r.get("iv") and r.get("plausible") and not r.get("truncated")
+                and not r.get("reduced_thinking") and not r.get("failed_reason"))
+
+
+def _not_a_result(doc, good):
+    """(flags, notes) for the samples that are not a result (operator ruling 2026-09-27): written at
+    reduced thinking, a failed harness run, or lost to an exception. Prints one line per failure.
+    Applied on the NOT_USABLE path too, which is where an all-failed run lands."""
+    runs = doc.get("runs", [])
+    flags, notes = [], []
+    if any("reduced_thinking" in r for r in runs):
+        rescued = [r.get("sample") for r in runs if r.get("reduced_thinking")]
+        what = "were written at reduced thinking and are not a result: excluded from the band"
+    else:   # a doc written before the stamp: the rule that applied then (the samples were in the band)
+        rescued = [r.get("sample") for r in good if r.get("stub_rejected") or r.get("forced_report")]
+        what = ("ended on a tool-call stub and were written at REDUCED reasoning effort "
+                "(`think: \"low\"`) — not comparable to a normal sample")
+    if rescued:
+        flags.append("LOW_EFFORT_RESCUE")
+        notes.append(f"low-effort rescue: sample(s) {', '.join(str(s) for s in rescued)} {what}")
+    failed = [(f"SAMPLE_FAILED:{r.get('sample')}:{r['failed_reason']}",
+               f"sample {r.get('sample')} ({r['failed_reason']})") for r in runs if r.get("failed_reason")]
+    lost = doc.get("samples_lost")
+    if isinstance(lost, int) and lost > 0:
+        failed.append((f"SAMPLE_FAILED:lost:{lost}", f"lost:{lost}"))
+    for _, w in failed:
+        print(f"[depth] {doc.get('ticker', '')}: SAMPLE FAILED - {w} (not a result)", flush=True)
+    if failed:
+        flags += [f for f, _ in failed]
+        notes.append(f"sample failed: {', '.join(w for _, w in failed)} (not a result)")
+    return flags, notes
+
+
+def _annotate(v, flags, notes):
+    if flags:
+        v["flags"] = sorted(set(v.get("flags") or []) | set(flags))
+    for note in notes:
+        v["reason"] = f"{v['reason']}; {note}" if v.get("reason") else note
 
 
 MOMENTUM_BLOCK = ("momentum_view", "entry_timing", "momentum_flip_condition", "momentum_break_rule",
@@ -562,7 +599,7 @@ def band_verdict(doc):
     # a sample left out only for want of a desk calculation stays visible on the row
     excluded = [f"desk_less_sample_excluded:{r.get('sample')}" for r in doc.get("runs", [])
                 if r.get("basis") is False and r.get("iv") and r.get("plausible")
-                and not r.get("truncated")]
+                and not r.get("truncated") and not r.get("reduced_thinking") and not r.get("failed_reason")]
     ivs = sorted(r["iv"] for r in good)
     v = {"ticker": doc["ticker"], "price": price, "date": datetime.now().strftime("%Y-%m-%d"),
          "model": doc.get("model"), "samples_run": doc.get("samples_run") or len(doc.get("runs", [])),
@@ -643,6 +680,7 @@ def band_verdict(doc):
         "bear_above_price_reason": scorecard.get("bear_above_price_reason"),
     })
 
+    nar_flags, nar_notes = _not_a_result(doc, good)
     if not ivs or not price:
         v.update({"direction": "NOT_USABLE", "size_hint": None,
                   # Present-and-None rather than absent: a consumer must be able to tell
@@ -655,6 +693,7 @@ def band_verdict(doc):
                   "position_basis_votes": doc.get("position_basis_votes"),
                   "momentum_evidence": scorecard.get("momentum_evidence"),
                   "reason": "zero plausible complete samples — malfunction path, not a verdict"})
+        _annotate(v, nar_flags, nar_notes)
         return v
 
     tol = float(doc.get("tolerance_pct") or 25.0)
@@ -876,23 +915,9 @@ def band_verdict(doc):
                 f"spread cannot see this, so convergence here is not stability")
         v["reason"] = f"{v['reason']}; {note}" if v.get("reason") else note
 
-    # LOW-EFFORT RESCUE (2026-09-20) — ANNOTATION ONLY. The harness forces a memorandum turn at
-    # `think: "low"` when a run ends on a tool-call stub, so a rescued sample was reasoned at a
-    # different effort level from its siblings. That status was persisted per sample but never
-    # reached runs[]/consensus.json, so a band could mix the two and still read as clean - a
-    # false-confidence defect in the verdict itself. Only samples actually USED matter: a rescued
-    # sample that was implausible or truncated never reached the band, and its rescue status is
-    # irrelevant to the published number. The note used to claim "or an exhausted budget" as well;
-    # the predicate never checked that key, and the budget path does not lower the effort anyway.
-    rescued = [r.get("sample") for r in good
-               if r.get("stub_rejected") or r.get("forced_report")]
-    if rescued:
-        v.setdefault("flags", []).append("LOW_EFFORT_RESCUE")
-        v["flags"] = sorted(set(v["flags"]))
-        note = (f"low-effort rescue: sample(s) {', '.join(str(s) for s in rescued)} ended on a "
-                f"tool-call stub and were written at REDUCED reasoning effort (`think: \"low\"`) "
-                f"— not comparable to a normal sample")
-        v["reason"] = f"{v['reason']}; {note}" if v.get("reason") else note
+    # LOW-EFFORT RESCUE and SAMPLE FAILED (operator ruling 2026-09-27) — computed above by
+    # _not_a_result, before the NOT_USABLE return.
+    _annotate(v, nar_flags, nar_notes)
 
     # DESK RECOVERY (Phase 4 window fix) — ANNOTATION ONLY. The sample hit the context window with
     # no desk result, got one desk-only turn on the pack's printed defaults, then a forced report:
@@ -900,6 +925,13 @@ def band_verdict(doc):
     recovered = [r.get("sample") for r in good if r.get("desk_recovery_used")]
     if recovered:
         v.setdefault("flags", []).append("DESK_RECOVERY")
+        v["flags"] = sorted(set(v["flags"]))
+
+    # WINDOW RETRY (operator ruling 2026-09-27) — ANNOTATION ONLY. The sample hit the context window
+    # with no tool call and no desk result, and succeeded on its full-thinking retry.
+    retried = [r.get("sample") for r in good if r.get("window_retry_used")]
+    if retried:
+        v.setdefault("flags", []).append("WINDOW_RETRY")
         v["flags"] = sorted(set(v["flags"]))
 
     # FORCED REPORT (2026-09-21) — ANNOTATION ONLY, and deliberately a SEPARATE flag from

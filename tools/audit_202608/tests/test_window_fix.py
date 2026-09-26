@@ -85,76 +85,129 @@ def _run(tmp_path, **kw):
                               max_search_calls=kw.pop("max_search_calls", 25), **kw)
 
 
-# ---- the desk-only recovery ----------------------------------------------------------------
+# ---- the full-thinking retry (operator ruling 2026-09-27) -----------------------------------
 
-def test_gpor_s2_shape_gets_the_desk_back_then_the_forced_report(monkeypatch, tmp_path):
+def test_the_retry_text_is_the_frozen_ruling():
+    assert at.WINDOW_RETRY_PROMPT.startswith(
+        "Your previous turn used the whole context window deliberating before any tool call, "
+        "and that reasoning is lost."
+    )
+    assert at.WINDOW_RETRY_PROMPT.endswith(
+        "Then reason from its output, research and re-run it as your analysis requires."
+    )
+
+
+def test_gpor_s2_shape_full_thinking_retry_then_normal_continuation(monkeypatch, tmp_path):
+    # Test 1: GPOR s2 shape: turn 1 done_reason "length", no tool call -> the next request's last message is
+    # WINDOW_RETRY_PROMPT, its think equals the configured level, its options equal the normal opts,
+    # and it offers the normal tools; if that turn calls the desk, the run continues normally,
+    # meta["window_retry_used"] is True, meta["failure"] is None, and that turn record has window_retry: True.
     bodies = _fake_ollama(monkeypatch, [
         _resp("", done="length", prompt=28581),                 # 53k of thinking, no call
-        _resp("", prompt=28700, tool_calls=_desk_call()),      # the recovery calls the desk
-        _resp(MEMO, prompt=31000)])                             # the forced report
+        _resp("", prompt=28700, tool_calls=_desk_call()),      # retry turn calls the desk
+        _resp(MEMO, prompt=31000),                              # normal report turn
+    ])
     seen = _dispatch(monkeypatch, [DESK_OK])
     report, _, meta = _run(tmp_path)
-    rec, forced = bodies[1], bodies[2]
-    assert rec["messages"][-1] == {"role": "user", "content": at.DESK_RECOVERY_PROMPT}
-    assert rec["think"] == "low" and rec["options"]["num_predict"] == at.DESK_RECOVERY_NUM_PREDICT
-    assert [t["function"]["name"] for t in rec["tools"]] == ["run_financial_model"]
-    assert "tools" not in forced and forced["think"] == "low"
+    assert len(bodies) == 3
+    retry_req = bodies[1]
+    assert retry_req["messages"][-1] == {"role": "user", "content": at.WINDOW_RETRY_PROMPT}
+    assert retry_req["think"] == "high"
+    assert retry_req["options"] == bodies[0]["options"]
+    normal_tool_names = [t["function"]["name"] for t in bodies[0]["tools"]]
+    assert [t["function"]["name"] for t in retry_req["tools"]] == normal_tool_names
     assert [s[0] for s in seen] == ["run_financial_model"]
-    assert meta["turns"][1].get("desk_recovery") is True and meta["turns"][2].get("forced_report") is True
     assert report == MEMO
-    assert meta["report_turn_headroom_tokens"] == 81920 - 31000
+    assert meta["window_retry_used"] is True
+    assert meta["failure"] is None
+    assert meta["turns"][1].get("window_retry") is True
 
 
-def test_the_recovery_text_is_the_frozen_ruling():
-    assert at.DESK_RECOVERY_PROMPT.startswith("Your previous turn ran out of room before any tool call. "
-                                              "Do not deliberate. Call run_financial_model once, now,")
-    assert at.DESK_RECOVERY_PROMPT.endswith("the Bear rate +150 bp. Nothing else in this turn.")
-
-
-def test_a_rejected_recovery_call_gets_one_retry_then_the_report(monkeypatch, tmp_path):
+def test_twice_exhausted_ends_in_failure_and_empty_report(monkeypatch, tmp_path):
+    # Test 2: Twice exhausted: the retry turn also ends length with no tool call -> no further request is made,
+    # meta["failure"] == "window_exhausted_twice", the report is empty.
     bodies = _fake_ollama(monkeypatch, [
         _resp("", done="length"),
-        _resp("", tool_calls=_desk_call()),
-        _resp("", tool_calls=_desk_call()),
-        _resp(MEMO)])
-    _dispatch(monkeypatch, [{"validation_error": True, "error": "shares_diluted missing"},
-                            {"validation_error": True, "error": "shares_diluted missing"}])
-    _, _, meta = _run(tmp_path)
-    assert len(bodies) == 4
-    assert [bool(t.get("desk_recovery")) for t in meta["turns"]] == [False, True, True, False]
-    assert meta["turns"][-1].get("forced_report") is True and "tools" not in bodies[-1]
+        _resp("", done="length"),
+    ])
+    report, _, meta = _run(tmp_path)
+    assert len(bodies) == 2
+    assert meta["failure"] == "window_exhausted_twice"
+    assert meta["window_retry_used"] is True
+    assert report == ""
 
 
-def test_a_recovery_that_cuts_out_again_goes_straight_to_the_report(monkeypatch, tmp_path):
-    bodies = _fake_ollama(monkeypatch, [_resp("", done="length"), _resp("", done="length"), _resp(MEMO)])
-    _, _, meta = _run(tmp_path)
-    assert len(bodies) == 3 and "tools" not in bodies[2]
-    assert sum(bool(t.get("desk_recovery")) for t in meta["turns"]) == 1
+def test_stub_after_desk_result_forced_report_and_non_deliverable_failure(monkeypatch, tmp_path):
+    # Test 3: A stub after a desk result -> the forced report request has think equal to the configured level
+    # and the normal num_predict; a non-deliverable forced report sets failure == "report_not_delivered".
+    bodies = _fake_ollama(monkeypatch, [
+        _resp("", tool_calls=_desk_call()),
+        _resp("partial memo", done="length"),
+        _resp("not deliverable memorandum without section 12 machine contract"),
+    ])
+    _dispatch(monkeypatch, [DESK_OK])
+    report, _, meta = _run(tmp_path)
+    assert len(bodies) == 3
+    forced_req = bodies[2]
+    assert "tools" not in forced_req
+    assert forced_req["think"] == "high"
+    assert forced_req["options"]["num_predict"] == bodies[0]["options"]["num_predict"]
+    assert meta["failure"] == "report_not_delivered"
+    assert meta["turns"][-1].get("forced_report") is True
+
+    # And when deliverable: failure is None
+    bodies2 = _fake_ollama(monkeypatch, [
+        _resp("", tool_calls=_desk_call()),
+        _resp("partial memo", done="length"),
+        _resp(MEMO),
+    ])
+    _dispatch(monkeypatch, [DESK_OK])
+    report2, _, meta2 = _run(tmp_path)
+    assert report2 == MEMO
+    assert meta2["failure"] is None
 
 
 def test_a_sample_with_a_desk_result_goes_to_the_forced_report(monkeypatch, tmp_path):
     # GPOR s1 t10: three desk calls behind it, then a report turn cut at the window; the forced
-    # report cited an earlier desk value. No recovery on the pack's defaults.
+    # report cited an earlier desk value. No window retry on the pack's defaults.
     bodies = _fake_ollama(monkeypatch, [_resp("", tool_calls=_desk_call()),
                                         _resp("partial memo", done="length"), _resp(MEMO)])
     _dispatch(monkeypatch, [DESK_OK])
     _, _, meta = _run(tmp_path)
-    assert len(bodies) == 3 and not any(t.get("desk_recovery") for t in meta["turns"])
-    assert at.DESK_RECOVERY_PROMPT not in json.dumps(bodies)
+    assert len(bodies) == 3 and not any(t.get("window_retry") for t in meta["turns"])
+    assert at.WINDOW_RETRY_PROMPT not in json.dumps(bodies)
+    assert meta["failure"] is None
 
 
 def test_a_stub_that_stopped_normally_keeps_the_old_path(monkeypatch, tmp_path):
     bodies = _fake_ollama(monkeypatch, [_resp("", done="stop"), _resp(MEMO)])
     _, _, meta = _run(tmp_path)
     assert len(bodies) == 2 and meta["turns"][-1].get("forced_report") is True
-    assert not any(t.get("desk_recovery") for t in meta["turns"])
+    assert not any(t.get("window_retry") for t in meta["turns"])
+    assert meta["failure"] is None
+
+
+def test_every_turn_record_carries_think(monkeypatch, tmp_path):
+    # Test 5: Every turn record carries think.
+    bodies = _fake_ollama(monkeypatch, [
+        _resp("", tool_calls=[{"function": {"name": "search_web", "arguments": {"query": "q"}}}]),
+        _resp("", tool_calls=_desk_call()),
+        _resp(MEMO),
+    ])
+    _dispatch(monkeypatch, [{"query": "q", "results": []}, DESK_OK])
+    _, _, meta = _run(tmp_path, think="medium")
+    assert len(meta["turns"]) == 3
+    for t in meta["turns"]:
+        assert "think" in t
+        assert t["think"] == "medium"
+    assert meta["think_configured"] == "medium"
 
 
 def test_the_recovery_reaches_the_sample_record():
     import consensus_valuation as cv
-    st = cv.rescue_status({"turns": [{}, {"desk_recovery": True}, {"forced_report": True}]})
-    assert st["desk_recovery_used"] is True and st["forced_report"] is True
-    assert cv.rescue_status({"turns": [{}]})["desk_recovery_used"] is False
+    st = cv.rescue_status({"turns": [{}, {"desk_recovery": True}, {"window_retry": True}, {"forced_report": True}]})
+    assert st["desk_recovery_used"] is True and st["window_retry_used"] is True and st["forced_report"] is True
+    assert cv.rescue_status({"turns": [{}]})["window_retry_used"] is False
 
 
 # ---- the essay ----------------------------------------------------------------------------------
