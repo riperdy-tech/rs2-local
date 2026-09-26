@@ -120,10 +120,12 @@ def test_ratios_are_stamped_even_when_a_reason_silences_the_flags():
           "guidance_deviation_reason": "any sentence at all"}
     r = cv.consensus_ratios(sc, {"estimates": AMD_EST}, _probe_pack())
     assert r == {"years12_ratio": 0.681, "base_to_civ": 0.729, "consensus_implied_value": 520.02,
-                 "base_window_gap": None, "reference_window_used": None}
+                 "base_window_gap": None, "reference_window_used": None,
+                 "reference_window_value": None}
     assert cv.consensus_ratios({}, None, None) == {"years12_ratio": None, "base_to_civ": None,
                                                    "consensus_implied_value": None,
-                                                   "base_window_gap": None, "reference_window_used": None}
+                                                   "base_window_gap": None, "reference_window_used": None,
+                 "reference_window_value": None}
 
 
 def test_the_medoid_summary_and_the_verdict_carry_the_ratios():

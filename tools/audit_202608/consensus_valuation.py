@@ -653,7 +653,7 @@ def select_medoid_scorecard(
                                            "terminal_multiple_reason", "interest_addback", "wacc_reason",
                                            "owner_earnings_source", "consensus_reference_status",
                                            "terminal_g_gap_bp", "terminal_reason", "base_window_gap",
-                                           "reference_window_used")},
+                                           "reference_window_used", "reference_window_value")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -958,8 +958,10 @@ def consensus_ratios(scorecard, enrich_data=None, pack_text=None):
     sc = scorecard or {}
     civ, lv2, window = reference_window(sc, pack_text)
     win = _pack_window(pack_text)
-    out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": civ,
-           "base_window_gap": win.get("gap"), "reference_window_used": window if win else None}
+    # review C3: the fiscal-year reference keeps its own field; the chosen window's value has its own
+    out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": _pack_reference(pack_text)[0],
+           "base_window_gap": win.get("gap"), "reference_window_used": window if win else None,
+           "reference_window_value": civ if win else None}
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth((enrich_data or {}).get("estimates"))
     y2 = _year2_flow(sc.get("base_cf_used"), path)

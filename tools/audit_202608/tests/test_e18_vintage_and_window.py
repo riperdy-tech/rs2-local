@@ -130,6 +130,8 @@ def test_the_harness_checks_against_the_nearer_reference():
                             {"estimates": ADI_EST}, pack)
     assert r["reference_window_used"] == "ttm" and r["base_window_gap"] == 0.56
     assert abs(r["base_to_civ"] - 1.02) < 0.01
+    assert abs(r["reference_window_value"] - win["ttm_value"]) < 0.01          # review C3
+    assert abs(r["consensus_implied_value"] - ref["value"]) < 0.01
 
 
 def test_both_windows_printed_needs_a_named_window():

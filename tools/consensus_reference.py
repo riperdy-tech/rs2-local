@@ -30,16 +30,21 @@ Reference path:
 E18 (ADI (b) joint review, 2026-09-25): the reference applied full current-FY growth to a TTM base
 that already held part of that fiscal year, overstating the year-1 flow by about (1+g1)^(q/4):
 +29% on ADI, +35% on AMD, +26% on APH, +9% on LAMR. Fable's E10 ruling that this and end-of-year
-discounting "roughly cancel" was wrong for fast growers. Consensus EPS growth is non-GAAP while
-the base is GAAP owner earnings; D&A added back absorbs most of that gap.
+discounting "roughly cancel" was wrong for fast growers. Consensus EPS growth is adjusted (non-GAAP)
+while the base is filed owner earnings, stock pay expensed and the base year's one-offs included.
+The whole-book test (2026-09-26) measured that gap: for about a third of names the printed year-2
+level sits more than 20% below the analysts' own path, so the reference is more conservative than
+the street's there. That is the E10 design, not an error; D&A does not absorb it.
 
 The whole-book test of E18 (2026-09-26, 176 names) failed, and Fable ruled:
 - The period comes from the consensus VINTAGE, not the calendar. The vendor's year-ago revenue for
-  the current year names the fiscal year its estimates start from. When the latest filed fiscal
-  year ended more than 12 months ago and the vendor has moved past it (EPAC, PSMT and MU showed it
-  had not: their year-ago revenue is the filed year's to the dollar), years 1-2 are the EPS levels,
-  valued at the end of the unfiled year. History older than 15 months is "stale", not a reference.
-- A fiscal-year base that is not positive (LIVN) goes to the EPS levels too, as LIND does.
+  the current year names the fiscal year its estimates start from (EPAC, PSMT and MU: the filed year
+  to the dollar, 12.9 months after it ended). A failed or unknown test means "not verified", never
+  "the vendor has rolled" (review ruling, 2026-09-27): vendor revenue for ZTO, ATAT and VIPS is 6.99x
+  ours, for RNW 116x. History older than 15 months is "stale", not a reference.
+- A fiscal-year base that is not positive (LIVN) goes to the EPS levels, as LIND does. Vendor EPS
+  LEVELS meet filed D&A and capex only when the vintage test passes (`levels_block` otherwise); the
+  growth method and the range levels use ratios of the vendor's own figures and are exempt.
 - The E18/old ratio followed the base WINDOW (rank correlation 0.975), not the period: net-income
   one-offs and capex swings land in the fiscal year or in the TTM. Neither window is right for every
   name (GOOG's TTM holds equity mark-ups, BMRN's an acquired-IPR&D charge), so when the TTM differs
@@ -169,13 +174,16 @@ def vintage_aligned(estimates, fy_revenue):
 
 
 def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex=None,
-          stub_months=None, base_label=None, levels_reason=None):
+          stub_months=None, base_label=None, levels_reason=None, levels_block=None):
     """Everything the pack prints: {'value', 'method', 'path', 'flows', 'c1', 'c2', 'reason',
     'levels', 'range', 'stub_months', 'base_label', 'levels_reason'}.
     method "growth": years 1-2 at consensus EPS growth on the owner-earnings base.
     method "levels": years 1-2 are consensus EPS x diluted shares + D&A - capex, when consensus EPS
     growth is unusable, when the base is not positive, or when `levels_reason` says why the base
     cannot carry the consensus rates. `value` is None, with a reason, when neither can be computed.
+    `levels_block` (review B1): why the vendor's EPS levels may not be combined with the filed D&A
+    and capex for this company (the vintage test failed or could not run); the levels method is then
+    not available.
     E18: with `stub_months` (months since the base fiscal year ended), the value is taken at that
     fiscal year end and rolled forward to today at coe."""
     c1, c2, why = consensus_earnings_growth(estimates)
@@ -210,6 +218,9 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
         return out
     out["levels_reason"] = levels_reason
     why = why or levels_reason
+    if levels_block:
+        out["reason"] = f"{why}; the EPS levels are not used: {levels_block}"
+        return out
     levels = consensus_eps_levels(estimates)
     if levels is None or da is None or capex is None:
         out["reason"] = why + ("" if levels else "; no positive next-FY EPS level") + \
@@ -246,14 +257,30 @@ def window_check(ref, fy_base, ttm_base, quarters):
     return out
 
 
+def fence_window(win, side, fence):
+    """Review B2: a TTM-window value outside the street fence is withheld, as E15 withholds the
+    fiscal-year one; the line then prints the side of the fence."""
+    if not (win and win.get("ttm_value") is not None and side):
+        return win
+    return dict(win, ttm_value=None, ttm_levels=None, fence_side=side, fence=fence)
+
+
 def window_line(win, ref, ttm_base, through, fmt_b):
     """SECTION 8's BASE WINDOW CHECK, printed only when the windows are more than WINDOW_TOL apart.
     The prefixes are fixed: the harness parses the gap, the TTM reference and its year-2 level."""
     if not (win and win["flag"]):
         return None
-    alt = (f"On the TTM window the consensus path is worth ${win['ttm_value']:,.2f} per share, year-2 "
-           f"cash-flow level {fmt_b(win['ttm_levels'][1])}"
-           if win["ttm_value"] is not None else "The TTM window's owner earnings are not positive")
+    if win.get("fence_side"):
+        # review B2: the E15 fence applies to the TTM window's value too; its side, never its number
+        lo, hi = win["fence"]
+        alt = (f"On the TTM window the consensus path lands {win['fence_side']} the street fence "
+               f"[${lo:,.2f}, ${hi:,.2f}], so its value is not shown: a Base on that window needs "
+               f"guidance_deviation_reason")
+    elif win["ttm_value"] is not None:
+        alt = (f"On the TTM window the consensus path is worth ${win['ttm_value']:,.2f} per share, year-2 "
+               f"cash-flow level {fmt_b(win['ttm_levels'][1])}")
+    else:
+        alt = "The TTM window's owner earnings are not positive"
     return (f"- [Arithmetic] BASE WINDOW CHECK: base_window_gap {win['gap'] * 100:+.0f}%. TTM owner earnings "
             f"(through {through}) are {fmt_b(ttm_base)}; the fiscal-year base grown by the consensus "
             f"current-FY EPS growth for the {win['quarters']} quarter(s) between them is "

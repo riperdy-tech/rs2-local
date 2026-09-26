@@ -711,26 +711,76 @@ def _parse_asof(asof):
     return datetime.strptime(str(asof)[:10], "%Y-%m-%d").date()
 
 
-def _fye_month_day(t):
+def _fye_month_day(t, with_source=False):
     """(month, day) of this company's fiscal year end, from TODAY's `fundamentals_ttm.json`.
 
     This is the ONLY use a point-in-time pack makes of a same-day snapshot file: not the VALUE
     of anything filed, only the recurring calendar pattern of WHEN this company's fiscal year
     closes (e.g. NVDA closes in late January, not December) — a structural fact about the
     company's reporting calendar that is, for essentially every filer, unchanged year over year
-    and so carries no look-ahead about what happened in the period being restricted. Falls back
-    to a calendar (Dec 31) fiscal year end when no current record is held for this ticker at all.
+    and so carries no look-ahead about what happened in the period being restricted. With no TTM
+    record, the month and day of the vendor's newest dated annual statement (review B3: WSE and TOP
+    close on 31 March; the old calendar default dropped WSE's reference as "after today" and dated
+    RNW's year silently wrong). Only then a calendar (Dec 31) year end, reported as source "default"
+    so the E18 reference can refuse it. `with_source=True` returns (month, day, source).
     """
     from datetime import date as _date
     rec = (rs2_data.load_json(SD / "fundamentals_ttm.json") or {}).get("tickers", {}).get(t) or {}
     fy_end = rec.get("fy_leg_end")
+    out = None
     if isinstance(fy_end, str) and len(fy_end) >= 10:
         try:
             d = _date.fromisoformat(fy_end[:10])
-            return d.month, d.day
+            out = (d.month, d.day, "ttm")
         except ValueError:
             pass
-    return 12, 31
+    if out is None:
+        dates = _vendor_annual_dates(rs2_data.load_json(SD / "financials" / f"{t}.json") or {})
+        out = (dates[0].month, dates[0].day, "vendor") if dates else (12, 31, "default")
+    return out if with_source else out[:2]
+
+
+def _vendor_annual_dates(fin):
+    """The vendor's annual statement dates, newest first; [] when it holds none."""
+    from datetime import date as _date
+    out = []
+    for r in fin.get("Annual_Income_Statement") or []:
+        try:
+            out.append(_date.fromisoformat(str(r.get("Date"))[:10]))
+        except ValueError:
+            pass
+    return sorted(out, reverse=True)
+
+
+def _vendor_fy_end_for(fin, net_income):
+    """Review B3: the date of the vendor's annual statement whose net income matches our filed
+    fiscal year's within the vintage tolerance, which confirms the label year; else None."""
+    from datetime import date as _date
+    if not isinstance(net_income, (int, float)) or net_income == 0:
+        return None
+    for r in fin.get("Annual_Income_Statement") or []:
+        v = r.get("NetIncome")
+        if isinstance(v, (int, float)) and abs(v / net_income - 1) <= consensus_reference.VINTAGE_TOL:
+            try:
+                return _date.fromisoformat(str(r.get("Date"))[:10])
+            except ValueError:
+                return None
+    return None
+
+
+def _vendor_capex_usable(fin, fy_end):
+    """Review B1: (usable, why not). The vendor's latest-annual capex may stand in for a filed one
+    only when the screener's FX block shows no unconverted currency on this vendor file and the
+    vendor's latest annual statement is dated at our latest fiscal year end within 7 days (RNW
+    subtracted 94.0B of rupee capex from dollar net income)."""
+    fx = fin.get("FX") or {}
+    if fx and not fx.get("converted") and fx.get("flag"):
+        return False, (f"the vendor's statements are in {fx.get('statement_currency')}, not converted "
+                       f"({fx.get('flag')})")
+    dates = _vendor_annual_dates(fin)
+    if not dates or fy_end is None or abs((dates[0] - fy_end).days) > 7:
+        return False, "the vendor's latest annual statement is not dated at our latest fiscal year end"
+    return True, None
 
 
 def _fy_end_date_for(year, month, day):
@@ -891,6 +941,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
     _ref_da = _ref_capex = None   # FY D&A and TTM capex, for the reference's EPS-levels method
     _ref_fy = None      # E18: the last full fiscal year's base and its age, for the reference
     _ref_fy_na = None   # E18: why that fiscal year cannot anchor the consensus path
+    _aligned = None     # E18: the vendor's estimates start from the filed fiscal year (vintage test)
     if asof_date is not None:
         from datetime import timedelta as _td
         asof_cutoff = asof_date - _td(days=POINT_IN_TIME_FILING_LAG_DAYS)
@@ -1946,13 +1997,22 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         ni_src, capex_src = "TTM net income", "TTM capex"
         oe_src = ["ttm", "ttm"]
         _fy_rec = (h.get(str(latest_yr)) or {}) if latest_yr is not None else {}
+        # Review B3/B1 (2026-09-27): the fiscal year end (TTM record, else the vendor's dated
+        # statements, the matching net income confirming the label year), and whether the vendor's
+        # capex may stand in for a filed one
+        _fye_mm = _fye_dd = _fye_src = _fy_end_dt = None
+        if latest_yr is not None:
+            _fye_mm, _fye_dd, _fye_src = _fye_month_day(t, with_source=True)
+            _fy_end_dt = ((_vendor_fy_end_for(fin, _fy_rec.get("net_income")) if _fye_src != "ttm" else None)
+                          or _fy_end_date_for(int(latest_yr), _fye_mm, _fye_dd))
+        _ven_capex_ok, _ven_capex_why = _vendor_capex_usable(fin, _fy_end_dt)
         if not isinstance(ni, (int, float)) and isinstance(_fy_rec.get("net_income"), (int, float)):
             ni, ni_src, oe_src[0] = _fy_rec["net_income"], f"FY{latest_yr} net income (no TTM held)", "fy"
         if not isinstance(capex, (int, float)):
             _ven_capex = fin.get("Capital_Expenditure")
             if isinstance(_fy_rec.get("capex"), (int, float)):
                 capex, capex_src, oe_src[1] = _fy_rec["capex"], f"FY{latest_yr} capex (no TTM capex held)", "fy"
-            elif isinstance(_ven_capex, (int, float)) and _ven_capex < 0:
+            elif isinstance(_ven_capex, (int, float)) and _ven_capex < 0 and _ven_capex_ok:
                 # yfinance reports capex as a negative cash flow (FCF = OCF + capex). A positive
                 # figure would mean that convention changed under us, so it is refused.
                 capex, oe_src[1] = -float(_ven_capex), "vendor"
@@ -1967,11 +2027,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         # growth is measured from, valued at that year end and rolled forward to today. A TTM base
         # with fiscal-year growth counted part of the current year twice (ADI +29%, AMD +35%).
         if latest_yr is not None:
-            _fye_mm, _fye_dd = _fye_month_day(t)
-            _fy_end_dt = _fy_end_date_for(int(latest_yr), _fye_mm, _fye_dd)
             _stub = (datetime.now().date() - _fy_end_dt).days / 30.4375
             _fy_cx = _fy_rec.get("capex")
-            if not isinstance(_fy_cx, (int, float)):
+            if not isinstance(_fy_cx, (int, float)) and _ven_capex_ok:
                 _vc = fin.get("Capital_Expenditure")
                 _fy_cx = -float(_vc) if isinstance(_vc, (int, float)) and _vc < 0 else None
             _fy_ni, _fy_da = _fy_rec.get("net_income"), _fy_rec.get("da")
@@ -1988,31 +2046,33 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             _age = (datetime.now().date() - _newest).days / 30.4375
             _aligned = consensus_reference.vintage_aligned(en.get("estimates") if en else None,
                                                            _fy_rec.get("revenue"))
-            if _stub < 0:
+            if _fye_src == "default":
+                _ref_fy_na = "the fiscal year end is unknown (no TTM record and no dated vendor statement)"
+            elif _stub < 0:
                 _ref_fy_na = f"FY{latest_yr} ends {_fy_end_dt.isoformat()}, after today"
             elif _age > consensus_reference.STALE_MONTHS:
                 _ref_fy_na = (f"stale history: the newest period we hold ends {_newest.isoformat()}, "
                               f"{_age:.0f} months ago")
             elif _stub > 12 and _aligned is not True:
-                # the vendor has moved past the next fiscal year (or cannot say): years 1-2 are the
-                # EPS levels of the years it now calls current and next, valued at the end of the
-                # year our filings do not hold yet
-                _fy1_end = _fy_end_date_for(int(latest_yr) + 1, _fye_mm, _fye_dd)
-                _ref_fy = {"stub": (datetime.now().date() - _fy1_end).days / 30.4375,
-                           "label": f"FY{int(latest_yr) + 1}, ended {_fy1_end.isoformat()}, not yet in our filings",
-                           "rolled": True,
-                           "levels_reason": (f"consensus has moved past FY{int(latest_yr) + 1}, which ended "
-                                             f"{_fy1_end.isoformat()} and is not yet in our filings "
-                                             f"(fy_rolled_unfiled)"),
-                           "da": _fy_da if isinstance(_fy_da, (int, float)) else None,
-                           "capex": _fy_cx, "base": None}
+                # review B1: a failed or unknown vintage test is "not verified", never "rolled"
+                _ref_fy_na = (f"not verified: FY{latest_yr} ended {_stub:.0f} months ago and the vendor's "
+                              f"year-ago revenue does not match its filed revenue within 2%, so the year "
+                              f"consensus starts from cannot be checked")
             else:
                 _ref_fy = {"stub": _stub,
                            "label": f"FY{latest_yr}, the last full fiscal year, ended {_fy_end_dt.isoformat()}",
                            "da": _fy_da if isinstance(_fy_da, (int, float)) else None,
                            "capex": _fy_cx,
                            "base": (_fy_ni + _fy_da - _fy_cx)
-                           if all(isinstance(x, (int, float)) for x in (_fy_ni, _fy_da, _fy_cx)) else None}
+                           if all(isinstance(x, (int, float)) for x in (_fy_ni, _fy_da, _fy_cx)) else None,
+                           # review B1: the vendor's EPS levels meet filed D&A and capex only when
+                           # the vintage test shows the two describe the same year and currency
+                           "levels_block": (None if _aligned is True else
+                                            f"the vendor's year-ago revenue does not match FY{latest_yr}'s "
+                                            f"filed revenue within 2% (currency, perimeter or period)"
+                                            if _aligned is False else
+                                            f"the vendor's year-ago revenue is not available to check "
+                                            f"against FY{latest_yr}'s filed revenue")}
                 # the FY and TTM windows are compared only when the TTM is this fiscal year's own
                 if f and _thr is not None and not ttm_stale and oe_src == ["ttm", "ttm"]:
                     _ref_fy["quarters"] = max(0, round((_thr - _fy_end_dt).days / 30.4375 / 3))
@@ -2374,7 +2434,23 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             _ya = (p0.get("eps") or {}).get("year_ago")
             _fyh = (h.get(str(latest_yr)) or {}) if latest_yr is not None else {}
             _fy_ni_x, _fy_sh_x = _fyh.get("net_income"), _fyh.get("shares_diluted")
+            # review B4 (2026-09-27): only when the vendor's figures and ours are on one basis: the
+            # vintage test passes and our filed share count agrees with the pack's (APH read -50%
+            # across a split, ADS names read +290% and +2168%)
+            _sh_ok = (isinstance(sh, (int, float)) and sh > 0 and isinstance(_fy_sh_x, (int, float))
+                      and abs(_fy_sh_x / sh - 1) <= consensus_reference.LEVEL_TOL)
             if (isinstance(_ya, (int, float)) and _ya > 0 and isinstance(_fy_ni_x, (int, float))
+                    and isinstance(_fy_sh_x, (int, float)) and _fy_sh_x > 0 and _fy_ni_x != 0
+                    and not (_aligned is True and _sh_ok)):
+                L.append(f"- BASE-YEAR CHECK: not available \u2014 "
+                         + (f"the vendor's year-ago revenue does not match FY{latest_yr}'s filed revenue within 2%"
+                            if _aligned is False else
+                            f"the vendor's year-ago revenue is not available to check against FY{latest_yr}'s "
+                            f"filed revenue" if _aligned is None else
+                            f"our filed FY{latest_yr} diluted share count ({_fy_sh_x / 1e9:.3f}B) and SECTION 2's "
+                            f"({sh / 1e9:.3f}B) differ by more than 15% (a split, ADS units or share classes)")
+                         + ", so the vendor's year-ago EPS and ours are not on one basis.")
+            elif (isinstance(_ya, (int, float)) and _ya > 0 and isinstance(_fy_ni_x, (int, float))
                     and isinstance(_fy_sh_x, (int, float)) and _fy_sh_x > 0 and _fy_ni_x != 0):
                 _fy_eps = _fy_ni_x / _fy_sh_x
                 L.append(f"- [Arithmetic] BASE-YEAR CHECK: consensus measures current-FY EPS growth from a "
@@ -2417,7 +2493,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                     _med / 100.0 if isinstance(_med, (int, float)) else None,
                     da=_fy.get("da"), capex=_fy.get("capex"),
                     stub_months=_fy.get("stub"), base_label=_fy.get("label"),
-                    levels_reason=_fy.get("levels_reason"))
+                    levels_reason=_fy.get("levels_reason"), levels_block=_fy.get("levels_block"))
                 if not _ref_fy and _ref.get("value") is None and _ref_fy_na:
                     _ref["reason"] = _ref_fy_na
                 # E15: outside the fail-fast fence the reference is not a credible summary of the
@@ -2438,6 +2514,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 else:
                     L.append(consensus_reference.pack_line(_ref, _fy.get("base"), _coe or 0.0, terminal_g_val or 0.0, _b))
                     _win = consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters"))
+                    if _win and _win.get("ttm_value") is not None:
+                        _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
+                        _win = consensus_reference.fence_window(_win, _wside, _wfence)
                     _wl = consensus_reference.window_line(_win, _ref, _ref_oe, _fy.get("through"), _b)
                     if _wl:
                         L.append(_wl)
@@ -2758,7 +2837,7 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
     — at least one dated, industry-specific indicator (pricing, inventory, capacity, order
     trends); a growth rate alone is not evidence.
   * Explain The Recent Move First: start from the CATALYST BRIEF, RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions. For each development say whether you accept or dispute it and why, and how it enters your Bull, Base and Bear numbers; add any development you find yourself and fetch the articles you rely on. Record them in `catalysts`. If a public takeover offer for the company is pending, value the business standalone; in the memorandum state the probability you give the offer and the expected value with and without it. The verdict stays on standalone value.
-  * Scenarios Anchored To Expectations: Stage-1 growth rates are growth of the CASH FLOW you value (base_cf), not of revenue: revenue growth leaves out margin change. SECTION 8's CONSENSUS-IMPLIED VALUE line prints the consensus cash-flow LEVELS for year 1 and year 2, built on the last full fiscal year, the same period consensus growth is measured from. Base years 1-2 reach those levels from whatever base you declare: the levels are the anchor, not the growth rates, so a base from another period (TTM, a cash basis) needs growth that lands on the same year-2 level; a Base year-2 cash flow more than 15% from the printed level needs guidance_deviation_reason. If no levels are printed, start from the company's guidance converted to cash-flow growth, or revenue growth plus your stated margin path, and say so in guidance_deviation_reason. When SECTION 8 prints a BASE WINDOW CHECK, the fiscal-year and TTM owner earnings disagree by more than consensus growth explains: find the item behind the gap in the filings, name in base_cf_reason the window you judge representative, and anchor to that window's reference and year-2 level. From year 3 growth follows revenue again: fade from next-FY consensus revenue growth toward the GROWTH BASE RATES median by year 5, never above next-FY revenue growth; anything above its p90 needs the MANDATE's dated evidence. When SECTION 8 prints Bull and Bear year-2 levels (3 or more analysts), the Bull and Bear year-2 cash flows reach them; say why in scenario_deviation_reason if not. With fewer analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one, otherwise state your own range and why. SECTION 8's CONSENSUS-IMPLIED VALUE is what the consensus path is worth at our discount rate; a Base IV more than a quarter away from it needs guidance_deviation_reason. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
+  * Scenarios Anchored To Expectations: Stage-1 growth rates are growth of the CASH FLOW you value (base_cf), not of revenue: revenue growth leaves out margin change. SECTION 8's CONSENSUS-IMPLIED VALUE line prints the consensus cash-flow LEVELS for year 1 and year 2, built on the last full fiscal year, the same period consensus growth is measured from. Base years 1-2 reach those levels from whatever base you declare: the levels are the anchor, not the growth rates, so a base from another period (TTM, a cash basis) needs growth that lands on the same year-2 level; a Base year-2 cash flow more than 15% from the printed level needs guidance_deviation_reason. If no levels are printed, start from the company's guidance converted to cash-flow growth, or revenue growth plus your stated margin path, and say so in guidance_deviation_reason. When SECTION 8 prints a BASE WINDOW CHECK, the fiscal-year and TTM owner earnings disagree by more than consensus growth explains: find the item behind the gap in the filings, name in base_cf_reason the window you judge representative, and anchor to that window's reference and year-2 level; where the TTM window's value is not shown (it lands outside the street fence), a Base on that window needs guidance_deviation_reason. From year 3 growth follows revenue again: fade from next-FY consensus revenue growth toward the GROWTH BASE RATES median by year 5, never above next-FY revenue growth; anything above its p90 needs the MANDATE's dated evidence. When SECTION 8 prints Bull and Bear year-2 levels (3 or more analysts), the Bull and Bear year-2 cash flows reach them; say why in scenario_deviation_reason if not. With fewer analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one, otherwise state your own range and why. SECTION 8's CONSENSUS-IMPLIED VALUE is what the consensus path is worth at our discount rate; a Base IV more than a quarter away from it needs guidance_deviation_reason. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
   * Share Count And Net Debt: Use SECTION 2's share count in every scenario. A contingent instrument (warrants or earn-outs that vest on milestones) may be added only in the scenarios where it vests (pass shares_diluted per scenario), with shares_basis "diluted_plus_contingent" and shares_reason naming the instrument and its vesting condition; never in a scenario whose premise is that it does not vest. In the firm frame use SECTION 6's NET DEBT as net_debt unless net_debt_reason says why.
   * Valuation Frame: Use the equity frame (valuation_frame "equity", rate_type "cost_of_equity", no net_debt). Every flow this pack prints (OWNER EARNINGS, CASH BASIS, the cash basis column, FCF) is after interest, an equity flow, and SECTION 1.5 anchors a cost of equity, not a WACC. The firm frame is the exception and needs all three of: a pre-interest flow (add back after-tax interest expense from SECTION 5 and give the amount in interest_addback, in $B); a WACC built from the COE ANCHOR, a cost of debt from filed interest over debt, a tax rate and weights from SECTION 6, stated in wacc_reason; and SECTION 6's NET DEBT. An after-interest flow in the firm frame counts the debt twice.
   * Terminal Growth And Multiple: terminal_g defaults to SECTION 1.5's long-run growth anchor; a terminal_g more than 0.5 points from it needs terminal_reason with dated evidence. The exit multiple defaults to SECTION 1.5's DEFAULT EXIT MULTIPLE (at a scenario's other rate, the desk's implied_terminal_ev_fcf_gordon for that scenario): the flow has already faded to terminal_g, so any other multiple asserts another terminal growth. The desk returns it as exit_implied_terminal_g; if it is more than 0.5 points from the terminal_g anchor, give terminal_reason with dated peer EV/FCF evidence. A P/E ratio is not an EV/FCF multiple, and this pack holds no EV/FCF peer data.

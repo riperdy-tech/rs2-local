@@ -23,7 +23,8 @@ def test_the_base_year_check_and_eps_analyst_count(screener_data_stub, monkeypat
     en = {"_ticker": "GEV", "_fetched_at": "2026-09-24T12:00:00",
           "estimates": {"0y": {"eps": {"avg": 20.0, "low": 18.0, "high": 22.0, "analysts": 25, "growth": 0.13,
                                        "year_ago": 17.70},
-                               "revenue": {"avg": 41e9, "low": 40e9, "high": 42e9, "analysts": 24, "growth": 0.08}},
+                               "revenue": {"avg": 41e9, "low": 40e9, "high": 42e9, "analysts": 24, "growth": 0.08,
+                                           "year_ago": 38068000000}},
                         "+1y": {"eps": {"avg": 24.0, "low": 21.0, "high": 27.0, "analysts": 23, "growth": 0.20},
                                 "revenue": {"avg": 45e9, "low": 43e9, "high": 47e9, "analysts": 22, "growth": 0.10}}}}
     orig = rs2_data.load_json
@@ -34,3 +35,7 @@ def test_the_base_year_check_and_eps_analyst_count(screener_data_stub, monkeypat
     fy_eps = 4.884e9 / 276e6           # the fixture's FY2025 net income / diluted shares = $17.70
     assert f"${fy_eps:.2f}" in line and "year-ago EPS of $17.70" in line and "+0% apart" in line
     assert "| EPS analysts |" in pack and "| $20.00 | $18.00 | $22.00 | 25 |" in pack
+    # review B4: without a vintage match the two EPS figures are not on one basis
+    del en["estimates"]["0y"]["revenue"]["year_ago"]
+    line = next(l for l in str(cap.build_pack("GEV")).splitlines() if "BASE-YEAR CHECK" in l)
+    assert line.startswith("- BASE-YEAR CHECK: not available") and "not available to check" in line
