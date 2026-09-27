@@ -1,0 +1,247 @@
+[
+  {
+    "run": "EZPW_20260927_191240",
+    "worktree": "rs2-P4-bat",
+    "sample": 1,
+    "price": 31.16,
+    "snapshot": "rs2-P4-bat/ab_reports/consensus/EZPW_20260927_191240/sample1_research/_research_snapshot.json",
+    "snapshot_sha256": "8ba6edeb853f09d85636d83cb10d4230b33fb0474ac078cdaf67e9cd156e74e0",
+    "facts": {
+      "shares": 61443377.0,
+      "coe_anchor": 0.0891
+    },
+    "typed": {
+      "base_iv": 58.76,
+      "bull_iv": 76.12,
+      "bear_iv": 30.11,
+      "base_probability": 0.45,
+      "bull_probability": 0.25,
+      "bear_probability": 0.3,
+      "kelly_fraction_pct": 24.75,
+      "asymmetric_payoff_skew": 42.82,
+      "base_cf_used": 0.148,
+      "stage1_growth_path": [
+        0.08,
+        0.09,
+        0.082,
+        0.069,
+        0.056
+      ],
+      "fade_years": 5,
+      "coe_used": 0.0891,
+      "coe_source": "anchor",
+      "valuation_frame": "equity",
+      "terminal_method": "dual_reconciled",
+      "terminal_multiple_or_g": 0.0375,
+      "cash_flow_life": "perpetual",
+      "shares_basis": "diluted",
+      "verdict_label": "undervalued"
+    },
+    "filled": {
+      "base_iv": 58.76,
+      "bull_iv": 76.12,
+      "bear_iv": 30.11,
+      "base_probability": 0.45,
+      "bull_probability": 0.25,
+      "bear_probability": 0.3,
+      "kelly_fraction_pct": 24.75,
+      "asymmetric_payoff_skew": 42.82,
+      "base_cf_used": 0.148,
+      "stage1_growth_path": [
+        0.08,
+        0.09,
+        0.082,
+        0.069,
+        0.056
+      ],
+      "fade_years": 5,
+      "coe_used": 0.0891,
+      "coe_source": "anchor",
+      "valuation_frame": "equity",
+      "terminal_method": "gordon",
+      "terminal_multiple_or_g": 0.0375,
+      "cash_flow_life": "perpetual",
+      "shares_basis": "diluted",
+      "verdict_label": "undervalued"
+    },
+    "prov": {
+      "mode": "joint",
+      "answer_call_index": 8,
+      "legs": {
+        "base": "gordon",
+        "bull": "gordon",
+        "bear": "gordon"
+      },
+      "unfilled": [],
+      "blend": false
+    },
+    "disagrees": [
+      "terminal_method"
+    ]
+  },
+  {
+    "run": "FIX_20260925_053027",
+    "worktree": "rs2-P4-run",
+    "sample": 1,
+    "price": 1643.39,
+    "snapshot": "rs2-P4-run/ab_reports/consensus/FIX_20260925_053027/sample1_research/_research_snapshot.json",
+    "snapshot_sha256": "8e567a907959c9f808c5ed8c8d7a9a49978c4a9474280d7a3e6348df5de968e8",
+    "facts": {
+      "shares": 35194329.0,
+      "coe_anchor": 0.0898
+    },
+    "typed": {
+      "base_iv": 1915.27,
+      "bull_iv": 2605.22,
+      "bear_iv": 701.33,
+      "base_probability": 0.5,
+      "bull_probability": 0.3,
+      "bear_probability": 0.2,
+      "kelly_fraction_pct": 18.22,
+      "asymmetric_payoff_skew": 1.02,
+      "base_cf_used": 1.186,
+      "stage1_growth_path": [
+        0.697,
+        0.228,
+        0.167,
+        0.145,
+        0.122
+      ],
+      "fade_years": 5,
+      "coe_used": 0.0898,
+      "coe_source": "anchor",
+      "valuation_frame": "firm",
+      "terminal_method": "dual_reconciled",
+      "terminal_multiple_or_g": 0.0375,
+      "cash_flow_life": null,
+      "shares_basis": null,
+      "verdict_label": "undervalued"
+    },
+    "filled": {
+      "base_iv": 1905.66,
+      "bull_iv": 2595.66,
+      "bear_iv": 789.84,
+      "base_probability": 0.5,
+      "bull_probability": 0.3,
+      "bear_probability": 0.2,
+      "kelly_fraction_pct": 21.33,
+      "asymmetric_payoff_skew": 1.12,
+      "base_cf_used": 1.186,
+      "stage1_growth_path": [
+        0.697,
+        0.228,
+        0.167,
+        0.145,
+        0.122
+      ],
+      "fade_years": 5,
+      "coe_used": 0.0898,
+      "coe_source": "anchor",
+      "valuation_frame": "firm",
+      "terminal_method": "exit_multiple",
+      "terminal_multiple_or_g": 19.84,
+      "cash_flow_life": "perpetual",
+      "shares_basis": "diluted",
+      "verdict_label": "undervalued"
+    },
+    "prov": {
+      "mode": "joint",
+      "answer_call_index": 5,
+      "legs": {
+        "base": "exit",
+        "bull": "exit",
+        "bear": "exit"
+      },
+      "unfilled": [],
+      "blend": false
+    },
+    "disagrees": [
+      "bear_iv",
+      "kelly_fraction_pct",
+      "terminal_method",
+      "terminal_multiple_or_g"
+    ]
+  },
+  {
+    "run": "UGI_20260925_080045",
+    "worktree": "rs2-P4-run",
+    "sample": 1,
+    "price": 36.37,
+    "snapshot": "rs2-P4-run/ab_reports/consensus/UGI_20260925_080045/sample1_research/_research_snapshot.json",
+    "snapshot_sha256": "d23c80135b2222c11e71189ee21be3795989aac1233a920ef24902127748108a",
+    "facts": {
+      "shares": 214494967.0,
+      "coe_anchor": 0.07719999999999999
+    },
+    "typed": {
+      "base_iv": 42.08,
+      "bull_iv": 46.24,
+      "bear_iv": 27.54,
+      "base_probability": 0.5,
+      "bull_probability": 0.3,
+      "bear_probability": 0.2,
+      "kelly_fraction_pct": 15.5,
+      "asymmetric_payoff_skew": 1.118,
+      "base_cf_used": 0.357,
+      "stage1_growth_path": [
+        -0.158,
+        0.151,
+        0.056,
+        0.056,
+        0.056
+      ],
+      "fade_years": 5,
+      "coe_used": 0.0772,
+      "coe_source": "anchor",
+      "valuation_frame": "equity",
+      "terminal_method": "dual_reconciled",
+      "terminal_multiple_or_g": 0.0375,
+      "cash_flow_life": null,
+      "shares_basis": "diluted",
+      "verdict_label": "undervalued"
+    },
+    "filled": {
+      "base_iv": 42.08,
+      "bull_iv": 46.24,
+      "bear_iv": 27.54,
+      "base_probability": 0.5,
+      "bull_probability": 0.3,
+      "bear_probability": 0.2,
+      "kelly_fraction_pct": 24.75,
+      "asymmetric_payoff_skew": 1.12,
+      "base_cf_used": 0.357,
+      "stage1_growth_path": [
+        -0.158,
+        0.151,
+        0.056,
+        0.056,
+        0.056
+      ],
+      "fade_years": 5,
+      "coe_used": 0.0772,
+      "coe_source": "anchor",
+      "valuation_frame": "equity",
+      "terminal_method": "exit_multiple",
+      "terminal_multiple_or_g": 26.1,
+      "cash_flow_life": "perpetual",
+      "shares_basis": "diluted",
+      "verdict_label": "undervalued"
+    },
+    "prov": {
+      "mode": "joint",
+      "answer_call_index": 13,
+      "legs": {
+        "base": "exit",
+        "bull": "exit",
+        "bear": "gordon"
+      },
+      "unfilled": [],
+      "blend": false
+    },
+    "disagrees": [
+      "kelly_fraction_pct",
+      "terminal_method",
+      "terminal_multiple_or_g"
+    ]
+  }
+]

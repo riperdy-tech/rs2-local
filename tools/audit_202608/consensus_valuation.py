@@ -55,6 +55,7 @@ from fiduciary_gate import validate_fiduciary_contract  # noqa: E402
 from research_brief_guard import check_research_brief  # noqa: E402
 from pack_data_sanity import check_pack_data_sanity  # noqa: E402
 import pack_facts  # noqa: E402
+import contract_fill  # noqa: E402
 
 OUT = HERE / "ab_reports" / "consensus"
 # THRESHOLDS — calibrated against four reference points on GOOG @ $343.54, not invented:
@@ -545,6 +546,7 @@ def select_medoid_scorecard(
             "desk_calls": None, "desk_iv_match": None,
             "desk_reverse_neutral_cagr": None, "coe_minus_anchor": None,
             "catalysts": None, "bull_below_price_reason": None, "bear_above_price_reason": None,
+            "code_fill_mode": None, "typed_contract_disagrees": None,
         }
 
     ivs = [r["iv"] for r in good]
@@ -622,6 +624,8 @@ def select_medoid_scorecard(
             "finite_life_years": san_fb.get("finite_life_years"),
             "cash_flow_life": san_fb.get("cash_flow_life"),
             "cash_flow_life_reason": san_fb.get("cash_flow_life_reason"),
+            "code_fill_mode": None,
+            "typed_contract_disagrees": None,
         }
         return san_fb, summary
 
@@ -728,6 +732,8 @@ def select_medoid_scorecard(
         "catalysts": medoid_card.get("catalysts"),
         "bull_below_price_reason": medoid_card.get("bull_below_price_reason"),
         "bear_above_price_reason": medoid_card.get("bear_above_price_reason"),
+        "code_fill_mode": (medoid_card.get("code_fill") or {}).get("mode"),
+        "typed_contract_disagrees": medoid_card.get("typed_contract_disagrees"),
     }
     return medoid_card, summary
 
@@ -2338,9 +2344,6 @@ def main():
         eval_rate = resp.get("eval_rate")
         eval_dur_s = resp.get("eval_duration_s")
         scorecard = extract_scorecard(rep, price)
-        ivs = extract_iv(rep, price)
-        iv = scorecard.get("base_iv") or (st.median(ivs) if ivs else None)
-        ok, why, flags = plausibility(iv, price, t)
 
         # Harness-filled per sample from tool snapshot (P4.0a)
         snapshot_dir = None
@@ -2353,6 +2356,23 @@ def main():
                 snapshot_dir = d / f"sample{i}_research"
                 if not (snapshot_dir / "_research_snapshot.json").exists():
                     snapshot_dir = d / f"sample{i}_research_retry"
+
+        calls = []
+        if use_tools and snapshot_dir and (snapshot_dir / "_research_snapshot.json").exists():
+            snap_file = snapshot_dir / "_research_snapshot.json"
+            calls = json.loads(snap_file.read_text(encoding="utf-8")).get("calls") or []
+
+        typed = {k: scorecard.get(k) for k in contract_fill.FILLED}
+        filled, prov = contract_fill.fill(calls, scorecard, facts, price)
+        scorecard.update(filled)
+        scorecard["typed_contract"] = typed
+        scorecard["code_fill"] = prov
+        scorecard["typed_contract_disagrees"] = contract_fill.disagrees(typed, filled)
+
+        ivs = extract_iv(rep, price)
+        iv = scorecard.get("base_iv") or (st.median(ivs) if ivs else None)
+        ok, why, flags = plausibility(iv, price, t)
+
         desk_info = extract_desk_snapshot_metrics(
             snapshot=snapshot_dir,
             base_iv=iv,

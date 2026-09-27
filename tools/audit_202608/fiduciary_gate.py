@@ -59,6 +59,26 @@ def contract_base(scorecard):
     return sc.get("base_iv") or sc.get("median_iv")
 
 
+def payoff_skew(
+    bull_iv: Optional[float],
+    bear_iv: Optional[float],
+    price: Optional[float]
+) -> Optional[float]:
+    """Calculates asymmetric payoff skew: upside / downside.
+
+    Returns None when price is missing or not positive, or bull_iv or bear_iv is None.
+    A downside <= 0 gives 99.9 when upside > 0, else 0.0;
+    otherwise round(upside / downside, 2).
+    """
+    if price is None or price <= 0 or bull_iv is None or bear_iv is None:
+        return None
+    downside = price - bear_iv
+    upside = bull_iv - price
+    if downside <= 0:
+        return 99.9 if upside > 0 else 0.0
+    return round(upside / downside, 2)
+
+
 def validate_fiduciary_contract(
     scorecard: Dict[str, Any],
     price: float
@@ -222,14 +242,8 @@ def validate_fiduciary_contract(
             card["kelly_fraction_pct"] = round(min(25.0, max(0.0, kelly_pct)), 2)
 
     # 5. Payoff Skew Recalculation
-    if price and price > 0 and bull_iv is not None and bear_iv is not None:
-        downside = price - bear_iv
-        upside = bull_iv - price
-        if downside <= 0:
-            skew = 99.9 if upside > 0 else 0.0
-        else:
-            skew = round(upside / downside, 2)
-
+    skew = payoff_skew(bull_iv, bear_iv, price)
+    if skew is not None:
         old_skew = card.get("asymmetric_payoff_skew")
         if old_skew is None or abs(float(old_skew) - skew) > 0.1:
             if old_skew is not None:
