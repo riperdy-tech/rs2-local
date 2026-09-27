@@ -397,6 +397,7 @@ CONTRACT_PASSTHROUGH = (
     "stage1_growth_path", "guidance_deviation_reason", "cycle_evidence",
     "verdict_label", "desk_calls", "desk_iv_match",
     "desk_reverse_neutral_cagr", "coe_minus_anchor",
+    "desk_share_basis_matched",
     # P4.2 momentum mandate (Section 12 contract)
     "momentum_view", "entry_timing", "momentum_flip_condition",
     "momentum_break_rule", "invalidation_rules",
@@ -647,6 +648,7 @@ def band_verdict(doc):
         "desk_iv_match": scorecard.get("desk_iv_match"),
         "desk_reverse_neutral_cagr": scorecard.get("desk_reverse_neutral_cagr"),
         "coe_minus_anchor": scorecard.get("coe_minus_anchor"),
+        "desk_share_basis_matched": scorecard.get("desk_share_basis_matched"),
         # Phase 4 E10: how far the base sits from consensus, stamped whatever reason was given
         "years12_ratio": scorecard.get("years12_ratio"),
         "base_to_civ": scorecard.get("base_to_civ"),

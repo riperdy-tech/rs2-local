@@ -2449,9 +2449,15 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         for y in yrs:
             r = h[str(y)]
             y_debt = r.get("lt_debt") if r.get("lt_debt") is not None else (vendor_debt if y == latest_y else None)
+            sh_cell = _n(r.get("shares_diluted"))
+            if sh_cell != NULL:
+                c_clean = sh_cell.replace(",", "").strip()
+                if re.match(r"^-?\d+(?:\.\d+)?$", c_clean):
+                    facts["filed_shares_diluted"] = float(c_clean)
+                    facts["filed_shares_fy"] = y   # yrs holds ints (`sorted(int(y) for y in h)`)
             L.append(_row([str(y), _b(r.get("cash")), _b(y_debt),
                            _b(r.get("total_liabilities")), _b(r.get("equity")),
-                           _b(r.get("retained_earnings")), _n(r.get("shares_diluted"))]))
+                           _b(r.get("retained_earnings")), sh_cell]))
         L += ["",
               "- `working capital` = current assets minus current liabilities. `change in WC` is "
               "the year-over-year difference of that.",

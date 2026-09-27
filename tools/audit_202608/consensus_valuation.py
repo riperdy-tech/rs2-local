@@ -236,7 +236,7 @@ def extract_scorecard(report, price):
         "desk_reverse_neutral_cagr": None,
         "coe_minus_anchor": None,
     }
-    
+
     # 1. Primary: Structured JSON block from Section 12
     jm = re.search(r"```json:underwriting\s*(\{.*?\})\s*```", report, re.DOTALL)
     if not jm:
@@ -545,6 +545,7 @@ def select_medoid_scorecard(
             "position_basis": None, "momentum_evidence": None,
             "desk_calls": None, "desk_iv_match": None,
             "desk_reverse_neutral_cagr": None, "coe_minus_anchor": None,
+            "desk_share_basis_matched": None,
             "catalysts": None, "bull_below_price_reason": None, "bear_above_price_reason": None,
             "code_fill_mode": None, "typed_contract_disagrees": None,
         }
@@ -618,6 +619,7 @@ def select_medoid_scorecard(
             "desk_iv_match": san_fb.get("desk_iv_match"),
             "desk_reverse_neutral_cagr": san_fb.get("desk_reverse_neutral_cagr"),
             "coe_minus_anchor": san_fb.get("coe_minus_anchor"),
+            "desk_share_basis_matched": san_fb.get("desk_share_basis_matched"),
             "catalysts": san_fb.get("catalysts"),
             "bull_below_price_reason": san_fb.get("bull_below_price_reason"),
             "bear_above_price_reason": san_fb.get("bear_above_price_reason"),
@@ -729,6 +731,7 @@ def select_medoid_scorecard(
         "desk_iv_match": medoid_card.get("desk_iv_match"),
         "desk_reverse_neutral_cagr": medoid_card.get("desk_reverse_neutral_cagr"),
         "coe_minus_anchor": medoid_card.get("coe_minus_anchor"),
+        "desk_share_basis_matched": medoid_card.get("desk_share_basis_matched"),
         "catalysts": medoid_card.get("catalysts"),
         "bull_below_price_reason": medoid_card.get("bull_below_price_reason"),
         "bear_above_price_reason": medoid_card.get("bear_above_price_reason"),
@@ -1581,6 +1584,18 @@ def _evaluate_contract_mismatches(inputs: dict, sc: dict) -> list[str]:
     return mismatches
 
 
+_SHARES_REASON_CITED_RE = re.compile(
+    r"\b(10-K|10-Q|8-K|20-F|6-K|40-F|DEF\s*14A|S-1|424B\w*|SECTION\s*6B|SECTION\s*2(?!\.\d))\b",
+    re.IGNORECASE,
+)
+
+
+def _is_shares_reason_cited(reason: str | None) -> bool:
+    if not reason:
+        return False
+    return bool(_SHARES_REASON_CITED_RE.search(str(reason)))
+
+
 def extract_desk_snapshot_metrics(
     snapshot=None,
     base_iv=None,
@@ -1850,24 +1865,64 @@ def extract_desk_snapshot_metrics(
             desk_matched_inputs = best_cand["inputs"]
             desk_years35_capped = bool(best_cand.get("capped", False))
 
+    desk_share_basis_matched = None
     share_flags = []
     share_implausible = False
     share_reason = None
 
     if desk_matched_inputs and facts:
-        n_val = facts.get("shares_outstanding")
-        if isinstance(n_val, (int, float)) and n_val > 0:
-            pack_shares_b = n_val / 1e9
-            call_shares = desk_matched_inputs.get("shares_diluted")
-            if call_shares is not None and call_shares > 0:
-                ratio = max(call_shares, pack_shares_b) / min(call_shares, pack_shares_b)
-                ratio_r = round(ratio, 2)
-                if ratio > 1.250001:
+        call_shares = desk_matched_inputs.get("shares_diluted")
+        if call_shares is not None and call_shares > 0:
+            desk_count = float(call_shares)
+            n_val = facts.get("shares_outstanding")
+            candidates = []
+            if isinstance(n_val, (int, float)) and n_val > 0:
+                candidates.append(("vendor", n_val / 1e9))
+
+            filed_val = facts.get("filed_shares_diluted")
+            if (
+                isinstance(n_val, (int, float))
+                and n_val > 0
+                and isinstance(filed_val, (int, float))
+                and filed_val > 0
+            ):
+                fy_vendor_ratio = filed_val / n_val
+                if 0.55 < fy_vendor_ratio < 1.8:
+                    candidates.append(("filed_fy_wa", filed_val / 1e9))
+
+            if candidates:
+                ratios = []
+                for name, val in candidates:
+                    r = max(desk_count, val) / min(desk_count, val)
+                    ratios.append((name, val, r))
+                ratios.sort(key=lambda x: x[2])
+                nearest_name, nearest_val, nearest_ratio = ratios[0]
+
+                if nearest_ratio <= 1.010001:
+                    desk_share_basis_matched = nearest_name
+
+                ratio_r = round(nearest_ratio, 2)
+                if nearest_ratio >= 1.099999:
                     share_flags.append(f"desk_share_count_mismatch_{ratio_r:.2f}x")
+
+                raw_shares_reason = scorecard.get("shares_reason") if scorecard else None
+                has_shares_reason = bool(
+                    raw_shares_reason is not None
+                    and str(raw_shares_reason).strip() != ""
+                    and str(raw_shares_reason).strip().lower() not in ("null", "none")
+                )
+
+                # A departure is a count more than 1% from SECTION 2's (the vendor candidate); a
+                # reason attached to SECTION 2's own count is not a departure and is not flagged.
+                departs = not any(name == "vendor" and r <= 1.010001 for name, _v, r in ratios)
+                if has_shares_reason:
+                    if departs:
+                        share_flags.append("desk_share_count_departure_with_reason")
+                        if not _is_shares_reason_cited(raw_shares_reason):
+                            share_flags.append("shares_reason_uncited")
+                elif nearest_ratio > 1.250001:
                     share_implausible = True
                     share_reason = "desk share count off by more than 25% (units or omission)"
-                elif ratio >= 1.10:
-                    share_flags.append(f"desk_share_count_mismatch_{ratio_r:.2f}x")
 
     eff_anchor = coe_anchor if coe_anchor is not None else desk_anchor_from_params
     if eff_anchor is None and ticker:
@@ -1896,6 +1951,7 @@ def extract_desk_snapshot_metrics(
         "desk_share_flags": share_flags,
         "desk_share_implausible": share_implausible,
         "desk_share_reason": share_reason,
+        "desk_share_basis_matched": desk_share_basis_matched,
         "desk_per_share_ivs": desk_ivs,
         "desk_years35_capped": desk_years35_capped,
     }
@@ -2501,6 +2557,7 @@ def main():
                      "desk_reverse_neutral_cagr": desk_info["desk_reverse_neutral_cagr"],
                      "coe_minus_anchor": desk_info["coe_minus_anchor"],
                      "desk_matched_inputs": desk_info.get("desk_matched_inputs"),
+                     "desk_share_basis_matched": desk_info.get("desk_share_basis_matched"),
                      "desk_validation_errors": meta.get("desk_validation_errors", 0),
                      "research_calls": research_calls,
                      "repeat_calls": repeat_calls,

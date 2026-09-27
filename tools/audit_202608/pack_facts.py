@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-FACTS_VERSION = 1
+FACTS_VERSION = 2
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -26,6 +26,8 @@ KEYS: list[str] = [
     "interest_expense_latest_b",
     "owner_earnings_source",
     "coe_anchor",
+    "filed_shares_diluted",
+    "filed_shares_fy",
 ]
 
 _CIV_RE = re.compile(r"CONSENSUS-IMPLIED VALUE \(reference, not a forecast\): \$([\d,]+\.\d+) per share")
@@ -164,6 +166,26 @@ def from_text(pack_text: str | None) -> dict[str, Any]:
     if m_coe:
         coe = float(m_coe.group(1)) / 100.0
 
+    filed_shares = None
+    filed_fy = None
+    for i, ln in enumerate(lines):
+        if ln.strip().startswith("| FY |"):
+            cols = [c.strip() for c in ln.strip().strip("|").split("|")]
+            if "wtd-avg shares" in cols:
+                k = cols.index("wtd-avg shares")
+                for row in lines[i + 2:]:
+                    if not row.strip().startswith("|"):
+                        break
+                    cells = [c.strip() for c in row.strip().strip("|").split("|")]
+                    # A year row starts with the four-digit fiscal year SECTION 6B prints (str(y));
+                    # any other row is not a year row and is skipped, never parsed for digits.
+                    if len(cells) > k and re.fullmatch(r"\d{4}", cells[0]):
+                        c_clean = cells[k].replace(",", "").strip()
+                        if re.match(r"^-?\d+(?:\.\d+)?$", c_clean):
+                            filed_shares = float(c_clean)
+                            filed_fy = int(cells[0])
+                break
+
     return {
         "version": FACTS_VERSION,
         "source": "text",
@@ -179,6 +201,8 @@ def from_text(pack_text: str | None) -> dict[str, Any]:
         "interest_expense_latest_b": interest_exp,
         "owner_earnings_source": oe_source,
         "coe_anchor": coe,
+        "filed_shares_diluted": filed_shares,
+        "filed_shares_fy": filed_fy,
     }
 
 
@@ -194,7 +218,11 @@ def read_sidecar(d: str | Path) -> dict[str, Any] | None:
     p = Path(d) / SIDECAR
     if not p.is_file():
         return None
-    return json.loads(p.read_text(encoding="utf-8"))
+    data = json.loads(p.read_text(encoding="utf-8"))
+    for k in ("filed_shares_diluted", "filed_shares_fy"):
+        if k not in data:
+            data[k] = None
+    return data
 
 
 def parity(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
