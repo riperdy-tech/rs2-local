@@ -877,6 +877,169 @@ def test_reverse_dcf_never_uses_defaulted_share_count():
     assert "explicit shares_diluted required" in res_skip["reverse_dcf"]["note"]
 
 
+def test_finite_life_10_years_equals_hand_computed_pv():
+    # 10-year finite life equals the hand-computed PV of 10 flows (no terminal)
+    base_cf = 10.0
+    rates = [0.05, 0.05, 0.05, 0.05, 0.05]
+    fade_years = 5
+    terminal_g = 0.02
+    wacc = 0.08
+    shares = 1.0
+
+    # Hand computation:
+    cf = base_cf
+    pv_sum = 0.0
+    # Stage 1: 5 years at 5%
+    for i in range(1, 6):
+        cf = cf * 1.05
+        pv_sum += cf / (1.08 ** i)
+    # Stage 2: 5 years linear fade from 5% to 2%
+    for i in range(1, 6):
+        year = 5 + i
+        g_t = 0.05 + (0.02 - 0.05) * (i / 5)
+        cf = cf * (1.0 + g_t)
+        pv_sum += cf / (1.08 ** year)
+
+    res = unbundled_dcf(
+        base_cf=base_cf,
+        growth_rates=rates,
+        wacc=wacc,
+        terminal_g=terminal_g,
+        fade_years=fade_years,
+        shares_diluted=shares,
+        sbc_treatment="deducted_in_cf",
+        finite_life_years=10,
+    )
+    assert res["terminal_method"] == "finite life 10 years"
+    assert res["terminal_value_pv"] == 0
+    assert res["terminal_share_of_value"] == 0
+    assert res["finite_life_years"] == 10
+    assert len(res["projected_cfs"]) == 10
+    assert res["dcf_pv"] == pytest.approx(round(pv_sum, 2), 0.01)
+    assert res["per_share_iv"] == pytest.approx(round(pv_sum, 2), 0.01)
+
+
+def test_finite_life_shorter_than_stage1_truncates_it():
+    # Finite life shorter than stage-1 path truncates it (e.g. 3 years on 5-year path)
+    res = unbundled_dcf(
+        base_cf=10.0,
+        growth_rates=[0.10, 0.10, 0.10, 0.10, 0.10],
+        wacc=0.10,
+        terminal_g=0.02,
+        fade_years=0,
+        shares_diluted=1.0,
+        sbc_treatment="deducted_in_cf",
+        finite_life_years=3,
+    )
+    assert len(res["projected_cfs"]) == 3
+    assert len(res["pv_cfs"]) == 3
+    # Year 1: 11 / 1.1 = 10; Year 2: 12.1 / 1.21 = 10; Year 3: 13.31 / 1.331 = 10 => sum = 30
+    assert res["dcf_pv"] == pytest.approx(30.0, 0.01)
+    assert res["per_share_iv"] == pytest.approx(30.0, 0.01)
+    assert res["terminal_value_pv"] == 0
+
+
+def test_finite_life_ignores_exit_multiple_with_note():
+    # Exit multiple is ignored and result carries note: "exit multiple ignored: finite life"
+    res = unbundled_dcf(
+        base_cf=10.0,
+        growth_rates=[0.05, 0.05, 0.05, 0.05, 0.05],
+        wacc=0.08,
+        terminal_g=0.02,
+        terminal_exit_multiple=15.0,
+        fade_years=0,
+        shares_diluted=1.0,
+        sbc_treatment="deducted_in_cf",
+        finite_life_years=10,
+    )
+    assert res.get("note") == "exit multiple ignored: finite life"
+    assert res["terminal_value_pv"] == 0
+    assert res["terminal_method"] == "finite life 10 years"
+    assert "per_share_iv_exit" not in res
+
+
+def test_finite_life_validation_errors():
+    # Validation errors for 0, 61, 2.5
+    for bad_val in (0, 61, 2.5):
+        res = unbundled_dcf(
+            base_cf=10.0,
+            growth_rates=[0.05, 0.05, 0.05, 0.05, 0.05],
+            wacc=0.08,
+            terminal_g=0.02,
+            fade_years=0,
+            shares_diluted=1.0,
+            sbc_treatment="deducted_in_cf",
+            finite_life_years=bad_val,
+        )
+        assert res.get("validation_error") is True
+        assert "finite_life_years" in res.get("missing", [])
+
+
+def test_call_without_finite_life_is_unchanged():
+    # Call without finite_life_years is unchanged (compare to test_unbundled_dcf_basic values)
+    res = unbundled_dcf(
+        base_cf=10.0,
+        growth_rates=[0.10, 0.10, 0.10, 0.10, 0.10],
+        wacc=0.10,
+        terminal_g=0.025,
+        terminal_exit_multiple=15.0,
+        net_debt=5.0,
+        shares_diluted=1.0,
+        fade_years=0,
+        sbc_treatment="deducted_in_cf",
+        valuation_frame="firm",
+    )
+    assert res["per_share_iv"] > 0
+    assert res["terminal_value_pv"] > 0
+    assert "finite_life_years" not in res
+    assert "finite life" not in res["terminal_method"]
+
+
+def test_finite_life_execute_financial_model_batch():
+    # execute_financial_model passes finite_life_years to scenario DCFs
+    params = {
+        "price": 100.0,
+        "shares_diluted": 1.0,
+        "terminal_g": 0.02,
+        "fade_years": 0,
+        "sbc_treatment": "deducted_in_cf",
+        "scenarios": [
+            {
+                "name": "Base",
+                "prob": 0.5,
+                "base_cf": 10.0,
+                "growth_rates": [0.05, 0.05, 0.05],
+                "wacc": 0.08,
+                "terminal_g": 0.02,
+                "finite_life_years": 3,
+            },
+            {
+                "name": "Bull",
+                "prob": 0.5,
+                "base_cf": 10.0,
+                "growth_rates": [0.10, 0.10, 0.10],
+                "wacc": 0.08,
+                "terminal_g": 0.02,
+            }
+        ]
+    }
+    res = execute_financial_model(params)
+    assert not res.get("error")
+    scs = res.get("scenario_dcfs") or []
+    assert len(scs) == 2
+    base_dcf = scs[0]["dcf"]
+    assert base_dcf["finite_life_years"] == 3
+    assert base_dcf["terminal_method"] == "finite life 3 years"
+    assert base_dcf["terminal_value_pv"] == 0
+
+    bull_dcf = scs[1]["dcf"]
+    assert "finite_life_years" not in bull_dcf
+    assert bull_dcf["terminal_value_pv"] > 0
+
+    md = format_model_results_markdown(res)
+    assert "finite life 3 years" in md
+
+
 
 
 

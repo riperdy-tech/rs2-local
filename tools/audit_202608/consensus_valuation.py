@@ -185,6 +185,9 @@ def extract_scorecard(report, price):
         "terminal_reason": None,
         "interest_addback": None,
         "wacc_reason": None,
+        # Revision 11: finite life
+        "finite_life_reason": None,
+        "finite_life_years": None,
         # Harness-filled per sample from tool snapshot (not declared by model)
         "desk_calls": None,
         "desk_iv_match": None,
@@ -224,6 +227,13 @@ def extract_scorecard(report, price):
                 card["bull_below_price_reason"] = str(card["bull_below_price_reason"]).strip()
             if card.get("bear_above_price_reason"):
                 card["bear_above_price_reason"] = str(card["bear_above_price_reason"]).strip()
+            if card.get("finite_life_reason"):
+                card["finite_life_reason"] = str(card["finite_life_reason"]).strip()
+            if card.get("finite_life_years") is not None:
+                try:
+                    card["finite_life_years"] = int(card["finite_life_years"])
+                except (ValueError, TypeError):
+                    pass
             if card["base_iv"] and price and 0.02 * price <= card["base_iv"] <= 10 * price:
                 return card
         except Exception:
@@ -566,6 +576,8 @@ def select_medoid_scorecard(
             "catalysts": san_fb.get("catalysts"),
             "bull_below_price_reason": san_fb.get("bull_below_price_reason"),
             "bear_above_price_reason": san_fb.get("bear_above_price_reason"),
+            "finite_life_years": san_fb.get("finite_life_years"),
+            "finite_life_reason": san_fb.get("finite_life_reason"),
         }
         return san_fb, summary
 
@@ -653,7 +665,8 @@ def select_medoid_scorecard(
                                            "terminal_multiple_reason", "interest_addback", "wacc_reason",
                                            "owner_earnings_source", "consensus_reference_status",
                                            "terminal_g_gap_bp", "terminal_reason", "base_window_gap",
-                                           "reference_window_used", "reference_window_value")},
+                                           "reference_window_used", "reference_window_value",
+                                           "finite_life_years", "finite_life_reason")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -1127,7 +1140,7 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
         res = c.get("result") if isinstance(c.get("result"), dict) else c
         top = {k: params.get(k) for k in ("explicit_growth", "growth_rates", "shares_diluted", "net_debt",
                                           "valuation_frame", "discount_rate", "wacc", "base_cf",
-                                          "terminal_exit_multiple", "terminal_g")}
+                                          "terminal_exit_multiple", "terminal_g", "finite_life_years")}
         scs = res.get("scenario_dcfs") or res.get("scenarios") or []
         scs = scs if isinstance(scs, list) else []
         if role:
@@ -1149,6 +1162,8 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
                 applied = d.get("explicit_growth") or p_sc.get("explicit_growth") or p_sc.get("growth_rates")
                 if applied:
                     out["explicit_growth"] = applied
+                if d.get("finite_life_years") is not None:
+                    out["finite_life_years"] = d.get("finite_life_years")
                 out["name"] = sc.get("name")
                 out["_desk"] = _desk_terminal(d, close)
                 return out
@@ -1158,6 +1173,8 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
             out = dict(top)
             if d.get("explicit_growth"):
                 out["explicit_growth"] = d["explicit_growth"]
+            if d.get("finite_life_years") is not None:
+                out["finite_life_years"] = d.get("finite_life_years")
             out["_desk"] = _desk_terminal(d, close)
             return out
     return None
@@ -1171,9 +1188,12 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
     sc = scorecard or {}
     calls = []
     try:
-        p = Path(snapshot_dir) / "_research_snapshot.json" if snapshot_dir else None
-        if p and p.exists():
-            calls = json.loads(p.read_text(encoding="utf-8")).get("calls") or []
+        if snapshot_dir:
+            p = Path(snapshot_dir)
+            if p.is_dir():
+                p = p / "_research_snapshot.json"
+            if p.exists():
+                calls = json.loads(p.read_text(encoding="utf-8")).get("calls") or []
     except Exception:
         calls = []
     stamps = {"bull_years12_ratio": None, "bear_years12_ratio": None, "base_shares_ratio": None,
@@ -1182,7 +1202,8 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
               "bear_exit_g_gap_bp": None, "base_exit_to_gordon_multiple": None,
               "owner_earnings_source": _pack_owner_earnings_source(pack_text),
               "terminal_g_gap_bp": None,
-              "consensus_reference_status": _pack_reference_status(pack_text)}
+              "consensus_reference_status": _pack_reference_status(pack_text),
+              "finite_life_years": None}
     flags = []
     g_anchor = _pack_terminal_g(pack_text)
     pack_sh = _pack_shares_b(pack_text)
@@ -1220,6 +1241,11 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         if role == "base":
             stamps["desk_frame"] = inp.get("valuation_frame")
             stamps["desk_net_debt"] = _num_b(inp.get("net_debt"))
+            if inp.get("finite_life_years") is not None:
+                try:
+                    stamps["finite_life_years"] = int(inp["finite_life_years"])
+                except (ValueError, TypeError):
+                    pass
         # E13: the terminal growth a published exit leg asserts, at this scenario's own rate, against
         # the anchor (the call's own terminal_g when the pack has none)
         dt = inp.get("_desk") or {}
@@ -1234,6 +1260,12 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
                 stamps[f"{role}_exit_g_gap_bp"] = round(((m_x * r - 1.0) / (m_x + 1.0) - g_ref) * 10000)
             if role == "base" and _fnum(dt.get("gordon_multiple")):
                 stamps["base_exit_to_gordon_multiple"] = round(m_x / _fnum(dt["gordon_multiple"]), 3)
+
+    if stamps["finite_life_years"] is None and sc.get("finite_life_years") is not None:
+        try:
+            stamps["finite_life_years"] = int(sc["finite_life_years"])
+        except (ValueError, TypeError):
+            pass
 
     def _has(field):
         v = str(sc.get(field) or "").strip()
@@ -1268,6 +1300,28 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
             and not _has("net_debt_reason") \
             and abs(stamps["desk_net_debt"] - nd_default) > max(0.1, 0.05 * abs(nd_default)):
         flags.append("net_debt_off_default_without_reason")
+    # Revision 11: finite_life_without_reason when any desk scenario of the final run used finite_life_years and finite_life_reason is empty
+    model_calls = [c for c in (calls or []) if isinstance(c, dict) and c.get("tool") == "run_financial_model"]
+    finite_life_in_desk = False
+    if model_calls:
+        last_c = model_calls[-1]
+        p = last_c.get("params") or {}
+        r = last_c.get("result") if isinstance(last_c.get("result"), dict) else last_c
+        for s in (p.get("scenarios") or []):
+            if isinstance(s, dict) and s.get("finite_life_years") is not None:
+                finite_life_in_desk = True
+                break
+        if not finite_life_in_desk:
+            for s in (r.get("scenario_dcfs") or last_c.get("scenario_dcfs") or []):
+                if isinstance(s, dict) and ((s.get("dcf") or {}).get("finite_life_years") is not None or s.get("finite_life_years") is not None):
+                    finite_life_in_desk = True
+                    break
+        if not finite_life_in_desk:
+            if p.get("finite_life_years") is not None or ((r.get("dcf_model") or last_c.get("dcf_model") or {}).get("finite_life_years") is not None):
+                finite_life_in_desk = True
+
+    if finite_life_in_desk and not _has("finite_life_reason"):
+        flags.append("finite_life_without_reason")
     # carriable (Fable): the model's own label against the 10% rule on its own base, per sample
     try:
         b, lbl = float(sc.get("base_iv")), str(sc.get("verdict_label") or "").strip().lower()

@@ -141,3 +141,69 @@ def test_a_bull_and_base_with_the_same_value_are_matched_by_name(tmp_path):
     assert inp["name"] == "Bull" and inp["explicit_growth"][0] == 0.30
     inp = cv._desk_scenario_inputs([call], 500.0, role="base")
     assert inp["name"] == "Base"
+
+
+def test_finite_life_years_stamped_from_base_scenario_desk_snapshot(tmp_path):
+    params = {"price": 609.43, "base_cf": 7.578, "shares_diluted": 1.6325, "valuation_frame": "equity",
+              "scenarios": [
+                  {"name": "Base", "finite_life_years": 25, "explicit_growth": [0.817, 1.055, 0.528, 0.325, 0.122]},
+                  {"name": "Bull", "explicit_growth": [0.9664, 1.4695, 0.60, 0.40, 0.15]},
+                  {"name": "Bear", "explicit_growth": [0.679, 0.371, -0.10, 0.02, 0.06]}
+              ]}
+    call = {"tool": "run_financial_model", "params": params,
+            "scenario_dcfs": [
+                {"name": "Base", "dcf": {"per_share_iv": 464.47, "finite_life_years": 25}},
+                {"name": "Bull", "dcf": {"per_share_iv": 933.25}},
+                {"name": "Bear", "dcf": {"per_share_iv": 70.69}}
+            ]}
+    (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [call]}), encoding="utf-8")
+    flags, st = cv.scenario_checks(tmp_path, _sc(finite_life_reason="25-year mine life per NI 43-101"),
+                                   {"estimates": EST}, PACK, 609.43)
+    assert st["finite_life_years"] == 25
+    assert "finite_life_without_reason" not in flags
+
+
+def test_finite_life_without_reason_flagged_when_reason_empty(tmp_path):
+    params = {"price": 609.43, "base_cf": 7.578, "shares_diluted": 1.6325, "valuation_frame": "equity",
+              "scenarios": [
+                  {"name": "Base", "finite_life_years": 25, "explicit_growth": [0.817, 1.055, 0.528, 0.325, 0.122]},
+                  {"name": "Bull", "explicit_growth": [0.9664, 1.4695, 0.60, 0.40, 0.15]},
+                  {"name": "Bear", "explicit_growth": [0.679, 0.371, -0.10, 0.02, 0.06]}
+              ]}
+    call = {"tool": "run_financial_model", "params": params,
+            "scenario_dcfs": [
+                {"name": "Base", "dcf": {"per_share_iv": 464.47, "finite_life_years": 25}},
+                {"name": "Bull", "dcf": {"per_share_iv": 933.25}},
+                {"name": "Bear", "dcf": {"per_share_iv": 70.69}}
+            ]}
+    (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [call]}), encoding="utf-8")
+    flags, st = cv.scenario_checks(tmp_path, _sc(), {"estimates": EST}, PACK, 609.43)
+    assert st["finite_life_years"] == 25
+    assert "finite_life_without_reason" in flags
+
+
+def test_finite_life_in_any_desk_scenario_without_reason_is_flagged(tmp_path):
+    params = {"price": 609.43, "base_cf": 7.578, "shares_diluted": 1.6325, "valuation_frame": "equity",
+              "scenarios": [
+                  {"name": "Base", "explicit_growth": [0.817, 1.055, 0.528, 0.325, 0.122]},
+                  {"name": "Bull", "explicit_growth": [0.9664, 1.4695, 0.60, 0.40, 0.15]},
+                  {"name": "Bear", "finite_life_years": 10, "explicit_growth": [0.679, 0.371, -0.10, 0.02, 0.06]}
+              ]}
+    call = {"tool": "run_financial_model", "params": params,
+            "scenario_dcfs": [
+                {"name": "Base", "dcf": {"per_share_iv": 464.47}},
+                {"name": "Bull", "dcf": {"per_share_iv": 933.25}},
+                {"name": "Bear", "dcf": {"per_share_iv": 70.69, "finite_life_years": 10}}
+            ]}
+    (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [call]}), encoding="utf-8")
+    flags, st = cv.scenario_checks(tmp_path, _sc(), {"estimates": EST}, PACK, 609.43)
+    assert st["finite_life_years"] is None
+    assert "finite_life_without_reason" in flags
+
+
+def test_finite_life_years_stamped_from_contract_fallback(tmp_path):
+    snap = _snapshot(tmp_path, 1.6325)
+    flags, st = cv.scenario_checks(snap, _sc(finite_life_years=15, finite_life_reason="15-year concession"),
+                                   {"estimates": EST}, PACK, 609.43)
+    assert st["finite_life_years"] == 15
+    assert "finite_life_without_reason" not in flags

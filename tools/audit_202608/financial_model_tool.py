@@ -102,16 +102,26 @@ def unbundled_dcf(
     sector_multiple_band: Optional[Dict[str, Any]] = None,
     sbc_treatment: Optional[str] = None,
     sbc_dilution: Optional[float] = None,
+    finite_life_years: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Calculate three-stage DCF per Phase 4 Decision D1:
     - Explicit growth (Stage 1)
     - Linear fade to terminal_g over fade_years (Stage 2)
     - Dual terminal valuation: Gordon growth and exit multiple (when given), both discounted to t=0
+    - Optional finite_life_years (1-60): discrete flows for N years with no terminal value
     - Valuation frame gating (equity refuses nonzero net_debt; firm requires net_debt and shares_diluted)
     - rate_engine.check_pairing wired with FrameMismatch structured refusal
     - SBC treatment single declaration; double deduction refused
     - Implied terminal EV/FCF multiple and reconciliation against sector_multiple_band
     """
+    if finite_life_years is not None:
+        if type(finite_life_years) is bool or not isinstance(finite_life_years, int) or finite_life_years < 1 or finite_life_years > 60:
+            return {
+                "error": f"invalid finite_life_years: must be an integer between 1 and 60 (got {finite_life_years})",
+                "missing": ["finite_life_years"],
+                "validation_error": True,
+            }
+
     v_err = _validate_required_dcf_inputs(
         terminal_g=terminal_g,
         shares_diluted=shares_diluted,
@@ -185,7 +195,7 @@ def unbundled_dcf(
         else:
             effective_shares = effective_shares + sd
 
-    if rate <= terminal_g:
+    if finite_life_years is None and rate <= terminal_g:
         return {"error": f"wacc ({rate}) must be greater than terminal_g ({terminal_g})"}
 
     # Project discrete cash flows: Stage 1 (explicit) + Stage 2 (linear fade)
@@ -195,7 +205,11 @@ def unbundled_dcf(
     growth_applied = []
     year = 0
 
+    max_years = finite_life_years if finite_life_years is not None else None
+
     for g in rates:
+        if max_years is not None and year >= max_years:
+            break
         year += 1
         g_val = float(g)
         cf = cf * (1.0 + g_val)
@@ -207,8 +221,20 @@ def unbundled_dcf(
     g_last = float(rates[-1])
     if fade_years > 0:
         for i in range(1, fade_years + 1):
+            if max_years is not None and year >= max_years:
+                break
             year += 1
             g_t = g_last + (terminal_g - g_last) * (i / fade_years)
+            cf = cf * (1.0 + g_t)
+            pv = cf / ((1.0 + rate) ** year)
+            yearly_cfs.append(round(cf, 4))
+            pv_cfs.append(round(pv, 4))
+            growth_applied.append(round(g_t, 4))
+
+    if max_years is not None:
+        while year < max_years:
+            year += 1
+            g_t = terminal_g
             cf = cf * (1.0 + g_t)
             pv = cf / ((1.0 + rate) ** year)
             yearly_cfs.append(round(cf, 4))
@@ -224,6 +250,43 @@ def unbundled_dcf(
     if annuity_flow and float(annuity_flow) > 0:
         cap_rate = float(annuity_cap_rate) if (annuity_cap_rate and float(annuity_cap_rate) > 0) else max(0.04, rate - 0.01)
         annuity_pv = float(annuity_flow) / cap_rate
+
+    # Finite life handling: no terminal value (neither Gordon nor exit multiple)
+    if finite_life_years is not None:
+        has_exit = terminal_exit_multiple is not None and float(terminal_exit_multiple) > 0
+        ev = dcf_pv + annuity_pv
+        eq = ev - effective_net_debt
+        per_share_iv = eq / effective_shares
+
+        res: Dict[str, Any] = {
+            "per_share_iv": round(per_share_iv, 2),
+            "enterprise_value": round(ev, 2),
+            "equity_value": round(eq, 2),
+            "dcf_pv": round(dcf_pv, 2),
+            "terminal_value_nominal": 0,
+            "terminal_value_pv": 0,
+            "terminal_method": f"finite life {finite_life_years} years",
+            "terminal_share_of_value": 0,
+            "finite_life_years": finite_life_years,
+            "annuity_pv": round(annuity_pv, 2),
+            "projected_cfs": yearly_cfs,
+            "pv_cfs": pv_cfs,
+            "growth_rates_applied": growth_applied,
+            "explicit_growth": [round(float(g), 4) for g in rates],
+            "fade_years": fade_years,
+            "terminal_g": terminal_g,
+            "net_debt": round(effective_net_debt, 2),
+            "shares_diluted": round(effective_shares, 4),
+            "valuation_frame": frame,
+            "rate_type": rate_type_norm,
+            "discount_rate_applied": round(rate, 4),
+        }
+        if has_exit:
+            res["note"] = "exit multiple ignored: finite life"
+        if sbc_treatment is not None:
+            res["sbc_treatment"] = sbc_treatment
+            res["sbc_dilution"] = sbc_dilution
+        return res
 
     # Stage 3: Terminal Value calculation — BOTH Gordon and exit multiple (when given)
     # Gordon terminal leg
@@ -844,6 +907,7 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
 
                 sc_frame = sc.get("valuation_frame", val_frame)
                 sc_net_debt = float(sc["net_debt"]) if sc.get("net_debt") is not None else top_net_debt
+                s_fly = sc.get("finite_life_years") if sc.get("finite_life_years") is not None else params.get("finite_life_years")
                 dcf_res = unbundled_dcf(
                     base_cf=float(s_cf),
                     growth_rates=[float(g) for g in s_gr],
@@ -860,6 +924,7 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
                     sector_multiple_band=sc.get("sector_multiple_band", sector_multiple_band),
                     sbc_treatment=s_sbc,
                     sbc_dilution=s_sbc_dil,
+                    finite_life_years=s_fly,
                 )
                 if not dcf_res.get("error"):
                     sc["iv"] = dcf_res["per_share_iv"]
@@ -892,6 +957,7 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
             sector_multiple_band=sector_multiple_band,
             sbc_treatment=sbc_treatment,
             sbc_dilution=sbc_dilution,
+            finite_life_years=params.get("finite_life_years"),
         )
         if result["dcf_model"].get("error"):
             return result["dcf_model"]
@@ -1009,7 +1075,9 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
         d = res["dcf_model"]
         lines.append(f"**Unbundled DCF Valuation (Frame: {d.get('valuation_frame', 'equity')}, Rate Type: {d.get('rate_type')}):**")
         lines.append(f"- Intrinsic Value: **${d['per_share_iv']}** per share")
-        if "per_share_iv_exit" in d and d.get("per_share_iv_exit") is not None:
+        if d.get("finite_life_years"):
+            lines.append(f"  * Terminal Value: None ({d.get('terminal_method')})")
+        elif "per_share_iv_exit" in d and d.get("per_share_iv_exit") is not None:
             lines.append(f"  * Gordon Terminal Leg: **${d.get('per_share_iv_gordon')}** (implied terminal multiple: {d.get('implied_terminal_ev_fcf_gordon')}x EV/FCF, TV share: {d.get('gordon_terminal', {}).get('terminal_share_of_value', 0)*100:.1f}%)")
             _g_exit = d.get("exit_implied_terminal_g")
             _g_note = (f", implies terminal g {_g_exit * 100:.2f}% vs {d.get('terminal_g', 0) * 100:.2f}% in the Gordon leg"
