@@ -115,6 +115,11 @@ def unbundled_dcf(
     - Implied terminal EV/FCF multiple and reconciliation against sector_multiple_band
     """
     if finite_life_years is not None:
+        # a whole-number float (15.0) or a digit string ("15") is that integer; anything else is refused
+        if isinstance(finite_life_years, float) and finite_life_years.is_integer():
+            finite_life_years = int(finite_life_years)
+        elif isinstance(finite_life_years, str) and finite_life_years.strip().isdigit():
+            finite_life_years = int(finite_life_years.strip())
         if type(finite_life_years) is bool or not isinstance(finite_life_years, int) or finite_life_years < 1 or finite_life_years > 60:
             return {
                 "error": f"invalid finite_life_years: must be an integer between 1 and 60 (got {finite_life_years})",

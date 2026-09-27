@@ -1043,3 +1043,12 @@ def test_finite_life_execute_financial_model_batch():
 
 
 
+
+
+def test_finite_life_accepts_whole_number_float_and_digit_string():
+    kw = dict(base_cf=10.0, growth_rates=[0.05, 0.05, 0.05, 0.05, 0.05], wacc=0.08, terminal_g=0.02, fade_years=0,
+              shares_diluted=1.0, sbc_treatment="deducted_in_cf")
+    ref = unbundled_dcf(finite_life_years=15, **kw)["per_share_iv"]
+    assert unbundled_dcf(finite_life_years=15.0, **kw)["per_share_iv"] == ref
+    assert unbundled_dcf(finite_life_years="15", **kw)["per_share_iv"] == ref
+    assert unbundled_dcf(finite_life_years="15.5", **kw).get("validation_error") is True
