@@ -1350,7 +1350,9 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
     if not cfl_valid or not _has("cash_flow_life_reason"):
         flags.append("cash_flow_life_missing")
 
-    model_calls = [c for c in (calls or []) if isinstance(c, dict) and c.get("tool") == "run_financial_model"]
+    # the last COMPLETED desk run: a refused call (budget exhausted, validation error) keeps whatever the model sent
+    model_calls = [c for c in (calls or []) if isinstance(c, dict) and c.get("tool") == "run_financial_model"
+                   and not c.get("error") and not c.get("validation_error")]
     if model_calls:
         last_c = model_calls[-1]
         p = last_c.get("params") or {}

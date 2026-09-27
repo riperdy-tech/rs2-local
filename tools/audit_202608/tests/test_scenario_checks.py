@@ -311,3 +311,18 @@ def test_extract_scorecard_and_medoid_cash_flow_life():
     card_perp = cv.extract_scorecard(report_perp, 609.43)
     assert card_perp["cash_flow_life"] == "perpetual"
     assert card_perp["cash_flow_life_reason"] == "Infinite franchise"
+
+
+def test_finite_life_mismatch_judges_the_last_completed_run_not_a_refused_call(tmp_path):
+    # MO s2 of the draw ended on a refused call ("financial model call budget exhausted") with no scenarios
+    scen = [{"name": n, "finite_life_years": 15, "explicit_growth": [0.05, 0.05, 0.05, 0.05, 0.05]}
+            for n in ("Base", "Bull", "Bear")]
+    done = {"tool": "run_financial_model", "params": {"price": 100.0, "scenarios": scen},
+            "scenario_dcfs": [{"name": n, "dcf": {"per_share_iv": 90.0, "finite_life_years": 15}}
+                              for n in ("Base", "Bull", "Bear")]}
+    refused = {"tool": "run_financial_model", "params": {"price": 100.0},
+               "error": "financial model call budget exhausted (8); use computed results and finalize memorandum"}
+    (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [done, refused]}), encoding="utf-8")
+    flags, st = cv.scenario_checks(tmp_path, _sc(cash_flow_life=15, cash_flow_life_reason="reserves / production, 10-K"),
+                                   {"estimates": EST}, PACK, 100.0)
+    assert "finite_life_mismatch" not in flags
