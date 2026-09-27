@@ -678,6 +678,7 @@ def band_verdict(doc):
         # pattern: the harness records them, the model never declares them).
         "momentum_state": doc.get("momentum_state"),
         "active_shocks_at_verdict": doc.get("active_shocks_at_verdict"),
+        "pack_facts_source": doc.get("pack_facts_source"),
         "base_cf_reason": scorecard.get("base_cf_reason"),
         "catalysts": scorecard.get("catalysts"),
         "bull_below_price_reason": scorecard.get("bull_below_price_reason"),

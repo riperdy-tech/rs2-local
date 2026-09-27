@@ -54,6 +54,7 @@ import valuation_backbone as vb  # noqa: E402
 from fiduciary_gate import validate_fiduciary_contract  # noqa: E402
 from research_brief_guard import check_research_brief  # noqa: E402
 from pack_data_sanity import check_pack_data_sanity  # noqa: E402
+import pack_facts  # noqa: E402
 
 OUT = HERE / "ab_reports" / "consensus"
 # THRESHOLDS — calibrated against four reference points on GOOG @ $343.54, not invented:
@@ -923,57 +924,24 @@ def check_base_cf_default_reason(scorecard: dict | None) -> list[str]:
     return flags
 
 
-_CIV_RE = re.compile(r"CONSENSUS-IMPLIED VALUE \(reference, not a forecast\): \$([\d,]+\.\d+) per share")
-_P90_COND_RE = re.compile(r"realized next-5y revenue CAGR[^\n]*?p90 (-?[\d.]+)%")
-_P90_SIZE_RE = re.compile(r"5y sustained growth, this size bucket[^\n]*?p90 (-?[\d.]+)%")
-
-
-_LEVELS_RE = re.compile(r"Consensus cash-flow levels: year 1 \$(-?[\d.,]+)B, year 2 \$(-?[\d.,]+)B")
-_RANGE_RE = re.compile(r"Bull year 2 \$(-?[\d.,]+)B and Bear year 2 \$(-?[\d.,]+)B")
-
-
 def _pack_levels(pack_text):
-    """E18: the consensus year-1 and year-2 cash-flow levels ($B) the pack prints, and the Bull and
-    Bear year-2 levels when there is a consensus range. {} for a pack printing none (revision <= 9)."""
-    t = pack_text or ""
-    out = {}
-    m = _LEVELS_RE.search(t)
-    if m:
-        out["year1"], out["year2"] = (float(x.replace(",", "")) for x in m.groups())
-    m = _RANGE_RE.search(t)
-    if m:
-        out["bull2"], out["bear2"] = (float(x.replace(",", "")) for x in m.groups())
-    return out
-
-
-_WINDOW_RE = re.compile(r"BASE WINDOW CHECK: base_window_gap ([+\-]?\d+)%")
-_WINDOW_ALT_RE = re.compile(r"On the TTM window the consensus path is worth \$([\d,]+\.\d+) per share, "
-                            r"year-2 cash-flow level \$(-?[\d.,]+)B")
+    return pack_facts.from_text(pack_text)["levels"]
 
 
 def _pack_window(pack_text):
-    """Whole-book test: the BASE WINDOW CHECK the pack prints when the fiscal-year and TTM windows
-    are more than 15% apart: {'gap', 'ttm_value', 'ttm_year2'}, or {} when none is printed."""
-    t = pack_text or ""
-    m = _WINDOW_RE.search(t)
-    if not m:
-        return {}
-    out = {"gap": int(m.group(1)) / 100.0, "ttm_value": None, "ttm_year2": None}
-    m = _WINDOW_ALT_RE.search(t)
-    if m:
-        out["ttm_value"] = float(m.group(1).replace(",", ""))
-        out["ttm_year2"] = float(m.group(2).replace(",", ""))
-    return out
+    return pack_facts.from_text(pack_text)["base_window"]
 
 
-def reference_window(scorecard, pack_text):
+def reference_window(scorecard, pack_text=None, facts=None):
     """(reference value, year-2 level $B, window) a sample is checked against. With a BASE WINDOW
     CHECK printed, the window whose reference is nearer the sample's base IV (Fable, 2026-09-26: the
     analyst names the window, the harness checks against the nearer reference); else the fiscal-year
     reference and level."""
-    civ, _ = _pack_reference(pack_text)
-    y2 = _pack_levels(pack_text).get("year2")
-    win = _pack_window(pack_text)
+    if facts is None:
+        facts = pack_facts.from_text(pack_text)
+    civ = facts.get("consensus_implied_value")
+    y2 = (facts.get("levels") or {}).get("year2")
+    win = facts.get("base_window") or {}
     iv = (scorecard or {}).get("base_iv")
     if win.get("ttm_value") and civ and isinstance(iv, (int, float)) and iv > 0:
         import math
@@ -991,42 +959,15 @@ def _year2_flow(base_cf, path):
 
 
 def _pack_reference(pack_text):
-    """(consensus-implied value per share, years-3-5 p90 as a fraction) printed in this pack, or
-    None for either. Read from the text so frozen battery packs are checked the same way."""
-    t = pack_text or ""
-    m = _CIV_RE.search(t)
-    civ = float(m.group(1).replace(",", "")) if m else None
-    m = _P90_COND_RE.search(t) or _P90_SIZE_RE.search(t)
-    p90 = float(m.group(1)) / 100.0 if m else None
-    return civ, p90
+    f = pack_facts.from_text(pack_text)
+    return f["consensus_implied_value"], f["years35_p90"]
 
 
-def next_fy_revenue_growth(pack_text: str) -> float | None:
-    """Read next-FY consensus revenue growth from the CONSENSUS ESTIMATES table in pack_text.
-
-    The table row '| next FY |' carries revenue growth in its sixth cell (e.g. '+0.9%').
-    Returns the rate as a float fraction (e.g. 0.009), or None if unavailable or unparseable.
-    """
-    if not pack_text:
-        return None
-    for line in pack_text.splitlines():
-        line_clean = line.strip()
-        if not line_clean.startswith("|"):
-            continue
-        cells = [c.strip() for c in line_clean.split("|")]
-        # cells: ['', 'next FY', 'revenue avg', 'low', 'high', 'analysts', 'growth', ...]
-        if len(cells) > 6 and cells[1].lower() == "next fy":
-            growth_str = cells[6]
-            m = re.search(r"([+-]?\d+(?:\.\d+)?)\s*%", growth_str)
-            if m:
-                try:
-                    return round(float(m.group(1)) / 100.0, 6)
-                except (ValueError, TypeError):
-                    pass
-    return None
+def next_fy_revenue_growth(pack_text: str | None = None) -> float | None:
+    return pack_facts.from_text(pack_text)["next_fy_revenue_growth"]
 
 
-def consensus_ratios(scorecard, enrich_data=None, pack_text=None):
+def consensus_ratios(scorecard, enrich_data=None, pack_text=None, facts=None):
     """E10 ratios stamped on every sample WHATEVER reason the model wrote (Fable check,
     2026-09-24: a model that always fills guidance_deviation_reason would otherwise hide how far
     its base sits from consensus):
@@ -1034,11 +975,13 @@ def consensus_ratios(scorecard, enrich_data=None, pack_text=None):
     - base_to_civ: base IV / the pack's CONSENSUS-IMPLIED VALUE.
     Each is None when it cannot be computed."""
     import consensus_reference
+    if facts is None:
+        facts = pack_facts.from_text(pack_text)
     sc = scorecard or {}
-    civ, lv2, window = reference_window(sc, pack_text)
-    win = _pack_window(pack_text)
+    civ, lv2, window = reference_window(sc, pack_text=pack_text, facts=facts)
+    win = facts.get("base_window") or {}
     # review C3: the fiscal-year reference keeps its own field; the chosen window's value has its own
-    out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": _pack_reference(pack_text)[0],
+    out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": facts.get("consensus_implied_value"),
            "base_window_gap": win.get("gap"), "reference_window_used": window if win else None,
            "reference_window_value": civ if win else None}
     path = sc.get("stage1_growth_path") or []
@@ -1072,17 +1015,12 @@ def _num_b(v):
 
 
 def _pack_shares_b(pack_text):
-    m = re.search(r"[-*]?\s*Shares outstanding:\s*([0-9,]+(?:\.[0-9]+)?)", pack_text or "", re.I)
-    return _num_b(m.group(1).replace(",", "")) if m else None
+    sh = pack_facts.from_text(pack_text)["shares_outstanding"]
+    return _num_b(sh) if sh is not None else None
 
 
 def _pack_net_debt_b(pack_text):
-    """SECTION 6's NET DEBT default in $B (negative = net cash), or None."""
-    m = re.search(r"NET DEBT \((?:default )?net_debt for the firm frame[^)]*\):[^\n]*?= (-?)\$(-?[\d.,]+)B", pack_text or "")
-    if not m:
-        return None
-    v = float(m.group(2).replace(",", ""))
-    return -abs(v) if m.group(1) or m.group(2).startswith("-") else v
+    return pack_facts.from_text(pack_text)["net_debt_b"]
 
 
 def _fnum(v):
@@ -1093,53 +1031,19 @@ def _fnum(v):
 
 
 def _pack_terminal_g(pack_text):
-    """SECTION 1.5's TERMINAL-GROWTH DEFAULT when printed, else the long-run growth anchor, as a decimal, or None."""
-    m_def = re.search(r"TERMINAL-GROWTH DEFAULT for this name:\s*([\d.]+)%", pack_text or "")
-    if m_def:
-        return float(m_def.group(1)) / 100.0
-    m = re.search(r"Long-run nominal growth anchor for terminal_g:\s*([\d.]+)%", pack_text or "")
-    return float(m.group(1)) / 100.0 if m else None
+    return pack_facts.from_text(pack_text)["terminal_g_default"]
 
 
 def _pack_interest_expense_b(pack_text):
-    """The latest filed interest expense in SECTION 5's fiscal-year table, in $B, or None."""
-    lines = (pack_text or "").splitlines()
-    for i, ln in enumerate(lines):
-        if ln.startswith("| FY |") and "interest expense" in ln:
-            cols = [c.strip() for c in ln.strip().strip("|").split("|")]
-            k = cols.index("interest expense")
-            val = None
-            for row in lines[i + 2:]:
-                if not row.startswith("|"):
-                    break
-                cells = [c.strip() for c in row.strip().strip("|").split("|")]
-                m = re.match(r"\$(-?[\d.,]+)B", cells[k]) if len(cells) > k else None
-                if m:
-                    val = float(m.group(1).replace(",", ""))
-            return val
-    return None
+    return pack_facts.from_text(pack_text)["interest_expense_latest_b"]
 
 
 def _pack_reference_status(pack_text):
-    """E15: "used", "outside_fence_above" / "outside_fence_below", "not_available", or None when the
-    pack prints no CONSENSUS-IMPLIED VALUE line at all (the point-in-time path, older packs)."""
-    t = pack_text or ""
-    if _CIV_RE.search(t):
-        return "used"
-    m = re.search(r"reference_status: (outside_fence_(?:above|below))", t)
-    if m:
-        return m.group(1)
-    return "not_available" if "CONSENSUS-IMPLIED VALUE: not available" in t else None
+    return pack_facts.from_text(pack_text)["reference_status"]
 
 
 def _pack_owner_earnings_source(pack_text):
-    """E14: where the pack's OWNER EARNINGS default came from - "ttm_filed", a fallback token
-    such as "fy_ni+vendor_capex", or None when the pack prints no default."""
-    t = pack_text or ""
-    m = re.search(r"OWNER EARNINGS \(default base_cf\):[^\n]*?\(owner_earnings_source: ([\w+]+)\)", t)
-    if m:
-        return m.group(1)
-    return "ttm_filed" if "[Arithmetic] OWNER EARNINGS (default base_cf):" in t else None
+    return pack_facts.from_text(pack_text)["owner_earnings_source"]
 
 
 def _desk_terminal(d, close):
@@ -1223,11 +1127,13 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
     return None
 
 
-def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, price=None):
+def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, price=None, facts=None):
     """E12 per-sample checks and stamps: the share count and net debt behind each published
     scenario, and bull/bear years 1-2 against the consensus EPS high/low path. Returns
     (flags, stamps)."""
     import consensus_reference
+    if facts is None:
+        facts = pack_facts.from_text(pack_text)
     sc = scorecard or {}
     calls = []
     try:
@@ -1243,13 +1149,13 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
               "bull_shares_ratio": None, "bear_shares_ratio": None, "desk_frame": None, "desk_net_debt": None,
               "bull_bear_anchor": None, "base_exit_g_gap_bp": None, "bull_exit_g_gap_bp": None,
               "bear_exit_g_gap_bp": None, "base_exit_to_gordon_multiple": None,
-              "owner_earnings_source": _pack_owner_earnings_source(pack_text),
+              "owner_earnings_source": facts.get("owner_earnings_source"),
               "terminal_g_gap_bp": None,
-              "consensus_reference_status": _pack_reference_status(pack_text),
+              "consensus_reference_status": facts.get("reference_status"),
               "finite_life_years": None}
     flags = []
-    g_anchor = _pack_terminal_g(pack_text)
-    pack_sh = _pack_shares_b(pack_text)
+    g_anchor = facts.get("terminal_g_default")
+    pack_sh = _num_b(facts.get("shares_outstanding"))
     est = (enrich_data or {}).get("estimates") or {}
     e0, e1 = (est.get("0y") or {}).get("eps") or {}, (est.get("+1y") or {}).get("eps") or {}
     prior = e0.get("year_ago")
@@ -1260,7 +1166,7 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         stamps["bull_bear_anchor"] = f"no consensus range ({e1.get('analysts') or 0} analysts)"
     else:
         stamps["bull_bear_anchor"] = "consensus high/low"
-    lv = _pack_levels(pack_text)
+    lv = facts.get("levels") or {}
     for role in ("base", "bull", "bear"):
         inp = _desk_scenario_inputs(calls, sc.get(f"{role}_iv"), role=role)
         if not inp:
@@ -1327,7 +1233,7 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         if not addback or addback <= 0:
             flags.append("firm_frame_on_equity_flow")
         else:
-            filed = _pack_interest_expense_b(pack_text)
+            filed = facts.get("interest_expense_latest_b")
             if filed is not None and addback > filed * 1.01:
                 flags.append("interest_addback_above_filed")
         if not _has("wacc_reason"):
@@ -1338,7 +1244,7 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         flags.append("shares_off_pack_without_reason")
     if (stamps["bear_shares_ratio"] or 0) > 1.01:
         flags.append("dilution_in_bear")
-    nd_default = _pack_net_debt_b(pack_text)
+    nd_default = facts.get("net_debt_b")
     if stamps["desk_frame"] == "firm" and nd_default is not None and stamps["desk_net_debt"] is not None \
             and not _has("net_debt_reason") \
             and abs(stamps["desk_net_debt"] - nd_default) > max(0.1, 0.05 * abs(nd_default)):
@@ -1424,7 +1330,7 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
 
 
 def check_sample_harness_rules(
-    scorecard, price, desk_info=None, enrich_data=None, momentum_state=None, pack_text=None
+    scorecard, price, desk_info=None, enrich_data=None, momentum_state=None, pack_text=None, facts=None
 ):
     """Evaluates Item 4 harness checks per sample:
     - scenario_order_violation: implausible if not (bear_iv <= base_iv <= bull_iv) with all 3 present
@@ -1449,6 +1355,8 @@ def check_sample_harness_rules(
     flags = []
     reasons = []
     implausible = False
+    if facts is None:
+        facts = pack_facts.from_text(pack_text)
 
     sc = scorecard or {}
     base_iv = sc.get("base_iv")
@@ -1530,7 +1438,7 @@ def check_sample_harness_rules(
         gdr = ""
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth(en.get("estimates"))
-    civ, lv2, _window = reference_window(sc, pack_text)
+    civ, lv2, _window = reference_window(sc, pack_text=pack_text, facts=facts)
     y2 = _year2_flow(sc.get("base_cf_used"), path)
     if lv2 and y2 is not None and not gdr:
         # E18: the year-2 LEVEL is the anchor, whatever base the sample declared (ADI (b): a TTM
@@ -1544,8 +1452,8 @@ def check_sample_harness_rules(
                 flags.append("years12_off_consensus_earnings")
         except (ValueError, TypeError, ZeroDivisionError):
             pass
-    _, p90 = _pack_reference(pack_text)
-    if _pack_window(pack_text):
+    p90 = facts.get("years35_p90")
+    if facts.get("base_window"):
         _bcr = str(sc.get("base_cf_reason") or "").strip()
         if not _bcr or _bcr.lower() in ("null", "none"):
             # whole-book test: with both windows printed, the analyst names the one it uses
@@ -1563,7 +1471,7 @@ def check_sample_harness_rules(
                 flags.append("years35_above_base_rate_p90")
         except (ValueError, TypeError):
             pass
-    rev_cap = next_fy_revenue_growth(pack_text)
+    rev_cap = facts.get("next_fy_revenue_growth")
     if rev_cap is not None and len(path) >= 5:
         try:
             if any(float(path[i]) - rev_cap > 0.005 for i in (2, 3, 4)) and not gdr:
@@ -1675,6 +1583,7 @@ def extract_desk_snapshot_metrics(
     coe_anchor=None,
     scorecard=None,
     pack=None,
+    facts=None,
 ):
     """Inspects run_financial_model tool calls from a sample's research snapshot.
 
@@ -1689,6 +1598,8 @@ def extract_desk_snapshot_metrics(
         desk_share_implausible: bool
         desk_share_reason: str or None
     """
+    if facts is None and pack:
+        facts = pack_facts.from_text(pack)
     calls = []
     if isinstance(snapshot, list):
         calls = snapshot
@@ -1937,25 +1848,20 @@ def extract_desk_snapshot_metrics(
     share_implausible = False
     share_reason = None
 
-    if desk_matched_inputs and pack:
-        m_sh = re.search(r"[-*]?\s*Shares outstanding:\s*([0-9,]+(?:\.[0-9]+)?)", pack, re.I)
-        if m_sh:
-            try:
-                n_val = float(m_sh.group(1).replace(",", ""))
-                if n_val > 0:
-                    pack_shares_b = n_val / 1e9
-                    call_shares = desk_matched_inputs.get("shares_diluted")
-                    if call_shares is not None and call_shares > 0:
-                        ratio = max(call_shares, pack_shares_b) / min(call_shares, pack_shares_b)
-                        ratio_r = round(ratio, 2)
-                        if ratio > 1.250001:
-                            share_flags.append(f"desk_share_count_mismatch_{ratio_r:.2f}x")
-                            share_implausible = True
-                            share_reason = "desk share count off by more than 25% (units or omission)"
-                        elif ratio >= 1.10:
-                            share_flags.append(f"desk_share_count_mismatch_{ratio_r:.2f}x")
-            except (ValueError, TypeError):
-                pass
+    if desk_matched_inputs and facts:
+        n_val = facts.get("shares_outstanding")
+        if isinstance(n_val, (int, float)) and n_val > 0:
+            pack_shares_b = n_val / 1e9
+            call_shares = desk_matched_inputs.get("shares_diluted")
+            if call_shares is not None and call_shares > 0:
+                ratio = max(call_shares, pack_shares_b) / min(call_shares, pack_shares_b)
+                ratio_r = round(ratio, 2)
+                if ratio > 1.250001:
+                    share_flags.append(f"desk_share_count_mismatch_{ratio_r:.2f}x")
+                    share_implausible = True
+                    share_reason = "desk share count off by more than 25% (units or omission)"
+                elif ratio >= 1.10:
+                    share_flags.append(f"desk_share_count_mismatch_{ratio_r:.2f}x")
 
     eff_anchor = coe_anchor if coe_anchor is not None else desk_anchor_from_params
     if eff_anchor is None and ticker:
@@ -2216,6 +2122,15 @@ def main():
         pack_macro_degraded = False  # unknown: the pack was not rebuilt this run
         pack_source = f"frozen:{pack_file_arg}"
         pack_active_shocks, pack_momentum_state = None, None  # unknown: not rebuilt this run
+        sidecar = pack_facts.read_sidecar(pack_file_arg.parent)
+        if sidecar is not None:
+            facts = sidecar
+            pack_facts_source = "sidecar"
+        else:
+            facts = pack_facts.from_text(pack)
+            pack_facts_source = "text"
+        pack_facts_parity = None
+        print(f"  [pack facts] source: {pack_facts_source}", flush=True)
     else:
         pack_text = cap.build_pack(t, price_override=price_override)
         pack_macro_degraded = bool(getattr(pack_text, "macro_degraded", False)
@@ -2226,6 +2141,12 @@ def main():
         # printed, so consensus.json (below) can record what the analyst actually saw.
         pack_active_shocks = list(getattr(cap, "LAST_PACK_ACTIVE_SHOCKS", []) or [])
         pack_momentum_state = dict(getattr(cap, "LAST_PACK_MOMENTUM_STATE", {}) or {})
+        facts = pack_text.facts
+        pack_facts_source = "build"
+        diffs = pack_facts.parity(facts, pack_facts.from_text(pack))
+        pack_facts_parity = {"ok": len(diffs) == 0, "mismatches": diffs}
+        if diffs:
+            print(f"::PACK FACTS PARITY:: mismatches: {', '.join(diffs)}", flush=True)
     pack_sha256 = hashlib.sha256(pack.encode("utf-8")).hexdigest()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     d = out_root / f"{t}_{ts}"
@@ -2244,6 +2165,7 @@ def main():
     # Save the exact pack. Without it a consensus run is not re-auditable from its own directory
     # — found when three auditors had to reconstruct it independently to check the reports.
     (d / "_pack.md").write_text(pack, encoding="utf-8")
+    pack_facts.write_sidecar(d, facts)
 
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
             if adaptive else f"{n} samples fixed")
@@ -2298,7 +2220,7 @@ def main():
                     seed=1000 + i, draft_num_predict=draft_num_predict, temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
-                    desk_context={"years35_cap": next_fy_revenue_growth(pack)})
+                    desk_context={"years35_cap": facts["next_fy_revenue_growth"]})
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2368,7 +2290,7 @@ def main():
                     temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
-                    desk_context={"years35_cap": next_fy_revenue_growth(pack)})
+                    desk_context={"years35_cap": facts["next_fy_revenue_growth"]})
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2438,6 +2360,7 @@ def main():
             ticker=t,
             scorecard=scorecard,
             pack=pack,
+            facts=facts,
         )
         scorecard.update(desk_info)
         if desk_info["desk_calls"] == 0:
@@ -2500,6 +2423,7 @@ def main():
             enrich_data=en_for_checks,
             momentum_state=pack_momentum_state,
             pack_text=pack,
+            facts=facts,
         )
         if order_imp:
             ok = False
@@ -2511,9 +2435,9 @@ def main():
                 flags = list(flags) + [f]
         # E10: the consensus ratios go on every sample, whatever reason the model wrote.
         if isinstance(scorecard, dict):
-            scorecard.update(consensus_ratios(scorecard, en_for_checks, pack))
+            scorecard.update(consensus_ratios(scorecard, en_for_checks, pack, facts=facts))
             # E12: shares, net debt and bull/bear against the pack, per scenario
-            e12_flags, e12_stamps = scenario_checks(snapshot_dir, scorecard, en_for_checks, pack, price)
+            e12_flags, e12_stamps = scenario_checks(snapshot_dir, scorecard, en_for_checks, pack, price, facts=facts)
             scorecard.update(e12_stamps)
             for f in e12_flags:
                 if f not in flags:
@@ -2672,6 +2596,8 @@ def main():
            "temperature": temperature,
            "pack_revision": cap.PACK_REVISION,
            "pack_source": pack_source, "pack_sha256": pack_sha256,
+           "pack_facts_source": pack_facts_source,
+           "pack_facts_version": pack_facts.FACTS_VERSION,
            "research_brief_asof": research_brief_asof,
            "research_brief_age_days": research_brief_age_days,
            "research_brief_stale": research_brief_stale,
@@ -2702,6 +2628,8 @@ def main():
            "position_basis_votes": pb_votes,
            "scorecard": scorecard_summary,
            "median_mos_pct": round((med / price - 1) * 100, 1) if med and price else None}
+    if pack_facts_source == "build":
+        doc["pack_facts_parity"] = pack_facts_parity
     if failfast_record is not None:
         doc["failfast"] = failfast_record
     (d / "consensus.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")

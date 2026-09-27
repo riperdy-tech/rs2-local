@@ -58,6 +58,7 @@ import rs2_data                     # noqa: E402
 import capability_test as cap       # noqa: E402
 import momentum_basis               # noqa: E402
 import catalyst_research            # noqa: E402
+import pack_facts                    # noqa: E402
 
 CONSENSUS_SCRIPT = HERE / "tools" / "audit_202608" / "consensus_valuation.py"
 DEFAULT_MODEL = rs2_data.CONFIG.get("depth_model", "rs2-analyst-deep-mtp5")
@@ -92,6 +93,10 @@ def build_frozen_pack(name, pack_path):
     pack = pack_text + "\n\n---\n\n" + cap.TASK + cap.RESEARCH_ADDENDUM
     pack_path.parent.mkdir(parents=True, exist_ok=True)
     pack_path.write_text(pack, encoding="utf-8")
+    facts = getattr(pack_text, "facts", None)
+    if facts is None:
+        facts = pack_facts.from_text(pack_text)
+    pack_facts.write_sidecar(pack_path.parent, facts)
     return pack, False
 
 

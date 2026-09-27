@@ -60,6 +60,7 @@ import rs2_data                     # noqa: E402
 import capability_test as cap       # noqa: E402
 import grade_depth_verdicts as gdv  # noqa: E402  (price fetch/cache — the grader's own machinery)
 import depth_pipeline               # noqa: E402  (band_verdict — pure computation, never main())
+import pack_facts                    # noqa: E402
 
 CONSENSUS_SCRIPT = HERE / "tools" / "audit_202608" / "consensus_valuation.py"
 DEFAULT_MODEL = "rs2-analyst-deep-mtp5-v31"
@@ -86,6 +87,10 @@ def build_asof_pack(name, asof_date, pack_path, force=False):
     pack = pack_text + "\n\n---\n\n" + cap.TASK
     pack_path.parent.mkdir(parents=True, exist_ok=True)
     pack_path.write_text(pack, encoding="utf-8")
+    facts = getattr(pack_text, "facts", None)
+    if facts is None:
+        facts = pack_facts.from_text(pack_text)
+    pack_facts.write_sidecar(pack_path.parent, facts)
     return pack, False
 
 

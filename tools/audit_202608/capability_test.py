@@ -50,6 +50,7 @@ import world_news  # noqa: E402
 import company_news  # noqa: E402
 import catalyst_research  # noqa: E402
 import consensus_reference  # noqa: E402
+import pack_facts  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -206,22 +207,26 @@ LAST_PACK_FLAGS = []
 # `--pack-file` run, which does not call build_pack() at all.
 LAST_PACK_ACTIVE_SHOCKS = []
 LAST_PACK_MOMENTUM_STATE = {}
+LAST_PACK_FACTS = None
 
 
 class PackText(str):
     macro_degraded: bool = False
     flags: list = []
+    facts: dict = {}
 
-    def __new__(cls, content, macro_degraded=False, flags=None):
+    def __new__(cls, content, macro_degraded=False, flags=None, facts=None):
         obj = str.__new__(cls, content)
         obj.macro_degraded = bool(macro_degraded)
         obj.flags = list(flags or [])
+        obj.facts = dict(facts) if facts is not None else {}
         return obj
 
     def __add__(self, other):
         res = PackText(super().__add__(other),
                        macro_degraded=self.macro_degraded,
-                       flags=self.flags)
+                       flags=self.flags,
+                       facts=self.facts)
         return res
 
 
@@ -976,6 +981,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
     _ref_fy_na = None   # E18: why that fiscal year cannot anchor the consensus path
     _aligned = None     # E18: the vendor's estimates start from the filed fiscal year (vintage test)
     _byc_printed = False  # the BASE-YEAR CHECK line printed its numbers (the window line points to it)
+    facts = pack_facts.empty()
+    facts["source"] = "build"
     if asof_date is not None:
         from datetime import timedelta as _td
         asof_cutoff = asof_date - _td(days=POINT_IN_TIME_FILING_LAG_DAYS)
@@ -1258,9 +1265,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                                 f"{adj_load_val:.3f}× (Blume: 0.67 × raw {raw_load_val:.3f} + 0.33) × implied ERP {erp_pct:.2f}% = "
                                 f"{coe_anchor_pct:.2f}%  (asof {asof_date.isoformat()}, {erp_src}; "
                                 f"{_STRUCTURAL_LOADING_LABEL})")
+            facts["coe_anchor"] = float(f"{coe_anchor_pct:.2f}") / 100.0
         else:
             coe_anchor_pct = None
             coe_anchor_line = f"- COE ANCHOR for this name: {ASOF_NULL}"
+            facts["coe_anchor"] = None
 
         if terminal_g_val is not None:
             terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: "
@@ -1338,6 +1347,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
               coe_anchor_line, terminal_g_line]
         if terminal_def_line:
             L.append(terminal_def_line)
+            _tg_def_v = terminal_def_val if terminal_def_val != terminal_g_val else terminal_g_val
+            facts["terminal_g_default"] = float(f"{_tg_def_v * 100:.2f}") / 100.0
+        elif terminal_g_val is not None:
+            facts["terminal_g_default"] = float(f"{terminal_g_val * 100:.2f}") / 100.0
+        else:
+            facts["terminal_g_default"] = None
         L += [t10y2y_line, baa_line, hy_line, regime_line]
 
         if rf_pct is not None:
@@ -1511,9 +1526,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             coe_anchor_line = (f"- COE ANCHOR for this name: rf {rf_pct:.2f}% + adjusted loading "
                                 f"{adj_load_val:.3f}× (Blume: 0.67 × raw {raw_load_val:.3f} + 0.33) × implied ERP {erp_pct:.2f}% = "
                                 f"{coe_anchor_pct:.2f}%  (asof {_coe_asof_str}, source: MRI cost-of-capital anchor)")
+            facts["coe_anchor"] = float(f"{coe_anchor_pct:.2f}") / 100.0
         else:
             coe_anchor_pct = None
             coe_anchor_line = f"- COE ANCHOR for this name: {NULL}"
+            facts["coe_anchor"] = None
 
         # D3: the long-run nominal growth anchor terminal_g must be built from, per P1.6/anchor_terminal_g().
         lrg_payload = rs2_data.usable_anchor("long_run_growth")
@@ -1624,6 +1641,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
               terminal_g_line]
         if terminal_def_line:
             L.append(terminal_def_line)
+            _tg_def_v = terminal_def_val if terminal_def_val != terminal_g_val else terminal_g_val
+            facts["terminal_g_default"] = float(f"{_tg_def_v * 100:.2f}") / 100.0
+        elif terminal_g_val is not None:
+            facts["terminal_g_default"] = float(f"{terminal_g_val * 100:.2f}") / 100.0
+        else:
+            facts["terminal_g_default"] = None
         L += [t10y2y_line,
               baa_line,
               hy_line,
@@ -1785,6 +1808,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
     if asof_date is not None:
         price_line = (f"- Price: ${px} [point-in-time close, as of "
                       f"{asof_price_data['asof']}]" if px is not None else f"- Price: {ASOF_NULL}")
+        facts["shares_outstanding"] = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool) and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
         L += [f"## SECTION 2 - MARKET   [point-in-time, as of {asof_date.isoformat()}]",
               price_line,
               f"- Shares outstanding: {_n(sh)}   [source: shares_diluted, "
@@ -1811,6 +1835,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         vdate = _v(fin, 'Data_Fetched_Date')
         vpx = f"${px}" if px is not None else NULL
         price_line = f"- Price: ${live_px} [live quote{asof_str}]   [vendor quote: {vpx} as of {vdate}]"
+        facts["shares_outstanding"] = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool) and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
         L += [f"## SECTION 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
               price_line,
               f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
@@ -1832,6 +1857,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
               f"Prefer the filed per-year SBC series in SECTION 5 where it is present]", ""]
     else:
         price_line = f"- Price: ${px}" if px is not None else f"- Price: {NULL}"
+        facts["shares_outstanding"] = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool) and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
         L += [f"## SECTION 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
               price_line,
               f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
@@ -2041,6 +2067,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             oe = ni + da - capex
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
+            facts["owner_earnings_source"] = "ttm_filed"
             L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Net income is after interest, so this is an equity flow: value it in the equity frame. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
@@ -2057,6 +2084,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if not isinstance(capex, (int, float)):
                 missing.append("TTM capex")
             missing_str = ", ".join(missing)
+            facts["owner_earnings_source"] = None
             L.append(f"- OWNER EARNINGS (default base_cf): not available (point-in-time) \u2014 {missing_str} missing")
         if latest_yr is not None:
             latest_rec = h.get(str(latest_yr)) or {}
@@ -2199,6 +2227,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             oe = ni + da - capex
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
+            facts["owner_earnings_source"] = f"{oe_src[0]}_ni+{oe_src[1]}_capex" if oe_tag else "ttm_filed"
             L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): {ni_src} {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 {capex_src} {_b(capex)} = {_b(oe)}{oe_tag}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Net income is after interest, so this is an equity flow: value it in the equity frame. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             _sbc_fy = (h.get(str(latest_yr)) or {}).get("sbc") if latest_yr is not None else None
             if isinstance(ocf, (int, float)) and isinstance(_sbc_fy, (int, float)):
@@ -2222,6 +2251,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if (not isinstance(capex, (int, float)) and not _ven_capex_ok and isinstance(_vc_x, (int, float))
                     and _vc_x < 0):
                 missing_str += f" (the vendor's capex is not used: {_ven_capex_why})"
+            facts["owner_earnings_source"] = None
             L.append(f"- OWNER EARNINGS (default base_cf): not available \u2014 {missing_str} missing; declare your base and why.")
         if latest_yr is not None:
             latest_rec = h.get(str(latest_yr)) or {}
@@ -2266,6 +2296,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
               _row(["---"] * 13)]
         for y in yrs:
             r = h[str(y)]
+            ie = r.get("interest_expense")
+            if isinstance(ie, (int, float)):
+                facts["interest_expense_latest_b"] = float(f"{ie / 1e9:,.3f}".replace(",", ""))
             L.append(_row([str(y), _b(r.get("revenue")), _b(r.get("gross_profit")),
                            _b(r.get("operating_income")), _b(r.get("net_income")),
                            _b(r.get("ocf")), _b(r.get("capex")), _b(r.get("fcf")), _b(r.get("da")),
@@ -2307,6 +2340,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         for hz in (5, 10):
             row = br_table.get(hz)
             if row:
+                if hz == 5 and "p90" in row:
+                    facts["years35_p90"] = float(br_table[5]["p90"]) / 100.0
                 L.append(f"- {hz}y sustained growth, this size bucket (n={row['n']}): "
                          f">=10%/yr {row['share_ge_10']}%, >=20%/yr {row['share_ge_20']}%, "
                          f">=30%/yr {row['share_ge_30']}%, median {row['p50']}%, p90 {row['p90']}%")
@@ -2329,6 +2364,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         g_lbl, g_stats = growth_persistence.persistence_for_growth(
             g0, sd=SD, max_fiscal_year=last_allowed_fy)
         if g_lbl and g_stats:
+            facts["years35_p90"] = float(g_stats["p90"]) / 100.0
             L.append(f"- Given the growth just delivered ({g0*100:+.1f}% YoY revenue, FY{max(yrs)}, "
                      f"bucket {g_lbl}): realized next-5y revenue CAGR across the corpus "
                      f"(n={g_stats['n']}) - p25 {g_stats['p25']}%, median {g_stats['median']}%, "
@@ -2376,6 +2412,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             # E12: one filed figure, used as net_debt in the firm frame (four samples had used four).
             # E13: the equity frame is the default; the firm frame needs a pre-interest flow.
             _sti_txt = _b(sti_val) if isinstance(sti_val, (int, float)) else "$0.000B (none filed)"
+            p = float(f"{abs(net_liq) / 1e9:,.3f}".replace(",", ""))
+            facts["net_debt_b"] = -p if net_liq > 0 else p
             L.append(f"- [Arithmetic] NET DEBT (net_debt for the firm frame, which needs a pre-interest flow): total debt "
                      f"{_b(effective_debt)} \u2212 cash {_b(cash_val)} \u2212 short-term investments "
                      f"{_sti_txt} = {'-' if net_liq > 0 else ''}{_b(abs(net_liq))} (negative = net cash). "
@@ -2543,6 +2581,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 n_analysts = rev.get("analysts") if rev.get("analysts") is not None else eps.get("analysts")
                 r_analysts = _n(n_analysts)
                 r_growth = _pct(rev.get("growth"))
+                if p_lbl == "next FY":
+                    g = rev.get("growth")
+                    if isinstance(g, (int, float)):
+                        facts["next_fy_revenue_growth"] = round(float(f"{g * 100:+.1f}") / 100.0, 6)
                 e_avg = f"${eps.get('avg'):.2f}" if isinstance(eps.get("avg"), (int, float)) else NULL
                 e_low = f"${eps.get('low'):.2f}" if isinstance(eps.get("low"), (int, float)) else NULL
                 e_high = f"${eps.get('high'):.2f}" if isinstance(eps.get("high"), (int, float)) else NULL
@@ -2631,6 +2673,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                     _band = None
                 _side, _fence = _reference_outside_fence((_ref or {}).get("value"), _band)
                 if _side:
+                    facts["reference_status"] = f"outside_fence_{_side}"
                     L.append(f"- CONSENSUS-IMPLIED VALUE: not used — the consensus path carried forward at our "
                              f"discount rate lands {_side} the fence [${_fence[0]:,.2f}, ${_fence[1]:,.2f}] built "
                              f"from the street's targets (0.5× the lowest and 2× the highest analyst target, each "
@@ -2638,6 +2681,25 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                              f"(reference_status: outside_fence_{_side}).")
                 else:
                     _tg_used = (terminal_def_val if terminal_def_val is not None else terminal_g_val) or 0.0
+                    if _ref.get("value") is None:
+                        facts["reference_status"] = "not_available"
+                        facts["consensus_implied_value"] = None
+                    else:
+                        val = float(f"{_ref['value']:,.2f}".replace(",", ""))
+                        if val >= 0:
+                            facts["reference_status"] = "used"
+                            facts["consensus_implied_value"] = val
+                        else:
+                            facts["reference_status"] = None
+                            facts["consensus_implied_value"] = None
+                    if _ref.get("value") is not None and _ref.get("levels"):
+                        facts["levels"] = {
+                            "year1": float(f"{_ref['levels'][0] / 1e9:,.3f}".replace(",", "")),
+                            "year2": float(f"{_ref['levels'][1] / 1e9:,.3f}".replace(",", "")),
+                        }
+                        if _ref.get("range"):
+                            facts["levels"]["bull2"] = float(f"{_ref['range'][0] / 1e9:,.3f}".replace(",", ""))
+                            facts["levels"]["bear2"] = float(f"{_ref['range'][1] / 1e9:,.3f}".replace(",", ""))
                     L.append(consensus_reference.pack_line(_ref, _fy.get("base"), _coe or 0.0, _tg_used, _b, anchor=terminal_g_val))
                     _win = consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters"))
                     if _win and _win.get("ttm_value") is not None:
@@ -2647,7 +2709,16 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                                                           base_year_check=_byc_printed)
                     if _wl:
                         L.append(_wl)
+                        gap = int(f"{_win['gap'] * 100:+.0f}") / 100.0
+                        ttm_val = float(f"{_win['ttm_value']:,.2f}".replace(",", "")) if _win.get("ttm_value") is not None else None
+                        ttm_y2 = float(f"{_win['ttm_levels'][1] / 1e9:,.3f}".replace(",", "")) if _win.get("ttm_value") is not None else None
+                        facts["base_window"] = {
+                            "gap": gap,
+                            "ttm_value": ttm_val,
+                            "ttm_year2": ttm_y2,
+                        }
         if _civ_na and asof_date is None:
+            facts["reference_status"] = "not_available"
             L.append(f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}")
         if en:
             L += [f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
@@ -2915,12 +2986,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
               f"today's value:"]
         L += [f"  - {reason}" for reason in asof_omitted]
         L.append("")
-    global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS
+    global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS
     LAST_PACK_MACRO_DEGRADED = macro_degraded
     LAST_PACK_FLAGS = ["macro_degraded"] if macro_degraded else []
     if asof_date is not None:
         LAST_PACK_FLAGS.append("point_in_time")
-    return PackText("\n".join(L), macro_degraded=macro_degraded, flags=LAST_PACK_FLAGS)
+    LAST_PACK_FACTS = facts
+    return PackText("\n".join(L), macro_degraded=macro_degraded, flags=LAST_PACK_FLAGS, facts=facts)
 
 
 # P4.4 — single source for the `invalidation_rules` / `momentum_flip_condition` /
