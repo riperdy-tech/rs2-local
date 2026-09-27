@@ -183,7 +183,10 @@ TIMEOUT = 14400
 #   DEFAULT: below the anchor's reach the default path rises no further than zero real growth
 #   (breakeven inflation), not to the anchor (T1); the TASK says the desk does the arithmetic; years 3-5
 #   above next-FY revenue growth need guidance_deviation_reason (F5).
-PACK_REVISION = 11
+# Revision 12 (Phase 4 development runs, reviewer ruling 2026-09-27): every valuation declares cash_flow_life
+#   ('perpetual' or years) with cash_flow_life_reason; a finite life goes to the desk in Base, Bull and Bear; a perpetual
+#   value of a depleting business deducts replacement capex; a commodity price deck is stated.
+PACK_REVISION = 12
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -2957,7 +2960,7 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
   * Share Count And Net Debt: Use SECTION 2's share count in every scenario. A contingent instrument (warrants or earn-outs that vest on milestones) may be added only in the scenarios where it vests (pass shares_diluted per scenario), with shares_basis "diluted_plus_contingent" and shares_reason naming the instrument and its vesting condition; never in a scenario whose premise is that it does not vest. In the firm frame use SECTION 6's NET DEBT as net_debt unless net_debt_reason says why.
   * Valuation Frame: Use the equity frame (valuation_frame "equity", rate_type "cost_of_equity", no net_debt). Every flow this pack prints (OWNER EARNINGS, CASH BASIS, the cash basis column, FCF) is after interest, an equity flow, and SECTION 1.5 anchors a cost of equity, not a WACC. The firm frame is the exception and needs all three of: a pre-interest flow (add back after-tax interest expense from SECTION 5 and give the amount in interest_addback, in $B); a WACC built from the COE ANCHOR, a cost of debt from filed interest over debt, a tax rate and weights from SECTION 6, stated in wacc_reason; and SECTION 6's NET DEBT. An after-interest flow in the firm frame counts the debt twice.
   * Terminal Growth And Multiple: terminal_g defaults to SECTION 1.5's TERMINAL-GROWTH DEFAULT (the long-run growth anchor unless a lower default is printed); a terminal_g more than 0.5 points from it needs terminal_reason with dated evidence. The exit multiple defaults to SECTION 1.5's DEFAULT EXIT MULTIPLE (at a scenario's other rate, the desk's implied_terminal_ev_fcf_gordon for that scenario): the flow has already faded to terminal_g, so any other multiple asserts another terminal growth. The desk returns it as exit_implied_terminal_g; if it is more than 0.5 points from the terminal_g default, give terminal_reason with dated peer EV/FCF evidence. A P/E ratio is not an EV/FCF multiple, and this pack holds no EV/FCF peer data.
-  * Finite Life: a business whose cash flows end - a depleting reserve, a licence or concession term, a patent cliff - is valued over that life, not in perpetuity: pass finite_life_years in the scenarios with finite_life_reason citing the filed reserve statement or term. A finite-life value sits below SECTION 8's reference, so also give guidance_deviation_reason.
+  * Cash-Flow Life: before valuing, decide whether the business's cash flows are perpetual or end, and state it in cash_flow_life ("perpetual" or the number of years) with cash_flow_life_reason. Cash flows end when they come from extracting a finite stock (a mine, a well, a reservoir) or from a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of the capex your base already deducts. The life is filed reserves divided by current annual production, or the remaining term, with the filing's date. Pass a finite life to the desk as finite_life_years in the Base, Bull and Bear scenarios. A perpetual value must deduct the capex that replaces what the business depletes; otherwise it counts reserves it would have to buy. Where revenue moves with a quoted commodity price, state in cash_flow_life_reason the price your cash flows assume and its source (the futures strip, the street's long-term deck, or your own with evidence); a spot price held for the whole life needs that evidence. A finite-life value sits below SECTION 8's reference, so also give guidance_deviation_reason.
   * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
 
 Produce the full report, SECTION 0 through SECTION 12, following the mandatory institutional memorandum structure. End with SECTION 12 Final Execution Opinion and the validated JSON contract. Reason fields take null when no reason is needed; never fill them with text such as "no deviation":
@@ -2978,7 +2981,8 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "net_debt_reason": "<string or null — required when the firm frame's net_debt differs from SECTION 6's NET DEBT>",
   "scenario_deviation_reason": "<string or null — required when the Bull or Bear year-2 cash flow is more than 15% from SECTION 8's Bull or Bear year-2 level>",
   "terminal_reason": "<string or null — required when terminal_g, or an exit multiple's implied terminal growth, is more than 0.5 points from the terminal_g default: the dated evidence>",
-  "finite_life_reason": "<string or null — required when any scenario uses finite_life_years: the filed evidence of the life (reserve statement and production rate, licence or concession term, patent expiry)>",
+  "cash_flow_life": <"perpetual" or an integer number of years (1-60) — required for every name>,
+  "cash_flow_life_reason": "<string — required for every name: one dated sentence; for a finite life, the filed reserves and production rate or the remaining term; where revenue moves with a commodity price, the price deck and its source>",
   "interest_addback": <float or null — firm frame only: the after-tax interest expense in $B added to the after-interest flow>,
   "wacc_reason": "<string or null — firm frame only: the COE ANCHOR, the cost of debt (filed interest / debt), the tax rate and the weights behind your WACC>",
   "base_cf_used": <float, in $B, the base cash flow you actually used for the Base Case>,

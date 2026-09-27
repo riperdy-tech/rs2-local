@@ -124,6 +124,45 @@ def extract_iv(report, price):
     return vals
 
 
+def _normalize_cash_flow_life(val):
+    """Revision 12: normalise cash_flow_life to 'perpetual' or int 1-60 (whole-number float or digit string accepted).
+    Anything else is returned as given."""
+    if val is None or type(val) is bool:
+        return val
+    if isinstance(val, str):
+        s = val.strip()
+        if s.lower() == "perpetual":
+            return "perpetual"
+        try:
+            f = float(s)
+            if f.is_integer() and 1 <= int(f) <= 60:
+                return int(f)
+        except (ValueError, TypeError):
+            pass
+        return val
+    if isinstance(val, (int, float)):
+        try:
+            f = float(val)
+            if f.is_integer() and 1 <= int(f) <= 60:
+                return int(f)
+        except (ValueError, TypeError):
+            pass
+        return val
+    return val
+
+
+def _norm_fly(val):
+    if val is None or type(val) is bool:
+        return None
+    try:
+        f = float(val)
+        if f.is_integer():
+            return int(f)
+    except (ValueError, TypeError):
+        pass
+    return val
+
+
 def extract_scorecard(report, price):
     """Extracts the complete 4-KPI Institutional Decision Vector from the report.
     Prioritizes the structured ```json:underwriting block; falls back to narrative regex."""
@@ -185,8 +224,9 @@ def extract_scorecard(report, price):
         "terminal_reason": None,
         "interest_addback": None,
         "wacc_reason": None,
-        # Revision 11: finite life
-        "finite_life_reason": None,
+        # Revision 12: cash-flow life
+        "cash_flow_life": None,
+        "cash_flow_life_reason": None,
         "finite_life_years": None,
         # Harness-filled per sample from tool snapshot (not declared by model)
         "desk_calls": None,
@@ -227,8 +267,10 @@ def extract_scorecard(report, price):
                 card["bull_below_price_reason"] = str(card["bull_below_price_reason"]).strip()
             if card.get("bear_above_price_reason"):
                 card["bear_above_price_reason"] = str(card["bear_above_price_reason"]).strip()
-            if card.get("finite_life_reason"):
-                card["finite_life_reason"] = str(card["finite_life_reason"]).strip()
+            if card.get("cash_flow_life") is not None:
+                card["cash_flow_life"] = _normalize_cash_flow_life(card["cash_flow_life"])
+            if card.get("cash_flow_life_reason") is not None:
+                card["cash_flow_life_reason"] = str(card["cash_flow_life_reason"]).strip()
             if card.get("finite_life_years") is not None:
                 try:
                     card["finite_life_years"] = int(card["finite_life_years"])
@@ -577,7 +619,8 @@ def select_medoid_scorecard(
             "bull_below_price_reason": san_fb.get("bull_below_price_reason"),
             "bear_above_price_reason": san_fb.get("bear_above_price_reason"),
             "finite_life_years": san_fb.get("finite_life_years"),
-            "finite_life_reason": san_fb.get("finite_life_reason"),
+            "cash_flow_life": san_fb.get("cash_flow_life"),
+            "cash_flow_life_reason": san_fb.get("cash_flow_life_reason"),
         }
         return san_fb, summary
 
@@ -666,7 +709,7 @@ def select_medoid_scorecard(
                                            "owner_earnings_source", "consensus_reference_status",
                                            "terminal_g_gap_bp", "terminal_reason", "base_window_gap",
                                            "reference_window_used", "reference_window_value",
-                                           "finite_life_years", "finite_life_reason")},
+                                           "finite_life_years", "cash_flow_life", "cash_flow_life_reason")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -1300,28 +1343,71 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
             and not _has("net_debt_reason") \
             and abs(stamps["desk_net_debt"] - nd_default) > max(0.1, 0.05 * abs(nd_default)):
         flags.append("net_debt_off_default_without_reason")
-    # Revision 11: finite_life_without_reason when any desk scenario of the final run used finite_life_years and finite_life_reason is empty
+    # Revision 12 (A1): cash_flow_life_missing and finite_life_mismatch
+    cfl = sc.get("cash_flow_life")
+    cfl_norm = _normalize_cash_flow_life(cfl)
+    cfl_valid = (cfl_norm == "perpetual") or (isinstance(cfl_norm, int) and type(cfl_norm) is not bool and 1 <= cfl_norm <= 60)
+    if not cfl_valid or not _has("cash_flow_life_reason"):
+        flags.append("cash_flow_life_missing")
+
     model_calls = [c for c in (calls or []) if isinstance(c, dict) and c.get("tool") == "run_financial_model"]
-    finite_life_in_desk = False
     if model_calls:
         last_c = model_calls[-1]
         p = last_c.get("params") or {}
         r = last_c.get("result") if isinstance(last_c.get("result"), dict) else last_c
-        for s in (p.get("scenarios") or []):
-            if isinstance(s, dict) and s.get("finite_life_years") is not None:
-                finite_life_in_desk = True
-                break
-        if not finite_life_in_desk:
-            for s in (r.get("scenario_dcfs") or last_c.get("scenario_dcfs") or []):
-                if isinstance(s, dict) and ((s.get("dcf") or {}).get("finite_life_years") is not None or s.get("finite_life_years") is not None):
-                    finite_life_in_desk = True
-                    break
-        if not finite_life_in_desk:
-            if p.get("finite_life_years") is not None or ((r.get("dcf_model") or last_c.get("dcf_model") or {}).get("finite_life_years") is not None):
-                finite_life_in_desk = True
+        p_scs = p.get("scenarios") if isinstance(p.get("scenarios"), list) else []
+        r_scs = r.get("scenario_dcfs") or last_c.get("scenario_dcfs") or []
+        r_scs = r_scs if isinstance(r_scs, list) else []
+        is_multi = len(p_scs) > 1 or len(r_scs) > 1
 
-    if finite_life_in_desk and not _has("finite_life_reason"):
-        flags.append("finite_life_without_reason")
+        if is_multi:
+            for role in ("base", "bull", "bear"):
+                s_p = next((s for s in p_scs if isinstance(s, dict) and str(s.get("name") or "").strip().lower().startswith(role)), None)
+                s_r = next((s for s in r_scs if isinstance(s, dict) and str(s.get("name") or "").strip().lower().startswith(role)), None)
+                fly = None
+                if s_p and s_p.get("finite_life_years") is not None:
+                    fly = s_p.get("finite_life_years")
+                elif s_r:
+                    dcf = s_r.get("dcf") if isinstance(s_r.get("dcf"), dict) else {}
+                    if dcf.get("finite_life_years") is not None:
+                        fly = dcf.get("finite_life_years")
+                    elif s_r.get("finite_life_years") is not None:
+                        fly = s_r.get("finite_life_years")
+                if fly is None and p.get("finite_life_years") is not None and (s_p or s_r):
+                    fly = p.get("finite_life_years")
+
+                fly_norm = _norm_fly(fly)
+                if cfl_norm == "perpetual":
+                    if fly_norm is not None:
+                        flags.append("finite_life_mismatch")
+                        break
+                elif isinstance(cfl_norm, int) and type(cfl_norm) is not bool and 1 <= cfl_norm <= 60:
+                    if fly_norm != cfl_norm:
+                        flags.append("finite_life_mismatch")
+                        break
+        else:
+            single_fly = None
+            if p_scs and len(p_scs) == 1 and isinstance(p_scs[0], dict):
+                single_fly = p_scs[0].get("finite_life_years")
+            elif r_scs and len(r_scs) == 1 and isinstance(r_scs[0], dict):
+                dcf = r_scs[0].get("dcf") if isinstance(r_scs[0].get("dcf"), dict) else {}
+                single_fly = dcf.get("finite_life_years") or r_scs[0].get("finite_life_years")
+            if single_fly is None and p.get("finite_life_years") is not None:
+                single_fly = p.get("finite_life_years")
+            if single_fly is None:
+                dcf_m = r.get("dcf_model") or last_c.get("dcf_model") or {}
+                if isinstance(dcf_m, dict):
+                    single_fly = dcf_m.get("finite_life_years")
+            if single_fly is None:
+                single_fly = r.get("finite_life_years")
+
+            single_fly_norm = _norm_fly(single_fly)
+            if cfl_norm == "perpetual":
+                if single_fly_norm is not None:
+                    flags.append("finite_life_mismatch")
+            elif isinstance(cfl_norm, int) and type(cfl_norm) is not bool and 1 <= cfl_norm <= 60:
+                if single_fly_norm != cfl_norm:
+                    flags.append("finite_life_mismatch")
     # carriable (Fable): the model's own label against the 10% rule on its own base, per sample
     try:
         b, lbl = float(sc.get("base_iv")), str(sc.get("verdict_label") or "").strip().lower()

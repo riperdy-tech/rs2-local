@@ -310,3 +310,13 @@ def test_an_all_failed_run_is_named_on_the_not_usable_row(capsys):
 def test_a_legacy_rescue_keeps_its_old_note():
     v = dp.band_verdict(_doc([_run(1, forced_report=True), _run(2)]))
     assert "LOW_EFFORT_RESCUE" in v["flags"] and "not comparable to a normal sample" in v["reason"]
+
+
+def test_the_cash_flow_life_fields_reach_the_verdict():
+    # non-negotiable 5: a contract field not in the verdict writer's list is silently dropped
+    doc = _doc([_run(1), _run(2)])
+    doc["scorecard"] = {"cash_flow_life": 15, "cash_flow_life_reason": "filed reserves / production (10-K 2026-02-20)",
+                        "finite_life_years": 15}
+    v = dp.band_verdict(doc)
+    assert v["cash_flow_life"] == 15 and v["finite_life_years"] == 15
+    assert v["cash_flow_life_reason"].startswith("filed reserves")

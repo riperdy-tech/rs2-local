@@ -244,7 +244,7 @@ TOOLS = [{
                             "wacc": {"type": "number", "description": "Discount rate as decimal"},
                             "terminal_g": {"type": "number", "description": "REQUIRED. Terminal growth as decimal"},
                             "terminal_exit_multiple": {"type": "number"},
-                            "finite_life_years": {"type": "integer", "description": "Optional. Years until the cash flows end (a depleting reserve, a licence or concession term, a patent cliff). Values the flows over that life with no terminal value. Needs finite_life_reason in the contract."}
+                            "finite_life_years": {"type": "integer", "description": "Optional. Years until the cash flows end (a depleting reserve, a licence or concession term, a patent cliff). Values the flows over that life with no terminal value. Must equal the contract's cash_flow_life."}
                         },
                         "required": ["name", "prob"]
                     }

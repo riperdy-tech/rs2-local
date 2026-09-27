@@ -43,7 +43,8 @@ def _snapshot(tmp_path, shares_top, bear_shares=None, frame="equity", net_debt=N
 
 
 def _sc(**kw):
-    return dict({"base_iv": 464.47, "bull_iv": 933.25, "bear_iv": 70.69, "verdict_label": "overvalued"}, **kw)
+    return dict({"base_iv": 464.47, "bull_iv": 933.25, "bear_iv": 70.69, "verdict_label": "overvalued",
+                 "cash_flow_life": "perpetual", "cash_flow_life_reason": "Perpetual franchise"}, **kw)
 
 
 def test_the_amd_s3_warrant_in_every_scenario_is_flagged(tmp_path):
@@ -147,42 +148,90 @@ def test_finite_life_years_stamped_from_base_scenario_desk_snapshot(tmp_path):
     params = {"price": 609.43, "base_cf": 7.578, "shares_diluted": 1.6325, "valuation_frame": "equity",
               "scenarios": [
                   {"name": "Base", "finite_life_years": 25, "explicit_growth": [0.817, 1.055, 0.528, 0.325, 0.122]},
-                  {"name": "Bull", "explicit_growth": [0.9664, 1.4695, 0.60, 0.40, 0.15]},
-                  {"name": "Bear", "explicit_growth": [0.679, 0.371, -0.10, 0.02, 0.06]}
+                  {"name": "Bull", "finite_life_years": 25, "explicit_growth": [0.9664, 1.4695, 0.60, 0.40, 0.15]},
+                  {"name": "Bear", "finite_life_years": 25, "explicit_growth": [0.679, 0.371, -0.10, 0.02, 0.06]}
               ]}
     call = {"tool": "run_financial_model", "params": params,
             "scenario_dcfs": [
                 {"name": "Base", "dcf": {"per_share_iv": 464.47, "finite_life_years": 25}},
-                {"name": "Bull", "dcf": {"per_share_iv": 933.25}},
-                {"name": "Bear", "dcf": {"per_share_iv": 70.69}}
+                {"name": "Bull", "dcf": {"per_share_iv": 933.25, "finite_life_years": 25}},
+                {"name": "Bear", "dcf": {"per_share_iv": 70.69, "finite_life_years": 25}}
             ]}
     (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [call]}), encoding="utf-8")
-    flags, st = cv.scenario_checks(tmp_path, _sc(finite_life_reason="25-year mine life per NI 43-101"),
+    flags, st = cv.scenario_checks(tmp_path, _sc(cash_flow_life=25, cash_flow_life_reason="25-year mine life per NI 43-101"),
                                    {"estimates": EST}, PACK, 609.43)
     assert st["finite_life_years"] == 25
-    assert "finite_life_without_reason" not in flags
+    assert "cash_flow_life_missing" not in flags
+    assert "finite_life_mismatch" not in flags
 
 
-def test_finite_life_without_reason_flagged_when_reason_empty(tmp_path):
+def test_cash_flow_life_missing_when_reason_empty_null_or_none(tmp_path):
+    snap = _snapshot(tmp_path, 1.6325)
+    for bad_reason in ("", "   ", "null", "NULL", "none", "None", None):
+        flags, _ = cv.scenario_checks(snap, _sc(cash_flow_life="perpetual", cash_flow_life_reason=bad_reason),
+                                      {"estimates": EST}, PACK, 609.43)
+        assert "cash_flow_life_missing" in flags, f"Expected flag for reason={bad_reason!r}"
+
+
+def test_cash_flow_life_missing_when_life_absent_or_invalid(tmp_path):
+    snap = _snapshot(tmp_path, 1.6325)
+    # Absent / None
+    sc_absent = _sc(cash_flow_life_reason="15-year reserve")
+    sc_absent.pop("cash_flow_life")
+    flags, _ = cv.scenario_checks(snap, sc_absent, {"estimates": EST}, PACK, 609.43)
+    assert "cash_flow_life_missing" in flags
+
+    flags, _ = cv.scenario_checks(snap, _sc(cash_flow_life=None, cash_flow_life_reason="15-year reserve"),
+                                  {"estimates": EST}, PACK, 609.43)
+    assert "cash_flow_life_missing" in flags
+    # Invalid values
+    for bad_life in ("finite", 0, -5, 61, 15.5, True, False, "unknown"):
+        flags, _ = cv.scenario_checks(snap, _sc(cash_flow_life=bad_life, cash_flow_life_reason="15-year reserve"),
+                                      {"estimates": EST}, PACK, 609.43)
+        assert "cash_flow_life_missing" in flags, f"Expected flag for life={bad_life!r}"
+
+
+def test_cash_flow_life_float_15_stays_quiet(tmp_path):
+    params = {"price": 609.43, "base_cf": 7.578, "shares_diluted": 1.6325, "valuation_frame": "equity",
+              "scenarios": [
+                  {"name": "Base", "finite_life_years": 15, "explicit_growth": [0.817, 1.055, 0.528, 0.325, 0.122]},
+                  {"name": "Bull", "finite_life_years": 15, "explicit_growth": [0.9664, 1.4695, 0.60, 0.40, 0.15]},
+                  {"name": "Bear", "finite_life_years": 15, "explicit_growth": [0.679, 0.371, -0.10, 0.02, 0.06]}
+              ]}
+    call = {"tool": "run_financial_model", "params": params,
+            "scenario_dcfs": [
+                {"name": "Base", "dcf": {"per_share_iv": 464.47, "finite_life_years": 15}},
+                {"name": "Bull", "dcf": {"per_share_iv": 933.25, "finite_life_years": 15}},
+                {"name": "Bear", "dcf": {"per_share_iv": 70.69, "finite_life_years": 15}}
+            ]}
+    (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [call]}), encoding="utf-8")
+    flags, st = cv.scenario_checks(tmp_path, _sc(cash_flow_life=15.0, cash_flow_life_reason="15-year concession"),
+                                   {"estimates": EST}, PACK, 609.43)
+    assert "cash_flow_life_missing" not in flags
+    assert "finite_life_mismatch" not in flags
+
+
+def test_finite_life_mismatch_on_bear_only(tmp_path):
     params = {"price": 609.43, "base_cf": 7.578, "shares_diluted": 1.6325, "valuation_frame": "equity",
               "scenarios": [
                   {"name": "Base", "finite_life_years": 25, "explicit_growth": [0.817, 1.055, 0.528, 0.325, 0.122]},
-                  {"name": "Bull", "explicit_growth": [0.9664, 1.4695, 0.60, 0.40, 0.15]},
+                  {"name": "Bull", "finite_life_years": 25, "explicit_growth": [0.9664, 1.4695, 0.60, 0.40, 0.15]},
                   {"name": "Bear", "explicit_growth": [0.679, 0.371, -0.10, 0.02, 0.06]}
               ]}
     call = {"tool": "run_financial_model", "params": params,
             "scenario_dcfs": [
                 {"name": "Base", "dcf": {"per_share_iv": 464.47, "finite_life_years": 25}},
-                {"name": "Bull", "dcf": {"per_share_iv": 933.25}},
+                {"name": "Bull", "dcf": {"per_share_iv": 933.25, "finite_life_years": 25}},
                 {"name": "Bear", "dcf": {"per_share_iv": 70.69}}
             ]}
     (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [call]}), encoding="utf-8")
-    flags, st = cv.scenario_checks(tmp_path, _sc(), {"estimates": EST}, PACK, 609.43)
-    assert st["finite_life_years"] == 25
-    assert "finite_life_without_reason" in flags
+    flags, st = cv.scenario_checks(tmp_path, _sc(cash_flow_life=25, cash_flow_life_reason="25-year mine life per NI 43-101"),
+                                   {"estimates": EST}, PACK, 609.43)
+    assert "finite_life_mismatch" in flags
+    assert "cash_flow_life_missing" not in flags
 
 
-def test_finite_life_in_any_desk_scenario_without_reason_is_flagged(tmp_path):
+def test_finite_life_mismatch_perpetual_declaration_with_finite_scenario(tmp_path):
     params = {"price": 609.43, "base_cf": 7.578, "shares_diluted": 1.6325, "valuation_frame": "equity",
               "scenarios": [
                   {"name": "Base", "explicit_growth": [0.817, 1.055, 0.528, 0.325, 0.122]},
@@ -196,14 +245,69 @@ def test_finite_life_in_any_desk_scenario_without_reason_is_flagged(tmp_path):
                 {"name": "Bear", "dcf": {"per_share_iv": 70.69, "finite_life_years": 10}}
             ]}
     (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [call]}), encoding="utf-8")
-    flags, st = cv.scenario_checks(tmp_path, _sc(), {"estimates": EST}, PACK, 609.43)
-    assert st["finite_life_years"] is None
-    assert "finite_life_without_reason" in flags
-
-
-def test_finite_life_years_stamped_from_contract_fallback(tmp_path):
-    snap = _snapshot(tmp_path, 1.6325)
-    flags, st = cv.scenario_checks(snap, _sc(finite_life_years=15, finite_life_reason="15-year concession"),
+    flags, st = cv.scenario_checks(tmp_path, _sc(cash_flow_life="perpetual", cash_flow_life_reason="Perpetual business"),
                                    {"estimates": EST}, PACK, 609.43)
-    assert st["finite_life_years"] == 15
-    assert "finite_life_without_reason" not in flags
+    assert "finite_life_mismatch" in flags
+    assert "cash_flow_life_missing" not in flags
+
+
+def test_single_scenario_finite_life_checks(tmp_path):
+    # Single scenario call with finite_life_years = 15
+    params = {"price": 609.43, "base_cf": 7.578, "shares_diluted": 1.6325, "valuation_frame": "equity",
+              "finite_life_years": 15}
+    call = {"tool": "run_financial_model", "params": params,
+            "dcf_model": {"per_share_iv": 464.47, "finite_life_years": 15}}
+    (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [call]}), encoding="utf-8")
+
+    # Clean match
+    flags, _ = cv.scenario_checks(tmp_path, _sc(cash_flow_life=15, cash_flow_life_reason="15-year concession"),
+                                  {"estimates": EST}, PACK, 609.43)
+    assert "cash_flow_life_missing" not in flags
+    assert "finite_life_mismatch" not in flags
+
+    # Mismatch with perpetual
+    flags, _ = cv.scenario_checks(tmp_path, _sc(cash_flow_life="perpetual", cash_flow_life_reason="Perpetual business"),
+                                  {"estimates": EST}, PACK, 609.43)
+    assert "finite_life_mismatch" in flags
+
+    # Mismatch with different finite life
+    flags, _ = cv.scenario_checks(tmp_path, _sc(cash_flow_life=20, cash_flow_life_reason="20-year concession"),
+                                  {"estimates": EST}, PACK, 609.43)
+    assert "finite_life_mismatch" in flags
+
+
+def test_extract_scorecard_and_medoid_cash_flow_life():
+    report = """```json:underwriting
+{
+  "base_iv": 464.47,
+  "bull_iv": 933.25,
+  "bear_iv": 70.69,
+  "cash_flow_life": "15.0",
+  "cash_flow_life_reason": "  15-year reserve life per 2026 10-K  "
+}
+```"""
+    card = cv.extract_scorecard(report, 609.43)
+    assert card["cash_flow_life"] == 15
+    assert card["cash_flow_life_reason"] == "15-year reserve life per 2026 10-K"
+    assert "finite_life_reason" not in card
+
+    # Medoid summary carries cash_flow_life and cash_flow_life_reason
+    runs = [{"sample": 1, "iv": 464.47, "plausible": True, "truncated": False, "scorecard": card}]
+    medoid, summary = cv.select_medoid_scorecard(runs, price=609.43)
+    assert summary["cash_flow_life"] == 15
+    assert summary["cash_flow_life_reason"] == "15-year reserve life per 2026 10-K"
+    assert "finite_life_reason" not in summary
+
+    # Perpetual normalization
+    report_perp = """```json:underwriting
+{
+  "base_iv": 464.47,
+  "bull_iv": 933.25,
+  "bear_iv": 70.69,
+  "cash_flow_life": "Perpetual",
+  "cash_flow_life_reason": "Infinite franchise"
+}
+```"""
+    card_perp = cv.extract_scorecard(report_perp, 609.43)
+    assert card_perp["cash_flow_life"] == "perpetual"
+    assert card_perp["cash_flow_life_reason"] == "Infinite franchise"

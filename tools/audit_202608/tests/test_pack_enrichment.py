@@ -170,8 +170,8 @@ def _slice(pack, header, next_prefix="## "):
     return pack[i:j if j != -1 else len(pack)]
 
 
-def test_pack_revision_is_11():
-    assert cap.PACK_REVISION == 11   # F4 + T1 + desk does the arithmetic (Phase 4 draw review 2026-09-27)
+def test_pack_revision_is_12():
+    assert cap.PACK_REVISION == 12   # Cash-flow life decision (Phase 4 development runs, reviewer ruling 2026-09-27)
 
 
 def test_no_ground_truth_phrase_anywhere(screener_data_stub):
