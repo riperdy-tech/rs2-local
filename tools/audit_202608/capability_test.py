@@ -189,7 +189,13 @@ TIMEOUT = 14400
 # Revision 13 (Phase 4 battery F5, reviewer design 2026-09-27): the desk holds Base years 3-5 at or below next-FY
 #   consensus revenue growth unless the call gives guidance_deviation_reason, and prints the value on the requested path
 #   beside the desk value; the contract's guidance_deviation_reason names the years 3-5 trigger.
-PACK_REVISION = 13
+# Revision 14 (Phase 4 E17, reviewer design 2026-09-27): the research tools change what the model is told.
+#   fetch_page serves a page in 9,000-character parts, with part and find arguments, and says which part it served.
+#   search_web sets aside results that share no word with the query and says how many. Every desk result states how many
+#   of the 5 desk runs are used and says when the desk closes; research results after that say it is closed. A PDF
+#   address is refused with a reason. RECENT COMPANY NEWS excerpts skip 'return to homepage' and 'top stories'
+#   furniture.
+PACK_REVISION = 14
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []

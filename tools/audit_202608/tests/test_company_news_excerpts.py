@@ -86,3 +86,17 @@ def test_a_multi_company_headline_cannot_bring_another_companys_paragraph():
     lind = ("Lindblad Expeditions said on Tuesday it completed the acquisition of White Desert Antarctica, "
             "adding luxury Antarctic camps and flights to its expedition travel portfolio.")
     assert company_news._excerpt(lind, "Lindblad buys White Desert", "Lindblad") is not None
+
+
+def test_e17_furniture_phrases_suppressed():
+    fx_path = Path(__file__).resolve().parent / "fixture_data" / "e17" / "excerpts.json"
+    data = json.loads(fx_path.read_text(encoding="utf-8"))
+    excerpts = data["excerpts"]
+    control = data["control_sentences"][0]
+
+    assert company_news._excerpt(excerpts[1], "9 Biggest Scandals In Dollar Tree History", "Dollar") is None
+    assert company_news._excerpt(excerpts[2], "Delaware County board supports Amphenol expansion", "Amphenol") is None
+
+    assert company_news._excerpt(excerpts[0], "Altria report", "Altria") is not None
+    assert company_news._excerpt(control + " " + control, "Lamar earnings", "Lamar") is not None
+

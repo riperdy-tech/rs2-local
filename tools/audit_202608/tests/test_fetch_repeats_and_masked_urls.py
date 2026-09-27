@@ -88,5 +88,5 @@ def test_a_page_fetched_again_gets_a_note_not_the_same_text(monkeypatch, tmp_pat
     snap = json.loads((tmp_path / "_research_snapshot.json").read_text(encoding="utf-8"))["calls"]
     notes = [c.get("note") for c in snap if c.get("note")]
     assert len(notes) == 3
-    assert "you read its first 9,000 characters" in notes[0]
+    assert "This page is a single part, served to you at call 1; this is request 2 for it." in notes[0]
     assert "it failed (fetch failed: HTTP 403)" in notes[1]

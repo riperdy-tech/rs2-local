@@ -116,7 +116,8 @@ EXCERPT_CHARS = 600
 
 # Page furniture that fetch_page's tag stripping leaves in (Yahoo, newswires, publisher banners)
 _FURNITURE = ("skip to", "something went wrong", "sign in", "subscribe", "cookie", "accessibility statement",
-              "advertiser disclosure", "preferred source", "all rights reserved", "javascript")
+              "advertiser disclosure", "preferred source", "all rights reserved", "javascript",
+              "return to homepage", "top stories")
 _SENTENCE = re.compile(r"(?:^|(?<=[.!?]) )([A-Z0-9\"\u201c'][^.!?]{40,500}[.!?])")
 
 

@@ -27,6 +27,7 @@ import difflib
 import html
 import io
 import json
+import math
 import re
 import ssl
 import statistics
@@ -76,6 +77,19 @@ REFETCH_SMELL = re.compile(
     r"\b(ttm|trailing twelve)\b|\bnet income\b|\brevenue for (fy|20)\d|\bfree cash flow\b|"
     r"\bshares outstanding\b|\bmarket cap\b", re.I)
 
+DESK_BUDGET = "{used} of {cap} desk runs used"
+DESK_CLOSED_RUNS = ("The desk is now closed: all {cap} desk runs are used, so run_financial_model is no longer "
+                    "offered. These are your final desk results; report them. Research tools stay open; write the "
+                    "memorandum when your research is done.")
+DESK_CLOSED_REJECTED = ("The desk is now closed after {n} rejected calls, so run_financial_model is no longer "
+                        "offered. Your last valid desk results stand; report them. Research tools stay open; write "
+                        "the memorandum when your research is done.")
+DESK_CLOSED_LINE = ("The desk is closed: run_financial_model is no longer offered, and your last desk results stand. "
+                    "Write the memorandum when your research is done.")
+PART_CHARS = 9000
+PDF_REFUSAL = ("this address is a PDF document; fetch_page reads web pages and text only. Search for the same document "
+               "as a web page (for a filing, its sec.gov HTML version).")
+
 TOOLS = [{
     "type": "function",
     "function": {
@@ -93,7 +107,7 @@ TOOLS = [{
             "If a number you need for an assumption is missing from the pack, SEARCH FOR IT "
             "rather than assuming a value."
             " Your earlier tool results stay in the conversation as compact notes marked [call N]. "
-            "Read them before searching; do not repeat a search you have already run or re-fetch a page you have already read."),
+            "Read them before searching; do not repeat a search you have already run. Fetching a page again gives its next unread part."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -108,12 +122,20 @@ TOOLS = [{
     "type": "function",
     "function": {
         "name": "fetch_page",
-        "description": ("Retrieve the readable text of one URL returned by search_web, when the "
-                        "snippet is not enough. Prefer primary sources: company IR pages, "
-                        "earnings-call transcripts, regulators, central banks."),
+        "description": (
+            "Retrieve the readable text of one URL returned by search_web, when the snippet is not enough. "
+            "Prefer primary sources: company IR pages, earnings-call transcripts, regulators, central banks. "
+            "A page is served in parts of 9,000 characters; the result says which part you have and how many "
+            "there are. Call again with the same url for the next part you have not read, or pass part to choose "
+            "one. Pass find to get the passages of the whole page that contain a word or phrase."
+        ),
         "parameters": {
             "type": "object",
-            "properties": {"url": {"type": "string"}},
+            "properties": {
+                "url": {"type": "string"},
+                "part": {"type": "integer", "description": "Optional. The 9,000-character part to read; 1 is the start of the page."},
+                "find": {"type": "string", "description": "Optional. A word or phrase of 3 to 100 characters; returns up to 5 passages of the whole page that contain it, each marked with its part. When given, part is ignored."},
+            },
             "required": ["url"],
         },
     },
@@ -287,6 +309,31 @@ def looks_like_refetch(query):
     return bool(REFETCH_SMELL.search(query or ""))
 
 
+_TITLE_STOP = set("the and for its has have had are was were with from that this into over after than "
+                  "amid will would could may might not but new says said stock stocks shares news why "
+                  "how what today report reports inc corp com".split())
+
+
+def _host(u):
+    h = (urllib.parse.urlparse(u or "").hostname or "").lower()
+    return h[4:] if h.startswith("www.") else h
+
+
+def _title_tokens(t):
+    """Content words of a headline, lightly stemmed so "signs"/"signed" and "deals"/"deal" match."""
+    words = {w for w in re.findall(r"[a-z0-9]+", (t or "").lower().replace("'s", ""))
+             if len(w) >= 3 and w not in _TITLE_STOP and not w.isdigit()}
+    return {re.sub(r"(ing|ed|es|s)$", "", w) if len(w) > 4 else w for w in words}
+
+
+def related_to_query(query, result):
+    q = _title_tokens(query)
+    if not q:
+        return None          # a query with no content word cannot be judged
+    return bool(q & _title_tokens(" ".join([result.get("title") or "", result.get("snippet") or "",
+                                            result.get("url") or ""])))
+
+
 def search_web(query, why="", snap=None, n=6, query_cache=None):
     """SearXNG JSON search -> compact result list. Deduplicates against prior queries."""
     if not query or not query.strip():
@@ -315,20 +362,90 @@ def search_web(query, why="", snap=None, n=6, query_cache=None):
         if snap is not None:
             snap.append({"tool": "search_web", "ts": time.strftime("%H:%M:%S"), **rec})
         return rec
-    out = []
+
+    audit_results = []
+    served = []
+    set_aside_items = []
+    has_content = bool(_title_tokens(query))
+
     for res in (data.get("results") or []):
         u = res.get("url") or ""
-        if any(bad in u for bad in LOW_TRUST):
+        item = {
+            "title": (res.get("title") or "")[:180],
+            "url": u,
+            "snippet": re.sub(r"\s+", " ", res.get("content") or "")[:420],
+        }
+        is_low_trust = any(bad in u for bad in LOW_TRUST)
+        if is_low_trust:
+            audit_entry = {
+                "title": item["title"],
+                "url": item["url"],
+                "snippet": item["snippet"],
+                "engines": res.get("engines"),
+                "publishedDate": res.get("publishedDate"),
+                "low_trust": True,
+                "related": None,
+                "served": False,
+            }
+            audit_results.append(audit_entry)
             continue
-        out.append({"title": (res.get("title") or "")[:180],
-                    "url": u,
-                    "snippet": re.sub(r"\s+", " ", res.get("content") or "")[:420]})
-        if len(out) >= n:
-            break
-    rec = {"query": query, "why": why, "n_results": len(out), "results": out,
-           "refetch_warning": looks_like_refetch(query), "cache_hit": False}
+
+        if not has_content:
+            rel = None
+            is_served = len(served) < n
+            if is_served:
+                served.append(item)
+        else:
+            rel = related_to_query(query, item)
+            if rel:
+                is_served = len(served) < n
+                if is_served:
+                    served.append(item)
+            else:
+                is_served = False
+                set_aside_items.append(item)
+
+        audit_entry = {
+            "title": item["title"],
+            "url": item["url"],
+            "snippet": item["snippet"],
+            "engines": res.get("engines"),
+            "publishedDate": res.get("publishedDate"),
+            "low_trust": False,
+            "related": rel,
+            "served": is_served,
+        }
+        audit_results.append(audit_entry)
+
+    rec = {
+        "query": query,
+        "why": why,
+        "n_results": len(served),
+        "results": served,
+    }
+    if set_aside_items:
+        distinct_hosts = []
+        for it in set_aside_items:
+            h = _host(it.get("url"))
+            if h and h not in distinct_hosts:
+                distinct_hosts.append(h)
+        sa = {
+            "count": len(set_aside_items),
+            "hosts": distinct_hosts[:8],
+        }
+        m = len(distinct_hosts) - 8
+        if m > 0:
+            sa["more_hosts"] = m
+        sa["reason"] = "no word in common with your query"
+        rec["set_aside"] = sa
+
+    rec["refetch_warning"] = looks_like_refetch(query)
+    rec["cache_hit"] = False
+    rec["_audit_results"] = audit_results
+    rec["_audit_unresponsive_engines"] = data.get("unresponsive_engines")
+
     if query_cache is not None:
-        query_cache[query] = out
+        query_cache[query] = served
     if snap is not None:
         snap.append({"tool": "search_web", "ts": time.strftime("%H:%M:%S"), **rec})
     return rec
@@ -371,28 +488,11 @@ NOT_ARTICLES = ("youtube.com", "facebook.com", "linkedin.com", "twitter.com", "x
 PAYWALL_MARKERS = ("subscribe to continue", "subscribe to read", "subscribers only", "for subscribers",
                    "already a subscriber", "to continue reading", "sign in to continue",
                    "log in to continue", "create a free account to", "premium article")
-_TITLE_STOP = set("the and for its has have had are was were with from that this into over after than "
-                  "amid will would could may might not but new says said stock stocks shares news why "
-                  "how what today report reports inc corp com".split())
-
-
-def _host(u):
-    h = (urllib.parse.urlparse(u or "").hostname or "").lower()
-    return h[4:] if h.startswith("www.") else h
-
-
 def _publisher(h):
     parts = h.split(".")
     if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "ac", "gov"):
         return parts[-3]
     return parts[-2] if len(parts) >= 2 else h
-
-
-def _title_tokens(t):
-    """Content words of a headline, lightly stemmed so "signs"/"signed" and "deals"/"deal" match."""
-    words = {w for w in re.findall(r"[a-z0-9]+", (t or "").lower().replace("'s", ""))
-             if len(w) >= 3 and w not in _TITLE_STOP and not w.isdigit()}
-    return {re.sub(r"(ing|ed|es|s)$", "", w) if len(w) > 4 else w for w in words}
 
 
 def _norm_title(t):
@@ -468,6 +568,133 @@ def _alternate_copy(url, title, cap, url_cache, snap):
     return None
 
 
+def part_note(k, n, chars, cap=PART_CHARS):
+    a = (k - 1) * cap + 1
+    b = k * cap
+    N = chars
+    if k < n:
+        return f"part {k} of {n}: characters {a:,}-{b:,} of {N:,}. Call fetch_page again with this url for the next part, or pass part or find."
+    if k == n and n > 1:
+        return f"part {n} of {n}: characters {a:,}-{N:,} of {N:,}, the end of the page."
+    return ""
+
+
+def page_part(rec, k, cap=PART_CHARS):
+    """Serve part k (1-indexed) of a page."""
+    url = rec.get("url") or ""
+    chars = rec.get("chars")
+    if chars is None:
+        chars = len(rec.get("full_text") or rec.get("text") or "")
+    n = max(1, math.ceil(chars / cap))
+    if not (1 <= k <= n):
+        return {"url": url, "error": f"this page has {n} parts; part {k} does not exist."}
+    if k > 1 and "full_text" not in rec:
+        return {"url": url, "error": "only part 1 of this page is stored; the rest is not available."}
+    full_text = rec.get("full_text") if "full_text" in rec else rec.get("text", "")
+    chunk = full_text[(k - 1) * cap : k * cap]
+    out = {
+        "url": url,
+        "part": k,
+        "parts": n,
+    }
+    if n > 1:
+        out["part_note"] = part_note(k, n, chars, cap)
+    out["chars"] = chars
+    out["text"] = chunk
+    return out
+
+
+def find_in_page(rec, phrase, cap=PART_CHARS, window=400, max_passages=5):
+    url = rec.get("url") or ""
+    phrase = (phrase or "").strip()
+    if len(phrase) < 3 or len(phrase) > 100:
+        return {"url": url, "error": "find needs 3 to 100 characters."}
+
+    has_full = "full_text" in rec and rec["full_text"] is not None
+    text = rec["full_text"] if has_full else (rec.get("text") or "")
+    chars = rec.get("chars")
+    if chars is None:
+        chars = len(text)
+    searched_note = None if has_full else "part 1 only (the rest is not stored)"
+
+    needle = phrase.lower()
+    haystack = text.lower()
+    matches = []
+    idx = 0
+    while True:
+        pos = haystack.find(needle, idx)
+        if pos == -1:
+            break
+        matches.append((pos, pos + len(needle)))
+        idx = pos + len(needle)
+
+    m = len(matches)
+    if m == 0:
+        out = {
+            "url": url,
+            "find": phrase,
+            "matches": 0,
+            "note": f'No passage of this page ({chars:,} characters) contains "{phrase}".',
+        }
+        if searched_note:
+            out["searched"] = searched_note
+        return out
+
+    passages = []
+    for start, end in matches:
+        span_start = max(0, start - window)
+        span_end = min(len(text), end + window)
+        if passages and start <= passages[-1]["span_end"]:
+            passages[-1]["span_end"] = max(passages[-1]["span_end"], span_end)
+        else:
+            if len(passages) >= max_passages:
+                continue
+            passages.append({
+                "span_start": span_start,
+                "span_end": span_end,
+                "first_match_start": start,
+            })
+
+    formatted_passages = [
+        f"[part {p['first_match_start'] // cap + 1}] {text[p['span_start']:p['span_end']]}"
+        for p in passages
+    ]
+    joined = "\n\n".join(formatted_passages)
+
+    out = {
+        "url": url,
+        "find": phrase,
+        "matches": m,
+        "chars": chars,
+        "text": joined,
+    }
+    if searched_note:
+        out["searched"] = searched_note
+    return out
+
+
+def _parse_part(raw_part):
+    """Parse part argument. Returns (part_int, None) on success, or (None, error_str) on invalid."""
+    if raw_part is None:
+        return None, None
+    if isinstance(raw_part, bool):
+        return None, "part must be a whole number from 1."
+    if isinstance(raw_part, int):
+        if raw_part >= 1:
+            return raw_part, None
+        return None, "part must be a whole number from 1."
+    if isinstance(raw_part, float):
+        if raw_part.is_integer() and int(raw_part) >= 1:
+            return int(raw_part), None
+        return None, "part must be a whole number from 1."
+    if isinstance(raw_part, str):
+        s = raw_part.strip()
+        if s.isdigit() and int(s) >= 1:
+            return int(s), None
+        return None, "part must be a whole number from 1."
+    return None, "part must be a whole number from 1."
+
+
 def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None, _fallback=True):
     if any(bad in url for bad in LOW_TRUST):
         if _fallback:
@@ -498,18 +725,39 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None, _fallb
         # the repeats were re-fetches of the same SEC and GEV URLs, and the module's rule is that
         # EVERY fetched page is written into the run directory.
         rec = url_cache[url]
+        chars = rec.get("chars")
+        if chars is None:
+            chars = len(rec.get("full_text") or rec.get("text") or "")
+        n = max(1, math.ceil(chars / cap))
+        ret = {
+            "url": rec.get("url") or url,
+            "part": 1,
+            "parts": n,
+        }
+        if n > 1:
+            ret["part_note"] = part_note(1, n, chars, cap)
+        ret["chars"] = chars
+        ret["text"] = (rec.get("full_text") or rec.get("text") or "")[:cap]
+        ret["cache_hit"] = True
         if snap is not None:
-            snap.append({"tool": "fetch_page", "ts": time.strftime("%H:%M:%S"), "url": url,
-                         "chars": rec.get("chars"), "text": rec.get("text", ""), "cached": True})
-        # A copy, not the stored `rec` itself — `cache_hit` marks the RETURN value for this call
-        # (P4.0b hit/miss accounting) and must never leak into what is persisted in url_cache.
-        return {**rec, "cache_hit": True}
+            snap.append({"tool": "fetch_page", "ts": time.strftime("%H:%M:%S"),
+                         "cached": True, **ret})
+        return ret
     host = (urllib.parse.urlparse(url).hostname or "").lower()
     is_sec = host == "sec.gov" or host.endswith(".sec.gov")
     try:
         req = urllib.request.Request(url, headers=SEC_UA if is_sec else UA)
         with urllib.request.urlopen(req, timeout=40, context=_SSL_CTX) as r:
-            raw = r.read(1_500_000).decode("utf-8", "replace")
+            data = r.read(1_500_000)
+            headers = getattr(r, "headers", None)
+            ctype = (headers.get("Content-Type") or "") if headers else ""
+            if "application/pdf" in ctype.lower() or (isinstance(data, bytes) and data[:5] == b"%PDF-") or (isinstance(data, str) and data[:5] == "%PDF-"):
+                if snap is not None:
+                    snap.append({"tool": "fetch_page", "ts": time.strftime("%H:%M:%S"), "url": url,
+                                 "chars": 0, "text": "", "cached": False,
+                                 "error": PDF_REFUSAL})
+                return {"url": url, "error": PDF_REFUSAL}
+            raw = data.decode("utf-8", "replace") if isinstance(data, bytes) else str(data)
     except Exception as e:
         code = getattr(e, "code", None)
         alt = _same_article(url, known_urls) if code == 404 else None
@@ -547,13 +795,24 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None, _fallb
                                cap, url_cache, snap)
         if copy:
             return {**copy, "paywalled_teaser": txt[:600]}
-    rec = {"url": url, "chars": len(txt), "text": txt[:cap]}
+    rec = {"url": url, "chars": len(txt), "text": txt[:cap], "full_text": txt}
     if url_cache is not None:
         url_cache[url] = rec
+    n = max(1, math.ceil(len(txt) / cap))
+    ret = {
+        "url": url,
+        "part": 1,
+        "parts": n,
+    }
+    if n > 1:
+        ret["part_note"] = part_note(1, n, len(txt), cap)
+    ret["chars"] = len(txt)
+    ret["text"] = txt[:cap]
+    ret["cache_hit"] = False
     if snap is not None:
         snap.append({"tool": "fetch_page", "ts": time.strftime("%H:%M:%S"),
-                     "url": url, "chars": len(txt), "text": txt[:cap], "cached": False})
-    return {**rec, "cache_hit": False}
+                     "cached": False, **ret})
+    return ret
 
 
 def dispatch_tool(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None, desk_context=None):
@@ -709,6 +968,12 @@ def _shorten_tool_calls(tool_calls, limit=ARG_MAX_CHARS):
 
 def _desk_summary(args, result):
     """The numbers a desk call exists to produce, per scenario, then reverse DCF and Kelly."""
+    out = {}
+    if isinstance(result, dict):
+        if "desk_budget" in result:
+            out["desk_budget"] = result["desk_budget"]
+        if "desk_closed" in result:
+            out["desk_closed"] = result["desk_closed"]
     sc_args = [x for x in ((args or {}).get("scenarios") or []) if isinstance(x, dict)]
     probs = {x.get("name"): x.get("probability") for x in sc_args}
     rows = []
@@ -725,7 +990,6 @@ def _desk_summary(args, result):
                "exit_implied_terminal_g": d.get("exit_implied_terminal_g"),
                "terminal_method": d.get("terminal_method")}
         rows.append({k: v for k, v in row.items() if v is not None})
-    out = {}
     if rows:
         out["scenarios"] = rows
     rd = result.get("reverse_dcf")
@@ -749,15 +1013,18 @@ def tool_message(name, args, result, limit=TOOL_MESSAGE_MAX_CHARS):
     """(content, cut) for one tool result. A desk result leads with its summary, then the markdown
     report, then the details, so the cut can only ever drop details. `cut` is
     {chars, cut_at} when the cut fired, else None."""
-    if (name == "run_financial_model" and isinstance(result, dict)
-            and not result.get("error") and not result.get("validation_error")):
-        ordered = {"summary": _desk_summary(args, result)}
-        if "markdown_report" in result:
-            ordered["markdown_report"] = result["markdown_report"]
-        ordered["details"] = {k: v for k, v in result.items() if k != "markdown_report"}
+    res = result
+    if isinstance(result, dict):
+        res = {k: v for k, v in result.items() if not k.startswith("_audit")}
+    if (name == "run_financial_model" and isinstance(res, dict)
+            and not res.get("error") and not res.get("validation_error")):
+        ordered = {"summary": _desk_summary(args, res)}
+        if "markdown_report" in res:
+            ordered["markdown_report"] = res["markdown_report"]
+        ordered["details"] = {k: v for k, v in res.items() if k != "markdown_report"}
         full = json.dumps(ordered)
     else:
-        full = json.dumps(result)
+        full = json.dumps(res)
     if len(full) > limit:
         return full[:limit], {"chars": len(full), "cut_at": limit}
     return full, None
@@ -780,7 +1047,9 @@ def compact_tool_note(name, args, result, call_index) -> str:
 
     if name == "search_web":
         q = (args or {}).get("query", "") if isinstance(args, dict) else ""
-        prefix = f'[call {call_index}] search: "{q}" -> '
+        sa = result.get("set_aside") if isinstance(result, dict) else None
+        sa_str = f" ({sa['count']} unrelated results set aside)" if isinstance(sa, dict) and "count" in sa else ""
+        prefix = f'[call {call_index}] search: "{q}"{sa_str} -> '
         if isinstance(result, dict) and result.get("error"):
             return f"{prefix}{result['error']}"
 
@@ -809,14 +1078,36 @@ def compact_tool_note(name, args, result, call_index) -> str:
         if isinstance(result, dict) and (result.get("error") or result.get("refused")):
             err = result.get("error") or result.get("refused")
             return f"{prefix}{err}"
+        if isinstance(result, dict):
+            if "note" in result and "text" not in result:
+                note = str(result["note"])[:300]
+                return f"[call {call_index}] page: {u} -> {note}"
+            if "find" in result:
+                phrase = result.get("find", "")
+                m = result.get("matches", 0)
+                txt = (result.get("text") or "")[:1500]
+                return f'[call {call_index}] page: {u} find "{phrase}": {m} matches -> {txt}'
+            k = result.get("part")
+            n = result.get("parts")
+            if n is not None and n > 1 and k is not None:
+                txt = (result.get("text") or "")[:1500]
+                return f"[call {call_index}] page: {u} (part {k} of {n}) -> {txt}"
         txt = (result.get("text", "") if isinstance(result, dict) else str(result or ""))[:1500]
         return f"{prefix}{txt}"
 
     elif name == "run_financial_model":
         if isinstance(result, dict) and result.get("error"):
             compact = {"error": result["error"]}
+            if "desk_budget" in result:
+                compact["desk_budget"] = result["desk_budget"]
+            if "desk_closed" in result:
+                compact["desk_closed"] = True
         elif isinstance(result, dict):
             compact = {}
+            if "desk_budget" in result:
+                compact["desk_budget"] = result["desk_budget"]
+            if "desk_closed" in result:
+                compact["desk_closed"] = True
             if "mode" in result:
                 compact["mode"] = result["mode"]
             elif isinstance(args, dict) and "mode" in args:
@@ -1130,8 +1421,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     eff_tools = TOOLS if tools is None else tools
 
     sample_search_queries = []
-    sample_fetched_urls = set()
-    sample_fetch_outcome = {}   # E16: url -> what its first fetch in this sample gave
+    page_alias = {}
+    page_reads = {}
+    sample_fetch_failures = {}
     research_calls = 0
     repeat_calls = 0
     desk_runs = []
@@ -1373,6 +1665,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
             result = None
             try:
+                desk_was_closed = (model_calls >= max_model_calls or desk_validation_errors > 6) if max_model_calls > 0 else False
                 if name in ("search_web", "fetch_page"):
                     research_calls += 1
                     if name == "search_web":
@@ -1380,12 +1673,6 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         if any(is_near_duplicate(q, prev_q, threshold=0.50) for prev_q in sample_search_queries):
                             repeat_calls += 1
                         sample_search_queries.append(q)
-                    elif name == "fetch_page":
-                        u = (args or {}).get("url", "")
-                        if u in sample_fetched_urls:
-                            repeat_calls += 1
-                        sample_fetched_urls.add(u)
-                    prior_fetch = sample_fetch_outcome.get(u) if name == "fetch_page" else None
 
                     search_calls += 1
                     if search_calls > max_search_calls:
@@ -1402,22 +1689,149 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                             "status": "search_quota_met",
                             "message": msg_text,
                         }
-                    elif prior_fetch is not None:
-                        # E16: the same page again gives the same text, the same failure fails again
-                        result = {"url": u, "note": f"already fetched in this sample: {prior_fetch}. Fetching "
-                                                    "it again returns exactly the same, so it adds nothing. Use "
-                                                    "what you have, or search for a different source."}
-                    else:
+                    elif name == "search_web":
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache,
                                                known_urls=seen_result_urls)
-                        if name == "fetch_page" and isinstance(result, dict):
-                            sample_fetch_outcome[u] = (
-                                f"it failed ({str(result.get('error'))[:160]})" if result.get("error")
-                                else f"you read its first {len(result.get('text') or ''):,} characters")
-                        if name == "search_web" and isinstance(result, dict):
+                        if isinstance(result, dict):
                             for r in (result.get("results") or []):
                                 if isinstance(r, dict) and r.get("url"):
                                     seen_result_urls.setdefault(r["url"], r.get("title") or "")
+                    elif name == "fetch_page":
+                        u = (args or {}).get("url") or ""
+                        raw_part = (args or {}).get("part")
+                        find = (args or {}).get("find")
+                        if find is not None and not isinstance(find, str):
+                            find = str(find)
+
+                        # Step 1: u failed earlier in this sample
+                        if u in sample_fetch_failures:
+                            repeat_calls += 1
+                            result = {
+                                "url": u,
+                                "note": f"already fetched in this sample: {sample_fetch_failures[u]}. Fetching "
+                                        f"it again returns exactly the same, so it adds nothing. Use "
+                                        f"what you have, or search for a different source."
+                            }
+                        else:
+                            # Validate part if find is not given
+                            part = None
+                            part_err = None
+                            if find is None and raw_part is not None:
+                                part, part_err = _parse_part(raw_part)
+
+                            if part_err is not None:
+                                result = {"url": u, "error": part_err}
+                            elif u not in page_alias:
+                                # Step 2: u is new
+                                result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache,
+                                                       known_urls=seen_result_urls)
+                                if isinstance(result, dict) and (result.get("error") or result.get("refused")):
+                                    err_msg = str(result.get("error") or result.get("refused"))
+                                    sample_fetch_failures[u] = f"it failed ({err_msg[:160]})"
+                                elif isinstance(result, dict):
+                                    # the dispatch reached the network or the cache even when another part, a
+                                    # find or a note is served below: keep its hit/miss for the P4.0b accounting
+                                    dispatch_cache_hit = result.get("cache_hit")
+                                    src = result.get("url") or u
+                                    page_alias[u] = src
+                                    if src not in page_reads:
+                                        p_count = result.get("parts")
+                                        if p_count is None:
+                                            p_count = 1
+                                        page_reads[src] = {
+                                            "parts": p_count,
+                                            "served": {},
+                                            "requests": 0,
+                                            "finds": {},
+                                            "first_call": calls,
+                                        }
+                                    page_reads[src]["requests"] += 1
+                                    r_num = page_reads[src]["requests"]
+                                    rec = u_cache.get(src)
+                                    if rec is None:
+                                        rec = {"url": src, "chars": result.get("chars", len(result.get("text") or "")),
+                                               "text": result.get("text") or ""}
+                                        u_cache[src] = rec
+
+                                    if find is not None:
+                                        result = find_in_page(rec, find)
+                                        phrase_key = find.strip().lower()
+                                        page_reads[src]["finds"][phrase_key] = calls
+                                        # Mark no part served
+                                    elif part is not None and part != 1:
+                                        part_res = page_part(rec, part)
+                                        if not part_res.get("error"):
+                                            page_reads[src]["served"][part] = calls
+                                        result = part_res
+                                    elif bool(page_reads[src]["served"]):
+                                        # src already has parts served
+                                        n_parts = page_reads[src]["parts"]
+                                        unread = [p for p in range(1, n_parts + 1) if p not in page_reads[src]["served"]]
+                                        if unread:
+                                            next_part = unread[0]
+                                            part_res = page_part(rec, next_part)
+                                            if not part_res.get("error"):
+                                                page_reads[src]["served"][next_part] = calls
+                                            part_res["same_page_as"] = f"call {page_reads[src]['first_call']}"
+                                            for k in ("alternate_for", "alternate_query", "corrected_from", "note"):
+                                                if k in result:
+                                                    part_res[k] = result[k]
+                                            result = part_res
+                                        else:
+                                            repeat_calls += 1
+                                            if n_parts == 1:
+                                                i_call = page_reads[src]["served"][1]
+                                                result = {"url": src, "note": f"This page is a single part, served to you at call {i_call}; this is request {r_num} for it. Pass part=1 to read it again, or find to search it."}
+                                            else:
+                                                served_list = [str(page_reads[src]["served"][p]) for p in range(1, n_parts + 1) if p in page_reads[src]["served"]]
+                                                result = {"url": src, "note": f"All {n_parts} parts of this page were served to you (calls {', '.join(served_list)}); this is request {r_num} for it. Pass part to read one again, or find to search the whole page."}
+                                    else:
+                                        # dispatch result is part 1
+                                        page_reads[src]["served"][1] = calls
+                                    if dispatch_cache_hit is not None and "cache_hit" not in result:
+                                        result["cache_hit"] = dispatch_cache_hit
+                            else:
+                                # Step 3: u was read before
+                                src = page_alias[u]
+                                page_reads[src]["requests"] += 1
+                                r_num = page_reads[src]["requests"]
+                                rec = u_cache[src]      # step 2 always leaves a record for src
+                                n_parts = page_reads[src]["parts"]
+
+                                if find is not None:
+                                    phrase_key = find.strip().lower()
+                                    if phrase_key in page_reads[src]["finds"]:
+                                        repeat_calls += 1
+                                    else:
+                                        page_reads[src]["finds"][phrase_key] = calls
+                                    result = find_in_page(rec, find)
+                                elif part is not None:
+                                    part_res = page_part(rec, part)
+                                    if not part_res.get("error"):
+                                        if part in page_reads[src]["served"]:
+                                            first_i = page_reads[src]["served"][part]
+                                            part_res["served_again"] = f"you first read this part at call {first_i}; older page text in your notes is shortened to 1,500 characters."
+                                            repeat_calls += 1
+                                        else:
+                                            page_reads[src]["served"][part] = calls
+                                    result = part_res
+                                else:
+                                    unread = [p for p in range(1, n_parts + 1) if p not in page_reads[src]["served"]]
+                                    if unread:
+                                        lowest = unread[0]
+                                        part_res = page_part(rec, lowest)
+                                        if not part_res.get("error"):
+                                            page_reads[src]["served"][lowest] = calls
+                                        result = part_res
+                                    else:
+                                        repeat_calls += 1
+                                        if n_parts == 1:
+                                            i_call = page_reads[src]["served"][1]
+                                            result = {"url": src, "note": f"This page is a single part, served to you at call {i_call}; this is request {r_num} for it. Pass part=1 to read it again, or find to search it."}
+                                        else:
+                                            served_list = [str(page_reads[src]["served"][p]) for p in range(1, n_parts + 1) if p in page_reads[src]["served"]]
+                                            result = {"url": src, "note": f"All {n_parts} parts of this page were served to you (calls {', '.join(served_list)}); this is request {r_num} for it. Pass part to read one again, or find to search the whole page."}
+
                 elif name == "run_financial_model":
                     if model_calls >= max_model_calls or desk_validation_errors > 6:
                         result = {"error": f"financial model call budget exhausted ({max_model_calls}); "
@@ -1433,8 +1847,20 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                                    f"use computed results and finalize memorandum"}
                         else:
                             model_calls += 1
+
+                    if max_model_calls > 0 and isinstance(result, dict):
+                        result = dict(result)
+                        result["desk_budget"] = DESK_BUDGET.format(used=model_calls, cap=max_model_calls)
+                        if not desk_was_closed and (model_calls >= max_model_calls or desk_validation_errors > 6):
+                            if model_calls >= max_model_calls:
+                                result["desk_closed"] = DESK_CLOSED_RUNS.format(cap=max_model_calls)
+                            else:
+                                result["desk_closed"] = DESK_CLOSED_REJECTED.format(n=desk_validation_errors)
                 else:
                     result = {"error": f"unknown tool {name}"}
+
+                if max_model_calls > 0 and desk_was_closed and isinstance(result, dict):
+                    result = {"desk": DESK_CLOSED_LINE, **result}
             except Exception as e:
                 call_rec["error"] = f"dispatch error: {type(e).__name__}: {str(e)[:120]}"
                 _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
@@ -1458,6 +1884,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         call_rec["result"] = result
                 elif isinstance(result, dict):
                     call_rec.update(result)
+                    if "desk" in result:
+                        desk_first = [("desk", result["desk"])] + [(k, v) for k, v in call_rec.items() if k != "desk"]
+                        call_rec.clear()
+                        call_rec.update(desk_first)
                 elif result is not None:
                     call_rec["result"] = result
                 _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)

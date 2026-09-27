@@ -1,0 +1,220 @@
+{
+ "run": "FIX_20260925_053027",
+ "sample": 1,
+ "source": "rs2-P4-run\\ab_reports\\consensus\\FIX_20260925_053027\\sample1_research\\_research_snapshot.json",
+ "source_sha256": "8e567a907959c9f808c5ed8c8d7a9a49978c4a9474280d7a3e6348df5de968e8",
+ "model": "rs2-analyst-deep-mtp5-v31",
+ "seed": 1001,
+ "turns": [
+  2,
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  0
+ ],
+ "calls": [
+  {
+   "i": 1,
+   "tool": "search_web",
+   "query": "Comfort Systems USA data center backlog share technology customers revenue Q2 2026 earnings",
+   "why": "Verify the research brief's claim that technology/data-center customers are ~45% of revenue and get a dated figure for data-center share of the $14.06B backlog — material to Bull/Bear weighting.",
+   "dedup_in_record": false,
+   "results": [
+    {
+     "title": "Why Is the Sky Blue on Earth but Red on Mars?",
+     "url": "https://www.sciencenewstoday.org/why-is-the-sky-blue-on-earth-but-red-on-mars",
+     "snippet": "Jul 11, 2026 · By studying why Earth’s sky is blue and why Mars’ sky is red, scientists gain a deeper understanding of planetary …"
+    },
+    {
+     "title": "Forget Chips: These 3 Stocks Are Building the AI Data Center Boom",
+     "url": "https://finance.yahoo.com/markets/stocks/articles/forget-chips-3-stocks-building-161500379.html",
+     "snippet": "Comfort Systems USA Has a $14 Billion Data Center Backlog.In its Q2 2026 earnings report, Comfort Systems reported a record backlog of $14.1 billion, up 73% year over year (YOY). Most of that backlog came from technology and industrial demand."
+    },
+    {
+     "title": "The Appearance of the Sky - Center for Science Education",
+     "url": "https://scied.ucar.edu/learning-zone/atmosphere/appearance-sky",
+     "snippet": "Red light has long wavelengths, while blue light has short wavelengths. Light bounces off of air molecules in the Earth's atmosphere, …"
+    },
+    {
+     "title": "Comfort Systems USA backlog rises to $14.06 billion by June 30",
+     "url": "https://www.stocktitan.net/news/FIX/comfort-systems-usa-reports-second-quarter-2026-6pc4g0cg8jje.html",
+     "snippet": "As compared to the same quarter last year, Comfort Systems USA is reporting a 50% increase in revenue, … increase in per share earnings, and remarkable and completely unprecedented quarterly cash flow of more than $1 billion Backlog as of June 30 …"
+    },
+    {
+     "title": "What Color Is the Sky Actually? The Science Explained",
+     "url": "https://biologyinsights.com/what-color-is-the-sky-actually-the-science-explained/",
+     "snippet": "6 days ago · Blue and violet wavelengths get scattered out of the beam long before it reaches you, leaving the longer wavelengths …"
+    },
+    {
+     "title": "Comfort Systems' Profit Growth Doubles: A Sustainable Trend?",
+     "url": "https://finance.yahoo.com/markets/stocks/articles/comfort-systems-profit-growth-doubles-163600578.html",
+     "snippet": "FIX's Q4 profit nearly doubles as margins top 25% and backlog hits a record $12B. Can execution, pricing and data center demand sustain the surge?"
+    }
+   ]
+  },
+  {
+   "i": 2,
+   "tool": "run_financial_model",
+   "desk": "valid",
+   "base_per_share_iv": 1915.27
+  },
+  {
+   "i": 3,
+   "tool": "run_financial_model",
+   "desk": "valid",
+   "base_per_share_iv": 1915.43
+  },
+  {
+   "i": 4,
+   "tool": "run_financial_model",
+   "desk": "valid",
+   "base_per_share_iv": 1915.27
+  },
+  {
+   "i": 5,
+   "tool": "run_financial_model",
+   "desk": "valid",
+   "base_per_share_iv": 1905.66
+  },
+  {
+   "i": 6,
+   "tool": "run_financial_model",
+   "desk": "valid",
+   "base_per_share_iv": 1905.66
+  },
+  {
+   "i": 7,
+   "tool": "search_web",
+   "query": "Comfort Systems USA Q2 2026 earnings technology customers 45% revenue data center backlog billion",
+   "why": "Pin down dated evidence on data-center/technology mix of revenue and backlog for scenario weighting.",
+   "dedup_in_record": true,
+   "results": [
+    {
+     "title": "Why Is the Sky Blue on Earth but Red on Mars?",
+     "url": "https://www.sciencenewstoday.org/why-is-the-sky-blue-on-earth-but-red-on-mars",
+     "snippet": "Jul 11, 2026 · By studying why Earth’s sky is blue and why Mars’ sky is red, scientists gain a deeper understanding of planetary …"
+    },
+    {
+     "title": "Forget Chips: These 3 Stocks Are Building the AI Data Center Boom",
+     "url": "https://finance.yahoo.com/markets/stocks/articles/forget-chips-3-stocks-building-161500379.html",
+     "snippet": "Comfort Systems USA Has a $14 Billion Data Center Backlog.In its Q2 2026 earnings report, Comfort Systems reported a record backlog of $14.1 billion, up 73% year over year (YOY). Most of that backlog came from technology and industrial demand."
+    },
+    {
+     "title": "The Appearance of the Sky - Center for Science Education",
+     "url": "https://scied.ucar.edu/learning-zone/atmosphere/appearance-sky",
+     "snippet": "Red light has long wavelengths, while blue light has short wavelengths. Light bounces off of air molecules in the Earth's atmosphere, …"
+    },
+    {
+     "title": "Comfort Systems USA backlog rises to $14.06 billion by June 30",
+     "url": "https://www.stocktitan.net/news/FIX/comfort-systems-usa-reports-second-quarter-2026-6pc4g0cg8jje.html",
+     "snippet": "As compared to the same quarter last year, Comfort Systems USA is reporting a 50% increase in revenue, … increase in per share earnings, and remarkable and completely unprecedented quarterly cash flow of more than $1 billion Backlog as of June 30 …"
+    },
+    {
+     "title": "What Color Is the Sky Actually? The Science Explained",
+     "url": "https://biologyinsights.com/what-color-is-the-sky-actually-the-science-explained/",
+     "snippet": "6 days ago · Blue and violet wavelengths get scattered out of the beam long before it reaches you, leaving the longer wavelengths …"
+    },
+    {
+     "title": "Comfort Systems' Profit Growth Doubles: A Sustainable Trend?",
+     "url": "https://finance.yahoo.com/markets/stocks/articles/comfort-systems-profit-growth-doubles-163600578.html",
+     "snippet": "FIX's Q4 profit nearly doubles as margins top 25% and backlog hits a record $12B. Can execution, pricing and data center demand sustain the surge?"
+    }
+   ]
+  },
+  {
+   "i": 8,
+   "tool": "fetch_page",
+   "url": "https://www.stocktitan.net/news/FIX/comfort-systems-usa-reports-second-quarter-2026-6pc4g0cg8jje.html",
+   "url_kind": "ok",
+   "outcome": {
+    "kind": "page",
+    "served_url": "https://www.stocktitan.net/news/FIX/comfort-systems-usa-reports-second-quarter-2026-6pc4g0cg8jje.html",
+    "chars": 20359,
+    "cache_hit_in_record": false
+   }
+  },
+  {
+   "i": 9,
+   "tool": "search_web",
+   "query": "\"Comfort Systems\" 2025 annual report technology customers data center percentage revenue segment",
+   "why": "Confirm or refute the ~45% technology-customer revenue share claim with a dated source.",
+   "dedup_in_record": false,
+   "results": [
+    {
+     "title": "ON Semiconductor",
+     "url": "https://www.onsemi.com/site/pdf/CMD_Packaging-Labeling_Guidelines.pdf",
+     "snippet": "Each Overpack will have a standard ON Semiconductor shipping label. The label consists of the following elements: ON …"
+    },
+    {
+     "title": "Comfort Systems USA (FIX): The AI Bottleneck... — Claremont Street",
+     "url": "https://claremontstreet.com/journal/comfort-systems-usa-fix-labor-bottleneck",
+     "snippet": "Comfort Systems USA (FIX) equity research — why the AI data center bottleneck is shifting from power to skilled labor, and our $5,326 target (190% upside).Technology-segment revenue (data centers) grows from 45% of the mix in 2025 to ~80% by 2028. Estimates summary."
+    },
+    {
+     "title": "On Off Labels | McMaster-Carr",
+     "url": "https://www.mcmaster.com/products/on-off-labels/",
+     "snippet": "Clearly identify whether a switch is in the on or off position. Choose from our selection of on off labels, including printer labels, …"
+    },
+    {
+     "title": "Sterling vs. Comfort Systems: Which Stock Wins on Data Center...",
+     "url": "https://www.tradingview.com/news/zacks:d22274b5d094b:0-sterling-vs-comfort-systems-which-stock-wins-on-data-center-growth/",
+     "snippet": "In the first quarter of 2025, Comfort Systems reported record earnings per share of $4.75, surging more than 75% year over year, with revenues climbing 19% to $1.83 billion. This growth was largely driven by advanced technology projects, including data centers and semiconductor..."
+    },
+    {
+     "title": "ON Semiconductor Packaging and Labeling Guidelines",
+     "url": "https://www.onsemi.com/site/pdf/ON-Semiconductor-Packaging-and-Labeling-Guidelines-ver1.0.2.pdf",
+     "snippet": "• MPN Label: A bar code label containing the ON Semiconductor Manufacturer Part Number of the device and other traceability …"
+    },
+    {
+     "title": "Tech giants including Microsoft and Oracle can’t get data centers built...",
+     "url": "https://sherwood.news/markets/tech-giants-including-microsoft-and-oracle-cant-get-data-centers-built-fast/",
+     "snippet": "“Data center, that margin is historically better than the smaller kind of industrial commercial jobs.”That would be an increase of roughly 23% compared to the $32.5 million in revenues the company generated in 2025, and would mark an acceleration from growth of 12% last year."
+    }
+   ]
+  },
+  {
+   "i": 10,
+   "tool": "search_web",
+   "query": "Comfort Systems USA FIX all-time high 2026 stock price June May peak",
+   "why": "Resolve the open question on the all-time high level/date to frame the drawdown and tranche levels.",
+   "dedup_in_record": false,
+   "results": [
+    {
+     "title": "Age Assurance and Age Verification | Trulioo",
+     "url": "https://www.trulioo.com/solutions/identity-verification/age-assurance",
+     "snippet": "Protect minors and meet evolving age assurance requirements and regulations without forcing every user through document checks. …"
+    },
+    {
+     "title": "This Beautiful-but-Boring HVAC Stock Has Quietly... | The Motley Fool",
+     "url": "https://www.fool.com/investing/2026/05/13/this-beautiful-but-boring-comfort-systems-has-quie/",
+     "snippet": "Comfort Systems USA (FIX +6.29%) stock is up an incredible 1,240% over the last three years, and up 116% in 2026 alone as I write. It's an astonishing run that speaks to the explosion in artificial intelligence (AI) data center spending in the period."
+    },
+    {
+     "title": "Global Age Assurance | Trulioo",
+     "url": "https://www.trulioo.com/resources/solution-sheets/age-assurance",
+     "snippet": "Global Age Assurance Trulioo helps digital businesses meet rising global age assurance standards without sacrificing user …"
+    },
+    {
+     "title": "Comfort Systems USA Stock Surges 17%, With A 6-Day... | Trefis",
+     "url": "https://www.trefis.com/stock/fix/articles/598577/comfort-systems-usa-stock-surges-17-with-a-6-day-winning-spree/2026-05-07",
+     "snippet": "May 7th, 2026 by Trefis Team. FIX: Comfort Systems USA logo.The Trefis High Quality (HQ) Portfolio, with a collection of 30 stocks, has a track record of comfortably outperforming its benchmark that includes all 3 — the S&P 500, S&P mid-cap, and Russell 2000 indices. Why is that?"
+    },
+    {
+     "title": "Trulioo Age Assurance Jobs in United States (2,000+ Open Roles ...",
+     "url": "https://www.linkedin.com/jobs/trulioo-age-assurance-jobs",
+     "snippet": "Today's top 2,000+ Trulioo Age Assurance jobs in United States. Leverage your professional network, and get hired. New Trulioo …"
+    },
+    {
+     "title": "Comfort Systems USA stock hits all-time high at 1147.54 USD By...",
+     "url": "https://www.investing.com/news/company-news/comfort-systems-usa-stock-hits-alltime-high-at-114754-usd-93CH-4458244",
+     "snippet": "Comfort Systems USA Inc. stock has reached an all-time high, touching a remarkable 1147.54 USD. This milestone reflects a significant growth trajectory for the company over the past year."
+    }
+   ]
+  }
+ ]
+}
