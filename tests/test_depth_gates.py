@@ -19,7 +19,9 @@ def _clean(**over):
     also failing."""
     base = {"direction": "hold", "gate_version": GV, "n_basis": 2,
             "fiduciary_verdict": "PASS", "kelly_fraction_pct": 0.0, "spread_pct": 5.0,
-            "run_source": "orchestrator"}
+            "run_source": "orchestrator",
+            "producer_class": {"status": "ok", "depleting": False, "sector": "Technology",
+                               "industry": "Software - Infrastructure", "source": "stocks.csv@test"}}
     base.update(over)
     return base
 
@@ -190,7 +192,9 @@ FIXTURE_ROWS = [
     # AAA: clean, actionable.
     {"ticker": "AAA", "direction": "hold", "gate_version": GV, "n_basis": 2,
      "fiduciary_verdict": "PASS", "kelly_fraction_pct": 0.0, "spread_pct": 5.0,
-     "run_source": "orchestrator", "date": "2026-09-22"},
+     "run_source": "orchestrator", "date": "2026-09-22",
+     "producer_class": {"status": "ok", "depleting": False, "sector": "Technology",
+                        "industry": "Software - Infrastructure", "source": "stocks.csv@test"}},
     # BBB: pre-v3.1 (no gate_version) AND single-sample — two reasons compound.
     {"ticker": "BBB", "direction": "undervalued", "n_basis": 1, "spread_pct": 5.0,
      "run_source": "orchestrator", "date": "2026-09-18"},

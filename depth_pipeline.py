@@ -1081,6 +1081,15 @@ def stamp_and_route(v, t, run_source, quote=None, screener_data_commit=None):
     if v["street_fence"] is None:
         v["flags"] = sorted(set(v.get("flags") or []) | {"no_street_fence"})
 
+    commit_str = screener_data_commit if screener_data_commit else "unknown"
+    v["producer_class"] = depth_gates.producer_class(
+        t,
+        Path(CONFIG["screener_data_dir"]) / "stocks.csv",
+        f"stocks.csv@{commit_str}",
+    )
+    if v["producer_class"].get("status") == "unknown":
+        v["flags"] = sorted(set(v.get("flags") or []) | {"producer_class_unknown"})
+
     if run_source == "ondemand":
         return OD_LEDGER, None
     if run_source in ("orchestrator", "cloud", "manual_production"):

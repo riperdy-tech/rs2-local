@@ -277,6 +277,8 @@ def _clean_verdict(ticker, **over):
     v = {"ticker": ticker, "direction": "hold", "gate_version": depth_gates.GATE_VERSION,
          "n_basis": 2, "fiduciary_verdict": "PASS", "kelly_fraction_pct": 0.0, "spread_pct": 5.0,
          "run_source": "orchestrator", "date": "2026-09-01",
+         "producer_class": {"status": "ok", "depleting": False, "sector": "Technology",
+                            "industry": "Software", "source": "test"},
          "invalidation_rules": [_rule(metric="net_income", comparator="<", threshold=0)]}
     v.update(over)
     return v

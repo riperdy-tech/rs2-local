@@ -24,7 +24,9 @@ V3 = ["outside_street_fence", "mos_beyond_150pct", "desk_not_used", "low_effort_
 def _clean(**over):
     base = {"direction": "hold", "gate_version": dg.GATE_VERSION, "n_basis": 2,
             "fiduciary_verdict": "PASS", "kelly_fraction_pct": 0.0, "spread_pct": 5.0,
-            "run_source": "orchestrator"}
+            "run_source": "orchestrator",
+            "producer_class": {"status": "ok", "depleting": False, "sector": "Technology",
+                               "industry": "Software - Infrastructure", "source": "stocks.csv@test"}}
     base.update(over)
     return base
 
@@ -33,8 +35,8 @@ def _v3(v):
     return [r for r in dg.assess(v)[1] if r in V3]
 
 
-def test_gate_version_is_four():
-    assert dg.GATE_VERSION == 4
+def test_gate_version_is_five():
+    assert dg.GATE_VERSION == 5
 
 
 def test_sample_failed_reason():
@@ -161,7 +163,7 @@ def test_a_row_without_a_fence_says_so(monkeypatch):
     monkeypatch.setattr(vb, "street_fence", lambda t: None)
     v = {"ticker": "X", "price": 10.0, "direction": "hold"}
     dp.stamp_and_route(v, "X", "gate_test")
-    assert v["street_fence"] is None and v["flags"] == ["no_street_fence"]
+    assert v["street_fence"] is None and "no_street_fence" in v["flags"]
     assert "outside_street_fence" not in dg.assess(v)[1]
 
 

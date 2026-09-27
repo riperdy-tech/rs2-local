@@ -20,9 +20,87 @@ under different rules and cannot be judged against today's bar — it fails clos
 """
 from __future__ import annotations
 
-# 4 (GATE_VERSION 4, operator ruling 2026-09-27): reasons 14-15. Failed samples or discovery briefs
-# block actionability.
-GATE_VERSION = 4
+import csv
+from pathlib import Path
+
+# Temporary (Phase 4 reviewer ruling 2026-09-27): revenue from extracting a finite stock, priced on a commodity.
+DEPLETING_INDUSTRIES = frozenset({
+    "Oil & Gas E&P", "Oil & Gas Integrated", "Gold", "Silver", "Copper", "Other Precious Metals & Mining",
+    "Other Industrial Metals & Mining", "Thermal Coal", "Coking Coal", "Uranium"})
+
+_PRODUCER_CSV_CACHE: dict[tuple[str, float], tuple[dict[str, tuple[str, str]], None] | tuple[None, str]] = {}
+
+
+def producer_class(ticker: str, stocks_csv_path: str | Path, source_label: str) -> dict:
+    """Classify ticker against screener stocks.csv depleting producer industries.
+
+    Fail-closed: returns status 'unavailable' on any read/parse/schema defect.
+    Returns status 'unknown' if ticker is missing or has empty industry.
+    Returns status 'ok' with depleting boolean, sector, industry, and source otherwise.
+    """
+    if not stocks_csv_path:
+        return {"status": "unavailable", "source": source_label, "error": "stocks_csv_path is empty or None"}
+
+    p = Path(stocks_csv_path)
+    try:
+        mtime = p.stat().st_mtime
+    except OSError as e:
+        return {"status": "unavailable", "source": source_label, "error": str(e)}
+
+    cache_key = (str(p.resolve()), mtime)
+    cached = _PRODUCER_CSV_CACHE.get(cache_key)
+    if cached is not None:
+        mapping, err = cached
+        if err:
+            return {"status": "unavailable", "source": source_label, "error": err}
+    else:
+        try:
+            with open(p, "r", encoding="utf-8-sig", newline="", errors="replace") as f:
+                reader = csv.DictReader(f)
+                if not reader.fieldnames:
+                    err = "stocks.csv has no header row"
+                    _PRODUCER_CSV_CACHE[cache_key] = (None, err)
+                    return {"status": "unavailable", "source": source_label, "error": err}
+                sym_col = next((c for c in reader.fieldnames if c and c.strip().lower() == "symbol"), None)
+                ind_col = next((c for c in reader.fieldnames if c and c.strip().lower() == "industry"), None)
+                sec_col = next((c for c in reader.fieldnames if c and c.strip().lower() == "sector"), None)
+                if not sym_col or not ind_col:
+                    err = "stocks.csv missing symbol or industry column"
+                    _PRODUCER_CSV_CACHE[cache_key] = (None, err)
+                    return {"status": "unavailable", "source": source_label, "error": err}
+                mapping = {}
+                for row in reader:
+                    sym = (row.get(sym_col) or "").strip().upper()
+                    if sym:
+                        sec = (row.get(sec_col) or "").strip() if sec_col else ""
+                        ind = (row.get(ind_col) or "").strip()
+                        mapping[sym] = (sec, ind)
+                _PRODUCER_CSV_CACHE[cache_key] = (mapping, None)
+        except Exception as e:
+            err = f"failed to read/parse stocks.csv: {e}"
+            _PRODUCER_CSV_CACHE[cache_key] = (None, err)
+            return {"status": "unavailable", "source": source_label, "error": err}
+
+    sym = (ticker or "").strip().upper()
+    if sym not in mapping:
+        return {"status": "unknown", "source": source_label}
+
+    sec, ind = mapping[sym]
+    if not ind:
+        return {"status": "unknown", "source": source_label}
+
+    return {
+        "status": "ok",
+        "depleting": ind in DEPLETING_INDUSTRIES,
+        "sector": sec,
+        "industry": ind,
+        "source": source_label,
+    }
+
+
+# 5 (GATE_VERSION 5, reviewer ruling 2026-09-27): reason 16. Depleting producers are not actionable
+# until a producer design passes its own test.
+GATE_VERSION = 5
 
 # P2-fix B2 (Phase 2 approval review): the ledger's `gate_version` alone does not prove a verdict
 # came from a VALID analyst — depth_pipeline stamps gate_version=2 on every verdict it writes
@@ -71,6 +149,7 @@ def assess(v):
          from 2026-09-27 such a sample is never a basis sample, so this guards rows written before that -> "low_effort_rescue"
      14. any flag starting with `SAMPLE_FAILED`               -> "sample_failed"
      15. any flag starting with `discovery_failed`            -> "discovery_failed"
+     16. depleting producer, or class unavailable on v>=5     -> "depleting_producer_unsupported" / "depleting_producer_class_unavailable"
 
     Reasons 10-13 (GATE_VERSION 3, Phase 4 (b)): the sanity audit already flagged FSM's samples
     (MoS +442%, 4.9x the analyst high) and kept them, as designed, but no gate read the flags. A
@@ -82,6 +161,11 @@ def assess(v):
     thinking, or one whose harness run failed, is not a result. Any flag starting with
     `SAMPLE_FAILED` (failed run or lost sample) produces reason `sample_failed`; any flag
     starting with `discovery_failed` produces `discovery_failed`.
+
+    Reasons 16 (GATE_VERSION 5, reviewer ruling 2026-09-27): Depleting-producer class (stocks.csv
+    industry). Phase 4 development runs (FSM, GPOR on revisions 11 and 12) valued these businesses
+    as perpetuities at spot commodity decks despite the TASK, so the verdict is not actionable
+    until a producer design passes its own pre-registered test. Temporary.
 
     P4.8: symmetric dispersion — `high_dispersion` fires for `overvalued` too, not only
     `undervalued`. band_verdict already demotes both directions to `hold` on write when the
@@ -157,6 +241,19 @@ def assess(v):
 
     if any(isinstance(f, str) and f.startswith("discovery_failed") for f in flags):
         reasons.append("discovery_failed")
+
+    pc = v.get("producer_class")
+    if isinstance(pc, dict):
+        if pc.get("status") == "ok" and pc.get("depleting") is True:
+            reasons.append("depleting_producer_unsupported")
+        elif pc.get("status") == "unavailable":
+            reasons.append("depleting_producer_class_unavailable")
+    else:
+        try:
+            if gv is not None and gv >= 5:
+                reasons.append("depleting_producer_class_unavailable")
+        except TypeError:
+            pass
 
     return (not reasons), reasons
 

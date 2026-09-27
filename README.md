@@ -152,7 +152,7 @@ judges one on read and returns `(actionable: bool, reasons: list[str])`, evaluat
 applicable reason so a row can carry more than one at once:
 
 1. `direction` not one of `undervalued`/`hold`/`overvalued` -> `not_usable`
-2. `gate_version` absent or `< GATE_VERSION` (currently 4) -> `pre_v3.1_gates`
+2. `gate_version` absent or `< GATE_VERSION` (currently 5) -> `pre_v3.1_gates`
 3. `n_basis == 1` -> `single_sample`
 4. `fiduciary_verdict == "FAIL"` -> `fiduciary_fail`
 5. `direction == overvalued` and `kelly_fraction_pct > 0` -> `kelly_on_overvalued`
@@ -172,6 +172,8 @@ applicable reason so a row can carry more than one at once:
     never a basis sample, so this guards rows written before that -> `low_effort_rescue`
 14. any flag starting with `SAMPLE_FAILED` -> `sample_failed`
 15. any flag starting with `discovery_failed` -> `discovery_failed`
+16. depleting producer (industry in depleting list) -> `depleting_producer_unsupported`;
+    producer_class unavailable (or absent on v>=5) -> `depleting_producer_class_unavailable`
 
 `orchestrate_depth.rebuild_overlay()` runs every ledger row's newest-per-ticker through
 `assess()` and adds `actionable` / `actionable_reasons` / `gate_version` to each row, plus
