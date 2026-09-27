@@ -1274,9 +1274,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         if terminal_g_val is not None:
             terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: "
                                 f"{terminal_g_val*100:.2f}%  [{_STRUCTURAL_TERMINAL_G_LABEL}]")
+            facts["terminal_g_anchor"] = float(f"{terminal_g_val*100:.2f}") / 100.0
         else:
             terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: {ASOF_NULL}  "
                                f"({terminal_g_src})")
+            facts["terminal_g_anchor"] = None
 
         be_val = be_pct / 100.0 if be_pct is not None else None
         terminal_def_val, terminal_def_reason = consensus_reference.terminal_default(
@@ -1539,8 +1541,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             tg_asof = lrg_payload.get("asof") if lrg_payload else None
             terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: "
                                 f"{terminal_g_val*100:.2f}%  (asof {tg_asof or NULL})")
+            facts["terminal_g_anchor"] = float(f"{terminal_g_val*100:.2f}") / 100.0
         else:
             terminal_g_line = f"- Long-run nominal growth anchor for terminal_g: {NULL}  ({terminal_g_src})"
+            facts["terminal_g_anchor"] = None
 
         be_val = be_pct / 100.0 if be_pct is not None else None
         terminal_def_val, terminal_def_reason = consensus_reference.terminal_default(
@@ -2068,6 +2072,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
             facts["owner_earnings_source"] = "ttm_filed"
+            facts["owner_earnings_default_b"] = float(f"{oe / 1e9:,.3f}".replace(",", ""))
             L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 TTM capex {_b(capex)} = {_b(oe)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Net income is after interest, so this is an equity flow: value it in the equity frame. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
@@ -2085,6 +2090,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 missing.append("TTM capex")
             missing_str = ", ".join(missing)
             facts["owner_earnings_source"] = None
+            facts["owner_earnings_default_b"] = None
             L.append(f"- OWNER EARNINGS (default base_cf): not available (point-in-time) \u2014 {missing_str} missing")
         if latest_yr is not None:
             latest_rec = h.get(str(latest_yr)) or {}
@@ -2228,10 +2234,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
             facts["owner_earnings_source"] = f"{oe_src[0]}_ni+{oe_src[1]}_capex" if oe_tag else "ttm_filed"
+            facts["owner_earnings_default_b"] = float(f"{oe / 1e9:,.3f}".replace(",", ""))
             L.append(f"- [Arithmetic] OWNER EARNINGS (default base_cf): {ni_src} {_b(ni)} + D&A (FY{latest_yr}) {_b(da)} \u2212 {capex_src} {_b(capex)} = {_b(oe)}{oe_tag}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded. Net income is after interest, so this is an equity flow: value it in the equity frame. Use this as base_cf unless base_cf_reason states why another base is more representative.")
             _sbc_fy = (h.get(str(latest_yr)) or {}).get("sbc") if latest_yr is not None else None
             if isinstance(ocf, (int, float)) and isinstance(_sbc_fy, (int, float)):
-                L.append(f"- [Arithmetic] CASH BASIS (alternative base_cf): TTM operating cash flow {_b(ocf)} \u2212 {capex_src} {_b(capex)} \u2212 stock compensation (FY{latest_yr}) {_b(_sbc_fy)} = {_b(ocf - capex - _sbc_fy)}. Includes working-capital swings and, like every flow here, is after interest; declare base_cf_basis \"other\" with base_cf_reason if you use it.")
+                _cash_basis = ocf - capex - _sbc_fy
+                facts["cash_basis_b"] = float(f"{_cash_basis / 1e9:,.3f}".replace(",", ""))
+                L.append(f"- [Arithmetic] CASH BASIS (alternative base_cf): TTM operating cash flow {_b(ocf)} \u2212 {capex_src} {_b(capex)} \u2212 stock compensation (FY{latest_yr}) {_b(_sbc_fy)} = {_b(_cash_basis)}. Includes working-capital swings and, like every flow here, is after interest; declare base_cf_basis \"other\" with base_cf_reason if you use it.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
                 gap = ocf - denom
@@ -2252,6 +2261,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                     and _vc_x < 0):
                 missing_str += f" (the vendor's capex is not used: {_ven_capex_why})"
             facts["owner_earnings_source"] = None
+            facts["owner_earnings_default_b"] = None
             L.append(f"- OWNER EARNINGS (default base_cf): not available \u2014 {missing_str} missing; declare your base and why.")
         if latest_yr is not None:
             latest_rec = h.get(str(latest_yr)) or {}
@@ -2342,6 +2352,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             if row:
                 if hz == 5 and "p90" in row:
                     facts["years35_p90"] = float(br_table[5]["p90"]) / 100.0
+                    facts["base_rate_5y"] = {
+                        "share_ge_10": float(row["share_ge_10"]),
+                        "share_ge_20": float(row["share_ge_20"]),
+                        "share_ge_30": float(row["share_ge_30"]),
+                        "p50": float(row["p50"]),
+                        "p90": float(row["p90"]),
+                    }
                 L.append(f"- {hz}y sustained growth, this size bucket (n={row['n']}): "
                          f">=10%/yr {row['share_ge_10']}%, >=20%/yr {row['share_ge_20']}%, "
                          f">=30%/yr {row['share_ge_30']}%, median {row['p50']}%, p90 {row['p90']}%")
@@ -2515,6 +2532,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
     # ---- SECTION 7 -------------------------------------------------------------------------
     if asof_date is None:
         if bat:
+            _rc5 = bat.get('revenue_cagr_5y')
+            facts["revenue_cagr_5y_pct"] = float(f"{_rc5*100:.1f}") if isinstance(_rc5, (int, float)) else None
             L += [f"## SECTION 7 - FILING-DERIVED QUALITY MEASURES   [Arithmetic on filed values; each "
                   f"line states its window; fiscal year {_v(bat, 'fiscal_year')}]",
                   f"- Piotroski F-score: {_v(bat, 'f_score')} out of "
@@ -2526,7 +2545,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                   f"CAGR: {_pct(bat.get('net_issuance_3y_cagr'))}   (negative = net buyback)",
                   f"- Operating margin, latest: {_pct(bat.get('op_margin_latest'))}   |   median over "
                   f"{_v(bat, 'op_margin_years')} years: {_pct(bat.get('op_margin_10y_median'))}",
-                  f"- Revenue CAGR, trailing 5 fiscal years: {_pct(bat.get('revenue_cagr_5y'))}",
+                  f"- Revenue CAGR, trailing 5 fiscal years: {_pct(_rc5)}",
                   f"- Years of history available: {_v(bat, 'years_available')}",
                   f"- Share-count split suspected in the series: "
                   f"{_v(bat, 'share_count_split_suspected')}",
@@ -3014,96 +3033,50 @@ FINANCIAL_METRICS = (
     "net_issuance_1y", "filing_8k_count",
 )
 
-TASK = """You are performing an institutional equity underwriting analysis. T0 is today's price in the data pack below.
+# S3 4.1: the form's 13 fields. The last two are kept until the operator rules on C10.
+FORM_FIELDS = ("catalysts", "conviction_score", "business_quality_moat", "cycle_evidence", "momentum_view",
+               "entry_timing", "position_basis", "momentum_evidence", "momentum_flip_condition",
+               "momentum_break_rule", "invalidation_rules", "reentry_tranches", "thesis_invalidation_trigger")
 
-YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Charter:
-  * First-Principles Value Decomposition: Dissect the enterprise into its distinct economic engines: (1) Transactional/Deliveries, (2) Captive Installed-Base / Recurring Contractual Annuity / Subscriptions, and (3) Strategic Optionality. Do not force the enterprise into a single rigid formula.
-  * Complete Value Cycle Rule: Customer advances, deferred revenue and contract liabilities can signal capacity lock-in. One-off prepayment float is not recurring cash flow. Credit a multi-year recurring annuity ONLY where the filings show the contracted backlog or installed base that secures it (cite the filing and the figure); a supplier purchase commitment is not customer revenue.
-  * Dual Terminal Valuation & Capitalization Realism: DCF projection cross-checked against net capitalization rates (1 / [WACC - g]) and verified empirical peer comps. Do not clamp terminal growth or force artificial multiple ceilings on durable compounders.
-  * Causal Downside Stress-Testing: The Bear case must trace operational shock transmission through the business engine bottom-up (transactional volume shock, installed-base service durability, operating de-leverage flow-through, and WACC spread expansion) rather than arbitrary top-down cash flow slashing. Enforce the Contracted Visibility Floor for backlogged/high-ARR enterprises.
-  * Lead Underwriter & Portfolio Manager Role: You own the fundamental economic viewpoint, business quality moat evaluation, scenario boundaries (Base, Bull, Bear), and final capital allocation decision. You are supported by a Python Financial Modeling Desk: invoke `run_financial_model` whenever you need deterministic DCF schedules, reverse DCF expectations gap, or continuous multi-outcome Kelly sizing. You can pass all 3 scenarios together in a single call (with each scenario's base_cf, growth_rates, wacc, terminal_g) and Python will compute all intrinsic values, reverse DCF expectations gap, and Kelly sizing in one unified table. DO NOT perform manual mental math on log-wealth Kelly formulas in prose; obtain exact numbers from `run_financial_model`.
-  * The desk does the arithmetic: do not compute present values, terminal values or per-share values in your reasoning. Call run_financial_model as soon as your inputs are set and reason from its output; revise with evidence, as below.
-  * One model, stated once: run Bear, Base and Bull together in ONE `run_financial_model` call. If you later change any input and run again, the memorandum must include a 'Model revisions' list giving, for every changed input, the old value, the new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden. The harness records every run you make and flags unexplained swings.
-  * Scratchpad Containment & Anti-Anchoring: Keep all rough-draft calculations, re-estimates, and trial reconciliations strictly inside <think>...</think>. Never adjust valuations to match market price T0. Enforce exact parity between Section 4 scenario tables and the Section 12 JSON contract.
-  * Declare Your Cash-Flow Base: Declare your cash-flow base. The default is SECTION 3's OWNER EARNINGS line (base_cf_basis "owner_earnings_default"); if you use another base, say why in base_cf_reason. Start from the default; do not run a trial base through the desk. The pack prints `cash basis [Arithmetic]`
-    (= OCF - capex - SBC) for every fiscal year; `ttm_fcf` means trailing-twelve-months OCF
-    minus capex, which subtracts NO stock compensation. If you use a basis that is none of
-    these, declare `other` rather than leaving it implied. Your declared basis is checked
-    against the filed figures and any disagreement is reported.
-  * All Valuation Arithmetic Through The Desk: every intrinsic value you publish MUST come from
-    `run_financial_model` — the three-stage DCF (explicit stage-1 growth, a declared linear fade
-    over `fade_years` to `terminal_g`, and a dual terminal value computed BOTH as Gordon growth
-    and as an exit multiple, both properly discounted). `base_iv` in the JSON contract below MUST
-    equal a desk `per_share_iv` (or a desk `blend` of named legs) within 1% — do not hand-compute
-    or eyeball a value and then declare it. Also call the desk's reverse DCF under the NEUTRAL
-    reference structure (anchor `coe_used`, 10-year linear fade to the terminal_g anchor from
-    SECTION 1.5) — print its implied 10-year CAGR and the GROWTH BASE RATES percentile band it
-    falls in, and argue explicitly why your own forecast differs from what the market is already
-    pricing in. A mid-cycle or margin-mean-reversion (cyclical) treatment requires `cycle_evidence`
-    — at least one dated, industry-specific indicator (pricing, inventory, capacity, order
-    trends); a growth rate alone is not evidence.
-  * Explain The Recent Move First: start from the CATALYST BRIEF, RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions. For each development say whether you accept or dispute it and why, and how it enters your Bull, Base and Bear numbers; add any development you find yourself and fetch the articles you rely on. Record them in `catalysts`. If a public takeover offer for the company is pending, value the business standalone; in the memorandum state the probability you give the offer and the expected value with and without it. The verdict stays on standalone value.
-  * Scenarios Anchored To Expectations: Stage-1 growth rates are growth of the CASH FLOW you value (base_cf), not of revenue: revenue growth leaves out margin change. SECTION 8's CONSENSUS-IMPLIED VALUE line prints the consensus cash-flow LEVELS for year 1 and year 2, built on the last full fiscal year, the same period consensus growth is measured from. Base years 1-2 reach those levels from whatever base you declare: the levels are the anchor, not the growth rates, so a base from another period (TTM, a cash basis) needs growth that lands on the same year-2 level; a Base year-2 cash flow more than 15% from the printed level needs guidance_deviation_reason. If no levels are printed, start from the company's guidance converted to cash-flow growth, or revenue growth plus your stated margin path, and say so in guidance_deviation_reason. When SECTION 8 prints a BASE WINDOW CHECK, the fiscal-year and TTM owner earnings disagree by more than consensus growth explains: find the item behind the gap in the filings, name in base_cf_reason the window you judge representative, and anchor to that window's reference and year-2 level; where the TTM window's value is not shown (it lands outside the street fence), a Base on that window needs guidance_deviation_reason. From year 3 growth follows revenue again: fade from next-FY consensus revenue growth toward the GROWTH BASE RATES median by year 5, and anything above its p90 needs the MANDATE's dated evidence. A Base year above next-FY revenue growth needs guidance_deviation_reason with dated evidence, given to the desk in the same call and repeated in the contract: without it the desk holds Base years 3-5 at next-FY revenue growth and prints what your path would give beside the desk value, and only the desk value can be your Base. When SECTION 8 prints Bull and Bear year-2 levels (3 or more analysts), the Bull and Bear year-2 cash flows reach them; say why in scenario_deviation_reason if not. With fewer analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one, otherwise state your own range and why. SECTION 8's CONSENSUS-IMPLIED VALUE is what the consensus path is worth at our discount rate; a Base IV more than a quarter away from it needs guidance_deviation_reason. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
-  * Share Count And Net Debt: Use SECTION 2's share count in every scenario. A contingent instrument (warrants or earn-outs that vest on milestones) may be added only in the scenarios where it vests (pass shares_diluted per scenario), with shares_basis "diluted_plus_contingent" and shares_reason naming the instrument and its vesting condition; never in a scenario whose premise is that it does not vest. In the firm frame use SECTION 6's NET DEBT as net_debt unless net_debt_reason says why.
-  * Valuation Frame: Use the equity frame (valuation_frame "equity", rate_type "cost_of_equity", no net_debt). Every flow this pack prints (OWNER EARNINGS, CASH BASIS, the cash basis column, FCF) is after interest, an equity flow, and SECTION 1.5 anchors a cost of equity, not a WACC. The firm frame is the exception and needs all three of: a pre-interest flow (add back after-tax interest expense from SECTION 5 and give the amount in interest_addback, in $B); a WACC built from the COE ANCHOR, a cost of debt from filed interest over debt, a tax rate and weights from SECTION 6, stated in wacc_reason; and SECTION 6's NET DEBT. An after-interest flow in the firm frame counts the debt twice.
-  * Terminal Growth And Multiple: terminal_g defaults to SECTION 1.5's TERMINAL-GROWTH DEFAULT (the long-run growth anchor unless a lower default is printed); a terminal_g more than 0.5 points from it needs terminal_reason with dated evidence. The exit multiple defaults to SECTION 1.5's DEFAULT EXIT MULTIPLE (at a scenario's other rate, the desk's implied_terminal_ev_fcf_gordon for that scenario): the flow has already faded to terminal_g, so any other multiple asserts another terminal growth. The desk returns it as exit_implied_terminal_g; if it is more than 0.5 points from the terminal_g default, give terminal_reason with dated peer EV/FCF evidence. A P/E ratio is not an EV/FCF multiple, and this pack holds no EV/FCF peer data.
-  * Cash-Flow Life: before valuing, decide whether the business's cash flows are perpetual or end, and state it in cash_flow_life ("perpetual" or the number of years) with cash_flow_life_reason. Cash flows end when they come from extracting a finite stock (a mine, a well, a reservoir) or from a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of the capex your base already deducts. The life is filed reserves divided by current annual production, or the remaining term, with the filing's date. Pass a finite life to the desk as finite_life_years in the Base, Bull and Bear scenarios. A perpetual value must deduct the capex that replaces what the business depletes; otherwise it counts reserves it would have to buy. Where revenue moves with a quoted commodity price, state in cash_flow_life_reason the price your cash flows assume and its source (the futures strip, the street's long-term deck, or your own with evidence); a spot price held for the whole life needs that evidence. A finite-life value sits below SECTION 8's reference, so also give guidance_deviation_reason.
-  * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
+# S3 4.2 (2026-09-28): replaces the revision-14 TASK, whose narrative rules code now enforces
+# (the desk's DEFAULTS block and its refusals) or which is now derived, not typed. Old literal
+# above this comment, in git history at 3d02fbd.
+TASK = """You are underwriting this company for real money. T0 is today's price in SECTION 2. The data pack above is what our systems hold. Its DEFAULTS block gives the value each desk input takes unless you decide otherwise, and the reason the desk asks for when you do.
 
-Produce the full report, SECTION 0 through SECTION 12, following the mandatory institutional memorandum structure. End with SECTION 12 Final Execution Opinion and the validated JSON contract. Reason fields take null when no reason is needed; never fill them with text such as "no deviation":
+YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic view, the moat judgment, the scenario boundaries and the capital decision, as the charter sets them. Every value you publish comes from run_financial_model: do not compute present values, terminal values, per-share values or Kelly sizes in your reasoning. Call the desk as soon as your inputs are set, and reason from its output.
+
+1. Explain the recent move first. Start from the CATALYST BRIEF, RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions. For each development, say whether you accept or dispute it and why, and how it enters Bull, Base and Bear. Add any development you find yourself, and fetch the articles you rely on. Record them in `catalysts`. If a public takeover offer is pending, value the business standalone; in the memorandum give the offer's probability and the expected value with and without it. The verdict stays on standalone value.
+2. Decompose the business into its economic engines: transactional deliveries; a captive installed base, recurring contractual annuity or subscriptions; strategic optionality. Do not force it into one formula. Credit a multi-year annuity only where the filings show the backlog or installed base that secures it (cite the filing and the figure). Customer advances and one-off prepayment float are not recurring cash flow, and a supplier purchase commitment is not customer revenue.
+3. Choose every valuation input and pass it to the desk: the cash-flow base and its window; the growth of that cash flow (not revenue) for years 1-5 in Base, Bull and Bear; fade years; terminal growth, or an exit multiple and which end value each scenario publishes (terminal_leg); the discount rate; the frame; the share count; net debt (firm frame only); the cash-flow life; and the scenario probabilities, justified by milestones and the balance of evidence. Start from the DEFAULTS; do not run trial bases through the desk.
+   - Growth: years 1-2 reach the consensus cash-flow levels in DEFAULTS from whatever base you declare. From year 3, growth follows next-FY revenue growth, fading toward the base-rate median by year 5. Growth above the base-rate p90 needs dated, company-specific evidence. With fewer than 3 analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one; otherwise state your own range and why.
+   - Scenarios: Bull rests on the strongest bull catalyst the market is reacting to, and Bear on the strongest bear catalyst. The Bear traces an operating shock through the business (volume, the installed base's durability, operating deleverage, a wider discount rate), not an arbitrary cut. Where the filings show contracted backlog above one year of revenue or recurring revenue above 70%, cite it: the Bear may not fall below that contracted floor without a stated reason.
+   - Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders; a departure from the default needs evidence, not a cap. A P/E ratio is not an EV/FCF multiple, and this pack holds no EV/FCF peer data.
+   - Frame: every flow in this pack is after interest, so value it in the equity frame. The firm frame needs a pre-interest flow, a WACC built from the COE ANCHOR, and net debt; the desk asks for each.
+   - Shares: use SECTION 2's count, the desk's default. Add a contingent instrument (warrants, earn-outs) only in the scenarios where it vests, never in one whose premise is that it does not.
+   - Cash-flow life: cash flows end when they come from a finite stock (a mine, a well, a reservoir) or a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of capex your base already deducts. The life is filed reserves over current production, or the remaining term, with the filing's date. A perpetual value must deduct the capex that replaces what the business depletes. Where revenue follows a quoted commodity price, state the price deck your flows assume and its source.
+4. Where an input departs from its DEFAULT, give the reason with dated evidence in the same desk call. The desk names any reason it needs, and a refused call does not use one of your desk runs. A reason is evidence, never text such as "no deviation"; leave a reason out when none is needed.
+5. Run Bear, Base and Bull together in one call. Your last complete desk run of all three is your answer. If you change any input after a complete run, the memorandum's 'Model revisions' list gives each changed input's old value, new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden, and so is moving any input toward today's price; the harness records every run.
+6. The desk also returns the reverse DCF: the growth today's price implies, under your structure and under the neutral reference. Report the neutral reference's implied 10-year growth and the base-rate band it falls in, and argue why your forecast differs from what the market is pricing.
+7. Timing: SECTION 2.5's price facts are not a valuation input. State whether they confirm, sit neutral to or contradict your value call, when to enter, the position basis, and checkable conditions that would break the trend or the thesis.
+8. Tag every driver's source: [Actual], [Estimate], [Assumption] or [Unconfirmed]. The research brief and the news are claims by others; where they conflict with the filings, the filings win.
+
+Produce the full memorandum, SECTION 0 through SECTION 12, as the system text specifies, and end with the contract below. The contract no longer carries the scenario values, probabilities, Kelly size, verdict label, valuation inputs or reasons: code takes them from your last complete desk run of Bear, Base and Bull. Where the system text asks you to type any of them into SECTION 12's contract, this TASK takes precedence, and SECTION 4's scenario table and SECTION 12's figures must show that run's values exactly.
 
 ```json:underwriting
 {
-  "base_iv": <float per-share intrinsic value for Base Case — MUST equal a desk per_share_iv/blend within 1%>,
-  "bull_iv": <float per-share intrinsic value for Bull Case>,
-  "bear_iv": <float per-share intrinsic value for Bear Case>,
-  "base_probability": <float between 0.0 and 1.0>,
-  "bull_probability": <float between 0.0 and 1.0>,
-  "bear_probability": <float between 0.0 and 1.0>,
   "catalysts": [{"date": "<YYYY-MM-DD>", "event": "<what happened>", "direction": "<bull | bear>", "estimates_moved": "<how consensus estimates moved with it, or 'no visible change'>", "scenario": "<which scenario it supports and how it moves the numbers>"}],
-  "bull_below_price_reason": "<string or null — required when bull_iv < today's price>",
-  "bear_above_price_reason": "<string or null — required when bear_iv > today's price>",
-  "shares_basis": "<diluted | diluted_plus_contingent — SECTION 2's count, or plus a contingent instrument in the scenarios where it vests>",
-  "shares_reason": "<string or null — required when any scenario's share count differs from SECTION 2's: the instrument and its vesting condition>",
-  "net_debt_reason": "<string or null — required when the firm frame's net_debt differs from SECTION 6's NET DEBT>",
-  "scenario_deviation_reason": "<string or null — required when the Bull or Bear year-2 cash flow is more than 15% from SECTION 8's Bull or Bear year-2 level>",
-  "terminal_reason": "<string or null — required when terminal_g, or an exit multiple's implied terminal growth, is more than 0.5 points from the terminal_g default: the dated evidence>",
-  "cash_flow_life": <"perpetual" or an integer number of years (1-60) — required for every name>,
-  "cash_flow_life_reason": "<string — required for every name: one dated sentence; for a finite life, the filed reserves and production rate or the remaining term; where revenue moves with a commodity price, the price deck and its source>",
-  "interest_addback": <float or null — firm frame only: the after-tax interest expense in $B added to the after-interest flow>,
-  "wacc_reason": "<string or null — firm frame only: the COE ANCHOR, the cost of debt (filed interest / debt), the tax rate and the weights behind your WACC>",
-  "base_cf_used": <float, in $B, the base cash flow you actually used for the Base Case>,
-  "base_cf_basis": "<owner_earnings_default | latest_fy | multi_year_avg | ttm_fcf | other — which base that figure is>",
-  "base_cf_reason": "<string or null — required when base_cf_basis is not owner_earnings_default: why that base is more representative; and when SECTION 8 prints a BASE WINDOW CHECK: the window you judge representative (fiscal year or TTM) and the item behind the gap>",
-  "conviction_score": <float between 4.0 and 15.0 reflecting analytical certainty>,
-  "business_quality_moat": <float between 1.0 and 5.0 reflecting moat durability>,
-  "kelly_fraction_pct": <float between 0.0 and 25.0 recommended quarter-Kelly position size, obtained from run_financial_model or set to 0.0 if expected edge <= 0>,
-  "asymmetric_payoff_skew": <float (Bull_IV - Price) / (Price - Bear_IV)>,
-  "reentry_tranches": {
-    "tranche_1_starter": <float price for Starter allocation reflecting margin of safety>,
-    "tranche_2_core": <float price for Core allocation anchored to Bear IV or deep pullback>
-  },
-  "thesis_invalidation_trigger": "<Exact operational or financial threshold that invalidates this thesis>",
-  "coe_used": <float, decimal cost of equity/capital you actually used in run_financial_model, e.g. 0.0936>,
-  "coe_source": "<anchor | anchor_adjusted | own — anchor/anchor_adjusted when coe_used is within +-150bp of SECTION 1.5's COE ANCHOR, own otherwise>",
-  "coe_adjustment_reason": "<string, required when coe_source is not \"anchor\" — why coe_used departs from the anchor>",
-  "valuation_frame": "<equity | firm — equity (the default) discounts the pack's after-interest flows at the cost of equity with net_debt refused; firm discounts a pre-interest flow (interest_addback) at a WACC built from the COE ANCHOR (wacc_reason) and requires SECTION 6's NET DEBT + shares_diluted>",
-  "terminal_method": "<gordon | exit_multiple | dual_reconciled>",
-  "terminal_multiple_or_g": <float — the terminal growth rate (decimal) or exit multiple actually used>,
-  "fade_years": <integer >= 0 — length of the Stage-2 linear fade to terminal_g, as passed to run_financial_model>,
-  "stage1_growth_path": [<5 annual growth rates of base_cf - cash flow, not revenue; years 1-2 normally consensus EPS growth>],
-  "guidance_deviation_reason": "<string or null — required when the Base year-2 cash flow is more than 15% from SECTION 8's year-2 level, the Base IV is more than a quarter away from SECTION 8's CONSENSUS-IMPLIED VALUE, or a Base year 3-5 growth is above next-FY consensus revenue growth (the reason you gave the desk)>",
-  "cycle_evidence": "<string or null — required when you apply a cyclical / mid-cycle / margin-mean-reversion treatment; a growth rate alone is not evidence>",
-  "verdict_label": "<undervalued | hold | overvalued — undervalued means Base IV at least 1.10x today's price, overvalued at most 0.90x, otherwise hold; your own stated verdict, checked against the recorded direction>",
-  "momentum_view": "<confirming | neutral | contradicting — does SECTION 2.5's price action confirm, sit neutral to, or contradict your valuation call?>",
+  "conviction_score": <float between 4.0 and 15.0: analytical certainty>,
+  "business_quality_moat": <float between 1.0 and 5.0: moat durability>,
+  "cycle_evidence": "<a dated, industry-specific indicator (pricing, inventory, capacity, orders) when you apply a cyclical, mid-cycle or margin-mean-reversion treatment; a growth rate alone is not evidence; null otherwise>",
+  "momentum_view": "<confirming | neutral | contradicting: SECTION 2.5's price action against your value call>",
   "entry_timing": "<buy_now | wait_for_momentum | avoid>",
-  "position_basis": "<value | momentum | none — mandate 7: value only when undervalued; momentum when your honest direction is hold or overvalued but the business is in a strong, fundamentally backed uptrend (entry_timing buy_now) - e.g. estimates rising or guidance raised; momentum_view then usually reads 'contradicting', which is expected; otherwise none>",
-  "momentum_evidence": "<string or null — required when position_basis is momentum: the dated facts from the GUIDANCE block or the filings that back the trend (guidance raised, backlog or orders growth, estimates rising)>",
+  "position_basis": "<value | momentum | none: value only when undervalued; momentum when your honest direction is hold or overvalued but the business is in a strong, fundamentally backed uptrend (entry_timing buy_now); otherwise none>",
+  "momentum_evidence": "<when position_basis is momentum: the dated facts from the GUIDANCE block or the filings that back the trend (guidance raised, backlog or orders growth, estimates rising); null otherwise>",
   "momentum_flip_condition": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
   "momentum_break_rule": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
-  "invalidation_rules": [
-    {"metric": "<name from the metric vocabulary below>", "comparator": "< | <= | > | >=", "threshold": <float>, "window": "<string, e.g. 'next reported quarter'>", "source": "<where this is checked, e.g. 'fundamentals_quarterly.json'; use \"unverifiable\" if the metric is outside both vocabularies>"}
-  ]
+  "invalidation_rules": [{"metric": "<name from the metric vocabulary below>", "comparator": "< | <= | > | >=", "threshold": <float>, "window": "<string, e.g. 'next reported quarter'>", "source": "<where this is checked, e.g. 'fundamentals_quarterly.json'; \\"unverifiable\\" if the metric is outside both vocabularies>"}],
+  "reentry_tranches": {"tranche_1_starter": <float price for the starter allocation, reflecting margin of safety>, "tranche_2_core": <float price for the core allocation, anchored to Bear IV or a deep pullback>},
+  "thesis_invalidation_trigger": "<the exact operational or financial threshold that invalidates this thesis>"
 }
 ```
 
@@ -3114,32 +3087,16 @@ METRIC VOCABULARY for `invalidation_rules` (at least one FINANCIAL and at least 
 Think carefully through the complete economic machinery before writing. Numbers before narrative."""
 
 
-# Appended ONLY when the analyst is given search tools (consensus_valuation --tools).
+# S3 4.3 (2026-09-28): replaces the revision-14 RESEARCH_ADDENDUM. Old literal above this
+# comment, in git history at 3d02fbd. Appended ONLY when the analyst is given search tools
+# (consensus_valuation --tools). Keeps the leading "\n\n" that main() relies on when appending.
 RESEARCH_ADDENDUM = """
 
-RESEARCH RULES — you have web search available, so DO NOT ASSUME WHAT YOU CAN LOOK UP.
-
-1. When your reasoning needs a fact you do not have, SEARCH FOR IT. Do not substitute an
-   assumption, a trend extrapolation, or a "reasonable" placeholder. This applies to
-   forward-looking drivers not covered in the pack, post-brief material corporate developments,
-   or specific parameter stress-tests.
-2. Search DURING your reasoning, not after you have decided. A number found to justify a
-   conclusion you already reached is not evidence.
-3. DO NOT search to re-verify figures already established in your pack:
-   - Financial statements in SECTIONS 3–6 (Revenue, net income, operating cash flow, filed debt) are authoritative from SEC filings.
-   - Operational unit drivers, forward management guidance, and segment metrics cited in SECTION 11 are claims made by another model, not verified — cite the filing when you rely on one, and check it against the filings above when you can.
-   - Search ONLY for what both filings AND research cannot tell you: unconfirmed gaps, missing corporate events, or specific model parameters that remain unresolved.
-4. Cite what you retrieve. Every retrieved figure gets its source named inline, and stays
-   [Actual] only if it came from the company or a regulator; a secondary report is [Estimate].
-5. If you search and still cannot establish a number, that is a legitimate finding: mark it
-   [Unconfirmed], state what you could not resolve, and carry the uncertainty into your
-   scenarios rather than burying it in a point estimate.
-6. THE WRITTEN MEMORANDUM IS THE DELIVERABLE, NOT THE TOOL CALLS. Tool output is raw input to
-   your analysis. After you have completed all tool calls and received their results, you MUST
-   immediately write the complete institutional underwriting memorandum in the full SECTION 0
-   through SECTION 12 format, ending with the ```json:underwriting contract. Stopping after a
-   tool call delivers nothing: a run that ends on tool output is discarded unread, however long
-   it ran. Never emit tool-call syntax as prose, and never treat a tool result as your answer."""
+RESEARCH RULES — you have web search, so do not assume what you can look up.
+1. When your reasoning needs a fact you do not have, search for it while you reason; never substitute an assumption, a trend extrapolation or a placeholder. A number found to justify a conclusion you already reached is not evidence.
+2. Do not search to re-verify filed figures: SECTIONS 3-6 come from SEC filings and are authoritative. Research-brief figures are another model's claims; cite the filing when you rely on one. Search only for what neither the filings nor the brief can tell you.
+3. Name the source of every retrieved figure inline. It stays [Actual] only if it came from the company or a regulator; a secondary report is [Estimate]. A number you could not establish is [Unconfirmed]: say what you could not resolve, and carry the uncertainty into the scenarios instead of burying it in a point estimate.
+4. The written memorandum is the deliverable, not the tool calls. When your research is done, write the complete memorandum, SECTION 0 through SECTION 12, ending with the ```json:underwriting contract. A run that ends on tool output is discarded unread, however long it ran. Never write tool-call syntax as prose, and never treat a tool result as your answer."""
 
 
 def _arg(flag, default=None):

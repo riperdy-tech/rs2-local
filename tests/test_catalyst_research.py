@@ -429,12 +429,15 @@ def test_pack_placement_and_build_pack_never_calls_run(monkeypatch, tmp_path):
 
 
 def test_task_bullet_text_replaced():
-    """Verify TASK bullet Explain The Recent Move First is replaced exactly."""
+    """Verify TASK bullet Explain The Recent Move First is replaced exactly.
+    # S3 A+B (brief §4.2): the old "Explain The Recent Move First" bullet is now checklist item 1;
+    # same doctrine (start from CATALYST BRIEF/RECENT COMPANY NEWS/SECTION 8, accept-or-dispute each
+    # development, record in `catalysts`), new sentence."""
     expected_bullet = (
-        "  * Explain The Recent Move First: start from the CATALYST BRIEF, RECENT COMPANY NEWS and "
-        "SECTION 8's estimate trend and revisions. For each development say whether you accept or "
-        "dispute it and why, and how it enters your Bull, Base and Bear numbers; add any development "
-        "you find yourself and fetch the articles you rely on. Record them in `catalysts`."
+        "1. Explain the recent move first. Start from the CATALYST BRIEF, RECENT COMPANY NEWS and "
+        "SECTION 8's estimate trend and revisions. For each development, say whether you accept or "
+        "dispute it and why, and how it enters Bull, Base and Bear. Add any development you find "
+        "yourself, and fetch the articles you rely on. Record them in `catalysts`."
     )
     assert expected_bullet in cap.TASK
 

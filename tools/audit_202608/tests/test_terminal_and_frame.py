@@ -15,6 +15,8 @@ HERE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 
+import analyst_tools as at  # noqa: E402
+import capability_test as cap  # noqa: E402
 import consensus_valuation as cv  # noqa: E402
 import financial_model_tool as fmt  # noqa: E402
 
@@ -61,13 +63,19 @@ def test_the_desk_returns_the_terminal_growth_an_exit_multiple_implies():
     assert "implies terminal g 2.57% vs 3.75% in the Gordon leg" in md
 
 
+# S3 A+B (brief §3.2, §3.3, §3.5 R6): price comes from context now; cash_flow_life and its reason
+# are required; the Base's 16x exit multiple implies a terminal growth 118bp from the default
+# (R6), so it needs terminal_reason.
 def test_the_batch_table_prints_each_scenarios_implied_growth():
     res = fmt.execute_financial_model({
-        "price": 1643.39, "valuation_frame": "equity", "rate_type": "cost_of_equity", "terminal_g": 0.0375,
+        "valuation_frame": "equity", "rate_type": "cost_of_equity", "terminal_g": 0.0375,
         "fade_years": 5, "shares_diluted": 0.0352, "terminal_exit_multiple": 16, "sbc_treatment": "deducted_in_cf",
+        "cash_flow_life": "perpetual", "cash_flow_life_reason": "test",
+        "base_cf_reason": "test", "terminal_reason": "test", "bear_above_price_reason": "test",
         "scenarios": [{"name": "Base", "prob": 0.5, "base_cf": 1.186, "growth_rates": FLOW["growth_rates"], "wacc": 0.0898},
                       {"name": "Bear", "prob": 0.5, "base_cf": 1.186, "growth_rates": [0.45, 0.08, 0.05, 0.04, 0.035],
-                       "wacc": 0.1048}]})
+                       "wacc": 0.1048}]},
+        context={"price": 1643.39})
     md = fmt.format_model_results_markdown(res)
     assert "- Base: 16.0x exit multiple implies terminal g 2.57% vs 3.75% in the Gordon leg" in md
     assert "- Bear: 16.0x exit multiple implies terminal g 3.98%" in md
@@ -81,15 +89,21 @@ def test_the_pack_line_gives_the_multiple_consistent_with_the_anchors():
     assert "not available" in cap._default_exit_multiple_line(3.0, 0.0375)       # rate below g
 
 
+# S3 A+B (brief §3.3, §4.2): terminal_reason/interest_addback/wacc_reason are now call arguments
+# on the desk's TOOLS schema, not contract fields typed into the TASK's JSON block; the "Valuation
+# Frame"/"Terminal Growth And Multiple" doctrine is now the Frame/Terminal value sub-bullets of
+# checklist item 3.
 def test_the_pack_prints_the_default_exit_multiple_and_the_frame_rule(screener_data_stub):
-    import capability_test as cap
     pack = str(cap.build_pack("GEV"))
     assert "DEFAULT EXIT MULTIPLE" in pack
     assert "Net income is after interest, so this is an equity flow" in pack
     assert "The equity frame (the default) takes no net_debt" in pack
-    for field in ('"terminal_reason":', '"interest_addback":', '"wacc_reason":'):
-        assert field in cap.TASK
-    assert "* Valuation Frame:" in cap.TASK and "* Terminal Growth And Multiple:" in cap.TASK
+    fm = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
+    props = fm["function"]["parameters"]["properties"]
+    for field in ("terminal_reason", "interest_addback", "wacc_reason"):
+        assert field in props
+    assert "Frame: every flow in this pack is after interest, so value it in the equity frame." in cap.TASK
+    assert "Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders" in cap.TASK
 
 
 def test_fix_s2_the_16x_exit_leg_is_flagged_without_a_reason(tmp_path):

@@ -9,19 +9,22 @@ sys.path.insert(0, str(HERE))
 import analyst_tools as at
 import financial_model_tool as fmt
 
+# S3 A+B (brief §3.3): "price" left the schema (the harness supplies it via desk_context).
 def test_financial_model_tool_registered_in_tools_list():
     tool_names = [t["function"]["name"] for t in at.TOOLS]
     assert "run_financial_model" in tool_names
-    
+
     # Check parameters
     fm_tool = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
     params = fm_tool["function"]["parameters"]["properties"]
-    assert "price" in params
+    assert "price" not in params
+    assert "cash_flow_life" in params
     assert "scenarios" in params
 
+# S3 A+B (brief §3.2, §3.3): price and demonstrated_cagr_5y (= revenue_cagr_5y_pct) come from
+# desk_context now, not the call; cash_flow_life/cash_flow_life_reason are required call arguments.
 def test_dispatch_financial_model_tool():
     args = {
-        "price": 951.0,
         "scenarios": [
             {"name": "Base", "iv": 1100.0, "prob": 0.35},
             {"name": "Bull", "iv": 1450.0, "prob": 0.20},
@@ -31,10 +34,12 @@ def test_dispatch_financial_model_tool():
         "shares_diluted": 0.274,
         "wacc": 0.085,
         "terminal_g": 0.025,
-        "demonstrated_cagr_5y": 7.5,
+        "cash_flow_life": "perpetual",
+        "cash_flow_life_reason": "test",
     }
     snap = []
-    res = at.dispatch_tool("run_financial_model", args, snap=snap)
+    res = at.dispatch_tool("run_financial_model", args, snap=snap,
+                           desk_context={"price": 951.0, "revenue_cagr_5y_pct": 7.5})
     assert "kelly_sizing" in res
     assert "reverse_dcf" in res
     assert "markdown_report" in res
@@ -225,28 +230,29 @@ def test_chat_with_tools_zero_desk_calls_refuses_financial_model(monkeypatch, tm
     assert "budget exhausted (0)" in snap["calls"][0]["error"]
 
 
+# S3 A+B (brief §3.3, §4.4): the required list is now cash_flow_life, cash_flow_life_reason,
+# terminal_g, fade_years, sbc_treatment; shares_diluted is optional (the context default applies)
+# and its description text changed.
 def test_financial_model_tool_schema_and_validation_agree():
-    """F4: run_financial_model schema required list matches desk validation.
-    shares_diluted, terminal_g, fade_years, sbc_treatment are required in schema,
-    and a desk call missing each is refused with validation_error: True."""
+    """F4: run_financial_model schema required list matches desk validation, and a desk call
+    missing each required field is refused with validation_error: True."""
     fm_tool = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
     fn = fm_tool["function"]
     props = fn["parameters"]["properties"]
     required = fn["parameters"]["required"]
 
     expected_desc = (
-        "Diluted share count in billions. REQUIRED in every frame: the desk "
-        "refuses a call without it. Use SECTION 2's shares outstanding unless you state a diluted count."
+        "Optional. The desk uses SECTION 2's count (DEFAULTS) when you leave it out. "
+        "Pass it only for a different count, with shares_reason."
     )
     assert props["shares_diluted"]["description"] == expected_desc
 
-    four_fields = ["shares_diluted", "terminal_g", "fade_years", "sbc_treatment"]
-    assert required == ["price", "shares_diluted", "terminal_g", "fade_years", "sbc_treatment"]
-    for field in four_fields:
+    five_fields = ["cash_flow_life", "cash_flow_life_reason", "terminal_g", "fade_years", "sbc_treatment"]
+    assert required == five_fields
+    for field in five_fields:
         assert field in required
 
     base_params = {
-        "price": 100.0,
         "base_cf": 10.0,
         "explicit_growth": [0.05],
         "wacc": 0.09,
@@ -254,12 +260,23 @@ def test_financial_model_tool_schema_and_validation_agree():
         "terminal_g": 0.025,
         "fade_years": 5,
         "sbc_treatment": "deducted_in_cf",
+        "cash_flow_life": "perpetual",
+        "cash_flow_life_reason": "test",
     }
-    for field in four_fields:
+    ctx = {"price": 100.0}
+    for field in five_fields:
         p = dict(base_params)
         del p[field]
-        res = fmt.execute_financial_model(p)
+        res = fmt.execute_financial_model(p, context=ctx)
         assert res.get("validation_error") is True, f"Desk must refuse call missing {field}"
-        assert field in res.get("missing", []), f"{field} must be reported in missing list"
+        assert any(field in m for m in res.get("missing", [])), f"{field} must be reported in missing list"
+
+    # shares_diluted is no longer required: with no scenario/top-level count and no context
+    # default, the call is refused with shares_diluted among the missing inputs (V6, §3.2).
+    p = dict(base_params)
+    del p["shares_diluted"]
+    res = fmt.execute_financial_model(p, context=ctx)
+    assert res.get("validation_error") is True
+    assert any("shares_diluted" in m for m in res.get("missing", []))
 
 

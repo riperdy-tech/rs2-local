@@ -25,8 +25,42 @@ os.environ.setdefault("STOCKS_ROOT", r"C:\Users\riper\stocks")
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+# consensus_reference.py (the R10 window choice, LEVEL_TOL/FAR_LOW/FAR_HIGH) lives at repo_root/tools
+_REPO_TOOLS = _REPO_ROOT / "tools"
+if str(_REPO_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_REPO_TOOLS))
 
 import rate_engine
+import consensus_reference
+
+
+def _normalize_cash_flow_life(val):
+    """S3 3.4 V1: normalise cash_flow_life to 'perpetual' or int 1-60 (whole-number float or digit
+    string accepted). Anything else is returned as given. Moved here from
+    consensus_valuation.py (revision 12) so the desk's own V1 check and the harness's flag use one
+    copy; consensus_valuation imports it back."""
+    if val is None or type(val) is bool:
+        return val
+    if isinstance(val, str):
+        s = val.strip()
+        if s.lower() == "perpetual":
+            return "perpetual"
+        try:
+            f = float(s)
+            if f.is_integer() and 1 <= int(f) <= 60:
+                return int(f)
+        except (ValueError, TypeError):
+            pass
+        return val
+    if isinstance(val, (int, float)):
+        try:
+            f = float(val)
+            if f.is_integer() and 1 <= int(f) <= 60:
+                return int(f)
+        except (ValueError, TypeError):
+            pass
+        return val
+    return val
 
 
 def _validate_required_dcf_inputs(
@@ -149,6 +183,7 @@ def unbundled_dcf(
     sbc_treatment: Optional[str] = None,
     sbc_dilution: Optional[float] = None,
     finite_life_years: Optional[int] = None,
+    terminal_leg: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Calculate three-stage DCF per Phase 4 Decision D1:
     - Explicit growth (Stage 1)
@@ -191,16 +226,17 @@ def unbundled_dcf(
     # Resolve rates
     rates = explicit_growth if explicit_growth is not None else growth_rates
     if not rates or len(rates) == 0:
-        return {"error": "explicit_growth (or growth_rates) must be a non-empty list of growth rates"}
+        return {"error": "explicit_growth (or growth_rates) must be a non-empty list of growth rates",
+                "validation_error": True}
 
     # Resolve discount rate
     effective_rate = wacc if wacc is not None else discount_rate
     if effective_rate is None or effective_rate <= 0:
-        return {"error": "wacc (or discount_rate) must be positive"}
+        return {"error": "wacc (or discount_rate) must be positive", "validation_error": True}
     rate = float(effective_rate)
 
     if base_cf <= 0:
-        return {"error": "base_cf must be positive for standard DCF"}
+        return {"error": "base_cf must be positive for standard DCF", "validation_error": True}
 
     # Valuation frame enforcement (D1)
     frame = str(valuation_frame or "equity").strip().lower()
@@ -208,7 +244,8 @@ def unbundled_dcf(
         frame_enum = rate_engine.RS2_EQUITY_FRAME
         claim_enum = rate_engine.CLAIM_EQUITY
         if net_debt is not None and abs(float(net_debt)) > 1e-9:
-            return {"error": f"valuation_frame 'equity' refuses nonzero net_debt ({net_debt}); cash flows are levered (FCFE) and directly yield equity value"}
+            return {"error": f"valuation_frame 'equity' refuses nonzero net_debt ({net_debt}); cash flows are levered (FCFE) and directly yield equity value",
+                    "validation_error": True}
         effective_net_debt = 0.0
         if rate_type is None:
             rate_type_norm = rate_engine.COST_OF_EQUITY
@@ -218,27 +255,30 @@ def unbundled_dcf(
         frame_enum = rate_engine.FIRM_FCFF_FRAME
         claim_enum = rate_engine.CLAIM_FIRM
         if net_debt is None:
-            return {"error": "valuation_frame 'firm' requires net_debt to bridge enterprise value to equity value"}
+            return {"error": "valuation_frame 'firm' requires net_debt to bridge enterprise value to equity value",
+                    "validation_error": True}
         if effective_shares <= 0:
-            return {"error": "valuation_frame 'firm' requires positive shares_diluted"}
+            return {"error": "valuation_frame 'firm' requires positive shares_diluted", "validation_error": True}
         effective_net_debt = float(net_debt)
         if rate_type is None:
             rate_type_norm = rate_engine.TRUE_WACC
         else:
             rate_type_norm = str(rate_type).strip().upper()
     else:
-        return {"error": f"unknown valuation_frame '{valuation_frame}'; allowed frames are 'equity' and 'firm'"}
+        return {"error": f"unknown valuation_frame '{valuation_frame}'; allowed frames are 'equity' and 'firm'",
+                "validation_error": True}
 
     # Rate pairing check
     try:
         rate_engine.check_pairing(frame_enum, claim_enum, rate_type_norm)
     except rate_engine.FrameMismatch as exc:
-        return {"error": f"FrameMismatch: {str(exc)}"}
+        return {"error": f"FrameMismatch: {str(exc)}", "validation_error": True}
 
     # SBC treatment (D1)
     if sbc_norm == "deducted_in_cf":
         if sbc_dilution is not None and float(sbc_dilution) != 0.0:
-            return {"error": "double deduction refused: sbc_treatment is 'deducted_in_cf', so sbc_dilution may not also be passed"}
+            return {"error": "double deduction refused: sbc_treatment is 'deducted_in_cf', so sbc_dilution may not also be passed",
+                    "validation_error": True}
     elif sbc_norm in ("dilution", "add_back_dilution"):
         sd = float(sbc_dilution)
         if sd < 1.0:
@@ -247,7 +287,7 @@ def unbundled_dcf(
             effective_shares = effective_shares + sd
 
     if finite_life_years is None and rate <= terminal_g:
-        return {"error": f"wacc ({rate}) must be greater than terminal_g ({terminal_g})"}
+        return {"error": f"wacc ({rate}) must be greater than terminal_g ({terminal_g})", "validation_error": True}
 
     # Project discrete cash flows: Stage 1 (explicit) + Stage 2 (linear fade)
     cf = float(base_cf)
@@ -386,8 +426,11 @@ def unbundled_dcf(
         if exit_mult is not None:
             exit_in_band = (band_low <= exit_mult <= band_high)
 
-    # Primary terminal leg: exit multiple if provided by caller, else Gordon
-    if has_exit:
+    # Primary (published) terminal leg. S3 3.6: with an exit multiple, terminal_leg=None (or
+    # "exit") means exit, today's leg; "gordon" publishes the Gordon leg instead. With no exit
+    # multiple only Gordon exists, regardless of terminal_leg.
+    published_leg = "gordon" if (not has_exit or terminal_leg == "gordon") else "exit"
+    if published_leg == "exit":
         primary_tv_nominal = tv_nominal_exit
         primary_tv_pv = tv_pv_exit
         primary_ev = ev_exit
@@ -427,6 +470,7 @@ def unbundled_dcf(
         "valuation_frame": frame,
         "rate_type": rate_type_norm,
         "discount_rate_applied": round(rate, 4),
+        "terminal_leg": published_leg,
         "gordon_terminal": {
             "per_share_iv": round(per_share_iv_gordon, 2),
             "terminal_value_nominal": round(tv_nominal_gordon, 2),
@@ -837,24 +881,24 @@ def blend(legs: List[Dict[str, Any]], price: Optional[float] = None) -> Dict[str
     and weights summing to 1. Returns blended per-share IV and echoes the legs.
     """
     if not legs or not isinstance(legs, list):
-        return {"error": "blend requires a non-empty list of leg dicts"}
+        return {"error": "blend requires a non-empty list of leg dicts", "validation_error": True}
 
     total_weight = 0.0
     parsed_legs = []
 
     for idx, leg in enumerate(legs):
         if not isinstance(leg, dict):
-            return {"error": f"Leg {idx} must be a dictionary"}
+            return {"error": f"Leg {idx} must be a dictionary", "validation_error": True}
         name = str(leg.get("name") or leg.get("label") or f"Leg {idx+1}")
 
         if "weight" not in leg or leg["weight"] is None:
-            return {"error": f"Leg '{name}' missing required 'weight'"}
+            return {"error": f"Leg '{name}' missing required 'weight'", "validation_error": True}
         try:
             w = float(leg["weight"])
         except (ValueError, TypeError):
-            return {"error": f"Leg '{name}' has non-numeric weight '{leg['weight']}'"}
+            return {"error": f"Leg '{name}' has non-numeric weight '{leg['weight']}'", "validation_error": True}
         if w < 0:
-            return {"error": f"Leg '{name}' has negative weight {w}"}
+            return {"error": f"Leg '{name}' has negative weight {w}", "validation_error": True}
 
         val = leg.get("iv")
         if val is None:
@@ -862,11 +906,12 @@ def blend(legs: List[Dict[str, Any]], price: Optional[float] = None) -> Dict[str
         if val is None:
             val = leg.get("value")
         if val is None:
-            return {"error": f"Leg '{name}' missing intrinsic value ('iv', 'per_share_iv', or 'value')"}
+            return {"error": f"Leg '{name}' missing intrinsic value ('iv', 'per_share_iv', or 'value')",
+                    "validation_error": True}
         try:
             v = float(val)
         except (ValueError, TypeError):
-            return {"error": f"Leg '{name}' has non-numeric intrinsic value '{val}'"}
+            return {"error": f"Leg '{name}' has non-numeric intrinsic value '{val}'", "validation_error": True}
 
         source = leg.get("source") or leg.get("result_id") or "desk"
         total_weight += w
@@ -885,7 +930,7 @@ def blend(legs: List[Dict[str, Any]], price: Optional[float] = None) -> Dict[str
         parsed_legs.append(leg_rec)
 
     if abs(total_weight - 1.0) > 0.001:
-        return {"error": f"Blend weights must sum to 1.0 (got {total_weight:.4f})"}
+        return {"error": f"Blend weights must sum to 1.0 (got {total_weight:.4f})", "validation_error": True}
 
     blended_iv = sum(l["weight"] * l["per_share_iv"] for l in parsed_legs)
     blended_iv_rounded = round(blended_iv, 2)
@@ -906,145 +951,299 @@ def blend(legs: List[Dict[str, Any]], price: Optional[float] = None) -> Dict[str
     return res
 
 
+def _role_of(name):
+    """S3 3.5: a name containing "bull" is Bull, one containing "bear" is Bear, and every other
+    scenario is Base. The desk's own rule (shared by the years35-cap logic below and the R1-R14
+    reason checks)."""
+    n = str(name or "").lower()
+    return "bull" if "bull" in n else ("bear" if "bear" in n else "base")
+
+
+def _to_b(v):
+    """A dollar or share figure in billions; raw counts/dollars are converted. Financial_model_tool
+    cannot import consensus_valuation's _num_b (that would cycle: consensus_valuation imports this
+    module's _normalize_cash_flow_life), so this is the desk's own copy of the same conversion."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return x / 1e9 if abs(x) > 1e6 else x
+
+
+def _reason_given(v):
+    """S3 3.3: a reason counts as not given when it is absent, empty, or reads "null" or "none"
+    (case-insensitive, after stripping). The harness's existing test."""
+    if v is None:
+        return False
+    s = str(v).strip()
+    return s != "" and s.lower() not in ("null", "none")
+
+
+def _effective_net_debt(explicit, frame, ctx_default_b):
+    if explicit is not None:
+        return float(explicit)
+    if frame == "equity":
+        return 0.0
+    return ctx_default_b
+
+
+def _effective_shares(explicit, top_shares, ctx_default_b):
+    if explicit is not None:
+        return explicit
+    if top_shares is not None:
+        return top_shares
+    return ctx_default_b
+
+
+def _need(reasons_needed, reason_name, given, triggered, why):
+    """S3 3.5: record that `reason_name` is needed, the first time it is triggered without
+    already being given. `reasons_needed` is an ordered dict of reason name -> why text."""
+    if triggered and not given:
+        reasons_needed.setdefault(reason_name, why)
+
+
+def _refusal(missing, needs_reasons, order=None):
+    """S3 3.7's refusal format."""
+    detail_bits = []
+    if order is not None:
+        detail_bits.append(f"the published values are not Bear <= Base <= Bull (Bear {order['bear']:.2f}, "
+                           f"Base {order['base']:.2f}, Bull {order['bull']:.2f}); no reason overrides the "
+                           f"order: change an input with dated evidence")
+    if missing:
+        detail_bits.append("missing " + ", ".join(missing))
+    if needs_reasons:
+        detail_bits.append("; ".join(f"{n['reason']} needed: {n['why']}" for n in needs_reasons))
+    detail = "; ".join(detail_bits)
+    msg = ("Not accepted as a desk run; it does not use one of your desk runs. " + detail +
+           ". Call again with the same inputs and these reasons, or change an input with dated evidence.")
+    out: Dict[str, Any] = {
+        "error": msg,
+        "validation_error": True,
+        "missing": list(missing),
+        "needs_reasons": list(needs_reasons),
+    }
+    if order is not None:
+        out["order"] = order
+    return out
+
+
 def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Master tool dispatcher called by Qwen or automation harness.
-    Supports single DCF, batch multi-scenario DCF, or blend mode in a single round trip."""
-    price = float(params.get("price") or 0)
-    result: Dict[str, Any] = {"price": price}
+    Supports single DCF, batch multi-scenario DCF, or blend mode in a single round trip.
 
-    raw_cap = (context or {}).get("years35_cap")
-    cap = float(raw_cap) if raw_cap is not None else None
-
-    raw_reason = str(params.get("guidance_deviation_reason") or "").strip()
-    reason = "" if raw_reason.lower() in ("null", "none") else raw_reason
-
-    capped_dcfs: List[Dict[str, Any]] = []
-    kept_names: List[str] = []
+    S3 3.2-3.7: `context` (the harness's desk_context) supplies today's price, the pack's share
+    default, the anchors, the base-rate table and the reverse-DCF inputs; the model supplies its
+    decisions and, where they depart from a default, the named reason. A call the desk cannot use,
+    or whose published legs fail a reason check, is refused (3.4, 3.5) and does not use a desk run.
+    """
+    ctx = context or {}
+    price = ctx.get("price")
 
     scenarios = params.get("scenarios") or []
     base_cf = params.get("base_cf")
 
-    # 0. Blend Mode Execution (if mode == 'blend' or ('legs' in params and not scenarios and not base_cf))
+    # ---- 0. Blend mode: unchecked (3.5); price still comes from the harness ------------------
     if params.get("mode") == "blend" or ("legs" in params and not scenarios and not base_cf):
         legs = params.get("legs")
         if not legs:
-            return {"error": "mode 'blend' requires non-empty 'legs' list"}
-        blend_res = blend(legs=legs, price=price if price > 0 else None)
+            return {"error": "mode 'blend' requires non-empty 'legs' list", "validation_error": True}
+        blend_res = blend(legs=legs, price=price if price and price > 0 else None)
         if blend_res.get("error"):
             return blend_res
+        result: Dict[str, Any] = {"price": price}
         result.update(blend_res)
         return result
 
+    result = {"price": price}
+    if params.get("price") is not None:
+        result["price_note"] = f"today's price is supplied by the harness: {price}"
+
     if "legs" in params and params["legs"]:
-        blend_res = blend(legs=params["legs"], price=price if price > 0 else None)
+        blend_res = blend(legs=params["legs"], price=price if price and price > 0 else None)
         if not blend_res.get("error"):
             result["blend"] = blend_res
+
+    # ---- 3.4 Refusals before computing --------------------------------------------------------
+    missing: List[str] = []
+    if price is None:
+        missing.append("price (harness)")
+
+    cfl_raw = params.get("cash_flow_life")
+    cfl_norm = _normalize_cash_flow_life(cfl_raw) if cfl_raw is not None else None
+    cfl_valid = (cfl_norm == "perpetual") or (
+        isinstance(cfl_norm, int) and type(cfl_norm) is not bool and 1 <= cfl_norm <= 60)
+    if not cfl_valid:                                                                     # V1
+        missing.append("cash_flow_life")
+    if not _reason_given(params.get("cash_flow_life_reason")):                            # V2
+        missing.append("cash_flow_life_reason")
+
+    # V3: finite_life_years leaves the schema; cash_flow_life applies to every scenario instead.
+    if params.get("finite_life_years") is not None:
+        missing.append("finite_life_years (use cash_flow_life, which applies to every scenario)")
+    for sc in scenarios:
+        if isinstance(sc, dict) and sc.get("finite_life_years") is not None:
+            missing.append(f"finite_life_years in {sc.get('name') or 'scenario'} "
+                           f"(use cash_flow_life, which applies to every scenario)")
+
+    is_finite = cfl_valid and cfl_norm != "perpetual"
+
+    # V4: terminal_leg
+    for sc in scenarios:
+        if not isinstance(sc, dict):
+            continue
+        nm = sc.get("name") or "scenario"
+        tl = sc.get("terminal_leg")
+        if tl is None:
+            continue
+        if tl not in ("exit", "gordon"):
+            missing.append(f"terminal_leg in {nm} (must be \"exit\" or \"gordon\")")
+        elif is_finite:
+            missing.append(f"terminal_leg in {nm} (a finite life has no terminal leg)")
+        elif tl == "exit" and sc.get("terminal_exit_multiple") is None and params.get("terminal_exit_multiple") is None:
+            missing.append(f"terminal_leg in {nm} (\"exit\" needs an exit multiple)")
+
+    # V5: every scenario needs prob >= 0; Base+Bull+Bear sum to 0.99-1.01 when all three are present
+    if scenarios:
+        for sc in scenarios:
+            nm = sc.get("name") if isinstance(sc, dict) else "scenario"
+            p = sc.get("prob") if isinstance(sc, dict) else None
+            if not isinstance(p, (int, float)) or type(p) is bool or p < 0:
+                missing.append(f"prob in {nm}")
+        roles_present = {_role_of(sc.get("name")) for sc in scenarios if isinstance(sc, dict)}
+        if {"base", "bull", "bear"} <= roles_present:
+            probs = [sc.get("prob") for sc in scenarios if isinstance(sc, dict)]
+            if all(isinstance(p, (int, float)) and type(p) is not bool for p in probs):
+                total = sum(float(p) for p in probs)
+                if not (0.99 <= total <= 1.01):
+                    missing.append("scenarios[].prob (Base, Bull and Bear must sum to 0.99-1.01)")
+
+    if missing:
+        return _refusal(missing=missing, needs_reasons=[])
+
+    # ---- Context defaults used while computing -------------------------------------------------
+    ctx_shares_default_b = ctx.get("shares_default_b")
+    ctx_net_debt_default_b = ctx.get("net_debt_default_b")
 
     val_frame = params.get("valuation_frame", "equity")
     rate_type = params.get("rate_type")
     fade_years = params.get("fade_years")
-    sector_multiple_band = params.get("sector_multiple_band")
     sbc_treatment = params.get("sbc_treatment")
     sbc_dilution = params.get("sbc_dilution")
 
-    top_net_debt = float(params["net_debt"]) if params.get("net_debt") is not None else (0.0 if val_frame == "equity" else None)
-    top_shares = params.get("shares_diluted")
+    top_net_debt_explicit = params.get("net_debt")
+    top_net_debt = _effective_net_debt(top_net_debt_explicit, val_frame, ctx_net_debt_default_b)
+    top_shares = _effective_shares(params.get("shares_diluted"), None, ctx_shares_default_b)
+    desk_finite_life_years = cfl_norm if isinstance(cfl_norm, int) else None
 
+    raw_cap = ctx.get("years35_cap")
+    cap = float(raw_cap) if raw_cap is not None else None
+    reason = params.get("guidance_deviation_reason") if _reason_given(params.get("guidance_deviation_reason")) else ""
+
+    capped_dcfs: List[Dict[str, Any]] = []
+    kept_names: List[str] = []
     scenario_dcfs = []
+    compute_errors: List[str] = []
 
-    # 1. Batch Scenario DCF Execution (if scenarios provide DCF parameters)
-    if scenarios:
-        for sc in scenarios:
-            s_cf = sc.get("base_cf")
-            s_gr = sc.get("explicit_growth") if sc.get("explicit_growth") is not None else sc.get("growth_rates")
-            s_wacc = sc.get("wacc") if sc.get("wacc") is not None else sc.get("discount_rate")
-            s_term_g = sc.get("terminal_g") if sc.get("terminal_g") is not None else params.get("terminal_g")
-            if s_cf is not None and s_gr and s_wacc is not None:
-                s_shares = sc.get("shares_diluted") if sc.get("shares_diluted") is not None else top_shares
-                s_fade = sc.get("fade_years") if sc.get("fade_years") is not None else fade_years
-                s_sbc = sc.get("sbc_treatment") if sc.get("sbc_treatment") is not None else sbc_treatment
-                s_sbc_dil = sc.get("sbc_dilution") if sc.get("sbc_dilution") is not None else sbc_dilution
+    # ---- 1. Batch scenario DCF execution -------------------------------------------------------
+    for sc in scenarios:
+        if not isinstance(sc, dict):
+            continue
+        sc_name = str(sc.get("name") or "Scenario")
+        s_cf = sc.get("base_cf")
+        s_gr = sc.get("explicit_growth") if sc.get("explicit_growth") is not None else sc.get("growth_rates")
+        s_wacc = sc.get("wacc") if sc.get("wacc") is not None else sc.get("discount_rate")
+        s_term_g = sc.get("terminal_g") if sc.get("terminal_g") is not None else params.get("terminal_g")
+        if s_cf is None or not s_gr or s_wacc is None:
+            continue
+        s_shares = _effective_shares(sc.get("shares_diluted"), top_shares, ctx_shares_default_b)
+        s_fade = sc.get("fade_years") if sc.get("fade_years") is not None else fade_years
+        s_sbc = sc.get("sbc_treatment") if sc.get("sbc_treatment") is not None else sbc_treatment
+        s_sbc_dil = sc.get("sbc_dilution") if sc.get("sbc_dilution") is not None else sbc_dilution
+        sc_frame = sc.get("valuation_frame", val_frame)
+        # a scenario's own net_debt, else the top level's explicit net_debt, else the frame default
+        sc_net_debt_explicit = sc.get("net_debt") if sc.get("net_debt") is not None else top_net_debt_explicit
+        sc_net_debt = _effective_net_debt(sc_net_debt_explicit, sc_frame, ctx_net_debt_default_b)
+        s_exit_mult = sc.get("terminal_exit_multiple") if sc.get("terminal_exit_multiple") is not None else params.get("terminal_exit_multiple")
+        s_terminal_leg = sc.get("terminal_leg")
 
-                sc_frame = sc.get("valuation_frame", val_frame)
-                sc_net_debt = float(sc["net_debt"]) if sc.get("net_debt") is not None else top_net_debt
-                s_fly = sc.get("finite_life_years") if sc.get("finite_life_years") is not None else params.get("finite_life_years")
-                dcf_res = unbundled_dcf(
-                    base_cf=float(s_cf),
-                    growth_rates=[float(g) for g in s_gr],
-                    wacc=float(s_wacc),
-                    terminal_g=float(s_term_g) if s_term_g is not None else None,
-                    terminal_exit_multiple=float(sc["terminal_exit_multiple"]) if sc.get("terminal_exit_multiple") else (float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None),
-                    annuity_flow=float(sc.get("annuity_flow", params.get("annuity_flow", 0.0))),
-                    annuity_cap_rate=float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate") else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None),
-                    net_debt=sc_net_debt,
-                    shares_diluted=s_shares,
-                    fade_years=s_fade,
-                    valuation_frame=sc_frame,
-                    rate_type=sc.get("rate_type", rate_type),
-                    sector_multiple_band=sc.get("sector_multiple_band", sector_multiple_band),
-                    sbc_treatment=s_sbc,
-                    sbc_dilution=s_sbc_dil,
-                    finite_life_years=s_fly,
-                )
-                if dcf_res.get("error"):
-                    return dcf_res
+        dcf_res = unbundled_dcf(
+            base_cf=float(s_cf),
+            growth_rates=[float(g) for g in s_gr],
+            wacc=float(s_wacc),
+            terminal_g=float(s_term_g) if s_term_g is not None else None,
+            terminal_exit_multiple=float(s_exit_mult) if s_exit_mult else None,
+            annuity_flow=float(sc.get("annuity_flow", params.get("annuity_flow", 0.0))),
+            annuity_cap_rate=float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate") else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None),
+            net_debt=sc_net_debt,
+            shares_diluted=s_shares,
+            fade_years=s_fade,
+            valuation_frame=sc_frame,
+            rate_type=sc.get("rate_type", rate_type),
+            sbc_treatment=s_sbc,
+            sbc_dilution=s_sbc_dil,
+            finite_life_years=desk_finite_life_years,
+            terminal_leg=s_terminal_leg,
+        )
+        if dcf_res.get("error"):
+            compute_errors.append(f"{sc_name}: {dcf_res['error']}")
+            continue
 
-                sc_name = str(sc.get("name") or "Scenario")
-                is_base = ("bull" not in sc_name.lower()) and ("bear" not in sc_name.lower())
-                if is_base and cap is not None:
-                    app_years = applied_years_1_to_5(s_gr, s_term_g, s_fade, s_fly)
-                    y35 = app_years[2:]
-                    if any(g > cap + 1e-12 for g in y35):
-                        if reason:
-                            kept_names.append(sc_name)
-                        else:
-                            n = len(s_gr)
-                            new_fade = max(0, int(s_fade) - (5 - n)) if n < 5 and s_fade is not None else (int(s_fade) if s_fade is not None else None)
-                            new_explicit_growth = app_years[:2] + [min(g, cap) for g in y35] + [float(g) for g in s_gr[5:]]
-                            new_dcf_res = unbundled_dcf(
-                                base_cf=float(s_cf),
-                                growth_rates=None,
-                                explicit_growth=new_explicit_growth,
-                                wacc=float(s_wacc),
-                                terminal_g=float(s_term_g) if s_term_g is not None else None,
-                                terminal_exit_multiple=float(sc["terminal_exit_multiple"]) if sc.get("terminal_exit_multiple") else (float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None),
-                                annuity_flow=float(sc.get("annuity_flow", params.get("annuity_flow", 0.0))),
-                                annuity_cap_rate=float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate") else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None),
-                                net_debt=sc_net_debt,
-                                shares_diluted=s_shares,
-                                fade_years=new_fade,
-                                valuation_frame=sc_frame,
-                                rate_type=sc.get("rate_type", rate_type),
-                                sector_multiple_band=sc.get("sector_multiple_band", sector_multiple_band),
-                                sbc_treatment=s_sbc,
-                                sbc_dilution=s_sbc_dil,
-                                finite_life_years=s_fly,
-                            )
-                            if new_dcf_res.get("error"):
-                                return new_dcf_res
-                            new_dcf_res["years35_capped"] = True
-                            capped_dcfs.append({
-                                "name": sc_name,
-                                "requested_years35": [round(g, 4) for g in y35],
-                                "applied_years35": [round(min(g, cap), 4) for g in y35],
-                                "requested_per_share_iv": round(dcf_res["per_share_iv"], 2),
-                                "applied_per_share_iv": round(new_dcf_res["per_share_iv"], 2),
-                                "requested_fade_years": int(s_fade) if s_fade is not None else None,
-                                "applied_fade_years": new_fade,
-                            })
-                            dcf_res = new_dcf_res
+        is_base = _role_of(sc_name) == "base"
+        if is_base and cap is not None:
+            app_years = applied_years_1_to_5(s_gr, s_term_g, s_fade, desk_finite_life_years)
+            y35 = app_years[2:]
+            if any(g > cap + 1e-12 for g in y35):
+                if reason:
+                    kept_names.append(sc_name)
+                else:
+                    n = len(s_gr)
+                    new_fade = max(0, int(s_fade) - (5 - n)) if n < 5 and s_fade is not None else (int(s_fade) if s_fade is not None else None)
+                    new_explicit_growth = app_years[:2] + [min(g, cap) for g in y35] + [float(g) for g in s_gr[5:]]
+                    new_dcf_res = unbundled_dcf(
+                        base_cf=float(s_cf),
+                        growth_rates=None,
+                        explicit_growth=new_explicit_growth,
+                        wacc=float(s_wacc),
+                        terminal_g=float(s_term_g) if s_term_g is not None else None,
+                        terminal_exit_multiple=float(s_exit_mult) if s_exit_mult else None,
+                        annuity_flow=float(sc.get("annuity_flow", params.get("annuity_flow", 0.0))),
+                        annuity_cap_rate=float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate") else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None),
+                        net_debt=sc_net_debt,
+                        shares_diluted=s_shares,
+                        fade_years=new_fade,
+                        valuation_frame=sc_frame,
+                        rate_type=sc.get("rate_type", rate_type),
+                        sbc_treatment=s_sbc,
+                        sbc_dilution=s_sbc_dil,
+                        finite_life_years=desk_finite_life_years,
+                        terminal_leg=s_terminal_leg,
+                    )
+                    if new_dcf_res.get("error"):
+                        compute_errors.append(f"{sc_name}: {new_dcf_res['error']}")
+                        continue
+                    new_dcf_res["years35_capped"] = True
+                    capped_dcfs.append({
+                        "name": sc_name,
+                        "requested_years35": [round(g, 4) for g in y35],
+                        "applied_years35": [round(min(g, cap), 4) for g in y35],
+                        "requested_per_share_iv": round(dcf_res["per_share_iv"], 2),
+                        "applied_per_share_iv": round(new_dcf_res["per_share_iv"], 2),
+                        "requested_fade_years": int(s_fade) if s_fade is not None else None,
+                        "applied_fade_years": new_fade,
+                    })
+                    dcf_res = new_dcf_res
 
-                sc["iv"] = dcf_res["per_share_iv"]
-                sc["dcf_details"] = dcf_res
-                scenario_dcfs.append({"name": sc.get("name"), "dcf": dcf_res})
+        sc["iv"] = dcf_res["per_share_iv"]
+        sc["dcf_details"] = dcf_res
+        scenario_dcfs.append({"name": sc.get("name"), "dcf": dcf_res})
 
     if scenario_dcfs:
         result["scenario_dcfs"] = scenario_dcfs
 
-    # 2. Single DCF projection (if top-level parameters supplied)
-    base_cf = params.get("base_cf")
+    # ---- 2. Single (top-level) DCF projection --------------------------------------------------
     growth_rates = params.get("explicit_growth") if params.get("explicit_growth") is not None else params.get("growth_rates")
     wacc = params.get("wacc") if params.get("wacc") is not None else params.get("discount_rate")
+    dcf_single = None
     if base_cf is not None and growth_rates and wacc is not None:
         dcf_single = unbundled_dcf(
             base_cf=float(base_cf),
@@ -1059,60 +1258,62 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             fade_years=fade_years,
             valuation_frame=val_frame,
             rate_type=rate_type,
-            sector_multiple_band=sector_multiple_band,
             sbc_treatment=sbc_treatment,
             sbc_dilution=sbc_dilution,
-            finite_life_years=params.get("finite_life_years"),
+            finite_life_years=desk_finite_life_years,
         )
         if dcf_single.get("error"):
-            return dcf_single
+            compute_errors.append(f"top-level: {dcf_single['error']}")
+            dcf_single = None
+        else:
+            if cap is not None:
+                app_years = applied_years_1_to_5(growth_rates, params.get("terminal_g"), fade_years, desk_finite_life_years)
+                y35 = app_years[2:]
+                if any(g > cap + 1e-12 for g in y35):
+                    if reason:
+                        kept_names.append("top-level")
+                    else:
+                        n = len(growth_rates)
+                        new_fade = max(0, int(fade_years) - (5 - n)) if n < 5 and fade_years is not None else (int(fade_years) if fade_years is not None else None)
+                        new_explicit_growth = app_years[:2] + [min(g, cap) for g in y35] + [float(g) for g in growth_rates[5:]]
+                        new_dcf_single = unbundled_dcf(
+                            base_cf=float(base_cf),
+                            growth_rates=None,
+                            explicit_growth=new_explicit_growth,
+                            wacc=float(wacc),
+                            terminal_g=float(params["terminal_g"]) if params.get("terminal_g") is not None else None,
+                            terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
+                            annuity_flow=float(params.get("annuity_flow", 0.0)),
+                            annuity_cap_rate=float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None,
+                            net_debt=top_net_debt,
+                            shares_diluted=top_shares,
+                            fade_years=new_fade,
+                            valuation_frame=val_frame,
+                            rate_type=rate_type,
+                            sbc_treatment=sbc_treatment,
+                            sbc_dilution=sbc_dilution,
+                            finite_life_years=desk_finite_life_years,
+                        )
+                        if new_dcf_single.get("error"):
+                            compute_errors.append(f"top-level: {new_dcf_single['error']}")
+                            dcf_single = None
+                        else:
+                            new_dcf_single["years35_capped"] = True
+                            capped_dcfs.append({
+                                "name": "top-level",
+                                "requested_years35": [round(g, 4) for g in y35],
+                                "applied_years35": [round(min(g, cap), 4) for g in y35],
+                                "requested_per_share_iv": round(dcf_single["per_share_iv"], 2),
+                                "applied_per_share_iv": round(new_dcf_single["per_share_iv"], 2),
+                                "requested_fade_years": int(fade_years) if fade_years is not None else None,
+                                "applied_fade_years": new_fade,
+                            })
+                            dcf_single = new_dcf_single
+            if dcf_single is not None:
+                result["dcf_model"] = dcf_single
 
-        if cap is not None:
-            t_fly = params.get("finite_life_years")
-            t_term_g = params.get("terminal_g")
-            app_years = applied_years_1_to_5(growth_rates, t_term_g, fade_years, t_fly)
-            y35 = app_years[2:]
-            if any(g > cap + 1e-12 for g in y35):
-                if reason:
-                    kept_names.append("top-level")
-                else:
-                    n = len(growth_rates)
-                    new_fade = max(0, int(fade_years) - (5 - n)) if n < 5 and fade_years is not None else (int(fade_years) if fade_years is not None else None)
-                    new_explicit_growth = app_years[:2] + [min(g, cap) for g in y35] + [float(g) for g in growth_rates[5:]]
-                    new_dcf_single = unbundled_dcf(
-                        base_cf=float(base_cf),
-                        growth_rates=None,
-                        explicit_growth=new_explicit_growth,
-                        wacc=float(wacc),
-                        terminal_g=float(params["terminal_g"]) if params.get("terminal_g") is not None else None,
-                        terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
-                        annuity_flow=float(params.get("annuity_flow", 0.0)),
-                        annuity_cap_rate=float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None,
-                        net_debt=top_net_debt,
-                        shares_diluted=top_shares,
-                        fade_years=new_fade,
-                        valuation_frame=val_frame,
-                        rate_type=rate_type,
-                        sector_multiple_band=sector_multiple_band,
-                        sbc_treatment=sbc_treatment,
-                        sbc_dilution=sbc_dilution,
-                        finite_life_years=params.get("finite_life_years"),
-                    )
-                    if new_dcf_single.get("error"):
-                        return new_dcf_single
-                    new_dcf_single["years35_capped"] = True
-                    capped_dcfs.append({
-                        "name": "top-level",
-                        "requested_years35": [round(g, 4) for g in y35],
-                        "applied_years35": [round(min(g, cap), 4) for g in y35],
-                        "requested_per_share_iv": round(dcf_single["per_share_iv"], 2),
-                        "applied_per_share_iv": round(new_dcf_single["per_share_iv"], 2),
-                        "requested_fade_years": int(fade_years) if fade_years is not None else None,
-                        "applied_fade_years": new_fade,
-                    })
-                    dcf_single = new_dcf_single
-
-        result["dcf_model"] = dcf_single
+    if compute_errors:
+        return _refusal(missing=compute_errors, needs_reasons=[])
 
     if cap is not None:
         if reason:
@@ -1122,9 +1323,197 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             if capped_dcfs:
                 result["years35_cap"] = {"cap": cap, "reason": None, "dcfs": capped_dcfs}
 
-    # 3. Reverse DCF expectations gap if parameters supplied (or inferred from Base scenario)
-    rev_cf = base_cf or (scenarios[0].get("base_cf") if scenarios else None)
-    rev_wacc = wacc or (scenarios[0].get("wacc") if scenarios else None)
+    # ---- 3.5 Reason checks, on the published legs ----------------------------------------------
+    checked: List[Dict[str, Any]] = []
+    if scenario_dcfs:
+        for item in scenario_dcfs:
+            nm = item["name"]
+            sc = next((s for s in scenarios if isinstance(s, dict) and s.get("name") == nm), {})
+            checked.append({"role": _role_of(nm), "name": nm, "sc": sc, "dcf": item["dcf"],
+                            "shares_b": _to_b(_effective_shares(sc.get("shares_diluted"), top_shares,
+                                                                ctx_shares_default_b))})
+    elif dcf_single is not None:
+        checked.append({"role": "base", "name": "top-level", "sc": params, "dcf": dcf_single,
+                        "shares_b": _to_b(top_shares)})
+
+    if checked:
+        base_entry = next((e for e in checked if e["role"] == "base"), None)
+        bull_entry = next((e for e in checked if e["role"] == "bull"), None)
+        bear_entry = next((e for e in checked if e["role"] == "bear"), None)
+
+        reasons_needed: Dict[str, str] = {}
+        order_violation = None
+
+        # R1 + R1b
+        shares_reason_given = _reason_given(params.get("shares_reason"))
+        if ctx_shares_default_b:
+            for e in checked:
+                applied = e.get("shares_b")
+                if applied is not None:
+                    # the harness's rule (shares_off_pack_without_reason): ratio rounded to 3 decimals,
+                    # |ratio - 1| more than 0.01. The dcf echo is rounded to 4 decimals of a billion, which
+                    # misstates a small count by more than 1%, so the unrounded input count is used.
+                    ratio = round(applied / ctx_shares_default_b, 3)
+                    if abs(ratio - 1) > 0.010001:          # "more than 1%": exactly 1% passes
+                        _need(reasons_needed, "shares_reason", shares_reason_given, True,
+                              f"{e['name']}'s share count is {abs(ratio - 1) * 100:.1f}% from the default "
+                              f"count {ctx_shares_default_b:.6f}B")
+        if ctx.get("shares_warning"):
+            _need(reasons_needed, "shares_reason", shares_reason_given, True,
+                  f"the pack carries a shares_warning: {ctx['shares_warning']}")
+
+        # R2 + R3 (Base, base_cf_reason)
+        base_cf_reason_given = _reason_given(params.get("base_cf_reason"))
+        oe_default = ctx.get("owner_earnings_default_b")
+        if base_entry is not None:
+            base_cf_val = _to_b(base_entry["sc"].get("base_cf"))
+            if oe_default is None:
+                _need(reasons_needed, "base_cf_reason", base_cf_reason_given, True,
+                      "the DEFAULTS owner earnings (owner_earnings_default_b) is not available")
+            elif base_cf_val is not None:
+                diff = abs(base_cf_val - oe_default) / abs(oe_default) if oe_default else None
+                if diff is not None and diff > 0.020001:
+                    _need(reasons_needed, "base_cf_reason", base_cf_reason_given, True,
+                          f"Base base_cf {base_cf_val:.4f}B is {diff * 100:.1f}% from the DEFAULTS "
+                          f"owner earnings {oe_default:.4f}B")
+        base_window = ctx.get("base_window") or {}
+        if base_window:
+            _need(reasons_needed, "base_cf_reason", base_cf_reason_given, True,
+                  f"the pack prints a BASE WINDOW CHECK (gap {base_window.get('gap')})")
+
+        # R4 (Base rate vs COE ANCHOR)
+        coe_adj_reason_given = _reason_given(params.get("coe_adjustment_reason"))
+        coe_anchor = ctx.get("coe_anchor")
+        if base_entry is not None and coe_anchor is not None:
+            applied_rate = base_entry["dcf"].get("discount_rate_applied")
+            if applied_rate is not None:
+                gap = abs(applied_rate - coe_anchor)
+                if gap > 0.015001:
+                    _need(reasons_needed, "coe_adjustment_reason", coe_adj_reason_given, True,
+                          f"Base rate {applied_rate * 100:.2f}% is {gap * 100:.2f} points from "
+                          f"the COE ANCHOR {coe_anchor * 100:.2f}%")
+
+        # R5 + R6 (Base terminal_g / exit-implied terminal g vs terminal_g_default)
+        terminal_reason_given = _reason_given(params.get("terminal_reason"))
+        tg_default = ctx.get("terminal_g_default")
+        if base_entry is not None and tg_default is not None:
+            applied_tg = base_entry["dcf"].get("terminal_g")
+            if applied_tg is not None:
+                gap_bp = round((float(applied_tg) - tg_default) * 10000)
+                if abs(gap_bp) > 50:
+                    _need(reasons_needed, "terminal_reason", terminal_reason_given, True,
+                          f"Base terminal_g {float(applied_tg) * 100:.2f}% is {abs(gap_bp) / 100:.2f} points "
+                          f"from terminal_g_default {tg_default * 100:.2f}%")
+            if base_entry["dcf"].get("terminal_leg") == "exit":
+                m_x = (base_entry["dcf"].get("exit_multiple_terminal") or {}).get("exit_multiple")
+                r_x = base_entry["dcf"].get("discount_rate_applied")
+                if m_x is not None and r_x is not None:
+                    implied_g = (float(m_x) * float(r_x) - 1.0) / (float(m_x) + 1.0)
+                    gap_bp = round((implied_g - tg_default) * 10000)
+                    if abs(gap_bp) > 50:
+                        _need(reasons_needed, "terminal_reason", terminal_reason_given, True,
+                              f"Base exit multiple implies terminal growth {implied_g * 100:.2f}%, "
+                              f"{abs(gap_bp) / 100:.2f} points from terminal_g_default {tg_default * 100:.2f}%")
+
+        # R7 + R8 (firm frame: interest_addback, wacc_reason)
+        any_firm = any(e["dcf"].get("valuation_frame") == "firm" for e in checked)
+        if any_firm:
+            iab = _to_b(params.get("interest_addback")) if params.get("interest_addback") is not None else None
+            if iab is None or iab <= 0:
+                _need(reasons_needed, "interest_addback", False, True,
+                      "the firm frame needs a positive interest_addback")
+            if not _reason_given(params.get("wacc_reason")):
+                _need(reasons_needed, "wacc_reason", False, True, "the firm frame needs wacc_reason")
+
+        # R9 (firm frame, net_debt off default)
+        net_debt_default = ctx.get("net_debt_default_b")
+        if any_firm and net_debt_default is not None:
+            explicit_nd = params.get("net_debt")
+            if explicit_nd is None:
+                explicit_nd = next((sc.get("net_debt") for sc in scenarios
+                                    if isinstance(sc, dict) and sc.get("net_debt") is not None), None)
+            if explicit_nd is not None:
+                nd = float(explicit_nd)
+                tol = max(0.1, 0.05 * abs(net_debt_default))
+                if abs(nd - net_debt_default) > tol:
+                    _need(reasons_needed, "net_debt_reason", _reason_given(params.get("net_debt_reason")), True,
+                          f"net_debt {nd:.4f}B is more than {tol:.4f}B from net_debt_default_b "
+                          f"{net_debt_default:.4f}B")
+
+        # R10 (Base vs the reference window)
+        guidance_reason_given = _reason_given(params.get("guidance_deviation_reason"))
+        if base_entry is not None:
+            civ = ctx.get("consensus_implied_value")
+            levels = ctx.get("levels") or {}
+            y2_level = levels.get("year2")
+            base_iv = base_entry["dcf"].get("per_share_iv")
+            ref_val, ref_level, _win = consensus_reference.choose_reference_window(
+                civ, y2_level, base_window.get("ttm_value"), base_window.get("ttm_year2"), base_iv)
+            base_cf_val = _to_b(base_entry["sc"].get("base_cf"))
+            g_path = base_entry["dcf"].get("growth_rates_applied") or []
+            if ref_level and base_cf_val is not None and len(g_path) >= 2:
+                y2_flow = base_cf_val * (1 + g_path[0]) * (1 + g_path[1])
+                gap = abs(y2_flow - ref_level) / abs(ref_level)
+                if gap > consensus_reference.LEVEL_TOL:
+                    _need(reasons_needed, "guidance_deviation_reason", guidance_reason_given, True,
+                          f"Base year-2 cash flow {y2_flow:.4f}B is {gap * 100:.1f}% from the "
+                          f"reference year-2 level {ref_level:.4f}B")
+            if ref_val and base_iv is not None:
+                ratio = base_iv / ref_val
+                if not (consensus_reference.FAR_LOW <= ratio <= consensus_reference.FAR_HIGH):
+                    _need(reasons_needed, "guidance_deviation_reason", guidance_reason_given, True,
+                          f"the Base value is {ratio:.2f}x the reference (outside "
+                          f"{consensus_reference.FAR_LOW}-{consensus_reference.FAR_HIGH})")
+
+        # R11 (Bull/Bear year-2 cash flow vs the DEFAULTS bull2/bear2 level)
+        scenario_dev_given = _reason_given(params.get("scenario_deviation_reason"))
+        levels = ctx.get("levels") or {}
+        for role, e in (("bull", bull_entry), ("bear", bear_entry)):
+            if e is None:
+                continue
+            lvl = levels.get(f"{role}2")
+            if not lvl:
+                continue
+            cf_val = _to_b(e["sc"].get("base_cf"))
+            g_path = e["dcf"].get("growth_rates_applied") or []
+            if cf_val is not None and len(g_path) >= 2:
+                y2_flow = cf_val * (1 + g_path[0]) * (1 + g_path[1])
+                gap = abs(y2_flow - lvl) / abs(lvl)
+                if gap > consensus_reference.LEVEL_TOL:
+                    _need(reasons_needed, "scenario_deviation_reason", scenario_dev_given, True,
+                          f"{role.capitalize()} year-2 cash flow {y2_flow:.4f}B is {gap * 100:.1f}% "
+                          f"from the DEFAULTS {role}2 level {lvl:.4f}B")
+
+        # R12 (scenario order: Bear <= Base <= Bull)
+        if base_entry and bull_entry and bear_entry:
+            bv = base_entry["dcf"].get("per_share_iv")
+            bu = bull_entry["dcf"].get("per_share_iv")
+            be = bear_entry["dcf"].get("per_share_iv")
+            if None not in (bv, bu, be) and not (be <= bv <= bu):
+                order_violation = {"bear": be, "base": bv, "bull": bu}
+
+        # R13 + R14 (Bull below price / Bear above price)
+        if bull_entry is not None and price is not None:
+            biv = bull_entry["dcf"].get("per_share_iv")
+            if biv is not None and biv < price:
+                _need(reasons_needed, "bull_below_price_reason",
+                      _reason_given(params.get("bull_below_price_reason")), True,
+                      f"the Bull value is {(1 - biv / price) * 100:.1f}% below today's price")
+        if bear_entry is not None and price is not None:
+            beiv = bear_entry["dcf"].get("per_share_iv")
+            if beiv is not None and beiv > price:
+                _need(reasons_needed, "bear_above_price_reason",
+                      _reason_given(params.get("bear_above_price_reason")), True,
+                      f"the Bear value is {(beiv / price - 1) * 100:.1f}% above today's price")
+
+        if reasons_needed or order_violation is not None:
+            needs_reasons_list = [{"reason": k, "why": v} for k, v in reasons_needed.items()]
+            return _refusal(missing=[], needs_reasons=needs_reasons_list, order=order_violation)
+
+    # ---- 3. Reverse DCF expectations gap (own structure + neutral reference from context) -----
+    base_role_sc = next((s for s in scenarios if isinstance(s, dict) and _role_of(s.get("name")) == "base"), None)
+    rev_cf = base_cf if base_cf is not None else (base_role_sc.get("base_cf") if base_role_sc else None)
+    rev_wacc = wacc if wacc is not None else (base_role_sc.get("wacc") if base_role_sc else None)
     rev_shares = None
     if top_shares is not None:
         try:
@@ -1133,9 +1522,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 rev_shares = s_val
         except (ValueError, TypeError):
             rev_shares = None
-    elif scenarios:
-        base_sc = next((s for s in scenarios if "base" in str(s.get("name", "")).lower()), scenarios[0])
-        s_base = base_sc.get("shares_diluted")
+    elif base_role_sc is not None:
+        s_base = _effective_shares(base_role_sc.get("shares_diluted"), None, ctx_shares_default_b)
         if s_base is not None:
             try:
                 s_val = float(s_base)
@@ -1144,8 +1532,9 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             except (ValueError, TypeError):
                 rev_shares = None
 
-    if price > 0 and rev_cf is not None and rev_wacc is not None:
-        term_g = params.get("terminal_g") or (scenarios[0].get("terminal_g") if scenarios else None)
+    if price and price > 0 and rev_cf is not None and rev_wacc is not None:
+        term_g = params.get("terminal_g") if params.get("terminal_g") is not None else (
+            base_role_sc.get("terminal_g") if base_role_sc else None)
         if term_g is not None:
             if rev_shares is None:
                 result["reverse_dcf"] = {
@@ -1153,12 +1542,13 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     "note": "reverse DCF skipped: explicit shares_diluted required (no defaulted share count since Phase 4)",
                 }
             else:
-                rev_coe_anchor = params.get("coe_anchor") or params.get("anchor_coe")
-                rev_term_anchor = params.get("terminal_g_anchor") or params.get("anchor_terminal_g")
-                rev_base_rates = params.get("base_rate_table")
+                rev_coe_anchor = ctx.get("coe_anchor")
+                rev_term_anchor = ctx.get("terminal_g_anchor")
+                rev_base_rates = ctx.get("base_rate_table")
+                rev_cagr = ctx.get("revenue_cagr_5y_pct")
                 rev_fade = int(fade_years) if fade_years is not None else 0
                 result["reverse_dcf"] = reverse_dcf_expectations_gap(
-                    current_price=price,
+                    current_price=float(price),
                     shares_diluted=rev_shares,
                     base_cf=float(rev_cf),
                     wacc=float(rev_wacc),
@@ -1168,23 +1558,23 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
                     net_debt=top_net_debt if top_net_debt is not None else 0.0,
                     valuation_frame=val_frame,
-                    demonstrated_cagr_5y=float(params["demonstrated_cagr_5y"]) if params.get("demonstrated_cagr_5y") is not None else None,
+                    demonstrated_cagr_5y=float(rev_cagr) if rev_cagr is not None else None,
                     coe_anchor=float(rev_coe_anchor) if rev_coe_anchor is not None else None,
                     terminal_g_anchor=float(rev_term_anchor) if rev_term_anchor is not None else None,
                     base_rate_table=rev_base_rates,
                 )
 
-    # 4. Continuous Kelly sizing and Payoff Skew if scenarios have valid IVs and probs
-    valid_scenarios = [s for s in scenarios if s.get("iv") is not None and s.get("prob") is not None]
-    if price > 0 and valid_scenarios:
+    # ---- 4. Continuous Kelly sizing and Payoff Skew --------------------------------------------
+    valid_scenarios = [s for s in scenarios if isinstance(s, dict) and s.get("iv") is not None and s.get("prob") is not None]
+    if price and price > 0 and valid_scenarios:
         result["kelly_sizing"] = continuous_multi_outcome_kelly(
             price=price,
             outcomes=valid_scenarios,
             position_cap_pct=float(params.get("position_cap_pct", 25.0)),
         )
-        base_iv = next((s["iv"] for s in valid_scenarios if "base" in str(s.get("name", "")).lower()), None)
-        bull_iv = next((s["iv"] for s in valid_scenarios if "bull" in str(s.get("name", "")).lower()), None)
-        bear_iv = next((s["iv"] for s in valid_scenarios if "bear" in str(s.get("name", "")).lower()), None)
+        base_iv = next((s["iv"] for s in valid_scenarios if _role_of(s.get("name")) == "base"), None)
+        bull_iv = next((s["iv"] for s in valid_scenarios if _role_of(s.get("name")) == "bull"), None)
+        bear_iv = next((s["iv"] for s in valid_scenarios if _role_of(s.get("name")) == "bear"), None)
         if base_iv is not None and bull_iv is not None and bear_iv is not None:
             result["payoff_skew"] = calculate_payoff_skew(float(base_iv), float(bull_iv), float(bear_iv), price)
 

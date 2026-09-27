@@ -21,14 +21,17 @@ class _FakeResp(io.BytesIO):
         return False
 
 
+# S3 A+B (brief §3.2, §3.7): price now comes from desk_context, not the call; cash_flow_life and
+# its reason are required; DESK_BUDGET's format grew a refused-calls count.
 def test_desk_closure_after_5_valid_runs_and_subsequent_research_results(monkeypatch, tmp_path):
     recorded_requests = []
+    cfl = {"cash_flow_life": "perpetual", "cash_flow_life_reason": "test"}
     turn_plan = [
-        [{"function": {"name": "run_financial_model", "arguments": {"price": 100.0}}}],
-        [{"function": {"name": "run_financial_model", "arguments": {"price": 101.0}}}],
-        [{"function": {"name": "run_financial_model", "arguments": {"price": 102.0}}}],
-        [{"function": {"name": "run_financial_model", "arguments": {"price": 103.0}}}],
-        [{"function": {"name": "run_financial_model", "arguments": {"price": 104.0}}}],
+        [{"function": {"name": "run_financial_model", "arguments": {"price": 100.0, **cfl}}}],
+        [{"function": {"name": "run_financial_model", "arguments": {"price": 101.0, **cfl}}}],
+        [{"function": {"name": "run_financial_model", "arguments": {"price": 102.0, **cfl}}}],
+        [{"function": {"name": "run_financial_model", "arguments": {"price": 103.0, **cfl}}}],
+        [{"function": {"name": "run_financial_model", "arguments": {"price": 104.0, **cfl}}}],
         [{"function": {"name": "search_web", "arguments": {"query": "amphenol news"}}}],
         [{"function": {"name": "fetch_page", "arguments": {"url": "https://example.com/a"}}}],
         [],  # memorandum
@@ -59,17 +62,18 @@ def test_desk_closure_after_5_valid_runs_and_subsequent_research_results(monkeyp
     monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(at, "dispatch_tool", fake_dispatch)
 
-    rep, think, meta = at.chat_with_tools("fake-model", "prompt", tmp_path, max_model_calls=5, verbose=False)
+    rep, think, meta = at.chat_with_tools("fake-model", "prompt", tmp_path, max_model_calls=5, verbose=False,
+                                          desk_context={"price": 100.0})
 
     snap = json.loads((tmp_path / "_research_snapshot.json").read_text(encoding="utf-8"))["calls"]
     assert len(snap) == 7
 
-    # 1. desk results 1-5 carry desk_budget "1 of 5 desk runs used" ... "5 of 5 desk runs used",
-    # and only the 5th carries desk_closed = DESK_CLOSED_RUNS
+    # 1. desk results 1-5 carry desk_budget "1 of 5 desk runs used; 0 refused calls (...)"
+    # ... "5 of 5 desk runs used; 0 refused calls (...)", and only the 5th carries desk_closed
     for i in range(5):
         c = snap[i]
         assert c["tool"] == "run_financial_model"
-        assert c.get("desk_budget") == f"{i+1} of 5 desk runs used"
+        assert c.get("desk_budget") == at.DESK_BUDGET.format(used=i + 1, cap=5, refused=0)
         if i < 4:
             assert "desk_closed" not in c
             assert "desk" not in c
@@ -128,14 +132,16 @@ def test_seven_rejected_desk_calls_close_desk(monkeypatch, tmp_path):
     monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(at, "dispatch_tool", fake_dispatch)
 
-    rep, think, meta = at.chat_with_tools("fake-model", "prompt", tmp_path, max_model_calls=5, verbose=False)
+    rep, think, meta = at.chat_with_tools("fake-model", "prompt", tmp_path, max_model_calls=5, verbose=False,
+                                          desk_context={"price": 100.0})
     snap = json.loads((tmp_path / "_research_snapshot.json").read_text(encoding="utf-8"))["calls"]
     assert len(snap) == 7
     assert meta["desk_validation_errors"] == 7
 
     # Call 7 gives DESK_CLOSED_REJECTED with n=7
+    # S3 A+B (brief §3.7): DESK_BUDGET's format grew a refused-calls count.
     call7 = snap[6]
-    assert call7.get("desk_budget") == "0 of 5 desk runs used"
+    assert call7.get("desk_budget") == at.DESK_BUDGET.format(used=0, cap=5, refused=7)
     assert call7.get("desk_closed") == at.DESK_CLOSED_REJECTED.format(n=7)
 
 

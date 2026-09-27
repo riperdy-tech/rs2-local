@@ -126,31 +126,7 @@ def extract_iv(report, price):
     return vals
 
 
-def _normalize_cash_flow_life(val):
-    """Revision 12: normalise cash_flow_life to 'perpetual' or int 1-60 (whole-number float or digit string accepted).
-    Anything else is returned as given."""
-    if val is None or type(val) is bool:
-        return val
-    if isinstance(val, str):
-        s = val.strip()
-        if s.lower() == "perpetual":
-            return "perpetual"
-        try:
-            f = float(s)
-            if f.is_integer() and 1 <= int(f) <= 60:
-                return int(f)
-        except (ValueError, TypeError):
-            pass
-        return val
-    if isinstance(val, (int, float)):
-        try:
-            f = float(val)
-            if f.is_integer() and 1 <= int(f) <= 60:
-                return int(f)
-        except (ValueError, TypeError):
-            pass
-        return val
-    return val
+from financial_model_tool import _normalize_cash_flow_life  # noqa: E402  (S3 3.4 V1: moved there)
 
 
 def _norm_fly(val):
@@ -444,20 +420,18 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
     """Rescues a truncated memorandum by issuing a continuation turn to Ollama.
     Reclaims 40k+ tokens of headroom by feeding the pack + partial report as assistant turn."""
     cutoff_snippet = partial_report[-250:].strip()
+    # S3 4.5 (2026-09-28): instruction 3's field list is now generated from FORM_FIELDS, so this
+    # prompt and the TASK's contract cannot drift apart. Old literal (base_iv, bull_iv, bear_iv,
+    # conviction_score, business_quality_moat, kelly_fraction_pct, asymmetric_payoff_skew,
+    # reentry_tranches, thesis_invalidation_trigger) in git history at 3d02fbd.
     continuation_prompt = (
         "Your institutional memorandum was truncated at the context wall mid-sentence.\n\n"
         f"The cutoff point was:\n\"... {cutoff_snippet}\"\n\n"
         "CONTINUATION INSTRUCTIONS:\n"
         "1. Pick up IMMEDIATELY from that exact unfinished sentence and complete it seamlessly.\n"
         "2. Complete any remaining analysis sections (Valuation Triad, Balance Sheet Audit, Risks, Milestones).\n"
-        "3. Conclude with Section 12: Machine Contract containing the complete ```json:underwriting block with all fields:\n"
-        "   - base_iv, bull_iv, bear_iv\n"
-        "   - conviction_score (out of 15)\n"
-        "   - business_quality_moat (1 to 5)\n"
-        "   - kelly_fraction_pct\n"
-        "   - asymmetric_payoff_skew\n"
-        "   - reentry_tranches: {tranche_1_starter, tranche_2_core}\n"
-        "   - thesis_invalidation_trigger\n\n"
+        "3. Conclude with SECTION 12 and the complete ```json:underwriting contract with these fields: "
+        + ", ".join(cap.FORM_FIELDS) + ". The values, probabilities and Kelly size come from your desk runs; do not type them into the contract.\n\n"
         "Do NOT repeat the prior sections. Proceed directly with the continuation."
     )
     messages = [
@@ -547,7 +521,7 @@ def select_medoid_scorecard(
             "desk_reverse_neutral_cagr": None, "coe_minus_anchor": None,
             "desk_share_basis_matched": None,
             "catalysts": None, "bull_below_price_reason": None, "bear_above_price_reason": None,
-            "code_fill_mode": None, "typed_contract_disagrees": None,
+            "code_fill_mode": None,
         }
 
     ivs = [r["iv"] for r in good]
@@ -627,7 +601,6 @@ def select_medoid_scorecard(
             "cash_flow_life": san_fb.get("cash_flow_life"),
             "cash_flow_life_reason": san_fb.get("cash_flow_life_reason"),
             "code_fill_mode": None,
-            "typed_contract_disagrees": None,
         }
         return san_fb, summary
 
@@ -736,7 +709,6 @@ def select_medoid_scorecard(
         "bull_below_price_reason": medoid_card.get("bull_below_price_reason"),
         "bear_above_price_reason": medoid_card.get("bear_above_price_reason"),
         "code_fill_mode": (medoid_card.get("code_fill") or {}).get("mode"),
-        "typed_contract_disagrees": medoid_card.get("typed_contract_disagrees"),
     }
     return medoid_card, summary
 
@@ -946,17 +918,14 @@ def reference_window(scorecard, pack_text=None, facts=None):
     CHECK printed, the window whose reference is nearer the sample's base IV (Fable, 2026-09-26: the
     analyst names the window, the harness checks against the nearer reference); else the fiscal-year
     reference and level."""
+    import consensus_reference
     if facts is None:
         facts = pack_facts.from_text(pack_text)
     civ = facts.get("consensus_implied_value")
     y2 = (facts.get("levels") or {}).get("year2")
     win = facts.get("base_window") or {}
     iv = (scorecard or {}).get("base_iv")
-    if win.get("ttm_value") and civ and isinstance(iv, (int, float)) and iv > 0:
-        import math
-        if abs(math.log(iv / win["ttm_value"])) < abs(math.log(iv / civ)):
-            return win["ttm_value"], win["ttm_year2"], "ttm"
-    return civ, y2, "fy"
+    return consensus_reference.choose_reference_window(civ, y2, win.get("ttm_value"), win.get("ttm_year2"), iv)
 
 
 def _year2_flow(base_cf, path):
@@ -1164,7 +1133,13 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
               "finite_life_years": None}
     flags = []
     g_anchor = facts.get("terminal_g_default")
-    pack_sh = _num_b(facts.get("shares_outstanding"))
+    # S3 5.11: the share-count default is the pack's count when the facts carry one (revision 15);
+    # SECTION 2's count otherwise. The desk's R1 uses the same reference, so this safety net and the
+    # desk cannot disagree about which count is "the pack's".
+    _sh_ref = facts.get("shares_default")
+    if not (isinstance(_sh_ref, (int, float)) and _sh_ref > 0):
+        _sh_ref = facts.get("shares_outstanding")
+    pack_sh = _num_b(_sh_ref)
     est = (enrich_data or {}).get("estimates") or {}
     e0, e1 = (est.get("0y") or {}).get("eps") or {}, (est.get("+1y") or {}).get("eps") or {}
     prior = e0.get("year_ago")
@@ -1249,8 +1224,11 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
             flags.append("firm_frame_without_wacc_reason")
 
     ratios = [stamps[f"{r}_shares_ratio"] for r in ("base", "bull", "bear") if stamps[f"{r}_shares_ratio"]]
-    if any(abs(r - 1) > 0.01 for r in ratios) and not _has("shares_reason"):
+    if any(abs(r - 1) > 0.010001 for r in ratios) and not _has("shares_reason"):   # more than 1%
         flags.append("shares_off_pack_without_reason")
+    # Contingent shares added to a Bear whose premise is that they do not vest. The ratio is taken
+    # against pack_sh above, which is the share-count default (S3 5.11) when the facts carry one: a
+    # diluted default is not contingent dilution, a warrant added to every scenario still is (AMD s3).
     if (stamps["bear_shares_ratio"] or 0) > 1.01:
         flags.append("dilution_in_bear")
     nd_default = facts.get("net_debt_b")
@@ -1325,16 +1303,6 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
             elif isinstance(cfl_norm, int) and type(cfl_norm) is not bool and 1 <= cfl_norm <= 60:
                 if single_fly_norm != cfl_norm:
                     flags.append("finite_life_mismatch")
-    # carriable (Fable): the model's own label against the 10% rule on its own base, per sample
-    try:
-        b, lbl = float(sc.get("base_iv")), str(sc.get("verdict_label") or "").strip().lower()
-        if lbl and price:
-            m = b / float(price) - 1
-            rule = "undervalued" if m >= 0.10 else "overvalued" if m <= -0.10 else "hold"
-            if lbl != rule:
-                flags.append("report_verdict_mismatch_sample")
-    except (TypeError, ValueError):
-        pass
     return flags, stamps
 
 
@@ -1503,87 +1471,6 @@ def check_sample_harness_rules(
     return implausible, reasons, flags
 
 
-def _evaluate_contract_mismatches(inputs: dict, sc: dict) -> list[str]:
-    mismatches = []
-    if not isinstance(sc, dict) or not isinstance(inputs, dict):
-        return mismatches
-
-    def _to_float(v):
-        if v is None:
-            return None
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return None
-
-    def _to_int(v):
-        if v is None:
-            return None
-        try:
-            return int(v)
-        except (ValueError, TypeError):
-            return None
-
-    # 1. base_cf_used (±2% relative)
-    c_cf = _to_float(sc.get("base_cf_used"))
-    d_cf = _to_float(inputs.get("base_cf"))
-    if c_cf is not None and d_cf is not None:
-        if c_cf != 0:
-            if (abs(c_cf - d_cf) / abs(c_cf)) > 0.020001:
-                mismatches.append("base_cf_used")
-        elif abs(d_cf) > 1e-6:
-            mismatches.append("base_cf_used")
-    elif c_cf is not None or d_cf is not None:
-        mismatches.append("base_cf_used")
-
-    # 2. stage1_growth_path (same length, each within 0.01 absolute)
-    c_path = sc.get("stage1_growth_path")
-    d_path = inputs.get("stage1_growth_path")
-    if c_path is not None and d_path is not None:
-        if not isinstance(c_path, (list, tuple)) or not isinstance(d_path, (list, tuple)):
-            mismatches.append("stage1_growth_path")
-        elif len(c_path) != len(d_path):
-            mismatches.append("stage1_growth_path")
-        else:
-            for cg, dg in zip(c_path, d_path):
-                cg_val = _to_float(cg)
-                dg_val = _to_float(dg)
-                if cg_val is None or dg_val is None:
-                    mismatches.append("stage1_growth_path")
-                    break
-                if abs(cg_val) > 1.0 and abs(dg_val) <= 1.0:
-                    cg_val /= 100.0
-                elif abs(dg_val) > 1.0 and abs(cg_val) <= 1.0:
-                    dg_val /= 100.0
-                if abs(cg_val - dg_val) > 0.010001:
-                    mismatches.append("stage1_growth_path")
-                    break
-    elif c_path is not None or d_path is not None:
-        mismatches.append("stage1_growth_path")
-
-    # 3. fade_years (exact)
-    c_fade = _to_int(sc.get("fade_years"))
-    d_fade = _to_int(inputs.get("fade_years"))
-    if c_fade is not None and d_fade is not None:
-        if c_fade != d_fade:
-            mismatches.append("fade_years")
-    elif c_fade is not None or d_fade is not None:
-        mismatches.append("fade_years")
-
-    # 4. coe_used vs the call's wacc/discount rate (±0.0005)
-    c_coe = _to_float(sc.get("coe_used"))
-    d_wacc = _to_float(inputs.get("wacc"))
-    if c_coe is not None and d_wacc is not None:
-        cu = c_coe / 100.0 if c_coe > 1.0 else c_coe
-        cr = d_wacc / 100.0 if d_wacc > 1.0 else d_wacc
-        if abs(cu - cr) > 0.0005001:
-            mismatches.append("coe_used")
-    elif c_coe is not None or d_wacc is not None:
-        mismatches.append("coe_used")
-
-    return mismatches
-
-
 _SHARES_REASON_CITED_RE = re.compile(
     r"\b(10-K|10-Q|8-K|20-F|6-K|40-F|DEF\s*14A|S-1|424B\w*|SECTION\s*6B|SECTION\s*2(?!\.\d))\b",
     re.IGNORECASE,
@@ -1614,7 +1501,6 @@ def extract_desk_snapshot_metrics(
         desk_reverse_neutral_cagr: float or None (from neutral reverse DCF call if made)
         coe_minus_anchor: float or None (coe_used - anchor_coe)
         desk_matched_inputs: dict or None (inputs of desk call matching base_iv)
-        desk_contract_flags: list of str
         desk_share_flags: list of str
         desk_share_implausible: bool
         desk_share_reason: str or None
@@ -1844,26 +1730,15 @@ def extract_desk_snapshot_metrics(
         except (ValueError, TypeError):
             desk_iv_match = False
 
+    # S3 3.8 retirement: no typed values remain to compare against, so the desk-contract-mismatch
+    # scoring is gone. The matching candidate nearest base_iv is used directly.
     desk_matched_inputs = None
-    contract_flags = []
     desk_years35_capped = False
     if matching_candidates:
         biv = float(base_iv)
-        if scorecard:
-            scored = []
-            for cand in matching_candidates:
-                mismatches = _evaluate_contract_mismatches(cand["inputs"], scorecard)
-                scored.append((len(mismatches), abs(cand["iv"] - biv), mismatches, cand))
-            scored.sort(key=lambda x: (x[0], x[1]))
-            best = scored[0]
-            desk_matched_inputs = best[3]["inputs"]
-            desk_years35_capped = bool(best[3].get("capped", False))
-            for field in best[2]:
-                contract_flags.append(f"desk_contract_mismatch:{field}")
-        else:
-            best_cand = matching_candidates[0]
-            desk_matched_inputs = best_cand["inputs"]
-            desk_years35_capped = bool(best_cand.get("capped", False))
+        best_cand = min(matching_candidates, key=lambda c: abs(c["iv"] - biv))
+        desk_matched_inputs = best_cand["inputs"]
+        desk_years35_capped = bool(best_cand.get("capped", False))
 
     desk_share_basis_matched = None
     share_flags = []
@@ -1874,31 +1749,13 @@ def extract_desk_snapshot_metrics(
         call_shares = desk_matched_inputs.get("shares_diluted")
         if call_shares is not None and call_shares > 0:
             desk_count = float(call_shares)
-            n_val = facts.get("shares_outstanding")
-            candidates = []
-            if isinstance(n_val, (int, float)) and n_val > 0:
-                candidates.append(("vendor", n_val / 1e9))
+            # S3 3.5 "S2b's share check in revision 15": candidates gain "default" (facts'
+            # shares_default, 5.11), via the function contract_fill.fill's shares_basis shares —
+            # one copy of the candidate list, not two.
+            nearest_name, nearest_ratio = contract_fill.s2b_share_match(desk_count, facts)
 
-            filed_val = facts.get("filed_shares_diluted")
-            if (
-                isinstance(n_val, (int, float))
-                and n_val > 0
-                and isinstance(filed_val, (int, float))
-                and filed_val > 0
-            ):
-                fy_vendor_ratio = filed_val / n_val
-                if 0.55 < fy_vendor_ratio < 1.8:
-                    candidates.append(("filed_fy_wa", filed_val / 1e9))
-
-            if candidates:
-                ratios = []
-                for name, val in candidates:
-                    r = max(desk_count, val) / min(desk_count, val)
-                    ratios.append((name, val, r))
-                ratios.sort(key=lambda x: x[2])
-                nearest_name, nearest_val, nearest_ratio = ratios[0]
-
-                if nearest_ratio <= 1.010001:
+            if nearest_ratio is not None:
+                if nearest_name is not None:
                     desk_share_basis_matched = nearest_name
 
                 ratio_r = round(nearest_ratio, 2)
@@ -1912,9 +1769,15 @@ def extract_desk_snapshot_metrics(
                     and str(raw_shares_reason).strip().lower() not in ("null", "none")
                 )
 
-                # A departure is a count more than 1% from SECTION 2's (the vendor candidate); a
-                # reason attached to SECTION 2's own count is not a departure and is not flagged.
-                departs = not any(name == "vendor" and r <= 1.010001 for name, _v, r in ratios)
+                # A departure is a count more than 1% from the share-count default (S3 5.11) when the
+                # facts carry one, and from SECTION 2's count when they do not (revision-14 packs,
+                # S2b). A reason attached to that count itself is not a departure and is not flagged.
+                ref_count = facts.get("shares_default")
+                if not (isinstance(ref_count, (int, float)) and ref_count > 0):
+                    ref_count = facts.get("shares_outstanding")
+                ref_matched = (isinstance(ref_count, (int, float)) and ref_count > 0
+                               and max(desk_count, ref_count / 1e9) / min(desk_count, ref_count / 1e9) <= 1.010001)
+                departs = not ref_matched
                 if has_shares_reason:
                     if departs:
                         share_flags.append("desk_share_count_departure_with_reason")
@@ -1947,7 +1810,10 @@ def extract_desk_snapshot_metrics(
         "desk_reverse_neutral_cagr": reverse_neutral_cagr,
         "coe_minus_anchor": diff_coe,
         "desk_matched_inputs": desk_matched_inputs,
-        "desk_contract_flags": contract_flags,
+        # S3 A+B fixup (Task 3 replay, §7.5): desk_contract_flags stays in the scorecard as an
+        # always-empty list. The scoring that used to populate it is retired (Task 2), but the field
+        # itself is not one of the replay's ignored keys, so it must still exist and be identical.
+        "desk_contract_flags": [],
         "desk_share_flags": share_flags,
         "desk_share_implausible": share_implausible,
         "desk_share_reason": share_reason,
@@ -2188,9 +2054,11 @@ def main():
         if sidecar is not None:
             facts = sidecar
             pack_facts_source = "sidecar"
+            pack_facts_version_read = sidecar.get("version")   # S3 3.1: the sidecar's own version
         else:
             facts = pack_facts.from_text(pack)
             pack_facts_source = "text"
+            pack_facts_version_read = None
         pack_facts_parity = None
         print(f"  [pack facts] source: {pack_facts_source}", flush=True)
     else:
@@ -2205,6 +2073,7 @@ def main():
         pack_momentum_state = dict(getattr(cap, "LAST_PACK_MOMENTUM_STATE", {}) or {})
         facts = pack_text.facts
         pack_facts_source = "build"
+        pack_facts_version_read = facts.get("version")
         diffs = pack_facts.parity(facts, pack_facts.from_text(pack))
         pack_facts_parity = {"ok": len(diffs) == 0, "mismatches": diffs}
         if diffs:
@@ -2228,6 +2097,30 @@ def main():
     # — found when three auditors had to reconstruct it independently to check the reports.
     (d / "_pack.md").write_text(pack, encoding="utf-8")
     pack_facts.write_sidecar(d, facts)
+
+    # S3 3.2: the harness hands the desk every constant the pack holds, once per run, from the
+    # facts object and the harness price. shares_default_b is 5.11's default, not SECTION 2's
+    # count; a count of 0 gives None (a zero share count cannot be a default), tested with
+    # `is not None`, never `or`.
+    desk_context = {
+        "price": price,                                   # the harness price, the one the verdict uses
+        "shares_default_b": (_num_b(facts["shares_default"])
+                             if facts["shares_default"] is not None and facts["shares_default"] > 0
+                             else None),
+        "coe_anchor": facts["coe_anchor"],
+        "terminal_g_default": facts["terminal_g_default"],
+        "terminal_g_anchor": facts["terminal_g_anchor"],
+        "base_rate_table": facts["base_rate_5y"] or None,
+        "revenue_cagr_5y_pct": facts["revenue_cagr_5y_pct"],
+        "net_debt_default_b": facts["net_debt_b"],
+        "interest_expense_latest_b": facts["interest_expense_latest_b"],
+        "owner_earnings_default_b": facts["owner_earnings_default_b"],
+        "base_window": facts["base_window"],
+        "consensus_implied_value": facts["consensus_implied_value"],
+        "levels": facts["levels"],
+        "years35_cap": facts["next_fy_revenue_growth"],
+        "shares_warning": facts["shares_warning"],       # R1b (5.11)
+    }
 
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
             if adaptive else f"{n} samples fixed")
@@ -2282,7 +2175,7 @@ def main():
                     seed=1000 + i, draft_num_predict=draft_num_predict, temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
-                    desk_context={"years35_cap": facts["next_fy_revenue_growth"]})
+                    desk_context=desk_context)
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2352,7 +2245,7 @@ def main():
                     temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
-                    desk_context={"years35_cap": facts["next_fy_revenue_growth"]})
+                    desk_context=desk_context)
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2418,12 +2311,9 @@ def main():
             snap_file = snapshot_dir / "_research_snapshot.json"
             calls = json.loads(snap_file.read_text(encoding="utf-8")).get("calls") or []
 
-        typed = {k: scorecard.get(k) for k in contract_fill.FILLED}
-        filled, prov = contract_fill.fill(calls, scorecard, facts, price)
+        filled, prov = contract_fill.fill(calls, scorecard, facts, price, ticker=t)
         scorecard.update(filled)
-        scorecard["typed_contract"] = typed
         scorecard["code_fill"] = prov
-        scorecard["typed_contract_disagrees"] = contract_fill.disagrees(typed, filled)
 
         ivs = extract_iv(rep, price)
         iv = scorecard.get("base_iv") or (st.median(ivs) if ivs else None)
@@ -2445,10 +2335,6 @@ def main():
         if not desk_info["desk_iv_match"]:
             flags = list(flags) + ["iv_not_desk_backed"]
             why = list(why) + [f"base IV ${iv} not backed by any desk calculation within 1%"]
-
-        for f in desk_info.get("desk_contract_flags", []):
-            if f not in flags:
-                flags = list(flags) + [f]
 
         if desk_info.get("desk_years35_capped"):
             if "years35_capped_by_desk" not in flags:
@@ -2675,6 +2561,7 @@ def main():
            "pack_source": pack_source, "pack_sha256": pack_sha256,
            "pack_facts_source": pack_facts_source,
            "pack_facts_version": pack_facts.FACTS_VERSION,
+           "pack_facts_version_read": pack_facts_version_read,
            "research_brief_asof": research_brief_asof,
            "research_brief_age_days": research_brief_age_days,
            "research_brief_stale": research_brief_stale,

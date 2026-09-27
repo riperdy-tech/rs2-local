@@ -77,7 +77,7 @@ REFETCH_SMELL = re.compile(
     r"\b(ttm|trailing twelve)\b|\bnet income\b|\brevenue for (fy|20)\d|\bfree cash flow\b|"
     r"\bshares outstanding\b|\bmarket cap\b", re.I)
 
-DESK_BUDGET = "{used} of {cap} desk runs used"
+DESK_BUDGET = "{used} of {cap} desk runs used; {refused} refused calls (the 7th refused call closes the desk)"
 DESK_CLOSED_RUNS = ("The desk is now closed: all {cap} desk runs are used, so run_financial_model is no longer "
                     "offered. These are your final desk results; report them. Research tools stay open; write the "
                     "memorandum when your research is done.")
@@ -144,36 +144,85 @@ TOOLS = [{
     "function": {
         "name": "run_financial_model",
         "description": (
-            "Invoke the Python Financial Modeling Analyst Desk to execute deterministic calculations: "
-            "1. Three-Stage DCF: computes exact per-share intrinsic value across Stage 1 (explicit growth), "
-            "Stage 2 (linear fade over fade_years to terminal_g), and Stage 3 (dual terminal value: Gordon growth "
-            "and exit multiple, both properly discounted to t=0). Enforces valuation frames ('equity' discounts FCFE "
-            "at cost_of_equity with nonzero net_debt refused; 'firm' discounts FCFF at true_wacc requiring net_debt "
-            "and shares_diluted) and verifies rate pairing via rate_engine. Refuses SBC double-deduction. Reconciles "
-            "implied terminal EV/FCF multiple against sector_multiple_band. "
-            "Holds Base years 3-5 growth at or below next-FY consensus revenue growth (SECTION 8) unless "
-            "guidance_deviation_reason is given, and shows the value on your path beside the desk value. "
-            "2. Reverse DCF: solves market-implied growth under (a) analyst's own structure and (b) neutral reference "
-            "structure (coe_anchor, 10-year linear fade to terminal_g_anchor) returning implied 10-year CAGR and base-rate table percentile. "
-            "3. Mathematical continuous Kelly sizing: derives exact quarter-Kelly and full Kelly log-wealth position sizes across scenarios. "
-            "4. Blend mode: calculates weighted combination of named desk valuation legs."
+            "Run the Python desk. One call values Base, Bull and Bear together: each scenario's base_cf, "
+            "five years of cash-flow growth, fade, discount rate and terminal growth (with an optional exit "
+            "multiple) give its per-share value. The desk also returns the reverse DCF (the growth today's "
+            "price implies, under your structure and under the neutral reference) and quarter-Kelly sizing. "
+            "The harness supplies today's price, the pack's share count, the anchors and the base-rate table; "
+            "pass only your decisions. An input that departs from its DEFAULT needs its reason argument: the "
+            "desk names any that are missing, and a refused call does not use one of your desk runs. The desk "
+            "holds Base years 3-5 at next-FY consensus revenue growth unless guidance_deviation_reason is "
+            "given, and shows the value on your path beside it. Base is every scenario not named Bull or Bear. "
+            "Blend mode combines named desk legs for display; it is never your answer."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "price": {"type": "number", "description": "Current market price T0 from Section 2."},
                 "mode": {"type": "string", "enum": ["dcf", "blend"], "description": "Calculation mode: 'dcf' (default) or 'blend'."},
                 "valuation_frame": {
                     "type": "string",
                     "enum": ["equity", "firm"],
-                    "description": "Valuation frame: 'equity' (the default) discounts FCFE at cost_of_equity; nonzero net_debt is refused. Every flow the pack prints (owner earnings, cash basis, FCF) is after interest, an equity flow, and the pack anchors a cost of equity, not a WACC. 'firm' discounts FCFF at true_wacc: only with a pre-interest flow (after-tax interest added back; interest_addback in the contract), a WACC built from the COE ANCHOR (wacc_reason), SECTION 6's NET DEBT and shares_diluted."
+                    "description": "'equity' (the default) discounts the pack's after-interest flows at the cost of equity; nonzero net_debt is refused. 'firm' discounts a pre-interest flow at a WACC and needs interest_addback, wacc_reason and net debt (default: the DEFAULTS net debt)."
                 },
                 "rate_type": {
                     "type": "string",
                     "enum": ["cost_of_equity", "true_wacc", "cost_of_equity_proxy"],
                     "description": "Semantic discount rate type. Must match valuation_frame (equity -> cost_of_equity; firm -> true_wacc)."
                 },
-                "guidance_deviation_reason": {"type": "string", "description": "Dated evidence for Base growth above next-FY consensus revenue growth in years 3-5; give the same reason in the contract. Without it the desk holds Base years 3-5 at next-FY consensus revenue growth. Base is every scenario not named Bull or Bear, and a top-level single DCF."},
+                "cash_flow_life": {
+                    # one JSON type: a list-valued "type" is untested with the Ollama tool parser on
+                    # this box; the desk accepts "perpetual", a digit string or an integer alike
+                    "type": "string",
+                    "description": "Required. \"perpetual\", or the whole number of years (1-60) until the cash flows end: filed reserves over current production, or the remaining licence, concession or patent term. It applies to every scenario; a finite life values the flows over that life with no end value."
+                },
+                "cash_flow_life_reason": {
+                    "type": "string",
+                    "description": "Required. One dated sentence: for a finite life, the filed reserves and production rate or the remaining term; where revenue follows a commodity price, the price deck your flows assume and its source."
+                },
+                "base_cf_reason": {
+                    "type": "string",
+                    "description": "Why a Base base_cf more than 2% from the DEFAULTS owner earnings is more representative, with the filing behind it. When the pack prints a BASE WINDOW CHECK, name the window you judge representative (fiscal year or TTM) and the item behind the gap."
+                },
+                "guidance_deviation_reason": {
+                    "type": "string",
+                    "description": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 15% from the DEFAULTS year-2 level, a Base value outside 0.75-1.33 of the reference, or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth)."
+                },
+                "scenario_deviation_reason": {
+                    "type": "string",
+                    "description": "Why a Bull or Bear year-2 cash flow is more than 15% from the DEFAULTS bull2 or bear2 level."
+                },
+                "terminal_reason": {
+                    "type": "string",
+                    "description": "Dated evidence for a Base terminal_g more than 0.5 points from the DEFAULTS terminal-growth default, or for a Base exit multiple whose implied terminal growth is; for a multiple, dated peer EV/FCF evidence (a P/E ratio is not an EV/FCF multiple)."
+                },
+                "coe_adjustment_reason": {
+                    "type": "string",
+                    "description": "Why the Base discount rate is more than 1.5 points from the COE ANCHOR."
+                },
+                "shares_reason": {
+                    "type": "string",
+                    "description": "The instrument and its vesting condition, when any scenario's shares_diluted differs from the pack's count by more than 1%. Add contingent shares only in the scenarios where they vest."
+                },
+                "net_debt_reason": {
+                    "type": "string",
+                    "description": "Firm frame: why net_debt differs from the DEFAULTS net debt."
+                },
+                "wacc_reason": {
+                    "type": "string",
+                    "description": "Firm frame, required: the COE ANCHOR, the cost of debt (filed interest over debt), the tax rate and the weights behind the WACC."
+                },
+                "interest_addback": {
+                    "type": "number",
+                    "description": "Firm frame, required: the after-tax interest expense in $B that makes the flow pre-interest. base_cf already includes it."
+                },
+                "bull_below_price_reason": {
+                    "type": "string",
+                    "description": "When the Bull value is below today's price: the assumption of the market-implied path you reject, with dated evidence; when Bull is also below the lowest analyst target, what every analyst is missing."
+                },
+                "bear_above_price_reason": {
+                    "type": "string",
+                    "description": "When the Bear value is above today's price: why even the downside case is worth more than the price, with dated evidence."
+                },
                 "explicit_growth": {
                     "type": "array",
                     "description": "Annual growth of base_cf - the owner cash flow being valued - for each Stage 1 year (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). Not revenue growth: revenue growth leaves out margin change. Years 1-2 normally follow consensus EPS growth (SECTION 8). Base years 3-5 above next-FY consensus revenue growth are held at it unless guidance_deviation_reason is given.",
@@ -192,17 +241,7 @@ TOOLS = [{
                     "type": "number",
                     "description": "REQUIRED for DCF. Long-term nominal terminal growth rate as decimal (e.g. 0.025 for 2.5%, 0.035 for 3.5%). The silent default was removed in Phase 4; calls without it are refused."
                 },
-                "terminal_exit_multiple": {"type": "number", "description": "Exit multiple on the final projected cash flow. Default: the net-cap-rate multiple (1 + terminal_g) / (rate - terminal_g), printed in SECTION 1.5 at the anchors. The desk returns the terminal growth any other multiple implies (exit_implied_terminal_g)."},
-                "sector_multiple_band": {
-                    "type": "object",
-                    "description": "MRI sector multiple band {low, mid, high, metric} used for reconciliation of implied terminal EV/FCF multiple.",
-                    "properties": {
-                        "low": {"type": "number"},
-                        "mid": {"type": "number"},
-                        "high": {"type": "number"},
-                        "metric": {"type": "string", "description": "Short label, at most 300 characters."}
-                    }
-                },
+                "terminal_exit_multiple": {"type": "number", "description": "Exit multiple on the final projected cash flow. Default: the DEFAULTS exit multiple, (1 + terminal_g) / (rate - terminal_g) at the defaults. The desk returns the terminal growth any other multiple implies (exit_implied_terminal_g)."},
                 "sbc_treatment": {
                     "type": "string",
                     "enum": ["deducted_in_cf", "add_back_dilution"],
@@ -216,22 +255,8 @@ TOOLS = [{
                 "wacc": {"type": "number", "description": "Cost of capital / discount rate as decimal, e.g. 0.085 for 8.5%."},
                 "annuity_flow": {"type": "number", "description": "Separate annual services / installed-base recurring annuity cash flow (if unbundled)."},
                 "annuity_cap_rate": {"type": "number", "description": "Capitalization rate for annuity flow (e.g. 0.075 for 7.5%)."},
-                "net_debt": {"type": "number", "description": "Total net debt in $B. Must be 0 or omitted in equity frame; required in firm frame."},
-                "shares_diluted": {"type": "number", "description": "Diluted share count in billions. REQUIRED in every frame: the desk refuses a call without it. Use SECTION 2's shares outstanding unless you state a diluted count."},
-                "demonstrated_cagr_5y": {"type": "number", "description": "Historical 5-year revenue CAGR in percent from Section 7."},
-                "coe_anchor": {"type": "number", "description": "Cost of equity anchor decimal for neutral reference reverse DCF."},
-                "terminal_g_anchor": {"type": "number", "description": "Long-run terminal growth anchor decimal for neutral reference reverse DCF."},
-                "base_rate_table": {
-                    "type": "object",
-                    "description": "Base rate table {p50, p90, share_ge_10, share_ge_20, share_ge_30} for implied CAGR percentile ranking.",
-                    "properties": {
-                        "p50": {"type": "number"},
-                        "p90": {"type": "number"},
-                        "share_ge_10": {"type": "number"},
-                        "share_ge_20": {"type": "number"},
-                        "share_ge_30": {"type": "number"}
-                    }
-                },
+                "net_debt": {"type": "number", "description": "Firm frame only, in $B; default: the DEFAULTS net debt. Must be 0 or omitted in the equity frame."},
+                "shares_diluted": {"type": "number", "description": "Optional. The desk uses SECTION 2's count (DEFAULTS) when you leave it out. Pass it only for a different count, with shares_reason."},
                 "legs": {
                     "type": "array",
                     "description": "Named valuation legs for blend mode: [{'name': 'Gordon DCF', 'weight': 0.6, 'iv': 150.0, 'source': 'desk'}, ...]. Weights must sum to 1.0.",
@@ -249,12 +274,10 @@ TOOLS = [{
                 "scenarios": {
                     "type": "array",
                     "description": (
-                        "List of scenario dicts. You can provide pre-computed 'iv' or supply scenario DCF parameters "
-                        "('base_cf', 'growth_rates', 'wacc', 'terminal_g') and Python will calculate all IVs, expectations gap, "
-                        "and Kelly sizing in a single call. Example: "
-                        "[{'name': 'Base', 'prob': 0.50, 'base_cf': 4.8, 'growth_rates': [0.29, 0.22, 0.17, 0.15, 0.12], 'wacc': 0.095, 'terminal_g': 0.045}, "
-                        "{'name': 'Bull', 'prob': 0.30, 'base_cf': 5.0, 'growth_rates': [0.34, 0.26, 0.21, 0.18, 0.15], 'wacc': 0.090, 'terminal_g': 0.050}, "
-                        "{'name': 'Bear', 'prob': 0.20, 'base_cf': 4.5, 'growth_rates': [0.15, 0.13, 0.07, 0.06, 0.05], 'wacc': 0.115, 'terminal_g': 0.025}]"
+                        "One entry per scenario: name (Base, Bull or Bear), prob, base_cf ($B), explicit_growth "
+                        "(5 annual growth rates of base_cf, cash flow not revenue), fade_years, wacc (the discount "
+                        "rate), terminal_g, and optionally terminal_exit_multiple, terminal_leg and shares_diluted. "
+                        "The desk computes every value, the reverse DCF and Kelly sizing in one call."
                     ),
                     "items": {
                         "type": "object",
@@ -269,13 +292,14 @@ TOOLS = [{
                             "wacc": {"type": "number", "description": "Discount rate as decimal"},
                             "terminal_g": {"type": "number", "description": "REQUIRED. Terminal growth as decimal"},
                             "terminal_exit_multiple": {"type": "number"},
-                            "finite_life_years": {"type": "integer", "description": "Optional. Years until the cash flows end (a depleting reserve, a licence or concession term, a patent cliff). Values the flows over that life with no terminal value. Must equal the contract's cash_flow_life."}
+                            "terminal_leg": {"type": "string", "enum": ["exit", "gordon"], "description": "\"exit\" or \"gordon\": which end value this scenario publishes when you pass an exit multiple. Default \"exit\". Without an exit multiple only \"gordon\" exists."},
+                            "shares_diluted": {"type": "number", "description": "Only for a contingent instrument that vests in this scenario, in billions; needs shares_reason."}
                         },
                         "required": ["name", "prob"]
                     }
                 }
             },
-            "required": ["price", "shares_diluted", "terminal_g", "fade_years", "sbc_treatment"]
+            "required": ["cash_flow_life", "cash_flow_life_reason", "terminal_g", "fade_years", "sbc_treatment"]
         }
     }
 }]
@@ -975,7 +999,9 @@ def _desk_summary(args, result):
         if "desk_closed" in result:
             out["desk_closed"] = result["desk_closed"]
     sc_args = [x for x in ((args or {}).get("scenarios") or []) if isinstance(x, dict)]
-    probs = {x.get("name"): x.get("probability") for x in sc_args}
+    # S3 3.7: this read "probability", which no scenario carries (the field is "prob"), so the
+    # summary never showed one before.
+    probs = {x.get("name"): x.get("prob") for x in sc_args}
     rows = []
     items = result.get("scenario_dcfs") if isinstance(result.get("scenario_dcfs"), list) else None
     if items is None and isinstance(result.get("dcf_model"), dict):
@@ -988,7 +1014,8 @@ def _desk_summary(args, result):
                "per_share_iv": d.get("per_share_iv"), "gordon_leg": d.get("per_share_iv_gordon"),
                "exit_leg": d.get("per_share_iv_exit"),
                "exit_implied_terminal_g": d.get("exit_implied_terminal_g"),
-               "terminal_method": d.get("terminal_method")}
+               "terminal_method": d.get("terminal_method"),
+               "terminal_leg": d.get("terminal_leg")}
         rows.append({k: v for k, v in row.items() if v is not None})
     if rows:
         out["scenarios"] = rows
@@ -1850,7 +1877,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
                     if max_model_calls > 0 and isinstance(result, dict):
                         result = dict(result)
-                        result["desk_budget"] = DESK_BUDGET.format(used=model_calls, cap=max_model_calls)
+                        result["desk_budget"] = DESK_BUDGET.format(used=model_calls, cap=max_model_calls,
+                                                                    refused=desk_validation_errors)
                         if not desk_was_closed and (model_calls >= max_model_calls or desk_validation_errors > 6):
                             if model_calls >= max_model_calls:
                                 result["desk_closed"] = DESK_CLOSED_RUNS.format(cap=max_model_calls)

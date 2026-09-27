@@ -6,15 +6,28 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(HERE))
 
+import analyst_tools as at  # noqa: E402
 import capability_test as cap  # noqa: E402
+import contract_fill  # noqa: E402
 
 
+# S3 A+B (brief §4.1, §3.8, §4.2, §3.3):
+# - the 1.10x/0.90x direction band moved into contract_fill.label (verdict_label is now derived);
+# - the takeover-offer sentence and the null-reason rule carry the same doctrine, reworded;
+# - the "cash basis [Arithmetic]" / owner-CF doctrine moved to the desk's base_cf_reason argument
+#   (named here, not asserted on pack text, since SECTION 3's wording is package C, out of scope);
+# - "Base years 1-2 reach those levels..." and the guidance-range fallback are the Growth sub-bullet.
 def test_the_task_states_the_direction_band_the_takeover_rule_and_null_reasons():
-    assert "undervalued means Base IV at least 1.10x today's price, overvalued at most 0.90x" in cap.TASK
-    assert "If a public takeover offer for the company is pending, value the business standalone" in cap.TASK
-    assert "Reason fields take null when no reason is needed" in cap.TASK
-    assert "`cash basis [Arithmetic]`" in cap.TASK and "owner CF" not in cap.TASK
-    assert "Base years 1-2 reach those levels from whatever base you declare" in cap.TASK
+    assert contract_fill.label(110.0, 100.0) == "undervalued"    # 1.10x
+    assert contract_fill.label(109.9, 100.0) == "hold"
+    assert contract_fill.label(89.9, 100.0) == "overvalued"      # just past 0.90x
+    assert contract_fill.label(90.1, 100.0) == "hold"
+    assert "If a public takeover offer is pending, value the business standalone" in cap.TASK
+    assert 'A reason is evidence, never text such as "no deviation"; leave a reason out when none is needed.' in cap.TASK
+    fm = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
+    assert "base_cf_reason" in fm["function"]["parameters"]["properties"]
+    assert "owner CF" not in cap.TASK
+    assert "years 1-2 reach the consensus cash-flow levels in DEFAULTS from whatever base you declare" in cap.TASK
     assert "anchor Bull and Bear to the top and bottom of the company's own guidance range" in cap.TASK
 
 

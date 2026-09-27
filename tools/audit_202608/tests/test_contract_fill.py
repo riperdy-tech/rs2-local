@@ -127,6 +127,8 @@ def test_rule_scenario_wise():
     assert filled["kelly_fraction_pct"] is None
 
 
+# S3 A+B (brief §3.8): FILLED grew from 19 to 32 entries (base_cf_basis, interest_addback and the
+# 11 reasons).
 def test_rule_no_desk_run():
     # No calls or only failed calls
     failed_call = _make_call(error="timeout")
@@ -135,7 +137,7 @@ def test_rule_no_desk_run():
     filled, prov = contract_fill.fill([failed_call], typed, facts, 100.0)
     assert prov["mode"] == "no_desk_run"
     assert filled == {}
-    assert len(prov["unfilled"]) == 19
+    assert len(prov["unfilled"]) == 32
     assert prov["unfilled"] == list(contract_fill.FILLED)
 
 
@@ -392,10 +394,16 @@ def test_rule_typed_value_matches_no_desk_value():
 # 2. Three real samples
 # ==============================================================================
 
+# S3 A+B (brief §3.8): these are older (pre-revision-15) recorded calls, so `filled` and
+# `disagrees` are unchanged (S2's rules apply as before) — only `prov["unfilled"]` grows, by the 13
+# fields FILLED gained (base_cf_basis, interest_addback, the 11 reasons). The golden fixture file
+# itself is not regenerated; the 13 names are appended to the loaded expectation in this test only.
 def test_real_samples():
     fix_dir = _HERE / "tests" / "fixture_data" / "contract_fill"
     golden_file = fix_dir / "golden_3_samples.json"
     golden = json.loads(golden_file.read_text(encoding="utf-8"))
+    new_fields = list(contract_fill.FILLED[19:])
+    assert len(new_fields) == 13
 
     for e in golden:
         fixture_path = fix_dir / f"{e['run']}_s{e['sample']}.json"
@@ -405,7 +413,9 @@ def test_real_samples():
         facts = {"shares_outstanding": e["facts"]["shares"], "coe_anchor": e["facts"]["coe_anchor"]}
         filled, prov = contract_fill.fill(desk_calls, e["typed"], facts, e["price"])
         assert filled == e["filled"], f"{e['run']} filled mismatch"
-        assert prov == e["prov"], f"{e['run']} prov mismatch"
+        expected_prov = dict(e["prov"])
+        expected_prov["unfilled"] = list(e["prov"]["unfilled"]) + new_fields
+        assert prov == expected_prov, f"{e['run']} prov mismatch"
         dis = contract_fill.disagrees(e["typed"], filled)
         assert dis == e["disagrees"], f"{e['run']} disagrees mismatch"
 
@@ -576,14 +586,13 @@ def test_main_integration_mock(monkeypatch, tmp_path):
     run0 = doc["runs"][0]
     sc = run0["scorecard"]
 
-    assert "typed_contract" in sc
-    assert sc["typed_contract"]["base_iv"] == 50.0
+    # S3 A+B (brief §3.8 retirement): the typed shadow (typed_contract, typed_contract_disagrees)
+    # is gone — no typed values remain to compare the desk against.
+    assert "typed_contract" not in sc
+    assert "typed_contract_disagrees" not in sc
     assert "code_fill" in sc
     assert sc["code_fill"]["mode"] == "joint"
-    assert "typed_contract_disagrees" in sc
-    # Desk computed 55.0 vs typed 50.0 -> disagrees contains base_iv
-    assert "base_iv" in sc["typed_contract_disagrees"]
-    # The run's iv should equal the desk value (55.0)
+    # The run's iv should equal the desk value (55.0), overriding the typed 50.0.
     assert run0["iv"] == 55.0
     assert sc["base_iv"] == 55.0
     assert doc["scorecard"]["code_fill_mode"] == "joint"

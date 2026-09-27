@@ -253,10 +253,12 @@ def test_the_desk_echoes_a_short_label_and_judges_the_full_band():
     assert len(band["metric"]) == len(ESSAY)                   # the caller's dict is not touched
 
 
+# S3 A+B (brief §3.7): _desk_summary reads a scenario's probability from "prob" (the field the
+# schema actually carries), not "probability".
 def test_a_desk_message_leads_with_its_summary_and_records_a_cut():
     big = dict(DESK_OK, details_padding="x" * 20000)
-    args = {"scenarios": [{"name": "Base", "probability": 0.5}, {"name": "Bull", "probability": 0.3},
-                          {"name": "Bear", "probability": 0.2}]}
+    args = {"scenarios": [{"name": "Base", "prob": 0.5}, {"name": "Bull", "prob": 0.3},
+                          {"name": "Bear", "prob": 0.2}]}
     content, cut = at.tool_message("run_financial_model", args, big)
     assert content.startswith('{"summary": {"scenarios": [{"name": "Base", "probability": 0.5, "per_share_iv": 409.92')
     assert '"name": "Bear", "probability": 0.2, "per_share_iv": 299.0' in content

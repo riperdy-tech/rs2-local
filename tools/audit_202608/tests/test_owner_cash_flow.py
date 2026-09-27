@@ -22,7 +22,9 @@ a stated value the system silently cannot verify.
 import pytest
 
 import depth_pipeline as dp
+from tools.audit_202608 import analyst_tools as at
 from tools.audit_202608 import capability_test as cap
+from tools.audit_202608 import contract_fill
 from tools.audit_202608.consensus_valuation import extract_scorecard, owner_cf_basis_check
 
 
@@ -243,11 +245,21 @@ def test_extract_scorecard_reports_an_absent_declaration_as_none():
     assert sc["base_cf_basis"] is None
 
 
-def test_the_task_asks_for_both_fields():
-    assert "base_cf_used" in cap.TASK
-    assert "base_cf_basis" in cap.TASK
+# S3 A+B (brief §4.1, §3.8): base_cf_used and base_cf_basis are no longer typed in the contract —
+# base_cf_basis is now derived by contract_fill.fill (§3.8), and the doctrine of declaring the
+# cash-flow base lives in TASK step 3 and the desk's base_cf_reason argument.
+def test_the_task_asks_for_the_cash_flow_base_and_the_desk_carries_the_reason():
+    assert "the cash-flow base and its window" in cap.TASK
+    fm = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
+    assert "base_cf_reason" in fm["function"]["parameters"]["properties"]
 
 
-def test_the_task_lists_the_allowed_bases():
-    for basis in cap.OWNER_CF_BASES:
-        assert basis in cap.TASK
+def test_the_fill_derives_base_cf_basis_from_the_allowed_bases():
+    assert "base_cf_basis" in contract_fill.FILLED
+    call = {"tool": "run_financial_model", "call_index": 1, "error": None, "validation_error": None,
+            "params": {"cash_flow_life": "perpetual",
+                       "scenarios": [{"name": "Base", "prob": 1.0, "base_cf": 5.0}]},
+            "result": {"scenario_dcfs": [{"name": "Base", "dcf": {"per_share_iv": 100.0}}]}}
+    facts = {"owner_earnings_default_b": 5.0}
+    filled, _ = contract_fill.fill([call], {}, facts, 90.0)
+    assert filled["base_cf_basis"] in cap.OWNER_CF_BASES

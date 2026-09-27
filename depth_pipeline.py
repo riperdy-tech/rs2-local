@@ -686,7 +686,6 @@ def band_verdict(doc):
         "bull_below_price_reason": scorecard.get("bull_below_price_reason"),
         "bear_above_price_reason": scorecard.get("bear_above_price_reason"),
         "code_fill_mode": scorecard.get("code_fill_mode"),
-        "typed_contract_disagrees": scorecard.get("typed_contract_disagrees"),
     })
 
     nar_flags, nar_notes = _not_a_result(doc, good)

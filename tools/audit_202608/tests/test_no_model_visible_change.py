@@ -27,13 +27,22 @@ REPO = Path(__file__).resolve().parents[3]
 FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 
 # Step 0.1: Text pin sha256 literals computed on unmodified tree
-TASK_SHA256 = "fa18e9967d0401db32a45797d0d3f7ad8e59d317df050cc4e350b04ea4cf0bed"
-RESEARCH_ADDENDUM_SHA256 = "a2dbd6ec296cff777373421babca855291e6b4f2f9a6181fce8e387bef92932d"
-TOOLS_SHA256 = "d9163b2096b730965f5f89bc88bfcc0e87757146427d344a430427bdd8edc4b0"
+# S3 (2026-09-28, package A+B): the TASK, RESEARCH_ADDENDUM, TOOLS JSON (run_financial_model's
+# schema) and continue_report's source changed on purpose (brief section 2). Old literals:
+# TASK_SHA256 = "fa18e9967d0401db32a45797d0d3f7ad8e59d317df050cc4e350b04ea4cf0bed"
+# RESEARCH_ADDENDUM_SHA256 = "a2dbd6ec296cff777373421babca855291e6b4f2f9a6181fce8e387bef92932d"
+# TOOLS_SHA256 = "d9163b2096b730965f5f89bc88bfcc0e87757146427d344a430427bdd8edc4b0"
+# CONTINUE_REPORT_SHA256 = "707e547dd3ccdbe8e6303180852c9171a46085d3085cfe9f3d8d320923708151"
+TASK_SHA256 = "b9d6528f8f865dd6c661d0b97731dfa3585962c52f74a3a6e81b6a386b38fe99"
+RESEARCH_ADDENDUM_SHA256 = "cd9c5add7226ed784de56433ea0168bb6c09b72fec678f60e42e90f2fdfaa043"
+# 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
+# "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
+TOOLS_SHA256 = "59ba2b728999b3f5be6f964fc9e4294d42678ffe611a5c6825f67369acb95861"
+# research_tools() (search_web, fetch_page) is unchanged, so its pin stays.
 RESEARCH_TOOLS_SHA256 = "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
 SYSTEM_MTP5_Q4_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
-CONTINUE_REPORT_SHA256 = "707e547dd3ccdbe8e6303180852c9171a46085d3085cfe9f3d8d320923708151"
+CONTINUE_REPORT_SHA256 = "71742a7a93e0d6f1aa02792c3414936abf07cf8fdf45d6989be4f94ecd8d64c3"
 
 
 def _sha256(s: str) -> str:

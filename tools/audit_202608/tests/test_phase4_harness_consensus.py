@@ -25,12 +25,15 @@ class _FakeOllamaResponse:
         return False
 
 
+# S3 A+B (brief §3.2, §3.7): price comes from desk_context now; cash_flow_life and its reason are
+# required, given here so the refusal under test stays the missing shares_diluted/sbc_treatment
+# one; DESK_BUDGET is unchanged in this test (nothing asserts on its text).
 def test_validation_errors_do_not_consume_budget_and_7th_refused(monkeypatch, tmp_path):
     """Validation errors do not consume the 5-call budget and the 7th validation error is refused."""
     # We will simulate 7 consecutive invalid run_financial_model tool calls from the model,
     # followed by a valid report turn.
     turns_payloads = []
-    
+
     # 7 tool calls omitting required parameters (shares_diluted, sbc_treatment)
     for i in range(7):
         turns_payloads.append({
@@ -41,12 +44,13 @@ def test_validation_errors_do_not_consume_budget_and_7th_refused(monkeypatch, tm
                         "function": {
                             "name": "run_financial_model",
                             "arguments": {
-                                "price": 100.0,
                                 "base_cf": 10.0,
                                 "growth_rates": [0.05],
                                 "fade_years": 0,
                                 "wacc": 0.09,
                                 "terminal_g": 0.025,
+                                "cash_flow_life": "perpetual",
+                                "cash_flow_life_reason": "test",
                                 # missing shares_diluted, sbc_treatment
                             }
                         }
@@ -79,7 +83,8 @@ def test_validation_errors_do_not_consume_budget_and_7th_refused(monkeypatch, tm
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
-    rep, think, meta = at.chat_with_tools("test-model", "test-pack", tmp_path, verbose=False)
+    rep, think, meta = at.chat_with_tools("test-model", "test-pack", tmp_path, verbose=False,
+                                          desk_context={"price": 100.0})
 
     # 1. Verification of snapshot calls
     snap_path = tmp_path / "_research_snapshot.json"
@@ -103,16 +108,13 @@ def test_validation_errors_do_not_consume_budget_and_7th_refused(monkeypatch, tm
     assert meta["desk_validation_errors"] == 7
 
 
-def test_desk_contract_match_flags_mismatches_and_passes_exact_match():
-    """Desk contract match flags each mismatched field and passes an exact match."""
-    scorecard = {
-        "base_cf_used": 10.0,
-        "stage1_growth_path": [0.10, 0.08, 0.06],
-        "fade_years": 3,
-        "coe_used": 0.095,
-    }
-
-    # 1. Exact match
+# S3 A+B (brief §3.8 retirement): desk_contract_mismatch:* and _evaluate_contract_mismatches are
+# gone (no typed values remain to compare the desk against), so this test's whole subject is
+# retired. Replaced with a minimal test that the flag list is always empty and matching still works.
+# S3 A+B (fixup Task 3, §7.5 replay): desk_contract_flags itself stays, always empty -- it is not an
+# ignored replay key, so its presence (as []) must be identical to the pre-retirement tree.
+def test_desk_contract_match_has_no_mismatch_flags_and_matches_nearest_iv():
+    """desk_contract_flags is always []; desk_matched_inputs is the candidate nearest base_iv."""
     calls_exact = [
         {
             "tool": "run_financial_model",
@@ -130,96 +132,11 @@ def test_desk_contract_match_flags_mismatches_and_passes_exact_match():
             }
         }
     ]
-    res_exact = extract_desk_snapshot_metrics(calls_exact, base_iv=150.0, scorecard=scorecard)
+    res_exact = extract_desk_snapshot_metrics(calls_exact, base_iv=150.0, scorecard={})
     assert res_exact["desk_iv_match"] is True
     assert res_exact["desk_contract_flags"] == []
     assert res_exact["desk_matched_inputs"]["base_cf"] == 10.0
     assert res_exact["desk_matched_inputs"]["fade_years"] == 3
-
-    # 2. Mismatch on base_cf_used (> 2% relative)
-    calls_cf_mismatch = [
-        {
-            "tool": "run_financial_model",
-            "params": {
-                "base_cf": 12.0,  # 20% diff
-                "explicit_growth": [0.10, 0.08, 0.06],
-                "fade_years": 3,
-                "wacc": 0.095,
-                "shares_diluted": 1.0,
-            },
-            "result": {
-                "dcf_model": {
-                    "per_share_iv": 150.0,
-                }
-            }
-        }
-    ]
-    res_cf = extract_desk_snapshot_metrics(calls_cf_mismatch, base_iv=150.0, scorecard=scorecard)
-    assert "desk_contract_mismatch:base_cf_used" in res_cf["desk_contract_flags"]
-    assert len(res_cf["desk_contract_flags"]) == 1
-
-    # 3. Mismatch on stage1_growth_path (> 0.01 absolute)
-    calls_growth_mismatch = [
-        {
-            "tool": "run_financial_model",
-            "params": {
-                "base_cf": 10.0,
-                "explicit_growth": [0.15, 0.08, 0.06],  # 0.15 vs 0.10
-                "fade_years": 3,
-                "wacc": 0.095,
-                "shares_diluted": 1.0,
-            },
-            "result": {
-                "dcf_model": {
-                    "per_share_iv": 150.0,
-                }
-            }
-        }
-    ]
-    res_growth = extract_desk_snapshot_metrics(calls_growth_mismatch, base_iv=150.0, scorecard=scorecard)
-    assert "desk_contract_mismatch:stage1_growth_path" in res_growth["desk_contract_flags"]
-
-    # 4. Mismatch on fade_years (exact)
-    calls_fade_mismatch = [
-        {
-            "tool": "run_financial_model",
-            "params": {
-                "base_cf": 10.0,
-                "explicit_growth": [0.10, 0.08, 0.06],
-                "fade_years": 5,  # 5 vs 3
-                "wacc": 0.095,
-                "shares_diluted": 1.0,
-            },
-            "result": {
-                "dcf_model": {
-                    "per_share_iv": 150.0,
-                }
-            }
-        }
-    ]
-    res_fade = extract_desk_snapshot_metrics(calls_fade_mismatch, base_iv=150.0, scorecard=scorecard)
-    assert "desk_contract_mismatch:fade_years" in res_fade["desk_contract_flags"]
-
-    # 5. Mismatch on coe_used (> 0.0005)
-    calls_coe_mismatch = [
-        {
-            "tool": "run_financial_model",
-            "params": {
-                "base_cf": 10.0,
-                "explicit_growth": [0.10, 0.08, 0.06],
-                "fade_years": 3,
-                "wacc": 0.105,  # 0.105 vs 0.095 (0.010 diff)
-                "shares_diluted": 1.0,
-            },
-            "result": {
-                "dcf_model": {
-                    "per_share_iv": 150.0,
-                }
-            }
-        }
-    ]
-    res_coe = extract_desk_snapshot_metrics(calls_coe_mismatch, base_iv=150.0, scorecard=scorecard)
-    assert "desk_contract_mismatch:coe_used" in res_coe["desk_contract_flags"]
 
 
 def test_share_count_mismatch_thresholds():

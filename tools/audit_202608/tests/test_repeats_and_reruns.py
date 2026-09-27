@@ -178,18 +178,20 @@ def test_flags_thresholds_edges():
     assert "research_repeats_4_of_20" in f
 
 
+# S3 A+B (brief §4.2): "One model, stated once" is now checklist item 5, directly after item 4
+# (departing inputs need reasons) and before item 6 (the reverse DCF).
 def test_capability_test_task_has_model_stated_once_bullet():
     expected_bullet = (
-        "  * One model, stated once: run Bear, Base and Bull together in ONE `run_financial_model` call. "
-        "If you later change any input and run again, the memorandum must include a 'Model revisions' list giving, "
-        "for every changed input, the old value, the new value and the dated evidence that forced the change. "
-        "Changing an input because you dislike the resulting value is forbidden. "
-        "The harness records every run you make and flags unexplained swings."
+        "5. Run Bear, Base and Bull together in one call. Your last complete desk run of all three "
+        "is your answer. If you change any input after a complete run, the memorandum's 'Model "
+        "revisions' list gives each changed input's old value, new value and the dated evidence "
+        "that forced the change. Changing an input because you dislike the resulting value is "
+        "forbidden, and so is moving any input toward today's price; the harness records every run."
     )
     assert expected_bullet in cap.TASK
-    # Verify it is positioned directly after "Lead Underwriter & Portfolio Manager Role"
-    role_pos = cap.TASK.find("Lead Underwriter & Portfolio Manager Role:")
-    bullet_pos = cap.TASK.find("One model, stated once:")
-    assert role_pos != -1
-    assert bullet_pos > role_pos
-    assert bullet_pos < cap.TASK.find("Scratchpad Containment & Anti-Anchoring:")
+    item4_pos = cap.TASK.find("4. Where an input departs from its DEFAULT")
+    bullet_pos = cap.TASK.find("5. Run Bear, Base and Bull together in one call.")
+    item6_pos = cap.TASK.find("6. The desk also returns the reverse DCF:")
+    assert item4_pos != -1
+    assert bullet_pos > item4_pos
+    assert bullet_pos < item6_pos

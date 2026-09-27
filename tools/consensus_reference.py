@@ -52,6 +52,8 @@ The whole-book test of E18 (2026-09-26, 176 names) failed, and Fable ruled:
   references are printed and the analyst names the window; nothing is chosen by rule.
 """
 
+import math
+
 EPS_GROWTH_MAX = 1.5   # above +150% an EPS growth rate is a recovery off a trough, not a cash-flow rate
 FADE_YEARS = 5         # years 6-10
 NEAR_LOW, NEAR_HIGH = 0.75, 1.33    # years 1-2 tolerance vs consensus earnings (x (1+c1)(1+c2))
@@ -61,6 +63,17 @@ RANGE_MIN_ANALYSTS = 3  # E12 F1: fewer analysts give no range (high = low = ave
 WINDOW_TOL = 0.15       # whole-book test: FY and TTM windows further apart than this print both references
 STALE_MONTHS = 15       # whole-book test: history older than this builds no reference
 VINTAGE_TOL = 0.02      # the vendor's year-ago revenue against the filed fiscal year
+
+
+def choose_reference_window(civ, y2, ttm_value, ttm_year2, iv):
+    """(reference value, year-2 level, window) — S3 3.5's R10 window choice, shared by
+    consensus_valuation.reference_window and the desk's own check so there is one copy of this
+    rule. 'ttm' when a TTM reference value is printed and it is nearer `iv` in log distance than
+    the fiscal-year reference; otherwise 'fy'."""
+    if ttm_value and civ and isinstance(iv, (int, float)) and iv > 0:
+        if abs(math.log(iv / ttm_value)) < abs(math.log(iv / civ)):
+            return ttm_value, ttm_year2, "ttm"
+    return civ, y2, "fy"
 
 
 def consensus_earnings_growth(estimates):

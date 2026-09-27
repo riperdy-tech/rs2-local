@@ -107,12 +107,20 @@ def run_fixture_replay(fixture_name, tmp_path):
     at.urllib.request.urlopen = router
 
     desk_iter = iter([c for c in calls if c["tool"] == "run_financial_model"])
+    # S3 A+B (brief §3.7): DESK_BUDGET's format grew a refused-calls count, fed from
+    # desk_validation_errors; track it here (as chat_with_tools does) so the tests can build the
+    # exact expected string per call instead of hardcoding it.
+    refused_so_far = []
+    refused_count = [0]
 
     def dispatch(name, args, **kw):
         if name == "run_financial_model":
             c = next(desk_iter)
             if c["desk"] == "validation_error":
+                refused_count[0] += 1
+                refused_so_far.append(refused_count[0])
                 return {"error": "missing", "validation_error": True}
+            refused_so_far.append(refused_count[0])
             return {"dcf_model": {"per_share_iv": c["base_per_share_iv"]}}
         return orig_dispatch(name, args, **kw)
 
@@ -120,7 +128,7 @@ def run_fixture_replay(fixture_name, tmp_path):
     try:
         rep, think, meta = at.chat_with_tools("fake-model", "prompt", tmp_path, verbose=False)
         snap = json.loads((tmp_path / "_research_snapshot.json").read_text(encoding="utf-8"))["calls"]
-        return snap, meta, recorded_model_msgs, calls
+        return snap, meta, recorded_model_msgs, calls, refused_so_far
     finally:
         at.urllib.request.urlopen = orig_urlopen
         at.dispatch_tool = orig_dispatch
@@ -147,20 +155,21 @@ def _assert_no_audit_keys_in_model_messages(msgs):
                 assert "_audit" not in content
 
 
+# S3 A+B (brief §3.7): DESK_BUDGET's format grew a refused-calls count.
 def test_replay_ugi(tmp_path):
     fx_name = "replay_UGI_20260925_080045_s1.json"
-    snap, meta, msgs, calls = run_fixture_replay(fx_name, tmp_path)
+    snap, meta, msgs, calls, refused = run_fixture_replay(fx_name, tmp_path)
 
     # 1. First page services
     _assert_first_page_services(snap, calls, fx_name)
 
     # 2. Desk facts
-    assert snap[6]["desk_budget"] == "0 of 5 desk runs used"
-    assert snap[7]["desk_budget"] == "1 of 5 desk runs used"
-    assert snap[8]["desk_budget"] == "2 of 5 desk runs used"
-    assert snap[9]["desk_budget"] == "3 of 5 desk runs used"
-    assert snap[11]["desk_budget"] == "4 of 5 desk runs used"
-    assert snap[12]["desk_budget"] == "5 of 5 desk runs used"
+    assert snap[6]["desk_budget"] == at.DESK_BUDGET.format(used=0, cap=5, refused=refused[0])
+    assert snap[7]["desk_budget"] == at.DESK_BUDGET.format(used=1, cap=5, refused=refused[1])
+    assert snap[8]["desk_budget"] == at.DESK_BUDGET.format(used=2, cap=5, refused=refused[2])
+    assert snap[9]["desk_budget"] == at.DESK_BUDGET.format(used=3, cap=5, refused=refused[3])
+    assert snap[11]["desk_budget"] == at.DESK_BUDGET.format(used=4, cap=5, refused=refused[4])
+    assert snap[12]["desk_budget"] == at.DESK_BUDGET.format(used=5, cap=5, refused=refused[5])
     assert snap[12]["desk_closed"] == at.DESK_CLOSED_RUNS.format(cap=5)
     for i in range(13, 27):
         assert snap[i].get("desk") == at.DESK_CLOSED_LINE, f"call {i+1} missing desk"
@@ -197,19 +206,20 @@ def test_replay_ugi(tmp_path):
     _assert_no_audit_keys_in_model_messages(msgs)
 
 
+# S3 A+B (brief §3.7): DESK_BUDGET's format grew a refused-calls count.
 def test_replay_aph(tmp_path):
     fx_name = "replay_APH_20260925_183541_s1.json"
-    snap, meta, msgs, calls = run_fixture_replay(fx_name, tmp_path)
+    snap, meta, msgs, calls, refused = run_fixture_replay(fx_name, tmp_path)
 
     # 1. First page services
     _assert_first_page_services(snap, calls, fx_name)
 
     # 2. Desk facts
-    assert snap[0]["desk_budget"] == "1 of 5 desk runs used"
-    assert snap[1]["desk_budget"] == "2 of 5 desk runs used"
-    assert snap[3]["desk_budget"] == "3 of 5 desk runs used"
-    assert snap[4]["desk_budget"] == "4 of 5 desk runs used"
-    assert snap[5]["desk_budget"] == "5 of 5 desk runs used"
+    assert snap[0]["desk_budget"] == at.DESK_BUDGET.format(used=1, cap=5, refused=refused[0])
+    assert snap[1]["desk_budget"] == at.DESK_BUDGET.format(used=2, cap=5, refused=refused[1])
+    assert snap[3]["desk_budget"] == at.DESK_BUDGET.format(used=3, cap=5, refused=refused[2])
+    assert snap[4]["desk_budget"] == at.DESK_BUDGET.format(used=4, cap=5, refused=refused[3])
+    assert snap[5]["desk_budget"] == at.DESK_BUDGET.format(used=5, cap=5, refused=refused[4])
     assert snap[5]["desk_closed"] == at.DESK_CLOSED_RUNS.format(cap=5)
     for i in range(6, 30):
         assert snap[i].get("desk") == at.DESK_CLOSED_LINE
@@ -239,16 +249,17 @@ def test_replay_aph(tmp_path):
     _assert_no_audit_keys_in_model_messages(msgs)
 
 
+# S3 A+B (brief §3.7): DESK_BUDGET's format grew a refused-calls count.
 def test_replay_fix(tmp_path):
     fx_name = "replay_FIX_20260925_053027_s1.json"
-    snap, meta, msgs, calls = run_fixture_replay(fx_name, tmp_path)
+    snap, meta, msgs, calls, refused = run_fixture_replay(fx_name, tmp_path)
 
     # 1. First page services
     _assert_first_page_services(snap, calls, fx_name)
 
     # 2. Desk facts
     for i in range(1, 6):
-        assert snap[i]["desk_budget"] == f"{i} of 5 desk runs used"
+        assert snap[i]["desk_budget"] == at.DESK_BUDGET.format(used=i, cap=5, refused=refused[i - 1])
     assert snap[5]["desk_closed"] == at.DESK_CLOSED_RUNS.format(cap=5)
     for i in range(6, 10):
         assert snap[i].get("desk") == at.DESK_CLOSED_LINE
@@ -327,6 +338,6 @@ if __name__ == "__main__":
     import tempfile
     for name in ("replay_UGI_20260925_080045_s1.json", "replay_APH_20260925_183541_s1.json", "replay_FIX_20260925_053027_s1.json"):
         with tempfile.TemporaryDirectory() as td:
-            snap, meta, msgs, calls = run_fixture_replay(name, Path(td))
+            snap, meta, msgs, calls, refused = run_fixture_replay(name, Path(td))
             print(format_replay_table(name, snap))
             print()

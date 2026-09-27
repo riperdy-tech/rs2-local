@@ -103,9 +103,10 @@ def test_calculate_payoff_skew():
     # (1450 - 951) / (951 - 550) = 499 / 401 = 1.244x
     assert round(skew, 2) == 1.24
 
+# S3 A+B (brief §3.2, §3.3): price and demonstrated_cagr_5y (= revenue_cagr_5y_pct) come from
+# context now; cash_flow_life and its reason are required.
 def test_execute_financial_model_dispatch():
     payload = {
-        "price": 951.0,
         "scenarios": [
             {"name": "Base", "iv": 1100.0, "prob": 0.35},
             {"name": "Bull", "iv": 1450.0, "prob": 0.20},
@@ -115,9 +116,10 @@ def test_execute_financial_model_dispatch():
         "shares_diluted": 0.274,
         "wacc": 0.085,
         "terminal_g": 0.025,
-        "demonstrated_cagr_5y": 7.5,
+        "cash_flow_life": "perpetual",
+        "cash_flow_life_reason": "test",
     }
-    out = execute_financial_model(payload)
+    out = execute_financial_model(payload, context={"price": 951.0, "revenue_cagr_5y_pct": 7.5})
     assert "kelly_sizing" in out
     assert "reverse_dcf" in out
     assert "payoff_skew" in out
@@ -156,16 +158,22 @@ def test_calculate_payoff_skew_zero_downside():
     assert skew == 99.9  # Asymmetric cap
 
 
+# S3 A+B (brief §3.2, §3.3, §3.5 R7/R8): price and demonstrated_cagr_5y come from context now;
+# cash_flow_life and its reason are required; the firm frame needs interest_addback and
+# wacc_reason.
 def test_batch_scenario_dcf_execution():
     """Verify batch multi-scenario DCF in a single tool call."""
     payload = {
-        "price": 951.04,
         "shares_diluted": 0.266,
         "fade_years": 0,
         "sbc_treatment": "deducted_in_cf",
         "net_debt": -9.6,  # Net cash
         "valuation_frame": "firm",
-        "demonstrated_cagr_5y": 8.7,
+        "cash_flow_life": "perpetual",
+        "cash_flow_life_reason": "test",
+        "interest_addback": 0.3,
+        "wacc_reason": "COE ANCHOR 9%, cost of debt 4%, tax 21%, weights 80/20",
+        "base_cf_reason": "test",   # no owner_earnings_default_b in context (R2)
         "scenarios": [
             {
                 "name": "Base",
@@ -193,7 +201,7 @@ def test_batch_scenario_dcf_execution():
             }
         ]
     }
-    out = execute_financial_model(payload)
+    out = execute_financial_model(payload, context={"price": 951.04, "revenue_cagr_5y_pct": 8.7})
     assert "scenario_dcfs" in out
     assert len(out["scenario_dcfs"]) == 3
     assert out["scenario_dcfs"][0]["dcf"]["per_share_iv"] > 0
@@ -691,17 +699,17 @@ def test_blend_missing_or_invalid_legs():
     assert "error" in blend([{"name": "No IV", "weight": 1.0}])
 
 
+# S3 A+B (brief §3.2): price comes from context now, including in blend mode.
 def test_blend_dispatch_via_execute_financial_model():
     """Verify blend mode dispatch and markdown formatting in execute_financial_model."""
     params = {
         "mode": "blend",
-        "price": 160.0,
         "legs": [
             {"name": "Gordon DCF", "weight": 0.60, "iv": 150.0, "source": "desk_call_1"},
             {"name": "Exit Multiple", "weight": 0.40, "iv": 200.0, "source": "desk_call_2"},
         ],
     }
-    res = execute_financial_model(params)
+    res = execute_financial_model(params, context={"price": 160.0})
     assert not res.get("error")
     assert res["mode"] == "blend"
     assert res["blended_per_share_iv"] == 170.0
@@ -803,28 +811,39 @@ def test_sbc_dilution_mode_validation():
     assert res_good["shares_diluted"] == pytest.approx(1.04, 0.001)
 
 
+# S3 A+B (brief §3.2, task order "specific tests"): the context now carries the price and the
+# call carries a life (both required), so the refusal is for shares_diluted alone; sbc_treatment
+# is given so it no longer confounds the check.
 def test_old_amd_call_9_params_refused():
-    """Old AMD call-9 params (omitted shares_diluted, omitted sbc_treatment) refused with validation_error."""
+    """Old AMD call-9 params (omitted shares_diluted) refused with validation_error."""
     params = {
-        "price": 160.0,
         "base_cf": 6.765,
         "growth_rates": [0.20, 0.15, 0.12, 0.10, 0.08],
         "fade_years": 5,
         "wacc": 0.095,
         "terminal_g": 0.03,
-        # omitted shares_diluted, omitted sbc_treatment
+        "sbc_treatment": "deducted_in_cf",
+        "cash_flow_life": "perpetual",
+        "cash_flow_life_reason": "test",
+        # omitted shares_diluted
     }
-    res = execute_financial_model(params)
+    res = execute_financial_model(params, context={"price": 160.0})
     assert res.get("validation_error") is True
-    assert "shares_diluted" in res["missing"]
-    assert "sbc_treatment" in res["missing"]
+    assert any("shares_diluted" in m for m in res["missing"])
+    assert not any("sbc_treatment" in m for m in res["missing"])
     assert "no silent defaults since Phase 4" in res["error"]
 
 
+# S3 A+B (brief §3.2, task order "specific tests"): the desk still never invents a share count.
+# With no shares in the call and none in the context, the whole call is refused with
+# shares_diluted among the missing inputs (V6) — there is no longer a "reverse DCF skipped" path
+# for a call with no share count anywhere, since the top-level DCF itself cannot compute either.
+# With shares_default_b in the context, the reverse DCF uses exactly that count.
 def test_reverse_dcf_never_uses_defaulted_share_count():
-    """Reverse DCF path must not run on a defaulted share count: explicit shares_diluted required."""
+    """Reverse DCF path must not run on a defaulted share count: explicit shares_diluted, or the
+    context's shares_default_b, is required."""
+    cfl = {"cash_flow_life": "perpetual", "cash_flow_life_reason": "test", "base_cf_reason": "test"}
     payload_sc_no_shares = {
-        "price": 100.0,
         "scenarios": [
             {
                 "name": "Base",
@@ -838,12 +857,13 @@ def test_reverse_dcf_never_uses_defaulted_share_count():
                 # shares_diluted omitted
             }
         ],
+        **cfl,
     }
-    res = execute_financial_model(payload_sc_no_shares)
-    assert res.get("error") is not None
+    res = execute_financial_model(payload_sc_no_shares, context={"price": 100.0})
+    assert res.get("validation_error") is True
+    assert any("shares_diluted" in m for m in res["missing"])
 
     payload_sc_with_shares = {
-        "price": 100.0,
         "scenarios": [
             {
                 "name": "Base",
@@ -857,24 +877,29 @@ def test_reverse_dcf_never_uses_defaulted_share_count():
                 "shares_diluted": 1.635,
             }
         ],
+        **cfl,
     }
-    res_ok = execute_financial_model(payload_sc_with_shares)
+    res_ok = execute_financial_model(payload_sc_with_shares, context={"price": 100.0})
     assert not res_ok.get("error")
     assert "reverse_dcf" in res_ok
     assert not res_ok["reverse_dcf"].get("skipped")
     assert res_ok["reverse_dcf"]["shares_diluted"] == 1.635
 
-    # If reverse DCF parameters supplied without shares_diluted:
-    payload_rev_skip = {
-        "price": 100.0,
+    # No shares anywhere in the call, but the context carries shares_default_b: the reverse DCF
+    # uses exactly that count (never invents one, never silently substitutes another value).
+    payload_rev_default = {
         "base_cf": 5.0,
         "wacc": 0.09,
         "terminal_g": 0.025,
+        "fade_years": 0,
+        "sbc_treatment": "deducted_in_cf",
+        **cfl,
     }
-    res_skip = execute_financial_model(payload_rev_skip)
-    assert "reverse_dcf" in res_skip
-    assert res_skip["reverse_dcf"].get("skipped") is True
-    assert "explicit shares_diluted required" in res_skip["reverse_dcf"]["note"]
+    res_default = execute_financial_model(payload_rev_default, context={"price": 100.0, "shares_default_b": 2.5})
+    assert not res_default.get("error")
+    assert "reverse_dcf" in res_default
+    assert not res_default["reverse_dcf"].get("skipped")
+    assert res_default["reverse_dcf"]["shares_diluted"] == 2.5
 
 
 def test_finite_life_10_years_equals_hand_computed_pv():
@@ -995,14 +1020,20 @@ def test_call_without_finite_life_is_unchanged():
     assert "finite life" not in res["terminal_method"]
 
 
+# S3 A+B (brief §3.4 V3): a scenario's own finite_life_years left the schema and is now refused;
+# cash_flow_life is a single top-level call argument that reaches every scenario uniformly
+# (there is no longer a way to mix a finite Base with a perpetual Bull in one call).
 def test_finite_life_execute_financial_model_batch():
-    # execute_financial_model passes finite_life_years to scenario DCFs
+    # execute_financial_model passes cash_flow_life to every scenario DCF, not per scenario.
     params = {
-        "price": 100.0,
         "shares_diluted": 1.0,
         "terminal_g": 0.02,
         "fade_years": 0,
         "sbc_treatment": "deducted_in_cf",
+        "cash_flow_life": 3,
+        "cash_flow_life_reason": "test",
+        "base_cf_reason": "test",
+        "bull_below_price_reason": "test",
         "scenarios": [
             {
                 "name": "Base",
@@ -1011,7 +1042,6 @@ def test_finite_life_execute_financial_model_batch():
                 "growth_rates": [0.05, 0.05, 0.05],
                 "wacc": 0.08,
                 "terminal_g": 0.02,
-                "finite_life_years": 3,
             },
             {
                 "name": "Bull",
@@ -1023,7 +1053,7 @@ def test_finite_life_execute_financial_model_batch():
             }
         ]
     }
-    res = execute_financial_model(params)
+    res = execute_financial_model(params, context={"price": 100.0})
     assert not res.get("error")
     scs = res.get("scenario_dcfs") or []
     assert len(scs) == 2
@@ -1033,8 +1063,15 @@ def test_finite_life_execute_financial_model_batch():
     assert base_dcf["terminal_value_pv"] == 0
 
     bull_dcf = scs[1]["dcf"]
-    assert "finite_life_years" not in bull_dcf
-    assert bull_dcf["terminal_value_pv"] > 0
+    assert bull_dcf["finite_life_years"] == 3
+    assert bull_dcf["terminal_value_pv"] == 0
+
+    # A scenario's own finite_life_years is now refused (V3): use cash_flow_life instead.
+    params_v3 = dict(params)
+    params_v3["scenarios"] = [dict(params["scenarios"][0], finite_life_years=3), params["scenarios"][1]]
+    res_v3 = execute_financial_model(params_v3, context={"price": 100.0})
+    assert res_v3.get("validation_error") is True
+    assert any("finite_life_years" in m for m in res_v3["missing"])
 
     md = format_model_results_markdown(res)
     assert "finite life 3 years" in md

@@ -3,23 +3,71 @@
 Given the calculator calls of one sample, its typed contract, the pack facts and price,
 returns the values code writes into the contract and the provenance of each.
 """
-import sys
-from pathlib import Path
-
-_HERE = Path(__file__).resolve().parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
-
 from fiduciary_gate import payoff_skew
+from financial_model_tool import _normalize_cash_flow_life
+
+# S3 3.3: the 11 reason arguments (cash_flow_life_reason counted among them).
+REASONS_11 = (
+    "cash_flow_life_reason", "base_cf_reason", "guidance_deviation_reason", "scenario_deviation_reason",
+    "terminal_reason", "coe_adjustment_reason", "shares_reason", "net_debt_reason", "wacc_reason",
+    "bull_below_price_reason", "bear_above_price_reason",
+)
 
 FILLED = (
     "base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability",
     "kelly_fraction_pct", "asymmetric_payoff_skew", "base_cf_used", "stage1_growth_path", "fade_years",
     "coe_used", "coe_source", "valuation_frame", "terminal_method", "terminal_multiple_or_g",
-    "cash_flow_life", "shares_basis", "verdict_label"
-)
+    "cash_flow_life", "shares_basis", "verdict_label",
+    # S3 3.8: revision-15 additions. base_cf_basis is derived; interest_addback and the 11 reasons
+    # (cash_flow_life_reason among them) are now call arguments, copied from the answer call.
+    "base_cf_basis", "interest_addback",
+) + REASONS_11
 ROLES = ("base", "bull", "bear")
 REL = 0.010001          # the harness's 1% desk-match tolerance (consensus_valuation, `close`)
+
+
+def _reason_given(v):
+    """S3 3.3: a reason counts as not given when it is absent, empty, or reads "null"/"none"
+    (case-insensitive, after stripping)."""
+    if v is None:
+        return False
+    s = str(v).strip()
+    return s != "" and s.lower() not in ("null", "none")
+
+
+def s2b_share_match(desk_count, facts):
+    """(name, ratio) — the candidate (vendor, filed_fy_wa or, from S3 5.11, default) nearest
+    desk_count, matched when the ratio is at most 1%; else (None, nearest_ratio) when there is a
+    nearest candidate, else (None, None). Shared by consensus_valuation's S2b share check and the
+    revision-15 shares_basis (3.5's "S2b's share check in revision 15"), so there is one copy of
+    the candidate list."""
+    facts = facts or {}
+    if desk_count is None or desk_count <= 0:
+        return None, None
+    candidates = []
+    n_val = facts.get("shares_outstanding")
+    if isinstance(n_val, (int, float)) and n_val > 0:
+        candidates.append(("vendor", n_val / 1e9))
+    filed_val = facts.get("filed_shares_diluted")
+    if (isinstance(n_val, (int, float)) and n_val > 0
+            and isinstance(filed_val, (int, float)) and filed_val > 0):
+        fy_vendor_ratio = filed_val / n_val
+        if 0.55 < fy_vendor_ratio < 1.8:
+            candidates.append(("filed_fy_wa", filed_val / 1e9))
+    default_val = facts.get("shares_default")
+    if isinstance(default_val, (int, float)) and default_val > 0:
+        candidates.append(("default", default_val / 1e9))
+    if not candidates:
+        return None, None
+    ratios = []
+    for name, val in candidates:
+        r = max(desk_count, val) / min(desk_count, val)
+        ratios.append((name, val, r))
+    ratios.sort(key=lambda x: x[2])
+    nearest_name, _nearest_val, nearest_ratio = ratios[0]
+    if nearest_ratio <= 1.010001:
+        return nearest_name, nearest_ratio
+    return None, nearest_ratio
 
 
 def role_of(name):
@@ -109,9 +157,11 @@ def label(base, price):
     return "undervalued" if m >= 0.10 else "overvalued" if m <= -0.10 else "hold"
 
 
-def fill(calls, typed, facts, price):
+def fill(calls, typed, facts, price, ticker=None):
     """(filled, prov). `typed` is the sample's parsed contract (extract_scorecard); `facts` needs
-    'shares_outstanding' (raw count or None) and 'coe_anchor' (fraction or None)."""
+    'shares_outstanding' (raw count or None) and 'coe_anchor' (fraction or None). `ticker` is only
+    needed for a revision-15 answer run's base_cf_basis (3.8); omit it and that field falls back
+    to "other" when the Base is not within 2% of the DEFAULTS owner earnings."""
     typed = typed or {}
     facts = facts or {}
     done = [c for c in (calls or []) if completed(c)]
@@ -137,21 +187,43 @@ def fill(calls, typed, facts, price):
                     break
     else:
         prov["mode"] = "no_desk_run"
+
+    # S3 3.8: a call is a revision-15 call when its params carry "cash_flow_life". The answer run
+    # (S2 R4) is unchanged: the reference call is `joint`, else (scenario-wise) the call that
+    # supplied the Base.
+    ref_call = joint if joint is not None else (src.get("base", (None, None))[0])
+    is_r15 = ref_call is not None and "cash_flow_life" in (ref_call.get("params") or {})
+
     out = {}
     for role in ROLES:
         if role in src:
             c, e = src[role]
-            leg, v = pick_leg(e["dcf"], _f(typed.get(f"{role}_iv")))
+            if is_r15:
+                # 3.8 "Leg (replaces S2 R5)": the scenario's dcf["terminal_leg"] when present, and
+                # "finite_life" on the finite path. There is no typed value to consult.
+                d = e["dcf"]
+                if d.get("finite_life_years") is not None:
+                    leg = "finite_life"
+                else:
+                    leg = d.get("terminal_leg") or "gordon"
+                v = _f(d.get("per_share_iv"))
+            else:
+                leg, v = pick_leg(e["dcf"], _f(typed.get(f"{role}_iv")))
             out[f"{role}_iv"] = v
             prov["legs"][role] = leg
             out[f"{role}_probability"] = _f(e["param"].get("prob"))
-    # blend: the last completed call is a blend and the typed base matches its value
-    if done:
+    # blend: the last completed call is a blend and the typed base matches its value. Never for a
+    # revision-15 answer run (reviewer, S3 A+B fix-up review): the TASK says a blend is never the
+    # answer, and a Base value the narrative fallback of extract_scorecard pulls from the memo's prose
+    # must not let a blend of model-typed leg values become the published Base.
+    if done and not is_r15:
         last = done[-1]
         b = _body(last)
         bv = None
         if (last.get("params") or {}).get("mode") == "blend" or b.get("mode") == "blend":
-            bv = _f(b.get("blended_per_share_iv") or b.get("per_share_iv"))
+            # S2 review carry-over: 0.0 is a value, never defaulted with `or`.
+            blended = b.get("blended_per_share_iv")
+            bv = _f(blended if blended is not None else b.get("per_share_iv"))
         elif isinstance(b.get("blend"), dict):
             bv = _f(b["blend"].get("blended_per_share_iv"))
         if bv and _close(typed.get("base_iv"), bv):
@@ -176,7 +248,7 @@ def fill(calls, typed, facts, price):
         fr = d.get("valuation_frame") or _inp(e, c, "valuation_frame")
         out["valuation_frame"] = str(fr).lower() if fr is not None else None
         leg = prov["legs"].get("base")
-        if leg == "finite":
+        if leg in ("finite", "finite_life"):
             out["terminal_method"], out["terminal_multiple_or_g"] = "finite_life", None
         elif leg == "exit":
             em = (d.get("exit_multiple_terminal") or {}).get("exit_multiple")
@@ -186,8 +258,13 @@ def fill(calls, typed, facts, price):
         else:
             tg = d.get("terminal_g") if d.get("terminal_g") is not None else _inp(e, c, "terminal_g")
             out["terminal_method"], out["terminal_multiple_or_g"] = "gordon", _f(tg)
-        fly = d.get("finite_life_years") if d.get("finite_life_years") is not None else _inp(e, c, "finite_life_years")
-        out["cash_flow_life"] = int(fly) if fly is not None else "perpetual"
+        if is_r15:
+            # 3.8: copied from the answer call's top-level params, not re-derived from the dcf.
+            cfl_param = (ref_call.get("params") or {}).get("cash_flow_life")
+            out["cash_flow_life"] = _normalize_cash_flow_life(cfl_param) if cfl_param is not None else "perpetual"
+        else:
+            fly = d.get("finite_life_years") if d.get("finite_life_years") is not None else _inp(e, c, "finite_life_years")
+            out["cash_flow_life"] = int(fly) if fly is not None else "perpetual"
         # discount-rate source against the printed anchor
         a = facts.get("coe_anchor")
         cu = out["coe_used"]
@@ -215,6 +292,68 @@ def fill(calls, typed, facts, price):
         if vals:
             out["shares_basis"] = ("diluted" if all(abs(v / pack_b - 1) <= 0.01 for v in vals)
                                    else "diluted_plus_contingent")
+
+    if is_r15:
+        # 3.8 "shares_basis (replaces S2 R7's rule for revision-15 runs)".
+        shares_default = facts.get("shares_default")
+        if src and shares_default and shares_default > 0:
+            default_b = shares_default / 1e9 if abs(shares_default) > 1e6 else shares_default
+            vals = []
+            for role, (c, e) in src.items():
+                v = _f(_inp(e, c, "shares_diluted"))
+                if v is not None:
+                    vals.append(v / 1e9 if abs(v) > 1e6 else v)
+            if vals and all(abs(v / default_b - 1) <= 0.01 for v in vals):
+                out["shares_basis"] = "default"
+            elif "base" in src:
+                base_desk_shares = _f(src["base"][1]["dcf"].get("shares_diluted"))
+                matched, _ratio = s2b_share_match(base_desk_shares, facts)
+                out["shares_basis"] = matched if matched in ("vendor", "filed_fy_wa") else "other"
+            else:
+                out["shares_basis"] = "other"
+        elif "base" in src:
+            base_desk_shares = _f(src["base"][1]["dcf"].get("shares_diluted"))
+            matched, _ratio = s2b_share_match(base_desk_shares, facts)
+            out["shares_basis"] = matched if matched in ("vendor", "filed_fy_wa") else "other"
+
+        # 3.8 "Copied fields": cash_flow_life_reason, interest_addback and the 11 reasons come
+        # from the answer call's top-level params (scenario-wise: the call that supplied the
+        # Base). A reason not given (3.3) is filled as None.
+        ref_params = ref_call.get("params") or {}
+        for reason_name in REASONS_11:
+            v = ref_params.get(reason_name)
+            out[reason_name] = v if _reason_given(v) else None
+        out["interest_addback"] = _f(ref_params.get("interest_addback"))
+
+        # 3.8 "base_cf_basis", in this order: within 2% of owner_earnings_default_b; else the
+        # nearest of latest_fy / multi_year_avg / ttm_fcf within OWNER_CF_TOL_PCT; else "other".
+        if "base" in src:
+            base_cf_val = out.get("base_cf_used")
+            oe_default = facts.get("owner_earnings_default_b")
+            if base_cf_val is not None and oe_default and abs(base_cf_val - oe_default) / abs(oe_default) <= 0.02:
+                out["base_cf_basis"] = "owner_earnings_default"
+            elif ticker and base_cf_val is not None:
+                import consensus_valuation as cv
+                candidates = {}
+                years = cv.owner_cf_by_year(ticker)
+                if years:
+                    latest = max(years)
+                    candidates["latest_fy"] = years[latest]
+                    candidates["multi_year_avg"] = sum(years.values()) / len(years)
+                ttm = cv.ttm_fcf_by_ticker(ticker)
+                if ttm is not None:
+                    candidates["ttm_fcf"] = ttm
+                best_name, best_dist = None, None
+                for name, target in candidates.items():
+                    if not target:
+                        continue
+                    dist = abs(base_cf_val - target) / abs(target)
+                    if dist <= cv.OWNER_CF_TOL_PCT / 100.0 and (best_dist is None or dist < best_dist):
+                        best_name, best_dist = name, dist
+                out["base_cf_basis"] = best_name or "other"
+            else:
+                out["base_cf_basis"] = "other"
+
     base = out.get("base_iv") if "base_iv" in out else None
     if base is not None:
         out["verdict_label"] = label(base, price)

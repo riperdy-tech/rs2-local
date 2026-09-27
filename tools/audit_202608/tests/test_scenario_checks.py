@@ -81,10 +81,13 @@ def test_net_debt_off_the_filed_default_needs_a_reason_in_the_firm_frame(tmp_pat
     assert cv._pack_net_debt_b(PACK) == -7.33
 
 
-def test_a_self_label_that_contradicts_the_numbers_is_flagged_per_sample(tmp_path):
+# S3 A+B (brief §3.8 retirement): report_verdict_mismatch_sample is gone — verdict_label is now
+# derived (contract_fill.label), so a self-typed label that contradicts the numbers can no longer
+# occur, and scenario_checks no longer flags one even when a raw scorecard carries one.
+def test_a_self_label_that_contradicts_the_numbers_is_no_longer_flagged(tmp_path):
     flags, _ = cv.scenario_checks(_snapshot(tmp_path, 1.6325), _sc(base_iv=509.99, verdict_label="hold"),
                                   {"estimates": EST}, PACK, 609.43)
-    assert "report_verdict_mismatch_sample" in flags
+    assert "report_verdict_mismatch_sample" not in flags
 
 
 def test_no_snapshot_means_no_stamps_and_no_crash(tmp_path):
