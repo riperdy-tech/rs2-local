@@ -192,7 +192,7 @@ TOOLS = [{
                 "annuity_flow": {"type": "number", "description": "Separate annual services / installed-base recurring annuity cash flow (if unbundled)."},
                 "annuity_cap_rate": {"type": "number", "description": "Capitalization rate for annuity flow (e.g. 0.075 for 7.5%)."},
                 "net_debt": {"type": "number", "description": "Total net debt in $B. Must be 0 or omitted in equity frame; required in firm frame."},
-                "shares_diluted": {"type": "number", "description": "Diluted share count in billions. Required in firm frame."},
+                "shares_diluted": {"type": "number", "description": "Diluted share count in billions. REQUIRED in every frame: the desk refuses a call without it. Use SECTION 2's shares outstanding unless you state a diluted count."},
                 "demonstrated_cagr_5y": {"type": "number", "description": "Historical 5-year revenue CAGR in percent from Section 7."},
                 "coe_anchor": {"type": "number", "description": "Cost of equity anchor decimal for neutral reference reverse DCF."},
                 "terminal_g_anchor": {"type": "number", "description": "Long-run terminal growth anchor decimal for neutral reference reverse DCF."},
@@ -249,7 +249,7 @@ TOOLS = [{
                     }
                 }
             },
-            "required": ["price"]
+            "required": ["price", "shares_diluted", "terminal_g", "fade_years", "sbc_treatment"]
         }
     }
 }]

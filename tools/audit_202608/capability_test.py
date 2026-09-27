@@ -178,7 +178,12 @@ TIMEOUT = 14400
 #   is stated; the estimates table shows EPS analysts; base-year and TTM-freshness lines; guidance
 #   range for Bull/Bear without a consensus range; takeover-offer wording; the momentum date; the
 #   SECTION 5 column "owner CF" is renamed "cash basis"; reason fields take null when unneeded.
-PACK_REVISION = 10
+# Revision 11 (Phase 4 draw review, operator approval 2026-09-27): the desk tool definition marks
+#   shares_diluted, terminal_g, fade_years and sbc_treatment required (F4); a per-name TERMINAL-GROWTH
+#   DEFAULT: below the anchor's reach the default path rises no further than zero real growth
+#   (breakeven inflation), not to the anchor (T1); the TASK says the desk does the arithmetic; years 3-5
+#   above next-FY revenue growth need guidance_deviation_reason (F5).
+PACK_REVISION = 11
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -294,10 +299,10 @@ def _default_exit_multiple_line(coe_anchor_pct, terminal_g):
     r, g = coe_anchor_pct / 100.0, float(terminal_g)
     return (f"- [Arithmetic] DEFAULT EXIT MULTIPLE (net capitalization rate at the anchors): "
             f"(1 + {g * 100:.2f}%) / ({r * 100:.2f}% \u2212 {g * 100:.2f}%) = {(1 + g) / (r - g):.2f}\u00d7 "
-            f"the final-year cash flow: the multiple consistent with the terminal_g anchor. At another "
+            f"the final-year cash flow: the multiple consistent with the terminal_g default. At another "
             f"rate (the Bear's wider rate) the desk prints the scenario's own as "
             f"implied_terminal_ev_fcf_gordon. A multiple whose implied terminal growth "
-            f"(exit_implied_terminal_g) is more than 0.5 points from the anchor needs "
+            f"(exit_implied_terminal_g) is more than 0.5 points from the terminal_g default needs "
             f"terminal_reason.")
 
 
@@ -1124,6 +1129,35 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
           "from reporting revenue including excise taxes to excluding them. Verify any step you "
           "intend to lean on; do not treat one as a business event on this pack's word alone.", ""]
 
+    # Phase 4 T1: compute consensus next-FY revenue growth and growth base rates median
+    # for Section 1.5's TERMINAL-GROWTH DEFAULT and Section 8's CONSENSUS-IMPLIED VALUE.
+    yrs = sorted([int(y) for y in h if str(y).isdigit()])
+    latest_rev = h.get(str(max(yrs)), {}).get("revenue") if yrs else None
+    size_label, br_table = base_rates.base_rate_table(latest_rev, sd=SD, max_fiscal_year=last_allowed_fy)
+    g0 = None
+    g_stats = None
+    g_lbl = None
+    if yrs:
+        y_last = max(yrs)
+        if (y_last - 1) in yrs:
+            rlast = h.get(str(y_last), {}).get("revenue")
+            rprev = h.get(str(y_last - 1), {}).get("revenue")
+            if isinstance(rlast, (int, float)) and isinstance(rprev, (int, float)) and rprev > 0:
+                g0 = rlast / rprev - 1
+    if g0 is not None:
+        g_lbl, g_stats = growth_persistence.persistence_for_growth(
+            g0, sd=SD, max_fiscal_year=last_allowed_fy)
+
+    _med = (g_stats or {}).get("median") if g_stats else None
+    if _med is None:
+        _med = ((br_table or {}).get(5) or {}).get("p50")
+    pack_median_5y = _med / 100.0 if isinstance(_med, (int, float)) else None
+
+    enrich_est = (en.get("estimates") or {}) if en else {}
+    pack_rev_g2 = consensus_reference.revenue_growth_next_fy(enrich_est)
+    terminal_def_val = None
+    terminal_def_reason = None
+
     # ---- SECTION 1 - IDENTITY & INSTITUTIONAL TAXONOMY -------------------------------------
     sector, industry = rs2_data.sector_lookup(t)
     
@@ -1223,6 +1257,27 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
             terminal_g_line = (f"- Long-run nominal growth anchor for terminal_g: {ASOF_NULL}  "
                                f"({terminal_g_src})")
 
+        be_val = be_pct / 100.0 if be_pct is not None else None
+        terminal_def_val, terminal_def_reason = consensus_reference.terminal_default(
+            terminal_g_val, be_val, pack_rev_g2, pack_median_5y)
+        terminal_def_line = None
+        if terminal_g_val is not None:
+            if terminal_def_val != terminal_g_val:
+                terminal_def_line = (
+                    f"- TERMINAL-GROWTH DEFAULT for this name: {terminal_def_val * 100:.2f}% \u2014 "
+                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
+                    f"so the default is the year-5 growth floored at zero real growth "
+                    f"(10-year breakeven inflation {be_val * 100:.2f}%). "
+                    f"terminal_g more than 0.5 points above or below it needs terminal_reason with dated evidence."
+                )
+            elif terminal_def_reason is not None and be_val is None:
+                terminal_def_line = (
+                    f"- TERMINAL-GROWTH DEFAULT for this name: {terminal_g_val * 100:.2f}% \u2014 "
+                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
+                    f"but the 10-year breakeven inflation floor is not available, so the default remains the anchor. "
+                    f"terminal_g more than 0.5 points above or below it needs terminal_reason with dated evidence."
+                )
+
         sec_series = rs2_data.asof_secondary_macro_series(asof_date)
         t10y2y = sec_series["t10y2y"][0] if sec_series["t10y2y"] else None
         baa10y = sec_series["baa10y"][0] if sec_series["baa10y"] else None
@@ -1268,7 +1323,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         L += ["## SECTION 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [Primary Macro Context, "
               "point-in-time]",
               anchor_meta_line, rf_line, real_line, be_line, erp_line, coe_line, load_line,
-              coe_anchor_line, terminal_g_line, t10y2y_line, baa_line, hy_line, regime_line]
+              coe_anchor_line, terminal_g_line]
+        if terminal_def_line:
+            L.append(terminal_def_line)
+        L += [t10y2y_line, baa_line, hy_line, regime_line]
 
         if rf_pct is not None:
             L.append(f"- **MANDATE:** Use the verified 10-Year Treasury yield above "
@@ -1283,7 +1341,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
                  "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not "
                  "force artificial multiple caps.")
-        L.append(_default_exit_multiple_line(coe_anchor_pct, terminal_g_val))
+        L.append(_default_exit_multiple_line(coe_anchor_pct, terminal_def_val if terminal_def_val is not None else terminal_g_val))
         L.append("")
 
         macro_degraded = bool(
@@ -1455,6 +1513,27 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         else:
             terminal_g_line = f"- Long-run nominal growth anchor for terminal_g: {NULL}  ({terminal_g_src})"
 
+        be_val = be_pct / 100.0 if be_pct is not None else None
+        terminal_def_val, terminal_def_reason = consensus_reference.terminal_default(
+            terminal_g_val, be_val, pack_rev_g2, pack_median_5y)
+        terminal_def_line = None
+        if terminal_g_val is not None:
+            if terminal_def_val != terminal_g_val:
+                terminal_def_line = (
+                    f"- TERMINAL-GROWTH DEFAULT for this name: {terminal_def_val * 100:.2f}% \u2014 "
+                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
+                    f"so the default is the year-5 growth floored at zero real growth "
+                    f"(10-year breakeven inflation {be_val * 100:.2f}%). "
+                    f"terminal_g more than 0.5 points above or below it needs terminal_reason with dated evidence."
+                )
+            elif terminal_def_reason is not None and be_val is None:
+                terminal_def_line = (
+                    f"- TERMINAL-GROWTH DEFAULT for this name: {terminal_g_val * 100:.2f}% \u2014 "
+                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
+                    f"but the 10-year breakeven inflation floor is not available, so the default remains the anchor. "
+                    f"terminal_g more than 0.5 points above or below it needs terminal_reason with dated evidence."
+                )
+
         # Anchor metadata
         reasons_str = "; ".join(str(r) for r in anchor_reasons) if anchor_reasons else "none"
         degraded_str = str(anchor_degraded) if anchor_degraded is not None else NULL
@@ -1530,8 +1609,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
               coe_line,
               load_line,
               coe_anchor_line,
-              terminal_g_line,
-              t10y2y_line,
+              terminal_g_line]
+        if terminal_def_line:
+            L.append(terminal_def_line)
+        L += [t10y2y_line,
               baa_line,
               hy_line,
               regime_line]
@@ -1558,7 +1639,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         # on a headline margin as thin as 0.044.
         L.append("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
                  "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force artificial multiple caps.")
-        L.append(_default_exit_multiple_line(coe_anchor_pct, terminal_g_val))
+        L.append(_default_exit_multiple_line(coe_anchor_pct, terminal_def_val if terminal_def_val is not None else terminal_g_val))
         L.append("")
 
         macro_degraded = bool(
@@ -2518,12 +2599,14 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                 _coe = coe_anchor_pct / 100.0 if isinstance(coe_anchor_pct, (int, float)) else None
                 _fy = _ref_fy or {}
                 _ref = consensus_reference.build(
-                    _fy.get("base"), est, _coe, terminal_g_val,
+                    _fy.get("base"), est, _coe,
+                    terminal_def_val if terminal_def_val is not None else terminal_g_val,
                     sh if isinstance(sh, (int, float)) and sh > 0 else None,
                     _med / 100.0 if isinstance(_med, (int, float)) else None,
                     da=_fy.get("da"), capex=_fy.get("capex"),
                     stub_months=_fy.get("stub"), base_label=_fy.get("label"),
-                    levels_reason=_fy.get("levels_reason"), levels_block=_fy.get("levels_block"))
+                    levels_reason=_fy.get("levels_reason"), levels_block=_fy.get("levels_block"),
+                    anchor=terminal_g_val)
                 if not _ref_fy and _ref.get("value") is None and _ref_fy_na:
                     _ref["reason"] = _ref_fy_na
                 # E15: outside the fail-fast fence the reference is not a credible summary of the
@@ -2542,7 +2625,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
                              f"discounted by 10%), so it is not a credible summary of the consensus "
                              f"(reference_status: outside_fence_{_side}).")
                 else:
-                    L.append(consensus_reference.pack_line(_ref, _fy.get("base"), _coe or 0.0, terminal_g_val or 0.0, _b))
+                    _tg_used = (terminal_def_val if terminal_def_val is not None else terminal_g_val) or 0.0
+                    L.append(consensus_reference.pack_line(_ref, _fy.get("base"), _coe or 0.0, _tg_used, _b, anchor=terminal_g_val))
                     _win = consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters"))
                     if _win and _win.get("ttm_value") is not None:
                         _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
@@ -2848,6 +2932,7 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
   * Dual Terminal Valuation & Capitalization Realism: DCF projection cross-checked against net capitalization rates (1 / [WACC - g]) and verified empirical peer comps. Do not clamp terminal growth or force artificial multiple ceilings on durable compounders.
   * Causal Downside Stress-Testing: The Bear case must trace operational shock transmission through the business engine bottom-up (transactional volume shock, installed-base service durability, operating de-leverage flow-through, and WACC spread expansion) rather than arbitrary top-down cash flow slashing. Enforce the Contracted Visibility Floor for backlogged/high-ARR enterprises.
   * Lead Underwriter & Portfolio Manager Role: You own the fundamental economic viewpoint, business quality moat evaluation, scenario boundaries (Base, Bull, Bear), and final capital allocation decision. You are supported by a Python Financial Modeling Desk: invoke `run_financial_model` whenever you need deterministic DCF schedules, reverse DCF expectations gap, or continuous multi-outcome Kelly sizing. You can pass all 3 scenarios together in a single call (with each scenario's base_cf, growth_rates, wacc, terminal_g) and Python will compute all intrinsic values, reverse DCF expectations gap, and Kelly sizing in one unified table. DO NOT perform manual mental math on log-wealth Kelly formulas in prose; obtain exact numbers from `run_financial_model`.
+  * The desk does the arithmetic: do not compute present values, terminal values or per-share values in your reasoning. Call run_financial_model as soon as your inputs are set and reason from its output; revise with evidence, as below.
   * One model, stated once: run Bear, Base and Bull together in ONE `run_financial_model` call. If you later change any input and run again, the memorandum must include a 'Model revisions' list giving, for every changed input, the old value, the new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden. The harness records every run you make and flags unexplained swings.
   * Scratchpad Containment & Anti-Anchoring: Keep all rough-draft calculations, re-estimates, and trial reconciliations strictly inside <think>...</think>. Never adjust valuations to match market price T0. Enforce exact parity between Section 4 scenario tables and the Section 12 JSON contract.
   * Declare Your Cash-Flow Base: Declare your cash-flow base. The default is SECTION 3's OWNER EARNINGS line (base_cf_basis "owner_earnings_default"); if you use another base, say why in base_cf_reason. Start from the default; do not run a trial base through the desk. The pack prints `cash basis [Arithmetic]`
@@ -2868,10 +2953,10 @@ YOU OWN THE COMPLETE ECONOMIC UNDERWRITING per the Institutional Underwriting Ch
     — at least one dated, industry-specific indicator (pricing, inventory, capacity, order
     trends); a growth rate alone is not evidence.
   * Explain The Recent Move First: start from the CATALYST BRIEF, RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions. For each development say whether you accept or dispute it and why, and how it enters your Bull, Base and Bear numbers; add any development you find yourself and fetch the articles you rely on. Record them in `catalysts`. If a public takeover offer for the company is pending, value the business standalone; in the memorandum state the probability you give the offer and the expected value with and without it. The verdict stays on standalone value.
-  * Scenarios Anchored To Expectations: Stage-1 growth rates are growth of the CASH FLOW you value (base_cf), not of revenue: revenue growth leaves out margin change. SECTION 8's CONSENSUS-IMPLIED VALUE line prints the consensus cash-flow LEVELS for year 1 and year 2, built on the last full fiscal year, the same period consensus growth is measured from. Base years 1-2 reach those levels from whatever base you declare: the levels are the anchor, not the growth rates, so a base from another period (TTM, a cash basis) needs growth that lands on the same year-2 level; a Base year-2 cash flow more than 15% from the printed level needs guidance_deviation_reason. If no levels are printed, start from the company's guidance converted to cash-flow growth, or revenue growth plus your stated margin path, and say so in guidance_deviation_reason. When SECTION 8 prints a BASE WINDOW CHECK, the fiscal-year and TTM owner earnings disagree by more than consensus growth explains: find the item behind the gap in the filings, name in base_cf_reason the window you judge representative, and anchor to that window's reference and year-2 level; where the TTM window's value is not shown (it lands outside the street fence), a Base on that window needs guidance_deviation_reason. From year 3 growth follows revenue again: fade from next-FY consensus revenue growth toward the GROWTH BASE RATES median by year 5, never above next-FY revenue growth; anything above its p90 needs the MANDATE's dated evidence. When SECTION 8 prints Bull and Bear year-2 levels (3 or more analysts), the Bull and Bear year-2 cash flows reach them; say why in scenario_deviation_reason if not. With fewer analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one, otherwise state your own range and why. SECTION 8's CONSENSUS-IMPLIED VALUE is what the consensus path is worth at our discount rate; a Base IV more than a quarter away from it needs guidance_deviation_reason. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
+  * Scenarios Anchored To Expectations: Stage-1 growth rates are growth of the CASH FLOW you value (base_cf), not of revenue: revenue growth leaves out margin change. SECTION 8's CONSENSUS-IMPLIED VALUE line prints the consensus cash-flow LEVELS for year 1 and year 2, built on the last full fiscal year, the same period consensus growth is measured from. Base years 1-2 reach those levels from whatever base you declare: the levels are the anchor, not the growth rates, so a base from another period (TTM, a cash basis) needs growth that lands on the same year-2 level; a Base year-2 cash flow more than 15% from the printed level needs guidance_deviation_reason. If no levels are printed, start from the company's guidance converted to cash-flow growth, or revenue growth plus your stated margin path, and say so in guidance_deviation_reason. When SECTION 8 prints a BASE WINDOW CHECK, the fiscal-year and TTM owner earnings disagree by more than consensus growth explains: find the item behind the gap in the filings, name in base_cf_reason the window you judge representative, and anchor to that window's reference and year-2 level; where the TTM window's value is not shown (it lands outside the street fence), a Base on that window needs guidance_deviation_reason. From year 3 growth follows revenue again: fade from next-FY consensus revenue growth toward the GROWTH BASE RATES median by year 5; a year above next-FY revenue growth needs guidance_deviation_reason with dated evidence, and anything above its p90 needs the MANDATE's dated evidence. When SECTION 8 prints Bull and Bear year-2 levels (3 or more analysts), the Bull and Bear year-2 cash flows reach them; say why in scenario_deviation_reason if not. With fewer analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one, otherwise state your own range and why. SECTION 8's CONSENSUS-IMPLIED VALUE is what the consensus path is worth at our discount rate; a Base IV more than a quarter away from it needs guidance_deviation_reason. Bull rests on the strongest bull catalyst the market is reacting to, Bear on the strongest bear catalyst. Bear <= Base <= Bull, all three from the desk, never by hand. A Bull IV below today's price claims the market is pricing an outcome better than your best case: name the assumption of the market-implied path you reject, with dated evidence, in `bull_below_price_reason`; a Bear IV above today's price needs `bear_above_price_reason`. Analyst price targets are context, not an anchor; if your Bull IV is below the LOWEST analyst target, `bull_below_price_reason` must also say what every analyst is missing.
   * Share Count And Net Debt: Use SECTION 2's share count in every scenario. A contingent instrument (warrants or earn-outs that vest on milestones) may be added only in the scenarios where it vests (pass shares_diluted per scenario), with shares_basis "diluted_plus_contingent" and shares_reason naming the instrument and its vesting condition; never in a scenario whose premise is that it does not vest. In the firm frame use SECTION 6's NET DEBT as net_debt unless net_debt_reason says why.
   * Valuation Frame: Use the equity frame (valuation_frame "equity", rate_type "cost_of_equity", no net_debt). Every flow this pack prints (OWNER EARNINGS, CASH BASIS, the cash basis column, FCF) is after interest, an equity flow, and SECTION 1.5 anchors a cost of equity, not a WACC. The firm frame is the exception and needs all three of: a pre-interest flow (add back after-tax interest expense from SECTION 5 and give the amount in interest_addback, in $B); a WACC built from the COE ANCHOR, a cost of debt from filed interest over debt, a tax rate and weights from SECTION 6, stated in wacc_reason; and SECTION 6's NET DEBT. An after-interest flow in the firm frame counts the debt twice.
-  * Terminal Growth And Multiple: terminal_g defaults to SECTION 1.5's long-run growth anchor; a terminal_g more than 0.5 points from it needs terminal_reason with dated evidence. The exit multiple defaults to SECTION 1.5's DEFAULT EXIT MULTIPLE (at a scenario's other rate, the desk's implied_terminal_ev_fcf_gordon for that scenario): the flow has already faded to terminal_g, so any other multiple asserts another terminal growth. The desk returns it as exit_implied_terminal_g; if it is more than 0.5 points from the terminal_g anchor, give terminal_reason with dated peer EV/FCF evidence. A P/E ratio is not an EV/FCF multiple, and this pack holds no EV/FCF peer data.
+  * Terminal Growth And Multiple: terminal_g defaults to SECTION 1.5's TERMINAL-GROWTH DEFAULT (the long-run growth anchor unless a lower default is printed); a terminal_g more than 0.5 points from it needs terminal_reason with dated evidence. The exit multiple defaults to SECTION 1.5's DEFAULT EXIT MULTIPLE (at a scenario's other rate, the desk's implied_terminal_ev_fcf_gordon for that scenario): the flow has already faded to terminal_g, so any other multiple asserts another terminal growth. The desk returns it as exit_implied_terminal_g; if it is more than 0.5 points from the terminal_g default, give terminal_reason with dated peer EV/FCF evidence. A P/E ratio is not an EV/FCF multiple, and this pack holds no EV/FCF peer data.
   * Apply data discipline: state every driver's source ([Actual], [Estimate], [Assumption], [Unconfirmed]).
 
 Produce the full report, SECTION 0 through SECTION 12, following the mandatory institutional memorandum structure. End with SECTION 12 Final Execution Opinion and the validated JSON contract. Reason fields take null when no reason is needed; never fill them with text such as "no deviation":
@@ -2891,7 +2976,7 @@ Produce the full report, SECTION 0 through SECTION 12, following the mandatory i
   "shares_reason": "<string or null — required when any scenario's share count differs from SECTION 2's: the instrument and its vesting condition>",
   "net_debt_reason": "<string or null — required when the firm frame's net_debt differs from SECTION 6's NET DEBT>",
   "scenario_deviation_reason": "<string or null — required when the Bull or Bear year-2 cash flow is more than 15% from SECTION 8's Bull or Bear year-2 level>",
-  "terminal_reason": "<string or null — required when terminal_g, or an exit multiple's implied terminal growth, is more than 0.5 points from the terminal_g anchor: the dated evidence>",
+  "terminal_reason": "<string or null — required when terminal_g, or an exit multiple's implied terminal growth, is more than 0.5 points from the terminal_g default: the dated evidence>",
   "interest_addback": <float or null — firm frame only: the after-tax interest expense in $B added to the after-interest flow>,
   "wacc_reason": "<string or null — firm frame only: the COE ANCHOR, the cost of debt (filed interest / debt), the tax rate and the weights behind your WACC>",
   "base_cf_used": <float, in $B, the base cash flow you actually used for the Base Case>,

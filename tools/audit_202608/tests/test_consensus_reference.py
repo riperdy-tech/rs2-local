@@ -205,17 +205,61 @@ def test_next_fy_revenue_growth_and_flag():
     sc_fire = {"base_iv": 50.0, "stage1_growth_path": [0.02, 0.01, 0.030, 0.028, 0.025]}
     f1 = cv.check_sample_harness_rules(sc_fire, 50.0, desk_info={"desk_per_share_ivs": [50.0]},
                                        pack_text=table_pack)[2]
-    assert "years35_above_revenue_cap" in f1
+    assert "years35_above_revenue_cap_without_reason" in f1
 
     # Flag does not fire for 0.009/0.009/0.009
     sc_quiet1 = {"base_iv": 50.0, "stage1_growth_path": [0.02, 0.01, 0.009, 0.009, 0.009]}
     f2 = cv.check_sample_harness_rules(sc_quiet1, 50.0, desk_info={"desk_per_share_ivs": [50.0]},
                                        pack_text=table_pack)[2]
-    assert "years35_above_revenue_cap" not in f2
+    assert "years35_above_revenue_cap_without_reason" not in f2
 
     # Flag does not fire for 0.013/0.012/0.012
     sc_quiet2 = {"base_iv": 50.0, "stage1_growth_path": [0.02, 0.01, 0.013, 0.012, 0.012]}
     f3 = cv.check_sample_harness_rules(sc_quiet2, 50.0, desk_info={"desk_per_share_ivs": [50.0]},
                                        pack_text=table_pack)[2]
-    assert "years35_above_revenue_cap" not in f3
+    assert "years35_above_revenue_cap_without_reason" not in f3
 
+
+def test_terminal_default_unit_cases():
+    # rev_g2 0.009, median 0.043, anchor 0.0375, breakeven 0.0234 -> 0.0234
+    val, reason = cref.terminal_default(0.0375, 0.0234, 0.009, 0.043)
+    assert val == 0.0234 and reason is not None
+
+    # rev_g2 0.030 -> 0.030
+    val, reason = cref.terminal_default(0.0375, 0.0234, 0.030, 0.043)
+    assert val == 0.030 and reason is not None
+
+    # rev_g2 0.0555 -> 0.0375
+    val, reason = cref.terminal_default(0.0375, 0.0234, 0.0555, 0.043)
+    assert val == 0.0375 and reason is None
+
+    # rev_g2 None -> 0.0375
+    val, reason = cref.terminal_default(0.0375, 0.0234, None, 0.043)
+    assert val == 0.0375 and reason is None
+
+    # breakeven None -> 0.0375 with a reason saying the floor is not available
+    val, reason = cref.terminal_default(0.0375, None, 0.009, 0.043)
+    assert val == 0.0375 and "floor is not available" in (reason or "")
+
+
+def test_pack_line_printed_tail_says_default_when_it_differs():
+    ref = {"value": 100.0, "method": "growth", "path": [0.1] * 5, "c1": 0.1, "c2": 0.1,
+           "levels": (10.0, 11.0), "range": None, "stub_months": None, "base_label": None,
+           "levels_reason": None}
+    # When anchor is None or equal: "terminal-growth anchor"
+    line_anchor = cref.pack_line(ref, 10.0, 0.10, 0.0375, lambda v: f"${v:.1f}")
+    assert "then a 5-year fade to the terminal-growth anchor 3.75%" in line_anchor
+
+    # When anchor is passed and differs: "terminal-growth default"
+    line_def = cref.pack_line(ref, 10.0, 0.10, 0.0234, lambda v: f"${v:.1f}", anchor=0.0375)
+    assert "then a 5-year fade to the terminal-growth default 2.34%" in line_def
+
+
+
+def test_years35_above_revenue_cap_is_cleared_by_a_guidance_deviation_reason():
+    table_pack = ("| period | revenue avg | low | high | analysts | growth | EPS avg |\n"
+                  "| next FY | $20.759B | $20.525B | $21.116B | 12 | +0.9% | $5.86 |\n")
+    sc = {"base_iv": 50.0, "stage1_growth_path": [0.02, 0.01, 0.030, 0.028, 0.025],
+          "guidance_deviation_reason": "dated evidence: raised multi-year guidance (8-K 2026-08-06)"}
+    f = cv.check_sample_harness_rules(sc, 50.0, desk_info={"desk_per_share_ivs": [50.0]}, pack_text=table_pack)[2]
+    assert "years35_above_revenue_cap_without_reason" not in f

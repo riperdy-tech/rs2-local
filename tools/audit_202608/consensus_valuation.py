@@ -1037,7 +1037,10 @@ def _fnum(v):
 
 
 def _pack_terminal_g(pack_text):
-    """SECTION 1.5's terminal_g anchor as a decimal, or None."""
+    """SECTION 1.5's TERMINAL-GROWTH DEFAULT when printed, else the long-run growth anchor, as a decimal, or None."""
+    m_def = re.search(r"TERMINAL-GROWTH DEFAULT for this name:\s*([\d.]+)%", pack_text or "")
+    if m_def:
+        return float(m_def.group(1)) / 100.0
     m = re.search(r"Long-run nominal growth anchor for terminal_g:\s*([\d.]+)%", pack_text or "")
     return float(m.group(1)) / 100.0 if m else None
 
@@ -1294,8 +1297,9 @@ def check_sample_harness_rules(
       CONSENSUS-IMPLIED VALUE without guidance_deviation_reason
     - years35_above_base_rate_p90 (E10, information): years 3-5 average growth above the pack's
       conditional (else size-bucket) p90
-    - years35_above_revenue_cap: flag if any of Base years 3-5 growth exceeds next-FY consensus
-      revenue growth by more than 0.005
+    - years35_above_revenue_cap_without_reason: any of Base years 3-5 growth exceeds next-FY consensus
+      revenue growth by more than 0.005 and guidance_deviation_reason is empty (review J6, 2026-09-27:
+      LAMR's evidence-backed departures above the cap must not read as violations)
 
     Returns:
         (is_implausible, [reasons], [flags])
@@ -1420,8 +1424,8 @@ def check_sample_harness_rules(
     rev_cap = next_fy_revenue_growth(pack_text)
     if rev_cap is not None and len(path) >= 5:
         try:
-            if any(float(path[i]) - rev_cap > 0.005 for i in (2, 3, 4)):
-                flags.append("years35_above_revenue_cap")
+            if any(float(path[i]) - rev_cap > 0.005 for i in (2, 3, 4)) and not gdr:
+                flags.append("years35_above_revenue_cap_without_reason")
         except (ValueError, TypeError):
             pass
 

@@ -9,6 +9,7 @@ debt twice at an invented WACC.
 import json
 import sys
 from pathlib import Path
+import pytest
 
 HERE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(HERE))
@@ -197,3 +198,72 @@ def test_terminal_growth_at_the_anchor_is_clean_and_the_old_field_name_still_cou
     flags, _ = cv.scenario_checks(_snapshot(tmp_path, x), {"base_iv": 1650.07, "terminal_multiple_reason": "peer data"},
                                   None, PACK, 1643.39)
     assert "exit_multiple_off_default_without_reason" not in flags
+
+
+def test_terminal_growth_default_parser_and_gap_measuring(tmp_path):
+    """T1: _pack_terminal_g returns default when present, else anchor;
+    terminal_g_gap_bp and terminal_g_off_anchor_without_reason measure against default."""
+    pack_with_default = (
+        "- Long-run nominal growth anchor for terminal_g: 3.75%  (asof 2026-09-23)\n"
+        "- TERMINAL-GROWTH DEFAULT for this name: 2.34% — next-FY consensus revenue growth (0.9%) is below the anchor, "
+        "so the default is the year-5 growth floored at zero real growth (10-year breakeven inflation 2.34%). "
+        "terminal_g more than 0.5 points above or below it needs terminal_reason with dated evidence.\n"
+        "- Shares outstanding: 35,200,000   [source: vendor financials]\n"
+    )
+    # Parser returns default (2.34%) when printed
+    assert cv._pack_terminal_g(pack_with_default) == pytest.approx(0.0234)
+    # Parser falls back to anchor (3.75%) when default is not printed
+    assert cv._pack_terminal_g(PACK) == 0.0375
+
+    # At the default (2.34%), terminal_g_gap_bp is 0 and no flag fires
+    d_at_default = _dcf_g(0.0893, 0.0234)
+    snap_def = _snapshot(tmp_path, d_at_default)
+    flags, st = cv.scenario_checks(snap_def, {"base_iv": d_at_default["per_share_iv"]}, None, pack_with_default, 98.64)
+    assert st["terminal_g_gap_bp"] == 0
+    assert "terminal_g_off_anchor_without_reason" not in flags
+
+    # At the old anchor (3.75%), which is +141 bp from default 2.34%, flag fires without reason
+    d_at_anchor = _dcf_g(0.0893, 0.0375)
+    snap_anc = _snapshot(tmp_path, d_at_anchor)
+    flags, st = cv.scenario_checks(snap_anc, {"base_iv": d_at_anchor["per_share_iv"]}, None, pack_with_default, 98.64)
+    assert st["terminal_g_gap_bp"] == 141
+    assert "terminal_g_off_anchor_without_reason" in flags
+
+    # Providing terminal_reason clears the flag
+    flags, _ = cv.scenario_checks(snap_anc, {"base_iv": d_at_anchor["per_share_iv"], "terminal_reason": "secular volume rebound"},
+                                  None, pack_with_default, 98.64)
+    assert "terminal_g_off_anchor_without_reason" not in flags
+
+
+def test_mo_pack_terminal_growth_default_and_exit_multiple():
+    """T1 verification on saved pack scratchpad/draw_previews/MO_pack.md inputs:
+    MO's default is 2.34% and the exit multiple at the 7.51% COE is
+    (1 + 0.0234) / (0.0751 - 0.0234) = 19.80x (19.79x formatted to 2 decimals)."""
+    import capability_test as cap
+    import consensus_reference as cref
+
+    # MO inputs: anchor 0.0375, breakeven 0.0234, rev_g2 0.009, median_5y 0.043, COE 7.51%
+    mo_anchor = 0.0375
+    mo_breakeven = 0.0234
+    mo_rev_g2 = 0.009
+    mo_median_5y = 0.043
+    mo_coe_pct = 7.51
+
+    val, reason = cref.terminal_default(mo_anchor, mo_breakeven, mo_rev_g2, mo_median_5y)
+    assert val == 0.0234
+    assert reason == "next-FY consensus revenue growth (0.9%) is below the anchor"
+
+    # Exit multiple line at 7.51% COE and default 2.34%
+    line = cap._default_exit_multiple_line(mo_coe_pct, val)
+    expected_mult = (1.0 + 0.0234) / (0.0751 - 0.0234)
+    assert expected_mult == pytest.approx(19.80, abs=0.01)
+    assert "19.79×" in line
+    assert "the multiple consistent with the terminal_g default" in line
+
+    # Reading the saved pack file directly if available
+    mo_pack_path = Path(__file__).resolve().parents[4] / "draw_previews" / "MO_pack.md"
+    if mo_pack_path.exists():
+        mo_text = mo_pack_path.read_text(encoding="utf-8")
+        assert cv.next_fy_revenue_growth(mo_text) == 0.009
+        assert "10-Year Breakeven Inflation Rate: 2.34%" in mo_text
+        assert "COE ANCHOR for this name: rf 5.01% + adjusted loading 0.575× (Blume: 0.67 × raw 0.365 + 0.33) × implied ERP 4.35% = 7.51%" in mo_text

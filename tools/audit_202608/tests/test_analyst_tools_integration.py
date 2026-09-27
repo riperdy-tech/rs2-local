@@ -7,6 +7,7 @@ HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 
 import analyst_tools as at
+import financial_model_tool as fmt
 
 def test_financial_model_tool_registered_in_tools_list():
     tool_names = [t["function"]["name"] for t in at.TOOLS]
@@ -222,5 +223,43 @@ def test_chat_with_tools_zero_desk_calls_refuses_financial_model(monkeypatch, tm
     assert snap_file.exists()
     snap = json.loads(snap_file.read_text(encoding="utf-8"))
     assert "budget exhausted (0)" in snap["calls"][0]["error"]
+
+
+def test_financial_model_tool_schema_and_validation_agree():
+    """F4: run_financial_model schema required list matches desk validation.
+    shares_diluted, terminal_g, fade_years, sbc_treatment are required in schema,
+    and a desk call missing each is refused with validation_error: True."""
+    fm_tool = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
+    fn = fm_tool["function"]
+    props = fn["parameters"]["properties"]
+    required = fn["parameters"]["required"]
+
+    expected_desc = (
+        "Diluted share count in billions. REQUIRED in every frame: the desk "
+        "refuses a call without it. Use SECTION 2's shares outstanding unless you state a diluted count."
+    )
+    assert props["shares_diluted"]["description"] == expected_desc
+
+    four_fields = ["shares_diluted", "terminal_g", "fade_years", "sbc_treatment"]
+    assert required == ["price", "shares_diluted", "terminal_g", "fade_years", "sbc_treatment"]
+    for field in four_fields:
+        assert field in required
+
+    base_params = {
+        "price": 100.0,
+        "base_cf": 10.0,
+        "explicit_growth": [0.05],
+        "wacc": 0.09,
+        "shares_diluted": 1.0,
+        "terminal_g": 0.025,
+        "fade_years": 5,
+        "sbc_treatment": "deducted_in_cf",
+    }
+    for field in four_fields:
+        p = dict(base_params)
+        del p[field]
+        res = fmt.execute_financial_model(p)
+        assert res.get("validation_error") is True, f"Desk must refuse call missing {field}"
+        assert field in res.get("missing", []), f"{field} must be reported in missing list"
 
 

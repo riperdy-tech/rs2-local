@@ -108,6 +108,31 @@ def _fade35(start, target):
     return [start + (target - start) / 3, start + (target - start) * 2 / 3, target]
 
 
+def terminal_default(anchor, breakeven, rev_g2, median_5y):
+    """Pure helper for Phase 4 T1: per-name terminal-growth default.
+    When rev_g2 is known and below anchor, default is min(anchor, max(breakeven, y5)),
+    where y5 is the reference path's year-5 growth.
+    If breakeven is unavailable, default is anchor with a reason saying the floor is not available.
+    Returns (value, reason).
+    """
+    if anchor is None:
+        return None, None
+    if rev_g2 is None or not (isinstance(rev_g2, (int, float)) and rev_g2 < anchor):
+        return anchor, None
+    if breakeven is None:
+        return anchor, "the 10-year breakeven inflation floor is not available"
+
+    if median_5y is not None:
+        y5 = _years35(rev_g2, median_5y)[-1]
+    else:
+        y5 = rev_g2
+    val = min(anchor, max(breakeven, y5))
+    if val == anchor:
+        return anchor, None
+    reason = f"next-FY consensus revenue growth ({rev_g2 * 100:.1f}%) is below the anchor"
+    return val, reason
+
+
 def _pv(flows, g_last, coe, terminal_g, fade_years):
     """PV of explicit flows (years 1..n), then a linear fade from g_last to terminal_g over
     fade_years, then a Gordon terminal value, all at coe."""
@@ -174,7 +199,8 @@ def vintage_aligned(estimates, fy_revenue):
 
 
 def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex=None,
-          stub_months=None, base_label=None, levels_reason=None, levels_block=None):
+          stub_months=None, base_label=None, levels_reason=None, levels_block=None,
+          anchor=None):
     """Everything the pack prints: {'value', 'method', 'path', 'flows', 'c1', 'c2', 'reason',
     'levels', 'range', 'stub_months', 'base_label', 'levels_reason'}.
     method "growth": years 1-2 at consensus EPS growth on the owner-earnings base.
@@ -187,9 +213,11 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     E18: with `stub_months` (months since the base fiscal year ended), the value is taken at that
     fiscal year end and rolled forward to today at coe."""
     c1, c2, why = consensus_earnings_growth(estimates)
+    is_default = (anchor is not None and terminal_g is not None and abs(terminal_g - anchor) > 1e-6)
     out = {"value": None, "method": None, "path": None, "flows": None, "c1": c1, "c2": c2,
            "reason": None, "growth_unusable": why, "levels": None, "range": None,
-           "stub_months": stub_months, "base_label": base_label, "levels_reason": None}
+           "stub_months": stub_months, "base_label": base_label, "levels_reason": None,
+           "terminal_g_is_default": is_default}
     missing = [n for n, v in (("cost-of-equity anchor", coe), ("terminal-growth anchor", terminal_g),
                               ("diluted shares", shares), ("growth base-rate median", median_5y))
                if v is None]
@@ -294,7 +322,7 @@ def window_line(win, ref, ttm_base, through, fmt_b, base_year_check=True):
               "year-2 level.")
 
 
-def pack_line(ref, base_cf, coe, terminal_g, fmt_b):
+def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):
     """SECTION 8's line. The prefixes are fixed: the harness parses the value and the levels
     (consensus_valuation)."""
     if ref.get("value") is None:
@@ -304,7 +332,9 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b):
     stub = ref.get("stub_months")
     roll = (f"; valued at the fiscal year end and rolled forward {stub:.0f} months to today"
             if stub else "")
-    tail = (f"; then a 5-year fade to the terminal-growth anchor {terminal_g * 100:.2f}%; discounted at "
+    differs = (anchor is not None and abs(terminal_g - anchor) > 1e-6) or bool(ref.get("terminal_g_is_default"))
+    tg_label = "terminal-growth default" if differs else "terminal-growth anchor"
+    tail = (f"; then a 5-year fade to the {tg_label} {terminal_g * 100:.2f}%; discounted at "
             f"the COE ANCHOR {coe * 100:.2f}%{roll}. A Base IV more than a quarter away from it (below 0.75x "
             f"or above 1.33x) needs guidance_deviation_reason.")
     lv = ref.get("levels")
