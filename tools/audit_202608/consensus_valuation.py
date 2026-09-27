@@ -1767,7 +1767,8 @@ def extract_desk_snapshot_metrics(
                                 "fade_years": None,
                                 "wacc": None,
                                 "shares_diluted": None,
-                            }
+                            },
+                            "capped": False,
                         })
 
             # 2. DCF model
@@ -1779,16 +1780,20 @@ def extract_desk_snapshot_metrics(
                     if v is not None and v > 0:
                         desk_ivs.append(v)
                         dcf_ivs.append(v)
+                is_capped = bool(dcf.get("years35_capped"))
+                d_growth = dcf.get("explicit_growth") if is_capped else p_growth
+                d_fade = dcf.get("fade_years") if is_capped else p_fade
                 for v in dcf_ivs:
                     candidates.append({
                         "iv": v,
                         "inputs": {
                             "base_cf": _parse_float(p_cf),
-                            "stage1_growth_path": _parse_growth(p_growth),
-                            "fade_years": _parse_int(p_fade),
+                            "stage1_growth_path": _parse_growth(d_growth),
+                            "fade_years": _parse_int(d_fade),
                             "wacc": _parse_float(p_wacc),
                             "shares_diluted": _parse_float(p_shares),
-                        }
+                        },
+                        "capped": is_capped,
                     })
 
             # 3. Scenario DCFs
@@ -1807,6 +1812,14 @@ def extract_desk_snapshot_metrics(
                         sc_wacc = sc.get("wacc") or p_sc.get("wacc") or sc.get("discount_rate") or p_sc.get("discount_rate") or p_wacc
                         sc_shares = sc.get("shares_diluted") if sc.get("shares_diluted") is not None else (p_sc.get("shares_diluted") if p_sc.get("shares_diluted") is not None else p_shares)
 
+                        is_capped = bool(d.get("years35_capped")) if isinstance(d, dict) else False
+                        if is_capped:
+                            cand_g = d.get("explicit_growth")
+                            cand_fade = d.get("fade_years")
+                        else:
+                            cand_g = sc_g
+                            cand_fade = sc_fade
+
                         ivs_found = []
                         if isinstance(d, dict) and not d.get("error"):
                             for k in ("per_share_iv", "per_share_iv_gordon", "per_share_iv_exit"):
@@ -1823,11 +1836,12 @@ def extract_desk_snapshot_metrics(
                                 "iv": v,
                                 "inputs": {
                                     "base_cf": _parse_float(sc_cf),
-                                    "stage1_growth_path": _parse_growth(sc_g),
-                                    "fade_years": _parse_int(sc_fade),
+                                    "stage1_growth_path": _parse_growth(cand_g),
+                                    "fade_years": _parse_int(cand_fade),
                                     "wacc": _parse_float(sc_wacc),
                                     "shares_diluted": _parse_float(sc_shares),
-                                }
+                                },
+                                "capped": is_capped,
                             })
 
             # Raw scenarios if scenario_dcfs not present
@@ -1853,7 +1867,8 @@ def extract_desk_snapshot_metrics(
                                     "fade_years": _parse_int(sc_fade),
                                     "wacc": _parse_float(sc_wacc),
                                     "shares_diluted": _parse_float(sc_shares),
-                                }
+                                },
+                                "capped": False,
                             })
 
             # 4. Top-level per_share_iv (if not blend and not dcf)
@@ -1869,7 +1884,8 @@ def extract_desk_snapshot_metrics(
                             "fade_years": _parse_int(p_fade),
                             "wacc": _parse_float(p_wacc),
                             "shares_diluted": _parse_float(p_shares),
-                        }
+                        },
+                        "capped": False,
                     })
 
             # 5. Reverse DCF
@@ -1898,6 +1914,7 @@ def extract_desk_snapshot_metrics(
 
     desk_matched_inputs = None
     contract_flags = []
+    desk_years35_capped = False
     if matching_candidates:
         biv = float(base_iv)
         if scorecard:
@@ -1908,10 +1925,13 @@ def extract_desk_snapshot_metrics(
             scored.sort(key=lambda x: (x[0], x[1]))
             best = scored[0]
             desk_matched_inputs = best[3]["inputs"]
+            desk_years35_capped = bool(best[3].get("capped", False))
             for field in best[2]:
                 contract_flags.append(f"desk_contract_mismatch:{field}")
         else:
-            desk_matched_inputs = matching_candidates[0]["inputs"]
+            best_cand = matching_candidates[0]
+            desk_matched_inputs = best_cand["inputs"]
+            desk_years35_capped = bool(best_cand.get("capped", False))
 
     share_flags = []
     share_implausible = False
@@ -1965,6 +1985,7 @@ def extract_desk_snapshot_metrics(
         "desk_share_implausible": share_implausible,
         "desk_share_reason": share_reason,
         "desk_per_share_ivs": desk_ivs,
+        "desk_years35_capped": desk_years35_capped,
     }
 
 
@@ -2276,7 +2297,8 @@ def main():
                     model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT, num_batch=num_batch,
                     seed=1000 + i, draft_num_predict=draft_num_predict, temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
-                    url_cache=evidence_url_cache if evidence_store_dir is not None else None)
+                    url_cache=evidence_url_cache if evidence_store_dir is not None else None,
+                    desk_context={"years35_cap": next_fy_revenue_growth(pack)})
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2345,7 +2367,8 @@ def main():
                     num_predict=NUM_PREDICT, seed=1000 + i + 50000, draft_num_predict=draft_num_predict,
                     temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
-                    url_cache=evidence_url_cache if evidence_store_dir is not None else None)
+                    url_cache=evidence_url_cache if evidence_store_dir is not None else None,
+                    desk_context={"years35_cap": next_fy_revenue_growth(pack)})
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2427,6 +2450,10 @@ def main():
         for f in desk_info.get("desk_contract_flags", []):
             if f not in flags:
                 flags = list(flags) + [f]
+
+        if desk_info.get("desk_years35_capped"):
+            if "years35_capped_by_desk" not in flags:
+                flags = list(flags) + ["years35_capped_by_desk"]
 
         for f in desk_info.get("desk_share_flags", []):
             if f not in flags:

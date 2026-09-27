@@ -84,6 +84,52 @@ def _validate_required_dcf_inputs(
     return None
 
 
+def applied_years_1_to_5(
+    rates: Optional[List[float]],
+    terminal_g: Optional[float] = None,
+    fade_years: Optional[int] = None,
+    finite_life_years: Optional[int] = None,
+) -> List[float]:
+    """Applied growth of each of years 1-5 as unbundled_dcf applies it, unrounded:
+    - first the explicit rates as given;
+    - then the linear fade from the last explicit rate to terminal_g over fade_years, using the same formula;
+    - then terminal_g for any later year, including years that fall inside the terminal value;
+    - the list stops at finite_life_years when one is given.
+    """
+    if not rates:
+        return []
+    max_years = 5
+    if finite_life_years is not None:
+        try:
+            fly = int(finite_life_years)
+            if fly < max_years:
+                max_years = fly
+        except (ValueError, TypeError):
+            pass
+
+    applied: List[float] = []
+    for g in rates:
+        if len(applied) >= max_years:
+            break
+        applied.append(float(g))
+
+    tg = float(terminal_g) if terminal_g is not None else 0.0
+    fy = int(fade_years) if fade_years is not None else 0
+
+    if len(applied) < max_years and fy > 0 and rates:
+        g_last = float(rates[-1])
+        for i in range(1, fy + 1):
+            if len(applied) >= max_years:
+                break
+            g_t = g_last + (tg - g_last) * (i / fy)
+            applied.append(g_t)
+
+    while len(applied) < max_years:
+        applied.append(tg)
+
+    return applied
+
+
 def unbundled_dcf(
     base_cf: float,
     growth_rates: Optional[List[float]] = None,
@@ -860,11 +906,20 @@ def blend(legs: List[Dict[str, Any]], price: Optional[float] = None) -> Dict[str
     return res
 
 
-def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
+def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Master tool dispatcher called by Qwen or automation harness.
     Supports single DCF, batch multi-scenario DCF, or blend mode in a single round trip."""
     price = float(params.get("price") or 0)
     result: Dict[str, Any] = {"price": price}
+
+    raw_cap = (context or {}).get("years35_cap")
+    cap = float(raw_cap) if raw_cap is not None else None
+
+    raw_reason = str(params.get("guidance_deviation_reason") or "").strip()
+    reason = "" if raw_reason.lower() in ("null", "none") else raw_reason
+
+    capped_dcfs: List[Dict[str, Any]] = []
+    kept_names: List[str] = []
 
     scenarios = params.get("scenarios") or []
     base_cf = params.get("base_cf")
@@ -931,12 +986,57 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
                     sbc_dilution=s_sbc_dil,
                     finite_life_years=s_fly,
                 )
-                if not dcf_res.get("error"):
-                    sc["iv"] = dcf_res["per_share_iv"]
-                    sc["dcf_details"] = dcf_res
-                    scenario_dcfs.append({"name": sc.get("name"), "dcf": dcf_res})
-                else:
+                if dcf_res.get("error"):
                     return dcf_res
+
+                sc_name = str(sc.get("name") or "Scenario")
+                is_base = ("bull" not in sc_name.lower()) and ("bear" not in sc_name.lower())
+                if is_base and cap is not None:
+                    app_years = applied_years_1_to_5(s_gr, s_term_g, s_fade, s_fly)
+                    y35 = app_years[2:]
+                    if any(g > cap + 1e-12 for g in y35):
+                        if reason:
+                            kept_names.append(sc_name)
+                        else:
+                            n = len(s_gr)
+                            new_fade = max(0, int(s_fade) - (5 - n)) if n < 5 and s_fade is not None else (int(s_fade) if s_fade is not None else None)
+                            new_explicit_growth = app_years[:2] + [min(g, cap) for g in y35] + [float(g) for g in s_gr[5:]]
+                            new_dcf_res = unbundled_dcf(
+                                base_cf=float(s_cf),
+                                growth_rates=None,
+                                explicit_growth=new_explicit_growth,
+                                wacc=float(s_wacc),
+                                terminal_g=float(s_term_g) if s_term_g is not None else None,
+                                terminal_exit_multiple=float(sc["terminal_exit_multiple"]) if sc.get("terminal_exit_multiple") else (float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None),
+                                annuity_flow=float(sc.get("annuity_flow", params.get("annuity_flow", 0.0))),
+                                annuity_cap_rate=float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate") else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None),
+                                net_debt=sc_net_debt,
+                                shares_diluted=s_shares,
+                                fade_years=new_fade,
+                                valuation_frame=sc_frame,
+                                rate_type=sc.get("rate_type", rate_type),
+                                sector_multiple_band=sc.get("sector_multiple_band", sector_multiple_band),
+                                sbc_treatment=s_sbc,
+                                sbc_dilution=s_sbc_dil,
+                                finite_life_years=s_fly,
+                            )
+                            if new_dcf_res.get("error"):
+                                return new_dcf_res
+                            new_dcf_res["years35_capped"] = True
+                            capped_dcfs.append({
+                                "name": sc_name,
+                                "requested_years35": [round(g, 4) for g in y35],
+                                "applied_years35": [round(min(g, cap), 4) for g in y35],
+                                "requested_per_share_iv": round(dcf_res["per_share_iv"], 2),
+                                "applied_per_share_iv": round(new_dcf_res["per_share_iv"], 2),
+                                "requested_fade_years": int(s_fade) if s_fade is not None else None,
+                                "applied_fade_years": new_fade,
+                            })
+                            dcf_res = new_dcf_res
+
+                sc["iv"] = dcf_res["per_share_iv"]
+                sc["dcf_details"] = dcf_res
+                scenario_dcfs.append({"name": sc.get("name"), "dcf": dcf_res})
 
     if scenario_dcfs:
         result["scenario_dcfs"] = scenario_dcfs
@@ -946,7 +1046,7 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
     growth_rates = params.get("explicit_growth") if params.get("explicit_growth") is not None else params.get("growth_rates")
     wacc = params.get("wacc") if params.get("wacc") is not None else params.get("discount_rate")
     if base_cf is not None and growth_rates and wacc is not None:
-        result["dcf_model"] = unbundled_dcf(
+        dcf_single = unbundled_dcf(
             base_cf=float(base_cf),
             growth_rates=[float(g) for g in growth_rates],
             wacc=float(wacc),
@@ -964,8 +1064,63 @@ def execute_financial_model(params: Dict[str, Any]) -> Dict[str, Any]:
             sbc_dilution=sbc_dilution,
             finite_life_years=params.get("finite_life_years"),
         )
-        if result["dcf_model"].get("error"):
-            return result["dcf_model"]
+        if dcf_single.get("error"):
+            return dcf_single
+
+        if cap is not None:
+            t_fly = params.get("finite_life_years")
+            t_term_g = params.get("terminal_g")
+            app_years = applied_years_1_to_5(growth_rates, t_term_g, fade_years, t_fly)
+            y35 = app_years[2:]
+            if any(g > cap + 1e-12 for g in y35):
+                if reason:
+                    kept_names.append("top-level")
+                else:
+                    n = len(growth_rates)
+                    new_fade = max(0, int(fade_years) - (5 - n)) if n < 5 and fade_years is not None else (int(fade_years) if fade_years is not None else None)
+                    new_explicit_growth = app_years[:2] + [min(g, cap) for g in y35] + [float(g) for g in growth_rates[5:]]
+                    new_dcf_single = unbundled_dcf(
+                        base_cf=float(base_cf),
+                        growth_rates=None,
+                        explicit_growth=new_explicit_growth,
+                        wacc=float(wacc),
+                        terminal_g=float(params["terminal_g"]) if params.get("terminal_g") is not None else None,
+                        terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
+                        annuity_flow=float(params.get("annuity_flow", 0.0)),
+                        annuity_cap_rate=float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None,
+                        net_debt=top_net_debt,
+                        shares_diluted=top_shares,
+                        fade_years=new_fade,
+                        valuation_frame=val_frame,
+                        rate_type=rate_type,
+                        sector_multiple_band=sector_multiple_band,
+                        sbc_treatment=sbc_treatment,
+                        sbc_dilution=sbc_dilution,
+                        finite_life_years=params.get("finite_life_years"),
+                    )
+                    if new_dcf_single.get("error"):
+                        return new_dcf_single
+                    new_dcf_single["years35_capped"] = True
+                    capped_dcfs.append({
+                        "name": "top-level",
+                        "requested_years35": [round(g, 4) for g in y35],
+                        "applied_years35": [round(min(g, cap), 4) for g in y35],
+                        "requested_per_share_iv": round(dcf_single["per_share_iv"], 2),
+                        "applied_per_share_iv": round(new_dcf_single["per_share_iv"], 2),
+                        "requested_fade_years": int(fade_years) if fade_years is not None else None,
+                        "applied_fade_years": new_fade,
+                    })
+                    dcf_single = new_dcf_single
+
+        result["dcf_model"] = dcf_single
+
+    if cap is not None:
+        if reason:
+            if kept_names:
+                result["years35_cap"] = {"cap": cap, "reason": reason, "kept": kept_names}
+        else:
+            if capped_dcfs:
+                result["years35_cap"] = {"cap": cap, "reason": None, "dcfs": capped_dcfs}
 
     # 3. Reverse DCF expectations gap if parameters supplied (or inferred from Base scenario)
     rev_cf = base_cf or (scenarios[0].get("base_cf") if scenarios else None)
@@ -1102,6 +1257,39 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
         if d.get("sbc_treatment"):
             lines.append(f"- SBC Policy: `{d.get('sbc_treatment')}`")
         lines.append("")
+
+    yc = res.get("years35_cap")
+    if isinstance(yc, dict):
+        cap_val = yc.get("cap")
+        if cap_val is not None:
+            if yc.get("reason"):
+                reason_str = str(yc["reason"])[:200]
+                lines.append(
+                    f"**Base years 3-5 above next-FY consensus revenue growth ({cap_val:+.1%}, SECTION 8), kept on your guidance_deviation_reason:** "
+                    f'"{reason_str}". The contract\'s guidance_deviation_reason must carry it.'
+                )
+                lines.append("")
+            elif "dcfs" in yc and isinstance(yc["dcfs"], list):
+                for cd in yc["dcfs"]:
+                    name = cd.get("name", "Base")
+                    app_rates = cd.get("applied_years35", [])
+                    req_rates = cd.get("requested_years35", [])
+                    applied_str = " / ".join(f"{g:+.1%}" for g in app_rates)
+                    requested_str = " / ".join(f"{g:+.1%}" for g in req_rates)
+                    if cd.get("applied_fade_years") != cd.get("requested_fade_years"):
+                        applied_str += f"; fade_years {cd.get('applied_fade_years')}"
+                    applied_iv = cd.get("applied_per_share_iv")
+                    requested_iv = cd.get("requested_per_share_iv")
+                    lines.append(
+                        f"**Base years 3-5 held at next-FY consensus revenue growth ({cap_val:+.1%}, SECTION 8):** "
+                        f"no guidance_deviation_reason was given, so the desk valued {name} on years 3-5 "
+                        f"{applied_str} instead of your {requested_str}: ${applied_iv}. "
+                        f"Your path would give ${requested_iv}; that is not a desk value and cannot be your base_iv. "
+                        f"Your contract's stage1_growth_path is the path the desk valued. "
+                        f"To keep your path, run the desk again with guidance_deviation_reason citing dated evidence, "
+                        f"and give the same reason in the contract."
+                    )
+                    lines.append("")
 
     if "reverse_dcf" in res and not res["reverse_dcf"].get("error"):
         r = res["reverse_dcf"]

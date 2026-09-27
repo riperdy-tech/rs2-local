@@ -129,6 +129,8 @@ TOOLS = [{
             "at cost_of_equity with nonzero net_debt refused; 'firm' discounts FCFF at true_wacc requiring net_debt "
             "and shares_diluted) and verifies rate pairing via rate_engine. Refuses SBC double-deduction. Reconciles "
             "implied terminal EV/FCF multiple against sector_multiple_band. "
+            "Holds Base years 3-5 growth at or below next-FY consensus revenue growth (SECTION 8) unless "
+            "guidance_deviation_reason is given, and shows the value on your path beside the desk value. "
             "2. Reverse DCF: solves market-implied growth under (a) analyst's own structure and (b) neutral reference "
             "structure (coe_anchor, 10-year linear fade to terminal_g_anchor) returning implied 10-year CAGR and base-rate table percentile. "
             "3. Mathematical continuous Kelly sizing: derives exact quarter-Kelly and full Kelly log-wealth position sizes across scenarios. "
@@ -149,9 +151,10 @@ TOOLS = [{
                     "enum": ["cost_of_equity", "true_wacc", "cost_of_equity_proxy"],
                     "description": "Semantic discount rate type. Must match valuation_frame (equity -> cost_of_equity; firm -> true_wacc)."
                 },
+                "guidance_deviation_reason": {"type": "string", "description": "Dated evidence for Base growth above next-FY consensus revenue growth in years 3-5; give the same reason in the contract. Without it the desk holds Base years 3-5 at next-FY consensus revenue growth. Base is every scenario not named Bull or Bear, and a top-level single DCF."},
                 "explicit_growth": {
                     "type": "array",
-                    "description": "Annual growth of base_cf - the owner cash flow being valued - for each Stage 1 year (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). Not revenue growth: revenue growth leaves out margin change. Years 1-2 normally follow consensus EPS growth (SECTION 8).",
+                    "description": "Annual growth of base_cf - the owner cash flow being valued - for each Stage 1 year (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). Not revenue growth: revenue growth leaves out margin change. Years 1-2 normally follow consensus EPS growth (SECTION 8). Base years 3-5 above next-FY consensus revenue growth are held at it unless guidance_deviation_reason is given.",
                     "items": {"type": "number"}
                 },
                 "growth_rates": {
@@ -553,7 +556,7 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None, _fallb
     return {**rec, "cache_hit": False}
 
 
-def dispatch_tool(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None):
+def dispatch_tool(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None, desk_context=None):
     """Unified dispatcher for all analyst tools."""
     if name == "search_web":
         return search_web(args.get("query", ""), args.get("why", ""), snap, query_cache=query_cache)
@@ -561,7 +564,7 @@ def dispatch_tool(name, args, snap=None, query_cache=None, url_cache=None, known
         return fetch_page(args.get("url", ""), snap, url_cache=url_cache, known_urls=known_urls)
     elif name == "run_financial_model":
         import financial_model_tool as fmt
-        res = fmt.execute_financial_model(args)
+        res = fmt.execute_financial_model(args, context=desk_context)
         md = fmt.format_model_results_markdown(res)
         res["markdown_report"] = md
         if snap is not None:
@@ -737,6 +740,8 @@ def _desk_summary(args, result):
         out["kelly"] = {kk: k.get(kk) for kk in ("expected_iv", "expected_return_pct",
                                                  "quarter_kelly_pct", "recommendation")
                         if k.get(kk) is not None}
+    if "years35_cap" in result:
+        out["years35_cap"] = result["years35_cap"]
     return out
 
 
@@ -870,6 +875,15 @@ def compact_tool_note(name, args, result, call_index) -> str:
                     k_dict["recommendation"] = k.get("recommendation")
                 if k_dict:
                     compact["kelly"] = k_dict
+
+            yc = result.get("years35_cap")
+            if isinstance(yc, dict) and "dcfs" in yc and isinstance(yc["dcfs"], list):
+                capped_map = {
+                    d.get("name", "Base"): [d.get("requested_per_share_iv"), d.get("applied_per_share_iv")]
+                    for d in yc["dcfs"] if isinstance(d, dict)
+                }
+                if capped_map:
+                    compact["years35_capped"] = capped_map
         else:
             compact = {"raw": str(result)[:200]}
 
@@ -1069,7 +1083,8 @@ def _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
 def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predict=49152,
                     seed=None, timeout=14400, verbose=True, draft_num_predict=None,
                     temperature=None, query_cache=None, url_cache=None,
-                    tools=None, max_search_calls=25, max_model_calls=5, num_batch=None):
+                    tools=None, max_search_calls=25, max_model_calls=5, num_batch=None,
+                    desk_context=None):
     """Ollama chat with the search tools available. Returns (report, thinking, meta).
 
     Snapshots every tool call to out_dir/_research_snapshot.json so the run stays reproducible
@@ -1408,7 +1423,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         result = {"error": f"financial model call budget exhausted ({max_model_calls}); "
                                            f"use computed results and finalize memorandum"}
                     else:
-                        result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache)
+                        # the cap goes only where it is set, so a dispatcher without desk_context fails loudly
+                        desk_kw = {"desk_context": desk_context} if desk_context is not None else {}
+                        result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache, **desk_kw)
                         if isinstance(result, dict) and result.get("validation_error") is True:
                             desk_validation_errors += 1
                             if desk_validation_errors > 6:
