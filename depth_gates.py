@@ -55,7 +55,7 @@ def producer_class(ticker: str, stocks_csv_path: str | Path, source_label: str) 
             return {"status": "unavailable", "source": source_label, "error": err}
     else:
         try:
-            with open(p, "r", encoding="utf-8-sig", newline="", errors="replace") as f:
+            with open(p, "r", encoding="utf-8-sig", newline="", errors="strict") as f:   # a bad byte fails closed
                 reader = csv.DictReader(f)
                 if not reader.fieldnames:
                     err = "stocks.csv has no header row"
@@ -246,7 +246,8 @@ def assess(v):
     if isinstance(pc, dict):
         if pc.get("status") == "ok" and pc.get("depleting") is True:
             reasons.append("depleting_producer_unsupported")
-        elif pc.get("status") == "unavailable":
+        elif pc.get("status") != "unknown" and pc.get("status") != "ok":
+            # "unavailable", or any status this code does not know: fail closed
             reasons.append("depleting_producer_class_unavailable")
     else:
         try:

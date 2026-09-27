@@ -229,3 +229,13 @@ def test_stamp_and_route_stamps_producer_class_and_unknown_flag(monkeypatch, tmp
     }
     assert "producer_class_unknown" in v2["flags"]
     assert "some_flag" in v2["flags"]
+
+
+def test_an_unknown_status_and_a_bad_byte_fail_closed(tmp_path):
+    import depth_gates as dg
+    ok, reasons = dg.assess({"direction": "undervalued", "gate_version": dg.GATE_VERSION, "n_basis": 2,
+                             "producer_class": {"status": "weird"}})
+    assert "depleting_producer_class_unavailable" in reasons
+    bad = tmp_path / "stocks.csv"
+    bad.write_bytes(b"symbol,sector,industry\nAAA,Basic Materials,Go\xffld\n")
+    assert dg.producer_class("AAA", bad, "stocks.csv@t")["status"] == "unavailable"
