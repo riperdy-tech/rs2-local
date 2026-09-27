@@ -134,5 +134,6 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
 
     # Assert byte equality with golden file
     golden_file = FIXTURE / "golden_pack_GEV_rev14.md"
-    golden_bytes = golden_file.read_bytes()
+    # core.autocrlf checks the fixture out with CRLF on Windows; the pack itself is built with "\n"
+    golden_bytes = golden_file.read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes
