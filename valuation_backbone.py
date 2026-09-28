@@ -123,31 +123,183 @@ def _iso_age_days(iso):
         return None
 
 
+BAND_LEG_OUTLIER = 3.0       # a target leg more than 3x from the median is pulled to 3x the median
+BAND_LEG_IMPLAUSIBLE = 6.0   # a target leg more than 6x from the median is a data defect: no band
+
+
+def _band_legs(lo, med, hi, mean=None):
+    """((low, median, high, winsorized), None) from one vendor record, or (None, why).
+
+    Cites Brief F measurements (2026-09-28): across 752 book and production records,
+    median/low tops at 2.48 (except MU at 4.29) and high/median at 2.74. Bound 3.0 sits
+    above all legitimate records but MU's; bound 6.0 rejects degenerate bands (e.g. ATAT).
+    """
+    def _coerce(x):
+        if x is None or isinstance(x, bool):
+            return None
+        try:
+            v = float(x)
+            return v if math.isfinite(v) else None
+        except (TypeError, ValueError):
+            return None
+
+    lo_v, hi_v = _coerce(lo), _coerce(hi)
+    if lo_v is None or hi_v is None or lo_v <= 0 or hi_v <= 0:
+        return None, "no_targets"
+
+    med_v = _coerce(med)
+    mean_v = _coerce(mean)
+
+    if med_v is not None:
+        c = med_v
+    elif mean_v is not None:
+        c = mean_v
+    else:
+        # With neither, today's high / low <= 6 applies and the centre is their midpoint
+        if hi_v < lo_v or (hi_v / lo_v) > BAND_LEG_IMPLAUSIBLE:
+            return None, "band_implausible"
+        c = (lo_v + hi_v) / 2.0
+
+    # A centre outside [low, high], or a leg more than 6 times from the centre, gives "band_implausible"
+    if not (lo_v <= c <= hi_v):
+        return None, "band_implausible"
+    if (c / lo_v) > BAND_LEG_IMPLAUSIBLE or (hi_v / c) > BAND_LEG_IMPLAUSIBLE:
+        return None, "band_implausible"
+
+    winsorized = []
+    lo_pulled, hi_pulled = lo_v, hi_v
+    if (c / lo_v) > BAND_LEG_OUTLIER:
+        lo_pulled = round(c / BAND_LEG_OUTLIER, 2)
+        winsorized.append("low")
+    if (hi_v / c) > BAND_LEG_OUTLIER:
+        hi_pulled = round(c * BAND_LEG_OUTLIER, 2)
+        winsorized.append("high")
+
+    return (lo_pulled, c, hi_pulled, winsorized), None
+
+
+def _sibling_scaled(sib):
+    """{low, median, mean, high} of a share-class sibling record (F1), each times its price_ratio,
+    or None when the record or its ratio is unusable. A non-numeric leg is None. The one owner of
+    this arithmetic: the band below and the pack's share-class line both read it (reviewer, F
+    review)."""
+    if not isinstance(sib, dict):
+        return None
+    ratio = _num(sib.get("price_ratio"))
+    if ratio is None or isinstance(ratio, bool) or ratio <= 0:
+        return None
+
+    def _scaled(key):
+        v = _num(sib.get(key))
+        return round(v * ratio, 2) if v is not None and not isinstance(v, bool) else None
+
+    return {"low": _scaled("low"), "median": _scaled("median"), "mean": _scaled("mean"),
+            "high": _scaled("high")}
+
+
 def _consensus_band(ticker):
-    """Analyst consensus price-target band {low, median, high, n, age_days, stale, source} or None.
-    Prefer the OpenBB cache (richer); fall back to the yfinance enrich file. No network — reads the
-    already-fetched JSON artifacts, keeping the backbone deterministic."""
+    """Analyst consensus price-target band {low, median, high, raw_low, raw_high, winsorized,
+    n, age_days, stale, source} or None.
+
+    F2.3 order: the first fresh usable band wins (openbb, then enrich own targets, then sibling
+    record scaled by price_ratio). A stale band never shadows a fresh one. When every usable band
+    is stale, return the freshest with stale: True.
+    """
     t = ticker.upper()
-    ob = rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json") or {}
-    def _sane(lo, hi):
-        lo, hi = _num(lo), _num(hi)
-        # reject corrupt/degenerate bands (e.g. ATAT high $558 vs $32 price) — too dispersed to fence
-        return bool(lo and hi and lo > 0 and hi >= lo and hi / lo <= 6)
-    c = ob.get("analyst_consensus") or {}
-    lo, med, hi = c.get("target_low"), c.get("target_median") or c.get("target_consensus"), c.get("target_high")
-    if _sane(lo, hi):
-        age = _iso_age_days(ob.get("_fetched_at"))
-        return {"low": _num(lo), "median": _num(med) or (_num(lo) + _num(hi)) / 2, "high": _num(hi),
-                "n": c.get("number_of_analysts"), "age_days": round(age, 1) if age is not None else None,
-                "stale": bool(age is not None and age > STALE_TARGET_DAYS), "source": "openbb"}
-    en = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
-    lo, med, hi = en.get("analyst_target_low"), en.get("analyst_target_median") or en.get("analyst_target_mean"), en.get("analyst_target_high")
-    if _sane(lo, hi):
-        age = _iso_age_days(en.get("_fetched_at"))
-        return {"low": _num(lo), "median": _num(med) or (_num(lo) + _num(hi)) / 2, "high": _num(hi),
-                "n": en.get("analyst_count"), "age_days": round(age, 1) if age is not None else None,
-                "stale": bool(age is not None and age > STALE_TARGET_DAYS), "source": "enrich"}
-    return None
+    candidates = []
+
+    # 1. OpenBB
+    ob = rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json")
+    if isinstance(ob, dict):
+        c = ob.get("analyst_consensus")
+        if isinstance(c, dict):
+            raw_lo = c.get("target_low")
+            raw_hi = c.get("target_high")
+            med = c.get("target_median")
+            mean = c.get("target_consensus") if med is None else None
+            legs, why = _band_legs(raw_lo, med, raw_hi, mean=mean)
+            if legs is not None:
+                age = _iso_age_days(ob.get("_fetched_at"))
+                stale = bool(age is not None and age > STALE_TARGET_DAYS)
+                candidates.append({
+                    "band": {
+                        "low": legs[0], "median": legs[1], "high": legs[2],
+                        "raw_low": float(raw_lo) if raw_lo is not None else None,
+                        "raw_high": float(raw_hi) if raw_hi is not None else None,
+                        "winsorized": legs[3],
+                        "n": c.get("number_of_analysts"),
+                        "age_days": round(age, 1) if age is not None else None,
+                        "stale": stale,
+                        "source": "openbb",
+                    },
+                    "stale": stale,
+                    "age_days": age if age is not None else 0.0,
+                })
+
+    # 2. Enrich own targets
+    en = rs2_data.load_json(HERE / "enrich" / f"{t}.json")
+    if isinstance(en, dict):
+        raw_lo = en.get("analyst_target_low")
+        raw_hi = en.get("analyst_target_high")
+        med = en.get("analyst_target_median")
+        mean = en.get("analyst_target_mean") if med is None else None
+        legs, why = _band_legs(raw_lo, med, raw_hi, mean=mean)
+        if legs is not None:
+            age = _iso_age_days(en.get("_fetched_at"))
+            stale = bool(age is not None and age > STALE_TARGET_DAYS)
+            candidates.append({
+                "band": {
+                    "low": legs[0], "median": legs[1], "high": legs[2],
+                    "raw_low": float(raw_lo) if raw_lo is not None else None,
+                    "raw_high": float(raw_hi) if raw_hi is not None else None,
+                    "winsorized": legs[3],
+                    "n": en.get("analyst_count"),
+                    "age_days": round(age, 1) if age is not None else None,
+                    "stale": stale,
+                    "source": "enrich",
+                },
+                "stale": stale,
+                "age_days": age if age is not None else 0.0,
+            })
+
+        # 3. Sibling targets
+        sib = en.get("analyst_targets_sibling")
+        scaled = _sibling_scaled(sib)
+        if scaled is not None:
+            legs, why = _band_legs(scaled["low"], scaled["median"], scaled["high"], mean=scaled["mean"])
+            if legs is not None:
+                s_ts = sib.get("fetched_at")
+                if s_ts is None:
+                    s_ts = en.get("_fetched_at")
+                age = _iso_age_days(s_ts)
+                stale = bool(age is not None and age > STALE_TARGET_DAYS)
+                sib_tk = sib.get("ticker", "UNKNOWN")
+                candidates.append({
+                    "band": {
+                        "low": legs[0], "median": legs[1], "high": legs[2],
+                        "raw_low": scaled["low"],
+                        "raw_high": scaled["high"],
+                        "winsorized": legs[3],
+                        "n": sib.get("count"),
+                        "age_days": round(age, 1) if age is not None else None,
+                        "stale": stale,
+                        "source": f"enrich_sibling:{sib_tk}",
+                    },
+                    "stale": stale,
+                    "age_days": age if age is not None else 0.0,
+                })
+
+    if not candidates:
+        return None
+
+    # First fresh usable band wins
+    for cand in candidates:
+        if not cand["stale"]:
+            return cand["band"]
+
+    # When every usable band is stale, return the freshest with stale: True
+    freshest = min(candidates, key=lambda c: c["age_days"])
+    return freshest["band"]
 
 
 def street_fence(ticker):
@@ -156,7 +308,7 @@ def street_fence(ticker):
     fence: 0.5x the lowest and 2x the highest analyst target, each discounted one year at 10%.
     None when there is no sane, fresh target band; a stale band fences nothing.
 
-    Returns {low, high, n_targets, asof, age_days, source}."""
+    Returns {low, high, n_targets, asof, age_days, source, winsorized}."""
     band = _consensus_band(ticker)
     if not band or band.get("stale"):
         return None
@@ -169,7 +321,8 @@ def street_fence(ticker):
         from datetime import datetime, timedelta, timezone
         asof = (datetime.now(timezone.utc) - timedelta(days=age)).strftime("%Y-%m-%d")
     return {"low": round(0.5 * lo / 1.10, 2), "high": round(2.0 * hi / 1.10, 2),
-            "n_targets": band.get("n"), "asof": asof, "age_days": age, "source": band.get("source")}
+            "n_targets": band.get("n"), "asof": asof, "age_days": age, "source": band.get("source"),
+            "winsorized": band.get("winsorized") or []}
 
 
 def _forward_growth(ticker):

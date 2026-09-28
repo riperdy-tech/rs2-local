@@ -629,7 +629,7 @@ def _age(rec):
     way to discount a number whose age it cannot see. The depth pipeline does not refresh these
     sources, so the honest fix is to state the age rather than to imply currency.
     """
-    ts = (rec or {}).get("_fetched_at")
+    ts = (rec or {}).get("_fetched_at") if (rec or {}).get("_fetched_at") is not None else (rec or {}).get("fetched_at")
     if not isinstance(ts, str) or len(ts) < 10:
         return "fetch date NOT RECORDED - age unknown, treat as potentially stale"
     try:
@@ -649,8 +649,8 @@ STALE_NULL = "not available (stale)"
 
 
 def _age_days(rec):
-    """Integer days since `_fetched_at`, or None when undatable. Companion to _age()."""
-    ts = (rec or {}).get("_fetched_at")
+    """Integer days since `_fetched_at` (or `fetched_at`), or None when undatable. Companion to _age()."""
+    ts = (rec or {}).get("_fetched_at") if (rec or {}).get("_fetched_at") is not None else (rec or {}).get("fetched_at")
     if not isinstance(ts, str) or len(ts) < 10:
         return None
     try:
@@ -2931,8 +2931,31 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                   f"{_sv(en, 'analyst_target_mean', en_stale)} / median "
                   f"{_sv(en, 'analyst_target_median', en_stale)} / high "
                   f"{_sv(en, 'analyst_target_high', en_stale)}   [Aggregator - 12-month sell-side "
-                  f"targets, {_age_label(en)}]",
-                  f"- 52-week range: {_sv(en, 'fifty_two_week_low', en_stale)} - "
+                  f"targets, {_age_label(en)}]"]
+            sib = en.get("analyst_targets_sibling")
+            own_low = en.get("analyst_target_low")
+            own_high = en.get("analyst_target_high")
+            if own_low is None or own_high is None:
+                import valuation_backbone as _vb
+                scaled_dict = _vb._sibling_scaled(sib)
+                if scaled_dict is not None:
+                    ratio = sib["price_ratio"]
+                    legs, _st = _vb._band_legs(scaled_dict["low"], scaled_dict["median"],
+                                               scaled_dict["high"], mean=scaled_dict["mean"])
+                    if legs is not None:
+                        sib_days = _age_days(sib)
+                        sib_stale = bool(sib_days is not None and sib_days > STALE_SUPPRESS_DAYS)
+                        sib_tk = _v(sib, "ticker")
+                        n_analysts = _v(sib, "count")
+                        L.append(
+                            f"- Analyst price targets, share class {sib_tk} "
+                            f"(this class has none; scaled by the price ratio {ratio:.4f}): "
+                            f"low {_sv(scaled_dict, 'low', sib_stale)} / "
+                            f"median {_sv(scaled_dict, 'median', sib_stale)} / "
+                            f"high {_sv(scaled_dict, 'high', sib_stale)}   "
+                            f"[Aggregator - {n_analysts} analysts, {_age_label(sib)}]"
+                        )
+            L += [f"- 52-week range: {_sv(en, 'fifty_two_week_low', en_stale)} - "
                   f"{_sv(en, 'fifty_two_week_high', en_stale)}"]
         L.append("")
 

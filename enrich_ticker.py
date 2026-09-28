@@ -309,6 +309,109 @@ def consensus_estimates(tk):
         return None
 
 
+def fetch_sibling_targets(ticker, ticker_info):
+    """Brief F (F1): When own analyst targets are missing, fetch targets from common-share-class sibling.
+
+    Returns (record, None) or (None, reason). The reason names the step that failed (reviewer, F
+    review): a data-layer failure is never reported as "no sibling"."""
+    try:
+        screener_dir = Path(paths.resolve("screener_data_dir", CONFIG))
+    except Exception as e:   # the resolver raises and names every candidate it tried
+        return None, f"screener_data_dir_unresolved: {str(e)[:160]}"
+
+    cik_file = screener_dir / "cik_map.json"
+    stocks_file = screener_dir / "stocks.csv"
+    try:
+        with open(cik_file, "r", encoding="utf-8-sig") as f:
+            cik_data = json.load(f)
+        cik_map = cik_data.get("map") if isinstance(cik_data, dict) else None
+        if not isinstance(cik_map, dict):
+            raise ValueError("no 'map' object")
+    except Exception as e:   # missing, unreadable or malformed file: a data failure, said as one
+        return None, f"cik_map_unreadable: {type(e).__name__}"
+
+    ticker_upper = ticker.upper()
+    ticker_cik = cik_map.get(ticker_upper)
+    if not ticker_cik:
+        return None, "ticker_not_in_cik_map"
+
+    import csv
+    stocks_names = {}
+    try:
+        with open(stocks_file, "r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            cols = {(c or "").strip().lower(): c for c in (reader.fieldnames or [])}
+            sym_col, name_col = cols.get("symbol"), cols.get("name")
+            if not sym_col or not name_col:
+                raise ValueError("no Symbol or Name column")
+            for row in reader:
+                sym = (row.get(sym_col) or "").strip().upper()
+                nm = (row.get(name_col) or "").strip()
+                if sym:
+                    stocks_names[sym] = " ".join(nm.split()).lower()
+    except Exception as e:   # missing, unreadable or malformed file: a data failure, said as one
+        return None, f"stocks_csv_unreadable: {type(e).__name__}"
+
+    ticker_name = stocks_names.get(ticker_upper)
+    if not ticker_name:
+        return None, "ticker_not_in_stocks_csv"
+
+    candidate_siblings = [
+        sym for sym, cik in cik_map.items()
+        if cik == ticker_cik and sym != ticker_upper and stocks_names.get(sym) == ticker_name
+    ]
+    if not candidate_siblings:
+        return None, "no_sibling_in_stocks_csv"
+
+    usable_siblings = []
+    failed_fetches = []
+    for sib_sym in sorted(candidate_siblings):
+        try:
+            sib_tk = yf.Ticker(sib_sym)
+            sib_info = sib_tk.info or {}
+        except Exception:   # a failed fetch is recorded, never counted as "no targets"
+            failed_fetches.append(sib_sym)
+            continue
+        s_lo = _num(sib_info.get("targetLowPrice"), lo=0, nd=2)
+        s_hi = _num(sib_info.get("targetHighPrice"), lo=0, nd=2)
+        if s_lo is not None and s_hi is not None and s_lo > 0 and s_hi > 0:
+            s_count = _num(sib_info.get("numberOfAnalystOpinions"), lo=0, nd=0)
+            usable_siblings.append((s_count if s_count is not None else 0, sib_sym, sib_info))
+
+    if not usable_siblings:
+        if failed_fetches:
+            return None, "sibling_fetch_failed: " + ", ".join(failed_fetches)
+        return None, "no_sibling_with_targets"
+
+    usable_siblings.sort(key=lambda x: x[0], reverse=True)
+    best_count, best_sym, best_info = usable_siblings[0]
+
+    t_price = _num((ticker_info or {}).get("currentPrice"), lo=0)
+    if t_price is None:
+        t_price = _num((ticker_info or {}).get("regularMarketPrice"), lo=0)
+
+    sib_price = _num(best_info.get("currentPrice"), lo=0)
+    if sib_price is None:
+        sib_price = _num(best_info.get("regularMarketPrice"), lo=0)
+
+    if t_price is None or t_price <= 0 or sib_price is None or sib_price <= 0:
+        return None, "no_usable_price"
+
+    price_ratio = round(t_price / sib_price, 4)
+
+    rec = {
+        "ticker": best_sym,
+        "price_ratio": price_ratio,
+        "low": _num(best_info.get("targetLowPrice"), lo=0, nd=2),
+        "median": _num(best_info.get("targetMedianPrice"), lo=0, nd=2),
+        "mean": _num(best_info.get("targetMeanPrice"), lo=0, nd=2),
+        "high": _num(best_info.get("targetHighPrice"), lo=0, nd=2),
+        "count": _num(best_info.get("numberOfAnalystOpinions"), lo=0, nd=0),
+        "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    return rec, None
+
+
 def enrich(ticker):
     t = ticker.upper()
     tk = yf.Ticker(t)
@@ -326,6 +429,13 @@ def enrich(ticker):
     data.update(options_skew(tk))
     data.update(dxy())
     data.update(analyst_targets(info))
+    own_lo = data.get("analyst_target_low")
+    own_hi = data.get("analyst_target_high")
+    if own_lo is None or own_hi is None:
+        sib_rec, sib_reason = fetch_sibling_targets(t, info)
+        data["analyst_targets_sibling"] = sib_rec
+        if sib_rec is None:
+            data["analyst_targets_sibling_reason"] = sib_reason
     # P4.10/DEP-02: next_earnings_date feeds depth_triggers.py's earnings_window trigger.
     data["next_earnings_date"] = next_earnings_date(cal)
     try:
