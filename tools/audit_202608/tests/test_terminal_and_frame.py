@@ -81,10 +81,12 @@ def test_the_batch_table_prints_each_scenarios_implied_growth():
     assert "- Bear: 16.0x exit multiple implies terminal g 3.98%" in md
 
 
+# S3 C (brief §5.6): the line drops to sentence case, states the multiple before the "=" and no
+# longer names terminal_reason (that rule now lives in the DEFAULTS block, §5.2).
 def test_the_pack_line_gives_the_multiple_consistent_with_the_anchors():
     import capability_test as cap
     line = cap._default_exit_multiple_line(8.98, 0.0375)
-    assert "(1 + 3.75%) / (8.98% − 3.75%) = 19.84×" in line and "terminal_reason" in line
+    assert "Default exit multiple 19.84× = (1 + 3.75%) / (8.98% − 3.75%)" in line
     assert "not available" in cap._default_exit_multiple_line(None, 0.0375)
     assert "not available" in cap._default_exit_multiple_line(3.0, 0.0375)       # rate below g
 
@@ -93,11 +95,14 @@ def test_the_pack_line_gives_the_multiple_consistent_with_the_anchors():
 # on the desk's TOOLS schema, not contract fields typed into the TASK's JSON block; the "Valuation
 # Frame"/"Terminal Growth And Multiple" doctrine is now the Frame/Terminal value sub-bullets of
 # checklist item 3.
+# S3 C (brief §5.3, §5.6): SECTION 1.5's exit-multiple line drops to sentence case ("Default exit
+# multiple") and its terminal_reason rule tail is gone; SECTION 6's NET DEBT line drops its "equity
+# frame"/"firm frame" rule sentences. Both rules now live in the DEFAULTS block (§5.2) instead.
 def test_the_pack_prints_the_default_exit_multiple_and_the_frame_rule(screener_data_stub):
     pack = str(cap.build_pack("GEV"))
-    assert "DEFAULT EXIT MULTIPLE" in pack
-    assert "Net income is after interest, so this is an equity flow" in pack
-    assert "The equity frame (the default) takes no net_debt" in pack
+    assert "Default exit multiple" in pack
+    assert "Net income is after interest, so this is an equity flow" not in pack
+    assert "The equity frame (the default) takes no net_debt" not in pack
     fm = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
     props = fm["function"]["parameters"]["properties"]
     for field in ("terminal_reason", "interest_addback", "wacc_reason"):
@@ -272,7 +277,8 @@ def test_mo_pack_terminal_growth_default_and_exit_multiple():
     expected_mult = (1.0 + 0.0234) / (0.0751 - 0.0234)
     assert expected_mult == pytest.approx(19.80, abs=0.01)
     assert "19.79×" in line
-    assert "the multiple consistent with the terminal_g default" in line
+    # S3 C (brief §5.6): "terminal_g default" -> "terminal-growth default" (sentence-case rewrite)
+    assert "the multiple consistent with the terminal-growth default" in line
 
     # Reading the saved pack file directly if available
     mo_pack_path = Path(__file__).resolve().parents[4] / "draw_previews" / "MO_pack.md"

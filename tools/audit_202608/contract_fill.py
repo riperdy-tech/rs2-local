@@ -157,11 +157,17 @@ def label(base, price):
     return "undervalued" if m >= 0.10 else "overvalued" if m <= -0.10 else "hold"
 
 
-def fill(calls, typed, facts, price, ticker=None):
+def fill(calls, typed, facts, price, ticker=None, allow_blend=True):
     """(filled, prov). `typed` is the sample's parsed contract (extract_scorecard); `facts` needs
     'shares_outstanding' (raw count or None) and 'coe_anchor' (fraction or None). `ticker` is only
     needed for a revision-15 answer run's base_cf_basis (3.8); omit it and that field falls back
-    to "other" when the Base is not within 2% of the DEFAULTS owner earnings."""
+    to "other" when the Base is not within 2% of the DEFAULTS owner earnings.
+
+    `allow_blend` (S3 5.12): False for a revision-15 pack (`main()` reads the pack's own revision
+    marker, `pack_facts.is_revision_15`) — no blend is ever published, even when the session has
+    no joint or scenario-wise desk run at all (only blend calls), which `is_r15` below cannot
+    detect on its own (a blend call's `entries()` carries no role, so `ref_call` stays None and
+    `is_r15` stays False). Defaults to True, so an older pack keeps S2's blend rule (R6)."""
     typed = typed or {}
     facts = facts or {}
     done = [c for c in (calls or []) if completed(c)]
@@ -215,8 +221,10 @@ def fill(calls, typed, facts, price, ticker=None):
     # blend: the last completed call is a blend and the typed base matches its value. Never for a
     # revision-15 answer run (reviewer, S3 A+B fix-up review): the TASK says a blend is never the
     # answer, and a Base value the narrative fallback of extract_scorecard pulls from the memo's prose
-    # must not let a blend of model-typed leg values become the published Base.
-    if done and not is_r15:
+    # must not let a blend of model-typed leg values become the published Base. S3 5.12: `not
+    # is_r15` alone misses a session with only blend calls (is_r15 needs a real scenario entry to
+    # detect), so `allow_blend` (set from the pack's own revision marker) is the real gate.
+    if done and not is_r15 and allow_blend:
         last = done[-1]
         b = _body(last)
         bv = None

@@ -139,8 +139,9 @@ def test_tools_schema_changed_descriptions_verbatim():
         "growth any other multiple implies (exit_implied_terminal_g)."
     )
     assert props["shares_diluted"]["description"] == (
-        "Optional. The desk uses SECTION 2's count (DEFAULTS) when you leave it out. Pass it only "
-        "for a different count, with shares_reason."
+        # S3 C review (2026-09-28): 5.11 made the desk's default the DEFAULTS shares_default.
+        "Optional. The desk uses the DEFAULTS block's shares_default when you leave it out. Pass it "
+        "only for a different count, with shares_reason."
     )
     assert props["net_debt"]["description"] == (
         "Firm frame only, in $B; default: the DEFAULTS net debt. Must be 0 or omitted in the equity frame."

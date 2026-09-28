@@ -8,7 +8,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import sys
 from typing import Any
+
+# S3 5.2: the DEFAULTS block's consensus_implied_value band uses the same FAR_LOW/FAR_HIGH the
+# desk's R10 check does (3.5) - one constant, not a copy. consensus_reference.py lives at
+# repo_root/tools and imports nothing of ours, so this import is a leaf, not a cycle.
+_REPO_TOOLS = Path(__file__).resolve().parents[2] / "tools"
+if str(_REPO_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_REPO_TOOLS))
+import consensus_reference  # noqa: E402
 
 FACTS_VERSION = 4
 SIDECAR = "_pack_facts.json"
@@ -89,13 +98,19 @@ def empty() -> dict[str, Any]:
     return d
 
 
+def is_revision_15(pack_text: str | None) -> bool:
+    """True when `pack_text`'s first line carries the revision-15 marker (5.1). The single check
+    `from_text` dispatches on and S3 5.12 uses (`contract_fill.fill(..., allow_blend=...)`)."""
+    t = pack_text or ""
+    return _REV15_MARKER in t.split("\n", 1)[0]
+
+
 def from_text(pack_text: str | None) -> dict[str, Any]:
     """Parse structured facts from pack text. A revision-15 text (first line carries the marker
     "(pack revision 15)") is read only from its DEFAULTS block; any other text uses the legacy
     readers verbatim (revisions up to 14, recorded packs, frozen battery packs)."""
     t = pack_text or ""
-    first_line = t.split("\n", 1)[0]
-    if _REV15_MARKER in first_line:
+    if is_revision_15(t):
         return _from_defaults_block(t)
     return _from_legacy_text(t)
 
@@ -306,135 +321,265 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
     }
 
 
+# S3 5.2: the DEFAULTS block's line grammar is `- <key>: <value> | <explanation>`, one fact per
+# line. `render_defaults_block` and `_from_defaults_block` are built together so they are exact
+# inverses (round-tripped by test_pack_rev15.py): every formatter below has a matching parser.
+_NA = "not available"
+
+
+def _dv_money(v):
+    """$B, 3 decimals (e.g. owner_earnings_default_b, cash_basis_b, net_debt_b)."""
+    return f"{v:,.3f}" if isinstance(v, (int, float)) else _NA
+
+
+def _dv_count(v):
+    """A share count, comma-grouped, 0 decimals."""
+    return f"{v:,.0f}" if isinstance(v, (int, float)) else _NA
+
+
+def _dv_rate2(v):
+    """A fraction printed as a percent rate, 2 decimals, no sign (coe_anchor, terminal_g_*)."""
+    return f"{v * 100:.2f}%" if isinstance(v, (int, float)) else _NA
+
+
+def _dv_growth1(v):
+    """A fraction printed as a signed percent growth rate, 1 decimal."""
+    return f"{v * 100:+.1f}%" if isinstance(v, (int, float)) else _NA
+
+
+def _dv_pct1(v):
+    """A fraction printed as an unsigned percent, 1 decimal (years35_p90: never negative)."""
+    return f"{v * 100:.1f}%" if isinstance(v, (int, float)) else _NA
+
+
+def _dv_str(v):
+    return v if isinstance(v, str) and v.strip() else _NA
+
+
+def _dp_num(raw, pct=False):
+    """The inverse of the `_dv_*` formatters above, for a scalar."""
+    s = raw.strip()
+    if s.lower() == _NA:
+        return None
+    v = float(s.rstrip("%").replace(",", ""))
+    return v / 100.0 if pct else v
+
+
+def _dp_str(raw):
+    s = raw.strip()
+    return None if s.lower() == _NA else s
+
+
+def render_defaults_block(facts: dict[str, Any], default_exit_multiple: float | None = None) -> str:
+    """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
+    TASK. Prints every one of the 24 `KEYS` (one fact per line), plus three display-only lines
+    that carry no facts key: `default_exit_multiple` and the two fixed rule lines `cash_flow_life`
+    and `price`. The reader (`_from_defaults_block`) ignores display lines.
+
+    `default_exit_multiple` is the caller's own already-computed value (SECTION 1.5's, from
+    `_default_exit_multiple_line`'s full-precision `coe_anchor_pct`/`terminal_g` inputs) — not
+    recomputed here from `facts["coe_anchor"]`/`facts["terminal_g_default"]`, which are already
+    quantized to 2 decimal places and would round the multiple differently (measured: 20.11x from
+    the rounded facts against the EZPW worked example's 20.12x from the SECTION 1.5 inputs)."""
+    f = facts
+
+    def line(key, value, explanation):
+        return f"- {key}: {value} | {explanation}"
+
+    lines = [
+        line("shares_outstanding", _dv_count(f.get("shares_outstanding")),
+             "SECTION 2, the vendor's basic count"),
+        line("shares_dilution_factor",
+             f"{f['shares_dilution_factor']:.4f}" if isinstance(f.get("shares_dilution_factor"), (int, float)) else _NA,
+             "the company's own diluted EPS (basic / diluted EPS); applied when it is at least 1.05"),
+        line("shares_dilution_period", _dv_str(f.get("shares_dilution_period")),
+             "the filed period the factor comes from"),
+        line("shares_default", _dv_count(f.get("shares_default")),
+             "the desk's shares_diluted unless you pass another count with shares_reason"),
+        line("shares_warning", _dv_str(f.get("shares_warning")),
+             "when present, the desk asks for shares_reason on every call"),
+        line("filed_shares_diluted", _dv_count(f.get("filed_shares_diluted")),
+             "SECTION 6B's latest filed diluted average; with after-interest flows it counts a "
+             "convertible's interest twice"),
+        line("filed_shares_fy",
+             str(int(f["filed_shares_fy"])) if isinstance(f.get("filed_shares_fy"), (int, float)) else _NA,
+             "the fiscal year of that average"),
+        line("owner_earnings_default_b", _dv_money(f.get("owner_earnings_default_b")),
+             "the Base base_cf; more than 2% away needs base_cf_reason"),
+        line("owner_earnings_source", _dv_str(f.get("owner_earnings_source")),
+             "where that default comes from"),
+        line("cash_basis_b", _dv_money(f.get("cash_basis_b")),
+             "the alternative base (includes working-capital swings)"),
+    ]
+
+    bw = f.get("base_window") or {}
+    bw_parts = []
+    if isinstance(bw.get("gap"), (int, float)):
+        bw_parts.append(f"gap={bw['gap'] * 100:+.0f}%")
+    if isinstance(bw.get("ttm_value"), (int, float)):
+        bw_parts.append(f"ttm_value={bw['ttm_value']:,.2f}")
+    if isinstance(bw.get("ttm_year2"), (int, float)):
+        bw_parts.append(f"ttm_year2={bw['ttm_year2']:.3f}")
+    lines.append(line("base_window", ", ".join(bw_parts) if bw_parts else _NA,
+                      "when printed, base_cf_reason names the window you judge representative "
+                      "and the item behind the gap"))
+
+    lines.append(line("coe_anchor", _dv_rate2(f.get("coe_anchor")),
+                      "the Base discount rate; more than 1.5 points away needs coe_adjustment_reason"))
+    lines.append(line("terminal_g_default", _dv_rate2(f.get("terminal_g_default")),
+                      "the Base terminal_g; more than 0.5 points away needs terminal_reason"))
+    lines.append(line("terminal_g_anchor", _dv_rate2(f.get("terminal_g_anchor")),
+                      "the long-run nominal growth anchor"))
+
+    dex_val = (f"{default_exit_multiple:.2f}x" if isinstance(default_exit_multiple, (int, float))
+              else _NA)
+    lines.append(line("default_exit_multiple", dex_val,
+                      "(1 + g) / (rate - g) at the defaults; a Base multiple implying terminal "
+                      "growth more than 0.5 points from terminal_g_default needs terminal_reason"))
+
+    lines.append(line("net_debt_b", _dv_money(f.get("net_debt_b")),
+                      "the firm frame's net debt; another figure needs net_debt_reason (the "
+                      "pack's flows are after interest: value them in the equity frame)"))
+    lines.append(line("interest_expense_latest_b", _dv_money(f.get("interest_expense_latest_b")),
+                      "the firm frame's interest_addback is at most this"))
+    lines.append(line("consensus_data_status", _dv_str(f.get("consensus_data_status")),
+                      "ok, or why SECTION 8 prints no consensus estimates"))
+
+    civ = f.get("consensus_implied_value")
+    if isinstance(civ, (int, float)):
+        lo, hi = civ * consensus_reference.FAR_LOW, civ * consensus_reference.FAR_HIGH
+        civ_expl = (f"a Base value outside {consensus_reference.FAR_LOW:g}-"
+                   f"{consensus_reference.FAR_HIGH:g} of it ({lo:,.2f}-{hi:,.2f}) needs "
+                   f"guidance_deviation_reason")
+    else:
+        civ_expl = (f"a Base value outside {consensus_reference.FAR_LOW:g}-"
+                   f"{consensus_reference.FAR_HIGH:g} of it needs guidance_deviation_reason")
+    lines.append(line("consensus_implied_value",
+                      f"{civ:,.2f}" if isinstance(civ, (int, float)) else _NA, civ_expl))
+    lines.append(line("reference_status", _dv_str(f.get("reference_status")),
+                      "whether the reference is shown, fenced or not available"))
+
+    lv = f.get("levels") or {}
+    lv_parts = [f"{k}={lv[k]:.3f}" for k in ("year1", "year2", "bull2", "bear2")
+                if isinstance(lv.get(k), (int, float))]
+    lines.append(line("levels", ", ".join(lv_parts) if lv_parts else _NA,
+                      "a Base year-2 cash flow more than 15% from year2 needs "
+                      "guidance_deviation_reason; a Bull or Bear more than 15% from bull2 or "
+                      "bear2 needs scenario_deviation_reason"))
+
+    lines.append(line("next_fy_revenue_growth", _dv_growth1(f.get("next_fy_revenue_growth")),
+                      "Base years 3-5 above it need guidance_deviation_reason, or the desk holds "
+                      "them at it"))
+    lines.append(line("years35_p90", _dv_pct1(f.get("years35_p90")),
+                      "growth above the base-rate p90 needs dated, company-specific evidence (a "
+                      "flag, not a veto)"))
+
+    br = f.get("base_rate_5y") or {}
+    br_parts = [f"{k}={br[k]:.1f}%" for k in ("share_ge_10", "share_ge_20", "share_ge_30", "p50", "p90")
+                if isinstance(br.get(k), (int, float))]
+    lines.append(line("base_rate_5y", ", ".join(br_parts) if br_parts else _NA,
+                      "the desk ranks the market-implied growth against it"))
+
+    rc5 = f.get("revenue_cagr_5y_pct")
+    lines.append(line("revenue_cagr_5y_pct", f"{rc5:+.1f}%" if isinstance(rc5, (int, float)) else _NA,
+                      "the desk compares the market-implied growth with it"))
+
+    lines.append('- cash_flow_life: required on every desk call ("perpetual" or years), with '
+                 'cash_flow_life_reason')
+    lines.append("- price: a Bull value below today's price needs bull_below_price_reason; a "
+                 "Bear value above it needs bear_above_price_reason")
+
+    header = ("## DEFAULTS   [each desk input takes this value unless you pass another; a "
+             "departure needs the named reason, and the desk asks for it]")
+    return header + "\n" + "\n".join(lines)
+
+
 def _from_defaults_block(t: str) -> dict[str, Any]:
-    """Read a revision-15 text's DEFAULTS block (section 5.2 of the S3 brief). That block is
-    Package C and is not built by this repository yet (PACK_REVISION stays 14), so no real pack
-    reaches this path today; it exists so the reader is ready, and is exercised by hand-written
-    text in tests. Raises ValueError when no DEFAULTS block is found — a revision-15 text never
-    falls back to the legacy readers."""
+    """Read a revision-15 text's DEFAULTS block (S3 5.2). Raises ValueError when no DEFAULTS
+    block is found, or when a facts-key line is missing from it — a revision-15 text never falls
+    back to the legacy readers, and the reader never guesses a key."""
     m = re.search(r"^## DEFAULTS\b.*$(\n(?:^-.*$\n?)*)", t, re.MULTILINE)
     if not m:
         raise ValueError("revision-15 text has no DEFAULTS block")
     block = m.group(0)
 
-    def _num(pattern, group=1, pct=False):
-        mm = re.search(pattern, block)
+    def _val(key):
+        mm = re.search(rf"^- {re.escape(key)}: (.*?) \| ", block, re.MULTILINE)
         if not mm:
-            return None
-        raw = mm.group(group)
-        if raw is None or raw.strip().lower() == "not available":
-            return None
-        v = float(raw.strip().rstrip("%").replace(",", ""))
-        if pct:
-            v = v / 100.0
-        return v
+            raise ValueError(f"revision-15 DEFAULTS block has no {key!r} line")
+        return mm.group(1)
 
-    def _present(name):
-        mm = re.search(rf"^- {re.escape(name)}: (.+)$", block, re.MULTILINE)
-        return mm.group(1) if mm else None
+    def _num(key, pct=False):
+        return _dp_num(_val(key), pct=pct)
 
-    shares_outstanding = _num(r"shares_outstanding: <([^>]+)>")
-    shares_default = _num(r"shares_default: <([^>]+)>")
-    sdf_line = _present("shares_dilution_factor")
-    shares_dilution_factor, shares_dilution_period = None, None
-    if sdf_line and not sdf_line.startswith("not available"):
-        m_sdf = re.match(r"<([^>]+)> \(<([^>]+)>:", sdf_line)
-        if m_sdf:
-            shares_dilution_factor = float(m_sdf.group(1))
-            shares_dilution_period = m_sdf.group(2)
-    sw_line = _present("shares_warning")
-    shares_warning = None
-    if sw_line:
-        m_sw = re.match(r"<([^>]+)>", sw_line)
-        if m_sw and m_sw.group(1).strip().lower() != "not available":
-            shares_warning = m_sw.group(1)
+    def _str(key):
+        return _dp_str(_val(key))
 
-    oe_line = _present("owner_earnings_default_b")
-    oe_default_b, oe_source = None, None
-    if oe_line:
-        m_oe = re.match(r"<([^>]+)> \(<([^>]+)>\)", oe_line)
-        if m_oe and m_oe.group(1).strip().lower() != "not available":
-            oe_default_b = float(m_oe.group(1).replace(",", ""))
-            oe_source = m_oe.group(2)
-    cash_basis_b = _num(r"cash_basis_b: <([^>]+)>,")
+    shares_outstanding = _num("shares_outstanding")
+    shares_dilution_factor = _num("shares_dilution_factor")
+    shares_dilution_period = _str("shares_dilution_period")
+    shares_default = _num("shares_default")
+    shares_warning = _str("shares_warning")
+    filed_shares_diluted = _num("filed_shares_diluted")
+    _fsfy_raw = _val("filed_shares_fy").strip()
+    filed_shares_fy = None if _fsfy_raw.lower() == _NA else int(_fsfy_raw.replace(",", ""))
+    owner_earnings_default_b = _num("owner_earnings_default_b")
+    owner_earnings_source = _str("owner_earnings_source")
+    cash_basis_b = _num("cash_basis_b")
 
-    win_line = _present("base_window")
+    bw_raw = _val("base_window").strip()
     base_window: dict[str, Any] = {}
-    if win_line and not win_line.startswith("not available"):
-        m_win = re.match(
-            r"gap <([^>]+)>, ttm_value <([^>]+)>, ttm_year2 <([^>]+)>", win_line)
-        if m_win:
-            g, tv, ty = m_win.groups()
-            if g.strip().lower() != "not available":
-                base_window["gap"] = float(g.rstrip("%")) / 100.0
-            base_window["ttm_value"] = (None if tv.strip().lower() == "not available"
-                                        else float(tv.replace(",", "")))
-            base_window["ttm_year2"] = (None if ty.strip().lower() == "not available"
-                                        else float(ty.replace(",", "")))
+    if bw_raw.lower() != _NA:
+        # Once the BASE WINDOW CHECK has printed at all, the build always carries all three
+        # members (build_pack sets "ttm_value"/"ttm_year2" to an explicit None alongside "gap"
+        # when there is no usable TTM alternative) — so a member missing from the rendered line
+        # is None, not absent, matching the source dict's shape exactly (the 0.0 rule: explicit
+        # None is a value here, distinct from the empty-dict "not printed at all" case above).
+        base_window = {"gap": None, "ttm_value": None, "ttm_year2": None}
+        # split members on ", " first — ttm_value can itself carry a comma (money, `:,.2f`), so a
+        # single regex over the whole string cannot draw the member boundary reliably.
+        for member in bw_raw.split(", "):
+            mm = re.match(r"(gap|ttm_value|ttm_year2)=(.+)$", member.strip())
+            if not mm:
+                continue
+            bk, bv = mm.groups()
+            base_window[bk] = (float(bv.rstrip("%")) / 100.0) if bk == "gap" else float(bv.replace(",", ""))
 
-    m_coe_raw = re.search(r"coe_anchor: <([^>]+)>", block)
-    coe_anchor = None
-    if m_coe_raw and m_coe_raw.group(1).strip().lower() != "not available":
-        coe_anchor = float(m_coe_raw.group(1).rstrip("%")) / 100.0
+    coe_anchor = _num("coe_anchor", pct=True)
+    terminal_g_default = _num("terminal_g_default", pct=True)
+    terminal_g_anchor = _num("terminal_g_anchor", pct=True)
+    # default_exit_multiple: derived, not a facts key — the reader ignores display lines.
+    net_debt_b = _num("net_debt_b")
+    interest_expense_latest_b = _num("interest_expense_latest_b")
+    consensus_data_status = _str("consensus_data_status")
 
-    tg_line = _present("terminal_g_default")
-    terminal_g_default, terminal_g_anchor = None, None
-    if tg_line:
-        m_tg = re.match(r"<([^>]+)> \(terminal_g_anchor: <([^>]+)>\)", tg_line)
-        if m_tg:
-            if m_tg.group(1).strip().lower() != "not available":
-                terminal_g_default = float(m_tg.group(1).rstrip("%")) / 100.0
-            if m_tg.group(2).strip().lower() != "not available":
-                terminal_g_anchor = float(m_tg.group(2).rstrip("%")) / 100.0
+    consensus_implied_value = _num("consensus_implied_value")
+    reference_status = _str("reference_status")
 
-    vf_line = _present("valuation_frame")
-    net_debt_b, interest_expense_latest_b = None, None
-    if vf_line:
-        m_ie = re.search(r"interest_expense_latest_b: <([^>]+)>", vf_line)
-        if m_ie and m_ie.group(1).strip().lower() != "not available":
-            interest_expense_latest_b = float(m_ie.group(1).replace(",", ""))
-        m_nd = re.search(r"net_debt_b: <([^>]+)>", vf_line)
-        if m_nd and m_nd.group(1).strip().lower() != "not available":
-            net_debt_b = float(m_nd.group(1).replace(",", ""))
-
-    civ_line = _present("consensus_implied_value")
-    consensus_implied_value, reference_status = None, None
-    if civ_line:
-        m_civ = re.match(r"<([^>]+)> \(<([^>]+)>\)", civ_line)
-        if m_civ and m_civ.group(1).strip().lower() != "not available":
-            consensus_implied_value = float(m_civ.group(1).replace(",", ""))
-            reference_status = m_civ.group(2)
-
-    lv_line = _present("levels")
+    lv_raw = _val("levels").strip()
     levels: dict[str, float] = {}
-    if lv_line and not lv_line.startswith("not available"):
-        for mm in re.finditer(r"(year1|year2|bull2|bear2) <([^>]+)>", lv_line):
-            k, v = mm.groups()
-            if v.strip().lower() != "not available":
-                levels[k] = float(v.replace(",", ""))
+    if lv_raw.lower() != _NA:
+        for mm in re.finditer(r"(year1|year2|bull2|bear2)=(-?[\d.,]+)", lv_raw):
+            lk, lv = mm.groups()
+            levels[lk] = float(lv.replace(",", ""))
 
-    next_fy_revenue_growth = _num(r"next_fy_revenue_growth: <([^>]+)>", pct=True)
-    years35_p90 = _num(r"years35_p90: <([^>]+)>", pct=True)
+    # next_fy_revenue_growth is stamped at its print site as round(x, 6) (capability_test.py's
+    # `facts["next_fy_revenue_growth"] = round(float(f"{g*100:+.1f}")/100.0, 6)`), unlike every
+    # other pct-scaled fact here (coe_anchor, terminal_g_*, years35_p90), which stay at whatever
+    # precision their own `float(...)/100.0` division gives — so this one key needs the same
+    # round(x, 6) on the way back in, or the two float reprs of "the same" value can differ.
+    _nfrg = _num("next_fy_revenue_growth", pct=True)
+    next_fy_revenue_growth = round(_nfrg, 6) if _nfrg is not None else None
+    years35_p90 = _num("years35_p90", pct=True)
 
-    br_line = _present("base_rate_5y")
+    br_raw = _val("base_rate_5y").strip()
     base_rate_5y: dict[str, float] = {}
-    if br_line and not br_line.startswith("not available"):
-        for mm in re.finditer(r"(p50|p90|share_ge_10|share_ge_20|share_ge_30) <([^>]+)>", br_line):
-            k, v = mm.groups()
-            if v.strip().lower() != "not available":
-                base_rate_5y[k] = float(v.strip().rstrip("%").replace(",", ""))
+    if br_raw.lower() != _NA:
+        for mm in re.finditer(r"(share_ge_10|share_ge_20|share_ge_30|p50|p90)=(-?[\d.]+)%", br_raw):
+            rk, rv = mm.groups()
+            base_rate_5y[rk] = float(rv)
 
-    # stored as a percent number (9.1), not a fraction — matches the revision-14 print site's units
-    revenue_cagr_5y_pct = _num(r"revenue_cagr_5y_pct: <([^>]+)>")
-
-    # S2c: read only from its own line. An absent line is None, never inferred from another key:
-    # the gate fails a None status closed on gate_version >= 6.
-    cds_line = _present("consensus_data_status")
-    consensus_data_status = None
-    if cds_line:
-        m_cds = re.match(r"<([^>]+)>", cds_line)
-        if m_cds and m_cds.group(1).strip().lower() != "not available":
-            consensus_data_status = m_cds.group(1).strip()
+    revenue_cagr_5y_pct = _num("revenue_cagr_5y_pct")   # stored as a percent number, not a fraction
 
     return {
         "version": FACTS_VERSION,
@@ -449,15 +594,13 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "net_debt_b": net_debt_b,
         "terminal_g_default": terminal_g_default,
         "interest_expense_latest_b": interest_expense_latest_b,
-        "owner_earnings_source": oe_source,
+        "owner_earnings_source": owner_earnings_source,
         "coe_anchor": coe_anchor,
-        # Package C has not defined a DEFAULTS line for these two (5.2 is a draft, unreviewed);
-        # SECTION 6B's format does not change in this step, so the S1 legacy reader still applies.
-        "filed_shares_diluted": _from_legacy_text(t)["filed_shares_diluted"],
-        "filed_shares_fy": _from_legacy_text(t)["filed_shares_fy"],
+        "filed_shares_diluted": filed_shares_diluted,
+        "filed_shares_fy": filed_shares_fy,
         "terminal_g_anchor": terminal_g_anchor,
         "base_rate_5y": base_rate_5y,
-        "owner_earnings_default_b": oe_default_b,
+        "owner_earnings_default_b": owner_earnings_default_b,
         "cash_basis_b": cash_basis_b,
         "revenue_cagr_5y_pct": revenue_cagr_5y_pct,
         "shares_default": shares_default,

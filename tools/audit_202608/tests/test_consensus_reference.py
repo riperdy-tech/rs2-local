@@ -159,7 +159,8 @@ def test_mu_trough_uses_consensus_eps_levels():
     assert r["flows"][1] == 159.12122 * 1.12e9 + 8e9 - 14e9
     line = cref.pack_line(r, 5e9, 0.10, 0.0375, lambda v: f"${v / 1e9:.3f}B")
     assert line.startswith("- [Arithmetic] CONSENSUS-IMPLIED VALUE (reference, not a forecast): $")
-    assert "Consensus EPS growth is unusable (EPS growth +787% for 0y is off a trough" in line
+    # S3 C (brief §5.6): pack_line's clauses are now lower-cased and pipe-separated.
+    assert "consensus EPS growth is unusable (EPS growth +787% for 0y is off a trough" in line
 
 
 def test_lind_negative_base_uses_levels_and_the_harness_reads_it():

@@ -18,6 +18,7 @@ sys.path.insert(0, str(HERE.parent))
 
 import consensus_reference as cr  # noqa: E402
 import consensus_valuation as cv  # noqa: E402
+import pack_facts  # noqa: E402
 
 B = 1e9
 ADI_EST = {"0y": {"eps": {"avg": 12.89, "low": 12.35, "high": 14.31, "analysts": 29, "growth": 0.655, "year_ago": 7.79},
@@ -49,9 +50,10 @@ def test_a_rolled_vintage_values_the_eps_levels_with_its_reason():
     y1, y2 = ref["levels"]
     assert abs(y1 - (12.89 * SH + 1.5 * B)) < 1 and abs(y2 - (16.34 * SH + 1.5 * B)) < 1
     line = cr.pack_line(ref, None, 0.1045, 0.0375, _fmt_b)
-    assert f"Years 1-2 are consensus EPS x diluted shares + D&A - capex because {why}" in line
-    assert "rolled forward 1 months to today" in line
-    assert cv._pack_levels(line)["year2"] == round(y2 / B, 3)
+    # S3 C (brief §5.6): pack_line's clauses are lower-cased and pipe-separated now.
+    assert f"years 1-2 are consensus EPS x diluted shares + D&A - capex because {why}" in line
+    assert "rolled forward 1 months" in line
+    assert _fmt_b(y2) in line   # the line prints the year-2 level it computed
 
 
 def test_a_base_that_is_not_positive_goes_to_the_eps_levels():
@@ -89,18 +91,18 @@ def test_a_one_off_in_one_window_prints_both_references():
     assert abs(win["ttm_value"] - ref["value"] * 1.56) < 1e-6
     assert abs(win["ttm_levels"][1] - ref["levels"][1] * 1.56) < 1
     line = cr.window_line(win, ref, ttm, "2026-05-02", _fmt_b)
-    assert line.startswith("- [Arithmetic] BASE WINDOW CHECK: base_window_gap +56%.")
-    parsed = cv._pack_window(line)
-    assert parsed["gap"] == 0.56 and abs(parsed["ttm_value"] - win["ttm_value"]) < 0.01
-    assert parsed["ttm_year2"] == round(win["ttm_levels"][1] / B, 3)
+    # S3 C (brief §5.6): the line is now pipe-separated clauses, not sentences ending in ".".
+    assert line.startswith("- [Arithmetic] BASE WINDOW CHECK: base_window_gap +56% | ")
+    assert f"${win['ttm_value']:,.2f} per share" in line
+    assert _fmt_b(win["ttm_levels"][1]) in line
 
 
 def test_a_ttm_that_is_not_positive_prints_no_second_reference():
     win = cr.window_check(_adi(), 3.732 * B, -0.1 * B, 2)
     assert win["flag"] and win["ttm_value"] is None
     line = cr.window_line(win, _adi(), -0.1 * B, "2026-05-02", _fmt_b)
-    assert "The TTM window's owner earnings are not positive" in line
-    assert cv._pack_window(line)["ttm_value"] is None
+    # S3 C (brief §5.6): the clause is now lower-cased.
+    assert "the TTM window's owner earnings are not positive" in line
 
 
 def test_no_window_check_without_the_growth_method_or_a_ttm():
@@ -119,15 +121,28 @@ def _pack_with_window(ttm_mult=1.56):
             + cr.window_line(win, ref, ttm, "2026-05-02", _fmt_b)), ref, win
 
 
+# S3 C (brief §5.6): pack_line/window_line's text is no longer parseable by the legacy regex
+# readers (see the module-level note above _facts_from_ref-style fixes in test_e18_reference.py);
+# `reference_window` / `consensus_ratios` take `facts` directly for exactly this case.
+def _facts_with_window(ref, win):
+    f = pack_facts.empty()
+    f["consensus_implied_value"] = ref["value"]
+    f["levels"] = {"year1": ref["levels"][0] / B, "year2": ref["levels"][1] / B}
+    f["base_window"] = {"gap": win["gap"], "ttm_value": win["ttm_value"],
+                        "ttm_year2": win["ttm_levels"][1] / B}
+    return f
+
+
 def test_the_harness_checks_against_the_nearer_reference():
     pack, ref, win = _pack_with_window()
+    facts = _facts_with_window(ref, win)
     near_ttm = {"base_iv": win["ttm_value"] * 1.02}
     near_fy = {"base_iv": ref["value"] * 0.98}
-    assert cv.reference_window(near_ttm, pack)[2] == "ttm"
-    assert cv.reference_window(near_fy, pack)[2] == "fy"
+    assert cv.reference_window(near_ttm, facts=facts)[2] == "ttm"
+    assert cv.reference_window(near_fy, facts=facts)[2] == "fy"
     r = cv.consensus_ratios(dict(near_ttm, base_cf_used=3.732 * 1.655 ** 0.5 * 1.56,
                                  stage1_growth_path=[0.2946, 0.268, 0.1, 0.1, 0.1]),
-                            {"estimates": ADI_EST}, pack)
+                            {"estimates": ADI_EST}, facts=facts)
     assert r["reference_window_used"] == "ttm" and r["base_window_gap"] == 0.56
     assert abs(r["base_to_civ"] - 1.02) < 0.01
     assert abs(r["reference_window_value"] - win["ttm_value"]) < 0.01          # review C3

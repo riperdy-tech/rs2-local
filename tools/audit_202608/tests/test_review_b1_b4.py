@@ -129,8 +129,11 @@ def test_a_ttm_window_outside_the_fence_prints_its_side_and_no_number():
     win = cr.window_check(ref, 3.732 * B, 3.732 * B * 1.655 ** 0.5 * 0.2, 2)       # BMRN's shape: -80%
     fenced = cr.fence_window(win, "below", (27.3, 400.0))
     line = cr.window_line(fenced, ref, 3.732 * B * 0.26, "2026-06-30", lambda v: f"${v / 1e9:.3f}B")
-    assert "lands below the street fence [$27.30, $400.00]" in line and "guidance_deviation_reason" in line
-    assert "worth $" not in line.split("On the TTM window")[1].split(";")[0]
+    # S3 C (brief §5.3/§5.6): the clause is lower-cased and its guidance_deviation_reason
+    # instruction is gone (that rule now lives in the DEFAULTS block, §5.2); the fence and its
+    # numbers stay.
+    assert "lands below the street fence [$27.30, $400.00]" in line
+    assert "worth $" not in line.split("on the TTM window")[1].split(" | ")[0]
     parsed = cv._pack_window(line)
     assert parsed["gap"] == -0.8 and parsed["ttm_value"] is None
     pack = cr.pack_line(ref, 3.732 * B, 0.1045, 0.0375, lambda v: f"${v / 1e9:.3f}B") + "\n" + line
@@ -244,7 +247,8 @@ def test_a_refused_vendor_capex_says_why(monkeypatch):
         return d
     pack = _gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000, fin_edit=rupees, ttm_edit=no_ttm_capex,
                      hist_edit=no_fy_capex)
-    line = next(l for l in pack.splitlines() if l.startswith("- OWNER EARNINGS (default base_cf)"))
+    # S3 C (brief §5.6): the label drops "(default base_cf)".
+    line = next(l for l in pack.splitlines() if l.startswith("- OWNER EARNINGS"))
     assert "not available" in line and "the vendor's capex is not used" in line and "INR" in line   # R5
 
 
@@ -252,5 +256,6 @@ def test_the_window_line_points_to_the_base_year_check_only_when_it_printed():
     ref = cr.build(3.732 * B, EST, 0.1045, 0.0375, 0.48 * B, 0.096, stub_months=10.8)
     win = cr.window_check(ref, 3.732 * B, 3.732 * B * 1.655 ** 0.5 * 1.56, 2)
     fmt = lambda v: f"${v / 1e9:.3f}B"  # noqa: E731
-    assert "The BASE-YEAR CHECK shows" in cr.window_line(win, ref, 1.0 * B, "2026-06-30", fmt)
+    # S3 C (brief §5.6): the clause is lower-cased.
+    assert "the BASE-YEAR CHECK shows" in cr.window_line(win, ref, 1.0 * B, "2026-06-30", fmt)
     assert "BASE-YEAR" not in cr.window_line(win, ref, 1.0 * B, "2026-06-30", fmt, base_year_check=False)  # R7

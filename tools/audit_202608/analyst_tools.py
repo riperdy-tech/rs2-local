@@ -256,7 +256,7 @@ TOOLS = [{
                 "annuity_flow": {"type": "number", "description": "Separate annual services / installed-base recurring annuity cash flow (if unbundled)."},
                 "annuity_cap_rate": {"type": "number", "description": "Capitalization rate for annuity flow (e.g. 0.075 for 7.5%)."},
                 "net_debt": {"type": "number", "description": "Firm frame only, in $B; default: the DEFAULTS net debt. Must be 0 or omitted in the equity frame."},
-                "shares_diluted": {"type": "number", "description": "Optional. The desk uses SECTION 2's count (DEFAULTS) when you leave it out. Pass it only for a different count, with shares_reason."},
+                "shares_diluted": {"type": "number", "description": "Optional. The desk uses the DEFAULTS block's shares_default when you leave it out. Pass it only for a different count, with shares_reason."},
                 "legs": {
                     "type": "array",
                     "description": "Named valuation legs for blend mode: [{'name': 'Gordon DCF', 'weight': 0.6, 'iv': 150.0, 'source': 'desk'}, ...]. Weights must sum to 1.0.",

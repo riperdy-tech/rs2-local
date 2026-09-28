@@ -115,7 +115,9 @@ def _slice_guidance(pack_text: str) -> str | None:
 def discovery_context(ticker: str) -> dict:
     """Build live pack with research off and slice out discovery facts."""
     t = str(ticker).upper()
-    pack_text = str(capability_test.build_pack(t, include_research=False))
+    # S3 5.8: news_snippets=True keeps the discovery run's slices byte-identical to revision 14's
+    # (build_pack's new default, False, drops a snippet-less row's snippet).
+    pack_text = str(capability_test.build_pack(t, include_research=False, news_snippets=True))
 
     sec25 = _slice_section(pack_text, "## SECTION 2.5") or "## SECTION 2.5 - PRICE ACTION\nnot available"
     news = _slice_section(pack_text, "## RECENT COMPANY NEWS") or "## RECENT COMPANY NEWS\nnot available"

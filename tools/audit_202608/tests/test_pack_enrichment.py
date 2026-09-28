@@ -97,38 +97,37 @@ def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_s
     assert pack.macro_degraded is False
     assert "macro_degraded" not in pack.flags
 
-    # Six anchor lines:
-    assert "- Nominal 10-Year US Treasury Yield (Risk-Free Rate Rf): 5.01%  [MRI anchor" in pack
-    assert "- Real 10-Year US Treasury Yield: 2.68%  [MRI anchor]" in pack
-    assert "- 10-Year Breakeven Inflation Rate: 2.34%  [MRI anchor]" in pack
-    assert "- Implied Equity Risk Premium (ERP): 4.35%  [MRI anchor]" in pack
-    assert "- Implied Cost of Equity: 9.36%  [MRI anchor]" in pack
-    assert "- Sector Cost of Equity Loading (industrials): 0.868x  [MRI anchor]" in pack
+    # S3 C (brief §5.6): SECTION 1.5 becomes a header plus typed lines (Rates, COE ANCHOR, default
+    # exit multiple, Curve, Regime probabilities); every number the six anchor lines and the
+    # secondary macro series used to print separately is now on the "Rates:"/"Curve" lines.
+    assert ("[MRI anchors as of 2026-09-23, degraded: False, reasons: none; verified: do not "
+            "search the web for them]") in pack
+    assert ("- Rates: rf (nominal 10y) 5.01% | real 10y 2.68% | breakeven 10y 2.34% | implied ERP "
+            "4.35% | implied cost of equity 9.36% | sector cost-of-equity loading (industrials) "
+            "0.868x") in pack
 
-    # Secondary macro series:
-    assert "- 10Y-2Y Treasury Yield Spread (Curve Slope) [macro_state.json]: +0.20%  (Normal / Steepening)" in pack
-    assert "- Investment Grade Credit Spread (BAA - 10Y) [macro_state.json]: 1.40%" in pack
-    assert "- High Yield Option-Adjusted Spread (OAS) [macro_state.json]: 2.68%" in pack
+    # Secondary macro series, folded into one "Curve" line:
+    assert ("- Curve 10y-2y +0.20% (Normal / Steepening, as of 2026-09-21) | IG spread "
+            "(BAA - 10Y) 1.40% (as of 2026-09-18) | HY OAS 2.68% (as of 2026-09-18)") in pack
 
     # B6 (Phase 1 approval review): the probability vector prints FIRST and the label second,
     # as a contested headline with its margin — never an unqualified regime name.
-    assert "Current Macro Regime: Probabilities: [" in pack
+    assert "Regime probabilities (as of" in pack
     assert "goldilocks 0.287" in pack
     assert "reflation 0.243" in pack
-    assert "headline goldilocks (margin 0.044 — contested)" in pack
+    assert "headline goldilocks, margin 0.044, contested" in pack
 
-    # Mandate line present when Rf is present:
-    assert "- **MANDATE:** Use the verified 10-Year Treasury yield above (5.01%)" in pack
+    # S3 C (brief §5.3): the MANDATE/COE MANDATE/COST OF CAPITAL lines are gone — those rules now
+    # live in the DEFAULTS block (§5.2).
+    assert "**MANDATE:**" not in pack
+    assert "**COE MANDATE:**" not in pack
+    assert "**COST OF CAPITAL & CAPITALIZATION ANCHOR:**" not in pack
 
     # Live COE ANCHOR shows adjusted loading and raw loading:
-    assert "- COE ANCHOR for this name: rf 5.01% + adjusted loading 0.912× (Blume: 0.67 × raw 0.868 + 0.33) × implied ERP 4.35% = 8.98%" in pack
-    assert "- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above (8.98%)" in pack
+    assert ("- COE ANCHOR for this name: 8.98% = rf 5.01% + adjusted loading 0.912× (Blume: 0.67 "
+            "× raw 0.868 + 0.33) × implied ERP 4.35% (asof 2026-09-23, source: MRI "
+            "cost-of-capital anchor)") in pack
 
-    # B6: the capitalization mandate no longer conditions on the regime LABEL — it must be the
-    # SAME unconditional text regardless of the (contested) headline above.
-    assert ("- **COST OF CAPITAL & CAPITALIZATION ANCHOR:** Derive terminal multiples from "
-            "net capitalization rates (1 / [WACC - g]) and verified peer comps; do not force "
-            "artificial multiple caps.") in pack
     assert "In the current" not in pack
     assert "goldilocks regime" not in pack
 
@@ -172,8 +171,8 @@ def _slice(pack, header, next_prefix="## "):
     return pack[i:j if j != -1 else len(pack)]
 
 
-def test_pack_revision_is_14():
-    assert cap.PACK_REVISION == 14
+def test_pack_revision_is_15():
+    assert cap.PACK_REVISION == 15
 
 
 def test_no_ground_truth_phrase_anywhere(screener_data_stub):

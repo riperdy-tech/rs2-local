@@ -33,11 +33,15 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # RESEARCH_ADDENDUM_SHA256 = "a2dbd6ec296cff777373421babca855291e6b4f2f9a6181fce8e387bef92932d"
 # TOOLS_SHA256 = "d9163b2096b730965f5f89bc88bfcc0e87757146427d344a430427bdd8edc4b0"
 # CONTINUE_REPORT_SHA256 = "707e547dd3ccdbe8e6303180852c9171a46085d3085cfe9f3d8d320923708151"
-TASK_SHA256 = "b9d6528f8f865dd6c661d0b97731dfa3585962c52f74a3a6e81b6a386b38fe99"
+# 2026-09-28 (reviewer, S3 C review): the Shares sentence names 5.11's DEFAULTS shares_default; was
+# "b9d6528f8f865dd6c661d0b97731dfa3585962c52f74a3a6e81b6a386b38fe99" ("use SECTION 2's count").
+TASK_SHA256 = "824b53db6bf8c1873bba57f2ed0e77f55456ec29cfebdb2a1c21eb733c885432"
 RESEARCH_ADDENDUM_SHA256 = "cd9c5add7226ed784de56433ea0168bb6c09b72fec678f60e42e90f2fdfaa043"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
-TOOLS_SHA256 = "59ba2b728999b3f5be6f964fc9e4294d42678ffe611a5c6825f67369acb95861"
+# 2026-09-28 (reviewer, S3 C review): shares_diluted's description names the DEFAULTS
+# shares_default; was "59ba2b728999b3f5be6f964fc9e4294d42678ffe611a5c6825f67369acb95861".
+TOOLS_SHA256 = "741e4664365e47863c2bf6e464dab13e461c9249fcf1f231d1d4dba920bdf954"
 # research_tools() (search_web, fetch_page) is unchanged, so its pin stays.
 RESEARCH_TOOLS_SHA256 = "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
@@ -58,7 +62,8 @@ def _get_system_block(path: Path) -> str:
 
 
 def test_text_pins():
-    assert capability_test.PACK_REVISION == 14
+    # S3 C (brief §2, §0): PACK_REVISION moves to 15 in this step's last commit.
+    assert capability_test.PACK_REVISION == 15
     assert _sha256(capability_test.TASK) == TASK_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
@@ -139,10 +144,12 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     text1 = str(pack1)
     text2 = str(pack2)
     assert text1 == text2
-    assert len(text1) == 21152
+    # S3 C (brief §2): the golden pack becomes golden_pack_GEV_rev15.md; the revision-14 golden
+    # file stays in the repository, unreferenced.
+    assert len(text1) == 20102
 
     # Assert byte equality with golden file
-    golden_file = FIXTURE / "golden_pack_GEV_rev14.md"
+    golden_file = FIXTURE / "golden_pack_GEV_rev15.md"
     # core.autocrlf checks the fixture out with CRLF on Windows; the pack itself is built with "\n"
     golden_bytes = golden_file.read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes

@@ -45,7 +45,7 @@ Additional commentary here.
 ## SECTION 12 - WHAT WE DO NOT HOLD
 Declared gaps.
 """
-    monkeypatch.setattr(cap, "build_pack", lambda ticker, include_research=False: cap.PackText(sample_pack))
+    monkeypatch.setattr(cap, "build_pack", lambda ticker, include_research=False, news_snippets=False: cap.PackText(sample_pack))
     monkeypatch.setattr(cap, "LAST_PACK_MOMENTUM_STATE", {"mom_1m": 0.12, "mom_6m": 0.50})
     monkeypatch.setattr(cr.rs2_data, "resolve_name", lambda t: "Test Company Inc.")
     monkeypatch.setattr(cr.rs2_data, "sector_lookup", lambda t: ("Technology", "Semiconductors"))
@@ -67,7 +67,7 @@ Declared gaps.
     assert "Additional commentary here" not in ctx["guidance"]
 
     # Fallback when blocks are absent
-    monkeypatch.setattr(cap, "build_pack", lambda ticker, include_research=False: cap.PackText("# Empty pack\n"))
+    monkeypatch.setattr(cap, "build_pack", lambda ticker, include_research=False, news_snippets=False: cap.PackText("# Empty pack\n"))
     ctx_fallback = cr.discovery_context("TEST")
     assert "not available" in ctx_fallback["section_2_5"]
     assert "not available" in ctx_fallback["recent_news"]

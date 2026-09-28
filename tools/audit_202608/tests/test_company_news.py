@@ -157,7 +157,10 @@ def test_pack_recent_company_news_live_present_after_section_2_5(screener_data_s
     assert "SearXNG news search (Reuters, Bing News), last 30 days, fetched 2026-09-24" in sec_news
     assert "- The stock moved" in sec_news
     assert "in 1 month and" in sec_news
-    assert "- 2026-09-23 | reuters, reuters.com | Meta's Muse rekindles fears over winners and losers | https://reuters.com/muse-ai | Meta launched Muse personal AI agent reviving chip thesis." in sec_news
+    # S3 C (brief §5.8, C1): this row has a snippet but no excerpt, so build_pack's default
+    # (news_snippets=False) drops the snippet — the row prints its first four fields only.
+    assert "- 2026-09-23 | reuters, reuters.com | Meta's Muse rekindles fears over winners and losers | https://reuters.com/muse-ai" in sec_news
+    assert "Meta launched Muse personal AI agent reviving chip thesis." not in sec_news
 
 
 def test_pack_recent_company_news_point_in_time_no_network(screener_data_stub, monkeypatch):

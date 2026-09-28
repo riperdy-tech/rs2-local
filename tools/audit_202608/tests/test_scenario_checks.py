@@ -96,11 +96,16 @@ def test_no_snapshot_means_no_stamps_and_no_crash(tmp_path):
     assert st["bull_bear_anchor"] == "no consensus range (0 analysts)"
 
 
+# S3 C (brief §5.3): the NET DEBT line's "(net_debt for the firm frame, which needs a
+# pre-interest flow)" parenthesis and its trailing rule sentences are gone — that rule now lives
+# in the DEFAULTS block (§5.2). The facts object (not the legacy regex reader, which anchored on
+# the removed parenthesis) is the modern source for net_debt_b.
 def test_the_pack_prints_one_net_debt_default(screener_data_stub):
     import capability_test as cap
-    pack = str(cap.build_pack("GEV"))
-    line = next(l for l in pack.splitlines() if "NET DEBT (net_debt for the firm frame" in l)
-    assert "short-term investments" in line and cv._pack_net_debt_b(pack) is not None
+    pack_obj = cap.build_pack("GEV")
+    pack = str(pack_obj)
+    line = next(l for l in pack.splitlines() if "[Arithmetic] NET DEBT:" in l)
+    assert "short-term investments" in line and pack_obj.facts.get("net_debt_b") is not None
 
 
 def test_scenario_growth_is_read_from_the_scenario_not_the_top_level_base_path(tmp_path):

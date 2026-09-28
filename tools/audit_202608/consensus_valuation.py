@@ -2050,6 +2050,9 @@ def main():
         pack_macro_degraded = False  # unknown: the pack was not rebuilt this run
         pack_source = f"frozen:{pack_file_arg}"
         pack_active_shocks, pack_momentum_state = None, None  # unknown: not rebuilt this run
+        # S3 5.9 (C2): research_omitted is written only when the pack is built fresh; a frozen
+        # `--pack-file` reuse reads a pack that was already filtered when it was built.
+        pack_research_omitted = None
         sidecar = pack_facts.read_sidecar(pack_file_arg.parent)
         if sidecar is not None:
             facts = sidecar
@@ -2071,6 +2074,8 @@ def main():
         # printed, so consensus.json (below) can record what the analyst actually saw.
         pack_active_shocks = list(getattr(cap, "LAST_PACK_ACTIVE_SHOCKS", []) or [])
         pack_momentum_state = dict(getattr(cap, "LAST_PACK_MOMENTUM_STATE", {}) or {})
+        # S3 5.9 (C2): the SECTION 11 sub-sections this build dropped as off-topic.
+        pack_research_omitted = list(getattr(pack_text, "research_omitted", []) or [])
         facts = pack_text.facts
         pack_facts_source = "build"
         pack_facts_version_read = facts.get("version")
@@ -2315,7 +2320,10 @@ def main():
             snap_file = snapshot_dir / "_research_snapshot.json"
             calls = json.loads(snap_file.read_text(encoding="utf-8")).get("calls") or []
 
-        filled, prov = contract_fill.fill(calls, scorecard, facts, price, ticker=t)
+        # S3 5.12: a revision-15 pack (its own first-line marker, not just cap.PACK_REVISION —
+        # a frozen `--pack-file` reuse may carry an older stamp) never publishes a blend.
+        filled, prov = contract_fill.fill(calls, scorecard, facts, price, ticker=t,
+                                          allow_blend=not pack_facts.is_revision_15(pack))
         scorecard.update(filled)
         scorecard["code_fill"] = prov
 
@@ -2599,6 +2607,10 @@ def main():
            "median_mos_pct": round((med / price - 1) * 100, 1) if med and price else None}
     if pack_facts_source == "build":
         doc["pack_facts_parity"] = pack_facts_parity
+        # S3 5.9 (C2): only written when the pack is built fresh — a frozen `--pack-file` reuse
+        # reads a pack that was already filtered when it was built, so the key stays absent
+        # rather than present-as-null (matches a pre-C record, where the key never existed).
+        doc["research_omitted"] = pack_research_omitted
     if failfast_record is not None:
         doc["failfast"] = failfast_record
     (d / "consensus.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")

@@ -33,36 +33,54 @@ import depth_gates  # noqa: E402
 import pack_facts  # noqa: E402
 import tools.dispersion_battery as db  # noqa: E402
 
-_DEFAULTS = """# DATA PACK - TST   (pack revision 15)
-
-## DEFAULTS   [each desk input takes this value unless you pass another]
-- shares_outstanding: <61,443,377> | SECTION 2
-- consensus_implied_value: <58.92> (<used>) | the reference
-{status_line}- revenue_cagr_5y_pct: <+9.1%> | the 5y CAGR
-"""
-
-
-def _defaults(status_line=""):
-    return pack_facts.from_text(_DEFAULTS.format(status_line=status_line))
+# S3 C (brief §5.2): the interim reader above (the "S2c" draft) let a partial, hand-assembled
+# block carry only the lines a test cared about, with any other key silently absent. The real
+# reader replacing it (`pack_facts._from_defaults_block`) requires every one of the 24 facts-key
+# lines — a real build always emits all of them (`render_defaults_block` prints "not available"
+# for a None fact rather than omitting the line) — and raises on a block that is missing one,
+# rather than treating a missing key as an implicit None. So these fixtures are built from a full
+# facts dict via `render_defaults_block`, and the "no status line" case (below) is now a raise,
+# not a None: the reader's job is to never infer or default a key it cannot find, which a raise
+# enforces more strictly than a silent None would.
 
 
-def test_defaults_block_without_a_status_line_is_none_not_inferred():
-    f = _defaults()
+def _facts(consensus_data_status=None, civ=58.92):
+    return dict(pack_facts.empty(), version=4, consensus_implied_value=civ,
+               reference_status=("used" if civ is not None else None),
+               revenue_cagr_5y_pct=9.1, consensus_data_status=consensus_data_status)
+
+
+def _defaults_text(facts):
+    return "# DATA PACK - TST   (pack revision 15)\n\n" + pack_facts.render_defaults_block(facts)
+
+
+def _defaults(consensus_data_status=None, civ=58.92):
+    return pack_facts.from_text(_defaults_text(_facts(consensus_data_status, civ)))
+
+
+def test_defaults_block_status_line_not_available_is_none_not_inferred():
+    f = _defaults(consensus_data_status=None, civ=58.92)
     assert f["source"] == "defaults_block"
     assert f["consensus_implied_value"] == pytest.approx(58.92)
-    assert f["consensus_data_status"] is None          # the build inferred "ok" here
-    no_civ = pack_facts.from_text(_DEFAULTS.format(status_line="").replace(
-        "- consensus_implied_value: <58.92> (<used>) | the reference\n", ""))
+    assert f["consensus_data_status"] is None          # explicit "not available", never inferred "ok"
+    no_civ = _defaults(consensus_data_status=None, civ=None)
     assert no_civ["consensus_implied_value"] is None
-    assert no_civ["consensus_data_status"] is None     # the build inferred "estimates_unavailable" here
+    assert no_civ["consensus_data_status"] is None     # never inferred "estimates_unavailable"
+
+
+def test_defaults_block_missing_status_line_entirely_raises():
+    block = pack_facts.render_defaults_block(_facts(consensus_data_status="ok"))
+    truncated = "\n".join(l for l in block.splitlines()
+                          if not l.startswith("- consensus_data_status:"))
+    text = "# DATA PACK - TST   (pack revision 15)\n\n" + truncated
+    with pytest.raises(ValueError):
+        pack_facts.from_text(text)
 
 
 def test_defaults_block_status_line_is_read_verbatim():
-    assert _defaults("- consensus_data_status: <enrich_missing> | SECTION 8\n")[
-        "consensus_data_status"] == "enrich_missing"
-    assert _defaults("- consensus_data_status: <ok> | SECTION 8\n")["consensus_data_status"] == "ok"
-    assert _defaults("- consensus_data_status: <not available> | SECTION 8\n")[
-        "consensus_data_status"] is None
+    assert _defaults(consensus_data_status="enrich_missing")["consensus_data_status"] == "enrich_missing"
+    assert _defaults(consensus_data_status="ok")["consensus_data_status"] == "ok"
+    assert _defaults(consensus_data_status=None)["consensus_data_status"] is None
 
 
 def _clean_v6(**over):

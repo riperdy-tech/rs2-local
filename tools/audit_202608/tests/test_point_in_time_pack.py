@@ -143,12 +143,13 @@ def test_ttm_recomputed_from_trailing_four_allowed_quarters(screener_data_stub, 
     pack = cap.build_pack("GEV", asof="2026-03-31")
     sec3 = pack.split("SECTION 3")[1].split("SECTION 4")[0]
     assert "recomputed from the 4 trailing allowed quarters" in sec3
-    assert "Operating cash flow: not available (point-in-time)" in sec3
-    assert "Capital expenditure: not available (point-in-time)" in sec3
-    assert "Free cash flow: not available (point-in-time)" in sec3
+    # S3 C (brief §5.6): one typed line (Revenue | net income | ...), lower-cased labels.
+    assert "operating cash flow not available (point-in-time)" in sec3
+    assert "capital expenditure not available (point-in-time)" in sec3
+    assert "free cash flow not available (point-in-time)" in sec3
     # Revenue IS recomputable (sum of the last 4 allowed quarters' `revenue` field) — must not
     # be blanket-omitted the way ocf/capex/fcf are.
-    assert "Revenue: not available" not in sec3
+    assert "Revenue not available" not in sec3
 
 
 def test_ttm_omitted_when_fewer_than_four_quarters_are_allowed(screener_data_stub, monkeypatch):
@@ -351,15 +352,19 @@ def test_asof_coe_anchor_reconstruction_in_pack(screener_data_stub, monkeypatch)
     sec15 = pack.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
 
     # COE ANCHOR: rf 4.30% + adj loading 0.912 (Blume: 0.67 * 0.868 + 0.33) * ERP 4.23% = 8.16%
-    assert "- COE ANCHOR for this name: rf 4.30% + adjusted loading 0.912× (Blume: 0.67 × raw 0.868 + 0.33) × implied ERP 4.23% = 8.16%" in sec15
+    # S3 C (brief §5.6): the result is stated before "=", and the anchor line is now combined with
+    # the long-run growth anchor clause on one line via " | ".
+    assert ("COE ANCHOR for this name: 8.16% = rf 4.30% + adjusted loading 0.912× (Blume: 0.67 × "
+            "raw 0.868 + 0.33) × implied ERP 4.23%") in sec15
 
     # Structural parameter labels must be present
     assert "sector loading from the current anchor (structural parameter; small look-ahead risk, accepted for this trial)" in sec15
     assert "Damodaran implied ERP, year-end 2025 (published ~Jan 2026)" in sec15
     assert "from the current anchor (structural parameter; small look-ahead risk, accepted for this trial)" in sec15
 
-    # COE MANDATE line must be stamped exactly as in live mode
-    assert "- **COE MANDATE:** Use `coe_used` within +-150 bp of the COE ANCHOR above (8.16%)" in sec15
+    # S3 C (brief §5.3): the COE MANDATE line is gone — that rule now lives in the DEFAULTS block
+    # (§5.2), which names the same +-150bp tolerance against coe_anchor.
+    assert "**COE MANDATE:**" not in sec15
 
 
 def test_asof_coe_anchor_uses_adjusted_loading(screener_data_stub, monkeypatch):

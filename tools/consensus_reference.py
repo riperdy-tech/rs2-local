@@ -306,6 +306,14 @@ def fence_window(win, side, fence):
     return dict(win, ttm_value=None, ttm_levels=None, fence_side=side, fence=fence)
 
 
+# S3 5.6 (2026-09-28): both functions below are rewritten as typed, pipe-separated clauses; the
+# instruction clauses that named a *_reason field are gone (those rules now live in the DEFAULTS
+# block, 5.2, and the desk's own refusals, 3.4-3.5). Every number and the gap stay. `fmt_b` is now
+# called with a bare-number formatter (capability_test._bn, S3 5.7) rather than `_b`, so a $B
+# quantity here carries no unit of its own — the per-share values keep their literal "$" since
+# they are prices, not the $B `fmt_b` covers.
+
+
 def window_line(win, ref, ttm_base, through, fmt_b, base_year_check=True):
     """SECTION 8's BASE WINDOW CHECK, printed only when the windows are more than WINDOW_TOL apart.
     The prefixes are fixed: the harness parses the gap, the TTM reference and its year-2 level."""
@@ -314,25 +322,26 @@ def window_line(win, ref, ttm_base, through, fmt_b, base_year_check=True):
     if win.get("fence_side"):
         # review B2: the E15 fence applies to the TTM window's value too; its side, never its number
         lo, hi = win["fence"]
-        alt = (f"On the TTM window the consensus path lands {win['fence_side']} the street fence "
-               f"[${lo:,.2f}, ${hi:,.2f}], so its value is not shown: a Base on that window needs "
-               f"guidance_deviation_reason")
+        alt = (f"on the TTM window the consensus path lands {win['fence_side']} the street fence "
+               f"[${lo:,.2f}, ${hi:,.2f}], not shown")
     elif win["ttm_value"] is not None:
-        alt = (f"On the TTM window the consensus path is worth ${win['ttm_value']:,.2f} per share, year-2 "
-               f"cash-flow level {fmt_b(win['ttm_levels'][1])}")
+        alt = (f"on the TTM window the consensus path is worth ${win['ttm_value']:,.2f} per share, "
+               f"year-2 cash-flow level {fmt_b(win['ttm_levels'][1])}")
     else:
-        alt = "The TTM window's owner earnings are not positive"
-    return (f"- [Arithmetic] BASE WINDOW CHECK: base_window_gap {win['gap'] * 100:+.0f}%. TTM owner earnings "
-            f"(through {through}) are {fmt_b(ttm_base)}; the fiscal-year base grown by the consensus "
-            f"current-FY EPS growth for the {win['quarters']} quarter(s) between them is "
-            f"{fmt_b(win['expected_ttm'])}. One of the two windows holds items the other does not (a one-off "
-            f"gain or charge, a capex swing). {alt}; on the fiscal-year window ${ref['value']:,.2f} (the "
-            f"CONSENSUS-IMPLIED VALUE above)."
-            # review R7: point to the BASE-YEAR CHECK only where it printed its numbers
-            + (" The BASE-YEAR CHECK shows the analysts' own year-ago EPS against the filed year." if base_year_check
-               else "")
-            + " Name in base_cf_reason the window you judge representative, and anchor to its reference and "
-              "year-2 level.")
+        alt = "the TTM window's owner earnings are not positive"
+    clauses = [f"[Arithmetic] BASE WINDOW CHECK: base_window_gap {win['gap'] * 100:+.0f}%",
+              f"TTM owner earnings (through {through}) {fmt_b(ttm_base)}",
+              f"the fiscal-year base grown by the consensus current-FY EPS growth for "
+              f"{win['quarters']} quarter(s) between them is {fmt_b(win['expected_ttm'])} "
+              f"(one of the two windows holds items the other does not: a one-off gain or "
+              f"charge, a capex swing)",
+              alt,
+              f"on the fiscal-year window ${ref['value']:,.2f} (the CONSENSUS-IMPLIED VALUE above)"]
+    # review R7: point to the BASE-YEAR CHECK only where it printed its numbers
+    if base_year_check:
+        clauses.append("the BASE-YEAR CHECK shows the analysts' own year-ago EPS against the "
+                       "filed year")
+    return "- " + " | ".join(clauses)
 
 
 def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):
@@ -340,38 +349,42 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):
     (consensus_valuation)."""
     if ref.get("value") is None:
         return f"- CONSENSUS-IMPLIED VALUE: not available — {ref.get('reason')}"
-    head = (f"- [Arithmetic] CONSENSUS-IMPLIED VALUE (reference, not a forecast): ${ref['value']:,.2f} "
-            f"per share — the analysts' own earnings path at our discount rate. ")
-    stub = ref.get("stub_months")
-    roll = (f"; valued at the fiscal year end and rolled forward {stub:.0f} months to today"
-            if stub else "")
-    differs = (anchor is not None and abs(terminal_g - anchor) > 1e-6) or bool(ref.get("terminal_g_is_default"))
-    tg_label = "terminal-growth default" if differs else "terminal-growth anchor"
-    tail = (f"; then a 5-year fade to the {tg_label} {terminal_g * 100:.2f}%; discounted at "
-            f"the COE ANCHOR {coe * 100:.2f}%{roll}. A Base IV more than a quarter away from it (below 0.75x "
-            f"or above 1.33x) needs guidance_deviation_reason.")
-    lv = ref.get("levels")
-    lv_txt = ""
-    if lv:
-        lv_txt = (f" Consensus cash-flow levels: year 1 {fmt_b(lv[0])}, year 2 {fmt_b(lv[1])} — your Base "
-                  f"year-2 cash flow should land within 15% of the year-2 level from whatever base you declare")
-        rng = ref.get("range")
-        if rng:
-            lv_txt += (f"; Bull year 2 {fmt_b(rng[0])} and Bear year 2 {fmt_b(rng[1])} at the next-FY EPS "
-                       f"high and low ({rng[2]} analysts)")
-        lv_txt += "."
+    clauses = [f"[Arithmetic] CONSENSUS-IMPLIED VALUE (reference, not a forecast): "
+              f"${ref['value']:,.2f} per share, the analysts' own earnings path at our discount rate"]
+
     label = ref.get("base_label")
     if ref["method"] == "growth":
+        clauses.append(f"base: owner earnings {fmt_b(base_cf)}" + (f" ({label})" if label else ""))
         path = " / ".join(f"{g * 100:+.1f}%" for g in ref["path"])
-        base_txt = f"Owner-earnings base {fmt_b(base_cf)}" + (f" ({label})" if label else "")
-        return (head + f"{base_txt}; cash-flow growth years 1-5 {path} (years 1-2 = consensus EPS "
-                f"growth; from year 3, next-FY revenue growth fading toward the GROWTH BASE RATES median, "
-                f"never above next-FY revenue growth)" + tail + lv_txt)
-    g35 = " / ".join(f"{g * 100:+.1f}%" for g in ref["path"][2:])
-    why = (f"Years 1-2 are consensus EPS x diluted shares + D&A - capex because {ref['levels_reason']}"
-           if ref.get("levels_reason") else
-           f"Consensus EPS growth is unusable ({ref['growth_unusable']}), so years 1-2 are "
-           f"consensus EPS x diluted shares + D&A - capex")
-    return (head + f"{why}: {fmt_b(ref['flows'][0])}, "
-            f"{fmt_b(ref['flows'][1])}; years 3-5 growth {g35} (next-FY revenue growth fading toward the "
-            f"GROWTH BASE RATES median, never above next-FY revenue growth)" + tail + lv_txt)
+        clauses.append(f"cash-flow growth years 1-5: {path} (years 1-2 consensus EPS growth; "
+                       f"from year 3, next-FY revenue growth fading toward the base-rate median, "
+                       f"never above next-FY revenue growth)")
+    else:
+        why = (f"years 1-2 are consensus EPS x diluted shares + D&A - capex because "
+               f"{ref['levels_reason']}" if ref.get("levels_reason") else
+               f"consensus EPS growth is unusable ({ref['growth_unusable']}), so years 1-2 are "
+               f"consensus EPS x diluted shares + D&A - capex")
+        clauses.append(f"base: {why}: {fmt_b(ref['flows'][0])}, {fmt_b(ref['flows'][1])}"
+                       + (f" ({label})" if label else ""))
+        g35 = " / ".join(f"{g * 100:+.1f}%" for g in ref["path"][2:])
+        clauses.append(f"years 3-5 growth {g35} (next-FY revenue growth fading toward the "
+                       f"base-rate median, never above next-FY revenue growth)")
+
+    differs = (anchor is not None and abs(terminal_g - anchor) > 1e-6) or bool(ref.get("terminal_g_is_default"))
+    tg_label = "terminal-growth default" if differs else "terminal-growth anchor"
+    clauses.append(f"then a 5-year fade to the {tg_label} {terminal_g * 100:.2f}%")
+    clauses.append(f"discounted at the COE ANCHOR {coe * 100:.2f}%")
+    stub = ref.get("stub_months")
+    if stub:
+        clauses.append(f"valued at the fiscal year end, rolled forward {stub:.0f} months")
+
+    lv = ref.get("levels")
+    if lv:
+        lv_clause = f"levels: year 1 {fmt_b(lv[0])}, year 2 {fmt_b(lv[1])}"
+        rng = ref.get("range")
+        if rng:
+            lv_clause += (f"; Bull year 2 {fmt_b(rng[0])}, Bear year 2 {fmt_b(rng[1])} (next-FY "
+                          f"EPS high and low, {rng[2]} analysts)")
+        clauses.append(lv_clause)
+
+    return "- " + " | ".join(clauses)

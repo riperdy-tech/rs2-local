@@ -1,12 +1,9 @@
 """tools/audit_202608/tests/test_pack_facts_v2.py — S3 3.1: pack_facts version 3 (section 6 item 1).
 
-Covers the legacy readers for the five new keys that already have a revision-14 print site, the
-revision-15 DEFAULTS-block reader on hand-written blocks, and the no-DEFAULTS-block raise.
-
-NOT covered here (Package C, out of scope for this brief pass): the DEFAULTS reader round-tripped
-against a real golden_pack_GEV_rev15.md build, since section 5.2's DEFAULTS block is not rendered
-by capability_test.build_pack in this step (PACK_REVISION stays 14). The reader is instead
-exercised against hand-written text matching 5.2's format, as the brief allows.
+Covers the legacy readers for the five new keys that already have a revision-14 print site, and
+the revision-15 DEFAULTS-block round trip (5.2, built in package C: `render_defaults_block` /
+`_from_defaults_block`, exercised against hand-written facts dicts and against a real
+capability_test.build_pack("GEV") output).
 """
 from pathlib import Path
 import sys
@@ -18,6 +15,7 @@ _REPO = _HERE.parent.parent
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_REPO))
 
+import capability_test as cap
 import pack_facts
 
 
@@ -112,90 +110,101 @@ def test_empty_has_all_24_keys():
 
 
 # ---------------------------------------------------------------------------------------------
-# Revision-15 DEFAULTS-block reader (hand-written text; no golden pack yet, package C)
+# Revision-15 DEFAULTS-block round trip (5.2, package C): render_defaults_block / reader
 # ---------------------------------------------------------------------------------------------
 
-_EZPW_DEFAULTS_BLOCK = """# DATA PACK - EZPW   (pack revision 15)
-
-## DEFAULTS   [each desk input takes this value unless you pass another; a departure needs the named reason, and the desk asks for it]
-- shares_outstanding: <61,443,377> | SECTION 2, the vendor's basic count
-- shares_dilution_factor: <1.2917> (<quarter ended 2026-06-30>: basic EPS <0.62>, diluted EPS <0.48>) | the company's own diluted EPS; applied when it is at least 1.05
-- shares_default: <79,364,362> | the desk's shares_diluted unless you pass another count with shares_reason
-- shares_warning: <not available> | when present, the desk asks for shares_reason on every call
-- owner_earnings_default_b: <0.148> (<owner_earnings_source>) | the Base base_cf; more than 2% away needs base_cf_reason | cash_basis_b: <0.126>, the alternative
-- base_window: gap <+56%>, ttm_value <12.34>, ttm_year2 <0.160> | when printed, base_cf_reason names the window you judge representative and the item behind the gap
-- coe_anchor: <8.91%> | the Base discount rate; more than 1.5 points away needs coe_adjustment_reason
-- terminal_g_default: <3.75%> (terminal_g_anchor: <3.75%>) | the Base terminal_g; more than 0.5 points away needs terminal_reason
-- default_exit_multiple: <20.12>x | (1 + g) / (rate - g) at the defaults; a Base multiple implying terminal growth more than 0.5 points from terminal_g_default needs terminal_reason
-- valuation_frame: equity | the pack's flows are after interest; the firm frame needs interest_addback (at most the latest filed interest expense, interest_expense_latest_b: <0.016>), wacc_reason, and net_debt_b: <-0.048> (another figure needs net_debt_reason)
-- consensus_implied_value: <58.92> (<reference_status>) | a Base value outside 0.75-1.33 of it (<44.19>-<78.36>) needs guidance_deviation_reason
-- levels: year1 <0.147>, year2 <0.160>, bull2 <0.164>, bear2 <0.159> | a Base year-2 cash flow more than 15% from year2 needs guidance_deviation_reason; a Bull or Bear more than 15% from bull2 or bear2 needs scenario_deviation_reason
-- next_fy_revenue_growth: <+9.5%> | Base years 3-5 above it need guidance_deviation_reason, or the desk holds them at it
-- years35_p90: <16.7%> | growth above the base-rate p90 needs dated, company-specific evidence (a flag, not a veto)
-- base_rate_5y: p50 <5.6%>, p90 <16.7%>, share_ge_10 <26.7%>, share_ge_20 <6.8%>, share_ge_30 <2.2%> | the desk ranks the market-implied growth against it
-- revenue_cagr_5y_pct: <+9.1%> | the desk compares the market-implied growth with it
-- cash_flow_life: required on every desk call ("perpetual" or years), with cash_flow_life_reason
-- price: a Bull value below today's price needs bull_below_price_reason; a Bear value above it needs bear_above_price_reason
-"""
+def _rev15(block):
+    return "# DATA PACK - X   (pack revision 15)\n\n" + block
 
 
 def test_defaults_block_round_trip_ezpw_example():
-    f = pack_facts.from_text(_EZPW_DEFAULTS_BLOCK)
+    """The brief's own normative EZPW example (5.2), reproduced by the renderer byte for byte."""
+    facts = dict(pack_facts.empty(), version=4,
+                 shares_outstanding=61443377.0, shares_dilution_factor=1.2917,
+                 shares_dilution_period="quarter ended 2026-06-30", shares_default=79364362.0,
+                 shares_warning=None, filed_shares_diluted=83383000.0, filed_shares_fy=2025,
+                 owner_earnings_default_b=0.148, owner_earnings_source="ttm_filed",
+                 cash_basis_b=0.126, base_window={}, coe_anchor=0.0891,
+                 terminal_g_default=0.0375, terminal_g_anchor=0.0375, net_debt_b=-0.048,
+                 interest_expense_latest_b=None, consensus_data_status="ok",
+                 consensus_implied_value=58.92, reference_status="used",
+                 levels={"year1": 0.147, "year2": 0.160, "bull2": 0.164, "bear2": 0.159},
+                 next_fy_revenue_growth=9.5 / 100, years35_p90=16.7 / 100.0,
+                 base_rate_5y={"share_ge_10": 26.7, "share_ge_20": 6.8, "share_ge_30": 2.2,
+                              "p50": 5.6, "p90": 16.7},
+                 revenue_cagr_5y_pct=9.1)
+    # the multiple is the caller's own pre-computed value (SECTION 1.5's, at full precision) —
+    # see render_defaults_block's docstring for why it is not derived from the rounded facts.
+    dex = cap._exit_multiple_value(8.91, 0.0375)
+    block = pack_facts.render_defaults_block(facts, default_exit_multiple=dex)
+    expected_lines = [
+        "- shares_outstanding: 61,443,377 | SECTION 2, the vendor's basic count",
+        "- shares_dilution_factor: 1.2917 | the company's own diluted EPS (basic / diluted EPS); "
+        "applied when it is at least 1.05",
+        "- shares_dilution_period: quarter ended 2026-06-30 | the filed period the factor comes from",
+        "- shares_default: 79,364,362 | the desk's shares_diluted unless you pass another count "
+        "with shares_reason",
+        "- shares_warning: not available | when present, the desk asks for shares_reason on "
+        "every call",
+        "- filed_shares_diluted: 83,383,000 | SECTION 6B's latest filed diluted average; with "
+        "after-interest flows it counts a convertible's interest twice",
+        "- filed_shares_fy: 2025 | the fiscal year of that average",
+        "- owner_earnings_default_b: 0.148 | the Base base_cf; more than 2% away needs base_cf_reason",
+        "- owner_earnings_source: ttm_filed | where that default comes from",
+        "- cash_basis_b: 0.126 | the alternative base (includes working-capital swings)",
+        "- base_window: not available | when printed, base_cf_reason names the window you judge "
+        "representative and the item behind the gap",
+        "- coe_anchor: 8.91% | the Base discount rate; more than 1.5 points away needs "
+        "coe_adjustment_reason",
+        "- terminal_g_default: 3.75% | the Base terminal_g; more than 0.5 points away needs "
+        "terminal_reason",
+        "- terminal_g_anchor: 3.75% | the long-run nominal growth anchor",
+        # the brief's worked "20.12x" comes from the real MRI anchor's full, unrounded precision
+        # (5.6's normative example); the synthetic 8.91/3.75 stand-ins used above round to
+        # 20.11x, so this asserts the renderer's number against `dex` (computed the same way
+        # SECTION 1.5 does) rather than the brief's literal digits.
+        f"- default_exit_multiple: {dex:.2f}x | (1 + g) / (rate - g) at the defaults; a Base "
+        "multiple implying terminal growth more than 0.5 points from terminal_g_default needs "
+        "terminal_reason",
+        "- net_debt_b: -0.048 | the firm frame's net debt; another figure needs net_debt_reason "
+        "(the pack's flows are after interest: value them in the equity frame)",
+        "- interest_expense_latest_b: not available | the firm frame's interest_addback is at "
+        "most this",
+        "- consensus_data_status: ok | ok, or why SECTION 8 prints no consensus estimates",
+        "- consensus_implied_value: 58.92 | a Base value outside 0.75-1.33 of it (44.19-78.36) "
+        "needs guidance_deviation_reason",
+        "- reference_status: used | whether the reference is shown, fenced or not available",
+        "- levels: year1=0.147, year2=0.160, bull2=0.164, bear2=0.159 | a Base year-2 cash flow "
+        "more than 15% from year2 needs guidance_deviation_reason; a Bull or Bear more than 15% "
+        "from bull2 or bear2 needs scenario_deviation_reason",
+        "- next_fy_revenue_growth: +9.5% | Base years 3-5 above it need guidance_deviation_reason, "
+        "or the desk holds them at it",
+        "- years35_p90: 16.7% | growth above the base-rate p90 needs dated, company-specific "
+        "evidence (a flag, not a veto)",
+        "- base_rate_5y: share_ge_10=26.7%, share_ge_20=6.8%, share_ge_30=2.2%, p50=5.6%, "
+        "p90=16.7% | the desk ranks the market-implied growth against it",
+        "- revenue_cagr_5y_pct: +9.1% | the desk compares the market-implied growth with it",
+        '- cash_flow_life: required on every desk call ("perpetual" or years), with '
+        "cash_flow_life_reason",
+        "- price: a Bull value below today's price needs bull_below_price_reason; a Bear value "
+        "above it needs bear_above_price_reason",
+    ]
+    for expected in expected_lines:
+        assert expected in block, expected
+    f = pack_facts.from_text(_rev15(block))
     assert f["version"] == 4
-    assert f["shares_outstanding"] == 61443377.0
-    assert f["shares_default"] == 79364362.0
-    assert f["shares_dilution_factor"] == pytest.approx(1.2917)
-    assert f["shares_dilution_period"] == "quarter ended 2026-06-30"
-    assert f["shares_warning"] is None
-    assert f["owner_earnings_default_b"] == pytest.approx(0.148)
-    assert f["cash_basis_b"] == pytest.approx(0.126)
-    assert f["base_window"] == {"gap": pytest.approx(0.56), "ttm_value": pytest.approx(12.34),
-                                "ttm_year2": pytest.approx(0.160)}
-    assert f["coe_anchor"] == pytest.approx(0.0891)
-    assert f["terminal_g_default"] == pytest.approx(0.0375)
-    assert f["terminal_g_anchor"] == pytest.approx(0.0375)
-    assert f["net_debt_b"] == pytest.approx(-0.048)
-    assert f["interest_expense_latest_b"] == pytest.approx(0.016)
-    assert f["consensus_implied_value"] == pytest.approx(58.92)
-    assert f["levels"] == {"year1": pytest.approx(0.147), "year2": pytest.approx(0.160),
-                           "bull2": pytest.approx(0.164), "bear2": pytest.approx(0.159)}
-    assert f["next_fy_revenue_growth"] == pytest.approx(0.095)
-    assert f["years35_p90"] == pytest.approx(0.167)
-    assert f["base_rate_5y"] == {"p50": 5.6, "p90": 16.7, "share_ge_10": 26.7,
-                                 "share_ge_20": 6.8, "share_ge_30": 2.2}
-    assert f["revenue_cagr_5y_pct"] == pytest.approx(9.1)
+    assert pack_facts.parity(facts, f) == []
 
 
 def test_defaults_block_with_none_values():
-    text = """# DATA PACK - X   (pack revision 15)
-
-## DEFAULTS   [test]
-- shares_outstanding: <not available> | x
-- shares_dilution_factor: <not available> | x
-- shares_default: <not available> | x
-- shares_warning: <SECTION 2's count is 12% from the basic count implied by filed EPS> | x
-- owner_earnings_default_b: <not available> (<not available>) | x | cash_basis_b: <not available>, x
-- base_window: <not available> | x
-- coe_anchor: <not available> | x
-- terminal_g_default: <not available> (terminal_g_anchor: <not available>) | x
-- default_exit_multiple: <not available>x | x
-- valuation_frame: equity | x, interest_expense_latest_b: <not available>, x, net_debt_b: <not available> x
-- consensus_implied_value: <not available> (<not_available>) | x (<not available>-<not available>) x
-- levels: <not available> | x
-- next_fy_revenue_growth: <not available> | x
-- years35_p90: <not available> | x
-- base_rate_5y: <not available> | x
-- revenue_cagr_5y_pct: <not available> | x
-- cash_flow_life: x
-- price: x
-"""
-    f = pack_facts.from_text(text)
-    for k in ("shares_outstanding", "shares_default", "shares_dilution_factor",
-              "owner_earnings_default_b", "cash_basis_b", "coe_anchor", "terminal_g_default",
-              "terminal_g_anchor", "net_debt_b", "interest_expense_latest_b",
-              "consensus_implied_value", "next_fy_revenue_growth", "years35_p90",
-              "revenue_cagr_5y_pct"):
-        assert f[k] is None, f"{k} should be None"
+    facts = pack_facts.empty()
+    facts["shares_warning"] = "SECTION 2's count is 12% from the basic count implied by filed EPS"
+    block = pack_facts.render_defaults_block(facts)
+    f = pack_facts.from_text(_rev15(block))
+    for k in pack_facts.KEYS:
+        if k == "shares_warning":
+            continue
+        assert f[k] == facts[k], f"{k} should round-trip to {facts[k]!r}, got {f[k]!r}"
     assert f["base_window"] == {}
     assert f["levels"] == {}
     assert f["base_rate_5y"] == {}
@@ -203,38 +212,74 @@ def test_defaults_block_with_none_values():
 
 
 def test_defaults_block_net_cash_sign():
-    text = """# DATA PACK - X   (pack revision 15)
-
-## DEFAULTS   [test]
-- valuation_frame: equity | x, interest_expense_latest_b: <0.010>, x, net_debt_b: <-1.234> x
-"""
-    f = pack_facts.from_text(text)
+    facts = dict(pack_facts.empty(), net_debt_b=-1.234, interest_expense_latest_b=0.010)
+    block = pack_facts.render_defaults_block(facts)
+    assert "- net_debt_b: -1.234 |" in block
+    f = pack_facts.from_text(_rev15(block))
     assert f["net_debt_b"] == pytest.approx(-1.234)
+    assert f["interest_expense_latest_b"] == pytest.approx(0.010)
 
 
 def test_defaults_block_zero_value():
-    text = """# DATA PACK - X   (pack revision 15)
-
-## DEFAULTS   [test]
-- valuation_frame: equity | x, interest_expense_latest_b: <0.000>, x, net_debt_b: <0.000> x
-"""
-    f = pack_facts.from_text(text)
+    facts = dict(pack_facts.empty(), net_debt_b=0.0, interest_expense_latest_b=0.0)
+    block = pack_facts.render_defaults_block(facts)
+    assert "- net_debt_b: 0.000 |" in block
+    assert "- interest_expense_latest_b: 0.000 |" in block
+    f = pack_facts.from_text(_rev15(block))
     assert f["net_debt_b"] == 0.0
     assert f["interest_expense_latest_b"] == 0.0
 
 
 def test_defaults_block_empty_base_window_and_missing_levels_members():
-    text = """# DATA PACK - X   (pack revision 15)
-
-## DEFAULTS   [test]
-- base_window: <not available> | x
-- levels: year1 <0.100>, year2 <0.200> | x
-"""
-    f = pack_facts.from_text(text)
+    facts = dict(pack_facts.empty(), base_window={}, levels={"year1": 0.100, "year2": 0.200})
+    block = pack_facts.render_defaults_block(facts)
+    assert "- base_window: not available |" in block
+    f = pack_facts.from_text(_rev15(block))
     assert f["base_window"] == {}
     assert f["levels"] == {"year1": 0.100, "year2": 0.200}
     assert "bull2" not in f["levels"]
     assert "bear2" not in f["levels"]
+
+
+def test_defaults_block_a_reference_status_with_no_value():
+    """S2c fail-open bug the A+B review corrected: a reference_status without a numeric
+    consensus_implied_value must still round-trip (the status is read verbatim, never inferred)."""
+    facts = dict(pack_facts.empty(), consensus_implied_value=None,
+                 reference_status="outside_fence_above")
+    block = pack_facts.render_defaults_block(facts)
+    f = pack_facts.from_text(_rev15(block))
+    assert f["consensus_implied_value"] is None
+    assert f["reference_status"] == "outside_fence_above"
+
+
+def test_defaults_block_shares_warning_present():
+    facts = dict(pack_facts.empty(), shares_warning=(
+        "SECTION 2's count is 29% from the basic count implied by filed EPS: share classes, "
+        "ADS units or a stale vendor count"))
+    block = pack_facts.render_defaults_block(facts)
+    f = pack_facts.from_text(_rev15(block))
+    assert f["shares_warning"] == facts["shares_warning"]
+
+
+@pytest.mark.parametrize("status", ["ok", "enrich_missing", "stale", "estimates_unavailable",
+                                    "point_in_time", None])
+def test_defaults_block_each_consensus_data_status_value(status):
+    facts = dict(pack_facts.empty(), consensus_data_status=status)
+    block = pack_facts.render_defaults_block(facts)
+    f = pack_facts.from_text(_rev15(block))
+    assert f["consensus_data_status"] == status
+
+
+def test_defaults_block_round_trips_a_real_gev_build(monkeypatch, screener_data_stub):
+    """The DEFAULTS reader round-trips the facts on a real build_pack("GEV") output (section 6
+    item 1), with PACK_REVISION forced to 15 so from_text dispatches to the DEFAULTS reader — the
+    module stays at 14 until package C's last step (brief section 0)."""
+    monkeypatch.setattr(cap, "PACK_REVISION", 15)
+    pack = cap.build_pack("GEV", include_research=False)
+    text = str(pack)
+    assert "(pack revision 15)" in text.splitlines()[0]
+    parsed = pack_facts.from_text(text)
+    assert pack_facts.parity(pack.facts, parsed) == []
 
 
 def test_revision_15_text_without_defaults_block_raises():

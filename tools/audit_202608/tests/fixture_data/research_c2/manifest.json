@@ -1,0 +1,57 @@
+[
+  {
+    "run": "EZPW_20260927_191240",
+    "title": "Catalysts & Guidance",
+    "expected_dropped": true
+  },
+  {
+    "run": "MO_20260927_044320",
+    "title": "Catalysts & Guidance",
+    "expected_dropped": false
+  },
+  {
+    "run": "FSM_20260927_113830",
+    "title": "What Changed in the Last 12 Months",
+    "expected_dropped": true
+  },
+  {
+    "run": "FSM_20260927_113830",
+    "title": "Bear Case / Short Thesis / Regulatory",
+    "expected_dropped": true
+  },
+  {
+    "run": "ADI_20260925_212229",
+    "title": "Competitive Position & Moat",
+    "expected_dropped": true
+  },
+  {
+    "run": "ADI_20260925_212229",
+    "title": "Catalysts & Guidance",
+    "expected_dropped": true
+  },
+  {
+    "run": "ADI_20260925_212229",
+    "title": "Capex Productivity & Returns",
+    "expected_dropped": true
+  },
+  {
+    "run": "APH_20260925_183541",
+    "title": "Catalysts & Guidance",
+    "expected_dropped": false
+  },
+  {
+    "run": "APH_20260925_183541",
+    "title": "What Changed in the Last 12 Months",
+    "expected_dropped": true
+  },
+  {
+    "run": "APH_20260925_183541",
+    "title": "Capex Productivity & Returns",
+    "expected_dropped": true
+  },
+  {
+    "run": "AU_20260926_044408",
+    "title": "Competitive Position & Moat",
+    "expected_dropped": false
+  }
+]

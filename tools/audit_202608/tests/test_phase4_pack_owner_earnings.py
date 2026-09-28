@@ -14,13 +14,13 @@ import rs2_data
 def test_owner_earnings_arithmetic_on_fixture(screener_data_stub):
     """Owner earnings line arithmetic correctly computed on GEV fixture."""
     pack = cap.build_pack("GEV")
+    # S3 C (brief \u00a75.6/\u00a75.3): result-first, bare numbers (the header carries $B once, \u00a75.7); the
+    # "equity frame" sentence is gone (that rule now lives in the DEFAULTS block, \u00a75.2).
     expected = (
-        '- [Arithmetic] OWNER EARNINGS (default base_cf): TTM net income $9.529B + '
-        'D&A (FY2025) $0.853B \u2212 TTM capex $1.701B = $8.681B. '
+        '- [Arithmetic] OWNER EARNINGS 8.681 = TTM net income 9.529 + '
+        'D&A (FY2025) 0.853 \u2212 TTM capex 1.701. '
         'Stock compensation is already expensed in net income, so it is counted once '
-        '(sbc_treatment "deducted_in_cf"); working-capital swings are excluded. '
-        'Net income is after interest, so this is an equity flow: value it in the equity frame. '
-        'Use this as base_cf unless base_cf_reason states why another base is more representative.'
+        '(sbc_treatment "deducted_in_cf"); working-capital swings are excluded.'
     )
     assert expected in pack
 
@@ -47,14 +47,15 @@ def test_owner_earnings_missing_input_lines(screener_data_stub, monkeypatch):
     ttm_data["tickers"]["GEV"]["fields"]["capex"] = None
     ttm_path.write_text(json.dumps(ttm_data), encoding="utf-8")
     pack = cap.build_pack("GEV")
-    assert "- OWNER EARNINGS (default base_cf): not available \u2014 TTM capex missing; declare your base and why." in pack
+    # S3 C (brief \u00a75.6): the label drops "(default base_cf)".
+    assert "- OWNER EARNINGS: not available \u2014 TTM capex missing; declare your base and why." in pack
 
     # 2. Missing net income
     ttm_data["tickers"]["GEV"]["fields"]["capex"] = orig_capex
     ttm_data["tickers"]["GEV"]["fields"]["net_income"] = None
     ttm_path.write_text(json.dumps(ttm_data), encoding="utf-8")
     pack = cap.build_pack("GEV")
-    assert "- OWNER EARNINGS (default base_cf): not available \u2014 TTM net income missing; declare your base and why." in pack
+    assert "- OWNER EARNINGS: not available \u2014 TTM net income missing; declare your base and why." in pack
 
     # 3. Missing D&A
     ttm_data["tickers"]["GEV"]["fields"]["net_income"] = 9529000000
@@ -65,13 +66,13 @@ def test_owner_earnings_missing_input_lines(screener_data_stub, monkeypatch):
         h_data["tickers"]["GEV"][yr]["da"] = None
     h_path.write_text(json.dumps(h_data), encoding="utf-8")
     pack = cap.build_pack("GEV")
-    assert "- OWNER EARNINGS (default base_cf): not available \u2014 D&A missing; declare your base and why." in pack
+    assert "- OWNER EARNINGS: not available \u2014 D&A missing; declare your base and why." in pack
 
     # 4. Missing net income and capex (TTM record empty)
     ttm_data["tickers"]["GEV"]["fields"] = {}
     ttm_path.write_text(json.dumps(ttm_data), encoding="utf-8")
     pack = cap.build_pack("GEV")
-    assert "- OWNER EARNINGS (default base_cf): not available \u2014 TTM net income, D&A, TTM capex missing; declare your base and why." in pack
+    assert "- OWNER EARNINGS: not available \u2014 TTM net income, D&A, TTM capex missing; declare your base and why." in pack
 
 
 def test_cash_flow_quality_line_at_26_pct_and_not_at_24_pct(screener_data_stub, monkeypatch):
@@ -131,7 +132,8 @@ def test_point_in_time_never_uses_post_asof_data(screener_data_stub, monkeypatch
     assert "$5.000B" not in pack
     assert "FY2026" not in pack.split("SECTION 3")[1].split("SECTION 4")[0]
     # Standard PIT pack missing capex reports missing capex without leak
-    assert "- OWNER EARNINGS (default base_cf): not available (point-in-time) \u2014 TTM capex missing" in pack
+    # S3 C (brief \u00a75.6): the label drops "(default base_cf)".
+    assert "- OWNER EARNINGS: not available (point-in-time) \u2014 TTM capex missing" in pack
 
     # Now provide quarterly capex in quarterly file for allowed quarters
     q_path = cap.SD / "fundamentals_quarterly.json"
@@ -142,7 +144,7 @@ def test_point_in_time_never_uses_post_asof_data(screener_data_stub, monkeypatch
 
     pack_with_capex = cap.build_pack("GEV", asof="2026-03-31")
     sec3 = pack_with_capex.split("SECTION 3")[1].split("SECTION 4")[0]
-    # Uses FY2025 D&A ($0.853B), NEVER FY2026 ($5.000B)
-    assert "D&A (FY2025) $0.853B" in sec3
+    # Uses FY2025 D&A (0.853, bare per §5.7), NEVER FY2026 ($5.000B)
+    assert "D&A (FY2025) 0.853" in sec3
     assert "FY2026" not in sec3
     assert "$5.000B" not in sec3

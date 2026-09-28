@@ -242,7 +242,8 @@ def test_financial_model_tool_schema_and_validation_agree():
     required = fn["parameters"]["required"]
 
     expected_desc = (
-        "Optional. The desk uses SECTION 2's count (DEFAULTS) when you leave it out. "
+        # S3 C review (2026-09-28): 5.11 made the desk's default the DEFAULTS shares_default.
+        "Optional. The desk uses the DEFAULTS block's shares_default when you leave it out. "
         "Pass it only for a different count, with shares_reason."
     )
     assert props["shares_diluted"]["description"] == expected_desc
