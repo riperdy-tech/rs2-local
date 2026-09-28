@@ -185,7 +185,10 @@ def test_discovery_slices_byte_identical_to_revision_14(tmp_path, s2c_tree):
     old = _dump_slices(s2c_tree, tmp_path / "old.json", supports_news_snippets=False)
     new = _dump_slices(REPO, tmp_path / "new.json", supports_news_snippets=True)
     for key in ("section_2_5", "recent_news", "consensus_estimates", "guidance"):
-        assert new[key] == old[key], key
+        # the charter-and-rename change renames the numbered pack blocks (DATA n); nothing else in
+        # the discovery input may change
+        expected = re.sub(r"\bSECTION[Ss]? (?=\d)", "DATA ", old[key]) if old[key] else old[key]
+        assert new[key] == expected, key
 
 
 # -------------------------------------------------------------------------------------------
@@ -231,7 +234,7 @@ def _slice(pack, header, next_prefix="## "):
 def test_section_1_6_has_no_duplicate_lines(screener_data_stub, monkeypatch):
     _stub_and_freeze(monkeypatch)
     pack = str(cap.build_pack("GEV", include_research=False))
-    sec16 = _slice(pack, "SECTION 1.6")
+    sec16 = _slice(pack, "DATA 1.6")
     assert "MRI regime probability vector" not in sec16
     assert "Nominal 10-Year Treasury yield:" not in sec16
     assert "Real 10-Year Treasury yield:" not in sec16

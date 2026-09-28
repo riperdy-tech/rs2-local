@@ -1,5 +1,6 @@
 """Tests for Phase 4 FIX 3: Pack default owner earnings starting cash flow and cash flow quality line."""
 import json
+import re
 import sys
 from pathlib import Path
 import pytest
@@ -9,6 +10,11 @@ sys.path.insert(0, str(HERE))
 
 import capability_test as cap
 import rs2_data
+
+
+def _sec3(pack: str) -> str:
+    s = re.split(r"##\s*DATA\s*3", pack)[1]
+    return re.split(r"##\s*DATA\s*4", s)[0]
 
 
 def test_owner_earnings_arithmetic_on_fixture(screener_data_stub):
@@ -130,7 +136,7 @@ def test_point_in_time_never_uses_post_asof_data(screener_data_stub, monkeypatch
     pack = cap.build_pack("GEV", asof="2026-03-31")
     # Must never reference FY2026 post-asof D&A ($5.000B)
     assert "$5.000B" not in pack
-    assert "FY2026" not in pack.split("SECTION 3")[1].split("SECTION 4")[0]
+    assert "FY2026" not in _sec3(pack)
     # Standard PIT pack missing capex reports missing capex without leak
     # S3 C (brief \u00a75.6): the label drops "(default base_cf)".
     assert "- OWNER EARNINGS: not available (point-in-time) \u2014 TTM capex missing" in pack
@@ -143,7 +149,7 @@ def test_point_in_time_never_uses_post_asof_data(screener_data_stub, monkeypatch
     q_path.write_text(json.dumps(q_data), encoding="utf-8")
 
     pack_with_capex = cap.build_pack("GEV", asof="2026-03-31")
-    sec3 = pack_with_capex.split("SECTION 3")[1].split("SECTION 4")[0]
+    sec3 = _sec3(pack_with_capex)
     # Uses FY2025 D&A (0.853, bare per §5.7), NEVER FY2026 ($5.000B)
     assert "D&A (FY2025) 0.853" in sec3
     assert "FY2026" not in sec3

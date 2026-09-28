@@ -32,10 +32,10 @@ WHAT IS NOT MIRRORED, AND WHY (measured against DeepSeek's API docs, 2026-08-24)
     spread_pct. Direction and IV level compare; spread does not compare like-for-like.
 
 FALLBACK LIMITS (--fresh), measured, not assumed:
-  * SECTION 11 of the pack is a research brief written by the LOCAL rs2-research model through
+  * DATA 11 of the pack is a research brief written by the LOCAL rs2-research model through
     LDR. With the local box down that brief cannot be refreshed. --fresh uses whatever
     research/{T}.md holds and PRINTS ITS AGE; if the file is absent the pack simply has no
-    SECTION 11. The run's own search tools (about 14 queries per sample) partly cover the gap.
+    DATA 11. The run's own search tools (about 14 queries per sample) partly cover the gap.
   * The tools call the LOCAL SearXNG. If it is unreachable, search_web returns an error to the
     model rather than failing the run - so a run can silently degrade to no-research. --fresh
     probes SearXNG first and says so.
@@ -263,7 +263,7 @@ def _searxng_up():
 
 
 def _brief_age_days(t):
-    """Age of the LOCAL research brief that build_pack folds in as SECTION 11, or None if absent.
+    """Age of the LOCAL research brief that build_pack folds in as DATA 11, or None if absent.
     Reported because --fresh cannot refresh it: only the local rs2-research model writes it."""
     rb = ROOT / "research" / f"{t}.md"
     if not rb.exists():
@@ -291,7 +291,7 @@ def main():
     if fresh:
         # FALLBACK PATH. Build the pack from current data exactly as consensus_valuation does -
         # same builder, same TASK, same addendum - so the only difference from a local run is
-        # which model reads it and how fresh SECTION 11 is.
+        # which model reads it and how fresh DATA 11 is.
         searx = _searxng_up()
         pack = cap.build_pack(t) + "\n\n---\n\n" + cap.TASK + cap.RESEARCH_ADDENDUM
         fin = cv.rs2_data.load_json(cv.common.SD / "financials" / f"{t}.json") or {}
@@ -299,7 +299,7 @@ def main():
         if not price:
             sys.exit(f"no price in the data pack for {t} - cannot judge a band against nothing")
         brief_msg = (f"research/{t}.md, {brief_age} days old (only the LOCAL model can refresh it)"
-                     if brief_age is not None else "ABSENT - pack has no SECTION 11")
+                     if brief_age is not None else "ABSENT - pack has no DATA 11")
         searx_msg = "up" if searx else "UNREACHABLE - no web research beyond the pack"
         print("[deep-api] FALLBACK MODE - no local run replayed.", flush=True)
         print(f"[deep-api]   research brief: {brief_msg}", flush=True)

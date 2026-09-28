@@ -35,17 +35,21 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # CONTINUE_REPORT_SHA256 = "707e547dd3ccdbe8e6303180852c9171a46085d3085cfe9f3d8d320923708151"
 # 2026-09-28 (reviewer, S3 C review): the Shares sentence names 5.11's DEFAULTS shares_default; was
 # "b9d6528f8f865dd6c661d0b97731dfa3585962c52f74a3a6e81b6a386b38fe99" ("use SECTION 2's count").
-TASK_SHA256 = "824b53db6bf8c1873bba57f2ed0e77f55456ec29cfebdb2a1c21eb733c885432"
-RESEARCH_ADDENDUM_SHA256 = "cd9c5add7226ed784de56433ea0168bb6c09b72fec678f60e42e90f2fdfaa043"
+# 2026-09-28 (package D): pack sections renamed DATA n (brief §D2).
+TASK_SHA256 = "017954dba1760027997a91e8456b63952ee5e2bcc7109ae4a9d03605ffd819ce"
+RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
 # 2026-09-28 (reviewer, S3 C review): shares_diluted's description names the DEFAULTS
 # shares_default; was "59ba2b728999b3f5be6f964fc9e4294d42678ffe611a5c6825f67369acb95861".
-TOOLS_SHA256 = "741e4664365e47863c2bf6e464dab13e461c9249fcf1f231d1d4dba920bdf954"
+# 2026-09-28 (package D): analyst_tools descriptions renamed DATA n (brief §D2).
+TOOLS_SHA256 = "cc6c27898d5fba93399520922cc29194506834fa86396d93c7b5047b43e5a3a6"
 # research_tools() (search_web, fetch_page) is unchanged, so its pin stays.
 RESEARCH_TOOLS_SHA256 = "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
 SYSTEM_MTP5_Q4_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
+SYSTEM_MTP5_V32_SHA256 = "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd723213b0c0ab7"
+SYSTEM_MTP5_Q4_V32_SHA256 = "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd723213b0c0ab7"
 CONTINUE_REPORT_SHA256 = "71742a7a93e0d6f1aa02792c3414936abf07cf8fdf45d6989be4f94ecd8d64c3"
 
 
@@ -73,6 +77,11 @@ def test_text_pins():
     sys_mtp5_q4 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-Q4.Modelfile")
     assert _sha256(sys_mtp5) == SYSTEM_MTP5_SHA256
     assert _sha256(sys_mtp5_q4) == SYSTEM_MTP5_Q4_SHA256
+
+    sys_mtp5_v32 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-v32.Modelfile")
+    sys_mtp5_q4_v32 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-Q4-v32.Modelfile")
+    assert _sha256(sys_mtp5_v32) == SYSTEM_MTP5_V32_SHA256
+    assert _sha256(sys_mtp5_q4_v32) == SYSTEM_MTP5_Q4_V32_SHA256
 
     assert _sha256(inspect.getsource(consensus_valuation.continue_report)) == CONTINUE_REPORT_SHA256
 
@@ -144,9 +153,8 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     text1 = str(pack1)
     text2 = str(pack2)
     assert text1 == text2
-    # S3 C (brief §2): the golden pack becomes golden_pack_GEV_rev15.md; the revision-14 golden
-    # file stays in the repository, unreferenced.
-    assert len(text1) == 20102
+    # 2026-09-28 (package D): pack sections renamed DATA n (brief §D2). 32 occurrences of SECTION -> DATA, -96 chars.
+    assert len(text1) == 20006
 
     # Assert byte equality with golden file
     golden_file = FIXTURE / "golden_pack_GEV_rev15.md"

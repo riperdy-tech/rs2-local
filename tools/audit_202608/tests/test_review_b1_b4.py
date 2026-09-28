@@ -223,7 +223,7 @@ def test_no_share_count_is_said_plainly_and_does_not_crash(monkeypatch):
         f.pop("Shares_Outstanding", None)
         return f
     line = _byc(_gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000, fin_edit=drop))    # R1
-    assert "SECTION 2 holds no share count" in line
+    assert "DATA 2 holds no share count" in line
 
 
 @pytest.mark.usefixtures("screener_data_stub")

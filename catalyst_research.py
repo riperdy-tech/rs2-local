@@ -119,7 +119,7 @@ def discovery_context(ticker: str) -> dict:
     # (build_pack's new default, False, drops a snippet-less row's snippet).
     pack_text = str(capability_test.build_pack(t, include_research=False, news_snippets=True))
 
-    sec25 = _slice_section(pack_text, "## SECTION 2.5") or "## SECTION 2.5 - PRICE ACTION\nnot available"
+    sec25 = _slice_section(pack_text, "## DATA 2.5") or _slice_section(pack_text, "## SECTION 2.5") or "## DATA 2.5 - PRICE ACTION\nnot available"
     news = _slice_section(pack_text, "## RECENT COMPANY NEWS") or "## RECENT COMPANY NEWS\nnot available"
     est = _slice_consensus_estimates(pack_text) or "- CONSENSUS ESTIMATES: not available"
     guidance = _slice_guidance(pack_text) or "## GUIDANCE & CONSENSUS\nnot available"

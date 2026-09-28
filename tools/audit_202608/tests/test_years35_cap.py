@@ -562,14 +562,14 @@ def test_16_markdown_capped_and_kept():
     }
     res_capped = execute_financial_model(copy.deepcopy(params_capped), context={"price": 100.0, "years35_cap": cap})
     md_capped = format_model_results_markdown(res_capped)
-    assert "**Base years 3-5 held at next-FY consensus revenue growth (+4.0%, SECTION 8):**" in md_capped
+    assert "**Base years 3-5 held at next-FY consensus revenue growth (+4.0%, DATA 8):**" in md_capped
     assert "no guidance_deviation_reason was given, so the desk valued Base on years 3-5 +4.0% / +4.0% / +4.0% instead of your +6.0% / +5.0% / +4.5%:" in md_capped
 
     params_kept = copy.deepcopy(params_capped)
     params_kept["guidance_deviation_reason"] = "Company guides +6% through 2028 (8-K 2026-08-06)"
     res_kept = execute_financial_model(params_kept, context={"price": 100.0, "years35_cap": cap})
     md_kept = format_model_results_markdown(res_kept)
-    assert "**Base years 3-5 above next-FY consensus revenue growth (+4.0%, SECTION 8), kept on your guidance_deviation_reason:**" in md_kept
+    assert "**Base years 3-5 above next-FY consensus revenue growth (+4.0%, DATA 8), kept on your guidance_deviation_reason:**" in md_kept
     assert '"Company guides +6% through 2028 (8-K 2026-08-06)"' in md_kept
 
 

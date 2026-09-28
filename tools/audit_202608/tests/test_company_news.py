@@ -147,9 +147,9 @@ def test_pack_recent_company_news_live_present_after_section_2_5(screener_data_s
 
     pack = cap.build_pack("AMD")
     # Verify section position: must appear after SECTION 2.5 and before SECTION 3
-    idx_25 = pack.find("## SECTION 2.5 - PRICE ACTION")
+    idx_25 = pack.find("## DATA 2.5 - PRICE ACTION")
     idx_news = pack.find("## RECENT COMPANY NEWS")
-    idx_3 = pack.find("## SECTION 3 - TRAILING TWELVE MONTHS")
+    idx_3 = pack.find("## DATA 3 - TRAILING TWELVE MONTHS")
     assert idx_25 != -1 and idx_news != -1 and idx_3 != -1
     assert idx_25 < idx_news < idx_3
 

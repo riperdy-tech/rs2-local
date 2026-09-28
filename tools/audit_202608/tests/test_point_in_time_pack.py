@@ -11,6 +11,7 @@ Uses the same GEV fixture slice every other `build_pack` test uses
 2026-06-30; `fundamentals_ttm.json.fy_leg_end`: "2025-12-31", i.e. a calendar fiscal year end).
 """
 import sys
+import re
 from datetime import date
 from pathlib import Path
 
@@ -21,6 +22,11 @@ sys.path.insert(0, str(HERE))
 
 import capability_test as cap
 import rs2_data
+
+
+def _split_sec(text, tag):
+    parts = re.split(rf"(?:##\s*)?DATA\s+{re.escape(tag)}(?=\s|$)", text)
+    return parts
 
 
 def _fake_asof_price_lookup(monkeypatch, price=180.0, asof_str="2026-03-31", series=None):
@@ -87,7 +93,7 @@ def test_asof_mode_forces_research_off_regardless_of_include_research(screener_d
     _fake_mri_asof(monkeypatch)
     _fake_asof_price_lookup(monkeypatch)
     pack = cap.build_pack("GEV", asof="2026-03-31", include_research=True)
-    assert "SECTION 11 - DEEP RESEARCH BRIEF" not in pack
+    assert "SECTION 11 - DEEP RESEARCH BRIEF" not in pack and "DATA 11 - DEEP RESEARCH BRIEF" not in pack
     assert "not available (point-in-time trial)" in pack
 
 
@@ -108,8 +114,9 @@ def test_quarterly_rows_after_the_cutoff_are_excluded(screener_data_stub, monkey
     _fake_asof_price_lookup(monkeypatch)
     pack = cap.build_pack("GEV", asof="2026-03-31")
     assert "2025-12-31" in pack        # last allowed quarter
-    assert "2026-03-31" not in pack.split("SECTION 4")[1].split("SECTION 5")[0]
-    assert "2026-06-30" not in pack.split("SECTION 4")[1].split("SECTION 5")[0]
+    sec4_text = _split_sec(_split_sec(pack, "4")[1], "5")[0]
+    assert "2026-03-31" not in sec4_text
+    assert "2026-06-30" not in sec4_text
 
 
 def test_fiscal_years_after_the_cutoff_are_excluded(screener_data_stub, monkeypatch):
@@ -118,7 +125,7 @@ def test_fiscal_years_after_the_cutoff_are_excluded(screener_data_stub, monkeypa
     _fake_mri_asof(monkeypatch)
     _fake_asof_price_lookup(monkeypatch, asof_str="2025-06-30")
     pack = cap.build_pack("GEV", asof="2025-06-30")
-    sec5 = pack.split("## SECTION 5 -")[1].split("GROWTH BASE RATES")[0]
+    sec5 = _split_sec(pack, "5 -")[1].split("GROWTH BASE RATES")[0]
     assert "| 2022 |" in sec5 or "2022" in sec5
     assert "| 2024 |" in sec5 or "2024" in sec5
     assert "| 2025 |" not in sec5
@@ -141,7 +148,7 @@ def test_ttm_recomputed_from_trailing_four_allowed_quarters(screener_data_stub, 
     _fake_mri_asof(monkeypatch)
     _fake_asof_price_lookup(monkeypatch)
     pack = cap.build_pack("GEV", asof="2026-03-31")
-    sec3 = pack.split("SECTION 3")[1].split("SECTION 4")[0]
+    sec3 = _split_sec(_split_sec(pack, "3")[1], "4")[0]
     assert "recomputed from the 4 trailing allowed quarters" in sec3
     # S3 C (brief §5.6): one typed line (Revenue | net income | ...), lower-cased labels.
     assert "operating cash flow not available (point-in-time)" in sec3
@@ -157,7 +164,7 @@ def test_ttm_omitted_when_fewer_than_four_quarters_are_allowed(screener_data_stu
     _fake_mri_asof(monkeypatch)
     _fake_asof_price_lookup(monkeypatch, asof_str="2024-07-01")
     pack = cap.build_pack("GEV", asof="2024-07-01")
-    sec3 = pack.split("SECTION 3")[1].split("SECTION 4")[0]
+    sec3 = _split_sec(_split_sec(pack, "3")[1], "4")[0]
     assert "not available (point-in-time)" in sec3
     assert "fewer than 4 quarters" in sec3
 
@@ -168,12 +175,12 @@ def test_same_day_snapshot_sections_are_omitted_with_a_reason(screener_data_stub
     _fake_mri_asof(monkeypatch)
     _fake_asof_price_lookup(monkeypatch)
     pack = cap.build_pack("GEV", asof="2026-03-31")
-    for header in ("SECTION 7 - FILING-DERIVED QUALITY MEASURES",
-                   "SECTION 8 - CONSENSUS & MULTIPLES",
-                   "SECTION 8.5 - PEER CONTEXT",
-                   "SECTION 9 - POSITIONING",
-                   "SECTION 10 - EARNINGS CALL EXCERPT"):
-        assert header in pack
+    for header in ("7 - FILING-DERIVED QUALITY MEASURES",
+                   "8 - CONSENSUS & MULTIPLES",
+                   "8.5 - PEER CONTEXT",
+                   "9 - POSITIONING",
+                   "10 - EARNINGS CALL EXCERPT"):
+        assert f"DATA {header}" in pack
     assert "not available (point-in-time)" in pack
     assert "POINT-IN-TIME OMISSIONS" in pack
 
@@ -184,7 +191,7 @@ def test_vendor_scalars_omitted_in_section_2(screener_data_stub, monkeypatch):
     _fake_mri_asof(monkeypatch)
     _fake_asof_price_lookup(monkeypatch)
     pack = cap.build_pack("GEV", asof="2026-03-31")
-    sec2 = pack.split("SECTION 2 - MARKET")[1].split("SECTION 2.5")[0]
+    sec2 = _split_sec(_split_sec(pack, "2 - MARKET")[1], "2.5")[0]
     assert "Total cash (vendor): not available (point-in-time)" in sec2
     assert "Total debt (vendor): not available (point-in-time)" in sec2
     assert "Stock-based compensation (vendor): not available (point-in-time)" in sec2
@@ -211,7 +218,7 @@ def test_scr10_momentum_recomputed_from_series_not_factor_scores(screener_data_s
     _fake_asof_price_lookup(monkeypatch, price=180.0, asof_str="2026-03-31", series=series)
     _fake_mri_asof(monkeypatch)
     pack = cap.build_pack("GEV", asof="2026-03-31")
-    sec25 = pack.split("SECTION 2.5")[1].split("SECTION 3")[0]
+    sec25 = _split_sec(_split_sec(pack, "2.5")[1], "3")[0]
     assert "recomputed from historical closes" in sec25
     assert "Distance from 52-week high" in sec25
     assert "not available (point-in-time)" not in sec25.split("Distance from 52-week high")[1].split("\n")[0]
@@ -231,7 +238,7 @@ def test_macro_state_of_the_world_uses_asof_accessors(screener_data_stub, monkey
     _fake_mri_asof(monkeypatch)
     _fake_asof_price_lookup(monkeypatch)
     pack = cap.build_pack("GEV", asof="2026-03-31")
-    assert "point-in-time" in pack.split("SECTION 1.5")[1].split("SECTION 2")[0]
+    assert "point-in-time" in _split_sec(_split_sec(pack, "1.5")[1], "2")[0]
     assert "goldilocks" in pack
     assert "ACTIVE SHOCK: `oil_shock`" in pack
     # ERP/CoE unavailable per the fake -> COE ANCHOR line must degrade honestly, not invent one.
@@ -256,7 +263,7 @@ def test_macro_state_prints_not_available_when_mri_gives_nothing(screener_data_s
     _fake_asof_price_lookup(monkeypatch)
     pack = cap.build_pack("GEV", asof="2026-03-31")
     assert pack.macro_degraded is True
-    sec16 = pack.split("SECTION 1.6")[1].split("SECTION 2")[0]
+    sec16 = _split_sec(_split_sec(pack, "1.6")[1], "2")[0]
     assert "not available (point-in-time)" in sec16
     assert "MRI regime probability vector: not available (point-in-time)" in sec16
     assert "Active shocks (S4 register): not available (point-in-time)" in sec16
@@ -349,7 +356,7 @@ def test_asof_coe_anchor_reconstruction_in_pack(screener_data_stub, monkeypatch)
     monkeypatch.setattr(rs2_data, "asof_inflation_trend", lambda asof: {"cpi_yoy": 0.033, "pce_yoy": 0.035})
 
     pack = cap.build_pack("GEV", asof="2026-03-31")
-    sec15 = pack.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
+    sec15 = _split_sec(_split_sec(pack, "1.5")[1], "1.6")[0]
 
     # COE ANCHOR: rf 4.30% + adj loading 0.912 (Blume: 0.67 * 0.868 + 0.33) * ERP 4.23% = 8.16%
     # S3 C (brief §5.6): the result is stated before "=", and the anchor line is now combined with
@@ -403,7 +410,7 @@ def test_asof_coe_anchor_missing_pieces_degrades_and_omits_mandate(screener_data
     monkeypatch.setattr(rs2_data, "anchor_sector_loading", lambda sector: (0.868, "src"))
 
     pack_no_rf = cap.build_pack("GEV", asof="2026-03-31")
-    sec15_no_rf = pack_no_rf.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
+    sec15_no_rf = _split_sec(_split_sec(pack_no_rf, "1.5")[1], "1.6")[0]
     assert "- COE ANCHOR for this name: not available (point-in-time)" in sec15_no_rf
     assert "COE MANDATE" not in sec15_no_rf
 
@@ -417,7 +424,7 @@ def test_asof_coe_anchor_missing_pieces_degrades_and_omits_mandate(screener_data
     monkeypatch.setattr(rs2_data, "asof_damodaran_erp", lambda asof: (None, "unavailable"))
 
     pack_no_erp = cap.build_pack("GEV", asof="2026-03-31")
-    sec15_no_erp = pack_no_erp.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
+    sec15_no_erp = _split_sec(_split_sec(pack_no_erp, "1.5")[1], "1.6")[0]
     assert "- COE ANCHOR for this name: not available (point-in-time)" in sec15_no_erp
     assert "COE MANDATE" not in sec15_no_erp
 
@@ -427,7 +434,7 @@ def test_asof_coe_anchor_missing_pieces_degrades_and_omits_mandate(screener_data
     monkeypatch.setattr(rs2_data, "anchor_sector_loading", lambda sector: (None, "unmapped"))
 
     pack_no_load = cap.build_pack("GEV", asof="2026-03-31")
-    sec15_no_load = pack_no_load.split("SECTION 1.5")[1].split("SECTION 1.6")[0]
+    sec15_no_load = _split_sec(_split_sec(pack_no_load, "1.5")[1], "1.6")[0]
     assert "- COE ANCHOR for this name: not available (point-in-time)" in sec15_no_load
     assert "COE MANDATE" not in sec15_no_load
 

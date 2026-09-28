@@ -610,12 +610,12 @@ def _segment_note(t):
     d = _sec_facts(t)
     if not d:
         return ("- Segment revenue and margin in raw SEC XBRL: NOT MAPPED; dimensional axes are "
-                "stripped from the companyfacts API. See SECTION 11 for extracted segment "
+                "stripped from the companyfacts API. See DATA 11 for extracted segment "
                 "economics and backlog.")
     n = sum(len(rows) for ns in (d.get("facts") or {}).values()
             for c in ns.values() for rows in (c.get("units") or {}).values())
     return (f"- Segment revenue and margin in raw SEC XBRL: NOT MAPPED; of the {n:,} fact rows in "
-            f"raw SEC companyfacts, zero carry a dimension. See SECTION 11 for extracted segment "
+            f"raw SEC companyfacts, zero carry a dimension. See DATA 11 for extracted segment "
             f"economics and backlog.")
 
 
@@ -801,10 +801,10 @@ def _share_default(fin, V, point_in_time=False):
         # 0.0 is a value, not an absence: a filed zero count gets its own message, never the
         # "not available" one V is None gets.
         if V is None:
-            warning = ("SECTION 2's count is not available: the desk has no share-count default "
+            warning = ("DATA 2's count is not available: the desk has no share-count default "
                       "and refuses a call without shares_diluted.")
         else:
-            warning = (f"SECTION 2's count is filed as {V:,.0f}: the desk has no share-count "
+            warning = (f"DATA 2's count is filed as {V:,.0f}: the desk has no share-count "
                       f"default from a count that is not positive.")
         return None, None, None, warning
 
@@ -842,7 +842,7 @@ def _share_default(fin, V, point_in_time=False):
     B, k_full, k = period["B"], period["k_full"], period["k"]
     if abs(V / B - 1) > _SHARE_DEFAULT_DEPART_TOL:
         gap_pct = abs(V / B - 1) * 100.0
-        warning = (f"SECTION 2's count is {gap_pct:.0f}% from the basic count implied by filed "
+        warning = (f"DATA 2's count is {gap_pct:.0f}% from the basic count implied by filed "
                   f"EPS: share classes, ADS units or a stale vendor count")
         return V, k, period, warning
 
@@ -866,7 +866,7 @@ def _share_default_lines(V, default, k, period, warning, point_in_time=False):
                     + (f" — not applied: {warning}" if warning else ""))
     elif point_in_time:
         dil_line = (f"- Shares dilution factor: {ASOF_NULL} — the vendor's EPS statements are a "
-                    f"same-day snapshot, and SECTION 2's count is already the filed diluted average "
+                    f"same-day snapshot, and DATA 2's count is already the filed diluted average "
                     f"of the latest allowed fiscal year")
     elif period is None and warning is None:
         dil_line = ("- Shares dilution factor: not available — no profitable period (net "
@@ -1261,14 +1261,14 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         if len(qs) != len(qs_allowed):
             asof_omitted.append(
                 f"fundamentals_quarterly.json: {len(qs) - len(qs_allowed)} quarter(s) ending "
-                f"after {cutoff_iso} excluded (SECTION 4)")
+                f"after {cutoff_iso} excluded (DATA 4)")
         qs = qs_allowed
         h_allowed = {y: v for y, v in h.items()
                     if str(y).isdigit() and int(y) <= last_allowed_fy}
         if len(h) != len(h_allowed):
             asof_omitted.append(
                 f"fundamentals_history.json: fiscal year(s) after FY{last_allowed_fy} excluded "
-                f"(SECTIONs 5/6/6A/6B/6C, GROWTH BASE RATES)")
+                f"(DATA 5/6/6A/6B/6C, GROWTH BASE RATES)")
         h = h_allowed
         # TTM (SECTION 3): revenue/net income are recomputable as the sum of the trailing 4
         # ALLOWED quarters; OCF/capex/FCF/D&A are NOT — fundamentals_quarterly.json carries only
@@ -1292,26 +1292,26 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     asof_ttm_recomputed["ocf"] = sum(ocf4)
         if asof_ttm_recomputed is None:
             asof_omitted.append(
-                "TTM revenue/net income (SECTION 3): fewer than 4 quarters end on or before "
+                "TTM revenue/net income (DATA 3): fewer than 4 quarters end on or before "
                 f"{cutoff_iso}")
         asof_omitted.append(
-            "TTM operating cash flow / capex / FCF / D&A (SECTION 3): fundamentals_quarterly.json "
+            "TTM operating cash flow / capex / FCF / D&A (DATA 3): fundamentals_quarterly.json "
             "carries no ocf/capex/fcf/da field at quarterly granularity, so these cannot be "
             "recomputed for any as-of date")
         if bat:
-            asof_omitted.append("fundamentals_battery.json (SECTION 7, quality/solvency "
+            asof_omitted.append("fundamentals_battery.json (DATA 7, quality/solvency "
                                 "measures): same-day snapshot, no stored history to restrict")
         bat = {}
         if ob:
-            asof_omitted.append("openbb cache (SECTION 8 consensus & multiples, SECTION 10 "
+            asof_omitted.append("openbb cache (DATA 8 consensus & multiples, DATA 10 "
                                 "earnings transcript): same-day snapshot, no stored history")
         ob = {}
         met = {}
         if en:
-            asof_omitted.append("enrich/*.json (SECTION 8 analyst targets/52-week range, "
-                                "SECTION 9 positioning): same-day snapshot, no stored history")
+            asof_omitted.append("enrich/*.json (DATA 8 analyst targets/52-week range, "
+                                "DATA 9 positioning): same-day snapshot, no stored history")
         en = {}
-        asof_omitted.append("SECTION 8.5 peer context: stocks.json is a same-day snapshot; "
+        asof_omitted.append("DATA 8.5 peer context: stocks.json is a same-day snapshot; "
                             "reconstructing it would need an as-of price+EPS fetch for every "
                             "cluster peer, not attempted this run")
 
@@ -1352,7 +1352,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # ---- SECTION 0 -------------------------------------------------------------------------
     # S3 5.4 (verbatim). Old wording (revision 14, four bullets plus a "Series continuity warning"
     # paragraph) is replaced by this two-bullet form; every number it carried is unchanged (none).
-    L += ["## SECTION 0 - HOW TO READ THIS PACK",
+    L += ["## DATA 0 - HOW TO READ THIS PACK",
           f"- `{NULL}` (NA in tables) means we do not hold the value; it never means zero, and a "
           f"filed zero prints 0.000. [Filed] = reported to the SEC by the company; [Arithmetic] = "
           f"exact arithmetic on filed values, with the window stated; [Aggregator] = a vendor's "
@@ -1412,7 +1412,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     except Exception:
         pass
 
-    L += ["## SECTION 1 - IDENTITY & TAXONOMY",
+    L += ["## DATA 1 - IDENTITY & TAXONOMY",
           f"- Ticker: {t} | Sector: {sector} | Canonical Industry: {canon_industry}",
           f"- Macro Strategic Cluster (1 of 24): {cluster}",
           f"- Primary Archetype Category: {archetype} (Deconstruct into constituent value drivers per Pillar 1)",
@@ -1550,7 +1550,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
 
         curve_line = f"- {curve_clause} | {ig_clause} | {hy_clause}"
 
-        L += [f"## SECTION 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [MRI anchors as of "
+        L += [f"## DATA 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [MRI anchors as of "
               f"{asof_date.isoformat()}, degraded: {degraded_str}, reasons: {reasons_str}, "
               f"point-in-time; verified: do not search the web for them]",
               rates_line,
@@ -1574,7 +1574,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         )
 
         shock_state = rs2_data.asof_shock_register(asof_date)
-        L16 = ["## SECTION 1.6 - STATE OF THE WORLD   [dated facts, not a forecast, "
+        L16 = ["## DATA 1.6 - STATE OF THE WORLD   [dated facts, not a forecast, "
               "point-in-time]", ""]
         if regime is not None:
             vec5 = [f"{k} {probs[k]:.3f}" if k in probs else f"{k} {ASOF_NULL}"
@@ -1817,7 +1817,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             tg_clause = f"long-run nominal growth anchor {NULL} ({terminal_g_src})"
         coe_anchor_line = f"- {coe_clause} | {tg_clause}"
 
-        L += ["## SECTION 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [MRI anchors as of "
+        L += ["## DATA 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [MRI anchors as of "
               f"{asof_str}, degraded: {degraded_str}, reasons: {reasons_str}; verified: do not "
               "search the web for them]",
               rates_line,
@@ -1858,7 +1858,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         shock_reg = rs2_data.load_json(Path(CONFIG.get("mri_outputs_dir", "")) / "shock_register.json") or {}
         shock_asof = shock_reg.get("asof")
 
-        L16 = ["## SECTION 1.6 - STATE OF THE WORLD   [dated facts, not a forecast]", ""]
+        L16 = ["## DATA 1.6 - STATE OF THE WORLD   [dated facts, not a forecast]", ""]
 
         # S3 5.10 (C3): the regime vector and the three rate lines duplicated SECTION 1.5's Regime
         # and Rates lines verbatim and are removed here; the shocks, risk flag, inflation trend
@@ -1913,7 +1913,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         asof_price_data = _asof_price_lookup(t, asof_date)
         if asof_price_data is None:
             asof_omitted.append(
-                f"price (SECTION 2/2.5): no historical close found on or near "
+                f"price (DATA 2/2.5): no historical close found on or near "
                 f"{asof_date.isoformat()} (network fetch failed or no listing that far back)")
         px = asof_price_data["price"] if asof_price_data else None
         sh = None
@@ -1923,7 +1923,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 sh = (h.get(str(max(_hy_asof))) or {}).get("shares_diluted")
         if sh is None:
             asof_omitted.append(
-                "shares outstanding (SECTION 2): no shares_diluted held for any allowed fiscal "
+                "shares outstanding (DATA 2): no shares_diluted held for any allowed fiscal "
                 "year — TODAY's vendor share count is not point-in-time and was not used")
         mcap = (px * sh) if (isinstance(px, (int, float)) and isinstance(sh, (int, float))) else None
     else:
@@ -1943,7 +1943,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         ticker=t, price=px, market_cap=(mcap if asof_date is not None else fin.get("Market_Cap")),
         diluted_shares=_dsh, ttm_fields=f, quarterly_rows=qs)
     if data_warnings:
-        L += ["## DATA WARNINGS   [T2 sanity checks — read before trusting SECTION 2's figures]"]
+        L += ["## DATA WARNINGS   [T2 sanity checks — read before trusting DATA 2's figures]"]
         L += [f"- {w['message']}" for w in data_warnings]
         L.append("")
 
@@ -1958,7 +1958,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         facts["shares_dilution_factor"] = _sd_k
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
         facts["shares_warning"] = _sd_warning
-        L += [f"## SECTION 2 - MARKET   [point-in-time, as of {asof_date.isoformat()}]",
+        L += [f"## DATA 2 - MARKET   [point-in-time, as of {asof_date.isoformat()}]",
               price_line,
               f"- Shares outstanding: {_n(sh)}   [source: shares_diluted, "
               f"FY{max((int(y) for y in h if str(y).isdigit()), default=NULL)} "
@@ -1969,12 +1969,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L += [f"- Market cap: {_b(mcap) if mcap is not None else ASOF_NULL}",
               f"- Beta: {ASOF_NULL}   [same-day vendor snapshot, no stored history]",
               "",
-              f"- Total cash (vendor): {ASOF_NULL}   [same-day vendor snapshot; see SECTION 6 for "
+              f"- Total cash (vendor): {ASOF_NULL}   [same-day vendor snapshot; see DATA 6 for "
               f"the filed, fiscal-year-restricted `cash` series]",
-              f"- Total debt (vendor): {ASOF_NULL}   [same-day vendor snapshot; see SECTION 6 for "
+              f"- Total debt (vendor): {ASOF_NULL}   [same-day vendor snapshot; see DATA 6 for "
               f"the filed, fiscal-year-restricted `long-term debt` series]",
               f"- Stock-based compensation (vendor): {ASOF_NULL}   [same-day vendor snapshot; "
-              f"prefer the filed per-year SBC series in SECTION 5]", ""]
+              f"prefer the filed per-year SBC series in DATA 5]", ""]
     elif price_override is not None:
         if isinstance(price_override, dict):
             live_px = price_override.get("price")
@@ -1993,7 +1993,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         facts["shares_dilution_factor"] = _sd_k
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
         facts["shares_warning"] = _sd_warning
-        L += [f"## SECTION 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
+        L += [f"## DATA 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
               price_line,
               f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
               f"{_v(fin, 'Data_Fetched_Date')}]"
@@ -2006,13 +2006,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               f"cost of equity.]",
               "",
               "**The three figures below are the VENDOR's restatement of the last annual report - not "
-              "live, and not our SEC extract. The filed series is in SECTION 6.**",
+              "live, and not our SEC extract. The filed series is in DATA 6.**",
               f"- Total cash (vendor): {_b(fin.get('Total_Cash'))}",
               f"- Total debt (vendor): {_b(fin.get('Total_Debt'))}   [our filed extract maps LONG-TERM "
               f"debt only, so the two legitimately differ - and neither is a complete debt figure]",
               f"- Stock-based compensation (vendor): {_b(fin.get('SBC_Stock_Based_Comp'))}   [the "
               f"period is NOT reliably trailing-twelve-months; on most names it is a fiscal year. "
-              f"Prefer the filed per-year SBC series in SECTION 5 where it is present]", ""]
+              f"Prefer the filed per-year SBC series in DATA 5 where it is present]", ""]
     else:
         price_line = f"- Price: ${px}" if px is not None else f"- Price: {NULL}"
         facts["shares_outstanding"] = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool) and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
@@ -2022,7 +2022,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         facts["shares_dilution_factor"] = _sd_k
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
         facts["shares_warning"] = _sd_warning
-        L += [f"## SECTION 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
+        L += [f"## DATA 2 - MARKET   [Aggregator - vendor quote as of {_v(fin, 'Data_Fetched_Date')}]",
               price_line,
               f"- Shares outstanding: {_n(sh)}   [source: vendor financials, as of "
               f"{_v(fin, 'Data_Fetched_Date')}]"
@@ -2035,13 +2035,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               f"cost of equity.]",
               "",
               "**The three figures below are the VENDOR's restatement of the last annual report - not "
-              "live, and not our SEC extract. The filed series is in SECTION 6.**",
+              "live, and not our SEC extract. The filed series is in DATA 6.**",
               f"- Total cash (vendor): {_b(fin.get('Total_Cash'))}",
               f"- Total debt (vendor): {_b(fin.get('Total_Debt'))}   [our filed extract maps LONG-TERM "
               f"debt only, so the two legitimately differ - and neither is a complete debt figure]",
               f"- Stock-based compensation (vendor): {_b(fin.get('SBC_Stock_Based_Comp'))}   [the "
               f"period is NOT reliably trailing-twelve-months; on most names it is a fiscal year. "
-              f"Prefer the filed per-year SBC series in SECTION 5 where it is present]", ""]
+              f"Prefer the filed per-year SBC series in DATA 5 where it is present]", ""]
 
     # ---- SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [P4.1, amended by B1] ---
     if asof_date is not None:
@@ -2053,7 +2053,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         def _mpct(v):
             return f"{v*100:+.1f}%" if isinstance(v, (int, float)) else ASOF_NULL
 
-        L += [f"## SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [recomputed from "
+        L += [f"## DATA 2.5 - PRICE ACTION (facts, not a valuation input)   [recomputed from "
               f"historical closes, as of {asof_date.isoformat()}]",
               f"- 12-1 month return: {_mpct(scr10.get('mom_12_1'))}",
               f"- 6-month return: {_mpct(scr10.get('mom_6m'))}",
@@ -2113,7 +2113,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         shifts = [lbl for lbl, key in (("regime_shift_up", "regime_shift_up"),
                                        ("regime_shift_down", "regime_shift_down"))
                  if mom.get(key)]
-        L += [f"## SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [Arithmetic on price "
+        L += [f"## DATA 2.5 - PRICE ACTION (facts, not a valuation input)   [Arithmetic on price "
               f"history, as of {price_asof_25}]",
               f"- 12-1 month return: {_mpct(mom.get('mom_12_1'))}",
               f"- 6-month return: {_mpct(mom.get('mom_6m'))}",
@@ -2164,7 +2164,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         mom_1m_str = f"{m1*100:+.1f}%" if isinstance(m1, (int, float)) else NULL
         mom_6m_str = f"{m6*100:+.1f}%" if isinstance(m6, (int, float)) else NULL
         L += [f"## RECENT COMPANY NEWS   [SearXNG news search (Reuters, Bing News), last 30 days, fetched {cnews_date}; third-party claims \u2014 the five most recent carry their opening text, read by code from the page shown after the arrow]",
-              f"- The stock moved {mom_1m_str} in 1 month and {mom_6m_str} in 6 months (SECTION 2.5)."]
+              f"- The stock moved {mom_1m_str} in 1 month and {mom_6m_str} in 6 months (DATA 2.5)."]
         news_rows = cnews.get("rows") or []
         if news_rows:
             for nr in news_rows:
@@ -2211,7 +2211,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # S3 5.6: one typed line (Revenue | net income | ...), bare numbers, unit stated once in the
     # header.
     if asof_date is not None:
-        L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [point-in-time: revenue/net income "
+        L.append(f"## DATA 3 - TRAILING TWELVE MONTHS   [point-in-time: revenue/net income "
                  f"recomputed from the 4 trailing allowed quarters; $B]")
         if asof_ttm_recomputed:
             L.append(f"- Revenue {_bn(asof_ttm_recomputed['revenue'])} (Arithmetic, sum of the 4 "
@@ -2274,7 +2274,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     else:
         # S3 5.6: one typed line (Revenue | net income | ...), bare numbers, unit stated once in
         # the header.
-        L.append(f"## SECTION 3 - TRAILING TWELVE MONTHS   [Filed - SEC 10-Q derived; through "
+        L.append(f"## DATA 3 - TRAILING TWELVE MONTHS   [Filed - SEC 10-Q derived; through "
                  f"{_v(ttm, 'through')}, filed {_v(ttm, 'filed')}; $B]")
         if f:
             _l3 = (f"- Revenue {_bn(f.get('revenue'))} | net income {_bn(f.get('net_income'))} | "
@@ -2283,13 +2283,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             ni, ocf = f.get("net_income"), f.get("ocf")
             if isinstance(ni, (int, float)) and isinstance(ocf, (int, float)):
                 _l3 += f" | [Arithmetic] net income minus operating cash flow {_bn(ni - ocf)}"
-            _l3 += " | D&A: not carried in the TTM extract for any name; use SECTION 5"
+            _l3 += " | D&A: not carried in the TTM extract for any name; use DATA 5"
             L.append(_l3)
         elif ttm_stale:
             L.append(f"{NULL} - our TTM record for this name is STRANDED: its fiscal anchor "
                      f"({ttm.get('fy_leg_end')}) disagrees with the newest annual year we hold "
                      f"({max(_yrs)}), so it is not this company's trailing twelve months and has been "
-                     f"withheld rather than shown with a wrong period label. Use SECTION 5.")
+                     f"withheld rather than shown with a wrong period label. Use DATA 5.")
         else:
             L.append(f"{NULL} - no TTM record. 20-F and 40-F filers file no 10-Q, so no TTM is "
                      f"derivable for them from this source.")
@@ -2449,7 +2449,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # ---- SECTION 4 -------------------------------------------------------------------------
     # S3 5.7: the money columns carry the unit once, in the header bracket, as bare numbers (NA
     # for absence) in the table; percent and count cells are unchanged.
-    L.append(f"## SECTION 4 - QUARTERLY   [Filed - 10-Q; all {len(qs)} quarters we hold, oldest "
+    L.append(f"## DATA 4 - QUARTERLY   [Filed - 10-Q; all {len(qs)} quarters we hold, oldest "
              f"first; $B]")
     if qs:
         L += [_row(["period end", "revenue", "net income", "gross profit", "YoY revenue",
@@ -2468,7 +2468,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
 
     # ---- SECTION 5 -------------------------------------------------------------------------
     # S3 5.7: money columns carry the unit once (header bracket), as bare numbers / NA.
-    L.append(f"## SECTION 5 - FISCAL-YEAR INCOME & CASH FLOW   [Filed - SEC companyfacts; all "
+    L.append(f"## DATA 5 - FISCAL-YEAR INCOME & CASH FLOW   [Filed - SEC companyfacts; all "
              f"{len(yrs)} years we hold; $B]")
     if yrs:
         L += [_row(["FY", "revenue", "gross profit", "operating income", "net income", "OCF",
@@ -2490,7 +2490,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                   "- `SBC` is stock-based compensation as filed, per fiscal year. It is a real "
                   "expense that is added back in OCF, so an owner-earnings figure that starts from "
                   "OCF and does not subtract it is overstated. Use this series, not the single "
-                  "vendor scalar in SECTION 2, whose period is unreliable."]
+                  "vendor scalar in DATA 2, whose period is unreliable."]
         L += ["",
               "- `cash basis [Arithmetic]` = OCF minus capex minus SBC, on the filed values in "
               "this table and nothing else. Exact arithmetic, NOT a normalisation, and blank "
@@ -2576,7 +2576,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
 
     # ---- SECTION 6 -------------------------------------------------------------------------
     # S3 5.7: the money tables below (6A, 6B, 6C) carry their $B unit once, in their own header.
-    L.append("## SECTION 6 - FISCAL-YEAR BALANCE SHEET & CAPITAL STRUCTURE   [Filed, except columns marked [Arithmetic]; $B]")
+    L.append("## DATA 6 - FISCAL-YEAR BALANCE SHEET & CAPITAL STRUCTURE   [Filed, except columns marked [Arithmetic]; $B]")
     if yrs:
         # Unambiguous Net Liquidity Card (prevents column-slip and guessing leverage)
         latest_y = max(yrs)
@@ -2610,7 +2610,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L.append("")
 
         # 6A: Working Capital & Operating Assets (8 columns, clean and focused)
-        L.append("### SECTION 6A - WORKING CAPITAL & OPERATING ASSETS   [$B]")
+        L.append("### DATA 6A - WORKING CAPITAL & OPERATING ASSETS   [$B]")
         L += [_row(["FY", "total assets", "current assets", "current liabs",
                     "working capital [Arithmetic]", "change in WC [Arithmetic]",
                     "receivables", "inventory"]),
@@ -2628,7 +2628,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L.append("")
 
         # 6B: Capital Structure, Debt & Equity (7 columns, clean and distinct from operating assets)
-        L.append("### SECTION 6B - CAPITAL STRUCTURE, DEBT & EQUITY   [$B]")
+        L.append("### DATA 6B - CAPITAL STRUCTURE, DEBT & EQUITY   [$B]")
         L += [_row(["FY", "cash", "long-term debt", "total liabs",
                     "equity", "retained earnings", "wtd-avg shares"]),
               _row(["---"] * 7)]
@@ -2674,7 +2674,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                  ("lt_investments", "long-term investments")]
     present = [(k, lbl) for k, lbl in DEBT_COLS if _held(h, yrs, k)]
     if present:
-        L.append("### SECTION 6C - DETAILED DEBT COMPONENTS & INVESTMENTS   [Filed. Columns absent for this "
+        L.append("### DATA 6C - DETAILED DEBT COMPONENTS & INVESTMENTS   [Filed. Columns absent for this "
                  "company are omitted entirely rather than shown empty; $B]")
         L += [_row(["FY"] + [lbl for _, lbl in present]), _row(["---"] * (len(present) + 1))]
         for y in yrs:
@@ -2682,7 +2682,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             L.append(_row([str(y)] + [_bn(r.get(k)) for k, _ in present]))
         L += ["",
               "- **WE DO NOT KNOW WHETHER THESE COLUMNS OVERLAP, SO WE DO NOT SUM THEM.** Which "
-              "XBRL tag produced each number is not recorded (see SECTION 0), and the two "
+              "XBRL tag produced each number is not recorded (see DATA 0), and the two "
               "long-term columns are measurably not interchangeable: across the live book they "
               "are identical on 72 of the 80 companies that carry both and disagree on 8, in one "
               "case by a factor of 650 (Marriott files $0.023B under one tag and $14.995B under "
@@ -2691,7 +2691,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               "cells would double-count on most names, and picking one tag per company is a "
               "judgment call. YOU decide which components belong in your net-debt figure, and say "
               "which you used.",
-              "- The vendor's own total-debt scalar in SECTION 2 is an independent cross-check "
+              "- The vendor's own total-debt scalar in DATA 2 is an independent cross-check "
               "built on a different definition. Where it disagrees with every column here, treat "
               "the discrepancy as unresolved rather than picking the number that suits the case.",
               "- Investments columns are securities held outside `cash`. Omitting them from net "
@@ -2703,7 +2703,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         if bat:
             _rc5 = bat.get('revenue_cagr_5y')
             facts["revenue_cagr_5y_pct"] = float(f"{_rc5*100:.1f}") if isinstance(_rc5, (int, float)) else None
-            L += [f"## SECTION 7 - FILING-DERIVED QUALITY MEASURES   [Arithmetic on filed values; each "
+            L += [f"## DATA 7 - FILING-DERIVED QUALITY MEASURES   [Arithmetic on filed values; each "
                   f"line states its window; fiscal year {_v(bat, 'fiscal_year')}]",
                   f"- Piotroski F-score: {_v(bat, 'f_score')} out of "
                   f"{_v(bat, 'f_score_checks_available')} checks WE WERE ABLE TO EVALUATE (the "
@@ -2728,7 +2728,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         fg = ob.get("forward_growth") or {}
         ob_stale = bool((_age_days(ob) or 0) > STALE_SUPPRESS_DAYS)
         en_stale = bool((_age_days(en) or 0) > STALE_SUPPRESS_DAYS)
-        L += [f"## SECTION 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age_label(ob)}]",
+        L += [f"## DATA 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age_label(ob)}]",
               # price_to_sales dropped 2026-08-20: measured non-null on 0 of 294 vendor records, so
               # the line could never print a value. Market cap and revenue are both in this pack;
               # the model can divide. A field that is structurally always absent is noise, not a
@@ -2808,8 +2808,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                             if _aligned is False else
                             f"the vendor's year-ago revenue is not available to check against FY{latest_yr}'s "
                             f"filed revenue" if _aligned is None else
-                            "SECTION 2 holds no share count" if not (isinstance(sh, (int, float)) and sh > 0) else
-                            f"our filed FY{latest_yr} diluted share count ({_fy_sh_x / 1e9:.3f}B) and SECTION 2's "
+                            "DATA 2 holds no share count" if not (isinstance(sh, (int, float)) and sh > 0) else
+                            f"our filed FY{latest_yr} diluted share count ({_fy_sh_x / 1e9:.3f}B) and DATA 2's "
                             # S3 5.11: the cause list gains dilution now that SECTION 2's count
                             # carries its own dilution factor.
                             f"({sh / 1e9:.3f}B) differ by more than 15% (a split, ADS units, "
@@ -2960,7 +2960,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L.append("")
 
         # ---- SECTION 8.5 - PEER CONTEXT [Aggregator, context not an anchor]   [P4.10] -----------
-        L.append("## SECTION 8.5 - PEER CONTEXT   [Aggregator, context not an anchor]")
+        L.append("## DATA 8.5 - PEER CONTEXT   [Aggregator, context not an anchor]")
         fs_cluster = fs_row.get("cluster")
         stocks_list = rs2_data.load_json(SD / "stocks.json") or []
         peer_syms = set()
@@ -3051,11 +3051,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # ---- SECTION 9 -------------------------------------------------------------------------
         if en:
             if en_stale:
-                L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age_label(en)}]",
+                L += [f"## DATA 9 - POSITIONING   [Aggregator, {_age_label(en)}]",
                       f"- {STALE_NULL} - record older than {STALE_SUPPRESS_DAYS} days; values "
                       f"suppressed rather than shown potentially wrong.", ""]
             else:
-                L += [f"## SECTION 9 - POSITIONING   [Aggregator, {_age_label(en)} - short interest is "
+                L += [f"## DATA 9 - POSITIONING   [Aggregator, {_age_label(en)} - short interest is "
                       f"semi-monthly settlement data; ownership is 13F data lagged by up to a quarter]",
                       f"- Short % of float: {_v(en, 'short_pct_float')}   |   shares short: "
                       f"{_n(en.get('shares_short'))}   |   days to cover: "
@@ -3068,7 +3068,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         tr = ob.get("earnings_transcript") or ob.get("transcript_excerpt")
         if tr:
             section10_printed = True   # S3 5.5/5.10: SECTION 12's Q&A pointer fires only here
-            L += ["## SECTION 10 - EARNINGS CALL EXCERPT   [Verbatim management speech - an assertion "
+            L += ["## DATA 10 - EARNINGS CALL EXCERPT   [Verbatim management speech - an assertion "
                   "by the company, not an audited fact]",
                   "**This excerpt is capped at ingest and is prepared remarks only. The analyst Q&A - "
                   "where guidance gets challenged, and where forward capital-spending plans are "
@@ -3082,20 +3082,20 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # none of them can be honestly restricted to an as-of date, so all four are OMITTED here
         # rather than shown with today's values under a point-in-time label. See SECTION 12 for
         # the full list of what was omitted and why.
-        L += ["## SECTION 7 - FILING-DERIVED QUALITY MEASURES   [" + ASOF_NULL + "]",
+        L += ["## DATA 7 - FILING-DERIVED QUALITY MEASURES   [" + ASOF_NULL + "]",
               "- fundamentals_battery.json is a same-day snapshot with no stored history to "
               "restrict to this as-of date.", ""]
         facts["consensus_data_status"] = "point_in_time"
-        L += ["## SECTION 8 - CONSENSUS & MULTIPLES   [" + ASOF_NULL + "]",
+        L += ["## DATA 8 - CONSENSUS & MULTIPLES   [" + ASOF_NULL + "]",
               "- the openbb cache (trailing multiples, consensus forward growth, analyst price "
               "targets) is a same-day snapshot with no stored history.", ""]
-        L += ["## SECTION 8.5 - PEER CONTEXT   [" + ASOF_NULL + "]",
+        L += ["## DATA 8.5 - PEER CONTEXT   [" + ASOF_NULL + "]",
               "- reconstructing peer point-in-time price/EPS would need an as-of network fetch "
               "for every cluster peer; not attempted this run.", ""]
-        L += ["## SECTION 9 - POSITIONING   [" + ASOF_NULL + "]",
+        L += ["## DATA 9 - POSITIONING   [" + ASOF_NULL + "]",
               "- enrich/*.json (short interest, institutional/insider ownership) is a same-day "
               "snapshot with no stored history.", ""]
-        L += ["## SECTION 10 - EARNINGS CALL EXCERPT   [" + ASOF_NULL + "]",
+        L += ["## DATA 10 - EARNINGS CALL EXCERPT   [" + ASOF_NULL + "]",
               "- the openbb cache carries no historical transcript archive.", ""]
     # ---- research brief load (shared by GUIDANCE & CONSENSUS and SECTION 11) ---------------
     rb = HERE / "research" / f"{t}.md"
@@ -3109,7 +3109,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             brief_ok, brief_reason = True, None
         if not brief_ok:
             print(f"   [pack] WARN research brief failed company verification for {t} "
-                  f"({brief_reason}) — omitting GUIDANCE & CONSENSUS and SECTION 11",
+                  f"({brief_reason}) — omitting GUIDANCE & CONSENSUS and DATA 11",
                   file=sys.stderr, flush=True)
 
     # ---- GUIDANCE & CONSENSUS   [D4/D4b] -----------------------------------------------------
@@ -3139,7 +3139,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             # revision 10: ADI (b)'s trailing figures lagged a filed quarter
             _thru = ttm.get("through") if isinstance(ttm, dict) else None
             if _thru:
-                L.append(f"- DATA FRESHNESS: SECTION 3's trailing figures run through {_thru}; this release was "
+                L.append(f"- DATA FRESHNESS: DATA 3's trailing figures run through {_thru}; this release was "
                          f"filed {rel['filing_date']}. A release filed after the next quarter end reports a "
                          f"quarter those figures do not hold yet.")
             excerpt = sec_guidance.guidance_excerpt(rel.get("text", ""))
@@ -3169,7 +3169,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # about this company) and annotate what was dropped, rather than silently shortening the
         # brief.
         rb_filtered, research_omitted = _c2_filter_research_brief(rb_text)
-        L.append("## SECTION 11 - DEEP RESEARCH BRIEF   [Written by another model, not verified - "
+        L.append("## DATA 11 - DEEP RESEARCH BRIEF   [Written by another model, not verified - "
                  "every figure is a claim to check against the filings above; cite the filing when "
                  "you rely on it.]")
         if research_omitted:
@@ -3181,28 +3181,28 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # ---- SECTION 12 ------------------------------------------------------------------------
     # S3 5.5: the "Declared so..." line becomes a header bracket, and each _decl line shrinks to
     # one line (HELD .../ NOT MAPPED ...) using the phrase table verbatim.
-    L += ["## SECTION 12 - WHAT WE DO NOT HOLD   [declared so you can source it or carry the "
+    L += ["## DATA 12 - WHAT WE DO NOT HOLD   [declared so you can source it or carry the "
           "uncertainty]",
           _segment_note(t),
           _decl("Marketable securities and short-term investments", h, yrs,
                 ("st_investments", "lt_investments"),
-                held_phrase="in SECTION 6C; liquidity held there makes a cash-only net debt "
+                held_phrase="in DATA 6C; liquidity held there makes a cash-only net debt "
                             "understate liquid assets, even flip its sign",
-                gap_phrase="the cash column and SECTION 2's vendor cash can understate liquid "
+                gap_phrase="the cash column and DATA 2's vendor cash can understate liquid "
                            "assets badly"),
           _decl("Stock-based compensation per year", h, yrs, ("sbc",),
-                held_phrase="in SECTION 5's SBC column",
-                gap_phrase="only SECTION 2's vendor scalar, whose period is unreliable"),
+                held_phrase="in DATA 5's SBC column",
+                gap_phrase="only DATA 2's vendor scalar, whose period is unreliable"),
           _pretax_note(h, yrs),
           _decl("Debt components beyond long-term debt", h, yrs,
                 ("debt_current", "short_term_borrowings_separate", "finance_lease_liability",
                  "operating_lease_liability", "borrowings_total", "debt_lt_noncurrent"),
-                held_phrase="in SECTION 6C; whether they overlap is not known, so no total debt "
+                held_phrase="in DATA 6C; whether they overlap is not known, so no total debt "
                             "is computed",
-                gap_phrase="SECTION 6's long-term debt understates total debt by an unknown "
-                           "amount; SECTION 2's vendor total is the only cross-check"),
-          "- Which XBRL tag produced each number: NOT RECORDED (see SECTION 0).",
-          ("- Analyst Q&A from earnings calls: NOT HELD; SECTION 10 holds prepared remarks only."
+                gap_phrase="DATA 6's long-term debt understates total debt by an unknown "
+                            "amount; DATA 2's vendor total is the only cross-check"),
+          "- Which XBRL tag produced each number: NOT RECORDED (see DATA 0).",
+          ("- Analyst Q&A from earnings calls: NOT HELD; DATA 10 holds prepared remarks only."
            if section10_printed else
            "- Earnings-call text: NOT HELD for this company."), ""]
     if drift:
@@ -3264,23 +3264,23 @@ FORM_FIELDS = ("catalysts", "conviction_score", "business_quality_moat", "cycle_
 # S3 4.2 (2026-09-28): replaces the revision-14 TASK, whose narrative rules code now enforces
 # (the desk's DEFAULTS block and its refusals) or which is now derived, not typed. Old literal
 # above this comment, in git history at 3d02fbd.
-TASK = """You are underwriting this company for real money. T0 is today's price in SECTION 2. The data pack above is what our systems hold. Its DEFAULTS block gives the value each desk input takes unless you decide otherwise, and the reason the desk asks for when you do.
+TASK = """You are underwriting this company for real money. T0 is today's price in DATA 2. The data pack above is what our systems hold. Its DEFAULTS block gives the value each desk input takes unless you decide otherwise, and the reason the desk asks for when you do.
 
 YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic view, the moat judgment, the scenario boundaries and the capital decision, as the charter sets them. Every value you publish comes from run_financial_model: do not compute present values, terminal values, per-share values or Kelly sizes in your reasoning. Call the desk as soon as your inputs are set, and reason from its output.
 
-1. Explain the recent move first. Start from the CATALYST BRIEF, RECENT COMPANY NEWS and SECTION 8's estimate trend and revisions. For each development, say whether you accept or dispute it and why, and how it enters Bull, Base and Bear. Add any development you find yourself, and fetch the articles you rely on. Record them in `catalysts`. If a public takeover offer is pending, value the business standalone; in the memorandum give the offer's probability and the expected value with and without it. The verdict stays on standalone value.
+1. Explain the recent move first. Start from the CATALYST BRIEF, RECENT COMPANY NEWS and DATA 8's estimate trend and revisions. For each development, say whether you accept or dispute it and why, and how it enters Bull, Base and Bear. Add any development you find yourself, and fetch the articles you rely on. Record them in `catalysts`. If a public takeover offer is pending, value the business standalone; in the memorandum give the offer's probability and the expected value with and without it. The verdict stays on standalone value.
 2. Decompose the business into its economic engines: transactional deliveries; a captive installed base, recurring contractual annuity or subscriptions; strategic optionality. Do not force it into one formula. Credit a multi-year annuity only where the filings show the backlog or installed base that secures it (cite the filing and the figure). Customer advances and one-off prepayment float are not recurring cash flow, and a supplier purchase commitment is not customer revenue.
 3. Choose every valuation input and pass it to the desk: the cash-flow base and its window; the growth of that cash flow (not revenue) for years 1-5 in Base, Bull and Bear; fade years; terminal growth, or an exit multiple and which end value each scenario publishes (terminal_leg); the discount rate; the frame; the share count; net debt (firm frame only); the cash-flow life; and the scenario probabilities, justified by milestones and the balance of evidence. Start from the DEFAULTS; do not run trial bases through the desk.
    - Growth: years 1-2 reach the consensus cash-flow levels in DEFAULTS from whatever base you declare. From year 3, growth follows next-FY revenue growth, fading toward the base-rate median by year 5. Growth above the base-rate p90 needs dated, company-specific evidence. With fewer than 3 analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one; otherwise state your own range and why.
    - Scenarios: Bull rests on the strongest bull catalyst the market is reacting to, and Bear on the strongest bear catalyst. The Bear traces an operating shock through the business (volume, the installed base's durability, operating deleverage, a wider discount rate), not an arbitrary cut. Where the filings show contracted backlog above one year of revenue or recurring revenue above 70%, cite it: the Bear may not fall below that contracted floor without a stated reason.
    - Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders; a departure from the default needs evidence, not a cap. A P/E ratio is not an EV/FCF multiple, and this pack holds no EV/FCF peer data.
    - Frame: every flow in this pack is after interest, so value it in the equity frame. The firm frame needs a pre-interest flow, a WACC built from the COE ANCHOR, and net debt; the desk asks for each.
-   - Shares: use the DEFAULTS block's shares_default, the desk's default (SECTION 2's count, times the dilution factor when SECTION 2 shows one). Add a contingent instrument (warrants, earn-outs) only in the scenarios where it vests, never in one whose premise is that it does not.
+   - Shares: use the DEFAULTS block's shares_default, the desk's default (DATA 2's count, times the dilution factor when DATA 2 shows one). Add a contingent instrument (warrants, earn-outs) only in the scenarios where it vests, never in one whose premise is that it does not.
    - Cash-flow life: cash flows end when they come from a finite stock (a mine, a well, a reservoir) or a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of capex your base already deducts. The life is filed reserves over current production, or the remaining term, with the filing's date. A perpetual value must deduct the capex that replaces what the business depletes. Where revenue follows a quoted commodity price, state the price deck your flows assume and its source.
 4. Where an input departs from its DEFAULT, give the reason with dated evidence in the same desk call. The desk names any reason it needs, and a refused call does not use one of your desk runs. A reason is evidence, never text such as "no deviation"; leave a reason out when none is needed.
 5. Run Bear, Base and Bull together in one call. Your last complete desk run of all three is your answer. If you change any input after a complete run, the memorandum's 'Model revisions' list gives each changed input's old value, new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden, and so is moving any input toward today's price; the harness records every run.
 6. The desk also returns the reverse DCF: the growth today's price implies, under your structure and under the neutral reference. Report the neutral reference's implied 10-year growth and the base-rate band it falls in, and argue why your forecast differs from what the market is pricing.
-7. Timing: SECTION 2.5's price facts are not a valuation input. State whether they confirm, sit neutral to or contradict your value call, when to enter, the position basis, and checkable conditions that would break the trend or the thesis.
+7. Timing: DATA 2.5's price facts are not a valuation input. State whether they confirm, sit neutral to or contradict your value call, when to enter, the position basis, and checkable conditions that would break the trend or the thesis.
 8. Tag every driver's source: [Actual], [Estimate], [Assumption] or [Unconfirmed]. The research brief and the news are claims by others; where they conflict with the filings, the filings win.
 
 Produce the full memorandum, SECTION 0 through SECTION 12, as the system text specifies, and end with the contract below. The contract no longer carries the scenario values, probabilities, Kelly size, verdict label, valuation inputs or reasons: code takes them from your last complete desk run of Bear, Base and Bull. Where the system text asks you to type any of them into SECTION 12's contract, this TASK takes precedence, and SECTION 4's scenario table and SECTION 12's figures must show that run's values exactly.
@@ -3291,12 +3291,12 @@ Produce the full memorandum, SECTION 0 through SECTION 12, as the system text sp
   "conviction_score": <float between 4.0 and 15.0: analytical certainty>,
   "business_quality_moat": <float between 1.0 and 5.0: moat durability>,
   "cycle_evidence": "<a dated, industry-specific indicator (pricing, inventory, capacity, orders) when you apply a cyclical, mid-cycle or margin-mean-reversion treatment; a growth rate alone is not evidence; null otherwise>",
-  "momentum_view": "<confirming | neutral | contradicting: SECTION 2.5's price action against your value call>",
+  "momentum_view": "<confirming | neutral | contradicting: DATA 2.5's price action against your value call>",
   "entry_timing": "<buy_now | wait_for_momentum | avoid>",
   "position_basis": "<value | momentum | none: value only when undervalued; momentum when your honest direction is hold or overvalued but the business is in a strong, fundamentally backed uptrend (entry_timing buy_now); otherwise none>",
   "momentum_evidence": "<when position_basis is momentum: the dated facts from the GUIDANCE block or the filings that back the trend (guidance raised, backlog or orders growth, estimates rising); null otherwise>",
-  "momentum_flip_condition": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
-  "momentum_break_rule": {"metric": "<one of the SCR-10 price-fact fields printed in SECTION 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
+  "momentum_flip_condition": {"metric": "<one of the SCR-10 price-fact fields printed in DATA 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
+  "momentum_break_rule": {"metric": "<one of the SCR-10 price-fact fields printed in DATA 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
   "invalidation_rules": [{"metric": "<name from the metric vocabulary below>", "comparator": "< | <= | > | >=", "threshold": <float>, "window": "<string, e.g. 'next reported quarter'>", "source": "<where this is checked, e.g. 'fundamentals_quarterly.json'; \\"unverifiable\\" if the metric is outside both vocabularies>"}],
   "reentry_tranches": {"tranche_1_starter": <float price for the starter allocation, reflecting margin of safety>, "tranche_2_core": <float price for the core allocation, anchored to Bear IV or a deep pullback>},
   "thesis_invalidation_trigger": "<the exact operational or financial threshold that invalidates this thesis>"
@@ -3304,7 +3304,7 @@ Produce the full memorandum, SECTION 0 through SECTION 12, as the system text sp
 ```
 
 METRIC VOCABULARY for `invalidation_rules` (at least one FINANCIAL and at least one PRICE/MOMENTUM rule are required; anything outside both lists must be declared `source: "unverifiable"`):
-  - MOMENTUM metrics (the SCR-10 field names, exactly as printed in SECTION 2.5): """ + ", ".join(MOMENTUM_METRICS) + """.
+  - MOMENTUM metrics (the SCR-10 field names, exactly as printed in DATA 2.5): """ + ", ".join(MOMENTUM_METRICS) + """.
   - FINANCIAL metrics: """ + ", ".join(FINANCIAL_METRICS) + """.
 
 Think carefully through the complete economic machinery before writing. Numbers before narrative."""
@@ -3317,7 +3317,7 @@ RESEARCH_ADDENDUM = """
 
 RESEARCH RULES — you have web search, so do not assume what you can look up.
 1. When your reasoning needs a fact you do not have, search for it while you reason; never substitute an assumption, a trend extrapolation or a placeholder. A number found to justify a conclusion you already reached is not evidence.
-2. Do not search to re-verify filed figures: SECTIONS 3-6 come from SEC filings and are authoritative. Research-brief figures are another model's claims; cite the filing when you rely on one. Search only for what neither the filings nor the brief can tell you.
+2. Do not search to re-verify filed figures: DATA 3-6 come from SEC filings and are authoritative. Research-brief figures are another model's claims; cite the filing when you rely on one. Search only for what neither the filings nor the brief can tell you.
 3. Name the source of every retrieved figure inline. It stays [Actual] only if it came from the company or a regulator; a secondary report is [Estimate]. A number you could not establish is [Unconfirmed]: say what you could not resolve, and carry the uncertainty into the scenarios instead of burying it in a point estimate.
 4. The written memorandum is the deliverable, not the tool calls. When your research is done, write the complete memorandum, SECTION 0 through SECTION 12, ending with the ```json:underwriting contract. A run that ends on tool output is discarded unread, however long it ran. Never write tool-call syntax as prose, and never treat a tool result as your answer."""
 

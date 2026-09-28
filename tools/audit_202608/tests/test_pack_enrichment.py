@@ -191,17 +191,17 @@ def test_section_11_header_reverts_to_claims_not_verified_wording(tmp_path, monk
         "GE Vernova is an industrials company.\n", encoding="utf-8")
     monkeypatch.setattr(cap, "HERE", tmp_path)
     pack = cap.build_pack("GEV")
-    sec11 = _slice(pack, "SECTION 11 - DEEP RESEARCH BRIEF")
+    sec11 = _slice(pack, "DATA 11 - DEEP RESEARCH BRIEF")
     assert ("Written by another model, not verified - every figure is a claim to check "
             "against the filings above; cite the filing when you rely on it." in sec11)
 
 
 def test_all_new_pack_sections_render_from_fixture(screener_data_stub):
     pack = cap.build_pack("GEV")
-    for header in ("SECTION 1.6 - STATE OF THE WORLD",
-                   "SECTION 2.5 - PRICE ACTION",
+    for header in ("DATA 1.6 - STATE OF THE WORLD",
+                   "DATA 2.5 - PRICE ACTION",
                    "GROWTH BASE RATES",
-                   "SECTION 8.5 - PEER CONTEXT",
+                   "DATA 8.5 - PEER CONTEXT",
                    "GUIDANCE & CONSENSUS"):
         assert f"## {header}" in pack, f"missing section: {header}"
 
@@ -221,11 +221,11 @@ def test_absent_sources_yield_not_available_not_invented(screener_data_stub, mon
         return orig_load_json(p)
     monkeypatch.setattr(rs2_data, "load_json", mock_load_json)
     pack = cap.build_pack("GEV")
-    sec16 = _slice(pack, "SECTION 1.6 - STATE OF THE WORLD")
+    sec16 = _slice(pack, "DATA 1.6 - STATE OF THE WORLD")
     assert "not available" in sec16
-    sec25 = _slice(pack, "SECTION 2.5 - PRICE ACTION")
+    sec25 = _slice(pack, "DATA 2.5 - PRICE ACTION")
     assert "not available" in sec25
-    sec85 = _slice(pack, "SECTION 8.5 - PEER CONTEXT")
+    sec85 = _slice(pack, "DATA 8.5 - PEER CONTEXT")
     assert "not available" in sec85
     guidance = _slice(pack, "GUIDANCE & CONSENSUS")
     assert "not available" in guidance
@@ -237,7 +237,7 @@ def test_section_2_5_never_contains_screener_opinion(screener_data_stub):
     # falling_knife opinion, which would invite the analyst to agree with the quant screen and
     # erode the independent second opinion the divergence engine exists to record.
     pack = cap.build_pack("GEV")
-    sec25 = _slice(pack, "SECTION 2.5 - PRICE ACTION")
+    sec25 = _slice(pack, "DATA 2.5 - PRICE ACTION")
     lowered = sec25.lower()
     for forbidden in ("band", "rank", "door", "composite", "falling_knife"):
         assert forbidden not in lowered, f"§2.5 leaked screener opinion word: {forbidden!r}"
@@ -245,7 +245,7 @@ def test_section_2_5_never_contains_screener_opinion(screener_data_stub):
 
 def test_section_2_5_closing_sentence_present(screener_data_stub):
     pack = cap.build_pack("GEV")
-    sec25 = _slice(pack, "SECTION 2.5 - PRICE ACTION")
+    sec25 = _slice(pack, "DATA 2.5 - PRICE ACTION")
     assert "these are facts about price and are not a valuation input" in sec25.lower()
 
 
@@ -345,10 +345,10 @@ def test_section_9_suppressed_when_enrich_record_is_stale(tmp_path, monkeypatch,
         (enrich_dir / "GEV.json").open("w", encoding="utf-8"))
     monkeypatch.setattr(cap, "HERE", tmp_path)
     pack = cap.build_pack("GEV")
-    sec9 = _slice(pack, "SECTION 9 - POSITIONING")
+    sec9 = _slice(pack, "DATA 9 - POSITIONING")
     assert cap.STALE_NULL in sec9
     assert "12.3" not in sec9   # the real short-interest value must be suppressed, not shown stale
-    sec8 = _slice(pack, "SECTION 8 - CONSENSUS")
+    sec8 = _slice(pack, "DATA 8 - CONSENSUS")
     assert cap.STALE_NULL in sec8
     assert "100.0" not in sec8
 

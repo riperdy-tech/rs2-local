@@ -74,5 +74,11 @@
   "model_v31_candidate": {
     "depth": "rs2-analyst-deep-mtp5-v31",
     "depth_q4": "rs2-analyst-deep-mtp5-q4-v31"
+  },
+  "_model_v32_candidate_note": "Charter v3.2, the trimmed analyst instructions (2026-09-28): NEW model names registered from the charter-v3.2 Modelfiles (SAME base GGUF blobs, only the SYSTEM block changed: six contradicting sentences resolved, Part II memorandum specification shortened to SECTION 0-12, and pack blocks renamed DATA n). NOT wired into depth_model - that stays rs2-analyst-deep-mtp5 until operator approval after the A/B passes. Candidates only.",
+  "model_v32_candidate": {
+    "depth": "rs2-analyst-deep-mtp5-v32",
+    "depth_q4": "rs2-analyst-deep-mtp5-q4-v32",
+    "system_sha256": "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd723213b0c0ab7"
   }
 }

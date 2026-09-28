@@ -47,7 +47,8 @@ def test_point_in_time_share_default_is_the_filed_count_without_a_factor(screene
     assert f["shares_dilution_factor"] is None and f["shares_dilution_period"] is None
     assert f["shares_warning"] is None
     text = str(pack)
-    sec2 = text[text.index("## SECTION 2 "):text.index("\n## ", text.index("## SECTION 2 ") + 5)]
+    idx2 = text.index("## DATA 2 ")
+    sec2 = text[idx2:text.index("\n## ", idx2 + 5)]
     assert "- Shares dilution factor: not available (point-in-time)" in sec2
     assert "quarter ended" not in sec2
     assert pack_facts.parity(f, pack_facts.from_text(text)) == []

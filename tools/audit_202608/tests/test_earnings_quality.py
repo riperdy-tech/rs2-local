@@ -1,5 +1,6 @@
 """Tests for Item 5: EARNINGS QUALITY line in capability_test.py SECTION 3."""
 import json
+import re
 import sys
 from pathlib import Path
 import pytest
@@ -9,6 +10,11 @@ sys.path.insert(0, str(HERE))
 
 import capability_test as cap
 import rs2_data
+
+
+def _sec3(pack: str) -> str:
+    s = re.split(r"##\s*DATA\s*3", pack)[1]
+    return re.split(r"##\s*DATA\s*4", s)[0]
 
 
 def test_earnings_quality_triggers_on_gev_fixture(screener_data_stub):
@@ -23,7 +29,7 @@ def test_earnings_quality_triggers_on_gev_fixture(screener_data_stub):
         "switch to an older fiscal year or to another base because of this line alone."
     )
     assert expected in pack
-    sec3 = pack.split("SECTION 3")[1].split("SECTION 4")[0]
+    sec3 = _sec3(pack)
     assert expected in sec3
 
 
@@ -129,7 +135,7 @@ def test_earnings_quality_point_in_time_never_reads_post_asof_year(screener_data
     h_path.write_text(json.dumps(h_data), encoding="utf-8")
 
     pack = cap.build_pack("GEV", asof="2026-03-31")
-    sec3 = pack.split("SECTION 3")[1].split("SECTION 4")[0]
+    sec3 = _sec3(pack)
     assert "FY2026" not in sec3
     assert "EARNINGS QUALITY" not in sec3
 
@@ -139,6 +145,6 @@ def test_earnings_quality_point_in_time_never_reads_post_asof_year(screener_data
     h_path.write_text(json.dumps(h_data), encoding="utf-8")
 
     pack_trig = cap.build_pack("GEV", asof="2026-03-31")
-    sec3_trig = pack_trig.split("SECTION 3")[1].split("SECTION 4")[0]
+    sec3_trig = _sec3(pack_trig)
     assert "in FY2025 net income ($4.884B) exceeded operating income ($1.388B)" in sec3_trig
     assert "FY2026" not in sec3_trig

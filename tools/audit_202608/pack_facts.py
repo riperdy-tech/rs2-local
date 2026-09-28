@@ -388,7 +388,7 @@ def render_defaults_block(facts: dict[str, Any], default_exit_multiple: float | 
 
     lines = [
         line("shares_outstanding", _dv_count(f.get("shares_outstanding")),
-             "SECTION 2, the vendor's basic count"),
+             "DATA 2, the vendor's basic count"),
         line("shares_dilution_factor",
              f"{f['shares_dilution_factor']:.4f}" if isinstance(f.get("shares_dilution_factor"), (int, float)) else _NA,
              "the company's own diluted EPS (basic / diluted EPS); applied when it is at least 1.05"),
@@ -399,7 +399,7 @@ def render_defaults_block(facts: dict[str, Any], default_exit_multiple: float | 
         line("shares_warning", _dv_str(f.get("shares_warning")),
              "when present, the desk asks for shares_reason on every call"),
         line("filed_shares_diluted", _dv_count(f.get("filed_shares_diluted")),
-             "SECTION 6B's latest filed diluted average; with after-interest flows it counts a "
+             "DATA 6B's latest filed diluted average; with after-interest flows it counts a "
              "convertible's interest twice"),
         line("filed_shares_fy",
              str(int(f["filed_shares_fy"])) if isinstance(f.get("filed_shares_fy"), (int, float)) else _NA,
@@ -443,7 +443,7 @@ def render_defaults_block(facts: dict[str, Any], default_exit_multiple: float | 
     lines.append(line("interest_expense_latest_b", _dv_money(f.get("interest_expense_latest_b")),
                       "the firm frame's interest_addback is at most this"))
     lines.append(line("consensus_data_status", _dv_str(f.get("consensus_data_status")),
-                      "ok, or why SECTION 8 prints no consensus estimates"))
+                      "ok, or why DATA 8 prints no consensus estimates"))
 
     civ = f.get("consensus_implied_value")
     if isinstance(civ, (int, float)):

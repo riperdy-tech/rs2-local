@@ -225,7 +225,7 @@ TOOLS = [{
                 },
                 "explicit_growth": {
                     "type": "array",
-                    "description": "Annual growth of base_cf - the owner cash flow being valued - for each Stage 1 year (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). Not revenue growth: revenue growth leaves out margin change. Years 1-2 normally follow consensus EPS growth (SECTION 8). Base years 3-5 above next-FY consensus revenue growth are held at it unless guidance_deviation_reason is given.",
+                    "description": "Annual growth of base_cf - the owner cash flow being valued - for each Stage 1 year (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). Not revenue growth: revenue growth leaves out margin change. Years 1-2 normally follow consensus EPS growth (DATA 8). Base years 3-5 above next-FY consensus revenue growth are held at it unless guidance_deviation_reason is given.",
                     "items": {"type": "number"}
                 },
                 "growth_rates": {

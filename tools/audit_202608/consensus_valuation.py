@@ -1472,7 +1472,7 @@ def check_sample_harness_rules(
 
 
 _SHARES_REASON_CITED_RE = re.compile(
-    r"\b(10-K|10-Q|8-K|20-F|6-K|40-F|DEF\s*14A|S-1|424B\w*|SECTION\s*6B|SECTION\s*2(?!\.\d))\b",
+    r"\b(10-K|10-Q|8-K|20-F|6-K|40-F|DEF\s*14A|S-1|424B\w*|(?:SECTION|DATA)\s*6B|(?:SECTION|DATA)\s*2(?!\.\d))\b",
     re.IGNORECASE,
 )
 
@@ -2095,7 +2095,7 @@ def main():
 
     if research_wrong_company or no_research_arg:
         # Proceed with --no-research semantics: strip Section 11 from pack
-        pack = re.sub(r"## SECTION 11 - DEEP RESEARCH BRIEF.*?(?=## SECTION 12|\Z)", "", pack, flags=re.DOTALL)
+        pack = re.sub(r"## (?:SECTION|DATA) 11 - DEEP RESEARCH BRIEF.*?(?=## (?:SECTION|DATA) 12|\Z)", "", pack, flags=re.DOTALL)
         pack_sha256 = hashlib.sha256(pack.encode("utf-8")).hexdigest()
 
     # Save the exact pack. Without it a consensus run is not re-auditable from its own directory

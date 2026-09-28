@@ -1655,7 +1655,7 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
             if yc.get("reason"):
                 reason_str = str(yc["reason"])[:200]
                 lines.append(
-                    f"**Base years 3-5 above next-FY consensus revenue growth ({cap_val:+.1%}, SECTION 8), kept on your guidance_deviation_reason:** "
+                    f"**Base years 3-5 above next-FY consensus revenue growth ({cap_val:+.1%}, DATA 8), kept on your guidance_deviation_reason:** "
                     f'"{reason_str}". The contract\'s guidance_deviation_reason must carry it.'
                 )
                 lines.append("")
@@ -1671,7 +1671,7 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
                     applied_iv = cd.get("applied_per_share_iv")
                     requested_iv = cd.get("requested_per_share_iv")
                     lines.append(
-                        f"**Base years 3-5 held at next-FY consensus revenue growth ({cap_val:+.1%}, SECTION 8):** "
+                        f"**Base years 3-5 held at next-FY consensus revenue growth ({cap_val:+.1%}, DATA 8):** "
                         f"no guidance_deviation_reason was given, so the desk valued {name} on years 3-5 "
                         f"{applied_str} instead of your {requested_str}: ${applied_iv}. "
                         f"Your path would give ${requested_iv}; that is not a desk value and cannot be your base_iv. "

@@ -73,9 +73,11 @@ def _require_section5(pack):
     honest alternative to a test that reports success while measuring nothing - the failure mode
     this suite has already produced twice.
     """
-    if "## SECTION 5" not in pack:
+    if "## DATA 5" not in pack:
         pytest.skip("pack has no SECTION 5 - screener data unavailable")
-    sec5 = pack.split("## SECTION 5")[1].split("## SECTION 6")[0]
+    hdr5 = "## DATA 5"
+    hdr6 = "## DATA 6"
+    sec5 = pack.split(hdr5)[1].split(hdr6)[0]
     if not any(l.strip().startswith("| 20") for l in sec5.splitlines()):
         pytest.skip("no fiscal-year rows in SECTION 5 - screener sec_facts unavailable")
     return sec5

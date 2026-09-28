@@ -138,7 +138,7 @@ def test_defaults_block_round_trip_ezpw_example():
     dex = cap._exit_multiple_value(8.91, 0.0375)
     block = pack_facts.render_defaults_block(facts, default_exit_multiple=dex)
     expected_lines = [
-        "- shares_outstanding: 61,443,377 | SECTION 2, the vendor's basic count",
+        "- shares_outstanding: 61,443,377 | DATA 2, the vendor's basic count",
         "- shares_dilution_factor: 1.2917 | the company's own diluted EPS (basic / diluted EPS); "
         "applied when it is at least 1.05",
         "- shares_dilution_period: quarter ended 2026-06-30 | the filed period the factor comes from",
@@ -146,7 +146,7 @@ def test_defaults_block_round_trip_ezpw_example():
         "with shares_reason",
         "- shares_warning: not available | when present, the desk asks for shares_reason on "
         "every call",
-        "- filed_shares_diluted: 83,383,000 | SECTION 6B's latest filed diluted average; with "
+        "- filed_shares_diluted: 83,383,000 | DATA 6B's latest filed diluted average; with "
         "after-interest flows it counts a convertible's interest twice",
         "- filed_shares_fy: 2025 | the fiscal year of that average",
         "- owner_earnings_default_b: 0.148 | the Base base_cf; more than 2% away needs base_cf_reason",
@@ -170,7 +170,7 @@ def test_defaults_block_round_trip_ezpw_example():
         "(the pack's flows are after interest: value them in the equity frame)",
         "- interest_expense_latest_b: not available | the firm frame's interest_addback is at "
         "most this",
-        "- consensus_data_status: ok | ok, or why SECTION 8 prints no consensus estimates",
+        "- consensus_data_status: ok | ok, or why DATA 8 prints no consensus estimates",
         "- consensus_implied_value: 58.92 | a Base value outside 0.75-1.33 of it (44.19-78.36) "
         "needs guidance_deviation_reason",
         "- reference_status: used | whether the reference is shown, fenced or not available",

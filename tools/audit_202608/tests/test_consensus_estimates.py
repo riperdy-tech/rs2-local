@@ -58,7 +58,7 @@ def test_section_8_consensus_estimates_table_and_trend_revisions(screener_data_s
     _patch_load_json(monkeypatch, {"AMD.json": en_data})
 
     pack = cap.build_pack("AMD")
-    sec8 = _slice(pack, "SECTION 8 - CONSENSUS & MULTIPLES")
+    sec8 = _slice(pack, "DATA 8 - CONSENSUS & MULTIPLES")
 
     # The old Consensus forward growth line must be REMOVED
     assert "Consensus forward growth" not in sec8
@@ -79,7 +79,7 @@ def test_section_8_consensus_estimates_table_and_trend_revisions(screener_data_s
 def test_section_8_consensus_estimates_missing_enrich(screener_data_stub, monkeypatch):
     _patch_load_json(monkeypatch, {"AMD.json": {}})
     pack = cap.build_pack("AMD")
-    sec8 = _slice(pack, "SECTION 8 - CONSENSUS & MULTIPLES")
+    sec8 = _slice(pack, "DATA 8 - CONSENSUS & MULTIPLES")
     assert "- CONSENSUS ESTIMATES: not available \u2014 enrich record missing" in sec8
 
 
@@ -91,7 +91,7 @@ def test_section_8_consensus_estimates_missing_estimates(screener_data_stub, mon
     }
     _patch_load_json(monkeypatch, {"AMD.json": en_data})
     pack = cap.build_pack("AMD")
-    sec8 = _slice(pack, "SECTION 8 - CONSENSUS & MULTIPLES")
+    sec8 = _slice(pack, "DATA 8 - CONSENSUS & MULTIPLES")
     assert "- CONSENSUS ESTIMATES: not available \u2014 yfinance estimates unavailable" in sec8
 
 
@@ -104,13 +104,13 @@ def test_section_8_consensus_estimates_staleness_suppression(screener_data_stub,
     }
     _patch_load_json(monkeypatch, {"AMD.json": en_data})
     pack = cap.build_pack("AMD")
-    sec8 = _slice(pack, "SECTION 8 - CONSENSUS & MULTIPLES")
+    sec8 = _slice(pack, "DATA 8 - CONSENSUS & MULTIPLES")
     assert "- CONSENSUS ESTIMATES: not available \u2014 stale (> 45 days)" in sec8
 
 
 def test_section_8_point_in_time_unchanged(screener_data_stub):
     from datetime import date
     pack = cap.build_pack("GEV", asof=date(2026, 3, 31))
-    sec8 = _slice(pack, "SECTION 8 - CONSENSUS & MULTIPLES")
+    sec8 = _slice(pack, "DATA 8 - CONSENSUS & MULTIPLES")
     assert "not available (point-in-time)" in sec8
     assert "CONSENSUS ESTIMATES" not in sec8

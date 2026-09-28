@@ -10,23 +10,24 @@ import capability_test as cap
 
 
 def test_discovery_context_slices_and_fallbacks(monkeypatch):
+    # a revision-15 pack: the numbered blocks are DATA n (the charter-and-rename change)
     sample_pack = """# DATA PACK - TEST
-## SECTION 1 - OVERVIEW
+## DATA 1 - OVERVIEW
 Some overview
 
-## SECTION 2.5 - PRICE ACTION (facts, not a valuation input)   [Arithmetic]
+## DATA 2.5 - PRICE ACTION (facts, not a valuation input)   [Arithmetic]
 - 12-1 month return: +50.0%
 - 1-month return: +12.0%
 These are facts about price and are not a valuation input.
 
 ## RECENT COMPANY NEWS   [SearXNG news search]
-- The stock moved +12.0% in 1 month and +50.0% in 6 months (SECTION 2.5).
+- The stock moved +12.0% in 1 month and +50.0% in 6 months (DATA 2.5).
 - 2026-09-20 | reuters.com | Major partnership announced | https://reuters.com/news/1 | Partnership details
 
-## SECTION 3 - TRAILING TWELVE MONTHS
+## DATA 3 - TRAILING TWELVE MONTHS
 - Revenue: $10.0B
 
-## SECTION 8 - CONSENSUS & MULTIPLES   [Aggregator]
+## DATA 8 - CONSENSUS & MULTIPLES   [Aggregator]
 - Trailing P/E: 25.0
 - CONSENSUS ESTIMATES   [yfinance, fetched 2026-09-24]
 | period | revenue avg | low | high | analysts | growth | EPS avg | low | high | growth |
@@ -42,7 +43,7 @@ COMPANY'S OWN WORDS — latest earnings release (SEC 8-K Item 2.02, filed 2026-0
 Management expects revenue growth of 15-20% for the full year.
 Additional commentary here.
 
-## SECTION 12 - WHAT WE DO NOT HOLD
+## DATA 12 - WHAT WE DO NOT HOLD
 Declared gaps.
 """
     monkeypatch.setattr(cap, "build_pack", lambda ticker, include_research=False, news_snippets=False: cap.PackText(sample_pack))
@@ -57,7 +58,7 @@ Declared gaps.
     assert ctx["industry"] == "Semiconductors"
     assert ctx["mom_1m"] == 0.12
     assert ctx["mom_6m"] == 0.50
-    assert "## SECTION 2.5 - PRICE ACTION" in ctx["section_2_5"]
+    assert "## DATA 2.5 - PRICE ACTION" in ctx["section_2_5"]
     assert "## RECENT COMPANY NEWS" in ctx["recent_news"]
     assert "- CONSENSUS ESTIMATES" in ctx["consensus_estimates"]
     assert "- Estimate revisions, last 30 days" in ctx["consensus_estimates"]
@@ -390,7 +391,7 @@ def test_pack_placement_and_build_pack_never_calls_run(monkeypatch, tmp_path):
     lines = pack_live_nocache.splitlines()
     news_idx = next(i for i, l in enumerate(lines) if "## RECENT COMPANY NEWS" in l)
     brief_idx = next(i for i, l in enumerate(lines) if "## CATALYST BRIEF" in l)
-    sec3_idx = next(i for i, l in enumerate(lines) if "## SECTION 3" in l)
+    sec3_idx = next(i for i, l in enumerate(lines) if "## DATA 3" in l)
     assert news_idx < brief_idx < sec3_idx
 
     # 2. Point-in-time mode
@@ -399,7 +400,7 @@ def test_pack_placement_and_build_pack_never_calls_run(monkeypatch, tmp_path):
     lines_pit = pack_pit.splitlines()
     news_pit_idx = next(i for i, l in enumerate(lines_pit) if "## RECENT COMPANY NEWS" in l)
     brief_pit_idx = next(i for i, l in enumerate(lines_pit) if "## CATALYST BRIEF" in l)
-    sec3_pit_idx = next(i for i, l in enumerate(lines_pit) if "## SECTION 3" in l)
+    sec3_pit_idx = next(i for i, l in enumerate(lines_pit) if "## DATA 3" in l)
     assert news_pit_idx < brief_pit_idx < sec3_pit_idx
 
     # 3. Live mode with cached brief
@@ -435,7 +436,7 @@ def test_task_bullet_text_replaced():
     # development, record in `catalysts`), new sentence."""
     expected_bullet = (
         "1. Explain the recent move first. Start from the CATALYST BRIEF, RECENT COMPANY NEWS and "
-        "SECTION 8's estimate trend and revisions. For each development, say whether you accept or "
+        "DATA 8's estimate trend and revisions. For each development, say whether you accept or "
         "dispute it and why, and how it enters Bull, Base and Bear. Add any development you find "
         "yourself, and fetch the articles you rely on. Record them in `catalysts`."
     )

@@ -76,7 +76,7 @@ if supports_news_snippets:
 else:
     pack_text = str(cap.build_pack("GEV", include_research=False))
 
-sec25 = cr._slice_section(pack_text, "## SECTION 2.5")
+sec25 = cr._slice_section(pack_text, "## DATA 2.5") or cr._slice_section(pack_text, "## SECTION 2.5")
 news = cr._slice_section(pack_text, "## RECENT COMPANY NEWS")
 est = cr._slice_consensus_estimates(pack_text)
 guidance = cr._slice_guidance(pack_text)

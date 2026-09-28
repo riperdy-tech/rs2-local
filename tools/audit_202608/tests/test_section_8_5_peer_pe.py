@@ -63,7 +63,7 @@ def test_peer_pe_computed_from_eps_ttm_excludes_nonpositive_earnings(screener_da
     })
 
     pack = cap.build_pack("GEV")
-    sec85 = _slice(pack, "SECTION 8.5 - PEER CONTEXT")
+    sec85 = _slice(pack, "DATA 8.5 - PEER CONTEXT")
 
     assert "computed instead from" in sec85 or "epsTtm" in sec85
     # n=4: GEV(100x)/PEER1(10x)/PEER2(20x)/PEER3(30x) -> sorted [10,20,30,100]
@@ -95,7 +95,7 @@ def test_peer_pe_falls_back_to_fundamentals_history_when_eps_ttm_absent(screener
     })
 
     pack = cap.build_pack("GEV")
-    sec85 = _slice(pack, "SECTION 8.5 - PEER CONTEXT")
+    sec85 = _slice(pack, "DATA 8.5 - PEER CONTEXT")
 
     assert "trailing P/E (n=1" in sec85
     assert "median 50.0x" in sec85
@@ -114,7 +114,7 @@ def test_peer_pe_not_available_when_neither_source_has_usable_data(screener_data
     })
 
     pack = cap.build_pack("GEV")
-    sec85 = _slice(pack, "SECTION 8.5 - PEER CONTEXT")
+    sec85 = _slice(pack, "DATA 8.5 - PEER CONTEXT")
 
     assert f"Cluster peers' trailing P/E: {cap.NULL}" in sec85
 
@@ -132,7 +132,7 @@ def test_peer_pe_dead_peratio_field_is_named_not_silently_dropped(screener_data_
     })
 
     pack = cap.build_pack("GEV")
-    sec85 = _slice(pack, "SECTION 8.5 - PEER CONTEXT")
+    sec85 = _slice(pack, "DATA 8.5 - PEER CONTEXT")
 
     assert "`peRatio`" in sec85
     assert "measured 0 for every one of" in sec85

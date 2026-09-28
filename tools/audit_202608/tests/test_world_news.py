@@ -405,7 +405,7 @@ def test_live_pack_world_news_block_renders_top_and_themes(screener_data_stub, m
     import world_news
     monkeypatch.setattr(world_news, "digest", _fake_digest(_SAMPLE_DIGEST))
     pack = cap.build_pack("GEV")
-    sec16 = _slice(pack, "SECTION 1.6 - STATE OF THE WORLD")
+    sec16 = _slice(pack, "DATA 1.6 - STATE OF THE WORLD")
     assert ("- WORLD NEWS, last 14 days — one-line AI summaries of dated headlines from the MRI "
             "news feed (context, not verified facts; check anything you rely on). 5 items "
             "considered, newest classified 2026-09-24:") in sec16
@@ -422,7 +422,7 @@ def test_live_pack_world_news_not_available_when_digest_none(screener_data_stub,
     import world_news
     monkeypatch.setattr(world_news, "digest", _fake_digest(None))
     pack = cap.build_pack("GEV")
-    sec16 = _slice(pack, "SECTION 1.6 - STATE OF THE WORLD")
+    sec16 = _slice(pack, "DATA 1.6 - STATE OF THE WORLD")
     assert ("- WORLD NEWS: not available — MRI news feed unavailable this run (no live digest "
             "and no usable cache)") in sec16
 
@@ -432,13 +432,13 @@ def test_live_pack_world_news_stale_prefix_at_4_not_at_3(screener_data_stub, mon
     stale = dict(_SAMPLE_DIGEST, stale_days=4)
     monkeypatch.setattr(world_news, "digest", _fake_digest(stale))
     pack = cap.build_pack("GEV")
-    sec16 = _slice(pack, "SECTION 1.6 - STATE OF THE WORLD")
+    sec16 = _slice(pack, "DATA 1.6 - STATE OF THE WORLD")
     assert "- STALE (4 days) — WORLD NEWS, last 14 days" in sec16
 
     not_stale = dict(_SAMPLE_DIGEST, stale_days=3)
     monkeypatch.setattr(world_news, "digest", _fake_digest(not_stale))
     pack2 = cap.build_pack("GEV")
-    sec16b = _slice(pack2, "SECTION 1.6 - STATE OF THE WORLD")
+    sec16b = _slice(pack2, "DATA 1.6 - STATE OF THE WORLD")
     assert "STALE (" not in sec16b
     assert "- WORLD NEWS, last 14 days" in sec16b
 
@@ -456,7 +456,7 @@ def test_asof_pack_world_news_not_available_with_first_partition_date(screener_d
         return empty_pit
     monkeypatch.setattr(world_news, "digest", _fake)
     pack = cap.build_pack("GEV", asof="2026-03-31")
-    sec16 = _slice(pack, "SECTION 1.6 - STATE OF THE WORLD")
+    sec16 = _slice(pack, "DATA 1.6 - STATE OF THE WORLD")
     assert "- WORLD NEWS: not available (point-in-time) — the news history does not reach back to this date" in sec16
     assert "2026-07-27" not in sec16          # no post-asof date, even as metadata
     # Wired correctly: digest() was called WITH the asof date, not live (None).
@@ -469,7 +469,7 @@ def test_asof_pack_world_news_renders_when_rows_present(screener_data_stub, monk
     _fake_asof_price_lookup(monkeypatch)
     monkeypatch.setattr(world_news, "digest", _fake_digest(_SAMPLE_DIGEST))
     pack = cap.build_pack("GEV", asof="2026-03-31")
-    sec16 = _slice(pack, "SECTION 1.6 - STATE OF THE WORLD")
+    sec16 = _slice(pack, "DATA 1.6 - STATE OF THE WORLD")
     assert "- WORLD NEWS, last 14 days" in sec16
     assert "the news history does not reach back to this date" not in sec16
     assert "Iran rejects US demands over the Strait of Hormuz blockade" in sec16
