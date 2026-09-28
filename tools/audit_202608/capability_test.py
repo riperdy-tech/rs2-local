@@ -2575,15 +2575,19 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         est = en.get("estimates") if en else None
         _civ_na = None   # why SECTION 8 has no CONSENSUS-IMPLIED VALUE (E10)
         if en_stale:
+            facts["consensus_data_status"] = "stale"
             L.append("- CONSENSUS ESTIMATES: not available \u2014 stale (> 45 days)")
             _civ_na = "consensus estimates stale"
         elif not en:
+            facts["consensus_data_status"] = "enrich_missing"
             L.append("- CONSENSUS ESTIMATES: not available \u2014 enrich record missing")
             _civ_na = "no consensus estimates"
         elif not est or not isinstance(est, dict):
+            facts["consensus_data_status"] = "estimates_unavailable"
             L.append("- CONSENSUS ESTIMATES: not available \u2014 yfinance estimates unavailable")
             _civ_na = "no consensus estimates"
         else:
+            facts["consensus_data_status"] = "ok"
             en_date = (en.get("_fetched_at") or "")[:10] or "unknown"
             L.append(f"- CONSENSUS ESTIMATES   [yfinance, fetched {en_date}; sell-side estimates, not company guidance]")
             L.append(_row(["period", "revenue avg", "low", "high", "analysts", "growth", "EPS avg", "low", "high",
@@ -2880,6 +2884,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None):
         L += ["## SECTION 7 - FILING-DERIVED QUALITY MEASURES   [" + ASOF_NULL + "]",
               "- fundamentals_battery.json is a same-day snapshot with no stored history to "
               "restrict to this as-of date.", ""]
+        facts["consensus_data_status"] = "point_in_time"
         L += ["## SECTION 8 - CONSENSUS & MULTIPLES   [" + ASOF_NULL + "]",
               "- the openbb cache (trailing multiples, consensus forward growth, analyst price "
               "targets) is a same-day snapshot with no stored history.", ""]

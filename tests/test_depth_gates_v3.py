@@ -26,7 +26,9 @@ def _clean(**over):
             "fiduciary_verdict": "PASS", "kelly_fraction_pct": 0.0, "spread_pct": 5.0,
             "run_source": "orchestrator",
             "producer_class": {"status": "ok", "depleting": False, "sector": "Technology",
-                               "industry": "Software - Infrastructure", "source": "stocks.csv@test"}}
+                               "industry": "Software - Infrastructure", "source": "stocks.csv@test"},
+            "consensus_data_status": "ok",
+            "street_fence": {"low": 10.0, "high": 20.0}}
     base.update(over)
     return base
 
@@ -35,8 +37,8 @@ def _v3(v):
     return [r for r in dg.assess(v)[1] if r in V3]
 
 
-def test_gate_version_is_five():
-    assert dg.GATE_VERSION == 5
+def test_gate_version_is_six():
+    assert dg.GATE_VERSION == 6
 
 
 def test_sample_failed_reason():
@@ -73,6 +75,7 @@ def test_the_fence_is_one_sided_and_inclusive(direction, median):
 
 def test_no_fence_on_the_row_is_no_fence_reason():
     v = _clean(direction="undervalued", median_iv=1e6)
+    del v["street_fence"]
     assert "outside_street_fence" not in dg.assess(v)[1]
     v["street_fence"] = None
     assert "outside_street_fence" not in dg.assess(v)[1]

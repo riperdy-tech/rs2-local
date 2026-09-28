@@ -279,6 +279,8 @@ def _clean_verdict(ticker, **over):
          "run_source": "orchestrator", "date": "2026-09-01",
          "producer_class": {"status": "ok", "depleting": False, "sector": "Technology",
                             "industry": "Software", "source": "test"},
+         "consensus_data_status": "ok",
+         "street_fence": {"low": 10.0, "high": 20.0},
          "invalidation_rules": [_rule(metric="net_income", comparator="<", threshold=0)]}
     v.update(over)
     return v

@@ -78,12 +78,12 @@ def test_2026_08_26_cloud_verdict_is_not_actionable(tmp_path, monkeypatch):
 
     actionable, reasons = depth_gates.assess(rec)
     assert actionable is False
-    assert reasons == ["pre_v3.1_gates"]
+    assert reasons == ["pre_v3.1_gates", "no_street_fence"]
 
     ov = json.loads(od.OVERLAY.read_text(encoding="utf-8"))
     assert ov["actionable_count"] == 0
     assert ov["tickers"]["ABBV"]["actionable"] is False
-    assert ov["tickers"]["ABBV"]["actionable_reasons"] == ["pre_v3.1_gates"]
+    assert ov["tickers"]["ABBV"]["actionable_reasons"] == ["pre_v3.1_gates", "no_street_fence"]
 
 
 def test_publish_audits_every_appended_row(tmp_path, monkeypatch):

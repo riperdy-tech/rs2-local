@@ -21,7 +21,9 @@ def _clean(**over):
             "fiduciary_verdict": "PASS", "kelly_fraction_pct": 0.0, "spread_pct": 5.0,
             "run_source": "orchestrator",
             "producer_class": {"status": "ok", "depleting": False, "sector": "Technology",
-                               "industry": "Software - Infrastructure", "source": "stocks.csv@test"}}
+                               "industry": "Software - Infrastructure", "source": "stocks.csv@test"},
+            "consensus_data_status": "ok",
+            "street_fence": {"low": 10.0, "high": 20.0}}
     base.update(over)
     return base
 
@@ -194,8 +196,10 @@ FIXTURE_ROWS = [
      "fiduciary_verdict": "PASS", "kelly_fraction_pct": 0.0, "spread_pct": 5.0,
      "run_source": "orchestrator", "date": "2026-09-22",
      "producer_class": {"status": "ok", "depleting": False, "sector": "Technology",
-                        "industry": "Software - Infrastructure", "source": "stocks.csv@test"}},
-    # BBB: pre-v3.1 (no gate_version) AND single-sample — two reasons compound.
+                        "industry": "Software - Infrastructure", "source": "stocks.csv@test"},
+     "consensus_data_status": "ok",
+     "street_fence": {"low": 10.0, "high": 20.0}},
+    # BBB: pre-v3.1 (no gate_version) AND single-sample — reasons compound.
     {"ticker": "BBB", "direction": "undervalued", "n_basis": 1, "spread_pct": 5.0,
      "run_source": "orchestrator", "date": "2026-09-18"},
     # CCC: the band_verdict() malfunction sentinel — must publish direction: null, status:
@@ -231,7 +235,7 @@ def test_rebuild_overlay_on_3row_fixture(tmp_path, monkeypatch):
 
     bbb = published["tickers"]["BBB"]
     assert bbb["actionable"] is False
-    assert bbb["actionable_reasons"] == ["pre_v3.1_gates", "single_sample"]
+    assert bbb["actionable_reasons"] == ["pre_v3.1_gates", "single_sample", "no_street_fence"]
     assert bbb["status"] == "ok"          # a real direction, just not actionable
     assert bbb["direction"] == "undervalued"
 

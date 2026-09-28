@@ -686,6 +686,7 @@ def band_verdict(doc):
         "bull_below_price_reason": scorecard.get("bull_below_price_reason"),
         "bear_above_price_reason": scorecard.get("bear_above_price_reason"),
         "code_fill_mode": scorecard.get("code_fill_mode"),
+        "consensus_data_status": doc.get("consensus_data_status"),
     })
 
     nar_flags, nar_notes = _not_a_result(doc, good)
@@ -1080,7 +1081,7 @@ def stamp_and_route(v, t, run_source, quote=None, screener_data_commit=None):
     v["gate_version"] = GATE_VERSION
     v["pipeline_commit"] = _pipeline_commit()
     # Phase 4 (b), FSM: the street fence travels on the row so depth_gates can judge it on read.
-    # No fence is an information flag, never a gate.
+    # No fence is now a gate reason, and it is still also flagged.
     v["street_fence"] = vb.street_fence(t)
     if v["street_fence"] is None:
         v["flags"] = sorted(set(v.get("flags") or []) | {"no_street_fence"})

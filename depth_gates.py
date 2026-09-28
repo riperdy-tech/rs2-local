@@ -98,9 +98,8 @@ def producer_class(ticker: str, stocks_csv_path: str | Path, source_label: str) 
     }
 
 
-# 5 (GATE_VERSION 5, reviewer ruling 2026-09-27): reason 16. Depleting producers are not actionable
-# until a producer design passes its own test.
-GATE_VERSION = 5
+# 6 (GATE_VERSION 6, brief S2c): reasons 17-18. Consensus data status and street fence required.
+GATE_VERSION = 6
 
 # P2-fix B2 (Phase 2 approval review): the ledger's `gate_version` alone does not prove a verdict
 # came from a VALID analyst — depth_pipeline stamps gate_version=2 on every verdict it writes
@@ -150,11 +149,14 @@ def assess(v):
      14. any flag starting with `SAMPLE_FAILED`               -> "sample_failed"
      15. any flag starting with `discovery_failed`            -> "discovery_failed"
      16. depleting producer, or class unavailable on v>=5     -> "depleting_producer_unsupported" / "depleting_producer_class_unavailable"
+     17. `consensus_data_status` present and not "ok", or absent on v>=6 -> "consensus_data_unavailable"
+     18. `street_fence` not a dict with numeric `low` and `high` -> "no_street_fence"
 
     Reasons 10-13 (GATE_VERSION 3, Phase 4 (b)): the sanity audit already flagged FSM's samples
-    (MoS +442%, 4.9x the analyst high) and kept them, as designed, but no gate read the flags. A
-    row without a `street_fence` gets no fence reason; depth_pipeline stamps the information flag
-    `no_street_fence` on it instead. Since the desk-backed rule a desk-less sample is not a basis
+    (MoS +442%, 4.9x the analyst high) and kept them, as designed, but no gate read the flags.
+    Reason 10 needs a fence; since GATE_VERSION 6 a row without one fails reason 18
+    (`no_street_fence`), and depth_pipeline still stamps the information flag of the same name.
+    Since the desk-backed rule a desk-less sample is not a basis
     sample, so reason 12 guards rows from before that rule and any path that skips it.
 
     Reasons 14-15 (GATE_VERSION 4, operator ruling 2026-09-27): a sample written at reduced
@@ -166,6 +168,15 @@ def assess(v):
     industry). Phase 4 development runs (FSM, GPOR on revisions 11 and 12) valued these businesses
     as perpetuities at spot commodity decks despite the TASK, so the verdict is not actionable
     until a producer design passes its own pre-registered test. Temporary.
+
+    Reasons 17-18 (GATE_VERSION 6, brief S2c): no verdict is actionable without its consensus
+    data or its street fence. Reason 17 (`consensus_data_unavailable`): `consensus_data_status`
+    is anything but "ok" ("enrich_missing", "stale", "point_in_time", "estimates_unavailable" or
+    an unknown value), or the field is absent and `gate_version` is at least 6. Reason 18
+    (`no_street_fence`): `street_fence` is not a dict with numeric `low` and `high`.
+    "estimates_unavailable" is gated by reviewer ruling at the S2c review: the status also comes
+    from an enrich record written before estimates were fetched, and from a failed fetch, not only
+    from a name yfinance does not cover. Opening it for uncovered names is an operator decision.
 
     P4.8: symmetric dispersion — `high_dispersion` fires for `overvalued` too, not only
     `undervalued`. band_verdict already demotes both directions to `hold` on write when the
@@ -255,6 +266,19 @@ def assess(v):
                 reasons.append("depleting_producer_class_unavailable")
         except TypeError:
             pass
+
+    cds = v.get("consensus_data_status")
+    if cds is not None and cds != "ok":
+        reasons.append("consensus_data_unavailable")
+    elif cds is None:
+        try:
+            if gv is not None and gv >= 6:
+                reasons.append("consensus_data_unavailable")
+        except TypeError:
+            pass
+
+    if not (isinstance(fence, dict) and _is_num(fence.get("low")) and _is_num(fence.get("high"))):
+        reasons.append("no_street_fence")
 
     return (not reasons), reasons
 

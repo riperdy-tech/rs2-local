@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-FACTS_VERSION = 3
+FACTS_VERSION = 4
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -39,6 +39,8 @@ KEYS: list[str] = [
     "shares_dilution_factor",
     "shares_dilution_period",
     "shares_warning",
+    # version 4 (S2c): SECTION 8 consensus estimates status
+    "consensus_data_status",
 ]
 
 # The revision-15 marker (S1's from_text dispatch, section 5.1's line format).
@@ -253,6 +255,25 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
     if m_rc5y:
         rev_cagr_5y = float(m_rc5y.group(1))
 
+    consensus_data_status = None
+    for ln in t.splitlines():
+        ln_s = ln.strip()
+        if ln_s.startswith("- CONSENSUS ESTIMATES: not available") and "stale (> 45 days)" in ln_s:
+            consensus_data_status = "stale"
+            break
+        elif ln_s.startswith("- CONSENSUS ESTIMATES: not available") and "enrich record missing" in ln_s:
+            consensus_data_status = "enrich_missing"
+            break
+        elif ln_s.startswith("- CONSENSUS ESTIMATES: not available") and "yfinance estimates unavailable" in ln_s:
+            consensus_data_status = "estimates_unavailable"
+            break
+        elif ln_s.startswith("- CONSENSUS ESTIMATES   [yfinance, fetched"):
+            consensus_data_status = "ok"
+            break
+        elif ln_s.startswith("## SECTION 8 - CONSENSUS & MULTIPLES   [not available (point-in-time)"):
+            consensus_data_status = "point_in_time"
+            break
+
     return {
         "version": FACTS_VERSION,
         "source": "text",
@@ -281,6 +302,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "shares_dilution_factor": None,
         "shares_dilution_period": None,
         "shares_warning": None,
+        "consensus_data_status": consensus_data_status,
     }
 
 
@@ -405,6 +427,15 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     # stored as a percent number (9.1), not a fraction — matches the revision-14 print site's units
     revenue_cagr_5y_pct = _num(r"revenue_cagr_5y_pct: <([^>]+)>")
 
+    # S2c: read only from its own line. An absent line is None, never inferred from another key:
+    # the gate fails a None status closed on gate_version >= 6.
+    cds_line = _present("consensus_data_status")
+    consensus_data_status = None
+    if cds_line:
+        m_cds = re.match(r"<([^>]+)>", cds_line)
+        if m_cds and m_cds.group(1).strip().lower() != "not available":
+            consensus_data_status = m_cds.group(1).strip()
+
     return {
         "version": FACTS_VERSION,
         "source": "defaults_block",
@@ -433,6 +464,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "shares_dilution_factor": shares_dilution_factor,
         "shares_dilution_period": shares_dilution_period,
         "shares_warning": shares_warning,
+        "consensus_data_status": consensus_data_status,
     }
 
 

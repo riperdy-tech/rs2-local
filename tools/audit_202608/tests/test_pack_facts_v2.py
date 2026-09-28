@@ -101,11 +101,11 @@ def test_five_11_share_keys_never_found_pre_revision_15():
 
 
 def test_facts_version_and_key_count():
-    assert pack_facts.FACTS_VERSION == 3
-    assert len(pack_facts.KEYS) == 23
+    assert pack_facts.FACTS_VERSION == 4
+    assert len(pack_facts.KEYS) == 24
 
 
-def test_empty_has_all_23_keys():
+def test_empty_has_all_24_keys():
     e = pack_facts.empty()
     for k in pack_facts.KEYS:
         assert k in e
@@ -141,7 +141,7 @@ _EZPW_DEFAULTS_BLOCK = """# DATA PACK - EZPW   (pack revision 15)
 
 def test_defaults_block_round_trip_ezpw_example():
     f = pack_facts.from_text(_EZPW_DEFAULTS_BLOCK)
-    assert f["version"] == 3
+    assert f["version"] == 4
     assert f["shares_outstanding"] == 61443377.0
     assert f["shares_default"] == 79364362.0
     assert f["shares_dilution_factor"] == pytest.approx(1.2917)
@@ -249,7 +249,7 @@ def test_revision_15_marker_only_on_first_line():
     text = "# DATA PACK - X\n\nsome text mentioning (pack revision 15) later on\n"
     # No DEFAULTS block and no raise: falls to the legacy reader.
     f = pack_facts.from_text(text)
-    assert f["version"] == 3
+    assert f["version"] == 4
     assert f["source"] == "text"
 
 
@@ -273,7 +273,7 @@ def test_read_sidecar_absent_returns_none(tmp_path):
     assert pack_facts.read_sidecar(tmp_path) is None
 
 
-def test_parity_compares_all_23_keys():
+def test_parity_compares_all_24_keys():
     a = pack_facts.empty()
     b = pack_facts.empty()
     b["terminal_g_anchor"] = 0.03

@@ -2153,6 +2153,10 @@ def main():
               f"{'y' if len(evidence_query_cache) == 1 else 'ies'}, "
               f"{len(evidence_url_cache)} cached page(s) from {evidence_store_dir}", flush=True)
 
+    cds = facts.get("consensus_data_status")
+    if cds != "ok":
+        print(f"::PACK DATA:: {cds}", flush=True)
+
     runs = []
     n_max = 3 if adaptive else n
     attempted = 0        # iterations ENTERED - the only honest denominator for sample loss
@@ -2562,6 +2566,7 @@ def main():
            "pack_facts_source": pack_facts_source,
            "pack_facts_version": pack_facts.FACTS_VERSION,
            "pack_facts_version_read": pack_facts_version_read,
+           "consensus_data_status": facts.get("consensus_data_status"),
            "research_brief_asof": research_brief_asof,
            "research_brief_age_days": research_brief_age_days,
            "research_brief_stale": research_brief_stale,

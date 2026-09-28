@@ -1,0 +1,415 @@
+{
+  "ticker": "ASTH",
+  "price": 36.37,
+  "date": "2026-09-28",
+  "model": "rs2-analyst-deep-mtp5-v31",
+  "samples_run": 2,
+  "n_basis": 2,
+  "iv_band_low": 62.25,
+  "iv_band_high": 76.01,
+  "median_iv": 69.13,
+  "spread_pct": 22.1,
+  "flags": [
+    "desk_input_revisions_4_swing_1.84x",
+    "no_street_fence"
+  ],
+  "pack_revision": 14,
+  "scheme": "band_direction_v1",
+  "m": 4.761627906976742,
+  "scorecard": {
+    "median_iv": 69.13,
+    "base_iv": 62.25,
+    "median_bull_iv": 81.03,
+    "median_bear_iv": 22.83,
+    "iv_band_low": 62.25,
+    "iv_band_high": 76.01,
+    "spread_pct": 22.1,
+    "converged": true,
+    "medoid_sample": 1,
+    "n_basis": 2,
+    "median_conviction_score": 10.0,
+    "median_quality_moat": 3.1,
+    "median_kelly_fraction_pct": 24.75,
+    "asymmetric_payoff_skew": 3.3,
+    "reentry_tranches": {
+      "tranche_1_starter": 35.0,
+      "tranche_2_core": 24.0
+    },
+    "thesis_invalidation_triggers": [
+      "Q3-26 revenue (print 2026-11-05) below the $1.0B guided floor or FY26 FCF below the $105M guided floor (8-K filed 2026-08-06), or a confirmed regulatory/audit finding that ACO shared-savings reserves are materially overstated - any one invalidates the cash-conversion thesis."
+    ],
+    "base_probability": 0.5,
+    "bull_probability": 0.25,
+    "bear_probability": 0.25,
+    "probabilities_defaulted": false,
+    "base_cf_used": 0.076,
+    "base_cf_basis": "other",
+    "coe_used": 0.08,
+    "coe_source": "anchor",
+    "coe_adjustment_reason": null,
+    "valuation_frame": "equity",
+    "terminal_method": "dual_reconciled",
+    "terminal_multiple_or_g": 0.0375,
+    "fade_years": 4,
+    "stage1_growth_path": [
+      0.3,
+      0.2,
+      0.11,
+      0.08,
+      0.06
+    ],
+    "years12_ratio": null,
+    "base_to_civ": null,
+    "consensus_implied_value": null,
+    "bull_years12_ratio": null,
+    "bear_years12_ratio": null,
+    "base_shares_ratio": 1.0,
+    "bull_shares_ratio": 1.0,
+    "bear_shares_ratio": 1.0,
+    "desk_frame": "equity",
+    "desk_net_debt": null,
+    "shares_basis": "diluted",
+    "shares_reason": null,
+    "net_debt_reason": null,
+    "scenario_deviation_reason": null,
+    "bull_bear_anchor": "no consensus range (0 analysts)",
+    "base_exit_g_gap_bp": null,
+    "bull_exit_g_gap_bp": null,
+    "bear_exit_g_gap_bp": null,
+    "base_exit_to_gordon_multiple": null,
+    "terminal_multiple_reason": null,
+    "interest_addback": null,
+    "wacc_reason": null,
+    "owner_earnings_source": "ttm_filed",
+    "consensus_reference_status": "not_available",
+    "terminal_g_gap_bp": 0,
+    "terminal_reason": null,
+    "base_window_gap": null,
+    "reference_window_used": null,
+    "reference_window_value": null,
+    "finite_life_years": null,
+    "cash_flow_life": "perpetual",
+    "cash_flow_life_reason": "Full-risk MA/ACO contracts are multi-year and renewable with no filed finite concession, licence or depleting stock (latest filed data 2026-08-06; FY25 balance sheet); the base already deducts maintenance capex ($0.010B FY25, filed), so a perpetual life is appropriate.",
+    "guidance_deviation_reason": "SECTION 8 prints no consensus cash-flow levels (enrichment missing), so per mandate the base is anchored to company guidance converted to cash flow: FY26 guided FCF $105-132.5M less expected SBC = ~$76M base. Year-1 +30% exceeds consensus FY27 adj EPS growth (+19%, stockanalysis.com 2026-09-27) because the valued flow is SBC-deducted FCF, not EPS: FY27 D&A/interest addbacks grow faster than net income while receivables-build decelerates as revenue growth slows from +24% (FY26 guided, filed 2026-08-06) to ~+10.6% (FY27 consensus revenue [Estimate]); at a stable ~45% FCF/EBITDA conversion this path is consistent with, not above, the street's EPS path. Years 3-5 (11/8/6%) are at or below next-FY consensus revenue growth (~10.6%), so no desk hold applies.",
+    "cycle_evidence": "Dated settlement-timing indicator justifying non-extrapolation of TTM OCF: Q3-25 revenue $956.0M (10-Q, filed) included ACO REACH settlement lumpiness; the Q2-26 release (filed 2026-08-06) reaffirmed FY26 guidance 'despite a one-time ACO REACH payment reduction', and Q3-26 guided revenue of $1.0-1.03B implies only +4.5-7.8% y/y vs that base - a filed, industry-specific swing factor in Medicare settlement timing, not a margin peak (FY25 operating margin 2.5% [Filed] is far below the 12-year median of 7.6%, so no mid-cycle haircut is applied).",
+    "verdict_label": "undervalued",
+    "momentum_view": "neutral",
+    "entry_timing": "buy_now",
+    "momentum_flip_condition": {
+      "metric": "mom_1m",
+      "comparator": ">=",
+      "threshold": 0,
+      "window_days": 30
+    },
+    "momentum_break_rule": {
+      "metric": "high_52w_distance",
+      "comparator": "<",
+      "threshold": -25,
+      "window_days": 90
+    },
+    "invalidation_rules": [
+      {
+        "metric": "revenue_yoy_pct",
+        "comparator": "<",
+        "threshold": 4.5,
+        "window": "next reported quarter (2026-11-05 print)",
+        "source": "fundamentals_quarterly.json"
+      },
+      {
+        "metric": "fcf",
+        "comparator": "<",
+        "threshold": 0.105,
+        "window": "FY2026 annual report (~Feb 2027)",
+        "source": "fundamentals_annual.json"
+      },
+      {
+        "metric": "mom_6m",
+        "comparator": "<",
+        "threshold": 0,
+        "window": "60 days",
+        "source": "section_2_5_price_history"
+      }
+    ],
+    "position_basis": "value",
+    "momentum_evidence": null,
+    "desk_calls": 4,
+    "desk_iv_match": true,
+    "desk_reverse_neutral_cagr": 5.23,
+    "coe_minus_anchor": 0.0,
+    "catalysts": [
+      {
+        "date": "2026-08-06",
+        "event": "Q2-26 results: revenue $972.5M +49% y/y (missed consensus ~1.3%), adj EPS $0.80 beat, FY26 adj EBITDA guidance raised to $255-280M, FCF guidance reaffirmed $105-132.5M; new Hawaii/Texas MA agreements (~3,000 professional-risk lives)",
+        "direction": "bull",
+        "estimates_moved": "FY26/FY27 consensus intact as of 2026-09-27 (FY26 adj EPS $3.07, FY27 $3.64)",
+        "scenario": "Anchors Base year-1/2 cash-flow growth and the Bull contract pipeline; FCF guidance is the base-cash-flow anchor itself"
+      },
+      {
+        "date": "2026-09-11",
+        "event": "Bipartisan Protecting Approved Care Act introduced (AAOS-backed): MA plans must honor initial prior authorizations, no retroactive denials/clawbacks; sector de-rating session (ASTH -2.7%, ALHC -12.6%)",
+        "direction": "bear",
+        "estimates_moved": "no visible change",
+        "scenario": "Supports Bear margin compression: prior-auth/clawback monetization is part of the value-based margin engine"
+      },
+      {
+        "date": "2026-09-17",
+        "event": "GlassHouse Research short report: profitability 'depends on an unusual stack of management estimates - reserves, PPA marks, ACO settlements'; flags $545M related-party loan, aggressive acquisitions, Medicare ~60% exposure to 2027 changes; stock -8%",
+        "direction": "bear",
+        "estimates_moved": "no visible change in consensus as of 2026-09-27 (mean PT $51.50)",
+        "scenario": "Supports Bear: settlement-timing normalization (no tailwind), margin compression, litigation overhang; related-party loan carried as unpriced tail"
+      },
+      {
+        "date": "2026-09-23",
+        "event": "8-K: material cybersecurity incident at subsidiary Astrana Health Management (social engineering; confidential data exfiltrated); company states no expected impact on financial condition; stock -5.5%",
+        "direction": "bear",
+        "estimates_moved": "no visible change",
+        "scenario": "Risk-premium event on the core billing platform; remediation cost and partner/patient exposure embedded in Bear CF drag, not Base"
+      },
+      {
+        "date": "2026-09-24",
+        "event": "Pomerantz LLP investor alert investigating claims on behalf of ASTH investors (securities); AWKO privacy alert (data breach) on 2026-09-25",
+        "direction": "bear",
+        "estimates_moved": "no visible change",
+        "scenario": "Class-action overhang and legal-cost tail; monitored via M4, not in base-case CF"
+      },
+      {
+        "date": "2026-09-15",
+        "event": "Oppenheimer initiates Outperform with $53 PT (Barclays maintains Buy $53 on 2026-08-28); avg PT $51.67 across 10 analysts",
+        "direction": "bull",
+        "estimates_moved": "consensus Strong Buy, unchanged post-incident as of 2026-09-27",
+        "scenario": "Sentiment support and crowding context (SECTION 5.5); not a valuation anchor"
+      }
+    ],
+    "bull_below_price_reason": null,
+    "bear_above_price_reason": null
+  },
+  "conviction_score": 10.0,
+  "business_quality_moat": 3.1,
+  "kelly_fraction_pct": 24.75,
+  "asymmetric_payoff_skew": 3.3,
+  "bull_iv": 81.03,
+  "bear_iv": 22.83,
+  "reentry_tranches": {
+    "tranche_1_starter": 35.0,
+    "tranche_2_core": 24.0
+  },
+  "thesis_invalidation_triggers": [
+    "Q3-26 revenue (print 2026-11-05) below the $1.0B guided floor or FY26 FCF below the $105M guided floor (8-K filed 2026-08-06), or a confirmed regulatory/audit finding that ACO shared-savings reserves are materially overstated - any one invalidates the cash-conversion thesis."
+  ],
+  "converged": true,
+  "early_stop": false,
+  "mode": "fixed_2",
+  "coe_used": 0.08,
+  "coe_source": "anchor",
+  "coe_adjustment_reason": null,
+  "valuation_frame": "equity",
+  "terminal_method": "dual_reconciled",
+  "terminal_multiple_or_g": 0.0375,
+  "fade_years": 4,
+  "stage1_growth_path": [
+    0.3,
+    0.2,
+    0.11,
+    0.08,
+    0.06
+  ],
+  "guidance_deviation_reason": "SECTION 8 prints no consensus cash-flow levels (enrichment missing), so per mandate the base is anchored to company guidance converted to cash flow: FY26 guided FCF $105-132.5M less expected SBC = ~$76M base. Year-1 +30% exceeds consensus FY27 adj EPS growth (+19%, stockanalysis.com 2026-09-27) because the valued flow is SBC-deducted FCF, not EPS: FY27 D&A/interest addbacks grow faster than net income while receivables-build decelerates as revenue growth slows from +24% (FY26 guided, filed 2026-08-06) to ~+10.6% (FY27 consensus revenue [Estimate]); at a stable ~45% FCF/EBITDA conversion this path is consistent with, not above, the street's EPS path. Years 3-5 (11/8/6%) are at or below next-FY consensus revenue growth (~10.6%), so no desk hold applies.",
+  "cycle_evidence": "Dated settlement-timing indicator justifying non-extrapolation of TTM OCF: Q3-25 revenue $956.0M (10-Q, filed) included ACO REACH settlement lumpiness; the Q2-26 release (filed 2026-08-06) reaffirmed FY26 guidance 'despite a one-time ACO REACH payment reduction', and Q3-26 guided revenue of $1.0-1.03B implies only +4.5-7.8% y/y vs that base - a filed, industry-specific swing factor in Medicare settlement timing, not a margin peak (FY25 operating margin 2.5% [Filed] is far below the 12-year median of 7.6%, so no mid-cycle haircut is applied).",
+  "verdict_label": "undervalued",
+  "desk_calls": 4,
+  "desk_iv_match": true,
+  "desk_reverse_neutral_cagr": 5.23,
+  "coe_minus_anchor": 0.0,
+  "years12_ratio": null,
+  "base_to_civ": null,
+  "consensus_implied_value": null,
+  "bull_years12_ratio": null,
+  "bear_years12_ratio": null,
+  "base_shares_ratio": 1.0,
+  "bull_shares_ratio": 1.0,
+  "bear_shares_ratio": 1.0,
+  "desk_frame": "equity",
+  "desk_net_debt": null,
+  "shares_basis": "diluted",
+  "shares_reason": null,
+  "net_debt_reason": null,
+  "scenario_deviation_reason": null,
+  "bull_bear_anchor": "no consensus range (0 analysts)",
+  "base_exit_g_gap_bp": null,
+  "bull_exit_g_gap_bp": null,
+  "bear_exit_g_gap_bp": null,
+  "base_exit_to_gordon_multiple": null,
+  "terminal_multiple_reason": null,
+  "interest_addback": null,
+  "wacc_reason": null,
+  "owner_earnings_source": "ttm_filed",
+  "consensus_reference_status": "not_available",
+  "terminal_g_gap_bp": 0,
+  "terminal_reason": null,
+  "base_window_gap": null,
+  "reference_window_used": null,
+  "reference_window_value": null,
+  "finite_life_years": null,
+  "cash_flow_life": "perpetual",
+  "cash_flow_life_reason": "Full-risk MA/ACO contracts are multi-year and renewable with no filed finite concession, licence or depleting stock (latest filed data 2026-08-06; FY25 balance sheet); the base already deducts maintenance capex ($0.010B FY25, filed), so a perpetual life is appropriate.",
+  "momentum_view": "neutral",
+  "entry_timing": "buy_now",
+  "momentum_flip_condition": {
+    "metric": "mom_1m",
+    "comparator": ">=",
+    "threshold": 0,
+    "window_days": 30
+  },
+  "momentum_break_rule": {
+    "metric": "high_52w_distance",
+    "comparator": "<",
+    "threshold": -25,
+    "window_days": 90
+  },
+  "invalidation_rules": [
+    {
+      "metric": "revenue_yoy_pct",
+      "comparator": "<",
+      "threshold": 4.5,
+      "window": "next reported quarter (2026-11-05 print)",
+      "source": "fundamentals_quarterly.json"
+    },
+    {
+      "metric": "fcf",
+      "comparator": "<",
+      "threshold": 0.105,
+      "window": "FY2026 annual report (~Feb 2027)",
+      "source": "fundamentals_annual.json"
+    },
+    {
+      "metric": "mom_6m",
+      "comparator": "<",
+      "threshold": 0,
+      "window": "60 days",
+      "source": "section_2_5_price_history"
+    }
+  ],
+  "position_basis": "value",
+  "position_basis_declared": "value",
+  "position_basis_votes": {
+    "value": 2
+  },
+  "momentum_evidence": null,
+  "momentum_state": {
+    "price_asof": "2026-09-22 18:22",
+    "mom_12_1": 0.3443,
+    "mom_6m": 0.4833,
+    "mom_1m": -0.0457,
+    "high_52w_distance": -0.2163,
+    "high_52w_basis": "monthly proxy",
+    "above_below_200d_mean": null,
+    "rs_vs_cluster_etf_3m": null,
+    "rs_vs_iwm_3m": null,
+    "realised_vol_60d": null,
+    "regime_shift_up": true,
+    "regime_shift_down": false,
+    "mom_break": null,
+    "mom_z_sector": 0.206,
+    "mom_z_universe": -0.127
+  },
+  "active_shocks_at_verdict": [],
+  "base_cf_reason": null,
+  "catalysts": [
+    {
+      "date": "2026-08-06",
+      "event": "Q2-26 results: revenue $972.5M +49% y/y (missed consensus ~1.3%), adj EPS $0.80 beat, FY26 adj EBITDA guidance raised to $255-280M, FCF guidance reaffirmed $105-132.5M; new Hawaii/Texas MA agreements (~3,000 professional-risk lives)",
+      "direction": "bull",
+      "estimates_moved": "FY26/FY27 consensus intact as of 2026-09-27 (FY26 adj EPS $3.07, FY27 $3.64)",
+      "scenario": "Anchors Base year-1/2 cash-flow growth and the Bull contract pipeline; FCF guidance is the base-cash-flow anchor itself"
+    },
+    {
+      "date": "2026-09-11",
+      "event": "Bipartisan Protecting Approved Care Act introduced (AAOS-backed): MA plans must honor initial prior authorizations, no retroactive denials/clawbacks; sector de-rating session (ASTH -2.7%, ALHC -12.6%)",
+      "direction": "bear",
+      "estimates_moved": "no visible change",
+      "scenario": "Supports Bear margin compression: prior-auth/clawback monetization is part of the value-based margin engine"
+    },
+    {
+      "date": "2026-09-17",
+      "event": "GlassHouse Research short report: profitability 'depends on an unusual stack of management estimates - reserves, PPA marks, ACO settlements'; flags $545M related-party loan, aggressive acquisitions, Medicare ~60% exposure to 2027 changes; stock -8%",
+      "direction": "bear",
+      "estimates_moved": "no visible change in consensus as of 2026-09-27 (mean PT $51.50)",
+      "scenario": "Supports Bear: settlement-timing normalization (no tailwind), margin compression, litigation overhang; related-party loan carried as unpriced tail"
+    },
+    {
+      "date": "2026-09-23",
+      "event": "8-K: material cybersecurity incident at subsidiary Astrana Health Management (social engineering; confidential data exfiltrated); company states no expected impact on financial condition; stock -5.5%",
+      "direction": "bear",
+      "estimates_moved": "no visible change",
+      "scenario": "Risk-premium event on the core billing platform; remediation cost and partner/patient exposure embedded in Bear CF drag, not Base"
+    },
+    {
+      "date": "2026-09-24",
+      "event": "Pomerantz LLP investor alert investigating claims on behalf of ASTH investors (securities); AWKO privacy alert (data breach) on 2026-09-25",
+      "direction": "bear",
+      "estimates_moved": "no visible change",
+      "scenario": "Class-action overhang and legal-cost tail; monitored via M4, not in base-case CF"
+    },
+    {
+      "date": "2026-09-15",
+      "event": "Oppenheimer initiates Outperform with $53 PT (Barclays maintains Buy $53 on 2026-08-28); avg PT $51.67 across 10 analysts",
+      "direction": "bull",
+      "estimates_moved": "consensus Strong Buy, unchanged post-incident as of 2026-09-27",
+      "scenario": "Sentiment support and crowding context (SECTION 5.5); not a valuation anchor"
+    }
+  ],
+  "bull_below_price_reason": null,
+  "bear_above_price_reason": null,
+  "position_basis_source_sample": 1,
+  "size_components": {
+    "dispersion": {
+      "bucket": "half",
+      "spread_pct": 22.1,
+      "source": "SIZE_BUCKETS"
+    },
+    "mos": {
+      "bucket": "full",
+      "mos_vs_base_pct": 71.2,
+      "source": "mos_vs_base_pct"
+    },
+    "conviction": {
+      "bucket": "half",
+      "conviction_score": 10.0,
+      "source": "scorecard.median_conviction_score"
+    },
+    "risk": {
+      "bucket": "full",
+      "elevated_volatility_ahead": false,
+      "source": "mri_outputs_dir/shock_register.json:risk_flags"
+    }
+  },
+  "instability": null,
+  "direction": "undervalued",
+  "size_hint": "half",
+  "mos_vs_median_pct": 90.1,
+  "mos_vs_base_pct": 71.2,
+  "fiduciary_amendments": [],
+  "fiduciary_violations": [],
+  "fiduciary_verdict": "PASS",
+  "consensus_dir": "ASTH_20260928_060305",
+  "run_source": "orchestrator",
+  "arm": "local",
+  "pack_source": "fresh",
+  "screener_data_commit": "f62d164020b99daada6a352badafebd6f576c3b5",
+  "research_brief_asof": "2026-09-28T05:52:07.852060",
+  "research_brief_age_days": 0.09,
+  "price_asof": "2026-09-25",
+  "price_source": "yfinance",
+  "price_asof_basis": null,
+  "gate_version": 6,
+  "pipeline_commit": "3d02fbd",
+  "street_fence": null,
+  "producer_class": {
+    "status": "ok",
+    "depleting": false,
+    "sector": "Healthcare",
+    "industry": "Medical Care Facilities",
+    "source": "stocks.csv@f62d164020b99daada6a352badafebd6f576c3b5"
+  },
+  "consensus_data_status": "enrich_missing"
+}

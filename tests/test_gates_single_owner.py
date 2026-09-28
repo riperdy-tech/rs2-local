@@ -31,7 +31,7 @@ sys.stdout = _ORIG_STDOUT
 
 def test_single_owner_constants_and_functions():
     # depth_gates defines the canonical objects
-    assert dg.GATE_VERSION == 5
+    assert dg.GATE_VERSION == 6
     assert dg.HIGH_DISPERSION_TOL_PCT == 25.0
     assert callable(dg.assess)
 

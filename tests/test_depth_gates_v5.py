@@ -121,7 +121,7 @@ def test_producer_class_case_insensitive_columns_and_ticker(tmp_path):
 def _base_v5_verdict(**over):
     base = {
         "direction": "hold",
-        "gate_version": 5,
+        "gate_version": dg.GATE_VERSION,
         "n_basis": 2,
         "fiduciary_verdict": "PASS",
         "kelly_fraction_pct": 0.0,
@@ -134,6 +134,8 @@ def _base_v5_verdict(**over):
             "industry": "Software - Infrastructure",
             "source": "stocks.csv@test",
         },
+        "consensus_data_status": "ok",
+        "street_fence": {"low": 10.0, "high": 20.0},
     }
     base.update(over)
     return base

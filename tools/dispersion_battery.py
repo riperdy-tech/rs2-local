@@ -77,6 +77,11 @@ def _quote(s):
     return f'"{s}"' if " " in s else s
 
 
+# S2c: statuses on which a battery measures nothing. "estimates_unavailable" added at the S2c review,
+# with the gate: an enrich record written before estimates were fetched prints it too.
+_NO_CONSENSUS_DATA = ("enrich_missing", "stale", "estimates_unavailable")
+
+
 def build_frozen_pack(name, pack_path):
     """Write capability_test.build_pack(name) + TASK + RESEARCH_ADDENDUM to `pack_path`, unless
     a pack is already there (reused verbatim — the battery is resumable at the name level too:
@@ -88,14 +93,23 @@ def build_frozen_pack(name, pack_path):
     script will not go on to run any sample.
     """
     if pack_path.exists():
-        return pack_path.read_text(encoding="utf-8"), True
+        # S2c review: a pack frozen before the pre-flight existed (the E17 L2 packs) is checked on
+        # reuse too, from its own printed text.
+        pack = pack_path.read_text(encoding="utf-8")
+        cds = pack_facts.from_text(pack)["consensus_data_status"]
+        if cds in _NO_CONSENSUS_DATA:
+            raise SystemExit(f"{name}: cannot reuse frozen pack with consensus_data_status={cds!r}")
+        return pack, True
     pack_text = cap.build_pack(name)
-    pack = pack_text + "\n\n---\n\n" + cap.TASK + cap.RESEARCH_ADDENDUM
-    pack_path.parent.mkdir(parents=True, exist_ok=True)
-    pack_path.write_text(pack, encoding="utf-8")
     facts = getattr(pack_text, "facts", None)
     if facts is None:
         facts = pack_facts.from_text(pack_text)
+    cds = facts.get("consensus_data_status") if facts else None
+    if cds in _NO_CONSENSUS_DATA:
+        raise SystemExit(f"{name}: cannot build frozen pack with consensus_data_status={cds!r}")
+    pack = pack_text + "\n\n---\n\n" + cap.TASK + cap.RESEARCH_ADDENDUM
+    pack_path.parent.mkdir(parents=True, exist_ok=True)
+    pack_path.write_text(pack, encoding="utf-8")
     pack_facts.write_sidecar(pack_path.parent, facts)
     return pack, False
 
