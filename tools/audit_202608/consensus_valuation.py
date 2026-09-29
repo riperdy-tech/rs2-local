@@ -2328,7 +2328,11 @@ def main():
         scorecard["code_fill"] = prov
 
         ivs = extract_iv(rep, price)
-        iv = scorecard.get("base_iv") or (st.median(ivs) if ivs else None)
+        # 0.0 is a value: a Base of 0.0 is judged (and refused) as the sample's number, not replaced by
+        # a figure scraped from the memo.
+        iv = scorecard.get("base_iv")
+        if iv is None:
+            iv = st.median(ivs) if ivs else None
         ok, why, flags = plausibility(iv, price, t)
 
         desk_info = extract_desk_snapshot_metrics(

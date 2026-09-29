@@ -73,7 +73,9 @@ def test_the_batch_table_prints_each_scenarios_implied_growth():
         "cash_flow_life": "perpetual", "cash_flow_life_reason": "test",
         "base_cf_reason": "test", "terminal_reason": "test", "bear_above_price_reason": "test",
         "scenarios": [{"name": "Base", "prob": 0.5, "base_cf": 1.186, "growth_rates": FLOW["growth_rates"], "wacc": 0.0898},
-                      {"name": "Bear", "prob": 0.5, "base_cf": 1.186, "growth_rates": [0.45, 0.08, 0.05, 0.04, 0.035],
+                      # revision 16: a call that sends scenarios needs Bull too (not under test here)
+                      {"name": "Bull", "prob": 0.25, "base_cf": 1.186 * 1.2, "growth_rates": FLOW["growth_rates"], "wacc": 0.0898},
+                      {"name": "Bear", "prob": 0.25, "base_cf": 1.186, "growth_rates": [0.45, 0.08, 0.05, 0.04, 0.035],
                        "wacc": 0.1048}]},
         context={"price": 1643.39})
     md = fmt.format_model_results_markdown(res)

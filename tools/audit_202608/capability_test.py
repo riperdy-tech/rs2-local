@@ -203,7 +203,15 @@ TIMEOUT = 14400
 #   trimmed (C1-C3); the share-count default (5.11) replaces SECTION 2's vendor count as what
 #   divides by shares; a revision-15 answer run never publishes a blend (5.12). Packages A and B
 #   (the desk's calling convention, the 13-field form) landed first, at PACK_REVISION 14.
-PACK_REVISION = 15
+# Revision 16 (brief_rev16.md, 2026-09-29, from the revision-15 before/after GPU test): a desk call that sends scenarios
+#   needs exactly one Base, one Bull and one Bear, each with base_cf, explicit_growth and wacc (a two-scenario call was
+#   accepted and Kelly sized two outcomes whose probabilities summed to 0.55); the desk divides by a share count in one
+#   unit (a whole count and its billions value give the same value); a refusal names the share unit when the Base value
+#   is under 0.01x or over 100x the reference (the consensus-implied value when present, else the price). The tool text
+#   says shares_diluted is a whole share count (billions also accepted) and scenarios are exactly three. A base_iv of 0.0
+#   is a value in the harness and in fiduciary_gate.contract_base (no `or` default). The pack text and TASK are unchanged
+#   apart from this number; pack_facts reads every revision from 15 on as revision 15.
+PACK_REVISION = 16
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -1210,8 +1218,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         last_allowed_fy = _last_allowed_fiscal_year(asof_cutoff, _fye_m, _fye_d)
         include_research = False
 
-    # S3 5.1: the revision marker. from_text() dispatches on "(pack revision 15)" appearing in
-    # this first line (pack_facts._REV15_MARKER) to read the DEFAULTS block instead of the legacy
+    # S3 5.1: the revision marker. from_text() dispatches on "(pack revision N)", N >= 15, appearing
+    # in this first line (pack_facts._REVISION_RE) to read the DEFAULTS block instead of the legacy
     # regexes.
     L = [f"# DATA PACK - {t}   (pack revision {PACK_REVISION})", ""]
     if asof_date is not None:

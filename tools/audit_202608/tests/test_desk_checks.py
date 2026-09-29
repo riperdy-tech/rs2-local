@@ -256,12 +256,16 @@ def test_v5_probability_sum_edges(total, ok):
 
 
 def test_v5_sum_not_checked_without_all_three_roles():
+    """Revision 16: a call without all three roles is refused for the missing role, and only for that:
+    the probability sum is not checked (0.1 + 0.1 would otherwise have been refused for it)."""
     p = _happy_params()
     p["scenarios"] = [p["scenarios"][0], p["scenarios"][1]]  # Base + Bull only
     p["scenarios"][0]["prob"] = 0.1
     p["scenarios"][1]["prob"] = 0.1
     res = execute_financial_model(p, context=_ctx())
-    assert not (res.get("validation_error") and any("prob" in m for m in res.get("missing", [])))
+    assert res["validation_error"] is True
+    assert len(res["missing"]) == 1 and "no Bear entry" in res["missing"][0]
+    assert "prob" not in res["error"] and "must sum" not in res["error"]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -747,3 +751,232 @@ def test_sector_multiple_band_not_passed_through():
     for sc in res["scenario_dcfs"]:
         assert "sector_multiple_band" not in sc["dcf"]
         assert "multiple_in_band_gordon" not in sc["dcf"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Revision 16 (brief_rev16.md): exactly three scenarios, one unit for share counts, and a refusal
+# that names the share unit
+# ---------------------------------------------------------------------------------------------
+
+_NO_DESK_RUN = ("scenario_dcfs", "dcf_model", "kelly_sizing", "payoff_skew", "reverse_dcf")
+
+
+def _assert_refused_for_scenarios(res):
+    """A refusal that produced no desk run: none of the result sections a run writes is present."""
+    assert res["validation_error"] is True
+    assert res["needs_reasons"] == []
+    assert not [k for k in _NO_DESK_RUN if k in res]
+
+
+def test_rev16_a_two_scenario_call_is_refused():
+    """Bull and Bear as scenarios with the Base as top-level inputs, probabilities summing to 0.55: the
+    call the desk used to accept, sizing Kelly on two outcomes."""
+    p = _happy_params(base_cf=5.0, explicit_growth=[0.05, 0.05, 0.02, 0.02, 0.02], wacc=0.08)
+    p["scenarios"] = [dict(sc, prob=prob) for sc, prob in zip(p["scenarios"][1:], (0.30, 0.25))]
+    assert [sc["name"] for sc in p["scenarios"]] == ["Bull", "Bear"]
+    assert sum(sc["prob"] for sc in p["scenarios"]) == pytest.approx(0.55)
+    res = execute_financial_model(p, context=_ctx())
+    _assert_refused_for_scenarios(res)
+    assert "no Base entry" in res["error"]
+    assert "no Bull entry" not in res["error"] and "no Bear entry" not in res["error"]
+
+
+@pytest.mark.parametrize("keep", [("Base",), ("Bull",), ("Bear",), ("Base", "Bull"), ("Base", "Bear")])
+def test_rev16_a_call_missing_a_role_is_refused_naming_each_missing_role(keep):
+    p = _happy_params()
+    p["scenarios"] = [sc for sc in p["scenarios"] if sc["name"] in keep]
+    res = execute_financial_model(p, context=_ctx())
+    _assert_refused_for_scenarios(res)
+    for role in ("Base", "Bull", "Bear"):
+        assert (f"no {role} entry" in res["error"]) == (role not in keep)
+
+
+def test_rev16_a_call_with_two_bases_is_refused_naming_the_duplicated_role():
+    p = _happy_params()
+    p["scenarios"].append(_sc("Downside", prob=0.0))          # a name without "bull" or "bear" is Base
+    res = execute_financial_model(p, context=_ctx())
+    _assert_refused_for_scenarios(res)
+    assert "2 Base entries (Base, Downside)" in res["error"]
+    assert "no Bull entry" not in res["error"] and "no Bear entry" not in res["error"]
+
+
+def test_rev16_two_bulls_and_two_bears_are_refused_too():
+    p = _happy_params()
+    p["scenarios"] += [_sc("Bull 2", prob=0.0), _sc("Bear 2", prob=0.0)]
+    res = execute_financial_model(p, context=_ctx())
+    _assert_refused_for_scenarios(res)
+    assert "2 Bull entries (Bull, Bull 2)" in res["error"] and "2 Bear entries (Bear, Bear 2)" in res["error"]
+
+
+def test_rev16_a_three_scenario_call_is_unchanged():
+    """The calibrated call of _happy_params (Base $104.26, Bull $135.91, Bear $61.56): accepted, every value and
+    the Kelly and payoff sections as before. A name carries its role by "bull" or "bear"; any other name is Base."""
+    for names in (("Base", "Bull", "Bear"), ("Central case", "Bull case", "Bear case")):
+        p = _happy_params()
+        for sc, nm in zip(p["scenarios"], names):
+            sc["name"] = nm
+        res = execute_financial_model(p, context=_ctx())
+        assert "error" not in res, res.get("error")
+        assert [s["dcf"]["per_share_iv"] for s in res["scenario_dcfs"]] == [104.26, 135.91, 61.56]
+        assert "kelly_sizing" in res and "payoff_skew" in res and "reverse_dcf" in res
+
+
+def test_rev16_a_call_without_scenarios_is_unchanged():
+    """A top-level call: the single DCF at the same value as the calibrated Base, no Kelly (it needs
+    scenarios), and an empty scenarios list is the same call."""
+    top = dict(base_cf=5.0, explicit_growth=[0.05, 0.05, 0.02, 0.02, 0.02], wacc=0.08)
+    p = _happy_params(**top)
+    del p["scenarios"]
+    res = execute_financial_model(p, context=_ctx())
+    assert "error" not in res, res.get("error")
+    assert res["dcf_model"]["per_share_iv"] == 104.26
+    assert "scenario_dcfs" not in res and "kelly_sizing" not in res
+    assert "reverse_dcf" in res
+    assert execute_financial_model(_happy_params(scenarios=[], **top), context=_ctx()) == res
+
+
+_K = 0.083371        # EZPW's diluted count in billions: 83,371,000 shares
+
+
+def _scaled(**over):
+    """_happy_params and _ctx() for a company of _K billion shares: every cash flow and level times _K, so the
+    values per share are the ones _happy_params is calibrated to; the share count is whatever `over` gives."""
+    ctx = _ctx(shares_default_b=_K, owner_earnings_default_b=5.0 * _K,
+               levels={k: v * _K for k, v in _ctx()["levels"].items()})
+    p = _happy_params(**over)
+    for sc in p["scenarios"]:
+        sc["base_cf"] = 5.0 * _K
+    return p, ctx
+
+
+def test_rev16_a_whole_share_count_and_its_billions_value_agree_to_the_cent():
+    """83,371,000 and 0.083371 (EZPW 1, calls 9 and 11 of the revision-15 run): the same desk output, whole
+    result, at the top level and in the scenarios, and the values per share are the calibrated ones."""
+    p_raw, ctx = _scaled(shares_diluted=83_371_000)
+    p_b, _ = _scaled(shares_diluted=_K)
+    p_sc_raw, _ = _scaled()
+    for sc in p_sc_raw["scenarios"]:
+        sc["shares_diluted"] = 83_371_000
+    p_sc_b, _ = _scaled()
+    for sc in p_sc_b["scenarios"]:
+        sc["shares_diluted"] = _K
+    res_b = execute_financial_model(p_b, context=ctx)
+    assert "error" not in res_b, res_b.get("error")
+    assert [s["dcf"]["per_share_iv"] for s in res_b["scenario_dcfs"]] == [104.26, 135.91, 61.56]
+    for p in (p_raw, p_sc_raw, p_sc_b):
+        assert execute_financial_model(p, context=ctx) == res_b
+
+
+@pytest.mark.parametrize("bad", ["79,364,362", "lots", 0, -1.0])
+def test_rev16_a_share_count_it_cannot_use_is_refused_not_replaced_by_the_default(bad):
+    p, ctx = _scaled(shares_diluted=bad)
+    res = execute_financial_model(p, context=ctx)
+    assert res["validation_error"] is True
+    assert any("shares_diluted" in m for m in res["missing"])
+    assert "scenario_dcfs" not in res
+
+
+@pytest.mark.parametrize("shares", [83.371, 0.000083371])
+def test_rev16_a_refusal_for_a_base_far_from_the_reference_names_the_share_unit(shares):
+    """Millions given where billions are meant (a Base 1000x too low) and the reverse (1000x too high): the
+    refusal says the likely cause is the share unit, gives the ratio to the reference and the pack's count,
+    and, like every refusal but the order one (S3 3.5), carries neither the Base value nor the reference."""
+    p, ctx = _scaled(shares_diluted=shares)
+    ctx["consensus_implied_value"] = 87.65                       # a reference no other figure in the text can equal
+    res = execute_financial_model(p, context=ctx)
+    assert res["validation_error"] is True
+    assert "share unit" in res["error"]
+    assert "never thousands or millions" in res["error"]
+    assert "the pack's default is 83,371,000, or 0.083371 in billions" in res["error"]
+    # the Base value the same call has once every reason is given (the refusal itself carries none)
+    reasons = dict(shares_reason="t", guidance_deviation_reason="t", bull_below_price_reason="t",
+                   bear_above_price_reason="t")
+    p_ok, _ = _scaled(shares_diluted=shares, **reasons)
+    accepted = execute_financial_model(p_ok, context=ctx)
+    assert "error" not in accepted, accepted.get("error")
+    base_value = next(s["dcf"]["per_share_iv"] for s in accepted["scenario_dcfs"] if s["name"] == "Base")
+    assert f"the Base value is {base_value / 87.65:.4f}x the reference," in res["error"]
+    assert f"{base_value:.2f}" not in res["error"] and str(base_value) not in res["error"]
+    assert "87.65" not in res["error"] and "reference price" not in res["error"]
+
+
+def test_rev16_a_refusal_for_another_reason_does_not_name_the_share_unit():
+    """A Base a fifth of the reference is a valuation difference, not a unit error."""
+    p = _happy_params()
+    for sc in p["scenarios"]:
+        if sc["name"] == "Base":
+            sc["wacc"] = 0.30
+    res = execute_financial_model(p, context=_ctx(consensus_implied_value=100.0))
+    assert res["validation_error"] is True and res["needs_reasons"]
+    assert "share unit" not in res["error"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Revision 16, incomplete entries: three entries are not three roles when one cannot be valued
+# ---------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("role", ["Base", "Bull", "Bear"])
+@pytest.mark.parametrize("field", ["base_cf", "explicit_growth", "wacc"])
+def test_rev16_an_entry_missing_a_field_is_refused_naming_the_role_and_the_field(role, field):
+    """The desk used to skip an entry without base_cf, explicit_growth or wacc: a three-entry call then valued
+    two roles and Kelly sized outcomes whose probabilities did not sum to 1."""
+    p = _happy_params()
+    entry = next(sc for sc in p["scenarios"] if sc["name"] == role)
+    del entry[field]
+    res = execute_financial_model(p, context=_ctx())
+    _assert_refused_for_scenarios(res)
+    assert f"the {role} entry ({role}) lacks {field}" in res["error"]
+    assert not [m for m in res["missing"] if role not in m]           # only that entry is named
+
+
+def test_rev16_the_0_67_probability_case_is_refused():
+    """Bear cannot be valued (no wacc), so the two entries the old desk computed carry 0.34 + 0.33 = 0.67
+    of the probability; the call is refused and no Kelly size is made."""
+    p = _happy_params()
+    del next(sc for sc in p["scenarios"] if sc["name"] == "Bear")["wacc"]
+    assert sum(sc["prob"] for sc in p["scenarios"] if sc["name"] != "Bear") == pytest.approx(0.67)
+    res = execute_financial_model(p, context=_ctx())
+    _assert_refused_for_scenarios(res)
+    assert "kelly_sizing" not in res and "the Bear entry (Bear) lacks wacc" in res["error"]
+
+
+def test_rev16_an_entry_missing_several_fields_names_all_of_them():
+    p = _happy_params()
+    for k in ("base_cf", "explicit_growth", "wacc"):
+        del p["scenarios"][1][k]
+    res = execute_financial_model(p, context=_ctx())
+    _assert_refused_for_scenarios(res)
+    assert "the Bull entry (Bull) lacks base_cf, explicit_growth, wacc" in res["error"]
+
+
+@pytest.mark.parametrize("empty", [[], None])
+def test_rev16_an_entry_with_no_growth_path_is_refused(empty):
+    p = _happy_params()
+    p["scenarios"][2]["explicit_growth"] = empty
+    res = execute_financial_model(p, context=_ctx())
+    _assert_refused_for_scenarios(res)
+    assert "the Bear entry (Bear) lacks explicit_growth" in res["error"]
+
+
+def test_rev16_the_aliases_growth_rates_and_discount_rate_still_complete_an_entry():
+    """explicit_growth / growth_rates and wacc / discount_rate are the same inputs: an entry using the alias
+    is complete and the call is the calibrated one."""
+    p = _happy_params()
+    for sc in p["scenarios"]:
+        sc["growth_rates"] = sc.pop("explicit_growth")
+        sc["discount_rate"] = sc.pop("wacc")
+    res = execute_financial_model(p, context=_ctx())
+    assert "error" not in res, res.get("error")
+    assert [s["dcf"]["per_share_iv"] for s in res["scenario_dcfs"]] == [104.26, 135.91, 61.56]
+
+
+@pytest.mark.parametrize("field", ["terminal_g", "fade_years"])
+def test_rev16_an_entry_the_dcf_cannot_value_is_refused_naming_it_and_the_field(field):
+    """The other inputs an entry needs come from the entry or the top level; with neither, the DCF's own input
+    check refuses the call (it always did) and names the entry and the field. No desk run is made."""
+    p = _happy_params()
+    del next(sc for sc in p["scenarios"] if sc["name"] == "Bear")[field]
+    del p[field]
+    res = execute_financial_model(p, context=_ctx())
+    _assert_refused_for_scenarios(res)
+    assert f"Bear: missing required inputs: {field}" in res["error"]

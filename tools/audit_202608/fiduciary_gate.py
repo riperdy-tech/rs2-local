@@ -56,7 +56,10 @@ def contract_base(scorecard):
     policy, and an auditor that re-implements the rule it audits is checking a near-copy.
     """
     sc = scorecard or {}
-    return sc.get("base_iv") or sc.get("median_iv")
+    base = sc.get("base_iv")
+    # 0.0 is a value: a contract base of 0.0 is the base (and the gate refuses it), never a reason to
+    # read the median instead.
+    return base if base is not None else sc.get("median_iv")
 
 
 def payoff_skew(

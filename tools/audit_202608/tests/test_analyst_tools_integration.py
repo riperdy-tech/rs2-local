@@ -23,19 +23,26 @@ def test_financial_model_tool_registered_in_tools_list():
 
 # S3 A+B (brief §3.2, §3.3): price and demonstrated_cagr_5y (= revenue_cagr_5y_pct) come from
 # desk_context now, not the call; cash_flow_life/cash_flow_life_reason are required call arguments.
+# Revision 16 (brief_rev16.md): every scenario entry carries the inputs the desk values it with (an entry
+# with only a name, prob and iv is refused), so the scenarios below are computed; all three values sit below
+# the $951 price, so the expected return is negative and the Kelly size is still 0.0.
 def test_dispatch_financial_model_tool():
     args = {
         "scenarios": [
-            {"name": "Base", "iv": 1100.0, "prob": 0.35},
-            {"name": "Bull", "iv": 1450.0, "prob": 0.20},
-            {"name": "Bear", "iv": 550.0, "prob": 0.45},
+            {"name": "Base", "prob": 0.35, "base_cf": 3.8, "explicit_growth": [0.05] * 5, "wacc": 0.085},
+            {"name": "Bull", "prob": 0.20, "base_cf": 4.56, "explicit_growth": [0.05] * 5, "wacc": 0.085},
+            {"name": "Bear", "prob": 0.45, "base_cf": 1.9, "explicit_growth": [0.05] * 5, "wacc": 0.085},
         ],
         "base_cf": 3.8,
         "shares_diluted": 0.274,
         "wacc": 0.085,
         "terminal_g": 0.025,
+        "fade_years": 5,
+        "sbc_treatment": "deducted_in_cf",
         "cash_flow_life": "perpetual",
         "cash_flow_life_reason": "test",
+        "base_cf_reason": "test",
+        "bull_below_price_reason": "test",
     }
     snap = []
     res = at.dispatch_tool("run_financial_model", args, snap=snap,
@@ -243,7 +250,9 @@ def test_financial_model_tool_schema_and_validation_agree():
 
     expected_desc = (
         # S3 C review (2026-09-28): 5.11 made the desk's default the DEFAULTS shares_default.
+        # Revision 16 (brief_rev16.md): the text says what the pack says about the count's unit.
         "Optional. The desk uses the DEFAULTS block's shares_default when you leave it out. "
+        "shares_default is a whole share count, for example 79,364,362; billions are also accepted. "
         "Pass it only for a different count, with shares_reason."
     )
     assert props["shares_diluted"]["description"] == expected_desc
@@ -281,3 +290,19 @@ def test_financial_model_tool_schema_and_validation_agree():
     assert any("shares_diluted" in m for m in res.get("missing", []))
 
 
+
+
+# Revision 16 (brief_rev16.md): the schema says what the pack says about the share count's unit (the DEFAULTS
+# block prints shares_default as a whole count), and that a call sends exactly three scenarios.
+def test_rev16_tool_text_names_the_share_unit_and_the_three_scenarios():
+    import pack_facts
+    block = pack_facts.render_defaults_block(dict(pack_facts.empty(), shares_default=79364362.0))
+    assert "- shares_default: 79,364,362 | " in block
+
+    fm_tool = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
+    props = fm_tool["function"]["parameters"]["properties"]
+    unit = "a whole share count, for example 79,364,362; billions are also accepted"
+    assert unit in props["shares_diluted"]["description"]
+    assert unit in props["scenarios"]["items"]["properties"]["shares_diluted"]["description"]
+    assert props["scenarios"]["description"].startswith(
+        "Exactly three entries, one each with role Base, Bull and Bear.")

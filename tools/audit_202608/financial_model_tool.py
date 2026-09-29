@@ -988,8 +988,13 @@ def _effective_net_debt(explicit, frame, ctx_default_b):
 
 
 def _effective_shares(explicit, top_shares, ctx_default_b):
+    """The share count the DCF divides by, in billions (the unit of its dollar figures). An explicit
+    count goes through `_to_b`, the conversion the reason checks use, so 83,371,000 and 0.083371 value
+    identically; `top_shares` and the context default are already in billions. A count `_to_b` cannot
+    read is returned as given, and the DCF's own input check refuses it."""
     if explicit is not None:
-        return explicit
+        explicit_b = _to_b(explicit)
+        return explicit if explicit_b is None else explicit_b
     if top_shares is not None:
         return top_shares
     return ctx_default_b
@@ -1002,8 +1007,8 @@ def _need(reasons_needed, reason_name, given, triggered, why):
         reasons_needed.setdefault(reason_name, why)
 
 
-def _refusal(missing, needs_reasons, order=None):
-    """S3 3.7's refusal format."""
+def _refusal(missing, needs_reasons, order=None, share_unit_note=None):
+    """S3 3.7's refusal format. `share_unit_note`, when given, is appended to the detail."""
     detail_bits = []
     if order is not None:
         detail_bits.append(f"the published values are not Bear <= Base <= Bull (Bear {order['bear']:.2f}, "
@@ -1013,6 +1018,8 @@ def _refusal(missing, needs_reasons, order=None):
         detail_bits.append("missing " + ", ".join(missing))
     if needs_reasons:
         detail_bits.append("; ".join(f"{n['reason']} needed: {n['why']}" for n in needs_reasons))
+    if share_unit_note:
+        detail_bits.append(share_unit_note)
     detail = "; ".join(detail_bits)
     msg = ("Not accepted as a desk run; it does not use one of your desk runs. " + detail +
            ". Call again with the same inputs and these reasons, or change an input with dated evidence.")
@@ -1109,6 +1116,34 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             p = sc.get("prob") if isinstance(sc, dict) else None
             if not isinstance(p, (int, float)) or type(p) is bool or p < 0:
                 missing.append(f"prob in {nm}")
+        # exactly one Base, one Bull and one Bear: with two, the sum check below never ran and Kelly
+        # sized outcomes whose probabilities summed to 0.55
+        names_by_role: Dict[str, List[str]] = {"base": [], "bull": [], "bear": []}
+        for sc in scenarios:
+            if isinstance(sc, dict):
+                names_by_role[_role_of(sc.get("name"))].append(str(sc.get("name") or "Scenario"))
+        for role, names in names_by_role.items():
+            if not names:
+                missing.append(f"scenarios: no {role.capitalize()} entry (send exactly three, one each with "
+                               f"role Base, Bull and Bear)")
+            elif len(names) > 1:
+                missing.append(f"scenarios: {len(names)} {role.capitalize()} entries ({', '.join(names)}); "
+                               f"send exactly three, one each with role Base, Bull and Bear (a name with "
+                               f"\"bull\" is Bull, one with \"bear\" is Bear, any other name is Base)")
+        # every entry needs what the desk values it with: an entry without them is skipped below, so a
+        # three-entry call could still size fewer than three roles
+        for sc in scenarios:
+            if not isinstance(sc, dict):
+                continue
+            growth = sc.get("explicit_growth") if sc.get("explicit_growth") is not None else sc.get("growth_rates")
+            lacks = [f for f, absent in (("base_cf", sc.get("base_cf") is None),
+                                         ("explicit_growth", not growth),
+                                         ("wacc", sc.get("wacc") is None and sc.get("discount_rate") is None))
+                     if absent]
+            if lacks:
+                missing.append(f"scenarios: the {_role_of(sc.get('name')).capitalize()} entry "
+                               f"({sc.get('name') or 'Scenario'}) lacks {', '.join(lacks)} (each entry needs "
+                               f"base_cf, explicit_growth and wacc)")
         roles_present = {_role_of(sc.get("name")) for sc in scenarios if isinstance(sc, dict)}
         if {"base", "bull", "bear"} <= roles_present:
             probs = [sc.get("prob") for sc in scenarios if isinstance(sc, dict)]
@@ -1343,6 +1378,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
 
         reasons_needed: Dict[str, str] = {}
         order_violation = None
+        share_unit_note = None
 
         # R1 + R1b
         shares_reason_given = _reason_given(params.get("shares_reason"))
@@ -1464,6 +1500,20 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     _need(reasons_needed, "guidance_deviation_reason", guidance_reason_given, True,
                           f"the Base value is {ratio:.2f}x the reference (outside "
                           f"{consensus_reference.FAR_LOW}-{consensus_reference.FAR_HIGH})")
+            # A Base value under 0.01x or over 100x the reference is not a valuation difference; the usual
+            # cause is a share count in the wrong unit, so a refusal says so. The reference is the one above,
+            # else today's price; a negative value is not a unit error. A refusal carries no per-share value
+            # (S3 3.5, except the order refusal), so the note gives the ratio and the pack's share count only.
+            unit_ref = ref_val if ref_val is not None and ref_val > 0 else price
+            if unit_ref is not None and unit_ref > 0 and base_iv is not None and base_iv >= 0:
+                unit_ratio = base_iv / unit_ref
+                if unit_ratio < 0.01 or unit_ratio > 100:
+                    default_bit = (f" (the pack's default is {ctx_shares_default_b * 1e9:,.0f}, or "
+                                   f"{ctx_shares_default_b:.6f} in billions)" if ctx_shares_default_b else "")
+                    share_unit_note = (f"the Base value is {unit_ratio:.4f}x the reference, too far to be a "
+                                       f"valuation difference; the likely cause is the share unit: shares_diluted "
+                                       f"is a whole share count or that count in billions, never thousands or "
+                                       f"millions{default_bit}")
 
         # R11 (Bull/Bear year-2 cash flow vs the DEFAULTS bull2/bear2 level)
         scenario_dev_given = _reason_given(params.get("scenario_deviation_reason"))
@@ -1508,7 +1558,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
 
         if reasons_needed or order_violation is not None:
             needs_reasons_list = [{"reason": k, "why": v} for k, v in reasons_needed.items()]
-            return _refusal(missing=[], needs_reasons=needs_reasons_list, order=order_violation)
+            return _refusal(missing=[], needs_reasons=needs_reasons_list, order=order_violation,
+                            share_unit_note=share_unit_note)
 
     # ---- 3. Reverse DCF expectations gap (own structure + neutral reference from context) -----
     base_role_sc = next((s for s in scenarios if isinstance(s, dict) and _role_of(s.get("name")) == "base"), None)

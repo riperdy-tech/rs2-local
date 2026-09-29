@@ -37,6 +37,16 @@ _NEUTRAL_REASONS = {
 }
 
 
+def _three(base):
+    """Revision 16: a call that sends scenarios needs exactly one Base, one Bull and one Bear. The cases
+    below that test a single Base use this to complete the set: the Bull and Bear are the Base's own inputs
+    at 1.2x and 0.5x the cash flow (the value is linear in it, so Bear <= Base <= Bull) and are not under
+    test. Probabilities 0.5 / 0.25 / 0.25."""
+    return [dict(base, prob=0.5),
+            dict(base, name="Bull", prob=0.25, base_cf=base["base_cf"] * 1.2),
+            dict(base, name="Bear", prob=0.25, base_cf=base["base_cf"] * 0.5)]
+
+
 def test_01_base_capped_and_kelly_uses_applied():
     """1. Base [0.10,0.08,0.06,0.05,0.045], cap 0.04, no reason:
     - Base applied years 3-5 are [0.04,0.04,0.04], and the IV equals unbundled_dcf on [0.10,0.08,0.04,0.04,0.04];
@@ -153,9 +163,7 @@ def test_03_empty_reason_variants():
             "sbc_treatment": "deducted_in_cf",
             "guidance_deviation_reason": empty_val,
             **_CFL, **_NEUTRAL_REASONS,
-            "scenarios": [
-                {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05, 0.045], "wacc": 0.08},
-            ],
+            "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05, 0.045], "wacc": 0.08}),
         }
         res = execute_financial_model(params, context={"price": 100.0, "years35_cap": 0.04})
         assert "years35_cap" in res
@@ -255,10 +263,8 @@ def test_07_scenario_named_central_capped():
         "terminal_g": 0.025,
         "fade_years": 5,
         "sbc_treatment": "deducted_in_cf",
-        **_CFL, "base_cf_reason": "test",
-        "scenarios": [
-            {"name": "Central", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05, 0.045], "wacc": 0.08},
-        ],
+        **_CFL, **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Central", "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05, 0.045], "wacc": 0.08}),
     }
     res = execute_financial_model(params, context={"price": 100.0, "years35_cap": 0.04})
     expected_dcf = unbundled_dcf(
@@ -287,10 +293,8 @@ def test_08_four_explicit_rates_fade_years_5():
         "terminal_g": 0.03,
         "fade_years": 5,
         "sbc_treatment": "deducted_in_cf",
-        **_CFL, "base_cf_reason": "test",
-        "scenarios": [
-            {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05], "wacc": 0.08},
-        ],
+        **_CFL, **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05], "wacc": 0.08}),
     }
     # Applied year 5: 0.05 + (0.03 - 0.05) * (1/5) = 0.046.
     # Cap 0.04 => applied is min(0.046, 0.04) = 0.04.
@@ -343,10 +347,8 @@ def test_09_two_explicit_rates_fade_years_8():
         "terminal_g": tg,
         "fade_years": fade_orig,
         "sbc_treatment": "deducted_in_cf",
-        **_CFL, "base_cf_reason": "test",
-        "scenarios": [
-            {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [r1, r2], "wacc": 0.08},
-        ],
+        **_CFL, **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [r1, r2], "wacc": 0.08}),
     }
     res = execute_financial_model(params, context={"price": 100.0, "years35_cap": cap})
     assert res["scenario_dcfs"][0]["dcf"]["per_share_iv"] == expected_dcf["per_share_iv"]
@@ -378,10 +380,8 @@ def test_10_two_explicit_rates_fade_years_1_terminal_above_cap():
         "terminal_g": tg,
         "fade_years": 1,
         "sbc_treatment": "deducted_in_cf",
-        **_CFL, "base_cf_reason": "test",
-        "scenarios": [
-            {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [r1, r2], "wacc": 0.08},
-        ],
+        **_CFL, **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [r1, r2], "wacc": 0.08}),
     }
     res = execute_financial_model(params, context={"price": 100.0, "years35_cap": cap})
     assert res["scenario_dcfs"][0]["dcf"]["per_share_iv"] == expected_dcf["per_share_iv"]
@@ -402,10 +402,8 @@ def test_11_finite_life_years_4():
         "sbc_treatment": "deducted_in_cf",
         "cash_flow_life": 4,
         "cash_flow_life_reason": "test",
-        "base_cf_reason": "test",
-        "scenarios": [
-            {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05], "wacc": 0.08},
-        ],
+        **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05], "wacc": 0.08}),
     }
     res = execute_financial_model(params, context={"price": 100.0, "years35_cap": cap})
     expected_dcf = unbundled_dcf(
@@ -433,10 +431,8 @@ def test_12_negative_cap():
         "terminal_g": 0.02,
         "fade_years": 5,
         "sbc_treatment": "deducted_in_cf",
-        **_CFL, "base_cf_reason": "test",
-        "scenarios": [
-            {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.05, 0.02, -0.01, -0.02, -0.03], "wacc": 0.08},
-        ],
+        **_CFL, **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [0.05, 0.02, -0.01, -0.02, -0.03], "wacc": 0.08}),
     }
     res = execute_financial_model(params, context={"price": 100.0, "years35_cap": cap})
     expected_dcf = unbundled_dcf(
@@ -527,10 +523,8 @@ def test_15_monotone_and_continuous():
             "terminal_g": 0.025,
             "fade_years": 5,
             "sbc_treatment": "deducted_in_cf",
-            **_CFL, "base_cf_reason": "test",
-            "scenarios": [
-                {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.10, 0.08, r, r, r], "wacc": 0.08},
-            ],
+            **_CFL, **_NEUTRAL_REASONS,
+            "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [0.10, 0.08, r, r, r], "wacc": 0.08}),
         }
         res = execute_financial_model(params, context={"price": 100.0, "years35_cap": cap})
         ivs.append(res["scenario_dcfs"][0]["dcf"]["per_share_iv"])
@@ -555,10 +549,8 @@ def test_16_markdown_capped_and_kept():
         "terminal_g": 0.025,
         "fade_years": 5,
         "sbc_treatment": "deducted_in_cf",
-        **_CFL, "base_cf_reason": "test",
-        "scenarios": [
-            {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05, 0.045], "wacc": 0.08},
-        ],
+        **_CFL, **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05, 0.045], "wacc": 0.08}),
     }
     res_capped = execute_financial_model(copy.deepcopy(params_capped), context={"price": 100.0, "years35_cap": cap})
     md_capped = format_model_results_markdown(res_capped)
@@ -579,8 +571,8 @@ def test_16b_markdown_fade_note_survives_serialization():
     params = {
         "valuation_frame": "equity", "rate_type": "cost_of_equity", "shares_diluted": 1.0,
         "terminal_g": 0.025, "fade_years": 5, "sbc_treatment": "deducted_in_cf",
-        **_CFL, "base_cf_reason": "test",
-        "scenarios": [{"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05], "wacc": 0.08}],
+        **_CFL, **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05], "wacc": 0.08}),
     }
     res = execute_financial_model(copy.deepcopy(params), context={"price": 100.0, "years35_cap": 0.04})
     rec = res["years35_cap"]["dcfs"][0]

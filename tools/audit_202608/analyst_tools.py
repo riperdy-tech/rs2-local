@@ -256,7 +256,7 @@ TOOLS = [{
                 "annuity_flow": {"type": "number", "description": "Separate annual services / installed-base recurring annuity cash flow (if unbundled)."},
                 "annuity_cap_rate": {"type": "number", "description": "Capitalization rate for annuity flow (e.g. 0.075 for 7.5%)."},
                 "net_debt": {"type": "number", "description": "Firm frame only, in $B; default: the DEFAULTS net debt. Must be 0 or omitted in the equity frame."},
-                "shares_diluted": {"type": "number", "description": "Optional. The desk uses the DEFAULTS block's shares_default when you leave it out. Pass it only for a different count, with shares_reason."},
+                "shares_diluted": {"type": "number", "description": "Optional. The desk uses the DEFAULTS block's shares_default when you leave it out. shares_default is a whole share count, for example 79,364,362; billions are also accepted. Pass it only for a different count, with shares_reason."},
                 "legs": {
                     "type": "array",
                     "description": "Named valuation legs for blend mode: [{'name': 'Gordon DCF', 'weight': 0.6, 'iv': 150.0, 'source': 'desk'}, ...]. Weights must sum to 1.0.",
@@ -274,10 +274,11 @@ TOOLS = [{
                 "scenarios": {
                     "type": "array",
                     "description": (
-                        "One entry per scenario: name (Base, Bull or Bear), prob, base_cf ($B), explicit_growth "
-                        "(5 annual growth rates of base_cf, cash flow not revenue), fade_years, wacc (the discount "
-                        "rate), terminal_g, and optionally terminal_exit_multiple, terminal_leg and shares_diluted. "
-                        "The desk computes every value, the reverse DCF and Kelly sizing in one call."
+                        "Exactly three entries, one each with role Base, Bull and Bear. Each entry: name, prob, "
+                        "base_cf ($B), explicit_growth (5 annual growth rates of base_cf, cash flow not revenue), "
+                        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_exit_multiple, "
+                        "terminal_leg and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
+                        "sizing in one call."
                     ),
                     "items": {
                         "type": "object",
@@ -293,7 +294,7 @@ TOOLS = [{
                             "terminal_g": {"type": "number", "description": "REQUIRED. Terminal growth as decimal"},
                             "terminal_exit_multiple": {"type": "number"},
                             "terminal_leg": {"type": "string", "enum": ["exit", "gordon"], "description": "\"exit\" or \"gordon\": which end value this scenario publishes when you pass an exit multiple. Default \"exit\". Without an exit multiple only \"gordon\" exists."},
-                            "shares_diluted": {"type": "number", "description": "Only for a contingent instrument that vests in this scenario, in billions; needs shares_reason."}
+                            "shares_diluted": {"type": "number", "description": "Only for a contingent instrument that vests in this scenario, as a whole share count, for example 79,364,362; billions are also accepted. Needs shares_reason."}
                         },
                         "required": ["name", "prob"]
                     }

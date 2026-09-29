@@ -1,6 +1,7 @@
 """tools/audit_202608/tests/test_pack_rev15.py — S3 package C (brief section 6 item 5, "Pack").
 
-- Byte equality with golden_pack_GEV_rev15.md, built with S1's step-0 stubs and frozen clock.
+- Byte equality with golden_pack_GEV_rev16.md (revision 15's pack with the number on its first line
+  moved to 16), built with S1's step-0 stubs and frozen clock.
 - The DEFAULTS block is the pack's last block and parses.
 - The retired-words test of 5.3 (GEV golden, and every rebuilt name from 7.3's 20-name sample).
 - The discovery slices (SECTION 2.5, RECENT COMPANY NEWS, CONSENSUS ESTIMATES, GUIDANCE) are
@@ -79,7 +80,7 @@ def test_golden_pack_gev_rev15_byte_equal(screener_data_stub, monkeypatch):
     pack2 = cap.build_pack("GEV", include_research=False)
     text1 = str(pack1)
     assert text1 == str(pack2)
-    golden_bytes = (FIXTURE / "golden_pack_GEV_rev15.md").read_bytes().replace(b"\r\n", b"\n")
+    golden_bytes = (FIXTURE / "golden_pack_GEV_rev16.md").read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes
 
 

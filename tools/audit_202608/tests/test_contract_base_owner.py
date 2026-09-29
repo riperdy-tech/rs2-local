@@ -42,6 +42,16 @@ def test_no_base_available_is_none_not_a_guess():
     assert fg.contract_base(None) is None
 
 
+def test_a_base_of_0_0_is_the_base_not_a_missing_one():
+    """0.0 is a value: the median is the fallback only when `base_iv` is absent (None), and the gate then
+    refuses the 0.0 base instead of a median standing in for it."""
+    sc = {"base_iv": 0.0, "median_iv": 517.745}
+    assert fg.contract_base(sc) == 0.0
+    assert fg.contract_base({"base_iv": None, "median_iv": 517.745}) == 517.745
+    ok, _card, issues = fg.validate_fiduciary_contract({"base_iv": fg.contract_base(sc)}, 500.0)
+    assert ok is False and issues == ["Fatal: base_iv must be strictly positive"]
+
+
 # ---- single ownership ------------------------------------------------------------------
 
 def test_the_pipeline_and_the_auditor_share_one_resolver():

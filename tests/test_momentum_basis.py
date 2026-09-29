@@ -193,7 +193,7 @@ def test_revenue_ttm_yoy_sources(monkeypatch):
 def test_contract_section_12_includes_momentum_basis():
     assert '"position_basis":' in cap.TASK
     assert '"momentum_evidence":' in cap.TASK
-    assert cap.PACK_REVISION == 15
+    assert cap.PACK_REVISION == 16
 
 
 def test_extract_scorecard_and_medoid_summary():

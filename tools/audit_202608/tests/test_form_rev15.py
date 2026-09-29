@@ -140,21 +140,26 @@ def test_tools_schema_changed_descriptions_verbatim():
     )
     assert props["shares_diluted"]["description"] == (
         # S3 C review (2026-09-28): 5.11 made the desk's default the DEFAULTS shares_default.
-        "Optional. The desk uses the DEFAULTS block's shares_default when you leave it out. Pass it "
-        "only for a different count, with shares_reason."
+        # Revision 16 (brief_rev16.md): the text says what the pack says about the count's unit.
+        "Optional. The desk uses the DEFAULTS block's shares_default when you leave it out. "
+        "shares_default is a whole share count, for example 79,364,362; billions are also accepted. "
+        "Pass it only for a different count, with shares_reason."
     )
     assert props["net_debt"]["description"] == (
         "Firm frame only, in $B; default: the DEFAULTS net debt. Must be 0 or omitted in the equity frame."
     )
+    # Revision 16 (brief_rev16.md): exactly three entries, one each with role Base, Bull and Bear.
     assert props["scenarios"]["description"] == (
-        "One entry per scenario: name (Base, Bull or Bear), prob, base_cf ($B), explicit_growth "
-        "(5 annual growth rates of base_cf, cash flow not revenue), fade_years, wacc (the discount "
-        "rate), terminal_g, and optionally terminal_exit_multiple, terminal_leg and shares_diluted. "
-        "The desk computes every value, the reverse DCF and Kelly sizing in one call."
+        "Exactly three entries, one each with role Base, Bull and Bear. Each entry: name, prob, "
+        "base_cf ($B), explicit_growth (5 annual growth rates of base_cf, cash flow not revenue), "
+        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_exit_multiple, "
+        "terminal_leg and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
+        "sizing in one call."
     )
     sc_props = props["scenarios"]["items"]["properties"]
     assert sc_props["shares_diluted"]["description"] == (
-        "Only for a contingent instrument that vests in this scenario, in billions; needs shares_reason."
+        "Only for a contingent instrument that vests in this scenario, as a whole share count, for "
+        "example 79,364,362; billions are also accepted. Needs shares_reason."
     )
     assert sc_props["terminal_leg"]["description"] == (
         "\"exit\" or \"gordon\": which end value this scenario publishes when you pass an exit "

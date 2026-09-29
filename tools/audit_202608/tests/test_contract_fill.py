@@ -596,3 +596,81 @@ def test_main_integration_mock(monkeypatch, tmp_path):
     assert run0["iv"] == 55.0
     assert sc["base_iv"] == 55.0
     assert doc["scorecard"]["code_fill_mode"] == "joint"
+
+
+# ==============================================================================
+# 6. Revision 16 (brief_rev16.md): main() reads a revision-16 pack as revision 15, and 0.0 is a value
+# ==============================================================================
+
+def _run_main_on_frozen_pack(monkeypatch, tmp_path, first_line, calls, report):
+    """cv.main() with --pack-file on a minimal pack (given first line, sidecar facts) and a fake
+    chat_with_tools that snapshots `calls` and returns `report`; returns consensus.json's document."""
+    d_pack = tmp_path / "mock_pack"
+    d_pack.mkdir()
+    pack_file = d_pack / "_pack.md"
+    pack_file.write_text(first_line + "\n\nShares outstanding: 1,000,000,000\n", encoding="utf-8")
+    (d_pack / "_pack_facts.json").write_text(
+        json.dumps({"source": "build", "shares_outstanding": 1e9, "coe_anchor": 0.08}), encoding="utf-8")
+
+    def mock_chat_with_tools(model, pack, sd_i, **kw):
+        sd = Path(sd_i)
+        sd.mkdir(parents=True, exist_ok=True)
+        (sd / "_research_snapshot.json").write_text(json.dumps({"calls": calls, "turns": [1]}), encoding="utf-8")
+        return report, "Thinking trace", {"done_reason": "stop", "eval_count": 100, "prompt_eval_count": 50}
+
+    monkeypatch.setattr(at, "chat_with_tools", mock_chat_with_tools)
+    monkeypatch.setattr(cv, "snapshot_research_brief", lambda *a, **k: cv.ResearchSnapshot(None, None, False, False))
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "consensus_valuation.py", "GEV", "--price", "100.0", "--samples", "1",
+        "--tools", "--no-early-stop", "--pack-file", str(pack_file), "--out-dir", str(out_dir)
+    ])
+    cv.main()
+    (res_dir,) = list(out_dir.glob("GEV_*"))
+    return json.loads((res_dir / "consensus.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("revision,blend_published", [(14, True), (15, False), (16, False)])
+def test_main_never_publishes_a_blend_on_a_revision_15_or_later_pack(monkeypatch, tmp_path, revision, blend_published):
+    """A session with only a blend call, whose value the memo's typed Base matches: S2's blend rule holds on
+    a revision-14 pack; from revision 15 on (16 included) no blend is published (5.12)."""
+    blend = {"tool": "run_financial_model", "call_index": 1,
+             "params": {"mode": "blend", "legs": [{"name": "a", "weight": 1.0, "iv": 125.0}]},
+             "result": {"mode": "blend", "blended_per_share_iv": 125.0, "per_share_iv": 125.0}}
+    report = '# Report\n```json:underwriting\n{"base_iv": 125.0, "verdict_label": "hold"}\n```\n'
+    first_line = f"# DATA PACK - GEV   (pack revision {revision})"
+    doc = _run_main_on_frozen_pack(monkeypatch, tmp_path, first_line, [blend], report)
+    prov = doc["runs"][0]["scorecard"]["code_fill"]
+    assert prov["blend"] is blend_published
+
+
+def test_main_judges_a_base_of_0_0_as_the_samples_number_and_does_not_replace_it_with_prose(monkeypatch, tmp_path):
+    """The Base the desk valued is 0.0 (a share count in the wrong unit). It is a value: the sample's IV is 0.0
+    and the sample is not usable; it is not swapped for the $55 the memo's prose states (0.0 is falsy, and the
+    old `or` fell through to the prose)."""
+    call = _make_call(
+        scenarios=[
+            {"name": "Base", "per_share_iv": 0.0, "prob": 0.5, "base_cf": 2.0,
+             "explicit_growth": [0.1], "fade_years": 5, "discount_rate_applied": 0.08,
+             "valuation_frame": "equity", "terminal_g": 0.025, "shares_diluted": 1.0},
+            {"name": "Bull", "per_share_iv": 0.0, "prob": 0.25, "shares_diluted": 1.0},
+            {"name": "Bear", "per_share_iv": 0.0, "prob": 0.25, "shares_diluted": 1.0},
+        ],
+        kelly=0.0,
+        call_index=1,
+        top_params={"cash_flow_life": "perpetual", "cash_flow_life_reason": "test"},
+    )
+    report = "# Report\nThe intrinsic value is $55.00 per share.\n"
+    doc = _run_main_on_frozen_pack(monkeypatch, tmp_path, "# DATA PACK - GEV   (pack revision 16)", [call], report)
+    run0 = doc["runs"][0]
+    assert run0["scorecard"]["base_iv"] == 0.0
+    assert run0["all_iv_mentions"] == [55.0]        # the prose figure is still read, and not used
+    assert run0["iv"] == 0.0
+    assert run0["plausible"] is False
+
+
+def test_main_takes_the_prose_value_only_when_the_scorecard_has_no_base(monkeypatch, tmp_path):
+    """The other side of the same rule: a missing Base (None) still falls back to the prose figure."""
+    report = "# Report\nThe intrinsic value is $55.00 per share.\n"
+    doc = _run_main_on_frozen_pack(monkeypatch, tmp_path, "# DATA PACK - GEV   (pack revision 16)", [], report)
+    assert doc["runs"][0]["iv"] == 55.0

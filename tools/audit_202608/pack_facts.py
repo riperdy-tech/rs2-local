@@ -52,8 +52,10 @@ KEYS: list[str] = [
     "consensus_data_status",
 ]
 
-# The revision-15 marker (S1's from_text dispatch, section 5.1's line format).
-_REV15_MARKER = "(pack revision 15)"
+# The revision marker (S1's from_text dispatch, section 5.1's line format). The DEFAULTS reader
+# serves every revision from 15 on: a later revision changes what the model is told, not this format.
+_REVISION_RE = re.compile(r"\(pack revision (\d+)\)")
+_FIRST_DEFAULTS_REVISION = 15
 
 _DICT_KEYS = ("levels", "base_window", "base_rate_5y")
 
@@ -99,16 +101,18 @@ def empty() -> dict[str, Any]:
 
 
 def is_revision_15(pack_text: str | None) -> bool:
-    """True when `pack_text`'s first line carries the revision-15 marker (5.1). The single check
-    `from_text` dispatches on and S3 5.12 uses (`contract_fill.fill(..., allow_blend=...)`)."""
+    """True when `pack_text`'s first line carries a revision marker of 15 or later (5.1), so a
+    revision-16 pack is read as revision 15 is. The single check `from_text` dispatches on and
+    S3 5.12 uses (`contract_fill.fill(..., allow_blend=...)`)."""
     t = pack_text or ""
-    return _REV15_MARKER in t.split("\n", 1)[0]
+    m = _REVISION_RE.search(t.split("\n", 1)[0])
+    return m is not None and int(m.group(1)) >= _FIRST_DEFAULTS_REVISION
 
 
 def from_text(pack_text: str | None) -> dict[str, Any]:
-    """Parse structured facts from pack text. A revision-15 text (first line carries the marker
-    "(pack revision 15)") is read only from its DEFAULTS block; any other text uses the legacy
-    readers verbatim (revisions up to 14, recorded packs, frozen battery packs)."""
+    """Parse structured facts from pack text. A text from revision 15 on (first line carries the
+    marker "(pack revision N)", N >= 15) is read only from its DEFAULTS block; any other text uses
+    the legacy readers verbatim (revisions up to 14, recorded packs, frozen battery packs)."""
     t = pack_text or ""
     if is_revision_15(t):
         return _from_defaults_block(t)

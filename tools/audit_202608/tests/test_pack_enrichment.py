@@ -171,8 +171,8 @@ def _slice(pack, header, next_prefix="## "):
     return pack[i:j if j != -1 else len(pack)]
 
 
-def test_pack_revision_is_15():
-    assert cap.PACK_REVISION == 15
+def test_pack_revision_is_16():
+    assert cap.PACK_REVISION == 16
 
 
 def test_no_ground_truth_phrase_anywhere(screener_data_stub):

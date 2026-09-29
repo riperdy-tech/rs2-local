@@ -105,19 +105,26 @@ def test_calculate_payoff_skew():
 
 # S3 A+B (brief §3.2, §3.3): price and demonstrated_cagr_5y (= revenue_cagr_5y_pct) come from
 # context now; cash_flow_life and its reason are required.
+# Revision 16 (brief_rev16.md): every scenario entry carries the inputs the desk values it with (an entry
+# with only a name, prob and iv is refused), so the scenarios below are computed; all three values sit below
+# the $951 price, so the expected return is negative and the Kelly size is still 0.0.
 def test_execute_financial_model_dispatch():
     payload = {
         "scenarios": [
-            {"name": "Base", "iv": 1100.0, "prob": 0.35},
-            {"name": "Bull", "iv": 1450.0, "prob": 0.20},
-            {"name": "Bear", "iv": 550.0, "prob": 0.45},
+            {"name": "Base", "prob": 0.35, "base_cf": 3.8, "explicit_growth": [0.05] * 5, "wacc": 0.085},
+            {"name": "Bull", "prob": 0.20, "base_cf": 4.56, "explicit_growth": [0.05] * 5, "wacc": 0.085},
+            {"name": "Bear", "prob": 0.45, "base_cf": 1.9, "explicit_growth": [0.05] * 5, "wacc": 0.085},
         ],
         "base_cf": 3.8,
         "shares_diluted": 0.274,
         "wacc": 0.085,
         "terminal_g": 0.025,
+        "fade_years": 5,
+        "sbc_treatment": "deducted_in_cf",
         "cash_flow_life": "perpetual",
         "cash_flow_life_reason": "test",
+        "base_cf_reason": "test",
+        "bull_below_price_reason": "test",
     }
     out = execute_financial_model(payload, context={"price": 951.0, "revenue_cagr_5y_pct": 7.5})
     assert "kelly_sizing" in out
@@ -842,21 +849,26 @@ def test_old_amd_call_9_params_refused():
 def test_reverse_dcf_never_uses_defaulted_share_count():
     """Reverse DCF path must not run on a defaulted share count: explicit shares_diluted, or the
     context's shares_default_b, is required."""
-    cfl = {"cash_flow_life": "perpetual", "cash_flow_life_reason": "test", "base_cf_reason": "test"}
+    cfl = {"cash_flow_life": "perpetual", "cash_flow_life_reason": "test", "base_cf_reason": "test",
+           "bull_below_price_reason": "test", "bear_above_price_reason": "test"}
+
+    def three(base):
+        # revision 16: a call that sends scenarios needs exactly one Base, one Bull and one Bear; the
+        # Bull and Bear are the Base's inputs at 1.2x and 0.5x the cash flow and are not under test
+        return [dict(base, prob=0.5), dict(base, name="Bull", prob=0.25, base_cf=base["base_cf"] * 1.2),
+                dict(base, name="Bear", prob=0.25, base_cf=base["base_cf"] * 0.5)]
+
     payload_sc_no_shares = {
-        "scenarios": [
-            {
-                "name": "Base",
-                "prob": 1.0,
-                "base_cf": 5.0,
-                "growth_rates": [0.10, 0.08],
-                "wacc": 0.09,
-                "terminal_g": 0.025,
-                "fade_years": 0,
-                "sbc_treatment": "deducted_in_cf",
-                # shares_diluted omitted
-            }
-        ],
+        "scenarios": three({
+            "name": "Base",
+            "base_cf": 5.0,
+            "growth_rates": [0.10, 0.08],
+            "wacc": 0.09,
+            "terminal_g": 0.025,
+            "fade_years": 0,
+            "sbc_treatment": "deducted_in_cf",
+            # shares_diluted omitted
+        }),
         **cfl,
     }
     res = execute_financial_model(payload_sc_no_shares, context={"price": 100.0})
@@ -864,19 +876,16 @@ def test_reverse_dcf_never_uses_defaulted_share_count():
     assert any("shares_diluted" in m for m in res["missing"])
 
     payload_sc_with_shares = {
-        "scenarios": [
-            {
-                "name": "Base",
-                "prob": 1.0,
-                "base_cf": 5.0,
-                "growth_rates": [0.10, 0.08],
-                "wacc": 0.09,
-                "terminal_g": 0.025,
-                "fade_years": 0,
-                "sbc_treatment": "deducted_in_cf",
-                "shares_diluted": 1.635,
-            }
-        ],
+        "scenarios": three({
+            "name": "Base",
+            "base_cf": 5.0,
+            "growth_rates": [0.10, 0.08],
+            "wacc": 0.09,
+            "terminal_g": 0.025,
+            "fade_years": 0,
+            "sbc_treatment": "deducted_in_cf",
+            "shares_diluted": 1.635,
+        }),
         **cfl,
     }
     res_ok = execute_financial_model(payload_sc_with_shares, context={"price": 100.0})
@@ -1045,9 +1054,17 @@ def test_finite_life_execute_financial_model_batch():
             },
             {
                 "name": "Bull",
-                "prob": 0.5,
+                "prob": 0.25,
                 "base_cf": 10.0,
                 "growth_rates": [0.10, 0.10, 0.10],
+                "wacc": 0.08,
+                "terminal_g": 0.02,
+            },
+            {   # revision 16: a call that sends scenarios needs Bear too (not under test here)
+                "name": "Bear",
+                "prob": 0.25,
+                "base_cf": 10.0,
+                "growth_rates": [0.0, 0.0, 0.0],
                 "wacc": 0.08,
                 "terminal_g": 0.02,
             }
@@ -1056,7 +1073,7 @@ def test_finite_life_execute_financial_model_batch():
     res = execute_financial_model(params, context={"price": 100.0})
     assert not res.get("error")
     scs = res.get("scenario_dcfs") or []
-    assert len(scs) == 2
+    assert len(scs) == 3
     base_dcf = scs[0]["dcf"]
     assert base_dcf["finite_life_years"] == 3
     assert base_dcf["terminal_method"] == "finite life 3 years"
@@ -1068,7 +1085,7 @@ def test_finite_life_execute_financial_model_batch():
 
     # A scenario's own finite_life_years is now refused (V3): use cash_flow_life instead.
     params_v3 = dict(params)
-    params_v3["scenarios"] = [dict(params["scenarios"][0], finite_life_years=3), params["scenarios"][1]]
+    params_v3["scenarios"] = [dict(params["scenarios"][0], finite_life_years=3)] + params["scenarios"][1:]
     res_v3 = execute_financial_model(params_v3, context={"price": 100.0})
     assert res_v3.get("validation_error") is True
     assert any("finite_life_years" in m for m in res_v3["missing"])

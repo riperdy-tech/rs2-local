@@ -324,3 +324,76 @@ def test_parity_compares_all_24_keys():
     b["terminal_g_anchor"] = 0.03
     mismatches = pack_facts.parity(a, b)
     assert mismatches == ["terminal_g_anchor"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Revision 16 (brief_rev16.md): a revision-16 pack is read as revision 15 is, not by the legacy readers
+# ---------------------------------------------------------------------------------------------
+
+def _rev(n, block):
+    return f"# DATA PACK - X   (pack revision {n})\n\n" + block
+
+
+def _facts_with_defaults():
+    return dict(pack_facts.empty(), version=4, shares_default=79364362.0, coe_anchor=0.0891,
+                terminal_g_default=0.0375, net_debt_b=-0.048, consensus_data_status="ok")
+
+
+def test_revision_14_reads_as_legacy():
+    """A revision-14 first line is not the DEFAULTS format: the legacy reader answers, and a text with no
+    DEFAULTS block is not an error (a DEFAULTS reader would raise on it)."""
+    text = "# DATA PACK - X   (pack revision 14)\n\nsome text with no defaults block\n"
+    assert pack_facts.is_revision_15(text) is False
+    f = pack_facts.from_text(text)
+    assert f["version"] == 4 and f["source"] == "text"
+
+
+def test_revisions_15_and_16_read_the_same():
+    facts = _facts_with_defaults()
+    block = pack_facts.render_defaults_block(facts)
+    f15, f16 = pack_facts.from_text(_rev(15, block)), pack_facts.from_text(_rev(16, block))
+    assert f15 == f16
+    assert pack_facts.parity(facts, f16) == []
+    assert f16["shares_default"] == 79364362.0        # a key only the DEFAULTS block prints
+    assert pack_facts.is_revision_15(_rev(15, block)) is True
+    assert pack_facts.is_revision_15(_rev(16, block)) is True
+
+
+def test_a_revision_16_text_without_a_defaults_block_raises_and_never_falls_back_to_the_legacy_readers():
+    with pytest.raises(ValueError):
+        pack_facts.from_text(_rev(16, "no defaults block anywhere in this text\n"))
+
+
+@pytest.mark.parametrize("first_line,expected", [
+    ("# DATA PACK - X   (pack revision 1)", False),
+    ("# DATA PACK - X   (pack revision 9)", False),
+    ("# DATA PACK - X   (pack revision 14)", False),
+    ("# DATA PACK - X   (pack revision 15)", True),
+    ("# DATA PACK - X   (pack revision 16)", True),
+    ("# DATA PACK - X   (pack revision 17)", True),
+    ("# DATA PACK - X   (pack revision 100)", True),
+    ("# DATA PACK - X", False),
+    ("# DATA PACK - X   (pack revision )", False),
+])
+def test_the_revision_number_on_the_first_line_decides(first_line, expected):
+    assert pack_facts.is_revision_15(first_line + "\n\nbody\n") is expected
+
+
+def test_the_revision_marker_counts_only_on_the_first_line_and_none_is_no_revision():
+    assert pack_facts.is_revision_15("# DATA PACK - X\n\n(pack revision 16)\n") is False
+    assert pack_facts.is_revision_15(None) is False
+    assert pack_facts.is_revision_15("") is False
+
+
+def test_the_revision_15_and_16_golden_gev_packs_read_the_same():
+    """The two fixtures differ on the first line only, and give the same facts from the DEFAULTS block."""
+    fixture = Path(__file__).resolve().parent / "fixture_data"
+    t15 = (fixture / "golden_pack_GEV_rev15.md").read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
+    t16 = (fixture / "golden_pack_GEV_rev16.md").read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
+    first15, rest15 = t15.split("\n", 1)
+    first16, rest16 = t16.split("\n", 1)
+    assert (first15, first16) == ("# DATA PACK - GEV   (pack revision 15)", "# DATA PACK - GEV   (pack revision 16)")
+    assert rest15 == rest16
+    f16 = pack_facts.from_text(t16)
+    assert f16 == pack_facts.from_text(t15)
+    assert f16["shares_default"] is not None and f16["coe_anchor"] is not None   # read from the DEFAULTS block

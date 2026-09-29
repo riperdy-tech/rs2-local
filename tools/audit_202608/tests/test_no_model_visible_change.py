@@ -43,7 +43,11 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 # 2026-09-28 (reviewer, S3 C review): shares_diluted's description names the DEFAULTS
 # shares_default; was "59ba2b728999b3f5be6f964fc9e4294d42678ffe611a5c6825f67369acb95861".
 # 2026-09-28 (package D): analyst_tools descriptions renamed DATA n (brief §D2).
-TOOLS_SHA256 = "cc6c27898d5fba93399520922cc29194506834fa86396d93c7b5047b43e5a3a6"
+# 2026-09-29 (revision 16, brief_rev16.md): exactly three descriptions changed on purpose: both
+# shares_diluted descriptions (a whole share count, billions also accepted) and the scenarios
+# description (exactly three entries, one each Base, Bull and Bear); was
+# "cc6c27898d5fba93399520922cc29194506834fa86396d93c7b5047b43e5a3a6".
+TOOLS_SHA256 = "2600921006ada7440b52f6e79da682c8be693d1ebba705b2d8a37efed6ddebe1"
 # research_tools() (search_web, fetch_page) is unchanged, so its pin stays.
 RESEARCH_TOOLS_SHA256 = "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
@@ -66,8 +70,8 @@ def _get_system_block(path: Path) -> str:
 
 
 def test_text_pins():
-    # S3 C (brief §2, §0): PACK_REVISION moves to 15 in this step's last commit.
-    assert capability_test.PACK_REVISION == 15
+    # Revision 16 (brief_rev16.md): the pack text is unchanged apart from the number on its first line.
+    assert capability_test.PACK_REVISION == 16
     assert _sha256(capability_test.TASK) == TASK_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
@@ -98,7 +102,7 @@ class FrozenDatetime(_real_datetime):
 
 
 def test_pack_byte_pin(screener_data_stub, monkeypatch):
-    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev14.md.
+    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev16.md.
 
     Datetime is frozen at 2026-09-27 12:00 local across:
     - capability_test
@@ -157,7 +161,7 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     assert len(text1) == 20006
 
     # Assert byte equality with golden file
-    golden_file = FIXTURE / "golden_pack_GEV_rev15.md"
+    golden_file = FIXTURE / "golden_pack_GEV_rev16.md"
     # core.autocrlf checks the fixture out with CRLF on Windows; the pack itself is built with "\n"
     golden_bytes = golden_file.read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes
