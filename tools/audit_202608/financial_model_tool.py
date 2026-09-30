@@ -25,13 +25,16 @@ os.environ.setdefault("STOCKS_ROOT", r"C:\Users\riper\stocks")
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-# consensus_reference.py (the R10 window choice, LEVEL_TOL/FAR_LOW/FAR_HIGH) lives at repo_root/tools
+# consensus_reference.py (LEVEL_TOL/FAR_LOW/FAR_HIGH, the long-run arithmetic) lives at repo_root/tools
 _REPO_TOOLS = _REPO_ROOT / "tools"
 if str(_REPO_TOOLS) not in sys.path:
     sys.path.insert(0, str(_REPO_TOOLS))
 
 import rate_engine
 import consensus_reference
+
+# Revision 17 (brief B 4i): the unit rule for sbc_dilution.
+SBC_DILUTION_UNIT_MESSAGE = "sbc_dilution is a fraction below 1 (0.02 = 2%) or a whole number of new shares"
 
 
 def _normalize_cash_flow_life(val):
@@ -164,12 +167,69 @@ def applied_years_1_to_5(
     return applied
 
 
+def _five_and_fade(rates, terminal_g, fade_years):
+    """The five annual growth rates of years 1-5 and the long-run fade in years, as the desk applies
+    them. Fewer than five rates: years n+1..5 continue the linear fade from the last rate toward
+    terminal_g (`applied_years_1_to_5`), and the fade left for years 6 on is shortened by the years
+    already used. This is the old three-stage path unchanged: a fade of F years starting after year n
+    is the same line whether it is read as years n+1..n+F or as years n+1..5 then 6..n+F."""
+    n = len(rates)
+    five = applied_years_1_to_5(rates, terminal_g, fade_years)
+    left = max(0, int(fade_years) - (5 - n)) if n < 5 else int(fade_years)
+    return five, left
+
+
+def _json_ronic(x):
+    """A return on new investment for a JSON result: the number, or "unlimited" for +inf."""
+    return "unlimited" if x is not None and math.isinf(x) else x
+
+
+def _is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _long_run_inputs(long_run, oe5, ronic_t_in, r):
+    """What the long run needs, from the pack's facts and the scenario's own inputs (brief B 4e).
+    Returns (e5, margin_ratio, ronic0, ronic_t, stamps).
+
+    E5 of the scenario = the reference's year-5 earnings plus the change in owner earnings the
+    scenario makes (one for one). Without a reference in the facts (no consensus): the base window's
+    net income / owner earnings ratio when it is positive, else owner earnings themselves - labelled
+    fallbacks (never a refusal). The margin factor needs the reference's m5 and the record's cycle.
+    RONIC_0 = max(r, R_tc); RONIC_T is the scenario's terminal_ronic, else the facts', else r (a
+    record the pack did not carry: growth earns only its cost)."""
+    lr = long_run or {}
+    stamps = []
+    e5f, oe5f = lr.get("e5"), lr.get("oe5")
+    margin_ratio = None
+    if _is_num(e5f) and _is_num(oe5f):
+        e5 = e5f + (oe5 - oe5f)
+        m5, m_tc = lr.get("m5"), lr.get("m_tc")
+        if lr.get("cycle") is True and _is_num(m5) and m5 > 0 and _is_num(m_tc):
+            margin_ratio = m_tc / m5
+    else:
+        ratio = lr.get("ni_over_oe")
+        if _is_num(ratio) and ratio > 0 and oe5 > 0:
+            e5 = oe5 * ratio
+            stamps.append("long_run_base_ratio")
+        else:
+            e5 = oe5
+            stamps.append("long_run_on_owner_earnings")
+    r_tc = lr.get("r_tc")
+    ronic0 = r if not _is_num(r_tc) else max(r, r_tc)
+    if _is_num(ronic_t_in):
+        ronic_t = float(ronic_t_in)
+    else:
+        ronic_t = r
+        stamps.append("terminal_ronic_at_cost_of_equity")
+    return e5, margin_ratio, ronic0, ronic_t, stamps
+
+
 def unbundled_dcf(
     base_cf: float,
     growth_rates: Optional[List[float]] = None,
     wacc: Optional[float] = None,
     terminal_g: Optional[float] = None,
-    terminal_exit_multiple: Optional[float] = None,
     annuity_flow: float = 0.0,
     annuity_cap_rate: Optional[float] = None,
     net_debt: Optional[float] = None,
@@ -183,14 +243,32 @@ def unbundled_dcf(
     sbc_treatment: Optional[str] = None,
     sbc_dilution: Optional[float] = None,
     finite_life_years: Optional[int] = None,
-    terminal_leg: Optional[str] = None,
+    terminal_ronic: Optional[float] = None,
+    long_run: Optional[Dict[str, Any]] = None,
+    working_capital: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
-    """Calculate three-stage DCF per Phase 4 Decision D1:
-    - Explicit growth (Stage 1)
-    - Linear fade to terminal_g over fade_years (Stage 2)
-    - Dual terminal valuation: Gordon growth and exit multiple (when given), both discounted to t=0
-    - Optional finite_life_years (1-60): discrete flows for N years with no terminal value
-    - Valuation frame gating (equity refuses nonzero net_debt; firm requires net_debt and shares_diluted)
+    """Revision 17 (brief B): a funded-growth DCF. Years 1-5 are the explicit cash flows (owner
+    earnings less the pack's working-capital schedule, when there is one); from year 6 growth is
+    paid for, at the return on new investment the company's record supports.
+
+    - Years 1-5: base_cf grown by the five explicit rates (fewer than five: the fade continues, see
+      `_five_and_fade`; more than five are refused: years 6 on follow terminal_g, terminal_ronic and
+      fade_years). Each year's flow is base_cf's path less `working_capital[t]` ($B, five values).
+    - Years 6..5+F (F = fade_years): growth fades linearly to terminal_g; earnings E_t start from the
+      scenario's year-5 earnings (`long_run` facts, `_long_run_inputs`); cash flow_t = E_t (1 -
+      g_{t+1} / max(r, RONIC_t)); the margin reverts toward the record's median when the record shows a
+      cycle. The terminal is E_{N+1} (1 - g / max(r, RONIC_T)) / (r - g): the value-driver form of
+      Gordon growth, the only terminal there is (the exit multiple left the desk in revision 17).
+      A negative long-run value is floored at 0 (`long_run_floor`). `terminal_ronic` (a fraction) is
+      the scenario's RONIC_T; None takes the cost of equity. The long-run arithmetic is
+      consensus_reference.long_run_value, the copy the pack's reference uses.
+    - Valued at the base fiscal year end and rolled forward by (1 + r)^(long_run["stub_months"]/12),
+      so the desk and the reference agree on identical inputs (the pack's stub, no roll without one).
+    - Optional finite_life_years (1-60): discrete flows for N years with no terminal value, on the
+      owner-earnings path as before (no working capital, no roll): stamped finite_life_owner_earnings.
+    - Valuation frame gating (equity refuses nonzero net_debt; firm requires net_debt and shares_diluted).
+      The firm frame applies the same long run, an approximation (the return on new investment is measured on
+      tangible invested capital before interest and applied to equity earnings: conservative for a levered company).
     - rate_engine.check_pairing wired with FrameMismatch structured refusal
     - SBC treatment single declaration; double deduction refused
     - Implied terminal EV/FCF multiple and reconciliation against sector_multiple_band
@@ -227,6 +305,10 @@ def unbundled_dcf(
     rates = explicit_growth if explicit_growth is not None else growth_rates
     if not rates or len(rates) == 0:
         return {"error": "explicit_growth (or growth_rates) must be a non-empty list of growth rates",
+                "validation_error": True}
+    if finite_life_years is None and len(rates) > 5:
+        return {"error": (f"explicit_growth holds the annual growth of years 1-5 (got {len(rates)} rates); "
+                          f"years 6 onward follow terminal_g, terminal_ronic and fade_years"),
                 "validation_error": True}
 
     # Resolve discount rate
@@ -283,25 +365,144 @@ def unbundled_dcf(
         sd = float(sbc_dilution)
         if sd < 1.0:
             effective_shares = effective_shares * (1.0 + sd)
+        elif sd >= 1_000_000:
+            # a whole count of new shares; the shares above are in billions
+            effective_shares = effective_shares + sd / 1e9
         else:
-            # an added count, like the share count itself (`_effective_shares`), is read by `_to_b`:
-            # the shares above are in billions, so a whole count of new shares must be too
-            effective_shares = effective_shares + _to_b(sd)
+            return {"error": SBC_DILUTION_UNIT_MESSAGE, "validation_error": True}
 
     if finite_life_years is None and rate <= terminal_g:
         return {"error": f"wacc ({rate}) must be greater than terminal_g ({terminal_g})", "validation_error": True}
 
-    # Project discrete cash flows: Stage 1 (explicit) + Stage 2 (linear fade)
+    if finite_life_years is not None:
+        return _finite_life_dcf(base_cf, rates, rate, terminal_g, fade_years, finite_life_years,
+                                annuity_flow, annuity_cap_rate, effective_net_debt, effective_shares,
+                                frame, rate_type_norm, sbc_treatment, sbc_dilution)
+
+    # ---- years 1-5: owner earnings less working capital --------------------------------------------
+    five, fade_left = _five_and_fade(rates, terminal_g, fade_years)
+    oe, cf = [], float(base_cf)
+    for g in five:
+        cf *= 1.0 + g
+        oe.append(cf)
+    wc = [float(x) for x in working_capital] if working_capital else None
+    if wc is not None and len(wc) != 5:
+        return {"error": "working_capital holds the five deductions of years 1-5", "validation_error": True}
+    flows15 = [oe[t] - (wc[t] if wc else 0.0) for t in range(5)]
+
+    # ---- years 6 on: growth paid for at the record's return ---------------------------------------
+    e5, margin_ratio, ronic0, ronic_t, stamps = _long_run_inputs(long_run, oe[4], terminal_ronic, rate)
+    lr = consensus_reference.long_run_value(e5, five[4], terminal_g, rate, ronic0, ronic_t,
+                                            margin_ratio, fade_left)
+    stub = (long_run or {}).get("stub_months")
+    roll = (1.0 + rate) ** (float(stub) / 12.0) if _is_num(stub) and stub else 1.0
+    if lr["floor"]:
+        stamps.append("long_run_floor")
+    if wc is not None:
+        stamps.append("working_capital_deducted")
+
+    n_years = lr["n_years"]
+    yearly = flows15 + ([] if lr["floor"] else lr["flows"])
+    pv_each = [roll * f / (1.0 + rate) ** (t + 1) for t, f in enumerate(yearly)]
+    growth_applied = list(five) + ([] if lr["floor"] else lr["growth"])
+    dcf_pv = sum(pv_each)
+    tv_pv = 0.0 if lr["floor"] else roll * lr["tv_pv"]
+    tv_nominal = 0.0 if lr["floor"] else lr["tv"]
+
+    annuity_pv = 0.0
+    if annuity_flow and float(annuity_flow) > 0:
+        cap_rate = float(annuity_cap_rate) if (annuity_cap_rate and float(annuity_cap_rate) > 0) else max(0.04, rate - 0.01)
+        annuity_pv = float(annuity_flow) / cap_rate
+
+    ev = dcf_pv + tv_pv + annuity_pv
+    eq = ev - effective_net_debt
+    per_share_iv = eq / effective_shares
+    final_cf = (flows15[-1] if lr["floor"] or not lr["flows"] else lr["flows"][-1])
+    implied_multiple = (lr["tv"] / final_cf) if (not lr["floor"] and final_cf > 0) else None
+    tv_share = (tv_pv / ev) if ev > 0 else 0.0
+
+    gordon_in_band = None
+    if sector_multiple_band and isinstance(sector_multiple_band, dict) and implied_multiple is not None:
+        band_low = float(sector_multiple_band.get("low", float("-inf")))
+        band_high = float(sector_multiple_band.get("high", float("inf")))
+        gordon_in_band = (band_low <= implied_multiple <= band_high)
+
+    res: Dict[str, Any] = {
+        "per_share_iv": round(per_share_iv, 2),
+        "per_share_iv_gordon": round(per_share_iv, 2),
+        "enterprise_value": round(ev, 2),
+        "equity_value": round(eq, 2),
+        "dcf_pv": round(dcf_pv, 2),
+        "terminal_value_nominal": round(tv_nominal, 2),
+        "terminal_value_pv": round(tv_pv, 2),
+        "terminal_method": (f"Gordon growth @ {terminal_g * 100:.1f}% on funded earnings, "
+                            f"terminal return on new investment "
+                            f"{'unlimited' if math.isinf(ronic_t) else f'{ronic_t * 100:.1f}%'}"),
+        "terminal_share_of_value": round(tv_share, 4),
+        "implied_terminal_ev_fcf_gordon": round(implied_multiple, 2) if implied_multiple is not None else None,
+        "annuity_pv": round(annuity_pv, 2),
+        "projected_cfs": [round(x, 4) for x in yearly],
+        "pv_cfs": [round(x, 4) for x in pv_each],
+        "growth_rates_applied": [round(g, 4) for g in growth_applied],
+        "explicit_growth": [round(float(g), 4) for g in rates],
+        "fade_years": fade_years,
+        "terminal_g": terminal_g,
+        "terminal_ronic": _json_ronic(ronic_t),
+        "ronic_start": _json_ronic(ronic0),
+        "net_debt": round(effective_net_debt, 2),
+        "shares_diluted": round(effective_shares, 4),
+        "valuation_frame": frame,
+        "rate_type": rate_type_norm,
+        "discount_rate_applied": round(rate, 4),
+        "valued_at": "base fiscal year end, rolled forward" if roll != 1.0 else "base fiscal year end",
+        "roll_forward_factor": round(roll, 6),
+        "working_capital_deducted": [round(x, 4) for x in wc] if wc is not None else None,
+        "long_run": {"years": n_years, "year5_earnings": round(e5, 4),
+                     "margin_ratio": round(margin_ratio, 4) if margin_ratio is not None else None,
+                     "floored": lr["floor"]},
+        "stamps": stamps,
+        "gordon_terminal": {
+            "per_share_iv": round(per_share_iv, 2),
+            "terminal_value_nominal": round(tv_nominal, 2),
+            "terminal_value_pv": round(tv_pv, 2),
+            "enterprise_value": round(ev, 2),
+            "equity_value": round(eq, 2),
+            "terminal_share_of_value": round(tv_share, 4),
+            "implied_terminal_multiple": round(implied_multiple, 2) if implied_multiple is not None else None,
+            "in_band": gordon_in_band,
+        },
+    }
+
+    if sector_multiple_band is not None:
+        # Phase 4 window fix: echo the band and a short label only; in_band used the full band above
+        res["sector_multiple_band"] = (
+            {k: (str(v)[:80] if k == "metric" else v) for k, v in sector_multiple_band.items()
+             if k in ("low", "mid", "high", "metric")}
+            if isinstance(sector_multiple_band, dict) else sector_multiple_band)
+        res["multiple_in_band_gordon"] = gordon_in_band
+
+    if sbc_treatment is not None:
+        res["sbc_treatment"] = sbc_treatment
+        res["sbc_dilution"] = sbc_dilution
+
+    return res
+
+
+def _finite_life_dcf(base_cf, rates, rate, terminal_g, fade_years, finite_life_years, annuity_flow,
+                     annuity_cap_rate, effective_net_debt, effective_shares, frame, rate_type_norm,
+                     sbc_treatment, sbc_dilution):
+    """A finite cash-flow life: today's arithmetic, kept as it was (brief B 4g): the owner-earnings
+    path for N years (explicit rates, then the linear fade, then terminal_g), no terminal value, no
+    working-capital deduction, no roll-forward. Stamped finite_life_owner_earnings."""
     cf = float(base_cf)
     yearly_cfs = []
     pv_cfs = []
     growth_applied = []
     year = 0
-
-    max_years = finite_life_years if finite_life_years is not None else None
+    max_years = finite_life_years
 
     for g in rates:
-        if max_years is not None and year >= max_years:
+        if year >= max_years:
             break
         year += 1
         g_val = float(g)
@@ -314,7 +515,7 @@ def unbundled_dcf(
     g_last = float(rates[-1])
     if fade_years > 0:
         for i in range(1, fade_years + 1):
-            if max_years is not None and year >= max_years:
+            if year >= max_years:
                 break
             year += 1
             g_t = g_last + (terminal_g - g_last) * (i / fade_years)
@@ -324,142 +525,35 @@ def unbundled_dcf(
             pv_cfs.append(round(pv, 4))
             growth_applied.append(round(g_t, 4))
 
-    if max_years is not None:
-        while year < max_years:
-            year += 1
-            g_t = terminal_g
-            cf = cf * (1.0 + g_t)
-            pv = cf / ((1.0 + rate) ** year)
-            yearly_cfs.append(round(cf, 4))
-            pv_cfs.append(round(pv, 4))
-            growth_applied.append(round(g_t, 4))
+    while year < max_years:
+        year += 1
+        g_t = terminal_g
+        cf = cf * (1.0 + g_t)
+        pv = cf / ((1.0 + rate) ** year)
+        yearly_cfs.append(round(cf, 4))
+        pv_cfs.append(round(pv, 4))
+        growth_applied.append(round(g_t, 4))
 
     dcf_pv = sum(pv_cfs)
-    n_years = year
-    final_cf = cf
-
-    # Annuity flow capitalization (unbundled service stream)
     annuity_pv = 0.0
     if annuity_flow and float(annuity_flow) > 0:
         cap_rate = float(annuity_cap_rate) if (annuity_cap_rate and float(annuity_cap_rate) > 0) else max(0.04, rate - 0.01)
         annuity_pv = float(annuity_flow) / cap_rate
 
-    # Finite life handling: no terminal value (neither Gordon nor exit multiple)
-    if finite_life_years is not None:
-        has_exit = terminal_exit_multiple is not None and float(terminal_exit_multiple) > 0
-        ev = dcf_pv + annuity_pv
-        eq = ev - effective_net_debt
-        per_share_iv = eq / effective_shares
-
-        res: Dict[str, Any] = {
-            "per_share_iv": round(per_share_iv, 2),
-            "enterprise_value": round(ev, 2),
-            "equity_value": round(eq, 2),
-            "dcf_pv": round(dcf_pv, 2),
-            "terminal_value_nominal": 0,
-            "terminal_value_pv": 0,
-            "terminal_method": f"finite life {finite_life_years} years",
-            "terminal_share_of_value": 0,
-            "finite_life_years": finite_life_years,
-            "annuity_pv": round(annuity_pv, 2),
-            "projected_cfs": yearly_cfs,
-            "pv_cfs": pv_cfs,
-            "growth_rates_applied": growth_applied,
-            "explicit_growth": [round(float(g), 4) for g in rates],
-            "fade_years": fade_years,
-            "terminal_g": terminal_g,
-            "net_debt": round(effective_net_debt, 2),
-            "shares_diluted": round(effective_shares, 4),
-            "valuation_frame": frame,
-            "rate_type": rate_type_norm,
-            "discount_rate_applied": round(rate, 4),
-        }
-        if has_exit:
-            res["note"] = "exit multiple ignored: finite life"
-        if sbc_treatment is not None:
-            res["sbc_treatment"] = sbc_treatment
-            res["sbc_dilution"] = sbc_dilution
-        return res
-
-    # Stage 3: Terminal Value calculation — BOTH Gordon and exit multiple (when given)
-    # Gordon terminal leg
-    cf_n1_gordon = final_cf * (1.0 + terminal_g)
-    tv_nominal_gordon = cf_n1_gordon / (rate - terminal_g)
-    tv_pv_gordon = tv_nominal_gordon / ((1.0 + rate) ** n_years)
-    implied_terminal_ev_fcf_gordon = tv_nominal_gordon / final_cf
-    ev_gordon = dcf_pv + tv_pv_gordon + annuity_pv
-    eq_gordon = ev_gordon - effective_net_debt
-    per_share_iv_gordon = eq_gordon / effective_shares
-    tv_share_gordon = (tv_pv_gordon / ev_gordon) if ev_gordon > 0 else 0.0
-
-    # Exit multiple leg
-    has_exit = terminal_exit_multiple is not None and float(terminal_exit_multiple) > 0
-    if has_exit:
-        exit_mult = float(terminal_exit_multiple)
-        tv_nominal_exit = final_cf * exit_mult
-        tv_pv_exit = tv_nominal_exit / ((1.0 + rate) ** n_years)
-        ev_exit = dcf_pv + tv_pv_exit + annuity_pv
-        eq_exit = ev_exit - effective_net_debt
-        per_share_iv_exit = eq_exit / effective_shares
-        tv_share_exit = (tv_pv_exit / ev_exit) if ev_exit > 0 else 0.0
-        implied_terminal_ev_fcf_exit = exit_mult
-        # Phase 4 E13: the terminal growth this multiple asserts at this rate, g = (M*r - 1) / (M + 1).
-        # The flow has already faded to terminal_g, so any other multiple states another growth
-        # (FIX s2: 16x at 8.98% implies 2.57% against the 3.75% anchor).
-        exit_implied_terminal_g = (exit_mult * rate - 1.0) / (exit_mult + 1.0)
-    else:
-        exit_implied_terminal_g = None
-        exit_mult = None
-        tv_nominal_exit = None
-        tv_pv_exit = None
-        ev_exit = None
-        eq_exit = None
-        per_share_iv_exit = None
-        tv_share_exit = None
-        implied_terminal_ev_fcf_exit = None
-
-    # Sector multiple band reconciliation check
-    gordon_in_band = None
-    exit_in_band = None
-    if sector_multiple_band and isinstance(sector_multiple_band, dict):
-        band_low = float(sector_multiple_band.get("low", float("-inf")))
-        band_high = float(sector_multiple_band.get("high", float("inf")))
-        gordon_in_band = (band_low <= implied_terminal_ev_fcf_gordon <= band_high)
-        if exit_mult is not None:
-            exit_in_band = (band_low <= exit_mult <= band_high)
-
-    # Primary (published) terminal leg. S3 3.6: with an exit multiple, terminal_leg=None (or
-    # "exit") means exit, today's leg; "gordon" publishes the Gordon leg instead. With no exit
-    # multiple only Gordon exists, regardless of terminal_leg.
-    published_leg = "gordon" if (not has_exit or terminal_leg == "gordon") else "exit"
-    if published_leg == "exit":
-        primary_tv_nominal = tv_nominal_exit
-        primary_tv_pv = tv_pv_exit
-        primary_ev = ev_exit
-        primary_eq = eq_exit
-        primary_iv = per_share_iv_exit
-        primary_tv_method = f"{exit_mult:.1f}x exit multiple"
-        primary_tv_share = tv_share_exit
-    else:
-        primary_tv_nominal = tv_nominal_gordon
-        primary_tv_pv = tv_pv_gordon
-        primary_ev = ev_gordon
-        primary_eq = eq_gordon
-        primary_iv = per_share_iv_gordon
-        primary_tv_method = f"Gordon growth @ {terminal_g * 100:.1f}%"
-        primary_tv_share = tv_share_gordon
+    ev = dcf_pv + annuity_pv
+    eq = ev - effective_net_debt
+    per_share_iv = eq / effective_shares
 
     res: Dict[str, Any] = {
-        "per_share_iv": round(primary_iv, 2),
-        "per_share_iv_gordon": round(per_share_iv_gordon, 2),
-        "enterprise_value": round(primary_ev, 2),
-        "equity_value": round(primary_eq, 2),
+        "per_share_iv": round(per_share_iv, 2),
+        "enterprise_value": round(ev, 2),
+        "equity_value": round(eq, 2),
         "dcf_pv": round(dcf_pv, 2),
-        "terminal_value_nominal": round(primary_tv_nominal, 2),
-        "terminal_value_pv": round(primary_tv_pv, 2),
-        "terminal_method": primary_tv_method,
-        "terminal_share_of_value": round(primary_tv_share, 4),
-        "implied_terminal_ev_fcf_gordon": round(implied_terminal_ev_fcf_gordon, 2),
+        "terminal_value_nominal": 0,
+        "terminal_value_pv": 0,
+        "terminal_method": f"finite life {finite_life_years} years",
+        "terminal_share_of_value": 0,
+        "finite_life_years": finite_life_years,
         "annuity_pv": round(annuity_pv, 2),
         "projected_cfs": yearly_cfs,
         "pv_cfs": pv_cfs,
@@ -472,49 +566,11 @@ def unbundled_dcf(
         "valuation_frame": frame,
         "rate_type": rate_type_norm,
         "discount_rate_applied": round(rate, 4),
-        "terminal_leg": published_leg,
-        "gordon_terminal": {
-            "per_share_iv": round(per_share_iv_gordon, 2),
-            "terminal_value_nominal": round(tv_nominal_gordon, 2),
-            "terminal_value_pv": round(tv_pv_gordon, 2),
-            "enterprise_value": round(ev_gordon, 2),
-            "equity_value": round(eq_gordon, 2),
-            "terminal_share_of_value": round(tv_share_gordon, 4),
-            "implied_terminal_multiple": round(implied_terminal_ev_fcf_gordon, 2),
-            "in_band": gordon_in_band,
-        },
+        "stamps": ["finite_life_owner_earnings"],
     }
-
-    if has_exit:
-        res["per_share_iv_exit"] = round(per_share_iv_exit, 2)
-        res["terminal_share_of_value_exit"] = round(tv_share_exit, 4)
-        res["exit_multiple_terminal"] = {
-            "per_share_iv": round(per_share_iv_exit, 2),
-            "terminal_value_nominal": round(tv_nominal_exit, 2),
-            "terminal_value_pv": round(tv_pv_exit, 2),
-            "enterprise_value": round(ev_exit, 2),
-            "equity_value": round(eq_exit, 2),
-            "terminal_share_of_value": round(tv_share_exit, 4),
-            "exit_multiple": exit_mult,
-            "implied_terminal_g": round(exit_implied_terminal_g, 4),
-            "in_band": exit_in_band,
-        }
-        res["exit_implied_terminal_g"] = round(exit_implied_terminal_g, 4)
-
-    if sector_multiple_band is not None:
-        # Phase 4 window fix: echo the band and a short label only; in_band used the full band above
-        res["sector_multiple_band"] = (
-            {k: (str(v)[:80] if k == "metric" else v) for k, v in sector_multiple_band.items()
-             if k in ("low", "mid", "high", "metric")}
-            if isinstance(sector_multiple_band, dict) else sector_multiple_band)
-        res["multiple_in_band_gordon"] = gordon_in_band
-        if has_exit:
-            res["multiple_in_band_exit"] = exit_in_band
-
     if sbc_treatment is not None:
         res["sbc_treatment"] = sbc_treatment
         res["sbc_dilution"] = sbc_dilution
-
     return res
 
 
@@ -562,7 +618,6 @@ def reverse_dcf_expectations_gap(
     demonstrated_cagr_5y: Optional[float] = None,
     fade_years: int = 0,
     stage1_years: int = 5,
-    terminal_exit_multiple: Optional[float] = None,
     net_debt: float = 0.0,
     valuation_frame: str = "equity",
     annuity_flow: float = 0.0,
@@ -570,9 +625,14 @@ def reverse_dcf_expectations_gap(
     coe_anchor: Optional[float] = None,
     terminal_g_anchor: Optional[float] = None,
     base_rate_table: Optional[Dict[str, Any]] = None,
+    terminal_ronic: Optional[float] = None,
+    long_run: Optional[Dict[str, Any]] = None,
+    working_capital: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     """Solve for market-implied growth per Phase 4 Decision D2:
-    (a) under caller's own structure (solve constant stage-1 growth equating IV to price, holding fade/terminal/rate)
+    (a) under caller's own structure (solve constant stage-1 growth equating IV to price, holding fade/terminal/rate;
+        revision 17: and the terminal return on new investment, the pack's long-run facts and working-capital
+        schedule the forward value uses)
     (b) under neutral reference structure (rate = coe_anchor, 10-year linear fade to terminal_g_anchor) returning
         implied 10-year CAGR, and percentile band when base_rate_table is passed.
     """
@@ -594,7 +654,6 @@ def reverse_dcf_expectations_gap(
             explicit_growth=[g] * stage1_years,
             wacc=wacc,
             terminal_g=terminal_g,
-            terminal_exit_multiple=terminal_exit_multiple,
             annuity_flow=annuity_flow,
             annuity_cap_rate=annuity_cap_rate,
             net_debt=net_debt,
@@ -602,6 +661,9 @@ def reverse_dcf_expectations_gap(
             fade_years=fade_years,
             valuation_frame=valuation_frame,
             sbc_treatment="deducted_in_cf",
+            terminal_ronic=terminal_ronic,
+            long_run=long_run,
+            working_capital=working_capital,
         )
         if r.get("error"):
             return None
@@ -1036,6 +1098,25 @@ def _refusal(missing, needs_reasons, order=None, share_unit_note=None):
     return out
 
 
+def _levels_hold(base_b, five, levels):
+    """Brief B 4c: (g1, g2, year-2 flow, gap) that hold a Base's years 1-2 at the fiscal-year levels
+    when its year-2 flow is more than LEVELS_HOLD_TOL from levels.year2, else None. g1 = year1 / base_cf
+    - 1 and g2 = year2 / year1 - 1. None when a level or the base is missing, or year 1 is exactly 0
+    (no growth rate reaches year 2 from it)."""
+    y1, y2 = (levels or {}).get("year1"), (levels or {}).get("year2")
+    if not (_is_num(y1) and _is_num(y2) and _is_num(base_b) and base_b > 0 and y2 != 0 and y1 != 0):
+        return None
+    flow2 = base_b * (1.0 + five[0]) * (1.0 + five[1])
+    gap = abs(flow2 - y2) / abs(y2)
+    if gap <= consensus_reference.LEVELS_HOLD_TOL + 1e-6:
+        return None
+    return y1 / base_b - 1.0, y2 / y1 - 1.0, flow2, gap
+
+
+def _pct_txt(x):
+    return "unlimited" if x is not None and math.isinf(x) else f"{x * 100:.2f}%"
+
+
 def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Master tool dispatcher called by Qwen or automation harness.
     Supports single DCF, batch multi-scenario DCF, or blend mode in a single round trip.
@@ -1044,6 +1125,12 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     default, the anchors, the base-rate table and the reverse-DCF inputs; the model supplies its
     decisions and, where they depart from a default, the named reason. A call the desk cannot use,
     or whose published legs fail a reason check, is refused (3.4, 3.5) and does not use a desk run.
+
+    Revision 17 (brief B 4): the context also carries terminal_ronic, long_run, working_capital,
+    cash_basis_b and levels; the desk holds the Base's years 1-2 at the fiscal-year levels when its
+    year 2 is more than 5% away and no guidance_deviation_reason is given (`years12_held_by_desk`),
+    deducts the pack's working-capital schedule in years 1-5 (unless the base already carries it,
+    `wc_in_base`), and values the long run with the pack's record.
     """
     ctx = context or {}
     price = ctx.get("price")
@@ -1094,22 +1181,18 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             missing.append(f"finite_life_years in {sc.get('name') or 'scenario'} "
                            f"(use cash_flow_life, which applies to every scenario)")
 
-    is_finite = cfl_valid and cfl_norm != "perpetual"
-
-    # V4: terminal_leg
-    for sc in scenarios:
-        if not isinstance(sc, dict):
-            continue
-        nm = sc.get("name") or "scenario"
-        tl = sc.get("terminal_leg")
-        if tl is None:
-            continue
-        if tl not in ("exit", "gordon"):
-            missing.append(f"terminal_leg in {nm} (must be \"exit\" or \"gordon\")")
-        elif is_finite:
-            missing.append(f"terminal_leg in {nm} (a finite life has no terminal leg)")
-        elif tl == "exit" and sc.get("terminal_exit_multiple") is None and params.get("terminal_exit_multiple") is None:
-            missing.append(f"terminal_leg in {nm} (\"exit\" needs an exit multiple)")
+    # V4 (revision 17): the exit multiple and the terminal leg left the desk; a call that sends
+    # either is refused by name, never silently ignored
+    for holder, label in [(params, "")] + [(sc, f" in {sc.get('name') or 'scenario'}")
+                                           for sc in scenarios if isinstance(sc, dict)]:
+        for gone in ("terminal_exit_multiple", "terminal_leg"):
+            if holder.get(gone) is not None:
+                missing.append(f"{gone}{label} (removed in revision 17: the terminal is always the funded "
+                               f"growth value, set with terminal_g and terminal_ronic)")
+        # a terminal_ronic the desk cannot read is refused, never replaced by the default
+        tr = holder.get("terminal_ronic")
+        if tr is not None and (isinstance(tr, bool) or not isinstance(tr, (int, float)) or math.isnan(tr)):
+            missing.append(f"terminal_ronic{label} (a number, for example 0.12)")
 
     # V5: every scenario needs prob >= 0; Base+Bull+Bear sum to 0.99-1.01 when all three are present
     if scenarios:
@@ -1176,10 +1259,116 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     cap = float(raw_cap) if raw_cap is not None else None
     reason = params.get("guidance_deviation_reason") if _reason_given(params.get("guidance_deviation_reason")) else ""
 
+    long_run_ctx = ctx.get("long_run")
+    wc_ctx = ctx.get("working_capital")
+    cash_basis_b = ctx.get("cash_basis_b")
+    levels_ctx = ctx.get("levels") or {}
+    ronic_default = ctx.get("terminal_ronic")
+
     capped_dcfs: List[Dict[str, Any]] = []
+    held_dcfs: List[Dict[str, Any]] = []
     kept_names: List[str] = []
     scenario_dcfs = []
     compute_errors: List[str] = []
+    base_inputs: Dict[str, Any] = {}     # the Base's effective inputs, for the reverse DCF
+
+    def _value(name, cf_in, gr_in, wacc_in, tg_in, shares_in, fade_in, sbc_in, sbc_dil_in, frame_in,
+               net_debt_in, rate_type_in, annuity_in, annuity_cap_in, ronic_in):
+        """One scenario's value, with the Base-only years-3-5 cap and years-1-2 hold. Returns the dcf
+        dict, or None after recording a compute error."""
+        base_b = _to_b(cf_in)
+        wc_in_base = (wc_ctx is not None and _is_num(cash_basis_b) and cash_basis_b != 0 and base_b is not None
+                      and abs(base_b - cash_basis_b) / abs(cash_basis_b) <= 0.020001)
+        wc_use = None if (wc_in_base or not wc_ctx) else wc_ctx
+
+        def run(growth, fade):
+            res = unbundled_dcf(
+                base_cf=float(cf_in),
+                growth_rates=None,
+                explicit_growth=[float(g) for g in growth],
+                wacc=float(wacc_in),
+                terminal_g=float(tg_in) if tg_in is not None else None,
+                annuity_flow=annuity_in,
+                annuity_cap_rate=annuity_cap_in,
+                net_debt=net_debt_in,
+                shares_diluted=shares_in,
+                fade_years=fade,
+                valuation_frame=frame_in,
+                rate_type=rate_type_in,
+                sbc_treatment=sbc_in,
+                sbc_dilution=sbc_dil_in,
+                finite_life_years=desk_finite_life_years,
+                terminal_ronic=ronic_in,
+                long_run=long_run_ctx,
+                working_capital=wc_use,
+            )
+            if not res.get("error"):
+                if wc_in_base:
+                    res.setdefault("stamps", []).append("wc_in_base")
+            return res
+
+        dcf_res = run(gr_in, fade_in)
+        if dcf_res.get("error"):
+            compute_errors.append(f"{name}: {dcf_res['error']}")
+            return None
+
+        if _role_of(name) != "base":
+            return dcf_res
+        requested_iv = dcf_res["per_share_iv"]
+        growth_now, fade_now = list(gr_in), fade_in
+
+        # years 3-5 above next-FY consensus revenue growth (S3 3.5, review J6)
+        if cap is not None:
+            app_years = applied_years_1_to_5(gr_in, tg_in, fade_in, desk_finite_life_years)
+            y35 = app_years[2:]
+            if any(g > cap + 1e-12 for g in y35):
+                if reason:
+                    kept_names.append(name)
+                else:
+                    n = len(gr_in)
+                    new_fade = max(0, int(fade_in) - (5 - n)) if n < 5 and fade_in is not None else (int(fade_in) if fade_in is not None else None)
+                    new_growth = app_years[:2] + [min(g, cap) for g in y35] + [float(g) for g in gr_in[5:]]
+                    new_res = run(new_growth, new_fade)
+                    if new_res.get("error"):
+                        compute_errors.append(f"{name}: {new_res['error']}")
+                        return None
+                    new_res["years35_capped"] = True
+                    capped_dcfs.append({
+                        "name": name,
+                        "requested_years35": [round(g, 4) for g in y35],
+                        "applied_years35": [round(min(g, cap), 4) for g in y35],
+                        "requested_per_share_iv": round(dcf_res["per_share_iv"], 2),
+                        "applied_per_share_iv": round(new_res["per_share_iv"], 2),
+                        "requested_fade_years": int(fade_in) if fade_in is not None else None,
+                        "applied_fade_years": new_fade,
+                    })
+                    dcf_res, growth_now, fade_now = new_res, new_growth, new_fade
+
+        # years 1-2 held at the fiscal-year levels (brief B 4c; replaces the refusal for the Base)
+        if not reason and levels_ctx and base_b is not None:
+            five_now, fade_left = _five_and_fade(growth_now, tg_in, fade_now)
+            hold = _levels_hold(base_b, five_now, levels_ctx)
+            if hold is not None:
+                g1, g2, flow2, gap = hold
+                held_growth = [g1, g2] + list(five_now[2:])
+                held_res = run(held_growth, fade_left)
+                if held_res.get("error"):
+                    compute_errors.append(f"{name}: {held_res['error']}")
+                    return None
+                held_res["years12_held"] = True
+                held_res.setdefault("stamps", []).append("years12_held_by_desk")
+                held_dcfs.append({
+                    "name": name,
+                    "requested_year2_flow": round(flow2, 4),
+                    "requested_gap_pct": round(gap * 100.0, 1),
+                    "held_year1": levels_ctx.get("year1"),
+                    "held_year2": levels_ctx.get("year2"),
+                    "held_growth_years12": [round(g1, 4), round(g2, 4)],
+                    "requested_per_share_iv": round(requested_iv, 2),
+                    "applied_per_share_iv": round(held_res["per_share_iv"], 2),
+                })
+                dcf_res = held_res
+        return dcf_res
 
     # ---- 1. Batch scenario DCF execution -------------------------------------------------------
     for sc in scenarios:
@@ -1200,76 +1389,20 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         # a scenario's own net_debt, else the top level's explicit net_debt, else the frame default
         sc_net_debt_explicit = sc.get("net_debt") if sc.get("net_debt") is not None else top_net_debt_explicit
         sc_net_debt = _effective_net_debt(sc_net_debt_explicit, sc_frame, ctx_net_debt_default_b)
-        s_exit_mult = sc.get("terminal_exit_multiple") if sc.get("terminal_exit_multiple") is not None else params.get("terminal_exit_multiple")
-        s_terminal_leg = sc.get("terminal_leg")
+        s_ronic = (sc.get("terminal_ronic") if sc.get("terminal_ronic") is not None
+                   else params.get("terminal_ronic") if params.get("terminal_ronic") is not None
+                   else ronic_default)
+        s_annuity = float(sc.get("annuity_flow", params.get("annuity_flow", 0.0)))
+        s_annuity_cap = (float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate")
+                         else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None))
 
-        dcf_res = unbundled_dcf(
-            base_cf=float(s_cf),
-            growth_rates=[float(g) for g in s_gr],
-            wacc=float(s_wacc),
-            terminal_g=float(s_term_g) if s_term_g is not None else None,
-            terminal_exit_multiple=float(s_exit_mult) if s_exit_mult else None,
-            annuity_flow=float(sc.get("annuity_flow", params.get("annuity_flow", 0.0))),
-            annuity_cap_rate=float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate") else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None),
-            net_debt=sc_net_debt,
-            shares_diluted=s_shares,
-            fade_years=s_fade,
-            valuation_frame=sc_frame,
-            rate_type=sc.get("rate_type", rate_type),
-            sbc_treatment=s_sbc,
-            sbc_dilution=s_sbc_dil,
-            finite_life_years=desk_finite_life_years,
-            terminal_leg=s_terminal_leg,
-        )
-        if dcf_res.get("error"):
-            compute_errors.append(f"{sc_name}: {dcf_res['error']}")
+        dcf_res = _value(sc_name, s_cf, [float(g) for g in s_gr], s_wacc, s_term_g, s_shares, s_fade, s_sbc,
+                         s_sbc_dil, sc_frame, sc_net_debt, sc.get("rate_type", rate_type), s_annuity,
+                         s_annuity_cap, s_ronic)
+        if dcf_res is None:
             continue
-
-        is_base = _role_of(sc_name) == "base"
-        if is_base and cap is not None:
-            app_years = applied_years_1_to_5(s_gr, s_term_g, s_fade, desk_finite_life_years)
-            y35 = app_years[2:]
-            if any(g > cap + 1e-12 for g in y35):
-                if reason:
-                    kept_names.append(sc_name)
-                else:
-                    n = len(s_gr)
-                    new_fade = max(0, int(s_fade) - (5 - n)) if n < 5 and s_fade is not None else (int(s_fade) if s_fade is not None else None)
-                    new_explicit_growth = app_years[:2] + [min(g, cap) for g in y35] + [float(g) for g in s_gr[5:]]
-                    new_dcf_res = unbundled_dcf(
-                        base_cf=float(s_cf),
-                        growth_rates=None,
-                        explicit_growth=new_explicit_growth,
-                        wacc=float(s_wacc),
-                        terminal_g=float(s_term_g) if s_term_g is not None else None,
-                        terminal_exit_multiple=float(s_exit_mult) if s_exit_mult else None,
-                        annuity_flow=float(sc.get("annuity_flow", params.get("annuity_flow", 0.0))),
-                        annuity_cap_rate=float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate") else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None),
-                        net_debt=sc_net_debt,
-                        shares_diluted=s_shares,
-                        fade_years=new_fade,
-                        valuation_frame=sc_frame,
-                        rate_type=sc.get("rate_type", rate_type),
-                        sbc_treatment=s_sbc,
-                        sbc_dilution=s_sbc_dil,
-                        finite_life_years=desk_finite_life_years,
-                        terminal_leg=s_terminal_leg,
-                    )
-                    if new_dcf_res.get("error"):
-                        compute_errors.append(f"{sc_name}: {new_dcf_res['error']}")
-                        continue
-                    new_dcf_res["years35_capped"] = True
-                    capped_dcfs.append({
-                        "name": sc_name,
-                        "requested_years35": [round(g, 4) for g in y35],
-                        "applied_years35": [round(min(g, cap), 4) for g in y35],
-                        "requested_per_share_iv": round(dcf_res["per_share_iv"], 2),
-                        "applied_per_share_iv": round(new_dcf_res["per_share_iv"], 2),
-                        "requested_fade_years": int(s_fade) if s_fade is not None else None,
-                        "applied_fade_years": new_fade,
-                    })
-                    dcf_res = new_dcf_res
-
+        if _role_of(sc_name) == "base":
+            base_inputs = {"ronic": s_ronic, "cf": s_cf, "wc_in_base": "wc_in_base" in dcf_res.get("stamps", [])}
         sc["iv"] = dcf_res["per_share_iv"]
         sc["dcf_details"] = dcf_res
         scenario_dcfs.append({"name": sc.get("name"), "dcf": dcf_res})
@@ -1282,72 +1415,17 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     wacc = params.get("wacc") if params.get("wacc") is not None else params.get("discount_rate")
     dcf_single = None
     if base_cf is not None and growth_rates and wacc is not None:
-        dcf_single = unbundled_dcf(
-            base_cf=float(base_cf),
-            growth_rates=[float(g) for g in growth_rates],
-            wacc=float(wacc),
-            terminal_g=float(params["terminal_g"]) if params.get("terminal_g") is not None else None,
-            terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
-            annuity_flow=float(params.get("annuity_flow", 0.0)),
-            annuity_cap_rate=float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None,
-            net_debt=top_net_debt,
-            shares_diluted=top_shares,
-            fade_years=fade_years,
-            valuation_frame=val_frame,
-            rate_type=rate_type,
-            sbc_treatment=sbc_treatment,
-            sbc_dilution=sbc_dilution,
-            finite_life_years=desk_finite_life_years,
-        )
-        if dcf_single.get("error"):
-            compute_errors.append(f"top-level: {dcf_single['error']}")
-            dcf_single = None
-        else:
-            if cap is not None:
-                app_years = applied_years_1_to_5(growth_rates, params.get("terminal_g"), fade_years, desk_finite_life_years)
-                y35 = app_years[2:]
-                if any(g > cap + 1e-12 for g in y35):
-                    if reason:
-                        kept_names.append("top-level")
-                    else:
-                        n = len(growth_rates)
-                        new_fade = max(0, int(fade_years) - (5 - n)) if n < 5 and fade_years is not None else (int(fade_years) if fade_years is not None else None)
-                        new_explicit_growth = app_years[:2] + [min(g, cap) for g in y35] + [float(g) for g in growth_rates[5:]]
-                        new_dcf_single = unbundled_dcf(
-                            base_cf=float(base_cf),
-                            growth_rates=None,
-                            explicit_growth=new_explicit_growth,
-                            wacc=float(wacc),
-                            terminal_g=float(params["terminal_g"]) if params.get("terminal_g") is not None else None,
-                            terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
-                            annuity_flow=float(params.get("annuity_flow", 0.0)),
-                            annuity_cap_rate=float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None,
-                            net_debt=top_net_debt,
-                            shares_diluted=top_shares,
-                            fade_years=new_fade,
-                            valuation_frame=val_frame,
-                            rate_type=rate_type,
-                            sbc_treatment=sbc_treatment,
-                            sbc_dilution=sbc_dilution,
-                            finite_life_years=desk_finite_life_years,
-                        )
-                        if new_dcf_single.get("error"):
-                            compute_errors.append(f"top-level: {new_dcf_single['error']}")
-                            dcf_single = None
-                        else:
-                            new_dcf_single["years35_capped"] = True
-                            capped_dcfs.append({
-                                "name": "top-level",
-                                "requested_years35": [round(g, 4) for g in y35],
-                                "applied_years35": [round(min(g, cap), 4) for g in y35],
-                                "requested_per_share_iv": round(dcf_single["per_share_iv"], 2),
-                                "applied_per_share_iv": round(new_dcf_single["per_share_iv"], 2),
-                                "requested_fade_years": int(fade_years) if fade_years is not None else None,
-                                "applied_fade_years": new_fade,
-                            })
-                            dcf_single = new_dcf_single
-            if dcf_single is not None:
-                result["dcf_model"] = dcf_single
+        top_ronic = params.get("terminal_ronic") if params.get("terminal_ronic") is not None else ronic_default
+        top_annuity = float(params.get("annuity_flow", 0.0))
+        top_annuity_cap = float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None
+        dcf_single = _value("top-level", base_cf, [float(g) for g in growth_rates], wacc, params.get("terminal_g"),
+                            top_shares, fade_years, sbc_treatment, sbc_dilution, val_frame, top_net_debt,
+                            rate_type, top_annuity, top_annuity_cap, top_ronic)
+        if dcf_single is not None:
+            if not base_inputs:
+                base_inputs = {"ronic": top_ronic, "cf": base_cf,
+                               "wc_in_base": "wc_in_base" in dcf_single.get("stamps", [])}
+            result["dcf_model"] = dcf_single
 
     if compute_errors:
         return _refusal(missing=compute_errors, needs_reasons=[])
@@ -1359,6 +1437,9 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         else:
             if capped_dcfs:
                 result["years35_cap"] = {"cap": cap, "reason": None, "dcfs": capped_dcfs}
+    if held_dcfs:
+        result["years12_held"] = {"levels": {"year1": levels_ctx.get("year1"), "year2": levels_ctx.get("year2")},
+                                  "reason_field": "guidance_deviation_reason", "dcfs": held_dcfs}
 
     # ---- 3.5 Reason checks, on the published legs ----------------------------------------------
     checked: List[Dict[str, Any]] = []
@@ -1400,7 +1481,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             _need(reasons_needed, "shares_reason", shares_reason_given, True,
                   f"the pack carries a shares_warning: {ctx['shares_warning']}")
 
-        # R2 + R3 (Base, base_cf_reason)
+        # R2 + R3 (Base, base_cf_reason). Revision 17: the pack's BASE WINDOW CHECK no longer needs a
+        # reason (the window does not change the Base's arithmetic; the line stays as information).
         base_cf_reason_given = _reason_given(params.get("base_cf_reason"))
         oe_default = ctx.get("owner_earnings_default_b")
         if base_entry is not None:
@@ -1414,10 +1496,6 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     _need(reasons_needed, "base_cf_reason", base_cf_reason_given, True,
                           f"Base base_cf {base_cf_val:.4f}B is {diff * 100:.1f}% from the DEFAULTS "
                           f"owner earnings {oe_default:.4f}B")
-        base_window = ctx.get("base_window") or {}
-        if base_window:
-            _need(reasons_needed, "base_cf_reason", base_cf_reason_given, True,
-                  f"the pack prints a BASE WINDOW CHECK (gap {base_window.get('gap')})")
 
         # R4 (Base rate vs COE ANCHOR)
         coe_adj_reason_given = _reason_given(params.get("coe_adjustment_reason"))
@@ -1431,7 +1509,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                           f"Base rate {applied_rate * 100:.2f}% is {gap * 100:.2f} points from "
                           f"the COE ANCHOR {coe_anchor * 100:.2f}%")
 
-        # R5 + R6 (Base terminal_g / exit-implied terminal g vs terminal_g_default)
+        # R5 + R6 (Base terminal_g and terminal_ronic vs their defaults)
         terminal_reason_given = _reason_given(params.get("terminal_reason"))
         tg_default = ctx.get("terminal_g_default")
         if base_entry is not None and tg_default is not None:
@@ -1442,16 +1520,17 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     _need(reasons_needed, "terminal_reason", terminal_reason_given, True,
                           f"Base terminal_g {float(applied_tg) * 100:.2f}% is {abs(gap_bp) / 100:.2f} points "
                           f"from terminal_g_default {tg_default * 100:.2f}%")
-            if base_entry["dcf"].get("terminal_leg") == "exit":
-                m_x = (base_entry["dcf"].get("exit_multiple_terminal") or {}).get("exit_multiple")
-                r_x = base_entry["dcf"].get("discount_rate_applied")
-                if m_x is not None and r_x is not None:
-                    implied_g = (float(m_x) * float(r_x) - 1.0) / (float(m_x) + 1.0)
-                    gap_bp = round((implied_g - tg_default) * 10000)
-                    if abs(gap_bp) > 50:
-                        _need(reasons_needed, "terminal_reason", terminal_reason_given, True,
-                              f"Base exit multiple implies terminal growth {implied_g * 100:.2f}%, "
-                              f"{abs(gap_bp) / 100:.2f} points from terminal_g_default {tg_default * 100:.2f}%")
+        if base_entry is not None and _is_num(ronic_default):
+            base_sc = base_entry["sc"]
+            base_ronic = (base_sc.get("terminal_ronic") if base_sc.get("terminal_ronic") is not None
+                          else params.get("terminal_ronic"))
+            if _is_num(base_ronic):
+                gap_pts = abs(float(base_ronic) - ronic_default)
+                if gap_pts > 0.020001:
+                    gap_txt = "infinitely" if math.isinf(gap_pts) else f"{gap_pts * 100:.2f} points"
+                    _need(reasons_needed, "terminal_reason", terminal_reason_given, True,
+                          f"Base terminal_ronic {_pct_txt(float(base_ronic))} is {gap_txt} from the DEFAULTS "
+                          f"terminal_ronic {_pct_txt(ronic_default)}")
 
         # R7 + R8 (firm frame: interest_addback, wacc_reason)
         any_firm = any(e["dcf"].get("valuation_frame") == "firm" for e in checked)
@@ -1478,24 +1557,13 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                           f"net_debt {nd:.4f}B is more than {tol:.4f}B from net_debt_default_b "
                           f"{net_debt_default:.4f}B")
 
-        # R10 (Base vs the reference window)
+        # R10 (Base value vs the fiscal-year reference). Revision 17: the Base's years 1-2 are held at
+        # the levels by the desk (above), so only the value check remains, against the fiscal-year
+        # reference alone (the window choice is gone).
         guidance_reason_given = _reason_given(params.get("guidance_deviation_reason"))
         if base_entry is not None:
-            civ = ctx.get("consensus_implied_value")
-            levels = ctx.get("levels") or {}
-            y2_level = levels.get("year2")
+            ref_val = ctx.get("consensus_implied_value")
             base_iv = base_entry["dcf"].get("per_share_iv")
-            ref_val, ref_level, _win = consensus_reference.choose_reference_window(
-                civ, y2_level, base_window.get("ttm_value"), base_window.get("ttm_year2"), base_iv)
-            base_cf_val = _to_b(base_entry["sc"].get("base_cf"))
-            g_path = base_entry["dcf"].get("growth_rates_applied") or []
-            if ref_level and base_cf_val is not None and len(g_path) >= 2:
-                y2_flow = base_cf_val * (1 + g_path[0]) * (1 + g_path[1])
-                gap = abs(y2_flow - ref_level) / abs(ref_level)
-                if gap > consensus_reference.LEVEL_TOL:
-                    _need(reasons_needed, "guidance_deviation_reason", guidance_reason_given, True,
-                          f"Base year-2 cash flow {y2_flow:.4f}B is {gap * 100:.1f}% from the "
-                          f"reference year-2 level {ref_level:.4f}B")
             if ref_val and base_iv is not None:
                 ratio = base_iv / ref_val
                 if not (consensus_reference.FAR_LOW <= ratio <= consensus_reference.FAR_HIGH):
@@ -1608,13 +1676,15 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     terminal_g=float(term_g),
                     fade_years=rev_fade,
                     stage1_years=len(growth_rates) if growth_rates else 5,
-                    terminal_exit_multiple=float(params["terminal_exit_multiple"]) if params.get("terminal_exit_multiple") else None,
                     net_debt=top_net_debt if top_net_debt is not None else 0.0,
                     valuation_frame=val_frame,
                     demonstrated_cagr_5y=float(rev_cagr) if rev_cagr is not None else None,
                     coe_anchor=float(rev_coe_anchor) if rev_coe_anchor is not None else None,
                     terminal_g_anchor=float(rev_term_anchor) if rev_term_anchor is not None else None,
                     base_rate_table=rev_base_rates,
+                    terminal_ronic=base_inputs.get("ronic") if base_inputs else ronic_default,
+                    long_run=long_run_ctx,
+                    working_capital=(None if (not wc_ctx or base_inputs.get("wc_in_base")) else wc_ctx),
                 )
 
     # ---- 4. Continuous Kelly sizing and Payoff Skew --------------------------------------------
@@ -1663,14 +1733,6 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
             iv = d.get("per_share_iv", 0.0)
             mos_str = f"{((iv - price) / price) * 100.0:+.1f}%" if price > 0 else "N/A"
             lines.append(f"| **{name}** | **${iv}** | {mos_str} | ${d.get('enterprise_value')}B | ${d.get('equity_value')}B | {d.get('terminal_method')} |")
-        # Phase 4 E13: what each exit multiple asserts about terminal growth, next to the Gordon leg
-        for item in res["scenario_dcfs"]:
-            d = item.get("dcf", {})
-            if d.get("exit_implied_terminal_g") is not None:
-                lines.append(f"- {item.get('name', 'Scenario')}: {d.get('terminal_method')} implies terminal g "
-                             f"{d['exit_implied_terminal_g'] * 100:.2f}% vs {d.get('terminal_g', 0) * 100:.2f}% in the "
-                             f"Gordon leg (Gordon ${d.get('per_share_iv_gordon')}, implied multiple "
-                             f"{d.get('implied_terminal_ev_fcf_gordon')}x)")
         lines.append("")
 
     # Single DCF Output
@@ -1680,12 +1742,6 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
         lines.append(f"- Intrinsic Value: **${d['per_share_iv']}** per share")
         if d.get("finite_life_years"):
             lines.append(f"  * Terminal Value: None ({d.get('terminal_method')})")
-        elif "per_share_iv_exit" in d and d.get("per_share_iv_exit") is not None:
-            lines.append(f"  * Gordon Terminal Leg: **${d.get('per_share_iv_gordon')}** (implied terminal multiple: {d.get('implied_terminal_ev_fcf_gordon')}x EV/FCF, TV share: {d.get('gordon_terminal', {}).get('terminal_share_of_value', 0)*100:.1f}%)")
-            _g_exit = d.get("exit_implied_terminal_g")
-            _g_note = (f", implies terminal g {_g_exit * 100:.2f}% vs {d.get('terminal_g', 0) * 100:.2f}% in the Gordon leg"
-                       if _g_exit is not None else "")
-            lines.append(f"  * Exit Multiple Leg: **${d.get('per_share_iv_exit')}** ({d.get('terminal_method')}{_g_note}, TV share: {d.get('terminal_share_of_value_exit', 0)*100:.1f}%)")
         else:
             lines.append(f"  * Gordon Terminal Value PV: ${d['terminal_value_pv']}B ({d['terminal_method']}, implied terminal multiple: {d.get('implied_terminal_ev_fcf_gordon')}x EV/FCF, TV share: {d.get('terminal_share_of_value', 0)*100:.1f}%)")
         if d.get("sector_multiple_band"):
@@ -1733,6 +1789,24 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
                         f"and give the same reason in the contract."
                     )
                     lines.append("")
+
+    yh = res.get("years12_held")
+    if isinstance(yh, dict):
+        lv = yh.get("levels") or {}
+        for hd in yh.get("dcfs", []):
+            g1, g2 = (hd.get("held_growth_years12") or [None, None])[:2]
+            lines.append(
+                f"**Base years 1-2 held at the fiscal-year consensus cash-flow levels (year 1 ${lv.get('year1')}B, "
+                f"year 2 ${lv.get('year2')}B, DATA 8):** your {hd.get('name', 'Base')}'s year-2 cash flow was "
+                f"${hd.get('requested_year2_flow')}B, {hd.get('requested_gap_pct')}% away, and no "
+                f"guidance_deviation_reason was given, so the desk valued it on years 1-2 growth "
+                f"{g1:+.1%} / {g2:+.1%} (years 3-5 as you sent them): ${hd.get('applied_per_share_iv')}. "
+                f"Your path would give ${hd.get('requested_per_share_iv')}; that is not a desk value and cannot be "
+                f"your base_iv. Your contract's stage1_growth_path is the path the desk valued. "
+                f"To keep your own years 1-2, run the desk again with guidance_deviation_reason citing dated "
+                f"evidence, and give the same reason in the contract."
+            )
+            lines.append("")
 
     if "reverse_dcf" in res and not res["reverse_dcf"].get("error"):
         r = res["reverse_dcf"]

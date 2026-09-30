@@ -31,6 +31,7 @@ output usable at all.
 import hashlib
 import io
 import json
+import math
 import re
 import statistics as st
 import sys
@@ -684,13 +685,16 @@ def select_medoid_scorecard(
                                            "bull_shares_ratio", "bear_shares_ratio", "desk_frame",
                                            "desk_net_debt", "shares_basis", "shares_reason",
                                            "net_debt_reason", "scenario_deviation_reason",
-                                           "bull_bear_anchor", "base_exit_g_gap_bp", "bull_exit_g_gap_bp",
-                                           "bear_exit_g_gap_bp", "base_exit_to_gordon_multiple",
+                                           "bull_bear_anchor",
                                            "terminal_multiple_reason", "interest_addback", "wacc_reason",
                                            "owner_earnings_source", "consensus_reference_status",
                                            "terminal_g_gap_bp", "terminal_reason", "base_window_gap",
-                                           "reference_window_used", "reference_window_value",
-                                           "finite_life_years", "cash_flow_life", "cash_flow_life_reason")},
+                                           "finite_life_years", "cash_flow_life", "cash_flow_life_reason",
+                                           # revision 17 (brief B 6): what the through-cycle package did to this
+                                           # verdict, each added to its owner's schema so none is dropped
+                                           "terminal_ronic", "terminal_ronic_gap_pts", "long_run_facts",
+                                           "working_capital_deducted", "base_year_capped",
+                                           "years12_held_by_desk", "desk_stamps")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
@@ -914,21 +918,6 @@ def _pack_window(pack_text):
     return pack_facts.from_text(pack_text)["base_window"]
 
 
-def reference_window(scorecard, pack_text=None, facts=None):
-    """(reference value, year-2 level $B, window) a sample is checked against. With a BASE WINDOW
-    CHECK printed, the window whose reference is nearer the sample's base IV (Fable, 2026-09-26: the
-    analyst names the window, the harness checks against the nearer reference); else the fiscal-year
-    reference and level."""
-    import consensus_reference
-    if facts is None:
-        facts = pack_facts.from_text(pack_text)
-    civ = facts.get("consensus_implied_value")
-    y2 = (facts.get("levels") or {}).get("year2")
-    win = facts.get("base_window") or {}
-    iv = (scorecard or {}).get("base_iv")
-    return consensus_reference.choose_reference_window(civ, y2, win.get("ttm_value"), win.get("ttm_year2"), iv)
-
-
 def _year2_flow(base_cf, path):
     """base_cf ($B) grown two years along path, or None."""
     try:
@@ -957,19 +946,20 @@ def consensus_ratios(scorecard, enrich_data=None, pack_text=None, facts=None):
     if facts is None:
         facts = pack_facts.from_text(pack_text)
     sc = scorecard or {}
-    civ, lv2, window = reference_window(sc, pack_text=pack_text, facts=facts)
+    # revision 17: the fiscal-year reference and level only (the window no longer changes the arithmetic;
+    # the BASE WINDOW CHECK's gap stays as information)
+    civ = facts.get("consensus_implied_value")
+    lv2 = (facts.get("levels") or {}).get("year2")
     win = facts.get("base_window") or {}
-    # review C3: the fiscal-year reference keeps its own field; the chosen window's value has its own
-    out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": facts.get("consensus_implied_value"),
-           "base_window_gap": win.get("gap"), "reference_window_used": window if win else None,
-           "reference_window_value": civ if win else None}
+    out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": civ,
+           "base_window_gap": win.get("gap")}
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth((enrich_data or {}).get("estimates"))
     y2 = _year2_flow(sc.get("base_cf_used"), path)
     try:
         if lv2 and y2 is not None:
-            # E18: Base year-2 cash flow against the pack's year-2 level (of the window the base is
-            # nearer, when the pack prints both), whatever base was declared
+            # E18: Base year-2 cash flow against the pack's fiscal-year year-2 level (revision 17: the
+            # window choice is gone), whatever base was declared
             out["years12_ratio"] = round(y2 / lv2, 3)
         elif c1 is not None and len(path) >= 2:
             out["years12_ratio"] = round((1 + float(path[0])) * (1 + float(path[1]))
@@ -1009,6 +999,18 @@ def _fnum(v):
         return None
 
 
+def _json_safe(x):
+    """A verdict is published as JSON the site parses, and JSON has no infinity: a return on negative
+    tangible equity (+inf, revision 17's long_run facts) is written "+inf" / "-inf"."""
+    if isinstance(x, float) and math.isinf(x):
+        return "+inf" if x > 0 else "-inf"
+    if isinstance(x, dict):
+        return {k: _json_safe(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_json_safe(v) for v in x]
+    return x
+
+
 def _pack_terminal_g(pack_text):
     return pack_facts.from_text(pack_text)["terminal_g_default"]
 
@@ -1025,24 +1027,13 @@ def _pack_owner_earnings_source(pack_text):
     return pack_facts.from_text(pack_text)["owner_earnings_source"]
 
 
-def _desk_terminal(d, close):
-    """E13: which terminal leg a published value came from, with the multiple and rate behind it."""
-    ex = (d.get("exit_multiple_terminal") or {}).get("exit_multiple")
-    exit_hit = bool(ex) and d.get("per_share_iv_exit") is not None and close(d.get("per_share_iv_exit"))
-    return {"leg": "exit" if exit_hit else ("gordon" if close(d.get("per_share_iv_gordon")) else None),
-            "exit_multiple": ex, "gordon_multiple": d.get("implied_terminal_ev_fcf_gordon"),
-            "terminal_g": d.get("terminal_g"), "rate": d.get("discount_rate_applied")}
-
-
-def _rate_of(inp, dt):
-    """The discount rate behind a desk scenario: the desk's own record, the call's inputs, or the
-    rate the Gordon multiple implies, M = (1 + g) / (r - g), for calls recorded before E13."""
-    for v in (dt.get("rate"), inp.get("wacc"), inp.get("discount_rate")):
-        x = _fnum(v)
-        if x is not None:
-            return x / 100.0 if x > 1.0 else x
-    g, m = _fnum(dt.get("terminal_g")), _fnum(dt.get("gordon_multiple"))
-    return (1.0 + g) / m + g if g is not None and m else None
+def _desk_terminal(d):
+    """Revision 17: what the desk applied at a published value's terminal: the growth, the rate, the return
+    on new investment (a number, or "unlimited"), the working capital deducted and the desk's own stamps."""
+    return {"terminal_g": d.get("terminal_g"), "rate": d.get("discount_rate_applied"),
+            "terminal_ronic": d.get("terminal_ronic"),
+            "working_capital_deducted": d.get("working_capital_deducted"),
+            "stamps": list(d.get("stamps") or [])}
 
 
 def _desk_scenario_inputs(calls, target_iv, role=None):
@@ -1066,7 +1057,7 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
         res = c.get("result") if isinstance(c.get("result"), dict) else c
         top = {k: params.get(k) for k in ("explicit_growth", "growth_rates", "shares_diluted", "net_debt",
                                           "valuation_frame", "discount_rate", "wacc", "base_cf",
-                                          "terminal_exit_multiple", "terminal_g", "finite_life_years")}
+                                          "terminal_ronic", "terminal_g", "finite_life_years")}
         scs = res.get("scenario_dcfs") or res.get("scenarios") or []
         scs = scs if isinstance(scs, list) else []
         if role:
@@ -1076,8 +1067,7 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
             if not isinstance(sc, dict):
                 continue
             d = sc.get("dcf") or {}
-            if any(close(x) for x in (d.get("per_share_iv"), d.get("per_share_iv_gordon"),
-                                      d.get("per_share_iv_exit"), sc.get("iv"))):
+            if any(close(x) for x in (d.get("per_share_iv"), d.get("per_share_iv_gordon"), sc.get("iv"))):
                 p_sc = next((s for s in (params.get("scenarios") or [])
                              if isinstance(s, dict) and s.get("name") == sc.get("name")), {})
                 out = dict(top)
@@ -1091,17 +1081,16 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
                 if d.get("finite_life_years") is not None:
                     out["finite_life_years"] = d.get("finite_life_years")
                 out["name"] = sc.get("name")
-                out["_desk"] = _desk_terminal(d, close)
+                out["_desk"] = _desk_terminal(d)
                 return out
         d = res.get("dcf_model") or {}
-        if isinstance(d, dict) and any(close(d.get(k)) for k in ("per_share_iv", "per_share_iv_gordon",
-                                                                 "per_share_iv_exit")):
+        if isinstance(d, dict) and any(close(d.get(k)) for k in ("per_share_iv", "per_share_iv_gordon")):
             out = dict(top)
             if d.get("explicit_growth"):
                 out["explicit_growth"] = d["explicit_growth"]
             if d.get("finite_life_years") is not None:
                 out["finite_life_years"] = d.get("finite_life_years")
-            out["_desk"] = _desk_terminal(d, close)
+            out["_desk"] = _desk_terminal(d)
             return out
     return None
 
@@ -1126,12 +1115,17 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         calls = []
     stamps = {"bull_years12_ratio": None, "bear_years12_ratio": None, "base_shares_ratio": None,
               "bull_shares_ratio": None, "bear_shares_ratio": None, "desk_frame": None, "desk_net_debt": None,
-              "bull_bear_anchor": None, "base_exit_g_gap_bp": None, "bull_exit_g_gap_bp": None,
-              "bear_exit_g_gap_bp": None, "base_exit_to_gordon_multiple": None,
+              "bull_bear_anchor": None,
               "owner_earnings_source": facts.get("owner_earnings_source"),
               "terminal_g_gap_bp": None,
               "consensus_reference_status": facts.get("reference_status"),
-              "finite_life_years": None}
+              "finite_life_years": None,
+              # revision 17 (brief B 6): stamped on every verdict whether or not a desk call is found
+              "terminal_ronic": None, "terminal_ronic_gap_pts": None,
+              "long_run_facts": _json_safe(facts.get("long_run")) or None,
+              "working_capital_deducted": None,
+              "base_year_capped": True if facts.get("base_year_cap") else None,
+              "years12_held_by_desk": None, "desk_stamps": None}
     flags = []
     g_anchor = facts.get("terminal_g_default")
     # S3 5.11: the share-count default is the pack's count when the facts carry one (revision 15);
@@ -1180,20 +1174,24 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
                     stamps["finite_life_years"] = int(inp["finite_life_years"])
                 except (ValueError, TypeError):
                     pass
-        # E13: the terminal growth a published exit leg asserts, at this scenario's own rate, against
-        # the anchor (the call's own terminal_g when the pack has none)
         dt = inp.get("_desk") or {}
         if role == "base" and g_anchor is not None and _fnum(dt.get("terminal_g")) is not None:
             # revision 10: terminal_g itself is pinned to the anchor (AU (b) s1 cut it to 2.5%)
             stamps["terminal_g_gap_bp"] = round((_fnum(dt["terminal_g"]) - g_anchor) * 10000)
-        if dt.get("leg") == "exit" and _fnum(dt.get("exit_multiple")):
-            m_x = _fnum(dt["exit_multiple"])
-            g_ref = g_anchor if g_anchor is not None else _fnum(dt.get("terminal_g"))
-            r = _rate_of(inp, dt)
-            if g_ref is not None and r is not None:
-                stamps[f"{role}_exit_g_gap_bp"] = round(((m_x * r - 1.0) / (m_x + 1.0) - g_ref) * 10000)
-            if role == "base" and _fnum(dt.get("gordon_multiple")):
-                stamps["base_exit_to_gordon_multiple"] = round(m_x / _fnum(dt["gordon_multiple"]), 3)
+        if role == "base":
+            # revision 17: the terminal return on new investment the desk applied to the Base, against the
+            # pack's default (a value or "unlimited"); the working capital and the desk's own stamps
+            applied = dt.get("terminal_ronic")
+            applied_f = math.inf if applied == "unlimited" else _fnum(applied)
+            stamps["terminal_ronic"] = applied
+            default_ronic = facts.get("terminal_ronic")
+            if applied_f is not None and default_ronic is not None:
+                stamps["terminal_ronic_gap_pts"] = (None if applied_f == default_ronic
+                                                    else round(abs(applied_f - default_ronic) * 100.0, 2)
+                                                    if not math.isinf(applied_f - default_ronic) else "unlimited")
+            stamps["working_capital_deducted"] = dt.get("working_capital_deducted")
+            stamps["desk_stamps"] = list(dt.get("stamps") or [])
+            stamps["years12_held_by_desk"] = "years12_held_by_desk" in stamps["desk_stamps"]
 
     if stamps["finite_life_years"] is None and sc.get("finite_life_years") is not None:
         try:
@@ -1205,13 +1203,14 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         v = str(sc.get(field) or "").strip()
         return bool(v) and v.lower() not in ("null", "none")
 
-    gap = stamps["base_exit_g_gap_bp"]
     terminal_reason = _has("terminal_reason") or _has("terminal_multiple_reason")
-    if gap is not None and abs(gap) > 50 and not terminal_reason:
-        flags.append("exit_multiple_off_default_without_reason")
     tg = stamps["terminal_g_gap_bp"]
     if tg is not None and abs(tg) > 50 and not terminal_reason:
         flags.append("terminal_g_off_anchor_without_reason")
+    # revision 17: the Base's terminal return on new investment more than 2 points from the pack's default
+    tr_gap = stamps["terminal_ronic_gap_pts"]
+    if tr_gap is not None and (tr_gap == "unlimited" or tr_gap > 2.0) and not terminal_reason:
+        flags.append("terminal_ronic_off_default_without_reason")
     # E13 (f): the equity frame is the default; a firm frame needs a pre-interest flow and a WACC build
     if stamps["desk_frame"] == "firm":
         addback = _num_b(sc.get("interest_addback"))
@@ -1416,12 +1415,15 @@ def check_sample_harness_rules(
         gdr = ""
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth(en.get("estimates"))
-    civ, lv2, _window = reference_window(sc, pack_text=pack_text, facts=facts)
+    civ = facts.get("consensus_implied_value")
+    lv2 = (facts.get("levels") or {}).get("year2")
     y2 = _year2_flow(sc.get("base_cf_used"), path)
     if lv2 and y2 is not None and not gdr:
         # E18: the year-2 LEVEL is the anchor, whatever base the sample declared (ADI (b): a TTM
-        # base on the rate path and a fiscal-year base on its own path were 68% apart)
-        if abs(y2 / lv2 - 1) > consensus_reference.LEVEL_TOL:
+        # base on the rate path and a fiscal-year base on its own path were 68% apart). Revision 17:
+        # the fiscal-year level at 5% (the desk holds a Base's years 1-2 at it, so this is rare; a held
+        # Base carries years12_held_by_desk, not this flag)
+        if abs(y2 / lv2 - 1) > consensus_reference.LEVELS_HOLD_TOL:
             flags.append("years12_off_consensus_earnings")
     elif not lv2 and c1 is not None and len(path) >= 2 and not gdr:
         try:
@@ -1431,11 +1433,6 @@ def check_sample_harness_rules(
         except (ValueError, TypeError, ZeroDivisionError):
             pass
     p90 = facts.get("years35_p90")
-    if facts.get("base_window"):
-        _bcr = str(sc.get("base_cf_reason") or "").strip()
-        if not _bcr or _bcr.lower() in ("null", "none"):
-            # whole-book test: with both windows printed, the analyst names the one it uses
-            flags.append("base_window_without_reason")
     if civ and base_iv is not None and not gdr:
         try:
             if not consensus_reference.FAR_LOW <= float(base_iv) / civ <= consensus_reference.FAR_HIGH:
@@ -1594,14 +1591,16 @@ def extract_desk_snapshot_metrics(
             dcf = res.get("dcf_model")
             if isinstance(dcf, dict) and not dcf.get("error"):
                 dcf_ivs = []
-                for k in ("per_share_iv", "per_share_iv_gordon", "per_share_iv_exit"):
+                for k in ("per_share_iv", "per_share_iv_gordon"):
                     v = _parse_float(dcf.get(k))
                     if v is not None and v > 0:
                         desk_ivs.append(v)
                         dcf_ivs.append(v)
                 is_capped = bool(dcf.get("years35_capped"))
-                d_growth = dcf.get("explicit_growth") if is_capped else p_growth
-                d_fade = dcf.get("fade_years") if is_capped else p_fade
+                # revision 17: a Base the desk held at the levels was valued on the desk's path, not the requested one
+                d_applied = is_capped or bool(dcf.get("years12_held"))
+                d_growth = dcf.get("explicit_growth") if d_applied else p_growth
+                d_fade = dcf.get("fade_years") if d_applied else p_fade
                 for v in dcf_ivs:
                     candidates.append({
                         "iv": v,
@@ -1632,7 +1631,8 @@ def extract_desk_snapshot_metrics(
                         sc_shares = sc.get("shares_diluted") if sc.get("shares_diluted") is not None else (p_sc.get("shares_diluted") if p_sc.get("shares_diluted") is not None else p_shares)
 
                         is_capped = bool(d.get("years35_capped")) if isinstance(d, dict) else False
-                        if is_capped:
+                        # revision 17: a held Base (years12_held) was valued on the desk's path too
+                        if is_capped or (isinstance(d, dict) and d.get("years12_held")):
                             cand_g = d.get("explicit_growth")
                             cand_fade = d.get("fade_years")
                         else:
@@ -1641,7 +1641,7 @@ def extract_desk_snapshot_metrics(
 
                         ivs_found = []
                         if isinstance(d, dict) and not d.get("error"):
-                            for k in ("per_share_iv", "per_share_iv_gordon", "per_share_iv_exit"):
+                            for k in ("per_share_iv", "per_share_iv_gordon"):
                                 v = _parse_float(d.get(k))
                                 if v is not None and v > 0:
                                     ivs_found.append(v)
@@ -2135,6 +2135,12 @@ def main():
         "base_window": facts["base_window"],
         "consensus_implied_value": facts["consensus_implied_value"],
         "levels": facts["levels"],
+        # revision 17 (brief B 4): the through-cycle facts the desk values with; an older frozen pack's
+        # sidecar carries None for each
+        "terminal_ronic": facts["terminal_ronic"],
+        "long_run": facts["long_run"],
+        "working_capital": facts["working_capital"],
+        "cash_basis_b": facts["cash_basis_b"],
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)
     }

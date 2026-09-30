@@ -27,7 +27,8 @@ def test_the_task_states_the_direction_band_the_takeover_rule_and_null_reasons()
     fm = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
     assert "base_cf_reason" in fm["function"]["parameters"]["properties"]
     assert "owner CF" not in cap.TASK
-    assert "years 1-2 reach the consensus cash-flow levels in DEFAULTS from whatever base you declare" in cap.TASK
+    # revision 17: the desk holds the Base's years 1-2 at the levels instead of asking for a reason
+    assert "the desk holds the Base's years 1-2 at the consensus cash-flow levels in DEFAULTS unless you give the reason DEFAULTS names for a departure" in cap.TASK
     assert "anchor Bull and Bear to the top and bottom of the company's own guidance range" in cap.TASK
 
 

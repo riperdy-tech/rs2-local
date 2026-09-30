@@ -7,6 +7,7 @@ is after interest and the pack anchors a cost of equity, so a firm frame on thos
 debt twice at an invented WACC.
 """
 import json
+import math
 import sys
 from pathlib import Path
 import pytest
@@ -19,6 +20,7 @@ import analyst_tools as at  # noqa: E402
 import capability_test as cap  # noqa: E402
 import consensus_valuation as cv  # noqa: E402
 import financial_model_tool as fmt  # noqa: E402
+import pack_facts  # noqa: E402
 
 PACK = ("- Long-run nominal growth anchor for terminal_g: 3.75%  (asof 2026-09-23)\n"
         "- Shares outstanding: 35,200,000   [source: vendor financials]\n"
@@ -33,9 +35,11 @@ FLOW = dict(base_cf=1.186, growth_rates=[0.697, 0.228, 0.167, 0.145, 0.122], ter
             fade_years=5, shares_diluted=0.0352, sbc_treatment="deducted_in_cf")
 
 
-def _dcf(wacc, exit_multiple=None, frame="equity", net_debt=None):
-    kw = dict(FLOW, wacc=wacc, terminal_exit_multiple=exit_multiple, valuation_frame=frame,
-              rate_type="cost_of_equity" if frame == "equity" else "true_wacc")
+def _dcf(wacc, frame="equity", net_debt=None, **extra):
+    """Revision 17: the exit multiple left the desk, so the helper takes none. `extra` passes a desk input such as
+    terminal_ronic (math.inf reproduces the unfunded arithmetic the FIX s1 figure below was computed with)."""
+    kw = dict(FLOW, wacc=wacc, valuation_frame=frame,
+              rate_type="cost_of_equity" if frame == "equity" else "true_wacc", **extra)
     if net_debt is not None:
         kw["net_debt"] = net_debt
     return fmt.unbundled_dcf(**kw)
@@ -53,23 +57,24 @@ def _snapshot(tmp_path, base, bull=None, bear=None, frame="equity", params_extra
     return tmp_path
 
 
-def test_the_desk_returns_the_terminal_growth_an_exit_multiple_implies():
-    d = _dcf(0.0898, 16.0)
-    assert d["per_share_iv"] == 1650.07 and d["per_share_iv_gordon"] == 1891.0   # FIX s2, reproduced
-    assert d["exit_implied_terminal_g"] == 0.0257 and d["exit_multiple_terminal"]["implied_terminal_g"] == 0.0257
+def test_the_desk_result_carries_one_terminal_and_no_exit_fields():
+    """FIX s1 (Gordon, 8.98%, unfunded terminal) is reproduced; the exit leg FIX s2 published (16x) cannot exist now."""
+    # unlimited returns at both ends of the long run (the record's median return is +inf) is the unfunded arithmetic
+    d = _dcf(0.0898, terminal_ronic=math.inf, long_run={"r_tc": math.inf})
+    assert d["per_share_iv"] == 1891.0 and d["per_share_iv_gordon"] == 1891.0   # FIX s1, reproduced
     assert d["discount_rate_applied"] == 0.0898
-    assert "exit_implied_terminal_g" not in _dcf(0.0898)                          # Gordon only
+    for gone in ("exit_implied_terminal_g", "exit_multiple_terminal", "per_share_iv_exit", "terminal_leg"):
+        assert gone not in d
     md = fmt.format_model_results_markdown({"dcf_model": d})
-    assert "implies terminal g 2.57% vs 3.75% in the Gordon leg" in md
+    assert "exit" not in md.lower() and "Exit Multiple" not in md
 
 
 # S3 A+B (brief §3.2, §3.3, §3.5 R6): price comes from context now; cash_flow_life and its reason
-# are required; the Base's 16x exit multiple implies a terminal growth 118bp from the default
-# (R6), so it needs terminal_reason.
-def test_the_batch_table_prints_each_scenarios_implied_growth():
+# are required. Revision 17: the batch table prints no exit-multiple line (there is no exit multiple).
+def test_the_batch_table_prints_no_exit_multiple_lines():
     res = fmt.execute_financial_model({
         "valuation_frame": "equity", "rate_type": "cost_of_equity", "terminal_g": 0.0375,
-        "fade_years": 5, "shares_diluted": 0.0352, "terminal_exit_multiple": 16, "sbc_treatment": "deducted_in_cf",
+        "fade_years": 5, "shares_diluted": 0.0352, "sbc_treatment": "deducted_in_cf",
         "cash_flow_life": "perpetual", "cash_flow_life_reason": "test",
         "base_cf_reason": "test", "terminal_reason": "test", "bear_above_price_reason": "test",
         "scenarios": [{"name": "Base", "prob": 0.5, "base_cf": 1.186, "growth_rates": FLOW["growth_rates"], "wacc": 0.0898},
@@ -77,80 +82,88 @@ def test_the_batch_table_prints_each_scenarios_implied_growth():
                       {"name": "Bull", "prob": 0.25, "base_cf": 1.186 * 1.2, "growth_rates": FLOW["growth_rates"], "wacc": 0.0898},
                       {"name": "Bear", "prob": 0.25, "base_cf": 1.186, "growth_rates": [0.45, 0.08, 0.05, 0.04, 0.035],
                        "wacc": 0.1048}]},
-        context={"price": 1643.39})
+        context={"price": 1643.39, "terminal_ronic": math.inf})
     md = fmt.format_model_results_markdown(res)
-    assert "- Base: 16.0x exit multiple implies terminal g 2.57% vs 3.75% in the Gordon leg" in md
-    assert "- Bear: 16.0x exit multiple implies terminal g 3.98%" in md
-
-
-# S3 C (brief §5.6): the line drops to sentence case, states the multiple before the "=" and no
-# longer names terminal_reason (that rule now lives in the DEFAULTS block, §5.2).
-def test_the_pack_line_gives_the_multiple_consistent_with_the_anchors():
-    import capability_test as cap
-    line = cap._default_exit_multiple_line(8.98, 0.0375)
-    assert "Default exit multiple 19.84× = (1 + 3.75%) / (8.98% − 3.75%)" in line
-    assert "not available" in cap._default_exit_multiple_line(None, 0.0375)
-    assert "not available" in cap._default_exit_multiple_line(3.0, 0.0375)       # rate below g
+    assert "Batch Scenario DCF Valuation Table" in md
+    assert "exit multiple" not in md and "implies terminal g" not in md
 
 
 # S3 A+B (brief §3.3, §4.2): terminal_reason/interest_addback/wacc_reason are now call arguments
 # on the desk's TOOLS schema, not contract fields typed into the TASK's JSON block; the "Valuation
 # Frame"/"Terminal Growth And Multiple" doctrine is now the Frame/Terminal value sub-bullets of
 # checklist item 3.
-# S3 C (brief §5.3, §5.6): SECTION 1.5's exit-multiple line drops to sentence case ("Default exit
-# multiple") and its terminal_reason rule tail is gone; SECTION 6's NET DEBT line drops its "equity
-# frame"/"firm frame" rule sentences. Both rules now live in the DEFAULTS block (§5.2) instead.
-def test_the_pack_prints_the_default_exit_multiple_and_the_frame_rule(screener_data_stub):
+# S3 C (brief §5.3, §5.6): SECTION 6's NET DEBT line drops its "equity frame"/"firm frame" rule
+# sentences; both rules live in the DEFAULTS block (§5.2) instead. Revision 17: SECTION 1.5 no longer
+# prints a default exit multiple and the DEFAULTS block no longer carries one.
+def test_the_pack_prints_no_default_exit_multiple_and_keeps_the_frame_rule(screener_data_stub):
     pack = str(cap.build_pack("GEV"))
-    assert "Default exit multiple" in pack
+    assert "exit multiple" not in pack.lower() and "default_exit_multiple" not in pack
     assert "Net income is after interest, so this is an equity flow" not in pack
     assert "The equity frame (the default) takes no net_debt" not in pack
     fm = next(t for t in at.TOOLS if t["function"]["name"] == "run_financial_model")
     props = fm["function"]["parameters"]["properties"]
-    for field in ("terminal_reason", "interest_addback", "wacc_reason"):
+    for field in ("terminal_reason", "interest_addback", "wacc_reason", "terminal_ronic"):
         assert field in props
+    for gone in ("terminal_exit_multiple", "terminal_leg"):
+        assert gone not in props
     assert "Frame: every flow in this pack is after interest, so value it in the equity frame." in cap.TASK
     assert "Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders" in cap.TASK
+    assert "exit multiple" not in cap.TASK and "terminal_leg" not in cap.TASK
 
 
-def test_fix_s2_the_16x_exit_leg_is_flagged_without_a_reason(tmp_path):
-    snap = _snapshot(tmp_path, _dcf(0.0898, 16.0))
-    flags, st = cv.scenario_checks(snap, {"base_iv": 1650.07}, None, PACK, 1643.39)
-    assert st["base_exit_g_gap_bp"] == -118 and st["base_exit_to_gordon_multiple"] == 0.806
-    assert "exit_multiple_off_default_without_reason" in flags
-    flags, st = cv.scenario_checks(snap, {"base_iv": 1650.07, "terminal_multiple_reason": "peer EV/FCF 16x, dated"},
-                                   None, PACK, 1643.39)
-    assert "exit_multiple_off_default_without_reason" not in flags and st["base_exit_g_gap_bp"] == -118
+DEFAULT_RONIC_FACTS = {"terminal_ronic": 0.10, "terminal_g_default": 0.0375}
 
 
-def test_an_exit_multiple_at_the_anchor_rounding_is_clean(tmp_path):
-    # AMD (c): 15x against the 15.49x the anchors imply at 10.45% -> 3.55%, 20 bp from 3.75%
-    snap = _snapshot(tmp_path, _dcf(0.1045, 15.0))
-    iv = _dcf(0.1045, 15.0)["per_share_iv"]
-    flags, st = cv.scenario_checks(snap, {"base_iv": iv}, None, PACK, 1643.39)
-    assert st["base_exit_g_gap_bp"] == -20 and "exit_multiple_off_default_without_reason" not in flags
+def test_a_base_terminal_ronic_more_than_two_points_off_the_default_is_flagged_without_a_reason(tmp_path):
+    """Revision 17 (brief B 6): terminal_ronic_off_default_without_reason replaces the exit-multiple flag."""
+    d = _dcf(0.0898, terminal_ronic=0.20)
+    snap = _snapshot(tmp_path, d)
+    facts = dict(pack_facts.empty(), **DEFAULT_RONIC_FACTS)
+    flags, st = cv.scenario_checks(snap, {"base_iv": d["per_share_iv"]}, None, PACK, 1643.39, facts=facts)
+    assert st["terminal_ronic"] == 0.2 and st["terminal_ronic_gap_pts"] == 10.0
+    assert "terminal_ronic_off_default_without_reason" in flags
+    flags, _ = cv.scenario_checks(snap, {"base_iv": d["per_share_iv"], "terminal_reason": "returns above 20% for a decade"},
+                                  None, PACK, 1643.39, facts=facts)
+    assert "terminal_ronic_off_default_without_reason" not in flags
 
 
-def test_publishing_the_gordon_leg_of_a_call_with_an_exit_multiple_is_not_an_exit_choice(tmp_path):
-    d = _dcf(0.0898, 16.0)
-    flags, st = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv_gordon"]}, None, PACK, 1643.39)
-    assert st["base_exit_g_gap_bp"] is None and "exit_multiple_off_default_without_reason" not in flags
+def test_a_terminal_ronic_within_two_points_is_clean_and_an_unlimited_one_is_stamped(tmp_path):
+    facts = dict(pack_facts.empty(), **DEFAULT_RONIC_FACTS)
+    d = _dcf(0.0898, terminal_ronic=0.11)
+    flags, st = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv"]}, None, PACK, 1643.39, facts=facts)
+    assert st["terminal_ronic_gap_pts"] == 1.0 and "terminal_ronic_off_default_without_reason" not in flags
+    d = _dcf(0.0898, terminal_ronic=math.inf)               # the desk echoes "unlimited", never a bare infinity
+    assert d["terminal_ronic"] == "unlimited"
+    flags, st = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv"]}, None, PACK, 1643.39, facts=facts)
+    assert st["terminal_ronic"] == "unlimited" and st["terminal_ronic_gap_pts"] == "unlimited"
+    assert "terminal_ronic_off_default_without_reason" in flags
+    # an unlimited default and an unlimited Base agree
+    facts_inf = dict(facts, terminal_ronic=math.inf)
+    flags, st = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv"]}, None, PACK, 1643.39, facts=facts_inf)
+    assert st["terminal_ronic_gap_pts"] is None and "terminal_ronic_off_default_without_reason" not in flags
 
 
-def test_bull_and_bear_are_stamped_at_their_own_rates(tmp_path):
-    base, bear = _dcf(0.0898, 16.0), _dcf(0.1048, 16.0)
-    _, st = cv.scenario_checks(_snapshot(tmp_path, base, bear=bear),
-                               {"base_iv": base["per_share_iv"], "bear_iv": bear["per_share_iv"]}, None, PACK, 1643.39)
-    assert st["bear_exit_g_gap_bp"] == 23          # 16x at 10.48% implies 3.98%
-
-
-def test_a_call_recorded_before_e13_still_gets_its_rate_from_the_gordon_multiple(tmp_path):
-    d = _dcf(0.0898, 16.0)
-    d.pop("discount_rate_applied")
-    call = {"tool": "run_financial_model", "params": {"valuation_frame": "equity"}, "dcf_model": d}
-    (tmp_path / "_research_snapshot.json").write_text(json.dumps({"calls": [call]}), encoding="utf-8")
-    flags, st = cv.scenario_checks(tmp_path, {"base_iv": 1650.07}, None, PACK, 1643.39)
-    assert st["base_exit_g_gap_bp"] == -118 and "exit_multiple_off_default_without_reason" in flags
+def test_the_revision_17_stamps_are_carried_from_the_desk_and_the_facts(tmp_path):
+    facts = dict(pack_facts.empty(), terminal_ronic=0.10, base_year_cap={"removed": 0.1, "ni_filed": 0.4,
+                                                                          "ni_capped": 0.3, "eps_filed": 5.78,
+                                                                          "eps_vendor": 5.08},
+                 long_run={"cycle": True, "e5": 1.0})
+    d = _dcf(0.0898, terminal_ronic=0.10, working_capital=[0.01, 0.02, 0.03, 0.04, 0.05])
+    d["stamps"].append("years12_held_by_desk")
+    _, st = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv"]}, None, PACK, 1643.39, facts=facts)
+    assert st["working_capital_deducted"] == [0.01, 0.02, 0.03, 0.04, 0.05]
+    assert st["years12_held_by_desk"] is True and st["base_year_capped"] is True
+    assert st["long_run_facts"] == {"cycle": True, "e5": 1.0}
+    assert "years12_held_by_desk" in st["desk_stamps"] and "working_capital_deducted" in st["desk_stamps"]
+    # a return on negative tangible equity is +inf in the facts; the verdict is JSON the site parses (no Infinity)
+    inf_facts = dict(facts, long_run={"cycle": False, "r_tc": math.inf})
+    _, st_inf = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv"]}, None, PACK, 1643.39, facts=inf_facts)
+    assert st_inf["long_run_facts"] == {"cycle": False, "r_tc": "+inf"}
+    json.dumps(st_inf, allow_nan=False)
+    # no snapshot: the stamps exist and are empty, the facts' are still carried
+    _, none = cv.scenario_checks(tmp_path / "nowhere", {"base_iv": 1.0}, None, PACK, 1.0, facts=facts)
+    assert none["terminal_ronic"] is None and none["years12_held_by_desk"] is None
+    assert none["base_year_capped"] is True and none["long_run_facts"] == {"cycle": True, "e5": 1.0}
 
 
 def test_the_firm_frame_on_an_after_interest_flow_is_flagged(tmp_path):
@@ -215,10 +228,11 @@ def test_terminal_growth_at_the_anchor_is_clean_and_the_old_field_name_still_cou
     d = _dcf_g(0.0893, 0.0375)
     flags, st = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv"]}, None, PACK, 98.64)
     assert st["terminal_g_gap_bp"] == 0 and "terminal_g_off_anchor_without_reason" not in flags
-    x = _dcf(0.0898, 16.0)
-    flags, _ = cv.scenario_checks(_snapshot(tmp_path, x), {"base_iv": 1650.07, "terminal_multiple_reason": "peer data"},
-                                  None, PACK, 1643.39)
-    assert "exit_multiple_off_default_without_reason" not in flags
+    # the contract's old field name still counts as a reason for a terminal_g departure
+    d2 = _dcf_g(0.0893, 0.025)
+    flags, _ = cv.scenario_checks(_snapshot(tmp_path, d2), {"base_iv": d2["per_share_iv"],
+                                                            "terminal_multiple_reason": "peer data"}, None, PACK, 98.64)
+    assert "terminal_g_off_anchor_without_reason" not in flags
 
 
 def test_terminal_growth_default_parser_and_gap_measuring(tmp_path):
@@ -256,11 +270,10 @@ def test_terminal_growth_default_parser_and_gap_measuring(tmp_path):
     assert "terminal_g_off_anchor_without_reason" not in flags
 
 
-def test_mo_pack_terminal_growth_default_and_exit_multiple():
-    """T1 verification on saved pack scratchpad/draw_previews/MO_pack.md inputs:
-    MO's default is 2.34% and the exit multiple at the 7.51% COE is
-    (1 + 0.0234) / (0.0751 - 0.0234) = 19.80x (19.79x formatted to 2 decimals)."""
-    import capability_test as cap
+def test_mo_pack_terminal_growth_default():
+    """T1 verification on saved pack scratchpad/draw_previews/MO_pack.md inputs: MO's default is 2.34% (the
+    consensus fallback rule; revision 17 keeps it for a name with no revenue trend). The exit multiple this
+    test also checked left the desk and the pack in revision 17."""
     import consensus_reference as cref
 
     # MO inputs: anchor 0.0375, breakeven 0.0234, rev_g2 0.009, median_5y 0.043, COE 7.51%
@@ -268,19 +281,10 @@ def test_mo_pack_terminal_growth_default_and_exit_multiple():
     mo_breakeven = 0.0234
     mo_rev_g2 = 0.009
     mo_median_5y = 0.043
-    mo_coe_pct = 7.51
 
     val, reason = cref.terminal_default(mo_anchor, mo_breakeven, mo_rev_g2, mo_median_5y)
     assert val == 0.0234
     assert reason == "next-FY consensus revenue growth (0.9%) is below the anchor"
-
-    # Exit multiple line at 7.51% COE and default 2.34%
-    line = cap._default_exit_multiple_line(mo_coe_pct, val)
-    expected_mult = (1.0 + 0.0234) / (0.0751 - 0.0234)
-    assert expected_mult == pytest.approx(19.80, abs=0.01)
-    assert "19.79×" in line
-    # S3 C (brief §5.6): "terminal_g default" -> "terminal-growth default" (sentence-case rewrite)
-    assert "the multiple consistent with the terminal-growth default" in line
 
     # Reading the saved pack file directly if available
     mo_pack_path = Path(__file__).resolve().parents[4] / "draw_previews" / "MO_pack.md"

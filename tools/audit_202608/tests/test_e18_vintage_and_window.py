@@ -20,6 +20,17 @@ import consensus_reference as cr  # noqa: E402
 import consensus_valuation as cv  # noqa: E402
 import pack_facts  # noqa: E402
 
+
+# Revision 17: the reference's long run needs the company's record. With RONIC_T = +inf, no cycle, no working
+# capital and base net income = owner earnings (D&A = capex) it reduces to revision 16's arithmetic, so the
+# tests in this module that pin revision-16 numbers build through this wrapper and keep their assertions.
+_REDUCTION = {"R_tc": float("inf"), "ronic_t": float("inf"), "cycle": False, "m_tc": None,
+              "nwc_intensity": None, "stamps": []}
+
+
+def _build(base_cf, *args, **kw):
+    return cr.build(base_cf, *args, **dict({"record": _REDUCTION, "base_ni": base_cf}, **kw))
+
 B = 1e9
 ADI_EST = {"0y": {"eps": {"avg": 12.89, "low": 12.35, "high": 14.31, "analysts": 29, "growth": 0.655, "year_ago": 7.79},
                   "revenue": {"growth": 0.373, "analysts": 29, "year_ago": 11019707000.0}},
@@ -44,7 +55,7 @@ def test_the_vendor_year_ago_revenue_names_the_base_year():
 
 def test_a_rolled_vintage_values_the_eps_levels_with_its_reason():
     why = "consensus has moved past FY2026, which ended 2026-08-31 and is not yet in our filings (fy_rolled_unfiled)"
-    ref = cr.build(None, ADI_EST, 0.1045, 0.0375, SH, 0.096, da=2.0 * B, capex=0.5 * B,
+    ref = _build(None, ADI_EST, 0.1045, 0.0375, SH, 0.096, da=2.0 * B, capex=0.5 * B,
                    stub_months=0.9, levels_reason=why)
     assert ref["method"] == "levels" and ref["value"] > 0 and ref["levels_reason"] == why
     y1, y2 = ref["levels"]
@@ -58,21 +69,21 @@ def test_a_rolled_vintage_values_the_eps_levels_with_its_reason():
 
 def test_a_base_that_is_not_positive_goes_to_the_eps_levels():
     # LIVN: FY2025 net loss of $242M from a one-off; the consensus EPS levels are positive
-    ref = cr.build(-0.277 * B, ADI_EST, 0.1045, 0.0375, SH, 0.096, da=0.046 * B, capex=0.081 * B,
+    ref = _build(-0.277 * B, ADI_EST, 0.1045, 0.0375, SH, 0.096, da=0.046 * B, capex=0.081 * B,
                    stub_months=8.8)
     assert ref["method"] == "levels" and ref["value"] > 0
     assert ref["levels_reason"] == "the fiscal-year owner-earnings base is not positive"
 
 
 def test_a_positive_base_with_usable_growth_is_unchanged():
-    ref = cr.build(3.732 * B, ADI_EST, 0.1045, 0.0375, SH, 0.096, stub_months=10.8)
+    ref = _build(3.732 * B, ADI_EST, 0.1045, 0.0375, SH, 0.096, stub_months=10.8)
     assert ref["method"] == "growth" and ref["levels_reason"] is None and 330 <= ref["value"] <= 354
 
 
 # ---- b. the two windows ------------------------------------------------------------------------
 
 def _adi():
-    return cr.build(3.732 * B, ADI_EST, 0.1045, 0.0375, SH, 0.096, stub_months=10.8)
+    return _build(3.732 * B, ADI_EST, 0.1045, 0.0375, SH, 0.096, stub_months=10.8)
 
 
 def test_adi_gap_is_the_period_effect_not_a_window_gap():
@@ -133,19 +144,18 @@ def _facts_with_window(ref, win):
     return f
 
 
-def test_the_harness_checks_against_the_nearer_reference():
+def test_the_harness_checks_against_the_fiscal_year_reference_only():
+    """Revision 17 (brief B 6): the nearer-window choice is gone. A sample near the TTM window's reference is
+    still compared with the fiscal-year reference; the gap stays as information (base_window_gap)."""
     pack, ref, win = _pack_with_window()
     facts = _facts_with_window(ref, win)
     near_ttm = {"base_iv": win["ttm_value"] * 1.02}
-    near_fy = {"base_iv": ref["value"] * 0.98}
-    assert cv.reference_window(near_ttm, facts=facts)[2] == "ttm"
-    assert cv.reference_window(near_fy, facts=facts)[2] == "fy"
     r = cv.consensus_ratios(dict(near_ttm, base_cf_used=3.732 * 1.655 ** 0.5 * 1.56,
                                  stage1_growth_path=[0.2946, 0.268, 0.1, 0.1, 0.1]),
                             {"estimates": ADI_EST}, facts=facts)
-    assert r["reference_window_used"] == "ttm" and r["base_window_gap"] == 0.56
-    assert abs(r["base_to_civ"] - 1.02) < 0.01
-    assert abs(r["reference_window_value"] - win["ttm_value"]) < 0.01          # review C3
+    assert r["base_window_gap"] == 0.56
+    assert abs(r["base_to_civ"] - near_ttm["base_iv"] / ref["value"]) < 0.001
+    assert "reference_window_used" not in r and "reference_window_value" not in r
     assert abs(r["consensus_implied_value"] - ref["value"]) < 0.01
 
 
@@ -157,8 +167,9 @@ def test_both_windows_printed_needs_a_named_window():
                                                        "bear_iv": ref["value"] * 0.7}, **sc),
                                                  382.61, enrich_data={"estimates": ADI_EST}, pack_text=pack)
         return fl
-    assert "base_window_without_reason" in flags()
-    assert "base_window_without_reason" in flags(base_cf_reason="none")
+    # revision 17: the window no longer changes the Base's arithmetic, so the flag that asked for a named window is gone
+    assert "base_window_without_reason" not in flags()
+    assert "base_window_without_reason" not in flags(base_cf_reason="none")
     assert "base_window_without_reason" not in flags(base_cf_reason="the TTM holds a one-off gain")
     plain = cr.pack_line(ref, 3.732 * B, 0.1045, 0.0375, _fmt_b)
     _, _, fl = cv.check_sample_harness_rules({"base_iv": ref["value"]}, 382.61,

@@ -145,14 +145,20 @@ TOOLS = [{
         "name": "run_financial_model",
         "description": (
             "Run the Python desk. One call values Base, Bull and Bear together: each scenario's base_cf, "
-            "five years of cash-flow growth, fade, discount rate and terminal growth (with an optional exit "
-            "multiple) give its per-share value. The desk also returns the reverse DCF (the growth today's "
+            "five years of cash-flow growth, fade, discount rate and terminal growth (with an optional "
+            "terminal_ronic) give its per-share value. The desk also returns the reverse DCF (the growth today's "
             "price implies, under your structure and under the neutral reference) and quarter-Kelly sizing. "
             "The harness supplies today's price, the pack's share count, the anchors and the base-rate table; "
             "pass only your decisions. An input that departs from its DEFAULT needs its reason argument: the "
             "desk names any that are missing, and a refused call does not use one of your desk runs. The desk "
             "holds Base years 3-5 at next-FY consensus revenue growth unless guidance_deviation_reason is "
-            "given, and shows the value on your path beside it. Base is every scenario not named Bull or Bear. "
+            "given, and shows the value on your path beside it. It holds the Base's years 1-2 at the DEFAULTS "
+            "cash-flow levels the same way (a Base year 2 more than 5% away). It deducts the DEFAULTS working "
+            "capital in years 1-5 (not when base_cf is within 2% of cash_basis_b) and pays for growth from year 6 "
+            "at terminal_ronic. It values at the base fiscal year end and rolls the value forward to today. "
+            "The firm frame uses the same long run, an approximation: the return on new investment is measured on "
+            "tangible invested capital before interest and applied to equity earnings, which is conservative "
+            "for a levered company. Base is every scenario not named Bull or Bear. "
             "Blend mode combines named desk legs for display; it is never your answer."
         ),
         "parameters": {
@@ -181,11 +187,11 @@ TOOLS = [{
                 },
                 "base_cf_reason": {
                     "type": "string",
-                    "description": "Why a Base base_cf more than 2% from the DEFAULTS owner earnings is more representative, with the filing behind it. When the pack prints a BASE WINDOW CHECK, name the window you judge representative (fiscal year or TTM) and the item behind the gap."
+                    "description": "Why a Base base_cf more than 2% from the DEFAULTS owner earnings is more representative, with the filing behind it."
                 },
                 "guidance_deviation_reason": {
                     "type": "string",
-                    "description": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 15% from the DEFAULTS year-2 level, a Base value outside 0.75-1.33 of the reference, or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth)."
+                    "description": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 5% from the DEFAULTS year-2 level (without it the desk holds years 1-2 at the DEFAULTS levels), a Base value outside 0.75-1.33 of the reference, or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth)."
                 },
                 "scenario_deviation_reason": {
                     "type": "string",
@@ -193,7 +199,7 @@ TOOLS = [{
                 },
                 "terminal_reason": {
                     "type": "string",
-                    "description": "Dated evidence for a Base terminal_g more than 0.5 points from the DEFAULTS terminal-growth default, or for a Base exit multiple whose implied terminal growth is; for a multiple, dated peer EV/FCF evidence (a P/E ratio is not an EV/FCF multiple)."
+                    "description": "Dated evidence for a Base terminal_g more than 0.5 points from the DEFAULTS terminal-growth default, or for a Base terminal_ronic more than 2 points from the DEFAULTS terminal_ronic."
                 },
                 "coe_adjustment_reason": {
                     "type": "string",
@@ -225,7 +231,7 @@ TOOLS = [{
                 },
                 "explicit_growth": {
                     "type": "array",
-                    "description": "Annual growth of base_cf - the owner cash flow being valued - for each Stage 1 year (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). Not revenue growth: revenue growth leaves out margin change. Years 1-2 normally follow consensus EPS growth (DATA 8). Base years 3-5 above next-FY consensus revenue growth are held at it unless guidance_deviation_reason is given.",
+                    "description": "Annual growth of base_cf - the owner cash flow being valued - for each of years 1-5 (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). Not revenue growth: revenue growth leaves out margin change. Years 1-2 normally follow consensus EPS growth (DATA 8). Base years 3-5 above next-FY consensus revenue growth are held at it unless guidance_deviation_reason is given.",
                     "items": {"type": "number"}
                 },
                 "growth_rates": {
@@ -235,13 +241,13 @@ TOOLS = [{
                 },
                 "fade_years": {
                     "type": "integer",
-                    "description": "Duration of Stage 2 linear fade in years (integer >= 0). Fades linearly from the last explicit rate to terminal_g."
+                    "description": "Duration of Stage 2 linear fade in years (integer >= 0). Fades linearly from the last explicit rate to terminal_g; the return on new investment and a cyclical margin move to their long-run values over the same years."
                 },
                 "terminal_g": {
                     "type": "number",
                     "description": "REQUIRED for DCF. Long-term nominal terminal growth rate as decimal (e.g. 0.025 for 2.5%, 0.035 for 3.5%). The silent default was removed in Phase 4; calls without it are refused."
                 },
-                "terminal_exit_multiple": {"type": "number", "description": "Exit multiple on the final projected cash flow. Default: the DEFAULTS exit multiple, (1 + terminal_g) / (rate - terminal_g) at the defaults. The desk returns the terminal growth any other multiple implies (exit_implied_terminal_g)."},
+                "terminal_ronic": {"type": "number", "description": "The return on new investment (a fraction, e.g. 0.12) that pays for growth from year 6 and in the terminal value. Default: the DEFAULTS terminal_ronic. A Base value more than 2 points from it needs terminal_reason."},
                 "sbc_treatment": {
                     "type": "string",
                     "enum": ["deducted_in_cf", "add_back_dilution"],
@@ -249,7 +255,7 @@ TOOLS = [{
                 },
                 "sbc_dilution": {
                     "type": "number",
-                    "description": "Share dilution from SBC when sbc_treatment is 'add_back_dilution'. Must NOT be passed if sbc_treatment is 'deducted_in_cf'."
+                    "description": "Share dilution from SBC when sbc_treatment is 'add_back_dilution': a fraction below 1 (0.02 = 2%) or a whole number of new shares. Must NOT be passed if sbc_treatment is 'deducted_in_cf'."
                 },
                 "base_cf": {"type": "number", "description": "Base owner cash flow / FCF (in $B or per-share, matching units)."},
                 "wacc": {"type": "number", "description": "Cost of capital / discount rate as decimal, e.g. 0.085 for 8.5%."},
@@ -276,8 +282,8 @@ TOOLS = [{
                     "description": (
                         "Exactly three entries, one each with role Base, Bull and Bear. Each entry: name, prob, "
                         "base_cf ($B), explicit_growth (5 annual growth rates of base_cf, cash flow not revenue), "
-                        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_exit_multiple, "
-                        "terminal_leg and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
+                        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_ronic "
+                        "and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
                         "sizing in one call."
                     ),
                     "items": {
@@ -292,8 +298,7 @@ TOOLS = [{
                             "fade_years": {"type": "integer"},
                             "wacc": {"type": "number", "description": "Discount rate as decimal"},
                             "terminal_g": {"type": "number", "description": "REQUIRED. Terminal growth as decimal"},
-                            "terminal_exit_multiple": {"type": "number"},
-                            "terminal_leg": {"type": "string", "enum": ["exit", "gordon"], "description": "\"exit\" or \"gordon\": which end value this scenario publishes when you pass an exit multiple. Default \"exit\". Without an exit multiple only \"gordon\" exists."},
+                            "terminal_ronic": {"type": "number", "description": "Return on new investment for this scenario, as a fraction. Default: the DEFAULTS terminal_ronic."},
                             "shares_diluted": {"type": "number", "description": "Only for a contingent instrument that vests in this scenario, as a whole share count, for example 79,364,362; billions are also accepted. Needs shares_reason."}
                         },
                         "required": ["name", "prob"]
@@ -1012,11 +1017,8 @@ def _desk_summary(args, result):
             continue
         d = sc.get("dcf") or {}
         row = {"name": sc.get("name"), "probability": probs.get(sc.get("name")),
-               "per_share_iv": d.get("per_share_iv"), "gordon_leg": d.get("per_share_iv_gordon"),
-               "exit_leg": d.get("per_share_iv_exit"),
-               "exit_implied_terminal_g": d.get("exit_implied_terminal_g"),
-               "terminal_method": d.get("terminal_method"),
-               "terminal_leg": d.get("terminal_leg")}
+               "per_share_iv": d.get("per_share_iv"),
+               "terminal_method": d.get("terminal_method")}
         rows.append({k: v for k, v in row.items() if v is not None})
     if rows:
         out["scenarios"] = rows
@@ -1034,6 +1036,8 @@ def _desk_summary(args, result):
                         if k.get(kk) is not None}
     if "years35_cap" in result:
         out["years35_cap"] = result["years35_cap"]
+    if "years12_held" in result:
+        out["years12_held"] = result["years12_held"]
     return out
 
 

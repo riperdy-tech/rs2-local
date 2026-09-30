@@ -359,10 +359,8 @@ def test_consumer_equivalence(pack_text, screener_data_stub, frozen_env):
     enrich = {"estimates": {"0y": {"eps": {"analysts": 10}}, "+1y": {"eps": {"analysts": 10}}}}
     desk_info = {"desk_calls": 1, "desk_iv_match": True, "desk_share_implausible": False}
 
-    # 1. reference_window
-    res1_text = cv.reference_window(scorecard, pack_text=pack_text)
-    res1_facts = cv.reference_window(scorecard, pack_text=None, facts=facts)
-    assert res1_text == res1_facts
+    # 1. (reference_window left the harness in revision 17 with the nearer-window choice; consensus_ratios below
+    #    reads the same fiscal-year reference and level)
 
     # 2. consensus_ratios
     res2_text = cv.consensus_ratios(scorecard, enrich_data=enrich, pack_text=pack_text)

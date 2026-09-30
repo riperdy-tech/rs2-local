@@ -23,6 +23,18 @@ sys.path.insert(0, str(HERE.parent))
 import capability_test as cap  # noqa: E402
 import consensus_reference as cr  # noqa: E402
 import consensus_valuation as cv  # noqa: E402
+import pack_facts  # noqa: E402
+
+
+# Revision 17: the reference's long run needs the company's record. With RONIC_T = +inf, no cycle, no working
+# capital and base net income = owner earnings (D&A = capex) it reduces to revision 16's arithmetic, so the
+# tests in this module that pin revision-16 numbers build through this wrapper and keep their assertions.
+_REDUCTION = {"R_tc": float("inf"), "ronic_t": float("inf"), "cycle": False, "m_tc": None,
+              "nwc_intensity": None, "stamps": []}
+
+
+def _build(base_cf, *args, **kw):
+    return cr.build(base_cf, *args, **dict({"record": _REDUCTION, "base_ni": base_cf}, **kw))
 
 B = 1e9
 WSE_FIN = {"Annual_Income_Statement": [{"Date": "2026-03-31", "NetIncome": 498700000.0},
@@ -109,15 +121,15 @@ EST = {"0y": {"eps": {"avg": 12.89, "analysts": 29, "growth": 0.655, "year_ago":
 
 
 def test_eps_levels_are_not_combined_with_filed_figures_on_an_unverified_vintage():
-    blocked = cr.build(-0.3 * B, EST, 0.1, 0.0375, 0.48 * B, 0.096, da=2.0 * B, capex=0.5 * B, stub_months=8.8,
+    blocked = _build(-0.3 * B, EST, 0.1, 0.0375, 0.48 * B, 0.096, da=2.0 * B, capex=0.5 * B, stub_months=8.8,
                        levels_block="the vendor's year-ago revenue does not match FY2025's filed revenue within 2%")
     assert blocked["value"] is None and "the EPS levels are not used" in blocked["reason"]
-    allowed = cr.build(-0.3 * B, EST, 0.1, 0.0375, 0.48 * B, 0.096, da=2.0 * B, capex=0.5 * B, stub_months=8.8)
+    allowed = _build(-0.3 * B, EST, 0.1, 0.0375, 0.48 * B, 0.096, da=2.0 * B, capex=0.5 * B, stub_months=8.8)
     assert allowed["method"] == "levels" and allowed["value"] > 0
 
 
 def test_the_growth_method_is_exempt_from_the_levels_guard():
-    ref = cr.build(3.732 * B, EST, 0.1045, 0.0375, 0.48 * B, 0.096, stub_months=10.8,
+    ref = _build(3.732 * B, EST, 0.1045, 0.0375, 0.48 * B, 0.096, stub_months=10.8,
                    levels_block="anything")
     assert ref["method"] == "growth" and ref["value"] > 0
 
@@ -125,7 +137,7 @@ def test_the_growth_method_is_exempt_from_the_levels_guard():
 # ---- B2: the TTM window is fenced -------------------------------------------------------------
 
 def test_a_ttm_window_outside_the_fence_prints_its_side_and_no_number():
-    ref = cr.build(3.732 * B, EST, 0.1045, 0.0375, 0.48 * B, 0.096, stub_months=10.8)
+    ref = _build(3.732 * B, EST, 0.1045, 0.0375, 0.48 * B, 0.096, stub_months=10.8)
     win = cr.window_check(ref, 3.732 * B, 3.732 * B * 1.655 ** 0.5 * 0.2, 2)       # BMRN's shape: -80%
     fenced = cr.fence_window(win, "below", (27.3, 400.0))
     line = cr.window_line(fenced, ref, 3.732 * B * 0.26, "2026-06-30", lambda v: f"${v / 1e9:.3f}B")
@@ -137,7 +149,10 @@ def test_a_ttm_window_outside_the_fence_prints_its_side_and_no_number():
     parsed = cv._pack_window(line)
     assert parsed["gap"] == -0.8 and parsed["ttm_value"] is None
     pack = cr.pack_line(ref, 3.732 * B, 0.1045, 0.0375, lambda v: f"${v / 1e9:.3f}B") + "\n" + line
-    assert cv.reference_window({"base_iv": 60.0}, pack)[2] == "fy"
+    # revision 17: the harness reads the fiscal-year reference only (the nearer-window choice is gone)
+    fenced_facts = pack_facts.empty()
+    fenced_facts["consensus_implied_value"] = ref["value"]
+    assert cv.consensus_ratios({"base_iv": 60.0}, None, facts=fenced_facts)["base_to_civ"] == round(60.0 / ref["value"], 3)
     assert cr.fence_window(win, None, None) is win
 
 
@@ -253,7 +268,7 @@ def test_a_refused_vendor_capex_says_why(monkeypatch):
 
 
 def test_the_window_line_points_to_the_base_year_check_only_when_it_printed():
-    ref = cr.build(3.732 * B, EST, 0.1045, 0.0375, 0.48 * B, 0.096, stub_months=10.8)
+    ref = _build(3.732 * B, EST, 0.1045, 0.0375, 0.48 * B, 0.096, stub_months=10.8)
     win = cr.window_check(ref, 3.732 * B, 3.732 * B * 1.655 ** 0.5 * 1.56, 2)
     fmt = lambda v: f"${v / 1e9:.3f}B"  # noqa: E731
     # S3 C (brief §5.6): the clause is lower-cased.

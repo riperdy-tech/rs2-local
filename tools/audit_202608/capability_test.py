@@ -50,6 +50,7 @@ import world_news  # noqa: E402
 import company_news  # noqa: E402
 import catalyst_research  # noqa: E402
 import consensus_reference  # noqa: E402
+import throughcycle_record  # noqa: E402
 import pack_facts  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
@@ -211,7 +212,15 @@ TIMEOUT = 14400
 #   says shares_diluted is a whole share count (billions also accepted) and scenarios are exactly three. A base_iv of 0.0
 #   is a value in the harness and in fiduciary_gate.contract_base (no `or` default). The pack text and TASK are unchanged
 #   apart from this number; pack_facts reads every revision from 15 on as revision 15.
-PACK_REVISION = 16
+# Revision 17 (brief_rev17_B_valuation.md, 2026-09-30, the through-cycle valuation package): the long run is valued from the
+#   company's own record (tools/throughcycle_record.py). Years 1-5 deduct working capital (nwc_intensity x the revenue change);
+#   from year 6 growth is paid for at the return the record supports (terminal_ronic, facts long_run) and, for a cyclical
+#   record, the margin reverts toward its median; terminal growth is the company's own revenue trend held between breakeven
+#   inflation and the anchor; a one-time gain in the base year is removed (base_year_cap). The desk holds the Base's years 1-2
+#   at the fiscal-year levels unless guidance_deviation_reason is given, values at the base fiscal year end rolled forward,
+#   and has no exit multiple or terminal leg. DEFAULTS gains terminal_ronic, long_run, working_capital (and base_year_cap when
+#   applied) and loses default_exit_multiple; the tool text and TASK change with it; sbc_dilution has one unit rule.
+PACK_REVISION = 17
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -310,6 +319,8 @@ REVIEWED_HISTORY_KEYS = frozenset({
     "short_term_borrowings_separate", "finance_lease_liability", "operating_lease_liability",
     "borrowings_total", "st_investments", "lt_investments",
     "pretax_income", "tax_provision",
+    # revision 17: read by the through-cycle record (tools/throughcycle_record.py), printed as its statistics
+    "goodwill", "intangibles_ex_goodwill", "amortization_intangibles",
 })
 
 
@@ -325,43 +336,6 @@ def _reference_outside_fence(value, band):
         return None, None
     fence = (0.5 * lo / 1.10, 2.0 * hi / 1.10)
     return ("above" if value > fence[1] else "below" if value < fence[0] else None), fence
-
-
-def _exit_multiple_value(coe_anchor_pct, terminal_g):
-    """(1 + g) / (COE - g) at full precision, or None when an anchor is missing or the rate does
-    not clear the growth rate. Shared by `_default_exit_multiple_line` (SECTION 1.5) and the
-    DEFAULTS block (5.2's `default_exit_multiple`), so the two print the identical number — not
-    recomputed from the rounded facts, which round the multiple differently (measured: 20.11x
-    from facts["coe_anchor"]/["terminal_g_default"] against the EZPW worked example's 20.12x from
-    these full-precision inputs)."""
-    if coe_anchor_pct is None or terminal_g is None or coe_anchor_pct / 100.0 <= float(terminal_g):
-        return None
-    r, g = coe_anchor_pct / 100.0, float(terminal_g)
-    return (1 + g) / (r - g)
-
-
-def _default_exit_multiple_line(coe_anchor_pct, terminal_g):
-    """S3 5.6 (2026-09-28): shortened for the DEFAULTS-block world - the rule tail that named
-    `terminal_reason` is gone (that rule now lives in the DEFAULTS block, 5.2) and the label drops
-    to sentence case to match SECTION 1.5's other typed lines. Every number stays. Old text (Phase
-    4 E13, revision 14): "DEFAULT EXIT MULTIPLE: not available ..." / "[Arithmetic] DEFAULT EXIT
-    MULTIPLE (net capitalization rate at the anchors): (1 + g%) / (r% - g%) = mult x the
-    final-year cash flow: the multiple consistent with the terminal_g default. At another rate
-    (the Bear's wider rate) the desk prints the scenario's own as implied_terminal_ev_fcf_gordon.
-    A multiple whose implied terminal growth (exit_implied_terminal_g) is more than 0.5 points
-    from the terminal_g default needs terminal_reason."
-
-    The exit multiple consistent with the anchors, (1 + g) / (COE - g). The desk fades the flow to
-    terminal_g before the terminal, so any other multiple asserts another g."""
-    mult = _exit_multiple_value(coe_anchor_pct, terminal_g)
-    if mult is None:
-        return ("- Default exit multiple: not available (an anchor is missing); the desk prints "
-                "implied_terminal_ev_fcf_gordon at your rate.")
-    r, g = coe_anchor_pct / 100.0, float(terminal_g)
-    return (f"- [Arithmetic] Default exit multiple {mult:.2f}× = (1 + {g * 100:.2f}%) "
-            f"/ ({r * 100:.2f}% − {g * 100:.2f}%): the multiple consistent with the "
-            f"terminal-growth default; at another rate the desk prints the scenario's own "
-            f"(implied_terminal_ev_fcf_gordon)")
 
 
 def _schema_drift(sources):
@@ -1159,6 +1133,12 @@ def _scr10_from_series(series, asof_iso):
     }
 
 
+def _span_n(years):
+    """[first, last, n] of a list of fiscal years, or None when there are none (the long_run fact's
+    "basis years": the record's span and how many years it used)."""
+    return [min(years), max(years), len(years)] if years else None
+
+
 def build_pack(t, price_override=None, include_research=True, asof=None, news_snippets=False):
     """Every fact we hold that is FILED, or is exact arithmetic on filed values, labelled with its
     source and its period. No judgment is exercised here: no valuation, no basis choice, no
@@ -1208,6 +1188,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     _ref_fy_na = None   # E18: why that fiscal year cannot anchor the consensus path
     _aligned = None     # E18: the vendor's estimates start from the filed fiscal year (vintage test)
     _byc_printed = False  # the BASE-YEAR CHECK line printed its numbers (the window line points to it)
+    _base_cap = None    # revision 17: consensus_reference.base_year_cap's dict when the cap applies
     section10_printed = False   # S3 5.5/5.10: SECTION 12's Q&A pointer names SECTION 10 only if it ran
     facts = pack_facts.empty()
     facts["source"] = "build"
@@ -1246,8 +1227,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # this company's trailing twelve months - it is a stranded old record. Measured: 12 of 171
     # book names, MDT anchored to 2015 against FY2026. Printing it as "TRAILING TWELVE MONTHS"
     # states a period that is years wrong, and the plausibility fence divides by its OCF.
-    _yrs = [int(y) for y in (rs2_data.load_json(SD / "fundamentals_history.json") or {})
-            .get("tickers", {}).get(t, {}) if str(y).isdigit()]
+    # one read of the 47 MB history for the year list, the rows and (revision 17) the provenance marker
+    _hist_doc = rs2_data.load_json(SD / "fundamentals_history.json") or {}
+    _yrs = [int(y) for y in _hist_doc.get("tickers", {}).get(t, {}) if str(y).isdigit()]
     ttm_stale = bool(ttm and _yrs
                      and int(str(ttm.get("fy_leg_end", ""))[:4] or 0) != max(_yrs))
     if ttm_stale or asof_date is not None:
@@ -1256,7 +1238,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         f = {}
     qrec = (rs2_data.load_json(SD / "fundamentals_quarterly.json") or {}).get("tickers", {}).get(t) or {}
     qs = qrec.get("quarters") or []
-    h = (rs2_data.load_json(SD / "fundamentals_history.json") or {}).get("tickers", {}).get(t) or {}
+    h = _hist_doc.get("tickers", {}).get(t) or {}
+    # Revision 17 (brief A's provenance marker): the fields (goodwill, intangibles_ex_goodwill,
+    # amortization_intangibles) this filer never tags in any held year, which the through-cycle record
+    # reads as "none held" (0); a null in a tagged series is a gap. provenance["untagged_fields"][T].
+    _untagged_fields = ((_hist_doc.get("provenance") or {}).get("untagged_fields") or {}).get(t) or []
     bat = (rs2_data.load_json(SD / "fundamentals_battery.json") or {}).get("tickers", {}).get(t) or {}
     ob = rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json") or {}
     en = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
@@ -1401,6 +1387,65 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     pack_rev_g2 = consensus_reference.revenue_growth_next_fy(enrich_est)
     terminal_def_val = None
     terminal_def_reason = None
+    terminal_def_basis = None
+    _record = None     # revision 17: the company's own record (tools/throughcycle_record.py), set in SECTION 1.5
+    _lr_raw = {}       # revision 17: the long_run fact's raw members, completed as the pack learns them
+
+    def _through_cycle(ga_q, be):
+        """Revision 17, brief B sections 1 and 3: the company's own record at r = the COE anchor the pack
+        prints (facts coe_anchor), and the terminal-growth default built on its revenue trend: (record,
+        default, basis, reason). The default is quantized to the two decimals the pack prints, so the
+        reference, the printed default and the desk's default are one number."""
+        # F4: the tag each year's debt_current resolved from (provenance runs), so short-term debt is subtracted once
+        _prov = _hist_doc.get("provenance") or {}
+        _dc_runs = ((_prov.get("runs") or {}).get(t) or {}).get("debt_current")
+        _dc_tags = throughcycle_record.resolve_run_tags(_dc_runs, _prov.get("_tags"), yrs)
+        rec = throughcycle_record.analyse(h, facts["coe_anchor"], untagged_fields=_untagged_fields,
+                                          base_year=max(yrs) if yrs else None, debt_current_tags=_dc_tags)
+        val, basis, reason = consensus_reference.terminal_growth_default(
+            ga_q, be, rec["g_rev"], pack_rev_g2, pack_median_5y)
+        if val is not None:
+            val = float(f"{val * 100:.2f}") / 100.0
+        return rec, val, basis, reason
+
+    def _terminal_default_line(gt, basis, reason, ga_q, be, rec):
+        """SECTION 1.5's TERMINAL-GROWTH DEFAULT line: the revenue-trend basis (revision 17), or the
+        revision-16 wording when the default came from the consensus-growth fallback."""
+        if ga_q is None:
+            return None
+        if basis == "revenue_trend":
+            yrs_g = rec["g_rev_years"]
+            return (f"- TERMINAL-GROWTH DEFAULT for this name: {gt * 100:.2f}% — from your own revenue "
+                    f"trend FY{yrs_g[0]}-FY{yrs_g[-1]}: {rec['g_rev'] * 100:.2f}%/yr, held between breakeven "
+                    f"inflation ({be * 100:.2f}%) and the anchor ({ga_q * 100:.2f}%).")
+        if gt != ga_q:
+            return (f"- TERMINAL-GROWTH DEFAULT for this name: {gt * 100:.2f}% — "
+                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
+                    f"so the default is the year-5 growth floored at zero real growth "
+                    f"(10-year breakeven inflation {be * 100:.2f}%).")
+        if reason is not None and be is None:
+            return (f"- TERMINAL-GROWTH DEFAULT for this name: {ga_q * 100:.2f}% — "
+                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
+                    f"but the 10-year breakeven inflation floor is not available, so the default remains the anchor.")
+        return None
+
+    def _record_facts():
+        """Revision 17: the record's part of the facts, stamped once the branch above has run."""
+        if _record is None:
+            return
+        _rt = _record["ronic_t"]
+        facts["terminal_ronic"] = pack_facts.q_rate(_rt) if _rt is not None else None
+        def _yrs(stat, years):
+            # the years a statistic used: none when the record was too short for the statistic
+            return _span_n(years) if stat is not None else None
+        _lr_raw.update({
+            "cycle": _record["cycle"], "cycle_year": _record["cycle_year"], "cycle_years": _record["cycle_years"],
+            "m_tc": _record["m_tc"], "m_years": _yrs(_record["m_tc"], _record["m_years"]),
+            "r_tc": _record["R_tc"], "r_years": _yrs(_record["R_tc"], _record["r_years"]), "p": _record["p"],
+            "g_rev": _record["g_rev"], "g_rev_years": _yrs(_record["g_rev"], _record["g_rev_years"]),
+            "terminal_g_basis": terminal_def_basis,
+            "nwc_intensity": _record["nwc_intensity"], "nwc_years": _yrs(_record["nwc_intensity"], _record["nwc_years"]),
+            "stamps": list(_record["stamps"])})
 
     # ---- SECTION 1 - IDENTITY & INSTITUTIONAL TAXONOMY -------------------------------------
     sector, industry = rs2_data.sector_lookup(t)
@@ -1474,23 +1519,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             facts["terminal_g_anchor"] = None
 
         be_val = be_pct / 100.0 if be_pct is not None else None
-        terminal_def_val, terminal_def_reason = consensus_reference.terminal_default(
-            terminal_g_val, be_val, pack_rev_g2, pack_median_5y)
-        terminal_def_line = None
-        if terminal_g_val is not None:
-            if terminal_def_val != terminal_g_val:
-                terminal_def_line = (
-                    f"- TERMINAL-GROWTH DEFAULT for this name: {terminal_def_val * 100:.2f}% \u2014 "
-                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
-                    f"so the default is the year-5 growth floored at zero real growth "
-                    f"(10-year breakeven inflation {be_val * 100:.2f}%)."
-                )
-            elif terminal_def_reason is not None and be_val is None:
-                terminal_def_line = (
-                    f"- TERMINAL-GROWTH DEFAULT for this name: {terminal_g_val * 100:.2f}% \u2014 "
-                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
-                    f"but the 10-year breakeven inflation floor is not available, so the default remains the anchor."
-                )
+        _record, terminal_def_val, terminal_def_basis, terminal_def_reason = _through_cycle(
+            facts["terminal_g_anchor"], be_val)
+        terminal_def_line = _terminal_default_line(terminal_def_val, terminal_def_basis, terminal_def_reason,
+                                                   facts["terminal_g_anchor"], be_val, _record)
 
         sec_series = rs2_data.asof_secondary_macro_series(asof_date)
         t10y2y = sec_series["t10y2y"][0] if sec_series["t10y2y"] else None
@@ -1565,13 +1597,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               coe_anchor_line]
         if terminal_def_line:
             L.append(terminal_def_line)
-            _tg_def_v = terminal_def_val if terminal_def_val != terminal_g_val else terminal_g_val
-            facts["terminal_g_default"] = float(f"{_tg_def_v * 100:.2f}") / 100.0
-        elif terminal_g_val is not None:
-            facts["terminal_g_default"] = float(f"{terminal_g_val * 100:.2f}") / 100.0
-        else:
-            facts["terminal_g_default"] = None
-        L.append(_default_exit_multiple_line(coe_anchor_pct, terminal_def_val if terminal_def_val is not None else terminal_g_val))
+        facts["terminal_g_default"] = terminal_def_val   # quantized to the printed two decimals
+        _record_facts()
         L += [curve_line, regime_line]
         L.append("")
 
@@ -1715,23 +1742,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             facts["terminal_g_anchor"] = None
 
         be_val = be_pct / 100.0 if be_pct is not None else None
-        terminal_def_val, terminal_def_reason = consensus_reference.terminal_default(
-            terminal_g_val, be_val, pack_rev_g2, pack_median_5y)
-        terminal_def_line = None
-        if terminal_g_val is not None:
-            if terminal_def_val != terminal_g_val:
-                terminal_def_line = (
-                    f"- TERMINAL-GROWTH DEFAULT for this name: {terminal_def_val * 100:.2f}% \u2014 "
-                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
-                    f"so the default is the year-5 growth floored at zero real growth "
-                    f"(10-year breakeven inflation {be_val * 100:.2f}%)."
-                )
-            elif terminal_def_reason is not None and be_val is None:
-                terminal_def_line = (
-                    f"- TERMINAL-GROWTH DEFAULT for this name: {terminal_g_val * 100:.2f}% \u2014 "
-                    f"next-FY consensus revenue growth ({pack_rev_g2 * 100:.1f}%) is below the anchor, "
-                    f"but the 10-year breakeven inflation floor is not available, so the default remains the anchor."
-                )
+        _record, terminal_def_val, terminal_def_basis, terminal_def_reason = _through_cycle(
+            facts["terminal_g_anchor"], be_val)
+        terminal_def_line = _terminal_default_line(terminal_def_val, terminal_def_basis, terminal_def_reason,
+                                                   facts["terminal_g_anchor"], be_val, _record)
 
         # Anchor metadata (S3 5.6: folded into the section header bracket, not a separate bullet)
         reasons_str = "; ".join(str(r) for r in anchor_reasons) if anchor_reasons else "none"
@@ -1832,13 +1846,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               coe_anchor_line]
         if terminal_def_line:
             L.append(terminal_def_line)
-            _tg_def_v = terminal_def_val if terminal_def_val != terminal_g_val else terminal_g_val
-            facts["terminal_g_default"] = float(f"{_tg_def_v * 100:.2f}") / 100.0
-        elif terminal_g_val is not None:
-            facts["terminal_g_default"] = float(f"{terminal_g_val * 100:.2f}") / 100.0
-        else:
-            facts["terminal_g_default"] = None
-        L.append(_default_exit_multiple_line(coe_anchor_pct, terminal_def_val if terminal_def_val is not None else terminal_g_val))
+        facts["terminal_g_default"] = terminal_def_val   # quantized to the printed two decimals
+        _record_facts()
         L += [curve_line, regime_line]
         L.append("")
 
@@ -2242,6 +2251,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             oe = ni + da - capex
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
+            # revision 17: the base window's net income over its owner earnings, for a desk with no
+            # consensus reference (the long run then takes earnings from owner earnings at this ratio)
+            if ni > 0 and oe > 0:
+                _lr_raw["ni_over_oe"] = ni / oe
             facts["owner_earnings_source"] = "ttm_filed"
             facts["owner_earnings_default_b"] = float(f"{oe / 1e9:,.3f}".replace(",", ""))
             # S3 5.6/5.3: result-first equation, bare numbers; the "equity frame" rule sentence is
@@ -2387,6 +2400,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                            "label": f"FY{latest_yr}, the last full fiscal year, ended {_fy_end_dt.isoformat()}",
                            "da": _fy_da if isinstance(_fy_da, (int, float)) else None,
                            "capex": _fy_cx,
+                           # revision 17: the earnings path's base (X: net income before acquired-intangible
+                           # amortization, F1) and the revenue path's base year
+                           "x": throughcycle_record.adjusted_earnings(_fy_rec, _untagged_fields),
+                           "revenue": _fy_rec.get("revenue"),
                            "base": (_fy_ni + _fy_da - _fy_cx)
                            if all(isinstance(x, (int, float)) for x in (_fy_ni, _fy_da, _fy_cx)) else None,
                            # review B1: the vendor's EPS levels meet filed D&A and capex only when
@@ -2401,11 +2418,17 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 if f and _thr is not None and not ttm_stale and oe_src == ["ttm", "ttm"]:
                     _ref_fy["quarters"] = max(0, round((_thr - _fy_end_dt).days / 30.4375 / 3))
                     _ref_fy["through"] = _thr.isoformat()
+                # revision 17: the desk values at the base fiscal year end and rolls forward by this age
+                _lr_raw["stub_months"] = _stub
 
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
             oe = ni + da - capex
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
+            # revision 17: the base window's net income over its owner earnings, for a desk with no
+            # consensus reference (the long run then takes earnings from owner earnings at this ratio)
+            if ni > 0 and oe > 0:
+                _lr_raw["ni_over_oe"] = ni / oe
             facts["owner_earnings_source"] = f"{oe_src[0]}_ni+{oe_src[1]}_capex" if oe_tag else "ttm_filed"
             facts["owner_earnings_default_b"] = float(f"{oe / 1e9:,.3f}".replace(",", ""))
             # S3 5.6/5.3: result-first equation, bare numbers; the "equity frame" sentence (OWNER
@@ -2827,6 +2850,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     and isinstance(_fy_sh_x, (int, float)) and _fy_sh_x > 0 and _fy_ni_x != 0):
                 _fy_eps = _fy_ni_x / _fy_sh_x
                 _byc_printed = True
+                # revision 17 (brief B 2a): a one-time item in the base year, seen as the filed EPS above the
+                # analysts' year-ago EPS; the filed share count is the BASE-YEAR CHECK's own
+                _base_cap = consensus_reference.base_year_cap(_fy_ni_x, _fy_sh_x, _ya) if _ref_fy else None
                 L.append(f"- [Arithmetic] BASE-YEAR CHECK: consensus measures current-FY EPS growth from a "
                          f"year-ago EPS of ${_ya:.2f}; our filed FY{latest_yr} EPS is ${_fy_eps:.2f} (net income / "
                          f"diluted shares), {(_ya / _fy_eps - 1) * 100:+.0f}% apart. A large gap means the "
@@ -2859,20 +2885,22 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 _med = (g_stats or {}).get("median") if g_stats else None
                 if _med is None:
                     _med = ((br_table or {}).get(5) or {}).get("p50")
-                _coe = coe_anchor_pct / 100.0 if isinstance(coe_anchor_pct, (int, float)) else None
+                # revision 17 (brief B Notation): r and the anchor are the values the pack prints (facts), the
+                # ones the desk defaults to, so the reference and the desk value on identical inputs
+                _coe = facts["coe_anchor"]
                 _fy = _ref_fy or {}
                 # S3 5.11: the reference divides by the share-count default (5.11), not SECTION
                 # 2's raw count, so the Base and its reference are on one share basis (R10).
                 _ref_shares = facts.get("shares_default")
                 _ref = consensus_reference.build(
-                    _fy.get("base"), est, _coe,
-                    terminal_def_val if terminal_def_val is not None else terminal_g_val,
+                    _fy.get("base"), est, _coe, terminal_def_val,
                     _ref_shares if isinstance(_ref_shares, (int, float)) and _ref_shares > 0 else None,
                     _med / 100.0 if isinstance(_med, (int, float)) else None,
                     da=_fy.get("da"), capex=_fy.get("capex"),
                     stub_months=_fy.get("stub"), base_label=_fy.get("label"),
                     levels_reason=_fy.get("levels_reason"), levels_block=_fy.get("levels_block"),
-                    anchor=terminal_g_val)
+                    anchor=facts["terminal_g_anchor"], record=_record, base_ni=_fy.get("x"),
+                    base_revenue=_fy.get("revenue"), base_cap=_base_cap)
                 if not _ref_fy and _ref.get("value") is None and _ref_fy_na:
                     _ref["reason"] = _ref_fy_na
                 # E15: outside the fail-fast fence the reference is not a credible summary of the
@@ -2892,7 +2920,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                              f"discounted by 10%), so it is not a credible summary of the consensus "
                              f"(reference_status: outside_fence_{_side}).")
                 else:
-                    _tg_used = (terminal_def_val if terminal_def_val is not None else terminal_g_val) or 0.0
+                    _tg_used = terminal_def_val if terminal_def_val is not None else 0.0
                     if _ref.get("value") is None:
                         facts["reference_status"] = "not_available"
                         facts["consensus_implied_value"] = None
@@ -2914,7 +2942,25 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                             facts["levels"]["bear2"] = float(f"{_ref['range'][1] / 1e9:,.3f}".replace(",", ""))
                     # S3 5.6/5.7: bare numbers (_bn), not $/B (_b) — the unit is carried once, by
                     # convention with SECTION 3's typed lines, not a header bracket here.
-                    L.append(consensus_reference.pack_line(_ref, _fy.get("base"), _coe or 0.0, _tg_used, _bn, anchor=terminal_g_val))
+                    L.append(consensus_reference.pack_line(_ref, _fy.get("base"), _coe if _coe is not None else 0.0,
+                                                           _tg_used, _bn, anchor=facts["terminal_g_anchor"]))
+                    if facts["reference_status"] == "used":
+                        # revision 17: what the reference's long run and working capital hold, for the desk
+                        _rlr = _ref.get("long_run")
+                        if _rlr:
+                            _lr_raw.update({"e5": _rlr["e5"] / 1e9, "oe5": _rlr["oe5"] / 1e9, "m5": _rlr["m5"]})
+                        if _ref.get("wc"):
+                            facts["working_capital"] = [pack_facts.q_b(x / 1e9) for x in _ref["wc"]]
+                        if _ref.get("base_year_cap"):
+                            _bc = _ref["base_year_cap"]
+                            facts["base_year_cap"] = pack_facts.quantize_base_year_cap(_bc)
+                            L.append(f"- [Arithmetic] BASE-YEAR CAP: filed FY{latest_yr} EPS ${_bc['eps_filed']:.2f} is "
+                                     f"{(_bc['eps_filed'] / _bc['eps_vendor'] - 1) * 100:+.0f}% above the analysts' year-ago "
+                                     f"EPS ${_bc['eps_vendor']:.2f}, so the CONSENSUS-IMPLIED VALUE takes base net income as "
+                                     f"${_bc['eps_vendor']:.2f} x the filed diluted shares = {_b(_bc['ni_capped'])} instead of "
+                                     f"{_b(_bc['ni_filed'])} and lowers its owner-earnings base by {_b(_bc['removed'])} (a "
+                                     f"one-time gain is likelier than a lasting one; a filed EPS below the analysts' is never "
+                                     f"raised)")
                     _win = consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters"))
                     if _win and _win.get("ttm_value") is not None:
                         _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
@@ -3237,9 +3283,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # the desk. `coe_anchor_pct` and `terminal_def_val`/`terminal_g_val` are set by whichever
     # SECTION 1.5 branch ran above (both branches use these same names) and are still in scope
     # here — Python functions have no block scope.
-    _dex = _exit_multiple_value(coe_anchor_pct,
-                                terminal_def_val if terminal_def_val is not None else terminal_g_val)
-    L += [pack_facts.render_defaults_block(facts, default_exit_multiple=_dex), ""]
+    facts["long_run"] = pack_facts.quantize_long_run(_lr_raw)
+    L += [pack_facts.render_defaults_block(facts), ""]
 
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS
     LAST_PACK_MACRO_DEGRADED = macro_degraded
@@ -3278,10 +3323,12 @@ YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic vie
 
 1. Explain the recent move first. Start from the CATALYST BRIEF, RECENT COMPANY NEWS and DATA 8's estimate trend and revisions. For each development, say whether you accept or dispute it and why, and how it enters Bull, Base and Bear. Add any development you find yourself, and fetch the articles you rely on. Record them in `catalysts`. If a public takeover offer is pending, value the business standalone; in the memorandum give the offer's probability and the expected value with and without it. The verdict stays on standalone value.
 2. Decompose the business into its economic engines: transactional deliveries; a captive installed base, recurring contractual annuity or subscriptions; strategic optionality. Do not force it into one formula. Credit a multi-year annuity only where the filings show the backlog or installed base that secures it (cite the filing and the figure). Customer advances and one-off prepayment float are not recurring cash flow, and a supplier purchase commitment is not customer revenue.
-3. Choose every valuation input and pass it to the desk: the cash-flow base and its window; the growth of that cash flow (not revenue) for years 1-5 in Base, Bull and Bear; fade years; terminal growth, or an exit multiple and which end value each scenario publishes (terminal_leg); the discount rate; the frame; the share count; net debt (firm frame only); the cash-flow life; and the scenario probabilities, justified by milestones and the balance of evidence. Start from the DEFAULTS; do not run trial bases through the desk.
-   - Growth: years 1-2 reach the consensus cash-flow levels in DEFAULTS from whatever base you declare. From year 3, growth follows next-FY revenue growth, fading toward the base-rate median by year 5. Growth above the base-rate p90 needs dated, company-specific evidence. With fewer than 3 analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one; otherwise state your own range and why.
+3. Choose every valuation input and pass it to the desk: the cash-flow base and its window; the growth of that cash flow (not revenue) for years 1-5 in Base, Bull and Bear; fade years; terminal growth and terminal_ronic (the return on new investment that pays for growth from year 6); the discount rate; the frame; the share count; net debt (firm frame only); the cash-flow life; and the scenario probabilities, justified by milestones and the balance of evidence. Start from the DEFAULTS; do not run trial bases through the desk.
+   - Growth: the desk holds the Base's years 1-2 at the consensus cash-flow levels in DEFAULTS unless you give the reason DEFAULTS names for a departure. From year 3, growth follows next-FY revenue growth, fading toward the base-rate median by year 5. Growth above the base-rate p90 needs dated, company-specific evidence. With fewer than 3 analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one; otherwise state your own range and why.
    - Scenarios: Bull rests on the strongest bull catalyst the market is reacting to, and Bear on the strongest bear catalyst. The Bear traces an operating shock through the business (volume, the installed base's durability, operating deleverage, a wider discount rate), not an arbitrary cut. Where the filings show contracted backlog above one year of revenue or recurring revenue above 70%, cite it: the Bear may not fall below that contracted floor without a stated reason.
-   - Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders; a departure from the default needs evidence, not a cap. A P/E ratio is not an EV/FCF multiple, and this pack holds no EV/FCF peer data.
+   - Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders; a departure from the terminal_g or terminal_ronic default needs evidence, not a cap.
+   - Working capital: the desk deducts the DEFAULTS working_capital from every scenario's owner earnings in years 1-5, unless your base_cf is within 2% of cash_basis_b, which already carries it.
+   - Valuation date: the desk values at the base fiscal year end and rolls the value forward to today at your discount rate, as the CONSENSUS-IMPLIED VALUE does.
    - Frame: every flow in this pack is after interest, so value it in the equity frame. The firm frame needs a pre-interest flow, a WACC built from the COE ANCHOR, and net debt; the desk asks for each.
    - Shares: use the DEFAULTS block's shares_default, the desk's default (DATA 2's count, times the dilution factor when DATA 2 shows one). Add a contingent instrument (warrants, earn-outs) only in the scenarios where it vests, never in one whose premise is that it does not.
    - Cash-flow life: cash flows end when they come from a finite stock (a mine, a well, a reservoir) or a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of capex your base already deducts. The life is filed reserves over current production, or the remaining term, with the filing's date. A perpetual value must deduct the capex that replaces what the business depletes. Where revenue follows a quoted commodity price, state the price deck your flows assume and its source.

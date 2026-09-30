@@ -36,7 +36,10 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # 2026-09-28 (reviewer, S3 C review): the Shares sentence names 5.11's DEFAULTS shares_default; was
 # "b9d6528f8f865dd6c661d0b97731dfa3585962c52f74a3a6e81b6a386b38fe99" ("use SECTION 2's count").
 # 2026-09-28 (package D): pack sections renamed DATA n (brief §D2).
-TASK_SHA256 = "017954dba1760027997a91e8456b63952ee5e2bcc7109ae4a9d03605ffd819ce"
+# 2026-09-30 (revision 17, brief_rev17_B_valuation.md): the TASK changed on purpose (terminal_ronic replaces the exit
+# multiple and terminal leg in item 3; the Growth, Terminal value, Working capital and Valuation date sub-bullets); was
+# "017954dba1760027997a91e8456b63952ee5e2bcc7109ae4a9d03605ffd819ce".
+TASK_SHA256 = "647be918454d5249b3fb6f70da3932e48d6a69b86dc728d46781de405fe0ab91"
 RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
@@ -47,7 +50,13 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 # shares_diluted descriptions (a whole share count, billions also accepted) and the scenarios
 # description (exactly three entries, one each Base, Bull and Bear); was
 # "cc6c27898d5fba93399520922cc29194506834fa86396d93c7b5047b43e5a3a6".
-TOOLS_SHA256 = "2600921006ada7440b52f6e79da682c8be693d1ebba705b2d8a37efed6ddebe1"
+# 2026-09-30 (revision 17): run_financial_model's schema changed on purpose (terminal_ronic replaces terminal_exit_multiple
+# and terminal_leg; the description, base_cf_reason, guidance_deviation_reason, terminal_reason, explicit_growth, fade_years
+# and sbc_dilution texts); was "2600921006ada7440b52f6e79da682c8be693d1ebba705b2d8a37efed6ddebe1".
+# 2026-09-30 (revision 17, brief B2 F2): the description's firm-frame sentence says the return on new investment is
+# measured on tangible invested capital before interest and applied to equity earnings; was
+# "2c23b3f0d23a40d3d9839f28a8efbe65d49249a0181291e065d5c97b62ea7196".
+TOOLS_SHA256 = "69b8bb654011315fae51b12c17b6eb84cb62f1b520875d093c24806043a7eb0e"
 # research_tools() (search_web, fetch_page) is unchanged, so its pin stays.
 RESEARCH_TOOLS_SHA256 = "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
@@ -70,8 +79,9 @@ def _get_system_block(path: Path) -> str:
 
 
 def test_text_pins():
-    # Revision 16 (brief_rev16.md): the pack text is unchanged apart from the number on its first line.
-    assert capability_test.PACK_REVISION == 16
+    # Revision 17 (brief_rev17_B_valuation.md): the pack text, the TASK and the tool schema changed on purpose (the
+    # through-cycle package); revision 16 changed only the number on the first line.
+    assert capability_test.PACK_REVISION == 17
     assert _sha256(capability_test.TASK) == TASK_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
@@ -102,7 +112,7 @@ class FrozenDatetime(_real_datetime):
 
 
 def test_pack_byte_pin(screener_data_stub, monkeypatch):
-    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev16.md.
+    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev17.md.
 
     Datetime is frozen at 2026-09-27 12:00 local across:
     - capability_test
@@ -158,10 +168,13 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     text2 = str(pack2)
     assert text1 == text2
     # 2026-09-28 (package D): pack sections renamed DATA n (brief §D2). 32 occurrences of SECTION -> DATA, -96 chars.
-    assert len(text1) == 20006
+    # revision 17: the exit-multiple line and DEFAULTS line left; terminal_ronic, long_run and working_capital lines
+    # and the new explanations joined (was 20006 at revision 16); brief B2 F6 shortened the long_run explanation
+    # (was 21077 before the fixes)
+    assert len(text1) == 20823
 
     # Assert byte equality with golden file
-    golden_file = FIXTURE / "golden_pack_GEV_rev16.md"
+    golden_file = FIXTURE / "golden_pack_GEV_rev17.md"
     # core.autocrlf checks the fixture out with CRLF on Windows; the pack itself is built with "\n"
     golden_bytes = golden_file.read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes

@@ -108,12 +108,14 @@ def test_r15_leg_from_terminal_leg_gordon_no_typed_value_consulted():
     assert prov["legs"]["base"] == "gordon"
 
 
-def test_r15_leg_from_terminal_leg_exit():
+def test_r15_leg_never_reads_a_terminal_leg_key_revision_17():
+    """Revision 17: the desk has no terminal_leg, so a revision-15 path fills the Gordon (funded) leg even from a
+    result that carries the key (it read "exit" here at revision 16)."""
     base = dict(BASE, terminal_leg="exit", per_share_iv=55.0)
     call = _r15_call([base, BULL, BEAR])
     filled, prov = contract_fill.fill([call], {}, {}, 90.0)
     assert filled["base_iv"] == pytest.approx(55.0)
-    assert prov["legs"]["base"] == "exit"
+    assert prov["legs"]["base"] == "gordon" and filled["terminal_method"] == "gordon"
 
 
 def test_r15_leg_finite_life():

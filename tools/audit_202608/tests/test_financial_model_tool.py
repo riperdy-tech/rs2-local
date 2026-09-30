@@ -1,3 +1,4 @@
+import math
 import sys
 from pathlib import Path
 import pytest
@@ -17,13 +18,13 @@ from financial_model_tool import (
 )
 
 def test_unbundled_dcf_basic():
-    # 5-year growth at 10%, terminal multiple 15x on Year 5 FCF, $10.0B base FCF, 10% WACC, 1B shares, $5B net debt
+    # 5-year growth at 10%, funded terminal at 2.5%, $10.0B base FCF, 10% WACC, 1B shares, $5B net debt
+    # (revision 17: the exit multiple left the desk; the terminal is the funded-growth form)
     res = unbundled_dcf(
         base_cf=10.0,
         growth_rates=[0.10, 0.10, 0.10, 0.10, 0.10],
         wacc=0.10,
         terminal_g=0.025,
-        terminal_exit_multiple=15.0,
         net_debt=5.0,
         shares_diluted=1.0,
         fade_years=0,
@@ -43,7 +44,6 @@ def test_unbundled_dcf_with_annuity():
         growth_rates=[0.10, 0.10, 0.10, 0.10, 0.10],
         wacc=0.10,
         terminal_g=0.025,
-        terminal_exit_multiple=15.0,
         annuity_flow=2.0,
         annuity_cap_rate=0.08,
         net_debt=0.0,
@@ -208,7 +208,9 @@ def test_batch_scenario_dcf_execution():
             }
         ]
     }
-    out = execute_financial_model(payload, context={"price": 951.04, "revenue_cagr_5y_pct": 8.7})
+    # revision 17: terminal_ronic = +inf in the context reproduces the unfunded arithmetic this test's values assume
+    out = execute_financial_model(payload, context={"price": 951.04, "revenue_cagr_5y_pct": 8.7,
+                                                    "terminal_ronic": math.inf})
     assert "scenario_dcfs" in out
     assert len(out["scenario_dcfs"]) == 3
     assert out["scenario_dcfs"][0]["dcf"]["per_share_iv"] > 0
@@ -233,16 +235,18 @@ def test_three_stage_dcf_with_fade():
       Stage 2 (fade over 2 years from 0.10 to 0.04):
         Year 3 (i=1, g=0.07): CF3 = 121.0 * 1.07 = 129.47, PV3 = 129.47 / 1.1^3 = 97.2727
         Year 4 (i=2, g=0.04): CF4 = 129.47 * 1.04 = 134.6488, PV4 = 134.6488 / 1.1^4 = 91.9669
-      Discrete DCF PV = 100.0 + 100.0 + 97.2727 + 91.9669 = 389.2396
-      Stage 3 (Gordon Terminal Value at t=4):
-        CF5 = 134.6488 * 1.04 = 140.034752
-        TV_nominal = 140.034752 / (0.10 - 0.04) = 2333.912533
-        TV_pv = 2333.912533 / 1.1^4 = 1594.093664
-      Enterprise Value = 389.2396 + 1594.093664 = 1983.3333
-      Equity Value = 1983.3333
-      Per-share IV = 1983.3333 / 10.0 = 198.33
-      Implied terminal EV/FCF multiple = TV_nominal / CF4 = 1.04 / 0.06 = 17.3333x
-      Terminal share of value = 1594.093664 / 1983.3333 = 0.8037 (80.37%)
+      Revision 17: the desk always projects years 1-5 explicitly (a fade that ends before year 5 continues at
+      terminal_g), so the terminal value sits at year 5, not year 4; the sum is unchanged with terminal_ronic = +inf:
+        Year 5 (g=0.04): CF5 = 134.6488 * 1.04 = 140.034752, PV5 = 140.034752 / 1.1^5 = 86.9482
+      Discrete DCF PV = 100.0 + 100.0 + 97.2727 + 91.9669 + 86.9482 = 476.1878
+      Stage 3 (Gordon Terminal Value at t=5):
+        CF6 = 140.034752 * 1.04 = 145.636142
+        TV_nominal = 145.636142 / (0.10 - 0.04) = 2427.269
+        TV_pv = 2427.269 / 1.1^5 = 1507.1
+      Enterprise Value = 476.1878 + 1507.1 = 1983.29
+      Per-share IV = 1983.29 / 10.0 = 198.33 (revision 16: the same, with the terminal at year 4)
+      Implied terminal EV/FCF multiple = TV_nominal / CF5 = 1.04 / 0.06 = 17.3333x
+      Terminal share of value = 1507.1 / 1983.29 = 0.7599
     """
     res = unbundled_dcf(
         base_cf=100.0,
@@ -253,27 +257,28 @@ def test_three_stage_dcf_with_fade():
         shares_diluted=10.0,
         sbc_treatment="deducted_in_cf",
         valuation_frame="equity",
+        terminal_ronic=math.inf,
     )
     assert not res.get("error")
-    assert res["dcf_pv"] == pytest.approx(389.24, 0.01)
-    assert res["terminal_value_nominal"] == pytest.approx(2333.91, 0.01)
-    assert res["terminal_value_pv"] == pytest.approx(1594.09, 0.01)
+    assert res["dcf_pv"] == pytest.approx(476.19, 0.01)
+    assert res["terminal_value_nominal"] == pytest.approx(2427.27, 0.01)
+    assert res["terminal_value_pv"] == pytest.approx(1507.10, 0.01)
     assert res["enterprise_value"] == pytest.approx(1983.33, 0.02)
     assert res["per_share_iv"] == pytest.approx(198.33, 0.01)
     assert res["implied_terminal_ev_fcf_gordon"] == pytest.approx(17.33, 0.01)
-    assert res["terminal_share_of_value"] == pytest.approx(0.8037, 0.001)
-    assert res["growth_rates_applied"] == [0.10, 0.10, 0.07, 0.04]
+    assert res["terminal_share_of_value"] == pytest.approx(0.7599, 0.001)
+    assert res["growth_rates_applied"] == [0.10, 0.10, 0.07, 0.04, 0.04]
 
 
-def test_dual_terminal_gordon_and_exit_legs():
-    """Verify both Gordon and Exit Multiple legs are calculated, discounted, and returned per D1."""
+def test_the_terminal_is_one_funded_value_discounted_to_t0():
+    """Revision 17: the exit multiple and the terminal leg left the desk. The one terminal (funded Gordon
+    growth) is calculated, discounted to t=0 and returned; no exit leg is."""
     res = unbundled_dcf(
         base_cf=10.0,
         explicit_growth=[0.08, 0.08, 0.08, 0.08, 0.08],
         fade_years=0,
         wacc=0.09,
         terminal_g=0.025,
-        terminal_exit_multiple=18.0,
         net_debt=2.0,
         shares_diluted=1.0,
         sbc_treatment="deducted_in_cf",
@@ -281,19 +286,15 @@ def test_dual_terminal_gordon_and_exit_legs():
     )
     assert not res.get("error")
     assert "gordon_terminal" in res
-    assert "exit_multiple_terminal" in res
+    assert "exit_multiple_terminal" not in res and "per_share_iv_exit" not in res
+    assert "terminal_leg" not in res and "exit_implied_terminal_g" not in res
     assert res["per_share_iv_gordon"] > 0
-    assert res["per_share_iv_exit"] > 0
     assert res["gordon_terminal"]["terminal_value_pv"] > 0
-    assert res["exit_multiple_terminal"]["terminal_value_pv"] > 0
-    # Both terminal values must be discounted to t=0
+    # the terminal value must be discounted to t=0
     n = 5
     disc_factor = (1.0 + 0.09) ** n
     assert res["gordon_terminal"]["terminal_value_pv"] == pytest.approx(
         res["gordon_terminal"]["terminal_value_nominal"] / disc_factor, 0.01
-    )
-    assert res["exit_multiple_terminal"]["terminal_value_pv"] == pytest.approx(
-        res["exit_multiple_terminal"]["terminal_value_nominal"] / disc_factor, 0.01
     )
 
 
@@ -313,6 +314,7 @@ def test_undiscounted_tv_regression_cat():
         shares_diluted=0.50,
         sbc_treatment="deducted_in_cf",
         valuation_frame="firm",
+        terminal_ronic=math.inf,       # revision 17: the unfunded terminal these values were computed with
     )
     assert not res.get("error")
     # Correct discounted values
@@ -481,8 +483,9 @@ def test_sbc_double_deduction_refused():
 
 
 def test_sector_multiple_band_inside_outside():
-    """Verify reconciliation of Gordon and Exit leg implied multiples against sector_multiple_band."""
-    # Gordon implied multiple: (1 + 0.04) / (0.10 - 0.04) = 17.33x
+    """Verify reconciliation of the Gordon implied multiple against sector_multiple_band (revision 17: the exit
+    leg is gone, so only the Gordon multiple is reconciled)."""
+    # Gordon implied multiple (unfunded, terminal_ronic = +inf): (1 + 0.04) / (0.10 - 0.04) = 17.33x
     band_inside = {"low": 15.0, "mid": 17.5, "high": 20.0, "metric": "EV/FCF"}
     res_in = unbundled_dcf(
         base_cf=100.0,
@@ -492,11 +495,11 @@ def test_sector_multiple_band_inside_outside():
         shares_diluted=10.0,
         fade_years=0,
         sbc_treatment="deducted_in_cf",
-        terminal_exit_multiple=18.0,
         sector_multiple_band=band_inside,
+        terminal_ronic=math.inf,
     )
     assert res_in["multiple_in_band_gordon"] is True
-    assert res_in["multiple_in_band_exit"] is True
+    assert "multiple_in_band_exit" not in res_in
 
     band_outside = {"low": 10.0, "mid": 12.0, "high": 15.0, "metric": "EV/FCF"}
     res_out = unbundled_dcf(
@@ -507,11 +510,10 @@ def test_sector_multiple_band_inside_outside():
         shares_diluted=10.0,
         fade_years=0,
         sbc_treatment="deducted_in_cf",
-        terminal_exit_multiple=18.0,
         sector_multiple_band=band_outside,
+        terminal_ronic=math.inf,
     )
     assert res_out["multiple_in_band_gordon"] is False
-    assert res_out["multiple_in_band_exit"] is False
 
 
 def test_reverse_dcf_missing_terminal_g_refused():
@@ -973,23 +975,23 @@ def test_finite_life_shorter_than_stage1_truncates_it():
     assert res["terminal_value_pv"] == 0
 
 
-def test_finite_life_ignores_exit_multiple_with_note():
-    # Exit multiple is ignored and result carries note: "exit multiple ignored: finite life"
+def test_finite_life_has_no_terminal_value_and_is_stamped():
+    # Revision 17: no exit multiple exists to be ignored; a finite life has no terminal value and keeps today's
+    # owner-earnings path, stamped finite_life_owner_earnings
     res = unbundled_dcf(
         base_cf=10.0,
         growth_rates=[0.05, 0.05, 0.05, 0.05, 0.05],
         wacc=0.08,
         terminal_g=0.02,
-        terminal_exit_multiple=15.0,
         fade_years=0,
         shares_diluted=1.0,
         sbc_treatment="deducted_in_cf",
         finite_life_years=10,
     )
-    assert res.get("note") == "exit multiple ignored: finite life"
     assert res["terminal_value_pv"] == 0
     assert res["terminal_method"] == "finite life 10 years"
-    assert "per_share_iv_exit" not in res
+    assert "per_share_iv_exit" not in res and "note" not in res
+    assert res["stamps"] == ["finite_life_owner_earnings"]
 
 
 def test_finite_life_validation_errors():
@@ -1016,7 +1018,6 @@ def test_call_without_finite_life_is_unchanged():
         growth_rates=[0.10, 0.10, 0.10, 0.10, 0.10],
         wacc=0.10,
         terminal_g=0.025,
-        terminal_exit_multiple=15.0,
         net_debt=5.0,
         shares_diluted=1.0,
         fade_years=0,

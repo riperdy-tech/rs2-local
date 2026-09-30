@@ -4,6 +4,7 @@ before computing (V1-V7) and its reason checks after computing (R1-R14), the end
 """
 import io
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -41,6 +42,8 @@ def _ctx(**over):
         # flows land exactly on these levels (see calibration below).
         "levels": {"year1": 5.25, "year2": 5.5125, "bull2": 5.99995, "bear2": 5.0},
         "years35_cap": None,
+        # revision 17: +inf reproduces the unfunded arithmetic the calibration below was computed with
+        "terminal_ronic": math.inf,
     }
     base.update(over)
     return base
@@ -211,13 +214,16 @@ def test_v4_exit_leg_without_exit_multiple_refused():
     assert any("terminal_leg" in m for m in res["missing"])
 
 
-def test_v4_exit_leg_with_scenario_level_multiple_accepted():
-    p = _happy_params()
-    p["scenarios"][0]["terminal_leg"] = "exit"
-    p["scenarios"][0]["terminal_exit_multiple"] = 20.0
-    res = execute_financial_model(p, context=_ctx())
-    assert "error" not in res
-    assert res["scenario_dcfs"][0]["dcf"]["terminal_leg"] == "exit"
+def test_v4_exit_multiple_and_terminal_leg_are_refused_by_name_at_both_levels():
+    """Revision 17 (brief B 4a, test 5): the exit multiple and the terminal leg left the desk; a call that
+    sends either is refused with a message that names it, never silently ignored."""
+    for level in ("scenario", "top"):
+        for field, value in (("terminal_exit_multiple", 20.0), ("terminal_leg", "gordon")):
+            p = _happy_params()
+            (p["scenarios"][0] if level == "scenario" else p)[field] = value
+            res = execute_financial_model(p, context=_ctx())
+            assert res["validation_error"] is True and "scenario_dcfs" not in res
+            assert any(field in m and "removed in revision 17" in m for m in res["missing"]), (level, field)
 
 
 def test_v4_terminal_leg_with_finite_life_refused():
@@ -451,12 +457,13 @@ def test_r2_owner_earnings_default_none_always_needs_reason():
 # R3: base_window printed
 # ---------------------------------------------------------------------------------------------
 
-def test_r3_base_window_needs_base_cf_reason():
+def test_r3_a_printed_base_window_no_longer_needs_a_base_cf_reason():
+    """Revision 17: the window does not change the Base's arithmetic (the desk holds years 1-2 at the
+    fiscal-year levels), so a BASE WINDOW CHECK is information and asks for no reason."""
     ctx = _ctx(base_window={"gap": 0.2, "ttm_value": None, "ttm_year2": None})
     p = _happy_params()
     res = execute_financial_model(p, context=ctx)
-    assert res.get("validation_error") is True
-    assert any(n["reason"] == "base_cf_reason" for n in res["needs_reasons"])
+    assert "error" not in res
 
 
 # ---------------------------------------------------------------------------------------------
@@ -503,14 +510,24 @@ def test_r5_terminal_g_at_50bp_ok_and_beyond_refused():
     assert any(n["reason"] == "terminal_reason" for n in res2["needs_reasons"])
 
 
-def test_r6_exit_implied_terminal_g_beyond_default_refused():
-    ctx = _ctx(terminal_g_default=0.03)
+def test_r6_terminal_ronic_beyond_two_points_of_the_default_needs_terminal_reason():
+    """Revision 17 (brief B 4b): a Base terminal_ronic more than 2 points from the DEFAULTS terminal_ronic needs
+    terminal_reason (the exit-multiple form of this check left with the exit multiple)."""
+    ctx = _ctx(terminal_ronic=0.12)
     p = _happy_params()
-    p["scenarios"][0]["terminal_leg"] = "exit"
-    p["scenarios"][0]["terminal_exit_multiple"] = 40.0   # far from default multiple
+    p["scenarios"][0]["terminal_ronic"] = 0.14                      # exactly 2 points: passes
+    assert "error" not in execute_financial_model(p, context=ctx)
+    p["scenarios"][0]["terminal_ronic"] = 0.1401                    # beyond 2 points
     res = execute_financial_model(p, context=ctx)
     assert res.get("validation_error") is True
-    assert any(n["reason"] == "terminal_reason" for n in res["needs_reasons"])
+    assert any(n["reason"] == "terminal_reason" and "terminal_ronic" in n["why"] for n in res["needs_reasons"])
+    p["terminal_reason"] = "the record shows returns above 14% for a decade (dated filing)"
+    assert "error" not in execute_financial_model(p, context=ctx)
+    # against an unlimited default any finite Base value is infinitely far
+    res = execute_financial_model(_happy_params(scenarios=[dict(sc, terminal_ronic=0.5) if sc["name"] == "Base" else sc
+                                                            for sc in _happy_params()["scenarios"]]),
+                                  context=_ctx())
+    assert any(n["reason"] == "terminal_reason" and "unlimited" in n["why"] for n in res["needs_reasons"])
 
 
 # ---------------------------------------------------------------------------------------------
@@ -662,29 +679,24 @@ def test_r14_bear_above_price_refused():
 
 
 # ---------------------------------------------------------------------------------------------
-# terminal_leg / end-value leg (3.6)
+# terminal_leg / end-value leg (3.6): revision 17 removed the exit multiple and the leg with it
 # ---------------------------------------------------------------------------------------------
 
-def test_terminal_leg_default_exit_when_multiple_given():
-    r = unbundled_dcf(base_cf=1.0, explicit_growth=[0.05] * 5, wacc=0.08, terminal_g=0.03,
+def test_the_desk_function_has_no_exit_multiple_or_terminal_leg_argument():
+    with pytest.raises(TypeError):
+        unbundled_dcf(base_cf=1.0, explicit_growth=[0.05] * 5, wacc=0.08, terminal_g=0.03,
                       terminal_exit_multiple=20.0, shares_diluted=1.0, fade_years=0,
                       sbc_treatment="deducted_in_cf")
-    assert r["terminal_leg"] == "exit"
-    assert r["per_share_iv"] == r["per_share_iv_exit"]
+    with pytest.raises(TypeError):
+        unbundled_dcf(base_cf=1.0, explicit_growth=[0.05] * 5, wacc=0.08, terminal_g=0.03,
+                      terminal_leg="gordon", shares_diluted=1.0, fade_years=0, sbc_treatment="deducted_in_cf")
 
 
-def test_terminal_leg_gordon_when_requested():
-    r = unbundled_dcf(base_cf=1.0, explicit_growth=[0.05] * 5, wacc=0.08, terminal_g=0.03,
-                      terminal_exit_multiple=20.0, shares_diluted=1.0, fade_years=0,
-                      sbc_treatment="deducted_in_cf", terminal_leg="gordon")
-    assert r["terminal_leg"] == "gordon"
-    assert r["per_share_iv"] == r["per_share_iv_gordon"]
-
-
-def test_terminal_leg_gordon_only_without_exit_multiple():
+def test_the_terminal_is_always_the_funded_growth_value():
     r = unbundled_dcf(base_cf=1.0, explicit_growth=[0.05] * 5, wacc=0.08, terminal_g=0.03,
                       shares_diluted=1.0, fade_years=0, sbc_treatment="deducted_in_cf")
-    assert r["terminal_leg"] == "gordon"
+    assert "terminal_leg" not in r and "per_share_iv_exit" not in r
+    assert r["per_share_iv"] == r["per_share_iv_gordon"]
 
 
 def test_finite_life_has_no_terminal_leg_key():
@@ -694,24 +706,21 @@ def test_finite_life_has_no_terminal_leg_key():
     assert "terminal_leg" not in r
 
 
-def test_kelly_follows_published_legs_ugi_like():
-    """UGI s1-like case: Gordon Bear chosen with an exit multiple passed. Kelly and payoff_skew
-    must use the published (Gordon) value, not the exit leg (codefill_golden.json: typed 15.5
-    against the desk's 24.75)."""
+def test_kelly_follows_the_published_value():
+    """Revision 17 (the exit leg is gone): a scenario with its own terminal_ronic publishes one value, and the
+    scenario dict Kelly consumes ("iv") is that value (UGI s1-like case: typed 15.5 against the desk's 24.75)."""
     ctx = _ctx()
     p = _happy_params()
     for sc in p["scenarios"]:
         if sc["name"] == "Bear":
-            sc["terminal_exit_multiple"] = 25.0
-            sc["terminal_leg"] = "gordon"
+            sc["terminal_ronic"] = 0.09
     res = execute_financial_model(p, context=ctx)
     if "error" in res:
         pytest.fail(f"scenario construction hit a reason check: {res.get('missing') or res.get('needs_reasons')}")  # reviewer: fail, never skip
     bear = next(s for s in res["scenario_dcfs"] if s["name"] == "Bear")
-    assert bear["dcf"]["terminal_leg"] == "gordon"
+    assert "terminal_leg" not in bear["dcf"] and "per_share_iv_exit" not in bear["dcf"]
     assert bear["dcf"]["per_share_iv"] == bear["dcf"]["per_share_iv_gordon"]
-    assert bear["dcf"]["per_share_iv"] != bear["dcf"]["per_share_iv_exit"]
-    # The scenario dict Kelly consumes ("iv") must equal the published (Gordon) value.
+    # The scenario dict Kelly consumes ("iv") must equal the published value.
     bear_param = next(s for s in p["scenarios"] if s["name"] == "Bear")
     assert bear_param["iv"] == bear["dcf"]["per_share_iv"]
 
@@ -734,6 +743,7 @@ def test_reverse_dcf_uses_base_when_bear_listed_first():
     expect = fmt.reverse_dcf_expectations_gap(
         current_price=100.0, shares_diluted=1.0, base_cf=base_sc["base_cf"], wacc=base_sc["wacc"],
         terminal_g=base_sc["terminal_g"], fade_years=0, stage1_years=5,
+        terminal_ronic=math.inf,          # revision 17: the context's default, which the desk's own run uses
     )
     assert rev["implied_growth_next_5y_pct"] == pytest.approx(expect["implied_growth_next_5y_pct"], abs=0.05)
 
@@ -872,16 +882,18 @@ _SBC_KW = dict(base_cf=5.0, explicit_growth=[0.05, 0.05], wacc=0.08, terminal_g=
 
 def test_sbc_dilution_count_is_read_in_billions_like_the_share_count():
     """sbc_dilution >= 1 is an added share count, and was added to the billions share count as given:
-    5,000,000 new shares on 0.083371 billion became 5 million billion. `_to_b` reads it as it reads the
-    share count, so a whole count and its billions value are the same result (both units >= 1 here: a
-    value under 1 is a fraction, by the desk's own rule, in every unit)."""
-    in_b = unbundled_dcf(shares_diluted=10.0, sbc_treatment="add_back_dilution", sbc_dilution=1.5, **_SBC_KW)
+    5,000,000 new shares on 0.083371 billion became 5 million billion. Revision 17 (brief B 4i) fixes the
+    unit rule: below 1 a fraction, 1,000,000 or more a whole count of new shares (read as billions), and a
+    value from 1 up to 1,000,000 is refused - a billions figure such as 1.5 is no longer accepted, because
+    it cannot be told from a mistyped percent."""
+    refused = unbundled_dcf(shares_diluted=10.0, sbc_treatment="add_back_dilution", sbc_dilution=1.5, **_SBC_KW)
     whole = unbundled_dcf(shares_diluted=10.0, sbc_treatment="add_back_dilution",
                           sbc_dilution=1_500_000_000, **_SBC_KW)
-    assert "error" not in in_b and "error" not in whole
-    assert in_b["shares_diluted"] == whole["shares_diluted"] == 11.5
-    assert {k: v for k, v in in_b.items() if k != "sbc_dilution"} == {k: v for k, v in whole.items() if k != "sbc_dilution"}
-    assert (in_b["sbc_dilution"], whole["sbc_dilution"]) == (1.5, 1_500_000_000)    # the record keeps what was sent
+    assert refused["validation_error"] is True
+    assert refused["error"] == "sbc_dilution is a fraction below 1 (0.02 = 2%) or a whole number of new shares"
+    assert "error" not in whole
+    assert whole["shares_diluted"] == 11.5
+    assert whole["sbc_dilution"] == 1_500_000_000    # the record keeps what was sent
 
 
 def test_sbc_dilution_whole_count_adds_its_billions_value_to_the_share_count():
@@ -898,7 +910,7 @@ def test_sbc_dilution_fraction_still_scales_the_share_count():
 
 
 def test_sbc_dilution_whole_count_through_the_desk_reaches_every_scenario():
-    p, ctx = _scaled(sbc_treatment="add_back_dilution", sbc_dilution=5_000_000)
+    p, ctx = _scaled(sbc_treatment="add_back_dilution", sbc_dilution=5_000_000)  # revision 17: >= 1,000,000 is a count
     res = execute_financial_model(p, context=ctx)
     assert "error" not in res, res.get("error")
     assert [s["dcf"]["shares_diluted"] for s in res["scenario_dcfs"]] == [round(_K + 0.005, 4)] * 3

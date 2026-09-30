@@ -58,7 +58,8 @@ def test_task_contains_no_retired_field_name():
 
 def test_task_precedence_and_checklist_markers():
     assert "YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC." in cap.TASK
-    assert "terminal_leg" in cap.TASK
+    # revision 17: the terminal leg left the desk; checklist item 3 names terminal_ronic in its place
+    assert "terminal_ronic" in cap.TASK and "terminal_leg" not in cap.TASK
     assert "cash-flow life" in cap.TASK
     for n in ("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8."):
         assert f"\n{n} " in cap.TASK or cap.TASK.startswith(n)
@@ -107,8 +108,10 @@ def test_tools_schema_new_top_level_arguments_verbatim():
     props = fm["function"]["parameters"]["properties"]
     expected = {
         "cash_flow_life_reason": "Required. One dated sentence: for a finite life, the filed reserves and production rate or the remaining term; where revenue follows a commodity price, the price deck your flows assume and its source.",
-        "base_cf_reason": "Why a Base base_cf more than 2% from the DEFAULTS owner earnings is more representative, with the filing behind it. When the pack prints a BASE WINDOW CHECK, name the window you judge representative (fiscal year or TTM) and the item behind the gap.",
-        "guidance_deviation_reason": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 15% from the DEFAULTS year-2 level, a Base value outside 0.75-1.33 of the reference, or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth).",
+        # revision 17: the BASE WINDOW CHECK sentence left (the window no longer changes the Base's arithmetic)
+        "base_cf_reason": "Why a Base base_cf more than 2% from the DEFAULTS owner earnings is more representative, with the filing behind it.",
+        # revision 17: a Base year 2 more than 5% from the level is held by the desk unless this reason is given
+        "guidance_deviation_reason": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 5% from the DEFAULTS year-2 level (without it the desk holds years 1-2 at the DEFAULTS levels), a Base value outside 0.75-1.33 of the reference, or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth).",
         "scenario_deviation_reason": "Why a Bull or Bear year-2 cash flow is more than 15% from the DEFAULTS bull2 or bear2 level.",
         "coe_adjustment_reason": "Why the Base discount rate is more than 1.5 points from the COE ANCHOR.",
         "shares_reason": "The instrument and its vesting condition, when any scenario's shares_diluted differs from the pack's count by more than 1%. Add contingent shares only in the scenarios where they vest.",
@@ -133,10 +136,25 @@ def test_tools_schema_changed_descriptions_verbatim():
         "nonzero net_debt is refused. 'firm' discounts a pre-interest flow at a WACC and needs "
         "interest_addback, wacc_reason and net debt (default: the DEFAULTS net debt)."
     )
-    assert props["terminal_exit_multiple"]["description"] == (
-        "Exit multiple on the final projected cash flow. Default: the DEFAULTS exit multiple, "
-        "(1 + terminal_g) / (rate - terminal_g) at the defaults. The desk returns the terminal "
-        "growth any other multiple implies (exit_implied_terminal_g)."
+    # revision 17: the exit multiple left the schema; terminal_ronic replaces it
+    assert "terminal_exit_multiple" not in props and "terminal_leg" not in props
+    assert props["terminal_ronic"]["description"] == (
+        "The return on new investment (a fraction, e.g. 0.12) that pays for growth from year 6 and in the "
+        "terminal value. Default: the DEFAULTS terminal_ronic. A Base value more than 2 points from it needs "
+        "terminal_reason."
+    )
+    assert props["terminal_reason"]["description"] == (
+        "Dated evidence for a Base terminal_g more than 0.5 points from the DEFAULTS terminal-growth default, "
+        "or for a Base terminal_ronic more than 2 points from the DEFAULTS terminal_ronic."
+    )
+    assert props["sbc_dilution"]["description"] == (
+        "Share dilution from SBC when sbc_treatment is 'add_back_dilution': a fraction below 1 (0.02 = 2%) or a "
+        "whole number of new shares. Must NOT be passed if sbc_treatment is 'deducted_in_cf'."
+    )
+    assert props["fade_years"]["description"] == (
+        "Duration of Stage 2 linear fade in years (integer >= 0). Fades linearly from the last explicit rate to "
+        "terminal_g; the return on new investment and a cyclical margin move to their long-run values over the "
+        "same years."
     )
     assert props["shares_diluted"]["description"] == (
         # S3 C review (2026-09-28): 5.11 made the desk's default the DEFAULTS shares_default.
@@ -152,8 +170,8 @@ def test_tools_schema_changed_descriptions_verbatim():
     assert props["scenarios"]["description"] == (
         "Exactly three entries, one each with role Base, Bull and Bear. Each entry: name, prob, "
         "base_cf ($B), explicit_growth (5 annual growth rates of base_cf, cash flow not revenue), "
-        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_exit_multiple, "
-        "terminal_leg and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
+        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_ronic "
+        "and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
         "sizing in one call."
     )
     sc_props = props["scenarios"]["items"]["properties"]
@@ -161,9 +179,9 @@ def test_tools_schema_changed_descriptions_verbatim():
         "Only for a contingent instrument that vests in this scenario, as a whole share count, for "
         "example 79,364,362; billions are also accepted. Needs shares_reason."
     )
-    assert sc_props["terminal_leg"]["description"] == (
-        "\"exit\" or \"gordon\": which end value this scenario publishes when you pass an exit "
-        "multiple. Default \"exit\". Without an exit multiple only \"gordon\" exists."
+    assert "terminal_exit_multiple" not in sc_props and "terminal_leg" not in sc_props
+    assert sc_props["terminal_ronic"]["description"] == (
+        "Return on new investment for this scenario, as a fraction. Default: the DEFAULTS terminal_ronic."
     )
 
 
@@ -179,15 +197,21 @@ def test_tools_run_financial_model_description_verbatim():
     assert fm["function"]["description"] == (
         "Run the Python desk. One call values Base, Bull and Bear together: each scenario's "
         "base_cf, five years of cash-flow growth, fade, discount rate and terminal growth (with an "
-        "optional exit multiple) give its per-share value. The desk also returns the reverse DCF "
+        "optional terminal_ronic) give its per-share value. The desk also returns the reverse DCF "
         "(the growth today's price implies, under your structure and under the neutral reference) "
         "and quarter-Kelly sizing. The harness supplies today's price, the pack's share count, the "
         "anchors and the base-rate table; pass only your decisions. An input that departs from its "
         "DEFAULT needs its reason argument: the desk names any that are missing, and a refused call "
         "does not use one of your desk runs. The desk holds Base years 3-5 at next-FY consensus "
         "revenue growth unless guidance_deviation_reason is given, and shows the value on your path "
-        "beside it. Base is every scenario not named Bull or Bear. Blend mode combines named desk "
-        "legs for display; it is never your answer."
+        "beside it. It holds the Base's years 1-2 at the DEFAULTS cash-flow levels the same way (a "
+        "Base year 2 more than 5% away). It deducts the DEFAULTS working capital in years 1-5 (not "
+        "when base_cf is within 2% of cash_basis_b) and pays for growth from year 6 at terminal_ronic. "
+        "It values at the base fiscal year end and rolls the value forward to today. The firm frame "
+        "uses the same long run, an approximation: the return on new investment is measured on "
+        "tangible invested capital before interest and applied to equity earnings, which is conservative "
+        "for a levered company. Base is every scenario not named Bull or Bear. "
+        "Blend mode combines named desk legs for display; it is never your answer."
     )
 
 

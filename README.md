@@ -92,9 +92,13 @@ Revision 6 bundled Phase 4's pack and charter changes into one revision (bumping
 `tools/audit_202608/capability_test.PACK_REVISION` re-triggers every name in the book; the current
 value lives there, not in this file). `base_iv` must now equal a
 `tools/audit_202608/financial_model_tool.py` desk result (three-stage DCF, declared `fade_years`,
-required `terminal_g`, dual terminal reconciled against the MRI sector band, frame-checked
+required `terminal_g`, terminal reconciled against the MRI sector band, frame-checked
 `equity`/`firm`) within 1%, or a named desk `blend` — samples with `desk_calls == 0` or an
-unmatched IV are excluded from medoid candidacy. The pack gained SECTION 1.5's `COE ANCHOR`
+unmatched IV are excluded from medoid candidacy. (Revision 17 replaced the dual Gordon/exit-multiple
+terminal with one funded-growth terminal valued from the company's own record: `terminal_ronic`, the
+`long_run` and `working_capital` facts in the DEFAULTS block, the Base's years 1-2 held at the
+consensus levels, a base-year cap for one-time gains; see `tools/throughcycle_record.py` and
+`tools/consensus_reference.py`.) The pack gained SECTION 1.5's `COE ANCHOR`
 (±150 bp mandate), SECTION 1.6 "state of the world", SECTION 2.5 price-only momentum facts (no
 screener opinion shown to the model), a GROWTH BASE RATES block (`tools/base_rates.py`), a
 GUIDANCE & CONSENSUS block, SECTION 8.5 peer P/E context, and a DATA WARNINGS block

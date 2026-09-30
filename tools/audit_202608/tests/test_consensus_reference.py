@@ -5,6 +5,7 @@ The AMD probe grew a $5.1B cash-flow base at consensus REVENUE growth (+46.9%, +
 "consensus plays out" case reached $13.0B in year 2 against consensus next-FY net income of
 $25.4B, and it valued AMD at $378.92 against a $614.61 price.
 """
+import math
 import sys
 from pathlib import Path
 
@@ -22,6 +23,11 @@ AMD_EST = {
             "eps": {"avg": 15.57069, "low": 9.6, "high": 20.25, "analysts": 50, "growth": 1.0553, "year_ago": 7.57578}},
 }
 AMD_SHARES = 1_632_475_042
+# Revision 17: the reference's long run needs the company's record; with RONIC_T = +inf, no cycle, no working
+# capital and base net income = owner earnings (D&A = capex) it reduces to revision 16's arithmetic, so the
+# tests below that pin revision-16 numbers pass these inputs and keep their assertions.
+REDUCTION = {"R_tc": math.inf, "ronic_t": math.inf, "cycle": False, "m_tc": None, "nwc_intensity": None,
+             "stamps": []}
 
 
 def test_consensus_earnings_growth_usable_and_not():
@@ -36,7 +42,7 @@ def test_consensus_earnings_growth_usable_and_not():
 
 
 def test_amd_reference_path_and_value():
-    r = cref.build(7.578e9, AMD_EST, 0.1045, 0.0375, AMD_SHARES, 0.122)
+    r = cref.build(7.578e9, AMD_EST, 0.1045, 0.0375, AMD_SHARES, 0.122, record=REDUCTION, base_ni=7.578e9)
     assert [round(g, 3) for g in r["path"]] == [0.817, 1.055, 0.528, 0.325, 0.122]
     assert abs(r["value"] - 520.02) < 0.5
     # year 2 now sits with consensus earnings ($25.4B), not at half of it
@@ -119,13 +125,12 @@ def test_ratios_are_stamped_even_when_a_reason_silences_the_flags():
     sc = {"base_iv": 378.92, "stage1_growth_path": [0.469, 0.731, 0.5, 0.35, 0.25],
           "guidance_deviation_reason": "any sentence at all"}
     r = cv.consensus_ratios(sc, {"estimates": AMD_EST}, _probe_pack())
+    # revision 17: the window choice is gone, so reference_window_used and reference_window_value are no longer stamped
     assert r == {"years12_ratio": 0.681, "base_to_civ": 0.729, "consensus_implied_value": 520.02,
-                 "base_window_gap": None, "reference_window_used": None,
-                 "reference_window_value": None}
+                 "base_window_gap": None}
     assert cv.consensus_ratios({}, None, None) == {"years12_ratio": None, "base_to_civ": None,
                                                    "consensus_implied_value": None,
-                                                   "base_window_gap": None, "reference_window_used": None,
-                 "reference_window_value": None}
+                                                   "base_window_gap": None}
 
 
 def test_the_medoid_summary_and_the_verdict_carry_the_ratios():
@@ -184,7 +189,7 @@ def test_no_revenue_estimate_fades_from_the_median_not_from_eps_growth():
     growth, the more generous choice exactly when data was thinner."""
     est = {"0y": {"eps": {"analysts": 5, "growth": 1.1183, "year_ago": 0.66}},
            "+1y": {"eps": {"analysts": 5, "growth": 0.2668, "year_ago": 1.398}}}
-    r = cref.build(4e8, est, 0.10, 0.0375, 3.07e8, 0.08)
+    r = cref.build(4e8, est, 0.10, 0.0375, 3.07e8, 0.08, record=REDUCTION, base_ni=4e8)
     assert r["method"] == "growth" and [round(g, 4) for g in r["path"][2:]] == [0.08, 0.08, 0.08]
 
 

@@ -99,8 +99,10 @@ def test_five_11_share_keys_never_found_pre_revision_15():
 
 
 def test_facts_version_and_key_count():
-    assert pack_facts.FACTS_VERSION == 4
-    assert len(pack_facts.KEYS) == 24
+    # revision 17 (brief B 5): FACTS_VERSION 4 -> 5 and four new keys
+    assert pack_facts.FACTS_VERSION == 5
+    assert len(pack_facts.KEYS) == 28
+    assert pack_facts.KEYS[-4:] == ["terminal_ronic", "long_run", "working_capital", "base_year_cap"]
 
 
 def test_empty_has_all_24_keys():
@@ -119,7 +121,7 @@ def _rev15(block):
 
 def test_defaults_block_round_trip_ezpw_example():
     """The brief's own normative EZPW example (5.2), reproduced by the renderer byte for byte."""
-    facts = dict(pack_facts.empty(), version=4,
+    facts = dict(pack_facts.empty(), version=5,
                  shares_outstanding=61443377.0, shares_dilution_factor=1.2917,
                  shares_dilution_period="quarter ended 2026-06-30", shares_default=79364362.0,
                  shares_warning=None, filed_shares_diluted=83383000.0, filed_shares_fy=2025,
@@ -133,10 +135,7 @@ def test_defaults_block_round_trip_ezpw_example():
                  base_rate_5y={"share_ge_10": 26.7, "share_ge_20": 6.8, "share_ge_30": 2.2,
                               "p50": 5.6, "p90": 16.7},
                  revenue_cagr_5y_pct=9.1)
-    # the multiple is the caller's own pre-computed value (SECTION 1.5's, at full precision) —
-    # see render_defaults_block's docstring for why it is not derived from the rounded facts.
-    dex = cap._exit_multiple_value(8.91, 0.0375)
-    block = pack_facts.render_defaults_block(facts, default_exit_multiple=dex)
+    block = pack_facts.render_defaults_block(facts)
     expected_lines = [
         "- shares_outstanding: 61,443,377 | DATA 2, the vendor's basic count",
         "- shares_dilution_factor: 1.2917 | the company's own diluted EPS (basic / diluted EPS); "
@@ -152,20 +151,24 @@ def test_defaults_block_round_trip_ezpw_example():
         "- owner_earnings_default_b: 0.148 | the Base base_cf; more than 2% away needs base_cf_reason",
         "- owner_earnings_source: ttm_filed | where that default comes from",
         "- cash_basis_b: 0.126 | the alternative base (includes working-capital swings)",
-        "- base_window: not available | when printed, base_cf_reason names the window you judge "
-        "representative and the item behind the gap",
+        # revision 17: the window no longer changes the Base's arithmetic
+        "- base_window: not available | information only: the desk's arithmetic does not depend on the window",
         "- coe_anchor: 8.91% | the Base discount rate; more than 1.5 points away needs "
         "coe_adjustment_reason",
         "- terminal_g_default: 3.75% | the Base terminal_g; more than 0.5 points away needs "
         "terminal_reason",
         "- terminal_g_anchor: 3.75% | the long-run nominal growth anchor",
-        # the brief's worked "20.12x" comes from the real MRI anchor's full, unrounded precision
-        # (5.6's normative example); the synthetic 8.91/3.75 stand-ins used above round to
-        # 20.11x, so this asserts the renderer's number against `dex` (computed the same way
-        # SECTION 1.5 does) rather than the brief's literal digits.
-        f"- default_exit_multiple: {dex:.2f}x | (1 + g) / (rate - g) at the defaults; a Base "
-        "multiple implying terminal growth more than 0.5 points from terminal_g_default needs "
-        "terminal_reason",
+        # revision 17: the default_exit_multiple line is gone (the desk has no exit multiple); the three
+        # through-cycle lines print "not available" for a facts object that holds none of them
+        "- terminal_ronic: not available | the Base terminal return on new investment: the cost of equity "
+        "plus p times the excess over it of r_tc, your record's median return on tangible invested capital "
+        "(both in long_run); a Base terminal_ronic more than 2 points away needs terminal_reason",
+        # brief B2 F6: two sentences
+        "- long_run: not available | The desk values years 6 on from X_5 (earnings before acquired-intangible "
+        "amortization), pays for growth at terminal_ronic, and, when cycle is yes, moves the margin from m5 to "
+        "your record's median m_tc by year 10. The members are the record behind it.",
+        "- working_capital: not available | no working-capital deduction: the reference has no revenue "
+        "path or your record holds fewer than 5 years with a classified balance sheet",
         "- net_debt_b: -0.048 | the firm frame's net debt; another figure needs net_debt_reason "
         "(the pack's flows are after interest: value them in the equity frame)",
         "- interest_expense_latest_b: not available | the firm frame's interest_addback is at "
@@ -174,9 +177,9 @@ def test_defaults_block_round_trip_ezpw_example():
         "- consensus_implied_value: 58.92 | a Base value outside 0.75-1.33 of it (44.19-78.36) "
         "needs guidance_deviation_reason",
         "- reference_status: used | whether the reference is shown, fenced or not available",
-        "- levels: year1=0.147, year2=0.160, bull2=0.164, bear2=0.159 | a Base year-2 cash flow "
-        "more than 15% from year2 needs guidance_deviation_reason; a Bull or Bear more than 15% "
-        "from bull2 or bear2 needs scenario_deviation_reason",
+        "- levels: year1=0.147, year2=0.160, bull2=0.164, bear2=0.159 | the desk holds the Base's "
+        "years 1-2 at year1 and year2 unless you pass guidance_deviation_reason (a Base year 2 more "
+        "than 5% away); a Bull or Bear more than 15% from bull2 or bear2 needs scenario_deviation_reason",
         "- next_fy_revenue_growth: +9.5% | Base years 3-5 above it need guidance_deviation_reason, "
         "or the desk holds them at it",
         "- years35_p90: 16.7% | growth above the base-rate p90 needs dated, company-specific "
@@ -192,8 +195,9 @@ def test_defaults_block_round_trip_ezpw_example():
     for expected in expected_lines:
         assert expected in block, expected
     f = pack_facts.from_text(_rev15(block))
-    assert f["version"] == 4
+    assert f["version"] == 5
     assert pack_facts.parity(facts, f) == []
+    assert "exit multiple" not in block.lower() and "default_exit_multiple" not in block
 
 
 def test_defaults_block_with_none_values():
@@ -294,7 +298,7 @@ def test_revision_15_marker_only_on_first_line():
     text = "# DATA PACK - X\n\nsome text mentioning (pack revision 15) later on\n"
     # No DEFAULTS block and no raise: falls to the legacy reader.
     f = pack_facts.from_text(text)
-    assert f["version"] == 4
+    assert f["version"] == 5
     assert f["source"] == "text"
 
 
@@ -345,7 +349,7 @@ def test_revision_14_reads_as_legacy():
     text = "# DATA PACK - X   (pack revision 14)\n\nsome text with no defaults block\n"
     assert pack_facts.is_revision_15(text) is False
     f = pack_facts.from_text(text)
-    assert f["version"] == 4 and f["source"] == "text"
+    assert f["version"] == 5 and f["source"] == "text"
 
 
 def test_revisions_15_and_16_read_the_same():

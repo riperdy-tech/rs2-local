@@ -93,13 +93,22 @@ win on conflict (`research_wrong_company` refuses a brief about the wrong compan
 ### The desk is mandatory for the answer
 
 `base_iv` must equal a `run_financial_model` per-share result (or a named desk `blend`) within
-1% — no undisclosed "judgement" IV. The desk runs a three-stage DCF (explicit growth from
-guidance/consensus, a declared `fade_years` fade, then `terminal_g`, which is now a **required**
-parameter — no silent default), returns both terminal legs (Gordon and exit multiple) reconciled
-against the MRI sector band, and enforces the valuation frame (`equity`/FCFE at cost of equity vs.
-`firm`/FCFF at WACC — a frame mismatch is a structured refusal, not a silent miscalculation). Cost
-of equity must sit within ±150 bp of the pack's SECTION 1.5 anchor or declare `coe_source: "own"`
-with a reason.
+1% — no undisclosed "judgement" IV. The desk runs a funded-growth DCF (explicit growth for years
+1-5 less the pack's working-capital schedule, held at the consensus year-1 and year-2 levels for the
+Base unless `guidance_deviation_reason` is given; from year 6 a declared `fade_years` fade to
+`terminal_g`, which is a **required** parameter — no silent default — with growth paid for at the
+return on new investment the company's own record supports, `terminal_ronic`; the terminal is that
+funded form only: revision 17 removed the exit multiple and the terminal leg), values at the base
+fiscal year end rolled forward to today, reconciles the implied terminal multiple against the MRI
+sector band, and enforces the valuation frame (`equity`/FCFE at cost of equity vs. `firm`/FCFF at
+WACC — a frame mismatch is a structured refusal, not a silent miscalculation). The record is measured
+by `tools/throughcycle_record.py` (long-run earnings are net income before acquired-intangible
+amortization; returns are on tangible invested capital before interest; a cycle is a fiscal year with
+revenue down at least 5% and earnings down at least a third; short-term debt is subtracted once) and the
+arithmetic of the long run is one function, `consensus_reference.long_run_value`, shared by the pack's
+reference and the desk. Cost of equity
+must sit within ±150 bp of the pack's SECTION 1.5 anchor or declare `coe_source: "own"` with a
+reason.
 
 ## 2. Architecture
 
@@ -118,7 +127,7 @@ contract.
 | Live price | `price_now.py` | live quote at verdict time via yfinance, staleness-refusing; `depth_pipeline.main()` hard-fails (exit code 8) without one |
 | Screener data refresh | `screener_refresh.py` | resets the dedicated publish clone to `origin/main` before every entry point reads it; refuses the whole run on failure; stamps `screener_data_commit` |
 | Thesis monitor | `thesis_monitor.py` | re-checks each actionable verdict's `invalidation_rules` against current data; writes `cache/depth_thesis.json`; feeds the `thesis_break`/`momentum_flip` triggers; also runs standalone via `--monitor` (no GPU) |
-| Desk | `tools/audit_202608/financial_model_tool.py` | the only place valuation arithmetic runs: three-stage DCF, dual terminal, frame-checked, both reverse-DCF structures, named `blend` legs |
+| Desk | `tools/audit_202608/financial_model_tool.py` | the only place valuation arithmetic runs: funded-growth DCF with one terminal, frame-checked, both reverse-DCF structures, named `blend` legs |
 
 Valuation support remains deterministic Python: `valuation_backbone.py` solves the growth the
 market price implies and is consumed as evidence, not as the published number.

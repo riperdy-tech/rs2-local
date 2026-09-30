@@ -16,6 +16,17 @@ import consensus_reference as cr  # noqa: E402
 import consensus_valuation as cv  # noqa: E402
 import pack_facts  # noqa: E402
 
+
+# Revision 17: the reference's long run needs the company's record. With RONIC_T = +inf, no cycle, no working
+# capital and base net income = owner earnings (D&A = capex) it reduces to revision 16's arithmetic, so the
+# tests in this module that pin revision-16 numbers build through this wrapper and keep their assertions.
+_REDUCTION = {"R_tc": float("inf"), "ronic_t": float("inf"), "cycle": False, "m_tc": None,
+              "nwc_intensity": None, "stamps": []}
+
+
+def _build(base_cf, *args, **kw):
+    return cr.build(base_cf, *args, **dict({"record": _REDUCTION, "base_ni": base_cf}, **kw))
+
 B = 1e9
 ADI_EST = {"0y": {"eps": {"avg": 12.89, "low": 12.35, "high": 14.31, "analysts": 29, "growth": 0.655, "year_ago": 7.79},
                   "revenue": {"growth": 0.373, "analysts": 29}},
@@ -29,8 +40,8 @@ def _fmt_b(v):
 
 
 def test_adi_fiscal_year_reference_lands_where_the_review_computed_it():
-    at_ye = cr.build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096)
-    rolled = cr.build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096, stub_months=10.8)
+    at_ye = _build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096)
+    rolled = _build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096, stub_months=10.8)
     assert 300 <= at_ye["value"] <= 324           # Fable: about $312 at the fiscal year end
     assert 330 <= rolled["value"] <= 354          # and about $342 rolled forward to today
     assert abs(rolled["value"] / at_ye["value"] - 1.1045 ** 0.9) < 1e-6
@@ -77,7 +88,7 @@ def _facts_from_ref(ref):
 
 
 def test_the_pack_line_prints_levels_the_harness_reads_back():
-    ref = cr.build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096, stub_months=10.8,
+    ref = _build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096, stub_months=10.8,
                    base_label="FY2025, the last full fiscal year, ended 2025-11-01")
     line = cr.pack_line(ref, ADI_FY_BASE, 0.1045, 0.0375, _fmt_b)
     assert "rolled forward 11 months" in line and "FY2025, the last full fiscal year" in line
@@ -92,7 +103,7 @@ def _pack_facts_dict(ref):
 
 
 def test_the_years12_check_is_a_level_check():
-    facts = _pack_facts_dict(cr.build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096, stub_months=10.8))
+    facts = _pack_facts_dict(_build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096, stub_months=10.8))
     # ADI s2 (b): the TTM base on the consensus rates lands 28% above the year-2 level
     s2 = {"base_cf_used": 4.771, "stage1_growth_path": [0.655, 0.268, 0.168, 0.132, 0.096]}
     assert abs(cv.consensus_ratios(s2, {"estimates": ADI_EST}, facts=facts)["years12_ratio"] - 1.28) < 0.01
@@ -105,7 +116,7 @@ def test_the_years12_check_is_a_level_check():
 
 
 def test_the_harness_flags_a_year2_off_the_level_without_a_reason():
-    facts = _pack_facts_dict(cr.build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096, stub_months=10.8))
+    facts = _pack_facts_dict(_build(ADI_FY_BASE, ADI_EST, 0.1045, 0.0375, 0.484565465 * B, 0.096, stub_months=10.8))
 
     def flags(sc):
         _, _, fl = cv.check_sample_harness_rules(dict({"base_iv": 342.0, "bull_iv": 400.0, "bear_iv": 200.0}, **sc),

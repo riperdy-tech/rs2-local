@@ -50,6 +50,23 @@ The whole-book test of E18 (2026-09-26, 176 names) failed, and Fable ruled:
   name (GOOG's TTM holds equity mark-ups, BMRN's an acquired-IPR&D charge), so when the TTM differs
   from the fiscal-year base grown by consensus for the quarters between them by more than 15%, both
   references are printed and the analyst names the window; nothing is chosen by rule.
+
+Revision 17 (brief B, the through-cycle package). The window no longer changes the Base's
+arithmetic (the desk holds years 1-2 at the fiscal-year levels); the BASE WINDOW CHECK stays as
+information. The reference now values the long run from the company's own record
+(tools/throughcycle_record.py):
+- An earnings path (X = net income before acquired-intangible amortization, revenue) runs beside the
+  owner-earnings path. Years 1-5 cash flow is
+  owner earnings less the working capital the revenue growth ties up (the record's median NWC /
+  revenue). From year 6, growth is paid for: cash flow = earnings x (1 - g / max(r, RONIC)), where
+  RONIC fades from the record's median return on tangible invested capital toward the return on new
+  investment the record supports (RONIC_T), and the earnings margin reverts toward the record's median
+  when the record shows a cycle. Terminal growth is the company's own revenue trend held between
+  breakeven inflation and the anchor (`terminal_growth_default`).
+- A one-time gain in the base year is removed when the vendor's year-ago EPS shows it (`base_year_cap`).
+- With RONIC_T = +inf, no cycle and no working capital the arithmetic reduces to revision 16's
+  (`reference_value`, kept for that test): the long-run arithmetic is `long_run_value`, the one copy
+  the desk (financial_model_tool) also uses.
 """
 
 import math
@@ -63,17 +80,8 @@ RANGE_MIN_ANALYSTS = 3  # E12 F1: fewer analysts give no range (high = low = ave
 WINDOW_TOL = 0.15       # whole-book test: FY and TTM windows further apart than this print both references
 STALE_MONTHS = 15       # whole-book test: history older than this builds no reference
 VINTAGE_TOL = 0.02      # the vendor's year-ago revenue against the filed fiscal year
-
-
-def choose_reference_window(civ, y2, ttm_value, ttm_year2, iv):
-    """(reference value, year-2 level, window) — S3 3.5's R10 window choice, shared by
-    consensus_valuation.reference_window and the desk's own check so there is one copy of this
-    rule. 'ttm' when a TTM reference value is printed and it is nearer `iv` in log distance than
-    the fiscal-year reference; otherwise 'fy'."""
-    if ttm_value and civ and isinstance(iv, (int, float)) and iv > 0:
-        if abs(math.log(iv / ttm_value)) < abs(math.log(iv / civ)):
-            return ttm_value, ttm_year2, "ttm"
-    return civ, y2, "fy"
+BASE_CAP_TOL = 0.02     # rev 17: filed EPS above the vendor's year-ago EPS by more than this is capped
+LEVELS_HOLD_TOL = 0.05  # rev 17: the desk holds Base years 1-2 at the levels when year 2 is further off than this
 
 
 def consensus_earnings_growth(estimates):
@@ -146,6 +154,111 @@ def terminal_default(anchor, breakeven, rev_g2, median_5y):
     return val, reason
 
 
+def terminal_growth_default(anchor, breakeven, g_rev, rev_g2, median_5y):
+    """Revision 17, brief B section 3: (value, basis, reason). The company's own revenue trend (the
+    Theil-Sen growth of its record, `g_rev`) held between breakeven inflation and the anchor:
+    min(anchor, max(breakeven, g_rev)), basis "revenue_trend". With no trend (a short record) or no
+    breakeven the rule of revision 16 applies (`terminal_default`), basis "consensus_fallback".
+    None values when the anchor is missing."""
+    if anchor is None:
+        return None, None, None
+    if g_rev is not None and breakeven is not None:
+        return min(anchor, max(breakeven, g_rev)), "revenue_trend", None
+    val, reason = terminal_default(anchor, breakeven, rev_g2, median_5y)
+    return val, "consensus_fallback", reason
+
+
+def base_year_cap(filed_ni, filed_shares, vendor_eps):
+    """Revision 17, brief B section 2a: a one-time gain in the base year (LAMR's Vistar gain), seen
+    as the filed EPS above the vendor's year-ago EPS. None unless filed EPS exceeds the vendor's by
+    more than BASE_CAP_TOL; never raised (filed EPS below the vendor's is kept, E10's
+    conservatism). Otherwise {'eps_filed', 'eps_vendor', 'ni_filed', 'ni_capped', 'removed'}: the
+    base net income becomes the vendor's EPS x the filed diluted shares, and `removed` is what the
+    owner-earnings base is reduced by. The caller decides when this may run (the BASE-YEAR CHECK
+    printed its numbers: vintage aligned, share counts within 15%)."""
+    if not (isinstance(filed_ni, (int, float)) and isinstance(filed_shares, (int, float)) and filed_shares > 0
+            and isinstance(vendor_eps, (int, float)) and vendor_eps > 0):
+        return None
+    eps_filed = filed_ni / filed_shares
+    if not eps_filed > vendor_eps * (1 + BASE_CAP_TOL):
+        return None
+    capped = vendor_eps * filed_shares
+    return {"eps_filed": eps_filed, "eps_vendor": float(vendor_eps), "ni_filed": float(filed_ni),
+            "ni_capped": capped, "removed": filed_ni - capped}
+
+
+def vendor_revenue(estimates):
+    """[current-FY, next-FY] revenue averages of the vendor's estimates, or None unless both exist
+    with analysts behind them."""
+    out = []
+    for key in ("0y", "+1y"):
+        rev = (((estimates or {}).get(key) or {}).get("revenue")) or {}
+        avg = rev.get("avg")
+        if not (rev.get("analysts") and isinstance(avg, (int, float)) and avg > 0):
+            return None
+        out.append(float(avg))
+    return out
+
+
+def ronic_at(ronic0, ronic_t, frac):
+    """RONIC of a long-run year: RONIC_0 + (RONIC_T - RONIC_0) x frac, frac = (t - 5) / fade years
+    (RONIC_T from frac 1 on). With an infinite end point (a return on negative tangible equity) the
+    interpolation is not defined: the start holds until frac reaches 1."""
+    if frac >= 1:
+        return ronic_t
+    if frac <= 0 or ronic0 == ronic_t or math.isinf(ronic0) or math.isinf(ronic_t):
+        return ronic0
+    return ronic0 + (ronic_t - ronic0) * frac
+
+
+def long_run_value(e5, g5, gt, r, ronic0, ronic_t, margin_ratio=None, fade_years=FADE_YEARS):
+    """Revision 17, brief B section 2d-2e: the value, at the base fiscal year end, of everything after
+    year 5. The one copy of this arithmetic; the reference and the desk both call it.
+
+    e5: year-5 earnings; g5: the year-5 growth; gt: terminal growth; r: the discount rate.
+    Years t = 6..5+F (F = fade_years): g_t = g5 + (gt - g5)(t-5)/F; earnings E_t = e5 x prod(1+g) x k_t,
+    where the margin factor k_t = 1 + (margin_ratio - 1) x min(1, (t-5)/F) (margin_ratio = m_tc / m5;
+    None = margin held); RONIC_t from `ronic_at`; cash flow_t = E_t (1 - g_{t+1} / max(r, RONIC_t)) with
+    g_{N+1} = gt (an infinite RONIC charges nothing). Terminal: E_{N+1} = E_N (1+gt), TV = E_{N+1}
+    (1 - gt / max(r, RONIC_T)) / (r - gt), discounted N years. F = 0 has no long-run years and no
+    margin fade. A negative long-run value is floored at 0 (`floor`).
+
+    None when r does not exceed gt. Else a dict: n_years, growth, earnings, margin_factor, ronic,
+    flows (cash flows of years 6..N), pv_flows, e_terminal, tv, tv_pv, value_raw, value, floor."""
+    if not r > gt:
+        return None
+    F = int(fade_years)
+    n = 5 + F
+
+    def g_at(t):
+        return gt if (F == 0 or t > n) else g5 + (gt - g5) * (t - 5) / F
+
+    growth, earnings, kfs, ronics, flows = [], [], [], [], []
+    cum, pv_flows = 1.0, 0.0
+    for t in range(6, n + 1):
+        frac = (t - 5) / F
+        g = g_at(t)
+        cum *= 1 + g
+        k = 1.0 if margin_ratio is None else 1 + (margin_ratio - 1) * min(1.0, frac)
+        e = e5 * cum * k
+        ron = ronic_at(ronic0, ronic_t, frac)
+        cf = e * (1 - g_at(t + 1) / max(r, ron))
+        growth.append(g)
+        earnings.append(e)
+        kfs.append(k)
+        ronics.append(ron)
+        flows.append(cf)
+        pv_flows += cf / (1 + r) ** t
+    k_end = 1.0 if (margin_ratio is None or F == 0) else margin_ratio
+    e_terminal = e5 * cum * k_end * (1 + gt)
+    tv = e_terminal * (1 - gt / max(r, ronic_t)) / (r - gt)
+    tv_pv = tv / (1 + r) ** n
+    raw = pv_flows + tv_pv
+    return {"n_years": n, "growth": growth, "earnings": earnings, "margin_factor": kfs, "ronic": ronics,
+            "flows": flows, "pv_flows": pv_flows, "e_terminal": e_terminal, "tv": tv, "tv_pv": tv_pv,
+            "value_raw": raw, "value": max(0.0, raw), "floor": raw < 0}
+
+
 def _pv(flows, g_last, coe, terminal_g, fade_years):
     """PV of explicit flows (years 1..n), then a linear fade from g_last to terminal_g over
     fade_years, then a Gordon terminal value, all at coe."""
@@ -211,26 +324,48 @@ def vintage_aligned(estimates, fy_revenue):
     return abs(ya / fy_revenue - 1) <= VINTAGE_TOL
 
 
+def _compound(base, growth):
+    """[base x (1+g1), base x (1+g1)(1+g2), ...]."""
+    out, x = [], float(base)
+    for g in growth:
+        x *= 1 + g
+        out.append(x)
+    return out
+
+
 def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex=None,
           stub_months=None, base_label=None, levels_reason=None, levels_block=None,
-          anchor=None):
+          anchor=None, record=None, base_ni=None, base_revenue=None, base_cap=None):
     """Everything the pack prints: {'value', 'method', 'path', 'flows', 'c1', 'c2', 'reason',
-    'levels', 'range', 'stub_months', 'base_label', 'levels_reason'}.
+    'levels', 'range', 'stub_months', 'base_label', 'levels_reason'}, and (revision 17) 'earnings',
+    'revenue', 'wc', 'nwc_intensity', 'long_run', 'long_run_path', 'terminal_ronic', 'ronic0',
+    'base_cf', 'base_year_cap', 'stamps'.
     method "growth": years 1-2 at consensus EPS growth on the owner-earnings base.
     method "levels": years 1-2 are consensus EPS x diluted shares + D&A - capex, when consensus EPS
     growth is unusable, when the base is not positive, or when `levels_reason` says why the base
     cannot carry the consensus rates. `value` is None, with a reason, when neither can be computed.
     `levels_block` (review B1): why the vendor's EPS levels may not be combined with the filed D&A
     and capex for this company (the vintage test failed or could not run); the levels method is then
-    not available.
+    not available, and the vendor's revenue is not combined with the filed revenue either.
     E18: with `stub_months` (months since the base fiscal year ended), the value is taken at that
-    fiscal year end and rolled forward to today at coe."""
+    fiscal year end and rolled forward to today at coe.
+
+    Revision 17 inputs: `record` (throughcycle_record.analyse's dict, computed at r = coe: R_tc,
+    ronic_t, cycle, m_tc, nwc_intensity; None = no record, stamped record_not_available with RONIC_T
+    = coe); `base_ni` (X of the filed base year - net income plus acquired-intangible amortization after
+    tax, throughcycle_record.adjusted_earnings - the earnings path's base in the growth method; the
+    levels method's earnings are consensus EPS x shares, stamped levels_eps_basis); `base_revenue` (the
+    filed base-year revenue); `base_cap` (`base_year_cap`'s dict: the cap acts on net income, so X and the
+    owner-earnings base are both reduced by `removed`)."""
     c1, c2, why = consensus_earnings_growth(estimates)
     is_default = (anchor is not None and terminal_g is not None and abs(terminal_g - anchor) > 1e-6)
     out = {"value": None, "method": None, "path": None, "flows": None, "c1": c1, "c2": c2,
            "reason": None, "growth_unusable": why, "levels": None, "range": None,
            "stub_months": stub_months, "base_label": base_label, "levels_reason": None,
-           "terminal_g_is_default": is_default}
+           "terminal_g_is_default": is_default,
+           "earnings": None, "revenue": None, "wc": None, "long_run": None, "long_run_path": None,
+           "terminal_ronic": None, "ronic0": None, "nwc_intensity": None, "base_cf": None,
+           "base_year_cap": None, "stamps": []}
     missing = [n for n, v in (("cost-of-equity anchor", coe), ("terminal-growth anchor", terminal_g),
                               ("diluted shares", shares), ("growth base-rate median", median_5y))
                if v is None]
@@ -245,36 +380,103 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     if why is None and levels_reason is None and base_cf <= 0:
         # whole-book test (LIVN): a loss year cannot carry growth rates; the EPS levels can
         levels_reason = "the fiscal-year owner-earnings base is not positive"
+    base = ni_base = None
     if why is None and levels_reason is None:
+        base = base_cf - (base_cap["removed"] if base_cap else 0.0)
+        # base_ni is X of the base year (net income before acquired-intangible amortization); the cap removes a
+        # net-income gain, so X_base = X - removed = NI_capped + A x (1 - t)
+        ni_base = None if base_ni is None else base_ni - (base_cap["removed"] if base_cap else 0.0)
+        if not base > 0:
+            levels_reason = "the base-year cap leaves the fiscal-year owner-earnings base not positive"
+        elif ni_base is None:
+            out["reason"] = "base-year net income missing"
+            return out
+    if why is None and levels_reason is None:
+        if base_cap:
+            out["base_year_cap"] = base_cap
+            out["stamps"].append("base_year_capped")
         out["path"] = reference_path(c1, c2, rev_g2, median_5y)
         out["method"] = "growth"
-        v = reference_value(base_cf, out["path"], coe, terminal_g, shares)
-        if v is None:
-            out["reason"] = "cost of equity not above terminal growth"
-        else:
-            out["value"] = v * roll
-            f1 = base_cf * (1 + c1)
-            out["levels"] = (f1, f1 * (1 + c2))
-            out["range"] = range_levels(estimates, out["levels"][1])
+        oe = _compound(base, out["path"])
+        ni = _compound(ni_base, out["path"])
+        out["base_cf"] = base
+        out["levels"] = (oe[0], oe[1])
+        out["range"] = range_levels(estimates, out["levels"][1])
+    else:
+        out["levels_reason"] = levels_reason
+        why = why or levels_reason
+        if levels_block:
+            out["reason"] = f"{why}; the EPS levels are not used: {levels_block}"
+            return out
+        levels = consensus_eps_levels(estimates)
+        if levels is None or da is None or capex is None:
+            out["reason"] = why + ("" if levels else "; no positive next-FY EPS level") + \
+                ("" if da is not None and capex is not None else "; D&A or capex missing")
+            return out
+        flows = (levels[0] * shares + da - capex, levels[1] * shares + da - capex)
+        path35 = _years35(rev_g2, median_5y)
+        out.update(method="levels", flows=flows, path=[None, None] + path35, levels=flows,
+                   range=range_levels(estimates, flows[1]))
+        # the vendor's EPS basis (adjusted or GAAP) is unknown, so the levels method's earnings are not X
+        out["stamps"].append("levels_eps_basis")
+        if not flows[1] > 0:
+            out["reason"] = why + "; next-FY cash flow from EPS levels is not positive"
+            return out
+        oe = list(flows) + _compound(flows[1], path35)
+        ni = [levels[0] * shares, levels[1] * shares] + _compound(levels[1] * shares, path35)
+    out["earnings"] = ni
+    g5 = out["path"][-1]
+    if coe <= terminal_g:
+        out["reason"] = "cost of equity not above terminal growth"
         return out
-    out["levels_reason"] = levels_reason
-    why = why or levels_reason
-    if levels_block:
-        out["reason"] = f"{why}; the EPS levels are not used: {levels_block}"
-        return out
-    levels = consensus_eps_levels(estimates)
-    if levels is None or da is None or capex is None:
-        out["reason"] = why + ("" if levels else "; no positive next-FY EPS level") + \
-            ("" if da is not None and capex is not None else "; D&A or capex missing")
-        return out
-    flows = (levels[0] * shares + da - capex, levels[1] * shares + da - capex)
-    path35 = _years35(rev_g2, median_5y)
-    v = reference_value_levels(flows[0], flows[1], path35, coe, terminal_g, shares)
-    out.update(method="levels", flows=flows, path=[None, None] + path35, levels=flows,
-               value=v * roll if v is not None else None,
-               range=range_levels(estimates, flows[1]))
-    if out["value"] is None:
-        out["reason"] = why + "; next-FY cash flow from EPS levels is not positive"
+
+    # revenue path: filed base-year revenue, the vendor's two revenue averages, then the years 3-5 growth
+    revenue = None
+    vr = vendor_revenue(estimates)
+    if not levels_block and vr and isinstance(base_revenue, (int, float)) and base_revenue > 0:
+        revenue = [float(base_revenue), vr[0], vr[1]] + _compound(vr[1], out["path"][2:])
+    out["revenue"] = revenue
+
+    # the record: return on new investment, cycle, margin, working capital
+    rec = record or {}
+    r_tc, ronic_t = rec.get("R_tc"), rec.get("ronic_t")
+    if ronic_t is None:
+        ronic_t = coe
+        out["stamps"].append("record_not_available")
+    elif "record_not_available" in (rec.get("stamps") or []):
+        out["stamps"].append("record_not_available")
+    ronic0 = coe if r_tc is None else max(coe, r_tc)
+    out["terminal_ronic"], out["ronic0"] = ronic_t, ronic0
+
+    # years 1-5 cash flow: owner earnings less the working capital the revenue growth ties up
+    nwc = rec.get("nwc_intensity")
+    wc = None
+    if revenue is not None and nwc is not None:
+        wc = [nwc * (revenue[t] - revenue[t - 1]) for t in range(1, 6)]
+    elif revenue is not None:
+        out["stamps"].append("working_capital_not_available")
+    out["wc"], out["nwc_intensity"] = wc, nwc
+    cash = [oe[t] - (wc[t] if wc else 0.0) for t in range(5)]
+    pv15 = sum(cf / (1 + coe) ** (t + 1) for t, cf in enumerate(cash))
+
+    # the long run
+    e5, oe5, m5, margin_ratio = ni[4], oe[4], None, None
+    if revenue is not None:
+        out["long_run_path"] = "revenue"
+        m5 = e5 / revenue[5]
+        if rec.get("cycle") and rec.get("m_tc") is not None and m5 > 0:
+            margin_ratio = rec["m_tc"] / m5
+    else:
+        out["long_run_path"] = "owner_earnings_ratio"
+        if not (e5 > 0 and oe5 > 0):
+            out["reason"] = ("no revenue path (the vendor's revenue is missing or not on the filed basis) and "
+                             "year-5 earnings or owner earnings is not positive")
+            return out
+    lr = long_run_value(e5, g5, terminal_g, coe, ronic0, ronic_t, margin_ratio)
+    if lr["floor"]:
+        out["stamps"].append("long_run_floor")
+    out["long_run"] = dict(lr, e5=e5, oe5=oe5, m5=m5, margin_ratio=margin_ratio, g5=g5)
+    out["value"] = (pv15 + lr["value"]) / shares * roll
     return out
 
 
@@ -344,6 +546,52 @@ def window_line(win, ref, ttm_base, through, fmt_b, base_year_check=True):
     return "- " + " | ".join(clauses)
 
 
+def _return_txt(x):
+    """A return on new investment as a percent; infinite = growth on negative tangible equity."""
+    return "unlimited" if x is not None and math.isinf(x) else f"{x * 100:.1f}%"
+
+
+def _long_run_clause(ref):
+    """Revision 17: the one clause that states how the long run (year 6 on) is valued. None when the
+    reference has no long run (levels reasons that stop before it)."""
+    lr = ref.get("long_run")
+    if not lr:
+        return None
+    if "record_not_available" in ref.get("stamps", []):
+        pay = ("from year 6 growth is paid for at the cost of equity (your record is not available, so "
+               "new investment earns no more than its cost)")
+    else:
+        r0, rt = ref["ronic0"], ref["terminal_ronic"]
+        pay = (f"from year 6 growth is paid for at the return your record shows (return on new investment "
+               f"{_return_txt(r0)} in year 5, {_return_txt(rt)} from year 10; cash flow = earnings x "
+               f"(1 - growth / return))")
+    if ref.get("long_run_path") == "revenue":
+        if lr.get("margin_ratio") is not None:
+            m = (f"earnings margin reverting from {lr['m5'] * 100:.1f}% to your record's median "
+                 f"{lr['m5'] * lr['margin_ratio'] * 100:.1f}% by year 10")
+        else:
+            m = f"earnings margin held at {lr['m5'] * 100:.1f}%"
+    else:
+        m = ("no revenue path (the vendor's revenue is missing or not on the filed basis), so earnings follow "
+             "owner earnings at the year-5 ratio of earnings to owner earnings")
+    out = f"{pay}; {m}"
+    if lr.get("floor"):
+        out += "; the long-run value is negative and is floored at zero"
+    return out
+
+
+def _working_capital_clause(ref, fmt_b):
+    """Revision 17: the working capital deducted from years 1-5, or why there is none. None when the
+    reference has no revenue path (the long-run clause says so)."""
+    if ref.get("revenue") is None:
+        return None
+    wc = ref.get("wc")
+    if wc is None:
+        return "working capital: not deducted (your record holds no classified balance sheet for it)"
+    return (f"working capital deducted in years 1-5: {' / '.join(fmt_b(x) for x in wc)} "
+            f"({ref['nwc_intensity'] * 100:.1f}% of each year's revenue change)")
+
+
 def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):
     """SECTION 8's line. The prefixes are fixed: the harness parses the value and the levels
     (consensus_valuation)."""
@@ -353,7 +601,12 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):
               f"${ref['value']:,.2f} per share, the analysts' own earnings path at our discount rate"]
 
     label = ref.get("base_label")
+    cap = ref.get("base_year_cap")
     if ref["method"] == "growth":
+        # rev 17: the base is the capped one when the base-year cap removed a one-time item
+        if cap:
+            label = (label + "; " if label else "") + f"after the base-year cap removed {fmt_b(cap['removed'])}"
+            base_cf = ref.get("base_cf") if ref.get("base_cf") is not None else base_cf
         clauses.append(f"base: owner earnings {fmt_b(base_cf)}" + (f" ({label})" if label else ""))
         path = " / ".join(f"{g * 100:+.1f}%" for g in ref["path"])
         clauses.append(f"cash-flow growth years 1-5: {path} (years 1-2 consensus EPS growth; "
@@ -373,6 +626,12 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):
     differs = (anchor is not None and abs(terminal_g - anchor) > 1e-6) or bool(ref.get("terminal_g_is_default"))
     tg_label = "terminal-growth default" if differs else "terminal-growth anchor"
     clauses.append(f"then a 5-year fade to the {tg_label} {terminal_g * 100:.2f}%")
+    lr_clause = _long_run_clause(ref)
+    if lr_clause:
+        clauses.append(lr_clause)
+    wc_clause = _working_capital_clause(ref, fmt_b)
+    if wc_clause:
+        clauses.append(wc_clause)
     clauses.append(f"discounted at the COE ANCHOR {coe * 100:.2f}%")
     stub = ref.get("stub_months")
     if stub:

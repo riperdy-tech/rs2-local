@@ -7,6 +7,7 @@ Tests cover:
 """
 import copy
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -495,7 +496,9 @@ def test_14_recorded_regressions():
             {"name": "Bear", "prob": 0.3, "base_cf": 6.997, "growth_rates": [0.047, 0.033, -0.02, -0.03, -0.03], "wacc": 0.0901},
         ],
     }
-    res_mo = execute_financial_model(mo_params, context={"price": 68.82, "years35_cap": 0.009})
+    # revision 17: the recorded values are the unfunded arithmetic; unlimited returns at both ends of the long run reproduce it
+    unfunded = {"terminal_ronic": math.inf, "long_run": {"r_tc": math.inf}}
+    res_mo = execute_financial_model(mo_params, context=dict({"price": 68.82, "years35_cap": 0.009}, **unfunded))
     scs_mo = {s["name"]: s["dcf"]["per_share_iv"] for s in res_mo["scenario_dcfs"]}
     assert scs_mo["Base"] == 82.74
     assert scs_mo["Bull"] == 96.39
@@ -511,7 +514,7 @@ def test_14_recorded_regressions():
             {"name": "Bear", "prob": 0.2, "base_cf": 0.694, "growth_rates": [0.01, -0.04, -0.02, 0.01, 0.025], "wacc": 0.0998},
         ],
     }
-    res_lamr = execute_financial_model(lamr_params, context={"price": 143.98, "years35_cap": 0.039})
+    res_lamr = execute_financial_model(lamr_params, context=dict({"price": 143.98, "years35_cap": 0.039}, **unfunded))
     scs_lamr = {s["name"]: s["dcf"]["per_share_iv"] for s in res_lamr["scenario_dcfs"]}
     assert scs_lamr["Base"] == 161.62
     assert scs_lamr["Bull"] == 192.98
@@ -753,6 +756,8 @@ def test_18_plumbing_consensus_valuation_passes_desk_context(monkeypatch, tmp_pa
         "base_rate_table", "revenue_cagr_5y_pct", "net_debt_default_b", "interest_expense_latest_b",
         "owner_earnings_default_b", "base_window", "consensus_implied_value", "levels",
         "years35_cap", "shares_warning",
+        # revision 17 (brief B 4): the through-cycle facts the desk values with
+        "terminal_ronic", "long_run", "working_capital", "cash_basis_b",
     }
     for ctx in captured_calls:
         assert set(ctx.keys()) == expected_keys

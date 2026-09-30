@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from math import inf, isinf
 from typing import Any
 
 # S3 5.2: the DEFAULTS block's consensus_implied_value band uses the same FAR_LOW/FAR_HIGH the
@@ -19,7 +20,7 @@ if str(_REPO_TOOLS) not in sys.path:
     sys.path.insert(0, str(_REPO_TOOLS))
 import consensus_reference  # noqa: E402
 
-FACTS_VERSION = 4
+FACTS_VERSION = 5
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -50,14 +51,26 @@ KEYS: list[str] = [
     "shares_warning",
     # version 4 (S2c): SECTION 8 consensus estimates status
     "consensus_data_status",
+    # version 5 (revision 17, brief B): the through-cycle package. `terminal_ronic` is the Base's default
+    # terminal return on new investment (a fraction, or +inf); `long_run` the reference's year-5 earnings
+    # and the company's record (see `long_run_members`); `working_capital` the reference's five
+    # deductions ($B, years 1-5) or None; `base_year_cap` the one-time item removed from the base year
+    # (a dict) or None when none was.
+    "terminal_ronic",
+    "long_run",
+    "working_capital",
+    "base_year_cap",
 ]
 
 # The revision marker (S1's from_text dispatch, section 5.1's line format). The DEFAULTS reader
 # serves every revision from 15 on: a later revision changes what the model is told, not this format.
 _REVISION_RE = re.compile(r"\(pack revision (\d+)\)")
 _FIRST_DEFAULTS_REVISION = 15
+# Revision 17: from this revision on the DEFAULTS block carries terminal_ronic, long_run and
+# working_capital lines (and base_year_cap when the cap applied); an older block has none of them.
+_FIRST_THROUGHCYCLE_REVISION = 17
 
-_DICT_KEYS = ("levels", "base_window", "base_rate_5y")
+_DICT_KEYS = ("levels", "base_window", "base_rate_5y", "long_run")
 
 _TERM_ANCHOR_RE = re.compile(r"Long-run nominal growth anchor for terminal_g:\s*([\d.]+)%")
 _BASE_RATE_5Y_RE = re.compile(
@@ -322,6 +335,11 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "shares_dilution_period": None,
         "shares_warning": None,
         "consensus_data_status": consensus_data_status,
+        # revision 17: no revision-14 print site exists for these
+        "terminal_ronic": None,
+        "long_run": {},
+        "working_capital": None,
+        "base_year_cap": None,
     }
 
 
@@ -374,17 +392,261 @@ def _dp_str(raw):
     return None if s.lower() == _NA else s
 
 
-def render_defaults_block(facts: dict[str, Any], default_exit_multiple: float | None = None) -> str:
-    """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
-    TASK. Prints every one of the 24 `KEYS` (one fact per line), plus three display-only lines
-    that carry no facts key: `default_exit_multiple` and the two fixed rule lines `cash_flow_life`
-    and `price`. The reader (`_from_defaults_block`) ignores display lines.
+# ---------------------------------------------------------------------------------------------
+# Revision 17 (brief B): the four through-cycle facts. Each value the build stamps is quantized to
+# the precision the DEFAULTS block prints, by the functions below, so the facts a build holds and
+# the facts read back from its own text are equal (the parity check) - and so the desk, which
+# reads the facts, agrees with the reference, which computes at full precision, to the cent.
+# ---------------------------------------------------------------------------------------------
 
-    `default_exit_multiple` is the caller's own already-computed value (SECTION 1.5's, from
-    `_default_exit_multiple_line`'s full-precision `coe_anchor_pct`/`terminal_g` inputs) — not
-    recomputed here from `facts["coe_anchor"]`/`facts["terminal_g_default"]`, which are already
-    quantized to 2 decimal places and would round the multiple differently (measured: 20.11x from
-    the rounded facts against the EZPW worked example's 20.12x from the SECTION 1.5 inputs)."""
+def q_b(x: float) -> float:
+    """A $B figure at the six decimals the DEFAULTS block prints ($1,000)."""
+    return float(f"{x:.6f}")
+
+
+def q_rate(x: float) -> float:
+    """A fraction at four decimals of a percent, the way the DEFAULTS block prints it (+/-inf pass)."""
+    return x if isinf(x) else float(f"{x * 100:.4f}") / 100.0
+
+
+def q_months(x: float) -> float:
+    return float(f"{x:.4f}")
+
+
+def q_ratio(x: float) -> float:
+    return float(f"{x:.6f}")
+
+
+def _q(v, fn):
+    return None if v is None else fn(v)
+
+
+LONG_RUN_MEMBERS = ("cycle", "cycle_year", "cycle_years", "e5", "oe5", "m5", "m_tc", "m_years", "r_tc", "r_years", "p",
+                    "g_rev", "g_rev_years", "terminal_g_basis", "ni_over_oe", "nwc_intensity", "nwc_years",
+                    "stub_months", "stamps")
+
+
+def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
+    """The `long_run` fact from raw values: every member of LONG_RUN_MEMBERS (None when unknown),
+    numbers at their printed precision. e5 and oe5 come in $B. {} for None or an empty dict.
+      cycle True/False/None, cycle_year int/None (the latest year with both falls), cycle_years the list of
+      such years, e5/oe5 $B, m5/m_tc/r_tc/g_rev/nwc_intensity fractions
+      (r_tc may be +/-inf), m_years/r_years/g_rev_years/nwc_years [first, last, n] or None, p (a
+      multiple of 1/8), terminal_g_basis "revenue_trend"/"consensus_fallback", ni_over_oe a ratio,
+      stub_months, stamps a list of strings."""
+    if not d:
+        return {}
+    out: dict[str, Any] = {}
+    for k in LONG_RUN_MEMBERS:
+        v = d.get(k)
+        if k in ("e5", "oe5"):
+            v = _q(v, q_b)
+        elif k in ("m5", "m_tc", "r_tc", "g_rev", "nwc_intensity"):
+            v = _q(v, q_rate)
+        elif k == "p":
+            v = _q(v, lambda x: float(f"{x:.3f}"))
+        elif k == "ni_over_oe":
+            v = _q(v, q_ratio)
+        elif k == "stub_months":
+            v = _q(v, q_months)
+        elif k in ("m_years", "r_years", "g_rev_years", "nwc_years"):
+            v = [int(x) for x in v] if v else None
+        elif k == "cycle_year":
+            v = int(v) if v is not None else None
+        elif k == "cycle_years":
+            v = [int(x) for x in v] if v else []
+        elif k == "stamps":
+            v = list(v) if v else []
+        out[k] = v
+    return out
+
+
+_NONE = "none"
+
+
+def _dv_rate4(v):
+    """A fraction as a percent at four decimals; +inf reads "unlimited"; None reads not available."""
+    if not isinstance(v, (int, float)):
+        return _NA
+    return "unlimited" if v == inf else f"{v * 100:.4f}%"
+
+
+def _dp_rate4(raw):
+    s = raw.strip()
+    if s.lower() == _NA:
+        return None
+    if s == "unlimited":
+        return inf
+    return float(s.rstrip("%")) / 100.0
+
+
+def _lr_rate(v):
+    """A long_run rate member: percent at four decimals, +inf/-inf spelled, none for None."""
+    if v is None:
+        return _NONE
+    if v == inf:
+        return "+inf"
+    if v == -inf:
+        return "-inf"
+    return f"{v * 100:.4f}%"
+
+
+def _lr_years(v):
+    return _NONE if not v else f"{v[0]}-{v[1]}:{v[2]}"
+
+
+def _fnum(v, fmt):
+    return _NONE if v is None else format(v, fmt)
+
+
+def _render_long_run(lr: dict[str, Any]) -> str:
+    """The long_run members as `name=value, ...` (`, `-separated; values carry no comma)."""
+    if not lr:
+        return _NA
+    cyc = lr.get("cycle")
+    parts = [
+        "cycle=" + (_NONE if cyc is None else ("yes" if cyc else "no")),
+        "cycle_year=" + _fnum(lr.get("cycle_year"), "d"),
+        "cycle_years=" + (";".join(str(y) for y in lr["cycle_years"]) if lr.get("cycle_years") else _NONE),
+        "e5=" + _fnum(lr.get("e5"), ".6f"),
+        "oe5=" + _fnum(lr.get("oe5"), ".6f"),
+        "m5=" + _lr_rate(lr.get("m5")),
+        "m_tc=" + _lr_rate(lr.get("m_tc")),
+        "m_years=" + _lr_years(lr.get("m_years")),
+        "r_tc=" + _lr_rate(lr.get("r_tc")),
+        "r_years=" + _lr_years(lr.get("r_years")),
+        "p=" + _fnum(lr.get("p"), ".3f"),
+        "g_rev=" + _lr_rate(lr.get("g_rev")),
+        "g_rev_years=" + _lr_years(lr.get("g_rev_years")),
+        "terminal_g_basis=" + (lr.get("terminal_g_basis") or _NONE),
+        "ni_over_oe=" + _fnum(lr.get("ni_over_oe"), ".6f"),
+        "nwc_intensity=" + _lr_rate(lr.get("nwc_intensity")),
+        "nwc_years=" + _lr_years(lr.get("nwc_years")),
+        "stub_months=" + _fnum(lr.get("stub_months"), ".4f"),
+        "stamps=" + (";".join(lr["stamps"]) if lr.get("stamps") else _NONE),
+    ]
+    return ", ".join(parts)
+
+
+def _parse_long_run(raw: str) -> dict[str, Any]:
+    s = raw.strip()
+    if s.lower() == _NA:
+        return {}
+    raw_members = {}
+    for member in s.split(", "):
+        k, _, v = member.partition("=")
+        raw_members[k.strip()] = v.strip()
+    out: dict[str, Any] = {}
+    for k in LONG_RUN_MEMBERS:
+        v = raw_members.get(k)
+        if v is None:
+            raise ValueError(f"revision-17 DEFAULTS long_run has no {k!r} member")
+        if v == _NONE:
+            out[k] = [] if k in ("stamps", "cycle_years") else None
+        elif k == "cycle":
+            out[k] = v == "yes"
+        elif k == "cycle_year":
+            out[k] = int(v)
+        elif k == "cycle_years":
+            out[k] = [int(x) for x in v.split(";")]
+        elif k in ("e5", "oe5", "ni_over_oe", "stub_months", "p"):
+            out[k] = float(v)
+        elif k in ("m5", "m_tc", "r_tc", "g_rev", "nwc_intensity"):
+            out[k] = inf if v == "+inf" else (-inf if v == "-inf" else float(v.rstrip("%")) / 100.0)
+        elif k in ("m_years", "r_years", "g_rev_years", "nwc_years"):
+            mm = re.fullmatch(r"(\d{4})-(\d{4}):(\d+)", v)
+            if not mm:
+                raise ValueError(f"revision-17 DEFAULTS long_run {k}={v!r} is not first-last:n")
+            out[k] = [int(x) for x in mm.groups()]
+        elif k == "stamps":
+            out[k] = v.split(";")
+        else:                                    # terminal_g_basis
+            out[k] = v
+    return out
+
+
+def _render_working_capital(wc) -> str:
+    return ", ".join(f"{x:.6f}" for x in wc) if wc else _NA
+
+
+def _parse_working_capital(raw: str):
+    s = raw.strip()
+    if s.lower() == _NA:
+        return None
+    return [float(x) for x in s.split(", ")]
+
+
+_CAP_MEMBERS = ("removed", "ni_filed", "ni_capped", "eps_filed", "eps_vendor")
+
+
+def quantize_base_year_cap(d: dict[str, Any] | None) -> dict[str, float] | None:
+    """The `base_year_cap` fact from consensus_reference.base_year_cap's dict (money in dollars,
+    per-share figures in dollars): $B at six decimals, EPS at four."""
+    if not d:
+        return None
+    return {"removed": q_b(d["removed"] / 1e9), "ni_filed": q_b(d["ni_filed"] / 1e9),
+            "ni_capped": q_b(d["ni_capped"] / 1e9), "eps_filed": float(f"{d['eps_filed']:.4f}"),
+            "eps_vendor": float(f"{d['eps_vendor']:.4f}")}
+
+
+def _render_base_year_cap(c) -> str:
+    return (f"removed={c['removed']:.6f}, ni_filed={c['ni_filed']:.6f}, ni_capped={c['ni_capped']:.6f}, "
+            f"eps_filed={c['eps_filed']:.4f}, eps_vendor={c['eps_vendor']:.4f}")
+
+
+def _parse_base_year_cap(raw: str) -> dict[str, float]:
+    got = dict(m.strip().split("=", 1) for m in raw.strip().split(", "))
+    return {k: float(got[k]) for k in _CAP_MEMBERS}
+
+
+def _years_txt(v) -> str:
+    return "the years it holds" if not v else f"FY{v[0]}-FY{v[1]}, {v[2]} years"
+
+
+def _terminal_g_explanation(f: dict[str, Any]) -> str:
+    """The terminal_g_default line's sentence: where the default comes from (brief B section 3)."""
+    lr = f.get("long_run") or {}
+    tail = "more than 0.5 points away needs terminal_reason"
+    basis = lr.get("terminal_g_basis")
+    if basis == "revenue_trend" and lr.get("g_rev") is not None:
+        yrs = lr.get("g_rev_years")
+        span = f"FY{yrs[0]}-FY{yrs[1]}" if yrs else "the years it holds"
+        return (f"from your own revenue trend {span}: {lr['g_rev'] * 100:.2f}%/yr, held between breakeven "
+                f"inflation and the anchor; {tail}")
+    if basis == "consensus_fallback":
+        return (f"the next-FY consensus revenue growth rule (your record holds fewer than 5 years of revenue "
+                f"or breakeven inflation is missing); {tail}")
+    return f"the Base terminal_g; {tail}"
+
+
+def _terminal_ronic_explanation(f: dict[str, Any]) -> str:
+    lr = f.get("long_run") or {}
+    tail = "a Base terminal_ronic more than 2 points away needs terminal_reason"
+    if "record_not_available" in (lr.get("stamps") or []):
+        return (f"the Base terminal return on new investment; your record has fewer than 3 years of returns "
+                f"on tangible invested capital, so it is the cost of equity and growth adds no value; {tail}")
+    return (f"the Base terminal return on new investment: the cost of equity plus p times the excess over it "
+            f"of r_tc, your record's median return on tangible invested capital (both in long_run); {tail}")
+
+
+def _working_capital_explanation(f: dict[str, Any]) -> str:
+    lr = f.get("long_run") or {}
+    if not f.get("working_capital"):
+        return ("no working-capital deduction: the reference has no revenue path or your record holds fewer "
+                "than 5 years with a classified balance sheet")
+    nwc = lr.get("nwc_intensity")
+    share = f"{nwc * 100:.2f}% of each year's revenue change" if isinstance(nwc, (int, float)) else "your record's median"
+    return (f"the working capital the reference's revenue growth ties up in years 1-5, $B ({share}, median of "
+            f"{_years_txt(lr.get('nwc_years'))}), which the desk deducts from every scenario's owner earnings "
+            f"unless base_cf is within 2% of cash_basis_b, which already carries it")
+
+
+def render_defaults_block(facts: dict[str, Any]) -> str:
+    """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
+    TASK. Prints every one of the `KEYS` (one fact per line; revision 17: `base_year_cap` only when
+    the cap applied), plus two display-only lines that carry no facts key: the fixed rule lines
+    `cash_flow_life` and `price`. The reader (`_from_defaults_block`) ignores display lines.
+    Revision 17 removed the `default_exit_multiple` display line: the desk has no exit multiple."""
     f = facts
 
     def line(key, value, explanation):
@@ -425,21 +687,21 @@ def render_defaults_block(facts: dict[str, Any], default_exit_multiple: float | 
     if isinstance(bw.get("ttm_year2"), (int, float)):
         bw_parts.append(f"ttm_year2={bw['ttm_year2']:.3f}")
     lines.append(line("base_window", ", ".join(bw_parts) if bw_parts else _NA,
-                      "when printed, base_cf_reason names the window you judge representative "
-                      "and the item behind the gap"))
+                      "information only: the desk's arithmetic does not depend on the window"))
 
     lines.append(line("coe_anchor", _dv_rate2(f.get("coe_anchor")),
                       "the Base discount rate; more than 1.5 points away needs coe_adjustment_reason"))
     lines.append(line("terminal_g_default", _dv_rate2(f.get("terminal_g_default")),
-                      "the Base terminal_g; more than 0.5 points away needs terminal_reason"))
+                      _terminal_g_explanation(f)))
     lines.append(line("terminal_g_anchor", _dv_rate2(f.get("terminal_g_anchor")),
                       "the long-run nominal growth anchor"))
-
-    dex_val = (f"{default_exit_multiple:.2f}x" if isinstance(default_exit_multiple, (int, float))
-              else _NA)
-    lines.append(line("default_exit_multiple", dex_val,
-                      "(1 + g) / (rate - g) at the defaults; a Base multiple implying terminal "
-                      "growth more than 0.5 points from terminal_g_default needs terminal_reason"))
+    lines.append(line("terminal_ronic", _dv_rate4(f.get("terminal_ronic")),
+                      _terminal_ronic_explanation(f)))
+    lines.append(line("long_run", _render_long_run(f.get("long_run") or {}),
+                      "The desk values years 6 on from X_5 (earnings before acquired-intangible "
+                      "amortization), pays for growth at terminal_ronic, and, when cycle is yes, moves the "
+                      "margin from m5 to your record's median m_tc by year 10. The members are the record "
+                      "behind it."))
 
     lines.append(line("net_debt_b", _dv_money(f.get("net_debt_b")),
                       "the firm frame's net debt; another figure needs net_debt_reason (the "
@@ -467,9 +729,17 @@ def render_defaults_block(facts: dict[str, Any], default_exit_multiple: float | 
     lv_parts = [f"{k}={lv[k]:.3f}" for k in ("year1", "year2", "bull2", "bear2")
                 if isinstance(lv.get(k), (int, float))]
     lines.append(line("levels", ", ".join(lv_parts) if lv_parts else _NA,
-                      "a Base year-2 cash flow more than 15% from year2 needs "
-                      "guidance_deviation_reason; a Bull or Bear more than 15% from bull2 or "
-                      "bear2 needs scenario_deviation_reason"))
+                      "the desk holds the Base's years 1-2 at year1 and year2 unless you pass "
+                      "guidance_deviation_reason (a Base year 2 more than 5% away); a Bull or Bear "
+                      "more than 15% from bull2 or bear2 needs scenario_deviation_reason"))
+    cap_fact = f.get("base_year_cap")
+    if cap_fact:
+        lines.append(line("base_year_cap", _render_base_year_cap(cap_fact),
+                          "the base year's filed EPS was more than 2% above the analysts' year-ago EPS, so "
+                          "the reference takes base net income as that year-ago EPS times the filed diluted "
+                          "shares and lowers its owner-earnings base by removed ($B)"))
+    lines.append(line("working_capital", _render_working_capital(f.get("working_capital")),
+                      _working_capital_explanation(f)))
 
     lines.append(line("next_fy_revenue_growth", _dv_growth1(f.get("next_fy_revenue_growth")),
                       "Base years 3-5 above it need guidance_deviation_reason, or the desk holds "
@@ -519,6 +789,19 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     def _str(key):
         return _dp_str(_val(key))
 
+    m_rev = _REVISION_RE.search(t.split("\n", 1)[0])
+    throughcycle = m_rev is not None and int(m_rev.group(1)) >= _FIRST_THROUGHCYCLE_REVISION
+
+    def _opt(key):
+        """A revision-17 line: required from revision 17 on, read when present before it (a block
+        rendered by this module under an older marker), else None."""
+        mm = re.search(rf"^- {re.escape(key)}: (.*?) \| ", block, re.MULTILINE)
+        if mm:
+            return mm.group(1)
+        if throughcycle and key != "base_year_cap":
+            raise ValueError(f"revision-17 DEFAULTS block has no {key!r} line")
+        return None
+
     shares_outstanding = _num("shares_outstanding")
     shares_dilution_factor = _num("shares_dilution_factor")
     shares_dilution_period = _str("shares_dilution_period")
@@ -552,7 +835,6 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     coe_anchor = _num("coe_anchor", pct=True)
     terminal_g_default = _num("terminal_g_default", pct=True)
     terminal_g_anchor = _num("terminal_g_anchor", pct=True)
-    # default_exit_multiple: derived, not a facts key — the reader ignores display lines.
     net_debt_b = _num("net_debt_b")
     interest_expense_latest_b = _num("interest_expense_latest_b")
     consensus_data_status = _str("consensus_data_status")
@@ -585,6 +867,15 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
 
     revenue_cagr_5y_pct = _num("revenue_cagr_5y_pct")   # stored as a percent number, not a fraction
 
+    _tr = _opt("terminal_ronic")
+    terminal_ronic = _dp_rate4(_tr) if _tr is not None else None
+    _lr = _opt("long_run")
+    long_run = _parse_long_run(_lr) if _lr is not None else {}
+    _wc = _opt("working_capital")
+    working_capital = _parse_working_capital(_wc) if _wc is not None else None
+    _cap = _opt("base_year_cap")
+    base_year_cap = _parse_base_year_cap(_cap) if _cap is not None else None
+
     return {
         "version": FACTS_VERSION,
         "source": "defaults_block",
@@ -612,6 +903,10 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "shares_dilution_period": shares_dilution_period,
         "shares_warning": shares_warning,
         "consensus_data_status": consensus_data_status,
+        "terminal_ronic": terminal_ronic,
+        "long_run": long_run,
+        "working_capital": working_capital,
+        "base_year_cap": base_year_cap,
     }
 
 

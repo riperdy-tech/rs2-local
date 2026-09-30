@@ -2,7 +2,7 @@
 
 Desk (financial_model_tool):
  1. R1 reads the unrounded share count: the dcf echo is rounded to 4 decimals of a billion.
- 2. R5/R6 use the harness's basis-point rounding (terminal_g_gap_bp, *_exit_g_gap_bp: > 50).
+ 2. R5 uses the harness's basis-point rounding (terminal_g_gap_bp: > 50); R6 (revision 17) measures terminal_ronic.
  3. An order violation (R12) is named in the refusal, which says no reason overrides it.
  4. Refusal texts carry the measured quantity, not a per-share value (R10(b), R13, R14).
  5. A missing harness price is never reported as 0.0.
@@ -79,13 +79,14 @@ def test_r5_uses_basis_point_rounding():
     assert "terminal_reason" in _needs(bad)         # 51 bp
 
 
-def test_r6_exit_implied_growth_uses_basis_point_rounding():
-    # implied g = (m*r - 1)/(m + 1); at r = 0.09 a multiple of 20 implies 3.7143%, 3 bp from 3.75%
-    ctx = _ctx(terminal_g_default=0.0375)
-    ok = fmt.execute_financial_model(_call(terminal_exit_multiple=20.0), ctx)
-    assert "terminal_reason" not in _needs(ok)
-    bad = fmt.execute_financial_model(_call(terminal_exit_multiple=12.0), ctx)   # implies 1.62%
-    assert "terminal_reason" in _needs(bad)
+def test_r6_terminal_ronic_is_measured_against_its_default_at_two_points():
+    # revision 17: the exit-multiple form of R6 left with the exit multiple; R6 now measures the Base's
+    # terminal_ronic against the DEFAULTS terminal_ronic, more than 2 points needing terminal_reason
+    ctx = _ctx(terminal_ronic=0.10)
+    ok = fmt.execute_financial_model(_call(sc_terminal_ronic=0.12), ctx)
+    assert "terminal_reason" not in _needs(ok)        # 2.0 points: not more than 2
+    bad = fmt.execute_financial_model(_call(sc_terminal_ronic=0.1205), ctx)
+    assert "terminal_reason" in _needs(bad)           # 2.05 points
 
 
 def test_r12_order_refusal_names_the_order():

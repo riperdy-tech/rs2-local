@@ -206,13 +206,11 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True):
         if role in src:
             c, e = src[role]
             if is_r15:
-                # 3.8 "Leg (replaces S2 R5)": the scenario's dcf["terminal_leg"] when present, and
-                # "finite_life" on the finite path. There is no typed value to consult.
+                # 3.8 "Leg (replaces S2 R5)": "finite_life" on the finite path, else "gordon". Revision 17: the
+                # desk has one terminal (funded growth) and no terminal_leg, so a revision-15 path never reads
+                # one. There is no typed value to consult.
                 d = e["dcf"]
-                if d.get("finite_life_years") is not None:
-                    leg = "finite_life"
-                else:
-                    leg = d.get("terminal_leg") or "gordon"
+                leg = "finite_life" if d.get("finite_life_years") is not None else "gordon"
                 v = _f(d.get("per_share_iv"))
             else:
                 leg, v = pick_leg(e["dcf"], _f(typed.get(f"{role}_iv")))
