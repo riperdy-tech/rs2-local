@@ -186,9 +186,11 @@ def test_a_sample_with_a_desk_result_goes_to_the_forced_report(monkeypatch, tmp_
 
 
 def test_a_stub_that_stopped_normally_keeps_the_old_path(monkeypatch, tmp_path):
-    bodies = _fake_ollama(monkeypatch, [_resp("", done="stop"), _resp(MEMO)])
+    # revision 17, brief C8: after a complete desk run (a stub with no desk run gets the desk continuation first)
+    bodies = _fake_ollama(monkeypatch, [_resp("", tool_calls=_desk_call()), _resp("", done="stop"), _resp(MEMO)])
+    _dispatch(monkeypatch, [DESK_OK])
     _, _, meta = _run(tmp_path)
-    assert len(bodies) == 2 and meta["turns"][-1].get("forced_report") is True
+    assert len(bodies) == 3 and meta["turns"][-1].get("forced_report") is True
     assert not any(t.get("window_retry") for t in meta["turns"])
     assert meta["failure"] is None
 
@@ -308,14 +310,16 @@ def test_page_notes_shrink_oldest_first_and_only_pages():
 
 def test_the_loop_shrinks_pages_only_when_the_report_room_runs_short(monkeypatch, tmp_path):
     page = {"url": "https://a.example/1", "text": "A" * 3000}
+    # revision 17, brief C8: the second call is a desk run (was a search), so the memorandum turn is not followed by
+    # the desk continuation; the page notes and the shrink are what this test reads
     calls = [[{"function": {"name": "fetch_page", "arguments": {"url": "https://a.example/1"}}}],
-             [{"function": {"name": "search_web", "arguments": {"query": "q"}}}]]
+             _desk_call()]
 
     def run(ctx):
         bodies = _fake_ollama(monkeypatch, [_resp("", tool_calls=calls[0], prompt=500),
                                             _resp("", tool_calls=calls[1], prompt=600),
                                             _resp(MEMO, prompt=700)])
-        _dispatch(monkeypatch, [page, {"query": "q", "results": []}])
+        _dispatch(monkeypatch, [page, DESK_OK])
         _, _, meta = at.chat_with_tools("m", "pack", tmp_path, ctx=ctx, verbose=False)
         return bodies, meta
 
@@ -414,7 +418,10 @@ def test_f2_num_predict_capping_and_turn_record_keys(monkeypatch, tmp_path):
 
     # 1. Small prompt: num_predict equals configured value
     bodies1 = _fake_ollama(monkeypatch, [_resp(MEMO)])
-    _, _, meta1 = at.chat_with_tools("m", "short", tmp_path, ctx=81920, num_predict=49152, verbose=False)
+    # revision 17, brief C8: max_model_calls=0 on these single-turn sessions (a memorandum with no desk run and the
+    # desk open would be followed by a desk continuation turn); num_predict and the turn keys are mode-independent
+    _, _, meta1 = at.chat_with_tools("m", "short", tmp_path, ctx=81920, num_predict=49152, verbose=False,
+                                     max_model_calls=0)
     assert len(bodies1) == 1
     t0 = meta1["turns"][0]
     assert "est_prompt_tokens" in t0 and "num_predict" in t0
@@ -425,7 +432,8 @@ def test_f2_num_predict_capping_and_turn_record_keys(monkeypatch, tmp_path):
     large_prompt = "x" * 15000
     bodies2 = _fake_ollama(monkeypatch, [_resp(MEMO)])
     ctx2 = 10000
-    _, _, meta2 = at.chat_with_tools("m", large_prompt, tmp_path, ctx=ctx2, num_predict=49152, verbose=False)
+    _, _, meta2 = at.chat_with_tools("m", large_prompt, tmp_path, ctx=ctx2, num_predict=49152, verbose=False,
+                                     max_model_calls=0)
     assert len(bodies2) == 1
     t1 = meta2["turns"][0]
     assert "est_prompt_tokens" in t1 and "num_predict" in t1
@@ -437,7 +445,8 @@ def test_f2_num_predict_capping_and_turn_record_keys(monkeypatch, tmp_path):
     huge_prompt = "x" * 60000
     bodies3 = _fake_ollama(monkeypatch, [_resp(MEMO)])
     ctx3 = 10000
-    _, _, meta3 = at.chat_with_tools("m", huge_prompt, tmp_path, ctx=ctx3, num_predict=49152, verbose=False)
+    _, _, meta3 = at.chat_with_tools("m", huge_prompt, tmp_path, ctx=ctx3, num_predict=49152, verbose=False,
+                                     max_model_calls=0)
     assert len(bodies3) == 1
     t2 = meta3["turns"][0]
     assert t2["num_predict"] == 1024

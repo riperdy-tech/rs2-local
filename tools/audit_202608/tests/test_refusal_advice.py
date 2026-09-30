@@ -100,16 +100,18 @@ def test_bear_whose_defaults_and_band_edge_both_sit_above_the_price_gets_sentenc
     assert err.endswith(" " + ADVISED_TAIL) and GENERIC_TAIL not in err
 
 
-def test_bear_defaults_above_the_price_but_band_edge_below_gets_sentences_1_and_3():
+def test_bear_defaults_above_the_price_but_band_edge_below_names_the_price_as_the_target_and_the_edge_as_the_reach():
+    # revision 17, brief C6b: was "Lowering the Bear to $b or below within the band clears this", which sent the model
+    # to the band's floor; the rule clears at today's price
     p = 60.0                                                            # BEAR_B (58.57) < 60 < BEAR_A (68.06)
     adv = _advice(_refusal(p), "bear_above_price_reason")
     assert adv == (f"The DEFAULTS Bear for this name is {_money(BEAR_A)}, above today's price {_money(p)}: keep the "
-                   f"defaults and give bear_above_price_reason (why the downside is limited), or build a deeper Bear "
-                   f"outside the band with scenario_deviation_reason and dated evidence. Lowering the Bear to "
-                   f"{_money(BEAR_B)} or below within the band clears this without another reason.")
+                   f"defaults and give bear_above_price_reason (why the downside is limited), or lower the Bear within "
+                   f"15% of bear2 until it is not above {_money(p)} (the band reaches down to {_money(BEAR_B)}); that "
+                   f"needs no other reason.")
 
 
-def test_a_bear_above_the_price_whose_defaults_clear_it_gets_sentence_3_alone():
+def test_a_bear_above_the_price_whose_defaults_are_not_above_it_gets_the_third_text_alone():
     def richer(p):                                                      # a Bear valued above the DEFAULTS Bear (year 2 in band)
         for sc in p["scenarios"]:
             if sc["name"] == "Bear":
@@ -119,8 +121,11 @@ def test_a_bear_above_the_price_whose_defaults_clear_it_gets_sentence_3_alone():
     price = (a + bear_iv) / 2                                           # the DEFAULTS Bear is below it; the call's Bear is not
     res = _refusal(price, mutate=richer)
     assert bear_iv > price > a                                          # the fixture is what it claims to be
+    # revision 17, brief C6b: was "Lowering the Bear to $b or below within the band clears this without another reason."
     assert _advice(res, "bear_above_price_reason") == (
-        f"Lowering the Bear to {_money(b)} or below within the band clears this without another reason.")
+        f"The DEFAULTS Bear for this name is {_money(a)}, not above today's price {_money(price)}: a Bear at the "
+        f"defaults, or any Bear within 15% of bear2 that is not above {_money(price)} (the band reaches down to "
+        f"{_money(b)}), clears this without another reason.")
 
 
 def test_bear_reasons_given_means_no_refusal_and_no_advice():
@@ -140,16 +145,17 @@ def test_bull_whose_defaults_and_band_edge_both_sit_below_the_price_gets_sentenc
                    f"scenario_deviation_reason as well.")
 
 
-def test_bull_defaults_below_the_price_but_band_edge_above_gets_sentences_1_and_3():
+def test_bull_defaults_below_the_price_but_band_edge_above_names_the_price_as_the_target_and_the_edge_as_the_reach():
+    # revision 17, brief C6b: was "Raising the Bull to $b or above within the band clears this", the band's ceiling
     p = 140.0                                                           # BULL_A (125.63) < 140 < BULL_B (143.74)
     adv = _advice(_refusal(p), "bull_below_price_reason")
     assert adv == (f"The DEFAULTS Bull for this name is {_money(BULL_A)}, below today's price {_money(p)}: keep the "
-                   f"defaults and give bull_below_price_reason (why the upside is limited), or build a higher Bull "
-                   f"outside the band with scenario_deviation_reason and dated evidence. Raising the Bull to "
-                   f"{_money(BULL_B)} or above within the band clears this without another reason.")
+                   f"defaults and give bull_below_price_reason (why the upside is limited), or raise the Bull within "
+                   f"15% of bull2 until it is not below {_money(p)} (the band reaches up to {_money(BULL_B)}); that "
+                   f"needs no other reason.")
 
 
-def test_a_bull_below_the_price_whose_defaults_clear_it_gets_sentence_3_alone():
+def test_a_bull_below_the_price_whose_defaults_are_not_below_it_gets_the_third_text_alone():
     def poorer(p):                                                      # a Bull valued below the DEFAULTS Bull
         for sc in p["scenarios"]:
             if sc["name"] == "Bull":
@@ -158,8 +164,11 @@ def test_a_bull_below_the_price_whose_defaults_clear_it_gets_sentence_3_alone():
     bull_iv = _accepted_values(poorer)["Bull"]
     price = (bull_iv + a) / 2
     assert bull_iv < price < a
+    # revision 17, brief C6b: was "Raising the Bull to $b or above within the band clears this without another reason."
     assert _advice(_refusal(price, mutate=poorer), "bull_below_price_reason") == (
-        f"Raising the Bull to {_money(b)} or above within the band clears this without another reason.")
+        f"The DEFAULTS Bull for this name is {_money(a)}, not below today's price {_money(price)}: a Bull at the "
+        f"defaults, or any Bull within 15% of bull2 that is not below {_money(price)} (the band reaches up to "
+        f"{_money(b)}), clears this without another reason.")
 
 
 # ---- what the refusal lists and how it ends -----------------------------------------------------------------------
@@ -223,7 +232,18 @@ def test_advice_never_leaves_a_compute_error_behind():
 
 # ---- the loop guard ---------------------------------------------------------------------------------------------
 
-GUARD = "The same rules fired after you changed inputs; give the reasons named above with the inputs you have."
+TAIL = " Give the reasons named above with the inputs you have."
+
+
+def _guard(*rules):
+    """The sentence the loop guard appends (revision 17, brief C6b): the reasons of the window, sorted, joined with ", "
+    and a final " and "."""
+    named = sorted(rules)
+    joined = named[0] if len(named) == 1 else ", ".join(named[:-1]) + " and " + named[-1]
+    return f"Changing inputs has not cleared {joined}.{TAIL}"
+
+
+GUARD = _guard("bear_above_price_reason")               # the guard's sentence when one reason is in the window
 
 
 def _refused(*reasons):
@@ -233,19 +253,53 @@ def _refused(*reasons):
 
 def test_the_guard_fires_on_the_same_reasons_after_changed_inputs_only():
     g = at.desk_loop_guard
-    first, prev = g(_refused("bear_above_price_reason"), "call-1", None)
-    assert GUARD not in first["error"]
-    second, prev = g(_refused("bear_above_price_reason"), "call-2", prev)
+    A, S = "bear_above_price_reason", "scenario_deviation_reason"
+    first, prev = g(_refused(A), "call-1", None)
+    assert "Changing inputs has not cleared" not in first["error"]
+    second, prev = g(_refused(A), "call-2", prev)
     assert second["error"].endswith(" " + GUARD)
-    assert at.DESK_LOOP_GUARD == GUARD
-    third, prev = g(_refused("bear_above_price_reason"), "call-2", prev)                # the same inputs again: no walk
-    assert GUARD not in third["error"]
-    fourth, prev = g(_refused("scenario_deviation_reason"), "call-3", prev)             # another reason set
-    assert GUARD not in fourth["error"]
-    fifth, prev = g(_refused("scenario_deviation_reason", "bear_above_price_reason"), "call-4", prev)
-    assert GUARD not in fifth["error"]
-    sixth, prev = g(_refused("bear_above_price_reason", "scenario_deviation_reason"), "call-5", prev)   # same set, any order
-    assert sixth["error"].endswith(" " + GUARD)
+    assert at.DESK_LOOP_GUARD.format(rules=A) == GUARD
+    third, prev = g(_refused(A), "call-2", prev)                                        # the same inputs again: no walk
+    assert "Changing inputs has not cleared" not in third["error"]
+    fourth, prev = g(_refused(S), "call-3", prev)                                       # another reason: nothing in common
+    assert "Changing inputs has not cleared" not in fourth["error"]
+    # revision 17, brief C6b: was "no guard" (the reason set differed from the refusal just before); the reasons now
+    # count one by one against the last two refusals, so a refusal that shares S with the one before fires
+    fifth, prev = g(_refused(S, A), "call-4", prev)
+    assert fifth["error"].endswith(" " + _guard(A, S))
+    sixth, prev = g(_refused(A, S), "call-5", prev)                                     # same set, any order
+    assert sixth["error"].endswith(" " + _guard(A, S))
+
+
+def test_the_guard_over_a_window_of_the_last_two_refusals():
+    g = at.desk_loop_guard
+    A, B, C = "bear_above_price_reason", "scenario_deviation_reason", "coe_adjustment_reason"
+
+    def run(steps):
+        prev, fired = None, []
+        for reasons, key in steps:
+            res, prev = g(_refused(*reasons), key, prev)
+            fired.append(res["error"].removeprefix("Not accepted as a desk run. x.").strip())
+        return fired
+
+    assert run([([A], "1"), ([A], "2")]) == ["", _guard(A)]                             # A, A with changed inputs fires
+    assert run([([A], "1"), ([A], "1")]) == ["", ""]                                    # the same inputs: no
+    assert run([([A], "1"), ([B], "2")]) == ["", ""]                                    # A, B: no
+    assert run([([A], "1"), ([B], "2"), ([A], "3")]) == ["", "", _guard(A, B)]          # A, B, A fires, naming the window
+    assert run([([A], "1"), ([B], "2"), ([C], "3"), ([A], "4")]) == ["", "", "", ""]    # A, B, C, A: A left the window
+    # three reasons in the window are joined "a, b and c", sorted
+    assert run([([A, C], "1"), ([B], "2"), ([A], "3")]) == ["", "", _guard(A, B, C)]
+    assert _guard(A, B, C) == ("Changing inputs has not cleared bear_above_price_reason, coe_adjustment_reason and "
+                               "scenario_deviation_reason." + TAIL)
+
+
+def test_the_guard_compares_with_the_latest_refusal_that_shares_a_reason():
+    g = at.desk_loop_guard
+    A = "bear_above_price_reason"
+    _, prev = g(_refused(A), "1", None)
+    _, prev = g(_refused(A), "2", prev)
+    res, prev = g(_refused(A), "2", prev)                # the model repeated call 2: identical to the latest one, no walk
+    assert "Changing inputs has not cleared" not in res["error"]
 
 
 def test_a_refusal_without_reasons_is_not_tracked_and_breaks_the_run():
@@ -351,9 +405,20 @@ def test_ugis_four_refusals_replay_to_the_preview_percentages_and_the_new_texts(
         after = results[i][1]
         assert "bear_above_price_reason needed: the Bear value is" in after
         assert sentence_1 + " " + sentence_2 in after
-        assert after.endswith(" " + ADVISED_TAIL) and GENERIC_TAIL not in after
+        # revision 17, brief C6b: refusal 3 now also carries the loop guard's sentence after the advised tail
+        assert after.removesuffix(" " + _guard("bear_above_price_reason", "scenario_deviation_reason")
+                                  ).endswith(" " + ADVISED_TAIL) and GENERIC_TAIL not in after
         assert results[i][0].endswith(GENERIC_TAIL)                     # what the preview's refusal said
     # refusals 2 and 4 (the Bear lowered outside the band): the year-2 rule alone, as before; no rule above applies
+    # (revision 17, brief C6b: the refusal's own text is unchanged; refusal 4 gains the loop guard, checked below)
     for i in (1, 3):
-        assert results[i][1] == results[i][0]
-        assert GUARD not in results[i][1]                               # the reasons alternate: nothing to guard
+        assert results[i][1].startswith(results[i][0])
+    # revision 17, brief C6b: the four refusals alternate two reasons (bear_above_price_reason, scenario_deviation_reason,
+    # bear_above_price_reason, scenario_deviation_reason), each after changed inputs. The guard compared only with the
+    # refusal just before and never fired (this test asserted exactly that); it now fires on refusals 3 and 4, not on 1 and 2.
+    fired = _guard("bear_above_price_reason", "scenario_deviation_reason")
+    assert fired == ("Changing inputs has not cleared bear_above_price_reason and scenario_deviation_reason. "
+                     "Give the reasons named above with the inputs you have.")
+    assert [r[1].endswith(" " + fired) for r in results] == [False, False, True, True]
+    assert results[3][1] == results[3][0] + " " + fired                # refusal 4's own text is the preview's, plus the sentence
+    assert results[2][1].endswith(" " + ADVISED_TAIL + " " + fired)

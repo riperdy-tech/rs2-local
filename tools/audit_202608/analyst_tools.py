@@ -84,10 +84,10 @@ DESK_CLOSED_RUNS = ("The desk is now closed: all {cap} desk runs are used, so ru
 DESK_CLOSED_REJECTED = ("The desk is now closed after {n} rejected calls, so run_financial_model is no longer "
                         "offered. Your last valid desk results stand; report them. Research tools stay open; write "
                         "the memorandum when your research is done.")
-# Revision 17, brief C6: the loop guard. The same set of reasons refused on two desk calls in a row, the inputs
-# having changed in between, means the model is walking an input across rules; the second refusal says so.
-DESK_LOOP_GUARD = ("The same rules fired after you changed inputs; give the reasons named above with the inputs "
-                   "you have.")
+# Revision 17, briefs C6 and C6b: the loop guard. A refusal that names a reason one of the last two refusals named,
+# with the inputs changed since that refusal, means the model is walking an input across rules (UGI's loop alternated
+# two reasons, which a comparison with the refusal just before cannot see); the refusal says so.
+DESK_LOOP_GUARD = "Changing inputs has not cleared {rules}. Give the reasons named above with the inputs you have."
 DESK_CLOSED_LINE = ("The desk is closed: run_financial_model is no longer offered, and your last desk results stand. "
                     "Write the memorandum when your research is done.")
 PART_CHARS = 9000
@@ -849,17 +849,23 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None, _fallb
     return ret
 
 
-def desk_loop_guard(result, call_key, previous):
-    """Revision 17, brief C6. `result` is a desk refusal, `call_key` the call's inputs as sent and `previous` the
-    (reason set, call_key) of the refusal on the call just before this one, or None. Returns (result, this
-    refusal): when the same reasons were refused on the previous call and the inputs differ, the error gains
-    DESK_LOOP_GUARD. A refusal with no reasons (a missing input, the order rule) is not tracked."""
+def desk_loop_guard(result, call_key, window):
+    """Revision 17, briefs C6 and C6b. `result` is a desk refusal, `call_key` the call's inputs as sent and `window`
+    the (reason set, call_key) of the last two tracked refusals, or None. Returns (result, the window with this
+    refusal added): when one of this refusal's reasons was named by a refusal in the window and the inputs differ
+    from the latest such refusal's, the error gains DESK_LOOP_GUARD, naming the reasons of the whole window (sorted,
+    joined with ", " and a final " and "). A refusal with no reasons (a missing input, the order rule) is not
+    tracked and clears the window; so does an accepted call, in the analyst loop."""
     reasons = frozenset(n.get("reason") for n in (result.get("needs_reasons") or []) if isinstance(n, dict))
     if not reasons:
         return result, None
-    if previous is not None and previous[0] == reasons and previous[1] != call_key:
-        result = dict(result, error=f"{result['error']} {DESK_LOOP_GUARD}")
-    return result, (reasons, call_key)
+    window = tuple(window or ())
+    sharing = [h for h in window if h[0] & reasons]
+    if sharing and sharing[-1][1] != call_key:
+        named = sorted(set().union(*(h[0] for h in window)))
+        rules = named[0] if len(named) == 1 else ", ".join(named[:-1]) + " and " + named[-1]
+        result = dict(result, error=f"{result['error']} {DESK_LOOP_GUARD.format(rules=rules)}")
+    return result, (window + ((reasons, call_key),))[-2:]
 
 
 def dispatch_tool(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None, desk_context=None):
@@ -944,6 +950,49 @@ WINDOW_RETRY_PROMPT = (
     "now with Base, Bull and Bear as the TASK sets them. This first call is a starting point, not "
     "your answer: research what the TASK asks, then re-run the desk, listing each change in 'Model "
     "revisions' with the evidence that moved it.")
+# Revision 17, brief C8: the desk continuation. A terminal turn (no tool call) while no desk run has covered Base, Bull
+# and Bear and the desk is still open gets one more turn, on the desk alone, instead of a memorandum that cannot
+# publish anything. Not the desk-only recovery removed on 2026-09-27: that one ran at reduced thinking on the printed
+# defaults; this one runs at the configured think level and asks for the scenarios the analysis argues for.
+DESK_CONTINUATION = (
+    "{lead} no desk-backed value: {cause}. Code takes every published value from your last complete desk run of "
+    "Bear, Base and Bull; without one, nothing is published. Call run_financial_model now with the Bear, Base and "
+    "Bull your analysis argues for; only run_financial_model is open now, and you have {left} of {cap} desk runs "
+    "left. When the desk has returned a complete run, write the complete memorandum, SECTION 0 to SECTION 12, with "
+    "SECTION 0, SECTION 4 and SECTION 12 taken from that run.")
+DESK_CONTINUATION_LEAD = {"memorandum": "Your memorandum has",
+                          "no_memorandum": "Your turn ended without the memorandum, and there is"}
+DESK_CONTINUATION_CAUSE = {"no_desk_call": "you have made no run_financial_model call",
+                           "no_complete_run": "none of your run_financial_model calls returned a complete run of "
+                                              "Bear, Base and Bull"}
+DESK_ONLY_OPEN = "Only run_financial_model is open now."
+
+
+def desk_run_is_complete(calls):
+    """Revision 17, brief C8: a complete desk run is exactly contract_fill's rule, with its own functions. Over the
+    session's run_financial_model calls (snapshot records: the tool, its params and the result's keys), the union of
+    `entries(call)` roles over the calls where `completed(call)` holds covers base, bull and bear."""
+    import contract_fill        # not at module level: contract_fill -> fiduciary_gate -> capability_test -> analyst_tools
+    roles = set()
+    for c in calls:
+        if isinstance(c, dict) and c.get("tool") == "run_financial_model" and contract_fill.completed(c):
+            roles |= {e["role"] for e in contract_fill.entries(c)}
+    return {"base", "bull", "bear"} <= roles
+
+
+def desk_continuation_cause(calls, model_calls, desk_validation_errors, max_model_calls):
+    """Revision 17, brief C8. None when the desk continuation must not fire on the state of the desk: discovery mode
+    (max_model_calls 0), the desk closed (all runs used, or more than 6 refusals), or a complete desk run in `calls`.
+    Otherwise "no_desk_call" (the session made no run_financial_model call) or "no_complete_run" (it made some, and
+    none covered Base, Bull and Bear)."""
+    if max_model_calls <= 0 or model_calls >= max_model_calls or desk_validation_errors > 6:
+        return None
+    if desk_run_is_complete(calls):
+        return None
+    made = any(isinstance(c, dict) and c.get("tool") == "run_financial_model" for c in calls)
+    return "no_complete_run" if made else "no_desk_call"
+
+
 # UGI s3 and LAMR s1 wrote essays of up to 30,523 characters into sector_multiple_band.metric. The
 # arguments stayed in every later prompt, and the desk echoed them into every scenario, which
 # pushed Bear past the 12,000-character cut of the tool message in 3 of 85 desk calls.
@@ -1467,7 +1516,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     search_calls = 0
     model_calls = 0
     desk_validation_errors = 0
-    last_desk_refusal = None            # (reasons, inputs) of the desk call just before, when it was refused (C6)
+    desk_refusal_window = None          # (reasons, inputs) of the last two refused desk calls, cleared by an accepted call (C6b)
     eff_tools = TOOLS if tools is None else tools
 
     sample_search_queries = []
@@ -1481,6 +1530,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     failure = None
     window_retry_used = False
     window_retry_pending = False
+    desk_continuation = None            # C8: the record returned in meta; None until the continuation fires
+    desk_continuation_pending = False   # the next turn's record carries "continuation_for_desk"
+    desk_only = False                   # C8: only run_financial_model is open for the rest of the session
+    desk_calls_at_c8 = 0
     server_errors = 0
     chars_per_token = [None]   # measured on the previous request, for the report-room rule
 
@@ -1613,7 +1666,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
         # If search budget is exhausted, only expose financial modeling tool
         active_tools = eff_tools
-        if search_calls >= max_search_calls:
+        if search_calls >= max_search_calls or desk_only:
             active_tools = [t for t in eff_tools if t["function"]["name"] == "run_financial_model"]
         if model_calls >= max_model_calls or desk_validation_errors > 6:
             active_tools = [t for t in active_tools if t["function"]["name"] != "run_financial_model"]
@@ -1634,6 +1687,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         if window_retry_pending:
             turn_rec["window_retry"] = True
             window_retry_pending = False
+        if desk_continuation_pending:
+            turn_rec["continuation_for_desk"] = True
+            desk_continuation_pending = False
         if resp.get("done_reason") == "server_error":
             turn_rec["server_error"] = True
             turn_rec["http_status"] = resp.get("http_status")
@@ -1668,6 +1724,32 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 failure = "window_exhausted_twice"
                 final_report = ""
                 break
+            # Revision 17, brief C8: no complete desk run and the desk still open. Whether this turn delivered a
+            # memorandum does not matter: a memorandum with no desk run cannot publish a value. Once per call.
+            c8_cause = (desk_continuation_cause(snap, model_calls, desk_validation_errors, max_model_calls)
+                        if (desk_continuation is None and failure is None and server_errors < 2
+                            and done_reason != "server_error"
+                            and any(t["function"]["name"] == "run_financial_model" for t in eff_tools))
+                        else None)
+            if c8_cause is not None:
+                delivered = not is_stub
+                if verbose:
+                    print(f"    [harness] terminal turn with no complete desk run and the desk open "
+                          f"({c8_cause}) - continuing on the desk alone", flush=True)
+                msgs.append({"role": "assistant", "content": msg.get("content") or ""})
+                meta_msgs.append(None)
+                msgs.append({"role": "user", "content": DESK_CONTINUATION.format(
+                    lead=DESK_CONTINUATION_LEAD["memorandum" if delivered else "no_memorandum"],
+                    cause=DESK_CONTINUATION_CAUSE[c8_cause],
+                    left=max_model_calls - model_calls, cap=max_model_calls)})
+                meta_msgs.append(None)
+                desk_only = True
+                desk_continuation_pending = True
+                desk_calls_at_c8 = sum(1 for c in snap if c.get("tool") == "run_financial_model")
+                desk_continuation = {"reason": c8_cause, "after": "memorandum" if delivered else "no_memorandum",
+                                     "turn": len(turns), "desk_calls_after": 0, "complete_after": False,
+                                     "base_over_reference": None}
+                continue
             if is_stub:
                 # BOTH live failure shapes land here, and the old test (`not content.strip()`)
                 # only caught the first:
@@ -1716,7 +1798,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             result = None
             try:
                 desk_was_closed = (model_calls >= max_model_calls or desk_validation_errors > 6) if max_model_calls > 0 else False
-                if name in ("search_web", "fetch_page"):
+                if desk_only and name != "run_financial_model":
+                    result = {"error": DESK_ONLY_OPEN}      # C8: counts against no budget
+                elif name in ("search_web", "fetch_page"):
                     research_calls += 1
                     if name == "search_web":
                         q = (args or {}).get("query", "")
@@ -1893,13 +1977,13 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache, **desk_kw)
                         if isinstance(result, dict) and result.get("validation_error") is True:
                             desk_validation_errors += 1
-                            result, last_desk_refusal = desk_loop_guard(result, call_key, last_desk_refusal)
+                            result, desk_refusal_window = desk_loop_guard(result, call_key, desk_refusal_window)
                             if desk_validation_errors > 6:
                                 result = {"error": f"financial model call budget exhausted ({max_model_calls}); "
                                                    f"use computed results and finalize memorandum"}
                         else:
                             model_calls += 1
-                            last_desk_refusal = None
+                            desk_refusal_window = None
 
                     if max_model_calls > 0 and isinstance(result, dict):
                         result = dict(result)
@@ -1945,6 +2029,18 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 elif result is not None:
                     call_rec["result"] = result
                 _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
+                if (name == "run_financial_model" and desk_continuation is not None
+                        and not desk_continuation["complete_after"] and desk_run_is_complete(snap)):
+                    # the first complete run after C8: its Base against the pack's consensus-implied value, an
+                    # annotation of the copy risk the removed desk-only recovery had, never a gate
+                    import contract_fill
+                    desk_continuation["complete_after"] = True
+                    base_iv = next((e["dcf"]["per_share_iv"] for c in reversed(snap)
+                                    if c.get("tool") == "run_financial_model" and contract_fill.completed(c)
+                                    for e in contract_fill.entries(c) if e["role"] == "base"), None)
+                    ref_iv = (desk_context or {}).get("consensus_implied_value")
+                    if isinstance(base_iv, (int, float)) and isinstance(ref_iv, (int, float)) and ref_iv > 0:
+                        desk_continuation["base_over_reference"] = base_iv / ref_iv
 
             if verbose:
                 q = args.get("query") or args.get("url") or (f"price={args.get('price')}" if name == 'run_financial_model' else "")
@@ -2001,6 +2097,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             break
 
     _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
+    if desk_continuation is not None:
+        desk_continuation["desk_calls_after"] = (
+            sum(1 for c in snap if c.get("tool") == "run_financial_model") - desk_calls_at_c8)
     eval_rate = round(gen_tokens / (eval_duration_total / 1e9), 2) if eval_duration_total > 0 else 0
     return final_report, final_think, {"tool_calls": calls, "done_reason": done_reason,
                                        "stub_rejected": stub_rejected,
@@ -2022,7 +2121,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                        "elapsed_s": round(time.time() - t0),
                                        "think_configured": think,
                                        "failure": failure,
-                                       "window_retry_used": window_retry_used}
+                                       "window_retry_used": window_retry_used,
+                                       "continuation_for_desk": desk_continuation}
 
 
 if __name__ == "__main__":

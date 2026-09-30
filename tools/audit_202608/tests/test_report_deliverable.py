@@ -93,32 +93,43 @@ def _msg(payload):
     return {"message": payload, "done_reason": "stop", "eval_count": 10}
 
 
+# revision 17, brief C8: a terminal turn while no desk run covers Base, Bull and Bear gets a desk continuation before
+# anything else, so these sessions make a complete desk run first (the desk continuation has its own tests).
+DESK_TURN = _msg({"content": "", "tool_calls": [{"function": {"name": "run_financial_model",
+                                                             "arguments": {"price": 100.0}}}]})
+DESK_OK = {"scenario_dcfs": [{"name": n, "dcf": {"per_share_iv": iv}}
+                             for n, iv in (("Base", 100.0), ("Bull", 130.0), ("Bear", 70.0))]}
+
+
 def test_stub_terminal_turn_triggers_the_report_delivery_turn(monkeypatch, tmp_path):
     """GEV sample 1 replay: the model ends on an unparsed envelope; the harness must NOT accept
     it, must ask for the memorandum, and must return the memorandum."""
     import tools.audit_202608.analyst_tools as at
 
+    monkeypatch.setattr(at, "dispatch_tool", lambda name, args, **kw: DESK_OK)
     seen = _stub_urlopen(monkeypatch, at, [
+        DESK_TURN,                               # a complete desk run first (revision 17, brief C8)
         _msg({"content": UNPARSED_TOOL_CALL}),   # the failure that cost the sample
         _msg({"content": MEMORANDUM}),           # the forced memorandum turn
     ])
     report, _think, meta = at.chat_with_tools(
         "test-model", "prompt", tmp_path, verbose=False)
 
-    assert len(seen) == 2, "the stub turn must be followed by exactly one forced turn"
+    assert len(seen) == 3, "the stub turn must be followed by exactly one forced turn"
     assert report == MEMORANDUM
     assert meta["stub_rejected"] is True
     # The forced turn must be tool-free, or the model can just call another tool.
-    assert "tools" not in seen[1]
+    assert "tools" not in seen[2]
 
 
 def test_deliverable_report_needs_no_forced_turn(monkeypatch, tmp_path):
     import tools.audit_202608.analyst_tools as at
 
-    seen = _stub_urlopen(monkeypatch, at, [_msg({"content": MEMORANDUM})])
+    monkeypatch.setattr(at, "dispatch_tool", lambda name, args, **kw: DESK_OK)
+    seen = _stub_urlopen(monkeypatch, at, [DESK_TURN, _msg({"content": MEMORANDUM})])
     report, _think, meta = at.chat_with_tools(
         "test-model", "prompt", tmp_path, verbose=False)
 
-    assert len(seen) == 1
+    assert len(seen) == 2                     # the desk turn and the memorandum: no forced turn
     assert report == MEMORANDUM
     assert meta["stub_rejected"] is False

@@ -1,0 +1,117 @@
+{
+ "ticker": "NUE",
+ "company": "Nucor Corporation",
+ "date": "2026-09-29",
+ "note": "NUE's saved company-news rows from the 2026-09-29 final test (before revision 17 brief C2)",
+ "rows": [
+  {
+   "date": null,
+   "source": "bing news, msn.com",
+   "title": "Why Nucor and Other Steel Stocks Are Falling After Trump Unveils Massive Project",
+   "url": "https://www.msn.com/en-us/news/other/why-nucor-and-other-steel-stocks-are-falling-after-trump-unveils-massive-project/ar-AA2d9ahV",
+   "snippet": "A huge new steel plant is coming to Iowa. That is making investors a little nervous."
+  },
+  {
+   "date": null,
+   "source": "bing news, yahoo.com",
+   "title": "Nucor employees arrive in Decatur",
+   "url": "https://www.yahoo.com/news/videos/nucor-employees-arrive-decatur-222210754.html",
+   "snippet": "Nucor Steel employees reach their final destination in Decatur after four day long ride from Nashville for the 10th Annual ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, bloomberg.com",
+   "title": "Nucor tem fornecedores ligados a evidências de trabalho escravo",
+   "url": "https://www.bloomberg.com/news/articles/2026-09-23/nucor-tem-fornecedores-ligados-a-evidencias-de-trabalho-escravo",
+   "snippet": "Nedirane dos Santos costumava trabalhar 30 dias seguidos em uma carvoaria no Maranhão antes de conseguir uma folga para ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, finance.yahoo.com",
+   "title": "Nucor's Shares Rally 50% in 6 Months: What's Driving the Momentum?",
+   "url": "https://finance.yahoo.com/markets/stocks/articles/nucors-shares-rally-50-6-115500666.html",
+   "snippet": "Nucor's shares have surged 50% in six months, fueled by higher steel prices, capacity expansion, acquisitions and an upbeat ...",
+   "excerpt": "Zacks Equity Research Mon, September 28, 2026 at 8:55 PM GMT+9 4 min read NUE TX IOSP AVNT Nucor Corporation 's NUE shares have gained 50.1% in the past six months. The company has also outperformed the Zacks Steel Producers industry's 41% rise over the same time frame. The gains partly reflect Nucor's strong earnings in the second quarter on Steel Mills segment's strength and an upbeat outlook for the third quarter. NUE is benefiting from healthy demand in key markets, actions to expand its production capabilities and higher steel prices. Zacks Investment Research Image Source: Zacks Investme",
+   "read_from": "https://finance.yahoo.com/markets/stocks/articles/nucors-shares-rally-50-6-115500666.html"
+  },
+  {
+   "date": null,
+   "source": "bing news, ad-hoc-news.de",
+   "title": "Nucor stock falls 1.11 percent as Q3 guidance trails estimates",
+   "url": "https://www.ad-hoc-news.de/boerse/news/corporate-news/nucor-stock-falls-1-11-percent-as-q3-guidance-trails-estimates/70196288",
+   "snippet": "Nucor Corporation (ISIN US6703461052) was trading at USD 244.49 on the NYSE on September 28, 2026 at 4:00 p.m. ET, down 1.11 ...",
+   "excerpt": "Nucor Corporation US6703461052 illustriert durch Architektur-Render einer modernen Stahlwerkshalle mit hohen Stahlträgern und Oberlichtern, Illustration mit AI erstellt. Nucor Corporation (ISIN US6703461052) was trading at USD 244.49 on the NYSE on September 28, 2026 at 4:00 p.m. ET, down 1.11 percent from the prior session's USD 247.25. The next test is the company's third-quarter outlook, which came in below the consensus estimate cited by MarketBeat on September 17, 2026. Q3 guidance sets the test According to PR Newswire on September 17, 2026, Nucor expects third-quarter earnings of USD 5.",
+   "read_from": "https://www.ad-hoc-news.de/boerse/news/corporate-news/nucor-stock-falls-1-11-percent-as-q3-guidance-trails-estimates/70196288"
+  },
+  {
+   "date": null,
+   "source": "bing news, 247wallst.com",
+   "title": "Cleveland-Cliffs Sinks 9% as Selloff Outruns Steel Group; Nucor and Steel Dynamics Pull Back",
+   "url": "https://247wallst.com/investing/2026/09/28/cleveland-cliffs-sinks-9-as-selloff-outruns-steel-group-nucor-and-steel-dynamics-pull-back/",
+   "snippet": "Cleveland-Cliffs is falling far harder than Nucor, Steel Dynamics, and the broader steel sector combined, and the reason ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, finance.yahoo.com",
+   "title": "Nucor (NUE)’s Stronger Steel Prices Fail to Offset Rising Costs in Q3 Outlook",
+   "url": "https://finance.yahoo.com/markets/stocks/articles/nucor-nue-stronger-steel-prices-063513078.html",
+   "snippet": "Nucor Corporation (NYSE:NUE) came under pressure after issuing third-quarter earnings guidance that fell short of Wall Street ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, ad-hoc-news.de",
+   "title": "Nucor stock at USD 247.25 on September 25, 2026, down 0.29 percent",
+   "url": "https://www.ad-hoc-news.de/boerse/news/vorboerse/nucor-stock-at-usd-247-25-on-september-25-2026-down-0-29-percent/70191261",
+   "snippet": "Nucor shares were quoted at USD 247.25 on September 25, 2026, down 0.29 percent. The company has issued third-quarter ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, msn.com",
+   "title": "Nucor Steel Cycle the Ride fundraiser surpasses $220K goal for cancer support",
+   "url": "https://www.msn.com/en-us/health/general/nucor-steel-cycle-the-ride-fundraiser-surpasses-220k-goal-for-cancer-support/vi-AA2d5BIz",
+   "snippet": "Nucor Steel employees complete a four-day bike ride from Nashville to Decatur, raising $222K for cancer research and support."
+  },
+  {
+   "date": null,
+   "source": "bing news, msn.com",
+   "title": "Why Nucor (NUE) dipped more than broader market today",
+   "url": "https://www.msn.com/en-us/news/other/why-nucor-nue-dipped-more-than-broader-market-today/ar-AA2d8YG0",
+   "snippet": "In the latest trading session, Nucor (NUE) closed at $244.49, marking a -1.12% move from the previous day. The stock trailed the S&P 500, which registered a daily loss of 0.77%. At the same time, the ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, finance.yahoo.com",
+   "title": "Nucor (NUE) Stock May Be 37% Undervalued On Cash Flow",
+   "url": "https://finance.yahoo.com/markets/stocks/articles/nucor-nue-stock-may-37-100927190.html",
+   "snippet": "Nucor has seen its stock climb sharply over the past few years, which puts fresh attention on what investors are really ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, coincentral.com",
+   "title": "Nucor (NUE) Stock Drops 5% as Earnings Guidance Disappoints Wall Street",
+   "url": "https://coincentral.com/nucor-nue-stock-drops-5-as-earnings-guidance-disappoints-wall-street/",
+   "snippet": "Nucor (NUE) stock fell 5% after Q3 2026 earnings guidance of $5.55-$5.65/share missed the Wall Street consensus of $5.99, ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, finance.yahoo.com",
+   "title": "Nucor (NUE): Strong Shipments, but Q3 Guidance Raises Earnings Questions",
+   "url": "https://finance.yahoo.com/markets/stocks/articles/nucor-nue-strong-shipments-q3-205941798.html",
+   "snippet": "On 17, Freedom Broker downgraded Nucor Corporation (NYSE:NUE) from Buy to Hold and lowered its price target from $305 to $285. This update comes after the company issued Q3 2026 earnings guidance of ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, blockonomi.com",
+   "title": "Nucor (NUE) Stock Tumbles 5% Following Weak Third Quarter Earnings Forecast",
+   "url": "https://blockonomi.com/nucor-nue-stock-tumbles-5-following-weak-third-quarter-earnings-forecast/",
+   "snippet": "Nucor (NUE) shares tumbled over 5% after the steelmaker's Q3 earnings outlook of $5.55-$5.65 per share fell short of the $5.99 consensus forecast."
+  },
+  {
+   "date": null,
+   "source": "bing news, msn.com",
+   "title": "Why Nucor (NUE) is a top momentum stock for the long term",
+   "url": "https://www.msn.com/en-us/news/other/why-nucor-nue-is-a-top-momentum-stock-for-the-long-term/ar-AA2cr5Ct",
+   "snippet": "For new and old investors, taking full advantage of the stock market and investing with confidence are common goals. Zacks Premium provides lots of different ways to do both. Featuring daily updates ..."
+  }
+ ]
+}

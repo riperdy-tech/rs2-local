@@ -1,0 +1,66 @@
+{
+ "ticker": "KALU",
+ "company": "Kaiser Aluminum Corporation",
+ "date": "2026-09-29",
+ "note": "KALU's saved company-news rows from the 2026-09-29 final test (before revision 17 brief C2)",
+ "rows": [
+  {
+   "date": null,
+   "source": "bing news, seekingalpha.com",
+   "title": "Kaiser Aluminum: A Quality Downstream Business, But The Valuation Limits The Upside",
+   "url": "https://seekingalpha.com/article/4948298-kaiser-aluminum-a-quality-downstream-business-but-the-valuation-limits-the-upside",
+   "snippet": "Kaiser Aluminum has attractive exposure to aerospace and other high-specification applications with high barriers to entry."
+  },
+  {
+   "date": null,
+   "source": "bing news, ad-hoc-news.de",
+   "title": "Kaiser Aluminum stock falls after Wells Fargo cuts target but lifts rating",
+   "url": "https://www.ad-hoc-news.de/boerse/news/nebenwerte/kaiser-aluminum-stock-falls-after-wells-fargo-cuts-target-but-lifts-rating/70133385",
+   "snippet": "The same MarketBeat overview reports that one analyst currently rates the stock Strong Buy, three rate it Buy, one has a Hold ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, finance.yahoo.com",
+   "title": "Kaiser (KALU) Upgraded to Strong Buy: Here's Why",
+   "url": "https://finance.yahoo.com/markets/stocks/articles/kaiser-kalu-upgraded-strong-buy-160005524.html",
+   "snippet": "Kaiser (KALU) might move higher on growing optimism about its earnings prospects, which is reflected by its upgrade to a ...",
+   "excerpt": "Therefore, the Zacks rating upgrade for Kaiser basically reflects positivity about its earnings outlook that could translate into buying pressure and an increase in its stock price. Most Powerful Force Impacting Stock Prices The change in a company's future earnings potential, as reflected in earnings estimate revisions, and the near-term price movement of its stock are proven to be strongly correlated. That's partly because of the influence of institutional investors that use earnings and earnings estimates for calculating the fair value of a company's shares. An increase or decrease in earni",
+   "read_from": "https://finance.yahoo.com/markets/stocks/articles/kaiser-kalu-upgraded-strong-buy-160005524.html"
+  },
+  {
+   "date": null,
+   "source": "bing news, msn.com",
+   "title": "Wells Fargo upgrades Kaiser Aluminum to equal-weight from underweight",
+   "url": "https://www.msn.com/en-us/money/top-stocks/wells-fargo-upgrades-kaiser-aluminum-to-equal-weight-from-underweight/ar-AA2cxadP",
+   "snippet": "Listings: (NASDAQGS:KALU) (DB:KLU1) Fintel reports that on September 18, 2026, Wells Fargo upgraded their outlook for Kaiser Aluminum (NASDAQGS:KALU) from Underweight to Equal-Weight. Prior to this ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, marketscreener.com",
+   "title": "Wells Fargo Upgrades Kaiser Aluminum to Equalweight From Underweight, Adjusts PT to $160 From $169",
+   "url": "https://www.marketscreener.com/news/wells-fargo-upgrades-kaiser-aluminum-to-equalweight-from-underweight-adjusts-pt-to-160-from-169-ce785adadb81f223",
+   "snippet": ""
+  },
+  {
+   "date": null,
+   "source": "bing news, wsws.org",
+   "title": "Maintenance worker crushed to death at Kaiser Aluminum plant in Kalamazoo, Michigan",
+   "url": "https://www.wsws.org/en/articles/2026/09/02/bycf-s02.html",
+   "snippet": "Andrew “Andy” Block was killed at the Kaiser Aluminum plant in Kalamazoo, Michigan two weeks ago when he was crushed by a powered scrap shoot clam shell that closed on him while he was performing a ..."
+  },
+  {
+   "date": null,
+   "source": "bing news, theglobeandmail.com",
+   "title": "Best Income Stocks to Buy for September 22nd",
+   "url": "https://www.theglobeandmail.com/investing/markets/stocks/KALU/pressreleases/4724921/best-income-stocks-to-buy-for-september-22nd/",
+   "snippet": "Detailed price information for Kaiser Aluminum (KALU-Q) from The Globe and Mail including charting and trades."
+  },
+  {
+   "date": null,
+   "source": "bing news, cnbc.com",
+   "title": "This aluminum stock is bound to bounce back, UBS says",
+   "url": "https://www.cnbc.com/2026/08/31/this-aluminum-stock-is-bound-to-bounce-back-ubs-says.html",
+   "snippet": "Kaiser Aluminum has pulled back as of late, and investors should take advantage by scooping up its shares, according to UBS. The investment bank upgraded the aluminum producer to buy from neutral. It ..."
+  }
+ ]
+}

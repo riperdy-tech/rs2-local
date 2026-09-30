@@ -848,6 +848,8 @@ def rescue_status(meta):
         "window_retry_used": window_retry_used,
         "reduced_thinking": reduced_thinking,
         "failure": meta.get("failure"),
+        # revision 17, brief C8: the desk continuation record (None when it did not fire)
+        "continuation_for_desk": meta.get("continuation_for_desk"),
     }
 
 
@@ -2462,6 +2464,9 @@ def main():
                      "desk_recovery_used": rescue["desk_recovery_used"],
                      "reduced_thinking": rescue["reduced_thinking"],
                      "window_retry_used": window_retry_used,
+                     "continuation_for_desk": rescue["continuation_for_desk"],
+                     **({"first_attempt_continuation_for_desk": first_rescue["continuation_for_desk"]}
+                        if sample_retried else {}),
                      "sample_retried": sample_retried,
                      "first_attempt_failure": first_attempt_failure,
                      "report_continued": report_continued,
@@ -2487,6 +2492,14 @@ def main():
                      "desk_runs": desk_runs,
                      "desk_swing": desk_swing,
                      "chars": len(rep), "secs": round(time.time() - t0)})
+        # revision 17, brief C8: a sample that used the desk continuation is flagged, after continue_report and the
+        # checks: `continuation_for_desk` when it counts as a result, `continuation_for_desk_failed` when it does not.
+        # Annotation only: counts_as_result is unchanged, so a sample still without a complete desk run stays out of
+        # the band exactly as before.
+        if runs[-1]["continuation_for_desk"] is not None:
+            flags = list(flags) + ["continuation_for_desk" if counts_as_result(runs[-1])
+                                   else "continuation_for_desk_failed"]
+            runs[-1]["flags"] = flags
         rate_str = f" | {eval_rate} tok/s ({eval_dur_s}s)" if eval_rate else ""
         print(f"  sample {i}: IV ${iv if iv else '?'} | usable={ok}"
               + f" | gen {g_tok} tok (think {len(think):,}ch / report {len(rep):,}ch)"

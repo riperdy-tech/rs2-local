@@ -2287,6 +2287,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L += [f"## RECENT COMPANY NEWS   [SearXNG news search (Reuters, Bing News), last 30 days, fetched {cnews_date}; third-party claims \u2014 the five most recent carry their opening text, read by code from the page shown after the arrow]",
               f"- The stock moved {mom_1m_str} in 1 month and {mom_6m_str} in 6 months (DATA 2.5)."]
         news_rows = cnews.get("rows") or []
+        not_naming = cnews.get("rows_not_naming", 0)     # rows the search returned whose headline did not name the company
         if news_rows:
             for nr in news_rows:
                 d_str = nr.get("date") or "undated"
@@ -2304,6 +2305,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 if nr.get("excerpt"):
                     _rf = urllib.parse.urlparse(nr.get("read_from") or u).hostname or "?"
                     L.append(f"  > read from {_rf[4:] if _rf.startswith('www.') else _rf}: {nr['excerpt']}")
+            if not_naming > 0:
+                L.append(f"- {not_naming} more rows from the search do not name the company in the headline; not shown.")
+        elif not_naming > 0:
+            L.append(f"- no row names the company in its headline ({not_naming} returned by the search; none shown)")
         else:
             unresp = cnews.get("unresponsive_engines") or []
             errs = cnews.get("errors") or []
@@ -2312,8 +2317,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 details.append(f"unresponsive engines: {', '.join(unresp)}")
             if errs:
                 details.append(f"errors: {'; '.join(errs)}")
-            err_str = "; ".join(details) if details else "no news returned"
-            L.append(f"- no news returned ({err_str})")
+            L.append(f"- no news returned ({'; '.join(details)})" if details else "- no news returned")
         L.append("")
 
     # ---- CATALYST BRIEF   [Phase 4 E9] ----------------------------------------------

@@ -36,14 +36,14 @@ def test_company_news_query_strings_and_params(tmp_path, monkeypatch):
 
 
 def test_company_news_low_trust_drop_and_dedup(tmp_path, monkeypatch):
-    # revision 17 (C2): a row must name the company, so every row's snippet says "AMD stock"; the low-trust and
-    # de-duplication filters are what these rows still exercise
+    # revision 17 (C2, C2b): a row must name the company in its headline or carry the ticker in an exchange form, so every row's
+    # snippet says "(NASDAQ: AMD)"; the low-trust and de-duplication filters are what these rows still exercise
     sample_results = [
-        {"url": "https://pitchgrade.com/news/1", "title": "Pitchgrade Article", "engine": "reuters", "publishedDate": "2026-09-20T00:00:00", "content": "AMD stock"},
-        {"url": "https://reuters.com/article1", "title": "Good Reuters News", "engine": "reuters", "publishedDate": "2026-09-21T00:00:00", "content": "AMD stock Snippet 1"},
-        {"url": "https://reuters.com/article1/", "title": "Duplicate URL News", "engine": "reuters", "publishedDate": "2026-09-21T00:00:00", "content": "AMD stock"},
-        {"url": "https://msn.com/article2", "title": "good reuters news", "engine": "bing news", "content": "AMD stock"},  # Duplicate lowercase title
-        {"url": "https://fool.com/article3", "title": "Unique Motley Fool", "engine": "bing news", "content": "AMD stock Snippet 3"},
+        {"url": "https://pitchgrade.com/news/1", "title": "Pitchgrade Article", "engine": "reuters", "publishedDate": "2026-09-20T00:00:00", "content": "(NASDAQ: AMD)"},
+        {"url": "https://reuters.com/article1", "title": "Good Reuters News", "engine": "reuters", "publishedDate": "2026-09-21T00:00:00", "content": "(NASDAQ: AMD) Snippet 1"},
+        {"url": "https://reuters.com/article1/", "title": "Duplicate URL News", "engine": "reuters", "publishedDate": "2026-09-21T00:00:00", "content": "(NASDAQ: AMD)"},
+        {"url": "https://msn.com/article2", "title": "good reuters news", "engine": "bing news", "content": "(NASDAQ: AMD)"},  # Duplicate lowercase title
+        {"url": "https://fool.com/article3", "title": "Unique Motley Fool", "engine": "bing news", "content": "(NASDAQ: AMD) Snippet 3"},
     ]
 
     monkeypatch.setattr(company_news, "_query_searxng", lambda ep, q, timeout=60: {"results": sample_results})
@@ -68,7 +68,7 @@ def test_company_news_ordering_and_15_cap(tmp_path, monkeypatch):
             "title": f"Dated Title {i}",
             "engine": "reuters",
             "publishedDate": f"2026-09-{day}T00:00:00",
-            "content": f"AMD stock content {i}",
+            "content": f"(NASDAQ: AMD) content {i}",
         })
     for i in range(10):
         sample_results.append({
@@ -76,7 +76,7 @@ def test_company_news_ordering_and_15_cap(tmp_path, monkeypatch):
             "title": f"Undated Title {i}",
             "engine": "bing news",
             "publishedDate": None,
-            "content": f"AMD stock undated content {i}",
+            "content": f"(NASDAQ: AMD) undated content {i}",
         })
 
     monkeypatch.setattr(company_news, "_query_searxng", lambda ep, q, timeout=60: {"results": sample_results})
@@ -102,7 +102,7 @@ def test_company_news_cache_reuse(tmp_path, monkeypatch):
         nonlocal call_count
         call_count += 1
         return {"results": [{"url": "https://reuters.com/one", "title": "One", "engine": "reuters",
-                             "content": "AMD stock"}]}
+                             "content": "(NASDAQ: AMD)"}]}
 
     monkeypatch.setattr(company_news, "_query_searxng", fake_query)
     monkeypatch.setattr(company_news, "fetch", lambda c, t: company_news._fetch_live(c, t, cache_dir=tmp_path))
@@ -180,3 +180,49 @@ def test_pack_recent_company_news_point_in_time_no_network(screener_data_stub, m
     assert not called, "company_news.fetch must not be called in point-in-time mode"
     sec_news = _slice(pack, "RECENT COMPANY NEWS")
     assert "not available (point-in-time) \u2014 the news search cannot be restricted to the briefing date" in sec_news
+
+
+# ---- revision 17, brief C2b: the news block says how many rows it did not show ------------------------------------
+
+def _saved_cache_as_a_cached_day(tmp_path, ticker):
+    """A saved final-test cache put back as today's cache file, so company_news re-filters it as a cached day."""
+    fx = json.loads((Path(__file__).resolve().parent / "fixture_data" / f"company_news_{ticker}_20260929.json")
+                    .read_text(encoding="utf-8"))
+    today = company_news.datetime.now(company_news.timezone.utc).strftime("%Y-%m-%d")
+    (tmp_path / f"{ticker}_{today}.json").write_text(
+        json.dumps({"ticker": ticker, "company": fx["company"], "date": today, "rows": fx["rows"],
+                    "unresponsive_engines": [], "errors": [], "excerpts_read": True}), encoding="utf-8")
+    return company_news._fetch_live(fx["company"], ticker, cache_dir=tmp_path)
+
+
+def test_the_block_says_no_row_names_the_company_when_none_is_shown(screener_data_stub, monkeypatch, tmp_path):
+    news = _saved_cache_as_a_cached_day(tmp_path, "FIVE")          # 15 rows came back, none names Five Below
+    assert news["rows"] == [] and news["rows_not_naming"] == 15
+    monkeypatch.setattr(company_news, "fetch", lambda c, t: news)
+    sec = _slice(cap.build_pack("AMD"), "RECENT COMPANY NEWS")
+    assert "- no row names the company in its headline (15 returned by the search; none shown)" in sec
+    assert "no news returned" not in sec                             # it printed "no news returned (no news returned)"
+
+
+def test_the_block_says_how_many_more_rows_were_not_shown(screener_data_stub, monkeypatch, tmp_path):
+    news = _saved_cache_as_a_cached_day(tmp_path, "PIPR")          # 9 of 14 rows name Piper Sandler in the headline
+    assert len(news["rows"]) == 9 and news["rows_not_naming"] == 5
+    monkeypatch.setattr(company_news, "fetch", lambda c, t: news)
+    sec = _slice(cap.build_pack("AMD"), "RECENT COMPANY NEWS")
+    lines = sec.rstrip("\n").split("\n")
+    assert lines[-1] == "- 5 more rows from the search do not name the company in the headline; not shown."
+    assert sum(1 for ln in lines if ln.startswith("- 20")) + sum(1 for ln in lines if ln.startswith("- undated")) >= 9
+
+
+def test_the_block_prints_no_news_returned_with_details_only_when_there_are_some(screener_data_stub, monkeypatch):
+    news = {"ticker": "AMD", "company": "AMD", "date": "2026-09-24", "rows": [], "unresponsive_engines": [], "errors": []}
+    monkeypatch.setattr(company_news, "fetch", lambda c, t: news)
+    lines = _slice(cap.build_pack("AMD"), "RECENT COMPANY NEWS").rstrip("\n").split("\n")
+    assert lines[-1] == "- no news returned"
+    news2 = dict(news, unresponsive_engines=["bing news"], errors=["timed out"])
+    monkeypatch.setattr(company_news, "fetch", lambda c, t: news2)
+    lines = _slice(cap.build_pack("AMD"), "RECENT COMPANY NEWS").rstrip("\n").split("\n")
+    assert lines[-1] == "- no news returned (unresponsive engines: bing news; errors: timed out)"
+    news3 = dict(news, rows_not_naming=0)                            # zero is a value: no "none shown" line
+    monkeypatch.setattr(company_news, "fetch", lambda c, t: news3)
+    assert "no row names" not in _slice(cap.build_pack("AMD"), "RECENT COMPANY NEWS")

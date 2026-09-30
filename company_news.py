@@ -5,12 +5,21 @@ Item 2 of Phase 4 Amendments (E8 design):
 - Two SearXNG queries: (1) "<company>", (2) "<TICKER> stock"
 - categories="news", time_range="month", format="json", timeout=60s
 - Drops LOW_TRUST URLs
-- Drops rows that do not name the company (`names_company`, revision 17 brief C2): the cleaned company name as a
-  phrase (a one-word name only with a finance word in the same row), or the ticker in a finance pattern
+- Drops rows whose HEADLINE does not name the company (`names_company`, revision 17 briefs C2 and C2b): the analyst
+  sees a row's headline, and its snippet only when an excerpt was read, so the headline is what must name the
+  company; the snippet and excerpt only confirm. The rows dropped are counted in `rows_not_naming` (saved in the
+  cache, printed in the pack's news block), so the filter annotates what it removed.
 - De-duplicates by URL and identical lower-cased title
 - Orders rows with publishedDate first (newest first), then undated in order returned. Keeps 15.
 - Caches to cache/company_news/<TICKER>_<YYYY-MM-DD>.json and reuses same day.
 - Never raises; records errors and unresponsive_engines.
+
+Residuals of the naming rule (revision 17, brief C2b), measured and accepted:
+- a one-word name that is an ordinary word ("Target", "Five") can still pass with a confirming word in the row;
+- a broker's name in a headline about a client ("<broker> raises <company> target") names the broker, so such a
+  row is judged on the broker's name, not the client's;
+- a headline that names the company only by a description ("the discount retailer") is dropped, even when its
+  body names the company.
 """
 import json
 import re
@@ -102,24 +111,68 @@ def _plain(text):
     return _INVISIBLE.sub("", str(text or "")).replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
 
 
-def names_company(clean_company, ticker, *parts):
-    """True when the row (its title, snippet and excerpt when read: `parts`) names the company.
+_LEGAL_WORD = (r"(?:Companies|Company|Co|Corporation|Corp|Incorporated|Inc|Holdings|Holding|Group|plc|Ltd|Limited|LLC|"
+               r"L\.P|LP|S\.A|SA|N\.V|NV|AG|SE)\.?")
+_TRAILING_LEGAL = re.compile(rf"[\s,&]+{_LEGAL_WORD}$", re.I)
 
-    a. the full cleaned company name as a phrase, case-insensitive; when the cleaned name is one word, only
-       together with a finance word in the same row (a one-word name is usually an ordinary word); or
-    b. the ticker, exact case, in a finance pattern: $T, (T), NYSE: T, NASDAQ: T, T stock, T shares.
-    """
-    text = _plain(" ".join(str(p) for p in parts if p))
-    words = _plain(clean_company).split()
-    if words:
-        phrase = r"(?<![A-Za-z0-9])" + r"\s+".join(re.escape(w) for w in words) + r"(?![A-Za-z0-9])"
-        if re.search(phrase, text, re.I) and (len(words) > 1 or _FINANCE_WORD.search(text)):
+
+def _match_name(clean_company):
+    """N: the cleaned name without a leading "The " and, repeatedly, a trailing legal word ("Piper Sandler
+    Companies" -> "Piper Sandler"); the cleaned name itself when that would leave nothing."""
+    s = re.sub(r"^The\s+", "", _plain(clean_company).strip(), flags=re.I)
+    while True:
+        s2 = _TRAILING_LEGAL.sub("", s).strip(" ,&")
+        if s2 == s or not s2:
+            return s
+        s = s2
+
+
+def _phrase_at(words, text, tail=""):
+    """True when `words` appear in `text` as a phrase (whitespace between words may vary), each word equal
+    ignoring case and, when it starts with a letter, starting with a capital letter in the text ("Five Below",
+    "FIVE BELOW"; not "five below"), not glued to a letter or digit on either side, and followed by the regex
+    `tail` when one is given."""
+    if not words:
+        return False
+    pattern = (r"(?<![A-Za-z0-9])" + r"\s+".join(f"((?i:{re.escape(w)}))" for w in words)
+               + r"(?![A-Za-z0-9])" + tail)
+    return any(all(not w[:1].isalpha() or m.group(i + 1)[:1].isupper() for i, w in enumerate(words))
+               for m in re.finditer(pattern, text))
+
+
+def names_company(clean_company, ticker, title, snippet="", excerpt=""):
+    """True when the row's HEADLINE names the company (revision 17, briefs C2 and C2b). The analyst sees the
+    headline, and the snippet only when an excerpt was read, so the headline must name the company; the snippet
+    and the excerpt only confirm. N is the cleaned name without a leading "The" and trailing legal words, H the
+    headline, B the snippet plus the excerpt, T the ticker (exact case). Keep the row when one of these holds:
+    1. H contains N as a phrase (each word equal ignoring case and starting with a capital letter); when N is one
+       word, the row must also carry a finance word in H or B, N again in B, N followed by a legal word or by
+       "(T)" in H or B, or rule 2's ticker form;
+    2. H or B contains "$T", "NYSE: T" or "NASDAQ: T" (exchange in any case, optional parentheses);
+    3. H contains "W (T)", W being the first word of N ("Kaiser (KALU)");
+    4. N has more than one word, H contains its first word, and B contains N;
+    5. T has three characters or more and is a whole token in H together with a finance word in H.
+    Nothing else counts: the bare "(T)" and the ticker in the body alone no longer do."""
+    N = _match_name(clean_company).split()
+    H = _plain(title)
+    B = _plain(" ".join(p for p in (snippet, excerpt) if p))
+    HB = H + " " + B
+    T = str(ticker).strip()
+    t = re.escape(T)
+    if re.search(rf"\${t}(?![A-Za-z0-9])|\b(?i:NYSE|NASDAQ):\s?{t}(?![A-Za-z0-9])", HB):                # 2
+        return True
+    if N:
+        if _phrase_at(N, H):                                                                        # 1
+            if (len(N) > 1 or _FINANCE_WORD.search(HB) or _phrase_at(N, B)
+                    or _phrase_at(N, HB, rf"\s*,?\s*{_LEGAL_WORD}(?![A-Za-z0-9])")
+                    or _phrase_at(N, HB, rf"\s*\(\s*{t}\s*\)")):
+                return True
+        if _phrase_at(N[:1], H, rf"\s*\(\s*{t}\s*\)"):                                          # 3
             return True
-    t = re.escape(str(ticker).strip())
-    end = r"(?![A-Za-z0-9])"
-    return bool(re.search(
-        rf"\${t}{end}|\({t}\)|\b(?i:NYSE|NASDAQ):\s?{t}{end}|(?<![A-Za-z0-9.]){t}\s+(?i:stocks?|shares){end}",
-        text))
+        if len(N) > 1 and _phrase_at(N[:1], H) and _phrase_at(N, B):                                # 4
+            return True
+    return (len(T) >= 3 and _FINANCE_WORD.search(H) is not None                                     # 5
+            and re.search(rf"(?<![A-Za-z0-9.\-$]){t}(?![A-Za-z0-9\-]|\.[A-Za-z])", H) is not None)
 
 
 def _mostly_non_latin(text):
@@ -234,8 +287,11 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
     if cache_file.exists():
         try:
             cached = json.loads(cache_file.read_text(encoding="utf-8"))
-            cached["rows"] = [r for r in cached.get("rows") or []
+            before = cached.get("rows") or []
+            cached["rows"] = [r for r in before
                               if names_company(clean_comp, t, r.get("title"), r.get("snippet"), r.get("excerpt"))]
+            # annotate, never silently gate: the rows this re-filter drops are counted with those already counted
+            cached["rows_not_naming"] = cached.get("rows_not_naming", 0) + len(before) - len(cached["rows"])
             if not cached.get("excerpts_read") and READ_TOP:
                 cached = _add_excerpts(cached, _name_token(clean_comp))
                 cache_file.write_text(json.dumps(cached, indent=2), encoding="utf-8")
@@ -264,6 +320,9 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
 
     seen_urls = set()
     seen_titles = set()
+    failed_urls = set()
+    failed_titles = set()
+    not_naming = []
     raw_rows = []
     name_token = _name_token(clean_comp)
 
@@ -277,12 +336,17 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
         if _mostly_non_latin(title):
             continue
         snippet = re.sub(r"\s+", " ", str(res.get("content") or "")).strip()[:220]
-        if not names_company(clean_comp, t, title, snippet):
-            # both queries match ticker collisions and ordinary words (LIND -> Linde Bangladesh, FIVE ->
-            # "five drafting tips"); a row must name the company, on the text the analyst is shown.
-            continue
         norm_url = u.lower().rstrip("/")
         norm_title = title.lower()
+        if not names_company(clean_comp, t, title, snippet):
+            # both queries match ticker collisions and ordinary words (LIND -> Linde Bangladesh, FIVE ->
+            # "five drafting tips"); the headline must name the company. The row is counted (once per url or
+            # title), not silently lost: the pack's news block says how many rows it did not show.
+            if norm_url not in failed_urls and norm_title not in failed_titles:
+                failed_urls.add(norm_url)
+                failed_titles.add(norm_title)
+                not_naming.append((norm_url, norm_title))
+            continue
         if norm_url in seen_urls or norm_title in seen_titles:
             continue
         seen_urls.add(norm_url)
@@ -309,6 +373,9 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
         "company": company,
         "date": today,
         "rows": rows,
+        # rows that passed the low-trust and non-Latin filters but whose headline did not name the company; a
+        # row the other query returned under a naming snippet is shown, so it is not counted here
+        "rows_not_naming": sum(1 for u_, ti_ in not_naming if u_ not in seen_urls and ti_ not in seen_titles),
         "unresponsive_engines": unresponsive_engines,
         "errors": errors,
     }

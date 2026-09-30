@@ -1685,31 +1685,39 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 return None
             band = f"{tol * 100:.0f}%"
             p = f"${price:,.2f}"
+            # a = the DEFAULTS scenario's value, b = the band's far end. The rule clears at today's price; inside the
+            # band the only value at or below b is b itself, so "lower it to b or below" sent the model to the floor
+            # of the band (revision 17, brief C6b): the texts name the price as the target and b as the reach.
+            a, b = f"${at_levels:,.2f}", f"${at_edge:,.2f}"
             if role == "bear":
-                out = []
+                if at_levels > price and at_edge > price:
+                    return (f"The DEFAULTS Bear for this name is {a}, above today's price {p}: keep the "
+                            f"defaults and give bear_above_price_reason (why the downside is limited), or build a "
+                            f"deeper Bear outside the band with scenario_deviation_reason and dated evidence. "
+                            f"No Bear within {band} of bear2 lands below {p} (the band's lowest is {b}); "
+                            f"lowering it further needs scenario_deviation_reason as well.")
                 if at_levels > price:
-                    out.append(f"The DEFAULTS Bear for this name is ${at_levels:,.2f}, above today's price {p}: keep the "
-                               f"defaults and give bear_above_price_reason (why the downside is limited), or build a "
-                               f"deeper Bear outside the band with scenario_deviation_reason and dated evidence.")
-                if at_edge > price:
-                    out.append(f"No Bear within {band} of bear2 lands below {p} (the band's lowest is ${at_edge:,.2f}); "
-                               f"lowering it further needs scenario_deviation_reason as well.")
-                else:
-                    out.append(f"Lowering the Bear to ${at_edge:,.2f} or below within the band clears this without "
-                               f"another reason.")
-                return " ".join(out)
-            out = []
+                    return (f"The DEFAULTS Bear for this name is {a}, above today's price {p}: keep the defaults and "
+                            f"give bear_above_price_reason (why the downside is limited), or lower the Bear within "
+                            f"{band} of bear2 until it is not above {p} (the band reaches down to {b}); that needs no "
+                            f"other reason.")
+                return (f"The DEFAULTS Bear for this name is {a}, not above today's price {p}: a Bear at the "
+                        f"defaults, or any Bear within {band} of bear2 that is not above {p} (the band reaches down "
+                        f"to {b}), clears this without another reason.")
+            if at_levels < price and at_edge < price:
+                return (f"The DEFAULTS Bull for this name is {a}, below today's price {p}: keep the "
+                        f"defaults and give bull_below_price_reason (why the upside is limited), or build a "
+                        f"higher Bull outside the band with scenario_deviation_reason and dated evidence. "
+                        f"No Bull within {band} of bull2 lands above {p} (the band's highest is {b}); "
+                        f"raising it further needs scenario_deviation_reason as well.")
             if at_levels < price:
-                out.append(f"The DEFAULTS Bull for this name is ${at_levels:,.2f}, below today's price {p}: keep the "
-                           f"defaults and give bull_below_price_reason (why the upside is limited), or build a "
-                           f"higher Bull outside the band with scenario_deviation_reason and dated evidence.")
-            if at_edge < price:
-                out.append(f"No Bull within {band} of bull2 lands above {p} (the band's highest is ${at_edge:,.2f}); "
-                           f"raising it further needs scenario_deviation_reason as well.")
-            else:
-                out.append(f"Raising the Bull to ${at_edge:,.2f} or above within the band clears this without "
-                           f"another reason.")
-            return " ".join(out)
+                return (f"The DEFAULTS Bull for this name is {a}, below today's price {p}: keep the defaults and "
+                        f"give bull_below_price_reason (why the upside is limited), or raise the Bull within "
+                        f"{band} of bull2 until it is not below {p} (the band reaches up to {b}); that needs no "
+                        f"other reason.")
+            return (f"The DEFAULTS Bull for this name is {a}, not below today's price {p}: a Bull at the "
+                    f"defaults, or any Bull within {band} of bull2 that is not below {p} (the band reaches up "
+                    f"to {b}), clears this without another reason.")
 
         advice = {}
         for role, reason_name in (("bull", "bull_below_price_reason"), ("bear", "bear_above_price_reason")):

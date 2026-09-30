@@ -92,11 +92,17 @@ GAPS_PREFIX = "research_gaps: "
 GAPS_CACHE_DAYS = 1
 
 
-def not_researched_section(title, returned, removed):
-    """The lines that stand in for a topic without usable sources. No prose from the model is kept."""
+def not_researched_section(title, returned, removed, rejected=None):
+    """The lines that stand in for a topic without usable sources. No prose from the model is kept. `rejected` is
+    the number of sources the relevance guard rejected as not about this company (revision 17, brief C1b): the
+    low-trust filter alone did not empty such a topic, and the count says so."""
+    if rejected is None:
+        counts = f"{returned} returned, {removed} removed as low-trust"
+    else:
+        counts = (f"{returned} returned: {removed} removed as low-trust, {rejected} rejected as not about this "
+                  f"company")
     return [f"## {title} — NOT RESEARCHED",
-            f"No usable sources were found ({returned} returned, {removed} removed as low-trust); "
-            f"treat this topic as unknown.",
+            f"No usable sources were found ({counts}); treat this topic as unknown.",
             ""]
 
 
@@ -717,7 +723,7 @@ def build(ticker, name, force=False):
             gaps.append((title, f"irrelevant sources — {reason} ({doms})"))
             print(f"[deep_research] {t} '{title}' ::IRRELEVANT SOURCES:: {reason} "
                   f"({doms}) — discarded", flush=True)
-            L += not_researched_section(title, returned, len(dropped))
+            L += not_researched_section(title, returned, len(dropped), rejected=len(urls))
             continue
         if dshare or sshare or lshare:
             print(f"[deep_research] {t} '{title}' note: sources {dshare*100:.0f}% dictionary, "

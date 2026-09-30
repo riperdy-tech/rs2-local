@@ -94,9 +94,32 @@ def test_a_topic_of_irrelevant_sources_is_a_gap_too(monkeypatch, desk):
     path = _build(monkeypatch, {"Bear Case / Short Thesis / Regulatory": ("About the word.", DICTIONARY)})
     text = path.read_text(encoding="utf-8")
     assert text.splitlines()[0] == "research_gaps: Bear Case / Short Thesis / Regulatory"
-    assert ("No usable sources were found (2 returned, 0 removed as low-trust); "
-            "treat this topic as unknown.") in text
+    # revision 17, brief C1b: was "(2 returned, 0 removed as low-trust)", which read as if the low-trust filter had
+    # emptied the topic; the branch now says the two sources were rejected as not about this company
+    assert ("No usable sources were found (2 returned: 0 removed as low-trust, 2 rejected as not about this "
+            "company); treat this topic as unknown.") in text
     assert "About the word." not in text
+    assert "2 returned, 0 removed" not in text
+
+
+def test_the_irrelevant_branch_counts_low_trust_and_rejected_sources_apart(monkeypatch, desk):
+    path = _build(monkeypatch, {"Bear Case / Short Thesis / Regulatory": ("About the word.", LOW_TRUST[:1] + DICTIONARY)})
+    text = path.read_text(encoding="utf-8")
+    assert ("No usable sources were found (3 returned: 1 removed as low-trust, 2 rejected as not about this "
+            "company); treat this topic as unknown.") in text
+
+
+def test_not_researched_section_prints_both_forms():
+    assert deep_research.not_researched_section("T", 4, 4) == [
+        "## T \u2014 NOT RESEARCHED",
+        "No usable sources were found (4 returned, 4 removed as low-trust); treat this topic as unknown.", ""]
+    assert deep_research.not_researched_section("T", 5, 1, rejected=4) == [
+        "## T \u2014 NOT RESEARCHED",
+        "No usable sources were found (5 returned: 1 removed as low-trust, 4 rejected as not about this company); "
+        "treat this topic as unknown.", ""]
+    assert deep_research.not_researched_section("T", 2, 0, rejected=0)[1] == (       # zero is a value, not an absence
+        "No usable sources were found (2 returned: 0 removed as low-trust, 0 rejected as not about this company); "
+        "treat this topic as unknown.")
 
 
 def test_two_gaps_of_five_are_declared_in_order_on_one_line(monkeypatch, desk):

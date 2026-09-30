@@ -285,13 +285,15 @@ def test_evidence_store_round_trips_and_is_shared_across_samples(
         if "11434" in url:
             ollama_calls.append(1)
             n = len(ollama_calls)
-            if n in (1, 3):
-                # turn 1 of each sample: issue the tool call
+            if n in (1, 4):
+                # turn 1 of each sample: issue the tool call (revision 17, brief C8: a sample is now three turns, the
+                # search, the memorandum and the memorandum again after the desk continuation, so its first turn is
+                # call 1 or call 4; it was call 1 or call 3)
                 payload = {"message": {"content": "", "tool_calls": [
                     {"function": {"name": "search_web", "arguments": {"query": QUERY}}}]},
                            "done_reason": "stop", "eval_count": 10}
             else:
-                # turn 2 of each sample: deliver the memorandum, no more tool calls
+                # the other turns of each sample: deliver the memorandum, no more tool calls
                 payload = _ollama_payload()
             return _FakeResponse(payload)
         # anything else is the SearXNG search call

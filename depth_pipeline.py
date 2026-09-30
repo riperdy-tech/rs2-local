@@ -945,6 +945,14 @@ def band_verdict(doc):
         v.setdefault("flags", []).append("WINDOW_RETRY")
         v["flags"] = sorted(set(v["flags"]))
 
+    # CONTINUATION FOR DESK (revision 17, brief C8) — ANNOTATION ONLY. The sample ended a turn with no complete desk
+    # run while the desk was open, and got one more turn on the desk alone, at the configured think level, before
+    # its memorandum. Its Base against the pack's consensus-implied value is in its `continuation_for_desk` record.
+    desk_continued = [r.get("sample") for r in good if r.get("continuation_for_desk")]
+    if desk_continued:
+        v.setdefault("flags", []).append("CONTINUATION_FOR_DESK")
+        v["flags"] = sorted(set(v["flags"]))
+
     # REPORT CONTINUED — ANNOTATION ONLY.
     continued = [r.get("sample") for r in good if r.get("report_continued")]
     if continued:

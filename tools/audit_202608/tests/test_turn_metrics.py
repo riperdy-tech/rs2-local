@@ -94,7 +94,9 @@ def test_chat_with_tools_records_a_turn_per_round_trip(monkeypatch, tmp_path):
     monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(at, "search_web", lambda *a, **k: {"results": []})
 
-    _rep, _think, meta = at.chat_with_tools("m", "pack", tmp_path, verbose=False)
+    # revision 17, brief C8: max_model_calls=0 (discovery mode): with a desk open and no desk run, the memorandum
+    # turn would be followed by a desk continuation turn; the turn records this test reads do not depend on the mode
+    _rep, _think, meta = at.chat_with_tools("m", "pack", tmp_path, verbose=False, max_model_calls=0)
 
     assert len(meta["turns"]) == len(seen) == 3
     assert [t["turn"] for t in meta["turns"]] == [1, 2, 3]

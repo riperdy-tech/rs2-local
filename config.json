@@ -80,5 +80,6 @@
     "depth": "rs2-analyst-deep-mtp5-v32",
     "depth_q4": "rs2-analyst-deep-mtp5-q4-v32",
     "system_sha256": "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd723213b0c0ab7"
-  }
+  },
+  "_model_v33_candidate_note": "Charter v3.3, one funded terminal (2026-09-30, revision 17): NEW model names registered from the charter-v3.3 Modelfiles (SAME base GGUF blobs, only the SYSTEM block changed: twelve sentence changes to the v3.2 SYSTEM text, the exit multiple and terminal_leg having left the desk). NOT wired into depth_model - that stays rs2-analyst-deep-mtp5 until operator approval after the A/B passes. Candidates only."
 }
