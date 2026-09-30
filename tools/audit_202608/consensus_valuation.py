@@ -127,6 +127,7 @@ def extract_iv(report, price):
 
 
 from financial_model_tool import _normalize_cash_flow_life  # noqa: E402  (S3 3.4 V1: moved there)
+from financial_model_tool import _to_b  # noqa: E402  (the desk's own share-count conversion)
 
 
 def _norm_fly(val):
@@ -1748,7 +1749,9 @@ def extract_desk_snapshot_metrics(
     if desk_matched_inputs and facts:
         call_shares = desk_matched_inputs.get("shares_diluted")
         if call_shares is not None and call_shares > 0:
-            desk_count = float(call_shares)
+            # Revision 16: the desk takes a whole count or billions and converts with `_to_b`; the
+            # candidates below are in billions, so the model's count is read the same way.
+            desk_count = _to_b(call_shares)
             # S3 3.5 "S2b's share check in revision 15": candidates gain "default" (facts'
             # shares_default, 5.11), via the function contract_fill.fill's shares_basis shares —
             # one copy of the candidate list, not two.
@@ -1786,6 +1789,15 @@ def extract_desk_snapshot_metrics(
                 elif nearest_ratio > 1.250001:
                     share_implausible = True
                     share_reason = "desk share count off by more than 25% (units or omission)"
+
+            # Annotation only, never an exclusion: a Base count 10x or more from the share-count default
+            # (5.11), in either direction, is where a wrong unit or a wrong company's count shows up.
+            default_count = facts.get("shares_default")
+            if isinstance(default_count, (int, float)) and default_count > 0:
+                default_b = default_count / 1e9
+                far_ratio = max(desk_count, default_b) / min(desk_count, default_b)
+                if far_ratio >= 9.999999:
+                    share_flags.append(f"desk_share_count_far_from_default_{far_ratio:.2f}x")
 
     eff_anchor = coe_anchor if coe_anchor is not None else desk_anchor_from_params
     if eff_anchor is None and ticker:

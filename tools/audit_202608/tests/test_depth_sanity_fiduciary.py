@@ -68,3 +68,45 @@ def test_sanity_still_fails_kelly_below_the_contract_base():
     }))
     assert level == 2
     assert any("fiduciary" in l.lower() for l in lines)
+
+
+# --- 0.0 is a value, not an absence ------------------------------------------------------------
+
+def test_a_contract_base_of_0_0_is_audited_as_the_base_not_replaced_by_the_band_low():
+    """`contract_base(sc) or lo` read a base of 0.0 as missing and audited against the band's low
+    bound ($831.19, above the price) instead: a Kelly on a base of $0 passed. Only None falls back."""
+    level, lines = audit("GEV", _gev_verdict({
+        "base_iv": 0.0, "median_iv": 934.535, "median_bull_iv": 0.0,
+        "median_bear_iv": 0.0, "median_kelly_fraction_pct": 8.98,
+    }))
+    assert level == 2
+    assert any("Kelly fraction" in l and "Base $0.0" in l for l in lines), lines
+
+
+def test_a_scorecard_with_no_iv_still_falls_back_to_the_band_low():
+    """No `base_iv` and no `median_iv` (None): the auditor audits against the band's low bound."""
+    level, lines = audit("GEV", _gev_verdict({"median_kelly_fraction_pct": 8.98}))
+    assert level == 2
+    assert any("Kelly fraction" in l and "Base $831.19" in l for l in lines), lines
+
+
+def test_a_median_kelly_of_0_0_is_the_kelly_not_a_missing_one():
+    """`median_kelly_fraction_pct or kelly_fraction_pct` read a median Kelly of 0.0 as missing and
+    took the medoid's 8.98 instead, flagging a base under the price that sized nothing."""
+    level, lines = audit("GEV", _gev_verdict({
+        "base_iv": 900.0, "median_iv": 934.535, "median_bull_iv": 1100.0,
+        "median_bear_iv": 700.0, "median_kelly_fraction_pct": 0.0, "kelly_fraction_pct": 8.98,
+        "median_quality_moat": 4.0,
+    }))
+    assert level < 2, lines
+    assert not any("fiduciary" in l.lower() for l in lines)
+
+
+def test_kelly_falls_back_to_the_medoid_field_only_when_the_median_is_absent():
+    level, lines = audit("GEV", _gev_verdict({
+        "base_iv": 900.0, "median_iv": 934.535, "median_bull_iv": 1100.0,
+        "median_bear_iv": 700.0, "kelly_fraction_pct": 8.98,
+        "median_quality_moat": 4.0,
+    }))
+    assert level == 2
+    assert any("Kelly fraction 8.98%" in l for l in lines), lines

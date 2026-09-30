@@ -148,10 +148,13 @@ def audit(ticker, verdict):
         # statistic and is a fallback only for verdicts predating 2026-09-20. Reading the median
         # as the base flagged every coherent contract whose median sat the other side of the price
         # — precisely GEV's shape, where the medoid's base was $1,037.88 and the median $934.54.
-        # `or lo` is the auditor's OWN tolerance for a ledger row carrying no IV at all. It stays
+        # Falling back to `lo` is the auditor's OWN tolerance for a ledger row carrying no IV at all
+        # (None only: a base of 0.0 is the base, and the check below reads it as such). It stays
         # HERE, at the call site, and is deliberately NOT folded into the rule: the rule has one
         # owner, imported above, because a second definition is a second policy.
-        base = contract_base(sc) or lo
+        base = contract_base(sc)
+        if base is None:
+            base = lo
         bull = sc.get("median_bull_iv")
         bear = sc.get("median_bear_iv")
         if bull is not None and base is not None and bull < (base - 0.05):
@@ -160,7 +163,9 @@ def audit(ticker, verdict):
             note(2, f"fiduciary contract failure: Bear IV (${bear}) > Base IV (${base}) — scenario monotonicity violated")
         if bear is not None and bull is not None and bear > bull:
             note(2, f"fiduciary contract failure: Bear IV (${bear}) > Bull IV (${bull}) — scenario monotonicity violated")
-        kelly = sc.get("median_kelly_fraction_pct") or sc.get("kelly_fraction_pct")
+        kelly = sc.get("median_kelly_fraction_pct")
+        if kelly is None:
+            kelly = sc.get("kelly_fraction_pct")
         if kelly is not None and kelly > 0 and base is not None and price is not None and base <= price:
             note(2, f"fiduciary contract failure: Kelly fraction {kelly}% > 0 on non-positive margin of safety (Base ${base} <= Price ${price})")
 

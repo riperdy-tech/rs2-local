@@ -284,7 +284,9 @@ def unbundled_dcf(
         if sd < 1.0:
             effective_shares = effective_shares * (1.0 + sd)
         else:
-            effective_shares = effective_shares + sd
+            # an added count, like the share count itself (`_effective_shares`), is read by `_to_b`:
+            # the shares above are in billions, so a whole count of new shares must be too
+            effective_shares = effective_shares + _to_b(sd)
 
     if finite_life_years is None and rate <= terminal_g:
         return {"error": f"wacc ({rate}) must be greater than terminal_g ({terminal_g})", "validation_error": True}

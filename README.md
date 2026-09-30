@@ -88,8 +88,9 @@ graded weekly by the screener's `grade_rs2_verdicts.py` (30/91/182/365d vs IWM/S
 
 ## Pack revision 6 — the desk is mandatory (Phase 4, charter v3.1)
 
-`tools/audit_202608/capability_test.PACK_REVISION = 6` bundles Phase 4's pack and charter changes
-into one revision (bumping it re-triggers every name in the book). `base_iv` must now equal a
+Revision 6 bundled Phase 4's pack and charter changes into one revision (bumping
+`tools/audit_202608/capability_test.PACK_REVISION` re-triggers every name in the book; the current
+value lives there, not in this file). `base_iv` must now equal a
 `tools/audit_202608/financial_model_tool.py` desk result (three-stage DCF, declared `fade_years`,
 required `terminal_g`, dual terminal reconciled against the MRI sector band, frame-checked
 `equity`/`firm`) within 1%, or a named desk `blend` — samples with `desk_calls == 0` or an

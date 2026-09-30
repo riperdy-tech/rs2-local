@@ -40,7 +40,8 @@ def s2b_share_match(desk_count, facts):
     desk_count, matched when the ratio is at most 1%; else (None, nearest_ratio) when there is a
     nearest candidate, else (None, None). Shared by consensus_valuation's S2b share check and the
     revision-15 shares_basis (3.5's "S2b's share check in revision 15"), so there is one copy of
-    the candidate list."""
+    the candidate list. desk_count is in billions, the unit of the candidates: a count the model
+    sent is converted with financial_model_tool._to_b before it is passed."""
     facts = facts or {}
     if desk_count is None or desk_count <= 0:
         return None, None

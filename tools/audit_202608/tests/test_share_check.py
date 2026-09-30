@@ -19,7 +19,9 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO))
 
 import consensus_valuation as cv
+import contract_fill
 import depth_pipeline as dp
+import financial_model_tool as fmt
 import pack_facts
 
 
@@ -152,6 +154,117 @@ def test_edge_ratios():
     assert res_absent["desk_share_basis_matched"] == "vendor"
     assert res_absent["desk_share_implausible"] is False
     assert res_absent["desk_share_flags"] == []
+
+
+# Revision 16: the desk accepts a whole share count or billions and converts with `_to_b`. The
+# harness compares in billions, so a whole count must be converted first (PIPR sample 1 raised
+# desk_share_count_mismatch_957671873.74x on 71,241,000 against a vendor count of 70,670,000).
+PIPR_FACTS = {"shares_outstanding": 70670000.0}
+
+
+@pytest.mark.parametrize("desk_count", [71241000.0, 0.071241])
+def test_whole_count_and_billions_agree_on_pipr(desk_count):
+    res = _run_check(desk_count, PIPR_FACTS)
+    assert res["desk_share_flags"] == []
+    assert res["desk_share_implausible"] is False
+    assert res["desk_share_reason"] is None
+    assert res["desk_share_basis_matched"] == "vendor"
+    assert res["desk_matched_inputs"]["shares_diluted"] == desk_count   # the record keeps what the model sent
+
+
+def test_pipr_ratio_is_1_008_in_either_unit():
+    # 71,241,000 / 70,670,000 = 1.00808; the comparison sits between the 1% match and the 1.10x flag
+    ratio_b = 71241000.0 / 70670000.0
+    assert round(ratio_b, 3) == 1.008
+    for desk_count in (71241000.0, 0.071241):
+        name, ratio = contract_fill.s2b_share_match(fmt._to_b(desk_count), PIPR_FACTS)
+        assert name == "vendor"
+        assert ratio == pytest.approx(ratio_b, abs=1e-9)
+
+
+@pytest.mark.parametrize("factor, printed", [(1.10, "1.10x"), (1.25, "1.25x"), (2.0, "2.00x")])
+@pytest.mark.parametrize("unit", [1.0, 1e-9])
+def test_real_mismatch_still_flags_with_correct_ratio(factor, printed, unit):
+    res = _run_check(70670000.0 * factor * unit, PIPR_FACTS)
+    assert f"desk_share_count_mismatch_{printed}" in res["desk_share_flags"]
+    assert res["desk_share_basis_matched"] is None
+    # off by more than 25% and no reason: excluded (units or omission)
+    assert res["desk_share_implausible"] is (factor > 1.25)
+
+
+def test_departure_from_default_reads_a_whole_count_in_billions():
+    # the departure test in the same block divides the default by 1e9; a whole count must agree with it
+    facts = {"shares_outstanding": 70670000.0, "shares_default": 70670000.0}
+    reason = "Count from 10-K filing"
+    for desk_count in (71241000.0, 0.071241):
+        res = _run_check(desk_count, facts, shares_reason=reason)
+        assert res["desk_share_flags"] == []
+    for desk_count in (77737000.0, 0.077737):
+        res = _run_check(desk_count, facts, shares_reason=reason)
+        assert "desk_share_count_departure_with_reason" in res["desk_share_flags"]
+
+
+@pytest.mark.parametrize("unreadable", ["not a count", "79,364,362", None])
+def test_unreadable_count_behaves_as_before(unreadable):
+    res = _run_check(unreadable, PIPR_FACTS)
+    assert res["desk_share_flags"] == []
+    assert res["desk_share_implausible"] is False
+    assert res["desk_share_basis_matched"] is None
+    assert fmt._to_b(unreadable) is None
+
+
+# The far-from-default annotation: a Base count 10x or more from facts["shares_default"] (whole count,
+# 5.11), in either direction, rides on the verdict as a flag. Never an exclusion of its own.
+FAR_FACTS = {"shares_outstanding": 70670000.0, "shares_default": 70670000.0}
+FAR_DEFAULT_B = 0.07067
+
+
+@pytest.mark.parametrize("multiple, printed", [
+    (10.0, "10.00x"), (11.5, "11.50x"), (100.0, "100.00x"),        # above the default
+    (0.1, "10.00x"), (0.05, "20.00x"), (0.02, "50.00x"),            # below it
+])
+@pytest.mark.parametrize("unit", [1.0, 1e9])                         # billions, and the whole count
+def test_a_count_10x_or_more_from_the_default_is_flagged_either_way(multiple, printed, unit):
+    res = _run_check(FAR_DEFAULT_B * multiple * unit, FAR_FACTS, shares_reason="Count from 10-K filing")
+    assert f"desk_share_count_far_from_default_{printed}" in res["desk_share_flags"]
+    assert res["desk_share_implausible"] is False       # with a reason it is kept: the flag annotates only
+
+
+@pytest.mark.parametrize("multiple", [9.0, 9.99, 1.0, 0.11, 0.5, 2.0])
+@pytest.mark.parametrize("unit", [1.0, 1e9])
+def test_a_count_under_10x_from_the_default_is_not_flagged_far(multiple, unit):
+    res = _run_check(FAR_DEFAULT_B * multiple * unit, FAR_FACTS, shares_reason="Count from 10-K filing")
+    assert not any("far_from_default" in f for f in res["desk_share_flags"])
+
+
+@pytest.mark.parametrize("facts", [
+    {"shares_outstanding": 70670000.0},                                   # no default at all
+    {"shares_outstanding": 70670000.0, "shares_default": None},
+    {"shares_outstanding": 70670000.0, "shares_default": 0.0},            # 0.0 is no usable count, not a ratio
+    {"shares_outstanding": 70670000.0, "shares_default": "n/a"},
+])
+def test_no_default_gives_no_far_flag(facts):
+    res = _run_check(FAR_DEFAULT_B * 50, facts, shares_reason="Count from 10-K filing")
+    assert not any("far_from_default" in f for f in res["desk_share_flags"])
+
+
+def test_the_far_flag_never_excludes_a_sample_by_itself():
+    """A count that matches SECTION 6B's filed count is no 25% mismatch; sitting 10x from the default is
+    only a flag, so nothing is removed from the sample."""
+    facts = {"shares_outstanding": 706700000.0, "filed_shares_diluted": 706700000.0, "filed_shares_fy": 2025,
+             "shares_default": 70670000.0}
+    res = _run_check(0.7067, facts)
+    assert res["desk_share_flags"] == ["desk_share_count_far_from_default_10.00x"]
+    assert res["desk_share_implausible"] is False
+    assert res["desk_share_reason"] is None
+    assert res["desk_share_basis_matched"] == "vendor"
+
+
+def test_the_far_flag_follows_its_neighbours_in_the_list():
+    res = _run_check(0.7067, FAR_FACTS, shares_reason="Count from 10-K filing")
+    flags = res["desk_share_flags"]
+    assert flags[-1] == "desk_share_count_far_from_default_10.00x"
+    assert "desk_share_count_mismatch_10.00x" in flags[:-1]
 
 
 def test_from_text_new_keys():

@@ -867,6 +867,47 @@ def test_rev16_a_whole_share_count_and_its_billions_value_agree_to_the_cent():
         assert execute_financial_model(p, context=ctx) == res_b
 
 
+_SBC_KW = dict(base_cf=5.0, explicit_growth=[0.05, 0.05], wacc=0.08, terminal_g=0.03, fade_years=0)
+
+
+def test_sbc_dilution_count_is_read_in_billions_like_the_share_count():
+    """sbc_dilution >= 1 is an added share count, and was added to the billions share count as given:
+    5,000,000 new shares on 0.083371 billion became 5 million billion. `_to_b` reads it as it reads the
+    share count, so a whole count and its billions value are the same result (both units >= 1 here: a
+    value under 1 is a fraction, by the desk's own rule, in every unit)."""
+    in_b = unbundled_dcf(shares_diluted=10.0, sbc_treatment="add_back_dilution", sbc_dilution=1.5, **_SBC_KW)
+    whole = unbundled_dcf(shares_diluted=10.0, sbc_treatment="add_back_dilution",
+                          sbc_dilution=1_500_000_000, **_SBC_KW)
+    assert "error" not in in_b and "error" not in whole
+    assert in_b["shares_diluted"] == whole["shares_diluted"] == 11.5
+    assert {k: v for k, v in in_b.items() if k != "sbc_dilution"} == {k: v for k, v in whole.items() if k != "sbc_dilution"}
+    assert (in_b["sbc_dilution"], whole["sbc_dilution"]) == (1.5, 1_500_000_000)    # the record keeps what was sent
+
+
+def test_sbc_dilution_whole_count_adds_its_billions_value_to_the_share_count():
+    added = unbundled_dcf(shares_diluted=_K, sbc_treatment="add_back_dilution", sbc_dilution=5_000_000, **_SBC_KW)
+    oracle = unbundled_dcf(shares_diluted=_K + 0.005, sbc_treatment="deducted_in_cf", **_SBC_KW)
+    assert "error" not in added and "error" not in oracle
+    assert added["shares_diluted"] == oracle["shares_diluted"] == round(_K + 0.005, 4)
+    assert added["per_share_iv"] == oracle["per_share_iv"]
+
+
+def test_sbc_dilution_fraction_still_scales_the_share_count():
+    res = unbundled_dcf(shares_diluted=_K, sbc_treatment="add_back_dilution", sbc_dilution=0.04, **_SBC_KW)
+    assert res["shares_diluted"] == round(_K * 1.04, 4)
+
+
+def test_sbc_dilution_whole_count_through_the_desk_reaches_every_scenario():
+    p, ctx = _scaled(sbc_treatment="add_back_dilution", sbc_dilution=5_000_000)
+    res = execute_financial_model(p, context=ctx)
+    assert "error" not in res, res.get("error")
+    assert [s["dcf"]["shares_diluted"] for s in res["scenario_dcfs"]] == [round(_K + 0.005, 4)] * 3
+    no_sbc, _ = _scaled()
+    base = execute_financial_model(no_sbc, context=ctx)
+    for diluted, plain in zip(res["scenario_dcfs"], base["scenario_dcfs"]):
+        assert diluted["dcf"]["per_share_iv"] < plain["dcf"]["per_share_iv"]
+
+
 @pytest.mark.parametrize("bad", ["79,364,362", "lots", 0, -1.0])
 def test_rev16_a_share_count_it_cannot_use_is_refused_not_replaced_by_the_default(bad):
     p, ctx = _scaled(shares_diluted=bad)

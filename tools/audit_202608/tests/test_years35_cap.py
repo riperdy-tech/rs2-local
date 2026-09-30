@@ -175,25 +175,28 @@ def test_03_empty_reason_variants():
 def test_04_identical_to_no_context_and_no_years35_cap_key():
     """4. Three calls give a result identical to the no-context call (compare the whole dict) and have no years35_cap key:
     - Base years 3-5 exactly at the cap;
-    - a call with no context;
+    - a call with no cap in its context;
     - a call with context {'years35_cap': None}.
+    The price is in every context (a call without one is refused, and refusals would compare equal to
+    each other), so all three are accepted runs.
     """
     params_at_cap = {
-        "price": 100.0,
         "valuation_frame": "equity",
         "rate_type": "cost_of_equity",
         "shares_diluted": 1.0,
         "terminal_g": 0.025,
         "fade_years": 5,
         "sbc_treatment": "deducted_in_cf",
-        "scenarios": [
-            {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.04, 0.04, 0.04], "wacc": 0.08},
-        ],
+        **_CFL, **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.04, 0.04, 0.04], "wacc": 0.08}),
     }
-    res_at_cap = execute_financial_model(copy.deepcopy(params_at_cap), context={"years35_cap": 0.04})
-    res_no_ctx = execute_financial_model(copy.deepcopy(params_at_cap), context=None)
-    res_none_cap = execute_financial_model(copy.deepcopy(params_at_cap), context={"years35_cap": None})
+    res_at_cap = execute_financial_model(copy.deepcopy(params_at_cap), context={"price": 100.0, "years35_cap": 0.04})
+    res_no_ctx = execute_financial_model(copy.deepcopy(params_at_cap), context={"price": 100.0})
+    res_none_cap = execute_financial_model(copy.deepcopy(params_at_cap), context={"price": 100.0, "years35_cap": None})
 
+    for res in (res_at_cap, res_no_ctx, res_none_cap):
+        assert "error" not in res, res.get("error")
+        assert len(res["scenario_dcfs"]) == 3
     assert "years35_cap" not in res_at_cap
     assert "years35_cap" not in res_no_ctx
     assert "years35_cap" not in res_none_cap
@@ -204,22 +207,25 @@ def test_04_identical_to_no_context_and_no_years35_cap_key():
 def test_05_bull_and_bear_above_cap_unchanged():
     """5. Bull above the cap and Bear above the cap are unchanged."""
     params = {
-        "price": 100.0,
         "valuation_frame": "equity",
         "rate_type": "cost_of_equity",
         "shares_diluted": 1.0,
         "terminal_g": 0.025,
         "fade_years": 5,
         "sbc_treatment": "deducted_in_cf",
+        **_CFL, **_NEUTRAL_REASONS,
         "scenarios": [
             {"name": "Base", "prob": 0.5, "base_cf": 10.0, "growth_rates": [0.03, 0.03, 0.03, 0.03, 0.03], "wacc": 0.08},
             {"name": "Bull", "prob": 0.3, "base_cf": 10.0, "growth_rates": [0.10, 0.09, 0.08, 0.07, 0.06], "wacc": 0.08},
             {"name": "Bear", "prob": 0.2, "base_cf": 10.0, "growth_rates": [0.06, 0.05, 0.05, 0.05, 0.05], "wacc": 0.09},
         ],
     }
-    res_no_ctx = execute_financial_model(copy.deepcopy(params), context=None)
-    res_capped = execute_financial_model(copy.deepcopy(params), context={"years35_cap": 0.04})
+    res_no_ctx = execute_financial_model(copy.deepcopy(params), context={"price": 100.0})
+    res_capped = execute_financial_model(copy.deepcopy(params), context={"price": 100.0, "years35_cap": 0.04})
 
+    for res in (res_no_ctx, res_capped):
+        assert "error" not in res, res.get("error")
+        assert len(res["scenario_dcfs"]) == 3
     assert "years35_cap" not in res_capped
     assert res_capped == res_no_ctx
 
@@ -450,22 +456,27 @@ def test_12_negative_cap():
 
 
 def test_13_params_years35_cap_ignored():
-    """13. params['years35_cap'] = 0.99 with no context is ignored."""
+    """13. params['years35_cap'] = 0.99 with no cap in the context is ignored. The same holds for a value
+    that would bite (0.04 caps this Base's 6%, 5% and 4.5%): the accepted result is the one without the
+    parameter, so only the context's cap counts. The price is in the context (a call without one is
+    refused, and a refusal never reads the parameter)."""
     params = {
-        "price": 100.0,
         "valuation_frame": "equity",
         "rate_type": "cost_of_equity",
         "shares_diluted": 1.0,
         "terminal_g": 0.025,
         "fade_years": 5,
         "sbc_treatment": "deducted_in_cf",
-        "years35_cap": 0.99,
-        "scenarios": [
-            {"name": "Base", "prob": 1.0, "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05, 0.045], "wacc": 0.08},
-        ],
+        **_CFL, **_NEUTRAL_REASONS,
+        "scenarios": _three({"name": "Base", "base_cf": 10.0, "growth_rates": [0.10, 0.08, 0.06, 0.05, 0.045], "wacc": 0.08}),
     }
-    res = execute_financial_model(params, context=None)
-    assert "years35_cap" not in res
+    res_plain = execute_financial_model(copy.deepcopy(params), context={"price": 100.0})
+    assert "error" not in res_plain, res_plain.get("error")
+    for param_cap in (0.99, 0.04):
+        res = execute_financial_model(dict(copy.deepcopy(params), years35_cap=param_cap), context={"price": 100.0})
+        assert "error" not in res, res.get("error")
+        assert "years35_cap" not in res
+        assert res == res_plain
 
 
 def test_14_recorded_regressions():
