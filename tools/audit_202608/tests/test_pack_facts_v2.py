@@ -102,9 +102,10 @@ def test_facts_version_and_key_count():
     # revision 17 (brief B 5): FACTS_VERSION 4 -> 5 and four new keys
     assert pack_facts.FACTS_VERSION == 5
     # revision 17 (brief C4): one more key, split_after_last_filing; same revision, so the version stays 5
-    assert len(pack_facts.KEYS) == 29
-    assert pack_facts.KEYS[-5:] == ["terminal_ronic", "long_run", "working_capital", "base_year_cap",
-                                    "split_after_last_filing"]
+    # revision 17 (brief F4): one more, reference_base_b (the fiscal-year base the reference grows from): 29 -> 30
+    assert len(pack_facts.KEYS) == 30
+    assert pack_facts.KEYS[-6:] == ["terminal_ronic", "long_run", "working_capital", "base_year_cap",
+                                    "split_after_last_filing", "reference_base_b"]
 
 
 def test_empty_has_all_24_keys():
@@ -153,6 +154,8 @@ def test_defaults_block_round_trip_ezpw_example():
         "- owner_earnings_default_b: 0.148 | the Base base_cf; more than 2% away needs base_cf_reason",
         "- owner_earnings_source: ttm_filed | where that default comes from",
         "- cash_basis_b: 0.126 | the alternative base (includes working-capital swings)",
+        # revision 17, brief F4: the fiscal-year base the reference grows from ("not available" here: no reference)
+        "- reference_base_b: not available | the fiscal-year owner-earnings base the CONSENSUS-IMPLIED VALUE grows from",
         # revision 17: the window no longer changes the Base's arithmetic
         "- base_window: not available | information only: the desk's arithmetic does not depend on the window",
         "- coe_anchor: 8.91% | the Base discount rate; more than 1.5 points away needs "
@@ -162,13 +165,19 @@ def test_defaults_block_round_trip_ezpw_example():
         "- terminal_g_anchor: 3.75% | the long-run nominal growth anchor",
         # revision 17: the default_exit_multiple line is gone (the desk has no exit multiple); the three
         # through-cycle lines print "not available" for a facts object that holds none of them
+        # brief F4: the return is the blend of the 8-year and latest-3-year medians, retained at p capped by persistence
         "- terminal_ronic: not available | the Base terminal return on new investment: the cost of equity "
-        "plus p times the excess over it of r_tc, your record's median return on tangible invested capital "
-        "(both in long_run); a Base terminal_ronic more than 2 points away needs terminal_reason",
-        # brief B2 F6: two sentences
+        "plus retention times the excess over it of r_blend, your record's blended return on tangible invested "
+        "capital (both in long_run; retention is p, the share of your last eight years above the cost of equity, "
+        "capped at the measured persistence); a Base terminal_ronic more than 2 points away needs terminal_reason",
+        # brief B2 F6: two sentences; brief F4: the explanation names the numbers that drive the long run
         "- long_run: not available | The desk values years 6 on from X_5 (earnings before acquired-intangible "
-        "amortization), pays for growth at terminal_ronic, and, when cycle is yes, moves the margin from m5 to "
-        "your record's median m_tc by year 10. The members are the record behind it.",
+        "amortization), pays for growth at a return that fades from r_blend (the blend of r8 and r3, your "
+        "record's 8-year and latest-3-year median returns on tangible invested capital) to terminal_ronic, and "
+        "moves the margin from m5 to m_long by year 10 (margin_ratio = m_long / m5; none means the margin is "
+        "held): om_5, the operating margin the consensus implies at year 5, closes margin_fraction of its gap "
+        "to om_tc, your record's 8-year median operating margin (to zero for a loss record; margin_cell names "
+        "the case). The members are the record behind it.",
         "- working_capital: not available | no working-capital deduction: the reference has no revenue "
         "path or your record holds fewer than 5 years with a classified balance sheet",
         "- net_debt_b: -0.048 | the firm frame's net debt; another figure needs net_debt_reason "
@@ -178,7 +187,7 @@ def test_defaults_block_round_trip_ezpw_example():
         "- consensus_data_status: ok | ok, or why DATA 8 prints no consensus estimates",
         "- consensus_implied_value: 58.92 | a Base value outside 0.75-1.33 of it (44.19-78.36) "
         "needs guidance_deviation_reason",
-        "- reference_status: used | whether the reference is shown, fenced or not available",
+        "- reference_status: used | whether the reference is shown, fenced, not available, or not meaningful (a value of zero or less)",
         "- levels: year1=0.147, year2=0.160, bull2=0.164, bear2=0.159 | the desk holds the Base's "
         "years 1-2 at year1 and year2 unless you pass guidance_deviation_reason (a Base year 2 more "
         "than 5% away); a Bull or Bear more than 15% from bull2 or bear2 needs scenario_deviation_reason",

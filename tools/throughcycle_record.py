@@ -14,8 +14,17 @@ and after) from what the company's own history says, not from a rule of thumb:
 - the growth of its own revenue (Theil-Sen slope of ln revenue on fiscal year);
 - the working capital its revenue carries (median NWC / revenue), short-term debt subtracted once (F4).
 
+Revision 17, brief F (the redesigned reference). The margin the long run reverts toward is now the operating margin,
+(operating income + acquired-intangible amortization) / revenue (brief F2: the pre-tax margin, (pre-tax income +
+amortization) / revenue, for a company that files no operating-income line), and the record carries what the reference's margin rule
+needs: its 8-year median (om_tc), the base year's (om_L), how it crosses that median (om_shape), the base year's earnings
+margin and tax rate (x_L, tax_L). The return on new investment blends the 8-year and the latest-3-year median returns,
+each year's return capped to [R_CAP_LOW, R_CAP_HIGH], and its retention is capped by measured persistence. Every rate
+(the five margin fractions, the blend weight, the three retention caps) is read from
+reference_calibration_v1.json by `calibration()`, the one owner of those numbers; none is written anywhere else.
+
 Pure functions: fiscal-year rows in, a dict out. It imports nothing of ours (the pack and the
-reference import it), it never reads a file, and it never defaults a missing figure except where a rule
+reference import it), it reads no file but the calibration file, and it never defaults a missing figure except where a rule
 below says so and a stamp records it: a year whose inputs are not all held is missing, and a statistic
 with too few years is None, stamped.
 
@@ -30,7 +39,10 @@ flagged; AAPL, ANET, APH, FIX, AMD, GEV, LAMR, GOOG, AMZN, META, DELL, MPWR, CLS
 not). They are not derived from the whole book.
 """
 
+import functools
+import json
 import math
+from pathlib import Path
 
 WINDOW_YEARS = 8        # W = L-7..L
 CYCLE_MAX_YEARS = 12    # the cycle test looks at up to 12 held years <= L
@@ -48,8 +60,42 @@ STB_EQUAL_TOL = 0.005            # F4: separate borrowings equal to current debt
 # tag leaves short-term borrowings a separate liability
 CURRENT_PORTION_TAGS = frozenset({"LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent",
                                   "CurrentPortionOfLongtermBorrowings"})
+OM_MIN_YEARS = 5        # brief F1: defined operating-margin years needed in the window
+OM_SWING_CROSSINGS = 2  # brief F1 (brief E): this many sign changes about the median make a margin "swing"
+R3_MIN_YEARS = 2        # brief F3: defined return years needed for the latest-3-year median
+R_CAP_LOW, R_CAP_HIGH = -0.5, 1.0   # brief F3 (brief E): a year's return is capped to this range for r8 and r3
+CALIBRATION_FILE = Path(__file__).resolve().parent / "reference_calibration_v1.json"
+CELL_NAMES = ("peak_swing", "peak_trend", "trough_swing", "trough_trend", "loss")
+RETENTION_BUCKETS = ("p_lt_0.5", "p_0.5_to_lt_1", "p_eq_1")
 
 INF = math.inf
+
+
+@functools.lru_cache(maxsize=None)
+def calibration(path=None):
+    """Brief F0, the one owner of the reference's rates: reference_calibration_v1.json (brief E's measurement, never
+    tuned here). {"margin_series", "fractions": {cell: f}, "w8", "retention_caps": {bucket: cap}}. Raises when the file
+    is missing, is not the operating-margin calibration, or lacks a cell or a bucket."""
+    doc = json.loads(Path(path or CALIBRATION_FILE).read_text(encoding="utf-8"))
+    if doc["margin_series"] != "operating_margin":
+        raise ValueError(f"reference calibration margin_series is {doc['margin_series']!r}, not 'operating_margin'")
+    return {"margin_series": doc["margin_series"],
+            "fractions": {c: float(doc["cells"][c]["f"]) for c in CELL_NAMES},
+            "w8": float(doc["w8"]),
+            "retention_caps": {b: float(doc["retention_caps"][b]["cap"]) for b in RETENTION_BUCKETS}}
+
+
+def retention_cap(p, cal=None):
+    """The calibration's cap on retention for a share p of years above the cost of equity: the bucket p < 0.5,
+    0.5 <= p < 1, or p = 1."""
+    caps = (cal or calibration())["retention_caps"]
+    return caps["p_lt_0.5"] if p < 0.5 else caps["p_eq_1"] if p >= 1 else caps["p_0.5_to_lt_1"]
+
+
+def capped_return(v):
+    """A year's return capped to [R_CAP_LOW, R_CAP_HIGH] for the blended statistics (+inf -> R_CAP_HIGH,
+    -inf -> R_CAP_LOW); None stays None."""
+    return None if v is None else min(R_CAP_HIGH, max(R_CAP_LOW, v))
 
 
 def _num(v):
@@ -157,6 +203,60 @@ def earnings_detail(row, untagged=()):
 def adjusted_earnings(row, untagged=()):
     """X of a year (see `earnings_detail`), None when net income is missing."""
     return earnings_detail(row, untagged)[0]
+
+
+def operating_margin(row, untagged=()):
+    """Brief F1 (brief E's definition): (operating income + acquired-intangible amortization) / revenue. An amortization
+    field in `untagged` counts 0; a null in a series the filer does tag makes the year undefined. None too when
+    operating income is missing or revenue is not positive."""
+    rev, oi = _num(row.get("revenue")), _num(row.get("operating_income"))
+    if rev is None or rev <= 0 or oi is None:
+        return None
+    if "amortization_intangibles" in untagged:
+        return oi / rev
+    am = _num(row.get("amortization_intangibles"))
+    return None if am is None else (oi + am) / rev
+
+
+def operating_margin_plain(row):
+    """Brief F1's fallback: operating income / revenue, no amortization added back. None when operating income is
+    missing or revenue is not positive."""
+    rev, oi = _num(row.get("revenue")), _num(row.get("operating_income"))
+    return None if rev is None or rev <= 0 or oi is None else oi / rev
+
+
+def pretax_margin(row, untagged=()):
+    """Brief F2.1 (brief E2's series): (pre-tax income + acquired-intangible amortization) / revenue, the operating
+    margin's definition on the pre-tax line, for a filer with no operating-income line. An amortization field in
+    `untagged` counts 0; a null in a series the filer does tag makes the year undefined. None too when pre-tax income
+    is missing or revenue is not positive."""
+    rev, pt = _num(row.get("revenue")), _num(row.get("pretax_income"))
+    if rev is None or rev <= 0 or pt is None:
+        return None
+    if "amortization_intangibles" in untagged:
+        return pt / rev
+    am = _num(row.get("amortization_intangibles"))
+    return None if am is None else (pt + am) / rev
+
+
+def pretax_margin_plain(row):
+    """Brief F2.1's fallback: pre-tax income / revenue, no amortization added back. None when pre-tax income is missing
+    or revenue is not positive."""
+    rev, pt = _num(row.get("revenue")), _num(row.get("pretax_income"))
+    return None if rev is None or rev <= 0 or pt is None else pt / rev
+
+
+def margin_series_name(om_basis):
+    """The name the model-visible text gives the margin record whose `om_basis` this is: "pre-tax" when the basis is a
+    pre-tax one (brief F2.1), else "operating" (also for an older block that has no basis)."""
+    return "pre-tax" if str(om_basis or "").startswith("pretax") else "operating"
+
+
+def crossings(values_by_year, centre):
+    """Brief F1 (brief E): order the values by year, drop those equal to `centre` exactly, and count the sign
+    changes of value - centre."""
+    signs = [1 if v > centre else -1 for _, v in sorted(values_by_year.items()) if v != centre]
+    return sum(1 for a, b in zip(signs, signs[1:]) if a != b)
 
 
 def short_term_debt(row, dc_tag=None):
@@ -271,6 +371,22 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
       stamps (["record_not_available"] when R_tc is None; "amortization_gap:<years>" and
       "tangible_equity_partial:<years>" when a year used net income for X or a partial tangible equity;
       "cycle_not_testable" when fewer than CYCLE_MIN_TESTED years could be tested for the cycle).
+
+    Brief F1 (the operating-margin record, over W): om_tc (median of the defined operating margins, at least
+    OM_MIN_YEARS), om_L (the base year's), om_years, om_crossings and om_shape ("swing" at OM_SWING_CROSSINGS or more
+    sign changes about om_tc, else "trend"), om_basis ("with_amortization"; "without_amortization", stamped
+    `operating_margin_without_amortization`, when the strict series has fewer than OM_MIN_YEARS defined years or is
+    undefined at L and operating income / revenue is used instead); x_L (the base year's X / revenue, None when
+    undefined) and tax_L (its tax rate). Brief F2.1: when neither operating series gives a record, the same two steps on
+    the pre-tax line (om_basis "pretax_with_amortization" or "pretax_without_amortization", stamped `margin_record_pretax`;
+    the om_* members then hold the pre-tax values). With no om_tc or om_L on either line every om_* member is None and the
+    stamp is `margin_record_not_available` (older blocks carry `operating_margin_record_not_available`, which stays
+    readable). The cycle test above (`cycle`, `cycle_years`) is an annotation only.
+
+    Brief F3 (returns on new capital): r8 (median of the capped returns over W, at least R_MIN_YEARS), r3 (median over
+    L-2..L, at least R3_MIN_YEARS), r_blend = w8 x r8 + (1 - w8) x r3 (r8 alone, stamped `returns_blend_without_recent`,
+    when r3 is undefined; None with r8), retention = min(p, the calibration's cap for p's bucket) and ronic_t = r +
+    retention x max(0, r_blend - r) (r when there is no r_blend). R_tc and p are the uncapped statistics, unchanged.
     """
     untagged = frozenset(untagged_fields or ())
     rows = normalise_rows(rows)
@@ -279,7 +395,10 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
            "p_years": [], "ronic_t": None, "cycle": None, "cycle_years": [], "cycle_year": None,
            "cycle_tested": 0, "m_tc": None, "m_years": [], "g_rev": None, "g_rev_years": [],
            "nwc_intensity": None, "nwc_years": [], "amortization_gap_years": [],
-           "tangible_equity_partial_years": [], "stamps": [], "untagged_fields": sorted(untagged)}
+           "tangible_equity_partial_years": [], "stamps": [], "untagged_fields": sorted(untagged),
+           "r8": None, "r3": None, "r_blend": None, "retention": None,
+           "om_basis": None, "om_tc": None, "om_L": None, "om_years": None, "om_crossings": None, "om_shape": None,
+           "x_L": None, "tax_L": None}
     if not held:
         out["stamps"].append("record_not_available")
         return out
@@ -301,21 +420,64 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
     out["R"] = R
     r_w = {y: R.get(y) for y in W if R.get(y) is not None}
     out["r_years"] = sorted(r_w)
+    cal = calibration()
     if len(r_w) >= R_MIN_YEARS:
         out["R_tc"] = median(list(r_w.values()))
+        # brief F3: the blended statistics use each year's return capped to [R_CAP_LOW, R_CAP_HIGH]
+        out["r8"] = median([capped_return(v) for v in r_w.values()])
+        r3_years = [capped_return(R[y]) for y in range(L - 2, L + 1) if R.get(y) is not None]
+        if len(r3_years) >= R3_MIN_YEARS:
+            out["r3"] = median(r3_years)
+            out["r_blend"] = cal["w8"] * out["r8"] + (1.0 - cal["w8"]) * out["r3"]
+        else:
+            out["r_blend"] = out["r8"]
+            out["stamps"].append("returns_blend_without_recent")
     if r is not None:
         out["p_years"] = sorted(y for y, v in r_w.items() if v > r)
         # p is a share of the window's eight years, missing years counting as not above; with no defined
         # year there is no record to take a share of, so None
         out["p"] = len(out["p_years"]) / float(WINDOW_YEARS) if r_w else None
-        if out["R_tc"] is None:
+        if out["r_blend"] is None:
             out["ronic_t"] = r
-        elif out["R_tc"] == INF:
-            out["ronic_t"] = INF
         else:
-            out["ronic_t"] = r + out["p"] * max(0.0, out["R_tc"] - r)
+            out["retention"] = min(out["p"], retention_cap(out["p"], cal))
+            out["ronic_t"] = r + out["retention"] * max(0.0, out["r_blend"] - r)
     if out["R_tc"] is None:
         out["stamps"].append("record_not_available")
+
+    # brief F1: the operating-margin record. The strict series first; when it has fewer than OM_MIN_YEARS defined
+    # years in W or none at L, operating income / revenue for every year of W. Brief F2.1: when neither gives a record,
+    # the same two steps on the pre-tax line (brief E2 measured that brief E's fractions transfer to it).
+    def _om_series(fn):
+        return {y: v for y in W if rows.get(y) is not None for v in (fn(rows[y]),) if v is not None}
+
+    def _margin_record(strict, plain, strict_basis, plain_basis):
+        series, basis = _om_series(strict), strict_basis
+        if len(series) < OM_MIN_YEARS or L not in series:
+            series, basis = _om_series(plain), plain_basis
+        return (series, basis) if len(series) >= OM_MIN_YEARS and L in series else (None, None)
+
+    om, basis = _margin_record(lambda row: operating_margin(row, untagged), operating_margin_plain,
+                               "with_amortization", "without_amortization")
+    if om is None:
+        om, basis = _margin_record(lambda row: pretax_margin(row, untagged), pretax_margin_plain,
+                                   "pretax_with_amortization", "pretax_without_amortization")
+    row_L = rows.get(L)
+    rev_L = _num(row_L.get("revenue")) if row_L is not None else None
+    x_L = adjusted_earnings(row_L, untagged) if row_L is not None else None
+    out["x_L"] = x_L / rev_L if (x_L is not None and rev_L is not None and rev_L > 0) else None
+    out["tax_L"] = tax_rate(row_L) if row_L is not None else None
+    if om is not None:
+        out["om_basis"], out["om_years"] = basis, sorted(om)
+        out["om_tc"], out["om_L"] = median(list(om.values())), om[L]
+        out["om_crossings"] = crossings(om, out["om_tc"])
+        out["om_shape"] = "swing" if out["om_crossings"] >= OM_SWING_CROSSINGS else "trend"
+        if basis == "without_amortization":
+            out["stamps"].append("operating_margin_without_amortization")
+        elif basis.startswith("pretax"):
+            out["stamps"].append("margin_record_pretax")
+    else:
+        out["stamps"].append("margin_record_not_available")
 
     hits, tested = cycle_years(used, L, untagged)
     out["cycle_tested"] = tested

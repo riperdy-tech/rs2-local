@@ -758,6 +758,8 @@ def test_18_plumbing_consensus_valuation_passes_desk_context(monkeypatch, tmp_pa
         "years35_cap", "shares_warning",
         # revision 17 (brief B 4): the through-cycle facts the desk values with
         "terminal_ronic", "long_run", "working_capital", "cash_basis_b",
+        # revision 17 (brief F6): the fiscal-year base the reference grows from
+        "reference_base_b",
     }
     for ctx in captured_calls:
         assert set(ctx.keys()) == expected_keys

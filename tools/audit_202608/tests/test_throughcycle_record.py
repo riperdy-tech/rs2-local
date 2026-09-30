@@ -20,8 +20,10 @@ R = 0.09          # the cost-of-equity anchor these histories are measured again
 
 def row(year, revenue=1000.0, ni=100.0, equity=500.0, goodwill=0.0, intangibles=0.0, amort=0.0,
         pretax=None, tax=None, ca=None, cl=None, cash=0.0, sti=None, lti=None, dc=None, stb=None,
-        lt_nc=None, lt=None, interest=None):
+        lt_nc=None, lt=None, interest=None, oi="default"):
+    # brief F1: operating income (15% of revenue unless given), so a fixture has an operating-margin record
     d = {"revenue": revenue, "net_income": ni, "equity": equity, "goodwill": goodwill,
+         "operating_income": (None if revenue is None else 0.15 * revenue) if oi == "default" else oi,
          "intangibles_ex_goodwill": intangibles, "amortization_intangibles": amort,
          "pretax_income": pretax, "tax_provision": tax, "current_assets": ca, "current_liabilities": cl,
          "cash": cash, "st_investments": sti, "lt_investments": lti, "debt_current": dc,
@@ -163,7 +165,9 @@ def test_a_steady_compounder_has_p_one_no_cycle_and_a_return_above_the_cost_of_e
     assert rec["base_year"] == 2025 and rec["window"] == [2018, 2025]
     assert rec["p"] == 1.0 and len(rec["p_years"]) == 8
     assert rec["R_tc"] > 0.20 and all(v > R for y, v in rec["R"].items() if y >= 2015)
-    assert rec["ronic_t"] == pytest.approx(R + 1.0 * (rec["R_tc"] - R))
+    # brief F3: RONIC_T = r + retention x (r_blend - r); p = 1 keeps all of it (the calibration's cap for p = 1 is 1.0)
+    assert rec["retention"] == 1.0 and rec["r_blend"] == pytest.approx(0.25 * rec["r8"] + 0.75 * rec["r3"])
+    assert rec["ronic_t"] == pytest.approx(R + 1.0 * (rec["r_blend"] - R))
     assert rec["cycle"] is False and rec["cycle_year"] is None and rec["cycle_years"] == []
     assert rec["cycle_tested"] == 11
     assert rec["m_tc"] == pytest.approx(0.10) and rec["stamps"] == []
@@ -185,7 +189,9 @@ def test_a_cyclical_record_shows_the_cycle_years_and_its_median_margin():
     # the return series sets R_tc, p and RONIC_T; it no longer decides the cycle
     assert rec["p"] == 5 / 8 and rec["p_years"] == [2018, 2019, 2021, 2022, 2023]
     assert rec["R_tc"] == pytest.approx(150.0 / 500.0)               # median of five 0.30 and three 0.04
-    assert rec["ronic_t"] == pytest.approx(R + 5 / 8 * (0.30 - R))
+    # brief F3: the blend is 0.25 x r8 (0.30, the window's median) + 0.75 x r3 (2023-2025: 0.30, 0.04, 0.04 -> 0.04)
+    assert rec["r8"] == pytest.approx(0.30) and rec["r3"] == pytest.approx(0.04) and rec["r_blend"] == pytest.approx(0.105)
+    assert rec["retention"] == 5 / 8 and rec["ronic_t"] == pytest.approx(R + 5 / 8 * (0.105 - R))
 
 
 def test_a_loss_year_with_rising_revenue_is_not_a_cycle():
@@ -252,7 +258,8 @@ def test_invested_capital_at_or_below_zero_gives_infinite_returns_and_a_median_o
     rows = history(2014, 2025, lambda y: row(y, ni=100.0, equity=200.0, goodwill=250.0, intangibles=50.0))
     rec = tc.analyse(rows, R)
     assert all(v == INF for v in rec["R"].values())
-    assert rec["R_tc"] == INF and rec["p"] == 1.0 and rec["ronic_t"] == INF
+    # brief F3: the blended return is capped (an infinite return reads 1.0), so growth is paid for at 100% returns, not for free
+    assert rec["R_tc"] == INF and rec["p"] == 1.0 and rec["r_blend"] == 1.0 and rec["ronic_t"] == 1.0
     # with losses on non-positive invested capital every year the return is -inf and RONIC_T is the cost of equity
     losing = history(2014, 2025, lambda y: row(y, ni=-10.0, equity=200.0, goodwill=250.0, intangibles=50.0))
     rec = tc.analyse(losing, R)

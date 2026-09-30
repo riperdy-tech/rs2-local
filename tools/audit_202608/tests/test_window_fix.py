@@ -416,13 +416,18 @@ def test_f2_num_predict_capping_and_turn_record_keys(monkeypatch, tmp_path):
     # Tests: a request's num_predict equals min(configured, ctx - est - 2048) for a large prompt
     # and the configured value for a small one; the turn record carries both keys; never below 1024.
 
+    # revision 17, brief F8 item 8: each session makes one complete desk run first, then delivers the memorandum (a
+    # memorandum with no complete desk run would be followed by a desk continuation turn); the rule under test is the
+    # first turn's, and it is the same in every turn
+    def session(prompt, **kw):
+        bodies = _fake_ollama(monkeypatch, [_resp("", tool_calls=_desk_call()), _resp(MEMO)])
+        _dispatch(monkeypatch, [DESK_OK])
+        _, _, meta = at.chat_with_tools("m", prompt, tmp_path, num_predict=49152, verbose=False, **kw)
+        assert len(bodies) == 2
+        return bodies, meta
+
     # 1. Small prompt: num_predict equals configured value
-    bodies1 = _fake_ollama(monkeypatch, [_resp(MEMO)])
-    # revision 17, brief C8: max_model_calls=0 on these single-turn sessions (a memorandum with no desk run and the
-    # desk open would be followed by a desk continuation turn); num_predict and the turn keys are mode-independent
-    _, _, meta1 = at.chat_with_tools("m", "short", tmp_path, ctx=81920, num_predict=49152, verbose=False,
-                                     max_model_calls=0)
-    assert len(bodies1) == 1
+    bodies1, meta1 = session("short", ctx=81920)
     t0 = meta1["turns"][0]
     assert "est_prompt_tokens" in t0 and "num_predict" in t0
     assert t0["num_predict"] == 49152
@@ -430,11 +435,8 @@ def test_f2_num_predict_capping_and_turn_record_keys(monkeypatch, tmp_path):
 
     # 2. Large prompt: num_predict equals min(configured, ctx - est - 2048)
     large_prompt = "x" * 15000
-    bodies2 = _fake_ollama(monkeypatch, [_resp(MEMO)])
     ctx2 = 10000
-    _, _, meta2 = at.chat_with_tools("m", large_prompt, tmp_path, ctx=ctx2, num_predict=49152, verbose=False,
-                                     max_model_calls=0)
-    assert len(bodies2) == 1
+    bodies2, meta2 = session(large_prompt, ctx=ctx2)
     t1 = meta2["turns"][0]
     assert "est_prompt_tokens" in t1 and "num_predict" in t1
     expected_np2 = ctx2 - t1["est_prompt_tokens"] - 2048
@@ -443,11 +445,8 @@ def test_f2_num_predict_capping_and_turn_record_keys(monkeypatch, tmp_path):
 
     # 3. Huge prompt: never below 1024
     huge_prompt = "x" * 60000
-    bodies3 = _fake_ollama(monkeypatch, [_resp(MEMO)])
     ctx3 = 10000
-    _, _, meta3 = at.chat_with_tools("m", huge_prompt, tmp_path, ctx=ctx3, num_predict=49152, verbose=False,
-                                     max_model_calls=0)
-    assert len(bodies3) == 1
+    bodies3, meta3 = session(huge_prompt, ctx=ctx3)
     t2 = meta3["turns"][0]
     assert t2["num_predict"] == 1024
     assert bodies3[0]["options"]["num_predict"] == 1024

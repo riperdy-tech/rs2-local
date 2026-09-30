@@ -103,10 +103,13 @@ fiscal year end rolled forward to today, reconciles the implied terminal multipl
 sector band, and enforces the valuation frame (`equity`/FCFE at cost of equity vs. `firm`/FCFF at
 WACC — a frame mismatch is a structured refusal, not a silent miscalculation). The record is measured
 by `tools/throughcycle_record.py` (long-run earnings are net income before acquired-intangible
-amortization; returns are on tangible invested capital before interest; a cycle is a fiscal year with
-revenue down at least 5% and earnings down at least a third; short-term debt is subtracted once) and the
-arithmetic of the long run is one function, `consensus_reference.long_run_value`, shared by the pack's
-reference and the desk. Cost of equity
+amortization; the long-run margin moves toward the company's 8-year median operating margin (its pre-tax
+margin, where no operating line is filed) by the fraction measured in `tools/reference_calibration_v1.json`;
+the downturn test (a fiscal year with revenue down at least 5% and earnings down at least a third) is an
+annotation and moves no number; returns are on tangible invested capital before interest, and the return
+on new capital blends the 8-year and latest-3-year medians, capped at 100%; short-term debt is subtracted
+once) and the arithmetic of the long run is one function, `consensus_reference.long_run_value`, shared by
+the pack's reference and the desk. Cost of equity
 must sit within ±150 bp of the pack's SECTION 1.5 anchor or declare `coe_source: "own"` with a
 reason.
 

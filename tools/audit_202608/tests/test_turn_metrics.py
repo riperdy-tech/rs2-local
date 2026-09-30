@@ -34,6 +34,12 @@ class _FakeResponse:
         return False
 
 
+# revision 17, brief F8 item 8: a terminal turn while no desk run covers Base, Bull and Bear gets a desk continuation turn, so
+# this session makes a complete desk run first (the pattern of test_report_deliverable.py's DESK_TURN / DESK_OK)
+DESK_OK = {"scenario_dcfs": [{"name": n, "dcf": {"per_share_iv": iv}}
+                             for n, iv in (("Base", 100.0), ("Bull", 130.0), ("Bear", 70.0))]}
+
+
 def _payload(**over):
     base = {
         "message": {"content": "x" * 6000},
@@ -74,8 +80,10 @@ def test_turn_metrics_counts_tool_calls_and_tolerates_missing_fields():
 def test_chat_with_tools_records_a_turn_per_round_trip(monkeypatch, tmp_path):
     import tools.audit_202608.analyst_tools as at
 
-    # two turns, then a deliverable report, so the loop runs three times
+    # a complete desk run, two search turns, then a deliverable report, so the loop runs four times
     turns = [
+        _payload(message={"content": "", "tool_calls": [
+            {"function": {"name": "run_financial_model", "arguments": {"price": 100.0}}}]}),
         _payload(message={"content": "", "tool_calls": [
             {"function": {"name": "search_web", "arguments": {"query": "q"}}}]}),
         _payload(message={"content": "", "tool_calls": [
@@ -93,18 +101,18 @@ def test_chat_with_tools_records_a_turn_per_round_trip(monkeypatch, tmp_path):
 
     monkeypatch.setattr(at.urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(at, "search_web", lambda *a, **k: {"results": []})
+    monkeypatch.setattr(at, "dispatch_tool",
+                        lambda name, args, **kw: DESK_OK if name == "run_financial_model" else {"results": []})
 
-    # revision 17, brief C8: max_model_calls=0 (discovery mode): with a desk open and no desk run, the memorandum
-    # turn would be followed by a desk continuation turn; the turn records this test reads do not depend on the mode
-    _rep, _think, meta = at.chat_with_tools("m", "pack", tmp_path, verbose=False, max_model_calls=0)
+    _rep, _think, meta = at.chat_with_tools("m", "pack", tmp_path, verbose=False)
 
-    assert len(meta["turns"]) == len(seen) == 3
-    assert [t["turn"] for t in meta["turns"]] == [1, 2, 3]
-    # the tool-call turn must be distinguishable from the final report turn
-    assert meta["turns"][0]["n_tool_calls"] == 1
+    assert len(meta["turns"]) == len(seen) == 4
+    assert [t["turn"] for t in meta["turns"]] == [1, 2, 3, 4]
+    # the tool-call turns must be distinguishable from the final report turn
+    assert meta["turns"][0]["n_tool_calls"] == 1 and meta["turns"][1]["n_tool_calls"] == 1
     assert meta["turns"][-1]["n_tool_calls"] == 0
     snapshot = json.loads((tmp_path / "_research_snapshot.json").read_text(encoding="utf-8"))
-    assert len(snapshot["turns"]) == 3
+    assert len(snapshot["turns"]) == 4
 
 
 # --- 3. a cache-hit fetch must still reach the snapshot ---------------------------------------

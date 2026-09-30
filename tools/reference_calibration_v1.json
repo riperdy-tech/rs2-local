@@ -1,0 +1,140 @@
+{
+ "margin_series": "operating_margin",
+ "cells": {
+  "peak_swing": {
+   "f": 0.7505280268164513,
+   "n": 344,
+   "n_own_cell": 344,
+   "ci90": [
+    0.638260478488349,
+    0.9448976039222179
+   ],
+   "bootstrap_valid_resamples": 1000,
+   "mark": "own"
+  },
+  "peak_trend": {
+   "f": 0.36966198969260045,
+   "n": 210,
+   "n_own_cell": 210,
+   "ci90": [
+    0.08631180549556633,
+    0.5226577649903984
+   ],
+   "bootstrap_valid_resamples": 1000,
+   "mark": "own"
+  },
+  "trough_swing": {
+   "f": 0.5302567725718526,
+   "n": 217,
+   "n_own_cell": 217,
+   "ci90": [
+    0.40233164604508154,
+    0.7150425985942868
+   ],
+   "bootstrap_valid_resamples": 1000,
+   "mark": "own"
+  },
+  "trough_trend": {
+   "f": 0.2019694563662897,
+   "n": 123,
+   "n_own_cell": 123,
+   "ci90": [
+    -0.07105716351628041,
+    0.49732511236114796
+   ],
+   "bootstrap_valid_resamples": 1000,
+   "mark": "own"
+  },
+  "loss": {
+   "f": 0.9805821203478815,
+   "n": 192,
+   "n_own_cell": 73,
+   "ci90": [
+    0.5148561060337143,
+    1.3966552364452947
+   ],
+   "bootstrap_valid_resamples": 1000,
+   "mark": "lifted_floor_flagged"
+  }
+ },
+ "w8": 0.25,
+ "retention_caps": {
+  "p_lt_0.5": {
+   "cap": 0.8400016705146105,
+   "n": 378,
+   "n_own_bucket": 378,
+   "ci90": [
+    0.622587964484769,
+    0.9493760651882628
+   ],
+   "bootstrap_valid_resamples": 1000,
+   "mark": "own"
+  },
+  "p_0.5_to_lt_1": {
+   "cap": 1.0,
+   "n": 2048,
+   "n_own_bucket": 2048,
+   "ci90": [
+    1.0,
+    1.0
+   ],
+   "bootstrap_valid_resamples": 1000,
+   "mark": "own"
+  },
+  "p_eq_1": {
+   "cap": 1.0,
+   "n": 224,
+   "n_own_bucket": 224,
+   "ci90": [
+    0.8880351638856131,
+    1.0
+   ],
+   "bootstrap_valid_resamples": 1000,
+   "mark": "own"
+  }
+ },
+ "r_g": 0.09,
+ "revenue_floor": 360000000.0,
+ "market_cap_floor_holdout": 744000000.0,
+ "seeds": {
+  "calibration_split": 20261001,
+  "holdout_draw": 20261002,
+  "bootstrap": 20261003
+ },
+ "rule_A": {
+  "x": {
+   "skill_vs_no_move": -0.005207106464776956,
+   "skill_vs_full_move": 0.04324253973144632,
+   "n_validation": 522
+  },
+  "op": {
+   "skill_vs_no_move": 0.156503913721332,
+   "skill_vs_full_move": -0.007846580528027225,
+   "n_validation": 298
+  }
+ },
+ "inputs_sha256": {
+  "extractor_build_fundamentals_history.py": "aa9493a4196f9a14fdceb403853278f469c01d2fc67a341f9fc5d0a949c38469",
+  "companyfacts.zip": "2a639c8179348c4520f480f8074edc67f9bfc2d26d13a52fedb1f1edd63fc4b6",
+  "history_0a_output": "7de1fcb746715d7b0818502e9a48561a2526e24251957fa03f71e3f1c81ac980",
+  "cik_map.json": "ade712aa93511cedf773c9556df088be366006571e1832d66e4593eb8d4bbf53",
+  "stocks.json": "b7f213bc08e70e0fda666bd11390b604db8c228e29fa88695999c850e91207b5",
+  "throughcycle_record.py": "ca19ed08e2062b4f9d4c63610053cd5174e23b048934e6261c457842064ed3dc",
+  "book_tickers.txt": "6923f962f90b09de278e1120d7129d8c1910bb56d30eb570d70d3fd3b2725c60",
+  "dev_names.txt": "0de754b8a885ac7bc8bfc42a1fd69b1e55534f478779dcc7dbfd067a24fae8df",
+  "holdout_candidates.txt": "d67cb07da1c038e35c69fa403d19de7272a6cee450855bea564f1b20fc89205d"
+ },
+ "code": {
+  "throughcycle_record_repo": "rs2-P4-r17",
+  "commit": "c78dbf2bc5cd94a7fcd48f11dab23f889ed82d30",
+  "calib.py_sha256": "76405fdbc1b459de49e32856eeeb5f0284021499e0e2be4111004c0b46ad9915"
+ },
+ "populations": {
+  "calibration_firms": 4828,
+  "eligible_tickers": 1550,
+  "fit_tickers": 1085,
+  "val_tickers": 465,
+  "firm_years_above_floor": 5339,
+  "returns_firm_years": 4493
+ }
+}

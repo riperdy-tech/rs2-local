@@ -1,0 +1,77 @@
+{
+ "_note": "Brief F7 fixtures: the pinned data of brief D (rev17D_accept\\screener_data_pinned): the filed fiscal-year rows (net income, diluted shares), the vendor's share count (financials Shares_Outstanding) and the screener's country for the three US splits (MNST and IESC 2-for-1, POWL 3-for-1) and one depositary-share case (EMBJ, 4 ordinary shares per ADS). The vendor's financials files sit beside this one, byte for byte.",
+ "cases": {
+  "MNST": {
+   "country": "United States",
+   "vendor_shares": 1959051764,
+   "history": {
+    "2023": {
+     "net_income": 1630988000,
+     "shares_diluted": 1057981000
+    },
+    "2024": {
+     "net_income": 1509048000,
+     "shares_diluted": 1013107000
+    },
+    "2025": {
+     "net_income": 1905432000,
+     "shares_diluted": 984451000
+    }
+   }
+  },
+  "IESC": {
+   "country": "United States",
+   "vendor_shares": 39848712,
+   "history": {
+    "2023": {
+     "net_income": 108288000,
+     "shares_diluted": 20413032
+    },
+    "2024": {
+     "net_income": 219116000,
+     "shares_diluted": 20414932
+    },
+    "2025": {
+     "net_income": 305975000,
+     "shares_diluted": 20182797
+    }
+   }
+  },
+  "POWL": {
+   "country": "United States",
+   "vendor_shares": 36432564,
+   "history": {
+    "2023": {
+     "net_income": 54525000,
+     "shares_diluted": 12120000
+    },
+    "2024": {
+     "net_income": 149848000,
+     "shares_diluted": 12188000
+    },
+    "2025": {
+     "net_income": 180747000,
+     "shares_diluted": 12167000
+    }
+   }
+  },
+  "EMBJ": {
+   "country": "Brazil",
+   "vendor_shares": 177958235,
+   "history": {
+    "2023": {
+     "net_income": 164300000,
+     "shares_diluted": 734632806
+    },
+    "2024": {
+     "net_income": 354600000,
+     "shares_diluted": 734632806
+    },
+    "2025": {
+     "net_income": 359000000,
+     "shares_diluted": 732412025
+    }
+   }
+  }
+ }
+}

@@ -29,7 +29,7 @@ import pack_facts  # noqa: E402
 # Revision 17: the reference's long run needs the company's record. With RONIC_T = +inf, no cycle, no working
 # capital and base net income = owner earnings (D&A = capex) it reduces to revision 16's arithmetic, so the
 # tests in this module that pin revision-16 numbers build through this wrapper and keep their assertions.
-_REDUCTION = {"R_tc": float("inf"), "ronic_t": float("inf"), "cycle": False, "m_tc": None,
+_REDUCTION = {"R_tc": float("inf"), "r_blend": float("inf"), "ronic_t": float("inf"), "cycle": False, "m_tc": None,
               "nwc_intensity": None, "stamps": []}
 
 
@@ -165,7 +165,8 @@ class _FixedNow(__import__("datetime").datetime):
         return cls(2026, 9, 26, 12, 0, tzinfo=tz)
 
 
-def _gev_pack(monkeypatch, fye, year_ago, fin_edit=None, ttm_edit=None, hist_edit=None, eps_year_ago=17.70):
+def _gev_pack(monkeypatch, fye, year_ago, fin_edit=None, ttm_edit=None, hist_edit=None, eps_year_ago=17.70,
+              country=None):
     import rs2_data
     en = {"_ticker": "GEV", "_fetched_at": "2026-09-24T12:00:00",
           "estimates": {"0y": {"eps": {"avg": 20.0, "low": 18.0, "high": 22.0, "analysts": 25, "growth": 0.13,
@@ -179,6 +180,8 @@ def _gev_pack(monkeypatch, fye, year_ago, fin_edit=None, ttm_edit=None, hist_edi
         s = str(p)
         if s.endswith("GEV.json") and "enrich" in s:
             return en
+        if country is not None and s.endswith("stocks.json"):
+            return [{"symbol": "GEV", "country": country}]       # brief F7: the screener's country for the split wording
         out = orig(p)
         if fin_edit and s.endswith("GEV.json") and "financials" in s:
             out = fin_edit(json.loads(json.dumps(out)))

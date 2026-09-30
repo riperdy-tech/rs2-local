@@ -126,7 +126,8 @@ def test_the_held_base_uses_a_shorter_list_the_same_way():
 
 # ---- section 4d/4e: working capital and the long run -------------------------------------------------
 
-LR_FACTS = {"e5": 0.30, "oe5": 0.28, "m5": 0.10, "m_tc": 0.06, "cycle": True, "r_tc": 0.20, "stub_months": 8.5}
+# brief F3: the facts carry the reference's margin_ratio (m_long / m5 = 0.06 / 0.10); the desk computes none
+LR_FACTS = {"e5": 0.30, "oe5": 0.28, "m5": 0.10, "margin_ratio": 0.6, "r_tc": 0.20, "stub_months": 8.5}
 WC = [0.004, 0.005, 0.006, 0.005, 0.004]
 
 
@@ -147,8 +148,9 @@ def test_working_capital_is_deducted_in_years_1_to_5_from_every_scenario_unless_
     res = execute_financial_model(_call(scs, guidance_deviation_reason="x"), _dcf_ctx(working_capital=WC, cash_basis_b=None))
     for item in res["scenario_dcfs"]:
         assert item["dcf"]["working_capital_deducted"] == WC
-    res = execute_financial_model(_call(_three(EZPW_PATH), guidance_deviation_reason="x"),
-                                  _dcf_ctx(working_capital=WC, cash_basis_b=0.1485))
+    # (brief F6: a base within 2% of an owner-earnings figure is owner earnings, so the DEFAULTS owner earnings sit away)
+    res = execute_financial_model(_call(_three(EZPW_PATH), guidance_deviation_reason="x", base_cf_reason="x"),
+                                  _dcf_ctx(working_capital=WC, cash_basis_b=0.1485, owner_earnings_default_b=0.20))
     for item in res["scenario_dcfs"]:                       # every scenario starts from 0.148, within 2% of 0.1485
         assert item["dcf"]["working_capital_deducted"] is None and "wc_in_base" in item["dcf"]["stamps"]
 
@@ -157,7 +159,8 @@ def test_wc_in_base_is_per_scenario_on_its_own_base_cf():
     scs = _three(EZPW_PATH)
     scs[2]["base_cf"] = 0.10                                            # the Bear starts from a lower base
     res = execute_financial_model(_call(scs, guidance_deviation_reason="x", scenario_deviation_reason="x",
-                                        base_cf_reason="x"), _dcf_ctx(working_capital=WC, cash_basis_b=0.148))
+                                        base_cf_reason="x"),
+                                  _dcf_ctx(working_capital=WC, cash_basis_b=0.148, owner_earnings_default_b=0.20))
     base, bull, bear = (i["dcf"] for i in res["scenario_dcfs"])
     assert "wc_in_base" in base["stamps"] and "wc_in_base" in bull["stamps"] and "wc_in_base" not in bear["stamps"]
     assert bear["working_capital_deducted"] == WC
@@ -188,9 +191,15 @@ def test_the_scenarios_year_5_earnings_move_one_for_one_with_its_owner_earnings(
     assert e5_high - e5_low == pytest.approx(oe5_low * 0.10, abs=1e-4)
 
 
-def test_the_cycle_margin_factor_reverts_a_cycle_name_toward_its_median():
-    flat = _direct(EZPW_PATH, ronic=0.135, long_run=dict(LR_FACTS, cycle=False))
+def test_the_desk_applies_the_facts_margin_ratio_and_computes_none_itself():
+    """Was `test_the_cycle_margin_factor_reverts_a_cycle_name_toward_its_median`: the desk no longer derives the ratio
+    from m_tc and the cycle flag; it takes the reference's margin_ratio from the facts (brief F3)."""
+    flat = _direct(EZPW_PATH, ronic=0.135, long_run=dict(LR_FACTS, margin_ratio=None))
     cyc = _direct(EZPW_PATH, ronic=0.135, long_run=LR_FACTS)
+    # an older block (m_tc and cycle, no margin_ratio) has no ratio: the desk holds the margin, it does not compute one
+    older = _direct(EZPW_PATH, ronic=0.135, long_run={"e5": 0.30, "oe5": 0.28, "m5": 0.10, "m_tc": 0.06, "cycle": True,
+                                                       "r_tc": 0.20, "stub_months": 8.5})
+    assert older["long_run"]["margin_ratio"] is None and older["per_share_iv"] == flat["per_share_iv"]
     assert flat["long_run"]["margin_ratio"] is None and cyc["long_run"]["margin_ratio"] == pytest.approx(0.6)
     assert cyc["per_share_iv"] < flat["per_share_iv"]
     # fewer fade years reach the median sooner

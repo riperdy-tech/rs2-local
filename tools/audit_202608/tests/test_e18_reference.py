@@ -20,7 +20,7 @@ import pack_facts  # noqa: E402
 # Revision 17: the reference's long run needs the company's record. With RONIC_T = +inf, no cycle, no working
 # capital and base net income = owner earnings (D&A = capex) it reduces to revision 16's arithmetic, so the
 # tests in this module that pin revision-16 numbers build through this wrapper and keep their assertions.
-_REDUCTION = {"R_tc": float("inf"), "ronic_t": float("inf"), "cycle": False, "m_tc": None,
+_REDUCTION = {"R_tc": float("inf"), "r_blend": float("inf"), "ronic_t": float("inf"), "cycle": False, "m_tc": None,
               "nwc_intensity": None, "stamps": []}
 
 

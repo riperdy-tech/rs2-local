@@ -158,7 +158,8 @@ TOOLS = [{
             "holds Base years 3-5 at next-FY consensus revenue growth unless guidance_deviation_reason is "
             "given, and shows the value on your path beside it. It holds the Base's years 1-2 at the DEFAULTS "
             "cash-flow levels the same way (a Base year 2 more than 5% away). It deducts the DEFAULTS working "
-            "capital in years 1-5 (not when base_cf is within 2% of cash_basis_b) and pays for growth from year 6 "
+            "capital in years 1-5 (not when base_cf is within 2% of cash_basis_b and not within 2% of "
+            "owner_earnings_default_b or reference_base_b) and pays for growth from year 6 "
             "at terminal_ronic. It values at the base fiscal year end and rolls the value forward to today. "
             "The firm frame uses the same long run, an approximation: the return on new investment is measured on "
             "tangible invested capital before interest and applied to equity earnings, which is conservative "
@@ -854,8 +855,10 @@ def desk_loop_guard(result, call_key, window):
     the (reason set, call_key) of the last two tracked refusals, or None. Returns (result, the window with this
     refusal added): when one of this refusal's reasons was named by a refusal in the window and the inputs differ
     from the latest such refusal's, the error gains DESK_LOOP_GUARD, naming the reasons of the whole window (sorted,
-    joined with ", " and a final " and "). A refusal with no reasons (a missing input, the order rule) is not
-    tracked and clears the window; so does an accepted call, in the analyst loop."""
+    joined with ", " and a final " and "); a refusal that ends with the desk's generic clause (", or change an input
+    with dated evidence") first gets the advised one, so the two sentences do not send the model in opposite directions
+    (brief F8, item 7). A refusal with no reasons (a missing input, the order rule) is not tracked and clears the
+    window; so does an accepted call, in the analyst loop."""
     reasons = frozenset(n.get("reason") for n in (result.get("needs_reasons") or []) if isinstance(n, dict))
     if not reasons:
         return result, None
@@ -864,7 +867,11 @@ def desk_loop_guard(result, call_key, window):
     if sharing and sharing[-1][1] != call_key:
         named = sorted(set().union(*(h[0] for h in window)))
         rules = named[0] if len(named) == 1 else ", ".join(named[:-1]) + " and " + named[-1]
-        result = dict(result, error=f"{result['error']} {DESK_LOOP_GUARD.format(rules=rules)}")
+        import financial_model_tool as fmt
+        error = result["error"]
+        if error.endswith(fmt.REFUSAL_GENERIC_CLAUSE):
+            error = error[:-len(fmt.REFUSAL_GENERIC_CLAUSE)] + fmt.REFUSAL_ADVISED_CLAUSE
+        result = dict(result, error=f"{error} {DESK_LOOP_GUARD.format(rules=rules)}")
     return result, (window + ((reasons, call_key),))[-2:]
 
 

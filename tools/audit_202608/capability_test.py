@@ -780,6 +780,10 @@ _SHARE_DEFAULT_FILED_TOL = 0.01
 # filed series, so a split that came after the last filing (PIPR: filed FY2025 17.8M, vendor 70.7M) was invisible.
 _SPLIT_KS = (2, 3, 4, 5, 8, 10, 15, 20)
 _SPLIT_TOL = 0.03
+# Revision 17, brief F7: the pack says "split" only when the company is in the United States and the vendor's restated
+# fiscal-year EPS times the multiplier is within this of the filed diluted EPS; depositary shares (an ADS is several
+# ordinary shares) show the same share-count ratio and the same EPS ratio without any split.
+_SPLIT_EPS_TOL = 0.03
 
 
 def _split_k(x):
@@ -825,6 +829,45 @@ def _split_after_last_filing(vendor_shares, h):
             return None
     return {"k": k, "reverse": reverse, "multiplier": (1.0 / k if reverse else float(k)), "fy": fy,
             "filed": filed, "vendor": float(vendor_shares)}
+
+
+def _screener_country(t):
+    """The company's country as the screener's `stocks.json` holds it, None when the ticker or the field is absent."""
+    stocks = rs2_data.load_json(SD / "stocks.json") or []
+    return next((row.get("country") for row in stocks if isinstance(row, dict) and row.get("symbol") == t), None)
+
+
+def _split_confirmed(split, h, fin, country):
+    """Revision 17, brief F7: is a split after the last filing (`_split_after_last_filing`'s dict) a split? True only
+    when `country` is the United States and the vendor's DilutedEPS for the latest filed fiscal year (`fin`'s
+    Annual_Income_Statement row of that year) times the split's multiplier lies within `_SPLIT_EPS_TOL` of the filed
+    diluted EPS (net income / shares_diluted of `h`'s row of that year). False when either is unavailable."""
+    if country != "United States":
+        return False
+    row = h.get(str(split["fy"])) or {}
+    ni, sh = row.get("net_income"), row.get("shares_diluted")
+    if not (isinstance(ni, (int, float)) and isinstance(sh, (int, float)) and sh > 0 and ni != 0):
+        return False
+    vendor = next((r.get("DilutedEPS") for r in (fin.get("Annual_Income_Statement") or [])
+                   if isinstance(r, dict) and str(r.get("Date"))[:4] == str(split["fy"])), None)
+    if not isinstance(vendor, (int, float)):
+        return False
+    return abs(vendor * split["multiplier"] / (ni / sh) - 1) <= _SPLIT_EPS_TOL
+
+
+def _split_sentence(split):
+    """DATA 7's account of a split after the last filing (`split` with its `confirmed` flag), or None for none."""
+    if not split:
+        return None
+    span = f"filed FY{split['fy']} {split['filed'] / 1e6:.1f}M -> vendor {split['vendor'] / 1e6:.1f}M"
+    if split["confirmed"]:
+        what = f"a {split['k']}-for-1 split" if not split["reverse"] else f"a 1-for-{split['k']} reverse split"
+        return (f"{what} ({span}; the vendor's restated FY{split['fy']} EPS agrees); filed per-share figures in "
+                f"DATA 5 and 6 are pre-split.")
+    of = f"{split['k']}x" if not split["reverse"] else f"1/{split['k']} of"
+    return (f"the vendor's share count is {of} the filed diluted count ({span}): a split after the last filing, or a "
+            f"different share unit such as depositary shares; the filed per-share figures in DATA 5 and 6 are on "
+            f"the filed unit.")
 
 
 def _x_over_owner_earnings(ni, oe, fy_row, untagged):
@@ -1537,6 +1580,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             "g_rev": _record["g_rev"], "g_rev_years": _yrs(_record["g_rev"], _record["g_rev_years"]),
             "terminal_g_basis": terminal_def_basis,
             "nwc_intensity": _record["nwc_intensity"], "nwc_years": _yrs(_record["nwc_intensity"], _record["nwc_years"]),
+            "om_tc": _record["om_tc"], "om_L": _record["om_L"], "om_years": _yrs(_record["om_tc"], _record["om_years"]),
+            "om_shape": _record["om_shape"], "om_basis": _record["om_basis"],
+            "r8": _record["r8"], "r3": _record["r3"], "r_blend": _record["r_blend"], "retention": _record["retention"],
             # brief C7: the DEFAULTS block lists the eight window years' stamps as ranges; the facts (the verdict) keep the
             # record's full list
             "stamps": pack_facts.compact_stamps(_record["stamps"], _record["window"]),
@@ -2044,6 +2090,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # Revision 17, brief C4/C5: a split after the last filing (live packs only: a point-in-time pack's count IS the
     # filed one), and the latest filed diluted count on today's share basis, for the share default.
     _split = None if asof_date is not None else _split_after_last_filing(sh, h)
+    if _split:
+        _split["confirmed"] = _split_confirmed(_split, h, fin, _screener_country(t))
     facts["split_after_last_filing"] = _split["multiplier"] if _split else None
     _filed_series = _filed_diluted_series(h) if h else []
     _filed_today = (_filed_series[-1][1] * _split["multiplier"] if _split else _filed_series[-1][1]) if _filed_series else None
@@ -2859,11 +2907,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                   f"- Years of history available: {_v(bat, 'years_available')}",
                   f"- Share-count split suspected in the filed series: "
                   f"{_v(bat, 'share_count_split_suspected')}. After the last filing: "
-                  + (f"a {_split['k']}-for-1 split" if _split and not _split["reverse"] else
-                     f"a 1-for-{_split['k']} reverse split" if _split else "none detected")
-                  + (f" (filed FY{_split['fy']} {_split['filed'] / 1e6:.1f}M -> vendor "
-                     f"{_split['vendor'] / 1e6:.1f}M); filed per-share figures in DATA 5 and 6 are pre-split."
-                     if _split else "."),
+                  + (_split_sentence(_split) or "none detected."),
                   "",
                   "The Beneish M-score is deliberately omitted: it imputes absent inputs and then "
                   "publishes a score, which would present a guess as a measurement.", ""]
@@ -2947,7 +2991,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             if _split and _split["fy"] == latest_yr and isinstance(_fy_sh_x, (int, float)):
                 _fy_sh_x = _fy_sh_x * _split["multiplier"]
                 _split_note = (f", the filed count x {_split['k']}" if not _split["reverse"] else
-                               f", the filed count / {_split['k']}") + " for the split after the last filing (DATA 7)"
+                               f", the filed count / {_split['k']}") + (
+                                   " for the split after the last filing (DATA 7)" if _split["confirmed"] else
+                                   " for the share-count difference after the last filing (DATA 7)")
             # review B4 (2026-09-27): only when the vendor's figures and ours are on one basis: the
             # vintage test passes and our filed share count agrees with the pack's (APH read -50%
             # across a split, ADS names read +290% and +2168%)
@@ -3033,7 +3079,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     _band = _vb._consensus_band(t)
                 except Exception:
                     _band = None
-                _side, _fence = _reference_outside_fence((_ref or {}).get("value"), _band)
+                # brief F5: a value of zero or less (as printed, to the cent) is no reference: it is stamped not_meaningful,
+                # prints no number, and the fence is not evaluated for it
+                _ref_value = (_ref or {}).get("value")
+                _not_meaningful = _ref_value is not None and float(f"{_ref_value:.2f}") <= 0
+                _side, _fence = (None, None) if _not_meaningful else _reference_outside_fence(_ref_value, _band)
                 if _side:
                     facts["reference_status"] = f"outside_fence_{_side}"
                     L.append(f"- CONSENSUS-IMPLIED VALUE: not used — the consensus path carried forward at our "
@@ -3046,14 +3096,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     if _ref.get("value") is None:
                         facts["reference_status"] = "not_available"
                         facts["consensus_implied_value"] = None
+                    elif _not_meaningful:
+                        facts["reference_status"] = "not_meaningful"
+                        facts["consensus_implied_value"] = None
                     else:
-                        val = float(f"{_ref['value']:,.2f}".replace(",", ""))
-                        if val >= 0:
-                            facts["reference_status"] = "used"
-                            facts["consensus_implied_value"] = val
-                        else:
-                            facts["reference_status"] = None
-                            facts["consensus_implied_value"] = None
+                        facts["reference_status"] = "used"
+                        facts["consensus_implied_value"] = float(f"{_ref['value']:,.2f}".replace(",", ""))
                     if _ref.get("value") is not None and _ref.get("levels"):
                         facts["levels"] = {
                             "year1": float(f"{_ref['levels'][0] / 1e9:,.3f}".replace(",", "")),
@@ -3064,15 +3112,30 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                             facts["levels"]["bear2"] = float(f"{_ref['range'][1] / 1e9:,.3f}".replace(",", ""))
                     # S3 5.6/5.7: bare numbers (_bn), not $/B (_b) — the unit is carried once, by
                     # convention with SECTION 3's typed lines, not a header bracket here.
-                    L.append(consensus_reference.pack_line(_ref, _fy.get("base"), _coe if _coe is not None else 0.0,
-                                                           _tg_used, _bn, anchor=facts["terminal_g_anchor"]))
-                    if facts["reference_status"] == "used":
-                        # revision 17: what the reference's long run and working capital hold, for the desk
+                    if _not_meaningful:
+                        L.append(consensus_reference.not_meaningful_line(_ref))
+                    else:
+                        L.append(consensus_reference.pack_line(_ref, _fy.get("base"), _coe if _coe is not None else 0.0,
+                                                               _tg_used, _bn, anchor=facts["terminal_g_anchor"]))
+                    if facts["reference_status"] in ("used", "not_meaningful"):
+                        # revision 17: what the reference's long run and working capital hold, for the desk (brief F5: a
+                        # reference that is not meaningful still prints these)
                         _rlr = _ref.get("long_run")
                         if _rlr:
-                            _lr_raw.update({"e5": _rlr["e5"] / 1e9, "oe5": _rlr["oe5"] / 1e9, "m5": _rlr["m5"]})
+                            _lr_raw.update({"e5": _rlr["e5"] / 1e9, "oe5": _rlr["oe5"] / 1e9, "m5": _rlr["m5"],
+                                            "om_5": _ref["om_5"], "margin_cell": _ref["margin_cell"],
+                                            "margin_fraction": _ref["margin_fraction"], "m_long": _ref["m_long"],
+                                            "margin_ratio": _ref["margin_ratio"]})
+                        # brief F2: the margin rule's stamps join the record's in the facts' stamps
+                        _margin_stamps = [s for s in _ref["stamps"] if s.startswith("margin_rule_")]
+                        if _margin_stamps:
+                            for _sk in ("stamps", "stamps_full"):
+                                _lr_raw[_sk] = list(_lr_raw.get(_sk) or []) + _margin_stamps
                         if _ref.get("wc"):
                             facts["working_capital"] = [pack_facts.q_b(x / 1e9) for x in _ref["wc"]]
+                        if _ref.get("base_cf") is not None:
+                            facts["reference_base_b"] = pack_facts.q_b(_ref["base_cf"] / 1e9)
+                    if facts["reference_status"] == "used":
                         if _ref.get("base_year_cap"):
                             _bc = _ref["base_year_cap"]
                             facts["base_year_cap"] = pack_facts.quantize_base_year_cap(_bc)
@@ -3083,7 +3146,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                                      f"{_b(_bc['ni_filed'])} and lowers its owner-earnings base by {_b(_bc['removed'])} (a "
                                      f"one-time gain is likelier than a lasting one; a filed EPS below the analysts' is never "
                                      f"raised)")
-                    _win = consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters"))
+                    _win = (None if _not_meaningful else
+                            consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters")))
                     if _win and _win.get("ttm_value") is not None:
                         _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
                         _win = consensus_reference.fence_window(_win, _wside, _wfence)
@@ -3404,7 +3468,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # SECTION 1.5 branch ran above (both branches use these same names) and are still in scope
     # here — Python functions have no block scope.
     facts["long_run"] = pack_facts.quantize_long_run(_lr_raw)
-    L += [pack_facts.render_defaults_block(facts), ""]
+    L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"])), ""]
 
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS
     LAST_PACK_MACRO_DEGRADED = macro_degraded
@@ -3447,7 +3511,7 @@ YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic vie
    - Growth: the desk holds the Base's years 1-2 at the consensus cash-flow levels in DEFAULTS unless you give the reason DEFAULTS names for a departure. From year 3, growth follows next-FY revenue growth, fading toward the base-rate median by year 5. Growth above the base-rate p90 needs dated, company-specific evidence. With fewer than 3 analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one; otherwise state your own range and why.
    - Scenarios: Bull rests on the strongest bull catalyst the market is reacting to, and Bear on the strongest bear catalyst. The Bear traces an operating shock through the business (volume, the installed base's durability, operating deleverage, a wider discount rate), not an arbitrary cut. Where the filings show contracted backlog above one year of revenue or recurring revenue above 70%, cite it: the Bear may not fall below that contracted floor without a stated reason.
    - Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders; a departure from the terminal_g or terminal_ronic default needs evidence, not a cap.
-   - Working capital: the desk deducts the DEFAULTS working_capital from every scenario's owner earnings in years 1-5, unless your base_cf is within 2% of cash_basis_b, which already carries it.
+   - Working capital: the desk deducts the DEFAULTS working_capital from every scenario's owner earnings in years 1-5, unless your base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b (a base that matches an owner-earnings figure is owner earnings).
    - Valuation date: the desk values at the base fiscal year end and rolls the value forward to today at your discount rate, as the CONSENSUS-IMPLIED VALUE does.
    - Frame: every flow in this pack is after interest, so value it in the equity frame. The firm frame needs a pre-interest flow, a WACC built from the COE ANCHOR, and net debt; the desk asks for each.
    - Shares: use the DEFAULTS block's shares_default, the desk's default (DATA 2's count, times the dilution factor when DATA 2 shows one). Add a contingent instrument (warrants, earn-outs) only in the scenarios where it vests, never in one whose premise is that it does not.

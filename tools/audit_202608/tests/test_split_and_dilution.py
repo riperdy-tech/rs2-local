@@ -27,6 +27,13 @@ def _gev_pack(monkeypatch, *a, **k):
         return _gev_pack_in(m, *a, **k)
 
 
+def _vendor(shares, eps):
+    """A fin_edit: the vendor's share count and its (restated) diluted EPS for the latest filed fiscal year (brief F7)."""
+    return lambda f: dict(f, Shares_Outstanding=shares,
+                          Annual_Income_Statement=[dict(f["Annual_Income_Statement"][0], DilutedEPS=eps)]
+                          + list(f["Annual_Income_Statement"][1:]))
+
+
 def _h(*counts):
     """A filed history whose fiscal years end at 2025, one shares_diluted per year."""
     years = range(2025 - len(counts) + 1, 2026)
@@ -104,10 +111,12 @@ def _hist_pipr(counts=(17_500_000, 17_600_000, PIPR_FILED)):
 @pytest.mark.usefixtures("screener_data_stub")
 def test_data_7_says_the_split_and_the_base_year_check_prints_numbers(monkeypatch):
     pack = _gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000, hist_edit=_hist_pipr(),
-                     fin_edit=lambda f: dict(f, Shares_Outstanding=PIPR_VENDOR), eps_year_ago=GEV_EPS / 4)
+                     fin_edit=_vendor(PIPR_VENDOR, GEV_EPS / 4), eps_year_ago=GEV_EPS / 4, country="United States")
     line7 = next(l for l in pack.splitlines() if l.startswith("- Share-count split suspected"))
+    # revision 17, brief F7: a US company whose vendor EPS (restated, 4.42) times the multiplier agrees with the filed EPS
     assert line7 == ("- Share-count split suspected in the filed series: False. After the last filing: a 4-for-1 split "
-                     "(filed FY2025 17.8M -> vendor 70.7M); filed per-share figures in DATA 5 and 6 are pre-split.")
+                     "(filed FY2025 17.8M -> vendor 70.7M; the vendor's restated FY2025 EPS agrees); filed per-share "
+                     "figures in DATA 5 and 6 are pre-split.")
     byc = _byc(pack)
     assert byc.startswith("- [Arithmetic] BASE-YEAR CHECK:") and "not available" not in byc
     assert "year-ago EPS of $4.42" in byc and "our filed FY2025 EPS is $4.42" in byc
@@ -118,8 +127,9 @@ def test_data_7_says_the_split_and_the_base_year_check_prints_numbers(monkeypatc
 @pytest.mark.usefixtures("screener_data_stub")
 def test_the_aph_shape_a_count_twice_the_filed_one_is_a_2_for_1_split_now(monkeypatch):
     pack = _gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000,
-                     fin_edit=lambda f: dict(f, Shares_Outstanding=552e6), eps_year_ago=GEV_EPS / 2)
-    assert "After the last filing: a 2-for-1 split (filed FY2025 276.0M -> vendor 552.0M)" in pack
+                     fin_edit=_vendor(552e6, GEV_EPS / 2), eps_year_ago=GEV_EPS / 2, country="United States")
+    assert ("After the last filing: a 2-for-1 split (filed FY2025 276.0M -> vendor 552.0M; the vendor's restated FY2025 "
+            "EPS agrees)") in pack
     byc = _byc(pack)
     assert "not available" not in byc and "the filed count x 2 for the split" in byc and "+0% apart" in byc
 
@@ -127,8 +137,9 @@ def test_the_aph_shape_a_count_twice_the_filed_one_is_a_2_for_1_split_now(monkey
 @pytest.mark.usefixtures("screener_data_stub")
 def test_a_reverse_split_after_the_last_filing_in_the_pack(monkeypatch):
     pack = _gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000,
-                     fin_edit=lambda f: dict(f, Shares_Outstanding=69e6), eps_year_ago=GEV_EPS * 4)
-    assert "After the last filing: a 1-for-4 reverse split (filed FY2025 276.0M -> vendor 69.0M)" in pack
+                     fin_edit=_vendor(69e6, GEV_EPS * 4), eps_year_ago=GEV_EPS * 4, country="United States")
+    assert ("After the last filing: a 1-for-4 reverse split (filed FY2025 276.0M -> vendor 69.0M; the vendor's restated "
+            "FY2025 EPS agrees)") in pack
     byc = _byc(pack)
     assert "not available" not in byc and "the filed count / 4 for the split" in byc
     assert "- split_after_last_filing: 1/4 | the vendor's share count is 1/4 of the last filed diluted count" in pack

@@ -59,10 +59,10 @@ information. The reference now values the long run from the company's own record
   owner-earnings path. Years 1-5 cash flow is
   owner earnings less the working capital the revenue growth ties up (the record's median NWC /
   revenue). From year 6, growth is paid for: cash flow = earnings x (1 - g / max(r, RONIC)), where
-  RONIC fades from the record's median return on tangible invested capital toward the return on new
-  investment the record supports (RONIC_T), and the earnings margin reverts toward the record's median
-  when the record shows a cycle. Terminal growth is the company's own revenue trend held between
-  breakeven inflation and the anchor (`terminal_growth_default`).
+  RONIC fades from the record's blended return on new capital (r_blend) toward the return on new
+  investment the record supports (RONIC_T), and the earnings margin moves toward the company's own median
+  operating margin by the fraction brief E measured (`margin_rule`, brief F). Terminal growth is the
+  company's own revenue trend held between breakeven inflation and the anchor (`terminal_growth_default`).
 - A one-time gain in the base year is removed when the vendor's year-ago EPS shows it (`base_year_cap`).
 - With RONIC_T = +inf, no cycle and no working capital the arithmetic reduces to revision 16's
   (`reference_value`, kept for that test): the long-run arithmetic is `long_run_value`, the one copy
@@ -70,6 +70,8 @@ information. The reference now values the long run from the company's own record
 """
 
 import math
+
+import throughcycle_record
 
 EPS_GROWTH_MAX = 1.5   # above +150% an EPS growth rate is a recovery off a trough, not a cash-flow rate
 FADE_YEARS = 5         # years 6-10
@@ -197,6 +199,62 @@ def vendor_revenue(estimates):
         if not (rev.get("analysts") and isinstance(avg, (int, float)) and avg > 0):
             return None
         out.append(float(avg))
+    return out
+
+
+def margin_rule(rec, m5):
+    """Revision 17, brief F2: how far the earnings margin moves toward the company's own median by year 10.
+
+    Brief E measured how far an operating margin closes the gap to its 8-year median; the reference starts from the
+    consensus's year-5 margin, so the rule is anchored on it. With m5 the consensus's year-5 earnings margin and the
+    record's om_L, x_L, tax_L, om_tc, om_shape:
+      OM_5 = om_L + (m5 - x_L) / (1 - tax_L)  (x_L undefined: OM_5 = om_L, stamp `margin_rule_filed_anchor`);
+      a loss record (om_tc <= 0): target 0, fraction the `loss` cell; else target om_tc, fraction the `peak_<shape>`
+      cell when OM_5 >= om_tc, else the `trough_<shape>` cell (the fractions are the calibration file's);
+      OM_long = OM_5 + f x (target - OM_5); m_long = max(0, m5 + (1 - tax_L) x (OM_long - OM_5)); ratio = m_long / m5.
+    No rule (ratio None: the margin is held at m5, `reason` says why and a stamp records it) when m5 is not positive,
+    when the record has no margin median (its own stamp `margin_record_not_available`, or the older
+    `operating_margin_record_not_available`), or when OM_5 <= 0, whatever om_tc is (`margin_rule_unmeasured_current_loss`:
+    brief E measured its cells on firms that were profitable at the base year, so a margin that is still a loss at year 5
+    is outside every measured cell, and the rule must not lift it above m5; brief F2.2). The record's series is the
+    operating margin, or the pre-tax margin where the company files no operating line (brief F2.1: the record's om_basis
+    starts with "pretax"; the arithmetic is the same and the text names the series, "series"). Returns {"om_tc", "om_L",
+    "om_shape", "series", "om_5", "cell", "fraction", "target", "m_long", "ratio", "reason", "stamps"}."""
+    om_tc, om_L = rec.get("om_tc"), rec.get("om_L")
+    name = throughcycle_record.margin_series_name(rec.get("om_basis"))
+    out = {"om_tc": om_tc, "om_L": om_L, "om_shape": rec.get("om_shape"), "series": name, "om_5": None, "cell": None,
+           "fraction": None, "target": None, "m_long": None, "ratio": None, "reason": None, "stamps": []}
+    if not m5 > 0:
+        out["reason"] = "the consensus's year-5 earnings margin is not positive"
+        out["stamps"].append("margin_rule_year5_margin_not_positive")
+        return out
+    if om_tc is None or om_L is None:
+        out["reason"] = "this company's record holds too few years of operating or pre-tax margin to measure its median"
+        return out
+    x_L, tax_L = rec.get("x_L"), rec.get("tax_L")
+    if x_L is None:
+        om_5 = om_L
+        out["stamps"].append("margin_rule_filed_anchor")
+    else:
+        om_5 = om_L + (m5 - x_L) / (1.0 - tax_L)
+    out["om_5"] = om_5
+    if om_5 <= 0:
+        median_is = "is a loss and" if om_tc <= 0 else "is positive but"
+        article = "an" if name == "operating" else "a"
+        out["reason"] = (f"this company's 8-year median {name} margin {median_is} the consensus implies "
+                         f"{article} {name} loss at year 5, which no measured case covers")
+        out["stamps"].append("margin_rule_unmeasured_current_loss")
+        return out
+    if om_tc <= 0:
+        out["cell"], out["target"] = "loss", 0.0
+    else:
+        out["cell"] = ("peak_" if om_5 >= om_tc else "trough_") + rec["om_shape"]
+        out["target"] = om_tc
+    f = throughcycle_record.calibration()["fractions"][out["cell"]]
+    om_long = om_5 + f * (out["target"] - om_5)
+    out["fraction"] = f
+    out["m_long"] = max(0.0, m5 + (1.0 - tax_L) * (om_long - om_5))
+    out["ratio"] = out["m_long"] / m5
     return out
 
 
@@ -350,9 +408,9 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     E18: with `stub_months` (months since the base fiscal year ended), the value is taken at that
     fiscal year end and rolled forward to today at coe.
 
-    Revision 17 inputs: `record` (throughcycle_record.analyse's dict, computed at r = coe: R_tc,
-    ronic_t, cycle, m_tc, nwc_intensity; None = no record, stamped record_not_available with RONIC_T
-    = coe); `base_ni` (X of the filed base year - net income plus acquired-intangible amortization after
+    Revision 17 inputs: `record` (throughcycle_record.analyse's dict, computed at r = coe: r_blend,
+    ronic_t, the operating-margin record om_tc / om_L / om_shape / x_L / tax_L, nwc_intensity; None = no
+    record, stamped record_not_available with RONIC_T = coe); `base_ni` (X of the filed base year - net income plus acquired-intangible amortization after
     tax, throughcycle_record.adjusted_earnings - the earnings path's base in the growth method; the
     levels method's earnings are consensus EPS x shares, stamped levels_eps_basis); `base_revenue` (the
     filed base-year revenue); `base_cap` (`base_year_cap`'s dict: the cap acts on net income, so X and the
@@ -365,7 +423,9 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
            "terminal_g_is_default": is_default,
            "earnings": None, "revenue": None, "wc": None, "long_run": None, "long_run_path": None,
            "terminal_ronic": None, "ronic0": None, "nwc_intensity": None, "base_cf": None,
-           "base_year_cap": None, "stamps": []}
+           "base_year_cap": None, "stamps": [],
+           "margin": None, "om_5": None, "margin_cell": None, "margin_fraction": None, "m_long": None,
+           "margin_ratio": None}
     missing = [n for n, v in (("cost-of-equity anchor", coe), ("terminal-growth anchor", terminal_g),
                               ("diluted shares", shares), ("growth base-rate median", median_5y))
                if v is None]
@@ -439,13 +499,15 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
 
     # the record: return on new investment, cycle, margin, working capital
     rec = record or {}
-    r_tc, ronic_t = rec.get("R_tc"), rec.get("ronic_t")
+    r_blend, ronic_t = rec.get("r_blend"), rec.get("ronic_t")
     if ronic_t is None:
         ronic_t = coe
         out["stamps"].append("record_not_available")
     elif "record_not_available" in (rec.get("stamps") or []):
         out["stamps"].append("record_not_available")
-    ronic0 = coe if r_tc is None else max(coe, r_tc)
+    # brief F: the record's operating-margin and blended-returns stamps ride on the reference too
+    out["stamps"] += [s for s in (rec.get("stamps") or []) if s.startswith(("operating_margin", "margin_record", "returns_blend"))]
+    ronic0 = coe if r_blend is None else max(coe, r_blend)
     out["terminal_ronic"], out["ronic0"] = ronic_t, ronic0
 
     # years 1-5 cash flow: owner earnings less the working capital the revenue growth ties up
@@ -464,8 +526,12 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     if revenue is not None:
         out["long_run_path"] = "revenue"
         m5 = e5 / revenue[5]
-        if rec.get("cycle") and rec.get("m_tc") is not None and m5 > 0:
-            margin_ratio = rec["m_tc"] / m5
+        rule = margin_rule(rec, m5)
+        margin_ratio = rule["ratio"]
+        out["stamps"] += rule["stamps"]
+        out["margin"] = rule
+        out.update(om_5=rule["om_5"], margin_cell=rule["cell"], margin_fraction=rule["fraction"],
+                   m_long=rule["m_long"], margin_ratio=margin_ratio)
     else:
         out["long_run_path"] = "owner_earnings_ratio"
         if not (e5 > 0 and oe5 > 0):
@@ -551,6 +617,21 @@ def _return_txt(x):
     return "unlimited" if x is not None and math.isinf(x) else f"{x * 100:.1f}%"
 
 
+def _margin_clause(rule, m5):
+    """Brief F2: how the earnings margin moves from year 5 to year 10, or why it is held (`margin_rule`'s dict)."""
+    if rule["ratio"] is None:
+        return f"earnings margin held at {m5 * 100:.1f}%: {rule['reason']}"
+    head = f"earnings margin moving from {m5 * 100:.1f}% to {rule['m_long'] * 100:.1f}% by year 10: "
+    f = f"{rule['fraction'] * 100:.0f}%"
+    if rule["cell"] == "loss":
+        return (head + f"this company's 8-year median {rule['series']} margin is a loss ({rule['om_tc'] * 100:.1f}%); "
+                f"such records closed {f} of the way to zero within 3-4 years")
+    kind = "moved up and down around their median" if rule["om_shape"] == "swing" else "trended"
+    return (head + f"the consensus implies a {rule['om_5'] * 100:.1f}% {rule['series']} margin at year 5 against this "
+            f"company's 8-year median of {rule['om_tc'] * 100:.1f}%; companies whose margins {kind} closed {f} of "
+            f"such a gap within 3-4 years")
+
+
 def _long_run_clause(ref):
     """Revision 17: the one clause that states how the long run (year 6 on) is valued. None when the
     reference has no long run (levels reasons that stop before it)."""
@@ -566,11 +647,7 @@ def _long_run_clause(ref):
                f"{_return_txt(r0)} in year 5, {_return_txt(rt)} from year 10; cash flow = earnings x "
                f"(1 - growth / return))")
     if ref.get("long_run_path") == "revenue":
-        if lr.get("margin_ratio") is not None:
-            m = (f"earnings margin reverting from {lr['m5'] * 100:.1f}% to your record's median "
-                 f"{lr['m5'] * lr['margin_ratio'] * 100:.1f}% by year 10")
-        else:
-            m = f"earnings margin held at {lr['m5'] * 100:.1f}%"
+        m = _margin_clause(ref["margin"], lr["m5"])
     else:
         m = ("no revenue path (the vendor's revenue is missing or not on the filed basis), so earnings follow "
              "owner earnings at the year-5 ratio of earnings to owner earnings")
@@ -590,6 +667,14 @@ def _working_capital_clause(ref, fmt_b):
         return "working capital: not deducted (your record holds no classified balance sheet for it)"
     return (f"working capital deducted in years 1-5: {' / '.join(fmt_b(x) for x in wc)} "
             f"({ref['nwc_intensity'] * 100:.1f}% of each year's revenue change)")
+
+
+def not_meaningful_line(ref):
+    """Brief F5: SECTION 8's line for a reference whose value is zero or less. It prints no number, only that there is no
+    positive value and the reference's own reason or stamps."""
+    why = "; ".join(x for x in (ref.get("reason"), ", ".join(ref.get("stamps") or [])) if x)
+    return ("- CONSENSUS-IMPLIED VALUE: not meaningful — the consensus path and this company's record give no "
+            "positive value" + (f" ({why})" if why else ""))
 
 
 def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):

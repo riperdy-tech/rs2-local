@@ -83,7 +83,9 @@ def test_gev_fixture_parity_and_literal_values(screener_data_stub, frozen_env):
         if k == "long_run":
             # revision 17 (brief C7): the facts also keep the record's full stamps (`stamps_full`) for the verdict, which the
             # DEFAULTS block does not print; every other member reads back equal
-            assert got["stamps_full"] == ["amortization_gap:2022/2023/2024/2025", "tangible_equity_partial:2022/2023/2024/2025"]
+            # brief F1: four held years are fewer than the five an operating-margin median needs
+            assert got["stamps_full"] == ["amortization_gap:2022/2023/2024/2025", "tangible_equity_partial:2022/2023/2024/2025",
+                                          "margin_record_not_available"]
             got = {m: v for m, v in got.items() if m != "stamps_full"}
         assert got == from_text[k], f"Mismatch for key {k}: {pack.facts[k]} != {from_text[k]}"
 

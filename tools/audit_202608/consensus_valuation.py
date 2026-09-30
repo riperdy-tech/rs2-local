@@ -2146,6 +2146,9 @@ def main():
         "long_run": facts["long_run"],
         "working_capital": facts["working_capital"],
         "cash_basis_b": facts["cash_basis_b"],
+        # revision 17, brief F6: the fiscal-year owner-earnings base the reference grows from, so the desk can tell an
+        # owner-earnings base from the cash basis
+        "reference_base_b": facts["reference_base_b"],
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)
     }

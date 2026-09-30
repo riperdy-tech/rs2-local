@@ -24,7 +24,7 @@ import throughcycle_record as tc  # noqa: E402
 B = 1e9
 INF = math.inf
 # a record that reduces the long run to revision 16's arithmetic: unlimited returns, no cycle, no working capital
-REDUCTION = {"R_tc": INF, "ronic_t": INF, "cycle": False, "m_tc": None, "nwc_intensity": None, "stamps": []}
+REDUCTION = {"R_tc": INF, "r_blend": INF, "ronic_t": INF, "cycle": False, "m_tc": None, "nwc_intensity": None, "stamps": []}
 
 EST = {
     "0y": {"revenue": {"avg": 10.8 * B, "low": 10.5 * B, "high": 11.0 * B, "analysts": 20, "growth": 0.08,
@@ -41,18 +41,22 @@ NI_BASE = 1.2 * B          # filed: 2.4 x 500M shares, the vendor's year-ago EPS
 REV_BASE = 10.0 * B
 
 
-def _cycle_history():
+def _cycle_history(op_margins=None):
     """Twelve years: high-margin and low-margin runs on flat equity, with demand downturns (revenue down more than
     5% and earnings down more than a third) in 2016 and 2020, so the record shows a cycle and a median margin above
-    the latest years'."""
+    the latest years'. Operating income (brief F1's operating-margin record) is 1.4 times the net margin less the
+    acquired-intangible amortization the row tags, so (operating income + amortization) / revenue is 1.4 x the net
+    margin; `op_margins` ({year: that margin}) overrides it."""
     swing = {2014: 15, 2015: 15, 2016: 2, 2017: 2, 2018: 14, 2019: 14, 2020: 3, 2021: 13, 2022: 13, 2023: 12,
              2024: 12, 2025: 12}
     level = {2016: 0.88, 2017: 0.88, 2020: 0.85}
     rows = {}
     for y in range(2014, 2026):
         rev = 8.0 * B * 1.03 ** (y - 2014) * level.get(y, 1.0)
+        om = (op_margins or {}).get(y, swing[y] / 100.0 * 1.4)
         rows[y] = {"revenue": rev, "net_income": rev * swing[y] / 100.0, "equity": 6.0 * B, "goodwill": 0.5 * B,
                    "intangibles_ex_goodwill": 0.5 * B, "amortization_intangibles": 0.05 * B,
+                   "operating_income": rev * om - 0.05 * B,
                    "pretax_income": rev * swing[y] / 80.0, "tax_provision": rev * swing[y] / 80.0 * 0.25,
                    "current_assets": rev * 0.35, "cash": rev * 0.10, "current_liabilities": rev * 0.20,
                    "st_investments": 0.0, "debt_current": rev * 0.02, "short_term_borrowings_separate": 0.0}
@@ -178,17 +182,34 @@ def test_the_earnings_and_revenue_paths_and_the_working_capital_deduction():
     assert without["value"] > ref["value"]                             # the deduction lowers the value
 
 
-def test_a_cycle_reverts_the_margin_toward_the_records_median_and_lowers_a_peak_margin_value():
+# brief F2: the operating-margin record the reference's margin rule reads (om_tc, om_L, om_shape, x_L, tax_L); the fixture's
+# consensus year-5 earnings margin m5 is about 12.9%, and an X margin of 12% at the base year puts OM_5 near 18.3%
+def _margin_record(**kw):
+    return dict(REDUCTION, **dict(dict(om_tc=0.06, om_L=0.17, om_shape="trend", x_L=0.12, tax_L=0.25), **kw))
+
+
+def test_the_margin_rule_moves_the_margin_toward_the_median_and_lowers_a_peak_value():
+    """Replaces the revision-17 (brief B2 F5) test of the cycle gate, which reverted the margin to the median of X / revenue
+    only when a demand-driven downturn was in the record: the margin now moves by the fraction brief E measured, whatever
+    the record's history (brief F2)."""
     m5 = (NI_BASE * 1.125 * 1.1111) / (11.6 * B)                         # about 0.1294
-    flat = _build(dict(REDUCTION, cycle=False, m_tc=0.06))
-    cyc = _build(dict(REDUCTION, cycle=True, m_tc=0.06))
-    assert flat["long_run"]["margin_ratio"] is None
-    assert cyc["long_run"]["margin_ratio"] == pytest.approx(0.06 / m5)
-    assert cyc["value"] < flat["value"]                                # reverting to a lower median lowers the value
-    trough = _build(dict(REDUCTION, cycle=True, m_tc=0.20))
-    assert trough["value"] > flat["value"]                             # and to a higher one raises it
-    # a cycle without a median (short record) changes nothing
-    assert _build(dict(REDUCTION, cycle=True, m_tc=None))["value"] == flat["value"]
+    flat = _build(REDUCTION)                                             # no operating-margin record: the margin is held
+    assert flat["long_run"]["margin_ratio"] is None and flat["margin_cell"] is None
+    peak = _build(_margin_record())                                      # OM_5 = 0.17 + (m5 - 0.12) / 0.75, above the median 0.06
+    om_5 = 0.17 + (m5 - 0.12) / 0.75
+    f = tc.calibration()["fractions"]["peak_trend"]                      # the file's peak_trend (one owner of the rates)
+    assert peak["om_5"] == pytest.approx(om_5) and peak["margin_cell"] == "peak_trend" and peak["margin_fraction"] == f
+    m_long = m5 + 0.75 * (f * (0.06 - om_5))
+    assert peak["m_long"] == pytest.approx(m_long) and peak["margin_ratio"] == pytest.approx(m_long / m5)
+    assert peak["long_run"]["margin_ratio"] == peak["margin_ratio"]
+    assert peak["value"] < flat["value"]                                 # moving toward a lower median lowers the value
+    trough = _build(_margin_record(om_tc=0.30))
+    assert trough["margin_cell"] == "trough_trend" and trough["margin_ratio"] > 1
+    assert trough["value"] > flat["value"]                               # and toward a higher one raises it
+    # a record without a median (short record) changes nothing, and says so
+    short = _build(dict(REDUCTION, om_tc=None, om_L=None, stamps=["operating_margin_record_not_available"]))
+    assert short["value"] == flat["value"] and short["margin_ratio"] is None
+    assert "operating_margin_record_not_available" in short["stamps"]
 
 
 def test_without_a_revenue_path_the_long_run_takes_earnings_from_owner_earnings():
@@ -212,7 +233,7 @@ def test_a_missing_record_is_stamped_and_grows_at_the_cost_of_equity():
     assert "record_not_available" in ref["stamps"] and ref["terminal_ronic"] == COE and ref["ronic0"] == COE
     inf = _build(REDUCTION)
     assert ref["value"] < inf["value"]
-    stamped = _build(dict(REDUCTION, R_tc=None, ronic_t=COE, stamps=["record_not_available"]))
+    stamped = _build(dict(REDUCTION, R_tc=None, r_blend=None, ronic_t=COE, stamps=["record_not_available"]))
     assert "record_not_available" in stamped["stamps"] and stamped["ronic0"] == COE
 
 
@@ -307,6 +328,7 @@ def _facts_for(ref, record, gt, quantize):
     f = pack_facts.empty()
     lr_raw = {"cycle": record["cycle"], "cycle_year": record.get("cycle_year"), "m_tc": record["m_tc"],
               "m_years": [2018, 2025, 8], "r_tc": record["R_tc"], "r_years": [2018, 2025, 8], "p": record.get("p"),
+              "r_blend": record["r_blend"], "margin_ratio": ref["margin_ratio"],
               "g_rev": None, "g_rev_years": None, "terminal_g_basis": "revenue_trend",
               "nwc_intensity": record["nwc_intensity"], "nwc_years": [2018, 2025, 8],
               "stamps": list(record.get("stamps") or []), "stub_months": ref["stub_months"],
@@ -347,11 +369,15 @@ def _desk_default_base(ref, facts, coe, gt, shares_default):
 
 
 @pytest.mark.parametrize("record_kw", [
-    dict(),                                                         # steady: unlimited returns, no cycle, no working capital
-    dict(R_tc=0.18, ronic_t=0.135, nwc_intensity=0.06),               # finite return, working capital
-    dict(R_tc=0.18, ronic_t=0.135, nwc_intensity=0.06, cycle=True, m_tc=0.075),   # and a cycle
-    dict(R_tc=INF, ronic_t=INF, nwc_intensity=-0.02, cycle=True, m_tc=0.20),      # negative tangible equity, trough
-], ids=["unlimited", "funded-wc", "cycle", "inf-trough"])
+    dict(),                                                         # steady: unlimited returns, no margin move, no working capital
+    dict(R_tc=0.18, r_blend=0.18, ronic_t=0.135, nwc_intensity=0.06),               # finite return, working capital
+    dict(R_tc=0.18, r_blend=0.18, ronic_t=0.135, nwc_intensity=0.06,
+         om_tc=0.075, om_L=0.17, om_shape="swing", x_L=0.12, tax_L=0.25),           # and a margin peak (peak_swing)
+    dict(R_tc=INF, r_blend=INF, ronic_t=INF, nwc_intensity=-0.02,
+         om_tc=0.30, om_L=0.17, om_shape="trend", x_L=0.12, tax_L=0.25),            # unlimited returns, margin trough
+    dict(R_tc=0.18, r_blend=0.18, ronic_t=0.135, nwc_intensity=0.06,
+         om_tc=-0.02, om_L=0.05, om_shape="trend", x_L=None, tax_L=0.21),           # a loss record, filed anchor
+], ids=["unlimited", "funded-wc", "peak-margin", "inf-trough", "loss-record"])
 def test_the_desk_equals_the_reference_on_the_reference_own_inputs(record_kw):
     record = dict(REDUCTION, **record_kw)
     gt = 0.0325
@@ -368,7 +394,8 @@ def test_the_desk_equals_the_reference_on_the_reference_own_inputs(record_kw):
         assert "working_capital_deducted" in exact["stamps"]
 
 
-def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None, separate_borrowings=False):
+def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None, separate_borrowings=False,
+                    op_margins=None):
     """build_pack("GEV") on the synthetic twelve-year history and estimates above (no network, clock frozen)."""
     import capability_test as cap
     import rs2_data
@@ -390,9 +417,10 @@ def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None
     monkeypatch.setattr(cap.base_rates, "base_rate_table", lambda *a, **k: ("$1-10B", {5: dict(row), 10: dict(row)}))
     monkeypatch.setattr(cap.growth_persistence, "persistence_for_growth", lambda *a, **k: (None, None))
 
-    hist = _cycle_history()
+    hist = _cycle_history(op_margins)
     hist[2025] = dict(hist[2025], revenue=10.0 * B, net_income=1.2 * B, da=0.5 * B, capex=0.6 * B,
-                      shares_diluted=500e6, ocf=1.5 * B, sbc=0.1 * B)
+                      shares_diluted=500e6, ocf=1.5 * B, sbc=0.1 * B,
+                      operating_income=10.0 * B * (op_margins or {}).get(2025, 0.12 * 1.4) - 0.05 * B)
     for y in range(2014, 2025):
         hist[y] = dict(hist[y], da=0.5 * B, capex=0.6 * B, shares_diluted=500e6)
     if drop_goodwill:
@@ -534,9 +562,16 @@ def test_the_desk_equals_the_reference_on_random_inputs_to_the_cent():
                "+1y": {"revenue": {"avg": rev0 * (1 + rng.uniform(0.0, 0.3)), "analysts": 12,
                                    "growth": rng.uniform(-0.05, 0.25)},
                        "eps": {"avg": eps0 * (1 + c1) * (1 + c2), "analysts": 12, "growth": c2}}}
-        record = {"R_tc": rng.choice([INF, rng.uniform(0.02, 0.4), None]), "cycle": rng.random() < 0.5,
-                  "m_tc": rng.choice([None, rng.uniform(0.0, 0.25)]),
+        record = {"R_tc": rng.choice([INF, rng.uniform(0.02, 0.4), None]),
                   "nwc_intensity": rng.choice([None, rng.uniform(-0.15, 0.4)]), "stamps": []}
+        record["r_blend"] = record["R_tc"]
+        # the margin rule's inputs: a record with an operating-margin median (a profit, a loss or none), the base year's
+        # operating margin and, sometimes, its earnings margin
+        record.update(om_tc=rng.choice([None, rng.uniform(-0.03, 0.3)]), om_L=rng.uniform(0.02, 0.3),
+                      om_shape=rng.choice(["swing", "trend"]), x_L=rng.choice([None, rng.uniform(0.02, 0.25)]),
+                      tax_L=rng.uniform(0.0, 0.35))
+        if record["om_tc"] is None:
+            record["om_L"] = None
         record["ronic_t"] = (INF if record["R_tc"] == INF else coe if record["R_tc"] is None
                              else coe + rng.random() * max(0.0, record["R_tc"] - coe))
         stub = rng.choice([None, rng.uniform(0.5, 14.0)])
@@ -547,8 +582,8 @@ def test_the_desk_equals_the_reference_on_random_inputs_to_the_cent():
             continue
         lr = ref["long_run"]
         facts = {"terminal_ronic": ref["terminal_ronic"],
-                 "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "m_tc": record["m_tc"],
-                              "cycle": record["cycle"], "r_tc": record["R_tc"], "stub_months": stub},
+                 "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "margin_ratio": ref["margin_ratio"],
+                              "r_blend": record["r_blend"], "r_tc": record["R_tc"], "stub_months": stub},
                  "working_capital": [x / B for x in ref["wc"]] if ref["wc"] else None}
         lv = ref["levels"]
         if ref["base_cf"] is not None:

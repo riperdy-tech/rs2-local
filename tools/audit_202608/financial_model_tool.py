@@ -197,18 +197,18 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r):
     base window's earnings before acquired-intangible amortization / owner earnings (`x_over_oe`, present when
     the base year's amortization is known: stamp `long_run_base_ratio_x`), else by its net income / owner earnings
     (`ni_over_oe`: `long_run_base_ratio_ni`), each when positive, else owner earnings themselves - labelled
-    fallbacks (never a refusal). The margin factor needs the reference's m5 and the record's cycle.
-    RONIC_0 = max(r, R_tc); RONIC_T is the scenario's terminal_ronic, else the facts', else r (a
-    record the pack did not carry: growth earns only its cost)."""
+    fallbacks (never a refusal). The margin factor is the facts' `margin_ratio` (brief F3: the reference's margin rule
+    computed it; the desk computes none, and there is none without a reference or in an older block).
+    RONIC_0 = max(r, r_blend) when the facts carry r_blend, else max(r, R_tc) for an older block, else r; RONIC_T is the
+    scenario's terminal_ronic, else the facts', else r (a record the pack did not carry: growth earns only its cost)."""
     lr = long_run or {}
     stamps = []
     e5f, oe5f = lr.get("e5"), lr.get("oe5")
     margin_ratio = None
     if _is_num(e5f) and _is_num(oe5f):
         e5 = e5f + (oe5 - oe5f)
-        m5, m_tc = lr.get("m5"), lr.get("m_tc")
-        if lr.get("cycle") is True and _is_num(m5) and m5 > 0 and _is_num(m_tc):
-            margin_ratio = m_tc / m5
+        if _is_num(lr.get("margin_ratio")):
+            margin_ratio = lr["margin_ratio"]
     else:
         ratio_x, ratio_ni = lr.get("x_over_oe"), lr.get("ni_over_oe")
         if _is_num(ratio_x) and ratio_x > 0 and oe5 > 0:
@@ -220,8 +220,8 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r):
         else:
             e5 = oe5
             stamps.append("long_run_on_owner_earnings")
-    r_tc = lr.get("r_tc")
-    ronic0 = r if not _is_num(r_tc) else max(r, r_tc)
+    r_blend, r_tc = lr.get("r_blend"), lr.get("r_tc")
+    ronic0 = max(r, r_blend) if _is_num(r_blend) else (max(r, r_tc) if _is_num(r_tc) else r)
     if _is_num(ronic_t_in):
         ronic_t = float(ronic_t_in)
     else:
@@ -261,8 +261,8 @@ def unbundled_dcf(
       fade_years). Each year's flow is base_cf's path less `working_capital[t]` ($B, five values).
     - Years 6..5+F (F = fade_years): growth fades linearly to terminal_g; earnings E_t start from the
       scenario's year-5 earnings (`long_run` facts, `_long_run_inputs`); cash flow_t = E_t (1 -
-      g_{t+1} / max(r, RONIC_t)); the margin reverts toward the record's median when the record shows a
-      cycle. The terminal is E_{N+1} (1 - g / max(r, RONIC_T)) / (r - g): the value-driver form of
+      g_{t+1} / max(r, RONIC_t)); the margin moves by the facts' margin_ratio (the reference's margin rule, brief F).
+      The terminal is E_{N+1} (1 - g / max(r, RONIC_T)) / (r - g): the value-driver form of
       Gordon growth, the only terminal there is (the exit multiple left the desk in revision 17).
       A negative long-run value is floored at 0 (`long_run_floor`). `terminal_ronic` (a fraction) is
       the scenario's RONIC_T; None takes the cost of equity. The long-run arithmetic is
@@ -1076,6 +1076,13 @@ def _need(reasons_needed, reason_name, given, triggered, why):
         reasons_needed.setdefault(reason_name, why)
 
 
+# a refusal's closing clause: the advised one when the desk computed advice for a reason, else the generic one (the
+# analyst loop's guard, analyst_tools.desk_loop_guard, replaces the generic clause with the advised one when it adds its
+# sentence: brief F8, item 7)
+REFUSAL_ADVISED_CLAUSE = " Call again with the same inputs and these reasons."
+REFUSAL_GENERIC_CLAUSE = " Call again with the same inputs and these reasons, or change an input with dated evidence."
+
+
 def _refusal(missing, needs_reasons, order=None, share_unit_note=None, advice=None):
     """S3 3.7's refusal format. `share_unit_note`, when given, is appended to the detail.
 
@@ -1101,8 +1108,7 @@ def _refusal(missing, needs_reasons, order=None, share_unit_note=None, advice=No
     advised = any(advice.get(n["reason"]) for n in needs_reasons)
     msg = ("Not accepted as a desk run; it does not use one of your desk runs. " + detail +
            ("" if detail.endswith(".") else ".") +
-           (" Call again with the same inputs and these reasons." if advised else
-            " Call again with the same inputs and these reasons, or change an input with dated evidence."))
+           (REFUSAL_ADVISED_CLAUSE if advised else REFUSAL_GENERIC_CLAUSE))
     out: Dict[str, Any] = {
         "error": msg,
         "validation_error": True,
@@ -1148,7 +1154,9 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     cash_basis_b and levels; the desk holds the Base's years 1-2 at the fiscal-year levels when its
     year 2 is more than 5% away and no guidance_deviation_reason is given (`years12_held_by_desk`),
     deducts the pack's working-capital schedule in years 1-5 (unless the base already carries it,
-    `wc_in_base`), and values the long run with the pack's record.
+    `wc_in_base`: within 2% of cash_basis_b and more than 2% from both owner_earnings_default_b and reference_base_b;
+    a base within 2% of an owner-earnings figure as well is owner earnings, stamped
+    `wc_basis_ambiguous_owner_earnings`, brief F6), and values the long run with the pack's record.
     """
     ctx = context or {}
     price = ctx.get("price")
@@ -1282,6 +1290,9 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     cash_basis_b = ctx.get("cash_basis_b")
     levels_ctx = ctx.get("levels") or {}
     ronic_default = ctx.get("terminal_ronic")
+    # brief F6: the owner-earnings figures a base_cf may match (the DEFAULTS owner earnings, and the fiscal-year base the
+    # reference grows from)
+    oe_figures = [x for x in (ctx.get("owner_earnings_default_b"), ctx.get("reference_base_b")) if _is_num(x) and x != 0]
 
     capped_dcfs: List[Dict[str, Any]] = []
     held_dcfs: List[Dict[str, Any]] = []
@@ -1297,8 +1308,11 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         """One scenario's value, with the Base-only years-3-5 cap and years-1-2 hold. Returns the dcf
         dict, or None after recording a compute error."""
         base_b = _to_b(cf_in)
-        wc_in_base = (wc_ctx is not None and _is_num(cash_basis_b) and cash_basis_b != 0 and base_b is not None
-                      and abs(base_b - cash_basis_b) / abs(cash_basis_b) <= 0.020001)
+        near_cash = (wc_ctx is not None and _is_num(cash_basis_b) and cash_basis_b != 0 and base_b is not None
+                     and abs(base_b - cash_basis_b) / abs(cash_basis_b) <= 0.020001)
+        # a base within 2% of an owner-earnings figure is owner earnings, whatever it lies near (brief F6)
+        near_oe = base_b is not None and any(abs(base_b - x) / abs(x) <= 0.020001 for x in oe_figures)
+        wc_in_base = near_cash and not near_oe
         wc_use = None if (wc_in_base or not wc_ctx) else wc_ctx
 
         def run(growth, fade):
@@ -1325,6 +1339,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             if not res.get("error"):
                 if wc_in_base:
                     res.setdefault("stamps", []).append("wc_in_base")
+                elif near_cash and near_oe:
+                    res.setdefault("stamps", []).append("wc_basis_ambiguous_owner_earnings")
             return res
 
         dcf_res = run(gr_in, fade_in)

@@ -39,7 +39,9 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # 2026-09-30 (revision 17, brief_rev17_B_valuation.md): the TASK changed on purpose (terminal_ronic replaces the exit
 # multiple and terminal leg in item 3; the Growth, Terminal value, Working capital and Valuation date sub-bullets); was
 # "017954dba1760027997a91e8456b63952ee5e2bcc7109ae4a9d03605ffd819ce".
-TASK_SHA256 = "647be918454d5249b3fb6f70da3932e48d6a69b86dc728d46781de405fe0ab91"
+# 2026-09-30 (revision 17, brief F6): the Working capital sentence says a base that matches an owner-earnings figure is owner
+# earnings (not cash-basis); was "647be918454d5249b3fb6f70da3932e48d6a69b86dc728d46781de405fe0ab91".
+TASK_SHA256 = "0d2056a3b707c21ecc3ac8dfe4eeb5b66b3b8eae89162c58431a2adab96f903c"
 RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
@@ -56,7 +58,11 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 # 2026-09-30 (revision 17, brief B2 F2): the description's firm-frame sentence says the return on new investment is
 # measured on tangible invested capital before interest and applied to equity earnings; was
 # "2c23b3f0d23a40d3d9839f28a8efbe65d49249a0181291e065d5c97b62ea7196".
-TOOLS_SHA256 = "69b8bb654011315fae51b12c17b6eb84cb62f1b520875d093c24806043a7eb0e"
+# 2026-09-30 (revision 17, brief F2.3): the description's working-capital sentence says what the desk does (brief F6): "(not
+# when base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b)"; was
+# "69b8bb654011315fae51b12c17b6eb84cb62f1b520875d093c24806043a7eb0e" (the sentence still read "not when base_cf is within 2% of
+# cash_basis_b", a rule the desk stopped applying in brief F6).
+TOOLS_SHA256 = "84a5d721b704401741dc1cb755b0461408e32830b4cec91a8c26327fe5928b40"
 # research_tools() (search_web, fetch_page) is unchanged, so its pin stays.
 RESEARCH_TOOLS_SHA256 = "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
@@ -183,7 +189,12 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # revision 17, brief C (+62 chars, was 20823): DATA 7's split line names the filed series and says what follows the last
     # filing, DATA 12's earnings-call line says why the text is missing, and the long_run line gains x_over_oe and prints its
     # stamps as ranges
-    assert len(text1) == 20885
+    # revision 17, brief F (+861 chars, was 20885): a reference_base_b line joined DEFAULTS, the terminal_ronic line names the
+    # blended return and retention, and the long_run line gained fourteen members (the operating-margin record, the margin
+    # rule's numbers, r8, r3, r_blend, retention) and a longer explanation
+    # revision 17, brief F2 (+33 chars, was 21746): the reference_status explanation names the fourth status (+43) and the GEV
+    # fixture's record has no margin record on either line, so its stamp reads margin_record_not_available (-10)
+    assert len(text1) == 21779
 
     # Assert byte equality with golden file
     golden_file = FIXTURE / "golden_pack_GEV_rev17.md"

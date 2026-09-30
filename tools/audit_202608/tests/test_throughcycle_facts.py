@@ -134,15 +134,19 @@ def test_the_sentences_carry_the_basis_and_the_reason_field():
     for key in ("terminal_ronic", "working_capital", "base_year_cap", "terminal_g_default"):
         explanation = line[key].split(" | ", 1)[1]
         assert ". " not in explanation, key
-    # brief B2 F6: the long_run explanation is these two sentences, nothing more
+    # brief B2 F6: the long_run explanation is two sentences, nothing more (brief F4 rewrote the first: the margin rule
+    # and the blended return now drive the long run)
     assert line["long_run"].split(" | ", 1)[1] == (
-        "The desk values years 6 on from X_5 (earnings before acquired-intangible amortization), pays for growth "
-        "at terminal_ronic, and, when cycle is yes, moves the margin from m5 to your record's median m_tc by year 10. "
-        "The members are the record behind it.")
+        "The desk values years 6 on from X_5 (earnings before acquired-intangible amortization), pays for growth at a "
+        "return that fades from r_blend (the blend of r8 and r3, your record's 8-year and latest-3-year median returns "
+        "on tangible invested capital) to terminal_ronic, and moves the margin from m5 to m_long by year 10 "
+        "(margin_ratio = m_long / m5; none means the margin is held): om_5, the operating margin the consensus implies "
+        "at year 5, closes margin_fraction of its gap to om_tc, your record's 8-year median operating margin (to zero "
+        "for a loss record; margin_cell names the case). The members are the record behind it.")
     assert "cycle_years=2016;2021," in line["long_run"] and "cycle_year=2021," in line["long_run"]
     # the return the record measures is named for what it is
     ok = _facts(long_run=pack_facts.quantize_long_run(dict(RAW_LR, stamps=[])))
-    assert "your record's median return on tangible invested capital" in [
+    assert "your record's blended return on tangible invested capital" in [
         l for l in pack_facts.render_defaults_block(ok).splitlines() if l.startswith("- terminal_ronic")][0]
     # with no revenue trend the default says which rule it came from
     fb = _facts(long_run=pack_facts.quantize_long_run(dict(RAW_LR, terminal_g_basis="consensus_fallback", g_rev=None,

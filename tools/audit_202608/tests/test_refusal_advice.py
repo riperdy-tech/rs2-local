@@ -412,7 +412,9 @@ def test_ugis_four_refusals_replay_to_the_preview_percentages_and_the_new_texts(
     # refusals 2 and 4 (the Bear lowered outside the band): the year-2 rule alone, as before; no rule above applies
     # (revision 17, brief C6b: the refusal's own text is unchanged; refusal 4 gains the loop guard, checked below)
     for i in (1, 3):
-        assert results[i][1].startswith(results[i][0])
+        # revision 17, brief F8 item 7: refusal 4 carries the loop guard, which first replaces the generic clause (", or
+        # change an input with dated evidence") with the advised one; refusal 2 is unchanged
+        assert results[i][1].startswith(results[i][0].removesuffix(GENERIC_TAIL) if i == 3 else results[i][0])
     # revision 17, brief C6b: the four refusals alternate two reasons (bear_above_price_reason, scenario_deviation_reason,
     # bear_above_price_reason, scenario_deviation_reason), each after changed inputs. The guard compared only with the
     # refusal just before and never fired (this test asserted exactly that); it now fires on refusals 3 and 4, not on 1 and 2.
@@ -420,5 +422,9 @@ def test_ugis_four_refusals_replay_to_the_preview_percentages_and_the_new_texts(
     assert fired == ("Changing inputs has not cleared bear_above_price_reason and scenario_deviation_reason. "
                      "Give the reasons named above with the inputs you have.")
     assert [r[1].endswith(" " + fired) for r in results] == [False, False, True, True]
-    assert results[3][1] == results[3][0] + " " + fired                # refusal 4's own text is the preview's, plus the sentence
+    # refusal 4's own text is the preview's with the generic clause made the advised one, plus the sentence (brief F8 item 7)
+    assert results[3][1] == results[3][0].removesuffix(GENERIC_TAIL) + ADVISED_TAIL + " " + fired
+    assert results[3][1].endswith(" Call again with the same inputs and these reasons. Changing inputs has not cleared "
+                                  "bear_above_price_reason and scenario_deviation_reason. Give the reasons named above "
+                                  "with the inputs you have.")
     assert results[2][1].endswith(" " + ADVISED_TAIL + " " + fired)

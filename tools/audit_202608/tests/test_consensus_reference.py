@@ -26,7 +26,7 @@ AMD_SHARES = 1_632_475_042
 # Revision 17: the reference's long run needs the company's record; with RONIC_T = +inf, no cycle, no working
 # capital and base net income = owner earnings (D&A = capex) it reduces to revision 16's arithmetic, so the
 # tests below that pin revision-16 numbers pass these inputs and keep their assertions.
-REDUCTION = {"R_tc": math.inf, "ronic_t": math.inf, "cycle": False, "m_tc": None, "nwc_intensity": None,
+REDUCTION = {"R_tc": math.inf, "r_blend": math.inf, "ronic_t": math.inf, "cycle": False, "m_tc": None, "nwc_intensity": None,
              "stamps": []}
 
 
