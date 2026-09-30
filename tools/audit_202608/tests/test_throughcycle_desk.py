@@ -211,14 +211,15 @@ def test_a_negative_long_run_is_floored_and_stamped():
 
 def test_without_a_reference_the_long_run_uses_the_base_windows_net_income_ratio():
     with_ratio = _direct(EZPW_PATH, ronic=0.135, long_run={"ni_over_oe": 0.9})
-    assert "long_run_base_ratio" in with_ratio["stamps"]
+    assert "long_run_base_ratio_ni" in with_ratio["stamps"]          # revision 17 (brief C7): was long_run_base_ratio
     oe5 = EZPW_BASE_CF * math.prod(1 + g for g in EZPW_PATH)
     assert with_ratio["long_run"]["year5_earnings"] == pytest.approx(0.9 * oe5, abs=1e-4)
 
 
 def test_without_a_ratio_either_it_uses_owner_earnings_as_earnings_and_says_so():
     res = _direct(EZPW_PATH, ronic=0.135, long_run={"ni_over_oe": None})
-    assert "long_run_on_owner_earnings" in res["stamps"] and "long_run_base_ratio" not in res["stamps"]
+    assert "long_run_on_owner_earnings" in res["stamps"]
+    assert not any(s.startswith("long_run_base_ratio") for s in res["stamps"])
     oe5 = EZPW_BASE_CF * math.prod(1 + g for g in EZPW_PATH)
     assert res["long_run"]["year5_earnings"] == pytest.approx(oe5, abs=1e-4)
     # a non-positive ratio is no ratio; a call with no facts at all is not refused

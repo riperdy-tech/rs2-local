@@ -60,6 +60,10 @@ KEYS: list[str] = [
     "long_run",
     "working_capital",
     "base_year_cap",
+    # revision 17, brief C4: the factor that turns the last filed diluted share count into today's when a split came
+    # after the last filing (4.0 for a 4-for-1 split, 0.25 for a 1-for-4 reverse split), else None. Same revision,
+    # so the version stays 5.
+    "split_after_last_filing",
 ]
 
 # The revision marker (S1's from_text dispatch, section 5.1's line format). The DEFAULTS reader
@@ -340,6 +344,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "long_run": {},
         "working_capital": None,
         "base_year_cap": None,
+        "split_after_last_filing": None,
     }
 
 
@@ -422,8 +427,55 @@ def _q(v, fn):
 
 
 LONG_RUN_MEMBERS = ("cycle", "cycle_year", "cycle_years", "e5", "oe5", "m5", "m_tc", "m_years", "r_tc", "r_years", "p",
-                    "g_rev", "g_rev_years", "terminal_g_basis", "ni_over_oe", "nwc_intensity", "nwc_years",
+                    "g_rev", "g_rev_years", "terminal_g_basis", "ni_over_oe", "x_over_oe", "nwc_intensity", "nwc_years",
                     "stub_months", "stamps")
+# a member a DEFAULTS block written before revision 17's brief C7 does not print: read as None, not an error
+_LONG_RUN_OPTIONAL_ON_READ = ("x_over_oe",)
+
+
+def _stamp_years(text: str) -> list[int] | None:
+    """The years of a year-list stamp body: "2016/2017/2018" (the record's own form) or "2016-2018,2021" (the
+    DEFAULTS form). None when `text` is neither."""
+    years: list[int] = []
+    for tok in re.split(r"[/,]", text):
+        m = re.fullmatch(r"(\d{4})(?:-(\d{4}))?", tok)
+        if not m:
+            return None
+        lo, hi = int(m.group(1)), int(m.group(2) or m.group(1))
+        if hi < lo:
+            return None
+        years.extend(range(lo, hi + 1))
+    return sorted(set(years))
+
+
+def _year_runs(years: list[int]) -> str:
+    """[2019, 2020, 2023] -> "2019-2020,2023"."""
+    runs: list[list[int]] = []
+    for y in years:
+        if runs and y == runs[-1][1] + 1:
+            runs[-1][1] = y
+        else:
+            runs.append([y, y])
+    return ",".join(str(a) if a == b else f"{a}-{b}" for a, b in runs)
+
+
+def compact_stamps(stamps, window=None) -> list[str]:
+    """Revision 17, brief C7: the DEFAULTS form of the record's stamps. A year-list stamp ("amortization_gap:2016/2017/...")
+    keeps only the years inside `window` ([first, last], the record's eight-year window; all years when None) and prints
+    its runs as ranges ("amortization_gap:2022-2025", "tangible_equity_partial:2019-2020,2023"); a year-list stamp
+    with no year left is dropped; every other stamp is unchanged. Reads both forms, so it is idempotent."""
+    out: list[str] = []
+    for s in stamps or []:
+        name, sep, body = str(s).partition(":")
+        years = _stamp_years(body) if sep else None
+        if years is None:
+            out.append(str(s))
+            continue
+        if window:
+            years = [y for y in years if window[0] <= y <= window[1]]
+        if years:
+            out.append(f"{name}:{_year_runs(years)}")
+    return out
 
 
 def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
@@ -432,8 +484,10 @@ def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
       cycle True/False/None, cycle_year int/None (the latest year with both falls), cycle_years the list of
       such years, e5/oe5 $B, m5/m_tc/r_tc/g_rev/nwc_intensity fractions
       (r_tc may be +/-inf), m_years/r_years/g_rev_years/nwc_years [first, last, n] or None, p (a
-      multiple of 1/8), terminal_g_basis "revenue_trend"/"consensus_fallback", ni_over_oe a ratio,
-      stub_months, stamps a list of strings."""
+      multiple of 1/8), terminal_g_basis "revenue_trend"/"consensus_fallback", ni_over_oe and x_over_oe ratios (the
+      base window's net income, and its earnings before acquired-intangible amortization, over its owner earnings),
+      stub_months, stamps a list of strings in the DEFAULTS form (`compact_stamps`). `stamps_full`, when the raw
+      values carry it, is the record's full stamp list for the verdict: it is not printed and not compared."""
     if not d:
         return {}
     out: dict[str, Any] = {}
@@ -445,7 +499,7 @@ def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
             v = _q(v, q_rate)
         elif k == "p":
             v = _q(v, lambda x: float(f"{x:.3f}"))
-        elif k == "ni_over_oe":
+        elif k in ("ni_over_oe", "x_over_oe"):
             v = _q(v, q_ratio)
         elif k == "stub_months":
             v = _q(v, q_months)
@@ -456,8 +510,10 @@ def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
         elif k == "cycle_years":
             v = [int(x) for x in v] if v else []
         elif k == "stamps":
-            v = list(v) if v else []
+            v = compact_stamps(v)
         out[k] = v
+    if d.get("stamps_full"):
+        out["stamps_full"] = list(d["stamps_full"])
     return out
 
 
@@ -520,10 +576,11 @@ def _render_long_run(lr: dict[str, Any]) -> str:
         "g_rev_years=" + _lr_years(lr.get("g_rev_years")),
         "terminal_g_basis=" + (lr.get("terminal_g_basis") or _NONE),
         "ni_over_oe=" + _fnum(lr.get("ni_over_oe"), ".6f"),
+        "x_over_oe=" + _fnum(lr.get("x_over_oe"), ".6f"),
         "nwc_intensity=" + _lr_rate(lr.get("nwc_intensity")),
         "nwc_years=" + _lr_years(lr.get("nwc_years")),
         "stub_months=" + _fnum(lr.get("stub_months"), ".4f"),
-        "stamps=" + (";".join(lr["stamps"]) if lr.get("stamps") else _NONE),
+        "stamps=" + (";".join(compact_stamps(lr["stamps"])) if lr.get("stamps") else _NONE),
     ]
     return ", ".join(parts)
 
@@ -539,6 +596,9 @@ def _parse_long_run(raw: str) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k in LONG_RUN_MEMBERS:
         v = raw_members.get(k)
+        if v is None and k in _LONG_RUN_OPTIONAL_ON_READ:
+            out[k] = None
+            continue
         if v is None:
             raise ValueError(f"revision-17 DEFAULTS long_run has no {k!r} member")
         if v == _NONE:
@@ -549,7 +609,7 @@ def _parse_long_run(raw: str) -> dict[str, Any]:
             out[k] = int(v)
         elif k == "cycle_years":
             out[k] = [int(x) for x in v.split(";")]
-        elif k in ("e5", "oe5", "ni_over_oe", "stub_months", "p"):
+        elif k in ("e5", "oe5", "ni_over_oe", "x_over_oe", "stub_months", "p"):
             out[k] = float(v)
         elif k in ("m5", "m_tc", "r_tc", "g_rev", "nwc_intensity"):
             out[k] = inf if v == "+inf" else (-inf if v == "-inf" else float(v.rstrip("%")) / 100.0)
@@ -559,7 +619,7 @@ def _parse_long_run(raw: str) -> dict[str, Any]:
                 raise ValueError(f"revision-17 DEFAULTS long_run {k}={v!r} is not first-last:n")
             out[k] = [int(x) for x in mm.groups()]
         elif k == "stamps":
-            out[k] = v.split(";")
+            out[k] = compact_stamps(v.split(";"))      # reads the record's "2016/2017" form and the ranges alike
         else:                                    # terminal_g_basis
             out[k] = v
     return out
@@ -597,6 +657,28 @@ def _render_base_year_cap(c) -> str:
 def _parse_base_year_cap(raw: str) -> dict[str, float]:
     got = dict(m.strip().split("=", 1) for m in raw.strip().split(", "))
     return {k: float(got[k]) for k in _CAP_MEMBERS}
+
+
+def _dv_split(m) -> str:
+    """The split multiplier as printed: `4` for a 4-for-1 split, `1/4` for a 1-for-4 reverse split."""
+    return f"{m:g}" if m >= 1 else f"1/{1 / m:g}"
+
+
+def _dp_split(raw: str) -> float:
+    s = raw.strip()
+    if s.startswith("1/"):
+        return 1.0 / float(s[2:])
+    return float(s)
+
+
+def _split_explanation(m) -> str:
+    if m >= 1:
+        return (f"the vendor's share count is {m:g} times the last filed diluted count (DATA 7): the filed per-share "
+                f"figures in DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK and the base-year cap use the "
+                f"filed count x {m:g}")
+    return (f"the vendor's share count is 1/{1 / m:g} of the last filed diluted count (DATA 7, a reverse split): the "
+            f"filed per-share figures in DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK and the base-year cap "
+            f"use the filed count / {1 / m:g}")
 
 
 def _years_txt(v) -> str:
@@ -644,7 +726,7 @@ def _working_capital_explanation(f: dict[str, Any]) -> str:
 def render_defaults_block(facts: dict[str, Any]) -> str:
     """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
     TASK. Prints every one of the `KEYS` (one fact per line; revision 17: `base_year_cap` only when
-    the cap applied), plus two display-only lines that carry no facts key: the fixed rule lines
+    the cap applied, `split_after_last_filing` only when a split was detected), plus two display-only lines that carry no facts key: the fixed rule lines
     `cash_flow_life` and `price`. The reader (`_from_defaults_block`) ignores display lines.
     Revision 17 removed the `default_exit_multiple` display line: the desk has no exit multiple."""
     f = facts
@@ -738,6 +820,9 @@ def render_defaults_block(facts: dict[str, Any]) -> str:
                           "the base year's filed EPS was more than 2% above the analysts' year-ago EPS, so "
                           "the reference takes base net income as that year-ago EPS times the filed diluted "
                           "shares and lowers its owner-earnings base by removed ($B)"))
+    split_fact = f.get("split_after_last_filing")
+    if split_fact:
+        lines.append(line("split_after_last_filing", _dv_split(split_fact), _split_explanation(split_fact)))
     lines.append(line("working_capital", _render_working_capital(f.get("working_capital")),
                       _working_capital_explanation(f)))
 
@@ -798,7 +883,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         mm = re.search(rf"^- {re.escape(key)}: (.*?) \| ", block, re.MULTILINE)
         if mm:
             return mm.group(1)
-        if throughcycle and key != "base_year_cap":
+        if throughcycle and key not in ("base_year_cap", "split_after_last_filing"):
             raise ValueError(f"revision-17 DEFAULTS block has no {key!r} line")
         return None
 
@@ -875,6 +960,8 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     working_capital = _parse_working_capital(_wc) if _wc is not None else None
     _cap = _opt("base_year_cap")
     base_year_cap = _parse_base_year_cap(_cap) if _cap is not None else None
+    _split = _opt("split_after_last_filing")
+    split_after_last_filing = _dp_split(_split) if _split is not None else None
 
     return {
         "version": FACTS_VERSION,
@@ -907,6 +994,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "long_run": long_run,
         "working_capital": working_capital,
         "base_year_cap": base_year_cap,
+        "split_after_last_filing": split_after_last_filing,
     }
 
 
@@ -934,7 +1022,12 @@ def read_sidecar(d: str | Path) -> dict[str, Any] | None:
 def parity(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
     """Return sorted list of KEYS whose values differ (source and version ignored)."""
     mismatches: list[str] = []
+
+    def _cmp(k, v):
+        # `stamps_full` is the verdict's copy of the record's stamps: the DEFAULTS block prints the window's only
+        return {m: x for m, x in v.items() if m != "stamps_full"} if k == "long_run" and isinstance(v, dict) else v
+
     for k in KEYS:
-        if a.get(k) != b.get(k):
+        if _cmp(k, a.get(k)) != _cmp(k, b.get(k)):
             mismatches.append(k)
     return sorted(mismatches)

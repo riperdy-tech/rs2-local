@@ -85,6 +85,32 @@ class ResearchInfraError(RuntimeError):
     Distinct from 'the web had nothing to say', which is a legitimate thin result."""
 
 
+# A topic with no usable sources is declared, not hidden and not fatal (revision 17, brief C1): the
+# brief carries this first line, names the topic in a `## <topic> — NOT RESEARCHED` section, and is
+# served from cache for a day only, so the next run tries the topic again.
+GAPS_PREFIX = "research_gaps: "
+GAPS_CACHE_DAYS = 1
+
+
+def not_researched_section(title, returned, removed):
+    """The lines that stand in for a topic without usable sources. No prose from the model is kept."""
+    return [f"## {title} — NOT RESEARCHED",
+            f"No usable sources were found ({returned} returned, {removed} removed as low-trust); "
+            f"treat this topic as unknown.",
+            ""]
+
+
+def cache_days(path):
+    """Freshness window of the brief on disk: research_cache_days, or one day at most when the
+    brief declares research gaps."""
+    days = int(CONFIG["research_cache_days"])
+    if path.exists():
+        with path.open(encoding="utf-8", errors="replace") as f:
+            if f.readline().startswith(GAPS_PREFIX):
+                return min(days, GAPS_CACHE_DAYS)
+    return days
+
+
 def ldr_overrides(tool):
     o = {
         "llm.provider": "ollama",
@@ -350,7 +376,8 @@ def drop_low_trust(urls):
     topic outright would have been far worse than the disease: 74 of ~600 topics exceed 40%, and
     ONE failed topic voids the whole brief, so ~60 tickers would fail forever while the farms
     resurfaced on every retry. Strip them instead. If real sources remain the brief is fine; if
-    NOTHING remains, the existing zero-source guard voids it, which is the correct outcome.
+    NOTHING remains, the zero-source guard declares that topic NOT RESEARCHED (the brief is voided
+    only when half of the topics or more end that way).
     """
     kept, dropped = [], []
     for u in urls:
@@ -557,7 +584,7 @@ def build(ticker, name, force=False):
     t = ticker.upper()
     out_dir = Path(CONFIG["out_research_dir"]); out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{t}.md"
-    if not force and fresh(path, int(CONFIG["research_cache_days"]), ticker=ticker):
+    if not force and fresh(path, cache_days(path), ticker=ticker):
         # A cached brief is only reusable if it is actually research. Briefs written before
         # the infra-error guard existed are error text on disk with a fresh mtime, so trusting
         # mtime alone would re-serve the poison for research_cache_days AND make the ticker
@@ -622,6 +649,9 @@ def build(ticker, name, force=False):
         print(f"[deep_research] {t}: lattice check skipped ({str(e)[:70]})", flush=True)
 
     failures = []            # infra failures — any one of these voids the whole brief
+    gaps = []                # (title, why) content failures: the topic had no usable sources. One or a
+                             # few are declared NOT RESEARCHED in the brief; half of the topics or more
+                             # looks like a search-layer outage and voids the brief like an infra failure.
     sections = []            # (title, summary) of committed topics, for the consistency flag
     for title, qt in topics:
         q = qt.format(subj=subj, yr=yr)
@@ -650,14 +680,17 @@ def build(ticker, name, force=False):
         # citation->URL mapping lives in formatted_findings; sources/all_links_of_system as backup
         # urls came back from run_topic, which already tried every backend in the chain.
 
-        # ZERO-SOURCE GUARD: uncited prose is not research. Treat it exactly like an infra
-        # failure so the brief is never written and the ticker retries for real, instead of
-        # caching a hallucination for research_cache_days and failing sanity on every retry.
+        # ZERO-SOURCE GUARD: uncited prose is not research, so none of it is kept. The topic is
+        # declared NOT RESEARCHED in the brief (a content failure, see `gaps`); it no longer voids
+        # the whole brief unless half of the topics or more come back that way (HAE 2026-09-29 and
+        # KMT 2026-09-30 lost their only sources of one topic of 5-6 to the low-trust filter and
+        # the name was not analysed at all).
         # When LDR's citation-number mapping is available it is the authoritative source list
         # (extract_urls' `sources` ordering is NOT the numbering the prose cites).
         numbered = numbered_sources(res)
         if numbered:
             urls = [u for _, u in numbered]
+        returned = len(urls)
         urls, dropped = drop_low_trust(urls)
         if dropped:
             print(f"[deep_research] {t} '{title}' dropped {len(dropped)} low-trust source(s) "
@@ -665,10 +698,11 @@ def build(ticker, name, force=False):
                   flush=True)
 
         if not urls:
-            failures.append((title, f"zero sources — {len(summ)}B of uncited prose "
-                                    f"(model recall, not research): {summ[:160]}"))
+            gaps.append((title, f"zero sources — {len(summ)}B of uncited prose "
+                                f"(model recall, not research): {summ[:160]}"))
             print(f"[deep_research] {t} '{title}' ::NO SOURCES:: {len(summ)}B of uncited "
                   f"prose discarded — {summ[:120]}", flush=True)
+            L += not_researched_section(title, returned, len(dropped))
             continue
 
         # RELEVANCE GUARD. Citations prove the model searched; they do NOT prove it searched for
@@ -680,9 +714,10 @@ def build(ticker, name, force=False):
         if reason:
             doms = ", ".join(sorted({urllib.parse.urlparse(u).netloc.replace("www.", "")
                                      for u in urls})[:6])
-            failures.append((title, f"irrelevant sources — {reason} ({doms})"))
+            gaps.append((title, f"irrelevant sources — {reason} ({doms})"))
             print(f"[deep_research] {t} '{title}' ::IRRELEVANT SOURCES:: {reason} "
                   f"({doms}) — discarded", flush=True)
+            L += not_researched_section(title, returned, len(dropped))
             continue
         if dshare or sshare or lshare:
             print(f"[deep_research] {t} '{title}' note: sources {dshare*100:.0f}% dictionary, "
@@ -708,19 +743,28 @@ def build(ticker, name, force=False):
         print(f"[deep_research] {t} '{title}' done via {tool} in {time.time()-t0:.0f}s "
               f"({len(summ)} chars, {len(urls)} sources)", flush=True)
 
-    if failures:
+    if failures or len(gaps) * 2 >= len(topics):
         # Do NOT write the file. A written brief is cached research_cache_days (7) and is
         # read back as genuine research, so persisting an infra failure poisons every
         # downstream verdict for a week and never self-heals. Writing nothing leaves the
-        # name due, so the retry re-runs it for real.
-        detail = "; ".join(f"{ti}: {er[:120]}" for ti, er in failures)
-        print(f"[deep_research] {t} ::ABORT:: {len(failures)}/{len(topics)} topics hit infra "
-              f"errors — brief NOT written (no poisoned cache). {detail}", flush=True)
+        # name due, so the retry re-runs it for real. Half of the topics without usable sources
+        # is treated the same way: that is what a search-layer outage looks like.
+        failed = failures + gaps
+        detail = "; ".join(f"{ti}: {er[:120]}" for ti, er in failed)
+        print(f"[deep_research] {t} ::ABORT:: {len(failed)}/{len(topics)} topics failed "
+              f"({len(failures)} infra errors, {len(gaps)} without usable sources) — "
+              f"brief NOT written (no poisoned cache). {detail}", flush=True)
         ops.notify_telegram(
-            f"[RS2 ops] research_infra_fail — {t}: {len(failures)}/{len(topics)} topics failed. "
+            f"[RS2 ops] research_infra_fail — {t}: {len(failed)}/{len(topics)} topics failed. "
             f"Brief not written; ticker will retry. {detail[:600]}")
         raise ResearchInfraError(detail)
 
+    if gaps:
+        # First line of the brief, ahead of the Company: header (the guard reads that header from
+        # the first 500 characters, so a short gaps line in front does not hide it).
+        L.insert(0, GAPS_PREFIX + "; ".join(ti for ti, _ in gaps))
+        print(f"[deep_research] {t} ::GAPS:: {len(gaps)}/{len(topics)} topics NOT RESEARCHED — "
+              f"brief written with the gaps declared, cached {GAPS_CACHE_DAYS} day(s)", flush=True)
     flag_consistency(t, sections)   # flag-only; never blocks the write
     path.write_text("\n".join(L), encoding="utf-8")
     print(f"[deep_research] {t} -> {path} (Tavily remaining: {quota.remaining('tavily')})", flush=True)

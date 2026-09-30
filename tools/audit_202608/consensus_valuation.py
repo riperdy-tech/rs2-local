@@ -694,6 +694,7 @@ def select_medoid_scorecard(
                                            # verdict, each added to its owner's schema so none is dropped
                                            "terminal_ronic", "terminal_ronic_gap_pts", "long_run_facts",
                                            "working_capital_deducted", "base_year_capped",
+                                           "split_after_last_filing",
                                            "years12_held_by_desk", "desk_stamps")},
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
@@ -1125,6 +1126,8 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
               "long_run_facts": _json_safe(facts.get("long_run")) or None,
               "working_capital_deducted": None,
               "base_year_capped": True if facts.get("base_year_cap") else None,
+              # revision 17 (brief C4): the factor a split after the last filing put on the filed share count
+              "split_after_last_filing": facts.get("split_after_last_filing"),
               "years12_held_by_desk": None, "desk_stamps": None}
     flags = []
     g_anchor = facts.get("terminal_g_default")

@@ -150,7 +150,7 @@ These are facts about price and are not a valuation input.
 - Operating margin, latest: +3.6%   |   median over 4 years: -0.7%
 - Revenue CAGR, trailing 5 fiscal years: not available
 - Years of history available: 4
-- Share-count split suspected in the series: False
+- Share-count split suspected in the filed series: False. After the last filing: none detected.
 
 The Beneish M-score is deliberately omitted: it imputes absent inputs and then publishes a score, which would present a guess as a measurement.
 
@@ -179,7 +179,7 @@ not available — research did not return dated guidance
 - Effective tax rate: WITHHELD; net income + tax does not equal pre-tax income, by more than 5%, in FY2023 (our pre-tax field admits a US-domestic-only tag), so do not reconstruct a tax rate from those years.
 - Debt components beyond long-term debt: HELD, 3 year(s) (2023-2025), in DATA 6C; whether they overlap is not known, so no total debt is computed
 - Which XBRL tag produced each number: NOT RECORDED (see DATA 0).
-- Earnings-call text: NOT HELD for this company.
+- Earnings-call text: NOT AVAILABLE — transcript status not recorded.
 
 ## DEFAULTS   [each desk input takes this value unless you pass another; a departure needs the named reason, and the desk asks for it]
 - shares_outstanding: 266,333,600 | DATA 2, the vendor's basic count
@@ -197,7 +197,7 @@ not available — research did not return dated guidance
 - terminal_g_default: 3.75% | the next-FY consensus revenue growth rule (your record holds fewer than 5 years of revenue or breakeven inflation is missing); more than 0.5 points away needs terminal_reason
 - terminal_g_anchor: 3.75% | the long-run nominal growth anchor
 - terminal_ronic: 10.1899% | the Base terminal return on new investment: the cost of equity plus p times the excess over it of r_tc, your record's median return on tangible invested capital (both in long_run); a Base terminal_ronic more than 2 points away needs terminal_reason
-- long_run: cycle=no, cycle_year=none, cycle_years=none, e5=none, oe5=none, m5=none, m_tc=none, m_years=none, r_tc=13.8198%, r_years=2022-2025:4, p=0.250, g_rev=none, g_rev_years=none, terminal_g_basis=consensus_fallback, ni_over_oe=1.097685, nwc_intensity=none, nwc_years=none, stub_months=8.8706, stamps=amortization_gap:2022/2023/2024/2025;tangible_equity_partial:2022/2023/2024/2025 | The desk values years 6 on from X_5 (earnings before acquired-intangible amortization), pays for growth at terminal_ronic, and, when cycle is yes, moves the margin from m5 to your record's median m_tc by year 10. The members are the record behind it.
+- long_run: cycle=no, cycle_year=none, cycle_years=none, e5=none, oe5=none, m5=none, m_tc=none, m_years=none, r_tc=13.8198%, r_years=2022-2025:4, p=0.250, g_rev=none, g_rev_years=none, terminal_g_basis=consensus_fallback, ni_over_oe=1.097685, x_over_oe=none, nwc_intensity=none, nwc_years=none, stub_months=8.8706, stamps=amortization_gap:2022-2025;tangible_equity_partial:2022-2025 | The desk values years 6 on from X_5 (earnings before acquired-intangible amortization), pays for growth at terminal_ronic, and, when cycle is yes, moves the margin from m5 to your record's median m_tc by year 10. The members are the record behind it.
 - net_debt_b: -7.676 | the firm frame's net debt; another figure needs net_debt_reason (the pack's flows are after interest: value them in the equity frame)
 - interest_expense_latest_b: not available | the firm frame's interest_addback is at most this
 - consensus_data_status: enrich_missing | ok, or why DATA 8 prints no consensus estimates

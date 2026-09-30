@@ -934,7 +934,10 @@ def test_rev16_a_refusal_for_a_base_far_from_the_reference_names_the_share_unit(
     """Millions given where billions are meant (a Base 1000x too low) and the reverse (1000x too high): the
     refusal says the likely cause is the share unit, gives the ratio to the reference and the pack's count,
     and, like every refusal but the order one (S3 3.5), carries neither the Base value nor the reference."""
-    p, ctx = _scaled(shares_diluted=shares)
+    # revision 17 (brief C6): a refusal on the Bull-below or Bear-above rule now carries per-share values of its own
+    # (the DEFAULTS Bull or Bear and the band's end), so those two reasons are given here and the refusal below is
+    # the unit note's alone; the advice is tested in test_refusal_advice.py
+    p, ctx = _scaled(shares_diluted=shares, bull_below_price_reason="t", bear_above_price_reason="t")
     ctx["consensus_implied_value"] = 87.65                       # a reference no other figure in the text can equal
     res = execute_financial_model(p, context=ctx)
     assert res["validation_error"] is True

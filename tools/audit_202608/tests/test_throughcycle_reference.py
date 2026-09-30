@@ -475,7 +475,9 @@ def test_the_untagged_marker_decides_whether_a_missing_goodwill_series_is_none_h
     assert not any(st.startswith("tangible_equity_partial") for st in untagged["long_run"]["stamps"])
     gap = _synthetic_pack(monkeypatch, drop_goodwill=True).facts
     assert gap["long_run"]["r_years"] == [2018, 2025, 8] and gap["long_run"]["r_tc"] == untagged["long_run"]["r_tc"]
-    assert "tangible_equity_partial:2014/2015/2016/2017/2018/2019/2020/2021/2022/2023/2024/2025" in gap["long_run"]["stamps"]
+    # revision 17 (brief C7): the DEFAULTS stamp lists the eight window years (2018-2025) as a range; the facts keep the full list
+    assert "tangible_equity_partial:2018-2025" in gap["long_run"]["stamps"]
+    assert "tangible_equity_partial:2014/2015/2016/2017/2018/2019/2020/2021/2022/2023/2024/2025" in gap["long_run"]["stamps_full"]
     assert "record_not_available" not in gap["long_run"]["stamps"]
     assert gap["terminal_ronic"] == untagged["terminal_ronic"]           # the record is the same: nothing is lost to the gap
 

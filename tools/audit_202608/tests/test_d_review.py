@@ -97,6 +97,25 @@ def test_system_v32_no_stale_references():
             assert removed not in sys_text, f"{filename} contains removed contract/parameter name: {removed}"
 
 
+def test_system_v33_one_funded_terminal():
+    # Revision 17 (brief_rev17_charter_v33.md): the exit multiple and terminal_leg left the desk, so the charter
+    # must not describe them; the v33 SYSTEM is the v32 SYSTEM with twelve sentence changes and no more.
+    for filename in ("RS2-Analyst-Deep-MTP5-v33.Modelfile", "RS2-Analyst-Deep-MTP5-Q4-v33.Modelfile"):
+        sys_text = _get_system_block(REPO / filename)
+        for gone in ("exit multiple", "terminal_leg", "BOTH terminal", "Dual Terminal", "terminal legs",
+                     "SECTION 1.5", "SECTION 1.6", "SECTION 2.5", "kelly_fraction_pct", "base_iv", "coe_source"):
+            assert gone not in sys_text, f"{filename} still contains {gone!r}"
+        assert "CHARTER v3.3" in sys_text and "CHARTER v3.2" not in sys_text
+        assert "terminal_ronic" in sys_text and "FUNDED TERMINAL VALUATION" in sys_text
+    v32 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-v32.Modelfile").split("\n")
+    v33 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-v33.Modelfile").split("\n")
+    assert len(v32) == len(v33)
+    changed = [i + 1 for i, (a, b) in enumerate(zip(v32, v33)) if a != b]
+    # SYSTEM-relative line numbers: 2 (title), 28 (value cycle), 30-31 (heading, macro sentence), 33-34 (valuation,
+    # growth/terminal), 37-39 (terminal multiple, peer cross-check, desk return), 47 (cycle), 93 (SECTION 3).
+    assert changed == [2, 28, 30, 31, 33, 34, 37, 38, 39, 47, 93]
+
+
 # --- 3. The readers ---
 
 def _saved_pack_after_no_research(monkeypatch, tmp_path, body):

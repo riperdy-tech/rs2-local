@@ -84,6 +84,10 @@ DESK_CLOSED_RUNS = ("The desk is now closed: all {cap} desk runs are used, so ru
 DESK_CLOSED_REJECTED = ("The desk is now closed after {n} rejected calls, so run_financial_model is no longer "
                         "offered. Your last valid desk results stand; report them. Research tools stay open; write "
                         "the memorandum when your research is done.")
+# Revision 17, brief C6: the loop guard. The same set of reasons refused on two desk calls in a row, the inputs
+# having changed in between, means the model is walking an input across rules; the second refusal says so.
+DESK_LOOP_GUARD = ("The same rules fired after you changed inputs; give the reasons named above with the inputs "
+                   "you have.")
 DESK_CLOSED_LINE = ("The desk is closed: run_financial_model is no longer offered, and your last desk results stand. "
                     "Write the memorandum when your research is done.")
 PART_CHARS = 9000
@@ -845,6 +849,19 @@ def fetch_page(url, snap=None, cap=9000, url_cache=None, known_urls=None, _fallb
     return ret
 
 
+def desk_loop_guard(result, call_key, previous):
+    """Revision 17, brief C6. `result` is a desk refusal, `call_key` the call's inputs as sent and `previous` the
+    (reason set, call_key) of the refusal on the call just before this one, or None. Returns (result, this
+    refusal): when the same reasons were refused on the previous call and the inputs differ, the error gains
+    DESK_LOOP_GUARD. A refusal with no reasons (a missing input, the order rule) is not tracked."""
+    reasons = frozenset(n.get("reason") for n in (result.get("needs_reasons") or []) if isinstance(n, dict))
+    if not reasons:
+        return result, None
+    if previous is not None and previous[0] == reasons and previous[1] != call_key:
+        result = dict(result, error=f"{result['error']} {DESK_LOOP_GUARD}")
+    return result, (reasons, call_key)
+
+
 def dispatch_tool(name, args, snap=None, query_cache=None, url_cache=None, known_urls=None, desk_context=None):
     """Unified dispatcher for all analyst tools."""
     if name == "search_web":
@@ -1450,6 +1467,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     search_calls = 0
     model_calls = 0
     desk_validation_errors = 0
+    last_desk_refusal = None            # (reasons, inputs) of the desk call just before, when it was refused (C6)
     eff_tools = TOOLS if tools is None else tools
 
     sample_search_queries = []
@@ -1871,14 +1889,17 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     else:
                         # the cap goes only where it is set, so a dispatcher without desk_context fails loudly
                         desk_kw = {"desk_context": desk_context} if desk_context is not None else {}
+                        call_key = json.dumps(args, sort_keys=True, default=str)      # the inputs as sent (the desk annotates args)
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache, **desk_kw)
                         if isinstance(result, dict) and result.get("validation_error") is True:
                             desk_validation_errors += 1
+                            result, last_desk_refusal = desk_loop_guard(result, call_key, last_desk_refusal)
                             if desk_validation_errors > 6:
                                 result = {"error": f"financial model call budget exhausted ({max_model_calls}); "
                                                    f"use computed results and finalize memorandum"}
                         else:
                             model_calls += 1
+                            last_desk_refusal = None
 
                     if max_model_calls > 0 and isinstance(result, dict):
                         result = dict(result)

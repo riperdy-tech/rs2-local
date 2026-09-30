@@ -5,6 +5,8 @@ Item 2 of Phase 4 Amendments (E8 design):
 - Two SearXNG queries: (1) "<company>", (2) "<TICKER> stock"
 - categories="news", time_range="month", format="json", timeout=60s
 - Drops LOW_TRUST URLs
+- Drops rows that do not name the company (`names_company`, revision 17 brief C2): the cleaned company name as a
+  phrase (a one-word name only with a finance word in the same row), or the ticker in a finance pattern
 - De-duplicates by URL and identical lower-cased title
 - Orders rows with publishedDate first (newest first), then undated in order returned. Keeps 15.
 - Caches to cache/company_news/<TICKER>_<YYYY-MM-DD>.json and reuses same day.
@@ -85,6 +87,39 @@ def _name_token(clean_company):
         if len(w) >= 4 and w.lower() not in _GENERIC_NAME_WORDS:
             return w
     return None
+
+
+# Revision 17, brief C2: FIVE's block carried a Reuters diesel story because "Five" is an ordinary word and the
+# rows of the quoted-name query were not filtered at all. One rule now applies to every row, from both queries.
+_FINANCE_WORD = re.compile(
+    r"(?<![A-Za-z0-9])(?:stocks?|shares|earnings|revenues?|guidance|quarters?|quarterly|dividends?|analysts?|"
+    r"CEO|Inc|Corp|NYSE|NASDAQ)(?![A-Za-z0-9])", re.I)
+_INVISIBLE = re.compile("[\N{ZERO WIDTH SPACE}-\N{ZERO WIDTH JOINER}\N{WORD JOINER}\N{ZERO WIDTH NO-BREAK SPACE}]")
+
+
+def _plain(text):
+    """Row text as matched: invisible characters (Reuters snippets carry them) removed, curly apostrophes straight."""
+    return _INVISIBLE.sub("", str(text or "")).replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
+
+
+def names_company(clean_company, ticker, *parts):
+    """True when the row (its title, snippet and excerpt when read: `parts`) names the company.
+
+    a. the full cleaned company name as a phrase, case-insensitive; when the cleaned name is one word, only
+       together with a finance word in the same row (a one-word name is usually an ordinary word); or
+    b. the ticker, exact case, in a finance pattern: $T, (T), NYSE: T, NASDAQ: T, T stock, T shares.
+    """
+    text = _plain(" ".join(str(p) for p in parts if p))
+    words = _plain(clean_company).split()
+    if words:
+        phrase = r"(?<![A-Za-z0-9])" + r"\s+".join(re.escape(w) for w in words) + r"(?![A-Za-z0-9])"
+        if re.search(phrase, text, re.I) and (len(words) > 1 or _FINANCE_WORD.search(text)):
+            return True
+    t = re.escape(str(ticker).strip())
+    end = r"(?![A-Za-z0-9])"
+    return bool(re.search(
+        rf"\${t}{end}|\({t}\)|\b(?i:NYSE|NASDAQ):\s?{t}{end}|(?<![A-Za-z0-9.]){t}\s+(?i:stocks?|shares){end}",
+        text))
 
 
 def _mostly_non_latin(text):
@@ -199,6 +234,8 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
     if cache_file.exists():
         try:
             cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            cached["rows"] = [r for r in cached.get("rows") or []
+                              if names_company(clean_comp, t, r.get("title"), r.get("snippet"), r.get("excerpt"))]
             if not cached.get("excerpts_read") and READ_TOP:
                 cached = _add_excerpts(cached, _name_token(clean_comp))
                 cache_file.write_text(json.dumps(cached, indent=2), encoding="utf-8")
@@ -239,10 +276,10 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
             continue
         if _mostly_non_latin(title):
             continue
-        if res.get("_query_index") == 1 and name_token and not re.search(
-                rf"\b{re.escape(name_token)}", title + " " + str(res.get("content") or ""), re.I):
-            # the "<TICKER> stock" query matches ticker collisions (LIND -> Linde Bangladesh);
-            # its rows must name the company. The quoted-name query's rows are already matched.
+        snippet = re.sub(r"\s+", " ", str(res.get("content") or "")).strip()[:220]
+        if not names_company(clean_comp, t, title, snippet):
+            # both queries match ticker collisions and ordinary words (LIND -> Linde Bangladesh, FIVE ->
+            # "five drafting tips"); a row must name the company, on the text the analyst is shown.
             continue
         norm_url = u.lower().rstrip("/")
         norm_title = title.lower()
@@ -253,7 +290,6 @@ def _fetch_live(company, ticker, searx_url=None, cache_dir=None, timeout=60):
 
         date_str = _parse_date(res.get("publishedDate"))
         source_str = _format_source(res.get("engine"), u)
-        snippet = re.sub(r"\s+", " ", str(res.get("content") or "")).strip()[:220]
 
         raw_rows.append({
             "date": date_str,

@@ -63,6 +63,10 @@ SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3
 SYSTEM_MTP5_Q4_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
 SYSTEM_MTP5_V32_SHA256 = "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd723213b0c0ab7"
 SYSTEM_MTP5_Q4_V32_SHA256 = "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd723213b0c0ab7"
+# 2026-09-30 (revision 17, brief_rev17_charter_v33.md): charter v3.3 - twelve sentence changes to the v3.2 SYSTEM text;
+# the v32 files and their pins stay for rollback.
+SYSTEM_MTP5_V33_SHA256 = "ff033c2519528445a1f2e56a797746524d64bff7d65e5a31612be35d6cbdfc22"
+SYSTEM_MTP5_Q4_V33_SHA256 = "ff033c2519528445a1f2e56a797746524d64bff7d65e5a31612be35d6cbdfc22"
 CONTINUE_REPORT_SHA256 = "71742a7a93e0d6f1aa02792c3414936abf07cf8fdf45d6989be4f94ecd8d64c3"
 
 
@@ -96,6 +100,11 @@ def test_text_pins():
     sys_mtp5_q4_v32 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-Q4-v32.Modelfile")
     assert _sha256(sys_mtp5_v32) == SYSTEM_MTP5_V32_SHA256
     assert _sha256(sys_mtp5_q4_v32) == SYSTEM_MTP5_Q4_V32_SHA256
+
+    sys_mtp5_v33 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-v33.Modelfile")
+    sys_mtp5_q4_v33 = _get_system_block(REPO / "RS2-Analyst-Deep-MTP5-Q4-v33.Modelfile")
+    assert _sha256(sys_mtp5_v33) == SYSTEM_MTP5_V33_SHA256
+    assert _sha256(sys_mtp5_q4_v33) == SYSTEM_MTP5_Q4_V33_SHA256
 
     assert _sha256(inspect.getsource(consensus_valuation.continue_report)) == CONTINUE_REPORT_SHA256
 
@@ -171,7 +180,10 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # revision 17: the exit-multiple line and DEFAULTS line left; terminal_ronic, long_run and working_capital lines
     # and the new explanations joined (was 20006 at revision 16); brief B2 F6 shortened the long_run explanation
     # (was 21077 before the fixes)
-    assert len(text1) == 20823
+    # revision 17, brief C (+62 chars, was 20823): DATA 7's split line names the filed series and says what follows the last
+    # filing, DATA 12's earnings-call line says why the text is missing, and the long_run line gains x_over_oe and prints its
+    # stamps as ranges
+    assert len(text1) == 20885
 
     # Assert byte equality with golden file
     golden_file = FIXTURE / "golden_pack_GEV_rev17.md"

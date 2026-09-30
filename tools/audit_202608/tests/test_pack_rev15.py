@@ -253,6 +253,9 @@ def test_section_12_qanda_pointer_follows_section_10(screener_data_stub, monkeyp
     # No transcript stubbed -> SECTION 10 is not printed -> the dangling "See SECTION 10" pointer
     # is gone.
     pack = str(cap.build_pack("GEV", include_research=False))
-    assert "- Earnings-call text: NOT HELD for this company." in pack
+    # revision 17 (brief C3): the fixed sentence is replaced by the line for the transcript status; GEV's fixture holds no
+    # openbb record at all, so no status was recorded
+    assert "- Earnings-call text: NOT AVAILABLE — transcript status not recorded." in pack
+    assert "NOT HELD for this company" not in pack
     assert "See SECTION 10" not in pack
     assert "- Analyst Q&A from earnings calls: NOT HELD; SECTION 10 holds prepared remarks only." not in pack

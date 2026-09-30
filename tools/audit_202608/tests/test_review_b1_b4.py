@@ -165,11 +165,11 @@ class _FixedNow(__import__("datetime").datetime):
         return cls(2026, 9, 26, 12, 0, tzinfo=tz)
 
 
-def _gev_pack(monkeypatch, fye, year_ago, fin_edit=None, ttm_edit=None, hist_edit=None):
+def _gev_pack(monkeypatch, fye, year_ago, fin_edit=None, ttm_edit=None, hist_edit=None, eps_year_ago=17.70):
     import rs2_data
     en = {"_ticker": "GEV", "_fetched_at": "2026-09-24T12:00:00",
           "estimates": {"0y": {"eps": {"avg": 20.0, "low": 18.0, "high": 22.0, "analysts": 25, "growth": 0.13,
-                                       "year_ago": 17.70},
+                                       "year_ago": eps_year_ago},
                                "revenue": {"avg": 41e9, "analysts": 24, "growth": 0.08, "year_ago": year_ago}},
                         "+1y": {"eps": {"avg": 24.0, "low": 21.0, "high": 27.0, "analysts": 23, "growth": 0.20},
                                 "revenue": {"avg": 45e9, "analysts": 22, "growth": 0.10}}}}
@@ -224,10 +224,12 @@ def _byc(pack):
 
 
 @pytest.mark.usefixtures("screener_data_stub")
-def test_the_base_year_check_across_a_split_is_withheld(monkeypatch):
-    # APH's shape: SECTION 2's share count is twice the filed diluted count
+def test_the_base_year_check_across_a_ratio_no_split_explains_is_withheld(monkeypatch):
+    # revision 17 (brief C4): was APH's shape, a count exactly twice the filed diluted count (Shares_Outstanding=552e6),
+    # which is now detected as a 2-for-1 split after the last filing (test_split_and_dilution.py). 1.5 times the filed
+    # count fits no split ratio: the ADS-unit shape, which keeps "not available"
     line = _byc(_gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000,
-                          fin_edit=lambda f: dict(f, Shares_Outstanding=552e6)))
+                          fin_edit=lambda f: dict(f, Shares_Outstanding=414e6)))
     assert line.startswith("- BASE-YEAR CHECK: not available") and "differ by more than 15%" in line
     assert "cannot be shown to be on one basis" in line                                  # R3
 

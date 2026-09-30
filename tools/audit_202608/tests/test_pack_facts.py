@@ -79,7 +79,13 @@ def test_gev_fixture_parity_and_literal_values(screener_data_stub, frozen_env):
     assert diffs == [], f"Parity diffs between pack.facts and from_text: {diffs}"
 
     for k in pack_facts.KEYS:
-        assert pack.facts[k] == from_text[k], f"Mismatch for key {k}: {pack.facts[k]} != {from_text[k]}"
+        got = pack.facts[k]
+        if k == "long_run":
+            # revision 17 (brief C7): the facts also keep the record's full stamps (`stamps_full`) for the verdict, which the
+            # DEFAULTS block does not print; every other member reads back equal
+            assert got["stamps_full"] == ["amortization_gap:2022/2023/2024/2025", "tangible_equity_partial:2022/2023/2024/2025"]
+            got = {m: v for m, v in got.items() if m != "stamps_full"}
+        assert got == from_text[k], f"Mismatch for key {k}: {pack.facts[k]} != {from_text[k]}"
 
     # Literal expected values for at least shares_outstanding, coe_anchor, terminal_g_default, owner_earnings_source
     assert pack.facts["shares_outstanding"] == 266333600.0

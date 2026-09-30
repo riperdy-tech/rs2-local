@@ -601,6 +601,24 @@ def _segment_note(t):
             f"economics and backlog.")
 
 
+def _transcript_line(ob, section10_printed):
+    """DATA 12's earnings-call line. When DATA 10 printed, the Q&A pointer; otherwise what
+    openbb_data.py recorded as `transcript_status` (revision 17, brief C3): a source that answered with no
+    transcript is a coverage fact, a source that failed is an outage, and a record from before the field
+    existed says neither."""
+    if section10_printed:
+        return "- Analyst Q&A from earnings calls: NOT HELD; DATA 10 holds prepared remarks only."
+    status = (ob or {}).get("transcript_status")
+    if status == "not_covered":
+        return "- Earnings-call text: NOT HELD \u2014 the source has no transcript for this company."
+    failed = re.fullmatch(r"source_failed: (.+) \((\d{4}-\d{2}-\d{2})\)", status) if isinstance(status, str) else None
+    if failed:
+        return (f"- Earnings-call text: NOT AVAILABLE \u2014 the transcript source failed ({failed.group(1)}, "
+                f"{failed.group(2)}); the call is not in this pack, so search for it if you need "
+                f"management's own words.")
+    return "- Earnings-call text: NOT AVAILABLE \u2014 transcript status not recorded."
+
+
 def _age(rec):
     """How old the aggregator record actually is, from its own `_fetched_at` stamp.
 
@@ -754,9 +772,72 @@ def _c2_filter_research_brief(rb_text):
 # and diluted EPS are filed to the cent).
 _DILUTION_APPLY_THRESHOLD = 1.05
 _SHARE_DEFAULT_DEPART_TOL = 0.10
+# Revision 17, brief C5: the vendor's count already within 1% of the filed diluted count is the filed count, not a
+# basic count awaiting a dilution factor (the census of 291 packs found the double count on 9 names).
+_SHARE_DEFAULT_FILED_TOL = 0.01
+
+# Revision 17, brief C4: a split after the last filing. The screener's `share_count_split_suspected` reads only the
+# filed series, so a split that came after the last filing (PIPR: filed FY2025 17.8M, vendor 70.7M) was invisible.
+_SPLIT_KS = (2, 3, 4, 5, 8, 10, 15, 20)
+_SPLIT_TOL = 0.03
 
 
-def _share_default(fin, V, point_in_time=False):
+def _split_k(x):
+    """The k of _SPLIT_KS that the ratio `x` is within 3% of, else None."""
+    for k in _SPLIT_KS:
+        if abs(x / k - 1) <= _SPLIT_TOL:
+            return k
+    return None
+
+
+def _filed_diluted_series(h):
+    """[(fiscal year, filed diluted share count)] ascending, for the years whose shares_diluted is a number, at the
+    whole-share precision DATA 6B prints (`facts["filed_shares_diluted"]` is the last of them)."""
+    out = []
+    for y in sorted(int(y) for y in h if str(y).isdigit()):
+        v = (h.get(str(y)) or {}).get("shares_diluted")
+        if isinstance(v, (int, float)) and float("-inf") < v < float("inf"):     # DATA 6B prints NaN and inf as text
+            out.append((y, float(f"{v:.0f}")))
+    return out
+
+
+def _split_after_last_filing(vendor_shares, h):
+    """Revision 17, brief C4: a split after the last filing. ratio = the vendor's shares_outstanding / the latest filed
+    diluted share count; the split is detected when the ratio (1/ratio for a reverse split) is within 3% of a k in
+    {2, 3, 4, 5, 8, 10, 15, 20} AND the filed series itself shows no step of that size between its last two years
+    (then the screener's own flag already says so). None when not detected. Otherwise a dict: `k`, `reverse`,
+    `multiplier` (the factor that turns a filed count into today's: k, or 1/k for a reverse split), `fy` and
+    `filed` (the latest filed diluted count and its fiscal year), `vendor`."""
+    if not (isinstance(vendor_shares, (int, float)) and vendor_shares > 0):
+        return None
+    series = [(y, v) for y, v in _filed_diluted_series(h) if v > 0]
+    if not series:
+        return None
+    fy, filed = series[-1]
+    ratio = vendor_shares / filed
+    reverse = ratio < 1
+    k = _split_k(1 / ratio if reverse else ratio)
+    if k is None:
+        return None
+    if len(series) >= 2:
+        prev = series[-2][1]
+        if _split_k(prev / filed if reverse else filed / prev) == k:
+            return None
+    return {"k": k, "reverse": reverse, "multiplier": (1.0 / k if reverse else float(k)), "fy": fy,
+            "filed": filed, "vendor": float(vendor_shares)}
+
+
+def _x_over_owner_earnings(ni, oe, fy_row, untagged):
+    """Revision 17, brief C7: the base window's earnings before acquired-intangible amortization over its owner earnings, for
+    a desk with no consensus reference. X = the window's net income + the base fiscal year's amortization x (1 - tax
+    rate) (`throughcycle_record.earnings_detail` on that year's row with the window's net income). None unless the base
+    year's amortization is known (a null in a series the filer tags is a gap: the desk then scales by net income) and
+    both X and owner earnings are positive."""
+    x, gap = throughcycle_record.earnings_detail(dict(fy_row or {}, net_income=ni), untagged)
+    return x / oe if (x is not None and not gap and x > 0 and oe > 0) else None
+
+
+def _share_default(fin, V, point_in_time=False, filed_diluted=None):
     """S3 5.11: the share-count default, added after the E17 L2 finding on EZPW. SECTION 2's
     vendor count `V` is the BASIC count; this multiplies it by the company's own dilution factor
     (basic / diluted EPS) when the dilution is large enough to matter, so the default pairs with
@@ -777,6 +858,10 @@ def _share_default(fin, V, point_in_time=False):
       - |V / B - 1| > 0.10 (B = NetIncome / BasicEPS, the basic count filed EPS implies): (V,
         k, period, a warning) — SECTION 2's count cannot be trusted as the basic count (share
         classes, ADS units or a stale vendor count), so no dilution is applied on top of it.
+      - k >= 1.05 and `filed_diluted` (the latest filed diluted count, split-adjusted by
+        `_split_after_last_filing`) is available with V within 1% of it (revision 17, brief C5): (V, k,
+        period with "matches_filed" True, None) — DATA 2's count already IS the filed diluted count, so the
+        factor is not applied a second time (SECTION 2 says so in one clause; no shares_warning).
       - otherwise: (round(V * k) if k >= 1.05 else V, k, period, None).
     """
     if not (isinstance(V, (int, float)) and V > 0):
@@ -828,6 +913,11 @@ def _share_default(fin, V, point_in_time=False):
                   f"EPS: share classes, ADS units or a stale vendor count")
         return V, k, period, warning
 
+    if (k_full >= _DILUTION_APPLY_THRESHOLD and isinstance(filed_diluted, (int, float)) and filed_diluted > 0
+            and abs(V / filed_diluted - 1) <= _SHARE_DEFAULT_FILED_TOL):
+        period["matches_filed"] = True
+        return float(V), k, period, None
+
     default = round(V * k_full) if k_full >= _DILUTION_APPLY_THRESHOLD else V
     return float(default), k, period, None
 
@@ -845,7 +935,9 @@ def _share_default_lines(V, default, k, period, warning, point_in_time=False):
         dil_line = (f"- Shares dilution factor: {k:.4f} = basic EPS {period['basic_eps']:g} / "
                     f"diluted EPS {period['diluted_eps']:g} ({period['label']}); applied to the "
                     f"default at 1.05 or above (convertibles, options or warrants)"
-                    + (f" — not applied: {warning}" if warning else ""))
+                    + (f" — not applied: {warning}" if warning else
+                       " — not applied: DATA 2's count already matches the filed diluted count"
+                       if period.get("matches_filed") else ""))
     elif point_in_time:
         dil_line = (f"- Shares dilution factor: {ASOF_NULL} — the vendor's EPS statements are a "
                     f"same-day snapshot, and DATA 2's count is already the filed diluted average "
@@ -1445,7 +1537,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             "g_rev": _record["g_rev"], "g_rev_years": _yrs(_record["g_rev"], _record["g_rev_years"]),
             "terminal_g_basis": terminal_def_basis,
             "nwc_intensity": _record["nwc_intensity"], "nwc_years": _yrs(_record["nwc_intensity"], _record["nwc_years"]),
-            "stamps": list(_record["stamps"])})
+            # brief C7: the DEFAULTS block lists the eight window years' stamps as ranges; the facts (the verdict) keep the
+            # record's full list
+            "stamps": pack_facts.compact_stamps(_record["stamps"], _record["window"]),
+            "stamps_full": list(_record["stamps"])})
 
     # ---- SECTION 1 - IDENTITY & INSTITUTIONAL TAXONOMY -------------------------------------
     sector, industry = rs2_data.sector_lookup(t)
@@ -1946,6 +2041,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     else:
         px, sh = fin.get("Price"), fin.get("Shares_Outstanding")
 
+    # Revision 17, brief C4/C5: a split after the last filing (live packs only: a point-in-time pack's count IS the
+    # filed one), and the latest filed diluted count on today's share basis, for the share default.
+    _split = None if asof_date is not None else _split_after_last_filing(sh, h)
+    facts["split_after_last_filing"] = _split["multiplier"] if _split else None
+    _filed_series = _filed_diluted_series(h) if h else []
+    _filed_today = (_filed_series[-1][1] * _split["multiplier"] if _split else _filed_series[-1][1]) if _filed_series else None
+
     # D9 (PHASE_4_PACK_SPEC.md): T2's pack-data-sanity checks, printed as a DATA WARNINGS block
     # at the TOP of SECTION 2 — before the figures they warn about, not after. Explicit params,
     # not `ticker=t` alone: this function's own ticker-resolution path reads
@@ -2005,7 +2107,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         price_line = f"- Price: ${live_px} [live quote{asof_str}]   [vendor quote: {vpx} as of {vdate}]"
         facts["shares_outstanding"] = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool) and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
         # S3 5.11: the share-count default, from the same vendor income statements in every path.
-        _sd_default, _sd_k, _sd_period, _sd_warning = _share_default(fin, facts["shares_outstanding"])
+        _sd_default, _sd_k, _sd_period, _sd_warning = _share_default(fin, facts["shares_outstanding"],
+                                                                     filed_diluted=_filed_today)
         facts["shares_default"] = _sd_default
         facts["shares_dilution_factor"] = _sd_k
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
@@ -2034,7 +2137,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         price_line = f"- Price: ${px}" if px is not None else f"- Price: {NULL}"
         facts["shares_outstanding"] = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool) and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
         # S3 5.11: the share-count default, from the same vendor income statements in every path.
-        _sd_default, _sd_k, _sd_period, _sd_warning = _share_default(fin, facts["shares_outstanding"])
+        _sd_default, _sd_k, _sd_period, _sd_warning = _share_default(fin, facts["shares_outstanding"],
+                                                                     filed_diluted=_filed_today)
         facts["shares_default"] = _sd_default
         facts["shares_dilution_factor"] = _sd_k
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
@@ -2255,6 +2359,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             # consensus reference (the long run then takes earnings from owner earnings at this ratio)
             if ni > 0 and oe > 0:
                 _lr_raw["ni_over_oe"] = ni / oe
+                _lr_raw["x_over_oe"] = _x_over_owner_earnings(ni, oe, h.get(str(latest_yr)), _untagged_fields)
             facts["owner_earnings_source"] = "ttm_filed"
             facts["owner_earnings_default_b"] = float(f"{oe / 1e9:,.3f}".replace(",", ""))
             # S3 5.6/5.3: result-first equation, bare numbers; the "equity frame" rule sentence is
@@ -2429,6 +2534,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             # consensus reference (the long run then takes earnings from owner earnings at this ratio)
             if ni > 0 and oe > 0:
                 _lr_raw["ni_over_oe"] = ni / oe
+                _lr_raw["x_over_oe"] = _x_over_owner_earnings(ni, oe, _fy_rec, _untagged_fields)
             facts["owner_earnings_source"] = f"{oe_src[0]}_ni+{oe_src[1]}_capex" if oe_tag else "ttm_filed"
             facts["owner_earnings_default_b"] = float(f"{oe / 1e9:,.3f}".replace(",", ""))
             # S3 5.6/5.3: result-first equation, bare numbers; the "equity frame" sentence (OWNER
@@ -2747,8 +2853,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                   f"{_v(bat, 'op_margin_years')} years: {_pct(bat.get('op_margin_10y_median'))}",
                   f"- Revenue CAGR, trailing 5 fiscal years: {_pct(_rc5)}",
                   f"- Years of history available: {_v(bat, 'years_available')}",
-                  f"- Share-count split suspected in the series: "
-                  f"{_v(bat, 'share_count_split_suspected')}",
+                  f"- Share-count split suspected in the filed series: "
+                  f"{_v(bat, 'share_count_split_suspected')}. After the last filing: "
+                  + (f"a {_split['k']}-for-1 split" if _split and not _split["reverse"] else
+                     f"a 1-for-{_split['k']} reverse split" if _split else "none detected")
+                  + (f" (filed FY{_split['fy']} {_split['filed'] / 1e6:.1f}M -> vendor "
+                     f"{_split['vendor'] / 1e6:.1f}M); filed per-share figures in DATA 5 and 6 are pre-split."
+                     if _split else "."),
                   "",
                   "The Beneish M-score is deliberately omitted: it imputes absent inputs and then "
                   "publishes a score, which would present a guess as a measurement.", ""]
@@ -2826,6 +2937,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             _ya = (p0.get("eps") or {}).get("year_ago")
             _fyh = (h.get(str(latest_yr)) or {}) if latest_yr is not None else {}
             _fy_ni_x, _fy_sh_x = _fyh.get("net_income"), _fyh.get("shares_diluted")
+            # revision 17 (brief C4): a split after the last filing leaves the filed count pre-split; the
+            # vendor's year-ago EPS is split-adjusted, so the check and the cap use the filed count x k
+            _split_note = ""
+            if _split and _split["fy"] == latest_yr and isinstance(_fy_sh_x, (int, float)):
+                _fy_sh_x = _fy_sh_x * _split["multiplier"]
+                _split_note = (f", the filed count x {_split['k']}" if not _split["reverse"] else
+                               f", the filed count / {_split['k']}") + " for the split after the last filing (DATA 7)"
             # review B4 (2026-09-27): only when the vendor's figures and ours are on one basis: the
             # vintage test passes and our filed share count agrees with the pack's (APH read -50%
             # across a split, ADS names read +290% and +2168%)
@@ -2855,7 +2973,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 _base_cap = consensus_reference.base_year_cap(_fy_ni_x, _fy_sh_x, _ya) if _ref_fy else None
                 L.append(f"- [Arithmetic] BASE-YEAR CHECK: consensus measures current-FY EPS growth from a "
                          f"year-ago EPS of ${_ya:.2f}; our filed FY{latest_yr} EPS is ${_fy_eps:.2f} (net income / "
-                         f"diluted shares), {(_ya / _fy_eps - 1) * 100:+.0f}% apart. A large gap means the "
+                         f"diluted shares{_split_note}), {(_ya / _fy_eps - 1) * 100:+.0f}% apart. A large gap means the "
                          f"consensus growth rate starts from a different base than the filings (adjusted rather "
                          f"than GAAP figures, or one-off items).")
             trend = p1.get("eps_trend") or {}
@@ -2957,7 +3075,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                             L.append(f"- [Arithmetic] BASE-YEAR CAP: filed FY{latest_yr} EPS ${_bc['eps_filed']:.2f} is "
                                      f"{(_bc['eps_filed'] / _bc['eps_vendor'] - 1) * 100:+.0f}% above the analysts' year-ago "
                                      f"EPS ${_bc['eps_vendor']:.2f}, so the CONSENSUS-IMPLIED VALUE takes base net income as "
-                                     f"${_bc['eps_vendor']:.2f} x the filed diluted shares = {_b(_bc['ni_capped'])} instead of "
+                                     f"${_bc['eps_vendor']:.2f} x the filed diluted shares{_split_note} = {_b(_bc['ni_capped'])} instead of "
                                      f"{_b(_bc['ni_filed'])} and lowers its owner-earnings base by {_b(_bc['removed'])} (a "
                                      f"one-time gain is likelier than a lasting one; a filed EPS below the analysts' is never "
                                      f"raised)")
@@ -3256,9 +3374,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 gap_phrase="DATA 6's long-term debt understates total debt by an unknown "
                             "amount; DATA 2's vendor total is the only cross-check"),
           "- Which XBRL tag produced each number: NOT RECORDED (see DATA 0).",
-          ("- Analyst Q&A from earnings calls: NOT HELD; DATA 10 holds prepared remarks only."
-           if section10_printed else
-           "- Earnings-call text: NOT HELD for this company."), ""]
+          _transcript_line(ob, section10_printed), ""]
     if drift:
         L += ["**SCHEMA DRIFT DETECTED WHILE BUILDING THIS PACK.** Fields this builder expects "
               "were absent from the upstream record, so sections above may be missing data we "

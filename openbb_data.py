@@ -8,6 +8,7 @@ don't have, then formats a block for the RS2 pipeline:
   - insider trading net activity (SEC)
   - key valuation/quality metrics (yfinance)
   - latest earnings-call transcript excerpt (FMP, quota-guarded — management's own words)
+  - transcript_status: why the excerpt is or is not there (ok, not_covered, source_failed: <error> (<date>))
 
 Cached per ticker (cache/openbb_{T}.json, TTL openbb_cache_days). yfinance load is tiny
 (few analyzed tickers, cached) — never the daily 8k-ticker scan.
@@ -99,6 +100,18 @@ def _forward_growth(t):
     return out
 
 
+def _transcript_attempt(fn):
+    """One transcript source. Returns (transcript dict or None, failure text or None): a source that answers
+    with no transcript is (None, None); an exception or HTTP error is (None, its message trimmed to 80
+    characters) — the difference the pack must not blur (2026-09-29: every pack lost the excerpt to a 404 and
+    printed the outage as "NOT HELD for this company")."""
+    try:
+        tr = fn()
+    except Exception as e:
+        return None, (" ".join(str(e).split()) or type(e).__name__)[:80]
+    return (tr if isinstance(tr, dict) else None), None
+
+
 def _transcript_defeatbeta(t):
     """Latest earnings-call transcript via the defeatbeta HF dataset (free, no quota,
     remote-DuckDB column-pruned reads — NOT a bulk download). Returns the same shape the
@@ -172,9 +185,9 @@ def fetch(ticker):
     # earnings transcript — latest quarter management commentary.
     # defeatbeta first (free HF dataset, full speaker-attributed transcript, no quota);
     # FMP only as a quota-guarded fallback when defeatbeta has nothing for the name.
-    d["transcript_excerpt"] = _safe(lambda: _transcript_defeatbeta(t), None)
-    if not isinstance(d["transcript_excerpt"], dict):
-        d["transcript_excerpt"] = None
+    # transcript_status: ok, not_covered (every source consulted answered with no transcript for the name) or
+    # source_failed: <error> (<date>) (a source raised: nothing can be said about coverage).
+    d["transcript_excerpt"], failed = _transcript_attempt(lambda: _transcript_defeatbeta(t))
     if d["transcript_excerpt"] is None and quota.key("FMP_API_KEY") and quota.remaining("fmp") > 2:
         def transcript():
             r = obb.equity.fundamental.transcript(t, provider="fmp").results
@@ -184,8 +197,15 @@ def fetch(ticker):
             txt = getattr(latest, "content", "") or ""
             return {"quarter": getattr(latest, "quarter", None), "year": getattr(latest, "year", None),
                     "excerpt": txt[:2500], "source": "fmp"}
-        d["transcript_excerpt"] = _safe(transcript, None)
+        d["transcript_excerpt"], failed_fmp = _transcript_attempt(transcript)
+        failed = failed or failed_fmp
         quota.bump("fmp", 1)
+    if d["transcript_excerpt"] is not None:
+        d["transcript_status"] = "ok"
+    elif failed:
+        d["transcript_status"] = f"source_failed: {failed} ({datetime.now(timezone.utc).strftime('%Y-%m-%d')})"
+    else:
+        d["transcript_status"] = "not_covered"
 
     cf.write_text(json.dumps(d, indent=2), encoding="utf-8")
     return d

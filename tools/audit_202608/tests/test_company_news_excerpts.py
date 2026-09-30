@@ -38,7 +38,8 @@ def test_the_top_stories_are_read_once_and_cached(tmp_path, monkeypatch):
              "snippet": ""} for i in range(7)]
     monkeypatch.setattr(company_news, "_query_searxng",
                         lambda ep, q, timeout=60: {"results": [{"url": r["url"], "title": r["title"],
-                                                                 "publishedDate": r["date"], "engine": "bing news"}
+                                                                 "publishedDate": r["date"], "engine": "bing news",
+                                                                 "content": "Lindblad Expeditions Holdings story"}
                                                                 for r in rows]})
     calls = []
     monkeypatch.setattr(company_news, "_read_article",

@@ -101,8 +101,10 @@ def test_five_11_share_keys_never_found_pre_revision_15():
 def test_facts_version_and_key_count():
     # revision 17 (brief B 5): FACTS_VERSION 4 -> 5 and four new keys
     assert pack_facts.FACTS_VERSION == 5
-    assert len(pack_facts.KEYS) == 28
-    assert pack_facts.KEYS[-4:] == ["terminal_ronic", "long_run", "working_capital", "base_year_cap"]
+    # revision 17 (brief C4): one more key, split_after_last_filing; same revision, so the version stays 5
+    assert len(pack_facts.KEYS) == 29
+    assert pack_facts.KEYS[-5:] == ["terminal_ronic", "long_run", "working_capital", "base_year_cap",
+                                    "split_after_last_filing"]
 
 
 def test_empty_has_all_24_keys():

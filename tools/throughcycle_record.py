@@ -35,6 +35,7 @@ import math
 WINDOW_YEARS = 8        # W = L-7..L
 CYCLE_MAX_YEARS = 12    # the cycle test looks at up to 12 held years <= L
 R_MIN_YEARS = 3         # defined return years needed for R_tc
+CYCLE_MIN_TESTED = 3    # years that must be testable for "no cycle" to mean anything (brief C7); fewer are stamped
 M_MIN_YEARS = 5         # defined margin years needed for m_tc
 G_MIN_YEARS = 5         # years with revenue > 0 needed for the Theil-Sen growth
 NWC_MIN_YEARS = 5       # defined working-capital years needed for nwc_intensity
@@ -263,11 +264,13 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
       R (every held year <= L -> return on tangible invested capital or None), r_years (defined years in W),
       R_tc, p, p_years (years in W with R_y > r), ronic_t,
       cycle (True / False, None when no year could be tested), cycle_years (the years with both falls),
-      cycle_year (the latest of them), cycle_tested (years that could be tested),
+      cycle_year (the latest of them), cycle_tested (years that could be tested; fewer than CYCLE_MIN_TESTED
+      stamps `cycle_not_testable`: the cycle is what it was, "no" still says nothing about a record that short),
       m_tc (median X / revenue), m_years, g_rev, g_rev_years, nwc_intensity, nwc_years,
       amortization_gap_years, tangible_equity_partial_years (held years <= L within the cycle look-back),
       stamps (["record_not_available"] when R_tc is None; "amortization_gap:<years>" and
-      "tangible_equity_partial:<years>" when a year used net income for X or a partial tangible equity).
+      "tangible_equity_partial:<years>" when a year used net income for X or a partial tangible equity;
+      "cycle_not_testable" when fewer than CYCLE_MIN_TESTED years could be tested for the cycle).
     """
     untagged = frozenset(untagged_fields or ())
     rows = normalise_rows(rows)
@@ -319,6 +322,8 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
     out["cycle_years"] = hits
     out["cycle_year"] = hits[-1] if hits else None
     out["cycle"] = None if tested == 0 else bool(hits)
+    if tested < CYCLE_MIN_TESTED:
+        out["stamps"].append("cycle_not_testable")
 
     margins = {}
     for y in W:

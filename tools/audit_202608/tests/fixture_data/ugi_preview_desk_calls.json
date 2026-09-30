@@ -1,0 +1,272 @@
+{
+ "source": "Phase-7 preview (qwen36_test), UGI sample 1: the revision-16 pack facts and desk calls 9-12 (the four refusals)",
+ "price": 36.51,
+ "facts": {
+  "shares_default": 214494967.0,
+  "coe_anchor": 0.07719999999999999,
+  "terminal_g_default": 0.0375,
+  "terminal_g_anchor": 0.0375,
+  "base_rate_5y": {
+   "share_ge_10": 26.7,
+   "share_ge_20": 6.8,
+   "share_ge_30": 2.2,
+   "p50": 5.6,
+   "p90": 16.7
+  },
+  "revenue_cagr_5y_pct": 2.1,
+  "net_debt_b": 6.313,
+  "interest_expense_latest_b": 0.379,
+  "owner_earnings_default_b": 0.357,
+  "base_window": {},
+  "consensus_implied_value": 50.94,
+  "levels": {
+   "year1": 0.339,
+   "year2": 0.39,
+   "bull2": 0.395,
+   "bear2": 0.381
+  },
+  "cash_basis_b": 0.169,
+  "next_fy_revenue_growth": 0.055,
+  "shares_warning": null
+ },
+ "calls": [
+  {
+   "index": 9,
+   "params": {
+    "cash_flow_life": "perpetual",
+    "cash_flow_life_reason": "TTM owner earnings of $0.357B through 2026-06-30 represent a going-concern value with regulatory-protected utility assets and propane distribution network; no finite life asset or license expiration drives a terminal date.",
+    "fade_years": 5,
+    "terminal_g": 0.0375,
+    "sbc_treatment": "deducted_in_cf",
+    "valuation_frame": "equity",
+    "rate_type": "cost_of_equity",
+    "base_cf": 0.357,
+    "base_cf_reason": "TTM owner earnings (net income $0.671B + D&A FY2025 $0.561B - TTM capex $0.875B) per DATA 3, filed through 2026-06-30.",
+    "scenarios": [
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       -0.05,
+       0.15,
+       0.055,
+       0.055,
+       0.055
+      ],
+      "fade_years": 5,
+      "name": "Base",
+      "prob": 0.5,
+      "wacc": 0.0772
+     },
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       0.02,
+       0.14,
+       0.07,
+       0.06,
+       0.05
+      ],
+      "fade_years": 5,
+      "name": "Bull",
+      "prob": 0.3,
+      "wacc": 0.0772
+     },
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       -0.05,
+       0.03,
+       0.04,
+       0.04,
+       0.04
+      ],
+      "fade_years": 5,
+      "name": "Bear",
+      "prob": 0.2,
+      "wacc": 0.0772
+     }
+    ]
+   },
+   "recorded_error": "Not accepted as a desk run; it does not use one of your desk runs. bear_above_price_reason needed: the Bear value is 9.4% above today's price. Call again with the same inputs and these reasons, or change an input with dated evidence."
+  },
+  {
+   "index": 10,
+   "params": {
+    "terminal_g": 0.0375,
+    "fade_years": 5,
+    "cash_flow_life": "perpetual",
+    "cash_flow_life_reason": "TTM owner earnings of $0.357B through 2026-06-30 represent a going-concern value with regulatory-protected utility assets and propane distribution network; no finite life asset or license expiration drives a terminal date.",
+    "sbc_treatment": "deducted_in_cf",
+    "valuation_frame": "equity",
+    "rate_type": "cost_of_equity",
+    "scenarios": [
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       -0.05,
+       0.15,
+       0.055,
+       0.055,
+       0.055
+      ],
+      "fade_years": 5,
+      "name": "Base",
+      "prob": 0.5,
+      "wacc": 0.0772
+     },
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       0.02,
+       0.14,
+       0.07,
+       0.06,
+       0.05
+      ],
+      "fade_years": 5,
+      "name": "Bull",
+      "prob": 0.3,
+      "wacc": 0.0772
+     },
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       -0.1,
+       -0.05,
+       0.02,
+       0.03,
+       0.03
+      ],
+      "fade_years": 5,
+      "name": "Bear",
+      "prob": 0.2,
+      "wacc": 0.092
+     }
+    ],
+    "base_cf_reason": "TTM owner earnings (net income $0.671B + D&A FY2025 $0.561B - TTM capex $0.875B) per DATA 3, filed through 2026-06-30.",
+    "bear_above_price_reason": "Even in the Bear case with -10% year-1 cash flow decline, -5% year-2, only 2-3% terminal growth, and a higher 9.2% discount rate (+148bps reflecting credit spread widening risk), the regulated utility floor ($40M+ quarterly EBIT from utilities segment with $65M PA rate increase pending) and AmeriGas"
+   },
+   "recorded_error": "Not accepted as a desk run; it does not use one of your desk runs. scenario_deviation_reason needed: Bear year-2 cash flow 0.3052B is 19.9% from the DEFAULTS bear2 level 0.3810B. Call again with the same inputs and these reasons, or change an input with dated evidence."
+  },
+  {
+   "index": 11,
+   "params": {
+    "terminal_g": 0.0375,
+    "fade_years": 5,
+    "cash_flow_life": "perpetual",
+    "cash_flow_life_reason": "TTM owner earnings of $0.357B through 2026-06-30 represent a going-concern value with regulatory-protected utility assets and propane distribution network; no finite life asset or license expiration drives a terminal date.",
+    "sbc_treatment": "deducted_in_cf",
+    "valuation_frame": "equity",
+    "rate_type": "cost_of_equity",
+    "scenarios": [
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       -0.05,
+       0.15,
+       0.055,
+       0.055,
+       0.055
+      ],
+      "fade_years": 5,
+      "name": "Base",
+      "prob": 0.5,
+      "terminal_g": 0.0375,
+      "wacc": 0.0772
+     },
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       0.05,
+       0.1,
+       0.06,
+       0.05,
+       0.04
+      ],
+      "fade_years": 5,
+      "name": "Bull",
+      "prob": 0.3,
+      "terminal_g": 0.0375,
+      "wacc": 0.0772
+     },
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       -0.08,
+       0.005,
+       0.04,
+       0.04,
+       0.04
+      ],
+      "fade_years": 5,
+      "name": "Bear",
+      "prob": 0.2,
+      "terminal_g": 0.0375,
+      "wacc": 0.0772
+     }
+    ],
+    "base_cf_reason": "TTM owner earnings (net income $0.671B + D&A FY2025 $0.561B - TTM capex $0.875B) per DATA 3, filed through 2026-06-30."
+   },
+   "recorded_error": "Not accepted as a desk run; it does not use one of your desk runs. bear_above_price_reason needed: the Bear value is 3.5% above today's price. Call again with the same inputs and these reasons, or change an input with dated evidence."
+  },
+  {
+   "index": 12,
+   "params": {
+    "cash_flow_life": "perpetual",
+    "cash_flow_life_reason": "TTM owner earnings of $0.357B through 2026-06-30 represent a going-concern value with regulatory-protected utility assets and propane distribution network; no finite life asset or license expiration drives a terminal date.",
+    "fade_years": 5,
+    "terminal_g": 0.0375,
+    "sbc_treatment": "deducted_in_cf",
+    "valuation_frame": "equity",
+    "rate_type": "cost_of_equity",
+    "scenarios": [
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       -0.05,
+       0.15,
+       0.055,
+       0.055,
+       0.055
+      ],
+      "fade_years": 5,
+      "name": "Base",
+      "prob": 0.5,
+      "wacc": 0.0772
+     },
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       0.05,
+       0.1,
+       0.06,
+       0.05,
+       0.04
+      ],
+      "fade_years": 5,
+      "name": "Bull",
+      "prob": 0.3,
+      "wacc": 0.0772
+     },
+     {
+      "base_cf": 0.357,
+      "explicit_growth": [
+       -0.15,
+       -0.1,
+       -0.05,
+       0.02,
+       0.03
+      ],
+      "fade_years": 5,
+      "name": "Bear",
+      "prob": 0.2,
+      "wacc": 0.092
+     }
+    ],
+    "base_cf_reason": "TTM owner earnings (net income $0.671B + D&A FY2025 $0.561B - TTM capex $0.875B) per DATA 3, filed through 2026-06-30.",
+    "bear_above_price_reason": "Even with severe Bear assumptions: -15% year-1 cash flow decline (AmeriGas volume collapse), -10% year-2, credit spread widening to 9.2% COE (+148bps), the regulated utility floor ($40M quarterly EBIT with $65M PA rate case upside pending) and AmeriGas [200 characters omitted]"
+   },
+   "recorded_error": "Not accepted as a desk run; it does not use one of your desk runs. scenario_deviation_reason needed: Bear year-2 cash flow 0.2731B is 28.3% from the DEFAULTS bear2 level 0.3810B. Call again with the same inputs and these reasons, or change an input with dated evidence."
+  }
+ ]
+}

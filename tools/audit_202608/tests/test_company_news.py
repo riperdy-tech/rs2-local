@@ -36,12 +36,14 @@ def test_company_news_query_strings_and_params(tmp_path, monkeypatch):
 
 
 def test_company_news_low_trust_drop_and_dedup(tmp_path, monkeypatch):
+    # revision 17 (C2): a row must name the company, so every row's snippet says "AMD stock"; the low-trust and
+    # de-duplication filters are what these rows still exercise
     sample_results = [
-        {"url": "https://pitchgrade.com/news/1", "title": "Pitchgrade Article", "engine": "reuters", "publishedDate": "2026-09-20T00:00:00"},
-        {"url": "https://reuters.com/article1", "title": "Good Reuters News", "engine": "reuters", "publishedDate": "2026-09-21T00:00:00", "content": "Snippet 1"},
-        {"url": "https://reuters.com/article1/", "title": "Duplicate URL News", "engine": "reuters", "publishedDate": "2026-09-21T00:00:00"},
-        {"url": "https://msn.com/article2", "title": "good reuters news", "engine": "bing news"},  # Duplicate lowercase title
-        {"url": "https://fool.com/article3", "title": "Unique Motley Fool", "engine": "bing news", "content": "Snippet 3"},
+        {"url": "https://pitchgrade.com/news/1", "title": "Pitchgrade Article", "engine": "reuters", "publishedDate": "2026-09-20T00:00:00", "content": "AMD stock"},
+        {"url": "https://reuters.com/article1", "title": "Good Reuters News", "engine": "reuters", "publishedDate": "2026-09-21T00:00:00", "content": "AMD stock Snippet 1"},
+        {"url": "https://reuters.com/article1/", "title": "Duplicate URL News", "engine": "reuters", "publishedDate": "2026-09-21T00:00:00", "content": "AMD stock"},
+        {"url": "https://msn.com/article2", "title": "good reuters news", "engine": "bing news", "content": "AMD stock"},  # Duplicate lowercase title
+        {"url": "https://fool.com/article3", "title": "Unique Motley Fool", "engine": "bing news", "content": "AMD stock Snippet 3"},
     ]
 
     monkeypatch.setattr(company_news, "_query_searxng", lambda ep, q, timeout=60: {"results": sample_results})
@@ -66,7 +68,7 @@ def test_company_news_ordering_and_15_cap(tmp_path, monkeypatch):
             "title": f"Dated Title {i}",
             "engine": "reuters",
             "publishedDate": f"2026-09-{day}T00:00:00",
-            "content": f"Content {i}",
+            "content": f"AMD stock content {i}",
         })
     for i in range(10):
         sample_results.append({
@@ -74,7 +76,7 @@ def test_company_news_ordering_and_15_cap(tmp_path, monkeypatch):
             "title": f"Undated Title {i}",
             "engine": "bing news",
             "publishedDate": None,
-            "content": f"Undated Content {i}",
+            "content": f"AMD stock undated content {i}",
         })
 
     monkeypatch.setattr(company_news, "_query_searxng", lambda ep, q, timeout=60: {"results": sample_results})
@@ -99,7 +101,8 @@ def test_company_news_cache_reuse(tmp_path, monkeypatch):
     def fake_query(ep, q, timeout=60):
         nonlocal call_count
         call_count += 1
-        return {"results": [{"url": "https://reuters.com/one", "title": "One", "engine": "reuters"}]}
+        return {"results": [{"url": "https://reuters.com/one", "title": "One", "engine": "reuters",
+                             "content": "AMD stock"}]}
 
     monkeypatch.setattr(company_news, "_query_searxng", fake_query)
     monkeypatch.setattr(company_news, "fetch", lambda c, t: company_news._fetch_live(c, t, cache_dir=tmp_path))

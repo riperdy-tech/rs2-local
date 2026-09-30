@@ -193,8 +193,10 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r):
     Returns (e5, margin_ratio, ronic0, ronic_t, stamps).
 
     E5 of the scenario = the reference's year-5 earnings plus the change in owner earnings the
-    scenario makes (one for one). Without a reference in the facts (no consensus): the base window's
-    net income / owner earnings ratio when it is positive, else owner earnings themselves - labelled
+    scenario makes (one for one). Without a reference in the facts (no consensus): owner earnings scaled by the
+    base window's earnings before acquired-intangible amortization / owner earnings (`x_over_oe`, present when
+    the base year's amortization is known: stamp `long_run_base_ratio_x`), else by its net income / owner earnings
+    (`ni_over_oe`: `long_run_base_ratio_ni`), each when positive, else owner earnings themselves - labelled
     fallbacks (never a refusal). The margin factor needs the reference's m5 and the record's cycle.
     RONIC_0 = max(r, R_tc); RONIC_T is the scenario's terminal_ronic, else the facts', else r (a
     record the pack did not carry: growth earns only its cost)."""
@@ -208,10 +210,13 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r):
         if lr.get("cycle") is True and _is_num(m5) and m5 > 0 and _is_num(m_tc):
             margin_ratio = m_tc / m5
     else:
-        ratio = lr.get("ni_over_oe")
-        if _is_num(ratio) and ratio > 0 and oe5 > 0:
-            e5 = oe5 * ratio
-            stamps.append("long_run_base_ratio")
+        ratio_x, ratio_ni = lr.get("x_over_oe"), lr.get("ni_over_oe")
+        if _is_num(ratio_x) and ratio_x > 0 and oe5 > 0:
+            e5 = oe5 * ratio_x
+            stamps.append("long_run_base_ratio_x")
+        elif _is_num(ratio_ni) and ratio_ni > 0 and oe5 > 0:
+            e5 = oe5 * ratio_ni
+            stamps.append("long_run_base_ratio_ni")
         else:
             e5 = oe5
             stamps.append("long_run_on_owner_earnings")
@@ -1071,8 +1076,15 @@ def _need(reasons_needed, reason_name, given, triggered, why):
         reasons_needed.setdefault(reason_name, why)
 
 
-def _refusal(missing, needs_reasons, order=None, share_unit_note=None):
-    """S3 3.7's refusal format. `share_unit_note`, when given, is appended to the detail."""
+def _refusal(missing, needs_reasons, order=None, share_unit_note=None, advice=None):
+    """S3 3.7's refusal format. `share_unit_note`, when given, is appended to the detail.
+
+    Revision 17 (brief C6): `advice` maps a reason name to the sentences the desk computed for that rule (the
+    DEFAULTS Bear or Bull and the ends of its band, `_band_advice`); they follow the reason's `why` in the text
+    and are kept once more in `_audit_advice` (the harness does not show `_audit` keys to the model). A refusal
+    that carries advice never ends with the generic "change an input" clause, which sent the model walking a
+    Bear down and up across two rules (UGI's preview sample): the advice already names the way out."""
+    advice = advice or {}
     detail_bits = []
     if order is not None:
         detail_bits.append(f"the published values are not Bear <= Base <= Bull (Bear {order['bear']:.2f}, "
@@ -1081,12 +1093,16 @@ def _refusal(missing, needs_reasons, order=None, share_unit_note=None):
     if missing:
         detail_bits.append("missing " + ", ".join(missing))
     if needs_reasons:
-        detail_bits.append("; ".join(f"{n['reason']} needed: {n['why']}" for n in needs_reasons))
+        detail_bits.append("; ".join(f"{n['reason']} needed: {n['why']}" + (f". {advice[n['reason']]}" if advice.get(n["reason"]) else "")
+                                     for n in needs_reasons))
     if share_unit_note:
         detail_bits.append(share_unit_note)
     detail = "; ".join(detail_bits)
+    advised = any(advice.get(n["reason"]) for n in needs_reasons)
     msg = ("Not accepted as a desk run; it does not use one of your desk runs. " + detail +
-           ". Call again with the same inputs and these reasons, or change an input with dated evidence.")
+           ("" if detail.endswith(".") else ".") +
+           (" Call again with the same inputs and these reasons." if advised else
+            " Call again with the same inputs and these reasons, or change an input with dated evidence."))
     out: Dict[str, Any] = {
         "error": msg,
         "validation_error": True,
@@ -1095,6 +1111,8 @@ def _refusal(missing, needs_reasons, order=None, share_unit_note=None):
     }
     if order is not None:
         out["order"] = order
+    if advice:
+        out["_audit_advice"] = dict(advice)
     return out
 
 
@@ -1271,6 +1289,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     scenario_dcfs = []
     compute_errors: List[str] = []
     base_inputs: Dict[str, Any] = {}     # the Base's effective inputs, for the reverse DCF
+    base_final: Dict[str, Any] = {}      # Base name -> (explicit growth, terminal_g, fade_years) as valued, for C6
+    value_args: Dict[str, Any] = {}      # scenario name -> the arguments its value was computed with, for C6
 
     def _value(name, cf_in, gr_in, wacc_in, tg_in, shares_in, fade_in, sbc_in, sbc_dil_in, frame_in,
                net_debt_in, rate_type_in, annuity_in, annuity_cap_in, ronic_in):
@@ -1367,7 +1387,9 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     "requested_per_share_iv": round(requested_iv, 2),
                     "applied_per_share_iv": round(held_res["per_share_iv"], 2),
                 })
+                growth_now, fade_now = held_growth, fade_left
                 dcf_res = held_res
+        base_final[name] = (list(growth_now), tg_in, fade_now)
         return dcf_res
 
     # ---- 1. Batch scenario DCF execution -------------------------------------------------------
@@ -1396,6 +1418,10 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         s_annuity_cap = (float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate")
                          else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None))
 
+        value_args[sc_name] = {"cf": s_cf, "wacc": s_wacc, "tg": s_term_g, "shares": s_shares, "sbc": s_sbc,
+                               "sbc_dil": s_sbc_dil, "frame": sc_frame, "net_debt": sc_net_debt,
+                               "rate_type": sc.get("rate_type", rate_type), "annuity": s_annuity,
+                               "annuity_cap": s_annuity_cap}
         dcf_res = _value(sc_name, s_cf, [float(g) for g in s_gr], s_wacc, s_term_g, s_shares, s_fade, s_sbc,
                          s_sbc_dil, sc_frame, sc_net_debt, sc.get("rate_type", rate_type), s_annuity,
                          s_annuity_cap, s_ronic)
@@ -1573,7 +1599,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             # A Base value under 0.01x or over 100x the reference is not a valuation difference; the usual
             # cause is a share count in the wrong unit, so a refusal says so. The reference is the one above,
             # else today's price; a negative value is not a unit error. A refusal carries no per-share value
-            # (S3 3.5, except the order refusal), so the note gives the ratio and the pack's share count only.
+            # (S3 3.5, except the order refusal and, from revision 17, the R13/R14 advice), so the note gives the
+            # ratio and the pack's share count only.
             unit_ref = ref_val if ref_val is not None and ref_val > 0 else price
             if unit_ref is not None and unit_ref > 0 and base_iv is not None and base_iv >= 0:
                 unit_ratio = base_iv / unit_ref
@@ -1626,10 +1653,75 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                       _reason_given(params.get("bear_above_price_reason")), True,
                       f"the Bear value is {(beiv / price - 1) * 100:.1f}% above today's price")
 
+        # Revision 17 (brief C6): before refusing on R13/R14, what the DEFAULTS Bull or Bear is worth and where the
+        # ends of its 15% band land, so the refusal names the way out instead of inviting a walk across two rules.
+        # The DEFAULTS scenario is this scenario's own call with its path at the printed level: year 1 at the Base's
+        # level, year 2 at bear2 or bull2, years 3-5 the Base's as valued, the fade the Base's, and the default long
+        # run (terminal_g_default and the DEFAULTS terminal_ronic). The edge is the same with year 2 at bear2 x 0.85
+        # or bull2 x 1.15. Needs the printed levels; without them there is nothing computed to say.
+        def _band_advice(role):
+            entry = bear_entry if role == "bear" else bull_entry
+            va = value_args.get(entry["name"])
+            bf = base_final.get(base_entry["name"]) if base_entry is not None else None
+            lvl, y1 = levels_ctx.get(f"{role}2"), levels_ctx.get("year1")
+            cf_b = _to_b(va["cf"]) if va else None
+            if not (va and bf and _is_num(lvl) and _is_num(y1) and lvl > 0 and y1 > 0 and cf_b is not None and cf_b > 0):
+                return None
+            five, left = _five_and_fade(bf[0], bf[1], bf[2])
+            tg = ctx["terminal_g_default"] if _is_num(ctx.get("terminal_g_default")) else va["tg"]
+
+            def worth(level):
+                n_errors = len(compute_errors)
+                dcf = _value(entry["name"], va["cf"], [y1 / cf_b - 1.0, level / y1 - 1.0] + list(five[2:]), va["wacc"],
+                             tg, va["shares"], left, va["sbc"], va["sbc_dil"], va["frame"], va["net_debt"],
+                             va["rate_type"], va["annuity"], va["annuity_cap"], ronic_default)
+                del compute_errors[n_errors:]         # advice never refuses; a value it cannot compute is left out
+                return None if dcf is None else dcf["per_share_iv"]
+
+            tol = consensus_reference.LEVEL_TOL
+            at_levels = worth(lvl)
+            at_edge = worth(lvl * (1.0 - tol if role == "bear" else 1.0 + tol))
+            if at_levels is None or at_edge is None:
+                return None
+            band = f"{tol * 100:.0f}%"
+            p = f"${price:,.2f}"
+            if role == "bear":
+                out = []
+                if at_levels > price:
+                    out.append(f"The DEFAULTS Bear for this name is ${at_levels:,.2f}, above today's price {p}: keep the "
+                               f"defaults and give bear_above_price_reason (why the downside is limited), or build a "
+                               f"deeper Bear outside the band with scenario_deviation_reason and dated evidence.")
+                if at_edge > price:
+                    out.append(f"No Bear within {band} of bear2 lands below {p} (the band's lowest is ${at_edge:,.2f}); "
+                               f"lowering it further needs scenario_deviation_reason as well.")
+                else:
+                    out.append(f"Lowering the Bear to ${at_edge:,.2f} or below within the band clears this without "
+                               f"another reason.")
+                return " ".join(out)
+            out = []
+            if at_levels < price:
+                out.append(f"The DEFAULTS Bull for this name is ${at_levels:,.2f}, below today's price {p}: keep the "
+                           f"defaults and give bull_below_price_reason (why the upside is limited), or build a "
+                           f"higher Bull outside the band with scenario_deviation_reason and dated evidence.")
+            if at_edge < price:
+                out.append(f"No Bull within {band} of bull2 lands above {p} (the band's highest is ${at_edge:,.2f}); "
+                           f"raising it further needs scenario_deviation_reason as well.")
+            else:
+                out.append(f"Raising the Bull to ${at_edge:,.2f} or above within the band clears this without "
+                           f"another reason.")
+            return " ".join(out)
+
+        advice = {}
+        for role, reason_name in (("bull", "bull_below_price_reason"), ("bear", "bear_above_price_reason")):
+            if reason_name in reasons_needed:
+                text = _band_advice(role)
+                if text:
+                    advice[reason_name] = text
+
         if reasons_needed or order_violation is not None:
             needs_reasons_list = [{"reason": k, "why": v} for k, v in reasons_needed.items()]
             return _refusal(missing=[], needs_reasons=needs_reasons_list, order=order_violation,
-                            share_unit_note=share_unit_note)
+                            share_unit_note=share_unit_note, advice=advice)
 
     # ---- 3. Reverse DCF expectations gap (own structure + neutral reference from context) -----
     base_role_sc = next((s for s in scenarios if isinstance(s, dict) and _role_of(s.get("name")) == "base"), None)
