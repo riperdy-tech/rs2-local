@@ -208,7 +208,8 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # revision 18, part 3 (+45 chars, was 22040): PACK_REVISION 18 on the first line (0) and the excess_cash line's departure sentence
     # (+45); the reference line's text changes do not show in this pack (GEV's fixture holds no consensus estimates)
     # revision 18, part-2 review condition (+251 chars, was 22085): the coe_premium_source DEFAULTS line (the premium-source label)
-    assert len(text1) == 22336
+    # revision 18, amendment 2 T2 (+13 chars, was 22336): the Rates line's "implied cost of equity" reads "MRI market cost of equity (context)"
+    assert len(text1) == 22349
 
     # Assert byte equality with golden file
     golden_file = FIXTURE / "golden_pack_GEV_rev18.md"

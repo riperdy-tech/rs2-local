@@ -479,7 +479,7 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
            "terminal_g_is_default": is_default,
            "earnings": None, "revenue": None, "wc": None, "long_run": None, "long_run_path": None,
            "terminal_ronic": None, "ronic0": None, "nwc_intensity": None, "base_cf": None,
-           "cash": None, "interest_removed": None, "stamps": [],
+           "cash": None, "interest_removed": None, "stamps": [], "record_R_tc": None,
            "margin": None, "om_5": None, "m_long": None,
            "margin_ratio": None}
     out["cash_term"] = ("applies" if (cash and cash.get("applies")) else "financial" if (cash and cash.get("financial"))
@@ -585,7 +585,7 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     if cash_on and rec.get("x_L") is not None and base_ni is not None and isinstance(base_revenue, (int, float)) and base_revenue > 0:
         # without this the margin rule would read the removed interest as an operating-margin change and add it back
         rec["x_L"] = (base_ni - i_l) / base_revenue
-    out["terminal_ronic"], out["ronic0"] = ronic_t, ronic0
+    out["terminal_ronic"], out["ronic0"], out["record_R_tc"] = ronic_t, ronic0, r_tc
 
     # years 1-5 cash flow: owner earnings less the working capital the revenue growth ties up
     nwc = rec.get("nwc_intensity")
@@ -711,19 +711,32 @@ def _margin_clause(rule, m5):
             f"by year 10 (the consensus implies {rule['om_5'] * 100:.1f}% at year 5)")
 
 
-def _long_run_clause(ref):
+def _long_run_clause(ref, coe):
     """Revision 17: the one clause that states how the long run (year 6 on) is valued. None when the
-    reference has no long run (levels reasons that stop before it)."""
+    reference has no long run (levels reasons that stop before it). Revision 18 (amendment 2, T1): the clause names the
+    record's median return (`record_R_tc`) only where the reference uses it: above the cost of equity `coe` it is the year-5
+    return and the year-10 return is the cost of equity plus the median's excess weighted by the share of years above it;
+    at or below it growth earns the cost of equity; +inf needs no new investment."""
     lr = ref.get("long_run")
     if not lr:
         return None
-    if "record_not_available" in ref.get("stamps", []):
+    r_tc = ref.get("record_R_tc")
+    if r_tc is None or "record_not_available" in ref.get("stamps", []):
         pay = ("from year 6 growth is paid for at the cost of equity (your record is not available, so "
                "new investment earns no more than its cost)")
+    elif math.isinf(r_tc):
+        pay = ("from year 6 growth needs no new investment: your record's tangible capital is zero or negative, so the "
+               "return on new investment is unlimited and cash flow = earnings")
+    elif r_tc <= coe:
+        pay = (f"from year 6 growth is paid for at the cost of equity, {coe * 100:.2f}%: the median return on tangible capital "
+               f"in your 8-year record, {_return_txt(r_tc)}, is not above it, so new investment earns only its "
+               f"cost; cash flow = earnings x (1 - growth / return)")
     else:
         r0, rt = ref["ronic0"], ref["terminal_ronic"]
-        pay = (f"from year 6 growth is paid for at the median return on tangible capital your record shows "
-               f"({_return_txt(r0)} in year 5, {_return_txt(rt)} from year 10)")
+        pay = (f"from year 6 growth is paid for at the return on new investment your record supports: {_return_txt(r0)} in "
+               f"year 5, the median return on tangible capital in your 8-year record, moving to {_return_txt(rt)} from year 10, "
+               f"the cost of equity plus that median's excess over it weighted by the share of record years above the cost of "
+               f"equity; cash flow = earnings x (1 - growth / return)")
     if ref.get("long_run_path") == "revenue":
         m = _margin_clause(ref["margin"], lr["m5"])
     else:
@@ -811,7 +824,7 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None, closure_asof=No
     differs = (anchor is not None and abs(terminal_g - anchor) > 1e-6) or bool(ref.get("terminal_g_is_default"))
     tg_label = "terminal-growth default" if differs else "terminal-growth anchor"
     clauses.append(f"then a 5-year fade to the {tg_label} {terminal_g * 100:.2f}%")
-    lr_clause = _long_run_clause(ref)
+    lr_clause = _long_run_clause(ref, coe)
     if lr_clause:
         clauses.append(lr_clause)
     wc_clause = _working_capital_clause(ref, fmt_b)

@@ -18,7 +18,7 @@ import consensus_reference as cr  # noqa: E402
 import contract_fill  # noqa: E402
 import financial_model_tool as fmt  # noqa: E402
 import pack_facts  # noqa: E402
-from test_rev18_part1 import _build, _cash, _margin_record, X_BASE, OE_BASE, B  # noqa: E402
+from test_rev18_part1 import _build, _cash, _margin_record, INF, X_BASE, OE_BASE, B  # noqa: E402
 from test_throughcycle_reference import COE, GA, REDUCTION, REV_BASE, _synthetic_pack  # noqa: E402
 
 ROLE = ("— a calibrated level anchor, not a buy signal: on point-in-time data (valuation dates 2017–2023, returns to 2026) this "
@@ -26,6 +26,16 @@ ROLE = ("— a calibrated level anchor, not a buy signal: on point-in-time data 
         "and its 'worth 30% more than the price' calls beat the S&P only about 2 points more often than an average stock in "
         "2019–2023, and less often in 2017–2018.")
 bn = lambda v: f"{v / B:.3f}"
+
+# amendment 2, T1: the long-run sentence, one per case of the record's median return R_tc against the cost of equity (COE = 9%)
+LR_TAIL = "cash flow = earnings x (1 - growth / return)"
+LR_ABOVE = ("from year 6 growth is paid for at the return on new investment your record supports: {ronic0} in year 5, the median "
+            "return on tangible capital in your 8-year record, moving to {terminal_ronic} from year 10, the cost of equity plus "
+            "that median's excess over it weighted by the share of record years above the cost of equity; " + LR_TAIL)
+LR_BELOW = ("from year 6 growth is paid for at the cost of equity, {coe}: the median return on tangible capital in your 8-year "
+            "record, {R_tc}, is not above it, so new investment earns only its cost; " + LR_TAIL)
+LR_INF = ("from year 6 growth needs no new investment: your record's tangible capital is zero or negative, so the return on new "
+          "investment is unlimited and cash flow = earnings")
 
 
 # ---- 3.1 the reference line --------------------------------------------------------------------------------------------------
@@ -48,8 +58,7 @@ def test_the_clauses_say_the_median_return_the_trend_margin_the_cash_and_the_clo
     rec = dict(_margin_record(x_L=X_BASE / REV_BASE), R_tc=0.2, ronic_t=0.15)
     ref = _build(rec, _cash(1.0 * B))
     line = cr.pack_line(ref, OE_BASE, COE, GA, bn, anchor=GA, closure_asof="2026-09-20")
-    assert ("from year 6 growth is paid for at the median return on tangible capital your record shows "
-            "(20.0% in year 5, 15.0% from year 10)") in line
+    assert LR_ABOVE.format(ronic0="20.0%", terminal_ronic="15.0%") in line
     m5 = ref["long_run"]["m5"]
     assert (f"earnings margin moving from {m5 * 100:.1f}% to {ref['m_long'] * 100:.1f}% by year 10: the operating margin moves to the "
             f"trend level of your 8-year record (6.0%) by year 10 (the consensus implies {ref['om_5'] * 100:.1f}% at year 5)") in line
@@ -66,6 +75,50 @@ def test_the_clauses_say_the_median_return_the_trend_margin_the_cash_and_the_clo
             in cr.pack_line(none, OE_BASE, COE, GA, bn, anchor=GA))
     held = _build(dict(REDUCTION, om_trend=None, om_L=None), None)
     assert "to measure its trend level" in cr.pack_line(held, OE_BASE, COE, GA, bn, anchor=GA)
+
+
+def _lr_clause(record):
+    ref = _build(dict(_margin_record(x_L=X_BASE / REV_BASE), **record), _cash(1.0 * B))
+    line = cr.pack_line(ref, OE_BASE, COE, GA, bn, anchor=GA)
+    clause = next(c for c in line.split(" | ") if c.startswith("from year 6"))
+    return ref, line, clause
+
+
+def test_the_long_run_clause_names_the_median_only_when_it_is_above_the_cost_of_equity_and_prints_the_year_10_return():
+    # R_tc above the cost of equity: year 5 is the median, year 10 is COE + p x excess (p = 0.5: 9% + 0.5 x 11% = 14.5%)
+    ref, line, clause = _lr_clause({"R_tc": 0.20, "ronic_t": COE + 0.5 * (0.20 - COE)})
+    assert ref["record_R_tc"] == 0.20 and ref["ronic0"] == 0.20 and ref["terminal_ronic"] == pytest.approx(0.145)
+    assert clause.startswith(LR_ABOVE.format(ronic0="20.0%", terminal_ronic="14.5%") + "; ")
+    assert "paid for at the median return" not in line and "your record shows" not in line
+
+
+def test_the_long_run_clause_names_the_cost_of_equity_when_the_median_is_not_above_it():
+    for r_tc, shown in ((0.05, "5.0%"), (-0.03, "-3.0%"), (COE, "9.0%")):     # below, negative and equal to the cost of equity
+        ref, line, clause = _lr_clause({"R_tc": r_tc, "ronic_t": COE})
+        assert ref["record_R_tc"] == r_tc and ref["ronic0"] == COE and ref["terminal_ronic"] == COE
+        assert clause.startswith(LR_BELOW.format(coe="9.00%", R_tc=shown) + "; ")
+        assert "moving to" not in clause and "in year 5" not in clause
+
+
+def test_the_long_run_clause_says_no_new_investment_is_needed_when_the_median_is_unlimited():
+    ref, line, clause = _lr_clause({"R_tc": INF, "ronic_t": INF})
+    assert ref["record_R_tc"] == INF
+    assert clause.startswith(LR_INF + "; ")
+    assert "unlimited and cash flow = earnings; " in line and "x (1 - growth / return)" not in clause
+
+
+def test_the_long_run_clause_with_no_record_is_unchanged():
+    ref = _build(None, _cash(1.0 * B))
+    assert ref["record_R_tc"] is None
+    clause = next(c for c in cr.pack_line(ref, OE_BASE, COE, GA, bn, anchor=GA).split(" | ") if c.startswith("from year 6"))
+    assert clause.startswith("from year 6 growth is paid for at the cost of equity (your record is not available, so new "
+                             "investment earns no more than its cost); ")
+
+
+def test_the_rates_line_labels_the_mri_cost_of_equity_as_context_in_live_packs():
+    src = Path(cap.__file__).read_text(encoding="utf-8")
+    assert '" | MRI market cost of equity (context) "' in src
+    assert src.count('" | implied cost of equity "') == 1            # the point-in-time pack keeps its own label and figure
 
 
 def test_the_pack_line_in_a_built_pack_carries_the_sentence_and_the_closure_date(screener_data_stub, monkeypatch):

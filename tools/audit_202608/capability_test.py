@@ -2329,7 +2329,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                       + " | breakeven 10y " + (f"{be_pct:.2f}%" if be_pct is not None else NULL)
                       + " | MRI universe premium (context; not used in the reference) "
                       + (f"{erp_pct:.2f}%" if erp_pct is not None else NULL)
-                      + " | implied cost of equity " + (f"{coe_pct:.2f}%" if coe_pct is not None else NULL)
+                      + " | MRI market cost of equity (context) " + (f"{coe_pct:.2f}%" if coe_pct is not None else NULL)
                       + " | sector cost-of-equity loading"
                       + (f" ({mri_sec})" if mri_sec is not None else f" (unmapped sector: {sector or 'none'})")
                       + " " + (f"{anchor_load_val:.3f}x" if anchor_load_val is not None else NULL))

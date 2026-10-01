@@ -462,7 +462,7 @@ def test_the_pack_builds_the_record_the_facts_and_the_lines_and_the_desk_follows
     assert f["reference_status"] == "used" and f["consensus_implied_value"] is not None, civ_line
     assert lr["e5"] is not None and lr["oe5"] is not None and f["working_capital"] is not None
     ref_line = next(l for l in text.splitlines() if "CONSENSUS-IMPLIED VALUE (reference" in l)
-    assert "from year 6 growth is paid for at the median return on tangible capital your record shows" in ref_line
+    assert "from year 6 growth is paid for at the return on new investment your record supports: " in ref_line
     assert "working capital deducted in years 1-5" in ref_line
     lv = f["levels"]
     g35 = cr._years35(f["next_fy_revenue_growth"], 0.05)
