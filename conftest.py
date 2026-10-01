@@ -161,3 +161,20 @@ def _bill_rate_is_deterministic_in_tests(monkeypatch):
     `monkeypatch.setattr(rs2_data, "bill_rate_mean", ...)` in its own body."""
     import rs2_data
     monkeypatch.setattr(rs2_data, "bill_rate_mean", lambda start, end: (None, "stubbed in tests: no MRI store"))
+
+
+@pytest.fixture(autouse=True)
+def _reference_closure_is_deterministic_in_tests(monkeypatch):
+    """Revision 18 (brief 1.6) - the pack's cost of equity is rf_eff + loading x the closure premium, read from
+    rs2_data.reference_closure() (cache/reference_closure.json), which exists only after tools/reference_closure.py --build. A
+    test must not depend on that artifact or its date. Every test defaults to a closure premium equal to the MRI anchor's own
+    mature premium (what the pack used before revision 18), dated inside the staleness window; a test of the accessor or the
+    closure's own consequences re-applies its own `monkeypatch.setattr(rs2_data, "reference_closure", ...)`."""
+    import rs2_data
+
+    def _stub(path=None):
+        erp, _src = rs2_data.anchor_mature_erp()
+        if erp is None:
+            return None, None, "stubbed in tests: no MRI premium to stand in"
+        return erp, "2026-09-20", {"stub": "tests"}
+    monkeypatch.setattr(rs2_data, "reference_closure", _stub)

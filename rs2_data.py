@@ -1253,6 +1253,36 @@ def bill_rate_mean(start, end):
     return float(total) / n / 100.0, f"DTB3_mean({n} observations in ({lo},{hi}])"
 
 
+REFERENCE_CLOSURE_FILE = HERE / "cache" / "reference_closure.json"
+
+
+def reference_closure(path=None):
+    """(erp, asof, provenance) - rs2's market-consistent equity risk premium (revision 18, brief section 2), or
+    (None, asof or None, the reason). `reference_closure_erp` is the premium at which the reference's own capitalisation-weighted
+    value of the market equals the market's capitalisation (tools/reference_closure.py --build writes cache/reference_closure.json
+    once a month with MRI's anchor cadence). It is a FRACTION. `provenance` is the artifact itself (members, coverage, flag,
+    consensus vintage, input hashes, revision).
+
+    No fallback of any kind: a missing file, a malformed one, a premium outside the solver's bounds, an artifact older than
+    config.json's `anchor_max_age_days` (45) or dated in the future gives (None, ..., reason), never MRI's premium."""
+    p = Path(path) if path is not None else REFERENCE_CLOSURE_FILE
+    doc = load_json(p)
+    if not isinstance(doc, dict):
+        return None, None, f"no_reference_closure_artifact({p.name})"
+    asof = doc.get("asof")
+    erp = doc.get("erp")
+    if not (isinstance(erp, (int, float)) and not isinstance(erp, bool) and 0.0005 <= erp <= 0.20):
+        return None, asof, "reference_closure_has_no_usable_erp"
+    try:
+        age = (datetime.now() - datetime.strptime(str(asof)[:10], "%Y-%m-%d")).days
+    except ValueError:
+        return None, asof, "reference_closure_asof_unreadable"
+    max_age = CONFIG["anchor_max_age_days"]
+    if not (0 <= age <= max_age):
+        return None, asof, f"reference_closure_stale({asof}, {age} days, limit {max_age})"
+    return float(erp), str(asof)[:10], doc
+
+
 # The exact series MRI's own cost-of-capital anchor reads for these three legs (config/
 # anchors.yaml risk_free.{nominal_10y,real_10y,breakeven_10y}), all FRED, all quoted in percent.
 _ASOF_RISK_FREE_SERIES = {

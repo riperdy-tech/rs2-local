@@ -12,8 +12,8 @@
 - Rows below are labelled by FISCAL year, not calendar year.
 
 ## DATA 1.5 - MACRO STATE & COST OF CAPITAL ANCHORS   [MRI anchors as of 2026-09-23, degraded: False, reasons: none; verified: do not search the web for them]
-- Rates: rf (nominal 10y) 5.01% | real 10y 2.68% | breakeven 10y 2.34% | implied ERP 4.35% | implied cost of equity 9.36% | sector cost-of-equity loading (industrials) 0.868x
-- COE ANCHOR for this name: 8.98% = rf 5.01% + adjusted loading 0.912× (Blume: 0.67 × raw 0.868 + 0.33) × implied ERP 4.35% (asof 2026-09-23, source: MRI cost-of-capital anchor) | long-run nominal growth anchor 3.75% (asof 2026-09-23)
+- Rates: rf (nominal 10y) 5.01% | real 10y 2.68% | breakeven 10y 2.34% | MRI universe premium (context; not used in the reference) 4.35% | implied cost of equity 9.36% | sector cost-of-equity loading (industrials) 0.868x
+- COE ANCHOR for this name: 8.98% = rf_eff 5.01% (the larger of rf 5.01% and the growth anchor 3.75%) + adjusted loading 0.912× (Blume: 0.67 × raw 0.868 + 0.33) × the market-consistent premium 4.35% (rs2 closure, as of 2026-09-20) | long-run nominal growth anchor 3.75% (asof 2026-09-23)
 - Curve 10y-2y not available | IG spread (BAA - 10Y) not available | HY OAS not available
 - Regime probabilities (as of 2026-09-01): goldilocks 0.287, reflation 0.243, tightening 0.182, stagflation 0.174, recession 0.115 | headline goldilocks, margin 0.044, contested
 

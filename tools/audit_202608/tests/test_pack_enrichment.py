@@ -58,7 +58,9 @@ def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_s
             "industrials": 0.868,
         },
     }
-    monkeypatch.setattr(rs2_data, "load_anchors", lambda force=False: {"cost_of_capital": anchor_coc})
+    # revision 18 (brief 1.6): rf_eff = max(rf, the long-run growth anchor), so the cost of equity needs that anchor too
+    anchor_lrg = {"asof": "2026-09-23", "degraded": False, "terminal_g_suggestion": 0.0375}
+    monkeypatch.setattr(rs2_data, "load_anchors", lambda force=False: {"cost_of_capital": anchor_coc, "long_run_growth": anchor_lrg})
 
     # 2. macro_state.json fixture in screener_data_stub
     macro_state = {
@@ -102,9 +104,10 @@ def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_s
     # secondary macro series used to print separately is now on the "Rates:"/"Curve" lines.
     assert ("[MRI anchors as of 2026-09-23, degraded: False, reasons: none; verified: do not "
             "search the web for them]") in pack
-    assert ("- Rates: rf (nominal 10y) 5.01% | real 10y 2.68% | breakeven 10y 2.34% | implied ERP "
-            "4.35% | implied cost of equity 9.36% | sector cost-of-equity loading (industrials) "
-            "0.868x") in pack
+    # revision 18 (brief 1.6): MRI's premium is market context on the Rates line, not an input of the reference
+    assert ("- Rates: rf (nominal 10y) 5.01% | real 10y 2.68% | breakeven 10y 2.34% | MRI universe premium "
+            "(context; not used in the reference) 4.35% | implied cost of equity 9.36% | sector cost-of-equity loading "
+            "(industrials) 0.868x") in pack
 
     # Secondary macro series, folded into one "Curve" line:
     assert ("- Curve 10y-2y +0.20% (Normal / Steepening, as of 2026-09-21) | IG spread "
@@ -124,9 +127,11 @@ def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_s
     assert "**COST OF CAPITAL & CAPITALIZATION ANCHOR:**" not in pack
 
     # Live COE ANCHOR shows adjusted loading and raw loading:
-    assert ("- COE ANCHOR for this name: 8.98% = rf 5.01% + adjusted loading 0.912× (Blume: 0.67 "
-            "× raw 0.868 + 0.33) × implied ERP 4.35% (asof 2026-09-23, source: MRI "
-            "cost-of-capital anchor)") in pack
+    # revision 18 (brief 1.6): rf_eff = max(rf, the growth anchor) + loading x the closure premium (the suite's stand-in premium is
+    # MRI's own 4.35%, dated 2026-09-20 - conftest.py)
+    assert ("- COE ANCHOR for this name: 8.98% = rf_eff 5.01% (the larger of rf 5.01% and the growth anchor 3.75%) + "
+            "adjusted loading 0.912× (Blume: 0.67 × raw 0.868 + 0.33) × the market-consistent premium 4.35% "
+            "(rs2 closure, as of 2026-09-20)") in pack
 
     assert "In the current" not in pack
     assert "goldilocks regime" not in pack

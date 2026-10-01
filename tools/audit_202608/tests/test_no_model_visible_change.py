@@ -198,7 +198,10 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # nothing else - terminal_ronic (the original rule r + p x (R_tc - r), no blend), the long_run members (r8, r3, r_blend,
     # retention, margin_cell and margin_fraction gone, om_trend joined, the cash-term stamp) with their two explanations, and
     # the new excess_cash line; the golden diff is in rev18/part1_golden_diff/
-    assert len(text1) == 21941
+    # revision 18, part 2 (+99 chars, was 21941): the two DATA 1.5 lines the cost of equity changes - the Rates line labels MRI's premium as
+    # context, and the COE ANCHOR is rf_eff + the loading x the closure premium (brief 1.6); the golden diff is in
+    # rev18/part2_golden_diff/
+    assert len(text1) == 22040
 
     # Assert byte equality with golden file
     golden_file = FIXTURE / "golden_pack_GEV_rev17.md"

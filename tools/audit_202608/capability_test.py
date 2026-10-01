@@ -926,6 +926,49 @@ def _shares_gap_state(filed, vendor, cover, is_10k_filer):
             "agrees": agrees, "vendor_unusable": only_filed and ten_k, "depositary": only_filed and not ten_k}
 
 
+class DataRoot:
+    """Revision 18 (brief section 2, step 1): the screener data a company's reference needs, each file read once and kept, so
+    the closure (a thousand names, many trial rates) and the ledger do not re-read the 47 MB history. `sd` defaults to the
+    module's SD at call time (a test's redirect reaches it). Read-only; every read goes through `rs2_data.load_json`."""
+
+    def __init__(self, sd=None):
+        self.sd = Path(sd) if sd is not None else Path(SD)
+        self._hist = self._ttm = self._cik = None
+        self._fin = {}
+
+    def hist_doc(self):
+        if self._hist is None:
+            self._hist = rs2_data.load_json(self.sd / "fundamentals_history.json") or {}
+        return self._hist
+
+    def history(self, t):
+        return self.hist_doc().get("tickers", {}).get(t) or {}
+
+    def untagged(self, t):
+        return ((self.hist_doc().get("provenance") or {}).get("untagged_fields") or {}).get(t) or []
+
+    def shares_cover(self, t):
+        return (self.hist_doc().get("shares_cover") or {}).get(t)
+
+    def ttm(self, t):
+        if self._ttm is None:
+            self._ttm = (rs2_data.load_json(self.sd / "fundamentals_ttm.json") or {}).get("tickers", {})
+        return self._ttm.get(t) or {}
+
+    def fin(self, t):
+        if t not in self._fin:
+            self._fin[t] = rs2_data.load_json(self.sd / "financials" / f"{t}.json") or {}
+        return self._fin[t]
+
+    def cik_map(self):
+        if self._cik is None:
+            self._cik = (rs2_data.load_json(self.sd / "cik_map.json") or {}).get("map") or {}
+        return self._cik
+
+    def financial_tickers(self):
+        return sorted(p.stem.upper() for p in (self.sd / "financials").glob("*.json"))
+
+
 def _shares_alert_text(g, filed, fy, vendor):
     """P-2: SECTION 2's SHARES ALERT, from `_shares_gap_state`'s dict. Annotates; the filed cells are untouched."""
     r = g["ratio"]
@@ -1151,7 +1194,7 @@ def _parse_asof(asof):
     return datetime.strptime(str(asof)[:10], "%Y-%m-%d").date()
 
 
-def _fye_month_day(t, with_source=False):
+def _fye_month_day(t, with_source=False, ttm=None, fin=None):
     """(month, day) of this company's fiscal year end, from TODAY's `fundamentals_ttm.json`.
 
     This is the ONLY use a point-in-time pack makes of a same-day snapshot file: not the VALUE
@@ -1165,7 +1208,8 @@ def _fye_month_day(t, with_source=False):
     so the E18 reference can refuse it. `with_source=True` returns (month, day, source).
     """
     from datetime import date as _date
-    rec = (rs2_data.load_json(SD / "fundamentals_ttm.json") or {}).get("tickers", {}).get(t) or {}
+    # revision 18: the caller may hand over the records it already holds (the reference's inputs read each file once)
+    rec = ttm if ttm is not None else (rs2_data.load_json(SD / "fundamentals_ttm.json") or {}).get("tickers", {}).get(t) or {}
     fy_end = rec.get("fy_leg_end")
     out = None
     if isinstance(fy_end, str) and len(fy_end) >= 10:
@@ -1175,9 +1219,12 @@ def _fye_month_day(t, with_source=False):
         except ValueError:
             pass
     if out is None:
-        dates = _vendor_annual_dates(rs2_data.load_json(SD / "financials" / f"{t}.json") or {})
+        dates = _vendor_annual_dates(fin if fin is not None else (rs2_data.load_json(SD / "financials" / f"{t}.json") or {}))
         out = (dates[0].month, dates[0].day, "vendor") if dates else (12, 31, "default")
     return out if with_source else out[:2]
+
+
+_fye_month_day.takes_records = True
 
 
 def _vendor_annual_dates(fin):
@@ -1360,6 +1407,241 @@ def _span_n(years):
     """[first, last, n] of a list of fiscal years, or None when there are none (the long_run fact's
     "basis years": the record's span and how many years it used)."""
     return [min(years), max(years), len(years)] if years else None
+
+
+_PERSISTENCE_MEMO = {}
+
+
+def _base_rate_median(h, sd, last_allowed_fy):
+    """The growth base-rate median the reference fades toward (revision 18: extracted from build_pack, one copy): (size_label,
+    br_table, g_lbl, g_stats, median_5y), median_5y a fraction or None - the conditional median for the growth just delivered,
+    else the size-bucket 5-year median."""
+    yrs = sorted([int(y) for y in h if str(y).isdigit()])
+    latest_rev = h.get(str(max(yrs)), {}).get("revenue") if yrs else None
+    size_label, br_table = base_rates.base_rate_table(latest_rev, sd=sd, max_fiscal_year=last_allowed_fy)
+    g0 = None
+    g_stats = None
+    g_lbl = None
+    if yrs:
+        y_last = max(yrs)
+        if (y_last - 1) in yrs:
+            rlast = h.get(str(y_last), {}).get("revenue")
+            rprev = h.get(str(y_last - 1), {}).get("revenue")
+            if isinstance(rlast, (int, float)) and isinstance(rprev, (int, float)) and rprev > 0:
+                g0 = rlast / rprev - 1
+    if g0 is not None:
+        # the persistence table depends on the corpus and the delivered-growth BUCKET only, and measuring it scans the corpus: one
+        # measurement per (bucket, corpus file, as-of year) serves a thousand names (the closure) as well as one pack
+        _fn = growth_persistence.persistence_for_growth
+        try:
+            _stamp = Path(sd).joinpath("fundamentals_history.json").stat().st_mtime_ns
+        except OSError:
+            _stamp = None
+        _key = (growth_persistence.bucket_for_growth(g0), str(sd), _stamp, last_allowed_fy, id(_fn))
+        if _key not in _PERSISTENCE_MEMO:
+            _PERSISTENCE_MEMO[_key] = _fn(g0, sd=sd, max_fiscal_year=last_allowed_fy)
+        g_lbl, g_stats = _PERSISTENCE_MEMO[_key]
+    _med = (g_stats or {}).get("median") if g_stats else None
+    if _med is None:
+        _med = ((br_table or {}).get(5) or {}).get("p50")
+    return size_label, br_table, g_lbl, g_stats, (_med / 100.0 if isinstance(_med, (int, float)) else None)
+
+
+def _record_for(t, h, hist_doc, coe, ga, be, rev_g2, median_5y, printed=True):
+    """Revision 17 brief B sections 1 and 3 (revision 18: extracted from build_pack, one copy): the company's own record at
+    r = `coe` and the terminal-growth default built on its revenue trend: (record, default, basis, reason). `printed`: the
+    default is quantized to the two decimals the pack prints, so the reference, the printed default and the desk's default are
+    one number; the closure solves on unquantized values."""
+    yrs = sorted([int(y) for y in h if str(y).isdigit()])
+    _prov = hist_doc.get("provenance") or {}
+    _dc_runs = ((_prov.get("runs") or {}).get(t) or {}).get("debt_current")
+    _dc_tags = throughcycle_record.resolve_run_tags(_dc_runs, _prov.get("_tags"), yrs)
+    untagged = ((_prov.get("untagged_fields") or {}).get(t)) or []
+    rec = throughcycle_record.analyse(h, coe, untagged_fields=untagged, base_year=max(yrs) if yrs else None,
+                                      debt_current_tags=_dc_tags)
+    val, basis, reason = consensus_reference.terminal_growth_default(ga, be, rec["g_rev"], rev_g2, median_5y)
+    if val is not None and printed:
+        val = float(f"{val * 100:.2f}") / 100.0
+    return rec, val, basis, reason
+
+
+def _cash_term_for(fy_rec, sector, fye_src, fye_conflict, fy_end_dt):
+    """Revision 18 (brief 1.3), extracted from build_pack: the cash term of the base fiscal year. The mean 3-month bill rate
+    over the 12 months to that year's end prices the interest the cash earns; a fiscal year end that is only a default or
+    unconfirmed has no such window."""
+    if sector in consensus_reference.FINANCIAL_SECTORS:
+        return consensus_reference.cash_term(fy_rec, None, sector)
+    if fye_src == "default" or fye_conflict is not None or fy_end_dt is None:
+        return {"applies": False, "financial": False, "cash": None, "interest": 0.0,
+                "stamps": ["cash_term_not_available_fiscal_year_end_unknown"]}
+    import calendar as _cal
+    _y0 = fy_end_dt.year - 1
+    _d0 = min(fy_end_dt.day, _cal.monthrange(_y0, fy_end_dt.month)[1])
+    _bill, _bill_src = rs2_data.bill_rate_mean(fy_end_dt.replace(year=_y0, day=_d0), fy_end_dt)
+    return consensus_reference.cash_term(fy_rec, _bill, sector)
+
+
+def _fiscal_year_base(t, h, fin, ttm, f, ttm_stale, estimates, untagged, today):
+    """The E18 base of the CONSENSUS-IMPLIED VALUE (revision 18: extracted from build_pack, one copy): the last full fiscal
+    year, its end date, its age, the vintage test and the reference's base inputs. Returns a dict: latest_yr, fy_rec,
+    fye_src, fye_conflict, fy_end_dt, ven_capex_ok, ven_capex_why, stub, aligned, thr, ref_fy (the base dict, or None) and
+    ref_fy_na (why there is none, or None). `today` is a date; `f` the TTM fields kept after the stranded-TTM gate."""
+    from datetime import date as _date
+    hy = [int(y) for y in h if str(y).isdigit()] if h else []
+    latest_yr = max(hy) if hy else None
+    fy_rec = (h.get(str(latest_yr)) or {}) if latest_yr is not None else {}
+    out = {"latest_yr": latest_yr, "fy_rec": fy_rec, "fye_src": None, "fye_conflict": None, "fy_end_dt": None,
+           "stub": None, "aligned": None, "thr": None, "ref_fy": None, "ref_fy_na": None}
+    if latest_yr is not None:
+        # the real `_fye_month_day` takes the records already in hand; a stand-in (a test's) is called as it always was
+        mm, dd, src = (_fye_month_day(t, with_source=True, ttm=ttm, fin=fin) if getattr(_fye_month_day, "takes_records", False)
+                       else _fye_month_day(t, with_source=True))
+        vend, conflict = ((_vendor_fy_end_for(fin, fy_rec.get("net_income"), int(latest_yr),
+                                              (h.get(str(int(latest_yr) - 1)) or {}).get("net_income")))
+                          if src != "ttm" else (None, None))
+        out.update(fye_src=src, fye_conflict=conflict, fy_end_dt=vend or _fy_end_date_for(int(latest_yr), mm, dd))
+    fy_end_dt = out["fy_end_dt"]
+    out["ven_capex_ok"], out["ven_capex_why"] = _vendor_capex_usable(fin, fy_end_dt)
+    if latest_yr is None:
+        return out
+    stub = (today - fy_end_dt).days / 30.4375
+    fy_cx = fy_rec.get("capex")
+    if not isinstance(fy_cx, (int, float)) and out["ven_capex_ok"]:
+        vc = fin.get("Capital_Expenditure")
+        fy_cx = -float(vc) if isinstance(vc, (int, float)) and vc < 0 else None
+    fy_ni, fy_da = fy_rec.get("net_income"), fy_rec.get("da")
+    # Whole-book test (2026-09-26): the period comes from the consensus vintage, not the calendar. Past a fiscal year end the
+    # vendor keeps the finished year as "current" until it is reported (EPAC, PSMT, MU: year-ago revenue = the filed FY2025 to
+    # the dollar), and then moves past it before our filings hold it.
+    try:
+        thr = _date.fromisoformat(str(ttm.get("through"))[:10]) if f else None
+    except ValueError:
+        thr = None
+    newest = max(d for d in (fy_end_dt, thr) if d is not None)
+    age = (today - newest).days / 30.4375
+    aligned = consensus_reference.vintage_aligned(estimates, fy_rec.get("revenue"))
+    out.update(stub=stub, aligned=aligned, thr=thr)
+    src, conflict = out["fye_src"], out["fye_conflict"]
+    if src == "default":
+        out["ref_fy_na"] = "the fiscal year end is unknown (no TTM record and no dated vendor statement)"
+    elif conflict is not None:
+        out["ref_fy_na"] = (f"the label year cannot be confirmed: the vendor's statements with FY{latest_yr}'s "
+                            f"and FY{int(latest_yr) - 1}'s net income are dated a year apart from ours "
+                            f"({conflict.isoformat()})")
+    elif stub < 0:
+        out["ref_fy_na"] = f"FY{latest_yr} ends {fy_end_dt.isoformat()}, after today"
+    elif age > consensus_reference.STALE_MONTHS:
+        out["ref_fy_na"] = (f"stale history: the newest period we hold ends {newest.isoformat()}, "
+                            f"{age:.0f} months ago")
+    elif stub > 12 and aligned is not True:
+        # review B1: a failed or unknown vintage test is "not verified", never "rolled"
+        out["ref_fy_na"] = (f"not verified: FY{latest_yr} ended {stub:.0f} months ago and the vendor's "
+                            + ("year-ago revenue does not match its filed revenue within 2%" if aligned is False
+                               else "year-ago revenue is not available")
+                            + ", so the year consensus starts from cannot be checked")
+    else:
+        ref_fy = {"stub": stub,
+                  "label": f"FY{latest_yr}, the last full fiscal year, ended {fy_end_dt.isoformat()}",
+                  "da": fy_da if isinstance(fy_da, (int, float)) else None,
+                  "capex": fy_cx,
+                  # revision 17: the earnings path's base (X: net income before acquired-intangible amortization, F1) and the
+                  # revenue path's base year
+                  "x": throughcycle_record.adjusted_earnings(fy_rec, untagged),
+                  "revenue": fy_rec.get("revenue"),
+                  "base": (fy_ni + fy_da - fy_cx)
+                  if all(isinstance(x, (int, float)) for x in (fy_ni, fy_da, fy_cx)) else None,
+                  # review B1: the vendor's EPS levels meet filed D&A and capex only when the vintage test shows the two
+                  # describe the same year and currency
+                  "levels_block": (None if aligned is True else
+                                   f"the vendor's year-ago revenue does not match FY{latest_yr}'s "
+                                   f"filed revenue within 2% (currency, perimeter or period)"
+                                   if aligned is False else
+                                   f"the vendor's year-ago revenue is not available to check "
+                                   f"against FY{latest_yr}'s filed revenue")}
+        # the FY and TTM windows are compared only when the TTM is this fiscal year's own (the caller adds `quarters`/`through`)
+        out["ref_fy"] = ref_fy
+    return out
+
+
+def _shares_default_state(t, fin, h, shares_cover):
+    """The share-count default of a live pack (revision 18: extracted from build_pack's SECTION 2 for the reference's inputs):
+    (shares_default, vendor shares, filed shares on today's basis). The same split, filed-series and P-2 vendor-protection
+    steps the pack prints from."""
+    sh = fin.get("Shares_Outstanding")
+    split = _split_after_last_filing(sh, h)
+    series = _filed_diluted_series(h) if h else []
+    filed_today = (series[-1][1] * split["multiplier"] if split else series[-1][1]) if series else None
+    gap = _shares_gap_state(filed_today, sh, shares_cover, lambda: fin.get("FX") is None and _screener_country(t) == "United States")
+    unusable = bool(gap and gap["vendor_unusable"])
+    so = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool)
+                                                 and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
+    default, _k, _period, _warning = _share_default(fin, so, filed_diluted=filed_today, vendor_unusable=unusable)
+    return default, sh, filed_today
+
+
+def reference_inputs(t, root, estimates, anchors, closure, *, printed=True, today=None):
+    """Revision 18 (brief section 2, step 1): the single source of everything `consensus_reference.build` needs for company `t`,
+    and nothing printed. build_pack, the closure builder and the ledger all call it; the parity test pins the pack's printed
+    reference to `build(**reference_inputs(...)["kwargs"])` to the cent.
+
+      t           ticker
+      root        a DataRoot (the screener data, each file read once)
+      estimates   the consensus estimates dict (enrich's "estimates"), or None
+      anchors     {"rf": the anchor's nominal 10-year (fraction) or None, "ga": the long-run growth anchor (fraction, unquantized)
+                  or None, "breakeven": 10-year breakeven (fraction) or None, "loading": {sector: Blume-adjusted loading}}
+      closure     {"erp": the closure premium (fraction)} or None; the cost of equity is max(rf, ga) + adjusted loading x erp,
+                  and there is NO fallback: without a premium (or a loading, or rf) the cost of equity is None
+      printed     True (the pack): the cost of equity and the terminal default are quantized to the two decimals the pack prints
+                  and the terminal anchor is the printed one; False (the closure's solve): unquantized, smooth in the premium
+      today       the date the base year's age is measured at (default: now)
+
+    Returns {"kwargs": the arguments of build (everything but the positional base_cf, estimates, coe, terminal_g, shares,
+    median_5y, which it also carries under those names), "coe", "coe_reason" (why there is none), "terminal_g", "record",
+    "shares_default", "sector", "loading", "fy" (`_fiscal_year_base`'s dict), "cash"}."""
+    today = today if today is not None else datetime.now().date()
+    key = (t, today, id(estimates))
+    memo = root.__dict__.setdefault("_static", {})
+    if key not in memo:
+        h = root.history(t)
+        fin = root.fin(t)
+        ttm = root.ttm(t)
+        yrs = [int(y) for y in h if str(y).isdigit()]
+        ttm_stale = bool(ttm and yrs and int(str(ttm.get("fy_leg_end", ""))[:4] or 0) != max(yrs))
+        f = {} if ttm_stale else (ttm.get("fields") or {})
+        untagged = root.untagged(t)
+        fy = _fiscal_year_base(t, h, fin, ttm, f, ttm_stale, estimates, untagged, today)
+        sector, _industry = rs2_data.sector_lookup(t)
+        cash = _cash_term_for(fy["fy_rec"], sector, fy["fye_src"], fy["fye_conflict"], fy["fy_end_dt"]) if fy["latest_yr"] is not None else None
+        shares_default, _sh, _filed = _shares_default_state(t, fin, h, root.shares_cover(t))
+        _size, _br, _gl, _gs, median_5y = _base_rate_median(h, root.sd, None)
+        memo[key] = (h, fy, sector, cash, shares_default, median_5y)
+    h, fy, sector, cash, shares_default, median_5y = memo[key]
+    rf, ga, be = anchors.get("rf"), anchors.get("ga"), anchors.get("breakeven")
+    loading = (anchors.get("loading") or {}).get(sector)
+    erp = (closure or {}).get("erp")
+    coe, coe_reason = None, None
+    if not (_is_number(rf) and _is_number(ga) and _is_number(loading) and _is_number(erp)):
+        coe_reason = "the closure premium, the risk-free rate, the growth anchor or the sector loading is not available"
+    else:
+        coe = max(rf, ga) + loading * erp
+        if printed:
+            coe = float(f"{coe * 100:.2f}") / 100.0
+    ga_used = (float(f"{ga * 100:.2f}") / 100.0 if printed else ga) if _is_number(ga) else None
+    rev_g2 = consensus_reference.revenue_growth_next_fy(estimates or {})
+    record, terminal_g, basis, reason = _record_for(t, h, root.hist_doc(), coe, ga_used, be, rev_g2, median_5y, printed=printed)
+    ref_fy = fy["ref_fy"] or {}
+    kwargs = dict(base_cf=ref_fy.get("base"), estimates=estimates, coe=coe, terminal_g=terminal_g,
+                  shares=shares_default if (isinstance(shares_default, (int, float)) and shares_default > 0) else None,
+                  median_5y=median_5y, da=ref_fy.get("da"), capex=ref_fy.get("capex"), stub_months=ref_fy.get("stub"),
+                  base_label=ref_fy.get("label"), levels_reason=ref_fy.get("levels_reason"), levels_block=ref_fy.get("levels_block"),
+                  anchor=ga_used, record=record, base_ni=ref_fy.get("x"), base_revenue=ref_fy.get("revenue"), cash=cash)
+    return {"kwargs": kwargs, "coe": coe, "coe_reason": coe_reason, "terminal_g": terminal_g, "terminal_basis": basis,
+            "terminal_reason": reason, "record": record, "shares_default": shares_default, "sector": sector, "loading": loading,
+            "fy": fy, "cash": cash, "median_5y": median_5y}
+
+
+def _is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v
 
 
 def build_pack(t, price_override=None, include_research=True, asof=None, news_snippets=False):
@@ -1586,26 +1868,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # Phase 4 T1: compute consensus next-FY revenue growth and growth base rates median
     # for Section 1.5's TERMINAL-GROWTH DEFAULT and Section 8's CONSENSUS-IMPLIED VALUE.
     yrs = sorted([int(y) for y in h if str(y).isdigit()])
-    latest_rev = h.get(str(max(yrs)), {}).get("revenue") if yrs else None
-    size_label, br_table = base_rates.base_rate_table(latest_rev, sd=SD, max_fiscal_year=last_allowed_fy)
-    g0 = None
-    g_stats = None
-    g_lbl = None
-    if yrs:
-        y_last = max(yrs)
-        if (y_last - 1) in yrs:
-            rlast = h.get(str(y_last), {}).get("revenue")
-            rprev = h.get(str(y_last - 1), {}).get("revenue")
-            if isinstance(rlast, (int, float)) and isinstance(rprev, (int, float)) and rprev > 0:
-                g0 = rlast / rprev - 1
-    if g0 is not None:
-        g_lbl, g_stats = growth_persistence.persistence_for_growth(
-            g0, sd=SD, max_fiscal_year=last_allowed_fy)
-
-    _med = (g_stats or {}).get("median") if g_stats else None
-    if _med is None:
-        _med = ((br_table or {}).get(5) or {}).get("p50")
-    pack_median_5y = _med / 100.0 if isinstance(_med, (int, float)) else None
+    size_label, br_table, g_lbl, g_stats, pack_median_5y = _base_rate_median(h, SD, last_allowed_fy)
 
     enrich_est = (en.get("estimates") or {}) if en else {}
     pack_rev_g2 = consensus_reference.revenue_growth_next_fy(enrich_est)
@@ -1620,17 +1883,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         prints (facts coe_anchor), and the terminal-growth default built on its revenue trend: (record,
         default, basis, reason). The default is quantized to the two decimals the pack prints, so the
         reference, the printed default and the desk's default are one number."""
-        # F4: the tag each year's debt_current resolved from (provenance runs), so short-term debt is subtracted once
-        _prov = _hist_doc.get("provenance") or {}
-        _dc_runs = ((_prov.get("runs") or {}).get(t) or {}).get("debt_current")
-        _dc_tags = throughcycle_record.resolve_run_tags(_dc_runs, _prov.get("_tags"), yrs)
-        rec = throughcycle_record.analyse(h, facts["coe_anchor"], untagged_fields=_untagged_fields,
-                                          base_year=max(yrs) if yrs else None, debt_current_tags=_dc_tags)
-        val, basis, reason = consensus_reference.terminal_growth_default(
-            ga_q, be, rec["g_rev"], pack_rev_g2, pack_median_5y)
-        if val is not None:
-            val = float(f"{val * 100:.2f}") / 100.0
-        return rec, val, basis, reason
+        return _record_for(t, h, _hist_doc, facts["coe_anchor"], ga_q, be, pack_rev_g2, pack_median_5y)
 
     def _terminal_default_line(gt, basis, reason, ga_q, be, rec):
         """SECTION 1.5's TERMINAL-GROWTH DEFAULT line: the revenue-trend basis (revision 17), or the
@@ -1954,14 +2207,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # D3 (PHASE_4_PACK_SPEC.md): COE ANCHOR for this name = rf + Blume-adjusted sector loading x implied ERP —
         # the single number `coe_used` is measured against (+-150bp), not just its separate legs above.
         adj_load_val, raw_load_val, _ = rs2_data.coe_loading(sector)
-        if rf_pct is not None and adj_load_val is not None and erp_pct is not None:
-            coe_anchor_pct = rf_pct + adj_load_val * erp_pct
-            _coe_asof_str = str(anchor_asof) if anchor_asof else NULL
-            facts["coe_anchor"] = float(f"{coe_anchor_pct:.2f}") / 100.0
-        else:
-            coe_anchor_pct = None
-            _coe_asof_str = NULL
-            facts["coe_anchor"] = None
+        coe_anchor_pct = None
+        _coe_asof_str = NULL
+        facts["coe_anchor"] = None
 
         # D3: the long-run nominal growth anchor terminal_g must be built from, per P1.6/anchor_terminal_g().
         lrg_payload = rs2_data.usable_anchor("long_run_growth")
@@ -1970,6 +2218,17 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             facts["terminal_g_anchor"] = float(f"{terminal_g_val*100:.2f}") / 100.0
         else:
             facts["terminal_g_anchor"] = None
+
+        # Revision 18 (brief 1.6): COE_i = rf_eff + adjusted loading x ERP_closure, rf_eff = max(rf, the long-run growth anchor).
+        # The closure premium is rs2's (tools/reference_closure.py); there is NO fallback to MRI's universe premium - a substituted
+        # rate is the defect the accessors exist to end. MRI's premium stays on the Rates line as market context.
+        _clos_erp, _clos_asof, _clos_why = rs2_data.reference_closure()
+        _rf_eff = None
+        if anchor_rf_val is not None and terminal_g_val is not None and adj_load_val is not None and _clos_erp is not None:
+            _rf_eff = max(anchor_rf_val, terminal_g_val)
+            coe_anchor_pct = (_rf_eff + adj_load_val * _clos_erp) * 100.0
+            _coe_asof_str = str(_clos_asof) if _clos_asof else NULL
+            facts["coe_anchor"] = float(f"{coe_anchor_pct:.2f}") / 100.0
 
         be_val = be_pct / 100.0 if be_pct is not None else None
         _record, terminal_def_val, terminal_def_basis, terminal_def_reason = _through_cycle(
@@ -2049,19 +2308,22 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         rates_line = ("- Rates: rf (nominal 10y) " + (f"{rf_pct:.2f}%" if rf_pct is not None else NULL)
                       + " | real 10y " + (f"{real_pct:.2f}%" if real_pct is not None else NULL)
                       + " | breakeven 10y " + (f"{be_pct:.2f}%" if be_pct is not None else NULL)
-                      + " | implied ERP " + (f"{erp_pct:.2f}%" if erp_pct is not None else NULL)
+                      + " | MRI universe premium (context; not used in the reference) "
+                      + (f"{erp_pct:.2f}%" if erp_pct is not None else NULL)
                       + " | implied cost of equity " + (f"{coe_pct:.2f}%" if coe_pct is not None else NULL)
                       + " | sector cost-of-equity loading"
                       + (f" ({mri_sec})" if mri_sec is not None else f" (unmapped sector: {sector or 'none'})")
                       + " " + (f"{anchor_load_val:.3f}x" if anchor_load_val is not None else NULL))
 
         if coe_anchor_pct is not None:
-            coe_clause = (f"COE ANCHOR for this name: {coe_anchor_pct:.2f}% = rf {rf_pct:.2f}% + "
+            coe_clause = (f"COE ANCHOR for this name: {coe_anchor_pct:.2f}% = rf_eff {_rf_eff * 100:.2f}% (the larger of rf "
+                         f"{anchor_rf_val * 100:.2f}% and the growth anchor {terminal_g_val * 100:.2f}%) + "
                          f"adjusted loading {adj_load_val:.3f}× (Blume: 0.67 × raw "
-                         f"{raw_load_val:.3f} + 0.33) × implied ERP {erp_pct:.2f}% (asof "
-                         f"{_coe_asof_str}, source: MRI cost-of-capital anchor)")
+                         f"{raw_load_val:.3f} + 0.33) × the market-consistent premium {_clos_erp * 100:.2f}% (rs2 closure, as of "
+                         f"{_coe_asof_str})")
         else:
-            coe_clause = f"COE ANCHOR for this name: {NULL}"
+            coe_clause = (f"COE ANCHOR for this name: {NULL} \u2014 the closure premium is missing or stale "
+                          f"({_clos_asof or _clos_why})" if _clos_erp is None else f"COE ANCHOR for this name: {NULL}")
         if terminal_g_val is not None:
             _tg_asof = lrg_payload.get("asof") if lrg_payload else None
             tg_clause = f"long-run nominal growth anchor {terminal_g_val * 100:.2f}% (asof {_tg_asof or NULL})"
@@ -2587,14 +2849,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # Review B3/B1 (2026-09-27): the fiscal year end (TTM record, else the vendor's dated
         # statements, the matching net income confirming the label year), and whether the vendor's
         # capex may stand in for a filed one
-        _fye_mm = _fye_dd = _fye_src = _fy_end_dt = _fye_conflict = None
-        if latest_yr is not None:
-            _fye_mm, _fye_dd, _fye_src = _fye_month_day(t, with_source=True)
-            _vend, _fye_conflict = ((_vendor_fy_end_for(fin, _fy_rec.get("net_income"), int(latest_yr),
-                                                         (h.get(str(int(latest_yr) - 1)) or {}).get("net_income")))
-                                    if _fye_src != "ttm" else (None, None))
-            _fy_end_dt = _vend or _fy_end_date_for(int(latest_yr), _fye_mm, _fye_dd)
-        _ven_capex_ok, _ven_capex_why = _vendor_capex_usable(fin, _fy_end_dt)
+        # revision 18: the E18 base, its fiscal year end, the vintage test and the vendor-capex test are `_fiscal_year_base`'s
+        # (one copy, also read by `reference_inputs`)
+        _fyb = _fiscal_year_base(t, h, fin, ttm, f, ttm_stale, en.get("estimates") if en else None, _untagged_fields,
+                                 datetime.now().date())
+        _fye_src, _fye_conflict, _fy_end_dt = _fyb["fye_src"], _fyb["fye_conflict"], _fyb["fy_end_dt"]
+        _ven_capex_ok, _ven_capex_why = _fyb["ven_capex_ok"], _fyb["ven_capex_why"]
         if not isinstance(ni, (int, float)) and isinstance(_fy_rec.get("net_income"), (int, float)):
             ni, ni_src, oe_src[0] = _fy_rec["net_income"], f"FY{latest_yr} net income (no TTM held)", "fy"
         if not isinstance(capex, (int, float)):
@@ -2612,86 +2872,20 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # so a pack built from TTM inputs is byte-identical to revision 9's.
         oe_tag = ("" if oe_src == ["ttm", "ttm"]
                   else f" (owner_earnings_source: {oe_src[0]}_ni+{oe_src[1]}_capex)")
-        # E18: the CONSENSUS-IMPLIED VALUE's base is the last full fiscal year, the period consensus
-        # growth is measured from, valued at that year end and rolled forward to today. A TTM base
-        # with fiscal-year growth counted part of the current year twice (ADI +29%, AMD +35%).
+        # E18: the CONSENSUS-IMPLIED VALUE's base is the last full fiscal year, the period consensus growth is measured from,
+        # valued at that year end and rolled forward to today (`_fiscal_year_base`)
         if latest_yr is not None:
-            _stub = (datetime.now().date() - _fy_end_dt).days / 30.4375
-            _fy_cx = _fy_rec.get("capex")
-            if not isinstance(_fy_cx, (int, float)) and _ven_capex_ok:
-                _vc = fin.get("Capital_Expenditure")
-                _fy_cx = -float(_vc) if isinstance(_vc, (int, float)) and _vc < 0 else None
-            _fy_ni, _fy_da = _fy_rec.get("net_income"), _fy_rec.get("da")
-            # Whole-book test (2026-09-26): the period comes from the consensus vintage, not the
-            # calendar. Past a fiscal year end the vendor keeps the finished year as "current" until
-            # it is reported (EPAC, PSMT, MU: year-ago revenue = the filed FY2025 to the dollar), and
-            # then moves past it before our filings hold it.
-            from datetime import date as _date
-            try:
-                _thr = _date.fromisoformat(str(ttm.get("through"))[:10]) if f else None
-            except ValueError:
-                _thr = None
-            _newest = max(d for d in (_fy_end_dt, _thr) if d is not None)
-            _age = (datetime.now().date() - _newest).days / 30.4375
-            _aligned = consensus_reference.vintage_aligned(en.get("estimates") if en else None,
-                                                           _fy_rec.get("revenue"))
-            if _fye_src == "default":
-                _ref_fy_na = "the fiscal year end is unknown (no TTM record and no dated vendor statement)"
-            elif _fye_conflict is not None:
-                _ref_fy_na = (f"the label year cannot be confirmed: the vendor's statements with FY{latest_yr}'s "
-                              f"and FY{int(latest_yr) - 1}'s net income are dated a year apart from ours "
-                              f"({_fye_conflict.isoformat()})")
-            elif _stub < 0:
-                _ref_fy_na = f"FY{latest_yr} ends {_fy_end_dt.isoformat()}, after today"
-            elif _age > consensus_reference.STALE_MONTHS:
-                _ref_fy_na = (f"stale history: the newest period we hold ends {_newest.isoformat()}, "
-                              f"{_age:.0f} months ago")
-            elif _stub > 12 and _aligned is not True:
-                # review B1: a failed or unknown vintage test is "not verified", never "rolled"
-                _ref_fy_na = (f"not verified: FY{latest_yr} ended {_stub:.0f} months ago and the vendor's "
-                              + ("year-ago revenue does not match its filed revenue within 2%" if _aligned is False
-                                 else "year-ago revenue is not available")
-                              + ", so the year consensus starts from cannot be checked")
-            else:
-                _ref_fy = {"stub": _stub,
-                           "label": f"FY{latest_yr}, the last full fiscal year, ended {_fy_end_dt.isoformat()}",
-                           "da": _fy_da if isinstance(_fy_da, (int, float)) else None,
-                           "capex": _fy_cx,
-                           # revision 17: the earnings path's base (X: net income before acquired-intangible
-                           # amortization, F1) and the revenue path's base year
-                           "x": throughcycle_record.adjusted_earnings(_fy_rec, _untagged_fields),
-                           "revenue": _fy_rec.get("revenue"),
-                           "base": (_fy_ni + _fy_da - _fy_cx)
-                           if all(isinstance(x, (int, float)) for x in (_fy_ni, _fy_da, _fy_cx)) else None,
-                           # review B1: the vendor's EPS levels meet filed D&A and capex only when
-                           # the vintage test shows the two describe the same year and currency
-                           "levels_block": (None if _aligned is True else
-                                            f"the vendor's year-ago revenue does not match FY{latest_yr}'s "
-                                            f"filed revenue within 2% (currency, perimeter or period)"
-                                            if _aligned is False else
-                                            f"the vendor's year-ago revenue is not available to check "
-                                            f"against FY{latest_yr}'s filed revenue")}
+            _stub, _aligned, _thr = _fyb["stub"], _fyb["aligned"], _fyb["thr"]
+            _ref_fy, _ref_fy_na = _fyb["ref_fy"], _fyb["ref_fy_na"]
+            if _ref_fy is not None:
                 # the FY and TTM windows are compared only when the TTM is this fiscal year's own
                 if f and _thr is not None and not ttm_stale and oe_src == ["ttm", "ttm"]:
                     _ref_fy["quarters"] = max(0, round((_thr - _fy_end_dt).days / 30.4375 / 3))
                     _ref_fy["through"] = _thr.isoformat()
                 # revision 17: the desk values at the base fiscal year end and rolls forward by this age
                 _lr_raw["stub_months"] = _stub
-            # revision 18 (brief 1.3): cash at face for a non-financial company. The mean 3-month bill rate over the 12 months
-            # to the base fiscal year's end prices the interest the cash earns; a fiscal year end that is only a default
-            # or unconfirmed has no such window.
-            _bill = None
-            if sector in consensus_reference.FINANCIAL_SECTORS:
-                _cash = consensus_reference.cash_term(_fy_rec, None, sector)
-            elif _fye_src == "default" or _fye_conflict is not None:
-                _cash = {"applies": False, "financial": False, "cash": None, "interest": 0.0,
-                         "stamps": ["cash_term_not_available_fiscal_year_end_unknown"]}
-            else:
-                import calendar as _cal
-                _y0 = _fy_end_dt.year - 1
-                _d0 = min(_fy_end_dt.day, _cal.monthrange(_y0, _fy_end_dt.month)[1])
-                _bill, _bill_src = rs2_data.bill_rate_mean(_fy_end_dt.replace(year=_y0, day=_d0), _fy_end_dt)
-                _cash = consensus_reference.cash_term(_fy_rec, _bill, sector)
+            # revision 18 (brief 1.3): cash at face for a non-financial company (`_cash_term_for`)
+            _cash = _cash_term_for(_fy_rec, sector, _fye_src, _fye_conflict, _fy_end_dt)
             if _cash["applies"]:
                 facts["excess_cash"] = pack_facts.q_b(_cash["cash"] / 1e9)
             elif _cash["financial"]:
@@ -3182,15 +3376,18 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 # S3 5.11: the reference divides by the share-count default (5.11), not SECTION
                 # 2's raw count, so the Base and its reference are on one share basis (R10).
                 _ref_shares = facts.get("shares_default")
-                _ref = consensus_reference.build(
-                    _fy.get("base"), est, _coe, terminal_def_val,
-                    _ref_shares if isinstance(_ref_shares, (int, float)) and _ref_shares > 0 else None,
-                    _med / 100.0 if isinstance(_med, (int, float)) else None,
-                    da=_fy.get("da"), capex=_fy.get("capex"),
-                    stub_months=_fy.get("stub"), base_label=_fy.get("label"),
-                    levels_reason=_fy.get("levels_reason"), levels_block=_fy.get("levels_block"),
-                    anchor=facts["terminal_g_anchor"], record=_record, base_ni=_fy.get("x"),
-                    base_revenue=_fy.get("revenue"), cash=_cash)
+                # revision 18 (brief section 2, step 1): every input of the reference is `reference_inputs`'
+                _root = DataRoot()
+                _root._hist, _root._ttm = _hist_doc, {t: ttm}
+                _root._fin[t] = fin
+                _ri = reference_inputs(t, _root, est,
+                                       {"rf": anchor_rf_val, "ga": terminal_g_val, "breakeven": be_val,
+                                        "loading": {sector: adj_load_val}},
+                                       {"erp": _clos_erp} if _clos_erp is not None else None, printed=True,
+                                       today=datetime.now().date())
+                _ref = consensus_reference.build(**_ri["kwargs"])
+                if _ri["coe"] is None and _ref.get("value") is None:
+                    _ref["reason"] = f"the closure premium is missing or stale ({_clos_asof or _clos_why})"
                 if not _ref_fy and _ref.get("value") is None and _ref_fy_na:
                     _ref["reason"] = _ref_fy_na
                 # E15, revision 18 (brief 1.5): outside the fail-fast fence the reference is no longer a credible
