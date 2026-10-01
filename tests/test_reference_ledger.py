@@ -24,7 +24,7 @@ import reference_ledger as rl  # noqa: E402
 
 
 def _row(t="AAA", d="2027-01-04", **kw):
-    r = {"date": d, "ticker": t, "price": 10.0, "reference_value": 12.0, "reference_status": "used", "vp": 1.2, "coe": 0.09,
+    r = {"date": d, "ticker": t, "price": 10.0, "price_date": d, "reference_value": 12.0, "reference_status": "used", "vp": 1.2, "coe": 0.09,
          "closure_erp": 0.05, "closure_asof": "2026-12-20", "revision": 18, "verdict": None}
     r.update(kw)
     return r
@@ -42,18 +42,20 @@ def _fakes(values, prices=None, sides=None, verdicts=None):
         return {"v": values[t], "coe": 0.09}
 
     return dict(inputs_fn=inputs_fn, build_fn=lambda **kw: {"value": kw["v"]}, fence_fn=lambda v, t: sides.get(t),
-                price_fn=lambda t: prices.get(t, 10.0), verdict_fn=lambda t: verdicts.get(t))
+                price_fn=lambda t: (prices.get(t, 10.0), None if prices.get(t, 10.0) is None else "2027-01-02"), verdict_fn=lambda t: verdicts.get(t))
 
 
 CLOSURE = (0.05, "2026-12-20", {"provenance": "x"})
+VERDICT = {"label": "undervalued", "base_iv": 13.0, "published_at": "2027-01-01", "pack_revision": 18}
 
 
 # ---- the append-only guarantee ---------------------------------------------------------------------------------------
 
 def test_the_fields_are_the_briefs_and_a_line_is_in_that_order(tmp_path):
     p = tmp_path / "l.jsonl"
-    assert rl.FIELDS == ("date", "ticker", "price", "reference_value", "reference_status", "vp", "coe", "closure_erp",
-                         "closure_asof", "revision", "verdict")
+    assert rl.FIELDS == ("date", "ticker", "price", "price_date", "reference_value", "reference_status", "vp", "coe",
+                         "closure_erp", "closure_asof", "revision", "verdict")
+    assert "group" not in rl.FIELDS and rl.VERDICT_KEYS == ("label", "base_iv", "published_at", "pack_revision")
     rl.append_rows(p, [_row("AAA"), _row("BBB")])
     lines = p.read_bytes().split(b"\n")
     assert lines[-1] == b"" and len(lines) == 3
@@ -129,7 +131,12 @@ def test_a_new_row_with_another_schema_refuses_the_whole_batch(tmp_path):
     for bad in ({**_row("BBB"), "extra": 1}, {k: v for k, v in _row("BBB").items() if k != "revision"},
                 _row("BBB", reference_status="maybe"), _row("BBB", price=float("nan")), _row("BBB", price="10"),
                 _row("BBB", price=float("inf")), _row("BBB", date="2027/01/04"), _row("BBB", revision=18.0),
-                _row("BBB", verdict="buy"), _row("BBB", closure_asof="soon")):
+                _row("BBB", verdict="buy"), _row("BBB", closure_asof="soon"), _row("BBB", price_date="soon"),
+                _row("BBB", price=None, price_date="2027-01-04"),
+                _row("BBB", verdict={"direction": "undervalued", "date": "2027-01-01", "median_iv": 13.0}),
+                _row("BBB", verdict={**VERDICT, "extra": 1}), _row("BBB", verdict={**VERDICT, "base_iv": "13"}),
+                _row("BBB", verdict={**VERDICT, "published_at": "yesterday"}),
+                _row("BBB", verdict={**VERDICT, "pack_revision": 18.0}), _row("BBB", verdict={**VERDICT, "label": 3})):
         with pytest.raises(rl.LedgerSchemaError):
             rl.append_rows(p, [_row("GOOD", d="2027-02-01"), bad])      # the bad row is last: GOOD must not be written either
         assert p.read_bytes() == before
@@ -191,11 +198,12 @@ def test_snapshot_rows_values_and_zero_is_a_value(tmp_path):
     vals = {"USED": 12.0, "ABOVE": 40.0, "BELOW": 1.0, "ZERO": 0.0, "NEG": -3.0, "NONE": None, "NOPX": 12.0}
     s = rl.snapshot("2027-01-04", list(vals), set(), ledger_path=p, closure=CLOSURE, revision=18,
                     **_fakes(vals, prices={"NOPX": None}, sides={"ABOVE": "above", "BELOW": "below"},
-                             verdicts={"USED": {"direction": "undervalued", "date": "2027-01-01", "median_iv": 13.0}}))
+                             verdicts={"USED": VERDICT}))
     rows = {r["ticker"]: r for r in rl.read_ledger(p)}
     assert s["rows_appended"] == 7 and s["no_price"] == 1 and s["errors"] == {}
     assert rows["USED"]["reference_status"] == "used" and rows["USED"]["vp"] == pytest.approx(1.2)
-    assert rows["USED"]["verdict"] == {"direction": "undervalued", "date": "2027-01-01", "median_iv": 13.0}
+    assert rows["USED"]["verdict"] == VERDICT and rows["ABOVE"]["verdict"] is None
+    assert rows["USED"]["price_date"] == "2027-01-02" and rows["NOPX"]["price_date"] is None
     assert rows["ABOVE"]["reference_status"] == "outside_fence_above" and rows["ABOVE"]["reference_value"] == 40.0
     assert rows["BELOW"]["reference_status"] == "outside_fence_below"
     assert rows["ZERO"]["reference_status"] == "not_meaningful" and rows["ZERO"]["reference_value"] == 0.0
@@ -258,7 +266,7 @@ def test_a_failing_name_gets_no_row_is_counted_and_the_rest_are_written(tmp_path
     vals = {"BK1": KeyError("BK1"), "BK2": 5.0, "UT1": ValueError("secret UT1 detail"), "UT2": 5.0}
     s = rl.snapshot("2027-01-04", ["BK1", "BK2"], {"UT1", "UT2"}, ledger_path=p, closure=CLOSURE, revision=18, **_fakes(vals))
     assert sorted(r["ticker"] for r in rl.read_ledger(p)) == ["BK2", "UT2"]
-    assert s["errors"] == {"book:KeyError": 1, "untouched:ValueError": 1}
+    assert s["errors"] == {"KeyError": 1, "ValueError": 1}
     text = json.dumps(s)
     assert "UT1" not in text and "UT2" not in text            # no untouched name, and no message of theirs, in the report
     assert any(x.startswith("BK1:") for x in s["error_samples_book_only"])
@@ -345,3 +353,37 @@ def test_cli_refuses_a_ledger_with_another_schema_without_writing(tmp_path, monk
     assert rl.main(["--snapshot", "--untouched-list", str(lst), "--ledger", str(led)]) == 2
     assert led.read_bytes() == before
     assert "schema mismatch" in capsys.readouterr().err
+
+
+# ---- the runs file: one summary line per snapshot, counts by reason, no names ---------------------------------------------
+
+def test_one_summary_line_per_snapshot_goes_to_the_append_only_runs_file_with_counts_and_no_names(tmp_path):
+    p = tmp_path / "l.jsonl"
+    runs = tmp_path / rl.RUNS_NAME
+    vals = {"ZQXA": KeyError("ZQXA"), "ZQXB": 5.0, "ZQXU": ValueError("secret ZQXU detail"), "ZQXV": 5.0, "ZQXW": 5.0}
+    s = rl.snapshot("2027-01-04", ["ZQXA", "ZQXB"], {"ZQXU", "ZQXV", "ZQXW"}, ledger_path=p, closure=CLOSURE, revision=18,
+                    **_fakes(vals, prices={"ZQXW": None}))
+    first = runs.read_bytes()
+    lines = first.splitlines()
+    assert len(lines) == 1 and first.endswith(b"\n")
+    line = json.loads(lines[0])
+    assert line == {"date": "2027-01-04", "revision": 18, "names": 5, "rows_appended": 3, "skipped_existing": 0, "no_price": 1,
+                    "closure_erp_recorded": True, "status_counts": {"used": 3}, "failed_by_reason": {"KeyError": 1, "ValueError": 1},
+                    "failed": 2}
+    assert b"ZQX" not in first and "book" not in first.decode() and "untouched" not in first.decode()
+    # a second snapshot appends a second line and leaves the first byte for byte
+    rl.snapshot("2027-01-11", ["ZQXB"], set(), ledger_path=p, closure=CLOSURE, revision=18, **_fakes(vals))
+    both = runs.read_bytes()
+    assert both.startswith(first) and len(both.splitlines()) == 2
+    assert s["errors"] == {"KeyError": 1, "ValueError": 1}
+
+
+def test_the_runs_file_lives_next_to_the_ledger_unless_named(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    kw = dict(closure=CLOSURE, revision=18, **_fakes({"AAA": 5.0}))
+    rl.snapshot("2027-01-04", ["AAA"], set(), ledger_path=tmp_path / "a" / "l.jsonl", **kw)
+    assert (tmp_path / "a" / rl.RUNS_NAME).exists()
+    rl.snapshot("2027-01-04", ["AAA"], set(), ledger_path=tmp_path / "b" / "l.jsonl", runs_path=tmp_path / "elsewhere.jsonl", **kw)
+    assert (tmp_path / "elsewhere.jsonl").exists() and not (tmp_path / "b" / rl.RUNS_NAME).exists()
+    assert rl.DEFAULT_LEDGER.parent == rl.HERE / "cache"

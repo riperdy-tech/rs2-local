@@ -15,8 +15,9 @@ THE UNTOUCHED NAMES are read from a list file named by `--untouched-list` or the
 (never a default, never copied into the repository). They are never printed, logged or put in an error message; every report
 here carries counts only.
 
-Integration with revision 18's part 2 (not on this branch yet) is confined to `production_adapters` at the bottom of this file;
-the engine of the ledger (`snapshot`, `append_rows`, `read_ledger`) takes its inputs as parameters and is tested with fakes.
+The production wiring (reference_inputs, the closure accessor, the shared status rule) is confined to `production_adapters` at
+the bottom of this file; the engine of the ledger (`snapshot`, `append_rows`, `read_ledger`) takes its inputs as parameters and is
+tested with fakes, and tests/test_reference_ledger_production.py pins a production snapshot row to the pack's printed reference.
 """
 from __future__ import annotations
 
@@ -36,9 +37,14 @@ DEFAULT_LEDGER = HERE / "cache" / "reference_ledger.jsonl"
 UNTOUCHED_ENV = "RS2_UNTOUCHED_LIST"
 
 # Brief section 5.1: date, ticker, price, reference value and status; V/P; COE, closure premium and its as-of date; revision;
-# the published verdict, if any. A line carries exactly these keys, in this order.
-FIELDS = ("date", "ticker", "price", "reference_value", "reference_status", "vp", "coe", "closure_erp",
+# the published verdict, if any. A line carries exactly these keys, in this order. `price_date` is the date of the quote the
+# price comes from (the screener file's fetch date); there is no group field: book and untouched are re-derived from the list.
+FIELDS = ("date", "ticker", "price", "price_date", "reference_value", "reference_status", "vp", "coe", "closure_erp",
           "closure_asof", "revision", "verdict")
+# The verdict, when there is one: the published label, the Base the verdict rested on, the date it was published and the pack
+# revision it was produced under (the evaluation reads the revision to tell a verdict the reference informed from one it did not).
+VERDICT_KEYS = ("label", "base_iv", "published_at", "pack_revision")
+RUNS_NAME = "reference_ledger_runs.jsonl"
 STATUSES = ("used", "outside_fence_above", "outside_fence_below", "not_meaningful", "not_available")
 _NUMERIC = ("price", "reference_value", "vp", "coe", "closure_erp")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -74,10 +80,25 @@ def validate_row(row):
     ca = row["closure_asof"]
     if ca is not None and not (isinstance(ca, str) and _DATE_RE.match(ca)):
         raise LedgerSchemaError("closure_asof must be an ISO date string or null")
+    pd_ = row["price_date"]
+    if pd_ is not None and not (isinstance(pd_, str) and _DATE_RE.match(pd_)):
+        raise LedgerSchemaError("price_date must be an ISO date string or null")
+    if row["price"] is None and pd_ is not None:
+        raise LedgerSchemaError("price_date without a price")
     if not (isinstance(row["revision"], int) and not isinstance(row["revision"], bool)):
         raise LedgerSchemaError("revision must be an integer")
-    if row["verdict"] is not None and not isinstance(row["verdict"], dict):
-        raise LedgerSchemaError("verdict must be an object or null")
+    v = row["verdict"]
+    if v is not None:
+        if not isinstance(v, dict) or set(v) != set(VERDICT_KEYS):
+            raise LedgerSchemaError(f"verdict must be null or an object with exactly the keys {VERDICT_KEYS}")
+        if v["base_iv"] is not None and not (_is_number(v["base_iv"]) and math.isfinite(v["base_iv"])):
+            raise LedgerSchemaError("verdict.base_iv must be a finite number or null")
+        if v["published_at"] is not None and not (isinstance(v["published_at"], str) and _DATE_RE.match(v["published_at"])):
+            raise LedgerSchemaError("verdict.published_at must be an ISO date string or null")
+        if v["label"] is not None and not isinstance(v["label"], str):
+            raise LedgerSchemaError("verdict.label must be a string or null")
+        if v["pack_revision"] is not None and not (isinstance(v["pack_revision"], int) and not isinstance(v["pack_revision"], bool)):
+            raise LedgerSchemaError("verdict.pack_revision must be an integer or null")
 
 
 def _line(row):
@@ -169,16 +190,11 @@ def load_untouched(path=None, expect_sha256=None):
 # ---- status, as the pack prints it ----------------------------------------------------------------------------------
 
 def classify_status(value, fence_side):
-    """The reference's status, by the pack's own rule (capability_test.build_pack, E15 and brief F5): no value is
-    not_available; a value of zero or less as printed to the cent is not_meaningful (the fence is not evaluated for it);
-    otherwise outside_fence_above / outside_fence_below when `fence_side()` says so, else used.
-    `fence_side` is a zero-argument callable returning 'above', 'below' or None, called only when the fence applies."""
-    if value is None:
-        return "not_available"
-    if float(f"{value:.2f}") <= 0:
-        return "not_meaningful"
-    side = fence_side()
-    return f"outside_fence_{side}" if side else "used"
+    """The reference's status - the pack's own rule, one copy: consensus_reference.classify_status (revision 18; build_pack
+    calls the same function). `fence_side` is a zero-argument callable returning 'above', 'below' or None, called only when the
+    fence applies."""
+    import consensus_reference
+    return consensus_reference.classify_status(value, fence_side)
 
 
 # ---- the snapshot ---------------------------------------------------------------------------------------------------
@@ -192,18 +208,19 @@ def _closure_fields(closure):
 
 
 def snapshot(snap_date, tickers, untouched, *, inputs_fn, build_fn, fence_fn, price_fn, verdict_fn, closure, revision,
-             ledger_path=DEFAULT_LEDGER):
+             ledger_path=DEFAULT_LEDGER, runs_path=None):
     """Append one row per name to the ledger for `snap_date` (an ISO string) and return a summary of COUNTS ONLY.
 
     tickers      the book's names; `untouched` (a set) are added to them (a name in both counts once, as untouched).
     inputs_fn    t -> the kwargs of consensus_reference.build, from reference_inputs (must carry 'coe').
     build_fn     the keyword arguments -> consensus_reference.build's dict (carries 'value').
     fence_fn     (value, t) -> 'above' | 'below' | None, the street-target fence the pack applies.
-    price_fn     t -> the price, or None.
-    verdict_fn   t -> the published verdict as a dict, or None.
+    price_fn     t -> (price, price_date) - the quote and the ISO date it was taken - or (None, None) / None.
+    verdict_fn   t -> the published verdict as {label, base_iv, published_at, pack_revision}, or None.
     closure      the closure accessor's (erp, asof, provenance), or None.
-    A name whose computation raises gets no row and is counted by group and exception class; the summary says so and the
-    caller exits non-zero."""
+    A name whose computation raises gets NO ROW; it is counted by exception class (the reason), never by name. The summary is
+    appended as one line to the append-only runs file (`runs_path`, default next to the ledger) - counts by reason and by
+    status, no names - and the caller exits non-zero when any name failed."""
     book = {t.strip().upper() for t in tickers}
     untouched = {t.strip().upper() for t in untouched}
     groups = {t: ("untouched" if t in untouched else "book") for t in sorted(book | untouched)}
@@ -213,8 +230,10 @@ def snapshot(snap_date, tickers, untouched, *, inputs_fn, build_fn, fence_fn, pr
     no_price = 0
     for t, g in groups.items():
         try:
-            price = price_fn(t)
+            quote = price_fn(t)
+            price, price_date = quote if quote is not None else (None, None)
             price = float(price) if price is not None else None
+            price_date = str(price_date)[:10] if (price is not None and price_date is not None) else None
             inputs = inputs_fn(t)
             ref = build_fn(**inputs)
             value = ref.get("value")
@@ -222,12 +241,12 @@ def snapshot(snap_date, tickers, untouched, *, inputs_fn, build_fn, fence_fn, pr
             status = classify_status(value, lambda: fence_fn(value, t))
             coe = inputs.get("coe")
             vp = value / price if (value is not None and price is not None and price > 0) else None
-            row = {"date": snap_date, "ticker": t, "price": price, "reference_value": value, "reference_status": status,
-                   "vp": vp, "coe": None if coe is None else float(coe), "closure_erp": erp, "closure_asof": asof,
-                   "revision": revision, "verdict": verdict_fn(t)}
+            row = {"date": snap_date, "ticker": t, "price": price, "price_date": price_date, "reference_value": value,
+                   "reference_status": status, "vp": vp, "coe": None if coe is None else float(coe), "closure_erp": erp,
+                   "closure_asof": asof, "revision": revision, "verdict": verdict_fn(t)}
             validate_row(row)
-        except Exception as e:  # counted and reported by class, never swallowed: the caller exits non-zero
-            key = f"{g}:{type(e).__name__}"
+        except Exception as e:  # counted by reason, never swallowed: the caller exits non-zero
+            key = type(e).__name__
             errors[key] = errors.get(key, 0) + 1
             if g == "book" and len(error_samples) < 3:
                 error_samples.append(f"{t}: {type(e).__name__}: {str(e)[:200]}")
@@ -236,11 +255,35 @@ def snapshot(snap_date, tickers, untouched, *, inputs_fn, build_fn, fence_fn, pr
         by_status[g][status] = by_status[g].get(status, 0) + 1
         no_price += int(price is None)
     appended, skipped = append_rows(ledger_path, rows)
-    return {"date": snap_date, "revision": revision, "names_book": sum(1 for g in groups.values() if g == "book"),
-            "names_untouched": sum(1 for g in groups.values() if g == "untouched"),
-            "in_both_lists": len(book & untouched), "rows_appended": appended, "skipped_existing": skipped,
-            "no_price": no_price, "closure_erp_recorded": erp is not None, "status_counts": by_status,
-            "errors": errors, "error_samples_book_only": error_samples}
+    summary = {"date": snap_date, "revision": revision, "names_book": sum(1 for g in groups.values() if g == "book"),
+               "names_untouched": sum(1 for g in groups.values() if g == "untouched"),
+               "in_both_lists": len(book & untouched), "rows_appended": appended, "skipped_existing": skipped,
+               "no_price": no_price, "closure_erp_recorded": erp is not None, "status_counts": by_status,
+               "errors": errors, "error_samples_book_only": error_samples}
+    append_run(runs_path if runs_path is not None else Path(ledger_path).with_name(RUNS_NAME), summary)
+    return summary
+
+
+def append_run(path, summary):
+    """Append one summary line for a snapshot to the append-only runs file: the date, the revision, the counts of names, rows,
+    skipped rows and rows with no price, the counts by status (book and untouched together) and the counts of failed names by
+    reason. No name, no group split, no sample message."""
+    status_total = {}
+    for g in summary["status_counts"].values():
+        for k, n in g.items():
+            status_total[k] = status_total.get(k, 0) + n
+    line = {"date": summary["date"], "revision": summary["revision"],
+            "names": summary["names_book"] + summary["names_untouched"], "rows_appended": summary["rows_appended"],
+            "skipped_existing": summary["skipped_existing"], "no_price": summary["no_price"],
+            "closure_erp_recorded": summary["closure_erp_recorded"], "status_counts": dict(sorted(status_total.items())),
+            "failed_by_reason": dict(sorted(summary["errors"].items())),
+            "failed": sum(summary["errors"].values())}
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "ab") as f:
+        f.write((json.dumps(line, separators=(",", ":"), allow_nan=False) + chr(10)).encode("ascii"))
+        f.flush()
+        os.fsync(f.fileno())
 
 
 # ---- the CLI and its production wiring ------------------------------------------------------------------------------
@@ -258,17 +301,35 @@ def block_network():
     socket.create_connection = _no_resolve
 
 
-def production_adapters(data_root):
-    """The five callables `snapshot` takes, wired to production, plus the book, the closure and the revision.
+class _Loadings:
+    """{sector: Blume-adjusted loading}, read from the MRI cost-of-capital anchor on demand (reference_inputs' `anchors["loading"]`)."""
 
-    INTEGRATION POINTS (revision 18 part 2; none of these exists on the branch this was written on):
-      1. `capability_test.reference_inputs(t, data_root, estimates, anchors, closure)` -> the keyword arguments of
-         `consensus_reference.build`, with 'coe' among them (brief section 2.1).
-      2. `rs2_data.reference_closure()` -> (erp, asof, provenance), or a stated reason (brief section 2.7).
-    The rest exists today: capability_test._reference_outside_fence and valuation_backbone._consensus_band (the fence),
-    consensus_reference.build, capability_test.PACK_REVISION, depth_membership._current_book (the book) and the local
-    overlay (cache/depth_overlay.json) for the published verdict. The price is the screener's own file
-    (financials/<T>.json, 'Price'), so the run needs no network."""
+    def __init__(self, rs2_data):
+        self._rs2_data = rs2_data
+        self._memo = {}
+
+    def get(self, sector, default=None):
+        if sector not in self._memo:
+            self._memo[sector] = self._rs2_data.coe_loading(sector)[0]
+        v = self._memo[sector]
+        return default if v is None else v
+
+
+def production_adapters(data_root, today=None):
+    """The callables `snapshot` takes, wired to production, plus the book, the closure and the revision.
+
+      1. inputs_fn: `capability_test.reference_inputs(t, DataRoot(), estimates, anchors, closure, printed=True)["kwargs"]` - the
+         keyword arguments of `consensus_reference.build` (with 'coe'), exactly the call the pack makes; `estimates` are
+         `<data_root>/enrich/<T>.json["estimates"]` (a record older than the pack's 45-day suppression gives none, as in the
+         pack) and `anchors` the MRI anchors through rs2_data's accessors (rf, the long-run growth anchor, breakeven, loadings).
+      2. closure: `rs2_data.reference_closure()` -> (erp, asof, provenance), or (None, asof, reason); the cost of equity has no
+         fallback, so without a usable premium a name has no value (status not_available).
+      3. status: `classify_status`, which is consensus_reference.classify_status, the rule the pack uses.
+      4. fence: `capability_test._reference_outside_fence` on `capability_test._consensus_band_or_none` - the pack's own pair.
+      5. price: the screener's own file (financials/<T>.json: 'Price' and the date of its fetch); verdict: the local overlay
+         (cache/depth_overlay.json) as {label: direction, base_iv: contract_base of its scorecard, published_at: date, pack_revision};
+         book: depth_membership._current_book(); revision: capability_test.PACK_REVISION. `today` is the date the base year's age is
+      measured at (default: today). The run needs no network."""
     root = Path(data_root)
     for p in (HERE / "tools" / "audit_202608", HERE / "tools", HERE):
         if str(p) not in sys.path:
@@ -276,35 +337,48 @@ def production_adapters(data_root):
     import capability_test as cap
     import consensus_reference as cref
     import depth_membership
+    import fiduciary_gate
     import rs2_data
-    import valuation_backbone as vb
-    for need, mod in (("reference_inputs", cap), ("reference_closure", rs2_data)):
-        if not hasattr(mod, need):
-            raise ImportError(f"{mod.__name__}.{need} does not exist yet: this needs revision 18 part 2 (brief section 2)")
     closure = rs2_data.reference_closure()
-    anchors = rs2_data.load_anchors()
+    erp = closure[0]
+    anchors = {"rf": rs2_data.anchor_risk_free_rate()[0], "ga": rs2_data.anchor_terminal_g()[0],
+               "breakeven": rs2_data.anchor_breakeven_10y()[0], "loading": _Loadings(rs2_data)}
+    droot = cap.DataRoot()
     sd = Path(rs2_data.CONFIG["screener_data_dir"])
     overlay = rs2_data.load_json(root / "cache" / "depth_overlay.json") or {}
     published = overlay.get("tickers") or {}
+    today = today if today is not None else _date.today()
 
     def inputs_fn(t):
         en = rs2_data.load_json(root / "enrich" / f"{t}.json") or {}
-        return cap.reference_inputs(t, root, en.get("estimates"), anchors, closure)
+        estimates = en.get("estimates")
+        age = cap._age_days(en)
+        if age is not None and age > cap.STALE_SUPPRESS_DAYS:
+            estimates = None                      # the pack's rule: stale consensus builds no reference
+        if not isinstance(estimates, dict):
+            estimates = None
+        ri = cap.reference_inputs(t, droot, estimates, anchors, {"erp": erp} if erp is not None else None, printed=True, today=today)
+        return ri["kwargs"]
 
     def fence_fn(value, t):
-        side, _ = cap._reference_outside_fence(value, vb._consensus_band(t))
+        side, _ = cap._reference_outside_fence(value, cap._consensus_band_or_none(t))
         return side
 
     def price_fn(t):
         fin = rs2_data.load_json(sd / "financials" / f"{t}.json") or {}
         px = fin.get("Price")
-        return None if px is None else float(px)
+        if px is None:
+            return None, None
+        fetched = fin.get("Data_Fetched_Date")
+        return float(px), (None if fetched is None else str(fetched)[:10])
 
     def verdict_fn(t):
         v = published.get(t)
         if not v:
             return None
-        return {"direction": v.get("direction"), "date": v.get("date"), "median_iv": v.get("median_iv")}
+        base = fiduciary_gate.contract_base(v.get("scorecard") or v)
+        return {"label": v.get("direction"), "base_iv": None if base is None else float(base),
+                "published_at": v.get("date"), "pack_revision": v.get("pack_revision")}
 
     return {"inputs_fn": inputs_fn, "build_fn": lambda **kw: cref.build(**kw), "fence_fn": fence_fn, "price_fn": price_fn,
             "verdict_fn": verdict_fn, "closure": closure, "revision": cap.PACK_REVISION,

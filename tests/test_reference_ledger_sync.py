@@ -15,7 +15,7 @@ from test_sync_state import _make_repos  # noqa: E402
 
 
 def _row(t, d):
-    return {"date": d, "ticker": t, "price": 10.0, "reference_value": 12.0, "reference_status": "used", "vp": 1.2, "coe": 0.09,
+    return {"date": d, "ticker": t, "price": 10.0, "price_date": d, "reference_value": 12.0, "reference_status": "used", "vp": 1.2, "coe": 0.09,
             "closure_erp": 0.05, "closure_asof": "2026-12-20", "revision": 18, "verdict": None}
 
 
