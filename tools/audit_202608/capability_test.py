@@ -880,7 +880,88 @@ def _x_over_owner_earnings(ni, oe, fy_row, untagged):
     return x / oe if (x is not None and not gap and x > 0 and oe > 0) else None
 
 
-def _share_default(fin, V, point_in_time=False, filed_diluted=None):
+# P-2: the latest filed diluted count and the vendor's count on one name differ by a factor of 100 or more (amendment A1's
+# rule). The screener's `shares_cover` (the latest filing's cover-page count, from the SEC) says which of the two is wrong;
+# "agree" is within 50%, the same test the reviewer's scan used.
+_SHARES_GAP = 100.0
+_SHARES_COVER_AGREE = 0.5
+
+
+def _positive_count(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and x == x and 0 < x < float("inf")
+
+
+def _shares_scale_gap(filed, vendor):
+    """vendor / filed when the two counts differ by a factor of 100 or more in either direction, else None."""
+    if not (_positive_count(filed) and _positive_count(vendor)):
+        return None
+    r = vendor / filed
+    return r if (r >= _SHARES_GAP or r <= 1 / _SHARES_GAP) else None
+
+
+def _counts_agree(a, b):
+    return 1 / (1 + _SHARES_COVER_AGREE) <= a / b <= 1 + _SHARES_COVER_AGREE
+
+
+def _shares_gap_state(filed, vendor, cover, is_10k_filer):
+    """P-2: None unless `filed` (the latest filed diluted count on today's share basis) and `vendor` differ by 100x or
+    more. Else a dict: `ratio` (vendor / filed), `cover` and `cover_date` (the screener's `shares_cover` record, None
+    when absent), `agrees` ("filed" | "vendor" | "both" | "neither" | None when there is no cover count),
+    `vendor_unusable` (the cover count agrees with the filed count only, and the company files 10-Ks: the vendor's count
+    is proven wrong and the share default is withheld) and `depositary` (the same, for a foreign filer: the vendor's
+    count is kept and may be a depositary-share count). `is_10k_filer` is called only when it decides."""
+    ratio = _shares_scale_gap(filed, vendor)
+    if ratio is None:
+        return None
+    cv = cover.get("val") if isinstance(cover, dict) else None
+    cv = float(cv) if _positive_count(cv) else None
+    if cv is None:
+        agrees = None
+    else:
+        a_f, a_v = _counts_agree(cv, filed), _counts_agree(cv, vendor)
+        agrees = "both" if (a_f and a_v) else "filed" if a_f else "vendor" if a_v else "neither"
+    only_filed = agrees == "filed"
+    ten_k = bool(is_10k_filer()) if only_filed else False
+    return {"ratio": ratio, "cover": cv, "cover_date": (cover or {}).get("date") if cv is not None else None,
+            "agrees": agrees, "vendor_unusable": only_filed and ten_k, "depositary": only_filed and not ten_k}
+
+
+def _shares_alert_text(g, filed, fy, vendor):
+    """P-2: SECTION 2's SHARES ALERT, from `_shares_gap_state`'s dict. Annotates; the filed cells are untouched."""
+    r = g["ratio"]
+    rel = f"{r:,.0f} times" if r >= 1 else f"1/{1 / r:,.0f} of"
+    text = (f"**SHARES ALERT - the latest filed diluted share count ({filed:,.0f}, FY{fy}, split-adjusted) and the "
+            f"vendor's count ({vendor:,.0f}) differ by a factor of 100 or more: the vendor's count is {rel} the filed "
+            f"count.**")
+    if g["cover"] is None:
+        text += " No cover-page count is held for this company, so which of the two is wrong is not established."
+        return text
+    when = f", {g['cover_date']}" if g["cover_date"] else ""
+    agree = {"filed": "agrees with the filed count", "vendor": "agrees with the vendor's count",
+             "both": "agrees with both", "neither": "agrees with neither"}[g["agrees"]]
+    text += f" The latest filing's cover-page count ({g['cover']:,.0f}{when}) {agree}."
+    if g["agrees"] == "vendor":
+        text += (" The filed count is the one that is off-scale: DATA 6B's weighted-average share column, and any "
+                 "per-share figure built from it, carries that factor.")
+    elif g["vendor_unusable"]:
+        text += (" The vendor's count is not usable: this pack gives no share-count default, and a valuation call must "
+                 "pass shares_diluted with a shares_reason.")
+    elif g["depositary"]:
+        text += " The vendor count may be a depositary-share count."
+    return text
+
+
+def _peer_shares_gap(vendor, years):
+    """P-2: the ratio (vendor / latest filed diluted count, split-adjusted as for the target) of a peer whose two counts
+    differ by 100x or more, else None. `years` is the peer's fundamentals_history ticker dict."""
+    series = _filed_diluted_series(years) if isinstance(years, dict) else []
+    if not series:
+        return None
+    split = _split_after_last_filing(vendor, years)
+    return _shares_scale_gap(series[-1][1] * (split["multiplier"] if split else 1.0), vendor)
+
+
+def _share_default(fin, V, point_in_time=False, filed_diluted=None, vendor_unusable=False):
     """S3 5.11: the share-count default, added after the E17 L2 finding on EZPW. SECTION 2's
     vendor count `V` is the BASIC count; this multiplies it by the company's own dilution factor
     (basic / diluted EPS) when the dilution is large enough to matter, so the default pairs with
@@ -891,6 +972,7 @@ def _share_default(fin, V, point_in_time=False, filed_diluted=None):
     loaded by `build_pack`). Returns (shares_default, shares_dilution_factor, period, warning),
     where `period` is `{"B", "k", "basic_eps", "diluted_eps", "label"}` or None (the caller reads
     `period["label"]` for the `shares_dilution_period` fact):
+      - `vendor_unusable` (P-2: the cover count proves V wrong): (None, None, None, a warning), as for no count.
       - V missing, or filed as 0 or negative (a share count of exactly 0.0 is a real filed value,
         never treated as "missing" per the 0.0 rule, but it is not a usable basic count either):
         (None, None, None, a warning naming which case it is) — the desk refuses as today (no
@@ -917,6 +999,12 @@ def _share_default(fin, V, point_in_time=False, filed_diluted=None):
             warning = (f"DATA 2's count is filed as {V:,.0f}: the desk has no share-count "
                       f"default from a count that is not positive.")
         return None, None, None, warning
+
+    if vendor_unusable:
+        # P-2: the cover count agrees with the filed count and the vendor's is 100x or more away from both (SECTION 2's
+        # SHARES ALERT says so): a count proven wrong is no basis for a default, so the desk refuses as for no count.
+        return None, None, None, ("DATA 2's count is proven wrong (see the SHARES ALERT): the desk has no share-count "
+                                  "default and refuses a call without shares_diluted.")
 
     if point_in_time:
         # S3 C review (2026-09-28): a point-in-time pack's SECTION 2 count is already the filed
@@ -1374,6 +1462,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     qrec = (rs2_data.load_json(SD / "fundamentals_quarterly.json") or {}).get("tickers", {}).get(t) or {}
     qs = qrec.get("quarters") or []
     h = _hist_doc.get("tickers", {}).get(t) or {}
+    _shares_cover = (_hist_doc.get("shares_cover") or {}).get(t)     # P-2: the latest filing's cover-page count
     # Revision 17 (brief A's provenance marker): the fields (goodwill, intangibles_ex_goodwill,
     # amortization_intangibles) this filer never tags in any held year, which the through-cycle record
     # reads as "none held" (0); a null in a tagged series is a gap. provenance["untagged_fields"][T].
@@ -2114,6 +2203,15 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L += [f"- {w['message']}" for w in data_warnings]
         L.append("")
 
+    # P-2: SHARES ALERT. Live packs only: a point-in-time pack's count IS the filed one, there is no vendor count to differ.
+    _shares_gap = None
+    if asof_date is None:
+        _shares_gap = _shares_gap_state(_filed_today, sh, _shares_cover,
+                                        lambda: fin.get("FX") is None and _screener_country(t) == "United States")
+    if _shares_gap:
+        L += [_shares_alert_text(_shares_gap, _filed_today, _filed_series[-1][0], sh), ""]
+    _sd_unusable = bool(_shares_gap and _shares_gap["vendor_unusable"])
+
     if asof_date is not None:
         price_line = (f"- Price: ${px} [point-in-time close, as of "
                       f"{asof_price_data['asof']}]" if px is not None else f"- Price: {ASOF_NULL}")
@@ -2156,7 +2254,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         facts["shares_outstanding"] = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool) and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
         # S3 5.11: the share-count default, from the same vendor income statements in every path.
         _sd_default, _sd_k, _sd_period, _sd_warning = _share_default(fin, facts["shares_outstanding"],
-                                                                     filed_diluted=_filed_today)
+                                                                     filed_diluted=_filed_today,
+                                                                     vendor_unusable=_sd_unusable)
         facts["shares_default"] = _sd_default
         facts["shares_dilution_factor"] = _sd_k
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
@@ -2186,7 +2285,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         facts["shares_outstanding"] = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool) and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
         # S3 5.11: the share-count default, from the same vendor income statements in every path.
         _sd_default, _sd_k, _sd_period, _sd_warning = _share_default(fin, facts["shares_outstanding"],
-                                                                     filed_diluted=_filed_today)
+                                                                     filed_diluted=_filed_today,
+                                                                     vendor_unusable=_sd_unusable)
         facts["shares_default"] = _sd_default
         facts["shares_dilution_factor"] = _sd_k
         facts["shares_dilution_period"] = _sd_period["label"] if _sd_period else None
@@ -3231,6 +3331,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             isinstance(row, dict) and isinstance((row.get("metrics") or {}).get("epsTtm"), (int, float))
             for row in stocks_list[:200])
         peer_pe, pe_source = [], None
+        peer_pe_left_out = 0
         if peer_syms and eps_field_exists:
             for row in stocks_list:
                 if not isinstance(row, dict) or row.get("symbol") not in peer_syms:
@@ -3259,6 +3360,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 if (isinstance(ni, (int, float)) and ni > 0
                         and isinstance(sh, (int, float)) and sh > 0
                         and isinstance(price, (int, float)) and price > 0):
+                    # P-2: a peer whose filed and vendor counts differ by 100x or more has a units error in one of
+                    # them, and its P/E is off by that factor: left out, and counted below.
+                    _pfin = rs2_data.load_json(SD / "financials" / f"{sym}.json") or {}
+                    if _peer_shares_gap(_pfin.get("Shares_Outstanding"), years) is not None:
+                        peer_pe_left_out += 1
+                        continue
                     peer_pe.append(price / (ni / sh))
             if peer_pe:
                 pe_source = ("price / (latest fiscal-year net income / diluted shares), "
@@ -3287,6 +3394,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                      f"{pe_sorted[int(pe_n * .75)]:.1f}x")
         else:
             L.append(f"- Cluster peers' trailing P/E: {NULL}")
+        if peer_pe_left_out:
+            L.append(f"- {peer_pe_left_out} cluster peer(s) left out of that trailing P/E: the peer's filed diluted "
+                     f"share count and the vendor's differ by a factor of 100 or more, so its P/E carries a units error.")
         L.append(f"- Cluster peers' EV/EBITDA: {NULL}")
         peer_band = rs2_data.anchor_multiple_bands(sector)
         if peer_band:
