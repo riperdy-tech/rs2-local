@@ -672,18 +672,27 @@ def data_health_scan(book):
         import data_health
         hist = (rs2_data.load_json(SD / "fundamentals_history.json") or {}).get("tickers", {})
         breaks = data_health.audit_series_breaks(book, hist)
+        share_gaps = data_health.audit_shares(book, hist)
     except Exception as e:
         log(f"data-health scan did not run (non-fatal): {str(e)[:120]}")
         return
     if not breaks:
         log("data-health scan: no provable scale corruption in the book.")
-        return
-    names = sorted({b["ticker"] for b in breaks})
-    log(f"data-health scan: {len(breaks)} provable 1000x scale break(s) in {len(names)} book "
-        f"name(s) — {', '.join(names)}. Their packs carry an integrity alert; NOT blocking.")
-    for b in breaks:
-        log(f"   {b['ticker']} {b['field']}: FY{b['from_year']} {b['from']:,} -> "
-            f"FY{b['to_year']} {b['to']:,}")
+    else:
+        names = sorted({b["ticker"] for b in breaks})
+        log(f"data-health scan: {len(breaks)} provable 1000x scale break(s) in {len(names)} book "
+            f"name(s) — {', '.join(names)}. Their packs carry an integrity alert; NOT blocking.")
+        for b in breaks:
+            log(f"   {b['ticker']} {b['field']}: FY{b['from_year']} {b['from']:,} -> "
+                f"FY{b['to_year']} {b['to']:,}")
+    # P-2: the two share counts the pack carries (the latest filed diluted count and the vendor's) disagree by a
+    # clean power of 1000: the same units error seen across sources rather than across years. Warns, never blocks.
+    if share_gaps:
+        log(f"data-health scan: {len(share_gaps)} book name(s) where the filed diluted share count and the "
+            f"vendor's differ by a power of 1000 — {', '.join(sorted(g['ticker'] for g in share_gaps))}. "
+            f"Where the gap is 100x or more their packs carry a SHARES ALERT; NOT blocking.")
+        for g in share_gaps:
+            log(f"   {g['ticker']} filed {g['raw']:,.0f} vs vendor {g['independent']:,.0f}")
 
 
 GRADER_TIMEOUT_SEC = 300
