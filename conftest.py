@@ -11,6 +11,7 @@ mtime, or added/removed, fails loudly instead of corrupting production state sil
 """
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -26,8 +27,14 @@ BATCH_ROOT = "closure_enrich"
 def _snapshot():
     if not CACHE.exists():
         return {}
-    return {str(p.relative_to(CACHE)): p.stat().st_mtime_ns
-            for p in CACHE.rglob("*") if p.is_file() and p.relative_to(CACHE).parts[0] != BATCH_ROOT}
+    out = {}
+    for dirpath, dirnames, filenames in os.walk(CACHE):
+        if Path(dirpath) == CACHE and BATCH_ROOT in dirnames:
+            dirnames.remove(BATCH_ROOT)          # never descended into: listing ~1,700 files twice per test is what made the suite slow
+        for name in filenames:
+            p = Path(dirpath) / name
+            out[str(p.relative_to(CACHE))] = p.stat().st_mtime_ns
+    return out
 
 
 def verify_batch_vintages(cache_dir):
