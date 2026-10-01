@@ -12,6 +12,7 @@ would encode a guess about what `build_pack` reads and then go stale silently wh
 
 Files named `<dir>__<name>.json` land at `<SD>/<dir>/<name>.json`; the rest land at `<SD>/<name>`.
 """
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -52,6 +53,15 @@ def screener_data_stub(tmp_path, monkeypatch):
             shutil.copyfile(f, sd / sub / leaf)
         else:
             shutil.copyfile(f, sd / f.name)
+    # Revision 18, amendment 2 (a missing provenance marker is a stated gap): the committed slice of the history predates brief A, so
+    # it carries no marker for GEV. Every name of the book carries one (the extractor processed it); the copy gives GEV the marker of
+    # nothing untagged, which is exactly what the code read for a missing marker before the guard, so the golden packs hold. A test
+    # of the guard itself removes it (tools/audit_202608/tests/test_rev18_marker_guard.py).
+    hist = sd / "fundamentals_history.json"
+    if hist.exists():
+        doc = json.loads(hist.read_text(encoding="utf-8"))
+        doc.setdefault("provenance", {}).setdefault("untagged_fields", {}).setdefault("GEV", [])
+        hist.write_text(json.dumps(doc), encoding="utf-8")
 
     monkeypatch.setattr(cap, "SD", sd)
     monkeypatch.setattr(common, "SD", sd)

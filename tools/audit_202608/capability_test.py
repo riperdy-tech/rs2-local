@@ -942,6 +942,15 @@ def _shares_gap_state(filed, vendor, cover, is_10k_filer):
             "agrees": agrees, "vendor_unusable": only_filed and ten_k, "depositary": only_filed and not ten_k}
 
 
+def _marker_for(hist_doc, t):
+    """Brief A's provenance marker of company `t` in the history document: the fields the extractor found this filer never tags in
+    any held year, as a list - [] is a marker with nothing untagged - or None when the history holds no marker for `t` at all
+    (revision 18, amendment 2: the extractor never processed the name; this is not the same as []). The record reads a missing
+    goodwill, intangibles or amortization series as "none held" only where the marker says so."""
+    m = ((hist_doc.get("provenance") or {}).get("untagged_fields") or {}).get(t)
+    return None if m is None else list(m)
+
+
 class DataRoot:
     """Revision 18 (brief section 2, step 1): the screener data a company's reference needs, each file read once and kept, so
     the closure (a thousand names, many trial rates) and the ledger do not re-read the 47 MB history. `sd` defaults to the
@@ -961,7 +970,8 @@ class DataRoot:
         return self.hist_doc().get("tickers", {}).get(t) or {}
 
     def untagged(self, t):
-        return ((self.hist_doc().get("provenance") or {}).get("untagged_fields") or {}).get(t) or []
+        """The marker list (possibly []), or None when the history has no marker for `t` (amendment 2: not the same as [])."""
+        return _marker_for(self.hist_doc(), t)
 
     def shares_cover(self, t):
         return (self.hist_doc().get("shares_cover") or {}).get(t)
@@ -1472,7 +1482,7 @@ def _record_for(t, h, hist_doc, coe, ga, be, rev_g2, median_5y, printed=True):
     _prov = hist_doc.get("provenance") or {}
     _dc_runs = ((_prov.get("runs") or {}).get(t) or {}).get("debt_current")
     _dc_tags = throughcycle_record.resolve_run_tags(_dc_runs, _prov.get("_tags"), yrs)
-    untagged = ((_prov.get("untagged_fields") or {}).get(t)) or []
+    untagged = _marker_for(hist_doc, t) or []       # a missing marker is stated by the callers (`reference_inputs`, the pack); the record reads it as none
     rec = throughcycle_record.analyse(h, coe, untagged_fields=untagged, base_year=max(yrs) if yrs else None,
                                       debt_current_tags=_dc_tags)
     val, basis, reason = consensus_reference.terminal_growth_default(ga, be, rec["g_rev"], rev_g2, median_5y)
@@ -1612,8 +1622,9 @@ def reference_inputs(t, root, estimates, anchors, closure, *, printed=True, toda
       today       the date the base year's age is measured at (default: now)
 
     Returns {"kwargs": the arguments of build (everything but the positional base_cf, estimates, coe, terminal_g, shares,
-    median_5y, which it also carries under those names), "coe", "coe_reason" (why there is none), "terminal_g", "record",
-    "shares_default", "sector", "loading", "fy" (`_fiscal_year_base`'s dict), "cash"}."""
+    median_5y, which it also carries under those names), "no_marker" (True when the history holds no brief-A provenance marker for
+    `t`: amendment 2, point 2 - `build` then returns no value and says why), "coe", "coe_reason" (why there is none),
+    "terminal_g", "record", "shares_default", "sector", "loading", "fy" (`_fiscal_year_base`'s dict), "cash"}."""
     today = today if today is not None else datetime.now().date()
     key = (t, today, id(estimates))
     memo = root.__dict__.setdefault("_static", {})
@@ -1624,14 +1635,15 @@ def reference_inputs(t, root, estimates, anchors, closure, *, printed=True, toda
         yrs = [int(y) for y in h if str(y).isdigit()]
         ttm_stale = bool(ttm and yrs and int(str(ttm.get("fy_leg_end", ""))[:4] or 0) != max(yrs))
         f = {} if ttm_stale else (ttm.get("fields") or {})
-        untagged = root.untagged(t)
+        marker = root.untagged(t)
+        untagged = [] if marker is None else marker
         fy = _fiscal_year_base(t, h, fin, ttm, f, ttm_stale, estimates, untagged, today)
         sector, _industry = rs2_data.sector_lookup(t)
         cash = _cash_term_for(fy["fy_rec"], sector, fy["fye_src"], fy["fye_conflict"], fy["fy_end_dt"]) if fy["latest_yr"] is not None else None
         shares_default, _sh, _filed = _shares_default_state(t, fin, h, root.shares_cover(t))
         _size, _br, _gl, _gs, median_5y = _base_rate_median(h, root.sd, None)
-        memo[key] = (h, fy, sector, cash, shares_default, median_5y)
-    h, fy, sector, cash, shares_default, median_5y = memo[key]
+        memo[key] = (h, fy, sector, cash, shares_default, median_5y, marker is None)
+    h, fy, sector, cash, shares_default, median_5y, no_marker = memo[key]
     rf, ga, be = anchors.get("rf"), anchors.get("ga"), anchors.get("breakeven")
     loading = (anchors.get("loading") or {}).get(sector)
     erp = (closure or {}).get("erp")
@@ -1650,8 +1662,9 @@ def reference_inputs(t, root, estimates, anchors, closure, *, printed=True, toda
                   shares=shares_default if (isinstance(shares_default, (int, float)) and shares_default > 0) else None,
                   median_5y=median_5y, da=ref_fy.get("da"), capex=ref_fy.get("capex"), stub_months=ref_fy.get("stub"),
                   base_label=ref_fy.get("label"), levels_reason=ref_fy.get("levels_reason"), levels_block=ref_fy.get("levels_block"),
-                  anchor=ga_used, record=record, base_ni=ref_fy.get("x"), base_revenue=ref_fy.get("revenue"), cash=cash)
-    return {"kwargs": kwargs, "coe": coe, "coe_reason": coe_reason, "terminal_g": terminal_g, "terminal_basis": basis,
+                  anchor=ga_used, record=record, base_ni=ref_fy.get("x"), base_revenue=ref_fy.get("revenue"), cash=cash,
+                  unavailable_reason=consensus_reference.NO_MARKER_REASON if no_marker else None)
+    return {"kwargs": kwargs, "no_marker": no_marker, "coe": coe, "coe_reason": coe_reason, "terminal_g": terminal_g, "terminal_basis": basis,
             "terminal_reason": reason, "record": record, "shares_default": shares_default, "sector": sector, "loading": loading,
             "fy": fy, "cash": cash, "median_5y": median_5y}
 
@@ -1765,6 +1778,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # amortization_intangibles) this filer never tags in any held year, which the through-cycle record
     # reads as "none held" (0); a null in a tagged series is a gap. provenance["untagged_fields"][T].
     _untagged_fields = ((_hist_doc.get("provenance") or {}).get("untagged_fields") or {}).get(t) or []
+    # Revision 18 (amendment 2, point 2): a name the extractor never processed has NO marker, which is not the same as a marker of
+    # nothing untagged ([]): its record would be computed without subtracting goodwill and intangibles. Such a name gets no
+    # reference, and the DEFAULTS lines derived from the record say so with the reason.
+    _no_marker = _marker_for(_hist_doc, t) is None
     bat = (rs2_data.load_json(SD / "fundamentals_battery.json") or {}).get("tickers", {}).get(t) or {}
     ob = rs2_data.load_json(HERE / "cache" / f"openbb_{t}.json") or {}
     en = rs2_data.load_json(HERE / "enrich" / f"{t}.json") or {}
@@ -1924,7 +1941,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
 
     def _record_facts():
         """Revision 17: the record's part of the facts, stamped once the branch above has run."""
-        if _record is None:
+        if _record is None or _no_marker:
             return
         _rt = _record["ronic_t"]
         facts["terminal_ronic"] = pack_facts.q_rate(_rt) if _rt is not None else None
@@ -3412,9 +3429,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                                        {"erp": _clos_erp} if _clos_erp is not None else None, printed=True,
                                        today=datetime.now().date())
                 _ref = consensus_reference.build(**_ri["kwargs"])
-                if _ri["coe"] is None and _ref.get("value") is None:
+                if _ri["coe"] is None and _ref.get("value") is None and not _ri["no_marker"]:
                     _ref["reason"] = f"the closure premium is missing or stale ({_clos_asof or _clos_why})"
-                if not _ref_fy and _ref.get("value") is None and _ref_fy_na:
+                if not _ref_fy and _ref.get("value") is None and _ref_fy_na and not _ri["no_marker"]:
                     _ref["reason"] = _ref_fy_na
                 # E15, revision 18 (brief 1.5): outside the fail-fast fence the reference is no longer a credible
                 # summary of the consensus (spot commodity earnings carried forward as a perpetuity): the line prints
@@ -3823,8 +3840,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # the desk. `coe_anchor_pct` and `terminal_def_val`/`terminal_g_val` are set by whichever
     # SECTION 1.5 branch ran above (both branches use these same names) and are still in scope
     # here — Python functions have no block scope.
-    facts["long_run"] = pack_facts.quantize_long_run(_lr_raw)
-    L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"])), ""]
+    facts["long_run"] = {} if _no_marker else pack_facts.quantize_long_run(_lr_raw)
+    L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker), ""]
 
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS
     LAST_PACK_MACRO_DEGRADED = macro_degraded

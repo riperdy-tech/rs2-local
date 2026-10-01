@@ -439,9 +439,14 @@ def _compound(base, growth):
     return out
 
 
+# revision 18 (amendment 2, point 2): the reason of a name whose screener history carries no brief-A provenance marker at all
+# (the field extractor never processed it). `reference_inputs` passes it to `build`; the closure builder refuses to build on it.
+NO_MARKER_REASON = "the screener history has no tangible-capital fields for this name"
+
+
 def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex=None,
           stub_months=None, base_label=None, levels_reason=None, levels_block=None,
-          anchor=None, record=None, base_ni=None, base_revenue=None, cash=None):
+          anchor=None, record=None, base_ni=None, base_revenue=None, cash=None, unavailable_reason=None):
     """Everything the pack prints: {'value', 'method', 'path', 'flows', 'c1', 'c2', 'reason',
     'levels', 'range', 'stub_months', 'base_label', 'levels_reason'}, and (revision 17) 'earnings',
     'revenue', 'wc', 'nwc_intensity', 'long_run', 'long_run_path', 'terminal_ronic', 'ronic0',
@@ -470,7 +475,11 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     rule does not add it back), the levels method's two cash-flow and two earnings levels each lose i_L, and the value gains
     cash / shares at face (not rolled forward). When the operating base (or the year-2 level) is no longer positive after i_L,
     the value is cash / shares, method "cash_only", stamp `operating_base_not_positive`. `shares` is the pack's share-count
-    default."""
+    default.
+
+    Amendment 2, point 2: `unavailable_reason` (None for every name that carries brief A's provenance marker) is the reason the
+    history cannot be read as a record at all - a missing marker is a stated gap, never a silent change of basis. The reference then
+    has no value: `value` None, that `reason`, the stamp `no_tangible_capital_marker`, and nothing else is computed."""
     c1, c2, why = consensus_earnings_growth(estimates)
     is_default = (anchor is not None and terminal_g is not None and abs(terminal_g - anchor) > 1e-6)
     out = {"value": None, "method": None, "path": None, "flows": None, "c1": c1, "c2": c2,
@@ -491,6 +500,10 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
         out["stamps"] += list(cash.get("stamps") or [])
     if cash_on:
         out["cash"], out["interest_removed"] = c_l, i_l
+    if unavailable_reason is not None:
+        out["reason"] = unavailable_reason
+        out["stamps"].append("no_tangible_capital_marker")
+        return out
     missing = [n for n, v in (("cost-of-equity anchor", coe), ("terminal-growth anchor", terminal_g),
                               ("diluted shares", shares), ("growth base-rate median", median_5y))
                if v is None]

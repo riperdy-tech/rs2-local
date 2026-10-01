@@ -389,7 +389,7 @@ def test_the_desk_equals_the_reference_on_the_reference_own_inputs(record_kw):
 
 
 def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None, separate_borrowings=False,
-                    op_margins=None, enrich_override=None):
+                    op_margins=None, enrich_override=None, no_marker=False):
     """build_pack("GEV") on the synthetic twelve-year history and estimates above (no network, clock frozen)."""
     import capability_test as cap
     import rs2_data
@@ -423,7 +423,7 @@ def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None
     if separate_borrowings:                      # short-term borrowings that differ from debt_current (2% of revenue)
         for y in hist:
             hist[y] = dict(hist[y], short_term_borrowings_separate=hist[y]["revenue"] * 0.01)
-    prov = {"untagged_fields": {"GEV": list(untagged)}}
+    prov = {"untagged_fields": {} if no_marker else {"GEV": list(untagged)}}      # no_marker: the extractor never processed GEV
     if debt_tag is not None:                     # brief A's provenance: the tag debt_current resolved from
         prov.update({"_tags": [debt_tag], "runs": {"GEV": {"debt_current": [[2010, 0, "p"]]}}})
     doc = {"tickers": {"GEV": {str(y): r for y, r in hist.items()}}, "provenance": prov}

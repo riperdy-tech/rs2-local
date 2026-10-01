@@ -13,6 +13,8 @@ Pipeline (each step a function here; nothing is printed that names a company):
   2. the consensus batch (`closure_enrich_batch.py`, the one networked step, run separately): enrich_ticker.enrich over the
                          aggregate's names, cached raw under cache/closure_enrich/<vintage date>/.
   3. `members`           the aggregate names that have a loading and whose reference value is above 0 at MRI's implied premium; fixed.
+                         The build refuses, before this step, when any aggregate name has no brief-A provenance marker in the history
+                         (amendment 2, point 2: such a name has no reference and could only drop out silently).
   4. `solve_erp`         bisection on [0.0005, 0.20], 80 iterations, the record recomputed at each trial rate (the reference is built
                          by capability_test.reference_inputs - the single source of the reference's inputs - and consensus_reference.build).
                          No root: the nearer bound and a flag. Refuses to publish below 300 members or below 60% of the aggregate's cap.
@@ -171,6 +173,18 @@ class Refused(Exception):
     """The closure is not published: the coverage floor (300 members, 60% of the aggregate's capitalisation) or an input is missing."""
 
 
+def check_markers(constituents, root):
+    """Refuse to build when any aggregate name has no brief-A provenance marker in the history (amendment 2, point 2): such a name
+    has no reference, so it could only drop out of the membership silently, and the closure would be solved on a smaller set
+    than the one the book is valued on. A marker of nothing untagged ([]) is a marker; only a missing entry refuses. The count is
+    named, no ticker."""
+    n = sum(1 for c in constituents if root.untagged(c["ticker"]) is None)
+    if n:
+        raise Refused(f"{n} of the aggregate's {len(constituents)} names have no tangible-capital provenance marker in the screener "
+                      f"history (the field extractor never processed them): the closure is not built on a history that does not "
+                      f"carry brief A's fields for every name valued; nothing is published")
+
+
 def check_floor(n_members, coverage):
     """Refuse to publish when C holds fewer than MIN_MEMBERS names or less than MIN_COVERAGE of the aggregate's capitalisation
     (mirroring MRI's coverage floor)."""
@@ -265,6 +279,8 @@ def build_closure(*, root, cap_mod, rs2_mod, enrich_dir, asof, today=None):
         raise Refused("an MRI anchor the closure needs is not usable (nominal 10-year, long-run growth anchor or implied premium)")
     agg, stats = build_aggregate(root, cap_mod)
     constituents = agg["constituents"]
+    check_markers(constituents, root)
+    stats["constituents_without_marker"] = 0
     sectors = {}
     for c in constituents:
         sec, _ind = rs2_mod.sector_lookup(c["ticker"])

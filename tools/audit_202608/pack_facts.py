@@ -759,9 +759,11 @@ def _terminal_g_explanation(f: dict[str, Any]) -> str:
     return f"the Base terminal_g; {tail}"
 
 
-def _terminal_ronic_explanation(f: dict[str, Any]) -> str:
+def _terminal_ronic_explanation(f: dict[str, Any], no_marker: bool = False) -> str:
     lr = f.get("long_run") or {}
     tail = "a Base terminal_ronic more than 2 points away needs terminal_reason"
+    if no_marker:
+        return f"not available: {consensus_reference.NO_MARKER_REASON}; {tail}"
     if "record_not_available" in (lr.get("stamps") or []):
         return (f"the Base terminal return on new investment; your record has fewer than 3 years of returns "
                 f"on tangible invested capital, so it is the cost of equity and growth adds no value; {tail}")
@@ -771,8 +773,10 @@ def _terminal_ronic_explanation(f: dict[str, Any]) -> str:
             f"{tail}")
 
 
-def _working_capital_explanation(f: dict[str, Any]) -> str:
+def _working_capital_explanation(f: dict[str, Any], no_marker: bool = False) -> str:
     lr = f.get("long_run") or {}
+    if no_marker:
+        return f"not available: {consensus_reference.NO_MARKER_REASON}"
     if not f.get("working_capital"):
         return ("no working-capital deduction: the reference has no revenue path or your record holds fewer "
                 "than 5 years with a classified balance sheet")
@@ -784,14 +788,16 @@ def _working_capital_explanation(f: dict[str, Any]) -> str:
             f"reference_base_b (a base that matches an owner-earnings figure is owner earnings)")
 
 
-def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = None) -> str:
+def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = None, no_marker: bool = False) -> str:
     """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
     TASK. Prints every one of the `KEYS` (one fact per line; revision 17: `base_year_cap` only when
     the cap applied, `split_after_last_filing` only when a split was detected), plus two display-only lines that carry no facts key: the fixed rule lines
     `cash_flow_life` and `price`. The reader (`_from_defaults_block`) ignores display lines.
     Revision 17 removed the `default_exit_multiple` display line: the desk has no exit multiple.
     `split_confirmed` (brief F7, not a fact): whether the split after the last filing is confirmed (a US company whose
-    vendor EPS agrees); it chooses the split line's sentence, and None reads as not confirmed."""
+    vendor EPS agrees); it chooses the split line's sentence, and None reads as not confirmed. `no_marker` (revision 18, amendment 2,
+    not a fact): the history holds no tangible-capital provenance marker for the name, so the three lines derived from its record
+    (terminal_ronic, long_run, working_capital) print "not available" and say why."""
     f = facts
 
     def line(key, value, explanation):
@@ -852,9 +858,10 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     lines.append(line("terminal_g_anchor", _dv_rate2(f.get("terminal_g_anchor")),
                       "the long-run nominal growth anchor"))
     lines.append(line("terminal_ronic", _dv_rate4(f.get("terminal_ronic")),
-                      _terminal_ronic_explanation(f)))
+                      _terminal_ronic_explanation(f, no_marker)))
     lr_series = throughcycle_record.margin_series_name((f.get("long_run") or {}).get("om_basis"))
     lines.append(line("long_run", _render_long_run(f.get("long_run") or {}),
+                      f"not available: {consensus_reference.NO_MARKER_REASON}" if no_marker else
                       "The desk values years 6 on from X_5 (earnings before acquired-intangible "
                       "amortization), pays for growth at a return that fades from r_tc (your record's 8-year median "
                       "return on tangible invested capital) to "
@@ -909,7 +916,7 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
         lines.append(line("split_after_last_filing", _dv_split(split_fact),
                           _split_explanation(split_fact, split_confirmed is True)))
     lines.append(line("working_capital", _render_working_capital(f.get("working_capital")),
-                      _working_capital_explanation(f)))
+                      _working_capital_explanation(f, no_marker)))
 
     lines.append(line("next_fy_revenue_growth", _dv_growth1(f.get("next_fy_revenue_growth")),
                       "Base years 3-5 above it need guidance_deviation_reason, or the desk holds "
