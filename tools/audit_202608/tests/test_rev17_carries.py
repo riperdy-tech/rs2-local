@@ -95,10 +95,12 @@ def test_the_facts_keep_the_full_list_for_the_verdict_and_parity_ignores_it():
 def test_in_the_pack_the_block_lists_the_window_and_the_facts_the_twelve_years(screener_data_stub, monkeypatch):
     pack = _synthetic_pack(monkeypatch, drop_goodwill=True)         # goodwill null in every year: partial, 2014-2025
     lr = pack.facts["long_run"]
-    assert lr["stamps"] == ["tangible_equity_partial:2018-2025"]
-    assert lr["stamps_full"] == [f"tangible_equity_partial:{FULL}"]
+    # revision 18: the suite's bill rate is "not available" (conftest), so the cash term is stamped after the record's
+    assert lr["stamps"] == ["tangible_equity_partial:2018-2025", "cash_term_not_available_no_bill_rate"]
+    assert lr["stamps_full"] == [f"tangible_equity_partial:{FULL}", "cash_term_not_available_no_bill_rate"]
     line = next(l for l in str(pack).splitlines() if l.startswith("- long_run: "))
-    assert "stamps=tangible_equity_partial:2018-2025 |" in line and "2014" not in line.split(" | ")[0]
+    assert "stamps=tangible_equity_partial:2018-2025;cash_term_not_available_no_bill_rate |" in line
+    assert "2014" not in line.split(" | ")[0]
     assert pack_facts.parity(pack.facts, pack_facts.from_text(str(pack))) == []
 
 

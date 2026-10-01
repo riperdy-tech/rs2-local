@@ -100,12 +100,13 @@ def test_five_11_share_keys_never_found_pre_revision_15():
 
 def test_facts_version_and_key_count():
     # revision 17 (brief B 5): FACTS_VERSION 4 -> 5 and four new keys
-    assert pack_facts.FACTS_VERSION == 5
     # revision 17 (brief C4): one more key, split_after_last_filing; same revision, so the version stays 5
     # revision 17 (brief F4): one more, reference_base_b (the fiscal-year base the reference grows from): 29 -> 30
-    assert len(pack_facts.KEYS) == 30
-    assert pack_facts.KEYS[-6:] == ["terminal_ronic", "long_run", "working_capital", "base_year_cap",
-                                    "split_after_last_filing", "reference_base_b"]
+    # revision 18 (brief 1.7): FACTS_VERSION 5 -> 6 and one more key, excess_cash: 30 -> 31
+    assert pack_facts.FACTS_VERSION == 6
+    assert len(pack_facts.KEYS) == 31
+    assert pack_facts.KEYS[-7:] == ["terminal_ronic", "long_run", "working_capital", "base_year_cap",
+                                    "split_after_last_filing", "reference_base_b", "excess_cash"]
 
 
 def test_empty_has_all_24_keys():
@@ -153,6 +154,11 @@ def test_defaults_block_round_trip_ezpw_example():
         "- filed_shares_fy: 2025 | the fiscal year of that average",
         "- owner_earnings_default_b: 0.148 | the Base base_cf; more than 2% away needs base_cf_reason",
         "- owner_earnings_source: ttm_filed | where that default comes from",
+        # revision 18 (brief 1.7): the excess cash the desk adds at face ("not available" here: no cash term computed)
+        "- excess_cash: not available | $B: the base fiscal year's cash and short-term investments at face (0 for a "
+        "financial company; not available when the cash term could not be computed, see long_run stamps), which the "
+        "desk adds per share to every scenario's value; the owner-earnings default and the reference base exclude the "
+        "after-tax interest on it",
         "- cash_basis_b: 0.126 | the alternative base (includes working-capital swings)",
         # revision 17, brief F4: the fiscal-year base the reference grows from ("not available" here: no reference)
         "- reference_base_b: not available | the fiscal-year owner-earnings base the CONSENSUS-IMPLIED VALUE grows from",
@@ -165,19 +171,19 @@ def test_defaults_block_round_trip_ezpw_example():
         "- terminal_g_anchor: 3.75% | the long-run nominal growth anchor",
         # revision 17: the default_exit_multiple line is gone (the desk has no exit multiple); the three
         # through-cycle lines print "not available" for a facts object that holds none of them
-        # brief F4: the return is the blend of the 8-year and latest-3-year medians, retained at p capped by persistence
+        # revision 18: the return is the original rule, r + p x (R_tc - r), no blend and no caps
         "- terminal_ronic: not available | the Base terminal return on new investment: the cost of equity "
-        "plus retention times the excess over it of r_blend, your record's blended return on tangible invested "
-        "capital (both in long_run; retention is p, the share of your last eight years above the cost of equity, "
-        "capped at the measured persistence); a Base terminal_ronic more than 2 points away needs terminal_reason",
+        "plus p times the excess over it of r_tc, your record's median return on tangible invested "
+        "capital (both in long_run; p is the share of your last eight years above the cost of equity); "
+        "a Base terminal_ronic more than 2 points away needs terminal_reason",
         # brief B2 F6: two sentences; brief F4: the explanation names the numbers that drive the long run
         "- long_run: not available | The desk values years 6 on from X_5 (earnings before acquired-intangible "
-        "amortization), pays for growth at a return that fades from r_blend (the blend of r8 and r3, your "
-        "record's 8-year and latest-3-year median returns on tangible invested capital) to terminal_ronic, and "
+        "amortization), pays for growth at a return that fades from r_tc (your record's 8-year median return "
+        "on tangible invested capital) to terminal_ronic, and "
         "moves the margin from m5 to m_long by year 10 (margin_ratio = m_long / m5; none means the margin is "
-        "held): om_5, the operating margin the consensus implies at year 5, closes margin_fraction of its gap "
-        "to om_tc, your record's 8-year median operating margin (to zero for a loss record; margin_cell names "
-        "the case). The members are the record behind it.",
+        "held): om_5, the operating margin the consensus implies at year 5, moves all the way to om_trend, the "
+        "trend level of your record's 8-year operating margin (to zero for a loss record). "
+        "The members are the record behind it.",
         "- working_capital: not available | no working-capital deduction: the reference has no revenue "
         "path or your record holds fewer than 5 years with a classified balance sheet",
         "- net_debt_b: -0.048 | the firm frame's net debt; another figure needs net_debt_reason "
@@ -206,7 +212,7 @@ def test_defaults_block_round_trip_ezpw_example():
     for expected in expected_lines:
         assert expected in block, expected
     f = pack_facts.from_text(_rev15(block))
-    assert f["version"] == 5
+    assert f["version"] == 6
     assert pack_facts.parity(facts, f) == []
     assert "exit multiple" not in block.lower() and "default_exit_multiple" not in block
 
@@ -309,7 +315,7 @@ def test_revision_15_marker_only_on_first_line():
     text = "# DATA PACK - X\n\nsome text mentioning (pack revision 15) later on\n"
     # No DEFAULTS block and no raise: falls to the legacy reader.
     f = pack_facts.from_text(text)
-    assert f["version"] == 5
+    assert f["version"] == 6
     assert f["source"] == "text"
 
 
@@ -360,7 +366,7 @@ def test_revision_14_reads_as_legacy():
     text = "# DATA PACK - X   (pack revision 14)\n\nsome text with no defaults block\n"
     assert pack_facts.is_revision_15(text) is False
     f = pack_facts.from_text(text)
-    assert f["version"] == 5 and f["source"] == "text"
+    assert f["version"] == 6 and f["source"] == "text"
 
 
 def test_revisions_15_and_16_read_the_same():

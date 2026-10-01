@@ -1222,6 +1222,37 @@ def _mri_query(sql, params=None):
         return []
 
 
+def bill_rate_mean(start, end):
+    """(rate, source) - the mean 3-month Treasury bill rate (FRED DTB3) over the observations dated after `start` and on or
+    before `end`, as a FRACTION (0.0397), or (None, reason). `start` and `end` are ISO dates or dates; the reference's cash
+    term (revision 18, brief 1.3) passes the 12 months to the base fiscal year's end.
+
+    Read-only, from MRI's own raw store, `data/raw/fred/raw_observations.parquet` under `paths.resolve("mri_dir")`. The
+    reason is stated and the caller stamps it; no rate is ever substituted."""
+    mri_dir = paths.resolve("mri_dir", CONFIG, required=False)
+    if mri_dir is None:
+        return None, "mri_dir_not_found"
+    p = Path(mri_dir) / "data" / "raw" / "fred" / "raw_observations.parquet"
+    if not p.exists():
+        return None, f"no_raw_observations_parquet({p})"
+    try:
+        import duckdb
+    except ImportError:
+        return None, "duckdb_not_installed"
+    lo, hi = str(start)[:10], str(end)[:10]
+    con = duckdb.connect()
+    try:
+        n, total = con.execute(
+            "SELECT count(*), sum(value) FROM read_parquet(?) WHERE series_id = 'DTB3' AND value IS NOT NULL "
+            "AND CAST(date AS DATE) > CAST(? AS DATE) AND CAST(date AS DATE) <= CAST(? AS DATE)",
+            [str(p), lo, hi]).fetchone()
+    finally:
+        con.close()
+    if not n:
+        return None, f"no_DTB3_observations({lo},{hi}]"
+    return float(total) / n / 100.0, f"DTB3_mean({n} observations in ({lo},{hi}])"
+
+
 # The exact series MRI's own cost-of-capital anchor reads for these three legs (config/
 # anchors.yaml risk_free.{nominal_10y,real_10y,breakeven_10y}), all FRED, all quoted in percent.
 _ASOF_RISK_FREE_SERIES = {

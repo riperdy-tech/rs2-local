@@ -194,7 +194,11 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # rule's numbers, r8, r3, r_blend, retention) and a longer explanation
     # revision 17, brief F2 (+33 chars, was 21746): the reference_status explanation names the fourth status (+43) and the GEV
     # fixture's record has no margin record on either line, so its stamp reads margin_record_not_available (-10)
-    assert len(text1) == 21779
+    # revision 18, part 1 (+162 chars, was 21779; PACK_REVISION stays 17 until part 3): the DEFAULTS lines the engine changes and
+    # nothing else - terminal_ronic (the original rule r + p x (R_tc - r), no blend), the long_run members (r8, r3, r_blend,
+    # retention, margin_cell and margin_fraction gone, om_trend joined, the cash-term stamp) with their two explanations, and
+    # the new excess_cash line; the golden diff is in rev18/part1_golden_diff/
+    assert len(text1) == 21941
 
     # Assert byte equality with golden file
     golden_file = FIXTURE / "golden_pack_GEV_rev17.md"

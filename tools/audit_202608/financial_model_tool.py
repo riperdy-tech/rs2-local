@@ -199,8 +199,9 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r):
     (`ni_over_oe`: `long_run_base_ratio_ni`), each when positive, else owner earnings themselves - labelled
     fallbacks (never a refusal). The margin factor is the facts' `margin_ratio` (brief F3: the reference's margin rule
     computed it; the desk computes none, and there is none without a reference or in an older block).
-    RONIC_0 = max(r, r_blend) when the facts carry r_blend, else max(r, R_tc) for an older block, else r; RONIC_T is the
-    scenario's terminal_ronic, else the facts', else r (a record the pack did not carry: growth earns only its cost)."""
+    RONIC_0 = max(r, R_tc) (the facts' r_tc; revision 18 - an older block's r_blend is no longer read), else r when the facts
+    carry no R_tc; RONIC_T is the scenario's terminal_ronic, else the facts', else r (a record the pack did not carry:
+    growth earns only its cost)."""
     lr = long_run or {}
     stamps = []
     e5f, oe5f = lr.get("e5"), lr.get("oe5")
@@ -220,8 +221,8 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r):
         else:
             e5 = oe5
             stamps.append("long_run_on_owner_earnings")
-    r_blend, r_tc = lr.get("r_blend"), lr.get("r_tc")
-    ronic0 = max(r, r_blend) if _is_num(r_blend) else (max(r, r_tc) if _is_num(r_tc) else r)
+    r_tc = lr.get("r_tc")
+    ronic0 = max(r, r_tc) if _is_num(r_tc) else r
     if _is_num(ronic_t_in):
         ronic_t = float(ronic_t_in)
     else:
@@ -251,6 +252,7 @@ def unbundled_dcf(
     terminal_ronic: Optional[float] = None,
     long_run: Optional[Dict[str, Any]] = None,
     working_capital: Optional[List[float]] = None,
+    excess_cash: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Revision 17 (brief B): a funded-growth DCF. Years 1-5 are the explicit cash flows (owner
     earnings less the pack's working-capital schedule, when there is one); from year 6 growth is
@@ -271,6 +273,9 @@ def unbundled_dcf(
       so the desk and the reference agree on identical inputs (the pack's stub, no roll without one).
     - Optional finite_life_years (1-60): discrete flows for N years with no terminal value, on the
       owner-earnings path as before (no working capital, no roll): stamped finite_life_owner_earnings.
+    - Revision 18 (brief 1.7): `excess_cash` ($B, the pack's DEFAULTS amount) is added at face per share to the value in the
+      equity frame (the firm frame's net_debt already nets the cash); the base_cf it pairs with excludes the after-tax
+      interest on it. None adds nothing.
     - Valuation frame gating (equity refuses nonzero net_debt; firm requires net_debt and shares_diluted).
       The firm frame applies the same long run, an approximation (the return on new investment is measured on
       tangible invested capital before interest and applied to equity earnings: conservative for a levered company).
@@ -379,10 +384,14 @@ def unbundled_dcf(
     if finite_life_years is None and rate <= terminal_g:
         return {"error": f"wacc ({rate}) must be greater than terminal_g ({terminal_g})", "validation_error": True}
 
+    # revision 18: the cash at face, in the equity frame only (the firm frame's net_debt already nets it)
+    cash_b = float(excess_cash) if (excess_cash is not None and frame == "equity") else 0.0
+
     if finite_life_years is not None:
         return _finite_life_dcf(base_cf, rates, rate, terminal_g, fade_years, finite_life_years,
                                 annuity_flow, annuity_cap_rate, effective_net_debt, effective_shares,
-                                frame, rate_type_norm, sbc_treatment, sbc_dilution)
+                                frame, rate_type_norm, sbc_treatment, sbc_dilution,
+                                cash_b=cash_b)
 
     # ---- years 1-5: owner earnings less working capital --------------------------------------------
     five, fade_left = _five_and_fade(rates, terminal_g, fade_years)
@@ -420,8 +429,8 @@ def unbundled_dcf(
         annuity_pv = float(annuity_flow) / cap_rate
 
     ev = dcf_pv + tv_pv + annuity_pv
-    eq = ev - effective_net_debt
-    per_share_iv = eq / effective_shares
+    eq = ev - effective_net_debt + cash_b
+    per_share_iv = (ev - effective_net_debt) / effective_shares + cash_b / effective_shares
     final_cf = (flows15[-1] if lr["floor"] or not lr["flows"] else lr["flows"][-1])
     implied_multiple = (lr["tv"] / final_cf) if (not lr["floor"] and final_cf > 0) else None
     tv_share = (tv_pv / ev) if ev > 0 else 0.0
@@ -455,6 +464,7 @@ def unbundled_dcf(
         "terminal_ronic": _json_ronic(ronic_t),
         "ronic_start": _json_ronic(ronic0),
         "net_debt": round(effective_net_debt, 2),
+        "excess_cash": round(cash_b, 4),
         "shares_diluted": round(effective_shares, 4),
         "valuation_frame": frame,
         "rate_type": rate_type_norm,
@@ -495,7 +505,7 @@ def unbundled_dcf(
 
 def _finite_life_dcf(base_cf, rates, rate, terminal_g, fade_years, finite_life_years, annuity_flow,
                      annuity_cap_rate, effective_net_debt, effective_shares, frame, rate_type_norm,
-                     sbc_treatment, sbc_dilution):
+                     sbc_treatment, sbc_dilution, cash_b=0.0):
     """A finite cash-flow life: today's arithmetic, kept as it was (brief B 4g): the owner-earnings
     path for N years (explicit rates, then the linear fade, then terminal_g), no terminal value, no
     working-capital deduction, no roll-forward. Stamped finite_life_owner_earnings."""
@@ -546,13 +556,14 @@ def _finite_life_dcf(base_cf, rates, rate, terminal_g, fade_years, finite_life_y
         annuity_pv = float(annuity_flow) / cap_rate
 
     ev = dcf_pv + annuity_pv
-    eq = ev - effective_net_debt
-    per_share_iv = eq / effective_shares
+    eq = ev - effective_net_debt + cash_b
+    per_share_iv = (ev - effective_net_debt) / effective_shares + cash_b / effective_shares
 
     res: Dict[str, Any] = {
         "per_share_iv": round(per_share_iv, 2),
         "enterprise_value": round(ev, 2),
         "equity_value": round(eq, 2),
+        "excess_cash": round(cash_b, 4),
         "dcf_pv": round(dcf_pv, 2),
         "terminal_value_nominal": 0,
         "terminal_value_pv": 0,
@@ -1288,8 +1299,18 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     long_run_ctx = ctx.get("long_run")
     wc_ctx = ctx.get("working_capital")
     cash_basis_b = ctx.get("cash_basis_b")
-    levels_ctx = ctx.get("levels") or {}
     ronic_default = ctx.get("terminal_ronic")
+    # revision 18 (brief 1.7): the excess cash the desk adds at face to every scenario's value ($B): the model's own amount
+    # (excess_cash, with excess_cash_reason when it departs from the DEFAULTS), else the DEFAULTS amount; None adds nothing
+    excess_default = ctx.get("excess_cash")
+    excess_given = params.get("excess_cash")
+    excess_use = (_to_b(excess_given) if excess_given is not None
+                  else (_to_b(excess_default) if _is_num(excess_default) else None))
+    # revision 18 (brief 1.5): a reference outside the street-target fence is annotation only; every band and refusal that
+    # reads the reference reads this flag first
+    ref_in_force = consensus_reference.reference_in_force(ctx.get("reference_status"))
+    # ... so the printed year-1/year-2/bull2/bear2 levels hold a Base and bound a Bull or Bear only for a reference in force
+    levels_ctx = (ctx.get("levels") or {}) if ref_in_force else {}
     # brief F6: the owner-earnings figures a base_cf may match (the DEFAULTS owner earnings, and the fiscal-year base the
     # reference grows from)
     oe_figures = [x for x in (ctx.get("owner_earnings_default_b"), ctx.get("reference_base_b")) if _is_num(x) and x != 0]
@@ -1335,6 +1356,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 terminal_ronic=ronic_in,
                 long_run=long_run_ctx,
                 working_capital=wc_use,
+                excess_cash=excess_use,
             )
             if not res.get("error"):
                 if wc_in_base:
@@ -1599,12 +1621,21 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                           f"net_debt {nd:.4f}B is more than {tol:.4f}B from net_debt_default_b "
                           f"{net_debt_default:.4f}B")
 
+        # R15 (revision 18, brief 1.7): an excess_cash that departs from the DEFAULTS amount needs a dated reason (a default of
+        # None counts as 0; the tolerance is the printed precision, $1,000)
+        if excess_given is not None:
+            given_b = _to_b(excess_given)
+            default_b = _to_b(excess_default) if _is_num(excess_default) else 0.0
+            if given_b is not None and abs(given_b - default_b) > 1.0000001e-6:
+                _need(reasons_needed, "excess_cash_reason", _reason_given(params.get("excess_cash_reason")), True,
+                      f"excess_cash {given_b:.6f}B is not the DEFAULTS excess_cash {default_b:.6f}B")
+
         # R10 (Base value vs the fiscal-year reference). Revision 17: the Base's years 1-2 are held at
         # the levels by the desk (above), so only the value check remains, against the fiscal-year
         # reference alone (the window choice is gone).
         guidance_reason_given = _reason_given(params.get("guidance_deviation_reason"))
         if base_entry is not None:
-            ref_val = ctx.get("consensus_implied_value")
+            ref_val = ctx.get("consensus_implied_value") if ref_in_force else None
             base_iv = base_entry["dcf"].get("per_share_iv")
             if ref_val and base_iv is not None:
                 ratio = base_iv / ref_val
@@ -1630,7 +1661,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
 
         # R11 (Bull/Bear year-2 cash flow vs the DEFAULTS bull2/bear2 level)
         scenario_dev_given = _reason_given(params.get("scenario_deviation_reason"))
-        levels = ctx.get("levels") or {}
+        levels = levels_ctx
         for role, e in (("bull", bull_entry), ("bear", bear_entry)):
             if e is None:
                 continue

@@ -182,32 +182,31 @@ def test_the_earnings_and_revenue_paths_and_the_working_capital_deduction():
     assert without["value"] > ref["value"]                             # the deduction lowers the value
 
 
-# brief F2: the operating-margin record the reference's margin rule reads (om_tc, om_L, om_shape, x_L, tax_L); the fixture's
-# consensus year-5 earnings margin m5 is about 12.9%, and an X margin of 12% at the base year puts OM_5 near 18.3%
+# brief F2, revision 18: the operating-margin record the reference's margin rule reads (om_trend, om_L, x_L, tax_L; om_tc and
+# om_shape are annotations); the fixture's consensus year-5 earnings margin m5 is about 12.9%, and an X margin of 12% at the
+# base year puts OM_5 near 18.3%
 def _margin_record(**kw):
-    return dict(REDUCTION, **dict(dict(om_tc=0.06, om_L=0.17, om_shape="trend", x_L=0.12, tax_L=0.25), **kw))
+    return dict(REDUCTION, **dict(dict(om_tc=0.06, om_trend=0.06, om_L=0.17, om_shape="trend", x_L=0.12, tax_L=0.25), **kw))
 
 
-def test_the_margin_rule_moves_the_margin_toward_the_median_and_lowers_a_peak_value():
-    """Replaces the revision-17 (brief B2 F5) test of the cycle gate, which reverted the margin to the median of X / revenue
-    only when a demand-driven downturn was in the record: the margin now moves by the fraction brief E measured, whatever
-    the record's history (brief F2)."""
+def test_the_margin_rule_moves_the_margin_all_the_way_to_the_trend_level_and_lowers_a_peak_value():
+    """Revision 18: the margin moves all the way to max(0, the record's trend level) by year 10, whatever the shape of the
+    record's history (no cells, no fractions)."""
     m5 = (NI_BASE * 1.125 * 1.1111) / (11.6 * B)                         # about 0.1294
     flat = _build(REDUCTION)                                             # no operating-margin record: the margin is held
-    assert flat["long_run"]["margin_ratio"] is None and flat["margin_cell"] is None
-    peak = _build(_margin_record())                                      # OM_5 = 0.17 + (m5 - 0.12) / 0.75, above the median 0.06
+    assert flat["long_run"]["margin_ratio"] is None and "margin_cell" not in flat and "margin_fraction" not in flat
+    peak = _build(_margin_record())                                      # OM_5 = 0.17 + (m5 - 0.12) / 0.75, above the trend level 0.06
     om_5 = 0.17 + (m5 - 0.12) / 0.75
-    f = tc.calibration()["fractions"]["peak_trend"]                      # the file's peak_trend (one owner of the rates)
-    assert peak["om_5"] == pytest.approx(om_5) and peak["margin_cell"] == "peak_trend" and peak["margin_fraction"] == f
-    m_long = m5 + 0.75 * (f * (0.06 - om_5))
+    assert peak["om_5"] == pytest.approx(om_5)
+    m_long = m5 + 0.75 * (0.06 - om_5)
     assert peak["m_long"] == pytest.approx(m_long) and peak["margin_ratio"] == pytest.approx(m_long / m5)
     assert peak["long_run"]["margin_ratio"] == peak["margin_ratio"]
-    assert peak["value"] < flat["value"]                                 # moving toward a lower median lowers the value
-    trough = _build(_margin_record(om_tc=0.30))
-    assert trough["margin_cell"] == "trough_trend" and trough["margin_ratio"] > 1
+    assert peak["value"] < flat["value"]                                 # moving toward a lower trend level lowers the value
+    trough = _build(_margin_record(om_trend=0.30))
+    assert trough["margin_ratio"] > 1
     assert trough["value"] > flat["value"]                               # and toward a higher one raises it
-    # a record without a median (short record) changes nothing, and says so
-    short = _build(dict(REDUCTION, om_tc=None, om_L=None, stamps=["operating_margin_record_not_available"]))
+    # a record without a trend level (short record) changes nothing, and says so
+    short = _build(dict(REDUCTION, om_trend=None, om_L=None, stamps=["operating_margin_record_not_available"]))
     assert short["value"] == flat["value"] and short["margin_ratio"] is None
     assert "operating_margin_record_not_available" in short["stamps"]
 
@@ -239,9 +238,9 @@ def test_a_missing_record_is_stamped_and_grows_at_the_cost_of_equity():
 
 # ---- section 2a: the base-year cap ---------------------------------------------------------------
 
-def test_the_growth_methods_earnings_start_from_x_less_the_cap_and_the_levels_method_is_stamped():
-    """Brief B2 F1: the earnings path's base is X (net income before acquired-intangible amortization), after the
-    base-year cap, which acts on net income: X_base = NI_capped + A x (1 - t) = X - removed."""
+def test_the_growth_methods_earnings_start_from_x_and_the_levels_method_is_stamped():
+    """Brief B2 F1: the earnings path's base is X (net income before acquired-intangible amortization). Revision 18: the
+    base-year cap no longer acts."""
     amort_after_tax = 0.05 * B * 0.75
     x_base = NI_BASE + amort_after_tax
     plain = _build(REDUCTION)
@@ -249,8 +248,8 @@ def test_the_growth_methods_earnings_start_from_x_less_the_cap_and_the_levels_me
     assert on_x["earnings"][0] == pytest.approx(x_base * 1.125) and plain["earnings"][0] == pytest.approx(NI_BASE * 1.125)
     assert on_x["long_run"]["e5"] / plain["long_run"]["e5"] == pytest.approx(x_base / NI_BASE)
     assert on_x["value"] > plain["value"]                              # the add-back is a real, larger long-run earnings base
-    capped = _build(REDUCTION, base_ni=x_base, base_cap={"removed": 0.1 * B})
-    assert capped["earnings"][0] == pytest.approx((x_base - 0.1 * B) * 1.125)
+    import inspect
+    assert "base_cap" not in inspect.signature(cr.build).parameters and "base_year_capped" not in on_x["stamps"]
     # the levels method takes the vendor's EPS times shares whatever X is, and says the basis is unknown
     est = {"0y": {"revenue": {"avg": 10.8 * B, "analysts": 20}, "eps": {"avg": 2.2, "analysts": 20, "growth": 3.0,
                                                                      "year_ago": 0.4}},
@@ -276,31 +275,26 @@ def test_the_base_year_cap_removes_a_gain_and_never_raises_a_base():
     assert cr.base_year_cap(None, 101.5e6, 5.08) is None
 
 
-def test_lamrs_cap_puts_the_reference_year_one_on_consensus_eps_times_shares():
-    """LAMR (revision 14): consensus +19.4% ran from an adjusted $5.08 against a filed $5.78 that held the
-    Vistar gain. With the cap the reference's year-1 net income is the vendor's year-1 EPS x the filed shares."""
+def test_the_base_year_cap_no_longer_acts_on_the_lamr_case():
+    """LAMR (revision 14): consensus +19.4% ran from an adjusted $5.08 against a filed $5.78 that held the Vistar gain.
+    Revision 17 capped the base at the vendor's EPS; revision 18 removed the cap's action: `build` takes no cap, the base is
+    the filed one and no stamp or pack sentence names a cap (`base_year_cap` itself stays, unused)."""
     filed_sh, filed_ni, ya = 101.5e6, 587e6, 5.08
     est = {"0y": {"revenue": {"avg": 2.3 * B, "analysts": 8, "year_ago": 2.1 * B},
                   "eps": {"avg": 5.08 * 1.194, "analysts": 8, "growth": 0.194, "year_ago": ya}},
            "+1y": {"revenue": {"avg": 2.4 * B, "analysts": 8, "growth": 0.043},
                    "eps": {"avg": 6.9, "analysts": 8, "growth": 0.1375, "year_ago": 5.08 * 1.194}}}
-    cap = cr.base_year_cap(filed_ni, filed_sh, ya)
+    cap = cr.base_year_cap(filed_ni, filed_sh, ya)                 # the function stays and still measures the gap
+    assert cap is not None and cap["removed"] > 0
     oe = 694e6
-    capped = cr.build(oe, est, 0.0848, 0.0375, filed_sh, 0.05, record=REDUCTION, base_ni=filed_ni,
-                      base_revenue=2.1 * B, base_cap=cap)
     plain = cr.build(oe, est, 0.0848, 0.0375, filed_sh, 0.05, record=REDUCTION, base_ni=filed_ni,
                      base_revenue=2.1 * B)
     consensus_eps_1 = 5.08 * 1.194
-    assert abs(capped["earnings"][0] / (consensus_eps_1 * filed_sh) - 1) < 0.02
-    assert abs(plain["earnings"][0] / (consensus_eps_1 * filed_sh) - 1) > 0.10       # without it: +14% too high
-    assert capped["base_cf"] == pytest.approx(oe - cap["removed"]) and "base_year_capped" in capped["stamps"]
-    assert capped["levels"][0] == pytest.approx((oe - cap["removed"]) * 1.194)
-    assert capped["levels"][0] < plain["levels"][0]
-    assert capped["value"] < plain["value"] and capped["base_year_cap"] is cap
-    # the pack line says what was removed
-    line = cr.pack_line(capped, oe, 0.0848, 0.0375, lambda v: f"{v / 1e9:.3f}", anchor=0.0375)
-    assert f"after the base-year cap removed {cap['removed'] / 1e9:.3f}" in line
-    assert "base: owner earnings 0.623" in line
+    assert abs(plain["earnings"][0] / (consensus_eps_1 * filed_sh) - 1) > 0.10       # the filed base: +14% above consensus
+    assert plain["base_cf"] == pytest.approx(oe) and "base_year_capped" not in plain["stamps"]
+    assert "base_year_cap" not in plain
+    line = cr.pack_line(plain, oe, 0.0848, 0.0375, lambda v: f"{v / 1e9:.3f}", anchor=0.0375)
+    assert "base-year cap" not in line and "base: owner earnings 0.694" in line
 
 
 # ---- section 3: the terminal-growth default -------------------------------------------------------
@@ -372,11 +366,11 @@ def _desk_default_base(ref, facts, coe, gt, shares_default):
     dict(),                                                         # steady: unlimited returns, no margin move, no working capital
     dict(R_tc=0.18, r_blend=0.18, ronic_t=0.135, nwc_intensity=0.06),               # finite return, working capital
     dict(R_tc=0.18, r_blend=0.18, ronic_t=0.135, nwc_intensity=0.06,
-         om_tc=0.075, om_L=0.17, om_shape="swing", x_L=0.12, tax_L=0.25),           # and a margin peak (peak_swing)
+         om_trend=0.075, om_L=0.17, om_shape="swing", x_L=0.12, tax_L=0.25),        # and a margin peak (trend level below year 5)
     dict(R_tc=INF, r_blend=INF, ronic_t=INF, nwc_intensity=-0.02,
-         om_tc=0.30, om_L=0.17, om_shape="trend", x_L=0.12, tax_L=0.25),            # unlimited returns, margin trough
+         om_trend=0.30, om_L=0.17, om_shape="trend", x_L=0.12, tax_L=0.25),         # unlimited returns, margin trough
     dict(R_tc=0.18, r_blend=0.18, ronic_t=0.135, nwc_intensity=0.06,
-         om_tc=-0.02, om_L=0.05, om_shape="trend", x_L=None, tax_L=0.21),           # a loss record, filed anchor
+         om_trend=-0.02, om_L=0.05, om_shape="trend", x_L=None, tax_L=0.21),        # a loss trend level, filed anchor
 ], ids=["unlimited", "funded-wc", "peak-margin", "inf-trough", "loss-record"])
 def test_the_desk_equals_the_reference_on_the_reference_own_inputs(record_kw):
     record = dict(REDUCTION, **record_kw)

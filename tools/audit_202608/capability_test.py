@@ -1323,7 +1323,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     _ref_fy_na = None   # E18: why that fiscal year cannot anchor the consensus path
     _aligned = None     # E18: the vendor's estimates start from the filed fiscal year (vintage test)
     _byc_printed = False  # the BASE-YEAR CHECK line printed its numbers (the window line points to it)
-    _base_cap = None    # revision 17: consensus_reference.base_year_cap's dict when the cap applies
+    _cash = None        # revision 18: consensus_reference.cash_term's dict for the base fiscal year (cash at face)
     section10_printed = False   # S3 5.5/5.10: SECTION 12's Q&A pointer names SECTION 10 only if it ran
     facts = pack_facts.empty()
     facts["source"] = "build"
@@ -1580,9 +1580,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             "g_rev": _record["g_rev"], "g_rev_years": _yrs(_record["g_rev"], _record["g_rev_years"]),
             "terminal_g_basis": terminal_def_basis,
             "nwc_intensity": _record["nwc_intensity"], "nwc_years": _yrs(_record["nwc_intensity"], _record["nwc_years"]),
-            "om_tc": _record["om_tc"], "om_L": _record["om_L"], "om_years": _yrs(_record["om_tc"], _record["om_years"]),
+            "om_tc": _record["om_tc"], "om_trend": _record["om_trend"], "om_L": _record["om_L"],
+            "om_years": _yrs(_record["om_tc"], _record["om_years"]),
             "om_shape": _record["om_shape"], "om_basis": _record["om_basis"],
-            "r8": _record["r8"], "r3": _record["r3"], "r_blend": _record["r_blend"], "retention": _record["retention"],
             # brief C7: the DEFAULTS block lists the eight window years' stamps as ranges; the facts (the verdict) keep the
             # record's full list
             "stamps": pack_facts.compact_stamps(_record["stamps"], _record["window"]),
@@ -2577,18 +2577,43 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     _ref_fy["through"] = _thr.isoformat()
                 # revision 17: the desk values at the base fiscal year end and rolls forward by this age
                 _lr_raw["stub_months"] = _stub
+            # revision 18 (brief 1.3): cash at face for a non-financial company. The mean 3-month bill rate over the 12 months
+            # to the base fiscal year's end prices the interest the cash earns; a fiscal year end that is only a default
+            # or unconfirmed has no such window.
+            _bill = None
+            if sector in consensus_reference.FINANCIAL_SECTORS:
+                _cash = consensus_reference.cash_term(_fy_rec, None, sector)
+            elif _fye_src == "default" or _fye_conflict is not None:
+                _cash = {"applies": False, "financial": False, "cash": None, "interest": 0.0,
+                         "stamps": ["cash_term_not_available_fiscal_year_end_unknown"]}
+            else:
+                import calendar as _cal
+                _y0 = _fy_end_dt.year - 1
+                _d0 = min(_fy_end_dt.day, _cal.monthrange(_y0, _fy_end_dt.month)[1])
+                _bill, _bill_src = rs2_data.bill_rate_mean(_fy_end_dt.replace(year=_y0, day=_d0), _fy_end_dt)
+                _cash = consensus_reference.cash_term(_fy_rec, _bill, sector)
+            if _cash["applies"]:
+                facts["excess_cash"] = pack_facts.q_b(_cash["cash"] / 1e9)
+            elif _cash["financial"]:
+                facts["excess_cash"] = 0.0
+            _cash_stamps = [x for x in _cash["stamps"] if x.startswith("cash_term")]
+            if _cash_stamps:
+                for _sk in ("stamps", "stamps_full"):
+                    _lr_raw[_sk] = list(_lr_raw.get(_sk) or []) + _cash_stamps
 
+        # revision 18: the after-tax interest on the cash is out of the earnings the Base and the reference capitalise
+        _i_cash = _cash["interest"] if (_cash and _cash["applies"]) else 0.0
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
             oe = ni + da - capex
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
             # revision 17: the base window's net income over its owner earnings, for a desk with no
             # consensus reference (the long run then takes earnings from owner earnings at this ratio)
-            if ni > 0 and oe > 0:
-                _lr_raw["ni_over_oe"] = ni / oe
-                _lr_raw["x_over_oe"] = _x_over_owner_earnings(ni, oe, _fy_rec, _untagged_fields)
+            if ni - _i_cash > 0 and oe - _i_cash > 0:
+                _lr_raw["ni_over_oe"] = (ni - _i_cash) / (oe - _i_cash)
+                _lr_raw["x_over_oe"] = _x_over_owner_earnings(ni - _i_cash, oe - _i_cash, _fy_rec, _untagged_fields)
             facts["owner_earnings_source"] = f"{oe_src[0]}_ni+{oe_src[1]}_capex" if oe_tag else "ttm_filed"
-            facts["owner_earnings_default_b"] = float(f"{oe / 1e9:,.3f}".replace(",", ""))
+            facts["owner_earnings_default_b"] = float(f"{(oe - _i_cash) / 1e9:,.3f}".replace(",", ""))
             # S3 5.6/5.3: result-first equation, bare numbers; the "equity frame" sentence (OWNER
             # EARNINGS) and the base_cf_basis sentence (CASH BASIS) are gone \u2014 those rules live in
             # the DEFAULTS block now.
@@ -3018,9 +3043,6 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     and isinstance(_fy_sh_x, (int, float)) and _fy_sh_x > 0 and _fy_ni_x != 0):
                 _fy_eps = _fy_ni_x / _fy_sh_x
                 _byc_printed = True
-                # revision 17 (brief B 2a): a one-time item in the base year, seen as the filed EPS above the
-                # analysts' year-ago EPS; the filed share count is the BASE-YEAR CHECK's own
-                _base_cap = consensus_reference.base_year_cap(_fy_ni_x, _fy_sh_x, _ya) if _ref_fy else None
                 L.append(f"- [Arithmetic] BASE-YEAR CHECK: consensus measures current-FY EPS growth from a "
                          f"year-ago EPS of ${_ya:.2f}; our filed FY{latest_yr} EPS is ${_fy_eps:.2f} (net income / "
                          f"diluted shares{_split_note}), {(_ya / _fy_eps - 1) * 100:+.0f}% apart. A large gap means the "
@@ -3068,12 +3090,15 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     stub_months=_fy.get("stub"), base_label=_fy.get("label"),
                     levels_reason=_fy.get("levels_reason"), levels_block=_fy.get("levels_block"),
                     anchor=facts["terminal_g_anchor"], record=_record, base_ni=_fy.get("x"),
-                    base_revenue=_fy.get("revenue"), base_cap=_base_cap)
+                    base_revenue=_fy.get("revenue"), cash=_cash)
                 if not _ref_fy and _ref.get("value") is None and _ref_fy_na:
                     _ref["reason"] = _ref_fy_na
-                # E15: outside the fail-fast fence the reference is not a credible summary of the
-                # consensus (spot commodity earnings carried forward as a perpetuity): say which
-                # side, print the fence, never the number
+                # E15, revision 18 (brief 1.5): outside the fail-fast fence the reference is no longer a credible
+                # summary of the consensus (spot commodity earnings carried forward as a perpetuity): the line prints
+                # the number and the fence, and the status flag keeps it out of every band, reason and refusal. Every fact
+                # the reference derives (levels, long run, working capital, base) is kept as for a reference in force, so
+                # the desk's default inputs equal the reference; the desk and the harness read the status before they apply
+                # a band, a hold or a refusal to it.
                 try:
                     import valuation_backbone as _vb
                     _band = _vb._consensus_band(t)
@@ -3084,85 +3109,74 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 _ref_value = (_ref or {}).get("value")
                 _not_meaningful = _ref_value is not None and float(f"{_ref_value:.2f}") <= 0
                 _side, _fence = (None, None) if _not_meaningful else _reference_outside_fence(_ref_value, _band)
-                if _side:
+                _tg_used = terminal_def_val if terminal_def_val is not None else 0.0
+                if _ref.get("value") is None:
+                    facts["reference_status"] = "not_available"
+                    facts["consensus_implied_value"] = None
+                elif _not_meaningful:
+                    facts["reference_status"] = "not_meaningful"
+                    facts["consensus_implied_value"] = None
+                elif _side:
                     facts["reference_status"] = f"outside_fence_{_side}"
-                    L.append(f"- CONSENSUS-IMPLIED VALUE: not used — the consensus path carried forward at our "
-                             f"discount rate lands {_side} the fence [${_fence[0]:,.2f}, ${_fence[1]:,.2f}] built "
-                             f"from the street's targets (0.5× the lowest and 2× the highest analyst target, each "
-                             f"discounted by 10%), so it is not a credible summary of the consensus "
-                             f"(reference_status: outside_fence_{_side}).")
+                    facts["consensus_implied_value"] = float(f"{_ref['value']:,.2f}".replace(",", ""))
                 else:
-                    _tg_used = terminal_def_val if terminal_def_val is not None else 0.0
-                    if _ref.get("value") is None:
-                        facts["reference_status"] = "not_available"
-                        facts["consensus_implied_value"] = None
-                    elif _not_meaningful:
-                        facts["reference_status"] = "not_meaningful"
-                        facts["consensus_implied_value"] = None
-                    else:
-                        facts["reference_status"] = "used"
-                        facts["consensus_implied_value"] = float(f"{_ref['value']:,.2f}".replace(",", ""))
-                    if _ref.get("value") is not None and _ref.get("levels"):
-                        facts["levels"] = {
-                            "year1": float(f"{_ref['levels'][0] / 1e9:,.3f}".replace(",", "")),
-                            "year2": float(f"{_ref['levels'][1] / 1e9:,.3f}".replace(",", "")),
-                        }
-                        if _ref.get("range"):
-                            facts["levels"]["bull2"] = float(f"{_ref['range'][0] / 1e9:,.3f}".replace(",", ""))
-                            facts["levels"]["bear2"] = float(f"{_ref['range'][1] / 1e9:,.3f}".replace(",", ""))
-                    # S3 5.6/5.7: bare numbers (_bn), not $/B (_b) — the unit is carried once, by
-                    # convention with SECTION 3's typed lines, not a header bracket here.
-                    if _not_meaningful:
-                        L.append(consensus_reference.not_meaningful_line(_ref))
-                    else:
-                        L.append(consensus_reference.pack_line(_ref, _fy.get("base"), _coe if _coe is not None else 0.0,
-                                                               _tg_used, _bn, anchor=facts["terminal_g_anchor"]))
-                    if facts["reference_status"] in ("used", "not_meaningful"):
-                        # revision 17: what the reference's long run and working capital hold, for the desk (brief F5: a
-                        # reference that is not meaningful still prints these)
-                        _rlr = _ref.get("long_run")
-                        if _rlr:
-                            _lr_raw.update({"e5": _rlr["e5"] / 1e9, "oe5": _rlr["oe5"] / 1e9, "m5": _rlr["m5"],
-                                            "om_5": _ref["om_5"], "margin_cell": _ref["margin_cell"],
-                                            "margin_fraction": _ref["margin_fraction"], "m_long": _ref["m_long"],
-                                            "margin_ratio": _ref["margin_ratio"]})
-                        # brief F2: the margin rule's stamps join the record's in the facts' stamps
-                        _margin_stamps = [s for s in _ref["stamps"] if s.startswith("margin_rule_")]
-                        if _margin_stamps:
-                            for _sk in ("stamps", "stamps_full"):
-                                _lr_raw[_sk] = list(_lr_raw.get(_sk) or []) + _margin_stamps
-                        if _ref.get("wc"):
-                            facts["working_capital"] = [pack_facts.q_b(x / 1e9) for x in _ref["wc"]]
-                        if _ref.get("base_cf") is not None:
-                            facts["reference_base_b"] = pack_facts.q_b(_ref["base_cf"] / 1e9)
-                    if facts["reference_status"] == "used":
-                        if _ref.get("base_year_cap"):
-                            _bc = _ref["base_year_cap"]
-                            facts["base_year_cap"] = pack_facts.quantize_base_year_cap(_bc)
-                            L.append(f"- [Arithmetic] BASE-YEAR CAP: filed FY{latest_yr} EPS ${_bc['eps_filed']:.2f} is "
-                                     f"{(_bc['eps_filed'] / _bc['eps_vendor'] - 1) * 100:+.0f}% above the analysts' year-ago "
-                                     f"EPS ${_bc['eps_vendor']:.2f}, so the CONSENSUS-IMPLIED VALUE takes base net income as "
-                                     f"${_bc['eps_vendor']:.2f} x the filed diluted shares{_split_note} = {_b(_bc['ni_capped'])} instead of "
-                                     f"{_b(_bc['ni_filed'])} and lowers its owner-earnings base by {_b(_bc['removed'])} (a "
-                                     f"one-time gain is likelier than a lasting one; a filed EPS below the analysts' is never "
-                                     f"raised)")
-                    _win = (None if _not_meaningful else
-                            consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters")))
-                    if _win and _win.get("ttm_value") is not None:
-                        _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
-                        _win = consensus_reference.fence_window(_win, _wside, _wfence)
-                    _wl = consensus_reference.window_line(_win, _ref, _ref_oe, _fy.get("through"), _bn,
-                                                          base_year_check=_byc_printed)
-                    if _wl:
-                        L.append(_wl)
-                        gap = int(f"{_win['gap'] * 100:+.0f}") / 100.0
-                        ttm_val = float(f"{_win['ttm_value']:,.2f}".replace(",", "")) if _win.get("ttm_value") is not None else None
-                        ttm_y2 = float(f"{_win['ttm_levels'][1] / 1e9:,.3f}".replace(",", "")) if _win.get("ttm_value") is not None else None
-                        facts["base_window"] = {
-                            "gap": gap,
-                            "ttm_value": ttm_val,
-                            "ttm_year2": ttm_y2,
-                        }
+                    facts["reference_status"] = "used"
+                    facts["consensus_implied_value"] = float(f"{_ref['value']:,.2f}".replace(",", ""))
+                if _ref.get("value") is not None and _ref.get("levels"):
+                    facts["levels"] = {
+                        "year1": float(f"{_ref['levels'][0] / 1e9:,.3f}".replace(",", "")),
+                        "year2": float(f"{_ref['levels'][1] / 1e9:,.3f}".replace(",", "")),
+                    }
+                    if _ref.get("range"):
+                        facts["levels"]["bull2"] = float(f"{_ref['range'][0] / 1e9:,.3f}".replace(",", ""))
+                        facts["levels"]["bear2"] = float(f"{_ref['range'][1] / 1e9:,.3f}".replace(",", ""))
+                # S3 5.6/5.7: bare numbers (_bn), not $/B (_b) — the unit is carried once, by
+                # convention with SECTION 3's typed lines, not a header bracket here.
+                if _not_meaningful:
+                    L.append(consensus_reference.not_meaningful_line(_ref))
+                else:
+                    _civ_line = consensus_reference.pack_line(_ref, _fy.get("base"), _coe if _coe is not None else 0.0,
+                                                              _tg_used, _bn, anchor=facts["terminal_g_anchor"])
+                    if _side:
+                        _civ_line += (f" | outside the street-target fence [${_fence[0]:,.2f}, ${_fence[1]:,.2f}] (0.5× the "
+                                      f"lowest and 2× the highest analyst target, each discounted by 10%) — read it as a "
+                                      f"level check only")
+                    L.append(_civ_line)
+                if facts["reference_status"] in ("used", "not_meaningful") or _side:
+                    # revision 17: what the reference's long run and working capital hold, for the desk (brief F5: a
+                    # reference that is not meaningful still prints these)
+                    _rlr = _ref.get("long_run")
+                    if _rlr:
+                        _lr_raw.update({"e5": _rlr["e5"] / 1e9, "oe5": _rlr["oe5"] / 1e9, "m5": _rlr["m5"],
+                                        "om_5": _ref["om_5"], "m_long": _ref["m_long"],
+                                        "margin_ratio": _ref["margin_ratio"]})
+                    # brief F2: the margin rule's stamps join the record's in the facts' stamps
+                    _margin_stamps = [s for s in _ref["stamps"]
+                                      if s.startswith("margin_rule_") or s == "operating_base_not_positive"]
+                    if _margin_stamps:
+                        for _sk in ("stamps", "stamps_full"):
+                            _lr_raw[_sk] = list(_lr_raw.get(_sk) or []) + _margin_stamps
+                    if _ref.get("wc"):
+                        facts["working_capital"] = [pack_facts.q_b(x / 1e9) for x in _ref["wc"]]
+                    if _ref.get("base_cf") is not None:
+                        facts["reference_base_b"] = pack_facts.q_b(_ref["base_cf"] / 1e9)
+                _win = (None if _not_meaningful else
+                        consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters")))
+                if _win and _win.get("ttm_value") is not None:
+                    _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
+                    _win = consensus_reference.fence_window(_win, _wside, _wfence)
+                _wl = consensus_reference.window_line(_win, _ref, _ref_oe, _fy.get("through"), _bn,
+                                                      base_year_check=_byc_printed)
+                if _wl:
+                    L.append(_wl)
+                    gap = int(f"{_win['gap'] * 100:+.0f}") / 100.0
+                    ttm_val = float(f"{_win['ttm_value']:,.2f}".replace(",", "")) if _win.get("ttm_value") is not None else None
+                    ttm_y2 = float(f"{_win['ttm_levels'][1] / 1e9:,.3f}".replace(",", "")) if _win.get("ttm_value") is not None else None
+                    facts["base_window"] = {
+                        "gap": gap,
+                        "ttm_value": ttm_val,
+                        "ttm_year2": ttm_y2,
+                    }
         if _civ_na and asof_date is None:
             facts["reference_status"] = "not_available"
             L.append(f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}")

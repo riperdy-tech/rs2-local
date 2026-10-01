@@ -150,3 +150,14 @@ def _no_model_json_fix_in_tests(monkeypatch):
     def _refuse(*a, **k):
         raise RuntimeError("no model calls in tests")
     monkeypatch.setattr(catalyst_research, "_llm_fix_json", _refuse)
+
+
+@pytest.fixture(autouse=True)
+def _bill_rate_is_deterministic_in_tests(monkeypatch):
+    """Revision 18 (brief 1.3) - capability_test.build_pack prices the interest on a company's cash with
+    rs2_data.bill_rate_mean, which reads MRI's raw FRED store off disk. A test must never depend on that store: today's
+    file changes with every refresh and exists only on this machine. Every test defaults to "no bill rate available" (the
+    stamped, no-cash-term reading); a test that wants the cash term passes its own rate by re-applying
+    `monkeypatch.setattr(rs2_data, "bill_rate_mean", ...)` in its own body."""
+    import rs2_data
+    monkeypatch.setattr(rs2_data, "bill_rate_mean", lambda start, end: (None, "stubbed in tests: no MRI store"))

@@ -760,6 +760,8 @@ def test_18_plumbing_consensus_valuation_passes_desk_context(monkeypatch, tmp_pa
         "terminal_ronic", "long_run", "working_capital", "cash_basis_b",
         # revision 17 (brief F6): the fiscal-year base the reference grows from
         "reference_base_b",
+        # revision 18 (brief 1.7, 1.5): the excess cash the desk adds at face, and the reference's status
+        "excess_cash", "reference_status",
     }
     for ctx in captured_calls:
         assert set(ctx.keys()) == expected_keys

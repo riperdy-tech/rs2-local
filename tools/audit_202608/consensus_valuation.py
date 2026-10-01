@@ -930,8 +930,12 @@ def _year2_flow(base_cf, path):
 
 
 def _pack_reference(pack_text):
+    """(the reference in force, the p90). Revision 18: a value printed outside the street-target fence is annotation only, so
+    it is not returned here (its status is in the facts)."""
+    import consensus_reference
     f = pack_facts.from_text(pack_text)
-    return f["consensus_implied_value"], f["years35_p90"]
+    civ = f["consensus_implied_value"] if consensus_reference.reference_in_force(f["reference_status"]) else None
+    return civ, f["years35_p90"]
 
 
 def next_fy_revenue_growth(pack_text: str | None = None) -> float | None:
@@ -952,7 +956,9 @@ def consensus_ratios(scorecard, enrich_data=None, pack_text=None, facts=None):
     # revision 17: the fiscal-year reference and level only (the window no longer changes the arithmetic;
     # the BASE WINDOW CHECK's gap stays as information)
     civ = facts.get("consensus_implied_value")
-    lv2 = (facts.get("levels") or {}).get("year2")
+    # revision 18 (brief 1.5): the levels are a reference's; outside the street-target fence they are a level check only
+    lv2 = ((facts.get("levels") or {}).get("year2")
+           if consensus_reference.reference_in_force(facts.get("reference_status")) else None)
     win = facts.get("base_window") or {}
     out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": civ,
            "base_window_gap": win.get("gap")}
@@ -1150,7 +1156,7 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         stamps["bull_bear_anchor"] = f"no consensus range ({e1.get('analysts') or 0} analysts)"
     else:
         stamps["bull_bear_anchor"] = "consensus high/low"
-    lv = facts.get("levels") or {}
+    lv = (facts.get("levels") or {}) if consensus_reference.reference_in_force(facts.get("reference_status")) else {}
     for role in ("base", "bull", "bear"):
         inp = _desk_scenario_inputs(calls, sc.get(f"{role}_iv"), role=role)
         if not inp:
@@ -1421,7 +1427,8 @@ def check_sample_harness_rules(
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth(en.get("estimates"))
     civ = facts.get("consensus_implied_value")
-    lv2 = (facts.get("levels") or {}).get("year2")
+    lv2 = ((facts.get("levels") or {}).get("year2")
+           if consensus_reference.reference_in_force(facts.get("reference_status")) else None)
     y2 = _year2_flow(sc.get("base_cf_used"), path)
     if lv2 and y2 is not None and not gdr:
         # E18: the year-2 LEVEL is the anchor, whatever base the sample declared (ADI (b): a TTM
@@ -1438,7 +1445,9 @@ def check_sample_harness_rules(
         except (ValueError, TypeError, ZeroDivisionError):
             pass
     p90 = facts.get("years35_p90")
-    if civ and base_iv is not None and not gdr:
+    # revision 18 (brief 1.5): a reference printed outside the street-target fence is a level check only: no band applies
+    if (civ and consensus_reference.reference_in_force(facts.get("reference_status"))
+            and base_iv is not None and not gdr):
         try:
             if not consensus_reference.FAR_LOW <= float(base_iv) / civ <= consensus_reference.FAR_HIGH:
                 flags.append("base_far_from_consensus_implied")
@@ -2149,6 +2158,10 @@ def main():
         # revision 17, brief F6: the fiscal-year owner-earnings base the reference grows from, so the desk can tell an
         # owner-earnings base from the cash basis
         "reference_base_b": facts["reference_base_b"],
+        # revision 18 (brief 1.7, 1.5): the excess cash the desk adds at face, and whether the reference is in force or
+        # printed outside the street-target fence as a level check only
+        "excess_cash": facts.get("excess_cash"),
+        "reference_status": facts.get("reference_status"),
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)
     }

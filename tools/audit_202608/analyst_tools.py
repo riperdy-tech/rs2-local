@@ -2045,7 +2045,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     base_iv = next((e["dcf"]["per_share_iv"] for c in reversed(snap)
                                     if c.get("tool") == "run_financial_model" and contract_fill.completed(c)
                                     for e in contract_fill.entries(c) if e["role"] == "base"), None)
+                    import consensus_reference
                     ref_iv = (desk_context or {}).get("consensus_implied_value")
+                    if not consensus_reference.reference_in_force((desk_context or {}).get("reference_status")):
+                        ref_iv = None          # revision 18 (brief 1.5): printed outside the fence, a level check only
                     if isinstance(base_iv, (int, float)) and isinstance(ref_iv, (int, float)) and ref_iv > 0:
                         desk_continuation["base_over_reference"] = base_iv / ref_iv
 

@@ -14,17 +14,22 @@ and after) from what the company's own history says, not from a rule of thumb:
 - the growth of its own revenue (Theil-Sen slope of ln revenue on fiscal year);
 - the working capital its revenue carries (median NWC / revenue), short-term debt subtracted once (F4).
 
-Revision 17, brief F (the redesigned reference). The margin the long run reverts toward is now the operating margin,
+Revision 17, brief F (the redesigned reference). The margin the long run reverts toward is the operating margin,
 (operating income + acquired-intangible amortization) / revenue (brief F2: the pre-tax margin, (pre-tax income +
 amortization) / revenue, for a company that files no operating-income line), and the record carries what the reference's margin rule
 needs: its 8-year median (om_tc), the base year's (om_L), how it crosses that median (om_shape), the base year's earnings
-margin and tax rate (x_L, tax_L). The return on new investment blends the 8-year and the latest-3-year median returns,
-each year's return capped to [R_CAP_LOW, R_CAP_HIGH], and its retention is capped by measured persistence. Every rate
-(the five margin fractions, the blend weight, the three retention caps) is read from
-reference_calibration_v2.json by `calibration()`, the one owner of those numbers; none is written anywhere else.
+margin and tax rate (x_L, tax_L).
+
+Revision 18 (brief rev18 design, section 1; the structure the backtest tested). The return on new investment is the original
+rule again: RONIC_0 = max(r, R_tc) and RONIC_T = r + p x max(0, R_tc - r), with R_tc the median of the uncapped returns
+over the window (+/-inf allowed, at least 3 years) and +inf when R_tc is +inf. The blend of the 8-year and the latest-3-year
+returns (r8, r3, r_blend), the retention caps, the capped returns and the calibration file are gone. The margin the long run
+moves toward is the record's TREND level, om_trend = a + b x L (b the Theil-Sen slope of the margin series `analyse` chose, a =
+median(margin_y - b x y)); `om_tc` (the median) and `om_shape` stay as annotations. reference_calibration_v2.json stays on
+disk, unused.
 
 Pure functions: fiscal-year rows in, a dict out. It imports nothing of ours (the pack and the
-reference import it), it reads no file but the calibration file, and it never defaults a missing figure except where a rule
+reference import it), it reads no file, and it never defaults a missing figure except where a rule
 below says so and a stamp records it: a year whose inputs are not all held is missing, and a statistic
 with too few years is None, stamped.
 
@@ -39,10 +44,7 @@ flagged; AAPL, ANET, APH, FIX, AMD, GEV, LAMR, GOOG, AMZN, META, DELL, MPWR, CLS
 not). They are not derived from the whole book.
 """
 
-import functools
-import json
 import math
-from pathlib import Path
 
 WINDOW_YEARS = 8        # W = L-7..L
 CYCLE_MAX_YEARS = 12    # the cycle test looks at up to 12 held years <= L
@@ -62,44 +64,8 @@ CURRENT_PORTION_TAGS = frozenset({"LongTermDebtCurrent", "LongTermDebtAndCapital
                                   "CurrentPortionOfLongtermBorrowings"})
 OM_MIN_YEARS = 5        # brief F1: defined operating-margin years needed in the window
 OM_SWING_CROSSINGS = 2  # brief F1 (brief E): this many sign changes about the median make a margin "swing"
-R3_MIN_YEARS = 2        # brief F3: defined return years needed for the latest-3-year median
-R_CAP_LOW, R_CAP_HIGH = -0.5, 1.0   # brief F3 (brief E): a year's return is capped to this range for r8 and r3
-CALIBRATION_FILE = Path(__file__).resolve().parent / "reference_calibration_v2.json"
-CELL_NAMES = ("peak_swing", "peak_trend", "trough_swing", "trough_trend", "loss")
-RETENTION_BUCKETS = ("p_lt_0.5", "p_0.5_to_lt_1", "p_eq_1")
 
 INF = math.inf
-
-
-@functools.lru_cache(maxsize=None)
-def calibration(path=None):
-    """Brief F0, the one owner of the reference's rates: reference_calibration_v2.json (brief E's measurement, never
-    tuned here). {"margin_series", "fractions": {cell: f}, "w8", "retention_caps": {bucket: cap}}. Raises when the file
-    is missing, is not the operating-margin calibration, lacks a cell or a bucket, or holds a rate outside [0, 1]."""
-    doc = json.loads(Path(path or CALIBRATION_FILE).read_text(encoding="utf-8"))
-    if doc["margin_series"] != "operating_margin":
-        raise ValueError(f"reference calibration margin_series is {doc['margin_series']!r}, not 'operating_margin'")
-    cal = {"margin_series": doc["margin_series"],
-           "fractions": {c: float(doc["cells"][c]["f"]) for c in CELL_NAMES},
-           "w8": float(doc["w8"]),
-           "retention_caps": {b: float(doc["retention_caps"][b]["cap"]) for b in RETENTION_BUCKETS}}
-    for name, v in (list(cal["fractions"].items()) + [("w8", cal["w8"])] + list(cal["retention_caps"].items())):
-        if not 0.0 <= v <= 1.0:      # a rate is a share between 0 and 1; anything else is a mis-specified measurement
-            raise ValueError(f"reference calibration {name} = {v} is outside [0, 1]")
-    return cal
-
-
-def retention_cap(p, cal=None):
-    """The calibration's cap on retention for a share p of years above the cost of equity: the bucket p < 0.5,
-    0.5 <= p < 1, or p = 1."""
-    caps = (cal or calibration())["retention_caps"]
-    return caps["p_lt_0.5"] if p < 0.5 else caps["p_eq_1"] if p >= 1 else caps["p_0.5_to_lt_1"]
-
-
-def capped_return(v):
-    """A year's return capped to [R_CAP_LOW, R_CAP_HIGH] for the blended statistics (+inf -> R_CAP_HIGH,
-    -inf -> R_CAP_LOW); None stays None."""
-    return None if v is None else min(R_CAP_HIGH, max(R_CAP_LOW, v))
 
 
 def _num(v):
@@ -366,7 +332,8 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
     L-7..L. `debt_current_tags` is {year: the tag debt_current resolved from} (F4). Returns a dict:
       base_year, window, r,
       R (every held year <= L -> return on tangible invested capital or None), r_years (defined years in W),
-      R_tc, p, p_years (years in W with R_y > r), ronic_t,
+      R_tc, p, p_years (years in W with R_y > r), ronic_t (r + p x max(0, R_tc - r); +inf when R_tc is +inf; r when
+      R_tc is None),
       cycle (True / False, None when no year could be tested), cycle_years (the years with both falls),
       cycle_year (the latest of them), cycle_tested (years that could be tested; fewer than CYCLE_MIN_TESTED
       stamps `cycle_not_testable`: the cycle is what it was, "no" still says nothing about a record that short),
@@ -387,10 +354,12 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
     stamp is `margin_record_not_available` (older blocks carry `operating_margin_record_not_available`, which stays
     readable). The cycle test above (`cycle`, `cycle_years`) is an annotation only.
 
-    Brief F3 (returns on new capital): r8 (median of the capped returns over W, at least R_MIN_YEARS), r3 (median over
-    L-2..L, at least R3_MIN_YEARS), r_blend = w8 x r8 + (1 - w8) x r3 (r8 alone, stamped `returns_blend_without_recent`,
-    when r3 is undefined; None with r8), retention = min(p, the calibration's cap for p's bucket) and ronic_t = r +
-    retention x max(0, r_blend - r) (r when there is no r_blend). R_tc and p are the uncapped statistics, unchanged.
+    Revision 18 (returns and the margin target): the return on new investment is the original rule: RONIC_0 =
+    max(r, R_tc) (the reference's `build` takes it from R_tc) and ronic_t = r + p x max(0, R_tc - r), +inf when R_tc is
+    +inf, r when R_tc is None. R_tc and p are the uncapped statistics. om_trend = a + b x L: b the Theil-Sen slope of the
+    (year, margin) series `om_basis` chose over `om_years`, a the median of (margin_y - b x y), L the base year; None
+    without a margin series. The reference's margin rule moves the long-run margin to max(0, om_trend); om_tc and
+    om_shape stay as annotations.
     """
     untagged = frozenset(untagged_fields or ())
     rows = normalise_rows(rows)
@@ -400,8 +369,7 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
            "cycle_tested": 0, "m_tc": None, "m_years": [], "g_rev": None, "g_rev_years": [],
            "nwc_intensity": None, "nwc_years": [], "amortization_gap_years": [],
            "tangible_equity_partial_years": [], "stamps": [], "untagged_fields": sorted(untagged),
-           "r8": None, "r3": None, "r_blend": None, "retention": None,
-           "om_basis": None, "om_tc": None, "om_L": None, "om_years": None, "om_crossings": None, "om_shape": None,
+           "om_basis": None, "om_tc": None, "om_trend": None, "om_L": None, "om_years": None, "om_crossings": None, "om_shape": None,
            "x_L": None, "tax_L": None}
     if not held:
         out["stamps"].append("record_not_available")
@@ -424,28 +392,19 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
     out["R"] = R
     r_w = {y: R.get(y) for y in W if R.get(y) is not None}
     out["r_years"] = sorted(r_w)
-    cal = calibration()
     if len(r_w) >= R_MIN_YEARS:
         out["R_tc"] = median(list(r_w.values()))
-        # brief F3: the blended statistics use each year's return capped to [R_CAP_LOW, R_CAP_HIGH]
-        out["r8"] = median([capped_return(v) for v in r_w.values()])
-        r3_years = [capped_return(R[y]) for y in range(L - 2, L + 1) if R.get(y) is not None]
-        if len(r3_years) >= R3_MIN_YEARS:
-            out["r3"] = median(r3_years)
-            out["r_blend"] = cal["w8"] * out["r8"] + (1.0 - cal["w8"]) * out["r3"]
-        else:
-            out["r_blend"] = out["r8"]
-            out["stamps"].append("returns_blend_without_recent")
     if r is not None:
         out["p_years"] = sorted(y for y, v in r_w.items() if v > r)
         # p is a share of the window's eight years, missing years counting as not above; with no defined
         # year there is no record to take a share of, so None
         out["p"] = len(out["p_years"]) / float(WINDOW_YEARS) if r_w else None
-        if out["r_blend"] is None:
+        if out["R_tc"] is None:
             out["ronic_t"] = r
+        elif out["R_tc"] == INF:
+            out["ronic_t"] = INF               # a return on negative tangible capital: nothing limits the funded growth
         else:
-            out["retention"] = min(out["p"], retention_cap(out["p"], cal))
-            out["ronic_t"] = r + out["retention"] * max(0.0, out["r_blend"] - r)
+            out["ronic_t"] = r + out["p"] * max(0.0, out["R_tc"] - r)
     if out["R_tc"] is None:
         out["stamps"].append("record_not_available")
 
@@ -474,6 +433,10 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
     if om is not None:
         out["om_basis"], out["om_years"] = basis, sorted(om)
         out["om_tc"], out["om_L"] = median(list(om.values())), om[L]
+        # revision 18: the trend level of the record, a + b x L (b: Theil-Sen slope, a: median of margin_y - b x y)
+        b = theil_sen(sorted(om.items()))
+        if b is not None:
+            out["om_trend"] = median([v - b * y for y, v in om.items()]) + b * L
         out["om_crossings"] = crossings(om, out["om_tc"])
         out["om_shape"] = "swing" if out["om_crossings"] >= OM_SWING_CROSSINGS else "trend"
         if basis == "without_amortization":

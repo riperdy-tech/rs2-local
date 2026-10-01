@@ -84,8 +84,9 @@ def test_gev_fixture_parity_and_literal_values(screener_data_stub, frozen_env):
             # revision 17 (brief C7): the facts also keep the record's full stamps (`stamps_full`) for the verdict, which the
             # DEFAULTS block does not print; every other member reads back equal
             # brief F1: four held years are fewer than the five an operating-margin median needs
+            # revision 18: the test suite's bill rate is "not available" (conftest), so the cash term is stamped
             assert got["stamps_full"] == ["amortization_gap:2022/2023/2024/2025", "tangible_equity_partial:2022/2023/2024/2025",
-                                          "margin_record_not_available"]
+                                          "margin_record_not_available", "cash_term_not_available_no_bill_rate"]
             got = {m: v for m, v in got.items() if m != "stamps_full"}
         assert got == from_text[k], f"Mismatch for key {k}: {pack.facts[k]} != {from_text[k]}"
 
@@ -277,27 +278,25 @@ def test_build_pack_branch_owner_earnings_fallback_token(screener_data_stub, fro
 
 
 def test_build_pack_branch_reference_outside_fence(screener_data_stub, frozen_env, monkeypatch):
-    """Monkeypatch enrich estimates and _reference_outside_fence to trigger outside fence branch."""
-    real_load_json = rs2_data.load_json
-
-    def fake_load_json(p):
-        data = real_load_json(p)
-        if "enrich" in str(p):
-            return {
-                "_fetched_at": "2026-09-27T00:00:00Z",
-                "estimates": {
-                    "0y": {"revenue": {"growth": 0.10, "avg": 1e10, "analysts": 10}, "eps": {"analysts": 10, "current": 2.0}},
-                    "+1y": {"revenue": {"growth": 0.08, "avg": 1.1e10, "analysts": 10}, "eps": {"analysts": 10, "current": 2.5}}
-                }
-            }
-        return data
-
-    monkeypatch.setattr(rs2_data, "load_json", fake_load_json)
+    """Revision 18 (brief 1.5): a reference outside the street-target fence prints its number, the fence and "a level check
+    only", and the facts keep the value with the status flag. The synthetic history gives a valued reference; the fence is
+    forced."""
+    from test_throughcycle_reference import _synthetic_pack
     monkeypatch.setattr(cap, "_reference_outside_fence", lambda v, b: ("above", (50.0, 150.0)))
-    pack = cap.build_pack("GEV", include_research=False)
-    assert pack.facts["reference_status"] == "outside_fence_above"
+    pack = _synthetic_pack(monkeypatch)
+    f = pack.facts
+    assert f["reference_status"] == "outside_fence_above"
+    assert isinstance(f["consensus_implied_value"], float) and f["consensus_implied_value"] > 0
+    line = next(l for l in str(pack).splitlines() if "CONSENSUS-IMPLIED VALUE (reference" in l)
+    assert f"${f['consensus_implied_value']:,.2f} per share" in line
+    assert line.endswith("| outside the street-target fence [$50.00, $150.00] (0.5\u00d7 the lowest and 2\u00d7 the highest analyst "
+                         "target, each discounted by 10%) \u2014 read it as a level check only")
+    assert "not used" not in line and "not a credible summary" not in str(pack)
+    # the facts the reference derives are kept (the desk's default inputs equal the reference); the desk reads the status
+    assert f["levels"].get("year2") and f["long_run"]["e5"] is not None and f["reference_base_b"] is not None
     from_text = pack_facts.from_text(str(pack))
-    assert pack_facts.parity(pack.facts, from_text) == []
+    assert pack_facts.parity(f, from_text) == []
+    assert from_text["reference_status"] == "outside_fence_above" and from_text["consensus_implied_value"] == f["consensus_implied_value"]
 
 
 # ---- Case 4: Consumer equivalence --------------------------------------------

@@ -157,10 +157,10 @@ def test_dilution_and_ads_units_are_not_splits_and_keep_not_available(monkeypatc
 
 
 @pytest.mark.usefixtures("screener_data_stub")
-def test_base_year_cap_uses_the_split_adjusted_filed_shares(monkeypatch):
+def test_the_base_year_check_uses_the_split_adjusted_filed_shares_and_the_cap_is_never_asked(monkeypatch):
     # filed FY2025 EPS $17.70 (net income / 276M); the vendor's year-ago EPS, split-adjusted for a 2-for-1, is $7.00
-    # against $8.85 filed per share on the adjusted count: the cap is asked for on the adjusted count (552M), not on
-    # the pre-split one (276M)
+    # against $8.85 filed per share on the adjusted count: the BASE-YEAR CHECK prints the adjusted count's EPS. Revision 18
+    # removed the cap's action: `base_year_cap` is not called at all (it stays in the module, unused)
     calls = []
     real = cap.consensus_reference.base_year_cap
     monkeypatch.setattr(cap.consensus_reference, "base_year_cap",
@@ -169,11 +169,10 @@ def test_base_year_cap_uses_the_split_adjusted_filed_shares(monkeypatch):
                      fin_edit=lambda f: dict(f, Shares_Outstanding=552e6), eps_year_ago=7.0)
     byc = _byc(pack)
     assert "our filed FY2025 EPS is $8.85" in byc and "year-ago EPS of $7.00" in byc
-    assert len(calls) == 1 and calls[0][1] == pytest.approx(552e6) and calls[0][2] == 7.0
+    assert calls == [] and "BASE-YEAR CAP" not in pack
     # the same inputs without a split: the pre-split count, as before
-    calls.clear()
-    _gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000, fin_edit=lambda f: f, eps_year_ago=7.0)
-    assert len(calls) == 1 and calls[0][1] == pytest.approx(276e6)
+    pre = _gev_pack(monkeypatch, (12, 31, "ttm"), 38068000000, fin_edit=lambda f: f, eps_year_ago=7.0)
+    assert calls == [] and "our filed FY2025 EPS is $" in _byc(pre)
 
 
 @pytest.mark.usefixtures("screener_data_stub")

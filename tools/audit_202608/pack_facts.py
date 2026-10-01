@@ -21,7 +21,7 @@ if str(_REPO_TOOLS) not in sys.path:
 import consensus_reference  # noqa: E402
 import throughcycle_record  # noqa: E402
 
-FACTS_VERSION = 5
+FACTS_VERSION = 6
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -69,6 +69,10 @@ KEYS: list[str] = [
     # None. The desk reads it to tell an owner-earnings base from the cash basis (brief F6). Same revision: the version
     # stays 5, and an older sidecar reads it as None.
     "reference_base_b",
+    # version 6 (revision 18, brief 1.7): the excess cash the reference adds at face and the desk adds to every scenario
+    # ($B: the base fiscal year's cash and short-term investments for a non-financial company, 0.0 for a financial one,
+    # None when the cash term is not available). An older sidecar or block reads it as None.
+    "excess_cash",
 ]
 
 # The revision marker (S1's from_text dispatch, section 5.1's line format). The DEFAULTS reader
@@ -351,6 +355,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "base_year_cap": None,
         "split_after_last_filing": None,
         "reference_base_b": None,
+        "excess_cash": None,
     }
 
 
@@ -441,18 +446,18 @@ def _q(v, fn):
 LONG_RUN_MEMBERS = ("cycle", "cycle_year", "cycle_years", "e5", "oe5", "m5", "m_tc", "m_years", "r_tc", "r_years", "p",
                     "g_rev", "g_rev_years", "terminal_g_basis", "ni_over_oe", "x_over_oe", "nwc_intensity", "nwc_years",
                     "stub_months", "stamps",
-                    # brief F4: the operating-margin record, the reference's margin rule and the blended return
-                    "om_tc", "om_L", "om_years", "om_shape", "om_basis", "om_5", "margin_cell", "margin_fraction",
-                    "m_long", "margin_ratio", "r8", "r3", "r_blend", "retention")
-# a member a DEFAULTS block written before revision 17's brief C7 (x_over_oe) or brief F (the rest) does not print: read as
-# None, not an error
-_LONG_RUN_NEW_MEMBERS = ("om_tc", "om_L", "om_years", "om_shape", "om_basis", "om_5", "margin_cell", "margin_fraction",
-                         "m_long", "margin_ratio", "r8", "r3", "r_blend", "retention")
+                    # brief F4, revision 18: the operating-margin record and the reference's margin rule (om_trend, the trend
+                    # level the margin moves to; revision 17's margin_cell, margin_fraction, r8, r3, r_blend and retention
+                    # are gone)
+                    "om_tc", "om_trend", "om_L", "om_years", "om_shape", "om_basis", "om_5", "m_long", "margin_ratio")
+# a member a DEFAULTS block written before revision 17's brief C7 (x_over_oe), brief F or revision 18 (the rest) does not
+# print: read as None, not an error. A revision-17 block's removed members (margin_cell, margin_fraction, r8, r3, r_blend,
+# retention) are ignored on read.
+_LONG_RUN_NEW_MEMBERS = ("om_tc", "om_trend", "om_L", "om_years", "om_shape", "om_basis", "om_5", "m_long", "margin_ratio")
 _LONG_RUN_OPTIONAL_ON_READ = ("x_over_oe",) + _LONG_RUN_NEW_MEMBERS
-# how a new member is quantized, printed and read back: margins and rates as rates, the ratio, the fraction and the
-# retention as ratios
-_LR_RATES = ("m5", "m_tc", "r_tc", "g_rev", "nwc_intensity", "om_tc", "om_L", "om_5", "m_long", "r8", "r3", "r_blend")
-_LR_RATIOS = ("ni_over_oe", "x_over_oe", "margin_fraction", "margin_ratio", "retention")
+# how a new member is quantized, printed and read back: margins and rates as rates, the ratios as ratios
+_LR_RATES = ("m5", "m_tc", "r_tc", "g_rev", "nwc_intensity", "om_tc", "om_trend", "om_L", "om_5", "m_long")
+_LR_RATIOS = ("ni_over_oe", "x_over_oe", "margin_ratio")
 _LR_YEARS = ("m_years", "r_years", "g_rev_years", "nwc_years", "om_years")
 
 
@@ -509,11 +514,10 @@ def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
       (r_tc may be +/-inf), m_years/r_years/g_rev_years/nwc_years [first, last, n] or None, p (a
       multiple of 1/8), terminal_g_basis "revenue_trend"/"consensus_fallback", ni_over_oe and x_over_oe ratios (the
       base window's net income, and its earnings before acquired-intangible amortization, over its owner earnings),
-      stub_months, stamps a list of strings in the DEFAULTS form (`compact_stamps`). Brief F4: om_tc/om_L/om_5/m_long
-      (the operating-margin record and the margins the reference's rule moves) and r8/r3/r_blend fractions, om_years
+      stub_months, stamps a list of strings in the DEFAULTS form (`compact_stamps`). Brief F4, revision 18: om_tc/om_trend/om_L/
+      om_5/m_long (the operating-margin record, its trend level and the margins the reference's rule moves), om_years
       [first, last, n] or None, om_shape "swing"/"trend", om_basis "with_amortization"/"without_amortization" (brief F2.1: "pretax_with_amortization"/
-      "pretax_without_amortization" where the company files no operating line),
-      margin_cell one of the five cell names or None, margin_fraction / margin_ratio / retention ratios. `stamps_full`, when the raw
+      "pretax_without_amortization" where the company files no operating line), margin_ratio a ratio. `stamps_full`, when the raw
       values carry it, is the record's full stamp list for the verdict: it is not printed and not compared."""
     if not d:
         return {}
@@ -608,19 +612,14 @@ def _render_long_run(lr: dict[str, Any]) -> str:
         "nwc_years=" + _lr_years(lr.get("nwc_years")),
         "stub_months=" + _fnum(lr.get("stub_months"), ".4f"),
         "om_tc=" + _lr_rate(lr.get("om_tc")),
+        "om_trend=" + _lr_rate(lr.get("om_trend")),
         "om_L=" + _lr_rate(lr.get("om_L")),
         "om_years=" + _lr_years(lr.get("om_years")),
         "om_shape=" + (lr.get("om_shape") or _NONE),
         "om_basis=" + (lr.get("om_basis") or _NONE),
         "om_5=" + _lr_rate(lr.get("om_5")),
-        "margin_cell=" + (lr.get("margin_cell") or _NONE),
-        "margin_fraction=" + _fnum(lr.get("margin_fraction"), ".6f"),
         "m_long=" + _lr_rate(lr.get("m_long")),
         "margin_ratio=" + _fnum(lr.get("margin_ratio"), ".6f"),
-        "r8=" + _lr_rate(lr.get("r8")),
-        "r3=" + _lr_rate(lr.get("r3")),
-        "r_blend=" + _lr_rate(lr.get("r_blend")),
-        "retention=" + _fnum(lr.get("retention"), ".6f"),
         "stamps=" + (";".join(compact_stamps(lr["stamps"])) if lr.get("stamps") else _NONE),
     ]
     return ", ".join(parts)
@@ -661,7 +660,7 @@ def _parse_long_run(raw: str) -> dict[str, Any]:
             out[k] = [int(x) for x in mm.groups()]
         elif k == "stamps":
             out[k] = compact_stamps(v.split(";"))      # reads the record's "2016/2017" form and the ranges alike
-        else:                                    # terminal_g_basis, om_shape, om_basis, margin_cell
+        else:                                    # terminal_g_basis, om_shape, om_basis
             out[k] = v
     return out
 
@@ -758,9 +757,9 @@ def _terminal_ronic_explanation(f: dict[str, Any]) -> str:
     if "record_not_available" in (lr.get("stamps") or []):
         return (f"the Base terminal return on new investment; your record has fewer than 3 years of returns "
                 f"on tangible invested capital, so it is the cost of equity and growth adds no value; {tail}")
-    return (f"the Base terminal return on new investment: the cost of equity plus retention times the excess over it "
-            f"of r_blend, your record's blended return on tangible invested capital (both in long_run; retention is "
-            f"p, the share of your last eight years above the cost of equity, capped at the measured persistence); "
+    return (f"the Base terminal return on new investment: the cost of equity plus p times the excess over it "
+            f"of r_tc, your record's median return on tangible invested capital (both in long_run; p is "
+            f"the share of your last eight years above the cost of equity); "
             f"{tail}")
 
 
@@ -812,6 +811,11 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
              "the Base base_cf; more than 2% away needs base_cf_reason"),
         line("owner_earnings_source", _dv_str(f.get("owner_earnings_source")),
              "where that default comes from"),
+        line("excess_cash", _dv_money6(f.get("excess_cash")),
+             "$B: the base fiscal year's cash and short-term investments at face (0 for a financial company; not "
+             "available when the cash term could not be computed, see long_run stamps), which the desk adds per share to "
+             "every scenario's value; the owner-earnings default and the reference base exclude the after-tax interest "
+             "on it"),
         line("cash_basis_b", _dv_money(f.get("cash_basis_b")),
              "the alternative base (includes working-capital swings)"),
         line("reference_base_b", _dv_money6(f.get("reference_base_b")),
@@ -840,12 +844,12 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     lr_series = throughcycle_record.margin_series_name((f.get("long_run") or {}).get("om_basis"))
     lines.append(line("long_run", _render_long_run(f.get("long_run") or {}),
                       "The desk values years 6 on from X_5 (earnings before acquired-intangible "
-                      "amortization), pays for growth at a return that fades from r_blend (the blend of r8 and r3, your "
-                      "record's 8-year and latest-3-year median returns on tangible invested capital) to "
+                      "amortization), pays for growth at a return that fades from r_tc (your record's 8-year median "
+                      "return on tangible invested capital) to "
                       "terminal_ronic, and moves the margin from m5 to m_long by year 10 (margin_ratio = m_long / "
                       f"m5; none means the margin is held): om_5, the {lr_series} margin the consensus implies at "
-                      f"year 5, closes margin_fraction of its gap to om_tc, your record's 8-year median {lr_series} "
-                      "margin (to zero for a loss record; margin_cell names the case). The members are the record "
+                      f"year 5, moves all the way to om_trend, the trend level of your record's 8-year {lr_series} "
+                      "margin (to zero for a loss record). The members are the record "
                       "behind it."))
 
     lines.append(line("net_debt_b", _dv_money(f.get("net_debt_b")),
@@ -857,7 +861,11 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
                       "ok, or why DATA 8 prints no consensus estimates"))
 
     civ = f.get("consensus_implied_value")
-    if isinstance(civ, (int, float)):
+    if isinstance(civ, (int, float)) and not consensus_reference.reference_in_force(f.get("reference_status")):
+        # revision 18 (brief 1.5): outside the street-target fence the value is printed as a level check only
+        civ_expl = ("outside the street-target fence (reference_status): a level check only; no Base band and no "
+                    "guidance_deviation_reason apply to it")
+    elif isinstance(civ, (int, float)):
         lo, hi = civ * consensus_reference.FAR_LOW, civ * consensus_reference.FAR_HIGH
         civ_expl = (f"a Base value outside {consensus_reference.FAR_LOW:g}-"
                    f"{consensus_reference.FAR_HIGH:g} of it ({lo:,.2f}-{hi:,.2f}) needs "
@@ -950,7 +958,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         mm = re.search(rf"^- {re.escape(key)}: (.*?) \| ", block, re.MULTILINE)
         if mm:
             return mm.group(1)
-        if throughcycle and key not in ("base_year_cap", "split_after_last_filing", "reference_base_b"):
+        if throughcycle and key not in ("base_year_cap", "split_after_last_filing", "reference_base_b", "excess_cash"):
             raise ValueError(f"revision-17 DEFAULTS block has no {key!r} line")
         return None
 
@@ -1031,6 +1039,8 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     split_after_last_filing = _dp_split(_split) if _split is not None else None
     _rb = _opt("reference_base_b")
     reference_base_b = _dp_num(_rb) if _rb is not None else None
+    _ec = _opt("excess_cash")
+    excess_cash = _dp_num(_ec) if _ec is not None else None
 
     return {
         "version": FACTS_VERSION,
@@ -1065,6 +1075,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "base_year_cap": base_year_cap,
         "split_after_last_filing": split_after_last_filing,
         "reference_base_b": reference_base_b,
+        "excess_cash": excess_cash,
     }
 
 

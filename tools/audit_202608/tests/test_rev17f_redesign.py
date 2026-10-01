@@ -42,64 +42,26 @@ CALIBRATION_CONTENT_SHA256 = "c112690fa8ddd108df738c4df926a64358b27bb1ce019adc6a
 FIX = Path(__file__).resolve().parent / "fixture_data" / "split_wording"
 
 
-# ---- F0: one owner for the rates ------------------------------------------------------------------------------------------
+# ---- F0, revision 18: the calibration file is unused ------------------------------------------------------------------------
 
-def test_the_calibration_file_is_brief_es_content():
-    obj = json.loads(Path(tc.CALIBRATION_FILE).read_text(encoding="utf-8"))
+def test_the_calibration_file_stays_on_disk_unused_and_its_loader_the_blend_and_the_caps_are_gone():
+    """Revision 18 (brief 1.1, 1.2): the five margin fractions, the blend weight and the retention caps are not read by any
+    code. The file stays on disk, byte for byte (nothing is deleted), and the loader, the capped returns and their
+    constants are gone."""
+    path = Path(tc.__file__).resolve().parent / "reference_calibration_v2.json"
+    obj = json.loads(path.read_text(encoding="utf-8"))
     canonical = json.dumps(obj, sort_keys=True, separators=(",", ":"))
     assert hashlib.sha256(canonical.encode("utf-8")).hexdigest() == CALIBRATION_CONTENT_SHA256
-    # the same content in either line-ending form pins the same value; brief E's raw bytes are CRLF (the provenance sha256)
-    raw = Path(tc.CALIBRATION_FILE).read_bytes().replace(b"\r\n", b"\n")
-    for form in (raw, raw.replace(b"\n", b"\r\n")):
-        again = json.dumps(json.loads(form.decode("utf-8")), sort_keys=True, separators=(",", ":"))
-        assert hashlib.sha256(again.encode("utf-8")).hexdigest() == CALIBRATION_CONTENT_SHA256
+    raw = path.read_bytes().replace(b"\r\n", b"\n")
     assert hashlib.sha256(raw.replace(b"\n", b"\r\n")).hexdigest() == CALIBRATION_RAW_SHA256
-    assert Path(tc.CALIBRATION_FILE).name == "reference_calibration_v2.json" and Path(tc.CALIBRATION_FILE).parent.name == "tools"
-
-
-def test_the_loader_reads_the_file_and_nothing_else_writes_a_rate():
-    cal = tc.calibration()
-    doc = json.loads(Path(tc.CALIBRATION_FILE).read_text(encoding="utf-8"))
-    assert cal["margin_series"] == "operating_margin" == doc["margin_series"]
-    assert cal["fractions"] == {c: doc["cells"][c]["f"] for c in ("peak_swing", "peak_trend", "trough_swing", "trough_trend", "loss")}
-    assert cal["w8"] == doc["w8"] == 0.25
-    assert cal["retention_caps"] == {b: doc["retention_caps"][b]["cap"] for b in ("p_lt_0.5", "p_0.5_to_lt_1", "p_eq_1")}
-    # no source file (tests excepted) writes a cell fraction or the first retention cap
+    for gone in ("calibration", "CALIBRATION_FILE", "retention_cap", "capped_return", "R_CAP_LOW", "R_CAP_HIGH", "CELL_NAMES",
+                 "RETENTION_BUCKETS", "R3_MIN_YEARS"):
+        assert not hasattr(tc, gone), gone
     repo = HERE.parent
     sources = list((repo / "tools").glob("*.py")) + list((repo / "tools" / "audit_202608").glob("*.py")) + list(repo.glob("*.py"))
     assert len(sources) > 20
-    for value in list(cal["fractions"].values()) + [cal["retention_caps"]["p_lt_0.5"]]:
-        needle = f"{value:.4f}"
-        offenders = [p.name for p in sources if needle in p.read_text(encoding="utf-8", errors="replace")]
-        assert offenders == [], (needle, offenders)
-
-
-def test_the_loader_refuses_a_file_that_is_not_the_operating_margin_calibration(tmp_path):
-    doc = json.loads(Path(tc.CALIBRATION_FILE).read_text(encoding="utf-8"))
-    p = tmp_path / "other.json"
-    p.write_text(json.dumps(dict(doc, margin_series="x_margin")), encoding="utf-8")
-    with pytest.raises(ValueError, match="x_margin"):
-        tc.calibration(str(p))
-    del doc["cells"]["loss"]
-    p2 = tmp_path / "short.json"
-    p2.write_text(json.dumps(doc), encoding="utf-8")
-    with pytest.raises(KeyError):
-        tc.calibration(str(p2))
-
-
-@pytest.mark.parametrize("where, bad", [("loss", -1.47), ("loss", 1.01), ("peak_swing", -0.01), ("w8", 1.5), ("p_lt_0.5", -0.2), ("p_eq_1", 1.2)])
-def test_the_loader_refuses_a_rate_outside_zero_to_one(tmp_path, where, bad):
-    doc = json.loads(Path(tc.CALIBRATION_FILE).read_text(encoding="utf-8"))
-    if where == "w8":
-        doc["w8"] = bad
-    elif where in doc["retention_caps"]:
-        doc["retention_caps"][where]["cap"] = bad
-    else:
-        doc["cells"][where]["f"] = bad
-    p = tmp_path / "bad.json"
-    p.write_text(json.dumps(doc), encoding="utf-8")
-    with pytest.raises(ValueError, match=where):
-        tc.calibration(str(p))
+    offenders = [p.name for p in sources if "CALIBRATION_FILE" in p.read_text(encoding="utf-8", errors="replace")]
+    assert offenders == [], offenders
 
 
 # ---- F1: the operating-margin record --------------------------------------------------------------------------------------
@@ -254,78 +216,59 @@ def test_the_cycle_test_is_still_computed_as_an_annotation():
     assert rec["cycle"] is True and rec["cycle_years"] == [2022] and rec["cycle_year"] == 2022
 
 
-# ---- F3: returns on new capital ---------------------------------------------------------------------------------------
+# ---- F3, revision 18: returns on new capital - the original rule -------------------------------------------------------------
 
 def _return_rows(ni_by_year, equity=500.0, **kw):
     return history(2014, 2025, lambda y: row(y, ni=ni_by_year(y), equity=equity, **kw))
 
 
-def test_each_years_return_is_capped_for_r8_and_r3_and_the_uncapped_statistics_stay():
+def test_the_uncapped_returns_set_r_tc_and_ronic_t_and_the_blend_members_are_gone():
     # 2018-2022 an infinite return (negative capital, positive profit), 2023-2025 the -inf side
     rows = history(2014, 2025, lambda y: row(y, ni=(100.0 if y <= 2022 else -10.0), equity=200.0, goodwill=250.0,
                                               intangibles=50.0))
     rec = tc.analyse(rows, R)
-    assert rec["R_tc"] == INF and rec["p"] == 5 / 8                                       # uncapped, as before
-    assert rec["r8"] == 1.0                                                              # median of five 1.0 and three -0.5
-    assert rec["r3"] == -0.5 and rec["r_blend"] == pytest.approx(0.25 * 1.0 + 0.75 * -0.5)
-    # a finite return above the cap: R = 100 / 40 = 2.5 (tangible capital 40)
+    assert rec["R_tc"] == INF and rec["p"] == 5 / 8
+    assert rec["ronic_t"] == INF                                          # +inf when R_tc is +inf, whatever p is
+    # a finite return above the old cap: R = 100 / 40 = 2.5 (tangible capital 40), kept as it is
     high = tc.analyse(_return_rows(lambda y: 100.0, equity=40.0), R)
-    assert high["R_tc"] == pytest.approx(2.5) and high["r8"] == 1.0 and high["r3"] == 1.0 and high["r_blend"] == 1.0
-    assert tc.R_CAP_LOW == -0.5 and tc.R_CAP_HIGH == 1.0
-    assert tc.capped_return(INF) == 1.0 and tc.capped_return(-INF) == -0.5 and tc.capped_return(0.3) == 0.3
-    assert tc.capped_return(None) is None and tc.capped_return(0.0) == 0.0
+    assert high["R_tc"] == pytest.approx(2.5) and high["p"] == 1.0
+    assert high["ronic_t"] == pytest.approx(R + 1.0 * (2.5 - R))
+    for rec_ in (rec, high):
+        assert not any(k in rec_ for k in ("r8", "r3", "r_blend", "retention"))
+        assert "returns_blend_without_recent" not in rec_["stamps"]
 
 
-def test_r8_r3_and_the_blend_by_hand():
-    # R = X / 500: 0.30 in 2018-2022 and 2025, 0.10 in 2023 and 2024 -> r8 = 0.30, r3 = median(0.10, 0.10, 0.30) = 0.10
-    rec = tc.analyse(_return_rows(lambda y: 50.0 if y in (2023, 2024) else 150.0), R)
-    assert rec["r8"] == pytest.approx(0.30) and rec["r3"] == pytest.approx(0.10)
-    assert rec["r_blend"] == pytest.approx(0.25 * 0.30 + 0.75 * 0.10) == pytest.approx(0.15)
-    assert tc.calibration()["w8"] == 0.25
-
-
-def test_a_missing_recent_return_leaves_the_eight_year_median_stamped_and_a_missing_eight_year_return_leaves_no_record():
-    # cash missing in 2024 and 2025: no invested capital there, so one defined year in L-2..L: r3 is undefined
-    rows = history(2014, 2025, lambda y: row(y, ni=100.0, equity=500.0, cash=(None if y >= 2024 else 0.0)))
-    rec = tc.analyse(rows, R)
-    assert rec["r3"] is None and rec["r8"] == pytest.approx(0.20) and rec["r_blend"] == rec["r8"]
-    assert "returns_blend_without_recent" in rec["stamps"] and "record_not_available" not in rec["stamps"]
-    # two defined years in W: no r8, no blend, the record is not available and RONIC_T is the cost of equity
-    thin = tc.analyse(history(2024, 2025, lambda y: row(y, ni=100.0, equity=500.0)), R)
-    assert thin["r8"] is None and thin["r_blend"] is None and thin["retention"] is None
-    assert "record_not_available" in thin["stamps"] and thin["ronic_t"] == R
-
-
-@pytest.mark.parametrize("years_above, bucket", [(2, "p_lt_0.5"), (5, "p_0.5_to_lt_1"), (8, "p_eq_1")])
-def test_retention_is_the_smaller_of_p_and_the_buckets_cap_and_ronic_t_follows(years_above, bucket, monkeypatch):
+@pytest.mark.parametrize("years_above", [2, 5, 8])
+def test_ronic_t_is_r_plus_p_times_the_excess_of_r_tc_over_r(years_above):
     above = set(range(2025 - years_above + 1, 2026))
-    rows = _return_rows(lambda y: 150.0 if y in above else 20.0)                        # R = 0.30 above r, 0.04 below
-    rec = tc.analyse(rows, R)
+    rec = tc.analyse(_return_rows(lambda y: 150.0 if y in above else 20.0), R)          # R = 0.30 above r, 0.04 below
     p = years_above / 8.0
-    caps = tc.calibration()["retention_caps"]
-    assert rec["p"] == p and rec["retention"] == min(p, caps[bucket]) == p             # the file's caps (0.84, 1.0, 1.0) bind nowhere
-    assert rec["ronic_t"] == pytest.approx(R + rec["retention"] * max(0.0, rec["r_blend"] - R))
-    # a calibration whose caps bind: retention is the cap, so the file stays the owner
-    fake = {"margin_series": "operating_margin", "fractions": tc.calibration()["fractions"], "w8": tc.calibration()["w8"],
-            "retention_caps": {"p_lt_0.5": 0.2, "p_0.5_to_lt_1": 0.5, "p_eq_1": 0.9}}
-    monkeypatch.setattr(tc, "calibration", lambda path=None: fake)
-    capped = tc.analyse(rows, R)
-    assert capped["retention"] == min(p, fake["retention_caps"][bucket]) < p
-    assert capped["ronic_t"] == pytest.approx(R + capped["retention"] * max(0.0, capped["r_blend"] - R))
+    r_tc = 0.30 if years_above >= 5 else 0.04                                          # the window's median
+    assert rec["p"] == p and rec["R_tc"] == pytest.approx(r_tc)
+    assert rec["ronic_t"] == pytest.approx(R + p * max(0.0, r_tc - R))
+    if r_tc < R:
+        assert rec["ronic_t"] == R                                                     # a median below r: growth earns its cost
 
 
-def test_the_bucket_edges_are_p_below_one_half_one_half_up_to_one_and_one():
-    caps = {"retention_caps": {"p_lt_0.5": 1, "p_0.5_to_lt_1": 2, "p_eq_1": 3}}
-    assert [tc.retention_cap(p, caps) for p in (0.0, 0.375, 0.5, 0.875, 1.0)] == [1, 1, 2, 2, 3]
+def test_a_median_of_minus_inf_or_a_thin_record_leaves_ronic_t_at_the_cost_of_equity():
+    losing = tc.analyse(history(2014, 2025, lambda y: row(y, ni=-10.0, equity=200.0, goodwill=250.0, intangibles=50.0)), R)
+    assert losing["R_tc"] == -INF and losing["ronic_t"] == R and not math.isnan(losing["ronic_t"])
+    # a p of 0 against +inf cannot arise from a median of +inf, but 0 x inf must never be computed: R_tc = +inf is read first
+    thin = tc.analyse(history(2024, 2025, lambda y: row(y, ni=100.0, equity=500.0)), R)
+    assert thin["R_tc"] is None and "record_not_available" in thin["stamps"] and thin["ronic_t"] == R
 
 
-def test_ronic_0_is_the_larger_of_the_cost_of_equity_and_the_blend_and_the_reference_carries_the_records_ronic_t():
-    for r_blend, expect0 in ((0.05, COE), (0.20, 0.20), (INF, INF)):
-        rec = dict(REDUCTION, r_blend=r_blend, ronic_t=0.13)
+def test_ronic_0_is_the_larger_of_the_cost_of_equity_and_r_tc_and_the_reference_carries_the_records_ronic_t():
+    for r_tc, expect0 in ((0.05, COE), (0.20, 0.20), (INF, INF), (-INF, COE)):
+        rec = dict(REDUCTION, R_tc=r_tc, ronic_t=0.13)
         ref = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=rec, base_ni=1.2 * B, base_revenue=10.0 * B,
                        stub_months=8.5, anchor=GA)
         assert ref["ronic0"] == expect0 and ref["terminal_ronic"] == 0.13
-    none = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=dict(REDUCTION, r_blend=None, ronic_t=COE,
+    # an older record that still carries r_blend: it is not read
+    old = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=dict(REDUCTION, R_tc=0.20, r_blend=0.50, ronic_t=0.13),
+                   base_ni=1.2 * B, base_revenue=10.0 * B, stub_months=8.5, anchor=GA)
+    assert old["ronic0"] == 0.20
+    none = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=dict(REDUCTION, R_tc=None, ronic_t=COE,
                                                                         stamps=["record_not_available"]),
                     base_ni=1.2 * B, base_revenue=10.0 * B, stub_months=8.5, anchor=GA)
     assert none["ronic0"] == COE and "record_not_available" in none["stamps"]
@@ -336,14 +279,16 @@ def _est():
     return EST
 
 
-def test_the_desk_reads_r_blend_from_the_facts_else_r_tc_of_an_older_block_else_the_cost_of_equity():
+def test_the_desk_reads_r_tc_from_the_facts_else_the_cost_of_equity_and_ignores_an_older_blocks_r_blend():
     r = 0.09
-    assert fmt._long_run_inputs({"r_blend": 0.20, "r_tc": 0.50}, 1.0, None, r)[2] == 0.20          # the blend, not r_tc
-    assert fmt._long_run_inputs({"r_blend": 0.05, "r_tc": 0.50}, 1.0, None, r)[2] == r             # below r: r
-    assert fmt._long_run_inputs({"r_tc": 0.20}, 1.0, None, r)[2] == 0.20                           # an older block
+    assert fmt._long_run_inputs({"r_tc": 0.50}, 1.0, None, r)[2] == 0.50                           # max(r, R_tc)
+    assert fmt._long_run_inputs({"r_blend": 0.20, "r_tc": 0.50}, 1.0, None, r)[2] == 0.50          # r_blend is not read
+    assert fmt._long_run_inputs({"r_blend": 0.20}, 1.0, None, r)[2] == r                           # ... even alone
+    assert fmt._long_run_inputs({"r_tc": 0.05}, 1.0, None, r)[2] == r                              # below r: r
     assert fmt._long_run_inputs({"r_tc": INF}, 1.0, None, r)[2] == INF
+    assert fmt._long_run_inputs({"r_tc": -INF}, 1.0, None, r)[2] == r
     assert fmt._long_run_inputs({}, 1.0, None, r)[2] == r and fmt._long_run_inputs(None, 1.0, None, r)[2] == r
-    assert fmt._long_run_inputs({"r_blend": 0.0, "r_tc": 0.50}, 1.0, None, 0.0)[2] == 0.0          # 0.0 is a value
+    assert fmt._long_run_inputs({"r_tc": 0.0}, 1.0, None, 0.0)[2] == 0.0                           # 0.0 is a value
     # the margin ratio is the facts' (only with a reference); no reference or an older block: none
     lr = {"e5": 0.3, "oe5": 0.28, "m5": 0.1, "margin_ratio": 0.655}
     assert fmt._long_run_inputs(lr, 1.0, None, r)[1] == 0.655
@@ -354,87 +299,84 @@ def test_the_desk_reads_r_blend_from_the_facts_else_r_tc_of_an_older_block_else_
     assert fmt._long_run_inputs(lr, 1.0, 0.11, r)[3] == 0.11 and fmt._long_run_inputs(lr, 1.0, None, r)[3] == r
 
 
-# ---- F2: the margin rule ---------------------------------------------------------------------------------------------------
+# ---- F2, revision 18: the margin rule - full reversion to the trend level -----------------------------------------------------
 
 def _rec(**kw):
-    return dict(dict(om_tc=0.10, om_L=0.20, om_shape="swing", x_L=0.16, tax_L=0.21), **kw)
+    return dict(dict(om_tc=0.10, om_trend=0.10, om_L=0.20, om_shape="swing", x_L=0.16, tax_L=0.21), **kw)
 
 
 def test_the_additive_conversion_by_hand_on_one_fixture():
-    """om_L 20%, x_L 16%, m5 15%, tax 21%, om_tc 10%, swing: OM_5 = 18.73%, OM_long = 12.18%, m_long = 9.82%, ratio 0.655."""
+    """om_L 20%, x_L 16%, m5 15%, tax 21%, trend level 10%: OM_5 = 18.73%, OM_long = 10% (all the way, not a fraction of the
+    gap), m_long = 15% + 0.79 x (10% - 18.73%) = 8.10%, ratio 0.540."""
     r = cr.margin_rule(_rec(), 0.15)
-    f = tc.calibration()["fractions"]["peak_swing"]
-    assert f == pytest.approx(0.7505, abs=5e-5)
-    assert r["cell"] == "peak_swing" and r["fraction"] == f and r["target"] == 0.10
+    assert r["target"] == 0.10 and r["om_trend"] == 0.10
     assert round(r["om_5"] * 100, 2) == 18.73                                        # 0.20 + (0.15 - 0.16) / 0.79
-    assert round((r["om_5"] + f * (0.10 - r["om_5"])) * 100, 2) == 12.18
-    assert round(r["m_long"] * 100, 2) == 9.82 and round(r["ratio"], 3) == 0.655
-    assert r["reason"] is None and r["stamps"] == []
+    assert round(r["m_long"] * 100, 2) == 8.10 and round(r["ratio"], 3) == 0.540
+    assert r["reason"] is None and r["stamps"] == [] and "cell" not in r and "fraction" not in r
 
 
-def _by_hand(om_tc, om_L, x_L, tax_L, m5, cell):
-    f = tc.calibration()["fractions"][cell]
-    target = 0.0 if cell == "loss" else om_tc
+def _by_hand(om_trend, om_L, x_L, tax_L, m5):
     om_5 = om_L + (m5 - x_L) / (1 - tax_L) if x_L is not None else om_L
-    om_long = om_5 + f * (target - om_5)
-    return om_5, f, max(0.0, m5 + (1 - tax_L) * (om_long - om_5))
+    target = max(0.0, om_trend)
+    return om_5, target, max(0.0, m5 + (1 - tax_L) * (target - om_5))
 
 
-@pytest.mark.parametrize("cell, om_tc, om_L, x_L, m5, shape", [
-    ("peak_swing", 0.10, 0.20, 0.16, 0.15, "swing"),          # OM_5 about 18.7%, above the median 10%
-    ("peak_trend", 0.10, 0.20, 0.16, 0.15, "trend"),
-    ("trough_swing", 0.20, 0.10, 0.08, 0.09, "swing"),        # OM_5 about 11.3%, below the median 20%
-    ("trough_trend", 0.20, 0.10, 0.08, 0.09, "trend"),
-    ("loss", -0.02, 0.05, 0.04, 0.05, "trend"),               # a loss record: the target is zero
-    ("loss", -0.02, 0.05, 0.04, 0.05, "swing"),               # the shape does not matter for a loss record
+@pytest.mark.parametrize("om_trend, om_L, x_L, m5", [
+    (0.10, 0.20, 0.16, 0.15),         # OM_5 about 18.7%, above the trend level 10%: the margin moves down
+    (0.20, 0.10, 0.08, 0.09),         # OM_5 about 11.3%, below the trend level 20%: up
+    (-0.02, 0.05, 0.04, 0.05),        # a negative trend level: the target is zero
+    (0.0, 0.05, 0.04, 0.05),          # 0.0 is a value
 ])
-def test_every_cell_uses_its_calibrated_fraction_and_moves_the_margin_by_it(cell, om_tc, om_L, x_L, m5, shape):
-    r = cr.margin_rule(_rec(om_tc=om_tc, om_L=om_L, x_L=x_L, om_shape=shape), m5)
-    om_5, f, m_long = _by_hand(om_tc, om_L, x_L, 0.21, m5, cell)
-    assert r["cell"] == cell and r["fraction"] == f == tc.calibration()["fractions"][cell]
-    assert r["om_5"] == pytest.approx(om_5) and r["m_long"] == pytest.approx(m_long) and r["ratio"] == pytest.approx(m_long / m5)
-    assert r["target"] == (0.0 if cell == "loss" else om_tc)
-    assert (r["ratio"] < 1) == cell.startswith(("peak", "loss"))                      # peaks and losses move down, troughs up
+def test_the_margin_moves_all_the_way_to_the_floored_trend_level(om_trend, om_L, x_L, m5):
+    r = cr.margin_rule(_rec(om_trend=om_trend, om_L=om_L, x_L=x_L), m5)
+    om_5, target, m_long = _by_hand(om_trend, om_L, x_L, 0.21, m5)
+    assert r["target"] == target and r["om_5"] == pytest.approx(om_5)
+    assert r["m_long"] == pytest.approx(m_long) and r["ratio"] == pytest.approx(m_long / m5)
+    assert (r["ratio"] < 1) == (target < om_5)                                          # above the level moves down, below up
+
+
+def test_the_median_and_the_shape_no_longer_move_the_margin():
+    base = cr.margin_rule(_rec(), 0.15)
+    for kw in (dict(om_tc=0.50), dict(om_tc=-0.50), dict(om_shape="trend"), dict(om_tc=None, om_shape=None)):
+        assert cr.margin_rule(_rec(**kw), 0.15)["m_long"] == base["m_long"]
 
 
 def test_the_anchor_is_the_filed_operating_margin_when_the_earnings_margin_is_unknown():
     r = cr.margin_rule(_rec(x_L=None), 0.15)
-    assert r["om_5"] == 0.20 and r["stamps"] == ["margin_rule_filed_anchor"] and r["cell"] == "peak_swing"
-    f = tc.calibration()["fractions"]["peak_swing"]
-    assert r["m_long"] == pytest.approx(0.15 + 0.79 * f * (0.10 - 0.20))
-    # exactly at the median: the peak cell (>=), the margin does not move
-    at_median = cr.margin_rule(_rec(x_L=None, om_L=0.10), 0.15)
-    assert at_median["cell"] == "peak_swing" and at_median["m_long"] == 0.15 and at_median["ratio"] == 1.0
+    assert r["om_5"] == 0.20 and r["stamps"] == ["margin_rule_filed_anchor"]
+    assert r["m_long"] == pytest.approx(0.15 + 0.79 * (0.10 - 0.20))
+    # exactly at the trend level: the margin does not move
+    at_level = cr.margin_rule(_rec(x_L=None, om_L=0.10), 0.15)
+    assert at_level["m_long"] == 0.15 and at_level["ratio"] == 1.0
 
 
 def test_the_long_run_margin_is_floored_at_zero_never_toward_a_loss():
-    # a loss record with a 20% operating margin against a 5% earnings margin: the move toward zero would take the earnings
-    # margin to 0.05 + 0.79 x (0.004 - 0.20) < 0
-    r = cr.margin_rule(_rec(om_tc=-0.01, om_L=0.20, x_L=0.05), 0.05)
-    assert r["cell"] == "loss" and r["m_long"] == 0.0 and r["ratio"] == 0.0
+    # a negative trend level with a 20% operating margin against a 5% earnings margin: the move to zero would take the
+    # earnings margin to 0.05 + 0.79 x (0 - 0.20) < 0
+    r = cr.margin_rule(_rec(om_trend=-0.01, om_L=0.20, x_L=0.05), 0.05)
+    assert r["target"] == 0.0 and r["m_long"] == 0.0 and r["ratio"] == 0.0
     # through the reference: the margin factor runs to 0 at year 10
-    rec = dict(REDUCTION, om_tc=-0.01, om_L=0.20, om_shape="trend", x_L=0.05, tax_L=0.21)
+    rec = dict(REDUCTION, om_tc=-0.01, om_trend=-0.01, om_L=0.20, om_shape="trend", x_L=0.05, tax_L=0.21)
     ref = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=rec, base_ni=1.2 * B, base_revenue=10.0 * B,
                    stub_months=8.5, anchor=GA)
     m5 = ref["long_run"]["m5"]
     assert ref["margin_ratio"] is not None and ref["m_long"] >= 0.0
-    r2 = cr.margin_rule(rec, m5)
-    assert r2["ratio"] == ref["margin_ratio"] and ref["margin_cell"] == "loss"
+    assert cr.margin_rule(rec, m5)["ratio"] == ref["margin_ratio"]
 
 
 def test_no_margin_rule_when_the_year_5_margin_is_not_positive():
     for m5 in (0.0, -0.01):
         r = cr.margin_rule(_rec(), m5)
-        assert r["ratio"] is None and r["cell"] is None and r["m_long"] is None
+        assert r["ratio"] is None and r["target"] is None and r["m_long"] is None
         assert r["stamps"] == ["margin_rule_year5_margin_not_positive"] and "not positive" in r["reason"]
 
 
-def test_no_margin_rule_without_an_operating_margin_record_and_the_reference_carries_the_records_stamp():
-    r = cr.margin_rule(dict(om_tc=None, om_L=None, om_shape=None, x_L=0.1, tax_L=0.2), 0.15)
+def test_no_margin_rule_without_a_trend_level_and_the_reference_carries_the_records_stamp():
+    r = cr.margin_rule(dict(om_tc=None, om_trend=None, om_L=None, om_shape=None, x_L=0.1, tax_L=0.2), 0.15)
     assert r["ratio"] is None and r["om_5"] is None and "too few years of operating or pre-tax margin" in r["reason"]
     # brief F2.1: the record's stamp is margin_record_not_available; the older stamp still rides on the reference
     for stamp in ("margin_record_not_available", "operating_margin_record_not_available"):
-        rec = dict(REDUCTION, om_tc=None, om_L=None, stamps=[stamp])
+        rec = dict(REDUCTION, om_tc=None, om_trend=None, om_L=None, stamps=[stamp])
         ref = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=rec, base_ni=1.2 * B, base_revenue=10.0 * B,
                        stub_months=8.5, anchor=GA)
         assert ref["margin_ratio"] is None and stamp in ref["stamps"]
@@ -445,42 +387,41 @@ def test_no_margin_rule_for_a_current_operating_loss_in_a_profitable_record():
     r = cr.margin_rule(_rec(om_L=-0.05, x_L=-0.03), 0.02)              # OM_5 = -0.05 + (0.02 + 0.03) / 0.79 = +0.013: a profit
     assert r["ratio"] is not None
     r = cr.margin_rule(_rec(om_L=-0.05, x_L=0.02), 0.02)               # OM_5 = -0.05 + 0 = -0.05
-    assert r["ratio"] is None and r["cell"] is None and r["om_5"] == pytest.approx(-0.05)
-    assert r["stamps"] == ["margin_rule_unmeasured_current_loss"] and "no measured case" in r["reason"]
+    assert r["ratio"] is None and r["target"] is None and r["om_5"] == pytest.approx(-0.05)
+    assert r["stamps"] == ["margin_rule_unmeasured_current_loss"] and "the rule does not cover" in r["reason"]
     # OM_5 = 0 is not a profit either
     assert cr.margin_rule(_rec(om_L=0.0, x_L=None), 0.05)["stamps"] == ["margin_rule_filed_anchor",
                                                                      "margin_rule_unmeasured_current_loss"]
 
 
-def test_a_current_loss_is_outside_every_measured_cell_a_loss_record_included():
-    # brief F2.2: brief E's loss cell was measured on firms profitable at the base year; a loss record whose consensus margin is
-    # still a loss at year 5 was never measured, so the rule must not lift its margin above m5
-    r = cr.margin_rule(_rec(om_tc=-0.02, om_L=-0.05, x_L=None), 0.05)
-    assert r["ratio"] is None and r["cell"] is None and r["fraction"] is None and r["target"] is None and r["m_long"] is None
+def test_a_current_loss_holds_the_margin_a_negative_trend_level_included():
+    # the guards are unchanged: a margin that is still a loss at year 5 is outside the rule, so it must not lift m5
+    r = cr.margin_rule(_rec(om_trend=-0.02, om_L=-0.05, x_L=None), 0.05)
+    assert r["ratio"] is None and r["target"] is None and r["m_long"] is None
     assert r["om_5"] == -0.05 and r["stamps"] == ["margin_rule_filed_anchor", "margin_rule_unmeasured_current_loss"]
-    assert r["reason"] == ("this company's 8-year median operating margin is a loss and the consensus implies an operating "
-                           "loss at year 5, which no measured case covers")
-    assert cr.margin_rule(_rec(om_tc=-0.02, om_L=0.0, x_L=None), 0.05)["ratio"] is None                # OM_5 = 0
-    r = cr.margin_rule(_rec(om_tc=-0.02, om_L=-0.05, x_L=0.02), 0.02)                                 # OM_5 = -0.05 + 0 / 0.79
+    assert r["reason"] == ("this company's 8-year trend-level operating margin is a loss and the consensus implies an operating "
+                           "loss at year 5, which the rule does not cover")
+    assert cr.margin_rule(_rec(om_trend=-0.02, om_L=0.0, x_L=None), 0.05)["ratio"] is None                # OM_5 = 0
+    r = cr.margin_rule(_rec(om_trend=-0.02, om_L=-0.05, x_L=0.02), 0.02)                                 # OM_5 = -0.05 + 0 / 0.79
     assert r["ratio"] is None and r["stamps"] == ["margin_rule_unmeasured_current_loss"]
-    # a loss record whose consensus margin is a profit at year 5 is still the loss cell
-    r = cr.margin_rule(_rec(om_tc=-0.02, om_L=-0.05, x_L=-0.03), 0.02)                                # OM_5 = -0.05 + 0.05 / 0.79 = +0.013
-    assert r["cell"] == "loss" and r["ratio"] is not None and r["stamps"] == []
+    # a negative trend level whose consensus margin is a profit at year 5 moves to zero
+    r = cr.margin_rule(_rec(om_trend=-0.02, om_L=-0.05, x_L=-0.03), 0.02)                                # OM_5 = -0.05 + 0.05 / 0.79 = +0.013
+    assert r["target"] == 0.0 and r["ratio"] is not None and r["stamps"] == []
     # through the reference: the margin is held at m5 and the stamp rides on the reference
-    rec = dict(REDUCTION, om_tc=-0.02, om_L=-0.05, om_shape="trend", x_L=None, tax_L=0.21)
+    rec = dict(REDUCTION, om_tc=-0.02, om_trend=-0.02, om_L=-0.05, om_shape="trend", x_L=None, tax_L=0.21)
     ref = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=rec, base_ni=1.2 * B, base_revenue=10.0 * B,
                    stub_months=8.5, anchor=GA)
-    assert ref["margin_ratio"] is None and ref["margin_cell"] is None and ref["long_run"]["margin_ratio"] is None
+    assert ref["margin_ratio"] is None and ref["long_run"]["margin_ratio"] is None
     assert ref["stamps"].count("margin_rule_unmeasured_current_loss") == 1
 
 
 def test_no_margin_rule_without_a_revenue_path():
     no_rev = {k: dict(v, revenue={"analysts": 0}) for k, v in _est().items()}
-    ref = cr.build(1.1 * B, no_rev, COE, GA, 500e6, MEDIAN5, record=dict(REDUCTION, om_tc=0.06, om_L=0.17, om_shape="trend",
-                                                                        x_L=0.12, tax_L=0.25),
+    ref = cr.build(1.1 * B, no_rev, COE, GA, 500e6, MEDIAN5, record=dict(REDUCTION, om_tc=0.06, om_trend=0.06, om_L=0.17,
+                                                                        om_shape="trend", x_L=0.12, tax_L=0.25),
                    base_ni=1.2 * B, base_revenue=10.0 * B)
     assert ref["long_run_path"] == "owner_earnings_ratio" and ref["margin"] is None and ref["margin_ratio"] is None
-    assert ref["margin_cell"] is None and ref["om_5"] is None and ref["long_run"]["margin_ratio"] is None
+    assert ref["om_5"] is None and ref["long_run"]["margin_ratio"] is None
 
 
 def _line(ref):
@@ -491,40 +432,37 @@ def _pct(x, nd=1):
     return f"{x * 100:.{nd}f}%"
 
 
-def test_the_explanations_say_which_case_moved_the_margin_and_why_it_did_not():
+def test_the_explanations_say_where_the_margin_moved_and_why_it_did_not():
     def ref_for(**kw):
-        rec = dict(REDUCTION, om_tc=0.06, om_L=0.17, om_shape="swing", x_L=0.12, tax_L=0.25)
+        rec = dict(REDUCTION, om_tc=0.06, om_trend=0.06, om_L=0.17, om_shape="swing", x_L=0.12, tax_L=0.25)
         rec.update(kw)
         return cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=rec, base_ni=1.2 * B, base_revenue=10.0 * B,
                         stub_months=8.5, anchor=GA)
     m5 = lambda ref: ref["long_run"]["m5"]
-    for shape, kind in (("swing", "moved up and down around their median"), ("trend", "trended")):
-        ref = ref_for(om_shape=shape)
-        f = _pct(ref["margin_fraction"], 0)
+    for shape in ("swing", "trend"):
+        ref = ref_for(om_shape=shape)                                   # the shape no longer changes the sentence
         assert ("earnings margin moving from " + _pct(m5(ref)) + " to " + _pct(ref["m_long"]) + " by year 10: the consensus "
-                "implies a " + _pct(ref["om_5"]) + " operating margin at year 5 against this company's 8-year median of 6.0%; "
-                "companies whose margins " + kind + " closed " + f + " of such a gap within 3-4 years") in _line(ref)
-    loss = ref_for(om_tc=-0.02)
-    assert ("earnings margin moving from " + _pct(m5(loss)) + " to " + _pct(loss["m_long"]) + " by year 10: this company's "
-            "8-year median operating margin is a loss (-2.0%); such records closed 60% of the way to zero within 3-4 years"
-            ) in _line(loss)
+                "implies a " + _pct(ref["om_5"]) + " operating margin at year 5 and the margin moves all the way to 6.0%, "
+                "the trend level of this company's 8-year record") in _line(ref)
+    loss = ref_for(om_trend=-0.02)
+    assert "moves all the way to 0.0%, the trend level" in _line(loss)                                  # floored at zero
     held = ref_for(om_L=-0.05, x_L=0.129)
     assert held["stamps"].count("margin_rule_unmeasured_current_loss") == 1
-    assert ("earnings margin held at " + _pct(m5(held)) + ": this company's 8-year median operating margin is positive but the "
-            "consensus implies an operating loss at year 5, which no measured case covers") in _line(held)
-    off = ref_for(om_tc=None, om_L=None)
+    assert ("earnings margin held at " + _pct(m5(held)) + ": this company's 8-year trend-level operating margin is positive but "
+            "the consensus implies an operating loss at year 5, which the rule does not cover") in _line(held)
+    off = ref_for(om_trend=None, om_L=None)
     assert ("earnings margin held at " + _pct(m5(off)) + ": this company's record holds too few years of operating or pre-tax "
-            "margin to measure its median") in _line(off)
-    loss_held = ref_for(om_tc=-0.02, om_L=-0.05, x_L=0.129)                                           # brief F2.2
-    assert ("earnings margin held at " + _pct(m5(loss_held)) + ": this company's 8-year median operating margin is a loss and the "
-            "consensus implies an operating loss at year 5, which no measured case covers") in _line(loss_held)
-    # the old wording is gone
-    assert "reverting" not in _line(loss) and "your record's median" not in _line(loss)
+            "margin to measure its trend level") in _line(off)
+    loss_held = ref_for(om_trend=-0.02, om_L=-0.05, x_L=0.129)
+    assert ("earnings margin held at " + _pct(m5(loss_held)) + ": this company's 8-year trend-level operating margin is a loss "
+            "and the consensus implies an operating loss at year 5, which the rule does not cover") in _line(loss_held)
+    # the revision-17 wording is gone
+    assert "closed" not in _line(ref_for()) and "of such a gap" not in _line(ref_for())
 
 
 def test_the_explanations_name_the_pretax_margin_when_the_record_is_on_the_pretax_line_and_the_arithmetic_is_the_same():
     def ref_for(basis, **kw):
-        rec = dict(REDUCTION, om_tc=0.06, om_L=0.17, om_shape="swing", x_L=0.12, tax_L=0.25, om_basis=basis)
+        rec = dict(REDUCTION, om_tc=0.06, om_trend=0.06, om_L=0.17, om_shape="swing", x_L=0.12, tax_L=0.25, om_basis=basis)
         rec.update(kw)
         return cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=rec, base_ni=1.2 * B, base_revenue=10.0 * B,
                         stub_months=8.5, anchor=GA)
@@ -532,21 +470,16 @@ def test_the_explanations_name_the_pretax_margin_when_the_record_is_on_the_preta
     for basis in ("pretax_with_amortization", "pretax_without_amortization"):
         pre, op = ref_for(basis), ref_for("with_amortization")
         assert pre["margin_ratio"] == op["margin_ratio"] and pre["m_long"] == op["m_long"] and pre["value"] == op["value"]
-        f = _pct(pre["margin_fraction"], 0)
         assert ("earnings margin moving from " + _pct(m5(pre)) + " to " + _pct(pre["m_long"]) + " by year 10: the consensus "
-                "implies a " + _pct(pre["om_5"]) + " pre-tax margin at year 5 against this company's 8-year median of 6.0%; "
-                "companies whose margins moved up and down around their median closed " + f + " of such a gap within 3-4 years"
-                ) in _line(pre)
+                "implies a " + _pct(pre["om_5"]) + " pre-tax margin at year 5 and the margin moves all the way to 6.0%, "
+                "the trend level of this company's 8-year record") in _line(pre)
         assert "operating margin" not in _line(pre)
-    loss = ref_for("pretax_with_amortization", om_tc=-0.02)
-    assert ("this company's 8-year median pre-tax margin is a loss (-2.0%); such records closed 60% of the way to zero within "
-            "3-4 years") in _line(loss)
     held = ref_for("pretax_with_amortization", om_L=-0.05, x_L=0.129)
-    assert ("earnings margin held at " + _pct(m5(held)) + ": this company's 8-year median pre-tax margin is positive but the "
-            "consensus implies a pre-tax loss at year 5, which no measured case covers") in _line(held)
-    loss_held = ref_for("pretax_without_amortization", om_tc=-0.02, om_L=-0.05, x_L=0.129)
-    assert ("this company's 8-year median pre-tax margin is a loss and the consensus implies a pre-tax loss at year 5, which no "
-            "measured case covers") in _line(loss_held)
+    assert ("earnings margin held at " + _pct(m5(held)) + ": this company's 8-year trend-level pre-tax margin is positive but the "
+            "consensus implies a pre-tax loss at year 5, which the rule does not cover") in _line(held)
+    loss_held = ref_for("pretax_without_amortization", om_trend=-0.02, om_L=-0.05, x_L=0.129)
+    assert ("this company's 8-year trend-level pre-tax margin is a loss and the consensus implies a pre-tax loss at year 5, "
+            "which the rule does not cover") in _line(loss_held)
     # the record's stamps ride on the reference
     stamped = ref_for("pretax_with_amortization", stamps=["margin_record_pretax"])
     assert "margin_record_pretax" in stamped["stamps"]
@@ -554,24 +487,25 @@ def test_the_explanations_name_the_pretax_margin_when_the_record_is_on_the_preta
 
 # ---- F4: the facts ---------------------------------------------------------------------------------------------------------
 
-RAW_NEW = {"om_tc": 0.1049999, "om_L": 0.19999999, "om_years": [2018, 2025, 8], "om_shape": "swing", "om_basis": "with_amortization",
-           "om_5": 0.18734177, "margin_cell": "peak_swing", "margin_fraction": 0.7505280268164513, "m_long": 0.09821357,
-           "margin_ratio": 0.65475710766, "r8": 0.2211111, "r3": 0.30555555, "r_blend": 0.28194444, "retention": 0.84000167}
+RAW_NEW = {"om_tc": 0.1049999, "om_trend": 0.0899999, "om_L": 0.19999999, "om_years": [2018, 2025, 8], "om_shape": "swing",
+           "om_basis": "with_amortization", "om_5": 0.18734177, "m_long": 0.08821357, "margin_ratio": 0.65475710766}
 
 
 def test_the_new_long_run_members_quantize_print_read_back_and_compare_like_their_neighbours():
     lr = pack_facts.quantize_long_run(dict(RAW_NEW))
     assert lr["om_tc"] == pytest.approx(0.105) and lr["om_L"] == pytest.approx(0.2) and lr["om_5"] == pytest.approx(0.187342)
-    assert lr["margin_fraction"] == 0.750528 and lr["margin_ratio"] == 0.654757 and lr["retention"] == 0.840002     # ratios: six places
-    assert lr["m_long"] == pytest.approx(0.098214) and lr["r_blend"] == pytest.approx(0.281944)                      # rates: 4 places of a percent
-    assert lr["om_years"] == [2018, 2025, 8] and lr["om_shape"] == "swing" and lr["margin_cell"] == "peak_swing"
+    assert lr["margin_ratio"] == 0.654757                                                                           # ratios: six places
+    assert lr["m_long"] == pytest.approx(0.088214) and lr["om_trend"] == pytest.approx(0.09)                        # rates: 4 places of a percent
+    assert lr["om_years"] == [2018, 2025, 8] and lr["om_shape"] == "swing"
+    assert not any(k in lr for k in ("margin_cell", "margin_fraction", "r8", "r3", "r_blend", "retention"))
     f = dict(pack_facts.empty(), long_run=lr, coe_anchor=0.09, terminal_g_default=0.03)
     block = pack_facts.render_defaults_block(f)
     line = next(l for l in block.splitlines() if l.startswith("- long_run: "))
-    for member in ("om_tc=10.5000%", "om_L=20.0000%", "om_years=2018-2025:8", "om_shape=swing", "om_basis=with_amortization",
-                   "om_5=18.7342%", "margin_cell=peak_swing", "margin_fraction=0.750528", "m_long=9.8214%",
-                   "margin_ratio=0.654757", "r8=22.1111%", "r3=30.5556%", "r_blend=28.1944%", "retention=0.840002"):
+    for member in ("om_tc=10.5000%", "om_trend=9.0000%", "om_L=20.0000%", "om_years=2018-2025:8", "om_shape=swing",
+                   "om_basis=with_amortization", "om_5=18.7342%", "m_long=8.8214%", "margin_ratio=0.654757"):
         assert member in line, member
+    for gone in ("margin_cell", "margin_fraction", "r8=", "r3=", "r_blend", "retention"):
+        assert gone not in line, gone
     back = pack_facts.from_text("# DATA PACK - X   (pack revision 17)\n\n" + block)
     assert pack_facts.parity(f, back) == []
     assert back["long_run"]["om_tc"] == lr["om_tc"] and back["long_run"]["margin_ratio"] == lr["margin_ratio"]
@@ -583,7 +517,7 @@ def test_the_new_long_run_members_quantize_print_read_back_and_compare_like_thei
     empty = pack_facts.quantize_long_run({"cycle": None})
     assert all(empty[m] is None for m in pack_facts._LONG_RUN_NEW_MEMBERS)
     members = line.split(" | ")[0]
-    old = re.sub(r", om_tc=.*?, retention=[^,]*", "", members)
+    old = re.sub(r", om_tc=.*?, margin_ratio=[^,]*", "", members)
     assert "om_tc" not in old and old != members
     older = pack_facts._parse_long_run(old.split(": ", 1)[1])
     assert all(older[m] is None for m in pack_facts._LONG_RUN_NEW_MEMBERS)
@@ -595,19 +529,19 @@ def test_the_long_run_explanation_names_the_series_the_margin_record_is_on():
         line = next(l for l in pack_facts.render_defaults_block(f).splitlines() if l.startswith("- long_run: "))
         return line.split(" | ", 1)[1], line
     operating, _ = explanation()
-    assert ("om_5, the operating margin the consensus implies at year 5, closes margin_fraction of its gap to om_tc, your record's "
-            "8-year median operating margin (to zero for a loss record; margin_cell names the case).") in operating
+    assert ("om_5, the operating margin the consensus implies at year 5, moves all the way to om_trend, the trend level of your "
+            "record's 8-year operating margin (to zero for a loss record).") in operating
     for basis in ("pretax_with_amortization", "pretax_without_amortization"):
         text, line = explanation(om_basis=basis)
-        assert ("om_5, the pre-tax margin the consensus implies at year 5, closes margin_fraction of its gap to om_tc, your record's "
-                "8-year median pre-tax margin (to zero for a loss record; margin_cell names the case).") in text
+        assert ("om_5, the pre-tax margin the consensus implies at year 5, moves all the way to om_trend, the trend level of your "
+                "record's 8-year pre-tax margin (to zero for a loss record).") in text
         assert "operating margin" not in text and ("om_basis=" + basis) in line
         block = pack_facts.render_defaults_block(dict(pack_facts.empty(), long_run=pack_facts.quantize_long_run(dict(RAW_NEW, om_basis=basis))))
         assert pack_facts.from_text("# DATA PACK - X   (pack revision 17)\n\n" + block)["long_run"]["om_basis"] == basis
 
 
 def test_reference_base_b_is_a_printed_fact_read_back_as_none_from_an_older_sidecar_or_block(tmp_path):
-    assert "reference_base_b" in pack_facts.KEYS and pack_facts.FACTS_VERSION == 5
+    assert "reference_base_b" in pack_facts.KEYS and pack_facts.FACTS_VERSION == 6
     assert pack_facts.empty()["reference_base_b"] is None
     f = dict(pack_facts.empty(), reference_base_b=pack_facts.q_b(0.0939412345))
     block = pack_facts.render_defaults_block(f)
@@ -670,21 +604,21 @@ TROUGH_TREND = {2018: 0.22, 2019: 0.21, 2020: 0.20, 2021: 0.20, 2022: 0.20, 2023
 LOSS_RECORD = {2018: -0.05, 2019: -0.04, 2020: -0.06, 2021: -0.03, 2022: -0.05, 2023: -0.04, 2024: -0.02, 2025: 0.02}
 
 
-@pytest.mark.parametrize("op_margins, cell, direction", [
-    (PEAK_SWING, "peak_swing", "down"),
-    (TROUGH_TREND, "trough_trend", "up"),
-    (LOSS_RECORD, "loss", "down"),
+@pytest.mark.parametrize("op_margins, direction", [
+    (PEAK_SWING, "down"),
+    (TROUGH_TREND, "up"),
+    (LOSS_RECORD, "down"),
 ], ids=["peak-swing", "trough-trend", "loss-record"])
 def test_the_desk_run_on_the_references_own_inputs_equals_the_reference_to_half_a_cent(screener_data_stub, monkeypatch,
-                                                                                    op_margins, cell, direction):
+                                                                                    op_margins, direction):
     pack, ref = _pack_and_reference(monkeypatch, op_margins)
     f = pack.facts
-    assert f["reference_status"] == "used" and ref["margin_cell"] == cell, (f["reference_status"], ref["margin_cell"])
+    assert f["reference_status"] == "used", f["reference_status"]
     assert ref["margin_ratio"] is not None and (ref["margin_ratio"] < 1) == (direction == "down")
     lr = f["long_run"]
-    assert lr["margin_cell"] == cell and lr["margin_ratio"] == pack_facts.q_ratio(ref["margin_ratio"])
+    assert lr["margin_ratio"] == pack_facts.q_ratio(ref["margin_ratio"])
     assert lr["om_shape"] in ("swing", "trend") and lr["om_basis"] == "with_amortization" and lr["om_years"] == [2018, 2025, 8]
-    assert lr["r_blend"] is not None and lr["r8"] is not None and lr["retention"] is not None
+    assert lr["om_trend"] is not None and lr["r_tc"] is not None and "r_blend" not in lr
     assert f["reference_base_b"] == pack_facts.q_b(ref["base_cf"] / B)
     assert pack_facts.parity(f, pack_facts.from_text(str(pack))) == []
     dcf, _ = _desk_value(str(pack), ref)
@@ -694,7 +628,7 @@ def test_the_desk_run_on_the_references_own_inputs_equals_the_reference_to_half_
     # the explanation of the pack's own line
     text = str(pack)
     clause = next(l for l in text.splitlines() if "CONSENSUS-IMPLIED VALUE (reference" in l)
-    assert "earnings margin moving from " in clause and "closed" in clause and "within 3-4 years" in clause
+    assert "earnings margin moving from " in clause and "moves all the way to" in clause and "closed" not in clause
 
 
 # ---- F5: a zero or negative value is never a reference ---------------------------------------------------------------------
@@ -757,7 +691,7 @@ W9_FY_BASE, W9_CASH_BASIS = 93.94e6, 93e6
 
 
 def _w9_reference():
-    rec = dict(REDUCTION, r_blend=0.15, ronic_t=0.12, nwc_intensity=0.10)
+    rec = dict(REDUCTION, R_tc=0.15, r_blend=0.15, ronic_t=0.12, nwc_intensity=0.10)
     return cr.build(W9_FY_BASE, W9_EST, COE, GA, 50e6, MEDIAN5, record=rec, base_ni=100e6, base_revenue=1.0 * B,
                     stub_months=8.5, anchor=GA)
 
@@ -769,7 +703,7 @@ def _w9_desk(ref, **ctx_over):
            "owner_earnings_default_b": 0.0885, "cash_basis_b": W9_CASH_BASIS / B, "reference_base_b": W9_FY_BASE / B,
            "levels": {"year1": lv[0] / B, "year2": lv[1] / B}, "terminal_ronic": ref["terminal_ronic"],
            "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "margin_ratio": ref["margin_ratio"],
-                        "r_blend": 0.15, "stub_months": 8.5},
+                        "r_tc": 0.15, "stub_months": 8.5},
            "working_capital": [x / B for x in ref["wc"]]}
     ctx.update(ctx_over)
     sc = lambda name, prob, w: {"name": name, "prob": prob, "base_cf": W9_FY_BASE / B, "explicit_growth": list(ref["path"]), "wacc": w}

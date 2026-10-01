@@ -36,9 +36,9 @@ def _text(f, revision=17):
     return f"# DATA PACK - X   (pack revision {revision})\n\n" + pack_facts.render_defaults_block(f)
 
 
-def test_version_five_and_the_four_keys_are_in_the_empty_object():
+def test_version_six_and_the_four_keys_are_in_the_empty_object():
     e = pack_facts.empty()
-    assert e["version"] == 5
+    assert e["version"] == 6                           # revision 18 (brief 1.7): FACTS_VERSION 5 -> 6
     assert e["terminal_ronic"] is None and e["long_run"] == {} and e["working_capital"] is None
     assert e["base_year_cap"] is None
 
@@ -63,7 +63,7 @@ def test_the_facts_round_trip_through_the_defaults_block_exactly():
     assert g["long_run"]["nwc_intensity"] == pytest.approx(-0.023457)          # signed rates survive
     assert g["working_capital"] == f["working_capital"] and len(g["working_capital"]) == 5
     assert g["base_year_cap"]["removed"] == pytest.approx(0.071725)
-    assert g["source"] == "defaults_block" and g["version"] == 5
+    assert g["source"] == "defaults_block" and g["version"] == 6
 
 
 def test_infinite_returns_and_unlimited_terminal_round_trip_and_the_sidecar_holds_them(tmp_path):
@@ -103,7 +103,7 @@ def test_a_revision_17_block_missing_a_line_is_an_error_but_older_blocks_read_wi
         with pytest.raises(ValueError, match=key):
             pack_facts.from_text(cut)
         older = cut.replace("(pack revision 17)", "(pack revision 16)")
-        assert pack_facts.from_text(older)["version"] == 5                # a revision-16 block has none of them
+        assert pack_facts.from_text(older)["version"] == 6                # a revision-16 block has none of them
     older = "\n".join(l for l in text.splitlines()
                       if not l.startswith(("- terminal_ronic:", "- long_run:", "- working_capital:", "- base_year_cap:")))
     g = pack_facts.from_text(older.replace("(pack revision 17)", "(pack revision 15)"))
@@ -135,18 +135,18 @@ def test_the_sentences_carry_the_basis_and_the_reason_field():
         explanation = line[key].split(" | ", 1)[1]
         assert ". " not in explanation, key
     # brief B2 F6: the long_run explanation is two sentences, nothing more (brief F4 rewrote the first: the margin rule
-    # and the blended return now drive the long run)
+    # and the return now drive the long run; revision 18: the return is R_tc, the margin moves all the way to om_trend)
     assert line["long_run"].split(" | ", 1)[1] == (
         "The desk values years 6 on from X_5 (earnings before acquired-intangible amortization), pays for growth at a "
-        "return that fades from r_blend (the blend of r8 and r3, your record's 8-year and latest-3-year median returns "
-        "on tangible invested capital) to terminal_ronic, and moves the margin from m5 to m_long by year 10 "
+        "return that fades from r_tc (your record's 8-year median return on tangible invested capital) to "
+        "terminal_ronic, and moves the margin from m5 to m_long by year 10 "
         "(margin_ratio = m_long / m5; none means the margin is held): om_5, the operating margin the consensus implies "
-        "at year 5, closes margin_fraction of its gap to om_tc, your record's 8-year median operating margin (to zero "
-        "for a loss record; margin_cell names the case). The members are the record behind it.")
+        "at year 5, moves all the way to om_trend, the trend level of your record's 8-year operating margin (to zero "
+        "for a loss record). The members are the record behind it.")
     assert "cycle_years=2016;2021," in line["long_run"] and "cycle_year=2021," in line["long_run"]
     # the return the record measures is named for what it is
     ok = _facts(long_run=pack_facts.quantize_long_run(dict(RAW_LR, stamps=[])))
-    assert "your record's blended return on tangible invested capital" in [
+    assert "r_tc, your record's median return on tangible invested capital" in [
         l for l in pack_facts.render_defaults_block(ok).splitlines() if l.startswith("- terminal_ronic")][0]
     # with no revenue trend the default says which rule it came from
     fb = _facts(long_run=pack_facts.quantize_long_run(dict(RAW_LR, terminal_g_basis="consensus_fallback", g_rev=None,

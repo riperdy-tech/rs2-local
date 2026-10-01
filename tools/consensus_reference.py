@@ -63,10 +63,20 @@ information. The reference now values the long run from the company's own record
   investment the record supports (RONIC_T), and the earnings margin moves toward the company's own median
   operating margin by the fraction brief E measured (`margin_rule`, brief F). Terminal growth is the
   company's own revenue trend held between breakeven inflation and the anchor (`terminal_growth_default`).
-- A one-time gain in the base year is removed when the vendor's year-ago EPS shows it (`base_year_cap`).
+- A one-time gain in the base year was removed when the vendor's year-ago EPS showed it (`base_year_cap`); revision 18
+  removed the cap's action (the function stays below, unused, as the record of what revision 17 did).
 - With RONIC_T = +inf, no cycle and no working capital the arithmetic reduces to revision 16's
   (`reference_value`, kept for that test): the long-run arithmetic is `long_run_value`, the one copy
   the desk (financial_model_tool) also uses.
+
+Revision 18 (brief rev18 design, section 1; the structure the backtest tested):
+- Returns: RONIC_0 = max(r, R_tc) and RONIC_T = r + p x max(0, R_tc - r) (+inf when R_tc is +inf), from the record
+  (throughcycle_record.analyse); no blend and no caps.
+- Margins: the long-run operating margin is max(0, om_trend), the record's trend level, reached linearly over years 6-10
+  (`margin_rule`); the peak/trough cells, the loss cell and the calibration file are gone.
+- Cash at face for non-financial companies (`cash_term`, `build(cash=...)`): the after-tax interest on cash and short-term
+  investments is taken out of the earnings the long run capitalises, and the cash itself is added at face, per share.
+- The base-year cap no longer acts.
 """
 
 import math
@@ -82,7 +92,9 @@ RANGE_MIN_ANALYSTS = 3  # E12 F1: fewer analysts give no range (high = low = ave
 WINDOW_TOL = 0.15       # whole-book test: FY and TTM windows further apart than this print both references
 STALE_MONTHS = 15       # whole-book test: history older than this builds no reference
 VINTAGE_TOL = 0.02      # the vendor's year-ago revenue against the filed fiscal year
-BASE_CAP_TOL = 0.02     # rev 17: filed EPS above the vendor's year-ago EPS by more than this is capped
+BASE_CAP_TOL = 0.02     # rev 17: filed EPS above the vendor's year-ago EPS by more than this was capped (revision 18: unused)
+FINANCIAL_SECTORS = ("Financial Services", "Real Estate")    # rev 18: no cash term (cash is an operating asset there)
+OUTSIDE_FENCE = ("outside_fence_above", "outside_fence_below")   # rev 18: reference_status values of a value printed but fenced
 LEVELS_HOLD_TOL = 0.05  # rev 17: the desk holds Base years 1-2 at the levels when year 2 is further off than this
 
 
@@ -170,8 +182,15 @@ def terminal_growth_default(anchor, breakeven, g_rev, rev_g2, median_5y):
     return val, "consensus_fallback", reason
 
 
+def reference_in_force(status):
+    """Revision 18 (brief 1.5): True when a printed reference value may drive a band, a departure reason or a desk refusal.
+    A value outside the street-target fence is printed with its status and is annotation only; a status of None (an older
+    block or a hand-built facts dict that carries a value without a status) reads as in force, as it did before."""
+    return status not in OUTSIDE_FENCE
+
+
 def base_year_cap(filed_ni, filed_shares, vendor_eps):
-    """Revision 17, brief B section 2a: a one-time gain in the base year (LAMR's Vistar gain), seen
+    """Revision 17, brief B section 2a (revision 18: no caller acts on it any more; kept as the record of that rule): a one-time gain in the base year (LAMR's Vistar gain), seen
     as the filed EPS above the vendor's year-ago EPS. None unless filed EPS exceeds the vendor's by
     more than BASE_CAP_TOL; never raised (filed EPS below the vendor's is kept, E10's
     conservatism). Otherwise {'eps_filed', 'eps_vendor', 'ni_filed', 'ni_capped', 'removed'}: the
@@ -189,6 +208,32 @@ def base_year_cap(filed_ni, filed_shares, vendor_eps):
             "ni_capped": capped, "removed": filed_ni - capped}
 
 
+def _finite(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def cash_term(row, bill_rate, sector):
+    """Revision 18 (brief 1.3): cash at face for a non-financial company. `row` is the base fiscal year's row; `bill_rate`
+    the mean 3-month bill rate over the 12 months to that year's end, as a fraction (None when it is not available); `sector`
+    the screener sector. Returns {"applies", "financial", "cash", "interest", "stamps"}:
+      financial sector ("Financial Services", "Real Estate"): applies False, cash 0.0, interest 0.0, no stamp;
+      cash missing: applies False, stamp `cash_term_not_available`; no bill rate: applies False, stamp
+      `cash_term_not_available_no_bill_rate` (cash None, interest 0.0 in both);
+      else C_L = cash + short-term investments (a null short-term figure counts 0) and i_L = C_L x bill_rate x (1 - tax_L),
+      tax_L = throughcycle_record.tax_rate(row)."""
+    if sector in FINANCIAL_SECTORS:
+        return {"applies": False, "financial": True, "cash": 0.0, "interest": 0.0, "stamps": []}
+    cash, sti = row.get("cash"), row.get("st_investments")
+    if not _finite(cash):
+        return {"applies": False, "financial": False, "cash": None, "interest": 0.0, "stamps": ["cash_term_not_available"]}
+    c = float(cash) + (float(sti) if _finite(sti) else 0.0)
+    if not _finite(bill_rate):
+        return {"applies": False, "financial": False, "cash": None, "interest": 0.0,
+                "stamps": ["cash_term_not_available_no_bill_rate"]}
+    return {"applies": True, "financial": False, "cash": c, "interest": c * bill_rate * (1.0 - throughcycle_record.tax_rate(row)),
+            "stamps": []}
+
+
 def vendor_revenue(estimates):
     """[current-FY, next-FY] revenue averages of the vendor's estimates, or None unless both exist
     with analysts behind them."""
@@ -203,33 +248,30 @@ def vendor_revenue(estimates):
 
 
 def margin_rule(rec, m5):
-    """Revision 17, brief F2: how far the earnings margin moves toward the company's own median by year 10.
+    """Revision 18: the margin moves all the way to the record's trend level by year 10.
 
-    Brief E measured how far an operating margin closes the gap to its 8-year median; the reference starts from the
-    consensus's year-5 margin, so the rule is anchored on it. With m5 the consensus's year-5 earnings margin and the
-    record's om_L, x_L, tax_L, om_tc, om_shape:
+    With m5 the consensus's year-5 earnings margin and the record's om_L, x_L, tax_L, om_trend (throughcycle_record: the
+    trend level a + b x L of the margin series it chose):
       OM_5 = om_L + (m5 - x_L) / (1 - tax_L)  (x_L undefined: OM_5 = om_L, stamp `margin_rule_filed_anchor`);
-      a loss record (om_tc <= 0): target 0, fraction the `loss` cell; else target om_tc, fraction the `peak_<shape>`
-      cell when OM_5 >= om_tc, else the `trough_<shape>` cell (the fractions are the calibration file's);
-      OM_long = OM_5 + f x (target - OM_5); m_long = max(0, m5 + (1 - tax_L) x (OM_long - OM_5)); ratio = m_long / m5.
-    No rule (ratio None: the margin is held at m5, `reason` says why and a stamp records it) when m5 is not positive,
-    when the record has no margin median (its own stamp `margin_record_not_available`, or the older
-    `operating_margin_record_not_available`), or when OM_5 <= 0, whatever om_tc is (`margin_rule_unmeasured_current_loss`:
-    brief E measured its cells on firms that were profitable at the base year, so a margin that is still a loss at year 5
-    is outside every measured cell, and the rule must not lift it above m5; brief F2.2). The record's series is the
-    operating margin, or the pre-tax margin where the company files no operating line (brief F2.1: the record's om_basis
-    starts with "pretax"; the arithmetic is the same and the text names the series, "series"). Returns {"om_tc", "om_L",
-    "om_shape", "series", "om_5", "cell", "fraction", "target", "m_long", "ratio", "reason", "stamps"}."""
-    om_tc, om_L = rec.get("om_tc"), rec.get("om_L")
+      target = max(0, om_trend); OM_long = target;
+      m_long = max(0, m5 + (1 - tax_L) x (target - OM_5)); ratio = m_long / m5.
+    No rule (ratio None: the margin is held at m5, `reason` says why and a stamp records it) when m5 is not positive, when
+    the record has no trend level (its own stamp `margin_record_not_available`, or the older
+    `operating_margin_record_not_available`), or when OM_5 <= 0 (`margin_rule_unmeasured_current_loss`: a margin that is
+    still a loss at year 5 is outside the cases the rule was built for, and it must not lift it above m5). The record's
+    series is the operating margin, or the pre-tax margin where the company files no operating line (the record's
+    om_basis starts with "pretax"; the arithmetic is the same and the text names the series, "series"). Returns
+    {"om_trend", "om_tc", "om_L", "om_shape", "series", "om_5", "target", "m_long", "ratio", "reason", "stamps"}."""
+    om_trend, om_L = rec.get("om_trend"), rec.get("om_L")
     name = throughcycle_record.margin_series_name(rec.get("om_basis"))
-    out = {"om_tc": om_tc, "om_L": om_L, "om_shape": rec.get("om_shape"), "series": name, "om_5": None, "cell": None,
-           "fraction": None, "target": None, "m_long": None, "ratio": None, "reason": None, "stamps": []}
+    out = {"om_trend": om_trend, "om_tc": rec.get("om_tc"), "om_L": om_L, "om_shape": rec.get("om_shape"), "series": name,
+           "om_5": None, "target": None, "m_long": None, "ratio": None, "reason": None, "stamps": []}
     if not m5 > 0:
         out["reason"] = "the consensus's year-5 earnings margin is not positive"
         out["stamps"].append("margin_rule_year5_margin_not_positive")
         return out
-    if om_tc is None or om_L is None:
-        out["reason"] = "this company's record holds too few years of operating or pre-tax margin to measure its median"
+    if om_trend is None or om_L is None:
+        out["reason"] = "this company's record holds too few years of operating or pre-tax margin to measure its trend level"
         return out
     x_L, tax_L = rec.get("x_L"), rec.get("tax_L")
     if x_L is None:
@@ -239,21 +281,14 @@ def margin_rule(rec, m5):
         om_5 = om_L + (m5 - x_L) / (1.0 - tax_L)
     out["om_5"] = om_5
     if om_5 <= 0:
-        median_is = "is a loss and" if om_tc <= 0 else "is positive but"
+        trend_is = "is a loss and" if om_trend <= 0 else "is positive but"
         article = "an" if name == "operating" else "a"
-        out["reason"] = (f"this company's 8-year median {name} margin {median_is} the consensus implies "
-                         f"{article} {name} loss at year 5, which no measured case covers")
+        out["reason"] = (f"this company's 8-year trend-level {name} margin {trend_is} the consensus implies "
+                         f"{article} {name} loss at year 5, which the rule does not cover")
         out["stamps"].append("margin_rule_unmeasured_current_loss")
         return out
-    if om_tc <= 0:
-        out["cell"], out["target"] = "loss", 0.0
-    else:
-        out["cell"] = ("peak_" if om_5 >= om_tc else "trough_") + rec["om_shape"]
-        out["target"] = om_tc
-    f = throughcycle_record.calibration()["fractions"][out["cell"]]
-    om_long = om_5 + f * (out["target"] - om_5)
-    out["fraction"] = f
-    out["m_long"] = max(0.0, m5 + (1.0 - tax_L) * (om_long - om_5))
+    out["target"] = max(0.0, om_trend)
+    out["m_long"] = max(0.0, m5 + (1.0 - tax_L) * (out["target"] - om_5))
     out["ratio"] = out["m_long"] / m5
     return out
 
@@ -393,11 +428,11 @@ def _compound(base, growth):
 
 def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex=None,
           stub_months=None, base_label=None, levels_reason=None, levels_block=None,
-          anchor=None, record=None, base_ni=None, base_revenue=None, base_cap=None):
+          anchor=None, record=None, base_ni=None, base_revenue=None, cash=None):
     """Everything the pack prints: {'value', 'method', 'path', 'flows', 'c1', 'c2', 'reason',
     'levels', 'range', 'stub_months', 'base_label', 'levels_reason'}, and (revision 17) 'earnings',
     'revenue', 'wc', 'nwc_intensity', 'long_run', 'long_run_path', 'terminal_ronic', 'ronic0',
-    'base_cf', 'base_year_cap', 'stamps'.
+    'base_cf', 'cash', 'interest_removed', 'stamps'.
     method "growth": years 1-2 at consensus EPS growth on the owner-earnings base.
     method "levels": years 1-2 are consensus EPS x diluted shares + D&A - capex, when consensus EPS
     growth is unusable, when the base is not positive, or when `levels_reason` says why the base
@@ -413,8 +448,16 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     record, stamped record_not_available with RONIC_T = coe); `base_ni` (X of the filed base year - net income plus acquired-intangible amortization after
     tax, throughcycle_record.adjusted_earnings - the earnings path's base in the growth method; the
     levels method's earnings are consensus EPS x shares, stamped levels_eps_basis); `base_revenue` (the
-    filed base-year revenue); `base_cap` (`base_year_cap`'s dict: the cap acts on net income, so X and the
-    owner-earnings base are both reduced by `removed`)."""
+    filed base-year revenue).
+
+    Revision 18 inputs: `record` carries R_tc (RONIC_0 = max(coe, R_tc); None = no return record), ronic_t and om_trend (the
+    margin rule's target; None = margin held); `cash` (`cash_term`'s dict; None = no cash term). With a cash term that
+    applies, the after-tax interest on the cash (i_L) is taken out of the earnings the long run capitalises: the growth
+    method's base becomes base_cf - i_L and base_ni - i_L (and the record's x_L becomes (X_L - i_L) / revenue_L, so the margin
+    rule does not add it back), the levels method's two cash-flow and two earnings levels each lose i_L, and the value gains
+    cash / shares at face (not rolled forward). When the operating base (or the year-2 level) is no longer positive after i_L,
+    the value is cash / shares, method "cash_only", stamp `operating_base_not_positive`. `shares` is the pack's share-count
+    default."""
     c1, c2, why = consensus_earnings_growth(estimates)
     is_default = (anchor is not None and terminal_g is not None and abs(terminal_g - anchor) > 1e-6)
     out = {"value": None, "method": None, "path": None, "flows": None, "c1": c1, "c2": c2,
@@ -423,15 +466,28 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
            "terminal_g_is_default": is_default,
            "earnings": None, "revenue": None, "wc": None, "long_run": None, "long_run_path": None,
            "terminal_ronic": None, "ronic0": None, "nwc_intensity": None, "base_cf": None,
-           "base_year_cap": None, "stamps": [],
-           "margin": None, "om_5": None, "margin_cell": None, "margin_fraction": None, "m_long": None,
+           "cash": None, "interest_removed": None, "stamps": [],
+           "margin": None, "om_5": None, "m_long": None,
            "margin_ratio": None}
+    cash_on = bool(cash and cash.get("applies"))
+    c_l = float(cash["cash"]) if cash_on else 0.0
+    i_l = float(cash["interest"]) if cash_on else 0.0
+    if cash:
+        out["stamps"] += list(cash.get("stamps") or [])
+    if cash_on:
+        out["cash"], out["interest_removed"] = c_l, i_l
     missing = [n for n, v in (("cost-of-equity anchor", coe), ("terminal-growth anchor", terminal_g),
                               ("diluted shares", shares), ("growth base-rate median", median_5y))
                if v is None]
     if missing:
         out["reason"] = f"{', '.join(missing)} missing"
         return out
+    if cash_on and base_cf is not None and base_cf > 0 and not (why or "").startswith(("no consensus estimates", "no EPS estimate")):
+        # the growth method's base: the interest on the cash comes off it, and off X. (A company with no consensus at all has no
+        # reference to be worth only its cash.)
+        ni_after = None if base_ni is None else base_ni - i_l
+        if base_cf - i_l <= 0 or (ni_after is not None and ni_after <= 0):
+            return _cash_only(out, c_l, shares)
     rev_g2 = revenue_growth_next_fy(estimates)
     roll = (1 + coe) ** (stub_months / 12) if stub_months else 1.0
     if why is None and levels_reason is None and base_cf is None:
@@ -442,19 +498,14 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
         levels_reason = "the fiscal-year owner-earnings base is not positive"
     base = ni_base = None
     if why is None and levels_reason is None:
-        base = base_cf - (base_cap["removed"] if base_cap else 0.0)
-        # base_ni is X of the base year (net income before acquired-intangible amortization); the cap removes a
-        # net-income gain, so X_base = X - removed = NI_capped + A x (1 - t)
-        ni_base = None if base_ni is None else base_ni - (base_cap["removed"] if base_cap else 0.0)
-        if not base > 0:
-            levels_reason = "the base-year cap leaves the fiscal-year owner-earnings base not positive"
-        elif ni_base is None:
+        # base_ni is X of the base year (net income before acquired-intangible amortization); with a cash term both the
+        # owner-earnings base and X lose the after-tax interest on the cash
+        base = base_cf - i_l
+        ni_base = None if base_ni is None else base_ni - i_l
+        if ni_base is None:
             out["reason"] = "base-year net income missing"
             return out
     if why is None and levels_reason is None:
-        if base_cap:
-            out["base_year_cap"] = base_cap
-            out["stamps"].append("base_year_capped")
         out["path"] = reference_path(c1, c2, rev_g2, median_5y)
         out["method"] = "growth"
         oe = _compound(base, out["path"])
@@ -475,15 +526,22 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
             return out
         flows = (levels[0] * shares + da - capex, levels[1] * shares + da - capex)
         path35 = _years35(rev_g2, median_5y)
-        out.update(method="levels", flows=flows, path=[None, None] + path35, levels=flows,
-                   range=range_levels(estimates, flows[1]))
         # the vendor's EPS basis (adjusted or GAAP) is unknown, so the levels method's earnings are not X
         out["stamps"].append("levels_eps_basis")
         if not flows[1] > 0:
+            out.update(method="levels", flows=flows, path=[None, None] + path35, levels=flows,
+                       range=range_levels(estimates, flows[1]))
             out["reason"] = why + "; next-FY cash flow from EPS levels is not positive"
             return out
+        if cash_on:
+            # revision 18: the vendor's EPS holds the interest on the cash; both levels of both series lose it
+            flows = (flows[0] - i_l, flows[1] - i_l)
+            if not flows[1] > 0:
+                return _cash_only(out, c_l, shares)
+        out.update(method="levels", flows=flows, path=[None, None] + path35, levels=flows,
+                   range=range_levels(estimates, flows[1]))
         oe = list(flows) + _compound(flows[1], path35)
-        ni = [levels[0] * shares, levels[1] * shares] + _compound(levels[1] * shares, path35)
+        ni = [levels[0] * shares - i_l, levels[1] * shares - i_l] + _compound(levels[1] * shares - i_l, path35)
     out["earnings"] = ni
     g5 = out["path"][-1]
     if coe <= terminal_g:
@@ -498,16 +556,19 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     out["revenue"] = revenue
 
     # the record: return on new investment, cycle, margin, working capital
-    rec = record or {}
-    r_blend, ronic_t = rec.get("r_blend"), rec.get("ronic_t")
+    rec = dict(record or {})
+    r_tc, ronic_t = rec.get("R_tc"), rec.get("ronic_t")
     if ronic_t is None:
         ronic_t = coe
         out["stamps"].append("record_not_available")
     elif "record_not_available" in (rec.get("stamps") or []):
         out["stamps"].append("record_not_available")
-    # brief F: the record's operating-margin and blended-returns stamps ride on the reference too
-    out["stamps"] += [s for s in (rec.get("stamps") or []) if s.startswith(("operating_margin", "margin_record", "returns_blend"))]
-    ronic0 = coe if r_blend is None else max(coe, r_blend)
+    # brief F: the record's operating-margin stamps ride on the reference too
+    out["stamps"] += [s for s in (rec.get("stamps") or []) if s.startswith(("operating_margin", "margin_record"))]
+    ronic0 = coe if r_tc is None else max(coe, r_tc)
+    if cash_on and rec.get("x_L") is not None and base_ni is not None and isinstance(base_revenue, (int, float)) and base_revenue > 0:
+        # without this the margin rule would read the removed interest as an operating-margin change and add it back
+        rec["x_L"] = (base_ni - i_l) / base_revenue
     out["terminal_ronic"], out["ronic0"] = ronic_t, ronic0
 
     # years 1-5 cash flow: owner earnings less the working capital the revenue growth ties up
@@ -530,8 +591,7 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
         margin_ratio = rule["ratio"]
         out["stamps"] += rule["stamps"]
         out["margin"] = rule
-        out.update(om_5=rule["om_5"], margin_cell=rule["cell"], margin_fraction=rule["fraction"],
-                   m_long=rule["m_long"], margin_ratio=margin_ratio)
+        out.update(om_5=rule["om_5"], m_long=rule["m_long"], margin_ratio=margin_ratio)
     else:
         out["long_run_path"] = "owner_earnings_ratio"
         if not (e5 > 0 and oe5 > 0):
@@ -542,7 +602,16 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     if lr["floor"]:
         out["stamps"].append("long_run_floor")
     out["long_run"] = dict(lr, e5=e5, oe5=oe5, m5=m5, margin_ratio=margin_ratio, g5=g5)
-    out["value"] = (pv15 + lr["value"]) / shares * roll
+    out["value"] = (pv15 + lr["value"]) / shares * roll + c_l / shares
+    return out
+
+
+def _cash_only(out, c_l, shares):
+    """The operating base is not positive once the interest on the cash is taken out: the operating business is worth
+    nothing and the value is the cash at face per share (stamp `operating_base_not_positive`)."""
+    out["method"] = "cash_only"
+    out["stamps"].append("operating_base_not_positive")
+    out["value"] = c_l / shares
     return out
 
 
@@ -618,18 +687,12 @@ def _return_txt(x):
 
 
 def _margin_clause(rule, m5):
-    """Brief F2: how the earnings margin moves from year 5 to year 10, or why it is held (`margin_rule`'s dict)."""
+    """Brief F2, revision 18: how the earnings margin moves from year 5 to year 10, or why it is held (`margin_rule`'s dict)."""
     if rule["ratio"] is None:
         return f"earnings margin held at {m5 * 100:.1f}%: {rule['reason']}"
     head = f"earnings margin moving from {m5 * 100:.1f}% to {rule['m_long'] * 100:.1f}% by year 10: "
-    f = f"{rule['fraction'] * 100:.0f}%"
-    if rule["cell"] == "loss":
-        return (head + f"this company's 8-year median {rule['series']} margin is a loss ({rule['om_tc'] * 100:.1f}%); "
-                f"such records closed {f} of the way to zero within 3-4 years")
-    kind = "moved up and down around their median" if rule["om_shape"] == "swing" else "trended"
-    return (head + f"the consensus implies a {rule['om_5'] * 100:.1f}% {rule['series']} margin at year 5 against this "
-            f"company's 8-year median of {rule['om_tc'] * 100:.1f}%; companies whose margins {kind} closed {f} of "
-            f"such a gap within 3-4 years")
+    return (head + f"the consensus implies a {rule['om_5'] * 100:.1f}% {rule['series']} margin at year 5 and the margin moves "
+            f"all the way to {rule['target'] * 100:.1f}%, the trend level of this company's 8-year record")
 
 
 def _long_run_clause(ref):
@@ -686,11 +749,15 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):
               f"${ref['value']:,.2f} per share, the analysts' own earnings path at our discount rate"]
 
     label = ref.get("base_label")
-    cap = ref.get("base_year_cap")
+    if ref["method"] == "cash_only":
+        # revision 18: the interest on the cash leaves no positive operating base
+        return "- " + " | ".join(clauses + [
+            f"base: owner earnings {fmt_b(base_cf)} less the after-tax interest on excess cash "
+            f"{fmt_b(ref['interest_removed'])} is not positive, so the operating business is valued at zero and the value is "
+            f"the excess cash {fmt_b(ref['cash'])} at face (operating_base_not_positive)"])
     if ref["method"] == "growth":
-        # rev 17: the base is the capped one when the base-year cap removed a one-time item
-        if cap:
-            label = (label + "; " if label else "") + f"after the base-year cap removed {fmt_b(cap['removed'])}"
+        if ref.get("interest_removed"):
+            # revision 18: the base printed is the one the long run capitalises, the cash term's interest already out
             base_cf = ref.get("base_cf") if ref.get("base_cf") is not None else base_cf
         clauses.append(f"base: owner earnings {fmt_b(base_cf)}" + (f" ({label})" if label else ""))
         path = " / ".join(f"{g * 100:+.1f}%" for g in ref["path"])
