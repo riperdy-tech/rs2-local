@@ -1119,6 +1119,30 @@ def stamp_and_route(v, t, run_source, quote=None, screener_data_commit=None):
     return TEST_LEDGER, notice
 
 
+def enrich_error_gate(t, enrich_dir=None, fetch=None):
+    """A name whose enrich record is a vendor fetch ERROR (HTTP 401, 429, 5xx - enrich_ticker.enrich's error record) has a
+    failed fetch behind its consensus data, not "no coverage". The record is fetched again (enrich_with_retry: once more after
+    a cool-off); a good record replaces it, and the run goes on. If the fetch still fails the run STOPS (False, reason) and
+    reports: nothing is written, and the name is never underwritten as if it had no consensus. A record that is not an error
+    record, and a missing record, pass untouched (the pack reports a missing record as such). Returns (True, None) or
+    (False, "enrich_fetch_failed: HTTP <status> at <where>")."""
+    d = Path(enrich_dir) if enrich_dir is not None else Path(CONFIG["out_enrich_dir"])
+    path = d / f"{t}.json"
+    rec = rs2_data.load_json(path)
+    if rs2_data.enrich_fetch_error(rec) is None:
+        return True, None
+    if fetch is None:
+        import enrich_ticker
+        fetch = enrich_ticker.enrich_with_retry
+    again = fetch(t)
+    err = rs2_data.enrich_fetch_error(again)
+    if err is not None:
+        return False, f"enrich_fetch_failed: HTTP {err[0]} at {err[1]}"
+    d.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(again, indent=2), encoding="utf-8")
+    return True, None
+
+
 def main():
     # B4: --no-publish is accepted here for interface symmetry with orchestrate_depth.py's flag
     # of the same name. This module never calls publish_overlay (that lives in
@@ -1143,6 +1167,12 @@ def main():
     if not ok:
         print(f"::HARD FAIL:: screener data refresh refused: {screener_data_commit}", flush=True)
         sys.exit(9)
+
+    # A failed consensus fetch is retried and then STOPS the run (exit 10); it is never read as "no consensus".
+    ok, why = enrich_error_gate(t)
+    if not ok:
+        print(f"::HARD FAIL:: {why}", flush=True)
+        sys.exit(10)
 
     # LIVE PRICE AT VERDICT TIME (P1.5): obtain the quote before research; hard-fail on None.
     quote = price_now.quote(t)

@@ -313,6 +313,9 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         elif ln_s.startswith("- CONSENSUS ESTIMATES: not available") and "enrich record missing" in ln_s:
             consensus_data_status = "enrich_missing"
             break
+        elif ln_s.startswith("- CONSENSUS ESTIMATES: not available") and "the vendor fetch failed" in ln_s:
+            consensus_data_status = "fetch_error"
+            break
         elif ln_s.startswith("- CONSENSUS ESTIMATES: not available") and "yfinance estimates unavailable" in ln_s:
             consensus_data_status = "estimates_unavailable"
             break

@@ -3279,6 +3279,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             facts["consensus_data_status"] = "enrich_missing"
             L.append("- CONSENSUS ESTIMATES: not available \u2014 enrich record missing")
             _civ_na = "no consensus estimates"
+        elif rs2_data.enrich_fetch_error(en) is not None:
+            # a vendor HTTP error (401, 429, 5xx) is a failed fetch, never "no coverage" (enrich_ticker.enrich's error record)
+            _fe_status, _fe_where = rs2_data.enrich_fetch_error(en)
+            facts["consensus_data_status"] = "fetch_error"
+            L.append(f"- CONSENSUS ESTIMATES: not available — the vendor fetch failed (HTTP {_fe_status} at {_fe_where}, "
+                     f"{(en.get('_fetched_at') or '')[:10] or 'unknown date'}); a failed fetch, not a lack of coverage")
+            _civ_na = "consensus fetch failed"
         elif not est or not isinstance(est, dict):
             facts["consensus_data_status"] = "estimates_unavailable"
             L.append("- CONSENSUS ESTIMATES: not available \u2014 yfinance estimates unavailable")

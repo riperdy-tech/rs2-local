@@ -171,9 +171,9 @@ def assess(v):
 
     Reasons 17-18 (GATE_VERSION 6, brief S2c): no verdict is actionable without its consensus
     data or its street fence. Reason 17 (`consensus_data_unavailable`): `consensus_data_status`
-    is anything but "ok" ("enrich_missing", "stale", "point_in_time", "estimates_unavailable" or
-    an unknown value), or the field is absent and `gate_version` is at least 6. Reason 18
-    (`no_street_fence`): `street_fence` is not a dict with numeric `low` and `high`.
+    is anything but "ok" ("enrich_missing", "stale", "point_in_time", "estimates_unavailable",
+    "fetch_error" - the vendor answered a core request with an HTTP error - or an unknown value),
+    or the field is absent and `gate_version` is at least 6. Reason 18 (`no_street_fence`): `street_fence` is not a dict with numeric `low` and `high`.
     "estimates_unavailable" is gated by reviewer ruling at the S2c review: the status also comes
     from an enrich record written before estimates were fetched, and from a failed fetch, not only
     from a name yfinance does not cover. Opening it for uncovered names is an operator decision.

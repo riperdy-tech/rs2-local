@@ -62,6 +62,16 @@ def load_json(path):
         return None
 
 
+def enrich_fetch_error(rec):
+    """(http_status, where) when an enrich record is the ERROR record of a failed vendor fetch - enrich_ticker.enrich() returns
+    one, with `_status: "error"` and no `estimates` key, when the vendor answers a core request with HTTP 401, 429 or a 5xx -
+    else None. A failed fetch is not "no coverage": every reader of an enrich record asks this before it reads `estimates`."""
+    if isinstance(rec, dict) and rec.get("_status") == "error":
+        err = rec.get("_error") if isinstance(rec.get("_error"), dict) else {}
+        return err.get("http_status"), err.get("where")
+    return None
+
+
 _SECTOR_CACHE = None
 
 def sector_lookup(ticker):

@@ -389,7 +389,7 @@ def test_the_desk_equals_the_reference_on_the_reference_own_inputs(record_kw):
 
 
 def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None, separate_borrowings=False,
-                    op_margins=None):
+                    op_margins=None, enrich_override=None):
     """build_pack("GEV") on the synthetic twelve-year history and estimates above (no network, clock frozen)."""
     import capability_test as cap
     import rs2_data
@@ -428,6 +428,8 @@ def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None
         prov.update({"_tags": [debt_tag], "runs": {"GEV": {"debt_current": [[2010, 0, "p"]]}}})
     doc = {"tickers": {"GEV": {str(y): r for y, r in hist.items()}}, "provenance": prov}
     enrich = {"_ticker": "GEV", "_fetched_at": "2026-09-26T12:00:00", "estimates": EST}
+    if enrich_override is not None:
+        enrich = enrich_override
     orig = rs2_data.load_json
 
     def load(path):

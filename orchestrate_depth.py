@@ -651,7 +651,7 @@ def run_one(t, ondemand=False):
     if rc == 0:
         return True, "ok"
     return False, {3: "research_infra", 5: "consensus_failed", 7: "vram", 8: "price_unavailable",
-                   9: "screener_data_stale"}.get(rc, f"exit_{rc}")
+                   9: "screener_data_stale", 10: "enrich_fetch_failed"}.get(rc, f"exit_{rc}")
 
 
 def data_health_scan(book):

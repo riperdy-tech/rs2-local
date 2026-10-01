@@ -19,7 +19,9 @@ CLI:  python enrich_ticker.py NVDA
 """
 import json
 import math
+import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,6 +35,56 @@ HERE = Path(__file__).resolve().parent
 # CONFIG["out_enrich_dir"] as None and every CLI run crashed at Path(None) — no enrich file was
 # written after the reorganisation (the same defect deep_research.py had).
 CONFIG = paths.load_config()
+
+
+class VendorHTTPError(Exception):
+    """The vendor answered a core request (info, calendar, estimates) with an HTTP error: 401 (a broken session, "Invalid
+    Crumb"), 429 (rate limited) or a 5xx. It is a failed fetch, never "no coverage": enrich() turns it into an error record."""
+
+    def __init__(self, status, where):
+        super().__init__(f"HTTP {status} at {where}")
+        self.status = status
+        self.where = where
+
+
+_HTTP_TEXT = re.compile(r"(?:HTTP(?:Error)?|status(?: code)?)\D{0,12}(401|429|5\d\d)\b", re.IGNORECASE)
+
+
+def _is_error_status(c):
+    return isinstance(c, int) and not isinstance(c, bool) and (c in (401, 429) or 500 <= c <= 599)
+
+
+def _vendor_http_status(exc):
+    """401, 429 or a 5xx when `exc` is the vendor's HTTP error (by its response or status attribute, by yfinance's rate-limit
+    class, or by the status named in its message), else None."""
+    for obj in (getattr(exc, "response", None), exc):
+        for attr in ("status_code", "status", "code"):
+            c = getattr(obj, attr, None)
+            if _is_error_status(c):
+                return c
+    if type(exc).__name__ == "YFRateLimitError":
+        return 429
+    text = str(exc)
+    m = _HTTP_TEXT.search(text)
+    if m:
+        return int(m.group(1))
+    if "Invalid Crumb" in text or "Unauthorized" in text:
+        return 401
+    if "Too Many Requests" in text:
+        return 429
+    return None
+
+
+def _raise_if_http(exc, where):
+    status = _vendor_http_status(exc)
+    if status is not None:
+        raise VendorHTTPError(status, where) from exc
+
+
+def is_error_record(rec):
+    """True for the record enrich() returns when the vendor answered with an HTTP error. It has no `estimates` key at all:
+    a null `estimates` means the vendor answered and has none (no coverage)."""
+    return isinstance(rec, dict) and rec.get("_status") == "error"      # the reader of the same shape: rs2_data.enrich_fetch_error
 
 
 def _pct(x, lo=0.0, hi=200.0):
@@ -305,7 +357,8 @@ def consensus_estimates(tk):
             }
         has_any = any(v is not None for p_data in out.values() for sec in p_data.values() for v in sec.values())
         return out if has_any else None
-    except Exception:
+    except Exception as e:
+        _raise_if_http(e, "estimates")
         return None
 
 
@@ -413,15 +466,44 @@ def fetch_sibling_targets(ticker, ticker_info):
 
 
 def enrich(ticker):
+    """The record for `ticker`. When the vendor answers a core request (info, calendar, estimates) with an HTTP error (401, 429
+    or a 5xx) the record is an ERROR record - {"_ticker", "_fetched_at", "_status": "error", "_error": {"http_status",
+    "where"}} with no `estimates` key - never a record of nulls that reads as "no coverage". enrich_with_retry() retries it."""
     t = ticker.upper()
+    try:
+        return _enrich(t)
+    except VendorHTTPError as e:
+        return {"_ticker": t, "_fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "_status": "error",
+                "_error": {"http_status": e.status, "where": e.where}}
+
+
+def enrich_with_retry(ticker, retries=1, cooloff=5.0, sleep=None, before_retry=None):
+    """enrich(), again after `cooloff` seconds (and `before_retry()`, for example a session reset) while the record is an error
+    record, at most `retries` more times. Returns the first good record, else the last error record: the caller stops and
+    reports, and never stores an error record as if it were the name's data."""
+    sleep = time.sleep if sleep is None else sleep
+    rec = enrich(ticker)
+    for _ in range(retries):
+        if not is_error_record(rec):
+            break
+        sleep(cooloff)
+        if before_retry is not None:
+            before_retry()
+        rec = enrich(ticker)
+    return rec
+
+
+def _enrich(t):
     tk = yf.Ticker(t)
     try:
         info = tk.info or {}
-    except Exception:
+    except Exception as e:
+        _raise_if_http(e, "info")
         info = {}
     try:
         cal = tk.calendar
-    except Exception:
+    except Exception as e:
+        _raise_if_http(e, "calendar")
         cal = None
     data = {"_ticker": t, "_fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     data.update(short_and_ownership(info))
@@ -438,26 +520,34 @@ def enrich(ticker):
             data["analyst_targets_sibling_reason"] = sib_reason
     # P4.10/DEP-02: next_earnings_date feeds depth_triggers.py's earnings_window trigger.
     data["next_earnings_date"] = next_earnings_date(cal)
-    try:
-        data["estimates"] = consensus_estimates(tk)
-    except Exception:
-        data["estimates"] = None
+    data["estimates"] = consensus_estimates(tk)
     return data
 
 
-if __name__ == "__main__":
+def main(argv=None, out_dir=None):
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-    if len(sys.argv) < 2:
+    argv = sys.argv if argv is None else argv
+    if len(argv) < 2:
         print("usage: python enrich_ticker.py <TICKER>", file=sys.stderr)
-        sys.exit(1)
-    t = sys.argv[1].upper()
-    out_dir = Path(CONFIG["out_enrich_dir"])
-    out_dir.mkdir(parents=True, exist_ok=True)
-    data = enrich(t)
+        return 1
+    t = argv[1].upper()
+    out_dir = Path(CONFIG["out_enrich_dir"]) if out_dir is None else Path(out_dir)
+    data = enrich_with_retry(t)
     path = out_dir / f"{t}.json"
+    if is_error_record(data):
+        # a failed fetch: reported, and the name's existing record (if any) is left exactly as it is
+        print(f"enrich FAILED for {t}: HTTP {data['_error']['http_status']} at {data['_error']['where']} after a retry; "
+              f"nothing written ({path} is unchanged)", file=sys.stderr)
+        return 3
+    out_dir.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     print(json.dumps(data, indent=2))
-    print(f"\n-> {path}", file=sys.stderr)
+    print(f"{chr(10)}-> {path}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
