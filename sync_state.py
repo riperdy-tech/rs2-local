@@ -30,6 +30,7 @@ STATE_FILES = [
     "depth_ondemand.jsonl",
     "depth_test_ledger.jsonl",
     "depth_ledger_events.jsonl",
+    "reference_ledger.jsonl",   # revision 18 brief section 5.3: the forward ledger of the reference (append-only)
 ]
 DELTA = Path("cloud_pending") / "depth_ledger_delta.jsonl"
 
