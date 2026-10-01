@@ -104,7 +104,7 @@ sector band, and enforces the valuation frame (`equity`/FCFE at cost of equity v
 WACC — a frame mismatch is a structured refusal, not a silent miscalculation). The record is measured
 by `tools/throughcycle_record.py` (long-run earnings are net income before acquired-intangible
 amortization; the long-run margin moves toward the company's 8-year median operating margin (its pre-tax
-margin, where no operating line is filed) by the fraction measured in `tools/reference_calibration_v1.json`;
+margin, where no operating line is filed) by the fraction measured in `tools/reference_calibration_v2.json`;
 the downturn test (a fiscal year with revenue down at least 5% and earnings down at least a third) is an
 annotation and moves no number; returns are on tangible invested capital before interest, and the return
 on new capital blends the 8-year and latest-3-year medians, capped at 100%; short-term debt is subtracted

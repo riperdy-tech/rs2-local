@@ -21,7 +21,7 @@ needs: its 8-year median (om_tc), the base year's (om_L), how it crosses that me
 margin and tax rate (x_L, tax_L). The return on new investment blends the 8-year and the latest-3-year median returns,
 each year's return capped to [R_CAP_LOW, R_CAP_HIGH], and its retention is capped by measured persistence. Every rate
 (the five margin fractions, the blend weight, the three retention caps) is read from
-reference_calibration_v1.json by `calibration()`, the one owner of those numbers; none is written anywhere else.
+reference_calibration_v2.json by `calibration()`, the one owner of those numbers; none is written anywhere else.
 
 Pure functions: fiscal-year rows in, a dict out. It imports nothing of ours (the pack and the
 reference import it), it reads no file but the calibration file, and it never defaults a missing figure except where a rule
@@ -64,7 +64,7 @@ OM_MIN_YEARS = 5        # brief F1: defined operating-margin years needed in the
 OM_SWING_CROSSINGS = 2  # brief F1 (brief E): this many sign changes about the median make a margin "swing"
 R3_MIN_YEARS = 2        # brief F3: defined return years needed for the latest-3-year median
 R_CAP_LOW, R_CAP_HIGH = -0.5, 1.0   # brief F3 (brief E): a year's return is capped to this range for r8 and r3
-CALIBRATION_FILE = Path(__file__).resolve().parent / "reference_calibration_v1.json"
+CALIBRATION_FILE = Path(__file__).resolve().parent / "reference_calibration_v2.json"
 CELL_NAMES = ("peak_swing", "peak_trend", "trough_swing", "trough_trend", "loss")
 RETENTION_BUCKETS = ("p_lt_0.5", "p_0.5_to_lt_1", "p_eq_1")
 
@@ -73,16 +73,20 @@ INF = math.inf
 
 @functools.lru_cache(maxsize=None)
 def calibration(path=None):
-    """Brief F0, the one owner of the reference's rates: reference_calibration_v1.json (brief E's measurement, never
+    """Brief F0, the one owner of the reference's rates: reference_calibration_v2.json (brief E's measurement, never
     tuned here). {"margin_series", "fractions": {cell: f}, "w8", "retention_caps": {bucket: cap}}. Raises when the file
-    is missing, is not the operating-margin calibration, or lacks a cell or a bucket."""
+    is missing, is not the operating-margin calibration, lacks a cell or a bucket, or holds a rate outside [0, 1]."""
     doc = json.loads(Path(path or CALIBRATION_FILE).read_text(encoding="utf-8"))
     if doc["margin_series"] != "operating_margin":
         raise ValueError(f"reference calibration margin_series is {doc['margin_series']!r}, not 'operating_margin'")
-    return {"margin_series": doc["margin_series"],
-            "fractions": {c: float(doc["cells"][c]["f"]) for c in CELL_NAMES},
-            "w8": float(doc["w8"]),
-            "retention_caps": {b: float(doc["retention_caps"][b]["cap"]) for b in RETENTION_BUCKETS}}
+    cal = {"margin_series": doc["margin_series"],
+           "fractions": {c: float(doc["cells"][c]["f"]) for c in CELL_NAMES},
+           "w8": float(doc["w8"]),
+           "retention_caps": {b: float(doc["retention_caps"][b]["cap"]) for b in RETENTION_BUCKETS}}
+    for name, v in (list(cal["fractions"].items()) + [("w8", cal["w8"])] + list(cal["retention_caps"].items())):
+        if not 0.0 <= v <= 1.0:      # a rate is a share between 0 and 1; anything else is a mis-specified measurement
+            raise ValueError(f"reference calibration {name} = {v} is outside [0, 1]")
+    return cal
 
 
 def retention_cap(p, cal=None):

@@ -35,9 +35,10 @@ from test_throughcycle_reference import (COE, GA, MEDIAN5, REDUCTION, _synthetic
 B = 1e9
 INF = math.inf
 # brief F2.4: the file is pinned by its content (sha256 of the canonical JSON), so git's line-ending handling cannot break it.
-# Provenance: brief E wrote it as bytes with sha256 c8decac70057a7e0484ef0bd1ddfccc6ac0607cb486deb6d15a2bff12e91a04e (CRLF).
-CALIBRATION_RAW_SHA256 = "c8decac70057a7e0484ef0bd1ddfccc6ac0607cb486deb6d15a2bff12e91a04e"
-CALIBRATION_CONTENT_SHA256 = "9c5c9888e61c4fda884ceaa2ac8c3ef401abeca3d9608919b3e083028a247373"
+# Provenance: brief E3 (Amendment 1) wrote v2 as bytes with sha256 6d18ca892d33ef77376b8a1294dc44b6cf94fbf1bd1894691049d16440bf46f8 (CRLF);
+# its parent, brief E's v1, has sha256 c8decac70057a7e0484ef0bd1ddfccc6ac0607cb486deb6d15a2bff12e91a04e. v2 differs from v1 only in cells.loss.
+CALIBRATION_RAW_SHA256 = "6d18ca892d33ef77376b8a1294dc44b6cf94fbf1bd1894691049d16440bf46f8"
+CALIBRATION_CONTENT_SHA256 = "c112690fa8ddd108df738c4df926a64358b27bb1ce019adc6abd74d3cbb30151"
 FIX = Path(__file__).resolve().parent / "fixture_data" / "split_wording"
 
 
@@ -53,7 +54,7 @@ def test_the_calibration_file_is_brief_es_content():
         again = json.dumps(json.loads(form.decode("utf-8")), sort_keys=True, separators=(",", ":"))
         assert hashlib.sha256(again.encode("utf-8")).hexdigest() == CALIBRATION_CONTENT_SHA256
     assert hashlib.sha256(raw.replace(b"\n", b"\r\n")).hexdigest() == CALIBRATION_RAW_SHA256
-    assert Path(tc.CALIBRATION_FILE).name == "reference_calibration_v1.json" and Path(tc.CALIBRATION_FILE).parent.name == "tools"
+    assert Path(tc.CALIBRATION_FILE).name == "reference_calibration_v2.json" and Path(tc.CALIBRATION_FILE).parent.name == "tools"
 
 
 def test_the_loader_reads_the_file_and_nothing_else_writes_a_rate():
@@ -84,6 +85,21 @@ def test_the_loader_refuses_a_file_that_is_not_the_operating_margin_calibration(
     p2.write_text(json.dumps(doc), encoding="utf-8")
     with pytest.raises(KeyError):
         tc.calibration(str(p2))
+
+
+@pytest.mark.parametrize("where, bad", [("loss", -1.47), ("loss", 1.01), ("peak_swing", -0.01), ("w8", 1.5), ("p_lt_0.5", -0.2), ("p_eq_1", 1.2)])
+def test_the_loader_refuses_a_rate_outside_zero_to_one(tmp_path, where, bad):
+    doc = json.loads(Path(tc.CALIBRATION_FILE).read_text(encoding="utf-8"))
+    if where == "w8":
+        doc["w8"] = bad
+    elif where in doc["retention_caps"]:
+        doc["retention_caps"][where]["cap"] = bad
+    else:
+        doc["cells"][where]["f"] = bad
+    p = tmp_path / "bad.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(ValueError, match=where):
+        tc.calibration(str(p))
 
 
 # ---- F1: the operating-margin record --------------------------------------------------------------------------------------
@@ -490,7 +506,7 @@ def test_the_explanations_say_which_case_moved_the_margin_and_why_it_did_not():
                 "companies whose margins " + kind + " closed " + f + " of such a gap within 3-4 years") in _line(ref)
     loss = ref_for(om_tc=-0.02)
     assert ("earnings margin moving from " + _pct(m5(loss)) + " to " + _pct(loss["m_long"]) + " by year 10: this company's "
-            "8-year median operating margin is a loss (-2.0%); such records closed 98% of the way to zero within 3-4 years"
+            "8-year median operating margin is a loss (-2.0%); such records closed 60% of the way to zero within 3-4 years"
             ) in _line(loss)
     held = ref_for(om_L=-0.05, x_L=0.129)
     assert held["stamps"].count("margin_rule_unmeasured_current_loss") == 1
@@ -523,7 +539,7 @@ def test_the_explanations_name_the_pretax_margin_when_the_record_is_on_the_preta
                 ) in _line(pre)
         assert "operating margin" not in _line(pre)
     loss = ref_for("pretax_with_amortization", om_tc=-0.02)
-    assert ("this company's 8-year median pre-tax margin is a loss (-2.0%); such records closed 98% of the way to zero within "
+    assert ("this company's 8-year median pre-tax margin is a loss (-2.0%); such records closed 60% of the way to zero within "
             "3-4 years") in _line(loss)
     held = ref_for("pretax_with_amortization", om_L=-0.05, x_L=0.129)
     assert ("earnings margin held at " + _pct(m5(held)) + ": this company's 8-year median pre-tax margin is positive but the "
