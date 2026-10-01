@@ -3260,6 +3260,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                         facts["working_capital"] = [pack_facts.q_b(x / 1e9) for x in _ref["wc"]]
                     if _ref.get("base_cf") is not None:
                         facts["reference_base_b"] = pack_facts.q_b(_ref["base_cf"] / 1e9)
+                    elif _ref.get("method") == "levels" and _ref.get("flows"):
+                        # revision 18 (amendment 1): a levels name's base is its year-1 owner-earnings level after the cash term,
+                        # so the desk's working-capital rule recognises the base as owner earnings
+                        facts["reference_base_b"] = pack_facts.q_b(_ref["flows"][0] / 1e9)
                 _win = (None if _not_meaningful else
                         consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters")))
                 if _win and _win.get("ttm_value") is not None:

@@ -482,9 +482,10 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     if missing:
         out["reason"] = f"{', '.join(missing)} missing"
         return out
-    if cash_on and base_cf is not None and base_cf > 0 and not (why or "").startswith(("no consensus estimates", "no EPS estimate")):
-        # the growth method's base: the interest on the cash comes off it, and off X. (A company with no consensus at all has no
-        # reference to be worth only its cash.)
+    if cash_on and why is None and levels_reason is None and base_cf is not None and base_cf > 0:
+        # a name valued by the GROWTH method (usable consensus EPS growth, a positive base): the interest on the cash comes off
+        # the base and off X. A name the levels method values is tested on its year-2 level below (a turnaround with a loss year
+        # and positive consensus EPS is not worth only its cash), and one with no consensus has no reference at all.
         ni_after = None if base_ni is None else base_ni - i_l
         if base_cf - i_l <= 0 or (ni_after is not None and ni_after <= 0):
             return _cash_only(out, c_l, shares)

@@ -231,6 +231,49 @@ def test_when_the_operating_base_is_not_positive_after_the_interest_the_value_is
     assert "operating_base_not_positive" not in neg["stamps"]
 
 
+def _turnaround_estimates():
+    """A turnaround: the vendor's year-ago EPS is a loss, positive consensus EPS levels for the next two years."""
+    return {"0y": {"revenue": {"avg": 10.8 * B, "analysts": 20}, "eps": {"avg": 2.2, "analysts": 20, "growth": 3.0, "year_ago": -0.5}},
+            "+1y": {"revenue": {"avg": 11.6 * B, "analysts": 20, "growth": 0.0741}, "eps": {"avg": 3.0, "analysts": 20, "growth": 0.36}}}
+
+
+def test_a_turnaround_is_valued_on_the_levels_method_not_on_its_cash_alone():
+    """Amendment 1: the growth method's cash-only test (OE - i <= 0, or X - i <= 0) applies only to a name the growth method
+    values. A loss year (X < 0) with positive consensus EPS levels goes to the levels method and is tested on its year-2 level
+    after the interest; part 1 first applied the growth test to it and returned the cash alone."""
+    c = 3.0 * B
+    cash = {"applies": True, "financial": False, "cash": c, "interest": 0.12 * B, "stamps": []}
+    kw = dict(da=0.5 * B, capex=0.4 * B, base_revenue=REV_BASE, stub_months=8.5)
+    # a loss year: X < 0 while the owner-earnings base is positive (D&A above capex), and an owner-earnings base below zero
+    for base_cf, base_ni in ((0.3 * B, -0.2 * B), (-0.1 * B, -0.2 * B)):
+        got = cr.build(base_cf, _turnaround_estimates(), COE, GA, SHARES, MEDIAN5, record=REDUCTION, base_ni=base_ni, cash=cash, **kw)
+        assert got["method"] == "levels" and "operating_base_not_positive" not in got["stamps"], got["stamps"]
+        assert got["value"] > c / SHARES + 1.0                           # the levels' operating value on top of the cash
+        assert got["levels"][1] == pytest.approx(3.0 * SHARES + 0.1 * B - 0.12 * B)
+    # the levels branch's own check is unchanged: a year-2 level that is not positive after the interest is cash only
+    big = dict(cash, interest=3.0 * SHARES + 0.2 * B)
+    only = cr.build(0.3 * B, _turnaround_estimates(), COE, GA, SHARES, MEDIAN5, record=REDUCTION, base_ni=-0.2 * B, cash=big, **kw)
+    assert only["method"] == "cash_only" and only["value"] == pytest.approx(c / SHARES)
+    # a name valued by the growth method keeps the growth test
+    growth = _build(_margin_record(), dict(cash, interest=OE_BASE))
+    assert growth["method"] == "cash_only"
+
+
+def test_a_levels_name_prints_its_year_1_owner_earnings_level_after_the_cash_term_as_reference_base_b(screener_data_stub, monkeypatch):
+    import test_throughcycle_reference as ttr
+    est = json.loads(json.dumps(ttr.EST))
+    est["0y"]["eps"]["growth"] = 3.0                                   # unusable growth: the levels method values the name
+    monkeypatch.setattr(ttr, "EST", est)
+    calls = []
+    real = cr.build
+    monkeypatch.setattr(cr, "build", lambda *a, **k: (calls.append(real(*a, **k)), calls[-1])[1])
+    pack = _pack_with_bill_rate(monkeypatch, 0.04)
+    ref = calls[-1]
+    assert ref["method"] == "levels" and ref["base_cf"] is None
+    assert pack.facts["reference_base_b"] == pack_facts.q_b(ref["flows"][0] / B)
+    assert pack_facts.from_text(str(pack))["reference_base_b"] == pack.facts["reference_base_b"]
+
+
 def test_the_return_record_reads_r_tc_and_the_margin_record_reads_om_trend_not_the_removed_members():
     # a record that still carries the revision-17 members: they are not read
     old = dict(REDUCTION, R_tc=0.20, r_blend=0.99, ronic_t=0.13, om_tc=0.50, om_trend=0.06, om_L=0.17, x_L=0.12, tax_L=0.25,
