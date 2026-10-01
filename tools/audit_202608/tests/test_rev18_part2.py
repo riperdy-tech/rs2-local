@@ -183,13 +183,15 @@ MIN_G, MAX_G = rc.MIN_GROWTH, rc.MAX_GROWTH
 # ---- the accessor ------------------------------------------------------------------------------------------------------
 
 _N = [0]
+_VALID = dict(members=1388, coverage_share=0.9587, flag=None, gap=2.5e-16, revision=18)
 
 
 def _write(tmp_path, **doc):
-    # a new file name each time: another test may have switched on common.enable_json_cache, which caches by path
+    """A published-quality artifact (an interior root, the identity closed, revision 18, the floors met) with `doc` laid over it.
+    A new file name each time: another test may have switched on common.enable_json_cache, which caches by path."""
     _N[0] += 1
     p = tmp_path / f"reference_closure_{_N[0]}.json"
-    p.write_text(json.dumps(doc), encoding="utf-8")
+    p.write_text(json.dumps(dict(_VALID, **doc)), encoding="utf-8")
     return p
 
 
@@ -202,7 +204,7 @@ def test_the_accessor_returns_the_premium_its_date_and_the_artifact_and_never_a_
             return now
     monkeypatch.setattr(rs2_data, "datetime", _Frozen, raising=False)
     monkeypatch.setattr(rs2_data, "reference_closure", REAL_REFERENCE_CLOSURE)
-    ok = _write(tmp_path, asof="2026-09-20", erp=0.0512, members=412, flag=None)
+    ok = _write(tmp_path, asof="2026-09-20", erp=0.0512, members=412)
     erp, asof, prov = rs2_data.reference_closure(ok)
     assert erp == 0.0512 and asof == "2026-09-20" and prov["members"] == 412
     # exactly the staleness limit (config.json's anchor_max_age_days, 45) is usable; one day more is not
@@ -221,6 +223,34 @@ def test_the_accessor_returns_the_premium_its_date_and_the_artifact_and_never_a_
     # the bounds themselves are values
     assert rs2_data.reference_closure(_write(tmp_path, asof="2026-09-20", erp=0.0005))[0] == 0.0005
     assert rs2_data.reference_closure(_write(tmp_path, asof="2026-09-20", erp=0.20))[0] == 0.20
+
+
+def test_the_accessor_refuses_an_artifact_the_builder_would_not_publish(tmp_path, monkeypatch):
+    """Revision 18, review condition: a bound flag, a gap above 1e-6, another revision, fewer than 300 members or less than 60% of
+    the aggregate's capitalisation each refuse, with a reason - a premium that was not solved is no premium."""
+    monkeypatch.setattr(rs2_data, "reference_closure", REAL_REFERENCE_CLOSURE)
+    now = datetime(2026, 10, 1, 12, 0, 0)
+
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+    monkeypatch.setattr(rs2_data, "datetime", _Frozen, raising=False)
+    base = dict(asof="2026-09-20", erp=0.05)
+    assert rs2_data.reference_closure(_write(tmp_path, **base))[0] == 0.05
+    for flag in ("bound_low", "bound_high"):
+        erp, asof, why = rs2_data.reference_closure(_write(tmp_path, flag=flag, **base))
+        assert erp is None and asof == "2026-09-20" and why == f"reference_closure_has_a_bound_flag({flag})"
+    assert rs2_data.reference_closure(_write(tmp_path, gap=1e-6, **base))[0] == 0.05                    # exactly at the limit passes
+    for gap in (1.0001e-6, 0.01, None, "0", True, -1e-9):
+        assert rs2_data.reference_closure(_write(tmp_path, gap=gap, **base))[2] == "reference_closure_gap_above_1e-6_or_missing"
+    for rev in (17, 19, None, True, "18"):
+        assert rs2_data.reference_closure(_write(tmp_path, revision=rev, **base))[2].startswith("reference_closure_revision_is_")
+    assert rs2_data.reference_closure(_write(tmp_path, members=300, coverage_share=0.60, **base))[0] == 0.05    # the floors, exactly
+    for kw in (dict(members=299), dict(coverage_share=0.5999), dict(members=None), dict(coverage_share=None), dict(members=True),
+               dict(members=400.0)):
+        assert rs2_data.reference_closure(_write(tmp_path, **dict(base, **kw)))[2].startswith("reference_closure_below_the_floor")
+    # the artifact on disk is still checked through the pack: a refused artifact leaves no cost of equity (tested with the pack above)
 
 
 # ---- reference_inputs: the cost of equity and the single source -------------------------------------------------------------

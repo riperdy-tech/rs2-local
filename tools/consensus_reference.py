@@ -189,6 +189,19 @@ def reference_in_force(status):
     return status not in OUTSIDE_FENCE
 
 
+def classify_status(value, fence_side):
+    """The reference's status, one rule for the pack and the ledger (revision 18): no value is "not_available"; a value of zero
+    or less as printed to the cent is "not_meaningful" (the fence is not evaluated for it); otherwise "outside_fence_above" /
+    "outside_fence_below" when `fence_side()` says so, else "used". `fence_side` is a zero-argument callable returning
+    "above", "below" or None, called only when the fence applies."""
+    if value is None:
+        return "not_available"
+    if float(f"{value:.2f}") <= 0:
+        return "not_meaningful"
+    side = fence_side()
+    return f"outside_fence_{side}" if side else "used"
+
+
 def base_year_cap(filed_ni, filed_shares, vendor_eps):
     """Revision 17, brief B section 2a (revision 18: no caller acts on it any more; kept as the record of that rule): a one-time gain in the base year (LAMR's Vistar gain), seen
     as the filed EPS above the vendor's year-ago EPS. None unless filed EPS exceeds the vendor's by
@@ -271,7 +284,7 @@ def margin_rule(rec, m5):
         out["stamps"].append("margin_rule_year5_margin_not_positive")
         return out
     if om_trend is None or om_L is None:
-        out["reason"] = "this company's record holds too few years of operating or pre-tax margin to measure its trend level"
+        out["reason"] = "your record holds too few years of operating or pre-tax margin to measure its trend level"
         return out
     x_L, tax_L = rec.get("x_L"), rec.get("tax_L")
     if x_L is None:
@@ -469,6 +482,8 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
            "cash": None, "interest_removed": None, "stamps": [],
            "margin": None, "om_5": None, "m_long": None,
            "margin_ratio": None}
+    out["cash_term"] = ("applies" if (cash and cash.get("applies")) else "financial" if (cash and cash.get("financial"))
+                        else "not_available" if cash else None)
     cash_on = bool(cash and cash.get("applies"))
     c_l = float(cash["cash"]) if cash_on else 0.0
     i_l = float(cash["interest"]) if cash_on else 0.0
@@ -692,8 +707,8 @@ def _margin_clause(rule, m5):
     if rule["ratio"] is None:
         return f"earnings margin held at {m5 * 100:.1f}%: {rule['reason']}"
     head = f"earnings margin moving from {m5 * 100:.1f}% to {rule['m_long'] * 100:.1f}% by year 10: "
-    return (head + f"the consensus implies a {rule['om_5'] * 100:.1f}% {rule['series']} margin at year 5 and the margin moves "
-            f"all the way to {rule['target'] * 100:.1f}%, the trend level of this company's 8-year record")
+    return (head + f"the {rule['series']} margin moves to the trend level of your 8-year record ({rule['target'] * 100:.1f}%) "
+            f"by year 10 (the consensus implies {rule['om_5'] * 100:.1f}% at year 5)")
 
 
 def _long_run_clause(ref):
@@ -707,9 +722,8 @@ def _long_run_clause(ref):
                "new investment earns no more than its cost)")
     else:
         r0, rt = ref["ronic0"], ref["terminal_ronic"]
-        pay = (f"from year 6 growth is paid for at the return your record shows (return on new investment "
-               f"{_return_txt(r0)} in year 5, {_return_txt(rt)} from year 10; cash flow = earnings x "
-               f"(1 - growth / return))")
+        pay = (f"from year 6 growth is paid for at the median return on tangible capital your record shows "
+               f"({_return_txt(r0)} in year 5, {_return_txt(rt)} from year 10)")
     if ref.get("long_run_path") == "revenue":
         m = _margin_clause(ref["margin"], lr["m5"])
     else:
@@ -733,6 +747,20 @@ def _working_capital_clause(ref, fmt_b):
             f"({ref['nwc_intensity'] * 100:.1f}% of each year's revenue change)")
 
 
+def _cash_clause(ref, fmt_b):
+    """Revision 18 (brief 3.1, Cash): what the reference does with the cash. None when the reference carries no cash-term state
+    (a caller that passed no cash term at all)."""
+    state = ref.get("cash_term")
+    if state == "applies":
+        return (f"plus excess cash ${fmt_b(ref['cash'])}B at face (after-tax interest on it removed from earnings)")
+    if state == "financial":
+        return "no excess-cash term (financial company)"
+    if state == "not_available":
+        why = ", ".join(s for s in (ref.get("stamps") or []) if s.startswith("cash_term")) or "cash_term_not_available"
+        return f"no excess-cash term (not available: {why})"
+    return None
+
+
 def not_meaningful_line(ref):
     """Brief F5: SECTION 8's line for a reference whose value is zero or less. It prints no number, only that there is no
     positive value and the reference's own reason or stamps."""
@@ -741,13 +769,17 @@ def not_meaningful_line(ref):
             "positive value" + (f" ({why})" if why else ""))
 
 
-def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):
+ANCHOR_ROLE = ("— a calibrated level anchor, not a buy signal: on point-in-time data (valuation dates 2017–2023, returns to 2026) this method valued stocks that went on to earn an average return within ±15% of their price, but it ranked stocks only weakly, and its 'worth 30% more than the price' calls beat the S&P only about 2 points more often than an average stock in 2019–2023, and less often in 2017–2018.")
+
+
+def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None, closure_asof=None):
     """SECTION 8's line. The prefixes are fixed: the harness parses the value and the levels
-    (consensus_valuation)."""
+    (consensus_valuation). Revision 18: the label's value is followed by the anchor-role sentence (`ANCHOR_ROLE`); `closure_asof`
+    (the closure premium's date) completes the discount clause."""
     if ref.get("value") is None:
         return f"- CONSENSUS-IMPLIED VALUE: not available — {ref.get('reason')}"
     clauses = [f"[Arithmetic] CONSENSUS-IMPLIED VALUE (reference, not a forecast): "
-              f"${ref['value']:,.2f} per share, the analysts' own earnings path at our discount rate"]
+              f"${ref['value']:,.2f} per share, the analysts' own earnings path at our discount rate " + ANCHOR_ROLE]
 
     label = ref.get("base_label")
     if ref["method"] == "cash_only":
@@ -785,7 +817,14 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None):
     wc_clause = _working_capital_clause(ref, fmt_b)
     if wc_clause:
         clauses.append(wc_clause)
-    clauses.append(f"discounted at the COE ANCHOR {coe * 100:.2f}%")
+    cash_clause = _cash_clause(ref, fmt_b)
+    if cash_clause:
+        clauses.append(cash_clause)
+    if closure_asof:
+        clauses.append(f"discounted at the COE ANCHOR {coe * 100:.2f}%, built from the market-consistent premium "
+                       f"(rs2 closure, as of {closure_asof})")
+    else:
+        clauses.append(f"discounted at the COE ANCHOR {coe * 100:.2f}%")
     stub = ref.get("stub_months")
     if stub:
         clauses.append(f"valued at the fiscal year end, rolled forward {stub:.0f} months")

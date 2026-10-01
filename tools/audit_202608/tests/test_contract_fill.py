@@ -137,7 +137,7 @@ def test_rule_no_desk_run():
     filled, prov = contract_fill.fill([failed_call], typed, facts, 100.0)
     assert prov["mode"] == "no_desk_run"
     assert filled == {}
-    assert len(prov["unfilled"]) == 32
+    assert len(prov["unfilled"]) == 33     # revision 18: excess_cash_reason joins the reasons
     assert prov["unfilled"] == list(contract_fill.FILLED)
 
 
@@ -403,7 +403,7 @@ def test_real_samples():
     golden_file = fix_dir / "golden_3_samples.json"
     golden = json.loads(golden_file.read_text(encoding="utf-8"))
     new_fields = list(contract_fill.FILLED[19:])
-    assert len(new_fields) == 13
+    assert len(new_fields) == 14     # revision 18: excess_cash_reason joins the reasons
 
     for e in golden:
         fixture_path = fix_dir / f"{e['run']}_s{e['sample']}.json"

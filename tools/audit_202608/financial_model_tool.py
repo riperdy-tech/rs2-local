@@ -644,6 +644,7 @@ def reverse_dcf_expectations_gap(
     terminal_ronic: Optional[float] = None,
     long_run: Optional[Dict[str, Any]] = None,
     working_capital: Optional[List[float]] = None,
+    excess_cash: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Solve for market-implied growth per Phase 4 Decision D2:
     (a) under caller's own structure (solve constant stage-1 growth equating IV to price, holding fade/terminal/rate;
@@ -651,6 +652,9 @@ def reverse_dcf_expectations_gap(
         schedule the forward value uses)
     (b) under neutral reference structure (rate = coe_anchor, 10-year linear fade to terminal_g_anchor) returning
         implied 10-year CAGR, and percentile band when base_rate_table is passed.
+    Revision 18 (brief 1.7, bar AT1e): `excess_cash` ($B, the DEFAULTS amount; equity frame only) is part of the value both
+    structures compare with the price, exactly as the forward desk adds it, so the growth the price implies is the growth of the
+    operating business alone: a price equal to a reference value that includes the cash returns that reference's growth.
     """
     if terminal_g is None:
         return {"error": "terminal_g is required for reverse DCF (the silent default was removed in Phase 4)"}
@@ -680,6 +684,7 @@ def reverse_dcf_expectations_gap(
             terminal_ronic=terminal_ronic,
             long_run=long_run,
             working_capital=working_capital,
+            excess_cash=excess_cash,
         )
         if r.get("error"):
             return None
@@ -743,6 +748,8 @@ def reverse_dcf_expectations_gap(
                 "error": f"coe_anchor ({c_anchor}) must be greater than terminal_g_anchor ({g_anchor})"
             }
         else:
+            cash_ps = float(excess_cash) / shares_diluted if (excess_cash is not None and shares_diluted > 0) else 0.0
+
             def _eval_neutral(g: float) -> float:
                 iv, _, _ = _neutral_reference_dcf(
                     base_cf=base_cf,
@@ -752,7 +759,8 @@ def reverse_dcf_expectations_gap(
                     net_debt=net_debt if valuation_frame == "firm" else 0.0,
                     shares_diluted=shares_diluted,
                 )
-                return iv
+                # revision 18: the cash at face, per share, as the forward desk adds it (equity frame only)
+                return iv + (cash_ps if valuation_frame == "equity" else 0.0)
 
             n_lo, n_hi = -0.90, 2.00
             for _ in range(5):
@@ -1832,6 +1840,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     terminal_ronic=base_inputs.get("ronic") if base_inputs else ronic_default,
                     long_run=long_run_ctx,
                     working_capital=(None if (not wc_ctx or base_inputs.get("wc_in_base")) else wc_ctx),
+                    excess_cash=excess_use,
                 )
 
     # ---- 4. Continuous Kelly sizing and Payoff Skew --------------------------------------------

@@ -9,19 +9,71 @@ LOG/STATE, stub the network- and file-scanning calls), but this fixture is the b
 test, present and future: any test that leaves so much as one file under cache/ with a changed
 mtime, or added/removed, fails loudly instead of corrupting production state silently.
 """
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache"
+# Revision 18: the closure's raw consensus batch (cache/closure_enrich/<vintage>/, ~1,700 files) is raw data, not state a test may
+# touch, and statting it twice per test made the suite many times slower. The per-test guard skips that subtree; the session
+# guard below checks every vintage against its manifest.json (file list and sha256) at the start and the end of the session.
+BATCH_ROOT = "closure_enrich"
 
 
 def _snapshot():
     if not CACHE.exists():
         return {}
     return {str(p.relative_to(CACHE)): p.stat().st_mtime_ns
-            for p in CACHE.rglob("*") if p.is_file()}
+            for p in CACHE.rglob("*") if p.is_file() and p.relative_to(CACHE).parts[0] != BATCH_ROOT}
+
+
+def verify_batch_vintages(cache_dir):
+    """Problems (a list of strings, empty when clean) found by checking every cache_dir/closure_enrich/<vintage>/ against its
+    manifest.json: a folder holding records but no manifest, a file the manifest does not list, a listed file that is missing,
+    a file whose sha256 differs, and a manifest whose own hash (over the sorted per-file hashes) differs. Subfolders (for example
+    a failed attempt moved aside) are not part of the vintage."""
+    root = Path(cache_dir) / BATCH_ROOT
+    problems = []
+    if not root.is_dir():
+        return problems
+    for vdir in sorted(p for p in root.iterdir() if p.is_dir()):
+        on_disk = {p.name for p in vdir.glob("*.json") if p.name != "manifest.json"}
+        man_path = vdir / "manifest.json"
+        if not man_path.exists():
+            if on_disk:
+                problems.append(f"{vdir.name}: records but no manifest.json")
+            continue
+        try:
+            man = json.loads(man_path.read_text(encoding="utf-8"))
+            listed = man["file_sha256"]
+        except (ValueError, KeyError):
+            problems.append(f"{vdir.name}: manifest.json is unreadable")
+            continue
+        for name in sorted(on_disk - set(listed)):
+            problems.append(f"{vdir.name}: {name} is not in the manifest")
+        for name in sorted(set(listed) - on_disk):
+            problems.append(f"{vdir.name}: {name} is in the manifest but missing")
+        for name in sorted(on_disk & set(listed)):
+            if hashlib.sha256((vdir / name).read_bytes()).hexdigest() != listed[name]:
+                problems.append(f"{vdir.name}: {name} differs from its manifest sha256")
+        own = hashlib.sha256("".join(f"{k}:{v}" + chr(10) for k, v in sorted(listed.items())).encode()).hexdigest()
+        if own != man.get("manifest_sha256"):
+            problems.append(f"{vdir.name}: the manifest's own hash does not match its file hashes")
+    return problems
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _batch_vintages_must_match_their_manifests():
+    start = verify_batch_vintages(CACHE)
+    if start:
+        pytest.fail("cache/closure_enrich does not match its manifest at session start: " + "; ".join(start[:6]), pytrace=False)
+    yield
+    end = verify_batch_vintages(CACHE)
+    if end:
+        pytest.fail("a test altered cache/closure_enrich (it no longer matches its manifest): " + "; ".join(end[:6]), pytrace=False)
 
 
 @pytest.fixture(autouse=True)

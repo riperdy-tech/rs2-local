@@ -441,17 +441,17 @@ def test_the_explanations_say_where_the_margin_moved_and_why_it_did_not():
     m5 = lambda ref: ref["long_run"]["m5"]
     for shape in ("swing", "trend"):
         ref = ref_for(om_shape=shape)                                   # the shape no longer changes the sentence
-        assert ("earnings margin moving from " + _pct(m5(ref)) + " to " + _pct(ref["m_long"]) + " by year 10: the consensus "
-                "implies a " + _pct(ref["om_5"]) + " operating margin at year 5 and the margin moves all the way to 6.0%, "
-                "the trend level of this company's 8-year record") in _line(ref)
+        assert ("earnings margin moving from " + _pct(m5(ref)) + " to " + _pct(ref["m_long"]) + " by year 10: the operating "
+                "margin moves to the trend level of your 8-year record (6.0%) by year 10 (the consensus implies "
+                + _pct(ref["om_5"]) + " at year 5)") in _line(ref)
     loss = ref_for(om_trend=-0.02)
-    assert "moves all the way to 0.0%, the trend level" in _line(loss)                                  # floored at zero
+    assert "moves to the trend level of your 8-year record (0.0%) by year 10" in _line(loss)             # floored at zero
     held = ref_for(om_L=-0.05, x_L=0.129)
     assert held["stamps"].count("margin_rule_unmeasured_current_loss") == 1
     assert ("earnings margin held at " + _pct(m5(held)) + ": this company's 8-year trend-level operating margin is positive but "
             "the consensus implies an operating loss at year 5, which the rule does not cover") in _line(held)
     off = ref_for(om_trend=None, om_L=None)
-    assert ("earnings margin held at " + _pct(m5(off)) + ": this company's record holds too few years of operating or pre-tax "
+    assert ("earnings margin held at " + _pct(m5(off)) + ": your record holds too few years of operating or pre-tax "
             "margin to measure its trend level") in _line(off)
     loss_held = ref_for(om_trend=-0.02, om_L=-0.05, x_L=0.129)
     assert ("earnings margin held at " + _pct(m5(loss_held)) + ": this company's 8-year trend-level operating margin is a loss "
@@ -470,9 +470,9 @@ def test_the_explanations_name_the_pretax_margin_when_the_record_is_on_the_preta
     for basis in ("pretax_with_amortization", "pretax_without_amortization"):
         pre, op = ref_for(basis), ref_for("with_amortization")
         assert pre["margin_ratio"] == op["margin_ratio"] and pre["m_long"] == op["m_long"] and pre["value"] == op["value"]
-        assert ("earnings margin moving from " + _pct(m5(pre)) + " to " + _pct(pre["m_long"]) + " by year 10: the consensus "
-                "implies a " + _pct(pre["om_5"]) + " pre-tax margin at year 5 and the margin moves all the way to 6.0%, "
-                "the trend level of this company's 8-year record") in _line(pre)
+        assert ("earnings margin moving from " + _pct(m5(pre)) + " to " + _pct(pre["m_long"]) + " by year 10: the pre-tax "
+                "margin moves to the trend level of your 8-year record (6.0%) by year 10 (the consensus implies "
+                + _pct(pre["om_5"]) + " at year 5)") in _line(pre)
         assert "operating margin" not in _line(pre)
     held = ref_for("pretax_with_amortization", om_L=-0.05, x_L=0.129)
     assert ("earnings margin held at " + _pct(m5(held)) + ": this company's 8-year trend-level pre-tax margin is positive but the "
@@ -628,7 +628,7 @@ def test_the_desk_run_on_the_references_own_inputs_equals_the_reference_to_half_
     # the explanation of the pack's own line
     text = str(pack)
     clause = next(l for l in text.splitlines() if "CONSENSUS-IMPLIED VALUE (reference" in l)
-    assert "earnings margin moving from " in clause and "moves all the way to" in clause and "closed" not in clause
+    assert "earnings margin moving from " in clause and "moves to the trend level of your 8-year record" in clause and "closed" not in clause
 
 
 # ---- F5: a zero or negative value is never a reference ---------------------------------------------------------------------
@@ -825,17 +825,17 @@ def test_a_us_split_whose_vendor_eps_does_not_agree_gets_the_neutral_form_and_so
 def test_the_defaults_explanation_follows_the_same_two_forms():
     conf, neutral = pack_facts._split_explanation(2.0, True), pack_facts._split_explanation(2.0, False)
     assert conf == ("the vendor's share count is 2 times the last filed diluted count (DATA 7): the filed per-share figures in "
-                    "DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK and the base-year cap use the filed count x 2")
+                    "DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK uses the filed count x 2")
     assert neutral == ("the vendor's share count is 2 times the last filed diluted count (DATA 7): a split after the last filing, "
                        "or a different share unit such as depositary shares; the filed per-share figures in DATA 5 and 6 are on "
-                       "the filed unit, and the BASE-YEAR CHECK and the base-year cap use the filed count x 2")
+                       "the filed unit, and the BASE-YEAR CHECK uses the filed count x 2")
     assert pack_facts._split_explanation(0.25, True) == (
         "the vendor's share count is 1/4 of the last filed diluted count (DATA 7, a reverse split): the filed per-share figures "
-        "in DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK and the base-year cap use the filed count / 4")
+        "in DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK uses the filed count / 4")
     assert pack_facts._split_explanation(0.25, False) == (
         "the vendor's share count is 1/4 of the last filed diluted count (DATA 7): a split after the last filing, or a different "
         "share unit such as depositary shares; the filed per-share figures in DATA 5 and 6 are on the filed unit, and the "
-        "BASE-YEAR CHECK and the base-year cap use the filed count / 4")
+        "BASE-YEAR CHECK uses the filed count / 4")
     f = dict(pack_facts.empty(), split_after_last_filing=4.0)
     assert "are pre-split" in pack_facts.render_defaults_block(f, split_confirmed=True)
     for arg in (False, None):
@@ -885,7 +885,7 @@ def test_the_pack_says_split_only_for_a_us_company_and_otherwise_the_neutral_for
     line = next(l for l in ads.splitlines() if l.startswith("- split_after_last_filing"))
     assert line == ("- split_after_last_filing: 2 | the vendor's share count is 2 times the last filed diluted count (DATA 7): a "
                     "split after the last filing, or a different share unit such as depositary shares; the filed per-share "
-                    "figures in DATA 5 and 6 are on the filed unit, and the BASE-YEAR CHECK and the base-year cap use the "
+                    "figures in DATA 5 and 6 are on the filed unit, and the BASE-YEAR CHECK uses the "
                     "filed count x 2")
     # a US company whose vendor EPS was not restated (still the filed 17.70), and one whose country the screener lacks
     for country, eps in (("United States", 17.69), (None, GEV_EPS / 2)):
@@ -896,7 +896,7 @@ def test_the_pack_says_split_only_for_a_us_company_and_otherwise_the_neutral_for
     assert ("After the last filing: a 2-for-1 split (filed FY2025 276.0M -> vendor 552.0M; the vendor's restated FY2025 EPS "
             "agrees); filed per-share figures in DATA 5 and 6 are pre-split.") in yes
     assert "the filed count x 2 for the split after the last filing (DATA 7)" in _byc(yes)
-    assert "are pre-split, and the BASE-YEAR CHECK and the base-year cap use the filed count x 2" in yes
+    assert "are pre-split, and the BASE-YEAR CHECK uses the filed count x 2" in yes
     # the multiplier and the arithmetic do not depend on the wording
     for text in (ads, yes):
         assert next(l for l in text.splitlines() if l.startswith("- split_after_last_filing")).startswith("- split_after_last_filing: 2 |")

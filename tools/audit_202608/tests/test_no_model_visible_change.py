@@ -41,7 +41,9 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # "017954dba1760027997a91e8456b63952ee5e2bcc7109ae4a9d03605ffd819ce".
 # 2026-09-30 (revision 17, brief F6): the Working capital sentence says a base that matches an owner-earnings figure is owner
 # earnings (not cash-basis); was "647be918454d5249b3fb6f70da3932e48d6a69b86dc728d46781de405fe0ab91".
-TASK_SHA256 = "0d2056a3b707c21ecc3ac8dfe4eeb5b66b3b8eae89162c58431a2adab96f903c"
+# 2026-10-01 (revision 18, brief 3.2): the TASK gained the Level anchor bullet after Valuation date; was
+# "0d2056a3b707c21ecc3ac8dfe4eeb5b66b3b8eae89162c58431a2adab96f903c".
+TASK_SHA256 = "6c42ab72a946259410b1e174ef4a8d8acf4571c9b84d18b17cda0596c1abfa93"
 RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
@@ -62,7 +64,9 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 # when base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b)"; was
 # "69b8bb654011315fae51b12c17b6eb84cb62f1b520875d093c24806043a7eb0e" (the sentence still read "not when base_cf is within 2% of
 # cash_basis_b", a rule the desk stopped applying in brief F6).
-TOOLS_SHA256 = "84a5d721b704401741dc1cb755b0461408e32830b4cec91a8c26327fe5928b40"
+# 2026-10-01 (revision 18, brief 1.7): run_financial_model's schema gained excess_cash and excess_cash_reason; was
+# "84a5d721b704401741dc1cb755b0461408e32830b4cec91a8c26327fe5928b40". The model's system text (the Modelfiles) is untouched.
+TOOLS_SHA256 = "1caed0f6c38965b562b77783bb33e483b3b6241b400321e53a37f25b3f1f1f21"
 # research_tools() (search_web, fetch_page) is unchanged, so its pin stays.
 RESEARCH_TOOLS_SHA256 = "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
@@ -91,7 +95,7 @@ def _get_system_block(path: Path) -> str:
 def test_text_pins():
     # Revision 17 (brief_rev17_B_valuation.md): the pack text, the TASK and the tool schema changed on purpose (the
     # through-cycle package); revision 16 changed only the number on the first line.
-    assert capability_test.PACK_REVISION == 17
+    assert capability_test.PACK_REVISION == 18
     assert _sha256(capability_test.TASK) == TASK_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
@@ -127,7 +131,7 @@ class FrozenDatetime(_real_datetime):
 
 
 def test_pack_byte_pin(screener_data_stub, monkeypatch):
-    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev17.md.
+    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev18.md.
 
     Datetime is frozen at 2026-09-27 12:00 local across:
     - capability_test
@@ -201,10 +205,13 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # revision 18, part 2 (+99 chars, was 21941): the two DATA 1.5 lines the cost of equity changes - the Rates line labels MRI's premium as
     # context, and the COE ANCHOR is rf_eff + the loading x the closure premium (brief 1.6); the golden diff is in
     # rev18/part2_golden_diff/
-    assert len(text1) == 22040
+    # revision 18, part 3 (+45 chars, was 22040): PACK_REVISION 18 on the first line (0) and the excess_cash line's departure sentence
+    # (+45); the reference line's text changes do not show in this pack (GEV's fixture holds no consensus estimates)
+    # revision 18, part-2 review condition (+251 chars, was 22085): the coe_premium_source DEFAULTS line (the premium-source label)
+    assert len(text1) == 22336
 
     # Assert byte equality with golden file
-    golden_file = FIXTURE / "golden_pack_GEV_rev17.md"
+    golden_file = FIXTURE / "golden_pack_GEV_rev18.md"
     # core.autocrlf checks the fixture out with CRLF on Windows; the pack itself is built with "\n"
     golden_bytes = golden_file.read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes

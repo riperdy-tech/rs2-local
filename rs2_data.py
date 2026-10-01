@@ -1254,6 +1254,7 @@ def bill_rate_mean(start, end):
 
 
 REFERENCE_CLOSURE_FILE = HERE / "cache" / "reference_closure.json"
+REFERENCE_CLOSURE_REVISION = 18
 
 
 def reference_closure(path=None):
@@ -1264,7 +1265,9 @@ def reference_closure(path=None):
     consensus vintage, input hashes, revision).
 
     No fallback of any kind: a missing file, a malformed one, a premium outside the solver's bounds, an artifact older than
-    config.json's `anchor_max_age_days` (45) or dated in the future gives (None, ..., reason), never MRI's premium."""
+    config.json's `anchor_max_age_days` (45) or dated in the future gives (None, ..., reason), never MRI's premium. So does an
+    artifact the builder would not have published: a bound flag (no interior root), a gap above 1e-6, a revision other than 18,
+    or fewer than 300 members or less than 60% of the aggregate's capitalisation."""
     p = Path(path) if path is not None else REFERENCE_CLOSURE_FILE
     doc = load_json(p)
     if not isinstance(doc, dict):
@@ -1280,6 +1283,18 @@ def reference_closure(path=None):
     max_age = CONFIG["anchor_max_age_days"]
     if not (0 <= age <= max_age):
         return None, asof, f"reference_closure_stale({asof}, {age} days, limit {max_age})"
+    # the artifact must be one the builder would publish: an interior root, the identity closed, this revision, the floors met
+    if doc.get("flag") is not None:
+        return None, asof, f"reference_closure_has_a_bound_flag({doc.get('flag')})"
+    gap = doc.get("gap")
+    if not (isinstance(gap, (int, float)) and not isinstance(gap, bool) and 0 <= gap <= 1e-6):
+        return None, asof, "reference_closure_gap_above_1e-6_or_missing"
+    if doc.get("revision") != REFERENCE_CLOSURE_REVISION or isinstance(doc.get("revision"), bool):
+        return None, asof, f"reference_closure_revision_is_{doc.get('revision')}_not_{REFERENCE_CLOSURE_REVISION}"
+    members, coverage = doc.get("members"), doc.get("coverage_share")
+    if not (isinstance(members, int) and not isinstance(members, bool) and members >= 300
+            and isinstance(coverage, (int, float)) and not isinstance(coverage, bool) and coverage >= 0.60):
+        return None, asof, "reference_closure_below_the_floor(300 members, 60% of the aggregate's capitalisation)"
     return float(erp), str(asof)[:10], doc
 
 

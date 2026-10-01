@@ -198,6 +198,7 @@ def extract_scorecard(report, price):
         "shares_basis": None,
         "shares_reason": None,
         "net_debt_reason": None,
+        "excess_cash_reason": None,         # revision 18: a different excess_cash than DEFAULTS' needs a dated reason
         "scenario_deviation_reason": None,
         # E13 (pack revision 9): terminal multiple and valuation frame
         "terminal_multiple_reason": None,   # revision 9 name; revision 10 asks for terminal_reason
@@ -684,7 +685,7 @@ def select_medoid_scorecard(
         **{k: medoid_card.get(k) for k in ("bull_years12_ratio", "bear_years12_ratio", "base_shares_ratio",
                                            "bull_shares_ratio", "bear_shares_ratio", "desk_frame",
                                            "desk_net_debt", "shares_basis", "shares_reason",
-                                           "net_debt_reason", "scenario_deviation_reason",
+                                           "net_debt_reason", "excess_cash_reason", "scenario_deviation_reason",
                                            "bull_bear_anchor",
                                            "terminal_multiple_reason", "interest_addback", "wacc_reason",
                                            "owner_earnings_source", "consensus_reference_status",

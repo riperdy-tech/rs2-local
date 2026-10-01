@@ -657,7 +657,7 @@ def band_verdict(doc):
         **{k: scorecard.get(k) for k in ("bull_years12_ratio", "bear_years12_ratio", "base_shares_ratio",
                                          "bull_shares_ratio", "bear_shares_ratio", "desk_frame",
                                          "desk_net_debt", "shares_basis", "shares_reason",
-                                         "net_debt_reason", "scenario_deviation_reason",
+                                         "net_debt_reason", "excess_cash_reason", "scenario_deviation_reason",
                                          "bull_bear_anchor",
                                          "terminal_multiple_reason", "interest_addback", "wacc_reason",
                                          "owner_earnings_source", "consensus_reference_status",

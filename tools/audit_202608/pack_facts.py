@@ -73,6 +73,10 @@ KEYS: list[str] = [
     # ($B: the base fiscal year's cash and short-term investments for a non-financial company, 0.0 for a financial one,
     # None when the cash term is not available). An older sidecar or block reads it as None.
     "excess_cash",
+    # revision 18 (review condition): where the premium behind coe_anchor comes from - "closure" (the live reference's rs2
+    # closure premium) or "damodaran_point_in_time" (a point-in-time pack, whose closure premium cannot be rebuilt for a past
+    # date) - or None when there is no cost of equity.
+    "coe_premium_source",
 ]
 
 # The revision marker (S1's from_text dispatch, section 5.1's line format). The DEFAULTS reader
@@ -356,6 +360,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "split_after_last_filing": None,
         "reference_base_b": None,
         "excess_cash": None,
+        "coe_premium_source": None,
     }
 
 
@@ -719,16 +724,16 @@ def _split_explanation(m, confirmed=True) -> str:
     if confirmed:
         if m >= 1:
             return (f"the vendor's share count is {m:g} times the last filed diluted count (DATA 7): the filed per-share "
-                    f"figures in DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK and the base-year cap use the "
+                    f"figures in DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK uses the "
                     f"filed count x {m:g}")
         return (f"the vendor's share count is 1/{k:g} of the last filed diluted count (DATA 7, a reverse split): the "
-                f"filed per-share figures in DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK and the base-year cap "
-                f"use the filed count / {k:g}")
+                f"filed per-share figures in DATA 5 and 6 are pre-split, and the BASE-YEAR CHECK "
+                f"uses the filed count / {k:g}")
     of = f"{m:g} times" if m >= 1 else f"1/{k:g} of"
     use = f"x {m:g}" if m >= 1 else f"/ {k:g}"
     return (f"the vendor's share count is {of} the last filed diluted count (DATA 7): a split after the last filing, or "
             f"a different share unit such as depositary shares; the filed per-share figures in DATA 5 and 6 are on the "
-            f"filed unit, and the BASE-YEAR CHECK and the base-year cap use the filed count {use}")
+            f"filed unit, and the BASE-YEAR CHECK uses the filed count {use}")
 
 
 def _years_txt(v) -> str:
@@ -815,7 +820,7 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
              "$B: the base fiscal year's cash and short-term investments at face (0 for a financial company; not "
              "available when the cash term could not be computed, see long_run stamps), which the desk adds per share to "
              "every scenario's value; the owner-earnings default and the reference base exclude the after-tax interest "
-             "on it"),
+             "on it; a different amount needs excess_cash_reason"),
         line("cash_basis_b", _dv_money(f.get("cash_basis_b")),
              "the alternative base (includes working-capital swings)"),
         line("reference_base_b", _dv_money6(f.get("reference_base_b")),
@@ -835,6 +840,10 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
 
     lines.append(line("coe_anchor", _dv_rate2(f.get("coe_anchor")),
                       "the Base discount rate; more than 1.5 points away needs coe_adjustment_reason"))
+    lines.append(line("coe_premium_source", _dv_str(f.get("coe_premium_source")),
+                      "where the premium behind coe_anchor comes from: the live reference uses rs2's closure premium; "
+                      "point-in-time packs use Damodaran's premium, because the live reference's closure premium cannot be "
+                      "rebuilt for a past date"))
     lines.append(line("terminal_g_default", _dv_rate2(f.get("terminal_g_default")),
                       _terminal_g_explanation(f)))
     lines.append(line("terminal_g_anchor", _dv_rate2(f.get("terminal_g_anchor")),
@@ -958,7 +967,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         mm = re.search(rf"^- {re.escape(key)}: (.*?) \| ", block, re.MULTILINE)
         if mm:
             return mm.group(1)
-        if throughcycle and key not in ("base_year_cap", "split_after_last_filing", "reference_base_b", "excess_cash"):
+        if throughcycle and key not in ("base_year_cap", "split_after_last_filing", "reference_base_b", "excess_cash", "coe_premium_source"):
             raise ValueError(f"revision-17 DEFAULTS block has no {key!r} line")
         return None
 
@@ -1039,6 +1048,8 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     split_after_last_filing = _dp_split(_split) if _split is not None else None
     _rb = _opt("reference_base_b")
     reference_base_b = _dp_num(_rb) if _rb is not None else None
+    _cps = _opt("coe_premium_source")
+    coe_premium_source = _dp_str(_cps) if _cps is not None else None
     _ec = _opt("excess_cash")
     excess_cash = _dp_num(_ec) if _ec is not None else None
 
@@ -1076,6 +1087,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "split_after_last_filing": split_after_last_filing,
         "reference_base_b": reference_base_b,
         "excess_cash": excess_cash,
+        "coe_premium_source": coe_premium_source,
     }
 
 

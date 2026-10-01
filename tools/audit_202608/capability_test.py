@@ -220,7 +220,13 @@ TIMEOUT = 14400
 #   at the fiscal-year levels unless guidance_deviation_reason is given, values at the base fiscal year end rolled forward,
 #   and has no exit multiple or terminal leg. DEFAULTS gains terminal_ronic, long_run, working_capital (and base_year_cap when
 #   applied) and loses default_exit_multiple; the tool text and TASK change with it; sbc_dilution has one unit rule.
-PACK_REVISION = 17
+# Revision 18 (brief_rev18_design.md, 2026-10-01, the frozen design in production): the reference is the structure the backtest
+#   tested - returns r + p x max(0, R_tc - r) with no blend, the margin moves all the way to the record's trend level, cash at
+#   face (excess_cash, the after-tax interest on it out of earnings), no base-year cap - discounted at rf_eff + loading x the
+#   closure premium (rs2's market-consistent premium; MRI's premium is context). The reference line carries a calibrated
+#   level-anchor sentence, the TASK a Level anchor bullet, the DEFAULTS an excess_cash line (the desk adds it per share and a
+#   different amount needs excess_cash_reason), and a value outside the street-target fence is printed with its flag.
+PACK_REVISION = 18
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -322,6 +328,16 @@ REVIEWED_HISTORY_KEYS = frozenset({
     # revision 17: read by the through-cycle record (tools/throughcycle_record.py), printed as its statistics
     "goodwill", "intangibles_ex_goodwill", "amortization_intangibles",
 })
+
+
+def _consensus_band_or_none(t):
+    """The street-target band the fence is built from (valuation_backbone._consensus_band), or None when it cannot be read: the
+    one place the pack and the forward ledger take it from."""
+    try:
+        import valuation_backbone as _vb
+        return _vb._consensus_band(t)
+    except Exception:
+        return None
 
 
 def _reference_outside_fence(value, band):
@@ -1992,6 +2008,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         if rf_pct is not None and adj_load_val is not None and erp_pct is not None:
             coe_anchor_pct = rf_pct + adj_load_val * erp_pct
             facts["coe_anchor"] = float(f"{coe_anchor_pct:.2f}") / 100.0
+            facts["coe_premium_source"] = "damodaran_point_in_time"
         else:
             coe_anchor_pct = None
             facts["coe_anchor"] = None
@@ -2061,7 +2078,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             coe_clause = (f"COE ANCHOR for this name: {coe_anchor_pct:.2f}% = rf {rf_pct:.2f}% + "
                          f"adjusted loading {adj_load_val:.3f}× (Blume: 0.67 × raw "
                          f"{raw_load_val:.3f} + 0.33) × implied ERP {erp_pct:.2f}% (asof "
-                         f"{asof_date.isoformat()}, {erp_src}; {_STRUCTURAL_LOADING_LABEL})")
+                         f"{asof_date.isoformat()}, {erp_src}; {_STRUCTURAL_LOADING_LABEL}); point-in-time packs use "
+                         f"Damodaran's premium; the live reference's closure premium cannot be rebuilt for a past date")
         else:
             coe_clause = f"COE ANCHOR for this name: {ASOF_NULL}"
         if terminal_g_val is not None:
@@ -2229,6 +2247,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             coe_anchor_pct = (_rf_eff + adj_load_val * _clos_erp) * 100.0
             _coe_asof_str = str(_clos_asof) if _clos_asof else NULL
             facts["coe_anchor"] = float(f"{coe_anchor_pct:.2f}") / 100.0
+            facts["coe_premium_source"] = "closure"
 
         be_val = be_pct / 100.0 if be_pct is not None else None
         _record, terminal_def_val, terminal_def_basis, terminal_def_reason = _through_cycle(
@@ -3305,7 +3324,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             _fyh = (h.get(str(latest_yr)) or {}) if latest_yr is not None else {}
             _fy_ni_x, _fy_sh_x = _fyh.get("net_income"), _fyh.get("shares_diluted")
             # revision 17 (brief C4): a split after the last filing leaves the filed count pre-split; the
-            # vendor's year-ago EPS is split-adjusted, so the check and the cap use the filed count x k
+            # vendor's year-ago EPS is split-adjusted, so the check uses the filed count x k
             _split_note = ""
             if _split and _split["fy"] == latest_yr and isinstance(_fy_sh_x, (int, float)):
                 _fy_sh_x = _fy_sh_x * _split["multiplier"]
@@ -3396,16 +3415,20 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 # the reference derives (levels, long run, working capital, base) is kept as for a reference in force, so
                 # the desk's default inputs equal the reference; the desk and the harness read the status before they apply
                 # a band, a hold or a refusal to it.
-                try:
-                    import valuation_backbone as _vb
-                    _band = _vb._consensus_band(t)
-                except Exception:
-                    _band = None
+                _band = _consensus_band_or_none(t)
                 # brief F5: a value of zero or less (as printed, to the cent) is no reference: it is stamped not_meaningful,
                 # prints no number, and the fence is not evaluated for it
                 _ref_value = (_ref or {}).get("value")
                 _not_meaningful = _ref_value is not None and float(f"{_ref_value:.2f}") <= 0
-                _side, _fence = (None, None) if _not_meaningful else _reference_outside_fence(_ref_value, _band)
+                _fence_box = []
+
+                def _fence_side():
+                    _s, _f = _reference_outside_fence(_ref_value, _band)
+                    _fence_box.append(_f)
+                    return _s
+                _status = consensus_reference.classify_status(_ref_value, _fence_side)
+                _side = _status.split("_")[-1] if _status.startswith("outside_fence") else None
+                _fence = _fence_box[0] if _fence_box else None
                 _tg_used = terminal_def_val if terminal_def_val is not None else 0.0
                 if _ref.get("value") is None:
                     facts["reference_status"] = "not_available"
@@ -3433,7 +3456,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     L.append(consensus_reference.not_meaningful_line(_ref))
                 else:
                     _civ_line = consensus_reference.pack_line(_ref, _fy.get("base"), _coe if _coe is not None else 0.0,
-                                                              _tg_used, _bn, anchor=facts["terminal_g_anchor"])
+                                                              _tg_used, _bn, anchor=facts["terminal_g_anchor"],
+                                                              closure_asof=_clos_asof)
                     if _side:
                         _civ_line += (f" | outside the street-target fence [${_fence[0]:,.2f}, ${_fence[1]:,.2f}] (0.5× the "
                                       f"lowest and 2× the highest analyst target, each discounted by 10%) — read it as a "
@@ -3838,6 +3862,7 @@ YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic vie
    - Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders; a departure from the terminal_g or terminal_ronic default needs evidence, not a cap.
    - Working capital: the desk deducts the DEFAULTS working_capital from every scenario's owner earnings in years 1-5, unless your base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b (a base that matches an owner-earnings figure is owner earnings).
    - Valuation date: the desk values at the base fiscal year end and rolls the value forward to today at your discount rate, as the CONSENSUS-IMPLIED VALUE does.
+   - Level anchor: the CONSENSUS-IMPLIED VALUE checks the level of your Base, not the direction of your call. It values average performers close to their price, but by itself it is not evidence that a stock is cheap or expensive. Your call rests on the economics you set out above. A Base far from the reference needs the reason DEFAULTS names; a Base close to it needs no reason and earns no credit.
    - Frame: every flow in this pack is after interest, so value it in the equity frame. The firm frame needs a pre-interest flow, a WACC built from the COE ANCHOR, and net debt; the desk asks for each.
    - Shares: use the DEFAULTS block's shares_default, the desk's default (DATA 2's count, times the dilution factor when DATA 2 shows one). Add a contingent instrument (warrants, earn-outs) only in the scenarios where it vests, never in one whose premise is that it does not.
    - Cash-flow life: cash flows end when they come from a finite stock (a mine, a well, a reservoir) or a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of capex your base already deducts. The life is filed reserves over current production, or the remaining term, with the filing's date. A perpetual value must deduct the capex that replaces what the business depletes. Where revenue follows a quoted commodity price, state the price deck your flows assume and its source.

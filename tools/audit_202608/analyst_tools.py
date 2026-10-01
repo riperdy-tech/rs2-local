@@ -218,6 +218,14 @@ TOOLS = [{
                     "type": "string",
                     "description": "Firm frame: why net_debt differs from the DEFAULTS net debt."
                 },
+                "excess_cash": {
+                    "type": "number",
+                    "description": "Optional. The desk adds the DEFAULTS excess_cash ($B, cash and short-term investments at face) per share to every scenario's value in the equity frame. Pass another amount only with excess_cash_reason."
+                },
+                "excess_cash_reason": {
+                    "type": "string",
+                    "description": "Why excess_cash differs from the DEFAULTS amount, with dated evidence (for example cash held where it cannot be used, per a dated filing)."
+                },
                 "wacc_reason": {
                     "type": "string",
                     "description": "Firm frame, required: the COE ANCHOR, the cost of debt (filed interest over debt), the tax rate and the weights behind the WACC."

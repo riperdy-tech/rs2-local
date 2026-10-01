@@ -6,11 +6,12 @@ returns the values code writes into the contract and the provenance of each.
 from fiduciary_gate import payoff_skew
 from financial_model_tool import _normalize_cash_flow_life
 
-# S3 3.3: the 11 reason arguments (cash_flow_life_reason counted among them).
+# S3 3.3: the 11 reason arguments (cash_flow_life_reason counted among them); revision 18 adds excess_cash_reason (the name
+# stays REASONS_11 for its callers: it is the tuple of every reason argument).
 REASONS_11 = (
     "cash_flow_life_reason", "base_cf_reason", "guidance_deviation_reason", "scenario_deviation_reason",
     "terminal_reason", "coe_adjustment_reason", "shares_reason", "net_debt_reason", "wacc_reason",
-    "bull_below_price_reason", "bear_above_price_reason",
+    "bull_below_price_reason", "bear_above_price_reason", "excess_cash_reason",
 )
 
 FILLED = (
