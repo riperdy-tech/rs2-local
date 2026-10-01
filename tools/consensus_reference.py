@@ -737,12 +737,16 @@ def _long_run_clause(ref, coe):
     if r_tc is None or "record_not_available" in ref.get("stamps", []):
         pay = ("from year 6 growth is paid for at the cost of equity (your record is not available, so "
                "new investment earns no more than its cost)")
-    elif math.isinf(r_tc):
+    elif r_tc == math.inf:
         pay = ("from year 6 growth needs no new investment: your record's tangible capital is zero or negative, so the "
                "return on new investment is unlimited and cash flow = earnings")
     elif r_tc <= coe:
+        # -inf (earnings of zero or less on zero or negative tangible capital) is not above the cost of equity: the arithmetic
+        # pays for growth at the cost of equity (ronic0 = ronic_t = coe), so the clause must not say "unlimited"
+        shown = ("negative without limit (earnings of zero or less on zero or negative tangible capital)"
+                 if r_tc == -math.inf else _return_txt(r_tc))
         pay = (f"from year 6 growth is paid for at the cost of equity, {coe * 100:.2f}%: the median return on tangible capital "
-               f"in your 8-year record, {_return_txt(r_tc)}, is not above it, so new investment earns only its "
+               f"in your 8-year record, {shown}, is not above it, so new investment earns only its "
                f"cost; cash flow = earnings x (1 - growth / return)")
     else:
         r0, rt = ref["ronic0"], ref["terminal_ronic"]

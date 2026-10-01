@@ -93,11 +93,14 @@ def test_the_long_run_clause_names_the_median_only_when_it_is_above_the_cost_of_
 
 
 def test_the_long_run_clause_names_the_cost_of_equity_when_the_median_is_not_above_it():
-    for r_tc, shown in ((0.05, "5.0%"), (-0.03, "-3.0%"), (COE, "9.0%")):     # below, negative and equal to the cost of equity
+    NEG_INF = "negative without limit (earnings of zero or less on zero or negative tangible capital)"
+    # below, negative, equal to the cost of equity, and -inf (earnings of zero or less on zero or negative tangible capital)
+    for r_tc, shown in ((0.05, "5.0%"), (-0.03, "-3.0%"), (COE, "9.0%"), (-INF, NEG_INF)):
         ref, line, clause = _lr_clause({"R_tc": r_tc, "ronic_t": COE})
         assert ref["record_R_tc"] == r_tc and ref["ronic0"] == COE and ref["terminal_ronic"] == COE
         assert clause.startswith(LR_BELOW.format(coe="9.00%", R_tc=shown) + "; ")
         assert "moving to" not in clause and "in year 5" not in clause
+        assert "unlimited" not in clause and "needs no new investment" not in clause
 
 
 def test_the_long_run_clause_says_no_new_investment_is_needed_when_the_median_is_unlimited():
