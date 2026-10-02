@@ -166,3 +166,146 @@ def test_g3_the_replay_context_equals_the_fresh_one_on_the_four_development_name
     assert set(result) == {"UGI", "MPWR", "MU", "LAMR"}
     for name, r in result.items():
         assert r["differences"] == [] and r["keys"] >= 27, name
+
+
+# ---- Part I: the levels method's earnings basis (measure only), on synthetic data -------------------------------------------------------------
+
+def _lb():
+    sys.path.insert(0, str(HERE))
+    sys.path.insert(0, str(TREE / "tools"))
+    import levels_eps_basis as lb
+    return lb
+
+
+def test_part_i_classes_by_the_two_percent_rules():
+    lb = _lb()
+    m = lb.measure(10.1, 10.0, 2.0, 0.2)                      # within 2% of filed
+    assert m["class"] == "gaap_like" and m["ya_over_filed"] == pytest.approx(1.01)
+    m = lb.measure(12.0, 10.0, 2.0, 0.2)                      # filed plus stock pay, before tax
+    assert m["class"] == "adjusted_like" and m["ya_over_filed_plus_pre_tax"] == pytest.approx(1.0)
+    assert m["ya_over_filed_plus_after_tax"] == pytest.approx(12.0 / 11.6)
+    assert lb.measure(15.0, 10.0, 2.0, 0.2)["class"] == "adjusted_like"      # above filed by more than 2%, whatever the stock pay
+    assert lb.measure(15.0, 10.0, None, 0.2)["class"] == "adjusted_like"
+    assert lb.measure(9.0, 10.0, 2.0, 0.2)["class"] == "unclassified"        # below filed by more than 2% and not filed plus stock pay
+    assert lb.measure(10.2, 10.0, 2.0, 0.2)["class"] == "gaap_like"          # 2% is inside; filed wins over a filed-plus match
+    assert lb.measure(10.21, 10.0, 0.1, 0.2)["class"] == "adjusted_like"
+
+
+def test_part_i_no_filed_basis_and_zero_values_are_values():
+    lb = _lb()
+    assert lb.measure(None, 10.0, 1.0, 0.2)["class"] == "no_filed_basis"
+    assert lb.measure(10.0, None, 1.0, 0.2)["class"] == "no_filed_basis"
+    m = lb.measure(0.0, 0.0, 0.0, 0.0)                                       # a zero is a number: both equal, so GAAP-like; no ratio, no restatement
+    assert m["class"] == "gaap_like" and m["ya_over_filed"] is None and m["restate"] is None
+    m = lb.measure(0.5, 0.0, 0.0, 0.2)
+    assert m["class"] == "adjusted_like" and m["ya_over_filed_plus_pre_tax"] is None
+    assert lb.measure(5.0, 4.0, 0.0, 0.2)["ya_over_filed_plus_after_tax"] == pytest.approx(1.25)
+    m = lb.measure(-1.0, 2.0, 0.5, 0.2)                                      # a loss year-ago EPS cannot restate
+    assert m["class"] == "unclassified" and m["restate"] is None
+    assert lb.measure(8.0, 4.0, 1.0, 0.2)["restate"] == pytest.approx(0.5)
+
+
+def test_part_i_restating_scales_both_levels_and_nothing_else():
+    lb = _lb()
+    est = {"0y": {"eps": {"avg": 8.0, "growth": 0.5, "year_ago": 5.0, "analysts": 4}, "revenue": {"avg": 1.0}},
+           "+1y": {"eps": {"avg": 10.0, "growth": 0.25, "analysts": 4}}}
+    out = lb.restated_estimates(est, 0.5)
+    assert out["0y"]["eps"]["avg"] == 4.0 and out["+1y"]["eps"]["avg"] == 5.0
+    assert out["0y"]["eps"]["growth"] == 0.5 and out["0y"]["revenue"] == {"avg": 1.0} and out["0y"]["eps"]["year_ago"] == 5.0
+    assert est["0y"]["eps"]["avg"] == 8.0                                    # the input is not touched
+
+
+def test_part_i_summary_counts_and_medians_carry_no_name():
+    lb = _lb()
+    recs = [dict(lb.measure(10.0, 10.0, 1.0, 0.2), restated_ratio=1.0),
+            dict(lb.measure(14.0, 10.0, 1.0, 0.2), restated_ratio=0.5),
+            dict(lb.measure(16.0, 10.0, 1.0, 0.2), restated_ratio=0.7),
+            dict(lb.measure(5.0, 10.0, 1.0, 0.2), restated_ratio=2.0),
+            dict(lb.measure(None, 10.0, 1.0, 0.2), restated_ratio=None)]
+    s = lb.summarize(recs)
+    assert s["names"] == 5 and s["counts"] == {"gaap_like": 1, "adjusted_like": 2, "unclassified": 1, "no_filed_basis": 1}
+    assert s["medians"]["ya_over_filed"] == pytest.approx(1.2) and s["medians"]["restated_ratio"] == pytest.approx(0.85)
+    assert s["by_class"]["adjusted_like"]["ya_over_filed"] == pytest.approx(1.5) and s["by_class"]["adjusted_like"]["restated_ratio_available"] == 2
+    assert s["by_class"]["no_filed_basis"]["ya_over_filed"] is None
+    loss = lb.summarize([dict(lb.measure(1.0, -2.0, 0.5, 0.2), restated_ratio=None)])           # a loss year: above filed, so adjusted-like, and counted
+    assert loss["counts"]["adjusted_like"] == 1 and loss["by_class"]["adjusted_like"]["filed_eps_not_positive"] == 1
+    assert lb.summarize([])["medians"]["restated_ratio"] is None
+
+
+def _fake_world(ticker_rows):
+    """A namespace with a fake capability module, reference module and ledger wiring: `ticker_rows` {ticker: (ni, sbc, shares, ya, e0, e1, value)}."""
+    import datetime
+    import types
+    import reference_ledger as rl
+    h = {t: {"2025": {"net_income": v[0], "sbc": v[1], "pretax_income": 100.0, "tax_provision": 20.0}} for t, v in ticker_rows.items()}
+    cap = types.SimpleNamespace(
+        DataRoot=lambda: types.SimpleNamespace(history=lambda t: h[t], fin=lambda t: {}, shares_cover=lambda t: None),
+        _shares_default_state=lambda t, fin, hh, c: (None, None, ticker_rows[t][2]),
+        throughcycle_record=types.SimpleNamespace(tax_rate=lambda row: row["tax_provision"] / row["pretax_income"]))
+    calls = []
+
+    def build(**k):
+        calls.append(k)
+        e = k["estimates"]
+        return {"method": "levels", "value": 10.0 * e["+1y"]["eps"]["avg"]}                # a value linear in the +1y level
+    cref = types.SimpleNamespace(build=build)
+
+    def adapters(root, today=None):
+        return {"inputs_fn": lambda t: {"estimates": _est(ticker_rows[t]), "coe": 0.09}}
+    return types.SimpleNamespace(cap=cap, cref=cref, root="r", fixed=datetime.datetime(2026, 10, 2, 12)), adapters, calls
+
+
+def _est(v):
+    return {"0y": {"eps": {"avg": v[4], "year_ago": v[3], "analysts": 3}}, "+1y": {"eps": {"avg": v[5], "analysts": 3}}}
+
+
+def _day_rows(ticker_rows, anonymous=False):
+    import hashlib
+    rows = {}
+    for t, v in ticker_rows.items():
+        key = hashlib.sha256(t.encode()).hexdigest()[:12] if anonymous else t
+        rows[key] = {"ticker": None if anonymous else t, "reference": {"method": "levels", "value": v[6], "estimates": _est(v)}}
+    rows["GROWTH"] = {"ticker": "GROWTH", "reference": {"method": "growth", "value": 5.0, "estimates": {}}}
+    return rows
+
+
+WORLD = {"MU": (10.0, 3.0, 1.0, 14.0, 12.0, 20.0, 200.0),          # filed EPS 10.0, stock pay 3.0 per share, vendor year-ago 14.0
+         "AAA": (10.0, 1.0, 1.0, 10.0, 11.0, 14.0, 140.0),
+         "BBB": (10.0, 1.0, 1.0, 4.0, 5.0, 6.0, 60.0)}
+
+
+def test_part_i_run_restates_the_levels_and_prints_only_the_development_name(monkeypatch, capsys):
+    lb = _lb()
+    import reference_ledger as rl
+    ns, adapters, calls = _fake_world(WORLD)
+    monkeypatch.setattr(rl, "production_adapters", adapters)
+    result = lb.run(ns, _day_rows(WORLD), show="MU")
+    assert result["names"] == 3 and result["levels_names_in_day"] == 3                       # the growth name is not a levels name
+    assert result["counts"] == {"gaap_like": 1, "adjusted_like": 1, "unclassified": 1, "no_filed_basis": 0}
+    mu = result["shown"]
+    assert mu["class"] == "adjusted_like" and mu["ya_over_filed"] == pytest.approx(1.4)
+    assert mu["ya_over_filed_plus_pre_tax"] == pytest.approx(14.0 / 13.0) and mu["ya_over_filed_plus_after_tax"] == pytest.approx(14.0 / 12.4)
+    assert mu["restated_ratio"] == pytest.approx(10.0 / 14.0)                                  # the levels x filed / year-ago: value x 10/14
+    assert [c["estimates"]["+1y"]["eps"]["avg"] for c in calls] == pytest.approx([14.0, 6.0 * 2.5, 20.0 * 10.0 / 14.0])
+    assert "AAA" not in json.dumps(result) and "BBB" not in json.dumps(result)
+    assert lb.run(ns, _day_rows(WORLD), show="ZZZ")["shown"] is None
+
+
+def test_part_i_an_anonymous_day_is_looked_up_through_the_names_file_in_memory(monkeypatch, tmp_path):
+    lb = _lb()
+    import reference_ledger as rl
+    ns, adapters, _ = _fake_world(WORLD)
+    monkeypatch.setattr(rl, "production_adapters", adapters)
+    rows = _day_rows(WORLD, anonymous=True)
+    names = tmp_path / "names.txt"
+    names.write_text(chr(10).join(WORLD) + chr(10), encoding="utf-8")
+    r = lb.run(ns, rows, names, show="MU")
+    assert r["names"] == 3 and r["skipped_no_ticker"] == 0 and r["shown"]["class"] == "adjusted_like"
+    r2 = lb.run(ns, rows, None, show="MU")                                                     # no names file: nothing can be looked up, said so
+    assert r2["names"] == 0 and r2["skipped_no_ticker"] == 3 and r2["shown"] is None
+    assert not any(t in json.dumps(r) for t in ("AAA", "BBB"))
+
+
+def test_part_i_the_script_has_no_engine_import_that_changes_anything():
+    src = (HERE / "levels_eps_basis.py").read_text(encoding="utf-8")
+    assert "consensus_reference" not in src and "financial_model_tool" not in src and "PACK_REVISION" not in src
