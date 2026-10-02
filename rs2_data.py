@@ -1124,6 +1124,22 @@ def anchor_terminal_g():
     return float(value), f"anchor_long_run_growth({payload.get('asof')})"
 
 
+def anchor_nominal_gdp_trend():
+    """(nominal_gdp_trend, source) - the long-run growth anchor's nominal GDP trend as a FRACTION, or (None, reason) (revision 19, brief D4).
+    Read under the freshness and degraded rules of `anchor_terminal_g`, with no fallback of any kind: without it the desk's terminal_g bound is
+    "not available", never another number. It is not `anchor_terminal_g`'s field (terminal_g_suggestion): the trend is the ceiling of the search,
+    the suggestion the default."""
+    payload = usable_anchor("long_run_growth")
+    if payload is None:
+        return None, "no_usable_long_run_growth_anchor"
+    if payload.get("degraded"):
+        return None, f"long_run_growth_anchor_degraded({payload.get('asof')})"
+    value = payload.get("nominal_gdp_trend")
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None, "long_run_growth_anchor_has_no_nominal_gdp_trend"
+    return float(value), f"anchor_long_run_growth({payload.get('asof')})"
+
+
 def anchor_multiple_bands(sector=None):
     """Sector bands from the anchor, or {} when the market-observed leg is unavailable.
 

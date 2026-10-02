@@ -18,7 +18,7 @@ RETIRED_FIELD_NAMES = (
     "base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability",
     "base_cf_used", "base_cf_basis", "base_cf_reason", "kelly_fraction_pct", "asymmetric_payoff_skew",
     "coe_used", "coe_source", "coe_adjustment_reason", "valuation_frame", "terminal_method",
-    "terminal_multiple_or_g", "fade_years", "stage1_growth_path", "guidance_deviation_reason",
+    "terminal_multiple_or_g", "stage1_growth_path", "guidance_deviation_reason",
     "verdict_label", "shares_basis", "shares_reason", "net_debt_reason", "scenario_deviation_reason",
     "terminal_reason", "interest_addback", "wacc_reason", "cash_flow_life", "cash_flow_life_reason",
     "finite_life_years", "bull_below_price_reason", "bear_above_price_reason",
@@ -52,6 +52,8 @@ def test_extract_scorecard_whitelist_still_accepts_every_form_field():
 
 
 def test_task_contains_no_retired_field_name():
+    # revision 19: fade_years is no longer in this list: item 6 names it as one of the six judgment inputs a crux may rest on (it is still not a
+    # contract field: code fills it from the desk run)
     for name in RETIRED_FIELD_NAMES:
         assert name not in cap.TASK, f"TASK still mentions retired field {name!r}"
 

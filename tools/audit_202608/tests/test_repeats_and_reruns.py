@@ -186,12 +186,12 @@ def test_capability_test_task_has_model_stated_once_bullet():
         "is your answer. If you change any input after a complete run, the memorandum's 'Model "
         "revisions' list gives each changed input's old value, new value and the dated evidence "
         "that forced the change. Changing an input because you dislike the resulting value is "
-        "forbidden, and so is moving any input toward today's price; the harness records every run."
+        "forbidden; the harness records every run."
     )
     assert expected_bullet in cap.TASK
     item4_pos = cap.TASK.find("4. Where an input departs from its DEFAULT")
     bullet_pos = cap.TASK.find("5. Run Bear, Base and Bull together in one call.")
-    item6_pos = cap.TASK.find("6. The desk also returns the reverse DCF:")
+    item6_pos = cap.TASK.find("6. The desk also returns price_implied:")
     assert item4_pos != -1
     assert bullet_pos > item4_pos
     assert bullet_pos < item6_pos

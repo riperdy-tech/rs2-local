@@ -19,9 +19,10 @@ _REPO_TOOLS = Path(__file__).resolve().parents[2] / "tools"
 if str(_REPO_TOOLS) not in sys.path:
     sys.path.insert(0, str(_REPO_TOOLS))
 import consensus_reference  # noqa: E402
+import pi_text  # noqa: E402
 import throughcycle_record  # noqa: E402
 
-FACTS_VERSION = 6
+FACTS_VERSION = 7
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -80,7 +81,20 @@ KEYS: list[str] = [
     # revision 19 (AT10 fix item 3): the base fiscal year's cash and short-term investments as filed ($B), for every sector,
     # or None when `cash` is null. The desk refuses an excess_cash above it. An older sidecar or block reads it as None.
     "base_year_cash_and_investments_b",
+    # version 7 (revision 19, brief D4): the facts the price-implied solver reads and the DEFAULTS run's own block. `rf_eff` (the risk-free rate the
+    # cost of equity is built on) and `nominal_gdp_trend` (the ceiling of the terminal_g search) are the desk's bounds; `reference_path` is the
+    # DEFAULTS run's five growth rates at full precision (a levels name: year 1 at 0, year 2 at the level); `price_implied_price` the price the
+    # DEFAULTS run was solved at; `price_implied_defaults` what the `price_implied` line prints (see pi_text.quantize_block). The first four are
+    # SIDECAR_ONLY: nothing prints them, so a text cannot give them back and the parity check leaves them out.
+    "rf_eff",
+    "nominal_gdp_trend",
+    "reference_path",
+    "price_implied_defaults",
+    "price_implied_price",
 ]
+
+# keys the DEFAULTS text does not carry: a frozen replay reads them from the sidecar, and a text read gives None (parity ignores them)
+SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price")
 
 # The revision marker (S1's from_text dispatch, section 5.1's line format). The DEFAULTS reader
 # serves every revision from 15 on: a later revision changes what the model is told, not this format.
@@ -368,6 +382,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "excess_cash": None,
         "coe_premium_source": None,
         "base_year_cash_and_investments_b": None,
+        "rf_eff": None, "nominal_gdp_trend": None, "reference_path": None, "price_implied_defaults": None, "price_implied_price": None,
     }
 
 
@@ -924,6 +939,10 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
                       "the desk holds the Base's years 1-2 at year1 and year2 unless you pass "
                       "guidance_deviation_reason (a Base year 2 more than 5% away); a Bull or Bear "
                       "more than 15% from bull2 or bear2 needs scenario_deviation_reason"))
+    lines.append(line("price_implied", pi_text.render_line_value(f.get("price_implied_defaults")),
+                      "at the DEFAULTS, the value of each judgment input at which the Base equals today's price, the other inputs held; "
+                      "the desk returns the same for your own inputs on every run; a verdict of undervalued or overvalued needs a crux on "
+                      "one of them (TASK item 6)"))
     cap_fact = f.get("base_year_cap")
     if cap_fact:
         lines.append(line("base_year_cap", _render_base_year_cap(cap_fact),
@@ -997,7 +1016,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         if mm:
             return mm.group(1)
         if throughcycle and key not in ("base_year_cap", "split_after_last_filing", "reference_base_b", "excess_cash", "coe_premium_source",
-                                  "base_year_cash_and_investments_b"):
+                                  "base_year_cash_and_investments_b", "price_implied"):
             raise ValueError(f"revision-17 DEFAULTS block has no {key!r} line")
         return None
 
@@ -1084,6 +1103,8 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     excess_cash = _dp_num(_ec) if _ec is not None else None
     _bc = _opt("base_year_cash_and_investments_b")
     base_year_cash_and_investments_b = _dp_num(_bc) if _bc is not None else None
+    _pi = _opt("price_implied")
+    price_implied_defaults = pi_text.parse_line_value(_pi) if _pi is not None else None
 
     return {
         "version": FACTS_VERSION,
@@ -1121,6 +1142,8 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "excess_cash": excess_cash,
         "coe_premium_source": coe_premium_source,
         "base_year_cash_and_investments_b": base_year_cash_and_investments_b,
+        "rf_eff": None, "nominal_gdp_trend": None, "reference_path": None,
+        "price_implied_defaults": price_implied_defaults, "price_implied_price": None,
     }
 
 
@@ -1154,6 +1177,8 @@ def parity(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
         return {m: x for m, x in v.items() if m != "stamps_full"} if k == "long_run" and isinstance(v, dict) else v
 
     for k in KEYS:
+        if k in SIDECAR_ONLY:
+            continue
         if _cmp(k, a.get(k)) != _cmp(k, b.get(k)):
             mismatches.append(k)
     return sorted(mismatches)

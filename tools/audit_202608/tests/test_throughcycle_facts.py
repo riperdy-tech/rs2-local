@@ -38,7 +38,7 @@ def _text(f, revision=17):
 
 def test_version_six_and_the_four_keys_are_in_the_empty_object():
     e = pack_facts.empty()
-    assert e["version"] == 6                           # revision 18 (brief 1.7): FACTS_VERSION 5 -> 6
+    assert e["version"] == 7                           # revision 18 (brief 1.7): FACTS_VERSION 5 -> 6; revision 19 (brief D4): 6 -> 7
     assert e["terminal_ronic"] is None and e["long_run"] == {} and e["working_capital"] is None
     assert e["base_year_cap"] is None
 
@@ -63,7 +63,7 @@ def test_the_facts_round_trip_through_the_defaults_block_exactly():
     assert g["long_run"]["nwc_intensity"] == pytest.approx(-0.023457)          # signed rates survive
     assert g["working_capital"] == f["working_capital"] and len(g["working_capital"]) == 5
     assert g["base_year_cap"]["removed"] == pytest.approx(0.071725)
-    assert g["source"] == "defaults_block" and g["version"] == 6
+    assert g["source"] == "defaults_block" and g["version"] == 7
 
 
 def test_infinite_returns_and_unlimited_terminal_round_trip_and_the_sidecar_holds_them(tmp_path):
@@ -103,7 +103,7 @@ def test_a_revision_17_block_missing_a_line_is_an_error_but_older_blocks_read_wi
         with pytest.raises(ValueError, match=key):
             pack_facts.from_text(cut)
         older = cut.replace("(pack revision 17)", "(pack revision 16)")
-        assert pack_facts.from_text(older)["version"] == 6                # a revision-16 block has none of them
+        assert pack_facts.from_text(older)["version"] == 7                # a revision-16 block has none of them
     older = "\n".join(l for l in text.splitlines()
                       if not l.startswith(("- terminal_ronic:", "- long_run:", "- working_capital:", "- base_year_cap:")))
     g = pack_facts.from_text(older.replace("(pack revision 17)", "(pack revision 15)"))

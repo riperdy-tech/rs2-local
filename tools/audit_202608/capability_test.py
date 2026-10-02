@@ -52,6 +52,7 @@ import catalyst_research  # noqa: E402
 import consensus_reference  # noqa: E402
 import throughcycle_record  # noqa: E402
 import pack_facts  # noqa: E402
+import pi_text  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -1722,6 +1723,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     asof_omitted = []   # every input dropped for point-in-time reasons, printed in SECTION 12
     _ref_oe = None      # the OWNER EARNINGS default, for SECTION 8's CONSENSUS-IMPLIED VALUE (E10)
     _ref_da = _ref_capex = None   # FY D&A and TTM capex, for the reference's EPS-levels method
+    _ref = None         # revision 19: the consensus reference build returned (None when SECTION 8 builds none), for the DEFAULTS run
+    _rf_eff = None      # revision 19: the risk-free rate the cost of equity is built on (a bound of the desk's coe search)
+    _pack_price = None  # revision 19: the price the pack is built at, the one the desk uses (the DEFAULTS run is solved at it)
     _ref_fy = None      # E18: the last full fiscal year's base and its age, for the reference
     _ref_fy_na = None   # E18: why that fiscal year cannot anchor the consensus path
     _aligned = None     # E18: the vendor's estimates start from the filed fiscal year (vintage test)
@@ -2550,6 +2554,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             live_px = float(price_override)
             live_asof = None
         asof_str = f", as of {live_asof}" if live_asof else ""
+        _pack_price = live_px
         vdate = _v(fin, 'Data_Fetched_Date')
         vpx = f"${px}" if px is not None else NULL
         price_line = f"- Price: ${live_px} [live quote{asof_str}]   [vendor quote: {vpx} as of {vdate}]"
@@ -2584,6 +2589,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               f"Prefer the filed per-year SBC series in DATA 5 where it is present]", ""]
     else:
         price_line = f"- Price: ${px}" if px is not None else f"- Price: {NULL}"
+        _pack_price = px
         facts["shares_outstanding"] = float(f"{sh:,.0f}".replace(",", "")) if (isinstance(sh, (int, float)) and not isinstance(sh, bool) and not (isinstance(sh, float) and (sh != sh)) and sh >= 0) else None
         # S3 5.11: the share-count default, from the same vendor income statements in every path.
         _sd_default, _sd_k, _sd_period, _sd_warning = _share_default(fin, facts["shares_outstanding"],
@@ -3853,6 +3859,22 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     _lr_facts = _lr_raw if not _no_marker else (
         {"stub_months": _lr_raw["stub_months"]} if _lr_raw.get("stub_months") is not None else {})
     facts["long_run"] = pack_facts.quantize_long_run(_lr_facts)
+    # revision 19 (brief D3, D4): the DEFAULTS run's price-implied value of each judgment input, solved at the pack's price by the desk's own solver
+    # on the one production construction of the DEFAULTS run (consensus_reference.defaults_desk_args); the two anchors the desk's bounds read
+    facts["rf_eff"] = _rf_eff
+    facts["nominal_gdp_trend"] = rs2_data.anchor_nominal_gdp_trend()[0]
+    _dargs, _dwhy = consensus_reference.defaults_desk_args(_ref, facts)
+    if _dargs is None:
+        facts["price_implied_defaults"] = {"not_available": _dwhy}
+    else:
+        facts["reference_path"] = [float(g) for g in _dargs["explicit_growth"]]
+        if isinstance(_pack_price, (int, float)) and not isinstance(_pack_price, bool) and _pack_price > 0:
+            import financial_model_tool as _fmt
+            facts["price_implied_price"] = float(_pack_price)
+            facts["price_implied_defaults"] = pi_text.quantize_block(_fmt.defaults_price_implied(
+                _dargs, _pack_price, rf_eff=facts["rf_eff"], gdp_trend=facts["nominal_gdp_trend"], levels=facts.get("levels")))
+        else:
+            facts["price_implied_defaults"] = {"not_available": "the pack has no price to solve at"}
     L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker), ""]
 
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS
@@ -3898,17 +3920,16 @@ YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic vie
    - Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders; a departure from the terminal_g or terminal_ronic default needs evidence, not a cap.
    - Working capital: the desk deducts the DEFAULTS working_capital from every scenario's owner earnings in years 1-5, unless your base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b (a base that matches an owner-earnings figure is owner earnings).
    - Valuation date: the desk values at the base fiscal year end and rolls the value forward to today at your discount rate, as the CONSENSUS-IMPLIED VALUE does.
-   - Level anchor: the CONSENSUS-IMPLIED VALUE checks the level of your Base, not the direction of your call. It values average performers close to their price, but by itself it is not evidence that a stock is cheap or expensive. Your call rests on the economics you set out above. A Base far from the reference needs the reason DEFAULTS names; a Base close to it needs no reason and earns no credit.
    - Frame: every flow in this pack is after interest, so value it in the equity frame. The firm frame needs a pre-interest flow, a WACC built from the COE ANCHOR, and net debt; the desk asks for each.
    - Shares: use the DEFAULTS block's shares_default, the desk's default (DATA 2's count, times the dilution factor when DATA 2 shows one). Add a contingent instrument (warrants, earn-outs) only in the scenarios where it vests, never in one whose premise is that it does not.
    - Cash-flow life: cash flows end when they come from a finite stock (a mine, a well, a reservoir) or a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of capex your base already deducts. The life is filed reserves over current production, or the remaining term, with the filing's date. A perpetual value must deduct the capex that replaces what the business depletes. Where revenue follows a quoted commodity price, state the price deck your flows assume and its source.
 4. Where an input departs from its DEFAULT, give the reason with dated evidence in the same desk call. The desk names any reason it needs, and a refused call does not use one of your desk runs. A reason is evidence, never text such as "no deviation"; leave a reason out when none is needed.
-5. Run Bear, Base and Bull together in one call. Your last complete desk run of all three is your answer. If you change any input after a complete run, the memorandum's 'Model revisions' list gives each changed input's old value, new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden, and so is moving any input toward today's price; the harness records every run.
-6. The desk also returns the reverse DCF: the growth today's price implies, under your structure and under the neutral reference. Report the neutral reference's implied 10-year growth and the base-rate band it falls in, and argue why your forecast differs from what the market is pricing.
+5. Run Bear, Base and Bull together in one call. Your last complete desk run of all three is your answer. If you change any input after a complete run, the memorandum's 'Model revisions' list gives each changed input's old value, new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden; the harness records every run.
+6. The desk also returns price_implied: for each judgment input (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level), the value at which your Base would equal today's price with your other inputs unchanged, or "not reachable" when no value inside the input's bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at least one citation {source, date, quote} of this company's own evidence: DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied value from that run. DEFAULTS, the base rates, the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands, the consensus rows, the news list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system text says otherwise, this TASK takes precedence.
 7. Timing: DATA 2.5's price facts are not a valuation input. State whether they confirm, sit neutral to or contradict your value call, when to enter, the position basis, and checkable conditions that would break the trend or the thesis.
 8. Tag every driver's source: [Actual], [Estimate], [Assumption] or [Unconfirmed]. The research brief and the news are claims by others; where they conflict with the filings, the filings win.
 
-Produce the full memorandum, SECTION 0 through SECTION 12, as the system text specifies, and end with the contract below. The contract no longer carries the scenario values, probabilities, Kelly size, verdict label, valuation inputs or reasons: code takes them from your last complete desk run of Bear, Base and Bull. Where the system text asks you to type any of them into SECTION 12's contract, this TASK takes precedence, and SECTION 4's scenario table and SECTION 12's figures must show that run's values exactly.
+Produce the full memorandum, SECTION 0 through SECTION 12, as the system text specifies, and end with the contract below. The contract no longer carries the scenario values, probabilities, Kelly size, verdict label, valuation inputs, reasons or crux: code takes them from your last complete desk run of Bear, Base and Bull. Where the system text asks you to type any of them into SECTION 12's contract, this TASK takes precedence, and SECTION 4's scenario table and SECTION 12's figures must show that run's values exactly.
 
 ```json:underwriting
 {

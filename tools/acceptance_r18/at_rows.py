@@ -14,6 +14,21 @@ LEVEL_ANCHOR_BULLET = ("- Level anchor: the CONSENSUS-IMPLIED VALUE checks the l
                        "to it needs no reason and earns no credit.")
 
 
+# the TASK's item 6 of revision 19 (brief_rev19.md D2 c), verbatim: AT6 restated for revision 19's text (ruling 1 forces the restatement; recorded as such)
+ITEM_6 = ("6. The desk also returns price_implied: for each judgment input (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level), "
+          "the value at which your Base would equal today's price with your other inputs unchanged, or \"not reachable\" when no value inside the input's "
+          "bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: "
+          "in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at "
+          "least one citation {source, date, quote} of this company's own evidence: DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), "
+          "or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied "
+          "value from that run. DEFAULTS, the base rates, the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands, the consensus rows, the news "
+          "list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. "
+          "Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the "
+          "number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse "
+          "DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system "
+          "text says otherwise, this TASK takes precedence.")
+
+
 def _num(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
@@ -127,20 +142,31 @@ def at5(rows, *, names=True):
 # ---- AT6 fence, cap, text -----------------------------------------------------------------------------------------------------------------
 
 def at6(rows, constants, *, names=True):
-    """constants: {"PACK_REVISION", "FACTS_VERSION", "ANCHOR_ROLE", "TASK"} read from the tree under test (build_day records them)."""
+    """AT6, restated for revision 19's text (brief_rev19.md section 13; ruling 1 forces it, and it is recorded as a restatement): every
+    outside-fence reference prints its value and flag; no base_year_capped stamp anywhere; the anchor-role sentence (D1's, as the tree under test
+    holds it) is in every printed reference line; item 6 is in the TASK and the Level-anchor bullet is not; every pack's DEFAULTS carries the
+    `price_implied` line; PACK_REVISION is 19 and FACTS_VERSION is 7.
+    constants: {"PACK_REVISION", "FACTS_VERSION", "ANCHOR_ROLE", "TASK"} read from the tree under test (build_day records them)."""
     bad = []
-    if constants.get("PACK_REVISION") != 18:
-        bad.append((None, f"PACK_REVISION is {constants.get('PACK_REVISION')}, not 18"))
-    if constants.get("FACTS_VERSION") != 6:
-        bad.append((None, f"FACTS_VERSION is {constants.get('FACTS_VERSION')}, not 6"))
-    task_ok = LEVEL_ANCHOR_BULLET in (constants.get("TASK") or "")
-    if not task_ok:
-        bad.append((None, "the TASK's Level anchor bullet is not present"))
+    if constants.get("PACK_REVISION") != 19:
+        bad.append((None, f"PACK_REVISION is {constants.get('PACK_REVISION')}, not 19"))
+    if constants.get("FACTS_VERSION") != 7:
+        bad.append((None, f"FACTS_VERSION is {constants.get('FACTS_VERSION')}, not 7"))
+    task = constants.get("TASK") or ""
+    item6_ok = ITEM_6 in task
+    if not item6_ok:
+        bad.append((None, "the TASK's item 6 (price_implied and the crux) is not present"))
+    anchor_bullet_gone = LEVEL_ANCHOR_BULLET not in task and "Level anchor" not in task
+    if not anchor_bullet_gone:
+        bad.append((None, "the TASK still carries the Level anchor bullet"))
     role = constants.get("ANCHOR_ROLE") or ""
-    printed = fenced = capped = 0
+    printed = fenced = capped = no_pi_line = 0
     for key, r in sorted(_built(rows).items()):
         text, st = r.get("text") or "", r.get("status")
         lines = [l for l in text.splitlines() if "CONSENSUS-IMPLIED VALUE (reference" in l]
+        if text and not any(l.startswith("- price_implied: ") for l in text.splitlines()):
+            no_pi_line += 1
+            bad.append((_k(key, names), "the DEFAULTS block has no price_implied line"))
         if st in PRINTED:
             printed += 1
             if not lines or not all(role and role in l for l in lines):
@@ -157,9 +183,11 @@ def at6(rows, constants, *, names=True):
             bad.append((_k(key, names), "a base_year_capped stamp is present"))
     ok = not bad
     return {"at": "AT6 fence, cap, text", "pass": ok, "printed_references": printed, "outside_fence": fenced, "base_year_capped": capped,
-            "pack_revision": constants.get("PACK_REVISION"), "facts_version": constants.get("FACTS_VERSION"), "task_bullet_present": task_ok,
-            "details": bad[:20],
-            "summary": f"{printed} printed references ({fenced} outside the fence); {capped} capped; TASK bullet {'present' if task_ok else 'MISSING'}; "
+            "packs_without_the_price_implied_line": no_pi_line, "pack_revision": constants.get("PACK_REVISION"),
+            "facts_version": constants.get("FACTS_VERSION"), "task_item_6_present": item6_ok, "level_anchor_bullet_absent": anchor_bullet_gone,
+            "restated_for": "revision 19", "details": bad[:20],
+            "summary": f"{printed} printed references ({fenced} outside the fence); {capped} capped; TASK item 6 {'present' if item6_ok else 'MISSING'}, "
+                       f"Level anchor bullet {'absent' if anchor_bullet_gone else 'STILL PRESENT'}; {no_pi_line} packs without the price_implied line; "
                        f"PACK_REVISION {constants.get('PACK_REVISION')}, FACTS_VERSION {constants.get('FACTS_VERSION')}; {len(bad)} problems"}
 
 

@@ -43,7 +43,10 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # earnings (not cash-basis); was "647be918454d5249b3fb6f70da3932e48d6a69b86dc728d46781de405fe0ab91".
 # 2026-10-01 (revision 18, brief 3.2): the TASK gained the Level anchor bullet after Valuation date; was
 # "0d2056a3b707c21ecc3ac8dfe4eeb5b66b3b8eae89162c58431a2adab96f903c".
-TASK_SHA256 = "6c42ab72a946259410b1e174ef4a8d8acf4571c9b84d18b17cda0596c1abfa93"
+# 2026-10-02 (revision 19, brief D2): the Level-anchor bullet is deleted, item 5 loses "and so is moving any input toward today's price", item 6
+# is the price_implied and crux paragraph, and the closing paragraph names the crux; was
+# "6c42ab72a946259410b1e174ef4a8d8acf4571c9b84d18b17cda0596c1abfa93".
+TASK_SHA256 = "dc955632d2ecf205aeff89354b0f2f0de97ecaa66370a1a0b8be816cd7d45505"
 RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
@@ -213,7 +216,8 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # revision 18, amendment 2 T2 (+13 chars, was 22336): the Rates line's "implied cost of equity" reads "MRI market cost of equity (context)"
     # revision 19, part F (+281 chars, was 22349): PACK_REVISION 19 on the first line (0), the excess_cash line's refusal clause and the new
     # base_year_cash_and_investments_b line (AT10 fix item 3)
-    assert len(text1) == 22630
+    # revision 19, part D (+358 chars, was 22630): the price_implied line (this fixture has no reference, so it reads "not available" and says why)
+    assert len(text1) == 22988
 
     # Assert byte equality with golden file
     golden_file = FIXTURE / "golden_pack_GEV_rev19.md"

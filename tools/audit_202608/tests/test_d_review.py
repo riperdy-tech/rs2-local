@@ -73,10 +73,11 @@ def test_task_and_research_addendum_memo_references():
     # D2: in TASK: "SECTION 0 through SECTION 12", "SECTION 12's contract",
     #     "SECTION 4's scenario table and SECTION 12's figures"
     task_sec_matches = re.findall(r"\bSECTION\s*\d+(?:\.\d+)?\b", cap.TASK)
-    # The occurrences should only refer to memo sections 0, 4, 12:
-    assert sorted(set(task_sec_matches)) == ["SECTION 0", "SECTION 12", "SECTION 4"]
-    # Total count in TASK is 5: SECTION 0 (1), SECTION 4 (1), SECTION 12 (3)
-    assert len(task_sec_matches) == 5
+    # The occurrences should only refer to memo sections 0, 3, 4, 12 (revision 19: item 6 has the memorandum state each crux in SECTION 3 and
+    # says SECTION 0 and SECTION 12 state the verdict it gives):
+    assert sorted(set(task_sec_matches)) == ["SECTION 0", "SECTION 12", "SECTION 3", "SECTION 4"]
+    # Total count in TASK is 8: SECTION 0 (2), SECTION 3 (1), SECTION 4 (1), SECTION 12 (4)
+    assert len(task_sec_matches) == 8
 
     # D2: in RESEARCH_ADDENDUM: "SECTION 0 through SECTION 12"
     addendum_sec_matches = re.findall(r"\bSECTION\s*\d+(?:\.\d+)?\b", cap.RESEARCH_ADDENDUM)

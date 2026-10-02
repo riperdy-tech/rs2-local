@@ -208,6 +208,7 @@ not available — research did not return dated guidance
 - consensus_implied_value: not available | a Base value outside 0.75-1.33 of it needs guidance_deviation_reason
 - reference_status: not_available | whether the reference is shown, fenced, not available, or not meaningful (a value of zero or less)
 - levels: not available | the desk holds the Base's years 1-2 at year1 and year2 unless you pass guidance_deviation_reason (a Base year 2 more than 5% away); a Bull or Bear more than 15% from bull2 or bear2 needs scenario_deviation_reason
+- price_implied: not available — the pack has no consensus reference (reference_status not_available) | at the DEFAULTS, the value of each judgment input at which the Base equals today's price, the other inputs held; the desk returns the same for your own inputs on every run; a verdict of undervalued or overvalued needs a crux on one of them (TASK item 6)
 - working_capital: not available | no working-capital deduction: the reference has no revenue path or your record holds fewer than 5 years with a classified balance sheet
 - next_fy_revenue_growth: not available | Base years 3-5 above it need guidance_deviation_reason, or the desk holds them at it
 - years35_p90: not available | growth above the base-rate p90 needs dated, company-specific evidence (a flag, not a veto)

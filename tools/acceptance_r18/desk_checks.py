@@ -120,6 +120,80 @@ def desk_parity(ns, rows, *, names=True, tol=CENT):
     return res
 
 
+P4_PRICE_TOL = 0.01          # dollars: a substituted price-implied value reproduces the pack's price within this
+P4_ERROR_REASON = "the DEFAULTS run could not be valued"
+
+
+def defaults_price_implied(ns, rows, *, names=True):
+    """P4 (brief_rev19.md section 5, a bar; revision 19): the book arithmetic of the DEFAULTS runs. For every name with a printed reference and
+    a DEFAULTS run, each of the six DEFAULTS price-implied values (financial_model_tool.defaults_price_implied on
+    consensus_reference.defaults_desk_args(reference, the facts the pack PRINTS), solved at the price the pack was solved at) either reproduces
+    that price within $0.01 when substituted into unbundled_dcf (unrounded), or is `not reachable` with its bound named (the bound's ends are
+    numbers, or the entry says it is not available and why); the fade is checked by its two bracketing integers straddling the price. 0 errors.
+    Names with no DEFAULTS run are counted with the reason. The facts the pack printed (the `price_implied` line) must equal this recomputation at
+    their printed precision. Counts only when `names` is False."""
+    fmt, pack_facts, cref = ns.fmt, ns.pack_facts, ns.cref
+    import pi_text                 # the tree under test's (a revision 19 tree has it; the revision 16 tree is never asked for P4)
+    checked = reached = unreached = errors = 0
+    no_run, bad = {}, []
+    for key, r in sorted(rows.items()):
+        if r.get("error") is not None:
+            no_run["the pack did not build"] = no_run.get("the pack did not build", 0) + 1
+            continue
+        if r.get("status") not in PRINTED or not isinstance(r.get("reference"), dict) or r["reference"].get("value") is None:
+            no_run["no printed reference"] = no_run.get("no printed reference", 0) + 1
+            continue
+        parsed = pack_facts.from_text(r["text"])
+        args, why = cref.defaults_desk_args(r["reference"], parsed)
+        if args is None:
+            no_run[why] = no_run.get(why, 0) + 1
+            continue
+        facts = r.get("facts") or {}
+        price = facts.get("price_implied_price")
+        if not (isinstance(price, (int, float)) and price > 0):
+            price = r.get("price")
+        if not (isinstance(price, (int, float)) and price > 0):
+            no_run["no price"] = no_run.get("no price", 0) + 1
+            continue
+        pi = fmt.defaults_price_implied(args, price, rf_eff=facts.get("rf_eff"), gdp_trend=facts.get("nominal_gdp_trend"), levels=parsed.get("levels"))
+        checked += 1
+        if pi.get("error"):
+            errors += 1
+            bad.append((key if names else None, str(pi["error"])[:100]))
+            continue
+        res = fmt.unbundled_dcf(**args)
+        for name, blk in pi.items():
+            if blk.get("reachable"):
+                reached += 1
+                if name == "fade_years":
+                    lo, hi = blk["bracket_values"]
+                    ok = min(lo, hi) - 1e-9 <= price <= max(lo, hi) + 1e-9
+                else:
+                    ok = abs(blk["base_at_value"] - price) <= P4_PRICE_TOL
+                if not ok:
+                    errors += 1
+                    bad.append((key if names else None, f"{name}: the value does not reproduce the price"))
+            else:
+                unreached += 1
+                bd = blk.get("bound") or {}
+                if not (blk.get("not_available") or (bd.get("low") is not None and bd.get("high") is not None)):
+                    errors += 1
+                    bad.append((key if names else None, f"{name}: not reachable with no bound named"))
+        printed = parsed.get("price_implied_defaults")
+        if printed != pi_text.quantize_block(pi):
+            errors += 1
+            bad.append((key if names else None, "the printed price_implied line is not the recomputation at its printed precision"))
+        if abs(res["per_share_iv_raw"] - r["reference"]["value"]) >= 0.005 and r["reference"].get("method") != "cash_only":
+            errors += 1
+            bad.append((key if names else None, "the DEFAULTS run does not equal the reference to the cent"))
+    ok = checked > 0 and errors == 0
+    return {"at": "P4 DEFAULTS price-implied", "pass": ok, "names_checked": checked, "values_reachable": reached, "values_not_reachable": unreached,
+            "errors": errors, "no_defaults_run_by_reason": no_run, "details": bad[:20],
+            "bar": f"each DEFAULTS price-implied value reproduces the pack's price within ${P4_PRICE_TOL} or is not reachable with its bound named; 0 errors",
+            "summary": f"{checked} names with a DEFAULTS run: {reached} values reproduce the price, {unreached} not reachable (bound named); {errors} errors; "
+                       f"{sum(no_run.values())} names with no DEFAULTS run {no_run}"}
+
+
 def _gstar(row):
     ref = row["reference"]
     path = ref.get("path")

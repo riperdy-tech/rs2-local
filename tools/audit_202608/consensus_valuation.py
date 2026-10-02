@@ -2172,6 +2172,9 @@ def main():
         # printed outside the street-target fence as a level check only
         "excess_cash": facts.get("excess_cash"),
         "base_year_cash_and_investments_b": facts.get("base_year_cash_and_investments_b"),   # revision 19, fix item 3: the desk's bound
+        # revision 19 (brief D4): the two anchors the price-implied solver's coe and terminal_g bounds read; None reads "not available"
+        "rf_eff": facts.get("rf_eff"),
+        "nominal_gdp_trend": facts.get("nominal_gdp_trend"),
         "reference_status": facts.get("reference_status"),
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)

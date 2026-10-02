@@ -34,6 +34,7 @@ if str(_REPO_TOOLS) not in sys.path:
 import rate_engine
 import consensus_reference
 import crux_check
+import pi_text
 
 # Revision 17 (brief B 4i): the unit rule for sbc_dilution.
 SBC_DILUTION_UNIT_MESSAGE = "sbc_dilution is a fraction below 1 (0.02 = 2%) or a whole number of new shares"
@@ -950,6 +951,21 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
     return out
 
 
+def defaults_price_implied(args, price, *, rf_eff=None, gdp_trend=None, levels=None):
+    """The price-implied block of the DEFAULTS run (brief D3): `args` is consensus_reference.defaults_desk_args' unbundled_dcf arguments, valued here
+    exactly as the desk values a Base (equity frame, no net debt, no annuity), `price` the pack's price. Returns price_implied's block, or
+    {"error": ...} when the DEFAULTS run cannot be valued."""
+    res = unbundled_dcf(**args)
+    if res.get("error"):
+        return {"error": f"the DEFAULTS run does not value: {res['error']}"}
+    b = {"cf": float(args["base_cf"]), "growth": list(args["explicit_growth"]), "fade": args["fade_years"], "wacc": float(args["wacc"]),
+         "tg": float(args["terminal_g"]), "shares": args["shares_diluted"], "sbc": args["sbc_treatment"], "sbc_dil": None, "frame": "equity",
+         "net_debt": 0.0, "rate_type": None, "annuity": 0.0, "annuity_cap": None, "ronic": args.get("terminal_ronic"),
+         "wc": args.get("working_capital"), "excess": args.get("excess_cash"), "long_run": args.get("long_run"), "finite": None,
+         "raw": res["per_share_iv_raw"]}
+    return price_implied(b, float(price), rf_eff=rf_eff, gdp_trend=gdp_trend, levels=levels)
+
+
 def crux_desk_check(crux, pi):
     """The desk's own check of a crux (B3), information only: per entry, v1 (the input is a judgment input) and v2 (its price-implied value is
     reachable inside its bound) against this run's `price_implied`. Validity is crux_check's; this is what the model is shown."""
@@ -980,19 +996,8 @@ def crux_desk_check_lines(items):
 
 
 def _fmt_pi_value(name, v):
-    if v is None:
-        return "not available"
-    if v == "unlimited":
-        return "unlimited"
-    if name in ("coe", "terminal_g"):
-        return f"{v * 100:.2f}%"
-    if name == "growth_years_3_5":
-        return f"{v * 100:+.1f}% a year"
-    if name == "fade_years":
-        return f"{v:.1f} years" if isinstance(v, float) else f"{v} years"
-    if name == "terminal_ronic":
-        return f"{v * 100:.1f}%"
-    return f"${v:,.3f}B"                                    # year2_level
+    """A price-implied value as the model reads it: pi_text's, the one owner of that text (the DEFAULTS block prints the same)."""
+    return pi_text.fmt_value(name, v)
 
 
 def price_implied_lines(pi):
@@ -1014,7 +1019,7 @@ def price_implied_lines(pi):
             lines.append(f"{name}: {_fmt_pi_value(name, blk.get('value'))} [{own}]")
         else:
             bd = blk.get("bound") or {}
-            lines.append(f"{name}: not reachable (bound {_fmt_pi_value(name, bd.get('low'))} to {_fmt_pi_value(name, bd.get('high'))}) [{own}]")
+            lines.append(f"{name}: not reachable (bound {pi_text.fmt_bound(name, bd.get('low'))} to {pi_text.fmt_bound(name, bd.get('high'))}) [{own}]")
     return lines
 
 

@@ -809,7 +809,39 @@ def not_meaningful_line(ref):
             "positive value" + (f" ({why})" if why else ""))
 
 
-ANCHOR_ROLE = ("— a calibrated level anchor, not a buy signal: on point-in-time data (valuation dates 2017–2023, returns to 2026) this method valued stocks that went on to earn an average return within ±15% of their price, but it ranked stocks only weakly, and its 'worth 30% more than the price' calls beat the S&P only about 2 points more often than an average stock in 2019–2023, and less often in 2017–2018.")
+ANCHOR_ROLE = ("— context, never the reason for a call: the same generic rules for every company; it values the average stock close to its price but carries little information about any one stock (on 2019–2023 point-in-time data, a stock it valued at twice its price went on to earn only about 3% more over three years than one it valued at its price).")
+
+
+def defaults_desk_args(ref, facts):
+    """Revision 19 (brief D3): the DEFAULTS run, the desk's Base valued on the pack's own default inputs, built in ONE place. Returns (args, None)
+    with `args` the keyword arguments of financial_model_tool.unbundled_dcf, or (None, reason) when there is no DEFAULTS run.
+    The reference's full-precision base and path ($B); for a levels name the year-1 level with year-1 growth 0 and year 2 at the year-2 level
+    (amendment 1: a levels name's base is its year-1 owner-earnings level after the cash term); a fade of FADE_YEARS; and the facts' quantised long
+    run, working capital, terminal_ronic, excess cash, COE anchor (the rate), terminal_g default and shares default. It mirrors the construction
+    AT1a's desk parity checks against the reference (tools/acceptance_r18/desk_checks.desk_parity), and a test proves they agree to the cent.
+    No run: a status of not_available (no reference), a cash-only reference (no operating business to value), a year-1 base that is not positive,
+    or a DEFAULTS input the pack does not print."""
+    if not isinstance(ref, dict) or ref.get("value") is None:
+        return None, "the pack has no consensus reference (reference_status not_available)"
+    if ref.get("method") == "cash_only":
+        return None, "the reference is cash-only: there is no operating business to value"
+    lv = ref.get("levels")
+    if ref.get("base_cf") is not None:
+        base, path = ref["base_cf"] / 1e9, list(ref["path"])
+    elif lv and lv[0]:
+        base, path = lv[0] / 1e9, [0.0, lv[1] / lv[0] - 1.0] + list(ref["path"][2:])
+    else:
+        return None, "the reference carries no base or levels"
+    if not base > 0:
+        return None, "the year-1 owner-earnings level after the cash term is not positive"
+    f = facts or {}
+    need = ("coe_anchor", "terminal_g_default", "shares_default")
+    if not all(_finite(f.get(k)) for k in need) or not f["shares_default"] > 0:
+        return None, "the pack does not print every default input (coe_anchor, terminal_g_default, shares_default)"
+    return {"base_cf": base, "explicit_growth": path, "wacc": f["coe_anchor"], "terminal_g": f["terminal_g_default"],
+            "shares_diluted": f["shares_default"] / 1e9, "fade_years": FADE_YEARS, "sbc_treatment": "deducted_in_cf",
+            "terminal_ronic": f.get("terminal_ronic"), "long_run": f.get("long_run"), "working_capital": f.get("working_capital"),
+            "excess_cash": f.get("excess_cash")}, None
 
 
 def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None, closure_asof=None):

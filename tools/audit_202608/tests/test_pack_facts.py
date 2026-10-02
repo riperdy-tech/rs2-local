@@ -79,6 +79,8 @@ def test_gev_fixture_parity_and_literal_values(screener_data_stub, frozen_env):
     assert diffs == [], f"Parity diffs between pack.facts and from_text: {diffs}"
 
     for k in pack_facts.KEYS:
+        if k in pack_facts.SIDECAR_ONLY:
+            continue                    # revision 19: nothing prints these (rf_eff, nominal_gdp_trend, reference_path, price_implied_price)
         got = pack.facts[k]
         if k == "long_run":
             # revision 17 (brief C7): the facts also keep the record's full stamps (`stamps_full`) for the verdict, which the

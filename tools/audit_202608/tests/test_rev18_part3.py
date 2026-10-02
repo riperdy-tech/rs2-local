@@ -21,10 +21,7 @@ import pack_facts  # noqa: E402
 from test_rev18_part1 import _build, _cash, _margin_record, INF, X_BASE, OE_BASE, B  # noqa: E402
 from test_throughcycle_reference import COE, GA, REDUCTION, REV_BASE, _synthetic_pack  # noqa: E402
 
-ROLE = ("— a calibrated level anchor, not a buy signal: on point-in-time data (valuation dates 2017–2023, returns to 2026) this "
-        "method valued stocks that went on to earn an average return within ±15% of their price, but it ranked stocks only weakly, "
-        "and its 'worth 30% more than the price' calls beat the S&P only about 2 points more often than an average stock in "
-        "2019–2023, and less often in 2017–2018.")
+ROLE = ("— context, never the reason for a call: the same generic rules for every company; it values the average stock close to its price but carries little information about any one stock (on 2019–2023 point-in-time data, a stock it valued at twice its price went on to earn only about 3% more over three years than one it valued at its price).")
 bn = lambda v: f"{v / B:.3f}"
 
 # amendment 2, T1: the long-run sentence, one per case of the record's median return R_tc against the cost of equity (COE = 9%)
@@ -139,11 +136,12 @@ LEVEL_ANCHOR = ("   - Level anchor: the CONSENSUS-IMPLIED VALUE checks the level
                 "Base close to it needs no reason and earns no credit.\n")
 
 
-def test_the_task_has_the_level_anchor_bullet_after_valuation_date_and_no_sentence_names_the_base_year_cap(screener_data_stub, monkeypatch):
+def test_the_task_has_no_level_anchor_bullet_and_no_sentence_names_the_base_year_cap(screener_data_stub, monkeypatch):
     t = cap.TASK
-    assert LEVEL_ANCHOR in t
+    # revision 19 (brief D2 a): the Level-anchor bullet is deleted; R10's band stays in the desk, and DEFAULTS states it
+    assert LEVEL_ANCHOR not in t and "Level anchor" not in t and "level of your Base" not in t
     vd = t.index("   - Valuation date:")
-    assert t.index("   - Level anchor:") == t.index("\n", vd) + 1 and t.index("   - Frame:") > t.index("   - Level anchor:")
+    assert t.index("   - Frame:") == t.index("\n", vd) + 1
     surfaces = {"TASK": t, "TOOLS": json.dumps(at.TOOLS), "RESEARCH_ADDENDUM": cap.RESEARCH_ADDENDUM,
                 "pack": str(_synthetic_pack(monkeypatch))}
     for name, text in surfaces.items():
@@ -151,7 +149,7 @@ def test_the_task_has_the_level_anchor_bullet_after_valuation_date_and_no_senten
     for ms in (2.0, 0.25):
         for confirmed in (True, False):
             assert "cap" not in pack_facts._split_explanation(ms, confirmed).replace("capital", "")
-    assert cap.PACK_REVISION == 19 and pack_facts.FACTS_VERSION == 6
+    assert cap.PACK_REVISION == 19 and pack_facts.FACTS_VERSION == 7
 
 
 # ---- the schema and the contract ----------------------------------------------------------------------------------------------

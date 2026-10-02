@@ -104,8 +104,8 @@ def test_build_day_records_the_pack_the_reference_the_independent_call_the_cash_
     assert world.meta["enrich_label"] == "book" and world.meta["enrich_check"]["pass"] is True
     inputs = ac.inputs_record(world.ns)
     assert len(inputs["history_sha256"]) == 64 and len(inputs["closure_sha256"]) == 64 and inputs["mri_anchor_sha256"]
-    assert inputs["pack_revision"] == 18 and inputs["date"] == DATE and inputs["resolved_dirs"]["screener_data_dir"] == str(world.sd.resolve())
-    assert ac.constants(world.ns)["FACTS_VERSION"] == 6 and "Level anchor" in ac.constants(world.ns)["TASK"]
+    assert inputs["pack_revision"] == 19 and inputs["date"] == DATE and inputs["resolved_dirs"]["screener_data_dir"] == str(world.sd.resolve())
+    assert ac.constants(world.ns)["FACTS_VERSION"] == 7 and "Level anchor" not in ac.constants(world.ns)["TASK"]          # restated for revision 19
 
 
 def _enrich_root(tmp_path, records):
@@ -314,6 +314,56 @@ def test_at1e_reads_the_unrounded_price_so_a_low_priced_name_passes(world, monke
     assert res["pass"] and res["a_own_structure"]["max_abs_pp"] <= 0.1, res["summary"]
 
 
+# ---- P4 and the DEFAULTS run's construction (revision 19) ----------------------------------------------------------------------------------
+
+def test_the_defaults_run_construction_equals_desk_parity_s_to_the_cent(world):
+    """consensus_reference.defaults_desk_args is the production construction of what AT1a's desk parity builds by hand: for the book day's name the
+    two give the same unrounded value (|desk parity - reference| is the same number to 1e-9), and both equal the reference to the cent."""
+    import desk_checks
+    ns = world.ns
+    r = world.rows["GEV"]
+    parsed = ns.pack_facts.from_text(r["text"])
+    args, why = ns.cref.defaults_desk_args(r["reference"], parsed)
+    assert why is None
+    value = ns.fmt.unbundled_dcf(**args)["per_share_iv_raw"]
+    res = desk_checks.desk_parity(ns, world.rows)
+    assert res["names_compared"] == 1 and res["pass"]
+    assert abs(value - r["reference"]["value"]) < 0.005
+    assert abs(abs(value - r["reference"]["value"]) - res["max_abs_difference"]) < 1e-9
+
+
+def test_p4_on_the_synthetic_book(world):
+    import desk_checks
+    res = desk_checks.defaults_price_implied(world.ns, world.rows)
+    assert res["pass"] and res["names_checked"] == 1 and res["errors"] == 0 and res["at"] == "P4 DEFAULTS price-implied"
+    assert res["values_reachable"] + res["values_not_reachable"] == 6
+    assert "bound named" in res["bar"] or "not reachable with its bound named" in res["bar"]
+    anon = desk_checks.defaults_price_implied(world.ns, world.rows, names=False)
+    assert anon["pass"] and all(d[0] is None for d in anon["details"])
+
+
+def test_p4_fails_on_a_printed_line_that_is_not_the_recomputation_and_counts_names_with_no_run_by_reason(world):
+    import desk_checks
+    bad = _copy(world.rows)
+    lines = bad["GEV"]["text"].splitlines()
+    i = next(i for i, l in enumerate(lines) if l.startswith("- price_implied: coe="))
+    head, rest = lines[i].split(" | ", 1)
+    items = head[len("- price_implied: "):].split("; ")
+    items[0] = "coe=99.99%"                                                 # a coe the DEFAULTS run does not give
+    lines[i] = "- price_implied: " + "; ".join(items) + " | " + rest
+    bad["GEV"]["text"] = chr(10).join(lines)
+    res = desk_checks.defaults_price_implied(world.ns, bad)
+    assert not res["pass"] and res["errors"] >= 1 and "recomputation" in res["details"][0][1]
+    cash_only = _copy(world.rows)
+    cash_only["GEV"]["reference"]["method"] = "cash_only"
+    res = desk_checks.defaults_price_implied(world.ns, cash_only)
+    assert res["names_checked"] == 0 and not res["pass"] and sum(res["no_defaults_run_by_reason"].values()) == 1
+    assert "cash-only" in next(iter(res["no_defaults_run_by_reason"]))
+    broken = _copy(world.rows)
+    broken["GEV"]["error"] = "boom"
+    assert desk_checks.defaults_price_implied(world.ns, broken)["no_defaults_run_by_reason"] == {"the pack did not build": 1}
+
+
 # ---- the row-level ATs -----------------------------------------------------------------------------------------------------------------
 
 def test_at1d_agrees_on_the_synthetic_name_and_finds_a_disagreement(world):
@@ -389,9 +439,19 @@ def test_at6_constants_anchor_sentence_fence_and_cap(world):
     capped = _copy(world.rows)
     capped["GEV"]["reference"]["stamps"] = ["base_year_capped"]
     assert not at_rows.at6(capped, consts)["pass"]
-    assert not at_rows.at6(world.rows, dict(consts, PACK_REVISION=17))["pass"]
-    assert not at_rows.at6(world.rows, dict(consts, FACTS_VERSION=5))["pass"]
-    assert not at_rows.at6(world.rows, dict(consts, TASK="no bullet"))["pass"]
+    assert not at_rows.at6(world.rows, dict(consts, PACK_REVISION=18))["pass"]                      # restated for revision 19: 19 and 7
+    assert not at_rows.at6(world.rows, dict(consts, FACTS_VERSION=6))["pass"]
+    assert not at_rows.at6(world.rows, dict(consts, TASK="no item 6"))["pass"]
+    res = at_rows.at6(world.rows, consts)
+    assert res["task_item_6_present"] and res["level_anchor_bullet_absent"] and res["packs_without_the_price_implied_line"] == 0
+    assert res["restated_for"] == "revision 19" and res["pack_revision"] == 19 and res["facts_version"] == 7
+    # the Level-anchor bullet is back in the TASK: fail; item 6 altered by one word: fail
+    assert not at_rows.at6(world.rows, dict(consts, TASK=consts["TASK"] + at_rows.LEVEL_ANCHOR_BULLET))["pass"]
+    assert not at_rows.at6(world.rows, dict(consts, TASK=consts["TASK"].replace("Without a valid crux your verdict is HOLD", "Without a valid crux your verdict is BUY")))["pass"]
+    # a pack whose DEFAULTS has no price_implied line fails
+    no_line = _copy(world.rows)
+    no_line["GEV"]["text"] = "\n".join(l for l in no_line["GEV"]["text"].splitlines() if not l.startswith("- price_implied: "))
+    assert not at_rows.at6(no_line, consts)["pass"]
 
 
 def test_at6_an_outside_fence_reference_prints_its_value_and_its_flag(world, monkeypatch):
