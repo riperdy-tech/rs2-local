@@ -12,6 +12,15 @@ What P7's file tested that has no counterpart here, and why:
   test_bad_request_json_and_shape (JSON part)           the provider receives a dict, not bytes; the shape part is ported
   test_unsupported_path_is_named                        the adapter's HTTP paths; the provider has one entry point
   test_pinned_system_file_is_the_modelfile_system_verbatim   tests/test_muse_system.py (the v33 file; the v32 construction too)
+  test_no_system_file_means_no_injection               the adapter's SYSTEM was optional; the provider's is mandatory and pinned
+
+P7's second step-0 file, test_harness_step0.py, tested the harness patches and the crash behaviour of the chain. Its tests live
+where the code they test does:
+  turn_metrics / chat_with_tools engine and draft fields, the mid-sample engine change     tools/audit_202608/tests/test_llm_provider_provenance.py
+  the forced length turn (one window retry), upstream reset, overflow, "adapter down"      tools/audit_202608/tests/test_llm_provider_window_and_retries.py
+  D2: killing llama-server mid-generation, recovery after a restart                        tests/test_llamacpp_server.py
+  D2: killing the adapter                                                                  no counterpart: there is no adapter process
+  --seed-base, the CLI against the mock, crash_test.judge / rescore                        revision 19's G2, and P7's run scripts (not rs2 code)
 Where a P7 assertion read the adapter's log (`timings_missing`, `unparsed_tool_args`, `n_tool_calls`, `ignored_options`,
 `sampling_stripped`), it reads the response here (ignored_options and sampling_stripped), or the translated reply."""
 import json

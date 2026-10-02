@@ -49,7 +49,7 @@ import rs2_data  # noqa: E402
 
 _AUDIT_DIR = str(Path(__file__).resolve().parent)
 if _AUDIT_DIR not in sys.path:
-    sys.path.append(_AUDIT_DIR)           # appended, never first: no module of this folder may shadow a root-level one
+    sys.path.insert(0, _AUDIT_DIR)
 import llm_provider  # noqa: E402  (the one door every analyst-model call goes through)
 
 SEARX = rs2_data.CONFIG.get("searxng_url", "http://localhost:8888")
