@@ -123,6 +123,12 @@ def srv(tmp_path, monkeypatch):
             p.wait()
 
 
+@pytest.fixture
+def short_wait(monkeypatch):
+    """The wait on a busy card is vram_unload_timeout_s (3 s in this fixture); the tests of a refusal need not sit through it."""
+    monkeypatch.setitem(rs2_data.CONFIG, "vram_unload_timeout_s", 0.3)
+
+
 def refused(srv, why):
     with pytest.raises(S.ServerRefusal) as e:
         S.start()
@@ -312,7 +318,7 @@ def test_refuses_when_the_port_is_not_free(srv):
 
 
 @pytest.mark.parametrize("used,ok", [(0, True), (199, True), (200, False), (201, False), (21937, False)])
-def test_the_card_must_be_idle_under_200_mib(srv, used, ok):
+def test_the_card_must_be_idle_under_200_mib(srv, used, ok, short_wait):
     srv.gpu = lambda: used if not srv.alive() else 21937
     if ok:
         S.start()
@@ -320,22 +326,22 @@ def test_the_card_must_be_idle_under_200_mib(srv, used, ok):
         refused(srv, "the card is not idle")
 
 
-def test_refuses_when_gpu_memory_cannot_be_read(srv):
+def test_refuses_when_gpu_memory_cannot_be_read(srv, short_wait):
     srv.gpu = lambda: None
     refused(srv, "cannot be read (nvidia-smi)")
 
 
-def test_refuses_when_ollama_has_a_model_loaded(srv):
+def test_refuses_when_ollama_has_a_model_loaded(srv, short_wait):
     srv.ollama = ["rs2-research:latest"]
     refused(srv, "Ollama has a model loaded")
 
 
-def test_refuses_when_ollama_cannot_say_what_is_loaded(srv, monkeypatch):
+def test_refuses_when_ollama_cannot_say_what_is_loaded(srv, monkeypatch, short_wait):
     monkeypatch.setattr(ops, "ollama_loaded", lambda endpoint: None)
     refused(srv, "Ollama /api/ps cannot be read")
 
 
-def test_every_reason_is_reported_together(srv):
+def test_every_reason_is_reported_together(srv, short_wait):
     srv.cfg["model_sha256"] = "0" * 64
     srv.ollama = ["x"]
     srv.gpu = lambda: 5000
@@ -735,3 +741,102 @@ def test_ensure_ready_checks_the_config_pins_and_the_provider_for_a_running_serv
     with pytest.raises(S.ServerRefusal, match="llm_provider.py hashes to"):
         S.ensure_ready()
     assert len(srv.spawns) == 1                      # refused, not restarted
+
+
+# ------------------------------------------------------------------ B-2: a card that is not yet idle is waited on
+
+def _busy_then_idle(srv, busy_checks, busy_mib=5000):
+    """gpu_used_mib reads `busy_mib` for the first `busy_checks` readings taken before the launch, then idle."""
+    reads = []
+
+    def gpu():
+        if srv.alive():
+            return 21937
+        reads.append(1)
+        return busy_mib if len(reads) <= busy_checks else 40
+    srv.gpu = gpu
+    return reads
+
+
+def test_a_card_that_falls_idle_on_the_third_check_starts(srv):
+    reads = _busy_then_idle(srv, 2)
+    t0 = time.time()
+    rec = S.start()
+    assert len(reads) == 3 and len(srv.spawns) == 1 and rec["pid"] == srv.procs[0].pid
+    assert time.time() - t0 < 3
+
+
+def test_ollama_releasing_its_model_on_the_third_check_starts(srv, monkeypatch):
+    states = iter([["rs2-research:latest"], ["rs2-research:latest"], []])
+    seen = []
+    monkeypatch.setattr(ops, "ollama_loaded", lambda endpoint: (seen.append(1), next(states, []))[1])
+    S.start()
+    assert len(seen) == 3 and len(srv.spawns) == 1
+
+
+def test_the_two_conditions_are_both_rechecked_each_round(srv, monkeypatch):
+    gpu_reads, ps_reads = [], []
+    srv.gpu = lambda: (21937 if srv.alive() else (gpu_reads.append(1), 5000 if len(gpu_reads) < 3 else 40)[1])
+    monkeypatch.setattr(ops, "ollama_loaded", lambda endpoint: (ps_reads.append(1), [] if len(ps_reads) >= 3 else ["x"])[1])
+    S.start()
+    assert len(gpu_reads) == 3 and len(ps_reads) == 3
+
+
+def test_a_card_that_never_falls_idle_is_refused_after_the_wait_with_nothing_launched(srv, monkeypatch):
+    monkeypatch.setitem(rs2_data.CONFIG, "vram_unload_timeout_s", 1)
+    srv.gpu = lambda: 5000
+    t0 = time.time()
+    with pytest.raises(S.ServerRefusal) as e:
+        S.start()
+    assert 1 <= time.time() - t0 < 6
+    assert "the card is not idle: 5000 MiB in use" in str(e.value) and "still so after waiting 1s" in str(e.value)
+    assert srv.spawns == [] and not srv.engine_file.exists()
+
+
+def test_a_model_in_ollama_that_never_leaves_is_refused_after_the_wait(srv, monkeypatch):
+    monkeypatch.setitem(rs2_data.CONFIG, "vram_unload_timeout_s", 1)
+    srv.ollama = ["rs2-research:latest"]
+    with pytest.raises(S.ServerRefusal, match="Ollama has a model loaded.*still so after waiting 1s"):
+        S.start()
+    assert srv.spawns == []
+
+
+def test_pin_and_file_refusals_stay_immediate_on_a_busy_card(srv, monkeypatch):
+    monkeypatch.setitem(rs2_data.CONFIG, "vram_unload_timeout_s", 30)
+    srv.gpu = lambda: 5000
+    srv.cfg["model_sha256"] = "0" * 64
+    t0 = time.time()
+    with pytest.raises(S.ServerRefusal) as e:
+        S.start()
+    assert time.time() - t0 < 5, "a pin refusal must not wait on the card"
+    assert "model sha256" in str(e.value) and "the card is not idle" in str(e.value)       # reported together, from one look
+    assert srv.spawns == []
+
+
+def test_a_port_in_use_stays_immediate_too(srv, monkeypatch):
+    monkeypatch.setitem(rs2_data.CONFIG, "vram_unload_timeout_s", 30)
+    srv.gpu = lambda: 5000
+    s = socket.socket()
+    s.bind(("127.0.0.1", srv.cfg["port"]))
+    s.listen(1)
+    try:
+        t0 = time.time()
+        with pytest.raises(S.ServerRefusal, match="is not free"):
+            S.start()
+        assert time.time() - t0 < 5
+    finally:
+        s.close()
+
+
+def test_check_pins_looks_once_and_does_not_wait(srv, monkeypatch):
+    monkeypatch.setitem(rs2_data.CONFIG, "vram_unload_timeout_s", 30)
+    srv.gpu = lambda: 5000
+    t0 = time.time()
+    assert any("the card is not idle" in b for b in S.check_pins())
+    assert time.time() - t0 < 5
+
+
+def test_ensure_ready_waits_on_a_busy_card_through_start(srv):
+    reads = _busy_then_idle(srv, 2)
+    rec = S.ensure_ready()
+    assert len(reads) == 3 and rec["pid"] == srv.procs[0].pid
