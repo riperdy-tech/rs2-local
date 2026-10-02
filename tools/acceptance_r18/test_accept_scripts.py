@@ -295,7 +295,8 @@ def test_the_thin_scripts_run_from_a_day_file_and_never_overwrite_a_result(world
 
 def _artifact(**kw):
     doc = {"asof": "2026-10-02", "erp": 0.0375, "flag": None, "gap": 2e-16, "members": 700, "coverage_share": 0.95, "sum_cap": 5e13, "sum_value": 5e13,
-           "inputs_sha256": {"fundamentals_history.json": "ab" * 32}, "aggregate": {"constituents_without_marker": 0}}
+           "inputs_sha256": {"fundamentals_history.json": "ab" * 32}, "aggregate": {"constituents_without_marker": 0},
+           "consensus_vintage": {"date": "2026-10-01", "tickers_requested": 1644}}
     doc.update(kw)
     return doc
 
@@ -305,12 +306,16 @@ def test_at2_each_bar_and_the_marker_condition():
     from datetime import date
     day = date(2026, 10, 5)
     good = at2_closure.evaluate_artifact(_artifact(), day, "ab" * 32, 0, 1700)
-    assert good["pass"] and len(good["checks"]) == 7
+    assert good["pass"] and len(good["checks"]) == 8
     cases = [dict(sum_value=5e13 * (1 + 1e-5)), dict(flag="bound_low"), dict(members=299), dict(coverage_share=0.59), dict(asof="2026-08-01"),
-             dict(inputs_sha256={"fundamentals_history.json": "cd" * 32}), dict(aggregate={"constituents_without_marker": 2}), dict(asof="2026-10-09")]
+             dict(inputs_sha256={"fundamentals_history.json": "cd" * 32}), dict(aggregate={"constituents_without_marker": 2}), dict(asof="2026-10-09"),
+             # finding 2: the consensus vintage is at most 45 days old on the acceptance day (46 days, a future date, none, unreadable)
+             dict(consensus_vintage={"date": "2026-08-20"}), dict(consensus_vintage={"date": "2026-10-09"}), dict(consensus_vintage={}),
+             dict(consensus_vintage=None), dict(consensus_vintage={"date": "soon"}), dict(consensus_vintage="2026-10-01")]
     for kw in cases:
         assert not at2_closure.evaluate_artifact(_artifact(**kw), day, "ab" * 32, 0, 1700)["pass"], kw
     assert not at2_closure.evaluate_artifact(_artifact(), day, "ab" * 32, 3, 1700)["pass"]           # amendment 2: 0 may be missing
+    assert at2_closure.evaluate_artifact(_artifact(consensus_vintage={"date": "2026-08-21"}), day, "ab" * 32, 0, 1700)["pass"]   # 45 days: the limit itself
 
 
 def test_at2_counts_the_aggregate_names_with_no_marker(world, monkeypatch):

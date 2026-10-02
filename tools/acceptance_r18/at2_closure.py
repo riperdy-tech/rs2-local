@@ -8,7 +8,7 @@ The bars, on the artifact:
   1. |sum(V x shares) - sum(cap)| / sum(cap) <= 1e-6                      6. the artifact's recorded input hash of fundamentals_history.json
   2. no bound flag                                                           equals the sha256 of the history file the day is on (it is
   3. members >= 300 and coverage >= 60% of the aggregate's capitalisation    the artifact "rebuilt on that history", amendment 2 point 1)
-  4. the artifact is no older than 45 days on the acceptance day
+  4. the artifact is no older than 45 days on the acceptance day, and so is the consensus vintage it was solved on (`consensus_vintage.date`)
   5. (amendment 2) the history carries brief A's provenance marker for every name of the closure's aggregate (a superset of its members):
      0 may be missing. The aggregate is rebuilt here by the closure's own `build_aggregate` on the day's history.
 Offline: every socket is blocked; nothing is written but the result.
@@ -43,6 +43,13 @@ def evaluate_artifact(doc, acceptance_day, history_sha256, missing_marker_count,
     except ValueError:
         age = None
     chk(f"artifact no older than {max_age_days} days on the acceptance day", age is not None and 0 <= age <= max_age_days, f"as of {doc.get('asof')}, {age} days old")
+    cv = doc.get("consensus_vintage")
+    try:
+        vintage_age = (acceptance_day - _date.fromisoformat(str(cv.get("date") if isinstance(cv, dict) else None)[:10])).days
+    except ValueError:
+        vintage_age = None
+    chk(f"consensus vintage no older than {max_age_days} days on the acceptance day", vintage_age is not None and 0 <= vintage_age <= max_age_days,
+        f"vintage {cv.get('date') if isinstance(cv, dict) else None}, {vintage_age} days old")
     rec_hash = (doc.get("inputs_sha256") or {}).get("fundamentals_history.json")
     chk("the artifact was built on the history file of the day (sha256)", rec_hash is not None and rec_hash == history_sha256,
         f"artifact {str(rec_hash)[:12]}, day {str(history_sha256)[:12]}")
