@@ -14,6 +14,7 @@ owns starting it, checking what it is, stopping it, and the engine record the pr
                     name, size and modification time with that record; a start with no record takes the hashes first.
 
     python llamacpp_server.py start | stop | status | ensure | begin-run
+    python llamacpp_server.py check-pins [--provider-sha256 HEX]    M7: every refusal of start(), without launching
 
 The consensus subprocess never starts or stops the server: it reaches it only through the provider.
 Exit codes of the command line: 0 done, 7 refused or failed (the VRAM exit code of the depth pipeline).
@@ -226,12 +227,52 @@ def _spawn(cmdline, log_path):
         log.close()
 
 
-# ---------------------------------------------------------------- refusals
+# ---------------------------------------------------------------- M7: the pins checked before anything runs
 
-def refusals(cfg=None, hasher=sha256_file):
-    """Every reason the server may not be started now, as readable lines (empty: it may). Nothing is launched."""
+PROVIDER_FILE = "tools/audit_202608/llm_provider.py"
+
+
+def committed_provider_sha256(repo=HERE, path=PROVIDER_FILE):
+    """sha256 of llm_provider.py as committed at HEAD (git show; the bytes the repository holds), or None when git cannot say."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo), "show", f"HEAD:{path}"], capture_output=True, timeout=30)
+    except Exception:
+        return None
+    return sha256_bytes(r.stdout) if r.returncode == 0 else None
+
+
+def config_refusals(cfg=None, expected_provider_sha256=None):
+    """The M7 pins that are not about the files and the machine: the provider, the model tag, the window, and the provider module
+    itself. `expected_provider_sha256` is the registration's pin (its run file); without it the committed file is the reference."""
     cfg = cfg or settings()
     bad = []
+    try:
+        provider = prov.provider_name()
+    except ValueError as e:
+        return [str(e)]
+    if provider != "llamacpp":
+        bad.append(f"depth_provider is {provider!r}, not 'llamacpp'")
+    depth_model = _config().get("depth_model")
+    if depth_model != cfg.get("model_tag"):
+        bad.append(f"depth_model {depth_model!r} is not llamacpp.model_tag {cfg.get('model_tag')!r}")
+    if _config().get("depth_ctx") != WINDOW:
+        bad.append(f"depth_ctx {_config().get('depth_ctx')!r} is not the server's window {WINDOW}")
+    mine = prov.provider_sha256()
+    reference = expected_provider_sha256 if expected_provider_sha256 is not None else committed_provider_sha256()
+    if reference is None:
+        bad.append("the committed llm_provider.py cannot be read (git show HEAD:...): its sha256 is not known")
+    elif mine != reference:
+        what = "the pinned" if expected_provider_sha256 is not None else "the committed"
+        bad.append(f"llm_provider.py hashes to {mine}, {what} file to {reference}")
+    return bad
+
+
+# ---------------------------------------------------------------- refusals
+
+def refusals(cfg=None, hasher=sha256_file, expected_provider_sha256=None):
+    """Every reason the server may not be started now, as readable lines (empty: it may). Nothing is launched."""
+    cfg = cfg or settings()
+    bad = config_refusals(cfg, expected_provider_sha256)
     got = cmdline_sha256(cfg)
     if got != cfg["server_cmdline_sha256"]:
         bad.append(f"the command line built from the config hashes to {got}, pinned {cfg['server_cmdline_sha256']}")
@@ -302,6 +343,12 @@ def _stale_engine_removed():
         return
     if not prov.pid_alive(eng.get("pid")):
         prov.engine_path().unlink(missing_ok=True)
+
+
+def check_pins(cfg=None, hasher=sha256_file, expected_provider_sha256=None):
+    """M7: everything start() checks, without launching: the config pins, the provider module, the files, the port, the card.
+    A list of readable lines; empty means every pin holds."""
+    return refusals(cfg or settings(), hasher, expected_provider_sha256)
 
 
 def start(cfg=None, hasher=sha256_file):
@@ -426,6 +473,9 @@ def ensure_ready(cfg=None, hasher=sha256_file):
         return start(cfg, hasher)
     if not prov.pid_alive(eng.get("pid")):
         return start(cfg, hasher)                    # a stale record: start() clears it
+    bad = config_refusals(cfg)                        # M7: the config pins and the provider file, for a running server too
+    if bad:
+        raise ServerRefusal("; ".join(bad))
     try:
         return prov.check_engine_ready(cfg)
     except prov.ProviderError as e:
@@ -450,6 +500,11 @@ def main(argv=None):
             print(json.dumps(status(), indent=2))
         elif cmd == "begin-run":
             print(json.dumps(begin_run(), indent=2))
+        elif cmd == "check-pins":
+            exp = argv[argv.index("--provider-sha256") + 1] if "--provider-sha256" in argv else None
+            bad = check_pins(expected_provider_sha256=exp)
+            print(chr(10).join(bad) if bad else "ok: every pin holds")
+            return 7 if bad else 0
         else:
             print(__doc__)
             return 2

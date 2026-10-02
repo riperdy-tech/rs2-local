@@ -114,6 +114,8 @@ def srv(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "gpu_used_mib", lambda: s.gpu())
     monkeypatch.setattr(ops, "ollama_loaded", lambda endpoint: list(s.ollama))
     monkeypatch.setattr(S, "process_image_path", lambda pid: cfg["server_exe"])
+    # the committed provider is whatever this tree holds (M7's own tests below replace this)
+    monkeypatch.setattr(S, "committed_provider_sha256", lambda repo=S.HERE, path=S.PROVIDER_FILE: prov.provider_sha256())
     yield s
     for p in s.procs:
         if p.poll() is None:
@@ -610,3 +612,126 @@ def test_is_enabled_follows_depth_provider(srv, monkeypatch):
     assert S.is_enabled() is True
     monkeypatch.setitem(rs2_data.CONFIG, "depth_provider", "ollama")
     assert S.is_enabled() is False
+
+
+# ------------------------------------------------------------------ M7: the pins checked before anything runs
+
+def test_check_pins_is_empty_when_every_pin_holds(srv):
+    assert S.check_pins() == []
+
+
+def test_check_pins_reports_every_m3_refusal_without_launching(srv):
+    srv.cfg["model_sha256"] = "0" * 64
+    srv.ollama = ["x"]
+    srv.gpu = lambda: 5000
+    srv.cfg["system_sha256"] = "3" * 64
+    bad = S.check_pins()
+    for part in ("model sha256", "Ollama has a model loaded", "the card is not idle", "system_file"):
+        assert any(part in b for b in bad), (part, bad)
+    assert srv.spawns == []
+
+
+def test_depth_model_must_equal_the_model_tag(srv, monkeypatch):
+    monkeypatch.setitem(rs2_data.CONFIG, "depth_model", "rs2-analyst-deep-mtp5-v33")
+    refused(srv, "depth_model 'rs2-analyst-deep-mtp5-v33' is not llamacpp.model_tag")
+    assert any("depth_model" in b for b in S.check_pins())
+
+
+def test_the_window_must_be_the_servers(srv, monkeypatch):
+    monkeypatch.setitem(rs2_data.CONFIG, "depth_ctx", 81920)
+    refused(srv, "depth_ctx 81920 is not the server's window 98304")
+
+
+@pytest.mark.parametrize("name,why", [("ollama", "not 'llamacpp'"), ("vllm", "depth_provider must be one of")])
+def test_the_provider_must_be_llamacpp(srv, monkeypatch, name, why):
+    monkeypatch.setitem(rs2_data.CONFIG, "depth_provider", name)
+    refused(srv, why)
+
+
+def test_a_provider_module_that_is_not_the_committed_file_refuses(srv, monkeypatch):
+    monkeypatch.setattr(S, "committed_provider_sha256", lambda repo=S.HERE, path=S.PROVIDER_FILE: "9" * 64)
+    msg = refused(srv, "llm_provider.py hashes to")
+    assert prov.provider_sha256() in msg and "the committed file to " + "9" * 64 in msg
+
+
+def test_a_committed_provider_that_cannot_be_read_refuses(srv, monkeypatch):
+    monkeypatch.setattr(S, "committed_provider_sha256", lambda repo=S.HERE, path=S.PROVIDER_FILE: None)
+    refused(srv, "the committed llm_provider.py cannot be read")
+
+
+def test_the_registrations_pin_replaces_the_committed_file_as_the_reference(srv, monkeypatch):
+    monkeypatch.setattr(S, "committed_provider_sha256", lambda repo=S.HERE, path=S.PROVIDER_FILE: "9" * 64)
+    assert S.check_pins(expected_provider_sha256=prov.provider_sha256()) == []
+    bad = S.check_pins(expected_provider_sha256="8" * 64)
+    assert len(bad) == 1 and "the pinned file to " + "8" * 64 in bad[0]
+
+
+def test_the_committed_file_is_read_with_git_show_head(tmp_path):
+    import shutil
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+    repo = tmp_path / "repo"
+    (repo / "tools" / "audit_202608").mkdir(parents=True)
+    f = repo / "tools" / "audit_202608" / "llm_provider.py"
+    content = b"first" + bytes([13, 10]) + b"second" + bytes([10])        # CRLF inside: the bytes are hashed as they are
+    f.write_bytes(content)
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    import os
+    run = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, env={**os.environ, **env}, check=True)
+    run("init", "-q")
+    run("config", "core.autocrlf", "false")
+    run("add", ".")
+    run("commit", "-q", "-m", "x")
+    committed = sha(content)
+    assert S.committed_provider_sha256(repo) == committed
+    f.write_bytes(b"edited after the commit")                       # a working-tree edit does not change what is committed
+    assert S.committed_provider_sha256(repo) == committed
+    assert S.committed_provider_sha256(tmp_path / "not_a_repo") is None
+
+
+def test_the_provider_file_is_kept_byte_exact_by_git(tmp_path):
+    """The pin is the sha256 of the file's bytes; with autocrlf a text file is checked out as CRLF and the pin would differ
+    between trees. .gitattributes marks it -text."""
+    import shutil
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+    out = subprocess.run(["git", "check-attr", "text", "--", S.PROVIDER_FILE], cwd=ROOT, capture_output=True, text=True).stdout
+    assert out.strip().endswith("text: unset"), out
+
+
+def test_the_real_committed_provider_is_this_trees_when_the_file_is_clean():
+    import shutil
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+    dirty = subprocess.run(["git", "status", "--porcelain", "--", S.PROVIDER_FILE], cwd=ROOT, capture_output=True, text=True).stdout
+    if dirty.strip():
+        pytest.skip("llm_provider.py has uncommitted changes in this tree")
+    assert S.committed_provider_sha256() == prov.provider_sha256()
+
+
+def test_the_cli_check_pins_exit_codes(srv, capsys):
+    assert S.main(["check-pins"]) == 0 and capsys.readouterr().out.strip() == "ok: every pin holds"
+    assert S.main(["check-pins", "--provider-sha256", "7" * 64]) == 7
+    assert "the pinned file to " + "7" * 64 in capsys.readouterr().out
+    srv.ollama = ["x"]
+    assert S.main(["check-pins"]) == 7 and "Ollama has a model loaded" in capsys.readouterr().out
+
+
+def test_the_runs_pins_are_the_registrations_list(srv):
+    """registration 3.2: build manifest, model, drafter, command line, SYSTEM, provider, residency band: each is a key the
+    refusals above read; none has a default."""
+    for k in ("build_manifest_sha256", "model_sha256", "drafter_sha256", "server_cmdline_sha256", "system_sha256"):
+        assert k in rs2_data.CONFIG["llamacpp"] and len(rs2_data.CONFIG["llamacpp"][k]) == 64
+    assert "vram_loaded_mib_band" in rs2_data.CONFIG["llamacpp"]
+
+
+def test_ensure_ready_checks_the_config_pins_and_the_provider_for_a_running_server_too(srv, monkeypatch):
+    S.ensure_ready()
+    monkeypatch.setitem(rs2_data.CONFIG, "depth_ctx", 81920)
+    with pytest.raises(S.ServerRefusal, match="depth_ctx 81920"):
+        S.ensure_ready()
+    monkeypatch.setitem(rs2_data.CONFIG, "depth_ctx", 98304)
+    monkeypatch.setattr(S, "committed_provider_sha256", lambda repo=S.HERE, path=S.PROVIDER_FILE: "9" * 64)
+    with pytest.raises(S.ServerRefusal, match="llm_provider.py hashes to"):
+        S.ensure_ready()
+    assert len(srv.spawns) == 1                      # refused, not restarted
