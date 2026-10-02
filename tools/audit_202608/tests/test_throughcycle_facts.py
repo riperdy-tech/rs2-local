@@ -164,3 +164,38 @@ def test_the_defaults_block_no_longer_carries_a_default_exit_multiple_line():
     assert "default_exit_multiple" not in block and "exit multiple" not in block.lower()
     with pytest.raises(TypeError):
         pack_facts.render_defaults_block(_facts(), default_exit_multiple=19.8)
+
+
+# ---- the long_run text says where the desk starts the return on new investment (revision 18 follow-up, finding 16) --------------------------
+
+FADES = "pays for growth at a return that fades from r_tc (your record's 8-year median return on tangible invested capital) to terminal_ronic,"
+STARTS = ("pays for growth at a return that starts at the cost of equity, coe_anchor (r_tc, your record's 8-year median return on tangible "
+          "invested capital, is not above it or is not available), then fades to terminal_ronic,")
+
+
+def _long_run_line(r_tc, coe=0.0898):
+    f = _facts(coe_anchor=coe, long_run=pack_facts.quantize_long_run(dict(RAW_LR, r_tc=r_tc, stamps=[])))
+    return [l for l in pack_facts.render_defaults_block(f).splitlines() if l.startswith("- long_run")][0]
+
+
+@pytest.mark.parametrize("r_tc,starts_at_r_tc", [
+    (0.26, True), (0.0899, True), (math.inf, True),                       # above the cost of equity (+inf included): the return starts at r_tc
+    (0.0898, False), (0.05, False), (-0.04, False), (-math.inf, False), (None, False),   # not above it, -inf, or none: it starts at the cost of equity
+])
+def test_the_long_run_text_names_where_the_return_starts_as_the_desk_starts_it(r_tc, starts_at_r_tc):
+    line = _long_run_line(r_tc)
+    assert (FADES in line) is starts_at_r_tc and (STARTS in line) is (not starts_at_r_tc)
+    # the claim is the desk's arithmetic: ronic0 = max(cost of equity, r_tc), the cost of equity where r_tc is none or not above it
+    import financial_model_tool as fmt
+    coe = 0.0898
+    lr = {"e5": 1.0, "oe5": 1.0, "r_tc": r_tc}
+    _e5, _mr, ronic0, _rt, _st = fmt._long_run_inputs(lr, 1.0, 0.1, coe)
+    assert (ronic0 > coe) is starts_at_r_tc and (ronic0 == r_tc if starts_at_r_tc else ronic0 == coe)
+
+
+def test_the_long_run_text_is_the_old_one_where_r_tc_is_above_the_cost_of_equity_and_everything_else_is_untouched():
+    above = _long_run_line(0.26)
+    below = _long_run_line(-0.04)
+    assert FADES in above and STARTS in below
+    # only the one clause differs between the two cases
+    assert above.split(" | ", 1)[1].replace(FADES, "<C>") == below.split(" | ", 1)[1].replace(STARTS, "<C>")

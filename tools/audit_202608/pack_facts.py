@@ -773,6 +773,18 @@ def _terminal_ronic_explanation(f: dict[str, Any], no_marker: bool = False) -> s
             f"{tail}")
 
 
+def _long_run_start_clause(f: dict[str, Any]) -> str:
+    """The DEFAULTS long_run text's account of where the return on new investment starts. The desk starts at max(cost of equity, r_tc)
+    (`financial_model_tool._long_run_inputs`: the cost of equity when r_tc is not above it, is -inf, or the record carries none). So
+    "fades from r_tc" is true only when r_tc is above coe_anchor (+inf included); every other case says where the desk really starts."""
+    r_tc, coe = (f.get("long_run") or {}).get("r_tc"), f.get("coe_anchor")
+    coe_known = isinstance(coe, (int, float)) and not isinstance(coe, bool)
+    if isinstance(r_tc, (int, float)) and not isinstance(r_tc, bool) and not (coe_known and r_tc <= coe):
+        return "fades from r_tc (your record's 8-year median return on tangible invested capital) to"
+    return ("starts at the cost of equity, coe_anchor (r_tc, your record's 8-year median return on tangible invested capital, "
+            "is not above it or is not available), then fades to")
+
+
 def _working_capital_explanation(f: dict[str, Any], no_marker: bool = False) -> str:
     lr = f.get("long_run") or {}
     if no_marker:
@@ -863,8 +875,7 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     lines.append(line("long_run", _render_long_run(f.get("long_run") or {}),
                       f"not available: {consensus_reference.NO_MARKER_REASON}" if no_marker else
                       "The desk values years 6 on from X_5 (earnings before acquired-intangible "
-                      "amortization), pays for growth at a return that fades from r_tc (your record's 8-year median "
-                      "return on tangible invested capital) to "
+                      "amortization), pays for growth at a return that " + _long_run_start_clause(f) + " "
                       "terminal_ronic, and moves the margin from m5 to m_long by year 10 (margin_ratio = m_long / "
                       f"m5; none means the margin is held): om_5, the {lr_series} margin the consensus implies at "
                       f"year 5, moves all the way to om_trend, the trend level of your record's 8-year {lr_series} "
