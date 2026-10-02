@@ -69,7 +69,7 @@ def test_the_refusal_carries_the_servers_counts_in_the_http_error_body(muse_env)
     import llm_provider as prov
     muse_env.fake.script = [("json", 400, overflow_body(101391, 98304))]
     with pytest.raises(urllib.error.HTTPError) as e:
-        prov.chat({"model": "m", "messages": [{"role": "user", "content": "x"}]}, 30)
+        prov.chat({"model": muse_env.cfg["model_tag"], "messages": [{"role": "user", "content": "x"}]}, 30)
     err = json.loads(e.value.read())["error"]
     assert err.startswith("context_overflow request (101391 tokens) exceeds the available context size (98304 tokens)")
     assert '"n_prompt_tokens": 101391' in err and '"n_ctx": 98304' in err

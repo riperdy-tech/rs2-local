@@ -211,3 +211,22 @@ def test_the_harness_timeouts_sit_where_the_adapter_topology_put_them():
     as a TimeoutError)."""
     up = rs2_data.CONFIG["llamacpp"]["upstream_timeout_s"]
     assert 14400 > up and 7200 > up and 1800 < up and 900 < up
+
+
+# ------------------------------------------------------------------ C4: each request names the pinned model
+
+@pytest.mark.parametrize("model", ["rs2-analyst-deep-mtp5-v33", "m", "", None])
+def test_a_request_for_another_model_is_refused_before_anything_is_sent(muse_env, model):
+    body = chat_body()
+    if model is None:
+        del body["model"]
+    else:
+        body["model"] = model
+    code, out = muse_env.post(body)
+    assert code == 500 and out["cause"] == "engine_not_ready" and "is not llamacpp.model_tag" in out["error"]
+    assert muse_env.fake.requests == []
+
+
+def test_a_request_for_the_pinned_model_is_served(muse_env):
+    muse_env.fake.script = [("json", 200, completion("a"))]
+    assert muse_env.post(chat_body(model=muse_env.cfg["model_tag"]))[0] == 200

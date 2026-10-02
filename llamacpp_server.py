@@ -269,8 +269,27 @@ def config_refusals(cfg=None, expected_provider_sha256=None):
 
 # ---------------------------------------------------------------- refusals
 
-def refusals(cfg=None, hasher=sha256_file, expected_provider_sha256=None):
-    """Every reason the server may not be started now, as readable lines (empty: it may). Nothing is launched."""
+def machine_refusals(cfg=None):
+    """The two conditions of the machine, which change with time: the card is idle (under 200 MiB in use) and Ollama's /api/ps
+    lists no model. A model that was just stopped or unloaded releases its memory over some seconds, so start() looks at these
+    again for up to vram_unload_timeout_s before it refuses."""
+    bad = []
+    used = gpu_used_mib()
+    if used is None:
+        bad.append("GPU memory in use cannot be read (nvidia-smi): the card is not known to be idle")
+    elif used >= IDLE_MIB:
+        bad.append(f"the card is not idle: {used} MiB in use, the limit is {IDLE_MIB}")
+    loaded = ops.ollama_loaded(_config()["ollama_endpoint"])
+    if loaded is None:
+        bad.append("Ollama /api/ps cannot be read: whether a model is loaded is not known")
+    elif loaded:
+        bad.append(f"Ollama has a model loaded: {loaded}")
+    return bad
+
+
+def refusals(cfg=None, hasher=sha256_file, expected_provider_sha256=None, machine=True):
+    """Every reason the server may not be started now, as readable lines (empty: it may). Nothing is launched. `machine` False
+    leaves out the two conditions of machine_refusals (start() waits on those)."""
     cfg = cfg or settings()
     bad = config_refusals(cfg, expected_provider_sha256)
     got = cmdline_sha256(cfg)
@@ -285,16 +304,8 @@ def refusals(cfg=None, hasher=sha256_file, expected_provider_sha256=None):
         bad.append(f"system_file {sysf} cannot be read: {type(e).__name__}: {e}")
     if not port_free(cfg["host"], cfg["port"]):
         bad.append(f"port {cfg['host']}:{cfg['port']} is not free")
-    used = gpu_used_mib()
-    if used is None:
-        bad.append("GPU memory in use cannot be read (nvidia-smi): the card is not known to be idle")
-    elif used >= IDLE_MIB:
-        bad.append(f"the card is not idle: {used} MiB in use, the limit is {IDLE_MIB}")
-    loaded = ops.ollama_loaded(_config()["ollama_endpoint"])
-    if loaded is None:
-        bad.append("Ollama /api/ps cannot be read: whether a model is loaded is not known")
-    elif loaded:
-        bad.append(f"Ollama has a model loaded: {loaded}")
+    if machine:
+        bad += machine_refusals(cfg)
     return bad + _artifact_problems(cfg, hasher)
 
 
@@ -354,9 +365,22 @@ def check_pins(cfg=None, hasher=sha256_file, expected_provider_sha256=None):
 def start(cfg=None, hasher=sha256_file):
     """Start the pinned llama-server and write engine.json, or raise ServerRefusal (and leave no server running)."""
     cfg = cfg or settings()
-    bad = refusals(cfg, hasher)
+    # Pin and file refusals (the config, the command line, SYSTEM, the port, the build folder, the model and drafter) are
+    # immediate, and are reported together with what the machine says now.
+    bad = refusals(cfg, hasher, machine=False)
     if bad:
-        raise ServerRefusal("; ".join(bad))
+        raise ServerRefusal("; ".join(bad + machine_refusals(cfg)))
+    # The machine's two conditions are looked at again for up to vram_unload_timeout_s: deep research has just released its
+    # Ollama model, and the card (and /api/ps) takes some seconds to say so. Still busy after that: refused, nothing launched.
+    wait_s = float(_config().get("vram_unload_timeout_s", 180))
+    t0 = time.time()
+    while True:
+        busy = machine_refusals(cfg)
+        if not busy:
+            break
+        if time.time() - t0 >= wait_s:
+            raise ServerRefusal("; ".join(busy) + f" (still so after waiting {wait_s:g}s)")
+        time.sleep(POLL_S)
     _stale_engine_removed()
     cmdline = build_cmdline(cfg)
     log_dir = Path(prov.ENGINE_DIR)

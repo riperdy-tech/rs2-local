@@ -448,6 +448,9 @@ def _llamacpp_chat(body, timeout):
         engine = check_engine_ready(cfg)
         system, _sha = system_text(cfg)
         req, info = to_openai(body, system)
+        if body.get("model") != cfg.get("model_tag"):                       # C4: each request names the pinned model
+            raise ProviderError("engine_not_ready", f"request model {body.get('model')!r} is not llamacpp.model_tag "
+                                f"{cfg.get('model_tag')!r}")
         up_timeout = min(timeout, cfg["upstream_timeout_s"])
         try:
             resp, secs = call_upstream(url, req, up_timeout)
