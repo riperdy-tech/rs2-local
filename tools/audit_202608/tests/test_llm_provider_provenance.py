@@ -366,7 +366,10 @@ def test_the_forward_ledgers_reader_ignores_the_extra_key(tmp_path, monkeypatch)
            "scorecard": {"base_iv": 150.0}, "serving": SERVING, "model": "the-tag"}
     (root / "cache" / "depth_overlay.json").write_text(json.dumps({"tickers": {"AAA": row}}), encoding="utf-8")
     verdict = rl.production_adapters(root, today=date(2026, 10, 2))["verdict_fn"]("AAA")
-    assert verdict == {"label": "undervalued", "base_iv": 150.0, "published_at": "2026-10-02", "pack_revision": 19}
+    base = {"label": "undervalued", "base_iv": 150.0, "published_at": "2026-10-02", "pack_revision": 19}
+    assert {k: verdict[k] for k in base} == base
+    # revision 19 (Part E) adds the crux fields; the serving record never reaches the ledger
+    assert set(verdict) - set(base) == {"direction_m", "crux_valid", "crux_inputs", "actionable_reasons"}
     assert "serving" not in verdict
     ledger_row = {"date": "2026-10-02", "ticker": "AAA", "price": 100.0, "price_date": "2026-10-01", "reference_value": 120.0,
                   "reference_status": "used", "vp": 0.83, "coe": 0.09, "closure_erp": 0.05, "closure_asof": "2026-09-20",
