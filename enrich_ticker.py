@@ -89,7 +89,7 @@ _SEEN = threading.local()
 
 
 def _install_status_recorder():
-    """Wrap YfData._make_request once: while a core request is running on this thread (`_core_request`), the final status code of each
+    """Wrap YfData._make_request (and YfData.cache_get, below) once: while a core request is running on this thread (`_core_request`), the final status code of each
     HTTP response is kept. Nothing else changes: the response (or the exception, a 429 included) goes back unchanged, and a thread
     outside `_core_request` records nothing. A yfinance without `_make_request` raises here, loudly: a recorder that silently never
     fires would put the empty-answer defect back."""
@@ -105,6 +105,27 @@ def _install_status_recorder():
         return response
     _make_request._rs2_records_status = True
     YfData._make_request = _make_request
+
+    # `YfData.cache_get` is an lru_cache (64 entries) in front of `get`: the third request of `Ticker.info` (the fundamentals timeseries)
+    # goes through it, and a repeat of a request it holds never reaches `_make_request`. A 5xx it had stored was then served again with no
+    # status recorded, and the status-less error that follows read as "no coverage" (the retry, and a second fetch of the name in the same
+    # process, gave a good-looking record of nulls). So a response served from the cache is recorded as well, and an error response is
+    # never kept: the cache is cleared, so the next request asks the vendor again.
+    original_cache_get = YfData.cache_get
+
+    def cache_get(self, *args, **kwargs):
+        response = original_cache_get(self, *args, **kwargs)
+        status = getattr(response, "status_code", None)
+        seen = getattr(_SEEN, "statuses", None)
+        if seen is not None:
+            seen.append(status)
+        if _is_error_status(status):
+            original_cache_get.cache_clear()
+        return response
+    cache_get._rs2_original = original_cache_get
+    cache_get.cache_clear = original_cache_get.cache_clear
+    cache_get.cache_info = original_cache_get.cache_info
+    YfData.cache_get = cache_get
 
 
 _install_status_recorder()

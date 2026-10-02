@@ -35,7 +35,8 @@ BODY_401 = '{"finance":{"result":null,"error":{"code":"Unauthorized","descriptio
 BODY_500 = '{"finance":{"result":null,"error":{"code":"Internal Server Error"}}}'
 BODY_429 = "Too Many Requests"
 BODY_404 = '{"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: ZZ"}}}'
-FAIL = {401: BODY_401, 500: BODY_500, 429: BODY_429, 404: BODY_404}
+BODY_503 = "<html><body><h1>503 Service Unavailable</h1></body></html>"
+FAIL = {401: BODY_401, 500: BODY_500, 429: BODY_429, 404: BODY_404, 503: BODY_503}
 
 
 def _raw(v):
@@ -222,6 +223,87 @@ def test_the_retry_wrapper_retries_a_real_stack_401_and_keeps_the_good_record(re
     sess.policy["info_summary"] = 401                          # still broken after the retry: the last error record
     rec = et.enrich_with_retry(rec0["_ticker"], cooloff=3.0, sleep=slept.append)
     assert et.is_error_record(rec) and slept == [3.0]
+
+
+# ---- an error on the request yfinance serves from its own cache (YfData.cache_get: Ticker.info's third request) ---------------------
+# Revision 18 follow-up, finding 1: a repeat of a cached request never reaches _make_request, so the recorder saw nothing and the
+# status-less error that followed read as "no coverage". Measured on this stack before the fix: the first attempt was an error record,
+# the retry and a second fetch of the name were good-looking records with targets and ownership null.
+
+@pytest.fixture
+def one_name(real_stack, monkeypatch):
+    """(name, set_policy, session): one symbol enriched several times, the fake session's policy changed between the calls."""
+    _N[0] += 1
+    inst = yf_data.YfData()
+    sess = FakeSession({}, FULL_TREND)
+    monkeypatch.setattr(inst, "_session", sess)
+    yf_data.YfData.cache_get.cache_clear()
+    return f"ZZ{_N[0]}", sess
+
+
+def _timeseries_calls(sess):
+    return sess.calls.count("info_timeseries")
+
+
+@pytest.mark.parametrize("code", [500, 503, 401])
+def test_a_persistent_error_on_info_timeseries_is_an_error_record_on_every_attempt(one_name, code):
+    name, sess = one_name
+    sess.policy["info_timeseries"] = code
+    rec = et.enrich_with_retry(name, retries=1, cooloff=0.0, sleep=lambda s: None)
+    assert et.is_error_record(rec) and rec["_error"] == {"http_status": code, "where": "info"} and "estimates" not in rec
+    assert rec["_ticker"] == name
+    assert _timeseries_calls(sess) >= 4                  # the retry asked the vendor again: two requests per attempt (the cookie strategy)
+    rec2 = et.enrich(name)                                # and a later call of the same name in the same process
+    assert et.is_error_record(rec2) and rec2["_error"]["http_status"] == code
+
+
+def test_a_500_on_info_timeseries_that_clears_before_the_retry_gives_the_good_record(one_name):
+    name, sess = one_name
+    sess.policy["info_timeseries"] = 500
+    rec = et.enrich_with_retry(name, retries=1, cooloff=0.0, sleep=lambda s: None, before_retry=sess.policy.clear)
+    assert not et.is_error_record(rec) and "_status" not in rec
+    assert rec["analyst_target_mean"] == 10.0 and rec["institutional_pct"] == 70.0 and rec["estimates"]["0y"]["eps"]["avg"] == 2.7
+
+
+def test_a_second_fetch_of_a_name_after_a_500_asks_the_vendor_again(one_name):
+    name, sess = one_name
+    sess.policy["info_timeseries"] = 500
+    first = et.enrich(name)
+    assert et.is_error_record(first)
+    sess.policy.clear()
+    before = _timeseries_calls(sess)
+    second = et.enrich(name)
+    assert _timeseries_calls(sess) == before + 1          # the 500 was not kept in yfinance's cache
+    assert not et.is_error_record(second) and second["analyst_target_mean"] == 10.0 and second["institutional_pct"] == 70.0
+
+
+def test_an_error_response_already_in_the_cache_is_an_error_record_when_it_is_served(one_name):
+    """The recorder also sees a response yfinance serves from its cache: poison the cache with a 500 (as an earlier caller outside any
+    core request would have), and the next enrich of the name reports it, then clears it."""
+    name, sess = one_name
+    sess.policy["info_timeseries"] = 500
+    seen_url = [None]
+    real_get = sess.get
+
+    def spy(url=None, params=None, **k):
+        if "fundamentals-timeseries" in (url or ""):
+            seen_url[0] = url
+        return real_get(url, params, **k)
+    sess.get = spy
+    et.enrich(name)                                       # records the timeseries URL
+    sess.get = real_get
+    assert seen_url[0] is not None
+    yf_data.YfData.cache_get.cache_clear()
+    inst = yf_data.YfData()
+    yf_data.YfData.cache_get._rs2_original(inst, url=seen_url[0])    # the 500 is now in the cache, outside any core request
+    assert yf_data.YfData.cache_get.cache_info().currsize == 1
+    sess.policy.clear()
+    before = _timeseries_calls(sess)
+    rec = et.enrich(name)
+    assert et.is_error_record(rec) and rec["_error"] == {"http_status": 500, "where": "info"}
+    assert _timeseries_calls(sess) == before              # served from the cache, not from the session
+    rec2 = et.enrich(name)                                # the error was cleared: the vendor is asked, and answers
+    assert not et.is_error_record(rec2) and rec2["institutional_pct"] == 70.0
 
 
 # ---- the recorder is per thread and leaves nothing behind -------------------------------------------------------------------------
