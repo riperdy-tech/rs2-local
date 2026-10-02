@@ -54,6 +54,12 @@ class LedgerSchemaError(ValueError):
     """The ledger, or a row to append, does not match the schema. Nothing is written."""
 
 
+class EnrichFetchFailed(RuntimeError):
+    """The name's enrich record is the ERROR record of a failed vendor fetch (rs2_data.enrich_fetch_error). A failed fetch is not "no
+    coverage": the name gets no row (counted by this class, the way every failed name is) instead of a not_available row that would
+    record a vendor outage as a fact about the company."""
+
+
 # ---- the append-only file -------------------------------------------------------------------------------------------
 
 def _is_number(x):
@@ -325,7 +331,10 @@ def production_adapters(data_root, today=None):
       2. closure: `rs2_data.reference_closure()` -> (erp, asof, provenance), or (None, asof, reason); the cost of equity has no
          fallback, so without a usable premium a name has no value (status not_available).
       3. status: `classify_status`, which is consensus_reference.classify_status, the rule the pack uses.
-      4. fence: `capability_test._reference_outside_fence` on `capability_test._consensus_band_or_none` - the pack's own pair.
+      4. fence: `capability_test._reference_outside_fence` on `capability_test._consensus_band_or_none` - the pack's own pair. The band
+         is read by valuation_backbone from ITS root (`valuation_backbone.HERE`: enrich/ and cache/openbb_*.json); each fence call
+         runs with that root set to `data_root`, so the estimates and the fence of one run are read from one place (and the module's
+         root is put back afterwards).
       5. price: the screener's own file (financials/<T>.json: 'Price' and the date of its fetch); verdict: the local overlay
          (cache/depth_overlay.json) as {label: direction, base_iv: contract_base of its scorecard, published_at: date, pack_revision};
          book: depth_membership._current_book(); revision: capability_test.PACK_REVISION. `today` is the date the base year's age is
@@ -339,6 +348,7 @@ def production_adapters(data_root, today=None):
     import depth_membership
     import fiduciary_gate
     import rs2_data
+    import valuation_backbone as vb
     closure = rs2_data.reference_closure()
     erp = closure[0]
     anchors = {"rf": rs2_data.anchor_risk_free_rate()[0], "ga": rs2_data.anchor_terminal_g()[0],
@@ -351,6 +361,9 @@ def production_adapters(data_root, today=None):
 
     def inputs_fn(t):
         en = rs2_data.load_json(root / "enrich" / f"{t}.json") or {}
+        failed = rs2_data.enrich_fetch_error(en)         # before `estimates` is read: a failed fetch has none, and is not "no coverage"
+        if failed is not None:
+            raise EnrichFetchFailed(f"enrich_fetch_failed: HTTP {failed[0]} at {failed[1]}")
         estimates = en.get("estimates")
         age = cap._age_days(en)
         if age is not None and age > cap.STALE_SUPPRESS_DAYS:
@@ -361,7 +374,13 @@ def production_adapters(data_root, today=None):
         return ri["kwargs"]
 
     def fence_fn(value, t):
-        side, _ = cap._reference_outside_fence(value, cap._consensus_band_or_none(t))
+        previous = vb.HERE
+        vb.HERE = root                                   # the band's root is the run's data root, not the module's own
+        try:
+            band = cap._consensus_band_or_none(t)
+        finally:
+            vb.HERE = previous
+        side, _ = cap._reference_outside_fence(value, band)
         return side
 
     def price_fn(t):
