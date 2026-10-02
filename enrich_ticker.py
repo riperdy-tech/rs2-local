@@ -21,11 +21,14 @@ import json
 import math
 import re
 import sys
+import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yfinance as yf
+from yfinance.data import YfData
 
 import paths
 
@@ -73,6 +76,61 @@ def _vendor_http_status(exc):
     if "Too Many Requests" in text:
         return 429
     return None
+
+
+# ---- the status of every vendor response, seen below yfinance's own error handling --------------------------------------------------
+#
+# yfinance's default (config.debug.hide_exceptions = True) makes its scrapers catch an HTTP error, log it and return None
+# (scrapers/quote.py `_fetch`, scrapers/analysis.py `_fetch`), and some of its own errors carry no status at all (the third request of
+# `Ticker.info`, the fundamentals timeseries, raises a YFException built from the response body). A 401 "Invalid Crumb" or a 500 therefore
+# reached enrich() as an empty answer and read as "no coverage"; only a 429, which YfData raises itself, got through. Rather than read
+# the status from whichever exception survives, every core request records the status of the response yfinance finally received.
+_SEEN = threading.local()
+
+
+def _install_status_recorder():
+    """Wrap YfData._make_request once: while a core request is running on this thread (`_core_request`), the final status code of each
+    HTTP response is kept. Nothing else changes: the response (or the exception, a 429 included) goes back unchanged, and a thread
+    outside `_core_request` records nothing. A yfinance without `_make_request` raises here, loudly: a recorder that silently never
+    fires would put the empty-answer defect back."""
+    original = YfData._make_request
+    if getattr(original, "_rs2_records_status", False):
+        return
+
+    def _make_request(self, *args, **kwargs):
+        response = original(self, *args, **kwargs)
+        seen = getattr(_SEEN, "statuses", None)
+        if seen is not None:
+            seen.append(getattr(response, "status_code", None))
+        return response
+    _make_request._rs2_records_status = True
+    YfData._make_request = _make_request
+
+
+_install_status_recorder()
+
+
+@contextmanager
+def _core_request(where):
+    """Run one core request (`where`: info, calendar or estimates). It raises VendorHTTPError when any response it received was a 401, a
+    429 or a 5xx, whatever yfinance did with it - returned an empty answer, or raised an error of its own that names no status. An
+    exception with no such response is left as it was (the callers read it with `_raise_if_http`)."""
+    previous = getattr(_SEEN, "statuses", None)
+    seen = _SEEN.statuses = []
+    try:
+        try:
+            yield
+        except Exception:
+            status = next((c for c in seen if _is_error_status(c)), None)
+            if status is not None:
+                raise VendorHTTPError(status, where)       # chained to the exception that carried no status of its own
+            raise
+        else:
+            status = next((c for c in seen if _is_error_status(c)), None)
+            if status is not None:
+                raise VendorHTTPError(status, where)
+    finally:
+        _SEEN.statuses = previous
 
 
 def _raise_if_http(exc, where):
@@ -496,12 +554,18 @@ def enrich_with_retry(ticker, retries=1, cooloff=5.0, sleep=None, before_retry=N
 def _enrich(t):
     tk = yf.Ticker(t)
     try:
-        info = tk.info or {}
+        with _core_request("info"):
+            info = tk.info or {}
+    except VendorHTTPError:
+        raise
     except Exception as e:
         _raise_if_http(e, "info")
         info = {}
     try:
-        cal = tk.calendar
+        with _core_request("calendar"):
+            cal = tk.calendar
+    except VendorHTTPError:
+        raise
     except Exception as e:
         _raise_if_http(e, "calendar")
         cal = None
@@ -520,7 +584,8 @@ def _enrich(t):
             data["analyst_targets_sibling_reason"] = sib_reason
     # P4.10/DEP-02: next_earnings_date feeds depth_triggers.py's earnings_window trigger.
     data["next_earnings_date"] = next_earnings_date(cal)
-    data["estimates"] = consensus_estimates(tk)
+    with _core_request("estimates"):
+        data["estimates"] = consensus_estimates(tk)
     return data
 
 
