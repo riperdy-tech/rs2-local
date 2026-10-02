@@ -680,6 +680,16 @@ def _age_days(rec):
         return None
 
 
+def _not_fresh(rec):
+    """Revision 19 (10c, C9): True when a record that exists is older than STALE_SUPPRESS_DAYS OR carries no readable fetch date (an undated record's
+    age cannot be shown to be within the limit, so it is never read as fresh). A missing record ({} or None) is not "not fresh": it is absent, and
+    the callers say so separately."""
+    if not rec:
+        return False
+    days = _age_days(rec)
+    return days is None or days > STALE_SUPPRESS_DAYS
+
+
 def _age_label(rec):
     """_age()'s string, with `- STALE (n days)` appended once the record crosses the P4.10
     suppression threshold (distinct from _age()'s own 14-day "discount accordingly" note)."""
@@ -3285,8 +3295,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # P4.10 staleness: past STALE_SUPPRESS_DAYS the header shows "STALE (n days)" AND the values
         # themselves are suppressed to STALE_NULL, rather than merely flagged (_age()'s 14-day note).
         fg = ob.get("forward_growth") or {}
-        ob_stale = bool((_age_days(ob) or 0) > STALE_SUPPRESS_DAYS)
-        en_stale = bool((_age_days(en) or 0) > STALE_SUPPRESS_DAYS)
+        ob_stale = _not_fresh(ob)
+        en_stale = _not_fresh(en)
         L += [f"## DATA 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age_label(ob)}]",
               # price_to_sales dropped 2026-08-20: measured non-null on 0 of 294 vendor records, so
               # the line could never print a value. Market cap and revenue are both in this pack;
