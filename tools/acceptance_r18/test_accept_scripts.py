@@ -234,6 +234,12 @@ def test_at1d_agrees_on_the_synthetic_name_and_finds_a_disagreement(world):
     missing = _copy(world.rows)
     missing["GEV"]["parity"] = None
     assert not at_rows.at1d(missing)["pass"]
+    # finding 7: a pack that failed to build is a failure, not a name that is left out (the other names all agree)
+    failed = dict(_copy(world.rows), BAD=dict(_row(), error="RuntimeError: boom", parity=None))
+    res = at_rows.at1d(failed)
+    assert not res["pass"] and res["not_built"] == 1 and res["agree_to_the_cent"] == 1 and res["disagree_or_missing"] == 1
+    assert at_rows.at1d(failed, names=False)["details"][0][0] is None                # the 167: counts and classes only
+    assert not at_rows.at1d({"BAD": dict(_row(), error="X")})["pass"]                  # nothing built at all
 
 
 def _row(status="used", printed=100.0, price=100.0, value=None, **kw):

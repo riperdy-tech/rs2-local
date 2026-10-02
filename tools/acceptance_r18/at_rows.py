@@ -29,11 +29,16 @@ def _k(key, names):
 # ---- AT1d single source ----------------------------------------------------------------------------------------------------------
 
 def at1d(rows, *, names=True):
-    """The pack's printed reference = build(**reference_inputs(...)) to the cent, for every name built (a name whose two values are both
-    None agrees). The independent call is build_day's `parity` (a fresh DataRoot, the files read again)."""
-    n = same = 0
+    """The pack's printed reference = build(**reference_inputs(...)) to the cent, for every name (a name whose two values are both None
+    agrees). A pack that FAILED TO BUILD is a failure of this test, counted and listed (`not_built`), never dropped. The independent call is
+    build_day's `parity` (a fresh DataRoot, the files read again)."""
+    n = same = not_built = 0
     bad, missing = [], 0
-    for key, r in sorted(_built(rows).items()):
+    for key, r in sorted(rows.items()):
+        if r.get("error") is not None:
+            not_built += 1
+            bad.append((_k(key, names), "the pack did not build: " + str(r["error"])[:80]))
+            continue
         par = r.get("parity")
         if par is None or "error" in par or "pack_value" not in par:
             missing += 1
@@ -50,8 +55,10 @@ def at1d(rows, *, names=True):
         if par.get("args_equal") is False:
             bad.append((_k(key, names), "the pack's build arguments differ from reference_inputs'"))
     ok = n > 0 and not bad
-    return {"at": "AT1d single source", "pass": ok, "names": n, "agree_to_the_cent": same, "disagree_or_missing": len(bad), "details": bad[:20],
-            "summary": f"{same} of {n} names: the pack's reference equals build(**reference_inputs) to the cent; {len(bad)} problems"}
+    return {"at": "AT1d single source", "pass": ok, "names": n, "agree_to_the_cent": same, "disagree_or_missing": len(bad), "not_built": not_built,
+            "details": bad[:20],
+            "summary": f"{same} of {n} names: the pack's reference equals build(**reference_inputs) to the cent; {len(bad)} problems "
+                       f"({not_built} packs did not build)"}
 
 
 # ---- AT3 coverage -----------------------------------------------------------------------------------------------------------------
