@@ -391,29 +391,57 @@ def _reduction_rows(ttr):
     B = ttr.B
     est = ttr.EST
     growth = {"method": "growth", "value": 1.0, "base_arg": 1.1 * B, "estimates": est, "coe": 0.09, "terminal_g": 0.0375, "shares": 500e6, "median_5y": 0.05,
-              "stub_months": 3.0, "da": 0.5 * B, "capex": 0.6 * B, "levels_reason_arg": None, "levels": None}
+              "stub_months": 3.0, "da": 0.5 * B, "capex": 0.6 * B, "levels_reason_arg": None, "levels": None, "levels_block_arg": None,
+              "anchor_arg": 0.04}
     levels = dict(growth, method="levels", base_arg=-0.2 * B, levels_reason_arg="the fiscal-year owner-earnings base is not positive",
                   levels=[2.7 * 500e6 + 0.5 * B - 0.6 * B, 3.0 * 500e6 + 0.5 * B - 0.6 * B])
-    return {"G1": {"reference": growth}, "L1": {"reference": levels}, "N1": {"reference": None}}
+    blocked = dict(levels, levels_block_arg="the vendor's EPS levels may not be combined with the filed D&A and capex (vintage test failed)")
+    return {"G1": {"reference": growth}, "L1": {"reference": levels}, "B1": {"reference": blocked}, "N1": {"reference": None}}
 
 
 @pytest.mark.skipif(not (SP / "rs2-P4-s15").exists(), reason="revision 16's tree (fee17cf) not found")
 def test_at1b_the_reduction_holds_on_synthetic_inputs_and_a_difference_is_found(world, tmp_path):
     import at1b_reduction
+    rows = _reduction_rows(world.ttr)
     day16 = tmp_path / "day16.json"
-    ac.write_result(day16, {"meta": {}, "rows": ac.jsonable(_reduction_rows(world.ttr))})
+    ac.write_result(day16, {"meta": {}, "rows": ac.jsonable(rows)})
+    # what revision 16's build returns on these inputs, from the worker itself (a fresh process: one engine per process)
+    w16 = tmp_path / "w16.json"
+    p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--worker", "rev16", "--tree", str(SP / "rs2-P4-s15"), "--day16", str(day16),
+                        "--worker-out", str(w16)], capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout + p.stderr
+    values = json.loads(w16.read_text(encoding="utf-8"))
+    assert values["G1"]["value"] is not None and values["L1"]["value"] is not None
+    assert values["B1"]["value"] is None                                  # finding 4: `levels_block` reaches revision 16's build and removes the levels method
+    for key, v in values.items():
+        rows[key]["reference"]["value"] = v["value"]                      # the day file's record of revision 16's own build
+    day16b = tmp_path / "day16b.json"
+    ac.write_result(day16b, {"meta": {}, "rows": ac.jsonable(rows)})
     out = tmp_path / "at1b.json"
-    p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16), "--tree16", str(SP / "rs2-P4-s15"), "--tree18", str(TREE),
+    p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16b), "--tree16", str(SP / "rs2-P4-s15"), "--tree18", str(TREE),
                         "--out", str(out)], capture_output=True, text=True)
     res = json.loads(out.read_text(encoding="utf-8"))
-    assert p.returncode == 0 and res["pass"] and res["names"] == 2, p.stdout + p.stderr
+    assert p.returncode == 0 and res["pass"] and res["names"] == 3 and res["rev16_worker_differs_from_recorded"] == 0, p.stdout + p.stderr
     assert res["trees"]["rev16"]["commit"].startswith("fee17cf")
-    # compare() on its own: a value off by two cents, and a name with no revision 18 value
+    # a day file whose recorded revision 16 value is not what revision 16's engine returns on its recorded inputs fails (finding 4)
+    rows["G1"]["reference"]["value"] += 0.02
+    day16c = tmp_path / "day16c.json"
+    ac.write_result(day16c, {"meta": {}, "rows": ac.jsonable(rows)})
+    out2 = tmp_path / "at1b2.json"
+    p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16c), "--tree16", str(SP / "rs2-P4-s15"), "--tree18", str(TREE),
+                        "--out", str(out2)], capture_output=True, text=True)
+    res2 = json.loads(out2.read_text(encoding="utf-8"))
+    assert p.returncode == 1 and not res2["pass"] and res2["differences"] == 0 and res2["rev16_worker_differs_from_recorded"] == 1
+    # compare() on its own: a value off by two cents, a name with no revision 18 value, a recorded value that differs, and one that is absent
     a = {"G1": {"value": 10.00, "method": "growth"}, "L1": {"value": None, "method": None}}
-    assert at1b_reduction.compare(a, {"G1": {"value": 10.00}, "L1": {"value": None}})["pass"]
-    assert not at1b_reduction.compare(a, {"G1": {"value": 10.02}, "L1": {"value": None}})["pass"]
-    assert not at1b_reduction.compare(a, {"G1": {"value": 10.00}})["pass"]
-    assert not at1b_reduction.compare({}, {})["pass"]
+    rec = {"G1": 10.00, "L1": None}
+    assert at1b_reduction.compare(a, {"G1": {"value": 10.00}, "L1": {"value": None}}, rec)["pass"]
+    assert not at1b_reduction.compare(a, {"G1": {"value": 10.02}, "L1": {"value": None}}, rec)["pass"]
+    assert not at1b_reduction.compare(a, {"G1": {"value": 10.00}}, rec)["pass"]
+    assert not at1b_reduction.compare(a, {"G1": {"value": 10.00}, "L1": {"value": None}}, {"G1": 10.02, "L1": None})["pass"]
+    assert not at1b_reduction.compare(a, {"G1": {"value": 10.00}, "L1": {"value": None}}, {"G1": 10.00})["pass"]
+    assert not at1b_reduction.compare(a, {"G1": {"value": 10.00}, "L1": {"value": None}}, {"G1": 10.00, "L1": 3.0})["pass"]
+    assert not at1b_reduction.compare({}, {}, {})["pass"]
 
 
 # ---- AT1c -------------------------------------------------------------------------------------------------------------------------------

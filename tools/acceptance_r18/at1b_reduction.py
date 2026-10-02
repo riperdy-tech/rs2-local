@@ -13,7 +13,10 @@ The switches (revision 18 worker):
   X = owner earnings   growth method: base_ni = base_cf. Levels method: the vendor's EPS levels are replaced by (cash-flow level / shares)
                        and D&A, capex by 0.0 (identical cash flows, earnings = cash flows); only where revision 16 had a value
   closure off          MRI's premium, no floor: the recorded coe is passed unchanged
-|difference| < $0.005 (and both None) for every name. Offline: every socket is blocked.
+|difference| < $0.005 (and both None) for every name. `build` receives every argument revision 16's build received that carries information:
+base, estimates, coe, terminal growth, shares, median, D&A, capex, stub months, levels_reason, levels_block and anchor. The revision 16 worker's
+value must also equal the value the day file recorded for revision 16's own build (the worker is checked against the record, not only against
+revision 18). Offline: every socket is blocked.
 """
 import argparse
 import copy
@@ -59,7 +62,8 @@ def worker(mode, tree, rows, out_path):
             lv = (est.get("0y") or {}).get("eps", {}).get("avg")
             if _num(lv) and _num(shares):
                 da, capex = ref["levels"][0] - lv * shares, 0.0           # only da - capex enters revision 16's levels method
-        kw = dict(stub_months=ref.get("stub_months"), da=da, capex=capex, levels_reason=levels_reason)
+        levels_block, anchor = ref.get("levels_block_arg"), ref.get("anchor_arg")      # the two arguments of `build` the day file keeps besides the rest
+        kw = dict(stub_months=ref.get("stub_months"), da=da, capex=capex, levels_reason=levels_reason, levels_block=levels_block, anchor=anchor)
         if mode == "rev16":
             res = cref.build(base_arg, est, coe, tg, shares, med, **kw)
             out[key] = {"value": res.get("value"), "method": res.get("method")}
@@ -73,22 +77,36 @@ def worker(mode, tree, rows, out_path):
                 eps["avg"] = (eps["avg"] * shares + da - capex) / shares      # revision 16's cash-flow level of that year, per share
             da18 = capex18 = 0.0
         res = cref.build(base_arg, est18, coe, tg, shares, med, da=da18, capex=capex18, stub_months=ref.get("stub_months"),
-                         levels_reason=levels_reason, record=record, base_ni=base_arg, base_revenue=None, cash=None)
+                         levels_reason=levels_reason, levels_block=levels_block, anchor=anchor, record=record, base_ni=base_arg,
+                         base_revenue=None, cash=None)
         out[key] = {"value": res.get("value"), "method": res.get("method")}
     Path(out_path).write_text(json.dumps(out), encoding="utf-8")
 
 
-def compare(v16, v18, *, names=True, tol=0.005):
-    bad, n = [], 0
+def _same(a, b, tol):
+    return (a is None and b is None) or (a is not None and _num(a) and _num(b) and abs(a - b) < tol)
+
+
+def compare(v16, v18, recorded, *, names=True, tol=0.005):
+    """`v16` / `v18`: the two workers' values by key; `recorded`: revision 16's own value for each key as the day file recorded it. The revision 16
+    worker must reproduce the recorded value to the cent (else the inputs it was fed are not the ones revision 16 received, and the comparison
+    with revision 18 proves nothing), and revision 18 must reproduce the revision 16 worker's."""
+    bad, bad16, n = [], [], 0
     for key in sorted(v16):
         n += 1
         a, b = v16[key]["value"], (v18.get(key) or {}).get("value", "missing")
-        same = (a is None and b is None) or (a is not None and _num(b) and abs(a - b) < tol)
+        same = _same(a, b, tol) if b != "missing" else False
         if not same:
             bad.append((key if names else None, a, b if b != "missing" else "no revision 18 value"))
-    ok = n > 0 and not bad
-    return {"at": "AT1b reduction", "pass": ok, "names": n, "differences": len(bad), "details": bad[:20], "bar": f"|rev18 - rev16| < ${tol}",
-            "summary": f"{n - len(bad)} of {n} names reproduce revision 16's value to the cent; {len(bad)} differ"}
+        rec = recorded.get(key, "missing")
+        if rec == "missing" or not _same(a, rec, tol):
+            bad16.append((key if names else None, rec if rec != "missing" else "no recorded revision 16 value", a))
+    ok = n > 0 and not bad and not bad16
+    return {"at": "AT1b reduction", "pass": ok, "names": n, "differences": len(bad), "details": bad[:20],
+            "rev16_worker_differs_from_recorded": len(bad16), "rev16_worker_details": bad16[:20],
+            "bar": f"|rev18 - rev16| < ${tol} and |rev16 worker - rev16 recorded| < ${tol}",
+            "summary": f"{n - len(bad)} of {n} names reproduce revision 16's value to the cent; {len(bad)} differ; the revision 16 worker differs from "
+                       f"the recorded revision 16 value on {len(bad16)}"}
 
 
 def main(argv=None):
@@ -105,6 +123,8 @@ def main(argv=None):
         _meta, rows = ac.load_day(a.day16)
         worker(a.worker, a.tree, rows, a.worker_out)
         return 0
+    _meta16, rows16 = ac.load_day(a.day16)
+    recorded = {key: (r.get("reference") or {}).get("value") for key, r in rows16.items() if r.get("reference")}
     ac.block_network()
     results = {}
     with tempfile.TemporaryDirectory(prefix="at1b_") as tmp:
@@ -113,7 +133,7 @@ def main(argv=None):
             subprocess.run([sys.executable, str(Path(__file__).resolve()), "--worker", mode, "--tree", str(tree), "--day16", str(a.day16),
                             "--worker-out", str(p)], check=True)
             results[mode] = json.loads(p.read_text(encoding="utf-8"))
-    result = compare(results["rev16"], results["rev18"])
+    result = compare(results["rev16"], results["rev18"], recorded)
     result["trees"] = {"rev16": {"path": str(a.tree16), "commit": ac.git_head(a.tree16)[0]}, "rev18": {"path": str(a.tree18), "commit": ac.git_head(a.tree18)[0]}}
     result["day16_file_sha256"] = ac.sha256_file(a.day16)
     return ac.finish(result, a.out)

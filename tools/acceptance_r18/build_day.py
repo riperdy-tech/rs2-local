@@ -97,7 +97,8 @@ def build_rows(ns, names, *, keep_text=True, anonymous=False, progress=True, dum
                                                       "margin_ratio", "m_long", "om_5", "flows", "levels_reason")}
                     ref.update(base_arg=a[0], coe=a[2], terminal_g=a[3], shares=a[4], median_5y=a[5], da=k.get("da"), capex=k.get("capex"),
                                record_R_tc=(k.get("record") or {}).get("R_tc"), unavailable_reason=k.get("unavailable_reason"),
-                               estimates=a[1], levels_reason_arg=k.get("levels_reason"))
+                               estimates=a[1], levels_reason_arg=k.get("levels_reason"), levels_block_arg=k.get("levels_block"),
+                               anchor_arg=k.get("anchor"))
                     row["reference"] = ref
                 else:
                     row["reference"] = None
