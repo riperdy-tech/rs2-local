@@ -4,7 +4,9 @@
 
 The suite is `python -m pytest tests tools/audit_202608/tests -q` run in --tree (default interpreter: C:/Program Files/Python312/python.exe).
 Each --harness names a worktree, the commit its HEAD must be (a different HEAD is a failure: the harness is tested at its pinned commit
-only) and the tests path inside it; its tests run with that worktree as the working directory. The summary line of every run is recorded.
+only) and the tests path inside it; its tests run with that worktree as the working directory. A relative worktree is a sibling of --tree.
+Without --harness the backtest harness is tested at its pinned commit, DEFAULT_HARNESS: AT7 is never the rs2 suite alone. The summary line
+of every run is recorded.
 No socket is opened by this script; the suites it runs are the project's own (sockets are blocked by their fixtures).
 """
 import argparse
@@ -17,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import accept_common as ac  # noqa: E402
 
 DEFAULT_PY = r"C:\Program Files\Python312\python.exe"
+DEFAULT_HARNESS = "rs2-bt@40cb5cf::backtest_phase2/tests"
 SUMMARY = re.compile(r"^(?:=+ )?(\d+ (?:passed|failed|error)[^=]*?)(?: =+)?$", re.M)
 
 
@@ -37,7 +40,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tree", required=True, type=Path)
     ap.add_argument("--python", default=DEFAULT_PY)
-    ap.add_argument("--harness", action="append", default=[])
+    ap.add_argument("--harness", action="append", default=None, help=f"default: {DEFAULT_HARNESS}")
     ap.add_argument("--targets", nargs="*", default=["tests", "tools/audit_202608/tests"], help="the suite's test paths (default: the two directories)")
     ap.add_argument("--out", default=None, type=Path)
     a = ap.parse_args(argv)
@@ -45,11 +48,13 @@ def main(argv=None):
     suite = run_pytest(a.python, a.tree, a.targets)
     suite.update(name="rs2 suite", tree=str(a.tree), commit=ac.git_head(a.tree)[0])
     runs.append(suite)
-    for spec in a.harness:
+    for spec in (a.harness or [DEFAULT_HARNESS]):
         m = re.fullmatch(r"(.+?)@([0-9a-fA-F]{7,40})::(.+)", spec)
         if not m:
             raise SystemExit(f"--harness wants <worktree>@<commit>::<tests path>, got a different form")
         wt, commit, tests = Path(m.group(1)), m.group(2), m.group(3)
+        if not wt.is_absolute():
+            wt = a.tree.resolve().parent / wt
         head, pinned = check_pin(wt, commit)
         if not pinned:
             runs.append({"name": f"harness {wt.name}", "passed": False, "returncode": None, "summary_line": f"HEAD {head} is not the pinned commit {commit}"})

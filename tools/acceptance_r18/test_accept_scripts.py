@@ -568,6 +568,27 @@ def test_at7_runs_the_suite_in_the_foreground_and_checks_the_pins(tmp_path):
     assert p.returncode == 1 and "is not the pinned commit" in p.stdout
 
 
+def test_at7_without_a_harness_tests_the_backtest_harness_at_its_pinned_commit_and_fails_where_it_is_not_there(tmp_path):
+    """Finding 6: the default is rs2-bt@40cb5cf::backtest_phase2/tests (a sibling of --tree); AT7 is never the rs2 suite alone."""
+    import at7_suite
+    assert at7_suite.DEFAULT_HARNESS == "rs2-bt@40cb5cf::backtest_phase2/tests"
+    good = tmp_path / "tree" / "good"
+    good.parent.mkdir()
+    _mini_repo(good, "def test_ok():\n    assert True\n")
+    run = lambda *args: subprocess.run([PY, str(HERE / "at7_suite.py"), "--python", PY, *args], capture_output=True, text=True)
+    out = tmp_path / "at7_default.json"
+    p = run("--tree", str(good), "--targets", "test_x.py", "--out", str(out))                  # no --harness, and no rs2-bt beside the tree
+    res = json.loads(out.read_text(encoding="utf-8"))
+    assert p.returncode == 1 and not res["pass"] and [r["name"] for r in res["runs"]] == ["rs2 suite", "harness rs2-bt"]
+    assert res["runs"][0]["passed"] and not res["runs"][1]["passed"] and "is not the pinned commit 40cb5cf" in res["runs"][1]["summary_line"]
+    # a relative worktree is a sibling of --tree
+    h = _mini_repo(good.parent / "sibling", "def test_ok():\n    assert True\n")
+    out2 = tmp_path / "at7_sibling.json"
+    p = run("--tree", str(good), "--targets", "test_x.py", "--harness", f"sibling@{h[:10]}::test_x.py", "--out", str(out2))
+    res2 = json.loads(out2.read_text(encoding="utf-8"))
+    assert p.returncode == 0 and res2["pass"] and len(res2["runs"]) == 2 and res2["runs"][1]["commit"] == h
+
+
 # ---- AT8: the guards and the counts, on a synthetic three-name list (the real list is never opened) ------------------------------------------
 
 SYN = ["ZQAA", "ZQBB", "ZQCC"]
