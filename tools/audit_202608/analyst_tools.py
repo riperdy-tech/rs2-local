@@ -47,6 +47,11 @@ sys.path.insert(0, str(HERE))
 
 import rs2_data  # noqa: E402
 
+_AUDIT_DIR = str(Path(__file__).resolve().parent)
+if _AUDIT_DIR not in sys.path:
+    sys.path.append(_AUDIT_DIR)           # appended, never first: no module of this folder may shadow a root-level one
+import llm_provider  # noqa: E402  (the one door every analyst-model call goes through)
+
 SEARX = rs2_data.CONFIG.get("searxng_url", "http://localhost:8888")
 OLLAMA = "http://127.0.0.1:11434/api/chat"
 MAX_TOOL_CALLS = 25          # balanced research budget; deduplication eliminates redundant query loops
@@ -1575,11 +1580,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
     def _post(body):
         nonlocal server_errors
-        req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
-                                     headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                resp = json.loads(r.read().decode())
+            resp = llm_provider.chat(body, timeout)
         except urllib.error.HTTPError as e:
             if e.code >= 500:
                 server_errors += 1

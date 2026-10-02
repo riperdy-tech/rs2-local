@@ -48,6 +48,7 @@ elif hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 import common  # noqa: E402
+import llm_provider  # noqa: E402  (the one door every analyst-model call goes through)
 common.enable_json_cache()
 import capability_test as cap  # noqa: E402
 import rs2_data  # noqa: E402
@@ -462,13 +463,8 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
         "messages": messages,
         "options": opts
     }
-    import urllib.request
-    req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
-                                 data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            resp = json.loads(r.read().decode())
+        resp = llm_provider.chat(body, timeout)
         msg = resp.get("message") or {}
         rep_cont = msg.get("content") or ""
         think_cont = msg.get("thinking") or ""
@@ -2248,12 +2244,7 @@ def main():
                 body = {"model": model, "stream": False, "think": think_level,
                         "messages": [{"role": "user", "content": pack}],
                         "options": opts}
-                import urllib.request
-                req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
-                                             data=json.dumps(body).encode(),
-                                             headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=7200) as r:
-                    resp = json.loads(r.read().decode())
+                resp = llm_provider.chat(body, 7200)
                 msg = resp.get("message") or {}
                 rep = msg.get("content") or ""
                 think = msg.get("thinking") or ""
@@ -2271,11 +2262,7 @@ def main():
                 print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
                       f"one retry, perturbed seed", flush=True)
                 body["options"]["seed"] = 1000 + i + 50000
-                req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
-                                             data=json.dumps(body).encode(),
-                                             headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=7200) as r:
-                    resp = json.loads(r.read().decode())
+                resp = llm_provider.chat(body, 7200)
                 msg = resp.get("message") or {}
                 rep = msg.get("content") or ""
                 think = msg.get("thinking") or ""

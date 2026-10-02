@@ -22,6 +22,7 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 
 import rs2_data
 import analyst_tools
+import llm_provider
 import capability_test
 
 CACHE_DIR = HERE / "cache" / "catalyst_brief"
@@ -178,10 +179,7 @@ def _llm_fix_json(model: str, block: str, err: str) -> str:
                 "The JSON below does not parse (" + err + "). Return the same content as valid JSON: "
                 "fix only the syntax (brackets, commas, quotes inside strings - escape them), change no "
                 "wording, add or drop nothing. Output only the JSON.\n\n" + block)}]}
-    req = analyst_tools.urllib.request.Request(analyst_tools.OLLAMA, data=json.dumps(body).encode(),
-                                               headers={"Content-Type": "application/json"})
-    with analyst_tools.urllib.request.urlopen(req, timeout=900) as r:
-        out = (json.loads(r.read().decode()).get("message") or {}).get("content") or ""
+    out = (llm_provider.chat(body, 900).get("message") or {}).get("content") or ""
     m = re.search(r"```(?:json[^\n]*)?\s*\n(.*?)```", out, re.DOTALL)
     return (m.group(1) if m else out).strip()
 
