@@ -33,6 +33,7 @@ elif hasattr(sys.stdout, "buffer"):
 
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
+import llamacpp_server      # noqa: E402  (depth_provider "llamacpp": the llama-server lifecycle, M3)
 import depth_gates          # noqa: E402  (single owner of `actionable` — P1.3)
 import depth_triggers       # noqa: E402
 import depth_membership     # noqa: E402
@@ -644,10 +645,23 @@ def run_one(t, ondemand=False):
             elif time.time() - last_progress > SAMPLE_TIMEOUT_MIN * 60:
                 log(f"::WATCHDOG:: {t} made no sample progress for {SAMPLE_TIMEOUT_MIN} min — killing tree + unloading models")
                 _kill_tree(proc.pid)
-                for m in (CONFIG.get("depth_model", "rs2-analyst-deep"), CONFIG.get("research_model")):
+                if llamacpp_server.is_enabled():
+                    # the analyst is llama-server; the research model is still an Ollama model under both providers
+                    ok, detail = llamacpp_server.stop()
+                    if not ok:
+                        log(f"::VRAM:: llama-server not released — {detail}")
+                    models = (CONFIG.get("research_model"),)
+                else:
+                    models = (CONFIG.get("depth_model", "rs2-analyst-deep"), CONFIG.get("research_model"))
+                for m in models:
                     ops.wait_unloaded(CONFIG["ollama_endpoint"], m,
                                       need_free_mb=0, timeout_s=120)
                 return False, "watchdog_timeout"
+    if llamacpp_server.is_enabled():
+        # after each child (M3.3): the card is the operator's between names, and llama-server never unloads itself
+        ok, detail = llamacpp_server.stop()
+        if not ok:
+            log(f"::VRAM:: llama-server not released — {detail}")
     if rc == 0:
         return True, "ok"
     return False, {3: "research_infra", 5: "consensus_failed", 7: "vram", 8: "price_unavailable",

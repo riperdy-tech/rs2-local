@@ -82,7 +82,12 @@ SYSTEM_MTP5_Q4_V32_SHA256 = "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd
 # the v32 files and their pins stay for rollback.
 SYSTEM_MTP5_V33_SHA256 = "ff033c2519528445a1f2e56a797746524d64bff7d65e5a31612be35d6cbdfc22"
 SYSTEM_MTP5_Q4_V33_SHA256 = "ff033c2519528445a1f2e56a797746524d64bff7d65e5a31612be35d6cbdfc22"
-CONTINUE_REPORT_SHA256 = "71742a7a93e0d6f1aa02792c3414936abf07cf8fdf45d6989be4f94ecd8d64c3"
+# 2026-10-02 (Muse integration, brief_muse_integration.md M2.4): the transport lines of continue_report (the urllib Request and
+# urlopen) became one call, llm_provider.chat(body, timeout). The body and every model-visible string are unchanged; under
+# depth_provider "ollama" the request is byte for byte what it was (tools/audit_202608/tests/test_llm_provider_ollama_identity.py
+# proves URL, bytes, headers and timeout, and passes on the old code too); was
+# "71742a7a93e0d6f1aa02792c3414936abf07cf8fdf45d6989be4f94ecd8d64c3".
+CONTINUE_REPORT_SHA256 = "3bf8a179c11596113e73e8f44037ff3e61c3f1fc459bc64d32f7f52b3ce21344"
 
 
 def _sha256(s: str) -> str:

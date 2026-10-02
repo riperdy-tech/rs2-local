@@ -51,6 +51,7 @@ _AUDIT_DIR = str(Path(__file__).resolve().parent)
 if _AUDIT_DIR not in sys.path:
     sys.path.insert(0, _AUDIT_DIR)
 import crux_check  # noqa: E402  (revision 19: the judgment inputs, the citation check)
+import llm_provider  # noqa: E402  (the one door every analyst-model call goes through)
 
 SEARX = rs2_data.CONFIG.get("searxng_url", "http://localhost:8888")
 OLLAMA = "http://127.0.0.1:11434/api/chat"
@@ -979,6 +980,13 @@ def report_is_deliverable(text):
     return len(body) >= REPORT_MIN_CHARS
 
 
+# What the llamacpp provider's response carries (llm_provider): the engine record that answered, llama-server's draft counters,
+# whether reasoning markers were left in the content, the sampling fields it stripped, the options it ignored, and whether it
+# injected the SYSTEM text.
+TURN_PROVENANCE_KEYS = ("engine", "draft_n", "draft_n_accepted", "reasoning_in_content", "sampling_stripped",
+                        "ignored_options", "system_injected")
+
+
 def turn_metrics(resp):
     """Per-turn cost record from one Ollama /api/chat response.
 
@@ -998,6 +1006,11 @@ def turn_metrics(resp):
         "load_s": round((resp.get("load_duration") or 0) / 1e9, 2),
         "done_reason": resp.get("done_reason"),
         "n_tool_calls": len((resp.get("message") or {}).get("tool_calls") or []),
+        # Muse integration, M5: the named cause of a refused turn (llamacpp provider only; an Ollama 500 has none)
+        **({"server_error_cause": resp["server_error_cause"]} if resp.get("server_error_cause") else {}),
+        # Muse integration, M6 (P7 step 0's harness patch, re-implemented): engine provenance and draft counters ride on the turn
+        # when the serving path reports them; an Ollama response has none of these keys, so its record is unchanged.
+        **{k: resp[k] for k in TURN_PROVENANCE_KEYS if k in resp},
     }
 
 
@@ -1704,15 +1717,15 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
 
     def _post(body):
         nonlocal server_errors
-        req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
-                                     headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                resp = json.loads(r.read().decode())
+            resp = llm_provider.chat(body, timeout)
         except urllib.error.HTTPError as e:
             if e.code >= 500:
                 server_errors += 1
-                return {"message": {}, "done_reason": "server_error", "http_status": e.code}
+                # the provider's named cause (context_overflow, connection_reset, engine_not_ready, ...); an Ollama 500 has none
+                cause = getattr(e, "cause", None)
+                return {"message": {}, "done_reason": "server_error", "http_status": e.code,
+                        **({"server_error_cause": cause} if cause else {})}
             raise
         if resp.get("prompt_eval_count"):
             chars_per_token[0] = len(json.dumps(body["messages"])) / resp["prompt_eval_count"]
@@ -2256,6 +2269,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             sum(1 for c in snap if c.get("tool") == "run_financial_model") - desk_calls_at_c8)
     eval_rate = round(gen_tokens / (eval_duration_total / 1e9), 2) if eval_duration_total > 0 else 0
     return final_report, final_think, {"tool_calls": calls, "done_reason": done_reason,
+                                       **llm_provider.turns_provenance(turns),
                                        "stub_rejected": stub_rejected,
                                        "turns": turns,
                                        "generated_tokens": gen_tokens,
