@@ -137,7 +137,7 @@ def test_rule_no_desk_run():
     filled, prov = contract_fill.fill([failed_call], typed, facts, 100.0)
     assert prov["mode"] == "no_desk_run"
     assert filled == {}
-    assert len(prov["unfilled"]) == 33     # revision 18: excess_cash_reason joins the reasons
+    assert len(prov["unfilled"]) == 37     # revision 18: excess_cash_reason joins the reasons; revision 19: direction_m, crux, crux_check, price_implied
     assert prov["unfilled"] == list(contract_fill.FILLED)
 
 
@@ -343,7 +343,9 @@ def test_rule_verdict_label_thresholds():
             ]
         )
         filled, _ = contract_fill.fill([call], {}, {}, price)
-        return filled["verdict_label"]
+        # revision 19: the +-10% rule is direction_m; the label is hold without a valid crux (test_rev19_crux.py has the crux cases)
+        assert filled["verdict_label"] == ("hold" if filled["direction_m"] in ("undervalued", "overvalued") else filled["direction_m"])
+        return filled["direction_m"]
 
     price = 100.0
     assert get_label(110.1, price) == "undervalued"  # 110.1/100 - 1 = +0.101
@@ -402,8 +404,9 @@ def test_real_samples():
     fix_dir = _HERE / "tests" / "fixture_data" / "contract_fill"
     golden_file = fix_dir / "golden_3_samples.json"
     golden = json.loads(golden_file.read_text(encoding="utf-8"))
-    new_fields = list(contract_fill.FILLED[19:])
+    new_fields = list(contract_fill.FILLED[19:-4])
     assert len(new_fields) == 14     # revision 18: excess_cash_reason joins the reasons
+    assert contract_fill.FILLED[-4:] == contract_fill.REVISION_19 == ("direction_m", "crux", "crux_check", "price_implied")
 
     for e in golden:
         fixture_path = fix_dir / f"{e['run']}_s{e['sample']}.json"
@@ -412,6 +415,16 @@ def test_real_samples():
 
         facts = {"shares_outstanding": e["facts"]["shares"], "coe_anchor": e["facts"]["coe_anchor"]}
         filled, prov = contract_fill.fill(desk_calls, e["typed"], facts, e["price"])
+        # revision 19: these recorded calls carry no crux, so a directional label is hold stamped no_valid_crux:missing, and direction_m is the
+        # revision-18 label the golden file holds; every other filled value is as recorded
+        new = {k: filled.pop(k) for k in contract_fill.REVISION_19}
+        recorded = e["filled"].get("verdict_label")
+        assert new["direction_m"] == recorded and new["crux"] is None and new["crux_check"]["entries"] == []
+        if recorded in ("undervalued", "overvalued"):
+            assert filled["verdict_label"] == "hold" and new["crux_check"]["stamps"] == ["no_valid_crux:missing"]
+            filled["verdict_label"] = recorded
+        else:
+            assert new["crux_check"]["stamps"] == []
         assert filled == e["filled"], f"{e['run']} filled mismatch"
         expected_prov = dict(e["prov"])
         expected_prov["unfilled"] = list(e["prov"]["unfilled"]) + new_fields

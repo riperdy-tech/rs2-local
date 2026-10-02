@@ -517,6 +517,7 @@ def select_medoid_scorecard(
             "valuation_frame": None, "terminal_method": None, "terminal_multiple_or_g": None,
             "fade_years": None, "stage1_growth_path": None, "guidance_deviation_reason": None,
             "cycle_evidence": None, "verdict_label": None,
+            "direction_m": None, "crux": None, "crux_check": None, "price_implied": None,
             "momentum_view": None, "entry_timing": None, "momentum_flip_condition": None,
             "momentum_break_rule": None, "invalidation_rules": None,
             "position_basis": None, "momentum_evidence": None,
@@ -585,6 +586,10 @@ def select_medoid_scorecard(
             "guidance_deviation_reason": san_fb.get("guidance_deviation_reason"),
             "cycle_evidence": san_fb.get("cycle_evidence"),
             "verdict_label": san_fb.get("verdict_label"),
+            "direction_m": san_fb.get("direction_m"),
+            "crux": san_fb.get("crux"),
+            "crux_check": san_fb.get("crux_check"),
+            "price_implied": san_fb.get("price_implied"),
             "momentum_view": san_fb.get("momentum_view"),
             "entry_timing": san_fb.get("entry_timing"),
             "momentum_flip_condition": san_fb.get("momentum_flip_condition"),
@@ -700,6 +705,11 @@ def select_medoid_scorecard(
         "guidance_deviation_reason": medoid_card.get("guidance_deviation_reason"),
         "cycle_evidence": medoid_card.get("cycle_evidence"),
         "verdict_label": medoid_card.get("verdict_label"),
+        # revision 19 (brief E): the label's revision-18 direction, the crux behind it and the desk's price-implied block, from the medoid
+        "direction_m": medoid_card.get("direction_m"),
+        "crux": medoid_card.get("crux"),
+        "crux_check": medoid_card.get("crux_check"),
+        "price_implied": medoid_card.get("price_implied"),
         "momentum_view": medoid_card.get("momentum_view"),
         "entry_timing": medoid_card.get("entry_timing"),
         "momentum_flip_condition": medoid_card.get("momentum_flip_condition"),
@@ -2132,6 +2142,7 @@ def main():
     # facts object and the harness price. shares_default_b is 5.11's default, not SECTION 2's
     # count; a count of 0 gives None (a zero share count cannot be a default), tested with
     # `is not None`, never `or`.
+    company_name = rs2_data.resolve_name(t) or t          # revision 19 (B6): the crux check's name for the news filter's rule
     desk_context = {
         "price": price,                                   # the harness price, the one the verdict uses
         "shares_default_b": (_num_b(facts["shares_default"])
@@ -2164,6 +2175,9 @@ def main():
         "reference_status": facts.get("reference_status"),
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)
+        # revision 19 (B4): the name and ticker the citation check's news-filter rule needs
+        "ticker": t,
+        "company": company_name,
     }
 
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
@@ -2362,7 +2376,8 @@ def main():
         # S3 5.12: a revision-15 pack (its own first-line marker, not just cap.PACK_REVISION —
         # a frozen `--pack-file` reuse may carry an older stamp) never publishes a blend.
         filled, prov = contract_fill.fill(calls, scorecard, facts, price, ticker=t,
-                                          allow_blend=not pack_facts.is_revision_15(pack))
+                                          allow_blend=not pack_facts.is_revision_15(pack),
+                                          pack_text=pack, company=company_name)
         scorecard.update(filled)
         scorecard["code_fill"] = prov
 

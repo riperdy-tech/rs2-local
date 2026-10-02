@@ -12,6 +12,7 @@ Provides exact arithmetic mid-stream for RS2 depth underwritings:
 
 from __future__ import annotations
 
+import datetime
 import math
 import os
 import sys
@@ -32,6 +33,7 @@ if str(_REPO_TOOLS) not in sys.path:
 
 import rate_engine
 import consensus_reference
+import crux_check
 
 # Revision 17 (brief B 4i): the unit rule for sbc_dilution.
 SBC_DILUTION_UNIT_MESSAGE = "sbc_dilution is a fraction below 1 (0.02 = 2%) or a whole number of new shares"
@@ -634,7 +636,7 @@ SOLVER_TOL = 0.0005             # dollars per share: a point with |value - price
 SOLVER_NARROW = 1e-9            # a bisection stops only when its bracket is narrower than this, in the search variable's units
 SOLVER_MAX_ITER = 200
 IDENTITY_TOL = 1e-6             # dollars per share: the rebuilt Base against the desk's own unrounded value
-PI_INPUTS = ("coe", "growth_years_3_5", "fade_years", "terminal_g", "terminal_ronic", "year2_level")
+PI_INPUTS = crux_check.J         # the judgment inputs: one owner (crux_check), the desk and the schema read it
 PI_FADE_MAX = 60                # the desk's finite-life limit, which bounds the fade search too
 PI_GROWTH_FLOOR = 0.001         # 1 + g + shift >= this, a business cannot shrink by 100% a year
 PI_GROWTH_CEILING = 10.0        # a numerical ceiling for the largest of years 3-5, a search limit and not an economic bound
@@ -889,7 +891,8 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
         lo_v, hi_v, vlo, vhi = ends(f, d_lo, d_hi)
         out["growth_years_3_5"] = finish("growth_years_3_5", own_g, (_geo_mean_growth([g + d_lo for g in y35]), _geo_mean_growth([g + d_hi for g in y35]), vlo, vhi),
                                          res, lambda d: _geo_mean_growth([g + d for g in y35]),
-                                         extra=lambda r: {"shift": r["s"] if r["found"] else None, "shift_bound": [d_lo, d_hi]})
+                                         extra=lambda r: {"shift": r["s"] if r["found"] else None, "shift_bound": [d_lo, d_hi],
+                                                          "own_path": list(y35)})
 
     # fade_years ---------------------------------------------------------------------------------------------------------------------
     f = lambda n: diff(raw(fade=int(n)))
@@ -945,6 +948,35 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
     else:
         out["year2_level"] = unavailable("year2_level", own_l2, "the pack prints no bull2 and bear2 range")
     return out
+
+
+def crux_desk_check(crux, pi):
+    """The desk's own check of a crux (B3), information only: per entry, v1 (the input is a judgment input) and v2 (its price-implied value is
+    reachable inside its bound) against this run's `price_implied`. Validity is crux_check's; this is what the model is shown."""
+    out = []
+    for e in crux:
+        name = e.get("input") if isinstance(e, dict) else None
+        blk = pi.get(name) if (isinstance(pi, dict) and isinstance(name, str)) else None
+        blk = blk if isinstance(blk, dict) else None
+        out.append({"input": name if isinstance(name, str) else None, "judgment_input": name in PI_INPUTS,
+                    "reachable": None if blk is None else bool(blk.get("reachable")),
+                    "price_implied": None if blk is None else blk.get("value"), "own": None if blk is None else blk.get("own")})
+    return out
+
+
+def crux_desk_check_lines(items):
+    """One line per crux entry for the model: not a judgment input, not reachable, or ok with the price-implied value and the run's own."""
+    lines = []
+    for i, it in enumerate(items or [], 1):
+        name = it.get("input")
+        if not it.get("judgment_input"):
+            lines.append(f"crux[{i}] {name}: not a judgment input (v1 fails)")
+        elif not it.get("reachable"):
+            lines.append(f"crux[{i}] {name}: the price-implied value is not reachable inside its bound (v2 fails)")
+        else:
+            lines.append(f"crux[{i}] {name}: judgment input, reachable: price-implied {_fmt_pi_value(name, it.get('price_implied'))} "
+                         f"[yours {_fmt_pi_value(name, it.get('own'))}]")
+    return lines
 
 
 def _fmt_pi_value(name, v):
@@ -1638,6 +1670,12 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 if not (0.99 <= total <= 1.01):
                     missing.append("scenarios[].prob (Base, Bull and Bear must sum to 0.99-1.01)")
 
+    # B2 (revision 19): a crux that is present must be well formed (a list of one to three entries, each with a judgment input, a reason and one to
+    # five citations of {source, date, quote}); a failure is a `missing` entry, so the call is refused and does not use a desk run. A crux is optional:
+    # none means HOLD, never a refusal, and nothing else about it refuses (validity is crux_check's, outside the desk).
+    for problem in crux_check.form_problems(params.get("crux"), ctx.get("run_date") or datetime.date.today().isoformat()):
+        missing.append(problem)
+
     # AT10 fix item 3 (revision 19): an excess_cash above the base fiscal year's cash and short-term investments is refused, whatever
     # reason comes with it (cash received after the valuation date is already in the cash flows). The bound is the pack's fact; with
     # no fact it is the DEFAULTS excess_cash when numeric, else 0. The tolerance is the printed precision, $1,000.
@@ -2170,6 +2208,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     if pi_key is not None and _is_num(price) and price > 0:
         result["price_implied"] = price_implied(base_solver[pi_key], float(price), rf_eff=ctx.get("rf_eff"),
                                                 gdp_trend=ctx.get("nominal_gdp_trend"), levels=ctx.get("levels"))
+        if isinstance(params.get("crux"), list) and params["crux"]:
+            result["crux_desk_check"] = crux_desk_check(params["crux"], result["price_implied"])
 
     # ---- 3. Reverse DCF expectations gap (own structure + neutral reference from context) -----
     base_role_sc = next((s for s in scenarios if isinstance(s, dict) and _role_of(s.get("name")) == "base"), None)

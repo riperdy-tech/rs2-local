@@ -66,7 +66,9 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 # cash_basis_b", a rule the desk stopped applying in brief F6).
 # 2026-10-01 (revision 18, brief 1.7): run_financial_model's schema gained excess_cash and excess_cash_reason; was
 # "84a5d721b704401741dc1cb755b0461408e32830b4cec91a8c26327fe5928b40". The model's system text (the Modelfiles) is untouched.
-TOOLS_SHA256 = "1caed0f6c38965b562b77783bb33e483b3b6241b400321e53a37f25b3f1f1f21"
+# 2026-10-02 (revision 19, brief B1): the description gains the price_implied sentence and the schema gains the crux argument; was
+# "1caed0f6c38965b562b77783bb33e483b3b6241b400321e53a37f25b3f1f1f21".
+TOOLS_SHA256 = "cff81bb1b95cdf0acc136564bd66022d06413c5bb94bc09e414201eec8242914"
 # research_tools() (search_web, fetch_page) is unchanged, so its pin stays.
 RESEARCH_TOOLS_SHA256 = "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"

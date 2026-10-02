@@ -3,6 +3,7 @@
 Given the calculator calls of one sample, its typed contract, the pack facts and price,
 returns the values code writes into the contract and the provenance of each.
 """
+import crux_check
 from fiduciary_gate import payoff_skew
 from financial_model_tool import _normalize_cash_flow_life
 
@@ -13,6 +14,10 @@ REASONS_11 = (
     "terminal_reason", "coe_adjustment_reason", "shares_reason", "net_debt_reason", "wacc_reason",
     "bull_below_price_reason", "bear_above_price_reason", "excess_cash_reason",
 )
+# revision 19: the label's revision-18 direction and the crux behind it, each with its owner here so none is dropped: direction_m the label before the
+# crux (stamped on every sample), crux the answer call's argument, crux_check crux_check.check's record with the label's stamps, price_implied the
+# answer call's block
+REVISION_19 = ("direction_m", "crux", "crux_check", "price_implied")
 
 FILLED = (
     "base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability",
@@ -22,7 +27,7 @@ FILLED = (
     # S3 3.8: revision-15 additions. base_cf_basis is derived; interest_addback and the 11 reasons
     # (cash_flow_life_reason among them) are now call arguments, copied from the answer call.
     "base_cf_basis", "interest_addback",
-) + REASONS_11
+) + REASONS_11 + REVISION_19
 ROLES = ("base", "bull", "bear")
 REL = 0.010001          # the harness's 1% desk-match tolerance (consensus_valuation, `close`)
 
@@ -159,7 +164,7 @@ def label(base, price):
     return "undervalued" if m >= 0.10 else "overvalued" if m <= -0.10 else "hold"
 
 
-def fill(calls, typed, facts, price, ticker=None, allow_blend=True):
+def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=None, company=None):
     """(filled, prov). `typed` is the sample's parsed contract (extract_scorecard); `facts` needs
     'shares_outstanding' (raw count or None) and 'coe_anchor' (fraction or None). `ticker` is only
     needed for a revision-15 answer run's base_cf_basis (3.8); omit it and that field falls back
@@ -169,7 +174,12 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True):
     marker, `pack_facts.is_revision_15`) — no blend is ever published, even when the session has
     no joint or scenario-wise desk run at all (only blend calls), which `is_r15` below cannot
     detect on its own (a blend call's `entries()` carries no role, so `ref_call` stays None and
-    `is_r15` stays False). Defaults to True, so an older pack keeps S2's blend rule (R6)."""
+    `is_r15` stays False). Defaults to True, so an older pack keeps S2's blend rule (R6).
+
+    Revision 19 (brief B6): `pack_text` (the pack the model read, frozen as _pack.md) and `company` (rs2_data.resolve_name) are what the crux check
+    reads, with the sample's own `calls` (its fetched pages) and `ticker`. From the answer call (`ref_call`) the fill copies `crux` (its params) and
+    `price_implied` (its result), runs crux_check.check, and sets `verdict_label` by crux_check.label19; `direction_m` (the revision-18 label) is
+    stamped on every sample, and `crux_check` carries the validity record with the label's stamps."""
     typed = typed or {}
     facts = facts or {}
     done = [c for c in (calls or []) if completed(c)]
@@ -364,7 +374,18 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True):
 
     base = out.get("base_iv") if "base_iv" in out else None
     if base is not None:
-        out["verdict_label"] = label(base, price)
+        # revision 19 (brief 1.4, B6): the label is the revision-18 direction when it is hold, or when it is directional and the answer call's crux is
+        # valid on the pack and this sample's fetched pages; otherwise hold, stamped no_valid_crux. A sample whose answer run is a frozen older pack
+        # gets the same rule: with no crux, a directional sample is hold.
+        crux = (ref_call.get("params") or {}).get("crux") if ref_call is not None else None
+        pi = _body(ref_call).get("price_implied") if ref_call is not None else None
+        chk = crux_check.check(crux, pi, pack_text, calls, company, ticker, facts)
+        lab, direction_m, stamps = crux_check.label19(base, price, chk)
+        out["verdict_label"] = lab
+        out["direction_m"] = direction_m
+        out["crux"] = crux
+        out["price_implied"] = pi
+        out["crux_check"] = dict(chk, stamps=stamps)
         out["asymmetric_payoff_skew"] = payoff_skew(out.get("bull_iv"), out.get("bear_iv"), price)
     filled = {}
     for k in FILLED:

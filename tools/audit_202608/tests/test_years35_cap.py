@@ -764,6 +764,8 @@ def test_18_plumbing_consensus_valuation_passes_desk_context(monkeypatch, tmp_pa
         "excess_cash", "reference_status",
         # revision 19 (AT10 fix item 3): the bound the desk holds an excess_cash to
         "base_year_cash_and_investments_b",
+        # revision 19 (B4): the name and ticker the citation check's news-filter rule needs
+        "ticker", "company",
     }
     for ctx in captured_calls:
         assert set(ctx.keys()) == expected_keys

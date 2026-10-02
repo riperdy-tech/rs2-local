@@ -47,6 +47,11 @@ sys.path.insert(0, str(HERE))
 
 import rs2_data  # noqa: E402
 
+_AUDIT_DIR = str(Path(__file__).resolve().parent)
+if _AUDIT_DIR not in sys.path:
+    sys.path.insert(0, _AUDIT_DIR)
+import crux_check  # noqa: E402  (revision 19: the judgment inputs, the citation check)
+
 SEARX = rs2_data.CONFIG.get("searxng_url", "http://localhost:8888")
 OLLAMA = "http://127.0.0.1:11434/api/chat"
 MAX_TOOL_CALLS = 25          # balanced research budget; deduplication eliminates redundant query loops
@@ -93,6 +98,17 @@ DESK_CLOSED_LINE = ("The desk is closed: run_financial_model is no longer offere
 PART_CHARS = 9000
 PDF_REFUSAL = ("this address is a PDF document; fetch_page reads web pages and text only. Search for the same document "
                "as a web page (for a filing, its sec.gov HTML version).")
+
+# revision 19 (brief_rev19.md B1): the crux argument of the desk call, verbatim
+CRUX_DESCRIPTION = (
+    "Your stated disagreement with today's price, needed for a verdict of undervalued or overvalued (TASK item 6): one "
+    "to three of the desk's judgment inputs (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, "
+    "year2_level) on which your evidence says the price is wrong. For each: input; reason (why this company's value of "
+    "it differs from what the price implies, and by how much); citations, one to five of {source, date, quote}: source "
+    "is DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or the exact URL of a page you fetched in "
+    "this session that names the company; date is YYYY-MM-DD; quote is 30 to 600 characters copied exactly from that "
+    "source. Code fills in your value and the price-implied value from this run. Leave crux out when you have no such "
+    "disagreement: the verdict is then HOLD.")
 
 TOOLS = [{
     "type": "function",
@@ -152,6 +168,8 @@ TOOLS = [{
             "five years of cash-flow growth, fade, discount rate and terminal growth (with an optional "
             "terminal_ronic) give its per-share value. The desk also returns the reverse DCF (the growth today's "
             "price implies, under your structure and under the neutral reference) and quarter-Kelly sizing. "
+            "On every run the desk also returns price_implied: for each judgment input, the value at which the Base "
+            "would equal today's price with your other inputs unchanged, or not reachable inside its bound. "
             "The harness supplies today's price, the pack's share count, the anchors and the base-rate table; "
             "pass only your decisions. An input that departs from its DEFAULT needs its reason argument: the "
             "desk names any that are missing, and a refused call does not use one of your desk runs. The desk "
@@ -241,6 +259,34 @@ TOOLS = [{
                 "bear_above_price_reason": {
                     "type": "string",
                     "description": "When the Bear value is above today's price: why even the downside case is worth more than the price, with dated evidence."
+                },
+                "crux": {
+                    "type": "array",
+                    "description": CRUX_DESCRIPTION,
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "input": {"type": "string", "enum": list(crux_check.J)},
+                            "reason": {"type": "string"},
+                            "citations": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 5,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "source": {"type": "string"},
+                                        "date": {"type": "string"},
+                                        "quote": {"type": "string"}
+                                    },
+                                    "required": ["source", "date", "quote"]
+                                }
+                            }
+                        },
+                        "required": ["input", "reason", "citations"]
+                    }
                 },
                 "explicit_growth": {
                     "type": "array",
@@ -1077,6 +1123,47 @@ def _shorten_tool_calls(tool_calls, limit=ARG_MAX_CHARS):
     return out
 
 
+def crux_citation_check(crux, pack_text, calls, desk_context):
+    """B4 (revision 19), information only: after a desk result, v3 of the crux check on the pack text (the session's first user message) and the
+    session's fetch_page records so far. Per entry, the class of each citation and whether its quote was found (crux_check.classify_citations,
+    the one owner). `desk_context` carries the company name and ticker the news filter's rule needs."""
+    ctx = desk_context or {}
+    sources = crux_check.pack_sources(pack_text)
+    fetched = crux_check.fetched_texts(calls)
+    out = []
+    for e in crux if isinstance(crux, list) else []:
+        if isinstance(e, dict):
+            out.append({"input": e.get("input"),
+                        "citations": crux_check.classify_citations(e.get("citations"), sources, fetched, ctx.get("company"), ctx.get("ticker"))})
+    return out
+
+
+CITATION_CLASS_TEXT = {"pack_company": "the company's own filing or release in the pack",
+                       "fetched_page_naming_company": "a page you fetched that names the company",
+                       "generic": "context, not company evidence",
+                       "unknown_source": "a page you have not fetched in this session, not evidence"}
+
+
+def crux_citation_lines(items):
+    """One line per citation for the model: its source, what class of evidence it is, and for company evidence whether the quote was found."""
+    lines = []
+    for i, it in enumerate(items or [], 1):
+        for k, c in enumerate(it.get("citations") or [], 1):
+            text = CITATION_CLASS_TEXT.get(c.get("class"), str(c.get("class")))
+            if c.get("quote_found") is not None:
+                text += ", quote found" if c["quote_found"] else ", quote NOT found"
+            lines.append(f"crux[{i}] {it.get('input')} citation {k} ({c.get('source')}): {text}")
+    return lines
+
+
+def _crux_lines(result):
+    """The crux lines of a desk result: the desk's own check (B3), then the citation check (B4)."""
+    import financial_model_tool as fmt
+    if not isinstance(result, dict):
+        return []
+    return fmt.crux_desk_check_lines(result.get("crux_desk_check")) + crux_citation_lines(result.get("crux_citation_check"))
+
+
 def _own_growth_notes(rd):
     """Revision 19 (brief 10a): what the model must be told about the own-structure growth the reverse DCF solved. A price no constant growth
     reaches is "not reachable"; a price reached at more than one constant growth lists every root (the solver shows the one nearest the
@@ -1139,6 +1226,9 @@ def _desk_summary(args, result):
     pi_lines = fmt.price_implied_lines(result.get("price_implied"))
     if pi_lines:
         out["price_implied"] = pi_lines
+    crux_lines = _crux_lines(result)
+    if crux_lines:
+        out["crux_check"] = crux_lines
     return out
 
 
@@ -1321,6 +1411,8 @@ def compact_tool_note(name, args, result, call_index) -> str:
             import financial_model_tool as fmt
             for line in fmt.price_implied_lines(result.get("price_implied")):
                 note += f"\nprice_implied {line}"
+            for line in _crux_lines(result):
+                note += "\n" + line
         return note
 
     return str(result)[:500]
@@ -2026,6 +2118,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         else:
                             model_calls += 1
                             desk_refusal_window = None
+                            if isinstance(result, dict) and isinstance((args or {}).get("crux"), list) and args["crux"]:
+                                # B4 (revision 19): v3 of the crux check on the pack and the pages fetched so far, shown to the model
+                                result = dict(result, crux_citation_check=crux_citation_check(args["crux"], msgs[0]["content"], snap, desk_context))
 
                     if max_model_calls > 0 and isinstance(result, dict):
                         result = dict(result)
