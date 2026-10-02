@@ -1,0 +1,2 @@
+charters/*.txt -text
+tests/fixtures/ollama2llamacpp.py -text
