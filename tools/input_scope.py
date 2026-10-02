@@ -447,9 +447,10 @@ def nci_data_line(nci, mixed_years, fmt_b):
         if nci["basis"] == "equity_split":
             basis += (f": equity attributable to the company {_money(nci['equity'], fmt_b)} of consolidated "
                       f"{_money(nci['equity_incl_nci'], fmt_b)}")
-        text = (f"- NONCONTROLLING INTERESTS: FY{y} net income attributable to the company {_money(nci['ni_parent'], fmt_b)}{derived} of "
-                f"consolidated {_money(nci['ni_incl_nci'], fmt_b)} (π = {_pct(nci['pi'])}, {basis}); the reference values the consolidated "
-                f"business and attributes π of it to the common shares")
+        cons = (f" of consolidated {fmt_b(nci['ni_incl_nci'])}" if nci["ni_incl_nci"] is not None else
+                " (the consolidated net income is not filed)")
+        text = (f"- NONCONTROLLING INTERESTS: FY{y} net income attributable to the company {_money(nci['ni_parent'], fmt_b)}{derived}{cons} "
+                f"(π = {_pct(nci['pi'])}, {basis}); the reference values the consolidated business and attributes π of it to the common shares")
     if mixed_years:
         text += (f"; the record's returns, margins and working capital use consolidated net income and equity except "
                  f"FY{', FY'.join(str(x) for x in mixed_years)}, where only the company's own figures are filed ({mixed_stamp(mixed_years)})")
