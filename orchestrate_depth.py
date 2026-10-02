@@ -916,6 +916,16 @@ def main():
         write_progress(0, None, False)
         return 0
 
+    if llamacpp_server.is_enabled():
+        # Muse integration, C6: a production sweep is a run. The full sha256 of the model and drafter are taken (and recorded) now,
+        # so each start() inside the sweep only compares name, size and modification time with this record.
+        try:
+            llamacpp_server.begin_run()
+        except (llamacpp_server.ServerRefusal, OSError) as e:
+            log(f"::VRAM:: llama-server model files are not the pinned ones — sweep refused: {e}")
+            write_progress(0, None, False)
+            return 1
+
     LOCK.write_text(json.dumps({"pid": subprocess.os.getpid(),
                                 "ts": datetime.now().isoformat()}), encoding="utf-8")
 
