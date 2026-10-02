@@ -383,11 +383,12 @@ def test_not_reachable_exactly_when_the_price_is_outside_the_values_over_the_bou
 
 def test_the_value_is_not_monotone_in_terminal_ronic_near_unlimited_and_the_solver_says_so():
     """+inf is its own case in the long run (the return fades from RONIC_0 to RONIC_T, and an infinite RONIC_T is not the limit of a large one),
-    so the value over [coe, +inf] is not monotone for this Base: a price just above the +inf end is still reached, at a finite return, twice."""
+    so the value over [coe, +inf] is not monotone for this Base: a price just above the +inf end is reached at a finite return, and the jump at +inf is no
+    second root (B-1)."""
     b = _b(growth=[0.12, 0.10, 0.08, 0.07, 0.06], tg=0.03, ronic=0.12, wacc=0.09)
     bd = _pi(b, 15.0)["terminal_ronic"]["bound"]
     blk = _pi(b, bd["value_high"] + 0.01)["terminal_ronic"]
-    assert blk["reachable"] and blk["roots_on_grid"] == 2 and "non_monotone" in blk["stamps"]
+    assert blk["reachable"] and blk["roots_on_grid"] == 1 and blk["discontinuities"] == 1 and "discontinuity" in blk["stamps"]    # B-1: the second "root" was the jump at +inf
     assert blk["value"] != "unlimited" and abs(_substitute(b, "terminal_ronic", blk) - (bd["value_high"] + 0.01)) <= 0.01
 
 
@@ -717,3 +718,96 @@ def test_the_compact_note_tells_the_model_when_the_own_growth_is_not_unique_or_n
     assert '"implied_stage1_growth_pct":40.5' in note(many)
     assert '"own_structure":"not reachable"' in note(none) and "implied_stage1_growth_pct" not in note(none)
     assert at._desk_summary({}, {"reverse_dcf": many})["reverse_dcf"]["own_growth_roots_pct"] == [-12.0, 40.5, 133.0]
+
+
+# ---- B-1 (the reviewer's evidence, SP/review_r19): a jump of the value is not a root --------------------------------------------------------------
+
+def _ronic_jump_prices(b):
+    """(V at unlimited, V at the largest finite return the search reaches, a price inside the jump between them): the frozen arithmetic treats an
+    unlimited return on new investment differently from a very large finite one, so the value jumps at +inf."""
+    v_inf = _value(b, ronic=INF)
+    v_big = _value(b, ronic=b["wacc"] * 1e9)
+    assert abs(v_inf - v_big) > 0.5
+    return v_inf, v_big, (v_inf + v_big) / 2.0
+
+
+@pytest.mark.parametrize("own_ronic", [INF, 0.12])
+def test_a_price_inside_the_unlimited_return_jump_is_solved_at_the_real_root_not_at_the_jump(own_ronic):
+    """The brackets next to u = 0 (unlimited) hold the jump; the root the solver reports is the nearest bracket that holds a root. Own value unlimited
+    (the 44 DEFAULTS that print unlimited) and own value finite."""
+    b = _b(growth=[0.12, 0.10, 0.08, 0.07, 0.06], tg=0.03, ronic=own_ronic, wacc=0.09)
+    v_inf, v_big, price = _ronic_jump_prices(b)
+    blk = _pi(b, price)["terminal_ronic"]
+    assert blk["reachable"] is True and blk["value"] != "unlimited" and blk["value"] < 100.0         # a finite return, not the jump's edge (wacc / 1e-9)
+    assert abs(_substitute(b, "terminal_ronic", blk) - price) <= 0.01
+    assert blk["roots_on_grid"] == 1 and blk["discontinuities"] == 1 and blk["stamps"] == ["discontinuity"]
+
+
+def test_the_discontinuity_is_counted_apart_from_the_roots_and_the_roots_are_not_miscounted():
+    b = _b(growth=[0.12, 0.10, 0.08, 0.07, 0.06], tg=0.03, ronic=0.12, wacc=0.09)
+    plain = _pi(b, 20.0)["terminal_ronic"]                                  # a price the jump does not touch: one root, no jump
+    assert plain["reachable"] and plain["roots_on_grid"] == 1 and plain["discontinuities"] == 0 and plain["stamps"] == []
+    v_inf, v_big, price = _ronic_jump_prices(b)
+    assert max(v_inf, v_big) > price > min(v_inf, v_big)
+
+
+def test_solve_nearest_returns_not_reachable_when_every_bracket_is_a_jump():
+    step = lambda s: -1.0 if s < 0.5 else 1.0                              # the value jumps over the price at 0.5 and nowhere crosses it
+    res = fmt.solve_nearest(step, [k / 10.0 for k in range(11)], 0.2)
+    assert res["found"] is False and res["s"] is None and res["roots_on_grid"] == 0 and res["discontinuities"] == 1 and res["side"] is None
+    assert res["error"] is None and res["roots"] == []
+
+
+def test_solve_nearest_takes_the_nearest_bracket_that_holds_a_root_and_counts_both_kinds():
+    # f: a jump at 0.25 (-1 to +1), a real crossing at 0.575, a jump at 0.9 (-1 to +1)
+    def f(s):
+        if s < 0.25:
+            return -1.0
+        return 1.0 - (s - 0.25) * 2.0 / 0.65 if s <= 0.9 else 1.0
+    grid = [k / 20.0 for k in range(21)]
+    res = fmt.solve_nearest(f, grid, 0.25)                                  # own value on the first jump
+    assert res["found"] and res["s"] == pytest.approx(0.575, abs=1e-6) and abs(res["f"]) <= fmt.SOLVER_RESIDUAL
+    assert res["roots_on_grid"] == 1 and res["discontinuities"] == 2 and res["roots"] == pytest.approx([0.575], abs=1e-6)
+    near_jump = fmt.solve_nearest(f, grid, 0.95)                            # own value beside the upper jump: the root is still the answer
+    assert near_jump["found"] and near_jump["s"] == pytest.approx(0.575, abs=1e-6)
+
+
+def test_a_residual_at_the_limit_is_a_root_and_one_just_above_is_a_jump():
+    below = fmt.solve_nearest(lambda s: -0.0099 if s < 0.5 else 0.0099, [k / 10.0 for k in range(11)], 0.5)
+    above = fmt.solve_nearest(lambda s: -0.0101 if s < 0.5 else 0.0101, [k / 10.0 for k in range(11)], 0.5)
+    assert below["found"] and below["discontinuities"] == 0 and abs(below["f"]) <= 0.0099
+    assert above["found"] is False and above["discontinuities"] == 1
+
+
+def test_a_finite_life_staircase_residual_above_a_cent_is_no_root_and_below_a_cent_is():
+    """The finite-life value rounds each year's PV to 0.0001 $B: a staircase whose steps are $1 on a 100,000-share name and $0.0001 on a 1B-share name."""
+    for shares, step, reachable in ((1e-4, 1.0, False), (1.0, 1e-4, True)):
+        b = _b(finite=10, shares=shares, ronic=None, growth=[0.1, 0.08, 0.06, 0.05, 0.04], wacc=0.1)
+        levels = sorted({_value(b, wacc=0.1 + 1e-8 * k) for k in range(2000)}, reverse=True)
+        assert levels[0] - levels[1] == pytest.approx(step, rel=1e-3)
+        price = (levels[1] + levels[2]) / 2.0                              # half a step from both neighbouring levels
+        blk = _pi(b, price)["coe"]
+        assert blk["reachable"] is reachable
+        if reachable:
+            assert abs(blk["base_at_value"] - price) <= 0.01 and blk["discontinuities"] == 0
+        else:
+            assert blk["value"] is None and blk["discontinuities"] >= 1 and "discontinuity" in blk["stamps"] and blk["side"] is None
+        exact = _pi(b, levels[2])["coe"]                                   # a price AT a level is reached whatever the step
+        assert exact["reachable"] and abs(exact["base_at_value"] - levels[2]) <= 0.01
+
+
+def test_the_own_structure_reverse_dcf_skips_a_jump_and_says_so_when_only_a_jump_is_left(monkeypatch):
+    step = lambda g: 80.0 if g < 0.5 else 120.0                              # a jump over the price at g = 0.5, no crossing anywhere else
+    monkeypatch.setattr(fmt, "unbundled_dcf", lambda **kw: {"per_share_iv_raw": step(kw["explicit_growth"][0]), "per_share_iv": 0.0})
+    r = fmt.reverse_dcf_expectations_gap(current_price=100.0, shares_diluted=1.0, base_cf=1.0, wacc=0.09, terminal_g=0.03)
+    own = r["own_structure"]
+    assert own["reachable"] is False and own["solved_growth_pct"] is None and own["discontinuities"] == 1 and own["roots_on_grid"] == 0
+    assert own["side"] is None and own["stamps"] == ["discontinuity"] and r["implied_growth_next_5y_pct"] is None
+    md = fmt.format_model_results_markdown({"price": 100.0, "reverse_dcf": r})
+    assert "**not reachable**" in md and "jumps past today's price" in md and "outside every value" not in md
+    # the same function with a real crossing beside the jump: the crossing is the answer
+    shape = lambda g: step(g) if g < 1.0 else 100.0 + (g - 1.5) * 40.0
+    monkeypatch.setattr(fmt, "unbundled_dcf", lambda **kw: {"per_share_iv_raw": shape(kw["explicit_growth"][0]), "per_share_iv": 0.0})
+    r2 = fmt.reverse_dcf_expectations_gap(current_price=100.0, shares_diluted=1.0, base_cf=1.0, wacc=0.09, terminal_g=0.03, x0=0.5)
+    assert r2["own_structure"]["reachable"] and r2["own_structure"]["solved_growth_pct"] == pytest.approx(150.0, abs=0.01)
+    assert r2["own_structure"]["discontinuities"] >= 1 and "discontinuity" in r2["own_structure"]["stamps"]

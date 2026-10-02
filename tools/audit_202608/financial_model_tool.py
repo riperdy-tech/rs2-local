@@ -636,6 +636,7 @@ SOLVER_GRID_POINTS = 121
 SOLVER_TOL = 0.0005             # dollars per share: a point with |value - price| at or below this is a root
 SOLVER_NARROW = 1e-9            # a bisection stops only when its bracket is narrower than this, in the search variable's units
 SOLVER_MAX_ITER = 200
+SOLVER_RESIDUAL = 0.01          # dollars per share: a bracket whose bisection ends further than this from the price holds a jump, not a root (B-1)
 IDENTITY_TOL = 1e-6             # dollars per share: the rebuilt Base against the desk's own unrounded value
 PI_INPUTS = crux_check.J         # the judgment inputs: one owner (crux_check), the desk and the schema read it
 PI_FADE_MAX = 60                # the desk's finite-life limit, which bounds the fade search too
@@ -707,11 +708,16 @@ def solve_nearest(f, points, s0, *, tol=SOLVER_TOL, narrow=SOLVER_NARROW, max_it
       points whose values differ in sign, or a point with |f| <= tol. The bracket nearest s0 (distance from s0 to its nearer end; a tie goes to
       the lower bracket) is bisected. Returns {"found", "s", "f", "bracket", "roots_on_grid", "side", "values", "points", "roots"}:
       `side` is "above" when the price is above every value on the grid, "below" when it is below every one (None otherwise), set only when
-      no bracket exists; `roots` (all_roots=True) lists the bisected root of every bracket, in ascending order."""
+      no bracket exists; `roots` (all_roots=True) lists the bisected root of every bracket that holds one, in ascending order.
+      B-1 (the reviewer's evidence, SP/review_r19): a sign change is also what a JUMP of the value looks like (the frozen arithmetic treats an unlimited
+      RONIC differently from a very large finite one; a finite-life value is a staircase). A bracket whose bisection ends more than SOLVER_RESIDUAL
+      from the price holds no root: it is counted in `discontinuities`, never in `roots_on_grid` (the brackets that DO hold a root), and the nearest
+      bracket that holds a root is the answer. When none does the input is not reachable; `side` stays None (the price is inside a jump, not
+      beyond every value) and the caller stamps `discontinuity`."""
     pts = sorted(set(float(p) for p in points) | ({float(s0)} if (s0 is not None and points[0] <= s0 <= points[-1]) else set()))
     vals = [f(p) for p in pts]
     brs = _find_brackets(vals, tol)
-    out = {"found": False, "s": None, "f": None, "bracket": None, "roots_on_grid": len(brs), "side": None, "values": vals, "points": pts,
+    out = {"found": False, "s": None, "f": None, "bracket": None, "roots_on_grid": 0, "discontinuities": 0, "side": None, "values": vals, "points": pts,
            "roots": [], "error": None}
     if not brs:
         ev = [v for v in vals if v is not None]
@@ -731,19 +737,24 @@ def solve_nearest(f, points, s0, *, tol=SOLVER_TOL, narrow=SOLVER_NARROW, max_it
     def dist(br):
         a, b = pts[br[0]], pts[br[1]]
         return 0.0 if a <= s0 <= b else min(abs(s0 - a), abs(s0 - b))
-    chosen = min(brs, key=lambda br: (dist(br), pts[br[0]]))
-    s, fs, a, b = root_of(chosen)
-    if s is None:
-        out["error"] = "evaluation"
+    ordered = sorted(brs, key=lambda br: (dist(br), pts[br[0]]))
+    roots, first, jumps, failed = [], None, 0, 0
+    for br in ordered:
+        r = root_of(br)
+        if r[0] is None:
+            failed += 1
+        elif abs(r[1]) > SOLVER_RESIDUAL:
+            jumps += 1
+        else:
+            roots.append(r[0])
+            first = first or r
+    if first is None:
+        if failed and not jumps:
+            out["error"] = "evaluation"
+        out["discontinuities"] = jumps
         return out
-    out.update(found=True, s=s, f=fs, bracket=(a, b))
-    if all_roots:
-        roots = []
-        for br in brs:
-            r = (s, fs, a, b) if br == chosen else root_of(br)
-            if r[0] is not None:
-                roots.append(r[0])
-        out["roots"] = sorted(roots)
+    out.update(found=True, s=first[0], f=first[1], bracket=(first[2], first[3]), roots_on_grid=len(roots), discontinuities=jumps)
+    out["roots"] = sorted(roots)
     return out
 
 
@@ -844,12 +855,15 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
         lo, hi, vlo, vhi = bound
         blk = {"value": None, "reachable": False, "own": _json_num(own),
                "bound": {"low": _json_num(lo), "high": _json_num(hi), "value_low": vlo, "value_high": vhi},
-               "side": res["side"], "base_at_value": None, "roots_on_grid": res["roots_on_grid"], "bracket": None, "stamps": []}
+               "side": res["side"], "base_at_value": None, "roots_on_grid": res["roots_on_grid"], "discontinuities": res.get("discontinuities", 0),
+               "bracket": None, "stamps": []}
         if res["found"]:
             blk.update(value=_json_num(to_value(res["s"])), reachable=True, side=None, base_at_value=None if res["f"] is None else res["f"] + price,
                        bracket=[res["bracket"][0], res["bracket"][1]])
         if res["roots_on_grid"] > 1:
             blk["stamps"].append("non_monotone")
+        if res.get("discontinuities"):
+            blk["stamps"].append("discontinuity")          # B-1: the price is inside a jump of the value; no value of the input reproduces it there
         if res.get("error"):
             blk["stamps"].append("evaluation_error")
         if extra:
@@ -859,7 +873,7 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
     def unavailable(name, own, why):
         return {"value": None, "reachable": False, "own": _json_num(own),
                 "bound": {"low": None, "high": None, "value_low": None, "value_high": None},
-                "side": None, "base_at_value": None, "roots_on_grid": 0, "bracket": None, "stamps": [], "not_available": why}
+                "side": None, "base_at_value": None, "roots_on_grid": 0, "discontinuities": 0, "bracket": None, "stamps": [], "not_available": why}
 
     def ends(f, lo, hi):
         va, vb = f(lo), f(hi)
@@ -901,7 +915,7 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
     v0, v60 = f(0), f(PI_FADE_MAX)
     blk = {"value": None, "reachable": False, "own": fade0,
            "bound": {"low": 0, "high": PI_FADE_MAX, "value_low": None if v0 is None else v0 + price, "value_high": None if v60 is None else v60 + price},
-           "side": res["side"], "base_at_value": None, "roots_on_grid": res["roots_on_grid"], "bracket": None, "stamps": [], "bracket_years": None,
+           "side": res["side"], "base_at_value": None, "roots_on_grid": res["roots_on_grid"], "discontinuities": 0, "bracket": None, "stamps": [], "bracket_years": None,
            "bracket_values": None}
     if res["found"]:
         fa, fb = res["values"]
@@ -1126,8 +1140,9 @@ def reverse_dcf_expectations_gap(
             "reachable": own["found"],
             "side": own["side"],
             "roots_on_grid": own["roots_on_grid"],
+            "discontinuities": own["discontinuities"],
             "roots_pct": roots_pct,
-            "stamps": ["multiple_roots"] if own["roots_on_grid"] > 1 else [],
+            "stamps": (["multiple_roots"] if own["roots_on_grid"] > 1 else []) + (["discontinuity"] if own["discontinuities"] else []),
         },
         "implied_growth_next_5y_pct": implied_g_pct,
     }
@@ -2403,8 +2418,12 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
             lines.append("**Reverse DCF Expectations Gap (What's Priced in at T0):**")
             os_ = r.get("own_structure") or {}
             if r.get("implied_growth_next_5y_pct") is None:
-                lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **not reachable** (no constant growth between -99% and "
-                             f"the search ceiling makes your structure's value equal today's price: the price is {os_.get('side') or 'outside'} every value)")
+                if os_.get("discontinuities"):
+                    lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **not reachable** (your structure's value jumps past today's price "
+                                 f"between two nearby constant growths; no constant growth gives a value equal to it)")
+                else:
+                    lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **not reachable** (no constant growth between -99% and "
+                                 f"the search ceiling makes your structure's value equal today's price: the price is {os_.get('side') or 'outside'} every value)")
             else:
                 lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **{r.get('implied_growth_next_5y_pct'):+.1f}%**")
                 if os_.get("roots_on_grid", 0) > 1:
