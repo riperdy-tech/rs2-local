@@ -92,6 +92,9 @@ def check_preconditions(results, day_meta, day_sha256, config):
             problems.append(f"the configuration differs from the one the ATs passed on: {k}")
     if config.get("tree_clean") is not True or day_config.get("tree_clean") is not True:
         problems.append("the tree is not clean (uncommitted changes): the look runs on a committed configuration only")
+    at5 = results.get("AT5")
+    if isinstance(at5, dict) and at5.get("pass") is True and not (isinstance(at5.get("gross_error_read_sha256"), str) and len(at5["gross_error_read_sha256"]) == 64):
+        problems.append("AT5 is recorded as passed without the reviewer's gross-error read (AT5' binds on it)")      # revision 19 (B-3)
     for at in DAY_BASED:
         r = results.get(at)
         if isinstance(r, dict) and r.get("day_file_sha256") != day_sha256:

@@ -118,25 +118,90 @@ def at4(rows, *, names=True):
                        f"not_meaningful"}
 
 
-# ---- AT5 level sanity ----------------------------------------------------------------------------------------------------------------------
+# ---- AT5' level sanity: the median clause and the reviewer's gross-error read (revision 19, brief_rev19.md 10b; recorded as post-hoc) -------------------
 
-def at5(rows, *, names=True):
-    """Over the names with a printed reference and a price: the median V/P lies in [0.70, 1.45] and at most 10% of them lie above 3x or
-    below 1/3x their price (a gross-error detector, not a calibration claim)."""
-    vps = []
-    for r in _built(rows).values():
+AT5_MEDIAN_BAR = (0.70, 1.45)
+READ_AT = "AT5 gross-error read"
+
+
+def scale_risk(r):
+    """True when a built name's reference is one the gross-error read must look at when it is extreme: it carries a shares warning, a share-scale gap
+    (SECTION 2's SHARES ALERT, or the SCALE CORRUPTION note of its filed series) or is valued by the cash-only method."""
+    f, ref, text = r.get("facts") or {}, r.get("reference") or {}, r.get("text") or ""
+    return bool(f.get("shares_warning")) or "SHARES ALERT" in text or "SCALE CORRUPTION" in text or ref.get("method") == "cash_only"
+
+
+def read_problems(read, to_read, day_sha256=None):
+    """(unread, errors, problems): `read` is the reviewer's file as a dict {"at": READ_AT, "day_file_sha256": ..., "reads": {row key: {"unit_or_scale_error":
+    bool}}}; `to_read` the row keys the read must cover. `unread` the keys it does not cover (or covers with a non-boolean answer), `errors` the keys it
+    marks as a unit or scale error, `problems` strings (no ticker) about the file itself: a wrong kind, or one written for another day file."""
+    problems = []
+    if not isinstance(read, dict) or read.get("at") != READ_AT or not isinstance(read.get("reads"), dict):
+        return sorted(to_read), [], ["the gross-error read is not in the form the scripts take (see at5_level_sanity.py)"]
+    if day_sha256 is not None and read.get("day_file_sha256") != day_sha256:
+        problems.append("the gross-error read was written for another day file")
+    unread, errors = [], []
+    for k in sorted(to_read):
+        e = read["reads"].get(k)
+        v = e.get("unit_or_scale_error") if isinstance(e, dict) else None
+        if not isinstance(v, bool):
+            unread.append(k)
+        elif v:
+            errors.append(k)
+    return unread, errors, problems
+
+
+def at5(rows, *, names=True, read=None, read_sha256=None, day_sha256=None):
+    """AT5', the operator's restatement of AT5 (brief_rev19.md 10b; post-hoc, recorded as such). Over the names with a printed reference and a price:
+      - the median V/P lies in [0.70, 1.45] (a bar);
+      - the share above 3x or below 1/3x is REPORTED with its census, never marked (the 10% clause is gone: it tested the dispersion of the generic
+        engine ruling 1 froze); the census is counts only, no ticker: above, below, outside the analysts' fence, levels method, cash-only, shares flag;
+      - the reviewer's gross-error read BINDS: every extreme that carries a shares warning, a share-scale gap or the cash-only method (`scale_risk`) is
+        covered by the read, and none is marked a unit or scale error. `read` is the parsed read file and `read_sha256` the sha256 of the file as given
+        (recorded in the result). A missing read is PENDING, never PASS; so is a read that does not cover every such extreme, one that is for another day
+        file, or one that is not in the form the scripts take. A read that marks a unit or scale error FAILS."""
+    vps, extremes = [], []
+    census = {"above_3x": 0, "below_one_third": 0, "outside_the_fence": 0, "levels_method": 0, "cash_only": 0, "with_a_shares_flag": 0}
+    for key, r in _built(rows).items():
         pv, px = r.get("printed_value"), r.get("price")
         if pv is not None and _num(px) and px > 0:
             vps.append(pv / px)
+            v = pv / px
+            if v > 3.0 or v < 1.0 / 3.0:
+                extremes.append((key, r))
+                census["above_3x" if v > 3.0 else "below_one_third"] += 1
+                census["outside_the_fence"] += r.get("status") in ("outside_fence_above", "outside_fence_below")
+                census["levels_method"] += (r.get("reference") or {}).get("method") == "levels"
+                census["cash_only"] += (r.get("reference") or {}).get("method") == "cash_only"
+                census["with_a_shares_flag"] += bool((r.get("facts") or {}).get("shares_warning"))
     if not vps:
         return {"at": "AT5 level sanity", "pass": False, "names": 0, "summary": "no name has a printed reference and a price"}
     med = statistics.median(vps)
-    extreme = sum(1 for v in vps if v > 3.0 or v < 1.0 / 3.0)
-    share = extreme / len(vps)
-    ok = 0.70 <= med <= 1.45 and share <= 0.10
-    return {"at": "AT5 level sanity", "pass": ok, "names": len(vps), "median_vp": med, "extreme": extreme, "extreme_share": share,
-            "bars": "median V/P in [0.70, 1.45]; at most 10% above 3x or below 1/3x",
-            "summary": f"median V/P {med:.3f} over {len(vps)} names; {extreme} ({share:.1%}) above 3x or below 1/3x"}
+    share = len(extremes) / len(vps)
+    median_ok = AT5_MEDIAN_BAR[0] <= med <= AT5_MEDIAN_BAR[1]
+    to_read = [k for k, r in extremes if scale_risk(r)]
+    res = {"at": "AT5 level sanity", "restated_for": "revision 19 (AT5', post-hoc)", "names": len(vps), "median_vp": med, "median_ok": median_ok,
+           "extreme": len(extremes), "extreme_share": share, "extreme_census": census,
+           "reported_not_marked": "the share above 3x or below 1/3x and its census", "bar": "median V/P in [0.70, 1.45]; the gross-error read binds",
+           "gross_error_read_required_for": len(to_read), "gross_error_read_sha256": read_sha256 if read is not None else None}
+    if read is None:
+        unread, errors, problems = list(to_read), [], ["no gross-error read was supplied"]
+    else:
+        unread, errors, problems = read_problems(read, to_read, day_sha256)
+    res.update(gross_error_read_unread=len(unread), gross_error_read_unit_or_scale_errors=len(errors), gross_error_read_problems=problems)
+    head = f"median V/P {med:.3f} over {len(vps)} names ({'in' if median_ok else 'OUTSIDE'} [0.70, 1.45]); {len(extremes)} ({share:.1%}) above 3x or below 1/3x (reported, not marked)"
+    if not median_ok or errors:
+        res["pass"] = False
+        res["summary"] = head + "; " + ("the median clause FAILS" if not median_ok else f"the gross-error read marks {len(errors)} unit or scale error(s): FAIL")
+    elif read is None or problems or unread:
+        res["pass"], res["label"] = False, "PENDING"
+        res["summary"] = (head + "; the gross-error read binds and is " + ("missing" if read is None else "not complete") +
+                          f" ({len(unread)} of {len(to_read)} extremes with a shares flag, a scale gap or the cash-only method unread)" +
+                          ("; " + "; ".join(problems) if read is not None and problems else ""))
+    else:
+        res["pass"] = True
+        res["summary"] = head + f"; the gross-error read covers all {len(to_read)} extremes with a shares flag, a scale gap or the cash-only method: none a unit or scale error"
+    return res
 
 
 # ---- AT6 fence, cap, text -----------------------------------------------------------------------------------------------------------------

@@ -350,6 +350,24 @@ def bootstrap_from_day(meta):
                      closure=inp["closure_artifact"] if inp.get("closure_sha256") else None)
 
 
+# Revision 19 follow-up (C8): the numbers `jsonable` wrote as "inf" or "-inf" that a reader takes as numbers. A day file holds an unlimited return on new
+# investment (terminal_ronic, ronic0, the record's R_tc) and the end of the price-implied terminal_ronic bound as +inf; a reader that compares them gets a
+# TypeError on the string, or a wrong answer from one that sorts it.
+INF_PATHS = (("facts", "terminal_ronic"), ("facts", "long_run", "r_tc"), ("facts", "price_implied_defaults", "terminal_ronic", "bound", "high"),
+             ("reference", "terminal_ronic"), ("reference", "ronic0"), ("reference", "record_R_tc"))
+
+
+def restore_infinities(row):
+    """Turn the "inf" / "-inf" strings at INF_PATHS of a day-file row back into floats (in place); a path that is absent or holds anything else is left."""
+    for path in INF_PATHS:
+        o = row
+        for k in path[:-1]:
+            o = o.get(k) if isinstance(o, dict) else None
+        if isinstance(o, dict) and o.get(path[-1]) in ("inf", "-inf"):
+            o[path[-1]] = unjson(o[path[-1]])
+    return row
+
+
 def load_day(path):
     """(meta, rows) of a build_day file, +-inf strings turned back into floats where a number is expected (the reference's record_R_tc)."""
     doc = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -365,6 +383,7 @@ def load_day(path):
         ref = r.get("reference")
         if isinstance(ref, dict):
             ref["record_R_tc"] = unjson(ref.get("record_R_tc"))
+        restore_infinities(r)
     return doc["meta"], doc["rows"]
 
 
