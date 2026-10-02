@@ -38,7 +38,7 @@ def _v3(v):
 
 
 def test_gate_version_is_seven():
-    assert dg.GATE_VERSION == 7          # revision 19: reason 19, directional_without_valid_crux
+    assert dg.GATE_VERSION == 8          # revision 19: reason 19, directional_without_valid_crux; pack revision 20: reasons 20-21
 
 
 def test_sample_failed_reason():

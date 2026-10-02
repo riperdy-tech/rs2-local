@@ -202,7 +202,7 @@ def test_the_rest_of_the_facts_pass_through_without_an_or_default():
 def test_a_built_pack_prints_the_defaults_price_implied_and_its_facts_equal_the_text(screener_data_stub, monkeypatch):
     pack = _pack_with_bill_rate(monkeypatch, 0.04)
     f = pack.facts
-    assert f["version"] == 7 == pack_facts.FACTS_VERSION
+    assert f["version"] == 8 == pack_facts.FACTS_VERSION
     block = f["price_implied_defaults"]
     assert set(block) == set(pi_text.INPUTS) and f["price_implied_price"] > 0 and len(f["reference_path"]) == 5
     assert f["rf_eff"] is not None and f["nominal_gdp_trend"] == rs2_data.anchor_nominal_gdp_trend()[0]

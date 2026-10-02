@@ -51,6 +51,7 @@ import company_news  # noqa: E402
 import catalyst_research  # noqa: E402
 import consensus_reference  # noqa: E402
 import throughcycle_record  # noqa: E402
+import input_scope  # noqa: E402
 import pack_facts  # noqa: E402
 import pi_text  # noqa: E402
 
@@ -231,7 +232,12 @@ TIMEOUT = 14400
 #   levels hold a Base's years 1-2 whatever the reference's status and the desk refuses an excess_cash above the base year's cash
 #   (the DEFAULTS gain base_year_cash_and_investments_b); then the price-implied value of each judgment input, the crux, the
 #   reference line as context, and the TASK's item 6 (recorded in rev19/BEFORE_AFTER_r19.md).
-PACK_REVISION = 19
+# Revision 20 (brief_input_scope_fixes.md, 2026-10-02, operator ruling (a): the input-scope errors fixed as rules for every company):
+#   noncontrolling interests (DATA 5's NONCONTROLLING INTERESTS line and its consolidated net-income column, the OWNER EARNINGS
+#   line's pi, the reference line's attribution and upper-bound clauses, the DEFAULTS' display-only nci_attribution line), the
+#   per-share check (DATA 2 and the reference line), the cash scope and customer money (DATA 6's cash line, the cash clause), and the
+#   vendor's revenue-basis break (the years 3-5 clause); recorded in rev20/BEFORE_AFTER_r20.md.
+PACK_REVISION = 20
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -332,7 +338,9 @@ REVIEWED_HISTORY_KEYS = frozenset({
     "pretax_income", "tax_provision",
     # revision 17: read by the through-cycle record (tools/throughcycle_record.py), printed as its statistics
     "goodwill", "intangibles_ex_goodwill", "amortization_intangibles",
-})
+    # revision 20 (brief_input_scope_fixes.md 1.2(b), 2.2(b), 1.4): read by tools/input_scope.py - the consolidated net income and equity,
+    # the balances outside the unrestricted cash line, and the per-share check's three facts
+}) | frozenset(input_scope.HISTORY_FIELDS)
 
 
 def _consensus_band_or_none(t):
@@ -1498,8 +1506,12 @@ def _record_for(t, h, hist_doc, coe, ga, be, rev_g2, median_5y, printed=True):
     _dc_runs = ((_prov.get("runs") or {}).get(t) or {}).get("debt_current")
     _dc_tags = throughcycle_record.resolve_run_tags(_dc_runs, _prov.get("_tags"), yrs)
     untagged = _marker_for(hist_doc, t) or []       # a missing marker is stated by the callers (`reference_inputs`, the pack); the record reads it as none
-    rec = throughcycle_record.analyse(h, coe, untagged_fields=untagged, base_year=max(yrs) if yrs else None,
+    # revision 20 (brief_input_scope_fixes.md 1.3(b)): the record reads consolidated net income and equity, so its returns, margins, cycle
+    # and working capital are ratios on one basis; `scope_mixed_years` are the window years that fall back to the company's own figures
+    view, mixed = input_scope.record_view(h, input_scope.scope_by_year(hist_doc, t, "ni_scope"), max(yrs) if yrs else None)
+    rec = throughcycle_record.analyse(view, coe, untagged_fields=untagged, base_year=max(yrs) if yrs else None,
                                       debt_current_tags=_dc_tags)
+    rec["scope_mixed_years"] = mixed
     val, basis, reason = consensus_reference.terminal_growth_default(ga, be, rec["g_rev"], rev_g2, median_5y)
     if val is not None and printed:
         val = float(f"{val * 100:.2f}") / 100.0
@@ -1639,7 +1651,12 @@ def reference_inputs(t, root, estimates, anchors, closure, *, printed=True, toda
     Returns {"kwargs": the arguments of build (everything but the positional base_cf, estimates, coe, terminal_g, shares,
     median_5y, which it also carries under those names), "no_marker" (True when the history holds no brief-A provenance marker for
     `t`: amendment 2, point 2 - `build` then returns no value and says why), "coe", "coe_reason" (why there is none),
-    "terminal_g", "record", "shares_default", "sector", "loading", "fy" (`_fiscal_year_base`'s dict), "cash"}."""
+    "terminal_g", "record", "shares_default", "sector", "loading", "fy" (`_fiscal_year_base`'s dict, its `ref_fy` attributed), "cash"
+    (attributed), "scope" (`input_scope.base_year_scope`), "vendor_basis" (`input_scope.vendor_revenue_basis`)}.
+
+    Revision 20 (brief_input_scope_fixes.md): the inputs are scoped before `build` sees them - every level but net income multiplied by
+    pi (Fix 1b), the record on the consolidated basis (`_record_for`), and on a vendor revenue-basis break the estimates without the next-FY
+    revenue entry (Fix 3). `build` itself is unchanged."""
     today = today if today is not None else datetime.now().date()
     key = (t, today, id(estimates))
     memo = root.__dict__.setdefault("_static", {})
@@ -1655,10 +1672,20 @@ def reference_inputs(t, root, estimates, anchors, closure, *, printed=True, toda
         fy = _fiscal_year_base(t, h, fin, ttm, f, ttm_stale, estimates, untagged, today)
         sector, _industry = rs2_data.sector_lookup(t)
         cash = _cash_term_for(fy["fy_rec"], sector, fy["fye_src"], fy["fye_conflict"], fy["fy_end_dt"]) if fy["latest_yr"] is not None else None
+        # revision 20 (brief_input_scope_fixes.md 1.3-1.4, 2.3): the base year's scope; net income stays the company's own and every
+        # other level `build` receives (the base's D&A and capex, X's amortization, revenue, the cash term) is attributed by pi
+        scope = input_scope.base_year_scope(h, root.hist_doc(), t, sector in consensus_reference.FINANCIAL_SECTORS)
+        fy = dict(fy, ref_fy=input_scope.attribute_fy_base(fy["ref_fy"], fy["fy_rec"], scope["nci"]["pi"]))
+        cash = input_scope.attribute_cash(cash, scope["nci"]["pi"])
         shares_default, _sh, _filed = _shares_default_state(t, fin, h, root.shares_cover(t))
         _size, _br, _gl, _gs, median_5y = _base_rate_median(h, root.sd, None)
-        memo[key] = (h, fy, sector, cash, shares_default, median_5y, marker is None)
-    h, fy, sector, cash, shares_default, median_5y, no_marker = memo[key]
+        memo[key] = (h, fy, sector, cash, shares_default, median_5y, marker is None, scope)
+    h, fy, sector, cash, shares_default, median_5y, no_marker, scope = memo[key]
+    # revision 20 (brief 3.2): a vendor revenue-basis break gives `build` the estimates without the next-FY revenue entry; then (brief 1.3(b))
+    # the vendor's revenue levels are attributed by pi. The terminal-growth default reads the vendor's figures as they are (brief 3.2).
+    vendor_basis = input_scope.vendor_revenue_basis(estimates)
+    est_build = input_scope.drop_next_fy_revenue(estimates) if vendor_basis["status"].startswith("break") else estimates
+    est_build = input_scope.attribute_estimates(est_build, scope["nci"]["pi"])
     rf, ga, be = anchors.get("rf"), anchors.get("ga"), anchors.get("breakeven")
     loading = (anchors.get("loading") or {}).get(sector)
     erp = (closure or {}).get("erp")
@@ -1673,7 +1700,7 @@ def reference_inputs(t, root, estimates, anchors, closure, *, printed=True, toda
     rev_g2 = consensus_reference.revenue_growth_next_fy(estimates or {})
     record, terminal_g, basis, reason = _record_for(t, h, root.hist_doc(), coe, ga_used, be, rev_g2, median_5y, printed=printed)
     ref_fy = fy["ref_fy"] or {}
-    kwargs = dict(base_cf=ref_fy.get("base"), estimates=estimates, coe=coe, terminal_g=terminal_g,
+    kwargs = dict(base_cf=ref_fy.get("base"), estimates=est_build, coe=coe, terminal_g=terminal_g,
                   shares=shares_default if (isinstance(shares_default, (int, float)) and shares_default > 0) else None,
                   median_5y=median_5y, da=ref_fy.get("da"), capex=ref_fy.get("capex"), stub_months=ref_fy.get("stub"),
                   base_label=ref_fy.get("label"), levels_reason=ref_fy.get("levels_reason"), levels_block=ref_fy.get("levels_block"),
@@ -1681,11 +1708,35 @@ def reference_inputs(t, root, estimates, anchors, closure, *, printed=True, toda
                   unavailable_reason=consensus_reference.NO_MARKER_REASON if no_marker else None)
     return {"kwargs": kwargs, "no_marker": no_marker, "coe": coe, "coe_reason": coe_reason, "terminal_g": terminal_g, "terminal_basis": basis,
             "terminal_reason": reason, "record": record, "shares_default": shares_default, "sector": sector, "loading": loading,
-            "fy": fy, "cash": cash, "median_5y": median_5y}
+            "fy": fy, "cash": cash, "median_5y": median_5y, "scope": scope, "vendor_basis": vendor_basis}
 
 
 def _is_number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v
+
+
+def _attributed_owner_earnings(ni, da, capex, pi):
+    """Revision 20 (brief 1.3(b)): owner earnings, the company's own net income plus pi x (D&A - capex); pi = 1 is the filed arithmetic
+    exactly (ni + da - capex)."""
+    return ni + da - capex if pi == 1.0 else ni + pi * (da - capex)
+
+
+def _oe_levels(text, pi):
+    """The OWNER EARNINGS line's D&A-minus-capex term: as filed, or (pi < 1) the common shares' share of it."""
+    return text if pi == 1.0 else f"\u03c0 {pi * 100:.1f}% \u00d7 ({text}), the common shares' share (NONCONTROLLING INTERESTS, DATA 5)"
+
+
+def _attributed_row(row, pi):
+    """A base-year row whose acquired-intangible amortization is attributed by pi (X = net income + pi x amortization x (1 - tax)); pi = 1
+    returns the row."""
+    if row is None or pi == 1.0 or not _is_number(row.get("amortization_intangibles")):
+        return row
+    return dict(row, amortization_intangibles=pi * row["amortization_intangibles"])
+
+
+def _q_b_or_none(v):
+    """Dollars as $B at the six decimals the facts keep, or None (revision 20's scope facts)."""
+    return pack_facts.q_b(v / 1e9) if _is_number(v) else None
 
 
 def build_pack(t, price_override=None, include_research=True, asof=None, news_snippets=False):
@@ -1983,6 +2034,29 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
 
     # ---- SECTION 1 - IDENTITY & INSTITUTIONAL TAXONOMY -------------------------------------
     sector, industry = rs2_data.sector_lookup(t)
+    # revision 20 (brief_input_scope_fixes.md): the base year's scope, the one copy `reference_inputs` also reads - pi (Fix 1b), the
+    # per-share check (Fix 1c), the cash scope and customer money (Fix 2b)
+    _scope = input_scope.base_year_scope(h, _hist_doc, t, sector in consensus_reference.FINANCIAL_SECTORS)
+    _pi = _scope["nci"]["pi"]
+    _nci = _scope["nci"]
+    # the record's window years that fall back to the company's own figures while noncontrolling interests are filed (the record itself
+    # is computed on the same view, `_record_for`)
+    _mixed = input_scope.record_view(h, input_scope.scope_by_year(_hist_doc, t, "ni_scope"), _scope["year"])[1]
+    facts["nci_attribution"] = {"pi": pack_facts.q_ratio(_pi), "basis": _nci["basis"], "year": _nci["year"],
+                                "ni_parent_b": _q_b_or_none(_nci["ni_parent"]), "ni_incl_nci_b": _q_b_or_none(_nci["ni_incl_nci"]),
+                                "equity_b": _q_b_or_none(_nci["equity"]), "equity_incl_nci_b": _q_b_or_none(_nci["equity_incl_nci"]),
+                                "stamps": list(_nci["stamps"]) + ([input_scope.mixed_stamp(_mixed)] if _mixed else [])}
+    facts["ni_scope"] = _scope["ni_scope"]
+    _ps = _scope["per_share"]
+    facts["per_share_basis"] = {"status": _ps["status"], "year": _ps["year"], "n_common_b": _q_b_or_none(_ps["n_common"]),
+                                "n_common_source": _ps["n_common_source"], "eps_filed": _ps["eps_filed"], "shares_diluted": _ps["shares_diluted"],
+                                "eps_implied": _ps["eps_implied"], "gap": _ps["gap"], "tolerance": _ps["tolerance"], "stamps": list(_ps["stamps"])}
+    _money = _scope["money"]
+    facts["cash_scope"] = _scope["cash_scope"]
+    facts["cash_restricted_b"] = _q_b_or_none(_money["cash_restricted"])
+    facts["customer_money"] = {"assets_b": _q_b_or_none(_money["assets"]), "liabilities_b": _q_b_or_none(_money["liabilities"]),
+                               "gap_b": _q_b_or_none(_money["gap"]), "stamps": list(_money["stamps"])}
+    facts["insurance_reserves_b"] = _q_b_or_none(_money["insurance_reserves"])
     
     # Ingest Canonical Industry Taxonomy & Corporate Finance Archetype
     canon_industry, cluster, archetype = industry, "Unknown", "compounder_general"
@@ -2547,6 +2621,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               f"vendor share count]" if sh is not None else f"- Shares outstanding: {ASOF_NULL}"]
         L += _share_default_lines(facts["shares_outstanding"], _sd_default, _sd_k, _sd_period, _sd_warning,
                                   point_in_time=True)
+        # revision 20 (brief 1.4): the per-share check's two figures when the identity fails (annotation; the reference is still printed)
+        if _ps["status"] == "unverified":
+            L.append(input_scope.per_share_data_line(_ps))
         L += [f"- Market cap: {_b(mcap) if mcap is not None else ASOF_NULL}",
               f"- Beta: {ASOF_NULL}   [same-day vendor snapshot, no stored history]",
               "",
@@ -2584,6 +2661,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               + ("   <- ZERO on file. No per-share value is derivable for this name."
                  if sh == 0 else "")]
         L += _share_default_lines(facts["shares_outstanding"], _sd_default, _sd_k, _sd_period, _sd_warning)
+        # revision 20 (brief 1.4): the per-share check's two figures when the identity fails (annotation; the reference is still printed)
+        if _ps["status"] == "unverified":
+            L.append(input_scope.per_share_data_line(_ps))
         L += [f"- Market cap: {_b(fin.get('Market_Cap'))}",
               f"- Beta: {_v(cm, 'Beta')}   [Aggregator - the vendor does not state its window or "
               f"benchmark. No RS2 code consumes beta; it is here only if you want to build your own "
@@ -2616,6 +2696,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               + ("   <- ZERO on file. No per-share value is derivable for this name."
                  if sh == 0 else "")]
         L += _share_default_lines(facts["shares_outstanding"], _sd_default, _sd_k, _sd_period, _sd_warning)
+        # revision 20 (brief 1.4): the per-share check's two figures when the identity fails (annotation; the reference is still printed)
+        if _ps["status"] == "unverified":
+            L.append(input_scope.per_share_data_line(_ps))
         L += [f"- Market cap: {_b(fin.get('Market_Cap'))}",
               f"- Beta: {_v(cm, 'Beta')}   [Aggregator - the vendor does not state its window or "
               f"benchmark. No RS2 code consumes beta; it is here only if you want to build your own "
@@ -2822,19 +2905,21 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         ocf = asof_ttm_recomputed.get("ocf") if asof_ttm_recomputed else None
 
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
-            oe = ni + da - capex
+            # revision 20 (brief 1.3(b)): net income is the company's own; D&A and capex are attributed by pi
+            oe = _attributed_owner_earnings(ni, da, capex, _pi)
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
             # revision 17: the base window's net income over its owner earnings, for a desk with no
             # consensus reference (the long run then takes earnings from owner earnings at this ratio)
             if ni > 0 and oe > 0:
                 _lr_raw["ni_over_oe"] = ni / oe
-                _lr_raw["x_over_oe"] = _x_over_owner_earnings(ni, oe, h.get(str(latest_yr)), _untagged_fields)
+                _lr_raw["x_over_oe"] = _x_over_owner_earnings(ni, oe, _attributed_row(h.get(str(latest_yr)), _pi), _untagged_fields)
             facts["owner_earnings_source"] = "ttm_filed"
             facts["owner_earnings_default_b"] = float(f"{oe / 1e9:,.3f}".replace(",", ""))
             # S3 5.6/5.3: result-first equation, bare numbers; the "equity frame" rule sentence is
             # gone (it lives in the DEFAULTS block's owner_earnings_default_b explanation now).
-            L.append(f"- [Arithmetic] OWNER EARNINGS {_bn(oe)} = TTM net income {_bn(ni)} + D&A (FY{latest_yr}) {_bn(da)} \u2212 TTM capex {_bn(capex)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded.")
+            _lv = _oe_levels(f"D&A (FY{latest_yr}) {_bn(da)} \u2212 TTM capex {_bn(capex)}", _pi)
+            L.append(f"- [Arithmetic] OWNER EARNINGS {_bn(oe)} = TTM net income {_bn(ni)} + {_lv}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded.")
             if isinstance(ocf, (int, float)):
                 denom = ni + da
                 gap = ocf - denom
@@ -2941,9 +3026,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 # revision 17: the desk values at the base fiscal year end and rolls forward by this age
                 _lr_raw["stub_months"] = _stub
             # revision 18 (brief 1.3): cash at face for a non-financial company (`_cash_term_for`)
-            _cash = _cash_term_for(_fy_rec, sector, _fye_src, _fye_conflict, _fy_end_dt)
+            # revision 20 (brief 1.3(b)): the cash term's cash and interest, and the desk's cash bound, are attributed by pi
+            _cash = input_scope.attribute_cash(_cash_term_for(_fy_rec, sector, _fye_src, _fye_conflict, _fy_end_dt), _pi)
             # revision 19 (AT10 fix item 3): the bound the desk holds an excess_cash to, for every sector
-            _cash_bound = consensus_reference.cash_and_investments(_fy_rec)
+            _cash_bound = input_scope.attribute_amount(consensus_reference.cash_and_investments(_fy_rec), _pi)
             if _cash_bound is not None:
                 facts["base_year_cash_and_investments_b"] = pack_facts.q_b(_cash_bound / 1e9)
             if _cash["applies"]:
@@ -2958,20 +3044,22 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # revision 18: the after-tax interest on the cash is out of the earnings the Base and the reference capitalise
         _i_cash = _cash["interest"] if (_cash and _cash["applies"]) else 0.0
         if isinstance(ni, (int, float)) and isinstance(da, (int, float)) and isinstance(capex, (int, float)):
-            oe = ni + da - capex
+            # revision 20 (brief 1.3(b)): net income is the company's own; D&A and capex are attributed by pi (the TTM window, too)
+            oe = _attributed_owner_earnings(ni, da, capex, _pi)
             _ref_oe = oe
             _ref_da, _ref_capex = da, capex
             # revision 17: the base window's net income over its owner earnings, for a desk with no
             # consensus reference (the long run then takes earnings from owner earnings at this ratio)
             if ni - _i_cash > 0 and oe - _i_cash > 0:
                 _lr_raw["ni_over_oe"] = (ni - _i_cash) / (oe - _i_cash)
-                _lr_raw["x_over_oe"] = _x_over_owner_earnings(ni - _i_cash, oe - _i_cash, _fy_rec, _untagged_fields)
+                _lr_raw["x_over_oe"] = _x_over_owner_earnings(ni - _i_cash, oe - _i_cash, _attributed_row(_fy_rec, _pi), _untagged_fields)
             facts["owner_earnings_source"] = f"{oe_src[0]}_ni+{oe_src[1]}_capex" if oe_tag else "ttm_filed"
             facts["owner_earnings_default_b"] = float(f"{(oe - _i_cash) / 1e9:,.3f}".replace(",", ""))
             # S3 5.6/5.3: result-first equation, bare numbers; the "equity frame" sentence (OWNER
             # EARNINGS) and the base_cf_basis sentence (CASH BASIS) are gone \u2014 those rules live in
             # the DEFAULTS block now.
-            L.append(f"- [Arithmetic] OWNER EARNINGS {_bn(oe)}{oe_tag} = {ni_src} {_bn(ni)} + D&A (FY{latest_yr}) {_bn(da)} \u2212 {capex_src} {_bn(capex)}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded.")
+            _lv = _oe_levels(f"D&A (FY{latest_yr}) {_bn(da)} \u2212 {capex_src} {_bn(capex)}", _pi)
+            L.append(f"- [Arithmetic] OWNER EARNINGS {_bn(oe)}{oe_tag} = {ni_src} {_bn(ni)} + {_lv}. Stock compensation is already expensed in net income, so it is counted once (sbc_treatment \"deducted_in_cf\"); working-capital swings are excluded.")
             _sbc_fy = (h.get(str(latest_yr)) or {}).get("sbc") if latest_yr is not None else None
             if isinstance(ocf, (int, float)) and isinstance(_sbc_fy, (int, float)):
                 _cash_basis = ocf - capex - _sbc_fy
@@ -3039,17 +3127,23 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     L.append(f"## DATA 5 - FISCAL-YEAR INCOME & CASH FLOW   [Filed - SEC companyfacts; all "
              f"{len(yrs)} years we hold; $B]")
     if yrs:
-        L += [_row(["FY", "revenue", "gross profit", "operating income", "net income", "OCF",
+        # revision 20 (brief 1.3(d)): where the consolidated net income (noncontrolling interests included) differs from the company's own,
+        # both are printed
+        _ni_both = any(_is_number(h[str(y)].get("net_income_incl_nci")) and h[str(y)].get("net_income_incl_nci") != h[str(y)].get("net_income")
+                       for y in yrs)
+        _ni_cols = ["net income", "net income incl. NCI"] if _ni_both else ["net income"]
+        L += [_row(["FY", "revenue", "gross profit", "operating income"] + _ni_cols + ["OCF",
                     "capex", "FCF", "D&A", "SG&A", "interest expense", "SBC",
                     "cash basis [Arithmetic]"]),
-              _row(["---"] * 13)]
+              _row(["---"] * (12 + len(_ni_cols)))]
         for y in yrs:
             r = h[str(y)]
             ie = r.get("interest_expense")
             if isinstance(ie, (int, float)):
                 facts["interest_expense_latest_b"] = float(f"{ie / 1e9:,.3f}".replace(",", ""))
+            _ni_cells = [_bn(r.get("net_income"))] + ([_bn(r.get("net_income_incl_nci"))] if _ni_both else [])
             L.append(_row([str(y), _bn(r.get("revenue")), _bn(r.get("gross_profit")),
-                           _bn(r.get("operating_income")), _bn(r.get("net_income")),
+                           _bn(r.get("operating_income"))] + _ni_cells + [
                            _bn(r.get("ocf")), _bn(r.get("capex")), _bn(r.get("fcf")), _bn(r.get("da")),
                            _bn(r.get("sga")), _bn(r.get("interest_expense")), _bn(r.get("sbc")),
                            _bn(owner_cf(r.get("ocf"), r.get("capex"), r.get("sbc")))]))
@@ -3063,6 +3157,13 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               "- `cash basis [Arithmetic]` = OCF minus capex minus SBC, on the filed values in "
               "this table and nothing else. Exact arithmetic, NOT a normalisation, and blank "
               "where any of the three inputs is absent."]
+        if _ni_both:
+            L.append("- `net income` is the company's own (attributable to its shareholders); `net income incl. NCI` is the consolidated "
+                     "figure, the noncontrolling interests' share included.")
+        # revision 20 (brief 1.3(d)): the attribution, printed when pi < 1, the base year's scope is derived or unknown, pi is unmeasured,
+        # or the record is mixed
+        if input_scope.nci_text_due(_nci, _mixed):
+            L.append(input_scope.nci_data_line(_nci, _mixed, _b))
         if t in LONE_DEPRECIATION_NAMES:
             L += ["",
                   f"**D&A WARNING for {t}:** this company files no combined depreciation-and-"
@@ -3156,7 +3257,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
 
         L.append("**EXPLICIT LIQUIDITY & CAPITAL STRUCTURE CARD (Zero-Guess Anchor):**")
         if cash_val is not None:
-            L.append(f"- Total Cash & Cash Equivalents: {_b(cash_val)}")
+            # revision 20 (brief 2.3): the cash scope when it is not the unrestricted line, and what the line excludes
+            _cn = input_scope.cash_note(_scope["cash_scope"], _money, _b) if _is_number(lr.get("cash")) else None
+            L.append(f"- Total Cash & Cash Equivalents: {_b(cash_val)}" + (f" ({_cn})" if _cn else ""))
         if effective_debt is not None:
             L.append(f"- Total Debt (Filed / Vendor): {_b(effective_debt)}")
         sti_val = lr.get("st_investments")
@@ -3453,6 +3556,18 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                                        {"erp": _clos_erp} if _clos_erp is not None else None, printed=True,
                                        today=datetime.now().date())
                 _ref = consensus_reference.build(**_ri["kwargs"])
+                # revision 20 (brief 1.3(b), 3.3): the base the reference grows from, attributed by pi (the window check reads it too), and
+                # the vendor's revenue basis
+                _fy_base = (input_scope.attribute_fy_base(_fy, h.get(str(latest_yr)) or {}, _pi) or {}).get("base")
+                _vb = _ri["vendor_basis"]
+                facts["vendor_revenue_basis"] = {"status": _vb["status"], "s": _vb["s"], "k": _vb["k"]}
+                _scope_clauses = {
+                    "after_base": [c for c in (input_scope.pi_clause(_nci),
+                                               input_scope.upper_bound_clause(_nci) if input_scope.NCI_UNMEASURED in _nci["stamps"] else None,
+                                               input_scope.per_share_clause(_ps) if _ps["status"] == "unverified" else None) if c],
+                    "years35": input_scope.years35_break_text(_vb) if _vb["status"].startswith("break") else None,
+                    "years35_extra": [input_scope.years35_untested_clause(_vb)] if input_scope.VENDOR_UNTESTED in _vb["stamps"] else [],
+                    "cash_note": input_scope.cash_note(_scope["cash_scope"], _money, lambda v: f"${_bn(v)}B")}
                 if _ri["coe"] is None and _ref.get("value") is None and not _ri["no_marker"]:
                     _ref["reason"] = f"the closure premium is missing or stale ({_clos_asof or _clos_why})"
                 if not _ref_fy and _ref.get("value") is None and _ref_fy_na and not _ri["no_marker"]:
@@ -3503,9 +3618,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 if _not_meaningful:
                     L.append(consensus_reference.not_meaningful_line(_ref))
                 else:
-                    _civ_line = consensus_reference.pack_line(_ref, _fy.get("base"), _coe if _coe is not None else 0.0,
+                    _civ_line = consensus_reference.pack_line(_ref, _fy_base, _coe if _coe is not None else 0.0,
                                                               _tg_used, _bn, anchor=facts["terminal_g_anchor"],
-                                                              closure_asof=_clos_asof)
+                                                              closure_asof=_clos_asof, scope=_scope_clauses)
                     if _side:
                         _civ_line += (f" | outside the street-target fence [${_fence[0]:,.2f}, ${_fence[1]:,.2f}] (0.5× the "
                                       f"lowest and 2× the highest analyst target, each discounted by 10%) — read it as a "
@@ -3534,7 +3649,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                         # so the desk's working-capital rule recognises the base as owner earnings
                         facts["reference_base_b"] = pack_facts.q_b(_ref["flows"][0] / 1e9)
                 _win = (None if _not_meaningful else
-                        consensus_reference.window_check(_ref, _fy.get("base"), _ref_oe, _fy.get("quarters")))
+                        consensus_reference.window_check(_ref, _fy_base, _ref_oe, _fy.get("quarters")))
                 if _win and _win.get("ttm_value") is not None:
                     _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
                     _win = consensus_reference.fence_window(_win, _wside, _wfence)

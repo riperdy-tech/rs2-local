@@ -106,12 +106,15 @@ def test_facts_version_and_key_count():
     # revision 18 (part 3, the point-in-time premium-source label): one more key, coe_premium_source: 31 -> 32; the version stays 6
     # revision 19 (AT10 fix item 3): one more key, base_year_cash_and_investments_b: 32 -> 33; (brief D4) FACTS_VERSION 6 -> 7 and five more keys
     # (rf_eff, nominal_gdp_trend, reference_path, price_implied_defaults, price_implied_price): 33 -> 38
-    assert pack_facts.FACTS_VERSION == 7
-    assert len(pack_facts.KEYS) == 38
-    assert pack_facts.KEYS[-13:] == ["long_run", "working_capital", "base_year_cap", "split_after_last_filing",
+    # pack revision 20 (brief_input_scope_fixes.md 1.3(c), 1.4, 2.3, 3.3): FACTS_VERSION 7 -> 8 and eight sidecar-only keys: 38 -> 46
+    assert pack_facts.FACTS_VERSION == 8
+    assert len(pack_facts.KEYS) == 46
+    scope = ["nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
+             "vendor_revenue_basis"]
+    assert pack_facts.KEYS[-21:] == ["long_run", "working_capital", "base_year_cap", "split_after_last_filing",
                                      "reference_base_b", "excess_cash", "coe_premium_source", "base_year_cash_and_investments_b",
-                                     "rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_defaults", "price_implied_price"]
-    assert pack_facts.SIDECAR_ONLY == ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price")
+                                     "rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_defaults", "price_implied_price"] + scope
+    assert pack_facts.SIDECAR_ONLY == ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price") + tuple(scope)
 
 
 def test_empty_has_all_24_keys():
@@ -218,7 +221,7 @@ def test_defaults_block_round_trip_ezpw_example():
     for expected in expected_lines:
         assert expected in block, expected
     f = pack_facts.from_text(_rev15(block))
-    assert f["version"] == 7
+    assert f["version"] == 8
     assert pack_facts.parity(facts, f) == []
     assert "exit multiple" not in block.lower() and "default_exit_multiple" not in block
 
@@ -321,7 +324,7 @@ def test_revision_15_marker_only_on_first_line():
     text = "# DATA PACK - X\n\nsome text mentioning (pack revision 15) later on\n"
     # No DEFAULTS block and no raise: falls to the legacy reader.
     f = pack_facts.from_text(text)
-    assert f["version"] == 7
+    assert f["version"] == 8
     assert f["source"] == "text"
 
 
@@ -372,7 +375,7 @@ def test_revision_14_reads_as_legacy():
     text = "# DATA PACK - X   (pack revision 14)\n\nsome text with no defaults block\n"
     assert pack_facts.is_revision_15(text) is False
     f = pack_facts.from_text(text)
-    assert f["version"] == 7 and f["source"] == "text"
+    assert f["version"] == 8 and f["source"] == "text"
 
 
 def test_revisions_15_and_16_read_the_same():

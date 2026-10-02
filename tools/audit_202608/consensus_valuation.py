@@ -57,6 +57,7 @@ from fiduciary_gate import validate_fiduciary_contract  # noqa: E402
 from research_brief_guard import check_research_brief  # noqa: E402
 from pack_data_sanity import check_pack_data_sanity  # noqa: E402
 import pack_facts  # noqa: E402
+import input_scope  # noqa: E402  (tools/, on the path through capability_test; revision 20's gate stamps)
 import contract_fill  # noqa: E402
 
 OUT = HERE / "ab_reports" / "consensus"
@@ -2653,6 +2654,8 @@ def main():
            "pack_facts_version": pack_facts.FACTS_VERSION,
            "pack_facts_version_read": pack_facts_version_read,
            "consensus_data_status": facts.get("consensus_data_status"),
+           # revision 20 (gate version 8): the input-scope stamps of the pack the samples saw; depth_gates reasons 20-21 read them
+           "input_scope_stamps": input_scope.gate_stamps(facts),
            "research_brief_asof": research_brief_asof,
            "research_brief_age_days": research_brief_age_days,
            "research_brief_stale": research_brief_stale,

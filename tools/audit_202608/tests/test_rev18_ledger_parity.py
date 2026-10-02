@@ -50,7 +50,7 @@ def test_a_production_snapshot_row_equals_the_packs_printed_reference_to_the_cen
     assert row["reference_status"] == f["reference_status"] == "used"
     assert round(row["reference_value"], 2) == f["consensus_implied_value"]
     assert row["coe"] == f["coe_anchor"]
-    assert row["revision"] == cap.PACK_REVISION == 19
+    assert row["revision"] == cap.PACK_REVISION == 20
     erp, asof, _ = rs2_data.reference_closure()
     assert row["closure_erp"] == erp and row["closure_asof"] == asof
     assert row["price"] is None or row["vp"] == pytest.approx(row["reference_value"] / row["price"])

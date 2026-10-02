@@ -157,7 +157,7 @@ judges one on read and returns `(actionable: bool, reasons: list[str])`, evaluat
 applicable reason so a row can carry more than one at once:
 
 1. `direction` not one of `undervalued`/`hold`/`overvalued` -> `not_usable`
-2. `gate_version` absent or `< GATE_VERSION` (currently 5) -> `pre_v3.1_gates`
+2. `gate_version` absent or `< GATE_VERSION` (currently 8) -> `pre_v3.1_gates`
 3. `n_basis == 1` -> `single_sample`
 4. `fiduciary_verdict == "FAIL"` -> `fiduciary_fail`
 5. `direction == overvalued` and `kelly_fraction_pct > 0` -> `kelly_on_overvalued`
@@ -179,6 +179,13 @@ applicable reason so a row can carry more than one at once:
 15. any flag starting with `discovery_failed` -> `discovery_failed`
 16. depleting producer (industry in depleting list) -> `depleting_producer_unsupported`;
     producer_class unavailable (or absent on v>=5) -> `depleting_producer_class_unavailable`
+17. `consensus_data_status` present and not `ok`, or absent on v>=6 -> `consensus_data_unavailable`
+18. `street_fence` not a dict with numeric `low` and `high` -> `no_street_fence`
+19. `pack_revision` >= 19, a directional verdict and `crux_valid` not True -> `directional_without_valid_crux`
+20. a directional verdict whose `input_scope_stamps` hold `nci_share_unmeasured` (noncontrolling interests filed, the common
+    shareholders' share not measurable; pack revision 20) -> `nci_share_unmeasured`
+21. a directional verdict whose `input_scope_stamps` hold `per_share_basis_unverified` (the filed net income, diluted EPS and
+    diluted share count fail the ASC 260 identity; pack revision 20) -> `per_share_basis_unverified`
 
 `orchestrate_depth.rebuild_overlay()` runs every ledger row's newest-per-ticker through
 `assess()` and adds `actionable` / `actionable_reasons` / `gate_version` to each row, plus

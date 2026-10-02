@@ -105,7 +105,7 @@ def _get_system_block(path: Path) -> str:
 def test_text_pins():
     # Revision 17 (brief_rev17_B_valuation.md): the pack text, the TASK and the tool schema changed on purpose (the
     # through-cycle package); revision 16 changed only the number on the first line.
-    assert capability_test.PACK_REVISION == 19
+    assert capability_test.PACK_REVISION == 20
     assert _sha256(capability_test.TASK) == TASK_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
@@ -141,7 +141,7 @@ class FrozenDatetime(_real_datetime):
 
 
 def test_pack_byte_pin(screener_data_stub, monkeypatch):
-    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev19.md.
+    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev20.md.
 
     Datetime is frozen at 2026-09-27 12:00 local across:
     - capability_test
@@ -222,10 +222,11 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # revision 19, part F (+281 chars, was 22349): PACK_REVISION 19 on the first line (0), the excess_cash line's refusal clause and the new
     # base_year_cash_and_investments_b line (AT10 fix item 3)
     # revision 19, part D (+358 chars, was 22630): the price_implied line (this fixture has no reference, so it reads "not available" and says why)
+    # revision 20 (0 chars): PACK_REVISION 20 on the first line; the GEV fixture's history predates the input-scope fields, so no other line changes
     assert len(text1) == 22988
 
     # Assert byte equality with golden file
-    golden_file = FIXTURE / "golden_pack_GEV_rev19.md"
+    golden_file = FIXTURE / "golden_pack_GEV_rev20.md"
     # core.autocrlf checks the fixture out with CRLF on Windows; the pack itself is built with "\n"
     golden_bytes = golden_file.read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes

@@ -1,0 +1,12 @@
+{
+ "rule": "Fix 3: up-break when s > rev_step_hi and k < k_lo; down-break when s < rev_step_lo and k > k_hi; testable only where vendor_revenue() is not None and consensus_earnings_growth() gives no reason",
+ "rev_step_lo": -0.10850538577173424,
+ "rev_step_hi": 0.4431367450274345,
+ "k_lo": -0.39540604417565023,
+ "k_hi": 0.7484252589850702,
+ "population": 1043,
+ "population_sha256": "2bc4a000354eae9914ce97d360a943c2ffb5781fcd8dcebb607d26d57f291d8b",
+ "source": "rs2-r18/cache/closure_enrich/2026-10-01 minus names291 (936e0a89) minus untouched167 (00232520)",
+ "quantile": "nearest rank, 0.5% and 99.5%",
+ "version": "v1 (the engine's usable-EPS-growth domain)"
+}

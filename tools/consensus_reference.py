@@ -787,12 +787,14 @@ def _working_capital_clause(ref, fmt_b):
             f"({ref['nwc_intensity'] * 100:.1f}% of each year's revenue change)")
 
 
-def _cash_clause(ref, fmt_b):
+def _cash_clause(ref, fmt_b, note=None):
     """Revision 18 (brief 3.1, Cash): what the reference does with the cash. None when the reference carries no cash-term state
-    (a caller that passed no cash term at all)."""
+    (a caller that passed no cash term at all). Revision 20 (brief_input_scope_fixes.md 2.3): `note` (the cash scope and what the
+    excess cash excludes, `input_scope.cash_note`) is added to the clause of a cash term that applies."""
     state = ref.get("cash_term")
     if state == "applies":
-        return (f"plus excess cash ${fmt_b(ref['cash'])}B at face (after-tax interest on it removed from earnings)")
+        return (f"plus excess cash ${fmt_b(ref['cash'])}B at face (after-tax interest on it removed from earnings)"
+                + (f"; the excess cash is the unrestricted cash line: {note}" if note else ""))
     if state == "financial":
         return "no excess-cash term (financial company)"
     if state == "not_available":
@@ -844,10 +846,19 @@ def defaults_desk_args(ref, facts):
             "excess_cash": f.get("excess_cash")}, None
 
 
-def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None, closure_asof=None):
+_YEARS35_RULE = "next-FY revenue growth fading toward the base-rate median, never above next-FY revenue growth"
+
+
+def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None, closure_asof=None, scope=None):
     """SECTION 8's line. The prefixes are fixed: the harness parses the value and the levels
     (consensus_valuation). Revision 18: the label's value is followed by the anchor-role sentence (`ANCHOR_ROLE`); `closure_asof`
-    (the closure premium's date) completes the discount clause."""
+    (the closure premium's date) completes the discount clause.
+
+    Revision 20 (brief_input_scope_fixes.md 1.3(d), 1.4, 2.3, 3.3): `scope` (None prints the line as before) carries the input-scope
+    text: "after_base" (clauses that follow the base clause: the attribution at pi, the upper bound of an unmeasured share, an unverified
+    per-share basis), "years35" (on a vendor revenue-basis break, the years 3-5 rule's replacement), "years35_extra" (clauses that follow
+    the growth clause: an untested revenue step) and "cash_note" (`_cash_clause`'s note)."""
+    sc = scope or {}
     if ref.get("value") is None:
         return f"- CONSENSUS-IMPLIED VALUE: not available — {ref.get('reason')}"
     clauses = [f"[Arithmetic] CONSENSUS-IMPLIED VALUE (reference, not a forecast): "
@@ -856,19 +867,21 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None, closure_asof=No
     label = ref.get("base_label")
     if ref["method"] == "cash_only":
         # revision 18: the interest on the cash leaves no positive operating base
+        tail = [f"the excess cash is the unrestricted cash line: {sc['cash_note']}"] if sc.get("cash_note") else []
         return "- " + " | ".join(clauses + [
             f"base: owner earnings {fmt_b(base_cf)} less the after-tax interest on excess cash "
             f"{fmt_b(ref['interest_removed'])} is not positive, so the operating business is valued at zero and the value is "
-            f"the excess cash {fmt_b(ref['cash'])} at face (operating_base_not_positive)"])
+            f"the excess cash {fmt_b(ref['cash'])} at face (operating_base_not_positive)"] + list(sc.get("after_base") or []) + tail)
+    years35 = sc.get("years35") or _YEARS35_RULE
     if ref["method"] == "growth":
         if ref.get("interest_removed"):
             # revision 18: the base printed is the one the long run capitalises, the cash term's interest already out
             base_cf = ref.get("base_cf") if ref.get("base_cf") is not None else base_cf
         clauses.append(f"base: owner earnings {fmt_b(base_cf)}" + (f" ({label})" if label else ""))
+        clauses += list(sc.get("after_base") or [])
         path = " / ".join(f"{g * 100:+.1f}%" for g in ref["path"])
         clauses.append(f"cash-flow growth years 1-5: {path} (years 1-2 consensus EPS growth; "
-                       f"from year 3, next-FY revenue growth fading toward the base-rate median, "
-                       f"never above next-FY revenue growth)")
+                       + ("from year 3, " if years35 == _YEARS35_RULE else "") + f"{years35})")
     else:
         why = (f"years 1-2 are consensus EPS x diluted shares + D&A - capex because "
                f"{ref['levels_reason']}" if ref.get("levels_reason") else
@@ -876,9 +889,10 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None, closure_asof=No
                f"consensus EPS x diluted shares + D&A - capex")
         clauses.append(f"base: {why}: {fmt_b(ref['flows'][0])}, {fmt_b(ref['flows'][1])}"
                        + (f" ({label})" if label else ""))
+        clauses += list(sc.get("after_base") or [])
         g35 = " / ".join(f"{g * 100:+.1f}%" for g in ref["path"][2:])
-        clauses.append(f"years 3-5 growth {g35} (next-FY revenue growth fading toward the "
-                       f"base-rate median, never above next-FY revenue growth)")
+        clauses.append(f"years 3-5 growth {g35} ({years35})")
+    clauses += list(sc.get("years35_extra") or [])
 
     differs = (anchor is not None and abs(terminal_g - anchor) > 1e-6) or bool(ref.get("terminal_g_is_default"))
     tg_label = "terminal-growth default" if differs else "terminal-growth anchor"
@@ -889,7 +903,7 @@ def pack_line(ref, base_cf, coe, terminal_g, fmt_b, anchor=None, closure_asof=No
     wc_clause = _working_capital_clause(ref, fmt_b)
     if wc_clause:
         clauses.append(wc_clause)
-    cash_clause = _cash_clause(ref, fmt_b)
+    cash_clause = _cash_clause(ref, fmt_b, sc.get("cash_note"))
     if cash_clause:
         clauses.append(cash_clause)
     if closure_asof:

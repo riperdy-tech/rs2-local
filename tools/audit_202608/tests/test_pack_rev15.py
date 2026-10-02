@@ -1,6 +1,6 @@
 """tools/audit_202608/tests/test_pack_rev15.py — S3 package C (brief section 6 item 5, "Pack").
 
-- Byte equality with golden_pack_GEV_rev19.md (revision 17: the through-cycle package's DEFAULTS lines, no
+- Byte equality with golden_pack_GEV_rev20.md (revision 17: the through-cycle package's DEFAULTS lines, no
   exit multiple; rev16's golden stays beside it as the pre-17 record), built with S1's step-0 stubs and
   frozen clock.
 - The DEFAULTS block is the pack's last block and parses.
@@ -81,7 +81,7 @@ def test_golden_pack_gev_rev15_byte_equal(screener_data_stub, monkeypatch):
     pack2 = cap.build_pack("GEV", include_research=False)
     text1 = str(pack1)
     assert text1 == str(pack2)
-    golden_bytes = (FIXTURE / "golden_pack_GEV_rev19.md").read_bytes().replace(b"\r\n", b"\n")
+    golden_bytes = (FIXTURE / "golden_pack_GEV_rev20.md").read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes
 
 

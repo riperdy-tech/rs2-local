@@ -100,7 +100,11 @@ def producer_class(ticker: str, stocks_csv_path: str | Path, source_label: str) 
 
 # 6 (GATE_VERSION 6, brief S2c): reasons 17-18. Consensus data status and street fence required.
 # 7 (GATE_VERSION 7, revision 19, brief C2): reason 19. A directional verdict needs a valid crux.
-GATE_VERSION = 7
+# 8 (GATE_VERSION 8, pack revision 20, brief_input_scope_fixes.md 1.3(a), 1.4): reasons 20-21. A directional verdict on a name whose
+#   noncontrolling-interest share cannot be measured, or whose per-share basis is not verified, is not actionable.
+GATE_VERSION = 8
+# the input-scope stamps a verdict row carries (`input_scope_stamps`, from the pack's facts) that reasons 20 and 21 read
+INPUT_SCOPE_GATE_STAMPS = {"nci_share_unmeasured": "nci_share_unmeasured", "per_share_basis_unverified": "per_share_basis_unverified"}
 # the first PACK_REVISION whose verdicts carry a crux: reason 19 reads only rows of this revision or later
 FIRST_CRUX_PACK_REVISION = 19
 
@@ -156,6 +160,14 @@ def assess(v):
      18. `street_fence` not a dict with numeric `low` and `high` -> "no_street_fence"
      19. `pack_revision` an integer >= FIRST_CRUX_PACK_REVISION (19), `direction` undervalued or overvalued, and `crux_valid`
          not True                                                -> "directional_without_valid_crux"
+     20. `direction` undervalued or overvalued and `input_scope_stamps` holds `nci_share_unmeasured` -> "nci_share_unmeasured"
+     21. `direction` undervalued or overvalued and `input_scope_stamps` holds `per_share_basis_unverified` -> "per_share_basis_unverified"
+
+    Reasons 20-21 (GATE_VERSION 8, pack revision 20, brief_input_scope_fixes.md 1.3(a) and 1.4): the reference of a name whose
+    noncontrolling interests are filed but whose common shareholders' share cannot be measured is an upper bound, and a name whose filed
+    net income, diluted EPS and diluted share count do not satisfy the ASC 260 identity has an unverified per-share basis. Either is
+    printed and annotated, never withheld (non-negotiable 3); a directional verdict on such a name is not actionable, HOLD is unaffected,
+    and the row is annotated, never dropped.
 
     Reasons 10-13 (GATE_VERSION 3, Phase 4 (b)): the sanity audit already flagged FSM's samples
     (MoS +442%, 4.9x the analyst high) and kept them, as designed, but no gate read the flags.
@@ -296,6 +308,12 @@ def assess(v):
     if (isinstance(pr, int) and not isinstance(pr, bool) and pr >= FIRST_CRUX_PACK_REVISION
             and direction in ("undervalued", "overvalued") and v.get("crux_valid") is not True):
         reasons.append("directional_without_valid_crux")
+
+    scope_stamps = v.get("input_scope_stamps")
+    if direction in ("undervalued", "overvalued") and isinstance(scope_stamps, (list, tuple)):
+        for stamp, reason in INPUT_SCOPE_GATE_STAMPS.items():
+            if stamp in scope_stamps:
+                reasons.append(reason)
 
     return (not reasons), reasons
 

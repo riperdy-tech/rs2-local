@@ -711,6 +711,8 @@ def band_verdict(doc):
         "bear_above_price_reason": scorecard.get("bear_above_price_reason"),
         "code_fill_mode": scorecard.get("code_fill_mode"),
         "consensus_data_status": doc.get("consensus_data_status"),
+        # revision 20 (gate version 8): the pack's input-scope stamps (depth_gates reasons 20-21)
+        "input_scope_stamps": doc.get("input_scope_stamps"),
         # revision 19 (brief C1): the label's revision-18 direction (rewritten below from the band rule), the crux behind the medoid's call
         # and its price-implied block; crux_valid and crux_by_sample are set below, once the basis samples are read
         "direction_m": None, "crux_valid": None, "crux_by_sample": None, "crux": None,

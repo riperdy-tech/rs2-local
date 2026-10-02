@@ -22,7 +22,7 @@ import consensus_reference  # noqa: E402
 import pi_text  # noqa: E402
 import throughcycle_record  # noqa: E402
 
-FACTS_VERSION = 7
+FACTS_VERSION = 8
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -91,10 +91,29 @@ KEYS: list[str] = [
     "reference_path",
     "price_implied_defaults",
     "price_implied_price",
+    # version 8 (pack revision 20, brief_input_scope_fixes.md 1.3(c), 1.4, 2.3, 3.3): the input scope of the reference. `nci_attribution`
+    # {pi, basis, year, ni_parent_b, ni_incl_nci_b, equity_b, equity_incl_nci_b, stamps} and the base year's `ni_scope` (Fix 1b);
+    # `per_share_basis` {status, year, n_common_b, n_common_source, eps_filed, shares_diluted, eps_implied, gap, tolerance, stamps}
+    # (Fix 1c); `cash_scope`, `cash_restricted_b`, `customer_money` {assets_b, liabilities_b, gap_b, stamps} and `insurance_reserves_b`
+    # (Fix 2b); `vendor_revenue_basis` {status, s, k} (Fix 3). All SIDECAR_ONLY: the DEFAULTS block does not print them (its
+    # nci_attribution line is display-only), so a text read gives None and the parity check leaves them out.
+    "nci_attribution",
+    "ni_scope",
+    "per_share_basis",
+    "cash_scope",
+    "cash_restricted_b",
+    "customer_money",
+    "insurance_reserves_b",
+    "vendor_revenue_basis",
 ]
 
 # keys the DEFAULTS text does not carry: a frozen replay reads them from the sidecar, and a text read gives None (parity ignores them)
-SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price")
+SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price",
+                "nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
+                "vendor_revenue_basis")
+# version 8's keys, None on every text read (legacy or DEFAULTS)
+_SCOPE_KEYS = ("nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
+               "vendor_revenue_basis")
 
 # The revision marker (S1's from_text dispatch, section 5.1's line format). The DEFAULTS reader
 # serves every revision from 15 on: a later revision changes what the model is told, not this format.
@@ -383,6 +402,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "coe_premium_source": None,
         "base_year_cash_and_investments_b": None,
         "rf_eff": None, "nominal_gdp_trend": None, "reference_path": None, "price_implied_defaults": None, "price_implied_price": None,
+        **{k: None for k in _SCOPE_KEYS},
     }
 
 
@@ -819,6 +839,32 @@ def _working_capital_explanation(f: dict[str, Any], no_marker: bool = False) -> 
             f"reference_base_b (a base that matches an owner-earnings figure is owner earnings)")
 
 
+_NCI_BASIS_TXT = {"ni_split": "net-income split", "equity_split": "equity split", "no_nci": "no noncontrolling interest",
+                  "unmeasured": "not measurable", "nci_unknown": "not measurable"}
+
+
+def _nci_defaults_line(f: dict[str, Any]) -> str | None:
+    """Revision 20 (brief_input_scope_fixes.md 1.3(d)): the DEFAULTS block's display-only attribution line (it carries no facts key the
+    reader parses), printed when pi < 1, pi is not measurable, the base year's net income scope is derived or unknown, or the record is
+    mixed - the cases in which the pack prints its NONCONTROLLING INTERESTS line. None otherwise."""
+    n = f.get("nci_attribution")
+    if not isinstance(n, dict) or not isinstance(n.get("pi"), (int, float)):
+        return None
+    stamps = n.get("stamps") or []
+    unmeasured = "nci_share_unmeasured" in stamps
+    mixed = any(str(x).startswith("record_scope_mixed") for x in stamps)
+    if not (n["pi"] < 1.0 or unmeasured or mixed or f.get("ni_scope") in ("parent_derived", "nci_unknown")):
+        return None
+    basis = _NCI_BASIS_TXT.get(n.get("basis"), n.get("basis"))
+    if unmeasured:
+        return (f"- nci_attribution: π = 100.0% ({basis}, FY{n.get('year')}) | the noncontrolling interests' share cannot be measured, "
+                f"so the defaults below are not attributed and include it: an upper bound (NONCONTROLLING INTERESTS, DATA 5)")
+    return (f"- nci_attribution: π = {n['pi'] * 100:.1f}% ({basis}, FY{n.get('year')}) | the defaults are the common shares' share of the "
+            f"consolidated business (π applied): owner_earnings_default_b, excess_cash, base_year_cash_and_investments_b, reference_base_b, "
+            f"levels, working_capital and long_run's e5 and oe5; net income is the company's own; cash_basis_b and the DATA tables are the "
+            f"filed figures")
+
+
 def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = None, no_marker: bool = False) -> str:
     """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
     TASK. Prints every one of the `KEYS` (one fact per line; revision 17: `base_year_cap` only when
@@ -870,6 +916,9 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
         line("reference_base_b", _dv_money6(f.get("reference_base_b")),
              "the fiscal-year owner-earnings base the CONSENSUS-IMPLIED VALUE grows from"),
     ]
+    nci_line = _nci_defaults_line(f)
+    if nci_line:
+        lines.append(nci_line)
 
     bw = f.get("base_window") or {}
     bw_parts = []
@@ -1144,6 +1193,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "base_year_cash_and_investments_b": base_year_cash_and_investments_b,
         "rf_eff": None, "nominal_gdp_trend": None, "reference_path": None,
         "price_implied_defaults": price_implied_defaults, "price_implied_price": None,
+        **{k: None for k in _SCOPE_KEYS},
     }
 
 

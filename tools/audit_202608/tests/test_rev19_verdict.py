@@ -172,7 +172,7 @@ def _row(**over):
 
 
 def test_gate_version_is_seven_and_reason_19_fires_on_a_directional_row_without_a_valid_crux():
-    assert depth_gates.GATE_VERSION == 7 and depth_gates.FIRST_CRUX_PACK_REVISION == 19
+    assert depth_gates.GATE_VERSION == 8 and depth_gates.FIRST_CRUX_PACK_REVISION == 19
     assert depth_gates.assess(_row()) == (True, [])
     for dirn in ("undervalued", "overvalued"):
         for cv_ in (False, None, "yes", 1):
