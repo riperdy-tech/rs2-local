@@ -104,10 +104,11 @@ def test_facts_version_and_key_count():
     # revision 17 (brief F4): one more, reference_base_b (the fiscal-year base the reference grows from): 29 -> 30
     # revision 18 (brief 1.7): FACTS_VERSION 5 -> 6 and one more key, excess_cash: 30 -> 31
     # revision 18 (part 3, the point-in-time premium-source label): one more key, coe_premium_source: 31 -> 32; the version stays 6
+    # revision 19 (AT10 fix item 3): one more key, base_year_cash_and_investments_b: 32 -> 33 (FACTS_VERSION 7 comes with the other new keys, part D)
     assert pack_facts.FACTS_VERSION == 6
-    assert len(pack_facts.KEYS) == 32
-    assert pack_facts.KEYS[-7:] == ["long_run", "working_capital", "base_year_cap", "split_after_last_filing",
-                                    "reference_base_b", "excess_cash", "coe_premium_source"]
+    assert len(pack_facts.KEYS) == 33
+    assert pack_facts.KEYS[-8:] == ["long_run", "working_capital", "base_year_cap", "split_after_last_filing",
+                                    "reference_base_b", "excess_cash", "coe_premium_source", "base_year_cash_and_investments_b"]
 
 
 def test_empty_has_all_24_keys():

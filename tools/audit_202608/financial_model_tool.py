@@ -1282,6 +1282,18 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 if not (0.99 <= total <= 1.01):
                     missing.append("scenarios[].prob (Base, Bull and Bear must sum to 0.99-1.01)")
 
+    # AT10 fix item 3 (revision 19): an excess_cash above the base fiscal year's cash and short-term investments is refused, whatever
+    # reason comes with it (cash received after the valuation date is already in the cash flows). The bound is the pack's fact; with
+    # no fact it is the DEFAULTS excess_cash when numeric, else 0. The tolerance is the printed precision, $1,000.
+    if params.get("excess_cash") is not None:
+        _given_b = _to_b(params.get("excess_cash"))
+        _bound_fact, _bound_default = ctx.get("base_year_cash_and_investments_b"), ctx.get("excess_cash")
+        _bound_b = (float(_bound_fact) if _is_num(_bound_fact) else (float(_bound_default) if _is_num(_bound_default) else 0.0))
+        if _given_b is not None and _given_b - _bound_b > 1.0000001e-6:
+            missing.append(f"excess_cash {_given_b:.6f} B is above the base fiscal year's cash and short-term investments "
+                           f"{_bound_b:.6f} B: cash received after the valuation date is already in the cash flows; "
+                           f"no reason allows it")
+
     if missing:
         return _refusal(missing=missing, needs_reasons=[])
 
@@ -1317,8 +1329,9 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     # revision 18 (brief 1.5): a reference outside the street-target fence is annotation only; every band and refusal that
     # reads the reference reads this flag first
     ref_in_force = consensus_reference.reference_in_force(ctx.get("reference_status"))
-    # ... so the printed year-1/year-2/bull2/bear2 levels hold a Base and bound a Bull or Bear only for a reference in force
-    levels_ctx = (ctx.get("levels") or {}) if ref_in_force else {}
+    # ... but the printed year-1/year-2/bull2/bear2 levels hold a Base and bound a Bull or Bear whatever the reference's status
+    # (revision 19, fix item 2): the levels are the pack's printed consensus cash flows, not the reference's value
+    levels_ctx = ctx.get("levels") or {}
     # brief F6: the owner-earnings figures a base_cf may match (the DEFAULTS owner earnings, and the fiscal-year base the
     # reference grows from)
     oe_figures = [x for x in (ctx.get("owner_earnings_default_b"), ctx.get("reference_base_b")) if _is_num(x) and x != 0]

@@ -151,7 +151,7 @@ def test_the_task_has_the_level_anchor_bullet_after_valuation_date_and_no_senten
     for ms in (2.0, 0.25):
         for confirmed in (True, False):
             assert "cap" not in pack_facts._split_explanation(ms, confirmed).replace("capital", "")
-    assert cap.PACK_REVISION == 18 and pack_facts.FACTS_VERSION == 6
+    assert cap.PACK_REVISION == 19 and pack_facts.FACTS_VERSION == 6
 
 
 # ---- the schema and the contract ----------------------------------------------------------------------------------------------

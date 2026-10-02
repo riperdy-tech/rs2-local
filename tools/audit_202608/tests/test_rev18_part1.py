@@ -359,7 +359,9 @@ def test_the_desk_applies_the_reference_band_only_when_the_status_is_in_force():
     assert "error" not in fmt.execute_financial_model(call, wild)
 
 
-def test_the_levels_hold_and_the_bull_bear_bands_apply_only_to_a_reference_in_force():
+def test_the_levels_hold_and_the_bull_bear_bands_apply_whatever_the_reference_status():
+    """Revision 18 gated the levels by the reference's status; revision 19 (AT10 fix item 2) does not: the printed levels are the pack's
+    consensus cash flows, not the reference's value (test_rev19_part_f.py has the per-status tests)."""
     from test_rev17f_redesign import _w9_reference
     ref = _w9_reference()
     path = list(ref["path"])
@@ -371,15 +373,15 @@ def test_the_levels_hold_and_the_bull_bear_bands_apply_only_to_a_reference_in_fo
     used = fmt.execute_financial_model(call, _desk_ctx(ref, reference_status="used"))
     assert "error" not in used and used["years12_held"]["dcfs"][0]["name"] == "Base"
     outside = fmt.execute_financial_model(call, _desk_ctx(ref, reference_status="outside_fence_above"))
-    assert "error" not in outside and "years12_held" not in outside                # no hold: the levels are a level check only
-    assert (outside["scenario_dcfs"][0]["dcf"]["per_share_iv"] > used["scenario_dcfs"][0]["dcf"]["per_share_iv"])
+    assert "error" not in outside and outside["years12_held"]["dcfs"][0]["name"] == "Base"      # the hold fires outside the fence too (revision 19)
+    assert (outside["scenario_dcfs"][0]["dcf"]["per_share_iv"] == used["scenario_dcfs"][0]["dcf"]["per_share_iv"])
     # the Bull/Bear year-2 bound (scenario_deviation_reason) is a band too
     call.pop("scenario_deviation_reason")
     lv = {"year1": ref["levels"][0] / B, "year2": ref["levels"][1] / B, "bull2": ref["levels"][1] / B, "bear2": ref["levels"][1] / B}
     needs = fmt.execute_financial_model(call, _desk_ctx(ref, levels=lv, reference_status="used"))
     assert "scenario_deviation_reason" in needs.get("error", "")
-    assert "scenario_deviation_reason" not in fmt.execute_financial_model(
-        call, _desk_ctx(ref, levels=lv, reference_status="outside_fence_below")).get("error", "")
+    assert "scenario_deviation_reason" in fmt.execute_financial_model(
+        call, _desk_ctx(ref, levels=lv, reference_status="outside_fence_below")).get("error", "")      # revision 19: R11 applies outside the fence too
 
 
 def test_the_harness_flag_and_the_stamps_read_the_status():
@@ -473,8 +475,10 @@ def test_the_desk_reads_excess_cash_from_the_context_and_a_departure_needs_a_rea
                                      _desk_ctx(ref, excess_cash=1.0))
     assert "error" not in ok
     assert ok["scenario_dcfs"][0]["dcf"]["per_share_iv"] == pytest.approx(base["scenario_dcfs"][0]["dcf"]["per_share_iv"] + 8.0, abs=0.0051)
-    # no DEFAULTS amount (None) counts as 0: any amount is a departure
-    assert "excess_cash_reason needed" in fmt.execute_financial_model(_desk_call(ref, excess_cash=0.5), _desk_ctx(ref))["error"]
+    # no DEFAULTS amount (None) counts as 0 (revision 19, AT10 fix item 3: with no fact it is also the bound, so an amount above it is refused
+    # whatever the reason; R15 still reads a negative amount as a departure)
+    assert "no reason allows it" in fmt.execute_financial_model(_desk_call(ref, excess_cash=0.5), _desk_ctx(ref))["error"]
+    assert "excess_cash_reason needed" in fmt.execute_financial_model(_desk_call(ref, excess_cash=-0.5), _desk_ctx(ref))["error"]
 
 
 def test_the_desk_equals_the_reference_to_the_cent_with_a_cash_term_on_a_seeded_sweep():

@@ -957,9 +957,8 @@ def consensus_ratios(scorecard, enrich_data=None, pack_text=None, facts=None):
     # revision 17: the fiscal-year reference and level only (the window no longer changes the arithmetic;
     # the BASE WINDOW CHECK's gap stays as information)
     civ = facts.get("consensus_implied_value")
-    # revision 18 (brief 1.5): the levels are a reference's; outside the street-target fence they are a level check only
-    lv2 = ((facts.get("levels") or {}).get("year2")
-           if consensus_reference.reference_in_force(facts.get("reference_status")) else None)
+    # revision 19 (fix item 2): the printed levels are read whatever the reference's status; only the reference's VALUE is gated
+    lv2 = (facts.get("levels") or {}).get("year2")
     win = facts.get("base_window") or {}
     out = {"years12_ratio": None, "base_to_civ": None, "consensus_implied_value": civ,
            "base_window_gap": win.get("gap")}
@@ -1157,7 +1156,7 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
         stamps["bull_bear_anchor"] = f"no consensus range ({e1.get('analysts') or 0} analysts)"
     else:
         stamps["bull_bear_anchor"] = "consensus high/low"
-    lv = (facts.get("levels") or {}) if consensus_reference.reference_in_force(facts.get("reference_status")) else {}
+    lv = facts.get("levels") or {}     # revision 19 (fix item 2): the printed levels, whatever the reference's status
     for role in ("base", "bull", "bear"):
         inp = _desk_scenario_inputs(calls, sc.get(f"{role}_iv"), role=role)
         if not inp:
@@ -1428,8 +1427,7 @@ def check_sample_harness_rules(
     path = sc.get("stage1_growth_path") or []
     c1, c2, _ = consensus_reference.consensus_earnings_growth(en.get("estimates"))
     civ = facts.get("consensus_implied_value")
-    lv2 = ((facts.get("levels") or {}).get("year2")
-           if consensus_reference.reference_in_force(facts.get("reference_status")) else None)
+    lv2 = (facts.get("levels") or {}).get("year2")     # revision 19 (fix item 2): the printed level, whatever the status
     y2 = _year2_flow(sc.get("base_cf_used"), path)
     if lv2 and y2 is not None and not gdr:
         # E18: the year-2 LEVEL is the anchor, whatever base the sample declared (ADI (b): a TTM
@@ -2162,6 +2160,7 @@ def main():
         # revision 18 (brief 1.7, 1.5): the excess cash the desk adds at face, and whether the reference is in force or
         # printed outside the street-target fence as a level check only
         "excess_cash": facts.get("excess_cash"),
+        "base_year_cash_and_investments_b": facts.get("base_year_cash_and_investments_b"),   # revision 19, fix item 3: the desk's bound
         "reference_status": facts.get("reference_status"),
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)

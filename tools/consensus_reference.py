@@ -225,6 +225,16 @@ def _finite(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
+def cash_and_investments(row):
+    """Revision 19 (AT10 fix item 3): the base fiscal year's cash plus short-term investments as filed, in dollars: `cash_term`'s C_L
+    (a null short-term figure counts 0), for every sector, financial or not, and whatever the bill rate. None when `cash` is null.
+    The desk refuses an excess_cash above it."""
+    cash, sti = row.get("cash"), row.get("st_investments")
+    if not _finite(cash):
+        return None
+    return float(cash) + (float(sti) if _finite(sti) else 0.0)
+
+
 def cash_term(row, bill_rate, sector):
     """Revision 18 (brief 1.3): cash at face for a non-financial company. `row` is the base fiscal year's row; `bill_rate`
     the mean 3-month bill rate over the 12 months to that year's end, as a fraction (None when it is not available); `sector`

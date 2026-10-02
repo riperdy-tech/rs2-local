@@ -226,7 +226,11 @@ TIMEOUT = 14400
 #   closure premium (rs2's market-consistent premium; MRI's premium is context). The reference line carries a calibrated
 #   level-anchor sentence, the TASK a Level anchor bullet, the DEFAULTS an excess_cash line (the desk adds it per share and a
 #   different amount needs excess_cash_reason), and a value outside the street-target fence is printed with its flag.
-PACK_REVISION = 18
+# Revision 19 (brief_rev19.md, 2026-10-02, operator ruling 1: no directional call without a stated disagreement): the printed
+#   levels hold a Base's years 1-2 whatever the reference's status and the desk refuses an excess_cash above the base year's cash
+#   (the DEFAULTS gain base_year_cash_and_investments_b); then the price-implied value of each judgment input, the crux, the
+#   reference line as context, and the TASK's item 6 (recorded in rev19/BEFORE_AFTER_r19.md).
+PACK_REVISION = 19
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -2922,6 +2926,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 _lr_raw["stub_months"] = _stub
             # revision 18 (brief 1.3): cash at face for a non-financial company (`_cash_term_for`)
             _cash = _cash_term_for(_fy_rec, sector, _fye_src, _fye_conflict, _fy_end_dt)
+            # revision 19 (AT10 fix item 3): the bound the desk holds an excess_cash to, for every sector
+            _cash_bound = consensus_reference.cash_and_investments(_fy_rec)
+            if _cash_bound is not None:
+                facts["base_year_cash_and_investments_b"] = pack_facts.q_b(_cash_bound / 1e9)
             if _cash["applies"]:
                 facts["excess_cash"] = pack_facts.q_b(_cash["cash"] / 1e9)
             elif _cash["financial"]:

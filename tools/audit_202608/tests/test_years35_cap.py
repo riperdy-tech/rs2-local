@@ -762,6 +762,8 @@ def test_18_plumbing_consensus_valuation_passes_desk_context(monkeypatch, tmp_pa
         "reference_base_b",
         # revision 18 (brief 1.7, 1.5): the excess cash the desk adds at face, and the reference's status
         "excess_cash", "reference_status",
+        # revision 19 (AT10 fix item 3): the bound the desk holds an excess_cash to
+        "base_year_cash_and_investments_b",
     }
     for ctx in captured_calls:
         assert set(ctx.keys()) == expected_keys

@@ -77,6 +77,9 @@ KEYS: list[str] = [
     # closure premium) or "damodaran_point_in_time" (a point-in-time pack, whose closure premium cannot be rebuilt for a past
     # date) - or None when there is no cost of equity.
     "coe_premium_source",
+    # revision 19 (AT10 fix item 3): the base fiscal year's cash and short-term investments as filed ($B), for every sector,
+    # or None when `cash` is null. The desk refuses an excess_cash above it. An older sidecar or block reads it as None.
+    "base_year_cash_and_investments_b",
 ]
 
 # The revision marker (S1's from_text dispatch, section 5.1's line format). The DEFAULTS reader
@@ -364,6 +367,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "reference_base_b": None,
         "excess_cash": None,
         "coe_premium_source": None,
+        "base_year_cash_and_investments_b": None,
     }
 
 
@@ -841,7 +845,11 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
              "$B: the base fiscal year's cash and short-term investments at face (0 for a financial company; not "
              "available when the cash term could not be computed, see long_run stamps), which the desk adds per share to "
              "every scenario's value; the owner-earnings default and the reference base exclude the after-tax interest "
-             "on it; a different amount needs excess_cash_reason"),
+             "on it; a different amount needs excess_cash_reason; the desk refuses an amount above "
+             "base_year_cash_and_investments_b"),
+        line("base_year_cash_and_investments_b", _dv_money6(f.get("base_year_cash_and_investments_b")),
+             "the base fiscal year's cash and short-term investments as filed; the desk refuses an excess_cash above it "
+             "(cash after the valuation date is already in the cash flows)"),
         line("cash_basis_b", _dv_money(f.get("cash_basis_b")),
              "the alternative base (includes working-capital swings)"),
         line("reference_base_b", _dv_money6(f.get("reference_base_b")),
@@ -988,7 +996,8 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         mm = re.search(rf"^- {re.escape(key)}: (.*?) \| ", block, re.MULTILINE)
         if mm:
             return mm.group(1)
-        if throughcycle and key not in ("base_year_cap", "split_after_last_filing", "reference_base_b", "excess_cash", "coe_premium_source"):
+        if throughcycle and key not in ("base_year_cap", "split_after_last_filing", "reference_base_b", "excess_cash", "coe_premium_source",
+                                  "base_year_cash_and_investments_b"):
             raise ValueError(f"revision-17 DEFAULTS block has no {key!r} line")
         return None
 
@@ -1073,6 +1082,8 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     coe_premium_source = _dp_str(_cps) if _cps is not None else None
     _ec = _opt("excess_cash")
     excess_cash = _dp_num(_ec) if _ec is not None else None
+    _bc = _opt("base_year_cash_and_investments_b")
+    base_year_cash_and_investments_b = _dp_num(_bc) if _bc is not None else None
 
     return {
         "version": FACTS_VERSION,
@@ -1109,6 +1120,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "reference_base_b": reference_base_b,
         "excess_cash": excess_cash,
         "coe_premium_source": coe_premium_source,
+        "base_year_cash_and_investments_b": base_year_cash_and_investments_b,
     }
 
 

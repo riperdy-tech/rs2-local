@@ -95,7 +95,7 @@ def _get_system_block(path: Path) -> str:
 def test_text_pins():
     # Revision 17 (brief_rev17_B_valuation.md): the pack text, the TASK and the tool schema changed on purpose (the
     # through-cycle package); revision 16 changed only the number on the first line.
-    assert capability_test.PACK_REVISION == 18
+    assert capability_test.PACK_REVISION == 19
     assert _sha256(capability_test.TASK) == TASK_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
@@ -131,7 +131,7 @@ class FrozenDatetime(_real_datetime):
 
 
 def test_pack_byte_pin(screener_data_stub, monkeypatch):
-    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev18.md.
+    """Confirm build_pack determinism and byte equality with golden_pack_GEV_rev19.md.
 
     Datetime is frozen at 2026-09-27 12:00 local across:
     - capability_test
@@ -209,10 +209,12 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # (+45); the reference line's text changes do not show in this pack (GEV's fixture holds no consensus estimates)
     # revision 18, part-2 review condition (+251 chars, was 22085): the coe_premium_source DEFAULTS line (the premium-source label)
     # revision 18, amendment 2 T2 (+13 chars, was 22336): the Rates line's "implied cost of equity" reads "MRI market cost of equity (context)"
-    assert len(text1) == 22349
+    # revision 19, part F (+281 chars, was 22349): PACK_REVISION 19 on the first line (0), the excess_cash line's refusal clause and the new
+    # base_year_cash_and_investments_b line (AT10 fix item 3)
+    assert len(text1) == 22630
 
     # Assert byte equality with golden file
-    golden_file = FIXTURE / "golden_pack_GEV_rev18.md"
+    golden_file = FIXTURE / "golden_pack_GEV_rev19.md"
     # core.autocrlf checks the fixture out with CRLF on Windows; the pack itself is built with "\n"
     golden_bytes = golden_file.read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes
