@@ -122,6 +122,10 @@ def _ri(est=EST):
 NCI = {"net_income_incl_nci": 1.5 * B, "equity_incl_nci": 7.5 * B}
 
 
+# the NCI fields of a name that holds none (the consolidated figures equal the company's own): pi = 1, so the history is not "before Fix 1a"
+NO_NCI = {"net_income_incl_nci": 1.2 * B, "equity_incl_nci": 6.0 * B}
+
+
 def _with_nci(y, row):
     return {"net_income_incl_nci": row["net_income"] * 1.25, "equity_incl_nci": row["equity"] * 1.25}
 
@@ -234,11 +238,12 @@ def test_gate_reasons_20_and_21_read_the_rows_stamps_and_nothing_else():
     assert ok is False and reasons == ["nci_share_unmeasured", "per_share_basis_unverified"]
     # annotations that are not gate reasons, an absent field and a None field gate nothing
     assert depth_gates.assess(_gate_row(input_scope_stamps=[isc.PER_SHARE_UNTESTED, isc.MONEY_EXCLUDED, isc.LIABILITIES_EXCEED]))[0] is True
+    # (since the 2026-10-02 follow-up, reason 22: on pack revision 20 an absent or unreadable stamps field is not "nothing to stamp")
     for v in (None, "nci_share_unmeasured"):
-        assert depth_gates.assess(_gate_row(input_scope_stamps=v))[0] is True
+        assert depth_gates.assess(_gate_row(input_scope_stamps=v)) == (False, ["input_scope_stamps_missing"])
     row = _gate_row()
     row.pop("input_scope_stamps")
-    assert depth_gates.assess(row)[0] is True
+    assert depth_gates.assess(row) == (False, ["input_scope_stamps_missing"])
     # a row of gate version 7 is stale on the new version (reason 2), as every version bump does
     assert "pre_v3.1_gates" in depth_gates.assess(_gate_row(gate_version=7))[1]
 
@@ -446,7 +451,7 @@ def test_1c1_the_identity_its_tolerance_and_the_untested_cases():
 
 
 def test_1c1_an_unverified_basis_is_printed_with_both_figures_kept_in_the_facts_and_gated(screener_data_stub, monkeypatch):
-    pack, call = _pack(monkeypatch, _doc(base_updates={"eps_diluted": 2.00}))
+    pack, call = _pack(monkeypatch, _doc(base_updates={"eps_diluted": 2.00, **NO_NCI}))
     f, text = pack.facts, str(pack)
     ps = f["per_share_basis"]
     assert ps["status"] == "unverified" and ps["eps_filed"] == 2.0 and ps["eps_implied"] == pytest.approx(2.4) and ps["gap"] == pytest.approx(0.2)
@@ -456,9 +461,9 @@ def test_1c1_an_unverified_basis_is_printed_with_both_figures_kept_in_the_facts_
     assert f"per-share basis not verified: {figures}" in _ref_line(text)
     assert f["reference_status"] == "used"                                                       # still printed
     _gate(isc.gate_stamps(f), "per_share_basis_unverified")
-    verified, _ = _pack(monkeypatch, _doc(base_updates={"eps_diluted": 2.40}))
+    verified, _ = _pack(monkeypatch, _doc(base_updates={"eps_diluted": 2.40, **NO_NCI}))
     assert verified.facts["per_share_basis"]["status"] == "verified" and "PER-SHARE CHECK" not in str(verified)
-    untested, _ = _pack(monkeypatch, _doc())
+    untested, _ = _pack(monkeypatch, _doc(base_updates=NO_NCI))
     assert untested.facts["per_share_basis"]["status"] == "untested" and isc.PER_SHARE_UNTESTED in isc.gate_stamps(untested.facts)
     assert depth_gates.assess(_gate_row(input_scope_stamps=isc.gate_stamps(untested.facts)))[0] is True
 
@@ -595,3 +600,81 @@ def test_the_new_history_fields_are_reviewed_and_the_sensor_stays_silent(screene
     pack, _ = _pack(monkeypatch, _doc(base_updates=every))
     assert "UNREVIEWED FIELDS PRESENT" not in str(pack)
     assert cap._unreviewed_history_fields({"2025": dict(every, some_new_field=1)}) == ["some_new_field"]
+
+
+# ---- the 2026-10-02 follow-up (brief_rev20_followup.md section R) ----------------------------------------------------------------------------
+
+def test_r1_a_history_without_the_nci_fields_fails_closed_and_sets_reason_20(screener_data_stub, monkeypatch):
+    """R1 (deviation 7 reversed): a history written before Fix 1a carries `nci_scope_fields_absent`; a directional verdict on it is not
+    actionable, with the reason of an unmeasured share. HOLD is unaffected and the row is annotated, never dropped."""
+    pack, _call = _pack(monkeypatch, _doc())                                  # the synthetic history has neither NCI field
+    f = pack.facts
+    assert f["nci_attribution"]["basis"] == "scope_fields_absent" and f["nci_attribution"]["pi"] == 1.0
+    stamps = isc.gate_stamps(f)
+    assert isc.NCI_FIELDS_ABSENT in stamps
+    _gate([isc.NCI_FIELDS_ABSENT], "nci_share_unmeasured")
+    ok, reasons = depth_gates.assess(_gate_row(input_scope_stamps=stamps))
+    assert ok is False and "nci_share_unmeasured" in reasons
+    # both stamps at once: the one reason, once
+    both = depth_gates.assess(_gate_row(input_scope_stamps=[isc.NCI_FIELDS_ABSENT, isc.NCI_UNMEASURED]))
+    assert both == (False, ["nci_share_unmeasured"])
+    # a history that carries the fields is unaffected
+    fielded, _ = _pack(monkeypatch, _doc(base_updates=NCI))
+    assert isc.NCI_FIELDS_ABSENT not in isc.gate_stamps(fielded.facts)
+
+
+def test_r2_a_directional_verdict_on_revision_20_without_input_scope_stamps_is_not_actionable(screener_data_stub, monkeypatch):
+    """R2 (Q2): a pack replayed from its text alone has no stamps (the blocks are sidecar-only), so the verdict row's `input_scope_stamps`
+    is None; a verdict that cannot show its inputs were scoped cannot carry money."""
+    pack, _call = _pack(monkeypatch, _doc(base_updates=NCI))
+    assert isinstance(isc.gate_stamps(pack.facts), list)                                      # the build (and its sidecar) states them
+    replayed = pack_facts.from_text(str(pack) + "\n\n---\n\n" + cap.TASK)
+    stamps = isc.gate_stamps(replayed)
+    assert stamps is None
+    for dirn, over in (("undervalued", {}), ("overvalued", {"kelly_fraction_pct": 0.0})):
+        row = _gate_row(direction=dirn, input_scope_stamps=stamps, **over)
+        before = copy.deepcopy(row)
+        ok, reasons = depth_gates.assess(row)
+        assert ok is False and reasons == ["input_scope_stamps_missing"] and row == before
+    assert depth_gates.assess(_gate_row(direction="hold", input_scope_stamps=stamps)) == (True, [])
+    # an absent field, or one that is not a list, is as missing as None; an empty list is a stated "nothing to stamp"
+    gone = _gate_row()
+    gone.pop("input_scope_stamps")
+    assert depth_gates.assess(gone) == (False, ["input_scope_stamps_missing"])
+    assert depth_gates.assess(_gate_row(input_scope_stamps="nci_share_unmeasured")) == (False, ["input_scope_stamps_missing"])
+    assert depth_gates.assess(_gate_row(input_scope_stamps=[])) == (True, [])
+    # a row of a revision before 20 is not judged on it
+    assert depth_gates.assess(_gate_row(pack_revision=19, input_scope_stamps=None)) == (True, [])
+    assert depth_gates.assess(_gate_row(pack_revision=None, input_scope_stamps=None)) == (True, [])
+    # with a stamp present the stamp's own reason is given, and the missing-stamps reason is not added
+    assert depth_gates.assess(_gate_row(input_scope_stamps=[isc.NCI_UNMEASURED])) == (False, ["nci_share_unmeasured"])
+    assert depth_gates.GATE_VERSION == 8
+
+
+def test_r4_a_filed_zero_of_restricted_cash_prints_no_excluded_clause(screener_data_stub, monkeypatch):
+    """R4 (Q6): nothing is excluded by a zero, so the clause is not printed; the value stays in the facts, and no number changes."""
+    plain, call_plain = _pack(monkeypatch, _doc())
+    zero, call_zero = _pack(monkeypatch, _doc(base_updates={"cash_restricted": 0.0}))
+    assert zero.facts["cash_restricted_b"] == 0.0                                               # the value stays in the facts
+    assert call_zero["out"]["value"] == call_plain["out"]["value"] and call_zero["kwargs"]["cash"] == call_plain["kwargs"]["cash"]
+    text = str(zero)
+    assert "excludes" not in _ref_line(text).split("the excess cash is", 1)[-1] and "restricted cash" not in _ref_line(text)
+    assert "restricted cash" not in text.split("DATA 6 -", 1)[1].split("DATA 6A", 1)[0]
+    assert isc.cash_note("unrestricted_line", isc.customer_money({"cash_restricted": 0.0}, False), str) is None
+    # with customer money filed beside the zero, only what is excluded is named
+    money = isc.customer_money({"cash_restricted": 0.0, "customer_money_assets": 0.1 * B}, False)
+    assert isc.cash_note("unrestricted_line", money, lambda v: f"${v / B:.3f}B") == "excludes customer money held $0.100B (customer_money_excluded)"
+    # a filed non-zero is named, as before
+    nz = isc.customer_money({"cash_restricted": 0.02 * B}, False)
+    assert isc.cash_note("unrestricted_line", nz, lambda v: f"${v / B:.3f}B") == "excludes restricted cash $0.020B (customer_money_excluded)"
+
+
+def test_r5_a_filed_cash_of_zero_is_kept_in_data_6_not_replaced_by_the_vendors(screener_data_stub, monkeypatch):
+    """R5: DATA 6's liquidity card read `lr.get("cash") or fin.get("Total_Cash")`; a filed 0.0 is a value."""
+    pack, _call = _pack(monkeypatch, _doc(base_updates={"cash": 0.0}))
+    card = str(pack).split("EXPLICIT LIQUIDITY & CAPITAL STRUCTURE CARD", 1)[1].split("DATA 6A", 1)[0]
+    cash_line = next(l for l in card.splitlines() if l.startswith("- Total Cash & Cash Equivalents:"))
+    assert cash_line.startswith("- Total Cash & Cash Equivalents: $0.000B"), cash_line
+    assert "the vendor's figure" not in cash_line
+    net = next(l for l in card.splitlines() if "NET DEBT: total debt" in l)
+    assert "cash $0.000B" in net, net

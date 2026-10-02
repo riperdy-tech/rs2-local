@@ -65,8 +65,8 @@ LIABILITIES_EXCEED = "customer_liabilities_exceed_separate_assets"
 INSURANCE_FLOAT = "insurance_float_present"
 VENDOR_BREAK = "vendor_revenue_basis_break"
 VENDOR_UNTESTED = "vendor_revenue_step_untested"
-# the two stamps the gate reads (depth_gates, GATE_VERSION 8)
-GATE_STAMPS = (NCI_UNMEASURED, PER_SHARE_UNVERIFIED)
+# the stamps the gate reads (depth_gates, GATE_VERSION 8): `nci_scope_fields_absent` sets the reason of `nci_share_unmeasured`
+GATE_STAMPS = (NCI_UNMEASURED, NCI_FIELDS_ABSENT, PER_SHARE_UNVERIFIED)
 
 
 def _num(v):
@@ -487,7 +487,7 @@ def cash_note(cash_scope, money, fmt_b):
     if cash_scope is not None and cash_scope != "unrestricted_line":
         parts.append(f"cash_scope {cash_scope}")
     excl = []
-    if money["cash_restricted"] is not None:
+    if money["cash_restricted"] is not None and money["cash_restricted"] != 0.0:     # a filed zero excludes nothing: it stays in the facts
         excl.append(f"restricted cash {fmt_b(money['cash_restricted'])}")
     if money["assets"] is not None:
         excl.append(f"customer money held {fmt_b(money['assets'])}")

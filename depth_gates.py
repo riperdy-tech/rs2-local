@@ -102,9 +102,15 @@ def producer_class(ticker: str, stocks_csv_path: str | Path, source_label: str) 
 # 7 (GATE_VERSION 7, revision 19, brief C2): reason 19. A directional verdict needs a valid crux.
 # 8 (GATE_VERSION 8, pack revision 20, brief_input_scope_fixes.md 1.3(a), 1.4): reasons 20-21. A directional verdict on a name whose
 #   noncontrolling-interest share cannot be measured, or whose per-share basis is not verified, is not actionable.
+#   Reason 22 (brief_rev20_followup.md, rulings 2 and 7) rides the same version: a history from before the fix, and a verdict with no
+#   input-scope stamps at all, fail closed.
 GATE_VERSION = 8
-# the input-scope stamps a verdict row carries (`input_scope_stamps`, from the pack's facts) that reasons 20 and 21 read
-INPUT_SCOPE_GATE_STAMPS = {"nci_share_unmeasured": "nci_share_unmeasured", "per_share_basis_unverified": "per_share_basis_unverified"}
+# the input-scope stamps a verdict row carries (`input_scope_stamps`, from the pack's facts) that reasons 20 and 21 read. A history without
+# the noncontrolling-interest fields (`nci_scope_fields_absent`) sets reason 20: its share is as unmeasured as one that cannot be measured.
+INPUT_SCOPE_GATE_STAMPS = {"nci_share_unmeasured": "nci_share_unmeasured", "nci_scope_fields_absent": "nci_share_unmeasured",
+                           "per_share_basis_unverified": "per_share_basis_unverified"}
+# the first PACK_REVISION whose verdicts carry input-scope stamps: reason 22 reads only rows of this revision or later
+FIRST_INPUT_SCOPE_PACK_REVISION = 20
 # the first PACK_REVISION whose verdicts carry a crux: reason 19 reads only rows of this revision or later
 FIRST_CRUX_PACK_REVISION = 19
 
@@ -162,12 +168,19 @@ def assess(v):
          not True                                                -> "directional_without_valid_crux"
      20. `direction` undervalued or overvalued and `input_scope_stamps` holds `nci_share_unmeasured` -> "nci_share_unmeasured"
      21. `direction` undervalued or overvalued and `input_scope_stamps` holds `per_share_basis_unverified` -> "per_share_basis_unverified"
+     22. `pack_revision` an integer >= FIRST_INPUT_SCOPE_PACK_REVISION (20), `direction` undervalued or overvalued, and `input_scope_stamps`
+         not a list (absent, None or any other type; an empty list is a stated "nothing to stamp") -> "input_scope_stamps_missing"
 
     Reasons 20-21 (GATE_VERSION 8, pack revision 20, brief_input_scope_fixes.md 1.3(a) and 1.4): the reference of a name whose
     noncontrolling interests are filed but whose common shareholders' share cannot be measured is an upper bound, and a name whose filed
     net income, diluted EPS and diluted share count do not satisfy the ASC 260 identity has an unverified per-share basis. Either is
     printed and annotated, never withheld (non-negotiable 3); a directional verdict on such a name is not actionable, HOLD is unaffected,
-    and the row is annotated, never dropped.
+    and the row is annotated, never dropped. `nci_scope_fields_absent` (a history written before the noncontrolling-interest fields existed)
+    also sets reason 20, once.
+
+    Reason 22 (GATE_VERSION 8, brief_rev20_followup.md ruling 2): a directional verdict on pack revision 20 or later whose input-scope stamps
+    are missing (a frozen pack replayed from its text alone has none: the blocks are sidecar-only) cannot show its inputs were scoped, so it
+    is not actionable. HOLD is unaffected.
 
     Reasons 10-13 (GATE_VERSION 3, Phase 4 (b)): the sanity audit already flagged FSM's samples
     (MoS +442%, 4.9x the analyst high) and kept them, as designed, but no gate read the flags.
@@ -312,8 +325,11 @@ def assess(v):
     scope_stamps = v.get("input_scope_stamps")
     if direction in ("undervalued", "overvalued") and isinstance(scope_stamps, (list, tuple)):
         for stamp, reason in INPUT_SCOPE_GATE_STAMPS.items():
-            if stamp in scope_stamps:
+            if stamp in scope_stamps and reason not in reasons:
                 reasons.append(reason)
+    elif (direction in ("undervalued", "overvalued") and isinstance(pr, int) and not isinstance(pr, bool)
+            and pr >= FIRST_INPUT_SCOPE_PACK_REVISION):
+        reasons.append("input_scope_stamps_missing")
 
     return (not reasons), reasons
 

@@ -1,5 +1,5 @@
 """tests/test_reference_ledger_eval.py - revision 18 brief section 5.2: the frozen evaluation (tools/reference_ledger_eval.py); from revision 19 the
-cohort's default revision is 19 (the synthetic ledgers below carry it) and the evaluation adds the call groups (tests/test_reference_ledger_r19.py).
+cohort's default revision is 20 (the synthetic ledgers below carry it; moved from 19 at pack revision 20) and the evaluation adds the call groups (tests/test_reference_ledger_r19.py).
 
 SYNTHETIC data only. The metric functions are the backtest's (registration d09bb4a4 section 7); each is pinned here on a case
 worked by hand. The end-to-end cases build a ledger through the real `snapshot` and a prices file, then evaluate it.
@@ -140,7 +140,7 @@ def _write_prices(path, returns, spy, d0=D0, h=12, extra=(), end_missing=(), sta
 
 def _full_row(t, d0=D0, **kw):
     r = {"date": d0.isoformat(), "ticker": t, "price": 10.0, "price_date": d0.isoformat(), "reference_value": 5.0,
-         "reference_status": "used", "vp": 0.5, "coe": 0.09, "closure_erp": 0.05, "closure_asof": "2026-12-20", "revision": 19,
+         "reference_status": "used", "vp": 0.5, "coe": 0.09, "closure_erp": 0.05, "closure_asof": "2026-12-20", "revision": 20,
          "verdict": None}
     r.update(kw)
     return r
@@ -161,7 +161,7 @@ def test_one_date_matches_the_hand_computed_values(tmp_path):
     (p,) = res["groups"]["all"]["per_date"]
     x = p["excluded"]
     assert res["snapshot_dates"] == ["2027-01-04"] and res["asof"] == "2028-01-04" and res["report_only"] is True
-    assert res["revision"] == 19 and res["other_revisions"] == {}
+    assert res["revision"] == 20 and res["other_revisions"] == {}
     assert (x["n"], p["rows"], p["not_valued"], p["no_price_at_start"], p["no_price_at_end"]) == (10, 10, 0, 0, 0)
     assert x["rho"] == pytest.approx(1.0)
     assert x["apv_median"] == pytest.approx(1.05) and a["APV"] == pytest.approx(1.05)
@@ -292,23 +292,26 @@ def test_the_status_split_reports_used_and_outside_the_fence_apart(tmp_path):
     assert res["status_split"]["book"]["outside_fence"]["aggregate"]["names_valued_at_start"] == 1
 
 
-def test_only_revision_19_rows_are_in_the_cohort_and_the_others_are_reported_apart(tmp_path):
+def test_only_revision_20_rows_are_in_the_cohort_and_the_others_are_reported_apart(tmp_path):
+    assert ev.REVISION == 20 and ev.CRUX_FIRST_REVISION == 19            # the cohort moved with the pack; the crux cohort did not
     led, px = tmp_path / "l.jsonl", tmp_path / "p.csv"
     old = [_full_row(f"ZO{i}", revision=18, reference_value=10.0 * v, vp=v) for i, v in enumerate(VP)]
+    old += [_full_row(f"ZP{i}", revision=19, reference_value=10.0 * v, vp=v) for i, v in enumerate(VP)]
     _ledger(led, extra_rows=old)
     returns = dict(zip(NAMES, RET))
     returns.update({f"ZO{i}": r for i, r in enumerate(RET)})
+    returns.update({f"ZP{i}": r for i, r in enumerate(RET)})
     _write_prices(px, returns, 0.05)
     rows = rl.read_ledger(led)
     res = ev.evaluate(rows, _load(px), D0, 12)
-    assert res["groups"]["all"]["per_date"][0]["rows"] == 10 and res["revisions"] == {"18": 10, "19": 10}
-    assert set(res["other_revisions"]) == {"18"} and "per_date" not in res["other_revisions"]["18"]["groups"]["all"]
+    assert res["groups"]["all"]["per_date"][0]["rows"] == 10 and res["revisions"] == {"18": 10, "19": 10, "20": 10}
+    assert set(res["other_revisions"]) == {"18", "19"} and "per_date" not in res["other_revisions"]["18"]["groups"]["all"]
     assert res["other_revisions"]["18"]["groups"]["all"]["aggregate"]["dates"] == 1
     res18 = ev.evaluate(rows, _load(px), D0, 12, revision=18)
-    assert res18["revision"] == 18 and res18["groups"]["all"]["per_date"][0]["rows"] == 10 and set(res18["other_revisions"]) == {"19"}
+    assert res18["revision"] == 18 and res18["groups"]["all"]["per_date"][0]["rows"] == 10 and set(res18["other_revisions"]) == {"19", "20"}
     # no row of the asked-for revision: an empty cohort, the others still reported
-    res20 = ev.evaluate(rows, _load(px), D0, 12, revision=20)
-    assert res20["snapshot_dates"] == [] and set(res20["other_revisions"]) == {"18", "19"}
+    res21 = ev.evaluate(rows, _load(px), D0, 12, revision=21)
+    assert res21["snapshot_dates"] == [] and set(res21["other_revisions"]) == {"18", "19", "20"}
 
 
 def test_a_ledger_price_far_from_the_files_unadjusted_close_is_counted_not_dropped(tmp_path):
@@ -339,7 +342,7 @@ def _synthetic(tmp_path, weeks=4, n=60, seed=7, horizon=12):
     f = dict(inputs_fn=lambda t: {"v": 10.0 * vp[t], "coe": 0.09}, build_fn=lambda **kw: {"value": kw["v"]},
              fence_fn=lambda v, t: None, price_fn=lambda t: (10.0, "2027-01-04"), verdict_fn=lambda t: None)
     for d in dates:
-        rl.snapshot(d.isoformat(), names[:40], set(names[40:]), ledger_path=led, closure=CLOSURE, revision=19, **f)
+        rl.snapshot(d.isoformat(), names[:40], set(names[40:]), ledger_path=led, closure=CLOSURE, revision=20, **f)
     with open(px, "w", encoding="utf-8", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["date", "ticker", "close", "adj_close", "dividends", "stock_splits"])
@@ -370,7 +373,7 @@ def test_the_frozen_script_runs_end_to_end_on_a_synthetic_ledger(tmp_path, capsy
     allg = res["groups"]["all"]["aggregate"]
     assert allg["dates"] == 4 and allg["excluded"]["rho_mean"] > 0.5            # the planted relationship is found
     assert res["groups"]["book"]["per_date"][0]["excluded"]["n"] == 40 and res["groups"]["untouched"]["per_date"][0]["excluded"]["n"] == 20
-    assert len(res["inputs"]["ledger_sha256"]) == 64 and res["inputs"]["prices_sha256"] == _sha(px) and res["revisions"] == {"19": 240}
+    assert len(res["inputs"]["ledger_sha256"]) == 64 and res["inputs"]["prices_sha256"] == _sha(px) and res["revisions"] == {"20": 240}
     assert res["definitions"]["buy"] == 1.3 and res["definitions"]["avoid"] == 0.7
 
 

@@ -3250,7 +3250,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         # Unambiguous Net Liquidity Card (prevents column-slip and guessing leverage)
         latest_y = max(yrs)
         lr = h.get(str(latest_y), {})
-        cash_val = lr.get("cash") or fin.get("Total_Cash")
+        cash_val = lr.get("cash") if lr.get("cash") is not None else fin.get("Total_Cash")     # a filed 0.0 is a value
         raw_debt = lr.get("lt_debt")
         vendor_debt = fin.get("Total_Debt")
         effective_debt = raw_debt if (raw_debt is not None and raw_debt > 0) else vendor_debt

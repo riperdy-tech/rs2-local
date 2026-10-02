@@ -183,9 +183,12 @@ applicable reason so a row can carry more than one at once:
 18. `street_fence` not a dict with numeric `low` and `high` -> `no_street_fence`
 19. `pack_revision` >= 19, a directional verdict and `crux_valid` not True -> `directional_without_valid_crux`
 20. a directional verdict whose `input_scope_stamps` hold `nci_share_unmeasured` (noncontrolling interests filed, the common
-    shareholders' share not measurable; pack revision 20) -> `nci_share_unmeasured`
+    shareholders' share not measurable; pack revision 20), or `nci_scope_fields_absent` (a history written before the
+    noncontrolling-interest fields existed) -> `nci_share_unmeasured`
 21. a directional verdict whose `input_scope_stamps` hold `per_share_basis_unverified` (the filed net income, diluted EPS and
     diluted share count fail the ASC 260 identity; pack revision 20) -> `per_share_basis_unverified`
+22. `pack_revision` >= 20, a directional verdict and `input_scope_stamps` not a list (a pack replayed from its text alone has
+    none) -> `input_scope_stamps_missing`
 
 `orchestrate_depth.rebuild_overlay()` runs every ledger row's newest-per-ticker through
 `assess()` and adds `actionable` / `actionable_reasons` / `gate_version` to each row, plus
