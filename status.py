@@ -32,6 +32,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 from fiduciary_gate import contract_base  # noqa: E402
+import llamacpp_server  # noqa: E402  (depth_provider "llamacpp": the llama-server lifecycle, M3)
 
 CONFIG = paths.load_config()   # STOCKS_ROOT contract: paths.py owns the peer-repo locations
 SD = Path(CONFIG["screener_data_dir"])
@@ -102,7 +103,12 @@ def _unload_models():
     """keep_alive:0 on the depth + research models to release VRAM. Call ONLY when idle."""
     import urllib.request
     ep = CONFIG["ollama_endpoint"].replace("/api/chat", "/api/generate")
-    for m in (DEPTH_MODEL, RESEARCH_MODEL):
+    models = (DEPTH_MODEL, RESEARCH_MODEL)
+    if llamacpp_server.is_enabled():
+        # the analyst is llama-server (it never unloads itself); the research model is an Ollama model under both providers
+        llamacpp_server.stop()
+        models = (RESEARCH_MODEL,)
+    for m in models:
         try:
             req = urllib.request.Request(
                 ep, data=json.dumps({"model": m, "keep_alive": 0}).encode(),
@@ -110,6 +116,25 @@ def _unload_models():
             urllib.request.urlopen(req, timeout=15).read()
         except Exception:
             pass
+
+
+_LLAMACPP_CACHE = {"t": 0.0, "v": None}
+
+
+def _llamacpp_line():
+    """Under depth_provider "llamacpp": one dashboard line from llamacpp_server.status(), cached 30 s (it runs nvidia-smi and
+    asks /health). None under ollama."""
+    if not llamacpp_server.is_enabled():
+        return None
+    if _LLAMACPP_CACHE["v"] is not None and time.time() - _LLAMACPP_CACHE["t"] < 30:
+        return _LLAMACPP_CACHE["v"]
+    s = llamacpp_server.status()
+    gpu = s["gpu_used_mib"]
+    line = (f"  llama-server: {'READY' if s['ready'] else 'DOWN'} | PID {s['pid'] or '—'} | "
+            f"health {'ok' if s['health'] else '—'} | GPU {gpu if gpu is not None else '?'} MiB | {s['model_tag']}"
+            + (f" | {s['problem']}" if s["problem"] and not s["ready"] and s["engine_file"] else ""))
+    _LLAMACPP_CACHE.update(t=time.time(), v=line)
+    return line
 
 
 _TASK_CACHE = {"t": 0.0, "v": (None, None, None)}
@@ -247,6 +272,9 @@ def depth_snapshot():
     L.append(f"║  Engine: {DEPTH_MODEL:<24} | Ctx: {DEPTH_CTX:<6} | Think: high (deep)     ║")
     L.append(f"║  Consensus: Adaptive 2-Escalate (Early <=15%, Escalate n=3) | Tools: SearXNG  ║")
     L.append("╚" + "═" * 78 + "╝")
+    _llama = _llamacpp_line()
+    if _llama:
+        L.append(_llama)
 
     alive = _sweep_running()
     paused = DEPTH_PAUSE.exists()

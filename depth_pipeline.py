@@ -48,6 +48,7 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
+import llamacpp_server      # noqa: E402  (depth_provider "llamacpp": the llama-server lifecycle, M3)
 import price_now            # noqa: E402  (P1.5 live price at verdict time)
 import screener_refresh     # noqa: E402  (P4.-1 — refresh the publish clone on a standalone run)
 import momentum_basis       # noqa: E402  (P4 E5b momentum basis)
@@ -291,6 +292,13 @@ def run_research(t):
     # the analyst itself still holding the card. Research (9.3GB) and analyst cannot coexist on
     # 24GB, so the ticker must START by clearing the card. Best-effort: if the card is already
     # clear this is a no-op poll.
+    if llamacpp_server.is_enabled():
+        # depth_provider "llamacpp": the analyst is llama-server, not an Ollama model. Stop it (a timeout is a hard
+        # failure, as for Ollama), then the same free-memory poll below.
+        ok, detail = llamacpp_server.stop()
+        if not ok:
+            print(f"[depth] ::VRAM:: llama-server not released — {detail}", flush=True)
+            sys.exit(7)
     ops.wait_unloaded(
         CONFIG["ollama_endpoint"], MODEL,
         need_free_mb=11000,          # enough for the research model + ctx, not the full 20GB
@@ -1202,6 +1210,15 @@ def main():
     if "--no-research" not in sys.argv:
         research_ok = run_research(t)
     consensus_no_research = (not bool(research_ok)) or ("--no-research" in sys.argv)
+
+    # depth_provider "llamacpp": the research model is out of the card (run_research); the analyst server is started or
+    # verified now, for the discovery run and the consensus subprocess, which only reach it through llm_provider.
+    if llamacpp_server.is_enabled():
+        try:
+            llamacpp_server.ensure_ready()
+        except llamacpp_server.ServerRefusal as e:
+            print(f"[depth] ::VRAM:: llama-server not ready — {e}", flush=True)
+            sys.exit(7)
 
     # Phase 4 E9: discovery run before consensus. Live runs call catalyst_research.run(t)
     # after research and BEFORE run_consensus; a failure is recorded on the verdict as

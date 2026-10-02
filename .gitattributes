@@ -1,2 +1,3 @@
 charters/*.txt -text
 tests/fixtures/ollama2llamacpp.py -text
+tests/fixtures/b11272_manifest.json -text
