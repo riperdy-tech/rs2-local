@@ -156,14 +156,14 @@ def unjson(x):
     return x
 
 
-def report(name, ok, detail):
-    print(f"{'PASS' if ok else 'FAIL'}  {name}: {detail}", flush=True)
+def report(name, ok, detail, label=None):
+    print(f"{'PASS' if ok else (label or 'FAIL')}  {name}: {detail}", flush=True)
 
 
 def finish(result, out):
     """Print the verdict, write the JSON, and return the process exit code (0 pass, 1 fail)."""
     write_result(out, result)
-    report(result["at"], result["pass"], result["summary"])
+    report(result["at"], result["pass"], result["summary"], result.get("label"))
     return 0 if result["pass"] else 1
 
 

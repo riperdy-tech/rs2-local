@@ -4,7 +4,10 @@
 the pack text's DEFAULTS block) with the reference's own base and growth path at full precision, against the reference's value, unrounded
 (amendment 1, point 3: the desk's rounding to the cent is not part of its arithmetic; |desk - reference| < $0.005). Names whose reference is
 cash-only are excluded and counted (the desk cannot value a zero operating business); any other name the desk cannot run is listed with the
-reason - by class and count, never by name when `names=False`.
+reason - by class and count, never by name when `names=False`. Revision 18 follow-up, finding 8: a name the desk cannot run for any reason
+other than a non-positive year-1 level (NONPOSITIVE_LEVEL) is PENDING THE REVIEWER'S RULING - listed under `pending_ruling`, and the test is
+not passed on it (label PENDING) - and the desk error behind every `base_valued_alone` fallback (the Base valued alone because the desk's own
+three-scenario call returned an error) is recorded in `base_valued_alone_errors`.
 
 `round_trips(ns, rows)` - AT1e (amendment 2, point 3). For every name with a printed reference whose reverse DCF runs:
   g* is the reference's year-1 growth (path[0] of the growth method); where there is none (a levels name) g* = 5%.
@@ -24,6 +27,7 @@ CENT = 0.005
 FADE_YEARS = 5
 DEFAULT_G_STAR = 0.05
 PRINTED = ("used", "outside_fence_above", "outside_fence_below")
+NONPOSITIVE_LEVEL = "the year-1 owner-earnings level after the cash term is not positive"
 
 
 def _printed(row):
@@ -37,6 +41,7 @@ def desk_parity(ns, rows, *, names=True, tol=CENT):
     fmt.round = lambda x, nd=None: x                      # the desk's own rounding is not part of its arithmetic
     try:
         checked, maxdiff, fails, cash_only, nonpos, unrun, no_desk = 0, 0.0, [], 0, 0, [], 0
+        alone_errors = []
         for key, r in sorted(rows.items()):
             if not _printed(r):
                 continue
@@ -57,7 +62,7 @@ def desk_parity(ns, rows, *, names=True, tol=CENT):
                 path = [0.0, lv[1] / lv[0] - 1] + ref["path"][2:]
             if base <= 0:
                 nonpos += 1
-                unrun.append((key if names else None, "the year-1 owner-earnings level after the cash term is not positive"))
+                unrun.append((key if names else None, NONPOSITIVE_LEVEL))
                 continue
             coe = parsed["coe_anchor"]
             sc = lambda name, prob, w: {"name": name, "prob": prob, "base_cf": base, "explicit_growth": list(path), "wacc": w}
@@ -81,6 +86,7 @@ def desk_parity(ns, rows, *, names=True, tol=CENT):
                                         terminal_ronic=parsed["terminal_ronic"], long_run=parsed["long_run"],
                                         working_capital=parsed["working_capital"], excess_cash=parsed["excess_cash"])
                 no_desk += 1
+                alone_errors.append((key if names else None, str(out["error"])[:160]))
             else:
                 dcf = out["scenario_dcfs"][0]["dcf"]
             if "per_share_iv" not in dcf:
@@ -96,12 +102,18 @@ def desk_parity(ns, rows, *, names=True, tol=CENT):
             del fmt.round
         else:
             fmt.round = real_round
-    ok = checked > 0 and not fails
-    return {"at": "AT1a desk parity", "pass": ok, "names_compared": checked, "max_abs_difference": maxdiff, "differences_at_or_above_bar": len(fails),
-            "fails": sorted(fails, key=lambda x: -x[1])[:20], "cash_only_excluded": cash_only,
-            "cannot_run_listed": unrun, "cannot_run_count": len(unrun), "base_valued_alone": no_desk, "bar": f"|desk - reference| < ${tol}",
-            "summary": f"{checked} names compared, max |difference| ${maxdiff:.6f}, {len(fails)} at or above ${tol}; {cash_only} cash-only "
-                       f"excluded; {len(unrun)} the desk cannot run (listed)"}
+    pending = [u for u in unrun if u[1] != NONPOSITIVE_LEVEL]
+    ok = checked > 0 and not fails and not pending
+    res = {"at": "AT1a desk parity", "pass": ok, "names_compared": checked, "max_abs_difference": maxdiff, "differences_at_or_above_bar": len(fails),
+           "fails": sorted(fails, key=lambda x: -x[1])[:20], "cash_only_excluded": cash_only,
+           "cannot_run_listed": unrun, "cannot_run_count": len(unrun), "pending_ruling": pending, "pending_ruling_count": len(pending),
+           "base_valued_alone": no_desk, "base_valued_alone_errors": alone_errors, "bar": f"|desk - reference| < ${tol}",
+           "summary": f"{checked} names compared, max |difference| ${maxdiff:.6f}, {len(fails)} at or above ${tol}; {cash_only} cash-only "
+                      f"excluded; {len(unrun)} the desk cannot run (listed), {len(pending)} of them pending the reviewer's ruling (a reason other "
+                      f"than a non-positive year-1 level); {no_desk} Bases valued alone after a desk error (errors recorded)"}
+    if pending and not fails:
+        res["label"] = "PENDING"                          # not passed, and not failed: the reviewer rules on the names the desk cannot run
+    return res
 
 
 def _gstar(row):

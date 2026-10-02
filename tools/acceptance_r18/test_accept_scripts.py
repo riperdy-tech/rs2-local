@@ -189,6 +189,52 @@ def test_at1a_passes_on_the_synthetic_name_and_fails_when_the_reference_differs_
     assert not res["pass"] and res["differences_at_or_above_bar"] == 1
 
 
+def test_at1a_records_the_desk_error_behind_a_base_valued_alone_fallback(world, monkeypatch):
+    """Finding 8: the fallback (the Base valued alone because the desk's three-scenario call failed) is recorded with the desk's error."""
+    import desk_checks
+    real = world.ns.fmt.execute_financial_model
+    monkeypatch.setattr(world.ns.fmt, "execute_financial_model", lambda call, ctx: {"error": "the scenarios are not ordered Bear < Base < Bull"})
+    res = desk_checks.desk_parity(world.ns, world.rows)
+    assert res["base_valued_alone"] == 1 and res["pass"] and res["pending_ruling_count"] == 0
+    assert res["base_valued_alone_errors"] == [("GEV", "the scenarios are not ordered Bear < Base < Bull")]
+    assert desk_checks.desk_parity(world.ns, world.rows, names=False)["base_valued_alone_errors"][0][0] is None
+    monkeypatch.setattr(world.ns.fmt, "execute_financial_model", real)
+    assert desk_checks.desk_parity(world.ns, world.rows)["base_valued_alone_errors"] == []
+
+
+def test_at1a_a_name_the_desk_cannot_run_is_pending_the_reviewers_ruling_unless_its_year_one_level_is_not_positive(world, monkeypatch):
+    import desk_checks
+    # a non-positive year-1 level: listed, counted, not pending (the other name carries the test)
+    rows = _copy(world.rows)
+    rows["NEG"] = _copy(world.rows)["GEV"]
+    rows["NEG"]["reference"]["base_cf"] = -1e9
+    res = desk_checks.desk_parity(world.ns, rows)
+    assert res["pass"] and res["names_compared"] == 1 and res["cannot_run_count"] == 1 and res["pending_ruling_count"] == 0
+    assert res["cannot_run_listed"] == [("NEG", desk_checks.NONPOSITIVE_LEVEL)] and "label" not in res
+    # any other reason: pending, not passed, and not a failure either
+    real = world.ns.fmt.unbundled_dcf
+    monkeypatch.setattr(world.ns.fmt, "execute_financial_model", lambda call, ctx: {"error": "x"})
+    monkeypatch.setattr(world.ns.fmt, "unbundled_dcf", lambda **kw: {"error": "wacc must exceed terminal_g"})
+    res = desk_checks.desk_parity(world.ns, world.rows)
+    assert not res["pass"] and res["pending_ruling"] == [("GEV", "wacc must exceed terminal_g")] and res["pending_ruling_count"] == 1
+    assert res["label"] == "PENDING" and res["differences_at_or_above_bar"] == 0 and "pending the reviewer's ruling" in res["summary"]
+    assert desk_checks.desk_parity(world.ns, world.rows, names=False)["pending_ruling"] == [(None, "wacc must exceed terminal_g")]
+    # one name compared, one pending: still not passed (the stand-in fails for the second name only, which carries a 1.0 $B base)
+    mixed = _copy(world.rows)
+    mixed["BAD"] = _copy(world.rows)["GEV"]
+    mixed["BAD"]["reference"]["base_cf"] = 1e9
+    monkeypatch.setattr(world.ns.fmt, "unbundled_dcf", lambda **kw: {"error": "boom"} if abs(kw["base_cf"] - 1.0) < 1e-12 else real(**kw))
+    res = desk_checks.desk_parity(world.ns, mixed)
+    assert not res["pass"] and res["pending_ruling_count"] == 1 and res["names_compared"] == 1 and res["label"] == "PENDING"
+
+
+def test_a_pending_result_is_reported_as_pending_and_exits_one(tmp_path, capsys):
+    result = {"at": "AT1a desk parity", "pass": False, "label": "PENDING", "summary": "x"}
+    assert ac.finish(result, tmp_path / "r.json") == 1
+    assert capsys.readouterr().out.startswith("PENDING  AT1a desk parity")
+    assert ac.finish({"at": "A", "pass": False, "summary": "x"}, None) == 1 and capsys.readouterr().out.startswith("FAIL")
+
+
 def test_at1a_counts_a_cash_only_reference_and_lists_nothing_else(world):
     import desk_checks
     rows = _copy(world.rows)
