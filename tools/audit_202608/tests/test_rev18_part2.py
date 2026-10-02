@@ -183,7 +183,7 @@ MIN_G, MAX_G = rc.MIN_GROWTH, rc.MAX_GROWTH
 # ---- the accessor ------------------------------------------------------------------------------------------------------
 
 _N = [0]
-_VALID = dict(members=1388, coverage_share=0.9587, flag=None, gap=2.5e-16, revision=18)
+_VALID = dict(members=1388, coverage_share=0.9587, flag=None, gap=2.5e-16, revision=18, aggregate={"constituents_without_marker": 0})
 
 
 def _write(tmp_path, **doc):
@@ -250,6 +250,12 @@ def test_the_accessor_refuses_an_artifact_the_builder_would_not_publish(tmp_path
     for kw in (dict(members=299), dict(coverage_share=0.5999), dict(members=None), dict(coverage_share=None), dict(members=True),
                dict(members=400.0)):
         assert rs2_data.reference_closure(_write(tmp_path, **dict(base, **kw)))[2].startswith("reference_closure_below_the_floor")
+    # revision 18 follow-up, finding 19: the artifact must record 0 aggregate names without brief A's marker (a missing record is not 0)
+    for agg in ({"constituents_without_marker": 1}, {"constituents_without_marker": 12}, {"constituents_without_marker": None}, {},
+                {"constituents_without_marker": False}, {"constituents_without_marker": 0.0}, None, "0"):
+        erp, asof, why = rs2_data.reference_closure(_write(tmp_path, aggregate=agg, **base))
+        assert erp is None and asof == "2026-09-20" and why.startswith("reference_closure_aggregate_has_names_without_a_marker"), agg
+    assert rs2_data.reference_closure(_write(tmp_path, aggregate={"constituents_without_marker": 0, "constituents": 1644}, **base))[0] == 0.05
     # the artifact on disk is still checked through the pack: a refused artifact leaves no cost of equity (tested with the pack above)
 
 

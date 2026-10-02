@@ -1277,7 +1277,9 @@ def reference_closure(path=None):
     No fallback of any kind: a missing file, a malformed one, a premium outside the solver's bounds, an artifact older than
     config.json's `anchor_max_age_days` (45) or dated in the future gives (None, ..., reason), never MRI's premium. So does an
     artifact the builder would not have published: a bound flag (no interior root), a gap above 1e-6, a revision other than 18,
-    or fewer than 300 members or less than 60% of the aggregate's capitalisation."""
+    or fewer than 300 members or less than 60% of the aggregate's capitalisation, or one that does not record
+    `aggregate.constituents_without_marker` as 0 (amendment 2: an artifact solved on a history that lacked brief A's marker for a name of
+    the aggregate - or one built before that was recorded - is not one the book may be valued on)."""
     p = Path(path) if path is not None else REFERENCE_CLOSURE_FILE
     doc = load_json(p)
     if not isinstance(doc, dict):
@@ -1305,6 +1307,10 @@ def reference_closure(path=None):
     if not (isinstance(members, int) and not isinstance(members, bool) and members >= 300
             and isinstance(coverage, (int, float)) and not isinstance(coverage, bool) and coverage >= 0.60):
         return None, asof, "reference_closure_below_the_floor(300 members, 60% of the aggregate's capitalisation)"
+    agg = doc.get("aggregate")
+    unmarked = agg.get("constituents_without_marker") if isinstance(agg, dict) else None
+    if not (isinstance(unmarked, int) and not isinstance(unmarked, bool) and unmarked == 0):
+        return None, asof, f"reference_closure_aggregate_has_names_without_a_marker({unmarked})"
     return float(erp), str(asof)[:10], doc
 
 
