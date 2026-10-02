@@ -292,6 +292,36 @@ def constants(ns):
             "ANCHOR_ROLE": getattr(ns.cref, "ANCHOR_ROLE", None), "TASK": getattr(ns.cap, "TASK", None)}
 
 
+SAME_DAY_KEYS = ("date", "history_sha256", "ttm_sha256", "mri_anchor_sha256", "root")
+
+
+def same_data(meta_a, rows_a, meta_b, rows_b):
+    """Problems (strings, no names; empty when the two day files stand on the same data): revision 18 follow-up, finding 5. A revision 16
+    day and a revision 18 day are comparable only when built on one date, one history, one TTM file, the same MRI anchor files, the same data
+    root and screener data directory, and the same enrich records (sha256, name by name, for the names both days hold)."""
+    ia, ib = (meta_a or {}).get("inputs"), (meta_b or {}).get("inputs")
+    if not isinstance(ia, dict) or not isinstance(ib, dict):
+        return ["a day file records no inputs (build_day.py writes them): it cannot be shown to stand on the other day's data"]
+    problems = []
+    for k in SAME_DAY_KEYS:
+        if k not in ia or k not in ib or ia[k] != ib[k]:
+            problems.append(f"the two days differ in {k}")
+    da, db = (ia.get("resolved_dirs") or {}).get("screener_data_dir"), (ib.get("resolved_dirs") or {}).get("screener_data_dir")
+    if da is None or da != db:
+        problems.append("the two days differ in screener_data_dir")
+    differ = sum(1 for k in set(rows_a or {}) & set(rows_b or {})
+                 if ((rows_a[k].get("enrich") or {}).get("sha256")) != ((rows_b[k].get("enrich") or {}).get("sha256")))
+    if differ:
+        problems.append(f"{differ} names' enrich records differ between the two days")
+    return problems
+
+
+def require_same_data(meta_a, rows_a, meta_b, rows_b, what="the revision 16 day"):
+    problems = same_data(meta_a, rows_a, meta_b, rows_b)
+    if problems:
+        raise SystemExit(f"refused: {what} was not built on the same data as the day it is compared with: " + "; ".join(problems))
+
+
 def bootstrap_from_day(meta):
     """Re-create the day a build_day file was built on (the same tree, data directories, date and closure artifact)."""
     inp = meta["inputs"]

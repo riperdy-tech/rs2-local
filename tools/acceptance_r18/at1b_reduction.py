@@ -2,8 +2,9 @@
 on, fed exactly the inputs revision 16's `build` receives on that day (revision 16's base, estimates, COE, terminal growth and share count),
 reproduces revision 16's (fee17cf) value to the cent. It compares engines, not packs.
 
-  python at1b_reduction.py --day16 <build_day.py output of revision 16's tree> --tree16 <rs2 at fee17cf> --tree18 <rs2 at the final commit>
-                           [--out <result.json>]
+  python at1b_reduction.py --day16 <build_day.py output of revision 16's tree> --day <build_day.py output of revision 18's tree, same day>
+                           --tree16 <rs2 at fee17cf> --tree18 <rs2 at the final commit> [--out <result.json>]
+Refused unless --day16 was built on the same data as --day (date, history, TTM and MRI anchor hashes, data root, enrich records).
 
 One engine per process (the backtest harness's rule): the driver starts this script twice with --worker, once per tree, and compares.
 The switches (revision 18 worker):
@@ -112,6 +113,7 @@ def compare(v16, v18, recorded, *, names=True, tol=0.005):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--day16", required=True, type=Path)
+    ap.add_argument("--day", type=Path, help="revision 18's day file on the same data (required unless --worker)")
     ap.add_argument("--tree16", type=Path)
     ap.add_argument("--tree18", type=Path)
     ap.add_argument("--out", default=None, type=Path)
@@ -123,7 +125,11 @@ def main(argv=None):
         _meta, rows = ac.load_day(a.day16)
         worker(a.worker, a.tree, rows, a.worker_out)
         return 0
-    _meta16, rows16 = ac.load_day(a.day16)
+    if a.day is None:
+        ap.error("--day is required: revision 16's day is compared with revision 18's on the same data")
+    meta16, rows16 = ac.load_day(a.day16)
+    meta18, rows18 = ac.load_day(a.day)
+    ac.require_same_data(meta16, rows16, meta18, rows18)           # finding 5: revision 16's day on other data is no baseline
     recorded = {key: (r.get("reference") or {}).get("value") for key, r in rows16.items() if r.get("reference")}
     ac.block_network()
     results = {}
@@ -136,6 +142,7 @@ def main(argv=None):
     result = compare(results["rev16"], results["rev18"], recorded)
     result["trees"] = {"rev16": {"path": str(a.tree16), "commit": ac.git_head(a.tree16)[0]}, "rev18": {"path": str(a.tree18), "commit": ac.git_head(a.tree18)[0]}}
     result["day16_file_sha256"] = ac.sha256_file(a.day16)
+    result["day_file_sha256"] = ac.sha256_file(a.day)
     return ac.finish(result, a.out)
 
 

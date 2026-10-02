@@ -345,9 +345,43 @@ def test_the_thin_scripts_run_from_a_day_file_and_never_overwrite_a_result(world
         again = subprocess.run([PY, str(HERE / script), "--day", str(day), "--out", str(out)], capture_output=True, text=True)
         assert again.returncode != 0 and "exists" in (again.stderr or "").lower()        # a result is a record: never overwritten
     day16 = tmp_path / "day16.json"
-    ac.write_result(day16, {"meta": {}, "rows": ac.jsonable(world.rows)})
+    ac.write_result(day16, {"meta": {"inputs": meta["inputs"]}, "rows": ac.jsonable(world.rows)})
     p = subprocess.run([PY, str(HERE / "at3_coverage.py"), "--day", str(day), "--day16", str(day16)], capture_output=True, text=True)
     assert p.returncode == 0 and "PASS" in p.stdout
+
+
+def test_a_revision_16_day_built_on_other_data_is_refused_by_at3_and_at1b(world, tmp_path):
+    """Finding 5: a different date, history or TTM or anchor hash, data root, screener folder, or other enrich records."""
+    inputs = ac.inputs_record(world.ns)
+    meta18 = {"inputs": inputs}
+    rows = ac.jsonable(world.rows)
+    assert ac.same_data(meta18, rows, meta18, rows) == []
+    other = lambda **kw: {"inputs": dict(inputs, **kw)}
+    cases = {"date": "2026-09-20", "history_sha256": "00" * 32, "ttm_sha256": "11" * 32, "mri_anchor_sha256": {"x.json": "22" * 32}, "root": "elsewhere",
+             "resolved_dirs": dict(inputs["resolved_dirs"], screener_data_dir="elsewhere")}
+    for key, value in cases.items():
+        problems = ac.same_data(other(**{key: value}), rows, meta18, rows)
+        assert problems and ("screener_data_dir" if key == "resolved_dirs" else key) in problems[0], (key, problems)
+    changed = copy.deepcopy(rows)
+    changed["GEV"]["enrich"]["sha256"] = "33" * 32
+    assert "1 names' enrich records differ" in ac.same_data(meta18, changed, meta18, rows)[0]
+    assert ac.same_data({}, rows, meta18, rows) and ac.same_data(meta18, rows, {"inputs": None}, rows)               # a day that records no inputs
+    # the scripts: AT3 and AT1b refuse before they compute anything, and write no result
+    day = tmp_path / "day.json"
+    ac.write_result(day, {"meta": ac.jsonable(dict(world.meta, inputs=inputs, constants=ac.constants(world.ns))), "rows": rows})
+    for name, meta16 in (("date", other(date="2026-09-20")), ("history", other(history_sha256="00" * 32)), ("noinputs", {})):
+        day16 = tmp_path / f"day16_{name}.json"
+        ac.write_result(day16, {"meta": ac.jsonable(meta16), "rows": rows})
+        out = tmp_path / f"at3_{name}.json"
+        p = subprocess.run([PY, str(HERE / "at3_coverage.py"), "--day", str(day), "--day16", str(day16), "--out", str(out)], capture_output=True, text=True)
+        assert p.returncode != 0 and "refused" in p.stderr and "same data" in p.stderr and not out.exists(), (name, p.stdout, p.stderr)
+        out = tmp_path / f"at1b_{name}.json"
+        p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16), "--day", str(day), "--tree16", str(TREE), "--tree18", str(TREE),
+                            "--out", str(out)], capture_output=True, text=True)
+        assert p.returncode != 0 and "refused" in p.stderr and not out.exists(), (name, p.stdout, p.stderr)
+    p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(tmp_path / "day16_date.json"), "--tree16", str(TREE), "--tree18", str(TREE)],
+                       capture_output=True, text=True)
+    assert p.returncode != 0 and "--day is required" in p.stderr
 
 
 # ---- AT2 --------------------------------------------------------------------------------------------------------------------------------
@@ -403,8 +437,11 @@ def _reduction_rows(ttr):
 def test_at1b_the_reduction_holds_on_synthetic_inputs_and_a_difference_is_found(world, tmp_path):
     import at1b_reduction
     rows = _reduction_rows(world.ttr)
+    inputs = ac.inputs_record(world.ns)
+    day = tmp_path / "day.json"                                           # revision 18's day on the same data (only its meta is read here)
+    ac.write_result(day, {"meta": ac.jsonable({"inputs": inputs}), "rows": {}})
     day16 = tmp_path / "day16.json"
-    ac.write_result(day16, {"meta": {}, "rows": ac.jsonable(rows)})
+    ac.write_result(day16, {"meta": ac.jsonable({"inputs": inputs}), "rows": ac.jsonable(rows)})
     # what revision 16's build returns on these inputs, from the worker itself (a fresh process: one engine per process)
     w16 = tmp_path / "w16.json"
     p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--worker", "rev16", "--tree", str(SP / "rs2-P4-s15"), "--day16", str(day16),
@@ -416,9 +453,9 @@ def test_at1b_the_reduction_holds_on_synthetic_inputs_and_a_difference_is_found(
     for key, v in values.items():
         rows[key]["reference"]["value"] = v["value"]                      # the day file's record of revision 16's own build
     day16b = tmp_path / "day16b.json"
-    ac.write_result(day16b, {"meta": {}, "rows": ac.jsonable(rows)})
+    ac.write_result(day16b, {"meta": ac.jsonable({"inputs": inputs}), "rows": ac.jsonable(rows)})
     out = tmp_path / "at1b.json"
-    p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16b), "--tree16", str(SP / "rs2-P4-s15"), "--tree18", str(TREE),
+    p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16b), "--day", str(day), "--tree16", str(SP / "rs2-P4-s15"), "--tree18", str(TREE),
                         "--out", str(out)], capture_output=True, text=True)
     res = json.loads(out.read_text(encoding="utf-8"))
     assert p.returncode == 0 and res["pass"] and res["names"] == 3 and res["rev16_worker_differs_from_recorded"] == 0, p.stdout + p.stderr
@@ -426,9 +463,9 @@ def test_at1b_the_reduction_holds_on_synthetic_inputs_and_a_difference_is_found(
     # a day file whose recorded revision 16 value is not what revision 16's engine returns on its recorded inputs fails (finding 4)
     rows["G1"]["reference"]["value"] += 0.02
     day16c = tmp_path / "day16c.json"
-    ac.write_result(day16c, {"meta": {}, "rows": ac.jsonable(rows)})
+    ac.write_result(day16c, {"meta": ac.jsonable({"inputs": inputs}), "rows": ac.jsonable(rows)})
     out2 = tmp_path / "at1b2.json"
-    p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16c), "--tree16", str(SP / "rs2-P4-s15"), "--tree18", str(TREE),
+    p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16c), "--day", str(day), "--tree16", str(SP / "rs2-P4-s15"), "--tree18", str(TREE),
                         "--out", str(out2)], capture_output=True, text=True)
     res2 = json.loads(out2.read_text(encoding="utf-8"))
     assert p.returncode == 1 and not res2["pass"] and res2["differences"] == 0 and res2["rev16_worker_differs_from_recorded"] == 1
