@@ -17,7 +17,7 @@ THE SCRIPTS (SP\\rev18\\accept\\; each is socket-blocked, offline, CPU only; non
   at7_suite.py          AT7   the full suite, and the backtest harness tests at their pinned commits (foreground)
   at9_cash_alive.py     AT9   the cash term applies to at least 90% of the names that hold a cash figure
   at8_untouched_look.py AT8   the ONE look at the 167 untouched names (counts only; guarded to run once, on one configuration)
-  selftest.py           proves every script on synthetic data or tiny fixtures; it never runs AT8's look
+  test_accept_scripts.py proves every script on synthetic data or tiny fixtures (pytest); it never runs AT8's look
   desk_checks.py        the desk-side arithmetic AT1a and AT1e share
 
 Every script prints PASS / FAIL lines and writes one JSON result; `--out` names it and an existing file is never overwritten.

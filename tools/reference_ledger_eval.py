@@ -10,7 +10,7 @@ metrics.py at commit 40cb5cf, because nothing imports across branches). No desig
         [--out <result.json>]
 
 prices.csv (a hashed file, refused unless its sha256 is --prices-sha256): columns date, ticker, close, adj_close, dividends,
-stock_splits - what Yahoo's history gives through yfinance with auto_adjust=False and actions=True (the unadjusted Close, the
+stock_splits - what Yahoo's history gives through yfinance with auto_adjust=False and actions=True (the split-adjusted Close, the
 Adj Close, the dividends and the splits), one row per ticker per trading day, SPY included. It is fetched ONCE per evaluation
 date, by the operator, with the operator's permission; this script reads it and never fetches: it touches no network.
 A total return is R(T, h) = AdjClose(T + h months) / AdjClose(T) - 1, the same for SPY; an observation is the last close on or
