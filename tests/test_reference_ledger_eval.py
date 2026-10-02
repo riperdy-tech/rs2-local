@@ -403,3 +403,58 @@ def test_an_empty_cohort_reports_it_and_exits_3(tmp_path, capsys):
                   "--horizon", "12", "--asof", "2027-06-01"])
     assert rc == 3
     assert json.loads(capsys.readouterr().out)["snapshot_dates"] == []
+
+
+# ---- the price check and splits (revision 18 follow-up, finding 8) -------------------------------------------------------------------
+# yfinance's Close is adjusted for splits as of the day it was fetched; the ledger's price is the quote of its own day. The check
+# multiplies the file's close by the splits dated after the price's date, so a later split is not counted as a mismatch.
+
+def _split_case(tmp_path, cases):
+    """cases: {name: (file_close_on_d0, ledger_price, [(days_after_d0, ratio), ...])}; the base ten names are in the ledger too."""
+    led, px = tmp_path / "l.jsonl", tmp_path / "p.csv"
+    from datetime import timedelta
+    extra_rows, extra_px = [], []
+    for t, (close, price, splits) in cases.items():
+        extra_rows.append(_full_row(t, price=price, reference_value=price * 0.5, vp=0.5))
+        extra_px.append([D0.isoformat(), t, close, 100.0, 0, 0])
+        for days, ratio in splits:                                  # the split's row, dated `days` from the price date
+            extra_px.append([(D0 + timedelta(days=days)).isoformat(), t, close, 100.0, 0, ratio])
+    _ledger(led, extra_rows=extra_rows)
+    _write_prices(px, dict(zip(NAMES, RET)), 0.05, extra=extra_px)
+    res = ev.evaluate(rl.read_ledger(led), _load(px), D0, 12)
+    (p,) = res["groups"]["all"]["per_date"]
+    return p
+
+
+def test_a_split_after_the_price_date_is_not_counted_as_a_price_mismatch(tmp_path):
+    p = _split_case(tmp_path, {
+        "ZQ1": (2.5, 10.0, [(30, 4.0)]),                 # a 4-for-1 later: the file's close is a quarter of the quoted price
+        "ZQ2": (100.0, 10.0, [(30, 0.1)]),               # a 1-for-10 reverse split later
+        "ZQ3": (10.0 / 6.0, 10.0, [(30, 2.0), (60, 3.0)]),   # two splits: the factors multiply
+    })
+    assert (p["price_checked"], p["price_mismatch"]) == (13, 0)
+
+
+def test_only_the_splits_after_the_price_date_adjust_it_and_a_real_mismatch_is_still_counted(tmp_path):
+    p = _split_case(tmp_path, {
+        "ZQ4": (10.0, 10.0, [(-10, 4.0)]),               # the split was BEFORE the price date: the file's close is already in the price's terms
+        "ZQ5": (10.0, 10.0, [(0, 4.0)]),                 # the split's ex-date is the price date: that day's quote is post-split
+        "ZQ6": (10.0, 10.0, [(30, 4.0)]),                # a later 4-for-1 and a close that does NOT match: 10 against 10 x 4 -> mismatch
+        "ZQ7": (2.5, 10.4, [(30, 4.0)]),                 # 4% off after adjusting: mismatch
+        "ZQ8": (2.5, 10.1, [(30, 4.0)]),                 # 1% off after adjusting: inside the check
+    })
+    assert (p["price_checked"], p["price_mismatch"]) == (15, 2)
+
+
+def test_a_zero_or_empty_stock_splits_cell_is_no_split_and_the_column_is_required(tmp_path):
+    f = tmp_path / "p.csv"
+    f.write_text("date,ticker,close,adj_close,dividends,stock_splits\n2027-01-04,AAA,10,10,0,0\n2027-01-05,AAA,10,10,0,\n"
+                 "2027-01-06,AAA,10,10,0,x\n2027-01-07,AAA,10,10,0,2.0\n", encoding="utf-8")
+    s = _load(f)["AAA"]
+    assert s[3] == {date(2027, 1, 7).toordinal(): 2.0}
+    assert ev.split_factor_after(s, date(2027, 1, 6)) == 2.0 and ev.split_factor_after(s, date(2027, 1, 7)) == 1.0
+    assert ev.split_factor_after(s, date(2027, 1, 4)) == 2.0
+    g = tmp_path / "q.csv"
+    g.write_text("date,ticker,close,adj_close,dividends\n2027-01-04,AAA,10,10,0\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="stock_splits"):
+        ev.load_prices(g, _sha(g))

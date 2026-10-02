@@ -17,8 +17,11 @@ A total return is R(T, h) = AdjClose(T + h months) / AdjClose(T) - 1, the same f
 before the date, within MAX_PRICE_GAP_DAYS (7), else missing. A name with no price at T is left out and counted. A name with a
 price at T and none at T + h is NOT dropped: each statistic is reported three ways - the names with both prices only (the
 "excluded" arm), and with those names counted as a total loss (R = -100%, the "low" bound) or as exactly SPY's return (excess
-0%, the "high" bound). The unadjusted Close is used for one check only: a ledger row whose price differs from the file's close
-on its price_date by more than PRICE_CHECK_PCT is counted (price_mismatch), never dropped.
+0%, the "high" bound). The file's close is used for one check only: a ledger row whose price differs from the file's close on its
+price_date by more than PRICE_CHECK_PCT is counted (price_mismatch), never dropped. yfinance's Close is adjusted for SPLITS (not for
+dividends) as of the day it was fetched, while the ledger's price is the quote of its own day: the check therefore multiplies the file's
+close by the product of the `stock_splits` ratios of the splits dated AFTER the price's date (a 4-for-1 is 4.0, a 1-for-10 reverse
+split 0.1; a zero or empty cell is no split), so a split between the snapshot and the fetch is not counted as a mismatch.
 
 Cohort: every snapshot date T with acceptance <= T and T + h months <= asof (asof defaults to acceptance + h months), and
 only the rows of the pre-registered revision (--revision, default 18); the rows of any other revision are reported separately
@@ -128,18 +131,19 @@ def add_months(d, months):
 
 
 def load_prices(path, expect_sha256):
-    """{ticker: (sorted list of date ordinals, list of adj_close, dict ordinal -> unadjusted close)} from a hashed
+    """{ticker: (sorted list of date ordinals, list of adj_close, dict ordinal -> close, dict ordinal -> split ratio)} from a hashed
     date,ticker,close,adj_close,dividends,stock_splits CSV. Refuses (ValueError) a file whose sha256 differs from
-    `expect_sha256`, or one with no adj_close column. A row with no usable positive adj_close is skipped; the unadjusted close
-    is kept where it is a positive number. The dividends and splits columns are carried by the file for the operator's audit
-    and are not read here: the adjusted close already contains them."""
+    `expect_sha256`, or one with no adj_close or stock_splits column. A row with no usable positive adj_close is skipped; the close
+    (yfinance's: adjusted for splits, not for dividends) is kept where it is a positive number, and a positive `stock_splits` cell is
+    kept as that date's split ratio (the price check reads both; the total returns read adj_close, which contains them). The dividends
+    column is carried for the operator's audit and is not read."""
     if hashlib.sha256(Path(path).read_bytes()).hexdigest().lower() != str(expect_sha256).strip().lower():
         raise ValueError("the prices file's sha256 differs from the expected value; it is not used")
-    raw, closes = {}, {}
+    raw, closes, splits = {}, {}, {}
     with open(path, "r", encoding="utf-8-sig", newline="") as f:
         rd = csv.DictReader(f)
-        if not rd.fieldnames or "adj_close" not in rd.fieldnames or "date" not in rd.fieldnames or "ticker" not in rd.fieldnames:
-            raise ValueError("the prices file needs the columns date, ticker, adj_close (and close, dividends, stock_splits)")
+        if not rd.fieldnames or any(c not in rd.fieldnames for c in ("date", "ticker", "adj_close", "stock_splits")):
+            raise ValueError("the prices file needs the columns date, ticker, adj_close and stock_splits (and close, dividends)")
         for row in rd:
             try:
                 d = date.fromisoformat(row["date"][:10])
@@ -155,11 +159,27 @@ def load_prices(path, expect_sha256):
                     c = None
                 if c is not None and math.isfinite(c) and c > 0:
                     closes.setdefault(t, {})[d.toordinal()] = c
+                try:
+                    sp = float(row.get("stock_splits"))
+                except (ValueError, TypeError):
+                    sp = None
+                if sp is not None and math.isfinite(sp) and sp > 0:
+                    splits.setdefault(t, {})[d.toordinal()] = sp
     out = {}
     for t, byd in raw.items():
         ords = sorted(byd)
-        out[t] = (ords, [byd[o] for o in ords], closes.get(t, {}))
+        out[t] = (ords, [byd[o] for o in ords], closes.get(t, {}), splits.get(t, {}))
     return out
+
+
+def split_factor_after(series, d):
+    """The product of the split ratios of the splits dated after `d` (a split on `d` itself is already in that day's quote): the factor
+    that takes a split-adjusted close of `d` back to the price quoted on `d`. 1.0 when there is none."""
+    f = 1.0
+    for o, ratio in series[3].items():
+        if o > d.toordinal():
+            f *= ratio
+    return f
 
 
 def price_on_or_before(series, d):
@@ -219,10 +239,11 @@ def _date_block(rows, prices, d0, horizon, statuses=PRINTED):
     for row in rows:
         if row["price"] is not None and row["price_date"] is not None:
             series = prices.get(row["ticker"])
-            c = series[2].get(date.fromisoformat(row["price_date"]).toordinal()) if series is not None else None
+            pd0 = date.fromisoformat(row["price_date"])
+            c = series[2].get(pd0.toordinal()) if series is not None else None
             if c is not None:
                 checked += 1
-                mismatch += int(abs(row["price"] / c - 1.0) * 100.0 > PRICE_CHECK_PCT)
+                mismatch += int(abs(row["price"] / (c * split_factor_after(series, pd0)) - 1.0) * 100.0 > PRICE_CHECK_PCT)
         v = row["vp"]
         if row["reference_status"] not in statuses or v is None or not v > 0:
             not_valued += 1
