@@ -1,4 +1,15 @@
-"""The frozen evaluation of the forward ledger (revision 18, brief section 5.2). REPORT ONLY.
+"""The frozen evaluation of the forward ledger (revision 18, brief section 5.2; revision 19, brief E2). REPORT ONLY.
+
+Revision 19 (brief_rev19.md E2), frozen at the revision-19 commit: the cohort is the rows of revision 19 (--revision, default 19), and the result adds
+`call_groups` to every group: four comparisons over the ledger's verdicts (`pack_revision` at least 19):
+  1. crux_calls: the label is directional (undervalued or overvalued), which the verdict code allows only with a valid crux;
+  2. calls_the_rule_demoted: direction_m is directional, the label is hold and crux_valid is not True (no_valid_crux);
+  3. crux_calls_at_default (every entry of the crux at its default) against crux_calls_with_a_departure (an entry not at its default);
+  4. crux_calls_gate_limited (outside_street_fence or mos_beyond_150pct among the actionable reasons) against crux_calls_inside_both: the comparison
+     operator ruling 2 of 2026-10-02 waits for, whether calls the fence or the 150% cap limited pay.
+For each group and arm: the count, the mean excess total return against SPY (`total_return`, over the horizon from the snapshot date) and the hit rate (the
+sign of the excess return agrees with the call: positive for undervalued, negative for overvalued; the call is the label, or direction_m for a demoted
+call). The three arms are the existing ones (excluded, low, high). A call with no price at the start, or no SPY return, is counted and left out.
 
 Run once at 12 months and once at 36 months after acceptance, with the backtest's definitions
 (registration d09bb4a4, sections 4.3 and 7; the metric functions below are copied verbatim from the backtest harness's
@@ -59,7 +70,12 @@ BUY, AVOID = 1.3, 0.7
 THIN = 30
 MAX_PRICE_GAP_DAYS = 7
 PRINTED = ("used", "outside_fence_above", "outside_fence_below")
-REVISION = 18
+REVISION = 19
+CRUX_FIRST_REVISION = 19
+DIRECTIONAL = ("undervalued", "overvalued")
+LIMITING_REASONS = ("outside_street_fence", "mos_beyond_150pct")
+CALL_GROUPS = ("crux_calls", "calls_the_rule_demoted", "crux_calls_at_default", "crux_calls_with_a_departure", "crux_calls_gate_limited",
+               "crux_calls_inside_both")
 PRICE_CHECK_PCT = 2.0
 STATUS_SPLIT = {"used": ("used",), "outside_fence": ("outside_fence_above", "outside_fence_below")}
 
@@ -295,6 +311,73 @@ def _aggregate(per):
             **{arm: _aggregate_arm(ok, arm) for arm in ARMS}}
 
 
+def _call_group_members(rows):
+    """{group: [(row, the call the row states)]} for the rows' verdicts of revision CRUX_FIRST_REVISION or later (see the module text)."""
+    out = {g: [] for g in CALL_GROUPS}
+    for row in rows:
+        v = row.get("verdict")
+        if not isinstance(v, dict):
+            continue
+        pr = v.get("pack_revision")
+        if not (isinstance(pr, int) and not isinstance(pr, bool) and pr >= CRUX_FIRST_REVISION):
+            continue
+        if v.get("label") in DIRECTIONAL:
+            call = v["label"]
+            out["crux_calls"].append((row, call))
+            ci = v.get("crux_inputs")
+            if isinstance(ci, list) and ci and all(isinstance(e, dict) and e.get("at_default") is True for e in ci):
+                out["crux_calls_at_default"].append((row, call))
+            elif isinstance(ci, list) and any(isinstance(e, dict) and e.get("at_default") is False for e in ci):
+                out["crux_calls_with_a_departure"].append((row, call))
+            reasons = v.get("actionable_reasons")
+            if isinstance(reasons, list):
+                key = "crux_calls_gate_limited" if any(r in LIMITING_REASONS for r in reasons) else "crux_calls_inside_both"
+                out[key].append((row, call))
+        elif v.get("label") == "hold" and v.get("direction_m") in DIRECTIONAL and v.get("crux_valid") is not True:
+            out["calls_the_rule_demoted"].append((row, v["direction_m"]))
+    return out
+
+
+def _call_stats(items):
+    """(count, mean excess, hit rate) of [(call, excess)]; the hit is a strictly right-signed excess (a zero excess is no hit)."""
+    n = len(items)
+    if n == 0:
+        return {"count": 0, "mean_excess": None, "hit_rate": None}
+    hits = sum(1 for call, ex in items if (ex > 0 if call == "undervalued" else ex < 0))
+    return {"count": n, "mean_excess": float(sum(ex for _c, ex in items) / n), "hit_rate": hits / n}
+
+
+def _call_group_block(members, prices, horizon):
+    """One group's figures in the three arms. `members` is [(ledger row, call)]."""
+    got, lost = [], []                                  # (call, excess) with an end price; (call, spy) without one
+    no_start = no_spy = 0
+    for row, call in members:
+        d0 = date.fromisoformat(row["date"])
+        d1 = add_months(d0, horizon)
+        spy = total_return(prices.get("SPY"), d0, d1)
+        if spy is None:
+            no_spy += 1
+            continue
+        series = prices.get(row["ticker"])
+        a, b = price_on_or_before(series, d0), price_on_or_before(series, d1)
+        if a is None:
+            no_start += 1
+            continue
+        if b is None:
+            lost.append((call, spy))
+            continue
+        got.append((call, (b / a - 1.0) - spy))
+    return {"calls": len(members), "no_price_at_start": no_start, "no_spy_return": no_spy, "no_price_at_end": len(lost),
+            "excluded": _call_stats(got),
+            "low": _call_stats(got + [(c, -1.0 - s) for c, s in lost]),
+            "high": _call_stats(got + [(c, 0.0) for c, _s in lost])}
+
+
+def _call_groups(rows, prices, horizon):
+    members = _call_group_members(rows)
+    return {g: _call_group_block(members[g], prices, horizon) for g in CALL_GROUPS}
+
+
 def _evaluate_rows(by_date, prices, horizon, untouched, with_dates=True):
     groups = {"all": lambda t: True}
     if untouched is not None:
@@ -304,7 +387,7 @@ def _evaluate_rows(by_date, prices, horizon, untouched, with_dates=True):
     for name, member in groups.items():
         sub = {d: [r for r in rows if member(r["ticker"])] for d, rows in by_date.items()}
         per = [p for p in (_date_block(sub[d], prices, d, horizon) for d in sorted(sub)) if p["rows"] > 0]
-        res["groups"][name] = {"aggregate": _aggregate(per)}
+        res["groups"][name] = {"aggregate": _aggregate(per), "call_groups": _call_groups([r for d in sorted(sub) for r in sub[d]], prices, horizon)}
         if with_dates:
             res["groups"][name]["per_date"] = per
         split = {}
@@ -334,6 +417,9 @@ def evaluate(ledger_rows, prices, acceptance, horizon, asof=None, untouched=None
               "revisions": {str(k): sum(len(v) for v in by.values()) for k, by in sorted(by_rev.items())},
               "definitions": {"buy": BUY, "avoid": AVOID, "thin_below_calls": THIN, "max_price_gap_days": MAX_PRICE_GAP_DAYS,
                               "printed_statuses": list(PRINTED), "status_split": {k: list(v) for k, v in STATUS_SPLIT.items()},
+                              "call_groups": {"cohort": f"verdicts of pack revision {CRUX_FIRST_REVISION} or later", "groups": list(CALL_GROUPS),
+                                              "gate_limiting_reasons": list(LIMITING_REASONS),
+                                              "hit": "the sign of the excess return over SPY agrees with the call (a zero excess is no hit)"},
                               "arms": {"excluded": "a name with no price at T + h is left out",
                                        "low": "it is counted at a return of -100%",
                                        "high": "it is counted at the return of SPY (0% excess)"}}}
@@ -357,7 +443,7 @@ def main(argv=None):
     ap.add_argument("--ledger", default=str(rl.DEFAULT_LEDGER))
     ap.add_argument("--prices", required=True)
     ap.add_argument("--prices-sha256", required=True, help="the prices file's sha256; the file is refused without a match")
-    ap.add_argument("--revision", type=int, default=REVISION, help="the pack revision whose rows are evaluated (default 18)")
+    ap.add_argument("--revision", type=int, default=REVISION, help="the pack revision whose rows are evaluated (default 19)")
     ap.add_argument("--acceptance-date", required=True)
     ap.add_argument("--horizon", type=int, required=True, choices=(12, 36))
     ap.add_argument("--asof", default=None, help="evaluation date; default acceptance + horizon months")

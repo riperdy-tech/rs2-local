@@ -43,7 +43,11 @@ FIELDS = ("date", "ticker", "price", "price_date", "reference_value", "reference
           "closure_asof", "revision", "verdict")
 # The verdict, when there is one: the published label, the Base the verdict rested on, the date it was published and the pack
 # revision it was produced under (the evaluation reads the revision to tell a verdict the reference informed from one it did not).
-VERDICT_KEYS = ("label", "base_iv", "published_at", "pack_revision")
+# Revision 19 (brief E1): four more, read from the overlay row - direction_m (the label before the crux rule), crux_valid (every basis sample's crux
+# valid), crux_inputs (the medoid's crux: a list of {input, own, implied, at_default}) and actionable_reasons (the gate's reasons, so the evaluation can
+# separate a call the fence or the 150% cap limited from one inside both). The ledger has no production rows yet, so its schema changes without a migration.
+VERDICT_KEYS = ("label", "base_iv", "published_at", "pack_revision", "direction_m", "crux_valid", "crux_inputs", "actionable_reasons")
+CRUX_INPUT_KEYS = ("input", "own", "implied", "at_default")
 RUNS_NAME = "reference_ledger_runs.jsonl"
 STATUSES = ("used", "outside_fence_above", "outside_fence_below", "not_meaningful", "not_available")
 _NUMERIC = ("price", "reference_value", "vp", "coe", "closure_erp")
@@ -105,6 +109,33 @@ def validate_row(row):
             raise LedgerSchemaError("verdict.label must be a string or null")
         if v["pack_revision"] is not None and not (isinstance(v["pack_revision"], int) and not isinstance(v["pack_revision"], bool)):
             raise LedgerSchemaError("verdict.pack_revision must be an integer or null")
+        if v["direction_m"] is not None and not isinstance(v["direction_m"], str):
+            raise LedgerSchemaError("verdict.direction_m must be a string or null")
+        if v["crux_valid"] is not None and not isinstance(v["crux_valid"], bool):
+            raise LedgerSchemaError("verdict.crux_valid must be a boolean or null")
+        ci = v["crux_inputs"]
+        if ci is not None:
+            if not isinstance(ci, list):
+                raise LedgerSchemaError("verdict.crux_inputs must be a list or null")
+            for e in ci:
+                if not isinstance(e, dict) or set(e) != set(CRUX_INPUT_KEYS):
+                    raise LedgerSchemaError(f"each verdict.crux_inputs entry must be an object with exactly the keys {CRUX_INPUT_KEYS}")
+                if not isinstance(e["input"], str):
+                    raise LedgerSchemaError("verdict.crux_inputs[].input must be a string")
+                for k in ("own", "implied"):
+                    x = e[k]
+                    if x is not None and x != "unlimited" and not (_is_number(x) and math.isfinite(x)):
+                        raise LedgerSchemaError(f"verdict.crux_inputs[].{k} must be a finite number, \"unlimited\" or null")
+                if e["at_default"] is not None and not isinstance(e["at_default"], bool):
+                    raise LedgerSchemaError("verdict.crux_inputs[].at_default must be a boolean or null")
+        ar = v["actionable_reasons"]
+        if ar is not None and not (isinstance(ar, list) and all(isinstance(x, str) for x in ar)):
+            raise LedgerSchemaError("verdict.actionable_reasons must be a list of strings or null")
+
+
+def _ledger_number(x):
+    """A crux value for a ledger line: +inf (a return on new investment) is written "unlimited", as the desk writes it; anything else as it is."""
+    return "unlimited" if isinstance(x, float) and math.isinf(x) and x > 0 else x
 
 
 def _line(row):
@@ -222,7 +253,8 @@ def snapshot(snap_date, tickers, untouched, *, inputs_fn, build_fn, fence_fn, pr
     build_fn     the keyword arguments -> consensus_reference.build's dict (carries 'value').
     fence_fn     (value, t) -> 'above' | 'below' | None, the street-target fence the pack applies.
     price_fn     t -> (price, price_date) - the quote and the ISO date it was taken - or (None, None) / None.
-    verdict_fn   t -> the published verdict as {label, base_iv, published_at, pack_revision}, or None.
+    verdict_fn   t -> the published verdict as {label, base_iv, published_at, pack_revision, direction_m, crux_valid, crux_inputs,
+                 actionable_reasons} (VERDICT_KEYS), or None.
     closure      the closure accessor's (erp, asof, provenance), or None.
     A name whose computation raises gets NO ROW; it is counted by exception class (the reason), never by name. The summary is
     appended as one line to the append-only runs file (`runs_path`, default next to the ledger) - counts by reason and by
@@ -396,8 +428,14 @@ def production_adapters(data_root, today=None):
         if not v:
             return None
         base = fiduciary_gate.contract_base(v.get("scorecard") or v)
+        crux = v.get("crux")
         return {"label": v.get("direction"), "base_iv": None if base is None else float(base),
-                "published_at": v.get("date"), "pack_revision": v.get("pack_revision")}
+                "published_at": v.get("date"), "pack_revision": v.get("pack_revision"),
+                "direction_m": v.get("direction_m"), "crux_valid": v.get("crux_valid"),
+                "crux_inputs": (None if not isinstance(crux, list) else
+                                [{"input": e.get("input"), "own": _ledger_number(e.get("own")), "implied": _ledger_number(e.get("implied")),
+                                  "at_default": e.get("at_default")} for e in crux if isinstance(e, dict)]),
+                "actionable_reasons": v.get("actionable_reasons")}
 
     return {"inputs_fn": inputs_fn, "build_fn": lambda **kw: cref.build(**kw), "fence_fn": fence_fn, "price_fn": price_fn,
             "verdict_fn": verdict_fn, "closure": closure, "revision": cap.PACK_REVISION,

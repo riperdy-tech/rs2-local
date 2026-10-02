@@ -46,7 +46,8 @@ def _fakes(values, prices=None, sides=None, verdicts=None):
 
 
 CLOSURE = (0.05, "2026-12-20", {"provenance": "x"})
-VERDICT = {"label": "undervalued", "base_iv": 13.0, "published_at": "2027-01-01", "pack_revision": 18}
+VERDICT = {"label": "undervalued", "base_iv": 13.0, "published_at": "2027-01-01", "pack_revision": 18, "direction_m": "undervalued", "crux_valid": True,
+           "crux_inputs": [{"input": "coe", "own": 0.0735, "implied": 0.098, "at_default": False}], "actionable_reasons": []}
 
 
 # ---- the append-only guarantee ---------------------------------------------------------------------------------------
@@ -55,7 +56,7 @@ def test_the_fields_are_the_briefs_and_a_line_is_in_that_order(tmp_path):
     p = tmp_path / "l.jsonl"
     assert rl.FIELDS == ("date", "ticker", "price", "price_date", "reference_value", "reference_status", "vp", "coe",
                          "closure_erp", "closure_asof", "revision", "verdict")
-    assert "group" not in rl.FIELDS and rl.VERDICT_KEYS == ("label", "base_iv", "published_at", "pack_revision")
+    assert "group" not in rl.FIELDS and rl.VERDICT_KEYS == ("label", "base_iv", "published_at", "pack_revision", "direction_m", "crux_valid", "crux_inputs", "actionable_reasons")
     rl.append_rows(p, [_row("AAA"), _row("BBB")])
     lines = p.read_bytes().split(b"\n")
     assert lines[-1] == b"" and len(lines) == 3

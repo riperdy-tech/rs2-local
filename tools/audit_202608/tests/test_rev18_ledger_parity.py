@@ -98,7 +98,9 @@ def test_the_row_carries_the_published_verdict_in_the_ledgers_shape_the_price_da
     (tmp_path / "cache" / "depth_overlay.json").write_text(json.dumps(overlay), encoding="utf-8")
     summary, rows, ledger = _snapshot(tmp_path, monkeypatch)
     row = rows[0]
-    assert row["verdict"] == {"label": "undervalued", "base_iv": 1037.88, "published_at": "2026-09-18", "pack_revision": 17}
+    # revision 19 (brief E1): the verdict also carries direction_m, crux_valid, crux_inputs and the actionable reasons; a revision-17 overlay row has no crux
+    assert row["verdict"] == {"label": "undervalued", "base_iv": 1037.88, "published_at": "2026-09-18", "pack_revision": 17, "direction_m": None,
+                              "crux_valid": None, "crux_inputs": None, "actionable_reasons": None}
     fin = rs2_data.load_json(Path(rs2_data.CONFIG["screener_data_dir"]) / "financials" / "GEV.json") or {}
     expect = None if fin.get("Price") is None else str(fin.get("Data_Fetched_Date"))[:10]
     assert (row["price"] is None and row["price_date"] is None) or row["price_date"] == expect
