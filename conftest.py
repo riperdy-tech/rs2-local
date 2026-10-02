@@ -277,3 +277,14 @@ def _reference_closure_is_deterministic_in_tests(monkeypatch):
             return None, None, "stubbed in tests: no MRI premium to stand in"
         return erp, "2026-09-20", {"stub": "tests"}
     monkeypatch.setattr(rs2_data, "reference_closure", _stub)
+
+
+@pytest.fixture
+def crux_valid_everywhere(monkeypatch):
+    """Revision 19 (brief 1.5) - band_verdict holds a directional verdict unless every basis sample's crux is valid. A test of the band rule,
+    the sizing, the quarantine or the gate that builds its own consensus doc by hand is about that rule, not about the crux: it opts in with
+    `pytestmark = pytest.mark.usefixtures("crux_valid_everywhere")`, and every basis sample then reads as carrying a valid crux. The crux
+    rule's own tests (tools/audit_202608/tests/test_rev19_verdict.py) do not use it."""
+    import depth_pipeline
+    monkeypatch.setattr(depth_pipeline, "_crux_of_sample",
+                        lambda r: {"sample": r.get("sample"), "valid": True, "reason": None, "inputs": ["coe"], "at_default": False})

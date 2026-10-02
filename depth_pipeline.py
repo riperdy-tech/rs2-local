@@ -590,6 +590,19 @@ def resolve_position_basis(good, medoid_sample, d):
     return basis, source, invalid
 
 
+def _crux_of_sample(r):
+    """One basis sample's crux for the verdict (revision 19, brief C1): {sample, valid, reason, inputs, at_default}. `valid` is the crux_check
+    record's own verdict, never inferred: a scorecard with no crux_check (written before revision 19, or by a path that did not run the check)
+    has no crux, reason `missing`. `at_default` is True when the crux has entries and every one is at its default (1.1)."""
+    chk = (r.get("scorecard") or {}).get("crux_check")
+    if not isinstance(chk, dict):
+        return {"sample": r.get("sample"), "valid": False, "reason": "missing", "inputs": [], "at_default": False}
+    ents = [e for e in (chk.get("entries") or []) if isinstance(e, dict)]
+    valid = chk.get("valid") is True
+    return {"sample": r.get("sample"), "valid": valid, "reason": None if valid else (chk.get("reason") or "missing"),
+            "inputs": [e.get("input") for e in ents], "at_default": bool(ents) and all(e.get("at_default") is True for e in ents)}
+
+
 def band_verdict(doc):
     """Direction-of-band verdict per the accepted spec, enriched with the Section 12 Underwriting Contract.
     Judges only USABLE, COMPLETE samples.
@@ -689,6 +702,10 @@ def band_verdict(doc):
         "bear_above_price_reason": scorecard.get("bear_above_price_reason"),
         "code_fill_mode": scorecard.get("code_fill_mode"),
         "consensus_data_status": doc.get("consensus_data_status"),
+        # revision 19 (brief C1): the label's revision-18 direction (rewritten below from the band rule), the crux behind the medoid's call
+        # and its price-implied block; crux_valid and crux_by_sample are set below, once the basis samples are read
+        "direction_m": None, "crux_valid": None, "crux_by_sample": None, "crux": None,
+        "price_implied": scorecard.get("price_implied"),
     })
 
     nar_flags, nar_notes = _not_a_result(doc, good)
@@ -703,6 +720,8 @@ def band_verdict(doc):
                   "position_basis_declared": scorecard.get("position_basis"),
                   "position_basis_votes": doc.get("position_basis_votes"),
                   "momentum_evidence": scorecard.get("momentum_evidence"),
+                  # revision 19 (brief C1): no direction, so no crux is read
+                  "direction_m": "NOT_USABLE", "crux_valid": None, "crux_by_sample": None, "crux": None, "price_implied": None,
                   "reason": "zero plausible complete samples — malfunction path, not a verdict"})
         _annotate(v, nar_flags, nar_notes)
         return v
@@ -774,6 +793,25 @@ def band_verdict(doc):
                                 f"disagreement prohibits capital allocation ({withheld} withheld)")
         v.setdefault("flags", []).append("HIGH_DISPERSION_QUARANTINE")
         v["flags"] = sorted(set(v["flags"]))
+
+    # Revision 19 (brief 1.5, operator ruling 1): no directional call without a stated disagreement. The band rule and the quarantine above
+    # give `direction_m`; when it is directional and any basis sample's crux is not valid (crux_check, run by contract_fill on each sample),
+    # the direction is hold, flagged no_valid_crux:<reason> of the first such sample in sample order. This applies "every draw agrees" to the
+    # crux, as the band rule applies it to the value. A sample whose scorecard carries no crux_check (one written before revision 19) has no crux.
+    v["direction_m"] = d
+    v["crux_by_sample"] = [_crux_of_sample(r) for r in good]
+    v["crux_valid"] = all(s["valid"] for s in v["crux_by_sample"])
+    med_crux = scorecard.get("crux") if isinstance(scorecard.get("crux"), list) else []
+    v["crux"] = [{"input": e.get("input"), "own": e.get("own"), "implied": e.get("implied"), "at_default": e.get("at_default"),
+                  "reason": (med_crux[i].get("reason") if i < len(med_crux) and isinstance(med_crux[i], dict) else None)}
+                 for i, e in enumerate(((scorecard.get("crux_check") or {}).get("entries")) or [])]
+    if d in ("undervalued", "overvalued") and not v["crux_valid"]:
+        bad = next(s for s in v["crux_by_sample"] if not s["valid"])
+        withheld = d
+        d = "hold"
+        v.setdefault("flags", []).append(f"no_valid_crux:{bad['reason']}")
+        v["flags"] = sorted(set(v["flags"]))
+        reason_notes.append(f"no valid stated disagreement with the price on sample {bad['sample']} ({bad['reason']}): {withheld} withheld")
 
     # Report verdict mismatch flag (P4 T2 / D7)
     rep_label = scorecard.get("verdict_label")

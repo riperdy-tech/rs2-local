@@ -214,7 +214,7 @@ def test_build_pack_facts_point_in_time(screener_data_stub, frozen_env, monkeypa
 def base_verdict():
     return {
         "run_source": "orchestrator",
-        "gate_version": 6,
+        "gate_version": depth_gates.GATE_VERSION,
         "n_basis": 2,
         "fiduciary_verdict": "PASS",
         "kelly_fraction_pct": 5.0,
@@ -309,7 +309,8 @@ def test_l2_asth_fixture():
 
     passed, reasons = depth_gates.assess(v)
     assert passed is False
-    assert set(reasons) == {"consensus_data_unavailable", "no_street_fence"}
+    # the recorded row was written under gate 6; from gate 7 on (revision 19) it is also older than the gate that judges it
+    assert set(reasons) == {"consensus_data_unavailable", "no_street_fence", "pre_v3.1_gates"}
 
 
 # =============================================================================================

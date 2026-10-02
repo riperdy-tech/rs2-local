@@ -99,7 +99,10 @@ def producer_class(ticker: str, stocks_csv_path: str | Path, source_label: str) 
 
 
 # 6 (GATE_VERSION 6, brief S2c): reasons 17-18. Consensus data status and street fence required.
-GATE_VERSION = 6
+# 7 (GATE_VERSION 7, revision 19, brief C2): reason 19. A directional verdict needs a valid crux.
+GATE_VERSION = 7
+# the first PACK_REVISION whose verdicts carry a crux: reason 19 reads only rows of this revision or later
+FIRST_CRUX_PACK_REVISION = 19
 
 # P2-fix B2 (Phase 2 approval review): the ledger's `gate_version` alone does not prove a verdict
 # came from a VALID analyst — depth_pipeline stamps gate_version=2 on every verdict it writes
@@ -151,6 +154,8 @@ def assess(v):
      16. depleting producer, or class unavailable on v>=5     -> "depleting_producer_unsupported" / "depleting_producer_class_unavailable"
      17. `consensus_data_status` present and not "ok", or absent on v>=6 -> "consensus_data_unavailable"
      18. `street_fence` not a dict with numeric `low` and `high` -> "no_street_fence"
+     19. `pack_revision` an integer >= FIRST_CRUX_PACK_REVISION (19), `direction` undervalued or overvalued, and `crux_valid`
+         not True                                                -> "directional_without_valid_crux"
 
     Reasons 10-13 (GATE_VERSION 3, Phase 4 (b)): the sanity audit already flagged FSM's samples
     (MoS +442%, 4.9x the analyst high) and kept them, as designed, but no gate read the flags.
@@ -177,6 +182,13 @@ def assess(v):
     "estimates_unavailable" is gated by reviewer ruling at the S2c review: the status also comes
     from an enrich record written before estimates were fetched, and from a failed fetch, not only
     from a name yfinance does not cover. Opening it for uncovered names is an operator decision.
+
+    Reason 19 (GATE_VERSION 7, revision 19, operator ruling 1 of 2026-10-02): no directional verdict is actionable without a valid stated
+    disagreement with the price (a crux: brief_rev19.md section 1). It is the gate's own check on the label code (gate on read), as reason 6 is
+    on the quarantine, and it must never fire on a row this code writes: band_verdict holds a direction whose basis samples do not all carry a
+    valid crux, so a directional row it writes has `crux_valid` True. Reasons 10 (`outside_street_fence`) and 11 (`mos_beyond_150pct`) are
+    unchanged (operator ruling 2): the fence and the 150% cap stay as limits on real-money action, even with a sound crux, until the forward
+    ledger shows that out-of-range calls pay.
 
     P4.8: symmetric dispersion — `high_dispersion` fires for `overvalued` too, not only
     `undervalued`. band_verdict already demotes both directions to `hold` on write when the
@@ -279,6 +291,11 @@ def assess(v):
 
     if not (isinstance(fence, dict) and _is_num(fence.get("low")) and _is_num(fence.get("high"))):
         reasons.append("no_street_fence")
+
+    pr = v.get("pack_revision")
+    if (isinstance(pr, int) and not isinstance(pr, bool) and pr >= FIRST_CRUX_PACK_REVISION
+            and direction in ("undervalued", "overvalued") and v.get("crux_valid") is not True):
+        reasons.append("directional_without_valid_crux")
 
     return (not reasons), reasons
 

@@ -1,4 +1,6 @@
 import pytest
+
+pytestmark = pytest.mark.usefixtures("crux_valid_everywhere")      # revision 19: these tests are about their own rule, not the crux
 from depth_pipeline import band_verdict
 
 # P4.4 — a minimal, checkable invalidation_rules pair, so a scorecard under test does not

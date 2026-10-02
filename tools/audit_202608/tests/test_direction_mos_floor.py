@@ -1,4 +1,6 @@
 import pytest
+
+pytestmark = pytest.mark.usefixtures("crux_valid_everywhere")      # revision 19: these tests are about their own rule, not the crux
 import depth_gates
 from depth_pipeline import band_verdict
 import tools.audit_202608.depth_sanity as depth_sanity

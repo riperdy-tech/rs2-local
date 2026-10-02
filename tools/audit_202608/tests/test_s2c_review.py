@@ -84,7 +84,7 @@ def test_defaults_block_status_line_is_read_verbatim():
 
 
 def _clean_v6(**over):
-    v = {"direction": "undervalued", "gate_version": 6, "n_basis": 2, "fiduciary_verdict": "PASS",
+    v = {"direction": "undervalued", "gate_version": depth_gates.GATE_VERSION, "n_basis": 2, "fiduciary_verdict": "PASS",
          "kelly_fraction_pct": 5.0, "spread_pct": 10.0, "run_source": "orchestrator",
          "street_fence": {"low": 100.0, "high": 150.0}, "median_iv": 120.0, "mos_vs_base_pct": 20.0,
          "flags": [], "producer_class": {"status": "ok", "depleting": False},

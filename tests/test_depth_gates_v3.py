@@ -37,8 +37,8 @@ def _v3(v):
     return [r for r in dg.assess(v)[1] if r in V3]
 
 
-def test_gate_version_is_six():
-    assert dg.GATE_VERSION == 6
+def test_gate_version_is_seven():
+    assert dg.GATE_VERSION == 7          # revision 19: reason 19, directional_without_valid_crux
 
 
 def test_sample_failed_reason():

@@ -10,6 +10,8 @@ Covers:
 """
 import pytest
 import momentum_basis as mb
+
+pytestmark = pytest.mark.usefixtures("crux_valid_everywhere")      # revision 19: these tests are about their own rule, not the crux
 import depth_pipeline as dp
 import capability_test as cap
 from tools.audit_202608.consensus_valuation import extract_scorecard, select_medoid_scorecard
