@@ -20,7 +20,8 @@ HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache"
 # Revision 18: the closure's raw consensus batch (cache/closure_enrich/<vintage>/, ~1,700 files) is raw data, not state a test may
 # touch, and statting it twice per test made the suite many times slower. The per-test guard skips that subtree; the session
-# guard below checks every vintage against its manifest.json (file list and sha256) at the start and the end of the session.
+# guard below checks every vintage against its manifest.json (file list and sha256) at the start and the end of the session, and
+# compares a listing of the WHOLE subtree (subfolders such as a failed attempt moved aside, and any file at the batch folder's root).
 BATCH_ROOT = "closure_enrich"
 
 
@@ -35,6 +36,39 @@ def _snapshot():
             p = Path(dirpath) / name
             out[str(p.relative_to(CACHE))] = p.stat().st_mtime_ns
     return out
+
+
+def closure_enrich_tree(cache_dir):
+    """{relative path: (kind, size, mtime_ns)} of EVERYTHING under cache_dir/closure_enrich - every file and every folder at any depth: a
+    vintage's records and manifest, a failed attempt moved aside (`_attempt*_broken_session/`), and any file or folder at the root of the
+    batch folder. The per-test guard never descends into it; the session guard compares this listing at the start and the end."""
+    root = Path(cache_dir) / BATCH_ROOT
+    out = {}
+    if not root.is_dir():
+        return out
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in dirnames:
+            p = Path(dirpath) / name
+            out[p.relative_to(root).as_posix() + "/"] = ("dir", 0, 0)
+        for name in filenames:
+            p = Path(dirpath) / name
+            st = p.stat()
+            out[p.relative_to(root).as_posix()] = ("file", st.st_size, st.st_mtime_ns)
+    return out
+
+
+def compare_closure_enrich_tree(before, after):
+    """Problems (a list of strings, empty when the two listings are equal): the entries added, removed or changed anywhere under
+    cache/closure_enrich between `before` and `after` (names are paths inside the batch folder; they hold no ticker list of ours)."""
+    problems = []
+    for rel in sorted(set(after) - set(before)):
+        problems.append(f"{rel} was added")
+    for rel in sorted(set(before) - set(after)):
+        problems.append(f"{rel} was removed")
+    for rel in sorted(set(before) & set(after)):
+        if before[rel] != after[rel]:
+            problems.append(f"{rel} was changed")
+    return problems
 
 
 def verify_batch_vintages(cache_dir):
@@ -77,10 +111,16 @@ def _batch_vintages_must_match_their_manifests():
     start = verify_batch_vintages(CACHE)
     if start:
         pytest.fail("cache/closure_enrich does not match its manifest at session start: " + "; ".join(start[:6]), pytrace=False)
+    tree_before = closure_enrich_tree(CACHE)
     yield
     end = verify_batch_vintages(CACHE)
     if end:
         pytest.fail("a test altered cache/closure_enrich (it no longer matches its manifest): " + "; ".join(end[:6]), pytrace=False)
+    # the manifest check covers only the vintages' *.json records; the whole subtree is guarded here (a subfolder such as a failed
+    # attempt moved aside, and any file at the root of the batch folder)
+    tree_changed = compare_closure_enrich_tree(tree_before, closure_enrich_tree(CACHE))
+    if tree_changed:
+        pytest.fail("a test altered cache/closure_enrich: " + "; ".join(tree_changed[:6]), pytrace=False)
 
 
 @pytest.fixture(autouse=True)
