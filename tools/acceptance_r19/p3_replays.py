@@ -104,23 +104,12 @@ def replay_labels(sp_root):
     return out
 
 
-def _num_b(x):
-    return None if x is None else (x / 1e9 if abs(x) > 1e6 else x)
-
-
-def desk_context(facts, price, rf_eff=RF_EFF_AT10, gdp=NOMINAL_GDP_TREND_AT10):
-    """The desk context the harness builds from a run's facts (consensus_valuation.main's), with the two anchor facts of FACTS_VERSION 7 given."""
-    return {"price": price, "shares_default_b": _num_b(facts["shares_default"]), "coe_anchor": facts["coe_anchor"],
-            "terminal_g_default": facts["terminal_g_default"], "terminal_g_anchor": facts["terminal_g_anchor"],
-            "base_rate_table": facts.get("base_rate_5y") or None, "revenue_cagr_5y_pct": facts.get("revenue_cagr_5y_pct"),
-            "net_debt_default_b": facts.get("net_debt_b"), "interest_expense_latest_b": facts.get("interest_expense_latest_b"),
-            "owner_earnings_default_b": facts.get("owner_earnings_default_b"), "base_window": facts.get("base_window"),
-            "consensus_implied_value": facts.get("consensus_implied_value"), "levels": facts.get("levels"),
-            "terminal_ronic": facts.get("terminal_ronic"), "long_run": facts.get("long_run"), "working_capital": facts.get("working_capital"),
-            "cash_basis_b": facts.get("cash_basis_b"), "reference_base_b": facts.get("reference_base_b"), "excess_cash": facts.get("excess_cash"),
-            "base_year_cash_and_investments_b": facts.get("base_year_cash_and_investments_b"), "reference_status": facts.get("reference_status"),
-            "years35_cap": facts.get("next_fy_revenue_growth"), "shares_warning": facts.get("shares_warning"), "rf_eff": rf_eff,
-            "nominal_gdp_trend": gdp}
+def desk_context(facts, price, ticker, run_date, rf_eff=RF_EFF_AT10, gdp=NOMINAL_GDP_TREND_AT10):
+    """The desk context of a frozen run: `consensus_valuation.build_desk_context`, the one function a run and a replay both use (revision 19 follow-up C9),
+    on the run's sidecar facts (read as a replay reads them) with the two anchor facts of FACTS_VERSION 7 that a version 6 sidecar lacks given from the
+    AT10 pins, at the run's own date."""
+    import consensus_valuation as cv
+    return cv.build_desk_context(dict(facts, rf_eff=rf_eff, nominal_gdp_trend=gdp), price, ticker, ticker, run_date=run_date)
 
 
 def replay_desk(sp_root):
@@ -129,9 +118,12 @@ def replay_desk(sp_root):
     import financial_model_tool as fmt
     rows = []
     for d in run_dirs(sp_root):
-        facts = _load(d / "_pack_facts.json")
+        import pack_facts
+        facts = pack_facts.read_sidecar(d)
         cons = _load(d / "consensus.json")
-        ctx = desk_context(facts, cons["price"])
+        stamp = d.name.rsplit("_", 2)                          # <ticker>_<YYYYMMDD>_<HHMMSS>: the run's local date, as the harness took it
+        run_date = f"{stamp[-2][:4]}-{stamp[-2][4:6]}-{stamp[-2][6:8]}"
+        ctx = desk_context(facts, cons["price"], cons["ticker"], run_date)
         for r in cons["runs"]:
             calls = _calls(d, r)
             if calls is None:

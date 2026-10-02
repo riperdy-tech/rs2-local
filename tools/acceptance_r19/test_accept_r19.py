@@ -193,7 +193,8 @@ def test_part_i_classes_by_the_two_percent_rules():
 
 def test_part_i_no_filed_basis_and_zero_values_are_values():
     lb = _lb()
-    assert lb.measure(None, 10.0, 1.0, 0.2)["class"] == "no_filed_basis"
+    assert lb.measure(None, 10.0, 1.0, 0.2)["class"] == "no_vendor_year_ago" and lb.measure(None, None, 1.0, 0.2)["class"] == "no_vendor_year_ago"
+    assert lb.measure(float("nan"), 10.0, 1.0, 0.2)["class"] == "no_vendor_year_ago"
     assert lb.measure(10.0, None, 1.0, 0.2)["class"] == "no_filed_basis"
     m = lb.measure(0.0, 0.0, 0.0, 0.0)                                       # a zero is a number: both equal, so GAAP-like; no ratio, no restatement
     assert m["class"] == "gaap_like" and m["ya_over_filed"] is None and m["restate"] is None
@@ -223,12 +224,13 @@ def test_part_i_summary_counts_and_medians_carry_no_name():
             dict(lb.measure(5.0, 10.0, 1.0, 0.2), restated_ratio=2.0),
             dict(lb.measure(None, 10.0, 1.0, 0.2), restated_ratio=None)]
     s = lb.summarize(recs)
-    assert s["names"] == 5 and s["counts"] == {"gaap_like": 1, "adjusted_like": 2, "unclassified": 1, "no_filed_basis": 1}
+    assert s["names"] == 5 and s["counts"] == {"gaap_like": 1, "adjusted_like": 2, "loss_maker": 0, "unclassified": 1, "no_vendor_year_ago": 1, "no_filed_basis": 0}
     assert s["medians"]["ya_over_filed"] == pytest.approx(1.2) and s["medians"]["restated_ratio"] == pytest.approx(0.85)
     assert s["by_class"]["adjusted_like"]["ya_over_filed"] == pytest.approx(1.5) and s["by_class"]["adjusted_like"]["restated_ratio_available"] == 2
-    assert s["by_class"]["no_filed_basis"]["ya_over_filed"] is None
-    loss = lb.summarize([dict(lb.measure(1.0, -2.0, 0.5, 0.2), restated_ratio=None)])           # a loss year: above filed, so adjusted-like, and counted
-    assert loss["counts"]["adjusted_like"] == 1 and loss["by_class"]["adjusted_like"]["filed_eps_not_positive"] == 1
+    assert s["by_class"]["no_vendor_year_ago"]["ya_over_filed"] is None and s["by_class"]["no_filed_basis"]["n"] == 0
+    loss = lb.summarize([dict(lb.measure(1.0, -2.0, 0.5, 0.2), restated_ratio=None), dict(lb.measure(-3.0, -2.0, 0.5, 0.2), restated_ratio=None)])
+    assert loss["counts"]["loss_maker"] == 2 and loss["counts"]["adjusted_like"] == 0 and loss["by_class"]["loss_maker"]["filed_eps_not_positive"] == 2   # a loss is its own class, not classed by sign
+    assert lb.measure(-3.0, -2.0, 0.5, 0.2)["restate"] is None and lb.measure(0.0, 0.0, 0.0, 0.2)["class"] == "gaap_like"
     assert lb.summarize([])["medians"]["restated_ratio"] is None
 
 
@@ -281,7 +283,7 @@ def test_part_i_run_restates_the_levels_and_prints_only_the_development_name(mon
     monkeypatch.setattr(rl, "production_adapters", adapters)
     result = lb.run(ns, _day_rows(WORLD), show="MU")
     assert result["names"] == 3 and result["levels_names_in_day"] == 3                       # the growth name is not a levels name
-    assert result["counts"] == {"gaap_like": 1, "adjusted_like": 1, "unclassified": 1, "no_filed_basis": 0}
+    assert result["counts"] == {"gaap_like": 1, "adjusted_like": 1, "loss_maker": 0, "unclassified": 1, "no_vendor_year_ago": 0, "no_filed_basis": 0}
     mu = result["shown"]
     assert mu["class"] == "adjusted_like" and mu["ya_over_filed"] == pytest.approx(1.4)
     assert mu["ya_over_filed_plus_pre_tax"] == pytest.approx(14.0 / 13.0) and mu["ya_over_filed_plus_after_tax"] == pytest.approx(14.0 / 12.4)

@@ -248,7 +248,22 @@ def test_the_replay_context_survives_an_infinite_return_and_the_no_reference_pac
 
 def test_the_replay_context_is_the_one_function_main_uses():
     src = Path(HERE / "audit_202608" / "consensus_valuation.py").read_text(encoding="utf-8")
-    assert "desk_context = build_desk_context(facts, price, t, company_name)" in src and src.count("desk_context = {") == 0
+    assert "desk_context = build_desk_context(facts, price, t, company_name, run_date=datetime.now().date().isoformat())" in src and src.count("desk_context = {") == 0
+
+
+def test_the_desk_context_carries_the_runs_date_and_the_desk_holds_a_citation_to_it(screener_data_stub):
+    """C7: the crux's form check read today's date when the context had none, so a replay of an older run judged its citations against the wrong day."""
+    import consensus_valuation as cv
+    import financial_model_tool as fmt
+    import capability_test as cap
+    pack = cap.build_pack("GEV")
+    assert cv.build_desk_context(pack.facts, 123.45, "GEV", "GE Vernova Inc.")["run_date"] is None
+    ctx = cv.build_desk_context(pack.facts, 123.45, "GEV", "GE Vernova Inc.", run_date="2020-06-01")
+    assert ctx["run_date"] == "2020-06-01" and len(ctx) == len(cv.build_desk_context(pack.facts, 123.45, "GEV", "GE Vernova Inc."))
+    problems = lambda d, c: fmt.crux_check.form_problems([{"input": "coe", "reason": "r", "citations": [{"source": "DATA 5", "date": d, "quote": "q" * 40}]}],
+                                                         c.get("run_date") or fmt.datetime.date.today().isoformat())
+    assert any("is after the run's date 2020-06-01" in x for x in problems("2021-01-01", ctx))                    # today's date would have let it pass
+    assert problems("2021-01-01", cv.build_desk_context(pack.facts, 123.45, "GEV", "GE Vernova Inc.")) == []
 
 
 def test_the_equality_helper_sees_a_difference():

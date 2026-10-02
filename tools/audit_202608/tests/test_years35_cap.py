@@ -766,6 +766,8 @@ def test_18_plumbing_consensus_valuation_passes_desk_context(monkeypatch, tmp_pa
         "base_year_cash_and_investments_b",
         # revision 19 (B4): the name and ticker the citation check's news-filter rule needs
         "ticker", "company",
+        # revision 19 follow-up (C7): the date the crux's citations are held to
+        "run_date",
         # revision 19 (brief D4): the anchors the price-implied solver's bounds read
         "rf_eff", "nominal_gdp_trend",
     }

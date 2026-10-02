@@ -9,8 +9,10 @@ year-ago EPS (`estimates["0y"]["eps"]["year_ago"]`, the vendor's own figure for 
   (a) ya_over_filed       year-ago EPS / filed diluted EPS (net income / filed diluted shares, on today's share basis)
   (b) ya_over_filed_plus  year-ago EPS / (filed diluted EPS + stock pay per diluted share): before tax and after tax at tax_L
                           (throughcycle_record.tax_rate of the base year's record); stock pay = the filed base year's `sbc`
-  (c) class               "gaap_like" (year-ago EPS within 2% of filed), else "adjusted_like" (within 2% of filed plus stock pay, before tax, or above
-                          filed by more than 2%), else "unclassified"; a name with no usable filed base is "no_filed_basis" and is counted, not classed
+  (c) class               "loss_maker" (filed diluted EPS below zero: the 2% rules mean nothing against a loss, so these are not classed by sign), else
+                          "gaap_like" (year-ago EPS within 2% of filed), else "adjusted_like" (within 2% of filed plus stock pay, before tax, or above
+                          filed by more than 2%), else "unclassified"; a name with no vendor year-ago EPS is "no_vendor_year_ago" and one with no usable
+                          filed EPS is "no_filed_basis": both are counted, not classed
   (d) restated_ratio      the reference value if both levels were restated to the filed basis (vendor EPS x filed / vendor year-ago EPS) / today's reference
 
 Reported: counts per class, the medians of (a), (b) and (d) overall and per class, and the row of the one development name asked for (--show, default MU).
@@ -27,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "acceptance_r18"))
 import accept_common as ac  # noqa: E402
 
 TOL = 0.02                       # the brief's 2%
-CLASSES = ("gaap_like", "adjusted_like", "unclassified", "no_filed_basis")
+CLASSES = ("gaap_like", "adjusted_like", "loss_maker", "unclassified", "no_vendor_year_ago", "no_filed_basis")
 
 
 def _num(v):
@@ -46,7 +48,10 @@ def measure(ya, filed_eps, stock_pay_ps, tax_l):
     where `restate` is filed / ya (the factor that turns the vendor's levels into the filed basis) or None."""
     out = {"ya": ya, "filed_eps": filed_eps, "stock_pay_ps": stock_pay_ps, "tax_l": tax_l, "ya_over_filed": None,
            "ya_over_filed_plus_pre_tax": None, "ya_over_filed_plus_after_tax": None, "class": "no_filed_basis", "restate": None}
-    if not (_num(ya) and _num(filed_eps)):
+    if not _num(ya):
+        out["class"] = "no_vendor_year_ago"                      # revision 19 follow-up (C1): the vendor gave no year-ago EPS; that is not a missing filing
+        return out
+    if not _num(filed_eps):
         return out
     plus_pre = filed_eps + stock_pay_ps if _num(stock_pay_ps) else None
     plus_after = filed_eps + stock_pay_ps * (1.0 - tax_l) if _num(stock_pay_ps) and _num(tax_l) else None
@@ -56,7 +61,9 @@ def measure(ya, filed_eps, stock_pay_ps, tax_l):
         out["ya_over_filed_plus_pre_tax"] = ya / plus_pre
     if plus_after:
         out["ya_over_filed_plus_after_tax"] = ya / plus_after
-    if _near(ya, filed_eps):
+    if filed_eps < 0:
+        out["class"] = "loss_maker"
+    elif _near(ya, filed_eps):
         out["class"] = "gaap_like"
     elif (plus_pre is not None and _near(ya, plus_pre)) or ya > filed_eps + TOL * abs(filed_eps):
         out["class"] = "adjusted_like"

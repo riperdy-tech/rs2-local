@@ -1989,12 +1989,14 @@ def early_stop_check(g2, prior_base=None):
             "prior_delta_pct": prior_delta_pct, "prior_ok": prior_ok}
 
 
-def build_desk_context(facts, price, ticker, company):
+def build_desk_context(facts, price, ticker, company, run_date=None):
     """The desk's context (S3 3.2; revision 19 brief G3): every constant the pack holds, from the facts object and the harness price. ONE function, so the
     context a fresh run builds from the facts its build returned and the context a `--pack-file` replay builds from the sidecar are the same
     function of equal facts (tests/test_rev19_replay_parity.py proves the two equal key for key and value for value).
     `shares_default_b` is 5.11's default, not SECTION 2's count; a count of 0 gives None (a zero share count cannot be a default), tested with
-    `is not None`, never `or`."""
+    `is not None`, never `or`.
+    `run_date` (an ISO date string, revision 19 follow-up C7): the date of the run, which the crux's form check holds each citation's date against; None
+    leaves the desk to read today's date, which is only right for a run made today (a replay of an older run passes that run's date)."""
     return {
         "price": price,                                   # the harness price, the one the verdict uses
         "shares_default_b": (_num_b(facts["shares_default"])
@@ -2033,6 +2035,7 @@ def build_desk_context(facts, price, ticker, company):
         # revision 19 (B4): the name and ticker the citation check's news-filter rule needs
         "ticker": ticker,
         "company": company,
+        "run_date": run_date,                             # revision 19 (C7): the date the crux's citations are held to
     }
 
 
@@ -2190,7 +2193,7 @@ def main():
     # count; a count of 0 gives None (a zero share count cannot be a default), tested with
     # `is not None`, never `or`.
     company_name = rs2_data.resolve_name(t) or t          # revision 19 (B6): the crux check's name for the news filter's rule
-    desk_context = build_desk_context(facts, price, t, company_name)
+    desk_context = build_desk_context(facts, price, t, company_name, run_date=datetime.now().date().isoformat())
 
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
             if adaptive else f"{n} samples fixed")
