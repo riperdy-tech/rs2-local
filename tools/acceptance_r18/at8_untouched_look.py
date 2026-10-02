@@ -7,7 +7,7 @@ passed on, and never again. Counts only: no name is printed, logged, written or 
 
 Refuses (before it reads a single name) unless: --confirm-one-look is given; the list's sha256 matches; the lock file (LOCK_PATH, one fixed path
 that no argument changes) does not exist; and the AT RESULT FILES in --results (each written by its own script: AT1a, AT1b, AT1c, AT1d, AT1e,
-AT2, AT3, AT4, AT5, AT6, AT7 and AT9, exactly one each) record `pass: true` and were run on the SAME configuration as this run. Nothing is
+AT2, AT3, AT4, AT5, AT6, AT7, AT9 and P4, exactly one each) record `pass: true` and were run on the SAME configuration as this run. Nothing is
 typed in: the configuration is the one the book's day file (--day) records, and each result file must name that day file's sha256 (or, AT1c,
 AT1b's revision 18 tree, AT7, AT2, the tree commit / the history and artifact hashes) - and it must equal this run's: tree commit, a CLEAN
 tree, history sha256, closure sha256, date, MRI anchor hashes and the bill-rate store's sha256.
@@ -16,8 +16,11 @@ on the date (counts only). The lock file is created (exclusively) before anythin
 that is still the one look: "if an integrity item fails, stop and report; there is no second look". The result's `configuration` adds the
 digests of the enrich records (their count and the sha256 of their sorted sha256s).
 
-Pass / fail (the bars): AT1a, AT1d and AT4 on the 167. Report only: coverage, the share below 0.9x price, the median V/P, the count outside the
-fence. The pack text and the rows are held in memory and never written.
+Pass / fail (the bars): AT1a, AT1d and AT4 on the 167, and (revision 19, brief H) P4 on the 167's DEFAULTS runs: each DEFAULTS price-implied value
+reproduces the pack's price within $0.01 when substituted, or is not reachable with its bound named. Report only: coverage, the share below 0.9x
+price, the median V/P, the count outside the fence; these level figures are labelled "second look, not independent (first look: the 2026-10-02 gap
+measurement)": the 2026-10-02 gap measurement saw the level of these names first, so this look repeats it and does not test it afresh.
+The pack text and the rows are held in memory and never written.
 """
 import argparse
 import json
@@ -30,8 +33,10 @@ import accept_common as ac  # noqa: E402
 import at_rows  # noqa: E402
 import desk_checks  # noqa: E402
 
-REQUIRED = ("AT1a", "AT1b", "AT1c", "AT1d", "AT1e", "AT2", "AT3", "AT4", "AT5", "AT6", "AT7", "AT9")
-DAY_BASED = ("AT1a", "AT1b", "AT1d", "AT1e", "AT3", "AT4", "AT5", "AT6", "AT9")         # their result files name the day file they ran on
+REQUIRED = ("AT1a", "AT1b", "AT1c", "AT1d", "AT1e", "AT2", "AT3", "AT4", "AT5", "AT6", "AT7", "AT9", "P4")
+DAY_BASED = ("AT1a", "AT1b", "AT1d", "AT1e", "AT3", "AT4", "AT5", "AT6", "AT9", "P4")   # their result files name the day file they ran on
+# revision 19 (brief H): what the look's level figures are, said on the figures themselves
+SECOND_LOOK_LABEL = "second look, not independent (first look: the 2026-10-02 gap measurement)"
 CONFIG_KEYS = ("tree_commit", "tree_clean", "history_sha256", "closure_sha256", "date", "mri_anchor_sha256", "bill_rate_sha256")
 # THE lock: one fixed path, in no repository and no argument. A different path would allow a second look.
 LOCK_PATH = Path.home() / ".rs2_acceptance" / "rev18_at8_one_look.lock"
@@ -117,26 +122,28 @@ def take_lock(path=None):
 
 
 def look(ns, rows):
-    """The look's result from the rows in memory (counts only). Pass = AT1a, AT1d and AT4; the rest is reported."""
+    """The look's result from the rows in memory (counts only). Pass = AT1a, AT1d, AT4 and P4; the rest is reported."""
     a1a = desk_checks.desk_parity(ns, rows, names=False)
     a1d = at_rows.at1d(rows, names=False)
     a4 = at_rows.at4(rows, names=False)
-    return summarize(rows, a1a, a1d, a4)
+    p4 = desk_checks.defaults_price_implied(ns, rows, names=False)
+    return summarize(rows, a1a, a1d, a4, p4)
 
 
-def summarize(rows, a1a, a1d, a4):
+def summarize(rows, a1a, a1d, a4, p4):
     built = {k: r for k, r in rows.items() if r.get("error") is None}
     printed = [r for r in built.values() if r.get("status") in at_rows.PRINTED]
     vps = [r["printed_value"] / r["price"] for r in printed if r.get("printed_value") is not None and isinstance(r.get("price"), (int, float)) and r["price"] > 0]
-    ok = bool(a1a["pass"] and a1d["pass"] and a4["pass"])
-    report_only = {"names": len(rows), "built": len(built), "build_errors": len(rows) - len(built),
+    ok = bool(a1a["pass"] and a1d["pass"] and a4["pass"] and p4["pass"])
+    report_only = {"label": SECOND_LOOK_LABEL, "names": len(rows), "built": len(built), "build_errors": len(rows) - len(built),
                    "with_a_printed_reference": len(printed), "coverage": (len(printed) / len(rows)) if rows else None,
                    "share_below_0.9x_price": (sum(1 for v in vps if v < 0.9) / len(vps)) if vps else None,
                    "median_vp": statistics.median(vps) if vps else None,
                    "outside_the_fence": sum(1 for r in printed if r["status"] != "used")}
-    return {"at": "AT8 the look at the untouched names", "pass": ok, "bars": {"AT1a": a1a, "AT1d": a1d, "AT4": a4}, "report_only": report_only,
-            "summary": f"AT1a {'pass' if a1a['pass'] else 'FAIL'}, AT1d {'pass' if a1d['pass'] else 'FAIL'}, AT4 {'pass' if a4['pass'] else 'FAIL'}; "
-                       f"coverage {report_only['coverage']}, below 0.9x {report_only['share_below_0.9x_price']}, median V/P {report_only['median_vp']}, "
+    return {"at": "AT8 the look at the untouched names", "pass": ok, "bars": {"AT1a": a1a, "AT1d": a1d, "AT4": a4, "P4": p4}, "report_only": report_only,
+            "summary": f"AT1a {'pass' if a1a['pass'] else 'FAIL'}, AT1d {'pass' if a1d['pass'] else 'FAIL'}, AT4 {'pass' if a4['pass'] else 'FAIL'}, "
+                       f"P4 {'pass' if p4['pass'] else 'FAIL'}; level figures ({SECOND_LOOK_LABEL}): coverage {report_only['coverage']}, "
+                       f"below 0.9x {report_only['share_below_0.9x_price']}, median V/P {report_only['median_vp']}, "
                        f"outside the fence {report_only['outside_the_fence']}"}
 
 

@@ -755,7 +755,7 @@ GOOD_ENRICH = {"_ticker": "X", "_fetched_at": "2026-09-26T12:00:00+00:00", "esti
 
 
 def _write_results(folder, day, inputs, **over):
-    """The twelve AT result files as the scripts write them (only the fields AT8 reads), all passed on the day file `day`; `over` = {AT: dict
+    """The thirteen result files (AT1a-AT9 and P4) as the scripts write them (only the fields AT8 reads), all passed on the day file `day`; `over` = {AT: dict
     merged into that result, or None to leave the file out}."""
     folder.mkdir(exist_ok=True)
     sha, commit = ac.sha256_file(day), inputs["tree_commit"]
@@ -767,7 +767,8 @@ def _write_results(folder, day, inputs, **over):
             "AT3": {"at": "AT3 coverage", "day_file_sha256": sha}, "AT4": {"at": "AT4 no non-positive reference printed", "day_file_sha256": sha},
             "AT5": {"at": "AT5 level sanity", "day_file_sha256": sha}, "AT6": {"at": "AT6 fence, cap, text", "day_file_sha256": sha},
             "AT7": {"at": "AT7 suite", "runs": [{"name": "rs2 suite", "commit": commit}, {"name": "harness rs2-bt", "commit": "40cb5cf" + "0" * 33}]},
-            "AT9": {"at": "AT9 cash term alive", "day_file_sha256": sha}}
+            "AT9": {"at": "AT9 cash term alive", "day_file_sha256": sha},
+            "P4": {"at": "P4 DEFAULTS price-implied", "day_file_sha256": sha}}
     for at, doc in docs.items():
         if over.get(at, {}) is None:
             continue
@@ -884,8 +885,11 @@ def test_at8_takes_the_look_once_writes_counts_only_and_refuses_a_second_look(wo
     assert rc == 0 and built == [(3, True, True)] and a8.LOCK_PATH.exists()
     text = (at8.tmp / "at8.json").read_text(encoding="utf-8")
     result = json.loads(text)
-    assert result["pass"] and set(result["bars"]) == {"AT1a", "AT1d", "AT4"} and result["counts"]["names"] == 3
-    assert set(result["report_only"]) >= {"coverage", "share_below_0.9x_price", "median_vp", "outside_the_fence"}
+    assert result["pass"] and set(result["bars"]) == {"AT1a", "AT1d", "AT4", "P4"} and result["counts"]["names"] == 3          # revision 19: P4 joins the bars
+    assert set(result["report_only"]) >= {"coverage", "share_below_0.9x_price", "median_vp", "outside_the_fence", "label"}
+    # revision 19 (brief H): the level figures say they are a second look, not independent of the first
+    assert result["report_only"]["label"] == a8.SECOND_LOOK_LABEL == "second look, not independent (first look: the 2026-10-02 gap measurement)"
+    assert a8.SECOND_LOOK_LABEL in result["summary"] and result["bars"]["P4"]["names_checked"] >= 1
     # finding 11: the configuration of the look carries the clean tree, the bill-rate store's hash and the digests of the enrich records
     cfg = result["configuration"]
     assert cfg["tree_clean"] is True and len(cfg["bill_rate_sha256"]) == 64 and cfg["enrich_digests"]["records"] == 3
@@ -896,6 +900,47 @@ def test_at8_takes_the_look_once_writes_counts_only_and_refuses_a_second_look(wo
     # the second look is refused, nothing is built, and the first result stands
     again = a8.main(_args(world, at8, "--confirm-one-look"), build_rows=lambda *a, **k: pytest.fail("a second look built something"))
     assert again == 2 and "already been taken" in capsys.readouterr().err and (at8.tmp / "at8.json").read_text(encoding="utf-8") == text
+
+
+def test_at8_p4_is_a_bar_a_missing_p4_result_refuses_the_look_and_a_failing_p4_fails_it(world, at8, capsys):
+    a8 = at8.a8
+    assert "P4" in a8.REQUIRED and "P4" in a8.DAY_BASED
+    assert a8.main(_args(world, at8, "--confirm-one-look", results=_write_results(at8.tmp / "r_nop4", at8.day, at8.inputs, P4=None)),
+                   build_rows=_stub(world)) == 2
+    err = capsys.readouterr().err
+    assert "P4 has no result file" in err and not a8.LOCK_PATH.exists()
+    assert a8.main(_args(world, at8, "--confirm-one-look", results=_write_results(at8.tmp / "r_p4day", at8.day, at8.inputs,
+                                                                                  P4={"day_file_sha256": "00" * 32})), build_rows=_stub(world)) == 2
+    assert "P4 was not run on the day file given" in capsys.readouterr().err
+    assert a8.main(_args(world, at8, "--confirm-one-look", results=_write_results(at8.tmp / "r_p4fail", at8.day, at8.inputs, P4={"pass": False})),
+                   build_rows=_stub(world)) == 2
+    assert "P4 is not recorded as passed" in capsys.readouterr().err
+    # the look itself: a DEFAULTS run that does not reproduce the price fails the look (P4 is one of the four bars)
+    bad = copy.deepcopy(world.rows["GEV"])
+    lines = bad["text"].splitlines()
+    i = next(i for i, l in enumerate(lines) if l.startswith("- price_implied: coe="))
+    head, rest = lines[i].split(" | ", 1)
+    items = head[len("- price_implied: "):].split("; ")
+    items[0] = "coe=99.99%"
+    lines[i] = "- price_implied: " + "; ".join(items) + " | " + rest
+    bad["text"] = chr(10).join(lines)
+    stub = lambda ns, names, **k: ({"k1": bad}, {"errors_by_class": {}, "enrich_by_source": {}, "enrich_age_days_max": None, "enrich_age_days_over_45": 0})
+    assert a8.main(_args(world, at8, "--confirm-one-look"), build_rows=stub) == 1
+    res = json.loads((at8.tmp / "at8.json").read_text(encoding="utf-8"))
+    assert not res["pass"] and not res["bars"]["P4"]["pass"] and res["bars"]["AT1a"]["pass"] and "P4 FAIL" in res["summary"]
+    assert "GEV" not in json.dumps(res)                                                                   # still counts only
+
+
+def test_the_p4_script_runs_from_a_day_file_and_never_overwrites_a_result(world, tmp_path):
+    meta = dict(world.meta, inputs=ac.inputs_record(world.ns), constants=ac.constants(world.ns))
+    day = tmp_path / "day.json"
+    ac.write_result(day, {"meta": ac.jsonable(meta), "rows": ac.jsonable(world.rows)})
+    out = tmp_path / "p4.json"
+    p = subprocess.run([PY, str(HERE / "p4_defaults_price_implied.py"), "--day", str(day), "--out", str(out)], capture_output=True, text=True)
+    result = json.loads(out.read_text(encoding="utf-8"))
+    assert p.returncode == 0 and result["pass"] and result["at"] == "P4 DEFAULTS price-implied" and result["day_file_sha256"] == ac.sha256_file(day), p.stdout + p.stderr
+    again = subprocess.run([PY, str(HERE / "p4_defaults_price_implied.py"), "--day", str(day), "--out", str(out)], capture_output=True, text=True)
+    assert again.returncode != 0 and json.loads(out.read_text(encoding="utf-8")) == result
 
 
 def test_at8_the_lock_is_one_fixed_path_that_no_argument_changes(world, at8, capsys):

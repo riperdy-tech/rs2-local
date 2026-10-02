@@ -13,7 +13,8 @@ THE SCRIPTS (SP\\rev18\\accept\\; each is socket-blocked, offline, CPU only; non
   at3_coverage.py       AT3   coverage against revision 16 on the same day and data
   at4_no_nonpositive.py AT4   no reference at or below zero is printed
   at5_level_sanity.py   AT5   the median V/P and the share of gross errors
-  at6_fence_cap_text.py AT6   fence, cap, text, PACK_REVISION and FACTS_VERSION
+  at6_fence_cap_text.py AT6   fence, cap, text, PACK_REVISION and FACTS_VERSION (restated for revision 19)
+  p4_defaults_price_implied.py P4  the book arithmetic of the DEFAULTS price-implied values (revision 19)
   at7_suite.py          AT7   the full suite, and the backtest harness tests at their pinned commits (foreground)
   at9_cash_alive.py     AT9   the cash term applies to at least 90% of the names that hold a cash figure
   at8_untouched_look.py AT8   the ONE look at the 167 untouched names (counts only; guarded to run once, on one configuration)
