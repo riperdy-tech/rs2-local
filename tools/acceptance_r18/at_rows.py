@@ -1,0 +1,179 @@
+"""The acceptance tests that read only the day's rows (revision 18, brief section 6): pure functions of build_day.py's output, so each is
+proved on written-down rows. The thin scripts at1d_*.py, at3_*.py, at4_*.py, at5_*.py, at6_*.py and at9_*.py load a day file and call these.
+
+Every function returns {"at", "pass", "summary", ...counts}. With `names=False` (the 167) nothing carries a ticker.
+"""
+import statistics
+
+PRINTED = ("used", "outside_fence_above", "outside_fence_below")
+
+# the TASK bullet of brief section 3.2, verbatim
+LEVEL_ANCHOR_BULLET = ("- Level anchor: the CONSENSUS-IMPLIED VALUE checks the level of your Base, not the direction of your call. It values "
+                       "average performers close to their price, but by itself it is not evidence that a stock is cheap or expensive. Your call "
+                       "rests on the economics you set out above. A Base far from the reference needs the reason DEFAULTS names; a Base close "
+                       "to it needs no reason and earns no credit.")
+
+
+def _num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _built(rows):
+    return {k: r for k, r in rows.items() if r.get("error") is None}
+
+
+def _k(key, names):
+    return key if names else None
+
+
+# ---- AT1d single source ----------------------------------------------------------------------------------------------------------
+
+def at1d(rows, *, names=True):
+    """The pack's printed reference = build(**reference_inputs(...)) to the cent, for every name built (a name whose two values are both
+    None agrees). The independent call is build_day's `parity` (a fresh DataRoot, the files read again)."""
+    n = same = 0
+    bad, missing = [], 0
+    for key, r in sorted(_built(rows).items()):
+        par = r.get("parity")
+        if par is None or "error" in par or "pack_value" not in par:
+            missing += 1
+            bad.append((_k(key, names), "no independent reference_inputs call: " + str((par or {}).get("error", "absent"))[:80]))
+            continue
+        n += 1
+        a, b = par["pack_value"], par["ri_value"]
+        if a is None and b is None:
+            same += 1
+        elif a is not None and b is not None and abs(a - b) < 0.005 and (r.get("printed_value") is None or abs(r["printed_value"] - a) < 0.005):
+            same += 1
+        else:
+            bad.append((_k(key, names), f"pack {a} vs reference_inputs {b}"))
+        if par.get("args_equal") is False:
+            bad.append((_k(key, names), "the pack's build arguments differ from reference_inputs'"))
+    ok = n > 0 and not bad
+    return {"at": "AT1d single source", "pass": ok, "names": n, "agree_to_the_cent": same, "disagree_or_missing": len(bad), "details": bad[:20],
+            "summary": f"{same} of {n} names: the pack's reference equals build(**reference_inputs) to the cent; {len(bad)} problems"}
+
+
+# ---- AT3 coverage -----------------------------------------------------------------------------------------------------------------
+
+def at3(rows18, rows16, *, names=True):
+    """The share of names with a printed reference (status used or outside the fence; for revision 16, a printed value) is at least
+    revision 16's share on the same names, minus 2 points. A name that did not build counts as having none."""
+    keys = sorted(rows18)
+    n = len(keys)
+    p18 = sum(1 for k in keys if (rows18[k].get("error") is None and rows18[k].get("status") in PRINTED))
+    p16 = sum(1 for k in keys if (k in rows16 and rows16[k].get("error") is None and rows16[k].get("printed_value") is not None))
+    s18, s16 = (p18 / n, p16 / n) if n else (0.0, 0.0)
+    ok = n > 0 and s18 >= s16 - 0.02
+    return {"at": "AT3 coverage", "pass": ok, "names": n, "printed_rev18": p18, "printed_rev16": p16, "share_rev18": s18, "share_rev16": s16,
+            "bar": "share rev18 >= share rev16 - 2 points", "names_only_in_rev16": sum(1 for k in keys if k not in rows16),
+            "summary": f"revision 18 prints {p18}/{n} = {s18:.1%}, revision 16 {p16}/{n} = {s16:.1%}"}
+
+
+# ---- AT4 no non-positive reference printed ---------------------------------------------------------------------------------------------------
+
+def at4(rows, *, names=True):
+    """No printed reference is at or below 0 (to the cent); a reference at or below 0 carries not_meaningful and prints no number."""
+    printed = nonpos_printed = nonpos_ref = wrong_status = 0
+    bad = []
+    for key, r in sorted(_built(rows).items()):
+        pv, ref = r.get("printed_value"), r.get("reference") or {}
+        if pv is not None:
+            printed += 1
+            if not pv > 0:
+                nonpos_printed += 1
+                bad.append((_k(key, names), "a non-positive number is printed"))
+        v = ref.get("value")
+        if v is not None and not float(f"{v:.2f}") > 0:
+            nonpos_ref += 1
+            if r.get("status") != "not_meaningful" or pv is not None:
+                wrong_status += 1
+                bad.append((_k(key, names), f"a reference at or below zero has status {r.get('status')} and prints {pv}"))
+    ok = not bad
+    return {"at": "AT4 no non-positive reference printed", "pass": ok, "printed": printed, "printed_non_positive": nonpos_printed,
+            "references_at_or_below_zero": nonpos_ref, "not_marked_not_meaningful": wrong_status, "details": bad[:20],
+            "summary": f"{printed} printed, {nonpos_printed} non-positive printed; {nonpos_ref} references at or below zero, {wrong_status} not marked "
+                       f"not_meaningful"}
+
+
+# ---- AT5 level sanity ----------------------------------------------------------------------------------------------------------------------
+
+def at5(rows, *, names=True):
+    """Over the names with a printed reference and a price: the median V/P lies in [0.70, 1.45] and at most 10% of them lie above 3x or
+    below 1/3x their price (a gross-error detector, not a calibration claim)."""
+    vps = []
+    for r in _built(rows).values():
+        pv, px = r.get("printed_value"), r.get("price")
+        if pv is not None and _num(px) and px > 0:
+            vps.append(pv / px)
+    if not vps:
+        return {"at": "AT5 level sanity", "pass": False, "names": 0, "summary": "no name has a printed reference and a price"}
+    med = statistics.median(vps)
+    extreme = sum(1 for v in vps if v > 3.0 or v < 1.0 / 3.0)
+    share = extreme / len(vps)
+    ok = 0.70 <= med <= 1.45 and share <= 0.10
+    return {"at": "AT5 level sanity", "pass": ok, "names": len(vps), "median_vp": med, "extreme": extreme, "extreme_share": share,
+            "bars": "median V/P in [0.70, 1.45]; at most 10% above 3x or below 1/3x",
+            "summary": f"median V/P {med:.3f} over {len(vps)} names; {extreme} ({share:.1%}) above 3x or below 1/3x"}
+
+
+# ---- AT6 fence, cap, text -----------------------------------------------------------------------------------------------------------------
+
+def at6(rows, constants, *, names=True):
+    """constants: {"PACK_REVISION", "FACTS_VERSION", "ANCHOR_ROLE", "TASK"} read from the tree under test (build_day records them)."""
+    bad = []
+    if constants.get("PACK_REVISION") != 18:
+        bad.append((None, f"PACK_REVISION is {constants.get('PACK_REVISION')}, not 18"))
+    if constants.get("FACTS_VERSION") != 6:
+        bad.append((None, f"FACTS_VERSION is {constants.get('FACTS_VERSION')}, not 6"))
+    task_ok = LEVEL_ANCHOR_BULLET in (constants.get("TASK") or "")
+    if not task_ok:
+        bad.append((None, "the TASK's Level anchor bullet is not present"))
+    role = constants.get("ANCHOR_ROLE") or ""
+    printed = fenced = capped = 0
+    for key, r in sorted(_built(rows).items()):
+        text, st = r.get("text") or "", r.get("status")
+        lines = [l for l in text.splitlines() if "CONSENSUS-IMPLIED VALUE (reference" in l]
+        if st in PRINTED:
+            printed += 1
+            if not lines or not all(role and role in l for l in lines):
+                bad.append((_k(key, names), "a printed reference line lacks the anchor-role sentence"))
+        if st in ("outside_fence_above", "outside_fence_below"):
+            fenced += 1
+            pv = r.get("printed_value")
+            line = lines[0] if lines else ""
+            if pv is None or f"${pv:,.2f}" not in line or "outside the street-target fence [" not in line or "level check only" not in line:
+                bad.append((_k(key, names), "an outside-fence reference does not print its value and flag"))
+        stamps = list((r.get("reference") or {}).get("stamps") or []) + list(((r.get("facts") or {}).get("long_run") or {}).get("stamps") or [])
+        if "base_year_capped" in text or any("base_year_capped" in str(s) for s in stamps) or (r.get("facts") or {}).get("base_year_cap"):
+            capped += 1
+            bad.append((_k(key, names), "a base_year_capped stamp is present"))
+    ok = not bad
+    return {"at": "AT6 fence, cap, text", "pass": ok, "printed_references": printed, "outside_fence": fenced, "base_year_capped": capped,
+            "pack_revision": constants.get("PACK_REVISION"), "facts_version": constants.get("FACTS_VERSION"), "task_bullet_present": task_ok,
+            "details": bad[:20],
+            "summary": f"{printed} printed references ({fenced} outside the fence); {capped} capped; TASK bullet {'present' if task_ok else 'MISSING'}; "
+                       f"PACK_REVISION {constants.get('PACK_REVISION')}, FACTS_VERSION {constants.get('FACTS_VERSION')}; {len(bad)} problems"}
+
+
+# ---- AT9 cash term alive -------------------------------------------------------------------------------------------------------------------------
+
+def at9(rows, *, names=True):
+    """Among the non-financial names with a printed reference and a filed cash figure, the cash term applies to at least 90%; an unknown
+    fiscal year end and a missing bill rate count against it (reported by stamp)."""
+    pop = applies = 0
+    against = {}
+    for r in _built(rows).values():
+        c = r.get("cash")
+        if r.get("status") not in PRINTED or not c or c.get("financial") or not c.get("filed"):
+            continue
+        pop += 1
+        if c.get("applies"):
+            applies += 1
+        else:
+            for s in (c.get("stamps") or ["no cash-term stamp"]):
+                against[s] = against.get(s, 0) + 1
+    share = applies / pop if pop else 0.0
+    ok = pop > 0 and share >= 0.90
+    return {"at": "AT9 cash term alive", "pass": ok, "population": pop, "applies": applies, "share": share, "not_applied_by_stamp": against,
+            "bar": "at least 90%", "summary": f"the cash term applies to {applies} of {pop} = {share:.1%}; not applied: {against}"}
