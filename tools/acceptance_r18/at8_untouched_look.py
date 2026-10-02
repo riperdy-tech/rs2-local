@@ -24,6 +24,7 @@ The pack text and the rows are held in memory and never written.
 """
 import argparse
 import json
+import os
 import statistics
 import sys
 from pathlib import Path
@@ -37,7 +38,10 @@ REQUIRED = ("AT1a", "AT1b", "AT1c", "AT1d", "AT1e", "AT2", "AT3", "AT4", "AT5", 
 DAY_BASED = ("AT1a", "AT1b", "AT1d", "AT1e", "AT3", "AT4", "AT5", "AT6", "AT9", "P4")   # their result files name the day file they ran on
 # revision 19 (brief H): what the look's level figures are, said on the figures themselves
 SECOND_LOOK_LABEL = "second look, not independent (first look: the 2026-10-02 gap measurement)"
-CONFIG_KEYS = ("tree_commit", "tree_clean", "history_sha256", "closure_sha256", "date", "mri_anchor_sha256", "bill_rate_sha256")
+# revision 19 (10c, B4): the configuration also covers every input B3 hashes (the MRI files and the screener files; the per-name files are recorded in
+# the result's configuration for the look's own names, not compared, since the look's names are not the day's), the TTM file, and both folder paths
+CONFIG_KEYS = ("tree_commit", "tree_clean", "history_sha256", "closure_sha256", "date", "mri_anchor_sha256", "bill_rate_sha256",
+               "ttm_sha256", "screener_data_dir", "mri_outputs_dir", "mri_input_sha256", "screener_input_sha256")
 # THE lock: one fixed path, in no repository and no argument. A different path would allow a second look.
 LOCK_PATH = Path.home() / ".rs2_acceptance" / "rev18_at8_one_look.lock"
 
@@ -79,7 +83,9 @@ def check_preconditions(results, day_meta, day_sha256, config):
         if not isinstance(r, dict):
             problems.append(f"{at} has no result file")
         elif r.get("pass") is not True:
-            problems.append(f"{at} is not recorded as passed")
+            # revision 19 (10c, B7): a result waiting for the reviewer's ruling is PENDING, not failed
+            problems.append(f"{at} is PENDING (the reviewer's ruling is outstanding), not recorded as passed" if ac.status_word(r) == "PENDING"
+                            else f"{at} is not recorded as passed")
     day_config = configuration_of(day_meta.get("inputs") or {})
     for k in CONFIG_KEYS:
         if day_config.get(k) is None or day_config.get(k) != config.get(k):
@@ -113,6 +119,17 @@ def enrich_precheck(ns, names):
     return chk
 
 
+def out_path_problem(out):
+    """Why `--out` cannot take the look's result (a string), or None: it must not exist (a result is a record, never overwritten) and its folder must
+    exist and be writable. Checked before the lock is taken, so a bad path costs nothing (revision 19, 10c, B6)."""
+    out = Path(out)
+    if out.exists():
+        return "--out names a file that already exists (a result is never overwritten); the look has not been taken"
+    if not out.parent.is_dir() or not os.access(out.parent, os.W_OK):
+        return "--out's folder does not exist or is not writable; the look has not been taken"
+    return None
+
+
 def take_lock(path=None):
     """Create the lock exclusively (LOCK_PATH unless a test names another). Raises FileExistsError when the look has already run (or started)."""
     path = Path(LOCK_PATH if path is None else path)
@@ -140,9 +157,10 @@ def summarize(rows, a1a, a1d, a4, p4):
                    "share_below_0.9x_price": (sum(1 for v in vps if v < 0.9) / len(vps)) if vps else None,
                    "median_vp": statistics.median(vps) if vps else None,
                    "outside_the_fence": sum(1 for r in printed if r["status"] != "used")}
+    word = lambda r: {"PASS": "pass", "PENDING": "PENDING", "FAIL": "FAIL"}[ac.status_word(r)]        # revision 19 (B7): a pending bar says so
     return {"at": "AT8 the look at the untouched names", "pass": ok, "bars": {"AT1a": a1a, "AT1d": a1d, "AT4": a4, "P4": p4}, "report_only": report_only,
-            "summary": f"AT1a {'pass' if a1a['pass'] else 'FAIL'}, AT1d {'pass' if a1d['pass'] else 'FAIL'}, AT4 {'pass' if a4['pass'] else 'FAIL'}, "
-                       f"P4 {'pass' if p4['pass'] else 'FAIL'}; level figures ({SECOND_LOOK_LABEL}): coverage {report_only['coverage']}, "
+            "summary": f"AT1a {word(a1a)}, AT1d {word(a1d)}, AT4 {word(a4)}, "
+                       f"P4 {word(p4)}; level figures ({SECOND_LOOK_LABEL}): coverage {report_only['coverage']}, "
                        f"below 0.9x {report_only['share_below_0.9x_price']}, median V/P {report_only['median_vp']}, "
                        f"outside the fence {report_only['outside_the_fence']}"}
 
@@ -165,6 +183,10 @@ def main(argv=None, build_rows=None):
         return 2
     if Path(LOCK_PATH).exists():
         print("refused: the look has already been taken (the lock file exists); it is never repeated", file=sys.stderr)
+        return 2
+    problem = out_path_problem(a.out)                                           # revision 19 (10c, B6): before the lock is taken
+    if problem:
+        print(f"refused: {problem}", file=sys.stderr)
         return 2
     results, problems = load_at_results(a.results)
     day_meta, _day_rows = ac.load_day(a.day)
@@ -193,7 +215,8 @@ def main(argv=None, build_rows=None):
     result["counts"] = {"names": len(names), "build_errors_by_class": meta["errors_by_class"], "enrich_by_source": meta["enrich_by_source"],
                         "enrich_age_days_max": meta["enrich_age_days_max"], "enrich_older_than_45_days": meta["enrich_age_days_over_45"],
                         "enrich_check": meta.get("enrich_check")}
-    result["configuration"] = dict(config, enrich_digests=pre["digests"])
+    result["configuration"] = dict(config, enrich_digests=pre["digests"],
+                                   per_name_inputs=ac.inputs_record(ns, names=names, anonymous=True)["per_name_inputs"])
     result["list_sha256"] = ac.sha256_file(a.untouched_list)
     return ac.finish(result, a.out)
 

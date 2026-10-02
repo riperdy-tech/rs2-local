@@ -503,7 +503,7 @@ def test_the_thin_scripts_run_from_a_day_file_and_never_overwrite_a_result(world
         again = subprocess.run([PY, str(HERE / script), "--day", str(day), "--out", str(out)], capture_output=True, text=True)
         assert again.returncode != 0 and "exists" in (again.stderr or "").lower()        # a result is a record: never overwritten
     day16 = tmp_path / "day16.json"
-    ac.write_result(day16, {"meta": {"inputs": meta["inputs"]}, "rows": ac.jsonable(world.rows)})
+    ac.write_result(day16, {"meta": {"inputs": meta["inputs"], "enrich_check": world.meta["enrich_check"]}, "rows": ac.jsonable(world.rows)})
     p = subprocess.run([PY, str(HERE / "at3_coverage.py"), "--day", str(day), "--day16", str(day16)], capture_output=True, text=True)
     assert p.returncode == 0 and "PASS" in p.stdout
 
@@ -514,7 +514,7 @@ def test_a_revision_16_day_built_on_other_data_is_refused_by_at3_and_at1b(world,
     meta18 = {"inputs": inputs}
     rows = ac.jsonable(world.rows)
     assert ac.same_data(meta18, rows, meta18, rows) == []
-    other = lambda **kw: {"inputs": dict(inputs, **kw)}
+    other = lambda **kw: {"inputs": dict(inputs, **kw), "enrich_check": world.meta["enrich_check"]}
     cases = {"date": "2026-09-20", "history_sha256": "00" * 32, "ttm_sha256": "11" * 32, "mri_anchor_sha256": {"x.json": "22" * 32}, "root": "elsewhere",
              "resolved_dirs": dict(inputs["resolved_dirs"], screener_data_dir="elsewhere")}
     for key, value in cases.items():
@@ -527,7 +527,7 @@ def test_a_revision_16_day_built_on_other_data_is_refused_by_at3_and_at1b(world,
     # the scripts: AT3 and AT1b refuse before they compute anything, and write no result
     day = tmp_path / "day.json"
     ac.write_result(day, {"meta": ac.jsonable(dict(world.meta, inputs=inputs, constants=ac.constants(world.ns))), "rows": rows})
-    for name, meta16 in (("date", other(date="2026-09-20")), ("history", other(history_sha256="00" * 32)), ("noinputs", {})):
+    for name, meta16 in (("date", other(date="2026-09-20")), ("history", other(history_sha256="00" * 32)), ("noinputs", {"enrich_check": world.meta["enrich_check"]})):
         day16 = tmp_path / f"day16_{name}.json"
         ac.write_result(day16, {"meta": ac.jsonable(meta16), "rows": rows})
         out = tmp_path / f"at3_{name}.json"
@@ -597,9 +597,9 @@ def test_at1b_the_reduction_holds_on_synthetic_inputs_and_a_difference_is_found(
     rows = _reduction_rows(world.ttr)
     inputs = ac.inputs_record(world.ns)
     day = tmp_path / "day.json"                                           # revision 18's day on the same data (only its meta is read here)
-    ac.write_result(day, {"meta": ac.jsonable({"inputs": inputs}), "rows": {}})
+    ac.write_result(day, {"meta": ac.jsonable({"inputs": inputs, "enrich_check": world.meta["enrich_check"]}), "rows": {}})
     day16 = tmp_path / "day16.json"
-    ac.write_result(day16, {"meta": ac.jsonable({"inputs": inputs}), "rows": ac.jsonable(rows)})
+    ac.write_result(day16, {"meta": ac.jsonable({"inputs": inputs, "enrich_check": world.meta["enrich_check"]}), "rows": ac.jsonable(rows)})
     # what revision 16's build returns on these inputs, from the worker itself (a fresh process: one engine per process)
     w16 = tmp_path / "w16.json"
     p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--worker", "rev16", "--tree", str(SP / "rs2-P4-s15"), "--day16", str(day16),
@@ -611,7 +611,7 @@ def test_at1b_the_reduction_holds_on_synthetic_inputs_and_a_difference_is_found(
     for key, v in values.items():
         rows[key]["reference"]["value"] = v["value"]                      # the day file's record of revision 16's own build
     day16b = tmp_path / "day16b.json"
-    ac.write_result(day16b, {"meta": ac.jsonable({"inputs": inputs}), "rows": ac.jsonable(rows)})
+    ac.write_result(day16b, {"meta": ac.jsonable({"inputs": inputs, "enrich_check": world.meta["enrich_check"]}), "rows": ac.jsonable(rows)})
     out = tmp_path / "at1b.json"
     p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16b), "--day", str(day), "--tree16", str(SP / "rs2-P4-s15"), "--tree18", str(TREE),
                         "--out", str(out)], capture_output=True, text=True)
@@ -621,7 +621,7 @@ def test_at1b_the_reduction_holds_on_synthetic_inputs_and_a_difference_is_found(
     # a day file whose recorded revision 16 value is not what revision 16's engine returns on its recorded inputs fails (finding 4)
     rows["G1"]["reference"]["value"] += 0.02
     day16c = tmp_path / "day16c.json"
-    ac.write_result(day16c, {"meta": ac.jsonable({"inputs": inputs}), "rows": ac.jsonable(rows)})
+    ac.write_result(day16c, {"meta": ac.jsonable({"inputs": inputs, "enrich_check": world.meta["enrich_check"]}), "rows": ac.jsonable(rows)})
     out2 = tmp_path / "at1b2.json"
     p = subprocess.run([PY, str(HERE / "at1b_reduction.py"), "--day16", str(day16c), "--day", str(day), "--tree16", str(SP / "rs2-P4-s15"), "--tree18", str(TREE),
                         "--out", str(out2)], capture_output=True, text=True)
@@ -828,7 +828,7 @@ def test_at8_refuses_without_the_flag_with_a_wrong_list_with_unmet_preconditions
     for key in ("history_sha256", "bill_rate_sha256", "closure_sha256", "tree_commit"):
         other = at8.tmp / f"day_{key}.json"
         inputs = dict(at8.inputs, **{key: "00" * 32 if key != "tree_commit" else "e" * 40})
-        ac.write_result(other, {"meta": ac.jsonable({"inputs": inputs}), "rows": {}})
+        ac.write_result(other, {"meta": ac.jsonable({"inputs": inputs, "enrich_check": world.meta["enrich_check"]}), "rows": {}})
         refused(f"the configuration differs from the one the ATs passed on: {key}", day=other, results=_write_results(at8.tmp / f"r_{key}", other, inputs))
 
 
@@ -1015,3 +1015,265 @@ def test_the_preconditions_checker_reads_result_files_and_names_what_is_missing(
     (folder / "day.json").write_text("{}", encoding="utf-8")
     (folder / "broken.json").write_text("{", encoding="utf-8")
     assert a8.load_at_results(folder)[1] == ["a file in the results folder is not readable JSON"]
+
+
+# ---- Revision 19, brief section 10c: the acceptance tooling's conditions (B1-B7, the anonymous path), on synthetic data ----------------------------
+
+REV16_TREE = SP / "review_fitems" / "tree_fee17cf"
+B1_DRIVER = '''import sys
+acc, tree, sd, mri, root, date, names, out = sys.argv[1:9]
+sys.path.insert(0, acc)
+import accept_common as ac
+ns = ac.bootstrap(tree, sd, mri, root, date, closure=None)
+cap = ns.cap
+sys.modules["industry_taxonomy"] = None
+row = {"n": 100, "p50": 5.0, "p90": 15.0, "share_ge_10": 20.0, "share_ge_20": 5.0, "share_ge_30": 1.0}
+cap.base_rates.base_rate_table = lambda *a, **k: ("$1-10B", {5: dict(row), 10: dict(row)})
+cap.growth_persistence.persistence_for_growth = lambda *a, **k: (None, None)
+assert not hasattr(ns.rs2, "enrich_fetch_error"), "this tree has the function: it is not the tree B1 is about"
+ac.bootstrap = lambda *a, **k: ns
+import build_day
+sys.exit(build_day.main(["--tree", tree, "--root", root, "--sd", sd, "--mri", mri, "--date", date, "--names", names, "--out", out]))
+'''
+
+
+@pytest.mark.skipif(not (REV16_TREE / "rs2_data.py").exists(), reason="revision 16's tree (fee17cf) not found at ACCEPT_SP/review_fitems/tree_fee17cf")
+def test_b1_build_day_builds_a_revision_16_day_on_fee17cf(world, tmp_path):
+    """10c B1: accept_common.enrich_entry called rs2_data.enrich_fetch_error, which fee17cf lacks. The day now builds, in a fresh process on that tree."""
+    driver = tmp_path / "b1_driver.py"
+    driver.write_text(B1_DRIVER, encoding="utf-8")
+    names = tmp_path / "names.txt"
+    names.write_text("GEV" + chr(10), encoding="utf-8")
+    out = tmp_path / "day16.json"
+    p = subprocess.run([PY, str(driver), str(HERE), str(REV16_TREE), str(world.sd), str(MRI), str(world.root), DATE, str(names), str(out)],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout[-1500:] + p.stderr[-2500:]
+    meta, rows = ac.load_day(out)
+    assert rows["GEV"]["enrich"]["status"] == "ok" and rows["GEV"]["revision"] == 16 and meta["enrich_check"]["pass"] is True
+    assert meta["constants"]["PACK_REVISION"] == 16 and meta["inputs"]["pack_revision"] == 16
+
+
+def test_b1_an_older_rs2_data_is_read_through_accept_commons_own_copy_of_the_error_shape(tmp_path):
+    from datetime import datetime
+    err = {"_ticker": "E", "_fetched_at": "2026-09-26T12:00:00", "_status": "error", "_error": {"http_status": 429, "where": "info"}}
+    good = {"_ticker": "G", "_fetched_at": "2026-09-26T12:00:00", "estimates": None}
+    root = _enrich_root(tmp_path, {"E": err, "G": good})
+    old_rs2 = SimpleNamespace(load_json=lambda p: json.loads(Path(p).read_text(encoding="utf-8")))                  # no enrich_fetch_error, as at fee17cf
+    fixed = datetime(2026, 9, 27, 12, 0, 0)
+    assert ac.enrich_entry(root, "E", fixed, old_rs2)["status"] == "error_record" and ac.enrich_entry(root, "G", fixed, old_rs2)["status"] == "ok"
+    assert ac.enrich_fetch_error(err) == (429, "info") and ac.enrich_fetch_error(good) is None and ac.enrich_fetch_error(None) is None
+
+
+def test_b2_load_day_refuses_a_day_file_without_an_enrich_check(tmp_path):
+    for name, meta in (("nometa", None), ("empty", {}), ("inputs_only", {"inputs": {}}), ("notadict", {"enrich_check": True})):
+        p = tmp_path / f"{name}.json"
+        p.write_text(json.dumps({"meta": meta, "rows": {}} if meta is not None else {"rows": {}}), encoding="utf-8")
+        with pytest.raises(SystemExit) as e:
+            ac.load_day(p)
+        assert "records no enrich check" in str(e.value), name
+    ok = tmp_path / "ok.json"
+    ok.write_text(json.dumps({"meta": {"enrich_check": {"pass": True}}, "rows": {"A": {}}}), encoding="utf-8")
+    assert ac.load_day(ok)[1] == {"A": {}}
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"meta": {"enrich_check": {"pass": False, "missing": 1}}, "rows": {}}), encoding="utf-8")
+    with pytest.raises(SystemExit) as e:
+        ac.load_day(bad)
+    assert "failed their check" in str(e.value)
+
+
+def test_b3_the_inputs_record_hashes_every_input_the_build_reads(world, tmp_path):
+    rec = ac.inputs_record(world.ns, names=["GEV"])
+    assert set(rec["mri_input_sha256"]) == set(ac.MRI_INPUT_FILES) == {"sector_multiple_bands.json", "rs2_repair_package.json", "current_regime.json", "shock_register.json"}
+    assert set(rec["screener_input_sha256"]) == set(ac.SCREENER_INPUT_FILES) == {"stocks.csv", "stocks.json", "cik_map.json", "factor_scores.json",
+                                                                                "fundamentals_battery.json", "fundamentals_quarterly.json", "macro_state.json"}
+    for f, sha in rec["mri_input_sha256"].items():
+        assert sha == (ac.sha256_file(MRI / f) if (MRI / f).exists() else None), f
+    for f, sha in rec["screener_input_sha256"].items():
+        assert sha == (ac.sha256_file(world.sd / f) if (world.sd / f).exists() else None), f
+    assert rec["screener_data_dir"] == str(world.sd.resolve()) and rec["mri_outputs_dir"] == str(MRI.resolve())
+    assert rec["screener_input_sha256"]["stocks.csv"] is not None and rec["per_name_inputs"]["names"] == 1
+    assert ac.inputs_record(world.ns)["per_name_inputs"] is None                                  # no names given: nothing per name is claimed
+
+
+def test_b3_a_changed_input_of_any_kind_makes_two_days_not_the_same_data(world, tmp_path):
+    """Each of the B3 inputs, changed on its own, shows in the record and `same_data` says the days differ."""
+    sd2, mri2, root2 = tmp_path / "sd2", tmp_path / "mri2", tmp_path / "root2"
+    shutil.copytree(world.sd, sd2)
+    mri2.mkdir()
+    (mri2 / "current_regime.json").write_text("{}", encoding="utf-8")
+    (root2 / "cache").mkdir(parents=True)
+    resolved = dict(world.ns.resolved, screener_data_dir=str(sd2), mri_outputs_dir=str(mri2))
+    ns2 = SimpleNamespace(**dict(vars(world.ns), sd=sd2, root=root2, resolved=resolved))
+    base = ac.inputs_record(ns2, names=["GEV"])
+    rows = ac.jsonable(world.rows)
+    assert ac.same_data({"inputs": base}, rows, {"inputs": ac.inputs_record(ns2, names=["GEV"])}, rows) == []
+    changes = {
+        "an MRI file": lambda: (mri2 / "shock_register.json").write_text("{}", encoding="utf-8"),
+        "an MRI file, edited": lambda: (mri2 / "current_regime.json").write_text('{"x": 1}', encoding="utf-8"),
+        "a screener file": lambda: (sd2 / "stocks.json").write_text("[]", encoding="utf-8"),
+        "a screener file, absent to present": lambda: (sd2 / "macro_state.json").write_text("{}", encoding="utf-8"),
+        "a name's financials": lambda: (sd2 / "financials" / "GEV.json").write_text('{"Price": 1}', encoding="utf-8"),
+        "a name's openbb cache": lambda: (root2 / "cache" / "openbb_GEV.json").write_text("{}", encoding="utf-8")}
+    prev = base
+    for what, change in changes.items():
+        change()
+        now = ac.inputs_record(ns2, names=["GEV"])
+        assert now != prev, what
+        problems = ac.same_data({"inputs": now}, rows, {"inputs": base}, rows)
+        assert problems, what
+        prev = now
+    other_paths = dict(vars(ns2), resolved=dict(resolved, mri_outputs_dir=str(tmp_path / "elsewhere")))
+    assert any("mri_outputs_dir" in p for p in ac.same_data({"inputs": ac.inputs_record(SimpleNamespace(**other_paths))}, rows, {"inputs": ac.inputs_record(ns2)}, rows))
+
+
+def test_b3_the_per_name_record_names_no_ticker_when_anonymous(world, tmp_path):
+    named = ac.per_name_inputs(world.ns, ["GEV", "ZZZZ"])
+    anon = ac.per_name_inputs(world.ns, ["GEV", "ZZZZ"], anonymous=True)
+    assert set(named["by_name"]) == {"GEV", "ZZZZ"} and named["by_name"]["ZZZZ"] == {"financials": None, "openbb": None}
+    assert "by_name" not in anon and "GEV" not in json.dumps(anon) and anon["sha256"] == named["sha256"] and anon["names"] == 2
+
+
+def test_b4_the_configuration_covers_the_b3_inputs_the_ttm_file_and_both_folder_paths(world, at8, capsys):
+    keys = at8.a8.CONFIG_KEYS
+    assert {"ttm_sha256", "screener_data_dir", "mri_outputs_dir", "mri_input_sha256", "screener_input_sha256"} <= set(keys)
+    assert set(at8.a8.configuration_of(at8.inputs)) == set(keys)
+    changed = {"ttm_sha256": "00" * 32, "screener_data_dir": "elsewhere", "mri_outputs_dir": "elsewhere",
+               "mri_input_sha256": {**at8.inputs["mri_input_sha256"], "shock_register.json": "00" * 32},
+               "screener_input_sha256": {**at8.inputs["screener_input_sha256"], "stocks.json": "00" * 32}}
+    for key, value in changed.items():
+        other = at8.tmp / f"day_b4_{key}.json"
+        inputs = dict(at8.inputs, **{key: value})
+        ac.write_result(other, {"meta": ac.jsonable(dict(world.meta, inputs=inputs)), "rows": {}})
+        assert at8.a8.main(_args(world, at8, "--confirm-one-look", day=other, results=_write_results(at8.tmp / f"r_b4_{key}", other, inputs)),
+                           build_rows=_stub(world)) == 2
+        assert f"the configuration differs from the one the ATs passed on: {key}" in capsys.readouterr().err and not at8.a8.LOCK_PATH.exists()
+
+
+def test_b4_the_looks_result_carries_the_digest_of_its_own_names_per_name_inputs(world, at8):
+    assert at8.a8.main(_args(world, at8, "--confirm-one-look"), build_rows=_stub(world)) in (0, 1)
+    res = json.loads((at8.tmp / "at8.json").read_text(encoding="utf-8"))
+    pn = res["configuration"]["per_name_inputs"]
+    assert pn["names"] == 3 and len(pn["sha256"]) == 64 and "by_name" not in pn and not any(t in json.dumps(res) for t in SYN)
+
+
+def test_b5_an_untracked_file_makes_the_tree_not_clean_an_ignored_one_does_not(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *a], capture_output=True, text=True, check=True)
+    git("init", "-q")
+    (repo / "a.py").write_text("x = 1" + chr(10), encoding="utf-8")
+    (repo / ".gitignore").write_text("ignored.txt" + chr(10), encoding="utf-8")
+    git("add", "a.py", ".gitignore")
+    git("commit", "-q", "-m", "one")
+    sha, clean = ac.git_head(repo)
+    assert len(sha) == 40 and clean is True
+    (repo / "ignored.txt").write_text("x", encoding="utf-8")
+    assert ac.git_head(repo)[1] is True                                               # git ignores it: the tree is the commit
+    (repo / "new.py").write_text("y = 2" + chr(10), encoding="utf-8")
+    assert ac.git_head(repo) == (sha, False)                                          # an untracked file: not a committed configuration
+    (repo / "sub").mkdir()
+    (repo / "new.py").unlink()
+    (repo / "sub" / "deep.py").write_text("z = 3" + chr(10), encoding="utf-8")
+    assert ac.git_head(repo) == (sha, False)                                          # also inside a new folder (every file counts)
+    (repo / "sub" / "deep.py").unlink()
+    (repo / "a.py").write_text("x = 2" + chr(10), encoding="utf-8")
+    assert ac.git_head(repo) == (sha, False)
+    assert ac.git_head(tmp_path / "nowhere") == (None, None)
+
+
+def test_b6_a_bad_out_path_is_refused_before_the_lock_is_taken(world, at8, capsys):
+    a8 = at8.a8
+    existing = at8.tmp / "taken.json"
+    existing.write_text("{}", encoding="utf-8")
+    assert a8.main(_args(world, at8, "--confirm-one-look", "--out", str(existing)), build_rows=_stub(world)) == 2
+    assert "already exists" in capsys.readouterr().err and not a8.LOCK_PATH.exists() and existing.read_text(encoding="utf-8") == "{}"
+    assert a8.main(_args(world, at8, "--confirm-one-look", "--out", str(at8.tmp / "no_such_folder" / "at8.json")), build_rows=_stub(world)) == 2
+    assert "folder does not exist" in capsys.readouterr().err and not a8.LOCK_PATH.exists()
+    assert a8.out_path_problem(at8.tmp / "fresh.json") is None and a8.out_path_problem(existing)
+    assert a8.main(_args(world, at8, "--confirm-one-look"), build_rows=_stub(world)) in (0, 1) and a8.LOCK_PATH.exists()      # a good path: the look runs
+
+
+def test_b7_a_pending_result_is_recorded_as_pending_not_fail(world, at8, capsys):
+    assert [ac.status_word(r) for r in ({"pass": True}, {"pass": False, "label": "PENDING"}, {"pass": False}, {"pass": False, "label": "x"}, None)] == \
+        ["PASS", "PENDING", "FAIL", "FAIL", "FAIL"]
+    assert ac.status_word({"pass": True, "label": "PENDING"}) == "PASS"
+    a8 = at8.a8
+    pending = {"pass": False, "label": "PENDING"}
+    assert a8.main(_args(world, at8, "--confirm-one-look", results=_write_results(at8.tmp / "r_pending", at8.day, at8.inputs, AT1a=pending)),
+                   build_rows=_stub(world)) == 2
+    err = capsys.readouterr().err
+    assert "AT1a is PENDING" in err and "AT1a is not recorded as passed" not in err and not a8.LOCK_PATH.exists()
+    assert a8.main(_args(world, at8, "--confirm-one-look", results=_write_results(at8.tmp / "r_failed", at8.day, at8.inputs, AT1a={"pass": False})),
+                   build_rows=_stub(world)) == 2
+    assert "AT1a is not recorded as passed" in capsys.readouterr().err
+    ok, bad = {"pass": True}, {"pass": False}
+    s = a8.summarize(world.rows, pending, ok, ok, ok)
+    assert s["summary"].startswith("AT1a PENDING, AT1d pass, AT4 pass, P4 pass") and s["pass"] is False
+    assert a8.summarize(world.rows, bad, ok, ok, ok)["summary"].startswith("AT1a FAIL")
+
+
+# ---- the anonymous path, at the file descriptors (10c: the probe, extended) ------------------------------------------------------------------------
+
+def _listing(*folders):
+    out = {}
+    for p in folders:
+        for x in sorted(Path(p).rglob("*")):
+            if x.is_file():
+                st = x.stat()
+                out[str(x)] = (st.st_size, st.st_mtime_ns)
+    return out
+
+
+def _anonymous_build(world, tmp_path, monkeypatch, capfd, record=None, wiring=None, name="GEV"):
+    """build_rows(anonymous=True) on `name` with the enrich record `record` (a dict; None = the world's own record) in a fresh data root, with the console read at the
+    file-descriptor level; returns (rows, console text, files written or changed under the roots, the tmp folder and the sd)."""
+    import reference_ledger as rl
+    root = _enrich_root(tmp_path / "anon_root", {name: record if record is not None else json.loads((world.root / "enrich" / f"{name}.json").read_text(encoding="utf-8"))})
+    (root / "cache").mkdir(exist_ok=True)
+    ns = SimpleNamespace(**dict(vars(world.ns), root=root))
+    monkeypatch.setattr(world.ns.cap, "HERE", root)
+    if wiring is not None:
+        monkeypatch.setattr(rl, "production_adapters", wiring)
+    before = _listing(root, world.sd, tmp_path)
+    capfd.readouterr()
+    rows, meta = world.build_day.build_rows(ns, [name], progress=True, anonymous=True)
+    out = capfd.readouterr()
+    monkeypatch.setattr(world.ns.cap, "HERE", world.root)
+    after = _listing(root, world.sd, tmp_path)
+    changed = sorted(k for k in set(after) | set(before) if after.get(k) != before.get(k))
+    return rows, out.out + out.err, changed, meta
+
+
+def test_the_anonymous_path_prints_no_ticker_and_writes_no_file_on_the_happy_path(world, tmp_path, monkeypatch, capfd):
+    rows, console, changed, meta = _anonymous_build(world, tmp_path, monkeypatch, capfd)
+    assert "GEV" not in console and changed == [] and [r["status"] for r in rows.values()] == ["used"] and meta["enrich_check"]["pass"]
+    assert list(rows) != ["GEV"] and next(iter(rows.values()))["ticker"] is None
+
+
+def test_the_anonymous_path_a_name_whose_parity_step_raises_prints_no_ticker_and_writes_no_file(world, tmp_path, monkeypatch, capfd):
+    def wiring(root, today=None):
+        def inputs_fn(t):
+            raise RuntimeError(f"cannot read the inputs of {t}")
+        return {"inputs_fn": inputs_fn}
+    rows, console, changed, _meta = _anonymous_build(world, tmp_path, monkeypatch, capfd, wiring=wiring)
+    r = next(iter(rows.values()))
+    assert r["parity"] == {"error": "RuntimeError"}                         # the class only, never the message that holds the name
+    assert "GEV" not in console
+    assert changed == []
+
+
+def test_the_anonymous_path_a_name_with_an_error_enrich_record_prints_no_ticker_and_writes_no_file(world, tmp_path, monkeypatch, capfd):
+    err = {"_ticker": "GEV", "_fetched_at": "2026-09-26T12:00:00", "_status": "error", "_error": {"http_status": 500, "where": "info GEV"}}
+    rows, console, changed, meta = _anonymous_build(world, tmp_path, monkeypatch, capfd, record=err)
+    r = next(iter(rows.values()))
+    assert r["enrich"]["status"] == "error_record" and r["enrich"]["error_record"] is True and not meta["enrich_check"]["pass"]
+    assert "GEV" not in console and changed == []
+    assert "GEV" not in json.dumps({k: v for k, v in r.items() if k not in ("facts", "text")}, default=str)
+
+
+def test_the_anonymous_path_a_name_with_a_stale_enrich_record_prints_no_ticker_and_writes_no_file(world, tmp_path, monkeypatch, capfd):
+    stale = dict(json.loads((world.root / "enrich" / "GEV.json").read_text(encoding="utf-8")), _fetched_at="2026-08-01T12:00:00")
+    rows, console, changed, meta = _anonymous_build(world, tmp_path, monkeypatch, capfd, record=stale)
+    r = next(iter(rows.values()))
+    assert r["enrich"]["status"] == "stale" and r["enrich"]["age_days"] == 57 and not meta["enrich_check"]["pass"]
+    assert "GEV" not in console and changed == []

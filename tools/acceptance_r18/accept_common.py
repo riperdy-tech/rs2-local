@@ -101,10 +101,11 @@ def sha256_text(s):
 
 
 def git_head(tree):
-    """(commit sha, tree is clean) of a git working tree; (None, None) when it is not one."""
+    """(commit sha, tree is clean) of a git working tree; (None, None) when it is not one. Revision 19 (10c, B5): an untracked file (one git does not
+    ignore) makes the tree not clean, as a modified one does: a file the build could read that no commit holds is not a committed configuration."""
     try:
         sha = subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
-        dirty = subprocess.run(["git", "-C", str(tree), "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True,
+        dirty = subprocess.run(["git", "-C", str(tree), "status", "--porcelain", "--untracked-files=all"], capture_output=True, text=True,
                                check=True).stdout.strip()
         return sha, dirty == ""
     except Exception:
@@ -157,6 +158,13 @@ def unjson(x):
     return x
 
 
+def status_word(result):
+    """"PASS", "PENDING" (a result labelled PENDING that is not passed: waiting for the reviewer's ruling, not failed) or "FAIL" (revision 19, 10c, B7)."""
+    if not isinstance(result, dict):
+        return "FAIL"
+    return "PASS" if result.get("pass") is True else "PENDING" if result.get("label") == "PENDING" else "FAIL"
+
+
 def report(name, ok, detail, label=None):
     print(f"{'PASS' if ok else (label or 'FAIL')}  {name}: {detail}", flush=True)
 
@@ -171,6 +179,16 @@ def finish(result, out):
 # ---- the enrich records of a day --------------------------------------------------------------------------------------------------
 
 ENRICH_MAX_AGE_DAYS = 45
+
+
+def enrich_fetch_error(rec):
+    """rs2_data.enrich_fetch_error at 9ba5cba (rs2_data.py:65-72), the same logic: (http_status, where) when an enrich record is the ERROR record of a
+    failed vendor fetch (`_status: "error"`), else None. Revision 19 (10c, B1): a tree whose rs2_data lacks the function (revision 16, fee17cf) is read
+    through this copy, so build_day builds a revision 16 day."""
+    if isinstance(rec, dict) and rec.get("_status") == "error":
+        err = rec.get("_error") if isinstance(rec.get("_error"), dict) else {}
+        return err.get("http_status"), err.get("where")
+    return None
 
 
 def enrich_entry(root, t, fixed, rs2):
@@ -192,7 +210,7 @@ def enrich_entry(root, t, fixed, rs2):
             date_s = ts[:10]
         except ValueError:
             pass
-    error = rs2.enrich_fetch_error(doc) is not None
+    error = getattr(rs2, "enrich_fetch_error", enrich_fetch_error)(doc) is not None
     status = "error_record" if error else "undated" if age is None else "stale" if age > ENRICH_MAX_AGE_DAYS else "ok"
     return {"source": f"enrich@{date_s}" if date_s else "enrich@undated", "date": date_s, "age_days": age, "sha256": sha256_file(p),
             "error_record": error, "status": status}
@@ -293,7 +311,8 @@ def constants(ns):
             "ANCHOR_ROLE": getattr(ns.cref, "ANCHOR_ROLE", None), "TASK": getattr(ns.cap, "TASK", None)}
 
 
-SAME_DAY_KEYS = ("date", "history_sha256", "ttm_sha256", "mri_anchor_sha256", "root")
+SAME_DAY_KEYS = ("date", "history_sha256", "ttm_sha256", "mri_anchor_sha256", "root", "mri_input_sha256", "screener_input_sha256", "per_name_inputs",
+                 "screener_data_dir", "mri_outputs_dir")
 
 
 def same_data(meta_a, rows_a, meta_b, rows_b):
@@ -335,7 +354,10 @@ def load_day(path):
     """(meta, rows) of a build_day file, +-inf strings turned back into floats where a number is expected (the reference's record_R_tc)."""
     doc = json.loads(Path(path).read_text(encoding="utf-8"))
     chk = (doc.get("meta") or {}).get("enrich_check")
-    if isinstance(chk, dict) and chk.get("pass") is not True:
+    if not isinstance(chk, dict):
+        raise SystemExit("refused: the day file records no enrich check (build_day.py writes it): the day's enrich records are not shown to be present, "
+                         "dated, error-free and at most %d days old, so no AT is run on it" % ENRICH_MAX_AGE_DAYS)
+    if chk.get("pass") is not True:
         raise SystemExit(f"refused: the day file's enrich records failed their check (missing {chk.get('missing')}, error records "
                          f"{chk.get('error_records')}, undated {chk.get('undated')}, older than {ENRICH_MAX_AGE_DAYS} days "
                          f"{chk.get('older_than_%d_days' % ENRICH_MAX_AGE_DAYS)}): the day is not one the ATs may be run on")
@@ -353,9 +375,38 @@ def bill_rate_store(ns):
     return p if p is not None and p.exists() else None
 
 
-def inputs_record(ns, extra_files=()):
+# Revision 19 (10c, B3): every file the build reads that the record did not hash (the MRI files beside the anchors, the screener's other files, and one
+# pair per name). A missing file is recorded as None: absence is part of the day.
+MRI_INPUT_FILES = ("sector_multiple_bands.json", "rs2_repair_package.json", "current_regime.json", "shock_register.json")
+SCREENER_INPUT_FILES = ("stocks.csv", "stocks.json", "cik_map.json", "factor_scores.json", "fundamentals_battery.json", "fundamentals_quarterly.json",
+                        "macro_state.json")
+
+
+def _sha_or_none(p):
+    p = Path(p)
+    return sha256_file(p) if p.is_file() else None
+
+
+def per_name_inputs(ns, names, anonymous=False):
+    """The per-name files the build reads, `financials/<T>.json` (screener data dir) and `cache/openbb_<T>.json` (the data root), hashed: {"names": n,
+    "financials": files present, "openbb": files present, "sha256": the sha256 of the sorted "<kind>:<sha256>" lines (nothing that names a ticker)}, and,
+    unless `anonymous`, "by_name": {ticker: {"financials": sha or None, "openbb": sha or None}} (a named day compares name by name)."""
+    names = sorted(set(names or ()))
+    by_name = {t: {"financials": _sha_or_none(Path(ns.sd) / "financials" / f"{t}.json"),
+                   "openbb": _sha_or_none(Path(ns.root) / "cache" / f"openbb_{t}.json")} for t in names}
+    lines = sorted(f"{kind}:{sha}" for v in by_name.values() for kind, sha in v.items() if sha)
+    out = {"names": len(names), "financials": sum(1 for v in by_name.values() if v["financials"]), "openbb": sum(1 for v in by_name.values() if v["openbb"]),
+           "sha256": sha256_text("\n".join(lines))}
+    if not anonymous:
+        out["by_name"] = by_name
+    return out
+
+
+def inputs_record(ns, extra_files=(), names=None, anonymous=False):
     """The hashes the day is stated by (amendment 2, point 4; revision 18 follow-up, finding 11): the final commit of the tree and whether it is
-    clean, the history and TTM files, the closure artifact, every MRI anchor file as resolved that day, and the bill-rate store."""
+    clean, the history and TTM files, the closure artifact, every MRI anchor file as resolved that day, and the bill-rate store. Revision 19 (10c,
+    B3): and every other input the build reads: the MRI files and the screener files named above, both folder paths, and, when `names` are given, each
+    name's financials and openbb cache (`per_name_inputs`; digests only when `anonymous`)."""
     commit, clean = git_head(ns.tree)
     art = Path(ns.closure) if ns.closure else Path(ns.tree) / "cache" / "reference_closure.json"
     anchors = {}
@@ -369,7 +420,11 @@ def inputs_record(ns, extra_files=()):
            "history_sha256": sha256_file(Path(ns.sd) / "fundamentals_history.json"),
            "ttm_sha256": sha256_file(Path(ns.sd) / "fundamentals_ttm.json") if (Path(ns.sd) / "fundamentals_ttm.json").exists() else None,
            "closure_artifact": str(art), "closure_sha256": sha256_file(art) if art.exists() else None,
-           "mri_anchors_dir": str(ad), "mri_anchor_sha256": anchors, "resolved_dirs": ns.resolved}
+           "mri_anchors_dir": str(ad), "mri_anchor_sha256": anchors, "resolved_dirs": ns.resolved,
+           "screener_data_dir": ns.resolved["screener_data_dir"], "mri_outputs_dir": ns.resolved["mri_outputs_dir"],
+           "mri_input_sha256": {f: _sha_or_none(Path(ns.resolved["mri_outputs_dir"]) / f) for f in MRI_INPUT_FILES},
+           "screener_input_sha256": {f: _sha_or_none(Path(ns.sd) / f) for f in SCREENER_INPUT_FILES},
+           "per_name_inputs": per_name_inputs(ns, names, anonymous) if names is not None else None}
     for f in extra_files:
         rec.setdefault("extra", {})[str(f)] = sha256_file(f)
     return rec

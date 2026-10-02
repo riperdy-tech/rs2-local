@@ -162,7 +162,7 @@ def main(argv=None):
         for r in rows.values():
             r.pop("text", None)
     meta["constants"] = ac.constants(ns)
-    meta["inputs"] = ac.inputs_record(ns, extra_files=[a.names] if not a.anonymous else [])
+    meta["inputs"] = ac.inputs_record(ns, extra_files=[a.names] if not a.anonymous else [], names=names, anonymous=a.anonymous)
     meta["names_sha256"] = ac.sha256_file(a.names)
     if hasattr(ns.rs2, "reference_closure"):
         erp, asof, _prov = ns.rs2.reference_closure()
