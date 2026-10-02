@@ -46,7 +46,8 @@ RULE = isc.break_rule()
 
 def _doc(base_updates=None, all_years=None, prov_extra=None):
     """The synthetic twelve-year history of test_throughcycle_reference (base year 2025: revenue 10.0B, net income 1.2B, D&A 0.5B, capex
-    0.6B, 500M diluted shares), `all_years` applied to every year and `base_updates` to 2025; `prov_extra` joins the provenance."""
+    0.6B, 500M diluted shares), `all_years` applied to every year and `base_updates` to 2025; `prov_extra` joins the provenance. Every
+    year's `equity` is the company's own (equity_scope parent, the screener follow-up's contract) unless `prov_extra` says otherwise."""
     hist = _cycle_history()
     hist[2025] = dict(hist[2025], revenue=10.0 * B, net_income=1.2 * B, da=0.5 * B, capex=0.6 * B, shares_diluted=500e6, ocf=1.5 * B,
                       sbc=0.1 * B, operating_income=10.0 * B * 0.12 * 1.4 - 0.05 * B)
@@ -55,7 +56,7 @@ def _doc(base_updates=None, all_years=None, prov_extra=None):
     for y in hist:
         hist[y].update(all_years(y, hist[y]) if callable(all_years) else (all_years or {}))
     hist[2025].update(base_updates or {})
-    prov = {"untagged_fields": {"GEV": []}}
+    prov = {"untagged_fields": {"GEV": []}, "equity_scope": {"GEV": {str(y): "parent" for y in hist}}}
     prov.update(prov_extra or {})
     return {"tickers": {"GEV": {str(y): r for y, r in hist.items()}}, "provenance": prov}
 
@@ -129,25 +130,41 @@ def _with_nci(y, row):
 
 def test_1b1_pi_each_branch():
     row = {"net_income": 1.2 * B, "net_income_incl_nci": 1.5 * B, "equity": 6.0 * B, "equity_incl_nci": 7.5 * B}
-    n = isc.nci_share(row, "parent", 2025)
+    n = isc.nci_share(row, "parent", 2025, "parent")
     assert n["basis"] == "ni_split" and n["pi"] == pytest.approx(0.8) and n["stamps"] == []
     # an NCI carrying a loss share: the parent's net income above the consolidated, pi capped at 1
-    capped = isc.nci_share(dict(row, net_income_incl_nci=1.1 * B), "parent", 2025)
+    capped = isc.nci_share(dict(row, net_income_incl_nci=1.1 * B), "parent", 2025, "parent")
     assert capped["basis"] == "ni_split" and capped["pi"] == 1.0
-    # the consolidated net income not positive: the equity split
-    eq = isc.nci_share(dict(row, net_income_incl_nci=-0.1 * B), "parent", 2025)
-    assert eq["basis"] == "equity_split" and eq["pi"] == pytest.approx(0.8)
-    eq_none = isc.nci_share(dict(row, net_income_incl_nci=None), "parent", 2025)
+    # the consolidated net income not positive: the equity split, read only on an equity that is the company's own
+    for es in isc.PARENT_EQUITY_SCOPES:
+        eq = isc.nci_share(dict(row, net_income_incl_nci=-0.1 * B), "parent", 2025, es)
+        assert eq["basis"] == "equity_split" and eq["pi"] == pytest.approx(0.8), es
+    eq_none = isc.nci_share(dict(row, net_income_incl_nci=None), "parent", 2025, "parent_derived")
     assert eq_none["basis"] == "equity_split"
-    # no NCI: no_nci_filed, or the income statement shows none and no NCI equity is filed (negative equity: neither split usable)
+    # an nci_unknown equity (the consolidated figure kept), or one with no scope, is not read: the share is not measured
+    for es in ("nci_unknown", None):
+        un_eq = isc.nci_share(dict(row, net_income_incl_nci=None), "parent", 2025, es)
+        assert un_eq["basis"] == "unmeasured" and un_eq["stamps"] == [isc.NCI_UNMEASURED], es
+    # ... but with the net-income split measured, the equity's scope does not matter
+    assert isc.nci_share(row, "parent", 2025, "nci_unknown")["basis"] == "ni_split"
+    # no NCI: no_nci_filed or nci_zero_filed, or the income statement shows none and no NCI equity is held (negative equity: neither
+    # split usable)
     neg = {"net_income": -0.2 * B, "net_income_incl_nci": -0.2 * B, "equity": -1.0 * B, "equity_incl_nci": -1.0 * B}
-    assert isc.nci_share(neg, "parent", 2025)["basis"] == "no_nci" and isc.nci_share(neg, "parent", 2025)["pi"] == 1.0
-    assert isc.nci_share(dict(neg, net_income_incl_nci=None), "parent", 2025)["basis"] == "no_nci"
-    assert isc.nci_share(dict(neg, net_income_incl_nci=None, equity_incl_nci=None), "no_nci_filed", 2025)["basis"] == "no_nci"
+    assert isc.nci_share(neg, "parent", 2025, "parent")["basis"] == "no_nci" and isc.nci_share(neg, "parent", 2025, "parent")["pi"] == 1.0
+    assert isc.nci_share(dict(neg, net_income_incl_nci=None), "parent", 2025, "parent")["basis"] == "no_nci"
+    assert isc.nci_share(neg, "parent", 2025, "nci_unknown")["basis"] == "unmeasured"           # equal only because both are consolidated
+    for ns in isc.NO_NCI_SCOPES:
+        assert isc.nci_share(dict(neg, net_income_incl_nci=None, equity_incl_nci=None), ns, 2025, None)["basis"] == "no_nci", ns
+    for es in isc.NO_NCI_SCOPES:
+        assert isc.nci_share(dict(neg, net_income_incl_nci=None, equity_incl_nci=None), "parent", 2025, es)["basis"] == "no_nci", es
+    # a filed zero NCI (nci_zero_filed): ProfitLoss is the parent's figure; with a positive net income the split is exactly 1
+    zero_nci = isc.nci_share({"net_income": 1.0 * B, "net_income_incl_nci": 1.0 * B, "equity": 5.0 * B, "equity_incl_nci": 5.0 * B},
+                             "nci_zero_filed", 2025, "nci_zero_filed")
+    assert zero_nci["pi"] == 1.0 and zero_nci["stamps"] == []
     # NCI filed, neither split usable: unmeasured, pi = 1, stamped
-    un = isc.nci_share(dict(neg, equity_incl_nci=-0.8 * B), "parent", 2025)
+    un = isc.nci_share(dict(neg, equity_incl_nci=-0.8 * B), "parent", 2025, "parent")
     assert un["basis"] == "unmeasured" and un["pi"] == 1.0 and un["stamps"] == [isc.NCI_UNMEASURED]
-    assert isc.nci_share(dict(neg, equity_incl_nci=None), "parent", 2025)["basis"] == "unmeasured"     # SE filed, the NCI-inclusive not resolved
+    assert isc.nci_share(dict(neg, equity_incl_nci=None), "parent", 2025, "parent")["basis"] == "unmeasured"   # SE filed, the NCI-inclusive not resolved
     # a base year whose net income scope is unknown: unmeasured, whatever the splits say
     unk = isc.nci_share(row, "nci_unknown", 2025)
     assert unk["basis"] == "nci_unknown" and unk["pi"] == 1.0 and unk["stamps"] == [isc.NCI_UNMEASURED]
@@ -156,7 +173,7 @@ def test_1b1_pi_each_branch():
     assert old["basis"] == "scope_fields_absent" and old["pi"] == 1.0 and old["stamps"] == [isc.NCI_FIELDS_ABSENT]
     assert not isc.nci_text_due(old, [])
     # a filed zero is a value: an NCI equity of exactly the parent's means none filed
-    zero = isc.nci_share({"net_income": 0.0, "net_income_incl_nci": 0.0, "equity": 0.0, "equity_incl_nci": 0.0}, "parent", 2025)
+    zero = isc.nci_share({"net_income": 0.0, "net_income_incl_nci": 0.0, "equity": 0.0, "equity_incl_nci": 0.0}, "parent", 2025, "parent")
     assert zero["basis"] == "no_nci"
 
 
@@ -291,7 +308,7 @@ def _switched_off(m):
     m.setattr(isc, "attribute_fy_base", lambda ref_fy, fy_rec, p: ref_fy)
     m.setattr(isc, "attribute_cash", lambda cash, p: cash)
     m.setattr(isc, "attribute_estimates", lambda est, p: est)
-    m.setattr(isc, "record_view", lambda rows, scope=None, base_year=None: (rows, []))
+    m.setattr(isc, "record_view", lambda rows, scope=None, base_year=None, equity_scope=None: (rows, []))
 
 
 def test_1b3_pi_of_one_changes_nothing(screener_data_stub, monkeypatch):
@@ -326,6 +343,8 @@ def test_1b4_the_record_reads_consolidated_net_income_and_equity():
     assert isc.record_view(rows3, {2024: "parent_derived"}, 2025)[1] == [2024]
     rows4 = dict(rows, **{"2024": {"net_income": 1.0, "net_income_incl_nci": None, "equity": 5.0, "equity_incl_nci": 5.5}})
     assert isc.record_view(rows4, {}, 2025)[1] == [2024]                                         # NCI equity filed, the income falls back
+    assert isc.record_view(rows3, {}, 2025, {2024: "nci_unknown"})[1] == [2024]                  # the equity scope shows NCI
+    assert isc.record_view(rows3, {}, 2025, {2024: "nci_zero_filed"})[1] == []
     # outside the eight-year window: not stamped
     rows5 = dict(rows, **{"2016": {"net_income": 1.0, "net_income_incl_nci": None, "equity": 5.0, "equity_incl_nci": None}})
     assert isc.record_view(rows5, {}, 2025)[1] == []
@@ -468,6 +487,13 @@ def test_2b1_the_annotations_change_no_number_and_say_what_the_cash_excludes(scr
     # the scope is printed when it is not the unrestricted line
     scoped, _ = _pack(monkeypatch, _doc(prov_extra={"cash_scope": {"GEV": {"2025": "total_no_restricted_filed"}}}))
     assert scoped.facts["cash_scope"] == "total_no_restricted_filed" and "cash_scope total_no_restricted_filed" in _ref_line(str(scoped))
+    # the follow-up's null cell (only CashAndSecurities...Segregated filed beside the cash-flow total): the cash term is not available and both
+    # lines say why
+    seg, call_seg = _pack(monkeypatch, _doc(base_updates={"cash": None},
+                                            prov_extra={"cash_scope": {"GEV": {"2025": "cash_unresolved_securities_segregated"}}}))
+    assert call_seg["kwargs"]["cash"]["applies"] is False and seg.facts["excess_cash"] is None
+    assert ("no excess-cash term (not available: cash_term_not_available); cash_scope cash_unresolved_securities_segregated"
+            in _ref_line(str(seg)))
     # nothing filed: no annotation
     assert isc.customer_money({}, financial=False) == {"cash_restricted": None, "assets": None, "liabilities": None, "insurance_reserves": None,
                                                        "gap": None, "stamps": []}

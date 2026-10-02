@@ -790,7 +790,8 @@ def _working_capital_clause(ref, fmt_b):
 def _cash_clause(ref, fmt_b, note=None):
     """Revision 18 (brief 3.1, Cash): what the reference does with the cash. None when the reference carries no cash-term state
     (a caller that passed no cash term at all). Revision 20 (brief_input_scope_fixes.md 2.3): `note` (the cash scope and what the
-    excess cash excludes, `input_scope.cash_note`) is added to the clause of a cash term that applies."""
+    excess cash excludes, `input_scope.cash_note`) is added to the clause of a cash term that applies, and to the clause of one that is
+    not available (a filed cash the screener's ladder could not resolve says which rung failed)."""
     state = ref.get("cash_term")
     if state == "applies":
         return (f"plus excess cash ${fmt_b(ref['cash'])}B at face (after-tax interest on it removed from earnings)"
@@ -799,7 +800,7 @@ def _cash_clause(ref, fmt_b, note=None):
         return "no excess-cash term (financial company)"
     if state == "not_available":
         why = ", ".join(s for s in (ref.get("stamps") or []) if s.startswith("cash_term")) or "cash_term_not_available"
-        return f"no excess-cash term (not available: {why})"
+        return f"no excess-cash term (not available: {why})" + (f"; {note}" if note else "")
     return None
 
 

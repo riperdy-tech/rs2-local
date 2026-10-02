@@ -1508,7 +1508,7 @@ def _record_for(t, h, hist_doc, coe, ga, be, rev_g2, median_5y, printed=True):
     untagged = _marker_for(hist_doc, t) or []       # a missing marker is stated by the callers (`reference_inputs`, the pack); the record reads it as none
     # revision 20 (brief_input_scope_fixes.md 1.3(b)): the record reads consolidated net income and equity, so its returns, margins, cycle
     # and working capital are ratios on one basis; `scope_mixed_years` are the window years that fall back to the company's own figures
-    view, mixed = input_scope.record_view(h, input_scope.scope_by_year(hist_doc, t, "ni_scope"), max(yrs) if yrs else None)
+    view, mixed = input_scope.record_view_for(h, hist_doc, t, max(yrs) if yrs else None)
     rec = throughcycle_record.analyse(view, coe, untagged_fields=untagged, base_year=max(yrs) if yrs else None,
                                       debt_current_tags=_dc_tags)
     rec["scope_mixed_years"] = mixed
@@ -2041,7 +2041,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     _nci = _scope["nci"]
     # the record's window years that fall back to the company's own figures while noncontrolling interests are filed (the record itself
     # is computed on the same view, `_record_for`)
-    _mixed = input_scope.record_view(h, input_scope.scope_by_year(_hist_doc, t, "ni_scope"), _scope["year"])[1]
+    _mixed = input_scope.record_view_for(h, _hist_doc, t, _scope["year"])[1]
     facts["nci_attribution"] = {"pi": pack_facts.q_ratio(_pi), "basis": _nci["basis"], "year": _nci["year"],
                                 "ni_parent_b": _q_b_or_none(_nci["ni_parent"]), "ni_incl_nci_b": _q_b_or_none(_nci["ni_incl_nci"]),
                                 "equity_b": _q_b_or_none(_nci["equity"]), "equity_incl_nci_b": _q_b_or_none(_nci["equity_incl_nci"]),
@@ -3258,7 +3258,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L.append("**EXPLICIT LIQUIDITY & CAPITAL STRUCTURE CARD (Zero-Guess Anchor):**")
         if cash_val is not None:
             # revision 20 (brief 2.3): the cash scope when it is not the unrestricted line, and what the line excludes
-            _cn = input_scope.cash_note(_scope["cash_scope"], _money, _b) if _is_number(lr.get("cash")) else None
+            _cn = (input_scope.cash_note(_scope["cash_scope"], _money, _b) if _is_number(lr.get("cash")) else
+                   f"the vendor's figure: the filed cash is not resolved, cash_scope {_scope['cash_scope']}"
+                   if _scope["cash_scope"] is not None else None)
             L.append(f"- Total Cash & Cash Equivalents: {_b(cash_val)}" + (f" ({_cn})" if _cn else ""))
         if effective_debt is not None:
             L.append(f"- Total Debt (Filed / Vendor): {_b(effective_debt)}")

@@ -21,8 +21,11 @@ Pure functions: rows, provenance and estimates in, dicts out. No file is read ex
 The screener history's field contract read here (owner: the screener history's schema, brief 1.2(b), 2.2(b)): year rows may carry
 `net_income_incl_nci`, `equity_incl_nci`, `cash_restricted`, `customer_money_assets`, `customer_money_liabilities`,
 `insurance_reserves`; the per-share check reads `eps_diluted`, `net_income_available_to_common_diluted` and `preferred_dividends`
-(NOT in the brief's contract: see `PER_SHARE_FIELDS`); the provenance block carries `ni_scope` and `cash_scope` as
-provenance[<key>][<ticker>][<year>] = <scope string>.
+(NOT in the brief's contract: see `PER_SHARE_FIELDS`); the provenance block carries `ni_scope`, `equity_scope` and `cash_scope` as
+provenance[<key>][<ticker>][<year>] = <scope string>. The screener follow-up (rev19/brief_screener_scope_followup.md, items 2-4): `equity`
+is the company's own on every rung, with `equity_scope` parent | parent_derived | no_nci_filed | nci_zero_filed | nci_unknown; `ni_scope`
+gains nci_zero_filed (an NCI element filed at zero: ProfitLoss is the parent's figure); `cash_scope` gains
+cash_unresolved_securities_segregated (a null cell).
 """
 import copy
 import hashlib
@@ -42,8 +45,14 @@ MONEY_FIELDS = ("cash_restricted", "customer_money_assets", "customer_money_liab
 PER_SHARE_FIELDS = ("eps_diluted", "net_income_available_to_common_diluted", "preferred_dividends")
 HISTORY_FIELDS = NCI_FIELDS + MONEY_FIELDS + PER_SHARE_FIELDS
 
-NI_SCOPES = ("parent", "parent_derived", "no_nci_filed", "nci_unknown")
-CASH_SCOPES = ("unrestricted_line", "ifrs_cash_and_equivalents", "derived_minus_restricted", "total_no_restricted_filed", "cash_unresolved")
+NI_SCOPES = ("parent", "parent_derived", "no_nci_filed", "nci_zero_filed", "nci_unknown")
+EQUITY_SCOPES = ("parent", "parent_derived", "no_nci_filed", "nci_zero_filed", "nci_unknown")
+# the equity scopes whose `equity` is the company's own figure: the only years the equity split (and the no-NCI test) may read
+PARENT_EQUITY_SCOPES = ("parent", "parent_derived", "no_nci_filed", "nci_zero_filed")
+# scopes under which no noncontrolling interest is held (a filed zero is a value: "the NCI is zero")
+NO_NCI_SCOPES = ("no_nci_filed", "nci_zero_filed")
+CASH_SCOPES = ("unrestricted_line", "ifrs_cash_and_equivalents", "derived_minus_restricted", "total_no_restricted_filed", "cash_unresolved",
+               "cash_unresolved_securities_segregated")
 
 # stamps
 NCI_UNMEASURED = "nci_share_unmeasured"
@@ -75,15 +84,18 @@ def scope_by_year(hist_doc, t, key):
 
 # ---- Fix 1b: pi ---------------------------------------------------------------------------------------------------------------------
 
-def nci_share(row, ni_scope=None, year=None):
+def nci_share(row, ni_scope=None, year=None, equity_scope=None):
     """Brief 1.3(a): pi, the common shareholders' share of the consolidated business in the base year (`row` is its history row,
-    `ni_scope` its provenance scope). Returns {"pi", "basis", "year", "ni_parent", "ni_incl_nci", "equity", "equity_incl_nci",
-    "ni_scope", "stamps"}:
+    `ni_scope` and `equity_scope` its provenance scopes). Returns {"pi", "basis", "year", "ni_parent", "ni_incl_nci", "equity",
+    "equity_incl_nci", "ni_scope", "equity_scope", "stamps"}:
       ni_split      pi = net_income / net_income_incl_nci when both > 0, capped at 1;
-      equity_split  else pi = equity / equity_incl_nci when both > 0, capped at 1;
-      no_nci        else pi = 1 when ni_scope is no_nci_filed, or the income statement shows no noncontrolling interest
-                    (net_income_incl_nci equals net_income, or is null while ni_scope is "parent": no consolidated figure and no NCI
-                    line is filed beside the company's own) and no NCI equity is filed (equity_incl_nci equals equity);
+      equity_split  else pi = equity / equity_incl_nci when both > 0, capped at 1, and only when `equity_scope` says `equity` is the
+                    company's own (PARENT_EQUITY_SCOPES; the screener follow-up, item 2): an nci_unknown equity, or one with no scope, is
+                    not read;
+      no_nci        else pi = 1 when ni_scope is no_nci_filed or nci_zero_filed, or the income statement shows no noncontrolling
+                    interest (net_income_incl_nci equals net_income, or is null while ni_scope is "parent": no consolidated figure and no
+                    NCI line is filed beside the company's own) and no NCI equity is held (equity_scope no_nci_filed or nci_zero_filed, or
+                    a parent-scope equity that equals equity_incl_nci);
       unmeasured    else pi = 1, stamp `nci_share_unmeasured`;
       nci_unknown   ni_scope is nci_unknown (the base year's net income is the consolidated figure, kept and marked): pi = 1, stamp
                     `nci_share_unmeasured`;
@@ -93,7 +105,7 @@ def nci_share(row, ni_scope=None, year=None):
     ni, ni_c = _num(row.get("net_income")), _num(row.get("net_income_incl_nci"))
     eq, eq_c = _num(row.get("equity")), _num(row.get("equity_incl_nci"))
     out = {"pi": 1.0, "basis": None, "year": year, "ni_parent": ni, "ni_incl_nci": ni_c, "equity": eq, "equity_incl_nci": eq_c,
-           "ni_scope": ni_scope, "stamps": []}
+           "ni_scope": ni_scope, "equity_scope": equity_scope, "stamps": []}
     if not any(k in row for k in NCI_FIELDS):
         out["basis"] = "scope_fields_absent"
         out["stamps"].append(NCI_FIELDS_ABSENT)
@@ -105,12 +117,13 @@ def nci_share(row, ni_scope=None, year=None):
     if ni is not None and ni_c is not None and ni > 0 and ni_c > 0:
         out["pi"], out["basis"] = min(1.0, ni / ni_c), "ni_split"
         return out
-    if eq is not None and eq_c is not None and eq > 0 and eq_c > 0:
+    parent_equity = equity_scope in PARENT_EQUITY_SCOPES
+    if parent_equity and eq is not None and eq_c is not None and eq > 0 and eq_c > 0:
         out["pi"], out["basis"] = min(1.0, eq / eq_c), "equity_split"
         return out
     income_shows_none = ((ni is not None and ni_c is not None and ni == ni_c) or (ni is not None and ni_c is None and ni_scope == "parent"))
-    no_nci_equity = eq is not None and eq_c is not None and eq == eq_c
-    if ni_scope == "no_nci_filed" or (income_shows_none and no_nci_equity):
+    no_nci_equity = equity_scope in NO_NCI_SCOPES or (parent_equity and eq is not None and eq_c is not None and eq == eq_c)
+    if ni_scope in NO_NCI_SCOPES or (income_shows_none and no_nci_equity):
         out["basis"] = "no_nci"
         return out
     out["basis"] = "unmeasured"
@@ -185,23 +198,25 @@ def _fell_back(row):
             or (_num(row.get("equity")) is not None and _num(row.get("equity_incl_nci")) is None))
 
 
-def _nci_filed(row, scope):
+def _nci_filed(row, scope, equity_scope=None):
     """True when the row shows that an element of the noncontrolling-interest list is filed for its year: a derived or unknown net-income
-    scope, a consolidated equity that differs from the company's own or that could not be resolved beside it (brief 1.2(b): equity_incl_nci
-    is null only when an element is filed and neither the inclusive tag nor the sum resolves), or a consolidated net income that differs."""
+    or equity scope, a consolidated equity that differs from the company's own or that could not be resolved beside it (brief 1.2(b):
+    equity_incl_nci is null only when an element is filed and neither the inclusive tag nor the sum resolves), or a consolidated net income
+    that differs."""
     eq, eq_c = _num(row.get("equity")), _num(row.get("equity_incl_nci"))
     ni, ni_c = _num(row.get("net_income")), _num(row.get("net_income_incl_nci"))
-    return (scope in ("parent_derived", "nci_unknown") or (eq is not None and eq_c is None)
+    return (scope in ("parent_derived", "nci_unknown") or equity_scope in ("parent_derived", "nci_unknown") or (eq is not None and eq_c is None)
             or (eq is not None and eq_c is not None and eq_c != eq) or (ni is not None and ni_c is not None and ni_c != ni))
 
 
-def record_view(rows, ni_scope_by_year=None, base_year=None):
+def record_view(rows, ni_scope_by_year=None, base_year=None, equity_scope_by_year=None):
     """Brief 1.3(b): (view, mixed_years). `view` is a copy of the history's rows in which each year's `net_income` is
     `net_income_incl_nci` and `equity` is `equity_incl_nci` where those are not null, so the record's returns, margins, cycle test and
     working capital are ratios on one basis (P3). A row that carries neither field (written before Fix 1a) is passed as it is.
     `mixed_years` are the years of the record's eight-year window (to `base_year`, default the newest) that fall back to the company's own
     figure while noncontrolling interests are filed for that year (`record_scope_mixed`)."""
     scope = ni_scope_by_year or {}
+    escope = equity_scope_by_year or {}
     years = sorted(int(y) for y in (rows or {}) if str(y).isdigit())
     L = base_year if base_year is not None else (years[-1] if years else None)
     window = set(range(L - throughcycle_record.WINDOW_YEARS + 1, L + 1)) if L is not None else set()
@@ -216,7 +231,7 @@ def record_view(rows, ni_scope_by_year=None, base_year=None):
         if _num(row.get("equity_incl_nci")) is not None:
             r["equity"] = row["equity_incl_nci"]
         view[y] = r
-        if int(y) in window and _fell_back(row) and _nci_filed(row, scope.get(int(y))):
+        if int(y) in window and _fell_back(row) and _nci_filed(row, scope.get(int(y)), escope.get(int(y))):
             mixed.append(int(y))
     return view, sorted(mixed)
 
@@ -365,8 +380,16 @@ def base_year_scope(rows, hist_doc, t, financial):
     L = years[-1] if years else None
     row = (rows.get(str(L)) or {}) if L is not None else {}
     ni_scope = scope_by_year(hist_doc, t, "ni_scope").get(L)
-    return {"year": L, "nci": nci_share(row, ni_scope, L), "per_share": per_share_check(row, L), "money": customer_money(row, financial),
-            "cash_scope": scope_by_year(hist_doc, t, "cash_scope").get(L), "ni_scope": ni_scope}
+    equity_scope = scope_by_year(hist_doc, t, "equity_scope").get(L)
+    return {"year": L, "nci": nci_share(row, ni_scope, L, equity_scope), "per_share": per_share_check(row, L),
+            "money": customer_money(row, financial), "cash_scope": scope_by_year(hist_doc, t, "cash_scope").get(L), "ni_scope": ni_scope,
+            "equity_scope": equity_scope}
+
+
+def record_view_for(rows, hist_doc, t, base_year):
+    """`record_view` with the ticker's net-income and equity scopes read from the history's provenance (the one call the pack's record
+    and `reference_inputs`' record share)."""
+    return record_view(rows, scope_by_year(hist_doc, t, "ni_scope"), base_year, scope_by_year(hist_doc, t, "equity_scope"))
 
 
 def gate_stamps(facts):
