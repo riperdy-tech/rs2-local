@@ -1588,6 +1588,16 @@ def extract_desk_run_value(args, result) -> float | None:
     return None
 
 
+def _write_own_evidence_caches(out_dir, query_cache, url_cache):
+    """Write the per-sample evidence caches this session made (revision 19, brief G1): evidence_query_cache.json and evidence_url_cache.json in `out_dir`.
+    A cache that is None (the caller passed its own) is not written. Nothing here reads or changes what the model is shown."""
+    p = Path(out_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    for name, cache in (("evidence_query_cache.json", query_cache), ("evidence_url_cache.json", url_cache)):
+        if cache is not None:
+            (p / name).write_text(json.dumps(cache, indent=2), encoding="utf-8")
+
+
 def _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap):
     """Persist snapshot immediately so tool calls are recorded before execution."""
     try:
@@ -2237,6 +2247,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             break
 
     _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
+    # revision 19 (brief G1), record only: the evidence this session itself gathered. A cache the caller passed is the caller's to persist (the
+    # evidence store does); one this function made would otherwise vanish with it, and a frozen replay needs the whole page, not the part the
+    # snapshot kept.
+    _write_own_evidence_caches(out_dir, q_cache if query_cache is None else None, u_cache if url_cache is None else None)
     if desk_continuation is not None:
         desk_continuation["desk_calls_after"] = (
             sum(1 for c in snap if c.get("tool") == "run_financial_model") - desk_calls_at_c8)

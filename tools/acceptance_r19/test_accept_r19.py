@@ -137,3 +137,32 @@ def test_p3c_reason_19_fires_on_none_of_the_replayed_rows(replays):
         v = run["verdict"]
         row = {"direction": v["direction"], "gate_version": depth_gates.GATE_VERSION, "pack_revision": 19, "crux_valid": v["crux_valid"]}
         assert "directional_without_valid_crux" not in depth_gates.assess(row)[1], run["run"]
+
+
+# ---- G3: frozen-replay parity on the four development names' built packs --------------------------------------------------------------------
+
+_have_dev = (_have_sp and (SP / "review_fitems" / "root_book" / "enrich").exists() and (SP / "sd_full").exists()
+             and (SP / "closure_full" / "reference_closure.json").exists())
+
+
+def test_g3_the_difference_helper_sees_what_it_should():
+    sys.path.insert(0, str(HERE))
+    import g3_replay_parity as g3
+    assert g3.differences({"a": [1, 2.0], "b": None}, {"a": [1, 2.0], "b": None}) == []
+    assert g3.differences({"a": [1, 2.0]}, {"a": [1, 2]}) == ["/a[1]"]
+    assert g3.differences({"a": 1}, {"b": 1}) == ["/a", "/b"] and g3.differences({"a": (1, 2)}, {"a": [1, 3]}) == ["/a[1]"]
+    assert g3.differences(float("nan"), float("nan")) == [] and g3.differences(float("inf"), float("inf")) == []
+
+
+@pytest.mark.skipif(not _have_dev, reason="ACCEPT_SP does not hold the book day's data roots (review_fitems/root_book, sd_full, closure_full)")
+def test_g3_the_replay_context_equals_the_fresh_one_on_the_four_development_names(tmp_path):
+    names = tmp_path / "names.txt"
+    names.write_text(chr(10).join(["UGI", "MPWR", "MU", "LAMR"]) + chr(10), encoding="utf-8")
+    p = subprocess.run([PY, str(HERE / "g3_replay_parity.py"), "--tree", str(TREE), "--root", str(SP / "review_fitems" / "root_book"), "--sd", str(SP / "sd_full"),
+                        "--mri", str(SP / "backtest" / "out" / "c2" / "mri"), "--date", "2026-10-02", "--closure", str(SP / "closure_full" / "reference_closure.json"),
+                        "--names", str(names), "--json"], capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout[-1500:] + p.stderr[-1500:]
+    result = json.loads(p.stdout)
+    assert set(result) == {"UGI", "MPWR", "MU", "LAMR"}
+    for name, r in result.items():
+        assert r["differences"] == [] and r["keys"] >= 27, name

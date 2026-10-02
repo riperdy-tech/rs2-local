@@ -731,6 +731,7 @@ def select_medoid_scorecard(
 
 
 OWNER_CF_TOL_PCT = 10.0        # a declaration within this of the figure it names is accepted
+SEED_BASE_DEFAULT = 1000       # revision 19 (brief G2): sample i uses seed SEED_BASE_DEFAULT + i unless --seed-base says otherwise
 
 # Distinguishes "the caller supplied no trailing figure, go and load one" from "we hold none".
 # A bare None cannot carry both meanings.
@@ -1992,6 +1993,53 @@ def early_stop_check(g2, prior_base=None):
             "prior_delta_pct": prior_delta_pct, "prior_ok": prior_ok}
 
 
+def build_desk_context(facts, price, ticker, company):
+    """The desk's context (S3 3.2; revision 19 brief G3): every constant the pack holds, from the facts object and the harness price. ONE function, so the
+    context a fresh run builds from the facts its build returned and the context a `--pack-file` replay builds from the sidecar are the same
+    function of equal facts (tests/test_rev19_replay_parity.py proves the two equal key for key and value for value).
+    `shares_default_b` is 5.11's default, not SECTION 2's count; a count of 0 gives None (a zero share count cannot be a default), tested with
+    `is not None`, never `or`."""
+    return {
+        "price": price,                                   # the harness price, the one the verdict uses
+        "shares_default_b": (_num_b(facts["shares_default"])
+                             if facts["shares_default"] is not None and facts["shares_default"] > 0
+                             else None),
+        "coe_anchor": facts["coe_anchor"],
+        "terminal_g_default": facts["terminal_g_default"],
+        "terminal_g_anchor": facts["terminal_g_anchor"],
+        "base_rate_table": facts["base_rate_5y"] or None,
+        "revenue_cagr_5y_pct": facts["revenue_cagr_5y_pct"],
+        "net_debt_default_b": facts["net_debt_b"],
+        "interest_expense_latest_b": facts["interest_expense_latest_b"],
+        "owner_earnings_default_b": facts["owner_earnings_default_b"],
+        "base_window": facts["base_window"],
+        "consensus_implied_value": facts["consensus_implied_value"],
+        "levels": facts["levels"],
+        # revision 17 (brief B 4): the through-cycle facts the desk values with; an older frozen pack's
+        # sidecar carries None for each
+        "terminal_ronic": facts["terminal_ronic"],
+        "long_run": facts["long_run"],
+        "working_capital": facts["working_capital"],
+        "cash_basis_b": facts["cash_basis_b"],
+        # revision 17, brief F6: the fiscal-year owner-earnings base the reference grows from, so the desk can tell an
+        # owner-earnings base from the cash basis
+        "reference_base_b": facts["reference_base_b"],
+        # revision 18 (brief 1.7, 1.5): the excess cash the desk adds at face, and whether the reference is in force or
+        # printed outside the street-target fence as a level check only
+        "excess_cash": facts.get("excess_cash"),
+        "base_year_cash_and_investments_b": facts.get("base_year_cash_and_investments_b"),   # revision 19, fix item 3: the desk's bound
+        # revision 19 (brief D4): the two anchors the price-implied solver's coe and terminal_g bounds read; None reads "not available"
+        "rf_eff": facts.get("rf_eff"),
+        "nominal_gdp_trend": facts.get("nominal_gdp_trend"),
+        "reference_status": facts.get("reference_status"),
+        "years35_cap": facts["next_fy_revenue_growth"],
+        "shares_warning": facts["shares_warning"],       # R1b (5.11)
+        # revision 19 (B4): the name and ticker the citation check's news-filter rule needs
+        "ticker": ticker,
+        "company": company,
+    }
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "GOOG").upper()
@@ -2012,6 +2060,9 @@ def main():
     draft_num_predict = int(sys.argv[sys.argv.index("--draft-num-predict") + 1]) if "--draft-num-predict" in sys.argv else None
     # GPU memory margin at 98,304 (config depth_num_batch, 2026-09-27); None = Ollama's default
     num_batch = int(sys.argv[sys.argv.index("--num-batch") + 1]) if "--num-batch" in sys.argv else None
+    # revision 19 (brief G2): sample i draws with seed K + i; K is --seed-base, 1000 by default (as before), and is recorded in consensus.json. The retry
+    # seeds keep their offsets (+50000 for an empty-report retry, +100 for a continuation).
+    seed_base = int(sys.argv[sys.argv.index("--seed-base") + 1]) if "--seed-base" in sys.argv else SEED_BASE_DEFAULT
     # ctx raised to 98,304 on 2026-09-27, measured on the RTX 3090: 23.6 GB resident, fully on GPU,
     # no CPU spill. Do not raise further without re-probing /api/ps for spill.
 
@@ -2143,45 +2194,7 @@ def main():
     # count; a count of 0 gives None (a zero share count cannot be a default), tested with
     # `is not None`, never `or`.
     company_name = rs2_data.resolve_name(t) or t          # revision 19 (B6): the crux check's name for the news filter's rule
-    desk_context = {
-        "price": price,                                   # the harness price, the one the verdict uses
-        "shares_default_b": (_num_b(facts["shares_default"])
-                             if facts["shares_default"] is not None and facts["shares_default"] > 0
-                             else None),
-        "coe_anchor": facts["coe_anchor"],
-        "terminal_g_default": facts["terminal_g_default"],
-        "terminal_g_anchor": facts["terminal_g_anchor"],
-        "base_rate_table": facts["base_rate_5y"] or None,
-        "revenue_cagr_5y_pct": facts["revenue_cagr_5y_pct"],
-        "net_debt_default_b": facts["net_debt_b"],
-        "interest_expense_latest_b": facts["interest_expense_latest_b"],
-        "owner_earnings_default_b": facts["owner_earnings_default_b"],
-        "base_window": facts["base_window"],
-        "consensus_implied_value": facts["consensus_implied_value"],
-        "levels": facts["levels"],
-        # revision 17 (brief B 4): the through-cycle facts the desk values with; an older frozen pack's
-        # sidecar carries None for each
-        "terminal_ronic": facts["terminal_ronic"],
-        "long_run": facts["long_run"],
-        "working_capital": facts["working_capital"],
-        "cash_basis_b": facts["cash_basis_b"],
-        # revision 17, brief F6: the fiscal-year owner-earnings base the reference grows from, so the desk can tell an
-        # owner-earnings base from the cash basis
-        "reference_base_b": facts["reference_base_b"],
-        # revision 18 (brief 1.7, 1.5): the excess cash the desk adds at face, and whether the reference is in force or
-        # printed outside the street-target fence as a level check only
-        "excess_cash": facts.get("excess_cash"),
-        "base_year_cash_and_investments_b": facts.get("base_year_cash_and_investments_b"),   # revision 19, fix item 3: the desk's bound
-        # revision 19 (brief D4): the two anchors the price-implied solver's coe and terminal_g bounds read; None reads "not available"
-        "rf_eff": facts.get("rf_eff"),
-        "nominal_gdp_trend": facts.get("nominal_gdp_trend"),
-        "reference_status": facts.get("reference_status"),
-        "years35_cap": facts["next_fy_revenue_growth"],
-        "shares_warning": facts["shares_warning"],       # R1b (5.11)
-        # revision 19 (B4): the name and ticker the citation check's news-filter rule needs
-        "ticker": t,
-        "company": company_name,
-    }
+    desk_context = build_desk_context(facts, price, t, company_name)
 
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
             if adaptive else f"{n} samples fixed")
@@ -2237,7 +2250,7 @@ def main():
                 sd_i = d / f"sample{i}_research"
                 rep, think, meta = analyst_tools.chat_with_tools(
                     model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT, num_batch=num_batch,
-                    seed=1000 + i, draft_num_predict=draft_num_predict, temperature=temperature,
+                    seed=seed_base + i, draft_num_predict=draft_num_predict, temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
                     desk_context=desk_context)
@@ -2255,7 +2268,7 @@ def main():
                     "num_predict": NUM_PREDICT,
                     "repeat_penalty": 1.05,
                     "presence_penalty": 0.05,
-                    "seed": 1000 + i
+                    "seed": seed_base + i
                 }
                 if draft_num_predict is not None:
                     opts["draft_num_predict"] = draft_num_predict
@@ -2286,7 +2299,7 @@ def main():
                 sample_retried = True
                 print(f"  sample {i}: EMPTY report after {len(think):,}ch thinking - "
                       f"one retry, perturbed seed", flush=True)
-                body["options"]["seed"] = 1000 + i + 50000
+                body["options"]["seed"] = seed_base + i + 50000
                 req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
                                              data=json.dumps(body).encode(),
                                              headers={"Content-Type": "application/json"})
@@ -2306,7 +2319,7 @@ def main():
                       f"one retry, perturbed seed", flush=True)
                 rep, think, meta = _at.chat_with_tools(
                     model, pack, d / f"sample{i}_research_retry", think=think_level, ctx=ctx, num_batch=num_batch,
-                    num_predict=NUM_PREDICT, seed=1000 + i + 50000, draft_num_predict=draft_num_predict,
+                    num_predict=NUM_PREDICT, seed=seed_base + i + 50000, draft_num_predict=draft_num_predict,
                     temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
@@ -2333,7 +2346,7 @@ def main():
             print(f"  sample {i}: TRUNCATED mid-report at {len(rep):,}ch — triggering State-Preserving Continuation...", flush=True)
             rep_cont, think_cont, meta_cont = continue_report(
                 model=model, pack=pack, partial_report=rep,
-                ctx=ctx, timeout=1800, seed=1000 + i + 100,
+                ctx=ctx, timeout=1800, seed=seed_base + i + 100,
                 draft_num_predict=draft_num_predict, temperature=temperature,
                 think=think_level, num_batch=num_batch)
             report_continued = {
@@ -2641,6 +2654,7 @@ def main():
     doc = {"ticker": t, "price": price, "model": model, "think": think_level,
            "draft_num_predict": draft_num_predict,
            "temperature": temperature,
+           "seed_base": seed_base,
            "pack_revision": cap.PACK_REVISION,
            "pack_source": pack_source, "pack_sha256": pack_sha256,
            "pack_facts_source": pack_facts_source,
