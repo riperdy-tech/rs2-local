@@ -17,6 +17,10 @@ three-scenario call returned an error) is recorded in `base_valued_alone_errors`
   (b) neutral structure: price = _neutral_reference_dcf value at g* plus the DEFAULTS excess cash per share; the neutral solve with the same
       excess cash must return g* within 0.1 pp.
   Reported, not a bar: both round trips without the cash term. Names the reverse DCF cannot run are counted with the reason.
+  Revision 19 (brief 10a, definitional and post hoc, recorded as such): the own-structure solve is the bracket-and-bisect routine on the unrounded
+  value, so the round-trip price is the unrounded one (per_share_iv_raw), and bar (a) applies to every name whose own-structure value has exactly
+  one root on the grid at that price. A name with more than one root is reported, with its roots and the solver's choice, and not marked: its
+  implied growth is not unique, so "returns g*" is not definable there. The solve runs with x0 = 0 (none given), never g*.
 """
 import math
 import statistics
@@ -127,7 +131,7 @@ def _gstar(row):
 def round_trips(ns, rows, *, names=True, tol_pp=TOL_PP):
     fmt, pack_facts = ns.fmt, ns.pack_facts
     reasons, diffs = {}, {"a": [], "b": [], "a_no_cash": [], "b_no_cash": []}
-    fails, run = [], 0
+    fails, run, multi_root = [], 0, []
 
     def skip(why):
         reasons[why] = reasons.get(why, 0) + 1
@@ -163,7 +167,7 @@ def round_trips(ns, rows, *, names=True, tol_pp=TOL_PP):
             own = fmt.unbundled_dcf(explicit_growth=[g] * 5, excess_cash=cash, **common)
             iv_n, _cf, _cagr = fmt._neutral_reference_dcf(base_cf=base, g=g, coe_anchor=coe, terminal_g_anchor=tga, net_debt=0.0,
                                                           shares_diluted=shares_b)
-            price_a = own.get("per_share_iv")
+            price_a = own.get("per_share_iv_raw")             # revision 19: the unrounded value (the cent hid growth on a low-priced name)
             price_b = iv_n + ((cash / shares_b) if cash is not None else 0.0)
             if own.get("error") or price_a is None or not price_a > 0 or not price_b > 0:
                 res = None
@@ -171,22 +175,28 @@ def round_trips(ns, rows, *, names=True, tol_pp=TOL_PP):
                 break
             ga = fmt.reverse_dcf_expectations_gap(current_price=price_a, excess_cash=cash, **rev)
             gb = fmt.reverse_dcf_expectations_gap(current_price=price_b, excess_cash=cash, **rev)
-            sa = (ga.get("own_structure") or {}).get("solved_growth_pct")
+            os_a = ga.get("own_structure") or {}
+            sa = os_a.get("solved_growth_pct")
             sb = (gb.get("neutral_reference_structure") or {}).get("solved_initial_growth_pct")
             if sa is None or sb is None:
                 res = None
                 skip("the reverse DCF returned no solution: " + str(ga.get("error") or gb.get("error") or "no neutral structure")[:80])
                 break
-            res[label] = (sa - g * 100.0, sb - g * 100.0)
+            multiple = (os_a.get("roots_on_grid") or 0) > 1
+            if multiple and label == "":
+                multi_root.append((key if names else None, list(os_a.get("roots_pct") or []), sa, g * 100.0))
+            res[label] = (None if multiple else sa - g * 100.0, sb - g * 100.0)
         if res is None:
             continue
         run += 1
         da, db = res[""]
-        diffs["a"].append(da)
+        if da is not None:
+            diffs["a"].append(da)
         diffs["b"].append(db)
-        diffs["a_no_cash"].append(res["_no_cash"][0])
+        if res["_no_cash"][0] is not None:
+            diffs["a_no_cash"].append(res["_no_cash"][0])
         diffs["b_no_cash"].append(res["_no_cash"][1])
-        if abs(da) > tol_pp or abs(db) > tol_pp:
+        if (da is not None and abs(da) > tol_pp) or abs(db) > tol_pp:
             fails.append((key if names else None, da, db))
 
     def summ(v):
@@ -197,7 +207,9 @@ def round_trips(ns, rows, *, names=True, tol_pp=TOL_PP):
     return {"at": "AT1e reverse DCF round trips", "pass": ok, "names_run": run, "cannot_run_by_reason": reasons,
             "bar": f"both round trips within {tol_pp} pp with the cash term",
             "a_own_structure": summ(diffs["a"]), "b_neutral_structure": summ(diffs["b"]),
+            "a_applies_to_single_root_names": len(diffs["a"]), "a_multiple_roots": {"count": len(multi_root), "items": multi_root},
             "reported_not_a_bar": {"a_without_cash_term": summ(diffs["a_no_cash"]), "b_without_cash_term": summ(diffs["b_no_cash"])},
             "fails": fails[:20], "fails_count": len(fails),
-            "summary": f"{run} names run; (a) own max {summ(diffs['a'])['max_abs_pp']} pp, (b) neutral max {summ(diffs['b'])['max_abs_pp']} pp; "
+            "summary": f"{run} names run; (a) own max {summ(diffs['a'])['max_abs_pp']} pp over {len(diffs['a'])} single-root names, "
+                       f"{len(multi_root)} with more than one root (reported, not marked); (b) neutral max {summ(diffs['b'])['max_abs_pp']} pp; "
                        f"{len(fails)} outside {tol_pp} pp; {sum(reasons.values())} cannot run"}

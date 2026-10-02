@@ -443,6 +443,7 @@ def unbundled_dcf(
 
     res: Dict[str, Any] = {
         "per_share_iv": round(per_share_iv, 2),
+        "per_share_iv_raw": per_share_iv,                  # revision 19: the value before rounding, which the price-implied solver reads
         "per_share_iv_gordon": round(per_share_iv, 2),
         "enterprise_value": round(ev, 2),
         "equity_value": round(eq, 2),
@@ -561,6 +562,7 @@ def _finite_life_dcf(base_cf, rates, rate, terminal_g, fade_years, finite_life_y
 
     res: Dict[str, Any] = {
         "per_share_iv": round(per_share_iv, 2),
+        "per_share_iv_raw": per_share_iv,                  # revision 19: the value before rounding
         "enterprise_value": round(ev, 2),
         "equity_value": round(eq, 2),
         "excess_cash": round(cash_b, 4),
@@ -625,6 +627,365 @@ def _neutral_reference_dcf(
     return per_share_iv, cf_10, cagr_10y
 
 
+# ---- revision 19 (brief_rev19.md, Part A and Part J): bracket-and-bisect, and the price-implied value of each judgment input ----------
+
+SOLVER_GRID_POINTS = 121
+SOLVER_TOL = 0.0005             # dollars per share: a point with |value - price| at or below this is a root
+SOLVER_NARROW = 1e-9            # a bisection stops only when its bracket is narrower than this, in the search variable's units
+SOLVER_MAX_ITER = 200
+IDENTITY_TOL = 1e-6             # dollars per share: the rebuilt Base against the desk's own unrounded value
+PI_INPUTS = ("coe", "growth_years_3_5", "fade_years", "terminal_g", "terminal_ronic", "year2_level")
+PI_FADE_MAX = 60                # the desk's finite-life limit, which bounds the fade search too
+PI_GROWTH_FLOOR = 0.001         # 1 + g + shift >= this, a business cannot shrink by 100% a year
+PI_GROWTH_CEILING = 10.0        # a numerical ceiling for the largest of years 3-5, a search limit and not an economic bound
+PI_COE_CEILING = 0.25
+PI_COE_GAP = 0.0001             # the discount rate stays this far above the Base's terminal_g
+PI_TG_GAP = 0.000001            # terminal_g stays this far below the discount rate
+
+
+def _linspace(lo, hi, n):
+    if n < 2 or hi <= lo:
+        return [float(lo)]
+    pts = [lo + (hi - lo) * k / (n - 1) for k in range(n)]
+    pts[-1] = float(hi)
+    return pts
+
+
+def _find_brackets(vals, tol=SOLVER_TOL):
+    """Index pairs of the points `vals` (differences from the price; None where the value could not be computed) that bracket a root:
+    (i, i + 1) for adjacent points whose values differ in sign, (i, i) for a point with |value| at or below `tol` (a run of such points
+    counts once). Only adjacent evaluated points form a bracket."""
+    out, in_run = [], False
+    for i, v in enumerate(vals):
+        if v is None:
+            in_run = False
+            continue
+        if abs(v) <= tol:
+            if not in_run:
+                out.append((i, i))
+            in_run = True
+            continue
+        in_run = False
+        w = vals[i - 1] if i > 0 else None
+        if w is not None and abs(w) > tol and (w < 0) != (v < 0):
+            out.append((i - 1, i))
+    return out
+
+
+def _bisect(f, a, fa, b, fb, tol=SOLVER_TOL, narrow=SOLVER_NARROW, max_iter=SOLVER_MAX_ITER):
+    """Bisect the bracket [a, b] (fa and fb of opposite sign) until |f| <= tol and the bracket is narrower than `narrow`, or for at most
+    `max_iter` iterations (or until the midpoint is not between the ends in floating point). Returns (s, f(s), a, b, iterations, ok), s being
+    the evaluated point with the smallest |f|; ok False when an evaluation failed (then s is None)."""
+    best_s, best_f = (a, fa) if abs(fa) <= abs(fb) else (b, fb)
+    it = 0
+    while it < max_iter:
+        it += 1
+        mid = (a + b) / 2.0
+        if not (a < mid < b):
+            break
+        fm = f(mid)
+        if fm is None:
+            return None, None, a, b, it, False
+        if abs(fm) < abs(best_f):
+            best_s, best_f = mid, fm
+        if abs(fm) <= tol and (b - a) < narrow:
+            break
+        if (fa < 0) == (fm < 0):
+            a, fa = mid, fm
+        else:
+            b, fb = mid, fm
+    return best_s, best_f, a, b, it, True
+
+
+def solve_nearest(f, points, s0, *, tol=SOLVER_TOL, narrow=SOLVER_NARROW, max_iter=SOLVER_MAX_ITER, all_roots=False):
+    """The root of f nearest s0, by bracket-and-bisect (brief 2, A3).
+      f(s) -> value minus price, or None where the value cannot be computed; `points` the ascending grid of the search variable; s0 the
+      run's own position in it. f is evaluated at every grid point and at s0 when s0 lies inside the grid. A bracket is a pair of adjacent
+      points whose values differ in sign, or a point with |f| <= tol. The bracket nearest s0 (distance from s0 to its nearer end; a tie goes to
+      the lower bracket) is bisected. Returns {"found", "s", "f", "bracket", "roots_on_grid", "side", "values", "points", "roots"}:
+      `side` is "above" when the price is above every value on the grid, "below" when it is below every one (None otherwise), set only when
+      no bracket exists; `roots` (all_roots=True) lists the bisected root of every bracket, in ascending order."""
+    pts = sorted(set(float(p) for p in points) | ({float(s0)} if (s0 is not None and points[0] <= s0 <= points[-1]) else set()))
+    vals = [f(p) for p in pts]
+    brs = _find_brackets(vals, tol)
+    out = {"found": False, "s": None, "f": None, "bracket": None, "roots_on_grid": len(brs), "side": None, "values": vals, "points": pts,
+           "roots": [], "error": None}
+    if not brs:
+        ev = [v for v in vals if v is not None]
+        if ev and all(v < 0 for v in ev):
+            out["side"] = "above"
+        elif ev and all(v > 0 for v in ev):
+            out["side"] = "below"
+        return out
+
+    def root_of(br):
+        i, j = br
+        if i == j:
+            return pts[i], vals[i], pts[i], pts[i]
+        s, fs, a, b, _it, ok = _bisect(f, pts[i], vals[i], pts[j], vals[j], tol, narrow, max_iter)
+        return (s, fs, a, b) if ok else (None, None, pts[i], pts[j])
+
+    def dist(br):
+        a, b = pts[br[0]], pts[br[1]]
+        return 0.0 if a <= s0 <= b else min(abs(s0 - a), abs(s0 - b))
+    chosen = min(brs, key=lambda br: (dist(br), pts[br[0]]))
+    s, fs, a, b = root_of(chosen)
+    if s is None:
+        out["error"] = "evaluation"
+        return out
+    out.update(found=True, s=s, f=fs, bracket=(a, b))
+    if all_roots:
+        roots = []
+        for br in brs:
+            r = (s, fs, a, b) if br == chosen else root_of(br)
+            if r[0] is not None:
+                roots.append(r[0])
+        out["roots"] = sorted(roots)
+    return out
+
+
+def solve_integer(f, ints, s0):
+    """The fade search: f at every integer of `ints` (ascending), the bracket of integers nearest s0 chosen as in `solve_nearest` (no bisection).
+    Returns {"found", "bracket" (F, F + 1), "values" (f at F and F + 1), "s" (the interpolated crossing), "roots_on_grid", "side", "points", "all"}.
+    A point whose |f| is at or below the tolerance is its own bracket (s = that integer)."""
+    pts = list(ints)
+    vals = [f(p) for p in pts]
+    brs = _find_brackets(vals)
+    out = {"found": False, "s": None, "bracket": None, "values": None, "roots_on_grid": len(brs), "side": None, "points": pts, "all": vals}
+    if not brs:
+        ev = [v for v in vals if v is not None]
+        if ev and all(v < 0 for v in ev):
+            out["side"] = "above"
+        elif ev and all(v > 0 for v in ev):
+            out["side"] = "below"
+        return out
+
+    def dist(br):
+        a, b = pts[br[0]], pts[br[1]]
+        return 0 if a <= s0 <= b else min(abs(s0 - a), abs(s0 - b))
+    i, j = min(brs, key=lambda br: (dist(br), pts[br[0]]))
+    if i == j:
+        out.update(found=True, s=float(pts[i]), bracket=(pts[i], pts[i]), values=(vals[i], vals[i]))
+    else:
+        fa, fb = vals[i], vals[j]
+        # f = value - price: the crossing is where the value equals the price, F + (P - v(F)) / (v(F + 1) - v(F)) = F + (0 - fa) / (fb - fa)
+        out.update(found=True, s=pts[i] + (0.0 - fa) / (fb - fa), bracket=(pts[i], pts[j]), values=(fa, fb))
+    return out
+
+
+def _json_num(x):
+    """A number for a JSON record: +inf is "unlimited" (the desk's own spelling for a return on new investment)."""
+    return "unlimited" if isinstance(x, float) and math.isinf(x) else x
+
+
+def _geo_mean_growth(rates):
+    """The geometric mean growth of `rates` (each above -1)."""
+    p = 1.0
+    for g in rates:
+        p *= (1.0 + g)
+    return p ** (1.0 / len(rates)) - 1.0
+
+
+def _pi_normalise(growth, terminal_g, fade, finite_life):
+    """(rates, fade_left): the Base's applied five rates and the fade left after year 5 (`_five_and_fade`). A finite-life Base with more than
+    five explicit rates keeps them as given (the five-rate form would drop its years 6 on)."""
+    if finite_life is not None and len(growth) > 5:
+        return [float(g) for g in growth], int(fade)
+    five, left = _five_and_fade(growth, terminal_g, fade)
+    return [float(g) for g in five], int(left)
+
+
+def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
+    """The price-implied value of each judgment input (brief_rev19 sections 1.1, A2-A4).
+
+    `b` is the Base's exact applied arguments: cf ($B), growth (the applied explicit rates after any hold or cap), fade, wacc, tg, shares,
+    sbc, sbc_dil, frame, net_debt, rate_type, annuity, annuity_cap, ronic (the terminal_ronic argument, maybe None), wc (the working capital
+    deducted, or None), excess, long_run, finite (cash_flow_life years or None) and raw (the Base's per_share_iv_raw). `price` is today's price.
+
+    The Base is rebuilt on five applied rates and the fade left; `unbundled_dcf` on those must reproduce the Base's per_share_iv_raw within
+    IDENTITY_TOL, or the block is {"error": "identity"}. For each input in PI_INPUTS the Base is valued with that input moved and every other
+    argument held (the applied terminal_ronic is held as a number); the root of value - price nearest the run's own value is returned
+    (`solve_nearest`, `solve_integer`), or "not reachable" with the bound and the values at its ends. Returns {input: block}."""
+    finite = b["finite"]
+    rates0, fade0 = _pi_normalise(b["growth"], b["tg"], b["fade"], finite)
+    common = dict(annuity_flow=b["annuity"], annuity_cap_rate=b["annuity_cap"], net_debt=b["net_debt"], shares_diluted=b["shares"],
+                  valuation_frame=b["frame"], rate_type=b["rate_type"], sbc_treatment=b["sbc"], sbc_dilution=b["sbc_dil"],
+                  finite_life_years=finite, long_run=b["long_run"], working_capital=b["wc"], excess_cash=b["excess"])
+
+    def dcf(rates, fade, wacc, tg, ronic):
+        return unbundled_dcf(base_cf=float(b["cf"]), explicit_growth=list(rates), wacc=wacc, terminal_g=tg, fade_years=fade, terminal_ronic=ronic,
+                             **common)
+
+    first = dcf(rates0, fade0, float(b["wacc"]), float(b["tg"]), b["ronic"])
+    if first.get("error") or first.get("per_share_iv_raw") is None or abs(first["per_share_iv_raw"] - b["raw"]) > IDENTITY_TOL:
+        return {"error": "identity", "base_per_share_iv_raw": b["raw"], "rebuilt_per_share_iv_raw": first.get("per_share_iv_raw"),
+                "detail": first.get("error")}
+    ronic0 = first.get("terminal_ronic")
+    ronic0 = math.inf if ronic0 == "unlimited" else ronic0         # the applied value, held as a number (None only for a finite life)
+    wacc0, tg0 = float(b["wacc"]), float(b["tg"])
+    cf1 = float(b["cf"]) * (1.0 + rates0[0])
+
+    def raw(rates=None, fade=None, wacc=None, tg=None, ronic=None):
+        r = dcf(rates0 if rates is None else rates, fade0 if fade is None else fade, wacc0 if wacc is None else wacc,
+                tg0 if tg is None else tg, ronic0 if ronic is None else ronic)
+        v = r.get("per_share_iv_raw") if not r.get("error") else None
+        return None if v is None or not math.isfinite(v) else float(v)
+
+    def diff(v):
+        return None if v is None else v - price
+
+    out = {}
+
+    def finish(name, own, bound, res, to_value, extra=None, value_at=None):
+        """Assemble one block from a `solve_nearest` result. `bound` is (low, high, value_low, value_high) in the input's units."""
+        lo, hi, vlo, vhi = bound
+        blk = {"value": None, "reachable": False, "own": _json_num(own),
+               "bound": {"low": _json_num(lo), "high": _json_num(hi), "value_low": vlo, "value_high": vhi},
+               "side": res["side"], "base_at_value": None, "roots_on_grid": res["roots_on_grid"], "bracket": None, "stamps": []}
+        if res["found"]:
+            blk.update(value=_json_num(to_value(res["s"])), reachable=True, side=None, base_at_value=None if res["f"] is None else res["f"] + price,
+                       bracket=[res["bracket"][0], res["bracket"][1]])
+        if res["roots_on_grid"] > 1:
+            blk["stamps"].append("non_monotone")
+        if res.get("error"):
+            blk["stamps"].append("evaluation_error")
+        if extra:
+            blk.update(extra(res))
+        return blk
+
+    def unavailable(name, own, why):
+        return {"value": None, "reachable": False, "own": _json_num(own),
+                "bound": {"low": None, "high": None, "value_low": None, "value_high": None},
+                "side": None, "base_at_value": None, "roots_on_grid": 0, "bracket": None, "stamps": [], "not_available": why}
+
+    def ends(f, lo, hi):
+        va, vb = f(lo), f(hi)
+        return lo, hi, None if va is None else va + price, None if vb is None else vb + price
+
+    # coe -------------------------------------------------------------------------------------------------------------------------
+    if _is_num(rf_eff):
+        lo, hi = max(float(rf_eff), tg0 + PI_COE_GAP), PI_COE_CEILING
+        f = lambda x: diff(raw(wacc=x))
+        res = solve_nearest(f, _linspace(lo, hi, SOLVER_GRID_POINTS), wacc0) if lo < hi else None
+        if res is None:
+            out["coe"] = unavailable("coe", wacc0, "the bound is empty")
+        else:
+            out["coe"] = finish("coe", wacc0, ends(f, lo, hi), res, lambda s: s)
+    else:
+        out["coe"] = unavailable("coe", wacc0, "rf_eff is not available")
+
+    # growth_years_3_5 ---------------------------------------------------------------------------------------------------------------
+    y35 = rates0[2:5]
+    own_g = _geo_mean_growth(y35)
+    d_lo, d_hi = (PI_GROWTH_FLOOR - 1.0) - min(y35), PI_GROWTH_CEILING - max(y35)
+
+    def shifted(d):
+        return rates0[:2] + [g + d for g in y35] + rates0[5:]
+    f = lambda d: diff(raw(rates=shifted(d)))
+    res = solve_nearest(f, _linspace(d_lo, d_hi, SOLVER_GRID_POINTS), 0.0) if d_lo < d_hi else None
+    if res is None:
+        out["growth_years_3_5"] = unavailable("growth_years_3_5", own_g, "the bound is empty")
+    else:
+        lo_v, hi_v, vlo, vhi = ends(f, d_lo, d_hi)
+        out["growth_years_3_5"] = finish("growth_years_3_5", own_g, (_geo_mean_growth([g + d_lo for g in y35]), _geo_mean_growth([g + d_hi for g in y35]), vlo, vhi),
+                                         res, lambda d: _geo_mean_growth([g + d for g in y35]),
+                                         extra=lambda r: {"shift": r["s"] if r["found"] else None, "shift_bound": [d_lo, d_hi]})
+
+    # fade_years ---------------------------------------------------------------------------------------------------------------------
+    f = lambda n: diff(raw(fade=int(n)))
+    res = solve_integer(f, range(0, PI_FADE_MAX + 1), fade0)
+    v0, v60 = f(0), f(PI_FADE_MAX)
+    blk = {"value": None, "reachable": False, "own": fade0,
+           "bound": {"low": 0, "high": PI_FADE_MAX, "value_low": None if v0 is None else v0 + price, "value_high": None if v60 is None else v60 + price},
+           "side": res["side"], "base_at_value": None, "roots_on_grid": res["roots_on_grid"], "bracket": None, "stamps": [], "bracket_years": None,
+           "bracket_values": None}
+    if res["found"]:
+        fa, fb = res["values"]
+        blk.update(value=res["s"], reachable=True, side=None, base_at_value=price, bracket=list(res["bracket"]), bracket_years=list(res["bracket"]),
+                   bracket_values=[fa + price, fb + price])
+    if res["roots_on_grid"] > 1:
+        blk["stamps"].append("non_monotone")
+    out["fade_years"] = blk
+
+    # terminal_g ---------------------------------------------------------------------------------------------------------------------
+    if _is_num(gdp_trend):
+        lo, hi = 0.0, min(float(gdp_trend), wacc0) - PI_TG_GAP
+        f = lambda x: diff(raw(tg=x))
+        res = solve_nearest(f, _linspace(lo, hi, SOLVER_GRID_POINTS), tg0) if lo < hi else None
+        out["terminal_g"] = (unavailable("terminal_g", tg0, "the bound is empty") if res is None
+                             else finish("terminal_g", tg0, ends(f, lo, hi), res, lambda s: s))
+    else:
+        out["terminal_g"] = unavailable("terminal_g", tg0, "nominal_gdp_trend is not available")
+
+    # terminal_ronic -----------------------------------------------------------------------------------------------------------------
+    if finite is not None:
+        out["terminal_ronic"] = unavailable("terminal_ronic", None, "not applicable (finite life)")
+    else:
+        def ronic_of(u):
+            return math.inf if u <= 0.0 else wacc0 / u
+        f = lambda u: diff(raw(ronic=ronic_of(u)))
+        u0 = 0.0 if math.isinf(ronic0) else wacc0 / ronic0
+        res = solve_nearest(f, _linspace(0.0, 1.0, SOLVER_GRID_POINTS), u0)
+        va, vb = f(1.0), f(0.0)
+        out["terminal_ronic"] = finish("terminal_ronic", ronic0, (wacc0, math.inf, None if va is None else va + price, None if vb is None else vb + price),
+                                       res, ronic_of)
+
+    # year2_level --------------------------------------------------------------------------------------------------------------------
+    own_l2 = cf1 * (1.0 + rates0[1])
+    lv = levels or {}
+    if _is_num(lv.get("bear2")) and _is_num(lv.get("bull2")) and cf1 > 0 and lv["bear2"] > 0:
+        lo, hi = float(lv["bear2"]), float(lv["bull2"])
+
+        def with_level(x):
+            return [rates0[0], x / cf1 - 1.0] + rates0[2:]
+        f = lambda x: diff(raw(rates=with_level(x)))
+        res = solve_nearest(f, _linspace(lo, hi, SOLVER_GRID_POINTS), own_l2) if lo < hi else None
+        out["year2_level"] = (unavailable("year2_level", own_l2, "the bound is empty") if res is None
+                              else finish("year2_level", own_l2, ends(f, lo, hi), res, lambda s: s))
+    else:
+        out["year2_level"] = unavailable("year2_level", own_l2, "the pack prints no bull2 and bear2 range")
+    return out
+
+
+def _fmt_pi_value(name, v):
+    if v is None:
+        return "not available"
+    if v == "unlimited":
+        return "unlimited"
+    if name in ("coe", "terminal_g"):
+        return f"{v * 100:.2f}%"
+    if name == "growth_years_3_5":
+        return f"{v * 100:+.1f}% a year"
+    if name == "fade_years":
+        return f"{v:.1f} years" if isinstance(v, float) else f"{v} years"
+    if name == "terminal_ronic":
+        return f"{v * 100:.1f}%"
+    return f"${v:,.3f}B"                                    # year2_level
+
+
+def price_implied_lines(pi):
+    """One line per judgment input for the model (brief 2, A5): the price-implied value, or "not reachable" with its bound, then the run's own
+    value in brackets. A block with an error (the identity check) gives one line saying so."""
+    if not isinstance(pi, dict):
+        return []
+    if pi.get("error"):
+        return [f"price_implied: not computed ({pi['error']})"]
+    lines = []
+    for name in PI_INPUTS:
+        blk = pi.get(name)
+        if not isinstance(blk, dict):
+            continue
+        own = _fmt_pi_value(name, blk.get("own"))
+        if blk.get("not_available"):
+            lines.append(f"{name}: not available, {blk['not_available']}" + ("" if blk.get("own") is None else f" [{own}]"))
+        elif blk.get("reachable"):
+            lines.append(f"{name}: {_fmt_pi_value(name, blk.get('value'))} [{own}]")
+        else:
+            bd = blk.get("bound") or {}
+            lines.append(f"{name}: not reachable (bound {_fmt_pi_value(name, bd.get('low'))} to {_fmt_pi_value(name, bd.get('high'))}) [{own}]")
+    return lines
+
+
 def reverse_dcf_expectations_gap(
     current_price: float,
     shares_diluted: float,
@@ -645,6 +1006,7 @@ def reverse_dcf_expectations_gap(
     long_run: Optional[Dict[str, Any]] = None,
     working_capital: Optional[List[float]] = None,
     excess_cash: Optional[float] = None,
+    x0: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Solve for market-implied growth per Phase 4 Decision D2:
     (a) under caller's own structure (solve constant stage-1 growth equating IV to price, holding fade/terminal/rate;
@@ -655,6 +1017,11 @@ def reverse_dcf_expectations_gap(
     Revision 18 (brief 1.7, bar AT1e): `excess_cash` ($B, the DEFAULTS amount; equity frame only) is part of the value both
     structures compare with the price, exactly as the forward desk adds it, so the growth the price implies is the growth of the
     operating business alone: a price equal to a reference value that includes the cash returns that reference's growth.
+    Revision 19 (brief 10a, AT1e): the own-structure solve is `solve_nearest` on the unrounded value (per_share_iv_raw): a grid of 121 growths on
+    [-0.99, hi] (hi starts at 2.00 and grows by 1.00, at most ten times, while the value there is below the price), the root nearest `x0` (the
+    call's own Base year-1 growth; 0 when there is none), a stop at |value - price| <= $0.0005 with a bracket narrower than 1e-9; the roots on
+    the grid are counted (more than one stamps `multiple_roots`), and with no root the result is `reachable: False` with its side, never a
+    midpoint. The neutral solve is unchanged.
     """
     if terminal_g is None:
         return {"error": "terminal_g is required for reverse DCF (the silent default was removed in Phase 4)"}
@@ -688,39 +1055,23 @@ def reverse_dcf_expectations_gap(
         )
         if r.get("error"):
             return None
-        return r.get("per_share_iv")
+        return r.get("per_share_iv_raw")          # revision 19: unrounded (the value the cent rounding hid on a low-priced name)
 
-    lo, hi = -0.90, 2.00
-    for _ in range(5):
-        val_lo = _eval_own(lo)
-        if val_lo is not None and val_lo > current_price:
-            lo -= 0.50
-        else:
-            break
+    def _own_diff(g: float) -> Optional[float]:
+        v = _eval_own(g)
+        return None if v is None else v - current_price
+
+    hi = 2.00
     for _ in range(10):
         val_hi = _eval_own(hi)
         if val_hi is not None and val_hi < current_price:
             hi += 1.00
         else:
             break
-
-    implied_g = None
-    for _ in range(70):
-        mid = (lo + hi) / 2.0
-        val_mid = _eval_own(mid)
-        if val_mid is None:
-            break
-        if abs(val_mid - current_price) < 0.0001 * current_price:
-            implied_g = mid
-            break
-        if val_mid < current_price:
-            lo = mid
-        else:
-            hi = mid
-    if implied_g is None:
-        implied_g = (lo + hi) / 2.0
-
-    implied_g_pct = round(implied_g * 100.0, 2)
+    own = solve_nearest(_own_diff, _linspace(-0.99, hi, SOLVER_GRID_POINTS), 0.0 if x0 is None else float(x0), all_roots=True)
+    implied_g = own["s"] if own["found"] else None
+    implied_g_pct = None if implied_g is None else round(implied_g * 100.0, 2)
+    roots_pct = [round(r * 100.0, 2) for r in own["roots"]]
     res: Dict[str, Any] = {
         "current_price": round(current_price, 2),
         "shares_diluted": shares_diluted,
@@ -735,6 +1086,11 @@ def reverse_dcf_expectations_gap(
             "terminal_g_pct": round(terminal_g * 100.0, 2),
             "discount_rate_pct": round(wacc * 100.0, 2),
             "valuation_frame": valuation_frame,
+            "reachable": own["found"],
+            "side": own["side"],
+            "roots_on_grid": own["roots_on_grid"],
+            "roots_pct": roots_pct,
+            "stamps": ["multiple_roots"] if own["roots_on_grid"] > 1 else [],
         },
         "implied_growth_next_5y_pct": implied_g_pct,
     }
@@ -834,7 +1190,7 @@ def reverse_dcf_expectations_gap(
 
             res["neutral_reference_structure"] = neutral_res
 
-    if demonstrated_cagr_5y is not None:
+    if demonstrated_cagr_5y is not None and implied_g_pct is not None:
         gap = round(implied_g_pct - demonstrated_cagr_5y, 2)
         res["demonstrated_cagr_5y_pct"] = round(demonstrated_cagr_5y, 2)
         res["expectations_gap_pts"] = gap
@@ -1344,6 +1700,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     base_inputs: Dict[str, Any] = {}     # the Base's effective inputs, for the reverse DCF
     base_final: Dict[str, Any] = {}      # Base name -> (explicit growth, terminal_g, fade_years) as valued, for C6
     value_args: Dict[str, Any] = {}      # scenario name -> the arguments its value was computed with, for C6
+    base_solver: Dict[str, Any] = {}     # Base name -> its exact applied arguments, for the price-implied solver (revision 19)
 
     def _value(name, cf_in, gr_in, wacc_in, tg_in, shares_in, fade_in, sbc_in, sbc_dil_in, frame_in,
                net_debt_in, rate_type_in, annuity_in, annuity_cap_in, ronic_in):
@@ -1449,6 +1806,12 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 growth_now, fade_now = held_growth, fade_left
                 dcf_res = held_res
         base_final[name] = (list(growth_now), tg_in, fade_now)
+        base_solver[name] = {"cf": float(cf_in), "growth": list(growth_now), "fade": fade_now, "wacc": float(wacc_in),
+                             "tg": float(tg_in) if tg_in is not None else None, "shares": shares_in, "sbc": sbc_in,
+                             "sbc_dil": sbc_dil_in, "frame": frame_in, "net_debt": net_debt_in, "rate_type": rate_type_in,
+                             "annuity": annuity_in, "annuity_cap": annuity_cap_in, "ronic": ronic_in, "wc": wc_use,
+                             "excess": excess_use, "long_run": long_run_ctx, "finite": desk_finite_life_years,
+                             "raw": dcf_res["per_share_iv_raw"]}
         return dcf_res
 
     # ---- 1. Batch scenario DCF execution -------------------------------------------------------
@@ -1799,6 +2162,15 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             return _refusal(missing=[], needs_reasons=needs_reasons_list, order=order_violation,
                             share_unit_note=share_unit_note, advice=advice)
 
+    # ---- 3a. Revision 19: the price-implied value of each judgment input, on the Base of an accepted call ------------------------
+    pi_key = next((str(it.get("name") or "Scenario") for it in scenario_dcfs
+                   if _role_of(it.get("name")) == "base" and str(it.get("name") or "Scenario") in base_solver), None)
+    if pi_key is None and dcf_single is not None and "top-level" in base_solver:
+        pi_key = "top-level"
+    if pi_key is not None and _is_num(price) and price > 0:
+        result["price_implied"] = price_implied(base_solver[pi_key], float(price), rf_eff=ctx.get("rf_eff"),
+                                                gdp_trend=ctx.get("nominal_gdp_trend"), levels=ctx.get("levels"))
+
     # ---- 3. Reverse DCF expectations gap (own structure + neutral reference from context) -----
     base_role_sc = next((s for s in scenarios if isinstance(s, dict) and _role_of(s.get("name")) == "base"), None)
     rev_cf = base_cf if base_cf is not None else (base_role_sc.get("base_cf") if base_role_sc else None)
@@ -1854,6 +2226,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     long_run=long_run_ctx,
                     working_capital=(None if (not wc_ctx or base_inputs.get("wc_in_base")) else wc_ctx),
                     excess_cash=excess_use,
+                    x0=(base_solver[pi_key]["growth"][0] if pi_key is not None else None),
                 )
 
     # ---- 4. Continuous Kelly sizing and Payoff Skew --------------------------------------------
@@ -1983,7 +2356,16 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
             lines.append(f"**Reverse DCF:** {r.get('note', 'Skipped')}\n")
         else:
             lines.append("**Reverse DCF Expectations Gap (What's Priced in at T0):**")
-            lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **{r.get('implied_growth_next_5y_pct', 0.0):+.1f}%**")
+            os_ = r.get("own_structure") or {}
+            if r.get("implied_growth_next_5y_pct") is None:
+                lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **not reachable** (no constant growth between -99% and "
+                             f"the search ceiling makes your structure's value equal today's price: the price is {os_.get('side') or 'outside'} every value)")
+            else:
+                lines.append(f"- Structure (a) [Own Assumptions]: Implied Stage-1 Growth: **{r.get('implied_growth_next_5y_pct'):+.1f}%**")
+                if os_.get("roots_on_grid", 0) > 1:
+                    roots = ", ".join(f"{x:+.1f}%" for x in os_.get("roots_pct") or [])
+                    lines.append(f"  * Not unique: your structure's value equals today's price at {os_['roots_on_grid']} constant growths ({roots}); "
+                                 f"the one nearest your year-1 growth is shown")
         if "expectations_gap_pts" in r:
             lines.append(f"  * Demonstrated 5Y Historical CAGR: {r['demonstrated_cagr_5y_pct']:+.1f}% -> Expectations Gap: **{r['expectations_gap_pts']:+.1f} points**")
             lines.append(f"  * Assessment: *{r['assessment']}*")

@@ -268,6 +268,52 @@ def test_at1e_uses_five_percent_where_the_reference_has_no_year_one_growth_and_c
     assert res["names_run"] == 0 and sum(res["cannot_run_by_reason"].values()) == 1 and not res["pass"]
 
 
+def test_at1e_restated_a_name_with_more_than_one_root_is_reported_not_marked_and_the_solve_never_gets_g_star(world, monkeypatch):
+    """Revision 19, brief 10a (definitional, post hoc): bar (a) applies to a name whose own-structure value has exactly one root at the round-trip
+    price; a name with more than one root is reported with its roots and the solver's choice, and the round trip uses x0 = 0, never g*."""
+    import desk_checks
+    real = world.ns.fmt.reverse_dcf_expectations_gap
+    seen = []
+
+    def spy(**kw):
+        seen.append(kw)
+        return real(**kw)
+    monkeypatch.setattr(world.ns.fmt, "reverse_dcf_expectations_gap", spy)
+    res = desk_checks.round_trips(world.ns, world.rows)
+    assert res["pass"] and res["a_applies_to_single_root_names"] == 1 and res["a_multiple_roots"]["count"] == 0
+    assert seen and all("x0" not in kw for kw in seen)                                  # x0 is never given: the solve starts from 0, not from g*
+    own_price = seen[0]["current_price"]
+    assert abs(own_price * 100.0 - round(own_price * 100.0)) > 1e-9                      # the price is the unrounded value (per_share_iv_raw), not cents
+
+    def three_roots(**kw):
+        out = real(**kw)
+        if "own_structure" in out:
+            out = dict(out, own_structure=dict(out["own_structure"], roots_on_grid=3, roots_pct=[-12.0, 40.5, 133.0], solved_growth_pct=40.5))
+        return out
+    monkeypatch.setattr(world.ns.fmt, "reverse_dcf_expectations_gap", three_roots)
+    multi = desk_checks.round_trips(world.ns, world.rows)
+    assert multi["pass"] and multi["a_own_structure"]["n"] == 0 and multi["a_applies_to_single_root_names"] == 0
+    assert multi["a_multiple_roots"]["count"] == 1
+    (key, roots, chosen, g_star), = multi["a_multiple_roots"]["items"]
+    assert key == "GEV" and roots == [-12.0, 40.5, 133.0] and chosen == 40.5 and isinstance(g_star, float)
+    assert multi["b_neutral_structure"]["n"] == 1 and multi["b_neutral_structure"]["max_abs_pp"] <= 0.1
+    anon = desk_checks.round_trips(world.ns, world.rows, names=False)
+    assert anon["a_multiple_roots"]["items"][0][0] is None
+
+
+def test_at1e_reads_the_unrounded_price_so_a_low_priced_name_passes(world, monkeypatch):
+    """The four revision-18 misses were names priced $1.35-$7.95 whose value moves $0.02-$0.05 a point: the round trip read cents."""
+    import desk_checks
+    rows = _copy(world.rows)
+    # a name whose per-share value is a few dollars and moves two cents a point: scale the share count of the DEFAULTS facts up
+    text = rows["GEV"]["text"]
+    parsed = world.ns.pack_facts.from_text(text)
+    scale = 25.0
+    monkeypatch.setattr(world.ns.pack_facts, "from_text", lambda t: dict(parsed, shares_default=parsed["shares_default"] * scale))
+    res = desk_checks.round_trips(world.ns, rows)
+    assert res["pass"] and res["a_own_structure"]["max_abs_pp"] <= 0.1, res["summary"]
+
+
 # ---- the row-level ATs -----------------------------------------------------------------------------------------------------------------
 
 def test_at1d_agrees_on_the_synthetic_name_and_finds_a_disagreement(world):

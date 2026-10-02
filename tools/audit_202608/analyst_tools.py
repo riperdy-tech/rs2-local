@@ -1077,6 +1077,20 @@ def _shorten_tool_calls(tool_calls, limit=ARG_MAX_CHARS):
     return out
 
 
+def _own_growth_notes(rd):
+    """Revision 19 (brief 10a): what the model must be told about the own-structure growth the reverse DCF solved. A price no constant growth
+    reaches is "not reachable"; a price reached at more than one constant growth lists every root (the solver shows the one nearest the
+    Base's year-1 growth). Nothing when the growth is unique."""
+    own = rd.get("own_structure") if isinstance(rd, dict) else None
+    if not isinstance(own, dict):
+        return {}
+    if own.get("reachable") is False:
+        return {"own_structure": "not reachable"}
+    if (own.get("roots_on_grid") or 0) > 1:
+        return {"own_growth_not_unique": True, "own_growth_roots_pct": list(own.get("roots_pct") or [])}
+    return {}
+
+
 def _desk_summary(args, result):
     """The numbers a desk call exists to produce, per scenario, then reverse DCF and Kelly."""
     out = {}
@@ -1110,6 +1124,7 @@ def _desk_summary(args, result):
             "implied_growth_next_5y_pct": rd.get("implied_growth_next_5y_pct"),
             "neutral_10y_cagr_pct": neutral.get("implied_10y_cagr_pct") if isinstance(neutral, dict) else None,
             "expectations_gap_pts": rd.get("expectations_gap_pts")}.items() if v is not None}
+        out["reverse_dcf"].update(_own_growth_notes(rd))
     k = result.get("kelly_sizing")
     if isinstance(k, dict):
         out["kelly"] = {kk: k.get(kk) for kk in ("expected_iv", "expected_return_pct",
@@ -1119,6 +1134,11 @@ def _desk_summary(args, result):
         out["years35_cap"] = result["years35_cap"]
     if "years12_held" in result:
         out["years12_held"] = result["years12_held"]
+    # revision 19: the price-implied value of each judgment input leads the result, where no cut reaches it
+    import financial_model_tool as fmt
+    pi_lines = fmt.price_implied_lines(result.get("price_implied"))
+    if pi_lines:
+        out["price_implied"] = pi_lines
     return out
 
 
@@ -1264,6 +1284,7 @@ def compact_tool_note(name, args, result, call_index) -> str:
                 rev_dict = {}
                 if rd.get("implied_stage1_growth_pct") is not None:
                     rev_dict["implied_stage1_growth_pct"] = rd.get("implied_stage1_growth_pct")
+                rev_dict.update(_own_growth_notes(rd))
                 neutral = rd.get("neutral_reference_structure")
                 if isinstance(neutral, dict) and neutral.get("implied_10y_cagr_pct") is not None:
                     rev_dict["neutral_10y_cagr_pct"] = neutral.get("implied_10y_cagr_pct")
@@ -1294,7 +1315,13 @@ def compact_tool_note(name, args, result, call_index) -> str:
         json_str = json.dumps(compact, separators=(',', ':'))
         if len(json_str) > 1200:
             json_str = json_str[:1200]
-        return f"[call {call_index}] model: {json_str}"
+        note = f"[call {call_index}] model: {json_str}"
+        if isinstance(result, dict) and not result.get("error"):
+            # revision 19: one line per judgment input after the JSON, which the 1,200-character cut does not reach
+            import financial_model_tool as fmt
+            for line in fmt.price_implied_lines(result.get("price_implied")):
+                note += f"\nprice_implied {line}"
+        return note
 
     return str(result)[:500]
 
