@@ -239,10 +239,12 @@ def test_a_failed_vendor_fetch_in_the_consensus_cache_refuses_the_closure_and_is
         rc.build_closure(root=_MarkedRoot(companies, markers), cap_mod=cap, rs2_mod=_AnchorsReadingFiles(), enrich_dir=tmp_path, asof="2026-10-02")
     msg = str(e.value)
     assert "error record of a failed vendor fetch (HTTP 503 at info)" in msg and "nothing is published" in msg and not any(t in msg for t in companies)
-    # the same directory with a no-coverage record (a good record whose estimates are null) is not a refusal for this reason
-    (tmp_path / "Z03.json").write_text(json.dumps({"_ticker": "Z03", "_fetched_at": "2026-10-02T00:00:00+00:00", "estimates": None}), encoding="utf-8")
+    # a no-coverage record (a good record whose estimates are null) is not a refusal for this reason (a new folder: json loads may be cached by path)
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    (fresh / "Z03.json").write_text(json.dumps({"_ticker": "Z03", "_fetched_at": "2026-10-02T00:00:00+00:00", "estimates": None}), encoding="utf-8")
     with pytest.raises(rc.Refused) as e2:
-        rc.build_closure(root=_MarkedRoot(companies, markers), cap_mod=cap, rs2_mod=_AnchorsReadingFiles(), enrich_dir=tmp_path, asof="2026-10-02")
+        rc.build_closure(root=_MarkedRoot(companies, markers), cap_mod=cap, rs2_mod=_AnchorsReadingFiles(), enrich_dir=fresh, asof="2026-10-02")
     assert "coverage floor" in str(e2.value) and "vendor" not in str(e2.value)
 
 
