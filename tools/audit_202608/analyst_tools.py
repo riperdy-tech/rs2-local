@@ -957,6 +957,8 @@ def turn_metrics(resp):
         "load_s": round((resp.get("load_duration") or 0) / 1e9, 2),
         "done_reason": resp.get("done_reason"),
         "n_tool_calls": len((resp.get("message") or {}).get("tool_calls") or []),
+        # Muse integration, M5: the named cause of a refused turn (llamacpp provider only; an Ollama 500 has none)
+        **({"server_error_cause": resp["server_error_cause"]} if resp.get("server_error_cause") else {}),
     }
 
 
@@ -1585,7 +1587,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         except urllib.error.HTTPError as e:
             if e.code >= 500:
                 server_errors += 1
-                return {"message": {}, "done_reason": "server_error", "http_status": e.code}
+                # the provider's named cause (context_overflow, connection_reset, engine_not_ready, ...); an Ollama 500 has none
+                cause = getattr(e, "cause", None)
+                return {"message": {}, "done_reason": "server_error", "http_status": e.code,
+                        **({"server_error_cause": cause} if cause else {})}
             raise
         if resp.get("prompt_eval_count"):
             chars_per_token[0] = len(json.dumps(body["messages"])) / resp["prompt_eval_count"]

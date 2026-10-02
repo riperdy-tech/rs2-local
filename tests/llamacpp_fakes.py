@@ -9,6 +9,7 @@ muse_env       a fixture: FakeLlama + the config and engine.json that make `llm_
 import copy
 import json
 import os
+import select
 import socket
 import struct
 import sys
@@ -85,13 +86,16 @@ def tool_call(name="search_web", args='{"query": "q"}', cid="call_1"):
 
 class FakeLlama:
     """`script` is a list of behaviours consumed in order (the last repeats): ("json", status, obj), ("raw", status,
-    bytes), ("sleep", seconds, obj), ("reset",) or a callable(request_body) returning one of those. `health` is the
+    bytes), ("sleep", seconds, obj), ("watch", seconds, obj), ("reset",) or a callable(request_body) returning one of those.
+    "watch" is "sleep" that notices the client closing the connection (llama-server stops a request whose client went away):
+    it sets `client_closed_at` (seconds after the request arrived) and answers nothing. `health` is the
     (status, obj) GET /health answers, or a callable() returning it; `health_delay` delays that answer."""
 
     def __init__(self):
         self.requests = []
         self.health_calls = 0
         self.script = []
+        self.client_closed_at = None
         self.health = (200, {"status": "ok"})
         self.health_delay = 0.0
         outer = self
@@ -128,6 +132,19 @@ class FakeLlama:
                     self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
                     self.connection.close()
                     return
+                if kind == "watch":
+                    t0 = time.time()
+                    while time.time() - t0 < beh[1]:
+                        r, _, _ = select.select([self.connection], [], [], 0.02)
+                        if r:
+                            try:
+                                gone = self.connection.recv(1, socket.MSG_PEEK) == b""
+                            except OSError:
+                                gone = True
+                            if gone:
+                                outer.client_closed_at = time.time() - t0
+                                return
+                    kind, beh = "json", ("json", 200, beh[2])
                 if kind == "sleep":
                     time.sleep(beh[1])
                     kind, beh = "json", ("json", 200, beh[2])
