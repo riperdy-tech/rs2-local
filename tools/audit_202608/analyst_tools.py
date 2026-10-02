@@ -938,6 +938,13 @@ def report_is_deliverable(text):
     return len(body) >= REPORT_MIN_CHARS
 
 
+# What the llamacpp provider's response carries (llm_provider): the engine record that answered, llama-server's draft counters,
+# whether reasoning markers were left in the content, the sampling fields it stripped, the options it ignored, and whether it
+# injected the SYSTEM text.
+TURN_PROVENANCE_KEYS = ("engine", "draft_n", "draft_n_accepted", "reasoning_in_content", "sampling_stripped",
+                        "ignored_options", "system_injected")
+
+
 def turn_metrics(resp):
     """Per-turn cost record from one Ollama /api/chat response.
 
@@ -959,6 +966,9 @@ def turn_metrics(resp):
         "n_tool_calls": len((resp.get("message") or {}).get("tool_calls") or []),
         # Muse integration, M5: the named cause of a refused turn (llamacpp provider only; an Ollama 500 has none)
         **({"server_error_cause": resp["server_error_cause"]} if resp.get("server_error_cause") else {}),
+        # Muse integration, M6 (P7 step 0's harness patch, re-implemented): engine provenance and draft counters ride on the turn
+        # when the serving path reports them; an Ollama response has none of these keys, so its record is unchanged.
+        **{k: resp[k] for k in TURN_PROVENANCE_KEYS if k in resp},
     }
 
 
@@ -2127,6 +2137,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             sum(1 for c in snap if c.get("tool") == "run_financial_model") - desk_calls_at_c8)
     eval_rate = round(gen_tokens / (eval_duration_total / 1e9), 2) if eval_duration_total > 0 else 0
     return final_report, final_think, {"tool_calls": calls, "done_reason": done_reason,
+                                       **llm_provider.turns_provenance(turns),
                                        "stub_rejected": stub_rejected,
                                        "turns": turns,
                                        "generated_tokens": gen_tokens,

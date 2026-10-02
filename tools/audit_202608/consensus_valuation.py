@@ -2477,6 +2477,7 @@ def main():
                      "failed_reason": failed_reason,
                      "report_turn_headroom_tokens": (meta or {}).get("report_turn_headroom_tokens"),
                      "done_reason": resp.get("done_reason"),
+                     **llm_provider.run_row_provenance(meta, resp),
                      "prompt_tokens": p_tok, "generated_tokens": g_tok,
                      "eval_rate": eval_rate, "eval_duration_s": eval_dur_s,
                      "thinking_chars": len(think), "report_chars": len(rep),
@@ -2609,6 +2610,7 @@ def main():
                    f"NOT CONVERGED — only {len(good)} usable sample(s), spread undefined" if med else
                    "NO USABLE SAMPLE — nothing parseable and complete")
     doc = {"ticker": t, "price": price, "model": model, "think": think_level,
+           **llm_provider.doc_provenance(runs),
            "draft_num_predict": draft_num_predict,
            "temperature": temperature,
            "pack_revision": cap.PACK_REVISION,

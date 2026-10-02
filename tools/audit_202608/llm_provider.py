@@ -502,6 +502,41 @@ def ollama_serving(model):
     return out
 
 
+def turns_provenance(turns):
+    """Per-sample provenance from the per-turn records of a tools session: the engine of the first turn that has one, whether
+    every turn's engine equals it, and the draft counters summed. {} when no turn carries an engine record, so an Ollama
+    sample's record is unchanged."""
+    engines = [t["engine"] for t in turns if t.get("engine") is not None]
+    if not engines:
+        return {}
+    drafted = [t["draft_n"] for t in turns if t.get("draft_n") is not None]
+    accepted = [t["draft_n_accepted"] for t in turns if t.get("draft_n_accepted") is not None]
+    return {"engine": engines[0], "engine_consistent": all(e == engines[0] for e in engines),
+            "draft_n": sum(drafted) if drafted else None, "draft_n_accepted": sum(accepted) if accepted else None}
+
+
+def run_row_provenance(meta, resp=None):
+    """The same four fields for a `runs` row of consensus.json: from the tools session's meta, or (no-tools path) from the
+    provider's own response. {} when the serving path reported no engine."""
+    meta = meta or {}
+    if meta.get("engine") is not None:
+        return {k: meta.get(k) for k in ("engine", "engine_consistent", "draft_n", "draft_n_accepted")}
+    if isinstance(resp, dict) and resp.get("engine") is not None:
+        return {"engine": resp["engine"], "engine_consistent": True, "draft_n": resp.get("draft_n"),
+                "draft_n_accepted": resp.get("draft_n_accepted")}
+    return {}
+
+
+def doc_provenance(runs):
+    """The run-level fields of consensus.json: `provider` always, `engine` (of the first sample that has one) when the serving
+    path reported one."""
+    out = {"provider": provider_name()}
+    engine = next((r["engine"] for r in runs if r.get("engine") is not None), None)
+    if engine is not None:
+        out["engine"] = engine
+    return out
+
+
 def serving_block(provider, model, engine=None):
     """The `serving` object of a verdict row. Under llamacpp it is read from the engine record that answered (None for a
     field the record lacks: a gap stays visible); under ollama from the Ollama manifest."""

@@ -49,6 +49,7 @@ sys.path.insert(0, str(HERE / "tools" / "audit_202608"))
 import ops                  # noqa: E402
 import rs2_data             # noqa: E402
 import llamacpp_server      # noqa: E402  (depth_provider "llamacpp": the llama-server lifecycle, M3)
+import llm_provider         # noqa: E402  (the serving block of a verdict row, M6)
 import price_now            # noqa: E402  (P1.5 live price at verdict time)
 import screener_refresh     # noqa: E402  (P4.-1 — refresh the publish clone on a standalone run)
 import momentum_basis       # noqa: E402  (P4 E5b momentum basis)
@@ -698,6 +699,10 @@ def band_verdict(doc):
         "code_fill_mode": scorecard.get("code_fill_mode"),
         "consensus_data_status": doc.get("consensus_data_status"),
     })
+
+    # Muse integration, M6: how the row was served (a doc written before the provider carried none, and gets none)
+    if doc.get("provider"):
+        v["serving"] = llm_provider.serving_block(doc["provider"], doc.get("model"), doc.get("engine"))
 
     nar_flags, nar_notes = _not_a_result(doc, good)
     if not ivs or not price:
