@@ -104,8 +104,8 @@ def test_build_day_records_the_pack_the_reference_the_independent_call_the_cash_
     assert world.meta["enrich_label"] == "book" and world.meta["enrich_check"]["pass"] is True
     inputs = ac.inputs_record(world.ns)
     assert len(inputs["history_sha256"]) == 64 and len(inputs["closure_sha256"]) == 64 and inputs["mri_anchor_sha256"]
-    assert inputs["pack_revision"] == 19 and inputs["date"] == DATE and inputs["resolved_dirs"]["screener_data_dir"] == str(world.sd.resolve())
-    assert ac.constants(world.ns)["FACTS_VERSION"] == 7 and "Level anchor" not in ac.constants(world.ns)["TASK"]          # restated for revision 19
+    assert inputs["pack_revision"] == 20 and inputs["date"] == DATE and inputs["resolved_dirs"]["screener_data_dir"] == str(world.sd.resolve())
+    assert ac.constants(world.ns)["FACTS_VERSION"] == 8 and "Level anchor" not in ac.constants(world.ns)["TASK"]          # restated for revision 20
 
 
 def _enrich_root(tmp_path, records):
@@ -427,20 +427,27 @@ def _at5_rows():
     return rows
 
 
-def _read(day_sha="d" * 64, **reads):
-    return {"at": "AT5 gross-error read", "day_file_sha256": day_sha, "reads": {k: {"unit_or_scale_error": v} for k, v in reads.items()}}
+TREE_C = "c" * 40
+
+
+def _read(day_sha="d" * 64, tree=TREE_C, **reads):
+    """A version-2 read (revision 20, brief_input_scope_fixes.md 9.3): each entry with both booleans and a basis holding a digit; a value of
+    `v` for a key marks the unit-or-scale error (an entry's other fields stay complete)."""
+    return {"at": "AT5 gross-error read", "version": 2, "day_file_sha256": day_sha, "tree_commit": tree, "reviewer": "test",
+            "written_at": "2026-10-02 21:00 KST",
+            "reads": {k: {"unit_or_scale_error": v, "input_scope_error": False, "basis": "V/P 4.0: price 100, reference 400"} for k, v in reads.items()}}
 
 
 def test_at5_prime_the_median_clause_stays_and_the_ten_percent_clause_is_reported_not_marked():
     import at_rows
     rows = {f"N{i}": _row(printed=100.0 * v) for i, v in enumerate([0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.0, 0.95, 1.05, 1.0])}
-    ok = at_rows.at5(rows, read=_read(), read_sha256="a" * 64)
+    ok = at_rows.at5(rows, read=_read(), read_sha256="a" * 64, tree_commit=TREE_C)
     assert ok["pass"] is True and ok["median_ok"] and ok["extreme"] == 0 and ok["gross_error_read_required_for"] == 0
     low = {f"N{i}": _row(printed=65.0) for i in range(10)}
-    res = at_rows.at5(low, read=_read(), read_sha256="a" * 64)
+    res = at_rows.at5(low, read=_read(), read_sha256="a" * 64, tree_commit=TREE_C)
     assert not res["pass"] and "label" not in res and "median clause FAILS" in res["summary"]               # median 0.65: a FAIL, never PENDING
     wild = dict(rows, X=_row(printed=400.0), Y=_row(printed=20.0))                                        # 2 of 12 extreme: 16.7%, over the old 10% bar
-    res = at_rows.at5(wild, read=_read(), read_sha256="a" * 64)
+    res = at_rows.at5(wild, read=_read(X=False, Y=False), read_sha256="a" * 64, tree_commit=TREE_C)      # revision 20: every extreme is read
     assert res["extreme"] == 2 and res["extreme_share"] > 0.10 and res["pass"] is True                     # reported, not marked
     assert "reported, not marked" in res["summary"] and res["extreme_census"]["above_3x"] == 1 and res["extreme_census"]["below_one_third"] == 1
     assert not at_rows.at5({})["pass"]
@@ -450,19 +457,21 @@ def test_at5_prime_a_missing_or_incomplete_read_is_pending_never_pass_and_an_err
     import at_rows
     rows = _at5_rows()
     none = at_rows.at5(rows)
-    assert none["pass"] is False and none["label"] == "PENDING" and none["gross_error_read_required_for"] == 2 and none["gross_error_read_unread"] == 2
+    # revision 20 (9.4 (a)): every extreme is required, Z (no flag) included
+    assert none["pass"] is False and none["label"] == "PENDING" and none["gross_error_read_required_for"] == 3 and none["gross_error_read_unread"] == 3
     assert none["gross_error_read_sha256"] is None and "missing" in none["summary"] and ac.status_word(none) == "PENDING"
-    partial = at_rows.at5(rows, read=_read(X=False), read_sha256="a" * 64, day_sha256="d" * 64)
+    kw = dict(read_sha256="a" * 64, day_sha256="d" * 64, tree_commit=TREE_C)
+    partial = at_rows.at5(rows, read=_read(X=False, Y=False), **kw)
     assert partial["pass"] is False and partial["label"] == "PENDING" and partial["gross_error_read_unread"] == 1 and ac.status_word(partial) == "PENDING"
-    full = at_rows.at5(rows, read=_read(X=False, Y=False), read_sha256="a" * 64, day_sha256="d" * 64)
+    full = at_rows.at5(rows, read=_read(X=False, Y=False, Z=False), **kw)
     assert full["pass"] is True and "label" not in full and full["gross_error_read_sha256"] == "a" * 64 and full["extreme"] == 3
-    assert full["gross_error_read_required_for"] == 2                                                      # Z has no flag: read or not, it binds nothing
-    bad = at_rows.at5(rows, read=_read(X=False, Y=True), read_sha256="a" * 64, day_sha256="d" * 64)
+    assert full["gross_error_read_required_for"] == 3 and full["extreme_with_scale_risk"] == 2
+    bad = at_rows.at5(rows, read=_read(X=False, Y=True, Z=False), **kw)
     assert bad["pass"] is False and "label" not in bad and bad["gross_error_read_unit_or_scale_errors"] == 1 and ac.status_word(bad) == "FAIL"
-    other_day = at_rows.at5(rows, read=_read(day_sha="e" * 64, X=False, Y=False), read_sha256="a" * 64, day_sha256="d" * 64)
+    other_day = at_rows.at5(rows, read=_read(day_sha="e" * 64, X=False, Y=False, Z=False), **kw)
     assert other_day["pass"] is False and other_day["label"] == "PENDING" and "another day file" in other_day["summary"]
-    for junk in ({}, {"at": "AT5 gross-error read"}, _read(X="no", Y=None)):
-        r = at_rows.at5(rows, read=junk, read_sha256="a" * 64)
+    for junk in ({}, {"at": "AT5 gross-error read"}, _read(X="no", Y=None, Z=False)):
+        r = at_rows.at5(rows, read=junk, read_sha256="a" * 64, tree_commit=TREE_C)
         assert r["pass"] is False and r["label"] == "PENDING"
     # the median FAIL outranks a missing read
     low = {f"N{i}": _row(printed=65.0) for i in range(10)}
@@ -475,10 +484,156 @@ def test_at5_prime_the_scale_risk_rule_and_a_result_with_no_ticker():
              _row(printed=400.0, text="**SCALE CORRUPTION.** One period"), _row(printed=400.0), _row(printed=400.0, value=400.0)]
     flags[4]["reference"]["method"] = "cash_only"
     assert [at_rows.scale_risk(r) for r in flags] == [True, True, True, False, True]
-    res = at_rows.at5(_at5_rows(), read=_read(X=False, Y=False), read_sha256="a" * 64, day_sha256="d" * 64)
+    res = at_rows.at5(_at5_rows(), read=_read(X=False, Y=False, Z=False), read_sha256="a" * 64, day_sha256="d" * 64, tree_commit=TREE_C)
     dumped = json.dumps(res)
     assert not any(f'"{k}"' in dumped for k in ("X", "Y", "Z")) and "N3" not in dumped
     assert res["extreme_census"] == {"above_3x": 2, "below_one_third": 1, "outside_the_fence": 2, "levels_method": 1, "cash_only": 1, "with_a_shares_flag": 1}
+
+
+def test_build_day_hashes_the_four_files_the_input_scope_build_rewrites(world):
+    """Section 10 step 3: a day built on the scratch folder sd_scope records the sha256 of each of the four files the screener's input-scope build rewrites
+    (history, TTM, quarterly, battery), so the day is stated by the corrected data."""
+    inputs = ac.inputs_record(world.ns)
+    sd = Path(world.ns.sd)
+    assert inputs["history_sha256"] == ac.sha256_file(sd / "fundamentals_history.json")
+    assert inputs["ttm_sha256"] == ac.sha256_file(sd / "fundamentals_ttm.json")
+    for f in ("fundamentals_quarterly.json", "fundamentals_battery.json"):
+        assert f in ac.SCREENER_INPUT_FILES and inputs["screener_input_sha256"][f] == (ac.sha256_file(sd / f) if (sd / f).exists() else None)
+
+
+# ---- revision 20 (brief_input_scope_fixes.md 9.3-9.4): the read file version 2 and the hardened check, one test per item ---------------------
+
+def _full(**over):
+    """A complete version-2 read of `_at5_rows()`'s three extremes, `over` merged into the top level."""
+    r = _read(X=False, Y=False, Z=False)
+    r.update(over)
+    return r
+
+
+def _at5(read, **kw):
+    import at_rows
+    args = dict(read_sha256="a" * 64, day_sha256="d" * 64, tree_commit=TREE_C)
+    args.update(kw)
+    return at_rows.at5(_at5_rows(), read=read, **args)
+
+
+def test_at5_hardening_a_every_extreme_is_required_not_only_the_scale_risk_ones():
+    import at_rows
+    res = _at5(_read(X=False, Y=False))                                              # Z carries no flag: still required
+    assert res["pass"] is False and res["label"] == "PENDING" and res["gross_error_read_unread"] == 1 and res["gross_error_read_required_for"] == 3
+    assert _at5(_full())["pass"] is True
+    unread, errors, problems = at_rows.read_problems(_full(), ["X", "Y", "Z"], "d" * 64, tree_commit=TREE_C)
+    assert unread == [] and errors == [] and problems == []
+
+
+def test_at5_hardening_b_an_entry_is_read_only_with_both_booleans_and_a_basis_with_a_digit():
+    for broken in ({"input_scope_error": None}, {"unit_or_scale_error": "false"}, {"basis": "looked at it, fine"}, {"basis": ""},
+                   {"basis": None}, {"input_scope_error": True}):                     # an input-scope mark without its category is not read
+        r = _full()
+        r["reads"]["Z"] = dict(r["reads"]["Z"], **broken)
+        if broken == {"input_scope_error": True}:
+            res = _at5(r)
+            assert res["pass"] is False and "label" not in res                        # it marks an error: a FAIL outranks the unread entry
+            continue
+        res = _at5(r)
+        assert res["pass"] is False and res["label"] == "PENDING" and res["gross_error_read_unread"] == 1, broken
+    r = _full()
+    r["reads"]["Z"].pop("input_scope_error")
+    assert _at5(r)["label"] == "PENDING"
+
+
+def test_at5_hardening_c_any_entry_marking_either_error_fails_required_or_not():
+    import at_rows
+    r = _full()
+    r["reads"]["Y"].update(input_scope_error=True, input_scope_category="nci")
+    res = _at5(r)
+    assert res["pass"] is False and "label" not in res and res["gross_error_read_input_scope_errors"] == 1 and ac.status_word(res) == "FAIL"
+    assert "1 input-scope error(s): FAIL" in res["summary"]
+    for cat in at_rows.INPUT_SCOPE_CATEGORIES:
+        r = _full()
+        r["reads"]["Z"].update(input_scope_error=True, input_scope_category=cat)
+        assert _at5(r)["pass"] is False
+    # an error mark on an entry that is not required (here: one the day does not even hold) still FAILS
+    r = _full()
+    r["reads"]["N3"] = {"unit_or_scale_error": True, "input_scope_error": False, "basis": "V/P 1.1"}
+    res = _at5(r)
+    assert res["pass"] is False and "label" not in res and res["gross_error_read_unit_or_scale_errors"] == 1
+
+
+def test_at5_hardening_d_an_entry_for_a_row_that_is_not_an_extreme_is_a_problem():
+    r = _full()
+    r["reads"]["N3"] = {"unit_or_scale_error": False, "input_scope_error": False, "basis": "V/P 1.1"}
+    res = _at5(r)
+    assert res["pass"] is False and res["label"] == "PENDING" and any("not an extreme of this day file" in p for p in res["gross_error_read_problems"])
+    assert "N3" not in json.dumps(res)
+
+
+def test_at5_hardening_e_a_duplicate_key_is_a_problem(tmp_path):
+    import at_rows
+    text = json.dumps(_full())
+    dup = text.replace('"reads": {', '"reads": {"Z": {"unit_or_scale_error": true, "input_scope_error": false, "basis": "1"}, ', 1)
+    read, dups = at_rows.parse_read(dup.encode("utf-8"))
+    assert dups == ["Z"] and read["reads"]["Z"]["unit_or_scale_error"] is False               # the ordinary parser keeps the last
+    res = _at5(read, read_duplicates=dups)
+    assert res["pass"] is False and res["label"] == "PENDING" and any("repeats" in p for p in res["gross_error_read_problems"])
+    top = text.replace('"version": 2', '"version": 2, "version": 2', 1)
+    assert at_rows.parse_read(top.encode("utf-8"))[1] == ["version"]
+    assert at_rows.parse_read(b"not json") == (None, [])
+    # the script reads the file through parse_read: a duplicate there leaves the result PENDING
+    day = tmp_path / "day.json"
+    ac.write_result(day, {"meta": {"enrich_check": {"pass": True}, "inputs": {"tree_commit": TREE_C}}, "rows": _at5_rows()})
+    sha = ac.sha256_file(day)
+    f = tmp_path / "read.json"
+    f.write_text(json.dumps(_read(day_sha=sha, X=False, Y=False, Z=False)).replace('"reads": {', '"reads": {"Z": {}, ', 1), encoding="utf-8")
+    p = subprocess.run([PY, str(HERE / "at5_level_sanity.py"), "--day", str(day), "--gross-error-read", str(f), "--out", str(tmp_path / "r.json")],
+                       capture_output=True, text=True)
+    res = json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))
+    assert p.returncode == 1 and res["label"] == "PENDING" and any("repeats" in x for x in res["gross_error_read_problems"])
+
+
+def test_at5_hardening_f_unknown_top_level_and_entry_keys_are_problems():
+    res = _at5(_full(comment="x"))
+    assert res["label"] == "PENDING" and any("unknown top-level keys: comment" in p for p in res["gross_error_read_problems"])
+    assert _at5(_full(notes="a free note"))["pass"] is True                                   # notes is allowed
+    r = _full()
+    r["reads"]["X"]["why_read"] = "shares warning"                                            # version 1's extra entry key
+    res = _at5(r)
+    assert res["label"] == "PENDING" and any("unknown keys" in p for p in res["gross_error_read_problems"])
+    for k in ("reviewer", "written_at", "tree_commit", "day_file_sha256"):
+        r = _full()
+        r.pop(k)
+        assert _at5(r)["label"] == "PENDING", k
+
+
+def test_at5_hardening_g_the_tree_commit_and_the_day_files_sha256_must_match():
+    res = _at5(_full(tree_commit="e" * 40))
+    assert res["label"] == "PENDING" and any("another tree commit" in p for p in res["gross_error_read_problems"])
+    res = _at5(_full(), tree_commit=None)
+    assert res["label"] == "PENDING" and any("records no tree commit" in p for p in res["gross_error_read_problems"])
+    res = _at5(_full(day_file_sha256="e" * 64))
+    assert res["label"] == "PENDING" and "another day file" in res["summary"]
+
+
+def test_at5_hardening_h_the_version_must_be_2():
+    for v in (1, None, "2", 3):
+        res = _at5(_full(version=v))
+        assert res["pass"] is False and res["label"] == "PENDING" and any("version" in p for p in res["gross_error_read_problems"]), v
+    r = _full()
+    r.pop("version")
+    assert _at5(r)["label"] == "PENDING"
+
+
+def test_at5_the_previous_reviewers_version_1_read_is_not_accepted():
+    """The read written for the review day at 30ebf2f (rev19/at5_gross_error_read_review_day.json) is version 1: under the hardened check it is
+    PENDING, never PASS (no version, entries without input_scope_error, a why_read key, five of 35 extremes)."""
+    import at_rows
+    v1 = {"at": "AT5 gross-error read", "day_file_sha256": "d" * 64, "tree_commit": TREE_C, "reviewer": "r", "written_at": "w", "rule": "old",
+          "reads": {"X": {"unit_or_scale_error": False, "why_read": "shares", "basis": "V/P 4.0"},
+                    "Y": {"unit_or_scale_error": False, "why_read": "cash_only", "basis": "V/P 0.2"}}}
+    res = _at5(v1)
+    assert res["pass"] is False and res["label"] == "PENDING" and res["gross_error_read_unread"] == 3
+    probs = " | ".join(res["gross_error_read_problems"])
+    assert "version None" in probs and "unknown top-level keys: rule" in probs and "unknown keys" in probs
 
 
 def test_at6_constants_anchor_sentence_fence_and_cap(world):
@@ -492,12 +647,12 @@ def test_at6_constants_anchor_sentence_fence_and_cap(world):
     capped = _copy(world.rows)
     capped["GEV"]["reference"]["stamps"] = ["base_year_capped"]
     assert not at_rows.at6(capped, consts)["pass"]
-    assert not at_rows.at6(world.rows, dict(consts, PACK_REVISION=18))["pass"]                      # restated for revision 19: 19 and 7
-    assert not at_rows.at6(world.rows, dict(consts, FACTS_VERSION=6))["pass"]
+    assert not at_rows.at6(world.rows, dict(consts, PACK_REVISION=19))["pass"]                      # restated for revision 20: 20 and 8
+    assert not at_rows.at6(world.rows, dict(consts, FACTS_VERSION=7))["pass"]
     assert not at_rows.at6(world.rows, dict(consts, TASK="no item 6"))["pass"]
     res = at_rows.at6(world.rows, consts)
     assert res["task_item_6_present"] and res["level_anchor_bullet_absent"] and res["packs_without_the_price_implied_line"] == 0
-    assert res["restated_for"] == "revision 19" and res["pack_revision"] == 19 and res["facts_version"] == 7
+    assert res["restated_for"] == "revision 20" and res["pack_revision"] == 20 and res["facts_version"] == 8
     # the Level-anchor bullet is back in the TASK: fail; item 6 altered by one word: fail
     assert not at_rows.at6(world.rows, dict(consts, TASK=consts["TASK"] + at_rows.LEVEL_ANCHOR_BULLET))["pass"]
     assert not at_rows.at6(world.rows, dict(consts, TASK=consts["TASK"].replace("Without a valid crux your verdict is HOLD", "Without a valid crux your verdict is BUY")))["pass"]
@@ -1334,7 +1489,7 @@ def test_the_anonymous_path_a_name_with_a_stale_enrich_record_prints_no_ticker_a
 
 def test_at5_prime_script_pending_without_the_read_pass_with_it_and_the_read_is_a_hashed_input(tmp_path):
     day = tmp_path / "day.json"
-    ac.write_result(day, {"meta": {"enrich_check": {"pass": True}}, "rows": _at5_rows()})
+    ac.write_result(day, {"meta": {"enrich_check": {"pass": True}, "inputs": {"tree_commit": TREE_C}}, "rows": _at5_rows()})
     sha = ac.sha256_file(day)
     run = lambda *extra: subprocess.run([PY, str(HERE / "at5_level_sanity.py"), "--day", str(day), *extra], capture_output=True, text=True)
     out = tmp_path / "pending.json"
@@ -1342,7 +1497,7 @@ def test_at5_prime_script_pending_without_the_read_pass_with_it_and_the_read_is_
     res = json.loads(out.read_text(encoding="utf-8"))
     assert p.returncode == 1 and p.stdout.startswith("PENDING  AT5 level sanity") and res["label"] == "PENDING" and res["day_file_sha256"] == sha
     read = tmp_path / "read.json"
-    read.write_text(json.dumps(_read(day_sha=sha, X=False, Y=False)), encoding="utf-8")
+    read.write_text(json.dumps(_read(day_sha=sha, X=False, Y=False, Z=False)), encoding="utf-8")
     out2 = tmp_path / "pass.json"
     p = run("--gross-error-read", str(read), "--read-sha256", ac.sha256_file(read)[:12], "--out", str(out2))
     res = json.loads(out2.read_text(encoding="utf-8"))
@@ -1354,7 +1509,7 @@ def test_at5_prime_script_pending_without_the_read_pass_with_it_and_the_read_is_
     assert wrong.returncode == 2 and "refused" in wrong.stderr and not (tmp_path / "wrong.json").exists()
     assert run("--read-sha256", "00000000", "--out", str(tmp_path / "w2.json")).returncode == 2
     errored = tmp_path / "read_err.json"
-    errored.write_text(json.dumps(_read(day_sha=sha, X=False, Y=True)), encoding="utf-8")
+    errored.write_text(json.dumps(_read(day_sha=sha, X=False, Y=True, Z=False)), encoding="utf-8")
     p = run("--gross-error-read", str(errored), "--out", str(tmp_path / "fail.json"))
     assert p.returncode == 1 and p.stdout.startswith("FAIL  AT5") and "label" not in json.loads((tmp_path / "fail.json").read_text(encoding="utf-8"))
 
