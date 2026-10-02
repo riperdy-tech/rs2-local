@@ -6,7 +6,10 @@
 
 For each name: the pack (build_pack, include_research=False), the reference exactly as `consensus_reference.build` returned it for the pack,
 and - revision 18 only - an INDEPENDENT call of `reference_inputs` (the ledger's production wiring: a fresh DataRoot, the files read again)
-then `build`, the cash-term state, whether the history holds a filed cash figure, and the enrich record's source, date and sha256.
+then `build`, the cash-term state, whether the history holds a filed cash figure, and the enrich record's source, date, age, status and sha256,
+all read from the record itself (`--enrich-label` is only noted in the meta: it is not a record's source). The day FAILS (exit 1, after the
+file is written) unless every record is present, is no error record, is dated and is at most 45 days old on the day; the counts are in
+`meta.enrich_check`, and the AT scripts refuse a day file whose check failed.
 `--tree` may be revision 16's tree (fee17cf): the independent call and the closure are then skipped, and the row carries the `build` call
 revision 16 received (AT1b, AT3 read it).
 
@@ -73,15 +76,11 @@ def build_rows(ns, names, *, keep_text=True, anonymous=False, progress=True, dum
                 err = type(e).__name__ if anonymous else f"{type(e).__name__}: {str(e)[:300]}"
                 errors[type(e).__name__] = errors.get(type(e).__name__, 0) + 1
             row = {"ticker": None if anonymous else t, "error": err, "revision": getattr(cap, "PACK_REVISION", None), "n_builds": len(calls)}
-            ep = Path(ns.root) / "enrich" / f"{t}.json"
-            if ep.exists():
-                doc = rs2.load_json(ep) or {}
-                row["enrich"] = {"source": enrich_label, "date": str(doc.get("_fetched_at"))[:10] if doc.get("_fetched_at") else None,
-                                 "sha256": ac.sha256_file(ep), "error_record": rs2.enrich_fetch_error(doc) is not None}
-                enrich_n[enrich_label] = enrich_n.get(enrich_label, 0) + 1
-                age = cap._age_days(doc) if hasattr(cap, "_age_days") else None
-                if age is not None:
-                    ages.append(age)
+            # the record says what it is (finding 3): its source, date, age and status are read from it, never from `enrich_label`
+            row["enrich"] = ac.enrich_entry(ns.root, t, ns.fixed, rs2)
+            enrich_n[row["enrich"]["source"]] = enrich_n.get(row["enrich"]["source"], 0) + 1
+            if row["enrich"]["age_days"] is not None:
+                ages.append(row["enrich"]["age_days"])
             if err is None:
                 sector, _industry = rs2.sector_lookup(t)
                 fin = rs2.load_json(sd / "financials" / f"{t}.json") or {}
@@ -134,8 +133,9 @@ def build_rows(ns, names, *, keep_text=True, anonymous=False, progress=True, dum
                           f"ref={(row.get('reference') or {}).get('value')} status={row.get('status')}", flush=True)
     finally:
         cref.build = orig_build
-    meta = {"n": len(rows), "errors_by_class": errors, "enrich_by_source": enrich_n,
-            "enrich_age_days_max": max(ages) if ages else None, "enrich_age_days_over_45": sum(1 for a in ages if a > 45)}
+    meta = {"n": len(rows), "errors_by_class": errors, "enrich_by_source": enrich_n, "enrich_label": enrich_label,
+            "enrich_age_days_max": max(ages) if ages else None, "enrich_age_days_over_45": sum(1 for a in ages if a > ac.ENRICH_MAX_AGE_DAYS),
+            "enrich_check": ac.enrich_check(r["enrich"] for r in rows.values())}
     return rows, meta
 
 
@@ -168,7 +168,11 @@ def main(argv=None):
         meta["closure"] = {"erp": erp, "asof": asof}
     ac.write_result(a.out, {"meta": ac.jsonable(meta), "rows": ac.jsonable(rows)})
     print("->", a.out, "names:", meta["n"], "errors:", sum(meta["errors_by_class"].values()))
-    return 0
+    chk = meta["enrich_check"]
+    ac.report("build_day enrich records", chk["pass"],
+              f"{chk['ok']} of {chk['records']} ok; missing {chk['missing']}, error records {chk['error_records']}, undated {chk['undated']}, "
+              f"older than {ac.ENRICH_MAX_AGE_DAYS} days {chk['older_than_%d_days' % ac.ENRICH_MAX_AGE_DAYS]}")
+    return 0 if chk["pass"] else 1
 
 
 if __name__ == "__main__":

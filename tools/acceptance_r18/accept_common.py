@@ -167,6 +167,52 @@ def finish(result, out):
     return 0 if result["pass"] else 1
 
 
+# ---- the enrich records of a day --------------------------------------------------------------------------------------------------
+
+ENRICH_MAX_AGE_DAYS = 45
+
+
+def enrich_entry(root, t, fixed, rs2):
+    """What the day's enrich record for `t` says about itself (revision 18 follow-up, finding 3): read from the record in `root`/enrich/, never
+    from a label the operator passes. `fixed` is the day's clock (a datetime). status is one of "ok", "missing" (no file), "error_record" (the
+    ERROR record of a failed vendor fetch), "undated" (no readable `_fetched_at`: its age cannot be shown to be within the limit), "stale"
+    (older than ENRICH_MAX_AGE_DAYS on the day). source is `enrich@<date the record was fetched>`."""
+    p = Path(root) / "enrich" / f"{t}.json"
+    blank = {"source": "missing", "date": None, "age_days": None, "sha256": None, "error_record": False, "status": "missing"}
+    if not p.exists():
+        return blank
+    doc = rs2.load_json(p)
+    doc = doc if isinstance(doc, dict) else {}
+    ts = doc.get("_fetched_at") if doc.get("_fetched_at") is not None else doc.get("fetched_at")
+    age = date_s = None
+    if isinstance(ts, str) and len(ts) >= 10:
+        try:
+            age = (fixed - datetime.fromisoformat(ts[:19])).days
+            date_s = ts[:10]
+        except ValueError:
+            pass
+    error = rs2.enrich_fetch_error(doc) is not None
+    status = "error_record" if error else "undated" if age is None else "stale" if age > ENRICH_MAX_AGE_DAYS else "ok"
+    return {"source": f"enrich@{date_s}" if date_s else "enrich@undated", "date": date_s, "age_days": age, "sha256": sha256_file(p),
+            "error_record": error, "status": status}
+
+
+def enrich_check(entries):
+    """Counts over `enrich_entry` results (no names): the day passes only when every record is present, is no error record, is dated and is
+    at most ENRICH_MAX_AGE_DAYS old. An empty day does not pass."""
+    c = {"records": 0, "ok": 0, "missing": 0, "error_records": 0, "undated": 0, f"older_than_{ENRICH_MAX_AGE_DAYS}_days": 0}
+    by_source = {}
+    for e in entries:
+        c["records"] += 1
+        key = {"ok": "ok", "missing": "missing", "error_record": "error_records", "undated": "undated",
+               "stale": f"older_than_{ENRICH_MAX_AGE_DAYS}_days"}[e["status"]]
+        c[key] += 1
+        by_source[e["source"]] = by_source.get(e["source"], 0) + 1
+    c["by_source"] = by_source
+    c["pass"] = c["records"] > 0 and c["ok"] == c["records"]
+    return c
+
+
 # ---- the tree under test --------------------------------------------------------------------------------------------------------
 
 def add_tree_paths(tree):
@@ -257,6 +303,11 @@ def bootstrap_from_day(meta):
 def load_day(path):
     """(meta, rows) of a build_day file, +-inf strings turned back into floats where a number is expected (the reference's record_R_tc)."""
     doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    chk = (doc.get("meta") or {}).get("enrich_check")
+    if isinstance(chk, dict) and chk.get("pass") is not True:
+        raise SystemExit(f"refused: the day file's enrich records failed their check (missing {chk.get('missing')}, error records "
+                         f"{chk.get('error_records')}, undated {chk.get('undated')}, older than {ENRICH_MAX_AGE_DAYS} days "
+                         f"{chk.get('older_than_%d_days' % ENRICH_MAX_AGE_DAYS)}): the day is not one the ATs may be run on")
     for r in doc["rows"].values():
         ref = r.get("reference")
         if isinstance(ref, dict):

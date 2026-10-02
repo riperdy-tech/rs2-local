@@ -97,12 +97,71 @@ def test_build_day_records_the_pack_the_reference_the_independent_call_the_cash_
     assert r["reference"]["value"] is not None and r["reference"]["method"] == "growth" and r["reference"]["estimates"]
     assert r["parity"]["pack_value"] == r["parity"]["ri_value"] and r["parity"]["args_equal"] is True
     assert set(r["cash"]) == {"filed", "applies", "financial", "stamps"} and r["cash"]["filed"] is True
-    assert r["enrich"]["source"] == "book" and r["enrich"]["date"] == "2026-09-26" and len(r["enrich"]["sha256"]) == 64
-    assert world.meta["enrich_by_source"] == {"book": 1} and world.meta["enrich_age_days_over_45"] == 0
+    # finding 3: the record's source, date, age and status are read from the record (the label the operator passes is only noted)
+    assert r["enrich"]["source"] == "enrich@2026-09-26" and r["enrich"]["date"] == "2026-09-26" and len(r["enrich"]["sha256"]) == 64
+    assert r["enrich"]["status"] == "ok" and r["enrich"]["age_days"] == 1 and r["enrich"]["error_record"] is False
+    assert world.meta["enrich_by_source"] == {"enrich@2026-09-26": 1} and world.meta["enrich_age_days_over_45"] == 0
+    assert world.meta["enrich_label"] == "book" and world.meta["enrich_check"]["pass"] is True
     inputs = ac.inputs_record(world.ns)
     assert len(inputs["history_sha256"]) == 64 and len(inputs["closure_sha256"]) == 64 and inputs["mri_anchor_sha256"]
     assert inputs["pack_revision"] == 18 and inputs["date"] == DATE and inputs["resolved_dirs"]["screener_data_dir"] == str(world.sd.resolve())
     assert ac.constants(world.ns)["FACTS_VERSION"] == 6 and "Level anchor" in ac.constants(world.ns)["TASK"]
+
+
+def _enrich_root(tmp_path, records):
+    """A data root whose enrich/ holds `records` ({ticker: dict | None for a missing file}); every file is written as given."""
+    (tmp_path / "enrich").mkdir(parents=True, exist_ok=True)
+    for t, rec in records.items():
+        if rec is not None:
+            (tmp_path / "enrich" / f"{t}.json").write_text(json.dumps(rec), encoding="utf-8")
+    return tmp_path
+
+
+def test_the_enrich_entry_reads_the_record_and_the_check_fails_on_a_stale_an_error_an_undated_or_a_missing_record(world, tmp_path):
+    """Finding 3: any record older than 45 days, an error record or a missing one fails the day (counted before, not enforced)."""
+    from datetime import datetime
+    fixed = datetime(2026, 9, 27, 12, 0, 0)
+    good = {"_ticker": "A", "_fetched_at": "2026-09-26T12:00:00+00:00", "estimates": None}
+    root = _enrich_root(tmp_path, {
+        "OK": good, "EDGE": dict(good, _fetched_at="2026-08-13T12:00:00+00:00"),                  # 45 days: the limit itself
+        "OLD": dict(good, _fetched_at="2026-08-12T12:00:00+00:00"),                               # 46 days
+        "ERR": {"_ticker": "E", "_fetched_at": "2026-09-26T12:00:00+00:00", "_status": "error", "_error": {"http_status": 500, "where": "info"}},
+        "UND": {"_ticker": "U", "estimates": None}, "BAD": dict(good, _fetched_at="yesterday"), "MISS": None})
+    e = {t: ac.enrich_entry(root, t, fixed, world.ns.rs2) for t in ("OK", "EDGE", "OLD", "ERR", "UND", "BAD", "MISS")}
+    assert [e[t]["status"] for t in e] == ["ok", "ok", "stale", "error_record", "undated", "undated", "missing"]
+    assert e["EDGE"]["age_days"] == 45 and e["OLD"]["age_days"] == 46 and e["OK"]["source"] == "enrich@2026-09-26" and e["MISS"]["sha256"] is None
+    assert e["ERR"]["error_record"] is True and e["OK"]["error_record"] is False and len(e["OK"]["sha256"]) == 64
+    assert ac.enrich_check([e["OK"], e["EDGE"]])["pass"]
+    for bad in ("OLD", "ERR", "UND", "BAD", "MISS"):
+        assert not ac.enrich_check([e["OK"], e[bad]])["pass"], bad
+    chk = ac.enrich_check(e.values())
+    assert chk["records"] == 7 and chk["ok"] == 2 and chk["missing"] == 1 and chk["error_records"] == 1 and chk["undated"] == 2
+    assert chk["older_than_45_days"] == 1 and not chk["pass"] and not ac.enrich_check([])["pass"]
+
+
+def test_a_day_with_a_failed_enrich_record_fails_build_day_and_is_refused_by_the_ats(world, tmp_path, monkeypatch):
+    names = tmp_path / "names.txt"
+    names.write_text("GEV" + chr(10), encoding="utf-8")
+    state = {}
+    # the day's records are read from `state["root"]` (a new folder each time: json loads are cached by path); the pack is built as in the world
+    monkeypatch.setattr(ac, "bootstrap", lambda *a, **k: SimpleNamespace(**dict(vars(world.ns), root=state["root"])))
+    args = lambda out: ["--tree", str(TREE), "--root", str(world.root), "--sd", str(world.sd), "--mri", str(MRI), "--date", DATE, "--names", str(names),
+                        "--closure", str(world.closure), "--out", str(out), "--enrich-label", "closure_enrich:2026-09-20"]
+    good = json.loads((world.root / "enrich" / "GEV.json").read_text(encoding="utf-8"))
+
+    def run(name, record):
+        state["root"] = _enrich_root(tmp_path / name, {"GEV": record})
+        return world.build_day.main(args(tmp_path / f"{name}.json"))
+    assert run("ok", good) == 0
+    meta, _rows = ac.load_day(tmp_path / "ok.json")
+    assert meta["enrich_check"]["pass"] and meta["enrich_label"] == "closure_enrich:2026-09-20"
+    assert run("stale", dict(good, _fetched_at="2026-08-01T12:00:00")) == 1                 # 57 days old on the day
+    with pytest.raises(SystemExit) as e:
+        ac.load_day(tmp_path / "stale.json")                                               # the file stands as the record, and no AT runs on it
+    assert "enrich records failed their check" in str(e.value) and "older than 45 days 1" in str(e.value)
+    assert run("error", {"_ticker": "GEV", "_fetched_at": "2026-09-26T12:00:00", "_status": "error", "_error": {"http_status": 500, "where": "info"}}) == 1
+    assert run("missing", None) == 1
+    assert json.loads((tmp_path / "missing.json").read_text(encoding="utf-8"))["meta"]["enrich_check"]["missing"] == 1
 
 
 def test_the_scripts_block_the_network_and_the_world_was_built_with_it_blocked(world):
