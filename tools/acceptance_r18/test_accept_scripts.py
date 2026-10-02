@@ -644,72 +644,181 @@ def test_at7_without_a_harness_tests_the_backtest_harness_at_its_pinned_commit_a
 # ---- AT8: the guards and the counts, on a synthetic three-name list (the real list is never opened) ------------------------------------------
 
 SYN = ["ZQAA", "ZQBB", "ZQCC"]
+FAKE_COMMIT = "c" * 40
+GOOD_ENRICH = {"_ticker": "X", "_fetched_at": "2026-09-26T12:00:00+00:00", "estimates": None}
 
 
-def _at8_setup(world, tmp_path, results=None, config_override=None, pre_name="pre.json"):
+def _write_results(folder, day, inputs, **over):
+    """The twelve AT result files as the scripts write them (only the fields AT8 reads), all passed on the day file `day`; `over` = {AT: dict
+    merged into that result, or None to leave the file out}."""
+    folder.mkdir(exist_ok=True)
+    sha, commit = ac.sha256_file(day), inputs["tree_commit"]
+    docs = {"AT1a": {"at": "AT1a desk parity", "day_file_sha256": sha},
+            "AT1b": {"at": "AT1b reduction", "day_file_sha256": sha, "trees": {"rev16": {"commit": "fee17cf"}, "rev18": {"commit": commit}}},
+            "AT1c": {"at": "AT1c same as the tested design", "tree_commit": commit},
+            "AT1d": {"at": "AT1d single source", "day_file_sha256": sha}, "AT1e": {"at": "AT1e reverse DCF round trips", "day_file_sha256": sha},
+            "AT2": {"at": "AT2 closure", "history_sha256": inputs["history_sha256"], "artifact_sha256": inputs["closure_sha256"]},
+            "AT3": {"at": "AT3 coverage", "day_file_sha256": sha}, "AT4": {"at": "AT4 no non-positive reference printed", "day_file_sha256": sha},
+            "AT5": {"at": "AT5 level sanity", "day_file_sha256": sha}, "AT6": {"at": "AT6 fence, cap, text", "day_file_sha256": sha},
+            "AT7": {"at": "AT7 suite", "runs": [{"name": "rs2 suite", "commit": commit}, {"name": "harness rs2-bt", "commit": "40cb5cf" + "0" * 33}]},
+            "AT9": {"at": "AT9 cash term alive", "day_file_sha256": sha}}
+    for at, doc in docs.items():
+        if over.get(at, {}) is None:
+            continue
+        (folder / f"{at}.json").write_text(json.dumps({**doc, "pass": True, **(over.get(at) or {})}), encoding="utf-8")
+    return folder
+
+
+@pytest.fixture
+def at8(world, tmp_path, monkeypatch):
+    """Everything AT8 needs, on the synthetic world: a clean committed tree (git_head is stood in: the worktree under test is being edited), a
+    book day file, the AT result files, an enrich root for the three synthetic names, and a lock path of its own."""
     import at8_untouched_look as a8
+    monkeypatch.setattr(ac, "git_head", lambda tree: (FAKE_COMMIT, True))
+    monkeypatch.setattr(a8, "LOCK_PATH", tmp_path / "lockdir" / "one_look.lock")
+    root = _enrich_root(tmp_path / "at8root", {t: dict(GOOD_ENRICH, _ticker=t) for t in SYN})
+    monkeypatch.setattr(ac, "bootstrap", lambda tree, sd, mri, root_, *a, **k: SimpleNamespace(**dict(vars(world.ns), root=Path(root_))))   # the --root given
+    inputs = ac.inputs_record(world.ns)
+    day = tmp_path / "day.json"
+    ac.write_result(day, {"meta": ac.jsonable(dict(world.meta, inputs=inputs, constants=ac.constants(world.ns))), "rows": ac.jsonable(world.rows)})
     lst = tmp_path / "list.txt"
     lst.write_text("\n".join(SYN) + "\n", encoding="utf-8")
-    cfg = a8.configuration_of(ac.inputs_record(world.ns))
-    cfg.update(config_override or {})
-    pre = tmp_path / pre_name
-    pre.write_text(json.dumps({"configuration": cfg, "results": results if results is not None else {k: True for k in a8.REQUIRED}}), encoding="utf-8")
-    return a8, lst, pre
+    return SimpleNamespace(a8=a8, inputs=inputs, day=day, lst=lst, root=root, tmp=tmp_path, results=_write_results(tmp_path / "results", day, inputs))
 
 
-def _args(world, tmp_path, lst, pre, *extra, sha=None):
-    return ["--tree", str(world.ns.tree), "--root", str(world.root), "--sd", str(world.sd), "--mri", str(MRI), "--date", DATE, "--closure", str(world.closure),
-            "--untouched-list", str(lst), "--untouched-sha256", sha or ac.sha256_file(lst)[:12], "--preconditions", str(pre), "--lock", str(tmp_path / "lock"),
-            "--out", str(tmp_path / "at8.json"), *extra]
+def _args(world, env, *extra, sha=None, results=None, day=None):
+    return ["--tree", str(world.ns.tree), "--root", str(env.root), "--sd", str(world.sd), "--mri", str(MRI), "--date", DATE, "--closure", str(world.closure),
+            "--untouched-list", str(env.lst), "--untouched-sha256", sha or ac.sha256_file(env.lst)[:12], "--results", str(results or env.results),
+            "--day", str(day or env.day), "--out", str(env.tmp / "at8.json"), *extra]
 
 
-def test_at8_refuses_without_the_flag_with_a_wrong_list_with_unmet_preconditions_and_after_the_look(world, tmp_path, capsys):
-    a8, lst, pre = _at8_setup(world, tmp_path)
-    stub = lambda ns, names, **k: ({"k1": copy.deepcopy(world.rows["GEV"])}, {"errors_by_class": {}, "enrich_by_source": {"untouched": 3},
-                                                                           "enrich_age_days_max": 1, "enrich_age_days_over_45": 0})
-    assert a8.main(_args(world, tmp_path, lst, pre), build_rows=stub) == 2                               # no --confirm-one-look
-    assert a8.main(_args(world, tmp_path, lst, pre, "--confirm-one-look", sha="deadbeef00"), build_rows=stub) == 2   # wrong list sha
+def _stub(world, **meta):
+    base = {"errors_by_class": {}, "enrich_by_source": {"enrich@2026-09-26": 3}, "enrich_age_days_max": 1, "enrich_age_days_over_45": 0}
+    return lambda ns, names, **k: ({"k1": copy.deepcopy(world.rows["GEV"])}, dict(base, **meta))
+
+
+def test_at8_refuses_without_the_flag_with_a_wrong_list_with_unmet_preconditions_and_after_the_look(world, at8, capsys):
+    a8, stub = at8.a8, _stub(world)
+    lock = a8.LOCK_PATH
+    assert a8.main(_args(world, at8), build_rows=stub) == 2                               # no --confirm-one-look
+    assert a8.main(_args(world, at8, "--confirm-one-look", sha="deadbeef00"), build_rows=stub) == 2   # wrong list sha
     err = capsys.readouterr().err
-    assert "ZQ" not in err and not (tmp_path / "lock").exists()
-    _, _, pre_bad = _at8_setup(world, tmp_path, results={k: (k != "AT2") for k in a8.REQUIRED}, pre_name="pre_bad.json")
-    assert a8.main(_args(world, tmp_path, lst, pre_bad, "--confirm-one-look"), build_rows=stub) == 2          # AT2 not passed
-    assert "AT2 is not recorded as passed" in capsys.readouterr().err and not (tmp_path / "lock").exists()
-    _, _, pre_cfg = _at8_setup(world, tmp_path, config_override={"history_sha256": "00" * 32}, pre_name="pre_cfg.json")
-    assert a8.main(_args(world, tmp_path, lst, pre_cfg, "--confirm-one-look"), build_rows=stub) == 2          # another configuration
-    assert "configuration differs" in capsys.readouterr().err and not (tmp_path / "lock").exists()
+    assert "ZQ" not in err and not lock.exists()
+
+    def refused(expect, **kw):
+        assert a8.main(_args(world, at8, "--confirm-one-look", **kw), build_rows=stub) == 2
+        assert expect in capsys.readouterr().err and not lock.exists()
+    # finding 12: the preconditions are the result files, not typed booleans
+    refused("AT2 is not recorded as passed", results=_write_results(at8.tmp / "r_fail", at8.day, at8.inputs, AT2={"pass": False}))
+    refused("AT7 has no result file", results=_write_results(at8.tmp / "r_gone", at8.day, at8.inputs, AT7=None))
+    refused("AT4 is recorded more than once", results=_dup_results(at8))
+    refused("AT3 was not run on the day file given", results=_write_results(at8.tmp / "r_day", at8.day, at8.inputs, AT3={"day_file_sha256": "00" * 32}))
+    refused("AT1c was not run on this tree commit", results=_write_results(at8.tmp / "r_c", at8.day, at8.inputs, AT1c={"tree_commit": "d" * 40}))
+    refused("AT1b was not run on this tree commit", results=_write_results(at8.tmp / "r_b", at8.day, at8.inputs, AT1b={"trees": {"rev18": {"commit": "d" * 40}}}))
+    refused("AT7 was not run on this tree commit", results=_write_results(at8.tmp / "r_7", at8.day, at8.inputs, AT7={"runs": [{"commit": "d" * 40}]}))
+    refused("AT2 was not run on this history and closure artifact", results=_write_results(at8.tmp / "r_2", at8.day, at8.inputs, AT2={"history_sha256": "00" * 32}))
+    # a day file built on another configuration (history, bill-rate store) than this run's
+    for key in ("history_sha256", "bill_rate_sha256", "closure_sha256", "tree_commit"):
+        other = at8.tmp / f"day_{key}.json"
+        inputs = dict(at8.inputs, **{key: "00" * 32 if key != "tree_commit" else "e" * 40})
+        ac.write_result(other, {"meta": ac.jsonable({"inputs": inputs}), "rows": {}})
+        refused(f"the configuration differs from the one the ATs passed on: {key}", day=other, results=_write_results(at8.tmp / f"r_{key}", other, inputs))
 
 
-def test_at8_takes_the_look_once_writes_counts_only_and_refuses_a_second_look(world, tmp_path, capsys):
-    a8, lst, pre = _at8_setup(world, tmp_path)
+def _dup_results(env):
+    folder = _write_results(env.tmp / "r_dup", env.day, env.inputs)
+    (folder / "AT4_again.json").write_text((folder / "AT4.json").read_text(encoding="utf-8"), encoding="utf-8")
+    return folder
+
+
+def test_at8_refuses_a_tree_that_is_not_clean_and_takes_no_lock(world, at8, capsys, monkeypatch):
+    """Finding 11: the clean-tree check - the configuration carries it, and an unclean tree is no configuration to look on."""
+    monkeypatch.setattr(ac, "git_head", lambda tree: (FAKE_COMMIT, False))
+    assert at8.a8.main(_args(world, at8, "--confirm-one-look"), build_rows=_stub(world)) == 2
+    assert "the tree is not clean" in capsys.readouterr().err and not at8.a8.LOCK_PATH.exists()
+    assert "tree_clean" in at8.a8.CONFIG_KEYS and "bill_rate_sha256" in at8.a8.CONFIG_KEYS
+
+
+def test_at8_configuration_adds_the_bill_rate_store_hash_and_the_digests_of_the_enrich_records(world, at8):
+    cfg = at8.a8.configuration_of(at8.inputs)
+    assert set(cfg) == set(at8.a8.CONFIG_KEYS) and cfg["tree_clean"] is True and cfg["tree_commit"] == FAKE_COMMIT
+    store = ac.bill_rate_store(world.ns)
+    assert store is not None and cfg["bill_rate_sha256"] == ac.sha256_file(store) and len(cfg["bill_rate_sha256"]) == 64
+
+
+def test_at8_checks_the_enrich_records_of_the_untouched_names_before_the_lock_and_reports_counts_only(world, at8, capsys):
+    """Finding 14: present, not an error record, at most 45 days old - counts, no name, and no lock taken."""
+    a8 = at8.a8
+    pre = a8.enrich_precheck(SimpleNamespace(root=at8.root, fixed=world.ns.fixed, rs2=world.ns.rs2), SYN)
+    assert pre["pass"] and pre["records"] == 3 and pre["digests"]["records"] == 3 and len(pre["digests"]["sha256_of_sorted_record_sha256"]) == 64
+    # a missing record, an error record and a stale one in three separate roots: each refuses, by count
+    cases = {"missing": ({"ZQAA": None}, "missing 1"),
+             "error": ({"ZQAA": {"_ticker": "ZQAA", "_fetched_at": "2026-09-26T12:00:00+00:00", "_status": "error", "_error": {"http_status": 503, "where": "info"}}},
+                       "error records 1"),
+             "stale": ({"ZQAA": dict(GOOD_ENRICH, _fetched_at="2026-08-01T12:00:00+00:00")}, "older than 45 days 1")}
+    for name, (changes, expect) in cases.items():
+        root = at8.tmp / f"root_{name}"
+        for t in SYN:
+            _enrich_root(root, {t: changes[t] if t in changes else dict(GOOD_ENRICH, _ticker=t)})
+        env = SimpleNamespace(**dict(vars(at8), root=root))
+        assert a8.main(_args(world, env, "--confirm-one-look"), build_rows=_stub(world)) == 2
+        err = capsys.readouterr().err
+        assert "enrich records are not all usable" in err and expect in err and "ZQ" not in err and not a8.LOCK_PATH.exists(), (name, err)
+
+
+def test_at8_takes_the_look_once_writes_counts_only_and_refuses_a_second_look(world, at8, capsys):
+    a8 = at8.a8
     built = []
 
     def stub(ns, names, **k):
         built.append((len(names), k.get("anonymous"), k.get("keep_text")))
-        return ({"k1": copy.deepcopy(world.rows["GEV"])}, {"errors_by_class": {}, "enrich_by_source": {"untouched": 3}, "enrich_age_days_max": 1,
-                                                          "enrich_age_days_over_45": 0})
-    rc = a8.main(_args(world, tmp_path, lst, pre, "--confirm-one-look"), build_rows=stub)
+        return _stub(world)(ns, names, **k)
+    rc = a8.main(_args(world, at8, "--confirm-one-look"), build_rows=stub)
     out = capsys.readouterr()
-    assert rc == 0 and built == [(3, True, True)] and (tmp_path / "lock").exists()
-    text = (tmp_path / "at8.json").read_text(encoding="utf-8")
+    assert rc == 0 and built == [(3, True, True)] and a8.LOCK_PATH.exists()
+    text = (at8.tmp / "at8.json").read_text(encoding="utf-8")
     result = json.loads(text)
     assert result["pass"] and set(result["bars"]) == {"AT1a", "AT1d", "AT4"} and result["counts"]["names"] == 3
     assert set(result["report_only"]) >= {"coverage", "share_below_0.9x_price", "median_vp", "outside_the_fence"}
+    # finding 11: the configuration of the look carries the clean tree, the bill-rate store's hash and the digests of the enrich records
+    cfg = result["configuration"]
+    assert cfg["tree_clean"] is True and len(cfg["bill_rate_sha256"]) == 64 and cfg["enrich_digests"]["records"] == 3
+    assert len(cfg["enrich_digests"]["sha256_of_sorted_record_sha256"]) == 64
     for name in SYN + ["GEV"]:
         assert name not in text and name not in out.out and name not in out.err                          # counts only
-    assert "CONSENSUS-IMPLIED" not in text and result["list_sha256"] == ac.sha256_file(lst)
+    assert "CONSENSUS-IMPLIED" not in text and result["list_sha256"] == ac.sha256_file(at8.lst)
     # the second look is refused, nothing is built, and the first result stands
-    again = a8.main(_args(world, tmp_path, lst, pre, "--confirm-one-look"), build_rows=lambda *a, **k: pytest.fail("a second look built something"))
-    assert again == 2 and "already been taken" in capsys.readouterr().err and (tmp_path / "at8.json").read_text(encoding="utf-8") == text
+    again = a8.main(_args(world, at8, "--confirm-one-look"), build_rows=lambda *a, **k: pytest.fail("a second look built something"))
+    assert again == 2 and "already been taken" in capsys.readouterr().err and (at8.tmp / "at8.json").read_text(encoding="utf-8") == text
 
 
-def test_at8_a_failing_bar_is_a_failing_look_and_the_look_is_still_used(world, tmp_path, capsys):
-    a8, lst, pre = _at8_setup(world, tmp_path)
+def test_at8_the_lock_is_one_fixed_path_that_no_argument_changes(world, at8, capsys):
+    """Finding 13: --lock is gone (a new path allowed a second look), and the lock is taken at LOCK_PATH, whatever --out says."""
+    a8 = at8.a8
+    with pytest.raises(SystemExit) as e:
+        a8.main(_args(world, at8, "--confirm-one-look", "--lock", str(at8.tmp / "other.lock")), build_rows=_stub(world))
+    assert e.value.code == 2 and "--lock" in capsys.readouterr().err and not (at8.tmp / "other.lock").exists()
+    assert a8.main(_args(world, at8, "--confirm-one-look"), build_rows=_stub(world)) == 0
+    assert a8.LOCK_PATH.exists() and not (at8.tmp / "other.lock").exists()
+    # a second look with a different --out is as refused as with the same one
+    argv = _args(world, at8, "--confirm-one-look")
+    argv[argv.index("--out") + 1] = str(at8.tmp / "at8_second.json")
+    assert a8.main(argv, build_rows=lambda *a, **k: pytest.fail("a second look built something")) == 2
+    assert not (at8.tmp / "at8_second.json").exists()
+    # the constant itself lies outside every repository and the scripts' folders, and is the same from either copy of the scripts
+    import importlib
+    real = importlib.reload(a8)
+    assert real.LOCK_PATH == Path.home() / ".rs2_acceptance" / "rev18_at8_one_look.lock" and not str(real.LOCK_PATH).startswith(str(HERE))
+
+
+def test_at8_a_failing_bar_is_a_failing_look_and_the_look_is_still_used(world, at8, capsys):
+    a8 = at8.a8
     bad = copy.deepcopy(world.rows["GEV"])
     bad["reference"]["value"] += 0.5                                                                      # AT1a breaks
     stub = lambda ns, names, **k: ({"k1": bad}, {"errors_by_class": {}, "enrich_by_source": {}, "enrich_age_days_max": None, "enrich_age_days_over_45": 0})
-    assert a8.main(_args(world, tmp_path, lst, pre, "--confirm-one-look"), build_rows=stub) == 1
-    assert "FAIL" in capsys.readouterr().out and (tmp_path / "lock").exists()
-    assert not json.loads((tmp_path / "at8.json").read_text(encoding="utf-8"))["bars"]["AT1a"]["pass"]
+    assert a8.main(_args(world, at8, "--confirm-one-look"), build_rows=stub) == 1
+    assert "FAIL" in capsys.readouterr().out and a8.LOCK_PATH.exists()
+    assert not json.loads((at8.tmp / "at8.json").read_text(encoding="utf-8"))["bars"]["AT1a"]["pass"]
 
 
 def test_the_name_list_loader_refuses_a_wrong_hash_without_naming_a_ticker(tmp_path):
@@ -724,12 +833,34 @@ def test_the_name_list_loader_refuses_a_wrong_hash_without_naming_a_ticker(tmp_p
         ac.load_names(lst, "0000")                                    # a prefix shorter than 8 characters is not enough
 
 
-def test_the_preconditions_checker_names_what_is_missing():
+def test_the_preconditions_checker_reads_result_files_and_names_what_is_missing(tmp_path):
     import at8_untouched_look as a8
     cfg = {k: "x" for k in a8.CONFIG_KEYS}
-    ok = {"configuration": dict(cfg), "results": {k: True for k in a8.REQUIRED}}
-    assert a8.check_preconditions(ok, cfg) == []
-    assert a8.check_preconditions({}, cfg)
-    assert a8.check_preconditions(dict(ok, results={**ok["results"], "AT9": False}), cfg) == ["AT9 is not recorded as passed"]
-    assert a8.check_preconditions(dict(ok, configuration=dict(cfg, tree_commit="y")), cfg) == ["the configuration differs from the one the ATs passed on: tree_commit"]
-    assert a8.check_preconditions(dict(ok, configuration={}), cfg) and a8.check_preconditions(ok, {k: None for k in a8.CONFIG_KEYS})
+    cfg["tree_clean"] = True
+    day = tmp_path / "day.json"
+    day.write_text("{}", encoding="utf-8")
+    sha = ac.sha256_file(day)
+    inputs = dict(cfg, history_sha256="x", closure_sha256="x", tree_commit="x")
+    folder = _write_results(tmp_path / "res", day, inputs)
+    results, problems = a8.load_at_results(folder)
+    assert problems == [] and set(results) == set(a8.REQUIRED)
+    meta = {"inputs": dict(cfg)}
+    assert a8.check_preconditions(results, meta, sha, cfg) == []
+    assert a8.check_preconditions({}, meta, sha, cfg) and a8.check_preconditions(results, {}, sha, cfg)
+    assert a8.check_preconditions(dict(results, AT9=dict(results["AT9"], **{"pass": False})), meta, sha, cfg) == ["AT9 is not recorded as passed"]
+    assert a8.check_preconditions(results, {"inputs": dict(cfg, tree_commit="y")}, sha, cfg) == [
+        "the configuration differs from the one the ATs passed on: tree_commit"]
+    assert a8.check_preconditions(results, {"inputs": {}}, sha, cfg) and a8.check_preconditions(results, meta, sha, {k: None for k in a8.CONFIG_KEYS})
+    dirty = dict(cfg, tree_clean=False)
+    assert any("not clean" in p for p in a8.check_preconditions(results, {"inputs": dict(dirty)}, sha, dirty))
+    assert any("not clean" in p for p in a8.check_preconditions(results, meta, sha, dirty))
+    # a hand-typed booleans file is no result file: it is not an AT result, so every AT is missing
+    typed = tmp_path / "typed"
+    typed.mkdir()
+    (typed / "acceptance.json").write_text(json.dumps({"configuration": cfg, "results": {k: True for k in a8.REQUIRED}}), encoding="utf-8")
+    found, _p = a8.load_at_results(typed)
+    assert found == {} and len(a8.check_preconditions(found, meta, sha, cfg)) == len(a8.REQUIRED)
+    # the day file and any other JSON in the folder are ignored; an unreadable file is a problem
+    (folder / "day.json").write_text("{}", encoding="utf-8")
+    (folder / "broken.json").write_text("{", encoding="utf-8")
+    assert a8.load_at_results(folder)[1] == ["a file in the results folder is not readable JSON"]

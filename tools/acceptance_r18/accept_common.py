@@ -345,16 +345,25 @@ def load_day(path):
     return doc["meta"], doc["rows"]
 
 
+def bill_rate_store(ns):
+    """The file the cash term's bill rate is read from (rs2_data.bill_rate_mean: MRI's raw FRED parquet under the resolved mri_dir), or None."""
+    mri_dir = ns.rs2.paths.resolve("mri_dir", ns.rs2.CONFIG, required=False)
+    p = Path(mri_dir) / "data" / "raw" / "fred" / "raw_observations.parquet" if mri_dir else None
+    return p if p is not None and p.exists() else None
+
+
 def inputs_record(ns, extra_files=()):
-    """The hashes the day is stated by (amendment 2, point 4): the final commit of the tree, the history and TTM files, the closure
-    artifact, every MRI anchor file as resolved that day."""
+    """The hashes the day is stated by (amendment 2, point 4; revision 18 follow-up, finding 11): the final commit of the tree and whether it is
+    clean, the history and TTM files, the closure artifact, every MRI anchor file as resolved that day, and the bill-rate store."""
     commit, clean = git_head(ns.tree)
     art = Path(ns.closure) if ns.closure else Path(ns.tree) / "cache" / "reference_closure.json"
     anchors = {}
     ad = Path(ns.rs2.anchors_dir())
     for p in sorted(ad.glob("*anchor*.json")):
         anchors[p.name] = sha256_file(p)
+    bill = bill_rate_store(ns)
     rec = {"tree": str(ns.tree), "root": str(ns.root), "tree_commit": commit, "tree_clean": clean, "date": ns.date,
+           "bill_rate_store": str(bill) if bill else None, "bill_rate_sha256": sha256_file(bill) if bill else None,
            "pack_revision": getattr(ns.cap, "PACK_REVISION", None),
            "history_sha256": sha256_file(Path(ns.sd) / "fundamentals_history.json"),
            "ttm_sha256": sha256_file(Path(ns.sd) / "fundamentals_ttm.json") if (Path(ns.sd) / "fundamentals_ttm.json").exists() else None,
