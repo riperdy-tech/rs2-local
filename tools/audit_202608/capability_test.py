@@ -3840,7 +3840,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # the desk. `coe_anchor_pct` and `terminal_def_val`/`terminal_g_val` are set by whichever
     # SECTION 1.5 branch ran above (both branches use these same names) and are still in scope
     # here — Python functions have no block scope.
-    facts["long_run"] = {} if _no_marker else pack_facts.quantize_long_run(_lr_raw)
+    # revision 18 follow-up, finding 17: a name with no marker has no record, but the age of the base fiscal year (stub_months) is not part of
+    # the record: it stays, so the desk still rolls the value forward to today. Without it the desk skipped the roll-forward unstamped.
+    _lr_facts = _lr_raw if not _no_marker else (
+        {"stub_months": _lr_raw["stub_months"]} if _lr_raw.get("stub_months") is not None else {})
+    facts["long_run"] = pack_facts.quantize_long_run(_lr_facts)
     L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker), ""]
 
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS

@@ -72,13 +72,37 @@ def test_a_name_with_no_marker_gets_no_reference_and_the_defaults_lines_say_why(
     pack = _synthetic_pack(monkeypatch, no_marker=True)
     f, text = pack.facts, str(pack)
     assert f["reference_status"] == "not_available" and f["consensus_implied_value"] is None
-    assert f["terminal_ronic"] is None and f["long_run"] == {} and f["working_capital"] is None and f["reference_base_b"] is None
+    # the record's members are empty; the age of the base fiscal year is not part of the record and stays (finding 17)
+    assert f["terminal_ronic"] is None and f["working_capital"] is None and f["reference_base_b"] is None
+    assert f["long_run"]["stub_months"] is not None and all(v in (None, []) for k, v in f["long_run"].items() if k != "stub_months")
     assert _line(text, "- CONSENSUS-IMPLIED VALUE") == f"- CONSENSUS-IMPLIED VALUE: not available — {REASON}"
     assert "CONSENSUS-IMPLIED VALUE (reference" not in text
-    for key in ("terminal_ronic", "long_run", "working_capital"):
+    for key in ("terminal_ronic", "working_capital"):
         assert _line(text, f"- {key}:").startswith(f"- {key}: not available | not available: {REASON}"), key
+    assert _line(text, "- long_run:").startswith("- long_run: cycle=none, ") and f" | not available: {REASON}" in _line(text, "- long_run:")
     assert _line(text, "- reference_status:").startswith("- reference_status: not_available")
     assert pack_facts.parity(f, pack_facts.from_text(text)) == []               # the printed lines still read back as the facts
+
+
+def test_a_name_with_no_marker_keeps_stub_months_and_the_desk_still_rolls_the_value_forward(screener_data_stub, monkeypatch):
+    """Revision 18 follow-up, finding 17: stub_months (the base fiscal year's age) is not part of the record. Dropping it with the record made
+    the desk skip the roll-forward to today without a stamp (financial_model_tool: roll = 1 without a stub)."""
+    import financial_model_tool as fmt
+    marker = _synthetic_pack(monkeypatch)
+    nomarker = _synthetic_pack(monkeypatch, no_marker=True)
+    stub = marker.facts["long_run"]["stub_months"]
+    assert stub is not None and nomarker.facts["long_run"]["stub_months"] == stub
+    parsed = pack_facts.from_text(str(nomarker))
+    assert parsed["long_run"]["stub_months"] == stub and parsed["long_run"]["r_tc"] is None
+    assert pack_facts.parity(nomarker.facts, parsed) == []
+    path = [0.08, 0.07, 0.06, 0.05, 0.05]
+    desk = lambda p: fmt.unbundled_dcf(base_cf=p["owner_earnings_default_b"], explicit_growth=path, wacc=p["coe_anchor"], terminal_g=p["terminal_g_default"],
+                                       shares_diluted=p["shares_default"] / 1e9, fade_years=5, sbc_treatment="deducted_in_cf",
+                                       terminal_ronic=p.get("terminal_ronic"), long_run=p.get("long_run"), working_capital=p.get("working_capital"),
+                                       excess_cash=p.get("excess_cash"))
+    out = desk(parsed)
+    assert out["roll_forward_factor"] == pytest.approx((1.0 + parsed["coe_anchor"]) ** (stub / 12.0), abs=1e-6) and out["roll_forward_factor"] > 1.0
+    assert desk(dict(parsed, long_run={}))["roll_forward_factor"] == 1.0           # what the desk did before the stub was kept
 
 
 def test_a_marker_of_nothing_untagged_and_a_partial_marker_still_give_a_reference(screener_data_stub, monkeypatch):
