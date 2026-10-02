@@ -294,6 +294,10 @@ def build_closure(*, root, cap_mod, rs2_mod, enrich_dir, asof, today=None):
         if t not in cache:
             p = enrich_dir / f"{t}.json"
             doc = rs2_mod.load_json(p) if p.exists() else None
+            failed = rs2_mod.enrich_fetch_error(doc)         # before `estimates` is read: a failed fetch has none, and is not "no coverage"
+            if failed is not None:
+                raise Refused(f"the consensus record of a name in the aggregate is the error record of a failed vendor fetch (HTTP {failed[0]} "
+                              f"at {failed[1]}), which is not \"no coverage\": the closure is not built on a vendor outage; nothing is published")
             cache[t] = (doc or {}).get("estimates") if isinstance(doc, dict) else None
         return cache[t]
 

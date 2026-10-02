@@ -195,6 +195,8 @@ class _Anchors:
     def load_json(self, p):
         return None
 
+    enrich_fetch_error = staticmethod(rs2_data.enrich_fetch_error)
+
 
 def _companies(n):
     return {f"Z{i:02d}": ({"Market_Cap": 1e9 + i * 1e6, "FX": None, "Shares_Outstanding": 1e6}, _rows(), str(i)) for i in range(n)}
@@ -218,6 +220,30 @@ def test_a_marker_of_nothing_untagged_or_a_partial_one_passes_the_closures_marke
     with pytest.raises(rc.Refused) as e:                                            # past the marker check, the later floor refuses
         rc.build_closure(root=_MarkedRoot(companies, markers), cap_mod=cap, rs2_mod=_Anchors(), enrich_dir=tmp_path, asof="2026-10-02")
     assert "coverage floor" in str(e.value) and "provenance marker" not in str(e.value)
+
+
+class _AnchorsReadingFiles(_Anchors):
+    def load_json(self, p):
+        return rs2_data.load_json(p)
+
+
+def test_a_failed_vendor_fetch_in_the_consensus_cache_refuses_the_closure_and_is_not_no_coverage(tmp_path):
+    """Revision 18 follow-up, finding 18: an error record has no `estimates`, so reading it as such counted a vendor outage as a name
+    with no coverage and solved the closure on a smaller set. The record is asked first, and the build refuses, naming no ticker."""
+    import json
+    companies = _companies(10)
+    markers = {t: [] for t in companies}
+    (tmp_path / "Z03.json").write_text(json.dumps({"_ticker": "Z03", "_fetched_at": "2026-10-02T00:00:00+00:00", "_status": "error",
+                                                   "_error": {"http_status": 503, "where": "info"}}), encoding="utf-8")
+    with pytest.raises(rc.Refused) as e:
+        rc.build_closure(root=_MarkedRoot(companies, markers), cap_mod=cap, rs2_mod=_AnchorsReadingFiles(), enrich_dir=tmp_path, asof="2026-10-02")
+    msg = str(e.value)
+    assert "error record of a failed vendor fetch (HTTP 503 at info)" in msg and "nothing is published" in msg and not any(t in msg for t in companies)
+    # the same directory with a no-coverage record (a good record whose estimates are null) is not a refusal for this reason
+    (tmp_path / "Z03.json").write_text(json.dumps({"_ticker": "Z03", "_fetched_at": "2026-10-02T00:00:00+00:00", "estimates": None}), encoding="utf-8")
+    with pytest.raises(rc.Refused) as e2:
+        rc.build_closure(root=_MarkedRoot(companies, markers), cap_mod=cap, rs2_mod=_AnchorsReadingFiles(), enrich_dir=tmp_path, asof="2026-10-02")
+    assert "coverage floor" in str(e2.value) and "vendor" not in str(e2.value)
 
 
 def test_the_check_counts_only_a_missing_entry(tmp_path):
