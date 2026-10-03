@@ -13,7 +13,8 @@ Validity (1.3). Every entry must pass, in this order:
   (v3) at least one citation is company evidence whose quote is found verbatim in its source: none is company evidence is
        `no_company_evidence`; company evidence is cited but no quote is found is `quote_not_found`.
 No crux at all is `missing`. The crux's reason is the first failure found, entries in order. Company evidence is exactly one of two classes:
-the company's own filings or release as printed in the pack (sources named `DATA 3`, `DATA 4`, `DATA 5`, `DATA 6` or `GUIDANCE`), and a page
+the company's own filings or release as printed in the pack (sources named `DATA 3`, `DATA 4`, `DATA 5`, `DATA 6`, `GUIDANCE` or, from pack
+revision 21, `PRIMARY P#`: an item of the PRIMARY SOURCES section, verbatim, which a URL that is an item's own also names), and a page
 fetched in this sample that names the company (the source is its URL). Everything else is context and never company evidence.
 """
 import re
@@ -36,17 +37,23 @@ TOL_LEVEL = 0.005
 _EPS = 1e-9               # "within" a tolerance includes the tolerance itself, whatever the float arithmetic says
 
 # code points (written as numbers: several of these characters are invisible)
-_QUOTE_MAP = {0x2018: "'", 0x2019: "'", 0x201A: "'", 0x201B: "'",               # typographic single quotes
-              0x201C: '"', 0x201D: '"', 0x201E: '"', 0x201F: '"',               # typographic double quotes
-              0x2013: "-", 0x2014: "-"}                                         # en and em dashes
-_ZERO_WIDTH = {0x200B: None, 0x200C: None, 0x200D: None, 0x2060: None, 0xFEFF: None}
+_QUOTE_MAP = {0x2018: "'", 0x2019: "'", 0x201A: "'", 0x201B: "'", 0x2032: "'",  # typographic single quotes and the prime
+              0x201C: '"', 0x201D: '"', 0x201E: '"', 0x201F: '"', 0x2033: '"',  # typographic double quotes and the double prime
+              0x2010: "-", 0x2011: "-", 0x2012: "-", 0x2013: "-", 0x2014: "-", 0x2015: "-", 0x2212: "-"}   # hyphens, dashes and the minus sign
+# invisible characters a filing carries and a copy leaves out: zero-width and word-joiner characters, the soft hyphen, the direction marks and the
+# invisible operators (revision 21, Q2: the round trip of a filing's every sentence)
+_ZERO_WIDTH = {0x200B: None, 0x200C: None, 0x200D: None, 0x2060: None, 0xFEFF: None, 0x00AD: None, 0x200E: None, 0x200F: None,
+               0x202A: None, 0x202B: None, 0x202C: None, 0x202D: None, 0x202E: None, 0x2061: None, 0x2062: None, 0x2063: None, 0x2064: None}
+_PRE_NFKC = {0x2033: '"', 0x2036: '"'}                                          # the double prime and the reversed double prime, before NFKC reads them
 _OWN_WORDS = re.compile(r"^(?:STALE \(\d+ days\) " + chr(0x2014) + r" )?COMPANY'S OWN WORDS")
 
 
 def normalise(text):
     """The text as the verbatim test reads it: NFKC; typographic quotes made straight; en and em dashes made a hyphen; zero-width
     characters removed; every run of whitespace one space; stripped. Matching on it is case-sensitive."""
-    s = unicodedata.normalize("NFKC", "" if text is None else str(text))
+    s = "" if text is None else str(text)
+    s = s.translate(_PRE_NFKC)                    # NFKC would turn a double prime into two primes, which a copy cannot be told from two apostrophes
+    s = unicodedata.normalize("NFKC", s)
     s = s.translate(_QUOTE_MAP).translate(_ZERO_WIDTH)
     return re.sub(r"\s+", " ", s).strip()
 
@@ -79,7 +86,7 @@ def _body(call):
 
 def fetched_texts(calls):
     """{normalised URL: the concatenation, in call order, of the text of every `fetch_page` record of the sample that carries no error} (1.3):
-    only what the model was shown. A record counts under the URL it was asked for and under the URL the page was served from, when they differ;
+    only what the model was shown (a call refused with a pointer to PRIMARY SOURCES fetched nothing). A record counts under the URL it was asked for and under the URL the page was served from, when they differ;
     a fetched page that served no text is still a fetched page (its text is empty)."""
     import catalyst_research
     parts = {}
@@ -88,6 +95,8 @@ def fetched_texts(calls):
             continue
         body = _body(c)
         if not isinstance(body, dict) or body.get("error") or body.get("refused") or c.get("error"):
+            continue
+        if body.get("served_from_primary") is not None:       # revision 21: a pointer to PRIMARY SOURCES, no page was fetched
             continue
         text = body.get("text")
         keys = {catalyst_research.normalize_url(str((c.get("params") or {}).get("url") or "")),
@@ -151,9 +160,18 @@ def at_default(name, own, defaults, own_path=None):
     return False
 
 
-def classify_citations(citations, sources, fetched, company, ticker):
-    """[{"source", "class", "quote_found"}] for the citations of one entry. `sources` is `pack_sources(pack)`, `fetched` is `fetched_texts(calls)`.
-    The class is `pack_company` (a pack source named exactly), `fetched_page_naming_company` (a URL fetched in this sample, no error, whose text
+def primary_items(pack_text):
+    """The PRIMARY SOURCES items the pack prints (revision 21): [{"id", "type", "form", "accession", "filed", "period", "url", "title", "text"}],
+    sec_primary.parse_pack's; empty for a pack that prints none (an older pack, or `not available`)."""
+    import sec_primary
+    return sec_primary.parse_pack(pack_text)
+
+
+def classify_citations(citations, sources, fetched, company, ticker, primary=None):
+    """[{"source", "class", "quote_found"}] for the citations of one entry. `sources` is `pack_sources(pack)`, `fetched` is `fetched_texts(calls)`,
+    `primary` is `primary_items(pack)` (revision 21; None reads none).
+    The class is `pack_company` (a pack source named exactly, or a PRIMARY source: `PRIMARY P1`, `P1`, or an sec.gov URL that is a primary item's
+    own, which resolves to that item; the quote is looked for in that item's text), `fetched_page_naming_company` (a URL fetched in this sample, no error, whose text
     names the company by the news filter's rule), `unknown_source` (a URL not fetched in this sample) or `generic` (anything else, including a
     fetched page that does not name the company). `quote_found` is whether the normalised quote is a substring of the normalised source text, for
     the two company classes; None for the others (context is never checked: it can never be company evidence)."""
@@ -165,10 +183,14 @@ def classify_citations(citations, sources, fetched, company, ticker):
         rec = {"source": src if isinstance(src, str) else None, "class": "generic", "quote_found": None}
         if isinstance(src, str) and src.strip():
             pack_name = _pack_source_name(src)
+            item = None if pack_name is not None else _primary_item(src, primary, quote)
             if pack_name is not None:
                 rec["class"] = "pack_company"
                 text = sources.get(pack_name, "")
                 rec["quote_found"] = _found(quote, text)
+            elif item is not None:
+                rec["class"] = "pack_company"
+                rec["quote_found"] = _found(quote, item["text"])
             elif _is_url(src):
                 import catalyst_research
                 key = catalyst_research.normalize_url(src.strip())
@@ -182,6 +204,13 @@ def classify_citations(citations, sources, fetched, company, ticker):
                         rec["quote_found"] = _found(quote, fetched[key])
         out.append(rec)
     return out
+
+
+def _primary_item(src, primary, quote):
+    if not primary:
+        return None
+    import sec_primary
+    return sec_primary.resolve_source(src, primary, quote)
 
 
 def _found(quote, text):
@@ -208,6 +237,7 @@ def check(crux, price_implied, pack_text, calls, company, ticker, defaults):
         return {"valid": False, "reason": "missing", "entries": []}
     sources = pack_sources(pack_text)
     fetched = fetched_texts(calls)
+    primary = primary_items(pack_text)
     pi = price_implied if isinstance(price_implied, dict) and not price_implied.get("error") else {}
     entries = []
     for e in crux:
@@ -223,7 +253,7 @@ def check(crux, price_implied, pack_text, calls, company, ticker, defaults):
             rec["reason"] = "not_judgment"
         else:
             rec["at_default"] = at_default(name, blk.get("own"), defaults, blk.get("own_path"))
-            rec["citations"] = classify_citations(entry.get("citations"), sources, fetched, company, ticker)
+            rec["citations"] = classify_citations(entry.get("citations"), sources, fetched, company, ticker, primary)
             if not rec["reachable"]:
                 rec["reason"] = "not_reachable"
             else:
@@ -289,7 +319,7 @@ def form_problems(crux, run_date):
                 continue
             src = c.get("source")
             if not isinstance(src, str) or not src.strip():
-                problems.append(f"{ct}.source (DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE or the URL of a page you fetched)")
+                problems.append(f"{ct}.source (PRIMARY P#, DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE or the URL of a page you fetched)")
             d = c.get("date")
             if not isinstance(d, str) or not DATE_RE.match(d):
                 problems.append(f"{ct}.date (YYYY-MM-DD)")

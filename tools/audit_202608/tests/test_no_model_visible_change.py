@@ -46,7 +46,9 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # 2026-10-02 (revision 19, brief D2): the Level-anchor bullet is deleted, item 5 loses "and so is moving any input toward today's price", item 6
 # is the price_implied and crux paragraph, and the closing paragraph names the crux; was
 # "6c42ab72a946259410b1e174ef4a8d8acf4571c9b84d18b17cda0596c1abfa93".
-TASK_SHA256 = "dc955632d2ecf205aeff89354b0f2f0de97ecaa66370a1a0b8be816cd7d45505"
+# 2026-10-03 (revision 21, brief_rev21.md Q3 and R4): item 6 names PRIMARY P# first among the sources of a crux and item 8 gains the sentence that
+# the primary sources are not searched or fetched again; was "dc955632d2ecf205aeff89354b0f2f0de97ecaa66370a1a0b8be816cd7d45505".
+TASK_SHA256 = "414a4fd72ee6e5b7af4eda667f06427863da5a033f88d956042db53e855e5d3d"
 RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
@@ -71,9 +73,11 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 # "84a5d721b704401741dc1cb755b0461408e32830b4cec91a8c26327fe5928b40". The model's system text (the Modelfiles) is untouched.
 # 2026-10-02 (revision 19, brief B1): the description gains the price_implied sentence and the schema gains the crux argument; was
 # "1caed0f6c38965b562b77783bb33e483b3b6241b400321e53a37f25b3f1f1f21".
-TOOLS_SHA256 = "cff81bb1b95cdf0acc136564bd66022d06413c5bb94bc09e414201eec8242914"
-# research_tools() (search_web, fetch_page) is unchanged, so its pin stays.
-RESEARCH_TOOLS_SHA256 = "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35"
+# 2026-10-03 (revision 21, brief_rev21.md R4): the search_web and fetch_page descriptions gain the primary-sources sentence and the crux argument's
+# description names PRIMARY P# among the sources; was "cff81bb1b95cdf0acc136564bd66022d06413c5bb94bc09e414201eec8242914".
+TOOLS_SHA256 = "c3fd7ad03bf8db9155ed62c45fddfa7bbae96131973184cb3ae05277d6508ae3"
+# research_tools() (search_web, fetch_page) changed with them (revision 21, R4); was "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35".
+RESEARCH_TOOLS_SHA256 = "62cb74cb2a4fa294060ba2acd1556ef14e501dfadb6b226b9034bc4634c68e49"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
 SYSTEM_MTP5_Q4_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
 SYSTEM_MTP5_V32_SHA256 = "04894e6c3b217be46f48c329ca7c6c8dd7347d344513ec4c5cd723213b0c0ab7"
@@ -105,7 +109,7 @@ def _get_system_block(path: Path) -> str:
 def test_text_pins():
     # Revision 17 (brief_rev17_B_valuation.md): the pack text, the TASK and the tool schema changed on purpose (the
     # through-cycle package); revision 16 changed only the number on the first line.
-    assert capability_test.PACK_REVISION == 20
+    assert capability_test.PACK_REVISION == 21
     assert _sha256(capability_test.TASK) == TASK_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
@@ -179,6 +183,13 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
         "digest",
         lambda *a, **k: None,
     )
+    # revision 21: the PRIMARY SOURCES section reads GEV's real filings from the committed per-accession cache (fixture_data/sec_primary: the
+    # 8-K Item 2.02 of 2026-07-22 with its exhibits, the 10-Q of the same day with its segment report, the 8-K Item 5.02 of 2026-08-27) and the
+    # submissions list; no request is made
+    import sec_primary
+    sp_dir = FIXTURE / "sec_primary"
+    monkeypatch.setattr(sec_primary, "CACHE", sp_dir)
+    monkeypatch.setattr(sec_primary, "_subs", lambda cik: json.loads((sp_dir / "GEV_submissions.json").read_text(encoding="utf-8")))
     # build_pack imports the screener's industry_taxonomy through sys.path entries it appends itself
     # (capability_test.py SECTION 1). Whether the import succeeds depends on what earlier tests left
     # in sys.path and sys.modules: the SECTION 1 cluster line then reads "Unknown" or the real cluster
@@ -223,10 +234,13 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # base_year_cash_and_investments_b line (AT10 fix item 3)
     # revision 19, part D (+358 chars, was 22630): the price_implied line (this fixture has no reference, so it reads "not available" and says why)
     # revision 20 (0 chars): PACK_REVISION 20 on the first line; the GEV fixture's history predates the input-scope fields, so no other line changes
-    assert len(text1) == 22988
+    # revision 21 (+23,756 chars, was 22988): PACK_REVISION 21 on the first line (0) and the PRIMARY SOURCES section after GUIDANCE & CONSENSUS (the
+    # 8-K Item 2.02 release of 2026-07-22, the segment report of the 10-Q of the same day, the 8-K Item 5.02 of 2026-08-27); the golden diff is in
+    # rev21/BEFORE_AFTER_r21.md
+    assert len(text1) == 46744
 
     # Assert byte equality with golden file
-    golden_file = FIXTURE / "golden_pack_GEV_rev20.md"
+    golden_file = FIXTURE / "golden_pack_GEV_rev21.md"
     # core.autocrlf checks the fixture out with CRLF on Windows; the pack itself is built with "\n"
     golden_bytes = golden_file.read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes

@@ -1,8 +1,8 @@
 """tools/audit_202608/tests/test_pack_rev15.py — S3 package C (brief section 6 item 5, "Pack").
 
-- Byte equality with golden_pack_GEV_rev20.md (revision 17: the through-cycle package's DEFAULTS lines, no
-  exit multiple; rev16's golden stays beside it as the pre-17 record), built with S1's step-0 stubs and
-  frozen clock.
+- Byte equality with golden_pack_GEV_rev21.md (revision 17: the through-cycle package's DEFAULTS lines, no
+  exit multiple; revision 21: the PRIMARY SOURCES section, read from GEV's real filings in fixture_data/sec_primary;
+  rev16's golden stays beside it as the pre-17 record), built with S1's step-0 stubs and frozen clock.
 - The DEFAULTS block is the pack's last block and parses.
 - The retired-words test of 5.3 (GEV golden, and every rebuilt name from 7.3's 20-name sample).
 - The discovery slices (SECTION 2.5, RECENT COMPANY NEWS, CONSENSUS ESTIMATES, GUIDANCE) are
@@ -67,6 +67,8 @@ def _stub_and_freeze(monkeypatch):
     monkeypatch.setattr(cap.sec_guidance, "latest_earnings_release", lambda *a, **k: None)
     monkeypatch.setattr(cap.world_news, "digest", lambda *a, **k: None)
     monkeypatch.setitem(sys.modules, "industry_taxonomy", None)
+    import gev_primary_fixture
+    gev_primary_fixture.install(monkeypatch)                      # revision 21: the PRIMARY SOURCES section reads GEV's committed filings
     for mod in (cap, rs2_data, catalyst_research, valuation_backbone):
         monkeypatch.setattr(mod, "datetime", _FrozenDatetime, raising=False)
 
@@ -81,7 +83,7 @@ def test_golden_pack_gev_rev15_byte_equal(screener_data_stub, monkeypatch):
     pack2 = cap.build_pack("GEV", include_research=False)
     text1 = str(pack1)
     assert text1 == str(pack2)
-    golden_bytes = (FIXTURE / "golden_pack_GEV_rev20.md").read_bytes().replace(b"\r\n", b"\n")
+    golden_bytes = (FIXTURE / "golden_pack_GEV_rev21.md").read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes
 
 
@@ -121,6 +123,11 @@ def _retired_word_hits(text):
     word survives on purpose (doctrine that stays, 5.3)."""
     i = text.find("## DEFAULTS")
     body = text[:i] if i != -1 else text
+    # revision 21: the PRIMARY SOURCES section is the company's own filing text, verbatim ("under contract" is GEV's own phrase), not the pack's words
+    p0 = body.find("## PRIMARY SOURCES")
+    if p0 != -1:
+        p1 = body.find("\n## ", p0 + 3)
+        body = body[:p0] + (body[p1:] if p1 != -1 else "")
     hits = []
     for word in _RETIRED_WORDS:
         for m in re.finditer(r"\b" + re.escape(word) + r"\b", body):

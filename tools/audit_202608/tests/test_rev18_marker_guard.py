@@ -279,6 +279,8 @@ def _gev_fixture_pack(monkeypatch, marker, tmp_path):
     monkeypatch.setattr(cap.sec_guidance, "latest_earnings_release", lambda *a, **k: None)
     monkeypatch.setattr(cap.world_news, "digest", lambda *a, **k: None)
     monkeypatch.setitem(sys.modules, "industry_taxonomy", None)
+    import gev_primary_fixture
+    gev_primary_fixture.install(monkeypatch)                      # revision 21: the PRIMARY SOURCES section reads GEV's committed filings
 
     class _Frozen(_real):
         @classmethod
@@ -299,7 +301,7 @@ def _gev_fixture_pack(monkeypatch, marker, tmp_path):
 
 
 def test_the_gev_fixture_pack_is_the_golden_pack_with_a_marker_and_differs_only_in_the_stated_lines_without_one(screener_data_stub, monkeypatch, tmp_path):
-    golden = (Path(__file__).resolve().parent / "fixture_data" / "golden_pack_GEV_rev20.md").read_bytes().replace(b"\r\n", b"\n")
+    golden = (Path(__file__).resolve().parent / "fixture_data" / "golden_pack_GEV_rev21.md").read_bytes().replace(b"\r\n", b"\n")
     with_marker = _gev_fixture_pack(monkeypatch, True, tmp_path)
     assert with_marker.encode("utf-8") == golden                                    # unchanged: names that carry a marker never reach the guard
     cap._SEC_CACHE.clear()

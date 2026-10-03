@@ -37,7 +37,8 @@ ITEM6 = ("6. The desk also returns price_implied: for each judgment input (coe, 
          "the value at which your Base would equal today's price with your other inputs unchanged, or \"not reachable\" when no value inside the input's "
          "bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: "
          "in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at "
-         "least one citation {source, date, quote} of this company's own evidence: DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), "
+         "least one citation {source, date, quote} of this company's own evidence: the company's own filings, verbatim, in PRIMARY SOURCES (cite them as "
+         "PRIMARY P# with the quote copied exactly), or DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), "
          "or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied "
          "value from that run. DEFAULTS, the base rates, the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands, the consensus rows, the news "
          "list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. "
@@ -202,7 +203,7 @@ def test_the_rest_of_the_facts_pass_through_without_an_or_default():
 def test_a_built_pack_prints_the_defaults_price_implied_and_its_facts_equal_the_text(screener_data_stub, monkeypatch):
     pack = _pack_with_bill_rate(monkeypatch, 0.04)
     f = pack.facts
-    assert f["version"] == 8 == pack_facts.FACTS_VERSION
+    assert f["version"] == 9 == pack_facts.FACTS_VERSION
     block = f["price_implied_defaults"]
     assert set(block) == set(pi_text.INPUTS) and f["price_implied_price"] > 0 and len(f["reference_path"]) == 5
     assert f["rf_eff"] is not None and f["nominal_gdp_trend"] == rs2_data.anchor_nominal_gdp_trend()[0]

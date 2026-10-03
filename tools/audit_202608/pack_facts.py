@@ -22,7 +22,7 @@ import consensus_reference  # noqa: E402
 import pi_text  # noqa: E402
 import throughcycle_record  # noqa: E402
 
-FACTS_VERSION = 8
+FACTS_VERSION = 9
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -105,15 +105,19 @@ KEYS: list[str] = [
     "customer_money",
     "insurance_reserves_b",
     "vendor_revenue_basis",
+    # version 9 (pack revision 21, brief_rev21.md P3): the PRIMARY SOURCES items the pack printed, per item {id, type, form, accession, filed, period,
+    # url, sha256 of its text, chars}; [] when the section printed `not available`. SIDECAR_ONLY: the pack text carries the items' text, not their
+    # hashes, so a text read gives None and the parity check leaves it out.
+    "primary_sources",
 ]
 
 # keys the DEFAULTS text does not carry: a frozen replay reads them from the sidecar, and a text read gives None (parity ignores them)
 SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price",
                 "nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
-                "vendor_revenue_basis")
-# version 8's keys, None on every text read (legacy or DEFAULTS)
+                "vendor_revenue_basis", "primary_sources")
+# version 8's keys (and version 9's primary_sources), None on every text read (legacy or DEFAULTS)
 _SCOPE_KEYS = ("nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
-               "vendor_revenue_basis")
+               "vendor_revenue_basis", "primary_sources")
 
 # The revision marker (S1's from_text dispatch, section 5.1's line format). The DEFAULTS reader
 # serves every revision from 15 on: a later revision changes what the model is told, not this format.

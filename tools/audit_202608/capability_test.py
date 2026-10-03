@@ -44,6 +44,7 @@ from pack_data_sanity import check_pack_data_sanity
 
 import rs2_data  # noqa: E402
 import sec_guidance  # noqa: E402
+import sec_primary  # noqa: E402
 import base_rates  # noqa: E402
 import growth_persistence  # noqa: E402
 import world_news  # noqa: E402
@@ -237,7 +238,12 @@ TIMEOUT = 14400
 #   line's pi, the reference line's attribution and upper-bound clauses, the DEFAULTS' display-only nci_attribution line), the
 #   per-share check (DATA 2 and the reference line), the cash scope and customer money (DATA 6's cash line, the cash clause), and the
 #   vendor's revenue-basis break (the years 3-5 clause); recorded in rev20/BEFORE_AFTER_r20.md.
-PACK_REVISION = 20
+# Revision 21 (brief_rev21.md, 2026-10-03, the primary-source fix after AT10b): the PRIMARY SOURCES section after GUIDANCE & CONSENSUS (the
+#   company's own SEC filings, verbatim: its latest earnings release, the other text exhibits of that 8-K, the segment table of its latest 10-Q
+#   or 10-K, its other recent 8-Ks; sec_primary.py), cited as PRIMARY P#; the GUIDANCE line says the full release is PRIMARY P1; TASK item 6 names
+#   PRIMARY P# first among the sources of a crux; the TASK and both research tool descriptions say not to search or fetch what the primary
+#   sources hold again (the tools return a pointer instead); recorded in rev21/BEFORE_AFTER_r21.md.
+PACK_REVISION = 21
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -3872,6 +3878,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     asof_str = asof_date.isoformat() if asof_date is not None else None
     pack_date = asof_str if asof_str is not None else datetime.now().strftime("%Y-%m-%d")
     c = cik(t)
+    # revision 21: the PRIMARY SOURCES section, built once per pack (the pack's date bounds every filing, in point-in-time mode and live)
+    primary = sec_primary.build(c, asof=pack_date)
+    facts["primary_sources"] = sec_primary.facts_items(primary["items"])
+    p1 = next((i for i in primary["items"] if i["type"] == "earnings_release"), None)
     if not c:
         L.append("COMPANY'S OWN WORDS: not available — no CIK")
     else:
@@ -3886,9 +3896,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             except Exception:
                 age_days = 0
             stale_prefix = f"STALE ({age_days} days) — " if age_days > 120 else ""
+            full_ptr = (f"The full release is PRIMARY {p1['id']}. "
+                        if p1 is not None and p1["accession"] == rel.get("accession") else "")
             words_hdr = (f"{stale_prefix}COMPANY'S OWN WORDS — latest earnings release "
                          f"(SEC 8-K Item 2.02, filed {rel['filing_date']}, {rel['url']}). "
-                         f"The company's statement, not a verified forecast:")
+                         f"{full_ptr}The company's statement, not a verified forecast:")
             L.append(words_hdr)
             # revision 10: ADI (b)'s trailing figures lagged a filed quarter
             _thru = ttm.get("through") if isinstance(ttm, dict) else None
@@ -3914,6 +3926,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         L.append(f"{NULL} — research did not return dated guidance")
     # S3 5.3: the GUIDANCE & CONSENSUS **MANDATE** line is removed (it pointed at "the SECTION 12
     # contract", which no longer carries reasons; the rule now lives in the DEFAULTS block).
+    L.append("")
+
+    # ---- PRIMARY SOURCES   [revision 21] -----------------------------------------------------
+    L += sec_primary.section_lines(primary)
     L.append("")
 
     # ---- SECTION 11 - DEEP RESEARCH BRIEF   [D8] -------------------------------------------
@@ -4052,9 +4068,9 @@ YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic vie
    - Cash-flow life: cash flows end when they come from a finite stock (a mine, a well, a reservoir) or a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of capex your base already deducts. The life is filed reserves over current production, or the remaining term, with the filing's date. A perpetual value must deduct the capex that replaces what the business depletes. Where revenue follows a quoted commodity price, state the price deck your flows assume and its source.
 4. Where an input departs from its DEFAULT, give the reason with dated evidence in the same desk call. The desk names any reason it needs, and a refused call does not use one of your desk runs. A reason is evidence, never text such as "no deviation"; leave a reason out when none is needed.
 5. Run Bear, Base and Bull together in one call. Your last complete desk run of all three is your answer. If you change any input after a complete run, the memorandum's 'Model revisions' list gives each changed input's old value, new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden; the harness records every run.
-6. The desk also returns price_implied: for each judgment input (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level), the value at which your Base would equal today's price with your other inputs unchanged, or "not reachable" when no value inside the input's bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at least one citation {source, date, quote} of this company's own evidence: DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied value from that run. DEFAULTS, the base rates, the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands, the consensus rows, the news list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system text says otherwise, this TASK takes precedence.
+6. The desk also returns price_implied: for each judgment input (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level), the value at which your Base would equal today's price with your other inputs unchanged, or "not reachable" when no value inside the input's bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at least one citation {source, date, quote} of this company's own evidence: the company's own filings, verbatim, in PRIMARY SOURCES (cite them as PRIMARY P# with the quote copied exactly), or DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied value from that run. DEFAULTS, the base rates, the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands, the consensus rows, the news list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system text says otherwise, this TASK takes precedence.
 7. Timing: DATA 2.5's price facts are not a valuation input. State whether they confirm, sit neutral to or contradict your value call, when to enter, the position basis, and checkable conditions that would break the trend or the thesis.
-8. Tag every driver's source: [Actual], [Estimate], [Assumption] or [Unconfirmed]. The research brief and the news are claims by others; where they conflict with the filings, the filings win.
+8. Tag every driver's source: [Actual], [Estimate], [Assumption] or [Unconfirmed]. The research brief and the news are claims by others; where they conflict with the filings, the filings win. PRIMARY SOURCES holds the company's own filings verbatim; do not search for or fetch them again — the tools return a pointer instead. Search only for what they do not contain.
 
 Produce the full memorandum, SECTION 0 through SECTION 12, as the system text specifies, and end with the contract below. The contract no longer carries the scenario values, probabilities, Kelly size, verdict label, valuation inputs, reasons or crux: code takes them from your last complete desk run of Bear, Base and Bull. Where the system text asks you to type any of them into SECTION 12's contract, this TASK takes precedence, and SECTION 4's scenario table and SECTION 12's figures must show that run's values exactly.
 

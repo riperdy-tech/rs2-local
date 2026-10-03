@@ -176,6 +176,21 @@ def _isolate_sec_guidance_in_tests(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_sec_primary_in_tests(monkeypatch, tmp_path):
+    """Revision 21: the PRIMARY SOURCES section reads sec.gov through sec_primary._http_get and caches in cache/sec_primary. A test never reaches
+    the network and never writes the repository's cache: the cache is a tmp_path directory and every request fails, until the test supplies its own
+    fixture (see tests/test_sec_primary.py)."""
+    import sec_primary
+    monkeypatch.setattr(sec_primary, "CACHE", tmp_path / "sec_primary")
+    monkeypatch.setattr(sec_primary, "THROTTLE_S", 0.0)
+
+    def _no_http(url, timeout=60):
+        raise OSError("Network disabled in tests")
+
+    monkeypatch.setattr(sec_primary, "_http_get", _no_http)
+
+
+@pytest.fixture(autouse=True)
 def _world_news_is_unreachable_by_default(tmp_path, monkeypatch):
     """P4 D10 — every `capability_test.build_pack()` call now asks `world_news.digest()` for
     SECTION 1.6's WORLD NEWS block, which resolves the real macro-regime-indicator repo and, in
