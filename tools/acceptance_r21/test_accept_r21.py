@@ -110,7 +110,7 @@ def test_r3_census_counts_by_rule_and_keeps_the_lists_private(tmp_path):
     assert "ACME" not in json.dumps(pub) and "ZZZZ" not in json.dumps(pub)
     acme = private["names"]["ACME"]
     assert [r["query"] for r in acme["refused"]] == ["Acme Q2 2026 earnings release", "Acme revenue $1,234.5 million", "Acme Q2 2026 revenue $1,234.5 million results"]
-    assert acme["refused"][1]["figure_tokens"] == ["1234.5"] and acme["refused"][0]["items"] == ["P1"]
+    assert acme["refused"][1]["figure_tokens"] == ["$1234.5m"] and acme["refused"][0]["items"] == ["P1"]
     assert [r["query"] for r in acme["allowed"]] == ["Acme city council vote", "Acme partner announcement"]
     assert acme["allowed"][0] == {"sample": 1, "query": "Acme city council vote", "dedup": False, "document_word": False, "period": False, "figure_not_in_items": []}
     # the script: the lists file must say `_private`, and an existing file is never overwritten

@@ -256,5 +256,34 @@ def test_a_6k_and_a_20f_are_the_kinds_the_refusal_rules_read(monkeypatch):
 def test_the_module_text_states_the_rules_in_words():
     doc = sp.__doc__
     for phrase in ("FOREIGN FILER", "results or earnings", "quarter, half-year or year word", "annual segment table", "20-F", "40-F", "a plain integer",
-                   "never counts", "COMPLETE primary item", "partly in the briefing"):
-        assert phrase in doc, phrase
+                   "never counts", "COMPLETE primary item", "partly in the briefing", "distinctive in", "Same form"):
+        assert phrase in doc.replace("A plain", "a plain"), phrase
+
+
+# ---- review 2: a 6-K about a meeting is never a results release -------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("head,desc,release", [
+    ("Results of the Annual General Meeting 2026 held for the year", "Press release", False),
+    ("Notice of Extraordinary General Meeting to approve the full year dividend", "Press release", False),
+    ("Voting results of the AGM: results for each resolution of the year", "Press release", False),
+    ("Foreign Co announces the EGM results for the year", "Press release", False),
+    ("Results of the vote at the special meeting of shareholders, annual report approved", "Press release", False),
+    ("Results of voting for the half-year resolutions", "Press release", False),
+    ("Notice of the 2026 annual meeting of shareholders and annual results", "Press release", False),
+    ("Second quarter 2026 results are attached.", "Results of the Annual General Meeting", False),            # the description counts as the title
+    ("Foreign Co Reports Second Quarter 2026 Results", "Press release", True),
+    ("Foreign Co Reports Second Quarter 2026 Results " + "x" * 600 + " annual general meeting follows", "Press release", True),   # past 600 characters
+    ("Foreign Co half-year results: meet management on the conference call", "Press release", True),
+])
+def test_a_6k_about_a_meeting_is_never_a_results_release(monkeypatch, head, desc, release):
+    A = f"0000123456-26-{abs(hash(head)) % 900000 + 1000:06d}"
+    FakeSEC(monkeypatch, [("6-K", "2026-08-10", "", "", A)], {acc_url(A): six(A, f"<html><body><p>{head}</p></body></html>", desc=desc)})
+    got = sp.build(CIK, "2026-09-01")
+    assert got["items"][0]["type"] == ("earnings_release" if release else "other_8k"), head
+    if not release:
+        assert any("No 8-K Item 2.02 earnings release or 6-K results release" in a for a in got["annotations"])
+
+
+def test_the_meeting_rule_in_words_is_in_the_module_text():
+    assert "NOT about a meeting" in sp.__doc__ and "AGM or EGM" in sp.__doc__ and "results of a vote" in sp.__doc__
+    assert sp.MEETING_WORDS.search("Annual and Special General Meeting") and sp.MEETING_WORDS.search("results of the vote") and not sp.MEETING_WORDS.search("Quarterly results")

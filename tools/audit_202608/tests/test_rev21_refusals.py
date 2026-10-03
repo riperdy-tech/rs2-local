@@ -29,7 +29,7 @@ ITEMS = [
     {"id": "P2", "type": "segment_table", "form": "10-Q", "accession": A2, "filed": "2026-07-30", "period": "Q2 2026", "title": '10-Q segment table (R8.htm, "Segment Information")',
      "url": f"{BASE}/{nd(A2)}/R8.htm", "text": "Segment Information | 3 Months Ended\nIndustrial | $ 1,234 | 1,100\nTotal | $2,000"},
     {"id": "P3", "type": "other_8k", "form": "8-K", "accession": A3, "filed": "2026-08-20", "period": None, "title": "8-K Item 5.02 (8-K body)",
-     "url": f"{BASE}/{nd(A3)}/acme-8k.htm", "text": "Item 5.02 Departure of Directors. The Offer Letter provides base salary of $1,000,000 and 700 shares."},
+     "url": f"{BASE}/{nd(A3)}/acme-8k.htm", "text": "Item 5.02 Departure of Directors. The Offer Letter provides base salary of $1,000,000 and an award of $700 per share."},
 ]
 PACK = "# DATA PACK - ACME   (pack revision 21)\n\n" + "\n".join(sp.section_lines({"items": ITEMS, "annotations": []})) + "\n\n## DATA 12 - X\n- y\n"
 PACK_ITEMS = sp.parse_pack(PACK)
@@ -82,20 +82,20 @@ def _ids(res):
 
 @pytest.mark.parametrize("query,ids", [
     ("Acme revenue $1,234.5 million second quarter breakdown", ["P1"]),             # a decimal, commas
-    ("acme revenue 1234.5 million", ["P1"]),                                         # the digits after removing the commas
+    ("acme revenue 1234.5 million", ["P1"]),                                         # the digits after removing the commas; the item's $ is extra
     ("Acme backlog $9.9 billion", ["P1"]),
-    ("Acme free cash flow 410 million", ["P1"]),                                     # 3 digits
+    ("Acme free cash flow 410 million", ["P1"]),                                     # 3 digits and a unit the item prints
+    ("Acme free cash flow $410 million", ["P1"]),
+    ("Acme free cash flow 410m", ["P1"]),                                            # m is million
+    ("Acme free cash flow 410 mn", ["P1"]),
     ("Acme industrial segment sales $1,234", ["P2"]),                                # a currency sign; P1 prints 1,234.5, not 1,234
     ("Acme industrial segment sales USD 1,234", ["P2"]),                             # a currency code
-    ("Acme free cash flow 410m", ["P1"]),                                            # a unit word right after the number
-    ("Acme free cash flow 410 mn", ["P1"]),
-    ("Acme free cash flow 410k", ["P1"]),
-    ("Acme orders grew 100%", ["P1"]),                                               # a % suffix
     ("Acme US$9.9 billion", ["P1"]),
     ("Acme CFO base salary $1,000,000 offer letter", ["P3"]),
-    ("what is 12.5% of ACME margin 9.9", ["P1"]),                                    # one of two tokens is enough
+    ("Acme stock award $700 per share", ["P3"]),
+    ("what is 12.5% of ACME margin 9.9", ["P1"]),                                    # one of two tokens is enough; the bare 9.9 matches the decorated $9.9 billion
 ])
-def test_a_figure_the_items_print_refuses_the_query(query, ids):
+def test_a_figure_the_items_print_in_the_same_form_refuses_the_query(query, ids):
     got = sp.refuse_search(query, ITEMS)
     assert got is not None and got[0]["served_from_primary"] == ids and got[1] == "figure", query
 
@@ -109,17 +109,67 @@ def test_a_figure_the_items_print_refuses_the_query(query, ids):
     "Acme sales 234.5",                                   # part of 1,234.5, not the number
     "Acme Birmingham 250 megawatts data center",           # a plain integer never counts, though the filing prints 250
     "Acme orders grew 100 percent",                       # nor does a number followed by a word that is not a unit
+    "Acme orders grew 100%",                              # the item prints 100 percent: not the same decoration
+    "Acme free cash flow 410k",                           # the item prints 410 million: k is not m
+    "Acme free cash flow \u20ac410 million",               # nor a euro amount a dollar amount
+    "Acme free cash flow 410 billion",
     "Acme 410 sites and 700 jobs and 1,234 units",        # plain integers, however long, with or without commas
     "Acme 250 miles",                                      # `m` is a unit only as a word of its own: miles are not millions
     "Acme 12 percent",                                    # two digits and no decimal point
     "Acme 5 new sites in 2027 and 99 jobs",
+    "Acme guidance 5% 21% 30% $65 million $12 $99",       # a small whole number never counts, whatever its decoration, though items print them
     "Acme Birmingham city council data center rezoning decision",           # a new angle: a city council
     "Siemens Energy announces partnership with Acme",                       # a new angle: a partner's announcement
     "Acme CEO interview on Bloomberg this week",
     "",
 ])
 def test_figure_false_positive_guards(query):
-    assert sp.refuse_search(query, ITEMS) is None, query
+    assert sp.refuse_search(query, ITEMS + [SMALL]) is None, query
+
+
+# the five over-refusals of the review census, as general cases: a small whole number printed by a filing (5%, 21%, $65 million, 30%) does not identify a figure;
+# the refusals that rest on decimals or on 3 or more digits (8.75, 15.4%, $380.6 million, 54.23bn, $61.5 billion) stand
+SMALL = {"id": "P4", "type": "earnings_release", "form": "8-K", "accession": "0000123456-26-000014", "filed": "2026-07-30", "period": "Q2 2026",
+         "title": "8-K Item 2.02 earnings release (EX-99.1)", "url": f"{BASE}/000012345626000014/ex991.htm",
+         "text": "Revenue guidance of about 5% growth. HBM share reached 21%. A settlement of $65 million. Adjusted EBITDA margin above 30%. "
+                 "AFFO per share of $8.75 to $8.90 and digital revenue up 15.4%. Enterprise Data revenue of $380.6 million. Revenue of $54.23 billion and "
+                 "guidance of $61.5 billion for the next quarter."}
+
+
+@pytest.mark.parametrize("query", [
+    "Bank revenue guidance 5% May 2026 earnings call",
+    "Micron HBM market share 21% early 2026 Samsung SK Hynix",
+    "Utility Pennsylvania PUC settlement $65 million rate increase effective October 2026",
+    "Media adjusted EBITDA margin above 30% Q2 2026",
+    "Bank revenue guidance 5 percent",
+])
+def test_the_five_census_over_refusals_are_allowed(query):
+    assert sp.refuse_search(query, [SMALL]) is None, query
+
+
+@pytest.mark.parametrize("query", [
+    "Lamar AFFO guidance $8.75 to $8.90 per share",
+    "Lamar digital revenue 15.4% programmatic",
+    "Monolithic Enterprise Data revenue $380.6 million YoY",
+    "Micron revenue 54.23bn",
+    "Micron guidance $61.5 billion midpoint",
+    "Micron guidance 61.5bn",
+])
+def test_the_refusals_that_rest_on_decimals_stand(query):
+    got = sp.refuse_search(query, [SMALL])
+    assert got is not None and got[0]["served_from_primary"] == ["P4"] and got[1] == "figure", query
+
+
+def test_same_form_after_normalising_value_currency_and_unit():
+    item = {"id": "P1", "type": "earnings_release", "form": "8-K", "accession": A1, "filed": "2026-07-30", "period": "Q2 2026", "title": "t", "url": f"{BASE}/x.htm",
+            "text": "Settlement of $650.0 million. Share of 15.4% in the quarter. Segment sales of 2,500 million. EBITDA of 77.7 for the year. Price $12.50."}
+    hit = lambda q: sp.refuse_search(q, [item]) is not None
+    assert hit("deal $650 million") and hit("deal $650.0 million") and hit("deal 650 million") and hit("deal $650")           # 65 and 65.0 are one; the item's decoration may be more
+    assert not hit("deal \u20ac650 million") and not hit("deal $650 billion") and not hit("deal 650k") and not hit("deal 650%")      # but not different
+    assert hit("share 15.4%") and hit("share 15.4") and not hit("share $15.4") and not hit("share 15.4 million")                # a bare 15.4 matches the decorated 15.4%
+    assert hit("sales $2,500 million") is False and hit("sales 2,500 million") and hit("sales 2500m")                               # the item prints no $ there
+    assert hit("EBITDA 77.7") and not hit("EBITDA 77.7%") and not hit("EBITDA $77.7")                                              # the item's 77.7 is bare
+    assert hit("price $12.5") and hit("price 12.50") and not hit("price \u00a312.5")
 
 
 def test_a_ticker_that_happens_to_be_digits_is_not_a_figure():
@@ -131,16 +181,17 @@ def test_a_ticker_that_happens_to_be_digits_is_not_a_figure():
 
 
 def test_figure_tokens_the_rule_in_words():
-    ft = sp.figure_tokens
-    assert ft("$1,234.5 million and 410 and 9.9% and 2,000bn and 12") == ["1234.5", "9.9", "2000"]       # the bare 410 and 12 are plain integers
+    ft = lambda q, ticker=None: [str(t) for t in sp.figure_tokens(q, ticker)]
+    assert ft("$1,234.5 million and 410 and 9.9% and 2,000bn and 12") == ["$1234.5m", "9.9%", "2000bn"]       # the bare 410 and 12 are plain integers
     assert ft("2026 1900 2099 2100 1899 250 1,234,567") == []                      # plain integers never count, years or not
-    assert ft("$2026 million 2026m 2026%") == ["2026", "2026", "2026"]             # a year written as an amount is an amount
-    assert ft("US$5 C$6 A$7 \u20ac8 \u00a39 USD 10 EUR 11 GBP 12 CAD 13 AUD 14") == [str(n) for n in range(5, 15)]
-    assert ft("5 million 6 billion 7 thousand 8bn 9mn 10mm 11m 12k 13%") == [str(n) for n in range(5, 14)]
-    assert ft("5 megawatts 6 miles 7 months 8 kilos 9 mbps") == []                 # a unit word is the word itself, not a longer word that starts with it
-    assert ft("1.0 99.1 0.5") == ["1.0", "99.1", "0.5"]                            # a decimal point
+    assert ft("$2026 million 2026m 2026%") == ["$2026m", "2026m", "2026%"]         # a year written as an amount is an amount
+    assert ft("US$500 C$600 A$700 \u20ac800 \u00a3900 USD 100 EUR 110 GBP 120 CAD 130 AUD 140") == ["$500", "C$600", "A$700", "\u20ac800", "\u00a3900", "$100", "\u20ac110", "\u00a3120", "C$130", "A$140"]
+    assert ft("500 million 600 billion 700 thousand 800bn 900mn 100mm 110m 120k 130% 140b") == ["500m", "600bn", "700k", "800bn", "900m", "100m", "110m", "120k", "130%", "140bn"]
+    assert ft("5 million 65 billion 21% 30% $65 million 5% $5 $99 99%") == []      # a whole number of 1 or 2 digits never counts, whatever its decoration
+    assert ft("5.0 million 1.0 99.1 0.5 5.5%") == ["5.0m", "1.0", "99.1", "0.5", "5.5%"]    # a decimal point is distinctive
+    assert ft("5 megawatts 6 miles 7 months 8 kilos 9 mbps 500 megawatts 600 miles") == []   # a unit word is the word itself, not a longer word that starts with it
     assert ft("Q2 2Q26 FY2026 FY26 H100 A320 5G \u20ac") == []
-    assert ft("600519 shares $600519", ticker="600519") == [] and ft("$600519", ticker="600520") == ["600519"]
+    assert ft("600519 shares $600519", ticker="600519") == [] and ft("$600519", ticker="600520") == ["$600519"]
 
 
 # ---- R2 (b): a request for the primary documents themselves --------------------------------------------------------------------------

@@ -13,7 +13,9 @@ THE ITEMS, in order (ids are sequential, so an absent kind leaves no gap):
                          those; its release is the newest 6-K, of the last SCAN_6K_DAYS days and among the newest SCAN_6K, with an exhibit
                          (the 6-K body when it has no EX-99 text exhibit) whose DESCRIPTION or first 600 characters hold a results or earnings
                          word AND a quarter, half-year or year word (quarter, half-year, half, six or nine or three months, year, annual,
-                         Q1-Q4, H1-H2; case-insensitive); it is cut like an 8-K release and takes P1's place and type
+                         Q1-Q4, H1-H2; case-insensitive), and is NOT about a meeting (an annual, extraordinary, special or general meeting, an
+                         AGM or EGM, the notice of one, the results of a vote or of voting: never a results release); it is cut like an 8-K
+                         release and takes P1's place and type
   other exhibits         the other text exhibits of the same 8-K (prepared remarks, CFO commentary, a supplemental exhibit), each at most
                          EXHIBIT_CAP characters; a PDF (an investor presentation) is skipped and annotated
   segment table          the latest periodic filing's (10-Q, 10-K, 20-F or 40-F) FilingSummary.xml, then the R report whose ShortName matches
@@ -34,10 +36,13 @@ THE CODE-ENFORCED REFUSALS (part R; analyst_tools applies them before a search o
   refuse_fetch   a URL that is the document of a COMPLETE primary item is not fetched; a pointer comes back. When the item was cut to its cap
                  (its text holds an omission marker) the fetch is made and its result says the document is partly in the briefing (fetch_hint).
                  A 10-Q, 10-K, 20-F or 40-F item is only its segment report: only that report's own address matches
-  refuse_search  a query holding a figure token the items print verbatim, or naming a document word and a period the items cover, is refused.
-                 A figure token is a number that has a decimal point, or a currency sign or code right before it ($, US$, C$, A$, euro, pound,
-                 USD, EUR, GBP, CAD, AUD), or a % or a unit word right after it (million, billion, thousand, bn, mn, mm, m, k); a plain integer
-                 never counts (250 megawatts is not a figure), nor does a number inside a word or code (H100) or an all-digit ticker
+  refuse_search  a query holding a figure token an item prints in the same form, or naming a document word and a period the items cover, is refused.
+                 A figure token is a number that is decorated (a decimal point, or a currency sign or code right before it: $, US$, C$, A$, euro, pound,
+                 USD, EUR, GBP, CAD, AUD, or a % or a unit word right after it: million, billion, thousand, bn, mn, mm, m, k, b) AND distinctive in
+                 size (a decimal point, or a whole-number part of 3 or more digits). A plain integer never counts (250 megawatts is not a figure), nor does
+                 a small whole number whatever its decoration (5%, 21%, $65 million), nor a number inside a word or code (H100), nor an all-digit ticker.
+                 "Same form": the item prints the same value (65 and 65.0 are one) with every decoration the token carries, so $650 million matches
+                 $650.0 million and 54.23bn matches $54.23 billion, 15.4% matches 15.4%, and a bare 15.4 matches a decorated 15.4%
 """
 import gzip
 import hashlib
@@ -72,6 +77,8 @@ ANNUAL_FORMS = ("10-K", "20-F", "40-F")
 SCAN_6K = 12                 # a foreign filer's 6-Ks looked through, newest first, for its periodic results release
 SCAN_6K_DAYS = 400
 RESULTS_WORDS = re.compile(r"\b(results|earnings)\b", re.I)
+MEETING_WORDS = re.compile(r"\b(AGM|EGM|(?:annual|extraordinary|special|general|shareholders?'?|stockholders?'?)\s+(?:and\s+(?:annual|extraordinary|special|general)\s+)?(?:general\s+)?meetings?|"
+                           r"(?:results?\s+of\s+(?:the\s+)?|notice\s+of\s+(?:the\s+)?)(?:\w+\s+){0,3}meetings?|results?\s+of\s+(?:the\s+)?(?:vote|voting)|voting\s+results?)\b", re.I)
 PERIOD_WORDS = re.compile(r"\b(quarter(?:ly)?|half[- ]year|half|six months|nine months|three months|year|annual|Q[1-4]|[1-4]Q|H[12]|[12]H)\b", re.I)
 OTHER_8K_DAYS = 120
 OTHER_8K_ITEMS = ("1.01", "2.01", "2.03", "5.02", "7.01", "8.01")
@@ -716,7 +723,7 @@ def _foreign_release(cik, six_rows):
         for d in docs:
             blocks = blocks_of(d["raw"])
             head = (d.get("description") or "") + " " + " ".join(c if k == "p" else " ".join(c) for k, c in blocks)[:600]
-            if RESULTS_WORDS.search(head) and PERIOD_WORDS.search(head):
+            if RESULTS_WORDS.search(head) and PERIOD_WORDS.search(head) and not MEETING_WORDS.search(head):
                 return r, d, blocks
     return None
 
@@ -1063,34 +1070,76 @@ def fetch_hint(url, items):
 
 # ---- R2: a search for what the primary items hold -----------------------------------------------------------------------------
 
-_CUR = r"(?:US\$|C\$|A\$|[$\u20ac\u00a3]|(?:USD|EUR|GBP|CAD|AUD)\s?)"
-_UNIT = r"(?:%|(?:million|billion|thousand|bn|mn|mm|m|k)\b)"
+_CUR = r"(?:US\$|C\$|A\$|[$\u20ac\u00a3]|(?:USD|EUR|GBP|CAD|AUD))\s?"
+_UNIT = r"(?:%|(?:million|billion|thousand|bn|mn|mm|m|k|b)\b)"
 _NUM_RE = re.compile(r"(?<![A-Za-z0-9,.])(" + _CUR + r")?(\d[\d,]*(?:\.\d+)?)(\s?" + _UNIT + r")?", re.I)
-_TEXT_NUM_RE = re.compile(r"(?<![A-Za-z0-9,.])\$?(\d[\d,]*(?:\.\d+)?)")
+_CUR_CANON = {"us$": "$", "$": "$", "usd": "$", "c$": "C$", "cad": "C$", "a$": "A$", "aud": "A$", "\u20ac": "\u20ac", "eur": "\u20ac", "\u00a3": "\u00a3", "gbp": "\u00a3"}
+_UNIT_CANON = {"%": "%", "million": "m", "mn": "m", "mm": "m", "m": "m", "billion": "bn", "bn": "bn", "b": "bn", "thousand": "k", "k": "k"}
+
+
+class Fig(str):
+    """A figure token of a query, written `<currency><number><unit>` in canonical form (the commas removed; the unit m, bn, k or %; the currency $, C$, A$, euro
+    or pound): `$650m`, `15.4%`, `54.23bn`, `8.75`. `cur`, `core` and `unit` are its parts."""
+
+    def __new__(cls, cur, core, unit):
+        o = super().__new__(cls, f"{cur}{core}{unit}")
+        o.cur, o.core, o.unit = cur, core, unit
+        return o
+
+
+def _decoration(m):
+    cur = _CUR_CANON.get((m.group(1) or "").strip().lower(), "")
+    unit = _UNIT_CANON.get((m.group(3) or "").strip().lower(), "")
+    return cur, unit
 
 
 def figure_tokens(query, ticker=None):
-    """The figure tokens of a query, as digits with the commas removed. A number is a figure token only when it carries one of: a decimal point; a
-    currency sign or code right before it ($, US$, C$, A$, the euro and pound signs, USD, EUR, GBP, CAD, AUD); a % right after it; or a unit word right
-    after it (million, billion, thousand, bn, mn, mm, m, k). A plain integer never counts, however long, and neither does a number that is part of a
-    word or code (H100, Q2, FY26) or one equal to an all-digit ticker."""
+    """The figure tokens of a query (`Fig`s). A number is a figure token only when BOTH hold. It is decorated and distinctive-in-form: it has a decimal
+    point, or a currency sign or code right before it ($, US$, C$, A$, euro, pound, USD, EUR, GBP, CAD, AUD), or a % or a unit word right after it
+    (million, billion, thousand, bn, mn, mm, m, k, b); a plain integer never counts. And it is distinctive in size: it has a decimal point, or its
+    whole-number part has 3 or more digits, so a small whole number (5%, 21%, $65 million) never counts, whatever its decoration. A number inside a word or
+    code (H100, Q2, FY26) or equal to an all-digit ticker does not count. A token counts as a figure of a primary item only when the item prints it
+    with the same decoration (see `item_figures`)."""
     tk = re.sub(r"\D", "", ticker or "") if ticker and str(ticker).isdigit() else None
     out = []
     for m in _NUM_RE.finditer(query or ""):
         core = m.group(2).rstrip(",").replace(",", "")
         if not core or core[-1] == ".":
             continue
-        if not ("." in core or m.group(1) or m.group(3)):
+        cur, unit = _decoration(m)
+        if not ("." in core or cur or unit):
+            continue
+        if not ("." in core or len(core) >= 3):
             continue
         if tk and core == tk:
             continue
-        out.append(core)
+        out.append(Fig(cur, core, unit))
     return out
 
 
 def item_figures(text):
-    """The set of numbers a text prints (digits and decimal point, commas removed)."""
-    return {m.group(1).rstrip(",").replace(",", "") for m in _TEXT_NUM_RE.finditer(text or "")}
+    """The set of (value, currency, unit) a text prints: every number with the decoration it carries (none, a currency, a unit, or both), the value as a
+    normalised Decimal so that 65 and 65.0 are one."""
+    from decimal import Decimal, InvalidOperation
+    out = set()
+    for m in _NUM_RE.finditer(text or ""):
+        core = m.group(2).rstrip(",").replace(",", "")
+        if not core or core[-1] == ".":
+            continue
+        try:
+            v = Decimal(core).normalize()
+        except InvalidOperation:
+            continue
+        out.add((v, *_decoration(m)))
+    return out
+
+
+def figure_in(token, figures):
+    """Whether a `Fig` is printed by an item (`item_figures`'s set): the same value, and every decoration the token carries is carried by the item's
+    number; a bare decimal therefore matches the same number printed with a % or a currency."""
+    from decimal import Decimal
+    v = Decimal(token.core).normalize()
+    return any(fv == v and (not token.cur or token.cur == c) and (not token.unit or token.unit == u) for fv, c, u in figures)
 
 
 DOC_WORDS = ("earnings release", "press release", "prepared remarks", "exhibit 99", "guidance", "outlook", "8-K", "results", "10-K", "10-Q",
@@ -1172,8 +1221,8 @@ def _class_fits(cls, item):
 
 
 def refuse_search(query, items, ticker=None):
-    """(refusal, rule) for a search_web query, or None. The query is refused when (a) it holds a figure token a primary item prints verbatim
-    (rule "figure"), or (b) it names a document word and a period that an item of that kind covers (rule "document"); both give the same
+    """(refusal, rule) for a search_web query, or None. The query is refused when (a) it holds a figure token (see `figure_tokens`) that a primary item
+    prints with the same decoration (rule "figure"), or (b) it names a document word and a period that an item of that kind covers (rule "document"); both give the same
     pointer, listing the items. A query that names neither is searched."""
     if not items or not (query or "").strip():
         return None
@@ -1182,7 +1231,7 @@ def refuse_search(query, items, ticker=None):
     if toks:
         for i in items:
             figs = item_figures(i["text"])
-            if any(t in figs for t in toks):
+            if any(figure_in(t, figs) for t in toks):
                 hit[i["id"]] = "figure"
     classes = {cls for rx, cls in _DOC_RES if rx.search(query)}
     periods = query_periods(query)

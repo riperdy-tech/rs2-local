@@ -50,7 +50,7 @@ def _flags(query, items, ticker):
     item prints."""
     import sec_primary as sp
     return {"document_word": any(rx.search(query) for rx, _ in sp._DOC_RES), "period": bool(sp.query_periods(query)),
-            "figure_not_in_items": [t for t in sp.figure_tokens(query, ticker)]}
+            "figure_not_in_items": [str(t) for t in sp.figure_tokens(query, ticker)]}
 
 
 def census(queries, packs_dir):
@@ -71,7 +71,7 @@ def census(queries, packs_dir):
             else:
                 res, rule = got
                 refused.append(dict(q, rule=rule, items=res["served_from_primary"],
-                                    figure_tokens=[x for x in sp.figure_tokens(q["query"], t) if any(x in sp.item_figures(i["text"]) for i in items)]))
+                                    figure_tokens=[str(x) for x in sp.figure_tokens(q["query"], t) if any(sp.figure_in(x, sp.item_figures(i["text"])) for i in items)]))
             uniq.add((t, q["query"]))
         private["names"][t] = {"pack_found": p.exists(), "items": [{"id": i["id"], "type": i["type"], "chars": len(i["text"])} for i in items],
                                "refused": refused, "allowed": allowed}
