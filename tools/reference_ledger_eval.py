@@ -1,6 +1,6 @@
 """The frozen evaluation of the forward ledger (revision 18, brief section 5.2; revision 19, brief E2). REPORT ONLY.
 
-Pack revision 20 (brief_rev20_followup.md, ruling 5): the cohort is the rows of revision 20 (--revision, default 20; the crux comparisons below
+Pack revision 21 (coordinator review of revision 21; at revision 20, brief_rev20_followup.md ruling 5): the cohort is the rows of revision 21 (--revision, default 21; the crux comparisons below
 still read verdicts of pack revision 19 or later, CRUX_FIRST_REVISION). Revision 19's rows are reported apart under "other_revisions".
 
 Revision 19 (brief_rev19.md E2), frozen at the revision-19 commit: the cohort was the rows of revision 19, and the result adds
@@ -38,7 +38,7 @@ close by the product of the `stock_splits` ratios of the splits dated AFTER the 
 split 0.1; a zero or empty cell is no split), so a split between the snapshot and the fetch is not counted as a mismatch.
 
 Cohort: every snapshot date T with acceptance <= T and T + h months <= asof (asof defaults to acceptance + h months), and
-only the rows of the pre-registered revision (--revision, default 20); the rows of any other revision are reported separately
+only the rows of the pre-registered revision (--revision, default 21); the rows of any other revision are reported separately
 under "other_revisions" and never mixed in. On each such date, over the names whose reference is printed (status used or
 outside the fence) with V/P > 0 and a price at the start:
   * rho: the Spearman rank correlation (ties averaged) between V/P and R;
@@ -73,7 +73,7 @@ BUY, AVOID = 1.3, 0.7
 THIN = 30
 MAX_PRICE_GAP_DAYS = 7
 PRINTED = ("used", "outside_fence_above", "outside_fence_below")
-REVISION = 20
+REVISION = 21
 CRUX_FIRST_REVISION = 19
 DIRECTIONAL = ("undervalued", "overvalued")
 LIMITING_REASONS = ("outside_street_fence", "mos_beyond_150pct")
@@ -446,7 +446,7 @@ def main(argv=None):
     ap.add_argument("--ledger", default=str(rl.DEFAULT_LEDGER))
     ap.add_argument("--prices", required=True)
     ap.add_argument("--prices-sha256", required=True, help="the prices file's sha256; the file is refused without a match")
-    ap.add_argument("--revision", type=int, default=REVISION, help="the pack revision whose rows are evaluated (default 20)")
+    ap.add_argument("--revision", type=int, default=REVISION, help="the pack revision whose rows are evaluated (default 21)")
     ap.add_argument("--acceptance-date", required=True)
     ap.add_argument("--horizon", type=int, required=True, choices=(12, 36))
     ap.add_argument("--asof", default=None, help="evaluation date; default acceptance + horizon months")

@@ -28,7 +28,7 @@ sys.path.insert(0, str(TREE))
 sys.path.insert(0, str(TREE / "tools" / "audit_202608"))
 sys.path.insert(0, str(HERE.parent / "acceptance_r18"))
 
-TYPES = ("earnings_release", "other_exhibit", "segment_table", "other_8k")
+TYPES = ("earnings_release", "other_exhibit", "segment_table", "segment_annual", "other_8k")
 
 
 def normalise_reason(text):

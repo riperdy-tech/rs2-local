@@ -9,24 +9,35 @@ summary), prints them in the pack as PRIMARY P1, P2, ..., and owns the code-enfo
 THE ITEMS, in order (ids are sequential, so an absent kind leaves no gap):
   earnings release       the latest 8-K Item 2.02 release exhibit (the exhibit sec_guidance picks), at most RELEASE_CAP characters; when
                          longer, the start, then the paragraphs on outlook, guidance, segments and backlog, then the tables, with every cut
-                         marked "[... n characters omitted ...]"
+                         marked "[... n characters omitted ...]". A FOREIGN FILER (no 8-K Item 2.02 at or before the as-of date) has none of
+                         those; its release is the newest 6-K, of the last SCAN_6K_DAYS days and among the newest SCAN_6K, with an exhibit
+                         (the 6-K body when it has no EX-99 text exhibit) whose DESCRIPTION or first 600 characters hold a results or earnings
+                         word AND a quarter, half-year or year word (quarter, half-year, half, six or nine or three months, year, annual,
+                         Q1-Q4, H1-H2; case-insensitive); it is cut like an 8-K release and takes P1's place and type
   other exhibits         the other text exhibits of the same 8-K (prepared remarks, CFO commentary, a supplemental exhibit), each at most
                          EXHIBIT_CAP characters; a PDF (an investor presentation) is skipped and annotated
-  segment table          the latest 10-Q or 10-K's FilingSummary.xml, then the R report whose ShortName matches /segment/i (a ShortName of
-                         "Segment Information" or "Segment Reporting" first, else the first match), flattened to label | value rows, at most
-                         SEGMENT_CAP characters; none: annotated "not filed as a separate report"
-  other recent 8-Ks      each 8-K filed in the 120 days to the as-of date with item 1.01, 2.01, 2.03, 5.02, 7.01 or 8.01, newest first, at
+  segment table          the latest periodic filing's (10-Q, 10-K, 20-F or 40-F) FilingSummary.xml, then the R report whose ShortName matches
+                         /segment/i (a ShortName of "Segment Information" or "Segment Reporting" first, else the first match), flattened to
+                         label | value rows, at most SEGMENT_CAP characters; none: annotated "not filed as a separate report"
+  annual segment table   when the latest periodic filing is a 10-Q: the same report of the latest 10-K, 20-F or 40-F (type segment_annual), the
+                         same cap; it is the first item cut when the section is over TOTAL_CAP
+  other recent filings   each 8-K filed in the 120 days to the as-of date with item 1.01, 2.01, 2.03, 5.02, 7.01 or 8.01, newest first, at
                          most 4: the item list in its header, the first OTHER_8K_CAP characters of its main exhibit (the 8-K body when it
-                         has none)
-TOTAL_CAP characters across all items: the oldest other-8-K item is trimmed first, then the other exhibits.
+                         has none). A foreign filer's are its 6-Ks of those 120 days other than the release's, at most 4, without an item list
+TOTAL_CAP characters across all items: the annual segment table is trimmed first, then the oldest other recent filing, then the other exhibits.
 
 Network: only sec.gov and data.sec.gov, with sec_guidance's User-Agent, under 10 requests per second (THROTTLE_S after every request), and
 each accession fetched once and cached forever in cache/sec_primary/. A failure (no CIK, SEC unreachable, nothing filed) is a reason, never
 a crash and never silent: the pack prints `PRIMARY SOURCES: not available - <reason>`.
 
 THE CODE-ENFORCED REFUSALS (part R; analyst_tools applies them before a search or fetch is dispatched and does not count the call):
-  refuse_fetch   a URL that is a primary item's document is not fetched; a pointer comes back
-  refuse_search  a query holding a figure the items hold verbatim, or naming a document word and a period the items cover, is refused
+  refuse_fetch   a URL that is the document of a COMPLETE primary item is not fetched; a pointer comes back. When the item was cut to its cap
+                 (its text holds an omission marker) the fetch is made and its result says the document is partly in the briefing (fetch_hint).
+                 A 10-Q, 10-K, 20-F or 40-F item is only its segment report: only that report's own address matches
+  refuse_search  a query holding a figure token the items print verbatim, or naming a document word and a period the items cover, is refused.
+                 A figure token is a number that has a decimal point, or a currency sign or code right before it ($, US$, C$, A$, euro, pound,
+                 USD, EUR, GBP, CAD, AUD), or a % or a unit word right after it (million, billion, thousand, bn, mn, mm, m, k); a plain integer
+                 never counts (250 megawatts is not a figure), nor does a number inside a word or code (H100) or an all-digit ticker
 """
 import gzip
 import hashlib
@@ -54,6 +65,14 @@ SEGMENT_CAP = 6000
 OTHER_8K_CAP = 2500
 TOTAL_CAP = 30000
 MAX_OTHER_8K = 4
+RELEASE_FORMS = ("8-K", "8-K/A")
+FOREIGN_FORMS = ("6-K", "6-K/A")
+PERIODIC_FORMS = ("10-Q", "10-K", "20-F", "40-F")
+ANNUAL_FORMS = ("10-K", "20-F", "40-F")
+SCAN_6K = 12                 # a foreign filer's 6-Ks looked through, newest first, for its periodic results release
+SCAN_6K_DAYS = 400
+RESULTS_WORDS = re.compile(r"\b(results|earnings)\b", re.I)
+PERIOD_WORDS = re.compile(r"\b(quarter(?:ly)?|half[- ]year|half|six months|nine months|three months|year|annual|Q[1-4]|[1-4]Q|H[12]|[12]H)\b", re.I)
 OTHER_8K_DAYS = 120
 OTHER_8K_ITEMS = ("1.01", "2.01", "2.03", "5.02", "7.01", "8.01")
 MIN_TRIMMED = 600            # a trimmed item shorter than this is dropped
@@ -494,15 +513,19 @@ def release_period(text):
 
 # ---- per-accession fetching ---------------------------------------------------------------------------------------------------
 
-def _split_documents(raw):
-    """[(type, filename, text)] of a full EDGAR submission .txt."""
+def _split_documents(raw, with_description=False):
+    """[(type, filename, text)] of a full EDGAR submission .txt; with `with_description` each also carries the document's DESCRIPTION line."""
     docs = re.findall(r"<DOCUMENT>(.*?)</DOCUMENT>", raw, flags=re.S | re.I) or re.split(r"(?i)<DOCUMENT>", raw)[1:]
     out = []
     for d in docs:
         t = re.search(r"<TYPE>\s*([^\r\n<]+)", d, re.I)
         f = re.search(r"<FILENAME>\s*([^\r\n<]+)", d, re.I)
         tm = re.search(r"<TEXT>(.*?)(?:</TEXT>|\Z)", d, flags=re.S | re.I)
-        out.append((t.group(1).strip() if t else "", f.group(1).strip() if f else "", tm.group(1) if tm else d))
+        row = (t.group(1).strip() if t else "", f.group(1).strip() if f else "", tm.group(1) if tm else d)
+        if with_description:
+            ds = re.search(r"<DESCRIPTION>\s*([^\r\n<]+)", d, re.I)
+            row += (ds.group(1).strip() if ds else "",)
+        out.append(row)
     return out
 
 
@@ -510,7 +533,7 @@ def _is_text_exhibit(dtype, filename):
     t = dtype.upper()
     if filename.lower().endswith(SKIP_EXT):
         return False
-    return t in ("8-K", "8-K/A") or (t.startswith("EX-") and not t.startswith(("EX-101", "EX-104")))
+    return t in RELEASE_FORMS + FOREIGN_FORMS or (t.startswith("EX-") and not t.startswith(("EX-101", "EX-104")))
 
 
 def fetch_8k(cik, accession):
@@ -525,9 +548,9 @@ def fetch_8k(cik, accession):
         print(f"[sec_primary] failed fetching {accession}: {str(e)[:120]}", file=sys.stderr)
         return None
     docs = []
-    for dtype, fname, text in _split_documents(raw):
+    for dtype, fname, text, desc in _split_documents(raw, with_description=True):
         if _is_text_exhibit(dtype, fname):
-            docs.append({"type": dtype, "filename": fname, "raw": text[:RAW_MAX]})
+            docs.append({"type": dtype, "filename": fname, "raw": text[:RAW_MAX], "description": desc})
         elif fname.lower().endswith(".pdf"):
             docs.append({"type": dtype, "filename": fname, "skipped": "pdf"})
     if not docs:
@@ -672,6 +695,50 @@ def build(cik, asof=None):
         return {"items": [], "annotations": [], "reason": f"error while building: {type(e).__name__}"}
 
 
+def _main_exhibit(got):
+    """The document an other-recent-filing item prints: the first EX-99, EX-2, EX-10 or EX-1.x text exhibit, else any other text exhibit, else the body."""
+    docs = got["docs"]
+    ex = next((x for x in docs if x["type"].upper().startswith("EX-") and "raw" in x and re.match(r"EX-99|EX-2|EX-10|EX-1\.", x["type"].upper())), None)
+    ex = ex or next((x for x in docs if x["type"].upper().startswith("EX-") and "raw" in x), None)
+    return ex or next((x for x in docs if "raw" in x), None)
+
+
+def _foreign_release(cik, six_rows):
+    """The newest 6-K at or before the as-of date (the rows are those of the last SCAN_6K_DAYS days, newest first, at most SCAN_6K of them looked
+    through) with an exhibit that reads as a periodic results release: its description or its first 600 characters hold a results or earnings word
+    and a quarter, half-year or year word (case-insensitive); when a 6-K has no EX-99 text exhibit its body is looked at the same way. Returns
+    (row, document, blocks) or None."""
+    for r in six_rows[:SCAN_6K]:
+        got = fetch_8k(cik, r["accession"])
+        if got is None:
+            continue
+        docs = [d for d in got["docs"] if "raw" in d and d["type"].upper().startswith("EX-99")] or [d for d in got["docs"] if "raw" in d and d["type"].upper() in FOREIGN_FORMS]
+        for d in docs:
+            blocks = blocks_of(d["raw"])
+            head = (d.get("description") or "") + " " + " ".join(c if k == "p" else " ".join(c) for k, c in blocks)[:600]
+            if RESULTS_WORDS.search(head) and PERIOD_WORDS.search(head):
+                return r, d, blocks
+    return None
+
+
+def _segment_item(cik, p, type_, notes, annual=False):
+    """The segment item of a 10-Q, 10-K, 20-F or 40-F row `p`, or None (with a note when the filing cannot be fetched or has no segment report)."""
+    got = fetch_periodic(cik, p["accession"])
+    what = "annual segment table" if annual else "segment table"
+    if got is None:
+        notes.append(f"The {p['form']} filed {p['filed']} (accession {p['accession']}) could not be fetched from SEC.")
+        return None
+    if not got.get("segment"):
+        notes.append(f"The {p['form']} filed {p['filed']} (accession {p['accession']}): the {what} is not filed as a separate report.")
+        return None
+    seg = got["segment"]
+    rows = []
+    for k, c in blocks_of(seg["raw"]):
+        rows += c if k == "t" else [c]
+    return _item(type_, p["form"], p["accession"], p["filed"], periodic_period(got.get("cover"), p["report_date"]), _doc_url(cik, p["accession"], seg["file"]),
+                 f"{p['form']} {what} ({seg['file']}, \"{seg['short_name']}\")", prefix_text("\n".join(rows), SEGMENT_CAP))
+
+
 def _build(cik, asof):
     out = {"items": [], "annotations": [], "reason": None}
     if not cik:
@@ -684,12 +751,25 @@ def _build(cik, asof):
         return out
     filings = _filings(subs, asof_s)
     items, notes = [], out["annotations"]
+    asof_dt = datetime.strptime(asof_s, "%Y-%m-%d")
+    day = lambda n: (asof_dt - timedelta(days=n)).strftime("%Y-%m-%d")
 
-    # P: the earnings release, and the other text exhibits of its 8-K
-    rel_rows = _newest([f for f in filings if f["form"] in ("8-K", "8-K/A") and _has_item_202(f["items"])])
+    # the earnings release, and the other text exhibits of its 8-K
+    rel_rows = _newest([f for f in filings if f["form"] in RELEASE_FORMS and _has_item_202(f["items"])])
     rel_acc = None
     if not rel_rows:
-        notes.append(f"No 8-K Item 2.02 earnings release on or before {asof_s}.")
+        # a filer with no 8-K Item 2.02 (a foreign private issuer): its newest 6-K whose exhibit reads as a periodic results release takes the release's place
+        six = _newest([f for f in filings if f["form"] in FOREIGN_FORMS and f["filed"] >= day(SCAN_6K_DAYS)])
+        found = _foreign_release(cik, six) if six else None
+        if found is None:
+            notes.append(f"No 8-K Item 2.02 earnings release{' or 6-K results release' if six else ''} on or before {asof_s}.")
+        else:
+            r, d, blocks = found
+            rel_acc = r["accession"]
+            period = release_period(" ".join(c if k == "p" else " ".join(c) for k, c in blocks[:15]))
+            where = d["type"] if d["type"].upper().startswith("EX-") else "6-K body"
+            items.append(_item("earnings_release", r["form"], r["accession"], r["filed"], period, _doc_url(cik, r["accession"], d["filename"]),
+                               f"{r['form']} earnings release ({where})", select_text(blocks, RELEASE_CAP)))
     else:
         r = rel_rows[0]
         rel_acc = r["accession"]
@@ -718,67 +798,68 @@ def _build(cik, asof):
                         items.append(_item("other_exhibit", r["form"], r["accession"], r["filed"], period,
                                            _doc_url(cik, r["accession"], x["filename"]), f"{r['form']} Item 2.02 other exhibit ({x['type']})", t))
 
-    # P: the segment table of the latest 10-Q or 10-K
-    per_rows = _newest([f for f in filings if f["form"] in ("10-Q", "10-K")])
+    # the segment table of the latest periodic filing (10-Q, 10-K, 20-F or 40-F); after a 10-Q, the latest annual report's too
+    per_rows = _newest([f for f in filings if f["form"] in PERIODIC_FORMS])
     if not per_rows:
-        notes.append(f"No 10-Q or 10-K on or before {asof_s}.")
+        notes.append(f"No 10-Q, 10-K, 20-F or 40-F on or before {asof_s}.")
     else:
         p = per_rows[0]
-        got = fetch_periodic(cik, p["accession"])
-        if got is None:
-            notes.append(f"The {p['form']} filed {p['filed']} (accession {p['accession']}) could not be fetched from SEC.")
-        elif not got.get("segment"):
-            notes.append(f"The {p['form']} filed {p['filed']} (accession {p['accession']}): the segment table is not filed as a separate report.")
-        else:
-            seg = got["segment"]
-            rows = []
-            for k, c in blocks_of(seg["raw"]):
-                rows += c if k == "t" else [c]
-            text = prefix_text("\n".join(rows), SEGMENT_CAP)
-            items.append(_item("segment_table", p["form"], p["accession"], p["filed"], periodic_period(got.get("cover"), p["report_date"]),
-                               _doc_url(cik, p["accession"], seg["file"]), f"{p['form']} segment table ({seg['file']}, \"{seg['short_name']}\")", text))
+        it = _segment_item(cik, p, "segment_table", notes)
+        if it is not None:
+            items.append(it)
+        if p["form"] == "10-Q":
+            ann = _newest([f for f in filings if f["form"] in ANNUAL_FORMS])
+            if not ann:
+                notes.append(f"No 10-K, 20-F or 40-F on or before {asof_s}.")
+            else:
+                it = _segment_item(cik, ann[0], "segment_annual", notes, annual=True)
+                if it is not None:
+                    items.append(it)
 
-    # P: the other recent 8-Ks
-    cutoff = (datetime.strptime(asof_s, "%Y-%m-%d") - timedelta(days=OTHER_8K_DAYS)).strftime("%Y-%m-%d")
-    other = [f for f in _newest(filings) if f["form"] in ("8-K", "8-K/A") and f["filed"] >= cutoff and f["accession"] != rel_acc
-             and set(_items_list(f["items"])) & set(OTHER_8K_ITEMS)]
-    for f in other[:MAX_OTHER_8K]:
+    # the other recent filings: 8-Ks of the last OTHER_8K_DAYS days with a listed item (a filer with no 8-K release: its other 6-Ks too)
+    cutoff = day(OTHER_8K_DAYS)
+    other = [f for f in filings if f["form"] in RELEASE_FORMS and f["filed"] >= cutoff and f["accession"] != rel_acc and set(_items_list(f["items"])) & set(OTHER_8K_ITEMS)]
+    if not rel_rows:
+        other += [f for f in filings if f["form"] in FOREIGN_FORMS and f["filed"] >= cutoff and f["accession"] != rel_acc]
+    for f in _newest(other)[:MAX_OTHER_8K]:
         got = fetch_8k(cik, f["accession"])
         if got is None:
-            notes.append(f"The 8-K filed {f['filed']} (accession {f['accession']}) could not be fetched from SEC.")
+            notes.append(f"The {f['form']} filed {f['filed']} (accession {f['accession']}) could not be fetched from SEC.")
             continue
-        ex = next((x for x in got["docs"] if x["type"].upper().startswith("EX-") and "raw" in x
-                   and re.match(r"EX-99|EX-2|EX-10|EX-1\.", x["type"].upper())), None)
-        ex = ex or next((x for x in got["docs"] if x["type"].upper().startswith("EX-") and "raw" in x), None)
-        ex = ex or next((x for x in got["docs"] if "raw" in x), None)
+        ex = _main_exhibit(got)
         if ex is None:
             continue
         blocks = blocks_of(ex["raw"])
-        if not ex["type"].upper().startswith("EX-"):          # an 8-K body opens with its cover page: start at the item text
+        foreign = f["form"] in FOREIGN_FORMS
+        if not ex["type"].upper().startswith("EX-") and not foreign:          # an 8-K body opens with its cover page: start at the item text
             item_re = re.compile(r"Item\s+(%s)\b" % "|".join(re.escape(i) for i in OTHER_8K_ITEMS))
             blocks = blocks[next((n for n, (k, c) in enumerate(blocks) if k == "p" and item_re.match(c)), 0):]
         text = prefix_text("\n".join(c if k == "p" else "\n".join(c) for k, c in blocks), OTHER_8K_CAP)
-        its = [i for i in _items_list(f["items"])]
-        where = ex["type"] if ex["type"].upper().startswith("EX-") else "8-K body"
-        items.append(_item("other_8k", f["form"], f["accession"], f["filed"], None, _doc_url(cik, f["accession"], ex["filename"]),
-                           f"{f['form']} Item{'s' if len(its) != 1 else ''} {', '.join(its)} ({where})", text))
+        where = ex["type"] if ex["type"].upper().startswith("EX-") else f"{f['form']} body"
+        if foreign:
+            title = f"{f['form']} ({where})"
+        else:
+            its = _items_list(f["items"])
+            title = f"{f['form']} Item{'s' if len(its) != 1 else ''} {', '.join(its)} ({where})"
+        items.append(_item("other_8k", f["form"], f["accession"], f["filed"], None, _doc_url(cik, f["accession"], ex["filename"]), title, text))
 
     items = _trim(items, notes)
     items = [i for i in items if i["text"]]
     for n, it in enumerate(items, 1):
         it["id"] = f"P{n}"
     if not items:
-        out["reason"] = f"no 8-K Item 2.02, 10-Q, 10-K or recent 8-K text on or before {asof_s}"
+        out["reason"] = f"no 8-K Item 2.02, 6-K results release, 10-Q, 10-K, 20-F, 40-F or recent 8-K or 6-K text on or before {asof_s}"
     out["items"] = items
     return out
 
 
 def _trim(items, notes):
-    """TOTAL_CAP across all items: the oldest other-8-K item is cut first, then the other exhibits (the last first); an item cut below
-    MIN_TRIMMED characters is dropped. The cut item keeps its start and ends with an omission marker."""
+    """TOTAL_CAP across all items: the annual segment table is cut first, then the other recent filings (the oldest first), then the other exhibits
+    (the last first); an item cut below MIN_TRIMMED characters is dropped. The cut item keeps its start and ends with an omission marker."""
     def total():
         return sum(len(i["text"]) for i in items)
-    order = [i for i in sorted([i for i in items if i["type"] == "other_8k"], key=lambda i: i["filed"])]
+    order = [i for i in items if i["type"] == "segment_annual"]
+    order += [i for i in sorted([i for i in items if i["type"] == "other_8k"], key=lambda i: i["filed"])]
     order += [i for i in reversed([i for i in items if i["type"] == "other_exhibit"])]
     for it in order:
         excess = total() - TOTAL_CAP
@@ -833,6 +914,8 @@ def _title_form_type(title):
         return form, "earnings_release"
     if "other exhibit" in title:
         return form, "other_exhibit"
+    if "annual segment table" in title:
+        return form, "segment_annual"
     if "segment table" in title:
         return form, "segment_table"
     return form, "other_8k"
@@ -933,49 +1016,71 @@ def _item_for_sec_url(url, items):
         if name and _url_key(i["url"]).rsplit("/", 1)[-1] == name:
             return i
     for i in same_acc:
-        if i["form"] in ("8-K", "8-K/A"):
+        if i["form"] in RELEASE_FORMS + FOREIGN_FORMS:
             return i
     return None
 
 
-def refuse_fetch(url, items):
-    """The model-facing refusal of a fetch_page call for a primary item's document, or None when the URL is not one. The call is not made."""
+PARTIAL_NOTE = "This document is partly in your briefing as PRIMARY {id}; the rest is fetched."
+
+
+def is_truncated(item):
+    """Whether an item's text was cut to its cap (it carries an omission marker): then the briefing holds only part of the document."""
+    return OMIT_RE.search(item.get("text") or "") is not None
+
+
+def _fetch_match(url, items):
     u = (url or "").strip()
     if not items or not re.match(r"^https?://", u, re.I):
         return None
     host = re.sub(r"^https?://", "", u, flags=re.I).split("/", 1)[0].lower()
-    it = None
     k = _url_key(u)
     for i in items:
         if _url_key(i["url"]) == k:
-            it = i
-            break
-    if it is None and (host == "sec.gov" or host.endswith(".sec.gov")):
-        it = _item_for_sec_url(u, items)
-    if it is None:
+            return i
+    if host == "sec.gov" or host.endswith(".sec.gov"):
+        return _item_for_sec_url(u, items)
+    return None
+
+
+def refuse_fetch(url, items):
+    """The model-facing refusal of a fetch_page call for a primary item's document, or None when the URL is not one of a COMPLETE item (an item cut to
+    its cap holds only part of the document: the fetch is made, see `fetch_hint`). The call is not made when this returns a refusal."""
+    it = _fetch_match(url, items)
+    if it is None or is_truncated(it):
         return None
     return {"served_from_primary": it["id"], "note": FETCH_NOTE.format(id=it["id"])}
 
 
+def fetch_hint(url, items):
+    """For a fetch of the document of an item that was cut to its cap: the note the fetched result carries (`partly_from_primary`, `primary_note`); None
+    otherwise."""
+    it = _fetch_match(url, items)
+    if it is None or not is_truncated(it):
+        return None
+    return {"partly_from_primary": it["id"], "primary_note": PARTIAL_NOTE.format(id=it["id"])}
+
+
 # ---- R2: a search for what the primary items hold -----------------------------------------------------------------------------
 
-_NUM_RE = re.compile(r"(?<![A-Za-z0-9,.])(\$?)(\d[\d,]*(?:\.\d+)?)(?:\s?(%|bn|billion|million|mm|m|b)\b)?", re.I)
+_CUR = r"(?:US\$|C\$|A\$|[$\u20ac\u00a3]|(?:USD|EUR|GBP|CAD|AUD)\s?)"
+_UNIT = r"(?:%|(?:million|billion|thousand|bn|mn|mm|m|k)\b)"
+_NUM_RE = re.compile(r"(?<![A-Za-z0-9,.])(" + _CUR + r")?(\d[\d,]*(?:\.\d+)?)(\s?" + _UNIT + r")?", re.I)
 _TEXT_NUM_RE = re.compile(r"(?<![A-Za-z0-9,.])\$?(\d[\d,]*(?:\.\d+)?)")
 
 
 def figure_tokens(query, ticker=None):
-    """The figure tokens of a query: a number with a decimal point or of 3 or more digits, optionally with $, %, bn, million or billion, as
-    its digits with the commas removed. Left out: a plain year (1900 to 2099 written bare), a number that is part of a word or code (H100,
-    Q2, FY26), and a number equal to an all-digit ticker."""
+    """The figure tokens of a query, as digits with the commas removed. A number is a figure token only when it carries one of: a decimal point; a
+    currency sign or code right before it ($, US$, C$, A$, the euro and pound signs, USD, EUR, GBP, CAD, AUD); a % right after it; or a unit word right
+    after it (million, billion, thousand, bn, mn, mm, m, k). A plain integer never counts, however long, and neither does a number that is part of a
+    word or code (H100, Q2, FY26) or one equal to an all-digit ticker."""
     tk = re.sub(r"\D", "", ticker or "") if ticker and str(ticker).isdigit() else None
     out = []
     for m in _NUM_RE.finditer(query or ""):
         core = m.group(2).rstrip(",").replace(",", "")
         if not core or core[-1] == ".":
             continue
-        if "." not in core and len(core) < 3:
-            continue
-        if "." not in core and len(core) == 4 and 1900 <= int(core) <= 2099 and not m.group(1) and not m.group(3):
+        if not ("." in core or m.group(1) or m.group(3)):
             continue
         if tk and core == tk:
             continue
@@ -1056,12 +1161,14 @@ def _class_fits(cls, item):
     if cls == "any":
         return True
     if cls == "release":
-        return item["form"] in ("8-K", "8-K/A")
+        return item["form"] in RELEASE_FORMS + FOREIGN_FORMS
     if cls == "remarks":                 # prepared remarks are held only when the 8-K's own exhibit of them is
         return item["type"] == "other_exhibit"
-    if cls in ("10-K", "10-Q"):
-        return item["form"] == cls
-    return item["type"] in ("earnings_release", "segment_table")
+    if cls == "10-K":
+        return item["form"] in ANNUAL_FORMS
+    if cls == "10-Q":
+        return item["form"] == "10-Q"
+    return item["type"] in ("earnings_release", "segment_table", "segment_annual")
 
 
 def refuse_search(query, items, ticker=None):

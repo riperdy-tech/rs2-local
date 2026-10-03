@@ -264,7 +264,7 @@ def test_point_in_time_uses_only_filings_dated_on_or_before_the_as_of_date(monke
     assert [i["type"] for i in early["items"]] == ["earnings_release", "other_exhibit", "segment_table"]
     # before any filing: nothing, with the reason
     none = sp.build(CIK, "2026-06-01")
-    assert none["items"] == [] and none["reason"].startswith("no 8-K Item 2.02, 10-Q, 10-K or recent 8-K text on or before 2026-06-01")
+    assert none["items"] == [] and none["reason"].startswith("no 8-K Item 2.02, 6-K results release, 10-Q, 10-K, 20-F, 40-F or recent 8-K or 6-K text on or before 2026-06-01")
 
 
 def test_other_8ks_are_those_of_the_last_120_days_with_the_listed_items(monkeypatch):

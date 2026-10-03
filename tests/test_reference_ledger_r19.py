@@ -37,7 +37,7 @@ def _verdict(**over):
 
 def _row(t="AAA", **over):
     r = {"date": D0.isoformat(), "ticker": t, "price": 10.0, "price_date": D0.isoformat(), "reference_value": 12.0, "reference_status": "used", "vp": 1.2,
-         "coe": 0.09, "closure_erp": 0.05, "closure_asof": "2026-12-20", "revision": 20, "verdict": _verdict()}
+         "coe": 0.09, "closure_erp": 0.05, "closure_asof": "2026-12-20", "revision": 21, "verdict": _verdict()}
     r.update(over)
     return r
 
@@ -188,7 +188,7 @@ def test_the_call_groups_match_the_hand_computed_figures(tmp_path):
     rows, prices, *_ = _cohort(tmp_path)
     res = ev.evaluate(rows, prices, D0, 12)
     cg = res["groups"]["all"]["call_groups"]
-    assert list(cg) == list(ev.CALL_GROUPS) and res["revision"] == 20
+    assert list(cg) == list(ev.CALL_GROUPS) and res["revision"] == 21
     # 1. crux calls: A1..A5, L1, N1 (the label is directional)
     g = cg["crux_calls"]
     assert (g["calls"], g["no_price_at_start"], g["no_price_at_end"], g["no_spy_return"]) == (7, 1, 1, 0)
@@ -247,7 +247,7 @@ def test_the_script_reports_the_groups_without_a_ticker_and_the_definitions_name
     printed = capsys.readouterr().out
     res = json.loads(out.read_text(encoding="utf-8"))
     assert json.loads(printed) == res and not any(t in printed for t in CASES)
-    assert res["revision"] == 20 and res["revisions"] == {"20": 12}
+    assert res["revision"] == 21 and res["revisions"] == {"21": 12}
     assert set(res["groups"]["all"]["call_groups"]) == set(ev.CALL_GROUPS)
     assert res["definitions"]["call_groups"]["groups"] == list(ev.CALL_GROUPS)
     assert res["definitions"]["call_groups"]["gate_limiting_reasons"] == ["outside_street_fence", "mos_beyond_150pct"]

@@ -337,7 +337,85 @@ Each item below is a company filing's text as filed (HTML cleaned, nothing parap
 > (a) Includes interest (income) expense of zero and zero and (provision) benefit for income taxes of $(3) million and $2 million for the three months ended June 30, 2026 and 2025, respectively, as well as interest (income) expense of zero
 > [… 2,655 characters omitted …]
 
-[P3] 8-K Item 5.02 (8-K body), filed 2026-08-27, accession 0001996810-26-000153, period not stated, https://www.sec.gov/Archives/edgar/data/1996810/000199681026000153/gev-20260825.htm
+[P3] 10-K annual segment table (R33.htm, "SEGMENT AND GEOGRAPHICAL INFORMATION"), filed 2026-01-29, accession 0001996810-26-000015, period FY 2025, https://www.sec.gov/Archives/edgar/data/1996810/000199681026000015/R33.htm
+> SEGMENT AND GEOGRAPHICAL INFORMATION | 12 Months Ended
+> Dec. 31, 2025
+> Segment Reporting [Abstract]
+> SEGMENT AND GEOGRAPHICAL INFORMATION | SEGMENT AND GEOGRAPHICAL INFORMATION. Operating segments include components of an enterprise about which separate financial information is available that is evaluated regularly by the Company’s Chief Operating Decision Maker (CODM) for the purpose of assessing performance and allocating resources. The Company’s CODM is its Chief Executive Officer (CEO). Our operating activities are managed through three segments: Power, Wind, and Electrification. These segments have been identified based on the nature of the products and services sold and how the Company manages its operations. The performance of these segments is principally measured based on revenues and segment EBITDA. Segment EBITDA is determined based on the performance measures used by our CEO to assess the performance of each business in a given period. In connection with that assessment, the CEO may exclude matters, such as charges for impairments, significant higher-cost restructuring programs, manufacturing footprint rationalization and other similar expenses, acquisition costs and other related charges, certain gains and losses from acquisitions or dispositions, and certain other non-operational items. Consistent accounting policies have been applied by all segments for all reporting periods. See Note 1 for a description of our reportable segments.
+> TOTAL SEGMENT REVENUES BY BUSINESS UNIT | 2025 | 2024 | 2023
+> Gas Power | $16,006 | $14,465 | $13,220
+> Nuclear Power | 1,018 | 819 | 827
+> Hydro Power | 806 | 781 | 887
+> Steam Power | 1,937 | 2,063 | 2,502
+> Power | $19,767 | $18,127 | $17,436
+> Onshore Wind | $8,241 | $7,781 | $7,761
+> Offshore Wind | 652 | 1,377 | 1,455
+> LM Wind Power | 217 | 542 | 610
+> Wind | $9,110 | $9,701 | $9,826
+> Grid Solutions | $6,620 | $4,957 | $3,955
+> Power Conversion & Storage | 2,049 | 1,676 | 1,549
+> Electrification Software | 973 | 917 | 874
+> Electrification | $9,642 | $7,550 | $6,378
+> Total segment revenues | $38,519 | $35,377 | $33,640
+> SEGMENT EBITDA
+> Year ended December 31, 2025 | Power | Wind | Electrification | Total
+> Equipment revenues | $6,420 | $7,224 | $7,290 | $20,934
+> Services revenues | 13,072 | 1,858 | 2,168 | 17,098
+> Intersegment revenues | 276 | 28 | 183 | 487
+> Segment revenues | 19,767 | 9,110 | 9,642 | 38,519
+> Other revenues and elimination of intersegment revenues | (451)
+> Total revenues | 38,068
+> Less:(a)
+> Cost of revenues(b) | 14,627 | 9,008 | 6,644
+> Selling, general, and administrative expenses(b) | 1,836 | 527 | 1,350
+> Research and development expenses(b) | 549 | 161 | 426
+> Other segment items(c) | (147) | 12 | (212)
+> Segment EBITDA | $2,902 | $(598) | $1,433 | $3,737
+> Year ended December 31, 2024 | Power | Wind | Electrification | Total
+> Equipment revenues | $5,509 | $8,018 | $5,412 | $18,939
+> Services revenues | 12,391 | 1,642 | 1,923 | 15,955
+> Intersegment revenues | 227 | 41 | 215 | 483
+> Segment revenues | 18,127 | 9,701 | 7,550 | 35,377
+> Other revenues and elimination of intersegment revenues | (442)
+> Total revenues | 34,935
+> Less:(a)
+> Cost of revenues(b) | 13,608 | 9,513 | 5,359
+> Selling, general, and administrative expenses(b) | 2,022 | 566 | 1,295
+> Research and development expenses(b) | 384 | 222 | 345
+> Other segment items(c) | (155) | (12) | (128)
+> Segment EBITDA | $2,268 | $(588) | $679 | $2,358
+> (a) The significant expense categories and amounts align with the segment-level information that is regularly provided to the CODM. Intersegment expenses are included within the amounts shown. (b) Excludes depreciation and amortization expenses. (c) Primarily includes equity method investment income and other interest and investment income.
+> Year ended December 31, 2023 | Power | Wind | Electrification | Total
+> Equipment revenues | $5,535 | $8,327 | $4,385 | $18,246
+> Services revenues | 11,758 | 1,488 | 1,733 | 14,979
+> Intersegment revenues | 143 | 11 | 260 | 414
+> Segment revenues | 17,436 | 9,826 | 6,378 | 33,640
+> Other revenues and elimination of intersegment revenues | (401)
+> Total revenues | 33,239
+> Less:(a)
+> Cost of revenues(b) | 13,425 | 10,006 | 4,690
+> Selling, general, and administrative expenses(b) | 2,124 | 611 | 1,213
+> Research and development expenses(b) | 315 | 248 | 320
+> Other segment items(c) | (149) | (6) | (79)
+> Segment EBITDA | $1,722 | $(1,033) | $234 | $923
+> (a) The significant expense categories and amounts align with the segment-level information that is regularly provided to the CODM. Intersegment expenses are included within the amounts shown. (b) Excludes depreciation and amortization expenses. (c) Primarily includes equity method investment income and other interest and investment income.
+> RECONCILIATION OF SEGMENT EBITDA TO NET INCOME (LOSS) | 2025 | 2024 | 2023
+> Segment EBITDA | $3,737 | $2,358 | $923
+> Corporate and other(a) | (541) | (323) | (116)
+> Restructuring and other charges | (277) | (426) | (433)
+> Gains (losses) on purchases and sales of business interests(b) | 281 | 1,024 | 92
+> Separation (costs) benefits(c) | (180) | 9 | —
+> Arbitration refund(d) | — | 254 | —
+> Non-operating benefit income | 459 | 536 | 567
+> Depreciation and amortization(e) | (847) | (1,008) | (847)
+> Interest and other financial income (charges) – net(f) | 185 | 130 | (53)
+> Russia and Ukraine charges(g) | — | — | (95)
+> Benefit (provision) for income taxes | 2,062 | (995) | (512)
+> Net income (loss) | $4,879 | $1,559 | $(474)
+> (a) Includes interest expense (income) of $(1) million, $10 million, and $45 million and benefit (provision) for income taxes of $(11) million, $56 million, and $168 million for the years ended December 31, 2025, 2024, and 2023, respectively, related to our Financial Services business which, because of the nature of its investments, is measured on an after-tax basis. (b) Includes unrealized (gains) losses related to our interest in China XD Electric Co., Ltd, recorded in Net interest and investment income (loss) which is part of Other income (expense) - net.
+> [… 2,818 characters omitted …]
+
+[P4] 8-K Item 5.02 (8-K body), filed 2026-08-27, accession 0001996810-26-000153, period not stated, https://www.sec.gov/Archives/edgar/data/1996810/000199681026000153/gev-20260825.htm
 > Item 5.02 Departure of Directors or Certain Officers; Election of Directors; Appointment of Certain Officers; Compensatory Arrangements of Certain Officers.
 > On August 25, 2026, Kenneth Parks, Chief Financial Officer of GE Vernova Inc. (the "Company"), has decided to retire on April 2, 2027 (the "Retirement Date"). From the six months preceding the Company's spin-off through the present day, Mr. Parks' insight and guidance have been invaluable at critical moments in GE Vernova's success, and he has been a trusted partner to Chief Executive Officer Scott Strazik and a vital resource to the Board of Directors and the Company's businesses. From January 1 to the Retirement Date, he will serve as strategic advisor to Mr. Strazik, and the Company wishes him the best in retirement.
 > Effective January 1, 2027, Claire McDonough will become Chief Financial Officer of GE Vernova, succeeding Mr. Parks. She will join the Company as strategic advisor to Mr. Strazik on November 1, 2026, ahead of that appointment.

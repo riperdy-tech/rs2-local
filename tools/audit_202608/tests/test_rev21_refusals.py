@@ -85,10 +85,15 @@ def _ids(res):
     ("acme revenue 1234.5 million", ["P1"]),                                         # the digits after removing the commas
     ("Acme backlog $9.9 billion", ["P1"]),
     ("Acme free cash flow 410 million", ["P1"]),                                     # 3 digits
-    ("Acme industrial segment sales 1,234", ["P2"]),                                 # P1 prints 1,234.5, not 1,234
+    ("Acme industrial segment sales $1,234", ["P2"]),                                # a currency sign; P1 prints 1,234.5, not 1,234
+    ("Acme industrial segment sales USD 1,234", ["P2"]),                             # a currency code
+    ("Acme free cash flow 410m", ["P1"]),                                            # a unit word right after the number
+    ("Acme free cash flow 410 mn", ["P1"]),
+    ("Acme free cash flow 410k", ["P1"]),
+    ("Acme orders grew 100%", ["P1"]),                                               # a % suffix
+    ("Acme US$9.9 billion", ["P1"]),
     ("Acme CFO base salary $1,000,000 offer letter", ["P3"]),
     ("what is 12.5% of ACME margin 9.9", ["P1"]),                                    # one of two tokens is enough
-    ("Acme Birmingham 250 megawatts data center", ["P1"]),                           # the rule as written: a 3-digit figure the filing prints
 ])
 def test_a_figure_the_items_print_refuses_the_query(query, ids):
     got = sp.refuse_search(query, ITEMS)
@@ -102,6 +107,10 @@ def test_a_figure_the_items_print_refuses_the_query(query, ids):
     "Acme H100 supply constraints MI300",                 # a number that is part of a code
     "Acme revenue 987.6 million",                         # a figure no item prints
     "Acme sales 234.5",                                   # part of 1,234.5, not the number
+    "Acme Birmingham 250 megawatts data center",           # a plain integer never counts, though the filing prints 250
+    "Acme orders grew 100 percent",                       # nor does a number followed by a word that is not a unit
+    "Acme 410 sites and 700 jobs and 1,234 units",        # plain integers, however long, with or without commas
+    "Acme 250 miles",                                      # `m` is a unit only as a word of its own: miles are not millions
     "Acme 12 percent",                                    # two digits and no decimal point
     "Acme 5 new sites in 2027 and 99 jobs",
     "Acme Birmingham city council data center rezoning decision",           # a new angle: a city council
@@ -114,20 +123,24 @@ def test_figure_false_positive_guards(query):
 
 
 def test_a_ticker_that_happens_to_be_digits_is_not_a_figure():
-    assert sp.refuse_search("700 stock buyback news", ITEMS) is not None                 # without the ticker, 700 is a figure P3 prints
-    assert sp.refuse_search("700 stock buyback news", ITEMS, ticker="700") is None       # with it, it is the company's name
-    assert sp.refuse_search("700 and 410 million", ITEMS, ticker="700")[0]["served_from_primary"] == ["P1"]     # only the ticker is excused
+    assert sp.refuse_search("700 stock buyback news", ITEMS) is None                     # a plain 700 is no figure, ticker or not
+    assert sp.refuse_search("$700 stock buyback", ITEMS) is not None                     # with a currency sign it is one P3 prints
+    assert sp.refuse_search("$700 stock buyback", ITEMS, ticker="700") is None           # and the ticker's own digits are excused
+    assert sp.refuse_search("$700 and 410 million", ITEMS, ticker="700")[0]["served_from_primary"] == ["P1"]     # only the ticker is excused
     assert sp.refuse_search("ACME stock", ITEMS, ticker="ACME") is None
 
 
 def test_figure_tokens_the_rule_in_words():
     ft = sp.figure_tokens
-    assert ft("$1,234.5 million and 410 and 9.9% and 2,000bn and 12") == ["1234.5", "410", "9.9", "2000"]
-    assert ft("2026 1900 2099 2100 1899") == ["2100", "1899"]                      # bare years 1900-2099 are not figures; 2100 and 1899 are numbers
-    assert ft("$2026 million") == ["2026"]                                         # a year written as an amount is an amount
-    assert ft("Q2 2Q26 FY2026 FY26 H100 A320 5G") == []
-    assert ft("1,2 3,4,5") == [] or isinstance(ft("1,2 3,4,5"), list)
-    assert ft("600519 shares", ticker="600519") == [] and ft("600519 shares", ticker="600520") == ["600519"]
+    assert ft("$1,234.5 million and 410 and 9.9% and 2,000bn and 12") == ["1234.5", "9.9", "2000"]       # the bare 410 and 12 are plain integers
+    assert ft("2026 1900 2099 2100 1899 250 1,234,567") == []                      # plain integers never count, years or not
+    assert ft("$2026 million 2026m 2026%") == ["2026", "2026", "2026"]             # a year written as an amount is an amount
+    assert ft("US$5 C$6 A$7 \u20ac8 \u00a39 USD 10 EUR 11 GBP 12 CAD 13 AUD 14") == [str(n) for n in range(5, 15)]
+    assert ft("5 million 6 billion 7 thousand 8bn 9mn 10mm 11m 12k 13%") == [str(n) for n in range(5, 14)]
+    assert ft("5 megawatts 6 miles 7 months 8 kilos 9 mbps") == []                 # a unit word is the word itself, not a longer word that starts with it
+    assert ft("1.0 99.1 0.5") == ["1.0", "99.1", "0.5"]                            # a decimal point
+    assert ft("Q2 2Q26 FY2026 FY26 H100 A320 5G \u20ac") == []
+    assert ft("600519 shares $600519", ticker="600519") == [] and ft("$600519", ticker="600520") == ["600519"]
 
 
 # ---- R2 (b): a request for the primary documents themselves --------------------------------------------------------------------------

@@ -234,10 +234,10 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # base_year_cash_and_investments_b line (AT10 fix item 3)
     # revision 19, part D (+358 chars, was 22630): the price_implied line (this fixture has no reference, so it reads "not available" and says why)
     # revision 20 (0 chars): PACK_REVISION 20 on the first line; the GEV fixture's history predates the input-scope fields, so no other line changes
-    # revision 21 (+23,756 chars, was 22988): PACK_REVISION 21 on the first line (0) and the PRIMARY SOURCES section after GUIDANCE & CONSENSUS (the
+    # revision 21 (+30,130 chars, was 22988; the annual segment table of the 10-K joined the section at the coordinator review): PACK_REVISION 21 on the first line (0) and the PRIMARY SOURCES section after GUIDANCE & CONSENSUS (the
     # 8-K Item 2.02 release of 2026-07-22, the segment report of the 10-Q of the same day, the 8-K Item 5.02 of 2026-08-27); the golden diff is in
     # rev21/BEFORE_AFTER_r21.md
-    assert len(text1) == 46744
+    assert len(text1) == 53118
 
     # Assert byte equality with golden file
     golden_file = FIXTURE / "golden_pack_GEV_rev21.md"

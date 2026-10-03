@@ -142,3 +142,32 @@ def test_the_round_trip_passes_on_a_pack_and_names_the_failing_item_otherwise(mo
     assert bad and bad[0][0] == "P1" and bad[0][1] == "PRIMARY P#"
     assert q2_round_trip.main(["--packs", str(tmp_path)]) == 1
     assert q2_round_trip.main(["--packs", str(tmp_path / "empty")]) == 1                    # no pack at all is not a pass
+
+
+# ---- the token census (coordinator review F) ---------------------------------------------------------------------------------------------
+
+def test_the_token_census_estimates_three_ways_and_flags_packs_over_sixty_percent_of_the_window(tmp_path):
+    import token_census
+    import capability_test as cap
+    extra = len("\n\n---\n\n") + len(cap.TASK) + len(cap.RESEARCH_ADDENDUM)
+    d = tmp_path / "packs"
+    d.mkdir()
+    (d / "A.md").write_text("x" * 10000 + "\n## PRIMARY SOURCES   [x]\n" + "y" * 5000 + "\n## DATA 12 - Z\n", encoding="utf-8")
+    (d / "B.md").write_text("z" * 3000, encoding="utf-8")
+    (d / "C.md").write_text("z" * int(0.7 * 98304 * 4), encoding="utf-8")                  # over 60% of the window even at chars/4
+    r = token_census.census(d, ratio=0.5)
+    assert r["packs"] == 3 and r["extra_chars"] == extra and r["limit_tokens"] == 58982
+    assert r["chars"]["min"] == 3000 + extra and r["largest_pack_chars"] == int(0.7 * 98304 * 4) + extra
+    assert r["primary_section_chars"]["max"] == 5025 and r["primary_section_chars"]["min"] == 0
+    assert r["estimates"]["chars_over_4"]["packs_over_60_percent"] == 1 and r["estimates"]["chars_over_3"]["packs_over_60_percent"] == 1
+    assert r["estimates"]["measured_ratio"]["tokens"]["max"] == round((int(0.7 * 98304 * 4) + extra) * 0.5)
+    assert token_census.census(d)["estimates"].keys() == {"chars_over_4", "chars_over_3"}
+
+
+def test_the_measured_ratio_is_prompt_tokens_over_the_pack_file_of_a_recorded_run(tmp_path):
+    import token_census
+    run = tmp_path / "ACME_20261003_080000"
+    (run / "sample1_research").mkdir(parents=True)
+    (run / "_pack.md").write_text("q" * 40000, encoding="utf-8")
+    (run / "sample1_research" / "_research_snapshot.json").write_text(json.dumps({"turns": [{"turn": 1, "prompt_tokens": 20000}, {"turn": 2, "prompt_tokens": 21000}]}), encoding="utf-8")
+    assert token_census.measured_ratio(tmp_path) == 0.5 and token_census.measured_ratio(None) is None and token_census.measured_ratio(tmp_path / "none") is None

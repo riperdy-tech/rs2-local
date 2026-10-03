@@ -2285,6 +2285,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 else:
                     result = {"error": f"unknown tool {name}"}
 
+                if (name == "fetch_page" and primary_items and pref is None and not desk_only and isinstance(result, dict)
+                        and not result.get("error") and not result.get("refused")):
+                    # revision 21 (coordinator ruling 1): the document of a primary item that was cut to its cap is fetched, and says what the briefing holds
+                    hint = sec_primary.fetch_hint((args or {}).get("url") or "", primary_items)
+                    if hint:
+                        result = dict(result, **hint)
                 if max_model_calls > 0 and desk_was_closed and isinstance(result, dict):
                     result = {"desk": DESK_CLOSED_LINE, **result}
             except Exception as e:
