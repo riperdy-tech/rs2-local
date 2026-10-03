@@ -21,6 +21,13 @@ import consensus_valuation as cv  # noqa: E402
 import depth_pipeline as dp  # noqa: E402
 from test_desk_checks import _ALL_REASONS_GIVEN, _ctx, _happy_params  # noqa: E402
 
+@pytest.fixture(autouse=True)
+def _no_crux_followup(monkeypatch):
+    """Revision 21: these sessions script every model turn and their desk runs are directional with no crux, which now earns the one crux follow-up
+    (tests/test_rev21_followup.py proves it). They test other behaviour, so the follow-up is switched off here."""
+    monkeypatch.setattr(at, "crux_followup_state", lambda *a, **k: None)
+
+
 MEMO = "# MEMO ONE\n" + "x" * 6000
 MEMO2 = "# MEMO TWO\n" + "y" * 6000
 PRICE = 50.0                                   # _ctx(price=50): the Bear of _happy_params is refused at this price

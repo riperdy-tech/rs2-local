@@ -164,6 +164,24 @@ def label(base, price):
     return "undervalued" if m >= 0.10 else "overvalued" if m <= -0.10 else "hold"
 
 
+def answer_run(calls):
+    """(call, base_iv, is_r15) of the answer run, by the rule `fill` applies: the last completed call that values Base, Bull and Bear together; with
+    none, the last completed call that values a Base. The Base is that call's own per-share value (the revision-15 path); (None, None, False) when
+    no completed call values a Base. Revision 21: the crux follow-up reads the answer run before the sample ends, through this one function."""
+    done = [c for c in (calls or []) if completed(c)]
+    ref = None
+    for c in reversed(done):
+        if {"base", "bull", "bear"} <= {e["role"] for e in entries(c)}:
+            ref = c
+            break
+    if ref is None:
+        ref = next((c for c in reversed(done) if any(e["role"] == "base" for e in entries(c))), None)
+    if ref is None:
+        return None, None, False
+    e = next((x for x in entries(ref) if x["role"] == "base"), None)
+    return ref, (_f(e["dcf"].get("per_share_iv")) if e else None), "cash_flow_life" in (ref.get("params") or {})
+
+
 def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=None, company=None):
     """(filled, prov). `typed` is the sample's parsed contract (extract_scorecard); `facts` needs
     'shares_outstanding' (raw count or None) and 'coe_anchor' (fraction or None). `ticker` is only

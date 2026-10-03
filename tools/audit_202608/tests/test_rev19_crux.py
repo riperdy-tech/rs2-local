@@ -23,6 +23,13 @@ import crux_check as cc  # noqa: E402
 import financial_model_tool as fmt  # noqa: E402
 from test_desk_checks import _ALL_REASONS_GIVEN, _ctx, _happy_params  # noqa: E402
 
+@pytest.fixture(autouse=True)
+def _no_crux_followup(monkeypatch):
+    """Revision 21: these sessions script every model turn and their desk runs are directional with no crux, which now earns the one crux follow-up
+    (tests/test_rev21_followup.py proves it). They test other behaviour, so the follow-up is switched off here."""
+    monkeypatch.setattr(at, "crux_followup_state", lambda *a, **k: None)
+
+
 TICKER, COMPANY = "TST", "Testco Inc."
 Q_CAPEX = "Management expects fiscal 2026 capital expenditure of about $1.1 billion, the lowest since 2021."       # GUIDANCE
 Q_DATA5 = "Capital expenditure fell to $0.9 billion as the Phoenix expansion finished in fiscal 2025."              # DATA 5
@@ -373,7 +380,8 @@ CRUX_DESCRIPTION = (
     "to three of the desk's judgment inputs (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, "
     "year2_level) on which your evidence says the price is wrong. For each: input; reason (why this company's value of "
     "it differs from what the price implies, and by how much); citations, one to five of {source, date, quote}: source "
-    "is DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or the exact URL of a page you fetched in "
+    "is PRIMARY P# (an item of PRIMARY SOURCES: the company's own filings, verbatim), DATA 3, DATA 4, DATA 5, DATA 6, "
+    "GUIDANCE (the company's own release), or the exact URL of a page you fetched in "
     "this session that names the company; date is YYYY-MM-DD; quote is 30 to 600 characters copied exactly from that "
     "source. Code fills in your value and the price-implied value from this run. Leave crux out when you have no such "
     "disagreement: the verdict is then HOLD.")

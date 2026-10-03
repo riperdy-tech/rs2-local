@@ -1939,6 +1939,30 @@ def _save_evidence_store(store_dir, query_cache, url_cache):
     (store_dir / "url_cache.json").write_text(json.dumps(url_cache, indent=2), encoding="utf-8")
 
 
+_VERDICT_WORD_RE = re.compile(r"\b(undervalued|overvalued|fairly valued|fair|hold)\b", re.I)
+
+
+def memo_verdict_word(report):
+    """Revision 21 (S3): the verdict word SECTION 0 of a memorandum states, as the code's label words: undervalued, overvalued or hold (fair and
+    fairly valued read as hold); None when the memorandum has no SECTION 0 or its SECTION 0 states none. The word is the first one within 120
+    characters after the word `verdict`, else the first verdict word of the section. Annotation only: the sample's flag memo_verdict_mismatch
+    compares it with the code's label and gates nothing."""
+    text = report or ""
+    m = re.search(r"(?im)^[#*>\s]*SECTION\s+0\b", text)
+    if m is None:
+        return None
+    rest = text[m.end():]
+    end = re.search(r"(?im)^[#*>\s]*SECTION\s+1\b", rest)
+    sec = rest[:end.start()] if end else rest[:4000]
+    v = re.search(r"verdict", sec, re.I)
+    hit = _VERDICT_WORD_RE.search(sec[v.end():v.end() + 120]) if v else None
+    hit = hit or _VERDICT_WORD_RE.search(sec)
+    if hit is None:
+        return None
+    w = hit.group(1).lower()
+    return "hold" if w in ("fair", "fairly valued") else w
+
+
 def desk_backed(run):
     """A sample whose base IV no desk call produced is not a basis sample (GPOR (b) s2: zero tool
     calls, a hand-computed $425 inside 3.7% of the desk-backed $410 made the spread look like
@@ -2444,6 +2468,12 @@ def main():
             flags = list(flags) + ["research_wrong_company"]
             why = list(why) + ["research brief failed company verification (research_wrong_company)"]
 
+        # revision 21 (S3): the memorandum's SECTION 0 verdict word against the code's label; reported, never a gate
+        _memo_word = memo_verdict_word(rep)
+        if (_memo_word is not None and scorecard.get("verdict_label") in ("undervalued", "overvalued", "hold")
+                and _memo_word != scorecard.get("verdict_label") and "memo_verdict_mismatch" not in flags):
+            flags = list(flags) + ["memo_verdict_mismatch"]
+
         research_calls = meta.get("research_calls", 0)
         repeat_calls = meta.get("repeat_calls", 0)
         desk_runs = meta.get("desk_runs") or []
@@ -2503,6 +2533,8 @@ def main():
                      "reduced_thinking": rescue["reduced_thinking"],
                      "window_retry_used": window_retry_used,
                      "continuation_for_desk": rescue["continuation_for_desk"],
+                     # revision 21 (S3): the crux follow-up of this sample: {fired, outcome: crux_added | hold_confirmed | no_change | None}
+                     "crux_followup": (meta or {}).get("crux_followup") or {"fired": False, "outcome": None},
                      **({"first_attempt_continuation_for_desk": first_rescue["continuation_for_desk"]}
                         if sample_retried else {}),
                      "sample_retried": sample_retried,

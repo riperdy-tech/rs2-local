@@ -1510,6 +1510,60 @@ REFUSAL_ADVISED_CLAUSE = " Call again with the same inputs and these reasons."
 REFUSAL_GENERIC_CLAUSE = " Call again with the same inputs and these reasons, or change an input with dated evidence."
 
 
+# Revision 21 (brief_rev21.md S2): the crux follow-up's desk call repeats the answer run's inputs unchanged and adds the crux. The inputs are the
+# values the desk computes with; the reasons and the crux are text, and the scenario entries carry what the desk annotated.
+FOLLOWUP_INPUT_KEYS = ("mode", "valuation_frame", "rate_type", "cash_flow_life", "base_cf", "explicit_growth", "fade_years", "terminal_g",
+                       "terminal_ronic", "sbc_treatment", "sbc_dilution", "wacc", "annuity_flow", "annuity_cap_rate", "net_debt", "shares_diluted",
+                       "excess_cash", "interest_addback")
+FOLLOWUP_SCENARIO_KEYS = ("prob", "base_cf", "explicit_growth", "fade_years", "wacc", "terminal_g", "terminal_ronic", "shares_diluted")
+
+
+def _same_input(a, b):
+    if a is None or b is None:
+        return a is None and b is None
+    if isinstance(a, (list, tuple)) or isinstance(b, (list, tuple)):
+        return (isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)) and len(a) == len(b)
+                and all(_same_input(x, y) for x, y in zip(a, b)))
+    if _is_num(a) and _is_num(b):
+        return math.isclose(float(a), float(b), rel_tol=1e-9, abs_tol=1e-12)
+    if isinstance(a, str) and isinstance(b, str):
+        return a.strip().lower() == b.strip().lower()
+    return a == b
+
+
+def _followup_view(params):
+    """The inputs of a desk call as (top-level {key: value}, {role: {key: value}}): explicit_growth reads growth_rates and wacc reads discount_rate
+    when the first is absent; a cash_flow_life is normalised."""
+    def pick(d, keys):
+        out = {k: d.get(k) for k in keys}
+        if out.get("explicit_growth") is None and d.get("growth_rates") is not None:
+            out["explicit_growth"] = d.get("growth_rates")
+        if "wacc" in out and out["wacc"] is None and d.get("discount_rate") is not None:
+            out["wacc"] = d.get("discount_rate")
+        return out
+    p = params if isinstance(params, dict) else {}
+    top = pick(p, FOLLOWUP_INPUT_KEYS)
+    if top.get("cash_flow_life") is not None:
+        top["cash_flow_life"] = _normalize_cash_flow_life(top["cash_flow_life"])
+    return top, {_role_of(sc.get("name")): pick(sc, FOLLOWUP_SCENARIO_KEYS)
+                 for sc in (p.get("scenarios") or []) if isinstance(sc, dict)}
+
+
+def followup_input_changes(params, reference):
+    """The names of the inputs in `params` that differ from `reference` (the answer run's call), for the crux follow-up's refusal; [] when they are
+    the same. Numbers are compared to a relative 1e-9; a scenario is matched by its role (Base, Bull, Bear)."""
+    top, scs = _followup_view(params)
+    rtop, rscs = _followup_view(reference)
+    names = [k for k in FOLLOWUP_INPUT_KEYS if not _same_input(top.get(k), rtop.get(k))]
+    for role in sorted(set(scs) | set(rscs)):
+        a, b = scs.get(role), rscs.get(role)
+        if a is None or b is None:
+            names.append(f"{role.capitalize()}.scenario")
+            continue
+        names += [f"{role.capitalize()}.{k}" for k in FOLLOWUP_SCENARIO_KEYS if not _same_input(a.get(k), b.get(k))]
+    return names
+
+
 def _refusal(missing, needs_reasons, order=None, share_unit_note=None, advice=None):
     """S3 3.7's refusal format. `share_unit_note`, when given, is appended to the detail.
 
@@ -1710,6 +1764,15 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
 
     if missing:
         return _refusal(missing=missing, needs_reasons=[])
+
+    # revision 21 (S2): the crux follow-up's call repeats the answer run's inputs; a changed input is refused as any call the desk cannot use is
+    if isinstance(ctx.get("crux_followup_inputs"), dict):
+        changed = followup_input_changes(params, ctx["crux_followup_inputs"])
+        if changed:
+            return {"error": "Not accepted as a desk run; it does not use one of your desk runs. This call must repeat your answer run's inputs "
+                             "unchanged and add crux; these differ from the answer run: " + ", ".join(changed) + ". Call again with the "
+                             "answer-run inputs and the crux, or reply HOLD without calling the desk.",
+                    "validation_error": True, "missing": [], "needs_reasons": [], "crux_followup_changed": changed}
 
     # ---- Context defaults used while computing -------------------------------------------------
     ctx_shares_default_b = ctx.get("shares_default_b")

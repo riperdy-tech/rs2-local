@@ -26,6 +26,13 @@ import pack_facts  # noqa: E402
 from test_desk_continuation import MEMO, _call, _desk, _serve, _snap, _turn  # noqa: E402
 from test_desk_checks import _ALL_REASONS_GIVEN, _ctx, _happy_params  # noqa: E402
 
+@pytest.fixture(autouse=True)
+def _no_crux_followup(monkeypatch):
+    """Revision 21: these sessions script every model turn and their desk runs are directional with no crux, which now earns the one crux follow-up
+    (tests/test_rev21_followup.py proves it). They test other behaviour, so the follow-up is switched off here."""
+    monkeypatch.setattr(at, "crux_followup_state", lambda *a, **k: None)
+
+
 OK = _happy_params(**_ALL_REASONS_GIVEN)
 
 

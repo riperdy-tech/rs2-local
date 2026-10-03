@@ -52,6 +52,7 @@ if _AUDIT_DIR not in sys.path:
     sys.path.insert(0, _AUDIT_DIR)
 import crux_check  # noqa: E402  (revision 19: the judgment inputs, the citation check)
 import llm_provider  # noqa: E402  (the one door every analyst-model call goes through)
+import sec_primary  # noqa: E402  (revision 21: the PRIMARY SOURCES items and the refusals that point at them)
 
 SEARX = rs2_data.CONFIG.get("searxng_url", "http://localhost:8888")
 OLLAMA = "http://127.0.0.1:11434/api/chat"
@@ -100,13 +101,18 @@ PART_CHARS = 9000
 PDF_REFUSAL = ("this address is a PDF document; fetch_page reads web pages and text only. Search for the same document "
                "as a web page (for a filing, its sec.gov HTML version).")
 
+# revision 21 (brief_rev21.md R4): the sentence the TASK and both research tool descriptions carry, verbatim
+PRIMARY_SENTENCE = ("PRIMARY SOURCES holds the company's own filings verbatim; do not search for or fetch them again — the tools return a "
+                    "pointer instead. Search only for what they do not contain.")
+
 # revision 19 (brief_rev19.md B1): the crux argument of the desk call, verbatim
 CRUX_DESCRIPTION = (
     "Your stated disagreement with today's price, needed for a verdict of undervalued or overvalued (TASK item 6): one "
     "to three of the desk's judgment inputs (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, "
     "year2_level) on which your evidence says the price is wrong. For each: input; reason (why this company's value of "
     "it differs from what the price implies, and by how much); citations, one to five of {source, date, quote}: source "
-    "is DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or the exact URL of a page you fetched in "
+    "is PRIMARY P# (an item of PRIMARY SOURCES: the company's own filings, verbatim), DATA 3, DATA 4, DATA 5, DATA 6, "
+    "GUIDANCE (the company's own release), or the exact URL of a page you fetched in "
     "this session that names the company; date is YYYY-MM-DD; quote is 30 to 600 characters copied exactly from that "
     "source. Code fills in your value and the price-implied value from this run. Leave crux out when you have no such "
     "disagreement: the verdict is then HOLD.")
@@ -128,7 +134,8 @@ TOOLS = [{
             "If a number you need for an assumption is missing from the pack, SEARCH FOR IT "
             "rather than assuming a value."
             " Your earlier tool results stay in the conversation as compact notes marked [call N]. "
-            "Read them before searching; do not repeat a search you have already run. Fetching a page again gives its next unread part."),
+            "Read them before searching; do not repeat a search you have already run. Fetching a page again gives its next unread part. "
+            + PRIMARY_SENTENCE),
         "parameters": {
             "type": "object",
             "properties": {
@@ -148,7 +155,8 @@ TOOLS = [{
             "Prefer primary sources: company IR pages, earnings-call transcripts, regulators, central banks. "
             "A page is served in parts of 9,000 characters; the result says which part you have and how many "
             "there are. Call again with the same url for the next part you have not read, or pass part to choose "
-            "one. Pass find to get the passages of the whole page that contain a word or phrase."
+            "one. Pass find to get the passages of the whole page that contain a word or phrase. "
+            + PRIMARY_SENTENCE
         ),
         "parameters": {
             "type": "object",
@@ -1067,6 +1075,68 @@ def desk_continuation_cause(calls, model_calls, desk_validation_errors, max_mode
     return "no_complete_run" if made else "no_desk_call"
 
 
+# Revision 21, brief_rev21.md part S: the crux follow-up. After a sample's memorandum, when its answer run (the last complete desk run) is
+# directional (undervalued or overvalued against the price, plus or minus 10%) and passed no crux, so that the label is HOLD, the harness sends
+# this message once. The follow-up has one extra desk run if the desk was used up; the call must repeat the answer run's inputs unchanged (the
+# desk refuses a changed input) and add the crux. Annotation of what happened: meta["crux_followup"] = {"fired", "outcome"}.
+CRUX_FOLLOWUP = (
+    "Your Base sits {x}% {side} the price, but your answer run passed no crux, so the verdict is HOLD. If your evidence supports a disagreement "
+    "with the price, call the desk once more with your answer-run inputs unchanged plus `crux` (input, reason, citations with quotes copied "
+    "exactly; PRIMARY P# sources qualify). If it does not, reply HOLD and end SECTION 0 and SECTION 12 with HOLD.")
+CRUX_FOLLOWUP_OUTCOMES = ("crux_added", "hold_confirmed", "no_change")
+# Revision 21, part R: a refusal that points at the primary sources does not count against the search budget. A sample that keeps sending
+# refused calls would loop for ever, so the refusals past this number count against it like any other call (they are still refused).
+PRIMARY_REFUSAL_CAP = 10
+
+
+def primary_refusal(name, args, items, ticker=None):
+    """(result, rule) when a search_web or fetch_page call asks for what the pack's PRIMARY SOURCES hold (sec_primary.refuse_search: rule "figure",
+    "document" or "figure+document"; sec_primary.refuse_fetch: rule "fetch"); None otherwise. `result` is what the model is shown."""
+    if not items:
+        return None
+    if name == "fetch_page":
+        r = sec_primary.refuse_fetch((args or {}).get("url") or "", items)
+        return (r, "fetch") if r is not None else None
+    if name == "search_web":
+        return sec_primary.refuse_search((args or {}).get("query") or "", items, ticker)
+    return None
+
+
+def crux_followup_state(calls, price, pack_text, desk_context=None):
+    """Revision 21 (S1): None when the crux follow-up must not fire, else {"direction", "base", "price", "answer_call_index", "inputs"}. It fires on
+    a directional answer run (contract_fill.label of its Base against the price is undervalued or overvalued) of a revision-15 call whose crux
+    check says `missing`; never on HOLD, never when the crux is present (whatever the check says of it). `inputs` is the answer call's params, for
+    the desk's changed-input refusal."""
+    import contract_fill
+    call, base, r15 = contract_fill.answer_run(calls)
+    if call is None or not r15 or base is None or isinstance(price, bool) or not isinstance(price, (int, float)) or price <= 0:
+        return None
+    direction = contract_fill.label(base, price)
+    if direction not in ("undervalued", "overvalued"):
+        return None
+    ctx = desk_context or {}
+    chk = crux_check.check((call.get("params") or {}).get("crux"), contract_fill._body(call).get("price_implied"), pack_text, calls,
+                           ctx.get("company"), ctx.get("ticker"), None)
+    if chk.get("reason") != "missing":
+        return None
+    return {"direction": direction, "base": base, "price": price, "answer_call_index": call.get("call_index"),
+            "inputs": json.loads(json.dumps(call.get("params") or {}, default=str))}
+
+
+def crux_followup_outcome(calls, start, answer_call_index):
+    """Revision 21 (S3): what the follow-up came to, from the snapshot records after index `start`. hold_confirmed: no desk call (the model replied
+    without the desk). crux_added: the answer run is now another call and carries a crux. no_change: a desk call was made and the sample stays at
+    its answer run (the desk refused a changed input, or the call carried no crux)."""
+    import contract_fill
+    if not any(isinstance(c, dict) and c.get("tool") == "run_financial_model" for c in (calls or [])[start:]):
+        return "hold_confirmed"
+    call, _base, _r15 = contract_fill.answer_run(calls)
+    crux = (call.get("params") or {}).get("crux") if call is not None else None
+    if call is not None and call.get("call_index") != answer_call_index and isinstance(crux, list) and crux:
+        return "crux_added"
+    return "no_change"
+
+
 # UGI s3 and LAMR s1 wrote essays of up to 30,523 characters into sector_multiple_band.metric. The
 # arguments stayed in every later prompt, and the desk echoed them into every scenario, which
 # pushed Bear past the 12,000-character cut of the tool message in 3 of 85 desk calls.
@@ -1143,11 +1213,12 @@ def crux_citation_check(crux, pack_text, calls, desk_context):
     ctx = desk_context or {}
     sources = crux_check.pack_sources(pack_text)
     fetched = crux_check.fetched_texts(calls)
+    primary = crux_check.primary_items(pack_text)       # revision 21: PRIMARY P# and an item's URL are company evidence, as the verdict's check reads them
     out = []
     for e in crux if isinstance(crux, list) else []:
         if isinstance(e, dict):
             out.append({"input": e.get("input"),
-                        "citations": crux_check.classify_citations(e.get("citations"), sources, fetched, ctx.get("company"), ctx.get("ticker"))})
+                        "citations": crux_check.classify_citations(e.get("citations"), sources, fetched, ctx.get("company"), ctx.get("ticker"), primary)})
     return out
 
 
@@ -1280,6 +1351,11 @@ def compact_tool_note(name, args, result, call_index) -> str:
     elif isinstance(result, str):
         if "search_quota_met" in result or "budget exhausted" in result.lower():
             return result
+    if isinstance(result, dict) and result.get("served_from_primary") is not None:
+        # revision 21: a refusal that points at PRIMARY SOURCES, kept whole (it is one sentence)
+        a = args if isinstance(args, dict) else {}
+        return (f'[call {call_index}] search: "{a.get("query", "")}" -> {result.get("note")}' if name == "search_web"
+                else f"[call {call_index}] page: {a.get('url', '')} -> {result.get('note')}")
 
     if name == "search_web":
         q = (args or {}).get("query", "") if isinstance(args, dict) else ""
@@ -1691,6 +1767,13 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     desk_continuation_pending = False   # the next turn's record carries "continuation_for_desk"
     desk_only = False                   # C8: only run_financial_model is open for the rest of the session
     desk_calls_at_c8 = 0
+    primary_items = sec_primary.parse_pack(content)      # revision 21: what the pack's PRIMARY SOURCES hold (none for an older pack)
+    primary_refusals = 0
+    crux_followup = None                # revision 21 (S1): the record returned in meta; None until the follow-up fires
+    crux_followup_pending = False       # the next turn's record carries "crux_followup"
+    crux_first_report = None            # the memorandum the follow-up was sent after: it stands when the reply is not a memorandum
+    crux_followup_start = 0
+    desk_ctx_now = desk_context         # the desk's context; the follow-up adds the answer run's inputs to it
     server_errors = 0
     chars_per_token = [None]   # measured on the previous request, for the report-room rule
 
@@ -1847,6 +1930,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         if desk_continuation_pending:
             turn_rec["continuation_for_desk"] = True
             desk_continuation_pending = False
+        if crux_followup_pending:
+            turn_rec["crux_followup"] = True
+            crux_followup_pending = False
         if resp.get("done_reason") == "server_error":
             turn_rec["server_error"] = True
             turn_rec["http_status"] = resp.get("http_status")
@@ -1907,6 +1993,34 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                      "turn": len(turns), "desk_calls_after": 0, "complete_after": False,
                                      "base_over_reference": None}
                 continue
+            # Revision 21 (S1): a delivered memorandum whose answer run is directional and passed no crux gets one follow-up message.
+            fu = (crux_followup_state(snap, (desk_context or {}).get("price"), msgs[0]["content"], desk_context)
+                  if (crux_followup is None and not is_stub and failure is None and server_errors < 2 and done_reason != "server_error"
+                      and max_model_calls > 0 and desk_validation_errors <= 6
+                      and any(t["function"]["name"] == "run_financial_model" for t in eff_tools))
+                  else None)
+            if fu is not None:
+                if verbose:
+                    print(f"    [harness] the answer run is {fu['direction']} and passed no crux - one crux follow-up", flush=True)
+                msgs.append({"role": "assistant", "content": msg.get("content") or ""})
+                meta_msgs.append(None)
+                msgs.append({"role": "user", "content": CRUX_FOLLOWUP.format(
+                    x=f"{abs(fu['base'] / fu['price'] - 1) * 100:.0f}", side="above" if fu["direction"] == "undervalued" else "below")})
+                meta_msgs.append(None)
+                if model_calls >= max_model_calls:
+                    max_model_calls = model_calls + 1            # the follow-up's desk call, when the desk was used up
+                desk_only = True
+                crux_followup_pending = True
+                crux_first_report = final_report
+                crux_followup_start = len(snap)
+                desk_ctx_now = dict(desk_context or {}, crux_followup_inputs=fu["inputs"])
+                crux_followup = {"fired": True, "outcome": None, "turn": len(turns), "direction": fu["direction"],
+                                 "answer_call_index": fu["answer_call_index"]}
+                continue
+            if crux_followup is not None and is_stub and (crux_first_report or "").strip():
+                # the follow-up's reply was not a memorandum (a bare HOLD): the first memorandum stands, as written
+                final_report = crux_first_report
+                break
             if is_stub:
                 # BOTH live failure shapes land here, and the old test (`not content.strip()`)
                 # only caught the first:
@@ -1953,10 +2067,22 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
 
             result = None
+            pref = (primary_refusal(name, args, primary_items, (desk_context or {}).get("ticker"))
+                    if (primary_items and name in ("search_web", "fetch_page") and not desk_only) else None)
             try:
                 desk_was_closed = (model_calls >= max_model_calls or desk_validation_errors > 6) if max_model_calls > 0 else False
                 if desk_only and name != "run_financial_model":
                     result = {"error": DESK_ONLY_OPEN}      # C8: counts against no budget
+                elif pref is not None:
+                    # revision 21 (R1, R2): what the PRIMARY SOURCES hold is not searched or fetched again; the pointer comes back, the call is
+                    # recorded (served_from_primary) and does not count against the search budget (until the loop guard's cap)
+                    result, rule = pref
+                    primary_refusals += 1
+                    call_rec["primary_refusal"] = rule
+                    if primary_refusals > PRIMARY_REFUSAL_CAP:
+                        research_calls += 1
+                        search_calls += 1
+                        call_rec["primary_refusal_counted"] = True
                 elif name in ("search_web", "fetch_page"):
                     research_calls += 1
                     if name == "search_web":
@@ -2129,7 +2255,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                            f"use computed results and finalize memorandum"}
                     else:
                         # the cap goes only where it is set, so a dispatcher without desk_context fails loudly
-                        desk_kw = {"desk_context": desk_context} if desk_context is not None else {}
+                        desk_kw = {"desk_context": desk_ctx_now} if desk_ctx_now is not None else {}
                         call_key = json.dumps(args, sort_keys=True, default=str)      # the inputs as sent (the desk annotates args)
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache, **desk_kw)
                         if isinstance(result, dict) and result.get("validation_error") is True:
@@ -2141,6 +2267,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         else:
                             model_calls += 1
                             desk_refusal_window = None
+                            if crux_followup is not None:
+                                max_model_calls = model_calls      # revision 21: the follow-up is one desk run
                             if isinstance(result, dict) and isinstance((args or {}).get("crux"), list) and args["crux"]:
                                 # B4 (revision 19): v3 of the crux check on the pack and the pages fetched so far, shown to the model
                                 result = dict(result, crux_citation_check=crux_citation_check(args["crux"], msgs[0]["content"], snap, desk_context))
@@ -2267,6 +2395,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     if desk_continuation is not None:
         desk_continuation["desk_calls_after"] = (
             sum(1 for c in snap if c.get("tool") == "run_financial_model") - desk_calls_at_c8)
+    if crux_followup is not None:
+        crux_followup["outcome"] = crux_followup_outcome(snap, crux_followup_start, crux_followup["answer_call_index"])
     eval_rate = round(gen_tokens / (eval_duration_total / 1e9), 2) if eval_duration_total > 0 else 0
     return final_report, final_think, {"tool_calls": calls, "done_reason": done_reason,
                                        **llm_provider.turns_provenance(turns),
@@ -2290,7 +2420,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                        "think_configured": think,
                                        "failure": failure,
                                        "window_retry_used": window_retry_used,
-                                       "continuation_for_desk": desk_continuation}
+                                       "continuation_for_desk": desk_continuation,
+                                       "crux_followup": ({"fired": True, "outcome": crux_followup["outcome"]} if crux_followup is not None
+                                                         else {"fired": False, "outcome": None}),
+                                       "primary_refusals": primary_refusals}
 
 
 if __name__ == "__main__":

@@ -162,7 +162,7 @@ def test_an_ollama_sample_meta_and_turns_are_unchanged(monkeypatch, tmp_path):
     monkeypatch.setitem(rs2_data.CONFIG, "depth_provider", "ollama")
     monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: R())
     rep, think, meta = at.chat_with_tools("m", "PACK", tmp_path / "s", think=False, verbose=False, max_model_calls=0)
-    assert set(meta) == OLD_META_KEYS
+    assert set(meta) == OLD_META_KEYS | {"crux_followup", "primary_refusals"}      # revision 21: the follow-up record and the refusal count
     assert set(meta["turns"][0]) == OLD_TURN_KEYS | {"turn", "think", "est_prompt_tokens", "num_predict"}
 
 
