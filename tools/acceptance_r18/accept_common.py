@@ -242,7 +242,7 @@ def add_tree_paths(tree):
     return tree
 
 
-def bootstrap(tree, sd, mri, root, date, closure=None, stub_world=True):
+def bootstrap(tree, sd, mri, root, date, closure=None, stub_world=True, primary_cache=None):
     """Pin one acceptance day and import the tree's modules under it (the guards of wb_p3.py):
 
       SCREENER_DATA_DIR / MRI_OUTPUTS_DIR / MRI_ANCHORS_DIR are set before any module imports and the resolved values are checked;
@@ -250,6 +250,9 @@ def bootstrap(tree, sd, mri, root, date, closure=None, stub_world=True):
       the MRI duckdb store is never opened (`_mri_query` refused; the one MRI read is the cash term's bill rate, a read-only parquet);
       capability_test.HERE and valuation_backbone.HERE are `root` (enrich/, cache/, research/ - one root for the estimates and the fence);
       `closure` (a path) is the closure artifact read through the production accessor (default: the tree's cache/reference_closure.json).
+      `primary_cache` (revision 21; a directory holding sec_primary/ and sec_submissions/, filled by tools/acceptance_r21/prefetch_sec.py): the PRIMARY
+      SOURCES section is built OFFLINE from that cache (the submissions copy of any age is read); without it the section is stubbed with the reason
+      `stubbed: acceptance`, as the SEC release is, so a day built without it never reads a cache.
 
     Returns a namespace of the modules and the frozen date. Call it once per process."""
     block_network()
@@ -292,6 +295,13 @@ def bootstrap(tree, sd, mri, root, date, closure=None, stub_world=True):
         cap.company_news.fetch = lambda company, t: {"date": str(date), "rows": [], "unresponsive_engines": [], "errors": ["stubbed: acceptance"]}
         cap.sec_guidance.latest_earnings_release = lambda *a, **k: None
         cap.world_news.digest = lambda *a, **k: None
+        if hasattr(cap, "sec_primary") and primary_cache is None:
+            cap.sec_primary.build = lambda cik, asof=None: {"items": [], "annotations": [], "reason": "stubbed: acceptance"}
+    if primary_cache is not None and hasattr(cap, "sec_primary"):
+        import sec_guidance
+        cap.sec_primary.CACHE = Path(primary_cache).resolve() / "sec_primary"
+        sec_guidance.SUB_CACHE = Path(primary_cache).resolve() / "sec_submissions"
+        cap.sec_primary.ALLOW_STALE_SUBMISSIONS = True
 
     def _no_store(*a, **k):
         raise RuntimeError("MRI duckdb store query refused (a live build reads the anchor JSON files only)")

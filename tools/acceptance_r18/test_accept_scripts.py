@@ -104,8 +104,8 @@ def test_build_day_records_the_pack_the_reference_the_independent_call_the_cash_
     assert world.meta["enrich_label"] == "book" and world.meta["enrich_check"]["pass"] is True
     inputs = ac.inputs_record(world.ns)
     assert len(inputs["history_sha256"]) == 64 and len(inputs["closure_sha256"]) == 64 and inputs["mri_anchor_sha256"]
-    assert inputs["pack_revision"] == 20 and inputs["date"] == DATE and inputs["resolved_dirs"]["screener_data_dir"] == str(world.sd.resolve())
-    assert ac.constants(world.ns)["FACTS_VERSION"] == 8 and "Level anchor" not in ac.constants(world.ns)["TASK"]          # restated for revision 20
+    assert inputs["pack_revision"] == 21 and inputs["date"] == DATE and inputs["resolved_dirs"]["screener_data_dir"] == str(world.sd.resolve())
+    assert ac.constants(world.ns)["FACTS_VERSION"] == 9 and "Level anchor" not in ac.constants(world.ns)["TASK"]          # restated for revision 21
 
 
 def _enrich_root(tmp_path, records):
@@ -647,12 +647,12 @@ def test_at6_constants_anchor_sentence_fence_and_cap(world):
     capped = _copy(world.rows)
     capped["GEV"]["reference"]["stamps"] = ["base_year_capped"]
     assert not at_rows.at6(capped, consts)["pass"]
-    assert not at_rows.at6(world.rows, dict(consts, PACK_REVISION=19))["pass"]                      # restated for revision 20: 20 and 8
-    assert not at_rows.at6(world.rows, dict(consts, FACTS_VERSION=7))["pass"]
+    assert not at_rows.at6(world.rows, dict(consts, PACK_REVISION=20))["pass"]                      # restated for revision 21: 21 and 9
+    assert not at_rows.at6(world.rows, dict(consts, FACTS_VERSION=8))["pass"]
     assert not at_rows.at6(world.rows, dict(consts, TASK="no item 6"))["pass"]
     res = at_rows.at6(world.rows, consts)
     assert res["task_item_6_present"] and res["level_anchor_bullet_absent"] and res["packs_without_the_price_implied_line"] == 0
-    assert res["restated_for"] == "revision 20" and res["pack_revision"] == 20 and res["facts_version"] == 8
+    assert res["restated_for"] == "revision 21" and res["pack_revision"] == 21 and res["facts_version"] == 9
     # the Level-anchor bullet is back in the TASK: fail; item 6 altered by one word: fail
     assert not at_rows.at6(world.rows, dict(consts, TASK=consts["TASK"] + at_rows.LEVEL_ANCHOR_BULLET))["pass"]
     assert not at_rows.at6(world.rows, dict(consts, TASK=consts["TASK"].replace("Without a valid crux your verdict is HOLD", "Without a valid crux your verdict is BUY")))["pass"]

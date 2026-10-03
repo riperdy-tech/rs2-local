@@ -107,6 +107,37 @@ GUIDANCE & CONSENSUS block, SECTION 8.5 peer P/E context, and a DATA WARNINGS bl
 position in the IV band, in half-widths). Full detail:
 `stocks-workspace/docs/system-map/03_RS2_DEPTH.md` (DEP-04/DEP-06/DEP-07/DEP-07b).
 
+### Pack revision 21 — primary sources, and the crux follow-up
+
+The pack carries a `## PRIMARY SOURCES` section directly after GUIDANCE & CONSENSUS: the company's own SEC filings as verbatim
+text (HTML cleaned, nothing paraphrased), built once per pack by `sec_primary.py` from EDGAR with `sec_guidance`'s User-Agent, one
+request at a time, each accession cached forever in `cache/sec_primary/`. In order: the latest 8-K Item 2.02 earnings release
+(14,000 characters at most; a longer one keeps its start, its outlook, guidance, segment and backlog paragraphs and its tables, every cut
+marked `[… n characters omitted …]`), that 8-K's other text exhibits (6,000 each; a PDF is skipped and said so), the segment report of
+the latest 10-Q or 10-K (`FilingSummary.xml`; 6,000), and the other 8-Ks of the last 120 days with item 1.01, 2.01, 2.03, 5.02, 7.01 or
+8.01 (2,500 each, four at most); 30,000 characters in all, the oldest other 8-K trimmed first. Each item is `[P1] …` with its filing
+date, accession, period and URL, its text a block quote. A name with no CIK, an unreachable SEC or nothing filed prints
+`PRIMARY SOURCES: not available — <reason>`. The facts sidecar's `primary_sources` (FACTS_VERSION 9) records each item's id, type, form,
+accession, filed, period, URL, text sha256 and length.
+
+A citation of `PRIMARY P#` (or of an item's URL) is company evidence for a crux: `crux_check` resolves it to the item and looks for the
+quote in that item's text (`crux_check.normalise` is the one matching rule). `tools/acceptance_r21/q2_round_trip.py` proves every
+sentence of an item is found, as `PRIMARY P#` and as its URL, in a built pack.
+
+The harness does not let the analyst search or fetch again for what the items hold (`sec_primary.refuse_fetch`, `refuse_search`, applied
+in `analyst_tools.chat_with_tools` before the call is dispatched): a `fetch_page` of an item's document, or a `search_web` query that
+holds a figure an item prints verbatim, or names a document word and a period an item covers, returns a pointer
+(`{"served_from_primary": [...], "note": ...}`), is recorded in the snapshot (`served_from_primary`, `primary_refusal`) and does not use
+the search budget (refusals past `PRIMARY_REFUSAL_CAP` do, so a refusal loop ends). `tools/acceptance_r21/r3_census.py` applies the
+search rules to a recorded run's queries; `prefetch_sec.py` is the one script that reaches the network, and only sec.gov.
+
+The crux follow-up: after a sample's memorandum, when its answer run is undervalued or overvalued and passed no crux (`crux_check`
+says `missing`), the harness sends one message (`analyst_tools.CRUX_FOLLOWUP`): call the desk once more with the answer-run inputs
+unchanged plus a crux, or reply HOLD. The desk refuses a changed input (`financial_model_tool.followup_input_changes`, the existing
+"Not accepted as a desk run" refusal); the follow-up has one desk run of its own. `consensus.json` records per sample `crux_followup`
+`{fired, outcome: crux_added | hold_confirmed | no_change}`, and a sample whose memorandum's SECTION 0 verdict word differs from the
+code's label carries the flag `memo_verdict_mismatch` (reported, never a gate).
+
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
 Every depth verdict (`verdict_depth.json`, each ledger row) carries, stamped by

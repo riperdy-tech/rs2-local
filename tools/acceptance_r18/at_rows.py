@@ -19,7 +19,8 @@ ITEM_6 = ("6. The desk also returns price_implied: for each judgment input (coe,
           "the value at which your Base would equal today's price with your other inputs unchanged, or \"not reachable\" when no value inside the input's "
           "bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: "
           "in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at "
-          "least one citation {source, date, quote} of this company's own evidence: DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), "
+          "least one citation {source, date, quote} of this company's own evidence: the company's own filings, verbatim, in PRIMARY SOURCES (cite them as "
+          "PRIMARY P# with the quote copied exactly), or DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), "
           "or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied "
           "value from that run. DEFAULTS, the base rates, the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands, the consensus rows, the news "
           "list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. "
@@ -285,14 +286,14 @@ def at6(rows, constants, *, names=True):
     """AT6, restated for revision 19's text (brief_rev19.md section 13; ruling 1 forces it, and it is recorded as a restatement): every
     outside-fence reference prints its value and flag; no base_year_capped stamp anywhere; the anchor-role sentence (D1's, as the tree under test
     holds it) is in every printed reference line; item 6 is in the TASK and the Level-anchor bullet is not; every pack's DEFAULTS carries the
-    `price_implied` line; PACK_REVISION is 20 and FACTS_VERSION is 8 (restated for revision 20, brief_input_scope_fixes.md section 10 step 3:
-    the input-scope text and facts; the rest of the test is unchanged).
+    `price_implied` line; PACK_REVISION is 21 and FACTS_VERSION is 9 (restated for revision 21, brief_rev21.md: ITEM_6 is the TASK's item 6 with the
+    PRIMARY P# sentence; at revision 20 it was 20 and 8, input-scope text and facts; the rest of the test is unchanged).
     constants: {"PACK_REVISION", "FACTS_VERSION", "ANCHOR_ROLE", "TASK"} read from the tree under test (build_day records them)."""
     bad = []
-    if constants.get("PACK_REVISION") != 20:
-        bad.append((None, f"PACK_REVISION is {constants.get('PACK_REVISION')}, not 20"))
-    if constants.get("FACTS_VERSION") != 8:
-        bad.append((None, f"FACTS_VERSION is {constants.get('FACTS_VERSION')}, not 8"))
+    if constants.get("PACK_REVISION") != 21:
+        bad.append((None, f"PACK_REVISION is {constants.get('PACK_REVISION')}, not 21"))
+    if constants.get("FACTS_VERSION") != 9:
+        bad.append((None, f"FACTS_VERSION is {constants.get('FACTS_VERSION')}, not 9"))
     task = constants.get("TASK") or ""
     item6_ok = ITEM_6 in task
     if not item6_ok:
@@ -326,7 +327,7 @@ def at6(rows, constants, *, names=True):
     return {"at": "AT6 fence, cap, text", "pass": ok, "printed_references": printed, "outside_fence": fenced, "base_year_capped": capped,
             "packs_without_the_price_implied_line": no_pi_line, "pack_revision": constants.get("PACK_REVISION"),
             "facts_version": constants.get("FACTS_VERSION"), "task_item_6_present": item6_ok, "level_anchor_bullet_absent": anchor_bullet_gone,
-            "restated_for": "revision 20", "details": bad[:20],
+            "restated_for": "revision 21", "details": bad[:20],
             "summary": f"{printed} printed references ({fenced} outside the fence); {capped} capped; TASK item 6 {'present' if item6_ok else 'MISSING'}, "
                        f"Level anchor bullet {'absent' if anchor_bullet_gone else 'STILL PRESENT'}; {no_pi_line} packs without the price_implied line; "
                        f"PACK_REVISION {constants.get('PACK_REVISION')}, FACTS_VERSION {constants.get('FACTS_VERSION')}; {len(bad)} problems"}

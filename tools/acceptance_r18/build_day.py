@@ -154,9 +154,11 @@ def main(argv=None):
     ap.add_argument("--dump-dir", default=None, type=Path)
     ap.add_argument("--enrich-label", default="book")
     ap.add_argument("--anonymous", action="store_true")
+    ap.add_argument("--primary-cache", default=None, type=Path, help="revision 21: the directory prefetch_sec.py filled (sec_primary/, sec_submissions/); "
+                    "the PRIMARY SOURCES section is built offline from it (absent: stubbed)")
     a = ap.parse_args(argv)
     names = ac.load_names(a.names, a.names_sha256)
-    ns = ac.bootstrap(a.tree, a.sd, a.mri, a.root, a.date, closure=a.closure)
+    ns = ac.bootstrap(a.tree, a.sd, a.mri, a.root, a.date, closure=a.closure, primary_cache=a.primary_cache)
     rows, meta = build_rows(ns, names, keep_text=True, anonymous=a.anonymous, dump_dir=a.dump_dir, enrich_label=a.enrich_label)
     if a.anonymous:
         for r in rows.values():
