@@ -1240,6 +1240,8 @@ def main():
     # OD_LEDGER, which nothing downstream reads (see depth_ondemand.py).
     ondemand = "--ondemand" in sys.argv
     samples = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else None
+    if samples is None and CONFIG.get("depth_samples_override") is not None:   # the baseline's one-sample mode
+        samples = int(CONFIG["depth_samples_override"])
     t0 = time.time()
 
     # P4.7/B2 — resolve the prior verdict BEFORE consensus runs, so a valid one can tighten the

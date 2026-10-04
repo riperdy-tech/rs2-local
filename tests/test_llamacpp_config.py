@@ -37,7 +37,7 @@ def test_the_llamacpp_block_keeps_m1s_key_order():
 
 def test_production_stays_on_ollama_with_its_model_unchanged():
     assert CONFIG["depth_provider"] == "ollama"
-    assert CONFIG["depth_model"] == "rs2-analyst-deep-mtp5"
+    assert CONFIG["depth_model"] == "rs2-analyst-deep-mtp5-v33"
     assert CONFIG["research_model"] == "rs2-research"          # the research helper stays on Ollama under both providers
     assert CONFIG["depth_ctx"] == 98304                          # the window the server's -c is pinned to
     assert CONFIG["vram_unload_timeout_s"] == 180                # M3's stop() wait

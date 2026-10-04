@@ -13,6 +13,7 @@ wall-clock watchdog with TREE kill + model unload, MAX_RETRIES, atomic state wri
 
   python orchestrate_depth.py --dry-run
   python orchestrate_depth.py --tickers GOOG,PM --limit 2      # shadow-style bounded run
+  python orchestrate_depth.py --tickers GOOG --force           # run the named stocks even if nothing is due
   python orchestrate_depth.py --limit 20                        # the 20-name shadow
 """
 import contextlib
@@ -764,6 +765,9 @@ def main():
     only = (args[args.index("--tickers") + 1].upper().split(",")
             if "--tickers" in args else None)
     ignore_factor_guard = "--ignore-factor-guard" in args
+    # --force (with --tickers): every named stock runs once, whatever its triggers, verdict or retry state.
+    # Added 2026-10-04 for the operator's baseline: one fresh revision-21 verdict for every nominated stock.
+    force = "--force" in args and only is not None
     # B4 (Phase 4 amendments): the gate run must not reach production. --no-publish suppresses
     # every publish_overlay() call below (no site push) without changing anything else — the
     # local ledger/overlay cache still gets written exactly as normal, just never pushed.
@@ -885,6 +889,8 @@ def main():
                           dwell_in=depth_membership.dwell_in,
                           held=depth_membership.held_names(),
                           rows=depth_membership.snapshots_recorded())
+    if force:
+        ordered = [(t, 1, "forced (--force)") for t in book]
     queue = [t for t, _, _ in ordered]
     cls_of = {t: c for t, c, _ in ordered}
     why_of = {t: w for t, _, w in ordered}

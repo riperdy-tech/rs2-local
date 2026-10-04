@@ -139,7 +139,7 @@ def test_under_ollama_the_provider_makes_no_other_call_and_reads_no_engine_file(
 
 def test_the_default_provider_is_ollama_and_so_is_the_production_config():
     cfg = json.loads((REPO / "config.json").read_text(encoding="utf-8"))
-    assert cfg["depth_provider"] == "ollama" and cfg["depth_model"] == "rs2-analyst-deep-mtp5"
+    assert cfg["depth_provider"] == "ollama" and cfg["depth_model"] == "rs2-analyst-deep-mtp5-v33"
 
 
 def test_analyst_tools_still_defines_OLLAMA_for_the_tests_and_tools_that_import_it():

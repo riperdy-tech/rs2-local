@@ -70,3 +70,22 @@ def test_main_sweep_publishes_normally_without_the_flag(tmp_path, monkeypatch):
 
     assert rc == 0
     assert len(published) >= 1
+
+
+def test_force_runs_named_stocks_that_are_not_due(tmp_path, monkeypatch):
+    """--force with --tickers (the 2026-10-04 baseline): a named stock the queue would skip (it already has a
+    verdict and no trigger) still runs once; without --force it does not."""
+    _isolate(monkeypatch, tmp_path)
+    monkeypatch.setattr(od, "build_queue", lambda *a, **k: [])
+    monkeypatch.setattr(od, "publish_overlay", lambda: None)
+    ran = []
+    monkeypatch.setattr(od, "run_one", lambda t, ondemand=False: (ran.append(t), (True, ""))[1])
+
+    monkeypatch.setattr(sys, "argv", ["orchestrate_depth.py", "--ignore-factor-guard", "--tickers", "FAKE1"])
+    assert od.main() == 0
+    assert ran == []
+
+    monkeypatch.setattr(sys, "argv", ["orchestrate_depth.py", "--ignore-factor-guard", "--tickers", "FAKE1,FAKE2",
+                                      "--force"])
+    assert od.main() == 0
+    assert ran == ["FAKE1", "FAKE2"]
