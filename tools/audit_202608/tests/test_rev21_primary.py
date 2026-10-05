@@ -385,7 +385,7 @@ def test_the_facts_schema_owns_primary_sources_and_the_version_is_9():
     d = pack_facts.empty()
     d["primary_sources"] = [{"id": "P1"}]
     assert pack_facts.parity(d, pack_facts.empty()) == []                        # sidecar-only: a text read gives None and parity leaves it out
-    golden = (FIXTURE / "golden_pack_GEV_rev21.md").read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
+    golden = (FIXTURE / "golden_pack_GEV_rev22.md").read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
     assert pack_facts.from_text(golden)["primary_sources"] is None
 
 
@@ -411,7 +411,7 @@ def test_the_pack_prints_the_failure_line_and_records_an_empty_list_when_the_sou
     assert "## PRIMARY SOURCES   [the company's own SEC filings, verbatim; cite as PRIMARY P#]\nPRIMARY SOURCES: not available — SEC fetch failed (submissions)\n" in pack
     assert pack.facts["primary_sources"] == []
     assert pack.index("## GUIDANCE & CONSENSUS") < pack.index("## PRIMARY SOURCES") < pack.index("## DATA 12")
-    assert pack.startswith("# DATA PACK - GEV   (pack revision 21)")
+    assert pack.startswith("# DATA PACK - GEV   (pack revision 22)")
 
 
 def test_the_pack_section_sits_directly_after_guidance_and_the_guidance_line_points_at_p1(monkeypatch, screener_data_stub):
@@ -445,7 +445,7 @@ def _round_trip(pack_text):
 
 
 def test_q2_round_trip_every_sentence_of_the_gev_golden_primary_section_is_found_as_primary_and_as_its_url():
-    golden = (FIXTURE / "golden_pack_GEV_rev21.md").read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
+    golden = (FIXTURE / "golden_pack_GEV_rev22.md").read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
     n, bad = _round_trip(golden)
     assert n > 200 and bad == []                                     # 100%
 

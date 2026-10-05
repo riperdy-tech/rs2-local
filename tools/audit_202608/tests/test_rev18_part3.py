@@ -149,7 +149,7 @@ def test_the_task_has_no_level_anchor_bullet_and_no_sentence_names_the_base_year
     for ms in (2.0, 0.25):
         for confirmed in (True, False):
             assert "cap" not in pack_facts._split_explanation(ms, confirmed).replace("capital", "")
-    assert cap.PACK_REVISION == 21 and pack_facts.FACTS_VERSION == 9
+    assert cap.PACK_REVISION == 22 and pack_facts.FACTS_VERSION == 9
 
 
 # ---- the schema and the contract ----------------------------------------------------------------------------------------------

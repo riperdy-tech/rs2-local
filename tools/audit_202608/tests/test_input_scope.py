@@ -678,3 +678,24 @@ def test_r5_a_filed_cash_of_zero_is_kept_in_data_6_not_replaced_by_the_vendors(s
     assert "the vendor's figure" not in cash_line
     net = next(l for l in card.splitlines() if "NET DEBT: total debt" in l)
     assert "cash $0.000B" in net, net
+
+
+def test_r22_the_liquidity_card_prints_net_debt_without_a_minus_sign(screener_data_stub, monkeypatch):
+    """Revision 22: the card printed a net-debt position as "Net Debt -$X", a double negative the analyst read as net cash (ESEA,
+    2026-10-05). Net debt is printed unsigned, agreeing with the [Arithmetic] NET DEBT line and net_debt_b; net cash keeps its line."""
+    def card_of(pack):
+        return str(pack).split("EXPLICIT LIQUIDITY & CAPITAL STRUCTURE CARD", 1)[1].split("DATA 6A", 1)[0]
+
+    def line(card, start):
+        return next(l for l in card.splitlines() if l.startswith(start))
+    debt, _c = _pack(monkeypatch, _doc(base_updates={"cash": 0.176 * B, "lt_debt": 0.198 * B}))
+    card = card_of(debt)
+    assert line(card, "- Net Liquidity Position:").startswith("- Net Liquidity Position: **Net Debt $0.022B**"), card
+    assert "Net Debt -" not in str(debt)
+    assert line(card, "- [Arithmetic] NET DEBT:").endswith("= $0.022B (negative = net cash).")
+    assert debt.facts["net_debt_b"] == 0.022
+    cash, _c = _pack(monkeypatch, _doc(base_updates={"cash": 0.5 * B, "lt_debt": 0.2 * B}))
+    card = card_of(cash)
+    assert line(card, "- Net Liquidity Position:").startswith("- Net Liquidity Position: **Net Cash +$0.300B**"), card
+    assert line(card, "- [Arithmetic] NET DEBT:").endswith("= -$0.300B (negative = net cash).")
+    assert cash.facts["net_debt_b"] == -0.3

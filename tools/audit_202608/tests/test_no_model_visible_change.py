@@ -109,7 +109,7 @@ def _get_system_block(path: Path) -> str:
 def test_text_pins():
     # Revision 17 (brief_rev17_B_valuation.md): the pack text, the TASK and the tool schema changed on purpose (the
     # through-cycle package); revision 16 changed only the number on the first line.
-    assert capability_test.PACK_REVISION == 21
+    assert capability_test.PACK_REVISION == 22
     assert _sha256(capability_test.TASK) == TASK_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
@@ -237,10 +237,11 @@ def test_pack_byte_pin(screener_data_stub, monkeypatch):
     # revision 21 (+30,130 chars, was 22988; the annual segment table of the 10-K joined the section at the coordinator review): PACK_REVISION 21 on the first line (0) and the PRIMARY SOURCES section after GUIDANCE & CONSENSUS (the
     # 8-K Item 2.02 release of 2026-07-22, the segment report of the 10-Q of the same day, the 8-K Item 5.02 of 2026-08-27); the golden diff is in
     # rev21/BEFORE_AFTER_r21.md
+    # revision 22 (0 chars): PACK_REVISION 22 on the first line; the GEV fixture holds net cash, so its liquidity card is unchanged
     assert len(text1) == 53118
 
     # Assert byte equality with golden file
-    golden_file = FIXTURE / "golden_pack_GEV_rev21.md"
+    golden_file = FIXTURE / "golden_pack_GEV_rev22.md"
     # core.autocrlf checks the fixture out with CRLF on Windows; the pack itself is built with "\n"
     golden_bytes = golden_file.read_bytes().replace(b"\r\n", b"\n")
     assert text1.encode("utf-8") == golden_bytes

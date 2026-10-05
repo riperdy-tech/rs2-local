@@ -177,7 +177,7 @@ def _slice(pack, header, next_prefix="## "):
 
 
 def test_pack_revision_is_19():
-    assert cap.PACK_REVISION == 21
+    assert cap.PACK_REVISION == 22
 
 
 def test_no_ground_truth_phrase_anywhere(screener_data_stub):

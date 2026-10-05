@@ -243,7 +243,10 @@ TIMEOUT = 14400
 #   or 10-K, its other recent 8-Ks; sec_primary.py), cited as PRIMARY P#; the GUIDANCE line says the full release is PRIMARY P1; TASK item 6 names
 #   PRIMARY P# first among the sources of a crux; the TASK and both research tool descriptions say not to search or fetch what the primary
 #   sources hold again (the tools return a pointer instead); recorded in rev21/BEFORE_AFTER_r21.md.
-PACK_REVISION = 21
+# Revision 22 (operator 2026-10-05, from an outside review of the baseline's ESEA run): DATA 6's liquidity card printed a net-debt
+#   position as "Net Debt -$X", a double negative the analyst read as net cash (ESEA: debt $0.198B, cash $0.176B, memo "net cash $21M").
+#   The card now prints "Net Debt $X" unsigned, matching the [Arithmetic] NET DEBT line and net_debt_b; no number changes.
+PACK_REVISION = 22
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -3274,7 +3277,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         if cash_val is not None and effective_debt is not None:
             _sti = sti_val if isinstance(sti_val, (int, float)) else 0.0
             net_liq = cash_val + _sti - effective_debt
-            net_desc = f"Net Cash +{_b(net_liq)}" if net_liq >= 0 else f"Net Debt -{_b(abs(net_liq))}"
+            net_desc = f"Net Cash +{_b(net_liq)}" if net_liq >= 0 else f"Net Debt {_b(abs(net_liq))}"
             L.append(f"- Net Liquidity Position: **{net_desc}** (Cash + short-term investments minus Total Debt)")
             # E12: one filed figure, used as net_debt in the firm frame (four samples had used four).
             # E13: the equity frame is the default; the firm frame needs a pre-interest flow.
