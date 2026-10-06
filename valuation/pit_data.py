@@ -1261,6 +1261,15 @@ class PitData:
         self._cache.clear()
         self._snap.clear()
 
+    def evict(self, cik, keep_snapshots=False):
+        """Forget one company's loaded facts and extraction (the memory hog: every cut document of every date) and, unless `keep_snapshots`, its
+        snapshots.  A pass over thousands of companies must evict as it goes."""
+        cik = str(cik).zfill(10)
+        self._cache.pop(cik, None)
+        if not keep_snapshots:
+            for k in [k for k in self._snap if k[0] == cik]:
+                del self._snap[k]
+
     # -- as-of views --
     def fiscal_years(self, cik, asof, mode=INPUT_MODE):
         c = self.company(cik)
@@ -1339,6 +1348,7 @@ class PitData:
                 why["not_in_archive"] += 1
                 continue
             fy = c.fiscal_years(asof)
+            self.evict(cik, keep_snapshots=True)
             if not fy:
                 why["no_annual_report_before_date"] += 1
                 continue
@@ -1403,7 +1413,6 @@ class PitData:
         if ev is None:
             out["flags"].append("splits_unknown")
             ev = []
-        c = self.company(cik)
         snap = self.snapshot(cik, asof_d)
         asof_iso = asof_d.isoformat()
         if snap is not None and snap.currency != "USD":
@@ -1494,9 +1503,8 @@ class Panel:
             view = {}
             for cik in self.ciks:
                 snap = self.pit.snapshot(cik, a)
-                if snap is None or not snap.years:
-                    continue
-                view[cik] = {y: {f: row.get(f) for f in self.fields} for y, row in snap.rows().items()}
+                if snap is not None and snap.years:
+                    view[cik] = {y: {f: row.get(f) for f in self.fields} for y, row in snap.rows().items()}
+                self.pit.evict(cik)
             self._views[a] = view
-            self.pit.drop_cache()
         return self._views[a]

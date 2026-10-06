@@ -92,7 +92,11 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
             else:
                 c["price_coverage"]["priced"] += 1
         c["unpriceable_share_of_universe"] = (1.0 - c["price_coverage"]["priced"] / len(keep)) if keep else None
+        prev = None
         for cik in keep:
+            if prev is not None:
+                pit.evict(prev)                      # one company's facts in memory at a time
+            prev = cik
             snap = pit.snapshot(cik, d)
             age = (to_date(d) - to_date(snap.L_fye)).days / 30.4375 if snap and snap.L_fye else None
             if age is None or age > max_base_age_months:
