@@ -240,3 +240,10 @@ def test_a_name_missing_a_yardstick_stays_at_the_median_rank_with_an_indicator_a
     assert res["yardstick_missing_share"][gm.YARDSTICKS[1]] == 0.0
     sp = gm.b2(gm.by_date(rows), "excluded", n_resamples=50)
     assert sp["by_date"]["d1"]["n"] == 120
+
+
+
+def test_the_run_stamps_the_raw_monthly_source_and_the_report_says_so():
+    from rebuild_harness import gate1_run, gate1_report
+    assert gate1_run.PRICE_STAMP == "raw_monthly_2026-10-01_survivors" and "adjusted_proxy" not in gate1_run.PRICE_STAMP
+    assert "raw month-end" in gm.PROVISIONAL and gm.PROVISIONAL.startswith("PROVISIONAL") and "Addendum H9" in gm.PROVISIONAL

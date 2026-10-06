@@ -10,11 +10,12 @@ passes (see valuation/gate1.py): prepare every company, measure the population c
 THE HOLDOUT LOCK comes first: `holdout.enforce` runs before any data is opened and refuses any 2023-2024 date unless a freeze file names this engine.  No
 freeze file exists or is created here.
 
-PRICES.  Valuation prices come from the local raw monthly download the operator approved earlier (prices_monthly_raw.json: Yahoo month-end bars, split-adjusted
-Close and Adj Close, with split events; today's listings only).  The traded unadjusted close is rebuilt as Close x the product of the splits dated later
-(MonthlyRawPriceSource).  It is month-end, survivors only, spin-off adjustments (Yahoo folds them into Close) are not undone and quality is UNVERIFIED:
-every record is stamped `adjusted_proxy` and every B1-B4 figure computed on it is PROVISIONAL (Addendum G).  Valuation dates are calendar quarter-ends and the
-price of a date is its month's closing bar (the last weekday of the month).
+PRICES (Addendum H9).  The development price source is the operator-approved raw monthly pull of 2026-10-01 (`data/priors/_inputs/prices_monthly_raw.json`:
+Yahoo month-end bars with `auto_adjust=False`: the split-adjusted Close, Adj Close, dividends and the split events; today's listings only).  The traded unadjusted
+close is rebuilt as Close x the product of the splits dated later (MonthlyRawPriceSource).  Month-end, survivors only, spin-off adjustments (Yahoo folds them into
+Close) are not undone, quality UNVERIFIED: every record is stamped `raw_monthly_2026-10-01_survivors` (PRICE_STAMP, with the file's sha256 in run_meta.json) and every
+B1-B4 figure computed on it is PROVISIONAL.  (Addendum G's premise that only an adjusted file existed was wrong.)  The holdout needs raw daily closes (D5).
+Valuation dates are calendar quarter-ends and the price of a date is its month's closing bar (the last weekday of the month).
 
 The 16:00 ET acceptance rule is applied through the layer: with no acceptance timestamp in this build, a filing is eligible when filed on an earlier date
 (a filing on the date itself is AMBIGUOUS and unused).
@@ -32,6 +33,7 @@ from pathlib import Path
 
 from valuation import gate1, pit_adapter
 from valuation import pit_data as pdm
+from valuation.common import sha256_file
 from valuation.discount_rate import DamodaranStore, MriRiskFree
 from valuation.priors import PopulationPriors
 from . import engines as eng_mod
@@ -49,7 +51,7 @@ DEFAULT_PRICES = INPUTS / "prices_monthly_raw.json"
 DEFAULT_SIC = INPUTS / "sic_by_cik.json"
 HORIZONS = (3, 6, 12, 24, 36)
 KS = (1, 2, 3)
-PRICE_STAMP = "adjusted_proxy"
+PRICE_STAMP = "raw_monthly_2026-10-01_survivors"
 
 GATE1_FILES = [REPO / "valuation" / n for n in ("common.py", "classification.py", "discount_rate.py", "engine_operating.py", "engine_financial.py",
                                                   "engine_commodity.py", "priors.py", "priors_interface.py", "pit_adapter.py", "gate1.py")]
@@ -243,6 +245,7 @@ def main(argv=None):
     ap.add_argument("--prices", type=Path, default=DEFAULT_PRICES)
     ap.add_argument("--sic", type=Path, default=DEFAULT_SIC)
     ap.add_argument("--n-draws", type=int, default=gate1.N_DRAWS)
+    ap.add_argument("--priors-dir", type=Path, help="the priors vintages folder (default: valuation.priors_build.config.DATA_DIR)")
     ap.add_argument("--freeze", type=Path)
     a = ap.parse_args(argv)
     dates = a.dates or dev_dates()
@@ -256,9 +259,11 @@ def main(argv=None):
     rf_src = MriRiskFree()
     rf = {d: rf_src(d) for d in dates}                              # the dated FRED series, read once in the parent
     cfg = {"store": str(a.store), "id_map": str(a.id_map), "prices": str(a.prices), "sic": str(a.sic), "rf": rf, "ciks": ciks, "n_draws": a.n_draws,
-           "out_dir": str(a.out_dir)}
+           "out_dir": str(a.out_dir), "priors_dir": str(a.priors_dir) if a.priors_dir else None}
     meta = {"started": datetime.now().isoformat(timespec="seconds"), "dates": dates, "lock": lock, "n_ciks": len(ciks), "workers": a.workers,
-            "n_draws": a.n_draws, "gate1_version": gate1.GATE1_VERSION, "price_stamp": PRICE_STAMP,
+            "n_draws": a.n_draws, "gate1_version": gate1.GATE1_VERSION, "price_stamp": PRICE_STAMP, "price_file": str(a.prices),
+            "price_file_sha256": sha256_file(a.prices), "price_file_meta": json.loads(a.prices.read_text(encoding="utf-8")).get("meta"),
+            "priors_dir": str(a.priors_dir) if a.priors_dir else None,
             "git_head": holdout._git(REPO, "rev-parse", "HEAD").decode().strip(), "rf": {k: v[0] for k, v in rf.items()}}
     (a.out_dir / "run_meta.json").write_text(json.dumps(_clean(meta), indent=1), encoding="utf-8")
     t0 = time.time()

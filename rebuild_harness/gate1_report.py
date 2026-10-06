@@ -45,7 +45,7 @@ def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), 
     big = [r for r in rows if r["mcap_group"] == ">=300M"]
     small = [r for r in rows if r["mcap_group"] == "<300M"]
     big_fresh = [r for r in big if not r["stale"]]
-    rep = {"provisional": gm.PROVISIONAL, "price_basis": "adjusted-only proxy (IV/price, earnings and FCF yields times Close/Adj Close)" if adjusted_proxy else "run basis: traded close rebuilt from the split-adjusted Close and the split events",
+    rep = {"provisional": gm.PROVISIONAL, "price_basis": "adjusted-only proxy (IV/price, earnings and FCF yields times Close/Adj Close)" if adjusted_proxy else "raw monthly pull of 2026-10-01 (Addendum H9): the traded close rebuilt from the split-adjusted Close and the split events; month-end, survivors only",
            "adjusted_proxy_rows_without_both_bars": proxy_missing, "run_dir": str(run_dir), "n_valued": len(rows), "n_valued_ge_300M": len(big), "n_valued_lt_300M": len(small),
            "coverage": gm.coverage_tables(counters), "per_date": per_date(rows)}
     rep["gate1_universe_ge_300M"] = gm.three_bounds(big, ">=300M", resamples, return_end=gm.RETURN_DATES_END)

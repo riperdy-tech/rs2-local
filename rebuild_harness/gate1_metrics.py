@@ -3,8 +3,8 @@
 Everything here is a pure function of records (tested on synthetic data in rebuild_harness/tests/test_gate1_metrics.py) plus a loader that reads a run folder
 one date at a time and keeps only compact rows (a full run holds ~100k records).
 
-EVERY FIGURE COMPUTED ON THE DEVELOPMENT RUN IS PROVISIONAL: the prices are the local month-end proxy of today's listings (Addendum G), survivors only; none of it
-counts toward gate 1.  `PROVISIONAL` rides on every result.
+EVERY FIGURE COMPUTED ON THE DEVELOPMENT RUN IS PROVISIONAL: the prices are the operator-approved raw month-end pull of today's listings (Addendum H9), survivors only;
+none of it counts toward gate 1.  `PROVISIONAL` rides on every result.
 
 The bars (registration section 5), computed under each survivorship bound of Addendum D (`excluded`, `minus100`, `last_close`):
   B1  per-date cross-sectional OLS of the 12-month excess return on the percentile ranks of the engine's IV / price and of the yardsticks, with industry fixed
@@ -35,7 +35,7 @@ import numpy as np
 from backtest_phase2.metrics import rankdata_avg, spearman
 from . import metrics as hm
 
-PROVISIONAL = "PROVISIONAL: local month-end price proxy, survivors only (Addendum G); not counted toward gate 1"
+PROVISIONAL = "PROVISIONAL: raw month-end prices of today's listings (Addendum H9), survivors only; not counted toward gate 1"
 RETURN_DATES_END = "2021-12-31"    # Addendum H6: the last development date whose 12-month outcome ends by 2022-12-31
 B3C_FLOOR = 0.30                   # Addendum H7: the interquartile range of ln(IV / price) at least this (an absolute floor)
 BOUNDS = hm.BOUNDS
