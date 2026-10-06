@@ -68,7 +68,7 @@ def compact(r):
                     "g1_p50": (v.get("forecast") or {}).get("year1_growth_point"), "m1_p50": (v.get("forecast") or {}).get("year1_margin_point"),
                     "g_naive": (v.get("prior_meta") or {}).get("mechanical_baseline_g1"), "m0": (v.get("state") or {}).get("op_margin"),
                     "disc": v.get("discount"), "inputs": v.get("inputs"), "state": v.get("state"), "prior_meta": v.get("prior_meta"),
-                    "secondary_kind": v.get("secondary_kind"), "terminal_year": v.get("terminal_year"), "margin_path": v.get("margin_path"), "stamps": r.get("stamps")})
+                    "secondary_kind": v.get("secondary_kind"), "terminal_year": v.get("terminal_year"), "margin_path": v.get("margin_path"), "g_term": v.get("terminal_growth"), "stamps": r.get("stamps")})
     return out
 
 
@@ -414,8 +414,10 @@ def structure_stats(rows):
         out["wacc"] = _q([r["disc"]["wacc"] for r in op])
         out["ronic_p50_minus_wacc"] = _q([r["inputs"]["ronic"]["p50"] - r["disc"]["wacc"] for r in op if "ronic" in r["inputs"]])
         out["share_ronic_p50_below_wacc"] = float(np.mean([r["inputs"]["ronic"]["p50"] < r["disc"]["wacc"] for r in op if "ronic" in r["inputs"]]))
-        out["share_g_terminal_p90_at_or_above_wacc"] = float(np.mean([r["inputs"]["g_terminal"]["p90"] >= r["disc"]["wacc"] for r in op if "g_terminal" in r["inputs"]]))
-        out["g_terminal_p50"] = _q([r["inputs"]["g_terminal"]["p50"] for r in op if "g_terminal" in r["inputs"]])
+        gt = [r["g_term"] for r in op if r.get("g_term")]
+        out["terminal_growth_date_value"] = _q([x["base"] for x in gt if x.get("base") is not None])
+        out["share_terminal_growth_from_negative_decay_path"] = (float(np.mean([bool((x.get("at_p50_inputs") or {}).get("basis", "").startswith("decay path")) for x in gt])) if gt else None)
+        out["terminal_growth_at_p50_inputs"] = _q([(x.get("at_p50_inputs") or {}).get("value") for x in gt])
         out["margin_target_p50_minus_current_margin"] = _q([r["inputs"]["margin_target"]["p50"] - r["m0"] for r in op if "margin_target" in r["inputs"] and r.get("m0") is not None])
         out["margin_target_width_p10_p90"] = _q([r["inputs"]["margin_target"]["p90"] - r["inputs"]["margin_target"]["p10"] for r in op if "margin_target" in r["inputs"]])
         mt = [(r["prior_meta"] or {}).get("margin_target") for r in op if r.get("prior_meta")]

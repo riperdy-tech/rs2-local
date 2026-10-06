@@ -33,6 +33,7 @@ for _p in (HERE, HERE / "tools"):
 import throughcycle_record as tcr  # noqa: E402  (pure functions; the repo's single owner of tax rate, tangible equity, short-term debt, NWC)
 
 MAX_HORIZON = 25                  # SPEC 3.1 (A5): the explicit horizon is at most 25 years
+TERMINAL_G_ANCHOR = 0.0375        # Addendum H2: the long-run nominal growth anchor of the stable-growth convention
 ANNUAL_FORMS = ("10-K", "10-K405", "10-KT", "20-F", "40-F")
 NORMAL = statistics.NormalDist()
 DEFAULT_LEVELS = (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95)
@@ -313,6 +314,20 @@ class Curve:
     def at(self, t: int) -> float:
         """Year t (1-based); beyond the last year the last value holds."""
         return self.values[min(t, len(self.values)) - 1]
+
+
+def terminal_growth_rate(rf: float) -> float:
+    """Addendum H2 (Damodaran's convention): terminal growth = min(the risk-free rate at T, the 3.75% long-run anchor): one value per date, never drawn from
+    the realized growth of companies."""
+    return min(float(rf), TERMINAL_G_ANCHOR)
+
+
+def terminal_growth_after(g_last: float, g_base: float):
+    """(rate, basis): the perpetuity growth after the last explicit year.  `g_base` is the date's value (`terminal_growth_rate`); a decay path that reaches a
+    NEGATIVE rate by the last explicit year continues at that rate (no floor): a shrinking company does not jump back to the long-run rate."""
+    if g_last < 0.0:
+        return g_last, "decay path reached a negative rate by the last explicit year: that rate continues"
+    return g_base, "min(risk-free rate at T, 3.75% anchor)"
 
 
 LEVEL_REF_YEAR = 5                # Addendum H1: a level input (margin, return on new capital) is the level this many years on

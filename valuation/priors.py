@@ -315,25 +315,7 @@ class PopulationPriors(Priors):
                     meta["cells"]["growth_decay"] = {"bucket": bk["bucket"], "n_k1": bk["n_k1"], "terminal_reference": gd["terminal_reference"]}
         if "growth_decay" not in curves:
             unavailable.append("growth_decay: no growth delivered or no measured curve for the bucket")
-        # g_terminal: by trailing-trend stratum
-        term = T["terminal"]
-        stratum = "all"
-        if ft.get("trend8") is not None:
-            stratum = "shrinking" if ft["trend8"] < 0 else "not_shrinking"
-        tfam = term["families"].get(fam, {}).get(stratum)
-        if tfam is None or tfam["with_delisted"].get("n", 0) < C.MIN_N:
-            fallbacks.append(f"g_terminal: {fam}/{stratum} has too few observations at K={term.get('K_eff')}: pooled over families and strata")
-            tfam = term["families"].get("all", {}).get("all")
-            stratum = "all (all families)"
-        qd = _qd(tfam["with_delisted"], 0.0, src) if tfam else None
-        if qd is None:
-            unavailable.append("g_terminal: no long-horizon growth observations in this vintage")
-        else:
-            inputs["g_terminal"] = qd
-            meta["cells"]["g_terminal"] = {"stratum": stratum, "K_eff": term["K_eff"], "n": tfam["with_delisted"]["n"], "variant": "with_delisted",
-                                           "n_complete": tfam["complete"].get("n"), "annualised_over_years": term["K_eff"]}
-            if term["K_eff"] < 10:
-                flags.append(f"g_terminal: the longest horizon this vintage supports is {term['K_eff']} years, not 10")
+        # terminal growth is not a prior (Addendum H2): the engines take min(risk-free rate at T, 3.75%); the table of realized K-year growth stays in the vintage
         # margin target and retention
         mr = T["margin_retention"]
         cuts = mr["cyc_cuts"]
@@ -457,17 +439,6 @@ class PopulationPriors(Priors):
                 positions["growth_persistence"] = _pos_dist(_pos_row(bk["ks"], "ratio_median", "n_ratio"), "ratio_q", src)
         if "growth_decay" not in curves:
             unavailable.append("growth_decay: no tangible-book growth delivered or no measured curve")
-        term = T["terminal"]
-        tfam = term["families"].get(fam, {}).get("all")
-        if tfam is None or tfam["with_delisted"].get("n", 0) < C.MIN_N:
-            tfam = term["families"].get("all", {}).get("all")
-            fallbacks.append("g_terminal: financial family too thin: pooled over families")
-        qd = _qd(tfam["with_delisted"], 0.0, src) if tfam else None
-        if qd is None:
-            unavailable.append("g_terminal: no long-horizon observations")
-        else:
-            inputs["g_terminal"] = qd
-            meta["cells"]["g_terminal"] = {"K_eff": term["K_eff"], "n": tfam["with_delisted"]["n"], "variant": "with_delisted", "growth_of": "revenue"}
         rr = T["rote_retention"]
         key = "all"
         if ft.get("rote_dev") is not None and abs(ft["rote_dev"]) >= 0.005:

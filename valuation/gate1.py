@@ -335,6 +335,7 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
                      "year1_rote_point": (first or {}).get("rote") if family == "financial" else None},
         "terminal_year": ({"margin": at["years"][-1]["margin"], "growth": at["years"][-1]["growth"]} if at.get("years") and family != "financial" else None),
         "margin_path": at.get("margin_path"),
+        "terminal_growth": {"base": (res.get("terminal_growth") or {}).get("base"), "at_p50_inputs": at.get("terminal_growth")},
         "discount": {k: getattr(disc, k) for k in ("rf", "erp", "beta_unlevered", "beta_levered", "de_ratio", "de_basis", "tax", "kd_pretax", "coe", "wacc")},
         "discount_sources": {"beta": disc.sources.get("beta"), "beta_file_sha256": (disc.sources.get("beta_meta") or {}).get("file_sha256"),
                              "erp": disc.sources.get("erp"), "erp_file_sha256": (disc.sources.get("erp_meta") or {}).get("file_sha256"),

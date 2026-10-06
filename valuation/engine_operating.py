@@ -29,8 +29,9 @@ THE CHAIN (all money in the filing's units; year t = 1..N, N = the length of the
   equity       = common.equity_bridge(EV)                (debt, finance leases, minority interest out; cash, investments in; no double count)
   value at the valuation date = equity at the base fiscal year end x (1 + cost of equity)^(years from that year end to the valuation date)
 
-Cash flows fall at year ends. The terminal-value share (PV of TV / EV) is always reported. Terminal growth must be below WACC: a draw
-that is not is counted as invalid with its reason (never repaired). Negative terminal growth is allowed; there is no floor.
+Cash flows fall at year ends. The terminal-value share (PV of TV / EV) is always reported. TERMINAL GROWTH (Addendum H2): not a drawn input. It is min(the risk-free rate at T, the 3.75% anchor), one value per date (common.terminal_growth_rate), which
+is also the asymptote the growth-decay path fades to; if the path has reached a negative rate by the last explicit year, that rate continues as terminal growth
+(no floor). Terminal growth must be below WACC: a draw that is not is counted as invalid with its reason (never repaired).
 
 SECONDARY CROSS-CHECK: EV = (EV / FCFF_1 multiple of the population at the same growth and return state, from priors.refs
 ["ev_fcf_multiple"]) x FCFF_1 of the same draw, bridged and rolled like the primary. Diagnostics (not values): the capital intensity the
@@ -42,11 +43,11 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 from .common import (Curve, DrawInvalid, InputError, MAX_HORIZON, QuantileDist, build_state, equity_bridge, level_path_weights, model_disagreement,
-                     parse_date, simulate, CompanyPIT)
+                     parse_date, simulate, terminal_growth_after, terminal_growth_rate, CompanyPIT, TERMINAL_G_ANCHOR)
 from .discount_rate import DiscountRate
 
 ENGINE = "operating"
-INPUTS = ("g1", "g_terminal", "margin_target", "ronic")      # margin_target = the margin level five years on (Addendum H1)
+INPUTS = ("g1", "margin_target", "ronic")      # margin_target = the margin level five years on (Addendum H1); terminal growth is not an input (Addendum H2)
 CURVES = ("growth_decay", "margin_retention", "ronic_fade")
 
 
@@ -91,7 +92,7 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     if N > MAX_HORIZON:
         raise InputError(f"horizon {N} exceeds {MAX_HORIZON} years")
     tax, wacc, coe = st["tax_rate"], disc.wacc, disc.coe
-    g1, gT, m5, ronic = p["g1"], p["g_terminal"], p["margin_target"], p["ronic"]
+    g1, gT, m5, ronic = p["g1"], p["g_terminal"], p["margin_target"], p["ronic"]       # gT: the date's terminal growth (the asymptote of the decay path)
     wm, margin_path = level_path_weights(mr, N)
     if wacc <= gT:
         raise DrawInvalid("terminal growth is not below the discount rate")
@@ -120,7 +121,9 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
             rows.append({"t": t, "growth": g, "revenue": rev, "margin": m, "ebit": ebit, "nopat": nopat, "ronic": ronic_t,
                          "growth_reinvestment": reinv, "maintenance_gap": maint, "fcff": fcff, "discount_factor": df, "pv": fcff * df})
         rev_prev = rev
+        g_last = g
     # terminal
+    gT, gT_basis = terminal_growth_after(g_last, gT)
     rev_T = rev_prev * (1.0 + gT)
     ebit_T = m5 * rev_T
     nopat_T = ebit_T - tax * max(ebit_T, 0.0)
@@ -137,7 +140,8 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     out = {"ev": ev, "equity": br["equity_value"] * factor, "equity_at_base_year_end": br["equity_value"], "roll_forward_years": yrs,
            "roll_forward_factor": factor, "tv_share": tv_share, "pv_explicit": pv_exp, "pv_terminal": pv_tv, "terminal_value": tv,
            "fcff_terminal_year": fcff_T, "terminal_reinvestment_rate": (reinv_T / nopat_T) if nopat_T > 0 else None,
-           "maint_gap_ratio_raw": gap_raw, "maint_gap_ratio_used": gap, "bridge": br, "fcff1": fcff1, "margin_path": margin_path}
+           "maint_gap_ratio_raw": gap_raw, "maint_gap_ratio_used": gap, "bridge": br, "fcff1": fcff1, "margin_path": margin_path,
+           "terminal_growth": {"value": gT, "basis": gT_basis}}
     if detail:
         out["years"] = rows
     return out
@@ -180,8 +184,11 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
     if curves_override:
         curves.update(curves_override)
     ref = ps.refs.get("ev_fcf_multiple")
+    g_term = terminal_growth_rate(disc.rf)
+    dists = {k: v for k, v in ps.inputs.items() if k != "g_terminal"}        # a prior may still carry one (placeholders); the date's value replaces it
 
     def chain(draw):
+        draw = dict(draw, g_terminal=g_term)
         mult = None
         if ref is not None:
             mult = ref(st, draw, disc)
@@ -197,8 +204,8 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
                 r["secondary_equity"] = sb["equity_value"] * r["roll_forward_factor"]
         return r
 
-    dist = simulate(chain, ps.inputs, n_draws, seed, corr, price_per_share, st.get("shares_outstanding"))
-    mid = _median_point(ps.inputs)
+    dist = simulate(chain, dists, n_draws, seed, corr, price_per_share, st.get("shares_outstanding"))
+    mid = dict(_median_point(dists), g_terminal=g_term)
     at_median = None
     try:
         at_median = operating_chain(st, mid, curves, disc, operating_leases_in_cash_flow=operating_leases_in_cash_flow,
@@ -220,4 +227,6 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
             "prior_source": ps.source, "discount": disc.as_dict(), "distribution": dist, "at_median_inputs": at_median,
             "model_disagreement": md, "model_disagreement_note": why,
             "consistency": capital_intensity_check(st, mid, disc), "cyclicality": st.get("cyclicality"),
-            "inputs": {k: v.as_dict() for k, v in ps.inputs.items()}, "notes": notes}
+            "inputs": {k: v.as_dict() for k, v in dists.items()},
+            "terminal_growth": {"base": g_term, "rf": disc.rf, "anchor": TERMINAL_G_ANCHOR, "rule": "Addendum H2: min(risk-free rate at T, 3.75%); a negative decay-path rate "
+                                "at the last explicit year continues (see at_median_inputs)"}, "notes": notes}

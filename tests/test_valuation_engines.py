@@ -81,21 +81,40 @@ def test_roll_forward_uses_cost_of_equity_over_the_years_since_base_year_end():
 
 def test_negative_terminal_growth_and_working_capital_release_by_hand():
     st = op_state(nwc_ratio=0.10)
-    p = {"g1": -0.05, "g_terminal": -0.02, "margin_target": 0.20, "ronic": 0.15}
+    p = {"g1": -0.05, "g_terminal": 0.02, "margin_target": 0.20, "ronic": 0.15}
     r = op.operating_chain(st, p, curves([1.0], [0.0], [1.0]), disc(), roll_forward=False, detail=True)
     y1 = r["years"][0]
+    assert y1["growth"] == pytest.approx(-0.05)                        # decay 1: year 1 is g1
     assert y1["revenue"] == pytest.approx(950.0)
     assert y1["growth_reinvestment"] == pytest.approx(-5.0)           # (950 - 1000) x 0.10: a release
     assert y1["fcff"] == pytest.approx(142.5 + 5.0)
-    # terminal: rev 931, NOPAT 139.65, release (931 - 950) x 0.10 = -1.9, FCFF 141.55, TV = 141.55 / (0.10 + 0.02)
-    assert r["terminal_value"] == pytest.approx(141.55 / 0.12)
+    # Addendum H2: the path is at -5% in its last explicit year, so -5% continues as terminal growth (the date's +2% is not used)
+    assert r["terminal_growth"]["value"] == pytest.approx(-0.05) and "negative" in r["terminal_growth"]["basis"]
+    # terminal: rev 902.5, NOPAT 135.375, release (902.5 - 950) x 0.10 = -4.75, FCFF 140.125, TV = 140.125 / (0.10 + 0.05)
+    assert r["terminal_value"] == pytest.approx(140.125 / 0.15)
     assert r["terminal_reinvestment_rate"] < 0
-    ev = 147.5 / 1.1 + (141.55 / 0.12) / 1.1
+    ev = 147.5 / 1.1 + (140.125 / 0.15) / 1.1
     assert r["ev"] == pytest.approx(ev, rel=REL)
     assert r["equity"] == pytest.approx(ev, rel=REL)
-    # no floor: a more negative terminal growth is a (weakly) different, still valid, value
-    p2 = dict(p, g_terminal=-0.10)
+    # no floor: a more negative last-year rate is a different, still valid, value
+    p2 = dict(p, g1=-0.12)
     assert op.operating_chain(st, p2, curves([1.0], [0.0], [1.0]), disc(), roll_forward=False)["ev"] > 0
+
+
+def test_terminal_growth_is_the_lower_of_the_risk_free_rate_and_the_anchor_one_value_per_date():
+    assert common.terminal_growth_rate(0.02) == 0.02 and common.terminal_growth_rate(0.0375) == 0.0375
+    assert common.terminal_growth_rate(0.05) == common.TERMINAL_G_ANCHOR == 0.0375
+    assert common.terminal_growth_rate(-0.002) == -0.002                # no floor
+    assert common.terminal_growth_after(0.01, 0.0375)[0] == 0.0375 and common.terminal_growth_after(-0.03, 0.0375)[0] == -0.03
+    assert common.terminal_growth_after(0.0, 0.0375)[0] == 0.0375       # zero growth is not negative
+
+
+def test_a_positive_decay_path_ends_at_the_dates_terminal_growth_and_the_inputs_value_is_the_date_one():
+    st = op_state()
+    p = {"g1": 0.10, "g_terminal": 0.02, "margin_target": 0.10, "ronic": 0.12}
+    r = op.operating_chain(st, p, curves([1.0, 0.5, 0.0], [0.0] * 3, [1.0] * 3), disc(), roll_forward=False, detail=True)
+    assert r["years"][-1]["growth"] == pytest.approx(0.02) and r["terminal_growth"]["value"] == pytest.approx(0.02)
+    assert "min(risk-free" in r["terminal_growth"]["basis"]
 
 
 def test_terminal_growth_at_or_above_the_discount_rate_is_an_invalid_draw_not_a_repair():
@@ -382,16 +401,14 @@ def test_sanity_no_zero_long_run_margin_from_an_operating_vs_earnings_gap():
 
 def test_sanity_a_shrinking_company_is_not_given_positive_perpetual_growth():
     st = op_state(op_margin=0.05)
-    shrink = {"g1": -0.04, "g_terminal": -0.02, "margin_target": 0.05, "ronic": 0.10}
-    grow = dict(shrink, g_terminal=0.0236)
+    shrink = {"g1": -0.04, "g_terminal": 0.0236, "margin_target": 0.05, "ronic": 0.10}
     c = curves([1.0] * 5, [1.0] * 5, [1.0] * 5)
     a = op.operating_chain(st, shrink, c, disc(), roll_forward=False, detail=True)
-    b = op.operating_chain(st, grow, c, disc(), roll_forward=False)
-    assert a["years"][-1]["growth"] == pytest.approx(-0.02 + (-0.04 + 0.02) * 1.0)    # decay 1 holds g1; the engine takes the supplied curve
-    assert a["ev"] < b["ev"]
-    # the chain imposes no floor: whatever terminal growth the (population) prior supplies is what is used
-    low = op.operating_chain(st, dict(shrink, g_terminal=-0.08), c, disc(), roll_forward=False)
-    assert low["terminal_value"] < a["terminal_value"]
+    assert a["years"][-1]["growth"] == pytest.approx(-0.04)           # decay 1 holds g1 to the last explicit year
+    assert a["terminal_growth"]["value"] == pytest.approx(-0.04)      # the negative rate continues; the date's positive value is NOT applied
+    # whatever the date's value is, a path that ends negative gives the same terminal value
+    b = op.operating_chain(st, dict(shrink, g_terminal=0.0), c, disc(), roll_forward=False)
+    assert b["ev"] == pytest.approx(a["ev"], rel=REL)
 
 
 def test_sanity_peak_margin_is_not_capitalized_when_the_normalization_curve_is_supplied():
@@ -435,7 +452,9 @@ def test_a_run_on_point_priors_equals_the_deterministic_chain():
     d = disc()
     r = op.run(pit, _PointPriors("operating", inputs, cv), d, n_draws=30)
     st = build_state(pit)
-    direct = op.operating_chain(st, inputs, cv, d)
+    # Addendum H2: the engine ignores a prior's terminal growth and takes min(risk-free rate at T, 3.75%) (disc() has rf 4%: the anchor binds)
+    direct = op.operating_chain(st, dict(inputs, g_terminal=0.0375), cv, d)
+    assert r["terminal_growth"]["base"] == 0.0375 and "g_terminal" not in r["inputs"]
     assert r["distribution"]["equity"]["p50"] == pytest.approx(direct["equity"], rel=REL)
     assert r["distribution"]["equity"]["p10"] == pytest.approx(direct["equity"], rel=REL)
     assert r["placeholder"] is True                    # the discount rate is a placeholder here: the flag follows it
@@ -470,3 +489,18 @@ def test_stale_asc932_tag_is_not_used():
     pit.concepts[n] = {"2018-12-31": Filed(999.0, "2018-12-31", "2019-02-20", "OLD", "10-K", n)}
     r = com.run(pit, PlaceholderPriors(True), disc(), n_draws=100)
     assert r["secondary"]["kind"] == "tangible_book_proxy" and any("stale" in s for s in r["secondary"]["stamps"])
+
+
+def test_financial_terminal_growth_follows_the_same_rule_and_the_run_reports_it():
+    st = {"tbv": 1000.0, "rote_latest": 0.12, "base_period": "2024-12-31", "tax_rate": 0.25}
+    cv = {"growth_decay": Curve([1.0, 0.5]), "rote_retention": Curve([0.5, 0.5]), "excess_fade": Curve([1.0, 1.0])}
+    up = fin.financial_chain(st, {"g1": 0.06, "g_terminal": 0.02, "rote_target": 0.12}, cv, disc(coe=0.10), roll_forward=False, detail=True)
+    assert up["years"][-1]["growth"] == pytest.approx(0.04) or up["terminal_growth"]["value"] == pytest.approx(0.02)
+    assert up["terminal_growth"]["value"] == pytest.approx(0.02) and "min(risk-free" in up["terminal_growth"]["basis"]
+    down = fin.financial_chain(st, {"g1": -0.06, "g_terminal": 0.02, "rote_target": 0.12}, {"growth_decay": Curve([1.0, 1.0]), "rote_retention": Curve([0.5, 0.5]),
+                                                                                         "excess_fade": Curve([1.0, 1.0])}, disc(coe=0.10), roll_forward=False)
+    assert down["terminal_growth"]["value"] == pytest.approx(-0.06)
+    rows = {f"{y}-12-31": dict(revenue=500.0 + 10 * (y - 2015), net_income=100.0 + 5 * (y - 2015), equity=1000.0 + 50 * (y - 2015),
+                               equity_incl_nci=1000.0 + 50 * (y - 2015), goodwill=100.0, intangibles_ex_goodwill=0.0, total_assets=9000.0) for y in range(2015, 2025)}
+    r = fin.run(_pit_from_rows(rows, asof="2025-06-30", sic="6022"), PlaceholderPriors(True), disc(coe=0.10), n_draws=50, seed=9)
+    assert r["terminal_growth"]["base"] == 0.0375 and "g_terminal" not in r["inputs"]        # disc() has rf 4%: the anchor binds, the placeholder's own value is ignored

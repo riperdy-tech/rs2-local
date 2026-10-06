@@ -2,7 +2,8 @@
 
   TBV_0      = tangible common equity at the base fiscal year end = equity - goodwill - intangibles ex goodwill - preferred equity
                (a goodwill or intangibles tag that is not filed counts as none and the state is stamped tbv_partial)
-  growth_t   = g_T + (g_1 - g_T) x d_t                          growth of tangible book (retention funds it; the payout is whatever NI - dTBV leaves)
+  growth_t   = g_T + (g_1 - g_T) x d_t                          growth of tangible book (retention funds it; the payout is whatever NI - dTBV leaves); g_T is the date's
+                                                                 terminal growth, min(risk-free rate, 3.75%) (Addendum H2), and a negative last-year rate continues as terminal growth
   ROTE_t     = rote_T + (ROTE_0 - rote_T) x rho_t                normalization of the return from the base year's ROTE_0 toward the through-cycle
                                                                  level rote_T (an input), speed rho = the measured normalization curve
   ROTE'_t    = COE + (ROTE_t - COE) x phi_t                      competitive fade of the excess return toward the cost of equity (phi: curve)
@@ -28,12 +29,13 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from .common import CompanyPIT, Curve, DrawInvalid, MAX_HORIZON, build_state, model_disagreement, simulate
+from .common import (CompanyPIT, Curve, DrawInvalid, MAX_HORIZON, TERMINAL_G_ANCHOR, build_state, model_disagreement, simulate, terminal_growth_after,
+                     terminal_growth_rate)
 from .discount_rate import DiscountRate
 from .engine_operating import refusal, years_between
 
 ENGINE = "financial"
-INPUTS = ("g1", "g_terminal", "rote_target")
+INPUTS = ("g1", "rote_target")                  # terminal growth is not an input (Addendum H2)
 CURVES = ("growth_decay", "rote_retention", "excess_fade")
 
 INSURER_PREMIUMS = ("PremiumsEarnedNet", "PremiumsEarnedNetPropertyAndCasualty", "PremiumsEarnedNetLife")
@@ -63,7 +65,7 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     if N > MAX_HORIZON:
         raise ValueError(f"horizon {N} exceeds {MAX_HORIZON} years")
     coe = disc.coe
-    g1, gT, rT = p["g1"], p["g_terminal"], p["rote_target"]
+    g1, gT, rT = p["g1"], p["g_terminal"], p["rote_target"]       # gT: the date's terminal growth (Addendum H2), the asymptote of the decay path
     if coe <= gT:
         raise DrawInvalid("terminal growth is not below the cost of equity")
     R0 = st["rote_latest"]
@@ -86,6 +88,8 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
             rows.append({"t": t, "growth": g, "rote": R, "rote_after_fade": Rp, "tbv_begin": tbv_prev, "excess_return": ri,
                          "tbv_end": tbv, "discount_factor": df, "pv": ri * df})
         tbv_prev = tbv
+        g_last = g
+    gT, gT_basis = terminal_growth_after(g_last, gT)
     ri_next = (Rp - coe) * tbv_prev
     tv = ri_next / (coe - gT)
     pv_tv = tv * (1.0 + coe) ** (-N)
@@ -97,7 +101,7 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     out = {"ev": value, "equity": value * factor, "equity_at_base_year_end": value, "roll_forward_years": yrs,
            "roll_forward_factor": factor, "tv_share": (pv_tv / value) if value != 0 else None,
            "tbv_0": st["tbv"], "pv_explicit_excess": pv_exp, "pv_terminal_excess": pv_tv, "excess_share_of_value": pv_total_excess / value if value else None,
-           "price_to_tbv_implied": value / st["tbv"]}
+           "price_to_tbv_implied": value / st["tbv"], "terminal_growth": {"value": gT, "basis": gT_basis}}
     if detail:
         out["years"] = rows
     return out
@@ -147,8 +151,11 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
     if miss:
         return refusal(ENGINE, [f"priors do not supply: {miss}"], ticker=pit.ticker)
     ref = ps.refs.get("ptbv_of_rote")
+    g_term = terminal_growth_rate(disc.rf)
+    dists = {k: v for k, v in ps.inputs.items() if k != "g_terminal"}
 
     def chain(draw):
+        draw = dict(draw, g_terminal=g_term)
         r = financial_chain(st, draw, ps.curves, disc, roll_forward=roll_forward)
         if ref is not None:
             m = ref(draw["rote_target"], disc.coe, draw["g_terminal"])
@@ -158,8 +165,8 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
                 r["secondary_equity"] = m * st["tbv"] * r["roll_forward_factor"]
         return r
 
-    dist = simulate(chain, ps.inputs, n_draws, seed, corr, price_per_share, st.get("shares_outstanding"))
-    mid = {k: d.ppf(0.5) for k, d in ps.inputs.items()}
+    dist = simulate(chain, dists, n_draws, seed, corr, price_per_share, st.get("shares_outstanding"))
+    mid = dict({k: d.ppf(0.5) for k, d in dists.items()}, g_terminal=g_term)
     try:
         at_median = financial_chain(st, mid, ps.curves, disc, roll_forward=roll_forward, detail=True)
     except DrawInvalid as e:
@@ -177,4 +184,6 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
             "prior_source": ps.source, "discount": disc.as_dict(), "distribution": dist, "at_median_inputs": at_median,
             "model_disagreement": md, "model_disagreement_note": why, "cyclicality": st.get("cyclicality"),
             "insurer_decomposition": insurer_decomposition(pit, st["tax_rate"], st["tbv"]),
-            "inputs": {k: v.as_dict() for k, v in ps.inputs.items()}, "notes": notes}
+            "inputs": {k: v.as_dict() for k, v in dists.items()},
+            "terminal_growth": {"base": g_term, "rf": disc.rf, "anchor": TERMINAL_G_ANCHOR, "rule": "Addendum H2: min(risk-free rate at T, 3.75%); a negative decay-path rate "
+                                "at the last explicit year continues (see at_median_inputs)"}, "notes": notes}
