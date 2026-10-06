@@ -30,8 +30,8 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from .common import (CompanyPIT, Curve, DrawInvalid, MAX_HORIZON, TERMINAL_G_ANCHOR, build_state, model_disagreement, simulate, terminal_growth_after,
-                     terminal_growth_rate)
+from .common import (CompanyPIT, Curve, DrawInvalid, EQUITY_FLOOR_RULE, MAX_HORIZON, TERMINAL_G_ANCHOR, build_state, model_disagreement, simulate,
+                     terminal_growth_after, terminal_growth_rate)
 from .discount_rate import DiscountRate
 from .engine_operating import refusal, years_between
 
@@ -102,7 +102,9 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     factor = (1.0 + coe) ** yrs
     # the financial value is already an equity value; "ev" in the shared result shape carries the same number
     pv_total_excess = pv_exp + pv_tv
-    out = {"ev": value, "equity": value * factor, "equity_at_base_year_end": value, "roll_forward_years": yrs,
+    eq_raw = value * factor
+    rules = [EQUITY_FLOOR_RULE] if eq_raw < 0.0 else []            # Addendum I2: limited liability, equity per draw is at least 0
+    out = {"ev": value, "equity": max(eq_raw, 0.0), "equity_unfloored": eq_raw, "rules": rules, "equity_at_base_year_end": max(value, 0.0), "roll_forward_years": yrs,
            "roll_forward_factor": factor, "tv_share": (pv_tv / value) if value != 0 else None,
            "tbv_0": st["tbv"], "pv_explicit_excess": pv_exp, "pv_terminal_excess": pv_tv, "excess_share_of_value": pv_total_excess / value if value else None,
            "price_to_tbv_implied": value / st["tbv"], "terminal_growth": {"value": gT, "basis": gT_basis}, "terminal_rote": max(ind, coe)}

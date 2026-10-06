@@ -37,6 +37,16 @@ Cash flows fall at year ends. The terminal-value share (PV of TV / EV) is always
 is also the asymptote the growth-decay path fades to; if the path has reached a negative rate by the last explicit year, that rate continues as terminal growth
 (no floor). Terminal growth must be below WACC: a draw that is not is counted as invalid with its reason (never repaired).
 
+DRAWS FROM ECONOMIC STATES, NOT IMPOSSIBLE ONES (Addendum I2).  A draw is INVALID only for numerical impossibility (a growth rate at or above the discount rate).  A draw whose long-run
+NOPAT margin m_5 (1 - tax) is not positive, or whose return on new capital (the ROIC level five years on, L_5) is not positive, is an economic state in which growth reinvestment
+cannot be priced: it is valued, counted by rule (`rules`), and
+  * gets NO GROWTH after year 5 (growth is capped at 0 from year 6 on, so a path that is already shrinking keeps shrinking; and the terminal growth is 0, or that negative
+    rate): no growth, no growth reinvestment;
+  * keeps its NOPAT path (negative if the margin is), the maintenance spending and the equity bridge;
+  * in an explicit year (1-5) in which growth is positive and its reinvestment cannot be priced (a non-positive margin, or a return-on-new-capital path point that is not
+    positive) the reinvestment is zero and the draw is counted (`growth_not_priced_in_explicit_years`): the near-term growth stands as the forecast, un-bought.
+EQUITY PER DRAW IS FLOORED AT 0 (limited liability, the textbook convention): `equity` is max(equity value, 0), the unfloored value is `equity_unfloored`, and a floored draw is counted.
+
 SECONDARY CROSS-CHECK: EV = (EV / FCFF_1 multiple of the population at the same growth and return state, from priors.refs
 ["ev_fcf_multiple"]) x FCFF_1 of the same draw, bridged and rolled like the primary. Diagnostics (not values): the capital intensity the
 chain implies against the company's own history, and the terminal reinvestment rate. Cross-checks are never averaged in;
@@ -46,12 +56,16 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from .common import (Curve, DrawInvalid, InputError, MAX_HORIZON, QuantileDist, build_state, equity_bridge, level_path_weights, model_disagreement,
-                     parse_date, simulate, terminal_growth_after, terminal_growth_rate, CompanyPIT, TERMINAL_G_ANCHOR)
+from .common import (Curve, DrawInvalid, EQUITY_FLOOR_RULE, InputError, LEVEL_REF_YEAR, MAX_HORIZON, QuantileDist, build_state, equity_bridge, level_path_weights,
+                     model_disagreement, parse_date, simulate, terminal_growth_after, terminal_growth_rate, CompanyPIT, TERMINAL_G_ANCHOR)
 from .discount_rate import DiscountRate
 
 ENGINE = "operating"
 INPUTS = ("g1", "margin_target", "ronic")      # margin_target / ronic = the margin / ROIC level five years on (Addenda H1, H3); terminal growth is not an input (H2)
+RULE_NO_GROWTH = "no_growth_after_year_5"
+RULE_NO_GROWTH_MARGIN = "no_growth_after_year_5: long-run NOPAT margin not positive"
+RULE_NO_GROWTH_RONIC = "no_growth_after_year_5: return on new capital not positive"
+RULE_UNPRICED_EARLY = "growth_not_priced_in_explicit_years"
 CURVES = ("growth_decay", "margin_retention", "ronic_fade")
 
 
@@ -79,20 +93,24 @@ def years_between(base_period_end: str, asof) -> float:
 
 
 def _growth_reinvestment(g, drev, m_t, tax, ronic_t, nwc_ratio):
+    """(reinvestment, priced).  Growth is priced as the revenue added x the long-run margin after tax / the return on new capital; where that cannot be priced (a non-positive
+    margin or return) the reinvestment is 0 and `priced` is False (Addendum I2: not an invalid draw).  A year with no revenue added needs none; a shrinking year releases
+    working capital."""
     if g >= 0:
+        if drev == 0.0:
+            return 0.0, True
         net = m_t * (1.0 - tax)
-        if net <= 0:
-            raise DrawInvalid("long-run NOPAT margin not positive: growth cannot be priced")
-        if ronic_t <= 0:
-            raise DrawInvalid("return on new capital not positive")
-        return drev * net / ronic_t
-    return drev * nwc_ratio
+        if net <= 0 or ronic_t <= 0:
+            return 0.0, False
+        return drev * net / ronic_t, True
+    return drev * nwc_ratio, True
 
 
 def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], disc: DiscountRate, *,
                     operating_leases_in_cash_flow: bool = True, maint_gap_floor: Optional[float] = 0.0,
                     roll_forward: bool = True, detail: bool = False) -> dict:
-    """One deterministic pass of the chain for point inputs p = {g1, g_terminal, margin_target (the margin level five years on), ronic (the ROIC level five years on)}. DrawInvalid when not valuable."""
+    """One deterministic pass of the chain for point inputs p = {g1, g_terminal, margin_target (the margin level five years on), ronic (the ROIC level five years on)}.
+    DrawInvalid only for numerical impossibility (Addendum I2); the rules applied to the draw are in the result's `rules`."""
     gd, mr, rfade = curves["growth_decay"], curves["margin_retention"], curves["ronic_fade"]
     N = len(gd)
     if N > MAX_HORIZON:
@@ -111,14 +129,29 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     rev_prev = st["revenue"]
     rows, pv_exp = [], 0.0
     fcff1 = None
+    # Addendum I2: the draw's long-run state.  Growth reinvestment cannot be priced when the long-run NOPAT margin or the return on new capital (the level five years on) is not positive
+    rules = []
+    lr_margin_bad, lr_ronic_bad = m5 * (1.0 - tax) <= 0.0, ronic <= 0.0
+    no_growth = lr_margin_bad or lr_ronic_bad
+    if lr_margin_bad:
+        rules.append(RULE_NO_GROWTH_MARGIN)
+    if lr_ronic_bad:
+        rules.append(RULE_NO_GROWTH_RONIC)
+    if no_growth:
+        rules.append(RULE_NO_GROWTH)
+    unpriced_years = []
     for t in range(1, N + 1):
         g = gT + (g1 - gT) * gd.at(t)
+        if no_growth and t > LEVEL_REF_YEAR:
+            g = min(g, 0.0)
         rev = rev_prev * (1.0 + g)
         m = m0 + (m5 - m0) * wm[t - 1]
         ebit = m * rev
         nopat = ebit - tax * max(ebit, 0.0)
         ronic_t = roic0 + (ronic - roic0) * wr[t - 1]
-        reinv = _growth_reinvestment(g, rev - rev_prev, m5, tax, ronic_t, nwc)
+        reinv, priced = _growth_reinvestment(g, rev - rev_prev, m5, tax, ronic_t, nwc)
+        if not priced:
+            unpriced_years.append(t)
         maint = gap * rev
         fcff = nopat - reinv - maint
         df = (1.0 + wacc) ** (-t)
@@ -130,13 +163,23 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
                          "growth_reinvestment": reinv, "maintenance_gap": maint, "fcff": fcff, "discount_factor": df, "pv": fcff * df})
         rev_prev = rev
         g_last = g
+    if unpriced_years:
+        rules.append(RULE_UNPRICED_EARLY)
     # terminal
-    gT, gT_basis = terminal_growth_after(g_last, gT)
+    if no_growth:
+        gT, gT_basis = ((g_last, "decay path reached a negative rate by the last explicit year: that rate continues") if g_last < 0.0
+                        else (0.0, "no growth: the long-run NOPAT margin or the return on new capital of the draw is not positive (Addendum I2)"))
+    else:
+        gT, gT_basis = terminal_growth_after(g_last, gT)
+    if wacc <= gT:
+        raise DrawInvalid("terminal growth is not below the discount rate")
     rev_T = rev_prev * (1.0 + gT)
     ebit_T = m5 * rev_T
     nopat_T = ebit_T - tax * max(ebit_T, 0.0)
     ronic_TV = max(ind_med, wacc)               # Addendum H3: the industry median floored at WACC
-    reinv_T = _growth_reinvestment(gT, rev_T - rev_prev, m5, tax, ronic_TV, nwc)
+    reinv_T, priced_T = _growth_reinvestment(gT, rev_T - rev_prev, m5, tax, ronic_TV, nwc)
+    if not priced_T:
+        raise DrawInvalid("terminal growth reinvestment cannot be priced")       # unreachable for a draw that passed the rules above: a bug, never a repair
     fcff_T = nopat_T - reinv_T - gap * rev_T
     tv = fcff_T / (wacc - gT)
     pv_tv = tv * (1.0 + wacc) ** (-N)
@@ -145,8 +188,11 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     br = equity_bridge(ev, st, operating_leases_in_cash_flow=operating_leases_in_cash_flow)
     yrs = years_between(st["base_period"], disc.asof) if roll_forward else 0.0
     factor = (1.0 + coe) ** yrs
-    out = {"ev": ev, "equity": br["equity_value"] * factor, "equity_at_base_year_end": br["equity_value"], "roll_forward_years": yrs,
-           "roll_forward_factor": factor, "tv_share": tv_share, "pv_explicit": pv_exp, "pv_terminal": pv_tv, "terminal_value": tv,
+    eq_raw = br["equity_value"] * factor
+    if eq_raw < 0.0:
+        rules.append(EQUITY_FLOOR_RULE)
+    out = {"ev": ev, "equity": max(eq_raw, 0.0), "equity_unfloored": eq_raw, "equity_at_base_year_end": max(br["equity_value"], 0.0), "rules": rules,
+           "roll_forward_years": yrs, "roll_forward_factor": factor, "tv_share": tv_share, "pv_explicit": pv_exp, "pv_terminal": pv_tv, "terminal_value": tv,
            "fcff_terminal_year": fcff_T, "terminal_reinvestment_rate": (reinv_T / nopat_T) if nopat_T > 0 else None,
            "maint_gap_ratio_raw": gap_raw, "maint_gap_ratio_used": gap, "bridge": br, "fcff1": fcff1, "margin_path": margin_path, "ronic_path": ronic_path, "ronic_terminal": ronic_TV,
            "terminal_growth": {"value": gT, "basis": gT_basis}}

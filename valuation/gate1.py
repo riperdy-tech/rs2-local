@@ -294,7 +294,8 @@ def prepare(adapt_result) -> dict:
 # ---- pass 2: value ---------------------------------------------------------------------------------------------------------------------------
 
 def invalid_draw_refusal(dist: dict) -> Optional[str]:
-    """Addendum H5: the refusal reason when more than INVALID_DRAW_MAX of a name's draws are invalid (the reasons and their counts named), else None."""
+    """Addendum H5: the refusal reason when more than INVALID_DRAW_MAX of a name's draws are invalid (the reasons and their counts named), else None.  Since
+    Addendum I2 a draw is invalid only for numerical impossibility; draws from economic states (no growth, equity floored) are valid and counted by rule."""
     n, bad = dist["n_draws"], dist["n_invalid"]
     if n <= 0 or bad / n <= INVALID_DRAW_MAX:
         return None
@@ -367,6 +368,7 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
         out["reasons"] = ["all_draws_invalid: " + "; ".join(f"{k} x{v}" for k, v in (dist.get("invalid_reasons") or {}).items())[:200]] if dist["equity"] is None else ["shares_unavailable"]
         return out
     out["n_draws"], out["n_valid"], out["invalid_reasons"] = dist["n_draws"], dist["n_valid"], dist.get("invalid_reasons") or {}
+    out["draw_rules"] = dist.get("draw_rules") or {}              # Addendum I2: the valid draws each stated rule applied to (overlapping counts)
     bad = invalid_draw_refusal(dist)
     if bad is not None:
         # refused, but the shapes of its priors are kept for the diagnostics (a refusal must not hide which priors produced it)

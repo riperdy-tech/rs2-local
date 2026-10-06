@@ -290,14 +290,14 @@ def test_the_gate1_run_refuses_a_holdout_date_before_opening_any_data(tmp_path):
 def test_invalid_draw_refusal_threshold_and_named_reasons():
     ok = {"n_draws": 2000, "n_invalid": 100, "invalid_reasons": {"x": 100}}               # exactly 5%: not over
     assert gate1.invalid_draw_refusal(ok) is None
-    over = {"n_draws": 2000, "n_invalid": 101, "invalid_reasons": {"return on new capital not positive": 90, "terminal growth is not below the discount rate": 11}}
+    over = {"n_draws": 2000, "n_invalid": 101, "invalid_reasons": {"terminal growth is not below the discount rate": 90, "terminal growth is not below the cost of equity": 11}}
     r = gate1.invalid_draw_refusal(over)
-    assert r.startswith("invalid_draws_over_5%: 5.1% of 2000 draws") and "return on new capital not positive x90" in r and r.index("x90") < r.index("x11")
+    assert r.startswith("invalid_draws_over_5%: 5.1% of 2000 draws") and "terminal growth is not below the discount rate x90" in r and r.index("x90") < r.index("x11")
     assert gate1.invalid_draw_refusal({"n_draws": 0, "n_invalid": 0}) is None
 
 
 class _WideRonicPriors(PlaceholderPriors):
-    """Placeholder priors whose ROIC level five years on is negative for a fifth of the draws: those draws cannot price the growth they carry."""
+    """Placeholder priors whose ROIC level five years on is negative for a large share of the draws: those draws cannot price the growth they carry."""
 
     def __init__(self, lo):
         super().__init__(True)
@@ -309,18 +309,44 @@ class _WideRonicPriors(PlaceholderPriors):
         return ps
 
 
-def test_a_name_with_too_many_invalid_draws_is_refused_with_the_reason_and_the_counts_are_kept(tmp_path):
+def _value(tmp_path, priors, rf=0.02, n_draws=400):
     pit = pdm.PitData(_store(tmp_path, base_rev=1000.0, growth=0.05), sic_source=_sic(tmp_path))
     prep = gate1.prepare(pit_adapter.adapt(pit, 1, "2020-06-30"))
     rows = [{"industry": "Software", "family": "operating", "de_book": 0.1 * i, "kd_effective": 0.06, "roic3": 0.01 * i} for i in range(1, 31)]
-    ctx = gate1.DateContext.build("2020-06-30", 0.02, rows)
-    rates = gate1.Rates(FakeStore(), {"2020-06-30": (0.02, "fake rf")})
-    bad = gate1.value_company(dict(prep, industry="Software"), ctx, _WideRonicPriors(-0.6), rates, shares=50.0, n_draws=400)
-    assert bad["status"] == "refused" and bad["reasons"][0].startswith("invalid_draws_over_5%") and "return on new capital not positive" in bad["reasons"][0]
-    assert bad["n_draws"] == 400 and sum(bad["invalid_reasons"].values()) == 400 - bad["n_valid"] and bad["n_valid"] < 400 * 0.95
-    fine = gate1.value_company(dict(prep, industry="Software"), ctx, _WideRonicPriors(0.04), rates, shares=50.0, n_draws=400)
-    assert fine["status"] == "ok" and fine["n_valid"] >= 0.95 * 400 and sum(fine["invalid_reasons"].values()) == 400 - fine["n_valid"]       # the tail below P10 is a few draws: inside the 5%
+    ctx = gate1.DateContext.build("2020-06-30", rf, rows)
+    rates = gate1.Rates(FakeStore(), {"2020-06-30": (rf, "fake rf")})
+    return gate1.value_company(dict(prep, industry="Software"), ctx, priors, rates, shares=50.0, n_draws=n_draws)
 
+
+def test_draws_from_economic_states_are_valued_and_counted_by_rule_not_invalid(tmp_path):
+    """Addendum I2: a draw whose return on new capital is not positive gets no growth after year 5; it is a valid draw, counted by rule, never part of the H5 refusal."""
+    v = _value(tmp_path, _WideRonicPriors(-0.6))
+    assert v["status"] == "ok" and v["n_valid"] == v["n_draws"] == 400 and v["invalid_reasons"] == {}
+    rules = v["draw_rules"]
+    assert 0 < rules["no_growth_after_year_5: return on new capital not positive"] < 400 and rules["no_growth_after_year_5"] == rules["no_growth_after_year_5: return on new capital not positive"]
+    assert v["iv_ps"]["p10"] >= 0.0 and v["share_negative_equity"] is not None
+    fine = _value(tmp_path, _WideRonicPriors(0.04))              # only the normal tail below P10 reaches a non-positive return: a few draws
+    assert fine["status"] == "ok" and fine["draw_rules"].get("no_growth_after_year_5", 0) < 0.05 * 400
+
+
+def test_a_name_with_too_many_numerically_invalid_draws_is_refused_with_the_reason_and_the_counts_are_kept(tmp_path, monkeypatch):
+    """The H5 refusal applies to the numerically impossible draws only.  Numerical impossibility cannot be reached with real rates on placeholder priors, so the chain is made
+    to declare it for the draws whose return on new capital is below 10%: the refusal, its named reason and the counts are what is tested."""
+    from valuation import engine_operating as op
+    from valuation.common import DrawInvalid
+    real = op.operating_chain
+
+    def flaky(st, p, curves, disc, **kw):
+        if p["ronic"] < 0.10:
+            raise DrawInvalid("terminal growth is not below the discount rate")
+        return real(st, p, curves, disc, **kw)
+    monkeypatch.setattr(op, "operating_chain", flaky)
+    bad = _value(tmp_path, _WideRonicPriors(0.04))
+    assert bad["status"] == "refused" and bad["reasons"][0].startswith("invalid_draws_over_5%") and "terminal growth is not below the discount rate" in bad["reasons"][0]
+    assert bad["n_draws"] == 400 and sum(bad["invalid_reasons"].values()) == 400 - bad["n_valid"] and bad["n_valid"] < 400 * 0.95 and "draw_rules" in bad
+    monkeypatch.setattr(op, "operating_chain", real)
+    ok = _value(tmp_path, _WideRonicPriors(0.04))
+    assert ok["status"] == "ok" and ok["invalid_reasons"] == {}
 
 
 def test_no_price_outcome_is_formed_past_the_end_of_2022():

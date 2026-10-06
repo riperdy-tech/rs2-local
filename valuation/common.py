@@ -34,6 +34,7 @@ import throughcycle_record as tcr  # noqa: E402  (pure functions; the repo's sin
 
 MAX_HORIZON = 25                  # SPEC 3.1 (A5): the explicit horizon is at most 25 years
 TERMINAL_G_ANCHOR = 0.0375        # Addendum H2: the long-run nominal growth anchor of the stable-growth convention
+EQUITY_FLOOR_RULE = "equity_floored_at_zero (limited liability)"       # Addendum I2: a draw whose equity value would be negative is valued at 0
 ANNUAL_FORMS = ("10-K", "10-K405", "10-KT", "20-F", "40-F")
 NORMAL = statistics.NormalDist()
 DEFAULT_LEVELS = (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95)
@@ -697,12 +698,14 @@ class DrawInvalid(Exception):
 
 
 def simulate(chain_fn, dists: Mapping[str, QuantileDist], n: int, seed: int, corr=None, price_per_share=None, shares=None) -> dict:
-    """Run chain_fn(draw) -> {"equity": float, "ev": float, "tv_share": float, ["secondary_equity": float | None]} over n joint draws.
+    """Run chain_fn(draw) -> {"equity": float, "ev": float, "tv_share": float, ["secondary_equity": float | None], ["rules": [rule names]]} over n joint draws.
 
     Returns the distribution summary of equity value, the terminal-value share, the secondary value (when the chain supplies it), the
-    counts of invalid draws by reason, and Pr(value > price) when a price per share and a share count are given.
+    counts of invalid draws by reason (invalid = numerically impossible only, Addendum I2), the number of VALID draws each stated rule applied to
+    (`draw_rules`: a draw can fall under several rules, so the counts overlap), and Pr(value > price) when a price per share and a share count are given.
     """
     eq, ev, tvs, sec = [], [], [], []
+    rules: Dict[str, int] = {}
     invalid: Dict[str, int] = {}
     sec_invalid: Dict[str, int] = {}
     for draw in draw_inputs(dists, n, seed, corr):
@@ -713,6 +716,8 @@ def simulate(chain_fn, dists: Mapping[str, QuantileDist], n: int, seed: int, cor
             continue
         eq.append(r["equity"])
         ev.append(r["ev"])
+        for k in r.get("rules") or ():
+            rules[k] = rules.get(k, 0) + 1
         if r.get("tv_share") is not None:
             tvs.append(r["tv_share"])
         if "secondary_equity" in r:
@@ -724,8 +729,8 @@ def simulate(chain_fn, dists: Mapping[str, QuantileDist], n: int, seed: int, cor
     out = {"n_draws": n, "n_valid": len(eq), "n_invalid": n - len(eq), "invalid_reasons": invalid,
            "equity": summarize(eq) if eq else None, "ev": summarize(ev) if ev else None,
            "tv_share": summarize(tvs) if tvs else None,
-           "secondary_equity": summarize(sec) if sec else None, "secondary_invalid_reasons": sec_invalid,
-           "share_negative_equity": (sum(1 for v in eq if v < 0) / len(eq)) if eq else None}
+           "secondary_equity": summarize(sec) if sec else None, "secondary_invalid_reasons": sec_invalid, "draw_rules": rules,
+           "share_negative_equity": (rules.get(EQUITY_FLOOR_RULE, 0) / len(eq)) if eq else None}      # the share of valid draws whose equity was floored at 0 (Addendum I2)
     if eq and price_per_share is not None and shares:
         per = [v / shares for v in eq]
         out["per_share"] = summarize(per)

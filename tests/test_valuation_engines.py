@@ -583,11 +583,78 @@ def test_the_ronic_path_starts_at_the_own_roic_follows_the_retention_curve_and_e
     assert op.operating_chain(st3, p, c, disc(w=0.10), roll_forward=False)["ronic_terminal"] == pytest.approx(0.14)
 
 
-def test_a_ronic_path_that_is_not_positive_while_the_company_grows_is_an_invalid_draw():
-    st = op_state(ronic=0.05)
+# ---- Addendum I2: economic states are valued, counted by rule; invalid is numerical impossibility only; equity per draw is floored at 0 -----------------------------
+
+def test_a_draw_whose_return_on_new_capital_is_not_positive_gets_no_growth_after_year_5_and_is_valued_not_invalid():
+    # 7 explicit years, growth persists at g1 = 10% (decay 1), the margin held at 10%, the ROIC level five years on is -2%: the path of the return on new capital is
+    # 0.15 + (-0.02 - 0.15) t / 5 (linear: a retention curve that has closed nothing by year 5), 0.116, 0.082, 0.048, 0.014, -0.02, ...
+    st = op_state(ronic=0.15, nwc_ratio=0.0)
+    p = {"g1": 0.10, "g_terminal": 0.02, "margin_target": 0.10, "ronic": -0.02}
+    r = op.operating_chain(st, p, curves([1.0] * 7, [0.0] * 7, [1.0] * 7), disc(), roll_forward=False, detail=True)
+    y = r["years"]
+    assert [round(x["growth"], 6) for x in y] == [0.10] * 5 + [0.0, 0.0]               # the near-term growth stands, no growth after year 5
+    assert y[5]["revenue"] == pytest.approx(y[4]["revenue"]) and y[6]["revenue"] == pytest.approx(y[4]["revenue"])
+    assert y[0]["growth_reinvestment"] == pytest.approx(100.0 * 0.10 * 0.75 / 0.116)  # priced where the path's return is positive
+    assert y[4]["growth_reinvestment"] == 0.0                                           # year 5: the return is -2%, growth cannot be priced: none
+    assert y[5]["growth_reinvestment"] == 0.0 and y[6]["growth_reinvestment"] == 0.0
+    assert r["terminal_growth"]["value"] == 0.0 and "no growth" in r["terminal_growth"]["basis"]
+    assert r["terminal_reinvestment_rate"] == 0.0
+    rev5 = y[4]["revenue"]
+    assert r["terminal_value"] == pytest.approx(rev5 * 0.10 * 0.75 / 0.10)             # NOPAT_5 / WACC: a perpetuity with no growth
+    assert set(r["rules"]) == {op.RULE_NO_GROWTH, op.RULE_NO_GROWTH_RONIC, op.RULE_UNPRICED_EARLY}
+
+
+def test_a_draw_whose_long_run_margin_is_not_positive_keeps_its_negative_nopat_and_is_floored_at_zero_equity():
+    st = op_state(ronic=0.15, nwc_ratio=0.10, debt=500.0)
+    p = {"g1": 0.05, "g_terminal": 0.02, "margin_target": -0.03, "ronic": 0.15}
+    r = op.operating_chain(st, p, curves([1.0] * 7, [0.0] * 7, [1.0] * 7), disc(), roll_forward=False, detail=True)
+    assert all(x["margin"] == pytest.approx(-0.03) or x["t"] < 5 for x in r["years"])
+    assert all(x["nopat"] < 0 or x["t"] < 2 for x in r["years"])                        # the NOPAT path stands, negative: no tax shield is booked on losses
+    assert r["years"][-1]["revenue"] == pytest.approx(r["years"][4]["revenue"])        # no growth after year 5
+    assert r["terminal_value"] < 0 and r["ev"] < 0
+    assert {op.RULE_NO_GROWTH, op.RULE_NO_GROWTH_MARGIN, common.EQUITY_FLOOR_RULE} <= set(r["rules"])
+    assert r["equity"] == 0.0 and r["equity_unfloored"] < 0 and r["equity_at_base_year_end"] == 0.0     # limited liability: never below zero
+
+
+def test_a_shrinking_path_keeps_shrinking_in_a_no_growth_draw():
+    st = op_state(ronic=0.15, nwc_ratio=0.10)
+    p = {"g1": -0.04, "g_terminal": 0.02, "margin_target": 0.10, "ronic": -0.01}
+    r = op.operating_chain(st, p, curves([1.0] * 7, [0.0] * 7, [1.0] * 7), disc(), roll_forward=False, detail=True)
+    assert all(x["growth"] == pytest.approx(-0.04) for x in r["years"])                # growth <= 0 is not capped: the release of working capital continues
+    assert r["terminal_growth"]["value"] == pytest.approx(-0.04) and "negative" in r["terminal_growth"]["basis"]
+
+
+def test_a_normal_draw_has_no_rule_and_an_unfloored_equity():
+    st = op_state(ronic=0.15, nwc_ratio=0.10)
+    r = op.operating_chain(st, {"g1": 0.05, "g_terminal": 0.02, "margin_target": 0.10, "ronic": 0.15}, curves([1.0, 0.5, 0.0], [0.0] * 3, [1.0] * 3), disc(), roll_forward=False)
+    assert r["rules"] == [] and r["equity"] == r["equity_unfloored"] > 0
+
+
+def test_invalid_stays_for_numerical_impossibility_only():
+    st = op_state(ronic=0.15)
+    # the date's terminal growth at or above WACC: invalid
     with pytest.raises(DrawInvalid):
-        op.operating_chain(st, {"g1": 0.10, "g_terminal": 0.02, "margin_target": 0.10, "ronic": -0.02}, curves([1.0] * 6, [0.0] * 6, [0.9, 0.8, 0.7, 0.6, 0.5, 0.5]),
-                           disc(), roll_forward=False)
+        op.operating_chain(st, {"g1": 0.05, "g_terminal": 0.10, "margin_target": 0.10, "ronic": 0.15}, curves([1.0], [0.0], [1.0]), disc(w=0.10), roll_forward=False)
+    # a no-growth draw's terminal growth of 0 at or above a non-positive WACC: invalid
+    with pytest.raises(DrawInvalid):
+        op.operating_chain(st, {"g1": 0.05, "g_terminal": -0.01, "margin_target": -0.05, "ronic": 0.15}, curves([1.0] * 7, [0.0] * 7, [1.0] * 7), disc(w=-0.005), roll_forward=False)
+
+
+def test_simulate_counts_the_draws_each_rule_applied_to_and_the_floored_share():
+    def chain(d):
+        return {"equity": max(d["x"], 0.0), "ev": d["x"], "tv_share": 0.5, "rules": ([common.EQUITY_FLOOR_RULE] if d["x"] < 0 else []) + (["r"] if d["x"] < 0.5 else [])}
+    out = simulate(chain, {"x": QuantileDist({0.1: -1.0, 0.5: 0.4, 0.9: 1.0})}, 400, 3)
+    assert out["n_invalid"] == 0 and out["draw_rules"]["r"] > out["draw_rules"][common.EQUITY_FLOOR_RULE] > 0
+    assert out["share_negative_equity"] == pytest.approx(out["draw_rules"][common.EQUITY_FLOOR_RULE] / out["n_valid"])
+    assert out["equity"]["p5"] >= 0.0
+
+
+def test_the_financial_equity_per_draw_is_floored_at_zero_too():
+    st = fin_state(rote_latest=-1.0, industry_rote={"value": -1.0, "n": 50, "basis": "industry"})
+    p = {"g1": 0.0, "g_terminal": 0.0, "rote_target": -1.0}
+    c = {"growth_decay": Curve([1.0] * 3), "rote_retention": Curve([1.0] * 3), "excess_fade": Curve([1.0] * 3)}
+    r = fin.financial_chain(st, p, c, disc(coe=0.10), roll_forward=False)
+    assert r["equity"] == 0.0 and r["equity_unfloored"] < 0 and r["rules"] == [common.EQUITY_FLOOR_RULE]
 
 
 def test_the_operating_engine_refuses_naming_a_missing_roic_or_industry_median():
