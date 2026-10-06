@@ -367,19 +367,23 @@ registered** (a Windows Scheduled Task change stays operator approval). `--monit
 is the one mode allowed to run under `cache/DEPTH_PAUSED`, restricted to writing
 `cache/depth_thesis.json` only.
 
-## The valuation rebuild's shared code and validation harness (SPEC_rebuild.md, Phase 5)
+## The valuation rebuild's shared code and validation harness (SPEC_rebuild.md, Phase 5, Addenda A-C)
 
 Offline; no model, no GPU, no network. Tests: `pytest valuation rebuild_harness`.
 
-- `valuation/pit_data.py` - the ONE point-in-time data layer (SEC companyfacts per filing; value, filing date, accession). A filing counts only if
-  filed strictly before the valuation date; values are as first filed; a fiscal year exists only from its own annual report (10-K, 10-KT, 20-F, 40-F);
-  the valuation-date price is the traded unadjusted close with share counts on the same basis (`PriceSource`). The engines, the priors and the harness
-  all import it. API at the top of the module.
+- `valuation/pit_data.py` - the ONE point-in-time data layer (SEC companyfacts per filing: value, filing date, accession). Decision time is 16:00 ET on
+  the valuation date (EDGAR acceptance timestamps from submissions files; filing dates alone are conservative). INPUTS are as known at T (the latest
+  eligible filing, amendments included); OUTCOMES are first filed. A fiscal year exists only from its own annual report. The extraction is the
+  screener's production extractor, vendored byte for byte in `valuation/vendored/` (sha256 in MANIFEST.json) and run unchanged on the cut document.
+  Every fact keeps its filing metadata and a provenance state (`facts_table`). `PriceSource` is the price-provider interface (traded unadjusted
+  close, quality verified/unverified/missing, delisting events, a Yahoo provider that is offline unless allowed). SIC and name as filed at T from
+  filing headers (`HeaderSic`). API at the top of the module.
 - `rebuild_harness/` - extends `backtest_phase2` (whose metric primitives it reuses): any list of valuation dates, total-return excess vs SPY at
-  3/6/12/24/36 months, first-filed fundamental outcomes, five yardsticks, the old engine (revision 21's reference, synthetic consensus) as a
-  pluggable engine `engine(ticker, asof, data_root)`, Spearman IC / quintile spreads / sector-neutral IC / incremental information / value-over-price
-  distribution by family / forecast error vs a naive forecast, date-block bootstrap, and the holdout lock (`holdout.py`: a run touching 2023-2024 is
-  refused unless a freeze file names every engine by git commit and file sha256). `python -m rebuild_harness.run_harness --help`.
+  3/6/12/24/36 months from the next session, delisting returns, first-filed fundamental outcomes, five yardsticks, the old engine (revision 21's
+  reference, synthetic consensus) as a pluggable engine `engine(ticker, asof, data_root)`, Spearman IC / quintile spreads / sector-neutral IC /
+  incremental information / value-over-price distribution by family / forecast error vs a naive forecast, date-block bootstrap, per-date share of
+  the universe the provider cannot price, and the holdout lock (`holdout.py`: a run touching 2023-2024 is refused unless a freeze file names every
+  engine by git commit and file sha256). `python -m rebuild_harness.run_harness --help`.
 - `backtest_phase2/` - the earlier registered backtest harness, unchanged (branch review-2026-09/backtest-phase2, 40cb5cf).
 
 ## Where the truth lives
