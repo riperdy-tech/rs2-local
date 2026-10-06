@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from . import gate1_metrics as gm
+from . import gate1_v2 as v2m
 
 
 def _clean(o):
@@ -38,7 +39,7 @@ def per_date(rows):
     return out
 
 
-def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), adjusted_proxy=None):
+def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), adjusted_proxy=None, v2=False, n_boot=v2m.N_BOOT):
     ran = []
     rows, counters, full = gm.load_run(run_dir, keep_all_for=tuple(extremes_dates), ran=ran)
     proxy_missing = None
@@ -51,9 +52,21 @@ def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), 
     rep = {"run_meta": json.loads(meta_p.read_text(encoding="utf-8")) if meta_p.exists() else None, "provisional": gm.PROVISIONAL, "price_basis": "adjusted-only proxy (IV/price, earnings and FCF yields times Close/Adj Close)" if adjusted_proxy else "raw monthly pull of 2026-10-01 (Addendum H9): the traded close rebuilt from the split-adjusted Close and the split events; month-end, survivors only",
            "adjusted_proxy_rows_without_both_bars": proxy_missing, "run_dir": str(run_dir), "n_valued": len(rows), "n_valued_ge_300M": len(big), "n_valued_lt_300M": len(small),
            "coverage": gm.coverage_tables(counters), "per_date": per_date(rows)}
-    rep["gate1_universe_ge_300M"] = gm.three_bounds(big, ">=300M", resamples, return_end=gm.RETURN_DATES_END)
-    rep["sub_300M_reported_separately"] = gm.three_bounds(small, "<300M", resamples, return_end=gm.RETURN_DATES_END)
-    rep["sensitivity_ge_300M_base_year_within_15_months"] = gm.three_bounds(big_fresh, ">=300M, base year <= 15 months old", resamples, return_end=gm.RETURN_DATES_END)
+    if v2:
+        # registration v2 (REGISTRATION_gate1_v2_DRAFT.md): the price-basis variant (B5, reported) is the adjusted-only proxy of the run's own price file, on copies of the rows
+        rep["registration"] = "v2"
+        pf = Path((rep["run_meta"] or {}).get("price_file") or "")
+        proxy_rows = None
+        if adjusted_proxy is None and pf.is_file():
+            proxy_rows = [dict(r, score=dict(r["score"])) for r in big]
+            rep["price_basis_variant_rows_without_both_bars"] = gm.apply_adjusted_proxy(proxy_rows, json.loads(pf.read_text(encoding="utf-8")))
+        rep["gate1_universe_ge_300M"] = v2m.v2_bars(big, ">=300M", n_boot, price_basis_rows=proxy_rows)
+        rep["sub_300M_reported_separately"] = v2m.v2_bars(small, "<300M", max(199, n_boot // 5), with_variants=False)
+        rep["sensitivity_ge_300M_base_year_within_15_months"] = v2m.v2_bars(big_fresh, ">=300M, base year <= 15 months old", max(199, n_boot // 5), with_variants=False)
+    else:
+        rep["gate1_universe_ge_300M"] = gm.three_bounds(big, ">=300M", resamples, return_end=gm.RETURN_DATES_END)
+        rep["sub_300M_reported_separately"] = gm.three_bounds(small, "<300M", resamples, return_end=gm.RETURN_DATES_END)
+        rep["sensitivity_ge_300M_base_year_within_15_months"] = gm.three_bounds(big_fresh, ">=300M, base year <= 15 months old", resamples, return_end=gm.RETURN_DATES_END)
     for label, rs in (("ge_300M", big), ("lt_300M", small)):
         rep.setdefault("diagnostics", {})[label] = {
             "vp_overall": gm.distribution_block([r["vp"] for r in rs]), "vp_by_family": gm.vp_by(rs, lambda r: r["family"]),
@@ -106,6 +119,9 @@ def render(rep):
     for key, title in (("gate1_universe_ge_300M", "B1-B4, universe: market cap >= $300M"), ("sub_300M_reported_separately", "B1-B4, sub-$300M group (separate)"),
                        ("sensitivity_ge_300M_base_year_within_15_months", "Sensitivity: >= $300M with a base year at most 15 months old")):
         r = rep[key]
+        if rep.get("registration") == "v2":
+            L += render_bars_v2(r, title)
+            continue
         L += ["", f"## {title}", "", f"valued: {r['n_valued']}", ""]
         L.append("| bar | " + " | ".join(gm.BOUNDS) + " | status over bounds |")
         L.append("|---|---|---|---|---|")
@@ -158,6 +174,74 @@ def render(rep):
     return "\n".join(L) + "\n"
 
 
+def _f(x, nd=4):
+    return "n/a" if x is None else (f"{x:.{nd}f}" if isinstance(x, float) else str(x))
+
+
+def _p(x, nd=1):
+    return "n/a" if x is None else f"{100 * x:.{nd}f}%"
+
+
+def render_bars_v2(r, title):
+    """The registration-v2 bars of one universe as markdown lines."""
+    B = gm.BOUNDS
+    L = ["", f"## {title} (registration v2)", "", f"valued name-dates: {r['n_valued']} (on the return dates {r['n_valued_return_dates']}); return dates {len(r['return_dates'])} "
+         f"({(r['return_dates'] or ['?'])[0]} .. {(r['return_dates'] or ['?'])[-1]}); B4 dates {len(r['b4_dates'])}; wild-cluster bootstrap draws {r['n_boot']}", "",
+         f"**Outcome (provisional): {r['outcome']}.** {r['outcome_rule']}", "", "| bar | " + " | ".join(B) + " | over the bounds |", "|---|" + "---|" * (len(B) + 1)]
+    bb = r["by_bound"]
+    st = r["bar_status_over_bounds"]
+    L.append("| B1 incremental information | " + " | ".join(bb[b]["B1"]["status"] for b in B) + f" | {st['B1']} |")
+    L.append("| B2 residual quintile spread | " + " | ".join(bb[b]["B2"]["status"] for b in B) + f" | {st['B2']} |")
+    L.append("| B3 level | " + " | ".join(r["B3"]["status"] for _ in B) + f" | {st['B3']} |")
+    L.append("| B4 forecasts | " + " | ".join(r["B4"]["status"] for _ in B) + f" | {st['B4']} |")
+    L.append("| B5 stability (direction) | " + " | ".join(bb[b]["B5"]["status"] for b in B) + f" | {st['B5']} |")
+    L += ["", "### B1: pooled regression, industry and date effects, wild-cluster bootstrap-t by date (one-sided 90% lower bound)", "",
+          "| bound | coefficient | se (date-clustered) | one-sided 90% lower bound | bootstrap p (H0: <= 0) | positive monthly coefficients | mean monthly coefficient | n | dates |", "|---|---|---|---|---|---|---|---|---|"]
+    for b in B:
+        x = bb[b]["B1"]
+        if x.get("n"):
+            L.append(f"| {b} | {_f(x['beta'])} | {_f(x['se'])} | {_f(x['lower_90_one_sided'])} | {_f(x['p_one_sided'], 3)} | {_p(x['share_positive_monthly_coefficients'])} of {x['n_months']} | {_f(x['mean_monthly_coefficient'])} | {x['n']} | {x['n_clusters']} |")
+        else:
+            L.append(f"| {b} | not computed | | | | | | {x.get('n')} | |")
+    L += ["", "### B2: industry-neutral top-minus-bottom quintile spread of the engine's residual after the yardsticks (pass > 0, strong pass >= +3 pp); the raw spread is reported", "",
+          "| bound | residual spread | 90% interval over dates | raw spread | dates with a positive residual spread | status |", "|---|---|---|---|---|---|"]
+    for b in B:
+        x = bb[b]["B2"]
+        L.append(f"| {b} | {_p(x['mean_spread_residual'], 2)} | [{_p(x['ci90_residual'][0], 2)}, {_p(x['ci90_residual'][1], 2)}] | {_p(x['mean_spread_raw'], 2)} | {_p(x['share_dates_positive_residual'])} | {x['status']} |")
+    b3 = r["B3"]
+    if b3.get("n"):
+        d = b3["diagnostics"]
+        L += ["", f"### B3: level. Universe median IV / price {_f(b3['median_vp'], 3)} against the band {b3['band']}: **{b3['status']}**", "",
+              f"n = {b3['n']}; share of dates whose own median is inside the band {_p(b3['share_dates_median_in_band'])}; family medians {json.dumps(_clean(b3['family_medians']))}",
+              f"Diagnostics (no bar): extremes {_p(d['share_extreme'])} (below 0.4x {_p(d['share_below_0_4'])}, above 2.5x {_p(d['share_above_2_5'])}; non-positive IV {_p(d['share_nonpositive_iv'])}); family gap in points "
+              f"{json.dumps(_clean(d['family_gap_points']))}; IQR of ln(IV/price) {_f(d['iqr_ln_vp_positive_iv'], 3)} on {d['n_positive_iv']} positive IVs",
+              "", "median IV / price by date: " + ", ".join(f"{k} {v:.2f}" for k, v in b3["median_vp_by_date"].items())]
+    for key, lab in (("B4", "B4: forecasts, every development date"), ("B4_return_dates_only", "B4 on the return dates only")):
+        b4 = r[key]
+        L += ["", f"### {lab}: **{b4['status']}**", "", "| family and measure | n | dates | engine median abs. error | naive median abs. error | engine closer for | P10..P90 coverage (target 80%) | directional accuracy (n) | status |", "|---|---|---|---|---|---|---|---|---|"]
+        for k, x in b4["by_family_measure"].items():
+            if x["n"]:
+                L.append(f"| {k} | {x['n']} | {x['n_dates']} | {_f(x['median_abs_error_engine'])} | {_f(x['median_abs_error_naive'])} | {_p(x['share_engine_closer'])} | {_p(x['coverage_p10_p90'])} | "
+                         f"{_p(x['directional_accuracy'])} ({x['n_direction']}) | {x['status']} |")
+            else:
+                L.append(f"| {k} | 0 | | | | | | | not computed |")
+    L += ["", "### B5: stability of direction (B1 and B2 positive under each bound and without the 1% of observations with the largest |residual|)", "", "| bound | " + " | ".join(
+        ["B1 > 0", "B2 > 0", "B1 > 0 without top 1%", "B2 > 0 without top 1%"]) + " | removed | status |", "|---|---|---|---|---|---|---|"]
+    for b in B:
+        x = bb[b]["B5"]
+        if x.get("direction_checks"):
+            c = x["direction_checks"]
+            L.append(f"| {b} | {c['B1_coefficient_positive']} | {c['B2_residual_spread_positive']} | {c['B1_coefficient_positive_without_top1pct_abs_resid']} | "
+                     f"{c['B2_residual_spread_positive_without_top1pct_abs_resid']} | {x['without_top1pct_abs_resid']['n_removed']} | {x['status']} |")
+    if bb[B[0]].get("variants_reported"):
+        L += ["", "### B5 reported variants (no bar)", "", "| variant | bound | B1 coefficient | lower bound | B1 | B2 residual spread | B2 |", "|---|---|---|---|---|---|---|"]
+        for b in B:
+            for name, v in bb[b]["variants_reported"].items():
+                v1, v2_ = v["B1"], v["B2"]
+                L.append(f"| {name} | {b} | {_f(v1.get('beta'))} | {_f(v1.get('lower_90_one_sided'))} | {v1['status']} | {_p(v2_['mean_spread_residual'], 2)} | {v2_['status']} |")
+    return L
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("run_dir", type=Path)
@@ -165,10 +249,12 @@ def main(argv=None):
     ap.add_argument("--resamples", type=int, default=2000)
     ap.add_argument("--extremes-dates", nargs="*", default=["2019-12-31", "2021-12-31"])
     ap.add_argument("--adjusted-proxy", type=Path, help="re-express the price-dependent scores on the adjusted-only proxy basis from this price file")
+    ap.add_argument("--v2", action="store_true", help="registration v2 bars (REGISTRATION_gate1_v2_DRAFT.md) instead of the v1 bars")
+    ap.add_argument("--n-boot", type=int, default=v2m.N_BOOT, help="wild-cluster bootstrap draws for B1 (registration v2)")
     a = ap.parse_args(argv)
     out = a.out_dir or a.run_dir
     out.mkdir(parents=True, exist_ok=True)
-    rep = build(a.run_dir, a.resamples, tuple(a.extremes_dates), a.adjusted_proxy)
+    rep = build(a.run_dir, a.resamples, tuple(a.extremes_dates), a.adjusted_proxy, v2=a.v2, n_boot=a.n_boot)
     (out / "gate1_dev_report.json").write_text(json.dumps(_clean(rep), indent=1), encoding="utf-8")
     (out / "gate1_dev_report.md").write_text(render(rep), encoding="utf-8")
     print("written", out)

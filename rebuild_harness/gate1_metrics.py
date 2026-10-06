@@ -60,7 +60,8 @@ def compact(r):
     """The few fields the metrics and the diagnostics read, from one record."""
     v = r.get("val") or {}
     price = r.get("price")
-    out = {"date": r["date"], "cik": r["cik"], "ticker": r.get("ticker"), "name": r.get("name_current_dated"), "industry": r.get("industry"),
+    out = {"date": r["date"], "cik": r["cik"], "ticker": r.get("ticker"), "name": r.get("name_current_dated"), "industry": r.get("industry"), "sector": r.get("sector"),
+           "score_alt": r.get("score_alt"),
            "family": r.get("family"), "status": r["status"], "reason": (r.get("reasons") or [None])[0], "mcap_group": r.get("mcap_group"),
            "price": price, "market_cap": r.get("market_cap"), "stale": (r.get("base_age_months") or 0) > 15, "base_age_months": r.get("base_age_months"),
            "score": r.get("score") or {}, "excess": _int_keys(r.get("excess")), "bounds": {int(k): v for k, v in (r.get("bounds") or {}).items()},
@@ -72,7 +73,7 @@ def compact(r):
                     "secondary_vp": (v["secondary_ps"] / price) if v.get("secondary_ps") is not None else None, "md": v.get("model_disagreement"),
                     "tv_share": v.get("tv_share_p50"), "tv_share_point": v.get("tv_share_p50_point"),
                     "invalid_share": 1.0 - v["n_valid"] / v["n_draws"], "neg_eq_share": v.get("share_negative_equity"), "draw_rules": v.get("draw_rules") or {}, "n_draws": v["n_draws"],
-                    "g1_p50": (v.get("forecast") or {}).get("year1_growth_point"), "m1_p50": (v.get("forecast") or {}).get("year1_margin_point"),
+                    "g1_p50": (v.get("forecast") or {}).get("year1_growth_point"), "fq": (v.get("forecast") or {}).get("year1_quantiles"), "m1_p50": (v.get("forecast") or {}).get("year1_margin_point"),
                     "g_naive": (v.get("prior_meta") or {}).get("mechanical_baseline_g1"), "m0": (v.get("state") or {}).get("op_margin"),
                     "disc": v.get("discount"), "inputs": v.get("inputs"), "state": v.get("state"), "prior_meta": v.get("prior_meta"),
                     "secondary_kind": v.get("secondary_kind"), "terminal_year": v.get("terminal_year"), "margin_path": v.get("margin_path"), "g_term": v.get("terminal_growth"), "returns": v.get("returns"), "stamps": r.get("stamps")})
