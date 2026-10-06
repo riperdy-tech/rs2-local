@@ -11,7 +11,7 @@ HOW TO ANSWER
 - A percentile below 10 or above 90 needs hard evidence: at least one citation from section D or Q whose quote holds a firm commitment (a contract, an agreement, backlog, an award, a purchase order) or a figure together with company guidance, capacity or a stated plan. A general outlook sentence is not hard evidence.
 - "width": narrow, normal or wide. How sure you are of the position. Narrow means the evidence pins the value down; wide means it could plausibly be far from your position either way.
 - "reasons": one to six short statements of why the company belongs there.
-- "citations": one to six objects {"section": "F" or "Q" or "D" or "S" or "R", "quote": text}. Each quote is 12 to 600 characters of contiguous text copied exactly from that section (no ellipsis, no paraphrase, no changes to numbers or punctuation).
+- "citations": one to six objects {"section": "F" or "Q" or "D" or "S", "quote": text}. Each quote is 12 to 600 characters of contiguous text copied exactly from that section (no ellipsis, no paraphrase, no changes to numbers or punctuation).
 - "bull_case" and "bear_case": one sentence each, with a citation, stating the strongest evidence-based case for a higher and for a lower position on revenue growth.
 
 TEXT YOU MAY USE

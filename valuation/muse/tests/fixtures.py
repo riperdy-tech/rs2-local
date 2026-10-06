@@ -155,7 +155,7 @@ class ScriptedMuse:
 
     def cits(self, user, name, pct, with_d_hard=False):
         S, R = section_text(user, "S"), section_text(user, "R")
-        c = [{"section": "S", "quote": S.split("\n")[0][:50]}, {"section": "R", "quote": line_with(R, f"[R {name}]", 45)}]
+        c = [{"section": "S", "quote": S.split("\n")[0][:50]}]
         if (pct < 10 or pct > 90 or with_d_hard) and section_text(user, "D") is not None:
             c.append({"section": "D", "quote": line_with(section_text(user, "D"), "supply agreement", 0)})
         return c

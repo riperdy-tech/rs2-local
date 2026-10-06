@@ -39,7 +39,7 @@ from .schema import EVIDENCE_SECTIONS, HARD_HI, HARD_LO, PCT_MAX, PCT_MIN, WIDTH
 QUOTE_MIN, QUOTE_MAX = 12, 600
 MAX_REASONS, MAX_CITATIONS = 6, 6
 REASON_MAX_CHARS = 1200
-SECTIONS = ("F", "Q", "D", "S", "R")
+SECTIONS = ("F", "Q", "D", "S")       # coordinator 2026-10-07: R (the population prior) is never evidence for a placement inside it
 CHARACTERS = ("cyclical", "structural", "one_off")
 NAMED_ERROR_MIN_CHARS = 20
 
@@ -100,10 +100,10 @@ class Evidence:
 def check_citation(cit, ev: Evidence, where: str, input_name: Optional[str] = None) -> Optional[Issue]:
     """None when the citation passes, else the Issue."""
     if not isinstance(cit, dict) or not isinstance(cit.get("section"), str) or not isinstance(cit.get("quote"), str):
-        return Issue("schema", f"{where}: a citation must be an object {{\"section\": \"F|Q|D|S|R\", \"quote\": \"...\"}}", input_name)
+        return Issue("schema", f"{where}: a citation must be an object {{\"section\": \"F|Q|D|S\", \"quote\": \"...\"}}", input_name)
     sec, quote = cit["section"].strip(), cit["quote"]
     if sec not in SECTIONS:
-        return Issue("schema", f"{where}: section {sec!r} is not one of F, Q, D, S, R", input_name)
+        return Issue("schema", f"{where}: section {sec!r} is not one of F, Q, D, S (section R, the population distributions, cannot be cited as evidence)", input_name)
     n = len(normalise(quote))
     if n < QUOTE_MIN or n > QUOTE_MAX:
         return Issue("quote", f"{where}: a quote must be {QUOTE_MIN} to {QUOTE_MAX} characters of contiguous text (yours has {n})", input_name)

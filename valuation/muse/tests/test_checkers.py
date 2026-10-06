@@ -46,6 +46,12 @@ def test_quote_length_bounds():
     assert ck.check_citation({"section": "S", "quote": "x" * 601}, EV, "c").code == "quote"
 
 
+def test_the_population_distributions_in_section_r_are_never_evidence():
+    # coordinator 2026-10-07: a placement inside a distribution cannot be supported by quoting that distribution
+    iss = ck.check_citation({"section": "R", "quote": "[R g1] Revenue growth in the next fiscal year"}, EV, "c")
+    assert iss is not None and iss.code == "schema" and "cannot be cited" in iss.message
+
+
 def test_a_section_the_prompt_did_not_show_cannot_be_cited():
     ev = Evidence({"S": S})
     iss = ck.check_citation({"section": "D", "quote": "signed supply agreement for 12 GW"}, ev, "c")
