@@ -90,3 +90,16 @@ def test_the_decomposition_refuses_more_than_eight_workers_and_a_holdout_date(tm
     with pytest.raises(holdout.HoldoutRefused):
         gd.main(["--out-dir", str(tmp_path / "o2"), "--priors-dir", str(tmp_path), "--closure-dir", str(tmp_path), "--dates", "2023-03-31"])
     assert not (tmp_path / "o2").exists()
+
+
+def test_the_reference_check_compares_the_baseline_with_the_runs_records_and_names_a_date_not_written(tmp_path):
+    import gzip
+    d = _decomp()
+    with gzip.open(tmp_path / "records_2020-03-31.jsonl.gz", "wt", encoding="utf-8") as f:
+        for cik, vp in (("1", 0.2), ("2", 1.0), ("3", 3.0000003)):
+            f.write(json.dumps({"cik": cik, "status": "valued", "price": 10.0, "val": {"iv_ps": {"p50": vp * 10.0}}}) + "\n")
+    out = ds.reference_check(d, tmp_path)
+    assert out["2022-03-31"] == {"reference_not_written": True}
+    r = out["2020-03-31"]
+    assert r["n_universe"] == 4 and r["n_compared"] == 3 and r["n_not_in_reference"] == 1 and r["max_relative_difference"] == pytest.approx(1e-7, rel=0.1)
+    assert "Baseline against the round-4 run" in ds.render(d, reference=out)

@@ -1,5 +1,6 @@
 """Tests of the registration-v2 machinery (rebuild_harness/gate1_v2.py) on synthetic panels: no file, no price, no network.  Bootstrap sizes are small here; the maths is checked
 against independent computations (dummy-variable OLS, a hand-built cluster-robust variance)."""
+import json
 import math
 import random
 
@@ -297,7 +298,6 @@ def test_the_whole_outcome_is_not_decided_when_hard_bars_straddle_the_bounds_and
 
 def _write_run(tmp_path, n_dates=5, n=160):
     import gzip
-    import json
     rng = random.Random(3)
     for k in range(n_dates):
         d = f"2020-{k + 1:02d}-28"
@@ -331,3 +331,19 @@ def test_the_v2_report_builds_and_renders_every_bar(tmp_path):
     for needle in ("registration v2", "B1: pooled regression", "one-sided 90% lower bound", "B2: industry-neutral", "B3: level", "B4: forecasts", "B5: stability", "B5 reported variants",
                    "PROVISIONAL", "Outcome (provisional)"):
         assert needle in md
+
+
+def test_the_round_comparison_reads_runs_on_the_same_dates_and_computes_v2_bars_for_one(tmp_path):
+    from rebuild_harness import gate1_compare_v2 as cmp
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir(), b.mkdir()
+    _write_run(a, n_dates=4)
+    _write_run(b, n_dates=3)
+    dates = [f"2020-{k + 1:02d}-28" for k in range(3)]
+    out = tmp_path / "cmp.md"
+    cmp.main(["--out", str(out), "--run", f"old={a}", "--run", f"new={b}", "--dates", *dates, "--bars", "old", "--n-boot", "49"])
+    md = out.read_text(encoding="utf-8")
+    js = json.loads(out.with_suffix(".json").read_text(encoding="utf-8"))
+    assert js["summaries"]["old"]["n"] == js["summaries"]["new"]["n"] == 3 * 160                     # the same dates: the fourth date of `old` is not read
+    assert "median IV / price (operating)" in md and "old: registration-v2 bars B1-B3" in md and "B3: median IV / price" in md and "PROVISIONAL" in md
+    assert js["summaries"]["old"]["operating"]["share_draws_floored_at_zero"] == 0.0

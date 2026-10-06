@@ -38,6 +38,28 @@ def load(run_dir):
     return out
 
 
+def reference_check(decomp, run_dir):
+    """Determinism check after the fact: the baseline of each date against the IV / price of the same names in the round-4 run's records ({date: {...}}); a date the run has not
+    written is reported as such."""
+    import gzip
+    out = {}
+    for d in sorted(decomp):
+        p = Path(run_dir) / f"records_{d}.jsonl.gz"
+        if not p.exists():
+            out[d] = {"reference_not_written": True}
+            continue
+        ref = {}
+        with gzip.open(p, "rt", encoding="utf-8") as fh:
+            for line in fh:
+                r = json.loads(line)
+                if r["status"] == "valued":
+                    ref[r["cik"]] = r["val"]["iv_ps"]["p50"] / r["price"]
+        base = decomp[d]["variants"]["base"]
+        diffs = [abs(base[c][0] - ref[c]) / max(abs(ref[c]), 1e-12) for c in base if c in ref and base[c] is not None]
+        out[d] = {"n_universe": len(base), "n_compared": len(diffs), "n_not_in_reference": sum(1 for c in base if c not in ref), "max_relative_difference": max(diffs) if diffs else None}
+    return out
+
+
 def _stats(items):
     """items: list of (vp, neg_eq_share, n_valid, n_draws, invalid_share) of the names valued by a variant."""
     if not items:
@@ -101,7 +123,7 @@ def pct(x):
     return "n/a" if x is None else f"{100 * x:.1f}%"
 
 
-def render(decomp, title="Level decomposition (Addendum J1)"):
+def render(decomp, title="Level decomposition (Addendum J1)", reference=None):
     dates = sorted(decomp)
     ret = [d for d in dates if d <= RETURN_END]
     L = [f"# {title}", "", "**DIAGNOSTIC ONLY. PROVISIONAL: raw month-end prices of today's listings (Addendum H9), survivors only. No default or registered rule is changed by anything here.**", "",
@@ -111,6 +133,8 @@ def render(decomp, title="Level decomposition (Addendum J1)"):
         e = decomp[d]["erp"]
         L.append(f"| {d} | {e.get('monthly_row')} | {pct(e['damodaran_monthly'])} | {pct(e['damodaran_annual'])} | {pct(e['round3b_common_closure'])} | {decomp[d]['n_universe']} |")
     ref = [(d, decomp[d].get("reference_check")) for d in dates if decomp[d].get("reference_check")]
+    if reference:
+        ref = [(d, r) for d, r in reference.items() if not r.get("reference_not_written")]
     if ref:
         L += ["", "Baseline against the round-4 run (determinism): " + "; ".join(f"{d}: {r['n_compared']}/{r['n_universe']} compared, max relative difference {r['max_relative_difference']}" for d, r in ref)]
     for label, ds in (("every date", None), (f"return dates only (to {RETURN_END}; {len(ret)} dates)", ret)):
@@ -144,6 +168,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--out-dir", type=Path)
+    ap.add_argument("--reference-run", type=Path, help="the round-4 run folder whose records the baseline must reproduce")
     a = ap.parse_args(argv)
     out = a.out_dir or a.run_dir
     out.mkdir(parents=True, exist_ok=True)
@@ -151,10 +176,11 @@ def main(argv=None):
     if not decomp:
         raise SystemExit(f"no decomp_*.json in {a.run_dir}")
     dates = sorted(decomp)
-    res = {"dates": dates, "all_dates": summarize(decomp), "return_dates": summarize(decomp, [d for d in dates if d <= RETURN_END]),
+    reference = reference_check(decomp, a.reference_run) if a.reference_run else None
+    res = {"dates": dates, "reference_check": reference, "all_dates": summarize(decomp), "return_dates": summarize(decomp, [d for d in dates if d <= RETURN_END]),
            "erp": {d: decomp[d]["erp"] for d in dates}, "labels": decomp[dates[0]]["labels"]}
     (out / "decomposition.json").write_text(json.dumps(_clean(res), indent=1), encoding="utf-8")
-    (out / "decomposition.md").write_text(render(decomp), encoding="utf-8")
+    (out / "decomposition.md").write_text(render(decomp, reference=reference), encoding="utf-8")
     print("written", out)
 
 
