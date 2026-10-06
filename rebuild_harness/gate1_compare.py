@@ -79,7 +79,7 @@ def rows(r1, r2):
     c1, c2 = r1["coverage"], r2["coverage"]
     st1, st2 = c1["by_family_and_status"], c2["by_family_and_status"]
     for key in ("operating | valued", "financial | valued", "commodity | valued", "operating | refused", "financial | refused", "commodity | refused", "family_not_built | family_not_built"):
-        out.append((f"name-dates {key} (all dates)", _f(st1.get(key, 0)), _f(st2.get(key, 0))))
+        out.append((f"name-dates {key.replace(' | ', ', ')} (all dates)", _f(st1.get(key, 0)), _f(st2.get(key, 0))))
     return out
 
 
