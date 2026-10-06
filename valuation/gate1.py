@@ -5,7 +5,7 @@ Per stock and date (registration `REGISTRATION_gate1_DRAFT.md` section 1):
   2. classification (`classification.classification`) -> family;
   3. the population priors at T (`PopulationPriors`, vintage year(T)-1; the margin level five years on is drawn directly, Addendum H1);
   4. the discount rate at T: Damodaran files dated before T (beta, implied ERP), risk-free from the dated FRED series, Hamada relevering with the BOOK D/E
-     (Addendum B 3), the cost of debt of Addendum B 5;
+     (Addendum B 3), the cost of debt of Addendum B 5; for the FINANCIAL family the industry's LEVERED beta as is, no Hamada (Addendum I3);
   5. the family engine with every judgment input at the prior's quantile function (the distribution's median is the value: the prior's P50 for every input,
      the engine's own mechanical inputs for everything else), and the P10..P90 of the value over the prior;
   6. the output: median value per share, P10..P90, the secondary cross-check, model disagreement, the terminal-value share, family and stamps.
@@ -74,6 +74,7 @@ class Rates:
         self.store = store
         self.rf_by_date = {str(k)[:10]: v for k, v in rf_by_date.items()}
         self._beta = store.beta_provider()
+        self._levered_beta = store.levered_beta_provider()
         self._erp = store.erp_provider()
         self._tables = {}
         self._erp_cache = {}
@@ -92,6 +93,10 @@ class Rates:
 
     def beta(self, asof, industry):
         return self._beta(asof, industry)
+
+    def levered_beta(self, asof, industry):
+        """Addendum I3: the industry's LEVERED beta (the betas sheet's "Beta" column) of the newest file dated before `asof`, for the financial family."""
+        return self._levered_beta(asof, industry)
 
     def industry_row(self, asof, industry) -> dict:
         """The industry's row of the newest betas file dated before `asof`: {"beta_unlevered", "de_ratio", "tax", "firms", "file"}."""
@@ -238,8 +243,11 @@ def make_discount(st: dict, asof, family: str, industry: Optional[str], ctx: Dat
         elif family == "financial":
             st2["kd_effective"] = rf
             stamps.append("kd_not_used_by_the_financial_engine: set to the risk-free rate only so that WACC (unused) is defined")
-    disc = discount_rate_for_state(st2, asof, industry=industry, rf_provider=rates.rf, beta_provider=rates.beta, erp_provider=rates.erp,
-                                   de_ratio=de_used, de_basis=basis)
+    fin = family == "financial"
+    disc = discount_rate_for_state(st2, asof, industry=industry, rf_provider=rates.rf, beta_provider=rates.levered_beta if fin else rates.beta, erp_provider=rates.erp,
+                                   de_ratio=de_used, de_basis=basis, levered_beta=fin)
+    if fin:
+        stamps.append(f"coe_levered_industry_beta: {disc.beta_levered:.2f} (no Hamada step)")
     return disc, stamps
 
 

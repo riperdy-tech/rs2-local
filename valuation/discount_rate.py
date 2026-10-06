@@ -2,6 +2,10 @@
 
   relevered beta = industry unlevered beta x (1 + (1 - tax) x D/E)         (Hamada, with the company's OWN D/E)
   cost of equity = rf + relevered beta x ERP
+  FINANCIAL FAMILY (Addendum I3): no Hamada.  Cost of equity = rf + the industry's LEVERED beta x ERP, the levered beta of Damodaran's industry table: the column "Beta"
+  (simple average across the industry's firms of each firm's regression beta, a 2/5-year weekly blend; the equity beta as observed, i.e. already levered by the
+  industry's own capital structure).  Damodaran's convention for financial service firms is that debt is raw material, not a financing choice, so unlevering and
+  relevering is not defined for them.
   WACC           = E/V x cost of equity + D/V x pre-tax cost of debt x (1 - tax),   E/V = 1/(1+D/E), D/V = (D/E)/(1+D/E)
 
 Data sources are pluggable (three small provider callables, each returning its value, a label and a data-set fingerprint):
@@ -37,6 +41,7 @@ from .common import DataNotPresent, InputError, parse_date, sha256_file
 
 PUBLICATION_LAG_DAYS = 5
 BETA_COLUMN = "unlevered beta corrected for cash"
+LEVERED_BETA_COLUMN = "beta"          # Addendum I3: the sheet's column "Beta " (the industry's levered, observed equity beta), used as is for the financial family
 ERP_COLUMN = "implied erp (fcfe)"
 APPROVAL_NOTE = ("Damodaran data is not present at the expected location (approved 2026-10-06; see stocks-workspace/data/damodaran/"
                  "MANIFEST.json).")
@@ -71,7 +76,7 @@ class DiscountRate:
     asof: str
     rf: float
     erp: float
-    beta_unlevered: float
+    beta_unlevered: Optional[float]     # None when the levered industry beta is used as is (financial family, Addendum I3)
     de_ratio: float
     de_basis: str                   # "book" (filed values, price-free) or "market"
     tax: float
@@ -89,18 +94,25 @@ class DiscountRate:
 
 def compute_discount_rate(asof, *, tax: float, de_ratio: float, de_basis: str, kd_pretax: Optional[float],
                           industry: str, rf_provider: Callable, beta_provider: Callable, erp_provider: Callable,
-                          placeholder: bool = False) -> DiscountRate:
+                          placeholder: bool = False, levered_beta: bool = False) -> DiscountRate:
     """Assemble the discount rate for `asof` from the three providers. Any provider may raise DataNotPresent: the error propagates
-    (a refusal, never a fallback)."""
+    (a refusal, never a fallback).  `levered_beta` (Addendum I3, the financial family): `beta_provider` returns the industry's LEVERED beta and it is used as the
+    company's beta as is, with no Hamada step; `beta_unlevered` is then None.  (The company's own D/E still sets the WACC weights, which the financial engine
+    does not use.)"""
     asof_d = parse_date(asof)
     rf, rf_label = rf_provider(asof_d)
     bu, b_label, b_meta = beta_provider(asof_d, industry)
     erp, e_label, e_meta = erp_provider(asof_d)
-    bl = relever_beta(bu, tax, de_ratio)
+    if levered_beta:
+        bl, bu = bu, None
+    else:
+        bl = relever_beta(bu, tax, de_ratio)
     coe = cost_of_equity(rf, bl, erp)
     w = wacc(coe, kd_pretax, tax, de_ratio)
     warns = []
-    if de_basis == "book":
+    if levered_beta:
+        warns.append("the industry's LEVERED beta is used as is (financial family: debt is raw material, no Hamada step; Addendum I3)")
+    elif de_basis == "book":
         warns.append("D/E is the book (filed) ratio, not the market ratio: Hamada's relevering is defined on market D/E")
     if placeholder:
         warns.append("PLACEHOLDER rates: for tests and plumbing only; never a valuation input")
@@ -112,7 +124,7 @@ def compute_discount_rate(asof, *, tax: float, de_ratio: float, de_basis: str, k
 
 
 def discount_rate_for_state(st: dict, asof, *, industry: str, rf_provider: Callable, beta_provider: Callable, erp_provider: Callable,
-                            de_ratio: Optional[float] = None, de_basis: str = "book", placeholder: bool = False) -> DiscountRate:
+                            de_ratio: Optional[float] = None, de_basis: str = "book", placeholder: bool = False, levered_beta: bool = False) -> DiscountRate:
     """The discount rate of a company from its common.build_state(): its own tax rate, its own D/E (book, from the filings, unless
     `de_ratio` is given with its basis) and its own measured pre-tax cost of debt (interest expense / average debt). A D/E or cost of
     debt that cannot be measured is a refusal (DataNotPresent), not a default."""
@@ -123,7 +135,7 @@ def discount_rate_for_state(st: dict, asof, *, industry: str, rf_provider: Calla
         raise DataNotPresent("D/E cannot be measured from the filings (debt or parent equity missing, or equity not positive)")
     return compute_discount_rate(asof, tax=st["tax_rate"], de_ratio=de_ratio, de_basis=de_basis, kd_pretax=st.get("kd_effective"),
                                  industry=industry, rf_provider=rf_provider, beta_provider=beta_provider, erp_provider=erp_provider,
-                                 placeholder=placeholder)
+                                 placeholder=placeholder, levered_beta=levered_beta)
 
 
 # ---- readers (rows as lists of cells) and parsers -------------------------------------------------------------------------------------
@@ -196,7 +208,8 @@ def parse_updated_cell(rows) -> date:
 
 
 def parse_betas_rows(rows, beta_column: str = BETA_COLUMN) -> Dict[str, dict]:
-    """{industry name: {"beta_unlevered", "de_ratio", "tax", "firms"}} from the rows of the industry-averages sheet."""
+    """{industry name: {"beta_unlevered", "beta_levered", "de_ratio", "tax", "firms"}} from the rows of the industry-averages sheet.  `beta_unlevered` is the value of
+    `beta_column` (the corrected-for-cash unlevered beta by default); `beta_levered` is the sheet's "Beta" column (Addendum I3), None where it is not a number."""
     hdr = None
     for i, r in enumerate(rows):
         if r and _norm(r[0]) == "industry name":
@@ -216,12 +229,12 @@ def parse_betas_rows(rows, beta_column: str = BETA_COLUMN) -> Dict[str, dict]:
             continue
         j = cols[beta_column]
         bu = _num(r[j]) if j < len(r) else None
-        if bu is None:
-            continue
 
         def at(j):
             return _num(r[j]) if j is not None and j < len(r) else None
-        out[str(r[0]).strip()] = {"beta_unlevered": bu, "de_ratio": at(cols.get("d/e ratio")),
+        if bu is None and at(cols.get(LEVERED_BETA_COLUMN)) is None:
+            continue
+        out[str(r[0]).strip()] = {"beta_unlevered": bu, "beta_levered": at(cols.get(LEVERED_BETA_COLUMN)), "de_ratio": at(cols.get("d/e ratio")),
                                   "tax": at(tax_col), "firms": at(cols.get("number of firms"))}
     if not out:
         raise DataNotPresent("betas sheet: no industry rows parsed")
@@ -359,11 +372,31 @@ class DamodaranStore:
                 raise DataNotPresent(f"no betas file dated before {asof_d} (no look-ahead: a later file is not used)")
             e = ok[-1]
             table = parse_betas_rows(e["_rows"], beta_column)
-            if industry not in table:
-                raise DataNotPresent(f"industry {industry!r} is not in {e['file']} ({e['date']}); has {len(table)} industries")
+            if industry not in table or table[industry]["beta_unlevered"] is None:
+                raise DataNotPresent(f"industry {industry!r} is not in {e['file']} ({e['date']}) with a {beta_column!r} value; has {len(table)} industries")
             return (table[industry]["beta_unlevered"], f"Damodaran {e['file']} ({e['date']}), {industry}, {beta_column}",
                     {"file": e["file"], "snapshot_date": e["date"].isoformat(), "file_sha256": e["sha256"], "csv": e["csv"],
                      "csv_sha256": e["csv_sha256"]})
+        return provider
+
+    def levered_beta_provider(self):
+        """Addendum I3: the same point-in-time file choice as `beta_provider` (the newest betas file dated strictly before `asof`), returning the industry's LEVERED beta,
+        the sheet's "Beta" column.  A missing or non-numeric value is a refusal (DataNotPresent), never a substitute."""
+        def provider(asof, industry):
+            asof_d = parse_date(asof)
+            ok = [e for e in self.beta_snapshots() if e["date"] < asof_d]
+            if not ok:
+                raise DataNotPresent(f"no betas file dated before {asof_d} (no look-ahead: a later file is not used)")
+            e = ok[-1]
+            table = parse_betas_rows(e["_rows"])
+            if industry not in table:
+                raise DataNotPresent(f"industry {industry!r} is not in {e['file']} ({e['date']}); has {len(table)} industries")
+            bl = table[industry]["beta_levered"]
+            if bl is None:
+                raise DataNotPresent(f"industry {industry!r} has no levered beta in {e['file']} ({e['date']})")
+            return (bl, f"Damodaran {e['file']} ({e['date']}), {industry}, levered industry beta (column 'Beta')",
+                    {"file": e["file"], "snapshot_date": e["date"].isoformat(), "file_sha256": e["sha256"], "csv": e["csv"],
+                     "csv_sha256": e["csv_sha256"], "column": "Beta (levered)"})
         return provider
 
     def erp_provider(self, publication_lag_days: int = PUBLICATION_LAG_DAYS):

@@ -154,6 +154,9 @@ class FakeStore:
     def beta_provider(self):
         return lambda asof, industry: (1.2 if industry == "Software" else 0.9, "fake beta", {"file_sha256": "x"})
 
+    def levered_beta_provider(self):
+        return lambda asof, industry: (1.5 if industry == "Software" else 1.1, "fake levered beta", {"file_sha256": "x"})
+
     def erp_provider(self):
         return lambda asof: (0.05, "fake erp", {"file_sha256": "y"})
 
@@ -211,6 +214,18 @@ def test_missing_industry_or_industry_not_in_the_file_is_a_refusal_not_a_default
         gate1.make_discount(_state(0.5, 0.06), "2019-12-31", "operating", "Not an industry", ctx, rates)
     with pytest.raises(DataNotPresent, match="negative"):
         gate1.make_discount(_state(-0.1, 0.06), "2019-12-31", "operating", "Software", ctx, rates)
+
+
+def test_the_financial_family_takes_the_industrys_levered_beta_as_is_with_no_hamada_step():
+    """Addendum I3: coe = rf + the industry's LEVERED beta x ERP; the company's own D/E (and the tax rate) do not move it; an operating company still relevers."""
+    ctx, rates = _ctx(), _rates()
+    a, sa = gate1.make_discount(_state(0.3, 0.06), "2019-12-31", "financial", "Software", ctx, rates)
+    b, sb = gate1.make_discount(_state(2.0, 0.06, tax=0.3), "2019-12-31", "financial", "Software", ctx, rates)
+    assert a.beta_levered == b.beta_levered == 1.5 and a.beta_unlevered is None
+    assert a.coe == b.coe == pytest.approx(0.02 + 1.5 * 0.05)
+    assert any(s.startswith("coe_levered_industry_beta") for s in sa) and any("LEVERED" in w for w in a.warnings)
+    o, _ = gate1.make_discount(_state(0.3, 0.06), "2019-12-31", "operating", "Software", ctx, rates)
+    assert o.beta_unlevered == 1.2 and o.beta_levered == pytest.approx(1.2 * (1 + 0.8 * 0.3))
 
 
 def test_the_financial_engine_does_not_need_a_cost_of_debt():

@@ -230,7 +230,24 @@ def test_store_picks_the_newest_beta_file_strictly_before_the_valuation_date_and
     with pytest.raises(DataNotPresent):
         prov("2021-06-01", "Unknown industry")
     with pytest.raises(DataNotPresent):
-        prov("2021-06-01", "Software")                  # NA beta: the industry is not parsed
+        prov("2021-06-01", "Software")                  # NA unlevered beta: the unlevered provider refuses (the levered one has a value, see the next test)
+
+
+def test_the_levered_provider_returns_the_betas_sheet_beta_column_from_the_same_point_in_time_file(tmp_path):
+    """Addendum I3: the column "Beta " (the levered industry beta) of the newest file dated strictly before the valuation date; hashes recorded; no substitute."""
+    s = dr.DamodaranStore(make_store(tmp_path))
+    prov = s.levered_beta_provider()
+    v, label, meta = prov("2021-06-01", "Steel")
+    assert v == 1.06 and meta["snapshot_date"] == "2020-01-05" and meta["column"].startswith("Beta") and len(meta["file_sha256"]) == 64
+    assert prov("2021-06-01", "Software")[0] == 1.28    # an industry with an NA unlevered beta still has its levered beta
+    assert prov("2022-01-05", "Steel")[0] == 1.06       # strictly before: the file dated the same day is not used
+    with pytest.raises(DataNotPresent):
+        prov("2020-01-05", "Steel")
+    with pytest.raises(DataNotPresent):
+        prov("2021-06-01", "Unknown industry")
+    d = dr.compute_discount_rate("2021-06-01", tax=0.25, de_ratio=3.0, de_basis="book", kd_pretax=0.05, industry="Steel", rf_provider=lambda a: (0.02, "rf"),
+                                 beta_provider=prov, erp_provider=s.erp_provider(), levered_beta=True)
+    assert d.beta_levered == 1.06 and d.beta_unlevered is None and d.coe == pytest.approx(0.02 + 1.06 * 0.0472)     # no Hamada: D/E = 3 does not enter
 
 
 def test_store_erp_uses_the_year_end_row_after_the_publication_lag(tmp_path):
@@ -258,7 +275,7 @@ def test_parsers_on_documented_layouts():
     rows = [["Industry Name", "Number of firms", "Beta ", "D/E Ratio", "Tax rate", "Unlevered beta", "Cash/Firm value",
              "Unlevered beta corrected for cash"], ["Auto Parts", "35", "1.34", "41.46%", "15.00%", "1.02", "9.45%", "1.13"]]
     t = dr.parse_betas_rows(rows)
-    assert t["Auto Parts"] == {"beta_unlevered": 1.13, "de_ratio": 0.4146, "tax": 0.15, "firms": 35.0}
+    assert t["Auto Parts"] == {"beta_unlevered": 1.13, "beta_levered": 1.34, "de_ratio": 0.4146, "tax": 0.15, "firms": 35.0}
     with pytest.raises(DataNotPresent):
         dr.parse_betas_rows([["x"]])
     assert dr.parse_updated_cell([["Date updated:", "5-Jan-26"]]) == date(2026, 1, 5)
@@ -284,6 +301,7 @@ def test_the_approved_damodaran_files_parse_select_by_date_and_record_hashes():
     for e in snaps:
         table = dr.parse_betas_rows(e["_rows"])
         assert len(table) > 80 and "Steel" in table and 0.0 < table["Steel"]["beta_unlevered"] < 3.0
+        assert 0.0 < table["Steel"]["beta_levered"] < 3.0 and 0.0 < table["Banks (Regional)"]["beta_levered"] < 3.0        # Addendum I3: the "Beta" column, in every file
     v, label, meta = s.beta_provider()("2021-06-01", "Steel")
     assert meta["snapshot_date"] == "2021-01-05" and len(meta["file_sha256"]) == 64
     erp, label, meta = s.erp_provider()("2021-06-01")
