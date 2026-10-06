@@ -20,9 +20,13 @@ Point in time (no look-ahead, nothing substituted from a later file):
   * beta: the newest betas file whose own "Date updated:" cell is strictly before `asof` (archives betasYY = early January YY+1;
     datasets_betas = 5-Jan-26). Industry unlevered beta = "Unlevered beta corrected for cash" (Damodaran's pure-play beta; he unlevers
     with a marginal tax rate stated in the sheet).
-  * ERP: histimpl.xls column "Implied ERP (FCFE)", row of the newest year-end Y with Dec 31 of Y + publication_lag_days (5) before
-    `asof`: a year-end value is used only after early January of the next year, the date his betas files carry. (The sheet's own
-    "Date updated" cell is stale and is not used.)
+  * ERP, MONTHLY (Addendum K; the default): implprem_ERPbymonth.xlsx, sheet "Historical ERP", column "ERP (T12 m with sustainable payout)" (Damodaran's primary
+    FCFE-with-sustainable-payout measure, the monthly counterpart of the annual "Implied ERP (FCFE)"): the newest start-of-month row dated ON OR BEFORE
+    `asof` that holds a value (no look-ahead: a later row is never used).  The column is empty before 2016-01-01; for a date before its first value the annual
+    row below is used and the label says so.
+  * ERP, ANNUAL (the fallback, and the only source when the manifest lists no monthly file): histimpl.xls column "Implied ERP (FCFE)", row of the newest
+    year-end Y with Dec 31 of Y + publication_lag_days (5) before `asof`: a year-end value is used only after early January of the next year, the date his
+    betas files carry. (The sheet's own "Date updated" cell is stale and is not used.)
 The SIC -> Damodaran industry mapping (indname.xls) is NOT among the approved files; the industry is passed explicitly until it is.
 
 Concentration risk is carried in scenario cash flows, never as an extra premium (SPEC 3.4). The closure premium is a diagnostic, not here.
@@ -33,7 +37,7 @@ import csv
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -43,6 +47,10 @@ PUBLICATION_LAG_DAYS = 5
 BETA_COLUMN = "unlevered beta corrected for cash"
 LEVERED_BETA_COLUMN = "beta"          # Addendum I3: the sheet's column "Beta " (the industry's levered, observed equity beta), used as is for the financial family
 ERP_COLUMN = "implied erp (fcfe)"
+ERP_MONTHLY_FILE = "implprem_ERPbymonth.xlsx"
+ERP_MONTHLY_SHEET = "Historical ERP"
+MONTHLY_MAX_AGE_DAYS = 62
+ERP_MONTHLY_COLUMN = "erp (t12 m with sustainable payout)"       # Addendum K
 APPROVAL_NOTE = ("Damodaran data is not present at the expected location (approved 2026-10-06; see stocks-workspace/data/damodaran/"
                  "MANIFEST.json).")
 
@@ -271,6 +279,35 @@ def parse_histimpl_rows(rows, column: str = ERP_COLUMN) -> Dict[int, float]:
     return out
 
 
+def parse_erp_monthly_rows(rows, column: str = ERP_MONTHLY_COLUMN) -> List[tuple]:
+    """[(start-of-month date, implied ERP fraction)] sorted by date, from the rows of the monthly sheet (Addendum K).  The header row starts with "Start of month"; a
+    row whose date cell is not a date, or whose ERP cell is empty ("NA", None), is skipped (the column is empty before 2016); a value outside (0, 0.5) refuses."""
+    hdr = None
+    for i, r in enumerate(rows):
+        if r and _norm(r[0]) == "start of month":
+            hdr = i
+            break
+    if hdr is None:
+        raise DataNotPresent("monthly ERP sheet: no header row starting with 'Start of month'")
+    j = next((k for k, c in enumerate(rows[hdr]) if _norm(c) == column), None)
+    if j is None:
+        raise DataNotPresent(f"monthly ERP sheet: no column {column!r}")
+    out = []
+    for r in rows[hdr + 1:]:
+        if not r or not isinstance(r[0], (date, datetime)):
+            continue
+        d = r[0].date() if isinstance(r[0], datetime) else r[0]
+        v = _num(r[j]) if j < len(r) else None
+        if v is None:
+            continue
+        if not (0.0 < v < 0.5):
+            raise DataNotPresent(f"monthly ERP sheet: implied ERP {v} for {d} is not a plausible fraction - refusing to use it")
+        out.append((d, v))
+    if not out:
+        raise DataNotPresent("monthly ERP sheet: no ERP rows parsed")
+    return sorted(out)
+
+
 def parse_indname_rows(rows) -> Dict[str, str]:
     """{SIC code (string): Damodaran industry name} from a SIC mapping sheet (indname.xls layout). NOT PRESENT in the approved data."""
     hdr = None
@@ -399,21 +436,47 @@ class DamodaranStore:
                      "csv_sha256": e["csv_sha256"], "column": "Beta (levered)"})
         return provider
 
-    def erp_provider(self, publication_lag_days: int = PUBLICATION_LAG_DAYS):
+    def _annual_erp(self, asof_d, publication_lag_days):
+        n = self._xls_names("datasets_histimpl")
+        if not n:
+            raise DataNotPresent(f"{APPROVAL_NOTE} The manifest lists no histimpl file.")
+        h = self._verify(n[0])
+        c, rows = self._sheet_csv(n[0], "year")
+        table = parse_histimpl_rows(rows)
+        ok = [y for y in table if date(y, 12, 31) + timedelta(days=publication_lag_days) < asof_d]
+        if not ok:
+            raise DataNotPresent(f"no year-end implied ERP at least {publication_lag_days} days before {asof_d}")
+        y = max(ok)
+        return (table[y], f"Damodaran implied ERP (FCFE), year-end {y}, {n[0]}",
+                {"file": n[0], "year_end": y, "file_sha256": h, "csv": c.name, "csv_sha256": sha256_file(c), "source": "annual"})
+
+    def monthly_erp_rows(self) -> List[tuple]:
+        """[(start-of-month date, ERP)] of the monthly file (Addendum K), re-hashed against the manifest on first use."""
+        if "erp_monthly" not in self._cache:
+            h = self._verify(ERP_MONTHLY_FILE)
+            rows = self._reader(self.root / ERP_MONTHLY_FILE, ERP_MONTHLY_SHEET)
+            self._cache["erp_monthly"] = (parse_erp_monthly_rows(rows), h)
+        return self._cache["erp_monthly"][0]
+
+    def erp_provider(self, publication_lag_days: int = PUBLICATION_LAG_DAYS, monthly: bool = True):
+        """erp(asof) -> (fraction, label, meta).  Monthly by default (Addendum K): the newest start-of-month row dated on or before `asof` with a value.  The annual
+        year-end path is used when the manifest lists no monthly file, or for a date before the monthly column's first value (the label and `meta["source"]` say
+        which); a monthly file that is listed but missing, or whose hash differs from the manifest, refuses."""
         def provider(asof):
             asof_d = parse_date(asof)
-            n = self._xls_names("datasets_histimpl")
-            if not n:
-                raise DataNotPresent(f"{APPROVAL_NOTE} The manifest lists no histimpl file.")
-            h = self._verify(n[0])
-            c, rows = self._sheet_csv(n[0], "year")
-            table = parse_histimpl_rows(rows)
-            ok = [y for y in table if date(y, 12, 31) + timedelta(days=publication_lag_days) < asof_d]
+            if not monthly or ERP_MONTHLY_FILE not in (self.manifest.get("files") or {}):
+                return self._annual_erp(asof_d, publication_lag_days)
+            rows = self.monthly_erp_rows()
+            ok = [r for r in rows if r[0] <= asof_d]
             if not ok:
-                raise DataNotPresent(f"no year-end implied ERP at least {publication_lag_days} days before {asof_d}")
-            y = max(ok)
-            return (table[y], f"Damodaran implied ERP (FCFE), year-end {y}, {n[0]}",
-                    {"file": n[0], "year_end": y, "file_sha256": h, "csv": c.name, "csv_sha256": sha256_file(c)})
+                v, label, meta = self._annual_erp(asof_d, publication_lag_days)
+                return v, label + f" (annual fallback: the monthly column starts {rows[0][0]})", dict(meta, fallback_reason="before the monthly column's first value")
+            d0, v = ok[-1]
+            if (asof_d - d0).days > MONTHLY_MAX_AGE_DAYS:
+                raise DataNotPresent(f"the newest monthly ERP row on or before {asof_d} is {d0}: stale by more than {MONTHLY_MAX_AGE_DAYS} days (a hole in a monthly file is a refusal, not a carried value)")
+            h = self._cache["erp_monthly"][1]
+            return (v, f"Damodaran monthly implied ERP (T12 m with sustainable payout), start of month {d0}, {ERP_MONTHLY_FILE}",
+                    {"file": ERP_MONTHLY_FILE, "row_date": d0.isoformat(), "file_sha256": h, "source": "monthly", "column": ERP_MONTHLY_COLUMN})
         return provider
 
     def industry_for_sic(self, sic) -> str:

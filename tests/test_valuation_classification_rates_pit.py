@@ -1,7 +1,7 @@
 """Tests: classification rules, the discount rate and its Damodaran store, and point-in-time handling. Synthetic fixtures, no network."""
 import hashlib
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -260,6 +260,79 @@ def test_store_erp_uses_the_year_end_row_after_the_publication_lag(tmp_path):
         e("2019-12-31")                                                   # no earlier row
 
 
+def add_monthly(root, rows, name=dr.ERP_MONTHLY_FILE, sheet=dr.ERP_MONTHLY_SHEET):
+    """Adds a stand-in monthly ERP workbook (openpyxl) to a store made by make_store and lists it in the manifest with its real sha256."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet
+    ws.append(["Start of month", "S&P 500", "T.Bond Rate", "ERP (T12 m with sustainable payout)", "ERP (T12m)"])
+    for r in rows:
+        ws.append(r)
+    wb.create_sheet("Other")
+    wb.save(root / name)
+    man = json.loads((root / "MANIFEST.json").read_text())
+    man["files"][name] = {"sha256": hashlib.sha256((root / name).read_bytes()).hexdigest(), "bytes": (root / name).stat().st_size}
+    (root / "MANIFEST.json").write_text(json.dumps(man))
+
+
+MONTHLY_ROWS = [[datetime(2015, 12, 1), 2000, 0.02, None, 0.0600],                 # the sustainable-payout column is empty before 2016, as in the real file
+                [datetime(2016, 1, 1), 1900, 0.02, 0.0516, 0.0600],
+                [datetime(2020, 2, 1), 3200, 0.015, 0.0522, 0.0524],
+                [datetime(2020, 3, 1), 2950, 0.011, 0.0577, 0.0569],
+                [datetime(2020, 4, 1), 2585, 0.007, 0.0652, 0.0616]]
+
+
+def test_monthly_erp_takes_the_newest_start_of_month_row_on_or_before_the_date_and_never_a_later_one(tmp_path):
+    """Addendum K: for a month-end date T the row of that month's first day; the next month's row is invisible; a row dated T itself counts (on or before)."""
+    root = make_store(tmp_path)
+    add_monthly(root, MONTHLY_ROWS)
+    e = dr.DamodaranStore(root).erp_provider()
+    v, label, meta = e("2020-03-31")
+    assert v == pytest.approx(0.0577) and meta["row_date"] == "2020-03-01" and meta["source"] == "monthly" and "start of month 2020-03-01" in label and len(meta["file_sha256"]) == 64
+    assert e("2020-04-01")[0] == pytest.approx(0.0652)               # a row dated the date itself is on or before it
+    assert e("2020-03-01")[0] == pytest.approx(0.0577)
+    assert e("2020-02-29")[0] == pytest.approx(0.0522)
+    assert e("2020-03-31")[2]["row_date"] != "2020-04-01"            # no look-ahead
+    with pytest.raises(DataNotPresent, match="stale"):
+        e("2020-07-31")                                                # the newest row is more than 62 days old: a hole in a monthly file is a refusal, not a stale value
+
+
+def test_monthly_erp_falls_back_to_the_annual_year_end_row_before_the_columns_first_value_and_says_so(tmp_path):
+    root = make_store(tmp_path)
+    # a store whose first value is 2020-03-01 (the 2015-12 row holds None, not a value): a date before it uses the annual year-end row, labelled
+    add_monthly(root, MONTHLY_ROWS[:1] + [[datetime(2020, 3, 1), 2950, 0.011, 0.0577, 0.0569]])
+    e2 = dr.DamodaranStore(root).erp_provider()
+    v, label, meta = e2("2020-01-31")
+    assert meta["source"] == "annual" and "annual fallback" in label and meta["fallback_reason"] and v == pytest.approx(0.0520)       # year-end 2019 (5.20%)
+
+
+def test_monthly_erp_without_a_monthly_file_in_the_manifest_uses_the_annual_path_and_a_listed_file_is_verified(tmp_path):
+    s = dr.DamodaranStore(make_store(tmp_path))
+    assert s.erp_provider()("2021-06-01")[2]["source"] == "annual"
+    root = make_store(tmp_path / "m")
+    add_monthly(root, MONTHLY_ROWS)
+    (root / dr.ERP_MONTHLY_FILE).write_bytes(b"tampered")
+    with pytest.raises(DataNotPresent, match="hash mismatch"):
+        dr.DamodaranStore(root).erp_provider()("2020-03-31")
+    root2 = make_store(tmp_path / "n")
+    add_monthly(root2, MONTHLY_ROWS)
+    (root2 / dr.ERP_MONTHLY_FILE).unlink()
+    with pytest.raises(DataNotPresent, match="not in the manifest or not on disk"):
+        dr.DamodaranStore(root2).erp_provider()("2020-03-31")
+
+
+def test_monthly_erp_parser_skips_empty_cells_refuses_a_percent_and_a_missing_column():
+    hdr = ["Start of month", "S&P 500", "ERP (T12 m with sustainable payout)"]
+    assert dr.parse_erp_monthly_rows([hdr, [datetime(2016, 1, 1), 1, None], [datetime(2016, 2, 1), 1, "NA"], [datetime(2016, 3, 1), 1, 0.05], ["note"], [datetime(2016, 4, 1), 1, "5.10%"]])         == [(date(2016, 3, 1), 0.05), (date(2016, 4, 1), 0.051)]
+    with pytest.raises(DataNotPresent):
+        dr.parse_erp_monthly_rows([hdr, [datetime(2016, 1, 1), 1, 5.1]])         # a percent, not a fraction: refused, not rescaled
+    with pytest.raises(DataNotPresent):
+        dr.parse_erp_monthly_rows([["Start of month", "x"], [datetime(2016, 1, 1), 1]])
+    with pytest.raises(DataNotPresent):
+        dr.parse_erp_monthly_rows([["Month", "x"]])
+
+
 def test_store_refuses_a_hash_mismatch_and_a_missing_directory(tmp_path):
     root = make_store(tmp_path)
     (root / "archives_betas0.xls").write_bytes(b"tampered")
@@ -305,7 +378,9 @@ def test_the_approved_damodaran_files_parse_select_by_date_and_record_hashes():
     v, label, meta = s.beta_provider()("2021-06-01", "Steel")
     assert meta["snapshot_date"] == "2021-01-05" and len(meta["file_sha256"]) == 64
     erp, label, meta = s.erp_provider()("2021-06-01")
-    assert 0.03 < erp < 0.08 and meta["year_end"] == 2020
+    assert erp == pytest.approx(0.0420) and meta["source"] == "monthly" and meta["row_date"] == "2021-06-01" and len(meta["file_sha256"]) == 64        # Addendum K: the monthly row
+    erp, label, meta = s.erp_provider(monthly=False)("2021-06-01")
+    assert 0.03 < erp < 0.08 and meta["year_end"] == 2020 and meta["source"] == "annual"                                                            # the annual path is unchanged
 
 
 # ---- Addendum H4: family_not_built for utilities and pipelines, and for pre-profit companies --------------------------------------------------------
