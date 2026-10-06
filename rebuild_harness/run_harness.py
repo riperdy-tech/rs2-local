@@ -69,13 +69,28 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
     for d in dates:
         c = cov["dates"][d] = {"window": lock["windows"][d], "companies_offered": len(ciks), "engine_reasons": {n: Counter() for n in names},
                                "engine_scored": Counter(), "outcome_available": defaultdict(Counter), "fund_outcome_available": Counter(),
-                               "price_flags": Counter(), "share_basis": Counter()}
+                               "price_flags": Counter(), "share_basis": Counter(), "outcome_status": defaultdict(Counter),
+                               "price_quality": Counter(), "price_coverage": Counter(), "provenance_state": Counter()}
         keep, why = pit.universe(d, ciks)
         c["universe_reasons"] = dict(why)
         c["with_annual_report"] = len(keep)
         c["excluded_stale_base_year"] = 0
         c["no_price_key_or_close"] = 0
         n_rec = 0
+        # the share of the universe the price provider cannot price on this date (Addendum C 4): no ticker for the company, a ticker the provider does
+        # not hold, or no close on the date
+        for cik in keep:
+            ts = pit.tickers_for(cik)
+            src = pit.price_source
+            if not ts:
+                c["price_coverage"]["unpriceable_no_ticker_mapping"] += 1
+            elif not any(src.has_key(t) for t in ts):
+                c["price_coverage"]["unpriceable_ticker_not_in_provider"] += 1
+            elif not any(src.close_unadjusted(t, d) is not None for t in ts if src.has_key(t)):
+                c["price_coverage"]["unpriceable_no_close_on_date"] += 1
+            else:
+                c["price_coverage"]["priced"] += 1
+        c["unpriceable_share_of_universe"] = (1.0 - c["price_coverage"]["priced"] / len(keep)) if keep else None
         for cik in keep:
             snap = pit.snapshot(cik, d)
             age = (to_date(d) - to_date(snap.L_fye)).days / 30.4375 if snap and snap.L_fye else None
@@ -95,8 +110,10 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
                 c["no_price_key_or_close"] += 1
                 continue
             c["share_basis"]["market_cap_ok" if mc["market_cap"] is not None else "market_cap_" + str(mc["reason"])] += 1
+            c["price_quality"][mc.get("price_quality")] += 1
+            c["provenance_state"][mc.get("provenance_state")] += 1
             rec = {"date": d, "cik": cik, "ticker": key, "sector": (labels.get(cik) or {}).get("sector"), "family": None, "price": mc["price"],
-                   "market_cap": mc["market_cap"], "score": {}, "vp": {}, "excess": {}, "ret": {}, "base": None, "out": {}, "forecasts": {},
+                   "market_cap": mc["market_cap"], "price_quality": mc.get("price_quality"), "provenance_state": mc.get("provenance_state"), "score": {}, "vp": {}, "excess": {}, "ret": {}, "base": None, "out": {}, "forecasts": {},
                    "stamps": {}}
             fam = None
             for e in engs:
@@ -117,9 +134,11 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
                 else:
                     c["engine_scored"][e.engine_name] += 1
             rec["family"] = fam or (family_fn(cik, d) if family_fn else None) or (labels.get(cik) or {}).get("family") or "unclassified"
-            ho = outcomes.horizon_outcomes(pit, key, d, horizons, coverage_only=coverage_only) if key else {h: {"available": False} for h in horizons}
+            ho = (outcomes.horizon_outcomes(pit, key, d, horizons, coverage_only=coverage_only) if key
+                  else {h: {"available": False, "status": outcomes.UNOBSERVABLE} for h in horizons})
             for h, o in ho.items():
                 c["outcome_available"][str(h)]["available" if o["available"] else "missing"] += 1
+                c["outcome_status"][str(h)][o["status"]] += 1
                 if not coverage_only:
                     rec["excess"][h], rec["ret"][h] = o.get("excess"), o.get("ret")
             if not coverage_only:

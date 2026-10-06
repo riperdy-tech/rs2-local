@@ -705,6 +705,72 @@ class SubmissionsDirSic:
         return SicRecord(code, str(d.get("sicDescription") or ""), "SEC submissions JSON (current assignment)", False)
 
 
+_HDR = {
+    "accession": r"ACCESSION NUMBER:\s*(\S+)", "form": r"CONFORMED SUBMISSION TYPE:\s*(\S+)", "period": r"CONFORMED PERIOD OF REPORT:\s*(\d{8})",
+    "filed": r"FILED AS OF DATE:\s*(\d{8})", "name": r"COMPANY CONFORMED NAME:\s*(.+)", "cik": r"CENTRAL INDEX KEY:\s*(\d+)",
+}
+
+
+def parse_sec_header(text):
+    """The fields of an EDGAR filing header (the SGML header of a submission, `<accession>.hdr.sgml` or the top of the `.txt`): accession, form,
+    period, filed date, acceptance timestamp (UTC), company name, CIK, SIC code and description as filed.  Missing fields are None."""
+    import re
+    out = {k: None for k in list(_HDR) + ["accepted_at", "sic", "sic_description"]}
+    for k, pat in _HDR.items():
+        m = re.search(pat, text)
+        if m:
+            out[k] = m.group(1).strip()
+    m = re.search(r"ACCEPTANCE-DATETIME>?:?\s*(\d{14})", text)
+    out["accepted_at"] = parse_accepted(m.group(1)) if m else None
+    m = re.search(r"STANDARD INDUSTRIAL CLASSIFICATION:\s*(.*?)\[(\d{4})\]", text)
+    if m:
+        out["sic_description"], out["sic"] = m.group(1).strip(), m.group(2)
+    if out["cik"]:
+        out["cik"] = out["cik"].zfill(10)
+    for k in ("period", "filed"):
+        if out[k]:
+            out[k] = f"{out[k][:4]}-{out[k][4:6]}-{out[k][6:8]}"
+    return out
+
+
+class HeaderSic:
+    """The SIC code and the company name AS FILED at T, from EDGAR filing headers: the header of the latest filing accepted at or before the decision
+    time (16:00 ET) of the date.  `records` are `parse_sec_header` dicts (a directory of header files via `from_dir`).  Returns None before the first
+    header on record: today's SIC is never substituted."""
+
+    def __init__(self, records):
+        self.by_cik = defaultdict(list)
+        for r in records:
+            if r.get("cik") and r.get("accepted_at") is not None:
+                self.by_cik[r["cik"]].append(r)
+        for v in self.by_cik.values():
+            v.sort(key=lambda r: r["accepted_at"])
+
+    @classmethod
+    def from_dir(cls, directory):
+        recs = []
+        for p in sorted(Path(directory).iterdir()):
+            if p.is_file() and (p.name.endswith(".hdr.sgml") or p.suffix in (".txt", ".hdr")):
+                recs.append(parse_sec_header(p.read_text(encoding="utf-8", errors="replace")))
+        return cls(recs)
+
+    def _latest(self, cik, asof, need=None):
+        cut = decision_time_utc(asof)
+        best = None
+        for r in self.by_cik.get(str(cik).zfill(10), ()):
+            if r["accepted_at"] <= cut and (need is None or r.get(need)):
+                best = r
+        return best
+
+    def __call__(self, cik, asof):
+        r = self._latest(cik, asof, "sic")
+        return None if r is None else SicRecord(r["sic"], r["sic_description"] or "", f"EDGAR filing header {r['accession']} (as filed at the date)", True)
+
+    def name_asof(self, cik, asof):
+        r = self._latest(cik, asof, "name")
+        return None if r is None else r["name"]
+
+
 # ---- the engines' CompanyPIT --------------------------------------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -758,18 +824,25 @@ class PitCompany:
         return self.series.get(field_name, {}).get(period_end)
 
 
-# ---- prices ---------------------------------------------------------------------------------------------------------------------------
+# ---- prices: the PriceProvider interface ---------------------------------------------------------------------------------------------------
+
+QUALITY_VERIFIED, QUALITY_UNVERIFIED, QUALITY_MISSING = "verified", "unverified", "missing"
+
 
 class PricePoint:
-    __slots__ = ("price", "bar", "flags")
+    __slots__ = ("price", "bar", "flags", "quality")
 
-    def __init__(self, price, bar, flags=()):
-        self.price, self.bar, self.flags = price, bar, tuple(flags)
+    def __init__(self, price, bar, flags=(), quality=QUALITY_VERIFIED):
+        self.price, self.bar, self.flags, self.quality = price, bar, tuple(flags), quality
 
 
 class PriceSource:
-    """Interface.  `basis` names what `close_unadjusted` is: "traded_unadjusted" is the only basis a result may rest on."""
+    """The PriceProvider interface (Addendum C 4).  `basis` names what `close_unadjusted` is: "traded_unadjusted" is the only basis a result may rest
+    on.  Every price carries `quality`: VERIFIED (a traded unadjusted close on the exact session, with the provider's split and dividend actions in
+    hand), UNVERIFIED (derived or approximate: a month-end bar standing for the last session, a stale bar, an adjusted-only proxy, unknown splits) or
+    MISSING (no price: `close_unadjusted` returns None, `price_quality` says why)."""
     basis = "traded_unadjusted"
+    delistings = None            # {key: {"date", "type", ...}} corporate-action events that end a security's price history
 
     def has_key(self, key):
         raise NotImplementedError
@@ -779,7 +852,7 @@ class PriceSource:
         raise NotImplementedError
 
     def adj_close(self, key, asof):
-        """PricePoint of the total-return-adjusted close on `asof`, or None.  Outcomes and momentum only."""
+        """PricePoint of the total-return-adjusted close on `asof`, or None.  Outcomes and past-return signals only."""
         raise NotImplementedError
 
     def splits(self, key):
@@ -789,10 +862,41 @@ class PriceSource:
     def last_date(self, key):
         raise NotImplementedError
 
+    def last_session(self, key):
+        """The date of the security's last bar, usable as `asof` for `adj_close` / `close_unadjusted`; None without bars."""
+        d = self.last_date(key)
+        if d is None:
+            return None
+        return _last_weekday_of_month(date(int(d[:4]), int(d[5:7]), 1)) if len(d) == 7 else to_date(d)
+
     def target_date(self, asof, months):
         """The date `months` after `asof` at which a price is read: the same calendar day (a daily source takes the latest bar within its gap);
         a monthly source overrides this with the last weekday of that month."""
         return add_months(to_date(asof), months)
+
+    def entry_point(self, key, asof):
+        """The total-return price at which a position decided at the 16:00 ET decision time on `asof` is entered: the NEXT session's adjusted close.
+        A source with no sessions of its own (monthly bars) returns the decision bar and flags `no_next_session_in_monthly_data`."""
+        p = self.adj_close(key, asof)
+        if p is None:
+            return None
+        return PricePoint(p.price, p.bar, tuple(p.flags) + ("no_next_session_in_monthly_data",), QUALITY_UNVERIFIED)
+
+    def price_quality(self, key, asof):
+        """(quality, reason) of the valuation price for `key` on `asof`."""
+        if not self.has_key(key):
+            return QUALITY_MISSING, "ticker_not_in_provider"
+        p = self.close_unadjusted(key, asof)
+        if p is None:
+            return QUALITY_MISSING, "no_close_on_date"
+        return p.quality, ",".join(p.flags) or "exact_session"
+
+    def delisting(self, key):
+        """The corporate-action event that ended the security's history (acquisition, bankruptcy, otc_continuation, other) or None."""
+        return (self.delistings or {}).get(key)
+
+
+PriceProvider = PriceSource
 
 
 def _last_weekday_of_month(d):
@@ -807,12 +911,14 @@ def _last_weekday_of_month(d):
 class MonthlyRawPriceSource(PriceSource):
     """The earlier registered download: {"prices": {key: {"YYYY-MM": [Close (split-adjusted), Adj Close, Dividends, Stock Splits]}}}.
     A monthly bar is the month's last close, so a price is served only for a date on or after the month's last weekday (the proxy for the last
-    trading day) - any other date is refused, never filled with the month-end.  The traded unadjusted close is the split-adjusted Close times the
-    product of the split ratios dated in LATER months; a split in the bar's own month leaves the basis undetermined and is flagged."""
+    trading day) - any other date is refused, never filled with the month-end; its quality is UNVERIFIED (the last weekday may be a holiday).  The
+    traded unadjusted close is the split-adjusted Close times the product of the split ratios dated in LATER months; a split in the bar's own month
+    leaves the basis undetermined and is flagged."""
 
-    def __init__(self, doc):
+    def __init__(self, doc, delistings=None):
         self.prices = doc["prices"]
         self.meta = doc.get("meta", {})
+        self.delistings = delistings
         self._ev = {}
 
     @classmethod
@@ -849,14 +955,14 @@ class MonthlyRawPriceSource(PriceSource):
         for sm, r in self.splits(key):
             if sm > m:
                 later *= r
-        flags = ["split_in_bar_month"] if any(sm == m for sm, _ in self.splits(key)) else []
-        return PricePoint(float(v[0]) * later, m, flags)
+        flags = ["month_end_bar_for_last_session"] + (["split_in_bar_month"] if any(sm == m for sm, _ in self.splits(key)) else [])
+        return PricePoint(float(v[0]) * later, m, flags, QUALITY_UNVERIFIED)
 
     def adj_close(self, key, asof):
         m, v = self._bar(key, asof)
         if v is None or not (is_num(v[1]) and v[1] > 0):
             return None
-        return PricePoint(float(v[1]), m)
+        return PricePoint(float(v[1]), m, (), QUALITY_UNVERIFIED)
 
     def last_date(self, key):
         ms = sorted(self.prices.get(key) or {})
@@ -868,24 +974,29 @@ class MonthlyRawPriceSource(PriceSource):
 
 class DailyPriceSource(PriceSource):
     """{key: {iso date: {"close": traded unadjusted close, "adj": total-return adjusted close}}} and {key: [(iso date, ratio)]} split events with
-    exact ex-dates.  A close is served for `asof` itself or the latest earlier bar within `max_gap_days` (flagged `stale_bar`)."""
+    exact ex-dates.  A close is served for `asof` itself (VERIFIED when the split events are in hand) or the latest earlier bar within
+    `max_gap_days` (UNVERIFIED, flagged `stale_bar`)."""
 
-    def __init__(self, rows, splits=None, max_gap_days=5):
-        self.rows, self._splits, self.max_gap = rows, splits or {}, max_gap_days
+    def __init__(self, rows, splits=None, max_gap_days=5, delistings=None):
+        self.rows, self._splits, self.max_gap = rows, splits, max_gap_days
+        self.delistings = delistings
         self._sorted = {}
 
     def has_key(self, key):
         return key in self.rows
+
+    def _keys(self, key):
+        if key not in self._sorted:
+            self._sorted[key] = sorted(self.rows.get(key) or {})
+        return self._sorted[key]
 
     def _find(self, key, asof):
         d = to_date(asof).isoformat()
         r = self.rows.get(key)
         if not r:
             return None, None
-        if key not in self._sorted:
-            self._sorted[key] = sorted(r)
-        ds = self._sorted[key]
         import bisect
+        ds = self._keys(key)
         i = bisect.bisect_right(ds, d) - 1
         if i < 0:
             return None, None
@@ -899,7 +1010,10 @@ class DailyPriceSource(PriceSource):
         bar, v = self._find(key, asof)
         if v is None or not (is_num(v.get("close")) and v["close"] > 0):
             return None
-        return PricePoint(float(v["close"]), bar, ["stale_bar"] if bar != to_date(asof).isoformat() else [])
+        flags = [] if bar == to_date(asof).isoformat() else ["stale_bar"]
+        if self._splits is None:
+            flags.append("splits_unknown")
+        return PricePoint(float(v["close"]), bar, flags, QUALITY_VERIFIED if not flags else QUALITY_UNVERIFIED)
 
     def adj_close(self, key, asof):
         bar, v = self._find(key, asof)
@@ -907,22 +1021,39 @@ class DailyPriceSource(PriceSource):
             return None
         return PricePoint(float(v["adj"]), bar)
 
+    def entry_point(self, key, asof):
+        """The first session strictly after `asof`: the adjusted close of the next bar (within the source's gap)."""
+        import bisect
+        d = to_date(asof).isoformat()
+        ds = self._keys(key)
+        i = bisect.bisect_right(ds, d)
+        if i >= len(ds) or _days(d, ds[i]) is None or _days(d, ds[i]) > self.max_gap:
+            return None
+        v = self.rows[key][ds[i]]
+        if not (is_num(v.get("adj")) and v["adj"] > 0):
+            return None
+        return PricePoint(float(v["adj"]), ds[i])
+
     def splits(self, key):
+        if self._splits is None:
+            return None
         return sorted((str(d), float(r)) for d, r in self._splits.get(key, ()))
 
     def last_date(self, key):
-        ds = sorted(self.rows.get(key) or {})
+        ds = self._keys(key)
         return ds[-1] if ds else None
 
 
 class AdjustedOnlyMonthlySource(PriceSource):
     """PROXY for a smoke run when only a split- and dividend-adjusted monthly close exists ({"prices": {key: {"YYYY-MM": adjusted close}}}).
     `basis` is "adjusted_proxy": the level is not a traded price (a dividend payer's old closes sit below what traded) and the split events are
-    unknown, so market caps and yields built on it are WRONG IN LEVEL.  Its total-return ratios are valid.  Never a basis for a result."""
+    unknown, so market caps and yields built on it are WRONG IN LEVEL and its quality is UNVERIFIED.  Its total-return ratios are valid.  Never a
+    basis for a result."""
     basis = "adjusted_proxy"
 
-    def __init__(self, doc):
+    def __init__(self, doc, delistings=None):
         self.prices = doc["prices"]
+        self.delistings = delistings
 
     @classmethod
     def load(cls, path):
@@ -942,11 +1073,11 @@ class AdjustedOnlyMonthlySource(PriceSource):
 
     def close_unadjusted(self, key, asof):
         m, v = self._val(key, asof)
-        return None if v is None else PricePoint(v, m, ["PROXY_adjusted_close"])
+        return None if v is None else PricePoint(v, m, ["PROXY_adjusted_close"], QUALITY_UNVERIFIED)
 
     def adj_close(self, key, asof):
         m, v = self._val(key, asof)
-        return None if v is None else PricePoint(v, m)
+        return None if v is None else PricePoint(v, m, (), QUALITY_UNVERIFIED)
 
     def splits(self, key):
         return None
@@ -957,6 +1088,68 @@ class AdjustedOnlyMonthlySource(PriceSource):
 
     def target_date(self, asof, months):
         return _last_weekday_of_month(add_months(to_date(asof), months))
+
+
+class NetworkNotAllowed(RuntimeError):
+    pass
+
+
+class YahooPriceProvider:
+    """Yahoo Finance as the first PriceProvider (Addendum C 4): `history(auto_adjust=False, actions=True)` per ticker, cached on disk, then served as a
+    `DailyPriceSource`.  Yahoo's "Close" is split-adjusted but not dividend-adjusted; the traded unadjusted close is Close times the product of the split
+    ratios with ex-dates after the bar.  NOTHING here touches the network unless `allow_network=True` (the operator's permission to download) or a
+    `downloader` is injected (tests).  `downloader(key, start, end)` -> [{"date", "close", "adj_close", "dividend", "split"}, ...] (split 0 or None
+    when there is none).  A ticker Yahoo cannot serve is recorded as empty and counted: `unpriceable(keys)`."""
+
+    def __init__(self, cache_dir, allow_network=False, downloader=None):
+        self.cache = Path(cache_dir)
+        self.allow_network = allow_network
+        self.downloader = downloader
+
+    def _path(self, key):
+        return self.cache / f"{key}.json"
+
+    def _download(self, key, start, end):
+        if self.downloader is not None:
+            return self.downloader(key, start, end)
+        if not self.allow_network:
+            raise NetworkNotAllowed(f"Yahoo download of {key} refused: allow_network is False (a download needs the operator's permission)")
+        import yfinance as yf                                     # imported only when a download is actually permitted
+        df = yf.Ticker(key).history(start=start, end=end, auto_adjust=False, actions=True)
+        return [{"date": ts.date().isoformat(), "close": float(r["Close"]), "adj_close": float(r["Adj Close"]),
+                 "dividend": float(r.get("Dividends", 0.0) or 0.0), "split": float(r.get("Stock Splits", 0.0) or 0.0)} for ts, r in df.iterrows()]
+
+    def fetch(self, keys, start, end):
+        self.cache.mkdir(parents=True, exist_ok=True)
+        for k in keys:
+            if self._path(k).exists():
+                continue
+            rows = self._download(k, start, end)
+            self._path(k).write_text(json.dumps({"key": k, "start": start, "end": end, "rows": rows}), encoding="utf-8")
+
+    def load(self, keys, delistings=None):
+        """A DailyPriceSource over the cached tickers (a ticker with no cached rows has no key: the caller counts it as unpriceable)."""
+        rows, splits = {}, {}
+        for k in keys:
+            if not self._path(k).exists():
+                continue
+            doc = json.loads(self._path(k).read_text(encoding="utf-8"))
+            if not doc["rows"]:
+                continue
+            ev = [(r["date"], float(r["split"])) for r in doc["rows"] if is_num(r.get("split")) and r["split"] not in (0, 0.0)]
+            rr = {}
+            for r in doc["rows"]:
+                later = 1.0
+                for d, ratio in ev:
+                    if d > r["date"]:
+                        later *= ratio
+                rr[r["date"]] = {"close": r["close"] * later, "adj": r["adj_close"]}
+            rows[k], splits[k] = rr, ev
+        return DailyPriceSource(rows, splits, delistings=delistings)
+
+    def unpriceable(self, keys):
+        """The keys with no cached price rows (Yahoo cannot serve them, or they were never fetched)."""
+        return [k for k in keys if not self._path(k).exists() or not json.loads(self._path(k).read_text(encoding="utf-8"))["rows"]]
 
 
 def split_product(events, after, upto, month_dated=None):
@@ -994,8 +1187,9 @@ def _split_between(events, a, b):
 class PitData:
     """The data root handed to every engine: `engine(ticker, asof, data_root)` receives a PitData."""
 
-    def __init__(self, store_dir, zip_path=None, price_source=None, id_map=None, sic_source=None, acceptance_source=None):
+    def __init__(self, store_dir, zip_path=None, price_source=None, id_map=None, sic_source=None, acceptance_source=None, sic_history=None):
         self.sic_source = sic_source
+        self.sic_history = sic_history                    # HeaderSic: the SIC and name as filed at T
         self.acceptance_source = acceptance_source        # cik -> {accession: UTC acceptance datetime}; None: filing dates only
         self.store_dir = Path(store_dir)
         self.zip_path = Path(zip_path) if zip_path else None
@@ -1091,9 +1285,14 @@ class PitData:
         return {} if c is None else c.fiscal_years(None, "first_filed")
 
     # -- SIC and the engines' view --
-    def sic(self, cik):
-        """SicRecord of the company from `sic_source` (None without one or without a record).  The assignment is CURRENT, never dated."""
-        return None if self.sic_source is None else self.sic_source(str(cik).zfill(10))
+    def sic(self, cik, asof=None):
+        """SicRecord of the company.  With a `sic_history` (filing headers) and a date: the SIC as filed at that date (point_in_time True), None when
+        no header is on record before it - today's record is never substituted.  Without a history: the CURRENT assignment from `sic_source`
+        (point_in_time False, stamped), which an as-of use must treat as a look-ahead label."""
+        cik = str(cik).zfill(10)
+        if self.sic_history is not None and asof is not None:
+            return self.sic_history(cik, asof)
+        return None if self.sic_source is None else self.sic_source(cik)
 
     def company_pit(self, cik, asof, ticker=None):
         """The engines' CompanyPIT at `asof` (valuation.common.CompanyPIT when importable, else an equivalent PitCompany): series[field][period_end] ->
@@ -1117,7 +1316,7 @@ class PitData:
         concepts = {n: {pe: Filed(x.val, pe, x.filed, x.accn, x.form, x.tag) for pe, x in per.items()} for n, per in c.concepts(asof_d).items()}
         cov = c.cover_shares(asof_d)
         shares = None if cov is None else Filed(cov["value"], cov["cover_date"] or cov["filed"], cov["filed"], cov["accn"], cov["form"], COVER_TAG)
-        sr = self.sic(cik)
+        sr = self.sic(cik, asof_d)
         notes = list(c.extract(asof_d).notes)
         ticker = ticker or self.ticker_for(cik) or f"CIK{cik}"
         prov = {(f, pe): (RESTATED if RESTATED in fy.cells[f].flags else PIT_VALID) for pe, fy in fys.items() for f in ENGINE_FIELDS if f in fy.cells}
@@ -1151,6 +1350,30 @@ class PitData:
 
     # -- price and share basis --
     def market_cap(self, cik, asof, key=None):
+        """`_market_cap` plus `price_quality` (verified / unverified / missing), its reason, and `provenance_state`: PIT_VALID, MISSING (no price, no
+        shares, or a company that does not report in dollars), AMBIGUOUS (share basis undetermined: a split on the count's day) or
+        CORPORATE_ACTION_UNRESOLVED (split events unknown, or a cover count 100x from the filed count)."""
+        out = self._market_cap(cik, asof, key)
+        src = self.price_source
+        k = key or self.ticker_for(cik)
+        if src is None or k is None:
+            q, why = QUALITY_MISSING, "no_price_source" if src is None else "no_price_key"
+        else:
+            q, why = src.price_quality(k, asof)
+        out["price_quality"], out["price_quality_reason"] = q, why
+        r = out.get("reason")
+        if r == "share_basis_undetermined":
+            st = AMBIGUOUS
+        elif r == "share_count_scale_conflict" or "splits_unknown" in out["flags"]:
+            st = CORPORATE_ACTION_UNRESOLVED
+        elif r is not None:
+            st = MISSING
+        else:
+            st = PIT_VALID
+        out["provenance_state"] = st
+        return out
+
+    def _market_cap(self, cik, asof, key=None):
         """Market capitalisation on the traded unadjusted price with share counts on the same basis.
 
         shares: the latest periodic report's cover-page count before `asof`, times the split ratios with ex-dates after the cover date and on or
