@@ -20,6 +20,7 @@ from .pack_v2 import Pack, input_texts, pct
 from .schema import SECTION_TITLES, muse_inputs, prompt_inputs
 
 PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
+CRLF, LF = bytes([13, 10]), bytes([10])
 SECTION_ORDER = ("F", "Q", "D", "S", "R")
 
 
@@ -29,9 +30,7 @@ def prompt_files() -> List[Path]:
 
 def file_sha256(path) -> str:
     """sha256 of the file with CRLF read as LF, so a checkout with git's autocrlf hashes the same as one without."""
-    return hashlib.sha256(Path(path).read_bytes().replace(b"
-", b"
-")).hexdigest()
+    return hashlib.sha256(Path(path).read_bytes().replace(CRLF, LF)).hexdigest()
 
 
 def prompt_hashes() -> dict:

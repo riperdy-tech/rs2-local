@@ -91,9 +91,7 @@ def test_every_request_and_response_is_saved_with_the_prompt_hashes(tmp_path):
 def test_prompt_hashes_are_the_files_sha256_and_change_with_the_wording(tmp_path, monkeypatch):
     import hashlib
     h = prompting.prompt_hashes()
-    assert h["P1.txt"] == hashlib.sha256((prompting.PROMPT_DIR / "P1.txt").read_bytes().replace(b"
-", b"
-")).hexdigest()
+    assert h["P1.txt"] == hashlib.sha256((prompting.PROMPT_DIR / "P1.txt").read_bytes().replace(prompting.CRLF, prompting.LF)).hexdigest()
     d = tmp_path / "prompts"
     d.mkdir()
     for p in prompting.PROMPT_DIR.iterdir():
