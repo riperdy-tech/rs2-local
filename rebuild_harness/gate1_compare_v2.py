@@ -81,7 +81,7 @@ def render(labels, S, dates, M, bars):
     for d in dates:
         L.append(f"| {d} | " + " | ".join(fp(M[l].get(d), 3) for l in labels) + " |")
     for l, b in bars.items():
-        L += ["", f"## {l}: registration-v2 bars B1-B3 on these dates (B4 is not stored by that round)", "", f"outcome fields: B1 {b['bar_status_over_bounds']['B1']}, B2 {b['bar_status_over_bounds']['B2']}, B3 {b['bar_status_over_bounds']['B3']}", "",
+        L += ["", f"## {l}: registration-v2 bars B1-B3 on these dates (B4 needs the forecast quantiles stored from round 4 on: see the run's report)", "", f"outcome fields: B1 {b['bar_status_over_bounds']['B1']}, B2 {b['bar_status_over_bounds']['B2']}, B3 {b['bar_status_over_bounds']['B3']}", "",
               "| bound | B1 coefficient | lower bound | positive months | B2 residual spread | B2 raw spread |", "|---|---|---|---|---|---|"]
         for bd in gm.BOUNDS:
             x, y = b["by_bound"][bd]["B1"], b["by_bound"][bd]["B2"]
