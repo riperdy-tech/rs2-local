@@ -165,20 +165,26 @@ def g1_tables(d: pd.DataFrame) -> dict:
             s = sub[sub["size_b"] >= 0]
             gv = s["tbv_g3" if (fam == "financial" and basis == "g3") else ("tbv_g_latest" if fam == "financial" else ("g3" if basis == "g3" else "g_latest"))]
             cells = grid_cells(s["size_b"].to_numpy(), s[bcol].to_numpy(), s[yv].to_numpy(), len(SIZE_EDGES) + 1, len(GROWTH_EDGES) + 1)
-            # attach the mechanical baseline's error and the median-growth-delivered of each cell
-            for cell in cells:
-                sel = ((s["size_b"] >= cell["row"][0]) & (s["size_b"] <= cell["row"][1]) & (s[bcol] >= cell["col"][0]) & (s[bcol] <= cell["col"][1])
-                       & s[yv].notna())
-                y = s.loc[sel, yv].to_numpy()
-                bl = (s.loc[sel, "tbv_g3" if basis == "g3" else "tbv_g_latest"] if fam == "financial" else s.loc[sel, "g3" if basis == "g3" else "g_latest"]).to_numpy()
-                ok = np.isfinite(bl)
-                cell["baseline_growth_median"] = float(np.median(bl[ok])) if ok.any() else None
-                cell["baseline_mae"] = float(np.mean(np.abs(y[ok] - bl[ok]))) if ok.any() else None
-                cell["baseline_medae"] = float(np.median(np.abs(y[ok] - bl[ok]))) if ok.any() else None
-                cell["cell_median_mae"] = float(np.mean(np.abs(y - cell["p50"]))) if len(y) else None
-                cell["cell_median_medae"] = float(np.median(np.abs(y - cell["p50"]))) if len(y) else None
+            blcol = ("tbv_g3" if basis == "g3" else "tbv_g_latest") if fam == "financial" else ("g3" if basis == "g3" else "g_latest")
+
+            def attach(cells_, frame, use_size):
+                for cell in cells_:
+                    sel = (frame[bcol] >= cell["col"][0]) & (frame[bcol] <= cell["col"][1]) & frame[yv].notna()
+                    if use_size:
+                        sel &= (frame["size_b"] >= cell["row"][0]) & (frame["size_b"] <= cell["row"][1])
+                    y = frame.loc[sel, yv].to_numpy()
+                    bl = frame.loc[sel, blcol].to_numpy()
+                    ok = np.isfinite(bl)
+                    cell["baseline_growth_median"] = float(np.median(bl[ok])) if ok.any() else None
+                    cell["baseline_mae"] = float(np.mean(np.abs(y[ok] - bl[ok]))) if ok.any() else None
+                    cell["baseline_medae"] = float(np.median(np.abs(y[ok] - bl[ok]))) if ok.any() else None
+                    cell["cell_median_mae"] = float(np.mean(np.abs(y - cell["p50"]))) if len(y) else None
+                    cell["cell_median_medae"] = float(np.median(np.abs(y - cell["p50"]))) if len(y) else None
+
+            attach(cells, s, True)
             allv = sub[yv].to_numpy(dtype=float)
             pooled = grid_cells(np.zeros(len(sub), dtype=int), sub[bcol].to_numpy(), allv, 1, len(GROWTH_EDGES) + 1)
+            attach(pooled, sub, False)
             out[fam][basis] = {"cells": cells, "n": int(sum(c["n"] for c in cells)), "size_pooled_cells": pooled, "all": qdict(allv)}
     return out
 
@@ -674,6 +680,7 @@ def survivorship(d: pd.DataFrame) -> dict:
     base = d["family"].isin(FAMILIES)
     out = {"all_family_obs": share(base), "k1_known": share(base & d["rev_1"].notna()), "by_family": {f: share(d["family"].eq(f)) for f in FAMILIES + ("family_not_built",)},
            "by_size": {str(b): share(base & (d["size_b"] == b)) for b in range(len(SIZE_EDGES) + 1)}, "non_usd": share(base & ~d["usd"])}
+    out["by_basis"] = {b: share(base & d["family_basis"].eq(b)) for b in ("sic+bs", "bs_only")}
     out["companies"] = {"with_obs": int(d["cik"].nunique()), "later_ceased": int(d.drop_duplicates("cik")["ceased"].sum()),
                         "ceased_before_cut": int(d.drop_duplicates("cik")["ceased_before_cut"].sum())}
     return out
@@ -684,9 +691,10 @@ def mechanical_baseline(d: pd.DataFrame, retention: dict) -> dict:
     held), margin held at the base year's.  Mean absolute error against what happened, next to the population median's error (in sample)."""
     out = {}
     s = d[d["family"].isin(["operating", "commodity"]) & d["y1"].notna() & d["g_base"].notna() & d["size_b"].ge(0)]
-    out["g1"] = {"n": int(len(s)), "baseline_mae": float(np.mean(np.abs(s["y1"] - s["g_base"]))) if len(s) else None,
+    out["g1"] = {"n": int(len(s)), "baseline_medae": float(np.median(np.abs(s["y1"] - s["g_base"]))) if len(s) else None,
                  "baseline_median_error": float(np.median(s["y1"] - s["g_base"])) if len(s) else None,
-                 "population_median_mae": float(np.mean(np.abs(s["y1"] - s["y1"].median()))) if len(s) else None}
+                 "population_median_medae": float(np.median(np.abs(s["y1"] - s["y1"].median()))) if len(s) else None,
+                 "note": "median absolute error: the mean absolute error of a growth rate is dominated by a few companies whose revenue multiplied"}
     a = d[d["family"].isin(["operating", "commodity"]) & d["dev"].notna() & (d["dev"].abs() >= A2_MIN_DEV) & d["med8"].notna() & d["cyc"].notna()]
     cuts = retention.get("cyc_cuts", [])
     cb = band(a["cyc"], cuts)
@@ -708,6 +716,6 @@ def mechanical_baseline(d: pd.DataFrame, retention: dict) -> dict:
                 pred[m] = a["med8"].to_numpy()[m] + med_k * a["dev"].to_numpy()[m]
         ok = ok & np.isfinite(pred)
         base = a["m"].to_numpy()
-        out["margin"][str(k)] = {"n": int(ok.sum()), "baseline_held_mae": float(np.mean(np.abs(v[ok] - base[ok]))) if ok.any() else None,
-                                 "median_path_mae": float(np.mean(np.abs(v[ok] - pred[ok]))) if ok.any() else None}
+        out["margin"][str(k)] = {"n": int(ok.sum()), "baseline_held_medae": float(np.median(np.abs(v[ok] - base[ok]))) if ok.any() else None,
+                                 "median_path_medae": float(np.median(np.abs(v[ok] - pred[ok]))) if ok.any() else None}
     return out

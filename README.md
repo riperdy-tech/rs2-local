@@ -384,6 +384,11 @@ Offline; no model, no GPU, no network. Tests: `pytest valuation rebuild_harness`
   incremental information / value-over-price distribution by family / forecast error vs a naive forecast, date-block bootstrap, per-date share of
   the universe the provider cannot price, and the holdout lock (`holdout.py`: a run touching 2023-2024 is refused unless a freeze file names every
   engine by git commit and file sha256). `python -m rebuild_harness.run_harness --help`.
+- `valuation/priors.py` + `valuation/priors_build/` - the population priors at T (SPEC section 4, Addenda A-E): `PopulationPriors.for_company(family, state, asof)`
+  returns a `PriorSet` (inputs as P5..P95, measured curves, `refs`: `ev_fcf_multiple`, `ptbv_of_rote`, `normalization_curve`, `curve_position`; `meta`: cell sizes, merges, fallbacks, the
+  mechanical baseline, input correlations). Vintage Y is cut at Dec 31 of Y and serves dates in Y+1; observations are company-years of the whole SEC archive (delisted companies kept)
+  from the layer's first-filed rows. Build: `python -m valuation.priors_build.prep_inputs`, `build_vintage <years>`, `mcap_panel`, `make_tables <years>`, `walkforward`, `report`; output under
+  `stocks-workspace/data/priors/` (`PRIORS_REPORT.md`). Tests: `valuation/tests/test_priors.py` (the no-look-ahead proof included).
 - `backtest_phase2/` - the earlier registered backtest harness, unchanged (branch review-2026-09/backtest-phase2, 40cb5cf).
 
 ## Where the truth lives
