@@ -10,11 +10,13 @@ ZIP_PATH = Path(os.environ.get("PRIORS_COMPANYFACTS_ZIP", str(Path(os.environ.ge
 CIK_MAP = Path(os.environ.get("STOCKS_ROOT", r"C:\Users\riper\stocks")) / "screener-publish" / "public" / "data" / "cik_map.json"
 INDNAME_CSV = WORKSPACE / "data" / "damodaran" / "csv" / "datasets_indname__2_By_company_name.csv"
 RAW_PRICES = WORKSPACE / "data" / "priors" / "_inputs" / "prices_monthly_raw.json"
-# priors v2 (Addendum H) is built into its own folder; the version-1 folder `data/priors` is kept as it was (nothing is ever deleted)
-DATA_DIR = Path(os.environ.get("PRIORS_DATA_DIR", str(WORKSPACE / "data" / "priors_v2")))
+# priors v2 (Addendum H) was built into its own folder `data/priors_v2` and priors v3 (Addendum I) into `data/priors_v3`; the version-1 folder `data/priors` and the v2 folder
+# are kept as they were (nothing is ever deleted).  PRIORS_DATA_DIR overrides.
+DATA_DIR = Path(os.environ.get("PRIORS_DATA_DIR", str(WORKSPACE / "data" / "priors_v3")))
 INPUTS_DIR = WORKSPACE / "data" / "priors" / "_inputs"
 
-PRIORS_VERSION = "2"      # 2: Addendum H (family_not_built for pre-profit and utilities; roic3; the roic_level table; correlations on the level variables)
+PRIORS_VERSION = "3"      # 2: Addendum H (family_not_built for pre-profit and utilities; roic3; the roic_level table; correlations on the level variables)
+                          # 3: Addendum I1 (the year-5 margin and ROIC level residuals are measured by the company's current level band: `residual_k5_by_level`)
 # a vintage Y is cut at Dec 31 of year Y: the layer is asked for the state at the NEXT day, so that every filing used was filed strictly before it
 # (companyfacts carries filing dates only; with no acceptance timestamp a filing on the cut date is AMBIGUOUS and unused).  A valuation date T uses
 # the latest vintage whose cut date is not after T.

@@ -13,6 +13,10 @@ SEC population, point in time:
     nothing after it; they exist only for survivors (no price file holds a delisted company) and are cross-check references, never averaged in.
   * NOTHING IS FILLED IN SILENTLY.  A lookup that cannot be answered at the company's own state falls back to a stated pooled table and the fallback is
     listed in `meta["fallbacks"]`; an input the vintage cannot support is absent from `inputs`, so the engine refuses naming it (`meta["unavailable"]`).
+  * SPREADS BY LEVEL (Addendum I1).  The year-5 residuals of the margin level and of the ROIC level are measured by the company's CURRENT level band (quintiles of the
+    current level within the cell, merged to n >= 50 by `stats.merge_1d`); the prior's quantiles are the median path plus the residual quantiles of the company's own band.
+  * The residual cell of the company's cyclicality x sign band is merged up (sign-pooled, then fully pooled) when it has fewer than 50 observations; if the pooled cell is still
+    under 50 the input is refused, named in `meta["unavailable"]` (never an invented spread).
 
 The state is the engines' own `common.build_state` dict, so the features priors condition on are computed the way the observation panel computed them
 (valuation/priors_build/obs.py): the same chain-index windows, the same cyclicality function.
@@ -74,6 +78,22 @@ def _find_cell(cells, r, c):
         if cell["row"][0] <= r <= cell["row"][1] and cell["col"][0] <= c <= cell["col"][1]:
             return cell
     return None
+
+
+def _level_group(tab: Optional[dict], level: Optional[float]):
+    """(group, n_cell): the group of a residual-by-level table (`stats.residual_by_level`) that holds `level` (its range is [lower, upper), open ends None), and the n of the
+    whole cell.  The group is None when the table is absent, the level is not a number, or the whole cell has fewer than MIN_N observations (Addendum I5: refuse, do not merge
+    below 50 here; the caller merges UP to the next pooled cell)."""
+    if not tab or not tab.get("groups"):
+        return None, 0
+    n_cell = int(tab.get("n", 0))
+    if n_cell < C.MIN_N or level is None or not math.isfinite(level):
+        return None, n_cell
+    for g in tab["groups"]:
+        lo, hi = g.get("lower"), g.get("upper")
+        if (lo is None or level >= lo) and (hi is None or level < hi):
+            return (g if g.get("n", 0) >= C.MIN_N else None), n_cell
+    return None, n_cell
 
 
 def _extend(vals: List[float], n: int) -> List[float]:
@@ -349,10 +369,27 @@ class PopulationPriors(Priors):
             if cv is not None:
                 curves["margin_retention"] = cv
                 positions["margin_retention"] = _pos_dist(_pos_row(bd["ks"], "median", "n"), "q", src)
-            res = mr["residual_k5"].get(ret_key)
-            if res is None or res.get("n", 0) < C.MIN_N:
-                res = mr["residual_k5"].get("pooled_all")
-                fallbacks.append(f"margin_target: residual spread of band {ret_key} too thin: the pooled spread")
+            # Addendum I1/I5: the residual of the margin level five years on, by the company's CURRENT margin band, in the cell of its cyclicality x sign band; a cell
+            # under MIN_N is merged up (sign-pooled, then fully pooled); under MIN_N there too, the input is refused, named
+            rl_tab = mr.get("residual_k5_by_level")
+            cands = [ret_key] + ([f"pooled_{ret_key.rsplit('_', 1)[1]}"] if ret_key.rsplit("_", 1)[-1] in ("pos", "neg") and not ret_key.startswith("pooled") else []) + (
+                ["pooled_all"] if ret_key != "pooled_all" else [])
+            res, grp, used, ns = None, None, None, []
+            if rl_tab is None:
+                unavailable.append("margin_target: this vintage has no level-conditional residual table (priors version < 3)")
+            else:
+                for k in cands:
+                    g_, n_ = _level_group(rl_tab.get(k), ft.get("m"))
+                    ns.append(f"{k} n={n_}")
+                    if g_ is not None:
+                        grp, used = g_, k
+                        break
+                if grp is None:
+                    unavailable.append(f"margin_target: no residual cell with n >= {C.MIN_N} after the stated merges ({'; '.join(ns)})" if ft.get("m") is not None
+                                       else "margin_target: no current operating margin to place in a level band")
+                elif used != ret_key:
+                    fallbacks.append(f"margin_target: residual cell of band {ret_key} has n={rl_tab.get(ret_key, {}).get('n', 0)} < {C.MIN_N}: merged up to {used} (n={rl_tab[used]['n']})")
+                res = grp
             if centre is not None and res is not None:
                 # Addendum H1: margin_target is the margin LEVEL five years on, drawn directly.  Its median is on the engine's own retention curve at year 5
                 # (the curve the chain moves along: the band's curve, the normalization curve of the score for the commodity family), centre + r_5 x dev, and
@@ -371,12 +408,14 @@ class PopulationPriors(Priors):
                     if qd is not None:
                         inputs["margin_target"] = qd
                         meta["cells"]["margin_target"] = {
-                            "band": ret_key, "n": res["n"], "centre_8y_median": centre, "dev": dev, "r5": r5, "r5_source": cv_src, "level5_median": centre + shift,
+                            "band": ret_key, "residual_cell": used, "n": res["n"], "centre_8y_median": centre, "dev": dev, "r5": r5, "r5_source": cv_src, "level5_median": centre + shift,
+                            "level_band": {"level": ft.get("m"), "band": res.get("band"), "lower": res.get("lower"), "upper": res.get("upper"), "merged": res.get("merged")},
                             "p10_p90_width": qd.ppf(0.9) - qd.ppf(0.1),
-                            "note": "the margin level 5 years on: the company's 8-year median + r_5 x its deviation, with the measured residual spread of that level (Addendum H1)"}
+                            "note": "the margin level 5 years on: the company's 8-year median + r_5 x its deviation + the measured residual of the company's CURRENT margin band "
+                                    "(Addenda H1, I1)"}
         if "margin_retention" not in curves:
             unavailable.append("margin_retention: no measured curve")
-        if "margin_target" not in inputs:
+        if "margin_target" not in inputs and not any(u.startswith("margin_target:") for u in unavailable):
             unavailable.append("margin_target: no centre (no margin) or no residual spread")
         # ronic (Addendum H3): the ROIC LEVEL five years on.  The company's own trailing 3-year ROIC (L0) fades along the measured retention of ROIC's excess to the
         # median ROIC I of its industry at T, so the median level five years on is I + phi_5 (L0 - I); the spread is the measured dispersion of the ROIC level path
@@ -399,9 +438,25 @@ class PopulationPriors(Priors):
                 fallbacks.append(f"ronic: band {key} too thin in this vintage: the sign-pooled ROIC retention")
                 bd, key = rl["bands"].get("all"), "all"
             cv = _curve_from_rows(bd["ks"], "median", "n", "ronic_fade", src, flags) if bd else None
-            res = rl["residual_k5"].get(key) or rl["residual_k5"].get("all")
+            res, used_r = None, None
+            lv_tab = rl.get("residual_k5_by_level")
+            if lv_tab is None:
+                unavailable.append("ronic: this vintage has no level-conditional ROIC residual table (priors version < 3)")
+            else:
+                ns = []
+                for k in ([key] + (["all"] if key != "all" else [])):
+                    g_, n_ = _level_group(lv_tab.get(k), L0)
+                    ns.append(f"{k} n={n_}")
+                    if g_ is not None:
+                        res, used_r = g_, k
+                        break
+                if res is None:
+                    unavailable.append(f"ronic: no ROIC residual cell with n >= {C.MIN_N} after the stated merges ({'; '.join(ns)})")
+                elif used_r != key:
+                    fallbacks.append(f"ronic: residual cell {key} has n={lv_tab.get(key, {}).get('n', 0)} < {C.MIN_N}: merged to {used_r} (n={lv_tab[used_r]['n']})")
             if cv is None or res is None:
-                unavailable.append("ronic: no measured ROIC retention curve or residual spread in this vintage")
+                if cv is None:
+                    unavailable.append("ronic: no measured ROIC retention curve in this vintage")
             else:
                 phi5 = cv.at(CURVE_REF_YEAR)
                 centre5 = I + phi5 * gap
@@ -411,9 +466,10 @@ class PopulationPriors(Priors):
                 else:
                     inputs["ronic"] = qd
                     curves["ronic_fade"] = cv
-                    meta["cells"]["ronic"] = {"band": key, "n": res.get("n"), "L0_trailing_3y_roic": L0, "industry_median_roic": I, "industry_basis": ind.get("basis"),
+                    meta["cells"]["ronic"] = {"band": key, "residual_cell": used_r, "n": res.get("n"), "L0_trailing_3y_roic": L0, "industry_median_roic": I, "industry_basis": ind.get("basis"),
                                               "industry_n": ind.get("n"), "phi5": phi5, "level5_median": centre5, "p10_p90_width": qd.ppf(0.9) - qd.ppf(0.1),
-                                              "note": "ROIC level five years on: I + phi_5 (L0 - I) with the measured residual spread of that level (Addendum H3)"}
+                                              "level_band": {"level": L0, "band": res.get("band"), "lower": res.get("lower"), "upper": res.get("upper"), "merged": res.get("merged")},
+                                              "note": "ROIC level five years on: I + phi_5 (L0 - I) with the measured residual of the company's CURRENT ROIC band (Addenda H3, I1)"}
                     flags.append("ronic_fade: the measured retention of ROIC's excess over the same-year population median (the date's industry median applies it in the engine)")
         if "ronic_fade" not in curves:
             unavailable.append("ronic_fade: no measured curve")

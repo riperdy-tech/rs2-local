@@ -260,6 +260,33 @@ def retention_table(dev: np.ndarray, med: np.ndarray, levels_k: Dict[int, np.nda
     return out
 
 
+LEVEL_BANDS = 5      # Addendum I1: quintiles of the company's current level
+
+
+def residual_by_level(level: np.ndarray, resid: np.ndarray, n_bands: int = LEVEL_BANDS, min_n: int = MIN_N) -> dict:
+    """Addendum I1: the quantiles of a year-5 residual by the company's CURRENT LEVEL band.  The cell's observations (`level` and `resid`, both finite) are cut into quintiles of
+    `level` (cuts measured on the cell, in the vintage: type-7 quantiles at 20/40/60/80%; a value equal to a cut goes to the upper band), and a band with fewer than `min_n`
+    observations is merged with its ADJACENT neighbour by the stated rule of `merge_1d` (the smallest band joins its adjacent neighbour with fewer observations, the lower
+    index on a tie) until every group has at least `min_n` or one group is left (a cell with fewer than `min_n` observations in all stays one thin group: the caller refuses it,
+    Addendum I5).  Each group holds its level range [lower, upper) (None = open), its n and its quantiles.  Heteroskedasticity is measured, not scaled by hand."""
+    lv, rs = np.asarray(level, dtype=float), np.asarray(resid, dtype=float)
+    ok = np.isfinite(lv) & np.isfinite(rs)
+    lv, rs = lv[ok], rs[ok]
+    out = {"n": int(len(lv)), "bands": n_bands, "rule": "quintiles of the current level within the cell, merged to n >= %d by merge_1d" % min_n, "groups": []}
+    if not len(lv):
+        return out
+    cuts = [float(c) for c in np.quantile(lv, [i / n_bands for i in range(1, n_bands)], method="linear")] if len(lv) >= n_bands else []
+    b = bucket(lv, cuts) if cuts else np.zeros(len(lv), dtype=int)
+    nb = len(cuts) + 1
+    counts = [int((b == i).sum()) for i in range(nb)]
+    for (lo, hi) in merge_1d(counts, min_n):
+        sel = (b >= lo) & (b <= hi)
+        q = qdict(rs[sel])
+        out["groups"].append({"band": [lo, hi], "lower": (cuts[lo - 1] if lo > 0 else None), "upper": (cuts[hi] if hi < nb - 1 else None), **q,
+                              "merged": hi > lo, "thin": q["n"] < min_n})
+    return out
+
+
 def margin_retention(d: pd.DataFrame, cyc_cuts: List[float]) -> dict:
     """A2 on the point-in-time panel: operating and commodity companies, record rule (>= 5 defined margin years in t-7..t), |dev| >= 0.5 points.
     Bands: cyclicality-score tercile (cuts measured in this vintage) x sign of the deviation, plus every band pooled; also the share of observations
@@ -287,7 +314,8 @@ def margin_retention(d: pd.DataFrame, cyc_cuts: List[float]) -> dict:
     out["bands"]["pooled_all"] = {"band": -1, "sign": 0, **retention_table(dev, med, levels, np.ones(len(s), bool))}
     # level distribution K = 5: residual about the median-retention path of the band x sign
     K = 5
-    res = {}
+    res, res_lvl = {}, {}
+    cur = s["m"].to_numpy(dtype=float)               # the company's current level (the base-year operating margin), the conditioning variable of Addendum I1
     for key, bd in out["bands"].items():
         if bd["sign"] == 0 or key.startswith("pooled"):
             pass
@@ -301,7 +329,9 @@ def margin_retention(d: pd.DataFrame, cyc_cuts: List[float]) -> dict:
         if m.sum() and vk is not None:
             e = (v[m] - med[m]) - vk * dev[m]
             res[key] = {**qdict(e), "retention_k5_used": vk, "level_dev_raw": qdict(v[m] - med[m])}
+            res_lvl[key] = {**residual_by_level(cur[m], e), "level_variable": "m: the base-year operating margin", "retention_k5_used": vk}
     out["residual_k5"] = res
+    out["residual_k5_by_level"] = res_lvl
     return out
 
 
@@ -394,7 +424,9 @@ def roic_level_tables(d: pd.DataFrame) -> dict:
         vk = [r for r in out["bands"][name]["ks"] if r["k"] == K][0].get("median")
         m = sel & np.isfinite(levels[K])
         if m.sum() and vk is not None:
-            out["residual_k5"][name] = {**qdict((levels[K][m] - ref[m]) - vk * dev[m]), "retention_k5_used": vk}
+            e = (levels[K][m] - ref[m]) - vk * dev[m]
+            out["residual_k5"][name] = {**qdict(e), "retention_k5_used": vk}
+            out.setdefault("residual_k5_by_level", {})[name] = {**residual_by_level(r0[m], e), "level_variable": "roic3: the trailing 3-year ROIC", "retention_k5_used": vk}
     return out
 
 

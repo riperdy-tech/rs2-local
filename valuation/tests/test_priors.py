@@ -324,8 +324,15 @@ def test_the_priorset_carries_the_baseline_the_correlations_and_stamps_every_fal
     assert set(ps.inputs) <= {"g1", "g_terminal", "margin_target", "ronic"}
 
 
-def test_margin_target_is_the_year_5_level_with_the_measured_spread_unscaled(synthetic_vintage):
-    """Addendum H1: the quantiles are centre + r_5 x deviation + the measured residual quantiles of the level five years on (no rescale); the median path is the curve's."""
+def _group_of(T_section, cell):
+    """The residual group (as built into the vintage) the prior's meta says it used: its residual cell and its level band."""
+    grp = [g for g in T_section["residual_k5_by_level"][cell["residual_cell"]]["groups"] if g["band"] == cell["level_band"]["band"]]
+    assert len(grp) == 1
+    return grp[0]
+
+
+def test_margin_target_is_the_year_5_level_with_the_spread_measured_in_the_companys_own_current_level_band(synthetic_vintage):
+    """Addendum H1 + I1: the quantiles are centre + r_5 x deviation + the residual quantiles of the company's CURRENT margin band (measured, not scaled); the median path is the curve's."""
     d, root, sic = synthetic_vintage
     cik = next(c for c, s in sorted(sic.items()) if s == "3571")
     cp, st = _state_for(root, sic, cik)
@@ -333,11 +340,115 @@ def test_margin_target_is_the_year_5_level_with_the_measured_spread_unscaled(syn
     cell = ps.meta["cells"]["margin_target"]
     qd = ps.inputs["margin_target"]
     T = json.loads((d / "2024" / "tables.json").read_text(encoding="utf-8"))
-    res = T["margin_retention"]["residual_k5"][cell["band"]] if cell["n"] == T["margin_retention"]["residual_k5"].get(cell["band"], {}).get("n") else T["margin_retention"]["residual_k5"]["pooled_all"]
+    assert T["priors_version"] == "3" and "residual_k5_by_level" in T["margin_retention"] and "residual_k5_by_level" in T["roic_level"]
+    res = _group_of(T["margin_retention"], cell)
+    lo, hi = res["lower"], res["upper"]
+    assert (lo is None or st["op_margin"] >= lo) and (hi is None or st["op_margin"] < hi) and cell["level_band"]["level"] == pytest.approx(st["op_margin"])
     assert cell["r5"] == pytest.approx(ps.curves["margin_retention"].at(5))
     assert cell["level5_median"] == pytest.approx(cell["centre_8y_median"] + cell["r5"] * (cell["dev"] or 0.0))
-    assert qd.ppf(0.9) - qd.ppf(0.1) == pytest.approx(res["p90"] - res["p10"])          # the measured width, as measured
+    assert qd.ppf(0.9) - qd.ppf(0.1) == pytest.approx(res["p90"] - res["p10"])          # the measured width of the band, as measured
     assert qd.ppf(0.5) == pytest.approx(cell["level5_median"] + res["p50"])
+    assert res["n"] >= C.MIN_N and cell["n"] == res["n"]
+
+
+def test_residual_by_level_measures_a_spread_that_grows_with_the_level():
+    """Addendum I1 on a heteroskedastic panel: resid = level x noise.  The five bands' widths rise with the level, the ranges tile the line, every group has n >= 50."""
+    rng = np.random.default_rng(11)
+    lv = rng.uniform(0.01, 0.30, 2000)
+    t = S.residual_by_level(lv, rng.normal(0, 1, 2000) * lv * 0.5)
+    g = t["groups"]
+    assert t["n"] == 2000 and [x["band"] for x in g] == [[i, i] for i in range(5)] and sum(x["n"] for x in g) == 2000 and all(x["n"] >= S.MIN_N for x in g)
+    w = [x["p90"] - x["p10"] for x in g]
+    assert all(b > a for a, b in zip(w, w[1:])) and w[-1] > 3 * w[0]                  # the spread is measured by level, not scaled by hand
+    assert g[0]["lower"] is None and g[-1]["upper"] is None and all(a["upper"] == b["lower"] for a, b in zip(g, g[1:]))
+    # a value on a cut goes to the upper band (the repo's bucket convention)
+    from valuation.priors import _level_group
+    cut = g[1]["upper"]
+    assert _level_group(t, cut)[0]["band"] == [2, 2] and _level_group(t, cut - 1e-12)[0]["band"] == [1, 1]
+    assert _level_group(t, -5.0)[0]["band"] == [0, 0] and _level_group(t, 5.0)[0]["band"] == [4, 4]       # open ends
+    assert _level_group(t, None)[0] is None and _level_group(None, 0.1)[0] is None
+
+
+def test_residual_by_level_merges_thin_bands_by_the_stated_rule_and_a_cell_under_50_stays_thin():
+    rng = np.random.default_rng(5)
+    t = S.residual_by_level(rng.uniform(0, 1, 120), rng.normal(0, 1, 120))               # 24 per quintile: merged by merge_1d until every group has >= 50
+    assert all(x["n"] >= S.MIN_N for x in t["groups"]) and sum(x["n"] for x in t["groups"]) == 120
+    assert len(t["groups"]) == len(S.merge_1d([24] * 5, S.MIN_N))
+    assert all(x["merged"] for x in t["groups"] if x["band"][1] > x["band"][0])
+    thin = S.residual_by_level(rng.uniform(0, 1, 40), rng.normal(0, 1, 40))             # under 50 in all: one thin group, which the lookup refuses (Addendum I5)
+    assert len(thin["groups"]) == 1 and thin["groups"][0]["thin"] and thin["n"] == 40
+    from valuation.priors import _level_group
+    assert _level_group(thin, 0.5) == (None, 40)
+    assert S.residual_by_level(np.array([]), np.array([]))["groups"] == []
+
+
+def _tables_copy(d, tmp_path, mutate):
+    T = json.loads((d / "2024" / "tables.json").read_text(encoding="utf-8"))
+    mutate(T)
+    out = tmp_path / "v"
+    (out / "2024").mkdir(parents=True)
+    (out / "2024" / "tables.json").write_text(json.dumps(T), encoding="utf-8")
+    return out
+
+
+def test_two_companies_in_different_level_bands_get_different_spreads(synthetic_vintage, tmp_path):
+    """Addendum I1: the residual quantiles come from the group the company's own current margin falls in: split the cell at the company's margin and the two sides differ."""
+    d, root, sic = synthetic_vintage
+    cik = next(c for c, s in sorted(sic.items()) if s == "3571")
+    cp, st = _state_for(root, sic, cik)
+    base = PopulationPriors(d).for_company("operating", st, "2025-06-30")
+    cell = base.meta["cells"]["margin_target"]
+    m = st["op_margin"]
+
+    def split(low_width, high_width, cut):
+        def mutate(T):
+            key = cell["residual_cell"]
+            tab = T["margin_retention"]["residual_k5_by_level"][key]
+            tab["groups"] = [{"band": [0, 1], "lower": None, "upper": cut, "n": 100, "p5": -low_width, "p10": -low_width / 2, "p25": -low_width / 4, "p50": 0.0, "p75": low_width / 4,
+                              "p90": low_width / 2, "p95": low_width, "merged": True, "thin": False},
+                             {"band": [2, 4], "lower": cut, "upper": None, "n": 100, "p5": -high_width, "p10": -high_width / 2, "p25": -high_width / 4, "p50": 0.0,
+                              "p75": high_width / 4, "p90": high_width / 2, "p95": high_width, "merged": True, "thin": False}]
+            tab["n"] = 200
+        return mutate
+    lo_side = PopulationPriors(_tables_copy(d, tmp_path / "a", split(0.02, 0.40, m + 1.0))).for_company("operating", st, "2025-06-30")      # the margin is below the cut
+    hi_side = PopulationPriors(_tables_copy(d, tmp_path / "b", split(0.02, 0.40, m - 1.0))).for_company("operating", st, "2025-06-30")      # the margin is above the cut
+    w = lambda ps: ps.inputs["margin_target"].ppf(0.9) - ps.inputs["margin_target"].ppf(0.1)         # noqa: E731
+    assert w(lo_side) == pytest.approx(0.02 / 2 * 2) and w(hi_side) == pytest.approx(0.40 / 2 * 2)
+    assert lo_side.meta["cells"]["margin_target"]["level_band"]["band"] == [0, 1] and hi_side.meta["cells"]["margin_target"]["level_band"]["band"] == [2, 4]
+
+
+def test_a_margin_or_roic_residual_cell_under_50_is_merged_up_then_the_input_is_refused_named(synthetic_vintage, tmp_path):
+    """Addendum I1 (the merge rule) and I5: the residual cell of the company's band is merged up (sign-pooled, then fully pooled) and, when every cell is under 50, the input
+    is refused naming the n."""
+    d, root, sic = synthetic_vintage
+    cik = next(c for c, s in sorted(sic.items()) if s == "3571")
+    cp, st = _state_for(root, sic, cik)
+    base = PopulationPriors(d).for_company("operating", st, "2025-06-30")
+    key = base.meta["cells"]["margin_target"]["residual_cell"]
+
+    def thin_own(T):                                  # the company's own cell: under 50
+        T["margin_retention"]["residual_k5_by_level"][key]["n"] = 25
+    ps = PopulationPriors(_tables_copy(d, tmp_path / "a", thin_own)).for_company("operating", st, "2025-06-30")
+    assert "margin_target" in ps.inputs or any("margin_target:" in u for u in ps.meta["unavailable"])
+    if "margin_target" in ps.inputs:                  # merged up to the next pooled cell, stamped
+        assert any("merged up to" in f for f in ps.meta["fallbacks"])
+
+    def thin_all(T):
+        for v in T["margin_retention"]["residual_k5_by_level"].values():
+            v["n"] = 25
+        for v in T["roic_level"]["residual_k5_by_level"].values():
+            v["n"] = 25
+    ps = PopulationPriors(_tables_copy(d, tmp_path / "b", thin_all)).for_company("operating", st, "2025-06-30")
+    assert "margin_target" not in ps.inputs and any("margin_target: no residual cell with n >= 50" in u and "n=25" in u for u in ps.meta["unavailable"])
+    assert "ronic" not in ps.inputs and any("ronic: no ROIC residual cell with n >= 50" in u and "n=25" in u for u in ps.meta["unavailable"])
+    r = op.run(cp, PopulationPriors(_tables_copy(d, tmp_path / "c", thin_all)), _disc(), n_draws=20, state=st)
+    assert r["status"] == "refused" and any("priors do not supply" in x and "margin_target" in x for x in r["reasons"])
+
+
+def _disc():
+    from valuation.discount_rate import DiscountRate
+    return DiscountRate(asof="2025-06-30", rf=0.04, erp=0.05, beta_unlevered=1.0, de_ratio=0.0, de_basis="book", tax=0.25, beta_levered=1.0, coe=0.10,
+                        kd_pretax=None, wacc=0.09, placeholder=True)
 
 
 def test_roic_level_table_measures_the_excess_retention_and_the_level_residual():
@@ -374,7 +485,7 @@ def test_ronic_is_the_roic_level_five_years_on_the_own_level_fading_to_the_indus
         L0 = st["roic3"]
         assert cell["L0_trailing_3y_roic"] == pytest.approx(L0) and cell["industry_median_roic"] == ind
         assert cell["level5_median"] == pytest.approx(ind + ps.curves["ronic_fade"].at(5) * (L0 - ind))
-        res = T["roic_level"]["residual_k5"][cell["band"]]
+        res = _group_of(T["roic_level"], cell)
         qd = ps.inputs["ronic"]
         assert qd.ppf(0.9) - qd.ppf(0.1) == pytest.approx(res["p90"] - res["p10"]) and qd.ppf(0.5) == pytest.approx(cell["level5_median"] + res["p50"])
     # without the date's industry median (or the own trailing ROIC) the prior names what it lacks, and the engine refuses before it
