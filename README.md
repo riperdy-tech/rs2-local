@@ -377,7 +377,8 @@ Offline; no model, no GPU, no network. Tests: `pytest valuation rebuild_harness`
   screener's production extractor, vendored byte for byte in `valuation/vendored/` (sha256 in MANIFEST.json) and run unchanged on the cut document.
   Every fact keeps its filing metadata and a provenance state (`facts_table`). `PriceSource` is the price-provider interface (traded unadjusted
   close, quality verified/unverified/missing, delisting events, a Yahoo provider that is offline unless allowed). SIC and name as filed at T from
-  filing headers (`HeaderSic`). API at the top of the module.
+  filing headers (`HeaderSic`). Quarterly facts (10-Q values, year-to-date differences, 10-K-derived fourth quarters) with the same provenance
+  (`quarterly`, `quarterly_rows`, `PitQuarterSource`). API at the top of the module.
 - `rebuild_harness/` - extends `backtest_phase2` (whose metric primitives it reuses): any list of valuation dates, total-return excess vs SPY at
   3/6/12/24/36 months from the next session, delisting returns, first-filed fundamental outcomes, five yardsticks, the old engine (revision 21's
   reference, synthetic consensus) as a pluggable engine `engine(ticker, asof, data_root)`, Spearman IC / quintile spreads / sector-neutral IC /

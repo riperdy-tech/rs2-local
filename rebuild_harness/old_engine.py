@@ -39,6 +39,12 @@ from backtest_phase2.arms import _precheck, synthetic_estimates   # noqa: E402  
 from valuation.pit_data import is_num, to_date   # noqa: E402
 from .engines import Context, result, REGISTRY   # noqa: E402
 
+import functools    # noqa: E402
+
+if not getattr(br, "_pit_memoised", False):       # the corpus file is hashed once per path, not once per company (as the earlier harness did)
+    br._file_sha = functools.lru_cache(maxsize=None)(br._file_sha)
+    br._pit_memoised = True
+
 R17_FIELDS = ("goodwill", "intangibles_ex_goodwill", "amortization_intangibles")
 OLD_ENGINE_FILES = [HERE, TOOLS / "consensus_reference.py", TOOLS / "throughcycle_record.py", TOOLS / "base_rates.py",
                     TOOLS / "growth_persistence.py", REPO / "backtest_phase2" / "arms.py"]

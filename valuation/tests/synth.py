@@ -34,10 +34,11 @@ def cover(end, filed, value, form="10-Q", accn=None):
 def write_company(store_dir, cik, facts, name="Synthetic Co"):
     store_dir = Path(store_dir)
     store_dir.mkdir(parents=True, exist_ok=True)
-    nested = {}
+    nested, q = {}, {}
     for taxo, tag, unit, start, end, val, accn, filed, form in facts:
-        nested.setdefault(taxo, {}).setdefault(tag, {}).setdefault(unit, []).append([start, end, val, accn, filed, form])
-    doc = {"cik": str(cik).zfill(10), "name": name, "facts": nested, "dropped_no_filed": 0, "layer_version": pd_.PIT_LAYER_VERSION}
+        tgt = q if (form in pd_.QUARTER_FORMS and taxo != "dei") else nested
+        tgt.setdefault(taxo, {}).setdefault(tag, {}).setdefault(unit, []).append([start, end, val, accn, filed, form])
+    doc = {"cik": str(cik).zfill(10), "name": name, "facts": nested, "qfacts": q, "dropped_no_filed": 0, "layer_version": pd_.PIT_LAYER_VERSION}
     with gzip.open(store_dir / f"{str(cik).zfill(10)}.json.gz", "wt", encoding="utf-8") as f:
         json.dump(doc, f)
     return str(cik).zfill(10)
@@ -85,3 +86,7 @@ def drop_filed_on_or_after(store_dir, cik, date_iso):
                 units[u] = [r for r in units[u] if r[4] < date_iso]
     with gzip.open(p, "wt", encoding="utf-8") as f:
         json.dump(doc, f)
+
+
+def duration_fact(tag, start, end, val, accn, filed, form="10-Q", unit="USD"):
+    return ["us-gaap", tag, unit, start, end, val, accn, filed, form]

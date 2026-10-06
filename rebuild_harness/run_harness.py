@@ -70,7 +70,8 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
         c = cov["dates"][d] = {"window": lock["windows"][d], "companies_offered": len(ciks), "engine_reasons": {n: Counter() for n in names},
                                "engine_scored": Counter(), "outcome_available": defaultdict(Counter), "fund_outcome_available": Counter(),
                                "price_flags": Counter(), "share_basis": Counter(), "outcome_status": defaultdict(Counter),
-                               "price_quality": Counter(), "price_coverage": Counter(), "provenance_state": Counter()}
+                               "price_quality": Counter(), "price_coverage": Counter(), "provenance_state": Counter(),
+                               "unresolved_delistings": Counter()}
         keep, why = pit.universe(d, ciks)
         c["universe_reasons"] = dict(why)
         c["with_annual_report"] = len(keep)
@@ -91,7 +92,11 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
             else:
                 c["price_coverage"]["priced"] += 1
         c["unpriceable_share_of_universe"] = (1.0 - c["price_coverage"]["priced"] / len(keep)) if keep else None
+        prev = None
         for cik in keep:
+            if prev is not None:
+                pit.evict(prev)                      # one company's facts in memory at a time
+            prev = cik
             snap = pit.snapshot(cik, d)
             age = (to_date(d) - to_date(snap.L_fye)).days / 30.4375 if snap and snap.L_fye else None
             if age is None or age > max_base_age_months:
@@ -113,7 +118,7 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
             c["price_quality"][mc.get("price_quality")] += 1
             c["provenance_state"][mc.get("provenance_state")] += 1
             rec = {"date": d, "cik": cik, "ticker": key, "sector": (labels.get(cik) or {}).get("sector"), "family": None, "price": mc["price"],
-                   "market_cap": mc["market_cap"], "price_quality": mc.get("price_quality"), "provenance_state": mc.get("provenance_state"), "score": {}, "vp": {}, "excess": {}, "ret": {}, "base": None, "out": {}, "forecasts": {},
+                   "market_cap": mc["market_cap"], "bounds": {}, "price_quality": mc.get("price_quality"), "provenance_state": mc.get("provenance_state"), "score": {}, "vp": {}, "excess": {}, "ret": {}, "base": None, "out": {}, "forecasts": {},
                    "stamps": {}}
             fam = None
             for e in engs:
@@ -139,8 +144,11 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
             for h, o in ho.items():
                 c["outcome_available"][str(h)]["available" if o["available"] else "missing"] += 1
                 c["outcome_status"][str(h)][o["status"]] += 1
+                if o["status"] == outcomes.UNOBSERVABLE and "history_ended_before_horizon" in o.get("flags", []):
+                    c["unresolved_delistings"][str(h)] += 1
                 if not coverage_only:
                     rec["excess"][h], rec["ret"][h] = o.get("excess"), o.get("ret")
+                    rec["bounds"][h] = o.get("bounds")
             if not coverage_only:
                 row, prev = snap.row_L(), None
                 yrs = snap.rows()
@@ -168,7 +176,10 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
         with gzip.open(out_dir / "records.jsonl.gz", "wt", encoding="utf-8") as f:
             for r in records:
                 f.write(json.dumps(_clean(r)) + "\n")
-        summary = metrics.summarize(records, names, ys, horizons, value_engines=value_engines, ks=ks, n_resamples=n_resamples)
+        # Addendum D: every return metric under three bounds on the unobservable delistings: excluded, at -100%, at the last close
+        by_bound = {b: metrics.summarize(metrics.view_for_bound(records, b), names, ys, horizons, value_engines=value_engines, ks=ks,
+                                         n_resamples=n_resamples) for b in metrics.BOUNDS}
+        summary = dict(by_bound["excluded"], bound="excluded", other_bounds={b: by_bound[b] for b in metrics.BOUNDS if b != "excluded"})
         (out_dir / "summary.json").write_text(json.dumps(_clean(summary), indent=1), encoding="utf-8")
     return {"coverage": cov, "summary": summary, "records": len(records)}
 
