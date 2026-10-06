@@ -13,7 +13,7 @@ RAW_PRICES = WORKSPACE / "data" / "priors" / "_inputs" / "prices_monthly_raw.jso
 DATA_DIR = Path(os.environ.get("PRIORS_DATA_DIR", str(WORKSPACE / "data" / "priors")))
 INPUTS_DIR = WORKSPACE / "data" / "priors" / "_inputs"
 
-PRIORS_VERSION = "1"
+PRIORS_VERSION = "2"      # 2: Addendum H (family_not_built for pre-profit and utilities; roic3; the roic_level table; correlations on the level variables)
 # a vintage Y is cut at Dec 31 of year Y: the layer is asked for the state at the NEXT day, so that every filing used was filed strictly before it
 # (companyfacts carries filing dates only; with no acceptance timestamp a filing on the cut date is AMBIGUOUS and unused).  A valuation date T uses
 # the latest vintage whose cut date is not after T.

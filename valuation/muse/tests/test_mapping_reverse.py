@@ -13,6 +13,7 @@ from valuation.muse.tests import fixtures as fx
 def setup(family="operating", sic="3674"):
     pit = fx.make_pit(sic=sic)
     st = build_state(pit)
+    st.update(fx.INDUSTRY_CONTEXT)                                   # Addendum H3: the date's industry medians
     ps = fx.LabeledPlaceholderPriors().for_company(family, st, pit.asof)
     return pit, st, ps, fx.disc_factory(st)
 
@@ -81,20 +82,20 @@ def p50(res):
 
 def test_an_all_p50_normal_placement_reproduces_the_prior_alone():
     pit, st, ps, disc = setup()
-    base = run_engine("operating", pit, MusePriors(ps, "operating", st, {}), disc, n_draws=300, seed=7)
+    base = run_engine("operating", pit, MusePriors(ps, "operating", st, {}), disc, n_draws=300, seed=7, state=st)
     pos = {n: Position(50.0, "normal") for n in ("g1", "margin_target", "ronic", "g_terminal")}
-    placed = run_engine("operating", pit, MusePriors(ps, "operating", st, pos), disc, n_draws=300, seed=7)
+    placed = run_engine("operating", pit, MusePriors(ps, "operating", st, pos), disc, n_draws=300, seed=7, state=st)
     assert p50(placed) == pytest.approx(p50(base), rel=1e-9)
     assert placed["placeholder"] is True
 
 
 def test_higher_growth_placement_raises_value_and_width_widens_the_distribution():
     pit, st, ps, disc = setup()
-    lo = run_engine("operating", pit, MusePriors(ps, "operating", st, {"g1": Position(20.0, "normal")}), disc, n_draws=400, seed=3)
-    hi = run_engine("operating", pit, MusePriors(ps, "operating", st, {"g1": Position(80.0, "normal")}), disc, n_draws=400, seed=3)
+    lo = run_engine("operating", pit, MusePriors(ps, "operating", st, {"g1": Position(20.0, "normal")}), disc, n_draws=400, seed=3, state=st)
+    hi = run_engine("operating", pit, MusePriors(ps, "operating", st, {"g1": Position(80.0, "normal")}), disc, n_draws=400, seed=3, state=st)
     assert p50(hi) > p50(lo)
-    nar = run_engine("operating", pit, MusePriors(ps, "operating", st, {"g1": Position(50.0, "narrow")}), disc, n_draws=400, seed=3)
-    wid = run_engine("operating", pit, MusePriors(ps, "operating", st, {"g1": Position(50.0, "wide")}), disc, n_draws=400, seed=3)
+    nar = run_engine("operating", pit, MusePriors(ps, "operating", st, {"g1": Position(50.0, "narrow")}), disc, n_draws=400, seed=3, state=st)
+    wid = run_engine("operating", pit, MusePriors(ps, "operating", st, {"g1": Position(50.0, "wide")}), disc, n_draws=400, seed=3, state=st)
     spread = lambda r: r["distribution"]["equity"]["p90"] - r["distribution"]["equity"]["p10"]   # noqa: E731
     assert spread(wid) > spread(nar)
 
@@ -104,7 +105,7 @@ def test_curve_inputs_move_the_value_and_stamp_that_their_width_is_not_propagate
     slow = MusePriors(ps, "operating", st, {"growth_persistence": Position(90.0, "wide")})
     fast = MusePriors(ps, "operating", st, {"growth_persistence": Position(10.0, "wide")})
     # the sign of the effect is not asserted: growth is nearly value-neutral when the return on new capital fades to the cost of capital
-    assert p50(run_engine("operating", pit, slow, disc, n_draws=300, seed=5)) != pytest.approx(p50(run_engine("operating", pit, fast, disc, n_draws=300, seed=5)), rel=1e-6)
+    assert p50(run_engine("operating", pit, slow, disc, n_draws=300, seed=5, state=st)) != pytest.approx(p50(run_engine("operating", pit, fast, disc, n_draws=300, seed=5, state=st)), rel=1e-6)
     assert mp.CURVE_WIDTH_STAMP in slow.stamps()
     assert slow.for_company("operating", st, pit.asof).curves["growth_decay"].at(5) == pytest.approx(ps.refs["curve_position"]("growth_persistence").ppf(0.9))
 
@@ -117,16 +118,16 @@ def test_the_family_must_match():
 
 def test_commodity_margin_retention_is_positioned_through_the_normalization_reference():
     pit, st, ps, disc = setup("commodity", "1311")
-    res = run_engine("commodity", pit, MusePriors(ps, "commodity", st, {"margin_retention": Position(90.0, "normal")}), disc, n_draws=200, seed=2)
+    res = run_engine("commodity", pit, MusePriors(ps, "commodity", st, {"margin_retention": Position(90.0, "normal")}), disc, n_draws=200, seed=2, state=st)
     assert res["status"] == "ok" and "positioned" in res["normalization"]["curve_source"]
-    base = run_engine("commodity", pit, MusePriors(ps, "commodity", st, {}), disc, n_draws=200, seed=2)
+    base = run_engine("commodity", pit, MusePriors(ps, "commodity", st, {}), disc, n_draws=200, seed=2, state=st)
     assert p50(res) != p50(base)
 
 
 def test_financial_rote_retention_is_positioned():
     pit, st, ps, disc = setup("financial", "6021")
-    a = run_engine("financial", pit, MusePriors(ps, "financial", st, {"rote_retention": Position(90.0, "normal")}), disc, n_draws=200, seed=2)
-    b = run_engine("financial", pit, MusePriors(ps, "financial", st, {"rote_retention": Position(10.0, "normal")}), disc, n_draws=200, seed=2)
+    a = run_engine("financial", pit, MusePriors(ps, "financial", st, {"rote_retention": Position(90.0, "normal")}), disc, n_draws=200, seed=2, state=st)
+    b = run_engine("financial", pit, MusePriors(ps, "financial", st, {"rote_retention": Position(10.0, "normal")}), disc, n_draws=200, seed=2, state=st)
     assert a["status"] == "ok" and p50(a) != p50(b)
 
 

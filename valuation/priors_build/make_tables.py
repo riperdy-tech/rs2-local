@@ -91,7 +91,7 @@ def tables_from_frames(df: pd.DataFrame, status, meta: dict, mc, year: int) -> d
         "population": S.population_state(d, cut), "survivorship": S.survivorship(d),
         "g1": S.g1_tables(d), "growth_decay": S.decay_tables(d),
         "margin_retention": ret, "normalization": S.normalization_bands(d, cyc_cuts5), "rote_retention": S.rote_retention(d),
-        "ronic": S.ronic_tables(d, roic_cuts),
+        "ronic": S.ronic_tables(d, roic_cuts), "roic_level": S.roic_level_tables(d),
         "ronic_fade": S.excess_return_fade(d, "roic", "roic_{k}", opc, float(roic_pool)) if np.isfinite(roic_pool) else None,
         "excess_fade_financial": S.excess_return_fade(d, "rote", "rote_{k}", d["family"].eq("financial"), float(rote_pool)) if np.isfinite(rote_pool) else None,
         "terminal": S.terminal_tables(d), "correlation": S.correlation_tables(d),

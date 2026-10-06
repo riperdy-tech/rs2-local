@@ -48,6 +48,8 @@ def make_pit(asof=ASOF, first=2016, years=10, sic="3674", ticker="SYN", shares=1
                       shares_outstanding=sh)
 
 
+INDUSTRY_CONTEXT = {"industry_roic": {"value": 0.12, "n": 50, "basis": "industry"}, "industry_rote": {"value": 0.10, "n": 50, "basis": "industry"}}   # Addendum H3
+
 IDENTITY = {"name": "Synthetic Co", "ticker": "SYN", "industry": "Test industry", "name_source": "as_of_T", "ticker_source": "as_of_T",
             "industry_source": "as_of_T"}
 

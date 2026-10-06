@@ -176,6 +176,8 @@ def features(st: dict, family: str) -> dict:
     nop = None if (oi is None or tax is None) else nopat_of(oi, tax)
     out["roic"] = (nop / ic) if (nop is not None and ic is not None and ic > 0) else None
     out["tbv"] = st.get("tbv")
+    out["roic3"] = st.get("roic3")                       # Addendum H3: the trailing 3-year ROIC level
+    out["industry_roic"] = st.get("industry_roic")       # {"value", "n", "basis"}: the date's industry median ROIC, attached by the caller (the population of the date)
     return out
 
 
@@ -376,33 +378,43 @@ class PopulationPriors(Priors):
             unavailable.append("margin_retention: no measured curve")
         if "margin_target" not in inputs:
             unavailable.append("margin_target: no centre (no margin) or no residual spread")
-        # ronic by family x ROIC tercile
-        rt = T["ronic"]["families"]
-        rb = _band(ft.get("roic"), T["ronic"]["roic_cuts"])
-        rf = rt.get(fam)
-        rcell = rf["bands"].get(NAMES.get(rb, "")) if (rf and rb >= 0) else None
-        if rcell is None or rcell.get("n", 0) < C.MIN_N:
-            alt = rt.get("operating")
-            rcell2 = alt["bands"].get(NAMES.get(rb, "")) if (alt and rb >= 0) else None
-            if rb < 0:
-                rcell2 = alt["floored_all"] if alt else None
-                fallbacks.append("ronic: return on capital not computable for the company: the family's pooled distribution")
-                rcell = (rf or {}).get("floored_all") if (rf and (rf["floored_all"].get("n", 0) >= C.MIN_N)) else rcell2
-            elif rcell2 is not None and rcell2.get("n", 0) >= C.MIN_N:
-                fallbacks.append(f"ronic: {fam}/{NAMES.get(rb)} has too few observations: the operating family's cell")
-                rcell = rcell2
-        qd = _qd(rcell, 0.0, src) if rcell else None
-        if qd is None:
-            unavailable.append("ronic: no cell with enough observations")
+        # ronic (Addendum H3): the ROIC LEVEL five years on.  The company's own trailing 3-year ROIC (L0) fades along the measured retention of ROIC's excess to the
+        # median ROIC I of its industry at T, so the median level five years on is I + phi_5 (L0 - I); the spread is the measured dispersion of the ROIC level path
+        # about that median path (T["roic_level"]), not of incremental ROIC.  The engine moves L0 -> that level along the curve's shape, holds it, and ends in
+        # perpetuity at max(I, WACC).
+        rl = T.get("roic_level")
+        L0, ind = ft.get("roic3"), ft.get("industry_roic")
+        if not rl or not rl.get("bands"):
+            unavailable.append("ronic: this vintage has no roic_level table (priors version < 2)")
+        elif L0 is None:
+            unavailable.append("ronic: no trailing 3-year ROIC for the company (three consecutive fiscal years with NOPAT and positive invested capital)")
+        elif ind is None:
+            unavailable.append("ronic: no industry median ROIC at T was supplied (the population of the date)")
         else:
-            inputs["ronic"] = qd
-            meta["cells"]["ronic"] = {"band": NAMES.get(rb), "n": rcell.get("n"), "window": "3-year change in NOPAT / change in invested capital (IC growth >= 10%)"}
-        rf_curve = T.get("ronic_fade")
-        if rf_curve:
-            cv = _curve_from_rows(rf_curve["ks"], "median", "n", "ronic_fade", src, flags)
-            if cv is not None:
-                curves["ronic_fade"] = cv
-                flags.append("ronic_fade: a measured PROXY: the retention of ROIC's excess over the population median ROIC, not the fade toward the cost of capital")
+            I = ind["value"]
+            gap = L0 - I
+            key = "pos" if gap >= rl["min_abs_gap"] else ("neg" if gap <= -rl["min_abs_gap"] else "all")
+            bd = rl["bands"].get(key)
+            if bd is None or bd.get("n", 0) < C.MIN_N:
+                fallbacks.append(f"ronic: band {key} too thin in this vintage: the sign-pooled ROIC retention")
+                bd, key = rl["bands"].get("all"), "all"
+            cv = _curve_from_rows(bd["ks"], "median", "n", "ronic_fade", src, flags) if bd else None
+            res = rl["residual_k5"].get(key) or rl["residual_k5"].get("all")
+            if cv is None or res is None:
+                unavailable.append("ronic: no measured ROIC retention curve or residual spread in this vintage")
+            else:
+                phi5 = cv.at(CURVE_REF_YEAR)
+                centre5 = I + phi5 * gap
+                qd = _qd(res, centre5, src)
+                if qd is None:
+                    unavailable.append("ronic: the residual spread has too few observations for P10/P50/P90")
+                else:
+                    inputs["ronic"] = qd
+                    curves["ronic_fade"] = cv
+                    meta["cells"]["ronic"] = {"band": key, "n": res.get("n"), "L0_trailing_3y_roic": L0, "industry_median_roic": I, "industry_basis": ind.get("basis"),
+                                              "industry_n": ind.get("n"), "phi5": phi5, "level5_median": centre5, "p10_p90_width": qd.ppf(0.9) - qd.ppf(0.1),
+                                              "note": "ROIC level five years on: I + phi_5 (L0 - I) with the measured residual spread of that level (Addendum H3)"}
+                    flags.append("ronic_fade: the measured retention of ROIC's excess over the same-year population median (the date's industry median applies it in the engine)")
         if "ronic_fade" not in curves:
             unavailable.append("ronic_fade: no measured curve")
         # references

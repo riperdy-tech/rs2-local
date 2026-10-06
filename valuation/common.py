@@ -447,6 +447,46 @@ def total_debt(row):
     return (0.0 if lt is None else lt) + tcr.short_term_debt(row)
 
 
+def chain_index(periods: List[str]) -> Dict[str, int]:
+    """{period end: chain index}: consecutive fiscal years differ by 1; a missing year (a gap of n years) jumps by n; a period shorter than a
+    year (a transition report) still steps by 1.  "t-2..t" and "t+k" mean years, not rows."""
+    out, i, prev = {}, 0, None
+    for pe in periods:
+        if prev is not None:
+            gap = (date.fromisoformat(pe) - date.fromisoformat(prev)).days
+            i += max(1, int(round(gap / 365.25)))
+        out[pe] = i
+        prev = pe
+    return out
+
+
+def nopat_of(ebit, tax) -> Optional[float]:
+    """The engines' rule: EBIT - tax x max(EBIT, 0)."""
+    return None if ebit is None else ebit - tax * max(ebit, 0.0)
+
+
+def invested_capital(row, debt_default: Optional[float] = None) -> Optional[float]:
+    """equity + debt (excluding leases) - cash - short-term investments (an untagged short-term investment is none): the state's own components.  `debt_default`
+    stands in for a debt that `total_debt` cannot measure (the never-tagged convention of Addendum G 5 passes 0.0)."""
+    eq, cash, d = num(row.get("equity")), num(row.get("cash")), total_debt(row)
+    if d is None:
+        d = debt_default
+    if eq is None or cash is None or d is None:
+        return None
+    sti = num(row.get("st_investments"))
+    return eq + d - cash - (0.0 if sti is None else sti)
+
+
+def trailing_level(series: Mapping[str, float], idx: Mapping[str, int], base: str, years: int = 3) -> Optional[float]:
+    """The mean of a yearly level over the `years` consecutive fiscal years ending at `base` (chain index), or None unless every one of them is defined."""
+    t = idx[base]
+    by = {i: p for p, i in idx.items()}
+    ps = [by.get(t - k) for k in range(years)]
+    if any(q is None or q not in series for q in ps):
+        return None
+    return sum(series[q] for q in ps) / years
+
+
 def build_state(pit: CompanyPIT, max_years: int = 12) -> dict:
     """The company's state at pit.asof: base-period figures and the history features the engines and priors read.
 
@@ -581,6 +621,19 @@ def build_state(pit: CompanyPIT, max_years: int = 12) -> dict:
     st["rote_series"] = rote
     st["rote_latest"] = rote.get(base_pe)
     st["rote_median"] = _median(rote.values())
+    # Addendum H3: the trailing 3-year level of the return on invested capital (NOPAT / invested capital, each of the three consecutive fiscal years ending at the
+    # base year) and, for financials, of the return on tangible equity.  Every one of the three years must be defined; none is imputed.
+    cidx = chain_index(periods)
+    dd = 0.0 if (st.get("debt_components_never_tagged") and len(st["debt_components_never_tagged"]) == len(DEBT_COMPONENTS)) else None
+    roic = {}
+    for p in periods:
+        nop = nopat_of(num(rows[p]["operating_income"]), st["tax_rate"])
+        ic = invested_capital(rows[p], dd)
+        if nop is not None and ic is not None and ic > 0:
+            roic[p] = nop / ic
+    st["roic_series"] = roic
+    st["roic3"] = trailing_level(roic, cidx, base_pe)
+    st["rote3"] = trailing_level(rote, cidx, base_pe)
     # interest and cost of debt: interest expense / average (debt + finance leases): the interest line carries finance-lease interest
     ie = num(base["interest_expense"])
     dprev = total_debt(prev) if prev else None

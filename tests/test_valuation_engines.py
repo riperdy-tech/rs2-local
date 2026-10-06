@@ -23,11 +23,22 @@ def disc(w=0.10, coe=0.12, asof="2025-06-30"):
                         coe=coe, kd_pretax=None, wacc=w, placeholder=True)
 
 
-def op_state(**kw):
+def op_state(ronic=0.12, **kw):
+    """`ronic`: the company's trailing 3-year ROIC AND its industry's median (Addendum H3), so that a return on new capital equal to it is the same in every year
+    and in perpetuity (max(I, WACC) = I for I >= WACC = 0.10): the hand computations below then do not depend on the ROIC path."""
     st = {"ticker": "SYN", "asof": "2025-06-30", "base_period": "2024-12-31", "revenue": 1000.0, "op_margin": 0.10, "tax_rate": 0.25,
+          "roic3": ronic, "industry_roic": {"value": ronic, "n": 50, "basis": "industry"},
           "maint_gap_ratio": 0.0, "nwc_ratio": 0.10, "debt": 0.0, "finance_lease_liability": 0.0, "operating_lease_liability": 0.0,
           "nci": 0.0, "cash": 0.0, "st_investments": 0.0, "lt_investments": 0.0, "read_as_none": [], "missing": []}
     st.update(kw)
+    return st
+
+
+def with_context(pit_or_state, roic=0.12, rote=0.10):
+    """The engines' state with the date's industry medians attached (what gate1.value_company does)."""
+    st = build_state(pit_or_state) if not isinstance(pit_or_state, dict) else pit_or_state
+    st["industry_roic"] = {"value": roic, "n": 50, "basis": "industry"}
+    st["industry_rote"] = {"value": rote, "n": 50, "basis": "industry"}
     return st
 
 
@@ -38,7 +49,7 @@ def curves(g, m, r):
 # ---- the operating chain, hand computed -----------------------------------------------------------------------------------------------
 
 def test_operating_chain_two_years_by_hand():
-    st = op_state(debt=200.0, cash=50.0, nci=10.0, finance_lease_liability=20.0, lt_investments=30.0, operating_lease_liability=77.0)
+    st = op_state(ronic=0.15, debt=200.0, cash=50.0, nci=10.0, finance_lease_liability=20.0, lt_investments=30.0, operating_lease_liability=77.0)
     p = {"g1": 0.10, "g_terminal": 0.02, "margin_target": 0.20, "ronic": 0.15}
     r = op.operating_chain(st, p, curves([1.0, 0.0], [0.0, 0.0], [1.0, 1.0]), disc(), roll_forward=False, detail=True)
     # year 1: rev 1100, EBIT 220, NOPAT 165, reinvestment 100 x 0.20 x 0.75 / 0.15 = 100, FCFF 65
@@ -80,7 +91,7 @@ def test_roll_forward_uses_cost_of_equity_over_the_years_since_base_year_end():
 
 
 def test_negative_terminal_growth_and_working_capital_release_by_hand():
-    st = op_state(nwc_ratio=0.10)
+    st = op_state(ronic=0.15, nwc_ratio=0.10)
     p = {"g1": -0.05, "g_terminal": 0.02, "margin_target": 0.20, "ronic": 0.15}
     r = op.operating_chain(st, p, curves([1.0], [0.0], [1.0]), disc(), roll_forward=False, detail=True)
     y1 = r["years"][0]
@@ -220,7 +231,7 @@ def test_model_disagreement_is_the_log_ratio():
 
 def fin_state(**kw):
     st = {"ticker": "SYN", "asof": "2025-06-30", "base_period": "2024-12-31", "tbv": 1000.0, "rote_latest": 0.15, "periods": ["2024-12-31"],
-          "tax_rate": 0.2, "read_as_none": [], "missing": []}
+          "tax_rate": 0.2, "read_as_none": [], "missing": [], "industry_rote": {"value": 0.10, "n": 50, "basis": "industry"}}
     st.update(kw)
     return st
 
@@ -232,11 +243,29 @@ def test_financial_excess_return_by_hand():
     r = fin.financial_chain(st, p, c, disc(coe=0.10), roll_forward=False, detail=True)
     y1, y2 = r["years"]
     assert y1["excess_return"] == pytest.approx(50.0)
-    assert y2["excess_return"] == pytest.approx(0.025 * 1030.0)
-    tv = 0.025 * 1060.9 / 0.07
-    expected = 1000 + 50 / 1.1 + 25.75 / 1.21 + tv / 1.21
+    assert y2["excess_return"] == pytest.approx(0.025 * 1030.0)         # the excess over the industry median (0.10) is still half open in year 2
+    # Addendum H3: in perpetuity the return is the industry median floored at the cost of equity: here 0.10 = COE, so no excess return after year N
+    assert r["terminal_rote"] == pytest.approx(0.10)
+    expected = 1000 + 50 / 1.1 + 25.75 / 1.21
     assert r["equity"] == pytest.approx(expected, rel=REL)
     assert r["price_to_tbv_implied"] == pytest.approx(expected / 1000.0)
+
+
+def test_financial_fades_to_the_industry_median_and_ends_at_it_floored_at_the_cost_of_equity():
+    p = {"g1": 0.03, "g_terminal": 0.03, "rote_target": 0.20}
+    c = {"growth_decay": Curve([1.0] * 3), "rote_retention": Curve([0.0] * 3), "excess_fade": Curve([0.0] * 3)}
+    # the excess has fully faded to the industry median 0.14 (above COE 0.10): RI_t = 0.04 x TBV_{t-1}, and the same in perpetuity
+    st = fin_state(industry_rote={"value": 0.14, "n": 50, "basis": "industry"})
+    r = fin.financial_chain(st, p, c, disc(coe=0.10), roll_forward=False, detail=True)
+    assert [y["rote_after_fade"] for y in r["years"]] == pytest.approx([0.14] * 3) and r["terminal_rote"] == pytest.approx(0.14)
+    tbv = [1000.0, 1030.0, 1060.9]
+    pv = sum(0.04 * tbv[i] / 1.1 ** (i + 1) for i in range(3))
+    tv = 0.04 * 1092.727 / 0.07
+    assert r["equity"] == pytest.approx(1000 + pv + tv / 1.1 ** 3, rel=1e-6)
+    # an industry median BELOW the cost of equity is floored at COE in perpetuity (no value destruction for ever), while the explicit years keep it
+    low = fin.financial_chain(fin_state(industry_rote={"value": 0.06, "n": 50, "basis": "industry"}), p, c, disc(coe=0.10), roll_forward=False, detail=True)
+    assert [y["rote_after_fade"] for y in low["years"]] == pytest.approx([0.06] * 3) and low["terminal_rote"] == pytest.approx(0.10)
+    assert low["pv_terminal_excess"] == 0.0
 
 
 def test_financial_full_fade_to_cost_of_equity_leaves_tangible_book():
@@ -257,6 +286,7 @@ def test_financial_value_below_tbv_when_return_is_below_cost_of_equity():
 def test_financial_refuses_without_a_positive_tangible_book():
     assert fin.state_gaps(fin_state(tbv=-5.0))
     assert fin.state_gaps(fin_state(tbv=None))
+    assert any("industry median return on tangible equity" in g for g in fin.state_gaps(fin_state(industry_rote=None)))
     assert not fin.state_gaps(fin_state())
 
 
@@ -325,13 +355,13 @@ def _commodity_pit(asc932=None, sic="1311"):
 def test_commodity_secondary_asc932_when_tagged_else_stamped_tangible_book_proxy():
     pri = PlaceholderPriors(True)
     d = disc(asof="2025-06-30")
-    with_sm = com.run(_commodity_pit(asc932=1500.0), pri, d, n_draws=200)
+    with_sm = com.run(_commodity_pit(asc932=1500.0), pri, d, n_draws=200, state=with_context(_commodity_pit(asc932=1500.0)))
     assert with_sm["status"] == "ok" and with_sm["secondary"]["kind"] == "asc932_standardized_measure"
     assert with_sm["secondary"]["proxy"] is False
     st = build_state(_commodity_pit(asc932=1500.0))
     yrs = (date(2025, 6, 30) - date(2024, 12, 31)).days / 365.25
     assert with_sm["secondary"]["equity"] == pytest.approx((1500.0 - 100.0 + 50.0) * 1.12 ** yrs)
-    no_sm = com.run(_commodity_pit(), pri, d, n_draws=200)
+    no_sm = com.run(_commodity_pit(), pri, d, n_draws=200, state=with_context(_commodity_pit()))
     assert no_sm["secondary"]["kind"] == "tangible_book_proxy" and no_sm["secondary"]["proxy"] is True
     assert any("PROXY" in s for s in no_sm["secondary"]["stamps"])
     assert no_sm["secondary"]["equity"] == pytest.approx(st["tbv"] * 1.12 ** yrs)
@@ -362,7 +392,7 @@ def _operating_pit(asof="2025-06-30"):
 
 def test_operating_run_returns_a_distribution_with_secondary_and_disagreement():
     pit = _operating_pit()
-    r = op.run(pit, PlaceholderPriors(True), disc(), n_draws=300, seed=5)
+    r = op.run(pit, PlaceholderPriors(True), disc(), n_draws=300, seed=5, state=with_context(pit))
     assert r["status"] == "ok" and r["family"] == "operating"
     d = r["distribution"]
     assert d["n_valid"] > 0 and d["equity"]["p10"] <= d["equity"]["p50"] <= d["equity"]["p90"]
@@ -371,7 +401,7 @@ def test_operating_run_returns_a_distribution_with_secondary_and_disagreement():
     assert "inputs drawn independently" in " ".join(r["notes"])
     assert r["placeholder"] is True and r["discount"]["placeholder"] is True
     assert r["base_period"] == "2024-12-31"
-    again = op.run(pit, PlaceholderPriors(True), disc(), n_draws=300, seed=5)
+    again = op.run(pit, PlaceholderPriors(True), disc(), n_draws=300, seed=5, state=with_context(pit))
     assert again["distribution"]["equity"] == d["equity"]            # deterministic for a seed
     assert "years" in r["at_median_inputs"]
 
@@ -402,6 +432,7 @@ def test_sanity_no_zero_long_run_margin_from_an_operating_vs_earnings_gap():
 def test_sanity_a_shrinking_company_is_not_given_positive_perpetual_growth():
     st = op_state(op_margin=0.05)
     shrink = {"g1": -0.04, "g_terminal": 0.0236, "margin_target": 0.05, "ronic": 0.10}
+    st = op_state(ronic=0.10, op_margin=0.05)
     c = curves([1.0] * 5, [1.0] * 5, [1.0] * 5)
     a = op.operating_chain(st, shrink, c, disc(), roll_forward=False, detail=True)
     assert a["years"][-1]["growth"] == pytest.approx(-0.04)           # decay 1 holds g1 to the last explicit year
@@ -450,8 +481,8 @@ def test_a_run_on_point_priors_equals_the_deterministic_chain():
     inputs = {"g1": 0.06, "g_terminal": 0.02, "margin_target": 0.15, "ronic": 0.12}
     cv = curves([1.0, 0.6, 0.3, 0.0], [0.5, 0.2, 0.0, 0.0], [1.0, 0.7, 0.4, 0.2])
     d = disc()
-    r = op.run(pit, _PointPriors("operating", inputs, cv), d, n_draws=30)
-    st = build_state(pit)
+    st = with_context(pit)
+    r = op.run(pit, _PointPriors("operating", inputs, cv), d, n_draws=30, state=st)
     # Addendum H2: the engine ignores a prior's terminal growth and takes min(risk-free rate at T, 3.75%) (disc() has rf 4%: the anchor binds)
     direct = op.operating_chain(st, dict(inputs, g_terminal=0.0375), cv, d)
     assert r["terminal_growth"]["base"] == 0.0375 and "g_terminal" not in r["inputs"]
@@ -467,7 +498,7 @@ def test_financial_run_end_to_end_with_secondary_and_flags():
         rows[f"{y}-12-31"] = dict(revenue=500.0 + 10 * (y - 2015), net_income=100.0 + 5 * (y - 2015), equity=1000.0 + 50 * (y - 2015),
                                   equity_incl_nci=1000.0 + 50 * (y - 2015), goodwill=100.0, intangibles_ex_goodwill=0.0, total_assets=9000.0)
     pit = _pit_from_rows(rows, asof="2025-06-30", sic="6022")
-    r = fin.run(pit, PlaceholderPriors(True), disc(coe=0.10), n_draws=200, seed=9)
+    r = fin.run(pit, PlaceholderPriors(True), disc(coe=0.10), n_draws=200, seed=9, state=with_context(pit))
     assert r["status"] == "ok" and r["family"] == "financial" and r["placeholder"] is True
     assert r["distribution"]["secondary_equity"] is not None and r["model_disagreement"] is not None
     assert r["distribution"]["tv_share"]["p50"] is not None
@@ -487,12 +518,12 @@ def test_stale_asc932_tag_is_not_used():
     pit = _commodity_pit()
     n = "StandardizedMeasureOfDiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReserves"
     pit.concepts[n] = {"2018-12-31": Filed(999.0, "2018-12-31", "2019-02-20", "OLD", "10-K", n)}
-    r = com.run(pit, PlaceholderPriors(True), disc(), n_draws=100)
+    r = com.run(pit, PlaceholderPriors(True), disc(), n_draws=100, state=with_context(pit))
     assert r["secondary"]["kind"] == "tangible_book_proxy" and any("stale" in s for s in r["secondary"]["stamps"])
 
 
 def test_financial_terminal_growth_follows_the_same_rule_and_the_run_reports_it():
-    st = {"tbv": 1000.0, "rote_latest": 0.12, "base_period": "2024-12-31", "tax_rate": 0.25}
+    st = fin_state(rote_latest=0.12)
     cv = {"growth_decay": Curve([1.0, 0.5]), "rote_retention": Curve([0.5, 0.5]), "excess_fade": Curve([1.0, 1.0])}
     up = fin.financial_chain(st, {"g1": 0.06, "g_terminal": 0.02, "rote_target": 0.12}, cv, disc(coe=0.10), roll_forward=False, detail=True)
     assert up["years"][-1]["growth"] == pytest.approx(0.04) or up["terminal_growth"]["value"] == pytest.approx(0.02)
@@ -502,5 +533,65 @@ def test_financial_terminal_growth_follows_the_same_rule_and_the_run_reports_it(
     assert down["terminal_growth"]["value"] == pytest.approx(-0.06)
     rows = {f"{y}-12-31": dict(revenue=500.0 + 10 * (y - 2015), net_income=100.0 + 5 * (y - 2015), equity=1000.0 + 50 * (y - 2015),
                                equity_incl_nci=1000.0 + 50 * (y - 2015), goodwill=100.0, intangibles_ex_goodwill=0.0, total_assets=9000.0) for y in range(2015, 2025)}
-    r = fin.run(_pit_from_rows(rows, asof="2025-06-30", sic="6022"), PlaceholderPriors(True), disc(coe=0.10), n_draws=50, seed=9)
+    pit9 = _pit_from_rows(rows, asof="2025-06-30", sic="6022")
+    r = fin.run(pit9, PlaceholderPriors(True), disc(coe=0.10), n_draws=50, seed=9, state=with_context(pit9))
     assert r["terminal_growth"]["base"] == 0.0375 and "g_terminal" not in r["inputs"]        # disc() has rf 4%: the anchor binds, the placeholder's own value is ignored
+
+
+# ---- Addendum H3: the return on new capital -----------------------------------------------------------------------------------------------------
+
+def _roic_pit():
+    """Five fiscal years, tax 25%, operating income 100/120/140/160/180 on invested capital 1000 (equity 1100 + debt 200 - cash 300) in every year."""
+    rows = {}
+    for i, y in enumerate(range(2020, 2025)):
+        oi = 100.0 + 20 * i
+        rows[f"{y}-12-31"] = dict(revenue=1000.0, operating_income=oi, pretax_income=oi, tax_provision=0.25 * oi, equity=1100.0, debt_lt_noncurrent=200.0,
+                                  cash=300.0, net_income=0.75 * oi, goodwill=100.0, intangibles_ex_goodwill=0.0, total_assets=2000.0,
+                                  current_assets=400.0, current_liabilities=200.0, capex=50.0, ppe_net=500.0, da=40.0)
+    return _pit_from_rows(rows, asof="2025-06-30")
+
+
+def test_the_state_carries_the_trailing_3_year_roic_level_by_hand():
+    st = build_state(_roic_pit())
+    # NOPAT = EBIT x 0.75 over invested capital 1000 in each year; the trailing 3 years are 2022-2024: EBIT 140, 160, 180
+    assert st["roic_series"]["2024-12-31"] == pytest.approx(180 * 0.75 / 1000.0)
+    assert st["roic3"] == pytest.approx((140 + 160 + 180) / 3 * 0.75 / 1000.0)
+    # a year without a defined ROIC inside the window leaves the level undefined (nothing is imputed)
+    pit = _roic_pit()
+    del pit.series["equity"]["2023-12-31"]
+    assert build_state(pit)["roic3"] is None
+
+
+def test_the_ronic_path_starts_at_the_own_roic_follows_the_retention_curve_and_ends_at_the_industry_median_floored_at_wacc():
+    # L0 = 20%, the ROIC level five years on 12%, the retention of the excess [0.9, 0.8, 0.7, 0.6, 0.5]: w_t = (1 - v_t) / (1 - v_5) = 0.2, 0.4, 0.6, 0.8, 1
+    st = op_state(ronic=0.20, nwc_ratio=0.0)
+    st["industry_roic"] = {"value": 0.08, "n": 50, "basis": "industry"}          # below WACC (0.10): the perpetuity return is WACC, not the median
+    p = {"g1": 0.10, "g_terminal": 0.02, "margin_target": 0.10, "ronic": 0.12}
+    c = curves([1.0] * 6, [0.0] * 6, [0.9, 0.8, 0.7, 0.6, 0.5, 0.5])
+    r = op.operating_chain(st, p, c, disc(w=0.10), roll_forward=False, detail=True)
+    assert [y["ronic"] for y in r["years"]] == pytest.approx([0.20 + (0.12 - 0.20) * w for w in (0.2, 0.4, 0.6, 0.8, 1.0, 1.0)])
+    assert r["ronic_terminal"] == pytest.approx(0.10)
+    # the median level five years on, I + phi_5 (L0 - I), reproduces the measured fade of the excess at every year (the same identity as the margin's)
+    I, L0, phi = 0.08, 0.20, [0.9, 0.8, 0.7, 0.6, 0.5]
+    L5 = I + phi[4] * (L0 - I)
+    r2 = op.operating_chain(st, dict(p, ronic=L5), c, disc(w=0.10), roll_forward=False, detail=True)
+    for t in range(5):
+        assert r2["years"][t]["ronic"] == pytest.approx(I + phi[t] * (L0 - I))
+    # an industry median above WACC is the perpetuity return as it stands
+    st3 = op_state(ronic=0.20, nwc_ratio=0.0)
+    st3["industry_roic"] = {"value": 0.14, "n": 50, "basis": "industry"}
+    assert op.operating_chain(st3, p, c, disc(w=0.10), roll_forward=False)["ronic_terminal"] == pytest.approx(0.14)
+
+
+def test_a_ronic_path_that_is_not_positive_while_the_company_grows_is_an_invalid_draw():
+    st = op_state(ronic=0.05)
+    with pytest.raises(DrawInvalid):
+        op.operating_chain(st, {"g1": 0.10, "g_terminal": 0.02, "margin_target": 0.10, "ronic": -0.02}, curves([1.0] * 6, [0.0] * 6, [0.9, 0.8, 0.7, 0.6, 0.5, 0.5]),
+                           disc(), roll_forward=False)
+
+
+def test_the_operating_engine_refuses_naming_a_missing_roic_or_industry_median():
+    gaps = op.state_gaps(op_state(roic3=None))
+    assert any("trailing 3-year ROIC" in g for g in gaps)
+    assert any("industry median ROIC at T" in g for g in op.state_gaps(op_state(industry_roic=None)))
+    assert not op.state_gaps(op_state())

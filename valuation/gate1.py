@@ -20,6 +20,9 @@ POPULATION CONTEXT.  Two rules of Addendum B need a population measured at the s
   * Cost of debt: a company with debt and no clean interest line (interest / average debt not measurable) gets risk-free + the median spread
     (interest / average debt - risk-free) measured on the same industry's companies on the date (at least `SPREAD_MIN_N`; else pooled), stamped.
     "Same year" is read as the same cross-section: every base fiscal year here is the latest annual report filed before the date.
+  * Return on new capital (Addendum H3): the median trailing 3-year ROIC (operating, commodity) or ROTE (financial) of the company's Damodaran industry on the date
+    (at least `RETURN_MIN_N` of them; else the family group's pooled median, stamped) is attached to the company's state as `industry_roic` / `industry_rote`: the
+    level its own ROIC fades to, and in perpetuity (floored at WACC / the cost of equity) what it earns.
 Nothing is silently dropped: every company ends in a record with a status and reasons.
 """
 from __future__ import annotations
@@ -41,6 +44,7 @@ GATE1_VERSION = "1"
 N_DRAWS = 2000
 MCAP_FLOOR = 300e6
 DE_MIN_N = 20
+RETURN_MIN_N = 20                  # Addendum H3: an industry with fewer companies on the date uses the pooled cross-section (stamped)
 SPREAD_MIN_N = 10
 DE_PERCENTILE = 0.95
 FAMILY_ENGINES = {"operating": engine_operating, "commodity": engine_commodity, "financial": engine_financial}
@@ -117,6 +121,10 @@ class DateContext:
     de_p95_pooled: Optional[tuple] = None
     spread: Dict[str, tuple] = field(default_factory=dict)       # industry -> (median spread, n)
     spread_pooled: Optional[tuple] = None
+    roic: Dict[str, tuple] = field(default_factory=dict)         # Addendum H3: industry -> (median trailing 3-year ROIC, n), operating + commodity companies
+    roic_pooled: Optional[tuple] = None
+    rote: Dict[str, tuple] = field(default_factory=dict)         # industry -> (median trailing 3-year ROTE, n), financial companies
+    rote_pooled: Optional[tuple] = None
 
     @classmethod
     def build(cls, asof, rf: float, rows: List[dict]) -> "DateContext":
@@ -125,7 +133,18 @@ class DateContext:
         by_ind_de: Dict[str, List[float]] = {}
         by_ind_sp: Dict[str, List[float]] = {}
         all_de, all_sp = [], []
+        by_ind_roic: Dict[str, List[float]] = {}
+        by_ind_rote: Dict[str, List[float]] = {}
+        all_roic, all_rote = [], []
         for r in rows:
+            ind_ = r.get("industry")
+            fam_ = r.get("family")
+            for key, val, grp, pool, fams in (("roic3", r.get("roic3"), by_ind_roic, all_roic, ("operating", "commodity")),
+                                              ("rote3", r.get("rote3"), by_ind_rote, all_rote, ("financial",))):
+                if val is not None and math.isfinite(val) and fam_ in fams:
+                    pool.append(val)
+                    if ind_:
+                        grp.setdefault(ind_, []).append(val)
             ind = r.get("industry")
             de, kd = r.get("de_book"), r.get("kd_effective")
             if de is not None and math.isfinite(de) and de >= 0:
@@ -144,6 +163,14 @@ class DateContext:
             ctx.de_p95_pooled = (_pctl(all_de, DE_PERCENTILE), len(all_de))
         if all_sp:
             ctx.spread_pooled = (statistics.median(all_sp), len(all_sp))
+        for ind, xs in by_ind_roic.items():
+            ctx.roic[ind] = (statistics.median(xs), len(xs))
+        for ind, xs in by_ind_rote.items():
+            ctx.rote[ind] = (statistics.median(xs), len(xs))
+        if all_roic:
+            ctx.roic_pooled = (statistics.median(all_roic), len(all_roic))
+        if all_rote:
+            ctx.rote_pooled = (statistics.median(all_rote), len(all_rote))
         return ctx
 
     def de_threshold(self, industry):
@@ -162,6 +189,19 @@ class DateContext:
         if self.spread_pooled is not None:
             return self.spread_pooled[0], self.spread_pooled[1], "pooled"
         return None, 0, None
+
+
+    def industry_return(self, industry, family):
+        """{"value", "n", "basis"} of the median trailing 3-year ROIC (operating, commodity) or ROTE (financial) of the company's industry on the date, from the
+        companies prepared on the date (the point-in-time population); the family group's pooled median, stamped, when the industry has fewer than RETURN_MIN_N;
+        None when nothing was measurable."""
+        tab, pooled = (self.rote, self.rote_pooled) if family == "financial" else (self.roic, self.roic_pooled)
+        v = tab.get(industry) if industry else None
+        if v is not None and v[1] >= RETURN_MIN_N:
+            return {"value": v[0], "n": v[1], "basis": "industry"}
+        if pooled is not None:
+            return {"value": pooled[0], "n": pooled[1], "basis": "pooled (industry too thin or unmapped)"}
+        return None
 
 
 # ---- the discount rate of a company -------------------------------------------------------------------------------------------------------
@@ -218,7 +258,7 @@ def prepare(adapt_result) -> dict:
     """Classification and the state of one adapted company: the compact fields the population context needs, and the packed CompanyPIT for pass 2.
     {"status": "prepared" | "refused" | "family_not_built" | "unclassifiable", "reasons": [...], "family", ...}"""
     out = {"cik": adapt_result.cik, "status": None, "reasons": [], "family": None, "family_reason": None, "conflicts": [], "industry": adapt_result.industry,
-           "stamps": list(adapt_result.stamps), "provenance": adapt_result.provenance, "de_book": None, "kd_effective": None, "blob": None}
+           "stamps": list(adapt_result.stamps), "provenance": adapt_result.provenance, "de_book": None, "kd_effective": None, "roic3": None, "rote3": None, "blob": None}
     if not adapt_result.ok:
         out["status"], out["reasons"] = "refused", list(adapt_result.refusals)
         return out
@@ -236,6 +276,7 @@ def prepare(adapt_result) -> dict:
         return out
     st = build_state(pit)
     out["de_book"], out["kd_effective"] = st.get("de_book"), st.get("kd_effective")
+    out["roic3"], out["rote3"] = st.get("roic3"), st.get("rote3")
     out["status"] = "prepared"
     out["blob"] = pack(pit)
     return out
@@ -264,6 +305,11 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
         out["status"], out["reasons"] = "refused", [f"discount_rate: {str(e)[:200]}"]
         return out
     out["stamps"] += dstamps
+    # Addendum H3: the median return of the company's industry on the date's population, attached to the state the priors and the engine read
+    ir = ctx.industry_return(prep["industry"], family)
+    if ir is not None:
+        st["industry_roic" if family != "financial" else "industry_rote"] = ir
+        out["stamps"].append(f"industry_median_return: {ir['basis']}, n={ir['n']}, value={ir['value']:.4f}")
     ps = priors.for_company(family, st, asof)
     out["prior_source"] = ps.source
     if ps.source == "UNAVAILABLE":
@@ -272,9 +318,7 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
     corr = ps.meta.get("corr") or None
     seed = seed_for(pit.cik or prep["cik"], asof)
     mod = FAMILY_ENGINES[family]
-    kwargs = dict(n_draws=n_draws, seed=seed, corr=corr)
-    if family == "operating":
-        kwargs["state"] = st
+    kwargs = dict(n_draws=n_draws, seed=seed, corr=corr, state=st)
     fixed = PreBuiltPriors(ps)
     def run_engine(kw):
         return mod.run(pit, fixed, disc, **kw)

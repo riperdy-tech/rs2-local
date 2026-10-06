@@ -273,10 +273,13 @@ def synthetic_vintage(pop, tmp_path_factory):
     return d, root, sic
 
 
-def _state_for(root, sic, cik, asof="2025-06-30"):
+def _state_for(root, sic, cik, asof="2025-06-30", industry_roic=0.10, industry_rote=0.10):
     pit = PitData(root / "store")
     cp = pit.company_pit(cik, asof)
-    return cp, build_state(cp)
+    st = build_state(cp)
+    st["industry_roic"] = {"value": industry_roic, "n": 50, "basis": "industry"}        # Addendum H3: what gate1.value_company attaches from the date's population
+    st["industry_rote"] = {"value": industry_rote, "n": 50, "basis": "industry"}
+    return cp, st
 
 
 @pytest.mark.parametrize("family,names", [("operating", {"growth_persistence": "growth_decay", "margin_retention": "margin_retention"}),
@@ -337,6 +340,61 @@ def test_margin_target_is_the_year_5_level_with_the_measured_spread_unscaled(syn
     assert qd.ppf(0.5) == pytest.approx(cell["level5_median"] + res["p50"])
 
 
+def test_roic_level_table_measures_the_excess_retention_and_the_level_residual():
+    """Addendum H3 on a hand-built panel: roic_{t+k} = ref + 0.6^k (roic3 - ref) + noise, the same-year median as the reference."""
+    rng = np.random.default_rng(3)
+    n = 400
+    year = np.repeat([2018, 2019, 2020, 2021], n // 4)
+    roic3 = rng.normal(0.10, 0.08, n)
+    ref = pd.Series(roic3).groupby(year).transform("median").to_numpy()
+    d = pd.DataFrame({"family": "operating", "year": year, "roic3": roic3})
+    for k in S.RATIO_KS:
+        d[f"roic_{k}"] = ref + 0.6 ** k * (roic3 - ref) + (rng.normal(0, 0.03, n) if k == 5 else 0.0)
+    t = S.roic_level_tables(d)
+    assert t["n_obs"] == n and set(t["bands"]) == {"pos", "neg", "all"}
+    meds = [r["median"] for r in t["bands"]["all"]["ks"]]
+    assert meds[:4] == pytest.approx([0.6 ** k for k in (1, 2, 3, 4)], abs=1e-9) and meds[4] == pytest.approx(0.6 ** 5, abs=0.05)
+    res = t["residual_k5"]["all"]
+    assert abs(res["p50"]) < 0.01 and 0.04 < res["p90"] - res["p10"] < 0.10         # about 2 x 1.28 x 0.03 = 0.077: the noise of the level five years on
+    assert t["bands"]["pos"]["sign"] == 1 and t["bands"]["neg"]["sign"] == -1
+    d2 = d.copy()
+    d2["roic3"] = np.nan
+    assert S.roic_level_tables(d2)["n_obs"] == 0
+
+
+def test_ronic_is_the_roic_level_five_years_on_the_own_level_fading_to_the_industry_median_with_the_measured_spread(synthetic_vintage):
+    d, root, sic = synthetic_vintage
+    cik = next(c for c, s in sorted(sic.items()) if s == "3571")
+    T = json.loads((d / "2024" / "tables.json").read_text(encoding="utf-8"))
+    for ind in (0.02, 0.30):
+        cp, st = _state_for(root, sic, cik, industry_roic=ind)
+        ps = PopulationPriors(d).for_company("operating", st, "2025-06-30")
+        assert "ronic" in ps.inputs and "ronic_fade" in ps.curves, ps.meta["unavailable"]
+        cell = ps.meta["cells"]["ronic"]
+        L0 = st["roic3"]
+        assert cell["L0_trailing_3y_roic"] == pytest.approx(L0) and cell["industry_median_roic"] == ind
+        assert cell["level5_median"] == pytest.approx(ind + ps.curves["ronic_fade"].at(5) * (L0 - ind))
+        res = T["roic_level"]["residual_k5"][cell["band"]]
+        qd = ps.inputs["ronic"]
+        assert qd.ppf(0.9) - qd.ppf(0.1) == pytest.approx(res["p90"] - res["p10"]) and qd.ppf(0.5) == pytest.approx(cell["level5_median"] + res["p50"])
+    # without the date's industry median (or the own trailing ROIC) the prior names what it lacks, and the engine refuses before it
+    cp, st = _state_for(root, sic, cik)
+    del st["industry_roic"]
+    ps = PopulationPriors(d).for_company("operating", st, "2025-06-30")
+    assert "ronic" not in ps.inputs and any("industry median ROIC" in u for u in ps.meta["unavailable"])
+    st["industry_roic"] = {"value": 0.1, "n": 5, "basis": "industry"}
+    st["roic3"] = None
+    assert any("trailing 3-year ROIC" in u for u in PopulationPriors(d).for_company("operating", st, "2025-06-30").meta["unavailable"])
+
+
+def test_terminal_growth_is_not_a_prior(synthetic_vintage):
+    d, root, sic = synthetic_vintage
+    cik = next(c for c, s in sorted(sic.items()) if s == "3571")
+    cp, st = _state_for(root, sic, cik)
+    ps = PopulationPriors(d).for_company("operating", st, "2025-06-30")
+    assert "g_terminal" not in ps.inputs and not any("g_terminal" in u for u in ps.meta["unavailable"])
+
+
 def test_the_engines_run_end_to_end_on_a_synthetic_priorset(synthetic_vintage):
     from valuation.discount_rate import DiscountRate
     d, root, sic = synthetic_vintage
@@ -346,9 +404,10 @@ def test_the_engines_run_end_to_end_on_a_synthetic_priorset(synthetic_vintage):
     for fam, code, eng in (("operating", "3571", op), ("commodity", "1311", com), ("financial", "6021", fin)):
         cik = next(c for c, s in sorted(sic.items()) if s == code)
         cp, st = _state_for(root, sic, cik)
-        r = eng.run(cp, pp, disc, n_draws=100)
+        r = eng.run(cp, pp, disc, n_draws=100, state=st)
         assert r["status"] in ("ok", "refused")
-        assert not any("priors do not supply" in x for x in r.get("reasons", []))
+        assert not any("priors do not supply" in x for x in r.get("reasons", [])), r.get("reasons")
+        assert not any("industry median" in x for x in r.get("reasons", []))
 
 
 # ---- the real population (skipped when the store or the built vintage is absent) -----------------------------------------------------------------
@@ -356,7 +415,14 @@ def test_the_engines_run_end_to_end_on_a_synthetic_priorset(synthetic_vintage):
 REAL = C.DATA_DIR / "2024" / "tables.json"
 
 
-@pytest.mark.skipif(not (C.STORE_DIR.exists() and REAL.exists()), reason="real store or built vintage absent")
+def _real_vintage_is_v2():
+    try:
+        return REAL.exists() and "roic_level" in json.loads(REAL.read_text(encoding="utf-8"))
+    except OSError:
+        return False
+
+
+@pytest.mark.skipif(not (C.STORE_DIR.exists() and _real_vintage_is_v2()), reason="real store or a priors-v2 vintage (with the roic_level table) absent")
 def test_engines_run_on_real_priors_for_a_few_names_no_value_is_asserted():
     from valuation.classification import classification
     from valuation.discount_rate import DiscountRate
@@ -374,7 +440,10 @@ def test_engines_run_on_real_priors_for_a_few_names_no_value_is_asserted():
         fam = classification(cik, "2025-06-30", cp)["family"]
         if fam not in ran:
             continue
-        r = {"operating": op, "commodity": com, "financial": fin}[fam].run(cp, pp, disc, n_draws=200)
+        st = build_state(cp)
+        st["industry_roic"] = {"value": 0.10, "n": 50, "basis": "industry"}          # Addendum H3: a stand-in for the date's population (plumbing check, no value asserted)
+        st["industry_rote"] = {"value": 0.10, "n": 50, "basis": "industry"}
+        r = {"operating": op, "commodity": com, "financial": fin}[fam].run(cp, pp, disc, n_draws=200, state=st)
         assert r["status"] in ("ok", "refused")
         assert not any("priors do not supply" in x for x in r.get("reasons", [])), (cik, r.get("reasons"))
         if r["status"] == "ok":

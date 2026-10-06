@@ -66,8 +66,8 @@ def asset_value_cross_check(pit: CompanyPIT, st: dict, disc: DiscountRate, *, oi
 
 def run(pit: CompanyPIT, priors, disc: DiscountRate, *, oil_gas: Optional[bool] = None, n_draws: int = 2000, seed: int = 20261006,
         corr=None, price_per_share: Optional[float] = None, operating_leases_in_cash_flow: bool = True,
-        maint_gap_floor: Optional[float] = 0.0, roll_forward: bool = True) -> dict:
-    st = build_state(pit)
+        maint_gap_floor: Optional[float] = 0.0, roll_forward: bool = True, state: Optional[dict] = None) -> dict:
+    st = state if state is not None else build_state(pit)
     gaps = op.state_gaps(st)
     cyc = st.get("cyclicality")
     if cyc is None:

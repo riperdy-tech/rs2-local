@@ -10,7 +10,11 @@ THE CHAIN (all money in the filing's units; year t = 1..N, N = the length of the
                                                          measured curve's shape and is held there (common.level_path_weights)
   EBIT_t       = margin_t x Rev_t
   NOPAT_t      = EBIT_t - tax x max(EBIT_t, 0)           = EBIT x (1 - tax) when EBIT > 0; no tax shield is booked on losses (no NOL asset)
-  RONIC_t      = WACC + (RONIC - WACC) x phi_t           phi = fade curve toward the cost of capital
+  RONIC_t      = L_0 + (L_5 - L_0) x w_t                 L_0 = the company's own trailing 3-year ROIC (NOPAT / invested capital); L_5 = the ROIC level five years on (an input,
+                                                         `ronic`, drawn from the measured dispersion of the ROIC level path about I + phi_5 (L_0 - I), I = the median ROIC
+                                                         of the company's industry at T on the date's population); w_t as for the margin with phi = the measured retention of
+                                                         ROIC's excess (Addendum H3). In perpetuity RONIC = max(I, WACC): a stable company does not keep investing below its
+                                                         cost of capital (the textbook stable-growth convention)
   growth reinvestment_t
        growth_t >= 0 : (Rev_t - Rev_{t-1}) x m_5 (1 - tax) / RONIC_t      capital needed per dollar of added revenue, i.e. reinvestment =
                                                          growth / return on new capital, priced at the LONG-RUN margin (m_5) so that a
@@ -47,7 +51,7 @@ from .common import (Curve, DrawInvalid, InputError, MAX_HORIZON, QuantileDist, 
 from .discount_rate import DiscountRate
 
 ENGINE = "operating"
-INPUTS = ("g1", "margin_target", "ronic")      # margin_target = the margin level five years on (Addendum H1); terminal growth is not an input (Addendum H2)
+INPUTS = ("g1", "margin_target", "ronic")      # margin_target / ronic = the margin / ROIC level five years on (Addenda H1, H3); terminal growth is not an input (H2)
 CURVES = ("growth_decay", "margin_retention", "ronic_fade")
 
 
@@ -60,7 +64,9 @@ def refusal(engine, reasons, **extra):
 def state_gaps(st) -> list:
     """What the operating chain needs from the filings and does not have."""
     gaps = list(st.get("missing", []))
-    for k, why in (("op_margin", "base-year operating margin (operating income and revenue)"),
+    for k, why in (("roic3", "trailing 3-year ROIC (NOPAT / invested capital in three consecutive fiscal years with positive invested capital)"),
+                   ("industry_roic", "industry median ROIC at T (the population of the date was not supplied)"),
+                   ("op_margin", "base-year operating margin (operating income and revenue)"),
                    ("maint_gap_ratio", "maintenance capex ratio (Greenwald: capex, PP&E, D&A and revenue in at least two consecutive years)"),
                    ("nwc_ratio", "net working capital / revenue (current assets, current liabilities, cash)")):
         if st.get(k) is None:
@@ -86,7 +92,7 @@ def _growth_reinvestment(g, drev, m_t, tax, ronic_t, nwc_ratio):
 def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], disc: DiscountRate, *,
                     operating_leases_in_cash_flow: bool = True, maint_gap_floor: Optional[float] = 0.0,
                     roll_forward: bool = True, detail: bool = False) -> dict:
-    """One deterministic pass of the chain for point inputs p = {g1, g_terminal, margin_target (the level five years on), ronic}. DrawInvalid when not valuable."""
+    """One deterministic pass of the chain for point inputs p = {g1, g_terminal, margin_target (the margin level five years on), ronic (the ROIC level five years on)}. DrawInvalid when not valuable."""
     gd, mr, rfade = curves["growth_decay"], curves["margin_retention"], curves["ronic_fade"]
     N = len(gd)
     if N > MAX_HORIZON:
@@ -94,6 +100,8 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     tax, wacc, coe = st["tax_rate"], disc.wacc, disc.coe
     g1, gT, m5, ronic = p["g1"], p["g_terminal"], p["margin_target"], p["ronic"]       # gT: the date's terminal growth (the asymptote of the decay path)
     wm, margin_path = level_path_weights(mr, N)
+    wr, ronic_path = level_path_weights(rfade, N)
+    roic0, ind_med = st["roic3"], st["industry_roic"]["value"]
     if wacc <= gT:
         raise DrawInvalid("terminal growth is not below the discount rate")
     m0 = st["op_margin"]
@@ -109,7 +117,7 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
         m = m0 + (m5 - m0) * wm[t - 1]
         ebit = m * rev
         nopat = ebit - tax * max(ebit, 0.0)
-        ronic_t = wacc + (ronic - wacc) * rfade.at(t)
+        ronic_t = roic0 + (ronic - roic0) * wr[t - 1]
         reinv = _growth_reinvestment(g, rev - rev_prev, m5, tax, ronic_t, nwc)
         maint = gap * rev
         fcff = nopat - reinv - maint
@@ -127,7 +135,7 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     rev_T = rev_prev * (1.0 + gT)
     ebit_T = m5 * rev_T
     nopat_T = ebit_T - tax * max(ebit_T, 0.0)
-    ronic_TV = wacc + (ronic - wacc) * rfade.at(N)
+    ronic_TV = max(ind_med, wacc)               # Addendum H3: the industry median floored at WACC
     reinv_T = _growth_reinvestment(gT, rev_T - rev_prev, m5, tax, ronic_TV, nwc)
     fcff_T = nopat_T - reinv_T - gap * rev_T
     tv = fcff_T / (wacc - gT)
@@ -140,7 +148,7 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     out = {"ev": ev, "equity": br["equity_value"] * factor, "equity_at_base_year_end": br["equity_value"], "roll_forward_years": yrs,
            "roll_forward_factor": factor, "tv_share": tv_share, "pv_explicit": pv_exp, "pv_terminal": pv_tv, "terminal_value": tv,
            "fcff_terminal_year": fcff_T, "terminal_reinvestment_rate": (reinv_T / nopat_T) if nopat_T > 0 else None,
-           "maint_gap_ratio_raw": gap_raw, "maint_gap_ratio_used": gap, "bridge": br, "fcff1": fcff1, "margin_path": margin_path,
+           "maint_gap_ratio_raw": gap_raw, "maint_gap_ratio_used": gap, "bridge": br, "fcff1": fcff1, "margin_path": margin_path, "ronic_path": ronic_path, "ronic_terminal": ronic_TV,
            "terminal_growth": {"value": gT, "basis": gT_basis}}
     if detail:
         out["years"] = rows

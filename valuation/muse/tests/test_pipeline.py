@@ -14,7 +14,7 @@ PRICE = {"price": fx.PRICE_SENTINEL, "market_cap": fx.MCAP_SENTINEL, "currency":
 def run(tmp_path, client, price=PRICE, pit=None, **kw):
     pit = pit or fx.make_pit()
     return run_company(pit=pit, identity=fx.IDENTITY, priors=fx.LabeledPlaceholderPriors(), disc_factory=fx.disc_factory, client=client,
-                       run_dir=tmp_path / "run", price_info=price, documents=fx.docs(), quarters=fx.quarters(), n_draws=200, seed=11, **kw)
+                       run_dir=tmp_path / "run", price_info=price, documents=fx.docs(), quarters=fx.quarters(), n_draws=200, seed=11, industry_context=fx.INDUSTRY_CONTEXT, **kw)
 
 
 def kinds(client):

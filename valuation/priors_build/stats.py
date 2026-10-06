@@ -363,6 +363,41 @@ def ronic_tables(d: pd.DataFrame, roic_cuts: List[float]) -> dict:
     return out
 
 
+ROIC_MIN_GAP = 0.02           # a company within 2 points of its reference ROIC has no direction to measure (the same threshold as the other excess-return fades)
+
+
+def roic_level_tables(d: pd.DataFrame) -> dict:
+    """Addendum H3: the ROIC LEVEL path (not incremental ROIC).  Operating and commodity observations with a trailing 3-year ROIC (`roic3`, the state's definition).
+    The reference is the median `roic3` of the vintage's same-fiscal-year cross-section (the population analogue of the industry median at the date).
+      retention : median / quartiles of (roic_{t+k} - ref) / (roic3 - ref), k = 1..7, where |roic3 - ref| >= ROIC_MIN_GAP, for the companies above the
+                  reference (`pos`), below it (`neg`) and all (`all`): the A2 method on the excess of ROIC over its reference.
+      residual_k5 : quantiles of the ROIC level five years on about the median-retention path, (roic_{t+5} - ref) - v_5 (roic3 - ref): its dispersion, the spread of the
+                  engine's `ronic` input (a LEVEL five years on).
+    The engine's reference is the date's industry median, which the vintage cannot know; the same-year population median is the measured stand-in."""
+    s = d[d["family"].isin(["operating", "commodity"]) & d["roic3"].notna()]
+    out = {"min_abs_gap": ROIC_MIN_GAP, "n_obs": int(len(s)), "bands": {}, "residual_k5": {},
+           "reference": "median roic3 of the vintage's same-fiscal-year operating + commodity observations"}
+    if not len(s):
+        return out
+    ref_by_year = s.groupby("year")["roic3"].median()
+    ref = s["year"].map(ref_by_year).to_numpy(dtype=float)
+    r0 = s["roic3"].to_numpy(dtype=float)
+    dev = r0 - ref
+    levels = {k: s[f"roic_{k}"].to_numpy(dtype=float) for k in RATIO_KS}
+    keep = np.abs(dev) >= ROIC_MIN_GAP
+    sign = np.where(dev > 0, 1, -1)
+    out["reference_by_year"] = {str(int(y)): float(v) for y, v in ref_by_year.items()}
+    K = CURVE_REF_YEAR
+    for name, sg in (("pos", 1), ("neg", -1), ("all", 0)):
+        sel = (sign == sg) if sg else np.ones(len(s), bool)
+        out["bands"][name] = {"sign": sg, **retention_table(dev, ref, levels, keep & sel)}
+        vk = [r for r in out["bands"][name]["ks"] if r["k"] == K][0].get("median")
+        m = sel & np.isfinite(levels[K])
+        if m.sum() and vk is not None:
+            out["residual_k5"][name] = {**qdict((levels[K][m] - ref[m]) - vk * dev[m]), "retention_k5_used": vk}
+    return out
+
+
 def excess_return_fade(d: pd.DataFrame, level_col: str, k_col_fmt: str, fam_mask: pd.Series, ref: float) -> dict:
     """The retention of a return's excess over a reference level `ref` (the population median of that return in the vintage): median of
     (r_{t+k} - ref) / (r_t - ref), k = 1..7, where |r_t - ref| >= 0.02.  A MEASURED PROXY for the fade of the return on new capital toward the cost of
@@ -505,7 +540,7 @@ def correlation_tables(d: pd.DataFrame) -> dict:
     out = {}
     for fam in ("operating", "commodity"):
         s = d[d["family"].eq(fam)]
-        var = {"g1": s["y1"].to_numpy(dtype=float), "margin_target": (s["m_3"] - s["m"]).to_numpy(dtype=float), "ronic": s["ronic3"].to_numpy(dtype=float)}
+        var = {"g1": s["y1"].to_numpy(dtype=float), "margin_target": (s["m_5"] - s["m"]).to_numpy(dtype=float), "ronic": (s["roic_5"] - s["roic3"]).to_numpy(dtype=float)}
         names = ["g1", "margin_target", "ronic"]
         mat = np.eye(3)
         pairs = {}
@@ -518,7 +553,8 @@ def correlation_tables(d: pd.DataFrame) -> dict:
                     mat[i, j] = mat[j, i] = r
         m2, fixed = nearest_psd(mat)
         out[fam] = {"pairs": pairs, "psd_adjusted": fixed, "matrix": m2.tolist(), "names": names,
-                    "definitions": {"g1": "revenue growth t->t+1", "margin_target": "operating margin change t -> t+3", "ronic": "3-year RONIC (floored definition)"}}
+                    "definitions": {"g1": "revenue growth t->t+1", "margin_target": "operating margin change t -> t+5 (the level five years on, Addendum H1)",
+                                    "ronic": "change of the ROIC level, trailing 3-year ROIC at t -> ROIC at t+5 (Addendum H3)"}}
     s = d[d["family"].eq("financial")]
     rs, n = spearman(s["ty1"].to_numpy(dtype=float), (s["rote_3"] - s["rote"]).to_numpy(dtype=float))
     out["financial"] = {"pairs": {"g1|rote_target": {"spearman": rs, "copula_r": None if rs is None else gaussian_copula_r(rs), "n": n}},

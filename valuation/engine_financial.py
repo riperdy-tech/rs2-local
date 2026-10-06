@@ -6,7 +6,8 @@
                                                                  terminal growth, min(risk-free rate, 3.75%) (Addendum H2), and a negative last-year rate continues as terminal growth
   ROTE_t     = rote_T + (ROTE_0 - rote_T) x rho_t                normalization of the return from the base year's ROTE_0 toward the through-cycle
                                                                  level rote_T (an input), speed rho = the measured normalization curve
-  ROTE'_t    = COE + (ROTE_t - COE) x phi_t                      competitive fade of the excess return toward the cost of equity (phi: curve)
+  ROTE'_t    = I + (ROTE_t - I) x phi_t                          competitive fade of the excess return toward I, the median return on tangible equity of the company's industry at T on the
+                                                                 date's population (phi: the measured retention of ROTE's excess); in perpetuity ROTE' = max(I, COE) (Addendum H3)
   RI_t       = (ROTE'_t - COE) x TBV_{t-1}                       excess return (residual income) of year t
   TBV_t      = TBV_{t-1} x (1 + growth_t)
   value      = TBV_0 + sum_{t=1..N} RI_t / (1+COE)^t  +  RI_{N+1} / (COE - g_T) / (1+COE)^N ,   RI_{N+1} = (ROTE'_N - COE) x TBV_N
@@ -55,6 +56,8 @@ def state_gaps(st) -> list:
         gaps.append(f"tangible book value is not positive ({st['tbv']:.4g}): the excess-return method has no base")
     if st.get("rote_latest") is None:
         gaps.append("base-year return on tangible equity (net income and tangible equity in the base year)")
+    if st.get("industry_rote") is None:
+        gaps.append("industry median return on tangible equity at T (the population of the date was not supplied)")
     return gaps
 
 
@@ -69,6 +72,7 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     if coe <= gT:
         raise DrawInvalid("terminal growth is not below the cost of equity")
     R0 = st["rote_latest"]
+    ind = st["industry_rote"]["value"]
     tbv_prev = st["tbv"]
     pv_exp = 0.0
     rows = []
@@ -77,7 +81,7 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     for t in range(1, N + 1):
         g = gT + (g1 - gT) * gd.at(t)
         R = rT + (R0 - rT) * rho.at(t)
-        Rp = coe + (R - coe) * phi.at(t)
+        Rp = ind + (R - ind) * phi.at(t)
         ri = (Rp - coe) * tbv_prev
         tbv = tbv_prev * (1.0 + g)
         df = (1.0 + coe) ** (-t)
@@ -90,7 +94,7 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
         tbv_prev = tbv
         g_last = g
     gT, gT_basis = terminal_growth_after(g_last, gT)
-    ri_next = (Rp - coe) * tbv_prev
+    ri_next = (max(ind, coe) - coe) * tbv_prev            # Addendum H3: in perpetuity the industry median, floored at the cost of equity
     tv = ri_next / (coe - gT)
     pv_tv = tv * (1.0 + coe) ** (-N)
     value = st["tbv"] + pv_exp + pv_tv
@@ -101,7 +105,7 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     out = {"ev": value, "equity": value * factor, "equity_at_base_year_end": value, "roll_forward_years": yrs,
            "roll_forward_factor": factor, "tv_share": (pv_tv / value) if value != 0 else None,
            "tbv_0": st["tbv"], "pv_explicit_excess": pv_exp, "pv_terminal_excess": pv_tv, "excess_share_of_value": pv_total_excess / value if value else None,
-           "price_to_tbv_implied": value / st["tbv"], "terminal_growth": {"value": gT, "basis": gT_basis}}
+           "price_to_tbv_implied": value / st["tbv"], "terminal_growth": {"value": gT, "basis": gT_basis}, "terminal_rote": max(ind, coe)}
     if detail:
         out["years"] = rows
     return out

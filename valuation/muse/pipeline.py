@@ -91,9 +91,11 @@ def _resolve_pass1_entries(res, inputs, ev, prompt, family):
 def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_factory: Callable, client, run_dir,
                 price_info: Optional[Mapping] = None, documents=None, quarters=None, cik: Optional[str] = None, n_draws: int = 2000,
                 seed: int = 20261006, corr=None, model: str = "muse", max_tokens: int = DEFAULT_MAX_TOKENS, llm_seed: Optional[int] = None,
-                base_url: str = DEFAULT_URL) -> dict:
+                base_url: str = DEFAULT_URL, industry_context: Optional[Mapping] = None) -> dict:
     """Value one company at pit.asof (see the module docstring). `disc_factory(state, de_ratio=None, de_basis="book") -> DiscountRate`.
-    `price_info` = {"price": per share, "market_cap": ..., "currency": ...} is used only after pass 1; None stops after the price-free pass."""
+    `price_info` = {"price": per share, "market_cap": ..., "currency": ...} is used only after pass 1; None stops after the price-free pass.
+    `industry_context` = {"industry_roic": {"value", "n", "basis"}} (operating, commodity) or {"industry_rote": ...} (financial): the median return of the company's
+    industry on the date's population (Addendum H3), which the priors and the engines read from the state; without it they refuse, naming it."""
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     out: dict = {"ticker": pit.ticker, "asof": pit.asof.isoformat(), "stamps": [], "calls": []}
@@ -104,6 +106,7 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
         return out
 
     st = build_state(pit)
+    st.update(industry_context or {})
     cls = classification_mod.classification(pit.ticker, pit.asof, pit)
     out["classification"] = {k: cls.get(k) for k in ("family", "reason", "conflicts", "notes")}
     family = cls["family"]
@@ -118,7 +121,7 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
         return finish("refused", reason=f"discount rate: {e}")
     shares = st.get("shares_outstanding")
     # 0: the engine on the prior alone
-    res0 = run_engine(family, pit, MusePriors(ps, family, st, {}), disc, n_draws=n_draws, seed=seed, corr=corr)
+    res0 = run_engine(family, pit, MusePriors(ps, family, st, {}), disc, n_draws=n_draws, seed=seed, corr=corr, state=st)
     if res0.get("status") != "ok":
         return finish("engine_refused", reason=res0.get("reasons"), engine=res0)
     out["code_only"] = {"iv_per_share": per_share_summary(res0, shares), "result": _slim(res0)}
@@ -192,7 +195,7 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
         out["pass1"] = {"positions": {n: p.as_dict() for n, p in positions.items()}}
         # 3: the price-free engine run on Muse's distributions
         mp1 = MusePriors(ps, family, st, positions)
-        res1 = run_engine(family, pit, mp1, disc, n_draws=n_draws, seed=seed, corr=corr)
+        res1 = run_engine(family, pit, mp1, disc, n_draws=n_draws, seed=seed, corr=corr, state=st)
         out["pass1"].update(iv_per_share=per_share_summary(res1, shares), result=_slim(res1), muse_stamps=mp1.stamps())
         if price_info is None:
             return finish("pass1_only")
@@ -247,7 +250,7 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
         out["redteam"] = {"decisions": [{k: (v.as_dict() if isinstance(v, Position) else v) for k, v in d.items()} for d in decisions],
                           "anchoring": redteam.anchoring_metric(decisions)}
         mp2 = MusePriors(ps, family, st, final_pos)
-        res2 = run_engine(family, pit, mp2, disc, n_draws=n_draws, seed=seed, corr=corr, price_per_share=price)
+        res2 = run_engine(family, pit, mp2, disc, n_draws=n_draws, seed=seed, corr=corr, price_per_share=price, state=st)
         dist = res2.get("distribution") or {}
         out["final"] = {"positions": {n: p.as_dict() for n, p in final_pos.items()}, "iv_per_share": per_share_summary(res2, shares),
                         "prob_iv_above_price": dist.get("prob_value_above_price"), "prob_iv_above_1.2x_price": dist.get("prob_value_above_1.2x_price"),

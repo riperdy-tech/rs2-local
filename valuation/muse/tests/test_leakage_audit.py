@@ -88,7 +88,7 @@ def test_identity_must_be_stamped_as_of_T_and_late_documents_are_flagged_in_the_
 def make_run(tmp_path):
     run_company(pit=fx.make_pit(), identity=fx.IDENTITY, priors=fx.LabeledPlaceholderPriors(), disc_factory=fx.disc_factory, client=fx.ScriptedMuse(),
                 run_dir=tmp_path / "runs" / "SYN_2026-04-15", price_info={"price": 25.0, "market_cap": 2500.0, "currency": "USD"}, documents=fx.docs(),
-                quarters=fx.quarters(), n_draws=100, seed=1)
+                quarters=fx.quarters(), n_draws=100, seed=1, industry_context=fx.INDUSTRY_CONTEXT)
     return tmp_path / "runs"
 
 

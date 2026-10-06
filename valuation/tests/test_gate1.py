@@ -64,6 +64,24 @@ def test_a_company_that_files_debt_is_unchanged():
     assert st["debt"] == pytest.approx(320.0) and "debt_components_never_tagged" in st and st["debt_components_never_tagged"] == ["short_term_borrowings_separate"]
 
 
+# ---- Addendum H3: the industry median return of a date -------------------------------------------------------------------------------------------------
+
+def test_the_date_context_holds_the_industry_median_roic_and_rote_of_the_dates_population():
+    rows = ([{"industry": "A", "family": "operating", "roic3": 0.01 * i, "rote3": None} for i in range(1, 26)]                 # 25 in industry A: median 0.13
+            + [{"industry": "B", "family": "commodity", "roic3": 0.5, "rote3": None} for _ in range(5)]                    # 5 in B: too thin
+            + [{"industry": "C", "family": "financial", "roic3": None, "rote3": 0.02 * i} for i in range(1, 23)]          # 22 financials: median 0.23
+            + [{"industry": "A", "family": "operating", "roic3": None, "rote3": None}])                                    # not measurable: not in the median
+    ctx = gate1.DateContext.build("2020-06-30", 0.02, rows)
+    a = ctx.industry_return("A", "operating")
+    assert a == {"value": pytest.approx(0.13), "n": 25, "basis": "industry"}
+    b = ctx.industry_return("B", "commodity")                                                                              # too thin: the pooled operating + commodity median, stamped
+    assert b["basis"].startswith("pooled") and b["n"] == 30 and b["value"] == pytest.approx(0.155)
+    assert ctx.industry_return(None, "operating")["basis"].startswith("pooled")
+    c = ctx.industry_return("C", "financial")
+    assert c["basis"] == "industry" and c["n"] == 22 and c["value"] == pytest.approx(0.23)                                 # financials never mix with the operating pool
+    assert gate1.DateContext.build("2020-06-30", 0.02, []).industry_return("A", "operating") is None
+
+
 # ---- the adapter -------------------------------------------------------------------------------------------------------------------------------
 
 def _store(tmp_path, cik=1, **kw):
@@ -210,13 +228,16 @@ def test_a_company_is_valued_per_share_and_every_record_field_is_present(tmp_pat
     ad = pit_adapter.adapt(pit, 1, "2020-06-30")
     prep = gate1.prepare(ad)
     assert prep["status"] == "prepared" and prep["family"] == "operating" and prep["blob"]
-    ctx = gate1.DateContext.build("2020-06-30", 0.02, [{"industry": "Software", "de_book": 0.1 * i, "kd_effective": 0.06} for i in range(1, 31)])
+    ctx = gate1.DateContext.build("2020-06-30", 0.02, [{"industry": "Software", "family": "operating", "de_book": 0.1 * i, "kd_effective": 0.06, "roic3": 0.01 * i}
+                                                       for i in range(1, 31)])
     rates = gate1.Rates(FakeStore(), {"2020-06-30": (0.02, "fake rf")})
     priors = PlaceholderPriors(True)
     v1 = gate1.value_company(dict(prep, industry="Software"), ctx, priors, rates, shares=50.0, n_draws=300)
     v2 = gate1.value_company(dict(prep, industry="Software"), ctx, priors, rates, shares=50.0, n_draws=300)
     assert v1["status"] == "ok" and any(x.startswith("kd_population_spread") for x in v1["stamps"]) and v1 == v2                                           # deterministic: the seed is per company and date
     assert v1["iv_ps"]["p10"] <= v1["iv_ps"]["p50"] <= v1["iv_ps"]["p90"]
+    assert any(x.startswith("industry_median_return: industry, n=30") for x in v1["stamps"])               # Addendum H3: the date's industry median ROIC
+    assert v1["terminal_growth"]["base"] == 0.02                                                              # Addendum H2: min(rf 2%, 3.75%)
     v100 = gate1.value_company(dict(prep, industry="Software"), ctx, priors, rates, shares=100.0, n_draws=300)
     assert v100["iv_ps"]["p50"] == pytest.approx(v1["iv_ps"]["p50"] / 2)               # per share: equity / shares
     assert v1["discount"]["de_basis"] == "book" and v1["discount_sources"]["beta_file_sha256"] == "x"

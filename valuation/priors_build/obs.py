@@ -19,7 +19,9 @@ from typing import Dict, List, Optional
 
 from valuation import common as vc
 from valuation.classification import classification
-from valuation.common import FIELDS, Filed, SicInfo, cyclicality_score, num, total_debt
+# chain_index, nopat_of and invested_capital are common's definitions (the engines' state reads them too); re-exported here for the callers that import them from obs
+from valuation.common import (FIELDS, Filed, SicInfo, chain_index, cyclicality_score, invested_capital, nopat_of, num, total_debt,  # noqa: F401
+                              trailing_level)
 from valuation.pit_data import is_num
 
 MAX_K = 10
@@ -33,19 +35,6 @@ def nan_if_none(x):
 
 
 # ---- a company's chain of fiscal years -----------------------------------------------------------------------------------------------------
-
-def chain_index(periods: List[str]) -> Dict[str, int]:
-    """{period end: chain index}: consecutive fiscal years differ by 1; a missing year (a gap of n years) jumps by n; a period shorter than a
-    year (a transition report) still steps by 1."""
-    out, i, prev = {}, 0, None
-    for pe in periods:
-        if prev is not None:
-            gap = (date.fromisoformat(pe) - date.fromisoformat(prev)).days
-            i += max(1, int(round(gap / 365.25)))
-        out[pe] = i
-        prev = pe
-    return out
-
 
 class PitView:
     """A CompanyPIT look-alike truncated at fiscal year t: what `classification` reads (periods, a base-period row, concepts, sic)."""
@@ -81,20 +70,6 @@ def tax_rate_median(rows_by_pe, periods) -> float:
         if pt is not None and tx is not None and pt > 0:
             rates.append(tcr.tax_rate(r))
     return vc._median(rates) if rates else tcr.TAX_DEFAULT
-
-
-def nopat_of(ebit, tax) -> Optional[float]:
-    """The engine's rule: EBIT - tax x max(EBIT, 0)."""
-    return None if ebit is None else ebit - tax * max(ebit, 0.0)
-
-
-def invested_capital(row) -> Optional[float]:
-    """equity + debt (excluding leases) - cash - short-term investments (an untagged short-term investment is none): the state's own components."""
-    eq, cash, d = num(row.get("equity")), num(row.get("cash")), total_debt(row)
-    if eq is None or cash is None or d is None:
-        return None
-    sti = num(row.get("st_investments"))
-    return eq + d - cash - (0.0 if sti is None else sti)
 
 
 def bridge_of(row) -> Optional[float]:
@@ -193,7 +168,7 @@ def rote_by_period(rows_by_pe, idx) -> Dict[str, float]:
 # ---- the observation table of one company ----------------------------------------------------------------------------------------------------
 
 COLUMNS_STATE = ("cik", "fye", "own_filed", "form", "currency", "family", "family_basis", "sic", "conflict", "years_held", "rev", "g_latest", "g3",
-                 "m", "med8", "n8", "dev", "cyc", "c_mv", "c_rf", "c_ac", "c_rc", "cyc_years", "tax", "nopat", "ic", "roic", "tbv", "rote",
+                 "m", "med8", "n8", "dev", "cyc", "c_mv", "c_rf", "c_ac", "c_rc", "cyc_years", "tax", "nopat", "ic", "roic", "roic3", "tbv", "rote",
                  "tbv_g_latest", "tbv_g3", "rote_med8", "rote_n8", "rote_dev", "trend8", "obs_date", "fcff1", "n_ahead", "revenue_cagr_ok")
 
 
@@ -257,13 +232,20 @@ def company_observations(c, cut_iso: str, sic_code: Optional[str], ticker: str =
         cl = classification(ticker or c.cik, view.asof, view)
         nop = nopat_of(num(rows[p].get("operating_income")), tax)
         icp = ic[p]
+        # Addendum H3: the trailing 3-year ROIC level at t (the state's own definition: NOPAT at the observation's tax rate / invested capital, three consecutive years)
+        roic_y = {}
+        for q in upto:
+            nq, iq = nopat_of(num(rows[q].get("operating_income")), tax), ic[q]
+            if nq is not None and iq is not None and iq > 0:
+                roic_y[q] = nq / iq
+        roic3 = trailing_level(roic_y, idx, p)
         # outcomes
         rec = {"cik": c.cik, "fye": p, "own_filed": fy.exists_from, "form": fy.own_form, "currency": fy.currency, "family": cl["family"],
                "family_basis": "sic+bs" if sic_code else "bs_only", "sic": sic_code, "conflict": bool(cl["conflicts"]), "years_held": len(upto),
                "rev": r0, "g_latest": g_latest, "g3": g3, "m": m0, "med8": med8, "n8": len(mw), "dev": dev,
                "cyc": cyc["score"] if cyc else None, "c_mv": comp.get("margin_volatility"), "c_rf": comp.get("reversal_frequency"),
                "c_ac": comp.get("autocorrelation"), "c_rc": comp.get("revenue_cyclicality"), "cyc_years": cyc["years"] if cyc else None,
-               "tax": tax, "nopat": nop, "ic": icp, "roic": (nop / icp) if (nop is not None and icp is not None and icp > 0) else None,
+               "tax": tax, "nopat": nop, "ic": icp, "roic": (nop / icp) if (nop is not None and icp is not None and icp > 0) else None, "roic3": roic3,
                "tbv": tb[p], "bridge": bridge_of(rows[p]), "rote": rote.get(p), "tbv_g_latest": tg_latest, "tbv_g3": tg3, "rote_med8": rmed, "rote_n8": len(rw), "rote_dev": rdev,
                "trend8": trend_slope(lr), "obs_date": obs_date(fy.exists_from).isoformat(), "fcff1": None, "revenue_cagr_ok": r0 is not None}
         n_ahead = 0
