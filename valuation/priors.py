@@ -294,7 +294,7 @@ class PopulationPriors(Priors):
         w0 = qd.ppf(0.9) - qd.ppf(0.1)
         w1 = inputs["margin_target"].ppf(0.9) - inputs["margin_target"].ppf(0.1)
         meta["margin_target_rescale"] = {
-            "applied": True, "r5": r5, "factor_uncapped": None if math.isinf(raw) else raw, "factor": factor, "capped": raw > MARGIN_RESCALE_CAP,
+            "applied": True, "r5": r5, "factor_uncapped": None if math.isinf(raw) else raw, "factor": factor, "capped": raw > MARGIN_RESCALE_CAP + 1e-9,
             "p10_p90_width_measured_level_5y": w0, "p10_p90_width_of_m_T_after_rescale": w1,
             "implied_year5_margin_width": (1.0 - r5) * w1, "r_terminal": rN, "implied_terminal_year_margin_width": (1.0 - rN) * w1,
             "stamp": "Addendum F 4: the m_T spread is scaled by 1/(1-r_5) of the engine's curve (cap 10 when r_5 >= 0.9)"}

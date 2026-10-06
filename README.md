@@ -392,6 +392,22 @@ Offline; no model, no GPU, no network. Tests: `pytest valuation rebuild_harness`
   `stocks-workspace/data/priors/` (`PRIORS_REPORT.md`). Tests: `valuation/tests/test_priors.py` (the no-look-ahead proof included).
 - `backtest_phase2/` - the earlier registered backtest harness, unchanged (branch review-2026-09/backtest-phase2, 40cb5cf).
 
+## Gate 1 on the development dates (T-integrate; REGISTRATION_gate1_DRAFT.md, Addenda F-G)
+
+Offline; no model, no GPU, no network except SEC filings through `sec_primary` in the Muse checks. Tests: `pytest valuation/tests/test_gate1.py rebuild_harness/tests/test_gate1_metrics.py`.
+
+- `valuation/pit_adapter.py` - the adapter from `PitData` to the engines' `CompanyPIT` (replaces the interim `pit_companyfacts.py`, which stays for its tests): the 16:00 ET
+  rule re-checked on every accession behind a value (PIT_INVALID and AMBIGUOUS refuse the company), provenance counts, a non-dollar filer refused, the SIC as filed at T from
+  the layer's header history else the current assignment (`CurrentSicFile`, stamped `sic_current_dated` / `industry_current_dated`).
+- `valuation/priors.py` - `PopulationPriors(rescale_margin_target=True)`: the `margin_target` spread is scaled by 1/(1 - r_5) of the engine's retention curve (cap 10 when r_5 >= 0.9; Addendum F 4),
+  with the implied terminal-year spread in `meta["margin_target_rescale"]`. `valuation/common.py`: a debt component never tagged in any held year counts as 0, stamped (Addendum G 5).
+- `valuation/gate1.py` - one company at one date: classification, priors, the discount rate at T (Damodaran files dated before T, the dated FRED risk-free, Hamada on the book D/E with the
+  industry D/E when parent equity is not positive or book D/E exceeds the industry's 95th percentile on the date, cost of debt = risk-free + the industry's median spread when there is no clean
+  interest line), the family engine over the prior (the distribution's median is the value; P10..P90, the secondary, the disagreement, the terminal-value share), per share on the price's share basis.
+- `rebuild_harness/gate1_run.py` - the 24 quarter-ends 2017-03-31 .. 2022-12-31, two passes per date (prepare; measure the population; value), a date per worker; the holdout lock answers first.
+  `rebuild_harness/gate1_metrics.py` + `gate1_report.py` - B1-B4 under the three survivorship bounds and the structural diagnostics (every figure PROVISIONAL on the local price proxy).
+  `rebuild_harness/gate1_muse_checks.py` - the leakage audit on real packs and the Item 1 / Item 7 extraction check.
+
 ## Muse passes of the rebuild (`valuation/muse/`; SPEC_muse_passes.md)
 
 Offline; no model, no GPU, no server is started by any module. Tests: `pytest valuation/muse` (a mock model and PLACEHOLDER priors, labelled).

@@ -14,8 +14,10 @@ THE ITEMS (each a DocItem; the pack builder re-checks every item against the cut
   annual_segment_note     the segment report of the latest annual report (FilingSummary R page), at most SEGMENT_CAP
   earnings_release        the newest 8-K Item 2.02 release exhibit (a foreign filer: the newest 6-K that reads as a periodic results release), at most RELEASE_CAP
 
-SECTION Q needs quarterly facts, which the shared layer does not store (`compact_company` keeps annual-report facts only). `CompanyFactsQuarters` reads the
-raw companyfacts document for the 10-Q facts and applies the same acceptance rule.
+SECTION Q needs quarterly facts. Their source is now the shared layer (Addendum G 12): `layer_quarters(pit_data)` returns `valuation.pit_data.PitQuarterSource`,
+which reads the quarterly facts the store keeps (10-Q values, year-to-date differences, the 10-K's derived fourth quarter) under the same provenance and 16:00 ET
+acceptance rule as every other input. `CompanyFactsQuarters`, which reads the raw companyfacts document, was the stopgap before the layer stored quarters; it stays
+for its own tests and for a store built without quarterly facts.
 """
 from __future__ import annotations
 
@@ -308,6 +310,12 @@ class StaticQuarters(QuarterSource):
         return [dict(r) for r in self.rows]
 
 
+def layer_quarters(pit_data, **kw) -> QuarterSource:
+    """Section Q's quarterly source: the shared point-in-time layer (`PitQuarterSource(pit_data)`), replacing the `CompanyFactsQuarters` stopgap."""
+    from valuation.pit_data import PitQuarterSource
+    return PitQuarterSource(pit_data, **kw)
+
+
 def zip_loader(zip_path) -> Callable:
     def load(cik):
         with zipfile.ZipFile(zip_path) as z:
@@ -326,7 +334,7 @@ def dir_loader(directory) -> Callable:
 
 
 class CompanyFactsQuarters(QuarterSource):
-    """Three-month revenue, operating income and net income from the 10-Q facts of the raw companyfacts document, with the same quarter a year earlier as the
+    """STOPGAP, superseded by `layer_quarters` (the shared layer's quarterly facts). Three-month revenue, operating income and net income from the 10-Q facts of the raw companyfacts document, with the same quarter a year earlier as the
     comparative column of the same filings. A fact is used when its filing is eligible at the valuation date (acceptance rule); of several filings of a quarter
     the latest eligible one is used (what was known at the date). `loader(cik)` returns the raw companyfacts dict; `acceptance(cik)` -> {accession: UTC datetime}."""
 

@@ -139,3 +139,29 @@ def test_quarters_use_ten_q_three_month_facts_with_the_comparative_and_the_accep
 def test_quarters_before_an_amendment_see_the_original():
     src = dc.CompanyFactsQuarters(lambda cik: companyfacts())
     assert src.quarters("1", "2025-08-30")[-1]["values"]["revenue"] == 395.0              # the amendment (2025-09-01) is invisible on 2025-08-30
+
+
+def test_section_q_comes_from_the_shared_layer(tmp_path):
+    """Addendum G 12: the Muse layer's quarterly source is `PitQuarterSource(pit)`; a pack built with it carries the layer's quarters, under its acceptance rule."""
+    from valuation.muse import pack_v2
+    from valuation.muse.tests import fixtures as fx
+    from valuation.pit_data import PitData, PitQuarterSource
+    from valuation.tests.test_quarterly import world
+    pit_data = world(tmp_path)
+    src = dc.layer_quarters(pit_data, fields=("revenue",))
+    assert isinstance(src, PitQuarterSource)
+    rows = src.quarters("1", "2019-09-01")
+    assert rows and rows[-1]["period_end"] == "2019-06-30" and rows[-1]["values"] == {"revenue": 27.0}
+    assert src.quarters("1", "2019-06-01")[-1]["period_end"] < "2019-06-30"          # the June quarter was not yet filed on that date
+    pit = fx.make_pit(asof="2019-09-01", first=2012, years=7)
+    ps = fx.LabeledPlaceholderPriors().for_company("operating", build_state_of(pit), pit.asof)
+    pack = pack_v2.build_pack(pit, "operating", fx.IDENTITY, ps, quarters=src, cik="1")
+    assert "Q" in pack.sections and "2019-06-30" in pack.sections["Q"] and pack.manifest["quarters"]["source"] == "PitQuarterSource"
+    assert pack.manifest["quarters"]["used"][-1][0] == "2019-06-30"
+    none = pack_v2.build_pack(pit, "operating", fx.IDENTITY, ps, quarters=None, cik="1")
+    assert "Q" not in none.sections
+
+
+def build_state_of(pit):
+    from valuation.common import build_state
+    return build_state(pit)

@@ -1491,8 +1491,13 @@ class PitData:
             obj = PitCompany(ticker, asof_d, series, concepts, reports, sr, cik, shares, notes)
         else:
             sic = None if sr is None else SicInfo(sr.code, sr.description, sr.source, sr.point_in_time)
+            asof_iso = asof_d.isoformat()
+            same_day = {x[2] for x in reports if x[1] == asof_iso}
+            same_day |= {f.accession for tab in (series, concepts) for per in tab.values() for f in per.values() if f.filed == asof_iso}
+            if shares is not None and shares.filed == asof_iso:
+                same_day.add(shares.accession)
             obj = CPIT(ticker, asof_d, series=series, concepts=concepts, annual_reports=reports, sic=sic, cik=cik, shares_outstanding=shares,
-                       notes=notes)
+                       notes=notes, same_day_ok=same_day)
         obj.provenance = prov           # {(field, period_end): PIT_VALID | RESTATED}; a field/period not in it is MISSING
         return obj
 

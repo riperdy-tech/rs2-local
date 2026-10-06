@@ -114,23 +114,29 @@ class CompanyPIT:
     cik: Optional[str] = None
     shares_outstanding: Optional[Filed] = None
     notes: List[str] = field(default_factory=list)
+    same_day_ok: set = field(default_factory=set)      # accessions filed ON `asof` that the layer certified as accepted by the 16:00 ET decision time (Addendum C 2)
 
     def __post_init__(self):
         self.asof = parse_date(self.asof)
         self.check()
 
     def check(self):
-        """PITViolation unless every value and every annual report was filed strictly before `asof`."""
+        """PITViolation unless every value and every annual report was filed strictly before `asof` - or on `asof` itself with an accession the layer certified in
+        `same_day_ok` (accepted at or before 16:00 ET: the decision-time rule of Addendum C 2 replaces "strictly before")."""
         bad = []
+
+        def late(filed, accn):
+            d = parse_date(filed)
+            return d > self.asof or (d == self.asof and accn not in self.same_day_ok)
         for tab in (self.series, self.concepts):
             for name, per in tab.items():
                 for pe, f in per.items():
-                    if parse_date(f.filed) >= self.asof:
+                    if late(f.filed, f.accession):
                         bad.append((name, pe, f.filed))
         for ar in self.annual_reports:
-            if parse_date(ar[1]) >= self.asof:
+            if late(ar[1], ar[2]):
                 bad.append(("annual_report", ar[0], ar[1]))
-        if self.shares_outstanding is not None and parse_date(self.shares_outstanding.filed) >= self.asof:
+        if self.shares_outstanding is not None and late(self.shares_outstanding.filed, self.shares_outstanding.accession):
             bad.append(("shares_outstanding", self.shares_outstanding.period_end, self.shares_outstanding.filed))
         if bad:
             raise PITViolation(f"{self.ticker}: {len(bad)} value(s) filed on or after {self.asof}: {bad[:5]}")

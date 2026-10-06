@@ -1,0 +1,453 @@
+"""Gate-1 metrics B1-B4 and the structural diagnostics, from the records `gate1_run` writes (registration REGISTRATION_gate1_DRAFT.md sections 3-5).
+
+Everything here is a pure function of records (tested on synthetic data in rebuild_harness/tests/test_gate1_metrics.py) plus a loader that reads a run folder
+one date at a time and keeps only compact rows (a full run holds ~100k records).
+
+EVERY FIGURE COMPUTED ON THE DEVELOPMENT RUN IS PROVISIONAL: the prices are the local month-end proxy of today's listings (Addendum G), survivors only; none of it
+counts toward gate 1.  `PROVISIONAL` rides on every result.
+
+The bars (registration section 5), computed under each survivorship bound of Addendum D (`excluded`, `minus100`, `last_close`):
+  B1  per-date cross-sectional OLS of the 12-month excess return on the percentile ranks of the engine's IV / price and of the yardsticks, with industry fixed
+      effects (every variable demeaned within its industry on the date); the mean engine coefficient over dates (Fama-MacBeth) must be > 0 and the 5th percentile of
+      its date-block bootstrap (90% interval, lower end) must be > 0.
+  B2  the industry-neutral spread of the 12-month excess return between the top and bottom quintile of IV / price (the rank taken inside the industry, the return
+      demeaned inside the industry), averaged over dates, must be >= +3 percentage points; the same spread on the engine's residual after the yardsticks must be > 0.
+  B3  (a) at most 15% of valued stocks below 0.4x or above 2.5x their price; (b) each family's share of those extremes within 10 points of its share of the
+      universe; (c) the interquartile range of ln(IV / price) at least half the old engine's (the old engine is NOT computed point in time in this build: see the
+      report; (c) is reported as "not computed" with the engine's own IQR).
+  B4  the median absolute error of the engine's next-fiscal-year revenue growth (its year-1 growth at the prior's P50 inputs) and operating margin against the
+      first-filed outcome must not exceed the naive baseline's (trailing 3-year revenue CAGR; margin held), for the operating and commodity families.
+A bar's status over the bounds is `metrics.gate_status` (pass / fail / not decided).  A bar that needs a return and has no dates with enough names is "not computed".
+"""
+import gzip
+import json
+import math
+from collections import Counter, OrderedDict, defaultdict
+from pathlib import Path
+
+import numpy as np
+
+from backtest_phase2.metrics import rankdata_avg, spearman
+from . import metrics as hm
+
+PROVISIONAL = "PROVISIONAL: local month-end price proxy, survivors only (Addendum G); not counted toward gate 1"
+BOUNDS = hm.BOUNDS
+HORIZON = 12
+VP_LOW, VP_HIGH = 0.4, 2.5
+MIN_NAMES = 30                     # a date needs this many names with the engine, every yardstick and the outcome for B1/B2
+MIN_INDUSTRY = 5                   # an industry with fewer names on a date does not enter the neutral spread
+YARDSTICKS = ("yardstick_earnings_yield", "yardstick_fcf_yield", "yardstick_gross_profitability", "yardstick_return_on_capital", "yardstick_momentum_12_1")
+ENGINE = "gate1_engine"
+B2_BAR = 0.03
+B3A_CAP = 0.15
+B3B_BAND = 0.10
+
+
+# ---- loading ----------------------------------------------------------------------------------------------------------------------------
+
+def _int_keys(d):
+    return {int(k): v for k, v in (d or {}).items()}
+
+
+def compact(r):
+    """The few fields the metrics and the diagnostics read, from one record."""
+    v = r.get("val") or {}
+    price = r.get("price")
+    out = {"date": r["date"], "cik": r["cik"], "ticker": r.get("ticker"), "name": r.get("name_current_dated"), "industry": r.get("industry"),
+           "family": r.get("family"), "status": r["status"], "reason": (r.get("reasons") or [None])[0], "mcap_group": r.get("mcap_group"),
+           "price": price, "market_cap": r.get("market_cap"), "stale": (r.get("base_age_months") or 0) > 15, "base_age_months": r.get("base_age_months"),
+           "score": r.get("score") or {}, "excess": _int_keys(r.get("excess")), "bounds": {int(k): v for k, v in (r.get("bounds") or {}).items()},
+           "base": r.get("base"), "out1": (r.get("out") or {}).get("1") or (r.get("out") or {}).get(1)}
+    if r["status"] == "valued":
+        iv = v["iv_ps"]
+        out.update({"iv": iv, "vp": iv["p50"] / price if price else None, "vp_p10": iv["p10"] / price, "vp_p90": iv["p90"] / price,
+                    "vp_point": (v["iv_point_p50_inputs_ps"] / price) if v.get("iv_point_p50_inputs_ps") is not None else None,
+                    "secondary_vp": (v["secondary_ps"] / price) if v.get("secondary_ps") is not None else None, "md": v.get("model_disagreement"),
+                    "tv_share": v.get("tv_share_p50"), "tv_share_point": v.get("tv_share_p50_point"),
+                    "invalid_share": 1.0 - v["n_valid"] / v["n_draws"], "neg_eq_share": v.get("share_negative_equity"),
+                    "g1_p50": (v.get("forecast") or {}).get("year1_growth_point"), "m1_p50": (v.get("forecast") or {}).get("year1_margin_point"),
+                    "g_naive": (v.get("prior_meta") or {}).get("mechanical_baseline_g1"), "m0": (v.get("state") or {}).get("op_margin"),
+                    "disc": v.get("discount"), "inputs": v.get("inputs"), "state": v.get("state"), "prior_meta": v.get("prior_meta"),
+                    "secondary_kind": v.get("secondary_kind"), "terminal_year": v.get("terminal_year"), "stamps": r.get("stamps")})
+    return out
+
+
+def load_run(run_dir, dates=None, keep_all_for=()):
+    """(compact valued rows, status counters) from a run folder.  `keep_all_for`: dates whose full valued records are also returned (for the extremes)."""
+    run_dir = Path(run_dir)
+    rows, counters, full = [], OrderedDict(), {}
+    files = sorted(run_dir.glob("records_*.jsonl.gz"))
+    for f in files:
+        d = f.name[len("records_"):-len(".jsonl.gz")]
+        if dates is not None and d not in dates:
+            continue
+        cnt = {"status": Counter(), "reason": Counter(), "family_status": Counter(), "mcap": Counter(), "family_reason": Counter()}
+        with gzip.open(f, "rt", encoding="utf-8") as fh:
+            for line in fh:
+                r = json.loads(line)
+                c = compact(r)
+                cnt["status"][r["status"]] += 1
+                fam = r.get("family") or "none"
+                cnt["family_status"][(fam, r["status"])] += 1
+                if r["status"] != "valued":
+                    cnt["reason"][_reason_class(c["reason"] or r["status"])] += 1
+                    cnt["family_reason"][(fam, _reason_class(c["reason"] or r["status"]))] += 1
+                else:
+                    cnt["mcap"][c["mcap_group"]] += 1
+                    rows.append(c)
+                    if d in keep_all_for:
+                        full.setdefault(d, []).append(r)
+        counters[d] = cnt
+    return rows, counters, full
+
+
+def _reason_class(reason):
+    """A short class of a refusal reason (the text before its details)."""
+    s = str(reason)
+    for head in ("priors do not supply", "not available", "no_price", "market_cap_unavailable", "discount_rate", "all_draws_invalid", "engine_exception",
+                 "engine_input_error", "priors_unavailable", "SIC ", "no_annual_report", "reporting_currency", "PIT_INVALID", "AMBIGUOUS", "unclassifiable"):
+        if s.startswith(head):
+            if head in ("not available", "priors do not supply", "discount_rate", "market_cap_unavailable", "no_price"):
+                return s[:90]
+            return head.strip()
+    return s[:60]
+
+
+# ---- helpers --------------------------------------------------------------------------------------------------------------------------------
+
+def pct_rank(x):
+    return hm.pct_rank(x)
+
+
+def by_date(rows):
+    out = OrderedDict()
+    for r in sorted(rows, key=lambda r: r["date"]):
+        out.setdefault(r["date"], []).append(r)
+    return out
+
+
+def excess_under(r, bound, h=HORIZON):
+    """The h-month excess return of a row under a survivorship bound: the observed value, or the bound's value for an unobservable delisting."""
+    b = (r.get("bounds") or {}).get(h)
+    if b is not None:
+        return b.get(bound)
+    return (r.get("excess") or {}).get(h)
+
+
+def _demean_by(x, groups):
+    x = np.asarray(x, dtype=float).copy()
+    g = np.asarray(groups)
+    for k in set(groups):
+        m = g == k
+        x[m] -= x[m].mean()
+    return x
+
+
+def _usable(rows, bound, yardsticks, h=HORIZON, need_yardsticks=True):
+    out = []
+    for r in rows:
+        if r["score"].get(ENGINE) is None:
+            continue
+        if need_yardsticks and any(r["score"].get(y) is None for y in yardsticks):
+            continue
+        e = excess_under(r, bound, h)
+        if e is None:
+            continue
+        out.append((r, e))
+    return out
+
+
+# ---- B1 -------------------------------------------------------------------------------------------------------------------------------------
+
+def b1_by_date(rows_by_date, bound, yardsticks=YARDSTICKS, h=HORIZON, y_is_rank=False):
+    """{date: {"n", "coef"}}: the engine's coefficient in the date's industry-demeaned OLS of the excess return on the percentile ranks."""
+    out = {}
+    for d, rows in rows_by_date.items():
+        pairs = _usable(rows, bound, yardsticks, h)
+        if len(pairs) < MIN_NAMES:
+            out[d] = {"n": len(pairs), "coef": float("nan")}
+            continue
+        rs = [p[0] for p in pairs]
+        ex = np.array([p[1] for p in pairs], dtype=float)
+        inds = [r.get("industry") or "unknown" for r in rs]
+        eng = pct_rank([r["score"][ENGINE] for r in rs])
+        Y = [pct_rank([r["score"][y] for r in rs]) for y in yardsticks]
+        X = np.column_stack([eng] + Y)
+        X = np.column_stack([_demean_by(X[:, j], inds) for j in range(X.shape[1])])
+        yv = pct_rank(ex) if y_is_rank else ex
+        yv = _demean_by(yv, inds)
+        beta, *_ = np.linalg.lstsq(X, yv, rcond=None)
+        out[d] = {"n": len(pairs), "coef": float(beta[0])}
+    return out
+
+
+def b1(rows_by_date, bound, yardsticks=YARDSTICKS, n_resamples=hm.N_RESAMPLES, y_is_rank=False):
+    per = b1_by_date(rows_by_date, bound, yardsticks, y_is_rank=y_is_rank)
+    coefs = [v["coef"] for v in per.values()]
+    ok = [c for c in coefs if c == c]
+    lo, hi, _ = hm.bootstrap_mean_over_dates(coefs, n_resamples)
+    mean = float(np.mean(ok)) if ok else float("nan")
+    status = ("not computed" if not ok else "pass" if (mean > 0 and lo > 0) else "fail")
+    return {"mean_coef": mean, "ci90": [lo, hi], "n_dates": len(ok), "by_date": per, "status": status, "yardsticks": list(yardsticks)}
+
+
+# ---- B2 -------------------------------------------------------------------------------------------------------------------------------------
+
+def _neutral_spread(scores, excess, inds):
+    """Industry-neutral top-minus-bottom quintile spread: within each industry (>= MIN_INDUSTRY names) the score's percentile rank and the return demeaned;
+    quintiles of the rank across the date; the mean demeaned return of the top quintile minus that of the bottom."""
+    scores, excess = np.asarray(scores, dtype=float), np.asarray(excess, dtype=float)
+    inds = np.asarray(inds)
+    rank = np.full(len(scores), np.nan)
+    dm = np.full(len(scores), np.nan)
+    for k in set(inds.tolist()):
+        m = np.where(inds == k)[0]
+        if len(m) < MIN_INDUSTRY:
+            continue
+        rank[m] = pct_rank(scores[m])
+        dm[m] = excess[m] - excess[m].mean()
+    ok = ~np.isnan(rank)
+    if ok.sum() < hm.MIN_QUINTILE_N:
+        return float("nan"), int(ok.sum())
+    q = hm.quintile_means(rank[ok], dm[ok])
+    return q[4] - q[0], int(ok.sum())
+
+
+def b2_by_date(rows_by_date, bound, yardsticks=YARDSTICKS, h=HORIZON):
+    out = {}
+    for d, rows in rows_by_date.items():
+        pairs = _usable(rows, bound, yardsticks, h)
+        if len(pairs) < MIN_NAMES:
+            out[d] = {"n": len(pairs), "spread": float("nan"), "spread_residual": float("nan")}
+            continue
+        rs = [p[0] for p in pairs]
+        ex = np.array([p[1] for p in pairs], dtype=float)
+        inds = [r.get("industry") or "unknown" for r in rs]
+        sc = np.array([r["score"][ENGINE] for r in rs], dtype=float)
+        sp, n_used = _neutral_spread(sc, ex, inds)
+        eng = pct_rank(sc)
+        Y = np.column_stack([pct_rank([r["score"][y] for r in rs]) for y in yardsticks])
+        X = np.column_stack([_demean_by(Y[:, j], inds) for j in range(Y.shape[1])])
+        e_dm = _demean_by(eng, inds)
+        beta, *_ = np.linalg.lstsq(X, e_dm, rcond=None)
+        resid = e_dm - X @ beta
+        spr, _ = _neutral_spread(resid + 1e-12 * np.arange(len(resid)), ex, inds)     # the tiny tie-break keeps ranks distinct; the residual is already industry-demeaned
+        out[d] = {"n": len(pairs), "n_neutral": n_used, "spread": sp, "spread_residual": spr}
+    return out
+
+
+def b2(rows_by_date, bound, yardsticks=YARDSTICKS, n_resamples=hm.N_RESAMPLES):
+    per = b2_by_date(rows_by_date, bound, yardsticks)
+    sp = [v["spread"] for v in per.values()]
+    sr = [v["spread_residual"] for v in per.values()]
+    oks = [x for x in sp if x == x]
+    okr = [x for x in sr if x == x]
+    mean_s = float(np.mean(oks)) if oks else float("nan")
+    mean_r = float(np.mean(okr)) if okr else float("nan")
+    status = "not computed" if not oks else ("pass" if (mean_s >= B2_BAR and mean_r > 0) else "fail")
+    return {"mean_spread": mean_s, "ci90": list(hm.bootstrap_mean_over_dates(sp, n_resamples)[:2]), "mean_spread_residual": mean_r,
+            "ci90_residual": list(hm.bootstrap_mean_over_dates(sr, n_resamples)[:2]), "n_dates": len(oks), "by_date": per, "status": status}
+
+
+# ---- B3 -------------------------------------------------------------------------------------------------------------------------------------
+
+def b3(rows, old_engine_iqr=None):
+    """Distribution bars on the valued names (no return involved: the same under every survivorship bound)."""
+    vp = [(r["vp"], r["family"] or "unclassified") for r in rows if r.get("vp") is not None]
+    if not vp:
+        return {"status": "not computed", "n": 0}
+    v = np.array([x for x, _ in vp], dtype=float)
+    fam = np.array([f for _, f in vp])
+    below, above = v < VP_LOW, v > VP_HIGH
+    ext = below | above
+    share = float(ext.mean())
+    fams = sorted(set(fam))
+    shares_all = {f: float((fam == f).mean()) for f in fams}
+    shares_ext = {f: (float((fam[ext] == f).mean()) if ext.any() else 0.0) for f in fams}
+    gaps = {f: shares_ext[f] - shares_all[f] for f in fams} if ext.any() else {f: 0.0 for f in fams}      # no extreme names: (b) holds vacuously
+    pos = v[v > 0]
+    iqr = float(np.percentile(np.log(pos), 75) - np.percentile(np.log(pos), 25)) if len(pos) > 3 else float("nan")
+    a_ok = share <= B3A_CAP
+    b_ok = all(abs(g) <= B3B_BAND for g in gaps.values())
+    c_status = "not computed" if old_engine_iqr is None else ("pass" if iqr >= 0.5 * old_engine_iqr else "fail")
+    status = "pass" if (a_ok and b_ok and c_status == "pass") else ("fail" if not (a_ok and b_ok) else "not computed")
+    return {"n": int(len(v)), "share_below_0_4": float(below.mean()), "share_above_2_5": float(above.mean()), "share_extreme": share,
+            "share_nonpositive_iv": float((v <= 0).mean()), "a_ok": a_ok, "family_share_universe": shares_all, "family_share_extremes": shares_ext,
+            "family_gap_points": {f: 100 * g for f, g in gaps.items()}, "b_ok": b_ok, "iqr_ln_vp_positive_iv": iqr, "n_positive_iv": int(len(pos)),
+            "old_engine_iqr": old_engine_iqr, "c_status": c_status, "status": status}
+
+
+# ---- B4 -------------------------------------------------------------------------------------------------------------------------------------
+
+def b4(rows, n_resamples=hm.N_RESAMPLES):
+    """Median absolute error of the engine's next-fiscal-year revenue growth and operating margin against the naive baseline, operating and commodity
+    families (the financial engine produces no revenue or operating margin)."""
+    gr, mr = [], []
+    for r in rows:
+        if r["family"] not in ("operating", "commodity"):
+            continue
+        base, o = r.get("base"), r.get("out1")
+        if not base or not o:
+            continue
+        rev0, rev1, m1 = base.get("revenue"), o.get("revenue"), o.get("operating_margin")
+        if rev0 and rev1 and r.get("g1_p50") is not None and r.get("g_naive") is not None:
+            a = rev1 / rev0 - 1.0
+            gr.append((r["date"], abs(r["g1_p50"] - a), abs(r["g_naive"] - a)))
+        if m1 is not None and r.get("m1_p50") is not None and r.get("m0") is not None:
+            mr.append((r["date"], abs(r["m1_p50"] - m1), abs(r["m0"] - m1)))
+
+    def block(rows_):
+        if not rows_:
+            return {"n": 0, "status": "not computed"}
+        e = np.array([x[1] for x in rows_])
+        n = np.array([x[2] for x in rows_])
+        dates = sorted({x[0] for x in rows_})
+        by = {d: (float(np.median([x[1] for x in rows_ if x[0] == d])), float(np.median([x[2] for x in rows_ if x[0] == d]))) for d in dates}
+        return {"n": len(rows_), "median_abs_error_engine": float(np.median(e)), "median_abs_error_naive": float(np.median(n)),
+                "engine_not_worse": bool(np.median(e) <= np.median(n)), "share_engine_closer": float((e < n).mean()),
+                "by_date_median_abs_error_engine_naive": by}
+    g, m = block(gr), block(mr)
+    status = ("not computed" if (g["n"] == 0 or m["n"] == 0) else "pass" if (g["engine_not_worse"] and m["engine_not_worse"]) else "fail")
+    return {"revenue_growth": g, "operating_margin": m, "status": status}
+
+
+# ---- the bars over the three bounds ---------------------------------------------------------------------------------------------------
+
+def three_bounds(rows, universe_label, n_resamples=hm.N_RESAMPLES, old_engine_iqr=None, yardsticks=YARDSTICKS):
+    rbd = by_date(rows)
+    out = {"universe": universe_label, "n_valued": len(rows), "provisional": PROVISIONAL, "yardsticks_used": list(yardsticks),
+           "note_sixth_yardstick": "the old engine is not computed point in time here (see the report): B1 and B2 use five yardsticks, not six"}
+    out["B1"] = {b: b1(rbd, b, yardsticks, n_resamples) for b in BOUNDS}
+    out["B1_rank_dependent_variant"] = {b: {k: v for k, v in b1(rbd, b, yardsticks, n_resamples, y_is_rank=True).items() if k != "by_date"} for b in BOUNDS}
+    out["B2"] = {b: b2(rbd, b, yardsticks, n_resamples) for b in BOUNDS}
+    out["B3"] = b3(rows, old_engine_iqr)
+    out["B4"] = b4(rows, n_resamples)
+    for bar in ("B1", "B2"):
+        by = {b: out[bar][b] for b in BOUNDS}
+        sts = {b: v["status"] for b, v in by.items()}
+        vals = set(sts.values())
+        out[bar + "_status_over_bounds"] = ("not computed" if vals == {"not computed"} else ("pass" if vals == {"pass"} else "fail" if vals == {"fail"} else "not decided"))
+    return out
+
+
+# ---- diagnostics ----------------------------------------------------------------------------------------------------------------------------
+
+def _q(v, ps=(5, 10, 25, 50, 75, 90, 95)):
+    v = np.asarray([x for x in v if x is not None and x == x], dtype=float)
+    return {f"p{p}": float(np.percentile(v, p)) for p in ps} if len(v) else {}
+
+
+def distribution_block(vals):
+    v = np.array([x for x in vals if x is not None and x == x], dtype=float)
+    if not len(v):
+        return {"n": 0}
+    return {"n": int(len(v)), "share_below_0_4": float((v < VP_LOW).mean()), "share_above_2_5": float((v > VP_HIGH).mean()),
+            "share_nonpositive": float((v <= 0).mean()), "quantiles": _q(v)}
+
+
+def vp_by(rows, keyfn, min_n=1):
+    g = defaultdict(list)
+    for r in rows:
+        if r.get("vp") is not None:
+            g[keyfn(r)].append(r["vp"])
+    return {k: distribution_block(v) for k, v in sorted(g.items(), key=lambda kv: str(kv[0])) if len(v) >= min_n}
+
+
+def extremes_by_family(rows):
+    out = {}
+    fams = sorted({r["family"] for r in rows})
+    n = len(rows)
+    for name, f in (("below_0_4", lambda x: x < VP_LOW), ("above_2_5", lambda x: x > VP_HIGH)):
+        ex = [r for r in rows if r.get("vp") is not None and f(r["vp"])]
+        out[name] = {"n": len(ex), "by_family": {fam: {"n": sum(1 for r in ex if r["family"] == fam), "share_of_extremes": (sum(1 for r in ex if r["family"] == fam) / len(ex)) if ex else None,
+                                                       "share_of_universe": sum(1 for r in rows if r["family"] == fam) / n} for fam in fams}}
+    return out
+
+
+def tv_share_distribution(rows):
+    allv = [r["tv_share"] for r in rows if r.get("tv_share") is not None]
+    out = {"all": _q(allv) | {"n": len(allv)}, "by_family": {}}
+    for fam in sorted({r["family"] for r in rows}):
+        out["by_family"][fam] = _q([r["tv_share"] for r in rows if r["family"] == fam and r.get("tv_share") is not None])
+    out["share_above_0_75"] = float(np.mean([x > 0.75 for x in allv])) if allv else None
+    out["point_p50_inputs"] = _q([r["tv_share_point"] for r in rows if r.get("tv_share_point") is not None])
+    return out
+
+
+def disagreement_by_family(rows):
+    out = {}
+    for fam in sorted({r["family"] for r in rows}):
+        v = [r["md"] for r in rows if r["family"] == fam and r.get("md") is not None]
+        out[fam] = _q(v) | {"n": len(v), "n_valued": sum(1 for r in rows if r["family"] == fam), "mean": float(np.mean(v)) if v else None}
+    return out
+
+
+def structure_stats(rows):
+    """Shares and levels that locate where the value comes from (diagnostics, not gates)."""
+    op = [r for r in rows if r["family"] in ("operating", "commodity") and r.get("disc") and r.get("inputs")]
+    out = {}
+    if op:
+        out["operating_commodity_n"] = len(op)
+        out["coe"] = _q([r["disc"]["coe"] for r in op])
+        out["wacc"] = _q([r["disc"]["wacc"] for r in op])
+        out["ronic_p50_minus_wacc"] = _q([r["inputs"]["ronic"]["p50"] - r["disc"]["wacc"] for r in op if "ronic" in r["inputs"]])
+        out["share_ronic_p50_below_wacc"] = float(np.mean([r["inputs"]["ronic"]["p50"] < r["disc"]["wacc"] for r in op if "ronic" in r["inputs"]]))
+        out["share_g_terminal_p90_at_or_above_wacc"] = float(np.mean([r["inputs"]["g_terminal"]["p90"] >= r["disc"]["wacc"] for r in op if "g_terminal" in r["inputs"]]))
+        out["g_terminal_p50"] = _q([r["inputs"]["g_terminal"]["p50"] for r in op if "g_terminal" in r["inputs"]])
+        out["margin_target_p50_minus_current_margin"] = _q([r["inputs"]["margin_target"]["p50"] - r["m0"] for r in op if "margin_target" in r["inputs"] and r.get("m0") is not None])
+        out["margin_target_width_p10_p90"] = _q([r["inputs"]["margin_target"]["p90"] - r["inputs"]["margin_target"]["p10"] for r in op if "margin_target" in r["inputs"]])
+        rs = [r["prior_meta"].get("margin_target_rescale") for r in op if r.get("prior_meta")]
+        rs = [x for x in rs if x and x.get("applied")]
+        out["margin_rescale_factor"] = _q([x["factor"] for x in rs])
+        out["margin_rescale_capped_share"] = float(np.mean([x["capped"] for x in rs])) if rs else None
+        out["implied_terminal_year_margin_width_p10_p90"] = _q([x["implied_terminal_year_margin_width"] for x in rs])
+        out["measured_year5_margin_width_p10_p90"] = _q([x["p10_p90_width_measured_level_5y"] for x in rs])
+        out["terminal_year_margin_minus_current"] = _q([r["terminal_year"]["margin"] - r["m0"] for r in op if r.get("terminal_year") and r.get("m0") is not None])
+    out["invalid_draw_share"] = _q([r["invalid_share"] for r in rows])
+    out["share_names_over_half_draws_invalid"] = float(np.mean([r["invalid_share"] > 0.5 for r in rows])) if rows else None
+    ratio = [r["vp"] / r["vp_point"] for r in rows if r.get("vp") is not None and r.get("vp_point") not in (None, 0) and r["vp"] > 0 and r["vp_point"] > 0]
+    out["ratio_distribution_median_to_point_inputs"] = _q(ratio)
+    out["point_inputs_vp"] = distribution_block([r.get("vp_point") for r in rows])
+    out["dispersion_p90_over_p10_value"] = _q([(r["vp_p90"] - r["vp_p10"]) for r in rows])
+    out["secondary_over_primary"] = _q([r["secondary_vp"] / r["vp"] for r in rows if r.get("secondary_vp") is not None and r.get("vp") and r["vp"] > 0 and r["secondary_vp"] > 0])
+    out["prior_fallback_counts"] = dict(Counter(f.split(":")[0] + ":" + f.split(":")[1][:60] if ":" in f else f[:80] for r in rows for f in ((r.get("prior_meta") or {}).get("fallbacks") or [])).most_common(15))
+    return out
+
+
+def extremes_listing(full_rows, n=30):
+    """The top and bottom `n` valued names by IV / price (names with a price and a positive market cap), each with the key inputs."""
+    vs = [r for r in full_rows if r["status"] == "valued"]
+    for r in vs:
+        r["_vp"] = r["val"]["iv_ps"]["p50"] / r["price"]
+
+    def row(r):
+        v = r["val"]
+        return {"ticker": r.get("ticker"), "name": r.get("name_current_dated"), "industry": r.get("industry"), "family": r.get("family"), "mcap_group": r.get("mcap_group"),
+                "price": r["price"], "market_cap": r["market_cap"], "iv_p10_p50_p90": [v["iv_ps"]["p10"], v["iv_ps"]["p50"], v["iv_ps"]["p90"]], "vp": r["_vp"],
+                "vp_point_p50_inputs": (v["iv_point_p50_inputs_ps"] / r["price"]) if v.get("iv_point_p50_inputs_ps") is not None else None,
+                "secondary_vp": (v["secondary_ps"] / r["price"]) if v.get("secondary_ps") is not None else None, "md": v.get("model_disagreement"),
+                "tv_share_p50": v.get("tv_share_p50"), "invalid_share": 1 - v["n_valid"] / v["n_draws"], "coe": v["discount"]["coe"], "wacc": v["discount"]["wacc"],
+                "beta_levered": v["discount"]["beta_levered"], "de": v["discount"]["de_ratio"], "de_basis": v["discount"]["de_basis"],
+                "revenue": v["state"]["revenue"], "op_margin": v["state"]["op_margin"], "op_margin_median": v["state"]["op_margin_median"],
+                "growth_latest": v["state"]["growth_latest"], "tax": v["state"]["tax_rate"], "tbv": v["state"]["tbv"], "rote": v["state"]["rote_latest"],
+                "inputs_p10_p50_p90": {k: [x["p10"], x["p50"], x["p90"]] for k, x in v["inputs"].items()}, "base_age_months": r["base_age_months"],
+                "stamps": r.get("stamps")[:6]}
+    vs.sort(key=lambda r: r["_vp"])
+    return {"bottom": [row(r) for r in vs[:n]], "top": [row(r) for r in vs[-n:][::-1]], "n_valued": len(vs)}
+
+
+def coverage_tables(counters):
+    """Per date: status counts; overall: refusals by reason, by family and reason, and valued by family and market-cap group."""
+    per_date = {d: dict(c["status"]) for d, c in counters.items()}
+    reason = Counter()
+    fam_reason = Counter()
+    fam_status = Counter()
+    mcap = Counter()
+    for c in counters.values():
+        reason.update(c["reason"])
+        fam_reason.update(c["family_reason"])
+        fam_status.update(c["family_status"])
+        mcap.update(c["mcap"])
+    return {"per_date_status": per_date, "refusals_by_reason": dict(reason.most_common()),
+            "refusals_by_family_and_reason": {f"{k[0]} | {k[1]}": v for k, v in fam_reason.most_common()},
+            "by_family_and_status": {f"{k[0]} | {k[1]}": v for k, v in sorted(fam_status.items())}, "valued_by_mcap_group": dict(mcap)}
