@@ -81,12 +81,19 @@ def load_run(run_dir, dates=None, keep_all_for=()):
         d = f.name[len("records_"):-len(".jsonl.gz")]
         if dates is not None and d not in dates:
             continue
-        cnt = {"status": Counter(), "reason": Counter(), "family_status": Counter(), "mcap": Counter(), "family_reason": Counter()}
+        cnt = {"status": Counter(), "reason": Counter(), "family_status": Counter(), "mcap": Counter(), "family_reason": Counter(), "invalid_draws": Counter(),
+               "invalid_names": Counter(), "prepared": 0}
         with gzip.open(f, "rt", encoding="utf-8") as fh:
             for line in fh:
                 r = json.loads(line)
                 c = compact(r)
                 cnt["status"][r["status"]] += 1
+                inv = (r.get("val") or {}).get("invalid_reasons")
+                if (r.get("val") or {}).get("n_draws"):
+                    cnt["prepared"] += 1                      # a name the engine ran on (valued, or refused for its invalid draws)
+                if inv:
+                    cnt["invalid_draws"].update(inv)          # Addendum H5: by reason, over every name with invalid draws
+                    cnt["invalid_names"].update(inv.keys())
                 fam = r.get("family") or "none"
                 cnt["family_status"][(fam, r["status"])] += 1
                 if r["status"] != "valued":
@@ -130,7 +137,7 @@ def _reason_class(reason):
         kind = s.split(": ", 1)[1].split(";")[0] if s.startswith("SIC ") else s.split(":", 1)[0]
         return "family_not_built: " + kind
     for head in ("priors do not supply", "not available", "no_price", "market_cap_unavailable", "discount_rate", "all_draws_invalid", "engine_exception",
-                 "engine_input_error", "priors_unavailable", "SIC ", "no_annual_report", "reporting_currency", "PIT_INVALID", "AMBIGUOUS", "unclassifiable"):
+                 "engine_input_error", "priors_unavailable", "invalid_draws_over", "SIC ", "no_annual_report", "reporting_currency", "PIT_INVALID", "AMBIGUOUS", "unclassifiable"):
         if s.startswith(head):
             if head in ("not available", "priors do not supply", "discount_rate", "market_cap_unavailable", "no_price"):
                 return s[:90]
@@ -476,9 +483,14 @@ def coverage_tables(counters):
         fam_reason.update(c["family_reason"])
         fam_status.update(c["family_status"])
         mcap.update(c["mcap"])
+    inv_draws, inv_names = Counter(), Counter()
+    for c in counters.values():
+        inv_draws.update(c["invalid_draws"])
+        inv_names.update(c["invalid_names"])
     by_date_reason = {d: dict(c["reason"].most_common()) for d, c in counters.items()}
     by_date_family = {d: {f"{k[0]} | {k[1]}": v for k, v in sorted(c["family_status"].items())} for d, c in counters.items()}
     return {"per_date_status": per_date, "refusals_by_date_and_reason": by_date_reason, "family_and_status_by_date": by_date_family,
-            "refusals_by_reason": dict(reason.most_common()),
+            "refusals_by_reason": dict(reason.most_common()), "invalid_draw_reasons_by_draws": dict(inv_draws.most_common()),
+            "invalid_draw_reasons_by_names": dict(inv_names.most_common()), "names_the_engine_ran_on": sum(c["prepared"] for c in counters.values()),
             "refusals_by_family_and_reason": {f"{k[0]} | {k[1]}": v for k, v in fam_reason.most_common()},
             "by_family_and_status": {f"{k[0]} | {k[1]}": v for k, v in sorted(fam_status.items())}, "valued_by_mcap_group": dict(mcap)}

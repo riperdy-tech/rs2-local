@@ -44,6 +44,7 @@ GATE1_VERSION = "1"
 N_DRAWS = 2000
 MCAP_FLOOR = 300e6
 DE_MIN_N = 20
+INVALID_DRAW_MAX = 0.05            # Addendum H5: a name with a larger share of invalid draws is refused, never valued on the survivors of its draws
 RETURN_MIN_N = 20                  # Addendum H3: an industry with fewer companies on the date uses the pooled cross-section (stamped)
 SPREAD_MIN_N = 10
 DE_PERCENTILE = 0.95
@@ -284,6 +285,15 @@ def prepare(adapt_result) -> dict:
 
 # ---- pass 2: value ---------------------------------------------------------------------------------------------------------------------------
 
+def invalid_draw_refusal(dist: dict) -> Optional[str]:
+    """Addendum H5: the refusal reason when more than INVALID_DRAW_MAX of a name's draws are invalid (the reasons and their counts named), else None."""
+    n, bad = dist["n_draws"], dist["n_invalid"]
+    if n <= 0 or bad / n <= INVALID_DRAW_MAX:
+        return None
+    why = "; ".join(f"{k} x{v}" for k, v in sorted((dist.get("invalid_reasons") or {}).items(), key=lambda kv: -kv[1]))
+    return f"invalid_draws_over_{INVALID_DRAW_MAX:.0%}: {bad / n:.1%} of {n} draws ({why})"[:300]
+
+
 def _per_share(summary: Optional[dict], shares: float, keys=("p10", "p25", "p50", "p75", "p90")) -> Optional[dict]:
     if summary is None:
         return None
@@ -347,6 +357,11 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
     if dist["equity"] is None or not shares or shares <= 0:
         out["status"] = "refused"
         out["reasons"] = ["all_draws_invalid: " + "; ".join(f"{k} x{v}" for k, v in (dist.get("invalid_reasons") or {}).items())[:200]] if dist["equity"] is None else ["shares_unavailable"]
+        return out
+    out["n_draws"], out["n_valid"], out["invalid_reasons"] = dist["n_draws"], dist["n_valid"], dist.get("invalid_reasons") or {}
+    bad = invalid_draw_refusal(dist)
+    if bad is not None:
+        out["status"], out["reasons"] = "refused", [bad]
         return out
     iv = _per_share(dist["equity"], shares)
     sec_eq = None

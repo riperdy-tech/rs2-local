@@ -267,3 +267,40 @@ def test_the_gate1_run_refuses_a_holdout_date_before_opening_any_data(tmp_path):
         freeze = tmp_path / "freeze.json"
         freeze.write_text(json.dumps({"engines": {}}), encoding="utf-8")
         gate1_run.main(["--out-dir", str(tmp_path / "out2"), "--dates", "2024-12-31", "--freeze", str(freeze)])
+
+
+# ---- Addendum H5: a name with more than 5% invalid draws is refused ----------------------------------------------------------------------------------
+
+def test_invalid_draw_refusal_threshold_and_named_reasons():
+    ok = {"n_draws": 2000, "n_invalid": 100, "invalid_reasons": {"x": 100}}               # exactly 5%: not over
+    assert gate1.invalid_draw_refusal(ok) is None
+    over = {"n_draws": 2000, "n_invalid": 101, "invalid_reasons": {"return on new capital not positive": 90, "terminal growth is not below the discount rate": 11}}
+    r = gate1.invalid_draw_refusal(over)
+    assert r.startswith("invalid_draws_over_5%: 5.1% of 2000 draws") and "return on new capital not positive x90" in r and r.index("x90") < r.index("x11")
+    assert gate1.invalid_draw_refusal({"n_draws": 0, "n_invalid": 0}) is None
+
+
+class _WideRonicPriors(PlaceholderPriors):
+    """Placeholder priors whose ROIC level five years on is negative for a fifth of the draws: those draws cannot price the growth they carry."""
+
+    def __init__(self, lo):
+        super().__init__(True)
+        self.lo = lo
+
+    def for_company(self, family, state, asof):
+        ps = super().for_company(family, state, asof)
+        ps.inputs["ronic"] = QuantileDist({0.10: self.lo, 0.50: 0.12, 0.90: 0.20}, "test")
+        return ps
+
+
+def test_a_name_with_too_many_invalid_draws_is_refused_with_the_reason_and_the_counts_are_kept(tmp_path):
+    pit = pdm.PitData(_store(tmp_path, base_rev=1000.0, growth=0.05), sic_source=_sic(tmp_path))
+    prep = gate1.prepare(pit_adapter.adapt(pit, 1, "2020-06-30"))
+    rows = [{"industry": "Software", "family": "operating", "de_book": 0.1 * i, "kd_effective": 0.06, "roic3": 0.01 * i} for i in range(1, 31)]
+    ctx = gate1.DateContext.build("2020-06-30", 0.02, rows)
+    rates = gate1.Rates(FakeStore(), {"2020-06-30": (0.02, "fake rf")})
+    bad = gate1.value_company(dict(prep, industry="Software"), ctx, _WideRonicPriors(-0.6), rates, shares=50.0, n_draws=400)
+    assert bad["status"] == "refused" and bad["reasons"][0].startswith("invalid_draws_over_5%") and "return on new capital not positive" in bad["reasons"][0]
+    assert bad["n_draws"] == 400 and sum(bad["invalid_reasons"].values()) == 400 - bad["n_valid"] and bad["n_valid"] < 400 * 0.95
+    fine = gate1.value_company(dict(prep, industry="Software"), ctx, _WideRonicPriors(0.04), rates, shares=50.0, n_draws=400)
+    assert fine["status"] == "ok" and fine["n_valid"] >= 0.95 * 400 and sum(fine["invalid_reasons"].values()) == 400 - fine["n_valid"]       # the tail below P10 is a few draws: inside the 5%
