@@ -89,13 +89,13 @@ def test_b2_bar_is_three_points_and_the_residual_must_be_positive():
 
 def test_b3_extremes_and_family_sorting():
     rows = [rec("d", i, 1.0, 0.0, family="operating") for i in range(80)] + [rec("d", 100 + i, 1.0, 0.0, family="financial") for i in range(20)]
-    ok = gm.b3(rows, old_engine_iqr=0.5)
-    assert ok["share_extreme"] == 0.0 and ok["a_ok"] and ok["b_ok"] and ok["c_status"] == "fail"      # every value / price is 1.0: no spread against 0.5
+    ok = gm.b3(rows)
+    assert ok["share_extreme"] == 0.0 and ok["a_ok"] and ok["b_ok"] and ok["c_status"] == "fail"      # every value / price is 1.0: no spread, below the 0.30 floor
     rows = [rec("d", i, 0.2 if i < 20 else 1.0, 0.0, family="financial" if i < 20 else "operating") for i in range(100)]   # every extreme is financial
     b = gm.b3(rows)
     assert b["share_below_0_4"] == pytest.approx(0.2) and not b["a_ok"]
     assert b["family_share_extremes"]["financial"] == 1.0 and b["family_gap_points"]["financial"] == pytest.approx(80.0) and not b["b_ok"]
-    assert b["status"] == "fail" and b["c_status"] == "not computed"
+    assert b["status"] == "fail" and b["c_status"] == "fail"                                  # 80% of the names sit at 1.0: the IQR of ln(IV/price) is 0
 
 
 def test_b3_counts_a_non_positive_value_as_below_the_floor_and_reports_the_iqr_on_positive_values():
@@ -104,11 +104,14 @@ def test_b3_counts_a_non_positive_value_as_below_the_floor_and_reports_the_iqr_o
     assert b["share_below_0_4"] == pytest.approx(2 / 6) and b["share_nonpositive_iv"] == pytest.approx(2 / 6) and b["n_positive_iv"] == 4
 
 
-def test_b3_c_compares_the_iqr_with_half_the_old_engines():
-    rows = [rec("d", i, math.exp(0.1 * (i - 50) / 25), 0.0) for i in range(100)]
-    iqr = gm.b3(rows)["iqr_ln_vp_positive_iv"]
-    assert gm.b3(rows, old_engine_iqr=iqr * 1.9)["c_status"] == "pass"
-    assert gm.b3(rows, old_engine_iqr=iqr * 2.1)["c_status"] == "fail"
+def test_b3_c_is_an_absolute_floor_on_the_iqr_of_ln_iv_over_price():
+    assert gm.B3C_FLOOR == 0.30
+    # ln(vp) uniform on [-x, x]: IQR = x; a population with an IQR of 0.2 fails, one of 0.4 passes (no old engine is involved)
+    narrow = [rec("d", i, math.exp(0.2 * (i - 50) / 50), 0.0) for i in range(101)]
+    wide = [rec("d", i, math.exp(0.4 * (i - 50) / 50), 0.0) for i in range(101)]
+    assert gm.b3(narrow)["c_status"] == "fail" and gm.b3(narrow)["status"] == "fail" and gm.b3(narrow)["iqr_ln_vp_positive_iv"] == pytest.approx(0.2, abs=0.01)
+    assert gm.b3(wide)["c_status"] == "pass" and gm.b3(wide)["status"] == "pass" and gm.b3(wide)["c_floor"] == 0.30
+    assert gm.b3([rec("d", i, -1.0, 0.0) for i in range(10)])["c_status"] == "not computed"             # no positive IV: no IQR
 
 
 # ---- B4 -------------------------------------------------------------------------------------------------------------------------------------
@@ -215,3 +218,25 @@ def test_returns_use_the_dates_to_the_end_of_2021_and_forecast_quality_every_dat
     assert res["B3"]["n"] == 360 and res["B3_all_dates"]["n"] == 600
     every = gm.three_bounds(rows, "t", n_resamples=50)
     assert every["B1"]["excluded"]["n_dates"] == 5
+
+
+def test_a_name_missing_a_yardstick_stays_at_the_median_rank_with_an_indicator_and_the_coverage_is_reported():
+    rows = population("d1", n=120, seed=71)
+    for r in rows[::4]:                                                    # a quarter of the names lack gross profitability
+        r["score"][gm.YARDSTICKS[2]] = None
+    for r in rows[1::10]:
+        r["score"][gm.YARDSTICKS[0]] = None
+    pairs = gm._usable(rows, "excluded")
+    assert len(pairs) == 120                                              # nobody is dropped for a missing yardstick
+    cols, inds, miss = gm.yardstick_design([p[0] for p in pairs], gm.YARDSTICKS)
+    assert miss[gm.YARDSTICKS[2]] == 30 and miss[gm.YARDSTICKS[0]] == 12 and miss[gm.YARDSTICKS[1]] == 0
+    assert len(inds) == 2 and [int(i.sum()) for i in inds] == [12, 30]       # indicators only for the yardsticks with a missing value on the date
+    c2 = cols[2]
+    assert all(c2[i] == 0.5 for i in range(0, 120, 4))                        # the median rank
+    have = [c2[i] for i in range(120) if i % 4]
+    assert len(set(have)) == len(have) and min(have) > 0 and max(have) < 1
+    res = gm.b1(gm.by_date(rows), "excluded", n_resamples=50)
+    assert res["by_date"]["d1"]["n"] == 120 and res["yardstick_missing_share"][gm.YARDSTICKS[2]] == pytest.approx(0.25)
+    assert res["yardstick_missing_share"][gm.YARDSTICKS[1]] == 0.0
+    sp = gm.b2(gm.by_date(rows), "excluded", n_resamples=50)
+    assert sp["by_date"]["d1"]["n"] == 120

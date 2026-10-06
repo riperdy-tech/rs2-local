@@ -90,7 +90,7 @@ def render(rep):
         L.append("| B2 neutral spread (residual) [90%] | " + " | ".join(f"{fmt(r['B2'][b]['mean_spread'], 4)} ({fmt(r['B2'][b]['mean_spread_residual'], 4)}) [{fmt(r['B2'][b]['ci90'][0], 4)}, {fmt(r['B2'][b]['ci90'][1], 4)}]" for b in gm.BOUNDS) + f" | {r['B2_status_over_bounds']} |")
         b3 = r["B3"]
         if b3.get("n"):
-            L += ["", f"B3: extremes {fmt(b3['share_extreme'])} (below 0.4x {fmt(b3['share_below_0_4'])}, above 2.5x {fmt(b3['share_above_2_5'])}; non-positive IV {fmt(b3['share_nonpositive_iv'])}); family gap in points {json.dumps(_clean(b3['family_gap_points']))}; IQR ln(IV/P) {fmt(b3['iqr_ln_vp_positive_iv'])} on {b3['n_positive_iv']} positive IVs; (c) {b3['c_status']}; status {b3['status']}"]
+            L += ["", f"B3: extremes {fmt(b3['share_extreme'])} (below 0.4x {fmt(b3['share_below_0_4'])}, above 2.5x {fmt(b3['share_above_2_5'])}; non-positive IV {fmt(b3['share_nonpositive_iv'])}); family gap in points {json.dumps(_clean(b3['family_gap_points']))}; IQR ln(IV/P) {fmt(b3['iqr_ln_vp_positive_iv'])} on {b3['n_positive_iv']} positive IVs (floor {b3['c_floor']}); (c) {b3['c_status']}; status {b3['status']}"]
         b4 = r["B4"]
         for k in ("revenue_growth", "operating_margin"):
             x = b4[k]

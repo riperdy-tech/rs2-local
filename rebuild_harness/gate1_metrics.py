@@ -13,14 +13,16 @@ The bars (registration section 5), computed under each survivorship bound of Add
   B2  the industry-neutral spread of the 12-month excess return between the top and bottom quintile of IV / price (the rank taken inside the industry, the return
       demeaned inside the industry), averaged over dates, must be >= +3 percentage points; the same spread on the engine's residual after the yardsticks must be > 0.
   B3  (a) at most 15% of valued stocks below 0.4x or above 2.5x their price; (b) each family's share of those extremes within 10 points of its share of the
-      universe; (c) the interquartile range of ln(IV / price) at least half the old engine's (the old engine is NOT computed point in time in this build: see the
-      report; (c) is reported as "not computed" with the engine's own IQR).
+      universe; (c) the interquartile range of ln(IV / price) at least B3C_FLOOR = 0.30 (Addendum H7: the old engine cannot be computed point in time, so the
+      comparator is a stated absolute floor, for the operator to approve with the other bars).
   B4  the median absolute error of the engine's next-fiscal-year revenue growth (its year-1 growth at the prior's P50 inputs) and operating margin against the
       first-filed outcome must not exceed the naive baseline's (trailing 3-year revenue CAGR; margin held), for the operating and commodity families.
 A bar's status over the bounds is `metrics.gate_status` (pass / fail / not decided).  A bar that needs a return and has no dates with enough names is "not computed".
 
 DATES (Addendum H6).  B1 and B2 (returns) use the dates up to RETURN_DATES_END = 2021-12-31, whose 12-month outcomes end by 2022-12-31 and so never overlap the
 2023-2024 holdout years; B3 is reported on the same dates and, beside it, on every date; B4 (forecast quality) uses every development date, the 2022 dates included.
+MISSING YARDSTICKS (Addendum H7).  A name missing a yardstick stays in B1 and B2 with that yardstick at the cross-sectional median rank (0.5) and an indicator
+column for the yardsticks with a missing value on the date; the coverage (the share missing by yardstick) is reported.
 """
 import gzip
 import json
@@ -35,6 +37,7 @@ from . import metrics as hm
 
 PROVISIONAL = "PROVISIONAL: local month-end price proxy, survivors only (Addendum G); not counted toward gate 1"
 RETURN_DATES_END = "2021-12-31"    # Addendum H6: the last development date whose 12-month outcome ends by 2022-12-31
+B3C_FLOOR = 0.30                   # Addendum H7: the interquartile range of ln(IV / price) at least this (an absolute floor)
 BOUNDS = hm.BOUNDS
 HORIZON = 12
 VP_LOW, VP_HIGH = 0.4, 2.5
@@ -179,18 +182,35 @@ def _demean_by(x, groups):
     return x
 
 
-def _usable(rows, bound, yardsticks, h=HORIZON, need_yardsticks=True):
+def _usable(rows, bound, yardsticks=None, h=HORIZON):
+    """(row, excess) of the names with an engine score and an outcome under the bound.  A missing yardstick does not exclude a name (Addendum H7: `yardstick_design`)."""
     out = []
     for r in rows:
         if r["score"].get(ENGINE) is None:
-            continue
-        if need_yardsticks and any(r["score"].get(y) is None for y in yardsticks):
             continue
         e = excess_under(r, bound, h)
         if e is None:
             continue
         out.append((r, e))
     return out
+
+
+def yardstick_design(rs, yardsticks):
+    """(rank columns, indicator columns, missing counts) of the yardsticks for the names `rs` on one date (Addendum H7).  Each yardstick is the percentile rank among the
+    names that have it; a name that lacks it gets the cross-sectional median rank 0.5 and a 1 in that yardstick's indicator column (a column only for yardsticks that
+    are missing for at least one name on the date)."""
+    cols, inds, missing = [], [], {}
+    for y in yardsticks:
+        v = np.array([np.nan if r["score"].get(y) is None else r["score"][y] for r in rs], dtype=float)
+        miss = np.isnan(v)
+        missing[y] = int(miss.sum())
+        rank = np.full(len(v), 0.5)
+        if (~miss).any():
+            rank[~miss] = pct_rank(v[~miss])
+        cols.append(rank)
+        if miss.any():
+            inds.append(miss.astype(float))
+    return cols, inds, missing
 
 
 # ---- B1 -------------------------------------------------------------------------------------------------------------------------------------
@@ -207,13 +227,13 @@ def b1_by_date(rows_by_date, bound, yardsticks=YARDSTICKS, h=HORIZON, y_is_rank=
         ex = np.array([p[1] for p in pairs], dtype=float)
         inds = [r.get("industry") or "unknown" for r in rs]
         eng = pct_rank([r["score"][ENGINE] for r in rs])
-        Y = [pct_rank([r["score"][y] for r in rs]) for y in yardsticks]
-        X = np.column_stack([eng] + Y)
+        Y, I, miss = yardstick_design(rs, yardsticks)
+        X = np.column_stack([eng] + Y + I)
         X = np.column_stack([_demean_by(X[:, j], inds) for j in range(X.shape[1])])
         yv = pct_rank(ex) if y_is_rank else ex
         yv = _demean_by(yv, inds)
         beta, *_ = np.linalg.lstsq(X, yv, rcond=None)
-        out[d] = {"n": len(pairs), "coef": float(beta[0])}
+        out[d] = {"n": len(pairs), "coef": float(beta[0]), "missing": miss}
     return out
 
 
@@ -224,7 +244,14 @@ def b1(rows_by_date, bound, yardsticks=YARDSTICKS, n_resamples=hm.N_RESAMPLES, y
     lo, hi, _ = hm.bootstrap_mean_over_dates(coefs, n_resamples)
     mean = float(np.mean(ok)) if ok else float("nan")
     status = ("not computed" if not ok else "pass" if (mean > 0 and lo > 0) else "fail")
-    return {"mean_coef": mean, "ci90": [lo, hi], "n_dates": len(ok), "by_date": per, "status": status, "yardsticks": list(yardsticks)}
+    return {"mean_coef": mean, "ci90": [lo, hi], "n_dates": len(ok), "by_date": per, "status": status, "yardsticks": list(yardsticks),
+            "yardstick_missing_share": _missing_share(per, yardsticks)}
+
+
+def _missing_share(per, yardsticks):
+    """The share of the names of the dates that entered the regression with each yardstick imputed (Addendum H7 coverage)."""
+    n = sum(v["n"] for v in per.values() if v.get("missing") is not None)
+    return {y: (sum(v["missing"][y] for v in per.values() if v.get("missing") is not None) / n if n else None) for y in yardsticks}
 
 
 # ---- B2 -------------------------------------------------------------------------------------------------------------------------------------
@@ -262,7 +289,8 @@ def b2_by_date(rows_by_date, bound, yardsticks=YARDSTICKS, h=HORIZON):
         sc = np.array([r["score"][ENGINE] for r in rs], dtype=float)
         sp, n_used = _neutral_spread(sc, ex, inds)
         eng = pct_rank(sc)
-        Y = np.column_stack([pct_rank([r["score"][y] for r in rs]) for y in yardsticks])
+        Yc, Ic, _miss = yardstick_design(rs, yardsticks)
+        Y = np.column_stack(Yc + Ic)
         X = np.column_stack([_demean_by(Y[:, j], inds) for j in range(Y.shape[1])])
         e_dm = _demean_by(eng, inds)
         beta, *_ = np.linalg.lstsq(X, e_dm, rcond=None)
@@ -287,7 +315,7 @@ def b2(rows_by_date, bound, yardsticks=YARDSTICKS, n_resamples=hm.N_RESAMPLES):
 
 # ---- B3 -------------------------------------------------------------------------------------------------------------------------------------
 
-def b3(rows, old_engine_iqr=None):
+def b3(rows):
     """Distribution bars on the valued names (no return involved: the same under every survivorship bound)."""
     vp = [(r["vp"], r["family"] or "unclassified") for r in rows if r.get("vp") is not None]
     if not vp:
@@ -305,12 +333,15 @@ def b3(rows, old_engine_iqr=None):
     iqr = float(np.percentile(np.log(pos), 75) - np.percentile(np.log(pos), 25)) if len(pos) > 3 else float("nan")
     a_ok = share <= B3A_CAP
     b_ok = all(abs(g) <= B3B_BAND for g in gaps.values())
-    c_status = "not computed" if old_engine_iqr is None else ("pass" if iqr >= 0.5 * old_engine_iqr else "fail")
-    status = "pass" if (a_ok and b_ok and c_status == "pass") else ("fail" if not (a_ok and b_ok) else "not computed")
+    c_status = "not computed" if iqr != iqr else ("pass" if iqr >= B3C_FLOOR else "fail")
+    if not (a_ok and b_ok) or c_status == "fail":
+        status = "fail"
+    else:
+        status = "pass" if c_status == "pass" else "not computed"
     return {"n": int(len(v)), "share_below_0_4": float(below.mean()), "share_above_2_5": float(above.mean()), "share_extreme": share,
             "share_nonpositive_iv": float((v <= 0).mean()), "a_ok": a_ok, "family_share_universe": shares_all, "family_share_extremes": shares_ext,
             "family_gap_points": {f: 100 * g for f, g in gaps.items()}, "b_ok": b_ok, "iqr_ln_vp_positive_iv": iqr, "n_positive_iv": int(len(pos)),
-            "old_engine_iqr": old_engine_iqr, "c_status": c_status, "status": status}
+            "c_floor": B3C_FLOOR, "c_status": c_status, "status": status}
 
 
 # ---- B4 -------------------------------------------------------------------------------------------------------------------------------------
@@ -349,18 +380,19 @@ def b4(rows, n_resamples=hm.N_RESAMPLES):
 
 # ---- the bars over the three bounds ---------------------------------------------------------------------------------------------------
 
-def three_bounds(rows, universe_label, n_resamples=hm.N_RESAMPLES, old_engine_iqr=None, yardsticks=YARDSTICKS, return_end=None):
+def three_bounds(rows, universe_label, n_resamples=hm.N_RESAMPLES, yardsticks=YARDSTICKS, return_end=None):
     """B1-B4 for `rows`.  `return_end` (an ISO date; Addendum H6): B1, B2 and B3 use the dates up to it, B4 every date; None uses every date for all of them."""
     ret_rows = rows if return_end is None else [r for r in rows if r["date"] <= return_end]
     rbd = by_date(ret_rows)
     out = {"universe": universe_label, "n_valued": len(rows), "n_valued_return_dates": len(ret_rows), "provisional": PROVISIONAL, "yardsticks_used": list(yardsticks),
            "return_dates": sorted(rbd), "b4_dates": sorted({r["date"] for r in rows}), "return_end": return_end,
-           "note_sixth_yardstick": "the old engine is not computed point in time here (see the report): B1 and B2 use five yardsticks, not six"}
+           "note_sixth_yardstick": "the old engine is not computed point in time (its anchors are not stored before 2026-05), so it is dropped (Addendum H7): five yardsticks",
+           "note_missing_yardsticks": "a name missing a yardstick stays in B1 and B2 at the median rank with an indicator (Addendum H7)"}
     out["B1"] = {b: b1(rbd, b, yardsticks, n_resamples) for b in BOUNDS}
     out["B1_rank_dependent_variant"] = {b: {k: v for k, v in b1(rbd, b, yardsticks, n_resamples, y_is_rank=True).items() if k != "by_date"} for b in BOUNDS}
     out["B2"] = {b: b2(rbd, b, yardsticks, n_resamples) for b in BOUNDS}
-    out["B3"] = b3(ret_rows, old_engine_iqr)
-    out["B3_all_dates"] = b3(rows, old_engine_iqr)
+    out["B3"] = b3(ret_rows)
+    out["B3_all_dates"] = b3(rows)
     out["B4"] = b4(rows, n_resamples)
     out["B4_return_dates_only"] = b4(ret_rows, n_resamples)
     for bar in ("B1", "B2"):
