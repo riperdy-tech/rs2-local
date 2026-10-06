@@ -8,8 +8,8 @@ THE DATA INTERFACE (Addendum A of SPEC_rebuild.md). Every function in this packa
   * nothing is filled from a current snapshot: a value that is not filed is None ("not available").
 
 `CompanyPIT` re-checks the first rule on construction and raises PITViolation, so a source that leaks cannot get past the engines.
-The shared layer (valuation/pit_data.py, harness branch) is expected to produce `CompanyPIT` objects; until it is merged,
-`valuation/pit_companyfacts.py` is an INTERIM adapter over the SEC companyfacts files, used for the dry run.
+The shared layer (valuation/pit_data.py) produces `CompanyPIT` objects through `valuation/pit_adapter.py`; `valuation/pit_companyfacts.py`, the INTERIM adapter
+over the SEC companyfacts files, is kept for its own tests only.
 
 Conventions: 0.0 is a value (`is None`, never `or`, for numerics); rates are fractions; money is in the filing's own units.
 """

@@ -5,8 +5,8 @@ the rates are placeholders (round numbers, not measurements): a figure from this
 
     python -m valuation.dry_run --asof 2026-10-06 [--census] [--out path.json]
 
-Reads (read-only) the screener's companyfacts files and the live rs2-local submissions cache; SEC submissions missing from that cache are
-fetched with the repo's own helper (sec_primary: <= 10 requests per second) into this tree's gitignored cache/.
+Reads (read-only) the compact point-in-time store of the shared layer (`valuation/pit_data.py`, through `pit_adapter.adapt`), the ticker -> CIK map and the
+current-dated SIC file.  No network.  (The interim `pit_companyfacts.py` source it used before the adapter exists only for its own tests.)
 """
 from __future__ import annotations
 
@@ -15,10 +15,13 @@ import json
 from pathlib import Path
 
 import paths
-from . import classification, common, engine_commodity, engine_financial, engine_operating
+from . import classification, common, engine_commodity, engine_financial, engine_operating, pit_adapter
 from .discount_rate import PlaceholderRates, discount_rate_for_state
-from .pit_companyfacts import CompanyFactsSource
+from .pit_data import PitData
 from .priors_interface import PlaceholderPriors
+
+SMOKE = paths.stocks_root() / "stocks-workspace" / "scratch" / "rev23" / "harness_smoke"
+PRIORS_INPUTS = paths.stocks_root() / "stocks-workspace" / "data" / "priors" / "_inputs"
 
 
 def book_names():
@@ -39,20 +42,23 @@ def main(argv=None):
     ap.add_argument("--census", action="store_true", help="classify the whole book and report the balance-sheet test shares (no valuation)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--per-family", default="4,3,3", help="operating,commodity,financial names to run the engines on")
+    ap.add_argument("--store", default=str(SMOKE / "store_all"), help="the compact point-in-time store")
+    ap.add_argument("--id-map", default=str(SMOKE / "sample_id_map.json"), help="ticker -> CIK")
     a = ap.parse_args(argv)
-    live_subs = paths.stocks_root() / "rs2-local" / "cache" / "sec_submissions"
-    src = CompanyFactsSource(submissions_dirs=[live_subs, paths.HERE / "cache" / "sec_submissions"], allow_network=True)
+    idm = json.loads(Path(a.id_map).read_text(encoding="utf-8"))
+    src = PitData(a.store, id_map=idm.get("map", idm), sic_source=pit_adapter.CurrentSicFile(PRIORS_INPUTS / "sic_by_cik.json"))
     names = book_names()
     want = dict(zip(("operating", "commodity", "financial"), (int(x) for x in a.per_family.split(","))))
     got = {k: [] for k in want}
     census, runs = [], []
     pr, rates = PlaceholderPriors(True), PlaceholderRates(True)
     for t in names:
-        try:
-            pit = src.load(t, a.asof)
-        except Exception as e:                        # a missing file or CIK is a result, not a crash
-            census.append({"ticker": t, "family": None, "load_error": f"{type(e).__name__}: {str(e)[:120]}"})
+        cik = src.cik_for(t)
+        ad = pit_adapter.adapt(src, cik, a.asof, ticker=t) if cik else None
+        if ad is None or not ad.ok:                   # a missing CIK or a refusal is a result, not a crash
+            census.append({"ticker": t, "family": None, "load_error": "no CIK for the ticker" if ad is None else "; ".join(ad.refusals)[:120]})
             continue
+        pit = ad.company
         c = classification.classification(t, a.asof, pit)
         census.append({"ticker": t, "family": c["family"], "reason": c["reason"], "conflicts": c["conflicts"],
                        "insurance_reserve_share": c["tests"]["insurance_reserve_share"], "lending_book_share": c["tests"]["lending_book_share"],
