@@ -114,7 +114,7 @@ def section_text(user: str, letter: str) -> Optional[str]:
 
 def identify(user: str) -> str:
     for key, name in (("Challenge your own placements", "P6"), ("Earlier analyses placed", "P5"), ("its revenue runway", "P1"), ("its profitability", "P2"),
-                      ("return on new invested capital: what one dollar", "P3"), ("its long-run growth, the growth it can sustain", "P4")):
+                      ("return on invested capital five years from now", "P3"), ("three most material risks to the inputs of this analysis", "P4")):
         if key in user:
             return name
     raise AssertionError("unrecognised prompt")

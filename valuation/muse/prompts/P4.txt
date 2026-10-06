@@ -1,7 +1,7 @@
-# template P4, version 1: the long run and the risks
+# template P4, version 2: the long-run risks
 {{HEADER}}
 
-TASK. Place this company inside the population distribution of its long-run growth, the growth it can sustain once the explicit forecast years are over, and name the three most material risks to the inputs. The distribution is in section R; it describes companies in a similar state to this one (section S). Use the filed figures (F), the company's own documents (D) and the company's state (S).
+TASK. Name the three most material risks to the inputs of this analysis, and say which input each would move most; place the company inside the distribution of any input listed under INPUTS TO PLACE, as in the other analyses. The long-run (terminal) growth rate is not an input and is not placed: it is the same rule for every company (the lower of the risk-free rate and a long-run growth anchor), so a risk to the company's long-run growth belongs to the inputs that carry the growth path, the margin and the return on capital. Use the filed figures (F), the company's own documents (D) and the company's state (S).
 
 INPUTS TO PLACE
 {{INPUTS}}
