@@ -153,7 +153,8 @@ def capital_intensity_check(st, p, disc) -> dict:
     eq, debt, cash = st.get("equity"), st.get("debt"), st.get("cash")
     ic = None
     if None not in (eq, debt, cash):
-        ic = eq + debt - cash - (st.get("st_investments") or 0.0)
+        sti = st.get("st_investments")
+        ic = eq + debt - cash - (0.0 if sti is None else sti)        # untagged short-term investments read as none
     hist = (ic / st["revenue"]) if (ic is not None and ic > 0 and st.get("revenue")) else None
     return {"implied_capital_per_revenue": implied, "historical_invested_capital_per_revenue": hist,
             "ratio_implied_to_historical": (implied / hist) if (implied is not None and hist) else None}
