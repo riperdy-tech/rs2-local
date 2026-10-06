@@ -383,6 +383,9 @@ def greenwald_maintenance_capex(capex, ppe, rev, rev_prev):
     return capex - (ppe / rev) * (rev - rev_prev)
 
 
+DEBT_COMPONENTS = ("debt_lt_noncurrent", "debt_current", "short_term_borrowings_separate")
+
+
 def total_debt(row):
     """Interest-bearing debt EXCLUDING leases: debt_lt_noncurrent + short-term debt counted once (tcr.short_term_debt).
     When no debt component is filed: 0.0 if no interest charge is filed either, else None (an inconsistency, not a zero)."""
@@ -476,6 +479,13 @@ def build_state(pit: CompanyPIT, max_years: int = 12) -> dict:
     st["nwc_years"] = len(nw)
     # balance sheet bridge items at the base period
     st["debt"] = total_debt(base)
+    # Addendum G 5: a debt component that is never tagged in ANY held year counts as 0 (the untagged-marker convention used for goodwill) and is stamped
+    untagged = [k for k in DEBT_COMPONENTS if all(rows[p][k] is None for p in periods)]
+    if untagged:
+        st["debt_components_never_tagged"] = untagged
+        st["read_as_none"].append("debt components never tagged in any held year, counted as 0: " + ", ".join(untagged))
+        if st["debt"] is None and len(untagged) == len(DEBT_COMPONENTS):
+            st["debt"] = 0.0
     fl0 = num(base["finance_lease_liability"])
     st["debt_incl_finance_leases"] = None if st["debt"] is None else st["debt"] + (0.0 if fl0 is None else fl0)
     for k, label in (("finance_lease_liability", "finance leases"), ("operating_lease_liability", "operating leases"),

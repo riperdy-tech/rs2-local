@@ -78,6 +78,8 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, oil_gas: Optional[bool] 
     nc = ps.refs.get("normalization_curve")
     if nc is None:
         return op.refusal(ENGINE, ["priors supply no normalization curve (priors.refs['normalization_curve'])"], ticker=pit.ticker)
+    if "growth_decay" not in ps.curves:              # a prior that cannot supply the curve is a refusal naming it, not a crash
+        return op.refusal(ENGINE, ["priors do not supply: ['growth_decay']"], ticker=pit.ticker)
     horizon = len(ps.curves["growth_decay"])
     curves = {"margin_retention": nc(cyc["score"], horizon)}
     # the secondary is a level, not a per-draw value: the operating run is used with its own (per-draw) multiple switched off
