@@ -32,7 +32,7 @@ def build_world(tmp_path, seed=1, price_after=None):
             filed = (date(y, 12, 31) + timedelta(days=60)).isoformat()
             facts.append(synth.cover(f"{y + 1}-02-15", filed, 100.0, form="10-K", accn=f"cv{cik}-{y}"))
             facts += synth.annual_report(f"{y}-12-31", filed, {"WeightedAverageNumberOfDilutedSharesOutstanding": 100.0}, unit="shares", accn=f"sh{cik}-{y}")
-        c = synth.write_company(store, cik, _merge(store, cik, facts))
+        synth.append_facts(store, cik, facts)
         t = f"T{i}"
         idm[t] = str(cik)
         p, drift = 10.0 + i, 0.002 + 0.0004 * i
@@ -51,13 +51,6 @@ def build_world(tmp_path, seed=1, price_after=None):
                     prices[t][k][0] *= 5.0
                     prices[t][k][1] *= 5.0
     return PitData(store, price_source=MonthlyRawPriceSource({"prices": prices}), id_map=idm), [str(i + 1) for i in range(N)]
-
-
-def _merge(store, cik, facts):
-    import gzip as gz
-    with gz.open(store / f"{str(cik).zfill(10)}.json.gz", "rt", encoding="utf-8") as f:
-        doc = json.load(f)
-    return doc["facts"] + facts
 
 
 def test_end_to_end_on_a_synthetic_world(tmp_path):
@@ -98,15 +91,9 @@ def test_scores_do_not_change_when_later_filings_are_removed(tmp_path):
     a, ciks = build_world(tmp_path / "a")
     recs = run_harness.run(["2018-06-29"], ciks, list(engines.YARDSTICKS), a, tmp_path / "oa", n_resamples=20, coverage_only=False)
     # drop every filing after 2018-06-29 from the store, rerun: the scores are the same
-    import gzip as gz
     b, _ = build_world(tmp_path / "b")
     for cik in ciks:
-        p = tmp_path / "b" / "store" / f"{cik.zfill(10)}.json.gz"
-        with gz.open(p, "rt", encoding="utf-8") as f:
-            doc = json.load(f)
-        doc["facts"] = [x for x in doc["facts"] if x[7] < "2018-06-29"]
-        with gz.open(p, "wt", encoding="utf-8") as f:
-            json.dump(doc, f)
+        synth.drop_filed_on_or_after(tmp_path / "b" / "store", cik, "2018-06-29")
     run_harness.run(["2018-06-29"], ciks, list(engines.YARDSTICKS), b, tmp_path / "ob", n_resamples=20)
     with gzip.open(tmp_path / "oa" / "records.jsonl.gz", "rt") as f:
         A = {json.loads(l)["cik"]: json.loads(l) for l in f}

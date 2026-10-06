@@ -52,6 +52,7 @@ class BaseRateCorpus:
         self.panel = panel
         self._dirs = {}
         self._tables = {}
+        self._sizes = {}
         self._tmp = tempfile.TemporaryDirectory(prefix="pit_corpus_")
 
     def _for(self, asof):
@@ -63,11 +64,13 @@ class BaseRateCorpus:
             doc = {"tickers": {cik: {str(y): {"revenue": r.get("revenue")} for y, r in yrs.items()} for cik, yrs in view.items()}}
             (d / "fundamentals_history.json").write_text(json.dumps(doc), encoding="utf-8")
             self._dirs[a] = d
+            self._sizes[a] = len(view)
             self._tables[a] = gp.persistence_table(sd=d)
         return self._dirs[a], self._tables[a]
 
     def size(self, asof):
-        return len(self.panel.asof(to_date(asof).isoformat()))
+        self._for(asof)
+        return self._sizes[to_date(asof).isoformat()]
 
     def synthetic_m(self, rows, L, asof):
         """The base-rate median growth (fraction) and its source: the earlier harness's `synthetic_m` on this corpus."""

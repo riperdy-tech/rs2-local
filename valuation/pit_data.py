@@ -1,57 +1,70 @@
-"""valuation/pit_data.py - the ONE shared point-in-time data layer (SPEC_rebuild.md, Addendum A).
+"""valuation/pit_data.py - the ONE shared point-in-time data layer (SPEC_rebuild.md, Addenda A and B).
 
 Source: the SEC companyfacts archive, per filing: every fact carries its value, its filing date and its accession.  Nothing here reads
 `fundamentals_history.json`, a screener snapshot, a vendor field or a current anchor.
 
-Rules (Addendum A, binding):
+RULES (Addendum A, binding)
   * A filing counts only if its filing date is STRICTLY BEFORE the valuation date (`filed < asof`).
-  * Values are AS FIRST FILED: of all the annual-report versions of one (field, fiscal period) filed before `asof`, the earliest wins
-    (ties: an original form over an amendment, then the ladder's order).  `mode="latest"` exists only to MEASURE how far restatements move
-    values; no engine, prior or metric may use it.
-  * A fiscal year exists only from its OWN annual report (10-K, 10-K405, 10-KT, 20-F, 40-F): the filing whose period of report is that year.
-    S-1 / F-1 data is never read (only annual-form facts and cover-page share counts of periodic reports are stored).  A fiscal year whose own
-    filing is not in companyfacts (a pre-XBRL original) exists from the earliest LATER filing that restates it, stamped
-    `no_own_filing_in_companyfacts`: later than the truth, never earlier, so there is no look-ahead.
+  * Values are AS FIRST FILED and a fiscal year exists only from its OWN annual report (10-K, 10-K405, 10-KT, 20-F, 40-F; a 10-K/A counts only
+    where the archive holds no original): a fact is used only if it comes from the annual report whose period of report is the fact's own period
+    (a comparative column in a later report, a restatement, is never read), and of duplicates of one (tag, period) the earliest filing wins.  S-1 /
+    F-1 data is never stored.  A company whose first annual report is filed on or after the date has no fiscal year at that date.
   * Delisted companies are kept: the archive holds every XBRL filer.
-  * The valuation-date price is the TRADED, UNADJUSTED close with share counts on the same basis; total-return series are for outcomes only.
+  * The valuation-date price is the TRADED, UNADJUSTED close with share counts on the same basis; total-return series are for outcomes and
+    for past-return signals only.
   * Nothing is filled from today: a missing value is None.
 
-API (all dates are `datetime.date` or ISO strings; `asof` is the valuation date):
+THE EXTRACTION IS THE SCREENER'S PRODUCTION EXTRACTOR (Addendum B).  `valuation/vendored/build_fundamentals_history.py` is a byte-identical copy of
+the screener-publish script (sha256 in valuation/vendored/MANIFEST.json, checked by a test): its tag ladders, accession votes, per-filer denies,
+scale corrections, noncontrolling-interest / restricted-cash scopes, capex investing closure and bank-revenue rules run UNCHANGED on a
+companyfacts document that has been cut to what was knowable (own-period facts, first filed, filed before the date).  Nothing imports the screener
+repository; the copy is data.  Re-copy it when the screener's extractor changes (the test names the file to compare).
+Two documented additions sit ON TOP of the extractor and never alter a value it produced: (1) a `SUPPLEMENTS` ladder for fields the extractor
+leaves empty (E&P revenue and capex tags, preferred equity), each cell flagged `pit_supplement`; (2) a non-USD reporting currency is carried in its
+own units (the unit is relabelled to USD for the extractor and the company is stamped `reporting_currency`: its values are NOT dollars).
 
-    pit = PitData(store_dir, zip_path=None, price_source=None, id_map=None)
-    pit.cik_for(ticker_or_cik)                      -> 10-digit CIK string or None
-    pit.company(cik)                                -> CompanyPit or None (None: no such company in the store / archive)
-    pit.snapshot(cik, asof)                         -> Snapshot  (rows, provenance, base year L, cover shares, own filing dates)
-    pit.fiscal_years(cik, asof, mode="first_filed") -> {fye iso: FiscalYear}   (only years whose own filing is before asof)
-    pit.rows(cik, asof)                             -> {int fiscal year: row dict} in the extractor's field names, plus 'fcf'
-    pit.outcome_fiscal_years(cik)                   -> every fiscal year, first-filed, NO cutoff (for OUTCOMES only)
-    pit.universe(asof, ciks=None)                   -> (list of cik with an annual report before asof, {reason: count})
+API (dates are `datetime.date` or ISO strings; `asof` is the valuation date):
+
+    pit = PitData(store_dir, zip_path=None, price_source=None, id_map=None, sic_source=None)
+    pit.cik_for(ticker_or_cik) / ticker_for(cik) / tickers_for(cik)
+    pit.company(cik)                                -> CompanyPit or None
+    pit.fiscal_years(cik, asof, mode="first_filed") -> {fye iso: FiscalYear}   (own annual report filed strictly before asof)
+    pit.snapshot(cik, asof)                         -> Snapshot  (rows, base year L, cover shares, stub months, currency)
+    pit.rows(cik, asof)                             -> {int fiscal year: row dict}, the extractor's field names plus 'fcf'
+    pit.company_pit(cik, asof)                      -> the engines' CompanyPIT: series[field][period_end] -> Filed(value, period_end, filed,
+                                                       accession, form, tag), concepts[name][period_end], annual_reports, sic, cover shares
+    pit.outcome_fiscal_years(cik)                   -> every fiscal year, first filed, NO cutoff (OUTCOMES only)
+    pit.universe(asof, ciks)                        -> (ciks with an annual report before asof, {reason: count})
     pit.market_cap(cik, asof, key=None)             -> {"market_cap", "price", "shares", ... "flags", "reason"}
-    pit.price / pit.price_source                    -> the PriceSource (unadjusted close, split events, total-return index)
+    pit.panel(ciks, fields)                         -> Panel; Panel.asof(date) -> {cik: {year: {field: value}}}
+    pit.price_source                                -> a PriceSource (unadjusted close, split events, total-return index)
 
-Field names follow the production extractor (revenue, gross_profit, operating_income, net_income, ocf, capex, da, ..., total_assets, equity,
-cash, ...) so code written for fundamentals_history rows reads these rows unchanged.  The tag ladders are a simplified, documented copy of the
-extractor's (no scale-defence, no accession vote: under first-filed each period has one filing, and the corrupt later restatements the
-defences exist for are not read).  Every cell records its tag, accession, filing date, form and flags.
+`mode="latest_known"` runs the same extractor on everything filed before the date WITHOUT the own-period / first-filed cut: what the screener's
+history would have said on that day.  It exists to measure restatements and for the parity check; no engine, prior or metric may use it.
 """
 import gzip
+import importlib.util
 import json
 import math
+import sys
 import zipfile
 from collections import defaultdict, namedtuple
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
-PIT_LAYER_VERSION = "1"
+PIT_LAYER_VERSION = "2"
 
 ANNUAL_ORIGINAL = ("10-K", "10-K405", "10-KT", "20-F", "40-F")
 ANNUAL_AMENDMENT = ("10-K/A", "10-K405/A", "10-KT/A", "20-F/A", "40-F/A")
 ANNUAL_FORMS = ANNUAL_ORIGINAL + ANNUAL_AMENDMENT
 COVER_FORMS = ANNUAL_FORMS + ("10-Q", "10-Q/A", "10-QT")
 COVER_TAG = "EntityCommonStockSharesOutstanding"
+STORE_TAXONOMIES = ("us-gaap", "ifrs-full", "srt", "dei")
 DAYS_LO, DAYS_HI = 350, 380          # a fiscal-year duration (52/53-week years included)
 FYE_CLUSTER_DAYS = 10                # period ends this close are the same fiscal year
-SHARE_COUNT_RATIO = 100.0            # amendment A1 of the earlier harness: a cover count 100x from the filed diluted count is a scale slip
+SHARE_COUNT_RATIO = 100.0            # a cover count 100x from the filed diluted count is a scale slip
+VENDORED_DIR = Path(__file__).resolve().parent / "vendored"
 
 
 def is_num(v):
@@ -72,304 +85,391 @@ def add_months(d, n):
     return date(y, m0 + 1, min(d.day, calendar.monthrange(y, m0 + 1)[1]))
 
 
-# ---- the field ladders ---------------------------------------------------------------------------------------------------------------
-
-# kind: duration (an annual flow) or instant (a balance); unit: the only unit read.  ladder: tags in order of preference (us-gaap and ifrs-full
-# namespaces are merged; us-gaap wins a tie).  Absent tag = None, never 0.
-FIELD_SPECS = {
-    "revenue": ("duration", "USD", ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
-                                    "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet", "Revenue",
-                                    "RevenueFromContractsWithCustomers"]),
-    "gross_profit": ("duration", "USD", ["GrossProfit"]),
-    "operating_income": ("duration", "USD", ["OperatingIncomeLoss", "ProfitLossFromOperatingActivities"]),
-    "net_income": ("duration", "USD", ["NetIncomeLoss", "ProfitLossAttributableToOwnersOfParent", "ProfitLoss"]),
-    "ocf": ("duration", "USD", ["NetCashProvidedByUsedInOperatingActivities",
-                                "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
-                                "CashFlowsFromUsedInOperatingActivities"]),
-    "capex": ("duration", "USD", ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets",
-                                  "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities"]),
-    "da": ("duration", "USD", ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization",
-                               "DepreciationAmortizationAndAccretionNet", "DepreciationAndAmortisationExpense",
-                               "AdjustmentsForDepreciationAndAmortisationExpense"]),
-    "sga": ("duration", "USD", ["SellingGeneralAndAdministrativeExpense", "GeneralAndAdministrativeExpense"]),
-    "interest_expense": ("duration", "USD", ["InterestExpense", "InterestExpenseDebt"]),
-    "pretax_income": ("duration", "USD", [
-        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
-        "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
-        "ProfitLossBeforeTax"]),
-    "tax_provision": ("duration", "USD", ["IncomeTaxExpenseBenefit", "IncomeTaxExpenseContinuingOperations", "IncomeTaxExpenseIncome"]),
-    "sbc": ("duration", "USD", ["ShareBasedCompensation", "AdjustmentsForSharebasedPayments"]),
-    "amortization_intangibles": ("duration", "USD", ["AmortizationOfIntangibleAssets", "AmortizationOfAcquiredIntangibleAssets",
-                                                     "FiniteLivedIntangibleAssetsAmortizationExpense"]),
-    "shares_diluted": ("duration", "shares", ["WeightedAverageNumberOfDilutedSharesOutstanding",
-                                              "WeightedAverageNumberOfSharesOutstandingBasic", "WeightedAverageShares",
-                                              "AdjustedWeightedAverageShares"]),
-    "eps_diluted": ("duration", "USD/shares", ["EarningsPerShareDiluted", "DilutedEarningsLossPerShare",
-                                               "EarningsPerShareBasicAndDiluted"]),
-    "total_assets": ("instant", "USD", ["Assets"]),
-    "current_assets": ("instant", "USD", ["AssetsCurrent", "CurrentAssets"]),
-    "current_liabilities": ("instant", "USD", ["LiabilitiesCurrent", "CurrentLiabilities"]),
-    "total_liabilities": ("instant", "USD", ["Liabilities"]),
-    "equity": ("instant", "USD", ["StockholdersEquity", "EquityAttributableToOwnersOfParent",
-                                  "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "Equity"]),
-    "cash": ("instant", "USD", ["CashAndCashEquivalentsAtCarryingValue", "CashAndCashEquivalents",
-                                "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"]),
-    "st_investments": ("instant", "USD", ["ShortTermInvestments", "MarketableSecuritiesCurrent",
-                                          "AvailableForSaleSecuritiesDebtSecuritiesCurrent", "OtherShortTermInvestments"]),
-    "lt_investments": ("instant", "USD", ["MarketableSecuritiesNoncurrent", "AvailableForSaleSecuritiesDebtSecuritiesNoncurrent"]),
-    "lt_debt": ("instant", "USD", ["LongTermDebtNoncurrent", "LongTermDebt"]),
-    "debt_lt_noncurrent": ("instant", "USD", ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongtermBorrowings",
-                                              "NoncurrentPortionOfNoncurrentBondsIssued"]),
-    "debt_current": ("instant", "USD", ["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent", "DebtCurrent",
-                                        "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings",
-                                        "CurrentPortionOfLongtermBorrowings", "ShortTermBorrowings", "ShorttermBorrowings"]),
-    "short_term_borrowings_separate": ("instant", "USD", ["CommercialPaper", "ShortTermBorrowings", "ShorttermBorrowings"]),
-    "finance_lease_liability": ("instant", "USD", ["FinanceLeaseLiability", "CapitalLeaseObligations"]),
-    "operating_lease_liability": ("instant", "USD", ["OperatingLeaseLiability", "LeaseLiabilities"]),
-    "receivables": ("instant", "USD", ["AccountsReceivableNetCurrent", "ReceivablesNetCurrent", "TradeAndOtherCurrentReceivables"]),
-    "inventory": ("instant", "USD", ["InventoryNet", "Inventories"]),
-    "ppe_net": ("instant", "USD", ["PropertyPlantAndEquipmentNet", "PropertyPlantAndEquipment"]),
-    "retained_earnings": ("instant", "USD", ["RetainedEarningsAccumulatedDeficit", "RetainedEarnings"]),
-    "goodwill": ("instant", "USD", ["Goodwill"]),
-    "intangibles_ex_goodwill": ("instant", "USD", ["IntangibleAssetsNetExcludingGoodwill", "IntangibleAssetsOtherThanGoodwill",
-                                                   "FiniteLivedIntangibleAssetsNet"]),
-    "minority_interest": ("instant", "USD", ["MinorityInterest", "NoncontrollingInterests"]),
-    # family-classification inputs (SPEC section 2): the balance-sheet tests stated in words
-    "insurance_reserves_future_benefits": ("instant", "USD", ["LiabilityForFuturePolicyBenefits"]),
-    "insurance_reserves_claims": ("instant", "USD", ["LiabilityForClaimsAndClaimsAdjustmentExpense"]),
-    "deposits": ("instant", "USD", ["Deposits"]),
-    "loans_receivable": ("instant", "USD", ["LoansAndLeasesReceivableNetReportedAmount"]),
-    # commodity cross-check (SPEC 3.3): the ASC 932 standardized measure, an instant filed in the oil and gas reserve disclosure
-    "standardized_measure": ("instant", "USD", ["StandardizedMeasureOfDiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReserveQuantities"]),
-}
-
-# a tag whose scope or content the consumer must know (never silently treated as the preferred tag)
-TAG_FLAGS = {
-    "ProfitLoss": "net_income_consolidated_may_include_nci",
-    "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": "equity_includes_nci",
-    "Equity": "equity_includes_nci",
-    "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents": "cash_includes_restricted",
-    "WeightedAverageNumberOfSharesOutstandingBasic": "shares_basic_not_diluted",
-    "WeightedAverageShares": "shares_undifferentiated",
-    "AdjustedWeightedAverageShares": "shares_undifferentiated",
-    "EarningsPerShareBasicAndDiluted": "eps_basic_and_diluted",
-}
-
-Fact = namedtuple("Fact", "tag unit start end val accn filed form taxo")
-Cell = namedtuple("Cell", "val tag unit accn filed form own flags")
-
-
-def _needed_tags():
-    s = {COVER_TAG}
-    for _k, _u, ladder in FIELD_SPECS.values():
-        s.update(ladder)
-    return s
-
-
-NEEDED_TAGS = _needed_tags()
-
-
-# ---- the store: companyfacts reduced to the annual-report facts the layer reads ------------------------------------------------------
-
-def compact_company(obj):
-    """One companyfacts member -> {"cik", "name", "facts": [[taxo, tag, unit, start, end, val, accn, filed, form], ...]}.  Keeps the needed
-    tags: annual-form facts, and the dei cover-page share count of periodic reports.  Facts with no filing date cannot be placed in time
-    and are dropped (counted)."""
-    out, no_filed = [], 0
-    for taxo, body in (obj.get("facts") or {}).items():
-        for tag, cb in (body or {}).items():
-            if tag not in NEEDED_TAGS:
-                continue
-            for unit, vals in ((cb or {}).get("units") or {}).items():
-                for v in vals:
-                    form = v.get("form")
-                    if tag == COVER_TAG:
-                        if form not in COVER_FORMS:
-                            continue
-                    elif form not in ANNUAL_FORMS:
-                        continue
-                    if not v.get("filed"):
-                        no_filed += 1
-                        continue
-                    if v.get("val") is None:
-                        continue
-                    out.append([taxo, tag, unit, v.get("start"), v.get("end"), v.get("val"), v.get("accn") or "", v["filed"], form])
-    return {"cik": str(obj.get("cik", "")).zfill(10), "name": obj.get("entityName"), "facts": out, "dropped_no_filed": no_filed,
-            "layer_version": PIT_LAYER_VERSION}
-
-
-class CompanyPit:
-    """One company's annual-report facts and the as-of logic over them."""
-
-    def __init__(self, doc):
-        self.cik = doc["cik"]
-        self.name = doc.get("name")
-        self.by_tag = defaultdict(list)
-        self.cover = []
-        for taxo, tag, unit, start, end, val, accn, filed, form in doc["facts"]:
-            f = Fact(tag, unit, start, end, val, accn, filed, form, taxo)
-            (self.cover if tag == COVER_TAG else self.by_tag[tag]).append(f)
-        self._accns = None
-        self._fy_index = None
-
-    # -- annual accessions and fiscal years --
-    def annual_accessions(self):
-        """{accn: {"filed", "form", "period"}}: period of report = the latest end among the accession's fiscal-year-length duration facts."""
-        if self._accns is None:
-            acc = {}
-            for facts in self.by_tag.values():
-                for f in facts:
-                    if f.start is None or f.end is None:
-                        continue
-                    d = _days(f.start, f.end)
-                    if d is None or not DAYS_LO <= d <= DAYS_HI:
-                        continue
-                    a = acc.setdefault(f.accn, {"filed": f.filed, "form": f.form, "period": f.end})
-                    if f.end > a["period"]:
-                        a["period"] = f.end
-                    if f.filed < a["filed"]:
-                        a["filed"] = f.filed
-            self._accns = acc
-        return self._accns
-
-    def fiscal_year_index(self):
-        """[{"fye", "own_accn", "own_filed", "own_form", "periods": [period ends clustered into it]}] sorted by fye.
-        The own filing of a fiscal year is the earliest-filed ORIGINAL annual report whose period of report is that year (an amendment
-        only when no original is in the archive)."""
-        if self._fy_index is None:
-            items = sorted(((a["period"], a["filed"], accn, a["form"]) for accn, a in self.annual_accessions().items()))
-            clusters, cur = [], []
-            for it in items:
-                if cur and _days(cur[-1][0], it[0]) > FYE_CLUSTER_DAYS:
-                    clusters.append(cur)
-                    cur = []
-                cur.append(it)
-            if cur:
-                clusters.append(cur)
-            idx = []
-            for cl in clusters:
-                originals = [c for c in cl if c[3] in ANNUAL_ORIGINAL]
-                pool = originals or cl
-                own = min(pool, key=lambda c: (c[1], c[2]))
-                idx.append({"fye": own[0], "own_accn": own[2], "own_filed": own[1], "own_form": own[3],
-                            "own_is_amendment": not originals, "periods": sorted({c[0] for c in cl}),
-                            "accns": {c[2] for c in cl}})
-            self._fy_index = idx
-        return self._fy_index
-
-    def _fye_for(self, end):
-        """The fiscal-year end a fact's period end belongs to (within FYE_CLUSTER_DAYS of an own-filing year), else None."""
-        best = None
-        for fy in self.fiscal_year_index():
-            d = abs(_days(fy["fye"], end))
-            if d <= FYE_CLUSTER_DAYS and (best is None or d < best[0]):
-                best = (d, fy["fye"])
-        return best[1] if best else None
-
-    # -- cell selection --
-    def _candidates(self, field, asof_iso):
-        kind, unit, ladder = FIELD_SPECS[field]
-        for rank, tag in enumerate(ladder):
-            for f in self.by_tag.get(tag, ()):
-                if f.unit != unit or not is_num(f.val) or f.end is None:
-                    continue
-                if asof_iso is not None and not f.filed < asof_iso:
-                    continue
-                if kind == "duration":
-                    if f.start is None:
-                        continue
-                    d = _days(f.start, f.end)
-                    if d is None or not DAYS_LO <= d <= DAYS_HI:
-                        continue
-                yield rank, f
-
-    def cells(self, asof, mode="first_filed"):
-        """{fye_iso: {field: Cell}} for every fiscal period, using only facts filed strictly before `asof` (None: no cutoff - OUTCOMES only).
-        mode "first_filed" (the only mode engines may use) or "latest" (diagnostic)."""
-        asof_iso = None if asof is None else to_date(asof).isoformat()
-        own_by_fye = {fy["fye"]: fy for fy in self.fiscal_year_index()}
-        own_accns = {a: fy["fye"] for fy in self.fiscal_year_index() for a in fy["accns"]}
-        out = defaultdict(dict)
-        for field in FIELD_SPECS:
-            best = {}
-            for rank, f in self._candidates(field, asof_iso):
-                fye = self._fye_for(f.end)
-                if fye is None:
-                    fye = f.end            # a comparative of a year whose own filing is not in the archive
-                amend = f.form in ANNUAL_AMENDMENT
-                if mode == "first_filed":
-                    key = (f.filed, amend, rank, f.accn)
-                    better = fye not in best or key < best[fye][0]
-                else:
-                    key = (f.filed, not amend, -rank, f.accn)
-                    better = fye not in best or key > best[fye][0]
-                if better:
-                    best[fye] = (key, rank, f)
-            for fye, (_key, rank, f) in best.items():
-                flags = []
-                if f.tag in TAG_FLAGS:
-                    flags.append(TAG_FLAGS[f.tag])
-                if f.form in ANNUAL_AMENDMENT:
-                    flags.append("from_amendment")
-                out[fye][field] = Cell(float(f.val), f.tag, f.unit, f.accn, f.filed, f.form,
-                                       own_accns.get(f.accn) == fye, tuple(flags))
-        return out
-
-    def fiscal_years(self, asof, mode="first_filed"):
-        """{fye iso: FiscalYear} for the years that exist at `asof` (own filing strictly before it; a year with no own filing in the archive exists
-        from the earliest filing that carries it).  asof None = no cutoff (outcomes)."""
-        asof_iso = None if asof is None else to_date(asof).isoformat()
-        cells = self.cells(asof, mode)
-        own = {fy["fye"]: fy for fy in self.fiscal_year_index()}
-        out = {}
-        for fye, fields in cells.items():
-            fy = own.get(fye)
-            if fy is not None:
-                exists_from, own_in_archive = fy["own_filed"], True
-            else:
-                exists_from, own_in_archive = min(c.filed for c in fields.values()), False
-            if asof_iso is not None and not exists_from < asof_iso:
-                continue
-            if not fields:
-                continue
-            stamps = [] if own_in_archive else ["no_own_filing_in_companyfacts"]
-            if fy is not None and fy["own_is_amendment"]:
-                stamps.append("own_filing_is_amendment")
-            out[fye] = FiscalYear(fye, fiscal_label(fye), exists_from, fy["own_accn"] if fy else None,
-                                  fy["own_form"] if fy else None, fields, tuple(stamps))
-        return dict(sorted(out.items()))
-
-    def cover_shares(self, asof):
-        """The cover-page share count of the latest periodic report filed strictly before `asof`: every class entry of that filing summed.
-        {"value", "cover_date", "filed", "accn", "form", "n_entries"} or None."""
-        asof_iso = to_date(asof).isoformat()
-        c = [f for f in self.cover if f.filed < asof_iso and is_num(f.val) and f.val > 0 and f.unit == "shares"]
-        if not c:
-            return None
-        last = max(f.filed for f in c)
-        sel = [f for f in c if f.filed == last]
-        # one filing can carry the same class twice (restated cover): keep one per (accn, end, val)
-        uniq = {(f.accn, f.end, f.val): f for f in sel}
-        entries = list(uniq.values())
-        end = max(f.end for f in entries if f.end) if any(f.end for f in entries) else None
-        return {"value": float(sum(f.val for f in entries if f.end == end)) if end else float(sum(f.val for f in entries)),
-                "cover_date": end, "filed": last, "accn": entries[0].accn, "form": entries[0].form, "n_entries": len(entries)}
-
-    def facts(self, tags, asof, forms=None):
-        """Raw facts of the given tags filed strictly before `asof` (for engines that need a tag the ladders do not carry; only tags in
-        NEEDED_TAGS are stored)."""
-        asof_iso = to_date(asof).isoformat()
-        for t in tags:
-            for f in self.by_tag.get(t, ()):
-                if f.filed < asof_iso and (forms is None or f.form in forms):
-                    yield f
-
-
 def _days(a, b):
     try:
         return (date.fromisoformat(b) - date.fromisoformat(a)).days
     except (TypeError, ValueError):
         return None
+
+
+# ---- the production extractor, vendored -------------------------------------------------------------------------------------------------
+
+_BFH = None
+
+
+def extractor():
+    """The vendored production extractor module (loaded once)."""
+    global _BFH
+    if _BFH is None:
+        sys.path.insert(0, str(VENDORED_DIR))
+        try:
+            spec = importlib.util.spec_from_file_location("vendored_build_fundamentals_history", VENDORED_DIR / "build_fundamentals_history.py")
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules["vendored_build_fundamentals_history"] = mod
+            spec.loader.exec_module(mod)
+        finally:
+            sys.path.remove(str(VENDORED_DIR))
+        _BFH = mod
+    return _BFH
+
+
+# Supplements: ladders for fields the extractor leaves empty, applied ONLY where its cell is None, from the same own-period facts, never
+# replacing an extracted value.  Every cell they fill is flagged `pit_supplement` and says so in its tag.  (Addendum B: E&P revenue and capex,
+# preferred equity.)  A rung that is a COMPONENT rather than a total says so in its flag.
+SUPPLEMENTS = {
+    "revenue": ("duration", [("OilAndGasRevenue", None), ("OilAndGasSalesRevenue", None), ("ExplorationAndProductionRevenue", None),
+                             ("ResultsOfOperationsRevenueFromOilAndGasProducingActivities", "revenue_is_producing_activities_component")]),
+    "capex": ("duration", [("PaymentsToExploreAndDevelopOilAndGasProperties", "capex_ep_exploration_and_development_unproven_total"),
+                           ("PaymentsToAcquireOilAndGasPropertyAndEquipment", "capex_ep_acquisition_line_may_be_component")]),
+    "preferred_equity": ("instant", [("PreferredStockValue", None), ("PreferredStockValueOutstanding", None)]),
+}
+
+# raw concepts carried by name (insurer decomposition, ASC 932 standardized measure, lending book, deposits)
+CONCEPT_TAGS = ("PremiumsEarnedNet", "PremiumsEarnedNetPropertyAndCasualty", "PremiumsEarnedNetLife", "PolicyholderBenefitsAndClaimsIncurredNet",
+                "PolicyholderBenefitsAndClaimsIncurredGross", "DeferredPolicyAcquisitionCostAmortizationExpense", "NetInvestmentIncome",
+                "StandardizedMeasureOfDiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReserves",
+                "DiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReservesStandardizedMeasure",
+                "StandardizedMeasureOfDiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReserveQuantities",
+                "LoansAndLeasesReceivableNetReportedAmount", "LoansAndLeasesReceivableNetOfDeferredIncome",
+                "FinancingReceivableExcludingAccruedInterestAfterAllowanceForCreditLoss", "LoansReceivableNet", "Deposits",
+                "LiabilityForFuturePolicyBenefits", "LiabilityForClaimsAndClaimsAdjustmentExpense", "UnearnedPremiums",
+                "PolicyholderContractDeposits")
+
+# the 29 fields the engines read (valuation/common.py FIELDS on the engines branch)
+ENGINE_FIELDS = (
+    "revenue", "operating_income", "pretax_income", "tax_provision", "net_income", "da", "capex", "ppe_net",
+    "cash", "st_investments", "lt_investments", "debt_current", "short_term_borrowings_separate", "debt_lt_noncurrent",
+    "finance_lease_liability", "operating_lease_liability", "equity", "equity_incl_nci", "goodwill",
+    "intangibles_ex_goodwill", "amortization_intangibles", "interest_expense", "total_assets", "total_liabilities",
+    "current_assets", "current_liabilities", "insurance_reserves", "preferred_equity", "ocf",
+)
+DURATION_FIELDS = {"revenue", "operating_income", "pretax_income", "tax_provision", "net_income", "da", "capex", "amortization_intangibles",
+                   "interest_expense", "ocf", "gross_profit", "sga", "sbc", "shares_diluted", "eps_diluted"}
+
+Cell = namedtuple("Cell", "val tag unit accn filed form own flags")
+
+
+# ---- the store: companyfacts reduced to annual-report facts --------------------------------------------------------------------------
+
+def compact_company(obj):
+    """One companyfacts member -> {"cik", "name", "facts": {taxonomy: {tag: {unit: [[start, end, val, accn, filed, form], ...]}}}}.
+
+    Keeps every tag of the annual-report forms (the extractor reads many tags, including whole families for its closure tests) and the dei cover-page
+    share count of periodic reports.  A fact with no filing date cannot be placed in time and is dropped (counted); S-1 / F-1 and quarterly facts
+    are not kept."""
+    facts, no_filed = {}, 0
+    for taxo in STORE_TAXONOMIES:
+        for tag, cb in ((obj.get("facts") or {}).get(taxo) or {}).items():
+            for unit, vals in ((cb or {}).get("units") or {}).items():
+                for v in vals:
+                    form = v.get("form")
+                    if taxo == "dei":
+                        if tag != COVER_TAG or form not in COVER_FORMS:
+                            continue
+                    elif form not in ANNUAL_FORMS:
+                        continue
+                    if v.get("val") is None:
+                        continue
+                    if not v.get("filed"):
+                        no_filed += 1
+                        continue
+                    facts.setdefault(taxo, {}).setdefault(tag, {}).setdefault(unit, []).append(
+                        [v.get("start"), v.get("end"), v["val"], v.get("accn") or "", v["filed"], form])
+    return {"cik": str(obj.get("cik", "")).zfill(10), "name": obj.get("entityName"), "facts": facts, "dropped_no_filed": no_filed,
+            "layer_version": PIT_LAYER_VERSION}
+
+
+def _fact_dict(a):
+    return {"start": a[0], "end": a[1], "val": a[2], "accn": a[3], "filed": a[4], "form": a[5]}
+
+
+class Extraction:
+    """The extractor's output for one (company, date, mode) and what is needed to say where each cell came from."""
+
+    def __init__(self, history, bundle, facts, own, currency, notes):
+        self.history, self.bundle, self.facts, self.own, self.currency, self.notes = history, bundle, facts, own, currency, notes
+
+
+class CompanyPit:
+    """One company's stored facts and the as-of logic over them."""
+
+    def __init__(self, doc, ticker=None):
+        self.cik = doc["cik"]
+        self.name = doc.get("name")
+        self.ticker = ticker
+        self.facts = doc["facts"]
+        self._acc = None
+        self._ext = {}
+
+    # -- annual accessions --
+    def accessions(self):
+        """{accn: {"filed", "form", "period"}} of the annual-report accessions: period of report = the latest end among the accession's
+        fiscal-year-length duration facts (the latest instant end when it has none)."""
+        if self._acc is None:
+            acc, inst = {}, {}
+            for taxo, tags in self.facts.items():
+                if taxo == "dei":
+                    continue
+                for tag, units in tags.items():
+                    for unit, rows in units.items():
+                        for start, end, _v, accn, filed, form in rows:
+                            if end is None:
+                                continue
+                            a = acc.setdefault(accn, {"filed": filed, "form": form, "period": None})
+                            if filed < a["filed"]:
+                                a["filed"] = filed
+                            if start is not None:
+                                d = _days(start, end)
+                                if d is not None and DAYS_LO <= d <= DAYS_HI and (a["period"] is None or end > a["period"]):
+                                    a["period"] = end
+                            elif accn not in inst or end > inst[accn]:
+                                inst[accn] = end
+            for accn, a in acc.items():
+                if a["period"] is None:
+                    a["period"] = inst.get(accn)
+                    a["period_from_instant"] = True
+            self._acc = {k: v for k, v in acc.items() if v["period"] is not None}
+        return self._acc
+
+    def fiscal_year_index(self):
+        """[{"fye", "own_accn", "own_filed", "own_form", "own_is_amendment"}] sorted: one per period of report (period ends within
+        FYE_CLUSTER_DAYS are one year); the own filing is the earliest-filed ORIGINAL annual report (an amendment only when none is held)."""
+        items = sorted((a["period"], a["filed"], accn, a["form"]) for accn, a in self.accessions().items())
+        clusters, cur = [], []
+        for it in items:
+            if cur and _days(cur[-1][0], it[0]) > FYE_CLUSTER_DAYS:
+                clusters.append(cur)
+                cur = []
+            cur.append(it)
+        if cur:
+            clusters.append(cur)
+        idx = []
+        for cl in clusters:
+            originals = [c for c in cl if c[3] in ANNUAL_ORIGINAL]
+            own = min(originals or cl, key=lambda c: (c[1], c[2]))
+            idx.append({"fye": own[0], "own_accn": own[2], "own_filed": own[1], "own_form": own[3], "own_is_amendment": not originals,
+                        "accns": {c[2] for c in cl}})
+        return idx
+
+    # -- the cut: what was knowable, as first filed --
+    def _facts_cut(self, asof_iso, mode):
+        """{tag: {"units": {unit: [fact dict]}}} merged (ifrs-full under us-gaap) + the dei dict + srt, from the facts that count at `asof_iso`
+        (None: no cutoff).  mode "first_filed": own-period facts only, earliest filing per (tag, unit, period); "latest_known": every fact filed
+        before the date (what the production extractor would have read)."""
+        acc = self.accessions() if mode == "first_filed" else None
+        out = {}
+        for taxo, tags in self.facts.items():
+            if taxo == "dei":
+                continue
+            tgt = out.setdefault(taxo, {})
+            for tag, units in tags.items():
+                for unit, rows in units.items():
+                    keep = {}
+                    for r in rows:
+                        start, end, _v, accn, filed, form = r
+                        if asof_iso is not None and not filed < asof_iso:
+                            continue
+                        if mode == "first_filed":
+                            a = acc.get(accn)
+                            if a is None or end is None or abs(_days(a["period"], end)) > FYE_CLUSTER_DAYS:
+                                continue
+                            k = (start, end)
+                            key = (filed, form in ANNUAL_AMENDMENT, accn)
+                            if k not in keep or key < keep[k][0]:
+                                keep[k] = (key, r)
+                        else:
+                            keep[(start, end, accn)] = ((filed,), r)
+                    if keep:
+                        tgt.setdefault(tag, {"units": {}})["units"][unit] = [_fact_dict(r) for _k, r in keep.values()]
+        dei = {}
+        for tag, units in ((self.facts.get("dei") or {}).items()):
+            for unit, rows in units.items():
+                lst = [_fact_dict(r) for r in rows if asof_iso is None or r[4] < asof_iso]
+                if lst:
+                    dei.setdefault(tag, {"units": {}})["units"][unit] = lst
+        return out, dei
+
+    @staticmethod
+    def _currency(us, ifrs):
+        """The reporting currency: the unit of the balance-sheet and income tags with the most facts (other than shares, ratios and per-share)."""
+        count = defaultdict(int)
+        for src in (ifrs, us):
+            for tag in ("Assets", "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "NetIncomeLoss", "ProfitLoss", "Equity",
+                        "StockholdersEquity", "Liabilities"):
+                for unit, rows in ((src.get(tag) or {}).get("units") or {}).items():
+                    if "/" not in unit and unit not in ("shares", "pure"):
+                        count[unit] += len(rows)
+        if not count:
+            return "USD"
+        if count.get("USD", 0) * 2 >= max(count.values()):
+            return "USD"
+        return max(count, key=count.get)
+
+    def extract(self, asof, mode="first_filed"):
+        """The Extraction at `asof` (cached).  Runs the vendored production extractor on the cut document."""
+        asof_iso = None if asof is None else to_date(asof).isoformat()
+        key = (asof_iso, mode)
+        if key in self._ext:
+            return self._ext[key]
+        B = extractor()
+        cut, dei = self._facts_cut(asof_iso, mode)
+        us, ifrs, srt = cut.get("us-gaap", {}), cut.get("ifrs-full", {}), cut.get("srt", {})
+        currency = self._currency(us, ifrs)
+        notes = []
+        if currency != "USD":
+            notes.append(f"reporting_currency:{currency}")
+            for src in (us, ifrs, srt):
+                for cb in src.values():
+                    units = cb["units"]
+                    for u in list(units):
+                        if u == currency:
+                            units["USD"] = units.pop(u)
+                        elif u == f"{currency}/shares":
+                            units["USD/shares"] = units.pop(u)
+        facts = dict(ifrs)
+        facts.update(us)
+        for tag in B.SRT_TAGS:
+            if tag in srt:
+                facts["srt:" + tag] = srt[tag]
+        try:
+            history, bundle = B.extract_history(facts, self.ticker, dei)
+        except Exception as exc:                     # an extractor failure is stated, never papered over
+            history, bundle = {}, None
+            notes.append(f"extractor_error:{type(exc).__name__}:{exc}")
+        own = {fy["fye"]: fy for fy in self.fiscal_year_index()}
+        ext = Extraction(history or {}, bundle or {}, facts, own, currency, notes)
+        self._ext[key] = ext
+        return ext
+
+    # -- cells --
+    def _find_fact(self, ext, tag, end, want_duration):
+        """The fact behind a cell: tag, a period end within FYE_CLUSTER_DAYS of `end`, earliest filed."""
+        best = None
+        for t in str(tag).split("+"):
+            for unit, rows in ((ext.facts.get(t) or {}).get("units") or {}).items():
+                for f in rows:
+                    if f.get("end") is None or abs(_days(end, f["end"])) > FYE_CLUSTER_DAYS:
+                        continue
+                    if want_duration and f.get("start") is None:
+                        continue
+                    k = (f["filed"], f["accn"])
+                    if best is None or k < best[0]:
+                        best = (k, f, unit)
+        return best
+
+    def fiscal_years(self, asof, mode="first_filed"):
+        """{fye iso: FiscalYear}: the fiscal years that exist at `asof` (own annual report filed strictly before it); asof None = no cutoff."""
+        ext = self.extract(asof, mode)
+        out = {}
+        B = extractor()
+        idx = {fy["fye"]: fy for fy in self.fiscal_year_index()}
+        for y, row in ext.history.items():
+            pe = ext.bundle.get("period_end", {}).get(str(y))
+            if pe is None:
+                continue
+            own = next((fy for f, fy in idx.items() if abs(_days(f, pe)) <= FYE_CLUSTER_DAYS), None)
+            if own is None:
+                continue
+            cells = {}
+            tags = ext.bundle.get("tags", {})
+            overrides = (ext.bundle.get("overrides") or {}).get(str(y), {})
+            for field, val in row.items():
+                if not is_num(val):
+                    continue
+                tag = (tags.get(field) or {}).get(y)
+                if field == "fcf":
+                    parts = [cells.get("ocf"), cells.get("capex")]
+                    if all(parts):
+                        cells[field] = Cell(float(val), "derived:ocf-capex", "USD", own["own_accn"], max(p.filed for p in parts), own["own_form"],
+                                            True, ("derived",))
+                    continue
+                hit = self._find_fact(ext, tag, pe, field in DURATION_FIELDS) if tag else None
+                if hit is not None:
+                    _k, f, unit = hit
+                    accn = overrides.get(field) or f["accn"]
+                    flags = ["from_amendment"] if f["form"] in ANNUAL_AMENDMENT else []
+                    cells[field] = Cell(float(val), str(tag), unit, accn, f["filed"], f["form"], accn in own["accns"], tuple(flags))
+                else:
+                    cells[field] = Cell(float(val), str(tag) if tag else "unknown", "USD", own["own_accn"], own["own_filed"], own["own_form"], True,
+                                        ("fact_not_located",))
+            self._supplement(ext, pe, row, cells, own)
+            if not cells:
+                continue
+            stamps = ["own_filing_is_amendment"] if own["own_is_amendment"] else []
+            stamps += [n for n in ext.notes if n.startswith("reporting_currency")]
+            out[pe] = FiscalYear(pe, int(y), own["own_filed"], own["own_accn"], own["own_form"], cells, tuple(stamps),
+                                 {k: v for k, v in row.items()}, ext.currency)
+        return dict(sorted(out.items()))
+
+    def _supplement(self, ext, pe, row, cells, own):
+        for field, (kind, ladder) in SUPPLEMENTS.items():
+            if is_num(row.get(field)):
+                continue
+            for tag, flag in ladder:
+                hit = None
+                for unit, rows in ((ext.facts.get(tag) or {}).get("units") or {}).items():
+                    if unit != "USD":
+                        continue
+                    for f in rows:
+                        if f.get("end") is None or abs(_days(pe, f["end"])) > FYE_CLUSTER_DAYS or not is_num(f["val"]):
+                            continue
+                        d = _days(f["start"], f["end"]) if f.get("start") else None
+                        if kind == "duration" and (d is None or not DAYS_LO <= d <= DAYS_HI):
+                            continue
+                        if kind == "instant" and f.get("start") is not None:
+                            continue
+                        k = (f["filed"], f["accn"])
+                        if hit is None or k < hit[0]:
+                            hit = (k, f)
+                if hit is not None:
+                    f = hit[1]
+                    flags = ("pit_supplement",) + ((flag,) if flag else ())
+                    cells[field] = Cell(float(f["val"]), tag, "USD", f["accn"], f["filed"], f["form"], f["accn"] in own["accns"], flags)
+                    row[field] = float(f["val"])
+                    break
+        ocf, cx = row.get("ocf"), row.get("capex")
+        if "fcf" not in cells and is_num(ocf) and is_num(cx):
+            row["fcf"] = ocf - cx
+
+    def concepts(self, asof, names=CONCEPT_TAGS, mode="first_filed"):
+        """{name: {period_end: Cell}}: raw concepts by name, own-period, first filed, annual-length flows or instants."""
+        ext = self.extract(asof, mode)
+        out = {}
+        for name in names:
+            per = {}
+            for unit, rows in ((ext.facts.get(name) or {}).get("units") or {}).items():
+                for f in rows:
+                    if f.get("end") is None or not is_num(f["val"]):
+                        continue
+                    if f.get("start") is not None:
+                        d = _days(f["start"], f["end"])
+                        if d is None or not DAYS_LO <= d <= DAYS_HI:
+                            continue
+                    k = (f["filed"], f["accn"])
+                    if f["end"] not in per or k < per[f["end"]][0]:
+                        per[f["end"]] = (k, f, unit)
+            if per:
+                out[name] = {pe: Cell(float(f["val"]), name, unit, f["accn"], f["filed"], f["form"], True, ()) for pe, (_k, f, unit) in per.items()}
+        return out
+
+    def cover_shares(self, asof):
+        """The cover-page share count of the latest periodic report filed strictly before `asof`: every class entry of that filing summed.
+        {"value", "cover_date", "filed", "accn", "form", "n_entries"} or None."""
+        asof_iso = to_date(asof).isoformat()
+        c = []
+        for unit, rows in (((self.facts.get("dei") or {}).get(COVER_TAG)) or {}).items():
+            if unit != "shares":
+                continue
+            c += [r for r in rows if r[4] < asof_iso and is_num(r[2]) and r[2] > 0]
+        if not c:
+            return None
+        last = max(r[4] for r in c)
+        uniq = {(r[3], r[1], r[2]): r for r in c if r[4] == last}
+        entries = list(uniq.values())
+        end = max((r[1] for r in entries if r[1]), default=None)
+        sel = [r for r in entries if r[1] == end] if end else entries
+        return {"value": float(sum(r[2] for r in sel)), "cover_date": end, "filed": last, "accn": entries[0][3], "form": entries[0][5],
+                "n_entries": len(entries)}
 
 
 def fiscal_label(fye_iso):
@@ -379,18 +479,15 @@ def fiscal_label(fye_iso):
 
 
 class FiscalYear:
-    __slots__ = ("fye", "year", "exists_from", "own_accn", "own_form", "cells", "stamps")
+    __slots__ = ("fye", "year", "exists_from", "own_accn", "own_form", "cells", "stamps", "_row", "currency")
 
-    def __init__(self, fye, year, exists_from, own_accn, own_form, cells, stamps):
+    def __init__(self, fye, year, exists_from, own_accn, own_form, cells, stamps, row=None, currency="USD"):
         self.fye, self.year, self.exists_from, self.own_accn, self.own_form = fye, year, exists_from, own_accn, own_form
-        self.cells, self.stamps = cells, stamps
+        self.cells, self.stamps, self._row, self.currency = cells, stamps, row, currency
 
     def row(self):
-        """{field: value} plus 'fcf' (ocf - capex, both required); a field not filed is absent-as-None."""
-        r = {f: self.cells[f].val if f in self.cells else None for f in FIELD_SPECS}
-        ocf, cx = r.get("ocf"), r.get("capex")
-        r["fcf"] = (ocf - cx) if (ocf is not None and cx is not None) else None
-        return r
+        """{field: value} in the extractor's names (plus supplements and 'fcf'); a field not filed is None."""
+        return dict(self._row) if self._row is not None else {f: c.val for f, c in self.cells.items()}
 
     def provenance(self):
         return {f: {"tag": c.tag, "accn": c.accn, "filed": c.filed, "form": c.form, "own_filing": c.own, "flags": list(c.flags)}
@@ -400,10 +497,11 @@ class FiscalYear:
 class Snapshot:
     """Everything the layer knows about one company at one valuation date."""
 
-    def __init__(self, cik, name, asof, years, cover):
+    def __init__(self, cik, name, asof, years, cover, currency="USD"):
         self.cik, self.name, self.asof = cik, name, to_date(asof)
         self.years = years                       # {fye iso: FiscalYear}
         self.cover = cover
+        self.currency = currency
         fyes = sorted(years)
         self.L_fye = fyes[-1] if fyes else None
         self.L = years[self.L_fye].year if fyes else None
@@ -426,6 +524,80 @@ class Snapshot:
     def stub_months(self):
         """Months from the base fiscal year end to the valuation date."""
         return (self.asof - to_date(self.L_fye)).days / 30.4375 if self.L_fye else None
+
+
+# ---- SIC (not in companyfacts) ---------------------------------------------------------------------------------------------------------
+
+SicRecord = namedtuple("SicRecord", "code description source point_in_time")
+
+
+class SubmissionsDirSic:
+    """SIC from SEC submissions JSON files (`CIK##########.json` with "sic" and "sicDescription") in a directory.  SEC publishes only the CURRENT
+    assignment: `point_in_time` is False, and the engines stamp it."""
+
+    def __init__(self, directory):
+        self.dir = Path(directory)
+
+    def __call__(self, cik):
+        p = self.dir / f"CIK{str(cik).zfill(10)}.json"
+        if not p.exists():
+            return None
+        d = json.loads(p.read_text(encoding="utf-8"))
+        code = str(d.get("sic") or "").strip() or None
+        return SicRecord(code, str(d.get("sicDescription") or ""), "SEC submissions JSON (current assignment)", False)
+
+
+# ---- the engines' CompanyPIT --------------------------------------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class PitFiled:
+    """Same fields as valuation.common.Filed on the engines branch (used when that module is not importable)."""
+    value: float
+    period_end: str
+    filed: str
+    accession: str
+    form: str = ""
+    tag: str = ""
+    period_start: str = None
+
+
+def _engine_types():
+    try:
+        from valuation import common as c
+        return c.CompanyPIT, c.Filed, c.SicInfo
+    except Exception:
+        return None, PitFiled, None
+
+
+class PitCompany:
+    """Fallback for valuation.common.CompanyPIT (same attributes and methods) when that module is not importable."""
+
+    def __init__(self, ticker, asof, series, concepts, annual_reports, sic, cik, shares_outstanding, notes):
+        self.ticker, self.asof, self.series, self.concepts = ticker, to_date(asof), series, concepts
+        self.annual_reports, self.sic, self.cik, self.shares_outstanding, self.notes = annual_reports, sic, cik, shares_outstanding, notes
+        self.check()
+
+    def check(self):
+        bad = [(n, pe, f.filed) for tab in (self.series, self.concepts) for n, per in tab.items() for pe, f in per.items()
+               if to_date(f.filed) >= self.asof]
+        bad += [("annual_report", a[0], a[1]) for a in self.annual_reports if to_date(a[1]) >= self.asof]
+        if bad:
+            raise ValueError(f"{self.ticker}: {len(bad)} value(s) filed on or after {self.asof}: {bad[:5]}")
+
+    def periods(self):
+        return sorted({a[0] for a in self.annual_reports})
+
+    def row(self, period_end):
+        return {f: (self.series[f][period_end].value if period_end in self.series.get(f, {}) else None) for f in ENGINE_FIELDS}
+
+    def rows(self):
+        return {pe: self.row(pe) for pe in self.periods()}
+
+    def concept_values(self, name):
+        return {pe: f.value for pe, f in sorted(self.concepts.get(name, {}).items())}
+
+    def filing_trail(self, field_name, period_end):
+        return self.series.get(field_name, {}).get(period_end)
 
 
 # ---- prices ---------------------------------------------------------------------------------------------------------------------------
@@ -664,7 +836,8 @@ def _split_between(events, a, b):
 class PitData:
     """The data root handed to every engine: `engine(ticker, asof, data_root)` receives a PitData."""
 
-    def __init__(self, store_dir, zip_path=None, price_source=None, id_map=None):
+    def __init__(self, store_dir, zip_path=None, price_source=None, id_map=None, sic_source=None):
+        self.sic_source = sic_source
         self.store_dir = Path(store_dir)
         self.zip_path = Path(zip_path) if zip_path else None
         self.price_source = price_source
@@ -727,7 +900,7 @@ class PitData:
             return None
         with gzip.open(p, "rt", encoding="utf-8") as f:
             doc = json.load(f)
-        self._cache[cik] = CompanyPit(doc)
+        self._cache[cik] = CompanyPit(doc, ticker=self.ticker_for(cik))
         return self._cache[cik]
 
     def drop_cache(self):
@@ -739,12 +912,13 @@ class PitData:
         c = self.company(cik)
         return {} if c is None else c.fiscal_years(asof, mode)
 
-    def snapshot(self, cik, asof):
+    def snapshot(self, cik, asof, mode="first_filed"):
         """The Snapshot of a company at `asof` (cached until `drop_cache`); None when the company is not in the store or the archive."""
-        k = (str(cik).zfill(10), to_date(asof).isoformat())
+        k = (str(cik).zfill(10), to_date(asof).isoformat(), mode)
         if k not in self._snap:
             c = self.company(cik)
-            self._snap[k] = None if c is None else Snapshot(c.cik, c.name, asof, c.fiscal_years(asof), c.cover_shares(asof))
+            self._snap[k] = None if c is None else Snapshot(c.cik, c.name, asof, c.fiscal_years(asof, mode), c.cover_shares(asof),
+                                                            c.extract(asof, mode).currency)
         return self._snap[k]
 
     def rows(self, cik, asof):
@@ -755,6 +929,42 @@ class PitData:
         """Every fiscal year, first-filed, with NO date cutoff.  For outcomes only: an engine that calls this has looked ahead."""
         c = self.company(cik)
         return {} if c is None else c.fiscal_years(None, "first_filed")
+
+    # -- SIC and the engines' view --
+    def sic(self, cik):
+        """SicRecord of the company from `sic_source` (None without one or without a record).  The assignment is CURRENT, never dated."""
+        return None if self.sic_source is None else self.sic_source(str(cik).zfill(10))
+
+    def company_pit(self, cik, asof, ticker=None):
+        """The engines' CompanyPIT at `asof` (valuation.common.CompanyPIT when importable, else an equivalent PitCompany): series[field][period_end] ->
+        Filed for the 29 engine fields, concepts[name][period_end], the annual-report list, SIC, and the cover-page share count.  Every value is
+        first filed, from its own annual report, filed strictly before `asof`.  None when the company is not in the store or the archive."""
+        cik = str(cik).zfill(10)
+        c = self.company(cik)
+        if c is None:
+            return None
+        CPIT, Filed, SicInfo = _engine_types()
+        asof_d = to_date(asof)
+        fys = c.fiscal_years(asof_d)
+        series = {f: {} for f in ENGINE_FIELDS}
+        reports = []
+        for pe, fy in fys.items():
+            reports.append((pe, fy.exists_from, fy.own_accn, fy.own_form))
+            for f in ENGINE_FIELDS:
+                cell = fy.cells.get(f)
+                if cell is not None:
+                    series[f][pe] = Filed(cell.val, pe, cell.filed, cell.accn, cell.form, cell.tag)
+        concepts = {n: {pe: Filed(x.val, pe, x.filed, x.accn, x.form, x.tag) for pe, x in per.items()} for n, per in c.concepts(asof_d).items()}
+        cov = c.cover_shares(asof_d)
+        shares = None if cov is None else Filed(cov["value"], cov["cover_date"] or cov["filed"], cov["filed"], cov["accn"], cov["form"], COVER_TAG)
+        sr = self.sic(cik)
+        notes = list(c.extract(asof_d).notes)
+        ticker = ticker or self.ticker_for(cik) or f"CIK{cik}"
+        if CPIT is None:
+            return PitCompany(ticker, asof_d, series, concepts, reports, sr, cik, shares, notes)
+        sic = None if sr is None else SicInfo(sr.code, sr.description, sr.source, sr.point_in_time)
+        return CPIT(ticker, asof_d, series=series, concepts=concepts, annual_reports=reports, sic=sic, cik=cik, shares_outstanding=shares,
+                    notes=notes)
 
     # -- the universe --
     def universe(self, asof, ciks):
@@ -770,7 +980,7 @@ class PitData:
                 why["no_annual_report_before_date"] += 1
                 continue
             if not any(("revenue" in y.cells or "net_income" in y.cells or "total_assets" in y.cells) for y in fy.values()):
-                why["no_usd_figures"] += 1
+                why["no_figures"] += 1
                 continue
             keep.append(c.cik)
         return keep, dict(why)
@@ -809,6 +1019,10 @@ class PitData:
         c = self.company(cik)
         snap = self.snapshot(cik, asof_d)
         asof_iso = asof_d.isoformat()
+        if snap is not None and snap.currency != "USD":
+            out["flags"].append(f"reporting_currency_{snap.currency}")
+            out["reason"] = "reporting_currency_not_usd"
+            return out
         cov_adj = cov_amb = None
         cov = snap.cover if snap else None
         if cov and cov.get("cover_date"):
@@ -867,8 +1081,7 @@ class PitData:
         return cell.val * p, flags
 
     def panel(self, ciks, fields=("revenue",)):
-        """A Panel: the first-filed cells (value and filing date) of the given fields for every fiscal year of every company, with no cutoff,
-        from which any as-of view is cut by filing date (`Panel.asof`).  Equivalent to calling `fiscal_years(cik, asof)` per date, built once."""
+        """A Panel of the given fields over `ciks`: `Panel.asof(date)` is every company's rows as of that date (cached per date)."""
         return Panel(self, list(ciks), tuple(fields))
 
     def total_return(self, key, d0, d1):
@@ -880,31 +1093,23 @@ class PitData:
 
 
 class Panel:
-    """First-filed cells of a field set across companies, with filing dates, cut to an as-of view without re-reading the archive.  A cell is in the
-    view iff it was filed strictly before `asof` and its fiscal year exists at `asof` (own filing strictly before it): the same rule as
-    `PitData.fiscal_years`, so a panel view and a direct read agree (tested)."""
+    """A cache of as-of views of a field set across companies: `asof(date)` -> {cik: {int year: {field: value}}}, each company read through
+    `PitData.snapshot(cik, date)` (one extraction per company per date, kept), so a panel view and a direct read agree by construction.  For
+    corpus statistics (base rates, priors) that need every company as of a date."""
 
     def __init__(self, pit, ciks, fields):
-        self.fields = fields
-        self.data = {}
-        for cik in ciks:
-            c = pit.company(cik)
-            if c is None:
-                continue
-            fys = c.fiscal_years(None)
-            self.data[c.cik] = [(fy.fye, fy.year, fy.exists_from,
-                                 {f: (fy.cells[f].val, fy.cells[f].filed) for f in fields if f in fy.cells}) for fy in fys.values()]
+        self.pit, self.ciks, self.fields = pit, [str(c).zfill(10) for c in ciks], tuple(fields)
+        self._views = {}
 
     def asof(self, asof):
-        """{cik: {int year: {field: value}}} for the fiscal years that exist before `asof`, cells filed before it."""
         a = to_date(asof).isoformat()
-        out = {}
-        for cik, years in self.data.items():
-            d = {}
-            for fye, year, exists_from, cells in years:
-                if not exists_from < a:
+        if a not in self._views:
+            view = {}
+            for cik in self.ciks:
+                snap = self.pit.snapshot(cik, a)
+                if snap is None or not snap.years:
                     continue
-                d[year] = {f: v for f, (v, filed) in cells.items() if filed < a}
-            if d:
-                out[cik] = d
-        return out
+                view[cik] = {y: {f: row.get(f) for f in self.fields} for y, row in snap.rows().items()}
+            self._views[a] = view
+            self.pit.drop_cache()
+        return self._views[a]

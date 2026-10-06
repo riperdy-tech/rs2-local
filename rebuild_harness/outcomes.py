@@ -56,6 +56,7 @@ def fundamental_outcomes(pit, cik, base_fye, ks=(1, 2, 3)):
         chain.append(nxt)
         if step in out:
             row, prow = nxt.row(), chain[-2].row()
+            dct = nxt.cells.get("debt_current")
             out[step] = {"fye": nxt.fye, "filed": nxt.exists_from, "own_accn": nxt.own_accn, "stamps": list(nxt.stamps),
-                         "measures": fundamentals.measures(row, prow)}
+                         "measures": fundamentals.measures(row, prow, dct.tag if dct is not None else None)}
     return out

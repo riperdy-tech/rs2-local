@@ -6,8 +6,10 @@ from pathlib import Path
 
 from valuation import pit_data as pd_
 
-FLOW = {t for _k, _u, ladder in pd_.FIELD_SPECS.values() for t in ladder}   # every ladder tag; instants are told apart below
-INSTANT_TAGS = {t for k, _u, ladder in pd_.FIELD_SPECS.values() if k == "instant" for t in ladder}
+INSTANT_TAGS = {"Assets", "AssetsCurrent", "Liabilities", "LiabilitiesCurrent", "StockholdersEquity", "Equity", "CashAndCashEquivalentsAtCarryingValue",
+                "LongTermDebtNoncurrent", "LongTermDebtCurrent", "ShortTermBorrowings", "PreferredStockValue", "Goodwill", "PropertyPlantAndEquipmentNet",
+                "LiabilityForFuturePolicyBenefits", "StandardizedMeasureOfDiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReserves",
+                "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"}
 
 
 def _fact(tag, fye, filed, val, accn, form, unit="USD", taxo="us-gaap"):
@@ -32,7 +34,10 @@ def cover(end, filed, value, form="10-Q", accn=None):
 def write_company(store_dir, cik, facts, name="Synthetic Co"):
     store_dir = Path(store_dir)
     store_dir.mkdir(parents=True, exist_ok=True)
-    doc = {"cik": str(cik).zfill(10), "name": name, "facts": facts, "dropped_no_filed": 0, "layer_version": pd_.PIT_LAYER_VERSION}
+    nested = {}
+    for taxo, tag, unit, start, end, val, accn, filed, form in facts:
+        nested.setdefault(taxo, {}).setdefault(tag, {}).setdefault(unit, []).append([start, end, val, accn, filed, form])
+    doc = {"cik": str(cik).zfill(10), "name": name, "facts": nested, "dropped_no_filed": 0, "layer_version": pd_.PIT_LAYER_VERSION}
     with gzip.open(store_dir / f"{str(cik).zfill(10)}.json.gz", "wt", encoding="utf-8") as f:
         json.dump(doc, f)
     return str(cik).zfill(10)
@@ -56,3 +61,27 @@ def simple_company(store_dir, cik, years, base_rev=100.0, growth=0.1, margin=0.2
         vals.update(extra or {})
         facts += annual_report(fye, filed, vals, accn=f"{cik}-{y}")
     return write_company(store_dir, cik, facts, name)
+
+
+def append_facts(store_dir, cik, facts):
+    """Add flat facts [taxo, tag, unit, start, end, val, accn, filed, form] to an existing company file."""
+    p = Path(store_dir) / f"{str(cik).zfill(10)}.json.gz"
+    with gzip.open(p, "rt", encoding="utf-8") as f:
+        doc = json.load(f)
+    for taxo, tag, unit, start, end, val, accn, filed, form in facts:
+        doc["facts"].setdefault(taxo, {}).setdefault(tag, {}).setdefault(unit, []).append([start, end, val, accn, filed, form])
+    with gzip.open(p, "wt", encoding="utf-8") as f:
+        json.dump(doc, f)
+
+
+def drop_filed_on_or_after(store_dir, cik, date_iso):
+    """Remove every fact filed on or after `date_iso` (as if the archive had been cut that day)."""
+    p = Path(store_dir) / f"{str(cik).zfill(10)}.json.gz"
+    with gzip.open(p, "rt", encoding="utf-8") as f:
+        doc = json.load(f)
+    for tags in doc["facts"].values():
+        for units in tags.values():
+            for u in list(units):
+                units[u] = [r for r in units[u] if r[4] < date_iso]
+    with gzip.open(p, "wt", encoding="utf-8") as f:
+        json.dump(doc, f)

@@ -4,6 +4,7 @@ import pytest
 from rebuild_harness import old_engine, run_harness
 from rebuild_harness.tests.test_run_harness import build_world, N
 from valuation.pit_data import Panel
+from valuation.tests import synth
 
 
 ANCHORS = {"rf": 0.03, "ga": 0.03, "breakeven": 0.02, "loading": {"Technology": 1.0}, "erp": 0.05, "bill_rate_at": lambda fye: 0.02}
@@ -44,17 +45,11 @@ def test_an_unknown_ticker_and_a_date_before_any_annual_report(tmp_path):
 
 
 def test_the_value_does_not_depend_on_filings_after_the_date(tmp_path):
-    import gzip, json
     pit, ciks = build_world(tmp_path / "a")
     a = make(pit, ciks)("T7", "2018-06-29", pit)["value_per_share"]
     pit2, _ = build_world(tmp_path / "b")
     for cik in ciks:
-        p = tmp_path / "b" / "store" / f"{cik.zfill(10)}.json.gz"
-        with gzip.open(p, "rt", encoding="utf-8") as f:
-            doc = json.load(f)
-        doc["facts"] = [x for x in doc["facts"] if x[7] < "2018-06-29"]
-        with gzip.open(p, "wt", encoding="utf-8") as f:
-            json.dump(doc, f)
+        synth.drop_filed_on_or_after(tmp_path / "b" / "store", cik, "2018-06-29")
     b = make(pit2, ciks)("T7", "2018-06-29", pit2)["value_per_share"]
     assert a == b and a is not None
 

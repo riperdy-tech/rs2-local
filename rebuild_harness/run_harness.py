@@ -126,7 +126,8 @@ def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizon
                 row, prev = snap.row_L(), None
                 yrs = snap.rows()
                 prev = yrs.get(max((y for y in yrs if y < snap.L), default=-1))
-                rec["base"] = fundamentals.measures(row, prev)
+                dct = snap.years[snap.L_fye].cells.get("debt_current")
+                rec["base"] = fundamentals.measures(row, prev, dct.tag if dct is not None else None)
                 fo = outcomes.fundamental_outcomes(pit, cik, snap.L_fye, ks)
                 for k, v in fo.items():
                     rec["out"][k] = v["measures"] if v else None

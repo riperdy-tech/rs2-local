@@ -53,6 +53,13 @@ class Context:
         self.prevL = self.rows.get(prev_year) if prev_year is not None else None
         self._mc = None
 
+    def dc_tag(self):
+        """The tag the base year's current debt came from (the short-term-debt netting depends on it)."""
+        if not self.snap or not self.snap.L_fye:
+            return None
+        c = self.snap.years[self.snap.L_fye].cells.get("debt_current")
+        return c.tag if c is not None else None
+
     def market_cap(self):
         if self._mc is None:
             self._mc = self.pit.market_cap(self.cik, self.asof, self.key)
@@ -133,7 +140,7 @@ def return_on_capital(ticker, asof, data_root):
     bad = _no_base(ctx)
     if bad:
         return bad
-    r = fundamentals.return_on_capital(ctx.rowL)
+    r = fundamentals.return_on_capital(ctx.rowL, ctx.dc_tag())
     if r is None:
         return result(reason="return_on_capital_not_computable", stamps=ctx.stamps())
     st = ctx.stamps() + (["tax_default"] if fundamentals.tax_rate(ctx.rowL)[1] else [])

@@ -1,0 +1,10 @@
+{
+  "purpose": "byte-identical copies of the screener's production extractor, run unchanged by valuation/pit_data.py on a point-in-time companyfacts document",
+  "copied_on": "2026-10-06",
+  "origin_repository": "screener-publish (a clone of stock-screener, origin/main as of 2026-10-06)",
+  "files": {
+    "build_fundamentals_history.py": {"origin_path": "scripts/build_fundamentals_history.py", "sha256": "7de02ffbf9a77d3086f994800ef11a10cfed138bda3bb074544b03b718e8da1e"},
+    "issuer_securities.py": {"origin_path": "scripts/issuer_securities.py", "sha256": "a88a623d32f1c0304f7e79750740071f427bf0ce7764f945a8a1d92908c2bace"}
+  },
+  "how_to_refresh": "copy both files again from the screener's scripts/ folder, update the sha256 values here, rerun valuation/tests (the parity test compares against a screener copy when SCREENER_PUBLISH_REPO or STOCKS_ROOT resolves one)"
+}

@@ -4,6 +4,14 @@ an outcome (a later year as first filed), so a forecast is always compared with 
 0.0 is a value: every test is `is None` / `is_num`, never truthiness.  A measure that cannot be computed is None; nothing is defaulted except
 the one declared tax default, which is stamped.
 """
+import sys
+from pathlib import Path
+
+for _p in (str(Path(__file__).resolve().parents[1] / "tools"),):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+import throughcycle_record as tcr   # the repository's single owner of the short-term-debt netting (F4)
+
 from valuation.pit_data import is_num
 
 TAX_DEFAULT = 0.21      # throughcycle_record.TAX_DEFAULT: used (and stamped) only when the filed rate cannot be computed
@@ -35,30 +43,32 @@ def nopat(row):
     return oi * (1.0 - t), stamped
 
 
-def total_debt(row):
-    """Long-term debt (noncurrent) + current debt, both required: a filer that tags no debt line is not assumed to have none."""
+def total_debt(row, dc_tag=None):
+    """Interest-bearing debt excluding leases: long-term debt (noncurrent) + short-term debt counted once (throughcycle_record.short_term_debt: the
+    current portion, plus the separately filed short-term borrowings only when the current portion is a current-portion-of-long-term-debt tag and
+    the two differ).  `dc_tag` is the tag the year's current debt came from (the cell's tag).  None when no debt line at all is filed: a filer that
+    tags no debt is not assumed to have none."""
     lt = row.get("debt_lt_noncurrent")
     if not is_num(lt):
         lt = row.get("lt_debt")
-    dc = row.get("debt_current")
-    if not is_num(lt) or not is_num(dc):
+    if not is_num(lt) and not is_num(row.get("debt_current")) and not is_num(row.get("short_term_borrowings_separate")):
         return None
-    return lt + dc
+    return (lt if is_num(lt) else 0.0) + tcr.short_term_debt(row, dc_tag)
 
 
-def invested_capital(row):
+def invested_capital(row, dc_tag=None):
     """Equity + debt - cash - short-term investments (a missing short-term investment counts 0; equity, debt and cash are required)."""
-    eq, cash, d = row.get("equity"), row.get("cash"), total_debt(row)
+    eq, cash, d = row.get("equity"), row.get("cash"), total_debt(row, dc_tag)
     if not is_num(eq) or not is_num(cash) or d is None:
         return None
     sti = row.get("st_investments")
     return eq + d - cash - (sti if is_num(sti) else 0.0)
 
 
-def return_on_capital(row):
+def return_on_capital(row, dc_tag=None):
     """NOPAT / invested capital (end of year); None unless both exist and the capital is positive."""
     n, _ = nopat(row)
-    ic = invested_capital(row)
+    ic = invested_capital(row, dc_tag)
     if n is None or ic is None or not ic > 0:
         return None
     return n / ic
@@ -93,12 +103,12 @@ def reinvestment_rate(row, prev_row):
     return (cx - da + (w1 - w0)) / n
 
 
-def measures(row, prev_row=None):
+def measures(row, prev_row=None, dc_tag=None):
     """{revenue, operating_margin, roc, reinvestment_rate, gross_profitability}: the fundamentals a forecast is scored on."""
     rev = row.get("revenue")
     return {"revenue": float(rev) if is_num(rev) and rev > 0 else None,
             "operating_margin": operating_margin(row),
-            "roc": return_on_capital(row),
+            "roc": return_on_capital(row, dc_tag),
             "reinvestment_rate": reinvestment_rate(row, prev_row),
             "gross_profitability": gross_profitability(row)}
 

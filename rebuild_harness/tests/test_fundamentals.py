@@ -27,7 +27,11 @@ def test_roc_needs_every_term_and_a_positive_capital():
     r = row()
     assert F.invested_capital(r) == 80 + 35 - 20
     assert abs(F.return_on_capital(r) - 16.0 / 95.0) < 1e-12
-    assert F.return_on_capital(row(debt_current=None)) is None            # a missing debt line is not "no debt"
+    assert F.return_on_capital(row(debt_current=None, debt_lt_noncurrent=None)) is None      # a filer that tags no debt line is not assumed to have none
+    assert F.invested_capital(row(debt_current=None)) == 80 + 30 - 20                       # one missing component counts 0 (the repository's F4 rule)
+    # separately filed short-term borrowings add to the current portion only when it is a current-portion-of-long-term-debt tag
+    r2 = row(short_term_borrowings_separate=10.0)
+    assert F.total_debt(r2, "DebtCurrent") == 35.0 and F.total_debt(r2, "LongTermDebtCurrent") == 45.0 and F.total_debt(r2) == 35.0
     assert F.return_on_capital(row(equity=-100.0)) is None
     assert F.return_on_capital(row(cash=0.0)) is not None                 # cash of zero is a value
 
