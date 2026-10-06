@@ -39,7 +39,10 @@ from datetime import date, datetime, timedelta
 from multiprocessing import Pool
 from pathlib import Path
 
+from valuation import common as vcommon
+from valuation import discount_rate as vdr
 from valuation import gate1, pit_adapter
+from valuation.priors_build import config as priors_config
 from valuation import sic_crosswalk as sx
 from valuation import pit_data as pdm
 from valuation.common import sha256_file
@@ -78,6 +81,28 @@ RETURN_DATES_END = "2021-12-31"         # the last development date whose 12-mon
 ERP_SHIFTS = (0.01, -0.01)
 DEFAULT_HEADERS = WORKSPACE / "data" / "sec_bulk" / "headers" / "headers_raw.csv"
 DEFAULT_CROSSWALK = WORKSPACE / "data" / "crosswalk" / "sic_to_damodaran_industry_v1.json"
+REGISTERED_INVALID_DRAW_MAX = gate1.INVALID_DRAW_MAX      # read at import: a diagnostic --invalid-draw-max does not change what a freeze records
+
+
+def frozen_config():
+    """The engine configuration a freeze names (Addendum J10): the module constants of the gate-1 engine, as they stand."""
+    return {"gate1_version": gate1.GATE1_VERSION, "n_draws": gate1.N_DRAWS, "mcap_floor": gate1.MCAP_FLOOR, "de_min_n": gate1.DE_MIN_N, "de_percentile": gate1.DE_PERCENTILE,
+            "return_min_n": gate1.RETURN_MIN_N, "spread_min_n": gate1.SPREAD_MIN_N, "invalid_draw_max": REGISTERED_INVALID_DRAW_MAX, "terminal_g_anchor": vcommon.TERMINAL_G_ANCHOR,
+            "max_horizon": vcommon.MAX_HORIZON, "level_ref_year": vcommon.LEVEL_REF_YEAR, "priors_min_n": priors_config.MIN_N, "priors_version": priors_config.PRIORS_VERSION,
+            "erp_monthly_max_age_days": vdr.MONTHLY_MAX_AGE_DAYS, "erp_publication_lag_days": vdr.PUBLICATION_LAG_DAYS, "headers_coverage_margin_days": sx.COVERAGE_MARGIN_DAYS,
+            "crosswalk_version": sx.CROSSWALK_VERSION, "price_stamp": PRICE_STAMP, "horizons": list(HORIZONS), "fundamental_ks": list(KS), "return_dates_end": RETURN_DATES_END}
+
+
+def frozen_seeds():
+    from . import gate1_v2, metrics as hm
+    return {"draw_seed_rule": "seed_for(cik, asof) = (int(cik) * 1000003 + asof.toordinal()) % (2**31 - 1): one per company and date", "wild_cluster_bootstrap_seed": gate1_v2.BOOT_SEED,
+            "wild_cluster_bootstrap_draws": gate1_v2.N_BOOT, "date_bootstrap_seed": hm.SEED, "date_bootstrap_resamples": hm.N_RESAMPLES}
+
+
+def freeze_inputs(a):
+    """What this run reads, for the holdout lock to hash against the freeze (Addendum J10)."""
+    return {"store": a.store, "prices": a.prices, "damodaran": vdr.default_root(), "priors": a.priors_dir or priors_config.DATA_DIR, "crosswalk": a.crosswalk, "headers": a.headers,
+            "config": frozen_config(), "seeds": frozen_seeds()}
 
 
 def month_end(y, m):
@@ -306,7 +331,7 @@ def main(argv=None):
     ap.add_argument("--freeze", type=Path)
     a = ap.parse_args(argv)
     dates = a.dates or dev_dates()
-    lock = holdout.enforce(dates, [gate1_engine], a.freeze)       # FIRST: before any data is opened
+    lock = holdout.enforce(dates, [gate1_engine], a.freeze, inputs=freeze_inputs(a))       # FIRST: before any data is opened
     a.out_dir.mkdir(parents=True, exist_ok=True)
     idm = json.loads(a.id_map.read_text(encoding="utf-8"))
     idm = idm.get("map", idm)

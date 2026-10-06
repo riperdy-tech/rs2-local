@@ -377,3 +377,23 @@ def test_the_shifted_rates_move_only_the_equity_premium_and_say_so():
     d, _ = gate1.make_discount(_state(0.5, 0.06), "2019-12-31", "operating", "Software", _ctx(), up)
     d0, _ = gate1.make_discount(_state(0.5, 0.06), "2019-12-31", "operating", "Software", _ctx(), base)
     assert d.coe - d0.coe == pytest.approx(0.01 * d0.beta_levered) and d.erp == pytest.approx(0.06)
+
+
+# ---- Addendum J10: what the gate-1 run offers the freeze --------------------------------------------------------------------------------------------------------
+
+def test_the_gate1_run_names_its_configuration_and_seeds_for_the_freeze_and_a_holdout_run_needs_the_contents(tmp_path):
+    import argparse
+    from pathlib import Path
+    from rebuild_harness import gate1_run as g, holdout
+    cfg, seeds = g.frozen_config(), g.frozen_seeds()
+    json.dumps(cfg), json.dumps(seeds)
+    assert cfg["n_draws"] == gate1.N_DRAWS and cfg["invalid_draw_max"] == 0.05 and cfg["terminal_g_anchor"] == 0.0375 and cfg["priors_min_n"] == 50 and cfg["mcap_floor"] == 300e6
+    assert seeds["wild_cluster_bootstrap_seed"] and "seed_for" in seeds["draw_seed_rule"]
+    a = argparse.Namespace(store=tmp_path / "s", prices=tmp_path / "p.json", priors_dir=None, crosswalk=None, headers=None)
+    try:
+        fi = g.freeze_inputs(a)
+    except DataNotPresent:
+        pytest.skip("the approved Damodaran files are not on this machine")
+    assert set(fi) == {"store", "prices", "damodaran", "priors", "crosswalk", "headers", "config", "seeds"} and fi["config"] == cfg and Path(fi["damodaran"]).name == "damodaran"
+    with pytest.raises(holdout.HoldoutRefused):
+        holdout.compute_contents(fi, g.REPO)                                    # no crosswalk given: the freeze cannot name it

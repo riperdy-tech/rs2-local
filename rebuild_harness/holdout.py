@@ -6,7 +6,22 @@ is not locked here (the AI replay has its own rules); the run still states which
 
 Freeze file (JSON):
     {"engines": {"<engine name>": {"git_commit": "<40-hex>", "files": {"<path relative to the repo root>": "<sha256>", ...}}}, "frozen_at": "...",
-     "registration": "<registration file name>"}
+     "registration": "<registration file name>", "contents": {...}}
+
+THE FREEZE CONTENTS (Addendum J10).  A freeze names more than the code.  `contents` holds, and a holdout run must reproduce exactly:
+    code_commit           the repository HEAD at the freeze
+    point_in_time_store   the tree hash of the point-in-time store folder (every file's relative path, size and sha256, in sorted order, hashed together)
+    price_snapshot        the sha256 of the price file (or the tree hash of a price folder)
+    damodaran             the sha256 of MANIFEST.json and of every Damodaran file it lists (each must match the manifest)
+    priors                the tree hash of the priors folder and of every vintage folder in it
+    industry_crosswalk    the sha256 of the SIC -> Damodaran-industry crosswalk file
+    sic_headers           the sha256 of the EDGAR headers file the SIC as filed is read from (None when no headers file is used)
+    config                the engine configuration (the module constants the caller names)
+    seeds                 the random seeds and the seed rule
+    packages              the Python version and the versions of the packages the harness uses
+`write_freeze` computes them from `inputs` (a dict of paths and values, see `compute_contents`) and REFUSES to write a freeze without them; `enforce` refuses a holdout run
+whose freeze lacks any of them, or whose current inputs hash differently, naming the first difference.  The Muse items (model hash, quantization, context, sampling, prompts)
+belong to gate 2's freeze, not this one.
 
 An engine passes when, for EVERY file in its identity (`engine.frozen_files`: its own module by default; the old engine lists the reference modules
 too):
@@ -25,6 +40,7 @@ Nothing here reads a price, an outcome or a filing.
 import hashlib
 import json
 import subprocess
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -82,13 +98,116 @@ def engine_identity(engine, repo=None):
     return {"git_commit": head, "files": {p.relative_to(root).as_posix(): sha256_file(p) for p in files}}, root
 
 
-def write_freeze(path, engines, repo=None, registration=None):
-    """Write a freeze file for the engines as they are now (the coordinator does this, once, after the development work is final)."""
+# ---- the freeze contents (Addendum J10) ------------------------------------------------------------------------------------------------
+
+CONTENT_KEYS = ("code_commit", "point_in_time_store", "price_snapshot", "damodaran", "priors", "industry_crosswalk", "sic_headers", "config", "seeds", "packages")
+PACKAGES = ("numpy", "pandas", "openpyxl")
+CHUNK = 1 << 20
+
+
+def file_sha256(p):
+    """sha256 of a data file's bytes as they are (no line-ending normalisation: that is for source files only)."""
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(CHUNK), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def tree_hash(root):
+    """{"tree_sha256", "n_files", "bytes"} of a folder: the sha256 of the sorted lines `relative posix path, size, file sha256` of every file under it.  A file added, removed,
+    renamed or changed in any byte changes it."""
+    root = Path(root)
+    if not root.is_dir():
+        raise HoldoutRefused(f"{root} is not a folder: no tree hash")
+    lines, total = [], 0
+    for p in sorted(x for x in root.rglob("*") if x.is_file()):
+        size = p.stat().st_size
+        total += size
+        lines.append(f"{p.relative_to(root).as_posix()}\t{size}\t{file_sha256(p)}")
+    return {"tree_sha256": hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest(), "n_files": len(lines), "bytes": total}
+
+
+def package_versions(names=PACKAGES):
+    from importlib import metadata
+    out = {"python": ".".join(str(x) for x in sys.version_info[:3])}
+    for n in names:
+        try:
+            out[n] = metadata.version(n)
+        except metadata.PackageNotFoundError:
+            out[n] = None
+    return out
+
+
+def _damodaran(root):
+    root = Path(root)
+    man_p = root / "MANIFEST.json"
+    if not man_p.is_file():
+        raise HoldoutRefused(f"no Damodaran MANIFEST.json under {root}")
+    man = json.loads(man_p.read_text(encoding="utf-8"))
+    files = {}
+    for name, spec in sorted((man.get("files") or {}).items()):
+        f = root / name
+        if not f.is_file():
+            raise HoldoutRefused(f"the Damodaran manifest lists {name}, which is not under {root}")
+        h = file_sha256(f)
+        if h != spec["sha256"]:
+            raise HoldoutRefused(f"{name} has sha256 {h}, the Damodaran manifest says {spec['sha256']}")
+        files[name] = h
+    return {"manifest_sha256": file_sha256(man_p), "files": files}
+
+
+def _price(path):
+    path = Path(path)
+    if path.is_dir():
+        return dict(tree_hash(path), kind="folder")
+    if not path.is_file():
+        raise HoldoutRefused(f"no price snapshot at {path}")
+    return {"sha256": file_sha256(path), "kind": "file", "bytes": path.stat().st_size}
+
+
+def compute_contents(inputs, repo):
+    """The freeze contents of the inputs a run reads.  `inputs`: {"store": folder, "prices": file or folder, "damodaran": folder, "priors": folder, "crosswalk": file, "headers": file or None,
+    "config": {...}, "seeds": {...}}.  A missing key is a refusal (a freeze that cannot name an input is not a freeze)."""
+    need = ("store", "prices", "damodaran", "priors", "crosswalk", "config", "seeds")
+    miss = [k for k in need if inputs.get(k) is None]
+    if miss:
+        raise HoldoutRefused(f"the freeze contents need these inputs and the run gave none: {miss}")
+    pri = Path(inputs["priors"])
+    vint = {d.name: tree_hash(d)["tree_sha256"] for d in sorted(pri.iterdir()) if d.is_dir() and d.name.isdigit()}
+    if not vint:
+        raise HoldoutRefused(f"no priors vintage folder (a year) under {pri}")
+    hdr = inputs.get("headers")
+    return {"code_commit": _git(Path(repo), "rev-parse", "HEAD").decode().strip(), "point_in_time_store": tree_hash(inputs["store"]), "price_snapshot": _price(inputs["prices"]),
+            "damodaran": _damodaran(inputs["damodaran"]), "priors": dict(tree_hash(pri), vintages=vint), "industry_crosswalk": {"sha256": file_sha256(inputs["crosswalk"])},
+            "sic_headers": None if hdr is None else {"sha256": file_sha256(hdr)}, "config": json.loads(json.dumps(inputs["config"], sort_keys=True)),
+            "seeds": json.loads(json.dumps(inputs["seeds"], sort_keys=True)), "packages": package_versions()}
+
+
+def verify_contents(frozen, current):
+    """Raises HoldoutRefused naming the first key whose frozen value differs from the current one (or is missing from the freeze)."""
+    if not isinstance(frozen, dict):
+        raise HoldoutRefused("the freeze file has no `contents` (Addendum J10): the commit alone is not a freeze")
+    absent = [k for k in CONTENT_KEYS if k not in frozen]
+    if absent:
+        raise HoldoutRefused(f"the freeze contents lack {absent} (Addendum J10)")
+    for k in CONTENT_KEYS:
+        if frozen[k] != current[k]:
+            raise HoldoutRefused(f"the freeze and the run differ in `{k}`: frozen {json.dumps(frozen[k], sort_keys=True)[:160]}, now {json.dumps(current[k], sort_keys=True)[:160]}")
+
+
+def write_freeze(path, engines, repo=None, registration=None, inputs=None):
+    """Write a freeze file for the engines and the inputs as they are now (the coordinator does this, once, after the development work is final).  `inputs` is required: see
+    `compute_contents`."""
+    if inputs is None:
+        raise HoldoutRefused("a freeze names the store, prices, Damodaran files, priors, crosswalk, configuration, seeds and packages as well as the code (Addendum J10): no `inputs` given")
     entries = {}
+    root = None
     for e in engines:
-        ident, _root = engine_identity(e, repo)
+        ident, root = engine_identity(e, repo)
         entries[e.engine_name] = ident
-    doc = {"engines": entries, "frozen_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "registration": registration}
+    doc = {"engines": entries, "frozen_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "registration": registration,
+           "contents": compute_contents(inputs, repo if repo else root)}
     Path(path).write_text(json.dumps(doc, indent=1), encoding="utf-8")
     return doc
 
@@ -121,13 +240,14 @@ def _check_engine(engine, entry, repo):
     return commit
 
 
-def enforce(dates, engines, freeze_path=None, repo=None, allow_rerun=False, record=True):
-    """Refuse (HoldoutRefused) a run that touches the holdout unless `freeze_path` freezes every engine.  Returns {"holdout_dates": [...],
-    "windows": {date: window}, "frozen": {engine: commit}}.  Call this FIRST in a run, before any data is opened."""
+def enforce(dates, engines, freeze_path=None, repo=None, allow_rerun=False, record=True, inputs=None):
+    """Refuse (HoldoutRefused) a run that touches the holdout unless `freeze_path` freezes every engine AND its contents (Addendum J10: `inputs` are the run's own, hashed here
+    and compared with the freeze's `contents`; a holdout run that states none is refused).  Returns {"holdout_dates": [...], "windows": {date: window}, "frozen": {engine:
+    commit}, "contents_verified": bool}.  Call this FIRST in a run, before any data is opened."""
     dates = [str(d)[:10] for d in dates]
     windows = {d: classify(d) for d in dates}
     touched = touches_holdout(dates)
-    info = {"holdout_dates": touched, "windows": windows, "frozen": {}}
+    info = {"holdout_dates": touched, "windows": windows, "frozen": {}, "contents_verified": False}
     if not touched:
         return info
     if freeze_path is None or not Path(freeze_path).is_file():
@@ -139,6 +259,12 @@ def enforce(dates, engines, freeze_path=None, repo=None, allow_rerun=False, reco
         if name not in entries:
             raise HoldoutRefused(f"the freeze file does not name engine {name!r}: refused")
         info["frozen"][name] = _check_engine(e, entries[name], repo)
+    if inputs is None:
+        raise HoldoutRefused("a holdout run must state its inputs (store, prices, Damodaran files, priors, crosswalk, configuration, seeds) so that they can be checked against the freeze: none given")
+    first_files = next(iter(getattr(engines[0], "frozen_files", [])), None) if engines else None
+    root = Path(repo).resolve() if repo else (repo_root(first_files) if first_files else None)
+    verify_contents(doc.get("contents"), compute_contents(inputs, root))
+    info["contents_verified"] = True
     ledger = Path(freeze_path).with_name("holdout_runs.jsonl")
     seen = set()
     if ledger.is_file():

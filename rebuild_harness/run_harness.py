@@ -53,11 +53,11 @@ def resolve_engines(engines):
 
 def run(dates, ciks, engines, pit, out_dir, labels=None, family_fn=None, horizons=outcomes.HORIZONS, freeze_path=None, coverage_only=False,
         max_base_age_months=15, yardsticks=eng_mod.YARDSTICKS, ks=(1, 2, 3), allow_rerun=False, n_resamples=metrics.N_RESAMPLES,
-        progress=None):
+        progress=None, inputs=None):
     """Run the harness; returns {"coverage": ..., "summary": ... or None, "records": n}.  See the module docstring."""
     dates = [str(d)[:10] for d in dates]
     engs = resolve_engines(engines)
-    lock = holdout.enforce(dates, engs, freeze_path, allow_rerun=allow_rerun)           # first: before any data is opened
+    lock = holdout.enforce(dates, engs, freeze_path, allow_rerun=allow_rerun, inputs=inputs)           # first: before any data is opened (a holdout run states its inputs: Addendum J10)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     labels = labels or {}
