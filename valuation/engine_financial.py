@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from .common import (CompanyPIT, Curve, DrawInvalid, MAX_HORIZON, QuantileDist, build_state, model_disagreement, simulate)
+from .common import CompanyPIT, Curve, DrawInvalid, MAX_HORIZON, build_state, model_disagreement, simulate
 from .discount_rate import DiscountRate
 from .engine_operating import refusal, years_between
 

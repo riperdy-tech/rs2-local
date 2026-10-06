@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from valuation import classification as cl, common, discount_rate as dr
+from valuation import classification as cl, discount_rate as dr
 from valuation.common import CompanyPIT, DataNotPresent, Filed, PITViolation, SicInfo
 from valuation.pit_companyfacts import CompanyFactsSource
 

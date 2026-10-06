@@ -4,17 +4,15 @@ The census cases at the bottom are REGRESSION SANITY only: they check that a str
 the new chain (no zero long-run margin from a margin translation, no forced positive perpetual growth). No constant anywhere is tuned
 to make a named stock come out right, and no test names a stock's value.
 """
-import json
 import math
 from datetime import date
-from pathlib import Path
 
 import pytest
 
-from valuation import common, classification as cl, engine_commodity as com, engine_financial as fin, engine_operating as op
+from valuation import common, engine_commodity as com, engine_financial as fin, engine_operating as op
 from valuation.common import (CompanyPIT, Curve, DrawInvalid, Filed, InputError, PITViolation, QuantileDist, SicInfo, build_state,
                               cyclicality_score, draw_inputs, equity_bridge, greenwald_maintenance_capex, simulate)
-from valuation.discount_rate import DiscountRate, cost_of_equity, relever_beta, wacc
+from valuation.discount_rate import DiscountRate
 from valuation.priors_interface import PlaceholderPriors, PriorSet
 
 REL = 1e-9

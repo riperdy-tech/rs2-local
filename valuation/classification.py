@@ -34,7 +34,6 @@ from __future__ import annotations
 from typing import Optional
 
 from .common import CompanyPIT, num, total_debt, parse_date
-from . import common
 
 INSURANCE_RESERVE_SHARE = 0.10
 LENDING_BOOK_SHARE = 0.50

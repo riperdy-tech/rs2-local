@@ -22,11 +22,10 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .common import ANNUAL_FORMS, CompanyPIT, DataNotPresent, FIELDS, Filed, PITSource, SicInfo, parse_date
+from .common import ANNUAL_FORMS, CompanyPIT, DataNotPresent, Filed, PITSource, SicInfo, parse_date
 
 LADDERS = {
     "revenue": ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax",

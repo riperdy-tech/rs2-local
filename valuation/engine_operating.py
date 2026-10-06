@@ -37,11 +37,10 @@ model_disagreement = ln(median primary / median secondary).
 """
 from __future__ import annotations
 
-from datetime import date
 from typing import Dict, Optional
 
 from .common import (Curve, DrawInvalid, InputError, MAX_HORIZON, QuantileDist, build_state, equity_bridge, model_disagreement,
-                     parse_date, simulate, summarize, CompanyPIT)
+                     parse_date, simulate, CompanyPIT)
 from .discount_rate import DiscountRate
 
 ENGINE = "operating"
@@ -83,7 +82,7 @@ def _growth_reinvestment(g, drev, m_t, tax, ronic_t, nwc_ratio):
 
 def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], disc: DiscountRate, *,
                     operating_leases_in_cash_flow: bool = True, maint_gap_floor: Optional[float] = 0.0,
-                    roll_forward: bool = True, detail: bool = False, secondary_multiple: Optional[float] = None) -> dict:
+                    roll_forward: bool = True, detail: bool = False) -> dict:
     """One deterministic pass of the chain for point inputs p = {g1, g_terminal, margin_target, ronic}. DrawInvalid when not valuable."""
     gd, mr, rfade = curves["growth_decay"], curves["margin_retention"], curves["ronic_fade"]
     N = len(gd)
@@ -139,13 +138,6 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
            "maint_gap_ratio_raw": gap_raw, "maint_gap_ratio_used": gap, "bridge": br, "fcff1": fcff1}
     if detail:
         out["years"] = rows
-    if secondary_multiple is not None:
-        if fcff1 is None or fcff1 <= 0:
-            out["secondary_equity"], out["secondary_reason"] = None, "year-1 FCFF not positive"
-        else:
-            sb = equity_bridge(secondary_multiple * fcff1, st, operating_leases_in_cash_flow=operating_leases_in_cash_flow)
-            out["secondary_ev"] = secondary_multiple * fcff1
-            out["secondary_equity"] = sb["equity_value"] * factor
     return out
 
 
