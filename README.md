@@ -389,24 +389,35 @@ Offline; no model, no GPU, no network. Tests: `pytest valuation rebuild_harness`
   returns a `PriorSet` (inputs as P5..P95, measured curves, `refs`: `ev_fcf_multiple`, `ptbv_of_rote`, `normalization_curve`, `curve_position`; `meta`: cell sizes, merges, fallbacks, the
   mechanical baseline, input correlations). Vintage Y is cut at Dec 31 of Y and serves dates in Y+1; observations are company-years of the whole SEC archive (delisted companies kept)
   from the layer's first-filed rows. Build: `python -m valuation.priors_build.prep_inputs`, `build_vintage <years>`, `mcap_panel`, `make_tables <years>`, `walkforward`, `report`; output under
-  `stocks-workspace/data/priors/` (`PRIORS_REPORT.md`). Tests: `valuation/tests/test_priors.py` (the no-look-ahead proof included).
+  `stocks-workspace/data/priors/` (version 1, `PRIORS_REPORT.md`) and `data/priors_v2/` (version 2, Addendum H; the default `DATA_DIR`; version-1 folder kept as it was). Tests: `valuation/tests/test_priors.py`
+  (the no-look-ahead proof included).
 - `backtest_phase2/` - the earlier registered backtest harness, unchanged (branch review-2026-09/backtest-phase2, 40cb5cf).
 
-## Gate 1 on the development dates (T-integrate; REGISTRATION_gate1_DRAFT.md, Addenda F-G)
+## Gate 1 on the development dates (T-integrate; REGISTRATION_gate1_DRAFT.md, Addenda F-H)
 
 Offline; no model, no GPU, no network except SEC filings through `sec_primary` in the Muse checks. Tests: `pytest valuation/tests/test_gate1.py rebuild_harness/tests/test_gate1_metrics.py`.
 
 - `valuation/pit_adapter.py` - the adapter from `PitData` to the engines' `CompanyPIT` (replaces the interim `pit_companyfacts.py`, which stays for its tests): the 16:00 ET
   rule re-checked on every accession behind a value (PIT_INVALID and AMBIGUOUS refuse the company), provenance counts, a non-dollar filer refused, the SIC as filed at T from
   the layer's header history else the current assignment (`CurrentSicFile`, stamped `sic_current_dated` / `industry_current_dated`).
-- `valuation/priors.py` - `PopulationPriors(rescale_margin_target=True)`: the `margin_target` spread is scaled by 1/(1 - r_5) of the engine's retention curve (cap 10 when r_5 >= 0.9; Addendum F 4),
-  with the implied terminal-year spread in `meta["margin_target_rescale"]`. `valuation/common.py`: a debt component never tagged in any held year counts as 0, stamped (Addendum G 5).
+- `valuation/common.py`: a debt component never tagged in any held year counts as 0, stamped (Addendum G 5). Addendum H (round 2; `SPEC_rebuild.md`):
+  H1 `margin_target` is the margin LEVEL five years on, drawn directly (the priors give 8-year median + r_5 x deviation + the measured residual spread, unscaled; the F 4 rescale is gone) and the
+  engine moves m_0 -> m_5 along the measured retention curve's shape and holds it (`common.level_path_weights`); H2 terminal growth is not drawn: `common.terminal_growth_rate` = min(risk-free rate
+  at T, 3.75%), one value per date, and a negative decay-path rate at the last explicit year continues; H3 `ronic` is the ROIC level five years on (the own trailing 3-year ROIC, `build_state` `roic3`,
+  fading along the measured retention of ROIC's excess to the median ROIC of the company's industry on the date's population, `gate1.DateContext.industry_return`; the spread is the measured dispersion of
+  the ROIC level, table `roic_level`), perpetuity max(industry median, WACC); financials: the excess ROTE fades to the industry median ROTE, perpetuity max(median, COE); the engines refuse naming a missing
+  `roic3` / industry median (`state["industry_roic"]`, `state["industry_rote"]`, attached by the caller; Muse's `run_company(industry_context=...)`); H4 `classification`: pre-profit (operating income <= 0 in
+  >= 3 of the last 4 fiscal years) and SIC 4900-4949 are `family_not_built`, counted by kind; H5 `gate1.invalid_draw_refusal`: more than 5% invalid draws refuses the name, reasons named.
 - `valuation/gate1.py` - one company at one date: classification, priors, the discount rate at T (Damodaran files dated before T, the dated FRED risk-free, Hamada on the book D/E with the
   industry D/E when parent equity is not positive or book D/E exceeds the industry's 95th percentile on the date, cost of debt = risk-free + the industry's median spread when there is no clean
   interest line), the family engine over the prior (the distribution's median is the value; P10..P90, the secondary, the disagreement, the terminal-value share), per share on the price's share basis.
-- `rebuild_harness/gate1_run.py` - the 24 quarter-ends 2017-03-31 .. 2022-12-31, two passes per date (prepare; measure the population; value), a date per worker; the holdout lock answers first.
-  `rebuild_harness/gate1_metrics.py` + `gate1_report.py` - B1-B4 under the three survivorship bounds and the structural diagnostics (every figure PROVISIONAL on the local price proxy).
-  `rebuild_harness/gate1_muse_checks.py` - the leakage audit on real packs and the Item 1 / Item 7 extraction check.
+- `rebuild_harness/gate1_run.py` - the 16 quarter-ends 2019-03-31 .. 2022-12-31 (H6: the 12 to 2021-12-31 serve the return metrics, the 2022 dates forecast quality only; no price outcome is formed past
+  2022-12-31), two passes per date (prepare; measure the population; value), a date per worker; the holdout lock answers first; `--priors-dir` names the vintages folder. The development prices are the
+  operator-approved raw monthly pull of 2026-10-01, stamped `raw_monthly_2026-10-01_survivors` (H9).
+  `rebuild_harness/gate1_metrics.py` + `gate1_report.py` - B1-B4 under the three survivorship bounds and the structural diagnostics (every figure PROVISIONAL): B1, B2, B3 on the return dates, B4 on every date;
+  the old engine is not a yardstick (H7), B3(c) is the absolute floor IQR of ln(IV / price) >= 0.30, a missing yardstick is imputed at the median rank with an indicator. `gate1_compare.py` reads two
+  reports into one round-1-against-round-2 table. `rebuild_harness/gate1_muse_checks.py` - the leakage audit on real packs and the Item 1 / Item 7 extraction check; `gate1_extraction_recheck.py` re-runs
+  that extraction on the same (name, date) pairs (H8: `documents.item_span` reads headings in table rows and wrapped headings; pack v2 template version 2.1).
 
 ## Muse passes of the rebuild (`valuation/muse/`; SPEC_muse_passes.md)
 
