@@ -9,9 +9,9 @@ It replaces the engines' interim `pit_companyfacts.py` source (kept for its own 
     the refusal says so.)
   * PROVENANCE.  Each cell's state is PIT_VALID or RESTATED (the value known at T differs from the first-filed value; allowed, it is what was known); a cell
     that is not filed is MISSING (None).  The counts ride on the result.
-  * INDUSTRY AS FILED AT T.  The SIC of `pit.sic(cik, asof)`: the EDGAR filing header as filed at the date when the layer holds a header history, else the
-    CURRENT assignment from `CurrentSicFile`, which is stamped `sic_current_dated` (a look-ahead label, said so on every result).  No header history exists in
-    this build (no header download was approved), so every SIC and Damodaran industry here is current-dated.
+  * INDUSTRY AS FILED AT T (Addendum J11).  The SIC of `pit.sic(cik, asof)`: the EDGAR filing header as filed at the date when the layer holds a header history that covers it
+    (`sic_crosswalk.SicResolver`), and then the industry is the crosswalk's modal industry of that SIC; else the CURRENT assignment from `CurrentSicFile`, stamped `sic_current_dated`
+    and `industry_current_dated` (a look-ahead label, said so on every result).  Where the headers download has not reached a date, every SIC and industry of it is current-dated.
   * CURRENCY.  A filer with no dollar facts is carried by the layer in its own units; the adapter refuses it (`reporting_currency_not_usd`): Addendum G 8, no
     FX source, counted by the caller.
 
@@ -61,7 +61,8 @@ class AdaptResult:
     refusals: List[str] = field(default_factory=list)
     stamps: List[str] = field(default_factory=list)
     provenance: dict = field(default_factory=dict)      # {"PIT_VALID": n, "RESTATED": n, "cells": n}
-    industry: Optional[str] = None              # the Damodaran industry label (current-dated), when the SIC source holds one
+    industry: Optional[str] = None              # the Damodaran industry: through the SIC-as-filed crosswalk when the SIC is as filed (J11), else the current-dated label
+    sector: Optional[str] = None                # the industry's Damodaran sector, when the SIC source holds a crosswalk
     currency: str = "USD"
 
     @property
@@ -130,9 +131,22 @@ def adapt(data: "pd_.PitData", cik, asof, ticker=None) -> AdaptResult:
     else:
         res.stamps.append("sic_as_filed_at_T")
     src = data.sic_source
-    res.industry = src.industry(cik) if hasattr(src, "industry") else None
-    if res.industry is not None and (obj.sic is None or not obj.sic.point_in_time):
-        res.stamps.append("industry_current_dated")
+    if hasattr(src, "industry_for"):
+        # Addendum J11: the industry of a SIC as filed comes through the crosswalk (modal industry of the US companies carrying the SIC), never from the company's 2026 row
+        res.industry, stamp, det = src.industry_for(cik, obj.sic)
+        if det is not None:
+            res.stamps.append(stamp)
+            if det["level"] != 4:
+                res.stamps.append(f"industry_crosswalk_fallback_{det['level']}_digit_prefix")
+        elif stamp.startswith("industry_unmapped"):
+            res.stamps.append(stamp)
+        elif res.industry is not None:
+            res.stamps.append(stamp)
+        res.sector = src.sector_of(res.industry) if hasattr(src, "sector_of") else None
+    else:
+        res.industry = src.industry(cik) if hasattr(src, "industry") else None
+        if res.industry is not None and (obj.sic is None or not obj.sic.point_in_time):
+            res.stamps.append("industry_current_dated")
     if any("from_amendment" in str(n) for n in obj.notes):
         res.stamps.append("amendment_in_inputs")
     if hasattr(obj, "check"):
