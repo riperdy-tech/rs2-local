@@ -406,7 +406,7 @@ Offline; no model, no GPU, no network except SEC filings through `sec_primary` i
   engine moves m_0 -> m_5 along the measured retention curve's shape and holds it (`common.level_path_weights`); H2 terminal growth is not drawn: `common.terminal_growth_rate` = min(risk-free rate
   at T, 3.75%), one value per date, and a negative decay-path rate at the last explicit year continues; H3 `ronic` is the ROIC level five years on (the own trailing 3-year ROIC, `build_state` `roic3`,
   fading along the measured retention of ROIC's excess to the median ROIC of the company's industry on the date's population, `gate1.DateContext.industry_return`; the spread is the measured dispersion of
-  the ROIC level, table `roic_level`), perpetuity max(industry median, WACC); financials: the excess ROTE fades to the industry median ROTE, perpetuity max(median, COE); the engines refuse naming a missing
+  the ROIC level, table `roic_level`), perpetuity max(industry median, WACC) (superseded by J3 below); financials: the excess ROTE fades to the industry median ROTE, perpetuity max(median, COE); the engines refuse naming a missing
   `roic3` / industry median (`state["industry_roic"]`, `state["industry_rote"]`, attached by the caller; Muse's `run_company(industry_context=...)`); H4 `classification`: pre-profit (operating income <= 0 in
   >= 3 of the last 4 fiscal years) and SIC 4900-4949 are `family_not_built`, counted by kind; H5 `gate1.invalid_draw_refusal`: more than 5% invalid draws refuses the name, reasons named.
 - Addendum I (round 3; `SPEC_rebuild.md`): I1 the year-5 residuals of the margin level and of the ROIC level are measured by the company's CURRENT level band (`stats.residual_by_level`: quintiles of
@@ -418,10 +418,28 @@ Offline; no model, no GPU, no network except SEC filings through `sec_primary` i
   I4 the financial terminal excess is kappa x max(industry median ROTE - COE, 0) with kappa the plateau of the measured excess-retention curve (its value at the longest k with n >= 50; the operating terminal
   RONIC is unchanged); I5 a prior cell under 50 after the stated merges refuses the input, named (`meta["unavailable"]`, then the engine's "priors do not supply" refusal with the cell and its n); I6 Muse
   prompts P3 and P4 are template version 2 (`ronic` is the ROIC level path; terminal growth is no longer a judgment input).
+- Addendum J / K (round 4; `SPEC_rebuild.md`, `REGISTRATION_gate1_v2_DRAFT.md`): K the discount rate's ERP is Damodaran's MONTHLY implied ERP, column "ERP (T12 m with sustainable payout)" of
+  `implprem_ERPbymonth.xlsx`: the newest start-of-month row dated on or before the valuation date (`DamodaranStore.erp_provider`, meta `row_date` / `source`); a row older than 62 days refuses; the annual
+  year-end path is the fallback before the column's first value (2016-01-01) and when the manifest lists no monthly file. J3 the operating and commodity terminal return on new capital is
+  WACC + kappa x (industry median ROIC - WACC), kappa the plateau of the measured ROIC-excess retention (the curve's last value = its value at the longest k with n >= 50; `meta["cells"]["ronic_fade"]`),
+  floored at WACC only where the formula goes below it (`ronic_terminal_floored_at_wacc`). J1 `valuation/variants.py` swaps ONE engine component at a time (every engine takes `variant=None`; neutral and None
+  are bit-for-bit the registered engine) and `rebuild_harness/gate1_decompose.py` + `gate1_decompose_summary.py` run each swap on a fixed universe (the ERP swap, to round 3b's closure ERP, replaces the `Rates`
+  object): diagnostic only. J11 `valuation/sic_crosswalk.py`: the SIC -> Damodaran-industry crosswalk (modal industry of the US companies of `indname` that carry the SIC, 4 -> 3 -> 2 digit fallback, ties to the
+  name that sorts first; file `data/crosswalk/sic_to_damodaran_industry_v1.json`, built by `build_file`, never overwritten), the EDGAR headers CSV as the SIC as filed (`HeadersFile`, with a coverage frontier
+  = the newest filing date in the file minus 31 days) and `SicResolver`, which the adapter uses: header SIC + crosswalk industry where the file covers the date and holds a header of the company, else the
+  current-dated SIC and industry, stamped `sic_current_dated` / `industry_current_dated`. J10 `rebuild_harness/holdout.py`: a freeze names the code commit, the store (tree hash), the price snapshot, every
+  Damodaran file, the priors folder and each vintage, the crosswalk, the SIC headers, the configuration (`gate1_run.frozen_config`), the seeds and the package versions; `write_freeze` refuses to write
+  without them and `enforce` refuses a holdout run whose `inputs` hash differently, naming the key.
+- Registration v2 in the harness (`rebuild_harness/gate1_v2.py`, `gate1_report --v2`): month-end dates (`gate1_run.dev_dates`: 36 from 2020-01-31, returns to 2021-12-31, forecasts all); B1 pooled OLS with
+  industry and date effects (alternating projections) and a wild-cluster bootstrap-t by date (Rademacher weights, null imposed, one-sided 90% lower bound b - q90(t*) se), the share of positive monthly
+  coefficients; B2 the residual quintile spread (pass > 0, strong pass >= +3 pp, raw reported); B3 the level bar (universe median IV / price in [0.67, 1.5]) with the pathology diagnostics; B4 per family
+  and measure, the P50 against the naive baseline, P10..P90 coverage and directional accuracy (the engines store `forecast_year1`: growth, margin, ROTE' at P10/P50/P90); B5 direction under the three bounds
+  and without the 1% of observations with the largest |residual|, with the ERP +-1 pp (`gate1_run` stores `score_alt` on the return dates), sector-neutral, size-neutral and price-basis variants reported.
+  `gate1_compare_v2.py` puts runs side by side on the same dates. Tests: `pytest valuation/tests rebuild_harness/tests tests/test_valuation_engines.py tests/test_valuation_classification_rates_pit.py`.
 - `valuation/gate1.py` - one company at one date: classification, priors, the discount rate at T (Damodaran files dated before T, the dated FRED risk-free, Hamada on the book D/E with the
   industry D/E when parent equity is not positive or book D/E exceeds the industry's 95th percentile on the date, cost of debt = risk-free + the industry's median spread when there is no clean
   interest line), the family engine over the prior (the distribution's median is the value; P10..P90, the secondary, the disagreement, the terminal-value share), per share on the price's share basis.
-- `rebuild_harness/gate1_run.py` - the 16 quarter-ends 2019-03-31 .. 2022-12-31 (H6: the 12 to 2021-12-31 serve the return metrics, the 2022 dates forecast quality only; no price outcome is formed past
+- `rebuild_harness/gate1_run.py` - the 36 month-ends 2020-01-31 .. 2022-12-31 from round 4 on (rounds 1-3: the 16 quarter-ends 2019-03-31 .. 2022-12-31; H6: the dates to 2021-12-31 serve the return metrics, the 2022 dates forecast quality only; no price outcome is formed past
   2022-12-31), two passes per date (prepare; measure the population; value), a date per worker; the holdout lock answers first; `--priors-dir` names the vintages folder. The development prices are the
   operator-approved raw monthly pull of 2026-10-01, stamped `raw_monthly_2026-10-01_survivors` (H9).
   `rebuild_harness/gate1_metrics.py` + `gate1_report.py` - B1-B4 under the three survivorship bounds and the structural diagnostics (every figure PROVISIONAL): B1, B2, B3 on the return dates, B4 on every date;
