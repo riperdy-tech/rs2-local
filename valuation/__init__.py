@@ -1,5 +1,7 @@
-"""valuation - the Phase-5 rebuild's classification, three engines and discount rate (SPEC_rebuild.md sections 2-3).
+"""valuation - the Phase-5 rebuild (SPEC_rebuild.md): classification, the three family engines and the discount rate
+(sections 2-3), and `pit_data`, the one point-in-time data layer the engines, the priors and the validation harness all
+import (Addenda A-D).
 
-Nothing here imports a production valuation module, runs a model or reads a vendor snapshot. Point-in-time data comes through the
-interface in `common` (CompanyPIT); the shared data layer (valuation/pit_data.py, built by the harness branch) is adapted to it at merge.
+Nothing here imports a production valuation module, runs a model or reads a vendor snapshot. The engines read
+point-in-time data through `common.CompanyPIT`, to be fed from `pit_data` (the adapter is the next integration step).
 """
