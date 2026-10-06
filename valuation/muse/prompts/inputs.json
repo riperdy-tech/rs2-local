@@ -1,0 +1,42 @@
+{
+  "g1": {
+    "label": "Revenue growth in the next fiscal year",
+    "unit": "rate",
+    "question": "Revenue growth in the next fiscal year, the year after the latest filed fiscal year, as a yearly rate. A high percentile means faster growth than most companies in a similar state."
+  },
+  "growth_persistence": {
+    "label": "How long the year-1 growth persists",
+    "unit": "fraction of the gap still open",
+    "question": "How long the next year's growth persists before it fades to the long-run growth rate. It is stated as the fraction of the gap between next year's growth and long-run growth that is still open five years out. A high percentile means growth persists longer than for most similar companies (a slower fade); a low percentile means it fades quickly."
+  },
+  "margin_target": {
+    "label": "Long-run operating margin",
+    "unit": "rate",
+    "question": "The operating margin (operating income divided by revenue) the company settles at in the long run. A high percentile means a higher long-run margin than most similar companies."
+  },
+  "margin_retention": {
+    "label": "How long today's margin gap persists",
+    "unit": "fraction of the gap still open",
+    "question": "How long the gap between today's operating margin and the long-run margin persists. It is stated as the fraction of that gap still open five years out. A high percentile means the gap persists longer (today's margin is more durable, or the move to the long-run margin is slow); a low percentile means the margin returns to its long-run level quickly."
+  },
+  "ronic": {
+    "label": "Return on new invested capital",
+    "unit": "rate",
+    "question": "The after-tax operating profit earned per dollar of new capital the company has to invest to grow. A high percentile means growth is cheap for this company: it needs little extra capital for each dollar of added revenue."
+  },
+  "g_terminal": {
+    "label": "Long-run (terminal) revenue growth",
+    "unit": "rate",
+    "question": "The yearly revenue growth the company sustains in the long run, after the explicit forecast years. It may be negative for a shrinking business. A high percentile means higher long-run growth than most similar companies."
+  },
+  "rote_target": {
+    "label": "Long-run return on tangible equity",
+    "unit": "rate",
+    "question": "The through-the-cycle return on tangible equity (net income divided by tangible common equity) the company earns in the long run. A high percentile means a higher long-run return than most similar companies."
+  },
+  "rote_retention": {
+    "label": "How long today's return gap persists",
+    "unit": "fraction of the gap still open",
+    "question": "How long the gap between today's return on tangible equity and the long-run return persists. It is stated as the fraction of that gap still open five years out. A high percentile means the gap persists longer; a low percentile means the return returns to its long-run level quickly."
+  }
+}
