@@ -361,7 +361,15 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
     out["n_draws"], out["n_valid"], out["invalid_reasons"] = dist["n_draws"], dist["n_valid"], dist.get("invalid_reasons") or {}
     bad = invalid_draw_refusal(dist)
     if bad is not None:
-        out["status"], out["reasons"] = "refused", [bad]
+        # refused, but the shapes of its priors are kept for the diagnostics (a refusal must not hide which priors produced it)
+        at0 = res.get("at_median_inputs") or {}
+        out.update({"status": "refused", "reasons": [bad], "family": family,
+                    "inputs": {k: {"p10": v["p10"], "p50": v["p50"], "p90": v["p90"]} for k, v in res.get("inputs", {}).items()},
+                    "prior_meta": {"margin_target": (ps.meta.get("cells") or {}).get("margin_target"), "cyc_score": ps.meta.get("cyc_score")},
+                    "state": {"op_margin": st.get("op_margin"), "op_margin_median": st.get("op_margin_median"), "revenue": st.get("revenue")},
+                    "returns": {"roic3": st.get("roic3"), "industry_roic": st.get("industry_roic"), "ronic_terminal_at_p50_inputs": at0.get("ronic_terminal"),
+                                "industry_rote": st.get("industry_rote"), "rote3": st.get("rote3")},
+                    "discount": {k: getattr(disc, k) for k in ("rf", "coe", "wacc")}})
         return out
     iv = _per_share(dist["equity"], shares)
     sec_eq = None

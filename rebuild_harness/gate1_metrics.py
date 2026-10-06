@@ -79,8 +79,17 @@ def compact(r):
     return out
 
 
-def load_run(run_dir, dates=None, keep_all_for=()):
-    """(compact valued rows, status counters) from a run folder.  `keep_all_for`: dates whose full valued records are also returned (for the extremes)."""
+def ran_row(r):
+    """The few prior-shape fields of a name the engine ran on (valued, or refused for its invalid draws: Addendum H5)."""
+    v = r.get("val") or {}
+    return {"date": r["date"], "family": r.get("family"), "status": r["status"], "mcap_group": r.get("mcap_group"), "invalid_share": 1.0 - v["n_valid"] / v["n_draws"],
+            "inputs": v.get("inputs") or {}, "m0": (v.get("state") or {}).get("op_margin"), "returns": v.get("returns"), "disc": v.get("discount"),
+            "margin_target": (v.get("prior_meta") or {}).get("margin_target")}
+
+
+def load_run(run_dir, dates=None, keep_all_for=(), ran=None):
+    """(compact valued rows, status counters) from a run folder.  `keep_all_for`: dates whose full valued records are also returned (for the extremes).  `ran`: a list
+    that receives `ran_row` of every name the engine ran on."""
     run_dir = Path(run_dir)
     rows, counters, full = [], OrderedDict(), {}
     files = sorted(run_dir.glob("records_*.jsonl.gz"))
@@ -98,6 +107,8 @@ def load_run(run_dir, dates=None, keep_all_for=()):
                 inv = (r.get("val") or {}).get("invalid_reasons")
                 if (r.get("val") or {}).get("n_draws"):
                     cnt["prepared"] += 1                      # a name the engine ran on (valued, or refused for its invalid draws)
+                    if ran is not None:
+                        ran.append(ran_row(r))
                 if inv:
                     cnt["invalid_draws"].update(inv)          # Addendum H5: by reason, over every name with invalid draws
                     cnt["invalid_names"].update(inv.keys())
@@ -506,6 +517,39 @@ def structure_stats(rows):
     out["dispersion_p90_over_p10_value"] = _q([(r["vp_p90"] - r["vp_p10"]) for r in rows])
     out["secondary_over_primary"] = _q([r["secondary_vp"] / r["vp"] for r in rows if r.get("secondary_vp") is not None and r.get("vp") and r["vp"] > 0 and r["secondary_vp"] > 0])
     out["prior_fallback_counts"] = dict(Counter(f.split(":")[0] + ":" + f.split(":")[1][:60] if ":" in f else f[:80] for r in rows for f in ((r.get("prior_meta") or {}).get("fallbacks") or [])).most_common(15))
+    return out
+
+
+def prior_shape_stats(ran):
+    """The shapes of the priors the engines drew from, over EVERY name the engine ran on (valued or refused for invalid draws), by family and by outcome: the width of the
+    margin level five years on, the share of names whose P10 margin level is not positive, the same for the ROIC level, and the invalid-draw share (Addendum H5)."""
+    out = {}
+    for fam in ("operating", "commodity", "financial"):
+        for grp, sel in (("all", lambda r: True), ("valued", lambda r: r["status"] == "valued"), ("refused_invalid_draws", lambda r: r["status"] != "valued")):
+            rs = [r for r in ran if r["family"] == fam and sel(r)]
+            if not rs:
+                continue
+            o = {"n": len(rs), "invalid_share": _q([r["invalid_share"] for r in rs])}
+            if fam != "financial":
+                mt = [r["inputs"]["margin_target"] for r in rs if "margin_target" in r["inputs"]]
+                rn = [r["inputs"]["ronic"] for r in rs if "ronic" in r["inputs"]]
+                o["margin_level5_p50"] = _q([x["p50"] for x in mt])
+                o["margin_level5_width_p10_p90"] = _q([x["p90"] - x["p10"] for x in mt])
+                o["share_margin_level5_p10_not_positive"] = float(np.mean([x["p10"] <= 0 for x in mt])) if mt else None
+                o["margin_now"] = _q([r["m0"] for r in rs if r.get("m0") is not None])
+                o["ronic_level5_p50"] = _q([x["p50"] for x in rn])
+                o["ronic_level5_width_p10_p90"] = _q([x["p90"] - x["p10"] for x in rn])
+                o["share_ronic_level5_p10_not_positive"] = float(np.mean([x["p10"] <= 0 for x in rn])) if rn else None
+                o["own_trailing_roic3"] = _q([r["returns"]["roic3"] for r in rs if r.get("returns") and r["returns"].get("roic3") is not None])
+                o["industry_median_roic"] = _q([r["returns"]["industry_roic"]["value"] for r in rs if r.get("returns") and r["returns"].get("industry_roic")])
+                o["wacc"] = _q([r["disc"]["wacc"] for r in rs if r.get("disc")])
+            else:
+                rt = [r["inputs"]["rote_target"] for r in rs if "rote_target" in r["inputs"]]
+                o["rote_target_p50"] = _q([x["p50"] for x in rt])
+                o["rote_target_width_p10_p90"] = _q([x["p90"] - x["p10"] for x in rt])
+                o["industry_median_rote"] = _q([r["returns"]["industry_rote"]["value"] for r in rs if r.get("returns") and r["returns"].get("industry_rote")])
+                o["coe"] = _q([r["disc"]["coe"] for r in rs if r.get("disc")])
+            out[f"{fam} | {grp}"] = o
     return out
 
 

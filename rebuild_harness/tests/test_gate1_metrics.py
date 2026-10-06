@@ -249,3 +249,15 @@ def test_the_run_stamps_the_raw_monthly_source_and_the_report_says_so():
     from rebuild_harness import gate1_run, gate1_report
     assert gate1_run.PRICE_STAMP == "raw_monthly_2026-10-01_survivors" and "adjusted_proxy" not in gate1_run.PRICE_STAMP
     assert "raw month-end" in gm.PROVISIONAL and gm.PROVISIONAL.startswith("PROVISIONAL") and "Addendum H9" in gm.PROVISIONAL
+
+
+def test_prior_shapes_cover_names_refused_for_invalid_draws_too():
+    ran = [{"date": "d", "family": "operating", "status": st, "mcap_group": ">=300M", "invalid_share": inv, "m0": 0.1, "returns": {"roic3": 0.2, "industry_roic": {"value": 0.1}},
+            "disc": {"wacc": 0.08}, "margin_target": None,
+            "inputs": {"margin_target": {"p10": p10, "p50": 0.1, "p90": 0.3}, "ronic": {"p10": r10, "p50": 0.1, "p90": 0.3}}}
+           for st, inv, p10, r10 in (("valued", 0.01, 0.05, 0.02), ("refused", 0.3, -0.1, -0.05), ("refused", 0.5, -0.2, 0.01))]
+    s = gm.prior_shape_stats(ran)
+    assert s["operating | all"]["n"] == 3 and s["operating | valued"]["n"] == 1 and s["operating | refused_invalid_draws"]["n"] == 2
+    assert s["operating | refused_invalid_draws"]["share_margin_level5_p10_not_positive"] == 1.0 and s["operating | valued"]["share_margin_level5_p10_not_positive"] == 0.0
+    assert s["operating | refused_invalid_draws"]["share_ronic_level5_p10_not_positive"] == 0.5
+    assert "financial | all" not in s

@@ -39,7 +39,8 @@ def per_date(rows):
 
 
 def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), adjusted_proxy=None):
-    rows, counters, full = gm.load_run(run_dir, keep_all_for=tuple(extremes_dates))
+    ran = []
+    rows, counters, full = gm.load_run(run_dir, keep_all_for=tuple(extremes_dates), ran=ran)
     proxy_missing = None
     if adjusted_proxy is not None:
         proxy_missing = gm.apply_adjusted_proxy(rows, json.loads(Path(adjusted_proxy).read_text(encoding="utf-8")))
@@ -59,6 +60,7 @@ def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), 
             "vp_by_industry_n_ge_20": gm.vp_by(rs, lambda r: r["industry"] or "unmapped", 20),
             "vp_by_date": gm.vp_by(rs, lambda r: r["date"]), "extremes_by_family": gm.extremes_by_family(rs),
             "tv_share": gm.tv_share_distribution(rs), "model_disagreement_by_family": gm.disagreement_by_family(rs), "structure": gm.structure_stats(rs)}
+    rep["prior_shapes_all_names_the_engine_ran_on"] = gm.prior_shape_stats(ran)
     rep["extremes_listings"] = {d: gm.extremes_listing(full[d], 30) for d in extremes_dates if d in full}
     return rep
 
@@ -130,6 +132,7 @@ def render(rep):
     L += ["", "## Diagnostics (>= $300M): terminal-value share", "", "```", json.dumps(_clean(d["tv_share"]), indent=1), "```"]
     L += ["", "## Diagnostics (>= $300M): model disagreement by family (ln primary / secondary)", "", "```", json.dumps(_clean(d["model_disagreement_by_family"]), indent=1), "```"]
     L += ["", "## Diagnostics (>= $300M): structure", "", "```", json.dumps(_clean(d["structure"]), indent=1), "```"]
+    L += ["", "## Prior shapes over every name the engine ran on (valued or refused for invalid draws), by family", "", "```", json.dumps(_clean(rep["prior_shapes_all_names_the_engine_ran_on"]), indent=1), "```"]
     for dt, ex in rep["extremes_listings"].items():
         for side in ("top", "bottom"):
             L += ["", f"## {dt}: {side} 30 by IV / price (all valued names, both market-cap groups)", "",
