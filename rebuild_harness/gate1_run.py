@@ -103,6 +103,8 @@ def _init(cfg):
     _ENV["priors"] = PopulationPriors(cfg.get("priors_dir"))
     _ENV["rates"] = gate1.Rates(DamodaranStore(), cfg["rf"])
     _ENV["cfg"] = cfg
+    if cfg.get("invalid_draw_max") is not None:
+        gate1.INVALID_DRAW_MAX = cfg["invalid_draw_max"]      # a DIAGNOSTIC variant only (never the registered rule 0.05): see --invalid-draw-max
 
 
 def _best_ticker(pit, cik, d):
@@ -245,6 +247,9 @@ def main(argv=None):
     ap.add_argument("--prices", type=Path, default=DEFAULT_PRICES)
     ap.add_argument("--sic", type=Path, default=DEFAULT_SIC)
     ap.add_argument("--n-draws", type=int, default=gate1.N_DRAWS)
+    ap.add_argument("--invalid-draw-max", type=float, default=None,
+                    help="DIAGNOSTIC variant only: the share of invalid draws above which a name is refused (the registered rule, Addendum H5, is %s; 1.0 shows what the engine "
+                         "does with no refusal)" % gate1.INVALID_DRAW_MAX)
     ap.add_argument("--priors-dir", type=Path, help="the priors vintages folder (default: valuation.priors_build.config.DATA_DIR)")
     ap.add_argument("--freeze", type=Path)
     a = ap.parse_args(argv)
@@ -259,11 +264,13 @@ def main(argv=None):
     rf_src = MriRiskFree()
     rf = {d: rf_src(d) for d in dates}                              # the dated FRED series, read once in the parent
     cfg = {"store": str(a.store), "id_map": str(a.id_map), "prices": str(a.prices), "sic": str(a.sic), "rf": rf, "ciks": ciks, "n_draws": a.n_draws,
-           "out_dir": str(a.out_dir), "priors_dir": str(a.priors_dir) if a.priors_dir else None}
+           "out_dir": str(a.out_dir), "priors_dir": str(a.priors_dir) if a.priors_dir else None,
+           "invalid_draw_max": a.invalid_draw_max}
     meta = {"started": datetime.now().isoformat(timespec="seconds"), "dates": dates, "lock": lock, "n_ciks": len(ciks), "workers": a.workers,
             "n_draws": a.n_draws, "gate1_version": gate1.GATE1_VERSION, "price_stamp": PRICE_STAMP, "price_file": str(a.prices),
             "price_file_sha256": sha256_file(a.prices), "price_file_meta": json.loads(a.prices.read_text(encoding="utf-8")).get("meta"),
-            "priors_dir": str(a.priors_dir) if a.priors_dir else None,
+            "priors_dir": str(a.priors_dir) if a.priors_dir else None, "invalid_draw_max": a.invalid_draw_max if a.invalid_draw_max is not None else gate1.INVALID_DRAW_MAX,
+            "invalid_draw_max_is_the_registered_rule": a.invalid_draw_max is None,
             "git_head": holdout._git(REPO, "rev-parse", "HEAD").decode().strip(), "rf": {k: v[0] for k, v in rf.items()}}
     (a.out_dir / "run_meta.json").write_text(json.dumps(_clean(meta), indent=1), encoding="utf-8")
     t0 = time.time()
