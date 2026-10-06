@@ -37,12 +37,16 @@ def per_date(rows):
     return out
 
 
-def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2022-06-30")):
+def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2022-06-30"), adjusted_proxy=None):
     rows, counters, full = gm.load_run(run_dir, keep_all_for=tuple(extremes_dates))
+    proxy_missing = None
+    if adjusted_proxy is not None:
+        proxy_missing = gm.apply_adjusted_proxy(rows, json.loads(Path(adjusted_proxy).read_text(encoding="utf-8")))
     big = [r for r in rows if r["mcap_group"] == ">=300M"]
     small = [r for r in rows if r["mcap_group"] == "<300M"]
     big_fresh = [r for r in big if not r["stale"]]
-    rep = {"provisional": gm.PROVISIONAL, "run_dir": str(run_dir), "n_valued": len(rows), "n_valued_ge_300M": len(big), "n_valued_lt_300M": len(small),
+    rep = {"provisional": gm.PROVISIONAL, "price_basis": "adjusted-only proxy (IV/price, earnings and FCF yields times Close/Adj Close)" if adjusted_proxy else "run basis: traded close rebuilt from the split-adjusted Close and the split events",
+           "adjusted_proxy_rows_without_both_bars": proxy_missing, "run_dir": str(run_dir), "n_valued": len(rows), "n_valued_ge_300M": len(big), "n_valued_lt_300M": len(small),
            "coverage": gm.coverage_tables(counters), "per_date": per_date(rows)}
     rep["gate1_universe_ge_300M"] = gm.three_bounds(big, ">=300M", resamples)
     rep["sub_300M_reported_separately"] = gm.three_bounds(small, "<300M", resamples)
@@ -62,7 +66,7 @@ def fmt(x, nd=3):
 
 
 def render(rep):
-    L = ["# Gate 1, development run: report", "", "**" + rep["provisional"] + "**", "",
+    L = ["# Gate 1, development run: report", "", "**" + rep["provisional"] + "**", "", f"Price basis: {rep['price_basis']}", "",
          f"Valued: {rep['n_valued']} (market cap >= $300M: {rep['n_valued_ge_300M']}; below: {rep['n_valued_lt_300M']})", ""]
     L += ["## Valued names and median IV / price by date", "", "| date | valued | >= $300M | median IV/price | share < 0.4x | share > 2.5x | median invalid-draw share | median COE |", "|---|---|---|---|---|---|---|---|"]
     for d, v in rep["per_date"].items():
@@ -123,10 +127,11 @@ def main(argv=None):
     ap.add_argument("--out-dir", type=Path)
     ap.add_argument("--resamples", type=int, default=2000)
     ap.add_argument("--extremes-dates", nargs="*", default=["2019-12-31", "2022-06-30"])
+    ap.add_argument("--adjusted-proxy", type=Path, help="re-express the price-dependent scores on the adjusted-only proxy basis from this price file")
     a = ap.parse_args(argv)
     out = a.out_dir or a.run_dir
     out.mkdir(parents=True, exist_ok=True)
-    rep = build(a.run_dir, a.resamples, tuple(a.extremes_dates))
+    rep = build(a.run_dir, a.resamples, tuple(a.extremes_dates), a.adjusted_proxy)
     (out / "gate1_dev_report.json").write_text(json.dumps(_clean(rep), indent=1), encoding="utf-8")
     (out / "gate1_dev_report.md").write_text(render(rep), encoding="utf-8")
     print("written", out)

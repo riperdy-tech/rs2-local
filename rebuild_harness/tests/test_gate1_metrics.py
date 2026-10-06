@@ -180,3 +180,18 @@ def test_compact_and_load_run_round_trip(tmp_path):
     assert len(rows) == 1 and rows[0]["vp"] == 2.0 and rows[0]["excess"] == {12: 0.1} and rows[0]["invalid_share"] == 0.5 and len(full["2021-06-30"]) == 1
     cov = gm.coverage_tables(counters)
     assert cov["per_date_status"]["2021-06-30"] == {"valued": 1, "refused": 1} and "not available: operating_income" in cov["refusals_by_reason"]
+
+
+def test_adjusted_proxy_basis_rescales_only_the_price_level_scores():
+    prices = {"prices": {"AAA": {"2021-06": [100.0, 80.0, 0.0, 0.0]}, "BBB": {"2021-06": [50.0, 50.0, 0.0, 0.0]}}}
+    a = rec("2021-06-30", 1, 1.0, 0.0, ys={y: 1.0 for y in gm.YARDSTICKS})
+    a.update(ticker="AAA", vp_p10=0.5, vp_p90=2.0, vp_point=1.2, secondary_vp=0.9)
+    b = rec("2021-06-30", 2, 2.0, 0.0, ys={y: 1.0 for y in gm.YARDSTICKS})
+    b.update(ticker="BBB", vp_p10=1.0, vp_p90=3.0, vp_point=None, secondary_vp=None)
+    c = rec("2021-06-30", 3, 3.0, 0.0)
+    c.update(ticker="CCC", vp_p10=None, vp_p90=None, vp_point=None, secondary_vp=None)
+    missing = gm.apply_adjusted_proxy([a, b, c], prices)
+    assert missing == 1 and a["vp"] == pytest.approx(1.25) and a["vp_p10"] == pytest.approx(0.625) and a["vp_point"] == pytest.approx(1.5)
+    assert a["score"][ENG] == pytest.approx(1.25) and a["score"]["yardstick_earnings_yield"] == pytest.approx(1.25) and a["score"]["yardstick_fcf_yield"] == pytest.approx(1.25)
+    assert a["score"]["yardstick_momentum_12_1"] == 1.0 and a["score"]["yardstick_return_on_capital"] == 1.0         # no price level in them
+    assert b["vp"] == 2.0 and c["vp"] == 3.0                                                                             # f = 1 for BBB; CCC has no bar: left on the run's basis

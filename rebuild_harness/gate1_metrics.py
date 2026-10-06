@@ -101,6 +101,28 @@ def load_run(run_dir, dates=None, keep_all_for=()):
     return rows, counters, full
 
 
+def apply_adjusted_proxy(rows, prices_doc):
+    """Re-express the price-dependent scores on the ADJUSTED-ONLY proxy basis (Addendum G's price limit): the price level is the dividend-adjusted close, so a name's
+    IV / price, earnings yield and FCF yield are those of the run times f = Close / Adj Close of the date's month (>= 1 for a dividend payer; the share counts in the
+    run are on the traded basis, and the adjusted price is the traded price divided by f once the split ratios cancel).  Momentum, gross profitability and return on
+    capital do not use the price level.  Returns the number of rows without both bars (left on the run's basis and counted)."""
+    prices = prices_doc["prices"]
+    missing = 0
+    for r in rows:
+        bar = (prices.get(r.get("ticker")) or {}).get(r["date"][:7])
+        if not bar or not (bar[0] and bar[1] and bar[0] > 0 and bar[1] > 0):
+            missing += 1
+            continue
+        f = bar[0] / bar[1]
+        for k in ("vp", "vp_p10", "vp_p90", "vp_point", "secondary_vp"):
+            if r.get(k) is not None:
+                r[k] = r[k] * f
+        for k in (ENGINE, "yardstick_earnings_yield", "yardstick_fcf_yield"):
+            if r["score"].get(k) is not None:
+                r["score"][k] = r["score"][k] * f
+    return missing
+
+
 def _reason_class(reason):
     """A short class of a refusal reason (the text before its details)."""
     s = str(reason)
