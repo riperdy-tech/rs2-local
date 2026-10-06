@@ -840,3 +840,32 @@ def test_half_width_keeps_every_p50_and_halves_the_distance_to_it():
         wa = a["distribution"]["equity"]["p90"] - a["distribution"]["equity"]["p10"]
         wb = b["distribution"]["equity"]["p90"] - b["distribution"]["equity"]["p10"]
         assert wb < wa
+
+
+# ---- registration v2 B4 (reported): the next-fiscal-year forecast quantiles ---------------------------------------------------------------------------------------
+
+def test_the_operating_forecast_year1_quantiles_map_the_input_quantiles_through_year_one_of_the_chain():
+    pri = PlaceholderPriors(True)
+    o = _operating_pit()
+    st = with_context(o)
+    r = op.run(o, pri, disc(), n_draws=100, seed=5, state=st)
+    fq = r["forecast_year1"]
+    y1 = r["at_median_inputs"]["years"][0]
+    assert fq["growth"]["p50"] == pytest.approx(y1["growth"]) and fq["margin"]["p50"] == pytest.approx(y1["margin"])          # the P50 is the chain's year 1 at the P50 inputs
+    assert fq["growth"]["p10"] < fq["growth"]["p50"] < fq["growth"]["p90"] and fq["margin"]["p10"] < fq["margin"]["p50"] < fq["margin"]["p90"]
+    ps = pri.for_company("operating", st, o.asof)
+    g_t = r["terminal_growth"]["base"]
+    from valuation.common import level_path_weights
+    wm, _ = level_path_weights(ps.curves["margin_retention"], len(ps.curves["growth_decay"]))
+    assert fq["margin"]["p90"] == pytest.approx(st["op_margin"] + (ps.inputs["margin_target"].ppf(0.9) - st["op_margin"]) * wm[0])
+    assert fq["growth"]["p10"] == pytest.approx(g_t + (ps.inputs["g1"].ppf(0.1) - g_t) * ps.curves["growth_decay"].at(1))
+
+
+def test_the_financial_forecast_year1_is_the_rote_that_enters_the_residual_income_at_the_inputs_quantiles():
+    f = _fin_pit()
+    st = with_context(f)
+    r = fin.run(f, PlaceholderPriors(True), disc(coe=0.10), n_draws=100, seed=5, state=st)
+    fq = r["forecast_year1"]
+    y1 = r["at_median_inputs"]["years"][0]
+    assert fq["rote"]["p50"] == pytest.approx(y1["rote_after_fade"]) and fq["rote_normalized"]["p50"] == pytest.approx(y1["rote"])
+    assert fq["rote"]["p10"] < fq["rote"]["p50"] < fq["rote"]["p90"]

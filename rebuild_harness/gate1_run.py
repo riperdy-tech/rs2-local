@@ -1,8 +1,8 @@
 """The gate-1 run on the DEVELOPMENT dates (registration REGISTRATION_gate1_DRAFT.md; brief T-integrate).  Code only: no GPU, no model, no server, no network.
 
-    python -m rebuild_harness.gate1_run --out-dir OUT [--dates 2019-12-31 2021-06-30] [--workers 8] [--limit-ciks N]
+    python -m rebuild_harness.gate1_run --out-dir OUT [--dates 2020-01-31 2021-06-30] [--workers 8] [--limit-ciks N] [--headers CSV] [--crosswalk JSON] [--no-erp-shifts]
 
-For each valuation date (default: the 16 quarter-ends 2019-03-31 .. 2022-12-31, Addendum H6) and each company in the id map it writes one record: the status of the
+For each valuation date (default: the 36 MONTH-ENDS 2020-01-31 .. 2022-12-31, registration v2: Addendum H6's development window on monthly dates) and each company in the id map it writes one record: the status of the
 company (valued, or the named reason it was not), the engine's value per share with its P10..P90, the secondary and the disagreement, the discount rate and
 its sources, the inputs at the prior's quantiles, the price and market cap, the five yardsticks, the outcomes and the fundamental outcomes.  A date is two
 passes (see valuation/gate1.py): prepare every company, measure the population context, value every company.
@@ -15,7 +15,14 @@ Yahoo month-end bars with `auto_adjust=False`: the split-adjusted Close, Adj Clo
 close is rebuilt as Close x the product of the splits dated later (MonthlyRawPriceSource).  Month-end, survivors only, spin-off adjustments (Yahoo folds them into
 Close) are not undone, quality UNVERIFIED: every record is stamped `raw_monthly_2026-10-01_survivors` (PRICE_STAMP, with the file's sha256 in run_meta.json) and every
 B1-B4 figure computed on it is PROVISIONAL.  (Addendum G's premise that only an adjusted file existed was wrong.)  The holdout needs raw daily closes (D5).
-Valuation dates are calendar quarter-ends and the price of a date is its month's closing bar (the last weekday of the month).
+Valuation dates are calendar month-ends and the price of a date is its month's closing bar (the last weekday of the month).
+
+CLASSIFICATION (Addendum J11).  The SIC and the Damodaran industry of a company at a date come from the EDGAR filing headers (`--headers`: the SIC as filed at the date, the industry
+through the SIC -> industry crosswalk, `--crosswalk`) where the headers file covers the date and holds a header of the company; elsewhere the current-dated SIC and industry of
+`sic_by_cik.json`, stamped.  The headers file is copied into the output folder first (a download in progress changes under a run): every worker reads the copy.
+
+DIAGNOSTIC SCORES (registration v2 B5, reported only).  On the return dates each valued name is valued again with the equity risk premium shifted by +1 pp and by -1 pp
+(`score_alt`: IV / price at the median, None when that run refuses the name); every other input is the run's.
 
 The 16:00 ET acceptance rule is applied through the layer: with no acceptance timestamp in this build, a filing is eligible when filed on an earlier date
 (a filing on the date itself is AMBIGUOUS and unused).
@@ -24,14 +31,16 @@ import argparse
 import gzip
 import json
 import os
+import shutil
 import sys
 import time
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from multiprocessing import Pool
 from pathlib import Path
 
 from valuation import gate1, pit_adapter
+from valuation import sic_crosswalk as sx
 from valuation import pit_data as pdm
 from valuation.common import sha256_file
 from valuation.discount_rate import DamodaranStore, MriRiskFree
@@ -54,7 +63,7 @@ KS = (1, 2, 3)
 PRICE_STAMP = "raw_monthly_2026-10-01_survivors"
 
 GATE1_FILES = [REPO / "valuation" / n for n in ("common.py", "classification.py", "discount_rate.py", "engine_operating.py", "engine_financial.py",
-                                                  "engine_commodity.py", "priors.py", "priors_interface.py", "pit_adapter.py", "gate1.py")]
+                                                  "engine_commodity.py", "priors.py", "priors_interface.py", "pit_adapter.py", "gate1.py", "variants.py", "sic_crosswalk.py")]
 
 
 @eng_mod.engine("gate1_engine", kind="value", files=GATE1_FILES)
@@ -63,18 +72,36 @@ def gate1_engine(ticker, asof, data_root):
     raise RuntimeError("gate1_engine values a whole valuation date; run rebuild_harness.gate1_run")
 
 
-DEV_FIRST_YEAR, DEV_LAST_YEAR = 2019, 2022
+DEV_FIRST_YEAR, DEV_LAST_YEAR = 2020, 2022
 OUTCOMES_END = date(2022, 12, 31)       # Addendum H6: no price outcome is formed past this date, so none reaches the 2023-2024 holdout years
+RETURN_DATES_END = "2021-12-31"         # the last development date whose 12-month outcome ends by 2022-12-31 (B1, B2, B3 use the dates to here; B4 every date)
+ERP_SHIFTS = (0.01, -0.01)
+DEFAULT_HEADERS = WORKSPACE / "data" / "sec_bulk" / "headers" / "headers_raw.csv"
+DEFAULT_CROSSWALK = WORKSPACE / "data" / "crosswalk" / "sic_to_damodaran_industry_v1.json"
+
+
+def month_end(y, m):
+    return (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).isoformat()
 
 
 def dev_dates():
-    """The 16 quarter-ends from 2019-03-31 to 2022-12-31 (Addendum H6): 2019-03-31 .. 2021-12-31 (12 dates) serve the return metrics, 2022 (4 dates) forecast quality
-    (B4) only.  History starts with fiscal year 2009 and the priors need years behind and ahead, so 2017 and 2018 hold nothing to value."""
-    out = []
-    for y in range(DEV_FIRST_YEAR, DEV_LAST_YEAR + 1):
-        for m, d in ((3, 31), (6, 30), (9, 30), (12, 31)):
-            out.append(date(y, m, d).isoformat())
-    return out
+    """The 36 month-ends from 2020-01-31 to 2022-12-31 (registration v2): 2020-01-31 .. 2021-12-31 (24 dates) serve the return metrics, 2022 (12 dates) forecast quality (B4) only.
+    History starts with fiscal year 2009 and the priors need years behind and ahead, so 2019 and earlier hold nothing to value (round 3: the 2018 vintage has margin residual n = 9)."""
+    return [month_end(y, m) for y in range(DEV_FIRST_YEAR, DEV_LAST_YEAR + 1) for m in range(1, 13)]
+
+
+class ShiftedErp:
+    """DIAGNOSTIC (registration v2 B5): a `Rates` whose equity risk premium is the real one plus `delta` (a fraction); everything else delegates."""
+
+    def __init__(self, base, delta):
+        self._base, self.delta = base, delta
+
+    def __getattr__(self, name):
+        return getattr(self._base, name)
+
+    def erp(self, asof):
+        v, label, meta = self._base.erp(asof)
+        return v + self.delta, label + f" {self.delta * 1e4:+.0f} bp (diagnostic shift)", dict(meta or {}, erp_shift=self.delta)
 
 
 def _clean(o):
@@ -97,9 +124,12 @@ def _init(cfg):
     run_harness.block_network()
     idm = json.loads(Path(cfg["id_map"]).read_text(encoding="utf-8"))
     idm = idm.get("map", idm)
-    sic = pit_adapter.CurrentSicFile(cfg["sic"])
+    cur = pit_adapter.CurrentSicFile(cfg["sic"])
+    hdr = sx.HeadersFile(cfg["headers"]) if cfg.get("headers") else None
+    cw = sx.Crosswalk.load(cfg["crosswalk"]) if cfg.get("crosswalk") else None
+    sic = sx.SicResolver(cur, hdr, cw)                       # Addendum J11: the SIC as filed where the headers cover the date, else the current-dated record (stamped)
     src = pdm.MonthlyRawPriceSource.load(cfg["prices"])
-    _ENV["pit"] = pdm.PitData(cfg["store"], price_source=src, id_map=idm, sic_source=sic)
+    _ENV["pit"] = pdm.PitData(cfg["store"], price_source=src, id_map=idm, sic_source=sic, sic_history=sic)
     _ENV["priors"] = PopulationPriors(cfg.get("priors_dir"))
     _ENV["rates"] = gate1.Rates(DamodaranStore(), cfg["rf"])
     _ENV["cfg"] = cfg
@@ -180,7 +210,7 @@ def prepare_date(d, ciks=None):
         rec["mcap_group"] = ">=300M" if mc["market_cap"] >= gate1.MCAP_FLOOR else "<300M"
         ar = pit_adapter.adapt(pit, cik, d, ticker=key)
         prep = gate1.prepare(ar)
-        rec["industry"] = rec["sector"] = ar.industry
+        rec["industry"], rec["sector"] = ar.industry, ar.sector
         rec["family"] = prep["family"]
         rec["stamps"] = list(prep["stamps"])
         rec["provenance"] = prep["provenance"]
@@ -224,9 +254,19 @@ def run_date(d, ciks=None):
             rec["score"]["gate1_engine"] = p50 / rec["price"]
         else:
             rec["status"], rec["reasons"] = "refused", list(v["reasons"])
+    t_alt = time.time()
+    if cfg.get("erp_shifts") and d <= RETURN_DATES_END:                  # registration v2 B5, reported: the same names with the premium shifted
+        for delta in cfg["erp_shifts"]:
+            lab = f"erp{delta * 1e4:+.0f}bp"
+            sr = ShiftedErp(rates, delta)
+            for rec in recs:
+                if rec["status"] != "valued":
+                    continue
+                va = gate1.value_company(preps[rec["cik"]], ctx, priors, sr, rec["shares"], n_draws=cfg.get("n_draws", gate1.N_DRAWS))
+                rec.setdefault("score_alt", {})[lab] = (va["iv_ps"]["p50"] / rec["price"]) if va["status"] == "ok" else None
     for rec in recs:
         counts[rec["status"]] += 1
-    summary = {"date": d, "rf": rf, "n_companies": len(ciks), "status": dict(counts), "seconds_pass1": t1 - t0, "seconds_pass2": time.time() - t1,
+    summary = {"date": d, "rf": rf, "n_companies": len(ciks), "status": dict(counts), "seconds_pass1": t1 - t0, "seconds_pass2": t_alt - t1, "seconds_erp_shifts": time.time() - t_alt,
                "de_p95_pooled": ctx.de_p95_pooled, "spread_pooled": ctx.spread_pooled, "n_industries_de": len(ctx.de_p95), "n_industries_spread": len(ctx.spread)}
     out_dir = Path(cfg["out_dir"])
     with gzip.open(out_dir / f"records_{d}.jsonl.gz", "wt", encoding="utf-8") as f:
@@ -260,6 +300,9 @@ def main(argv=None):
                     help="DIAGNOSTIC variant only: the share of invalid draws above which a name is refused (the registered rule, Addendum H5, is %s; 1.0 shows what the engine "
                          "does with no refusal)" % gate1.INVALID_DRAW_MAX)
     ap.add_argument("--priors-dir", type=Path, help="the priors vintages folder (default: valuation.priors_build.config.DATA_DIR)")
+    ap.add_argument("--headers", type=Path, default=DEFAULT_HEADERS if DEFAULT_HEADERS.exists() else None, help="the EDGAR headers CSV (the SIC as filed; Addendum J11)")
+    ap.add_argument("--crosswalk", type=Path, default=DEFAULT_CROSSWALK if DEFAULT_CROSSWALK.exists() else None, help="the SIC -> Damodaran industry crosswalk (Addendum J11)")
+    ap.add_argument("--no-erp-shifts", action="store_true", help="skip the +-1 pp equity-premium diagnostic scores (registration v2 B5)")
     ap.add_argument("--freeze", type=Path)
     a = ap.parse_args(argv)
     dates = a.dates or dev_dates()
@@ -272,15 +315,24 @@ def main(argv=None):
         ciks = ciks[:a.limit_ciks]
     rf_src = MriRiskFree()
     rf = {d: rf_src(d) for d in dates}                              # the dated FRED series, read once in the parent
+    headers_copy = None
+    if a.headers is not None:                                       # the headers download is still growing: a run reads one frozen copy of it
+        headers_copy = a.out_dir / "headers_snapshot.csv"
+        shutil.copyfile(a.headers, headers_copy)
     cfg = {"store": str(a.store), "id_map": str(a.id_map), "prices": str(a.prices), "sic": str(a.sic), "rf": rf, "ciks": ciks, "n_draws": a.n_draws,
            "out_dir": str(a.out_dir), "priors_dir": str(a.priors_dir) if a.priors_dir else None,
-           "invalid_draw_max": a.invalid_draw_max}
+           "invalid_draw_max": a.invalid_draw_max, "headers": str(headers_copy) if headers_copy else None, "crosswalk": str(a.crosswalk) if a.crosswalk else None,
+           "erp_shifts": [] if a.no_erp_shifts else list(ERP_SHIFTS)}
     meta = {"started": datetime.now().isoformat(timespec="seconds"), "dates": dates, "lock": lock, "n_ciks": len(ciks), "workers": a.workers,
             "n_draws": a.n_draws, "gate1_version": gate1.GATE1_VERSION, "price_stamp": PRICE_STAMP, "price_file": str(a.prices),
             "price_file_sha256": sha256_file(a.prices), "price_file_meta": json.loads(a.prices.read_text(encoding="utf-8")).get("meta"),
             "priors_dir": str(a.priors_dir) if a.priors_dir else None, "invalid_draw_max": a.invalid_draw_max if a.invalid_draw_max is not None else gate1.INVALID_DRAW_MAX,
             "invalid_draw_max_is_the_registered_rule": a.invalid_draw_max is None,
-            "git_head": holdout._git(REPO, "rev-parse", "HEAD").decode().strip(), "rf": {k: v[0] for k, v in rf.items()}}
+            "git_head": holdout._git(REPO, "rev-parse", "HEAD").decode().strip(), "rf": {k: v[0] for k, v in rf.items()},
+            "engine_files_sha256": {p.relative_to(REPO).as_posix(): holdout.sha256_file(p) for p in GATE1_FILES},
+            "headers": sx.HeadersFile(headers_copy).info() if headers_copy else None,
+            "crosswalk": ({"path": str(a.crosswalk), "sha256": sha256_file(a.crosswalk), "meta": sx.Crosswalk.load(a.crosswalk).meta} if a.crosswalk else None),
+            "erp_shifts": cfg["erp_shifts"], "return_dates_end": RETURN_DATES_END}
     (a.out_dir / "run_meta.json").write_text(json.dumps(_clean(meta), indent=1), encoding="utf-8")
     t0 = time.time()
     with Pool(a.workers, initializer=_init, initargs=(cfg,)) as pool:

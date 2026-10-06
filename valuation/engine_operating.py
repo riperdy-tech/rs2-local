@@ -213,6 +213,20 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     return out
 
 
+FORECAST_LEVELS = (0.10, 0.50, 0.90)
+
+
+def forecast_year1(st: dict, dists: Dict[str, QuantileDist], curves: Dict[str, Curve], g_term: float) -> dict:
+    """The next fiscal year's forecast at the prior's P10 / P50 / P90 (registration v2 B4, reported): revenue growth (year 1 of the chain: g_T + (g1 - g_T) d_1) and the operating
+    margin (m_0 + (m_5 - m_0) w_1).  Both are monotone in the input, so the quantiles of the input map to the quantiles of the forecast."""
+    N = len(curves["growth_decay"])
+    wm, _info = level_path_weights(curves["margin_retention"], N)
+    m0 = st["op_margin"]
+    d1 = curves["growth_decay"].at(1)
+    return {"growth": {f"p{int(round(p * 100))}": g_term + (dists["g1"].ppf(p) - g_term) * d1 for p in FORECAST_LEVELS},
+            "margin": {f"p{int(round(p * 100))}": m0 + (dists["margin_target"].ppf(p) - m0) * wm[0] for p in FORECAST_LEVELS}}
+
+
 def _median_point(dists: Dict[str, QuantileDist]) -> Dict[str, float]:
     return {k: d.ppf(0.5) for k, d in dists.items()}
 
@@ -305,7 +319,7 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
     return {"status": "ok", "engine": engine, "family": family, "ticker": pit.ticker, "asof": st["asof"], "base_period": st["base_period"],
             "base_filed": st["base_filed"], "base_accession": st["base_accession"], "placeholder": bool(ps.placeholder or disc.placeholder),
             "prior_source": ps.source, "discount": disc.as_dict(), "distribution": dist, "at_median_inputs": at_median,
-            "model_disagreement": md, "model_disagreement_note": why,
+            "model_disagreement": md, "model_disagreement_note": why, "forecast_year1": forecast_year1(st, dists, curves, g_term),
             "consistency": capital_intensity_check(st, mid, disc), "cyclicality": st.get("cyclicality"),
             "inputs": {k: v.as_dict() for k, v in dists.items()},
             "terminal_growth": {"base": g_term, "rf": disc.rf, "anchor": TERMINAL_G_ANCHOR, "rule": "Addendum H2: min(risk-free rate at T, 3.75%); a negative decay-path rate "

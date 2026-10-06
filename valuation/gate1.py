@@ -410,7 +410,7 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
         "n_draws": dist["n_draws"], "n_valid": dist["n_valid"], "invalid_reasons": dist.get("invalid_reasons") or {},
         "share_negative_equity": dist.get("share_negative_equity"),
         "inputs": inputs_summary,
-        "forecast": {"g1_p50": res["inputs"]["g1"]["p50"] if "g1" in res.get("inputs", {}) else None,
+        "forecast": {"year1_quantiles": res.get("forecast_year1"), "g1_p50": res["inputs"]["g1"]["p50"] if "g1" in res.get("inputs", {}) else None,
                      "year1_growth_point": (first or {}).get("growth"), "year1_margin_point": (first or {}).get("margin") if family != "financial" else None,
                      "year1_rote_point": (first or {}).get("rote") if family == "financial" else None},
         "terminal_year": ({"margin": at["years"][-1]["margin"], "growth": at["years"][-1]["growth"]} if at.get("years") and family != "financial" else None),

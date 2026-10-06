@@ -48,3 +48,16 @@ def test_reinvestment_rate():
 def test_gross_profitability():
     assert F.gross_profitability(row()) == 50.0 / 150.0
     assert F.gross_profitability(row(gross_profit=0.0)) == 0.0
+
+
+def test_rote_is_net_income_over_the_average_tangible_equity_of_the_state_definition_and_zero_is_a_value():
+    prev = row(equity=900.0, goodwill=100.0, intangibles_ex_goodwill=0.0, net_income=50.0)
+    cur = row(equity=1100.0, goodwill=100.0, intangibles_ex_goodwill=0.0, net_income=120.0)
+    assert F.tangible_equity(cur) == 1000.0 and F.tangible_equity(prev) == 800.0
+    assert abs(F.rote(cur, prev) - 120.0 / 900.0) < 1e-12
+    assert F.rote(row(equity=1100.0, goodwill=100.0, intangibles_ex_goodwill=0.0, net_income=0.0), prev) == 0.0          # zero earnings is a value
+    assert F.rote(cur, None) is None                                                                                      # no adjacent previous year: not computed, no earlier year substituted
+    assert F.rote(row(equity=1100.0, goodwill=100.0, intangibles_ex_goodwill=0.0, net_income=None), prev) is None
+    assert F.rote(cur, row(equity=-1000.0, goodwill=0.0, intangibles_ex_goodwill=0.0)) is None                           # a non-positive average tangible equity
+    assert F.tangible_equity(row(equity=1100.0, goodwill=100.0, intangibles_ex_goodwill=0.0, preferred_equity=50.0)) == 950.0
+    assert F.measures(cur, prev)["rote"] == F.rote(cur, prev)

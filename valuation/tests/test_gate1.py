@@ -277,8 +277,9 @@ def test_the_gate1_run_refuses_a_holdout_date_before_opening_any_data(tmp_path):
                         "--id-map", str(tmp_path / "nope.json")])
     assert not (tmp_path / "out").exists()                                   # nothing was created: the lock answers first
     dates = gate1_run.dev_dates()
-    assert len(dates) == 16 and dates[0] == "2019-03-31" and dates[-1] == "2022-12-31" and not holdout.touches_holdout(dates)         # Addendum H6
-    assert [d for d in dates if d <= "2021-12-31"] == dates[:12] and dates[12:] == ["2022-03-31", "2022-06-30", "2022-09-30", "2022-12-31"]
+    assert len(dates) == 36 and dates[0] == "2020-01-31" and dates[-1] == "2022-12-31" and not holdout.touches_holdout(dates)         # registration v2: month-ends
+    assert [d for d in dates if d <= "2021-12-31"] == dates[:24] and dates[24:] == [gate1_run.month_end(2022, m) for m in range(1, 13)]
+    assert dates[1] == "2020-02-29" and dates[11] == "2020-12-31" and dates[13] == "2021-02-28" and dates[24] == "2022-01-31" and dates[27] == "2022-04-30"
     with pytest.raises(holdout.HoldoutRefused):                               # also with a freeze file that does not name this engine
         freeze = tmp_path / "freeze.json"
         freeze.write_text(json.dumps({"engines": {}}), encoding="utf-8")
@@ -356,3 +357,23 @@ def test_no_price_outcome_is_formed_past_the_end_of_2022():
     assert [h for h in g.HORIZONS if g.months_after("2022-06-30", h) <= g.OUTCOMES_END] == [3, 6]
     assert [h for h in g.HORIZONS if g.months_after("2019-03-31", h) <= g.OUTCOMES_END] == [3, 6, 12, 24, 36]
     assert [h for h in g.HORIZONS if g.months_after("2021-12-31", h) <= g.OUTCOMES_END] == [3, 6, 12]
+
+
+# ---- registration v2: month-end dates, the diagnostic equity-premium shift -----------------------------------------------------------------------------------
+
+def test_month_ends_include_leap_february_and_year_boundaries():
+    from rebuild_harness import gate1_run as g
+    assert [g.month_end(2020, m) for m in (1, 2, 4, 12)] == ["2020-01-31", "2020-02-29", "2020-04-30", "2020-12-31"]
+    assert g.month_end(2021, 2) == "2021-02-28" and g.month_end(2022, 12) == "2022-12-31"
+
+
+def test_the_shifted_rates_move_only_the_equity_premium_and_say_so():
+    from rebuild_harness import gate1_run as g
+    base = _rates()
+    up, dn = g.ShiftedErp(base, 0.01), g.ShiftedErp(base, -0.01)
+    v, label, meta = up.erp("2019-12-31")
+    assert v == pytest.approx(0.06) and "+100 bp" in label and meta["erp_shift"] == 0.01 and dn.erp("2019-12-31")[0] == pytest.approx(0.04)
+    assert up.rf("2019-12-31") == base.rf("2019-12-31") and up.beta("2019-12-31", "Software") == base.beta("2019-12-31", "Software")
+    d, _ = gate1.make_discount(_state(0.5, 0.06), "2019-12-31", "operating", "Software", _ctx(), up)
+    d0, _ = gate1.make_discount(_state(0.5, 0.06), "2019-12-31", "operating", "Software", _ctx(), base)
+    assert d.coe - d0.coe == pytest.approx(0.01 * d0.beta_levered) and d.erp == pytest.approx(0.06)

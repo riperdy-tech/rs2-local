@@ -124,6 +124,24 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     return out
 
 
+FORECAST_LEVELS = (0.10, 0.50, 0.90)
+
+
+def forecast_year1(st: dict, dists: Dict[str, "QuantileDist"], curves: Dict[str, Curve]) -> dict:
+    """The next fiscal year's return on tangible equity at the prior's P10 / P50 / P90 (registration v2 B4, reported): `rote` = ROTE'_1 = I + (ROTE_1 - I) phi_1 with
+    ROTE_1 = rT + (ROTE_0 - rT) rho_1, the return that enters the year's residual income (monotone in the input rT whenever the curves are positive), and `rote_normalized` = ROTE_1."""
+    R0, ind = st["rote_latest"], st["industry_rote"]["value"]
+    rho1, phi1 = curves["rote_retention"].at(1), curves["excess_fade"].at(1)
+    out = {"rote": {}, "rote_normalized": {}}
+    for p in FORECAST_LEVELS:
+        rT = dists["rote_target"].ppf(p)
+        R1 = rT + (R0 - rT) * rho1
+        k = f"p{int(round(p * 100))}"
+        out["rote_normalized"][k] = R1
+        out["rote"][k] = ind + (R1 - ind) * phi1
+    return out
+
+
 def insurer_decomposition(pit: CompanyPIT, tax: float, tbv: Optional[float]) -> Optional[dict]:
     """See the module docstring. None when the premiums, claims and investment income concepts are not all tagged for >= 3 years."""
     def pick(names):
@@ -213,7 +231,7 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
     return {"status": "ok", "engine": ENGINE, "family": "financial", "ticker": pit.ticker, "asof": st["asof"], "base_period": st["base_period"],
             "base_filed": st["base_filed"], "base_accession": st["base_accession"], "placeholder": bool(ps.placeholder or disc.placeholder),
             "prior_source": ps.source, "discount": disc.as_dict(), "distribution": dist, "at_median_inputs": at_median,
-            "model_disagreement": md, "model_disagreement_note": why, "cyclicality": st.get("cyclicality"),
+            "model_disagreement": md, "model_disagreement_note": why, "cyclicality": st.get("cyclicality"), "forecast_year1": forecast_year1(st, dists, curves),
             "insurer_decomposition": insurer_decomposition(pit, st["tax_rate"], st["tbv"]),
             "inputs": {k: v.as_dict() for k, v in dists.items()},
             "terminal_growth": {"base": g_term, "rf": disc.rf, "anchor": TERMINAL_G_ANCHOR, "rule": "Addendum H2: min(risk-free rate at T, 3.75%); a negative decay-path rate "

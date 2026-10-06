@@ -103,14 +103,35 @@ def reinvestment_rate(row, prev_row):
     return (cx - da + (w1 - w0)) / n
 
 
+def tangible_equity(row):
+    """Tangible common equity at a year end on the engine state's definition (valuation.common.build_state): throughcycle_record.tangible_equity_detail less preferred equity."""
+    t, _partial = tcr.tangible_equity_detail(row)
+    pref = row.get("preferred_equity")
+    if t is not None and is_num(pref):
+        t -= pref
+    return t
+
+
+def rote(row, prev_row):
+    """Net income / the average of this and the previous year's year-end tangible equity (the state's ROTE, where both years exist); None unless both years' tangible equity exist
+    and the average is positive.  The previous fiscal year must be given (the outcome chain supplies it): no earlier year is substituted."""
+    ni = row.get("net_income")
+    t1 = tangible_equity(row)
+    t0 = None if prev_row is None else tangible_equity(prev_row)
+    if not is_num(ni) or t1 is None or t0 is None:
+        return None
+    den = 0.5 * (t1 + t0)
+    return ni / den if den > 0 else None
+
+
 def measures(row, prev_row=None, dc_tag=None):
-    """{revenue, operating_margin, roc, reinvestment_rate, gross_profitability}: the fundamentals a forecast is scored on."""
+    """{revenue, operating_margin, roc, reinvestment_rate, gross_profitability, rote}: the fundamentals a forecast is scored on."""
     rev = row.get("revenue")
     return {"revenue": float(rev) if is_num(rev) and rev > 0 else None,
             "operating_margin": operating_margin(row),
             "roc": return_on_capital(row, dc_tag),
             "reinvestment_rate": reinvestment_rate(row, prev_row),
-            "gross_profitability": gross_profitability(row)}
+            "gross_profitability": gross_profitability(row), "rote": rote(row, prev_row)}
 
 
 FORECAST_MEASURES = ("revenue", "operating_margin", "roc", "reinvestment_rate")
