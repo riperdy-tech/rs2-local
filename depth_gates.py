@@ -139,14 +139,14 @@ def assess(v):
     """(actionable: bool, reasons: list[str]).
 
     Every reason that applies is returned, evaluated in this fixed order — not just the first
-    match, so a verdict can be `pre_v3.1_gates` AND `single_sample` at once and a reader sees
+    match, so a verdict can be `pre_v3.1_gates` AND `fiduciary_fail` at once and a reader sees
     both. `actionable` is True only when `reasons` is empty. `v` is a ledger/overlay verdict
     dict; every field is read with `.get()`, because a verdict from before a field existed must
     produce a reason (typically `pre_v3.1_gates`), never raise.
 
       1. `direction` not in {undervalued, hold, overvalued}   -> "not_usable"
       2. `gate_version` absent or < GATE_VERSION               -> "pre_v3.1_gates"
-      3. `n_basis == 1`                                        -> "single_sample"
+      3. (retired 2026-10-06) `n_basis == 1` was "single_sample"; see the note in the body
       4. `fiduciary_verdict == "FAIL"`                         -> "fiduciary_fail"
       5. `direction == overvalued` and `kelly_fraction_pct > 0` -> "kelly_on_overvalued"
       6. `direction in {undervalued, overvalued}` and `spread_pct > 25` -> "high_dispersion"
@@ -240,8 +240,11 @@ def assess(v):
     if stale:
         reasons.append("pre_v3.1_gates")
 
-    if v.get("n_basis") == 1:
-        reasons.append("single_sample")
+    # Reason 3 `single_sample` (n_basis == 1) retired by operator ruling 2026-10-06: "I am no longer doing minimum two
+    # sample runs as they take forever ... unblock them." A one-sample verdict is judged by the other reasons like any
+    # other; its n_basis (1), its point band and the pipeline's single-surviving-sample warning stay on the row, so the
+    # reader still sees it rests on one opinion. GATE_VERSION is deliberately unchanged: a bump would mark every
+    # existing verdict pre_v3.1_gates, and this change only removes a reason.
 
     if v.get("fiduciary_verdict") == "FAIL":
         reasons.append("fiduciary_fail")

@@ -251,9 +251,9 @@ def test_actionable_recomputed_per_row():
     assert bbb["actionable"] is False
     assert bbb["actionable_reasons"] == ["pre_v3.1_gates", "high_dispersion", "non_production_row"]
 
-    ccc = by_ticker["CCC"]      # n_basis == 1
-    assert ccc["actionable"] is False
-    assert ccc["actionable_reasons"] == ["single_sample"]
+    ccc = by_ticker["CCC"]      # n_basis == 1: no longer a gate reason (operator ruling 2026-10-06)
+    assert ccc["actionable"] is True
+    assert ccc["actionable_reasons"] == []
 
     eee = by_ticker["EEE"]      # undervalued, spread_pct=33 > 25
     assert eee["actionable"] is False
