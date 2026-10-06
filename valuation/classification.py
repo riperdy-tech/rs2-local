@@ -9,6 +9,8 @@ THE RULES
    * REIT / real estate (6500-6599, 6798) and conglomerate / holding shells (6719, 9990, 9995) and blank-check shells (6770):
      "family_not_built" (SPEC 2: out of scope in this build; classified and annotated, never valued). A balance-sheet test never
      overrides this: a mortgage REIT stays "family_not_built".
+   * regulated utilities and pipelines (4900-4949: electric, gas, water, combination and sanitary services, gas and other transmission, Addendum H4): they need a
+     rate-base model (revenue does not track the asset base, so the revenue-driven chain mis-states their maintenance spending), a later family: "family_not_built".
    * financial: banks, savings institutions, credit and finance companies, mortgage bankers, brokers and dealers, insurers
      (6000-6411 less the exceptions below). Exceptions that are fee businesses valued as operating companies: 6282 investment advice
      (asset managers) and 6411 insurance agents and brokers.
@@ -17,12 +19,16 @@ THE RULES
      industrial inorganic, plastics and resins, industrial organic and agricultural chemicals (2810-2829, 2860-2879), steel works and
      primary non-ferrous smelting (3312-3317, 3330-3339), deep sea and other water transportation (4400-4499).
    * operating: everything else (the default; oilfield services 1389 is operating by this rule).
-2. Two balance-sheet tests on the base-year filing, in words:
+2. PRE-PROFIT (Addendum H4): an operating or commodity company whose operating income was <= 0 in at least PRE_PROFIT_MIN_LOSS_YEARS of its last
+   PRE_PROFIT_WINDOW fiscal years known at the date (a year with no operating income filed is not counted) has no margin level to be an operating DCF about:
+   it needs a survival and option model, a later family: "family_not_built", annotated with the count.  Financials are not tested (their engine does not use
+   operating income).
+3. Two balance-sheet tests on the base-year filing, in words:
    * insurance_reserves is material against total assets (>= INSURANCE_RESERVE_SHARE) -> financial;
    * a lending book funded by borrowings: loans and financing receivables are a majority of total assets (>= LENDING_BOOK_SHARE) AND
      borrowings plus deposits are a majority of total liabilities (>= FUNDING_SHARE) -> financial.
    A test whose inputs are not filed is listed under tests.not_evaluated (it never passes by default).
-3. A conflict (the SIC family differs from the balance-sheet family) is recorded in `conflicts`; the balance sheet wins, except that
+4. A conflict (the SIC family differs from the balance-sheet family) is recorded in `conflicts`; the balance sheet wins, except that
    "family_not_built" by SIC is final. A financial SIC that the balance sheet does not confirm stays financial and is annotated.
 
 THRESHOLDS are classification conventions stated here, not tuned parameters; the report gives the corpus measurement behind the
@@ -35,6 +41,8 @@ from typing import Optional
 
 from .common import CompanyPIT, num, total_debt, parse_date
 
+PRE_PROFIT_WINDOW = 4             # Addendum H4
+PRE_PROFIT_MIN_LOSS_YEARS = 3
 INSURANCE_RESERVE_SHARE = 0.10
 LENDING_BOOK_SHARE = 0.50
 FUNDING_SHARE = 0.50
@@ -45,7 +53,7 @@ DEPOSIT_TAGS = ("Deposits",)
 
 _NOT_BUILT = [((6500, 6599), "reit_or_real_estate"), ((6798, 6798), "reit_or_real_estate"), ((6770, 6770), "blank_check_shell"),
               ((6719, 6719), "conglomerate_or_holding_company"), ((9990, 9990), "conglomerate_or_holding_company"),
-              ((9995, 9995), "conglomerate_or_holding_company")]
+              ((9995, 9995), "conglomerate_or_holding_company"), ((4900, 4949), "regulated_utility_or_pipeline")]
 _FINANCIAL_EXCEPTIONS = {6282: "investment advice: a fee business, valued as operating", 6411: "insurance agents and brokers: a fee business, valued as operating"}
 _FINANCIAL = [(6000, 6411)]
 _COMMODITY = [(1000, 1299), (1400, 1499), (1311, 1311), (1321, 1321), (1381, 1382), (2911, 2911), (2611, 2611), (2621, 2621),
@@ -115,6 +123,19 @@ def balance_sheet_tests(pit: CompanyPIT) -> dict:
     return out
 
 
+def pre_profit_test(data: CompanyPIT) -> dict:
+    """Addendum H4: operating income <= 0 in how many of the last PRE_PROFIT_WINDOW fiscal years known at the date (a year with no operating income filed is not
+    counted).  {"years": [...], "loss_years": n, "years_with_operating_income": m, "pre_profit": bool}."""
+    pers = data.periods()[-PRE_PROFIT_WINDOW:]
+    vals = {}
+    for pe in pers:
+        v = num(data.row(pe).get("operating_income"))
+        if v is not None:
+            vals[pe] = v
+    loss = sum(1 for v in vals.values() if v <= 0)
+    return {"years": pers, "loss_years": loss, "years_with_operating_income": len(vals), "pre_profit": loss >= PRE_PROFIT_MIN_LOSS_YEARS}
+
+
 def classification(ticker: str, asof, data: CompanyPIT) -> dict:
     asof_d = parse_date(asof)
     if data.asof != asof_d:
@@ -168,4 +189,11 @@ def classification(ticker: str, asof, data: CompanyPIT) -> dict:
         return out
     out["family"] = fam_sic if fam_sic is not None else "operating"
     out["reason"] = f"SIC {sic}: {sic_note}" if fam_sic is not None else "no SIC code; no balance-sheet financial profile"
+    pp = pre_profit_test(data)
+    out["tests"]["pre_profit"] = pp
+    if pp["pre_profit"]:
+        out["conflicts"].append(f"{out['reason']}, but operating income was <= 0 in {pp['loss_years']} of the last {len(pp['years'])} fiscal years")
+        out["family"] = "family_not_built"
+        out["reason"] = (f"pre_profit: operating income <= 0 in {pp['loss_years']} of the last {len(pp['years'])} fiscal years known at the date; "
+                         "needs a survival and option model; family not built (Addendum H4)")
     return out

@@ -288,3 +288,48 @@ def test_the_approved_damodaran_files_parse_select_by_date_and_record_hashes():
     assert meta["snapshot_date"] == "2021-01-05" and len(meta["file_sha256"]) == 64
     erp, label, meta = s.erp_provider()("2021-06-01")
     assert 0.03 < erp < 0.08 and meta["year_end"] == 2020
+
+
+# ---- Addendum H4: family_not_built for utilities and pipelines, and for pre-profit companies --------------------------------------------------------
+
+@pytest.mark.parametrize("sic", ["4900", "4911", "4922", "4923", "4924", "4925", "4931", "4941", "4949"])
+def test_regulated_utilities_and_pipelines_are_family_not_built(sic):
+    out = cl.classification("SYN", ASOF, make_pit(sic, {"total_assets": 100.0}))
+    assert out["family"] == "family_not_built" and "regulated_utility_or_pipeline" in out["reason"] and "family not built" in out["reason"]
+
+
+@pytest.mark.parametrize("sic,family", [("4899", "operating"), ("4950", "operating"), ("4813", "operating"), ("4610", "operating")])
+def test_the_utility_range_is_exactly_4900_to_4949(sic, family):
+    assert cl.classification("SYN", ASOF, make_pit(sic, {"total_assets": 100.0}))["family"] == family
+
+
+def _oi_pit(sic, ois):
+    periods = tuple(f"{2025 - len(ois) + i}-12-31" for i in range(len(ois)))
+    pit = make_pit(sic, {"total_assets": 100.0}, periods=periods)
+    for pe, v in zip(periods, ois):
+        if v is not None:
+            filed = (date.fromisoformat(pe) + timedelta(days=60)).isoformat()
+            pit.series.setdefault("operating_income", {})[pe] = Filed(float(v), pe, filed, "A", "10-K", "operating_income")
+    return pit
+
+
+def test_pre_profit_is_operating_income_at_or_below_zero_in_three_of_the_last_four_years():
+    # the last four years known: -5, -1, 0, +9  -> three at or below zero (0.0 is a value, and a loss): pre-profit
+    out = cl.classification("SYN", ASOF, _oi_pit("2834", [20, -5, -1, 0, 9]))
+    assert out["family"] == "family_not_built" and out["reason"].startswith("pre_profit: operating income <= 0 in 3 of the last 4")
+    assert out["tests"]["pre_profit"]["pre_profit"] is True and any("operating income was <= 0" in c for c in out["conflicts"])
+    # two of four is not
+    ok = cl.classification("SYN", ASOF, _oi_pit("2834", [-5, -1, 4, 9]))
+    assert ok["family"] == "operating" and ok["tests"]["pre_profit"]["loss_years"] == 2
+    # only the last four count: an old loss year outside the window does not
+    assert cl.classification("SYN", ASOF, _oi_pit("2834", [-9, -9, -9, 5, 6, 7, -1]))["family"] == "operating"
+    # a company with three fiscal years, all losses (a young company): pre-profit
+    assert cl.classification("SYN", ASOF, _oi_pit("7372", [-3, -4, -2]))["family"] == "family_not_built"
+    # a year with no operating income filed is not counted either way
+    assert cl.classification("SYN", ASOF, _oi_pit("7372", [-3, None, -2, 5]))["family"] == "operating"
+    assert cl.classification("SYN", ASOF, _oi_pit("7372", [-3, None, -2, -1]))["family"] == "family_not_built"
+
+
+def test_pre_profit_applies_to_commodity_but_not_to_financials():
+    assert cl.classification("SYN", ASOF, _oi_pit("1311", [-1, -2, -3, -4]))["family"] == "family_not_built"
+    assert cl.classification("SYN", ASOF, _oi_pit("6022", [-1, -2, -3, -4]))["family"] == "financial"

@@ -195,3 +195,9 @@ def test_adjusted_proxy_basis_rescales_only_the_price_level_scores():
     assert a["score"][ENG] == pytest.approx(1.25) and a["score"]["yardstick_earnings_yield"] == pytest.approx(1.25) and a["score"]["yardstick_fcf_yield"] == pytest.approx(1.25)
     assert a["score"]["yardstick_momentum_12_1"] == 1.0 and a["score"]["yardstick_return_on_capital"] == 1.0         # no price level in them
     assert b["vp"] == 2.0 and c["vp"] == 3.0                                                                             # f = 1 for BBB; CCC has no bar: left on the run's basis
+
+
+def test_family_not_built_reasons_are_counted_by_kind():
+    assert gm._reason_class("SIC 4911: regulated_utility_or_pipeline; family not built (SPEC 2)") == "family_not_built: regulated_utility_or_pipeline"
+    assert gm._reason_class("SIC 6798: reit_or_real_estate; family not built (SPEC 2)") == "family_not_built: reit_or_real_estate"
+    assert gm._reason_class("pre_profit: operating income <= 0 in 3 of the last 4 fiscal years known at the date; needs a survival and option model; family not built (Addendum H4)") == "family_not_built: pre_profit"

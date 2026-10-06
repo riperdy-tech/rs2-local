@@ -126,6 +126,9 @@ def apply_adjusted_proxy(rows, prices_doc):
 def _reason_class(reason):
     """A short class of a refusal reason (the text before its details)."""
     s = str(reason)
+    if "family not built" in s:                          # Addendum H4: counted by kind (reit_or_real_estate, regulated_utility_or_pipeline, pre_profit, ...)
+        kind = s.split(": ", 1)[1].split(";")[0] if s.startswith("SIC ") else s.split(":", 1)[0]
+        return "family_not_built: " + kind
     for head in ("priors do not supply", "not available", "no_price", "market_cap_unavailable", "discount_rate", "all_draws_invalid", "engine_exception",
                  "engine_input_error", "priors_unavailable", "SIC ", "no_annual_report", "reporting_currency", "PIT_INVALID", "AMBIGUOUS", "unclassifiable"):
         if s.startswith(head):
