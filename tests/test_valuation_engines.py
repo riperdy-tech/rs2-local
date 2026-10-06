@@ -460,3 +460,11 @@ def test_build_state_refuses_a_pit_object_that_leaks():
     pit.series["revenue"]["2024-12-31"] = leaked
     with pytest.raises(PITViolation):
         build_state(pit)
+
+
+def test_stale_asc932_tag_is_not_used():
+    pit = _commodity_pit()
+    n = "StandardizedMeasureOfDiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReserves"
+    pit.concepts[n] = {"2018-12-31": Filed(999.0, "2018-12-31", "2019-02-20", "OLD", "10-K", n)}
+    r = com.run(pit, PlaceholderPriors(True), disc(), n_draws=100)
+    assert r["secondary"]["kind"] == "tangible_book_proxy" and any("stale" in s for s in r["secondary"]["stamps"])

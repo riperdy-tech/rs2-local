@@ -12,7 +12,7 @@ PRIMARY: the operating chain of engine_operating (same arithmetic, same equity b
 SECONDARY CROSS-CHECK (an asset value, never averaged in):
   * oil and gas: the standardized measure of discounted future net cash flows (ASC 932; us-gaap
     StandardizedMeasureOfDiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReserves, else
-    DiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReservesStandardizedMeasure) of the latest annual report filed before the valuation date,
+    DiscountedFutureNetCashFlowsRelatingToProvedOilAndGasReservesStandardizedMeasure) of the BASE-period annual report (an older one is refused as stale),
     bridged like an enterprise value (debt, leases, minority interest out; cash and investments in). It values proved reserves after tax only.
   * elsewhere (vessels, plant), and for an oil and gas filer that does not file the tag: tangible book value as a replacement-cost PROXY.
     The result stamps it as a proxy.
@@ -44,14 +44,18 @@ def latest_concept(pit: CompanyPIT, names):
 def asset_value_cross_check(pit: CompanyPIT, st: dict, disc: DiscountRate, *, oil_gas: bool, roll_forward: bool = True) -> dict:
     yrs = op.years_between(st["base_period"], disc.asof) if roll_forward else 0.0
     factor = (1.0 + disc.coe) ** yrs
+    why = None
     if oil_gas:
         sm = latest_concept(pit, ASC932_TAGS)
+        if sm is not None and sm[1] != st["base_period"]:
+            why = f"the standardized-measure tag was last filed for {sm[1]}, not for the base period {st['base_period']}: too stale to use"
+            sm = None
         if sm is not None:
             br = equity_bridge(sm[0], st)
             return {"kind": "asc932_standardized_measure", "equity": br["equity_value"] * factor, "standardized_measure": sm[0],
                     "period_end": sm[1], "filed": sm[2], "accession": sm[3], "tag": sm[4], "bridge": br["items"], "proxy": False,
                     "stamps": ["proved reserves only, after tax, at SEC prices; bridged like an enterprise value"]}
-        why = "oil and gas filer with no standardized-measure tag in the companyfacts taxonomy (custom extension tags are not in it)"
+        why = why or "oil and gas filer with no standardized-measure tag in the companyfacts taxonomy (custom extension tags are not in it)"
     else:
         why = "not an oil and gas filer"
     if st.get("tbv") is None:
