@@ -10,7 +10,8 @@ ZIP_PATH = Path(os.environ.get("PRIORS_COMPANYFACTS_ZIP", str(Path(os.environ.ge
 CIK_MAP = Path(os.environ.get("STOCKS_ROOT", r"C:\Users\riper\stocks")) / "screener-publish" / "public" / "data" / "cik_map.json"
 INDNAME_CSV = WORKSPACE / "data" / "damodaran" / "csv" / "datasets_indname__2_By_company_name.csv"
 RAW_PRICES = WORKSPACE / "data" / "priors" / "_inputs" / "prices_monthly_raw.json"
-DATA_DIR = Path(os.environ.get("PRIORS_DATA_DIR", str(WORKSPACE / "data" / "priors")))
+# priors v2 (Addendum H) is built into its own folder; the version-1 folder `data/priors` is kept as it was (nothing is ever deleted)
+DATA_DIR = Path(os.environ.get("PRIORS_DATA_DIR", str(WORKSPACE / "data" / "priors_v2")))
 INPUTS_DIR = WORKSPACE / "data" / "priors" / "_inputs"
 
 PRIORS_VERSION = "2"      # 2: Addendum H (family_not_built for pre-profit and utilities; roic3; the roic_level table; correlations on the level variables)

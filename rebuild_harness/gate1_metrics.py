@@ -75,7 +75,7 @@ def compact(r):
                     "g1_p50": (v.get("forecast") or {}).get("year1_growth_point"), "m1_p50": (v.get("forecast") or {}).get("year1_margin_point"),
                     "g_naive": (v.get("prior_meta") or {}).get("mechanical_baseline_g1"), "m0": (v.get("state") or {}).get("op_margin"),
                     "disc": v.get("discount"), "inputs": v.get("inputs"), "state": v.get("state"), "prior_meta": v.get("prior_meta"),
-                    "secondary_kind": v.get("secondary_kind"), "terminal_year": v.get("terminal_year"), "margin_path": v.get("margin_path"), "g_term": v.get("terminal_growth"), "stamps": r.get("stamps")})
+                    "secondary_kind": v.get("secondary_kind"), "terminal_year": v.get("terminal_year"), "margin_path": v.get("margin_path"), "g_term": v.get("terminal_growth"), "returns": v.get("returns"), "stamps": r.get("stamps")})
     return out
 
 
@@ -89,7 +89,7 @@ def load_run(run_dir, dates=None, keep_all_for=()):
         if dates is not None and d not in dates:
             continue
         cnt = {"status": Counter(), "reason": Counter(), "family_status": Counter(), "mcap": Counter(), "family_reason": Counter(), "invalid_draws": Counter(),
-               "invalid_names": Counter(), "prepared": 0}
+               "invalid_names": Counter(), "prepared": 0, "invalid_family": Counter()}
         with gzip.open(f, "rt", encoding="utf-8") as fh:
             for line in fh:
                 r = json.loads(line)
@@ -101,6 +101,8 @@ def load_run(run_dir, dates=None, keep_all_for=()):
                 if inv:
                     cnt["invalid_draws"].update(inv)          # Addendum H5: by reason, over every name with invalid draws
                     cnt["invalid_names"].update(inv.keys())
+                    for k_, n_ in inv.items():
+                        cnt["invalid_family"][(fam, k_)] += n_
                 fam = r.get("family") or "none"
                 cnt["family_status"][(fam, r["status"])] += 1
                 if r["status"] != "valued":
@@ -474,12 +476,29 @@ def structure_stats(rows):
         mt = [(r["prior_meta"] or {}).get("margin_target") for r in op if r.get("prior_meta")]
         mt = [x for x in mt if x]
         out["margin_level5_r5"] = _q([x["r5"] for x in mt])
+        out["g1_width_p10_p90"] = _q([r["inputs"]["g1"]["p90"] - r["inputs"]["g1"]["p10"] for r in op if "g1" in r["inputs"]])
+        out["ronic_level5_width_p10_p90"] = _q([r["inputs"]["ronic"]["p90"] - r["inputs"]["ronic"]["p10"] for r in op if "ronic" in r["inputs"]])
+        rt = [r["returns"] for r in op if r.get("returns")]
+        out["own_trailing_roic3"] = _q([x["roic3"] for x in rt if x.get("roic3") is not None])
+        out["industry_median_roic"] = _q([x["industry_roic"]["value"] for x in rt if x.get("industry_roic")])
+        out["industry_median_roic_basis_pooled_share"] = float(np.mean([x["industry_roic"]["basis"].startswith("pooled") for x in rt if x.get("industry_roic")])) if rt else None
+        out["ronic_terminal_at_p50_inputs"] = _q([x["ronic_terminal_at_p50_inputs"] for x in rt if x.get("ronic_terminal_at_p50_inputs") is not None])
+        out["share_terminal_ronic_floored_at_wacc"] = float(np.mean([abs(x["ronic_terminal_at_p50_inputs"] - r["disc"]["wacc"]) < 1e-12 for r in op for x in [r.get("returns") or {}]
+                                                                    if x.get("ronic_terminal_at_p50_inputs") is not None])) if rt else None
         out["margin_level5_median_minus_8y_median"] = _q([x["level5_median"] - x["centre_8y_median"] for x in mt])
         mp = [r.get("margin_path") for r in op if r.get("margin_path")]
         out["margin_path_linear_share"] = float(np.mean([x["shape"] == "linear" for x in mp])) if mp else None
         out["margin_path_clipped_share"] = float(np.mean([bool(x["clipped"]) for x in mp])) if mp else None
         out["terminal_year_margin_minus_current"] = _q([r["terminal_year"]["margin"] - r["m0"] for r in op if r.get("terminal_year") and r.get("m0") is not None])
+    fin = [r for r in rows if r["family"] == "financial" and r.get("returns")]
+    if fin:
+        out["financial_industry_median_rote"] = _q([x["returns"]["industry_rote"]["value"] for x in fin if x["returns"].get("industry_rote")])
+        out["financial_terminal_rote_at_p50_inputs"] = _q([x["returns"]["rote_terminal_at_p50_inputs"] for x in fin if x["returns"].get("rote_terminal_at_p50_inputs") is not None])
+        out["financial_share_terminal_rote_floored_at_coe"] = float(np.mean([abs(x["returns"]["rote_terminal_at_p50_inputs"] - x["disc"]["coe"]) < 1e-12 for x in fin
+                                                                           if x["returns"].get("rote_terminal_at_p50_inputs") is not None and x.get("disc")]))
+        out["financial_rote_target_width_p10_p90"] = _q([x["inputs"]["rote_target"]["p90"] - x["inputs"]["rote_target"]["p10"] for x in fin if x.get("inputs") and "rote_target" in x["inputs"]])
     out["invalid_draw_share"] = _q([r["invalid_share"] for r in rows])
+    out["share_names_over_5pct_draws_invalid"] = float(np.mean([r["invalid_share"] > 0.05 for r in rows])) if rows else None
     out["share_names_over_half_draws_invalid"] = float(np.mean([r["invalid_share"] > 0.5 for r in rows])) if rows else None
     ratio = [r["vp"] / r["vp_point"] for r in rows if r.get("vp") is not None and r.get("vp_point") not in (None, 0) and r["vp"] > 0 and r["vp_point"] > 0]
     out["ratio_distribution_median_to_point_inputs"] = _q(ratio)
@@ -507,6 +526,11 @@ def extremes_listing(full_rows, n=30):
                 "revenue": v["state"]["revenue"], "op_margin": v["state"]["op_margin"], "op_margin_median": v["state"]["op_margin_median"],
                 "growth_latest": v["state"]["growth_latest"], "tax": v["state"]["tax_rate"], "tbv": v["state"]["tbv"], "rote": v["state"]["rote_latest"],
                 "inputs_p10_p50_p90": {k: [x["p10"], x["p50"], x["p90"]] for k, x in v["inputs"].items()}, "base_age_months": r["base_age_months"],
+                "roic3": (v.get("returns") or {}).get("roic3"), "industry_roic": ((v.get("returns") or {}).get("industry_roic") or {}).get("value"),
+                "ronic_terminal": (v.get("returns") or {}).get("ronic_terminal_at_p50_inputs"), "rote3": (v.get("returns") or {}).get("rote3"),
+                "industry_rote": ((v.get("returns") or {}).get("industry_rote") or {}).get("value"), "rote_terminal": (v.get("returns") or {}).get("rote_terminal_at_p50_inputs"),
+                "g_term": ((v.get("terminal_growth") or {}).get("at_p50_inputs") or {}).get("value"),
+                "terminal_year_margin": (v.get("terminal_year") or {}).get("margin"),
                 "stamps": r.get("stamps")[:6]}
     vs.sort(key=lambda r: r["_vp"])
     return {"bottom": [row(r) for r in vs[:n]], "top": [row(r) for r in vs[-n:][::-1]], "n_valued": len(vs)}
@@ -524,14 +548,16 @@ def coverage_tables(counters):
         fam_reason.update(c["family_reason"])
         fam_status.update(c["family_status"])
         mcap.update(c["mcap"])
-    inv_draws, inv_names = Counter(), Counter()
+    inv_draws, inv_names, inv_fam = Counter(), Counter(), Counter()
     for c in counters.values():
         inv_draws.update(c["invalid_draws"])
         inv_names.update(c["invalid_names"])
+        inv_fam.update(c["invalid_family"])
     by_date_reason = {d: dict(c["reason"].most_common()) for d, c in counters.items()}
     by_date_family = {d: {f"{k[0]} | {k[1]}": v for k, v in sorted(c["family_status"].items())} for d, c in counters.items()}
     return {"per_date_status": per_date, "refusals_by_date_and_reason": by_date_reason, "family_and_status_by_date": by_date_family,
             "refusals_by_reason": dict(reason.most_common()), "invalid_draw_reasons_by_draws": dict(inv_draws.most_common()),
-            "invalid_draw_reasons_by_names": dict(inv_names.most_common()), "names_the_engine_ran_on": sum(c["prepared"] for c in counters.values()),
+            "invalid_draw_reasons_by_names": dict(inv_names.most_common()),
+            "invalid_draw_reasons_by_family_and_draws": {f"{k[0]} | {k[1]}": v for k, v in inv_fam.most_common()}, "names_the_engine_ran_on": sum(c["prepared"] for c in counters.values()),
             "refusals_by_family_and_reason": {f"{k[0]} | {k[1]}": v for k, v in fam_reason.most_common()},
             "by_family_and_status": {f"{k[0]} | {k[1]}": v for k, v in sorted(fam_status.items())}, "valued_by_mcap_group": dict(mcap)}

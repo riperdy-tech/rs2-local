@@ -412,7 +412,7 @@ def test_the_engines_run_end_to_end_on_a_synthetic_priorset(synthetic_vintage):
 
 # ---- the real population (skipped when the store or the built vintage is absent) -----------------------------------------------------------------
 
-REAL = C.DATA_DIR / "2024" / "tables.json"
+REAL = C.DATA_DIR / "2021" / "tables.json"
 
 
 def _real_vintage_is_v2():
@@ -430,14 +430,14 @@ def test_engines_run_on_real_priors_for_a_few_names_no_value_is_asserted():
     sic_map = json.loads((C.INPUTS_DIR / "sic_by_cik.json").read_text(encoding="utf-8"))["map"]
     pit = PitData(C.STORE_DIR, sic_source=lambda cik: (lambda s: SicRecord(s["sic"], "", "damodaran 2026-01 (current-dated)", False) if s else None)(sic_map.get(cik)))
     pp = PopulationPriors()
-    disc = DiscountRate(asof="2025-06-30", rf=0.04, erp=0.05, beta_unlevered=1.0, de_ratio=0.0, de_basis="book", tax=0.25, beta_levered=1.0, coe=0.10,
+    disc = DiscountRate(asof="2022-06-30", rf=0.04, erp=0.05, beta_unlevered=1.0, de_ratio=0.0, de_basis="book", tax=0.25, beta_levered=1.0, coe=0.10,
                         kd_pretax=None, wacc=0.09, placeholder=True)
     ran = {"operating": 0, "commodity": 0, "financial": 0}
     for cik in ("0000320193", "0000789019", "0000034088", "0000019617", "0000070858", "0000072971", "0000831259", "0000093410"):
-        cp = pit.company_pit(cik, "2025-06-30")
+        cp = pit.company_pit(cik, "2022-06-30")
         if cp is None:
             continue
-        fam = classification(cik, "2025-06-30", cp)["family"]
+        fam = classification(cik, "2022-06-30", cp)["family"]
         if fam not in ran:
             continue
         st = build_state(cp)

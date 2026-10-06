@@ -3,6 +3,7 @@
     python -m rebuild_harness.gate1_report RUN_DIR [--out-dir OUT] [--resamples 2000] [--extremes-dates 2019-12-31 2021-12-31]
 
 Writes gate1_dev_report.json and gate1_dev_report.md.  Reads records only; it forms no new return.  Every figure is PROVISIONAL (see gate1_metrics).
+B1, B2 and B3 are on the dates to 2021-12-31 (Addendum H6), B4 on every date; the run's `run_meta.json` (commit, priors folder, price file hash) is copied into the report.
 """
 import argparse
 import json
@@ -45,7 +46,8 @@ def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), 
     big = [r for r in rows if r["mcap_group"] == ">=300M"]
     small = [r for r in rows if r["mcap_group"] == "<300M"]
     big_fresh = [r for r in big if not r["stale"]]
-    rep = {"provisional": gm.PROVISIONAL, "price_basis": "adjusted-only proxy (IV/price, earnings and FCF yields times Close/Adj Close)" if adjusted_proxy else "raw monthly pull of 2026-10-01 (Addendum H9): the traded close rebuilt from the split-adjusted Close and the split events; month-end, survivors only",
+    meta_p = Path(run_dir) / "run_meta.json"
+    rep = {"run_meta": json.loads(meta_p.read_text(encoding="utf-8")) if meta_p.exists() else None, "provisional": gm.PROVISIONAL, "price_basis": "adjusted-only proxy (IV/price, earnings and FCF yields times Close/Adj Close)" if adjusted_proxy else "raw monthly pull of 2026-10-01 (Addendum H9): the traded close rebuilt from the split-adjusted Close and the split events; month-end, survivors only",
            "adjusted_proxy_rows_without_both_bars": proxy_missing, "run_dir": str(run_dir), "n_valued": len(rows), "n_valued_ge_300M": len(big), "n_valued_lt_300M": len(small),
            "coverage": gm.coverage_tables(counters), "per_date": per_date(rows)}
     rep["gate1_universe_ge_300M"] = gm.three_bounds(big, ">=300M", resamples, return_end=gm.RETURN_DATES_END)
@@ -66,13 +68,21 @@ def fmt(x, nd=3):
 
 
 def render(rep):
+    rm = rep.get("run_meta") or {}
     L = ["# Gate 1, development run: report", "", "**" + rep["provisional"] + "**", "", f"Price basis: {rep['price_basis']}", "",
+         f"Run: commit {rm.get('git_head')}, {len(rm.get('dates') or [])} dates, priors folder {rm.get('priors_dir') or 'default'}, price file sha256 {str(rm.get('price_file_sha256'))[:16]}, stamp {rm.get('price_stamp')}", "",
          f"Valued: {rep['n_valued']} (market cap >= $300M: {rep['n_valued_ge_300M']}; below: {rep['n_valued_lt_300M']})", ""]
     L += ["## Valued names and median IV / price by date", "", "| date | valued | >= $300M | median IV/price | share < 0.4x | share > 2.5x | median invalid-draw share | median COE |", "|---|---|---|---|---|---|---|---|"]
     for d, v in rep["per_date"].items():
         L.append(f"| {d} | {v['n_valued']} | {v['n_valued_ge_300M']} | {fmt(v['median_vp'])} | {fmt(v['share_below_0_4'])} | {fmt(v['share_above_2_5'])} | {fmt(v['median_invalid_share'])} | {fmt(v['median_coe'])} |")
     cov = rep["coverage"]
     L += ["", "## Coverage: refusals by reason (all dates)", ""] + [f"- {v}: {k}" for k, v in list(cov["refusals_by_reason"].items())[:40]]
+    nb = {k: v for k, v in cov["refusals_by_reason"].items() if k.startswith("family_not_built")}
+    L += ["", "## Scope: family_not_built by kind (name-dates, all dates; Addendum H4)", ""] + [f"- {v}: {k}" for k, v in nb.items()]
+    L += ["", "## Invalid draws (Addendum H5): reasons, over every name the engine ran on", "", f"names the engine ran on: {cov.get('names_the_engine_ran_on')}", "",
+          "by draws:"] + [f"- {v}: {k}" for k, v in cov.get("invalid_draw_reasons_by_draws", {}).items()] + ["", "by names (a name counts once per reason):"] + [
+              f"- {v}: {k}" for k, v in cov.get("invalid_draw_reasons_by_names", {}).items()] + ["", "by family, in draws:"] + [
+              f"- {v}: {k}" for k, v in cov.get("invalid_draw_reasons_by_family_and_draws", {}).items()]
     L += ["", "## Coverage: by family and status", ""] + [f"- {k}: {v}" for k, v in cov["by_family_and_status"].items()]
     L += ["", "## Coverage: per date status", ""] + [f"- {d}: {v}" for d, v in cov["per_date_status"].items()]
     L += ["", "## Coverage: family and status by date", ""] + [f"- {d}: {v}" for d, v in cov["family_and_status_by_date"].items()]
@@ -88,15 +98,24 @@ def render(rep):
         L.append("|---|---|---|---|---|")
         L.append("| B1 mean engine coefficient [90% lower, upper] | " + " | ".join(f"{fmt(r['B1'][b]['mean_coef'], 4)} [{fmt(r['B1'][b]['ci90'][0], 4)}, {fmt(r['B1'][b]['ci90'][1], 4)}] ({r['B1'][b]['n_dates']} dates)" for b in gm.BOUNDS) + f" | {r['B1_status_over_bounds']} |")
         L.append("| B2 neutral spread (residual) [90%] | " + " | ".join(f"{fmt(r['B2'][b]['mean_spread'], 4)} ({fmt(r['B2'][b]['mean_spread_residual'], 4)}) [{fmt(r['B2'][b]['ci90'][0], 4)}, {fmt(r['B2'][b]['ci90'][1], 4)}]" for b in gm.BOUNDS) + f" | {r['B2_status_over_bounds']} |")
+        L.append(f"dates: B1, B2, B3 on {len(r.get('return_dates') or [])} dates ({(r.get('return_dates') or ['?'])[0]} .. {(r.get('return_dates') or ['?'])[-1]}); B4 on {len(r.get('b4_dates') or [])} dates "
+                 f"({(r.get('b4_dates') or ['?'])[0]} .. {(r.get('b4_dates') or ['?'])[-1]}); valued name-dates on the return dates {r.get('n_valued_return_dates')}")
+        ym = r["B1"]["excluded"].get("yardstick_missing_share") or {}
+        L.append("yardstick coverage (share of B1 names imputed at the median rank): " + ", ".join(f"{k.replace('yardstick_', '')} {fmt(v)}" for k, v in ym.items()))
         b3 = r["B3"]
         if b3.get("n"):
             L += ["", f"B3: extremes {fmt(b3['share_extreme'])} (below 0.4x {fmt(b3['share_below_0_4'])}, above 2.5x {fmt(b3['share_above_2_5'])}; non-positive IV {fmt(b3['share_nonpositive_iv'])}); family gap in points {json.dumps(_clean(b3['family_gap_points']))}; IQR ln(IV/P) {fmt(b3['iqr_ln_vp_positive_iv'])} on {b3['n_positive_iv']} positive IVs (floor {b3['c_floor']}); (c) {b3['c_status']}; status {b3['status']}"]
-        b4 = r["B4"]
-        for k in ("revenue_growth", "operating_margin"):
-            x = b4[k]
-            if x["n"]:
-                L.append(f"B4 {k}: n={x['n']}, median abs error engine {fmt(x['median_abs_error_engine'], 4)} vs naive {fmt(x['median_abs_error_naive'], 4)}; engine closer for {fmt(x['share_engine_closer'])} of names")
-        L.append(f"B4 status: {b4['status']}")
+        b3a = r.get("B3_all_dates") or {}
+        if b3a.get("n"):
+            L.append(f"B3 on every date: extremes {fmt(b3a['share_extreme'])} (below 0.4x {fmt(b3a['share_below_0_4'])}, above 2.5x {fmt(b3a['share_above_2_5'])}); family gap in points "
+                     f"{json.dumps(_clean(b3a['family_gap_points']))}; IQR ln(IV/P) {fmt(b3a['iqr_ln_vp_positive_iv'])}; status {b3a['status']}")
+        for key, lab in (("B4", "B4 (every date)"), ("B4_return_dates_only", "B4 (the return dates only)")):
+            b4 = r[key]
+            for k in ("revenue_growth", "operating_margin"):
+                x = b4[k]
+                if x["n"]:
+                    L.append(f"{lab} {k}: n={x['n']}, median abs error engine {fmt(x['median_abs_error_engine'], 4)} vs naive {fmt(x['median_abs_error_naive'], 4)}; engine closer for {fmt(x['share_engine_closer'])} of names")
+            L.append(f"{lab} status: {b4['status']}")
     lab = "ge_300M"
     d = rep["diagnostics"][lab]
     L += ["", "## Diagnostics (>= $300M): IV / price by family", ""]
@@ -114,10 +133,10 @@ def render(rep):
     for dt, ex in rep["extremes_listings"].items():
         for side in ("top", "bottom"):
             L += ["", f"## {dt}: {side} 30 by IV / price (all valued names, both market-cap groups)", "",
-                  "| ticker | industry | family | group | IV/P | IV/P at P50 inputs | secondary/P | TV share | invalid | COE | WACC | rev $M | margin | g latest | inputs P10/P50/P90 |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+                  "| ticker | industry | family | group | IV/P | IV/P at P50 inputs | secondary/P | TV share | invalid | COE | WACC | rev $M | margin | g latest | L0 (3y ROIC) | industry ROIC | terminal RONIC | g term | inputs P10/P50/P90 |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
             for r in ex[side]:
                 inp = "; ".join(f"{k} {fmt(v[0], 3)}/{fmt(v[1], 3)}/{fmt(v[2], 3)}" for k, v in r["inputs_p10_p50_p90"].items())
-                L.append(f"| {r['ticker']} | {r['industry']} | {r['family']} | {r['mcap_group']} | {fmt(r['vp'], 2)} | {fmt(r['vp_point_p50_inputs'], 2)} | {fmt(r['secondary_vp'], 2)} | {fmt(r['tv_share_p50'], 2)} | {fmt(r['invalid_share'], 2)} | {fmt(r['coe'], 3)} | {fmt(r['wacc'], 3)} | {fmt((r['revenue'] or 0) / 1e6, 0)} | {fmt(r['op_margin'], 3)} | {fmt(r['growth_latest'], 3)} | {inp} |")
+                L.append(f"| {r['ticker']} | {r['industry']} | {r['family']} | {r['mcap_group']} | {fmt(r['vp'], 2)} | {fmt(r['vp_point_p50_inputs'], 2)} | {fmt(r['secondary_vp'], 2)} | {fmt(r['tv_share_p50'], 2)} | {fmt(r['invalid_share'], 2)} | {fmt(r['coe'], 3)} | {fmt(r['wacc'], 3)} | {fmt((r['revenue'] or 0) / 1e6, 0)} | {fmt(r['op_margin'], 3)} | {fmt(r['growth_latest'], 3)} | {fmt(r.get('roic3') if r['family'] != 'financial' else r.get('rote3'), 3)} | {fmt(r.get('industry_roic') if r['family'] != 'financial' else r.get('industry_rote'), 3)} | {fmt(r.get('ronic_terminal') if r['family'] != 'financial' else r.get('rote_terminal'), 3)} | {fmt(r.get('g_term'), 4)} | {inp} |")
     return "\n".join(L) + "\n"
 
 
