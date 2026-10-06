@@ -315,6 +315,35 @@ class Curve:
         return self.values[min(t, len(self.values)) - 1]
 
 
+LEVEL_REF_YEAR = 5                # Addendum H1: a level input (margin, return on new capital) is the level this many years on
+
+
+def level_path_weights(curve: Curve, n: int, ref: int = LEVEL_REF_YEAR):
+    """(weights, info): w_t, t = 1..n, the fraction of the move from today's level to the year-`ref` level that is made by year t (Addendum H1):
+
+        w_t = (1 - v_t) / (1 - v_ref)   for t <= ref         v = the measured retention curve (the fraction of the initial gap still open)
+        w_t = 1                         for t > ref          the level is held after year `ref` (the measured retention levels off by then)
+
+    so a level x_t = x_0 + (x_ref - x_0) w_t moves along the measured curve's shape and, when x_ref is the median level, reproduces the curve exactly.
+    Two structural conventions, both reported in `info`: a fraction of a move lies in [0, 1], so a w_t outside it (a measured curve that is not monotone) is
+    clipped (`clipped`); and a curve with v_ref = 1 (no part of the gap closed by the reference year at the median) has no shape to take, so the move is linear
+    in t (`shape` = "linear")."""
+    denom = 1.0 - curve.at(ref)
+    clipped = False
+    if denom <= 1e-9:
+        return [min(t, ref) / ref for t in range(1, n + 1)], {"shape": "linear", "clipped": False, "v_ref": curve.at(ref)}
+    out = []
+    for t in range(1, n + 1):
+        if t >= ref:
+            out.append(1.0)
+            continue
+        w = (1.0 - curve.at(t)) / denom
+        if w < 0.0 or w > 1.0:
+            clipped = True
+        out.append(min(1.0, max(0.0, w)))
+    return out, {"shape": "curve", "clipped": clipped, "v_ref": curve.at(ref)}
+
+
 def exp_curve(n: int, half_life_years: float, name="", source="") -> Curve:
     """v_t = 0.5 ** (t / half_life): for tests and placeholders. half_life <= 0 -> full reversion in year 1."""
     if half_life_years <= 0:

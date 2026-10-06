@@ -147,9 +147,8 @@ def test_diagnostics_shapes():
         r.update({"tv_share": 0.3 + 0.01 * (i % 10), "tv_share_point": 0.5, "md": -0.5 + 0.1 * (i % 5) if i % 7 else None, "invalid_share": 0.5, "vp_point": r["vp"] * 2,
                   "vp_p10": r["vp"] / 2, "vp_p90": r["vp"] * 2, "secondary_vp": r["vp"] * 1.5, "disc": {"coe": 0.08, "wacc": 0.07},
                   "inputs": {"ronic": {"p50": 0.05}, "g_terminal": {"p50": 0.02, "p90": 0.2}, "margin_target": {"p10": 0.0, "p50": 0.1, "p90": 0.3}}, "prior_meta": {
-                      "fallbacks": ["g_terminal: pooled"], "margin_target_rescale": {"applied": True, "factor": 3.0, "capped": False, "implied_terminal_year_margin_width": 0.1,
-                                                                                     "p10_p90_width_measured_level_5y": 0.2}},
-                  "terminal_year": {"margin": 0.1}})
+                      "fallbacks": ["g_terminal: pooled"], "margin_target": {"r5": 0.6, "level5_median": 0.12, "centre_8y_median": 0.10}},
+                  "margin_path": {"shape": "curve", "clipped": False}, "terminal_year": {"margin": 0.1}})
         r["m0"] = 0.12
         rows.append(r)
     by_fam = gm.vp_by(rows, lambda r: r["family"])
@@ -159,7 +158,7 @@ def test_diagnostics_shapes():
     assert gm.tv_share_distribution(rows)["all"]["n"] == 60
     assert gm.disagreement_by_family(rows)["operating"]["n"] > 0
     st = gm.structure_stats(rows)
-    assert st["share_ronic_p50_below_wacc"] == 1.0 and st["share_g_terminal_p90_at_or_above_wacc"] == 1.0 and st["margin_rescale_factor"]["p50"] == 3.0
+    assert st["share_ronic_p50_below_wacc"] == 1.0 and st["share_g_terminal_p90_at_or_above_wacc"] == 1.0 and st["margin_level5_r5"]["p50"] == 0.6 and st["margin_path_linear_share"] == 0.0
     assert st["share_names_over_half_draws_invalid"] == 0.0 and st["ratio_distribution_median_to_point_inputs"]["p50"] == pytest.approx(0.5)
 
 

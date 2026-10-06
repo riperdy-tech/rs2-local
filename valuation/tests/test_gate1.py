@@ -1,4 +1,4 @@
-"""Tests of the T-integrate pieces: the adapter (decision-time refusals, stamps), the Addendum F 4 margin_target rescale, the Addendum G debt rule, the
+"""Tests of the T-integrate pieces: the adapter (decision-time refusals, stamps), the Addendum H1 margin level, the Addendum G debt rule, the
 population context and the discount rate of a company (Addendum B 3 and 5), the holdout lock of the gate-1 run, and one company end to end on synthetic data.
 Synthetic data only: no network, no archive, no model."""
 import json
@@ -8,61 +8,37 @@ import pytest
 
 from valuation import gate1, pit_adapter
 from valuation import pit_data as pdm
-from valuation.common import Curve, DataNotPresent, Filed, QuantileDist, build_state
-from valuation.priors import MARGIN_RESCALE_CAP, PopulationPriors
+from valuation.common import Curve, DataNotPresent, Filed, QuantileDist, build_state, level_path_weights
+from valuation.priors import PopulationPriors
 from valuation.priors_interface import PlaceholderPriors
 from valuation.tests import synth
 from valuation.muse.tests import fixtures as fx
 
 
-# ---- Addendum F 4: the margin_target spread ----------------------------------------------------------------------------------------------------
+# ---- Addendum H1: the margin level five years on --------------------------------------------------------------------------------------------------
 
-def _qd():
-    return QuantileDist({0.05: -0.10, 0.10: -0.05, 0.25: -0.02, 0.50: 0.0, 0.75: 0.03, 0.90: 0.06, 0.95: 0.09}, "t")
-
-
-def _rescale(r5, family="operating"):
-    inputs, meta = {"margin_target": _qd()}, {}
-    curve = Curve([1.0, 0.9, 0.85, 0.8, r5, r5, r5, r5, r5, r5], "margin_retention")
-    PopulationPriors._rescale_margin_target(family, inputs, {"margin_retention": curve, "growth_decay": curve}, {}, meta, None)
-    return inputs["margin_target"], meta["margin_target_rescale"], curve
-
-
-def test_rescale_makes_the_engines_year_5_margin_spread_equal_the_measured_one():
-    qd, info, curve = _rescale(0.75)
-    assert info["factor"] == pytest.approx(4.0) and not info["capped"]
-    raw = _qd()
-    m0 = 0.15
-    r5 = curve.at(5)
-    for p in (0.10, 0.25, 0.75, 0.90):
-        # the engine's year-5 margin is (1 - r5) m_T + r5 m_0: its deviation from the median path is (1 - r5) times the deviation of m_T
-        dev_engine = (1 - r5) * (qd.ppf(p) - qd.ppf(0.5))
-        assert dev_engine == pytest.approx(raw.ppf(p) - raw.ppf(0.5))
-    assert info["implied_year5_margin_width"] == pytest.approx(raw.ppf(0.9) - raw.ppf(0.1))
-    assert qd.ppf(0.5) == raw.ppf(0.5)                                  # the pivot is the median: the centre does not move
-    assert info["stamp"].startswith("Addendum F 4")
+def test_level_path_weights_follow_the_measured_curve_and_hold_after_year_5():
+    curve = Curve([0.9, 0.8, 0.7, 0.6, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], "margin_retention")
+    w, info = level_path_weights(curve, 10)
+    assert info == {"shape": "curve", "clipped": False, "v_ref": 0.5}
+    assert w[:5] == pytest.approx([0.2, 0.4, 0.6, 0.8, 1.0]) and w[5:] == [1.0] * 5
+    # the median level five years on, m0 + (m5 - m0) w_t, IS the median path m_t = med + r_t (m0 - med) of the curve, where m5 = med + r_5 (m0 - med)
+    m0, med = 0.20, 0.10
+    m5 = med + curve.at(5) * (m0 - med)
+    for t in range(1, 6):
+        assert m0 + (m5 - m0) * w[t - 1] == pytest.approx(med + curve.at(t) * (m0 - med))
 
 
-def test_rescale_is_capped_at_ten_when_the_retention_is_at_or_above_0_9():
-    qd, info, _ = _rescale(0.95)
-    assert info["factor"] == MARGIN_RESCALE_CAP == 10.0 and info["capped"]
-    assert qd.ppf(0.9) - qd.ppf(0.5) == pytest.approx(10 * (_qd().ppf(0.9) - _qd().ppf(0.5)))
-    qd9, info9, _ = _rescale(0.9)
-    assert info9["factor"] == pytest.approx(10.0) and not info9["capped"]
-    qd0, info0, _ = _rescale(0.0)
-    assert info0["factor"] == pytest.approx(1.0)
+def test_level_path_weights_clip_a_non_monotone_curve_and_go_linear_when_nothing_closed_by_year_5():
+    w, info = level_path_weights(Curve([0.9, 0.3, 0.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6]), 10)
+    assert info["clipped"] and all(0.0 <= x <= 1.0 for x in w) and w[1] == 1.0       # v_2 < v_5: the raw fraction exceeds 1
+    w2, info2 = level_path_weights(Curve([1.0] * 10), 10)
+    assert info2["shape"] == "linear" and w2[:5] == pytest.approx([0.2, 0.4, 0.6, 0.8, 1.0]) and w2[5:] == [1.0] * 5
 
 
-def test_rescale_reports_the_implied_terminal_year_spread():
-    _, info, curve = _rescale(0.6)
-    rN = curve.at(len(curve))
-    assert info["r_terminal"] == rN
-    assert info["implied_terminal_year_margin_width"] == pytest.approx((1 - rN) * info["p10_p90_width_of_m_T_after_rescale"])
-
-
-def test_the_rescale_can_be_switched_off(tmp_path):
-    pp = PopulationPriors(tmp_path, rescale_margin_target=False)
-    assert pp.rescale_margin_target is False and PopulationPriors(tmp_path).rescale_margin_target is True
+def test_the_margin_level_is_drawn_directly_without_a_rescale():
+    from valuation.priors import PopulationPriors
+    assert not hasattr(PopulationPriors, "_rescale_margin_target")
 
 
 # ---- Addendum G: debt never tagged ------------------------------------------------------------------------------------------------------------

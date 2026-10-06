@@ -102,7 +102,6 @@ def _curve_from_rows(rows: List[dict], key: str, n_key: str, name: str, source: 
     return Curve(_extend(clipped, horizon), name, source)
 
 
-MARGIN_RESCALE_CAP = 10.0   # Addendum F 4
 CURVE_REF_YEAR = 5          # a curve input is the fraction of the initial gap still open this many years on (Muse schema.CURVE_REF_YEAR)
 
 
@@ -185,9 +184,8 @@ def features(st: dict, family: str) -> dict:
 class PopulationPriors(Priors):
     """Priors measured on the point-in-time population.  `data_dir` holds one folder per vintage with `tables.json`."""
 
-    def __init__(self, data_dir: Optional[Path] = None, rescale_margin_target: bool = True):
+    def __init__(self, data_dir: Optional[Path] = None):
         self.data_dir = Path(data_dir) if data_dir is not None else C.DATA_DIR
-        self.rescale_margin_target = rescale_margin_target     # Addendum F 4 (a stated convention); False returns the raw measured spread
         self._tables: Dict[int, dict] = {}
 
     # -- vintages --
@@ -235,8 +233,6 @@ class PopulationPriors(Priors):
         meta["cyc_score"], meta["cyc_score_basis"] = score, score_basis
         if family in ("operating", "commodity"):
             self._operating(family, T, ft, score, inputs, curves, refs, meta, fallbacks, unavailable, flags, src, positions)
-            if self.rescale_margin_target:
-                self._rescale_margin_target(family, inputs, curves, refs, meta, score)
         else:
             self._financial(T, ft, inputs, curves, refs, meta, fallbacks, unavailable, flags, src, positions)
         # the correlation of the inputs, by family
@@ -262,42 +258,6 @@ class PopulationPriors(Priors):
                 return _pos.get(name)
             refs["curve_position"] = curve_position
         return PriorSet(family, inputs, curves, refs, src, False, meta)
-
-    # -- Addendum F 4: the margin_target spread --
-    @staticmethod
-    def _rescale_margin_target(family, inputs, curves, refs, meta, score):
-        """The prior's margin_target quantiles describe the margin LEVEL `CURVE_REF_YEAR` (5) years on.  The engine's path is
-        margin_t = m_T + (m_0 - m_T) r_t = (1 - r_t) m_T + r_t m_0, so a draw of m_T moves the year-5 margin by (1 - r_5) of itself.  To make the engine's year-5
-        margin reproduce the measured spread, the deviation of m_T from its median is scaled by 1 / (1 - r_5), where r_5 is the retention (fraction of today's gap
-        still open) of the curve the ENGINE uses at year 5 (the cell's margin_retention curve; for the commodity engine the normalization curve of the company's
-        cyclicality score).  When r_5 >= 0.9 the scale is capped at 10.  A stated convention, stamped; the implied terminal-year spread is a diagnostic."""
-        qd = inputs.get("margin_target")
-        if qd is None:
-            return
-        if family == "commodity" and refs.get("normalization_curve") is not None and score is not None:
-            try:
-                cv = refs["normalization_curve"](score, len(curves["growth_decay"]) if "growth_decay" in curves else HORIZON)
-            except DataNotPresent:
-                cv = curves.get("margin_retention")
-        else:
-            cv = curves.get("margin_retention")
-        if cv is None:
-            meta["margin_target_rescale"] = {"applied": False, "reason": "no margin-retention curve to take r_5 from"}
-            return
-        r5 = cv.at(CURVE_REF_YEAR)
-        raw = 1.0 / (1.0 - r5) if r5 < 1.0 else math.inf
-        factor = min(raw, MARGIN_RESCALE_CAP)
-        pivot = qd.ppf(0.5)
-        new_q = {p: pivot + (v - pivot) * factor for p, v in qd.q}
-        inputs["margin_target"] = QuantileDist(new_q, qd.label)
-        rN = cv.at(len(cv))
-        w0 = qd.ppf(0.9) - qd.ppf(0.1)
-        w1 = inputs["margin_target"].ppf(0.9) - inputs["margin_target"].ppf(0.1)
-        meta["margin_target_rescale"] = {
-            "applied": True, "r5": r5, "factor_uncapped": None if math.isinf(raw) else raw, "factor": factor, "capped": raw > MARGIN_RESCALE_CAP + 1e-9,
-            "p10_p90_width_measured_level_5y": w0, "p10_p90_width_of_m_T_after_rescale": w1,
-            "implied_year5_margin_width": (1.0 - r5) * w1, "r_terminal": rN, "implied_terminal_year_margin_width": (1.0 - rN) * w1,
-            "stamp": "Addendum F 4: the m_T spread is scaled by 1/(1-r_5) of the engine's curve (cap 10 when r_5 >= 0.9)"}
 
     # -- operating and commodity --
     def _g1_cell(self, T, fam, ft, growth, usd_size, label, fallbacks):
@@ -410,12 +370,26 @@ class PopulationPriors(Priors):
                 res = mr["residual_k5"].get("pooled_all")
                 fallbacks.append(f"margin_target: residual spread of band {ret_key} too thin: the pooled spread")
             if centre is not None and res is not None:
-                qd = _qd(res, centre, src)
-                if qd is not None:
-                    inputs["margin_target"] = qd
-                    meta["cells"]["margin_target"] = {"band": ret_key, "n": res["n"], "centre": centre,
-                                                       "note": "centre = the company's 8-year median margin + quantiles of the level 5 years on about the "
-                                                               "median-retention path (the engine's m_T blend scales this spread by (1 - r_t))"}
+                # Addendum H1: margin_target is the margin LEVEL five years on, drawn directly.  Its median is on the engine's own retention curve at year 5
+                # (the curve the chain moves along: the band's curve, the normalization curve of the score for the commodity family), centre + r_5 x dev, and
+                # its spread is the measured residual of the level five years on about the median-retention path.  No rescale.
+                cv_eng, cv_src = cv, f"band {ret_key} curve"
+                if family == "commodity" and score is not None:
+                    try:
+                        cv_eng, cv_src = self._normalization_ref(T, ft, score, meta["cyc_score_basis"], [])(score, HORIZON), "normalization curve of the cyclicality score"
+                    except DataNotPresent:
+                        pass
+                r5 = cv_eng.at(CURVE_REF_YEAR) if cv_eng is not None else None
+                dev = ft.get("dev")
+                if r5 is not None:
+                    shift = r5 * (0.0 if dev is None else dev)
+                    qd = _qd(res, centre + shift, src)
+                    if qd is not None:
+                        inputs["margin_target"] = qd
+                        meta["cells"]["margin_target"] = {
+                            "band": ret_key, "n": res["n"], "centre_8y_median": centre, "dev": dev, "r5": r5, "r5_source": cv_src, "level5_median": centre + shift,
+                            "p10_p90_width": qd.ppf(0.9) - qd.ppf(0.1),
+                            "note": "the margin level 5 years on: the company's 8-year median + r_5 x its deviation, with the measured residual spread of that level (Addendum H1)"}
         if "margin_retention" not in curves:
             unavailable.append("margin_retention: no measured curve")
         if "margin_target" not in inputs:

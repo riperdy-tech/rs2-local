@@ -4,14 +4,16 @@ THE CHAIN (all money in the filing's units; year t = 1..N, N = the length of the
 
   growth_t     = g_T + (g_1 - g_T) x d_t                 d = growth-decay curve (d_1 = 1, falls to its last value), g_T may be negative
   Rev_t        = Rev_{t-1} x (1 + growth_t)              Rev_0 = the base fiscal year's revenue
-  margin_t     = m_T + (m_0 - m_T) x r_t                 r = margin-retention curve (fraction of today's gap still open); m_0 = the base
-                                                         year's operating margin as filed; m_T = the long-run margin (an input)
+  margin_t     = m_0 + (m_5 - m_0) x w_t                 m_0 = the base year's operating margin as filed; m_5 = the margin LEVEL five years on (an input, drawn
+                                                         from the measured distribution of that level: Addendum H1); w_t = (1 - r_t) / (1 - r_5) for
+                                                         t <= 5 (r = the measured margin-retention curve), 1 after: the margin reaches m_5 along the
+                                                         measured curve's shape and is held there (common.level_path_weights)
   EBIT_t       = margin_t x Rev_t
   NOPAT_t      = EBIT_t - tax x max(EBIT_t, 0)           = EBIT x (1 - tax) when EBIT > 0; no tax shield is booked on losses (no NOL asset)
   RONIC_t      = WACC + (RONIC - WACC) x phi_t           phi = fade curve toward the cost of capital
   growth reinvestment_t
-       growth_t >= 0 : (Rev_t - Rev_{t-1}) x m_T (1 - tax) / RONIC_t      capital needed per dollar of added revenue, i.e. reinvestment =
-                                                         growth / return on new capital, priced at the LONG-RUN margin so that a
+       growth_t >= 0 : (Rev_t - Rev_{t-1}) x m_5 (1 - tax) / RONIC_t      capital needed per dollar of added revenue, i.e. reinvestment =
+                                                         growth / return on new capital, priced at the LONG-RUN margin (m_5) so that a
                                                          temporarily depressed or inflated margin does not change the capital a unit of
                                                          growth needs
        growth_t <  0 : (Rev_t - Rev_{t-1}) x NWC/Rev       working-capital RELEASE of a shrinking company (negative reinvestment); fixed
@@ -23,7 +25,7 @@ THE CHAIN (all money in the filing's units; year t = 1..N, N = the length of the
                                                          into cash for ever (set maint_gap_floor=None to disable; the raw gap is always reported)
   FCFF_t       = NOPAT_t - growth reinvestment_t - maintenance_t
   EV           = sum_t FCFF_t / (1+WACC)^t  +  TV / (1+WACC)^N ,   TV = FCFF_{N+1} / (WACC - g_T)
-                 FCFF_{N+1} built from Rev_N x (1+g_T), the margin and RONIC of year N (held), growth reinvestment at g_T
+                 FCFF_{N+1} built from Rev_N x (1+g_T), the margin m_5 and the RONIC of year N (held), growth reinvestment at g_T
   equity       = common.equity_bridge(EV)                (debt, finance leases, minority interest out; cash, investments in; no double count)
   value at the valuation date = equity at the base fiscal year end x (1 + cost of equity)^(years from that year end to the valuation date)
 
@@ -39,12 +41,12 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from .common import (Curve, DrawInvalid, InputError, MAX_HORIZON, QuantileDist, build_state, equity_bridge, model_disagreement,
+from .common import (Curve, DrawInvalid, InputError, MAX_HORIZON, QuantileDist, build_state, equity_bridge, level_path_weights, model_disagreement,
                      parse_date, simulate, CompanyPIT)
 from .discount_rate import DiscountRate
 
 ENGINE = "operating"
-INPUTS = ("g1", "g_terminal", "margin_target", "ronic")
+INPUTS = ("g1", "g_terminal", "margin_target", "ronic")      # margin_target = the margin level five years on (Addendum H1)
 CURVES = ("growth_decay", "margin_retention", "ronic_fade")
 
 
@@ -83,13 +85,14 @@ def _growth_reinvestment(g, drev, m_t, tax, ronic_t, nwc_ratio):
 def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], disc: DiscountRate, *,
                     operating_leases_in_cash_flow: bool = True, maint_gap_floor: Optional[float] = 0.0,
                     roll_forward: bool = True, detail: bool = False) -> dict:
-    """One deterministic pass of the chain for point inputs p = {g1, g_terminal, margin_target, ronic}. DrawInvalid when not valuable."""
+    """One deterministic pass of the chain for point inputs p = {g1, g_terminal, margin_target (the level five years on), ronic}. DrawInvalid when not valuable."""
     gd, mr, rfade = curves["growth_decay"], curves["margin_retention"], curves["ronic_fade"]
     N = len(gd)
     if N > MAX_HORIZON:
         raise InputError(f"horizon {N} exceeds {MAX_HORIZON} years")
     tax, wacc, coe = st["tax_rate"], disc.wacc, disc.coe
-    g1, gT, mT, ronic = p["g1"], p["g_terminal"], p["margin_target"], p["ronic"]
+    g1, gT, m5, ronic = p["g1"], p["g_terminal"], p["margin_target"], p["ronic"]
+    wm, margin_path = level_path_weights(mr, N)
     if wacc <= gT:
         raise DrawInvalid("terminal growth is not below the discount rate")
     m0 = st["op_margin"]
@@ -102,11 +105,11 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     for t in range(1, N + 1):
         g = gT + (g1 - gT) * gd.at(t)
         rev = rev_prev * (1.0 + g)
-        m = mT + (m0 - mT) * mr.at(t)
+        m = m0 + (m5 - m0) * wm[t - 1]
         ebit = m * rev
         nopat = ebit - tax * max(ebit, 0.0)
         ronic_t = wacc + (ronic - wacc) * rfade.at(t)
-        reinv = _growth_reinvestment(g, rev - rev_prev, mT, tax, ronic_t, nwc)
+        reinv = _growth_reinvestment(g, rev - rev_prev, m5, tax, ronic_t, nwc)
         maint = gap * rev
         fcff = nopat - reinv - maint
         df = (1.0 + wacc) ** (-t)
@@ -119,11 +122,10 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
         rev_prev = rev
     # terminal
     rev_T = rev_prev * (1.0 + gT)
-    m_T1 = mT + (m0 - mT) * mr.at(N)
-    ebit_T = m_T1 * rev_T
+    ebit_T = m5 * rev_T
     nopat_T = ebit_T - tax * max(ebit_T, 0.0)
     ronic_TV = wacc + (ronic - wacc) * rfade.at(N)
-    reinv_T = _growth_reinvestment(gT, rev_T - rev_prev, mT, tax, ronic_TV, nwc)
+    reinv_T = _growth_reinvestment(gT, rev_T - rev_prev, m5, tax, ronic_TV, nwc)
     fcff_T = nopat_T - reinv_T - gap * rev_T
     tv = fcff_T / (wacc - gT)
     pv_tv = tv * (1.0 + wacc) ** (-N)
@@ -135,7 +137,7 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     out = {"ev": ev, "equity": br["equity_value"] * factor, "equity_at_base_year_end": br["equity_value"], "roll_forward_years": yrs,
            "roll_forward_factor": factor, "tv_share": tv_share, "pv_explicit": pv_exp, "pv_terminal": pv_tv, "terminal_value": tv,
            "fcff_terminal_year": fcff_T, "terminal_reinvestment_rate": (reinv_T / nopat_T) if nopat_T > 0 else None,
-           "maint_gap_ratio_raw": gap_raw, "maint_gap_ratio_used": gap, "bridge": br, "fcff1": fcff1}
+           "maint_gap_ratio_raw": gap_raw, "maint_gap_ratio_used": gap, "bridge": br, "fcff1": fcff1, "margin_path": margin_path}
     if detail:
         out["years"] = rows
     return out

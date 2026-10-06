@@ -277,11 +277,13 @@ def test_cyclicality_score_by_hand_and_bounds():
 
 def test_commodity_normalization_starts_in_year_one_and_peak_hold_is_flagged():
     st = op_state(op_margin=0.30)
-    p = {"g1": 0.0, "g_terminal": 0.0, "margin_target": 0.10, "ronic": 0.12}
+    # the margin level five years on (Addendum H1) at its median: through-cycle 0.10 + r_5 x (0.30 - 0.10) with the curve's value at year 5 (held) r_5 = 0.1
+    p = {"g1": 0.0, "g_terminal": 0.0, "margin_target": 0.10 + 0.1 * 0.20, "ronic": 0.12}
     nc = Curve([0.6, 0.3, 0.1])
     r = op.operating_chain(st, p, {"growth_decay": Curve([1.0] * 3), "margin_retention": nc, "ronic_fade": Curve([1.0] * 3)}, disc(),
                            roll_forward=False, detail=True)
-    assert r["years"][0]["margin"] == pytest.approx(0.10 + 0.20 * 0.6)         # year 1 is already normalized, not the 30% peak
+    assert r["years"][0]["margin"] == pytest.approx(0.10 + 0.20 * 0.6)         # year 1 is already normalized, not the 30% peak: on the curve
+    assert r["years"][1]["margin"] == pytest.approx(0.10 + 0.20 * 0.3) and r["years"][2]["margin"] == pytest.approx(0.10 + 0.20 * 0.1)
     assert r["years"][0]["margin"] < 0.30
 
 

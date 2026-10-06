@@ -3,7 +3,7 @@
 Per stock and date (registration `REGISTRATION_gate1_DRAFT.md` section 1):
   1. the engines' CompanyPIT from `pit_adapter.adapt` (inputs as known at T under the 16:00 ET rule, provenance refusals, industry stamped);
   2. classification (`classification.classification`) -> family;
-  3. the population priors at T (`PopulationPriors`, vintage year(T)-1, with the Addendum F 4 margin_target rescale);
+  3. the population priors at T (`PopulationPriors`, vintage year(T)-1; the margin level five years on is drawn directly, Addendum H1);
   4. the discount rate at T: Damodaran files dated before T (beta, implied ERP), risk-free from the dated FRED series, Hamada relevering with the BOOK D/E
      (Addendum B 3), the cost of debt of Addendum B 5;
   5. the family engine with every judgment input at the prior's quantile function (the distribution's median is the value: the prior's P50 for every input,
@@ -334,12 +334,13 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
                      "year1_growth_point": (first or {}).get("growth"), "year1_margin_point": (first or {}).get("margin") if family != "financial" else None,
                      "year1_rote_point": (first or {}).get("rote") if family == "financial" else None},
         "terminal_year": ({"margin": at["years"][-1]["margin"], "growth": at["years"][-1]["growth"]} if at.get("years") and family != "financial" else None),
+        "margin_path": at.get("margin_path"),
         "discount": {k: getattr(disc, k) for k in ("rf", "erp", "beta_unlevered", "beta_levered", "de_ratio", "de_basis", "tax", "kd_pretax", "coe", "wacc")},
         "discount_sources": {"beta": disc.sources.get("beta"), "beta_file_sha256": (disc.sources.get("beta_meta") or {}).get("file_sha256"),
                              "erp": disc.sources.get("erp"), "erp_file_sha256": (disc.sources.get("erp_meta") or {}).get("file_sha256"),
                              "rf": disc.sources.get("rf")},
         "prior_meta": {"vintage": meta.get("vintage"), "fallbacks": list(meta.get("fallbacks", [])), "unavailable": list(meta.get("unavailable", [])),
-                       "flags_n": len(meta.get("flags", [])), "margin_target_rescale": meta.get("margin_target_rescale"),
+                       "flags_n": len(meta.get("flags", [])), "margin_target": (meta.get("cells") or {}).get("margin_target"),
                        "cyc_score": meta.get("cyc_score"), "mechanical_baseline_g1": (meta.get("mechanical_baseline") or {}).get("g1"),
                        "corr_used": bool(kwargs["corr"])},
         "state": {"revenue": st.get("revenue"), "op_margin": st.get("op_margin"), "op_margin_median": st.get("op_margin_median"),

@@ -321,6 +321,22 @@ def test_the_priorset_carries_the_baseline_the_correlations_and_stamps_every_fal
     assert set(ps.inputs) <= {"g1", "g_terminal", "margin_target", "ronic"}
 
 
+def test_margin_target_is_the_year_5_level_with_the_measured_spread_unscaled(synthetic_vintage):
+    """Addendum H1: the quantiles are centre + r_5 x deviation + the measured residual quantiles of the level five years on (no rescale); the median path is the curve's."""
+    d, root, sic = synthetic_vintage
+    cik = next(c for c, s in sorted(sic.items()) if s == "3571")
+    cp, st = _state_for(root, sic, cik)
+    ps = PopulationPriors(d).for_company("operating", st, "2025-06-30")
+    cell = ps.meta["cells"]["margin_target"]
+    qd = ps.inputs["margin_target"]
+    T = json.loads((d / "2024" / "tables.json").read_text(encoding="utf-8"))
+    res = T["margin_retention"]["residual_k5"][cell["band"]] if cell["n"] == T["margin_retention"]["residual_k5"].get(cell["band"], {}).get("n") else T["margin_retention"]["residual_k5"]["pooled_all"]
+    assert cell["r5"] == pytest.approx(ps.curves["margin_retention"].at(5))
+    assert cell["level5_median"] == pytest.approx(cell["centre_8y_median"] + cell["r5"] * (cell["dev"] or 0.0))
+    assert qd.ppf(0.9) - qd.ppf(0.1) == pytest.approx(res["p90"] - res["p10"])          # the measured width, as measured
+    assert qd.ppf(0.5) == pytest.approx(cell["level5_median"] + res["p50"])
+
+
 def test_the_engines_run_end_to_end_on_a_synthetic_priorset(synthetic_vintage):
     from valuation.discount_rate import DiscountRate
     d, root, sic = synthetic_vintage

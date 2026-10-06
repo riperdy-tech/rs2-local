@@ -68,7 +68,7 @@ def compact(r):
                     "g1_p50": (v.get("forecast") or {}).get("year1_growth_point"), "m1_p50": (v.get("forecast") or {}).get("year1_margin_point"),
                     "g_naive": (v.get("prior_meta") or {}).get("mechanical_baseline_g1"), "m0": (v.get("state") or {}).get("op_margin"),
                     "disc": v.get("discount"), "inputs": v.get("inputs"), "state": v.get("state"), "prior_meta": v.get("prior_meta"),
-                    "secondary_kind": v.get("secondary_kind"), "terminal_year": v.get("terminal_year"), "stamps": r.get("stamps")})
+                    "secondary_kind": v.get("secondary_kind"), "terminal_year": v.get("terminal_year"), "margin_path": v.get("margin_path"), "stamps": r.get("stamps")})
     return out
 
 
@@ -418,12 +418,13 @@ def structure_stats(rows):
         out["g_terminal_p50"] = _q([r["inputs"]["g_terminal"]["p50"] for r in op if "g_terminal" in r["inputs"]])
         out["margin_target_p50_minus_current_margin"] = _q([r["inputs"]["margin_target"]["p50"] - r["m0"] for r in op if "margin_target" in r["inputs"] and r.get("m0") is not None])
         out["margin_target_width_p10_p90"] = _q([r["inputs"]["margin_target"]["p90"] - r["inputs"]["margin_target"]["p10"] for r in op if "margin_target" in r["inputs"]])
-        rs = [r["prior_meta"].get("margin_target_rescale") for r in op if r.get("prior_meta")]
-        rs = [x for x in rs if x and x.get("applied")]
-        out["margin_rescale_factor"] = _q([x["factor"] for x in rs])
-        out["margin_rescale_capped_share"] = float(np.mean([x["capped"] for x in rs])) if rs else None
-        out["implied_terminal_year_margin_width_p10_p90"] = _q([x["implied_terminal_year_margin_width"] for x in rs])
-        out["measured_year5_margin_width_p10_p90"] = _q([x["p10_p90_width_measured_level_5y"] for x in rs])
+        mt = [(r["prior_meta"] or {}).get("margin_target") for r in op if r.get("prior_meta")]
+        mt = [x for x in mt if x]
+        out["margin_level5_r5"] = _q([x["r5"] for x in mt])
+        out["margin_level5_median_minus_8y_median"] = _q([x["level5_median"] - x["centre_8y_median"] for x in mt])
+        mp = [r.get("margin_path") for r in op if r.get("margin_path")]
+        out["margin_path_linear_share"] = float(np.mean([x["shape"] == "linear" for x in mp])) if mp else None
+        out["margin_path_clipped_share"] = float(np.mean([bool(x["clipped"]) for x in mp])) if mp else None
         out["terminal_year_margin_minus_current"] = _q([r["terminal_year"]["margin"] - r["m0"] for r in op if r.get("terminal_year") and r.get("m0") is not None])
     out["invalid_draw_share"] = _q([r["invalid_share"] for r in rows])
     out["share_names_over_half_draws_invalid"] = float(np.mean([r["invalid_share"] > 0.5 for r in rows])) if rows else None
