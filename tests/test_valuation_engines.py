@@ -579,25 +579,49 @@ def test_the_state_carries_the_trailing_3_year_roic_level_by_hand():
     assert build_state(pit)["roic3"] is None
 
 
-def test_the_ronic_path_starts_at_the_own_roic_follows_the_retention_curve_and_ends_at_the_industry_median_floored_at_wacc():
+def test_the_ronic_path_starts_at_the_own_roic_follows_the_retention_curve_and_ends_at_wacc_plus_kappa_times_the_industry_excess_floored_at_wacc():
     # L0 = 20%, the ROIC level five years on 12%, the retention of the excess [0.9, 0.8, 0.7, 0.6, 0.5]: w_t = (1 - v_t) / (1 - v_5) = 0.2, 0.4, 0.6, 0.8, 1
     st = op_state(ronic=0.20, nwc_ratio=0.0)
-    st["industry_roic"] = {"value": 0.08, "n": 50, "basis": "industry"}          # below WACC (0.10): the perpetuity return is WACC, not the median
+    st["industry_roic"] = {"value": 0.08, "n": 50, "basis": "industry"}          # below WACC (0.10): the formula would go below WACC, so the perpetuity return is WACC (flagged)
     p = {"g1": 0.10, "g_terminal": 0.02, "margin_target": 0.10, "ronic": 0.12}
     c = curves([1.0] * 6, [0.0] * 6, [0.9, 0.8, 0.7, 0.6, 0.5, 0.5])
     r = op.operating_chain(st, p, c, disc(w=0.10), roll_forward=False, detail=True)
     assert [y["ronic"] for y in r["years"]] == pytest.approx([0.20 + (0.12 - 0.20) * w for w in (0.2, 0.4, 0.6, 0.8, 1.0, 1.0)])
-    assert r["ronic_terminal"] == pytest.approx(0.10)
+    assert r["ronic_terminal"] == pytest.approx(0.10) and r["ronic_terminal_floored_at_wacc"] is True and r["ronic_terminal_kappa"] == pytest.approx(0.5)
     # the median level five years on, I + phi_5 (L0 - I), reproduces the measured fade of the excess at every year (the same identity as the margin's)
     I, L0, phi = 0.08, 0.20, [0.9, 0.8, 0.7, 0.6, 0.5]
     L5 = I + phi[4] * (L0 - I)
     r2 = op.operating_chain(st, dict(p, ronic=L5), c, disc(w=0.10), roll_forward=False, detail=True)
     for t in range(5):
         assert r2["years"][t]["ronic"] == pytest.approx(I + phi[t] * (L0 - I))
-    # an industry median above WACC is the perpetuity return as it stands
+    # an industry median above WACC: Addendum J3, WACC + kappa x (I - WACC) with kappa the plateau (the curve's last value, 0.5): 0.10 + 0.5 x 0.04 = 0.12, not the median 0.14
     st3 = op_state(ronic=0.20, nwc_ratio=0.0)
     st3["industry_roic"] = {"value": 0.14, "n": 50, "basis": "industry"}
-    assert op.operating_chain(st3, p, c, disc(w=0.10), roll_forward=False)["ronic_terminal"] == pytest.approx(0.14)
+    r3 = op.operating_chain(st3, p, c, disc(w=0.10), roll_forward=False)
+    assert r3["ronic_terminal"] == pytest.approx(0.12) and r3["ronic_terminal_floored_at_wacc"] is False
+
+
+def test_terminal_ronic_is_wacc_plus_kappa_times_the_industry_excess_and_prices_the_terminal_growth_by_hand():
+    """Addendum J3.  kappa = 1 gives the industry median (the round-3 rule when it is above WACC), kappa = 0 gives WACC, in between the interpolation; the terminal growth
+    reinvestment is priced at that return: TV = (NOPAT - g x revenue x m (1 - tax) / RONIC_TV) / (WACC - g)."""
+    I, wacc, g = 0.16, 0.10, 0.02
+    for kappa, want in ((1.0, 0.16), (0.0, 0.10), (0.25, 0.10 + 0.25 * 0.06)):
+        st = op_state(ronic=I, nwc_ratio=0.0)
+        r = op.operating_chain(st, {"g1": 0.0, "g_terminal": g, "margin_target": 0.10, "ronic": I}, curves([0.0], [0.0], [kappa]), disc(w=wacc), roll_forward=False)
+        assert r["ronic_terminal"] == pytest.approx(want) and r["ronic_terminal_kappa"] == pytest.approx(kappa)
+        rev_N = 1000.0 * 1.02                                  # the one explicit year grows at g_T (decay 0)
+        rev_T = rev_N * 1.02
+        nopat_T = 0.10 * rev_T * 0.75
+        reinv = (rev_T - rev_N) * 0.10 * 0.75 / want
+        assert r["terminal_value"] == pytest.approx((nopat_T - reinv) / (wacc - g), rel=REL)
+    # the industry median at WACC exactly is not "below": no floor flag; below WACC the flag is set and the return is WACC whatever kappa is
+    st = op_state(ronic=0.10, nwc_ratio=0.0)
+    r = op.operating_chain(st, {"g1": 0.0, "g_terminal": g, "margin_target": 0.10, "ronic": 0.10}, curves([0.0], [0.0], [0.4]), disc(w=0.10), roll_forward=False)
+    assert r["ronic_terminal"] == pytest.approx(0.10) and r["ronic_terminal_floored_at_wacc"] is False
+    st = op_state(ronic=0.07, nwc_ratio=0.0)
+    for kappa in (0.0, 0.4, 1.0):
+        r = op.operating_chain(st, {"g1": 0.0, "g_terminal": g, "margin_target": 0.10, "ronic": 0.07}, curves([0.0], [0.0], [kappa]), disc(w=0.10), roll_forward=False)
+        assert r["ronic_terminal"] == pytest.approx(0.10) and r["ronic_terminal_floored_at_wacc"] is (kappa > 0.0)      # kappa = 0: the formula IS WACC, nothing is floored
 
 
 # ---- Addendum I2: economic states are valued, counted by rule; invalid is numerical impossibility only; equity per draw is floored at 0 -----------------------------

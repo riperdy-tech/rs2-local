@@ -13,8 +13,10 @@ THE CHAIN (all money in the filing's units; year t = 1..N, N = the length of the
   RONIC_t      = L_0 + (L_5 - L_0) x w_t                 L_0 = the company's own trailing 3-year ROIC (NOPAT / invested capital); L_5 = the ROIC level five years on (an input,
                                                          `ronic`, drawn from the measured dispersion of the ROIC level path about I + phi_5 (L_0 - I), I = the median ROIC
                                                          of the company's industry at T on the date's population); w_t as for the margin with phi = the measured retention of
-                                                         ROIC's excess (Addendum H3). In perpetuity RONIC = max(I, WACC): a stable company does not keep investing below its
-                                                         cost of capital (the textbook stable-growth convention)
+                                                         ROIC's excess (Addendum H3). In perpetuity (Addendum J3): RONIC = WACC + kappa x (I - WACC), kappa = the measured long-run
+                                                         plateau of that retention (the curve's value at the longest k with n >= 50, which the curve holds beyond), floored at WACC
+                                                         only when the formula would go below it (I < WACC: a stable company does not keep investing below its cost of capital, the
+                                                         textbook stable-growth convention); the same pattern as the financial engine's terminal excess (Addendum I4)
   growth reinvestment_t
        growth_t >= 0 : (Rev_t - Rev_{t-1}) x m_5 (1 - tax) / RONIC_t      capital needed per dollar of added revenue, i.e. reinvestment =
                                                          growth / return on new capital, priced at the LONG-RUN margin (m_5) so that a
@@ -176,7 +178,9 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     rev_T = rev_prev * (1.0 + gT)
     ebit_T = m5 * rev_T
     nopat_T = ebit_T - tax * max(ebit_T, 0.0)
-    ronic_TV = max(ind_med, wacc)               # Addendum H3: the industry median floored at WACC
+    kappa = rfade.values[-1]                    # Addendum J3: the plateau of the measured ROIC-excess retention (its value at the longest k with n >= 50)
+    ronic_formula = wacc + kappa * (ind_med - wacc)
+    ronic_TV = max(ronic_formula, wacc)         # floored at WACC only where the formula goes below it (I < WACC); the flag below says so
     reinv_T, priced_T = _growth_reinvestment(gT, rev_T - rev_prev, m5, tax, ronic_TV, nwc)
     if not priced_T:
         raise DrawInvalid("terminal growth reinvestment cannot be priced")       # unreachable for a draw that passed the rules above: a bug, never a repair
@@ -195,6 +199,7 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
            "roll_forward_years": yrs, "roll_forward_factor": factor, "tv_share": tv_share, "pv_explicit": pv_exp, "pv_terminal": pv_tv, "terminal_value": tv,
            "fcff_terminal_year": fcff_T, "terminal_reinvestment_rate": (reinv_T / nopat_T) if nopat_T > 0 else None,
            "maint_gap_ratio_raw": gap_raw, "maint_gap_ratio_used": gap, "bridge": br, "fcff1": fcff1, "margin_path": margin_path, "ronic_path": ronic_path, "ronic_terminal": ronic_TV,
+           "ronic_terminal_kappa": kappa, "ronic_terminal_floored_at_wacc": ronic_formula < wacc,
            "terminal_growth": {"value": gT, "basis": gT_basis}}
     if detail:
         out["years"] = rows

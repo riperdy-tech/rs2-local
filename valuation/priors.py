@@ -422,7 +422,7 @@ class PopulationPriors(Priors):
         # ronic (Addendum H3): the ROIC LEVEL five years on.  The company's own trailing 3-year ROIC (L0) fades along the measured retention of ROIC's excess to the
         # median ROIC I of its industry at T, so the median level five years on is I + phi_5 (L0 - I); the spread is the measured dispersion of the ROIC level path
         # about that median path (T["roic_level"]), not of incremental ROIC.  The engine moves L0 -> that level along the curve's shape, holds it, and ends in
-        # perpetuity at max(I, WACC).
+        # perpetuity at WACC + kappa (I - WACC), kappa the plateau of that retention curve (Addendum J3), floored at WACC only where the formula goes below it.
         rl = T.get("roic_level")
         L0, ind = ft.get("roic3"), ft.get("industry_roic")
         if not rl or not rl.get("bands"):
@@ -468,6 +468,13 @@ class PopulationPriors(Priors):
                 else:
                     inputs["ronic"] = qd
                     curves["ronic_fade"] = cv
+                    k_used = 0
+                    for r_ in bd["ks"]:
+                        if r_.get("median") is None or r_.get("n", 0) < C.MIN_N:
+                            break
+                        k_used = r_["k"]
+                    meta["cells"]["ronic_fade"] = {"plateau": cv.values[-1], "plateau_k": k_used, "plateau_n": next(r_["n"] for r_ in bd["ks"] if r_["k"] == k_used), "band": key,
+                                                   "note": "Addendum J3: the terminal return on new capital is WACC + this plateau x (the industry median ROIC - WACC), floored at WACC where the formula goes below it"}
                     meta["cells"]["ronic"] = {"band": key, "residual_cell": used_r, "n": res.get("n"), "L0_trailing_3y_roic": L0, "industry_median_roic": I, "industry_basis": ind.get("basis"),
                                               "industry_n": ind.get("n"), "phi5": phi5, "level5_median": centre5, "p10_p90_width": qd.ppf(0.9) - qd.ppf(0.1),
                                               "level_band": {"level": L0, "band": res.get("band"), "lower": res.get("lower"), "upper": res.get("upper"), "merged": res.get("merged")},

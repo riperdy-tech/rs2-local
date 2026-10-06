@@ -22,7 +22,7 @@ POPULATION CONTEXT.  Two rules of Addendum B need a population measured at the s
     "Same year" is read as the same cross-section: every base fiscal year here is the latest annual report filed before the date.
   * Return on new capital (Addendum H3): the median trailing 3-year ROIC (operating, commodity) or ROTE (financial) of the company's Damodaran industry on the date
     (at least `RETURN_MIN_N` of them; else the family group's pooled median, stamped) is attached to the company's state as `industry_roic` / `industry_rote`: the
-    level its own ROIC fades to, and in perpetuity (floored at WACC / the cost of equity) what it earns.
+    level its own ROIC fades to; in perpetuity the operating return on new capital is WACC + kappa x (that median - WACC) (Addendum J3), the financial excess kappa x (median - cost of equity) (I4), each floored where the formula goes below the cost of capital.
 Nothing is silently dropped: every company ends in a record with a status and reasons.
 """
 from __future__ import annotations
@@ -413,7 +413,8 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
         "terminal_year": ({"margin": at["years"][-1]["margin"], "growth": at["years"][-1]["growth"]} if at.get("years") and family != "financial" else None),
         "margin_path": at.get("margin_path"),
         "returns": {"roic3": st.get("roic3"), "industry_roic": st.get("industry_roic"), "ronic_terminal_at_p50_inputs": at.get("ronic_terminal"),
-                    "ronic_path": at.get("ronic_path"), "industry_rote": st.get("industry_rote"), "rote_terminal_at_p50_inputs": at.get("terminal_rote"),
+                    "ronic_path": at.get("ronic_path"), "ronic_terminal_kappa": at.get("ronic_terminal_kappa"), "ronic_terminal_floored_at_wacc": at.get("ronic_terminal_floored_at_wacc"),
+                    "industry_rote": st.get("industry_rote"), "rote_terminal_at_p50_inputs": at.get("terminal_rote"),
                     "rote_terminal_excess_retention": at.get("terminal_excess_retention"), "rote3": st.get("rote3")},
         "terminal_growth": {"base": (res.get("terminal_growth") or {}).get("base"), "at_p50_inputs": at.get("terminal_growth")},
         "discount": {k: getattr(disc, k) for k in ("rf", "erp", "beta_unlevered", "beta_levered", "de_ratio", "de_basis", "tax", "kd_pretax", "coe", "wacc")},

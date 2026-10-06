@@ -548,6 +548,20 @@ def test_the_financial_priorset_reports_the_plateau_the_terminal_excess_retentio
     assert cell["plateau_k"] == max(r["k"] for r in rows if r["k"] <= cell["plateau_k"] and r["n"] >= C.MIN_N) and cell["plateau_n"] == rows[cell["plateau_k"] - 1]["n"]
 
 
+def test_the_operating_priorset_reports_the_plateau_the_terminal_ronic_kappa_is_read_from(synthetic_vintage):
+    """Addendum J3: the plateau of the ROIC-excess retention curve and the k it was measured at (the longest k with n >= 50) are named in the PriorSet's meta, and the engine's
+    kappa is the curve's last value."""
+    d, root, sic = synthetic_vintage
+    cik = next(c for c, s in sorted(sic.items()) if s == "3571")
+    cp, st = _state_for(root, sic, cik)
+    ps = PopulationPriors(d).for_company("operating", st, "2025-06-30")
+    cell = ps.meta["cells"]["ronic_fade"]
+    assert cell["plateau"] == pytest.approx(ps.curves["ronic_fade"].values[-1]) and cell["plateau_n"] >= C.MIN_N and 1 <= cell["plateau_k"] <= 7
+    T = json.loads((d / "2024" / "tables.json").read_text(encoding="utf-8"))
+    rows = T["roic_level"]["bands"][cell["band"]]["ks"]
+    assert cell["plateau_k"] == max(r["k"] for r in rows if r["k"] <= cell["plateau_k"] and r["n"] >= C.MIN_N) and cell["plateau_n"] == rows[cell["plateau_k"] - 1]["n"]
+
+
 def test_the_engines_run_end_to_end_on_a_synthetic_priorset(synthetic_vintage):
     from valuation.discount_rate import DiscountRate
     d, root, sic = synthetic_vintage
