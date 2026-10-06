@@ -71,7 +71,7 @@ def compact(r):
                     "vp_point": (v["iv_point_p50_inputs_ps"] / price) if v.get("iv_point_p50_inputs_ps") is not None else None,
                     "secondary_vp": (v["secondary_ps"] / price) if v.get("secondary_ps") is not None else None, "md": v.get("model_disagreement"),
                     "tv_share": v.get("tv_share_p50"), "tv_share_point": v.get("tv_share_p50_point"),
-                    "invalid_share": 1.0 - v["n_valid"] / v["n_draws"], "neg_eq_share": v.get("share_negative_equity"),
+                    "invalid_share": 1.0 - v["n_valid"] / v["n_draws"], "neg_eq_share": v.get("share_negative_equity"), "draw_rules": v.get("draw_rules") or {}, "n_draws": v["n_draws"],
                     "g1_p50": (v.get("forecast") or {}).get("year1_growth_point"), "m1_p50": (v.get("forecast") or {}).get("year1_margin_point"),
                     "g_naive": (v.get("prior_meta") or {}).get("mechanical_baseline_g1"), "m0": (v.get("state") or {}).get("op_margin"),
                     "disc": v.get("discount"), "inputs": v.get("inputs"), "state": v.get("state"), "prior_meta": v.get("prior_meta"),
@@ -84,7 +84,8 @@ def ran_row(r):
     v = r.get("val") or {}
     return {"date": r["date"], "family": r.get("family"), "status": r["status"], "mcap_group": r.get("mcap_group"), "invalid_share": 1.0 - v["n_valid"] / v["n_draws"],
             "inputs": v.get("inputs") or {}, "m0": (v.get("state") or {}).get("op_margin"), "returns": v.get("returns"), "disc": v.get("discount"),
-            "margin_target": (v.get("prior_meta") or {}).get("margin_target")}
+            "margin_target": (v.get("prior_meta") or {}).get("margin_target"), "draw_rules": v.get("draw_rules") or {}, "n_draws": v["n_draws"],
+            "share_negative_equity": v.get("share_negative_equity")}
 
 
 def load_run(run_dir, dates=None, keep_all_for=(), ran=None):
@@ -98,15 +99,23 @@ def load_run(run_dir, dates=None, keep_all_for=(), ran=None):
         if dates is not None and d not in dates:
             continue
         cnt = {"status": Counter(), "reason": Counter(), "family_status": Counter(), "mcap": Counter(), "family_reason": Counter(), "invalid_draws": Counter(),
-               "invalid_names": Counter(), "prepared": 0, "invalid_family": Counter()}
+               "invalid_names": Counter(), "prepared": 0, "invalid_family": Counter(), "rule_draws": Counter(), "rule_names": Counter(), "family_draws": Counter(),
+               "family_names": Counter(), "prior_unavailable": Counter()}
         with gzip.open(f, "rt", encoding="utf-8") as fh:
             for line in fh:
                 r = json.loads(line)
                 c = compact(r)
+                fam = r.get("family") or "none"
                 cnt["status"][r["status"]] += 1
                 inv = (r.get("val") or {}).get("invalid_reasons")
-                if (r.get("val") or {}).get("n_draws"):
+                vv = r.get("val") or {}
+                if vv.get("n_draws"):
                     cnt["prepared"] += 1                      # a name the engine ran on (valued, or refused for its invalid draws)
+                    cnt["family_names"][fam] += 1
+                    cnt["family_draws"][fam] += vv["n_draws"]
+                    for k_, n_ in (vv.get("draw_rules") or {}).items():        # Addendum I2: the valid draws each rule applied to, over every name the engine ran on
+                        cnt["rule_draws"][(fam, k_)] += n_
+                        cnt["rule_names"][(fam, k_)] += 1
                     if ran is not None:
                         ran.append(ran_row(r))
                 if inv:
@@ -114,7 +123,10 @@ def load_run(run_dir, dates=None, keep_all_for=(), ran=None):
                     cnt["invalid_names"].update(inv.keys())
                     for k_, n_ in inv.items():
                         cnt["invalid_family"][(fam, k_)] += n_
-                fam = r.get("family") or "none"
+                if r["status"] != "valued":
+                    for x_ in (r.get("reasons") or [])[1:]:
+                        if str(x_).startswith("prior unavailable"):          # Addendum I5: an input refused for a cell under 50, named
+                            cnt["prior_unavailable"][(fam, str(x_)[:200])] += 1
                 cnt["family_status"][(fam, r["status"])] += 1
                 if r["status"] != "valued":
                     cnt["reason"][_reason_class(c["reason"] or r["status"])] += 1
@@ -507,6 +519,7 @@ def structure_stats(rows):
         out["financial_terminal_rote_at_p50_inputs"] = _q([x["returns"]["rote_terminal_at_p50_inputs"] for x in fin if x["returns"].get("rote_terminal_at_p50_inputs") is not None])
         out["financial_share_terminal_rote_floored_at_coe"] = float(np.mean([abs(x["returns"]["rote_terminal_at_p50_inputs"] - x["disc"]["coe"]) < 1e-12 for x in fin
                                                                            if x["returns"].get("rote_terminal_at_p50_inputs") is not None and x.get("disc")]))
+        out["financial_terminal_excess_retention"] = _q([x["returns"]["rote_terminal_excess_retention"] for x in fin if x["returns"].get("rote_terminal_excess_retention") is not None])
         out["financial_rote_target_width_p10_p90"] = _q([x["inputs"]["rote_target"]["p90"] - x["inputs"]["rote_target"]["p10"] for x in fin if x.get("inputs") and "rote_target" in x["inputs"]])
     out["invalid_draw_share"] = _q([r["invalid_share"] for r in rows])
     out["share_names_over_5pct_draws_invalid"] = float(np.mean([r["invalid_share"] > 0.05 for r in rows])) if rows else None
@@ -553,6 +566,90 @@ def prior_shape_stats(ran):
     return out
 
 
+def coe_by_family(rows):
+    """The discount rate by family over the valued names (Addendum I3 reports the financial family's cost of equity on the levered industry beta): quantiles of the cost of
+    equity, the levered beta used, the book D/E and the WACC."""
+    out = {}
+    for fam in sorted({r["family"] for r in rows}):
+        d = [r["disc"] for r in rows if r["family"] == fam and r.get("disc")]
+        out[fam] = {"n": len(d), "coe": _q([x["coe"] for x in d]), "beta_levered": _q([x["beta_levered"] for x in d]),
+                    "beta_unlevered": _q([x["beta_unlevered"] for x in d if x.get("beta_unlevered") is not None]), "erp": _q([x["erp"] for x in d]),
+                    "de_ratio": _q([x["de_ratio"] for x in d]), "wacc": _q([x["wacc"] for x in d]),
+                    "beta_basis": "levered industry beta as is (Addendum I3)" if fam == "financial" else "industry unlevered beta relevered by Hamada on the book D/E"}
+    return out
+
+
+def draw_rule_stats(rows):
+    """Over the VALUED names: the share of draws floored at zero equity (limited liability) and the quantiles of the valued names' share of no-growth draws."""
+    out = {}
+    for fam in sorted({r["family"] for r in rows}):
+        rs = [r for r in rows if r["family"] == fam]
+        ng = [(r.get("draw_rules") or {}).get("no_growth_after_year_5", 0) / r["n_draws"] for r in rs if r.get("n_draws")]
+        out[fam] = {"n": len(rs), "share_draws_equity_floored": _q([r.get("neg_eq_share") for r in rs if r.get("neg_eq_share") is not None]),
+                    "share_draws_no_growth_after_year_5": _q(ng), "share_names_with_any_no_growth_draw": float(np.mean([x > 0 for x in ng])) if ng else None}
+    return out
+
+
+def widths_by_level_band(ran, n_bands=5):
+    """Addendum I1, as the engines used it: over every name the engine ran on, the P10..P90 width of the margin level five years on by quintile of the company's CURRENT
+    operating margin and of the ROIC level five years on by quintile of its trailing 3-year ROIC (operating, commodity); for financials the ROTE target width by quintile of
+    the trailing 3-year ROTE.  Quintile cuts are measured on the names listed."""
+    def bands(rs, level, width, label):
+        pairs = [(level(r), width(r)) for r in rs]
+        pairs = [(a, b) for a, b in pairs if a is not None and b is not None and a == a and b == b]
+        if len(pairs) < n_bands * 5:
+            return {"n": len(pairs), "bands": []}
+        lv = np.array([a for a, _ in pairs])
+        cuts = np.quantile(lv, [i / n_bands for i in range(1, n_bands)])
+        idx = np.searchsorted(cuts, lv, side="right")
+        out = []
+        for b in range(n_bands):
+            sel = idx == b
+            w = np.array([pairs[i][1] for i in range(len(pairs)) if sel[i]])
+            out.append({"band": b, "level_from": float(lv[sel].min()), "level_to": float(lv[sel].max()), "n": int(sel.sum()), "median_width_p10_p90": float(np.median(w)),
+                        "p25_width": float(np.percentile(w, 25)), "p75_width": float(np.percentile(w, 75))})
+        return {"n": len(pairs), "level": label, "bands": out}
+    out = {}
+    op = [r for r in ran if r["family"] in ("operating", "commodity")]
+    out["margin_level5_width_by_current_margin"] = bands(op, lambda r: r.get("m0"), lambda r: (r["inputs"]["margin_target"]["p90"] - r["inputs"]["margin_target"]["p10"]) if "margin_target" in r["inputs"] else None,
+                                                         "base-year operating margin")
+    out["roic_level5_width_by_trailing_roic"] = bands(op, lambda r: (r.get("returns") or {}).get("roic3"),
+                                                      lambda r: (r["inputs"]["ronic"]["p90"] - r["inputs"]["ronic"]["p10"]) if "ronic" in r["inputs"] else None, "trailing 3-year ROIC")
+    fin = [r for r in ran if r["family"] == "financial"]
+    out["rote_target_width_by_trailing_rote"] = bands(fin, lambda r: (r.get("returns") or {}).get("rote3"),
+                                                      lambda r: (r["inputs"]["rote_target"]["p90"] - r["inputs"]["rote_target"]["p10"]) if "rote_target" in r["inputs"] else None,
+                                                      "trailing 3-year ROTE")
+    return out
+
+
+def prior_table_widths(priors_dir):
+    """The residual cells of the priors folder itself (the tables the run read): per vintage, for the margin level and the ROIC level, each cell's groups by level band with the
+    level range, n and the P10..P90 width; the ROTE residual cells (n); and the plateau of the financial excess retention."""
+    out = {}
+    for tp in sorted(Path(priors_dir).glob("*/tables.json")):
+        T = json.loads(tp.read_text(encoding="utf-8"))
+        v = {"priors_version": T.get("priors_version"), "margin": {}, "roic": {}, "rote_residual_n": {}, "excess_retention_plateau": None}
+        for key, tab in (T["margin_retention"].get("residual_k5_by_level") or {}).items():
+            if key.startswith("pooled") or tab["n"] >= 50:
+                v["margin"][key] = {"n": tab["n"], "groups": [{"n": g["n"], "from": g["lower"], "to": g["upper"], "width_p10_p90": (g["p90"] - g["p10"]) if g.get("p90") is not None else None}
+                                                              for g in tab["groups"]]}
+        for key, tab in (T["roic_level"].get("residual_k5_by_level") or {}).items():
+            v["roic"][key] = {"n": tab["n"], "groups": [{"n": g["n"], "from": g["lower"], "to": g["upper"], "width_p10_p90": (g["p90"] - g["p10"]) if g.get("p90") is not None else None}
+                                                        for g in tab["groups"]]}
+        v["rote_residual_n"] = {k: x["n"] for k, x in (T["rote_retention"].get("residual_k5") or {}).items()}
+        ef = (T.get("excess_fade_financial") or {}).get("ks") or []
+        k_used = 0
+        for r in ef:
+            if r.get("median") is None or r.get("n", 0) < 50:
+                break
+            k_used = r["k"]
+        if k_used:
+            r = ef[k_used - 1]
+            v["excess_retention_plateau"] = {"k": k_used, "n": r["n"], "value": r["median"]}
+        out[tp.parent.name] = v
+    return out
+
+
 def extremes_listing(full_rows, n=30):
     """The top and bottom `n` valued names by IV / price (names with a price and a positive market cap), each with the key inputs."""
     vs = [r for r in full_rows if r["status"] == "valued"]
@@ -593,15 +690,27 @@ def coverage_tables(counters):
         fam_status.update(c["family_status"])
         mcap.update(c["mcap"])
     inv_draws, inv_names, inv_fam = Counter(), Counter(), Counter()
+    rule_draws, rule_names, fam_draws, fam_names, prior_un = Counter(), Counter(), Counter(), Counter(), Counter()
     for c in counters.values():
         inv_draws.update(c["invalid_draws"])
         inv_names.update(c["invalid_names"])
         inv_fam.update(c["invalid_family"])
+        rule_draws.update(c["rule_draws"])
+        rule_names.update(c["rule_names"])
+        fam_draws.update(c["family_draws"])
+        fam_names.update(c["family_names"])
+        prior_un.update(c["prior_unavailable"])
     by_date_reason = {d: dict(c["reason"].most_common()) for d, c in counters.items()}
     by_date_family = {d: {f"{k[0]} | {k[1]}": v for k, v in sorted(c["family_status"].items())} for d, c in counters.items()}
     return {"per_date_status": per_date, "refusals_by_date_and_reason": by_date_reason, "family_and_status_by_date": by_date_family,
             "refusals_by_reason": dict(reason.most_common()), "invalid_draw_reasons_by_draws": dict(inv_draws.most_common()),
             "invalid_draw_reasons_by_names": dict(inv_names.most_common()),
             "invalid_draw_reasons_by_family_and_draws": {f"{k[0]} | {k[1]}": v for k, v in inv_fam.most_common()}, "names_the_engine_ran_on": sum(c["prepared"] for c in counters.values()),
+            "draw_rules": {"draws_by_family_and_rule": {f"{k[0]} | {k[1]}": v for k, v in sorted(rule_draws.items())},
+                           "names_by_family_and_rule": {f"{k[0]} | {k[1]}": v for k, v in sorted(rule_names.items())},
+                           "draws_by_family": dict(fam_draws), "names_by_family": dict(fam_names),
+                           "share_of_draws_by_family_and_rule": {f"{k[0]} | {k[1]}": v / fam_draws[k[0]] for k, v in sorted(rule_draws.items()) if fam_draws[k[0]]},
+                           "share_of_names_by_family_and_rule": {f"{k[0]} | {k[1]}": v / fam_names[k[0]] for k, v in sorted(rule_names.items()) if fam_names[k[0]]}},
+            "priors_unavailable_named": {f"{k[0]} | {k[1]}": v for k, v in prior_un.most_common(30)},
             "refusals_by_family_and_reason": {f"{k[0]} | {k[1]}": v for k, v in fam_reason.most_common()},
             "by_family_and_status": {f"{k[0]} | {k[1]}": v for k, v in sorted(fam_status.items())}, "valued_by_mcap_group": dict(mcap)}

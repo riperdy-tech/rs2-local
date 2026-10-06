@@ -261,3 +261,74 @@ def test_prior_shapes_cover_names_refused_for_invalid_draws_too():
     assert s["operating | refused_invalid_draws"]["share_margin_level5_p10_not_positive"] == 1.0 and s["operating | valued"]["share_margin_level5_p10_not_positive"] == 0.0
     assert s["operating | refused_invalid_draws"]["share_ronic_level5_p10_not_positive"] == 0.5
     assert "financial | all" not in s
+
+
+# ---- Addendum I: the draw rules, the cost of equity by family, the widths by level band, the named refusals ----------------------------------------------------------------
+
+def _val(fam, **kw):
+    v = {"status": "ok", "family": fam, "iv_ps": {"p10": 1.0, "p25": 1.5, "p50": 2.0, "p75": 2.5, "p90": 3.0}, "n_draws": 100, "n_valid": 100, "invalid_reasons": {},
+         "draw_rules": {}, "share_negative_equity": 0.0, "discount": {"coe": 0.08, "wacc": 0.07, "rf": 0.02, "erp": 0.05, "beta_levered": 1.0, "beta_unlevered": 0.9, "de_ratio": 0.3},
+         "inputs": {}, "state": {"op_margin": 0.1, "revenue": 1.0}, "returns": {}, "prior_meta": {}}
+    v.update(kw)
+    return v
+
+
+def _record(date, cik, fam, val, status="valued", reasons=None, price=1.0):
+    return {"date": date, "cik": cik, "ticker": cik, "industry": "I", "family": fam, "status": status, "reasons": reasons or [], "mcap_group": ">=300M", "price": price,
+            "market_cap": 1e9, "base_age_months": 3, "score": {}, "excess": {}, "bounds": {}, "val": val, "stamps": []}
+
+
+def test_the_loader_counts_draws_by_rule_and_family_and_names_the_refused_priors(tmp_path):
+    import gzip
+    import json
+    recs = [_record("2020-03-31", "1", "operating", _val("operating", draw_rules={"no_growth_after_year_5": 10, "equity_floored_at_zero (limited liability)": 4})),
+            _record("2020-03-31", "2", "operating", _val("operating", draw_rules={"no_growth_after_year_5": 30})),
+            _record("2020-03-31", "3", "financial", _val("financial", draw_rules={"equity_floored_at_zero (limited liability)": 7})),
+            _record("2020-03-31", "4", "operating", None, status="refused", reasons=["priors do not supply: ['margin_target']",
+                                                                                      "prior unavailable: margin_target: no residual cell with n >= 50 after the stated merges (pooled_all n=9)"])]
+    with gzip.open(tmp_path / "records_2020-03-31.jsonl.gz", "wt", encoding="utf-8") as f:
+        for r in recs:
+            f.write(json.dumps(r) + "\n")
+    ran = []
+    rows, counters, _ = gm.load_run(tmp_path, ran=ran)
+    cov = gm.coverage_tables(counters)
+    dr = cov["draw_rules"]
+    assert dr["names_by_family"] == {"operating": 2, "financial": 1} and dr["draws_by_family"] == {"operating": 200, "financial": 100}
+    assert dr["draws_by_family_and_rule"]["operating | no_growth_after_year_5"] == 40 and dr["share_of_draws_by_family_and_rule"]["operating | no_growth_after_year_5"] == pytest.approx(0.2)
+    assert dr["names_by_family_and_rule"]["financial | equity_floored_at_zero (limited liability)"] == 1
+    assert list(cov["priors_unavailable_named"].values()) == [1] and "pooled_all n=9" in list(cov["priors_unavailable_named"])[0]
+    assert [r["draw_rules"] for r in ran if r["family"] == "financial"] == [{"equity_floored_at_zero (limited liability)": 7}]
+    assert gm.draw_rule_stats(rows)["operating"]["share_names_with_any_no_growth_draw"] == 1.0
+
+
+def test_the_cost_of_equity_is_reported_by_family_with_the_beta_basis():
+    rows = [dict(rec("d", i, 1.0, 0.0, family="financial"), disc={"coe": 0.09, "wacc": 0.08, "erp": 0.05, "beta_levered": 1.1, "beta_unlevered": None, "de_ratio": 2.0}) for i in range(3)]
+    rows += [dict(rec("d", 10 + i, 1.0, 0.0), disc={"coe": 0.07, "wacc": 0.06, "erp": 0.05, "beta_levered": 0.9, "beta_unlevered": 0.8, "de_ratio": 0.3}) for i in range(3)]
+    c = gm.coe_by_family(rows)
+    assert c["financial"]["coe"]["p50"] == pytest.approx(0.09) and c["financial"]["beta_unlevered"] == {} and "levered industry beta as is" in c["financial"]["beta_basis"]
+    assert c["operating"]["beta_unlevered"]["p50"] == pytest.approx(0.8) and "Hamada" in c["operating"]["beta_basis"]
+
+
+def test_widths_by_level_band_show_a_spread_that_grows_with_the_level():
+    ran = [{"date": "d", "family": "operating", "status": "valued", "m0": 0.01 * i, "returns": {"roic3": 0.02 * i}, "invalid_share": 0.0,
+            "inputs": {"margin_target": {"p10": 0.0, "p50": 0.05, "p90": 0.002 * i}, "ronic": {"p10": 0.0, "p50": 0.1, "p90": 0.004 * i}}} for i in range(1, 101)]
+    w = gm.widths_by_level_band(ran)
+    mw = [b["median_width_p10_p90"] for b in w["margin_level5_width_by_current_margin"]["bands"]]
+    assert len(mw) == 5 and all(b > a for a, b in zip(mw, mw[1:])) and sum(b["n"] for b in w["margin_level5_width_by_current_margin"]["bands"]) == 100
+    assert len(w["roic_level5_width_by_trailing_roic"]["bands"]) == 5 and w["rote_target_width_by_trailing_rote"]["bands"] == []
+
+
+def test_the_priors_tables_are_read_by_level_band(tmp_path):
+    import json
+    d = tmp_path / "2020"
+    d.mkdir()
+    grp = lambda lo, hi, n, w: {"band": [0, 0], "lower": lo, "upper": hi, "n": n, "p10": -w / 2, "p90": w / 2}          # noqa: E731
+    T = {"priors_version": "3", "margin_retention": {"residual_k5_by_level": {"pooled_all": {"n": 120, "groups": [grp(None, 0.05, 60, 0.1), grp(0.05, None, 60, 0.3)]},
+                                                                               "low_pos": {"n": 20, "groups": [grp(None, None, 20, 0.2)]}}},
+         "roic_level": {"residual_k5_by_level": {"all": {"n": 100, "groups": [grp(None, None, 100, 0.25)]}}},
+         "rote_retention": {"residual_k5": {"all": {"n": 25}}},
+         "excess_fade_financial": {"ks": [{"k": 1, "n": 900, "median": 0.8}, {"k": 2, "n": 60, "median": 0.6}, {"k": 3, "n": 20, "median": 0.9}]}}
+    (d / "tables.json").write_text(json.dumps(T), encoding="utf-8")
+    out = gm.prior_table_widths(tmp_path)["2020"]
+    assert out["margin"]["pooled_all"]["groups"][1]["width_p10_p90"] == pytest.approx(0.3) and "low_pos" not in out["margin"]       # a non-pooled cell under 50 is not listed
+    assert out["roic"]["all"]["n"] == 100 and out["rote_residual_n"] == {"all": 25} and out["excess_retention_plateau"] == {"k": 2, "n": 60, "value": 0.6}

@@ -59,8 +59,12 @@ def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), 
             "vp_overall": gm.distribution_block([r["vp"] for r in rs]), "vp_by_family": gm.vp_by(rs, lambda r: r["family"]),
             "vp_by_industry_n_ge_20": gm.vp_by(rs, lambda r: r["industry"] or "unmapped", 20),
             "vp_by_date": gm.vp_by(rs, lambda r: r["date"]), "extremes_by_family": gm.extremes_by_family(rs),
-            "tv_share": gm.tv_share_distribution(rs), "model_disagreement_by_family": gm.disagreement_by_family(rs), "structure": gm.structure_stats(rs)}
+            "tv_share": gm.tv_share_distribution(rs), "model_disagreement_by_family": gm.disagreement_by_family(rs), "structure": gm.structure_stats(rs),
+            "coe_by_family": gm.coe_by_family(rs), "draw_rules_valued_names": gm.draw_rule_stats(rs)}
     rep["prior_shapes_all_names_the_engine_ran_on"] = gm.prior_shape_stats(ran)
+    rep["widths_by_level_band_all_names_the_engine_ran_on"] = gm.widths_by_level_band(ran)
+    pdir = (rep["run_meta"] or {}).get("priors_dir")
+    rep["priors_tables_by_level_band"] = gm.prior_table_widths(pdir) if pdir and Path(pdir).exists() else None
     rep["extremes_listings"] = {d: gm.extremes_listing(full[d], 30) for d in extremes_dates if d in full}
     return rep
 
@@ -85,6 +89,13 @@ def render(rep):
           "by draws:"] + [f"- {v}: {k}" for k, v in cov.get("invalid_draw_reasons_by_draws", {}).items()] + ["", "by names (a name counts once per reason):"] + [
               f"- {v}: {k}" for k, v in cov.get("invalid_draw_reasons_by_names", {}).items()] + ["", "by family, in draws:"] + [
               f"- {v}: {k}" for k, v in cov.get("invalid_draw_reasons_by_family_and_draws", {}).items()]
+    dr = cov.get("draw_rules") or {}
+    L += ["", "## Draw rules (Addendum I2): valid draws each rule applied to, over every name the engine ran on", "",
+          f"names by family: {dr.get('names_by_family')}; draws by family: {dr.get('draws_by_family')}", "", "| family and rule | draws | share of the family's draws | names | share of the family's names |", "|---|---|---|---|---|"]
+    for k, v in (dr.get("draws_by_family_and_rule") or {}).items():
+        L.append(f"| {k} | {v} | {fmt((dr.get('share_of_draws_by_family_and_rule') or {}).get(k), 4)} | {(dr.get('names_by_family_and_rule') or {}).get(k)} | "
+                 f"{fmt((dr.get('share_of_names_by_family_and_rule') or {}).get(k), 3)} |")
+    L += ["", "## Priors that refused an input for a cell under 50 (Addendum I5), named: name-dates", ""] + [f"- {v}: {k}" for k, v in (cov.get("priors_unavailable_named") or {}).items()]
     L += ["", "## Coverage: by family and status", ""] + [f"- {k}: {v}" for k, v in cov["by_family_and_status"].items()]
     L += ["", "## Coverage: per date status", ""] + [f"- {d}: {v}" for d, v in cov["per_date_status"].items()]
     L += ["", "## Coverage: family and status by date", ""] + [f"- {d}: {v}" for d, v in cov["family_and_status_by_date"].items()]
@@ -132,6 +143,10 @@ def render(rep):
     L += ["", "## Diagnostics (>= $300M): terminal-value share", "", "```", json.dumps(_clean(d["tv_share"]), indent=1), "```"]
     L += ["", "## Diagnostics (>= $300M): model disagreement by family (ln primary / secondary)", "", "```", json.dumps(_clean(d["model_disagreement_by_family"]), indent=1), "```"]
     L += ["", "## Diagnostics (>= $300M): structure", "", "```", json.dumps(_clean(d["structure"]), indent=1), "```"]
+    L += ["", "## Diagnostics (>= $300M): cost of equity by family (Addendum I3: financials on the levered industry beta)", "", "```", json.dumps(_clean(d["coe_by_family"]), indent=1), "```"]
+    L += ["", "## Diagnostics (>= $300M): draw rules over the valued names (floored equity, no-growth draws)", "", "```", json.dumps(_clean(d["draw_rules_valued_names"]), indent=1), "```"]
+    L += ["", "## Prior widths by current level band, over every name the engine ran on (Addendum I1)", "", "```", json.dumps(_clean(rep["widths_by_level_band_all_names_the_engine_ran_on"]), indent=1), "```"]
+    L += ["", "## The priors tables by level band (the folder the run read)", "", "```", json.dumps(_clean(rep.get("priors_tables_by_level_band")), indent=1), "```"]
     L += ["", "## Prior shapes over every name the engine ran on (valued or refused for invalid draws), by family", "", "```", json.dumps(_clean(rep["prior_shapes_all_names_the_engine_ran_on"]), indent=1), "```"]
     for dt, ex in rep["extremes_listings"].items():
         for side in ("top", "bottom"):
