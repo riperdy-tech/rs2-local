@@ -36,6 +36,7 @@ class PriorSet:
     refs: Dict[str, Callable] = field(default_factory=dict)
     source: str = ""
     placeholder: bool = False
+    meta: Dict = field(default_factory=dict)       # measured priors only: cell sizes, merges, fallbacks, the mechanical baseline, input correlations
 
 
 class Priors:
