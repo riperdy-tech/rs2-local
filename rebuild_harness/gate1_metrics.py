@@ -448,6 +448,9 @@ def coverage_tables(counters):
         fam_reason.update(c["family_reason"])
         fam_status.update(c["family_status"])
         mcap.update(c["mcap"])
-    return {"per_date_status": per_date, "refusals_by_reason": dict(reason.most_common()),
+    by_date_reason = {d: dict(c["reason"].most_common()) for d, c in counters.items()}
+    by_date_family = {d: {f"{k[0]} | {k[1]}": v for k, v in sorted(c["family_status"].items())} for d, c in counters.items()}
+    return {"per_date_status": per_date, "refusals_by_date_and_reason": by_date_reason, "family_and_status_by_date": by_date_family,
+            "refusals_by_reason": dict(reason.most_common()),
             "refusals_by_family_and_reason": {f"{k[0]} | {k[1]}": v for k, v in fam_reason.most_common()},
             "by_family_and_status": {f"{k[0]} | {k[1]}": v for k, v in sorted(fam_status.items())}, "valued_by_mcap_group": dict(mcap)}

@@ -23,6 +23,7 @@ import argparse
 import gzip
 import json
 import os
+import re
 import sys
 import time
 from collections import Counter
@@ -99,8 +100,30 @@ def extraction_row(items, notes):
             continue
         t = it.text
         row[label] = {"found": True, "chars": len(t), "accession": it.accession, "filed": it.filed, "accepted_at": it.accepted_at, "head": t[:240], "tail": t[-200:],
-                      "form": it.form}
+                      "form": it.form, "flags": extraction_flags(t, kind)}
     return row
+
+
+_HEADFRAG = re.compile(r"^[A-Z][A-Z0-9 ,&'\-]{2,60}\s+[A-Z][a-z]")
+_NEXT_ITEM = re.compile(r"\bItem\s+(?:1A|1B|2|3|7A|8)\b", re.I)
+
+
+def extraction_flags(text: str, kind: str) -> list:
+    """Mechanical, descriptive flags for the coordinator's reading (nothing here gates): short text, a table-of-contents marker, a head that looks like the tail of a
+    wrapped heading, the next Item's heading inside the last 400 characters (an overrun), omission markers."""
+    f = []
+    if len(text) < (1500 if kind == "annual_business" else 1000):
+        f.append("short")
+    if re.search(r"table of contents", text[:600], re.I):
+        f.append("table_of_contents_marker_in_head")
+    if _HEADFRAG.match(text.strip()):
+        f.append("head_looks_like_a_wrapped_heading_fragment")
+    if _NEXT_ITEM.search(text[-400:]):
+        f.append("next_item_heading_in_tail")
+    n = text.count("characters omitted")
+    if n:
+        f.append(f"omission_markers:{n}")
+    return f
 
 
 def run(run_dir, out_dir, dates, per_family, network):
@@ -194,10 +217,10 @@ class _Fixed(docs.DocumentSource):
 def render_extraction(summary):
     rows = [r for r in summary["extraction"] if r.get("extraction")]
     L = ["# Extraction check: Item 1 and Item 7 on real annual reports", "", f"({summary['fetch']})", "",
-         "| date | ticker | family | Item 1 chars | Item 7 chars | notes |", "|---|---|---|---|---|---|"]
+         "| date | ticker | family | Item 1 chars [flags] | Item 7 chars [flags] | notes |", "|---|---|---|---|---|---|"]
     for r in rows:
         e = r["extraction"]
-        L.append(f"| {r['date']} | {r['ticker']} | {r.get('family_at_T')} | {e['item_1_business'].get('chars', 'NOT FOUND')} | {e['item_7_mdna'].get('chars', 'NOT FOUND')} | {'; '.join(e['notes'])[:140]} |")
+        L.append(f"| {r['date']} | {r['ticker']} | {r.get('family_at_T')} | {e['item_1_business'].get('chars', 'NOT FOUND')} {e['item_1_business'].get('flags', '')} | {e['item_7_mdna'].get('chars', 'NOT FOUND')} {e['item_7_mdna'].get('flags', '')} | {'; '.join(e['notes'])[:140]} |")
     L += ["", "## Heads and tails (for the coordinator to read)", ""]
     for r in rows:
         for lab in ("item_1_business", "item_7_mdna"):

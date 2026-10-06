@@ -71,6 +71,11 @@ def render(rep):
     L += ["", "## Coverage: refusals by reason (all dates)", ""] + [f"- {v}: {k}" for k, v in list(cov["refusals_by_reason"].items())[:40]]
     L += ["", "## Coverage: by family and status", ""] + [f"- {k}: {v}" for k, v in cov["by_family_and_status"].items()]
     L += ["", "## Coverage: per date status", ""] + [f"- {d}: {v}" for d, v in cov["per_date_status"].items()]
+    L += ["", "## Coverage: family and status by date", ""] + [f"- {d}: {v}" for d, v in cov["family_and_status_by_date"].items()]
+    top = list(cov["refusals_by_reason"])[:10]
+    L += ["", "## Coverage: the ten most frequent refusal reasons by date", "", "| date | " + " | ".join(t[:38] for t in top) + " |", "|---|" + "---|" * len(top)]
+    for d, rs in cov["refusals_by_date_and_reason"].items():
+        L.append(f"| {d} | " + " | ".join(str(rs.get(t, 0)) for t in top) + " |")
     for key, title in (("gate1_universe_ge_300M", "B1-B4, universe: market cap >= $300M"), ("sub_300M_reported_separately", "B1-B4, sub-$300M group (separate)"),
                        ("sensitivity_ge_300M_base_year_within_15_months", "Sensitivity: >= $300M with a base year at most 15 months old")):
         r = rep[key]
