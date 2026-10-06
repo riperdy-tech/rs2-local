@@ -509,6 +509,9 @@ def structure_stats(rows):
         out["ronic_terminal_at_p50_inputs"] = _q([x["ronic_terminal_at_p50_inputs"] for x in rt if x.get("ronic_terminal_at_p50_inputs") is not None])
         out["share_terminal_ronic_floored_at_wacc"] = float(np.mean([abs(x["ronic_terminal_at_p50_inputs"] - r["disc"]["wacc"]) < 1e-12 for r in op for x in [r.get("returns") or {}]
                                                                     if x.get("ronic_terminal_at_p50_inputs") is not None])) if rt else None
+        out["terminal_ronic_kappa"] = _q([x["ronic_terminal_kappa"] for x in rt if x.get("ronic_terminal_kappa") is not None])
+        fl = [x["ronic_terminal_floored_at_wacc"] for x in rt if x.get("ronic_terminal_floored_at_wacc") is not None]
+        out["share_terminal_ronic_formula_below_wacc_floored_flag"] = float(np.mean(fl)) if fl else None          # Addendum J3: the names whose formula went below WACC and was floored
         out["margin_level5_median_minus_8y_median"] = _q([x["level5_median"] - x["centre_8y_median"] for x in mt])
         mp = [r.get("margin_path") for r in op if r.get("margin_path")]
         out["margin_path_linear_share"] = float(np.mean([x["shape"] == "linear" for x in mp])) if mp else None
