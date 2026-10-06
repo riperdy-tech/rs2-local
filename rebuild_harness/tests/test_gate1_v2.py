@@ -107,6 +107,7 @@ def test_b1_pooled_passes_a_real_signal_and_reports_the_share_of_positive_months
     r = v2.b1_pooled(panel_rows(0.5), "excluded", n_boot=199)
     assert r["status"] == "pass" and r["lower_90_one_sided"] > 0 and r["beta"] > 0.1 and r["n_months"] == 8 and r["share_positive_monthly_coefficients"] == 1.0
     assert r["n"] == 8 * 160 and r["n_clusters"] == 8 and r["effects"] == "industry" and "engine" == r["columns"][0]
+    assert set(r["yardstick_missing_share"]) == set(gm.YARDSTICKS) and all(v == 0.0 for v in r["yardstick_missing_share"].values())
 
 
 def test_b1_pooled_fails_a_reversed_signal_and_a_noise_engine_has_a_lower_bound_below_zero():
@@ -144,6 +145,7 @@ def test_a_missing_yardstick_stays_in_the_pooled_regression_at_the_median_rank_w
     for r in rows[::7]:
         r["score"]["yardstick_gross_profitability"] = None
     pn = v2.build_panel(rows, "excluded")
+    assert v2.b1_pooled(rows, "excluded", n_boot=19)["yardstick_missing_share"]["yardstick_gross_profitability"] == pytest.approx(len(rows[::7]) / len(rows))
     assert len(pn["y"]) == len(rows) and "missing:yardstick_gross_profitability" in pn["cols"] and "missing:yardstick_fcf_yield" not in pn["cols"]
     j = pn["cols"].index("yardstick_gross_profitability")
     jm = pn["cols"].index("missing:yardstick_gross_profitability")
@@ -329,7 +331,7 @@ def test_the_v2_report_builds_and_renders_every_bar(tmp_path):
     assert r["B4"]["by_family_measure"]["revenue_growth | operating"]["status"] == "pass" and "equity premium +100bp" in r["by_bound"]["excluded"]["variants_reported"]
     md = rp.render(rep)
     for needle in ("registration v2", "B1: pooled regression", "one-sided 90% lower bound", "B2: industry-neutral", "B3: level", "B4: forecasts", "B5: stability", "B5 reported variants",
-                   "PROVISIONAL", "Outcome (provisional)"):
+                   "PROVISIONAL", "Outcome (provisional)", "yardstick coverage", "revenue_growth, operating"):
         assert needle in md
 
 

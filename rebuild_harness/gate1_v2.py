@@ -192,7 +192,8 @@ def b1_pooled(rows, bound, score_fn=None, effects="industry", n_boot=N_BOOT, yar
     per = b1_per_date(rows, bound, score_fn, yardsticks)
     cs = [v["coef"] for v in per.values() if v["coef"] == v["coef"]]
     out = {k: wb[k] for k in ("beta", "se", "t", "lower_90_one_sided", "p_one_sided", "n_boot", "n", "n_clusters")}
-    out.update({"status": "pass" if wb["lower_90_one_sided"] > 0 else "fail", "effects": effects, "columns": pn["cols"],
+    miss = {y: (float(pn["X"][:, pn["cols"].index(f"missing:{y}")].mean()) if f"missing:{y}" in pn["cols"] else 0.0) for y in yardsticks}
+    out.update({"status": "pass" if wb["lower_90_one_sided"] > 0 else "fail", "effects": effects, "columns": pn["cols"], "yardstick_missing_share": miss,
                 "share_positive_monthly_coefficients": (float(np.mean([c > 0 for c in cs])) if cs else None), "n_months": len(cs),
                 "mean_monthly_coefficient": float(np.mean(cs)) if cs else None})
     out["_residuals"], out["_keep"] = wb["residuals"], pn["keep"]

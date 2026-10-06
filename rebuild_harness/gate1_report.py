@@ -203,6 +203,8 @@ def render_bars_v2(r, title):
             L.append(f"| {b} | {_f(x['beta'])} | {_f(x['se'])} | {_f(x['lower_90_one_sided'])} | {_f(x['p_one_sided'], 3)} | {_p(x['share_positive_monthly_coefficients'])} of {x['n_months']} | {_f(x['mean_monthly_coefficient'])} | {x['n']} | {x['n_clusters']} |")
         else:
             L.append(f"| {b} | not computed | | | | | | {x.get('n')} | |")
+    ym = bb[B[0]]["B1"].get("yardstick_missing_share") or {}
+    L += ["", "yardstick coverage (share of B1 names entering with the yardstick imputed at the median rank): " + ", ".join(f"{k.replace('yardstick_', '')} {_p(v)}" for k, v in ym.items())]
     L += ["", "### B2: industry-neutral top-minus-bottom quintile spread of the engine's residual after the yardsticks (pass > 0, strong pass >= +3 pp); the raw spread is reported", "",
           "| bound | residual spread | 90% interval over dates | raw spread | dates with a positive residual spread | status |", "|---|---|---|---|---|---|"]
     for b in B:
@@ -220,6 +222,7 @@ def render_bars_v2(r, title):
         b4 = r[key]
         L += ["", f"### {lab}: **{b4['status']}**", "", "| family and measure | n | dates | engine median abs. error | naive median abs. error | engine closer for | P10..P90 coverage (target 80%) | directional accuracy (n) | status |", "|---|---|---|---|---|---|---|---|---|"]
         for k, x in b4["by_family_measure"].items():
+            k = k.replace(" | ", ", ")                                    # a pipe inside a markdown table cell would split it
             if x["n"]:
                 L.append(f"| {k} | {x['n']} | {x['n_dates']} | {_f(x['median_abs_error_engine'])} | {_f(x['median_abs_error_naive'])} | {_p(x['share_engine_closer'])} | {_p(x['coverage_p10_p90'])} | "
                          f"{_p(x['directional_accuracy'])} ({x['n_direction']}) | {x['status']} |")
