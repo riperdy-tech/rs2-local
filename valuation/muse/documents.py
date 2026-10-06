@@ -121,7 +121,7 @@ def _acc_iso(t) -> Optional[str]:
 
 _HEAD_MAX = 220          # a heading paragraph is short
 _ITEM_PATTERNS = {
-    "business": (re.compile(r"^\s*item\s*1\s*[\.\:\-–—]?\s*(?:description\s+of\s+)?(?:the\s+)?business\b", re.I),
+    "business": (re.compile(r"^\s*items?\s*1\s*(?:(?:and|&)\s*2\s*)?[\.\:\-–—]?\s*(?:description\s+of\s+)?(?:the\s+)?business\b", re.I),
                  re.compile(r"^\s*item\s*1a\b|^\s*item\s*1b\b|^\s*item\s*2\s*[\.\:\-–—]?\s*propert", re.I)),
     "mdna": (re.compile(r"^\s*item\s*7\s*[\.\:\-–—]?\s*management", re.I),
              re.compile(r"^\s*item\s*7a\b|^\s*item\s*8\b", re.I)),
@@ -134,19 +134,101 @@ _ITEM_PATTERNS_20F = {
 }
 
 
+# a heading that is only the item's number ("Item 7."): its title is in the next unit (a wrapped heading)
+_BARE_ITEM = re.compile(r"^\s*item\s*\d+[a-z]?\s*[\.\:\-–—]?\s*$", re.I)
+# the end of each Item's canonical title: a heading matched on its first words that has not reached it is wrapped, and the next short lines complete it
+_TITLE_END = {("10", "business"): None,
+              ("10", "mdna"): re.compile(r"results\s+of\s+operations", re.I),
+              ("20", "business"): re.compile(r"the\s+company\b", re.I),
+              ("20", "mdna"): re.compile(r"prospects\b", re.I)}
+_CONT_MAX = 120          # a heading's continuation line is short
+_CONT_UNITS = 3          # and there are at most this many of them
+
+
+def _units(blocks):
+    """The blocks as a flat list of units (kind, text, block index): a paragraph is one unit and each row of a table is one (its cells joined by " | " as the
+    selector's blocks give them).  Item headings are sought among the units of both kinds: a heading may be a paragraph, a one-row table, or a row of a larger one."""
+    out = []
+    for bi, (k, c) in enumerate(blocks):
+        if k == "p":
+            out.append(("p", c, bi))
+        else:
+            out += [("r", row, bi) for row in c]
+    return out
+
+
+def _norm(text: str) -> str:
+    return text.replace(" | ", " ")
+
+
+def _heading_at(units, i, rx, title_end=None, start=False):
+    """How many units the Item heading starting at unit `i` spans (0 = none): the unit itself when its text (a table row's cells joined with a space) matches `rx`;
+    or, when the unit is only the item's number, that unit and the next, whose text completes the title.  For a START heading whose title is not complete after
+    that (a heading wrapped over several lines), the following short units that finish it are part of the heading too."""
+    k, t, _ = units[i]
+    nt = _norm(t)
+    n = 0
+    if len(nt) <= _HEAD_MAX and rx.match(nt):
+        n = 1
+    elif _BARE_ITEM.match(nt) and i + 1 < len(units) and len(_norm(units[i + 1][1])) <= _HEAD_MAX and rx.match(nt + " " + _norm(units[i + 1][1])):
+        n = 2
+    if n and start and title_end is not None:
+        acc = " ".join(_norm(units[j][1]) for j in range(i, i + n))
+        m = n
+        while not title_end.search(acc) and m < n + _CONT_UNITS and i + m < len(units):
+            nxt = _norm(units[i + m][1])
+            if len(nxt) > _CONT_MAX or nxt.rstrip().endswith("."):
+                break
+            acc += " " + nxt
+            m += 1
+        if title_end.search(acc):
+            n = m                                   # the wrapped title is complete: its continuation lines are part of the heading
+    return n
+
+
+def _rebuild(units, lo, hi):
+    """The units lo..hi-1 as blocks again: a paragraph is a paragraph and consecutive rows of one table are one table block."""
+    out, cur = [], None
+    for k, t, bi in units[lo:hi]:
+        if k == "p":
+            out.append(("p", t))
+            cur = None
+        elif cur is not None and cur[0] == bi:
+            cur[1].append(t)
+        else:
+            cur = [bi, [t]]
+            out.append(("t", cur[1]))
+    return out
+
+
+def _size(span) -> int:
+    return sum(len(c) if k == "p" else sum(len(r) for r in c) for k, c in span)
+
+
 def item_span(blocks, which: str, form: str):
     """The blocks between an Item's heading and the next Item's heading. A table of contents repeats each heading with almost nothing after
-    it, so of the heading matches the one with the LONGEST span is taken. [] when no heading is found (a 40-F wrapper has none)."""
-    pats = _ITEM_PATTERNS_20F if form.upper().startswith(("20-F", "40-F")) else _ITEM_PATTERNS
+    it, so of the heading matches the one with the LONGEST span is taken. [] when no heading is found (a 40-F wrapper has none).
+
+    A heading is a paragraph, a ONE-ROW table or a row of a larger table (Addendum H8: filings set their headings in layout tables), and it may be wrapped: the
+    item's number alone in one unit with the title in the next, or a long title (Item 7's "Management's Discussion and Analysis of Financial Condition and
+    Results of Operations") broken over short lines.  The next Item's heading is sought the same way."""
+    foreign = form.upper().startswith(("20-F", "40-F"))
+    pats = _ITEM_PATTERNS_20F if foreign else _ITEM_PATTERNS
     start_re, end_re = pats[which]
-    heads = [i for i, (k, c) in enumerate(blocks) if k == "p" and len(c) <= _HEAD_MAX and start_re.match(c)]
+    title_end = _TITLE_END[("20" if foreign else "10", which)]
+    units = _units(blocks)
     best: list = []
-    for h in heads:
-        end = next((j for j in range(h + 1, len(blocks)) if blocks[j][0] == "p" and len(blocks[j][1]) <= _HEAD_MAX and end_re.match(blocks[j][1])),
-                   len(blocks))
-        span = blocks[h + 1:end]
-        if sum(len(c) if k == "p" else sum(len(r) for r in c) for k, c in span) > sum(len(c) if k == "p" else sum(len(r) for r in c) for k, c in best):
-            best = span
+    best_size = 0
+    for i in range(len(units)):
+        n = _heading_at(units, i, start_re, title_end, start=True)
+        if not n:
+            continue
+        lo = i + n
+        hi = next((j for j in range(lo, len(units)) if _heading_at(units, j, end_re)), len(units))
+        span = _rebuild(units, lo, hi)
+        size = _size(span)
+        if size > best_size:
+            best, best_size = span, size
     return best
 
 

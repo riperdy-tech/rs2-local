@@ -165,3 +165,108 @@ def test_section_q_comes_from_the_shared_layer(tmp_path):
 def build_state_of(pit):
     from valuation.common import build_state
     return build_state(pit)
+
+
+# ---- Addendum H8: headings in table rows, one-row tables and wrapped headings ---------------------------------------------------------------------------------
+
+def _plain_of(html, which, form="10-K"):
+    return dc._plain(dc.item_span(sp.blocks_of(html), which, form))
+
+
+def test_headings_set_in_a_one_row_table_are_found_and_the_toc_table_is_skipped():
+    html = ("<html><body><table><tr><td>Item 1.</td><td>Business</td><td>4</td></tr><tr><td>Item 1A.</td><td>Risk Factors</td><td>8</td></tr>"
+            "<tr><td>Item 7.</td><td>Management's Discussion and Analysis of Financial Condition and Results of Operations</td><td>18</td></tr>"
+            "<tr><td>Item 7A.</td><td>Quantitative</td><td>30</td></tr></table>"
+            "<p>PART I</p><table><tr><td>ITEM 1.</td><td>BUSINESS</td></tr></table><p>We make widgets for industrial customers in many countries.</p>"
+            "<table><tr><td>ITEM 1A.</td><td>RISK FACTORS</td></tr></table><p>Many risks apply.</p>"
+            "<table><tr><td>ITEM 7.</td><td>MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS</td></tr></table>"
+            "<p>Revenue rose on higher volume and we expect further growth.</p><table><tr><td>ITEM 7A.</td><td>QUANTITATIVE</td></tr></table><p>Market risk text.</p>"
+            "</body></html>")
+    biz, md = _plain_of(html, "business"), _plain_of(html, "mdna")
+    assert "widgets for industrial customers" in biz and "Many risks" not in biz and "Business | 4" not in biz
+    assert "higher volume" in md and "Market risk text" not in md and "Quantitative" not in md
+
+
+def test_a_heading_that_is_a_row_of_a_larger_table_starts_the_span_after_that_row():
+    html = ("<html><body><table><tr><td>PART I</td></tr><tr><td>Item 1.</td><td>Business</td></tr><tr><td>We sell software subscriptions to enterprises worldwide.</td></tr>"
+            "<tr><td>Item 1A.</td><td>Risk Factors</td></tr><tr><td>Risks.</td></tr></table></body></html>")
+    biz = _plain_of(html, "business")
+    assert "software subscriptions" in biz and "Risks." not in biz and "Item 1." not in biz
+
+
+def test_a_heading_wrapped_over_lines_is_found_whole_and_its_continuation_is_not_text():
+    # the item's number alone, the title in the next paragraph
+    html = ("<html><body><p>Item 7.</p><p>Management's Discussion and Analysis of Financial Condition and Results of Operations</p>"
+            "<p>The year was strong and revenue grew twelve percent on volume.</p><p>Item 7A.</p><p>Quantitative and Qualitative Disclosures</p><p>Market risk.</p></body></html>")
+    md = _plain_of(html, "mdna")
+    assert md.startswith("The year was strong") and "Market risk" not in md
+    # a long title broken after "Financial Condition"
+    html2 = ("<html><body><p>ITEM 7. MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION</p><p>AND RESULTS OF OPERATIONS</p>"
+             "<p>Revenue grew on strong demand across segments this year.</p><p>ITEM 7A. QUANTITATIVE</p><p>Market risk.</p></body></html>")
+    md2 = _plain_of(html2, "mdna")
+    assert md2.startswith("Revenue grew on strong demand") and "RESULTS OF OPERATIONS" not in md2
+    # a wrapped END heading: "Item 2." alone before "Properties"
+    html3 = ("<html><body><p>Item 1. Business</p><p>We operate retail stores across the country and online.</p><p>Item 2.</p><p>Properties</p><p>Leased stores.</p></body></html>")
+    assert "Leased stores" not in _plain_of(html3, "business") and "retail stores" in _plain_of(html3, "business")
+    # a title that never completes is not swallowed: the heading is its first line only
+    html4 = ("<html><body><p>Item 7. Management's Discussion and Analysis</p><p>Revenue grew strongly during the year across all of our regions and segments</p>"
+             "<p>Item 8. Financial Statements</p></body></html>")
+    assert _plain_of(html4, "mdna").startswith("Revenue grew strongly")
+
+
+def test_items_1_and_2_business_and_properties_is_the_business_heading():
+    html = ("<html><body><p>Items 1 and 2. Business and Properties</p><p>We explore for oil and gas in two basins with proved reserves.</p>"
+            "<p>Item 1A. Risk Factors</p><p>Prices.</p></body></html>")
+    assert "proved reserves" in _plain_of(html, "business") and "Prices." not in _plain_of(html, "business")
+
+
+def test_a_20f_with_headings_in_table_rows():
+    html = ("<html><body><table><tr><td>Item 4.</td><td>Information on the Company</td><td>30</td></tr><tr><td>Item 4A.</td><td>Unresolved</td><td>46</td></tr>"
+            "<tr><td>Item 5.</td><td>Operating and Financial Review and Prospects</td><td>46</td></tr><tr><td>Item 6.</td><td>Directors</td><td>64</td></tr></table>"
+            "<table><tr><td>Item 4.</td><td>Information on the Company</td></tr></table><p>We own and charter vessels to liner companies worldwide.</p>"
+            "<table><tr><td>Item 4A.</td><td>Unresolved Staff Comments</td></tr></table><p>None.</p>"
+            "<table><tr><td>Item 5.</td><td>Operating and Financial Review and Prospects</td></tr></table><p>Charter revenue rose on higher rates.</p>"
+            "<table><tr><td>Item 6.</td><td>Directors</td></tr></table><p>Board.</p></body></html>")
+    assert "charter vessels" in _plain_of(html, "business", "20-F") and "None." not in _plain_of(html, "business", "20-F")
+    assert "higher rates" in _plain_of(html, "mdna", "20-F") and "Board." not in _plain_of(html, "mdna", "20-F")
+
+
+def test_the_pack_v2_template_version_records_the_new_extraction():
+    from valuation.muse import schema
+    assert schema.PACK_VERSION == "2.1"
+
+
+# ---- the real annual reports of the round-1 extraction check (skipped when the cache is absent) -------------------------------------------------------------
+
+import os  # noqa: E402
+import gzip  # noqa: E402
+import re  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+_CACHE = Path(os.environ.get("STOCKS_ROOT", r"C:\Users\riper\stocks")) / "stocks-workspace" / "scratch" / "rev23" / "gate1_dev" / "muse_checks_a" / "sec_annual_cache"
+_FILES_20F = ("0001328919", "0001341170", "0001369241", "0001430725")           # 20-F filers of the check (the other filers file 10-Ks)
+_INCORPORATED_BY_REFERENCE = ("0000019584", "0000034088")                      # Item 7 of these says "incorporated by reference to Exhibit 13": a few lines is the right answer
+
+
+def _real_files():
+    return sorted(_CACHE.glob("*.annual.json.gz")) if _CACHE.exists() else []
+
+
+@pytest.mark.skipif(len(_real_files()) < 30, reason="the cached annual reports of the extraction check are absent")
+def test_item_1_and_item_7_are_found_in_every_cached_annual_report():
+    n = 0
+    for f in _real_files():
+        raw = json.loads(gzip.decompress(f.read_bytes()).decode("utf-8"))["raw"]
+        blocks = sp.blocks_of(raw)
+        form = "20-F" if f.name.startswith(_FILES_20F) else "10-K"
+        biz, md = dc._plain(dc.item_span(blocks, "business", form)), dc._plain(dc.item_span(blocks, "mdna", form))
+        assert len(biz) > 1500, (f.name, len(biz))
+        if f.name.startswith(_INCORPORATED_BY_REFERENCE):
+            assert 0 < len(md) < 1000, (f.name, len(md))
+        else:
+            assert len(md) > 5000, (f.name, len(md))
+        # the span ends before the next Item: it holds no heading of the next Item at a unit start
+        for text, rx in ((biz, r"(?m)^\s*item\s*1a\b"), (md, r"(?m)^\s*item\s*(7a|8)\b")):
+            assert not re.search(rx, text, re.I) or form == "20-F", f.name
+        n += 1
+    assert n >= 30
