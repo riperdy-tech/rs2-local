@@ -22,17 +22,20 @@ def test_filing_counts_only_strictly_before_the_date(tmp_path):
     assert pit.snapshot("1", "2020-03-03").L == 2019
 
 
-def test_values_are_as_first_filed_and_latest_mode_only_measures_restatements(tmp_path):
+def test_inputs_are_as_known_and_outcomes_are_first_filed(tmp_path):
     facts = (synth.annual_report("2019-12-31", "2020-03-01", {"Revenues": 100.0}) +
              synth.annual_report("2020-12-31", "2021-03-01", {"Revenues": 120.0}, comparatives={"2019-12-31": {"Revenues": 90.0}}))
     synth.write_company(tmp_path / "store", 1, facts)
     pit = pit_with(tmp_path)
-    first = pit.fiscal_years("1", "2021-06-01")
-    assert first["2019-12-31"].cells["revenue"].val == 100.0              # never the restated 90
-    assert first["2020-12-31"].cells["revenue"].val == 120.0
-    latest = pit.fiscal_years("1", "2021-06-01", mode="latest_known")
-    assert latest["2019-12-31"].cells["revenue"].val == 90.0              # diagnostic mode shows the restatement
-    assert pit.fiscal_years("1", "2020-06-01")["2019-12-31"].cells["revenue"].val == 100.0
+    known = pit.fiscal_years("1", "2021-06-01")                              # input rule: the latest filing known at the date
+    assert known["2019-12-31"].cells["revenue"].val == 90.0
+    assert pit.fiscal_years("1", "2020-06-01")["2019-12-31"].cells["revenue"].val == 100.0       # before the restatement was filed
+    first = pit.fiscal_years("1", "2021-06-01", mode="first_filed")          # outcome rule: the first value reported, never the restated one
+    assert first["2019-12-31"].cells["revenue"].val == 100.0
+    assert pit.outcome_fiscal_years("1")["2019-12-31"].cells["revenue"].val == 100.0
+    marked = pit.company_pit("1", "2021-06-01")
+    assert marked.provenance[("revenue", "2019-12-31")] == "RESTATED" and marked.provenance[("revenue", "2020-12-31")] == "PIT_VALID"
+    assert marked.series["revenue"]["2019-12-31"].value == 90.0 and marked.series["revenue"]["2019-12-31"].filed == "2021-03-01"
 
 
 def test_a_restatement_filed_after_the_date_is_invisible(tmp_path):
@@ -73,12 +76,14 @@ def test_only_annual_forms_count_and_s1_data_is_never_stored(tmp_path):
     assert list(pit_with(tmp_path).fiscal_years("1", "2021-01-01")) == ["2019-12-31"]
 
 
-def test_an_amendment_never_overrides_the_original_but_stands_when_alone(tmp_path):
-    facts = (synth.annual_report("2019-12-31", "2020-03-01", {"Revenues": 100.0}) +
-             synth.annual_report("2019-12-31", "2020-09-01", {"Revenues": 95.0}, form="10-K/A"))
+def test_an_amendment_eligible_at_the_date_replaces_the_original_one_filed_later_is_invisible(tmp_path):
+    facts = (synth.annual_report("2019-12-31", "2020-03-01", {"Revenues": 100.0, "Assets": 50.0}) +
+             synth.annual_report("2019-12-31", "2020-09-01", {"Revenues": 95.0, "Assets": 50.0}, form="10-K/A"))      # a full restating amendment
     synth.write_company(tmp_path / "store", 1, facts)
     pit = pit_with(tmp_path)
-    assert pit.fiscal_years("1", "2021-01-01")["2019-12-31"].cells["revenue"].val == 100.0
+    assert pit.fiscal_years("1", "2020-12-01")["2019-12-31"].cells["revenue"].val == 95.0        # the 10-K/A is known: it replaces the 10-K
+    assert pit.fiscal_years("1", "2020-06-01")["2019-12-31"].cells["revenue"].val == 100.0       # filed after the date: invisible
+    assert pit.fiscal_years("1", "2020-12-01", mode="first_filed")["2019-12-31"].cells["revenue"].val == 100.0
     synth.write_company(tmp_path / "store", 2, synth.annual_report("2019-12-31", "2020-09-01", {"Revenues": 95.0}, form="10-K/A"))
     fy = pit.fiscal_years("2", "2021-01-01")["2019-12-31"]
     assert fy.cells["revenue"].val == 95.0 and "from_amendment" in fy.cells["revenue"].flags
@@ -86,14 +91,17 @@ def test_an_amendment_never_overrides_the_original_but_stands_when_alone(tmp_pat
 
 
 def test_the_production_extractors_tag_backfill_reads_a_year_whose_own_report_used_the_old_tag(tmp_path):
-    # ASC 606: FY2019's own report files SalesRevenueNet, FY2020's files Revenues.  The production ladder backfills the year the winner lacks.
+    # ASC 606: FY2019's own report files SalesRevenueNet, FY2020's files Revenues and restates FY2019 (99) under the new tag.
     facts = (synth.annual_report("2019-12-31", "2020-03-01", {"SalesRevenueNet": 100.0, "Assets": 50.0}) +
              synth.annual_report("2020-12-31", "2021-03-01", {"Revenues": 120.0, "Assets": 55.0}, comparatives={"2019-12-31": {"Revenues": 99.0}}))
     synth.write_company(tmp_path / "store", 1, facts)
-    fy = pit_with(tmp_path).fiscal_years("1", "2021-06-01")
-    c19, c20 = fy["2019-12-31"].cells["revenue"], fy["2020-12-31"].cells["revenue"]
-    assert (c19.val, c19.tag, c19.filed) == (100.0, "SalesRevenueNet", "2020-03-01")      # first filed: not the 99 restated comparative
-    assert (c20.val, c20.tag) == (120.0, "Revenues")
+    pit = pit_with(tmp_path)
+    known = pit.fiscal_years("1", "2021-06-01")
+    assert (known["2019-12-31"].cells["revenue"].val, known["2019-12-31"].cells["revenue"].tag) == (99.0, "Revenues")      # as known: the restated column
+    first = pit.fiscal_years("1", "2021-06-01", mode="first_filed")
+    c19 = first["2019-12-31"].cells["revenue"]
+    assert (c19.val, c19.tag, c19.filed) == (100.0, "SalesRevenueNet", "2020-03-01")      # first filed: the production ladder backfills the year the winner lacks
+    assert first["2020-12-31"].cells["revenue"].val == 120.0
 
 
 def test_the_production_scale_correction_applies_to_first_filed_values(tmp_path):
@@ -321,3 +329,69 @@ def test_the_vendored_extractor_is_the_screeners_file_byte_for_byte():
             assert hashlib.sha256(src.read_bytes()).hexdigest() == man["files"]["build_fundamentals_history.py"]["sha256"], \
                 "the screener's extractor changed: re-copy valuation/vendored (see MANIFEST.json)"
             break
+
+
+# ---- Addendum C: the decision time, acceptance timestamps, provenance states --------------------------------------------------------------
+
+def test_the_decision_time_is_16_00_eastern_with_the_daylight_rule():
+    assert pdm.decision_time_utc("2019-03-01").isoformat() == "2019-03-01T21:00:00+00:00"          # EST
+    assert pdm.decision_time_utc("2019-07-01").isoformat() == "2019-07-01T20:00:00+00:00"          # EDT
+    assert pdm.decision_time_utc("2019-03-08").hour == 21 and pdm.decision_time_utc("2019-03-11").hour == 20     # DST began 2019-03-10
+    assert pdm.decision_time_utc("2019-11-01").hour == 20 and pdm.decision_time_utc("2019-11-04").hour == 21     # and ended 2019-11-03
+    assert pdm.parse_accepted("2019-03-01T21:15:34.000Z").hour == 21 and pdm.parse_accepted("20190701101500").hour == 14
+    assert pdm.parse_accepted("garbage") is None and pdm.parse_accepted(None) is None
+
+
+def _accepting(tmp_path, accepted):
+    subs = tmp_path / "subs"
+    subs.mkdir(parents=True, exist_ok=True)
+    (subs / "CIK0000000001.json").write_text(json.dumps({"filings": {"recent": {
+        "accessionNumber": list(accepted), "acceptanceDateTime": list(accepted.values())}}}), encoding="utf-8")
+    return pdm.SubmissionsAcceptance(subs)
+
+
+def test_a_filing_accepted_before_16_00_eastern_on_the_date_is_known_one_accepted_after_is_not(tmp_path):
+    facts = synth.annual_report("2019-12-31", "2020-03-02", {"Revenues": 100.0, "Assets": 50.0}, accn="a1")
+    synth.write_company(tmp_path / "store", 1, facts)
+    early = _accepting(tmp_path, {"a1": "2020-03-02T20:59:59.000Z"})          # 15:59:59 EST
+    late = _accepting(tmp_path / "late", {"a1": "2020-03-02T21:00:01.000Z"})  # 16:00:01 EST
+    assert list(PitData(tmp_path / "store", acceptance_source=early).fiscal_years("1", "2020-03-02")) == ["2019-12-31"]
+    assert PitData(tmp_path / "store", acceptance_source=late).fiscal_years("1", "2020-03-02") == {}
+    assert list(PitData(tmp_path / "store", acceptance_source=late).fiscal_years("1", "2020-03-03")) == ["2019-12-31"]
+
+
+def test_without_a_timestamp_a_filing_on_the_date_is_ambiguous_and_not_used(tmp_path):
+    facts = synth.annual_report("2019-12-31", "2020-03-02", {"Revenues": 100.0, "Assets": 50.0}, accn="a1")
+    synth.write_company(tmp_path / "store", 1, facts)
+    pit = pit_with(tmp_path)
+    assert pit.fiscal_years("1", "2020-03-02") == {}
+    assert list(pit.fiscal_years("1", "2020-03-03")) == ["2019-12-31"]
+    states = {r["state"] for r in pit.company("1").facts_table("2020-03-02") if r["tag"] == "Revenues"}
+    assert states == {"AMBIGUOUS"}
+
+
+def test_facts_table_carries_every_field_and_the_provenance_states(tmp_path):
+    facts = (synth.annual_report("2019-12-31", "2020-03-01", {"Revenues": 100.0}, accn="a1") +
+             synth.annual_report("2020-12-31", "2021-03-01", {"Revenues": 120.0}, comparatives={"2019-12-31": {"Revenues": 90.0}}, accn="a2") +
+             synth.annual_report("2021-12-31", "2022-03-01", {"Revenues": 130.0}, accn="a3"))
+    synth.write_company(tmp_path / "store", 1, facts)
+    pit = pit_with(tmp_path)
+    recs = [r for r in pit.company("1").facts_table("2021-06-01") if r["tag"] == "Revenues"]
+    by = {(r["accession"], r["end"]): r for r in recs}
+    assert by[("a1", "2019-12-31")]["state"] == "RESTATED"          # superseded by the 90 in a2
+    assert by[("a2", "2019-12-31")]["state"] == "PIT_VALID" and by[("a2", "2020-12-31")]["state"] == "PIT_VALID"
+    assert by[("a3", "2021-12-31")]["state"] == "PIT_INVALID"       # filed after the date
+    r = by[("a2", "2020-12-31")]
+    assert {"cik", "taxonomy", "tag", "unit", "value", "start", "end", "instant", "dimensions", "form", "filed", "accepted_at", "accession", "amended",
+            "fy", "fp", "state"} <= set(r) and r["instant"] is False and r["dimensions"] is None and r["amended"] is False
+    assert [x for x in pit.company("1").facts_table("2021-06-01") if x["tag"] == "Revenues" and x["state"] == "PIT_INVALID"]
+
+
+def test_the_company_pit_never_carries_a_value_accepted_after_the_decision_time(tmp_path):
+    facts = (synth.annual_report("2018-12-31", "2019-03-01", {"Revenues": 90.0, "Assets": 50.0}, accn="a1") +
+             synth.annual_report("2019-12-31", "2020-03-02", {"Revenues": 100.0, "Assets": 60.0}, accn="a2"))
+    synth.write_company(tmp_path / "store", 1, facts)
+    acc = _accepting(tmp_path, {"a1": "2019-03-01T21:00:00.000Z", "a2": "2020-03-02T22:30:00.000Z"})
+    cp = PitData(tmp_path / "store", acceptance_source=acc, id_map={"AAA": "1"}).company_pit("1", "2020-03-02")
+    assert cp.periods() == ["2018-12-31"]
+    assert all(f.filed < "2020-03-02" or f.filed == "2019-03-01" for per in cp.series.values() for f in per.values())

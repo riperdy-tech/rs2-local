@@ -3,12 +3,23 @@
 Source: the SEC companyfacts archive, per filing: every fact carries its value, its filing date and its accession.  Nothing here reads
 `fundamentals_history.json`, a screener snapshot, a vendor field or a current anchor.
 
-RULES (Addendum A, binding)
-  * A filing counts only if its filing date is STRICTLY BEFORE the valuation date (`filed < asof`).
-  * Values are AS FIRST FILED and a fiscal year exists only from its OWN annual report (10-K, 10-K405, 10-KT, 20-F, 40-F; a 10-K/A counts only
-    where the archive holds no original): a fact is used only if it comes from the annual report whose period of report is the fact's own period
-    (a comparative column in a later report, a restatement, is never read), and of duplicates of one (tag, period) the earliest filing wins.  S-1 /
-    F-1 data is never stored.  A company whose first annual report is filed on or after the date has no fiscal year at that date.
+RULES (Addenda A and C, binding)
+  * DECISION TIME.  The decision timestamp is 16:00 US Eastern on the valuation date T.  A filing is eligible when its EDGAR acceptance timestamp
+    (SEC submissions `acceptanceDateTime`, given to the layer by an `AcceptanceSource`) is at or before that moment; simulated trades happen at the
+    next session.  A filing with no acceptance timestamp is eligible when filed on an earlier date, AMBIGUOUS (and not used) when filed on T itself,
+    and ineligible later.  companyfacts carries only a filing DATE: without submissions data the layer is conservative, never generous.
+  * INPUT at T (the default `mode="as_known"`): the latest filing known at T, amendments included.  A 10-K/A eligible at T replaces the 10-K's value;
+    one accepted after T is invisible.  A restated comparative column in a later eligible report is the value known at T.  The cell says so: its
+    provenance state is RESTATED when the value known at T differs from the period's first-filed value.
+  * OUTCOME for a period (`mode="first_filed"`, `outcome_fiscal_years`): the first value reported for that period (its own annual report), never a
+    later restatement.  Two different rules; the harness uses each in its place.
+  * A fiscal year exists only from its OWN annual report (10-K, 10-K405, 10-KT, 20-F, 40-F; a 10-K/A counts only where the archive holds no
+    original).  S-1 / F-1 data is never stored; a comparative column of a company's first annual report is not a fiscal year.  A company whose first
+    annual report is not eligible at T has no fiscal year at T.
+  * Every stored fact keeps CIK, taxonomy, tag, unit, value, start, end, instant, form, filed, accession, amendment flag, fy and fp (companyfacts holds
+    no dimensional facts: `dimensions` is always empty); `facts_table(asof)` adds `accepted_at` and a provenance state per record: PIT_VALID,
+    PIT_INVALID (accepted after T), RESTATED (superseded by a later eligible value), AMBIGUOUS (filed on T with no timestamp), and the cell-level
+    MISSING and CORPORATE_ACTION_UNRESOLVED (share basis that cannot be put on the price's split basis).  Engines refuse PIT_INVALID and AMBIGUOUS.
   * Delisted companies are kept: the archive holds every XBRL filer.
   * The valuation-date price is the TRADED, UNADJUSTED close with share counts on the same basis; total-return series are for outcomes and
     for past-return signals only.
@@ -17,7 +28,7 @@ RULES (Addendum A, binding)
 THE EXTRACTION IS THE SCREENER'S PRODUCTION EXTRACTOR (Addendum B).  `valuation/vendored/build_fundamentals_history.py` is a byte-identical copy of
 the screener-publish script (sha256 in valuation/vendored/MANIFEST.json, checked by a test): its tag ladders, accession votes, per-filer denies,
 scale corrections, noncontrolling-interest / restricted-cash scopes, capex investing closure and bank-revenue rules run UNCHANGED on a
-companyfacts document that has been cut to what was knowable (own-period facts, first filed, filed before the date).  Nothing imports the screener
+companyfacts document that has been cut to what was knowable at T (inputs: every eligible fact; outcomes: own-period, first-filed facts).  Nothing imports the screener
 repository; the copy is data.  Re-copy it when the screener's extractor changes (the test names the file to compare).
 Two documented additions sit ON TOP of the extractor and never alter a value it produced: (1) a `SUPPLEMENTS` ladder for fields the extractor
 leaves empty (E&P revenue and capex tags, preferred equity), each cell flagged `pit_supplement`; (2) a non-USD reporting currency is carried in its
@@ -28,7 +39,7 @@ API (dates are `datetime.date` or ISO strings; `asof` is the valuation date):
     pit = PitData(store_dir, zip_path=None, price_source=None, id_map=None, sic_source=None)
     pit.cik_for(ticker_or_cik) / ticker_for(cik) / tickers_for(cik)
     pit.company(cik)                                -> CompanyPit or None
-    pit.fiscal_years(cik, asof, mode="first_filed") -> {fye iso: FiscalYear}   (own annual report filed strictly before asof)
+    pit.fiscal_years(cik, asof, mode="as_known")    -> {fye iso: FiscalYear}   (own annual report eligible at asof; values as known at asof)
     pit.snapshot(cik, asof)                         -> Snapshot  (rows, base year L, cover shares, stub months, currency)
     pit.rows(cik, asof)                             -> {int fiscal year: row dict}, the extractor's field names plus 'fcf'
     pit.company_pit(cik, asof)                      -> the engines' CompanyPIT: series[field][period_end] -> Filed(value, period_end, filed,
@@ -39,8 +50,7 @@ API (dates are `datetime.date` or ISO strings; `asof` is the valuation date):
     pit.panel(ciks, fields)                         -> Panel; Panel.asof(date) -> {cik: {year: {field: value}}}
     pit.price_source                                -> a PriceSource (unadjusted close, split events, total-return index)
 
-`mode="latest_known"` runs the same extractor on everything filed before the date WITHOUT the own-period / first-filed cut: what the screener's
-history would have said on that day.  It exists to measure restatements and for the parity check; no engine, prior or metric may use it.
+`mode="as_known"` is the input rule above (the production extractor on everything eligible at T).  `mode="first_filed"` is the outcome rule.
 """
 import gzip
 import importlib.util
@@ -50,7 +60,7 @@ import sys
 import zipfile
 from collections import defaultdict, namedtuple
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 PIT_LAYER_VERSION = "2"
@@ -83,6 +93,69 @@ def add_months(d, n):
     idx = d.year * 12 + (d.month - 1) + n
     y, m0 = divmod(idx, 12)
     return date(y, m0 + 1, min(d.day, calendar.monthrange(y, m0 + 1)[1]))
+
+
+def _nth_weekday(year, month, weekday, n):
+    """The n-th (1-based; -1 = last) given weekday (Mon=0) of a month."""
+    import calendar
+    days = [d for d in range(1, calendar.monthrange(year, month)[1] + 1) if date(year, month, d).weekday() == weekday]
+    return date(year, month, days[n - 1] if n > 0 else days[-1])
+
+
+def et_is_dst(d):
+    """US Eastern daylight time on date `d` at 16:00 (the rule in force: from 2007 the second Sunday of March to the first Sunday of November;
+    before, the first Sunday of April to the last Sunday of October)."""
+    if d.year >= 2007:
+        return _nth_weekday(d.year, 3, 6, 2) <= d < _nth_weekday(d.year, 11, 6, 1)
+    return _nth_weekday(d.year, 4, 6, 1) <= d < _nth_weekday(d.year, 10, 6, -1)
+
+
+def decision_time_utc(d):
+    """16:00 US Eastern on date `d`, as a UTC datetime (the decision timestamp of a valuation date)."""
+    d = to_date(d)
+    return datetime(d.year, d.month, d.day, 16 + (4 if et_is_dst(d) else 5), 0, 0, tzinfo=timezone.utc)
+
+
+def parse_accepted(s):
+    """An EDGAR acceptance timestamp ('2019-03-01T21:15:34.000Z' or a header's '20190301161534' in Eastern time) as a UTC datetime, or None."""
+    if not s:
+        return None
+    s = str(s).strip()
+    try:
+        if "T" in s:
+            return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
+        if s.isdigit() and len(s) == 14:               # SGML header: Eastern wall-clock time
+            d = datetime(int(s[:4]), int(s[4:6]), int(s[6:8]), int(s[8:10]), int(s[10:12]), int(s[12:14]))
+            return (d + timedelta(hours=4 if et_is_dst(d.date()) else 5)).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return None
+
+
+class SubmissionsAcceptance:
+    """Acceptance timestamps from SEC submissions JSON files in a directory: `CIK##########.json` (filings.recent) and the files it lists under
+    filings.files.  `__call__(cik)` -> {accession: UTC datetime}."""
+
+    def __init__(self, directory):
+        self.dir = Path(directory)
+
+    def __call__(self, cik):
+        out = {}
+        p = self.dir / f"CIK{str(cik).zfill(10)}.json"
+        if not p.exists():
+            return out
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        blocks = [(doc.get("filings") or {}).get("recent") or {}]
+        for f in (doc.get("filings") or {}).get("files") or []:
+            q = self.dir / f.get("name", "")
+            if q.is_file():
+                blocks.append(json.loads(q.read_text(encoding="utf-8")))
+        for b in blocks:
+            for accn, acc in zip(b.get("accessionNumber") or [], b.get("acceptanceDateTime") or []):
+                t = parse_accepted(acc)
+                if t is not None:
+                    out[accn] = t
+        return out
 
 
 def _days(a, b):
@@ -152,7 +225,7 @@ Cell = namedtuple("Cell", "val tag unit accn filed form own flags")
 # ---- the store: companyfacts reduced to annual-report facts --------------------------------------------------------------------------
 
 def compact_company(obj):
-    """One companyfacts member -> {"cik", "name", "facts": {taxonomy: {tag: {unit: [[start, end, val, accn, filed, form], ...]}}}}.
+    """One companyfacts member -> {"cik", "name", "facts": {taxonomy: {tag: {unit: [[start, end, val, accn, filed, form, fy, fp], ...]}}}}.
 
     Keeps every tag of the annual-report forms (the extractor reads many tags, including whole families for its closure tests) and the dei cover-page
     share count of periodic reports.  A fact with no filing date cannot be placed in time and is dropped (counted); S-1 / F-1 and quarterly facts
@@ -174,13 +247,23 @@ def compact_company(obj):
                         no_filed += 1
                         continue
                     facts.setdefault(taxo, {}).setdefault(tag, {}).setdefault(unit, []).append(
-                        [v.get("start"), v.get("end"), v["val"], v.get("accn") or "", v["filed"], form])
+                        [v.get("start"), v.get("end"), v["val"], v.get("accn") or "", v["filed"], form, v.get("fy"), v.get("fp")])
     return {"cik": str(obj.get("cik", "")).zfill(10), "name": obj.get("entityName"), "facts": facts, "dropped_no_filed": no_filed,
             "layer_version": PIT_LAYER_VERSION}
 
 
 def _fact_dict(a):
     return {"start": a[0], "end": a[1], "val": a[2], "accn": a[3], "filed": a[4], "form": a[5]}
+
+
+def _unpack(r):
+    """(start, end, val, accn, filed, form) of a stored row (rows written before fy/fp were stored have six elements)."""
+    return r[0], r[1], r[2], r[3], r[4], r[5]
+
+
+PIT_VALID, PIT_INVALID, MISSING, AMBIGUOUS, RESTATED, CORPORATE_ACTION_UNRESOLVED = (
+    "PIT_VALID", "PIT_INVALID", "MISSING", "AMBIGUOUS", "RESTATED", "CORPORATE_ACTION_UNRESOLVED")
+INPUT_MODE, OUTCOME_MODE = "as_known", "first_filed"
 
 
 class Extraction:
@@ -193,7 +276,8 @@ class Extraction:
 class CompanyPit:
     """One company's stored facts and the as-of logic over them."""
 
-    def __init__(self, doc, ticker=None):
+    def __init__(self, doc, ticker=None, acceptance=None):
+        self.acceptance = acceptance or {}              # {accession: UTC datetime of EDGAR acceptance}
         self.cik = doc["cik"]
         self.name = doc.get("name")
         self.ticker = ticker
@@ -212,7 +296,8 @@ class CompanyPit:
                     continue
                 for tag, units in tags.items():
                     for unit, rows in units.items():
-                        for start, end, _v, accn, filed, form in rows:
+                        for row_ in rows:
+                            start, end, _v, accn, filed, form = _unpack(row_)
                             if end is None:
                                 continue
                             a = acc.setdefault(accn, {"filed": filed, "form": form, "period": None})
@@ -251,12 +336,32 @@ class CompanyPit:
                         "accns": {c[2] for c in cl}})
         return idx
 
-    # -- the cut: what was knowable, as first filed --
+    # -- eligibility: the decision timestamp is 16:00 ET on the valuation date --
+    def eligibility(self, asof_iso):
+        """f(accession, filed) -> "ok" | "invalid" | "ambiguous" at valuation date `asof_iso` (None: everything is ok).  With an acceptance
+        timestamp: ok iff accepted at or before 16:00 ET on the date.  Without one: ok when filed on an earlier date, ambiguous when filed on the
+        date itself (the time of day is unknown), invalid when later."""
+        if asof_iso is None:
+            return lambda accn, filed: "ok"
+        cut = decision_time_utc(asof_iso)
+        acc = self.acceptance
+
+        def f(accn, filed):
+            t = acc.get(accn)
+            if t is not None:
+                return "ok" if t <= cut else "invalid"
+            if filed < asof_iso:
+                return "ok"
+            return "ambiguous" if filed == asof_iso else "invalid"
+        return f
+
+    # -- the cut: what was knowable at T --
     def _facts_cut(self, asof_iso, mode):
         """{tag: {"units": {unit: [fact dict]}}} merged (ifrs-full under us-gaap) + the dei dict + srt, from the facts that count at `asof_iso`
-        (None: no cutoff).  mode "first_filed": own-period facts only, earliest filing per (tag, unit, period); "latest_known": every fact filed
-        before the date (what the production extractor would have read)."""
-        acc = self.accessions() if mode == "first_filed" else None
+        (None: no cutoff).  mode "first_filed" (outcomes): own-period facts only, earliest filing per (tag, unit, period); "as_known" (inputs): every
+        eligible fact, so the latest filing known at the date, amendments and restated comparatives included (what the production extractor reads)."""
+        acc = self.accessions() if mode == OUTCOME_MODE else None
+        elig = self.eligibility(asof_iso)
         out = {}
         for taxo, tags in self.facts.items():
             if taxo == "dei":
@@ -266,10 +371,10 @@ class CompanyPit:
                 for unit, rows in units.items():
                     keep = {}
                     for r in rows:
-                        start, end, _v, accn, filed, form = r
-                        if asof_iso is not None and not filed < asof_iso:
+                        start, end, _v, accn, filed, form = _unpack(r)
+                        if elig(accn, filed) != "ok":
                             continue
-                        if mode == "first_filed":
+                        if mode == OUTCOME_MODE:
                             a = acc.get(accn)
                             if a is None or end is None or abs(_days(a["period"], end)) > FYE_CLUSTER_DAYS:
                                 continue
@@ -284,14 +389,16 @@ class CompanyPit:
         dei = {}
         for tag, units in ((self.facts.get("dei") or {}).items()):
             for unit, rows in units.items():
-                lst = [_fact_dict(r) for r in rows if asof_iso is None or r[4] < asof_iso]
+                lst = [_fact_dict(r) for r in rows if elig(r[3], r[4]) == "ok"]
                 if lst:
                     dei.setdefault(tag, {"units": {}})["units"][unit] = lst
         return out, dei
 
     @staticmethod
     def _currency(us, ifrs):
-        """The reporting currency: the unit of the balance-sheet and income tags with the most facts (other than shares, ratios and per-share)."""
+        """USD when the company files any dollar fact for the balance-sheet and income tags below (the production extractor reads dollars only, so a
+        foreign filer's USD convenience translation is what it reads); otherwise the unit of those tags with the most facts (shares, ratios and
+        per-share units excluded), which is then carried in its own currency and stamped."""
         count = defaultdict(int)
         for src in (ifrs, us):
             for tag in ("Assets", "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "NetIncomeLoss", "ProfitLoss", "Equity",
@@ -301,11 +408,11 @@ class CompanyPit:
                         count[unit] += len(rows)
         if not count:
             return "USD"
-        if count.get("USD", 0) * 2 >= max(count.values()):
-            return "USD"
+        if count.get("USD", 0) > 0:
+            return "USD"           # a filer with dollar facts (a 20-F convenience translation included) is read in dollars, as the production extractor reads it
         return max(count, key=count.get)
 
-    def extract(self, asof, mode="first_filed"):
+    def extract(self, asof, mode=INPUT_MODE):
         """The Extraction at `asof` (cached).  Runs the vendored production extractor on the cut document."""
         asof_iso = None if asof is None else to_date(asof).isoformat()
         key = (asof_iso, mode)
@@ -342,9 +449,11 @@ class CompanyPit:
         return ext
 
     # -- cells --
-    def _find_fact(self, ext, tag, end, want_duration):
-        """The fact behind a cell: tag, a period end within FYE_CLUSTER_DAYS of `end`, earliest filed."""
-        best = None
+    def _find_fact(self, ext, tag, end, want_duration, val=None):
+        """The fact behind a cell: the tag, a period end within FYE_CLUSTER_DAYS of `end`, and (when given) the cell's value; of several, the
+        earliest filed (the filing in which that value first appeared).  Falls back to the earliest filed fact of the tag and period when no fact
+        carries the value (a scale-corrected or summed cell)."""
+        best = fallback = None
         for t in str(tag).split("+"):
             for unit, rows in ((ext.facts.get(t) or {}).get("units") or {}).items():
                 for f in rows:
@@ -353,12 +462,15 @@ class CompanyPit:
                     if want_duration and f.get("start") is None:
                         continue
                     k = (f["filed"], f["accn"])
-                    if best is None or k < best[0]:
+                    if fallback is None or k < fallback[0]:
+                        fallback = (k, f, unit)
+                    if val is not None and is_num(f["val"]) and abs(f["val"] - val) <= 1e-9 * max(1.0, abs(val)) and (best is None or k < best[0]):
                         best = (k, f, unit)
-        return best
+        return best or fallback
 
-    def fiscal_years(self, asof, mode="first_filed"):
-        """{fye iso: FiscalYear}: the fiscal years that exist at `asof` (own annual report filed strictly before it); asof None = no cutoff."""
+    def fiscal_years(self, asof, mode=INPUT_MODE, states=False):
+        """{fye iso: FiscalYear}: the fiscal years that exist at `asof` (own annual report eligible at the decision time); asof None = no cutoff.
+        states=True marks each cell whose as-known value differs from the period's first-filed value with the flag RESTATED (a second extraction)."""
         ext = self.extract(asof, mode)
         out = {}
         B = extractor()
@@ -383,7 +495,7 @@ class CompanyPit:
                         cells[field] = Cell(float(val), "derived:ocf-capex", "USD", own["own_accn"], max(p.filed for p in parts), own["own_form"],
                                             True, ("derived",))
                     continue
-                hit = self._find_fact(ext, tag, pe, field in DURATION_FIELDS) if tag else None
+                hit = self._find_fact(ext, tag, pe, field in DURATION_FIELDS, val) if tag else None
                 if hit is not None:
                     _k, f, unit = hit
                     accn = overrides.get(field) or f["accn"]
@@ -399,6 +511,14 @@ class CompanyPit:
             stamps += [n for n in ext.notes if n.startswith("reporting_currency")]
             out[pe] = FiscalYear(pe, int(y), own["own_filed"], own["own_accn"], own["own_form"], cells, tuple(stamps),
                                  {k: v for k, v in row.items()}, ext.currency)
+        if states and mode == INPUT_MODE and out:
+            first = self.fiscal_years(asof, OUTCOME_MODE)
+            for pe, fy in out.items():
+                f1 = first.get(pe)
+                for field, c in list(fy.cells.items()):
+                    c1 = f1.cells.get(field) if f1 else None
+                    if c1 is not None and c1.val != c.val:
+                        fy.cells[field] = c._replace(flags=c.flags + (RESTATED,))
         return dict(sorted(out.items()))
 
     def _supplement(self, ext, pe, row, cells, own):
@@ -431,8 +551,9 @@ class CompanyPit:
         if "fcf" not in cells and is_num(ocf) and is_num(cx):
             row["fcf"] = ocf - cx
 
-    def concepts(self, asof, names=CONCEPT_TAGS, mode="first_filed"):
-        """{name: {period_end: Cell}}: raw concepts by name, own-period, first filed, annual-length flows or instants."""
+    def concepts(self, asof, names=CONCEPT_TAGS, mode=INPUT_MODE):
+        """{name: {period_end: Cell}}: raw concepts by name, as known at `asof` (mode first_filed: own-period, first filed), annual-length flows or
+        instants.  The value of a period is that of the latest eligible filing (as_known) or the first (first_filed)."""
         ext = self.extract(asof, mode)
         out = {}
         for name in names:
@@ -446,21 +567,58 @@ class CompanyPit:
                         if d is None or not DAYS_LO <= d <= DAYS_HI:
                             continue
                     k = (f["filed"], f["accn"])
-                    if f["end"] not in per or k < per[f["end"]][0]:
+                    better = f["end"] not in per or (k < per[f["end"]][0] if mode == OUTCOME_MODE else k > per[f["end"]][0])
+                    if better:
                         per[f["end"]] = (k, f, unit)
             if per:
                 out[name] = {pe: Cell(float(f["val"]), name, unit, f["accn"], f["filed"], f["form"], True, ()) for pe, (_k, f, unit) in per.items()}
         return out
 
+    def facts_table(self, asof, tags=None):
+        """Every stored fact as a record with its provenance state at `asof`: {cik, taxonomy, tag, unit, value, start, end, instant, dimensions, form,
+        filed, accepted_at, accession, amended, fy, fp, state}.  state: PIT_INVALID (accepted after the decision time), AMBIGUOUS (filed on the date
+        with no acceptance timestamp), RESTATED (eligible but superseded by a later eligible filing with a different value), else PIT_VALID.
+        `tags`: restrict to these tags.  The snapshot is built from the PIT_VALID and RESTATED-superseding records, so a number can name its accession."""
+        asof_iso = to_date(asof).isoformat()
+        elig = self.eligibility(asof_iso)
+        recs = []
+        for taxo, tg in self.facts.items():
+            for tag, units in tg.items():
+                if tags is not None and tag not in tags:
+                    continue
+                for unit, rows in units.items():
+                    for r in rows:
+                        start, end, val, accn, filed, form = _unpack(r)
+                        e = elig(accn, filed)
+                        t = self.acceptance.get(accn)
+                        recs.append({"cik": self.cik, "taxonomy": taxo, "tag": tag, "unit": unit, "value": val, "start": start, "end": end,
+                                     "instant": start is None, "dimensions": None, "form": form, "filed": filed,
+                                     "accepted_at": None if t is None else t.isoformat(), "accession": accn, "amended": form in ANNUAL_AMENDMENT,
+                                     "fy": r[6] if len(r) > 6 else None, "fp": r[7] if len(r) > 7 else None,
+                                     "state": {"ok": PIT_VALID, "invalid": PIT_INVALID, "ambiguous": AMBIGUOUS}[e]})
+        latest = {}
+        for x in recs:
+            if x["state"] == PIT_VALID:
+                k = (x["taxonomy"], x["tag"], x["unit"], x["start"], x["end"])
+                if k not in latest or (x["filed"], x["accession"]) > (latest[k]["filed"], latest[k]["accession"]):
+                    latest[k] = x
+        for x in recs:
+            if x["state"] == PIT_VALID:
+                top = latest[(x["taxonomy"], x["tag"], x["unit"], x["start"], x["end"])]
+                if top is not x and top["value"] != x["value"]:
+                    x["state"] = RESTATED
+        return recs
+
     def cover_shares(self, asof):
         """The cover-page share count of the latest periodic report filed strictly before `asof`: every class entry of that filing summed.
         {"value", "cover_date", "filed", "accn", "form", "n_entries"} or None."""
         asof_iso = to_date(asof).isoformat()
+        elig = self.eligibility(asof_iso)
         c = []
         for unit, rows in (((self.facts.get("dei") or {}).get(COVER_TAG)) or {}).items():
             if unit != "shares":
                 continue
-            c += [r for r in rows if r[4] < asof_iso and is_num(r[2]) and r[2] > 0]
+            c += [r for r in rows if elig(r[3], r[4]) == "ok" and is_num(r[2]) and r[2] > 0]
         if not c:
             return None
         last = max(r[4] for r in c)
@@ -836,8 +994,9 @@ def _split_between(events, a, b):
 class PitData:
     """The data root handed to every engine: `engine(ticker, asof, data_root)` receives a PitData."""
 
-    def __init__(self, store_dir, zip_path=None, price_source=None, id_map=None, sic_source=None):
+    def __init__(self, store_dir, zip_path=None, price_source=None, id_map=None, sic_source=None, acceptance_source=None):
         self.sic_source = sic_source
+        self.acceptance_source = acceptance_source        # cik -> {accession: UTC acceptance datetime}; None: filing dates only
         self.store_dir = Path(store_dir)
         self.zip_path = Path(zip_path) if zip_path else None
         self.price_source = price_source
@@ -900,7 +1059,8 @@ class PitData:
             return None
         with gzip.open(p, "rt", encoding="utf-8") as f:
             doc = json.load(f)
-        self._cache[cik] = CompanyPit(doc, ticker=self.ticker_for(cik))
+        self._cache[cik] = CompanyPit(doc, ticker=self.ticker_for(cik),
+                                      acceptance=self.acceptance_source(cik) if self.acceptance_source is not None else None)
         return self._cache[cik]
 
     def drop_cache(self):
@@ -908,11 +1068,11 @@ class PitData:
         self._snap.clear()
 
     # -- as-of views --
-    def fiscal_years(self, cik, asof, mode="first_filed"):
+    def fiscal_years(self, cik, asof, mode=INPUT_MODE):
         c = self.company(cik)
         return {} if c is None else c.fiscal_years(asof, mode)
 
-    def snapshot(self, cik, asof, mode="first_filed"):
+    def snapshot(self, cik, asof, mode=INPUT_MODE):
         """The Snapshot of a company at `asof` (cached until `drop_cache`); None when the company is not in the store or the archive."""
         k = (str(cik).zfill(10), to_date(asof).isoformat(), mode)
         if k not in self._snap:
@@ -945,7 +1105,7 @@ class PitData:
             return None
         CPIT, Filed, SicInfo = _engine_types()
         asof_d = to_date(asof)
-        fys = c.fiscal_years(asof_d)
+        fys = c.fiscal_years(asof_d, INPUT_MODE, states=True)
         series = {f: {} for f in ENGINE_FIELDS}
         reports = []
         for pe, fy in fys.items():
@@ -960,11 +1120,15 @@ class PitData:
         sr = self.sic(cik)
         notes = list(c.extract(asof_d).notes)
         ticker = ticker or self.ticker_for(cik) or f"CIK{cik}"
+        prov = {(f, pe): (RESTATED if RESTATED in fy.cells[f].flags else PIT_VALID) for pe, fy in fys.items() for f in ENGINE_FIELDS if f in fy.cells}
         if CPIT is None:
-            return PitCompany(ticker, asof_d, series, concepts, reports, sr, cik, shares, notes)
-        sic = None if sr is None else SicInfo(sr.code, sr.description, sr.source, sr.point_in_time)
-        return CPIT(ticker, asof_d, series=series, concepts=concepts, annual_reports=reports, sic=sic, cik=cik, shares_outstanding=shares,
-                    notes=notes)
+            obj = PitCompany(ticker, asof_d, series, concepts, reports, sr, cik, shares, notes)
+        else:
+            sic = None if sr is None else SicInfo(sr.code, sr.description, sr.source, sr.point_in_time)
+            obj = CPIT(ticker, asof_d, series=series, concepts=concepts, annual_reports=reports, sic=sic, cik=cik, shares_outstanding=shares,
+                       notes=notes)
+        obj.provenance = prov           # {(field, period_end): PIT_VALID | RESTATED}; a field/period not in it is MISSING
+        return obj
 
     # -- the universe --
     def universe(self, asof, ciks):
