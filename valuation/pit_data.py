@@ -34,6 +34,16 @@ Two documented additions sit ON TOP of the extractor and never alter a value it 
 leaves empty (E&P revenue and capex tags, preferred equity), each cell flagged `pit_supplement`; (2) a non-USD reporting currency is carried in its
 own units (the unit is relabelled to USD for the extractor and the company is stamped `reporting_currency`: its values are NOT dollars).
 
+QUARTERS (Addendum E 3): `pit.quarterly(cik, asof)` returns the quarterly facts of a company AS KNOWN at T under the same eligibility rule (16:00 ET
+acceptance; filing dates alone are conservative): every three-month value a 10-Q reports, the quarters that only a year-to-date figure gives (Q2 = six
+months - Q1, Q3 = nine months - six months), and the fourth quarter derived from the 10-K (FY - nine months).  Each record carries its tag, unit, period,
+value, kind (reported_3m | derived_ytd_difference | derived_q4 | reported_instant), form, filed, accepted_at, accession, amended, fy, fp, its source
+accessions, the first-reported value, and a provenance state (PIT_VALID, or RESTATED when a later eligible comparative changed the value).  `mode="first_filed"`
+gives each quarter's value from its own 10-Q (outcomes).  `pit.quarterly_rows(cik, asof, fields, max_quarters)` returns the shape the Muse layer's
+`CompanyFactsQuarters.quarters()` returns, so `PitQuarterSource(pit)` replaces that stopgap.  Quarterly facts are stored only for the tags in
+`quarter_fields()` (the production extractor's ladders for the income statement, cash flow and balance sheet); a store built before this addition has no
+`qfacts` and the call says so in its notes.
+
 API (dates are `datetime.date` or ISO strings; `asof` is the valuation date):
 
     pit = PitData(store_dir, zip_path=None, price_source=None, id_map=None, sic_source=None)
@@ -71,6 +81,7 @@ ANNUAL_FORMS = ANNUAL_ORIGINAL + ANNUAL_AMENDMENT
 COVER_FORMS = ANNUAL_FORMS + ("10-Q", "10-Q/A", "10-QT")
 COVER_TAG = "EntityCommonStockSharesOutstanding"
 STORE_TAXONOMIES = ("us-gaap", "ifrs-full", "srt", "dei")
+QUARTER_FORMS = ("10-Q", "10-Q/A", "10-QT")
 DAYS_LO, DAYS_HI = 350, 380          # a fiscal-year duration (52/53-week years included)
 FYE_CLUSTER_DAYS = 10                # period ends this close are the same fiscal year
 SHARE_COUNT_RATIO = 100.0            # a cover count 100x from the filed diluted count is a scale slip
@@ -221,6 +232,36 @@ DURATION_FIELDS = {"revenue", "operating_income", "pretax_income", "tax_provisio
 
 Cell = namedtuple("Cell", "val tag unit accn filed form own flags")
 
+_QUARTER_FIELDS = None
+
+
+def quarter_fields():
+    """{field: ("duration"|"instant", [tags in ladder order])}: the quarterly fields, taken from the production extractor's own ladders."""
+    global _QUARTER_FIELDS
+    if _QUARTER_FIELDS is None:
+        B = extractor()
+
+        def combined(f):
+            spec = B.FIELD_SPECS.get(f)
+            return list(spec["COMBINED"]) if spec else list(B.DURATION_TAGS[f])
+
+        dur = {f: ("duration", combined(f)) for f in ("revenue", "gross_profit", "operating_income", "pretax_income", "tax_provision", "ocf", "capex", "da")}
+        dur["net_income"] = ("duration", ["NetIncomeLoss", "ProfitLossAttributableToOwnersOfParent", "ProfitLoss"])
+        for f in ("interest_expense", "sga", "sbc"):
+            dur[f] = ("duration", list(B.DURATION_TAGS[f]))
+        inst = {f: ("instant", list(B.INSTANT_TAGS[f])) for f in ("total_assets", "current_assets", "current_liabilities", "total_liabilities", "cash",
+                                                                   "receivables", "inventory", "ppe_net")}
+        inst["equity"] = ("instant", ["StockholdersEquity", "EquityAttributableToOwnersOfParent",
+                                      "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"])
+        for f in ("debt_lt_noncurrent", "debt_current"):
+            inst[f] = ("instant", list(B.INSTANT_FIELD_SPECS[f]["COMBINED"]))
+        _QUARTER_FIELDS = {**dur, **inst}
+    return _QUARTER_FIELDS
+
+
+def quarter_tags():
+    return {t for _k, tags in quarter_fields().values() for t in tags}
+
 
 # ---- the store: companyfacts reduced to annual-report facts --------------------------------------------------------------------------
 
@@ -231,6 +272,16 @@ def compact_company(obj):
     share count of periodic reports.  A fact with no filing date cannot be placed in time and is dropped (counted); S-1 / F-1 and quarterly facts
     are not kept."""
     facts, no_filed = {}, 0
+    qfacts, qtags = {}, quarter_tags()
+    for taxo in ("us-gaap", "ifrs-full"):
+        for tag, cb in ((obj.get("facts") or {}).get(taxo) or {}).items():
+            if tag not in qtags:
+                continue
+            for unit, vals in ((cb or {}).get("units") or {}).items():
+                for v in vals:
+                    if v.get("form") in QUARTER_FORMS and v.get("filed") and v.get("val") is not None:
+                        qfacts.setdefault(taxo, {}).setdefault(tag, {}).setdefault(unit, []).append(
+                            [v.get("start"), v.get("end"), v["val"], v.get("accn") or "", v["filed"], v["form"], v.get("fy"), v.get("fp")])
     for taxo in STORE_TAXONOMIES:
         for tag, cb in ((obj.get("facts") or {}).get(taxo) or {}).items():
             for unit, vals in ((cb or {}).get("units") or {}).items():
@@ -248,7 +299,7 @@ def compact_company(obj):
                         continue
                     facts.setdefault(taxo, {}).setdefault(tag, {}).setdefault(unit, []).append(
                         [v.get("start"), v.get("end"), v["val"], v.get("accn") or "", v["filed"], form, v.get("fy"), v.get("fp")])
-    return {"cik": str(obj.get("cik", "")).zfill(10), "name": obj.get("entityName"), "facts": facts, "dropped_no_filed": no_filed,
+    return {"cik": str(obj.get("cik", "")).zfill(10), "name": obj.get("entityName"), "facts": facts, "qfacts": qfacts, "dropped_no_filed": no_filed,
             "layer_version": PIT_LAYER_VERSION}
 
 
@@ -282,6 +333,7 @@ class CompanyPit:
         self.name = doc.get("name")
         self.ticker = ticker
         self.facts = doc["facts"]
+        self.qfacts = doc.get("qfacts")                 # None: a store built before quarterly facts were kept
         self._acc = None
         self._ext = {}
 
@@ -573,6 +625,112 @@ class CompanyPit:
             if per:
                 out[name] = {pe: Cell(float(f["val"]), name, unit, f["accn"], f["filed"], f["form"], True, ()) for pe, (_k, f, unit) in per.items()}
         return out
+
+    # -- quarterly facts --
+    def _quarter_candidates(self, field, asof_iso, mode):
+        """{(start, end): (value, meta)} for one field: of the ladder's tags the first that has the period; of that tag's eligible filings the latest
+        (as_known) or the earliest (first_filed); annual-report facts (12-month and instants) and 10-Q facts together."""
+        kind, ladder = quarter_fields()[field]
+        elig = self.eligibility(asof_iso)
+        pools = [self.qfacts or {}, self.facts]
+        best = {}
+        for rank, tag in enumerate(ladder):
+            for taxo in ("us-gaap", "ifrs-full"):
+                for pool in pools:
+                    for unit, rows in (((pool.get(taxo) or {}).get(tag)) or {}).items():
+                        if unit != "USD":
+                            continue
+                        for r in rows:
+                            start, end, val, accn, filed, form = _unpack(r)
+                            if end is None or not is_num(val) or elig(accn, filed) != "ok":
+                                continue
+                            if (kind == "duration") != (start is not None):
+                                continue
+                            k = (start, end)
+                            cur = best.get(k)
+                            if cur is not None and cur[2] < rank:
+                                continue                    # a higher-priority tag already has the period
+                            key = (filed, accn)
+                            newer = cur is None or cur[2] > rank or (key < cur[1] if mode == OUTCOME_MODE else key > cur[1])
+                            if newer:
+                                best[k] = (val, key, rank, tag, form, r)
+        return best
+
+    def quarters(self, asof, fields=None, mode=INPUT_MODE):
+        """The quarterly records at `asof` (see the module docstring); [] with a note-bearing first element never: use `quarterly_notes`."""
+        asof_iso = None if asof is None else to_date(asof).isoformat()
+        acc = self.acceptance
+        out = []
+        for field, (kind, _ladder) in quarter_fields().items():
+            if fields is not None and field not in fields:
+                continue
+            latest = self._quarter_candidates(field, asof_iso, mode)
+            first = self._quarter_candidates(field, asof_iso, OUTCOME_MODE) if mode == INPUT_MODE else latest
+
+            def rec(start, end, value, qkind, sources, st, tag, unit="USD"):
+                src = [x for x in sources if x]
+                filed = max(x["filed"] for x in src)
+                last = max(src, key=lambda x: (x["filed"], x["accn"]))
+                t = acc.get(last["accn"])
+                restated = any(x.get("restated") for x in src)
+                return {"cik": self.cik, "field": field, "tag": tag, "unit": unit, "period_start": start, "period_end": end, "value": value, "kind": qkind,
+                        "form": last["form"], "filed": filed, "accepted_at": None if t is None else t.isoformat(), "accession": last["accn"],
+                        "amended": last["form"].endswith("/A"), "fy": last.get("fy"), "fp": last.get("fp"), "sources": sorted({x["accn"] for x in src}),
+                        "first_value": st, "state": RESTATED if restated else PIT_VALID}
+
+            def meta(k):
+                v = latest[k]
+                r = v[5]
+                f1 = first.get(k)
+                return {"value": v[0], "filed": v[1][0], "accn": v[1][1], "form": v[4], "tag": v[3], "fy": r[6] if len(r) > 6 else None,
+                        "fp": r[7] if len(r) > 7 else None, "restated": f1 is not None and f1[0] != v[0], "first": None if f1 is None else f1[0]}
+
+            if kind == "instant":
+                for (start, end) in latest:
+                    m = meta((start, end))
+                    out.append(rec(start, end, m["value"], "reported_instant", [m], m["first"], m["tag"]))
+                continue
+            keys = sorted(latest)
+
+            def dur(k):
+                return _days(k[0], k[1])
+
+            q3m = [k for k in keys if 80 <= (dur(k) or 0) <= 100]
+            ytd = [k for k in keys if (dur(k) or 0) > 100 and (dur(k) or 0) < 350]
+            fy = [k for k in keys if DAYS_LO <= (dur(k) or 0) <= DAYS_HI]
+            for k in q3m:
+                m = meta(k)
+                out.append(rec(k[0], k[1], m["value"], "reported_3m", [m], m["first"], m["tag"]))
+
+            def near(a, b, tol=12):
+                return a is not None and b is not None and abs(_days(a, b)) <= tol
+
+            have = {(r["period_start"], r["period_end"]) for r in out if r["field"] == field}
+
+            def known(start, end):
+                for k in keys:
+                    if near(k[0], start) and near(k[1], end):
+                        return k
+                return None
+            for y in ytd + fy:                                 # a year-to-date or full-year figure: difference against the shorter period that ends where it starts
+                for z in keys:
+                    if z == y or not near(z[0], y[0]):
+                        continue
+                    d_y, d_z = dur(y), dur(z)
+                    if d_z is None or d_y is None or not (80 <= d_y - d_z <= 100):
+                        continue
+                    if not (80 <= d_z <= 290):
+                        continue
+                    q = (z[1], y[1])                           # the quarter after z, to y's end
+                    if any(near(q[0], h[0], 3) and near(q[1], h[1], 12) for h in have):
+                        continue
+                    mq = meta(y)
+                    mz = meta(z)
+                    qkind = "derived_q4" if y in fy else "derived_ytd_difference"
+                    first_v = None if (mq["first"] is None or mz["first"] is None) else mq["first"] - mz["first"]
+                    out.append(rec(q[0], q[1], mq["value"] - mz["value"], qkind, [mq, mz], first_v, mq["tag"] if mq["tag"] == mz["tag"] else mq["tag"] + "-" + mz["tag"]))
+                    have.add(q)
+        return sorted(out, key=lambda r: (r["period_end"], r["field"]))
 
     def facts_table(self, asof, tags=None):
         """Every stored fact as a record with its provenance state at `asof`: {cik, taxonomy, tag, unit, value, start, end, instant, dimensions, form,
@@ -1476,6 +1634,39 @@ class PitData:
             return None, flags + ["share_basis_undetermined"]
         return cell.val * p, flags
 
+    def quarterly(self, cik, asof, fields=None, mode=INPUT_MODE):
+        """The quarterly records of a company at `asof` (see the module docstring): {"records": [...], "notes": [...]}.  Notes say when the store has
+        no quarterly facts (built before they were kept) or the company is unknown."""
+        c = self.company(cik)
+        if c is None:
+            return {"records": [], "notes": ["company_not_in_store"]}
+        if c.qfacts is None:
+            return {"records": [], "notes": ["store_has_no_quarterly_facts_rebuild_it"]}
+        return {"records": c.quarters(asof, fields, mode), "notes": []}
+
+    def quarterly_rows(self, cik, asof, fields=("revenue", "operating_income", "net_income"), max_quarters=6, mode=INPUT_MODE):
+        """The latest quarters as {"period_end", "filed", "accession", "accepted_at", "values": {field: value}, "prior_year": {field: value of the same
+        quarter a year earlier}, "kinds": {field: kind}, "states": {field: provenance state}} - the shape of the Muse layer's `CompanyFactsQuarters.quarters()`,
+        newest last.  A quarter is listed when any requested field has it (a quarter not yet derivable is absent)."""
+        recs = [r for r in self.quarterly(cik, asof, fields, mode)["records"] if r["kind"] != "reported_instant" and 80 <= (_days(r["period_start"], r["period_end"]) or 0) <= 100]
+        by = defaultdict(dict)
+        for r in recs:
+            by[r["period_end"]][r["field"]] = r
+        ends = sorted(by)
+        out = []
+        for e in ends:
+            tgt = date.fromisoformat(e) - timedelta(days=365)
+            prior = {}
+            for f in by[e]:
+                for pe in ends:
+                    if f in by[pe] and abs((date.fromisoformat(pe) - tgt).days) <= 12:
+                        prior[f] = by[pe][f]["value"]
+            first = min(by[e].values(), key=lambda r: (r["kind"] != "reported_3m", r["filed"]))
+            out.append({"period_end": e, "filed": first["filed"], "accession": first["accession"], "accepted_at": first["accepted_at"],
+                        "values": {f: r["value"] for f, r in by[e].items()}, "prior_year": prior,
+                        "kinds": {f: r["kind"] for f, r in by[e].items()}, "states": {f: r["state"] for f, r in by[e].items()}})
+        return out[-max_quarters:]
+
     def panel(self, ciks, fields=("revenue",)):
         """A Panel of the given fields over `ciks`: `Panel.asof(date)` is every company's rows as of that date (cached per date)."""
         return Panel(self, list(ciks), tuple(fields))
@@ -1508,3 +1699,15 @@ class Panel:
                 self.pit.evict(cik)
             self._views[a] = view
         return self._views[a]
+
+
+
+class PitQuarterSource:
+    """The Muse layer's `QuarterSource` interface over the shared layer: `quarters(cik, asof)` -> `PitData.quarterly_rows`.  Replaces
+    `CompanyFactsQuarters` (valuation/muse/documents.py on the muse branch)."""
+
+    def __init__(self, pit, fields=("revenue", "operating_income", "net_income"), max_quarters=6):
+        self.pit, self.fields, self.max_quarters = pit, tuple(fields), max_quarters
+
+    def quarters(self, cik, asof):
+        return self.pit.quarterly_rows(cik, asof, self.fields, self.max_quarters)
