@@ -316,6 +316,33 @@ def bootstrap_skill(records, engine, measure, k, n=N_RESAMPLES, seed=SEED):
     return _interval(draws)
 
 
+# ---- bounds on unobservable delistings (Addendum D) -------------------------------------------------------------------------------------
+
+BOUNDS = ("excluded", "minus100", "last_close")
+
+
+def view_for_bound(records, bound):
+    """The records with each horizon's excess return replaced by its value under `bound`: `excluded` (an unobservable delisting has no return and leaves
+    the sample), `minus100` (it is -100%), `last_close` (the return to the last bar held).  Outcomes that were observed or resolved are the same under
+    every bound.  A record with no `bounds` keeps its `excess`."""
+    out = []
+    for r in records:
+        b = r.get("bounds") or {}
+        ex = {h: (b[h][bound] if (h in b and b[h] is not None) else r["excess"].get(h)) for h in set(r["excess"]) | set(b)}
+        out.append(dict(r, excess=ex))
+    return out
+
+
+def gate_status(by_bound, bar, direction=">="):
+    """"pass" when the statistic meets the bar under EVERY bound, "fail" when it meets it under none, otherwise "not decided" (the bounds straddle the
+    bar: Addendum D, never "pass").  `by_bound`: {bound: value}; a nan value is "not decided"."""
+    vals = [v for v in by_bound.values()]
+    if any(v is None or v != v for v in vals):
+        return "not decided"
+    ok = [(v >= bar) if direction == ">=" else (v <= bar) if direction == "<=" else (v > bar) if direction == ">" else (v < bar) for v in vals]
+    return "pass" if all(ok) else "fail" if not any(ok) else "not decided"
+
+
 # ---- the summary --------------------------------------------------------------------------------------------------------------------
 
 def summarize(records, engines, yardsticks, horizons, value_engines=(), measures=("revenue", "operating_margin", "roc", "reinvestment_rate"),

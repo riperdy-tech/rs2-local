@@ -13,6 +13,10 @@ Delisting is a corporate-action event, modelled on CRSP's method (Addendum C 4):
   * a BANKRUPTCY is -100%;
   * a security that moved to OTC (`otc_continuation`) continues to be priced by the provider - if it has no bar, it is unobservable;
   * with no event on record the outcome is OUTCOME_UNOBSERVABLE: never an invented -100%.
+Addendum D (no paid data): an unresolved delisting - no event on record, or an event whose consideration / equity treatment code cannot read reliably - is
+OUTCOME_UNOBSERVABLE, and every return is reported under three BOUNDS (`bounds`): `excluded` (the name leaves the sample), `minus100` (the position is
+lost), `last_close` (the return to the last bar the provider holds, then held as cash).  An observed or resolved outcome has the same value under all
+three.  A security with a bar after the horizon, or with no entry price, has no bounds.
 After a delisting the proceeds are held as cash (no further return; the benchmark keeps moving, so the excess is measured to the horizon);
 `flags` says so.  A horizon beyond the end of the benchmark's data is `horizon_beyond_data`, not a missing security.
 """
@@ -58,7 +62,8 @@ def horizon_outcome(pit, key, asof, months, benchmark=BENCHMARK, coverage_only=F
     """{"status", "available", "ret", "bench", "excess", "flags"} for one security and horizon (see the module docstring for the statuses)."""
     src = pit.price_source
     d1 = src.target_date(asof, months)
-    out = {"status": UNOBSERVABLE, "available": False, "ret": None, "bench": None, "excess": None, "flags": []}
+    out = {"status": UNOBSERVABLE, "available": False, "ret": None, "bench": None, "excess": None, "flags": [],
+           "bounds": {"excluded": None, "minus100": None, "last_close": None}}
     a0 = src.entry_point(key, asof) if src.has_key(key) else None
     b0 = src.entry_point(benchmark, asof) if src.has_key(benchmark) else None
     b1 = src.adj_close(benchmark, d1) if src.has_key(benchmark) else None
@@ -76,20 +81,40 @@ def horizon_outcome(pit, key, asof, months, benchmark=BENCHMARK, coverage_only=F
         if not coverage_only:
             ret, bench = a1.price / a0.price - 1.0, b1.price / b0.price - 1.0
             out.update(ret=ret, bench=bench, excess=ret - bench)
+            out["bounds"] = {k: ret - bench for k in out["bounds"]}
         return out
     ev = src.delisting(key)
     if ev is None:
         out["flags"].append("no_delisting_event_on_record")
-        return out
-    ret, flags = _delisting_terminal(src, key, ev, a0.price)
-    out["flags"] += flags
+        ret, flags = None, []
+    else:
+        ret, flags = _delisting_terminal(src, key, ev, a0.price)
+        out["flags"] += flags
     if ret is None:
+        _unresolved_bounds(src, key, a0, b0, b1, d1, out, coverage_only)
         return out
     out.update(status=BANKRUPT if ev.get("type") == "bankruptcy" else ACQUIRED, available=True)
     if not coverage_only:
         bench = b1.price / b0.price - 1.0
         out.update(ret=ret, bench=bench, excess=ret - bench)
+        out["bounds"] = {k: ret - bench for k in out["bounds"]}
     return out
+
+
+def _unresolved_bounds(src, key, a0, b0, b1, d1, out, coverage_only):
+    """The three bounds of an unobservable delisting.  Only a security whose history ENDED before the horizon has them (a security that simply has no
+    bar at the horizon date but trades later is a data gap, not a delisting)."""
+    last = src.last_session(key) if src.has_key(key) else None
+    if last is None or last >= d1:
+        out["flags"].append("gap_not_delisting")
+        return
+    out["flags"].append("history_ended_before_horizon")
+    if coverage_only:
+        return
+    adj_last = src.adj_close(key, last)
+    bench = b1.price / b0.price - 1.0
+    out["bounds"] = {"excluded": None, "minus100": -1.0 - bench,
+                     "last_close": (adj_last.price / a0.price - 1.0 - bench) if adj_last is not None else None}
 
 
 def horizon_outcomes(pit, key, asof, horizons=HORIZONS, benchmark=BENCHMARK, coverage_only=False):
