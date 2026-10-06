@@ -251,21 +251,38 @@ def test_financial_excess_return_by_hand():
     assert r["price_to_tbv_implied"] == pytest.approx(expected / 1000.0)
 
 
-def test_financial_fades_to_the_industry_median_and_ends_at_it_floored_at_the_cost_of_equity():
-    p = {"g1": 0.03, "g_terminal": 0.03, "rote_target": 0.20}
-    c = {"growth_decay": Curve([1.0] * 3), "rote_retention": Curve([0.0] * 3), "excess_fade": Curve([0.0] * 3)}
-    # the excess has fully faded to the industry median 0.14 (above COE 0.10): RI_t = 0.04 x TBV_{t-1}, and the same in perpetuity
+def test_financial_terminal_excess_is_the_industry_median_excess_times_the_measured_long_run_retention():
+    """Addendum I4: RI_{N+1} = kappa x max(I - COE, 0) x TBV_N, kappa = the plateau (the last value) of the measured retention curve; the explicit years still fade to I."""
+    p = {"g1": 0.03, "g_terminal": 0.03, "rote_target": 0.14}
+    # the target return is the industry median 0.14 (above COE 0.10) and stays there in the explicit years whatever the retention: RI_t = 0.04 x TBV_{t-1}
     st = fin_state(industry_rote={"value": 0.14, "n": 50, "basis": "industry"})
-    r = fin.financial_chain(st, p, c, disc(coe=0.10), roll_forward=False, detail=True)
-    assert [y["rote_after_fade"] for y in r["years"]] == pytest.approx([0.14] * 3) and r["terminal_rote"] == pytest.approx(0.14)
     tbv = [1000.0, 1030.0, 1060.9]
     pv = sum(0.04 * tbv[i] / 1.1 ** (i + 1) for i in range(3))
-    tv = 0.04 * 1092.727 / 0.07
-    assert r["equity"] == pytest.approx(1000 + pv + tv / 1.1 ** 3, rel=1e-6)
-    # an industry median BELOW the cost of equity is floored at COE in perpetuity (no value destruction for ever), while the explicit years keep it
-    low = fin.financial_chain(fin_state(industry_rote={"value": 0.06, "n": 50, "basis": "industry"}), p, c, disc(coe=0.10), roll_forward=False, detail=True)
+    for kappa in (0.5, 1.0, 0.0):
+        c = {"growth_decay": Curve([1.0] * 3), "rote_retention": Curve([0.0] * 3), "excess_fade": Curve([0.9, 0.7, kappa])}
+        r = fin.financial_chain(st, p, c, disc(coe=0.10), roll_forward=False, detail=True)
+        assert [y["rote_after_fade"] for y in r["years"]] == pytest.approx([0.14] * 3)
+        assert r["terminal_excess_retention"] == kappa and r["terminal_rote"] == pytest.approx(0.10 + kappa * 0.04)
+        tv = kappa * 0.04 * 1092.727 / 0.07
+        assert r["equity"] == pytest.approx(1000 + pv + tv / 1.1 ** 3, rel=1e-6)
+    # kappa = 1 is the full median excess for ever (the round-2 reading); kappa = 0 leaves no terminal excess
+    assert fin.financial_chain(st, p, {"growth_decay": Curve([1.0] * 3), "rote_retention": Curve([0.0] * 3), "excess_fade": Curve([0.9, 0.7, 0.0])}, disc(coe=0.10),
+                               roll_forward=False)["pv_terminal_excess"] == 0.0
+    # an industry median BELOW the cost of equity: the explicit years keep it, the perpetuity has no excess (floored at 0, never a negative excess for ever)
+    c = {"growth_decay": Curve([1.0] * 3), "rote_retention": Curve([0.0] * 3), "excess_fade": Curve([0.0] * 3)}
+    low = fin.financial_chain(fin_state(industry_rote={"value": 0.06, "n": 50, "basis": "industry"}), dict(p, rote_target=0.06), c, disc(coe=0.10), roll_forward=False, detail=True)
     assert [y["rote_after_fade"] for y in low["years"]] == pytest.approx([0.06] * 3) and low["terminal_rote"] == pytest.approx(0.10)
     assert low["pv_terminal_excess"] == 0.0
+
+
+def test_the_priors_name_the_plateau_of_the_financial_excess_retention_at_its_longest_k_with_50_observations():
+    from valuation.priors import PopulationPriors
+    ks = [{"k": k, "n": n, "median": m} for k, n, m in ((1, 900, 0.80), (2, 700, 0.64), (3, 400, 0.52), (4, 120, 0.45), (5, 49, 0.99), (6, 30, 0.10), (7, 0, None))]
+    from valuation.priors import _curve_from_rows
+    cv = _curve_from_rows(ks, "median", "n", "excess_fade", "t", [])
+    assert cv.values[-1] == pytest.approx(0.45) and cv.values[3] == pytest.approx(0.45)      # k = 4 is the longest with n >= 50: held beyond
+    # a table that stops after k = 2 (n < 50 from k = 3) plateaus at k = 2
+    assert _curve_from_rows(ks[:2] + [dict(ks[2], n=10)], "median", "n", "excess_fade", "t", []).values[-1] == pytest.approx(0.64)
 
 
 def test_financial_full_fade_to_cost_of_equity_leaves_tangible_book():

@@ -414,7 +414,7 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
         "margin_path": at.get("margin_path"),
         "returns": {"roic3": st.get("roic3"), "industry_roic": st.get("industry_roic"), "ronic_terminal_at_p50_inputs": at.get("ronic_terminal"),
                     "ronic_path": at.get("ronic_path"), "industry_rote": st.get("industry_rote"), "rote_terminal_at_p50_inputs": at.get("terminal_rote"),
-                    "rote3": st.get("rote3")},
+                    "rote_terminal_excess_retention": at.get("terminal_excess_retention"), "rote3": st.get("rote3")},
         "terminal_growth": {"base": (res.get("terminal_growth") or {}).get("base"), "at_p50_inputs": at.get("terminal_growth")},
         "discount": {k: getattr(disc, k) for k in ("rf", "erp", "beta_unlevered", "beta_levered", "de_ratio", "de_basis", "tax", "kd_pretax", "coe", "wacc")},
         "discount_sources": {"beta": disc.sources.get("beta"), "beta_file_sha256": (disc.sources.get("beta_meta") or {}).get("file_sha256"),

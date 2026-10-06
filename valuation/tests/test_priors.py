@@ -395,6 +395,19 @@ def test_terminal_growth_is_not_a_prior(synthetic_vintage):
     assert "g_terminal" not in ps.inputs and not any("g_terminal" in u for u in ps.meta["unavailable"])
 
 
+def test_the_financial_priorset_reports_the_plateau_the_terminal_excess_retention_is_read_from(synthetic_vintage):
+    """Addendum I4: the plateau of the excess-retention curve and the k it was measured at (the longest k with n >= 50) are named in the PriorSet's meta."""
+    d, root, sic = synthetic_vintage
+    cik = next(c for c, s in sorted(sic.items()) if s == "6021")
+    cp, st = _state_for(root, sic, cik)
+    ps = PopulationPriors(d).for_company("financial", st, "2025-06-30")
+    cell = ps.meta["cells"]["excess_fade"]
+    assert cell["plateau"] == pytest.approx(ps.curves["excess_fade"].values[-1]) and 1 <= cell["plateau_k"] <= 7 and cell["plateau_n"] >= C.MIN_N
+    T = json.loads((d / "2024" / "tables.json").read_text(encoding="utf-8"))
+    rows = T["excess_fade_financial"]["ks"]
+    assert cell["plateau_k"] == max(r["k"] for r in rows if r["k"] <= cell["plateau_k"] and r["n"] >= C.MIN_N) and cell["plateau_n"] == rows[cell["plateau_k"] - 1]["n"]
+
+
 def test_the_engines_run_end_to_end_on_a_synthetic_priorset(synthetic_vintage):
     from valuation.discount_rate import DiscountRate
     d, root, sic = synthetic_vintage

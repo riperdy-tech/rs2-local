@@ -7,10 +7,15 @@
   ROTE_t     = rote_T + (ROTE_0 - rote_T) x rho_t                normalization of the return from the base year's ROTE_0 toward the through-cycle
                                                                  level rote_T (an input), speed rho = the measured normalization curve
   ROTE'_t    = I + (ROTE_t - I) x phi_t                          competitive fade of the excess return toward I, the median return on tangible equity of the company's industry at T on the
-                                                                 date's population (phi: the measured retention of ROTE's excess); in perpetuity ROTE' = max(I, COE) (Addendum H3)
+                                                                 date's population (phi: the measured retention of ROTE's excess)
   RI_t       = (ROTE'_t - COE) x TBV_{t-1}                       excess return (residual income) of year t
   TBV_t      = TBV_{t-1} x (1 + growth_t)
-  value      = TBV_0 + sum_{t=1..N} RI_t / (1+COE)^t  +  RI_{N+1} / (COE - g_T) / (1+COE)^N ,   RI_{N+1} = (ROTE'_N - COE) x TBV_N
+  value      = TBV_0 + sum_{t=1..N} RI_t / (1+COE)^t  +  RI_{N+1} / (COE - g_T) / (1+COE)^N ,   RI_{N+1} = kappa x max(I - COE, 0) x TBV_N
+
+TERMINAL EXCESS RETURN (Addendum I4).  In perpetuity the excess of the return on tangible equity over the cost of equity is the industry median's excess x kappa, the MEASURED long-run
+retention of ROTE's excess: the plateau of the measured retention curve (`excess_fade`), its value at the longest k with at least 50 observations (the curve holds it beyond).  Not
+the full median excess for ever (Addendum H3 is superseded for the terminal).  The excess stays floored at 0 (a perpetuity does not earn below the cost of equity, the
+stable-growth convention); the operating engine's terminal return on new capital is a different object (it prices growth only) and is unchanged.
   at the valuation date = value x (1 + COE)^(years since the base year end)
 
 ROTE_0 = net income / average tangible common equity of the base year (the ending balance in the first held year). Net income is the
@@ -94,7 +99,9 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
         tbv_prev = tbv
         g_last = g
     gT, gT_basis = terminal_growth_after(g_last, gT)
-    ri_next = (max(ind, coe) - coe) * tbv_prev            # Addendum H3: in perpetuity the industry median, floored at the cost of equity
+    kappa = phi.values[-1]                                # Addendum I4: the plateau of the measured retention of ROTE's excess (its value at the longest k with n >= 50)
+    excess_T = kappa * max(ind - coe, 0.0)                # the industry median's excess over the cost of equity x the retention, floored at 0
+    ri_next = excess_T * tbv_prev
     tv = ri_next / (coe - gT)
     pv_tv = tv * (1.0 + coe) ** (-N)
     value = st["tbv"] + pv_exp + pv_tv
@@ -107,7 +114,8 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     out = {"ev": value, "equity": max(eq_raw, 0.0), "equity_unfloored": eq_raw, "rules": rules, "equity_at_base_year_end": max(value, 0.0), "roll_forward_years": yrs,
            "roll_forward_factor": factor, "tv_share": (pv_tv / value) if value != 0 else None,
            "tbv_0": st["tbv"], "pv_explicit_excess": pv_exp, "pv_terminal_excess": pv_tv, "excess_share_of_value": pv_total_excess / value if value else None,
-           "price_to_tbv_implied": value / st["tbv"], "terminal_growth": {"value": gT, "basis": gT_basis}, "terminal_rote": max(ind, coe)}
+           "price_to_tbv_implied": value / st["tbv"], "terminal_growth": {"value": gT, "basis": gT_basis}, "terminal_rote": coe + excess_T,
+           "terminal_excess_retention": kappa, "terminal_excess_industry_median_over_coe": ind - coe}
     if detail:
         out["years"] = rows
     return out

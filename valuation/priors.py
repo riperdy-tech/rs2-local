@@ -485,6 +485,13 @@ class PopulationPriors(Priors):
             if cv is not None:
                 curves["excess_fade"] = cv
                 flags.append("excess_fade: a measured PROXY: the retention of ROTE's excess over the population median ROTE, not the fade toward the cost of equity")
+                k_used = 0
+                for r in ef["ks"]:
+                    if r.get("median") is None or r.get("n", 0) < C.MIN_N:
+                        break
+                    k_used = r["k"]
+                meta["cells"]["excess_fade"] = {"plateau": cv.values[-1], "plateau_k": k_used, "plateau_n": next(r["n"] for r in ef["ks"] if r["k"] == k_used),
+                                                "note": "Addendum I4: the terminal excess of the financial engine is the industry median's excess x this plateau (the value at the longest k with n >= 50)"}
         if "excess_fade" not in curves:
             unavailable.append("excess_fade: no measured curve")
         refs["ptbv_of_rote"] = self._ptbv_ref(T)
