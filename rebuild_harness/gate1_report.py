@@ -1,6 +1,6 @@
 """Build the gate-1 development report from a run folder: coverage, B1-B4 under the three bounds (PROVISIONAL), and the structural diagnostics.
 
-    python -m rebuild_harness.gate1_report RUN_DIR [--out-dir OUT] [--resamples 2000] [--extremes-dates 2019-12-31 2022-06-30]
+    python -m rebuild_harness.gate1_report RUN_DIR [--out-dir OUT] [--resamples 2000] [--extremes-dates 2019-12-31 2021-12-31]
 
 Writes gate1_dev_report.json and gate1_dev_report.md.  Reads records only; it forms no new return.  Every figure is PROVISIONAL (see gate1_metrics).
 """
@@ -37,7 +37,7 @@ def per_date(rows):
     return out
 
 
-def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2022-06-30"), adjusted_proxy=None):
+def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), adjusted_proxy=None):
     rows, counters, full = gm.load_run(run_dir, keep_all_for=tuple(extremes_dates))
     proxy_missing = None
     if adjusted_proxy is not None:
@@ -48,9 +48,9 @@ def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2022-06-30"), 
     rep = {"provisional": gm.PROVISIONAL, "price_basis": "adjusted-only proxy (IV/price, earnings and FCF yields times Close/Adj Close)" if adjusted_proxy else "run basis: traded close rebuilt from the split-adjusted Close and the split events",
            "adjusted_proxy_rows_without_both_bars": proxy_missing, "run_dir": str(run_dir), "n_valued": len(rows), "n_valued_ge_300M": len(big), "n_valued_lt_300M": len(small),
            "coverage": gm.coverage_tables(counters), "per_date": per_date(rows)}
-    rep["gate1_universe_ge_300M"] = gm.three_bounds(big, ">=300M", resamples)
-    rep["sub_300M_reported_separately"] = gm.three_bounds(small, "<300M", resamples)
-    rep["sensitivity_ge_300M_base_year_within_15_months"] = gm.three_bounds(big_fresh, ">=300M, base year <= 15 months old", resamples)
+    rep["gate1_universe_ge_300M"] = gm.three_bounds(big, ">=300M", resamples, return_end=gm.RETURN_DATES_END)
+    rep["sub_300M_reported_separately"] = gm.three_bounds(small, "<300M", resamples, return_end=gm.RETURN_DATES_END)
+    rep["sensitivity_ge_300M_base_year_within_15_months"] = gm.three_bounds(big_fresh, ">=300M, base year <= 15 months old", resamples, return_end=gm.RETURN_DATES_END)
     for label, rs in (("ge_300M", big), ("lt_300M", small)):
         rep.setdefault("diagnostics", {})[label] = {
             "vp_overall": gm.distribution_block([r["vp"] for r in rs]), "vp_by_family": gm.vp_by(rs, lambda r: r["family"]),
@@ -126,7 +126,7 @@ def main(argv=None):
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--out-dir", type=Path)
     ap.add_argument("--resamples", type=int, default=2000)
-    ap.add_argument("--extremes-dates", nargs="*", default=["2019-12-31", "2022-06-30"])
+    ap.add_argument("--extremes-dates", nargs="*", default=["2019-12-31", "2021-12-31"])
     ap.add_argument("--adjusted-proxy", type=Path, help="re-express the price-dependent scores on the adjusted-only proxy basis from this price file")
     a = ap.parse_args(argv)
     out = a.out_dir or a.run_dir

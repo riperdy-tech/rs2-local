@@ -262,7 +262,8 @@ def test_the_gate1_run_refuses_a_holdout_date_before_opening_any_data(tmp_path):
                         "--id-map", str(tmp_path / "nope.json")])
     assert not (tmp_path / "out").exists()                                   # nothing was created: the lock answers first
     dates = gate1_run.dev_dates()
-    assert len(dates) == 24 and dates[0] == "2017-03-31" and dates[-1] == "2022-12-31" and not holdout.touches_holdout(dates)
+    assert len(dates) == 16 and dates[0] == "2019-03-31" and dates[-1] == "2022-12-31" and not holdout.touches_holdout(dates)         # Addendum H6
+    assert [d for d in dates if d <= "2021-12-31"] == dates[:12] and dates[12:] == ["2022-03-31", "2022-06-30", "2022-09-30", "2022-12-31"]
     with pytest.raises(holdout.HoldoutRefused):                               # also with a freeze file that does not name this engine
         freeze = tmp_path / "freeze.json"
         freeze.write_text(json.dumps({"engines": {}}), encoding="utf-8")
@@ -304,3 +305,13 @@ def test_a_name_with_too_many_invalid_draws_is_refused_with_the_reason_and_the_c
     assert bad["n_draws"] == 400 and sum(bad["invalid_reasons"].values()) == 400 - bad["n_valid"] and bad["n_valid"] < 400 * 0.95
     fine = gate1.value_company(dict(prep, industry="Software"), ctx, _WideRonicPriors(0.04), rates, shares=50.0, n_draws=400)
     assert fine["status"] == "ok" and fine["n_valid"] >= 0.95 * 400 and sum(fine["invalid_reasons"].values()) == 400 - fine["n_valid"]       # the tail below P10 is a few draws: inside the 5%
+
+
+
+def test_no_price_outcome_is_formed_past_the_end_of_2022():
+    from datetime import date
+    from rebuild_harness import gate1_run as g
+    assert g.months_after("2021-12-31", 12) == date(2022, 12, 1) <= g.OUTCOMES_END and g.months_after("2022-03-31", 12) > g.OUTCOMES_END
+    assert [h for h in g.HORIZONS if g.months_after("2022-06-30", h) <= g.OUTCOMES_END] == [3, 6]
+    assert [h for h in g.HORIZONS if g.months_after("2019-03-31", h) <= g.OUTCOMES_END] == [3, 6, 12, 24, 36]
+    assert [h for h in g.HORIZONS if g.months_after("2021-12-31", h) <= g.OUTCOMES_END] == [3, 6, 12]

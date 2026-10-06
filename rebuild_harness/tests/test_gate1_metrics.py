@@ -201,3 +201,17 @@ def test_family_not_built_reasons_are_counted_by_kind():
     assert gm._reason_class("SIC 4911: regulated_utility_or_pipeline; family not built (SPEC 2)") == "family_not_built: regulated_utility_or_pipeline"
     assert gm._reason_class("SIC 6798: reit_or_real_estate; family not built (SPEC 2)") == "family_not_built: reit_or_real_estate"
     assert gm._reason_class("pre_profit: operating income <= 0 in 3 of the last 4 fiscal years known at the date; needs a survival and option model; family not built (Addendum H4)") == "family_not_built: pre_profit"
+
+
+def test_returns_use_the_dates_to_the_end_of_2021_and_forecast_quality_every_date():
+    rows = []
+    for k, d in enumerate(["2021-06-30", "2021-09-30", "2021-12-31", "2022-03-31", "2022-06-30"]):
+        for r in population(d, n=120, seed=60 + k):
+            r["g1_p50"], r["g_naive"], r["m1_p50"], r["m0"], r["out1"] = 0.1, 0.1, 0.1, 0.1, {"revenue": 110.0, "operating_margin": 0.1}
+            rows.append(r)
+    res = gm.three_bounds(rows, "t", n_resamples=50, return_end="2021-12-31")
+    assert res["return_dates"] == ["2021-06-30", "2021-09-30", "2021-12-31"] and res["B1"]["excluded"]["n_dates"] == 3 and res["B2"]["excluded"]["n_dates"] == 3
+    assert len(res["b4_dates"]) == 5 and res["B4"]["revenue_growth"]["n"] == 600 and res["B4_return_dates_only"]["revenue_growth"]["n"] == 360
+    assert res["B3"]["n"] == 360 and res["B3_all_dates"]["n"] == 600
+    every = gm.three_bounds(rows, "t", n_resamples=50)
+    assert every["B1"]["excluded"]["n_dates"] == 5

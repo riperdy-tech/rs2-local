@@ -18,6 +18,9 @@ The bars (registration section 5), computed under each survivorship bound of Add
   B4  the median absolute error of the engine's next-fiscal-year revenue growth (its year-1 growth at the prior's P50 inputs) and operating margin against the
       first-filed outcome must not exceed the naive baseline's (trailing 3-year revenue CAGR; margin held), for the operating and commodity families.
 A bar's status over the bounds is `metrics.gate_status` (pass / fail / not decided).  A bar that needs a return and has no dates with enough names is "not computed".
+
+DATES (Addendum H6).  B1 and B2 (returns) use the dates up to RETURN_DATES_END = 2021-12-31, whose 12-month outcomes end by 2022-12-31 and so never overlap the
+2023-2024 holdout years; B3 is reported on the same dates and, beside it, on every date; B4 (forecast quality) uses every development date, the 2022 dates included.
 """
 import gzip
 import json
@@ -31,6 +34,7 @@ from backtest_phase2.metrics import rankdata_avg, spearman
 from . import metrics as hm
 
 PROVISIONAL = "PROVISIONAL: local month-end price proxy, survivors only (Addendum G); not counted toward gate 1"
+RETURN_DATES_END = "2021-12-31"    # Addendum H6: the last development date whose 12-month outcome ends by 2022-12-31
 BOUNDS = hm.BOUNDS
 HORIZON = 12
 VP_LOW, VP_HIGH = 0.4, 2.5
@@ -345,15 +349,20 @@ def b4(rows, n_resamples=hm.N_RESAMPLES):
 
 # ---- the bars over the three bounds ---------------------------------------------------------------------------------------------------
 
-def three_bounds(rows, universe_label, n_resamples=hm.N_RESAMPLES, old_engine_iqr=None, yardsticks=YARDSTICKS):
-    rbd = by_date(rows)
-    out = {"universe": universe_label, "n_valued": len(rows), "provisional": PROVISIONAL, "yardsticks_used": list(yardsticks),
+def three_bounds(rows, universe_label, n_resamples=hm.N_RESAMPLES, old_engine_iqr=None, yardsticks=YARDSTICKS, return_end=None):
+    """B1-B4 for `rows`.  `return_end` (an ISO date; Addendum H6): B1, B2 and B3 use the dates up to it, B4 every date; None uses every date for all of them."""
+    ret_rows = rows if return_end is None else [r for r in rows if r["date"] <= return_end]
+    rbd = by_date(ret_rows)
+    out = {"universe": universe_label, "n_valued": len(rows), "n_valued_return_dates": len(ret_rows), "provisional": PROVISIONAL, "yardsticks_used": list(yardsticks),
+           "return_dates": sorted(rbd), "b4_dates": sorted({r["date"] for r in rows}), "return_end": return_end,
            "note_sixth_yardstick": "the old engine is not computed point in time here (see the report): B1 and B2 use five yardsticks, not six"}
     out["B1"] = {b: b1(rbd, b, yardsticks, n_resamples) for b in BOUNDS}
     out["B1_rank_dependent_variant"] = {b: {k: v for k, v in b1(rbd, b, yardsticks, n_resamples, y_is_rank=True).items() if k != "by_date"} for b in BOUNDS}
     out["B2"] = {b: b2(rbd, b, yardsticks, n_resamples) for b in BOUNDS}
-    out["B3"] = b3(rows, old_engine_iqr)
+    out["B3"] = b3(ret_rows, old_engine_iqr)
+    out["B3_all_dates"] = b3(rows, old_engine_iqr)
     out["B4"] = b4(rows, n_resamples)
+    out["B4_return_dates_only"] = b4(ret_rows, n_resamples)
     for bar in ("B1", "B2"):
         by = {b: out[bar][b] for b in BOUNDS}
         sts = {b: v["status"] for b, v in by.items()}

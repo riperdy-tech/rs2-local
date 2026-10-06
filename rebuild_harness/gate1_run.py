@@ -1,8 +1,8 @@
 """The gate-1 run on the DEVELOPMENT dates (registration REGISTRATION_gate1_DRAFT.md; brief T-integrate).  Code only: no GPU, no model, no server, no network.
 
-    python -m rebuild_harness.gate1_run --out-dir OUT [--dates 2019-12-31 2022-06-30] [--workers 8] [--limit-ciks N]
+    python -m rebuild_harness.gate1_run --out-dir OUT [--dates 2019-12-31 2021-06-30] [--workers 8] [--limit-ciks N]
 
-For each valuation date (default: the 24 quarter-ends 2017-03-31 .. 2022-12-31) and each company in the id map it writes one record: the status of the
+For each valuation date (default: the 16 quarter-ends 2019-03-31 .. 2022-12-31, Addendum H6) and each company in the id map it writes one record: the status of the
 company (valued, or the named reason it was not), the engine's value per share with its P10..P90, the secondary and the disagreement, the discount rate and
 its sources, the inputs at the prior's quantiles, the price and market cap, the five yardsticks, the outcomes and the fundamental outcomes.  A date is two
 passes (see valuation/gate1.py): prepare every company, measure the population context, value every company.
@@ -61,10 +61,15 @@ def gate1_engine(ticker, asof, data_root):
     raise RuntimeError("gate1_engine values a whole valuation date; run rebuild_harness.gate1_run")
 
 
+DEV_FIRST_YEAR, DEV_LAST_YEAR = 2019, 2022
+OUTCOMES_END = date(2022, 12, 31)       # Addendum H6: no price outcome is formed past this date, so none reaches the 2023-2024 holdout years
+
+
 def dev_dates():
-    """The 24 quarter-ends from 2017-03-31 to 2022-12-31."""
+    """The 16 quarter-ends from 2019-03-31 to 2022-12-31 (Addendum H6): 2019-03-31 .. 2021-12-31 (12 dates) serve the return metrics, 2022 (4 dates) forecast quality
+    (B4) only.  History starts with fiscal year 2009 and the priors need years behind and ahead, so 2017 and 2018 hold nothing to value."""
     out = []
-    for y in range(2017, 2023):
+    for y in range(DEV_FIRST_YEAR, DEV_LAST_YEAR + 1):
         for m, d in ((3, 31), (6, 30), (9, 30), (12, 31)):
             out.append(date(y, m, d).isoformat())
     return out
@@ -106,8 +111,15 @@ def _best_ticker(pit, cik, d):
     return mcs[0][0], mcs[0][1], len(cands) - 1
 
 
+def months_after(d, h):
+    y, m = divmod(pdm.to_date(d).month - 1 + h, 12)
+    y += pdm.to_date(d).year
+    return date(y, m + 1, 1)
+
+
 def _attach_outcomes(rec, pit, cik, key, d, snap):
-    ho = outcomes.horizon_outcomes(pit, key, d, HORIZONS) if key else {h: {"available": False, "status": outcomes.UNOBSERVABLE} for h in HORIZONS}
+    hz = tuple(h for h in HORIZONS if months_after(d, h) <= OUTCOMES_END)            # only horizons that end inside the development years (Addendum H6)
+    ho = outcomes.horizon_outcomes(pit, key, d, hz) if (key and hz) else {h: {"available": False, "status": outcomes.UNOBSERVABLE} for h in hz}
     rec["excess"], rec["ret"], rec["bounds"], rec["outcome_status"] = {}, {}, {}, {}
     for h, o in ho.items():
         rec["excess"][h], rec["ret"][h], rec["bounds"][h] = o.get("excess"), o.get("ret"), o.get("bounds")
