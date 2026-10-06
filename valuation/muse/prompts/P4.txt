@@ -1,0 +1,21 @@
+# template P4, version 1: the long run and the risks
+{{HEADER}}
+
+TASK. Place this company inside the population distribution of its long-run growth, the growth it can sustain once the explicit forecast years are over, and name the three most material risks to the inputs. The distribution is in section R; it describes companies in a similar state to this one (section S). Use the filed figures (F), the company's own documents (D) and the company's state (S).
+
+INPUTS TO PLACE
+{{INPUTS}}
+
+HOW TO ANSWER
+- "percentile": a number from 5 to 95. 50 is the typical company in a similar state; 80 means you expect this company to be above 80 percent of them. Do not default to 50: put the company where its evidence puts it, and no further.
+- A percentile below 10 or above 90 needs hard evidence: at least one citation from section D or Q whose quote holds a firm commitment (a contract, an agreement, backlog, an award, a purchase order) or a figure together with company guidance, capacity or a stated plan. A general outlook sentence is not hard evidence.
+- "width": narrow, normal or wide. How sure you are of the position.
+- "reasons": one to six short statements of why the company belongs there (durability of its advantages, size of its market, the pressure on its position).
+- "citations": one to six objects {"section": "F" or "D" or "S", "quote": text}. Each quote is 12 to 600 characters of contiguous text copied exactly from that section (no ellipsis, no paraphrase, no changes to numbers or punctuation).
+- "risks": exactly three objects {"risk": one sentence, "input": the name of the input it would move most (one of {{ALL_INPUT_NAMES}}), "citation": {"section": ..., "quote": ...}}, the three most material risks to the company's outlook, each backed by a quote from the text.
+
+TEXT YOU MAY USE
+{{SECTIONS}}
+
+ANSWER with one JSON object and nothing else, in this shape:
+{{EXAMPLE}}

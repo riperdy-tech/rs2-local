@@ -1,0 +1,315 @@
+"""leakage_audit.py - the scripted part of the formal leakage audit that runs before the first AI replay (SPEC_rebuild Addendum C 8).
+
+It scans every pack section, every prompt template and every saved request for
+  * DATES AFTER T: ISO dates, long-form dates ("March 3, 2026", "3 March 2026"), month-year ("March 2026"), fiscal-year and quarter labels ("FY2027", "Q3 2026")
+    and bare years later than T's year;
+  * WORDING about data availability or replays ("replay", "back-test", "point-in-time", "as known", "knowledge cut-off", "hindsight", ...). The only date
+    statement a prompt may carry is the header line "Analysis date: <T>" (checked exactly);
+  * for pass-1 requests (P1-P5), the WORDS that must never appear in them (the bare word price, market cap, consensus, valuation, news, returns of the
+    stock, ...);
+  * IDENTITY: a manifest whose company name, ticker or industry is not stamped "as_of_T" (current names and tickers after mergers).
+A finding is a VIOLATION anywhere in a header, a template, a section built by code (F, Q, S, R) or a document item's header line, and a REVIEW inside the
+verbatim body of a document item (section D): a company's own filing legitimately says "we expect ... in 2027" and "available for sale"; the
+coordinator reads those. Nothing here decides: the report (markdown + json) is READ by the coordinator, with the checklist at its end.
+
+    python -m valuation.muse.leakage_audit <run_dir or runs root> [--out report.md] [--strict]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from dataclasses import dataclass, asdict
+from datetime import date
+from pathlib import Path
+from typing import List, Optional
+
+from valuation import pit_data as pdm
+
+from .prompting import PROMPT_DIR, prompt_files
+
+MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+_MON = {m.lower(): i + 1 for i, m in enumerate(MONTHS)}
+_MON.update({m[:3].lower(): i + 1 for i, m in enumerate(MONTHS)})
+_MON["sept"] = 9
+_MONRE = "|".join(sorted(_MON, key=len, reverse=True))
+
+ISO = re.compile(r"(?<![\d-])(\d{4})-(\d{2})-(\d{2})(?![\d])")
+LONG = re.compile(r"\b(" + _MONRE + r")\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b", re.I)
+DMY = re.compile(r"\b(\d{1,2})\s+(" + _MONRE + r")\.?,?\s+(\d{4})\b", re.I)
+MONYEAR = re.compile(r"\b(" + _MONRE + r")\.?,?\s+(\d{4})\b", re.I)
+FISCAL = re.compile(r"\b(?:FY|fiscal(?:\s+year)?)\s*'?(\d{4})\b", re.I)
+QTR = re.compile(r"\bQ[1-4]\s*'?\s*(\d{4})\b|\b[1-4]Q\s*'?(\d{4})\b")
+YEAR = re.compile(r"(?<![\d.,$])((?:19|20)\d{2})(?!\d|[.,]\d)")
+
+WORDING = [re.compile(p, re.I) for p in (
+    r"\breplay\w*", r"\bback-?test\w*", r"\bsimulat\w*", r"\bpoint[- ]in[- ]time\b", r"\bas[- ]known\b", r"\bdata availab\w*",
+    r"\bavailab(?:le|ility)\s+(?:at|as of|on|before|then)\b", r"\bknowledge\s+cut-?off\b", r"\btraining\s+(?:cut-?off|data)\b", r"\bhindsight\b",
+    r"\blook-?ahead\b", r"\bhistorical(?:ly)?\s+(?:date|analysis|exercise)\b", r"\bpretend\w*", r"\bimagine\s+(?:that\s+)?it\s+is\b",
+    r"\bknown\s+(?:at|by|on|as of)\s+(?:that|the)\b", r"\bas of that date\b", r"\bat that time\b", r"\bin the past\b")]
+
+# words that must not appear in a pass-1 prompt outside the verbatim body of a filing
+FORBIDDEN_PASS1 = [re.compile(p, re.I) for p in (
+    r"\bprice[sd]?\b", r"\bpricing\b", r"market[- ]cap\w*", r"\bmarket value\b", r"\bconsensus\b", r"\bprice target\w*", r"\banalyst (?:estimate|target|rating)s?\b",
+    r"\bvaluation\w*", r"\bintrinsic value\b", r"\b(?:under|over)valued\b", r"\bnews\b", r"\b(?:stock|share|total|excess|market) returns?\b",
+    r"\bshare price\b", r"\bstock price\b", r"\bupside\b", r"\bdownside\b", r"\bmultiples?\b")]
+
+HEADER_RE = re.compile(r"^Analysis date: (\d{4}-\d{2}-\d{2})$", re.M)
+
+
+@dataclass
+class Finding:
+    where: str
+    kind: str                # date_after_T | wording | forbidden_pass1 | header | identity
+    severity: str            # violation | review
+    match: str
+    context: str
+
+    def as_dict(self):
+        return asdict(self)
+
+
+def _ctx(text: str, a: int, b: int, w: int = 50) -> str:
+    return text[max(0, a - w):b + w].replace("\n", " ")
+
+
+def _safe_date(y, m, d) -> Optional[date]:
+    try:
+        return date(int(y), int(m), int(d))
+    except ValueError:
+        return None
+
+
+def dates_after(text: str, asof: date) -> List[tuple]:
+    """[(match text, start, end)] of every date-like statement later than `asof` (month-year: later than asof's month; fiscal / quarter / bare year:
+    later than asof's year)."""
+    found: List[tuple] = []
+    spans: List[tuple] = []
+
+    def take(m, d):
+        spans.append(m.span())
+        if d is not None and d > asof:
+            found.append((m.group(0), *m.span()))
+
+    for m in ISO.finditer(text):
+        take(m, _safe_date(m.group(1), m.group(2), m.group(3)))
+    for m in LONG.finditer(text):
+        take(m, _safe_date(m.group(3), _MON[m.group(1).lower().rstrip(".")], m.group(2)))
+    for m in DMY.finditer(text):
+        take(m, _safe_date(m.group(3), _MON[m.group(2).lower().rstrip(".")], m.group(1)))
+
+    def inside(s, e):
+        return any(a <= s and e <= b for a, b in spans)
+
+    for m in MONYEAR.finditer(text):
+        if inside(*m.span()):
+            continue
+        spans.append(m.span())
+        ym = (int(m.group(2)), _MON[m.group(1).lower().rstrip(".")])
+        if ym > (asof.year, asof.month):
+            found.append((m.group(0), *m.span()))
+    for rx in (FISCAL, QTR):
+        for m in rx.finditer(text):
+            if inside(*m.span()):
+                continue
+            spans.append(m.span())
+            y = int(next(g for g in m.groups() if g))
+            if y > asof.year:
+                found.append((m.group(0), *m.span()))
+    for m in YEAR.finditer(text):
+        if inside(*m.span()):
+            continue
+        if int(m.group(1)) > asof.year:
+            found.append((m.group(0), *m.span()))
+    return sorted(found, key=lambda t: t[1])
+
+
+def scan_text(text: str, asof: Optional[date], where: str, *, verbatim_body: bool = False, pass1: bool = False) -> List[Finding]:
+    """Findings in one piece of text. `verbatim_body`: the text is a company's own words (review, not violation). `pass1`: also apply FORBIDDEN_PASS1."""
+    sev = "review" if verbatim_body else "violation"
+    out: List[Finding] = []
+    if asof is not None:
+        for m, a, b in dates_after(text, asof):
+            out.append(Finding(where, "date_after_T", sev, m, _ctx(text, a, b)))
+    else:                                              # a template: no date at all
+        for rx in (ISO, LONG, DMY, MONYEAR, FISCAL, QTR, YEAR):
+            for m in rx.finditer(text):
+                out.append(Finding(where, "date_after_T", sev, m.group(0), _ctx(text, *m.span())))
+    for rx in WORDING:
+        for m in rx.finditer(text):
+            out.append(Finding(where, "wording", sev, m.group(0), _ctx(text, *m.span())))
+    if pass1:
+        for rx in FORBIDDEN_PASS1:
+            for m in rx.finditer(text):
+                out.append(Finding(where, "forbidden_pass1", sev, m.group(0), _ctx(text, *m.span())))
+    return out
+
+
+# ---- a section / a prompt / a pack -------------------------------------------------------------------------------------------------------
+
+def scan_section(name: str, text: str, asof: date, where: str, *, pass1: bool = False) -> List[Finding]:
+    """A pack section. For D the item header lines ("[D1] ... filed <date>") are metadata (violations); the item bodies are the company's words (review)."""
+    if name != "D":
+        return scan_text(text, asof, f"{where} section {name}", pass1=pass1)
+    out: List[Finding] = []
+    body: List[str] = []
+    for line in text.split("\n"):
+        if re.match(r"^\[D\d+\] ", line):
+            out += scan_text(line, asof, f"{where} section D header", pass1=pass1)
+        else:
+            body.append(line)
+    out += scan_text("\n".join(body), asof, f"{where} section D body", verbatim_body=True, pass1=pass1)
+    return out
+
+
+def split_user_text(text: str):
+    """[(section letter or None, text)] of a rendered prompt: the part before the first section marker and each "=== SECTION X: ..." block."""
+    parts = re.split(r"(?m)^=== SECTION ([FQDSR]):[^\n]*\n", text)
+    out = [(None, parts[0])]
+    for i in range(1, len(parts), 2):
+        out.append((parts[i], parts[i + 1]))
+    return out
+
+
+def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool) -> List[Finding]:
+    """A rendered user prompt. Its only date is the header line; the template text around the sections is scanned like code-built text."""
+    out: List[Finding] = []
+    m = HEADER_RE.search(text)
+    if m is None or not text.startswith("Analysis date: "):
+        out.append(Finding(where, "header", "violation", "", "the prompt does not open with the line 'Analysis date: <T>'"))
+    elif m.group(1) != asof.isoformat():
+        out.append(Finding(where, "header", "violation", m.group(0), f"the analysis date is not T = {asof.isoformat()}"))
+    if len(HEADER_RE.findall(text)) > 1:
+        out.append(Finding(where, "header", "violation", "", "more than one 'Analysis date:' line"))
+    for sec, chunk in split_user_text(text):
+        if sec is None:
+            chunk = HEADER_RE.sub("", chunk, count=1)
+            out += scan_text(chunk, asof, f"{where} prompt text", pass1=pass1)
+        else:
+            out += scan_section(sec, chunk, asof, where, pass1=pass1)
+    return out
+
+
+def audit_templates(directory=PROMPT_DIR) -> List[Finding]:
+    """The template files and the system text carry no date at all and no availability wording; P1-P5 carry none of the pass-1 forbidden words."""
+    out: List[Finding] = []
+    for p in prompt_files():
+        text = p.read_text(encoding="utf-8")
+        if p.suffix == ".json":
+            continue
+        is_pass1 = p.stem in ("P1", "P2", "P3", "P4", "P5", "system")
+        out += scan_text(text, None, f"template {p.name}", pass1=is_pass1)
+    return out
+
+
+def audit_pack(pack: dict, asof: date, where: str = "pack") -> List[Finding]:
+    out: List[Finding] = []
+    lines = pack["header"].split("\n")
+    if lines[0] != f"Analysis date: {asof.isoformat()}":
+        out.append(Finding(f"{where} header", "header", "violation", lines[0], "the first header line must be 'Analysis date: <T>'"))
+    out += scan_text("\n".join(lines[1:]), asof, f"{where} header")
+    for name, text in pack["sections"].items():
+        out += scan_section(name, text, asof, where, pass1=True)
+    for name, text in pack["r"].items():
+        out += scan_section("R", text, asof, f"{where} {name}", pass1=True)
+    idn = (pack.get("manifest") or {}).get("identity") or {}
+    for k in ("name_source", "ticker_source", "industry_source"):
+        if idn.get(k) != "as_of_T":
+            out.append(Finding(f"{where} manifest", "identity", "violation", f"{k}={idn.get(k)}", "identity must be stamped as of T (no current names or tickers)"))
+    for it in ((pack.get("manifest") or {}).get("documents") or {}).get("used") or []:
+        t = pdm.parse_accepted(it.get("accepted_at")) if it.get("accepted_at") else None
+        if t is not None and t > pdm.decision_time_utc(asof):
+            out.append(Finding(f"{where} manifest", "date_after_T", "violation", it.get("accession", ""), "a document accepted after the 16:00 ET cutoff is in section D"))
+        elif t is None and str(it.get("filed", "9999"))[:10] >= asof.isoformat():
+            out.append(Finding(f"{where} manifest", "date_after_T", "violation", it.get("accession", ""), "a document with no acceptance timestamp filed on or after T is in section D"))
+    return out
+
+
+# ---- a run directory and a tree --------------------------------------------------------------------------------------------------------------
+
+def audit_run_dir(run_dir) -> dict:
+    run_dir = Path(run_dir)
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    asof = date.fromisoformat(manifest["asof"])
+    findings: List[Finding] = []
+    n_requests = 0
+    if (run_dir / "pack.json").exists():
+        findings += audit_pack(json.loads((run_dir / "pack.json").read_text(encoding="utf-8")), asof)
+    sys_msg = manifest.get("system_message", "")
+    findings += scan_text(sys_msg, None, "system message", pass1=True)
+    for p in sorted(run_dir.glob("*_request.json")):
+        n_requests += 1
+        req = json.loads(p.read_text(encoding="utf-8"))
+        call = re.match(r"\d+_(P\d)", p.name)
+        pass1 = bool(call) and call.group(1) in ("P1", "P2", "P3", "P4", "P5")
+        msgs = req.get("messages") or []
+        for i, m in enumerate(msgs):
+            if m["role"] == "user" and i == 1:
+                findings += scan_prompt_text(m["content"], asof, p.name, pass1=pass1)
+            elif m["role"] == "user":                                  # the retry message (checker text) and nothing else
+                findings += scan_text(m["content"], asof, f"{p.name} retry message", pass1=pass1)
+            elif m["role"] == "assistant":
+                findings += scan_text(m["content"], asof, f"{p.name} earlier answer", verbatim_body=True)
+    return {"run_dir": str(run_dir), "ticker": manifest.get("ticker"), "asof": manifest["asof"], "n_requests": n_requests,
+            "findings": [f.as_dict() for f in findings],
+            "violations": sum(1 for f in findings if f.severity == "violation"), "reviews": sum(1 for f in findings if f.severity == "review")}
+
+
+def find_run_dirs(root) -> List[Path]:
+    root = Path(root)
+    if (root / "run_manifest.json").exists():
+        return [root]
+    return sorted(p.parent for p in root.rglob("run_manifest.json"))
+
+
+CHECKLIST = [
+    "Read every 'review' finding: a date after T inside a company's own words is normal for a forward-looking statement; a date that describes an event "
+    "after T is not.",
+    "Names and tickers: for each company confirm the name and ticker in the header are those in force at T (mergers, renames, redomiciles).",
+    "Cached snippets, file names and URLs: confirm no document item text or manifest field was produced from a source dated after T.",
+    "Read two or three full prompts end to end as the model sees them.",
+    "Confirm the templates' sha256 in run_manifest.json equal the frozen prompt set named in the registration.",
+]
+
+
+def audit(root) -> dict:
+    reports = [audit_run_dir(d) for d in find_run_dirs(root)]
+    tmpl = audit_templates()
+    return {"templates": [f.as_dict() for f in tmpl], "runs": reports,
+            "violations": sum(r["violations"] for r in reports) + sum(1 for f in tmpl if f.severity == "violation"),
+            "reviews": sum(r["reviews"] for r in reports)}
+
+
+def render_markdown(rep: dict, limit: int = 300) -> str:
+    L = ["# Muse leakage audit", "", f"Violations: {rep['violations']}; items for review: {rep['reviews']}; runs scanned: {len(rep['runs'])}", ""]
+    L.append("## Templates")
+    L += [f"- {f['where']}: {f['kind']} {f['match']!r} ({f['severity']}) ...{f['context']}..." for f in rep["templates"]] or ["- clean"]
+    for r in rep["runs"]:
+        L += ["", f"## {r['ticker']} {r['asof']} ({r['n_requests']} requests): {r['violations']} violations, {r['reviews']} review"]
+        for f in r["findings"][:limit]:
+            L.append(f"- [{f['severity']}] {f['where']}: {f['kind']} {f['match']!r} ...{f['context']}...")
+        if len(r["findings"]) > limit:
+            L.append(f"- ... {len(r['findings']) - limit} more in the json")
+    L += ["", "## Coordinator's checklist"] + [f"- [ ] {c}" for c in CHECKLIST]
+    return "\n".join(L) + "\n"
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("root", help="a run directory, or a folder holding run directories")
+    ap.add_argument("--out", default=None, help="write the markdown report here (and .json beside it)")
+    ap.add_argument("--strict", action="store_true", help="exit 1 when there is a violation")
+    a = ap.parse_args(argv)
+    rep = audit(a.root)
+    md = render_markdown(rep)
+    if a.out:
+        Path(a.out).write_text(md, encoding="utf-8")
+        Path(a.out).with_suffix(".json").write_text(json.dumps(rep, indent=1), encoding="utf-8")
+    else:
+        sys.stdout.write(md)
+    return 1 if (a.strict and rep["violations"]) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -391,6 +391,25 @@ Offline; no model, no GPU, no network. Tests: `pytest valuation rebuild_harness`
   `stocks-workspace/data/priors/` (`PRIORS_REPORT.md`). Tests: `valuation/tests/test_priors.py` (the no-look-ahead proof included).
 - `backtest_phase2/` - the earlier registered backtest harness, unchanged (branch review-2026-09/backtest-phase2, 40cb5cf).
 
+## Muse passes of the rebuild (`valuation/muse/`; SPEC_muse_passes.md)
+
+Offline; no model, no GPU, no server is started by any module. Tests: `pytest valuation/muse` (a mock model and PLACEHOLDER priors, labelled).
+
+- `pack_v2.py` - the pack: header ("Analysis date: <T>", name and ticker as of T, family, industry) and sections F (filed history), Q (latest quarters),
+  D (the company's own documents), S (state), R (population prior and mechanical baseline per input), all from the point-in-time layer at T. The builder has
+  no price argument. `documents.py` selects section D under the 16:00 ET acceptance rule (`sec_primary.build` is date-inclusive and cannot be bounded,
+  so only its text helpers and fetchers are reused) and reads quarterly facts for Q (the shared layer stores none).
+- `prompts/` - versioned templates P1-P6, `system.txt` and `inputs.json`; their sha256 and the hash of the set are recorded in every run's `run_manifest.json`.
+  `prompting.py` renders them; pass-1 rendering has no argument that can carry a price.
+- `runner.py` - one chat call per prompt to an OpenAI-compatible llama.cpp server (default `http://127.0.0.1:8080`), system prefix `Reasoning strength: xhigh`,
+  JSON only, one retry with the checker's message, every request and response saved; a transport failure stops the run (never a fallback value).
+- `checkers.py` - quotes (the revision-21 `crux_check` normalisation), the hard-evidence rule for positions outside P10..P90, schema.
+- `mapping.py` - percentile + width -> distribution on the prior's quantile function (width factors 0.5 / 1 / 1.5, a stated convention), curve positions,
+  `MusePriors` (feeds the unchanged family engines). `reverse.py` - the percentile of each input at which the value equals the price (extraordinary outside
+  P5..P95). `redteam.py` - the revision rule and the anchoring metric. `pipeline.py` - one company end to end. `leakage_audit.py` - the scripted leakage audit.
+- The priors object may supply `PriorSet.refs["curve_position"](name, state)`, the population distribution of the fraction of the initial gap still open
+  five years out (median = the measured curve's value at year 5); without it growth_persistence / margin_retention / rote_retention are not asked of Muse.
+
 ## Where the truth lives
 
 - `CLAUDE.md` — standard of proof (read it first)

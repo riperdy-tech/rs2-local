@@ -1,0 +1,20 @@
+# template P3, version 1: reinvestment and returns
+{{HEADER}}
+
+TASK. Place this company inside the population distribution of its return on new invested capital: what one dollar of growth costs this company, judged from its own record and its business model. A company that needs little new capital for each dollar of added revenue sits high; a company that must reinvest heavily sits low. The distribution is in section R; it describes companies in a similar state to this one (section S). Use the filed figures (F), the company's own documents (D) and the company's state (S).
+
+INPUTS TO PLACE
+{{INPUTS}}
+
+HOW TO ANSWER
+- "percentile": a number from 5 to 95. 50 is the typical company in a similar state; 80 means you expect this company to be above 80 percent of them. Do not default to 50: put the company where its evidence puts it, and no further.
+- A percentile below 10 or above 90 needs hard evidence: at least one citation from section D or Q whose quote holds a firm commitment (a contract, an agreement, backlog, an award, a purchase order) or a figure together with company guidance, capacity or a stated plan. A general outlook sentence is not hard evidence.
+- "width": narrow, normal or wide. How sure you are of the position.
+- "reasons": one to six short statements of why the company belongs there, drawing on its capital spending, working capital and business model.
+- "citations": one to six objects {"section": "F" or "D" or "S", "quote": text}. Each quote is 12 to 600 characters of contiguous text copied exactly from that section (no ellipsis, no paraphrase, no changes to numbers or punctuation).
+
+TEXT YOU MAY USE
+{{SECTIONS}}
+
+ANSWER with one JSON object and nothing else, in this shape:
+{{EXAMPLE}}

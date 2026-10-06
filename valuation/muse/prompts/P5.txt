@@ -1,0 +1,21 @@
+# template P5, version 1: synthesis
+{{HEADER}}
+
+TASK. Earlier analyses placed this company inside the population distributions of its judgment inputs. Their results are below, with the company's state (section S) and the distributions (section R). Check that the placements are coherent as a whole, then give the final position and width for every input.
+
+COHERENCE CHECK. Combinations of extreme positions need a stated reason with evidence. Examples: top-decile growth together with a top-decile margin and a top-decile return on new capital needs a moat that the evidence supports; a shrinking company with an expanding margin needs a cause; a long-lasting growth surge with a collapsing return on new capital contradicts itself. Where a combination is not supported, change a position and say why.
+
+THE EARLIER ANALYSES
+{{PASS1_RESULTS}}
+
+HOW TO ANSWER
+- "inputs": for every input ({{INPUT_NAMES}}) the final {"percentile": 5 to 95, "width": "narrow" or "normal" or "wide", "reasons": [...], "citations": [...]}. Citations are objects {"section", "quote"}; a quote must be copied exactly from section S or R below, or exactly from a quote cited in the earlier analyses above (keep its section letter).
+- A percentile below 10 or above 90 needs hard evidence: at least one citation from section D or Q (taken from the quotes the analyses cited) holding a firm commitment (a contract, an agreement, backlog, an award, a purchase order) or a figure together with company guidance, capacity or a stated plan. A general outlook sentence is not hard evidence.
+- "changes": a list with one {"input": name, "reason": text} for every input whose position or width you changed from the analyses (an empty list when none changed).
+- "coherence": a short text stating what the coherence check found.
+
+TEXT YOU MAY USE
+{{SECTIONS}}
+
+ANSWER with one JSON object and nothing else, in this shape:
+{{EXAMPLE}}
