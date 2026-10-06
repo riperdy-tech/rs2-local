@@ -309,8 +309,9 @@ def _per_share(summary: Optional[dict], shares: float, keys=("p10", "p25", "p50"
     return {k: summary[k] / shares for k in keys}
 
 
-def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Optional[float], n_draws: int = N_DRAWS) -> dict:
-    """Value one prepared company.  Returns a dict with `status` "ok" or "refused" (reasons named) and, when ok, every output of the registration."""
+def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Optional[float], n_draws: int = N_DRAWS, variant=None) -> dict:
+    """Value one prepared company.  Returns a dict with `status` "ok" or "refused" (reasons named) and, when ok, every output of the registration.
+    `variant`: a DIAGNOSTIC swap of one engine component (valuation/variants.py, Addendum J1); None is the registered engine and changes nothing."""
     out = {"status": None, "reasons": [], "stamps": list(prep["stamps"])}
     pit = unpack(prep["blob"])
     asof = pit.asof
@@ -338,6 +339,8 @@ def value_company(prep: dict, ctx: DateContext, priors, rates: Rates, shares: Op
     seed = seed_for(pit.cik or prep["cik"], asof)
     mod = FAMILY_ENGINES[family]
     kwargs = dict(n_draws=n_draws, seed=seed, corr=corr, state=st)
+    if variant is not None and not variant.neutral:
+        kwargs["variant"] = variant
     fixed = PreBuiltPriors(ps)
     def run_engine(kw):
         return mod.run(pit, fixed, disc, **kw)

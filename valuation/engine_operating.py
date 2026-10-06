@@ -61,6 +61,7 @@ from typing import Dict, Optional
 from .common import (Curve, DrawInvalid, EQUITY_FLOOR_RULE, InputError, LEVEL_REF_YEAR, MAX_HORIZON, QuantileDist, build_state, equity_bridge, level_path_weights,
                      model_disagreement, parse_date, simulate, terminal_growth_after, terminal_growth_rate, CompanyPIT, TERMINAL_G_ANCHOR)
 from .discount_rate import DiscountRate
+from . import variants as var
 
 ENGINE = "operating"
 INPUTS = ("g1", "margin_target", "ronic")      # margin_target / ronic = the margin / ROIC level five years on (Addenda H1, H3); terminal growth is not an input (H2)
@@ -94,12 +95,12 @@ def years_between(base_period_end: str, asof) -> float:
     return (parse_date(asof) - parse_date(base_period_end)).days / 365.25
 
 
-def _growth_reinvestment(g, drev, m_t, tax, ronic_t, nwc_ratio):
+def _growth_reinvestment(g, drev, m_t, tax, ronic_t, nwc_ratio, zero=False):
     """(reinvestment, priced).  Growth is priced as the revenue added x the long-run margin after tax / the return on new capital; where that cannot be priced (a non-positive
     margin or return) the reinvestment is 0 and `priced` is False (Addendum I2: not an invalid draw).  A year with no revenue added needs none; a shrinking year releases
-    working capital."""
+    working capital.  `zero` (a DIAGNOSTIC variant, Addendum J1 f): growth reinvestment is 0 for a growing year."""
     if g >= 0:
-        if drev == 0.0:
+        if drev == 0.0 or zero:
             return 0.0, True
         net = m_t * (1.0 - tax)
         if net <= 0 or ronic_t <= 0:
@@ -110,9 +111,11 @@ def _growth_reinvestment(g, drev, m_t, tax, ronic_t, nwc_ratio):
 
 def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], disc: DiscountRate, *,
                     operating_leases_in_cash_flow: bool = True, maint_gap_floor: Optional[float] = 0.0,
-                    roll_forward: bool = True, detail: bool = False) -> dict:
+                    roll_forward: bool = True, detail: bool = False, variant=None) -> dict:
     """One deterministic pass of the chain for point inputs p = {g1, g_terminal, margin_target (the margin level five years on), ronic (the ROIC level five years on)}.
-    DrawInvalid only for numerical impossibility (Addendum I2); the rules applied to the draw are in the result's `rules`."""
+    DrawInvalid only for numerical impossibility (Addendum I2); the rules applied to the draw are in the result's `rules`.
+    `variant`: a DIAGNOSTIC swap of one component (valuation/variants.py); None is the registered engine."""
+    zero_reinv = variant is not None and variant.reinvestment == "zero"
     gd, mr, rfade = curves["growth_decay"], curves["margin_retention"], curves["ronic_fade"]
     N = len(gd)
     if N > MAX_HORIZON:
@@ -151,7 +154,7 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
         ebit = m * rev
         nopat = ebit - tax * max(ebit, 0.0)
         ronic_t = roic0 + (ronic - roic0) * wr[t - 1]
-        reinv, priced = _growth_reinvestment(g, rev - rev_prev, m5, tax, ronic_t, nwc)
+        reinv, priced = _growth_reinvestment(g, rev - rev_prev, m5, tax, ronic_t, nwc, zero_reinv)
         if not priced:
             unpriced_years.append(t)
         maint = gap * rev
@@ -181,7 +184,11 @@ def operating_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
     kappa = rfade.values[-1]                    # Addendum J3: the plateau of the measured ROIC-excess retention (its value at the longest k with n >= 50)
     ronic_formula = wacc + kappa * (ind_med - wacc)
     ronic_TV = max(ronic_formula, wacc)         # floored at WACC only where the formula goes below it (I < WACC); the flag below says so
-    reinv_T, priced_T = _growth_reinvestment(gT, rev_T - rev_prev, m5, tax, ronic_TV, nwc)
+    if variant is not None and variant.terminal_ronic == "industry_median":
+        ronic_TV = max(ind_med, wacc)           # DIAGNOSTIC (J1 c): round 3's rule
+    elif variant is not None and variant.terminal_ronic == "wacc":
+        ronic_TV = wacc                         # DIAGNOSTIC (J1 c)
+    reinv_T, priced_T = _growth_reinvestment(gT, rev_T - rev_prev, m5, tax, ronic_TV, nwc, zero_reinv)
     if not priced_T:
         raise DrawInvalid("terminal growth reinvestment cannot be priced")       # unreachable for a draw that passed the rules above: a bug, never a repair
     fcff_T = nopat_T - reinv_T - gap * rev_T
@@ -228,9 +235,12 @@ def capital_intensity_check(st, p, disc) -> dict:
 def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, seed: int = 20261006, corr=None,
         price_per_share: Optional[float] = None, operating_leases_in_cash_flow: bool = True,
         maint_gap_floor: Optional[float] = 0.0, roll_forward: bool = True, state: Optional[dict] = None,
-        engine: str = ENGINE, family: str = "operating", curves_override: Optional[Dict[str, Curve]] = None) -> dict:
+        engine: str = ENGINE, family: str = "operating", curves_override: Optional[Dict[str, Curve]] = None, variant=None) -> dict:
     """Value one company at pit.asof: state from the filings, priors for its state, a distribution of equity value, the secondary
-    cross-check and the model disagreement. A refusal names every gap."""
+    cross-check and the model disagreement. A refusal names every gap.
+    `variant`: a DIAGNOSTIC swap of one component (valuation/variants.py); None is the registered engine."""
+    if var.is_neutral(variant):
+        variant = None
     st = state if state is not None else build_state(pit)
     gaps = state_gaps(st)
     if gaps:
@@ -245,14 +255,23 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
     ref = ps.refs.get("ev_fcf_multiple")
     g_term = terminal_growth_rate(disc.rf)
     dists = {k: v for k, v in ps.inputs.items() if k != "g_terminal"}        # a prior may still carry one (placeholders); the date's value replaces it
+    hold_margin = False
+    if variant is not None:                                                  # DIAGNOSTIC swaps (Addendum J1), each exactly one component
+        curves = var.apply_to_curves(variant, curves)
+        dists = var.scaled_dists(dists, variant.width)
+        hold_margin = variant.margin == "held"
+        if variant.terminal_g == "flat":
+            g_term = TERMINAL_G_ANCHOR
 
     def chain(draw):
         draw = dict(draw, g_terminal=g_term)
+        if hold_margin:
+            draw["margin_target"] = st["op_margin"]
         mult = None
         if ref is not None:
             mult = ref(st, draw, disc)
         r = operating_chain(st, draw, curves, disc, operating_leases_in_cash_flow=operating_leases_in_cash_flow,
-                            maint_gap_floor=maint_gap_floor, roll_forward=roll_forward)
+                            maint_gap_floor=maint_gap_floor, roll_forward=roll_forward, variant=variant)
         if ref is not None:
             if mult is None:
                 r["secondary_equity"], r["secondary_reason"] = None, "population multiple not defined for this draw"
@@ -265,10 +284,12 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
 
     dist = simulate(chain, dists, n_draws, seed, corr, price_per_share, st.get("shares_outstanding"))
     mid = dict(_median_point(dists), g_terminal=g_term)
+    if hold_margin:
+        mid["margin_target"] = st["op_margin"]
     at_median = None
     try:
         at_median = operating_chain(st, mid, curves, disc, operating_leases_in_cash_flow=operating_leases_in_cash_flow,
-                                    maint_gap_floor=maint_gap_floor, roll_forward=roll_forward, detail=True)
+                                    maint_gap_floor=maint_gap_floor, roll_forward=roll_forward, detail=True, variant=variant)
     except DrawInvalid as e:
         at_median = {"invalid": str(e)}
     md, why = (None, "no secondary cross-check supplied by the priors")

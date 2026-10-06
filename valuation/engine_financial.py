@@ -38,6 +38,7 @@ from typing import Dict, Optional
 from .common import (CompanyPIT, Curve, DrawInvalid, EQUITY_FLOOR_RULE, MAX_HORIZON, TERMINAL_G_ANCHOR, build_state, model_disagreement, simulate,
                      terminal_growth_after, terminal_growth_rate)
 from .discount_rate import DiscountRate
+from . import variants as var
 from .engine_operating import refusal, years_between
 
 ENGINE = "financial"
@@ -67,7 +68,7 @@ def state_gaps(st) -> list:
 
 
 def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], disc: DiscountRate, *, roll_forward: bool = True,
-                    detail: bool = False) -> dict:
+                    detail: bool = False, variant=None) -> dict:
     gd, rho, phi = curves["growth_decay"], curves["rote_retention"], curves["excess_fade"]
     N = len(gd)
     if N > MAX_HORIZON:
@@ -100,6 +101,8 @@ def financial_chain(st: dict, p: Dict[str, float], curves: Dict[str, Curve], dis
         g_last = g
     gT, gT_basis = terminal_growth_after(g_last, gT)
     kappa = phi.values[-1]                                # Addendum I4: the plateau of the measured retention of ROTE's excess (its value at the longest k with n >= 50)
+    if variant is not None and variant.terminal_ronic != "j3":      # DIAGNOSTIC (Addendum J1 c, the financial analogue): kappa 1 = the full median excess, kappa 0 = none
+        kappa = 1.0 if variant.terminal_ronic == "industry_median" else 0.0
     excess_T = kappa * max(ind - coe, 0.0)                # the industry median's excess over the cost of equity x the retention, floored at 0
     ri_next = excess_T * tbv_prev
     tv = ri_next / (coe - gT)
@@ -155,7 +158,9 @@ def insurer_decomposition(pit: CompanyPIT, tax: float, tbv: Optional[float]) -> 
 
 
 def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, seed: int = 20261006, corr=None,
-        price_per_share: Optional[float] = None, roll_forward: bool = True, state: Optional[dict] = None) -> dict:
+        price_per_share: Optional[float] = None, roll_forward: bool = True, state: Optional[dict] = None, variant=None) -> dict:
+    if var.is_neutral(variant):
+        variant = None
     st = state if state is not None else build_state(pit)
     gaps = state_gaps(st)
     if gaps:
@@ -167,10 +172,20 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
     ref = ps.refs.get("ptbv_of_rote")
     g_term = terminal_growth_rate(disc.rf)
     dists = {k: v for k, v in ps.inputs.items() if k != "g_terminal"}
+    curves = ps.curves
+    hold_rote = False
+    if variant is not None:                                                   # DIAGNOSTIC swaps (Addendum J1), each exactly one component
+        curves = var.apply_to_curves(variant, curves)
+        dists = var.scaled_dists(dists, variant.width)
+        hold_rote = variant.margin == "held"
+        if variant.terminal_g == "flat":
+            g_term = TERMINAL_G_ANCHOR
 
     def chain(draw):
         draw = dict(draw, g_terminal=g_term)
-        r = financial_chain(st, draw, ps.curves, disc, roll_forward=roll_forward)
+        if hold_rote:
+            draw["rote_target"] = st["rote_latest"]
+        r = financial_chain(st, draw, curves, disc, roll_forward=roll_forward, variant=variant)
         if ref is not None:
             m = ref(draw["rote_target"], disc.coe, draw["g_terminal"])
             if m is None:
@@ -181,8 +196,10 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, n_draws: int = 2000, see
 
     dist = simulate(chain, dists, n_draws, seed, corr, price_per_share, st.get("shares_outstanding"))
     mid = dict({k: d.ppf(0.5) for k, d in dists.items()}, g_terminal=g_term)
+    if hold_rote:
+        mid["rote_target"] = st["rote_latest"]
     try:
-        at_median = financial_chain(st, mid, ps.curves, disc, roll_forward=roll_forward, detail=True)
+        at_median = financial_chain(st, mid, curves, disc, roll_forward=roll_forward, detail=True, variant=variant)
     except DrawInvalid as e:
         at_median = {"invalid": str(e)}
     md, why = None, "no secondary cross-check supplied by the priors"

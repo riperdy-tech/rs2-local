@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .common import CompanyPIT, build_state, equity_bridge, model_disagreement
+from .common import CompanyPIT, Curve, build_state, equity_bridge, model_disagreement
 from .discount_rate import DiscountRate
 from . import engine_operating as op
 
@@ -66,7 +66,7 @@ def asset_value_cross_check(pit: CompanyPIT, st: dict, disc: DiscountRate, *, oi
 
 def run(pit: CompanyPIT, priors, disc: DiscountRate, *, oil_gas: Optional[bool] = None, n_draws: int = 2000, seed: int = 20261006,
         corr=None, price_per_share: Optional[float] = None, operating_leases_in_cash_flow: bool = True,
-        maint_gap_floor: Optional[float] = 0.0, roll_forward: bool = True, state: Optional[dict] = None) -> dict:
+        maint_gap_floor: Optional[float] = 0.0, roll_forward: bool = True, state: Optional[dict] = None, variant=None) -> dict:
     st = state if state is not None else build_state(pit)
     gaps = op.state_gaps(st)
     cyc = st.get("cyclicality")
@@ -82,13 +82,15 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, *, oil_gas: Optional[bool] 
         return op.refusal(ENGINE, ["priors do not supply: ['growth_decay']"], ticker=pit.ticker)
     horizon = len(ps.curves["growth_decay"])
     curves = {"margin_retention": nc(cyc["score"], horizon)}
+    if variant is not None and variant.margin == "instant":          # DIAGNOSTIC (Addendum J1 h): no normalization curve, the drawn through-cycle level from year 1
+        curves = {"margin_retention": Curve([0.0] * horizon, "no normalization curve (instant)", "diagnostic variant")}
     # the secondary is a level, not a per-draw value: the operating run is used with its own (per-draw) multiple switched off
     ps_refs = dict(ps.refs)
     ps_refs.pop("ev_fcf_multiple", None)
     ps.refs = ps_refs
     res = op.run(pit, _Fixed(ps), disc, n_draws=n_draws, seed=seed, corr=corr, price_per_share=price_per_share,
                  operating_leases_in_cash_flow=operating_leases_in_cash_flow, maint_gap_floor=maint_gap_floor, roll_forward=roll_forward,
-                 state=st, engine=ENGINE, family="commodity", curves_override=curves)
+                 state=st, engine=ENGINE, family="commodity", curves_override=curves, variant=variant)
     if res.get("status") != "ok":
         return res
     if oil_gas is None:

@@ -703,3 +703,140 @@ def test_the_operating_engine_refuses_naming_a_missing_roic_or_industry_median()
     assert any("trailing 3-year ROIC" in g for g in gaps)
     assert any("industry median ROIC at T" in g for g in op.state_gaps(op_state(industry_roic=None)))
     assert not op.state_gaps(op_state())
+
+
+# ---- Addendum J1: the DIAGNOSTIC one-component swaps (valuation/variants.py); the registered engine is untouched ---------------------------------------------------
+
+from dataclasses import replace as _replace
+
+from valuation import variants as V
+
+
+def _fin_pit():
+    rows = {f"{y}-12-31": dict(revenue=500.0 + 10 * (y - 2015), net_income=100.0 + 5 * (y - 2015), equity=1000.0 + 50 * (y - 2015),
+                               equity_incl_nci=1000.0 + 50 * (y - 2015), goodwill=100.0, intangibles_ex_goodwill=0.0, total_assets=9000.0) for y in range(2015, 2025)}
+    return _pit_from_rows(rows, asof="2025-06-30", sic="6022")
+
+
+def _runs(variant):
+    """(operating, commodity, financial) results of the three engines on placeholder priors with a given variant, same seed."""
+    pri = PlaceholderPriors(True)
+    o = _operating_pit()
+    c = _commodity_pit()
+    f = _fin_pit()
+    return (op.run(o, pri, disc(), n_draws=300, seed=5, state=with_context(o), variant=variant),
+            com.run(c, pri, disc(), n_draws=300, seed=5, state=with_context(c), variant=variant),
+            fin.run(f, pri, disc(coe=0.10), n_draws=300, seed=5, state=with_context(f), variant=variant))
+
+
+def test_a_neutral_variant_and_none_are_the_registered_engine_bit_for_bit():
+    base = _runs(None)
+    for variant in (V.Variant(), V.Variant(name="base")):
+        assert variant.neutral
+        got = _runs(variant)
+        for a, b in zip(base, got):
+            assert a["distribution"] == b["distribution"] and a["at_median_inputs"] == b["at_median_inputs"]
+    assert all(r["status"] == "ok" for r in base)
+
+
+def test_the_variant_validates_its_fields():
+    for bad in ({"terminal_g": "x"}, {"terminal_ronic": "x"}, {"growth_decay": "x"}, {"margin": "x"}, {"reinvestment": "x"}, {"width": 0.0}, {"width": 1.5}):
+        with pytest.raises(ValueError):
+            V.Variant(**bad)
+
+
+def test_terminal_g_flat_replaces_the_date_value_by_the_anchor_in_the_operating_and_financial_engines():
+    d = _replace(disc(), rf=0.01)                                  # the rule gives min(1%, 3.75%) = 1%
+    pri = PlaceholderPriors(True)
+    o = _operating_pit()
+    base = op.run(o, pri, d, n_draws=60, seed=5, state=with_context(o))
+    flat = op.run(o, pri, d, n_draws=60, seed=5, state=with_context(o), variant=V.Variant(terminal_g="flat"))
+    assert base["terminal_growth"]["base"] == pytest.approx(0.01) and flat["terminal_growth"]["base"] == pytest.approx(0.0375)
+    f = _fin_pit()
+    fb = fin.run(f, pri, _replace(d, coe=0.10), n_draws=60, seed=5, state=with_context(f))
+    ff = fin.run(f, pri, _replace(d, coe=0.10), n_draws=60, seed=5, state=with_context(f), variant=V.Variant(terminal_g="flat"))
+    assert fb["terminal_growth"]["base"] == pytest.approx(0.01) and ff["terminal_growth"]["base"] == pytest.approx(0.0375)
+
+
+def test_terminal_ronic_variants_by_hand_operating_and_the_financial_analogue():
+    st = op_state(ronic=0.16, nwc_ratio=0.0)
+    p = {"g1": 0.0, "g_terminal": 0.02, "margin_target": 0.10, "ronic": 0.16}
+    c = curves([0.0], [0.0], [0.25])
+    j3 = op.operating_chain(st, p, c, disc(w=0.10), roll_forward=False)
+    med = op.operating_chain(st, p, c, disc(w=0.10), roll_forward=False, variant=V.Variant(terminal_ronic="industry_median"))
+    wac = op.operating_chain(st, p, c, disc(w=0.10), roll_forward=False, variant=V.Variant(terminal_ronic="wacc"))
+    assert j3["ronic_terminal"] == pytest.approx(0.10 + 0.25 * 0.06) and med["ronic_terminal"] == pytest.approx(0.16) and wac["ronic_terminal"] == pytest.approx(0.10)
+    assert wac["terminal_value"] < j3["terminal_value"] < med["terminal_value"]            # a lower return on new capital makes growth dearer
+    st2 = op_state(ronic=0.07, nwc_ratio=0.0)                                                  # a median below WACC: round 3 floors it at WACC too
+    assert op.operating_chain(st2, dict(p, ronic=0.07), c, disc(w=0.10), roll_forward=False,
+                              variant=V.Variant(terminal_ronic="industry_median"))["ronic_terminal"] == pytest.approx(0.10)
+    # financial analogue: kappa 1 = the full median excess, kappa 0 = none
+    stf = fin_state(industry_rote={"value": 0.14, "n": 50, "basis": "industry"})
+    cf = {"growth_decay": Curve([1.0, 1.0]), "rote_retention": Curve([1.0, 1.0]), "excess_fade": Curve([0.5, 0.5])}
+    pf = {"g1": 0.03, "g_terminal": 0.03, "rote_target": 0.14}
+    vals = {n: fin.financial_chain(stf, pf, cf, disc(coe=0.10), roll_forward=False, variant=V.Variant(terminal_ronic=n)) for n in ("j3", "industry_median", "wacc")}
+    assert vals["j3"]["terminal_excess_retention"] == pytest.approx(0.5) and vals["industry_median"]["terminal_excess_retention"] == 1.0 and vals["wacc"]["terminal_excess_retention"] == 0.0
+    assert vals["wacc"]["equity"] < vals["j3"]["equity"] < vals["industry_median"]["equity"]
+    assert vals["wacc"]["terminal_rote"] == pytest.approx(0.10)                                # no terminal excess: the return is the cost of equity
+
+
+def test_no_decay_holds_g1_for_five_years_then_fades_linearly_to_the_measured_last_value():
+    c = Curve([1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.1, 0.1, 0.1, 0.0], "g")
+    nd = V.no_decay_curve(c)
+    assert nd.values[:5] == [1.0] * 5 and nd.values[-1] == pytest.approx(0.0) and len(nd) == 10
+    assert nd.values[5:] == pytest.approx([1.0 - 0.2 * k for k in range(1, 6)])                 # 0.8, 0.6, 0.4, 0.2, 0.0
+    assert V.no_decay_curve(Curve([1.0, 0.5, 0.2])).values == [1.0, 1.0, 1.0]                     # a horizon of 5 or fewer holds g1 throughout
+    assert all(a >= b for a, b in zip(nd.values, nd.values[1:]))
+    st = op_state(ronic=0.12)
+    p = {"g1": 0.10, "g_terminal": 0.02, "margin_target": 0.10, "ronic": 0.12}
+    cs = {"growth_decay": Curve([1.0, 0.5, 0.0, 0.0, 0.0, 0.0]), "margin_retention": Curve([0.0] * 6), "ronic_fade": Curve([1.0] * 6)}
+    base = op.operating_chain(st, p, cs, disc(), roll_forward=False, detail=True)
+    nd_ = op.operating_chain(st, p, V.apply_to_curves(V.Variant(growth_decay="none"), cs), disc(), roll_forward=False, detail=True)
+    assert [y["growth"] for y in nd_["years"]][:5] == pytest.approx([0.10] * 5) and nd_["ev"] > base["ev"]
+
+
+def test_margin_held_pins_the_margin_at_the_base_year_in_every_engine_and_instant_is_commodity_only():
+    pri = PlaceholderPriors(True)
+    o = _operating_pit()
+    st = with_context(o)
+    held = op.run(o, pri, disc(), n_draws=100, seed=5, state=st, variant=V.Variant(margin="held"))
+    assert all(y["margin"] == pytest.approx(st["op_margin"]) for y in held["at_median_inputs"]["years"])
+    c = _commodity_pit()
+    stc = with_context(c)
+    held_c = com.run(c, pri, disc(), n_draws=100, seed=5, state=stc, variant=V.Variant(margin="held"))
+    assert all(y["margin"] == pytest.approx(stc["op_margin"]) for y in held_c["at_median_inputs"]["years"])
+    inst = com.run(c, pri, disc(), n_draws=100, seed=5, state=stc, variant=V.Variant(margin="instant"))
+    base_c = com.run(c, pri, disc(), n_draws=100, seed=5, state=stc)
+    m5 = base_c["inputs"]["margin_target"]["p50"]
+    assert inst["at_median_inputs"]["years"][0]["margin"] == pytest.approx(m5) and base_c["at_median_inputs"]["years"][0]["margin"] != pytest.approx(m5)
+    assert inst["normalization"]["retention_year_1"] == 0.0
+    f = _fin_pit()
+    stf = with_context(f)
+    held_f = fin.run(f, pri, disc(coe=0.10), n_draws=100, seed=5, state=stf, variant=V.Variant(margin="held"))
+    assert held_f["at_median_inputs"]["years"][0]["rote"] == pytest.approx(stf["rote_latest"])         # the ROTE target is the base-year ROTE: no normalization move
+
+
+def test_zero_reinvestment_zeroes_growth_reinvestment_only_and_keeps_the_working_capital_release():
+    st = op_state(ronic=0.15, nwc_ratio=0.10)
+    p = {"g1": 0.10, "g_terminal": 0.02, "margin_target": 0.20, "ronic": 0.15}
+    z = op.operating_chain(st, p, curves([1.0, 0.0], [0.0, 0.0], [1.0, 1.0]), disc(), roll_forward=False, detail=True, variant=V.Variant(reinvestment="zero"))
+    assert [y["growth_reinvestment"] for y in z["years"]] == [0.0, 0.0] and z["terminal_reinvestment_rate"] == 0.0
+    assert z["years"][0]["fcff"] == pytest.approx(z["years"][0]["nopat"])
+    shrink = op.operating_chain(st, dict(p, g1=-0.05), curves([1.0], [0.0], [1.0]), disc(), roll_forward=False, detail=True, variant=V.Variant(reinvestment="zero"))
+    assert shrink["years"][0]["growth_reinvestment"] == pytest.approx(-5.0)                    # (950 - 1000) x 0.10: the release stays
+    base = op.operating_chain(st, p, curves([1.0, 0.0], [0.0, 0.0], [1.0, 1.0]), disc(), roll_forward=False)
+    assert z["ev"] > base["ev"]
+
+
+def test_half_width_keeps_every_p50_and_halves_the_distance_to_it():
+    d = QuantileDist({0.05: -0.10, 0.10: -0.06, 0.25: -0.02, 0.50: 0.02, 0.75: 0.10, 0.90: 0.20, 0.95: 0.30})
+    h = V.scaled_dist(d, 0.5)
+    assert h.ppf(0.5) == d.ppf(0.5) and h.ppf(0.9) - h.ppf(0.1) == pytest.approx(0.5 * (d.ppf(0.9) - d.ppf(0.1))) and h.ppf(0.95) - 0.02 == pytest.approx(0.5 * (0.30 - 0.02))
+    assert V.scaled_dist(d, 1.0) is d
+    base = _runs(None)
+    half = _runs(V.Variant(width=0.5))
+    for a, b in zip(base, half):
+        assert b["at_median_inputs"].get("equity") == a["at_median_inputs"].get("equity")        # the point values (every input at its P50) do not move
+        wa = a["distribution"]["equity"]["p90"] - a["distribution"]["equity"]["p10"]
+        wb = b["distribution"]["equity"]["p90"] - b["distribution"]["equity"]["p10"]
+        assert wb < wa
