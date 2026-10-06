@@ -15,8 +15,8 @@ SEC population, point in time:
     listed in `meta["fallbacks"]`; an input the vintage cannot support is absent from `inputs`, so the engine refuses naming it (`meta["unavailable"]`).
   * SPREADS BY LEVEL (Addendum I1).  The year-5 residuals of the margin level and of the ROIC level are measured by the company's CURRENT level band (quintiles of the
     current level within the cell, merged to n >= 50 by `stats.merge_1d`); the prior's quantiles are the median path plus the residual quantiles of the company's own band.
-  * The residual cell of the company's cyclicality x sign band is merged up (sign-pooled, then fully pooled) when it has fewer than 50 observations; if the pooled cell is still
-    under 50 the input is refused, named in `meta["unavailable"]` (never an invented spread).
+  * MIN_N IS ENFORCED (Addendum I5).  A cell with fewer than 50 observations after the stated merges refuses the input, named in `meta["unavailable"]`: the residual cell of the
+    company's cyclicality x sign band is merged up (sign-pooled, then fully pooled) and, if the pooled cell is still under 50, there is no prior (never an invented spread).
 
 The state is the engines' own `common.build_state` dict, so the features priors condition on are computed the way the observation panel computed them
 (valuation/priors_build/obs.py): the same chain-index windows, the same cyclicality function.
@@ -312,6 +312,8 @@ class PopulationPriors(Priors):
                     cell, basis = c2, b2
         if cell is None:
             unavailable.append("g1: no growth delivered (fewer than two fiscal years of revenue) or no cell in this vintage")
+        elif cell["n"] < C.MIN_N:
+            unavailable.append(f"g1: the size x growth cell has n={cell['n']} < {C.MIN_N} after the stated merges (Addendum I5)")
         else:
             qd = _qd(cell, 0.0, src)
             if qd is None:
@@ -524,16 +526,28 @@ class PopulationPriors(Priors):
             if cv is not None:
                 curves["rote_retention"] = cv
                 positions["rote_retention"] = _pos_dist(_pos_row(bd["ks"], "median", "n"), "q", src)
-            res = rr["residual_k5"].get(key) or rr["residual_k5"].get("all")
+            # Addendum I5: the residual cell of the sign band, merged to the sign-pooled cell when under MIN_N, refused when that is under MIN_N too
+            res, used_t = None, None
+            ns = []
+            for k in ([key] + (["all"] if key != "all" else [])):
+                c_ = rr["residual_k5"].get(k)
+                ns.append(f"{k} n={0 if not c_ else c_.get('n', 0)}")
+                if c_ is not None and c_.get("n", 0) >= C.MIN_N:
+                    res, used_t = c_, k
+                    break
+            if res is None:
+                unavailable.append(f"rote_target: no residual cell with n >= {C.MIN_N} after the stated merges ({'; '.join(ns)})")
+            elif used_t != key:
+                fallbacks.append(f"rote_target: residual cell {key} has n={(rr['residual_k5'].get(key) or {}).get('n', 0)} < {C.MIN_N}: merged to {used_t} (n={res['n']})")
             if centre is not None and res is not None:
                 qd = _qd(res, centre, src)
                 if qd is not None:
                     inputs["rote_target"] = qd
-                    meta["cells"]["rote_target"] = {"band": key, "n": res["n"], "centre": centre}
+                    meta["cells"]["rote_target"] = {"band": key, "residual_cell": used_t, "n": res["n"], "centre": centre}
         for k in ("rote_retention",):
             if k not in curves:
                 unavailable.append(f"{k}: no measured curve")
-        if "rote_target" not in inputs:
+        if "rote_target" not in inputs and not any(u.startswith("rote_target:") for u in unavailable):
             unavailable.append("rote_target: no centre or no residual spread")
         ef = T.get("excess_fade_financial")
         if ef:

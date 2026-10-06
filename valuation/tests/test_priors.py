@@ -445,6 +445,35 @@ def test_a_margin_or_roic_residual_cell_under_50_is_merged_up_then_the_input_is_
     assert r["status"] == "refused" and any("priors do not supply" in x and "margin_target" in x for x in r["reasons"])
 
 
+def test_a_rote_residual_or_g1_cell_under_50_refuses_the_input_named(synthetic_vintage, tmp_path):
+    """Addendum I5 for the other inputs: the ROTE residual (the coordinator's example, n = 25) and a growth cell under 50 after the merges."""
+    d, root, sic = synthetic_vintage
+    cik = next(c for c, s in sorted(sic.items()) if s == "3571")
+    cp, st = _state_for(root, sic, cik)
+    cikf = next(c for c, s in sorted(sic.items()) if s == "6021")
+    cpf, stf = _state_for(root, sic, cikf)
+
+    def thin_rote(T):                                 # the ROTE residual of the 2020 vintage in the coordinator's example: n = 25
+        for v in T["rote_retention"]["residual_k5"].values():
+            v["n"] = 25
+    psf = PopulationPriors(_tables_copy(d, tmp_path / "d", thin_rote)).for_company("financial", stf, "2025-06-30")
+    assert "rote_target" not in psf.inputs and any("rote_target: no residual cell with n >= 50" in u and "n=25" in u for u in psf.meta["unavailable"])
+    assert fin.run(cpf, PopulationPriors(_tables_copy(d, tmp_path / "e", thin_rote)), _disc(), n_draws=20, state=stf)["status"] == "refused"
+
+    def thin_g1(T):                                   # a size x growth cell under 50 (a whole table that thin): refused, named (the operating family has no fallback)
+        for basis in T["g1"]["operating"].values():
+            for c in basis.get("cells", []) + basis.get("size_pooled_cells", []):
+                c["n"] = 30
+    psg = PopulationPriors(_tables_copy(d, tmp_path / "f", thin_g1)).for_company("operating", st, "2025-06-30")
+    assert "g1" not in psg.inputs and any(u.startswith("g1:") and "n=30" in u for u in psg.meta["unavailable"])
+
+    def merge_rote(T):                                # the signed cell under 50 merges to the sign-pooled cell when that has 50 or more: stamped
+        T["rote_retention"]["residual_k5"]["pos"]["n"] = 20
+        T["rote_retention"]["residual_k5"]["neg"]["n"] = 20
+    psm = PopulationPriors(_tables_copy(d, tmp_path / "g", merge_rote)).for_company("financial", stf, "2025-06-30")
+    assert "rote_target" in psm.inputs and psm.meta["cells"]["rote_target"]["residual_cell"] == "all" and any("rote_target: residual cell" in f for f in psm.meta["fallbacks"])
+
+
 def _disc():
     from valuation.discount_rate import DiscountRate
     return DiscountRate(asof="2025-06-30", rf=0.04, erp=0.05, beta_unlevered=1.0, de_ratio=0.0, de_basis="book", tax=0.25, beta_levered=1.0, coe=0.10,
