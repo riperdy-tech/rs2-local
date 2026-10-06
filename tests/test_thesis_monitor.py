@@ -288,7 +288,7 @@ def _clean_verdict(ticker, **over):
 
 def test_run_evaluates_only_actionable_rows(isolated, monkeypatch):
     actionable = _clean_verdict("AAA")
-    non_actionable = _clean_verdict("BBB", fiduciary_verdict="FAIL")   # fiduciary_fail -> not actionable
+    non_actionable = _clean_verdict("BBB", n_basis=1)   # single_sample -> not actionable
     monkeypatch.setattr(tm.depth_triggers, "newest_verdicts",
                         lambda: {"AAA": actionable, "BBB": non_actionable})
     summary = tm.run()

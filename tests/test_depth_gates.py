@@ -64,11 +64,10 @@ def test_pre_v31_gates_on_older_gate_version():
     assert reasons == ["pre_v3.1_gates"]
 
 
-def test_single_sample_is_no_longer_a_gate_reason():
-    # operator ruling 2026-10-06: one-sample verdicts are no longer blocked for that alone
+def test_single_sample():
     actionable, reasons = dg.assess(_clean(n_basis=1))
-    assert actionable is True
-    assert reasons == []
+    assert actionable is False
+    assert reasons == ["single_sample"]
 
 
 def test_fiduciary_fail():
@@ -157,11 +156,11 @@ def test_non_production_row_gate_test():
 # ---- multiple reasons compound, in the fixed order ------------------------------------------
 
 def test_reasons_compound_in_order():
-    v = _clean(fiduciary_verdict="FAIL")
+    v = _clean(n_basis=1)
     del v["gate_version"]
     actionable, reasons = dg.assess(v)
     assert actionable is False
-    assert reasons == ["pre_v3.1_gates", "fiduciary_fail"]
+    assert reasons == ["pre_v3.1_gates", "single_sample"]
 
 
 # ---- never raises on a sparse/legacy verdict --------------------------------------------------
@@ -236,7 +235,7 @@ def test_rebuild_overlay_on_3row_fixture(tmp_path, monkeypatch):
 
     bbb = published["tickers"]["BBB"]
     assert bbb["actionable"] is False
-    assert bbb["actionable_reasons"] == ["pre_v3.1_gates", "no_street_fence"]   # n_basis 1 no longer gates (2026-10-06)
+    assert bbb["actionable_reasons"] == ["pre_v3.1_gates", "single_sample", "no_street_fence"]
     assert bbb["status"] == "ok"          # a real direction, just not actionable
     assert bbb["direction"] == "undervalued"
 
@@ -324,10 +323,10 @@ def test_pre_valid_analyst_fires_on_a_row_with_no_pack_revision_at_all(monkeypat
 
 def test_pre_valid_analyst_compounds_with_other_reasons(monkeypatch):
     monkeypatch.setattr(dg, "FIRST_VALID_PACK_REVISION", 5)
-    v = _clean(pack_revision=4, fiduciary_verdict="FAIL")
+    v = _clean(pack_revision=4, n_basis=1)
     actionable, reasons = dg.assess(v)
     assert actionable is False
-    assert reasons == ["fiduciary_fail", "pre_valid_analyst"]
+    assert reasons == ["single_sample", "pre_valid_analyst"]
 
 
 # ---- analyst_valid() — P2-fix B2: keyed on FIRST_VALID_PACK_REVISION, not gate_version alone ----

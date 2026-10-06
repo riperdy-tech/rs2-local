@@ -191,7 +191,7 @@ def test_a_sample_consensus_valuation_left_out_stays_out_of_the_verdict():
     assert "desk_not_used" not in v["flags"] and "iv_not_desk_backed" not in v["flags"]
     assert "desk_less_sample_excluded:2" in v["flags"] and "LOW_EFFORT_RESCUE" in v["flags"]
     reasons = dg.assess(dict(v, gate_version=dg.GATE_VERSION, run_source="orchestrator"))[1]
-    assert "single_sample" not in reasons and "low_effort_rescue" in reasons   # n_basis 1 no longer gates (2026-10-06)
+    assert "single_sample" in reasons and "low_effort_rescue" in reasons
     assert "desk_not_used" not in reasons
 
 
