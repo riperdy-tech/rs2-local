@@ -137,14 +137,14 @@ def _attach_outcomes(rec, pit, cik, key, d, snap):
     rec["out"] = {k: (v["measures"] if v else None) for k, v in fo.items()}
 
 
-def run_date(d, ciks=None):
-    """One valuation date: prepare, measure the population, value.  Returns (records, context summary)."""
+def prepare_date(d, ciks=None):
+    """Pass 1 of one valuation date: prepare every company and measure the population context.  Returns (records, preps, context, t0, t1); the records of the
+    companies that were prepared are waiting for pass 2 (status "prepared")."""
     t0 = time.time()
     pit, priors, rates, cfg = _ENV["pit"], _ENV["priors"], _ENV["rates"], _ENV["cfg"]
     ciks = ciks if ciks is not None else cfg["ciks"]
     rf = rates.rf(d)[0]
     recs, preps = [], {}
-    counts = Counter()
     prev = None
     for cik in ciks:
         if prev is not None:
@@ -201,7 +201,16 @@ def run_date(d, ciks=None):
     if prev is not None:
         pit.evict(prev)
     ctx = gate1.DateContext.build(d, rf, [p for p in preps.values()])
-    t1 = time.time()
+    return recs, preps, ctx, t0, time.time()
+
+
+def run_date(d, ciks=None):
+    """One valuation date: prepare, measure the population, value.  Returns (records, context summary)."""
+    pit, priors, rates, cfg = _ENV["pit"], _ENV["priors"], _ENV["rates"], _ENV["cfg"]
+    ciks = ciks if ciks is not None else cfg["ciks"]
+    rf = rates.rf(d)[0]
+    counts = Counter()
+    recs, preps, ctx, t0, t1 = prepare_date(d, ciks)
     for rec in recs:
         if rec["status"] != "prepared":
             continue
