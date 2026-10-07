@@ -436,6 +436,13 @@ Offline; no model, no GPU, no network except SEC filings through `sec_primary` i
   and measure, the P50 against the naive baseline, P10..P90 coverage and directional accuracy (the engines store `forecast_year1`: growth, margin, ROTE' at P10/P50/P90); B5 direction under the three bounds
   and without the 1% of observations with the largest |residual|, with the ERP +-1 pp (`gate1_run` stores `score_alt` on the return dates), sector-neutral, size-neutral and price-basis variants reported.
   `gate1_compare_v2.py` puts runs side by side on the same dates. Tests: `pytest valuation/tests rebuild_harness/tests tests/test_valuation_engines.py tests/test_valuation_classification_rates_pit.py`.
+- Holdout inputs (Addendum L3, L4; freeze preparation, no freeze file exists): `rebuild_harness/daily_prices.py` `LazyDailyPriceSource` reads the D5 daily raw closes (`data/prices_daily/<TICKER>.csv.gz`) lazily, an LRU
+  of tickers per worker, never the folder; the traded close = Close x the product of the split ratios with ex-date after the session; the entry of an outcome is the NEXT session's total-return-adjusted OPEN
+  (registration v2 section 2). `rebuild_harness/delisting_inputs.py` turns the D1 event index (`data/sec_bulk/index/events.json`) and the D3 documents (`delisting_docs/`, primary 8-K document only) into price
+  events through the existing strict readers (`delistings.read_cash_consideration`, `read_equity_cancelled`); a missing document leaves the event unresolved (three bounds). `rebuild_harness/holdout_inputs.py`:
+  `StrictSicResolver` (the SIC as filed from the D2 headers, never the current-dated file; a company with no header by T is `industry_unmapped`), `require_headers_cover` (the whole run refuses while the headers
+  download has not reached a holdout date), `require_holdout_configuration` (daily prices, D1 + D3 complete, one window per run). `gate1_run` takes `--prices-daily`, `--delisting-index`, `--delisting-docs`; on a
+  holdout date it requires them, uses the strict resolver, the 12-month horizon only and outcomes to 2025-12-31; the freeze contents also name the D1 and D3 folders.
 - `valuation/gate1.py` - one company at one date: classification, priors, the discount rate at T (Damodaran files dated before T, the dated FRED risk-free, Hamada on the book D/E with the
   industry D/E when parent equity is not positive or book D/E exceeds the industry's 95th percentile on the date, cost of debt = risk-free + the industry's median spread when there is no clean
   interest line), the family engine over the prior (the distribution's median is the value; P10..P90, the secondary, the disagreement, the terminal-value share), per share on the price's share basis.

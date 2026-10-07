@@ -49,7 +49,7 @@ def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), 
     small = [r for r in rows if r["mcap_group"] == "<300M"]
     big_fresh = [r for r in big if not r["stale"]]
     meta_p = Path(run_dir) / "run_meta.json"
-    rep = {"run_meta": json.loads(meta_p.read_text(encoding="utf-8")) if meta_p.exists() else None, "provisional": gm.PROVISIONAL, "price_basis": "adjusted-only proxy (IV/price, earnings and FCF yields times Close/Adj Close)" if adjusted_proxy else "raw monthly pull of 2026-10-01 (Addendum H9): the traded close rebuilt from the split-adjusted Close and the split events; month-end, survivors only",
+    rep = {"run_meta": json.loads(meta_p.read_text(encoding="utf-8")) if meta_p.exists() else None, "provisional": gm.PROVISIONAL, "price_basis": "adjusted-only proxy (IV/price, earnings and FCF yields times Close/Adj Close)" if adjusted_proxy else ("D5 daily raw closes (Addendum L4): the traded close of the session, outcomes from the next session's open; survivors only" if str((json.loads(meta_p.read_text(encoding="utf-8")) if meta_p.exists() else {}).get("price_stamp") or "").startswith("raw_daily") else "raw monthly pull of 2026-10-01 (Addendum H9): the traded close rebuilt from the split-adjusted Close and the split events; month-end, survivors only"),
            "adjusted_proxy_rows_without_both_bars": proxy_missing, "run_dir": str(run_dir), "n_valued": len(rows), "n_valued_ge_300M": len(big), "n_valued_lt_300M": len(small),
            "coverage": gm.coverage_tables(counters), "per_date": per_date(rows)}
     if v2:
@@ -60,9 +60,10 @@ def build(run_dir, resamples=2000, extremes_dates=("2019-12-31", "2021-12-31"), 
         if adjusted_proxy is None and pf.is_file():
             proxy_rows = [dict(r, score=dict(r["score"])) for r in big]
             rep["price_basis_variant_rows_without_both_bars"] = gm.apply_adjusted_proxy(proxy_rows, json.loads(pf.read_text(encoding="utf-8")))
-        rep["gate1_universe_ge_300M"] = v2m.v2_bars(big, ">=300M", n_boot, price_basis_rows=proxy_rows)
-        rep["sub_300M_reported_separately"] = v2m.v2_bars(small, "<300M", max(199, n_boot // 5), with_variants=False)
-        rep["sensitivity_ge_300M_base_year_within_15_months"] = v2m.v2_bars(big_fresh, ">=300M, base year <= 15 months old", max(199, n_boot // 5), with_variants=False)
+        ret_end = (rep["run_meta"] or {}).get("return_dates_end") or gm.RETURN_DATES_END          # the run's own last return date (the holdout's is 2024-12-31)
+        rep["gate1_universe_ge_300M"] = v2m.v2_bars(big, ">=300M", n_boot, return_end=ret_end, price_basis_rows=proxy_rows)
+        rep["sub_300M_reported_separately"] = v2m.v2_bars(small, "<300M", max(199, n_boot // 5), return_end=ret_end, with_variants=False)
+        rep["sensitivity_ge_300M_base_year_within_15_months"] = v2m.v2_bars(big_fresh, ">=300M, base year <= 15 months old", max(199, n_boot // 5), return_end=ret_end, with_variants=False)
     else:
         rep["gate1_universe_ge_300M"] = gm.three_bounds(big, ">=300M", resamples, return_end=gm.RETURN_DATES_END)
         rep["sub_300M_reported_separately"] = gm.three_bounds(small, "<300M", resamples, return_end=gm.RETURN_DATES_END)

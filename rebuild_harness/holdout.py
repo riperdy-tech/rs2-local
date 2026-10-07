@@ -16,6 +16,8 @@ THE FREEZE CONTENTS (Addendum J10).  A freeze names more than the code.  `conten
     priors                the tree hash of the priors folder and of every vintage folder in it
     industry_crosswalk    the sha256 of the SIC -> Damodaran-industry crosswalk file
     sic_headers           the sha256 of the EDGAR headers file the SIC as filed is read from (None when no headers file is used)
+    delisting_index       the tree hash of the D1 event index folder (Addendum L4)
+    delisting_docs        the tree hash of the D3 delisting documents folder (Addendum L4)
     config                the engine configuration (the module constants the caller names)
     seeds                 the random seeds and the seed rule
     packages              the Python version and the versions of the packages the harness uses
@@ -100,7 +102,8 @@ def engine_identity(engine, repo=None):
 
 # ---- the freeze contents (Addendum J10) ------------------------------------------------------------------------------------------------
 
-CONTENT_KEYS = ("code_commit", "point_in_time_store", "price_snapshot", "damodaran", "priors", "industry_crosswalk", "sic_headers", "config", "seeds", "packages")
+CONTENT_KEYS = ("code_commit", "point_in_time_store", "price_snapshot", "damodaran", "priors", "industry_crosswalk", "sic_headers", "delisting_index", "delisting_docs", "config", "seeds",
+                "packages")
 PACKAGES = ("numpy", "pandas", "openpyxl")
 CHUNK = 1 << 20
 
@@ -114,14 +117,14 @@ def file_sha256(p):
     return h.hexdigest()
 
 
-def tree_hash(root):
+def tree_hash(root, exclude_top_level=()):
     """{"tree_sha256", "n_files", "bytes"} of a folder: the sha256 of the sorted lines `relative posix path, size, file sha256` of every file under it.  A file added, removed,
-    renamed or changed in any byte changes it."""
+    renamed or changed in any byte changes it.  `exclude_top_level`: names of direct children (files or folders) left out, e.g. a download's `_logs` folder."""
     root = Path(root)
     if not root.is_dir():
         raise HoldoutRefused(f"{root} is not a folder: no tree hash")
     lines, total = [], 0
-    for p in sorted(x for x in root.rglob("*") if x.is_file()):
+    for p in sorted(x for x in root.rglob("*") if x.is_file() and x.relative_to(root).parts[0] not in exclude_top_level):
         size = p.stat().st_size
         total += size
         lines.append(f"{p.relative_to(root).as_posix()}\t{size}\t{file_sha256(p)}")
@@ -160,7 +163,7 @@ def _damodaran(root):
 def _price(path):
     path = Path(path)
     if path.is_dir():
-        return dict(tree_hash(path), kind="folder")
+        return dict(tree_hash(path, exclude_top_level=("_logs",)), kind="folder")           # a download folder's logs are not data
     if not path.is_file():
         raise HoldoutRefused(f"no price snapshot at {path}")
     return {"sha256": file_sha256(path), "kind": "file", "bytes": path.stat().st_size}
@@ -168,8 +171,8 @@ def _price(path):
 
 def compute_contents(inputs, repo):
     """The freeze contents of the inputs a run reads.  `inputs`: {"store": folder, "prices": file or folder, "damodaran": folder, "priors": folder, "crosswalk": file, "headers": file or None,
-    "config": {...}, "seeds": {...}}.  A missing key is a refusal (a freeze that cannot name an input is not a freeze)."""
-    need = ("store", "prices", "damodaran", "priors", "crosswalk", "config", "seeds")
+    "delisting_index": folder, "delisting_docs": folder, "config": {...}, "seeds": {...}}.  A missing key is a refusal (a freeze that cannot name an input is not a freeze)."""
+    need = ("store", "prices", "damodaran", "priors", "crosswalk", "delisting_index", "delisting_docs", "config", "seeds")
     miss = [k for k in need if inputs.get(k) is None]
     if miss:
         raise HoldoutRefused(f"the freeze contents need these inputs and the run gave none: {miss}")
@@ -180,7 +183,8 @@ def compute_contents(inputs, repo):
     hdr = inputs.get("headers")
     return {"code_commit": _git(Path(repo), "rev-parse", "HEAD").decode().strip(), "point_in_time_store": tree_hash(inputs["store"]), "price_snapshot": _price(inputs["prices"]),
             "damodaran": _damodaran(inputs["damodaran"]), "priors": dict(tree_hash(pri), vintages=vint), "industry_crosswalk": {"sha256": file_sha256(inputs["crosswalk"])},
-            "sic_headers": None if hdr is None else {"sha256": file_sha256(hdr)}, "config": json.loads(json.dumps(inputs["config"], sort_keys=True)),
+            "sic_headers": None if hdr is None else {"sha256": file_sha256(hdr)}, "delisting_index": tree_hash(inputs["delisting_index"]),
+            "delisting_docs": tree_hash(inputs["delisting_docs"]), "config": json.loads(json.dumps(inputs["config"], sort_keys=True)),
             "seeds": json.loads(json.dumps(inputs["seeds"], sort_keys=True)), "packages": package_versions()}
 
 

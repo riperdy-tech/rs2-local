@@ -51,7 +51,11 @@ def inputs(tmp_path):
         (d / "priors" / y / "tables.json").write_text(json.dumps({"y": y}), encoding="utf-8")
     (d / "crosswalk.json").write_text('{"by_sic4": {}}', encoding="utf-8")
     (d / "headers.csv").write_text("cik,accession" + chr(10), encoding="utf-8")
-    return {"store": d / "store", "prices": d / "prices.json", "damodaran": d / "damodaran", "priors": d / "priors", "crosswalk": d / "crosswalk.json", "headers": d / "headers.csv",
+    (d / "d1").mkdir()
+    (d / "d1" / "events.json").write_text("[]", encoding="utf-8")
+    (d / "d3").mkdir()
+    (d / "d3" / "_manifest.jsonl").write_text("", encoding="utf-8")
+    return {"delisting_index": d / "d1", "delisting_docs": d / "d3", "store": d / "store", "prices": d / "prices.json", "damodaran": d / "damodaran", "priors": d / "priors", "crosswalk": d / "crosswalk.json", "headers": d / "headers.csv",
             "config": {"n_draws": 2000, "invalid_draw_max": 0.05}, "seeds": {"bootstrap": 20261007}}
 
 
@@ -172,6 +176,7 @@ def test_the_freeze_contents_name_every_input_by_hash(repo, tmp_path, inputs):
     assert c["damodaran"]["files"] == {"betas.xls": hashlib.sha256(b"betas").hexdigest()} and len(c["damodaran"]["manifest_sha256"]) == 64
     assert set(c["priors"]["vintages"]) == {"2019", "2020"} and c["priors"]["n_files"] == 2 and len(c["priors"]["tree_sha256"]) == 64
     assert len(c["industry_crosswalk"]["sha256"]) == 64 and len(c["sic_headers"]["sha256"]) == 64
+    assert c["delisting_index"]["n_files"] == 1 and c["delisting_docs"]["n_files"] == 1 and len(c["delisting_docs"]["tree_sha256"]) == 64      # Addendum L4: D1 and D3 are named
     assert c["config"] == {"invalid_draw_max": 0.05, "n_draws": 2000} and c["seeds"] == {"bootstrap": 20261007}
     assert c["packages"]["python"].count(".") == 2 and "numpy" in c["packages"]
     info = holdout.enforce(["2023-06-30"], [e], fz, repo=repo, inputs=inputs)
@@ -183,7 +188,7 @@ def test_a_freeze_cannot_be_written_without_its_contents(repo, tmp_path, inputs)
     with pytest.raises(holdout.HoldoutRefused, match="no `inputs` given"):
         holdout.write_freeze(tmp_path / "f.json", [e], repo=repo)
     assert not (tmp_path / "f.json").exists()
-    for k in ("store", "prices", "damodaran", "priors", "crosswalk", "config", "seeds"):
+    for k in ("store", "prices", "damodaran", "priors", "crosswalk", "delisting_index", "delisting_docs", "config", "seeds"):
         with pytest.raises(holdout.HoldoutRefused, match=k):
             holdout.write_freeze(tmp_path / "g.json", [e], repo=repo, inputs={x: v for x, v in inputs.items() if x != k})
     no_vint = dict(inputs, priors=tmp_path / "data" / "store")
@@ -258,6 +263,17 @@ def test_every_changed_input_is_refused_by_name(repo, tmp_path, inputs):
         inputs["headers"].write_text("cik,accession" + chr(10) + "1,2" + chr(10), encoding="utf-8")
         return lambda: inputs["headers"].write_text("cik,accession" + chr(10), encoding="utf-8")
     refused("`sic_headers`", edit_headers)
+
+    def edit_d1():
+        (inputs["delisting_index"] / "events.json").write_text("[1]", encoding="utf-8")
+        return lambda: (inputs["delisting_index"] / "events.json").write_text("[]", encoding="utf-8")
+    refused("`delisting_index`", edit_d1)
+
+    def add_d3():
+        (inputs["delisting_docs"] / "0000000001").mkdir()
+        (inputs["delisting_docs"] / "0000000001" / "d8k.htm").write_text("x", encoding="utf-8")
+        return lambda: ((inputs["delisting_docs"] / "0000000001" / "d8k.htm").unlink(), (inputs["delisting_docs"] / "0000000001").rmdir())
+    refused("`delisting_docs`", add_d3)
     refused("`config`", lambda: (lambda: None), dict(inputs, config={"n_draws": 2000, "invalid_draw_max": 0.10}))
     refused("`seeds`", lambda: (lambda: None), dict(inputs, seeds={"bootstrap": 1}))
     refused("`sic_headers`", lambda: (lambda: None), dict(inputs, headers=None))
@@ -300,3 +316,17 @@ def test_a_development_run_writes_no_file_and_needs_no_freeze(tmp_path):
     before = set(tmp_path.iterdir())
     assert holdout.enforce(["2020-01-31", "2022-12-31"], [e], None)["contents_verified"] is False
     assert set(tmp_path.iterdir()) == before
+
+
+def test_a_price_folder_snapshot_ignores_its_download_logs_but_not_a_price_file(tmp_path):
+    f = tmp_path / "prices_daily"
+    (f / "_logs").mkdir(parents=True)
+    (f / "A.csv.gz").write_bytes(b"a")
+    (f / "manifest.csv").write_bytes(b"m")
+    (f / "_logs" / "log.txt").write_bytes(b"1")
+    h1 = holdout._price(f)
+    (f / "_logs" / "log.txt").write_bytes(b"a longer log line")
+    assert holdout._price(f) == h1 and h1["kind"] == "folder" and h1["n_files"] == 2
+    (f / "A.csv.gz").write_bytes(b"b")
+    assert holdout._price(f)["tree_sha256"] != h1["tree_sha256"]
+    assert holdout.tree_hash(f)["n_files"] == 3 and holdout.tree_hash(f, exclude_top_level=("_logs",))["n_files"] == 2

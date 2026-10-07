@@ -394,6 +394,6 @@ def test_the_gate1_run_names_its_configuration_and_seeds_for_the_freeze_and_a_ho
         fi = g.freeze_inputs(a)
     except DataNotPresent:
         pytest.skip("the approved Damodaran files are not on this machine")
-    assert set(fi) == {"store", "prices", "damodaran", "priors", "crosswalk", "headers", "config", "seeds"} and fi["config"] == cfg and Path(fi["damodaran"]).name == "damodaran"
+    assert set(fi) == {"store", "prices", "damodaran", "priors", "crosswalk", "headers", "delisting_index", "delisting_docs", "config", "seeds"} and fi["config"] == cfg and Path(fi["damodaran"]).name == "damodaran"
     with pytest.raises(holdout.HoldoutRefused):
         holdout.compute_contents(fi, g.REPO)                                    # no crosswalk given: the freeze cannot name it

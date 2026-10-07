@@ -49,7 +49,7 @@ from valuation.common import sha256_file
 from valuation.discount_rate import DamodaranStore, MriRiskFree
 from valuation.priors import PopulationPriors
 from . import engines as eng_mod
-from . import fundamentals, holdout, outcomes
+from . import daily_prices, delisting_inputs, fundamentals, holdout, holdout_inputs, outcomes
 
 HERE = Path(__file__).resolve()
 REPO = HERE.parents[1]
@@ -64,6 +64,8 @@ DEFAULT_SIC = INPUTS / "sic_by_cik.json"
 HORIZONS = (3, 6, 12, 24, 36)
 KS = (1, 2, 3)
 PRICE_STAMP = "raw_monthly_2026-10-01_survivors"
+DAILY_PRICE_STAMP = holdout_inputs.HOLDOUT_STAMP            # the D5 daily raw closes (Addendum L4): survivors only, today's listings
+DAILY_ENTRY_FIELD = "open"                                    # registration v2, section 2: the return starts at the NEXT session's open
 
 GATE1_FILES = [REPO / "valuation" / n for n in ("common.py", "classification.py", "discount_rate.py", "engine_operating.py", "engine_financial.py",
                                                   "engine_commodity.py", "priors.py", "priors_interface.py", "pit_adapter.py", "gate1.py", "variants.py", "sic_crosswalk.py")]
@@ -84,13 +86,15 @@ DEFAULT_CROSSWALK = WORKSPACE / "data" / "crosswalk" / "sic_to_damodaran_industr
 REGISTERED_INVALID_DRAW_MAX = gate1.INVALID_DRAW_MAX      # read at import: a diagnostic --invalid-draw-max does not change what a freeze records
 
 
-def frozen_config():
+def frozen_config(price_stamp=PRICE_STAMP):
     """The engine configuration a freeze names (Addendum J10): the module constants of the gate-1 engine, as they stand."""
     return {"gate1_version": gate1.GATE1_VERSION, "n_draws": gate1.N_DRAWS, "mcap_floor": gate1.MCAP_FLOOR, "de_min_n": gate1.DE_MIN_N, "de_percentile": gate1.DE_PERCENTILE,
             "return_min_n": gate1.RETURN_MIN_N, "spread_min_n": gate1.SPREAD_MIN_N, "invalid_draw_max": REGISTERED_INVALID_DRAW_MAX, "terminal_g_anchor": vcommon.TERMINAL_G_ANCHOR,
             "max_horizon": vcommon.MAX_HORIZON, "level_ref_year": vcommon.LEVEL_REF_YEAR, "priors_min_n": priors_config.MIN_N, "priors_version": priors_config.PRIORS_VERSION,
             "erp_monthly_max_age_days": vdr.MONTHLY_MAX_AGE_DAYS, "erp_publication_lag_days": vdr.PUBLICATION_LAG_DAYS, "headers_coverage_margin_days": sx.COVERAGE_MARGIN_DAYS,
-            "crosswalk_version": sx.CROSSWALK_VERSION, "price_stamp": PRICE_STAMP, "horizons": list(HORIZONS), "fundamental_ks": list(KS), "return_dates_end": RETURN_DATES_END}
+            "crosswalk_version": sx.CROSSWALK_VERSION, "price_stamp": price_stamp, "horizons": list(HORIZONS), "fundamental_ks": list(KS), "return_dates_end": RETURN_DATES_END,
+            "holdout_horizons": list(holdout_inputs.HOLDOUT_HORIZONS), "holdout_outcomes_end": holdout_inputs.HOLDOUT_OUTCOMES_END.isoformat(),
+            "holdout_return_dates_end": holdout_inputs.HOLDOUT_RETURN_DATES_END, "daily_entry_field": DAILY_ENTRY_FIELD, "daily_max_gap_days": 5}
 
 
 def frozen_seeds():
@@ -101,8 +105,10 @@ def frozen_seeds():
 
 def freeze_inputs(a):
     """What this run reads, for the holdout lock to hash against the freeze (Addendum J10)."""
-    return {"store": a.store, "prices": a.prices, "damodaran": vdr.default_root(), "priors": a.priors_dir or priors_config.DATA_DIR, "crosswalk": a.crosswalk, "headers": a.headers,
-            "config": frozen_config(), "seeds": frozen_seeds()}
+    daily = getattr(a, "prices_daily", None)
+    return {"store": a.store, "prices": daily or a.prices, "damodaran": vdr.default_root(), "priors": a.priors_dir or priors_config.DATA_DIR, "crosswalk": a.crosswalk, "headers": a.headers,
+            "delisting_index": getattr(a, "delisting_index", None), "delisting_docs": getattr(a, "delisting_docs", None),
+            "config": frozen_config(DAILY_PRICE_STAMP if daily else PRICE_STAMP), "seeds": frozen_seeds()}
 
 
 def month_end(y, m):
@@ -149,11 +155,19 @@ def _init(cfg):
     run_harness.block_network()
     idm = json.loads(Path(cfg["id_map"]).read_text(encoding="utf-8"))
     idm = idm.get("map", idm)
-    cur = pit_adapter.CurrentSicFile(cfg["sic"])
     hdr = sx.HeadersFile(cfg["headers"]) if cfg.get("headers") else None
     cw = sx.Crosswalk.load(cfg["crosswalk"]) if cfg.get("crosswalk") else None
-    sic = sx.SicResolver(cur, hdr, cw)                       # Addendum J11: the SIC as filed where the headers cover the date, else the current-dated record (stamped)
-    src = pdm.MonthlyRawPriceSource.load(cfg["prices"])
+    if cfg.get("strict_classification"):                     # Addendum L3 (the holdout): the SIC as filed at T and nothing else; the current-dated file is not even opened
+        sic = holdout_inputs.StrictSicResolver(sx.SicResolver(None, hdr, cw))
+    else:
+        cur = pit_adapter.CurrentSicFile(cfg["sic"])
+        sic = sx.SicResolver(cur, hdr, cw)                   # Addendum J11: the SIC as filed where the headers cover the date, else the current-dated record (stamped)
+    delist = json.loads(Path(cfg["price_events"]).read_text(encoding="utf-8")) if cfg.get("price_events") else None
+    if cfg.get("prices_daily"):                              # Addendum L4: the D5 daily raw closes, read lazily (an LRU of tickers, never the whole folder)
+        src = daily_prices.LazyDailyPriceSource(cfg["prices_daily"], max_cached=cfg.get("max_cached_tickers", 256), delistings=delist, entry_field=DAILY_ENTRY_FIELD)
+    else:
+        src = pdm.MonthlyRawPriceSource.load(cfg["prices"])
+        src.delistings = delist
     _ENV["pit"] = pdm.PitData(cfg["store"], price_source=src, id_map=idm, sic_source=sic, sic_history=sic)
     _ENV["priors"] = PopulationPriors(cfg.get("priors_dir"))
     _ENV["rates"] = gate1.Rates(DamodaranStore(), cfg["rf"])
@@ -176,8 +190,8 @@ def months_after(d, h):
     return date(y, m + 1, 1)
 
 
-def _attach_outcomes(rec, pit, cik, key, d, snap):
-    hz = tuple(h for h in HORIZONS if months_after(d, h) <= OUTCOMES_END)            # only horizons that end inside the development years (Addendum H6)
+def _attach_outcomes(rec, pit, cik, key, d, snap, horizons=HORIZONS, outcomes_end=OUTCOMES_END):
+    hz = tuple(h for h in horizons if months_after(d, h) <= outcomes_end)            # only horizons that end inside the window (development: Addendum H6; holdout: the registered 12 months)
     ho = outcomes.horizon_outcomes(pit, key, d, hz) if (key and hz) else {h: {"available": False, "status": outcomes.UNOBSERVABLE} for h in hz}
     rec["excess"], rec["ret"], rec["bounds"], rec["outcome_status"] = {}, {}, {}, {}
     for h, o in ho.items():
@@ -207,7 +221,7 @@ def prepare_date(d, ciks=None):
         prev = cik
         snap = pit.snapshot(cik, d)
         rec = {"date": d, "cik": cik, "ticker": None, "industry": None, "sector": None, "family": None, "status": None, "reasons": [], "stamps": [],
-               "price_stamp": PRICE_STAMP, "price": None, "price_adj": None, "market_cap": None, "shares": None, "mcap_group": None,
+               "price_stamp": cfg.get("price_stamp", PRICE_STAMP), "price": None, "price_adj": None, "market_cap": None, "shares": None, "mcap_group": None,
                "price_quality": None, "price_flags": [], "base_fye": None, "base_age_months": None, "score": {}, "val": None}
         if snap is None or not snap.years:
             rec["status"], rec["reasons"] = "refused", ["no_annual_report_at_decision_time"]
@@ -249,7 +263,7 @@ def prepare_date(d, ciks=None):
         for name in eng_mod.YARDSTICKS:
             r = eng_mod.REGISTRY[name](key or f"CIK{cik}", d, pit)
             rec["score"][name] = r.get("score")
-        _attach_outcomes(rec, pit, cik, key, d, snap)
+        _attach_outcomes(rec, pit, cik, key, d, snap, cfg.get("horizons", HORIZONS), pdm.to_date(cfg["outcomes_end"]) if cfg.get("outcomes_end") else OUTCOMES_END)
         rec["status"] = "prepared"
         preps[cik] = prep
         recs.append(rec)
@@ -280,7 +294,7 @@ def run_date(d, ciks=None):
         else:
             rec["status"], rec["reasons"] = "refused", list(v["reasons"])
     t_alt = time.time()
-    if cfg.get("erp_shifts") and d <= RETURN_DATES_END:                  # registration v2 B5, reported: the same names with the premium shifted
+    if cfg.get("erp_shifts") and d <= cfg.get("return_dates_end", RETURN_DATES_END):                  # registration v2 B5, reported: the same names with the premium shifted
         for delta in cfg["erp_shifts"]:
             lab = f"erp{delta * 1e4:+.0f}bp"
             sr = ShiftedErp(rates, delta)
@@ -327,11 +341,17 @@ def main(argv=None):
     ap.add_argument("--priors-dir", type=Path, help="the priors vintages folder (default: valuation.priors_build.config.DATA_DIR)")
     ap.add_argument("--headers", type=Path, default=DEFAULT_HEADERS if DEFAULT_HEADERS.exists() else None, help="the EDGAR headers CSV (the SIC as filed; Addendum J11)")
     ap.add_argument("--crosswalk", type=Path, default=DEFAULT_CROSSWALK if DEFAULT_CROSSWALK.exists() else None, help="the SIC -> Damodaran industry crosswalk (Addendum J11)")
+    ap.add_argument("--prices-daily", type=Path, help="the D5 daily raw closes folder (data/prices_daily): valuation prices and daily outcomes (Addendum L4); REQUIRED for a holdout run")
+    ap.add_argument("--delisting-index", type=Path, help="the D1 event index folder (data/sec_bulk/index): delisting events (Addendum L4); required for a holdout run")
+    ap.add_argument("--delisting-docs", type=Path, help="the D3 delisting documents folder (data/sec_bulk/delisting_docs), read through the strict readers; required for a holdout run")
+    ap.add_argument("--max-cached-tickers", type=int, default=256, help="the lazy daily loader's LRU size per worker")
     ap.add_argument("--no-erp-shifts", action="store_true", help="skip the +-1 pp equity-premium diagnostic scores (registration v2 B5)")
     ap.add_argument("--freeze", type=Path)
     a = ap.parse_args(argv)
     dates = a.dates or dev_dates()
     lock = holdout.enforce(dates, [gate1_engine], a.freeze, inputs=freeze_inputs(a))       # FIRST: before any data is opened
+    is_holdout = bool(lock["holdout_dates"])
+    hold_check = holdout_inputs.require_holdout_configuration(dates, a) if is_holdout else None      # Addenda L3, L4: daily prices, D1 + D3, the SIC as filed for every date
     a.out_dir.mkdir(parents=True, exist_ok=True)
     idm = json.loads(a.id_map.read_text(encoding="utf-8"))
     idm = idm.get("map", idm)
@@ -344,20 +364,40 @@ def main(argv=None):
     if a.headers is not None:                                       # the headers download is still growing: a run reads one frozen copy of it
         headers_copy = a.out_dir / "headers_snapshot.csv"
         shutil.copyfile(a.headers, headers_copy)
+    price_stamp = DAILY_PRICE_STAMP if a.prices_daily else PRICE_STAMP
+    horizons = holdout_inputs.HOLDOUT_HORIZONS if is_holdout else HORIZONS
+    outcomes_end = holdout_inputs.HOLDOUT_OUTCOMES_END if is_holdout else OUTCOMES_END
+    return_end = holdout_inputs.HOLDOUT_RETURN_DATES_END if is_holdout else RETURN_DATES_END
+    price_events, delist_report, delist_info = None, None, None
+    if a.delisting_index is not None:                        # D1 + D3 through the strict readers: written once, read by every worker
+        idx = delisting_inputs.EventIndex(a.delisting_index)
+        docs = delisting_inputs.DelistingDocs(a.delisting_docs) if a.delisting_docs is not None else None
+        tk_of = {}
+        for t, c in idm.items():
+            tk_of.setdefault(str(c).zfill(10), []).append(t)
+        price_events, delist_report = delisting_inputs.build_price_events(idx, docs, lambda c: tk_of.get(str(c).zfill(10), []), since=min(dates))
+        (a.out_dir / "price_events.json").write_text(json.dumps(price_events), encoding="utf-8")
+        delist_info = {"index": idx.info(), "build_report": delist_report, "docs_completeness": None if docs is None else delisting_inputs.completeness(idx, docs, since=min(dates))}
     cfg = {"store": str(a.store), "id_map": str(a.id_map), "prices": str(a.prices), "sic": str(a.sic), "rf": rf, "ciks": ciks, "n_draws": a.n_draws,
+           "prices_daily": str(a.prices_daily) if a.prices_daily else None, "price_stamp": price_stamp, "strict_classification": is_holdout, "max_cached_tickers": a.max_cached_tickers,
+           "price_events": str(a.out_dir / "price_events.json") if price_events is not None else None, "horizons": list(horizons), "outcomes_end": outcomes_end.isoformat(),
+           "return_dates_end": return_end,
            "out_dir": str(a.out_dir), "priors_dir": str(a.priors_dir) if a.priors_dir else None,
            "invalid_draw_max": a.invalid_draw_max, "headers": str(headers_copy) if headers_copy else None, "crosswalk": str(a.crosswalk) if a.crosswalk else None,
            "erp_shifts": [] if a.no_erp_shifts else list(ERP_SHIFTS)}
     meta = {"started": datetime.now().isoformat(timespec="seconds"), "dates": dates, "lock": lock, "n_ciks": len(ciks), "workers": a.workers,
-            "n_draws": a.n_draws, "gate1_version": gate1.GATE1_VERSION, "price_stamp": PRICE_STAMP, "price_file": str(a.prices),
-            "price_file_sha256": sha256_file(a.prices), "price_file_meta": json.loads(a.prices.read_text(encoding="utf-8")).get("meta"),
+            "n_draws": a.n_draws, "gate1_version": gate1.GATE1_VERSION, "price_stamp": price_stamp,
+            "price_file": None if a.prices_daily else str(a.prices), "price_file_sha256": sha256_file(a.prices_daily / "manifest.csv") if a.prices_daily else sha256_file(a.prices),
+            "price_file_meta": ({"source": "D5 daily raw closes (Yahoo, auto_adjust=False)", "folder": str(a.prices_daily), "entry": DAILY_ENTRY_FIELD, "file_sha256_is_the_manifest": True} if a.prices_daily else json.loads(a.prices.read_text(encoding="utf-8")).get("meta")),
+            "mode": "holdout" if is_holdout else "development", "strict_classification": is_holdout, "holdout_configuration": hold_check, "delisting_inputs": delist_info,
+            "horizons": list(horizons), "outcomes_end": outcomes_end.isoformat(),
             "priors_dir": str(a.priors_dir) if a.priors_dir else None, "invalid_draw_max": a.invalid_draw_max if a.invalid_draw_max is not None else gate1.INVALID_DRAW_MAX,
             "invalid_draw_max_is_the_registered_rule": a.invalid_draw_max is None,
             "git_head": holdout._git(REPO, "rev-parse", "HEAD").decode().strip(), "rf": {k: v[0] for k, v in rf.items()},
             "engine_files_sha256": {p.relative_to(REPO).as_posix(): holdout.sha256_file(p) for p in GATE1_FILES},
             "headers": sx.HeadersFile(headers_copy).info() if headers_copy else None,
             "crosswalk": ({"path": str(a.crosswalk), "sha256": sha256_file(a.crosswalk), "meta": sx.Crosswalk.load(a.crosswalk).meta} if a.crosswalk else None),
-            "erp_shifts": cfg["erp_shifts"], "return_dates_end": RETURN_DATES_END}
+            "erp_shifts": cfg["erp_shifts"], "return_dates_end": return_end}
     (a.out_dir / "run_meta.json").write_text(json.dumps(_clean(meta), indent=1), encoding="utf-8")
     t0 = time.time()
     with Pool(a.workers, initializer=_init, initargs=(cfg,)) as pool:
