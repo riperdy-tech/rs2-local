@@ -162,7 +162,7 @@ class FakeStore:
 
 
 def _rates(rf=0.02):
-    return gate1.Rates(FakeStore(), {"2019-12-31": (rf, "fake rf")})
+    return gate1.Rates(FakeStore(), {"2019-12-31": (rf, "fake rf")}, erp_basis="damodaran")
 
 
 def test_the_context_uses_the_industry_cross_section_when_it_has_enough_names_else_the_pooled_one():
@@ -245,7 +245,7 @@ def test_a_company_is_valued_per_share_and_every_record_field_is_present(tmp_pat
     assert prep["status"] == "prepared" and prep["family"] == "operating" and prep["blob"]
     ctx = gate1.DateContext.build("2020-06-30", 0.02, [{"industry": "Software", "family": "operating", "de_book": 0.1 * i, "kd_effective": 0.06, "roic3": 0.01 * i}
                                                        for i in range(1, 31)])
-    rates = gate1.Rates(FakeStore(), {"2020-06-30": (0.02, "fake rf")})
+    rates = gate1.Rates(FakeStore(), {"2020-06-30": (0.02, "fake rf")}, erp_basis="damodaran")
     priors = PlaceholderPriors(True)
     v1 = gate1.value_company(dict(prep, industry="Software"), ctx, priors, rates, shares=50.0, n_draws=300)
     v2 = gate1.value_company(dict(prep, industry="Software"), ctx, priors, rates, shares=50.0, n_draws=300)
@@ -315,7 +315,7 @@ def _value(tmp_path, priors, rf=0.02, n_draws=400):
     prep = gate1.prepare(pit_adapter.adapt(pit, 1, "2020-06-30"))
     rows = [{"industry": "Software", "family": "operating", "de_book": 0.1 * i, "kd_effective": 0.06, "roic3": 0.01 * i} for i in range(1, 31)]
     ctx = gate1.DateContext.build("2020-06-30", rf, rows)
-    rates = gate1.Rates(FakeStore(), {"2020-06-30": (rf, "fake rf")})
+    rates = gate1.Rates(FakeStore(), {"2020-06-30": (rf, "fake rf")}, erp_basis="damodaran")
     return gate1.value_company(dict(prep, industry="Software"), ctx, priors, rates, shares=50.0, n_draws=n_draws)
 
 
@@ -394,6 +394,6 @@ def test_the_gate1_run_names_its_configuration_and_seeds_for_the_freeze_and_a_ho
         fi = g.freeze_inputs(a)
     except DataNotPresent:
         pytest.skip("the approved Damodaran files are not on this machine")
-    assert set(fi) == {"store", "prices", "damodaran", "priors", "crosswalk", "headers", "delisting_index", "delisting_docs", "config", "seeds"} and fi["config"] == cfg and Path(fi["damodaran"]).name == "damodaran"
+    assert set(fi) == {"store", "prices", "damodaran", "priors", "crosswalk", "headers", "delisting_index", "delisting_docs", "price_fallback", "survivorship_cover", "config", "seeds"} and fi["config"] == cfg and Path(fi["damodaran"]).name == "damodaran"
     with pytest.raises(holdout.HoldoutRefused):
         holdout.compute_contents(fi, g.REPO)                                    # no crosswalk given: the freeze cannot name it

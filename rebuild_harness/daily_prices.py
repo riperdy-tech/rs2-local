@@ -228,6 +228,11 @@ class LazyDailyPriceSource(PriceSource):
         s = self._series(key)
         return None if s is None else s.last_iso
 
+    def first_date(self, key):
+        """The first bar of the ticker's file (iso date), or None when the ticker is not in the folder."""
+        s = self._series(key)
+        return None if s is None else _iso(s.days[0])
+
     def raw_split_events(self, key):
         """[(ex-date, ratio)] of the split events whose pre-split Close was found NOT adjusted (the traded close is the Close there); None when the ticker is not in the folder."""
         s = self._series(key)
@@ -236,6 +241,86 @@ class LazyDailyPriceSource(PriceSource):
 
 def _iso(day) -> str:
     return str(EPOCH + np.timedelta64(int(day), "D"))
+
+
+# ---- M6: the monthly file as the fallback for a ticker whose D5 history starts late ------------------------------------------------------------------
+
+FALLBACK_FLAG = "price_monthly_fallback"
+
+
+class FallbackPriceSource(PriceSource):
+    """A D5 daily source with the operator-approved monthly raw file behind it, for the tickers whose D5 history STARTS AFTER the date asked for (Addendum M6: QRVO and 16 others; 521 ticker-dates
+    over the 36 development month-ends, `scratch/rev23/gate1_dev/round5/price_crosscheck_monthly_vs_daily.txt`).
+
+    * the valuation price of such a ticker at a month-end date is the monthly file's traded close (`MonthlyRawPriceSource.close_unadjusted`), flagged `price_monthly_fallback` and UNVERIFIED (a month-end bar
+      stands for the last session);
+    * outcomes use the daily data where it exists and the monthly data where it does not: `adj_close` and `entry_point` read the daily bar when the ticker has one at the date and the monthly bar when its
+      daily history has not started, each flagged `price_monthly_fallback`; `entry_point` of a monthly bar is the decision bar itself (no next session), as the monthly source says;
+    * the fallback applies ONLY to the late-start case: a ticker that D5 does not hold at all is not a key; a ticker whose daily history ended, or whose bar is missing within the gap, has no price (a gap
+      is never filled from a month-end bar);
+    * `splits` is the daily exact-date events plus the monthly (month-dated) events of the months BEFORE the daily history starts, so that a share count at a date in the fallback stretch is put on the traded basis.
+    Everything else is the daily source's."""
+    basis = "traded_unadjusted"
+
+    def __init__(self, daily: LazyDailyPriceSource, monthly, delistings=None):
+        self.daily, self.monthly = daily, monthly
+        self._splits = {}
+        self.delistings = delistings
+        if delistings is not None:
+            daily.delistings = delistings
+
+    # the delisting events live on the daily source (outcomes read them through this object)
+    def delisting(self, key):
+        return (self.delistings or self.daily.delistings or {}).get(key)
+
+    def has_key(self, key):
+        return self.daily.has_key(key)
+
+    def late(self, key, asof) -> bool:
+        """True when the ticker is in D5, its first bar lies after `asof`, and the monthly file holds it."""
+        first = self.daily.first_date(key)
+        return first is not None and first > to_date(asof).isoformat() and self.monthly.has_key(key)
+
+    def _tag(self, p):
+        return None if p is None else PricePoint(p.price, p.bar, tuple(p.flags) + (FALLBACK_FLAG,), QUALITY_UNVERIFIED)
+
+    def close_unadjusted(self, key, asof):
+        p = self.daily.close_unadjusted(key, asof)
+        if p is None and self.late(key, asof):
+            return self._tag(self.monthly.close_unadjusted(key, asof))
+        return p
+
+    def adj_close(self, key, asof):
+        p = self.daily.adj_close(key, asof)
+        if p is None and self.late(key, asof):
+            return self._tag(self.monthly.adj_close(key, asof))
+        return p
+
+    def entry_point(self, key, asof):
+        p = self.daily.entry_point(key, asof)
+        if p is None and self.late(key, asof):
+            return self._tag(self.monthly.entry_point(key, asof))
+        return p
+
+    def splits(self, key):
+        if key not in self._splits:
+            ev = self.daily.splits(key)
+            if ev is None:
+                self._splits[key] = None
+            else:
+                first = self.daily.first_date(key)
+                early = [(m, r) for m, r in (self.monthly.splits(key) if self.monthly.has_key(key) else []) if m < first[:7]]
+                self._splits[key] = sorted(early) + list(ev)
+        return self._splits[key]
+
+    def last_date(self, key):
+        return self.daily.last_date(key)
+
+    def target_date(self, asof, months):
+        return self.daily.target_date(asof, months)
+
+    def drop_cache(self):
+        self.daily.drop_cache()
 
 
 # ---- a scan of the whole folder (a one-off check, not part of a run) -------------------------------------------------------------------------

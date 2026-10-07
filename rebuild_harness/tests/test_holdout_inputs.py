@@ -93,7 +93,12 @@ def args(tmp_path, **kw):
     d1_idx, d3_docs = build(tmp_path, [ev("0000000001", "acquisition_completed", "2023-06-01", "A-1", ["2.01"])], {("0000000001", "A-1"): CASH_8K})
     daily = tmp_path / "daily"
     daily.mkdir(exist_ok=True)
-    base = dict(prices_daily=daily, prices=tmp_path / "monthly.json", delisting_index=tmp_path / "d1", delisting_docs=tmp_path / "d3", headers=headers_csv(tmp_path), crosswalk=crosswalk(tmp_path))
+    (tmp_path / "monthly.json").write_text('{"prices": {}}', encoding="utf-8")
+    cover = tmp_path / "cover"
+    cover.mkdir(exist_ok=True)
+    (cover / "cover.jsonl.gz").write_bytes(b"x")
+    base = dict(prices_daily=daily, prices=tmp_path / "monthly.json", delisting_index=tmp_path / "d1", delisting_docs=tmp_path / "d3", headers=headers_csv(tmp_path), crosswalk=crosswalk(tmp_path),
+                survivorship_cover=cover, erp_basis="engine_consistent", no_prices_fallback=False)
     base.update(kw)
     return Namespace(**base)
 
@@ -110,6 +115,11 @@ def test_a_complete_holdout_configuration_passes(tmp_path):
     ({"delisting_docs": "nowhere"}, "D3 documents"),
     ({"headers": None}, "D2 EDGAR headers"),
     ({"crosswalk": None}, "crosswalk"),
+    ({"survivorship_cover": None}, "survivorship cover index"),
+    ({"survivorship_cover": "nowhere"}, "survivorship cover index"),
+    ({"erp_basis": "damodaran"}, "engine-consistent one"),
+    ({"no_prices_fallback": True}, "monthly raw price file"),
+    ({"prices": "nowhere.json"}, "monthly raw price file"),
 ])
 def test_every_missing_holdout_input_is_refused_by_name(tmp_path, change, match):
     a = args(tmp_path)
@@ -137,10 +147,12 @@ def test_the_gate1_run_names_the_daily_prices_and_d1_d3_in_the_freeze_and_the_st
     a = args(tmp_path, store=tmp_path, priors_dir=tmp_path, headers=None)
     fi = gate1_run.freeze_inputs(a)
     assert fi["prices"] == a.prices_daily and fi["delisting_index"] == a.delisting_index and fi["delisting_docs"] == a.delisting_docs
+    assert fi["price_fallback"] == a.prices and fi["survivorship_cover"] == a.survivorship_cover                                 # Addendum M: the freeze names both
+    assert gate1_run.freeze_inputs(Namespace(**dict(vars(a), no_prices_fallback=True)))["price_fallback"] is None
     assert fi["config"]["price_stamp"] == "raw_daily_D5_survivors" and fi["config"]["daily_entry_field"] == "open"
     assert fi["config"]["holdout_horizons"] == [12] and fi["config"]["holdout_outcomes_end"] == "2025-12-31" and fi["config"]["holdout_return_dates_end"] == "2024-12-31"
     a.prices_daily = None
-    assert gate1_run.freeze_inputs(a)["prices"] == a.prices and gate1_run.freeze_inputs(a)["config"]["price_stamp"] == gate1_run.PRICE_STAMP
+    assert gate1_run.freeze_inputs(a)["prices"] == a.prices and gate1_run.freeze_inputs(a)["config"]["price_stamp"] == gate1_run.PRICE_STAMP and gate1_run.freeze_inputs(a)["price_fallback"] is None
 
 
 def test_the_run_refuses_a_holdout_date_without_a_freeze_before_any_data_is_opened(tmp_path, monkeypatch):
@@ -172,3 +184,13 @@ def test_readiness_names_what_is_missing_and_what_it_waits_for(tmp_path):
     assert any(b.startswith("D3_delisting_docs") and "1 of 1 accessions" in b for b in r["blockers"])
     r = hi.readiness(tmp_path / "nowhere", tmp_path / "nowhere", tmp_path / "nowhere", tmp_path / "nowhere.csv", tmp_path / "nowhere.json", dates=["2023-01-31"])
     assert r["ready"] is False and len(r["blockers"]) == 4          # D3 is not judged when D1 is absent
+
+
+def test_readiness_also_checks_the_cover_index_and_the_fallback_file_when_they_are_named(tmp_path):
+    a = args(tmp_path)
+    (tmp_path / "daily" / "A.csv.gz").write_bytes(b"x")
+    (tmp_path / "daily" / "manifest.csv").write_text("ticker,rows,first_date,last_date,status\n", encoding="utf-8")
+    ok = hi.readiness(a.prices_daily, a.delisting_index, a.delisting_docs, a.headers, a.crosswalk, dates=["2023-01-31", "2024-12-31"], survivorship_cover=a.survivorship_cover, prices_fallback=a.prices)
+    assert ok["ready"] is True and ok["checks"]["survivorship_cover_index"]["ok"] and ok["checks"]["price_fallback_monthly_file"]["ok"]
+    bad = hi.readiness(a.prices_daily, a.delisting_index, a.delisting_docs, a.headers, a.crosswalk, dates=["2023-01-31", "2024-12-31"], survivorship_cover=tmp_path / "nowhere", prices_fallback=tmp_path / "no.json")
+    assert bad["ready"] is False and any(b.startswith("survivorship_cover_index") for b in bad["blockers"]) and any(b.startswith("price_fallback_monthly_file") for b in bad["blockers"])

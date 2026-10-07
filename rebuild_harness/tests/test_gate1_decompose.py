@@ -32,7 +32,7 @@ def _setup(tmp_path):
     pit = pdm.PitData(_store(tmp_path, base_rev=1000.0, growth=0.05), sic_source=_sic(tmp_path))
     prep = gate1.prepare(pit_adapter.adapt(pit, 1, "2020-06-30"))
     ctx = gate1.DateContext.build("2020-06-30", 0.02, [{"industry": "Software", "family": "operating", "de_book": 0.1 * i, "kd_effective": 0.06, "roic3": 0.01 * i} for i in range(1, 31)])
-    return dict(prep, industry="Software"), ctx, gate1.Rates(FakeStore(), {"2020-06-30": (0.02, "fake rf")}), PlaceholderPriors(True)
+    return dict(prep, industry="Software"), ctx, gate1.Rates(FakeStore(), {"2020-06-30": (0.02, "fake rf")}, erp_basis="damodaran"), PlaceholderPriors(True)
 
 
 def test_value_company_with_a_neutral_variant_is_the_registered_value_and_a_swap_changes_it(tmp_path):

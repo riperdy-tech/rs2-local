@@ -132,12 +132,42 @@ _CASH2 = re.compile(r"\$\s?(\d{1,4}(?:\.\d{1,4})?)\s+(?:in cash\s+)?per share", 
 _STOCK_WORDS = re.compile(r"exchange ratio|shares of (?:the )?(?:parent|acquirer|buyer)|stock consideration|in stock|common stock of|contingent value|cvr|collar|election", re.I)
 
 
-def read_cash_consideration(text):
-    """The all-cash price per share in a completion 8-K / merger text, or None.  Strict: exactly one distinct dollar amount per share, and none of the
-    words that mean stock, ratios, elections or contingent rights anywhere in the text.  Anything else is None (unobservable): a wrong price is worse than none."""
+_ABBREV = re.compile(r"\b(Inc|Corp|Co|Ltd|LLC|L\.P|U\.S|No|Nos|Mr|Mrs|Ms|Dr|St|Cos|Bros|plc|N\.V|S\.A|a\.m|p\.m|e\.g|i\.e|vs|Sec|Dec|Jan|Feb|Mar|Apr|Aug|Sept|Oct|Nov)\.", re.I)
+_SENT_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z“\"(])")
+_DOT = "․"                                           # a stand-in for the period of an abbreviation, so that the sentence split does not cut after it
+
+
+def sentences(text):
+    """The sentences of a flattened document: split after . ! ? followed by white space and a capital letter, the period of an abbreviation (Inc., Corp., U.S., ...) and of a decimal never ends one.  A split
+    that is missed makes a sentence longer, and the reader below stricter; it is never made shorter than the sentence."""
+    t = _ABBREV.sub(lambda m: m.group(0)[:-1] + _DOT, text)
+    return [x.replace(_DOT, ".").strip() for x in _SENT_END.split(t) if x.strip()]
+
+
+def read_cash_consideration_whole_text(text):
+    """The reader as it stood before Addendum M5, kept to report the yield BEFORE: the all-cash price per share in a completion 8-K / merger text, or None.  Exactly one distinct dollar amount
+    per share, and none of the words that mean stock, ratios, elections or contingent rights ANYWHERE in the text."""
     if not text or _STOCK_WORDS.search(text):
         return None
     amounts = {m.group(1) for m in _CASH.finditer(text)} | {m.group(1) for m in _CASH2.finditer(text)}
+    return float(next(iter(amounts))) if len(amounts) == 1 else None
+
+
+def consideration_sentences(text):
+    """The sentences that state a per-share dollar amount (Addendum M5): the scope of the cash reader."""
+    return [x for x in sentences(text or "") if _CASH.search(x) or _CASH2.search(x)]
+
+
+def read_cash_consideration(text, stock_words=None):
+    """The all-cash price per share in a completion 8-K / merger text, or None (Addendum M5: scoped to the sentence that states the per-share merger consideration).  Strict where it looks: in
+    EVERY sentence that states a per-share dollar amount there must be none of the words that mean stock, ratios, elections or contingent rights (a cash-and-stock election in that sentence
+    still declines), and across those sentences there must be exactly one distinct amount.  A word elsewhere in the document (a mention of an election of directors in another Item, a risk
+    factor) does not decline it.  No sentence stating a per-share amount is None (unobservable): a wrong price is worse than none.  `stock_words`: a REPORT-ONLY alternative pattern, never used by the registered run."""
+    sw = stock_words if stock_words is not None else _STOCK_WORDS
+    scoped = consideration_sentences(text)
+    if not scoped or any(sw.search(x) for x in scoped):
+        return None
+    amounts = {m.group(1) for x in scoped for m in (*_CASH.finditer(x), *_CASH2.finditer(x))}
     return float(next(iter(amounts))) if len(amounts) == 1 else None
 
 
@@ -150,19 +180,25 @@ def read_equity_cancelled(text):
     return True if (cancelled and nothing) else None
 
 
+def price_event(e, text):
+    """The price event of one delisting event (a dict of the D1 event with its evidence) given the text of its completion filing / plan (or None: no reader input): type 'unresolved_<class>' unless
+    a strict reader resolves it ('bankruptcy', or 'acquisition' with `cash_per_share`).  Shared by `to_price_events` (keyed by ticker) and the survivorship census (keyed by company)."""
+    ev = {"date": e["date"], "type": "unresolved_" + e["class"], "class": e["class"], "evidence": e["evidence"]}
+    if e["class"] == "bankruptcy" and read_equity_cancelled(text):
+        ev["type"] = "bankruptcy"
+    elif e["class"] == "acquisition_completed":
+        cash = read_cash_consideration(text)
+        if cash is not None:
+            ev.update(type="acquisition", cash_per_share=cash)
+    return ev
+
+
 def to_price_events(events, tickers_for, text_for=None):
     """{ticker: delisting event dict for the PriceSource}.  `tickers_for(cik)` -> tickers; `text_for(event)` -> text of the completion filing / plan (or None:
     no reader input).  Without text every event is `unresolved`: type 'unresolved_<class>', which the harness turns into OUTCOME_UNOBSERVABLE with bounds."""
     out = {}
     for e in events:
-        text = text_for(e) if text_for else None
-        ev = {"date": e["date"], "type": "unresolved_" + e["class"], "class": e["class"], "evidence": e["evidence"]}
-        if e["class"] == "bankruptcy" and read_equity_cancelled(text):
-            ev["type"] = "bankruptcy"
-        elif e["class"] == "acquisition_completed":
-            cash = read_cash_consideration(text)
-            if cash is not None:
-                ev.update(type="acquisition", cash_per_share=cash)
+        ev = price_event(e, text_for(e) if text_for else None)
         for t in tickers_for(e["cik"]):
             out[t] = ev
     return out

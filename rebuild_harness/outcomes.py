@@ -71,7 +71,7 @@ def horizon_outcome(pit, key, asof, months, benchmark=BENCHMARK, coverage_only=F
         out["status"] = UNOBSERVABLE
         out["flags"].append("no_entry_price" if a0 is None else "no_benchmark_entry")
         return out
-    out["flags"] += [f for f in a0.flags if f.startswith("no_next_session")]
+    out["flags"] += [f for f in a0.flags if f.startswith(("no_next_session", "price_monthly_fallback"))]
     if b1 is None:
         out["status"] = BEYOND
         return out

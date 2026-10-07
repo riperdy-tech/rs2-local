@@ -12,6 +12,8 @@ THE FREEZE CONTENTS (Addendum J10).  A freeze names more than the code.  `conten
     code_commit           the repository HEAD at the freeze
     point_in_time_store   the tree hash of the point-in-time store folder (every file's relative path, size and sha256, in sorted order, hashed together)
     price_snapshot        the sha256 of the price file (or the tree hash of a price folder)
+    price_fallback        the sha256 of the monthly raw price file that stands behind a D5 ticker whose history starts late (Addendum M6); None when the run has none
+    survivorship_cover    the tree hash of the cover index folder the missing-name census reads (Addendum M1: public float and share counts from the cover pages); None when the run has none
     damodaran             the sha256 of MANIFEST.json and of every Damodaran file it lists (each must match the manifest)
     priors                the tree hash of the priors folder and of every vintage folder in it
     industry_crosswalk    the sha256 of the SIC -> Damodaran-industry crosswalk file
@@ -102,7 +104,7 @@ def engine_identity(engine, repo=None):
 
 # ---- the freeze contents (Addendum J10) ------------------------------------------------------------------------------------------------
 
-CONTENT_KEYS = ("code_commit", "point_in_time_store", "price_snapshot", "damodaran", "priors", "industry_crosswalk", "sic_headers", "delisting_index", "delisting_docs", "config", "seeds",
+CONTENT_KEYS = ("code_commit", "point_in_time_store", "price_snapshot", "price_fallback", "survivorship_cover", "damodaran", "priors", "industry_crosswalk", "sic_headers", "delisting_index", "delisting_docs", "config", "seeds",
                 "packages")
 PACKAGES = ("numpy", "pandas", "openpyxl")
 CHUNK = 1 << 20
@@ -171,7 +173,7 @@ def _price(path):
 
 def compute_contents(inputs, repo):
     """The freeze contents of the inputs a run reads.  `inputs`: {"store": folder, "prices": file or folder, "damodaran": folder, "priors": folder, "crosswalk": file, "headers": file or None,
-    "delisting_index": folder, "delisting_docs": folder, "config": {...}, "seeds": {...}}.  A missing key is a refusal (a freeze that cannot name an input is not a freeze)."""
+    "delisting_index": folder, "delisting_docs": folder, "config": {...}, "seeds": {...}, and optionally "price_fallback": file, "survivorship_cover": folder}.  A missing key is a refusal (a freeze that cannot name an input is not a freeze)."""
     need = ("store", "prices", "damodaran", "priors", "crosswalk", "delisting_index", "delisting_docs", "config", "seeds")
     miss = [k for k in need if inputs.get(k) is None]
     if miss:
@@ -181,7 +183,9 @@ def compute_contents(inputs, repo):
     if not vint:
         raise HoldoutRefused(f"no priors vintage folder (a year) under {pri}")
     hdr = inputs.get("headers")
+    fb, cover = inputs.get("price_fallback"), inputs.get("survivorship_cover")
     return {"code_commit": _git(Path(repo), "rev-parse", "HEAD").decode().strip(), "point_in_time_store": tree_hash(inputs["store"]), "price_snapshot": _price(inputs["prices"]),
+            "price_fallback": None if fb is None else _price(fb), "survivorship_cover": None if cover is None else tree_hash(cover),
             "damodaran": _damodaran(inputs["damodaran"]), "priors": dict(tree_hash(pri), vintages=vint), "industry_crosswalk": {"sha256": file_sha256(inputs["crosswalk"])},
             "sic_headers": None if hdr is None else {"sha256": file_sha256(hdr)}, "delisting_index": tree_hash(inputs["delisting_index"]),
             "delisting_docs": tree_hash(inputs["delisting_docs"]), "config": json.loads(json.dumps(inputs["config"], sort_keys=True)),

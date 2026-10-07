@@ -371,12 +371,12 @@ def b5_and_b1_b2(rows, bound, n_boot=N_BOOT, price_basis_rows=None, with_variant
         return out
     # reported variants
     var = {}
-    for lab in ("erp+100bp", "erp-100bp"):
+    for lab, name in (("erp+100bp", "equity premium +100bp"), ("erp-100bp", "equity premium -100bp"), ("erp_damodaran", "equity premium: Damodaran's own (Addendum M sensitivity)")):
         if any((r.get("score_alt") or {}).get(lab) is not None for r in rows):
             f = _score_alt(lab)
             vb1 = b1_pooled(rows, bound, score_fn=f, n_boot=n_boot)
             vb2 = b2_v2(rows, bound, score_fn=f)
-            var[f"equity premium {lab[3:]}"] = {"B1": {k: v for k, v in vb1.items() if not k.startswith("_")}, "B2": {k: v for k, v in vb2.items() if k != "by_date"}}
+            var[name] = {"B1": {k: v for k, v in vb1.items() if not k.startswith("_")}, "B2": {k: v for k, v in vb2.items() if k != "by_date"}}
     for lab, eff, grp in (("sector-neutral", "sector", "sector"), ("size-neutral", "size", "size")):
         vb1 = b1_pooled(rows, bound, effects=eff, n_boot=n_boot)
         vb2 = b2_v2(rows, bound, group=grp)

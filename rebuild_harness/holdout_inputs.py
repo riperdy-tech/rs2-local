@@ -4,6 +4,8 @@
                   Outcomes: the 12-month horizon, entered at the next session's open (registration v2, section 2).
   L4  DELISTINGS  the D1 event index and the D3 documents through the strict readers (`rebuild_harness.delisting_inputs`); D3 must be COMPLETE (every 8-K accession D1 asks for is on disk or
                   is a recorded failed fetch), else the run refuses: a half-downloaded document set would turn a resolvable event into an unobservable one by accident of timing.
+  M   SURVIVORSHIP  the cover index (`rebuild_harness.survivorship`: public float and share counts of the cover pages, Addendum M1-M2) for the missing-name census, and the monthly raw price file behind a D5 ticker
+                  whose history starts late (M6): both are required, so that the three bounds are not identical for want of the companies that left.  `--erp-basis` must be the registered `engine_consistent` (Addenda L1, M).
   L3  CLASSIFICATION  the SIC AS FILED at T from the D2 headers, for every holdout date.  `StrictSicResolver` NEVER falls back to the current-dated `sic_by_cik.json`: a company with no header
                   accepted by T has no SIC and is refused (`industry_unmapped`), and a date the headers file does not yet cover refuses the whole run, naming the date and the file's coverage.
 
@@ -93,6 +95,13 @@ def require_holdout_configuration(dates, a, headers: Optional["sx.HeadersFile"] 
         v = getattr(a, name, None)
         if v is None or not Path(v).is_dir():
             raise HoldoutRefused(f"the holdout needs the D1 event index and the D3 documents (--{name.replace('_', '-')}): {v} is not a folder (Addendum L4)")
+    if getattr(a, "erp_basis", "engine_consistent") != "engine_consistent":
+        raise HoldoutRefused(f"the holdout runs the registered equity risk premium, the engine-consistent one (Addenda L1, M), not {a.erp_basis!r}: Damodaran's own is a development sensitivity")
+    cover = getattr(a, "survivorship_cover", None)
+    if cover is None or not (Path(cover) / "cover.jsonl.gz").is_file():
+        raise HoldoutRefused(f"the holdout needs the survivorship cover index (--survivorship-cover; rebuild_harness.survivorship.build_cover_index): no cover.jsonl.gz under {cover} (Addendum M1)")
+    if getattr(a, "no_prices_fallback", False) or getattr(a, "prices", None) is None or not Path(a.prices).is_file():
+        raise HoldoutRefused(f"the holdout puts the monthly raw price file behind a D5 ticker whose history starts late (Addendum M6): no such file at {getattr(a, 'prices', None)} or the fallback was switched off")
     if getattr(a, "headers", None) is None or not Path(a.headers).is_file():
         raise HoldoutRefused("the holdout needs the D2 EDGAR headers file (--headers): the SIC as filed at T (Addendum L3)")
     if getattr(a, "crosswalk", None) is None or not Path(a.crosswalk).is_file():
@@ -111,7 +120,7 @@ def require_holdout_configuration(dates, a, headers: Optional["sx.HeadersFile"] 
 
 # ---- readiness: what stands between now and a freeze (reads statistics only; writes nothing) ---------------------------------------------------
 
-def readiness(prices_daily, delisting_index, delisting_docs, headers, crosswalk, dates=None) -> dict:
+def readiness(prices_daily, delisting_index, delisting_docs, headers, crosswalk, dates=None, survivorship_cover=None, prices_fallback=None) -> dict:
     """{"ready": bool, "blockers": [...], "checks": {...}}: whether the holdout's inputs are in place.  Each check is its own entry; none of them hashes the big folders (the freeze does) and none
     opens a price, an outcome or a filing of a holdout date.  A blocker is a sentence naming what is missing and what it waits for."""
     from . import delisting_inputs as di
@@ -147,6 +156,12 @@ def readiness(prices_daily, delisting_index, delisting_docs, headers, crosswalk,
     except Exception as e:
         need(False, "D2_headers_sic_as_filed", {}, f"{type(e).__name__}: {e}")
     need(Path(crosswalk).is_file(), "industry_crosswalk", {"path": str(crosswalk)}, f"no crosswalk at {crosswalk}")
+    if survivorship_cover is not None:
+        cp = Path(survivorship_cover) / "cover.jsonl.gz"
+        need(cp.is_file(), "survivorship_cover_index", {"path": str(survivorship_cover), "bytes": cp.stat().st_size if cp.is_file() else None},
+             f"no cover index at {cp}; build it with rebuild_harness.survivorship.build_cover_index (Addendum M1)")
+    if prices_fallback is not None:
+        need(Path(prices_fallback).is_file(), "price_fallback_monthly_file", {"path": str(prices_fallback)}, f"no monthly raw price file at {prices_fallback} (Addendum M6)")
     return {"ready": not blockers, "blockers": blockers, "checks": checks, "holdout_dates": [dates[0], dates[-1], len(dates)]}
 
 
@@ -161,8 +176,10 @@ def main(argv=None):
     ap.add_argument("--delisting-docs", type=Path, default=ws / "sec_bulk" / "delisting_docs")
     ap.add_argument("--headers", type=Path, default=ws / "sec_bulk" / "headers" / "headers_raw.csv")
     ap.add_argument("--crosswalk", type=Path, default=ws / "crosswalk" / "sic_to_damodaran_industry_v1.json")
+    ap.add_argument("--survivorship-cover", type=Path, default=ws / "survivorship_cover")
+    ap.add_argument("--prices-fallback", type=Path, default=ws / "priors" / "_inputs" / "prices_monthly_raw.json")
     a = ap.parse_args(argv)
-    r = readiness(a.prices_daily, a.delisting_index, a.delisting_docs, a.headers, a.crosswalk)
+    r = readiness(a.prices_daily, a.delisting_index, a.delisting_docs, a.headers, a.crosswalk, survivorship_cover=a.survivorship_cover, prices_fallback=a.prices_fallback)
     print(json.dumps(r, indent=1))
     return 0 if r["ready"] else 1
 

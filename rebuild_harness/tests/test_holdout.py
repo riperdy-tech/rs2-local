@@ -330,3 +330,27 @@ def test_a_price_folder_snapshot_ignores_its_download_logs_but_not_a_price_file(
     (f / "A.csv.gz").write_bytes(b"b")
     assert holdout._price(f)["tree_sha256"] != h1["tree_sha256"]
     assert holdout.tree_hash(f)["n_files"] == 3 and holdout.tree_hash(f, exclude_top_level=("_logs",))["n_files"] == 2
+
+
+def test_the_freeze_names_the_fallback_price_file_and_the_cover_index_and_refuses_a_change_in_either(repo, tmp_path, inputs):
+    """Addendum M: the monthly raw file behind a late-start D5 ticker (M6) and the cover index of the census (M1) are freeze contents; a run with different ones is refused by name."""
+    import hashlib
+    fb = tmp_path / "data" / "monthly.json"
+    fb.write_text('{"prices": {"A": {}}}', encoding="utf-8")
+    cover = tmp_path / "data" / "cover"
+    cover.mkdir()
+    (cover / "cover.jsonl.gz").write_bytes(b"cover-1")
+    inp = dict(inputs, price_fallback=fb, survivorship_cover=cover)
+    e, fz, doc = _freeze(repo, tmp_path, inp)
+    c = doc["contents"]
+    assert c["price_fallback"]["sha256"] == hashlib.sha256(fb.read_bytes()).hexdigest() and c["survivorship_cover"]["n_files"] == 1 and len(c["survivorship_cover"]["tree_sha256"]) == 64
+    assert holdout.enforce(["2023-06-30"], [e], fz, repo=repo, inputs=inp, record=False)["contents_verified"] is True
+    fb.write_text('{"prices": {"B": {}}}', encoding="utf-8")
+    with pytest.raises(holdout.HoldoutRefused, match="`price_fallback`"):
+        holdout.enforce(["2023-06-30"], [e], fz, repo=repo, inputs=inp, record=False)
+    fb.write_text('{"prices": {"A": {}}}', encoding="utf-8")
+    (cover / "cover.jsonl.gz").write_bytes(b"cover-2")
+    with pytest.raises(holdout.HoldoutRefused, match="`survivorship_cover`"):
+        holdout.enforce(["2023-06-30"], [e], fz, repo=repo, inputs=inp, record=False)
+    with pytest.raises(holdout.HoldoutRefused, match="`price_fallback`"):
+        holdout.enforce(["2023-06-30"], [e], fz, repo=repo, inputs=dict(inp, price_fallback=None), record=False)      # a run that drops the fallback differs from the freeze

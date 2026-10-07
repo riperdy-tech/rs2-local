@@ -51,6 +51,8 @@ ERP_MONTHLY_FILE = "implprem_ERPbymonth.xlsx"
 ERP_MONTHLY_SHEET = "Historical ERP"
 MONTHLY_MAX_AGE_DAYS = 62
 ERP_MONTHLY_COLUMN = "erp (t12 m with sustainable payout)"       # Addendum K
+# Addendum M (L1, option B): the columns of the same monthly row that Damodaran's index model is built from (the engine-consistent premium re-solves that model)
+ERP_MODEL_COLUMNS = {"index": "s&p 500", "tbond": "t.bond rate", "cf_t12": "cf (trailing 12 month)", "growth": "expected growth rate"}
 APPROVAL_NOTE = ("Damodaran data is not present at the expected location (approved 2026-10-06; see stocks-workspace/data/damodaran/"
                  "MANIFEST.json).")
 
@@ -308,6 +310,43 @@ def parse_erp_monthly_rows(rows, column: str = ERP_MONTHLY_COLUMN) -> List[tuple
     return sorted(out)
 
 
+def parse_erp_model_rows(rows, column: str = ERP_MONTHLY_COLUMN) -> List[dict]:
+    """[{"date", "erp", "index", "tbond", "cf_t12", "growth"}] sorted by date: the rows of the monthly sheet that hold a published sustainable-payout ERP, with the other inputs of
+    Damodaran's index model read from the SAME row (Addendum M).  A model input that is empty or not a number is None here (the caller refuses the date that uses it)."""
+    hdr = None
+    for i, r in enumerate(rows):
+        if r and _norm(r[0]) == "start of month":
+            hdr = i
+            break
+    if hdr is None:
+        raise DataNotPresent("monthly ERP sheet: no header row starting with 'Start of month'")
+    cols = {}
+    for k, c in enumerate(rows[hdr]):
+        cols.setdefault(_norm(c), k)
+    need = [column] + list(ERP_MODEL_COLUMNS.values())
+    miss = [c for c in need if c not in cols]
+    if miss:
+        raise DataNotPresent(f"monthly ERP sheet: no column(s) {miss} (found {sorted(cols)})")
+
+    def at(r, name):
+        j = cols[name]
+        return _num(r[j]) if j < len(r) else None
+    out = []
+    for r in rows[hdr + 1:]:
+        if not r or not isinstance(r[0], (date, datetime)):
+            continue
+        d = r[0].date() if isinstance(r[0], datetime) else r[0]
+        v = at(r, column)
+        if v is None:
+            continue
+        if not (0.0 < v < 0.5):
+            raise DataNotPresent(f"monthly ERP sheet: implied ERP {v} for {d} is not a plausible fraction - refusing to use it")
+        out.append({"date": d, "erp": v, **{k: at(r, c) for k, c in ERP_MODEL_COLUMNS.items()}})
+    if not out:
+        raise DataNotPresent("monthly ERP sheet: no ERP rows parsed")
+    return sorted(out, key=lambda x: x["date"])
+
+
 def parse_indname_rows(rows) -> Dict[str, str]:
     """{SIC code (string): Damodaran industry name} from a SIC mapping sheet (indname.xls layout). NOT PRESENT in the approved data."""
     hdr = None
@@ -457,6 +496,29 @@ class DamodaranStore:
             rows = self._reader(self.root / ERP_MONTHLY_FILE, ERP_MONTHLY_SHEET)
             self._cache["erp_monthly"] = (parse_erp_monthly_rows(rows), h)
         return self._cache["erp_monthly"][0]
+
+    def monthly_model_row(self, asof) -> dict:
+        """Addendum M: the monthly row `erp_provider` uses for `asof` (the newest start-of-month row on or before `asof` that holds a published sustainable-payout ERP, never
+        older than MONTHLY_MAX_AGE_DAYS) with the inputs of Damodaran's index model of THAT row: {"date", "erp", "index", "tbond", "cf_t12", "growth", "file", "file_sha256"}.
+        A row that lacks a model input is a refusal naming it (an earlier row is never substituted); so is a date before the column's first value."""
+        asof_d = parse_date(asof)
+        if ERP_MONTHLY_FILE not in (self.manifest.get("files") or {}):
+            raise DataNotPresent(f"the manifest lists no monthly ERP file ({ERP_MONTHLY_FILE}): the engine-consistent premium needs Damodaran's monthly row")
+        if "erp_model" not in self._cache:
+            h = self._verify(ERP_MONTHLY_FILE)
+            rows = self._reader(self.root / ERP_MONTHLY_FILE, ERP_MONTHLY_SHEET)
+            self._cache["erp_model"] = (parse_erp_model_rows(rows), h)
+        table, h = self._cache["erp_model"]
+        ok = [r for r in table if r["date"] <= asof_d]
+        if not ok:
+            raise DataNotPresent(f"no monthly ERP row on or before {asof_d} (the column starts {table[0]['date']}): the engine-consistent premium has no row")
+        row = ok[-1]
+        if (asof_d - row["date"]).days > MONTHLY_MAX_AGE_DAYS:
+            raise DataNotPresent(f"the newest monthly ERP row on or before {asof_d} is {row['date']}: stale by more than {MONTHLY_MAX_AGE_DAYS} days")
+        bad = [k for k in ERP_MODEL_COLUMNS if row[k] is None]
+        if bad:
+            raise DataNotPresent(f"the monthly row {row['date']} lacks the model input(s) {bad}: the engine-consistent premium is not computed from another row")
+        return dict(row, file=ERP_MONTHLY_FILE, file_sha256=h)
 
     def erp_provider(self, publication_lag_days: int = PUBLICATION_LAG_DAYS, monthly: bool = True):
         """erp(asof) -> (fraction, label, meta).  Monthly by default (Addendum K): the newest start-of-month row dated on or before `asof` with a value.  The annual

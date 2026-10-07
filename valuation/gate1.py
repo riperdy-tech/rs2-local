@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Dict, List, Optional
 
-from . import classification, common, engine_commodity, engine_financial, engine_operating
+from . import classification, common, engine_commodity, engine_financial, engine_operating, erp_consistent
 from .common import DataNotPresent, InputError, build_state, parse_date
 from .discount_rate import DamodaranStore, discount_rate_for_state, parse_betas_rows
 from .priors_interface import PriorSet, Priors
@@ -68,16 +68,27 @@ def unpack(blob: bytes):
 
 class Rates:
     """Risk-free (a dated value handed in), Damodaran beta and implied ERP (`DamodaranStore`, no look-ahead, hashes recorded), and the industry row of
-    the betas file in force (unlevered beta corrected for cash and the industry's D/E)."""
+    the betas file in force (unlevered beta corrected for cash and the industry's D/E).
 
-    def __init__(self, store: DamodaranStore, rf_by_date: Dict[str, tuple]):
+    THE EQUITY RISK PREMIUM (Addenda L1, M).  The default `erp_basis` is "engine_consistent": Damodaran's published monthly sustainable-payout ERP plus delta, the change in the solved required
+    return of his reproduced index model when only the five-year growth is swapped for the engine's own (valuation/erp_consistent.py).  It needs the date's engine growth, a population
+    measure, so the run computes it per date and hands it to `set_consistent_erp`; asking for the premium of a date that has none is a DataNotPresent, never a silent fall back to Damodaran's.
+    `erp_basis="damodaran"` (and `erp_damodaran(asof)` on any Rates) is Damodaran's own, reported as the sensitivity."""
+
+    ERP_BASES = ("engine_consistent", "damodaran")
+
+    def __init__(self, store: DamodaranStore, rf_by_date: Dict[str, tuple], erp_basis: str = "engine_consistent"):
+        if erp_basis not in self.ERP_BASES:
+            raise InputError(f"erp_basis must be one of {self.ERP_BASES}, not {erp_basis!r}")
         self.store = store
+        self.erp_basis = erp_basis
         self.rf_by_date = {str(k)[:10]: v for k, v in rf_by_date.items()}
         self._beta = store.beta_provider()
         self._levered_beta = store.levered_beta_provider()
         self._erp = store.erp_provider()
         self._tables = {}
         self._erp_cache = {}
+        self._consistent: Dict[str, erp_consistent.ConsistentErp] = {}
 
     def rf(self, asof):
         k = parse_date(asof).isoformat()
@@ -85,11 +96,27 @@ class Rates:
             raise DataNotPresent(f"no risk-free rate prepared for {k}")
         return self.rf_by_date[k]
 
-    def erp(self, asof):
+    def erp_damodaran(self, asof):
+        """Damodaran's own implied ERP of the date (monthly, Addendum K): (fraction, label, meta)."""
         k = parse_date(asof).isoformat()
         if k not in self._erp_cache:
             self._erp_cache[k] = self._erp(k)
         return self._erp_cache[k]
+
+    def set_consistent_erp(self, asof, ce: "erp_consistent.ConsistentErp"):
+        self._consistent[parse_date(asof).isoformat()] = ce
+
+    def consistent(self, asof):
+        return self._consistent.get(parse_date(asof).isoformat())
+
+    def erp(self, asof):
+        if self.erp_basis == "damodaran":
+            return self.erp_damodaran(asof)
+        k = parse_date(asof).isoformat()
+        ce = self._consistent.get(k)
+        if ce is None:
+            raise DataNotPresent(f"no engine-consistent ERP was computed for {k}: it is the default premium (Addendum M) and is never replaced silently by Damodaran's")
+        return ce.erp, ce.label(), ce.meta()
 
     def beta(self, asof, industry):
         return self._beta(asof, industry)
@@ -289,6 +316,35 @@ def prepare(adapt_result) -> dict:
     out["status"] = "prepared"
     out["blob"] = pack(pit)
     return out
+
+
+# ---- the engine's growth, for the engine-consistent ERP (Addenda L1, M) ----------------------------------------------------------------------
+
+def engine_growth_p50(prep: dict, ctx: DateContext, priors, rf: float) -> dict:
+    """The P50 growth path of years 1-5 of one prepared company, as the engine would use it, WITHOUT valuing it (the premium it feeds must not depend on the premium): {"status": "ok", "path": [g_1..g_5],
+    "mean": ..., "g1_p50": ..., "g_term": ...} or {"status": "unavailable", "reason": ...}.  The state, the industry return attached to it and the priors are those of `value_company`; the path is
+    `erp_consistent.growth_path` (g_T + (g_1 - g_T) d_t with g_1 the prior's median and d the measured decay curve).  Years 1-5 of the engine's path do not depend on the discount rate (the
+    no-growth rule of Addendum I2 acts from year 6 on)."""
+    pit = unpack(prep["blob"])
+    family = prep["family"]
+    st = build_state(pit)
+    ir = ctx.industry_return(prep["industry"], family)
+    if ir is not None:
+        st["industry_roic" if family != "financial" else "industry_rote"] = ir
+    try:
+        ps = priors.for_company(family, st, pit.asof)
+    except (DataNotPresent, InputError, KeyError, ValueError, ArithmeticError) as e:
+        return {"status": "unavailable", "reason": f"priors: {type(e).__name__}: {str(e)[:120]}"}
+    if ps.source == "UNAVAILABLE":
+        return {"status": "unavailable", "reason": "priors_unavailable"}
+    if "g1" not in ps.inputs:
+        return {"status": "unavailable", "reason": "priors supply no g1"}
+    if "growth_decay" not in ps.curves:
+        return {"status": "unavailable", "reason": "priors supply no growth_decay curve"}
+    g_term = common.terminal_growth_rate(rf)
+    g1 = ps.inputs["g1"].ppf(0.5)
+    path = erp_consistent.growth_path(g1, g_term, ps.curves["growth_decay"])
+    return {"status": "ok", "path": path, "mean": erp_consistent.mean_growth(path), "g1_p50": g1, "g_term": g_term}
 
 
 # ---- pass 2: value ---------------------------------------------------------------------------------------------------------------------------
