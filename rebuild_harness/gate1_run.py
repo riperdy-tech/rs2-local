@@ -434,6 +434,8 @@ def main(argv=None):
     ap.add_argument("--no-erp-shifts", action="store_true", help="skip the +-1 pp equity-premium diagnostic scores (registration v2 B5)")
     ap.add_argument("--freeze", type=Path)
     a = ap.parse_args(argv)
+    if a.survivorship_cover is not None and (a.delisting_index is None or a.prices_daily is None):
+        ap.error("--survivorship-cover needs --delisting-index (the D1 events of the census) and --prices-daily (the price source that says who has no price at T)")
     dates = a.dates or dev_dates()
     lock = holdout.enforce(dates, [gate1_engine], a.freeze, inputs=freeze_inputs(a))       # FIRST: before any data is opened
     is_holdout = bool(lock["holdout_dates"])
