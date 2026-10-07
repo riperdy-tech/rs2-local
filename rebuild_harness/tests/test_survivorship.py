@@ -215,6 +215,29 @@ def test_a_cash_and_stock_election_in_that_sentence_still_declines_and_so_do_two
     assert D.read_cash_consideration("Each share was converted into the right to receive $45.00 in cash per share, subject to the election.") is None
 
 
+# ---- N5: 'common stock of' is not a stock word -----------------------------------------------------------------------------------------------------------
+
+TARGET_STOCK_NAMED = "At the Effective Time each share of common stock of the Company was converted into the right to receive $45.00 in cash, without interest."
+
+
+def test_common_stock_of_in_the_consideration_sentence_names_the_shares_bought_and_no_longer_declines():
+    assert D.read_cash_consideration_whole_text(TARGET_STOCK_NAMED) is None               # before M5 and N5
+    assert D.read_cash_consideration(TARGET_STOCK_NAMED, stock_words=D._STOCK_WORDS_M5) is None      # the M5 reader (scoped, with the phrase)
+    assert D.read_cash_consideration(TARGET_STOCK_NAMED) == 45.0                          # the N5 reader
+
+
+def test_elections_exchange_ratios_and_named_acquirer_stock_still_decline_after_n5():
+    for tail in ("or, at the holder's election, 0.5 shares of Parent common stock.",
+                 "and 0.5 shares of Parent common stock (the exchange ratio).",
+                 "and 0.5 shares of common stock of Parent.",
+                 "and 0.5 shares of common stock of the Acquirer.",
+                 "and 0.5 shares of the buyer.",
+                 "plus one contingent value right.",
+                 "payable in stock consideration at the holder's option."):
+        t = "Each share of common stock of the Company was converted into the right to receive $45.00 in cash " + tail
+        assert D.read_cash_consideration(t) is None, tail
+
+
 def test_an_abbreviation_never_ends_a_sentence_and_a_missed_split_only_makes_the_reader_stricter():
     t = "Acme Corp. and Parent Inc. agreed. Each share receives $45.00 in cash per share (the election of Parent Inc. is irrelevant)."
     assert [s for s in D.sentences(t)] == ["Acme Corp. and Parent Inc. agreed.", "Each share receives $45.00 in cash per share (the election of Parent Inc. is irrelevant)."]

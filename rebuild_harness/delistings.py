@@ -129,7 +129,10 @@ def counts_for_valuation_dates(events, dates, horizon_months=36):
 
 _CASH = re.compile(r"(?:receive|entitled to receive|converted into the right to receive)[^.;]{0,120}?\$\s?(\d{1,4}(?:\.\d{1,4})?)\s+(?:per share\s+)?in cash", re.I)
 _CASH2 = re.compile(r"\$\s?(\d{1,4}(?:\.\d{1,4})?)\s+(?:in cash\s+)?per share", re.I)
-_STOCK_WORDS = re.compile(r"exchange ratio|shares of (?:the )?(?:parent|acquirer|buyer)|stock consideration|in stock|common stock of|contingent value|cvr|collar|election", re.I)
+_STOCK_WORDS_M5 = re.compile(r"exchange ratio|shares of (?:the )?(?:parent|acquirer|buyer)|stock consideration|in stock|common stock of|contingent value|cvr|collar|election", re.I)     # Addenda D, M5
+# Addendum N5: 'common stock of' alone names the shares being BOUGHT in a target's consideration sentence, not stock paid, so it no longer declines; the same phrase naming the ACQUIRER ('common stock of
+# Parent') still does, as do elections, exchange ratios and the other words (the ruling: "named acquirer stock still decline")
+_STOCK_WORDS = re.compile(_STOCK_WORDS_M5.pattern.replace("common stock of|", "common stock of (?:the )?(?:parent|acquirer|buyer)|"), re.I)
 
 
 _ABBREV = re.compile(r"\b(Inc|Corp|Co|Ltd|LLC|L\.P|U\.S|No|Nos|Mr|Mrs|Ms|Dr|St|Cos|Bros|plc|N\.V|S\.A|a\.m|p\.m|e\.g|i\.e|vs|Sec|Dec|Jan|Feb|Mar|Apr|Aug|Sept|Oct|Nov)\.", re.I)
@@ -145,9 +148,9 @@ def sentences(text):
 
 
 def read_cash_consideration_whole_text(text):
-    """The reader as it stood before Addendum M5, kept to report the yield BEFORE: the all-cash price per share in a completion 8-K / merger text, or None.  Exactly one distinct dollar amount
+    """The reader as it stood before Addendum M5 (with its stock words of then, `_STOCK_WORDS_M5`), kept to report the yield BEFORE: the all-cash price per share in a completion 8-K / merger text, or None.  Exactly one distinct dollar amount
     per share, and none of the words that mean stock, ratios, elections or contingent rights ANYWHERE in the text."""
-    if not text or _STOCK_WORDS.search(text):
+    if not text or _STOCK_WORDS_M5.search(text):
         return None
     amounts = {m.group(1) for m in _CASH.finditer(text)} | {m.group(1) for m in _CASH2.finditer(text)}
     return float(next(iter(amounts))) if len(amounts) == 1 else None
@@ -159,9 +162,10 @@ def consideration_sentences(text):
 
 
 def read_cash_consideration(text, stock_words=None):
-    """The all-cash price per share in a completion 8-K / merger text, or None (Addendum M5: scoped to the sentence that states the per-share merger consideration).  Strict where it looks: in
-    EVERY sentence that states a per-share dollar amount there must be none of the words that mean stock, ratios, elections or contingent rights (a cash-and-stock election in that sentence
-    still declines), and across those sentences there must be exactly one distinct amount.  A word elsewhere in the document (a mention of an election of directors in another Item, a risk
+    """The all-cash price per share in a completion 8-K / merger text, or None (Addendum M5: scoped to the sentence that states the per-share merger consideration; Addendum N5: 'common stock of'
+    is not a stock word).  Strict where it looks: in
+    EVERY sentence that states a per-share dollar amount there must be none of the words that mean stock, ratios, elections or contingent rights (a cash-and-stock election, an exchange ratio and
+    a named acquirer's stock in that sentence still decline), and across those sentences there must be exactly one distinct amount.  A word elsewhere in the document (a mention of an election of directors in another Item, a risk
     factor) does not decline it.  No sentence stating a per-share amount is None (unobservable): a wrong price is worse than none.  `stock_words`: a REPORT-ONLY alternative pattern, never used by the registered run."""
     sw = stock_words if stock_words is not None else _STOCK_WORDS
     scoped = consideration_sentences(text)
