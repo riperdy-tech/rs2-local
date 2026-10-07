@@ -65,6 +65,12 @@ def classify_company(cik, filings):
         if bk:
             return {"cik": cik, "date": bk[0][1], "class": "bankruptcy_no_exit_record", "evidence": [_ev(bk[0])]}
         return None
+    return _classify_at(cik, anchor, exits, filings, ev8k, bk)
+
+
+def _classify_at(cik, anchor, exits, filings, ev8k, bk):
+    """The event of ONE exit record (`anchor`), by the rules in the module docstring.  `exits` are the company's Form 25 records (their presence only decides `delisted_other` against
+    `deregistered_other`); `filings`, `ev8k`, `bk` are the company's filings, its 8-Ks and its Item 1.03 8-Ks."""
     d0 = _d(anchor[1])
     near = [f for f in ev8k if -ACQ_BEFORE_DAYS <= (_d(f[1]) - d0).days <= ACQ_AFTER_DAYS]
     bk_near = [f for f in bk if 0 <= (d0 - _d(f[1])).days <= BANKRUPTCY_LOOKBACK_DAYS]
@@ -83,6 +89,35 @@ def classify_company(cik, filings):
     if a201:
         return {"cik": cik, "date": anchor[1], "class": "acquisition_weak", "evidence": evidence + [_ev(a201[0])]}
     return {"cik": cik, "date": anchor[1], "class": "delisted_other" if exits else "deregistered_other", "evidence": evidence}
+
+
+EVENT_CLUSTER_DAYS = 30        # exit records chained at gaps up to this are ONE event (a Form 15 that follows its Form 25); the survivorship counters already split their gaps here (nothing else is gated on it)
+
+
+def classify_exit_events(cik, filings, cluster_days: int = EVENT_CLUSTER_DAYS):
+    """EVERY exit event of one company, in date order (Addendum P4); `classify_company` keeps only the first.  The company's exit records (Form 25 family and Form 15 family) are chained into
+    clusters (a record within `cluster_days` of the previous one belongs to the same event); each cluster is anchored on its first Form 25, else its first Form 15, and classed by the same rules as
+    `classify_company` (the whole filing history is the evidence, so a cluster followed by periodic reports more than 120 days later is `exit_record_still_reporting`).  A company with no exit
+    record but an Item 1.03 8-K has the one `bankruptcy_no_exit_record` event, as there."""
+    ev8k = [f for f in filings if f[0] in ("8-K", "8-K/A")]
+    bk = [f for f in ev8k if "1.03" in f[2]]
+    recs = [f for f in filings if f[0] in EXCHANGE_FORMS or f[0] in DEREG_FORMS]            # in the order of `filings` (by date; ties as there), so a single cluster is anchored on the record `classify_company` takes
+    if not recs:
+        return [{"cik": cik, "date": bk[0][1], "class": "bankruptcy_no_exit_record", "evidence": [_ev(bk[0])]}] if bk else []
+    clusters, cur = [], [recs[0]]
+    for f in recs[1:]:
+        if (_d(f[1]) - _d(cur[-1][1])).days <= cluster_days:
+            cur.append(f)
+        else:
+            clusters.append(cur)
+            cur = [f]
+    clusters.append(cur)
+    out = []
+    for cl in clusters:
+        ex = [f for f in cl if f[0] in EXCHANGE_FORMS]
+        anchor = (ex or cl)[0]
+        out.append(_classify_at(cik, anchor, ex or [], filings, ev8k, bk))
+    return out
 
 
 def _ev(f):
@@ -177,15 +212,24 @@ def consideration_sentences(text):
     return [x for x in sentences(text or "") if _amounts(x)]
 
 
+# Addendum P3: the residue the par-value guard left.  An amount "per share" in a sentence about a warrant, its exercise price, a liquidating distribution, a redemption value or a SPAC's trust account is not
+# the price paid for the shares, and neither is a figure in a SPAC's cover page (the units / warrants lines of the registered-securities table, and the inline-XBRL member names that print before it).  These
+# are decline words: such a sentence makes the whole reading None, so the name stays unobservable (the decline direction).  `redemption price` and `redemption amount` are read as `redemption value`
+# (a SPAC states the per-share trust figure by all three).
+_NOT_A_PRICE_WORDS = re.compile(r"warrant|exercise price|liquidating distribution|redemption (?:value|price|amount)|trust account", re.I)
+_SPAC_COVER_TEXT = re.compile(r"units?,? each (?:consisting|comprising)|exercisable for one|redeemable (?:warrant|class|ordinary|common)|[A-Za-z]{1,12}:[A-Za-z0-9.]+Member", re.I)
+_P3_WORDS = re.compile(_NOT_A_PRICE_WORDS.pattern + "|" + _SPAC_COVER_TEXT.pattern, re.I)
+
+
 def read_cash_consideration(text, stock_words=None):
     """The all-cash price per share in a completion 8-K / merger text, or None (Addendum M5: scoped to the sentence that states the per-share merger consideration; Addendum N5: 'common stock of'
-    is not a stock word).  Strict where it looks: in
+    is not a stock word; Addendum P3: a sentence about a warrant, an exercise price, a liquidating distribution, a redemption value or a trust account, or a SPAC cover page, declines).  Strict where it looks: in
     EVERY sentence that states a per-share dollar amount there must be none of the words that mean stock, ratios, elections or contingent rights (a cash-and-stock election, an exchange ratio and
     a named acquirer's stock in that sentence still decline), and across those sentences there must be exactly one distinct amount.  A word elsewhere in the document (a mention of an election of directors in another Item, a risk
     factor) does not decline it.  No sentence stating a per-share amount is None (unobservable): a wrong price is worse than none.  `stock_words`: a REPORT-ONLY alternative pattern, never used by the registered run."""
     sw = stock_words if stock_words is not None else _STOCK_WORDS
     scoped = consideration_sentences(text)
-    if not scoped or any(sw.search(x) for x in scoped):
+    if not scoped or any(sw.search(x) or _P3_WORDS.search(x) for x in scoped):                 # Addendum P3: the words that say the amount is not a price paid for the shares
         return None
     amounts = {a for x in scoped for a in _amounts(x)}
     return float(next(iter(amounts))) if len(amounts) == 1 else None

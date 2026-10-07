@@ -129,16 +129,18 @@ def test_every_missing_holdout_input_is_refused_by_name(tmp_path, change, match)
         hi.require_holdout_configuration(["2023-01-31"], a)
 
 
-def test_mixed_windows_and_incomplete_documents_and_uncovered_headers_are_refused(tmp_path):
+def test_mixed_windows_and_uncovered_headers_are_refused_and_a_missing_d3_accession_is_counted_not_blocking(tmp_path):
     a = args(tmp_path)
     with pytest.raises(HoldoutRefused, match="only holdout dates"):
         hi.require_holdout_configuration(["2022-12-30", "2023-01-31"], a)
     with pytest.raises(HoldoutRefused, match="does not cover"):
         hi.require_headers_cover(sx.HeadersFile(a.headers), ["2025-06-30"])
-    # D3 incomplete: an 8-K accession D1 asks for that is not in the manifest
+    # Addendum P5: an 8-K accession D1 asks for that is not in the manifest leaves its event unresolved, counted; it does not refuse
     (tmp_path / "d3" / "_manifest.jsonl").write_text("", encoding="utf-8")
-    with pytest.raises(HoldoutRefused, match="delisting documents are incomplete"):
-        hi.require_holdout_configuration(["2023-01-31"], a)
+    out = hi.require_holdout_configuration(["2023-01-31"], a)
+    assert out["delisting_docs"]["complete"] is False and out["delisting_docs"]["not_downloaded"] == 1 and out["delisting_docs"]["blocking"] is False
+    assert out["delisting_events_unresolved_missing_document"]["unresolved_missing_document"] == 1
+    assert out["delisting_events_unresolved_missing_document"]["by_reason"] == {"accession_not_in_d3_manifest": 1}
 
 
 def test_the_gate1_run_names_the_daily_prices_and_d1_d3_in_the_freeze_and_the_stamp(tmp_path, monkeypatch):
@@ -175,13 +177,16 @@ def test_readiness_names_what_is_missing_and_what_it_waits_for(tmp_path):
     (tmp_path / "daily" / "manifest.csv").write_text("ticker,rows,first_date,last_date,status\n", encoding="utf-8")
     r = hi.readiness(a.prices_daily, a.delisting_index, a.delisting_docs, a.headers, a.crosswalk, dates=["2023-01-31", "2024-12-31"])
     assert r["ready"] is True and r["blockers"] == [] and all(c["ok"] for c in r["checks"].values())
-    # the headers download has not reached the dates, and a D3 accession is not downloaded
+    # the headers download has not reached the dates (a blocker), and a D3 accession is not downloaded (Addendum P5: a note, never a blocker)
     half = headers_csv(tmp_path, [HEADERS[0]], "half.csv")
     (tmp_path / "d3" / "_manifest.jsonl").write_text("", encoding="utf-8")
     r = hi.readiness(a.prices_daily, a.delisting_index, a.delisting_docs, half, a.crosswalk, dates=["2023-01-31", "2024-12-31"])
-    assert r["ready"] is False and len(r["blockers"]) == 2
+    assert r["ready"] is False and len(r["blockers"]) == 1
     assert any(b.startswith("D2_headers_sic_as_filed") and "2 of 2 holdout dates" in b and "from 2023-01-31" in b for b in r["blockers"])
-    assert any(b.startswith("D3_delisting_docs") and "1 of 1 accessions" in b for b in r["blockers"])
+    assert r["checks"]["D3_delisting_docs"]["ok"] is True and r["checks"]["D3_delisting_docs"]["not_downloaded"] == 1 and r["checks"]["D3_delisting_docs"]["events_unresolved_missing_document"] == 1
+    assert any(n.startswith("D3_delisting_docs") and "1 of 1 accessions" in n and "not blocking" in n for n in r["notes"])
+    ok = hi.readiness(a.prices_daily, a.delisting_index, a.delisting_docs, a.headers, a.crosswalk, dates=["2023-01-31", "2024-12-31"])
+    assert ok["ready"] is True and ok["blockers"] == [] and len(ok["notes"]) == 1                        # a missing accession alone never blocks
     r = hi.readiness(tmp_path / "nowhere", tmp_path / "nowhere", tmp_path / "nowhere", tmp_path / "nowhere.csv", tmp_path / "nowhere.json", dates=["2023-01-31"])
     assert r["ready"] is False and len(r["blockers"]) == 4          # D3 is not judged when D1 is absent
 

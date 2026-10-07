@@ -15,17 +15,22 @@ at T, the registered three bounds would be identical, and the bias (failed compa
   N6 THE LINE   the dividing line of the horizon is the D1 event date (the delisting or the merger close) against the horizon date the outcome itself is measured at (`PriceSource.target_date`):
                 one rule, used by the census flag and by the outcome.  An event dated after that date means the company still traded at the horizon and D5 merely lacks it: not a death.
   M4/N1 BOUNDS  the three bounds, keyed as everywhere else (`excluded`, `minus100`, `last_close`) so the registered pass / fail / not-decided rule applies over them as written:
-                * a bankruptcy-class event inside the horizon whose reader declines: excluded, -100% (`minus100`), the proxy price held (`last_close`, a 0% return);
-                * every other unobservable name (an event after the horizon, or a non-bankruptcy event inside it that no reader resolves): excluded, the date's cross-sectional 10th-percentile excess return
-                  of the same horizon (in the `minus100` slot: pessimistic but possible, `bounds_basis` says so; Addendum N1: "literal -100% applies only to bankruptcies within the horizon"), the proxy
-                  price held (`last_close`).
-                The 10th percentile is over the date's names with a measured excess return in the gate universe (market cap at least $300M, not census names); it needs the whole date, so it is filled after
-                the date's pass 1 (`fill_cross_section_bounds`).
+                * P1: an event INSIDE the horizon of class bankruptcy, `bankruptcy_no_exit_record`, `delisted_other` or `deregistered_other` that no reader resolves: excluded, -100% (`minus100`), the proxy
+                  price held (`last_close`, a 0% return).  An exchange delisting or a deregistration without an acquisition is usually distress, and a pessimistic bound treats it as one;
+                * every other unobservable name (an event after the horizon, or an acquisition inside it that no reader resolves: acquisitions are usually at a premium): excluded, the date's
+                  cross-sectional 10th-percentile excess return of the same horizon (in the `minus100` slot: pessimistic but possible; Addendum N1), the proxy price held (`last_close`).
+                `bounds_basis` records which basis fills the pessimistic slot (`MINUS100_BASIS` or `P10_BASIS`).
+                The 10th percentile is over the date's names with a measured excess return in the gate universe (market cap at least $300M, not census names: P2); it needs the whole date, so it is filled
+                after the date's pass 1 (`fill_cross_section_bounds`).
 
-LIMITATION (Addendum N3, stated, not fixed).  D1 holds ONE event per company: the company's first Form 25 (or Form 15).  A company that delisted one security first (notes, preferred shares, a move
-between exchanges) and its common stock later is dated at the first event: an event before T hides a later delisting from the census (the company is absent), and an event after T may be dated before the
-real exit.  Where the submissions show it the census counts it (`limitation_*` counters, given an `exit_records` index built by `build_exit_records`): a census company with a later exit record, a company
-that was still filing periodic reports at T after an earlier event and exits after T, a dropped-class company with a later exit record.  These are the detectable cases; how many others there are is not known.
+P4 (fixes N3).  D1's `events.json` holds ONE event per company: its first Form 25 (or Form 15).  A company that delisted one security first (notes, preferred shares, a move between exchanges) and its
+common stock later was dated at the first event: before T that hid a later delisting from the census.  Given an index with `events_all.json` (`rebuild_harness.event_index`: every exit event of every company,
+exit records within 30 days of each other one event), the census takes, for each company, the FIRST QUALIFYING EVENT DATED AFTER T (class not `exit_record_still_reporting`), not the first event overall.
+Without it (an index of one event per company) the census is as it was and, given `exit_records`, still counts the detectable misses (`limitation_*`, N3); with it those counters are not produced (the
+cases are in the census).  Whatever the submissions do not show remains unknown.
+
+P5.  A D3 document that is not on disk leaves the event unresolved (no text is never read as "no cash"); the census counts such events (`census_event_unresolved_missing_document`) and the run's
+configuration check reports them; they never block a freeze or a run.
 
 THE COVER INDEX.  `dei:EntityPublicFloat` and `dei:EntityCommonStockSharesOutstanding` are not in the point-in-time store (it keeps the share count only).  `build_cover_index` reads them once from the
 local companyfacts archive into a new folder (`cover.jsonl.gz`, one line per company that has a public float; `manifest.json` names the archive's size and sha256): nothing is downloaded.  The cover
@@ -59,8 +64,10 @@ PROXY_STAMP = "price_proxy_public_float"
 FLOAT_TAG, SHARES_TAG = "EntityPublicFloat", "EntityCommonStockSharesOutstanding"
 FIXED_BOUND_KEYS = ("excluded", "minus100", "last_close")
 NOT_A_DELISTING_OF_THE_COMMON = ("exit_record_still_reporting",)      # Addendum N2: dropped from the census
-MINUS100_CLASSES = ("bankruptcy", "bankruptcy_no_exit_record")        # Addendum N1: the only classes whose unresolved event INSIDE the horizon is bounded at -100%
+MINUS100_CLASSES = ("bankruptcy", "bankruptcy_no_exit_record", "delisted_other", "deregistered_other")      # Addendum P1: the classes whose unresolved event INSIDE the horizon is bounded at -100%
 P10_BASIS = "cross_section_p10"
+MINUS100_BASIS = "minus100_event_class_inside_horizon"
+MISSING_DOCUMENT_REASONS = ("accession_not_in_d3_manifest", "no_document_downloaded_ok", "document_file_missing_on_disk")
 COVER_FORMS = ("10-K", "10-Q")                                        # Addendum N4: the covers whose share count is read (amendments and transition reports included)
 EXIT_FORMS = delistings.EXCHANGE_FORMS + delistings.DEREG_FORMS
 GAP_DAYS = 30                                                         # the LIMITATION counters are split at this gap; nothing is gated on it
@@ -165,6 +172,11 @@ class CoverIndex:
                      "n_share_entries": n}, **sh_meta)
 
 
+def _anchor(ev) -> str:
+    """The accession of the event's anchor record (its first evidence entry: the Form 25 / Form 15 or the Item 1.03 8-K): one per event of a company."""
+    return str((ev.get("evidence") or [{}])[0].get("accession") or "")
+
+
 # ---- the census (M1) ----------------------------------------------------------------------------------------------------------------------------
 
 def event_after_horizon(event_date, horizon_date) -> bool:
@@ -200,8 +212,9 @@ class Survivorship:
                  exit_records: Optional[Dict[str, dict]] = None):
         self.cover, self.index, self.docs, self.tickers_for, self.src, self.floor = cover, index, docs, tickers_for, price_source, floor
         self.exit_records = exit_records
-        self._events = sorted(index.events, key=lambda e: e["date"])
-        self._event_of = {e["cik"]: e for e in index.events}
+        self._events = sorted(index.all_events, key=lambda e: e["date"])                      # Addendum P4: every exit event of a company when the index has them, else the one D1 holds
+        self._event_of = {e["cik"]: e for e in index.events}                                  # the first event per company (the fallback of an item without an `event_accession`)
+        self._event_by_key = {(e["cik"], _anchor(e)): e for e in index.all_events}
         self._census_cache: Dict[tuple, dict] = {}
         self._price_events: Dict[str, dict] = {}
 
@@ -241,13 +254,18 @@ class Survivorship:
         horizon_end = self.horizon_date(asof, horizon_months)
         c = Counter()
         items = []
-        for e in self._events:
+        first_after, picked = {}, {}
+        for e in self._events:                                                     # sorted by date: the first met is the earliest
             if e["date"] <= k:
                 continue
-            c["events_after_T"] += 1
-            if e["class"] in NOT_A_DELISTING_OF_THE_COMMON:                        # Addendum N2
-                c["dropped_class:" + e["class"]] += 1
-                continue
+            first_after.setdefault(e["cik"], e)
+            if e["class"] not in NOT_A_DELISTING_OF_THE_COMMON:                    # Addendum N2
+                picked.setdefault(e["cik"], e)                                     # Addendum P4: the first qualifying event dated after T
+        c["events_after_T"] = len(first_after)                                     # companies with an exit event after T (one per company when the index holds one event each)
+        for cik, e0 in first_after.items():
+            if cik not in picked:
+                c["dropped_class:" + e0["class"]] += 1
+        for e in sorted(picked.values(), key=lambda e: (e["date"], e["cik"])):
             cov, why = self._screen(e["cik"], k, pit)
             if why in ("no_public_float_cover_before_T", "public_float_below_floor"):
                 c[why] += 1
@@ -260,7 +278,7 @@ class Survivorship:
             if why == "no_annual_report_at_T":
                 c[why] += 1
                 continue
-            item = {"cik": e["cik"], "name": cov["name"], "class": e["class"], "event_date": e["date"], "public_float": cov["public_float"], "shares": cov["shares"],
+            item = {"cik": e["cik"], "name": cov["name"], "class": e["class"], "event_date": e["date"], "event_accession": _anchor(e), "public_float": cov["public_float"], "shares": cov["shares"],
                     "price_proxy": cov["price_proxy"], "cover_accession": cov["accession"], "cover_filed": cov["filed"], "cover_end": cov["end"],
                     "shares_accession": cov["shares_accession"], "shares_form": cov["shares_form"], "shares_filed": cov["shares_filed"], "shares_end": cov["shares_end"],
                     "within_horizon": not event_after_horizon(e["date"], horizon_end)}
@@ -273,7 +291,13 @@ class Survivorship:
                 c["census_no_shares_on_cover"] += 1
             else:
                 c["census_with_price_proxy"] += 1
-        if self.exit_records is not None:
+            if self.docs is not None and e["class"] in di.ITEM_FOR_CLASS:           # Addendum P5: an event whose document is not on disk is unresolved, counted, never blocking
+                _pe, text_why = self.price_event(item)
+                if text_why is not None:
+                    c["census_event_unresolved_no_text"] += 1
+                    if text_why in MISSING_DOCUMENT_REASONS:
+                        c["census_event_unresolved_missing_document"] += 1
+        if self.exit_records is not None and not self.index.has_all_events:
             c.update(self._limitation(k, pit, horizon_end, items))
         out = {"asof": k, "items": items, "counts": dict(c), "annual_report_checked": pit is not None, "horizon_end": horizon_end}
         self._census_cache[ck] = out
@@ -324,9 +348,9 @@ class Survivorship:
     # -- M3 --
     def price_event(self, item) -> tuple:
         """(price event, reason) of the census company's D1 event through the strict readers (D3 documents).  An event whose documents cannot be read stays unresolved."""
-        key = item["cik"]
+        key = (item["cik"], item.get("event_accession"))
         if key not in self._price_events:
-            ev = self._event_of.get(key)
+            ev = self._event_by_key.get(key) if item.get("event_accession") is not None else self._event_of.get(item["cik"])
             if ev is None:
                 self._price_events[key] = (None, "no_d1_event")
             elif self.docs is None:
@@ -338,8 +362,8 @@ class Survivorship:
 
     def outcome(self, item, src, asof, months: int, benchmark: str = outcomes.BENCHMARK) -> dict:
         """The horizon outcome of a census company (the shape of `outcomes.horizon_outcome`): resolved by M3 where a strict reader resolves its event INSIDE the horizon (N6: the D1 event date against
-        the horizon date), else UNOBSERVABLE with the three bounds (module docstring, M4/N1): `excluded` None; `minus100` the -100% bound for a bankruptcy-class event inside the horizon, otherwise
-        None with `bounds_basis` {"minus100": "cross_section_p10"} for `fill_cross_section_bounds` to fill; `last_close` the proxy price held, a 0% return."""
+        the horizon date), else UNOBSERVABLE with the three bounds (module docstring, M4/N1/P1): `excluded` None; `minus100` the -100% bound for an event of a MINUS100_CLASSES class inside the horizon
+        (`bounds_basis` {"minus100": MINUS100_BASIS}), otherwise None with `bounds_basis` {"minus100": "cross_section_p10"} for `fill_cross_section_bounds` to fill; `last_close` the proxy price held, a 0% return."""
         out = {"status": outcomes.UNOBSERVABLE, "available": False, "ret": None, "bench": None, "excess": None, "flags": [PROXY_STAMP], "bounds": {k: None for k in FIXED_BOUND_KEYS}}
         proxy = item.get("price_proxy")
         d1 = src.target_date(asof, months)
@@ -370,8 +394,9 @@ class Survivorship:
             out["bounds"] = {k: ret - bench for k in FIXED_BOUND_KEYS}
             return out
         out["flags"].append("unobservable_delisting:" + str((ev or {}).get("type") or why))
-        if item.get("class") in MINUS100_CLASSES and not after:
+        if item.get("class") in MINUS100_CLASSES and not after:                          # Addendum P1: an exit of distress class inside the horizon
             out["bounds"] = {"excluded": None, "minus100": -1.0 - bench, "last_close": 0.0 - bench}
+            out["bounds_basis"] = {"minus100": MINUS100_BASIS}
         else:
             out["bounds"] = {"excluded": None, "minus100": None, "last_close": 0.0 - bench}
             out["bounds_basis"] = {"minus100": P10_BASIS}

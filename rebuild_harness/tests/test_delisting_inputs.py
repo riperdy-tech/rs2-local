@@ -144,3 +144,20 @@ def test_a_resolved_event_reaches_the_outcome_and_an_unresolved_one_gets_three_b
     bench = 300.0 / 299.5 - 1.0                                # the benchmark enters at the next session's open (300 - 0.5) and is read at the close (300)
     assert o["status"] == "OUTCOME_UNOBSERVABLE" and o["bounds"]["excluded"] is None and o["bounds"]["minus100"] == pytest.approx(-1.0 - bench) and o["bounds"]["last_close"] == pytest.approx(159.0 / 108.5 - 1.0 - bench)
 
+
+
+def test_p5_the_events_whose_document_is_missing_are_counted_by_reason_and_never_read_as_no_cash(tmp_path):
+    e = [ev("0000000001", "acquisition_completed", "2023-06-01", "A-1", ["2.01"]), ev("0000000002", "acquisition_completed", "2023-06-01", "A-2", ["2.01"]),
+         ev("0000000003", "bankruptcy", "2023-06-01", "A-3", ["1.03"]), ev("0000000004", "delisted_other", "2023-06-01", "A-4", []),
+         ev("0000000005", "acquisition_completed", "2019-06-01", "A-5", ["2.01"])]
+    idx, docs = build(tmp_path, e, {("0000000001", "A-1"): CASH_8K, ("0000000002", "A-2"): None, ("0000000003", "A-3"): BK_8K, ("0000000005", "A-5"): None})
+    m = di.missing_document_events(idx, docs, since="2023-01-01")
+    assert m["events_with_a_reader"] == 3 and m["unresolved_missing_document"] == 1 and m["by_reason"] == {"accession_not_in_d3_manifest": 1} and m["first"][0][:2] == ["0000000002", "2023-06-01"]
+    assert di.missing_document_events(idx, docs)["unresolved_missing_document"] == 2                   # no window: the 2019 event with no document is counted too
+    # a manifest entry with no file ok (a failed fetch), and a file the manifest lists that is not on disk
+    docs2 = di.DelistingDocs(tmp_path / "d3")
+    docs2.manifest[("0000000001", "A-1")] = {"cik": "0000000001", "accession": "A-1", "status": "ok", "files": [{"name": "gone.htm", "status": "ok"}]}
+    docs2.manifest[("0000000003", "A-3")] = {"cik": "0000000003", "accession": "A-3", "status": "http_404", "files": []}
+    m2 = di.missing_document_events(idx, docs2, since="2023-01-01")
+    assert m2["unresolved_missing_document"] == 3 and m2["by_reason"] == {"document_file_missing_on_disk": 1, "accession_not_in_d3_manifest": 1, "no_document_downloaded_ok": 1}
+    assert di.event_text(e[2], idx, docs2) == (None, "no_document_downloaded_ok")                         # the same reason the reader path gives: no text, never "no distribution"

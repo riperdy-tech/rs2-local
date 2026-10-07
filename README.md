@@ -469,6 +469,15 @@ Offline; no model, no GPU, no network except SEC filings through `sec_primary` i
   still does on `common stock of Parent/Acquirer/Buyer`, elections, exchange ratios and the other stock words; companion: a par value (`par value $0.0001 per share`) is not a per-share price (56 of the 80 amounts the
   M5 reader resolved on the 2023-2025 completion 8-Ks were par values).  N6 the dividing line of the horizon is the D1 event date against the horizon date the outcome is measured at (`PriceSource.target_date`): the census flag
   and the outcome use the one rule (`survivorship.event_after_horizon`).
+  Addendum P (the harness only; the engine is frozen at `c7d7a4f`): P1 the pessimistic bound by event class inside the horizon: an unresolved event of class bankruptcy, `bankruptcy_no_exit_record`, `delisted_other` or
+  `deregistered_other` is -100% (`survivorship.MINUS100_CLASSES`; `bounds_basis` {"minus100": `MINUS100_BASIS`}); an acquisition no reader resolves, and every event after the horizon, takes the date's cross-sectional 10th
+  percentile (`P10_BASIS`).  P2 the p10 population is the gate universe (>= $300M, census names out, measured excess return): unchanged.  P3 `read_cash_consideration` declines on a stating sentence that mentions a warrant,
+  an exercise price, a liquidating distribution, a redemption value / price / amount or a trust account, or that carries a SPAC cover page (the units / warrants lines and the inline-XBRL member names): `delistings._P3_WORDS`.
+  P4 the N3 misses are fixed: `rebuild_harness/event_index.py` builds, from the local submissions archive into a new folder, `events_all.json` (EVERY exit event of each company: `delistings.classify_exit_events`, exit
+  records within 30 days of each other one event, anchored on the first Form 25) beside D1's own `events.json` (byte copy: the survivors' price events are unchanged) and an `event_8k.csv.gz` that adds the 8-K rows of the new
+  events; `EventIndex.all_events` reads it (a one-event index falls back to `events`), and the census takes for each company the FIRST QUALIFYING exit event dated after T (class not `exit_record_still_reporting`), so a company
+  whose first Form 25 was for another security is no longer absent.  P5 a D3 accession that is not on disk leaves its event unresolved (no text is never "no cash"); `delisting_inputs.missing_document_events` and the census
+  (`census_event_unresolved_missing_document`) count them; they no longer refuse a holdout run (`holdout_inputs.require_holdout_configuration`) or make the readiness report not ready.
 - `valuation/gate1.py` - one company at one date: classification, priors, the discount rate at T (Damodaran files dated before T, the dated FRED risk-free, Hamada on the book D/E with the
   industry D/E when parent equity is not positive or book D/E exceeds the industry's 95th percentile on the date, cost of debt = risk-free + the industry's median spread when there is no clean
   interest line), the family engine over the prior (the distribution's median is the value; P10..P90, the secondary, the disagreement, the terminal-value share), per share on the price's share basis.

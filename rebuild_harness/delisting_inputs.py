@@ -34,6 +34,7 @@ from valuation.common import DataNotPresent
 from . import delistings
 
 EVENTS_FILE, EVENT_8K_FILE, MANIFEST_FILE = "events.json", "event_8k.csv.gz", "_manifest.jsonl"
+ALL_EVENTS_FILE = "events_all.json"          # Addendum P4: EVERY exit event of each company (events.json keeps the first one only); built by `rebuild_harness.event_index`
 ITEM_FOR_CLASS = {"acquisition_completed": "2.01", "bankruptcy": "1.03"}
 
 
@@ -92,6 +93,17 @@ class EventIndex:
         if bad:
             raise DataNotPresent(f"{ep}: {len(bad)} event(s) lack cik/date/class/evidence")
         self.events_sha256 = _sha256(ep)
+        ap = self.dir / ALL_EVENTS_FILE
+        self.has_all_events = ap.is_file()
+        self.all_events_sha256 = None
+        if self.has_all_events:                       # Addendum P4: the census reads every exit event of a company, the price source of the survivors the first one (as before)
+            self.all_events: List[dict] = json.loads(ap.read_text(encoding="utf-8"))
+            bad = [e for e in self.all_events if not all(k in e for k in ("cik", "date", "class", "evidence"))]
+            if bad:
+                raise DataNotPresent(f"{ap}: {len(bad)} event(s) lack cik/date/class/evidence")
+            self.all_events_sha256 = _sha256(ap)
+        else:
+            self.all_events = self.events
         self.primary_doc: Dict[Tuple[str, str], str] = {}
         self.eight_k: Dict[Tuple[str, str], dict] = {}
         p8 = self.dir / EVENT_8K_FILE
@@ -105,7 +117,8 @@ class EventIndex:
 
     def info(self) -> dict:
         return {"dir": str(self.dir), "events": len(self.events), "events_sha256": self.events_sha256, "eight_k_rows": len(self.eight_k),
-                "classes": dict(Counter(e["class"] for e in self.events))}
+                "classes": dict(Counter(e["class"] for e in self.events)),
+                "all_events": len(self.all_events) if self.has_all_events else None, "all_events_sha256": self.all_events_sha256}
 
 
 class DelistingDocs:
@@ -161,6 +174,41 @@ def completeness(index: EventIndex, docs: DelistingDocs, since: str = "0000-00-0
     n_not_downloaded = sum(1 for x in missing if not x[2].startswith("fetch_failed"))
     return {"accessions_wanted": len(want), "with_document": have, "fetch_failed": sum(1 for x in missing if x[2].startswith("fetch_failed")),
             "not_downloaded": n_not_downloaded, "complete": n_not_downloaded == 0, "first_missing": missing[:20]}
+
+
+def missing_document_events(index: EventIndex, docs: DelistingDocs, since: str = "0000-00-00") -> dict:
+    """Addendum P5: the events (every exit event of the index, `all_events`) dated on or after `since` whose class has a reader and one of whose evidence 8-K documents is not on disk.  Such an event
+    stays UNRESOLVED (`event_text` gives it no text, never "no cash"): it is counted here and in the run's report, and it does not block a freeze or a run.  Reads the manifest and checks the file
+    exists; opens no document."""
+    n_reader, missing, reasons = 0, [], Counter()
+    for ev in index.all_events:
+        item = ITEM_FOR_CLASS.get(ev["class"])
+        if item is None or ev["date"] < since:
+            continue
+        n_reader += 1
+        why = None
+        for x in ev["evidence"]:
+            if not (str(x.get("form", "")).startswith("8-K") and item in (x.get("items") or [])):
+                continue
+            key = (str(ev["cik"]).zfill(10), x["accession"])
+            m = docs.manifest.get(key)
+            if m is None:
+                why = "accession_not_in_d3_manifest"
+            else:
+                files = [f for f in (m.get("files") or []) if f.get("status") == "ok"]
+                if not files:
+                    why = "no_document_downloaded_ok"
+                else:
+                    primary = index.primary_doc.get(key)
+                    name = primary if primary in [f["name"] for f in files] else files[0]["name"]
+                    if not (docs.dir / key[0] / x["accession"] / name).is_file():
+                        why = "document_file_missing_on_disk"
+            if why:
+                break
+        if why:
+            reasons[why] += 1
+            missing.append([ev["cik"], ev["date"], ev["class"], why])
+    return {"events_with_a_reader": n_reader, "unresolved_missing_document": len(missing), "by_reason": dict(reasons), "first": missing[:20]}
 
 
 def event_text(ev: dict, index: EventIndex, docs: DelistingDocs) -> Tuple[Optional[str], Optional[str]]:
