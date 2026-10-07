@@ -219,6 +219,8 @@ def consideration_sentences(text):
 _NOT_A_PRICE_WORDS = re.compile(r"warrant|exercise price|liquidating distribution|redemption (?:value|price|amount)|trust account", re.I)
 _SPAC_COVER_TEXT = re.compile(r"units?,? each (?:consisting|comprising)|exercisable for one|redeemable (?:warrant|class|ordinary|common)|[A-Za-z]{1,12}:[A-Za-z0-9.]+Member", re.I)
 _P3_WORDS = re.compile(_NOT_A_PRICE_WORDS.pattern + "|" + _SPAC_COVER_TEXT.pattern, re.I)
+# The SPAC cover page is a feature of the DOCUMENT (its registered-securities table and the inline-XBRL members before it), not of the sentence that happens to state an amount: such a document declines whole.
+_P3_DOC_WORDS = re.compile(r"units?,? each (?:consisting|comprising)|redeemable warrant|UnitsEachConsisting|WarrantsEach|blank check company|special purpose acquisition", re.I)
 
 
 def read_cash_consideration(text, stock_words=None):
@@ -228,6 +230,8 @@ def read_cash_consideration(text, stock_words=None):
     a named acquirer's stock in that sentence still decline), and across those sentences there must be exactly one distinct amount.  A word elsewhere in the document (a mention of an election of directors in another Item, a risk
     factor) does not decline it.  No sentence stating a per-share amount is None (unobservable): a wrong price is worse than none.  `stock_words`: a REPORT-ONLY alternative pattern, never used by the registered run."""
     sw = stock_words if stock_words is not None else _STOCK_WORDS
+    if text and _P3_DOC_WORDS.search(text):                                                    # Addendum P3: a SPAC's cover page
+        return None
     scoped = consideration_sentences(text)
     if not scoped or any(sw.search(x) or _P3_WORDS.search(x) for x in scoped):                 # Addendum P3: the words that say the amount is not a price paid for the shares
         return None

@@ -176,15 +176,19 @@ def test_p3_the_reader_declines_on_warrants_exercise_prices_liquidating_distribu
         assert D.read_cash_consideration(price + " " + decline) is None, decline                       # the decline sentence states an amount too: the whole reading declines
     assert D.read_cash_consideration(price + " The Company has warrants outstanding.") == 12.05       # a word in a sentence that states no per-share amount does not decline
     assert D.read_cash_consideration("Each unit consisting of one share was converted into the right to receive $12.05 in cash.") == 12.05
+    # a SPAC's cover page anywhere in the document declines it whole, even when the sentence that states the amount has none of the words
+    spac = "UnitsEachConsistingOfOneClassOrdinaryShareAndOnehalfOfRedeemableWarrantMember 2024-08-15 FORM 8-K Units, each consisting of one Class A ordinary share and one-half of one redeemable warrant. "
+    assert D.read_cash_consideration(spac + "Greenstar agreed to purchase 200,000 shares at a price of $10.00 per share.") is None
+    assert D.read_cash_consideration("dei:FormerAddressMember us-gaap:CommonStockMember 2024-08-15 FORM 8-K. " + price) == 12.05           # an ordinary inline-XBRL header is not a SPAC cover page
 
 
 def test_p3_the_report_only_pattern_is_inert_when_swapped_out_and_stock_words_still_apply():
     import re
-    saved = D._P3_WORDS
+    saved, saved_doc = D._P3_WORDS, D._P3_DOC_WORDS
     try:
-        D._P3_WORDS = re.compile(r"(?!x)x")
+        D._P3_WORDS = D._P3_DOC_WORDS = re.compile(r"(?!x)x")
         assert D.read_cash_consideration("Each warrant had an exercise price of $0.75 per share.") == 0.75        # what the reader said before P3 (the yield script's stage E)
     finally:
-        D._P3_WORDS = saved
+        D._P3_WORDS, D._P3_DOC_WORDS = saved, saved_doc
     assert D.read_cash_consideration("Each warrant had an exercise price of $0.75 per share.") is None
     assert D.read_cash_consideration("Each share was converted into $5.00 in cash or, at the holder's election, stock.") is None
