@@ -489,6 +489,27 @@ Offline; no model, no GPU, no server is started by any module. Tests: `pytest va
 - The priors object may supply `PriorSet.refs["curve_position"](name, state)`, the population distribution of the fraction of the initial gap still open
   five years out (median = the measured curve's value at year 5); without it growth_persistence / margin_retention / rote_retention are not asked of Muse.
 
+## Gate 2: the Muse replay (`rebuild_harness/gate2/`; REGISTRATION_gate2_DRAFT.md, approved 2026-10-07)
+
+Built on `review-2026-10/rebuild-gate2` from `rebuild-gate1` `550c0d2` (the engine is frozen at `c7d7a4f` and only imported). No GPU, no model and no server is started by any module
+at import; the runner starts the pinned llama-server only when it runs and the card is free. Tests: `pytest rebuild_harness/gate2` (a mock model and placeholder priors, labelled).
+
+- `sample.py` - the sample: per replay date 120 companies from the gate universe, stratified by family (largest remainder), seed 20261007, written once with its sha256, never redrawn.
+  `env.prepare_dates` (CPU) builds each date's universe and population context first. The pilot is the first 10 of 2025-10-31's drawn order; the G6 control is 30 company-dates by a seeded draw.
+- `runner.py` - per (company, date): inputs of the frozen engine at T, `valuation.muse.pipeline.run_company` (the CODE arm is its `code_only`: every input at the prior's P50, the same
+  draws and share basis), a checkpoint line in `progress.jsonl` after every company, a new attempt folder per attempt, every request and response saved, per-company wall time. Pause switch
+  `<state>/PAUSE`; waits (never skips) while another program uses the GPU (`gpu.py`: foreign Ollama models, other CUDA processes, VRAM that is not ours, another session's lock); a transport
+  failure restarts the server and re-runs the same company (never a fallback), three in a row halt with exit 3; `context_overflow` and HTTP 4xx are final recorded statuses.
+- `server.py` - the Muse server: the pinned production command line with the context `-c 32768` (registered) in place of `-c 98304`, nothing else different (`window_difference` proves it);
+  its own engine record under the state folder (the production `cache/llamacpp` record is never touched). `guard.py` - the context guard (prompt and answer share the window).
+- `freeze_content.py` - the gate-2 freeze contents (model, drafter, build, command line, system text, templates, engine file hashes against `c7d7a4f`, seeds, sample); `write` needs
+  `--confirm-write-the-freeze`; the runner refuses to run unless `verify` finds no drift.
+- `outcome_extract.py` - first-reported next-two-quarter outcomes and 3/6/12-month excess returns with the three delisting bounds, only where elapsed. `scoring.py` - G1-G6 and the mechanical
+  verdict. `integrity.py` - the G5 facts re-derived from the saved prompts and responses.
+- `launch_gate2.vbs` + `register_gate2_task.ps1` - the hidden launcher and the scheduled task (`RS2-Gate2-Replay`: at logon and every 15 minutes, IgnoreNew, `runner.lock`); state under
+  `stocks-workspace/data/gate2/`. Preconditions the real run still needs: priors vintages 2024 and 2025 (the repository holds 2016-2021), `prepare_dates`, the sample, the pins
+  (`python -m rebuild_harness.gate2.server pins`) and the freeze. `python -m rebuild_harness.gate2.runner --mode pilot --dry-run` lists them.
+
 ## Where the truth lives
 
 - `CLAUDE.md` — standard of proof (read it first)
