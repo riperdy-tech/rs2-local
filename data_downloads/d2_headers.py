@@ -71,7 +71,7 @@ def load_done():
         with open(RAW, newline="", encoding="utf-8") as f:
             for r in csv.DictReader(f):
                 if r["status"] == "ok" or r["status"] == "404":
-                    done.add(r["accession"])
+                    done.add((r["cik"], r["accession"]))
     return done
 
 
@@ -79,8 +79,9 @@ def finalize():
     best = {}
     with open(RAW, newline="", encoding="utf-8") as f:
         for r in csv.DictReader(f):
-            if r["accession"] not in best or r["status"] in ("ok", "404"):
-                best[r["accession"]] = r
+            k = (r["cik"], r["accession"])
+            if k not in best or r["status"] in ("ok", "404"):
+                best[k] = r
     rows = sorted(best.values(), key=lambda r: (r["cik"], r["filed"], r["accession"]))
     with gzip.open(OUT / "headers.csv.gz", "wt", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
@@ -100,7 +101,7 @@ def main():
     allrows = [r for r in allrows if a.from_year <= int(r["filed"][:4]) <= a.to_year]
     allrows.sort(key=lambda r: (int(r["filed"][:4]) < 2009, r["filed"]))
     done = load_done()
-    todo = [r for r in allrows if r["accession"] not in done]
+    todo = [r for r in allrows if (r["cik"], r["accession"]) not in done]
     log(f"annual filings in scope {len(allrows)}; done {len(done)}; to do {len(todo)}; rate {a.rate}/s")
     new = not RAW.exists()
     fh = open(RAW, "a", newline="", encoding="utf-8")
