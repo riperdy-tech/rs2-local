@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional
 
 from valuation import classification as classification_mod
-from valuation.common import CompanyPIT, DataNotPresent, build_state
+from valuation.common import CompanyPIT, DataNotPresent, build_state, terminal_growth_rate
 from valuation.priors_interface import Priors
 
 from . import checkers, prompting, redteam
@@ -266,7 +266,7 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
         if mc and debt is not None and mc > 0:
             try:
                 disc_m = disc_factory(st, de_ratio=debt / mc, de_basis="market")
-                point, q = pass1_point(ps, family, st, final_pos)
+                point, q = pass1_point(ps, family, st, final_pos, g_terminal=terminal_growth_rate(disc.rf))
                 curves, _nc, _s = positioned_curves(ps, family, st, q)
                 out["final"]["market_de_sensitivity"] = {
                     "book_de": disc.de_ratio, "market_de": disc_m.de_ratio, "wacc_book": disc.wacc, "wacc_market": disc_m.wacc, "coe_book": disc.coe,

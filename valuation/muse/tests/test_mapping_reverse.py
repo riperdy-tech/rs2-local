@@ -1,7 +1,7 @@
 """Mapping (percentile + width -> distribution on the prior), the engines fed through MusePriors, and the reverse valuation (PLACEHOLDER priors and rates: test-only)."""
 import pytest
 
-from valuation.common import Curve, InputError, QuantileDist, build_state, exp_curve
+from valuation.common import Curve, InputError, QuantileDist, build_state, exp_curve, terminal_growth_rate
 from valuation.muse import mapping as mp
 from valuation.muse import reverse as rv
 from valuation.muse.mapping import Position, MusePriors, muse_distribution, percentile_of, position_curve, run_engine
@@ -139,11 +139,29 @@ def test_unanchored_is_the_priors_p50_with_width_wide_stamped():
 # ---- the reverse valuation ----------------------------------------------------------------------------------------------------------------------
 
 def value_with(family, st, ps, disc, pct_by_name, level_u=None):
-    point, q = rv.pass1_point(ps, family, st, {n: Position(p, "normal") for n, p in pct_by_name.items()})
+    point, q = rv.pass1_point(ps, family, st, {n: Position(p, "normal") for n, p in pct_by_name.items()}, g_terminal=terminal_growth_rate(disc.rf))
     for n, u in (level_u or {}).items():
         point[n] = ps.inputs[n].ppf(u)
     curves, _nc, _s = mp.positioned_curves(ps, family, st, q)
     return point_value_per_share(family, st, point, curves, disc, st["shares_outstanding"])
+
+
+def test_priors_without_a_terminal_growth_input_reverse_on_the_dates_terminal_growth_like_the_engine():
+    """Addendum H2: real priors carry no g_terminal; the engines use the date's value (min(rf, 3.75%)).  The reverse valuation must do the same, not read the prior."""
+    import copy
+    _, st, ps, disc = setup()
+    real = copy.copy(ps)
+    real.inputs = {k: v for k, v in ps.inputs.items() if k != "g_terminal"}
+    gT = terminal_growth_rate(disc.rf)
+    point, _q = rv.pass1_point(real, "operating", st, {}, g_terminal=gT)
+    assert point["g_terminal"] == gT and set(point) == {"g1", "g_terminal", "margin_target", "ronic"}
+    with pytest.raises(InputError, match="no distribution for g_terminal"):
+        rv.pass1_point(real, "operating", st, {})
+    pos = {n: Position(50.0, "normal") for n in ("g1", "margin_target", "ronic")}
+    r = reverse_valuation(real, "operating", st, pos, disc, 50.0, st["shares_outstanding"])
+    assert r["status"] == "ok" and set(r["inputs"]) == {"g1", "margin_target", "ronic"}
+    eng = run_engine("operating", fx.make_pit(), MusePriors(real, "operating", st, {}), disc, n_draws=100, seed=1, state=st)
+    assert eng["status"] == "ok"                                                                     # the frozen engine runs on priors without g_terminal
 
 
 def test_the_percentile_that_reproduces_the_price_is_found_for_a_level_input():
@@ -170,7 +188,7 @@ def test_a_curve_input_is_reversed_too():
     _, st, ps, disc = setup()
     pos = {n: Position(50.0, "normal") for n in ("g1", "growth_persistence")}
     cd = ps.refs["curve_position"]("growth_persistence")
-    point, q = rv.pass1_point(ps, "operating", st, pos)
+    point, q = rv.pass1_point(ps, "operating", st, pos, g_terminal=terminal_growth_rate(disc.rf))
     q = dict(q, growth_persistence=cd.ppf(0.65))
     curves, _n, _s = mp.positioned_curves(ps, "operating", st, q)
     price = point_value_per_share("operating", st, point, curves, disc, st["shares_outstanding"])

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import List, Mapping, Optional
 
-from valuation.common import DrawInvalid
+from valuation.common import DrawInvalid, InputError, terminal_growth_rate
 from valuation.engine_financial import financial_chain
 from valuation.engine_operating import operating_chain
 from valuation.priors_interface import PriorSet
@@ -47,11 +47,18 @@ def point_value_per_share(family: str, st: dict, point: Mapping[str, float], cur
     return r["equity"] / shares
 
 
-def pass1_point(base: PriorSet, family: str, st: dict, positions: Mapping[str, Position]):
+def pass1_point(base: PriorSet, family: str, st: dict, positions: Mapping[str, Position], g_terminal: Optional[float] = None):
     """(point inputs, curve positions {name: q}) at the pass-1 medians; an input with no position sits at the prior's median (level) or keeps the measured
-    curve (curve input)."""
+    curve (curve input).  `g_terminal` is the date's terminal growth (Addendum H2: not a drawn input; `common.terminal_growth_rate(disc.rf)`), which the engines
+    use whatever a prior carries for it; real priors carry none, so a caller that has the discount rate passes it (without it the prior's own g_terminal is read, as
+    the placeholder priors of the tests carry one)."""
     point = {}
     for n in ENGINE_LEVEL_INPUTS[family]:
+        if n == "g_terminal" and g_terminal is not None:
+            point[n] = g_terminal
+            continue
+        if n not in base.inputs:
+            raise InputError(f"the priors supply no distribution for {n} and no value was given for it")
         dist = base.inputs[n]
         pos = positions.get(n)
         point[n] = dist.ppf(0.5 if pos is None else pos.percentile / 100.0)
@@ -73,7 +80,7 @@ def reverse_valuation(base: PriorSet, family: str, st: dict, positions: Mapping[
         out["status"] = "refused"
         out["reason"] = "a positive price and a share count are needed"
         return out
-    point0, q0 = pass1_point(base, family, st, positions)
+    point0, q0 = pass1_point(base, family, st, positions, g_terminal=terminal_growth_rate(disc.rf))
 
     def value(point, q):
         curves, _nc, _s = positioned_curves(base, family, st, q)
