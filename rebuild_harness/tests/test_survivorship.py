@@ -238,6 +238,16 @@ def test_elections_exchange_ratios_and_named_acquirer_stock_still_decline_after_
         assert D.read_cash_consideration(t) is None, tail
 
 
+def test_a_par_value_is_not_a_price():
+    assert D.read_cash_consideration("each share of common stock, par value $0.0001 per share, of the Company was converted into the right to receive a promissory note.") is None
+    assert D.read_cash_consideration("each Class A ordinary share, par value US$0.0001 per share, of the Company was converted into one share of the surviving company.") is None
+    assert D.read_cash_consideration("each share of common stock, par value $0.0001 per share, of the Company was converted into the right to receive $12.05 in cash.") == 12.05
+    assert D.read_cash_consideration("Purchaser tendered for all shares of common stock, $0.01 par value per share, at $9.10 per share in cash.") == 9.10
+    assert D.read_cash_consideration("Purchaser tendered for all shares of common stock, $0.01 per share par value, at $9.10 per share in cash.") == 9.10
+    assert D.read_cash_consideration("each share of common stock, par value of $0.01 per share, was converted into the right to receive $0.35 in cash.") == 0.35       # a genuine penny price still counts
+    assert D.consideration_sentences("The shares have a par value $0.01 per share. Each share was converted into the right to receive $5.00 in cash.") == ["Each share was converted into the right to receive $5.00 in cash."]
+
+
 def test_an_abbreviation_never_ends_a_sentence_and_a_missed_split_only_makes_the_reader_stricter():
     t = "Acme Corp. and Parent Inc. agreed. Each share receives $45.00 in cash per share (the election of Parent Inc. is irrelevant)."
     assert [s for s in D.sentences(t)] == ["Acme Corp. and Parent Inc. agreed.", "Each share receives $45.00 in cash per share (the election of Parent Inc. is irrelevant)."]

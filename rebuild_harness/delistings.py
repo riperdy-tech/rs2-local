@@ -156,9 +156,25 @@ def read_cash_consideration_whole_text(text):
     return float(next(iter(amounts))) if len(amounts) == 1 else None
 
 
+_PAR_BEFORE = re.compile(r"par value(?:\s+of)?[\s,:(]*[A-Za-z.]{0,4}$", re.I)           # "par value $0.0001 per share", "par value of $0.01 per share", "par value US$0.0001 per share"
+_PAR_AFTER = re.compile(r"[\s,)]{0,3}par value", re.I)                   # "$0.01 per share par value"
+
+
+def _amounts(sentence):
+    """The distinct per-share dollar amounts a sentence states, as the text of the number.  A figure that is the PAR VALUE of a share ("par value $0.0001 per share", "$0.01 per share par value") is
+    not a price and is not counted: it sits in the same sentence as the consideration in a merger 8-K and would otherwise be read as one (measured on the 2023-2025 completion 8-Ks: 56 of the 80
+    amounts the scoped reader resolved were par values)."""
+    out = set()
+    for m in (*_CASH.finditer(sentence), *_CASH2.finditer(sentence)):
+        if _PAR_BEFORE.search(sentence[max(0, m.start() - 30):m.start()]) or _PAR_AFTER.match(sentence[m.end():m.end() + 20]):
+            continue
+        out.add(m.group(1))
+    return out
+
+
 def consideration_sentences(text):
-    """The sentences that state a per-share dollar amount (Addendum M5): the scope of the cash reader."""
-    return [x for x in sentences(text or "") if _CASH.search(x) or _CASH2.search(x)]
+    """The sentences that state a per-share dollar amount (Addendum M5; par values do not count): the scope of the cash reader."""
+    return [x for x in sentences(text or "") if _amounts(x)]
 
 
 def read_cash_consideration(text, stock_words=None):
@@ -171,7 +187,7 @@ def read_cash_consideration(text, stock_words=None):
     scoped = consideration_sentences(text)
     if not scoped or any(sw.search(x) for x in scoped):
         return None
-    amounts = {m.group(1) for x in scoped for m in (*_CASH.finditer(x), *_CASH2.finditer(x))}
+    amounts = {a for x in scoped for a in _amounts(x)}
     return float(next(iter(amounts))) if len(amounts) == 1 else None
 
 
