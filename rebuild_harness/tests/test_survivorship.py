@@ -450,32 +450,33 @@ def test_the_bounds_flow_into_the_registered_three_bound_rule_with_the_p10_in_th
 
 # ---- N3: the one-event-per-company limitation, counted where detectable --------------------------------------------------------------------------------------------
 
-def test_build_exit_records_reads_every_form_25_and_15_of_the_wanted_companies_including_older_pages(tmp_path):
+def test_build_exit_records_reads_every_form_25_and_15_and_the_periodic_dates_of_the_wanted_companies_including_older_pages(tmp_path):
     z = tmp_path / "subs.zip"
 
     def recent(forms, dates):
         return {"filings": {"recent": {"form": forms, "filingDate": dates, "items": [""] * len(forms), "accessionNumber": [f"a{i}" for i in range(len(forms))]},
                             "files": [{"name": "CIK0000000010-submissions-001.json"}]}}
 
-    older = {"form": ["25-NSE"], "filingDate": ["2019-01-10"], "items": [""], "accessionNumber": ["old"]}
+    older = {"form": ["25-NSE", "10-Q"], "filingDate": ["2019-01-10", "2018-11-01"], "items": ["", ""], "accessionNumber": ["old", "oldq"]}
     with zipfile.ZipFile(z, "w") as zz:
         zz.writestr("CIK0000000010.json", json.dumps(recent(["8-K", "25", "15-12B", "10-K"], ["2020-12-01", "2020-12-01", "2022-03-01", "2020-03-01"])))
         zz.writestr("CIK0000000010-submissions-001.json", json.dumps(older))
         zz.writestr("CIK0000000011.json", json.dumps(recent(["10-K"], ["2020-03-01"])))
         zz.writestr("CIK0000000012.json", json.dumps(recent(["25"], ["2021-01-01"])))
     got = sv.build_exit_records(z, ["0000000010", "0000000011"])
-    assert got == {"0000000010": ["2019-01-10", "2020-12-01", "2022-03-01"]}      # no exit record: absent; not wanted: absent; the older page is merged
+    assert got == {"0000000010": {"exit": ["2019-01-10", "2020-12-01", "2022-03-01"], "periodic": ["2018-11-01", "2020-03-01"]}}      # no exit record: absent; not wanted: absent; the older page is merged
 
 
 def test_the_limitation_counters_count_the_detectable_second_exit_records(tmp_path):
-    exits = {"0000000001": ["2021-11-15", "2021-11-20"],                         # a census company with a Form 15 five days after its Form 25: same week
-             "0000000005": ["2021-09-15", "2022-03-01"],                         # a census company with a later record more than 30 days on
-             "0000000009": ["2021-12-15", "2022-06-01"],                         # company 9: the first Form 25 was for another security, the next is more than 30 days later
-             "0000000010": ["2020-12-01", "2022-03-01"]}                         # company 10: first event before T; a second exit record inside the horizon, after T
+    exits = {"0000000001": {"exit": ["2021-11-15", "2021-11-20"], "periodic": []},        # a census company with a Form 15 five days after its Form 25: same week
+             "0000000005": {"exit": ["2021-09-15", "2022-03-01"], "periodic": []},        # a census company with a later record more than 30 days on
+             "0000000009": {"exit": ["2021-12-15", "2022-06-01"], "periodic": []},        # company 9: the first Form 25 was for another security, the next is more than 30 days later
+             "0000000010": {"exit": ["2020-12-01", "2022-03-01"], "periodic": ["2021-03-01"]},       # company 10: first event before T, still filing after it and before T; a second exit record inside the horizon
+             "0000000004": {"exit": ["2021-01-15", "2021-12-20"], "periodic": []}}        # company 4 left on 2021-01-15 and filed its Form 15 later: not alive at T, not a miss
     surv, pit, _src = _world(tmp_path, extra=True, exit_records=exits)
     k = surv.census(T, pit)["counts"]
     assert k["limitation_census_later_exit_record"] == 2 and k["limitation_census_later_exit_record:gap_gt_30d"] == 1 and k["limitation_census_later_exit_record:gap_le_30d"] == 1
-    assert k["limitation_missed_event_before_T"] == 1 and k["limitation_missed_event_before_T:gap_gt_30d"] == 1 and k["limitation_missed_event_before_T:next_exit_record_within_horizon"] == 1
+    assert k["limitation_missed_event_before_T"] == 1 and k["limitation_missed_event_before_T:next_exit_record_within_horizon"] == 1
     assert k["limitation_dropped_class_later_exit"] == 1 and k["limitation_dropped_class_later_exit:gap_gt_30d"] == 1
     assert k["census"] == 3                                                       # counted, never corrected: the census itself is unchanged
     plain_dir = tmp_path / "plain"

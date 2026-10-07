@@ -24,8 +24,8 @@ at T, the registered three bounds would be identical, and the bias (failed compa
 
 LIMITATION (Addendum N3, stated, not fixed).  D1 holds ONE event per company: the company's first Form 25 (or Form 15).  A company that delisted one security first (notes, preferred shares, a move
 between exchanges) and its common stock later is dated at the first event: an event before T hides a later delisting from the census (the company is absent), and an event after T may be dated before the
-real exit.  Where the submissions show a second exit record the census counts it (`limitation_*` counters, given an `exit_records` index built by `build_exit_records`): these are the detectable cases;
-how many others there are is not known.
+real exit.  Where the submissions show it the census counts it (`limitation_*` counters, given an `exit_records` index built by `build_exit_records`): a census company with a later exit record, a company
+that was still filing periodic reports at T after an earlier event and exits after T, a dropped-class company with a later exit record.  These are the detectable cases; how many others there are is not known.
 
 THE COVER INDEX.  `dei:EntityPublicFloat` and `dei:EntityCommonStockSharesOutstanding` are not in the point-in-time store (it keeps the share count only).  `build_cover_index` reads them once from the
 local companyfacts archive into a new folder (`cover.jsonl.gz`, one line per company that has a public float; `manifest.json` names the archive's size and sha256): nothing is downloaded.  The cover
@@ -172,11 +172,12 @@ def event_after_horizon(event_date, horizon_date) -> bool:
     return to_date(event_date) > to_date(horizon_date)
 
 
-def build_exit_records(submissions_zip, ciks) -> Dict[str, List[str]]:
-    """{cik: sorted dates of every Form 25 / 25-NSE / Form 15 family filing} for `ciks`, read from the local SEC submissions archive (`CIK##########.json` plus its `-submissions-NNN.json` pages).  This
-    is the one thing the LIMITATION counters need that D1 does not keep (D1 holds the first exit record only).  Reads the archive; writes nothing and downloads nothing."""
+def build_exit_records(submissions_zip, ciks) -> Dict[str, dict]:
+    """{cik: {"exit": sorted dates of every Form 25 / 25-NSE / Form 15 family filing, "periodic": sorted dates of every 10-K / 10-Q / 20-F / 40-F family filing}} for the `ciks` that have an exit record, read
+    from the local SEC submissions archive (`CIK##########.json` plus its `-submissions-NNN.json` pages).  This is what the LIMITATION counters need that D1 does not keep (D1 holds the first exit record
+    only, and no periodic dates).  Reads the archive; writes nothing and downloads nothing."""
     want = {str(c).zfill(10) for c in ciks}
-    out: Dict[str, List[str]] = {}
+    out: Dict[str, dict] = {}
     with zipfile.ZipFile(submissions_zip) as z:
         pages: Dict[str, List[str]] = {}
         for n in z.namelist():
@@ -184,9 +185,10 @@ def build_exit_records(submissions_zip, ciks) -> Dict[str, List[str]]:
                 pages.setdefault(n[3:13], []).append(n)
         for cik, files in pages.items():
             blocks = [json.loads(z.read(n)) for n in sorted(files)]
-            dates = sorted({f[1] for f in delistings.filings_of(blocks) if f[0] in EXIT_FORMS})
-            if dates:
-                out[cik] = dates
+            filings = delistings.filings_of(blocks)
+            exits = sorted({f[1] for f in filings if f[0] in EXIT_FORMS})
+            if exits:
+                out[cik] = {"exit": exits, "periodic": sorted({f[1] for f in filings if f[0] in delistings.PERIODIC})}
     return out
 
 
@@ -195,7 +197,7 @@ class Survivorship:
     `build_exit_records`) lets the census count the cases of the one-event-per-company limitation that the submissions show (Addendum N3)."""
 
     def __init__(self, cover: CoverIndex, index: di.EventIndex, docs: Optional[di.DelistingDocs], tickers_for: Callable[[str], Iterable[str]], price_source, floor: float = FLOAT_FLOOR,
-                 exit_records: Optional[Dict[str, List[str]]] = None):
+                 exit_records: Optional[Dict[str, dict]] = None):
         self.cover, self.index, self.docs, self.tickers_for, self.src, self.floor = cover, index, docs, tickers_for, price_source, floor
         self.exit_records = exit_records
         self._events = sorted(index.events, key=lambda e: e["date"])
@@ -279,34 +281,36 @@ class Survivorship:
 
     def _limitation(self, k, pit, horizon_end, items) -> Counter:
         """Addendum N3: the detectable cases of the one-event-per-company limitation (D1 holds a company's FIRST exit record only), from the submissions' exit records.  Counted, never corrected:
-          limitation_census_later_exit_record      a census company with an exit record dated after its D1 event;
-          limitation_missed_event_before_T         a company that passes the M1 tests but is absent because its D1 event is dated on or before T, with an exit record dated after T;
-          limitation_dropped_class_later_exit      a company whose D1 event is after T but of a class N2 drops, with a later exit record;
-        each split by whether the LATEST such record is more than `GAP_DAYS` after the D1 event (a second security, probably; a same-week Form 25 / Form 15 pair is not), and the missed ones by whether
-        their next exit record after T falls inside the horizon."""
+          limitation_census_later_exit_record      a census company with an exit record dated after its D1 event (split: the latest such record more than `GAP_DAYS` after it, probably the end of
+                                                   the common stock; or within `GAP_DAYS`, a Form 15 that follows its Form 25);
+          limitation_missed_event_before_T         a company that passes the M1 tests but is absent because its D1 event is dated on or before T, that filed a periodic report after that event and
+                                                   before T (so it was still alive at T: the first event was for another security) and has an exit record dated after T; split by whether the next
+                                                   exit record after T falls inside the horizon;
+          limitation_dropped_class_later_exit      a company whose D1 event is after T but of a class N2 drops, with a later exit record (split by the gap as the first)."""
         c = Counter()
 
         def gap_key(ev_date, last):
             return "gap_gt_30d" if (to_date(last) - to_date(ev_date)).days > GAP_DAYS else "gap_le_30d"
 
         for i in items:
-            later = [d for d in self.exit_records.get(i["cik"], []) if d > i["event_date"]]
+            later = [d for d in (self.exit_records.get(i["cik"]) or {}).get("exit", []) if d > i["event_date"]]
             if later:
                 c["limitation_census_later_exit_record"] += 1
                 c["limitation_census_later_exit_record:" + gap_key(i["event_date"], later[-1])] += 1
-        for cik, dates in self.exit_records.items():
+        for cik, rec in self.exit_records.items():
             e = self._event_of.get(cik)
             if e is None:
                 continue
-            after_T = [d for d in dates if d > k]
-            if e["date"] <= k and after_T:
-                _cov, why = self._screen(cik, k, pit)
-                if why is None:
-                    c["limitation_missed_event_before_T"] += 1
-                    c["limitation_missed_event_before_T:" + gap_key(e["date"], after_T[-1])] += 1
-                    c["limitation_missed_event_before_T:next_exit_record_" + ("within" if after_T[0] <= horizon_end else "after") + "_horizon"] += 1
-            elif e["date"] > k and e["class"] in NOT_A_DELISTING_OF_THE_COMMON:
-                later = [d for d in dates if d > e["date"]]
+            exits = rec["exit"]
+            if e["date"] <= k:
+                after_T = [d for d in exits if d > k]
+                if after_T and any(e["date"] < p < k for p in rec["periodic"]):
+                    _cov, why = self._screen(cik, k, pit)
+                    if why is None:
+                        c["limitation_missed_event_before_T"] += 1
+                        c["limitation_missed_event_before_T:next_exit_record_" + ("within" if after_T[0] <= horizon_end else "after") + "_horizon"] += 1
+            elif e["class"] in NOT_A_DELISTING_OF_THE_COMMON:
+                later = [d for d in exits if d > e["date"]]
                 if later:
                     _cov, why = self._screen(cik, k, pit)
                     if why is None:
