@@ -71,12 +71,12 @@ def test_the_latest_cover_is_the_newest_filed_strictly_before_the_date_and_its_p
 T = "2021-06-30"
 
 
-def _world(tmp_path):
-    """Companies: 1 acquired for cash after T; 5 bankrupt after T; 6 delisted for no stated reason after T; 2 below the float floor; 3 still priced at T (D5 holds it); 4 left before T; 7 no cover;
+def _world(tmp_path, extra=False, exit_records=None):
+    """With `extra`: company 9 (a Form 25 for another security: class exit_record_still_reporting, dated 2021-12-15) and company 10 (a first Form 25 on 2020-12-01, before T).  Companies: 1 acquired for cash after T; 5 bankrupt after T; 6 delisted for no stated reason after T; 2 below the float floor; 3 still priced at T (D5 holds it); 4 left before T; 7 no cover;
     8 no annual report known at T.  The D5 folder holds company 3 and SPY."""
     zpath = tmp_path / "cf.zip"
     docs = {}
-    for i, fl in ((1, 900e6), (2, 100e6), (3, 700e6), (4, 900e6), (5, 600e6), (6, 450e6), (8, 900e6)):
+    for i, fl in ((1, 900e6), (2, 100e6), (3, 700e6), (4, 900e6), (5, 600e6), (6, 450e6), (8, 900e6)) + (((9, 900e6), (10, 800e6)) if extra else ()):
         docs[f"CIK{i:010d}.json"] = _company(i, f"Co{i}", [_fact("2020-06-30", fl, f"C{i}-20", "2021-03-01")], [_fact("2021-02-15", 50e6 if i != 6 else 30e6, f"C{i}-20", "2021-03-01")])
     with zipfile.ZipFile(zpath, "w") as z:
         for n, d in docs.items():
@@ -86,6 +86,8 @@ def _world(tmp_path):
               ev("0000000003", "acquisition_completed", "2021-11-15", "A-3", ["2.01"]), ev("0000000004", "bankruptcy", "2021-01-15", "A-4", ["1.03"]),
               ev("0000000005", "bankruptcy", "2021-09-15", "A-5", ["1.03"]), ev("0000000006", "delisted_other", "2021-10-01", "A-6", []),
               ev("0000000007", "delisted_other", "2021-10-01", "A-7", []), ev("0000000008", "delisted_other", "2021-12-01", "A-8", [])]
+    if extra:
+        events += [ev("0000000009", "exit_record_still_reporting", "2021-12-15", "A-9", []), ev("0000000010", "delisted_other", "2020-12-01", "A-10", [])]
     idx, docs3 = build(tmp_path, events, {("0000000001", "A-1"): CASH_8K, ("0000000005", "A-5"): BK_8K})
     d5 = tmp_path / "d5"
     d5.mkdir()
@@ -93,13 +95,13 @@ def _world(tmp_path):
     write(d5, "SPY", run("2021-05-01", 700, 400.0, 0.5))
     src = dp.LazyDailyPriceSource(d5)
     store = tmp_path / "store"
-    for i in (1, 2, 3, 4, 5, 6):
+    for i in (1, 2, 3, 4, 5, 6) + ((9, 10) if extra else ()):
         synth.simple_company(store, i, 6)                          # an annual report known at T (the last is the 2020 one, filed 2021-03-01)
     # company 8: its first annual report is filed after T
     synth.simple_company(store, 8, 1, first_year=2021)
     pit = pdm.PitData(store, price_source=src)
     tk = {"0000000003": ["THREE"]}
-    return sv.Survivorship(sv.CoverIndex(tmp_path / "cover"), idx, docs3, lambda c: tk.get(c, []), src), pit, src
+    return sv.Survivorship(sv.CoverIndex(tmp_path / "cover"), idx, docs3, lambda c: tk.get(c, []), src, exit_records=exit_records), pit, src
 
 
 def test_the_census_is_float_at_or_above_the_floor_no_price_at_T_an_event_after_T_and_an_annual_report_known(tmp_path):
@@ -153,13 +155,26 @@ def test_a_bankruptcy_with_the_equity_cancelled_is_minus_100_percent(tmp_path):
     assert all(v == pytest.approx(o["excess"]) for v in o["bounds"].values())
 
 
-def test_everything_else_is_unobservable_with_the_three_bounds_excluded_minus100_and_the_proxy_price_held(tmp_path):
+def test_a_non_bankruptcy_event_no_reader_resolves_is_excluded_or_the_cross_section_p10_or_the_proxy_price_held(tmp_path):
     surv, pit, src = _world(tmp_path)
-    o = surv.outcome(surv.items_by_cik(T, pit)["0000000006"], src, T, 12)        # a delisting with no reader for its class
+    o = surv.outcome(surv.items_by_cik(T, pit)["0000000006"], src, T, 12)        # a delisting with no reader for its class, inside the horizon
     b = _bench(src, T)
     assert o["status"] == outcomes.UNOBSERVABLE and not o["available"] and o["excess"] is None and o["ret"] is None
-    assert o["bounds"] == {"excluded": None, "minus100": pytest.approx(-1.0 - b), "last_close": pytest.approx(0.0 - b)}
+    assert o["bounds"] == {"excluded": None, "minus100": None, "last_close": pytest.approx(0.0 - b)}          # Addendum N1: -100% is for bankruptcies only; the slot waits for the date's 10th percentile
+    assert o["bounds_basis"] == {"minus100": sv.P10_BASIS}
     assert any(f.startswith("unobservable_delisting:unresolved_delisted_other") for f in o["flags"])
+
+
+def test_a_bankruptcy_class_event_inside_the_horizon_that_no_reader_resolves_keeps_the_minus_100_bound(tmp_path):
+    surv, pit, src = _world(tmp_path)
+    surv.docs = None                                                    # no documents: the Item 1.03 text cannot be read
+    surv._price_events.clear()
+    o = surv.outcome(surv.items_by_cik(T, pit)["0000000005"], src, T, 12)
+    b = _bench(src, T)
+    assert o["status"] == outcomes.UNOBSERVABLE and o["bounds"] == {"excluded": None, "minus100": pytest.approx(-1.0 - b), "last_close": pytest.approx(0.0 - b)} and "bounds_basis" not in o
+    late = dict(surv.items_by_cik(T, pit)["0000000005"], event_date="2022-09-15")                 # the same bankruptcy dated after the horizon is not a death inside it
+    o2 = surv.outcome(late, src, T, 12)
+    assert "event_after_horizon" in o2["flags"] and o2["bounds"]["minus100"] is None and o2["bounds_basis"] == {"minus100": sv.P10_BASIS}
 
 
 def test_an_acquisition_the_strict_reader_declines_is_unobservable_and_so_is_an_event_after_the_horizon(tmp_path):
@@ -167,11 +182,13 @@ def test_an_acquisition_the_strict_reader_declines_is_unobservable_and_so_is_an_
     surv.docs = build_stock(tmp_path)                                  # the same event, now read from a stock-and-cash text: the reader declines
     surv._price_events.clear()
     o = surv.outcome(surv.items_by_cik(T, pit)["0000000001"], src, T, 12)
-    assert o["status"] == outcomes.UNOBSERVABLE and o["bounds"]["excluded"] is None and o["bounds"]["minus100"] < o["bounds"]["last_close"]
+    assert o["status"] == outcomes.UNOBSERVABLE and o["bounds"]["excluded"] is None and o["bounds"]["minus100"] is None and o["bounds"]["last_close"] == pytest.approx(0.0 - _bench(src, T))
+    assert o["bounds_basis"] == {"minus100": sv.P10_BASIS}
     late = dict(surv.items_by_cik(T, pit)["0000000001"], event_date="2022-09-15")                   # after the 12-month horizon (2022-06-30): the company still traded then
     surv._price_events.clear()
     o2 = surv.outcome(late, src, T, 12)
     assert o2["status"] == outcomes.UNOBSERVABLE and "event_after_horizon" in o2["flags"] and o2["bounds"]["excluded"] is None
+    assert o2["bounds"]["minus100"] is None and o2["bounds_basis"] == {"minus100": sv.P10_BASIS} and o2["bounds"]["last_close"] == pytest.approx(0.0 - _bench(src, T))      # N1: excluded, p10, held
 
 
 def build_stock(tmp_path):
@@ -311,3 +328,174 @@ def test_the_outcome_flag_carries_the_fallback_stamp(tmp_path):
     pit = pdm.PitData("unused", price_source=s)
     o = outcomes.horizon_outcome(pit, "LATE", "2021-01-31", 3)                                           # entry from the monthly bar, exit from the daily one
     assert o["status"] == "observed" and "price_monthly_fallback" in o["flags"] and "no_next_session_in_monthly_data" in o["flags"]
+
+
+# ---- N2: a Form 25 for another security is not a delisting of the common ------------------------------------------------------------------------------------------
+
+def test_exit_record_still_reporting_is_not_in_the_census_and_is_counted_apart(tmp_path):
+    surv, pit, _src = _world(tmp_path, extra=True)
+    c = surv.census(T, pit)
+    assert "0000000009" not in {i["cik"] for i in c["items"]} and c["counts"]["dropped_class:exit_record_still_reporting"] == 1
+    assert c["counts"]["events_after_T"] == 8 and c["counts"]["census"] == 3                    # the seven events of the plain world, and company 9, which only the drop keeps out
+
+
+# ---- N4: the share count of the price proxy is the latest 10-K or 10-Q cover before T ------------------------------------------------------------------------------
+
+def _two_covers_zip(tmp_path):
+    p = tmp_path / "cf4.zip"
+    docs = {"CIK0000000001.json": _company(1, "Alpha", [_fact("2020-06-30", 900e6, "A-20", "2021-03-02")],
+                                           [_fact("2021-02-15", 50e6, "A-20", "2021-03-02", "10-K"), _fact("2021-04-20", 48e6, "A-Q1", "2021-05-05", "10-Q"),
+                                            _fact("2021-04-20", 2e6, "A-Q1", "2021-05-05", "10-Q"), _fact("2021-07-20", 45e6, "A-Q2", "2021-08-04", "10-Q"),
+                                            _fact("2021-08-01", 99e6, "A-S1", "2021-08-20", "S-1")]),     # not a 10-K / 10-Q cover: never read
+            "CIK0000000002.json": _company(2, "Beta", [_fact("2020-06-30", 500e6, "B-20", "2021-03-02")], [_fact("2021-04-20", 25e6, "B-Q1", "2021-05-05", "10-Q")])}      # the 10-K cover states no count; a 10-Q does
+    with zipfile.ZipFile(p, "w") as z:
+        for n, d in docs.items():
+            z.writestr(n, json.dumps(d))
+    return p
+
+
+def test_the_proxy_share_count_is_the_latest_10k_or_10q_cover_filed_before_T_not_only_the_floats_cover(tmp_path):
+    sv.build_cover_index(_two_covers_zip(tmp_path), tmp_path / "cover4", workers=1)
+    idx = sv.CoverIndex(tmp_path / "cover4")
+    c = idx.latest("0000000001", "2021-06-30")                                # the 10-Q filed 2021-05-05 is newer than the 10-K that states the float
+    assert c["accession"] == "A-20" and c["public_float"] == 900e6 and c["shares_accession"] == "A-Q1" and c["shares_form"] == "10-Q" and c["shares"] == 50e6 and c["price_proxy"] == pytest.approx(18.0)
+    assert idx.latest("0000000001", "2021-05-05")["shares_accession"] == "A-20" and idx.latest("0000000001", "2021-05-05")["shares"] == 50e6      # filed ON the date: not known
+    c2 = idx.latest("0000000001", "2021-12-31")
+    assert c2["shares_accession"] == "A-Q2" and c2["shares"] == 45e6 and c2["price_proxy"] == pytest.approx(20.0) and c2["accession"] == "A-20"      # the S-1's 99e6 is not a 10-K / 10-Q cover
+    b = idx.latest("0000000002", "2021-12-31")
+    assert b["shares"] == 25e6 and b["price_proxy"] == pytest.approx(20.0) and b["shares_accession"] == "B-Q1"                    # N4 gives a proxy where the 10-K cover alone gave none
+    assert idx.latest("0000000002", "2021-04-01")["shares"] is None and idx.latest("0000000002", "2021-04-01")["price_proxy"] is None   # no such cover before the date: still no proxy
+
+
+def test_the_census_items_carry_the_share_cover_and_count_the_priced_ones(tmp_path):
+    surv, pit, _src = _world(tmp_path)
+    c = surv.census(T, pit)
+    assert c["counts"]["census_with_price_proxy"] == 3 and "census_no_shares_on_cover" not in c["counts"]
+    i = surv.items_by_cik(T, pit)["0000000001"]
+    assert i["shares_accession"] == "C1-20" and i["shares_form"] == "10-K" and i["shares_filed"] == "2021-03-01"
+
+
+# ---- N6: one dividing line ----------------------------------------------------------------------------------------------------------------------------------------
+
+class _LastWeekdayTarget:
+    """A monthly source's horizon date (the last weekday of the month): where it differs from the same calendar day the old census flag and the outcome disagreed."""
+
+    def __init__(self, base):
+        self._b = base
+
+    def __getattr__(self, name):
+        return getattr(self._b, name)
+
+    def target_date(self, asof, months):
+        return pdm._last_weekday_of_month(pdm.add_months(pdm.to_date(asof), months))
+
+
+def test_the_census_flag_and_the_outcome_use_the_same_dividing_line_the_horizon_date_of_the_source(tmp_path):
+    surv, pit, src = _world(tmp_path)
+    wk = _LastWeekdayTarget(src)
+    surv.src = wk                                                                  # T + 10 months: the same day is Saturday 2022-04-30, the horizon date is Friday 2022-04-29
+    assert surv.horizon_date(T, 10) == "2022-04-29"
+    assert sv.event_after_horizon("2022-04-29", "2022-04-29") is False and sv.event_after_horizon("2022-04-30", "2022-04-29") is True
+    surv._events = [dict(e, date="2022-04-30") if e["cik"] == "0000000006" else e for e in surv._events]
+    item = {i["cik"]: i for i in surv.census(T, pit, 10)["items"]}["0000000006"]
+    assert item["within_horizon"] is False and "event_after_horizon" in surv.outcome(item, wk, T, 10)["flags"]          # both say: after the horizon
+    on_the_line = dict(item, event_date="2022-04-29")
+    assert "event_after_horizon" not in surv.outcome(on_the_line, wk, T, 10)["flags"]                                  # an event ON the horizon date is inside it
+
+
+# ---- N1: the date's cross-sectional 10th percentile ---------------------------------------------------------------------------------------------------------------
+
+def _rec(cik, excess, group=">=300M", surv_item=None, basis=None, bounds=None):
+    r = {"cik": cik, "mcap_group": group, "excess": {12: excess}, "bounds": {12: bounds or {"excluded": None, "minus100": excess, "last_close": excess}}}
+    if surv_item:
+        r["survivorship"] = surv_item
+    if basis:
+        r["bounds_basis"] = {12: basis}
+    return r
+
+
+def test_the_pessimistic_bound_of_an_unobservable_name_is_the_dates_cross_sectional_10th_percentile_of_the_gate_universe():
+    import numpy as np
+    obs = [i / 100.0 for i in range(-40, 61)]                                      # 101 observed excess returns in the gate universe
+    recs = [_rec(f"{i:010d}", x) for i, x in enumerate(obs, 1)]
+    recs.append(_rec("0000000900", -0.99, group="<300M"))                          # below the floor: not in the cross-section
+    recs.append(_rec("0000000901", -0.95, surv_item={"stamp": "x"}))               # a census name: not in the cross-section
+    recs.append(_rec("0000000902", None))                                          # no measured excess
+    pending = _rec("0000000903", None, surv_item={"stamp": "x"}, basis={"minus100": sv.P10_BASIS}, bounds={"excluded": None, "minus100": None, "last_close": -0.1})
+    resolved = _rec("0000000904", 0.3, surv_item={"stamp": "x"})
+    recs += [pending, resolved]
+    stats = sv.fill_cross_section_bounds(recs)
+    want = float(np.percentile(obs, 10))
+    assert stats[12]["n"] == 101 and stats[12]["p10"] == pytest.approx(want) and want == pytest.approx(-0.30)
+    assert pending["bounds"][12] == {"excluded": None, "minus100": pytest.approx(want), "last_close": -0.1} and pending["bound_p10"][12]["n"] == 101
+    assert resolved["bounds"][12]["minus100"] == 0.3 and "bound_p10" not in resolved                  # a resolved name keeps its value under every bound
+    assert recs[0]["bounds"][12]["minus100"] == obs[0]                              # an observed name is untouched
+
+
+def test_with_no_measured_excess_the_pessimistic_bound_stays_none():
+    pending = _rec("0000000903", None, surv_item={"stamp": "x"}, basis={"minus100": sv.P10_BASIS}, bounds={"excluded": None, "minus100": None, "last_close": -0.1})
+    stats = sv.fill_cross_section_bounds([pending])
+    assert stats[12] == {"p10": None, "n": 0} and pending["bounds"][12]["minus100"] is None
+
+
+def test_the_bounds_flow_into_the_registered_three_bound_rule_with_the_p10_in_the_minus100_slot(tmp_path):
+    surv, pit, src = _world(tmp_path)
+    o = surv.outcome(surv.items_by_cik(T, pit)["0000000006"], src, T, 12)
+    rec = {"cik": "0000000006", "mcap_group": ">=300M", "survivorship": {"x": 1}, "excess": {12: o["excess"]}, "bounds": {12: o["bounds"]}, "bounds_basis": {12: o["bounds_basis"]}}
+    other = _rec("0000000001", -0.2)
+    sv.fill_cross_section_bounds([rec, other])
+    view = {b: hm.view_for_bound([rec], b)[0]["excess"][12] for b in hm.BOUNDS}
+    assert view["excluded"] is None and view["minus100"] == pytest.approx(-0.2) and view["last_close"] == pytest.approx(0.0 - _bench(src, T))
+
+
+# ---- N3: the one-event-per-company limitation, counted where detectable --------------------------------------------------------------------------------------------
+
+def test_build_exit_records_reads_every_form_25_and_15_of_the_wanted_companies_including_older_pages(tmp_path):
+    z = tmp_path / "subs.zip"
+
+    def recent(forms, dates):
+        return {"filings": {"recent": {"form": forms, "filingDate": dates, "items": [""] * len(forms), "accessionNumber": [f"a{i}" for i in range(len(forms))]},
+                            "files": [{"name": "CIK0000000010-submissions-001.json"}]}}
+
+    older = {"form": ["25-NSE"], "filingDate": ["2019-01-10"], "items": [""], "accessionNumber": ["old"]}
+    with zipfile.ZipFile(z, "w") as zz:
+        zz.writestr("CIK0000000010.json", json.dumps(recent(["8-K", "25", "15-12B", "10-K"], ["2020-12-01", "2020-12-01", "2022-03-01", "2020-03-01"])))
+        zz.writestr("CIK0000000010-submissions-001.json", json.dumps(older))
+        zz.writestr("CIK0000000011.json", json.dumps(recent(["10-K"], ["2020-03-01"])))
+        zz.writestr("CIK0000000012.json", json.dumps(recent(["25"], ["2021-01-01"])))
+    got = sv.build_exit_records(z, ["0000000010", "0000000011"])
+    assert got == {"0000000010": ["2019-01-10", "2020-12-01", "2022-03-01"]}      # no exit record: absent; not wanted: absent; the older page is merged
+
+
+def test_the_limitation_counters_count_the_detectable_second_exit_records(tmp_path):
+    exits = {"0000000001": ["2021-11-15", "2021-11-20"],                         # a census company with a Form 15 five days after its Form 25: same week
+             "0000000005": ["2021-09-15", "2022-03-01"],                         # a census company with a later record more than 30 days on
+             "0000000009": ["2021-12-15", "2022-06-01"],                         # company 9: the first Form 25 was for another security, the next is more than 30 days later
+             "0000000010": ["2020-12-01", "2022-03-01"]}                         # company 10: first event before T; a second exit record inside the horizon, after T
+    surv, pit, _src = _world(tmp_path, extra=True, exit_records=exits)
+    k = surv.census(T, pit)["counts"]
+    assert k["limitation_census_later_exit_record"] == 2 and k["limitation_census_later_exit_record:gap_gt_30d"] == 1 and k["limitation_census_later_exit_record:gap_le_30d"] == 1
+    assert k["limitation_missed_event_before_T"] == 1 and k["limitation_missed_event_before_T:gap_gt_30d"] == 1 and k["limitation_missed_event_before_T:next_exit_record_within_horizon"] == 1
+    assert k["limitation_dropped_class_later_exit"] == 1 and k["limitation_dropped_class_later_exit:gap_gt_30d"] == 1
+    assert k["census"] == 3                                                       # counted, never corrected: the census itself is unchanged
+    plain_dir = tmp_path / "plain"
+    plain_dir.mkdir()
+    plain, pit2, _ = _world(plain_dir)
+    assert not any(x.startswith("limitation_") for x in plain.census(T, pit2)["counts"])    # with no exit-record index the census does not count them
+
+
+def test_the_run_attaches_the_survivor_outcome_with_its_bound_basis_and_fills_the_p10_from_the_dates_records(tmp_path):
+    from datetime import date
+    from rebuild_harness import gate1_run as g
+    surv, pit, src = _world(tmp_path)
+    g._ENV["surv"] = surv
+    try:
+        item = surv.items_by_cik(T, pit)["0000000006"]
+        rec = {"cik": "0000000006", "mcap_group": ">=300M", "survivorship": dict(item)}
+        g._attach_outcomes(rec, pit, "0000000006", None, T, pit.snapshot("0000000006", T), horizons=(12,), outcomes_end=date(2030, 1, 1), survivor=item)
+    finally:
+        g._ENV.pop("surv", None)
+    assert rec["bounds"][12]["minus100"] is None and rec["bounds_basis"] == {12: {"minus100": sv.P10_BASIS}} and rec["excess"][12] is None
+    others = [_rec(f"{i:010d}", x / 100.0) for i, x in enumerate(range(-50, 51), 1)]
+    sv.fill_cross_section_bounds(others + [rec])
+    assert rec["bounds"][12]["minus100"] == pytest.approx(-0.40) and rec["bound_p10"][12]["n"] == 101

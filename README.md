@@ -459,6 +459,15 @@ Offline; no model, no GPU, no network except SEC filings through `sec_primary` i
   (`consideration_sentences`: the stock words, the one distinct amount); `read_cash_consideration_whole_text` is the earlier reader, kept to report the yield before.  M6: `daily_prices.FallbackPriceSource` puts the monthly
   raw file behind a D5 ticker whose history starts late (`price_monthly_fallback`; outcomes use the daily bar where it exists, else the monthly one); on by default with `--prices-daily`, required in a holdout.  The freeze
   contents name the fallback file and the cover index; `python -m rebuild_harness.holdout_inputs` reports what still blocks a freeze.
+  Addendum N (the harness only; the engine is frozen at `c7d7a4f`): N1 an event after the horizon is UNOBSERVABLE with bounds {excluded, the proxy price held (0%, `last_close`), the date's cross-sectional 10th-percentile excess return
+  of the same horizon (in the `minus100` slot, `bounds_basis` says so; filled by `survivorship.fill_cross_section_bounds` after the date's pass 1, over the gate universe's measured excess returns, census names out)};
+  -100% stays only for a bankruptcy-class event inside the horizon that no reader resolves (every other unresolved event, inside the horizon or after it, takes the p10 bound).  N2 `exit_record_still_reporting`
+  is not in the census (counted as `dropped_class:...`).  N3 D1 holds ONE event per company (its first exit record): a delisting of another security first hides a later one; with `exit_records` (`build_exit_records`, read from
+  the local submissions archive) the census counts the detectable cases (`limitation_*`, split at a 30-day gap), it never corrects them.  N4 the proxy's share count is the latest `dei:EntityCommonStockSharesOutstanding` on
+  any 10-K or 10-Q cover filed before T (`shares_accession`, `shares_form`, `shares_filed` on the census item).  N5 `read_cash_consideration` no longer declines on `common stock of` (it names the target's shares) but
+  still does on `common stock of Parent/Acquirer/Buyer`, elections, exchange ratios and the other stock words; companion: a par value (`par value $0.0001 per share`) is not a per-share price (56 of the 80 amounts the
+  M5 reader resolved on the 2023-2025 completion 8-Ks were par values).  N6 the dividing line of the horizon is the D1 event date against the horizon date the outcome is measured at (`PriceSource.target_date`): the census flag
+  and the outcome use the one rule (`survivorship.event_after_horizon`).
 - `valuation/gate1.py` - one company at one date: classification, priors, the discount rate at T (Damodaran files dated before T, the dated FRED risk-free, Hamada on the book D/E with the
   industry D/E when parent equity is not positive or book D/E exceeds the industry's 95th percentile on the date, cost of debt = risk-free + the industry's median spread when there is no clean
   interest line), the family engine over the prior (the distribution's median is the value; P10..P90, the secondary, the disagreement, the terminal-value share), per share on the price's share basis.
