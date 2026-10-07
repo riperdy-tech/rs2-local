@@ -192,3 +192,17 @@ def test_p3_the_report_only_pattern_is_inert_when_swapped_out_and_stock_words_st
         D._P3_WORDS, D._P3_DOC_WORDS = saved, saved_doc
     assert D.read_cash_consideration("Each warrant had an exercise price of $0.75 per share.") is None
     assert D.read_cash_consideration("Each share was converted into $5.00 in cash or, at the holder's election, stock.") is None
+
+
+def test_r2_the_reader_declines_on_a_declared_dividend_or_distribution():
+    price = "Each share of common stock was converted into the right to receive $12.05 in cash."
+    assert D.read_cash_consideration(price) == 12.05
+    for decline in ("On June 2, 2024, the Company's board of directors declared a distribution of $0.0944 per share, payable on June 6, 2024.",
+                    "The board of directors declared a special cash dividend of $0.25 per share of Company Common Stock.",
+                    "The board has declared a stub period cash dividend in an amount equal to $0.1462 per share."):
+        assert D.read_cash_consideration(decline) is None, decline
+        assert D.read_cash_consideration(price + " " + decline) is None, decline
+    assert D.read_cash_consideration("On June 2, 2024, the board declared a distribution of $0.0944 per share.") is None
+    # a word elsewhere that states no per-share amount, and "Dividend Adjustments" in an offer price, do not decline
+    assert D.read_cash_consideration(price + " The board declared the Offer fair to holders.") == 12.05
+    assert D.read_cash_consideration("The offer price is $10.20 per Share in cash, less any Dividend Adjustments.") == 10.2

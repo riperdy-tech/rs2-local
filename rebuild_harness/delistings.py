@@ -216,7 +216,8 @@ def consideration_sentences(text):
 # the price paid for the shares, and neither is a figure in a SPAC's cover page (the units / warrants lines of the registered-securities table, and the inline-XBRL member names that print before it).  These
 # are decline words: such a sentence makes the whole reading None, so the name stays unobservable (the decline direction).  `redemption price` and `redemption amount` are read as `redemption value`
 # (a SPAC states the per-share trust figure by all three).
-_NOT_A_PRICE_WORDS = re.compile(r"warrant|exercise price|liquidating distribution|redemption (?:value|price|amount)|trust account", re.I)
+# Addendum R2 (decline direction): a sentence that says the board "declared a dividend / distribution" states a payment to holders, not the merger price.
+_NOT_A_PRICE_WORDS = re.compile(r"warrant|exercise price|liquidating distribution|redemption (?:value|price|amount)|trust account|declar(?:e|es|ed|ing) (?:an? |the |its )?(?:[\w-]+ ){0,3}?(?:dividend|distribution)", re.I)
 _SPAC_COVER_TEXT = re.compile(r"units?,? each (?:consisting|comprising)|exercisable for one|redeemable (?:warrant|class|ordinary|common)|[A-Za-z]{1,12}:[A-Za-z0-9.]+Member", re.I)
 _P3_WORDS = re.compile(_NOT_A_PRICE_WORDS.pattern + "|" + _SPAC_COVER_TEXT.pattern, re.I)
 # The SPAC cover page is a feature of the DOCUMENT (its registered-securities table and the inline-XBRL members before it), not of the sentence that happens to state an amount: such a document declines whole.
