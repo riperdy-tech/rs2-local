@@ -334,6 +334,16 @@ def f6(df, out):
     L2, r = score_compare(deep, scores, hs=(12, 24), title="F6, names with at least 3 realised years,")
     L += L2
     res.update({f"deep|{k[0]}|{k[1]}": v for k, v in r.items()})
+    # the ingredients alone: do the realised fundamentals rank returns as well without the engine mapping into value?
+    deep2 = common[common["or_kg"] >= 3].copy()
+    deep2["ing_growth"] = deep2["R_gavg3"]
+    deep2["ing_margin"] = np.where(deep2["family"] == "financial", deep2["R_rote3"] - deep2["own_rote_target"], deep2["R_m3"] - deep2["state_op_margin"])
+    deep2["ing_both"] = pd.concat([ranked_within(deep2, "ing_growth", ("date",)), ranked_within(deep2, "ing_margin", ("date",))], axis=1).mean(axis=1, skipna=False)
+    ing = [("ORACLE IV / price (the engine mapping applied)", "or_main"), ("registered engine IV / price", "vp"), ("realised growth, years 1-3 (no mapping, no price)", "ing_growth"),
+           ("realised change in margin (financial: ROTE) to year 3 (no mapping, no price)", "ing_margin"), ("mean rank of the two realised ingredients", "ing_both")]
+    L2, r = score_compare(deep2, ing, hs=(12, 24), title="F6 ingredients alone, names with at least 3 realised years,")
+    L += ["## Is it the mapping or the inputs? The realised ingredients ranked on their own (no engine, no price) beside the oracle IV / price", ""] + L2
+    res.update({f"ingredients|{k[0]}|{k[1]}": v for k, v in r.items()})
     # how far the oracle moves the value
     pos = common[(common["or_main"] > 0) & (common["vp_pt"] > 0)]
     mv = np.log(pos["or_main"] / pos["vp_pt"])
@@ -475,4 +485,50 @@ def f8(df, out):
               f"{r2[0][0]:+.3f} (se {r2[1][0]:.3f}), naive {r2[0][1]:+.3f} (se {r2[1][1]:.3f}).", ""]
         surp["rote_y3"] = {"n": len(s), "slope": float(r1[0][0]), "se": float(r1[1][0]), "horse_engine": float(r2[0][0]), "horse_naive": float(r2[0][1])}
     out["F8_surprise"] = surp
+    L += ["## Robust version of the same question: regress the realised outcome on the engine P50 and on the price-implied value (both winsorised at P1 / P99 by date), date effects", "",
+          "If the price is right the realised value loads 1 on the implied value and 0 on the engine P50; if the engine adds information beyond the price its coefficient is positive with the price-implied "
+          "coefficient below one. `naive` is the company own latest state carried through the same path. The mean per-date Spearman correlation of each regressor with the outcome is beside it.", ""]
+    rob = {}
+
+    def wins(s_, d_):
+        lo = s_.groupby(d_).transform(lambda x: x.quantile(0.01))
+        hi = s_.groupby(d_).transform(lambda x: x.quantile(0.99))
+        return s_.clip(lower=lo, upper=hi)
+
+    def race(label, s, y, xs, names):
+        s = s.copy()
+        ok = s[y].notna()
+        for x in xs:
+            ok &= s[x].notna()
+        s = s[ok]
+        if len(s) < 300:
+            return
+        for v in [y] + xs:
+            s["w_" + v] = wins(s[v], s["date"])
+        r = _fe_reg(s["w_" + y].to_numpy(), s[["w_" + x for x in xs]].to_numpy(), s["date"].to_numpy())
+        sp = []
+        for x in xs:
+            cs = []
+            for dt, g in s.groupby("date"):
+                if len(g) > 50:
+                    cs.append(float(np.corrcoef(fxm.pct_rank(g[x]), fxm.pct_rank(g[y]))[0, 1]))
+            sp.append(float(np.mean(cs)) if cs else float("nan"))
+        L.append(f"- **{label}** ({len(s)} name-dates): " + "; ".join(f"{n} {r[0][i]:+.3f} (se {r[1][i]:.3f}, Spearman {sp[i]:+.2f})" for i, n in enumerate(names)) + f"; R2 within {r[3]:.3f}")
+        rob[label] = {n: {"coef": float(r[0][i]), "se": float(r[1][i]), "spearman": sp[i]} for i, n in enumerate(names)}
+
+    oc = d[(d["family"] != "financial")].copy()
+    oc["naive_avg3"] = oc["gT"] + (oc["own_g1"] - oc["gT"]) * oc["Dfac"]
+    oc["imp_ok"] = oc["g_avg3_imp_sat"].where(oc["im_g1_status"] == "ok")
+    race("operating + commodity, average growth of years 1-3: engine P50, price-implied", oc, "R_gavg3", ["im_g_avg3_eng", "g_avg3_imp_sat"], ["engine P50", "price-implied (saturated)"])
+    race("operating + commodity, average growth of years 1-3, names whose implied growth is inside the grid", oc, "R_gavg3", ["im_g_avg3_eng", "imp_ok"], ["engine P50", "price-implied"])
+    race("operating + commodity, average growth of years 1-3: engine, implied, naive", oc, "R_gavg3", ["im_g_avg3_eng", "g_avg3_imp_sat", "naive_avg3"], ["engine P50", "price-implied", "naive"])
+    oc["m_naive"] = oc["state_op_margin"]
+    race("operating + commodity, margin in year 3: engine P50, price-implied", oc, "R_m3", ["im_m3_eng", "im_m3_imp"], ["engine P50", "price-implied"])
+    race("operating + commodity, margin in year 3: engine, implied, naive (current margin)", oc, "R_m3", ["im_m3_eng", "im_m3_imp", "m_naive"], ["engine P50", "price-implied", "naive"])
+    fi = d[d["family"] == "financial"].copy()
+    fi["naive_avg3"] = fi["gT"] + (fi["own_g1"] - fi["gT"]) * fi["Dfac"]
+    race("financial, average tangible-book growth of years 1-3: engine, implied, naive", fi, "R_gavg3", ["im_g_avg3_eng", "g_avg3_imp_sat", "naive_avg3"], ["engine P50", "price-implied", "naive"])
+    race("financial, ROTE in year 3: engine target, price-implied target, naive (own ROTE)", fi, "R_rote3", ["p50_rote_target", "rote_sat", "own_rote_target"], ["engine P50", "price-implied", "naive"])
+    out["F8_robust"] = rob
+    L.append("")
     return L

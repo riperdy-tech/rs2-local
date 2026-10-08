@@ -69,6 +69,18 @@ def ranked_within(df, col, by=("date", "family")):
     return df.groupby(list(by))[col].transform(fxm.rank_nan)
 
 
+def add_controls(df):
+    d = df.copy()
+    d["c_size"] = np.log(d["mcap"])
+    d["c_beta"] = d["beta_1y"]
+    d["c_vol"] = d["vol_1y"]
+    d["c_lev"] = d["sv_debt"] / d["sv_total_assets"]
+    d["c_liq"] = np.log(d["dvol_3m"].where(d["dvol_3m"] > 0))
+    for c in ("c_size", "c_beta", "c_vol", "c_lev", "c_liq"):
+        d[c] = d[c].replace([np.inf, -np.inf], np.nan)
+    return d
+
+
 # ---- F1, F2 -------------------------------------------------------------------------------------------------------------------------------------
 
 def f1(df, out):
@@ -90,7 +102,24 @@ def f1(df, out):
             row.append("n/a" if c is None else f"{c['beta']:+.4f} (t {c['t']:+.1f})")
         rows.append(row)
     L += ["**B1-style pooled coefficient on the engine's rank (date and industry effects, five yardsticks; date-clustered t-statistic, 12-month-style CR1 not bootstrap)**", ""] + md(["horizon"] + [fxm.BLABEL[b] for b in BOUNDS], rows) + [""]
-    out["F1"] = {"metrics": {f"{h}|{s}": v for (h, s), v in res.items()}, "pooled": {f"{h}|{b}": v for (h, b), v in coefs.items()}}
+    cd = df[df["date"] <= "2023-09-30"]
+    resc = horizon_table(cd, "vp", by_year=False)
+    L += ["## The same horizons on ONE set of dates (valuation dates up to 2023-09-30, the last with a 36-month outcome), so that the horizons are comparable", ""]
+    L += render_metric(resc, "spread_resid", title="Residual quintile spread, common dates, pp")
+    L += render_metric(resc, "ic", title="Rank IC x 100, common dates")
+    L += render_metric(resc, "spread_raw", title="Raw neutral spread, common dates, pp")
+    rows = []
+    cc = {}
+    for h in HZ:
+        row = [f"{h}m"]
+        for b in BOUNDS:
+            c = fxm.pooled_coef(cd, cd["vp"], h, b, Y5)
+            cc[f"{h}|{b}"] = c
+            row.append("n/a" if c is None else f"{c['beta']:+.4f} (t {c['t']:+.1f})")
+        rows.append(row)
+    L += ["**Pooled coefficient, common dates**", ""] + md(["horizon"] + [fxm.BLABEL[b] for b in BOUNDS], rows) + [""]
+    out["F1"] = {"metrics": {f"{h}|{s}": v for (h, s), v in res.items()}, "pooled": {f"{h}|{b}": v for (h, b), v in coefs.items()},
+                 "common_dates": {f"{h}|{s}": v for (h, s), v in resc.items()}, "common_dates_pooled": cc}
     return L
 
 
@@ -141,7 +170,27 @@ def f7(df, out):
          "Same names, same dates, only the ranking statistic changes (value per share over the 2,000 draws, divided by the price; ranks are by date).", ""]
     L2, res = score_compare(df, scores, title="F7")
     out["F7"] = {f"{k[0]}|{k[1]}": v for k, v in res.items()}
-    return L + L2
+    d = add_controls(df)
+    ctrl = ["c_size", "c_beta", "c_vol", "c_liq", "c_lev"]
+    L3 = ["## The same statistics after also controlling for size, beta, one-year volatility, liquidity and leverage", "",
+          "The upper-tail statistics (mean, P75, P90) rise with the dispersion of the draws, so they may proxy for a risk factor. The residual of the engine rank is formed after the five yardsticks AND "
+          "ln market cap, 1y beta, 1y volatility, ln dollar volume and debt / assets (ranks, industry-demeaned).", ""]
+    ctl = {}
+    for h in (12, 24):
+        rows = []
+        for lab, col in scores:
+            if col not in ("vp", "vp_mean", "vp_p75", "vp_p90", "pgt", "vp_p10"):
+                continue
+            sp, ic = [], []
+            for b in BOUNDS:
+                sm = fxm.summarize(fxm.per_date(d[d[col].notna()], col, h, b, Y5, extra_resid_cols=ctrl), h)
+                ctl[f"{lab}|{h}|{b}"] = sm
+                sp.append(f"{100 * sm['spread_resid']:+.2f}" + ("*" if fxm.sig(sm, "spread_resid") else ""))
+                ic.append(f"{100 * sm['ic_resid']:+.2f}" + ("*" if fxm.sig(sm, "ic_resid") else ""))
+            rows.append([lab, " / ".join(sp), " / ".join(ic)])
+        L3 += [f"**h = {h} months**", ""] + md(["score", "residual spread pp after all controls (excl / -100% / last)", "residual IC x 100"], rows) + [""]
+    out["F7_controls"] = ctl
+    return L + L2 + L3
 
 
 # ---- F9 ------------------------------------------------------------------------------------------------------------------------------------------
