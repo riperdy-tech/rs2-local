@@ -176,7 +176,15 @@ def pooled_design(df: pd.DataFrame, score_vals: pd.Series, h: int, bound: str, y
             continue
         sub, s, x = sub[ok], s[ok], x[ok]
         eng = pct_rank(s)
-        Yc, Ic = yard_design(sub, ycols)
+        Yc, Ic = [], []
+        for c in ycols:                                   # a fixed layout: every yardstick has its indicator column on every date (all-zero columns are dropped afterwards)
+            v = sub[c].to_numpy(dtype=float)
+            miss = np.isnan(v)
+            r_ = np.full(len(v), 0.5)
+            if (~miss).any():
+                r_[~miss] = pct_rank(v[~miss])
+            Yc.append(r_)
+            Ic.append(miss.astype(float))
         cc, ci = [], []
         for c in control_cols:
             v = sub[c].to_numpy(dtype=float)
