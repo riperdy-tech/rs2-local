@@ -411,3 +411,26 @@ def test_outcome_rule():
     assert HS.outcome(bars(z, ok))["OUTCOME"] == "FAIL"                                                      # zero is not positive
     assert HS.outcome(bars(ok, {b: 0.04 for b in HS.BOUNDS}, lower=-0.01))["OUTCOME"] == "PASS"             # a point pass without the lower bound is a pass, not a strong pass
     assert not any(HS.outcome(bars(ok, {b: 0.04 for b in HS.BOUNDS}, lower=-0.01))["H1_strong_pass_lower_bound_positive"].values())
+
+
+def _h3_row(date, fam, g50, g_naive, m50, m0, rev0=100.0, rev1=110.0, m1=0.2):
+    return {"date": date, "family": fam, "fq": {"growth": {"p50": g50, "p10": g50 - 0.1, "p90": g50 + 0.1}, "margin": {"p50": m50, "p10": m50 - 0.1, "p90": m50 + 0.1}, "rote": {"p50": 0.1, "p10": 0.0, "p90": 0.2}},
+            "base": {"revenue": rev0}, "out1": {"revenue": rev1, "operating_margin": m1, "rote": 0.11}, "g_naive": g_naive, "m0": m0, "state": {"growth_latest": 0.05, "rote_latest": 0.09}}
+
+
+def test_h3_passes_when_the_engine_is_closer_than_the_naive_baseline_on_both_operating_measures():
+    from rebuild_harness.stage2 import holdout_score as HS
+    rows = [_h3_row("d", "operating", g50=0.10, g_naive=0.02, m50=0.19, m0=0.10) for _ in range(5)]                     # outcome growth 10%, margin 0.2: the engine is nearer on both
+    r = HS.h3(rows)
+    assert r["status"] == "pass" and set(r["operating"]) == {"revenue_growth | operating", "operating_margin | operating"}
+    bad = [_h3_row("d", "operating", g50=0.02, g_naive=0.10, m50=0.19, m0=0.10) for _ in range(5)]                      # growth worse than naive
+    assert HS.h3(bad)["status"] == "fail"
+    assert HS.h3([])["status"] == "not computed"
+
+
+def test_h3_ignores_commodity_and_reports_financial_rote():
+    from rebuild_harness.stage2 import holdout_score as HS
+    rows = [_h3_row("d", "operating", 0.10, 0.02, 0.19, 0.10) for _ in range(3)] + [_h3_row("d", "commodity", 0.0, 0.10, 0.0, 0.1) for _ in range(5)] + [_h3_row("d", "financial", 0.0, 0.0, 0.0, 0.0) for _ in range(3)]
+    r = HS.h3(rows)
+    assert r["status"] == "pass" and r["operating"]["revenue_growth | operating"]["n"] == 3
+    assert r["financial_rote_reported"]["n"] == 3
