@@ -203,6 +203,14 @@ class SurvivalModel:
     def predict(self, X: np.ndarray) -> np.ndarray:
         return _sigmoid(self.intercept + self.transform.apply(X) @ self.coef)
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "SurvivalModel":
+        """The model a freeze recorded (`as_dict`): the frozen coefficients are applied as they are, never refitted."""
+        t = d["transform"]
+        tf = Transform(lo=dict(t["lo"]), hi=dict(t["hi"]), mean=dict(t["mean"]), sd=dict(t["sd"]))
+        return cls(asof=d["asof"], transform=tf, intercept=float(d["intercept"]), coef=np.array([d["coef"][k] for k in FEATURES], dtype=float), n_train=int(d["n_train"]),
+                   n_events=int(d["n_events"]), train_dates=list(d["train_dates"]), ridge=float(d.get("ridge", RIDGE)))
+
     def as_dict(self) -> dict:
         return {"asof": self.asof, "intercept": self.intercept, "coef": dict(zip(FEATURES, [float(c) for c in self.coef])), "transform": self.transform.as_dict(), "n_train": self.n_train,
                 "n_events": self.n_events, "train_dates": self.train_dates, "ridge": self.ridge, "winsor": list(WINSOR), "features": list(FEATURES)}

@@ -333,3 +333,81 @@ def test_variants_use_the_layers_in_order():
     assert f[c].tolist() == pytest.approx((f["vp_mean"] * (1 - f["pfail"])).tolist())
     f0, c0 = v["V0 registered median, all families"]
     assert len(f0) == n and (f0[c0] == f0["vp"]).all()
+
+
+def test_model_round_trip_through_json(tmp_path):
+    obs, ev = _obs(tmp_path)
+    m = S.fit_for_date(obs, "2020-03-31", ev)
+    d = json.loads(json.dumps(m.as_dict()))
+    m2 = S.SurvivalModel.from_dict(d)
+    X = obs[obs["date"] == "2020-03-31"][list(S.FEATURES)].to_numpy(dtype=float)
+    assert np.allclose(m.predict(X), m2.predict(X), rtol=0, atol=1e-15)
+    assert m2.n_events == m.n_events and m2.train_dates == m.train_dates
+
+
+# ---- the holdout lock of the gate-1b runner -------------------------------------------------------------------------------------------------
+
+def _fake_freeze(tmp_path, commit=None, break_hash=False, coeff_dates=None):
+    from rebuild_harness import gate1_run as g1r, holdout
+    from rebuild_harness.stage2 import holdout_run as HR
+    root = g1r.REPO
+    head = holdout._git(root, "rev-parse", "HEAD").decode().strip()
+    files = {p.relative_to(root).as_posix(): holdout.sha256_file(p) for p in g1r.GATE1_FILES}
+    if break_hash:
+        k = sorted(files)[0]
+        files[k] = "0" * 64
+    dates = HR.DATES if coeff_dates is None else coeff_dates
+    doc = {"engines": {"gate1_engine": {"git_commit": head, "files": files}}, "contents": {"code_commit": commit or head}, "stage2": {"survival_coefficients": {d: {"x": 1} for d in dates}}}
+    p = tmp_path / "gate1b_freeze.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    return p
+
+
+def test_holdout_lock_accepts_a_consistent_freeze_and_refuses_a_second_run(tmp_path):
+    from rebuild_harness import holdout
+    from rebuild_harness.stage2 import holdout_run as HR
+    p = _fake_freeze(tmp_path)
+    lock = HR.check_lock(p, tmp_path, resume=False)
+    assert not lock["already_started"]
+    lock["ledger"].write_text(json.dumps({"freeze_sha256": lock["freeze_sha256"], "engine": "gate1_engine", "dates": HR.DATES}) + "\n", encoding="utf-8")
+    with pytest.raises(holdout.HoldoutRefused, match="run once"):
+        HR.check_lock(p, tmp_path, resume=False)
+    assert HR.check_lock(p, tmp_path, resume=True)["already_started"]            # --resume completes missing dates only
+
+
+def test_holdout_lock_refuses_other_code_a_changed_engine_and_missing_coefficients(tmp_path):
+    from rebuild_harness import holdout
+    from rebuild_harness.stage2 import holdout_run as HR
+    with pytest.raises(holdout.HoldoutRefused, match="code commit"):
+        HR.check_lock(_fake_freeze(tmp_path, commit="a" * 40), tmp_path, False)
+    with pytest.raises(holdout.HoldoutRefused, match="engine changed"):
+        HR.check_lock(_fake_freeze(tmp_path, break_hash=True), tmp_path, False)
+    with pytest.raises(holdout.HoldoutRefused, match="survival coefficients"):
+        HR.check_lock(_fake_freeze(tmp_path, coeff_dates=HR.DATES[:-1]), tmp_path, False)
+
+
+def test_holdout_dates_are_the_registered_month_ends():
+    from rebuild_harness.stage2 import holdout_run as HR
+    assert HR.DATES == ["2025-01-31", "2025-02-28", "2025-03-31", "2025-04-30", "2025-05-30", "2025-06-30", "2025-07-31", "2025-08-29", "2025-09-30"]
+    with pytest.raises(RuntimeError, match="not one of the registered"):
+        HR.run_date("2025-10-31")
+    with pytest.raises(RuntimeError, match="not one of the registered"):
+        HR.run_date("2024-12-31")
+
+
+def test_outcome_rule():
+    from rebuild_harness.stage2 import holdout_score as HS
+    def bars(b1, b2, h3="pass", lower=0.01, sp=0.01):
+        return {"by_bound": {b: {"H1": {"beta": b1[b], "lower_90_one_sided": lower}, "H2": {"mean_spread_residual": b2[b]}} for b in HS.BOUNDS}, "H3": {"status": h3}}
+    ok = {b: 0.1 for b in HS.BOUNDS}
+    assert HS.outcome(bars(ok, {b: 0.04 for b in HS.BOUNDS}))["OUTCOME"] == "PASS"
+    assert HS.outcome(bars(ok, {b: 0.04 for b in HS.BOUNDS}))["H2_strong_pass_ge_3pp"] == {b: True for b in HS.BOUNDS}
+    neg = {b: -0.1 for b in HS.BOUNDS}
+    assert HS.outcome(bars(neg, {b: 0.04 for b in HS.BOUNDS}))["OUTCOME"] == "FAIL"                        # a hard bar fails under all three bounds
+    mixed = dict(ok, minus100=-0.1)
+    assert HS.outcome(bars(mixed, {b: 0.04 for b in HS.BOUNDS}))["OUTCOME"] == "NOT DECIDED"                 # a hard bar straddles
+    assert HS.outcome(bars(ok, {b: 0.04 for b in HS.BOUNDS}, h3="fail"))["OUTCOME"] == "FAIL"
+    z = {b: 0.0 for b in HS.BOUNDS}
+    assert HS.outcome(bars(z, ok))["OUTCOME"] == "FAIL"                                                      # zero is not positive
+    assert HS.outcome(bars(ok, {b: 0.04 for b in HS.BOUNDS}, lower=-0.01))["OUTCOME"] == "PASS"             # a point pass without the lower bound is a pass, not a strong pass
+    assert not any(HS.outcome(bars(ok, {b: 0.04 for b in HS.BOUNDS}, lower=-0.01))["H1_strong_pass_lower_bound_positive"].values())
