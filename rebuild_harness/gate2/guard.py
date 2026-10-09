@@ -49,7 +49,7 @@ class ContextGuardClient:
     def chat(self, request: dict) -> dict:
         est = estimate_prompt_tokens(request, self.cpt)
         room = self.window - est - self.margin
-        asked = int(request.get("max_tokens") or room)
+        asked = room if request.get("max_tokens") is None else int(request["max_tokens"])     # is None, never `or` (non-negotiable 4)
         if room < self.floor:
             self._log({"prompt_tokens_estimated": est, "window": self.window, "requested_max_tokens": asked, "sent": None, "refused": "context_overflow"})
             raise ContextOverflow(f"{OVERFLOW_PREFIX} the prompt is about {est} tokens of the {self.window}-token window: no room for an answer ({room} < {self.floor})")

@@ -25,6 +25,11 @@ OUT_OF_SCOPE_FAMILIES = ("commodity",)
 # registration section 4, G6
 MASKED_N = 30
 MASKED_SEED_LABEL = "masked_control"
+# SPEC_rebuild Addendum AD R8 (a reported diagnostic): the repeatability control, 30 company-dates rerun with a second model seed in their own state folder
+REPEAT_N = 30
+REPEAT_SEED_LABEL = "repeat_control"
+REPEAT_LLM_SEED_OFFSET = 1          # the second seed: (the company-date's model seed + 1) mod 2**31; the engine draws keep their seed
+REPEAT_MARKER = "REPEAT_CONTROL"    # a state folder holding the repeat control carries this file and holds nothing else
 
 # registration section 1: Muse settings
 CONTEXT = 32768                      # registered ("context 32k"); the pinned production line is 98304 (server.PINNED_WINDOW)

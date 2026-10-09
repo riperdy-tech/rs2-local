@@ -43,7 +43,7 @@ from . import config
 ENGINE_COMMIT = "c7d7a4f"
 CODE_GLOBS = ("valuation/*.py", "valuation/muse/*.py", "valuation/muse/prompts/*", "rebuild_harness/*.py", "rebuild_harness/gate2/*.py", "rebuild_harness/gate2/*.vbs", "rebuild_harness/gate2/*.ps1",
               "rebuild_harness/stage2/*.py", "rebuild_harness/forensics/*.py")
-REQUEST_FIELDS = ["model", "messages", "stream", "max_tokens", "seed"]
+REQUEST_FIELDS = ["model", "messages", "stream", "max_tokens", "seed", "response_format"]   # response_format: Addendum AD R4 (muse runner version 2)
 
 
 def _git(*args, repo=config.REPO) -> bytes:

@@ -180,6 +180,13 @@ def masked_control(sample: Mapping, n: int = config.MASKED_N, seed: int = config
     return sorted(rng.sample(allj, min(n, len(allj))), key=lambda j: (j["date"], j["cik"]))
 
 
+def repeat_control(sample: Mapping, n: int = config.REPEAT_N, seed: int = config.SEED) -> List[dict]:
+    """The R8 repeatability control (Addendum AD): `n` company-dates of the sample, chosen by a seeded generator with its own label (independent of the G6 draw)."""
+    allj = jobs(sample)
+    rng = random.Random(f"{seed}:{config.REPEAT_SEED_LABEL}")
+    return sorted(rng.sample(allj, min(n, len(allj))), key=lambda j: (j["date"], j["cik"]))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("cmd", choices=["draw", "verify"])

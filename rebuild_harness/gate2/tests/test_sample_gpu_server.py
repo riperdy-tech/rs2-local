@@ -291,3 +291,10 @@ def test_stop_never_kills_a_process_that_is_not_the_pinned_server(tmp_path):
     s.image_name = lambda pid: "game.exe"                                  # the pid now belongs to another program
     ok, _ = s.stop(timeout=0.0)
     assert st["killed"] == []
+
+
+def test_the_repeat_control_is_thirty_of_the_sample_deterministic_and_drawn_apart_from_g6():
+    s = sm.draw({d: universe() for d in config.DATES})
+    rep, allj = sm.repeat_control(s), sm.jobs(s)
+    assert len(rep) == 30 and all(j in allj for j in rep) and rep == sm.repeat_control(s)
+    assert rep != sm.masked_control(s)

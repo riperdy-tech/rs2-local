@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
 
+from .jsonschemas import citation_labels, pack_labels
 from .pack_v2 import Pack, input_texts, pct
 from .schema import SECTION_TITLES, muse_inputs, prompt_inputs
 
@@ -59,6 +60,7 @@ class Rendered:
     sections: Dict[str, str]                 # the section texts the prompt shows, by letter (what quotes are checked against)
     template_sha256: str
     inputs: List[str] = field(default_factory=list)
+    labels: List[str] = field(default_factory=list)           # the citation sections this prompt may name (its JSON schema's enum)
 
 
 def render_sections(sections: Mapping[str, str]) -> str:
@@ -91,14 +93,19 @@ def _inputs_block(names: Sequence[str]) -> str:
     return "\n".join(f"- {n} ({t[n]['label']}): {t[n]['question']}" for n in names)
 
 
-def _entry_skeleton() -> str:
+def _section_choice(labels: Sequence[str]) -> str:
+    """The section placeholder of the example: exactly the labels the checker and the schema accept for this prompt (never R, Addendum AD.2)."""
+    return "<" + "|".join(labels) + ">"
+
+
+def _entry_skeleton(labels: Sequence[str]) -> str:
     return ('{"percentile": <5 to 95>, "width": "<narrow|normal|wide>", "reasons": ["..."], '
-            '"citations": [{"section": "<F|Q|D|S|R>", "quote": "<exact text>"}]}')
+            '"citations": [{"section": "' + _section_choice(labels) + '", "quote": "<exact text>"}]}')
 
 
-def _example(prompt: str, names: Sequence[str], family: str) -> str:
-    inputs = "{" + ", ".join(f'"{n}": {_entry_skeleton()}' for n in names) + "}"
-    cit = '{"section": "<F|Q|D|S|R>", "quote": "<exact text>"}'
+def _example(prompt: str, names: Sequence[str], family: str, labels: Sequence[str]) -> str:
+    inputs = "{" + ", ".join(f'"{n}": {_entry_skeleton(labels)}' for n in names) + "}"
+    cit = '{"section": "' + _section_choice(labels) + '", "quote": "<exact text>"}'
     if prompt == "P1":
         return ('{"inputs": ' + inputs + ', "bull_case": {"text": "<one sentence>", "citation": ' + cit + '}, '
                 '"bear_case": {"text": "<one sentence>", "citation": ' + cit + '}}')
@@ -123,10 +130,11 @@ def render_pass1(prompt: str, pack: Pack, family: str) -> Optional[Rendered]:
     if not names:
         return None
     sections = pack.sections_for(prompt, names)
+    labels = citation_labels(sections)
     tpl = read_template(prompt)
     user = _fill(tpl, {"HEADER": pack.header, "INPUTS": _inputs_block(names), "SECTIONS": render_sections(sections),
-                      "EXAMPLE": _example(prompt, names, family), "ALL_INPUT_NAMES": ", ".join(muse_inputs(family))})
-    return Rendered(prompt, user, sections, file_sha256(PROMPT_DIR / f"{prompt}.txt"), names)
+                      "EXAMPLE": _example(prompt, names, family, labels), "ALL_INPUT_NAMES": ", ".join(muse_inputs(family))})
+    return Rendered(prompt, user, sections, file_sha256(PROMPT_DIR / f"{prompt}.txt"), names, labels)
 
 
 # ---- P5 -----------------------------------------------------------------------------------------------------------------------------
@@ -167,9 +175,10 @@ def format_pass1(prompt: str, family: str, obj: Optional[Mapping], entries: Mapp
 
 def render_p5(pack: Pack, family: str, inputs: Sequence[str], pass1_blocks: Sequence[str]) -> Rendered:
     sections = pack.sections_for("P5", inputs)
+    labels = pack_labels(pack.sections)                 # P5 shows no filing text: it re-cites quotes verified in pass 1, from any filing section
     user = _fill(read_template("P5"), {"HEADER": pack.header, "PASS1_RESULTS": "\n\n".join(pass1_blocks), "INPUT_NAMES": ", ".join(inputs),
-                                       "SECTIONS": render_sections(sections), "EXAMPLE": _example("P5", inputs, family)})
-    return Rendered("P5", user, sections, file_sha256(PROMPT_DIR / "P5.txt"), list(inputs))
+                                       "SECTIONS": render_sections(sections), "EXAMPLE": _example("P5", inputs, family, labels)})
+    return Rendered("P5", user, sections, file_sha256(PROMPT_DIR / "P5.txt"), list(inputs), labels)
 
 
 # ---- P6 -----------------------------------------------------------------------------------------------------------------------------
@@ -219,8 +228,9 @@ def render_p6(pack: Pack, family: str, inputs: Sequence[str], price_info: Mappin
     for s in extra_sections:
         if s in ("F", "Q", "D") and s in pack.sections:
             sections[s] = pack.sections[s]
+    labels = pack_labels(pack.sections)                 # pass-1 quotes may be re-cited from any filing section; new quotes need a section shown
     tpl = _round_blocks(read_template("P6"), round_no)
     user = _fill(tpl, {"HEADER": pack.header, "PRICE_BLOCK": price_block(price_info), "INPUT_REVIEW": review_block(review),
                       "SECTION_INDEX": section_index(pack, list(sections)), "SECTIONS": render_sections(sections),
-                      "EXAMPLE": _example("P6", inputs, family)})
-    return Rendered("P6", user, sections, file_sha256(PROMPT_DIR / "P6.txt"), list(inputs))
+                      "EXAMPLE": _example("P6", inputs, family, labels)})
+    return Rendered("P6", user, sections, file_sha256(PROMPT_DIR / "P6.txt"), list(inputs), labels)

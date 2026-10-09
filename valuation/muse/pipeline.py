@@ -23,7 +23,7 @@ from valuation import classification as classification_mod
 from valuation.common import CompanyPIT, DataNotPresent, build_state, terminal_growth_rate
 from valuation.priors_interface import Priors
 
-from . import checkers, prompting, redteam
+from . import checkers, jsonschemas as js, prompting, redteam
 from .checkers import Evidence, Issue, check_pass1, check_synthesis, changed_inputs, entry_has_hard_evidence
 from .mapping import MusePriors, Position, per_share_summary, positioned_curves, run_engine, unanchored
 from .pack_v2 import build_pack
@@ -147,7 +147,8 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
             for s in price_collisions(rd.user, price_info):
                 out["stamps"].append(f"price_string_collision in {prompt}: {s!r} appears in filing text shown to the model")
             ev = Evidence(rd.sections)
-            res = runner.call(prompt, rd.user, lambda o, p=prompt, r=rd, e=ev: check_pass1(p, o, family, r.inputs, e))
+            res = runner.call(prompt, rd.user, lambda o, p=prompt, r=rd, e=ev: check_pass1(p, o, family, r.inputs, e),
+                              response_format=js.response_format(js.pass1_schema(prompt, rd.inputs, family, rd.labels), prompt))
             ent, pos, pl, extras_ok = _resolve_pass1_entries(res, rd.inputs, ev, prompt, family)
             entries.update(ent)
             positions.update(pos)
@@ -172,7 +173,7 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
                         if n not in listed:
                             iss.append(Issue("schema", f"input {n} differs from the earlier analyses but has no entry in changes", n))
                 return iss
-            res5 = runner.call("P5", rd5.user, v5)
+            res5 = runner.call("P5", rd5.user, v5, response_format=js.response_format(js.synthesis_schema(list(positions), rd5.labels), "P5"))
             out["calls"].append({"call": "P5", "ok": res5.ok, "retried": res5.retried, "issues": [i.as_dict() for i in res5.issues]})
             if res5.obj is not None and isinstance(res5.obj.get("inputs"), dict):
                 iss5 = check_synthesis(res5.obj, list(positions), ev5)
@@ -220,12 +221,15 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
                     return [Issue("schema", "request_sections must list sections that exist among F, Q, D")]
                 return []
             return redteam.validate_p6(o, input_names, ev, entries)
-        res6 = runner.call("P6", rd1.user, lambda o: v6(o, ev1, True))
+        requestable = [x for x in js.REQUESTABLE if x in pack.sections]
+        res6 = runner.call("P6", rd1.user, lambda o: v6(o, ev1, True),
+                           response_format=js.response_format(js.redteam_schema(input_names, rd1.labels, 1, requestable), "P6"))
         ev6, rd6 = ev1, rd1
         if res6.ok and "request_sections" in res6.obj and "inputs" not in res6.obj:
             rd6 = prompting.render_p6(pack, family, input_names, price_info, review, round_no=2, extra_sections=res6.obj["request_sections"])
             ev6 = Evidence(rd6.sections, pool)
-            res6 = runner.call("P6_round2", rd6.user, lambda o: v6(o, ev6, False))
+            res6 = runner.call("P6_round2", rd6.user, lambda o: v6(o, ev6, False),
+                               response_format=js.response_format(js.redteam_schema(input_names, rd6.labels, 2), "P6_round2"))
         out["calls"].append({"call": "P6", "ok": res6.ok, "retried": res6.retried, "issues": [i.as_dict() for i in res6.issues]})
         # 5: the revision rule
         seen = redteam.pass1_quote_set(list(entries.values()))

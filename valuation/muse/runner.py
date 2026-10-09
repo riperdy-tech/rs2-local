@@ -3,7 +3,9 @@
 SYSTEM MESSAGE = "Reasoning strength: xhigh\\n" + prompts/system.txt (the short text written for this layer). The prefix is Muse's reasoning-strength
 switch, as in AT10b and charters/SYSTEM_muse_v33.txt; it is recorded per run. Lower settings are a later, measured experiment.
 
-ONE CALL PER PROMPT, JSON ONLY. The request is {model, messages: [system, user], stream: false, max_tokens, seed?}. No sampling field is sent: as in
+ONE CALL PER PROMPT, JSON ONLY. The request is {model, messages: [system, user], stream: false, max_tokens, seed?, response_format?}. `response_format` (version 2,
+SPEC_rebuild Addendum AD R4) carries the call's JSON schema (jsonschemas.py) so llama-server constrains decoding to that shape; it is sent on BOTH attempts and saved
+with each request. No sampling field is sent: as in
 tools/audit_202608/llm_provider.py the pinned server decides sampling. The server's reasoning (`reasoning_content`) is kept in the saved response and
 never parsed as the answer.
 
@@ -37,7 +39,7 @@ from .prompting import prompt_hashes, system_text
 DEFAULT_URL = "http://127.0.0.1:8080"
 REASONING_PREFIX = "Reasoning strength: xhigh\n"
 DEFAULT_MAX_TOKENS = 32768
-RUNNER_VERSION = "1"
+RUNNER_VERSION = "2"
 
 
 class MuseTransportError(RuntimeError):
@@ -120,14 +122,16 @@ class MuseRunner:
     def _save(self, name: str, obj) -> None:
         (self.run_dir / name).write_text(json.dumps(obj, indent=1, default=str, ensure_ascii=False), encoding="utf-8")
 
-    def _request(self, messages: Sequence[dict]) -> dict:
+    def _request(self, messages: Sequence[dict], response_format: Optional[dict] = None) -> dict:
         req = {"model": self.model, "messages": list(messages), "stream": False, "max_tokens": self.max_tokens}
         if self.seed is not None:
             req["seed"] = self.seed
+        if response_format is not None:
+            req["response_format"] = response_format
         return req
 
-    def _ask(self, call_id: str, attempt_no: int, messages, rendered_sha: str):
-        req = self._request(messages)
+    def _ask(self, call_id: str, attempt_no: int, messages, rendered_sha: str, response_format: Optional[dict] = None):
+        req = self._request(messages, response_format)
         self.seq += 1
         stem = f"{self.seq:02d}_{call_id}_a{attempt_no}"
         self._save(stem + "_request.json", req)
@@ -148,13 +152,13 @@ class MuseRunner:
                                  "usage": resp.get("usage")}) + "\n")
         return content, msg.get("reasoning_content"), ch.get("finish_reason"), resp.get("usage"), secs
 
-    def call(self, call_id: str, user_text: str, validate: Callable[[dict], List[Issue]]) -> CallResult:
-        """One prompt: the answer, validated; one retry with the checker's message when it fails."""
+    def call(self, call_id: str, user_text: str, validate: Callable[[dict], List[Issue]], response_format: Optional[dict] = None) -> CallResult:
+        """One prompt: the answer, validated; one retry with the checker's message when it fails. `response_format` constrains both attempts."""
         rendered_sha = sha256_text(user_text)
         messages = [{"role": "system", "content": self.system_message}, {"role": "user", "content": user_text}]
         result = CallResult(call_id, None, [])
         for n in (1, 2):
-            content, reasoning, finish, usage, secs = self._ask(call_id, n, messages, rendered_sha)
+            content, reasoning, finish, usage, secs = self._ask(call_id, n, messages, rendered_sha, response_format)
             obj, err = parse_json(content)
             if err is None and finish == "length":
                 obj, err = None, "the answer was cut off at the length limit; answer more briefly (fewer, shorter reasons) and finish the JSON"
@@ -162,7 +166,8 @@ class MuseRunner:
                 issues = [Issue("not_json", err)]
             else:
                 issues = list(validate(obj))
-            result.attempts.append(Attempt(n, sha256_text(json.dumps(self._request(messages), sort_keys=True)), content, reasoning, finish, usage, secs, issues))
+            result.attempts.append(Attempt(n, sha256_text(json.dumps(self._request(messages, response_format), sort_keys=True)), content, reasoning, finish, usage,
+                                           secs, issues))
             result.obj, result.issues = obj, issues
             if not issues:
                 return result

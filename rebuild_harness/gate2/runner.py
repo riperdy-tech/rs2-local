@@ -1,6 +1,6 @@
 """runner.py - the gate-2 Muse replay runner (registration section 2).
 
-    python -m rebuild_harness.gate2.runner --mode pilot|full|masked [--state-dir DIR] [--dry-run] [--rehearsal]
+    python -m rebuild_harness.gate2.runner --mode pilot|full|masked|repeat [--state-dir DIR] [--dry-run] [--rehearsal]
 
 For every (company, date) of the sample, in the sample's order (dates ascending, each date in its drawn order):
   1. the inputs of the frozen gate-1 engine at T (`env.RealEnv.company_inputs`): filings known at T only;
@@ -27,6 +27,8 @@ SINGLE INSTANCE: `runner.lock` (a second copy exits at once); the scheduled task
 
 MODES.  `pilot`: the first 10 companies of 2025-10-31 (part of the sample): the report is the TIME per company (and operational counts: calls, tokens, length cuts, failures); the outputs are
 SEALED (a manifest of sha256 values is written, nothing is summarised, nothing is read back).  `full`: the rest.  `masked`: the G6 control of 30 company-dates with name and ticker masked.
+`repeat` (Addendum AD R8): 30 company-dates of the sample rerun with a second model seed (the engine draws keep theirs), in a state folder of their own that carries the
+marker file REPEAT_CONTROL; the other modes refuse a folder with the marker and `repeat` refuses a folder without it, so a repeat never mixes with a scored run.
 """
 from __future__ import annotations
 
@@ -84,7 +86,7 @@ class Gate2Runner:
     def __init__(self, *, state_dir=None, sample: dict, env, server, probe, client, pause_files: Sequence[Path] = (), clock: Callable[[], float] = time.time,
                  sleep: Callable[[float], None] = time.sleep, poll: float = config.POLL_SECONDS, n_draws: Optional[int] = None, max_tokens: int = config.MAX_TOKENS,
                  freeze_problems: Callable[[], List[str]] = lambda: [], retry_errors: bool = False, now: Callable[[], datetime] = datetime.now,
-                 pipeline_run: Optional[Callable] = None, out=print):
+                 pipeline_run: Optional[Callable] = None, out=print, llm_seed_offset: int = 0):
         self.paths = config.state_paths(state_dir)
         self.sample, self.env, self.server, self.probe, self.client = sample, env, server, probe, client
         self.pause_files = [Path(p) for p in ([self.paths["pause"]] + list(pause_files))]
@@ -93,6 +95,7 @@ class Gate2Runner:
         self.freeze_problems = freeze_problems
         self._pipeline_run = pipeline_run
         self.transport_retries: Dict[str, int] = {}
+        self.llm_seed_offset = llm_seed_offset
 
     # -- records --
     def _event(self, event: str, **kw) -> None:
@@ -209,6 +212,8 @@ class Gate2Runner:
             else:
                 if masked:
                     ci = env_mod.masked_inputs(ci)
+                if self.llm_seed_offset and ci.llm_seed is not None:     # R8: the second model seed; the engine draws keep their seed
+                    ci.llm_seed = (ci.llm_seed + self.llm_seed_offset) % 2 ** 31
                 rec["family"] = ci.family
                 run_dir.mkdir(parents=True, exist_ok=True)
                 timed = guard.TimedClient(guard.ContextGuardClient(self.client, log_path=run_dir / "guard.jsonl"), clock=self.clock)
@@ -384,7 +389,7 @@ def build_real(args):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--mode", choices=["pilot", "full", "masked"], required=True)
+    ap.add_argument("--mode", choices=["pilot", "full", "masked", "repeat"], required=True)
     ap.add_argument("--state-dir", type=Path)
     ap.add_argument("--config", type=Path, help="config.json holding the llamacpp pins (default: RS2_CONFIG_PATH, else this repository's)")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and the readiness checks; start nothing")
@@ -415,8 +420,16 @@ def main(argv=None) -> int:
         return 2
     if not a.dry_run and ((a.mode == "full" and paths["finished"].exists()) or (a.mode == "pilot" and paths["pilot_done"].exists())):
         return 0                                          # the scheduled task's repeats exit quietly once the work is finished
+    marker = paths["root"] / config.REPEAT_MARKER
+    if a.mode == "repeat" and not marker.exists():
+        print(f"REFUSED: --mode repeat needs its own state folder carrying the marker file {config.REPEAT_MARKER} (Addendum AD R8)")
+        return 2
+    if a.mode != "repeat" and marker.exists():
+        print(f"REFUSED: this state folder holds the repeat control ({config.REPEAT_MARKER}); run --mode {a.mode} in a scored state folder")
+        return 2
     smp = sample_mod.load_verified(sample_mod.sample_path(state_dir))
-    jobs = {"pilot": sample_mod.pilot_jobs(smp), "full": sample_mod.jobs(smp), "masked": sample_mod.masked_control(smp)}[a.mode]
+    jobs = {"pilot": sample_mod.pilot_jobs(smp), "full": sample_mod.jobs(smp), "masked": sample_mod.masked_control(smp),
+            "repeat": sample_mod.repeat_control(smp)}[a.mode]
     if a.limit:
         jobs = jobs[:a.limit]
     masked = a.mode == "masked"
@@ -433,7 +446,8 @@ def main(argv=None) -> int:
         return 4
     ev, srv, client = build_real(a)
     runner = Gate2Runner(state_dir=state_dir, sample=smp, env=ev, server=srv, probe=gpu.Probe(), client=client, pause_files=a.pause_also, max_tokens=a.max_tokens,
-                         freeze_problems=(lambda: []) if a.rehearsal else (lambda: freeze_content.verify(state_dir)), retry_errors=a.retry_errors)
+                         freeze_problems=(lambda: []) if a.rehearsal else (lambda: freeze_content.verify(state_dir)), retry_errors=a.retry_errors,
+                         llm_seed_offset=config.REPEAT_LLM_SEED_OFFSET if a.mode == "repeat" else 0)
     code = runner.run(jobs, masked=masked, label=a.mode)
     if code == 0 and all_final(runner, jobs, masked) and not a.limit:
         if a.mode == "pilot":

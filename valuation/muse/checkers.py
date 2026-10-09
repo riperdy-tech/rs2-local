@@ -16,6 +16,11 @@
   3. SCHEMA. percentile a real number in [5, 95]; width one of narrow, normal, wide; reasons a non-empty list of text; citations a non-empty list.
      Missing and unexpected inputs are failures; so are the prompt-specific fields (P1 bull/bear, P2 character, P4 risks).
 
+SECTION D's PARTS (Addendum AD, the coordinator's ruling on Addendum AC 2). The pack labels each document of section D "[D1] ...", "[D2] ...". A citation
+may name the part ("D2"); its quote must then be found inside that part's text, and it counts as section D everywhere else (shown-section rule, hard
+evidence, the P2 character rule). `Evidence` is the single owner of the split (`d_subsections`), so the G5 re-check (rebuild_harness/gate2/integrity.py)
+applies exactly the rule the pipeline applied. Run 1 cited D parts 281 times and the old checker refused every one.
+
 Each check yields `Issue`s with a message the runner sends back in the one retry. Nothing here calls a model.
 """
 from __future__ import annotations
@@ -26,7 +31,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 _HERE = Path(__file__).resolve().parents[2]
 for _p in (_HERE, _HERE / "tools" / "audit_202608"):
@@ -44,6 +49,28 @@ CHARACTERS = ("cyclical", "structural", "one_off")
 NAMED_ERROR_MIN_CHARS = 20
 
 normalise = crux_check.normalise
+_D_PART = re.compile(r"^D(\d+)$")
+_D_MARK = re.compile(r"(?m)^\[(D\d+)\] ")
+
+
+def base_section(label) -> Optional[str]:
+    """'D3' -> 'D' (a part of section D); any other label unchanged."""
+    if not isinstance(label, str):
+        return None
+    return "D" if _D_PART.match(label) else label
+
+
+def d_subsections(text: Optional[str]) -> Dict[str, str]:
+    """{"D1": text, "D2": text, ...}: section D split at the pack's "[Dn] " markers (pack_v2.build_d). A label that occurs twice keeps both texts."""
+    out: Dict[str, str] = {}
+    if not text:
+        return out
+    marks = list(_D_MARK.finditer(text))
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        part = text[m.start():end]
+        out[m.group(1)] = (out[m.group(1)] + "\n" + part) if m.group(1) in out else part
+    return out
 
 
 @dataclass
@@ -88,13 +115,23 @@ class Evidence:
     def __init__(self, sections: Mapping[str, str], pool: Iterable[Tuple[str, str]] = ()):
         self.sections = dict(sections)
         self.norm = {k: normalise(v) for k, v in self.sections.items()}
-        self.pool = [(s, normalise(q)) for s, q in pool]
+        self.parts = {k: normalise(v) for k, v in d_subsections(self.sections.get("D")).items()}
+        self.pool = [(base_section(s), normalise(q)) for s, q in pool]
+
+    def shown(self, section: str) -> bool:
+        """The section (or, for 'Dn', section D) was shown to the prompt or has quotes in the verified pool."""
+        b = base_section(section)
+        return b in self.sections or any(s == b for s, _ in self.pool)
 
     def find(self, section: str, quote: str) -> bool:
         q = normalise(quote)
-        if section in self.norm and q in self.norm[section]:
+        b = base_section(section)
+        if b != section:                                    # a part of D: only that part's text, or a pooled D quote
+            if section in self.parts and q in self.parts[section]:
+                return True
+        elif section in self.norm and q in self.norm[section]:
             return True
-        return any(s == section and q in pq for s, pq in self.pool)
+        return any(s == b and q in pq for s, pq in self.pool)
 
 
 def check_citation(cit, ev: Evidence, where: str, input_name: Optional[str] = None) -> Optional[Issue]:
@@ -102,13 +139,16 @@ def check_citation(cit, ev: Evidence, where: str, input_name: Optional[str] = No
     if not isinstance(cit, dict) or not isinstance(cit.get("section"), str) or not isinstance(cit.get("quote"), str):
         return Issue("schema", f"{where}: a citation must be an object {{\"section\": \"F|Q|D|S\", \"quote\": \"...\"}}", input_name)
     sec, quote = cit["section"].strip(), cit["quote"]
-    if sec not in SECTIONS:
-        return Issue("schema", f"{where}: section {sec!r} is not one of F, Q, D, S (section R, the population distributions, cannot be cited as evidence)", input_name)
+    if base_section(sec) not in SECTIONS:
+        return Issue("schema", f"{where}: section {sec!r} is not one of F, Q, D (or a part of D such as D2), S (section R, the population distributions, "
+                               f"cannot be cited as evidence)", input_name)
     n = len(normalise(quote))
     if n < QUOTE_MIN or n > QUOTE_MAX:
         return Issue("quote", f"{where}: a quote must be {QUOTE_MIN} to {QUOTE_MAX} characters of contiguous text (yours has {n})", input_name)
-    if sec not in ev.sections and not any(s == sec for s, _ in ev.pool):
-        return Issue("section", f"{where}: section {sec} was not shown in this prompt, so it cannot be cited here", input_name)
+    if not ev.shown(sec):
+        return Issue("section", f"{where}: section {base_section(sec)} was not shown in this prompt, so it cannot be cited here", input_name)
+    if base_section(sec) != sec and "D" in ev.sections and sec not in ev.parts:
+        return Issue("section", f"{where}: section D has no part {sec} (its parts are {', '.join(ev.parts) or 'none'})", input_name)
     if not ev.find(sec, quote):
         return Issue("quote", f"{where}: the quote {quote[:80]!r} was not found verbatim in section {sec}. Quote contiguous text copied exactly "
                               f"from the section, with no ellipsis and no paraphrase", input_name)
@@ -146,7 +186,7 @@ def qualifies(quote: str) -> bool:
 def hard_evidence(citations, ev: Evidence) -> bool:
     """True when some citation is from section D or Q, found in it (or in the verified pool for that section), and `qualifies`."""
     for c in citations if isinstance(citations, list) else []:
-        if isinstance(c, dict) and c.get("section") in EVIDENCE_SECTIONS and isinstance(c.get("quote"), str):
+        if isinstance(c, dict) and base_section(c.get("section")) in EVIDENCE_SECTIONS and isinstance(c.get("quote"), str):
             if ev.find(c["section"], c["quote"]) and qualifies(c["quote"]):
                 return True
     return False
@@ -253,7 +293,7 @@ def check_pass1(prompt: str, obj: dict, family: str, expected: Sequence[str], ev
             else:
                 bad = [check_citation(c, ev, f"character, citation {k}") for k, c in enumerate(cc, 1)]
                 out += [b for b in bad if b is not None]
-                if not any(isinstance(c, dict) and c.get("section") == "D" for c in cc):
+                if not any(isinstance(c, dict) and base_section(c.get("section")) == "D" for c in cc):
                     out.append(Issue("schema", "character must cite section D (the company's own documents)"))
     elif prompt == "P4":
         risks = obj.get("risks")

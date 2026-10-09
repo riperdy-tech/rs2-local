@@ -294,3 +294,24 @@ def test_the_pilot_report_is_times_and_counts_only_and_the_outputs_are_sealed(tm
     doc = json.loads(seal.read_text(encoding="utf-8"))
     assert doc["n_files"] > 10 * 12 and len(doc["manifest_sha256"]) == 64
     assert rn.seal_pilot(tmp_path) == seal                                                  # sealed once
+
+
+def test_the_repeat_control_changes_only_the_model_seed(tmp_path):
+    """Addendum AD R8: the second model seed reaches every request; the engine draws keep their seed (11 in the fakes)."""
+    c1, c2 = fx.ScriptedMuse(), fx.ScriptedMuse()
+    r1, smp, _ = make(tmp_path / "a", client=c1, n_per_date=1)
+    jobs = sample_mod.jobs(smp)[:1]
+    assert r1.run(jobs) == 0
+    r2, _, _ = make(tmp_path / "b", client=c2, n_per_date=1)
+    r2.llm_seed_offset = config.REPEAT_LLM_SEED_OFFSET
+    assert r2.run(jobs) == 0
+    assert {q.get("seed") for q in c1.requests} == {11} and {q.get("seed") for q in c2.requests} == {12}
+    j2 = json.loads(next((tmp_path / "b").rglob("job.json")).read_text(encoding="utf-8"))
+    assert j2["seed"] == 11 and j2["llm_seed"] == 12
+
+
+def test_repeat_mode_and_scored_modes_refuse_each_others_state_folder(tmp_path):
+    assert rn.main(["--mode", "repeat", "--state-dir", str(tmp_path)]) == 2            # no marker: a scored folder
+    (tmp_path / config.REPEAT_MARKER).write_text("R8", encoding="utf-8")
+    for mode in ("full", "pilot", "masked"):
+        assert rn.main(["--mode", mode, "--state-dir", str(tmp_path)]) == 2
