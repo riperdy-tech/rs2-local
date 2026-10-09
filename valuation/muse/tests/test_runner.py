@@ -102,12 +102,13 @@ def test_prompt_hashes_are_the_files_sha256_and_change_with_the_wording(tmp_path
     assert h2["P1.txt"] != h["P1.txt"] and h2["prompt_set"] != h["prompt_set"] and h2["P2.txt"] == h["P2.txt"]
 
 
-def test_p3_and_p4_are_template_version_2_on_the_current_inputs_the_others_stay_version_1():
+def test_template_versions_and_the_current_inputs():
     """Addendum I6: P3 asks for the ROIC level path (the engine's `ronic`), P4 no longer asks for the terminal growth (not a judgment input since Addendum H2); only the
-    two changed templates are new versions (a new version, because what the model is told changed: workspace non-negotiable 7)."""
+    two changed templates are new versions (a new version, because what the model is told changed: workspace non-negotiable 7).
+    Addendum AC: every template gained the statement of the exact shape of the answer, so each is one version higher (P1, P2, P5, P6 version 2; P3, P4 version 3)."""
     raw = {n: (prompting.PROMPT_DIR / f"{n}.txt").read_text(encoding="utf-8") for n in ("P1", "P2", "P3", "P4", "P5", "P6")}
-    assert raw["P3"].startswith("# template P3, version 2") and raw["P4"].startswith("# template P4, version 2")
-    assert all(raw[n].startswith(f"# template {n}, version 1") for n in ("P1", "P2", "P5", "P6"))
+    assert raw["P3"].startswith("# template P3, version 3") and raw["P4"].startswith("# template P4, version 3")
+    assert all(raw[n].startswith(f"# template {n}, version 2") for n in ("P1", "P2", "P5", "P6"))
     assert "return on invested capital five years from now" in raw["P3"] and "what one dollar of growth costs this company" not in raw["P3"]
     assert "terminal) growth rate is not an input" in raw["P4"] and "the growth it can sustain once the explicit forecast years are over" not in raw["P4"]
     assert not prompting.read_template("P3").startswith("# template")                      # the version comment is for people, not sent

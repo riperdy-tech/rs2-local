@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
 
+from .jsonschemas import pass1_schema, redteam_schema, synthesis_schema
 from .pack_v2 import Pack, input_texts, pct
 from .schema import SECTION_TITLES, muse_inputs, prompt_inputs
 
@@ -59,6 +60,7 @@ class Rendered:
     sections: Dict[str, str]                 # the section texts the prompt shows, by letter (what quotes are checked against)
     template_sha256: str
     inputs: List[str] = field(default_factory=list)
+    schema: Optional[dict] = None            # the JSON schema sent with the call (jsonschemas.py): the answer's exact shape
 
 
 def render_sections(sections: Mapping[str, str]) -> str:
@@ -126,7 +128,7 @@ def render_pass1(prompt: str, pack: Pack, family: str) -> Optional[Rendered]:
     tpl = read_template(prompt)
     user = _fill(tpl, {"HEADER": pack.header, "INPUTS": _inputs_block(names), "SECTIONS": render_sections(sections),
                       "EXAMPLE": _example(prompt, names, family), "ALL_INPUT_NAMES": ", ".join(muse_inputs(family))})
-    return Rendered(prompt, user, sections, file_sha256(PROMPT_DIR / f"{prompt}.txt"), names)
+    return Rendered(prompt, user, sections, file_sha256(PROMPT_DIR / f"{prompt}.txt"), names, pass1_schema(prompt, names, family))
 
 
 # ---- P5 -----------------------------------------------------------------------------------------------------------------------------
@@ -169,7 +171,7 @@ def render_p5(pack: Pack, family: str, inputs: Sequence[str], pass1_blocks: Sequ
     sections = pack.sections_for("P5", inputs)
     user = _fill(read_template("P5"), {"HEADER": pack.header, "PASS1_RESULTS": "\n\n".join(pass1_blocks), "INPUT_NAMES": ", ".join(inputs),
                                        "SECTIONS": render_sections(sections), "EXAMPLE": _example("P5", inputs, family)})
-    return Rendered("P5", user, sections, file_sha256(PROMPT_DIR / "P5.txt"), list(inputs))
+    return Rendered("P5", user, sections, file_sha256(PROMPT_DIR / "P5.txt"), list(inputs), synthesis_schema(list(inputs)))
 
 
 # ---- P6 -----------------------------------------------------------------------------------------------------------------------------
@@ -223,4 +225,4 @@ def render_p6(pack: Pack, family: str, inputs: Sequence[str], price_info: Mappin
     user = _fill(tpl, {"HEADER": pack.header, "PRICE_BLOCK": price_block(price_info), "INPUT_REVIEW": review_block(review),
                       "SECTION_INDEX": section_index(pack, list(sections)), "SECTIONS": render_sections(sections),
                       "EXAMPLE": _example("P6", inputs, family)})
-    return Rendered("P6", user, sections, file_sha256(PROMPT_DIR / "P6.txt"), list(inputs))
+    return Rendered("P6", user, sections, file_sha256(PROMPT_DIR / "P6.txt"), list(inputs), redteam_schema(list(inputs), round_no))

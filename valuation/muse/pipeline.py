@@ -147,7 +147,7 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
             for s in price_collisions(rd.user, price_info):
                 out["stamps"].append(f"price_string_collision in {prompt}: {s!r} appears in filing text shown to the model")
             ev = Evidence(rd.sections)
-            res = runner.call(prompt, rd.user, lambda o, p=prompt, r=rd, e=ev: check_pass1(p, o, family, r.inputs, e))
+            res = runner.call(prompt, rd.user, lambda o, p=prompt, r=rd, e=ev: check_pass1(p, o, family, r.inputs, e), schema=rd.schema)
             ent, pos, pl, extras_ok = _resolve_pass1_entries(res, rd.inputs, ev, prompt, family)
             entries.update(ent)
             positions.update(pos)
@@ -172,7 +172,7 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
                         if n not in listed:
                             iss.append(Issue("schema", f"input {n} differs from the earlier analyses but has no entry in changes", n))
                 return iss
-            res5 = runner.call("P5", rd5.user, v5)
+            res5 = runner.call("P5", rd5.user, v5, schema=rd5.schema)
             out["calls"].append({"call": "P5", "ok": res5.ok, "retried": res5.retried, "issues": [i.as_dict() for i in res5.issues]})
             if res5.obj is not None and isinstance(res5.obj.get("inputs"), dict):
                 iss5 = check_synthesis(res5.obj, list(positions), ev5)
@@ -220,12 +220,12 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
                     return [Issue("schema", "request_sections must list sections that exist among F, Q, D")]
                 return []
             return redteam.validate_p6(o, input_names, ev, entries)
-        res6 = runner.call("P6", rd1.user, lambda o: v6(o, ev1, True))
+        res6 = runner.call("P6", rd1.user, lambda o: v6(o, ev1, True), schema=rd1.schema)
         ev6, rd6 = ev1, rd1
         if res6.ok and "request_sections" in res6.obj and "inputs" not in res6.obj:
             rd6 = prompting.render_p6(pack, family, input_names, price_info, review, round_no=2, extra_sections=res6.obj["request_sections"])
             ev6 = Evidence(rd6.sections, pool)
-            res6 = runner.call("P6_round2", rd6.user, lambda o: v6(o, ev6, False))
+            res6 = runner.call("P6_round2", rd6.user, lambda o: v6(o, ev6, False), schema=rd6.schema)
         out["calls"].append({"call": "P6", "ok": res6.ok, "retried": res6.retried, "issues": [i.as_dict() for i in res6.issues]})
         # 5: the revision rule
         seen = redteam.pass1_quote_set(list(entries.values()))

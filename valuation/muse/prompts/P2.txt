@@ -1,4 +1,4 @@
-# template P2, version 1: margins
+# template P2, version 2: margins
 {{HEADER}}
 
 TASK. Place this company inside the population distributions of its profitability: where it belongs for its long-run level and for how long today's gap to that level persists, and why. Say whether today's profitability is cyclical, structural or a one-off, citing the company's own documents (section D). The distributions are in section R; they describe companies in a similar state to this one (section S). Use the filed figures (F), the latest quarters (Q, when shown), the company's own documents (D) and the company's state (S).
@@ -16,6 +16,8 @@ HOW TO ANSWER
 
 TEXT YOU MAY USE
 {{SECTIONS}}
+
+THE SHAPE OF THE ANSWER. One JSON object with exactly two keys at its top level: "inputs" and "character". "inputs" holds one entry per input named above and nothing else; "character" sits beside "inputs", never inside it. A citation's "section" is F, Q, D or S (section R cannot be cited). Section D is made of numbered documents, each opened by a line "[D1] ...", "[D2] ..."; for a quote from one of them you may name the document ("D2"), and the quote must then come from that document.
 
 ANSWER with one JSON object and nothing else, in this shape:
 {{EXAMPLE}}

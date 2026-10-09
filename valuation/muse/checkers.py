@@ -5,6 +5,10 @@
      and a substring test on the normalised section. A quote is QUOTE_MIN..QUOTE_MAX normalised characters (a short quote matches anywhere and proves
      nothing). A section the prompt did not show cannot be cited, except that a quote already VERIFIED in pass 1 may be re-cited in a later step
      that does not show the section (P5 sees no document text; its citations are checked against the pool of pass-1 quotes).
+     SECTION D LABELS (Addendum AC). Section D is a series of numbered documents, each opened by a line "[D1] title, filed ...", "[D2] ...". A citation may name
+     the section "D" (the quote is looked up in all of D) or a document "D1", "D2", ... (the quote is looked up ONLY in that document's text: the subsections are
+     separable, because pack_v2.build_d writes every document behind its "[Dn] " line). A label whose number is not among the documents shown fails with a message
+     that lists the labels that exist. For every other rule (the hard-evidence rule, "character must cite D") "D3" is section D.
   2. HARD EVIDENCE. A position outside P10..P90 must cite section D or Q with a quote that holds a firm commitment or a figure with a forward
      word. The rule, in code (`qualifies`):
          STRONG commitment words anywhere in the quote: contract, agreement, backlog, awarded, purchase order, take-or-pay, offtake,
@@ -45,6 +49,27 @@ NAMED_ERROR_MIN_CHARS = 20
 
 normalise = crux_check.normalise
 
+_D_LABEL = re.compile(r"^D(\d{1,3})$")
+_D_HEAD = re.compile(r"(?m)^\[D(\d+)\] ")
+
+
+def base_section(section) -> Optional[str]:
+    """The section letter a citation's label stands for: "D1", "D2", ... are section D; every other label is returned stripped and unchanged."""
+    if not isinstance(section, str):
+        return None
+    s = section.strip()
+    return "D" if _D_LABEL.match(s) else s
+
+
+def split_documents(d_text: str) -> dict:
+    """{"D1": text of document 1, ...} from section D's text (each document runs from its "[Dn] " line to the next one); {} when no such line exists."""
+    out: dict = {}
+    heads = list(_D_HEAD.finditer(d_text))
+    for k, m in enumerate(heads):
+        end = heads[k + 1].start() if k + 1 < len(heads) else len(d_text)
+        out["D" + m.group(1)] = out.get("D" + m.group(1), "") + d_text[m.start():end]
+    return out
+
 
 @dataclass
 class Issue:
@@ -83,18 +108,36 @@ def parse_json(text) -> Tuple[Optional[dict], Optional[str]]:
 # ---- evidence: the text a quote is looked for in ------------------------------------------------------------------------------------
 
 class Evidence:
-    """The sections a prompt showed (raw text by section letter) and, optionally, a pool of (section, quote) pairs verified earlier."""
+    """The sections a prompt showed (raw text by section letter) and, optionally, a pool of (section, quote) pairs verified earlier.
+
+    A citation names a section letter or, for section D, a document label ("D1"): `find` looks a "D1" quote up only in document 1's text, a "D" quote in all of D."""
 
     def __init__(self, sections: Mapping[str, str], pool: Iterable[Tuple[str, str]] = ()):
         self.sections = dict(sections)
         self.norm = {k: normalise(v) for k, v in self.sections.items()}
-        self.pool = [(s, normalise(q)) for s, q in pool]
+        self.docs = {k: normalise(v) for k, v in split_documents(self.sections.get("D", "")).items()}
+        self.pool = [(s.strip() if isinstance(s, str) else s, normalise(q)) for s, q in pool]
+
+    def doc_labels(self) -> List[str]:
+        return sorted(self.docs, key=lambda k: int(k[1:]))
+
+    def shows(self, section: str) -> bool:
+        """True when a prompt showed `section` (a letter, or a document label that exists), or the pool holds a quote verified under that label."""
+        sec = section.strip()
+        if _D_LABEL.match(sec):
+            return sec in self.docs or any(s == sec or s == "D" for s, _ in self.pool)
+        return sec in self.sections or any(base_section(s) == sec for s, _ in self.pool)
 
     def find(self, section: str, quote: str) -> bool:
         q = normalise(quote)
-        if section in self.norm and q in self.norm[section]:
+        sec = section.strip()
+        if _D_LABEL.match(sec):
+            if sec in self.docs and q in self.docs[sec]:
+                return True
+            return any(s in (sec, "D") and q in pq for s, pq in self.pool)
+        if sec in self.norm and q in self.norm[sec]:
             return True
-        return any(s == section and q in pq for s, pq in self.pool)
+        return any(base_section(s) == sec and q in pq for s, pq in self.pool)
 
 
 def check_citation(cit, ev: Evidence, where: str, input_name: Optional[str] = None) -> Optional[Issue]:
@@ -102,12 +145,15 @@ def check_citation(cit, ev: Evidence, where: str, input_name: Optional[str] = No
     if not isinstance(cit, dict) or not isinstance(cit.get("section"), str) or not isinstance(cit.get("quote"), str):
         return Issue("schema", f"{where}: a citation must be an object {{\"section\": \"F|Q|D|S\", \"quote\": \"...\"}}", input_name)
     sec, quote = cit["section"].strip(), cit["quote"]
-    if sec not in SECTIONS:
-        return Issue("schema", f"{where}: section {sec!r} is not one of F, Q, D, S (section R, the population distributions, cannot be cited as evidence)", input_name)
+    if base_section(sec) not in SECTIONS:
+        return Issue("schema", f"{where}: section {sec!r} is not one of F, Q, D, S (section R, the population distributions, cannot be cited as evidence). "
+                               f"For a quote from a numbered document of section D you may name the document, e.g. \"D1\"", input_name)
     n = len(normalise(quote))
     if n < QUOTE_MIN or n > QUOTE_MAX:
         return Issue("quote", f"{where}: a quote must be {QUOTE_MIN} to {QUOTE_MAX} characters of contiguous text (yours has {n})", input_name)
-    if sec not in ev.sections and not any(s == sec for s, _ in ev.pool):
+    if not ev.shows(sec):
+        if _D_LABEL.match(sec) and ev.docs:
+            return Issue("section", f"{where}: there is no document {sec} in section D; the documents shown are {', '.join(ev.doc_labels())}", input_name)
         return Issue("section", f"{where}: section {sec} was not shown in this prompt, so it cannot be cited here", input_name)
     if not ev.find(sec, quote):
         return Issue("quote", f"{where}: the quote {quote[:80]!r} was not found verbatim in section {sec}. Quote contiguous text copied exactly "
@@ -146,7 +192,7 @@ def qualifies(quote: str) -> bool:
 def hard_evidence(citations, ev: Evidence) -> bool:
     """True when some citation is from section D or Q, found in it (or in the verified pool for that section), and `qualifies`."""
     for c in citations if isinstance(citations, list) else []:
-        if isinstance(c, dict) and c.get("section") in EVIDENCE_SECTIONS and isinstance(c.get("quote"), str):
+        if isinstance(c, dict) and base_section(c.get("section")) in EVIDENCE_SECTIONS and isinstance(c.get("quote"), str):
             if ev.find(c["section"], c["quote"]) and qualifies(c["quote"]):
                 return True
     return False
@@ -253,7 +299,7 @@ def check_pass1(prompt: str, obj: dict, family: str, expected: Sequence[str], ev
             else:
                 bad = [check_citation(c, ev, f"character, citation {k}") for k, c in enumerate(cc, 1)]
                 out += [b for b in bad if b is not None]
-                if not any(isinstance(c, dict) and c.get("section") == "D" for c in cc):
+                if not any(isinstance(c, dict) and base_section(c.get("section")) == "D" for c in cc):
                     out.append(Issue("schema", "character must cite section D (the company's own documents)"))
     elif prompt == "P4":
         risks = obj.get("risks")

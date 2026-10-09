@@ -1,4 +1,4 @@
-# template P5, version 1: synthesis
+# template P5, version 2: synthesis
 {{HEADER}}
 
 TASK. Earlier analyses placed this company inside the population distributions of its judgment inputs. Their results are below, with the company's state (section S) and the distributions (section R). Check that the placements are coherent as a whole, then give the final position and width for every input.
@@ -16,6 +16,8 @@ HOW TO ANSWER
 
 TEXT YOU MAY USE
 {{SECTIONS}}
+
+THE SHAPE OF THE ANSWER. One JSON object with exactly three keys at its top level: "inputs", "changes" and "coherence". "inputs" holds one entry per input named above and nothing else; "changes" and "coherence" sit beside "inputs", never inside it. A citation's "section" is F, Q, D or S (section R cannot be cited). Section D is made of numbered documents, each opened by a line "[D1] ...", "[D2] ..."; for a quote from one of them you may name the document ("D2"), and the quote must then come from that document.
 
 ANSWER with one JSON object and nothing else, in this shape:
 {{EXAMPLE}}

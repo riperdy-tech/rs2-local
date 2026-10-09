@@ -1,4 +1,4 @@
-# template P6, version 1: red team
+# template P6, version 2: red team
 {{HEADER}}
 
 TASK. You placed this company inside the population distributions of its judgment inputs without knowing the market price. The price is below, with what it requires of each input. Challenge your own placements.
@@ -27,6 +27,8 @@ If you need the text of section F, Q or D to find evidence, answer only with {"r
 [[IF_ROUND2]]
 The sections you asked for are included above. Answer now; no further requests.
 [[/IF_ROUND2]]
+
+THE SHAPE OF THE ANSWER. One JSON object with one key at its top level, "inputs", which holds one entry per input listed above and nothing else (or, where allowed above, the request for sections). A citation's "section" is F, Q, D or S (section R cannot be cited). Section D is made of numbered documents, each opened by a line "[D1] ...", "[D2] ..."; for a quote from one of them you may name the document ("D2"), and the quote must then come from that document.
 
 ANSWER with one JSON object and nothing else, in this shape:
 {{EXAMPLE}}

@@ -1,4 +1,4 @@
-# template P4, version 2: the long-run risks
+# template P4, version 3: the long-run risks
 {{HEADER}}
 
 TASK. Name the three most material risks to the inputs of this analysis, and say which input each would move most; place the company inside the distribution of any input listed under INPUTS TO PLACE, as in the other analyses. The long-run (terminal) growth rate is not an input and is not placed: it is the same rule for every company (the lower of the risk-free rate and a long-run growth anchor), so a risk to the company's long-run growth belongs to the inputs that carry the growth path, the margin and the return on capital. Use the filed figures (F), the company's own documents (D) and the company's state (S).
@@ -16,6 +16,8 @@ HOW TO ANSWER
 
 TEXT YOU MAY USE
 {{SECTIONS}}
+
+THE SHAPE OF THE ANSWER. One JSON object with exactly two keys at its top level: "inputs" and "risks". "inputs" holds one entry per input named above and nothing else; "risks" is a list of exactly three objects and sits beside "inputs", never inside it. A citation's "section" is F, Q, D or S (section R cannot be cited). Section D is made of numbered documents, each opened by a line "[D1] ...", "[D2] ..."; for a quote from one of them you may name the document ("D2"), and the quote must then come from that document.
 
 ANSWER with one JSON object and nothing else, in this shape:
 {{EXAMPLE}}

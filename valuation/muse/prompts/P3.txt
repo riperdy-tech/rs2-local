@@ -1,4 +1,4 @@
-# template P3, version 2: reinvestment and returns
+# template P3, version 3: reinvestment and returns
 {{HEADER}}
 
 TASK. Place this company inside the population distribution of its return on invested capital five years from now. The return on invested capital is the after-tax operating profit the company earns per dollar of capital tied up in the business (equity plus debt, less cash). The company starts from its own recent level (sections S and F show it), and over the years the level moves from there toward the typical level of the company's industry;  the distribution in section R describes where companies in a similar state stand five years on. The same level is the return the company earns on the new capital it invests to grow, so it also tells how much capital each further dollar of growth needs. A company whose advantages are durable, or whose business needs little capital for each dollar of added revenue, sits high; a company whose advantages are eroding, or that must reinvest heavily for a small return, sits low. Judge it from its own record and business model. The distribution is in section R; it describes companies in a similar state to this one (section S). Use the filed figures (F), the company's own documents (D) and the company's state (S).
@@ -15,6 +15,8 @@ HOW TO ANSWER
 
 TEXT YOU MAY USE
 {{SECTIONS}}
+
+THE SHAPE OF THE ANSWER. One JSON object with exactly one key at its top level: "inputs", which holds one entry per input named above and nothing else. A citation's "section" is F, Q, D or S (section R cannot be cited). Section D is made of numbered documents, each opened by a line "[D1] ...", "[D2] ..."; for a quote from one of them you may name the document ("D2"), and the quote must then come from that document.
 
 ANSWER with one JSON object and nothing else, in this shape:
 {{EXAMPLE}}

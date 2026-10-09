@@ -303,7 +303,7 @@ def test_the_freeze_lifecycle_write_once_verify_and_every_drift_is_named(tmp_pat
     m = doc["muse"]
     assert m["context"] == 32768 and m["server"]["window"] == 32768 and m["server"]["pinned_window"] == 98304 and m["reasoning_prefix"] == "Reasoning strength: xhigh\n"
     assert len(m["system_message_sha256"]) == 64 and "prompt_set" in m["prompt_template_hashes"] and m["model"]["sha256"] == cfg["model_sha256"] and m["drafter"]["sha256"] == cfg["drafter_sha256"]
-    assert m["llama_cpp"]["build"] == "b11272" and m["request_fields"] == ["model", "messages", "stream", "max_tokens", "seed"]
+    assert m["llama_cpp"]["build"] == "b11272" and m["request_fields"] == ["model", "messages", "stream", "max_tokens", "seed", "response_format"]
     with pytest.raises(RuntimeError, match="written once"):
         freeze_content.write(tmp_path, confirm=True, cfg=cfg, hash_model=False, build_cmd=line)
     assert freeze_content.verify(tmp_path, cfg=cfg, build_cmd=line) == []
