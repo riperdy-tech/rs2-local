@@ -31,10 +31,12 @@ def make_world(n_companies=60, dates=("2025-10-31", "2025-12-31", "2026-02-27"),
             price = 10.0
             fc = lambda y, n: {"p10": y + n - 0.06, "p50": y + n, "p90": y + n + 0.06}
             rows.append({"key": key, "date": d, "cik": f"{c:010d}", "family": fam, "price": price,
-                         "code": {"iv": code_ratio * price, "iv_p50": code_ratio * price, "growth": None if fam == "financial" else fc(y_g, noise_c[0]), "margin": fc(y_m, noise_c[1])},
-                         "muse": {"iv": muse_ratio * price, "iv_p50": muse_ratio * price, "growth": None if fam == "financial" else fc(y_g, noise_m[0]), "margin": fc(y_m, noise_m[1])},
+                         "code": {"iv": code_ratio * price, "iv_p50": code_ratio * price, "growth": None if fam == "financial" else fc(y_g, noise_c[0]), "margin": fc(y_m, noise_c[1]),
+                                  "margin_base": 0.0},
+                         "muse": {"iv": muse_ratio * price, "iv_p50": muse_ratio * price, "growth": None if fam == "financial" else fc(y_g, noise_m[0]), "margin": fc(y_m, noise_m[1]),
+                                  "margin_base": 0.0},
                          "decisions": [], "positions": {}, "masked": False})
-            q = {"revenue_growth": y_g, "operating_margin": y_m, "rote_annualised_on_tbv_at_T": y_m}
+            q = {"revenue_growth": y_g, "operating_margin_change": y_m, "rote_change_annualised_on_tbv_at_T": y_m}    # base 0: the change equals the level
             outcomes[key] = {"key": key, "quarters": {"q1": q, "q2": q}, "returns": {"3": {"bounds": {b: ex for b in sc.BOUNDS}}}}
     return rows, outcomes
 
@@ -257,7 +259,7 @@ def test_the_loader_reads_the_runs_and_the_whole_scoring_runs_end_to_end_on_mock
     assert any(r["family"] == "financial" and r["code"]["growth"] is None and r["code"]["margin"] is not None for r in rows)
     outs = {}
     for r in rows:
-        q = {"revenue_growth": 0.05, "operating_margin": 0.15, "rote_annualised_on_tbv_at_T": 0.1}
+        q = {"revenue_growth": 0.05, "operating_margin_change": 0.01, "rote_change_annualised_on_tbv_at_T": 0.01}
         outs[r["key"]] = {"key": r["key"], "quarters": {"q1": q, "q2": q}, "returns": {"3": {"bounds": {b: 0.0 for b in sc.BOUNDS}}}}
     p = tmp_path / "o.jsonl"
     p.write_text("\n".join(json.dumps(v) for v in outs.values()), encoding="utf-8")
@@ -332,3 +334,19 @@ def test_the_code_and_seed_sections_name_what_the_registration_freezes():
     assert any(k.startswith("valuation/muse/prompts/") for k in code) and "rebuild_harness/gate2/runner.py" in code
     seeds = freeze_content.seeds_section()
     assert seeds["sample_seed"] == 20261007 and "seed_for" in seeds["engine_draw_seed_rule"] and seeds["per_date"] == 120
+
+
+def test_g1_scores_the_margin_and_rote_as_year_on_year_changes_addendum_o2():
+    """Coordinator audit (Addendum AD): the margin forecast enters as (year-1 P50 - base-year margin), the outcome as (quarter margin - same quarter a year earlier)."""
+    row = {"value": None}
+    pi = {"key": "k", "family": "operating", "cik": "1",
+          "muse": {"margin": {"p10": 0.10, "p50": 0.13, "p90": 0.16}, "margin_base": 0.12, "growth": None},
+          "code": {"margin": {"p10": 0.09, "p50": 0.12, "p90": 0.15}, "margin_base": 0.12, "growth": None}}
+    outs = {"k": {"quarters": {"q1": {"operating_margin": 0.30, "operating_margin_change": 0.01}}}}
+    pairs, _ = sc.paired_errors([pi], outs, "margin")
+    assert pairs[0]["muse_err"] == pytest.approx(0.0) and pairs[0]["code_err"] == pytest.approx(0.01)   # levels (0.13 vs 0.30) would mislead
+    assert sc._fc(dict(pi["muse"], margin_base=None), "margin") is None                                # no base, no margin forecast
+    v = {"revenue": 110.0, "operating_income": 15.0, "net_income": 6.0}
+    q = oe.quarter_measures({"period_end": "2025-09-30", "filed": "2025-11-05", "values": v,
+                             "prior_year": {"revenue": 100.0, "operating_income": 12.0, "net_income": 5.0}}, "financial", 100.0)
+    assert q["operating_margin_change"] == pytest.approx(15 / 110 - 0.12) and q["rote_change_annualised_on_tbv_at_T"] == pytest.approx(0.04)

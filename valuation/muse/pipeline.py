@@ -113,6 +113,8 @@ def run_company(*, pit: CompanyPIT, identity: Mapping, priors: Priors, disc_fact
     if family not in BUILT_FAMILIES:
         return finish("not_valued", reason=f"family {family!r}: {cls.get('reason')}")
     out["family"] = family
+    # Addendum O 2 / AD: G1 scores the margin (ROTE for financials) as a year-on-year CHANGE from the base year, so the base-year level is recorded with the run
+    out["base_year"] = {"op_margin": st.get("op_margin"), "rote_latest": st.get("rote_latest")}
     ps = priors.for_company(family, st, pit.asof)
     out["placeholder_priors"] = bool(ps.placeholder)
     try:

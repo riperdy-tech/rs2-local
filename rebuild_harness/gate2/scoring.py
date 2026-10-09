@@ -61,8 +61,10 @@ def row_from_run(result: Mapping, job: Mapping, run_dir: Optional[Path] = None, 
     code_s = (result.get("code_only") or {}).get("iv_per_share") or {}
     muse_s = (result.get("final") or {}).get("iv_per_share") or {}
     price = (job.get("price_info") or {}).get("price")
-    code = dict(_fy1((result.get("code_only") or {}).get("result")), iv=stage2_layer.value_ps(code_s.get("mean"), p_fail), iv_p50=code_s.get("p50"))
-    muse = dict(_fy1((result.get("final") or {}).get("result")), iv=stage2_layer.value_ps(muse_s.get("mean"), p_fail), iv_p50=muse_s.get("p50"))
+    base = result.get("base_year") or {}
+    mb = base.get("rote_latest") if result.get("family") == "financial" else base.get("op_margin")      # Addendum O 2: margin and ROTE are scored as changes from this
+    code = dict(_fy1((result.get("code_only") or {}).get("result")), iv=stage2_layer.value_ps(code_s.get("mean"), p_fail), iv_p50=code_s.get("p50"), margin_base=mb)
+    muse = dict(_fy1((result.get("final") or {}).get("result")), iv=stage2_layer.value_ps(muse_s.get("mean"), p_fail), iv_p50=muse_s.get("p50"), margin_base=mb)
     return {"key": job["key"], "date": result.get("asof"), "cik": job.get("cik"),
             "family": result.get("family"), "price": price, "code": code, "muse": muse, "decisions": (result.get("redteam") or {}).get("decisions", []),
             "positions": (result.get("final") or {}).get("positions", {}), "p_fail": p_fail, "run_dir": str(run_dir) if run_dir else None, "masked": bool(job.get("masked"))}
@@ -173,12 +175,18 @@ def _outcome_value(oc: Mapping, quarter: str, measure: str, family: str) -> Opti
         return None
     if measure == "growth":
         return q.get("revenue_growth")
-    return q.get("rote_annualised_on_tbv_at_T") if family == "financial" else q.get("operating_margin")
+    # Addendum O 2: the margin (ROTE for financials) is compared as a year-on-year change, which removes seasonality (coordinator audit, Addendum AD)
+    return q.get("rote_change_annualised_on_tbv_at_T") if family == "financial" else q.get("operating_margin_change")
 
 
 def _fc(arm: Mapping, measure: str, p: str = "p50") -> Optional[float]:
+    """The arm's year-1 forecast at quantile p: growth as forecast; the margin (ROTE) as the CHANGE from the base-year level (Addendum O 2); None when either is missing."""
     d = arm.get(measure)
-    return None if not d else d.get(p)
+    v = None if not d else d.get(p)
+    if measure != "margin" or v is None:
+        return v
+    base = arm.get("margin_base")
+    return None if base is None else v - base
 
 
 def paired_errors(rows: Sequence[Mapping], outcomes: Mapping[str, dict], measure: str, quarter: str = "q1") -> Tuple[List[dict], Counter]:

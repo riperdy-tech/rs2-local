@@ -48,8 +48,14 @@ def quarter_measures(row: Mapping, family: str, tbv: Optional[float]) -> dict:
     growth = (rev / rev0 - 1.0) if (_num(rev) and _num(rev0) and rev0 > 0) else None
     margin = (oi / rev) if (_num(oi) and _num(rev) and rev > 0) else None
     rote = (4.0 * ni / tbv) if (family == "financial" and _num(ni) and _num(tbv) and tbv > 0) else None
+    # Addendum O 2 (G1 compares year-on-year CHANGES): the same quarter a year earlier, from the comparative column of the same filing
+    oi0, ni0 = p.get("operating_income"), p.get("net_income")
+    margin0 = (oi0 / rev0) if (_num(oi0) and _num(rev0) and rev0 > 0) else None
+    margin_change = (margin - margin0) if (margin is not None and margin0 is not None) else None
+    rote_change = (4.0 * (ni - ni0) / tbv) if (family == "financial" and _num(ni) and _num(ni0) and _num(tbv) and tbv > 0) else None
     return {"period_end": row["period_end"], "filed": row["filed"], "accession": row.get("accession"), "revenue_growth": growth, "operating_margin": margin,
-            "rote_annualised_on_tbv_at_T": rote}
+            "rote_annualised_on_tbv_at_T": rote, "operating_margin_year_earlier": margin0, "operating_margin_change": margin_change,
+            "rote_change_annualised_on_tbv_at_T": rote_change}
 
 
 def quarter_outcomes(pit_data, cik: str, asof: str, family: str, tbv: Optional[float] = None, mode: str = OUTCOME_MODE) -> dict:
