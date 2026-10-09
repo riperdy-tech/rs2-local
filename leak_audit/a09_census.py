@@ -34,8 +34,20 @@ for name, keep in {"baseline": lambda r: True, "excl. census names entirely": la
     print(f"{name:35s} {len(rs)}  {lib.fmt(res)}", flush=True)
 # census only: a pooled design needs >=30 names/date with outcome; report what exists
 rs = [r for r in rows if r["_k"] in cens]
-res = lib.bars(rs, fn, n_boot=0)
-out["census only"] = {"n_rows": len(rs), "res": res}
-print("census only", len(rs), lib.fmt(res, lb=False))
+try:
+    res = lib.bars(rs, fn, n_boot=0)
+    out["census only"] = {"n_rows": len(rs), "res": res}
+    print("census only", len(rs), lib.fmt(res, lb=False))
+except Exception as e:                      # fewer than 30 census names per date with an outcome under the 'excluded' bound: the registered design cannot be formed
+    out["census only"] = {"n_rows": len(rs), "error": f"{type(e).__name__}: {e}"}
+    print("census only: registered design not estimable", type(e).__name__)
+co = panel[panel.survivor.astype(bool) & panel.x12_excluded.notna() & (panel.family != "commodity")].copy()
+co["rk"] = co.groupby("date")["s_cfg"].rank(pct=True)
+allv = panel[(panel.family != "commodity")].copy(); allv["rk"] = allv.groupby("date")["s_cfg"].rank(pct=True)
+out["census_resolved_descriptive"] = {"n": int(len(co)), "mean_excess": float(co.x12_excluded.mean()), "median_excess": float(co.x12_excluded.median()),
+                                       "spearman_rank_vs_excess": float(co[["rk", "x12_excluded"]].corr(method="spearman").iloc[0, 1]),
+                                       "survivors_mean_excess": float(allv[~allv.survivor.astype(bool)].x12_excluded.mean()), "survivors_median_excess": float(allv[~allv.survivor.astype(bool)].x12_excluded.median()),
+                                       "census_share_in_top_quintile_all": float((allv[allv.survivor.astype(bool)].rk > 0.8).mean())}
+print(out["census_resolved_descriptive"])
 # census-only descriptive: the bound-filled returns are a constant per date, so only the SCORE differs; report the mean score and the acquired / not split
 lib.dump(out, "a09_census.json")
