@@ -120,3 +120,89 @@ def test_the_runner_reports_every_metric_under_the_three_bounds(tmp_path):
     n_m100 = s["other_bounds"]["minus100"]["engines"]["yardstick_earnings_yield"]["horizons"]["12"]["ic_by_date"]["2018-06-29"]["n"]
     assert n_ex == 40 - 8 and n_m100 == 40                                      # excluded drops them; at -100% they count
     assert res["coverage"]["dates"]["2018-06-29"]["unresolved_delistings"]["12"] == 8
+
+
+# ---- Addendum P4: every exit event of a company ---------------------------------------------------------------------------------------------------------------
+
+def events_of(forms, cik="0000000001"):
+    return D.classify_exit_events(cik, D.filings_of(subs(forms)))
+
+
+def test_p4_a_notes_delisting_then_the_common_stock_are_two_events_and_a_form_15_after_its_form_25_is_one():
+    forms = [("10-K", "2019-03-01"), ("25", "2020-01-02"), ("10-Q", "2020-11-01"), ("10-K", "2021-03-01"),                 # a Form 25 for notes: the company kept reporting
+             ("8-K", "2022-02-10", "2.01,3.01"), ("25", "2022-03-01"), ("15-12B", "2022-03-08")]                            # the common stock leaves, a Form 15 a week later
+    evs = events_of(forms)
+    assert [(e["date"], e["class"]) for e in evs] == [("2020-01-02", "exit_record_still_reporting"), ("2022-03-01", "acquisition_completed")]
+    assert D.classify_company("0000000001", D.filings_of(subs(forms)))["date"] == "2020-01-02"                           # D1 keeps the first only
+    assert evs[1]["evidence"][0]["form"] == "25" and {x["form"] for x in evs[1]["evidence"]} == {"25", "8-K"}
+
+
+def test_p4_a_form_15_far_from_the_form_25_is_its_own_event_and_a_single_cluster_equals_the_first_event_rule():
+    forms = [("10-K", "2019-03-01"), ("25", "2020-01-02"), ("15-12G", "2021-06-01")]                                      # 17 months apart: two events
+    assert [(e["date"], e["class"]) for e in events_of(forms)] == [("2020-01-02", "delisted_other"), ("2021-06-01", "deregistered_other")]
+    for single in ([("10-K", "2019-03-01"), ("25", "2020-01-02")],
+                   [("8-K", "2019-01-15", "1.03,9.01"), ("25-NSE", "2019-03-01")],
+                   [("8-K", "2020-06-10", "2.01,3.01,5.01,9.01"), ("25", "2020-06-12"), ("15-12B", "2020-06-22")],
+                   [("10-K", "2019-03-01"), ("15-12G", "2020-01-02")],
+                   [("10-K", "2019-03-01"), ("25", "2020-01-02"), ("10-K", "2021-03-01")],
+                   [("8-K", "2019-01-15", "1.03")]):
+        assert events_of(single) == [classify(single)], single                                                           # one cluster: the same event, the same evidence
+    assert events_of([("10-K", "2019-03-01"), ("8-K", "2019-04-01", "2.02")]) == []
+
+
+def test_p4_the_cluster_gap_is_a_parameter_and_the_event_date_is_the_first_form_25():
+    forms = [("25", "2020-01-02"), ("15-12B", "2020-02-20")]                                                              # 49 days apart
+    assert len(D.classify_exit_events("0000000001", D.filings_of(subs(forms)))) == 2
+    assert len(D.classify_exit_events("0000000001", D.filings_of(subs(forms)), cluster_days=60)) == 1
+    # a Form 15 that comes first in a cluster does not make the event a deregistration when a Form 25 is in it
+    cl = events_of([("15-12B", "2020-01-02"), ("25", "2020-01-10")])
+    assert [(e["date"], e["class"]) for e in cl] == [("2020-01-10", "delisted_other")]
+
+
+# ---- Addendum P3: the reader declines on the residue the par-value guard left -------------------------------------------------------------------------------------
+
+def test_p3_the_reader_declines_on_warrants_exercise_prices_liquidating_distributions_redemption_values_trust_accounts_and_spac_cover_text():
+    price = "Each share of common stock was converted into the right to receive $12.05 in cash."
+    assert D.read_cash_consideration(price) == 12.05
+    for decline in ("Each warrant was converted into a warrant to purchase shares at an exercise price of $0.75 per share.",
+                    "The Company's warrants entitle holders to purchase one share at $11.50 per share.",
+                    "Holders will receive a liquidating distribution of $3.20 per share in cash.",
+                    "Holders exercised their right to redeem at a redemption price of approximately $10.10 per share.",
+                    "The redemption value was $10.05 per share, paid from the Trust Account.",
+                    "An aggregate of $195,826,566 was removed from the trust account, or $10.10 per share.",
+                    "Units, each consisting of one share of Class A common stock and one-half of one redeemable warrant, at $11.50 per share.",
+                    "GXII:WarrantsEachExercisableForOneShareClassCommonStockFor11.50PerShareMember 2023-03-16 $11.50 per share."):
+        assert D.read_cash_consideration(decline) is None, decline
+        assert D.read_cash_consideration(price + " " + decline) is None, decline                       # the decline sentence states an amount too: the whole reading declines
+    assert D.read_cash_consideration(price + " The Company has warrants outstanding.") == 12.05       # a word in a sentence that states no per-share amount does not decline
+    assert D.read_cash_consideration("Each unit consisting of one share was converted into the right to receive $12.05 in cash.") == 12.05
+    # a SPAC's cover page anywhere in the document declines it whole, even when the sentence that states the amount has none of the words
+    spac = "UnitsEachConsistingOfOneClassOrdinaryShareAndOnehalfOfRedeemableWarrantMember 2024-08-15 FORM 8-K Units, each consisting of one Class A ordinary share and one-half of one redeemable warrant. "
+    assert D.read_cash_consideration(spac + "Greenstar agreed to purchase 200,000 shares at a price of $10.00 per share.") is None
+    assert D.read_cash_consideration("dei:FormerAddressMember us-gaap:CommonStockMember 2024-08-15 FORM 8-K. " + price) == 12.05           # an ordinary inline-XBRL header is not a SPAC cover page
+
+
+def test_p3_the_report_only_pattern_is_inert_when_swapped_out_and_stock_words_still_apply():
+    import re
+    saved, saved_doc = D._P3_WORDS, D._P3_DOC_WORDS
+    try:
+        D._P3_WORDS = D._P3_DOC_WORDS = re.compile(r"(?!x)x")
+        assert D.read_cash_consideration("Each warrant had an exercise price of $0.75 per share.") == 0.75        # what the reader said before P3 (the yield script's stage E)
+    finally:
+        D._P3_WORDS, D._P3_DOC_WORDS = saved, saved_doc
+    assert D.read_cash_consideration("Each warrant had an exercise price of $0.75 per share.") is None
+    assert D.read_cash_consideration("Each share was converted into $5.00 in cash or, at the holder's election, stock.") is None
+
+
+def test_r2_the_reader_declines_on_a_declared_dividend_or_distribution():
+    price = "Each share of common stock was converted into the right to receive $12.05 in cash."
+    assert D.read_cash_consideration(price) == 12.05
+    for decline in ("On June 2, 2024, the Company's board of directors declared a distribution of $0.0944 per share, payable on June 6, 2024.",
+                    "The board of directors declared a special cash dividend of $0.25 per share of Company Common Stock.",
+                    "The board has declared a stub period cash dividend in an amount equal to $0.1462 per share."):
+        assert D.read_cash_consideration(decline) is None, decline
+        assert D.read_cash_consideration(price + " " + decline) is None, decline
+    assert D.read_cash_consideration("On June 2, 2024, the board declared a distribution of $0.0944 per share.") is None
+    # a word elsewhere that states no per-share amount, and "Dividend Adjustments" in an offer price, do not decline
+    assert D.read_cash_consideration(price + " The board declared the Offer fair to holders.") == 12.05
+    assert D.read_cash_consideration("The offer price is $10.20 per Share in cash, less any Dividend Adjustments.") == 10.2

@@ -2,8 +2,8 @@
 
   L4  PRICES      the D5 daily raw closes (`rebuild_harness.daily_prices.LazyDailyPriceSource`, a folder), for the valuation price and the daily outcomes: the monthly file is refused.
                   Outcomes: the 12-month horizon, entered at the next session's open (registration v2, section 2).
-  L4  DELISTINGS  the D1 event index and the D3 documents through the strict readers (`rebuild_harness.delisting_inputs`); D3 must be COMPLETE (every 8-K accession D1 asks for is on disk or
-                  is a recorded failed fetch), else the run refuses: a half-downloaded document set would turn a resolvable event into an unobservable one by accident of timing.
+  L4  DELISTINGS  the D1 event index and the D3 documents through the strict readers (`rebuild_harness.delisting_inputs`).  Addendum P5: a D3 accession that is not on disk leaves its event UNRESOLVED
+                  (it stays under the three bounds), counted by `delisting_inputs.missing_document_events` in the configuration check and the readiness report; it does NOT block a run or a freeze.
   M   SURVIVORSHIP  the cover index (`rebuild_harness.survivorship`: public float and share counts of the cover pages, Addendum M1-M2) for the missing-name census, and the monthly raw price file behind a D5 ticker
                   whose history starts late (M6): both are required, so that the three bounds are not identical for want of the companies that left.  `--erp-basis` must be the registered `engine_consistent` (Addenda L1, M).
   L3  CLASSIFICATION  the SIC AS FILED at T from the D2 headers, for every holdout date.  `StrictSicResolver` NEVER falls back to the current-dated `sic_by_cik.json`: a company with no header
@@ -111,10 +111,8 @@ def require_holdout_configuration(dates, a, headers: Optional["sx.HeadersFile"] 
     from . import delisting_inputs as di
     idx, docs = di.EventIndex(a.delisting_index), di.DelistingDocs(a.delisting_docs)
     comp = di.completeness(idx, docs, since="2023-01-01")
-    if not comp["complete"]:
-        raise HoldoutRefused(f"the D3 delisting documents are incomplete: {comp['not_downloaded']} of {comp['accessions_wanted']} accessions are not downloaded (first: {comp['first_missing'][:3]}); "
-                             "wait for the download (Addendum L4)")
-    out["delisting_docs"] = comp
+    out["delisting_docs"] = dict(comp, blocking=False)                       # Addendum P5: counted, never blocking
+    out["delisting_events_unresolved_missing_document"] = di.missing_document_events(idx, docs, since="2023-01-01")
     return out
 
 
@@ -125,7 +123,7 @@ def readiness(prices_daily, delisting_index, delisting_docs, headers, crosswalk,
     opens a price, an outcome or a filing of a holdout date.  A blocker is a sentence naming what is missing and what it waits for."""
     from . import delisting_inputs as di
     dates = list(dates or holdout_dates())
-    checks, blockers = {}, []
+    checks, blockers, notes = {}, [], []
 
     def need(ok, name, info, why):
         checks[name] = dict(ok=bool(ok), **info)
@@ -141,8 +139,12 @@ def readiness(prices_daily, delisting_index, delisting_docs, headers, crosswalk,
         try:
             docs = di.DelistingDocs(delisting_docs)
             comp = di.completeness(idx, docs, since="2023-01-01")
-            need(comp["complete"], "D3_delisting_docs", {k: comp[k] for k in ("accessions_wanted", "with_document", "fetch_failed", "not_downloaded")},
-                 f"{comp['not_downloaded']} of {comp['accessions_wanted']} accessions are not downloaded yet; wait for the download")
+            miss = di.missing_document_events(idx, docs, since="2023-01-01")
+            need(True, "D3_delisting_docs", dict({k: comp[k] for k in ("accessions_wanted", "with_document", "fetch_failed", "not_downloaded")},
+                                                 events_with_a_reader=miss["events_with_a_reader"], events_unresolved_missing_document=miss["unresolved_missing_document"], blocking=False), "")
+            if comp["not_downloaded"] or miss["unresolved_missing_document"]:     # Addendum P5
+                notes.append(f"D3_delisting_docs: {comp['not_downloaded']} of {comp['accessions_wanted']} accessions are not downloaded; {miss['unresolved_missing_document']} of "
+                             f"{miss['events_with_a_reader']} events with a reader stay unresolved (counted; Addendum P5: not blocking)")
         except Exception as e:
             need(False, "D3_delisting_docs", {}, f"{type(e).__name__}: {e}")
     except Exception as e:
@@ -162,7 +164,7 @@ def readiness(prices_daily, delisting_index, delisting_docs, headers, crosswalk,
              f"no cover index at {cp}; build it with rebuild_harness.survivorship.build_cover_index (Addendum M1)")
     if prices_fallback is not None:
         need(Path(prices_fallback).is_file(), "price_fallback_monthly_file", {"path": str(prices_fallback)}, f"no monthly raw price file at {prices_fallback} (Addendum M6)")
-    return {"ready": not blockers, "blockers": blockers, "checks": checks, "holdout_dates": [dates[0], dates[-1], len(dates)]}
+    return {"ready": not blockers, "blockers": blockers, "notes": notes, "checks": checks, "holdout_dates": [dates[0], dates[-1], len(dates)]}
 
 
 def main(argv=None):
@@ -172,9 +174,9 @@ def main(argv=None):
     root = Path(__file__).resolve().parents[2]
     ws = Path(__import__("os").environ.get("STOCKS_ROOT", r"C:\Users\riper\stocks")) / "stocks-workspace" / "data"
     ap.add_argument("--prices-daily", type=Path, default=ws / "prices_daily")
-    ap.add_argument("--delisting-index", type=Path, default=ws / "sec_bulk" / "index")
+    ap.add_argument("--delisting-index", type=Path, default=ws / "sec_bulk" / "index_P4b")
     ap.add_argument("--delisting-docs", type=Path, default=ws / "sec_bulk" / "delisting_docs")
-    ap.add_argument("--headers", type=Path, default=ws / "sec_bulk" / "headers" / "headers_raw.csv")
+    ap.add_argument("--headers", type=Path, default=ws / "sec_bulk" / "headers" / "headers.csv.gz")
     ap.add_argument("--crosswalk", type=Path, default=ws / "crosswalk" / "sic_to_damodaran_industry_v1.json")
     ap.add_argument("--survivorship-cover", type=Path, default=ws / "survivorship_cover")
     ap.add_argument("--prices-fallback", type=Path, default=ws / "priors" / "_inputs" / "prices_monthly_raw.json")

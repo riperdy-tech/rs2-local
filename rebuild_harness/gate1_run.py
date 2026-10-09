@@ -226,6 +226,8 @@ def _attach_outcomes(rec, pit, cik, key, d, snap, horizons=HORIZONS, outcomes_en
     for h, o in ho.items():
         rec["excess"][h], rec["ret"][h], rec["bounds"][h] = o.get("excess"), o.get("ret"), o.get("bounds")
         rec["outcome_status"][h] = o["status"]
+        if o.get("bounds_basis"):                                                       # Addendum N1: a bound that waits for the date's cross-section (`survivorship.fill_cross_section_bounds`)
+            rec.setdefault("bounds_basis", {})[h] = o["bounds_basis"]
     row = snap.row_L()
     yrs = snap.rows()
     prev = yrs.get(max((y for y in yrs if y < snap.L), default=-1))
@@ -315,6 +317,8 @@ def prepare_date(d, ciks=None):
         recs.append(rec)
     if prev is not None:
         pit.evict(prev)
+    if surv is not None:                                                                # Addendum N1: the date's 10th-percentile excess return, for the census names with no observable outcome
+        survivorship.fill_cross_section_bounds(recs)
     ctx = gate1.DateContext.build(d, rf, [p for p in preps.values()])
     return recs, preps, ctx, t0, time.time()
 
