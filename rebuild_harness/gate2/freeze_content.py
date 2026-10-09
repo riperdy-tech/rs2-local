@@ -11,7 +11,12 @@ THE CONTENTS.
                 line, with the window as the only difference), the server's pinned sampling flags, the context (32768), the reasoning prefix ("Reasoning strength: xhigh"), the sha256 of the
                 system text the runner sends (prefix + prompts/system.txt), the sha256 of every prompt template and of inputs.json, the pack v2 template version, the runner version, the
                 request fields (model, messages, stream, max_tokens, seed: no sampling field) and the cap on generated tokens with the context guard's constants;
-  code          the sha256 of the Muse layer, the pipeline and the gate-2 harness files;
+  code          the sha256 of the Muse layer, the pipeline, the gate-2 harness files, the gate-1 harness and valuation modules it imports, the Stage 2 layer and the forensic analytics;
+  stage2        the Stage 2 configuration of Addenda V and W for BOTH arms: V1 (mean), V2 (the survival model: its coefficients and training window for each replay date, the hashes of the
+                training data, the file of the company-dates' probabilities), V3 (commodity out of scope);
+  inputs        what the runner reads: the point-in-time store, the D5 daily closes and the monthly file behind them, Damodaran's files, the priors vintages of year(T) - 1, the crosswalk, the
+                SIC headers and the SEC submissions archive.  FULL content hashes are taken when the freeze is written; `verify` (run at every runner start) re-takes only the cheap
+                fingerprint (file count, bytes, newest modification time of a tree; size and modification time of a single file) so a restart does not read 20 GB;
   seeds         the sample seed (20261007) and the draw rule, the engine draw seed rule (`gate1.seed_for`), the model seed rule (the same value per company-date), the bootstrap seeds;
   sample        the sample file and its sha256;
   gate1_freeze  the gate-1 freeze file's sha256, when it exists (it names the store, prices, Damodaran files, priors vintages, crosswalk, headers and engine configuration);
@@ -25,6 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -35,7 +41,8 @@ from typing import Dict, List, Optional
 from . import config
 
 ENGINE_COMMIT = "c7d7a4f"
-CODE_GLOBS = ("valuation/muse/*.py", "valuation/muse/prompts/*", "rebuild_harness/gate2/*.py", "rebuild_harness/gate2/*.vbs", "rebuild_harness/gate2/*.ps1")
+CODE_GLOBS = ("valuation/*.py", "valuation/muse/*.py", "valuation/muse/prompts/*", "rebuild_harness/*.py", "rebuild_harness/gate2/*.py", "rebuild_harness/gate2/*.vbs", "rebuild_harness/gate2/*.ps1",
+              "rebuild_harness/stage2/*.py", "rebuild_harness/forensics/*.py")
 REQUEST_FIELDS = ["model", "messages", "stream", "max_tokens", "seed"]
 
 
@@ -125,7 +132,68 @@ def packages_section() -> dict:
     return out
 
 
-def collect(state_dir=None, *, cfg: Optional[dict] = None, hash_model: bool = True, build_cmd=None, gate1_freeze: Optional[Path] = None) -> dict:
+def _tree_fp(root, exclude_top_level=()) -> dict:
+    """The cheap fingerprint of a folder: file count, bytes, newest modification time (nanoseconds)."""
+    n, total, newest = 0, 0, 0
+    for dirpath, _d, files in os.walk(root):
+        for f in files:
+            if Path(dirpath, f).relative_to(root).parts[0] in exclude_top_level:
+                continue
+            st = os.stat(os.path.join(dirpath, f))
+            n, total, newest = n + 1, total + st.st_size, max(newest, st.st_mtime_ns)
+    return {"n_files": n, "bytes": total, "newest_mtime_ns": newest}
+
+
+def _input_paths() -> dict:
+    from rebuild_harness import gate1_run as g
+    from valuation import discount_rate as vdr
+    w = config.WORKSPACE
+    return {"store": Path(g.DEFAULT_STORE), "id_map": Path(g.DEFAULT_IDMAP), "prices_daily": w / "data" / "prices_daily", "prices_monthly": Path(g.DEFAULT_PRICES),
+            "damodaran": Path(vdr.default_root()), "crosswalk": Path(g.DEFAULT_CROSSWALK), "headers": Path(g.DEFAULT_HEADERS), "priors": w / "data" / "priors_v3",
+            "submissions_zip": w / "data" / "sec_bulk" / "submissions.zip"}
+
+
+def inputs_section(*, full: bool = False, gate1b_freeze: Optional[Path] = None) -> dict:
+    """{"fingerprint": {...cheap...}} and, when `full`, {"full": {...content hashes...}, "equal_to_gate1b_freeze": {...}}.  Only the fingerprint is compared by `verify`."""
+    from rebuild_harness import holdout
+    paths = _input_paths()
+    vint = sorted({int(d[:4]) - 1 for d in config.DATES})
+    fkeys = ("id_map", "prices_monthly", "crosswalk", "headers", "submissions_zip")
+    fp = {"store": _tree_fp(paths["store"]), "prices_daily": _tree_fp(paths["prices_daily"], ("_logs",)), "priors_vintages": {str(v): _tree_fp(paths["priors"] / str(v)) for v in vint},
+          "damodaran": _tree_fp(paths["damodaran"]), "files": {k: {"bytes": paths[k].stat().st_size, "mtime_ns": paths[k].stat().st_mtime_ns} for k in fkeys}}
+    out = {"paths": {k: str(v) for k, v in paths.items()}, "priors_vintages_used": vint, "fingerprint": fp}
+    if full:
+        full_h = {"store": holdout.tree_hash(paths["store"]), "prices_daily": holdout._price(paths["prices_daily"]), "damodaran": holdout._damodaran(paths["damodaran"]),
+                  "priors_vintages": {str(v): holdout.tree_hash(paths["priors"] / str(v))["tree_sha256"] for v in vint},
+                  "files": {k: {"sha256": holdout.file_sha256(paths[k])} for k in fkeys}}
+        out["full"] = full_h
+        if gate1b_freeze is not None and Path(gate1b_freeze).exists():
+            c = json.loads(Path(gate1b_freeze).read_text(encoding="utf-8")).get("contents") or {}
+            gp = c.get("price_snapshot") or {}
+            out["equal_to_gate1b_freeze"] = {
+                "store": (c.get("point_in_time_store") or {}).get("tree_sha256") == full_h["store"]["tree_sha256"],
+                "prices_daily": gp.get("tree_sha256") == full_h["prices_daily"]["tree_sha256"],
+                "damodaran": c.get("damodaran") == full_h["damodaran"],
+                "priors_vintages_used": all((c.get("priors") or {}).get("vintages", {}).get(k) == v for k, v in full_h["priors_vintages"].items()),
+                "crosswalk": (c.get("industry_crosswalk") or {}).get("sha256") == full_h["files"]["crosswalk"]["sha256"],
+                "headers": (c.get("sic_headers") or {}).get("sha256") == full_h["files"]["headers"]["sha256"],
+                "prices_monthly_fallback": (c.get("price_fallback") or {}).get("sha256") == full_h["files"]["prices_monthly"]["sha256"]}
+    return out
+
+
+def stage2_section(state_dir=None) -> dict:
+    """The Stage 2 configuration (Addenda V, W): layers, the survival models of every replay date and the files they and the probabilities live in."""
+    from . import stage2_layer as sl
+    p = sl.stage2_paths(state_dir)
+    doc = json.loads(p["models"].read_text(encoding="utf-8")) if p["models"].exists() else None
+    return {"layers": sl.LAYERS, "out_of_scope_families": list(config.OUT_OF_SCOPE_FAMILIES),
+            "engine_identical_to": "c7d7a4f (git diff c7d7a4f HEAD over valuation/engine_*, common.py, discount_rate.py, priors.py is empty)",
+            "survival_models": None if doc is None else {"file": str(p["models"]), "sha256": sl.sha256_file(p["models"]), "settings": doc["settings"], "training_data": doc["training_data"],
+                                                         "n_pool": doc["n_pool"], "models": doc["models"]},
+            "survival_pfail": None if not p["pfail"].exists() else {"file": str(p["pfail"]), "sha256": sl.sha256_file(p["pfail"])}}
+
+
+def collect(state_dir=None, *, cfg: Optional[dict] = None, hash_model: bool = True, build_cmd=None, gate1_freeze: Optional[Path] = None, full_inputs: bool = False) -> dict:
     from . import sample
     paths = config.state_paths(state_dir)
     sp = sample.sample_path(state_dir)
@@ -135,7 +203,8 @@ def collect(state_dir=None, *, cfg: Optional[dict] = None, hash_model: bool = Tr
         g1 = {"path": str(gate1_freeze), "sha256": hashlib.sha256(Path(gate1_freeze).read_bytes()).hexdigest()}
     return {"registration": "REGISTRATION_gate2_DRAFT.md (approved 2026-10-07)", "collected_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "gate2_commit": _git("rev-parse", "HEAD").decode().strip(), "engine": engine_section(), "muse": muse_section(state_dir, cfg=cfg, hash_model=hash_model, build_cmd=build_cmd),
-            "code": code_section(), "seeds": seeds_section(), "sample": smp, "gate1_freeze": g1, "packages": packages_section()}
+            "code": code_section(), "stage2": stage2_section(state_dir), "inputs": inputs_section(full=full_inputs, gate1b_freeze=gate1_freeze), "seeds": seeds_section(), "sample": smp,
+            "gate1_freeze": g1, "packages": packages_section()}
 
 
 def freeze_path(state_dir=None) -> Path:
@@ -149,11 +218,13 @@ def write(state_dir=None, *, confirm: bool = False, **kw) -> dict:
     p = freeze_path(state_dir)
     if p.exists():
         raise RuntimeError(f"{p} exists: a freeze is written once")
-    doc = collect(state_dir, **kw)
+    doc = collect(state_dir, full_inputs=True, **kw)
     if not doc["engine"]["every_file_equals_the_file_at_the_commit"]:
         raise RuntimeError(f"the engine files differ from commit {ENGINE_COMMIT}: {doc['engine']['files_that_differ']}")
     if doc["sample"]["sha256"] is None:
         raise RuntimeError("no sample file: draw it before the freeze")
+    if doc["stage2"]["survival_models"] is None or doc["stage2"]["survival_pfail"] is None:
+        raise RuntimeError("no Stage 2 survival models / probabilities: build them (stage2_layer models, stage2_layer pfail) before the freeze")
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "x", encoding="utf-8") as fh:
         fh.write(json.dumps(doc, indent=1, sort_keys=True))
@@ -184,9 +255,12 @@ def verify(state_dir=None, *, cfg: Optional[dict] = None, build_cmd=None) -> Lis
     except Exception as e:
         return [f"the current contents cannot be collected: {type(e).__name__}: {e}"]
     problems = []
-    for k in ("engine", "muse", "code", "seeds", "sample", "gate1_freeze", "packages"):
+    for k in ("engine", "muse", "code", "stage2", "inputs", "seeds", "sample", "gate1_freeze", "packages"):
         if k == "packages":
             continue                                   # recorded, not enforced: a package patch release does not change a result the pins above did not already fix
+        if k == "inputs":                              # only the cheap fingerprint is re-taken at a restart; the full content hashes were taken once, at the write
+            problems += [f"inputs.fingerprint.{x}" for x in _walk_diff((frozen.get(k) or {}).get("fingerprint"), (now.get(k) or {}).get("fingerprint"))]
+            continue
         problems += [f"{k}.{x}" for x in _walk_diff(frozen.get(k), now.get(k))]
     if not now["engine"]["every_file_equals_the_file_at_the_commit"]:
         problems.append(f"engine files differ from commit {ENGINE_COMMIT}: {now['engine']['files_that_differ']}")

@@ -526,8 +526,21 @@ at import; the runner starts the pinned llama-server only when it runs and the c
 - `outcome_extract.py` - first-reported next-two-quarter outcomes and 3/6/12-month excess returns with the three delisting bounds, only where elapsed. `scoring.py` - G1-G6 and the mechanical
   verdict. `integrity.py` - the G5 facts re-derived from the saved prompts and responses.
 - `launch_gate2.vbs` + `register_gate2_task.ps1` - the hidden launcher and the scheduled task (`RS2-Gate2-Replay`: at logon and every 15 minutes, IgnoreNew, `runner.lock`); state under
-  `stocks-workspace/data/gate2/`. Preconditions the real run still needs: priors vintages 2024 and 2025 (the repository holds 2016-2021), `prepare_dates`, the sample, the pins
-  (`python -m rebuild_harness.gate2.server pins`) and the freeze. `python -m rebuild_harness.gate2.runner --mode pilot --dry-run` lists them.
+  `stocks-workspace/data/gate2/`. Preconditions the real run still needs: priors vintages 2024 and 2025 (`data/priors_v3` holds 2016-2025), the date contexts
+  (`python -m rebuild_harness.gate2.prepare`, CPU), the sample, the Stage 2 models and probabilities (below), the pins (`python -m rebuild_harness.gate2.server pins`) and the freeze.
+  `python -m rebuild_harness.gate2.runner --mode pilot --dry-run` lists them. Classification is strict (the SIC as filed at T, Addendum O 3) by default.
+
+### The Stage 2 configuration on both arms (Addenda V and W; merged from `review-2026-10/stage2`)
+
+Gate 2's CODE arm is the frozen engine (identical to `c7d7a4f`) in the Stage 2 configuration, and the MUSE arm is valued the same way, so the pair differs only in the placed inputs.
+`stage2_layer.py`: **V1** the value of an arm is the mean of the engine's per-share equity draws (`iv_per_share.mean` of `code_only` and `final`; the median stays as a diagnostic, `iv_p50`);
+**V2** value = mean x (1 - P(fail within 12 months)), equity recovery 0, P(fail) from `rebuild_harness/stage2/survival.py` (same six variables, ridge 1.0, minimum 5 events) fitted for each
+replay date T from observations resolved before T (quarter-ends t with t + 12 months <= T, labelled with D1 failure events dated before T): the forensic panel (2020-2024), the lean
+observations of 2016-2019, and the lean observations of 2025-03-31 and 2025-06-30 (`python -m rebuild_harness.stage2.obs --out-dir <state>/stage2/obs_2025 --dates 2025-03-31 2025-06-30`);
+**V3** commodity is out of scope: `sample.draw_date` leaves it out before the stratification (120 in-scope names per date), `scoring.load_rows` refuses a commodity row. Order:
+`stage2_layer models` (writes `stage2/survival_models.json` once), the sample, `stage2_layer pfail` (writes `stage2/survival_pfail.json` once: one probability per sample company-date, formed
+from the filings at T before any model call), then the freeze, which names the coefficients of every date, the training-data hashes, the probability file and the full content hashes of the
+inputs (`verify` re-takes only a cheap fingerprint at a restart). `scoring.py` ranks `iv` = mean x (1 - P(fail)) for both arms in G2. V4 and V5 are not part of gate 2's bars.
 
 ## Where the truth lives
 

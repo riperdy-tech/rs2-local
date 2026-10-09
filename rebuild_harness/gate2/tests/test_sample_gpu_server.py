@@ -41,7 +41,9 @@ def test_the_draw_is_stratified_random_deterministic_and_without_duplicates():
     ents = r1["entries"]
     assert len(ents) == 120 and len({e["cik"] for e in ents}) == 120
     from collections import Counter
-    assert Counter(e["family"] for e in ents) == {"operating": 84, "financial": 24, "commodity": 12}
+    # Addendum V3: commodity is out of scope, so the 120 are shared by operating (700) and financial (200) in proportion: 93.3 -> 93, 26.7 -> 27
+    assert Counter(e["family"] for e in ents) == {"operating": 93, "financial": 27}
+    assert r1["out_of_scope"] == {"commodity": 100} and r1["universe"] == {"financial": 200, "operating": 700} and r1["allocation"] == {"financial": 27, "operating": 93}
     assert [e["cik"] for e in ents] != sorted(e["cik"] for e in ents)  # shuffled, not sorted
     other = sm.draw_date(u, "2025-12-31")
     assert {e["cik"] for e in other["entries"]} != {e["cik"] for e in ents}      # a different date draws differently

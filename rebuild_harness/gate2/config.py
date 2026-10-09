@@ -20,6 +20,8 @@ SEED = 20261007
 MCAP_FLOOR = 300e6
 PILOT_DATE = "2025-10-31"
 PILOT_N = 10
+# Addendum V3 (binding for gate 2 by Addendum W): the commodity family is out of scope for BOTH arms
+OUT_OF_SCOPE_FAMILIES = ("commodity",)
 # registration section 4, G6
 MASKED_N = 30
 MASKED_SEED_LABEL = "masked_control"
@@ -51,6 +53,6 @@ RUNNER_VERSION = "1"
 def state_paths(state_dir: Path = None) -> dict:
     d = Path(state_dir) if state_dir is not None else STATE_DIR
     return {"root": d, "sample": d / "sample", "ctx": d / "ctx", "runs": d / "runs", "runs_masked": d / "runs_masked", "server": d / "server",
-            "freeze": d / "freeze", "submissions": d / "submissions", "doc_cache": d / "doc_cache", "outcomes": d / "outcomes", "reports": d / "reports",
+            "freeze": d / "freeze", "stage2": d / "stage2", "submissions": d / "submissions", "doc_cache": d / "doc_cache", "outcomes": d / "outcomes", "reports": d / "reports",
             "progress": d / "progress.jsonl", "events": d / "events.jsonl", "pause": d / "PAUSE", "lock": d / "runner.lock", "pid": d / "runner.pid",
             "finished": d / "gate2_finished.flag", "pilot_done": d / "pilot_done.flag"}

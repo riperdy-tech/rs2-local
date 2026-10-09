@@ -11,7 +11,8 @@ G1  forecast accuracy (HARD).  For q1, the first fiscal quarter first reported a
     (the arm's own engine run: CODE at the prior's P50, MUSE at Muse's final placements) for revenue growth (operating and commodity families: the frozen engine forecasts no revenue
     growth for financials) and for the operating margin (the return on tangible equity for financials).  Bar, for EACH of the two measures: the median of d is < 0 and the upper end of its
     one-sided 90% bootstrap interval (clustered by company) is < 0.  (Reading: both measures must pass; the pooled-over-both statistic and the per-family figures are reported.)  q2 is reported only.
-G2  return information (HARD in direction).  Rank IC (Spearman) of IV/price with the 3-month excess return, MUSE minus CODE, pooled over dates (the observation-weighted mean of the per-date IC
+G2  return information (HARD in direction).  IV is the STAGE 2 VALUE of Addenda V and W on BOTH arms: the mean of the engine's draws x (1 - P(fail within 12 months)), with P(fail) the
+    point-in-time model of `stage2_layer` (the same for the two arms of a company-date); commodity is out of scope.  Rank IC (Spearman) of IV/price with the 3-month excess return, MUSE minus CODE, pooled over dates (the observation-weighted mean of the per-date IC
     differences; dates with fewer than 10 paired observations are listed and left out).  The 90% bootstrap interval (clustered by company) is reported.  Computed under each of the three
     delisting bounds; the direction (> 0) must hold under all three: all three hold = pass, none = fail, a mix = NOT DECIDED.  6 and 12 months are reported where elapsed.
 G3  calibration (reported).  The share of realised q1 growth and margin that fall inside the arm's stated P10..P90 (both arms).
@@ -35,7 +36,7 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
-from . import config
+from . import config, stage2_layer
 
 BOUNDS = ("excluded", "minus100", "last_close")
 MIN_DATE_N = 10
@@ -52,23 +53,25 @@ def _fy1(res: Optional[Mapping]) -> dict:
     return {"growth": None, "margin": None}
 
 
-def row_from_run(result: Mapping, job: Mapping, run_dir: Optional[Path] = None) -> Optional[dict]:
-    """The scoring row of one finished company-date, or None when it holds no pair of arms."""
+def row_from_run(result: Mapping, job: Mapping, run_dir: Optional[Path] = None, p_fail: Optional[float] = None) -> Optional[dict]:
+    """The scoring row of one finished company-date, or None when it holds no pair of arms.  Each arm carries `iv`, the Stage 2 value (V1 mean x V2 survival, `stage2_layer.value_ps`), and
+    `iv_p50`, the engine's median, kept as a diagnostic only."""
     if result.get("status") != "ok":
         return None
-    code_iv = ((result.get("code_only") or {}).get("iv_per_share") or {}).get("p50")
-    muse_iv = ((result.get("final") or {}).get("iv_per_share") or {}).get("p50")
+    code_s = (result.get("code_only") or {}).get("iv_per_share") or {}
+    muse_s = (result.get("final") or {}).get("iv_per_share") or {}
     price = (job.get("price_info") or {}).get("price")
-    code = dict(_fy1((result.get("code_only") or {}).get("result")), iv_p50=code_iv)
-    muse = dict(_fy1((result.get("final") or {}).get("result")), iv_p50=muse_iv)
+    code = dict(_fy1((result.get("code_only") or {}).get("result")), iv=stage2_layer.value_ps(code_s.get("mean"), p_fail), iv_p50=code_s.get("p50"))
+    muse = dict(_fy1((result.get("final") or {}).get("result")), iv=stage2_layer.value_ps(muse_s.get("mean"), p_fail), iv_p50=muse_s.get("p50"))
     return {"key": job["key"], "date": result.get("asof"), "cik": job.get("cik"),
             "family": result.get("family"), "price": price, "code": code, "muse": muse, "decisions": (result.get("redteam") or {}).get("decisions", []),
-            "positions": (result.get("final") or {}).get("positions", {}), "run_dir": str(run_dir) if run_dir else None, "masked": bool(job.get("masked"))}
+            "positions": (result.get("final") or {}).get("positions", {}), "p_fail": p_fail, "run_dir": str(run_dir) if run_dir else None, "masked": bool(job.get("masked"))}
 
 
 def load_rows(state_dir=None, masked: bool = False) -> Tuple[List[dict], Counter, Counter]:
     """(rows, statuses of every final company-date, exclusions): from progress.jsonl (the latest line per key) and each run folder's result.json and job.json."""
     paths = config.state_paths(state_dir)
+    pfail = stage2_layer.load_pfail(state_dir)
     latest: Dict[str, dict] = {}
     if paths["progress"].exists():
         for line in paths["progress"].read_text(encoding="utf-8").splitlines():
@@ -92,9 +95,13 @@ def load_rows(state_dir=None, masked: bool = False) -> Tuple[List[dict], Counter
             excl["unreadable_run_folder"] += 1
             continue
         job = dict(job, cik=r["cik"], masked=masked)
-        row = row_from_run(result, job, run_dir)
-        if row is None or row["code"]["iv_p50"] is None or row["muse"]["iv_p50"] is None:
-            excl["no_pair_of_arms"] += 1
+        if (result.get("family") or r.get("family")) in config.OUT_OF_SCOPE_FAMILIES:
+            excl["out_of_scope_family_v3"] += 1
+            continue
+        pf = (pfail.get(stage2_layer.job_key(r["date"], r["cik"])) or {}).get("p_fail")
+        row = row_from_run(result, job, run_dir, pf)
+        if row is None or row["code"]["iv"] is None or row["muse"]["iv"] is None:
+            excl["no_pair_of_arms_or_no_survival_probability"] += 1
             continue
         row["date"], row["cik"], row["family"] = r["date"], r["cik"], r.get("family") or row["family"]
         rows.append(row)
@@ -240,7 +247,7 @@ def ic_rows(rows, outcomes, horizon: str, bound: str) -> Tuple[List[dict], Count
         elif not (isinstance(p, (int, float)) and p > 0):
             excl["no_price"] += 1
         else:
-            out.append({"cik": r["cik"], "date": r["date"], "key": r["key"], "muse": r["muse"]["iv_p50"] / p, "code": r["code"]["iv_p50"] / p, "excess": ex})
+            out.append({"cik": r["cik"], "date": r["date"], "key": r["key"], "muse": r["muse"]["iv"] / p, "code": r["code"]["iv"] / p, "excess": ex})
     return out, excl
 
 

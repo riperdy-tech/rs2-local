@@ -400,12 +400,16 @@ def main(argv=None) -> int:
     ap.add_argument("--crosswalk", type=Path)
     ap.add_argument("--sic", type=Path)
     ap.add_argument("--priors-dir", type=Path)
-    ap.add_argument("--strict-classification", action="store_true", help="refuse any current-dated SIC (the holdout rule); default: stamped, as gate 1's development runs")
+    ap.add_argument("--strict-classification", action=argparse.BooleanOptionalAction, default=True,
+                    help="the SIC as filed at T and nothing else (Addendum O 3, the holdout rule); ON by default, --no-strict-classification is for rehearsals only")
     ap.add_argument("--no-documents-network", action="store_true")
     ap.add_argument("--max-tokens", type=int, default=config.MAX_TOKENS)
     a = ap.parse_args(argv)
     state_dir = a.state_dir
     paths = config.state_paths(state_dir)
+    if not a.strict_classification and not a.rehearsal:
+        print("REFUSED: gate 2 classifies strictly (Addendum O 3); --no-strict-classification needs --rehearsal")
+        return 2
     if a.rehearsal and (state_dir is None or Path(state_dir).resolve() == config.STATE_DIR.resolve()):
         print("REFUSED: --rehearsal needs a --state-dir other than the real one")
         return 2

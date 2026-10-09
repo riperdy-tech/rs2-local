@@ -443,6 +443,10 @@ def readiness(*, dates=config.DATES, state_dir=None, priors_dir=None, damodaran_
         add(f"context_{d}.pkl", (paths["ctx"] / f"context_{d}.pkl").exists(), str(paths["ctx"]))
     from . import sample as sm
     add("sample file", sm.sample_path(state_dir).exists(), str(sm.sample_path(state_dir)))
+    from . import stage2_layer as sl
+    sp = sl.stage2_paths(state_dir)
+    add("stage2 survival models (V2)", sp["models"].exists(), str(sp["models"]))
+    add("stage2 survival probabilities (V2)", sp["pfail"].exists(), str(sp["pfail"]))
     add("freeze file", (paths["freeze"] / "gate2_freeze.json").exists(), str(paths["freeze"]))
     add("server pins record", (paths["server"] / "pins.json").exists(), str(paths["server"]))
     return {"ok": all(c["ok"] for c in checks), "checks": checks}

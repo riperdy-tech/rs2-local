@@ -6,6 +6,10 @@
 For each replay date, 120 companies drawn AT RANDOM from the gate universe (market cap of at least $300M at T, a built family, an annual report accepted before T),
 STRATIFIED BY FAMILY IN PROPORTION, seed 20261007, DRAWN ONCE, before any run.
 
+COMMODITY IS OUT OF SCOPE (Addendum V3, binding for gate 2 by Addendum W).  The universe file still lists the commodity names (a built family); the drawer counts them per date
+(`out_of_scope_counts`) and leaves them out BEFORE the stratification, so the 120 per date are shared between the in-scope families (operating and financial) in proportion to their
+size.  The effect: the sample is 120 in-scope names per date, not 120 of which some are commodity; nothing else about the draw changes.
+
 THE UNIVERSE is read from `universe_<date>.json` files (written by `env.prepare_dates`, which applies the three conditions to the date's prepared companies); this
 module sees only {cik, ticker, family} per company, never a price or an engine value, so the draw cannot depend on either.
 
@@ -33,8 +37,8 @@ from . import config
 BUILT_FAMILIES = ("operating", "commodity", "financial")
 
 
-RULE = ("per date: family shares of the universe by the largest-remainder rule summing to per_date; within a family random.Random('<seed>:<date>:<family>').sample of the ciks "
-        "in sorted order; the drawn companies shuffled by random.Random('<seed>:<date>:order')")
+RULE = ("per date: the out-of-scope families (commodity, Addendum V3) removed from the universe; family shares of the rest by the largest-remainder rule summing to per_date; "
+        "within a family random.Random('<seed>:<date>:<family>').sample of the ciks in sorted order; the drawn companies shuffled by random.Random('<seed>:<date>:order')")
 
 
 class SampleError(RuntimeError):
@@ -68,9 +72,10 @@ def allocate(counts: Mapping[str, int], total: int) -> Dict[str, int]:
 
 
 def draw_date(companies: Sequence[Mapping], date: str, seed: int = config.SEED, per_date: int = config.PER_DATE) -> dict:
-    """{"entries": [{cik, ticker, family}...] in the runner's order, "universe": {family: n}, "allocation": {family: k}} for one date."""
+    """{"entries": [{cik, ticker, family}...] in the runner's order, "universe": {family: n} (in scope), "out_of_scope": {family: n}, "allocation": {family: k}} for one date."""
     seen = set()
     by_family: Dict[str, List[Mapping]] = {}
+    out_of_scope: Dict[str, int] = {}
     for c in sorted(companies, key=lambda c: str(c["cik"])):
         cik = str(c["cik"]).zfill(10)
         if cik in seen:
@@ -79,6 +84,9 @@ def draw_date(companies: Sequence[Mapping], date: str, seed: int = config.SEED, 
         fam = c["family"]
         if fam not in BUILT_FAMILIES:
             raise SampleError(f"{date}: company {cik} has family {fam!r}, which is not built (the universe holds built families only)")
+        if fam in config.OUT_OF_SCOPE_FAMILIES:
+            out_of_scope[fam] = out_of_scope.get(fam, 0) + 1
+            continue
         by_family.setdefault(fam, []).append({"cik": cik, "ticker": c.get("ticker"), "family": fam})
     counts = {f: len(v) for f, v in sorted(by_family.items())}
     alloc = allocate(counts, per_date)
@@ -87,17 +95,18 @@ def draw_date(companies: Sequence[Mapping], date: str, seed: int = config.SEED, 
         rng = random.Random(f"{seed}:{date}:{fam}")
         chosen += rng.sample(by_family[fam], alloc[fam])
     random.Random(f"{seed}:{date}:order").shuffle(chosen)
-    return {"entries": chosen, "universe": counts, "allocation": alloc}
+    return {"entries": chosen, "universe": counts, "out_of_scope": dict(sorted(out_of_scope.items())), "allocation": alloc}
 
 
 def draw(universe: Mapping[str, Sequence[Mapping]], dates: Sequence[str] = config.DATES, seed: int = config.SEED, per_date: int = config.PER_DATE) -> dict:
     out = {"registration": "REGISTRATION_gate2_DRAFT.md section 2", "seed": seed, "per_date": per_date, "dates": list(dates), "rule": RULE,
-           "universe_counts": {}, "allocation": {}, "entries": {}}
+           "out_of_scope_families": list(config.OUT_OF_SCOPE_FAMILIES), "universe_counts": {}, "out_of_scope_counts": {}, "allocation": {}, "entries": {}}
     for d in dates:
         if d not in universe:
             raise SampleError(f"no universe for {d}")
         r = draw_date(universe[d], d, seed, per_date)
         out["universe_counts"][d], out["allocation"][d], out["entries"][d] = r["universe"], r["allocation"], r["entries"]
+        out["out_of_scope_counts"][d] = r["out_of_scope"]
     return out
 
 

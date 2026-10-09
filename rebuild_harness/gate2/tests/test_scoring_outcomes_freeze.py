@@ -31,8 +31,8 @@ def make_world(n_companies=60, dates=("2025-10-31", "2025-12-31", "2026-02-27"),
             price = 10.0
             fc = lambda y, n: {"p10": y + n - 0.06, "p50": y + n, "p90": y + n + 0.06}
             rows.append({"key": key, "date": d, "cik": f"{c:010d}", "family": fam, "price": price,
-                         "code": {"iv_p50": code_ratio * price, "growth": None if fam == "financial" else fc(y_g, noise_c[0]), "margin": fc(y_m, noise_c[1])},
-                         "muse": {"iv_p50": muse_ratio * price, "growth": None if fam == "financial" else fc(y_g, noise_m[0]), "margin": fc(y_m, noise_m[1])},
+                         "code": {"iv": code_ratio * price, "iv_p50": code_ratio * price, "growth": None if fam == "financial" else fc(y_g, noise_c[0]), "margin": fc(y_m, noise_c[1])},
+                         "muse": {"iv": muse_ratio * price, "iv_p50": muse_ratio * price, "growth": None if fam == "financial" else fc(y_g, noise_m[0]), "margin": fc(y_m, noise_m[1])},
                          "decisions": [], "positions": {}, "masked": False})
             q = {"revenue_growth": y_g, "operating_margin": y_m, "rote_annualised_on_tbv_at_T": y_m}
             outcomes[key] = {"key": key, "quarters": {"q1": q, "q2": q}, "returns": {"3": {"bounds": {b: ex for b in sc.BOUNDS}}}}
@@ -84,7 +84,7 @@ def test_g2_direction_under_the_three_bounds_pass_fail_and_not_decided():
     rows, outs = make_world(signal=False, seed=3)
     for r_ in rows:                                                                      # CODE carries the information instead
         ex = outs[r_["key"]]["returns"]["3"]["bounds"]["excluded"]
-        r_["code"]["iv_p50"] = (1.0 + 3 * ex) * 10.0
+        r_["code"]["iv"] = r_["code"]["iv_p50"] = (1.0 + 3 * ex) * 10.0
     assert sc.g2(rows, outs, draws=100)["verdict"] == "fail"
     rows, outs = make_world(signal=True, seed=5)
     for k, o in outs.items():                                                            # under the minus-100% bound the order is destroyed: the bar straddles the bounds
@@ -249,9 +249,11 @@ def test_a_failed_call_with_no_recorded_fallback_is_a_violation_a_recorded_one_i
 
 
 def test_the_loader_reads_the_runs_and_the_whole_scoring_runs_end_to_end_on_mock_runs(tmp_path):
-    run_mock(tmp_path, n=3)
+    smp = run_mock(tmp_path, n=3)
+    from rebuild_harness.gate2 import stage2_layer as sl
+    sl.write_pfail({sl.job_key(j["date"], j["cik"]): {"status": "ok", "p_fail": 0.05} for j in sample_mod.jobs(smp)}, "m", "s", tmp_path)
     rows, statuses, excl = sc.load_rows(tmp_path)
-    assert len(rows) == 6 and statuses == {"ok": 6} and all(r["price"] == fx.PRICE_SENTINEL and r["code"]["iv_p50"] > 0 and r["muse"]["iv_p50"] > 0 for r in rows)
+    assert len(rows) == 6 and statuses == {"ok": 6} and all(r["price"] == fx.PRICE_SENTINEL and r["code"]["iv_p50"] > 0 and r["muse"]["iv_p50"] > 0 and r["code"]["iv"] > 0 and r["muse"]["iv"] > 0 for r in rows)
     assert any(r["family"] == "financial" and r["code"]["growth"] is None and r["code"]["margin"] is not None for r in rows)
     outs = {}
     for r in rows:
@@ -278,14 +280,25 @@ def test_the_freeze_is_written_only_on_confirmation_and_once_and_verify_reports_
 
 def test_the_freeze_lifecycle_write_once_verify_and_every_drift_is_named(tmp_path, monkeypatch):
     from rebuild_harness.gate2 import server
+    fake_inputs = {"fingerprint": {"store": {"n_files": 1}}, "full": {"store": {"tree_sha256": "x"}}}
+    monkeypatch.setattr(freeze_content, "inputs_section", lambda full=False, gate1b_freeze=None: fake_inputs if full else {"fingerprint": fake_inputs["fingerprint"]})
+    fake_stage2 = {"layers": {"V1": "mean"}, "survival_models": {"sha256": "m"}, "survival_pfail": {"sha256": "p"}}
+    monkeypatch.setattr(freeze_content, "stage2_section", lambda state_dir=None: fake_stage2)
     from rebuild_harness.gate2.tests.test_sample_gpu_server import fake_cfg
     cfg, line = fake_cfg(tmp_path)
     server.record_pins(cfg, tmp_path)
     with pytest.raises(RuntimeError, match="no sample file"):
         freeze_content.write(tmp_path, confirm=True, cfg=cfg, hash_model=False, build_cmd=line)
+    monkeypatch.setattr(freeze_content, "stage2_section", lambda state_dir=None: {"survival_models": None, "survival_pfail": None})
+    sample_mod.write_once(sample_mod.sample_path(tmp_path), {"dates": ["d"], "entries": {"d": []}, "seed": config.SEED})
+    with pytest.raises(RuntimeError, match="no Stage 2 survival"):
+        freeze_content.write(tmp_path, confirm=True, cfg=cfg, hash_model=False, build_cmd=line)
+    monkeypatch.setattr(freeze_content, "stage2_section", lambda state_dir=None: fake_stage2)
+    (sample_mod.sample_path(tmp_path)).unlink()
+    (sample_mod.sample_path(tmp_path).with_name("sample.json.sha256")).unlink()
     sample_mod.write_once(sample_mod.sample_path(tmp_path), {"dates": ["d"], "entries": {"d": []}, "seed": config.SEED})
     doc = freeze_content.write(tmp_path, confirm=True, cfg=cfg, hash_model=False, build_cmd=line)
-    for k in ("engine", "muse", "code", "seeds", "sample", "packages"):
+    for k in ("engine", "muse", "code", "stage2", "inputs", "seeds", "sample", "packages"):
         assert k in doc
     m = doc["muse"]
     assert m["context"] == 32768 and m["server"]["window"] == 32768 and m["server"]["pinned_window"] == 98304 and m["reasoning_prefix"] == "Reasoning strength: xhigh\n"
@@ -298,6 +311,12 @@ def test_the_freeze_lifecycle_write_once_verify_and_every_drift_is_named(tmp_pat
     probs = freeze_content.verify(tmp_path, cfg=cfg, build_cmd=line)
     assert any("muse.max_tokens_cap" in p for p in probs)
     monkeypatch.setattr(config, "MAX_TOKENS", 16384)
+    fake_stage2["survival_pfail"] = {"sha256": "changed"}                                  # a Stage 2 probability file that changed after the freeze is named
+    assert any(p.startswith("stage2.survival_pfail.sha256") for p in freeze_content.verify(tmp_path, cfg=cfg, build_cmd=line))
+    fake_stage2["survival_pfail"] = {"sha256": "p"}
+    fake_inputs["fingerprint"]["store"]["n_files"] = 2                                       # an input tree that grew is named
+    assert any(p.startswith("inputs.fingerprint.store.n_files") for p in freeze_content.verify(tmp_path, cfg=cfg, build_cmd=line))
+    fake_inputs["fingerprint"]["store"]["n_files"] = 1
     monkeypatch.setattr(freeze_content, "CODE_GLOBS", freeze_content.CODE_GLOBS + ("README.md",))
     assert any(p.startswith("code.README.md") for p in freeze_content.verify(tmp_path, cfg=cfg, build_cmd=line))
 
