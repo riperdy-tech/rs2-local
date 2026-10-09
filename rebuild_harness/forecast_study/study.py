@@ -21,14 +21,15 @@ import pandas as pd
 
 KS = (1, 2, 3)
 GRID = np.round(np.arange(0.0, 1.0001, 0.05), 2)
+AUDIT = []                         # (what, key, T, latest outcome filing used, latest origin year used): every fit appends; the report asserts that none reaches T
 MIN_TRAIN = 100                    # a fit on fewer observations is not made (the blend is then undefined that year)
 HIST_MAX, HIST_MIN = 8, 5          # the operating-leverage regression: the latest 8 fiscal years, at least 5
 
 # (family, variable) -> y stem of the outcome, the code's column stem, the naive column, the population stem, alternative code columns
 VARS = {
-    ("operating", "growth"): dict(y="g", c="c_growth_{k}", naive="mech_g1", pop="g", alt={}),
+    ("operating", "growth"): dict(y="g", c="c_growth_{k}", naive="mech_g1", pop="g", alt={"iii_last": "f_g_latest"}),
     ("operating", "margin"): dict(y="m", c="c_margin_{k}", naive="f_m", pop="m", alt={"ii_curve": "c_margin_curve_{k}_p50"}),
-    ("financial", "growth"): dict(y="tg", c="c_growth_{k}", naive="mech_g1", pop="tg", alt={}),
+    ("financial", "growth"): dict(y="tg", c="c_growth_{k}", naive="mech_g1", pop="tg", alt={"iii_last": "f_tg_latest"}),
     ("financial", "rote"): dict(y="rote", c="c_rote_{k}", naive="rote_latest", pop="rote", alt={"ii_norm": "c_rote_norm_{k}_p50", "ii_curve": "c_rote_curve_{k}_p50"}),
 }
 
@@ -57,7 +58,8 @@ class Population:
                 self._c[key] = None
             else:
                 q = np.quantile(v, [0.1, 0.5, 0.9])
-                self._c[key] = {"p10": float(q[0]), "p50": float(q[1]), "p90": float(q[2]), "n": int(len(v))}
+                self._c[key] = {"p10": float(q[0]), "p50": float(q[1]), "p90": float(q[2]), "n": int(len(v)), "max_filed": str(f[m].max())}
+                AUDIT.append(("population", key, T, self._c[key]["max_filed"], None))
         return self._c[key]
 
 
@@ -106,6 +108,12 @@ def build_candidates(P, pop, family, var, k):
     for c in [c for c in d.columns if c.startswith("x_")]:
         d[c] = pd.to_numeric(d[c], errors="coerce")
     d["filed"] = d[f"filed_{k}"]
+    # (i-u): the median outcome of this study's own universe (market cap >= $300M) at the earlier origins, outcomes filed before T (a size-matched population median; a robustness candidate)
+    iu = {}
+    for Y in sorted(d.year.unique()):
+        tr = d[(d.year < Y) & d["y"].notna() & d["filed"].notna() & (d["filed"] < t_of(Y))]
+        iu[Y] = float(tr["y"].median()) if len(tr) >= MIN_TRAIN else np.nan
+    d["x_iu"] = d.year.map(iu)
     return d
 
 
@@ -119,7 +127,8 @@ def walk_forward_w(d, years):
             out[Y] = None
             continue
         p, c, y = tr["x_i"].to_numpy(float), tr["x_ii"].to_numpy(float), tr["y"].to_numpy(float)
-        out[Y] = {"mae": fit_w_mae(p, c, y), "eb": fit_w_eb(p, c, y), "n": int(len(tr))}
+        out[Y] = {"mae": fit_w_mae(p, c, y), "eb": fit_w_eb(p, c, y), "n": int(len(tr)), "max_filed": str(tr["filed"].max()), "max_origin_year": int(tr.year.max())}
+        AUDIT.append(("blend_weight", Y, t_of(Y), out[Y]["max_filed"], out[Y]["max_origin_year"]))
     return out
 
 
@@ -207,12 +216,24 @@ def band_of(x, cuts):
 
 
 class Reversion:
-    """Measured partial mean reversion, walk-forward: x_k = x0 + lam (anchor - x0), lam fitted by the grid MAE on the whole population's rows of the family whose year-k outcome is filed before T,
-    separately for each cyclicality band (equal-weight terciles of the training rows) of the operating family; one band for the financial family (its margin-based cyclicality score is not defined)."""
+    """Measured partial mean reversion, walk-forward: x_k = x0 + lam (anchor - x0), lam fitted by the grid MAE on the whole population's rows of the family whose year-k outcome is filed before T, separately
+    for each cell of the conditioning: the cyclicality band (equal-weight terciles of the training rows; operating family only - the margin-based score is not defined for the financial family) and,
+    with `signed`, the sign of the deviation x0 - anchor (|deviation| < 0.5 points is `flat`: the code's own rule).  A cell with fewer than MIN_TRAIN rows uses the pooled fit."""
 
-    def __init__(self, obs, family, level, anchor, y, banded):
+    def __init__(self, obs, family, level, anchor, y, banded, signed=False):
         o = obs[obs.family == family]
-        self.o, self.level, self.anchor, self.y, self.banded, self._c = o, level, anchor, y, banded, {}
+        self.o, self.level, self.anchor, self.y, self.banded, self.signed, self._c = o, level, anchor, y, banded, signed, {}
+
+    @staticmethod
+    def sign_of(x0, a):
+        d = x0 - a
+        return "flat" if abs(d) < 0.005 else ("pos" if d > 0 else "neg")
+
+    def cell_of(self, x0, a, cyc, cuts):
+        b = band_of(cyc, cuts) if self.banded else "none"
+        if self.signed:
+            b = b + "_" + self.sign_of(x0, a)
+        return b
 
     def fit(self, k, T):
         key = (k, T)
@@ -221,21 +242,19 @@ class Reversion:
         o = self.o
         f = o[f"filed_{k}"]
         tr = o[f.notna() & (f < T) & o[self.level].notna() & o[self.anchor].notna() & o[f"{self.y}_{k}"].notna()]
-        res = {"cuts": None, "lam": {}, "n": {}}
+        res = {"cuts": None, "lam": {}, "n": {}, "max_filed": None}
         if len(tr) >= MIN_TRAIN:
+            res["max_filed"] = str(f[tr.index].max())
+            AUDIT.append(("reversion", (self.level, k, self.signed), T, res["max_filed"], None))
             if self.banded:
                 res["cuts"] = tercile_cuts(o.loc[f.notna() & (f < T), "cyc"].to_numpy(float))
-                bands = tr["cyc"].map(lambda x: band_of(x, res["cuts"]))
-            else:
-                bands = pd.Series("none", index=tr.index)
-            for b, g in tr.groupby(bands):
+            cells = [self.cell_of(x0, a, c, res["cuts"]) for x0, a, c in zip(tr[self.level], tr[self.anchor], tr["cyc"] if "cyc" in tr else [None] * len(tr))]
+            cells = pd.Series(cells, index=tr.index)
+            for b, g in tr.groupby(cells):
                 if len(g) >= MIN_TRAIN:
-                    x0, a, y = g[self.level].to_numpy(float), g[self.anchor].to_numpy(float), g[f"{self.y}_{k}"].to_numpy(float)
-                    res["lam"][b] = fit_w_mae(x0, a, y)
+                    res["lam"][b] = fit_w_mae(g[self.level].to_numpy(float), g[self.anchor].to_numpy(float), g[f"{self.y}_{k}"].to_numpy(float))
                     res["n"][b] = int(len(g))
-            tr_all = tr
-            if len(tr_all) >= MIN_TRAIN:
-                res["lam"]["_pooled"] = fit_w_mae(tr_all[self.level].to_numpy(float), tr_all[self.anchor].to_numpy(float), tr_all[f"{self.y}_{k}"].to_numpy(float))
+            res["lam"]["_pooled"] = fit_w_mae(tr[self.level].to_numpy(float), tr[self.anchor].to_numpy(float), tr[f"{self.y}_{k}"].to_numpy(float))
         self._c[key] = res
         return res
 
@@ -243,10 +262,20 @@ class Reversion:
         r = self.fit(k, T)
         if not r["lam"]:
             return np.nan, np.nan, "none"
-        b = band_of(cyc, r["cuts"]) if self.banded else "none"
-        lam = r["lam"].get(b, r["lam"].get("_pooled"))
         a = x0 if (anchor is None or not np.isfinite(anchor)) else anchor
+        b = self.cell_of(x0, a, cyc, r["cuts"])
+        lam = r["lam"].get(b, r["lam"].get("_pooled"))
         return x0 + lam * (a - x0), lam, b
+
+
+def universe_frame(P, level, anchor, y, cyc=None):
+    """The study universe's own rows as a training table for `Reversion` (columns named like the observation table's): the earlier origins' state and outcomes.  A fit at T keeps the rows whose outcome
+    was filed before T, which are exactly the earlier origins' (an outcome is filed after its own origin)."""
+    u = pd.DataFrame({"family": P.family, level: P[level if level in P else {"m": "f_m", "rote": "rote_latest"}[level]], anchor: P[{"med8": "f_med8", "rote_med8": "f_rote_med8"}[anchor]]})
+    u["cyc"] = P["f_cyc_equal"] if cyc is None else P[cyc]
+    for k in KS:
+        u[f"{y}_{k}"], u[f"filed_{k}"] = P[f"{y}_{k}"], P[f"filed_{k}"]
+    return u
 
 
 def history_index(obs):
@@ -274,48 +303,48 @@ def leverage_fit(h, cik, base_fye):
     return c, float(om - c * rm)
 
 
-def margin_study(P, obs, growth_cells, rev_key):
-    """One frame per horizon with the margin baselines of Study B for the operating family.  `growth_cells[k]` is the Study-A growth cell (frame with x_* columns) from which the revenue forecast
-    `rev_key` is read (a candidate name such as "b_mae" or "ii"); the oracle uses the realised revenue."""
+def margin_study(P, obs, pop, growth_cells, rev_key):
+    """One frame per horizon with the margin baselines of Study B for the operating family, indexed like P.  `growth_cells[k]` is the Study-A growth cell (frame with x_* columns) from which the revenue
+    forecast `rev_key` (a candidate name such as "b_mae") is read; the oracle variants use the realised (first-filed) revenue of the year.  Columns:
+      y        the year-k operating margin, first filed         ref      the population median margin known at T (the trimming reference, candidate-independent)
+      persist  the base margin held (as known at T)             ii       the engine's P50 margin path (needs the vintage's margin_target)      ii_curve  the engine's retention-only path
+      rev_band persistence + measured partial mean reversion toward the 8-year median, one speed per cyclicality band, fitted at T on the population (walk-forward)
+      lev_pred / lev_oracle  OI = a + c Rev fitted on the company's own latest 8 fiscal years (at least 5) up to the base year, applied to the forecast / the realised revenue; `_clip`: c held in [0, 1]"""
     h = history_index(obs)
     rv = Reversion(obs, "operating", "m", "med8", "m", True)
-    out = {}
+    rvs = Reversion(obs, "operating", "m", "med8", "m", True, signed=True)
+    U = universe_frame(P, "m", "med8", "m")
+    rvu, rvus = Reversion(U, "operating", "m", "med8", "m", True), Reversion(U, "operating", "m", "med8", "m", True, signed=True)
     op = P[P.family == "operating"]
-    revhat = {}                                                    # cumulative revenue forecast per row index
+    cum, cumhat = pd.Series(1.0, index=op.index), {}
     for k in KS:
-        g = growth_cells[k]
-        revhat[k] = None
-    cum = pd.Series(1.0, index=op.index)
-    cumhat = {}
-    for k in KS:
-        gk = growth_cells[k]["x_" + rev_key].reindex(op.index)
-        cum = cum * (1.0 + gk)
+        cum = cum * (1.0 + growth_cells[k]["x_" + rev_key].reindex(op.index))
         cumhat[k] = cum.copy()
+    out = {}
     for k in KS:
         rows = []
         for idx, r in op.iterrows():
             T = t_of(r.year)
             m0 = r["f_m"]
-            rec = {"idx": idx, "year": r.year, "cik": r.cik, "y": r[f"m_{k}"], "base": r["f_m"]}
-            rec["persist"] = m0
-            rec["ii"] = r.get(f"c_margin_{k}_p50", np.nan)
-            rec["ii_curve"] = r.get(f"c_margin_curve_{k}_p50", np.nan)
+            st = pop.stats("operating", "m", k, T)
+            rec = {"idx": idx, "year": r.year, "cik": r.cik, "y": r[f"m_{k}"], "persist": m0, "ref": np.nan if st is None else st["p50"],
+                   "ii": r.get(f"c_margin_{k}_p50", np.nan), "ii_curve": r.get(f"c_margin_curve_{k}_p50", np.nan)}
             if pd.notna(m0):
-                pred, lam, band = rv.predict(k, T, m0, r["f_med8"], r["cyc"])
-                rec["rev_band"], rec["rev_lam"], rec["band"] = pred, lam, band
+                rec["rev_band"], rec["rev_lam"], rec["band"] = rv.predict(k, T, m0, r["f_med8"], r["f_cyc_equal"])
+                rec["rev_band_sign"] = rvs.predict(k, T, m0, r["f_med8"], r["f_cyc_equal"])[0]
+                rec["rev_band_u"], rec["rev_lam_u"], _ = rvu.predict(k, T, m0, r["f_med8"], r["f_cyc_equal"])
+                rec["rev_band_sign_u"] = rvus.predict(k, T, m0, r["f_med8"], r["f_cyc_equal"])[0]
+            x = h.get(r.cik)
             fit = leverage_fit(h, r.cik, r.base_fye)
             rec["lev_c"] = np.nan if fit is None else fit[0]
-            rev0 = r["o_rev"]
-            for tag, revk in (("pred", rev0 * cumhat[k].get(idx, np.nan) if pd.notna(rev0) else np.nan), ("oracle", r.get(f"rev_{k}", np.nan))):
+            rev0 = pd.to_numeric(r["f_rev"], errors="coerce")
+            for tag, revk in (("pred", rev0 * cumhat[k].get(idx, np.nan)), ("oracle", r.get(f"rev_{k}", np.nan))):
+                rec["lev_" + tag] = rec["lev_" + tag + "_clip"] = np.nan
                 if fit is None or not pd.notna(revk) or revk <= 0:
-                    rec["lev_" + tag] = rec["lev_" + tag + "_clip"] = np.nan
                     continue
                 c, a = fit
                 rec["lev_" + tag] = c + a / revk
                 cc = min(1.0, max(0.0, c))
-                rm_, om_ = 0.0, 0.0
-                rec["lev_" + tag + "_clip"] = np.nan
-                x = h[r.cik]
                 n = int(np.searchsorted(x[0], r.base_fye, side="right"))
                 lo = max(0, n - HIST_MAX)
                 a2 = x[2][lo:n].mean() - cc * x[1][lo:n].mean()

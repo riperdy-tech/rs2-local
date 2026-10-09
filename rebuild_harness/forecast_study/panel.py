@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 CUT = "2024-12-31"
+MAX_BASE_AGE_MONTHS = 18.0
 OBS = Path(r"C:\Users\riper\stocks\stocks-workspace\data\priors_v3\2024\obs.csv.gz")
 KS = (1, 2, 3)
 OBS_COLS = (["cik", "fye", "own_filed", "family", "rev", "m", "med8", "dev", "cyc", "rote", "tbv", "rote_med8", "years_held", "n_ahead"]
@@ -60,6 +61,7 @@ def read_pass(pass_dir):
                     o["f_" + a] = ft.get(a)
                 st = r.get("state") or {}
                 o["rote_latest"] = st.get("rote_latest")
+                o["s_tbv"] = st.get("tbv")
                 mech = r.get("mech") or {}
                 o["mech_g1"] = mech.get("g1")
                 o["cyc"] = (r.get("cyc") or {}).get("score")
@@ -82,17 +84,25 @@ def read_pass(pass_dir):
 
 def build(pass_dir):
     p = read_pass(pass_dir)
+    n0 = len(p)
+    stale = (p.base_age_months < 0) | (p.base_age_months > MAX_BASE_AGE_MONTHS)
+    p = p[~stale].copy()                               # a base year more than 18 months old (a delinquent filer) or ending after the origin is not a forecast of "the next fiscal year"
     obs = load_obs()
     assert_cut(obs)
     keep = ["cik", "fye", "own_filed", "rev", "m", "rote", "tbv", "years_held"] + [f"{a}_{k}" for k in KS for a in ("rev", "m", "rote", "tbv", "filed", "g", "tg")]
     o = obs[keep].rename(columns={"fye": "base_fye", "rev": "o_rev", "m": "o_m", "rote": "o_rote", "tbv": "o_tbv", "own_filed": "base_filed"})
-    j = p.merge(o, on=["cik", "base_fye"], how="left", validate="one_to_one")
+    j = p.merge(o, on=["cik", "base_fye"], how="left", validate="many_to_one")
     j["matched"] = j["base_filed"].notna()
+    # the year-1 growth is measured from the base year AS KNOWN AT T (the state the code forecast from), to the first-filed value of the next year: H3's convention (`gate1_v2.b4_v2`); years 2 and 3 are first-filed on both ends
+    r0, t0 = pd.to_numeric(j["f_rev"], errors="coerce"), pd.to_numeric(j["s_tbv"], errors="coerce")
+    j["g_1"] = np.where((r0 > 0) & (j["rev_1"] > 0), j["rev_1"] / r0 - 1.0, np.nan)
+    j["tg_1"] = np.where((t0 > 0) & (j["tbv_1"] > 0), j["tbv_1"] / t0 - 1.0, np.nan)
     for k in KS:
         j[f"filed_{k}"] = j[f"filed_{k}"].astype("string")
         bad = j[f"filed_{k}"].notna() & (j[f"filed_{k}"] <= j["date"])
         j.loc[bad, [f"g_{k}", f"tg_{k}", f"m_{k}", f"rote_{k}", f"rev_{k}", f"tbv_{k}"]] = np.nan          # an outcome filed on or before the origin is not an outcome
         j[f"n_bad_{k}"] = bad
+    j.attrs["excluded_stale_base"] = int(n0 - len(p))
     return j, obs
 
 

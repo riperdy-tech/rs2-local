@@ -27,6 +27,7 @@ from valuation.common import build_state
 from valuation import classification
 from valuation.discount_rate import MriRiskFree
 from valuation import pit_adapter
+from valuation.priors import features as prior_features
 from rebuild_harness import gate1_run as g1r
 from rebuild_harness.stage2 import obs as s2obs
 
@@ -160,10 +161,13 @@ def pass_date(d):
         rec["vintage"] = ps.meta.get("vintage")
         rec["unavailable"] = [u[:140] for u in ps.meta.get("unavailable", [])]
         rec["fallbacks"] = [u[:140] for u in ps.meta.get("fallbacks", [])]
-        rec["features"] = {a: (_num(b) if not isinstance(b, (bool, str)) else b) for a, b in (ps.meta.get("features") or {}).items() if not isinstance(b, (dict, list))}
+        ft = ps.meta.get("features") or prior_features(st, fam)          # the vintage may be absent (origin 2016 needs vintage 2015): the features are the state's, not the prior's
+        rec["features"] = {a: (_num(b) if not isinstance(b, (bool, str)) else b) for a, b in ft.items() if not isinstance(b, (dict, list))}
         rec["state"] = {a: _num(st.get(a)) for a in ("revenue", "op_margin", "op_margin_median", "growth_latest", "rote_latest", "rote_median", "tbv", "roic3", "rote3")}
-        rec["cyc"] = {"score": ps.meta.get("cyc_score"), "basis": ps.meta.get("cyc_score_basis")}
-        rec["mech"] = {a: (_num(b) if not isinstance(b, (dict, str)) else None) for a, b in (ps.meta.get("mechanical_baseline") or {}).items()}
+        rec["cyc"] = {"score": ps.meta.get("cyc_score", ft.get("cyc_equal")), "basis": ps.meta.get("cyc_score_basis")}
+        g_mech = (ft.get("tg3") if ft.get("tg3") is not None else ft.get("tg_latest")) if fam == "financial" else (ft.get("g3") if ft.get("g3") is not None else ft.get("g_latest"))
+        rec["mech"] = {a: (_num(b) if not isinstance(b, (dict, str)) else None) for a, b in (ps.meta.get("mechanical_baseline") or {}).items()} or {"g1": _num(g_mech), "margin_held": _num(ft.get("m")),
+                                                                                                                                      "rote_held": _num(ft.get("rote"))}
         rec["cells"] = {a: {kk: vv for kk, vv in b.items() if isinstance(vv, (int, float, str, bool, type(None)))} for a, b in (ps.meta.get("cells") or {}).items() if a in ("g1", "margin_target")}
         rec["inputs"] = {a: {f"p{int(p * 100)}": _num(v.ppf(p)) for p in (0.1, 0.5, 0.9)} for a, v in ps.inputs.items()}
         rec["forecast"] = forecasts(fam, st, ps, g_term) if ps.source != "UNAVAILABLE" else {}
