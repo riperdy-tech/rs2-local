@@ -53,8 +53,10 @@ class Position:
 
 
 def unanchored(reason: str, source: str = "P1") -> Position:
-    """The fallback of SPEC_muse_passes section 2: the prior's P50 with width wide, stamped."""
-    return Position(50.0, "wide", "unanchored", source, ["unanchored: " + reason])
+    """The fallback, stamped: the prior's P50 with width NORMAL, i.e. the prior itself, the code arm's own distribution (Addendum AE.2). SPEC_muse_passes
+    section 2 said width wide; under the mean of the draws a wider spread changes the value through convexity alone, so a failed answer would move the
+    Muse arm without supplying any information."""
+    return Position(50.0, "normal", "unanchored", source, ["unanchored: " + reason])
 
 
 # ---- level inputs ----------------------------------------------------------------------------------------------------------------

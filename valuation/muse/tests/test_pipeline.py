@@ -89,7 +89,7 @@ def test_a_failed_input_after_the_retry_is_unanchored_at_the_priors_p50_with_wid
     assert r["status"] == "ok"
     for n in ("margin_target", "margin_retention"):
         p = r["final"]["positions"][n]
-        assert (p["percentile"], p["width"], p["status"]) == (50.0, "wide", "unanchored") and p["stamps"][0].startswith("unanchored:")
+        assert (p["percentile"], p["width"], p["status"]) == (50.0, "normal", "unanchored") and p["stamps"][0].startswith("unanchored:")
     assert r["final"]["positions"]["g1"]["status"] == "anchored"
     assert r["final"]["unanchored_inputs"] == ["margin_retention", "margin_target"]
     assert [x["call"] for x in r["calls"]][:2] == ["P1", "P2"] and r["calls"][1]["ok"] is False
@@ -168,9 +168,15 @@ def test_red_team_accepts_a_revision_with_a_new_quote_after_asking_for_section_d
     assert g["percentile"] == 75 and g["source"] == "P6" and "revision_evidence: new_quote" in g["stamps"]
 
 
-def test_red_team_accepts_a_named_error(tmp_path, realistic_price):
+def test_red_team_named_error_counts_only_away_from_the_price(tmp_path, realistic_price):
+    """Addendum AE.1: a named error can move a position away from the price; toward the price it needs a new filing quote."""
     r = run(tmp_path, fx.ScriptedMuse(p6={"ronic": dict(percentile=30, named_error=True)}), price=realistic_price)
-    assert r["final"]["positions"]["ronic"]["percentile"] == 30 and r["final"]["positions"]["ronic"]["source"] == "P6"
+    d = next(x for x in r["redteam"]["decisions"] if x["input"] == "ronic")
+    assert d["proposed"] and d["named_error"] and not d["new_quote"]
+    if d["toward_price"]:
+        assert not d["accepted"] and "Addendum AE.1" in d["reason"] and r["final"]["positions"]["ronic"]["source"] != "P6"
+    else:
+        assert d["accepted"] and r["final"]["positions"]["ronic"]["percentile"] == 30 and r["final"]["positions"]["ronic"]["source"] == "P6"
 
 
 def test_a_p6_that_never_parses_leaves_every_pass1_position(tmp_path, realistic_price):

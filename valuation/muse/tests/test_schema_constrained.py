@@ -248,3 +248,15 @@ def test_the_audit_reviews_model_text_and_fiscal_labels_but_keeps_code_text_stri
     assert not [f for f in la.audit_pack(pk, asof) if f.kind == "identity"]
     pk["manifest"]["identity"]["ticker_source"] = "current_record"
     assert [f for f in la.audit_pack(pk, asof) if f.kind == "identity"]
+
+
+def test_a_date_in_model_text_must_be_grounded_in_the_filings_addendum_ae4():
+    from datetime import date
+    from valuation.muse import leakage_audit as la
+    asof = date(2025, 10, 31)
+    p5 = "Analysis date: 2025-10-31\n-- P1 --\n  reason 1: guidance for calendar 2026 revenue\n  reason 2: the 2027 merger closes\n"
+    fs = la.scan_prompt_text(p5, asof, "P5", pass1=True, grounding="We expect calendar 2026 revenue of $2.6 billion.")
+    by = {f.match: f.severity for f in fs if f.kind == "date_after_T"}
+    assert by == {"2026": "review", "2027": "violation"}                             # 2027 is in no filing shown: ungrounded future
+    plain = {f.match: f.severity for f in la.scan_prompt_text(p5, asof, "P5", pass1=True) if f.kind == "date_after_T"}
+    assert plain == {"2026": "review", "2027": "review"}                              # without grounding text nothing changes

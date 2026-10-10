@@ -109,7 +109,8 @@ def test_changed_templates_are_new_versions_the_others_stay_version_1():
     raw = {n: (prompting.PROMPT_DIR / f"{n}.txt").read_text(encoding="utf-8") for n in ("P1", "P2", "P3", "P4", "P5", "P6")}
     assert raw["P3"].startswith("# template P3, version 2") and raw["P4"].startswith("# template P4, version 2")
     assert raw["P5"].startswith("# template P5, version 2") and "section S or R" not in raw["P5"]
-    assert all(raw[n].startswith(f"# template {n}, version 1") for n in ("P1", "P2", "P6"))
+    assert raw["P6"].startswith("# template P6, version 2") and "a named error alone is not enough" in raw["P6"]   # Addendum AE.1
+    assert all(raw[n].startswith(f"# template {n}, version 1") for n in ("P1", "P2"))
     assert "return on invested capital five years from now" in raw["P3"] and "what one dollar of growth costs this company" not in raw["P3"]
     assert "terminal) growth rate is not an input" in raw["P4"] and "the growth it can sustain once the explicit forecast years are over" not in raw["P4"]
     assert not prompting.read_template("P3").startswith("# template")                      # the version comment is for people, not sent

@@ -5,6 +5,8 @@ THE REVISION RULE. For every input P6 answers keep or revise. A revision that ch
       in, or containing a pass-1 quote does not count as new), or
   (b) a NAMED ERROR: {"reason_index": n, "why_wrong": text} where n is the number of one of that input's pass-1 reasons and the text is at least
       NAMED_ERROR_MIN_CHARS characters.
+  Addendum AE.1: a revision that moves TOWARD the price is accepted only under (a), with the new quote from a filing section (F, Q or D); (b) alone is
+  refused for it. A revision away from the price, or a width-only change, keeps (a) or (b).
 Neither: the revision is REFUSED and the pass-1 position stands (stamped). The hard-evidence rule of pass 1 applies to the revised position (outside
 P10..P90), and also to a revised position within NEAR_EXTRAORDINARY_POINTS percentile points of an extraordinary price requirement (schema.py): the side
 relying on an extraordinary assumption carries the burden. Failures of schema, quotes or the hard-evidence rule inside the answer are check failures (one
@@ -21,8 +23,10 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 
-from .checkers import (Evidence, Issue, NAMED_ERROR_MIN_CHARS, check_citation, check_entry, entry_has_hard_evidence, hard_evidence,
+from .checkers import (Evidence, Issue, NAMED_ERROR_MIN_CHARS, base_section, check_citation, check_entry, entry_has_hard_evidence, hard_evidence,
                        normalise)
+
+FILING_SECTIONS = ("F", "Q", "D")       # Addendum AE.1: the sections a toward-price revision's new quote must come from
 from .mapping import Position
 from .schema import NEAR_EXTRAORDINARY_POINTS, PCT_MAX, PCT_MIN
 
@@ -108,6 +112,13 @@ def decide(name: str, pass1: Position, pass1_entry: Optional[Mapping], p6_entry:
     rec["named_error"] = bool(isinstance(ne, dict))
     if not rec["new_quote"] and not rec["named_error"]:
         rec["reason"] = "refused: a revision needs a quote not cited in pass 1 or a named error in a pass-1 reason; the pass-1 position stands"
+        return rec
+    # Addendum AE.1 (both reviewers of cross-checks 6 and 7): a move TOWARD the price needs a NEW QUOTE from the filings (F, Q or D); a named error alone
+    # no longer suffices, because run 1 (11 of 13) and rehearsal r2 (4 of 4) moved toward the price on named errors without new evidence.
+    rec["new_quote_from_filing"] = bool(rec["new_quote"] and base_section(nq.get("section")) in FILING_SECTIONS)
+    if rec["toward_price"] and not rec["new_quote_from_filing"]:
+        rec["reason"] = ("refused (Addendum AE.1): a revision toward the price needs a new quote from the filings (sections F, Q or D) that was not cited "
+                         "in pass 1; a named error alone is not enough; the pass-1 position stands")
         return rec
     extraordinary = bool(requirement and requirement.get("extraordinary"))
     stamps = ["revised_by_P6", "revision_evidence: " + ("new_quote" if rec["new_quote"] else "named_error")]

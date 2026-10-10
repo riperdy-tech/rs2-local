@@ -140,3 +140,21 @@ def test_the_metric_by_date():
     out = rt.anchoring_by_date([rec(True, True, True, new_quote=True, asof="2026-02-28"), rec(True, False, True, asof="2026-01-31"),
                                 rec(False, False, None, asof="2026-01-31")])
     assert list(out) == ["2026-01-31", "2026-02-28"] and out["2026-01-31"]["n_inputs"] == 2 and out["2026-02-28"]["n_accepted"] == 1
+
+
+# ---- Addendum AE.1: a move toward the price needs a new quote from the filings -----------------------------------------------------------------
+
+def test_a_named_error_alone_cannot_move_a_position_toward_the_price():
+    req = {"status": "ok", "required_percentile": 85.0, "extraordinary": False}
+    ne = {"reason_index": 1, "why_wrong": "the first reason understated the growth the price implies"}
+    d = decide(revise(70, named_error=ne), req)
+    assert d["toward_price"] is True and not d["accepted"] and d["position"] is P1 and "Addendum AE.1" in d["reason"]
+    assert decide(revise(70, new_quote=NEW), req)["accepted"]                          # a new filing quote still can
+    assert decide(revise(40, named_error=ne), req)["accepted"]                          # away from the price: the registered rule
+
+
+def test_a_toward_price_new_quote_must_come_from_a_filing_section():
+    req = {"status": "ok", "required_percentile": 85.0, "extraordinary": False}
+    s_quote = {"section": "S", "quote": "3-year compound growth +6.7%"}                  # new, but from the code-built state section
+    d = decide(revise(70, new_quote=s_quote), req)
+    assert d["new_quote"] and not d["new_quote_from_filing"] and not d["accepted"]

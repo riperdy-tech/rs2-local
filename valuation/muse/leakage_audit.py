@@ -186,7 +186,21 @@ def split_user_text(text: str):
     return out
 
 
-def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool) -> List[Finding]:
+def ground(findings: List[Finding], grounding: Optional[str]) -> List[Finding]:
+    """Addendum AE.4: a date found in MODEL text stays `review` only when the run's filing text (the pack, accepted before T) contains it; a date the
+    filings do not contain is an ungrounded statement about the future (a hallucination or a leak) and becomes a `violation`. Without grounding text
+    (an older caller) nothing changes."""
+    if grounding is None:
+        return findings
+    g = re.sub(r"\s+", " ", grounding).lower()
+    for f in findings:
+        if f.kind == "date_after_T" and re.sub(r"\s+", " ", f.match).lower() not in g:
+            f.severity = "violation"
+            f.context = "[not in the filings shown] " + f.context
+    return findings
+
+
+def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool, grounding: Optional[str] = None) -> List[Finding]:
     """A rendered user prompt. Its only date is the header line; the template text around the sections is scanned like code-built text."""
     out: List[Finding] = []
     m = HEADER_RE.search(text)
@@ -203,7 +217,7 @@ def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool) -> List[
             for line in chunk.split("\n"):
                 (echo_lines if MODEL_ECHO.match(line) else code_lines).append(line)
             out += scan_text("\n".join(code_lines), asof, f"{where} prompt text", pass1=pass1)
-            out += scan_text("\n".join(echo_lines), asof, f"{where} model text echoed", verbatim_body=True, pass1=pass1)
+            out += ground(scan_text("\n".join(echo_lines), asof, f"{where} model text echoed", verbatim_body=True, pass1=pass1), grounding)
         else:
             out += scan_section(sec, chunk, asof, where, pass1=pass1)
     return out
@@ -252,8 +266,11 @@ def audit_run_dir(run_dir) -> dict:
     asof = date.fromisoformat(manifest["asof"])
     findings: List[Finding] = []
     n_requests = 0
+    grounding = None
     if (run_dir / "pack.json").exists():
-        findings += audit_pack(json.loads((run_dir / "pack.json").read_text(encoding="utf-8")), asof)
+        pack = json.loads((run_dir / "pack.json").read_text(encoding="utf-8"))
+        findings += audit_pack(pack, asof)
+        grounding = "\n".join(v for k, v in (pack.get("sections") or {}).items() if k in ("F", "Q", "D", "S"))
     sys_msg = manifest.get("system_message", "")
     findings += scan_text(sys_msg, None, "system message", pass1=True)
     for p in sorted(run_dir.glob("*_request.json")):
@@ -264,11 +281,11 @@ def audit_run_dir(run_dir) -> dict:
         msgs = req.get("messages") or []
         for i, m in enumerate(msgs):
             if m["role"] == "user" and i == 1:
-                findings += scan_prompt_text(m["content"], asof, p.name, pass1=pass1)
+                findings += scan_prompt_text(m["content"], asof, p.name, pass1=pass1, grounding=grounding)
             elif m["role"] == "user":                                  # the retry message (checker text) and nothing else
                 findings += scan_text(m["content"], asof, f"{p.name} retry message", pass1=pass1)
             elif m["role"] == "assistant":
-                findings += scan_text(m["content"], asof, f"{p.name} earlier answer", verbatim_body=True)
+                findings += ground(scan_text(m["content"], asof, f"{p.name} earlier answer", verbatim_body=True), grounding)
     return {"run_dir": str(run_dir), "ticker": manifest.get("ticker"), "asof": manifest["asof"], "n_requests": n_requests,
             "findings": [f.as_dict() for f in findings],
             "violations": sum(1 for f in findings if f.severity == "violation"), "reviews": sum(1 for f in findings if f.severity == "review")}

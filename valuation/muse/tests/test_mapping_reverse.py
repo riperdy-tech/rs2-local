@@ -133,7 +133,7 @@ def test_financial_rote_retention_is_positioned():
 
 def test_unanchored_is_the_priors_p50_with_width_wide_stamped():
     u = mp.unanchored("checks failed twice", "P2")
-    assert (u.percentile, u.width, u.status) == (50.0, "wide", "unanchored") and "unanchored: checks failed twice" in u.stamps[0]
+    assert (u.percentile, u.width, u.status) == (50.0, "normal", "unanchored") and "unanchored: checks failed twice" in u.stamps[0]   # Addendum AE.2: the prior itself
 
 
 # ---- the reverse valuation ----------------------------------------------------------------------------------------------------------------------

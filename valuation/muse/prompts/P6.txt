@@ -1,4 +1,4 @@
-# template P6, version 1: red team
+# template P6, version 2: red team
 {{HEADER}}
 
 TASK. You placed this company inside the population distributions of its judgment inputs without knowing the market price. The price is below, with what it requires of each input. Challenge your own placements.
@@ -13,7 +13,7 @@ YOUR PLACEMENTS AND WHAT THE PRICE REQUIRES
 WHAT TO DO, for each input
 1. State the strongest case, from the evidence, for the value the market requires ("market_case").
 2. Then keep or revise your position ("decision": "keep" or "revise").
-3. A revision needs one of two things: a quote not cited in your earlier analyses ("new_quote": {"section", "quote"}), or a named error in one of your earlier reasons ("named_error": {"reason_index": the number of the reason as listed above, "why_wrong": what was wrong with it, at least 20 characters}). A revision with neither is refused and your earlier position stands.
+3. A revision needs one of two things: a quote not cited in your earlier analyses ("new_quote": {"section", "quote"}), or a named error in one of your earlier reasons ("named_error": {"reason_index": the number of the reason as listed above, "why_wrong": what was wrong with it, at least 20 characters}). A revision with neither is refused and your earlier position stands. A revision that moves your position TOWARD the value the price requires needs a new quote from the filings (section F, Q or D) that you did not cite before; a named error alone is not enough for that direction, and such a revision is refused.
 4. When the price requires an extraordinary assumption (marked EXTRAORDINARY above), the side that relies on it carries the burden of proof. A position at or within 10 percentile points of an extraordinary requirement needs hard evidence: a citation from section D or Q whose quote holds a firm commitment (a contract, an agreement, backlog, an award, a purchase order) or a figure together with company guidance, capacity or a stated plan. A general outlook sentence is not hard evidence.
 - A revised input also gives "percentile" (5 to 95), "width" (narrow, normal or wide), "reasons" (one to six statements) and "citations" (one to six objects {"section", "quote"}, quotes copied exactly from the text below, 12 to 600 characters, no ellipsis).
 
