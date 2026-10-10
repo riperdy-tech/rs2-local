@@ -206,6 +206,18 @@ def test_only_elapsed_horizons_are_scored_and_the_outcome_file_is_written_once(t
         oe.build(FakePit([]), [job], "2026-06-30", tmp_path)
 
 
+def test_returns_are_measured_on_the_resolved_common_share_not_the_sample_ticker(monkeypatch):
+    import rebuild_harness.outcomes as oc
+    seen = []
+    monkeypatch.setattr(oc, "horizon_outcome", lambda pit, key, asof, h, *a, **k: seen.append(key) or {"status": "observed", "excess": 0.0, "ret": 0.0,
+                                                                                                        "bounds": {b: 0.0 for b in sc.BOUNDS}, "flags": []})
+    job = {"cik": "1000", "date": "2025-10-31", "ticker": "BRKRP", "family": "operating"}
+    o = oe.company_outcomes(FakePit([]), job, "2026-06-30", ticker_of=lambda j: "BRKR")
+    assert o["ticker"] == "BRKR" and o["sample_ticker"] == "BRKRP" and set(seen) == {"BRKR"}       # Addendum AD.10: the security priced at T
+    seen.clear()
+    assert oe.company_outcomes(FakePit([]), job, "2026-06-30")["ticker"] == "BRKRP" and set(seen) == {"BRKRP"}
+
+
 # ---- the integrity re-check and the loader on real mock runs ---------------------------------------------------------------------------------
 
 def run_mock(tmp_path, client=None, n=2):

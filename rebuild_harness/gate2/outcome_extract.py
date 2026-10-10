@@ -96,23 +96,27 @@ def return_outcomes(pit_data, key: Optional[str], asof: str, scoring_date: str, 
     return out
 
 
-def company_outcomes(pit_data, job: Mapping, scoring_date: str, *, tbv: Optional[float] = None) -> dict:
+def company_outcomes(pit_data, job: Mapping, scoring_date: str, *, tbv: Optional[float] = None, ticker_of=None) -> dict:
+    """`ticker_of(job)` names the security whose returns are measured: the runner's own resolver (`gate1_run._best_ticker`, the common stock by SEC order,
+    Addendum AD.10), so the outcome is the return of the very security priced at T. Without it the sample file's ticker is used (tests only): that ticker
+    can be a preferred share or a note (BRKRP for Bruker), the defect AD.10 fixed in the price."""
     cik, d = str(job["cik"]).zfill(10), job["date"]
-    return {"key": f"{d}_{cik}", "date": d, "cik": cik, "ticker": job.get("ticker"), "family": job.get("family"),
-            "quarters": quarter_outcomes(pit_data, cik, d, job.get("family"), tbv), "returns": return_outcomes(pit_data, job.get("ticker"), d, scoring_date)}
+    tk = ticker_of(job) if ticker_of is not None else job.get("ticker")
+    return {"key": f"{d}_{cik}", "date": d, "cik": cik, "ticker": tk, "sample_ticker": job.get("ticker"), "family": job.get("family"),
+            "quarters": quarter_outcomes(pit_data, cik, d, job.get("family"), tbv), "returns": return_outcomes(pit_data, tk, d, scoring_date)}
 
 
 def outcomes_path(scoring_date: str, state_dir=None) -> Path:
     return config.state_paths(state_dir)["outcomes"] / f"outcomes_{scoring_date}.jsonl"
 
 
-def build(pit_data, jobs: Sequence[Mapping], scoring_date: str, state_dir=None, tbv_of=lambda job: None, out=print) -> Path:
+def build(pit_data, jobs: Sequence[Mapping], scoring_date: str, state_dir=None, tbv_of=lambda job: None, out=print, ticker_of=None) -> Path:
     """Write outcomes_<scoring date>.jsonl for `jobs` (exclusive creation: an existing file for a scoring date is refused)."""
     p = outcomes_path(scoring_date, state_dir)
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "x", encoding="utf-8") as fh:
         for j in jobs:
-            fh.write(json.dumps(company_outcomes(pit_data, j, scoring_date, tbv=tbv_of(j)), default=str) + "\n")
+            fh.write(json.dumps(company_outcomes(pit_data, j, scoring_date, tbv=tbv_of(j), ticker_of=ticker_of), default=str) + "\n")
     return p
 
 
@@ -175,7 +179,7 @@ def main(argv=None) -> int:
             return None if pc is None else build_state(pc).get("tbv")
         except Exception:
             return None
-    p = build(pit, jobs, a.scoring_date, a.state_dir, tbv_of=tbv_of)
+    p = build(pit, jobs, a.scoring_date, a.state_dir, tbv_of=tbv_of, ticker_of=lambda j: g._best_ticker(pit, str(j["cik"]).zfill(10), j["date"])[0])
     print(f"{len(jobs)} company-dates -> {p}")
     return 0
 
