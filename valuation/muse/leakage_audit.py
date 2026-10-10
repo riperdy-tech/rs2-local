@@ -186,17 +186,21 @@ def split_user_text(text: str):
     return out
 
 
-def ground(findings: List[Finding], grounding: Optional[str]) -> List[Finding]:
-    """Addendum AE.4: a date found in MODEL text stays `review` only when the run's filing text (the pack, accepted before T) contains it; a date the
-    filings do not contain is an ungrounded statement about the future (a hallucination or a leak) and becomes a `violation`. Without grounding text
-    (an older caller) nothing changes."""
+def ground(findings: List[Finding], grounding: Optional[str], asof: Optional[date] = None) -> List[Finding]:
+    """Addendum AE.4 (as revised in AE.12): a future date found in MODEL text stays `review` only when the run's filing text (the pack, accepted before T)
+    itself refers to the same future YEAR in some date form ("2026", "fiscal 2026", "Q2 2026", "FY2026"); the model writes "FY2026" where a filing writes
+    "fiscal 2026", so an exact-string test is too literal. A future year the filings never mention is an ungrounded statement about the future (a
+    hallucination or a leak) and becomes a `violation`. Stated limit: a year the filings mention for another reason (a note due 2027) also grounds it,
+    and the finding stays a review item that the coordinator reads. Without grounding text (an older caller) nothing changes."""
     if grounding is None:
         return findings
-    g = re.sub(r"\s+", " ", grounding).lower()
+    years = {y for m, _a, _b in (dates_after(grounding, asof) if asof is not None else []) for y in re.findall(r"(?:19|20)\d{2}", m)}
+    if asof is None:
+        years = set(re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", grounding))
     for f in findings:
-        if f.kind == "date_after_T" and re.sub(r"\s+", " ", f.match).lower() not in g:
+        if f.kind == "date_after_T" and not (set(re.findall(r"(?:19|20)\d{2}", f.match)) & years):
             f.severity = "violation"
-            f.context = "[not in the filings shown] " + f.context
+            f.context = "[year not referred to in the filings shown] " + f.context
     return findings
 
 
@@ -217,7 +221,7 @@ def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool, groundin
             for line in chunk.split("\n"):
                 (echo_lines if MODEL_ECHO.match(line) else code_lines).append(line)
             out += scan_text("\n".join(code_lines), asof, f"{where} prompt text", pass1=pass1)
-            out += ground(scan_text("\n".join(echo_lines), asof, f"{where} model text echoed", verbatim_body=True, pass1=pass1), grounding)
+            out += ground(scan_text("\n".join(echo_lines), asof, f"{where} model text echoed", verbatim_body=True, pass1=pass1), grounding, asof)
         else:
             out += scan_section(sec, chunk, asof, where, pass1=pass1)
     return out
@@ -285,7 +289,7 @@ def audit_run_dir(run_dir) -> dict:
             elif m["role"] == "user":                                  # the retry message (checker text) and nothing else
                 findings += scan_text(m["content"], asof, f"{p.name} retry message", pass1=pass1)
             elif m["role"] == "assistant":
-                findings += ground(scan_text(m["content"], asof, f"{p.name} earlier answer", verbatim_body=True), grounding)
+                findings += ground(scan_text(m["content"], asof, f"{p.name} earlier answer", verbatim_body=True), grounding, asof)
     return {"run_dir": str(run_dir), "ticker": manifest.get("ticker"), "asof": manifest["asof"], "n_requests": n_requests,
             "findings": [f.as_dict() for f in findings],
             "violations": sum(1 for f in findings if f.severity == "violation"), "reviews": sum(1 for f in findings if f.severity == "review")}
