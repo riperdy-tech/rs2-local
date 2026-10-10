@@ -57,6 +57,13 @@ FORBIDDEN_PASS1 = [re.compile(p, re.I) for p in (
 
 HEADER_RE = re.compile(r"^Analysis date: (\d{4}-\d{2}-\d{2})$", re.M)
 
+# Addendum AD.10 (operator ruling 2026-10-10): text the MODEL wrote in pass 1, echoed into the P5 and P6 prompts (prompting.format_pass1 / review_block), is a
+# REVIEW item, not a violation. The model's knowledge ends about August 2025, before every replay date, so its words cannot carry information from after T; its
+# dates and words come from the filings it was shown (company guidance such as "calendar 2026 revenue", "pricing power"). Code-built lines stay violations.
+MODEL_ECHO = re.compile(r"^(\s+reason \d+: |\s+cited \[[^\]]*\]: |bull_case: |bear_case: |character of today's level: |risk \d+ \(moves )")
+D_FILED = re.compile(r"\bfiled (\d{4}-\d{2}-\d{2})\b")
+ACCEPTED_IDENTITY = {"name_source": ("as_of_T",), "ticker_source": ("as_of_T", "verified_in_filing", "withheld"), "industry_source": ("as_of_T",)}
+
 
 @dataclass
 class Finding:
@@ -156,7 +163,14 @@ def scan_section(name: str, text: str, asof: date, where: str, *, pass1: bool = 
     body: List[str] = []
     for line in text.split("\n"):
         if re.match(r"^\[D\d+\] ", line):
-            out += scan_text(line, asof, f"{where} section D header", pass1=pass1)
+            found = scan_text(line, asof, f"{where} section D header", pass1=pass1)
+            m = D_FILED.search(line)
+            if m is not None and m.group(1) < asof.isoformat():
+                # Addendum AD.10: a fiscal-period label ("Q2 2026", "FY2026") in the header of a document filed before T is the filer's own period name: review
+                for f in found:
+                    if f.kind == "date_after_T" and not ISO.fullmatch(f.match):
+                        f.severity = "review"
+            out += found
         else:
             body.append(line)
     out += scan_text("\n".join(body), asof, f"{where} section D body", verbatim_body=True, pass1=pass1)
@@ -185,7 +199,11 @@ def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool) -> List[
     for sec, chunk in split_user_text(text):
         if sec is None:
             chunk = HEADER_RE.sub("", chunk, count=1)
-            out += scan_text(chunk, asof, f"{where} prompt text", pass1=pass1)
+            code_lines, echo_lines = [], []
+            for line in chunk.split("\n"):
+                (echo_lines if MODEL_ECHO.match(line) else code_lines).append(line)
+            out += scan_text("\n".join(code_lines), asof, f"{where} prompt text", pass1=pass1)
+            out += scan_text("\n".join(echo_lines), asof, f"{where} model text echoed", verbatim_body=True, pass1=pass1)
         else:
             out += scan_section(sec, chunk, asof, where, pass1=pass1)
     return out
@@ -215,7 +233,7 @@ def audit_pack(pack: dict, asof: date, where: str = "pack") -> List[Finding]:
         out += scan_section("R", text, asof, f"{where} {name}", pass1=True)
     idn = (pack.get("manifest") or {}).get("identity") or {}
     for k in ("name_source", "ticker_source", "industry_source"):
-        if idn.get(k) != "as_of_T":
+        if idn.get(k) not in ACCEPTED_IDENTITY[k]:
             out.append(Finding(f"{where} manifest", "identity", "violation", f"{k}={idn.get(k)}", "identity must be stamped as of T (no current names or tickers)"))
     for it in ((pack.get("manifest") or {}).get("documents") or {}).get("used") or []:
         t = pdm.parse_accepted(it.get("accepted_at")) if it.get("accepted_at") else None

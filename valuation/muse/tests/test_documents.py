@@ -233,7 +233,7 @@ def test_a_20f_with_headings_in_table_rows():
 
 def test_the_pack_v2_template_version_records_the_new_extraction():
     from valuation.muse import schema
-    assert schema.PACK_VERSION == "2.1"
+    assert schema.PACK_VERSION == "2.2"          # 2.1 Addendum H8 (extraction); 2.2 Addendum AD.10 (an unverifiable ticker is withheld)
 
 
 # ---- the real annual reports of the round-1 extraction check (skipped when the cache is absent) -------------------------------------------------------------

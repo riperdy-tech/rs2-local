@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
@@ -241,8 +242,24 @@ def build_r(name: str, dist: QuantileDist, st: dict) -> str:
 # ---- the pack ------------------------------------------------------------------------------------------------------------------------
 
 def header_text(asof, identity: Mapping, family: str) -> str:
-    return (f"Analysis date: {pdm.to_date(asof).isoformat()}\nCompany: {identity.get('name')} ({identity.get('ticker')})\n"
+    who = identity.get("name") if identity.get("ticker") is None else f"{identity.get('name')} ({identity.get('ticker')})"
+    return (f"Analysis date: {pdm.to_date(asof).isoformat()}\nCompany: {who}\n"
             f"Family: {family}\nIndustry: {identity.get('industry') or 'not classified'}")
+
+
+def ticker_as_of_t(identity: Mapping, d_text: Optional[str]) -> dict:
+    """Addendum AD.10: a ticker that is not stamped as of T is shown only when it appears in a document accepted before T (section D, whose items pass the
+    16:00 ET acceptance check); otherwise it is withheld. Today's ticker can carry a later corporate change (Ambac shown as OSG and OPENLANE as OPLN in
+    gate-2 run 1)."""
+    ident = dict(identity)
+    t = ident.get("ticker")
+    if ident.get("ticker_source") == "as_of_T" or t is None:
+        return ident
+    if d_text and re.search(r"(?<![A-Za-z])" + re.escape(str(t)) + r"(?![A-Za-z])", d_text):
+        ident["ticker_source"] = "verified_in_filing"
+    else:
+        ident["ticker"], ident["ticker_source"], ident["ticker_withheld"] = None, "withheld", t
+    return ident
 
 
 def build_pack(pit: CompanyPIT, family: str, identity: Mapping, prior_set: PriorSet, *, state: Optional[dict] = None,
@@ -264,8 +281,6 @@ def build_pack(pit: CompanyPIT, family: str, identity: Mapping, prior_set: Prior
         stamps.append("SIC is the current SEC assignment, not the one filed at T (industry label is today's)")
     if str(identity.get("name_source")) != "as_of_T":
         stamps.append(f"company name is not stamped as of T (source: {identity.get('name_source')})")
-    if str(identity.get("ticker_source")) != "as_of_T":
-        stamps.append(f"ticker is not stamped as of T (source: {identity.get('ticker_source')})")
     # Q
     q_rows = quarters.quarters(cik or pit.cik, pit.asof) if quarters is not None else []
     q_text, q_kept, q_dropped = build_q(q_rows, pit.asof, unit, ccy) if q_rows else (None, [], [])
@@ -284,6 +299,10 @@ def build_pack(pit: CompanyPIT, family: str, identity: Mapping, prior_set: Prior
                        "dropped_after_cutoff": [i.as_manifest() for i in d_dropped], "notes": list(d_notes)}
     if d_text is None:
         stamps.append("section D absent: " + ("no document source" if documents is None else "no document accepted before the cutoff"))
+    identity = ticker_as_of_t(identity, d_text)                      # Addendum AD.10: shown only when a document accepted before T names it
+    mf["identity"] = dict(identity)
+    if identity.get("ticker_source") == "withheld":
+        stamps.append(f"ticker withheld: {identity.get('ticker_withheld')} is not found in any document accepted before T")
     sections["S"] = build_s(st, family, unit)
     # R
     r: Dict[str, str] = {}

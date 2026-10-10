@@ -202,12 +202,44 @@ def _init(cfg):
         gate1.INVALID_DRAW_MAX = cfg["invalid_draw_max"]      # a DIAGNOSTIC variant only (never the registered rule 0.05): see --invalid-draw-max
 
 
+# SEC's company_tickers_exchange.json (downloaded 2026-10-10, sha256 33b39989...): each company's listed securities in SEC's order, the common stock first
+# (CMCSA before the CCZ notes, HBAN before its HBANL..HBANZ preferreds, BRKR before the BRKRP preferred).  SPEC_rebuild Addendum AD.10.
+SEC_TICKERS = Path(os.environ.get("SEC_TICKERS_FILE") or (WORKSPACE / "data" / "sec_bulk" / "company_tickers_2026-10-10" / "company_tickers_exchange.json"))
+_SEC_ORDER = None
+
+
+def sec_ticker_order(cik) -> list:
+    """The company's tickers in SEC's order ([] when the file or the company is absent)."""
+    global _SEC_ORDER
+    if _SEC_ORDER is None:
+        _SEC_ORDER = {}
+        if SEC_TICKERS.exists():
+            d = json.loads(SEC_TICKERS.read_text(encoding="utf-8"))
+            i_c, i_t = d["fields"].index("cik"), d["fields"].index("ticker")
+            for row in d["data"]:
+                _SEC_ORDER.setdefault(str(row[i_c]).zfill(10), []).append(row[i_t])
+    return _SEC_ORDER.get(str(cik).zfill(10), [])
+
+
 def _best_ticker(pit, cik, d):
-    """Of a company's tickers (share classes), the one with the largest market cap on the date (any with a price when none has a determinable cap)."""
+    """The company's COMMON stock: the first of its tickers in SEC's order that is among its candidates and has a price on the date (Addendum AD.10).
+
+    Before AD.10 this took the ticker with the largest market cap, but the cap was every ticker's price times the COMMON share count, so a high-priced preferred or
+    note (BRKRP at $316.25 for Bruker: a $48B "cap") won.  When SEC lists none of the candidates, the old rule applies and the choice is flagged
+    `ticker_not_in_sec_list_or_unpriced`."""
     cands = pit.tickers_for(cik) or [None]
-    mcs = [(t, pit.market_cap(cik, d, t)) for t in cands]
-    mcs.sort(key=lambda x: (x[1]["market_cap"] is not None, x[1]["market_cap"] or 0.0, x[1]["price"] is not None), reverse=True)
-    return mcs[0][0], mcs[0][1], len(cands) - 1
+    mcs = {t: pit.market_cap(cik, d, t) for t in cands}
+    for t in sec_ticker_order(cik):
+        if t in mcs and mcs[t]["price"] is not None:
+            mc = dict(mcs[t])
+            if len(cands) > 1:
+                mc["flags"] = list(mc.get("flags") or []) + [f"ticker_common_by_sec_order: {t} of {sorted(c for c in cands if c)}"]
+            return t, mc, len(cands) - 1
+    order = sorted(mcs.items(), key=lambda x: (x[1]["market_cap"] is not None, x[1]["market_cap"] or 0.0, x[1]["price"] is not None), reverse=True)
+    mc = dict(order[0][1])
+    if len(cands) > 1:
+        mc["flags"] = list(mc.get("flags") or []) + ["ticker_not_in_sec_list_or_unpriced: no SEC-listed common ticker with a price; largest price x common shares among the candidates"]
+    return order[0][0], mc, len(cands) - 1
 
 
 def months_after(d, h):

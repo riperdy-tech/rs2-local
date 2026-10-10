@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 
 # The pack v2 template version (recorded in every pack manifest; not the production PACK_REVISION).  2.1 (Addendum H8): section D's Item 1 / Item 7 text is found
 # in filings whose headings are table rows, one-row tables, wrapped over several lines, or "Items 1 and 2": what the model is shown changes, so the version does.
-PACK_VERSION = "2.1"
+PACK_VERSION = "2.2"   # 2.2 (Addendum AD.10): a ticker not found in a document accepted before T is withheld from the header
 
 WIDTHS = ("narrow", "normal", "wide")
 # SPEC_muse_passes section 2: the prior's own spread scaled by width. Stated convention until the replay calibrates it.

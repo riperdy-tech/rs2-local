@@ -212,3 +212,39 @@ def test_the_runner_sends_and_saves_response_format_on_both_attempts(tmp_path):
     r2 = MuseRunner(Seq('{"a": 1}'), tmp_path / "b")
     r2.call("Y", "hi", lambda o: [])
     assert "response_format" not in r2.client.requests[0]                               # absent unless given
+
+
+# ---- Addendum AD.10: the ticker as of T, and the audit's review classes -----------------------------------------------------------------------
+
+def test_a_ticker_is_shown_only_when_a_document_accepted_before_t_names_it():
+    from valuation.muse.pack_v2 import header_text, ticker_as_of_t
+    base = {"name": "AMBAC FINANCIAL GROUP INC", "ticker": "OSG", "ticker_source": "current_record"}
+    doc = "[D1] Annual report\nAmbac (NYSE: AMBC) provides financial guarantees."
+    w = ticker_as_of_t(base, doc)
+    assert w["ticker"] is None and w["ticker_source"] == "withheld" and w["ticker_withheld"] == "OSG"
+    h = header_text("2025-10-31", w, "financial")
+    assert "Company: AMBAC FINANCIAL GROUP INC\n" in h and "OSG" not in h
+    v = ticker_as_of_t(dict(base, ticker="AMBC"), doc)
+    assert v["ticker"] == "AMBC" and v["ticker_source"] == "verified_in_filing"
+    assert ticker_as_of_t(dict(base, ticker="AMB"), doc)["ticker_source"] == "withheld"                         # whole-word match only
+    assert ticker_as_of_t(dict(base, ticker_source="as_of_T"), None)["ticker"] == "OSG"                         # an as-of-T stamp is kept
+
+
+def test_the_audit_reviews_model_text_and_fiscal_labels_but_keeps_code_text_strict():
+    from datetime import date
+    from valuation.muse import leakage_audit as la
+    asof = date(2025, 10, 31)
+    p5 = ("Analysis date: 2025-10-31\n-- P1 --\ng1: position P70, width normal\n  reason 1: Company is guiding calendar 2026 revenue with pricing power\n"
+          '  cited [D2]: "we expect 2026 revenue of $2.6 billion"\nThe outlook for 2027 is code-built text.\n')
+    fs = la.scan_prompt_text(p5, asof, "P5", pass1=True)
+    assert [f.match for f in fs if f.severity == "violation"] == ["2027"]                                       # only the code-built line
+    assert {f.match for f in fs if f.severity == "review"} >= {"2026", "pricing"}
+    hdr = la.scan_section("D", "[D1] 8-K Item 2.02 earnings release, filed 2025-09-03, Q2 2026\nbody", asof, "pack")
+    assert hdr and all(f.severity == "review" for f in hdr if f.kind == "date_after_T")
+    late = la.scan_section("D", "[D1] 8-K Item 2.02 earnings release, filed 2025-11-03, Q2 2026\nbody", asof, "pack")
+    assert any(f.severity == "violation" for f in late)                                                         # filed after T: still a violation
+    pk = {"header": "Analysis date: 2025-10-31\nCompany: X", "sections": {}, "r": {},
+          "manifest": {"identity": {"name_source": "as_of_T", "ticker_source": "withheld", "industry_source": "as_of_T"}}}
+    assert not [f for f in la.audit_pack(pk, asof) if f.kind == "identity"]
+    pk["manifest"]["identity"]["ticker_source"] = "current_record"
+    assert [f for f in la.audit_pack(pk, asof) if f.kind == "identity"]

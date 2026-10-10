@@ -372,6 +372,8 @@ class RealEnv:
             key, mc, _dup = g._best_ticker(pit, cik, d)
             if mc["price"] is None or mc["market_cap"] is None:
                 return Refusal("refused", ["no_price_or_market_cap: " + str(mc["reason"])])
+            if mc["market_cap"] < config.MCAP_FLOOR:                      # Addendum AD.10: the common share's cap; a sample entry drawn on a preferred's cap may fall below
+                return Refusal("refused", [f"below_mcap_floor_on_the_common_share: {mc['market_cap']:,.0f} < {config.MCAP_FLOOR:,.0f} ({key})"], list(mc.get("flags") or []))
             ar = pit_adapter.adapt(pit, cik, d, ticker=key)
             if not ar.ok:
                 return Refusal("refused", list(ar.refusals), list(ar.stamps))
