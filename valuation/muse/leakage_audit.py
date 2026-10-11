@@ -198,10 +198,34 @@ def ground(findings: List[Finding], grounding: Optional[str], asof: Optional[dat
     if asof is None:
         years = set(re.findall(r"(?<!\d)(?:19|20)\d{2}(?!\d)", grounding))
     for f in findings:
-        if f.kind == "date_after_T" and not (set(re.findall(r"(?:19|20)\d{2}", f.match)) & years):
-            f.severity = "violation"
-            f.context = "[year not referred to in the filings shown] " + f.context
+        ys = set(re.findall(r"(?:19|20)\d{2}", f.match))
+        if f.kind != "date_after_T" or (ys & years):
+            continue
+        # Addendum AJ (operator 2026-10-11): naming the year being forecast (year(T) + 1, "into 2026") is forward reasoning, not information from after T
+        # (the model's knowledge ends before every replay date): a review item. Any other ungrounded future year is a review item the coordinator MUST read
+        # before scoring (kind `date_beyond_forecast_year`); it counts against G5 only if it ties a value to a period ending after T (recorded judgement).
+        if asof is not None and ys and all(int(y) == asof.year + 1 for y in ys):
+            f.severity = "review"
+            f.context = "[the forecast year, not in the filings shown] " + f.context
+        else:
+            f.severity = "review"
+            f.kind = "date_beyond_forecast_year"
+            f.context = "[READ BEFORE SCORING: a future year beyond the forecast year, not in the filings shown] " + f.context
     return findings
+
+
+RETRY_QUOTE = re.compile(r"the quote '(.+?)' was", re.S)
+
+
+def scan_retry_message(text: str, asof: date, where: str, *, pass1: bool, grounding: Optional[str]) -> List[Finding]:
+    """Addendum AJ: a retry message is checker text plus the model's OWN failed quotes, which the checker echoes back ("the quote '...' was not found
+    verbatim"). The echoed quote is model text (review, grounded as model text); the rest stays code-built text (strict)."""
+    quotes = [m.group(1) for m in RETRY_QUOTE.finditer(text)]
+    code = RETRY_QUOTE.sub("the quote '' was", text)
+    out = scan_text(code, asof, f"{where} retry message", pass1=pass1)
+    if quotes:
+        out += ground(scan_text("\n".join(quotes), asof, f"{where} retry message (model quote echoed)", verbatim_body=True, pass1=pass1), grounding, asof)
+    return out
 
 
 def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool, grounding: Optional[str] = None) -> List[Finding]:
@@ -287,7 +311,7 @@ def audit_run_dir(run_dir) -> dict:
             if m["role"] == "user" and i == 1:
                 findings += scan_prompt_text(m["content"], asof, p.name, pass1=pass1, grounding=grounding)
             elif m["role"] == "user":                                  # the retry message (checker text) and nothing else
-                findings += scan_text(m["content"], asof, f"{p.name} retry message", pass1=pass1)
+                findings += scan_retry_message(m["content"], asof, p.name, pass1=pass1, grounding=grounding)
             elif m["role"] == "assistant":
                 findings += ground(scan_text(m["content"], asof, f"{p.name} earlier answer", verbatim_body=True), grounding, asof)
     return {"run_dir": str(run_dir), "ticker": manifest.get("ticker"), "asof": manifest["asof"], "n_requests": n_requests,

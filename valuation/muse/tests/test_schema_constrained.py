@@ -256,7 +256,22 @@ def test_a_date_in_model_text_must_be_grounded_in_the_filings_addendum_ae4():
     asof = date(2025, 10, 31)
     p5 = "Analysis date: 2025-10-31\n-- P1 --\n  reason 1: guidance for calendar 2026 revenue\n  reason 2: the 2027 merger closes\n"
     fs = la.scan_prompt_text(p5, asof, "P5", pass1=True, grounding="We expect calendar 2026 revenue of $2.6 billion.")
-    by = {f.match: f.severity for f in fs if f.kind == "date_after_T"}
-    assert by == {"2026": "review", "2027": "violation"}                             # 2027 is in no filing shown: ungrounded future
+    by = {f.match: (f.kind, f.severity) for f in fs if f.kind in ("date_after_T", "date_beyond_forecast_year")}
+    # Addendum AJ: 2027 is in no filing shown and is beyond the forecast year: a review item the coordinator must read before scoring, not a violation
+    assert by == {"2026": ("date_after_T", "review"), "2027": ("date_beyond_forecast_year", "review")}
     plain = {f.match: f.severity for f in la.scan_prompt_text(p5, asof, "P5", pass1=True) if f.kind == "date_after_T"}
     assert plain == {"2026": "review", "2027": "review"}                              # without grounding text nothing changes
+
+
+def test_addendum_aj_the_forecast_year_is_review_and_a_retry_message_echoing_the_models_quote_is_model_text():
+    from datetime import date
+    from valuation.muse import leakage_audit as la
+    asof = date(2025, 10, 31)
+    p5 = "Analysis date: 2025-10-31\n-- P1 --\n  reason 1: headwinds may persist into 2026\n"
+    fs = [f for f in la.scan_prompt_text(p5, asof, "P5", pass1=True, grounding="Revenue fell in 2024.") if f.match == "2026"]
+    assert [(f.kind, f.severity) for f in fs] == [("date_after_T", "review")] and fs[0].context.startswith("[the forecast year")
+    retry = "Your answer failed: citation 2: the quote 'targeted pricing into FY 2029 and 2026' was not found verbatim in section D2."
+    rf = la.scan_retry_message(retry, asof, "P2", pass1=True, grounding="Revenue fell in 2024.")
+    assert all(f.severity == "review" for f in rf) and {f.kind for f in rf} == {"date_after_T", "date_beyond_forecast_year", "forbidden_pass1"}
+    code = la.scan_retry_message("Fix the answer for 2026 by the price.", asof, "P2", pass1=True, grounding="")
+    assert {(f.kind, f.severity) for f in code} == {("date_after_T", "violation"), ("forbidden_pass1", "violation")}   # code-built text stays strict
