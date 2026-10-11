@@ -242,8 +242,14 @@ def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool, groundin
         if sec is None:
             chunk = HEADER_RE.sub("", chunk, count=1)
             code_lines, echo_lines = [], []
+            open_quote = False                         # Addendum AJ.4: a multi-line quote echoed after "cited [Dn]:" continues on the next lines until it closes
             for line in chunk.split("\n"):
-                (echo_lines if MODEL_ECHO.match(line) else code_lines).append(line)
+                if MODEL_ECHO.match(line) or open_quote:
+                    echo_lines.append(line)
+                    if line.count('"') % 2 == 1:
+                        open_quote = not open_quote
+                else:
+                    code_lines.append(line)
             out += scan_text("\n".join(code_lines), asof, f"{where} prompt text", pass1=pass1)
             out += ground(scan_text("\n".join(echo_lines), asof, f"{where} model text echoed", verbatim_body=True, pass1=pass1), grounding, asof)
         else:

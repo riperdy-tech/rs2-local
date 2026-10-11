@@ -275,3 +275,13 @@ def test_addendum_aj_the_forecast_year_is_review_and_a_retry_message_echoing_the
     assert all(f.severity == "review" for f in rf) and {f.kind for f in rf} == {"date_after_T", "date_beyond_forecast_year", "forbidden_pass1"}
     code = la.scan_retry_message("Fix the answer for 2026 by the price.", asof, "P2", pass1=True, grounding="")
     assert {(f.kind, f.severity) for f in code} == {("date_after_T", "violation"), ("forbidden_pass1", "violation")}   # code-built text stays strict
+
+
+def test_addendum_aj4_a_multiline_quote_echoed_in_model_text_stays_model_text_until_it_closes():
+    from datetime import date
+    from valuation.muse import leakage_audit as la
+    asof = date(2026, 2, 27)
+    p5 = ('Analysis date: 2026-02-27\n-- P1 --\n  cited [D4]: "Business Outlook:\nBased on information available as of February 9, 2026, the company guides.\n'
+          'More guidance text."\nThe analysis date is known at that time.\n')
+    fs = la.scan_prompt_text(p5, asof, "P5", pass1=True, grounding="Based on information available as of February 9, 2026")
+    assert {(f.match, f.severity) for f in fs if f.kind == "wording"} == {("available as of", "review"), ("at that time", "violation"), ("known at that", "violation")}
