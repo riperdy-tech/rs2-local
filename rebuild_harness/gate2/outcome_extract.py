@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
 
@@ -77,6 +77,39 @@ def quarter_outcomes(pit_data, cik: str, asof: str, family: str, tbv: Optional[f
     return out
 
 
+def annual_outcomes(pit_at, build, cik: str, asof: str, scoring_date: str) -> dict:
+    """The FISCAL-YEAR-1 outcome (REGISTRATION_gate2b section 3; Addendum AH, the approved C1 fix): year 1 is the fiscal year after the base year known at T, the
+    quantity the engines forecast.  `pit_at(cik, d)` is the engines' CompanyPIT (first-filed values from annual reports filed strictly before d); `build` is
+    `build_state`.  The base figures are those of `build(pit_at(cik, T))`, the very `base_year` the arms are measured from; the year-1 figures are those of
+    `build` as of the day after the year-1 annual report was first filed, so no later restatement enters.  A year 1 not filed before the scoring date, or a
+    fiscal-year change (year-1 period end not 300-400 days after the base period's), has no outcome and says why."""
+    p0 = pit_at(cik, asof)
+    s0 = build(p0) if p0 is not None else {}
+    pe0 = s0.get("base_period")
+    out = {"status": None, "base_period": pe0, "year1_period": None, "year1_filed": None, "revenue_growth": None, "operating_margin_change": None,
+           "rote_change": None}
+    if pe0 is None:
+        return dict(out, status="no_base_year_at_T")
+    pl = pit_at(cik, scoring_date)
+    later = [a for a in (pl.annual_reports if pl is not None else []) if str(a[0]) > str(pe0)]
+    if not later:
+        return dict(out, status="year1_not_filed_by_scoring_date")
+    pe1 = min(str(a[0]) for a in later)
+    f1 = min(str(a[1])[:10] for a in later if str(a[0]) == pe1)
+    out.update(year1_period=pe1, year1_filed=f1)
+    if not 300 <= _days(pe0, pe1) <= 400:
+        return dict(out, status="fiscal_year_change")
+    p1 = pit_at(cik, (date.fromisoformat(f1) + timedelta(days=1)).isoformat())
+    s1 = build(p1) if p1 is not None else {}
+    if s1.get("base_period") != pe1:
+        return dict(out, status="year1_state_mismatch")
+    r0, r1 = s0.get("revenue"), s1.get("revenue")
+    m0, m1 = s0.get("op_margin"), s1.get("op_margin")
+    q0, q1 = s0.get("rote_latest"), s1.get("rote_latest")
+    return dict(out, status="ok", revenue_growth=(r1 / r0 - 1.0) if (_num(r0) and _num(r1) and r0 > 0) else None,
+                operating_margin_change=(m1 - m0) if (_num(m0) and _num(m1)) else None, rote_change=(q1 - q0) if (_num(q0) and _num(q1)) else None)
+
+
 def months_after(d: str, h: int) -> date:
     y, m = divmod(date.fromisoformat(d).month - 1 + h, 12)
     return date(date.fromisoformat(d).year + y, m + 1, 1)
@@ -96,27 +129,33 @@ def return_outcomes(pit_data, key: Optional[str], asof: str, scoring_date: str, 
     return out
 
 
-def company_outcomes(pit_data, job: Mapping, scoring_date: str, *, tbv: Optional[float] = None, ticker_of=None) -> dict:
+def company_outcomes(pit_data, job: Mapping, scoring_date: str, *, tbv: Optional[float] = None, ticker_of=None, annual_of=None) -> dict:
     """`ticker_of(job)` names the security whose returns are measured: the runner's own resolver (`gate1_run._best_ticker`, the common stock by SEC order,
     Addendum AD.10), so the outcome is the return of the very security priced at T. Without it the sample file's ticker is used (tests only): that ticker
     can be a preferred share or a note (BRKRP for Bruker), the defect AD.10 fixed in the price."""
     cik, d = str(job["cik"]).zfill(10), job["date"]
     tk = ticker_of(job) if ticker_of is not None else job.get("ticker")
-    return {"key": f"{d}_{cik}", "date": d, "cik": cik, "ticker": tk, "sample_ticker": job.get("ticker"), "family": job.get("family"),
-            "quarters": quarter_outcomes(pit_data, cik, d, job.get("family"), tbv), "returns": return_outcomes(pit_data, tk, d, scoring_date)}
+    out = {"key": f"{d}_{cik}", "date": d, "cik": cik, "ticker": tk, "sample_ticker": job.get("ticker"), "family": job.get("family"),
+           "quarters": quarter_outcomes(pit_data, cik, d, job.get("family"), tbv), "returns": return_outcomes(pit_data, tk, d, scoring_date)}
+    if annual_of is not None:
+        try:
+            out["annual"] = annual_of(job)
+        except Exception as e:                                         # recorded as itself, never a fabricated outcome
+            out["annual"] = {"status": f"error: {type(e).__name__}: {str(e)[:120]}"}
+    return out
 
 
 def outcomes_path(scoring_date: str, state_dir=None) -> Path:
     return config.state_paths(state_dir)["outcomes"] / f"outcomes_{scoring_date}.jsonl"
 
 
-def build(pit_data, jobs: Sequence[Mapping], scoring_date: str, state_dir=None, tbv_of=lambda job: None, out=print, ticker_of=None) -> Path:
+def build(pit_data, jobs: Sequence[Mapping], scoring_date: str, state_dir=None, tbv_of=lambda job: None, out=print, ticker_of=None, annual_of=None) -> Path:
     """Write outcomes_<scoring date>.jsonl for `jobs` (exclusive creation: an existing file for a scoring date is refused)."""
     p = outcomes_path(scoring_date, state_dir)
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "x", encoding="utf-8") as fh:
         for j in jobs:
-            fh.write(json.dumps(company_outcomes(pit_data, j, scoring_date, tbv=tbv_of(j), ticker_of=ticker_of), default=str) + "\n")
+            fh.write(json.dumps(company_outcomes(pit_data, j, scoring_date, tbv=tbv_of(j), ticker_of=ticker_of, annual_of=annual_of), default=str) + "\n")
     return p
 
 
@@ -179,7 +218,10 @@ def main(argv=None) -> int:
             return None if pc is None else build_state(pc).get("tbv")
         except Exception:
             return None
-    p = build(pit, jobs, a.scoring_date, a.state_dir, tbv_of=tbv_of, ticker_of=lambda j: g._best_ticker(pit, str(j["cik"]).zfill(10), j["date"])[0])
+    def annual_of(j):
+        return annual_outcomes(lambda c, d: pit.company_pit(c, d, j.get("ticker")), build_state, str(j["cik"]).zfill(10), j["date"], a.scoring_date)
+    p = build(pit, jobs, a.scoring_date, a.state_dir, tbv_of=tbv_of, ticker_of=lambda j: g._best_ticker(pit, str(j["cik"]).zfill(10), j["date"])[0],
+              annual_of=annual_of)
     print(f"{len(jobs)} company-dates -> {p}")
     return 0
 

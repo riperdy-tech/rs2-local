@@ -362,3 +362,52 @@ def test_g1_scores_the_margin_and_rote_as_year_on_year_changes_addendum_o2():
     q = oe.quarter_measures({"period_end": "2025-09-30", "filed": "2025-11-05", "values": v,
                              "prior_year": {"revenue": 100.0, "operating_income": 12.0, "net_income": 5.0}}, "financial", 100.0)
     assert q["operating_margin_change"] == pytest.approx(15 / 110 - 0.12) and q["rote_change_annualised_on_tbv_at_T"] == pytest.approx(0.04)
+
+
+# ---- Addendum AH: the fiscal-year-1 outcome ---------------------------------------------------------------------------------------------------
+
+class AnnualPit:
+    """annual_reports filed strictly before asof, as the engines' CompanyPIT holds them."""
+    def __init__(self, reports, asof):
+        self.annual_reports = [a for a in reports if a[1] < asof]
+
+
+def annual_world(reports, states):
+    """states: {base period: build_state dict}; build reads the latest report the pit holds."""
+    pit_at = lambda cik, d: AnnualPit(reports, d)
+    build = lambda p: states.get(max((a[0] for a in p.annual_reports), default=None), {})
+    return pit_at, build
+
+
+REPORTS = [("2024-12-31", "2025-02-20", "A1", "10-K"), ("2025-12-31", "2026-02-19", "A2", "10-K"), ("2025-12-31", "2026-05-01", "A3", "10-K/A")]
+STATES = {"2024-12-31": {"base_period": "2024-12-31", "revenue": 100.0, "op_margin": 0.10, "rote_latest": 0.12},
+          "2025-12-31": {"base_period": "2025-12-31", "revenue": 112.0, "op_margin": 0.10, "rote_latest": 0.0}}
+
+
+def test_the_annual_outcome_is_year_one_against_the_base_year_known_at_T_first_filed():
+    pit_at, build = annual_world(REPORTS, STATES)
+    a = oe.annual_outcomes(pit_at, build, "1", "2025-10-31", "2026-06-30")
+    assert a["status"] == "ok" and a["base_period"] == "2024-12-31" and a["year1_period"] == "2025-12-31" and a["year1_filed"] == "2026-02-19"
+    assert a["revenue_growth"] == pytest.approx(0.12) and a["operating_margin_change"] == 0.0 and a["rote_change"] == pytest.approx(-0.12)   # 0.0 is a value
+    seen = []
+    oe.annual_outcomes(lambda c, d: seen.append(d) or AnnualPit(REPORTS, d), build, "1", "2025-10-31", "2026-06-30")
+    assert "2026-02-20" in seen                                                         # the day after the first filing, before the 10-K/A
+
+
+def test_a_year_one_not_filed_or_a_fiscal_year_change_has_no_outcome_and_says_why():
+    pit_at, build = annual_world(REPORTS, STATES)
+    assert oe.annual_outcomes(pit_at, build, "1", "2025-10-31", "2026-02-01")["status"] == "year1_not_filed_by_scoring_date"
+    assert oe.annual_outcomes(pit_at, build, "1", "2025-01-15", "2026-06-30")["status"] == "no_base_year_at_T"
+    short = [REPORTS[0], ("2025-06-30", "2025-09-01", "B", "10-KT")]
+    pa, bd = annual_world(short, {"2024-12-31": STATES["2024-12-31"], "2025-06-30": {"base_period": "2025-06-30"}})
+    a = oe.annual_outcomes(pa, bd, "1", "2025-03-31", "2026-06-30")
+    assert a["status"] == "fiscal_year_change" and a["revenue_growth"] is None
+
+
+def test_company_outcomes_records_the_annual_outcome_and_an_error_as_itself():
+    job = {"cik": "1", "date": "2025-10-31", "ticker": "AAA", "family": "operating"}
+    o = oe.company_outcomes(FakePit([]), job, "2025-11-01", annual_of=lambda j: {"status": "ok", "revenue_growth": 0.1})
+    assert o["annual"]["revenue_growth"] == 0.1
+    o = oe.company_outcomes(FakePit([]), job, "2025-11-01", annual_of=lambda j: 1 / 0)
+    assert o["annual"]["status"].startswith("error: ZeroDivisionError")
+    assert "annual" not in oe.company_outcomes(FakePit([]), job, "2025-11-01")

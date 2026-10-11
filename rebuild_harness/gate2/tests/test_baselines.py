@@ -44,3 +44,39 @@ def test_build_applies_eligibility_skips_commodity_and_takes_medians_per_date_an
     c1 = rep["companies"]["2025-10-31_0000000001"]
     assert c1["n_quarters"] == 1 and c1["baselines"]["growth"]["persistence"] == pytest.approx(0.01)   # the quarter filed after T is not known at T
     assert rep["pop_median"]["2025-10-31"]["operating"]["growth"] == pytest.approx(0.02)
+
+
+# ---- Addendum AH: the annual-convention run-rate ----------------------------------------------------------------------------------------------
+
+Q4 = [row("2024-12-31", 100, 90, 10, 9, ni=3.0), row("2025-03-31", 110, 100, 12, 10, ni=3.2), row("2025-06-30", 120, 100, 15, 10, ni=3.4),
+      row("2025-09-30", 130, 110, 13, 11, ni=3.6)]
+
+
+def test_runrate_is_four_contiguous_quarters_against_the_build_state_base_year():
+    r = bl.runrate(Q4, "operating", {"op_margin": 0.10})
+    assert r["growth"] == pytest.approx(460 / 400 - 1) and r["margin"] == pytest.approx(50 / 460 - 0.10)
+    assert bl.runrate(Q4[1:], "operating", {"op_margin": 0.10}) == {"growth": None, "margin": None}                 # fewer than four
+    gap = Q4[:2] + [row("2025-09-30", 130, 110, 13, 11), row("2025-12-31", 140, 120, 14, 12)]
+    assert bl.runrate(gap, "operating", {"op_margin": 0.10})["growth"] is None                                     # a missing quarter is never bridged
+    assert bl.runrate(Q4, "operating", {})["margin"] is None and bl.runrate(Q4, "operating", None)["growth"] == pytest.approx(0.15)
+
+
+def test_runrate_rote_uses_the_same_denominator_as_rote_latest_and_zero_is_a_value():
+    st = {"base_period": "2024-12-31", "tbv_series": {"2023-12-31": 100.0, "2024-12-31": 120.0}, "rote_latest": 0.10}
+    assert bl.runrate(Q4, "financial", st) == {"margin": pytest.approx(13.2 / 110 - 0.10)}
+    zero = [dict(r, values=dict(r["values"], net_income=0.0)) for r in Q4]
+    assert bl.runrate(zero, "financial", st)["margin"] == pytest.approx(-0.10)
+    assert bl.runrate(Q4, "financial", dict(st, tbv_series={"2024-12-31": 120.0}))["margin"] == pytest.approx(13.2 / 120 - 0.10)   # first year: no average
+    assert bl.runrate(Q4, "financial", dict(st, rote_latest=None))["margin"] is None
+
+
+def test_build_records_the_runrate_and_its_population_median():
+    class Pit:
+        def quarterly_rows(self, cik, d, fields, n):
+            k = int(cik)
+            return [dict(r, values=dict(r["values"], revenue=r["values"]["revenue"] * k)) for r in Q4]
+    uni = {"2025-10-31": [{"cik": "1", "family": "operating"}, {"cik": "2", "family": "operating"}, {"cik": "3", "family": "operating"}]}
+    rep = bl.build(Pit(), uni, lambda acc, filed, d: "ok", lambda cik, d, t: {"op_margin": 0.10})
+    gs = sorted(rep["companies"][f"2025-10-31_{c:010d}"]["runrate"]["growth"] for c in (1, 2, 3))
+    assert gs == pytest.approx([460 / 400 - 1, 920 / 400 - 1, 1380 / 400 - 1])
+    assert rep["pop_median_runrate"]["2025-10-31"]["operating"]["growth"] == pytest.approx(920 / 400 - 1)

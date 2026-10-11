@@ -5,6 +5,9 @@
 R3a  FILING SKILL (primary): Muse's PRICE-BLIND pass-1 forecasts against the code, the population median and persistence, on G1's statistic (paired median of
      |A - outcome| - |B - outcome|, upper end of the one-sided 90% company-clustered bootstrap < 0), for revenue growth (operating) and the margin change (ROTE
      change for financials), q1.  "Muse adds filing skill" needs pass 1 to beat all three on a measure; the trailing-four-quarter baseline is reported (AE.3).
+     ADDENDUM AH (approved 2026-10-11, the C1 fix): the population median and persistence that C1 reads are the ANNUAL-CONVENTION run-rate arms
+     (`persist_rr`, `popmed_rr`, baselines_v2.json), so every arm forecasts the same annual quantity and shares q1's horizon mismatch; the AE.3 quarterly
+     arms are reported beside them, and every comparison is repeated on the fiscal-year-1 target ("annual") where its outcome exists.
 R3b  THE RED TEAM'S VALUE: final against pass 1 on the same statistic (AE.1: under the tightened rule the red team may revise nothing; then final = pass 1, said so).
 R3c  STRICT ANCHORING: among proposed revisions, the share moving toward the price without a new quote from a filing section (G4-strict, <= 10%); registered G4
      (a named error counts) is in scoring.py.
@@ -25,6 +28,8 @@ import numpy as np
 from . import config, scoring
 
 MEASURE_FAMILIES = {"growth": ("operating",), "margin": ("operating", "financial")}
+C1_ARMS = ("code", "persist_rr", "popmed_rr")                                 # Addendum AH: the arms the S3 branch rule C1 reads
+REPORTED_ARMS = ("persistence", "pop_median", "t4q")                           # AE.3 quarterly convention: reported, horizon-mismatched against the annual arms
 
 
 def _pass1_arm(row: Mapping) -> Optional[dict]:
@@ -38,31 +43,56 @@ def _pass1_arm(row: Mapping) -> Optional[dict]:
 
 
 def _baseline_arms(row: Mapping, base: Mapping) -> Dict[str, dict]:
-    """{"persistence", "t4q", "pop_median"}: forecasts of the target statistic itself (a change), so their base is 0."""
+    """{"persistence", "t4q", "pop_median"} (AE.3, quarterly convention) and {"persist_rr", "popmed_rr"} (Addendum AH, the annual-convention run-rate):
+    forecasts of the change itself, so their base is 0."""
     rec = (base.get("companies") or {}).get(row["key"]) or {}
     pm = ((base.get("pop_median") or {}).get(row["date"]) or {}).get(row["family"]) or {}
+    pmr = ((base.get("pop_median_runrate") or {}).get(row["date"]) or {}).get(row["family"]) or {}
+    rr = rec.get("runrate") or {}
     out = {}
-    for name in ("persistence", "t4q", "pop_median"):
+    for name in ("persistence", "t4q", "pop_median", "persist_rr", "popmed_rr"):
         arm = {"margin_base": 0.0}
         for m in ("growth", "margin"):
-            v = pm.get(m) if name == "pop_median" else ((rec.get("baselines") or {}).get(m) or {}).get(name)
+            if name == "pop_median":
+                v = pm.get(m)
+            elif name == "popmed_rr":
+                v = pmr.get(m)
+            elif name == "persist_rr":
+                v = rr.get(m)
+            else:
+                v = ((rec.get("baselines") or {}).get(m) or {}).get(name)
             arm[m] = None if v is None else {"p50": v}
         out[name] = arm
     return out
 
 
-def compare(rows: List[Mapping], outcomes: Mapping, a: str, b: str, measure: str, draws=config.BOOT_DRAWS, seed=config.BOOT_SEED) -> dict:
-    """G1's statistic for arm `a` against arm `b` (negative median d = `a` is closer), pooled and by date."""
+ANNUAL_FIELDS = {"growth": "revenue_growth", "margin": "operating_margin_change"}
+
+
+def target_value(oc: Optional[Mapping], target: str, measure: str, family: str) -> Optional[float]:
+    """The outcome of a target: "q1" (Addendum O 2, scoring._outcome_value) or "annual" (fiscal year 1, `outcome_extract.annual_outcomes`)."""
+    if target == "q1":
+        return scoring._outcome_value(oc, "q1", measure, family)
+    a = (oc or {}).get("annual") or {}
+    if a.get("status") != "ok":
+        return None
+    if measure == "margin" and family == "financial":
+        return a.get("rote_change")
+    return a.get(ANNUAL_FIELDS[measure])
+
+
+def compare(rows: List[Mapping], outcomes: Mapping, a: str, b: str, measure: str, draws=config.BOOT_DRAWS, seed=config.BOOT_SEED, target: str = "q1") -> dict:
+    """G1's statistic for arm `a` against arm `b` (negative median d = `a` is closer), pooled and by date, on `target` ("q1" or "annual")."""
     pairs = []
     for r in rows:
         if r["family"] not in MEASURE_FAMILIES[measure]:
             continue
-        y = scoring._outcome_value(outcomes.get(r["key"]), "q1", measure, r["family"])
+        y = target_value(outcomes.get(r["key"]), target, measure, r["family"])
         fa, fb = scoring._fc(r.get(a) or {}, measure), scoring._fc(r.get(b) or {}, measure)
         if y is None or fa is None or fb is None:
             continue
         pairs.append({"cik": r["cik"], "date": r["date"], "d": abs(fa - y) - abs(fb - y)})
-    res = {"a": a, "b": b, "measure": measure, "n": len(pairs)}
+    res = {"a": a, "b": b, "measure": measure, "target": target, "n": len(pairs)}
     if not pairs:
         return dict(res, median_d=None, upper90=None, a_better=None, by_date={})
     d = [p["d"] for p in pairs]
@@ -114,12 +144,14 @@ def run(state_dir, outcomes_path, baselines_path, repeat_state=None, draws=confi
     for r in rows:
         r["muse_p1"] = _pass1_arm(r)
         r.update(_baseline_arms(r, base))
-    out = {"n_rows": len(rows), "R3a": {}, "R3b": {}, "R3c": r3c(rows)}
-    for m in ("growth", "margin"):
-        cs = {b: compare(rows, outcomes, "muse_p1", b, m, draws, seed) for b in ("code", "pop_median", "persistence", "t4q")}
-        out["R3a"][m] = dict(cs, filing_skill=None if any(cs[b]["a_better"] is None for b in ("code", "pop_median", "persistence"))
-                             else all(cs[b]["a_better"] for b in ("code", "pop_median", "persistence")))
-        out["R3b"][m] = compare(rows, outcomes, "muse", "muse_p1", m, draws, seed)
+    out = {"n_rows": len(rows), "R3a": {}, "R3a_annual": {}, "R3b": {}, "R3b_annual": {}, "R3c": r3c(rows),
+           "C1_rule": "Addendum AH (approved 2026-10-11): filing skill = pass 1 beats code, persist_rr and popmed_rr on a measure, q1 target with every arm "
+                      "forecasting the annual quantity; the AE.3 quarterly-convention arms and the annual target are reported"}
+    for target, k3a, k3b in (("q1", "R3a", "R3b"), ("annual", "R3a_annual", "R3b_annual")):
+        for m in ("growth", "margin"):
+            cs = {b: compare(rows, outcomes, "muse_p1", b, m, draws, seed, target) for b in C1_ARMS + REPORTED_ARMS}
+            out[k3a][m] = dict(cs, filing_skill=None if any(cs[b]["a_better"] is None for b in C1_ARMS) else all(cs[b]["a_better"] for b in C1_ARMS))
+            out[k3b][m] = compare(rows, outcomes, "muse", "muse_p1", m, draws, seed, target)
     out["R3b"]["red_team_revised_nothing"] = all(not d.get("accepted") for r in rows for d in r["decisions"])
     if repeat_state:
         rep_rows, _s, _e = scoring.load_rows(repeat_state)
