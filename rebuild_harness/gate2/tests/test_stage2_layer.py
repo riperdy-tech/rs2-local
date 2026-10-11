@@ -45,8 +45,13 @@ def test_the_loader_scores_the_stage2_value_and_counts_what_it_leaves_out(tmp_pa
     table[drop] = {"status": "ok", "p_fail": None}                         # a company-date the preparation could not give a probability
     sl.write_pfail(table, "m", "s", tmp_path)
     rows, statuses, excl = sc.load_rows(tmp_path)
-    assert len(rows) == len(jobs) - 1 and excl["no_pair_of_arms_or_no_survival_probability"] == 1 and all(r["key"] != drop for r in rows)
-    assert all(r["p_fail"] == 0.1 and r["code"]["iv"] > 0 and r["muse"]["iv"] > 0 for r in rows)
+    # Addendum AJ.2: the row stays for the forecast bars (G1, G3, G4, G6) and is counted; only the return bar (G2) leaves it out
+    assert len(rows) == len(jobs) and excl["no_value_per_share_g2_only"] == 1
+    kept = [r for r in rows if r["key"] == drop][0]
+    assert kept["code"]["iv"] is None and kept["muse"]["iv"] is None
+    assert all(r["p_fail"] == 0.1 and r["code"]["iv"] > 0 and r["muse"]["iv"] > 0 for r in rows if r["key"] != drop)
+    obs, ex2 = sc.ic_rows(rows, {r["key"]: {"returns": {"3": {"bounds": {"excluded": 0.01}}}} for r in rows}, "3", "excluded")
+    assert drop not in {o["key"] for o in obs} and ex2["no_value_per_share"] == 1
     monkeypatch.setattr(config, "OUT_OF_SCOPE_FAMILIES", ("financial",))   # V3: a row of an out-of-scope family is never scored
     rows2, _s, excl2 = sc.load_rows(tmp_path)
     assert all(r["family"] != "financial" for r in rows2) and excl2["out_of_scope_family_v3"] >= 1

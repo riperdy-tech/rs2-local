@@ -102,9 +102,13 @@ def load_rows(state_dir=None, masked: bool = False) -> Tuple[List[dict], Counter
             continue
         pf = (pfail.get(stage2_layer.job_key(r["date"], r["cik"])) or {}).get("p_fail")
         row = row_from_run(result, job, run_dir, pf)
-        if row is None or row["code"]["iv"] is None or row["muse"]["iv"] is None:
-            excl["no_pair_of_arms_or_no_survival_probability"] += 1
+        if row is None:
+            excl["no_pair_of_arms"] += 1
             continue
+        if row["code"]["iv"] is None or row["muse"]["iv"] is None:
+            # Addendum AJ.2: no value per share (no share count, or no survival probability) removes the company-date from the RETURN bar only (G2, in
+            # ic_rows); G1, G3, G4 and G6 compare forecasts and positions, which need no share count. Counted, never silently dropped.
+            excl["no_value_per_share_g2_only"] += 1
         row["date"], row["cik"], row["family"] = r["date"], r["cik"], r.get("family") or row["family"]
         rows.append(row)
     return rows, statuses, excl
@@ -254,6 +258,8 @@ def ic_rows(rows, outcomes, horizon: str, bound: str) -> Tuple[List[dict], Count
             excl["no_return_under_this_bound_or_not_elapsed"] += 1
         elif not (isinstance(p, (int, float)) and p > 0):
             excl["no_price"] += 1
+        elif r["muse"]["iv"] is None or r["code"]["iv"] is None:
+            excl["no_value_per_share"] += 1
         else:
             out.append({"cik": r["cik"], "date": r["date"], "key": r["key"], "muse": r["muse"]["iv"] / p, "code": r["code"]["iv"] / p, "excess": ex})
     return out, excl

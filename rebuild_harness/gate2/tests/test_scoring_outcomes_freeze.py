@@ -411,3 +411,13 @@ def test_company_outcomes_records_the_annual_outcome_and_an_error_as_itself():
     o = oe.company_outcomes(FakePit([]), job, "2025-11-01", annual_of=lambda j: 1 / 0)
     assert o["annual"]["status"].startswith("error: ZeroDivisionError")
     assert "annual" not in oe.company_outcomes(FakePit([]), job, "2025-11-01")
+
+
+def test_addendum_aj3_a_failed_pass1_call_is_handled_by_the_designed_paths_and_an_unhandled_one_is_not():
+    pos = lambda **kw: {"pass1": {"positions": {n: {"status": s, "source": src} for n, (s, src) in kw.items()}}}
+    extras_only = dict(pos(g1=("anchored", "P1")), calls=[{"call": "P2", "ok": False, "issues": [{"code": "quote", "input": None}]}])
+    reanchored = dict(pos(g1=("anchored", "P5")), calls=[{"call": "P1", "ok": False, "issues": [{"code": "quote", "input": "g1"}]}])
+    unanchored = dict(pos(g1=("unanchored", "P1")), calls=[{"call": "P1", "ok": False, "issues": [{"code": "quote", "input": "g1"}]}])
+    kept_bad = dict(pos(g1=("anchored", "P1")), calls=[{"call": "P1", "ok": False, "issues": [{"code": "quote", "input": "g1"}]}])
+    assert integrity.fallback_recorded(extras_only) and integrity.fallback_recorded(reanchored) and integrity.fallback_recorded(unanchored)
+    assert not integrity.fallback_recorded(kept_bad)                         # a failed entry that still stands as the call's own position: a violation

@@ -108,7 +108,25 @@ def accepted_citations(result: dict, calls: Dict[str, dict]) -> List[dict]:
     return out
 
 
+PASS1_CALLS = ("P1", "P2", "P3", "P4")
+
+
+def _call_handled(call: dict, result: dict) -> bool:
+    """Addendum AJ.3: a failed P1..P4 call (its answer failed the checker after the retry) is handled by the pipeline's designed paths, which the run records
+    in `calls` (ok false, with its issues): an issue on no input (a supporting citation of the bull or bear case, a risk or the character) only keeps that
+    citation out of the evidence pool; an input whose entry failed is unanchored at pass 1 and stays so unless P5 re-anchors it with its own verified
+    citations (`source` P5). Either way no failed quote is accepted (the citation re-check is separate). P5 and P6 keep the stamp tests below."""
+    failed = {i.get("input") for i in call.get("issues") or [] if i.get("input")}
+    pos = (result.get("pass1") or {}).get("positions") or {}
+    return all(n in pos and (pos[n].get("status") == "unanchored" or pos[n].get("source") != call.get("call")) for n in failed)
+
+
 def fallback_recorded(result: dict) -> bool:
+    bad = [c for c in result.get("calls") or [] if not c.get("ok")]
+    if bad and all(c.get("call") in PASS1_CALLS for c in bad):
+        return all(_call_handled(c, result) for c in bad)
+    if bad and any(c.get("call") in PASS1_CALLS and not _call_handled(c, result) for c in bad):
+        return False
     for scope in ("final", "pass1"):
         for p in ((result.get(scope) or {}).get("positions") or {}).values():
             if p.get("status") == "unanchored" or any("synthesis_failed" in s or "synthesis_check_failed" in s for s in p.get("stamps", [])):
