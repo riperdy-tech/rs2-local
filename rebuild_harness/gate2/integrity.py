@@ -137,10 +137,18 @@ def fallback_recorded(result: dict) -> bool:
     return False
 
 
+def _other_part(c: dict, ev: Evidence) -> Optional[str]:
+    """The part of the cited section (D1, D2, ...) whose text holds the quote verbatim, when the cited part does not; None otherwise."""
+    sec, q = c.get("section"), checkers.normalise(c.get("quote") or "")
+    if not isinstance(sec, str) or not q or checkers.base_section(sec) == sec:
+        return None
+    return next((k for k, t in ev.parts.items() if k != sec and q in t), None)
+
+
 def verify_run_dir(run_dir) -> dict:
     run_dir = Path(run_dir)
     rp = run_dir / "result.json"
-    out = {"run_dir": str(run_dir), "status": None, "n_citations": 0, "n_citations_failed": 0, "failed": [], "n_calls": 0, "n_calls_not_ok": 0, "fallback_recorded": None,
+    out = {"run_dir": str(run_dir), "status": None, "n_citations": 0, "n_citations_failed": 0, "failed": [], "n_part_label_errors": 0, "part_label_errors": [], "n_calls": 0, "n_calls_not_ok": 0, "fallback_recorded": None,
            "json_rule_violation": False, "transport_violation": False}
     if not rp.exists():
         out["status"] = "no_result"
@@ -160,6 +168,13 @@ def verify_run_dir(run_dir) -> dict:
             continue
         issue = checkers.check_citation({"section": c["section"], "quote": c["quote"]}, ev, "verify", c["input"])
         if issue is not None:
+            other = _other_part(c, ev)
+            if other is not None:
+                # Addendum AJ.5 (operator 2026-10-12): the quote is verbatim in another part of the same section shown, before T: a PART-LABEL error, counted
+                # and reported, not a quote failure (no invented, paraphrased or post-T evidence)
+                out["n_part_label_errors"] += 1
+                out["part_label_errors"].append({**c, "found_in": other})
+                continue
             out["n_citations_failed"] += 1
             if len(out["failed"]) < 10:
                 out["failed"].append({**c, "why": issue.message[:200]})

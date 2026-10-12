@@ -421,3 +421,12 @@ def test_addendum_aj3_a_failed_pass1_call_is_handled_by_the_designed_paths_and_a
     kept_bad = dict(pos(g1=("anchored", "P1")), calls=[{"call": "P1", "ok": False, "issues": [{"code": "quote", "input": "g1"}]}])
     assert integrity.fallback_recorded(extras_only) and integrity.fallback_recorded(reanchored) and integrity.fallback_recorded(unanchored)
     assert not integrity.fallback_recorded(kept_bad)                         # a failed entry that still stands as the call's own position: a violation
+
+
+def test_addendum_aj5_a_quote_verbatim_in_another_part_is_a_part_label_error_and_a_quote_found_nowhere_still_fails():
+    from valuation.muse.checkers import Evidence
+    d = "[D1] 10-K item 1, filed 2026-02-20\nWe write insurance.\n[D3] 8-K Item 2.02 earnings release, filed 2026-02-04\nIn Personal Lines, retention is strong.\n"
+    ev = Evidence({"D": d})
+    assert integrity._other_part({"section": "D1", "quote": "In Personal Lines, retention is strong."}, ev) == "D3"
+    assert integrity._other_part({"section": "D1", "quote": "A sentence in no filing."}, ev) is None
+    assert integrity._other_part({"section": "D", "quote": "In Personal Lines, retention is strong."}, ev) is None

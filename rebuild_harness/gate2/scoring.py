@@ -399,7 +399,7 @@ def g5(state_dir=None, run_roots: Optional[Sequence[Path]] = None, audit_report:
                 runs += r["runs"]
         tmpl = [f for f in leakage_audit.audit_templates() if f.severity == "violation"]
         rep = {"runs": runs, "violations": sum(x["violations"] for x in runs) + len(tmpl), "reviews": sum(x["reviews"] for x in runs), "template_violations": len(tmpl)}
-    cit_n = cit_bad = json_viol = 0
+    cit_n = cit_bad = json_viol = part_label = 0
     failed_examples = []
     for root in roots:
         if not Path(root).exists():
@@ -410,12 +410,13 @@ def g5(state_dir=None, run_roots: Optional[Sequence[Path]] = None, audit_report:
             v = integrity.verify_run_dir(rd)
             cit_n += v["n_citations"]
             cit_bad += v["n_citations_failed"]
+            part_label += v.get("n_part_label_errors", 0)
             json_viol += 1 if v["json_rule_violation"] else 0
             if v["failed"] and len(failed_examples) < 10:
                 failed_examples.append({"run_dir": v["run_dir"], "failed": v["failed"][:3]})
     bad_status = {s: n for s, n in (statuses or {}).items() if s in ("model_unavailable", "context_overflow", "request_rejected", "error", "transport_failure")}
     ok = rep["violations"] == 0 and cit_bad == 0 and json_viol == 0 and not bad_status
-    return {"leakage_violations": rep["violations"], "leakage_reviews_for_the_coordinator": rep["reviews"], "citations_checked": cit_n, "citations_failed": cit_bad,
+    return {"leakage_violations": rep["violations"], "leakage_reviews_for_the_coordinator": rep["reviews"], "citations_checked": cit_n, "citations_failed": cit_bad, "part_label_errors_reported": part_label,
             "failed_citation_examples": failed_examples, "runs_with_unrecorded_fallback": json_viol, "company_dates_with_a_technical_final_status": bad_status, "passes": bool(ok),
             "rule": "no leakage violation; 100% of accepted citations pass the quote check; no failed call without a recorded fallback; no technical final status"}
 

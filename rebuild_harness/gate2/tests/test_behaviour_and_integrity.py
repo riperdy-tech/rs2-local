@@ -53,7 +53,8 @@ def test_integrity_accepts_the_d_part_citation_the_pipeline_accepted_and_refuses
     ok = integrity.verify_run_dir(make_run(tmp_path / "a", d_part="D2"))
     assert ok["n_citations"] == 2 and ok["n_citations_failed"] == 0
     bad = integrity.verify_run_dir(make_run(tmp_path / "b", d_part="D1"))      # the quote is in D2, not D1
-    assert bad["n_citations_failed"] == 2
+    # Addendum AJ.5 (operator 2026-10-12): verbatim in another part of the same section shown is a part-label error, reported, not a quote failure
+    assert bad["n_citations_failed"] == 0 and bad["n_part_label_errors"] == 2 and {e["found_in"] for e in bad["part_label_errors"]} == {"D2"}
 
 
 def test_behaviour_counts_a_known_run_and_the_gate_reads_it(tmp_path):
