@@ -385,7 +385,27 @@ def g6(unmasked_rows, masked_rows) -> dict:
 
 # ---- G5 -------------------------------------------------------------------------------------------------------------------------------
 
-def g5(state_dir=None, run_roots: Optional[Sequence[Path]] = None, audit_report: Optional[dict] = None, statuses: Optional[Counter] = None) -> dict:
+def reproduced_refusal_keys(state_dir, reproduced: Optional[Mapping[str, dict]]) -> Dict[str, dict]:
+    """Addendum AK.5 (operator 2026-10-13): the keys of `reproduced` whose final status in progress.jsonl is "error" with no model call, and whose evidence
+    records the corrected code's clean refusal with zero model calls. Only such keys leave the technical-status count; each stays listed in the report."""
+    if not reproduced:
+        return {}
+    latest = {}
+    p = config.state_paths(state_dir)["progress"]
+    for line in p.read_text(encoding="utf-8").splitlines():
+        r = json.loads(line)
+        if not r.get("masked"):
+            latest[r["key"]] = r
+    out = {}
+    for k, ev in reproduced.items():
+        r = latest.get(k) or {}
+        if r.get("status") == "error" and not r.get("n_calls") and ev.get("corrected_status") == "engine_refused" and ev.get("model_calls") == 0 and ev.get("commit"):
+            out[k] = dict(ev, original_reason=r.get("reason"))
+    return out
+
+
+def g5(state_dir=None, run_roots: Optional[Sequence[Path]] = None, audit_report: Optional[dict] = None, statuses: Optional[Counter] = None,
+       reproduced: Optional[Mapping[str, dict]] = None) -> dict:
     from valuation.muse import leakage_audit
     from . import integrity
     paths = config.state_paths(state_dir)
@@ -415,9 +435,14 @@ def g5(state_dir=None, run_roots: Optional[Sequence[Path]] = None, audit_report:
             if v["failed"] and len(failed_examples) < 10:
                 failed_examples.append({"run_dir": v["run_dir"], "failed": v["failed"][:3]})
     bad_status = {s: n for s, n in (statuses or {}).items() if s in ("model_unavailable", "context_overflow", "request_rejected", "error", "transport_failure")}
+    rep_ok = reproduced_refusal_keys(state_dir, reproduced)
+    if rep_ok and bad_status.get("error"):
+        bad_status["error"] -= len(rep_ok)
+        bad_status = {s: n for s, n in bad_status.items() if n > 0}
     ok = rep["violations"] == 0 and cit_bad == 0 and json_viol == 0 and not bad_status
     return {"leakage_violations": rep["violations"], "leakage_reviews_for_the_coordinator": rep["reviews"], "citations_checked": cit_n, "citations_failed": cit_bad, "part_label_errors_reported": part_label,
-            "failed_citation_examples": failed_examples, "runs_with_unrecorded_fallback": json_viol, "company_dates_with_a_technical_final_status": bad_status, "passes": bool(ok),
+            "failed_citation_examples": failed_examples, "runs_with_unrecorded_fallback": json_viol, "company_dates_with_a_technical_final_status": bad_status,
+            "pre_model_code_exceptions_reproduced_as_refusals": rep_ok, "passes": bool(ok),
             "rule": "no leakage violation; 100% of accepted citations pass the quote check; no failed call without a recorded fallback; no technical final status"}
 
 
@@ -437,12 +462,12 @@ def verdict(g1r: Mapping, g2r: Mapping, g4r: Mapping, g5r: Mapping) -> dict:
             "note": "registration section 5; real money remains the operator's decision"}
 
 
-def score(state_dir=None, outcomes_path=None, draws=config.BOOT_DRAWS, seed=config.BOOT_SEED, run_roots=None, audit_report=None) -> dict:
+def score(state_dir=None, outcomes_path=None, draws=config.BOOT_DRAWS, seed=config.BOOT_SEED, run_roots=None, audit_report=None, reproduced=None) -> dict:
     rows, statuses, excl = load_rows(state_dir, masked=False)
     outcomes = load_outcomes(outcomes_path) if outcomes_path else {}
     masked_rows, _ms, _me = load_rows(state_dir, masked=True)
     G1, G2, G3, G4 = g1(rows, outcomes, draws, seed), g2(rows, outcomes, draws, seed), g3(rows, outcomes), g4(rows)
-    G5 = g5(state_dir, run_roots, audit_report, statuses)
+    G5 = g5(state_dir, run_roots, audit_report, statuses, reproduced)
     G6 = g6(rows, masked_rows)
     return {"n_company_dates_final": sum(statuses.values()), "statuses": dict(statuses), "n_paired": len(rows), "exclusions": dict(excl), "G1": G1, "G2": G2, "G3": G3, "G4": G4, "G5": G5,
             "G6": G6, "verdict": verdict(G1, G2, G4, G5), "outcomes_file": str(outcomes_path) if outcomes_path else None}

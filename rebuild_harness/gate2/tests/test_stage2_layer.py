@@ -171,3 +171,16 @@ def test_the_probability_file_is_written_once_and_the_freeze_section_names_it(tm
     sec = freeze_content.stage2_section(tmp_path)
     assert sec["survival_pfail"]["sha256"] == sha and sec["survival_models"] is None and sec["out_of_scope_families"] == ["commodity"]
     assert set(sec["layers"]) == {"V1", "V2", "V3"}
+
+
+def test_addendum_ak5_only_an_evidenced_pre_model_error_leaves_the_technical_status_count(tmp_path):
+    import json as _json
+    from rebuild_harness.gate2 import config as _cfg, scoring as _sc
+    p = _cfg.state_paths(tmp_path)["progress"]
+    p.parent.mkdir(parents=True, exist_ok=True)
+    lines = [{"key": "2026-04-30_0000000001", "status": "error", "n_calls": 0}, {"key": "2026-04-30_0000000002", "status": "error", "n_calls": 3}]
+    p.write_text("\n".join(_json.dumps(x) for x in lines), encoding="utf-8")
+    good = {"corrected_status": "engine_refused", "model_calls": 0, "commit": "d2bacbd"}
+    ev = {"2026-04-30_0000000001": good, "2026-04-30_0000000002": good, "2026-04-30_0000000003": good}
+    assert set(_sc.reproduced_refusal_keys(tmp_path, ev)) == {"2026-04-30_0000000001"}       # an error after model calls, or an unknown key, never qualifies
+    assert _sc.reproduced_refusal_keys(tmp_path, {"2026-04-30_0000000001": dict(good, model_calls=1)}) == {}

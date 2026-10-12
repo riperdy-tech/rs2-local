@@ -43,6 +43,7 @@ import numpy as np
 from . import config
 
 INDEPENDENT = config.WORKSPACE / "scratch" / "rev23" / "gate2_audit" / "independent_g1.py"
+REPRODUCED = config.WORKSPACE / "scratch" / "rev23" / "gate2_audit" / "reproduced_refusals.json"     # Addendum AK.5: evidence-backed, each key re-verified by scoring
 MIN_COMMIT_GB = 8.0
 
 
@@ -304,7 +305,8 @@ def render(rep, diag, agree, aud, mvi, meta) -> str:
 
 def run_stages(state_dir, outcomes_path, baselines_path, repeat_state, out_dir: Path, meta: Mapping, draws: int = config.BOOT_DRAWS) -> dict:
     from . import diagnostics, scoring
-    rep = scoring.score(state_dir, outcomes_path, draws=draws)
+    reproduced = json.loads(REPRODUCED.read_text(encoding="utf-8")) if REPRODUCED.exists() else None
+    rep = scoring.score(state_dir, outcomes_path, draws=draws, reproduced=reproduced)
     diag = diagnostics.run(state_dir, outcomes_path, baselines_path, repeat_state, draws=draws)
     agree = independent_agreement(state_dir, outcomes_path, baselines_path, rep, diag)
     rows, _s, _e = scoring.load_rows(state_dir)
