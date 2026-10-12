@@ -228,3 +228,13 @@ def test_the_financial_family_is_reversed_on_its_own_inputs():
     price = value_with("financial", st, ps, disc, {n: 50 for n in pos}, {"rote_target": 0.6})
     r = reverse_valuation(ps, "financial", st, pos, disc, price, st["shares_outstanding"])
     assert r["inputs"]["rote_target"]["required_percentile"] == pytest.approx(60.0, abs=0.01)
+
+
+@pytest.mark.parametrize("family,sic", [("operating", "3674"), ("financial", "6021"), ("commodity", "1311")])
+def test_addendum_ak5_a_prior_set_without_a_growth_decay_curve_is_refused_by_the_engine_never_a_crash(family, sic):
+    from valuation.priors_interface import PriorSet
+    pit, st, ps, disc = setup(family, sic)
+    bare = PriorSet(ps.family, dict(ps.inputs), {k: v for k, v in ps.curves.items() if k != "growth_decay"}, dict(ps.refs), ps.source, ps.placeholder)
+    for positions in ({}, {"g1": Position(70.0, "normal"), "growth_persistence": Position(60.0, "normal")}):
+        res = run_engine(family, pit, MusePriors(bare, family, st, positions), disc, n_draws=100, seed=7, state=st)
+        assert res["status"] != "ok" and any("growth_decay" in str(r) for r in res.get("reasons", []))   # a named refusal, before any model call

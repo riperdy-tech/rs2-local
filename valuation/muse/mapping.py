@@ -114,10 +114,12 @@ def positioned_curves(base: PriorSet, family: str, state: dict, q_by_name: Dict[
     curves = dict(base.curves)
     stamps: List[str] = []
     nc = base.refs.get("normalization_curve")
-    horizon = len(curves["growth_decay"])
+    # Addendum AK.5: a prior set without a growth-decay curve (the priors could not measure it) is passed on unchanged, never a crash here; the engine then
+    # refuses naming what the priors do not supply (engine_operating / engine_financial `miss`), as for every other missing input
+    horizon = len(curves["growth_decay"]) if "growth_decay" in curves else None
     if family == "commodity":
         score = ((state or {}).get("cyclicality") or {}).get("score")
-        if nc is not None and score is not None:
+        if nc is not None and score is not None and horizon is not None:
             curves["margin_retention"] = nc(score, horizon)
     for name, q in q_by_name.items():
         cname = INPUTS[name]["curve"]
