@@ -228,6 +228,17 @@ def scan_retry_message(text: str, asof: date, where: str, *, pass1: bool, ground
     return out
 
 
+COMPANY_LINE = re.compile(r"^Company: (.+?)( \([A-Za-z0-9.\-]+\))?$")
+
+
+def company_name_masked(line: str) -> str:
+    """Addendum AJ.10: the company's own legal name in the pack header's identity line ("Company: <name> (<ticker>)", `pack_v2.header_text`) is a name,
+    not wording: "Consensus Cloud Solutions" is not analyst consensus. Only the name is masked; the ticker and every other code-built line stay scanned
+    (the identity itself is audited by the identity rules)."""
+    m = COMPANY_LINE.match(line)
+    return line if m is None else f"Company: <name>{m.group(2) or ''}"
+
+
 def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool, grounding: Optional[str] = None) -> List[Finding]:
     """A rendered user prompt. Its only date is the header line; the template text around the sections is scanned like code-built text."""
     out: List[Finding] = []
@@ -249,7 +260,7 @@ def scan_prompt_text(text: str, asof: date, where: str, *, pass1: bool, groundin
                     if line.count('"') % 2 == 1:
                         open_quote = not open_quote
                 else:
-                    code_lines.append(line)
+                    code_lines.append(company_name_masked(line))
             out += scan_text("\n".join(code_lines), asof, f"{where} prompt text", pass1=pass1)
             out += ground(scan_text("\n".join(echo_lines), asof, f"{where} model text echoed", verbatim_body=True, pass1=pass1), grounding, asof)
         else:

@@ -285,3 +285,13 @@ def test_addendum_aj4_a_multiline_quote_echoed_in_model_text_stays_model_text_un
           'More guidance text."\nThe analysis date is known at that time.\n')
     fs = la.scan_prompt_text(p5, asof, "P5", pass1=True, grounding="Based on information available as of February 9, 2026")
     assert {(f.match, f.severity) for f in fs if f.kind == "wording"} == {("available as of", "review"), ("at that time", "violation"), ("known at that", "violation")}
+
+
+def test_addendum_aj10_the_companys_own_name_in_the_header_is_a_name_not_forbidden_wording():
+    from datetime import date
+    from valuation.muse import leakage_audit as la
+    asof = date(2026, 4, 30)
+    p1 = "Analysis date: 2026-04-30\nCompany: Consensus Cloud Solutions, Inc. (CCSI)\nFamily: operating\nThe consensus price target is high.\n"
+    fs = [(f.match, f.severity) for f in la.scan_prompt_text(p1, asof, "P1", pass1=True) if f.kind == "forbidden_pass1"]
+    assert ("consensus", "violation") in fs and ("Consensus", "violation") not in fs          # the name is exempt; wording elsewhere still fails
+    assert la.company_name_masked("Company: Price Group (PRG)") == "Company: <name> (PRG)" and la.company_name_masked("Family: price") == "Family: price"
