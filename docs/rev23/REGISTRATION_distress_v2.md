@@ -58,15 +58,38 @@ D5 requires that the least-solvent tercile does not invert and that the default 
 
 **A candidate qualifies when all three hold:**
 1. AUC ≥ C0's + 0.05, pooled, and ≥ C0's in at least 70% of the evaluable years (a year is evaluable when its training window holds at least 30 resolved events);
-2. Brier ≤ C0's, the paired difference's one-sided 90% bootstrap upper bound (resampling years) < 0;
+2. Brier ≤ C0's, the paired difference's one-sided 90% upper bound < 0, by the two-way bootstrap below;
 3. calibration slope within 0.8–1.2 and intercept within ±0.3.
 
 **The selected candidate:**
 - **Complexity order,** by feature count: C2 < C1 < C3. C2 replaces one of C0's six features; C1 adds about sixteen.
 - **Start with the simplest qualifying candidate.** A more complex qualifying candidate replaces it only if their paired Brier difference
-  has a one-sided 90% bootstrap upper bound < 0 (resampling years, 2,000 resamples, seed 20261013). The comparison is made in the order
+  has a one-sided 90% upper bound < 0 by the two-way bootstrap below. The comparison is made in the order
   above. A small pooled difference never decides it.
 - If none qualifies, C0 stays and the result is reported.
+
+### 4a. The bootstrap, for development and fresh dates alike (AK.21)
+
+Observations share two kinds of dependence:
+- **within a company:** the same company appears at many origins, and its one exit is the label of up to 4 quarterly (development) or
+  12 monthly (fresh) origins;
+- **within a period:** common shocks hit many companies at once, and 12-month outcome windows of neighbouring origins overlap.
+
+A bootstrap over periods alone, or companies alone, keeps one and breaks the other, so its intervals are too narrow. Every interval in
+this registration is therefore a **two-way (pigeonhole) bootstrap** (Owen 2007):
+- **Each resample:** draw companies with replacement and, independently, **12-month blocks of origins** (origin years) with replacement.
+- **Each observation's weight:** (times its company was drawn) × (times its origin block was drawn).
+- **The statistic** (AUC, Brier, their paired differences with C0, the calibration measures, the tercile spreads) is computed on the
+  weighted sample.
+- **The settings:** 2,000 resamples, seed 20261013.
+- **Pairing:** C0 and the candidate are always evaluated on the same weighted sample.
+
+The 12-month block matches the outcome window, so every pair of overlapping outcomes falls in at most two adjacent blocks.
+
+**Validation before any candidate result** (fixed now): on C0's own development predictions, report the interval widths of the
+year-only, company-only and two-way bootstraps side by side. Then, on synthetic panels with a known AUC and planted company and period
+effects, the two-way 90% interval must cover the true AUC in 85–95% of 500 simulations. If it fails, the registration is revised before
+any candidate is fitted.
 
 **Reported, never used in selection:** the same walk-forward AUC and Brier score on a 36-month label (first qualifying exit within 36
 months). It shows whether a 12-month model ranks the failures of months 13–36 (Gemini's debt-maturity-wall point). A longer horizon in
@@ -89,8 +112,8 @@ spread of the 12-month excess return residualised on the five yardsticks with in
 **Counting fresh events.** An independent event is one company's first qualifying exit. It is counted once, although it appears in up
 to 12 monthly origins.
 
-**Uncertainty.** Every fresh-date interval below is a block bootstrap by calendar quarter of origin (2,000 resamples, seed 20261013), so
-events sharing a period are resampled together. Every comparison with C0 is paired on the same company-dates.
+**Uncertainty.** The fresh-date intervals use the two-way bootstrap of section 4a. Every comparison with C0 is paired on the same
+company-dates.
 
 **Stage 1, monitoring:** from 30 independent fresh events, every quarter. Reported:
 - AUC, Brier and the calibration measures, with their intervals;

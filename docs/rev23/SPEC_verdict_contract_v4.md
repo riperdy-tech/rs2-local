@@ -188,7 +188,10 @@ An abstention is published, so the site shows **"no view: <reason>"**. It is nev
 
 **Flags that annotate and never block** (published in `flags`, shown on the site):
 - `distress_model_not_validated`: the distress model in force has not passed B5's fresh-date bars (C0 included);
-- `value_distribution_model_implied`: on every v4 row (section 2b).
+- `value_distribution_model_implied`: on every v4 row (section 2b);
+- `joint_tail_undercoverage`: on every row whose `versions.engine` uses engine v2.0's Gaussian copula. AK.20's D-T1 measured revenue
+  and margin falling together 1.6–1.9 times as often as that copula draws, so P10 sits too high and `undervalued` is too easy. The flag
+  stays until a copula version passes its own registration (v2.1). It is versioned with the engine and named in the release record.
 
 **Not carried into v4:**
 - `pre_v3.1_gates`, `single_sample` (replaced by R8's multi-sample rule inside the core), `fiduciary_fail` (section 9) and

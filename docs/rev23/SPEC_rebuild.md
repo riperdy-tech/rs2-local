@@ -3039,3 +3039,104 @@ committed in `52b1f8d` before either was run.
   - **The top quintile's median by origin year,** 2017 to 2022: −3.1, −2.7, −0.6, −0.6, −0.2, −3.0 pp (n 49–176).
   - **Reading:** the top-margin cell already draws a negative median and the widest lower tail, so v2 partly carries peak-margin
     reversion through year 3. This supports keeping the median bias (AK.19).
+
+**AL.4 E2 and E6 on real data; a correction to AL.3** (2026-10-13 17:54).
+
+**E6 PASS:** `engine_v2_audit/e6_cut_proof_real.py`. For vintages 2019, 2021, 2023 and 2024, every fact filed on or after the cut was
+changed: 171,005, 114,730, 54,333 and 23,793 facts and rows. Each table rebuilt byte-identical.
+
+**E2:** `engine_v2_audit/e2_reproduce.py`.
+- **The method:** it runs the study's own code (extracted from `review-2026-10/forecast-study`) to rebuild each table's trimmed common
+  sample, and the study's reported MAE_t for (ii) reproduces exactly in all 12 tables, so the rows are the study's.
+- **Pass, 6 tables:** margin k1–3 and tangible-book growth k1–3 equal their counterpart (ii) exactly: 0.0659/0.0760/0.0856 and
+  0.1209/0.1203/0.1211.
+- **Outside the 0.0005 tolerance, 2 tables:** operating growth k2 (v2 0.1306 against the study's (i) 0.1315) and k3 (0.1290 against
+  0.1295).
+  - **The cause:** in those years v2's rule is the population median, and v2 cuts it at Jan 1 of the origin year (the priors'
+    vintage rule) where the study cut at the origin date (Jun 30).
+  - **The direction:** v2 is the more accurate.
+  - **The ruling:** a definitional difference, not a defect; it misses the registered tolerance and is recorded as E2 FAIL on those two
+    tables. The vintage rule is not changed to meet E2.
+- **No exact counterpart, 4 tables:** the study's blends refitted w each year. v2's fixed weights beat both (i) and (ii) in every case:
+  growth k1 0.1288 against 0.1299/0.1299; ROTE 0.0709/0.0744/0.0780 against (ii) 0.0729/0.0768/0.0825.
+
+**Correction to AL.3's E3 diagnosis:** following an outside review's correction, the sentence "no rule free of look-ahead could have
+known" is withdrawn as too categorical. A pre-registered regime-aware grouping, or a deliberately heavier tail, could widen the bands
+before a shock. What holds is narrower: the tables as designed learn only from misses already filed. Whether either alternative does
+better out of sample is untested.
+
+**The outside review's recommendation for the operator's E3 decision:**
+- approve v2.0 and proceed to gate 2b, with E3 kept as a diagnosed FAIL (never relabelled);
+- E2 and E6 run first (done);
+- B4 is the decision gate (it is already per measure). Financial tangible-book growth, which is not a B4 measure, is reported on the
+  2026 dates as a diagnostic;
+- if B4 fails or shows material undercoverage in turbulence, build v2.1 under the existing rule;
+- **noted:** gate 2b's three dates may contain no shock, so a B4 pass says nothing about turbulence. That limitation stays open into
+  shadow operation.
+
+**Also for the same decision:** the fork's AK.19–AK.20 (the D-T1 tail test triggered on 6 of 18 copula pairs, and an empirical copula
+proposed for v2.1). The copula is not changed until the operator rules.
+
+**AK.21 (2026-10-13 21:33): rulings on ChatGPT's review of the v2 drafts and AK.19–AK.20; the D-T1 evidence published.** No gate-2
+outcome has been read.
+
+*Accepted and applied, each checked against the text first:*
+1. **C1 needs a specific joint-tail flag**, not just the generic `value_distribution_model_implied`. **Accepted.** C1 section 8 now has
+   `joint_tail_undercoverage` on every row made with engine v2.0's Gaussian copula. It names AK.20's measurement, annotates without
+   blocking, and stays until a copula version passes its own registration.
+2. **B5's quarter-block bootstrap breaks within-company dependence.** A company's single exit labels up to 12 monthly origins across
+   several quarters. The development "resampling years" bootstrap had the same defect. **Accepted.** New B5 section 4a, for development
+   and fresh dates alike:
+   - **The method:** a two-way (pigeonhole) bootstrap. Companies and 12-month origin blocks are drawn independently; each observation's
+     weight is the product of the two counts; the comparison with C0 stays paired.
+   - **The check:** validated before any candidate result, against interval widths beside the one-way versions and against synthetic
+     coverage of 85–95% over 500 simulations with planted company and period effects.
+   - **Unchanged:** the candidates, the order and the bars.
+3. **S5's V5 contradicts S5 section 6** when the calibration map is not the identity. **Accepted** (a second erratum, before any
+   outcome): V5 now tests the transport **before** the calibration map. The calibration path is tested separately: the identity map
+   reproduces the transported distribution, and a non-identity map changes year 1 only. The median-bias rule is untouched.
+4. **H-S1 still said "the calibrated IV distribution".** **Accepted.** The selection registration now reads `log(mean_iv / price)` on
+   the survival-adjusted, model-implied distribution, not claimed calibrated. It is a dated correction before any selection data exist,
+   with the old wording quoted. **This awaits the operator's confirmation, with the AK.19 `mean_iv` reading.**
+5. **The D-T1 evidence could not be checked** because the scripts were not in the public mirror. **Accepted.** They are now published
+   under `docs/rev23/evidence/engine_v2_audit/` in the mirror:
+   - the four scripts and the result JSON;
+   - the residual panel itself, `d_t1_residuals_cut2025.csv.gz` (43,176 rows of cik, date, family, variable, year and residual,
+     derived from public SEC filings), sha256 `780254a8be8a7524…`;
+   - `d_t1_from_csv.py`, which recomputes D-T1 from that file alone, importing nothing from rs2-local;
+   - **its result:** the same 6 triggers and identical empirical rates. The Gaussian rates agree with the integral within Monte Carlo
+     noise (largest gap 0.00015).
+   - **The build code** that produced the panel is rs2-local `review-2026-10/gate2-run2` `a605eff` (public). Commit `735fcb9` is in
+     stocks-workspace, which has no remote, so it cannot resolve in rs2-local; the mirror's README says so.
+
+*Agreed recommendations that are the operator's to decide:*
+- **The empirical-copula v2.1 registration:** ChatGPT approves writing it, with the eligible panel, the resampling method, the minimum
+  sizes, the missing-pair rule, both tails and out-of-time bars all fixed before the build and before B4's SYSTEM freeze. The coordinator
+  agrees.
+- **E3, option 1 now** (keep the diagnosed failure; gate 2b's B4 judges the marginals), with no MRI-regime cells until the historical
+  turbulence series is rebuilt and passes its own look-ahead audit. The coordinator agrees.
+- ChatGPT's separation is the right frame: **E3 is about the marginal bands; D-T1 and the copula are about the joint distribution.** The
+  empirical copula cannot fix E3's shock-year under-coverage.
+
+**AK.22 (2026-10-13 21:40): gate-2 run 2 finished (600 of 600); the final review; the masked control started (plan A1, A2).**
+- **Finished:** `gate2_finished.flag` exists (fork 2 saw it at 21:33). Statuses: ok 424, engine_refused 156, refused 17, error 3.
+- **The final milestone review (`reviews/review_600.md`):**
+  - leakage: 0 violations in 16,275 reviews, and 0 beyond-forecast-year items to read;
+  - G5 passes on dummy outcomes, with 0 of 7,593 citations failed (1 part-label error reported, AJ.5) and 0 unrecorded fallbacks;
+  - the independent script agrees with scoring and diagnostics (0 mismatches);
+  - G4 behaviour: 18 of 85 registered (21%; strictly 26 of 85), with 0 accepted.
+
+  **Two flags, both resolved:**
+  - **"Technical" STOP:** the three known pre-model `growth_decay` exceptions (VIRT, MIAX, CBOE), already ruled and reproduced as clean
+    refusals (AK.5, AK.14). Unchanged since 551.
+  - **"NEW refusal reason: None":** RILYN, 2026-06-30. It was cleanly refused before any model call, because its common share (RILY)
+    was at $298,529,958, below the $300M floor. Its progress row stores the reason under `reasons`, written by the pre-build refusal
+    path, where every other row uses `reason`. So it is a reading artefact of the review script, now fixed to read either key, and not
+    a run defect. Scoring counts it by status as `status_refused`, correctly. Plan B6 note: a below-floor company is outside the
+    universe, not a "no view"; the live universe filter runs first.
+
+  **A1's exit holds:** the flag exists and the last review has 0 unresolved flags.
+- **A2, the masked control:** first a dry run from the frozen worktree (`wt-gate2-run2` at `a5fd342`, clean), showing 30 jobs, 0 done
+  and readiness ok. Then `RS2-Gate2-Replay` was re-registered with `-Mode masked` on `data\gate2_run2`. The repeat control
+  (`RS2-Gate2-Repeat`) follows when masked is final. Then score_day runs with no model loaded, and fork 2's vintage-2025 build waits
+  for that.
