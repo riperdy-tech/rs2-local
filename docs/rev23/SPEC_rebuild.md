@@ -3577,3 +3577,50 @@ found in the extractor's outcome mode: recasts.**
 - **Still to register for Audit 1 (fork 2's AL.10–AL.11):** a count, over the 600 company-dates at T, of annual reports whose assigned
   period ends after their own filing date, and of latest fiscal years older than expected. These are the fiscal-year mislabel's effect
   on gate-2 inputs, reported with numerator and denominator.
+
+**AL.12 (2026-10-13 23:37): AL.10 built and measured. The point-in-time tables differ little from AL.3; E3 and E4 are unchanged in verdict.**
+- **The build:** `priors_build/near_term.py` gains a per-vintage mode, `--obs-root` and `--panel-pattern` (rs2-local
+  `review-2026-10/gate2-run2` f02628f, with the lazy medians in a3fcc87).
+  - Each vintage reads only its own extraction. The builder refuses an obs table whose `obs_meta` names another vintage or cut, or
+    whose bytes do not match its `obs_sha256` (E6b). It refuses a panel whose attributes do not name that obs and the cut V-12-31.
+  - Tables carry `extractor`: label `legacy`, the vendored sha256, the store fingerprint and the two known defects (AL.8 item 3).
+  - Medians are computed only for origins that have a residual, because origin 2016 has no forecast and there is no vintage 2015.
+  - The single-obs mode is byte-identical to AL.3: vintages 2020 and 2024 were rebuilt and match their sha256.
+  - Tests: 8 builder tests (4 new: medians per origin cut, own-obs refusal, panel refusal with label, per-vintage cut proof).
+    Suite: 742 passed (738 + 4).
+- **The output:** `data/priors_v4_pit/2016..2024`. The AL.3 tables are kept.
+- **Diff against AL.3** (`scratch/rev23/engine_v2_audit/al10_diff.py`, `al10_diff.json`), negatives first:
+  - The largest pool-quantile change is 0.038, in operating margin year 2 at vintage 2018 (n 62 → 61). Others are 0.002–0.018 at
+    2017–2019 and at most 0.005 from 2022 on.
+  - Population medians move by up to 0.020 (vintage 2016, which has no residuals) and at most 0.004 from 2019 on.
+  - Copula correlations move by at most 0.017.
+  - Cell counts are unchanged in every vintage.
+- **E3 and E4 re-run** on these tables (`e3_e4.py` with an obs root: medians at each origin's own cut from its own vintage; outcomes
+  from `panel_cut2024`):
+  - every cell keeps its n;
+  - coverage moves by at most 0.6 points (for example, operating growth year 3 is 0.686 → 0.681; operating margin year 2 is 0.666 →
+    0.661);
+  - **E3 FAIL as before**, with the same diagnosis (AL.4);
+  - **E4 PASS as before**, with 3 of 12 cells worse.
+
+  Output: `e3_e4_pit.json`.
+- **E6 on these tables** holds by construction plus E6b. Each panel's `assert_cut` and each obs table's own cut admit no fact filed
+  after the cut, and the per-vintage cut-proof test perturbs every late fact in the panel and in every obs table.
+- **E1 and E2 are not affected.** E1 checks the centre formulas, which do not depend on the tables; E2 reproduces the study.
+- **The decision for the operator:** the engine freezes on `priors_v4_pit`. It is point in time, and its differences from AL.3 are
+  within the noise shown above. Vintage 2025 will be built the same way.
+- **Note:** a scratch rebuild of 2020 and 2024 for the identity check was written to `C:\c\Users\riper\AppData\...\v4_recheck`
+  because of a path-form slip. It is left in place; the operator may remove it.
+
+**AK.32 (2026-10-13 23:37): the tag-consistent re-score is rehearsed end to end, with no real outcome, and joins the overnight chain.**
+- **The rehearsal:** `scratch/rev23/gate2_audit/rehearse_tc.py`. Its pseudo-outcomes put the latest quarter filed before T as q1; all
+  else is score_day's dummy outcomes.
+  - `tag_consistent.py rescore` rebuilt 424 rows: 348 with a tag-consistent q1, 14 differing by more than 1 pt, and 17 with tags
+    disagreeing inside one filing.
+  - It re-scored them with `score_day.run_stages` and got **0 mismatches** against the independent script.
+  - Audit 1's look-ahead check flagged the 411 pseudo-outcomes filed before T, as it must: the check works.
+- **The chain:** `chain/post_masked_chain.py` gains step 2b. After the registered score, it runs the tag-consistent re-score into
+  `scratch/rev23/gate2_audit/tag_consistent/<scoring date>/`, outside the run's state. Then the repeat control is registered. A failure
+  is recorded and does not block the repeat control. A no-op run after the edit returned 0.
+- **In the morning both versions exist.** Per AK.30 the tag-consistent one governs. The coordinator audits both (Audit 1, the hand check)
+  before anything is reported.
