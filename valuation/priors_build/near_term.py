@@ -84,14 +84,14 @@ def residual_frame(panel: pd.DataFrame, obs: pd.DataFrame, cut: str, medians_obs
         if fam not in nt.VARIABLES:
             continue
         ocut = date(int(str(r["date"])[:4]), 1, 1).isoformat()                          # the vintage the origin would use: cut Jan 1 of its year
-        if ocut not in medians_at:
-            medians_at[ocut] = population_medians(medians_obs(ocut) if medians_obs is not None else obs, ocut)
-        pop = medians_at[ocut]
         for var in nt.VARIABLES[fam]:
             for k in nt.KS:
                 y, ii, filed = r.get(f"{OUTCOME[var]}_{k}"), r.get(CODE[var].format(k=k)), r.get(f"filed_{k}")
                 if pd.isna(y) or pd.isna(ii) or pd.isna(filed) or str(filed) >= cut:
                     continue
+                if ocut not in medians_at:                                                 # only when a residual needs them (origin 2016 has no forecast, and no vintage 2015)
+                    medians_at[ocut] = population_medians(medians_obs(ocut) if medians_obs is not None else obs, ocut)
+                pop = medians_at[ocut]
                 cell = (pop.get(fam, {}).get(var) or {}).get(str(k)) or {}
                 i = cell.get("median") if (cell.get("n") or 0) >= nt.MIN_N else None
                 x = _rule(fam, var, k, float(ii), i)

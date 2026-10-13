@@ -135,7 +135,8 @@ def test_the_medians_at_each_origins_cut_come_from_that_cuts_own_obs_when_given(
     p = panel[(panel["cik"] == row["cik"])].iloc[0]
     i = nb.population_medians(other, f"{str(p['date'])[:4]}-01-01")["operating"]["growth"]["1"]["median"]
     assert row["resid"] == pytest.approx(math.log1p(p["g_1"]) - math.log1p(i + 0.5 * (0.08 - i)))
-    assert sorted(set(seen)) == sorted({f"{str(d)[:4]}-01-01" for d in panel["date"] if str(d) < "2021-01-01"})
+    used = panel[(panel["date"].astype(str) < "2021-01-01") & (panel["filed_1"].astype(str) < "2021-01-01")]       # origins with a residual: medians only where needed
+    assert sorted(set(seen)) == sorted({f"{str(d)[:4]}-01-01" for d in used["date"]})
 
 
 def _write_vintage(root, v, obs, cut=None):
