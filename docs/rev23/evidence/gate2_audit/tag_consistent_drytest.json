@@ -1,0 +1,611 @@
+{
+ "n": 600,
+ "compared": 482,
+ "agree_growth": 462,
+ "agree_margin": 460,
+ "no_pair": 88,
+ "kinds": {
+  "reported_3m": 284,
+  "derived_q4": 201
+ },
+ "disagree": [
+  {
+   "key": "2025-10-31_0001395942",
+   "period_end": "2025-06-30",
+   "accession": "0001395942-25-000051",
+   "extractor_growth": 0.11556276053728576,
+   "same_filing_growth": 0.08539882830103651,
+   "extractor_margin_change": -0.03082499904085645,
+   "same_filing_margin_change": 0.044548407730133334,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.08539882830103651
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-10-31_0000884219",
+   "period_end": "2025-06-30",
+   "accession": "0000950170-25-104958",
+   "extractor_growth": -0.6915950314103207,
+   "same_filing_growth": 0.15357555755377916,
+   "extractor_margin_change": null,
+   "same_filing_margin_change": null,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": null,
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "derived_q4",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.15357555755377916
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-10-31_0001092796",
+   "period_end": "2025-07-31",
+   "accession": "0000950170-25-113031",
+   "extractor_growth": -0.03687141983834086,
+   "same_filing_growth": -0.03687141983834086,
+   "extractor_margin_change": -0.013689417630370026,
+   "same_filing_margin_change": -0.01749316250776718,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": -0.03687141983834086
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-10-31_0000874501",
+   "period_end": "2025-06-30",
+   "accession": "0000874501-25-000132",
+   "extractor_growth": -0.4766,
+   "same_filing_growth": 0.07680702235632975,
+   "extractor_margin_change": null,
+   "same_filing_margin_change": null,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": null,
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "derived_q4",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.07680702235632975,
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 1.2934725058618866
+    },
+    "disagree_over_1pt": true
+   }
+  },
+  {
+   "key": "2025-10-31_0000885978",
+   "period_end": "2025-06-30",
+   "accession": "0001140361-25-029744",
+   "extractor_growth": 0.18035767689455118,
+   "same_filing_growth": 0.18035767689455118,
+   "extractor_margin_change": 0.009058521581944062,
+   "same_filing_margin_change": 0.03325853354438202,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.18035767689455118,
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.18035767689455118
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-10-31_0000935703",
+   "period_end": "2025-08-02",
+   "accession": "0000935703-25-000061",
+   "extractor_growth": -0.38060389223179925,
+   "same_filing_growth": 0.12333480804207841,
+   "extractor_margin_change": 0.023017821309355507,
+   "same_filing_margin_change": -0.0024977357726852153,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.12333480804207841,
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.12330586643709252
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-10-31_0001627223",
+   "period_end": "2025-06-30",
+   "accession": "0000950170-25-103212",
+   "extractor_growth": 0.05006501950585185,
+   "same_filing_growth": 0.03925353925353936,
+   "extractor_margin_change": null,
+   "same_filing_margin_change": null,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": null,
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "derived_q4",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.03925353925353936
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-10-31_0000912562",
+   "period_end": "2025-09-30",
+   "accession": "0000912562-25-000054",
+   "extractor_growth": -0.13914052204343352,
+   "same_filing_growth": 0.12198879956121988,
+   "extractor_margin_change": 0.006644083530425532,
+   "same_filing_margin_change": -0.02732890516614689,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.12198879956121988
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-12-31_0000070866",
+   "period_end": "2025-09-30",
+   "accession": "0000070866-25-000088",
+   "extractor_growth": -0.03797468354430378,
+   "same_filing_growth": -0.03389830508474578,
+   "extractor_margin_change": 0.0008327781479013988,
+   "same_filing_margin_change": -0.0006690454950936675,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": -0.03389830508474578
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-12-31_0000040729",
+   "period_end": "2025-09-30",
+   "accession": "0000040729-25-000025",
+   "extractor_growth": 0.030908226343319134,
+   "same_filing_growth": 0.015456674473067977,
+   "extractor_margin_change": null,
+   "same_filing_margin_change": null,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": null,
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "derived_q4",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.015456674473067977,
+     "RevenueFromContractWithCustomerExcludingAssessedTax": -0.03448275862068961
+    },
+    "disagree_over_1pt": true
+   }
+  },
+  {
+   "key": "2025-12-31_0001419612",
+   "period_end": "2025-09-30",
+   "accession": "0001178913-25-003678",
+   "extractor_growth": 0.3038447239012201,
+   "same_filing_growth": 0.44488712383460394,
+   "extractor_margin_change": 4.05632464313984,
+   "same_filing_margin_change": 4.6144661591033636,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.44488712383460394
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-12-31_0001973266",
+   "period_end": "2025-09-30",
+   "accession": "0001193125-25-267014",
+   "extractor_growth": 0.6438549597591567,
+   "same_filing_growth": -0.2731054993142652,
+   "extractor_margin_change": -0.04662360898000692,
+   "same_filing_margin_change": 0.13107119185736668,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": -0.2731054993142652
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2025-12-31_0001051512",
+   "period_end": "2025-09-30",
+   "accession": "0001051512-25-000071",
+   "extractor_growth": -0.7479403594771241,
+   "same_filing_growth": -0.05794251550395879,
+   "extractor_margin_change": -0.15496264033297552,
+   "same_filing_margin_change": 0.2368668033573833,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": -0.05794251550395879,
+     "RevenueFromContractWithCustomerExcludingAssessedTax": -0.1186036258880464
+    },
+    "disagree_over_1pt": true
+   }
+  },
+  {
+   "key": "2026-02-27_0000106040",
+   "period_end": "2026-01-02",
+   "accession": "0001628280-26-004207",
+   "extractor_growth": -0.29591598599766633,
+   "same_filing_growth": 0.25238688252386887,
+   "extractor_margin_change": 0.10212808089824715,
+   "same_filing_margin_change": 0.06849961743010721,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.25238688252386887
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-02-27_0001475841",
+   "period_end": "2025-12-31",
+   "accession": "0001104659-26-019119",
+   "extractor_growth": 0.24601754071952753,
+   "same_filing_growth": 0.22076215505913277,
+   "extractor_margin_change": null,
+   "same_filing_margin_change": null,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": null,
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "derived_q4",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.24601754071952753,
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.22076215505913277
+    },
+    "disagree_over_1pt": true
+   }
+  },
+  {
+   "key": "2026-02-27_0000102752",
+   "period_end": "2025-09-30",
+   "accession": "0000102752-25-000085",
+   "extractor_growth": 0.03397499387821479,
+   "same_filing_growth": 0.38924681548992845,
+   "extractor_margin_change": -0.050956807330010484,
+   "same_filing_margin_change": -0.06291055456176313,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.38924681548992845
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-02-27_0000863436",
+   "period_end": "2025-12-31",
+   "accession": "0001193125-26-064849",
+   "extractor_growth": 0.07222551215049156,
+   "same_filing_growth": 0.06184607822484378,
+   "extractor_margin_change": -0.014824223992101194,
+   "same_filing_margin_change": -0.01397696686241871,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": null
+   },
+   "kind": "derived_q4",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.07222551215049156,
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.06184607822484378
+    },
+    "disagree_over_1pt": true
+   }
+  },
+  {
+   "key": "2026-04-30_0001069202",
+   "period_end": "2026-03-31",
+   "accession": "0001069202-26-000054",
+   "extractor_growth": 0.05826962520977075,
+   "same_filing_growth": 0.05826962520977075,
+   "extractor_margin_change": -0.0010278862502337283,
+   "same_filing_margin_change": -0.012588579891852247,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.05826962520977075
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-04-30_0001680247",
+   "period_end": "2025-12-31",
+   "accession": "0001680247-26-000028",
+   "extractor_growth": -0.09633010350830129,
+   "same_filing_growth": -0.09633010350830129,
+   "extractor_margin_change": 0.07292791151082181,
+   "same_filing_margin_change": 0.07854319005983385,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "derived_q4",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": -0.09633010350830129
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-04-30_0000810332",
+   "period_end": "2025-12-31",
+   "accession": "0001628280-26-019614",
+   "extractor_growth": 12.545029205777222,
+   "same_filing_growth": 0.32158393008259645,
+   "extractor_margin_change": 1.2412444027597194,
+   "same_filing_margin_change": 0.03254626599539365,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "derived_q4",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.32158393008259645
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-06-30_0000921638",
+   "period_end": "2026-03-31",
+   "accession": "0000921638-26-000062",
+   "extractor_growth": 0.8374760752705153,
+   "same_filing_growth": 0.8374760752705153,
+   "extractor_margin_change": 0.30504513813345424,
+   "same_filing_margin_change": 0.17905103798753708,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.8374760752705153
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-06-30_0001751008",
+   "period_end": "2026-03-31",
+   "accession": "0001751008-26-000044",
+   "extractor_growth": 0.24152488408182893,
+   "same_filing_growth": 0.5897241870827128,
+   "extractor_margin_change": 0.3344555228575362,
+   "same_filing_margin_change": 0.056768625826760344,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.5897241870827128
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-06-30_0001069202",
+   "period_end": "2026-03-31",
+   "accession": "0001069202-26-000054",
+   "extractor_growth": 0.05826962520977075,
+   "same_filing_growth": 0.05826962520977075,
+   "extractor_margin_change": -0.0010278862502337283,
+   "same_filing_margin_change": -0.012588579891852247,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.05826962520977075
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-06-30_0001302215",
+   "period_end": "2026-03-31",
+   "accession": "0001302215-26-000053",
+   "extractor_growth": -0.04618545006017205,
+   "same_filing_growth": -0.04618545006017205,
+   "extractor_margin_change": -0.012000060449613631,
+   "same_filing_margin_change": -0.01477757979921493,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "derived_q4",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": -0.04618545006017205
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-06-30_0000769520",
+   "period_end": "2026-04-04",
+   "accession": "0000769520-26-000032",
+   "extractor_growth": -0.07359035193083818,
+   "same_filing_growth": 0.14957782604708592,
+   "extractor_margin_change": 0.0036940430389661716,
+   "same_filing_margin_change": -0.018502585530134952,
+   "tags": {
+    "revenue": "us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.14957782604708592
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-06-30_0000842633",
+   "period_end": "2026-03-31",
+   "accession": "0000842633-26-000029",
+   "extractor_growth": -0.30367856995075926,
+   "same_filing_growth": 0.10376492194674003,
+   "extractor_margin_change": -0.04917922953691742,
+   "same_filing_margin_change": -0.005953881577841644,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.10376492194674003,
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 0.10376492194674003
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-06-30_0000010795",
+   "period_end": "2026-03-31",
+   "accession": "0000010795-26-000026",
+   "extractor_growth": -0.10584218512898336,
+   "same_filing_growth": 0.05223214285714284,
+   "extractor_margin_change": -0.08383754071268033,
+   "same_filing_margin_change": -0.06576260303654767,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.05223214285714284
+    },
+    "disagree_over_1pt": false
+   }
+  },
+  {
+   "key": "2026-06-30_0001808834",
+   "period_end": "2026-03-31",
+   "accession": "0001808834-26-000066",
+   "extractor_growth": 0.08564102863959033,
+   "same_filing_growth": 0.11107553842747464,
+   "extractor_margin_change": 0.005607590444784177,
+   "same_filing_margin_change": 0.0036473365351678277,
+   "tags": {
+    "revenue": "us-gaap/Revenues/USD",
+    "operating_income": "us-gaap/OperatingIncomeLoss/USD",
+    "net_income": "us-gaap/NetIncomeLoss/USD"
+   },
+   "kind": "reported_3m",
+   "revenue_tags": {
+    "tags": {
+     "Revenues": 0.11107553842747464,
+     "RevenueFromContractWithCustomerExcludingAssessedTax": 30.491246970105035
+    },
+    "disagree_over_1pt": true
+   }
+  }
+ ],
+ "revenue_tags_disagree": 24
+}

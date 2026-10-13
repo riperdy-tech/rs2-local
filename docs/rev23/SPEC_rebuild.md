@@ -3486,3 +3486,94 @@ script"). The ruling was given before any gate-2 outcome was read and before the
 - **The mechanism.** The automatic chain scores the registered version, since its code is held unchanged under the scoring freeze. The
   coordinator's audit script then rebuilds the outcomes tag-consistently and re-scores with the same scoring functions. That result
   governs, and it is what the operator is told.
+
+**AL.10 (2026-10-13 23:25): a point-in-time defect in my engine-v2 table build, found through AL.6; the fix is registered before it is built or measured.**
+- **The defect.** The near-term tables for vintages 2016–2024 (`data/priors_v4`, AL.3) read their inputs from extractions made at a
+  later cut than the vintage's own.
+  - **The outcomes** come from the study panel, which was joined to the **vintage-2024** observation table.
+  - **The medians i_k** come from the **vintage-2025** observation table, filtered by filing date.
+
+  Filtering by filing date keeps every value filed after the cut out. It does not undo the extractor's tag choice, and AL.6 shows that
+  choice depends on every filing before the extraction's own cut. So, for example, the vintage-2019 table can carry a value that the
+  extractor would have taken from a different tag at 2020-01-01.
+
+  This is look-ahead in tag selection, about 0.1% of values (AL.6: 8–16 per measure). E6's cut proof cannot see it, because it perturbs
+  facts inside an observation table that has already been extracted.
+
+  SPEC_engine_v2 section 2 requires i_k "under the priors' rule", which means the vintage's own observation table. My build did not meet
+  that. My error, in my own code.
+- **The fix,** decided now, before any number from it exists:
+  - **Medians:** i_k at an origin's own cut (1 January of year Y) are read from `data/priors_v3/<Y−1>/obs.csv.gz`. Origins run from
+    2017; origin 2016 has no code forecast, so vintages 2016–2024 are all needed, and all exist.
+  - **Outcomes:** the outcomes of vintage V's table come from a panel joined to `data/priors_v3/<V>/obs.csv.gz` with CUT = V-12-31,
+    using the study's own `panel.build`, as in AL.6. That is one panel per vintage, 2016–2025.
+  - **Vintage 2025** already uses its own observation table for outcomes, and gets the same median rule.
+  - **Nothing else changes:** weights, cells, quantile levels, MIN_N, the copula rule and every bar stay as they are.
+- **Where:** new tables go to a new directory, `data/priors_v4_pit/`. The AL.3 tables stay untouched, for comparison.
+- **What is re-run, with bars unchanged:** E1–E4 and E6 on the new tables. A per-vintage diff against the AL.3 tables is reported,
+  negatives first. E5 runs once, on the corrected tables, after vintage 2025. Which directory the engine freezes on goes to the operator
+  with the diff.
+- **The cut proof is strengthened (E6b):** for each vintage, the obs used must be the vintage's own (its `obs_meta` cut date equals the
+  table's cut). The builder refuses otherwise.
+- **Label (AL.8):** the new tables carry `extractor: legacy` with the vendored extractor's sha256 (`7de02ffb…`). The priors_v3
+  observation tables were built 2026-10-07 14:27–14:46, after that file's last change (e5be9ff, 2026-10-07 00:32).
+
+**AL.11 (2026-10-13 23:29): building AL.10's per-vintage panels exposed two more data defects. Both are written up; nothing in `pit_data` is changed
+(the scoring hold).**
+- **Fiscal years mislabelled by a forward-looking fact.**
+  - **Mechanism:** `pit_data.accessions()` sets a report's own period from the latest end among any of its fiscal-year-length
+    durations, in any unit. One forward fact relabels the report. Boeing's FY2017 10-K (2018-02-12) files the 2018 statutory tax rate
+    for calendar 2018, and so becomes "FY2018".
+  - **Within a vintage:** a year goes missing, so inputs are stale.
+  - **Across vintages:** the FY2018 values carry the 2018-02-12 stamp, which is look-ahead for any consumer that filters a later
+    vintage's table by stamp. My AL.3 tables and the forecast study did exactly that.
+  - **Size:** 0.44–0.70% of observation rows per vintage. In the study panel, about 0.1–0.6% of outcomes are stamped before their own
+    period ends.
+  - **Report:** `PROBLEM_REPORT_fiscal_year_mislabel.md`.
+  - **AL.10's per-vintage rebuild** removes the look-ahead from engine v2. The missing years remain until `pit_data` is repaired.
+- **One row in vintage 2017 breaks the observation rule.**
+  - **The row:** CIK 1670869, FY2017-06-30. Its value comes from a 10-K/A filed 2017-10-12, but its own report is a 10-KT filed
+    2018-04-02, after the cut. It also appears as the FY2016 row's year-1 outcome.
+  - **Handling:** the study's `assert_cut` refused that vintage's panel. `panel_cut.py` now drops such rows and outcomes explicitly,
+    lists them, and stores the list in the panel's attributes. No other vintage has one.
+- **Per-vintage panels built** (`scratch/rev23/forecast_study/out/panel_cut<V>.pkl`, 2016–2024; 2025 from AL.6).
+  - Compared with the study panel, they hold slightly fewer outcomes before each cut: 2017 1,534 vs 1,548; 2018 4,113 vs 4,183; 2019
+    7,870 vs 7,898.
+  - Spot check: the outcomes the study panel has and these lack are values stamped before the cut but filed after it (for example,
+    Boeing's FY2018 revenue as a year-2 outcome of origin 2017), or rows whose base did not match at the earlier cut.
+
+**AK.31 (2026-10-13 23:32): the tag-consistent audit script is built and dry-tested before any outcome is read. A second, larger defect is
+found in the extractor's outcome mode: recasts.**
+- **The script:** `scratch/rev23/gate2_audit/tag_consistent.py`, mirrored with its evidence under `docs/rev23/evidence/gate2_audit/`.
+  - `rescore`: rebuilds every q1, q2 and annual outcome from one filing's own comparative columns (AK.27–AK.29), then re-scores with the
+    registered scoring functions (`score_day.run_stages`) into a folder outside the run's state. Per AK.30 that result governs.
+  - **What it reads:** the store's raw facts, merging annual-report and quarterly-report facts (the store keeps them apart), and none of
+    the extractor's tag-choice logic. The tag ladders are copied from `pit_data.quarter_fields()`.
+  - **The ROTE denominator:** the run's own `tbv_0` at T. The annual ROTE change is not rebuilt: its registered value is kept and
+    flagged.
+- **The dry test (no outcome read).** For each of the 600 sample company-dates, the latest quarter **filed before T**, measured by the
+  extractor (`quarterly_rows`, first-filed) and by the same-filing rule:
+  - 482 compared, 88 with no same-filing pair, 201 of the pairs derived Q4s;
+  - 462 agree within 1 pt on growth; 28 disagree on growth or margin; **14 differ by more than 5 pt**.
+- **What the disagreements are, from the raw facts:**
+  - **(a) Recasts, the larger class and a new defect.** A company that sells a business re-reports last year's quarter as continuing
+    operations. The extractor's OUTCOME mode (`first_filed`) takes last year's quarter as first filed, so the comparison is new continuing
+    revenue against old total revenue.
+    - **TDS (CIK 1051512):** its own 10-Q gives a prior-year quarter of 327.5M; the extractor takes 1,224M, making the growth −74.8%
+      against −5.8%.
+    - **Dollar Tree (CIK 935703), after the Family Dollar sale:** 4,068.6M against 7,378.8M, making −38.1% against +12.3%.
+    - **CIK 1973266:** a retroactive presentation change, +64.4% against −27.3%.
+  - **(b) Tag seams (AL.7).** CIK 810332's Q4 was stitched as `Revenues` minus the contract tag: +1,254% against +32%.
+  - **(c) Derived Q4s across a recast.** These are caught by a guard added now, before any outcome: when the 10-K's prior-year figure
+    differs from the one first filed (more than 0.5%), the derived Q4 is not like for like, so the row has no tag-consistent outcome and
+    is listed.
+- **What it means:**
+  - About 3% of quarters (14 of 482) would carry a growth error above 5 pt under the registered outcome. That is material for G1, and it
+    supports the AK.30 ruling.
+  - The same `first_filed` comparison underlies every outcome built across years from first-filed values. That includes the forecast
+    study's outcomes and engine v2's residual tables (fork 2's area; it has been told).
+  - The inputs (`as_known` mode) take each period's latest filed value, so recast comparatives are mostly consistent there; the
+    seam (AL.7) remains.
+- **Still to register for Audit 1 (fork 2's AL.10–AL.11):** a count, over the 600 company-dates at T, of annual reports whose assigned
+  period ends after their own filing date, and of latest fiscal years older than expected. These are the fiscal-year mislabel's effect
+  on gate-2 inputs, reported with numerator and denominator.
