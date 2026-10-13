@@ -3716,3 +3716,50 @@ check is still to do.**
   Before B4, the annual-target redefinition (AK.34) and the same-filing outcome (AK.27) go into outcome_extract.
 - **Still to do before the result is final:** the 20-outcome hand check against the SEC filings (Audit 1), and R8 when the repeat control
   ends.
+
+**AL.13 (2026-10-14 04:12): REGISTRATION of a measurement. Engine v2's growth outcomes, first-filed against same-filing (tag-consistent). Fixed before
+any number exists; it measures only and changes nothing.** The basis is fork 1's AK.31 (recasts: TDS, Dollar Tree) and AL.7 (tag seams).
+The operator ruled for gate 2 that "tag-consistent governs" (AK.27–AK.30).
+1. **Rows.** Every growth residual row of the per-vintage panels (`panel_cut<V>.pkl`, 2017–2024, and 2025 once built): operating
+   revenue growth for k = 1–3. Tangible-book growth is not rebuilt, because it rests on equity instants, not on a revenue seam; the same
+   choice gate 2 made.
+2. **The two definitions.**
+   - **First-filed** (the current SPEC section 3 definition): `rev_k / rev_(k−1) − 1`, each year as first filed in its own report.
+   - **Tag-consistent:** the same growth taken inside **year k's own 10-K**, from its comparative column for year k−1. Revenue is the
+     largest current-period value among the ladder tags present for both periods, within one unit, USD when present.
+
+   These rules match fork 1's `tag_consistent.py` (`annual_tc`: same ladder, same largest-tag rule, the same one-unit rule,
+   AK.28–AK.29), so gate 2 and engine v2 measure outcomes the same way. The facts are raw store facts at vintage V's cut, from the store
+   that built priors_v3 (fingerprint `7de131bd…`).
+3. **What is reported,** by vintage, k and cell:
+   - (a) the share of rows with |difference| > 1, 5 and 20 points, and rows with no same-filing pair;
+   - (b) the cause of each row over 1 point:
+     - **tag seam:** the extractor's revenue tags for years k−1 and k differ;
+     - **recast:** the same tag, but year k's comparative for k−1 differs from k−1's first-filed value by more than 0.5%;
+     - **other;**
+
+     each reported separately (fork 1's suggestion);
+   - (c) the residual pools and cells rebuilt with the tag-consistent outcome, into a scratch directory, never a data directory, with
+     the quantile shift reported;
+   - (d) E3 and E4 re-run on them.
+4. **No bars.** It is a measurement. Adoption would amend SPEC_engine_v2 section 3's outcome definition and rebuild all ten tables as a
+   new version; that is the operator's decision, with these numbers.
+5. **Agreement (Q4):** on a seeded sample of 300 rows (seed 20261014), the tag-consistent growth must equal `tag_consistent.annual_tc`'s
+   revenue growth to 1e−9 wherever both exist. Any disagreement is resolved before (a)–(d) are reported.
+6. **When:** in the CPU window after the repeat control, at low priority, with commit headroom of at least 8 GB.
+
+**AL.14 (2026-10-14 04:16): F1 built, the diagnostics-only tag-seam flag (AL.8 item 1), after fork 1's `chain/DONE` (04:03) lifted the scoring hold.**
+- **The flag:** `pit_data.fiscal_years` stamps `TAG_SEAM` on a cell whose tag differs from the same field's tag in the adjacent
+  prior fiscal year. Adjacent means period ends 350–380 days apart. Derived cells are skipped.
+- **What it does not do:** it changes no value. It only appends a flag, through the same `_replace` as `RESTATED`.
+- **Consumers:** no existing consumer reads it. Cell flags are read only for `RESTATED` (`company_pit` provenance) and through notes for
+  `from_amendment`; `FiscalYear.provenance()` has no caller.
+- **The per-year provenance** asked for in AL.8 is the cell's existing tag, accession, filing date and form, plus this flag. The extractor's
+  primary-versus-backfill label is not exposed, a stated gap.
+- **Commit:** rs2-local `review-2026-10/gate2-run2` 68d0f9b, pushed after a clean scan.
+- **Tests:** one new test (the ASC 606 fixture: first-filed FY2020 is stamped; as known, nothing is stamped; values unchanged). Suite:
+  743 passed.
+- **Real-data check,** on AL.7's seeded sample (300 companies, cut 2026-01-01): 121 revenue cells flagged. That equals the tag changes
+  between adjacent years (121 of AL.7's 123; the other 2 span a gap year), with 0 mismatches.
+- **Not built:** the fiscal-year mislabel fix, which awaits the operator's ruling.
+- **Not changed:** the frozen run-2 worktree (`a5fd342`), which the repeat control runs from.
