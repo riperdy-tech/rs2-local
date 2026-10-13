@@ -13,6 +13,10 @@ valuation/near_term.cell_key, with the size axis read as USD (the panel's univer
 COPULA: Spearman correlations of paired residuals, as Gaussian r = 2 sin(pi rho / 6), for each variable across years and between the family's two variables in
 the same year; fewer than MIN_N pairs, or the year-3 level with its long-run partner (not in the panel), is independence, listed.
 NOTHING IS FITTED: the weights are section 2's constants; these tables only measure.
+PER-VINTAGE INPUTS (Addendum AL.10): with --obs-root and --panel-pattern, vintage V's table reads ONLY extractions made at V's own cut: its outcomes from a panel
+joined to <obs-root>/V/obs.csv.gz (built by the study's panel code with CUT = V-12-31; the panel's attrs name that obs and cut), its stored i from that same obs,
+and the medians at each origin's own cut (Jan 1 of year Y) from <obs-root>/<Y-1>/obs.csv.gz.  Each obs must be its vintage's own (obs_meta cut date = Jan 1
+of V+1), else the build refuses (E6b).  The single-obs mode above filters a later extraction by filing stamps, which is not point in time (AL.6, AL.11).
 """
 from __future__ import annotations
 
@@ -69,8 +73,9 @@ def _rule(fam, var, k, ii, i):
     return i + w * (ii - i)
 
 
-def residual_frame(panel: pd.DataFrame, obs: pd.DataFrame, cut: str) -> pd.DataFrame:
-    """One row per panel row x variable x k with an outcome filed before `cut`: the residual and the features of the cell."""
+def residual_frame(panel: pd.DataFrame, obs: pd.DataFrame, cut: str, medians_obs=None) -> pd.DataFrame:
+    """One row per panel row x variable x k with an outcome filed before `cut`: the residual and the features of the cell.  `medians_obs(ocut)`, when given,
+    is the observation table the medians at an origin's own cut are read from (AL.10: that cut's own vintage); otherwise `obs`."""
     rows = []
     medians_at = {}
     p = panel[panel["date"].astype(str) < cut]
@@ -80,7 +85,7 @@ def residual_frame(panel: pd.DataFrame, obs: pd.DataFrame, cut: str) -> pd.DataF
             continue
         ocut = date(int(str(r["date"])[:4]), 1, 1).isoformat()                          # the vintage the origin would use: cut Jan 1 of its year
         if ocut not in medians_at:
-            medians_at[ocut] = population_medians(obs, ocut)
+            medians_at[ocut] = population_medians(medians_obs(ocut) if medians_obs is not None else obs, ocut)
         pop = medians_at[ocut]
         for var in nt.VARIABLES[fam]:
             for k in nt.KS:
@@ -108,9 +113,9 @@ def _q(v) -> dict:
     return {"n": int(len(v)), "q": {str(p): float(np.quantile(v, p)) for p in nt.RESID_LEVELS}}
 
 
-def build_table(vintage: int, panel: pd.DataFrame, obs: pd.DataFrame) -> dict:
+def build_table(vintage: int, panel: pd.DataFrame, obs: pd.DataFrame, medians_obs=None) -> dict:
     cut = C.cut_date(vintage)
-    res = residual_frame(panel, obs, cut)
+    res = residual_frame(panel, obs, cut, medians_obs)
     level_cuts = {}
     for fam, col in (("operating", "m"), ("financial", "rote")):
         lv = res[(res["family"] == fam) & (res["k"] == 1)].drop_duplicates(["cik", "date"])[col].astype(float).dropna() if len(res) else pd.Series(dtype=float)
@@ -157,18 +162,68 @@ def copula_pairs(res: pd.DataFrame, fam: str) -> Dict[str, Optional[float]]:
     return out
 
 
+LEGACY_EXTRACTOR_SHA256 = "7de02ffbf9a77d3086f994800ef11a10cfed138bda3bb074544b03b718e8da1e"     # valuation/vendored MANIFEST, unchanged since e5be9ff (AL.8)
+
+
+def own_obs_path(root: Path, vintage: int) -> Path:
+    """<root>/<vintage>/obs.csv.gz, refused unless its obs_meta says it is that vintage's own extraction (cut Jan 1 of vintage + 1) (AL.10, E6b)."""
+    p = Path(root) / str(vintage) / "obs.csv.gz"
+    meta = json.loads(p.with_name("obs_meta.json").read_text(encoding="utf-8"))
+    if meta.get("vintage") != vintage or meta.get("cut_date") != C.cut_date(vintage):
+        raise SystemExit(f"refused: {p} is not vintage {vintage}'s own extraction (vintage {meta.get('vintage')}, cut {meta.get('cut_date')})")
+    if hashlib.sha256(p.read_bytes()).hexdigest() != meta.get("obs_sha256"):
+        raise SystemExit(f"refused: {p} does not match the obs_sha256 of its obs_meta")
+    return p
+
+
+def extractor_lineage(obs_path: Path) -> dict:
+    """The extraction the table's inputs came from (AL.8 3: the legacy-extractor label)."""
+    man = json.loads((Path(nt.__file__).resolve().parent / "vendored" / "MANIFEST.json").read_text(encoding="utf-8"))
+    sha = man["files"]["build_fundamentals_history.py"]["sha256"]
+    meta = json.loads(Path(obs_path).with_name("obs_meta.json").read_text(encoding="utf-8"))
+    return {"label": "legacy" if sha == LEGACY_EXTRACTOR_SHA256 else "unlabelled", "vendored_extractor_sha256": sha,
+            "store_fingerprint_sha256": meta.get("store_fingerprint_sha256"),
+            "known_defects": ["revenue tag seams (PROBLEM_REPORT_revenue_tag_seams.md)", "fiscal years mislabelled by forward facts (PROBLEM_REPORT_fiscal_year_mislabel.md)"]}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--vintages", type=int, nargs="+", required=True)
     ap.add_argument("--obs", type=Path, default=OBS)
     ap.add_argument("--panel", type=Path, default=PANEL)
     ap.add_argument("--out", type=Path, default=OUT_DIR)
+    ap.add_argument("--obs-root", type=Path, help="per-vintage mode (AL.10): the priors_v3 root holding <V>/obs.csv.gz")
+    ap.add_argument("--panel-pattern", help="per-vintage mode (AL.10): the panel of vintage V, with {V} in the path")
     a = ap.parse_args(argv)
-    obs, panel = load_obs(a.obs), pd.read_pickle(a.panel)
+    per_vintage = a.obs_root is not None
+    if per_vintage != (a.panel_pattern is not None):
+        ap.error("--obs-root and --panel-pattern go together")
+    cache: Dict[int, pd.DataFrame] = {}
+
+    def obs_of(v: int) -> pd.DataFrame:
+        if v not in cache:
+            if len(cache) >= 3:
+                cache.pop(next(iter(cache)))
+            cache[v] = load_obs(own_obs_path(a.obs_root, v))
+        return cache[v]
+
+    obs_single, panel_single = (None, None) if per_vintage else (load_obs(a.obs), pd.read_pickle(a.panel))
     for v in a.vintages:
-        t = build_table(v, panel, obs)
-        t["inputs"] = {"obs": str(a.obs), "obs_sha256": hashlib.sha256(Path(a.obs).read_bytes()).hexdigest(), "panel": str(a.panel),
-                       "panel_sha256": hashlib.sha256(Path(a.panel).read_bytes()).hexdigest()}
+        if per_vintage:
+            obs_path, panel_path = own_obs_path(a.obs_root, v), Path(a.panel_pattern.format(V=v))
+            panel = pd.read_pickle(panel_path)
+            want = json.loads(obs_path.with_name("obs_meta.json").read_text(encoding="utf-8"))["obs_sha256"]
+            if panel.attrs.get("cut") != f"{v}-12-31" or panel.attrs.get("obs_sha256") != want:
+                raise SystemExit(f"refused: {panel_path} was not joined to vintage {v}'s own obs at cut {v}-12-31 (attrs {panel.attrs.get('cut')}, {panel.attrs.get('obs_sha256')})")
+            t = build_table(v, panel, obs_of(v), lambda ocut: obs_of(int(ocut[:4]) - 1))
+            t["inputs"] = {"mode": "per_vintage (AL.10)", "obs": str(obs_path), "obs_sha256": hashlib.sha256(obs_path.read_bytes()).hexdigest(), "panel": str(panel_path),
+                           "panel_sha256": hashlib.sha256(panel_path.read_bytes()).hexdigest(), "medians_obs": f"{a.obs_root}/<origin year - 1>/obs.csv.gz",
+                           "panel_obs_rows_dropped_filed_after_cut": panel.attrs.get("obs_rows_dropped_filed_after_cut")}
+            t["extractor"] = extractor_lineage(obs_path)
+        else:
+            t = build_table(v, panel_single, obs_single)
+            t["inputs"] = {"obs": str(a.obs), "obs_sha256": hashlib.sha256(Path(a.obs).read_bytes()).hexdigest(), "panel": str(a.panel),
+                           "panel_sha256": hashlib.sha256(Path(a.panel).read_bytes()).hexdigest()}
         d = a.out / str(v)
         d.mkdir(parents=True, exist_ok=True)
         p = d / "near_term.json"

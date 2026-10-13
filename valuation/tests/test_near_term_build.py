@@ -116,3 +116,92 @@ def test_the_cut_proof_every_fact_filed_on_or_after_the_cut_changes_and_the_tabl
             panel2.loc[late_origin, c] = panel2.loc[late_origin, c] * 3 + 7
     b = nb.build_table(2020, panel2, obs2)
     assert json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
+
+
+# ---- Addendum AL.10: per-vintage inputs ----------------------------------------------------------------------------------------------------------------
+
+def test_the_medians_at_each_origins_cut_come_from_that_cuts_own_obs_when_given():
+    obs, panel = _obs(), panel_frame()
+    other = _obs()
+    other["rev_1"] = other["rev_1"] * 1.5                                                  # a different extraction: other medians
+    other["g_1"] = other["rev_1"] / other["rev"] - 1.0
+    seen = []
+
+    def medians_obs(ocut):
+        seen.append(ocut)
+        return other
+    res = nb.residual_frame(panel, obs, "2021-01-01", medians_obs)
+    row = res[(res["var"] == "growth") & (res["k"] == 1)].iloc[0]
+    p = panel[(panel["cik"] == row["cik"])].iloc[0]
+    i = nb.population_medians(other, f"{str(p['date'])[:4]}-01-01")["operating"]["growth"]["1"]["median"]
+    assert row["resid"] == pytest.approx(math.log1p(p["g_1"]) - math.log1p(i + 0.5 * (0.08 - i)))
+    assert sorted(set(seen)) == sorted({f"{str(d)[:4]}-01-01" for d in panel["date"] if str(d) < "2021-01-01"})
+
+
+def _write_vintage(root, v, obs, cut=None):
+    import hashlib
+    d = root / str(v)
+    d.mkdir(parents=True)
+    p = d / "obs.csv.gz"
+    obs.to_csv(p, index=False)
+    (d / "obs_meta.json").write_text(json.dumps({"vintage": v, "cut_date": cut or f"{v + 1}-01-01", "obs_sha256": hashlib.sha256(p.read_bytes()).hexdigest()}))
+    return p
+
+
+def test_own_obs_path_refuses_another_vintages_extraction_and_altered_bytes(tmp_path):
+    _write_vintage(tmp_path, 2019, obs_frame(n=40))
+    assert nb.own_obs_path(tmp_path, 2019).name == "obs.csv.gz"
+    _write_vintage(tmp_path, 2020, obs_frame(n=40), cut="2022-01-01")
+    with pytest.raises(SystemExit, match="not vintage 2020's own extraction"):
+        nb.own_obs_path(tmp_path, 2020)
+    with open(tmp_path / "2019" / "obs.csv.gz", "ab") as fh:
+        fh.write(b"x")
+    with pytest.raises(SystemExit, match="obs_sha256"):
+        nb.own_obs_path(tmp_path, 2019)
+
+
+def test_per_vintage_main_refuses_a_panel_not_joined_to_the_vintages_own_obs_and_labels_the_extractor(tmp_path):
+    import hashlib
+    root = tmp_path / "obs"
+    for v in range(2015, 2023):
+        _write_vintage(root, v, obs_frame())
+    panel = panel_frame(n=600)
+    meta = json.loads((root / "2022" / "obs_meta.json").read_text())
+    panel.attrs.update(cut="2022-12-31", obs_sha256=meta["obs_sha256"])
+    panel.to_pickle(tmp_path / "panel_2022.pkl")
+    bad = panel.copy()
+    bad.attrs.update(cut="2023-12-31", obs_sha256=meta["obs_sha256"])
+    bad.to_pickle(tmp_path / "panel_2021.pkl")
+    with pytest.raises(SystemExit, match="not joined to vintage 2021's own obs"):
+        nb.main(["--vintages", "2021", "--obs-root", str(root), "--panel-pattern", str(tmp_path / "panel_{V}.pkl"), "--out", str(tmp_path / "out")])
+    nb.main(["--vintages", "2022", "--obs-root", str(root), "--panel-pattern", str(tmp_path / "panel_{V}.pkl"), "--out", str(tmp_path / "out")])
+    raw = (tmp_path / "out" / "2022" / "near_term.json").read_bytes()
+    t = json.loads(raw)
+    assert (tmp_path / "out" / "2022" / "near_term.sha256").read_text() == hashlib.sha256(raw).hexdigest()
+    assert t["inputs"]["mode"].startswith("per_vintage") and t["extractor"]["label"] == "legacy"
+    assert t["extractor"]["vendored_extractor_sha256"] == nb.LEGACY_EXTRACTOR_SHA256 and len(t["extractor"]["known_defects"]) == 2
+    with pytest.raises(SystemExit):
+        nb.main(["--vintages", "2022", "--obs-root", str(root), "--out", str(tmp_path / "out2")])     # the two per-vintage options go together
+
+
+def test_the_cut_proof_holds_in_per_vintage_mode():
+    obs, panel = _obs(), panel_frame(n=600)
+    by = {y: _obs() for y in range(2014, 2021)}
+    a = nb.build_table(2020, panel, obs, lambda ocut: by[int(ocut[:4]) - 1])
+    cut = a["cut_date"]
+
+    def late(d):
+        d = d.copy()
+        for k in nt.KS:
+            lo = d[f"filed_{k}"].astype(str) >= cut
+            for c in (f"rev_{k}", f"tbv_{k}", f"m_{k}", f"rote_{k}", f"g_{k}", f"tg_{k}"):
+                d.loc[lo, c] = d.loc[lo, c] * 3 + 7
+        return d
+    panel2 = panel.copy()
+    for k in nt.KS:
+        lp = panel2[f"filed_{k}"].astype(str) >= cut
+        for c in (f"g_{k}", f"m_{k}", f"tg_{k}", f"rote_{k}"):
+            panel2.loc[lp, c] = panel2.loc[lp, c] * 3 + 7
+    by2 = {y: late(d) for y, d in by.items()}
+    b = nb.build_table(2020, panel2, late(obs), lambda ocut: by2[int(ocut[:4]) - 1])
+    assert json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
