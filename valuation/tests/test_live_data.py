@@ -42,3 +42,21 @@ def test_stale_reasons_name_every_failure_and_a_fresh_company_has_none():
     assert ld.stale_reasons("2", "2026-10-13", man) == ["company facts never fetched"]
     failed = {"0000000001": dict(man["0000000001"], error="OSError: SEC down")}
     assert any("refresh failed" in x for x in ld.stale_reasons("1", "2026-10-13", failed))
+
+
+def test_addendum_ak13_the_diluted_share_fallback_is_domestic_first_filed_and_point_in_time():
+    from valuation import pit_data as pd_
+    class C:
+        def __init__(self, rows):
+            self.facts = {"us-gaap": {pd_.DILUTED_TAG: {"shares": rows}}}
+        def eligibility(self, asof_iso):
+            return lambda accn, filed: "ok" if filed < asof_iso else "after"
+    rows = [["2024-01-01", "2024-12-31", 100.0, "a1", "2025-02-20", "10-K", 2024, "FY"],
+            ["2024-01-01", "2024-12-31", 104.0, "a2", "2026-02-20", "10-K", 2025, "FY"],       # the same year re-filed later: not the first-filed value
+            ["2025-01-01", "2025-12-31", 98.0, "a2", "2026-02-20", "10-K", 2025, "FY"],
+            ["2025-07-01", "2025-09-30", 97.0, "q3", "2025-11-01", "10-K", 2025, "Q3"],         # a quarter: not an annual period
+            ["2025-01-01", "2025-12-31", 900.0, "f1", "2025-04-01", "20-F", 2025, "FY"]]        # a foreign issuer's ordinary shares: never
+    fb = pd_.diluted_shares_fallback(C(rows), "2025-12-31")
+    assert fb == {"value": 100.0, "period_end": "2024-12-31", "filed": "2025-02-20", "accn": "a1", "form": "10-K"}
+    assert pd_.diluted_shares_fallback(C(rows), "2026-03-01")["value"] == 98.0                # the next year once it is filed
+    assert pd_.diluted_shares_fallback(C(rows[3:]), "2026-03-01") is None                       # only a quarter and a 20-F: no fallback

@@ -788,6 +788,27 @@ class CompanyPit:
                 "n_entries": len(entries)}
 
 
+DILUTED_TAG = "WeightedAverageNumberOfDilutedSharesOutstanding"
+DOMESTIC_ANNUAL_FORMS = ("10-K", "10-K/A", "10-KT", "10-KT/A")    # a foreign issuer's count is in ordinary shares while its price may be per ADS: no fallback
+SHARES_FALLBACK_NOTE = ("shares: no cover-page count (a dual-class company reports it by class, which companyfacts omits); the latest annual diluted "
+                        "weighted-average count is used (a period average including dilution: it lags the cover count, Addendum AK.13)")
+
+
+def diluted_shares_fallback(company, asof):
+    """Addendum AK.13: when the cover-page count is absent, the diluted weighted-average shares of the latest fiscal year (a 330-400 day period) whose annual
+    report (a domestic 10-K; never a 20-F / 40-F, whose ordinary-share count need not match a per-ADS price) was filed strictly before `asof`, its first-filed value; {"value", "period_end", "filed", "accn", "form"} or None."""
+    asof_iso = to_date(asof).isoformat()
+    elig = company.eligibility(asof_iso)
+    rows = [r for r in (((company.facts.get("us-gaap") or {}).get(DILUTED_TAG) or {}).get("shares") or [])
+            if r[0] and r[1] and 330 <= (to_date(r[1]) - to_date(r[0])).days <= 400 and is_num(r[2]) and r[2] > 0 and elig(r[3], r[4]) == "ok"
+            and r[5] in DOMESTIC_ANNUAL_FORMS]
+    if not rows:
+        return None
+    end = max(r[1] for r in rows)
+    first = min((r for r in rows if r[1] == end), key=lambda r: r[4])
+    return {"value": float(first[2]), "period_end": end, "filed": first[4], "accn": first[3], "form": first[5]}
+
+
 def fiscal_label(fye_iso):
     """The integer fiscal year of a period end: its calendar year, except a 52/53-week year ending Jan 1-7, which belongs to the year before."""
     d = date.fromisoformat(fye_iso)
@@ -1485,6 +1506,11 @@ class PitData:
         shares = None if cov is None else Filed(cov["value"], cov["cover_date"] or cov["filed"], cov["filed"], cov["accn"], cov["form"], COVER_TAG)
         sr = self.sic(cik, asof_d)
         notes = list(c.extract(asof_d).notes)
+        if shares is None:
+            fb = diluted_shares_fallback(c, asof_d)
+            if fb is not None:
+                shares = Filed(fb["value"], fb["period_end"], fb["filed"], fb["accn"], fb["form"], DILUTED_TAG)
+                notes.append(SHARES_FALLBACK_NOTE)
         ticker = ticker or self.ticker_for(cik) or f"CIK{cik}"
         prov = {(f, pe): (RESTATED if RESTATED in fy.cells[f].flags else PIT_VALID) for pe, fy in fys.items() for f in ENGINE_FIELDS if f in fy.cells}
         if CPIT is None:
