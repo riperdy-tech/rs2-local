@@ -21,6 +21,34 @@ def test_preconditions_refuse_an_unfinished_run_unfinished_controls_and_the_pack
     assert "gate2_finished.flag" in text and "masked control" in text and "repeat control" in text and "packs' store" in text
 
 
+
+def test_repeat_later_waives_only_the_repeat_control_and_says_so(tmp_path):
+    """AK.25 (operator 2026-10-13): scoring may precede the repeat control; every other refusal stands."""
+    run_mock(tmp_path, n=2)
+    pre = sd.preconditions(tmp_path, None, store=tmp_path / "s", packs_store=tmp_path / "s", memory=False, repeat_later=True)
+    text = " ".join(pre["refusals"])
+    assert "repeat control" not in text and pre["repeat_deferred"] is True
+    assert "gate2_finished.flag" in text and "masked control" in text and "packs' store" in text
+    assert sd.main(["score", "--state-dir", str(tmp_path), "--repeat-later", "--repeat-state", str(tmp_path)]) == 2   # not both
+
+
+def test_r8_reports_beside_an_existing_score_once_and_only_on_a_final_repeat(tmp_path, monkeypatch):
+    smp = run_mock(tmp_path, n=3)
+    sl.write_pfail({sl.job_key(j["date"], j["cik"]): {"status": "ok", "p_fail": 0.05} for j in sample_mod.jobs(smp)}, "m", "s", tmp_path)
+    assert sd.main(["r8", "--state-dir", str(tmp_path), "--repeat-state", str(tmp_path)]) == 2                          # no scoring date
+    assert sd.main(["r8", "--state-dir", str(tmp_path), "--repeat-state", str(tmp_path), "--scoring-date", "2026-10-14"]) == 2   # no score there
+    out = tmp_path / "scoring" / "2026-10-14"
+    out.mkdir(parents=True)
+    (out / "report.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(sd, "control_final", lambda state, mode: False)
+    assert sd.main(["r8", "--state-dir", str(tmp_path), "--repeat-state", str(tmp_path), "--scoring-date", "2026-10-14"]) == 5   # repeat not final
+    monkeypatch.setattr(sd, "control_final", lambda state, mode: True)
+    assert sd.main(["r8", "--state-dir", str(tmp_path), "--repeat-state", str(tmp_path), "--scoring-date", "2026-10-14"]) == 0
+    r = json.loads((out / "r8.json").read_text(encoding="utf-8"))
+    from rebuild_harness.gate2 import scoring
+    assert r["n_company_dates"] == len(scoring.load_rows(tmp_path)[0]) > 0 and r["median_abs_shift"] == 0.0 and r["share_identical"] == 1.0     # the same rows: no shift
+    assert sd.main(["r8", "--state-dir", str(tmp_path), "--repeat-state", str(tmp_path), "--scoring-date", "2026-10-14"]) == 2   # written once
+
 def test_audit1_finds_look_ahead_counts_coverage_and_draws_a_fixed_hand_check_list():
     rows = [{"key": f"2025-10-31_{i:010d}", "date": "2025-10-31", "family": "operating"} for i in range(30)]
     outs = {r["key"]: {"cik": r["key"][11:], "ticker": "T", "quarters": {"q1": {"filed": "2025-11-10", "revenue_growth": 0.1, "operating_margin_change": 0.0}},

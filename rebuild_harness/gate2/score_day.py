@@ -3,10 +3,13 @@ the reported diagnostics, the coordinator's independent recomputation and Audit 
 
     python -m rebuild_harness.gate2.score_day check     --state-dir RUN2 [--repeat-state REP]            preconditions only; reads no outcome
     python -m rebuild_harness.gate2.score_day refresh   --state-dir RUN2                                 new companyfacts snapshot + outcome store (no model loaded)
-    python -m rebuild_harness.gate2.score_day score     --state-dir RUN2 --repeat-state REP --store NEW_STORE [--scoring-date D]
+    python -m rebuild_harness.gate2.score_day score     --state-dir RUN2 (--repeat-state REP | --repeat-later) --store NEW_STORE [--scoring-date D]
+    python -m rebuild_harness.gate2.score_day r8        --state-dir RUN2 --repeat-state REP --scoring-date D   R8 after a --repeat-later score
     python -m rebuild_harness.gate2.score_day rehearse  --state-dir RUN2 --baselines FILE --out DIR       dummy outcomes; writes only into DIR
 
-WHAT IT REFUSES.  `score` runs only when: gate2_finished.flag exists; the masked control and the repeat control are final; no outcomes file exists yet for
+WHAT IT REFUSES.  `score` runs only when: gate2_finished.flag exists; the masked control and the repeat control are final (or, with --repeat-later, the
+repeat control is deferred: operator 2026-10-13, Addendum AK.25 - R8 is a reported diagnostic, not a bar, it reads no outcome, and it runs from the frozen
+worktree on hash-verified inputs, so scoring first cannot touch it; `r8` then reports it beside the score); no outcomes file exists yet for
 the scoring date (outcome_extract writes once); the store passed is NOT the store the packs were built from (the outcome store must be a newer snapshot,
 built by the `PitData.build_company` path from a newer companyfacts.zip); and the memory guard holds (no llama-server running, commit headroom >= 8 GB,
 memory `ram-limit-during-gpu-runs`).  Each refusal names its reason.
@@ -106,10 +109,10 @@ def scoring_date_from(store_date: str, spy_last: str, index_date: str, given: Op
     return d
 
 
-def preconditions(state_dir, repeat_state=None, store=None, packs_store=None, memory: bool = True) -> Dict[str, object]:
+def preconditions(state_dir, repeat_state=None, store=None, packs_store=None, memory: bool = True, repeat_later: bool = False) -> Dict[str, object]:
     paths = config.state_paths(state_dir)
     out = {"finished_flag": paths["finished"].exists(), "masked_control_final": control_final(state_dir, "masked"),
-           "repeat_control_final": control_final(repeat_state, "repeat")}
+           "repeat_control_final": control_final(repeat_state, "repeat"), "repeat_deferred": bool(repeat_later)}
     if store is not None:
         out["outcome_store_is_new"] = Path(store).resolve() != Path(packs_store).resolve() if packs_store else None
     if memory:
@@ -120,7 +123,7 @@ def preconditions(state_dir, repeat_state=None, store=None, packs_store=None, me
         refusals.append("gate2_finished.flag is missing: the replay is not finished")
     if out["masked_control_final"] is not True:
         refusals.append("the masked control (G6) is not final")
-    if out["repeat_control_final"] is not True:
+    if out["repeat_control_final"] is not True and not repeat_later:
         refusals.append("the repeat control (R8) is not final or its state folder was not given")
     if store is not None and out.get("outcome_store_is_new") is False:
         refusals.append("the outcome store is the packs' store (an August snapshot): outcomes need a newer companyfacts snapshot")
@@ -296,6 +299,8 @@ def render(rep, diag, agree, aud, mvi, meta) -> str:
     L.append(f"- R3c: {json.dumps(diag['R3c'])}")
     if "R8" in diag:
         L.append(f"- R8: {json.dumps(diag['R8'])}")
+    elif str(meta.get("repeat_control", "")).startswith("deferred"):
+        L.append("- R8: deferred (AK.25): the repeat control runs after scoring; `score_day r8` writes r8.json beside this report")
     L += ["", "## Independent recomputation", "", f"- mismatches: {len(agree['mismatches'])}"] + [f"  - {m}" for m in agree["mismatches"][:20]]
     L += ["", "## Audit 1", "", f"- look-ahead violations: {len(aud['look_ahead_violations'])}", "- coverage (date|family|measure: rows, q1, annual, ...):"]
     L += [f"  - {k}: {v}" for k, v in aud["coverage"].items()]
@@ -341,9 +346,10 @@ def dummy_outcomes(state_dir, path: Path, seed: int = 7) -> Path:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("stage", choices=("check", "refresh", "score", "rehearse"))
+    ap.add_argument("stage", choices=("check", "refresh", "score", "r8", "rehearse"))
     ap.add_argument("--state-dir", type=Path, required=True)
     ap.add_argument("--repeat-state", type=Path)
+    ap.add_argument("--repeat-later", action="store_true", help="score: defer the repeat control (AK.25); R8 is reported later by the r8 stage")
     ap.add_argument("--store", type=Path, help="score: the NEW outcome store (a newer companyfacts snapshot)")
     ap.add_argument("--store-date", help="score: the companyfacts snapshot date of --store (YYYY-MM-DD)")
     ap.add_argument("--scoring-date")
@@ -363,6 +369,28 @@ def main(argv=None) -> int:
             return 5
         print(json.dumps(refresh(config.WORKSPACE / "data" / "sec_bulk", config.WORKSPACE / "data" / "pit_store"), indent=1))
         return 0
+    if a.stage == "r8":
+        from . import diagnostics, scoring
+        if a.repeat_state is None or a.scoring_date is None:
+            print("REFUSED: r8 needs --repeat-state and --scoring-date (the date of the score it reports beside)")
+            return 2
+        out = config.state_paths(a.state_dir)["root"] / "scoring" / a.scoring_date
+        if not (out / "report.json").exists():
+            print(f"REFUSED: no score at {out}: r8 reports beside an existing score")
+            return 2
+        if (out / "r8.json").exists():
+            print(f"REFUSED: {out / 'r8.json'} exists (written once)")
+            return 2
+        if control_final(a.repeat_state, "repeat") is not True:
+            print("REFUSED: the repeat control is not final")
+            return 5
+        rows, _s, _e = scoring.load_rows(a.state_dir)
+        rep_rows, _s, _e = scoring.load_rows(a.repeat_state)
+        res = dict(diagnostics.r8(rows, rep_rows), repeat_state=str(a.repeat_state), note="deferred R8 (AK.25); it reads no outcome")
+        with open(out / "r8.json", "x", encoding="utf-8") as fh:
+            json.dump(res, fh, indent=1)
+        print(json.dumps(res, indent=1))
+        return 0
     if a.stage == "rehearse":
         if a.out is None or a.baselines is None:
             print("REFUSED: rehearse needs --out (outside the run's state) and --baselines")
@@ -378,7 +406,10 @@ def main(argv=None) -> int:
     # score
     from . import env as env_mod
     g = env_mod._g1r()
-    pre = preconditions(a.state_dir, a.repeat_state, a.store, g.DEFAULT_STORE, memory=True)
+    if a.repeat_later and a.repeat_state is not None:
+        print("REFUSED: give --repeat-state or --repeat-later, not both")
+        return 2
+    pre = preconditions(a.state_dir, a.repeat_state, a.store, g.DEFAULT_STORE, memory=True, repeat_later=a.repeat_later)
     if a.store is None or a.store_date is None:
         pre["refusals"].append("score needs --store and --store-date")
     if pre["refusals"]:
@@ -405,7 +436,8 @@ def main(argv=None) -> int:
         print("REFUSED: the baselines build failed")
         return 6
     res = run_stages(a.state_dir, outcome_extract.outcomes_path(sd, a.state_dir), bfile, a.repeat_state, out,
-                     {"mode": "SCORING", "scoring_date": sd, "store": str(a.store), "store_date": a.store_date, "spy_last": spy_last, "index_date": idx_date}, a.draws)
+                     {"mode": "SCORING", "scoring_date": sd, "store": str(a.store), "store_date": a.store_date, "spy_last": spy_last, "index_date": idx_date,
+                      "repeat_control": "deferred: R8 follows in r8.json (AK.25)" if a.repeat_later else "final"}, a.draws)
     print(json.dumps(res, indent=1))
     return 0 if res["mismatches"] == 0 else 1
 
