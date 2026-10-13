@@ -32,6 +32,16 @@ agreement. Where a claim rests on code you cannot see, say so rather than assume
   against the filed statements. The worst cases are +1,544% against +8%, and −52% against
   +69%. It is not a look-ahead leak.
 
+**A second, larger defect, found by the coordinator's dry test (AK.31; quarters filed before T, so no outcome was read):**
+- **Recasts.** The extractor's outcome mode compares a quarter with the year-earlier quarter **as first filed**. A company that sold a
+  business re-reports that year-earlier quarter as continuing operations, so the comparison mixes bases:
+  - TDS: −74.8% against the filing's own −5.8%;
+  - Dollar Tree after Family Dollar: −38% against +12%.
+- **Size:** across the 600 company-dates' latest pre-T quarters, the same-filing rule differs by more than 5 pt in 14 of 482 (about 3%).
+  Most are recasts; one is a tag join (+1,254% against +32%).
+- **The same-filing rule corrects both.** A guard was added for a derived Q4 that spans a recast: such a row is listed, never guessed.
+- **The evidence:** `evidence/gate2_audit/`.
+
 **Where it reaches gate 2:**
 - **The hard bar G1** scores next-quarter revenue growth and margin change, built as the q1 quarter against the quarter a year earlier.
   Each quarter's tag is chosen separately, so q1 is exposed. (The coordinator first said q1 was safe, in AK.26, and corrected this in
@@ -59,6 +69,8 @@ agreement. Where a claim rests on code you cannot see, say so rather than assume
    closure test (the report's F3). Where can it pick wrongly: gross versus net, pass-through revenue, excise taxes?
 3. Should the tag-consistent version govern? The registered definition is the extractor's output. Changing it before reading outcomes is
    allowed by the project's rules, but it is a change.
+4a. The recast finding suggests the outcome-side problem is mostly **recasts**, not tags. Does the same-filing rule have a failure
+   mode for recasts that this brief misses, for example a recast announced after the q1 filing, or a 10-Q/A?
 4. Gate 2's **inputs** were built by the same extractor. Is gate 2 still interpretable? The proposed treatment is to keep the frozen
    inputs and report the share of company-dates with a seam in their input history as a stated limitation. Is that enough?
 
