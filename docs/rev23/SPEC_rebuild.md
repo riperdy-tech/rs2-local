@@ -3160,3 +3160,84 @@ outcome has been read.
 
 **A note on coordination.** At 21:40 fork 2 was not listed, and its message address had gone stale, so the "masked started" message
 bounced. At 21:49 it reappeared as a newly started session, so its process had restarted. The message was then delivered.
+
+**AK.24 (2026-10-13 21:56): everything stopped for the operator's PC restart (operator: "force stop it").**
+- **The masked control:**
+  - `data\gate2_run2\PAUSE` was set first.
+  - Then, on the operator's instruction, it was force-stopped mid-company: `RS2-Gate2-Replay` stopped, runner pid 114136 and
+    llama-server pid 118704 killed. The GPU shows 0 MiB.
+  - The interrupted company is the first masked job, attempt `a01`, begun 21:51. By the runner's design, a crash is never resumed in
+    place: the next start retries it in a new attempt folder, `a02`.
+  - **To resume:** delete `PAUSE`. After the reboot the task starts at logon and waits on `PAUSE`.
+- **The milestone review:** its hourly run (pid 114368, started 21:45) was stopped too. Its `state.json` was checked afterwards and
+  parses.
+- **Other work:**
+  - fork 2 reports nothing running and its work committed;
+  - Gemini Baselining stopped its batch at 59 of 161 saved answers, and it resumes with `run_batches.py --batch 5`;
+  - `RS2-Baseline-Runner` has been idle since 10-12 behind `DEPTH_PAUSED`, which stays set.
+
+**AL.5 An outside review of the engine-v2 decision; E6 completed for 2016–2024** (2026-10-13 22:33).
+
+**E6 over every built vintage:** `engine_v2_audit/e6_cut_proof_real.py` on 2016, 2017, 2018, 2020 and 2022 as well (2019, 2021, 2023 and
+2024 in AL.4). Every vintage from 2016 to 2024 rebuilt byte-identical with every later-filed fact altered: 84,886 to 249,331 facts and
+rows per vintage. **E6 is satisfied for 2016–2024. Vintage 2025 is pending its build, and the freeze waits for it.**
+
+**The review's rulings, adopted:**
+1. **E2 and E3 stay FAIL.** E2's two growth tables are a documented exception: the Jan-1 cut against the study's Jun-30 cut. The tolerance
+   is not amended, and nothing is redefined as a pass. The four tables compared with the study's refitted blends are recorded as
+   comparisons, not replications.
+2. **A gate-2b pass establishes only gate 2b's registered year-1 criteria on its dates.** It does not resolve years 2–3, shock-year
+   undercoverage, joint-tail dependence or turbulence behaviour. Financial tangible-book growth is reported separately.
+3. **Required before the gate-2b SYSTEM freeze:** E5 (after vintage 2025) and E6 for vintage 2025.
+4. **The triggers, kept separate:**
+
+| Evidence | Response |
+|---|---|
+| D-T1 triggered (AK.20) | Register and evaluate the empirical-copula candidate (v2.1). It cannot correct the marginals. |
+| Gate 2b fails a registered year-1 calibration bar | Record the measure; investigate a separately registered marginal-calibration candidate. |
+| Shadow operation shows material undercoverage in turbulence | A pre-registered investigation of the marginal and/or joint tail, on a rebuilt look-ahead-audited regime history (MRI's pre-2026-09-22 timeline is unusable). |
+| Gate 2b passes but contains no relevant shock | Turbulence performance stays unvalidated; the limitation is kept and monitored in shadow operation. |
+
+5. **Conditions for the v2.1 copula registration** (passed to the fork, which drafts it):
+   - only the dependence changes; the v2.0 marginals are kept;
+   - built on vintage V and evaluated on untouched residuals from V+1;
+   - lower and upper tails both tested;
+   - E3 and E4 re-run;
+   - E5 re-run unless an independently justified invariance test shows the rankings cannot change;
+   - the definition and the bars frozen before any result is inspected;
+   - a candidate passing its tests does not by itself authorise adoption.
+
+**Not approved, as the review states:** reading a gate-2b pass as resolving shock-year undercoverage or joint-tail dependence; changing
+v2.0's cut, bars or weights to obtain a pass.
+
+**Transparency:** the reviewer saw a mirror ending at AK.20. The fork's mirror refresh (`d6d286b`) now carries AK.23, and this entry needs
+the next refresh.
+
+**AK.25 (2026-10-13 23:00): scoring moves ahead of the repeat control (the operator: "earlier the checking the better ... you're not modifying the
+intention of the run"), and an unattended chain runs it.**
+- **The masked control resumed** at 22:35 after the restart (PAUSE removed, one runner, server loaded). By 22:55 it was at 5 of 30.
+  The first company was retried in a new attempt folder, as AK.24 said.
+- **Why the order change leaves the run's meaning intact:**
+  - R8 is a reported diagnostic, not one of the bars G1–G6;
+  - R8 reads no outcome: it compares placed percentiles between two runs;
+  - the repeat control runs from the frozen worktree (`a5fd342`) on hash-verified copies with its own freeze (AK.17), so knowing the
+    score cannot alter it.
+  Every bar, threshold and reading rule is unchanged. G6 still needs the masked control, and scoring still waits for it.
+- **The code:** `score_day` gains `--repeat-later` and an `r8` stage (rs2-local `review-2026-10/gate2-run2` `97e19a6`, pushed after a
+  scan; suite 738 passed, including 2 new tests).
+  - `--repeat-later` waives only the repeat-control precondition; every other refusal stands. The report says "R8: deferred".
+  - `r8` writes `r8.json` once, beside an existing score, and only on a final repeat control.
+- **The chain:** scheduled task `RS2-Gate2-PostMasked`, files in `scratch/rev23/gate2_audit/chain/`, runs every 15 minutes and at
+  logon. It exits at once until the masked control is final and no llama-server runs. Then, once:
+  0. disable `RS2-Gate2-Replay`;
+  1. `score_day refresh` (new companyfacts snapshot and outcome store; standing SEC approval);
+  2. `score_day score --repeat-later`;
+  3. register `RS2-Gate2-Repeat`;
+  4. write `DONE`.
+
+  A failed refresh or score is recorded as `FAILED_<step>`, and the repeat control is still registered, since it does not depend on
+  scoring. A pid lock prevents doubles, and a stale lock is cleared. Its first test run returned 0 and did nothing, as expected.
+- **Nothing is reported automatically.** The coordinator audits the score first: the independent recomputation, Audit 1 and the hand
+  check (Q4).
+- **Fork 2's CPU-heavy vintage-2025 pass** now waits until the repeat control ends, because the repeat loads the model straight after
+  scoring. It is not urgent: gate 2b's freeze comes after the 10-30 filings.
