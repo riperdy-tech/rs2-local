@@ -2892,3 +2892,103 @@ AK.7, is AL.1; this session continues in the AL series.
   `riperdy-tech/rs2-local` (commit `633df3a`, folder `docs/rev23/`), after a scan that found no keys, tokens, account numbers, phone
   numbers or emails.
 - **The authoritative copy** stays in stocks-workspace. The mirror is refreshed after record changes.
+
+**AK.19 (2026-10-13 17:47): rulings on ChatGPT's and Gemini's answers to cross-check 9; C1 and B5 revised to draft v2.** Both
+reviews were read against the records themselves. Each claim was checked before it was ruled on. No gate-2 outcome has been read.
+Before these edits, the local records and the public mirror were byte-identical (ChatGPT's caveat; checked with `cmp`).
+
+*Defects confirmed and fixed in the drafts:*
+1. **The C1–B5 interface gap (ChatGPT).** B5 section 7 published `prob_fail_12m` through v4, but C1 had no such field. **Accepted.**
+   C1 now has `prob_fail_12m` and `versions.distress_model`.
+2. **The calibration claim (ChatGPT; both reviews' "greatest risk").** C1 called the value distribution "calibrated", but S5 section 6
+   calibrates year-1 forecasts only, and that does not carry through the long-run chain and the copula. **Accepted.** New C1 section
+   2b:
+   - value per share is model-implied, with `value_distribution: "model_implied"` on every row;
+   - the claimed and tested quantities are the year-1 forecasts (gate 2b B4) and `prob_fail_12m` (B5);
+   - TRK-06 no longer calibration-grades `prob_value_above_price`; its only test is S8's returns.
+3. **`expected_mos` was a median (ChatGPT).** **Accepted.**
+   - Renamed `median_mos`; `mean_iv` and `mean_mos` added.
+   - A table names the measure each consumer uses.
+   - H-S1's "expected IV" is fixed as `mean_iv`, the survival-adjusted mean, consistent with Addendum V (the mean keeps the signal).
+     **That last point amends the approved selection registration before any selection data exist, and needs the operator's
+     confirmation.**
+4. **The abstention reason (ChatGPT).** C1 section 8 labelled every abstention `family_not_built`. **Accepted** as a draft bug: the
+   reason is now `abstention.code`, with a test that each of the four codes comes back as itself.
+5. **The survival adjustment as a distribution (ChatGPT; Gemini's point 3 in part).** "Mean IV × P(survive)" defines a mean, not
+   quantiles. **Accepted.** C1 section 2a defines the mixture: value 0 with probability p, the going-concern distribution otherwise.
+   - **Formulas:** quantile q is 0 when q ≤ p and otherwise the going-concern quantile at (q − p)/(1 − p); the mean is (1 − p) × mean,
+     the existing formula; Pr(V > price) is (1 − p) × Pr(V_gc > price).
+   - **Not multiplying every draw by 1 − p:** that matches the mean but gives the wrong shape.
+   - **The consequence:** a name with p ≥ 0.10 cannot be `undervalued`. This is stated, and its effect on the fixture universe is
+     reported before any merge.
+   - **`dispersion_bucket`:** it now reads the going-concern quantiles, because the mixture's P50 can be 0.
+6. **The S5/engine-v2 centring contradiction (ChatGPT).** S5 section 6 said the base distribution was "re-centred". Engine v2 section 3
+   keeps the median bias, and S5's own V5 requires w = 0 to equal v2 byte for byte. Those cannot all hold. **Accepted** as an erratum
+   to S5 section 6: every draw shifts by w·Δ, and the median bias is kept. That is the only reading consistent with two approved
+   documents; no S5 code exists yet. **The operator is asked to confirm the erratum.**
+7. **The complexity order in B5 (the coordinator's own finding, prompted by ChatGPT's simplicity point).** The draft ranked C1 < C2 <
+   C3. By feature count it is C2 < C1 < C3: C2 replaces one of six features, while C1 adds about sixteen. Corrected. A more complex
+   qualifying candidate must also beat the simpler one by a paired Brier bound (upper 90% < 0, by year), not by any pooled difference.
+
+*B5's fresh-date read (both reviews).* 30 events is too few for a decisive AUC bar.
+- **Gemini's figure checked independently:** Hanley–McNeil at AUC 0.70 with 1,000 non-events gives SE 0.054 at 30 events, 0.030 at
+  100 and 0.025 at 150. Clustering widens these.
+- **Accepted, in this form:**
+  - monitoring from 30 independent events (each company counted once), never decisive;
+  - one decisive read at 100 independent events and 24 matured origin months, using block-bootstrap intervals by origin quarter and
+    pairing against C0;
+  - **the bars:** AUC ≥ 0.70 with a paired lower bound > 0; a paired Brier upper bound < 0; no inversion;
+  - **a calibration bar,** which D5 requires and the draft lacked: slope 0.7–1.3, observed ÷ predicted 0.75–1.33 overall and 0.67–1.5
+    in the top predicted decile. The last is Gemini's worst-decile point.
+- **Precision:** an AUC interval wider than 0.15 makes the read inconclusive. There is one final read at 150 events.
+- **The cost, stated:** at the draft's own rate (about 30 events by mid-2028), 100 events may take until the early 2030s. Until then
+  the layer runs flagged.
+
+*What is in force (ChatGPT's "fail closed").* **Modified.** C0 is not a validated default: it inverts and has AUC 0.65. "Keep C0" is
+therefore the status quo, not a closed failure.
+- **Before the read:** the development-selected candidate, which won an out-of-time walk-forward comparison over 2012–2024. It is
+  flagged `distress_model_not_validated`, and the flag annotates and never blocks (non-negotiable 3).
+- **After a failure:** whichever of C0 and the candidate has the lower fresh Brier score, by a rule fixed now, still flagged, and a
+  new version is registered.
+
+The residual spread is now defined: gate 1b's H2 statistic, within C0-formed solvency terciles, ranked by `log(mean_iv / price)`.
+
+*Answers ruled on, design kept:*
+- **Keep v2's median bias (ChatGPT) rather than re-centring (Gemini).** **Kept**, as approved. The bias is measured out of time per
+  cell, and the margin cells are margin-level quintiles (`near_term.cell_key`). So the top quintile's year-3 bias is exactly what
+  corrects the peak-margin reversion Gemini names as its failure mode 1. Re-centring would remove that correction.
+- **Fixed weights and year 1 only (both agree).** Kept.
+  - Gemini's sub-regime check is already reported: AL.3's E3 by origin year shows 2020–2021 under-covered.
+  - Gemini's "w_Y2 ≤ 0.5 w_Y1" is noted for any future year-2 registration, not adopted now.
+- **Gemini's continuous evidence score `s`.** **Rejected.** Unanchored inputs already get zero deviation (S5), so the score is already
+  binary on hard evidence. A graded score of the model's own evidence is a new, unvalidated self-assessment
+  (memory `claude-builds-not-part-of-system`). Hard-evidence and weaker-evidence subsets are reported as diagnostics (ChatGPT).
+- **S5 adoption "gridlock" (Gemini: Bayesian shrinkage, or breadth as co-qualifier).** **Rejected.**
+  - Gemini is right that annual outcomes come mostly from two dates. S5 already allows two dates for w and states that calibration
+    may fall to the identity.
+  - w = 0 leaves engine v2 working. A false adoption costs real money; an inert Muse costs only compute.
+  - Relaxing an approved rule because its likely outcome is now visible is the move Q1 forbids. ChatGPT reached the same ruling.
+- **Nonlinear distress models (both: no).** Agreed. Gemini's "use C3" is not adopted: selection is by section 4, not preference.
+- **Gemini's distress-horizon critique.** **Partly accepted:**
+  - a 36-month label is reported as a diagnostic in B5 section 4;
+  - the debt-maturity wall is already in C1, and the Merton distance in C2 is the equity-as-option view;
+  - a horizon change in the valuation is a later version.
+- **The Gaussian copula's zero tail dependence (both agree on the fact; Gemini says switch to t with fitted ν, ChatGPT says keep the
+  base and add a stress diagnostic).** **Kept as registered.** The marginals are empirical residual quantiles, so the single-variable
+  tails are measured; only the joint tail is at issue, and that is testable on development data. **Registered now, before it is
+  computed (D-T1):**
+  - **The measurement:** on the vintage-2024 residual panel (outcomes filed before 2025-01-01), for every measured copula pair with
+    n ≥ 300, the empirical lower-tail co-exceedance Pr(U_a < 0.10, U_b < 0.10) of rank PITs, against the Gaussian-copula rate at the
+    measured r. The upper tail is reported too.
+  - **The trigger:** in any pair, ratio ≥ 1.5 **and** the empirical rate's one-sided 90% bootstrap lower bound (resampling companies,
+    seed 20261013) above the Gaussian rate.
+  - **If triggered:** a v2.1 copula is registered separately: a t copula with ν fixed at 4, the same correlations, and E3/E4 re-run.
+    It is never swapped in place and never has a fitted ν. The operator decides it together with AL.3's open E3 question.
+- **D-T3, registered with D-T1 (Gemini's failure mode 1):** operating margin year-3 residual median and P10–P90 coverage by margin-level
+  quintile, and the top quintile by origin year. Reported only.
+
+*For the operator:* approve C1 draft v2 and B5 draft v2; confirm the S5 section 6 erratum and the H-S1 `mean_iv` reading.
+
+*Related and still open (fork 2's AL.3):* the E3 decision. One caution, from the records rather than a ruling: option 2 conditions
+historical residuals on MRI's turbulence flag. The stored MRI timeline before 2026-09-22 was corrupt (memory
+`mri-stored-timeline-was-corrupt`), so that option would first need a rebuilt historical series, proven by its own look-ahead audit.

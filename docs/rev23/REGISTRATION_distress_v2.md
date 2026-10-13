@@ -1,6 +1,14 @@
-# Distress layer v2 registration — DRAFT, 2026-10-13: a survival model that earns its place
+# Distress layer v2 registration — DRAFT v2, 2026-10-13 17:45: a survival model that earns its place
 
 Recovery plan S6; remaining-work plan B5; definition of done D5. Written before any candidate is built or measured.
+
+**Revision v2 (SPEC_rebuild AK.19, after the ChatGPT and Gemini reviews of cross-check 9):**
+- the complexity order is corrected, and a more complex candidate must beat a simpler one by a paired bound (section 4);
+- the fresh-date read becomes two-stage, set by precision (section 5): monitoring from 30 independent events, a decisive read at 100;
+- a calibration bar is added, because D5 requires it;
+- what is in force before and after the read is stated (section 6);
+- integration follows the verdict contract v4 mixture (section 7);
+- a 36-month diagnostic is added.
 
 ## 1. What exists, and why it is not enough
 
@@ -54,8 +62,15 @@ D5 requires that the least-solvent tercile does not invert and that the default 
 3. calibration slope within 0.8–1.2 and intercept within ±0.3.
 
 **The selected candidate:**
-- the qualifying candidate with the lowest pooled Brier score, with ties going to the simpler one (C1 < C2 < C3);
-- if none qualifies, C0 stays and the result is reported.
+- **Complexity order,** by feature count: C2 < C1 < C3. C2 replaces one of C0's six features; C1 adds about sixteen.
+- **Start with the simplest qualifying candidate.** A more complex qualifying candidate replaces it only if their paired Brier difference
+  has a one-sided 90% bootstrap upper bound < 0 (resampling years, 2,000 resamples, seed 20261013). The comparison is made in the order
+  above. A small pooled difference never decides it.
+- If none qualifies, C0 stays and the result is reported.
+
+**Reported, never used in selection:** the same walk-forward AUC and Brier score on a 36-month label (first qualifying exit within 36
+months). It shows whether a 12-month model ranks the failures of months 13–36 (Gemini's debt-maturity-wall point). A longer horizon in
+the valuation is a later version under its own registration.
 
 ## 5. Validation of the selected candidate (read once; never used to change it)
 
@@ -64,10 +79,38 @@ D5 requires that the least-solvent tercile does not invert and that the default 
   bounds;
 - the correlation of scores with and without the layer.
 
-**On fresh dates, the decisive bars,** read when at least 30 distress events have accrued on fresh dates (expected around mid-2028;
-reported quarterly before then, never acted on):
-- AUC ≥ 0.70 and Brier ≤ C0's on the same dates;
-- the least-solvent tercile's 12-month residual spread is ≥ 0 under the "excluded" and "last close" bounds (it no longer inverts).
+**The residual spread, defined.** Gate 1b's H2 statistic (REGISTRATION_gate1b.md): the industry-neutral top-minus-bottom quintile
+spread of the 12-month excess return residualised on the five yardsticks with industry and date effects.
+- **Here, it is computed within each solvency tercile.** The terciles are formed by C0's P(fail) at T, so membership does not depend
+  on the candidate.
+- **The ranking variable is `log(mean_iv / price)`:** survival-adjusted under the layer being tested, and unadjusted for the
+  comparison.
+
+**Counting fresh events.** An independent event is one company's first qualifying exit. It is counted once, although it appears in up
+to 12 monthly origins.
+
+**Uncertainty.** Every fresh-date interval below is a block bootstrap by calendar quarter of origin (2,000 resamples, seed 20261013), so
+events sharing a period are resampled together. Every comparison with C0 is paired on the same company-dates.
+
+**Stage 1, monitoring:** from 30 independent fresh events, every quarter. Reported:
+- AUC, Brier and the calibration measures, with their intervals;
+- the tercile spreads.
+
+No decision is ever taken at this stage, whatever the numbers.
+
+**Stage 2, the decisive read.** Once, at the first quarter-end with **at least 100 independent fresh events** and at least 24 origin
+months with matured 12-month outcomes. Like the old 30-event read, this count is expected to take years; the date is recorded at
+approval and is never a reason to read early. All of these must hold:
+1. **Ranking:** AUC ≥ 0.70, **and** the paired AUC difference against C0 has a one-sided 90% lower bound > 0.
+2. **Accuracy:** the paired Brier difference against C0 has a one-sided 90% upper bound < 0.
+3. **Calibration** (D5):
+   - the calibration slope is within 0.7–1.3;
+   - observed ÷ predicted events are within 0.75–1.33 overall;
+   - observed ÷ predicted events are within 0.67–1.5 in the top decile of predicted P(fail).
+4. **No inversion:** the least-solvent tercile's residual spread is ≥ 0 under the "excluded" and "last close" bounds.
+
+**Precision.** If the AUC interval is wider than 0.15, the read is **inconclusive** and is treated as not validated. A second and final
+read is then made at 150 independent events. No other look is ever decisive.
 
 ## 6. What may never happen
 
@@ -75,13 +118,24 @@ reported quarterly before then, never acted on):
 - A return used in selection.
 - A ticker-specific override.
 
-A failure of the fresh bars leaves C0, or the selected candidate marked "not validated", in place, and is reported.
+**What is in force, fixed now:**
+- **Before the decisive read:** the development-selected candidate (or C0 if none qualified), flagged `distress_model_not_validated` on
+  every verdict (contract v4 section 8). The flag annotates and never blocks.
+- **After a pass:** the selected candidate, without the flag.
+- **After a failure or an inconclusive final read:** whichever of C0 and the candidate had the lower fresh Brier score, by this rule
+  fixed now, still flagged. A new version is opened under its own registration and its own fresh panel.
+
+A failed candidate is never relabelled as passing, and no candidate, feature or bar is changed after a fresh result is seen.
 
 ## 7. Integration
 
-- **Unchanged formula:** value = mean IV × P(survive 12 months).
-- **Publication:** the selected P(fail) is published in the verdict contract (v4) as `prob_fail_12m`, with its model version, and
-  graded by TRK-06 (calibration of P(fail) against realised events).
+- **Unchanged formula for the mean:** value = mean IV × P(survive 12 months).
+- **As a distribution:** the verdict contract v4 section 2a mixture: value 0 with probability P(fail), the going-concern distribution
+  otherwise. Its quantiles, its `prob_value_above_price` and its mean all come from that one mixture.
+- **Publication:**
+  - the P(fail) in force is published in the verdict contract v4 as `prob_fail_12m`;
+  - its model and hash are published as `versions.distress_model`;
+  - it is graded by TRK-06 against realised exits.
 
 ## 8. Audit
 
@@ -91,4 +145,5 @@ A failure of the fresh bars leaves C0, or the selected candidate marked "not val
 
 ## 9. Approval record
 
-Not yet approved. It is for the operator, and part of cross-check 9.
+Not yet approved. It is for the operator. Cross-check 9 was answered by ChatGPT and Gemini, and the rulings are in SPEC_rebuild
+AK.19.

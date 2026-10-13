@@ -114,13 +114,18 @@ the test on fresh dates.
 
 ## 6. Calibration of SYSTEM's distribution
 
-**The base distribution.** The transported year-1 centre plus v2's residual distribution for the cell, re-centred. Years 2–3 are v2's
-own distributions, unchanged, since there is no Muse adjustment there.
+**The base distribution.** v2's year-1 distribution for the cell, shifted by the transport: every draw moves by `w·Δ`. Years 2–3 are
+v2's own distributions, unchanged, since there is no Muse adjustment there.
+
+*Erratum (AK.19, 2026-10-13, before any gate-2 outcome is read):* this sentence and the identity case below said "re-centred". That
+contradicted `SPEC_engine_v2.md` section 3 (v2's measured median bias is kept, not re-centred) and this spec's own V5 (with w = 0,
+SYSTEM equals v2 byte for byte in distributions). The meaning is the shift above: the median bias is kept and w = 0 gives v2 exactly.
+Nothing else changes. The operator is asked to confirm.
 
 **Calibration of year 1,** on the **annual** year-1 target only, the same target gate 2b's B4 scores.
 
 **Minimum:** at least 150 company-dates **and** at least 3 distinct dates with ≥ 30 each. Otherwise the calibration is the identity
-(v2's bands, re-centred), stated.
+(v2's bands, shifted by `w·Δ`), stated.
 
 When the minimum is met:
 1. Out-of-fold PITs `u = F(y)` under the base distribution, with folds leaving one date out.

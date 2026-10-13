@@ -1,6 +1,13 @@
-# Verdict contract v4 — DRAFT, 2026-10-13 14:51: what the new analyst publishes, and how the existing chain reads it
+# Verdict contract v4 — DRAFT v2, 2026-10-13 17:45: what the new analyst publishes, and how the existing chain reads it
 
 Recovery plan S7; remaining-work plan C1. Written during gate-2 run 2, before any gate-2 outcome is read.
+
+**Revision v2 (SPEC_rebuild AK.19, after the ChatGPT and Gemini reviews of cross-check 9):**
+- the survival adjustment is defined as a mixture, and `prob_fail_12m` and the distress model version are published (section 2a);
+- the value distribution is labelled model-implied, because no calibration of value per share is claimed (section 2b);
+- `expected_mos` is renamed `median_mos`, and `mean_iv` and `mean_mos` are added, each with its users named;
+- section 8 keeps the specific abstention code as the reason;
+- TRK-06 grades only observable quantities.
 
 **Its basis:**
 - the system map: DEP-07 (the band verdict and the Section 12 contract), DEP-07b (the fiduciary gate), DEP-09 (the ledger, gate on
@@ -8,7 +15,7 @@ Recovery plan S7; remaining-work plan C1. Written during gate-2 run 2, before an
 - `SPEC_engine_v2.md`, `SPEC_S5_muse_integration.md`, `REGISTRATION_selection.md`;
 - the operator's decisions O2, O3 and O8 (Addendum AK).
 
-**The goal.** Map the new core's output (a calibrated distribution of value per share, the year 1–3 forecasts, Muse's positions and
+**The goal.** Map the new core's output (a model-implied distribution of value per share, section 2b; the year 1–3 forecasts, Muse's positions and
 evidence) into the downstream contract with the least change. Every consumer keeps working, and nothing is invented to fill a field
 the new core does not produce.
 
@@ -25,21 +32,25 @@ the new core does not produce.
 | `scheme` | `"core_v4"` | v1–v3 rows keep `"band_direction_v1"`. Consumers branch on it. |
 | `gate_version` | `3` | `depth_gates` v4. Rows with `gate_version < 3` are read by the existing rules, unchanged. |
 | `run_source` | as today | DEP-09 routing, unchanged. |
-| `versions` | `{engine, near_term_vintage, priors_vintage, pack, templates, runner, calibration, model_sha256, llama_cpp_build, s5_freeze}` | Every one is required; a row missing any is `not_usable`. |
+| `versions` | `{engine, near_term_vintage, priors_vintage, pack, templates, runner, calibration, distress_model, model_sha256, llama_cpp_build, s5_freeze}` | Every one is required; a row missing any is `not_usable`. `distress_model` names the P(fail) model in force (B5: `C0` until a candidate is selected) with its hash. |
 | `asof`, `price`, `price_date` | as today | |
 
 ## 2. Value and direction
 
 | Field | Definition | Kept from v3? |
 |---|---|---|
-| `iv_quantiles` | `{p10, p25, p50, p75, p90}` of the **calibrated** value per share (S5 section 6; identity calibration when S5 adopted none) | new |
+| `iv_quantiles` | `{p10, p25, p50, p75, p90}` of the **survival-adjusted** value per share (section 2a) | new |
+| `iv_quantiles_going_concern` | the same quantiles of the going-concern distribution, before the survival adjustment (section 2a) | new |
 | `median_iv` | `iv_quantiles.p50` | kept (same meaning: the central value) |
 | `base_iv` | `iv_quantiles.p50`. In v3 it was the medoid sample's own base case. v4 has one coherent distribution, so base and median coincide; both are kept so consumers need not change | kept (meaning narrowed, stated) |
+| `mean_iv` | the mean of the survival-adjusted distribution = `(1 − prob_fail_12m) × mean(going-concern draws)`. The existing distress formula, value = mean IV × P(survive 12 months), unchanged | new |
 | `iv_band_low`, `iv_band_high` | `p10`, `p90` | kept |
-| `prob_value_above_price` | Pr(value per share > price) under the calibrated distribution | new |
-| `expected_mos` | `(median_iv − price) / price` | new |
+| `prob_fail_12m` | P(distress exit within 12 months) from the distress model in force (`versions.distress_model`; B5 section 7). In [0, 1] | new |
+| `prob_value_above_price` | Pr(value per share > price) under the survival-adjusted distribution = `(1 − prob_fail_12m) × Pr(going-concern value > price)`. **Model-implied** (section 2b) | new |
+| `median_mos` | `(median_iv − price) / price` (named for what it is: a median, not an expectation) | new |
+| `mean_mos` | `(mean_iv − price) / price` | new |
 | `tv_share` | the terminal-value share of value, P50 | new |
-| `direction` | **`undervalued`** iff price < `iv_band_low` **and** `expected_mos ≥ 0.10` (`MIN_MOS_FOR_DIRECTION`, D7). **`overvalued`** iff price > `iv_band_high` **and** `expected_mos ≤ −0.10`. Otherwise **`hold`**. | kept (the band rule on the calibrated P10–P90) |
+| `direction` | **`undervalued`** iff price < `iv_band_low` **and** `median_mos ≥ 0.10` (`MIN_MOS_FOR_DIRECTION`, D7). **`overvalued`** iff price > `iv_band_high` **and** `median_mos ≤ −0.10`. Otherwise **`hold`**. | kept (the band rule on the survival-adjusted P10–P90) |
 | `m` | `(median_iv − price) / ((iv_band_high − iv_band_low)/2)`, `compute_m()`, unchanged | kept |
 | `status` | `"ok"` or `"not_usable"` (direction null) | kept |
 | `n_basis` | the number of model samples combined (S5 R8 k; 1 when not multi-sampled) | kept (meaning: samples combined) |
@@ -53,6 +64,43 @@ the new core does not produce.
 
 The discount rate actually used is carried under `discount`, from the engine.
 
+**Which measure each consumer uses** (one reading, everywhere):
+
+| Use | Measure |
+|---|---|
+| `direction`, `mos_bucket`, the fiduciary edge check | `median_mos` and the survival-adjusted P10/P90 |
+| `probability_bucket` | `prob_value_above_price` (survival-adjusted) |
+| H-S1 in `REGISTRATION_selection.md` ("log(expected IV ÷ price)") | `log(mean_iv / price)`: the survival-adjusted mean. The mean keeps the ranking signal that the median loses (Addendum V); this amendment to the selection registration is made before any selection data exist and is for the operator (AK.19) |
+| `m` | `median_iv` and the band, `compute_m()` unchanged |
+
+### 2a. The survival adjustment, as a distribution
+
+The engine produces N going-concern draws of value per share, `V_1 … V_N`: engine v2, the S5 transport, and the S5 year-1
+calibration when it was adopted. With `p = prob_fail_12m` and equity recovery 0 on failure (Stage 2 V2, unchanged), the published
+distribution is the **mixture**: value 0 with probability p, and the going-concern distribution with probability 1 − p.
+- **Quantile at level q:** 0 if q ≤ p; otherwise the going-concern quantile at level (q − p) / (1 − p).
+- **Mean:** `(1 − p) × mean(V)`, which is exactly the existing formula; B5's "value = mean IV × P(survive)" is this mean.
+- **Not done:** multiplying every draw by 1 − p. That matches the mean but describes a different distribution, with no mass at 0.
+- **Its consequences, stated:**
+  - with p ≥ 0.10, `iv_band_low` is 0, so the name cannot be `undervalued`;
+  - with p ≥ 0.50, `median_iv` is 0.
+  That is the intended reading of a 10% chance that the equity is worth nothing. Section 11 reports how many fixture rows change
+  direction because of it.
+- **The horizon limit, stated:** p covers 12 months only. Failure after month 12 sits inside the going-concern draws. B5 reports a
+  36-month diagnostic. A longer horizon is a later version, never a drive-by change.
+
+### 2b. What is and is not calibrated
+
+Value per share is not observable, so no calibration of the value distribution is claimed. The year-1 calibration of S5 section 6 does
+not carry through the engine's long-run chain and the copula to the value distribution, and this contract does not say it does.
+- **Claimed and tested:**
+  - year-1 forecast quantiles, `forecast_years[1]` (S5 section 6; tested by gate 2b's B4);
+  - `prob_fail_12m` (B5; graded by TRK-06 against realised exits).
+- **Model-implied:**
+  - `iv_quantiles`, `prob_value_above_price`, `median_mos`, `mean_mos`, `direction`;
+  - each row carries `value_distribution: "model_implied"`;
+  - their only observable test is returns, through `REGISTRATION_selection.md` (S8). They are never called calibrated.
+
 ## 3. Size
 
 `size_hint ∈ {quarter, half, full}` = the most conservative of these buckets (`_min_bucket`, unchanged; a `None` bucket is excluded,
@@ -60,8 +108,8 @@ never an extreme):
 
 | Bucket | Rule | Status |
 |---|---|---|
-| `dispersion_bucket` | (P90 − P10) / P50 ≤ 0.40 full; ≤ 0.80 half; else quarter | **new thresholds**: calibrated bands are wider than v3's sample spread |
-| `mos_bucket` | `expected_mos` ≥ 0.25 full; ≥ 0.10 half; else quarter | kept |
+| `dispersion_bucket` | (P90 − P10) / P50 of `iv_quantiles_going_concern` ≤ 0.40 full; ≤ 0.80 half; else quarter (going concern, because the mixture's P50 can be 0; distress enters through `probability_bucket`) | **new thresholds**: v4's residual-based bands are wider than v3's sample spread |
+| `mos_bucket` | `median_mos` ≥ 0.25 full; ≥ 0.10 half; else quarter | kept |
 | `probability_bucket` | `prob_value_above_price` ≥ 0.90 full; ≥ 0.80 half; else quarter | new; replaces `conviction_bucket` |
 | `risk_bucket` | the MRI turbulence flag read fresh; `None` with `risk_flag_unavailable` when unreadable | kept |
 
@@ -128,7 +176,7 @@ An abstention is published, so the site shows **"no view: <reason>"**. It is nev
 | Reason | Rule (registered now) |
 |---|---|
 | `not_usable` | `status != "ok"`, or a required `versions` field is missing |
-| `family_not_built` | `abstention` present |
+| the abstention's own code (`family_not_built`, `engine_refused`, `no_share_count`, `no_quarterly_filings`) | `abstention` present: the reason is `abstention.code`, never a fixed label, so a refused engine input is never reported as an unbuilt family |
 | `integrity_fail` | any accepted citation fails the quote re-check (part-label errors excepted, AJ.5), or a leakage violation in the run |
 | `unanchored_high` | more than half of the Muse-adjustable inputs unanchored |
 | `implausible_level` | `median_iv / price` outside the family's P1–P99 of the same ratio over the engine-v2 code-only pass of the whole universe at `asof` |
@@ -138,17 +186,21 @@ An abstention is published, so the site shows **"no view: <reason>"**. It is nev
 | `pre_valid_analyst` | `versions.s5_freeze` is not the freeze gate 2b promoted. Shadow-only rows are never actionable. |
 | `non_production_row` | `run_source` not production (as today) |
 
+**Flags that annotate and never block** (published in `flags`, shown on the site):
+- `distress_model_not_validated`: the distress model in force has not passed B5's fresh-date bars (C0 included);
+- `value_distribution_model_implied`: on every v4 row (section 2b).
+
 **Not carried into v4:**
 - `pre_v3.1_gates`, `single_sample` (replaced by R8's multi-sample rule inside the core), `fiduciary_fail` (section 9) and
   `kelly_on_overvalued` (no Kelly);
-- `high_dispersion`: a calibrated band is honest uncertainty, not a malfunction. Direction already requires the price outside it, and
+- `high_dispersion`: the v4 band is the model's stated uncertainty, not a malfunction. Direction already requires the price outside it, and
   size reads its width.
 
 ## 9. The fiduciary gate for v4 (DEP-07b rewritten for `core_v4`)
 
 Kept and adapted:
 1. **Monotonicity:** p10 ≤ p25 ≤ p50 ≤ p75 ≤ p90.
-2. **Non-negative edge:** `undervalued` requires `prob_value_above_price > 0.5` and `expected_mos ≥ 0.10`; the mirror for `overvalued`.
+2. **Non-negative edge:** `undervalued` requires `prob_value_above_price > 0.5` and `median_mos ≥ 0.10`; the mirror for `overvalued`.
 3. **Checkable invalidation:** at least one financial and one price/momentum rule in the vocabulary (true by construction, still
    checked).
 4. **Versions complete.**
@@ -165,7 +217,7 @@ Dropped with their fields: the probability simplex, the tranche monotonicity and
 | rs2 overlay writer (DEP-09/10) | carries the v4 fields; publishes only through `screener-publish` |
 | screener `apply_llm_overlay` (SCR-04) | reads `direction`, `actionable`, `size_hint`, `m`, `entry_timing` as today. New fields are additive. Absent v3 fields (`conviction`, Kelly) handled as absent, not zero |
 | TRK-03 `rn_depth` | unchanged predicate (undervalued and actionable) |
-| TRK-06 grading | adds calibration grading of `prob_value_above_price` and coverage of `forecast_years` against realised fundamentals (D2/D3 tracking) |
+| TRK-06 grading | adds only observable grades: coverage of `forecast_years` against realised fundamentals (D2/D3 tracking), and calibration of `prob_fail_12m` against realised distress exits. `prob_value_above_price` is not graded as a calibration (section 2b); its test is S8's return evaluation |
 | site desk | shows the quantiles, the probability, "no view: <reason>", and consensus marked display-only; drops conviction and moat for v4 rows |
 | follow-up DEP-13/14 | reads the generated watch items (section 5), same shape |
 
@@ -177,7 +229,12 @@ Dropped with their fields: the probability simplex, the tranche monotonicity and
 - **Audit 4:** a field-by-field trace from engine result to site display on 5 fixture rows, checked by hand.
 - **The O8 test:** no non-display module reads `consensus_display`.
 - **Property tests:** the direction is always consistent with the band and the MoS floor; `size_hint` is always the minimum of the
-  buckets; an abstention is never actionable.
+  buckets; an abstention is never actionable; each of the four abstention codes comes back from `assess` as its own reason.
+- **The mixture (section 2a), against an independent script that imports nothing from the producer:** on random p and draws, the
+  quantiles equal the stated formula, `mean_iv = (1 − p) × mean(V)`, `prob_value_above_price = (1 − p) × Pr(V > price)`, and p = 0
+  reproduces the going-concern quantiles exactly.
+- **Reported on the fixture universe (no outcomes):** the distribution of `prob_fail_12m` under C0, and how many rows change direction
+  or size because of the survival adjustment, so its effect is seen before any consumer merges.
 
 ## 12. Approval record
 
