@@ -104,6 +104,21 @@ def test_the_production_extractors_tag_backfill_reads_a_year_whose_own_report_us
     assert first["2020-12-31"].cells["revenue"].val == 120.0
 
 
+def test_a_tag_change_between_adjacent_years_is_stamped_tag_seam_and_no_value_moves(tmp_path):
+    # Addendum AL.8 1: diagnostics only.  First filed, FY2019 is SalesRevenueNet and FY2020 Revenues: FY2020's revenue cell carries TAG_SEAM; as known,
+    # both years read Revenues (the restated column) and nothing is stamped.  Values are those of the test above.
+    facts = (synth.annual_report("2019-12-31", "2020-03-01", {"SalesRevenueNet": 100.0, "Assets": 50.0}) +
+             synth.annual_report("2020-12-31", "2021-03-01", {"Revenues": 120.0, "Assets": 55.0}, comparatives={"2019-12-31": {"Revenues": 99.0}}))
+    synth.write_company(tmp_path / "store", 1, facts)
+    pit = pit_with(tmp_path)
+    first = pit.fiscal_years("1", "2021-06-01", mode="first_filed")
+    assert pdm.TAG_SEAM in first["2020-12-31"].cells["revenue"].flags and pdm.TAG_SEAM not in first["2019-12-31"].cells["revenue"].flags
+    assert pdm.TAG_SEAM not in first["2020-12-31"].cells["total_assets"].flags                # same tag both years
+    assert first["2020-12-31"].cells["revenue"].val == 120.0 and first["2019-12-31"].cells["revenue"].val == 100.0
+    known = pit.fiscal_years("1", "2021-06-01")
+    assert all(pdm.TAG_SEAM not in c.flags for fy in known.values() for c in fy.cells.values())
+
+
 def test_the_production_scale_correction_applies_to_first_filed_values(tmp_path):
     facts = []
     for i, y in enumerate(range(2013, 2020)):

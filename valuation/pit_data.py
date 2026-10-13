@@ -312,6 +312,7 @@ def _unpack(r):
     return r[0], r[1], r[2], r[3], r[4], r[5]
 
 
+TAG_SEAM = "tag_seam"                                                # a cell's tag differs from the adjacent prior year's (AL.8: diagnostic only)
 PIT_VALID, PIT_INVALID, MISSING, AMBIGUOUS, RESTATED, CORPORATE_ACTION_UNRESOLVED = (
     "PIT_VALID", "PIT_INVALID", "MISSING", "AMBIGUOUS", "RESTATED", "CORPORATE_ACTION_UNRESOLVED")
 INPUT_MODE, OUTCOME_MODE = "as_known", "first_filed"
@@ -563,6 +564,14 @@ class CompanyPit:
             stamps += [n for n in ext.notes if n.startswith("reporting_currency")]
             out[pe] = FiscalYear(pe, int(y), own["own_filed"], own["own_accn"], own["own_form"], cells, tuple(stamps),
                                  {k: v for k, v in row.items()}, ext.currency)
+        years = sorted(out)                                             # Addendum AL.8 1 (diagnostics only, no value changes): a cell whose tag differs from the
+        for prev, cur in zip(years, years[1:]):                         # same field's tag in the adjacent prior fiscal year is stamped TAG_SEAM, because a growth
+            if not DAYS_LO <= _days(prev, cur) <= DAYS_HI:              # across the two joins two tags (PROBLEM_REPORT_revenue_tag_seams.md)
+                continue
+            for field, c in list(out[cur].cells.items()):
+                c0 = out[prev].cells.get(field)
+                if c0 is not None and c.tag != c0.tag and not str(c.tag).startswith("derived") and not str(c0.tag).startswith("derived"):
+                    out[cur].cells[field] = c._replace(flags=c.flags + (TAG_SEAM,))
         if states and mode == INPUT_MODE and out:
             first = self.fiscal_years(asof, OUTCOME_MODE)
             for pe, fy in out.items():
