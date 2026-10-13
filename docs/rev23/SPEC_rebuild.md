@@ -2881,3 +2881,14 @@ AK.7, is AL.1; this session continues in the AL series.
   2. pre-specify a regime-aware cell rule (for example, residual tables conditioned on MRI's turbulence flag at the origin) as v2.1,
      then re-run E3;
   3. require both.
+
+**AK.18 (2026-10-13 17:00): the records are committed and mirrored.**
+- **First commit:** `docs/review_2026-09-22/rev23` in stocks-workspace, commit `e2cb84e` (30 files). Until now the records had never
+  been committed.
+- **A coordinator error, corrected before anything left the PC:** the first attempt (`9c01859`) swept in another session's already
+  staged deletions of CLAUDE.md, CODEX.md and GEMINI.md. It was undone with `git reset --soft` and redone by pathspec. Those deletions
+  are staged again exactly as the other session left them.
+- **The mirror:** by the operator's choice (public, in rs2-local), the folder is mirrored to the branch `docs/rev23-records` of
+  `riperdy-tech/rs2-local` (commit `633df3a`, folder `docs/rev23/`), after a scan that found no keys, tokens, account numbers, phone
+  numbers or emails.
+- **The authoritative copy** stays in stocks-workspace. The mirror is refreshed after record changes.
