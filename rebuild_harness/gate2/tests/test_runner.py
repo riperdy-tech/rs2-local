@@ -315,3 +315,18 @@ def test_repeat_mode_and_scored_modes_refuse_each_others_state_folder(tmp_path):
     (tmp_path / config.REPEAT_MARKER).write_text("R8", encoding="utf-8")
     for mode in ("full", "pilot", "masked"):
         assert rn.main(["--mode", mode, "--state-dir", str(tmp_path)]) == 2
+
+
+def test_addendum_ak16_the_runner_releases_each_company_after_its_job_whatever_its_status(tmp_path):
+    from rebuild_harness.gate2 import runner as rn, sample as sample_mod
+    from rebuild_harness.gate2.tests import fakes
+    from valuation.muse.tests import fixtures as fx
+    smp = fakes.make_sample(n_per_date=2)
+    jobs = sample_mod.jobs(smp)
+    env = fakes.FakeEnv(refuse={str(jobs[0]["cik"]).zfill(10)})
+    released = []
+    env.release = lambda job: released.append((job["date"], str(job["cik"]).zfill(10)))
+    r = rn.Gate2Runner(state_dir=tmp_path, sample=smp, env=env, server=fakes.FakeServer(), probe=fakes.FakeProbe(), client=fx.ScriptedMuse(),
+                       clock=fakes.Clock(), sleep=lambda s: None, poll=0, n_draws=100, out=lambda *a, **k: None)
+    assert r.run(jobs) == 0
+    assert released == [(j["date"], str(j["cik"]).zfill(10)) for j in jobs]                 # every job, the refused one included, in order

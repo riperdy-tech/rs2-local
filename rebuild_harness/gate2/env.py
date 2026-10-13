@@ -358,6 +358,11 @@ class RealEnv:
             self._quarters = docs.layer_quarters(self.g._ENV["pit"])
         return self._quarters
 
+    def release(self, job: Mapping) -> None:
+        """Addendum AK.16: forget the job's company in the point-in-time layer's cache (its facts and every extraction, about 12 MB) once its job is
+        recorded.  `PitData.evict` says a pass over thousands of companies must evict as it goes; run 2 did not, and its runner held 4.9 GB."""
+        self.g._ENV["pit"].evict(str(job["cik"]).zfill(10))
+
     def company_inputs(self, job: Mapping):
         """`CompanyInputs`, or a `Refusal` (a final recorded status) when the company-date cannot reach the pipeline."""
         from valuation import classification as cls_mod

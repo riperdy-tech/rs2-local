@@ -294,6 +294,9 @@ class Gate2Runner:
                     self.sleep(self.poll)
                 consecutive = 0
                 self._append_progress(rec)
+                release = getattr(self.env, "release", None)                # Addendum AK.16: free the company's cached facts after its job (4.9 GB over run 2)
+                if release is not None:
+                    release(job)
                 self._event("done", n=f"{len(done) + i + 1}/{len(done) + len(todo)}", key=key, status=rec["status"], seconds=rec["wall_seconds"])
             self._event("finished", label=label)
             return 0
