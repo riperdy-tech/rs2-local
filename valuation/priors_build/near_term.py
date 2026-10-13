@@ -7,7 +7,8 @@ POPULATION MEDIANS i_k as of a cut date C: the observation table's rows whose ow
 tangible-book growth likewise, the margin and ROTE as filed (`forecast_study/panel.load_obs`).
 RESIDUALS for vintage V (cut C = Jan 1 of V+1): the forecast-study panel's rows (the >= $300M universe at each 30 June origin) whose origin is before C; for each
 year k with its outcome filed before C, the residual = outcome - v2's section-2 forecast at that origin, the forecast made with the population medians as of the
-origin's own cut (Jan 1 of the origin's year: the vintage that origin would use).  Quantiles RESID_LEVELS per cell and for the family pool; cells as in
+origin's own cut (Jan 1 of the origin's year: the vintage that origin would use); for the two growth variables in log space,
+log(1 + outcome) - log(1 + forecast) (Addendum AL.1).  Quantiles RESID_LEVELS per cell and for the family pool; cells as in
 valuation/near_term.cell_key, with the size axis read as USD (the panel's universe is priced in USD; a reporting-currency revenue mis-buckets, a stated limit).
 COPULA: Spearman correlations of paired residuals, as Gaussian r = 2 sin(pi rho / 6), for each variable across years and between the family's two variables in
 the same year; fewer than MIN_N pairs, or the year-3 level with its long-run partner (not in the panel), is independence, listed.
@@ -91,7 +92,13 @@ def residual_frame(panel: pd.DataFrame, obs: pd.DataFrame, cut: str) -> pd.DataF
                 x = _rule(fam, var, k, float(ii), i)
                 if not math.isfinite(x):
                     continue
-                rows.append({"cik": r["cik"], "date": r["date"], "family": fam, "var": var, "k": k, "resid": float(y) - x,
+                if var in nt.GROWTH_VARS:                                                 # Addendum AL.1 2: growth residuals in log space
+                    if float(y) <= -1.0 or x <= -1.0:
+                        continue
+                    resid = math.log1p(float(y)) - math.log1p(x)
+                else:
+                    resid = float(y) - x
+                rows.append({"cik": r["cik"], "date": r["date"], "family": fam, "var": var, "k": k, "resid": resid,
                              "rev": r.get("f_rev"), "g3": r.get("f_g3"), "g_latest": r.get("f_g_latest"), "tg3": r.get("f_tg3"), "tg_latest": r.get("f_tg_latest"),
                              "m": r.get("f_m"), "rote": r.get("f_rote")})
     return pd.DataFrame(rows)

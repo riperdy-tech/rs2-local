@@ -1,7 +1,7 @@
 """engine_financial_v2.py - engine v2 for financial companies (SPEC_engine_v2.md, approved 2026-10-11).
 
 What differs from v1 (`engine_financial`, frozen at c7d7a4f and not edited):
-  years 1-3   tangible-book growth `nt_tbvg_k` and the return on tangible equity after the fade toward the industry, `nt_rote_k` (the quantity v1's
+  years 1-3   tangible-book growth, drawn as log growth `nt_ltbvg_k` (g = exp(z) - 1, Addendum AL.1), and the return on tangible equity after the fade toward the industry, `nt_rote_k` (the quantity v1's
               forecast_year1 reports as `rote`), are drawn inputs (valuation/near_term.py)
   years 4+    growth_t = g_T + (g_3 - g_T) d_t / d_3;  the pre-fade ROTE R_t = rT + (R*_3 - rT) rho_t / rho_3 with R*_3 = I + (ROTE'_3 - I) / phi_3 (the year-3 draw
               undone from its fade), and ROTE'_t = I + (R_t - I) phi_t; with phi_3 or rho_3 at 0 the path is rT (stamped)
@@ -10,6 +10,7 @@ WHY THE CHAIN IS A COPY: as engine_operating_v2 (Addendum AK.6); `test_engine_v2
 """
 from __future__ import annotations
 
+import math
 from typing import Dict, Mapping, Optional
 
 from . import engine_financial as v1
@@ -22,6 +23,7 @@ from .priors import features as prior_features
 
 ENGINE = "financial_v2"
 RULE_FLAT_DECAY = "v2: the growth-decay curve is 0 at year 3; growth after year 3 is terminal growth"
+INVALID_GROWTH = "tangible-book growth at or below -100% (tangible book would not be positive)"
 RULE_FLAT_ROTE = "v2: the ROTE retention or the excess fade is 0 at year 3; ROTE after year 3 is the long-run level"
 
 
@@ -37,7 +39,7 @@ def financial_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
     ind = st["industry_rote"]["value"]
     tbv_prev = st["tbv"]
     pv_exp, rows, rules = 0.0, [], []
-    g3, d3 = p["nt_tbvg_3"], gd.at(3)
+    g3, d3 = math.expm1(p["nt_ltbvg_3"]), gd.at(3)
     rho3, phi3 = rho.at(3), phi.at(3)
     R3 = ind + (p["nt_rote_3"] - ind) / phi3 if phi3 > 0.0 else None
     if d3 <= 0.0:
@@ -46,11 +48,13 @@ def financial_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
         rules.append(RULE_FLAT_ROTE)
     for t in range(1, N + 1):
         if t <= 3:
-            g, Rp = p[f"nt_tbvg_{t}"], p[f"nt_rote_{t}"]
+            g, Rp = math.expm1(p[f"nt_ltbvg_{t}"]), p[f"nt_rote_{t}"]
         else:
             g = gT + (g3 - gT) * gd.at(t) / d3 if d3 > 0.0 else gT
             R = rT + (R3 - rT) * rho.at(t) / rho3 if (R3 is not None and rho3 > 0.0) else rT
             Rp = ind + (R - ind) * phi.at(t)
+        if g <= -1.0:
+            raise DrawInvalid(INVALID_GROWTH)
         ri = (Rp - coe) * tbv_prev
         tbv = tbv_prev * (1.0 + g)
         df = (1.0 + coe) ** (-t)

@@ -1,9 +1,11 @@
 """engine_operating_v2.py - engine v2 for operating companies (SPEC_engine_v2.md, approved 2026-10-11).
 
 What differs from v1 (`engine_operating`, frozen at c7d7a4f and not edited):
-  years 1-3   revenue growth and the operating margin are drawn inputs `nt_growth_k`, `nt_margin_k` (valuation/near_term.py: base-rate centres + the measured
-              residuals of v2's own forecasts, joined to v1's Gaussian copula)
-  years 4-5   growth_t = g_T + (g_3 - g_T) d_t / d_3; margin_t = m_3 + (m_5 - m_3) (r_3 - r_t) / (r_3 - r_5) (linear over years 4-5 when r_3 = r_5, stamped)
+  years 1-3   revenue growth and the operating margin are drawn inputs: log growth `nt_lgrowth_k` (g = exp(z) - 1, Addendum AL.1) and `nt_margin_k`
+              (valuation/near_term.py: base-rate centres + the measured residuals of v2's own forecasts, joined to v1's Gaussian copula)
+  years 4-5   growth_t = g_T + (g_3 - g_T) d_t / d_3; margin_t = m_3 + (m_5 - m_3) (w_t - w_3) / (1 - w_3) on v1's own level-path weights w (clipped as v1
+              clips them; Addendum AL.1 4), m_5 when w_3 = 1
+  any year    growth at or below -100% is an invalid draw (never repaired; counted by `simulate`)
   after       v1 unchanged (margin m_5; the decay path; the ROIC path H3, reinvestment priced at m_5, maintenance, the I2 rules, the terminal value, the
               equity bridge and floor)
 WHY THE CHAIN IS A COPY (Addendum AK.6): v1's loop computes each year's growth and margin inline; replacing years 1-5 needs its own loop.  Every line other than
@@ -12,6 +14,7 @@ reproduces v1's result exactly (algebraically, the years 4-5 continuation then e
 """
 from __future__ import annotations
 
+import math
 from typing import Dict, Mapping, Optional
 
 from . import engine_operating as v1
@@ -23,19 +26,15 @@ from .priors import features as prior_features
 
 ENGINE = "operating_v2"
 RULE_FLAT_DECAY = "v2: the growth-decay curve is 0 at year 3; growth after year 3 is terminal growth"
-RULE_FLAT_RETENTION = "v2: the margin-retention curve is flat between years 3 and 5; the margin moves to m_5 linearly"
-
-
-def _continuation_weight(mr: Curve, t: int) -> float:
-    r3, r5 = mr.at(3), mr.at(LEVEL_REF_YEAR)
-    if abs(r3 - r5) <= 1e-9:
-        return (t - 3) / (LEVEL_REF_YEAR - 3)
-    return min(1.0, max(0.0, (r3 - mr.at(t)) / (r3 - r5)))
+INVALID_GROWTH = "growth at or below -100% (revenue would not be positive)"
+# Addendum AL.1 4: v1's level path reached m_5 by year 3 and (a non-monotone curve) moves back before year 5; the year-3 draw cannot carry v1's base margin,
+# so v2 holds m_5 for years 4-5 (the one case where v2's continuation is not v1's path), stamped
+RULE_HELD_AFTER_TARGET = "v2: the margin path reached m_5 by year 3 under a non-monotone retention curve; held at m_5 in years 4-5 (v1 would move back)"
 
 
 def operating_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], disc: DiscountRate, *,
                        operating_leases_in_cash_flow: bool = True, maint_gap_floor: Optional[float] = 0.0, roll_forward: bool = True, detail: bool = False) -> dict:
-    """v1's operating_chain with years 1-5 of growth and margin as in the module docstring.  p = {nt_growth_1..3, nt_margin_1..3, g_terminal, margin_target, ronic}."""
+    """v1's operating_chain with years 1-5 of growth and margin as in the module docstring.  p = {nt_lgrowth_1..3, nt_margin_1..3, g_terminal, margin_target, ronic}."""
     gd, mr, rfade = curves["growth_decay"], curves["margin_retention"], curves["ronic_fade"]
     N = len(gd)
     if N > MAX_HORIZON:
@@ -43,6 +42,7 @@ def operating_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
     tax, wacc, coe = st["tax_rate"], disc.wacc, disc.coe
     gT, m5, ronic = p["g_terminal"], p["margin_target"], p["ronic"]
     wr, ronic_path = level_path_weights(rfade, N)
+    wm, _wm_info = level_path_weights(mr, N)
     roic0, ind_med = st["roic3"], st["industry_roic"]["value"]
     if wacc <= gT:
         raise DrawInvalid("terminal growth is not below the discount rate")
@@ -61,21 +61,24 @@ def operating_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
         rules.append(v1.RULE_NO_GROWTH_RONIC)
     if no_growth:
         rules.append(v1.RULE_NO_GROWTH)
-    g3, m3, d3 = p["nt_growth_3"], p["nt_margin_3"], gd.at(3)
+    g3, m3, d3 = math.expm1(p["nt_lgrowth_3"]), p["nt_margin_3"], gd.at(3)
+    w3 = wm[2]
     if d3 <= 0.0:
         rules.append(RULE_FLAT_DECAY)
-    if abs(mr.at(3) - mr.at(LEVEL_REF_YEAR)) <= 1e-9:
-        rules.append(RULE_FLAT_RETENTION)
+    if w3 >= 1.0 - 1e-12 and min(wm[3:LEVEL_REF_YEAR]) < 1.0 - 1e-12:
+        rules.append(RULE_HELD_AFTER_TARGET)
     unpriced_years = []
     margin_path = []
     for t in range(1, N + 1):
         if t <= 3:                                                                     # v2: drawn years 1-3
-            g, m = p[f"nt_growth_{t}"], p[f"nt_margin_{t}"]
+            g, m = math.expm1(p[f"nt_lgrowth_{t}"]), p[f"nt_margin_{t}"]
         else:                                                                          # v2: the measured shapes, continued from the year-3 draw
             g = gT + (g3 - gT) * gd.at(t) / d3 if d3 > 0.0 else gT
-            m = m3 + (m5 - m3) * _continuation_weight(mr, t) if t <= LEVEL_REF_YEAR else m5
+            m = (m3 + (m5 - m3) * (wm[t - 1] - w3) / (1.0 - w3)) if w3 < 1.0 - 1e-12 else m5
         if no_growth and t > LEVEL_REF_YEAR:
             g = min(g, 0.0)
+        if g <= -1.0:
+            raise DrawInvalid(INVALID_GROWTH)
         margin_path.append(m)
         rev = rev_prev * (1.0 + g)
         ebit = m * rev

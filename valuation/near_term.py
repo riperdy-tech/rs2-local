@@ -5,6 +5,10 @@ THE CENTRES (section 2; the forecast study's exact formulas, `forecast_study/pas
           (else m0) (the retention-only path);  rote_k = ind + ((centre + (R0 - centre) rho_k) - ind) phi_k with centre = rote_med8 (else R0);  tbvg_k as growth_k
   i       the family's population median of the year-k outcome in the vintage's observation table (outcomes filed before the cut); fewer than MIN_N refuses
   rule    operating growth: k=1 i + 0.5 (ii - i), k=2,3 i;  operating margin: ii;  financial ROTE: i + 0.75 (ii - i);  financial tangible-book growth: ii
+SEMANTICS (Addendum AL.1 1): financial `rote` is the company's REALISED return on tangible equity in year k - net income over average tangible book, the
+definition of `build_state`'s rote_latest and of the observation table's outcomes.  v1's faded value I + (R - I) phi is v1's forecast of that realised return
+(it is what enters residual income), so the centre, the residual's outcome and the residual-income input are one variable.
+GROWTH IN LOG SPACE (Addendum AL.1 2): revenue and tangible-book growth are measured and drawn as log(1 + g), so a draw maps back above -100%.
 THE DISTRIBUTIONS (section 3): centre + the measured residual quantiles of the company's cell (v2's own walk-forward misses), kept un-centred (the median bias
 is reported), as a QuantileDist named nt_<variable>_<k>.  They join the engine's other inputs in `common.simulate`, so v1's Gaussian copula draws them with the
 measured pairs (`corr`).  `deviations[variable][k]` (S5) shifts a centre and is stamped; none by default.
@@ -43,7 +47,38 @@ class NearTermRefusal(InputError):
 
 
 def name(var: str, k: int) -> str:
-    return f"nt_{var}_{k}"
+    """The input name of a near-term draw.  Growth variables are drawn as LOG growth, log(1 + g) (Addendum AL.1), and named so: nt_lgrowth_k, nt_ltbvg_k."""
+    return f"nt_l{var}_{k}" if var in GROWTH_VARS else f"nt_{var}_{k}"
+
+
+# ---- the table's integrity (Addendum AL.1 3) ------------------------------------------------------------------------------------------------------
+
+def validate_table(table: Mapping, asof=None) -> None:
+    """Refuse (NearTermRefusal, naming every problem) a table of another engine version, whose cut date is not its vintage's (Jan 1 of vintage + 1) or
+    is after the valuation date, or whose quantile sets are incomplete, non-finite or decreasing."""
+    bad = []
+    if table.get("version") != ENGINE_VERSION:
+        bad.append(f"v2 table: engine version {table.get('version')!r} is not {ENGINE_VERSION!r}")
+    v, cut = table.get("vintage"), str(table.get("cut_date") or "")
+    if not isinstance(v, int) or cut != f"{v + 1}-01-01":
+        bad.append(f"v2 table: cut date {cut!r} is not the cut of vintage {v!r}")
+    if asof is not None and cut and cut > str(asof)[:10]:
+        bad.append(f"v2 table: cut date {cut} is after the valuation date {str(asof)[:10]} (point in time)")
+    need = [str(p) for p in RESID_LEVELS]
+    for fam, vars_ in (table.get("residuals") or {}).items():
+        for var, ks in vars_.items():
+            for k, entry in ks.items():
+                for cname, c in [("pool", entry.get("pool") or {})] + list((entry.get("cells") or {}).items()):
+                    if not c.get("n"):
+                        continue
+                    q = c.get("q") or {}
+                    vals = [q.get(p) for p in need]
+                    if any(x is None or not isinstance(x, (int, float)) or not math.isfinite(x) for x in vals):
+                        bad.append(f"v2 table: {fam} {var} year {k} {cname}: quantile levels incomplete or not finite")
+                    elif any(b < a for a, b in zip(vals, vals[1:])):
+                        bad.append(f"v2 table: {fam} {var} year {k} {cname}: quantiles decrease")
+    if bad:
+        raise NearTermRefusal(bad)
 
 
 # ---- the centres ----------------------------------------------------------------------------------------------------------------------------------
@@ -143,24 +178,31 @@ def near_term_inputs(family: str, st: Mapping, ps, g_term: float, table: Mapping
                      deviations: Optional[Mapping[str, Mapping[int, float]]] = None) -> Tuple[Dict[str, QuantileDist], Dict[tuple, float], dict]:
     """(dists, corr, info): the nt_* inputs for `common.simulate`, the measured copula pairs among them and with the long-run partner, and what the result
     reports (section 5).  Raises NearTermRefusal."""
+    validate_table(table, st.get("asof"))
     cen, detail = centres(family, st, ps, g_term, table)
-    dists, info = {}, {"engine_version": ENGINE_VERSION, "near_term_vintage": table.get("vintage"), "cells": {}, "fallbacks": [], "deviations": {},
-                                                   "forecast_years": {}}
+    dists, info = {}, {"engine_version": ENGINE_VERSION, "near_term_vintage": table.get("vintage"), "near_term_cut_date": table.get("cut_date"),
+                       "near_term_sha256": table.get("_sha256"), "cells": {}, "fallbacks": [], "deviations": {}, "forecast_years": {}}
     for var in VARIABLES[family]:
         info["forecast_years"][var] = {}
+        log = var in GROWTH_VARS
         for k in KS:
             q, used = residual_quantiles(family, var, k, cell_key(var, family, feats, table), table)
             if used == "pool":
                 info["fallbacks"].append(f"{var} year {k}: the company's cell is under {MIN_N}; the family pool is used")
-            dev = float(((deviations or {}).get(var) or {}).get(k) or 0.0)
+            dev = float(((deviations or {}).get(var) or {}).get(k) or 0.0)       # in the outcome's own units (growth as a rate), Addendum AK.2
             if dev:
                 info["deviations"][f"{var}_{k}"] = dev
             c = cen[var][k] + dev
-            d = QuantileDist({p: c + v for p, v in q.items()}, f"v2 {var} y{k} centre+residuals ({used})")
+            if log and c <= -1.0:
+                raise NearTermRefusal([f"v2 {var} year {k}: the centre {c:.4g} is at or below -100%"])
+            base = math.log1p(c) if log else c
+            d = QuantileDist({p: base + v for p, v in q.items()}, f"v2 {var} y{k} centre+residuals{' (log growth)' if log else ''} ({used})")
             dists[name(var, k)] = d
             info["cells"][name(var, k)] = used
-            info["forecast_years"][var][k] = dict({f"p{int(round(p * 100))}": d.ppf(p) for p in REPORT_LEVELS},
-                                                  forecast_p50_rule=cen[var][k], median_bias=q.get(0.5), deviation=dev or None, rule=detail[var][k])
+            back = (lambda z: math.expm1(z)) if log else (lambda z: z)               # quantiles map through the monotone transform
+            info["forecast_years"][var][k] = dict({f"p{int(round(p * 100))}": back(d.ppf(p)) for p in REPORT_LEVELS},
+                                                  forecast_p50_rule=cen[var][k], deviation=dev or None, rule=detail[var][k],
+                                                  **({"median_bias_log": q.get(0.5)} if log else {"median_bias": q.get(0.5)}))
     corr, paired, independent = {}, [], []
     for key, r in (((table.get("corr") or {}).get(family)) or {}).items():
         a, b = key.split("|")
@@ -188,14 +230,31 @@ def checked_corr(names: List[str], corr: Mapping[tuple, float], info: dict) -> D
         return dict(corr)
     except InputError:
         kept = {p: r for p, r in corr.items() if not (p[0].startswith("nt_") or p[1].startswith("nt_"))}
+        dropped = sorted(f"{a}|{b}" for (a, b) in corr if (a, b) not in kept)
         info.setdefault("fallbacks", []).append("near-term copula not positive definite with the long-run pairs: near-term pairs dropped (independence)")
+        cop = info.setdefault("copula", {"measured": [], "independent": []})           # Addendum AL.1 5: the report describes the matrix actually used
+        cop["measured"] = [x for x in cop.get("measured", []) if x not in dropped]
+        cop["independent"] = sorted(set(cop.get("independent", [])) | set(dropped))
+        cop["dropped_not_positive_definite"] = dropped
         return kept
 
 
 # ---- the tables -----------------------------------------------------------------------------------------------------------------------------------
 
-def load_table(data_dir, vintage: int) -> dict:
+def load_table(data_dir, vintage: int, asof=None) -> dict:
+    """The vintage's table, refused unless its bytes match near_term.sha256, it is that vintage, and it passes `validate_table` (Addendum AL.1 3)."""
+    import hashlib
     p = Path(data_dir) / str(vintage) / "near_term.json"
-    if not p.exists():
-        raise NearTermRefusal([f"v2: no near-term table for vintage {vintage} at {p}"])
-    return json.loads(p.read_text(encoding="utf-8"))
+    sp = p.with_name("near_term.sha256")
+    if not p.exists() or not sp.exists():
+        raise NearTermRefusal([f"v2: no near-term table (or no sha256 file) for vintage {vintage} at {p}"])
+    raw = p.read_bytes()
+    h = hashlib.sha256(raw).hexdigest()
+    if h != sp.read_text(encoding="utf-8").strip():
+        raise NearTermRefusal([f"v2: near-term table {p} does not match its recorded sha256"])
+    t = json.loads(raw.decode("utf-8"))
+    if t.get("vintage") != vintage:
+        raise NearTermRefusal([f"v2: {p} holds vintage {t.get('vintage')!r}, not {vintage}"])
+    validate_table(t, asof)
+    t["_sha256"] = h
+    return t

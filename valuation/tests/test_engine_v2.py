@@ -23,7 +23,7 @@ def table(n=500, i=None, resid=RESID, corr=None):
     var = lambda: {str(k): {"cells": {}, "pool": pool} for k in nt.KS}
     i = i or {"operating": {"growth": {str(k): {"median": 0.05, "n": n} for k in nt.KS}},
               "financial": {"rote": {str(k): {"median": 0.10, "n": n} for k in nt.KS}}}
-    return {"vintage": 2024, "i": i, "edges": {"size_usd": [5e7, 2.5e8, 1e9, 5e9, 2e10], "growth": [-0.1, 0.0, 0.05, 0.1, 0.2, 0.4]},
+    return {"version": nt.ENGINE_VERSION, "vintage": 2024, "cut_date": "2025-01-01", "i": i, "edges": {"size_usd": [5e7, 2.5e8, 1e9, 5e9, 2e10], "growth": [-0.1, 0.0, 0.05, 0.1, 0.2, 0.4]},
             "level_cuts": {"operating": [0.05, 0.1, 0.15, 0.2], "financial": [0.05, 0.08, 0.11, 0.14]},
             "residuals": {"operating": {"growth": var(), "margin": var()}, "financial": {"tbvg": var(), "rote": var()}}, "corr": corr or {}}
 
@@ -38,7 +38,7 @@ def test_the_v2_operating_chain_reproduces_v1_exactly_when_its_years_1_to_3_are_
     gd, mr = ps.curves["growth_decay"], ps.curves["margin_retention"]
     wm, info = level_path_weights(mr, len(gd))
     assert info["clipped"] is False
-    q = dict(p, **{f"nt_growth_{k}": gT + (g1 - gT) * gd.at(k) for k in nt.KS}, **{f"nt_margin_{k}": st["op_margin"] + (m5 - st["op_margin"]) * wm[k - 1] for k in nt.KS})
+    q = dict(p, **{f"nt_lgrowth_{k}": math.log1p(gT + (g1 - gT) * gd.at(k)) for k in nt.KS}, **{f"nt_margin_{k}": st["op_margin"] + (m5 - st["op_margin"]) * wm[k - 1] for k in nt.KS})
     a = o1.operating_chain(st, p, ps.curves, disc, detail=True)
     b = o2.operating_chain_v2(st, q, ps.curves, disc, detail=True)
     for key in ("ev", "equity", "pv_explicit", "pv_terminal", "fcff1", "terminal_value"):
@@ -55,7 +55,7 @@ def test_the_v2_financial_chain_reproduces_v1_exactly_when_its_years_1_to_3_are_
     p = {"g1": g1, "g_terminal": gT, "rote_target": rT}
     gd, rho, phi = ps.curves["growth_decay"], ps.curves["rote_retention"], ps.curves["excess_fade"]
     R0, ind = st["rote_latest"], st["industry_rote"]["value"]
-    q = dict(p, **{f"nt_tbvg_{k}": gT + (g1 - gT) * gd.at(k) for k in nt.KS},
+    q = dict(p, **{f"nt_ltbvg_{k}": math.log1p(gT + (g1 - gT) * gd.at(k)) for k in nt.KS},
              **{f"nt_rote_{k}": ind + ((rT + (R0 - rT) * rho.at(k)) - ind) * phi.at(k) for k in nt.KS})
     a = f1.financial_chain(st, p, ps.curves, disc, detail=True)
     b = f2.financial_chain_v2(st, q, ps.curves, disc, detail=True)
@@ -113,11 +113,12 @@ def test_the_distribution_is_the_centre_plus_the_residuals_kept_uncentred_and_a_
     gT = terminal_growth_rate(disc.rf)
     c, _ = nt.centres("operating", st, ps, gT, table())
     d, corr, info = nt.near_term_inputs("operating", st, ps, gT, table(), {}, deviations={"growth": {1: 0.02}})
-    assert d["nt_growth_1"].ppf(0.5) == pytest.approx(c["growth"][1] + 0.02 + RESID[0.5])     # the median bias is kept
+    assert d["nt_lgrowth_1"].ppf(0.5) == pytest.approx(math.log1p(c["growth"][1] + 0.02) + RESID[0.5])     # log growth (AL.1); the median bias is kept
     assert d["nt_margin_2"].ppf(0.9) == pytest.approx(c["margin"][2] + RESID[0.9])
     fy = info["forecast_years"]["growth"][1]
-    assert fy["forecast_p50_rule"] == pytest.approx(c["growth"][1]) and fy["median_bias"] == RESID[0.5] and fy["deviation"] == 0.02
-    assert info["deviations"] == {"growth_1": 0.02} and info["cells"]["nt_growth_1"] == "pool" and len(info["fallbacks"]) == 6
+    assert fy["forecast_p50_rule"] == pytest.approx(c["growth"][1]) and fy["median_bias_log"] == RESID[0.5] and fy["deviation"] == 0.02
+    assert fy["p50"] == pytest.approx(math.expm1(math.log1p(c["growth"][1] + 0.02) + RESID[0.5]))          # reported back as a growth rate
+    assert info["deviations"] == {"growth_1": 0.02} and info["cells"]["nt_lgrowth_1"] == "pool" and len(info["fallbacks"]) == 6
 
 
 def test_the_companys_own_cell_is_used_when_it_has_50_and_the_pool_otherwise():
@@ -133,15 +134,124 @@ def test_the_companys_own_cell_is_used_when_it_has_50_and_the_pool_otherwise():
 
 def test_a_copula_that_is_not_positive_definite_drops_only_the_near_term_pairs_and_says_so():
     info = {}
-    bad = {("nt_growth_1", "nt_growth_2"): 0.99, ("nt_growth_2", "nt_growth_3"): 0.99, ("nt_growth_1", "nt_growth_3"): -0.99, ("g1", "margin_target"): 0.3}
-    out = nt.checked_corr(["g1", "margin_target", "nt_growth_1", "nt_growth_2", "nt_growth_3"], bad, info)
+    bad = {("nt_lgrowth_1", "nt_lgrowth_2"): 0.99, ("nt_lgrowth_2", "nt_lgrowth_3"): 0.99, ("nt_lgrowth_1", "nt_lgrowth_3"): -0.99, ("g1", "margin_target"): 0.3}
+    out = nt.checked_corr(["g1", "margin_target", "nt_lgrowth_1", "nt_lgrowth_2", "nt_lgrowth_3"], bad, info)
     assert out == {("g1", "margin_target"): 0.3} and "independence" in info["fallbacks"][0]
 
 
 def test_full_runs_value_both_families_and_report_years_1_to_3():
     for family, sic, mod, var in (("operating", "3674", o2, "growth"), ("financial", "6021", f2, "rote")):
         pit, st, ps, disc = setup(family, sic)
-        r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(corr={family: {"nt_" + var + "_1|nt_" + var + "_2": 0.5}}), n_draws=300, seed=3, state=st)
+        r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(corr={family: {nt.name(var, 1) + "|" + nt.name(var, 2): 0.5}}), n_draws=300, seed=3, state=st)
         assert r["status"] == "ok" and r["engine_version"] == "v2.0" and r["distribution"]["equity"]["p50"] > 0
         assert set(r["forecast_years"][var]) == {1, 2, 3} and "p50" in r["forecast_year1"][var if family == "operating" else "rote"]
-        assert r["near_term"]["copula"]["measured"] == ["nt_" + var + "_1|nt_" + var + "_2"]
+        assert r["near_term"]["copula"]["measured"] == [nt.name(var, 1) + "|" + nt.name(var, 2)]
+
+
+# ---- Addendum AL.1: the outside review's tests ---------------------------------------------------------------------------------------------------
+
+def test_al1_1_rote_semantics_the_centre_the_residual_target_and_the_residual_income_input_are_one_variable_with_rote_med8():
+    pit, st, ps, disc = setup("financial", "6021")
+    gT = terminal_growth_rate(disc.rf)
+    ps.meta = {"features": {"rote_med8": 0.09}}                                   # the production case: an 8-year median exists
+    R0, ind = st["rote_latest"], st["industry_rote"]["value"]
+    rho, phi = ps.curves["rote_retention"], ps.curves["excess_fade"]
+    ii1 = ind + ((0.09 + (R0 - 0.09) * rho.at(1)) - ind) * phi.at(1)               # pass_priors.forecasts rote_curve_1 with centre = rote_med8
+    c, _ = nt.centres("financial", st, ps, gT, table())
+    assert c["rote"][1] == pytest.approx(0.10 + 0.75 * (ii1 - 0.10))
+    # the residual-income input of year 1 IS the drawn nt_rote_1: excess return = (nt_rote_1 - coe) x tangible book
+    q = {"g_terminal": gT, "rote_target": 0.12, **{f"nt_ltbvg_{k}": math.log1p(0.04) for k in nt.KS}, **{f"nt_rote_{k}": 0.13 for k in nt.KS}}
+    y1 = f2.financial_chain_v2(st, q, ps.curves, disc, detail=True)["years"][0]
+    assert y1["rote_after_fade"] == 0.13 and y1["excess_return"] == pytest.approx((0.13 - disc.coe) * st["tbv"])
+    # and the outcome a residual is measured against is realised ROTE: net income / average tangible book, build_state's definition
+    from valuation.priors_build.obs import rote_by_period
+    assert rote_by_period.__doc__.lstrip().startswith("Return on tangible equity of a year: net income over the average")
+
+
+def test_al1_2_no_sampled_growth_can_reach_minus_100_percent_and_the_chain_refuses_one_that_does():
+    extreme = {p: v for p, v in zip(nt.RESID_LEVELS, (-6.0, -4.0, -3.0, -1.5, 0.0, 0.3, 0.6, 0.8, 1.2))}   # log-space misses far beyond history
+    for family, sic, mod in (("operating", "3674", o2), ("financial", "6021", f2)):
+        pit, st, ps, disc = setup(family, sic)
+        r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(resid=extreme), n_draws=2000, seed=5, state=st)
+        assert r["status"] == "ok" and not any("100%" in k for k in r["distribution"]["invalid_reasons"])    # log space: none reached -100%
+        gvar = "growth" if family == "operating" else "tbvg"
+        assert all(r["forecast_years"][gvar][k]["p10"] > -1.0 for k in nt.KS)
+    pit, st, ps, disc = setup()
+    gT = terminal_growth_rate(disc.rf)
+    bad = {"g_terminal": gT, "margin_target": 0.15, "ronic": 0.12, "nt_lgrowth_1": -50.0, "nt_lgrowth_2": 0.0, "nt_lgrowth_3": 0.0,
+           **{f"nt_margin_{k}": 0.15 for k in nt.KS}}
+    from valuation.common import DrawInvalid
+    with pytest.raises(DrawInvalid):                                              # expm1(-50) rounds to -1.0: refused, never a negative revenue
+        o2.operating_chain_v2(st, bad, ps.curves, disc)
+
+
+def test_al1_3_a_table_of_another_version_vintage_cut_hash_or_with_bad_quantiles_is_a_named_refusal(tmp_path):
+    import hashlib
+    import json as _json
+    good = table()
+    nt.validate_table(good, "2025-06-30")
+    for mutate, needle in ((lambda t: t.update(version="v1.9"), "engine version"), (lambda t: t.update(cut_date="2025-06-30"), "is not the cut"),
+                           (lambda t: t["residuals"]["operating"]["growth"]["1"]["pool"]["q"].pop("0.99"), "incomplete"),
+                           (lambda t: t["residuals"]["operating"]["margin"]["2"]["pool"]["q"].update({"0.75": -9.0}), "decrease")):
+        t = _json.loads(_json.dumps(good))
+        mutate(t)
+        with pytest.raises(nt.NearTermRefusal) as e:
+            nt.validate_table(t, "2025-06-30")
+        assert needle in str(e.value)
+    with pytest.raises(nt.NearTermRefusal) as e:
+        nt.validate_table(good, "2024-12-31")                                     # the cut (2025-01-01) is after the valuation date
+    assert "point in time" in str(e.value)
+    d = tmp_path / "2024"
+    d.mkdir()
+    (d / "near_term.json").write_text(_json.dumps(good), encoding="utf-8")
+    (d / "near_term.sha256").write_text(hashlib.sha256((d / "near_term.json").read_bytes()).hexdigest(), encoding="utf-8")
+    assert nt.load_table(tmp_path, 2024, "2025-06-30")["_sha256"]
+    (d / "near_term.sha256").write_text("0" * 64, encoding="utf-8")
+    with pytest.raises(nt.NearTermRefusal, match="sha256"):
+        nt.load_table(tmp_path, 2024)
+    pit, st, ps, disc = setup()
+    r = o2.run(pit, fx.LabeledPlaceholderPriors(), disc, dict(good, cut_date="2030-01-01", vintage=2029), n_draws=50, state=st)
+    assert r["status"] == "refused" and any("point in time" in x for x in r["reasons"])
+
+
+def test_al1_4_a_non_monotone_margin_retention_curve_keeps_the_v1_identity_with_its_clipped_weights():
+    from valuation.common import Curve
+    pit, st, ps, disc = setup()
+    gT = terminal_growth_rate(disc.rf)
+    mr = Curve([0.95, 0.70, 0.80, 0.40, 0.30, 0.25, 0.20, 0.20, 0.20, 0.20], "margin_retention", "non-monotone test")
+    curves = dict(ps.curves, margin_retention=mr)
+    wm, info = level_path_weights(mr, len(curves["growth_decay"]))
+    assert info["clipped"] is False and wm[1] > wm[2]                              # non-monotone path: year 2 moves further than year 3
+    discriminating = Curve([0.88, 0.04, 0.82, 0.96, 0.57, 0.17, 0.87, 0.97, 0.7, 0.51], "margin_retention", "old formula off v1")   # brute force, AL.1 4
+    for curve in (mr, discriminating, Curve([0.5, 0.2, 0.6, 0.1, 0.3, 0.25, 0.2, 0.2, 0.2, 0.2], "margin_retention", "clipped")):
+        cv = dict(ps.curves, margin_retention=curve)
+        w, inf = level_path_weights(curve, 10)
+        p = {"g1": 0.07, "g_terminal": gT, "margin_target": 0.2, "ronic": 0.13}
+        q = dict(p, **{f"nt_lgrowth_{k}": math.log1p(gT + (0.07 - gT) * cv["growth_decay"].at(k)) for k in nt.KS},
+                 **{f"nt_margin_{k}": st["op_margin"] + (0.2 - st["op_margin"]) * w[k - 1] for k in nt.KS})
+        a, b = o1.operating_chain(st, p, cv, disc, detail=True), o2.operating_chain_v2(st, q, cv, disc, detail=True)
+        assert b["equity"] == pytest.approx(a["equity"], rel=1e-12)
+        assert all(yb["margin"] == pytest.approx(ya["margin"], abs=1e-12) for ya, yb in zip(a["years"], b["years"]))
+    assert inf["clipped"] is True                                                 # the second curve exercises v1's clipping
+
+
+def test_al1_5_after_a_positive_definite_fallback_the_report_lists_the_pairs_actually_used():
+    pit, st, ps, disc = setup()
+    bad = {"operating": {"nt_lgrowth_1|nt_lgrowth_2": 0.99, "nt_lgrowth_2|nt_lgrowth_3": 0.99, "nt_lgrowth_1|nt_lgrowth_3": -0.99, "nt_margin_1|nt_margin_2": 0.5}}
+    r = o2.run(pit, fx.LabeledPlaceholderPriors(), disc, table(corr=bad), n_draws=100, seed=1, state=st)
+    cop = r["near_term"]["copula"]
+    assert r["status"] == "ok" and cop["measured"] == [] and set(cop["dropped_not_positive_definite"]) == set(bad["operating"])
+    assert set(bad["operating"]) <= set(cop["independent"]) and any("independence" in f for f in r["near_term"]["fallbacks"])
+
+
+def test_al1_4b_the_one_case_v2_cannot_reproduce_v1_reached_target_by_year_3_then_back_is_stamped():
+    from valuation.common import Curve
+    pit, st, ps, disc = setup()
+    gT = terminal_growth_rate(disc.rf)
+    curve = Curve([0.6, 0.4, 0.2, 0.5, 0.3, 0.25, 0.2, 0.2, 0.2, 0.2], "margin_retention", "past target at year 3")
+    cv = dict(ps.curves, margin_retention=curve)
+    w, _ = level_path_weights(curve, 10)
+    assert w[2] == 1.0 and w[3] < 1.0
+    q = {"g_terminal": gT, "margin_target": 0.2, "ronic": 0.13, **{f"nt_lgrowth_{k}": 0.05 for k in nt.KS}, **{f"nt_margin_{k}": 0.2 for k in nt.KS}}
+    r = o2.operating_chain_v2(st, q, cv, disc, detail=True)
+    assert o2.RULE_HELD_AFTER_TARGET in r["rules"] and r["years"][3]["margin"] == 0.2

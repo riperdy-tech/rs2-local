@@ -1,5 +1,6 @@
 """Engine v2's near-term table builder (SPEC_engine_v2.md sections 2-3, 6; REGISTRATION_engine_v2 E6): what it measures, and the cut proof."""
 import copy
+import math
 import json
 
 import numpy as np
@@ -76,7 +77,7 @@ def test_residuals_are_the_outcome_minus_the_rule_at_the_origins_own_cut_and_not
     row = res[(res["var"] == "growth") & (res["k"] == 1)].iloc[0]
     p = panel[(panel["cik"] == row["cik"])].iloc[0]
     i = nb.population_medians(obs, f"{str(p['date'])[:4]}-01-01")["operating"]["growth"]["1"]["median"]
-    assert row["resid"] == pytest.approx(p["g_1"] - (i + 0.5 * (0.08 - i)))               # section 2: i + 0.5 (ii - i)
+    assert row["resid"] == pytest.approx(math.log1p(p["g_1"]) - math.log1p(i + 0.5 * (0.08 - i)))    # section 2's rule; growth in log space (AL.1)
     m = res[(res["var"] == "margin") & (res["k"] == 2)].iloc[0]
     pm = panel[panel["cik"] == m["cik"]].iloc[0]
     assert m["resid"] == pytest.approx(pm["m_2"] - 0.14)                                   # margin: the code's path
@@ -88,7 +89,7 @@ def test_the_table_measures_pools_cells_and_the_copula_and_leaves_the_unmeasurab
     t = nb.build_table(2022, panel_frame(n=600), _obs())
     pool = t["residuals"]["operating"]["growth"]["1"]["pool"]
     assert pool["n"] >= nt.MIN_N and list(pool["q"]) == [str(p) for p in nt.RESID_LEVELS]
-    assert t["corr"]["operating"]["nt_growth_1|nt_growth_2"] > 0.9                         # a shared shock: strongly dependent residuals
+    assert t["corr"]["operating"]["nt_lgrowth_1|nt_lgrowth_2"] > 0.9                         # a shared shock: strongly dependent residuals
     assert t["corr"]["operating"]["nt_margin_3|margin_target"] is None and t["level_cuts"]["operating"] is not None
     assert t["cut_date"] == "2023-01-01" and t["i"]["operating"]["growth"]["1"]["max_filed"] < "2023-01-01"
 
