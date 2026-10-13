@@ -3637,3 +3637,82 @@ outcome).**
   `engine_refused` (no trailing 3-year ROIC), possibly a consequence of the same defect. It is not scored, so no bar moves.
 - **Reported in the gate-2 result as a stated limitation,** with these counts. The inputs stay frozen. The repair belongs to `pit_data`,
   in fork 2's problem report, for the operator.
+
+**AK.34 (2026-10-14 04:01): the masked control finished, the chain scored the registered version, and the coordinator's audit found
+three defects in the outcome design. Nothing is reported to the operator as a result yet.**
+- **The chain:**
+  - the masked control finished at 01:31 (30 of 30);
+  - the chain started at 01:46 and disabled `RS2-Gate2-Replay`;
+  - the refresh downloaded companyfacts (Last-Modified 2026-10-13, 1,410,326,370 bytes, sha256 `c8335ac3…`) and built
+    `store_2026-10-13` (20,455 of 20,455), finishing at 02:03;
+  - `score --repeat-later` finished at 03:58: rc 0, 0 mismatches against the independent script, scoring date 2026-10-06;
+  - the tag-consistent re-score started at 03:58.
+- **The registered version's own negatives:** verdict FAIL (G1 and G4); 4 outcomes filed on or before T; R3a margin skill not shown;
+  G4-strict 26 of 85.
+- **Audit finding 1: the 4 look-ahead flags.**
+  - All four are annual year-1 10-Ks filed **on** T (2026-02-27).
+  - For CLOV, that 10-K's text was in the pack. It was accepted 13:08 ET, inside the registered 16:00 ET cutoff for documents, while the
+    financial tables ended at FY2024 (strictly before T). So Muse could read the year its annual target measures.
+  - The q1 target is not affected (q1 requires a filing strictly after T). These 4 annual rows are excluded from every annual result.
+- **Audit finding 2 (serious): the q1 outcome was public in Muse's pack on 53 of 400 q1 rows (13%).**
+  - On these rows the q1 quarter had ended before T, its XBRL report came after T, and its **8-K earnings release, filed before T, was
+    in the pack**. Example: FormFactor's quarter ended 2025-09-27, its 10-Q came 2025-11-04, and its release of 2025-10-29 was shown.
+  - By date: 2025-10-31 19/82, 2025-12-31 1/81, 2026-02-27 16/81, 2026-04-30 17/78, 2026-06-30 0/78.
+  - The registration allows a quarter that ended before T as q1, and the packs include earnings releases by design. Together they let
+    Muse read the outcome that G1 scores it on, while the code and the baselines cannot.
+  - Any Muse advantage on G1 or R3a may therefore be partly reading, not forecasting.
+  - **A sensitivity is running, not a registered bar:**
+    - S1 removes those 53 rows;
+    - S2 removes every row whose q1 quarter had ended at T.
+    Which reading governs is the operator's decision, put to them with both results.
+- **Audit finding 3: five stale q1 picks.** The rule "the earliest quarter first reported after T" chose quarters that ended 217–731 days
+  before T and first appeared in a later filing (LHX, JJSF, NABL twice, SYBT). These are not the next quarter; S2 removes them.
+- **Also for the annual target (S5's primary, and gate 2b):** 15 of the 2026-02-27 annual rows had a Q4/full-year earnings release for
+  year 1 in the pack before T, so the year's result was public. Before B4, the annual target must be redefined as the first fiscal
+  year whose results were **not** public at T, counting earnings releases as public. Gate 2b's dates need the same rule. Recorded for the
+  S5/gate-2b amendment, to be written before any gate-2b outcome exists.
+
+**AK.35 (2026-10-14 04:11): gate 2 scored and audited. The version of record is the tag-consistent outcomes (AK.30); the 20-outcome hand
+check is still to do.**
+- **A coordinator bug found and fixed before reading the version of record.**
+  - The cause: `tag_consistent.quarter_tc` returned early when a quarter had no same-filing revenue pair, so banks (which have no revenue
+    line) lost their ROTE outcome (60 rows), although ROTE needs only net income.
+  - The fix: each measure now stands on its own pair.
+  - The re-run is `scratch/rev23/gate2_audit/tag_consistent/2026-10-06_v2/` (394 q1 rows with a same-filing outcome, against 337). The
+    first run is kept as the record of the bug.
+  - The pseudo-outcome rehearsal (AK.32) had not exercised it, because its registered ROTE was empty.
+- **The version of record** (tag-consistent v2; 0 mismatches against the independent script):
+
+  | Bar | Kind | Result |
+  |---|---|---|
+  | G1 growth | hard | **Muse beats the code**: median d −0.0230, upper90 −0.0172, n 281 |
+  | G1 margin | hard | **fails**: median d +0.0015, upper90 +0.0026, n 391 |
+  | G1 overall | hard | FAIL, on margin |
+  | G2 | hard (direction) | passes on direction: dIC +0.011, interval [−0.031, +0.056], n 386, same under all three bounds |
+  | G4 | hard | FAIL: 18 of 85 revisions (21%), none accepted |
+  | G5 | hard | passes: 0 leakage, 0 of 7,897 citations failed |
+  | G3 (reported) | coverage | growth Muse 0.943, code 0.897 (both too wide); margin Muse 0.708, code 0.752 |
+  | G6 (reported) | name bias | 7.0 percentile points of mean shift over 81 inputs of 17 company-dates |
+
+  **Registered verdict: FAIL** (G1 on margin, and G4).
+- **The diagnostics that decide the branch (AD.5):**
+  - **R3a growth:** filing skill shown. Pass 1 beats the code, `persist_rr` and `popmed_rr` (medians −0.023, −0.008, −0.021).
+  - **R3a margin:** not shown.
+  - **R3b:** final against pass 1 has a median of 0.0 on both measures. The red team does not beat pass 1, so it is **not kept**, and
+    G4's anchoring behaviour leaves the live system with it.
+  - **R8** is deferred (AK.25). The repeat control started at 04:04.
+- **The leak sensitivity (AK.34), on the version of record, through the full stages; 0 mismatches each:**
+  - **S1**, without the 53 rows whose q1 earnings release was in the pack: growth d −0.0235 (upper90 −0.0173, n 267), and R3a growth
+    still shows skill.
+  - **S2**, without every row whose q1 quarter had ended at T (137 rows): growth d −0.0221 (upper90 −0.0167, n 192), and R3a growth
+    still shows skill.
+  - Margin fails in both.
+  - **So the growth skill is not an artefact of Muse reading earnings releases.**
+- **By the registered rule the branch is C1** (pass 1 beats all three baselines on growth). Next, per AD.5:
+  1. engine v2;
+  2. Muse's deviations shrunk and calibrated under S5 (growth only, unless the S5 fit finds margin value);
+  3. gate 2b on its untouched dates.
+
+  Before B4, the annual-target redefinition (AK.34) and the same-filing outcome (AK.27) go into outcome_extract.
+- **Still to do before the result is final:** the 20-outcome hand check against the SEC filings (Audit 1), and R8 when the repeat control
+  ends.

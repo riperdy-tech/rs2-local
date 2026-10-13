@@ -134,26 +134,28 @@ def quarter_tc(facts, q, family, tbv):
     if not q or not q.get("accession") or not q.get("period_end"):
         return {"status": "no_registered_quarter"}
     accn, end = q["accession"], q["period_end"]
-    got, kind = {}, "reported_3m"
+    got, kinds = {}, {}
     for f in ("revenue", "operating_income", "net_income"):
         rs = rows_of(facts, f)
-        p = pairs_in_filing(rs, accn, end, Q3M)
+        p, kinds[f] = pairs_in_filing(rs, accn, end, Q3M), "reported_3m"
         if not p:
-            p, kind = derived_q4(rs, accn, end), "derived_q4"
+            p, kinds[f] = derived_q4(rs, accn, end), "derived_q4"
         got[f] = choose(p, f)
-    out = {"status": "ok", "kind": kind, "tags": {f: (None if got[f][0] is None else "/".join(got[f][0])) for f in got}, "revenue_tags": got["revenue"][2]}
+    out = {"kind": kinds["revenue"], "kinds": kinds, "tags": {f: (None if got[f][0] is None else "/".join(got[f][0])) for f in got},
+           "revenue_tags": got["revenue"][2], "revenue_growth": None, "operating_margin_change": None, "rote_change_annualised_on_tbv_at_T": None}
+    # each measure stands on its own pair (AK.35: a bank has no revenue line, and its ROTE needs none)
     rk, rv, _n = got["revenue"]
-    if rk is None:
-        return dict(out, status="no_same_filing_revenue_pair")
-    r1, r0 = rv
-    out["revenue_growth"] = (r1 / r0 - 1.0) if r0 > 0 else None
-    ok, ov, _ = got["operating_income"]
-    if ok is not None and ok[2] == rk[2] and r1 > 0 and r0 > 0:
-        out["operating_margin_change"] = ov[0] / r1 - ov[1] / r0
-    else:
-        out["operating_margin_change"] = None
+    if rk is not None:
+        r1, r0 = rv
+        out["revenue_growth"] = (r1 / r0 - 1.0) if r0 > 0 else None
+        ok, ov, _ = got["operating_income"]
+        if ok is not None and ok[2] == rk[2] and r1 > 0 and r0 > 0:
+            out["operating_margin_change"] = ov[0] / r1 - ov[1] / r0
     nk, nv, _ = got["net_income"]
-    out["rote_change_annualised_on_tbv_at_T"] = (4.0 * (nv[0] - nv[1]) / tbv) if (family == "financial" and nk is not None and tbv and tbv > 0) else None
+    if family == "financial" and nk is not None and tbv and tbv > 0:
+        out["rote_change_annualised_on_tbv_at_T"] = 4.0 * (nv[0] - nv[1]) / tbv
+    measured = [m for m in ("revenue_growth", "operating_margin_change", "rote_change_annualised_on_tbv_at_T") if out[m] is not None]
+    out["status"] = "ok" if measured else "no_same_filing_pair"
     return out
 
 
