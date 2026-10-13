@@ -3624,3 +3624,16 @@ found in the extractor's outcome mode: recasts.**
   is recorded and does not block the repeat control. A no-op run after the edit returned 0.
 - **In the morning both versions exist.** Per AK.30 the tag-consistent one governs. The coordinator audits both (Audit 1, the hand check)
   before anything is reported.
+
+**AK.33 (2026-10-13 23:38): the fiscal-year mislabel's reach into gate-2 inputs, measured (fork 2's AL.10–AL.11; inputs at T only, no
+outcome).**
+- **The script:** `scratch/rev23/gate2_audit/fy_mislabel_check.py`, run on the packs' store at each T. The signature is an annual report
+  filed before T whose assigned period ends after its own filing date.
+- **44 of 600 company-dates (7.3%)** have at least one such report in their history: 36 operating and 8 financial. Most of those reports
+  were filed in 2010–2019 (2010: 1, 2011–2016: 40 together, 2018: 8). So the effect sits in the long history the inputs summarise:
+  multi-year medians, trailing growth and the history Muse is shown. There it shows as a missing or shifted year.
+- **1 of 600 (0.2%) has the latest report itself mislabelled:** Avnet (CIK 8858) at 2025-12-31. Each of its 10-Ks from 2023 to 2025 is
+  stamped a year ahead (FY2025, filed 2025-08-15, is labelled 2026-06-27), so the base year the engines saw is a year stale. That row was
+  `engine_refused` (no trailing 3-year ROIC), possibly a consequence of the same defect. It is not scored, so no bar moves.
+- **Reported in the gate-2 result as a stated limitation,** with these counts. The inputs stay frozen. The repair belongs to `pit_data`,
+  in fork 2's problem report, for the operator.

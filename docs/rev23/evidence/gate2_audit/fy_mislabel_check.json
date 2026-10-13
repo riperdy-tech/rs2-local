@@ -1,0 +1,715 @@
+{
+ "n": 600,
+ "in_store": 600,
+ "mislabelled_any": 44,
+ "mislabelled_last": 1,
+ "rows": [
+  {
+   "key": "2025-10-31_0000861884",
+   "ticker": "RS",
+   "family": "operating",
+   "mislabelled": {
+    "0001558370-18-001275": {
+     "filed": "2018-02-28",
+     "assigned_period": "2018-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001558370-25-001806",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-10-31_0001100682",
+   "ticker": "CRL",
+   "family": "operating",
+   "mislabelled": {
+    "0001445305-14-000599": {
+     "filed": "2014-02-25",
+     "assigned_period": "2014-12-29",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001100682-25-000011",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-10-31_0000104889",
+   "ticker": "GHC",
+   "family": "operating",
+   "mislabelled": {
+    "0000104889-12-000006": {
+     "filed": "2012-02-29",
+     "assigned_period": "2012-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000104889-25-000022",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-10-31_0000050863",
+   "ticker": "INTC",
+   "family": "operating",
+   "mislabelled": {
+    "0000950123-11-015783": {
+     "filed": "2011-02-18",
+     "assigned_period": "2011-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000050863-25-000009",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-10-31_0000313616",
+   "ticker": "DHR",
+   "family": "operating",
+   "mislabelled": {
+    "0001193125-11-044412": {
+     "filed": "2011-02-24",
+     "assigned_period": "2011-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000313616-25-000043",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-10-31_0001025835",
+   "ticker": "EFSC",
+   "family": "financial",
+   "mislabelled": {
+    "0001025835-14-000012": {
+     "filed": "2014-03-17",
+     "assigned_period": "2014-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001025835-25-000039",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-10-31_0001377936",
+   "ticker": "SAR",
+   "family": "operating",
+   "mislabelled": {
+    "0001213900-23-035521": {
+     "filed": "2023-05-02",
+     "assigned_period": "2024-02-28",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001213900-25-040617",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-10-31_0000080424",
+   "ticker": "PG",
+   "family": "operating",
+   "mislabelled": {
+    "0000080424-12-000063": {
+     "filed": "2012-08-08",
+     "assigned_period": "2013-06-30",
+     "form": "10-K"
+    },
+    "0000080424-19-000050": {
+     "filed": "2019-08-06",
+     "assigned_period": "2020-06-30",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000080424-25-000076",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-10-31_0001111335",
+   "ticker": "VC",
+   "family": "operating",
+   "mislabelled": {
+    "0001111335-17-000003": {
+     "filed": "2017-02-23",
+     "assigned_period": "2017-12-31",
+     "form": "10-K"
+    },
+    "0001445305-12-000456": {
+     "filed": "2012-02-27",
+     "assigned_period": "2012-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001111335-25-000006",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-10-31_0000039368",
+   "ticker": "FUL",
+   "family": "operating",
+   "mislabelled": {
+    "0001193125-12-026988": {
+     "filed": "2012-01-27",
+     "assigned_period": "2012-12-01",
+     "form": "10-K"
+    },
+    "0001193125-13-028025": {
+     "filed": "2013-01-29",
+     "assigned_period": "2013-11-30",
+     "form": "10-K"
+    },
+    "0001193125-14-020505": {
+     "filed": "2014-01-24",
+     "assigned_period": "2014-11-29",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001437749-25-001699",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0001170010",
+   "ticker": "KMX",
+   "family": "operating",
+   "mislabelled": {
+    "0001170010-15-000008": {
+     "filed": "2015-04-24",
+     "assigned_period": "2016-02-29",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001170010-25-000024",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0001381197",
+   "ticker": "IBKR",
+   "family": "financial",
+   "mislabelled": {
+    "0001047469-16-010549": {
+     "filed": "2016-02-29",
+     "assigned_period": "2018-12-31",
+     "form": "10-K"
+    },
+    "0001047469-17-001069": {
+     "filed": "2017-02-28",
+     "assigned_period": "2019-12-31",
+     "form": "10-K"
+    },
+    "0001047469-18-001166": {
+     "filed": "2018-03-01",
+     "assigned_period": "2020-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001381197-25-000036",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0000016040",
+   "ticker": "CBT",
+   "family": "operating",
+   "mislabelled": {
+    "0001564590-16-029604": {
+     "filed": "2016-11-23",
+     "assigned_period": "2017-09-30",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001193125-25-292412",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0000021076",
+   "ticker": "CLX",
+   "family": "operating",
+   "mislabelled": {
+    "0001206774-10-001891": {
+     "filed": "2010-08-26",
+     "assigned_period": "2015-06-30",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000021076-25-000039",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0000815556",
+   "ticker": "FAST",
+   "family": "operating",
+   "mislabelled": {
+    "0001193125-11-029081": {
+     "filed": "2011-02-09",
+     "assigned_period": "2011-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000815556-25-000065",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0000008858",
+   "ticker": "AVT",
+   "family": "operating",
+   "mislabelled": {
+    "0000008858-23-000029": {
+     "filed": "2023-08-18",
+     "assigned_period": "2024-06-29",
+     "form": "10-K"
+    },
+    "0000008858-24-000030": {
+     "filed": "2024-08-14",
+     "assigned_period": "2025-06-28",
+     "form": "10-K"
+    },
+    "0000008858-25-000028": {
+     "filed": "2025-08-15",
+     "assigned_period": "2026-06-27",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000008858-25-000028",
+   "latest_is_mislabelled": true,
+   "base_year_end_used": "2025-06-28"
+  },
+  {
+   "key": "2025-12-31_0000885725",
+   "ticker": "BSX",
+   "family": "operating",
+   "mislabelled": {
+    "0000885725-13-000007": {
+     "filed": "2013-02-22",
+     "assigned_period": "2013-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000885725-25-000011",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0001025835",
+   "ticker": "EFSC",
+   "family": "financial",
+   "mislabelled": {
+    "0001025835-14-000012": {
+     "filed": "2014-03-17",
+     "assigned_period": "2014-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001025835-25-000039",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0001828016",
+   "ticker": "PLTK",
+   "family": "operating",
+   "mislabelled": {
+    "0001828016-21-000014": {
+     "filed": "2021-02-26",
+     "assigned_period": "2021-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001828016-25-000011",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0000080424",
+   "ticker": "PG",
+   "family": "operating",
+   "mislabelled": {
+    "0000080424-12-000063": {
+     "filed": "2012-08-08",
+     "assigned_period": "2013-06-30",
+     "form": "10-K"
+    },
+    "0000080424-19-000050": {
+     "filed": "2019-08-06",
+     "assigned_period": "2020-06-30",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000080424-25-000076",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2025-12-31_0001166691",
+   "ticker": "CCZ",
+   "family": "operating",
+   "mislabelled": {
+    "0001166691-18-000004": {
+     "filed": "2018-01-31",
+     "assigned_period": "2018-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001166691-25-000011",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-02-27_0001521332",
+   "ticker": "APTV",
+   "family": "operating",
+   "mislabelled": {
+    "0001521332-14-000011": {
+     "filed": "2014-02-10",
+     "assigned_period": "2014-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001521332-26-000009",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-02-27_0001501585",
+   "ticker": "HII",
+   "family": "operating",
+   "mislabelled": {
+    "0001501585-18-000006": {
+     "filed": "2018-02-15",
+     "assigned_period": "2018-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001501585-26-000006",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-02-27_0000103595",
+   "ticker": "VLGEA",
+   "family": "operating",
+   "mislabelled": {
+    "0001096906-12-002629": {
+     "filed": "2012-11-05",
+     "assigned_period": "2013-07-28",
+     "form": "10-K/A"
+    },
+    "0001096906-13-001552": {
+     "filed": "2013-10-08",
+     "assigned_period": "2014-07-27",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000103595-25-000015",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-02-27_0000807882",
+   "ticker": "JACK",
+   "family": "operating",
+   "mislabelled": {
+    "0000807882-12-000006": {
+     "filed": "2012-11-21",
+     "assigned_period": "2013-09-29",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000807882-25-000072",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0000060086",
+   "ticker": "L",
+   "family": "financial",
+   "mislabelled": {
+    "0001193125-11-043352": {
+     "filed": "2011-02-23",
+     "assigned_period": "2011-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000060086-26-000008",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0000788329",
+   "ticker": "JOUT",
+   "family": "operating",
+   "mislabelled": {
+    "0001042167-12-000163": {
+     "filed": "2012-12-11",
+     "assigned_period": "2013-09-27",
+     "form": "10-K"
+    },
+    "0001042167-13-000205": {
+     "filed": "2013-12-06",
+     "assigned_period": "2014-09-26",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001140361-25-045348",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0000005272",
+   "ticker": "AIG",
+   "family": "financial",
+   "mislabelled": {
+    "0000005272-18-000022": {
+     "filed": "2018-02-16",
+     "assigned_period": "2018-12-31",
+     "form": "10-K"
+    },
+    "0000005272-19-000023": {
+     "filed": "2019-02-15",
+     "assigned_period": "2019-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000005272-26-000023",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0000109380",
+   "ticker": "ZION",
+   "family": "financial",
+   "mislabelled": {
+    "0000109380-18-000102": {
+     "filed": "2018-03-01",
+     "assigned_period": "2018-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000109380-26-000046",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0000822663",
+   "ticker": "IPAR",
+   "family": "operating",
+   "mislabelled": {
+    "0001144204-13-014616": {
+     "filed": "2013-03-12",
+     "assigned_period": "2013-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001753926-26-000464",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0001100682",
+   "ticker": "CRL",
+   "family": "operating",
+   "mislabelled": {
+    "0001445305-14-000599": {
+     "filed": "2014-02-25",
+     "assigned_period": "2014-12-29",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001100682-26-000022",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0000091419",
+   "ticker": "SJM",
+   "family": "operating",
+   "mislabelled": {
+    "0000950123-11-062373": {
+     "filed": "2011-06-28",
+     "assigned_period": "2012-04-30",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000091419-25-000056",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0000929008",
+   "ticker": "WCC",
+   "family": "operating",
+   "mislabelled": {
+    "0000929008-15-000006": {
+     "filed": "2015-02-24",
+     "assigned_period": "2019-12-31",
+     "form": "10-K"
+    },
+    "0000929008-16-000049": {
+     "filed": "2016-02-22",
+     "assigned_period": "2021-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000929008-26-000008",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0000038725",
+   "ticker": "FELE",
+   "family": "operating",
+   "mislabelled": {
+    "0000038725-18-000039": {
+     "filed": "2018-02-27",
+     "assigned_period": "2018-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000038725-26-000009",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0001083301",
+   "ticker": "WULF",
+   "family": "financial",
+   "mislabelled": {
+    "0001558370-18-001442": {
+     "filed": "2018-03-02",
+     "assigned_period": "2018-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001083301-26-000031",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-04-30_0000092230",
+   "ticker": "TFC",
+   "family": "financial",
+   "mislabelled": {
+    "0000092230-14-000014": {
+     "filed": "2014-02-26",
+     "assigned_period": "2014-12-31",
+     "form": "10-K"
+    },
+    "0000092230-15-000021": {
+     "filed": "2015-02-25",
+     "assigned_period": "2015-12-31",
+     "form": "10-K"
+    },
+    "0000092230-16-000125": {
+     "filed": "2016-02-25",
+     "assigned_period": "2016-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000092230-26-000030",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-06-30_0000794367",
+   "ticker": "M",
+   "family": "operating",
+   "mislabelled": {
+    "0000794367-12-000096": {
+     "filed": "2012-03-28",
+     "assigned_period": "2013-02-02",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001628280-26-021721",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-06-30_0000772406",
+   "ticker": "CRUS",
+   "family": "operating",
+   "mislabelled": {
+    "0001193125-15-201883": {
+     "filed": "2015-05-27",
+     "assigned_period": "2016-03-26",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000772406-26-000018",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-06-30_0000043196",
+   "ticker": "GTN-A",
+   "family": "operating",
+   "mislabelled": {
+    "0001437749-13-002311": {
+     "filed": "2013-03-05",
+     "assigned_period": "2013-12-31",
+     "form": "10-K"
+    },
+    "0001437749-14-003874": {
+     "filed": "2014-03-11",
+     "assigned_period": "2014-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001437749-26-005803",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-06-30_0000080424",
+   "ticker": "PG",
+   "family": "operating",
+   "mislabelled": {
+    "0000080424-12-000063": {
+     "filed": "2012-08-08",
+     "assigned_period": "2013-06-30",
+     "form": "10-K"
+    },
+    "0000080424-19-000050": {
+     "filed": "2019-08-06",
+     "assigned_period": "2020-06-30",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000080424-25-000076",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-06-30_0001481582",
+   "ticker": "RYZ",
+   "family": "operating",
+   "mislabelled": {
+    "0001564590-21-008111": {
+     "filed": "2021-02-24",
+     "assigned_period": "2021-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001193125-26-062397",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-06-30_0000016040",
+   "ticker": "CBT",
+   "family": "operating",
+   "mislabelled": {
+    "0001564590-16-029604": {
+     "filed": "2016-11-23",
+     "assigned_period": "2017-09-30",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001193125-25-292412",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-06-30_0000091388",
+   "ticker": "SFD",
+   "family": "operating",
+   "mislabelled": {
+    "0000091388-15-000015": {
+     "filed": "2015-03-25",
+     "assigned_period": "2015-12-27",
+     "form": "10-K"
+    },
+    "0000091388-16-000064": {
+     "filed": "2016-03-29",
+     "assigned_period": "2017-01-01",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0000091388-26-000014",
+   "latest_is_mislabelled": false
+  },
+  {
+   "key": "2026-06-30_0001464790",
+   "ticker": "RILYN",
+   "family": "operating",
+   "mislabelled": {
+    "0001213900-21-013276": {
+     "filed": "2021-03-04",
+     "assigned_period": "2021-12-31",
+     "form": "10-K"
+    }
+   },
+   "latest_annual_accession": "0001464790-26-000027",
+   "latest_is_mislabelled": false
+  }
+ ]
+}
