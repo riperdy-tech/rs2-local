@@ -3140,3 +3140,23 @@ outcome has been read.
   and readiness ok. Then `RS2-Gate2-Replay` was re-registered with `-Mode masked` on `data\gate2_run2`. The repeat control
   (`RS2-Gate2-Repeat`) follows when masked is final. Then score_day runs with no model loaded, and fork 2's vintage-2025 build waits
   for that.
+
+**AK.23 (2026-10-13 21:50): the operator's approvals.** In the operator's words: "approve C1, B5, S5, mean_iv, and the engine v2 bundle". Recorded in each document:
+- **The verdict contract v4** is approved at draft v2, with the AK.21 joint-tail flag.
+- **The distress registration v2** is approved, with AK.21's two-way bootstrap, before any candidate is built or measured. The expected
+  date of the decisive read is recorded at approval: not before about 2032.
+- **S5:** both errata are confirmed: the median bias is kept and every draw shifts by w·Δ (AK.19), and V5 tests before calibration
+  (AK.21).
+- **Selection:** H-S1 = `log(mean_iv / price)` on the survival-adjusted, model-implied distribution, confirmed before any selection data
+  exist.
+- **The engine v2 bundle (fork 2's AL.3/AL.4 with AK.20):**
+  - **E3, option 1:** the diagnosed shock-year under-coverage is kept as a failure on record, and gate 2b's B4 judges the marginal
+    bands on its untouched dates. No MRI-regime cells are built until MRI's historical turbulence series is rebuilt and passes its own
+    look-ahead audit.
+  - **E2:** its two tables, operating growth in years 2 and 3, are accepted as explained: v2 cuts its medians at Jan 1, and the study
+    cut them at Jun 30.
+  - **v2.1:** the empirical-copula registration is to be written, and fixed before its build and before B4's SYSTEM freeze.
+  - Engine v2.0 stays the engine. Its verdicts carry `joint_tail_undercoverage` until a copula version passes.
+
+**A note on coordination.** At 21:40 fork 2 was not listed, and its message address had gone stale, so the "masked started" message
+bounced. At 21:49 it reappeared as a newly started session, so its process had restarted. The message was then delivered.

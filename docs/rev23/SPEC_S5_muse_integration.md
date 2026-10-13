@@ -120,7 +120,7 @@ v2's own distributions, unchanged, since there is no Muse adjustment there.
 *Erratum (AK.19, 2026-10-13, before any gate-2 outcome is read):* this sentence and the identity case below said "re-centred". That
 contradicted `SPEC_engine_v2.md` section 3 (v2's measured median bias is kept, not re-centred) and this spec's own V5 (with w = 0,
 SYSTEM equals v2 byte for byte in distributions). The meaning is the shift above: the median bias is kept and w = 0 gives v2 exactly.
-Nothing else changes. The operator is asked to confirm.
+Nothing else changes. **Confirmed by the operator, 2026-10-13 21:50 KST** (AK.23), with the AK.21 erratum to V5.
 
 **Calibration of year 1,** on the **annual** year-1 target only, the same target gate 2b's B4 scores.
 

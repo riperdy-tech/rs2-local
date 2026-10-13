@@ -1,4 +1,4 @@
-# Distress layer v2 registration — DRAFT v2, 2026-10-13 17:45: a survival model that earns its place
+# Distress layer v2 registration — APPROVED (v2, 2026-10-13 17:45; two-way bootstrap added 21:33): a survival model that earns its place
 
 Recovery plan S6; remaining-work plan B5; definition of done D5. Written before any candidate is built or measured.
 
@@ -168,5 +168,8 @@ A failed candidate is never relabelled as passing, and no candidate, feature or 
 
 ## 9. Approval record
 
-Not yet approved. It is for the operator. Cross-check 9 was answered by ChatGPT and Gemini, and the rulings are in SPEC_rebuild
-AK.19.
+**Approved by the operator, 2026-10-13 21:50 KST:** "approve C1, B5, S5, mean_iv, and the engine v2 bundle" (SPEC_rebuild AK.23). It was approved before any candidate was built or measured.
+
+**The decisive read's expected date, recorded at approval as section 5 requires:** not before about 2032. This is from the draft's own
+rate estimate (about 30 independent fresh events by mid-2028). It is re-estimated, for information only, at the first monitoring report,
+and is never a reason to read early.

@@ -1,4 +1,4 @@
-# Verdict contract v4 — DRAFT v2, 2026-10-13 17:45: what the new analyst publishes, and how the existing chain reads it
+# Verdict contract v4 — APPROVED (v2, 2026-10-13 17:45; joint-tail flag added 21:33): what the new analyst publishes, and how the existing chain reads it
 
 Recovery plan S7; remaining-work plan C1. Written during gate-2 run 2, before any gate-2 outcome is read.
 
@@ -241,4 +241,5 @@ Dropped with their fields: the probability simplex, the tranche monotonicity and
 
 ## 12. Approval record
 
-Not yet approved. It is for the operator, and part of cross-check 10.
+**Approved by the operator, 2026-10-13 21:50 KST:** "approve C1, B5, S5, mean_iv, and the engine v2 bundle" (SPEC_rebuild AK.23). The version approved is draft v2 with the AK.21 `joint_tail_undercoverage`
+flag. Any change from here on is a new version. Cross-check 10 reviews the downstream changes (plan C2).
