@@ -3,8 +3,17 @@
 **Date:** 2026-10-13 23:07 KST. **Author:** the coordinator, fork 2. **Records:** SPEC_rebuild Addenda AL.6 and AL.7; fork 1's AK.26.
 
 **Status:**
-- open; nothing has been changed;
-- **a decision for the operator** (section 8).
+- open; no value has been changed;
+- the operator's decisions are recorded in AL.8 (section 8);
+- **revised 2026-10-13 after a hand check** (section 9).
+
+**The three questions** (AL.8):
+
+| Question | Answer so far |
+|---|---|
+| Is the cause real? | Yes. The mechanism is in the code (section 5). Four cases were checked against the filed income statements, and each extracted growth figure is wrong (section 3). |
+| How prevalent is it? | Provisional: about 0.4–0.5% of year-to-year pairs off by more than 5 points, from two 300-company samples (section 4). The other fields are suspected and not yet quantified. |
+| Does it change a decision? | Not yet measured. The gate-2 share of affected company-dates and the sensitivity of its outcomes are fork 1's (AK.27–AK.28). The effect on engine v2's tables is still to measure. |
 
 ## 1. Summary
 
@@ -18,8 +27,8 @@ wrong. Examples:
 
 In a sample of 300 companies of the $300M+ study universe:
 - 7.3% of consecutive-year pairs cross a tag change;
-- the growth across the change is off by more than 5 points in 0.55% of all pairs;
-- it is off by more than 20 points in 0.47%.
+- the growth across the change is off by more than 5 points in 0.47% of all pairs;
+- it is off by more than 20 points in 0.38%.
 
 It is not a look-ahead leak: each cut reads only filings made before it. It is a data-correctness defect in a shared component, and the
 same mechanism very probably affects the other fields resolved the same way, which have not been measured (section 6).
@@ -34,25 +43,34 @@ Revenue growth is an input at three points, and a false figure distorts each one
 The errors are rare but very large, so they sit in exactly the tails that set risk. A company whose own history contains a false collapse
 or a false doubling is valued on a wrong trend.
 
-## 3. Evidence: five cases
+## 3. Evidence: four cases, checked by hand against the filed income statements
 
-The cut is 2026-01-01, `first_filed` mode, read from the shared store (`pit_data`). The last column shows what year t's own annual report
-files for both years, from the same accession.
+The cut is 2026-01-01, `first_filed` mode, read from the shared store (`pit_data`). The last column is the income statement as filed (the
+SEC's rendered statement page of that accession, downloaded 2026-10-13 under standing approval O5). Every reference figure is the
+statement's total revenue line.
+
+The scripts are `scratch/rev23/engine_v2_audit/handcheck_fetch.py` and `handcheck_read.py`.
 
 | CIK | Year t | Extracted: year t−1 → year t | Extracted growth | Year t's own filing (accession), both years |
 |---|---|---|---|---|
-| 1042893 | FY2018 | 455.5M `Revenues` → 337.5M `RevenueFromContractWithCustomerExcludingAssessedTax` | −25.9% | `Revenues` 455.5M → 384.6M, **−15.6%** (0001042893-19-000003). The contract tag is filed for 2018 only. |
-| 835011 | FY2018 | 22.9M `Revenues` → 376.1M contract-revenue tag | **+1,544%** | contract revenue 347.4M → 376.1M, **+8.2%**. `Revenues` here is a 20-million side line (22.9M → 19.8M) (0001628280-19-002041). |
-| 46080 | FY2017 | 2,194.7M `Revenues` → 5,209.8M `SalesRevenueNet` | **+137%** | `SalesRevenueNet` 5,019.8M → 5,209.8M, **+3.8%** (0001193125-18-058659). |
-| 76267 | FY2019 (ends 2019-03-03) | 111.2M `Revenues` → 51.1M `RevenueFromContractWithCustomerIncludingAssessedTax` | **−54%** | the same tag 40.2M → 51.1M, **+27%** (0001437749-19-010516). |
-| 1720446 | FY2018 | 314.9M `SalesRevenueNet` → 530.2M contract-revenue tag | +68% | `Revenues` 2,048.9M → 3,645.3M, **+78%**. The contract tag is the full figure in 2016–2017 but a 530M slice in 2018 (0001564590-19-011452). |
+| 1042893 | FY2018 | 455.5M `Revenues` → 337.5M `RevenueFromContractWithCustomerExcludingAssessedTax` | −25.9% | "Total revenues" 455,469K → 384,626K, **−15.6%** (0001042893-19-000003). The contract tag, 337,466K, is the line "Revenues from products and services", which excludes leasing (47,160K). |
+| 835011 | FY2018 | 22.9M `Revenues` → 376.1M contract-revenue tag | **+1,544%** | "Net sales" 347,448K → 376,089K, **+8.2%** (0001628280-19-002041). `Revenues` (22.9M) is not the statement's revenue line. |
+| 46080 | FY2017 | 2,194.7M `Revenues` → 5,209.8M `SalesRevenueNet` | **+137%** | "Net revenues" 5,019,822K → 5,209,782K, **+3.8%** (0001193125-18-058659). |
+| 76267 | FY2019 (ends 2019-03-03) | 111.2M `Revenues` → 51.1M `RevenueFromContractWithCustomerIncludingAssessedTax` | **−54%** | "Net sales" 40,230,000 → 51,116,000, **+27.1%** (0001437749-19-010516). |
 
 **Two failure modes appear:**
-- **(a) Seam:** two tags of different scope are joined, as in 1042893 and 1720446.
+- **(a) Seam:** two tags of different scope are joined, as in 1042893.
 - **(b) Partial line:** the tag that won for some years is a partial line, not the total. Examples: 835011 (`Revenues` = 22.9M against
   a 347M business) and 46080 (a FY2016 `Revenues` of 2,194.7M against `SalesRevenueNet` of 5,019.8M).
 
-Both show up as a tag change between consecutive years.
+Both show up as a tag change between consecutive years. 76267 is one of the two; its 111.2M is not the filed total, and the case shows only
+that the extracted year t−1 figure is wrong.
+
+**A fifth case is withdrawn** (it was in the first version). CIK 1720446 reports in RMB. The extracted figures are the USD convenience
+translations that each annual report gives for its own year: 314.9M for FY2017, and 530.2M = RMB 3,645.3M for FY2018. Both are totals,
+so it is not a tag seam. Its +68% is USD growth at two year-ends' rates, against +77.9% in RMB. The first version called 530.2M a "slice";
+that was wrong. The error came from the measurement script, which compared a USD value with RMB values (section 4). Mixed-rate
+convenience translation of foreign filers is a separate question, not part of this report.
 
 **The same filing read at two cuts gives different values (AL.6):**
 - 1042893 FY2018 is 384.6M at the 2025-01-01 cut and 337.5M at the 2026-01-01 cut.
@@ -67,8 +85,12 @@ them. Both are read-only, run at low priority, from a seeded draw (seed 20261013
 
 | Sample (300 drawn each) | Companies with a tag change | Consecutive-year pairs | Pairs crossing a tag change | Checkable against the filing | Off by > 1 pt | > 5 pt | > 20 pt |
 |---|---|---|---|---|---|---|---|
-| All filers (`sic_by_cik`); 292 with data | 96 | 1,641 | 123 (7.5%) | 118 | 17 (1.0%) | 9 (0.55%) | 6 (0.37%) |
-| The $300M+ study panel's companies | 131 | 2,343 | 170 (7.3%) | 165 | 19 (0.81%) | 13 (0.55%) | 11 (0.47%) |
+| All filers (`sic_by_cik`); 292 with data | 96 | 1,641 | 123 (7.5%) | 116 | 16 (0.98%) | 8 (0.49%) | 5 (0.30%) |
+| The $300M+ study panel's companies | 131 | 2,343 | 170 (7.3%) | 163 | 17 (0.73%) | 11 (0.47%) | 9 (0.38%) |
+
+These are the corrected counts. The first version compared values across units: a foreign filer's USD convenience figure against its own
+RMB figures. The script now compares within the cell's unit only, and the first outputs are kept as `*_v1_unit_mix.json`. Earlier figures
+were 17/9/6 and 19/13/11.
 
 The percentages in the last three columns are of all pairs; the counts are of the checkable pairs.
 
@@ -80,10 +102,9 @@ The percentages in the last three columns are of all pairs; the counts are of th
 Large errors cluster in 2018–2019, the ASC 606 transition, but occur in every period from 2015 to 2023.
 
 **Limits of the measurement:**
-- **The reference is not ground truth.** It is the growth of one consistently tagged figure. Where that tag is itself a slice, the reference
-  is the slice's growth. Case 1720446 shows this: the contract-tag reference says −74%, but the true total, `Revenues`, grew +78%. The
-  counts above are therefore an estimate of the order of size, not an audit.
-- **No hand check yet.** No case has been checked against the filed income statement itself. Section 7 adds one.
+- **The reference is not ground truth.** It is the growth of one consistently tagged figure from one filing. Where that tag is a partial
+  line in both years, the reference is the line's growth. The counts above are an estimate of the order of size, not an audit.
+- **Hand check:** four cases so far, all confirmed. Twenty are planned before any value fix (section 7).
 - **Revenue only.** Section 6 covers the other fields.
 - **300 companies per sample.** The full-universe count is still to do.
 
@@ -131,7 +152,7 @@ Non-negotiable 2 applies: the fix belongs in the extractor, never in a consumer 
 **F2. Same-filing growth (medium).**
 - **What:** growth for year t is taken from year t's own annual report: both years under one tag, the report's own comparative column.
   Where that report has no comparative, the growth is stamped and left to the consumer.
-- **Effect:** this removes failure mode (a). It does not fix (b) when the slice is consistent across years, as in 1720446's contract tag.
+- **Effect:** this removes failure mode (a). It does not fix (b) when a partial line is used consistently in both years of one filing.
 
 **F3. Total-revenue check (larger).**
 - **What:** the winning tag must be the total, not a line within it. A closure test against other filed facts of the same filing decides,
@@ -146,22 +167,36 @@ Non-negotiable 2 applies: the fix belongs in the extractor, never in a consumer 
 5. **The screener:** a diff of its shipped history.
 6. **The other fields:** the same seam count for each `COMBINED` field.
 
-## 8. Decisions needed from the operator
+## 8. Decisions (the operator forwarded an outside review; ruled in AL.8)
 
-1. **The approach:**
-   - **My recommendation:** F1 now; F2 and F3 designed and measured before adoption.
-2. **Gate 2 and the frozen `c7d7a4f`:**
-   - **Recommendation:** gate 2 stays on its frozen inputs. Changing the extractor mid-gate would break the registration.
-   - **Instead,** the share of gate-2 company-dates with a seam in their input history is measured and reported beside the result, as a
-     stated limitation.
-3. **Engine v2:**
-   - **Recommendation:** vintage 2025 is built on the current extractor, consistent with 2016–2024. If F2 or F3 is adopted, all ten
-     tables are rebuilt together as a new version (V → V+1), never one alone.
-4. **The screener:** the extractor is the screener's production code. Any fix lands in `screener-publish`'s script first and is
-   re-vendored. That changes what the live site shows, so it needs the operator's approval and a named deploy.
+1. **Approach: diagnostics only (F1).**
+   - **The provenance recorded per year:** the selected tag, any backfill tag, the accession and period, and `tag_seam`.
+   - **Before F2 or F3:** the hand check and a broader before-and-after validation.
+   - **Status of the numbers:** prevalence is provisional; the other fields are suspected, unquantified.
+2. **Gate 2: the frozen inputs and the running chain are preserved as the original result, with the limitation stated.**
+   - The affected company-dates are reported with numerator and denominator.
+   - A sensitivity analysis comes before any affected outcome counts as clean evidence.
+   - q1 is qualified too, because AK.27 disproved its independence.
+   - Owner: fork 1.
+3. **Engine v2: vintage 2025 is built on the current extractor and labelled the legacy-extractor vintage.**
+   - So are all ten tables, through `data/priors_v4/LINEAGE.json`.
+   - A value fix would rebuild all ten as a new version, keeping the legacy one with its hashes.
+4. **Screener: no live value fix.**
+   - Development happens on an isolated branch.
+   - Any deploy, warning-only included, needs a named release, the commit, regression tests, a before-and-after comparison, a rollback
+     plan, and a list of who sees changed numbers.
 
 **Correction (2026-10-13, after AK.27).** The first version of this report said gate 2's q1 outcomes were not affected. That was wrong
 (section 6). The q1 rule and its operator decision are fork 1's, registered in AK.27, and separate from the `pit_data` repair here.
+
+## 9. Revisions
+
+- **2026-10-13, after the hand check (AL.9):**
+  - four cases confirmed against the filed statements;
+  - case 1720446 withdrawn (currency translation, not a seam);
+  - the measurement script's unit mixing fixed, and the counts corrected downward;
+  - the three-questions table added;
+  - section 8 replaced by the AL.8 rulings.
 
 **Holds in force:** nothing that gate-2 scoring imports (`pit_data`, the extractor, `rebuild_harness/gate2/*`) changes until fork 1's
 scoring chain writes `chain/DONE`.

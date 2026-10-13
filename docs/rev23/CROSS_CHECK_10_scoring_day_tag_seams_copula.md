@@ -24,10 +24,12 @@ agreement. Where a claim rests on code you cannot see, say so rather than assume
 - **Two failure modes:**
   - (a) a join between two tags. CIK 1042893: FY2017 455.5M on `Revenues`, FY2018 337.5M on the contract tag. That reads as −25.9%;
     its own 10-K gives −15.6%.
-  - (b) a tag that is only a partial line in one year. CIK 1720446: the contract tag is 2,048.9M for 2017 but a 530.2M slice for 2018,
-    while `Revenues` gives 3,645.3M.
-- **Its size:** on 300 random companies, the extracted annual growth differs from the filing's own comparative growth by more than
-  5 pt in 0.55% of consecutive-year pairs, and by more than 20 pt in 0.37%. The worst cases are +1,544% against +8%, and −52% against
+  - (b) a tag that is only a partial line in one year. The case first cited, CIK 1720446, was **withdrawn** after fork 2's hand check
+    (AL.9): it was an RMB filer's USD convenience translation, mixed across units by fork 2's measuring script. No hand-checked case of (b)
+    exists yet; the AK.28 rule for it stays as a safeguard.
+- **Its size** (corrected after the hand check, AL.9): in the $300M+ sample, the extracted annual growth differs from the filing's own
+  comparative growth by more than 5 pt in 0.47% of consecutive-year pairs, and by more than 20 pt in 0.38%. 4 of 5 cases were confirmed
+  against the filed statements. The worst cases are +1,544% against +8%, and −52% against
   +69%. It is not a look-ahead leak.
 
 **Where it reaches gate 2:**
@@ -42,11 +44,13 @@ agreement. Where a claim rests on code you cannot see, say so rather than assume
   quarters cannot be on different tags. Where the q1 quarter is a derived Q4 (fiscal year minus nine months), both legs use one tag present
   in both filings. The annual target uses the year-1 10-K's comparative column for year 0.
 - **A partial line inside one filing** (failure b): where a filing carries more than one revenue tag for both periods, the tag with the
-  largest current-period value is used, on the reasoning that a total is never smaller than a line within it. How often the tags disagree
+  largest current-period value is used, on the reasoning that a total is never smaller than a line within it. The comparison is made only
+  within one unit (the outcome's currency), because a convenience translation in another unit would otherwise win or lose by the exchange
+  rate (AK.29). How often the tags disagree
   by more than 1 pt is reported.
 - **Audit 1** reports every bar both ways, registered and tag-consistent, with the count of rows that differ.
-- **Which version governs:** the operator decides before the coordinator reads any score. The coordinator proposes the tag-consistent one.
-  If the operator does not rule, the registered version governs.
+- **Which version governs:** the operator has ruled, before any score exists, that the **tag-consistent outcome governs** (AK.30). The
+  registered version is reported beside it. Question 3 now asks whether that ruling is sound, and what it could miss.
 
 **Questions:**
 1. Is the same-filing comparative the right correction for an outcome? Can it still mis-measure: restated comparatives, a 10-Q/A,

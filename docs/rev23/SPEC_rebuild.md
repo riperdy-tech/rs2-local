@@ -3423,3 +3423,66 @@ cross-check 10 is written.**
 - **Cross-check 10** is written: `CROSS_CHECK_10_scoring_day_tag_seams_copula.md`, covering the tag seams, the meaning of the gate-2
   verdict (G4, a hard bar, is already at 21% against 10%, independent of any outcome), the scoring order and v2.1. The review of the
   downstream changes (C2), earlier called cross-check 10, becomes cross-check 11.
+
+**AL.9 (2026-10-13 23:21): the hand check of the problem report's five cases (AL.8 item 1); one case withdrawn; the counts corrected downward.**
+- **What was read:** the SEC's rendered income-statement page of each case's accession, downloaded under O5 with the workspace's declared
+  SEC identity. Scripts: `scratch/rev23/engine_v2_audit/handcheck_fetch.py` and `handcheck_read.py`; the pages are in this session's
+  scratchpad.
+- **Confirmed (4).** In each, the reference is the statement's total revenue line, and the extracted growth is wrong:
+
+  | CIK | Filed total, year t−1 → year t | Filed growth | Extracted growth |
+  |---|---|---|---|
+  | 1042893 | "Total revenues" 455,469K → 384,626K | −15.6% | −25.9%; the contract tag is "Revenues from products and services", without leasing |
+  | 835011 | "Net sales" 347,448K → 376,089K | +8.2% | +1,544% |
+  | 46080 | "Net revenues" 5,019,822K → 5,209,782K | +3.8% | +137% |
+  | 76267 | "Net sales" 40,230K → 51,116K | +27.1% | −54% |
+- **Withdrawn (1): CIK 1720446, which is not a tag seam.**
+  - **What it is:** an RMB reporter. The extracted values are the USD convenience translations of each year's own report, both totals
+    (FY2018 $530,192K = RMB 3,645,335K). Its +68% is USD growth at two year-ends' rates, against +77.9% in RMB.
+  - **My error:** I called 530.2M a "slice". It came from my measurement script, which compared values across units (USD against CNY).
+- **The script is fixed** to compare only within the cell's unit. Re-run on the same seeds:
+
+  | Sample | Off by > 1 pt | > 5 pt | > 20 pt |
+  |---|---|---|---|
+  | All filers | 16 (0.98%) | 8 (0.49%) | 5 (0.30%) |
+  | $300M+ panel | 17 (0.73%) | 11 (0.47%) | 9 (0.38%) |
+
+  Previously these were 17/9/6 and 19/13/11. The first outputs are kept as `*_v1_unit_mix.json`.
+- **The problem report is revised** (section 9 there): the cases, the counts, the three-questions table (AL.8 item 5) and the AL.8
+  rulings.
+- **Not part of this report:** mixed-rate convenience translation of foreign filers. It is noted as a possible separate question.
+
+**AK.29 (2026-10-13 23:23): fork 2's builder's read of the v2.1 draft, all adopted (draft v2); a unit rule added to AK.28; cross-check 10
+corrected.**
+- **The v2.1 draft is revised to v2. Fork 2's four points, all adopted:**
+  1. **The minimum against the test vintages.** Complete vectors reach 500 only from 2021 for operating and 2022 for financial, so
+     earlier vintages would fall back to v2.0's copula and dilute every pooled comparison toward a tie. Test vintages are now per family:
+     operating 2021–2024, financial 2022–2024. V = 2024 needs fork 2's vintage-2025 panel, a dependency now stated.
+  2. **The ranks** are taken among the n complete vectors, not the coordinate's pool. Otherwise U is not uniform and C3 fails by
+     construction.
+  3. **The draw** does not change `common.draw_inputs`, which v1 shares (E7). Each joint draw's six near-term values are replaced by
+     `Q_i(U_i)` from the copula's own stream, `random.Random(f"{seed}|nt_copula_v2.1")`. Every other input stays byte-identical to v2.0.
+  4. **"Untouched" is defined for vectors and pairs:** test vectors are complete at V + 1 but not at V; test pairs are present at V + 1
+     but not at V.
+
+  Also recorded: the cross-block precondition holds by construction; v2.0's not-positive-definite drop is reported beside C1 and C2; C2
+  covers the six pairs that v2.0 left independent.
+- **Fork 2's hand check (AL.9):**
+  - 4 of 5 seam cases are confirmed against the filed statements.
+  - CIK 1720446 is withdrawn. It was an RMB filer's USD convenience translation, mixed across units by fork 2's measuring script.
+  - The rates are corrected to 0.47% above 5 pt and 0.38% above 20 pt.
+- **Consequences:**
+  - **AK.28's "largest current-period value" rule now compares tags only within one unit** (the outcome's currency), fixed before any
+    outcome is read.
+  - **Cross-check 10 is corrected in place:** 1720446 withdrawn as the failure-(b) example, the rates updated, and the unit rule added.
+    The mirror copy from 23:18 carried the withdrawn example. Reviewers who fetched it before this refresh are told in the cover message.
+
+**AK.30 (2026-10-13 23:23): the operator rules that the tag-consistent outcome governs** ("tag-consistent governs, go ahead with the audit
+script"). The ruling was given before any gate-2 outcome was read and before the score exists.
+- **For every gate-2 bar and diagnostic, the tag-consistent outcome (AK.27–AK.29) is the measure of record.**
+- **The registered extractor outcome is reported beside it**, with the count of rows that differ.
+- **A row with no tag-consistent outcome** is listed with its reason. It is excluded from the governing version only, and never from the
+  registered one.
+- **The mechanism.** The automatic chain scores the registered version, since its code is held unchanged under the scoring freeze. The
+  coordinator's audit script then rebuilds the outcomes tag-consistently and re-scores with the same scoring functions. That result
+  governs, and it is what the operator is told.
