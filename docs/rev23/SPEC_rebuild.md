@@ -3241,3 +3241,66 @@ intention of the run"), and an unattended chain runs it.**
   check (Q4).
 - **Fork 2's CPU-heavy vintage-2025 pass** now waits until the repeat control ends, because the repeat loads the model straight after
   scoring. It is not urgent: gate 2b's freeze comes after the 10-30 filings.
+
+**AL.6 Vintage 2025, step 1: the residual panel re-joined to the vintage-2025 outcomes; a tag-choice property of the shared extractor found** (2026-10-13 23:05; operator: "go ahead with vintage 2025").
+- **The script:** `scratch/rev23/engine_v2_audit/panel_cut2025.py`. It runs the forecast study's own `panel.build`, unchanged, with two constants set for vintage 2025:
+  - `OBS = data/priors_v3/2025/obs.csv.gz` (cut 2026-01-01, first-filed values);
+  - `CUT = 2025-12-31` (the study's `assert_cut` then refuses any outcome filed later).
+
+  It writes once, to a new file; the study's `panel.pkl` is untouched.
+- **One workaround:** `pandas.read_csv` runs with `low_memory=False`. The chunked reader crashed on the larger 2025 table while composing a
+  mixed-type warning (`IndexError`). Whole-file type inference reads the same file; the study's `load_obs` is otherwise unchanged.
+- **The output:** `scratch/rev23/forecast_study/out/panel_cut2025.pkl`.
+  - 13,309 rows; origins 2016-06-30 to 2024-06-30.
+  - 99.11% matched.
+  - The latest outcome was filed 2025-12-29.
+  - 74 stale bases were excluded.
+  - It ran at below-normal priority while the masked control ran, using 2.7 GB of physical memory.
+- **Check against the study panel,** joined on (date, cik), all 13,309 rows:
+  - the code forecasts are identical;
+  - outcomes gained from 2025 filings: about 1,000–1,600 per measure (for example g_1 10,740 → 12,102; g_3 7,898 → 9,509);
+  - old outcomes that changed value: 8–16 per measure (g_1: 14 of 10,740, 0.13%);
+  - old outcomes that disappeared: 2–5 per measure.
+- **Why outcomes changed (negative finding, not my code).** The same filing, with the same accession and filing date, yields a different
+  revenue at the two cuts. The shared extractor (`valuation.pit_data`, `fiscal_years(cut, "first_filed")`) chooses the revenue tag using
+  every filing before the cut, so a later filing can move an earlier period from one tag to the other.
+
+  | Company | Fiscal year | Filing (filed) | Cut 2025-01-01 | Cut 2026-01-01 |
+  |---|---|---|---|---|
+  | CIK 1042893 | 2018 | 0001042893-19-000003 (2019-02-27) | 384.6M, `Revenues` | 337.5M, `RevenueFromContractWithCustomerExcludingAssessedTax` |
+  | CIK 78003 | 2023 | 0000078003-24-000039 (2024-02-22) | 50.9B, `RevenueFromContractWithCustomerExcludingAssessedTax` | 58.5B, `Revenues` |
+
+  The flip goes in both directions; neither tag is uniformly right. It is point in time: each cut reads only filings before itself, and
+  the store fingerprint is identical for both vintages (`7de131bd…`). So it is not a leak, and each vintage's near-term table correctly
+  uses its own vintage's outcomes.
+
+  It does mean that a historical fact is not fixed across vintages. Revenue in particular can switch between the total and the
+  contract-revenue tag. Owner: the shared extractor, not engine v2. Recorded as an open data-quality item for whoever owns
+  `pit_data`, not fixed here (surgical scope). The effect on vintage 2025's residual quantiles is at most 0.13% of the rows.
+- **Still to do** (the CPU-heavy part, which waits until the repeat control ends, per AK.25):
+  1. a pass at origin 2025-06-30, with the study's `LAST_ORIGIN` guard lifted explicitly for engine v2 only;
+  2. the panel re-built to a new file that includes that origin;
+  3. `data/priors_v4/2025` built;
+  4. E6 for 2025;
+  5. then E5.
+
+**AK.26 (2026-10-13 23:20): fork 2's AL.6 finding (the revenue tag is chosen per cut) is checked against gate-2 outcomes; a check is registered before
+any outcome is read.**
+- **The finding:** `pit_data` chooses each company's revenue tag from all filings before the cut. The same accession can therefore show
+  a different revenue at a different cut (AL.6: CIK 78003 FY2023 is 50.9B at the 2025-01-01 cut and 58.5B at the 2026-01-01 cut). This
+  is point in time, not a leak.
+- **The gate-2 q1 outcomes (the hard bars) are not exposed.** `outcome_extract.quarter_outcomes` reads one `quarterly_rows(cik, None, ...)`
+  call. The quarter and its year-earlier comparative come from that single selection.
+- **The annual (fiscal-year-1) outcome is exposed.** `annual_outcomes` takes r0 and m0 from `build(pit_at(cik, T))` and r1 and m1 from
+  `build(pit_at(cik, filed_1 + 1 day))`, two different cuts. A tag switch between them would put a level step into the measured
+  growth and margin change.
+  - **Tonight** the annual target is reported only: R3 diagnostics; the hard bars use q1.
+  - **It becomes primary** for S5's fit and calibration (B4) and for gate 2b.
+- **Registered now:**
+  1. **Audit 1 adds a tag-consistency check** on every annual outcome: r0' and m0', the base-year revenue and margin as resolved at the
+     year-1 cut. It reports the rows where |r0'/r0 − 1| > 0.5% or |m0' − m0| > 0.1 pp. Every annual diagnostic is reported twice, as
+     registered and same-cut (growth r1/r0', margin change m1 − m0'), and the count is stated.
+  2. **Before B4, `annual_outcomes` is corrected to the same-cut base** (r0', m0'), with a test. A growth or margin change measured
+     across two different tags is not a measurement of the company. This is a measurement correction fixed before any annual outcome is
+     read, recorded and shown to the operator; it is not a choice made on results.
+  3. **ROTE (`rote_latest`)** gets the same check.
