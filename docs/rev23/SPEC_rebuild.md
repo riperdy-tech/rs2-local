@@ -2992,3 +2992,50 @@ The residual spread is now defined: gate 1b's H2 statistic, within C0-formed sol
 *Related and still open (fork 2's AL.3):* the E3 decision. One caution, from the records rather than a ruling: option 2 conditions
 historical residuals on MRI's turbulence flag. The stored MRI timeline before 2026-09-22 was corrupt (memory
 `mri-stored-timeline-was-corrupt`), so that option would first need a rebuilt historical series, proven by its own look-ahead audit.
+
+**AK.20 (2026-10-13 17:51): D-T1 triggered; the registered t(ν=4) remedy is shown not to fit, and is withdrawn; D-T3 reported.**
+
+The scripts are `scratch/rev23/engine_v2_audit/d_t1_tails.py` (result `d_t1_tails_result.json`, sha256 `1361edab69cae80d…`) and
+`d_t1_check.py`, an independent Monte Carlo check with 4M draws that imports neither the build nor the first script. The rule was
+committed in `52b1f8d` before either was run.
+
+- **D-T1 TRIGGERED on 6 of 18 pairs:**
+
+  | Pair | Empirical ÷ Gaussian, lower tail | Upper tail |
+  |---|---|---|
+  | operating growth × margin, year 1 | 1.61 | 1.36 |
+  | operating growth × margin, year 2 | 1.61 | 1.24 |
+  | operating growth × margin, year 3 | 1.87 | 1.00 |
+  | ROTE year 1 × year 3 | 1.90 | 2.09 |
+  | ROTE year 2 × year 3 | 1.69 | 1.63 |
+  | tangible-book growth × ROTE, year 1 | 1.67 | 1.80 |
+
+  - Every trigger has a one-sided 90% lower bound above the Gaussian rate (n 1,164–6,292, companies resampled).
+  - **The Gaussian rates are confirmed independently:** the Monte Carlo agrees with the integral to four decimals on all 18 pairs.
+  - **What it means:** revenue and margin collapse together about 1.6–1.9 times as often as v2's Gaussian copula draws. The joint
+    downside of value is therefore under-drawn, so P10 sits too high and the band is too narrow on the downside, which makes
+    `undervalued` (price < P10) too easy. Gemini's point 2 is confirmed on the development data.
+  - **Gate 2b does not see this.** Gate 2b scores each measure's year-1 margin on its own, and the copula does not change those
+    marginals. D-T1 is the test that catches it.
+- **The registered remedy does not fit (a coordinator error in AK.19, corrected here).** AK.19 named a t copula with ν fixed at 4 as the
+  v2.1 candidate. Its implied co-exceedance at the same r, from the same check:
+  - **growth × margin:** the empirical rate is still 1.25–1.39 times t4's in the lower tail, and t4 overstates the upper tail (0.74–1.08);
+  - **growth across years:** t4 overstates the joint lower tail (empirical ÷ t4 = 0.65–0.70), where the data show no excess.
+
+  The dependence is **asymmetric**: strong in the joint downside of growth and margin, roughly Gaussian in their upside. A symmetric t
+  copula cannot represent it, because it would widen some tails that the data do not support and still miss the one that matters.
+  The t4 candidate is **withdrawn before anything was built**.
+- **The replacement candidate, proposed for a separate v2.1 registration (for the operator):** the **empirical copula**.
+  - **The draw:** joint rank vectors resampled from the residual panel's complete company-date vectors (years 1–3 of both variables
+    of the family). It has no fitted parameter, and it keeps whatever asymmetry the data hold.
+  - **The year-3 and long-run pair** stays independent, as in v2.
+  - **Validation, out of time:** the copula is built from vintage V and tested on residuals filed in V + 1. D-T1 is re-run per held-out
+    vintage (the ratio is within 0.67–1.5 on every pair, lower and upper), together with E3 and E4. The marginals are unchanged, so
+    gate 2b's year-1 scoring is unaffected.
+  - **Timing:** decided before B4's SYSTEM freeze, together with AL.3's E3 question.
+- **D-T3 (reported only; Gemini's failure mode 1), operating margin year 3, vintage 2024:**
+  - **Residual median by current-margin quintile, l0 to l4:** +2.1, +0.6, 0.0, +0.1, **−1.2 pp**.
+  - **P10 by quintile:** −16.1, −8.3, −10.9, −12.3, **−19.6 pp**.
+  - **The top quintile's median by origin year,** 2017 to 2022: −3.1, −2.7, −0.6, −0.6, −0.2, −3.0 pp (n 49–176).
+  - **Reading:** the top-margin cell already draws a negative median and the widest lower tail, so v2 partly carries peak-margin
+    reversion through year 3. This supports keeping the median bias (AK.19).
