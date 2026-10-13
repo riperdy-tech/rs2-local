@@ -3242,7 +3242,7 @@ intention of the run"), and an unattended chain runs it.**
 - **Fork 2's CPU-heavy vintage-2025 pass** now waits until the repeat control ends, because the repeat loads the model straight after
   scoring. It is not urgent: gate 2b's freeze comes after the 10-30 filings.
 
-**AL.6 Vintage 2025, step 1: the residual panel re-joined to the vintage-2025 outcomes; a tag-choice property of the shared extractor found** (2026-10-13 23:05; operator: "go ahead with vintage 2025").
+**AL.6 Vintage 2025, step 1: the residual panel re-joined to the vintage-2025 outcomes; a tag-choice property of the shared extractor found** (2026-10-13 23:00; operator: "go ahead with vintage 2025").
 - **The script:** `scratch/rev23/engine_v2_audit/panel_cut2025.py`. It runs the forecast study's own `panel.build`, unchanged, with two constants set for vintage 2025:
   - `OBS = data/priors_v3/2025/obs.csv.gz` (cut 2026-01-01, first-filed values);
   - `CUT = 2025-12-31` (the study's `assert_cut` then refuses any outcome filed later).
@@ -3284,7 +3284,7 @@ intention of the run"), and an unattended chain runs it.**
   4. E6 for 2025;
   5. then E5.
 
-**AK.26 (2026-10-13 23:20): fork 2's AL.6 finding (the revenue tag is chosen per cut) is checked against gate-2 outcomes; a check is registered before
+**AK.26 (2026-10-13, about 23:10; corrected in AK.27 from "23:20", which was not a Get-Date value and lay in the future): fork 2's AL.6 finding (the revenue tag is chosen per cut) is checked against gate-2 outcomes; a check is registered before
 any outcome is read.**
 - **The finding:** `pit_data` chooses each company's revenue tag from all filings before the cut. The same accession can therefore show
   a different revenue at a different cut (AL.6: CIK 78003 FY2023 is 50.9B at the 2025-01-01 cut and 58.5B at the 2026-01-01 cut). This
@@ -3304,3 +3304,122 @@ any outcome is read.**
      across two different tags is not a measurement of the company. This is a measurement correction fixed before any annual outcome is
      read, recorded and shown to the operator; it is not a choice made on results.
   3. **ROTE (`rote_latest`)** gets the same check.
+
+**AL.7 The extractor mixes revenue tags across years within one cut, and some growth figures are false** (2026-10-13 23:04; follow-up of AL.6; a measurement only, nothing changed).
+- **Found from AL.6's examples.** At cut 2026-01-01, CIK 1042893's series reads:
+  - FY2015–2017 from `Revenues` (FY2017 455.5M);
+  - FY2018 onward from `RevenueFromContractWithCustomerExcludingAssessedTax` (FY2018 337.5M).
+
+  So its FY2018 growth is −25.9%. The FY2018 annual report itself gives `Revenues` for both years (455.5M → 384.6M), which is −15.6%. The
+  break is inside one cut, not only across cuts.
+- **Measured** (`scratch/rev23/engine_v2_audit/tag_breaks_sample.py` and `tag_breaks_effect.py`). A seeded random sample of 300 companies
+  (seed 20261013), all sizes, cut 2026-01-01, read-only, low priority; commit headroom was 34.8 GB.
+  - 292 companies; 1,641 consecutive-year revenue pairs.
+  - 123 pairs (7.5%) change tag, in 96 companies. Most changes are the ASC 606 transition in 2018–2019 and are harmless.
+  - Against the growth given by year t's own annual report (its comparative column under year t's tag; otherwise year t−1's tag for both
+    years from that report), 118 pairs could be checked. The extracted growth differs by:
+    - more than 1 point in 17 pairs (1.0% of all pairs);
+    - more than 5 points in 9 (0.55%);
+    - more than 20 points in 6 (0.37%).
+  - Largest cases:
+    - CIK 835011 FY2018: +1,544% extracted vs +8.2% in the filing;
+    - CIK 1697851 FY2020: −52% vs +69%;
+    - CIK 945983 FY2018: −60% vs +13%.
+- **Reach.** Every consumer of `pit_data.fiscal_years(..., "first_filed")` revenue:
+  - the priors v3 observation tables, and so the frozen c7d7a4f priors that gate 2 uses (the features g_latest and g3, and the growth
+    cells);
+  - engine v2's near-term residual tables (2016–2025), where false growth outcomes land mostly in the P1/P99 tails;
+  - the annual outcome of gate 2 (fork 1, AK.26).
+
+  Gate 2's q1 outcomes come from `quarterly_rows` and are not exposed (fork 1, AK.26).
+- **What it is not:** a look-ahead leak. Each cut reads only filings before itself.
+- **Owner and next step.** The shared extractor (`valuation/pit_data.py`), which neither fork owns. Under non-negotiable 2 the fix belongs
+  in the extractor, not in any consumer. A fix would change every priors vintage, and with it the frozen c7d7a4f inputs. So it is an operator
+  decision, not a drive-by edit. It is also held until fork 1's scoring chain finishes (`chain/DONE`), because scoring imports `pit_data`.
+
+  Proposed for the ruling: growth taken from one filing's own comparative columns (both years under one tag), with a tag change between
+  years stamped. This would be measured first by the vintage-by-vintage effect on the priors tables and on E3/E4, before anything is
+  adopted.
+- **Engine v2 now:** vintage 2025 proceeds on the current extractor, consistent with 2016–2024. The defect is a known and measured limitation
+  of all ten tables, not a reason to rebuild one of them alone.
+
+**AK.27 (2026-10-13 23:16): a correction to AK.26. The q1 outcomes ARE exposed to tag switches (fork 2's AL.7). The check is widened before any
+outcome is read.**
+- **AL.7:** a revenue series can switch tag between consecutive periods **within one cut**. At the 2026-01-01 cut, CIK 1042893 has FY2017
+  from `Revenues` (455.5M) and FY2018 from the contract-revenue tag (337.5M): −25.9% against −15.6% in its own 10-K. Fork 2 measured 300
+  random companies (1,641 consecutive-year pairs): 7.5% switch tag. Against the growth in year t's own filing, the extracted growth is
+  off by more than 1 pt in 1.0% of pairs, more than 5 pt in 0.55% and more than 20 pt in 0.37%.
+- **The coordinator's error:** AK.26 said q1 is safe because its value and comparative come from one `quarterly_rows` call. One call does
+  not mean one tag. `PitData.quarters` chooses a tag for each period separately (every record carries its own `tag`). So the q1 quarter
+  and its year-earlier quarter can sit on different tags, and the G1 revenue-growth outcome can carry a false step. The margin outcome
+  can too, since revenue is its denominator. Corrected here, before any outcome is read.
+- **Registered now (replacing AK.26's items 1–2):**
+  1. **The tag-consistent outcome, measured from one filing.** For each q1 row, take the growth and the margin change from the comparative
+     columns of the q1 filing itself: the same accession reports the quarter and the year-earlier quarter under one tag. This is fork 2's
+     cleaner rule. The annual outcome likewise uses the year-1 10-K's own comparative column for year 0. Rows where the filing has no
+     same-tag comparative are listed, never dropped.
+  2. **Audit 1 reports**, per measure and target, the count where the registered outcome and the tag-consistent outcome differ by more than
+     1 pt (growth) or 0.1 pt (margin). Every bar and diagnostic is reported both ways.
+  3. **Which governs is the operator's decision, to be taken before the coordinator reads any score.** The coordinator proposes that the
+     tag-consistent outcome governs. A growth measured across two tags is not a measurement of the company, and the correction is fixed
+     before any outcome is read. The registered version stays reported beside it. If the operator does not rule first, the registered
+     version governs, as registered.
+- **Further reach (AL.7):** the priors v3 observations (the code's `g_latest`/`g3` features and growth cells), and so gate 2's inputs,
+  and engine v2's residual tables. Those are inputs, frozen for run 2. The repair belongs in `pit_data`, owned by neither fork, and would
+  change every priors vintage and the frozen inputs. It goes to the operator as a separate decision. Nothing changes now.
+
+**AL.8 (2026-10-13 23:17): rulings on the outside review of the revenue tag-seam problem report.** The operator forwarded the review. The
+reviewer saw the report's summary, not the file, and the summary still said q1 was unaffected. Each point is ruled on below.
+1. **Approach: ADOPTED, diagnostics only.**
+   - **What lands:** provenance flags that change no value. Per year: the selected tag, any backfill tag, the accession and period, and
+     whether a year-to-year figure crosses a tag change (`tag_seam`).
+   - **Where:** in `pit_data`, on top of the vendored extractor, like `SUPPLEMENTS`. The vendored file stays byte-identical to the
+     screener's.
+   - **When:** only after fork 1's `chain/DONE`, because scoring imports `pit_data`.
+   - **Before either value fix:** all five report cases are checked by hand against the filed income statements, including whether the
+     reference is total revenue. A broader before-and-after validation follows.
+   - **Status of the numbers:** the measured prevalence is provisional. The other `COMBINED` fields are "suspected, unquantified".
+2. **Gate 2: ADOPTED, with one correction from the record.**
+   - **What stays:** the frozen inputs and the running chain are preserved unchanged, as the original reproducible result, with its
+     known limitation stated.
+   - **The correction:** the reviewer kept q1 unchanged "provided their independence ... is confirmed". AK.27 disproved that independence.
+     By the reviewer's own condition, q1 is therefore qualified like the annual outcome. AK.27's comparative-column version is reported
+     beside it, and the operator decides which governs before any score is read.
+   - **Also required:**
+     - the affected company-dates, with numerator and denominator;
+     - a sensitivity analysis for the affected outcomes before they count as clean evidence.
+
+     Owner: fork 1.
+3. **Engine v2: ADOPTED, with a label.**
+   - **The label:** vintage 2025 is the **legacy-extractor vintage**. So are 2016–2024, which were built on the same extractor. All ten
+     carry the label: the 2025 table in its own metadata, and all ten in a lineage file beside them (`data/priors_v4/LINEAGE.json`). That
+     file records the vendored extractor's sha256, the store fingerprint and each table's sha256.
+   - **If a value fix is adopted:** all ten are rebuilt together as a new version, and v-legacy is kept with its hashes.
+4. **Live screener: ADOPTED, no live value fix.**
+   - Development happens only on an isolated branch.
+   - Any deploy, including a warning-only change that alters the site or the schema, needs a named release, the commit, regression tests,
+     a before-and-after comparison, a rollback plan and a list of who sees changed numbers.
+5. **The three questions: ADOPTED.** The report separates them:
+   - Is the cause real?
+   - How prevalent is it?
+   - Does it change a decision?
+
+**AK.28 (2026-10-13 23:18): the tag-consistent outcome rule is completed before any outcome is read; the v2.1 registration is drafted;
+cross-check 10 is written.**
+- **Fork 2's caution:** a single tag inside one filing can still be a partial line. In CIK 1720446's FY2018 10-K the contract tag is
+  2,048.9M for 2017 but a 530.2M slice for 2018. So AK.27's rule is completed as follows, fixed now:
+  1. **Several tags for both periods.** Where the outcome filing carries more than one revenue tag (from the extractor's revenue ladder)
+     for both the current and the comparative period, the tag with the **largest current-period value** is used, because a total is
+     never smaller than a line within it. The number of rows where the tags present disagree by more than 1 pt is reported.
+  2. **A derived Q4** (fiscal year minus nine months) is tag-consistent only when one tag is present for both periods in both filings, the
+     10-K and the Q3 10-Q. Otherwise the row is listed as having no tag-consistent outcome, never dropped from the registered version.
+  3. **Operating income** follows the same rules, and the margin uses the revenue chosen above.
+  4. **The audit script is the coordinator's** (`scratch/rev23/gate2_audit/`). It imports nothing that scoring imports, writes
+     nothing into the run's state, and runs after the score exists. Before any outcome is read, it is first tested on quarters filed
+     before T.
+- **The v2.1 registration** is drafted in `REGISTRATION_engine_v2_1_copula.md`: the checkerboard empirical copula, the AL.5 conditions,
+  the tests C1–C5 and the bars, all fixed before any build. It goes to fork 2 to read (it owns the build), then to cross-check 10, then
+  to the operator.
+- **Cross-check 10** is written: `CROSS_CHECK_10_scoring_day_tag_seams_copula.md`, covering the tag seams, the meaning of the gate-2
+  verdict (G4, a hard bar, is already at 21% against 10%, independent of any outcome), the scoring order and v2.1. The review of the
+  downstream changes (C2), earlier called cross-check 10, becomes cross-check 11.
