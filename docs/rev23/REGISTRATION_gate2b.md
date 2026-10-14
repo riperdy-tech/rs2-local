@@ -15,6 +15,58 @@ first read of a gate-2 outcome on, this file is fixed.
 - It is not proof of forecasting skill across market regimes. D2 and D3 are established only by the shadow record
   (S10).
 
+## v3 — the governing version (approved by the operator 2026-10-14 21:12 KST, SPEC_rebuild AK.53; written before any gate-2b data was drawn)
+
+Sections 1–7 below are the v2 text. Where v3 says otherwise, v3 governs.
+
+**Why v3.** S5 gave w = 0 (AK.52), so **SYSTEM is engine v2 alone.** Engine v2 is a code engine with no knowledge cutoff, so a past date can
+be untouched. The operator's deadline is the end of October 2026.
+
+1. **The primary date is 2026-07-31.**
+   - The v2 reason for skipping it was the S5 fit's view of June-quarter outcomes through gate-2 date 2026-06-30. No fit exists now.
+   - **Every company in gate 2's 2026-06-30 sample is excluded,** because the coordinator has seen their June-quarter outcomes in
+     aggregate.
+   - Nothing for this date has been valued, scored or examined by engine v2's development (E1–E8 use other dates).
+2. **The universe, a census.** The v2 universe rule (market cap at least $300M at T, a built family, an annual report and a 10-Q in the 12
+   months before T, engine v2 can value it at T), every eligible company. There is no quota draw: engine v2 runs on the CPU.
+   - **The inputs** are pinned to the engine freeze: base priors `priors_v3_fy`, near-term tables `priors_v4_fy` (vintage 2025), engine
+     v2.0.3 (AK.51), or as the freeze records.
+   - **The context** (`data/gate2b_0731/ctx`) is built with the registered gate-2 configuration and `priors_v3_fy`.
+3. **The target is q1:** the next quarterly result not yet public at T, measured under the amendment above (AK.37 v2):
+   - same-filing measures;
+   - total-revenue verification;
+   - exclusion of a result public before the T cutoff (SEC Item 2.02 or the pack);
+   - the 120-day guard;
+   - the register.
+
+   Every arm forecasts the annual quantity and is scored on q1, with the shared mismatch, as in gate 2's G1.
+4. **The arms:** SYSTEM = V2 (engine v2.0.3 at its P50), CODE (engine v1 at its prior P50), PERSIST and POPMED (the run-rate statistics,
+   AH).
+5. **The bars, in G1's form** (median of the paired d = |arm − y| − |other − y| < 0, with the one-sided 90% company-clustered bootstrap upper
+   end < 0; 2,000 draws, seed 20261013):
+   - **B2:** SYSTEM beats PERSIST and POPMED on revenue growth and on the margin change; on the ROTE change, it beats PERSIST.
+   - **B3:** SYSTEM beats CODE on every measure.
+   - **B1** is dropped (SYSTEM = V2).
+   - **The verdict:** PASS when B2 and B3 hold; otherwise FAIL. No other bar may be added after any outcome is read.
+6. **B4 (calibration of the year-1 annual band)** is read on the fiscal-year-1 outcomes in spring 2027. It is a **condition for real money,
+   not for paper (shadow) operation.**
+7. **Confirmation dates: 2026-08-31, 09-30 and 10-30.**
+   - Each is valued under the same freeze, with its own universe (excluding no one but the gate-2 overlaps).
+   - Each is scored when its q1 outcomes are filed, under these same rules, then pooled with 07-31 for a confirmation read.
+   - A confirmation failure triggers a review, and suspends promotion toward real money. A confirmation pass never rescues a 07-31
+     failure.
+8. **Muse** runs, recorded and unused, on a 450-company random subset of 07-31 (seed 20261010), at about 3 GPU-days, off the critical path.
+9. **Audit before any report:**
+   - the independent recomputation;
+   - Audit 1 (look-ahead, coverage, the register);
+   - a 20-outcome hand check against the filed documents;
+   - E8's measures on the 07-31 census, reported beside the verdict (not a bar).
+10. **The schedule:**
+    - the engine freeze by about 10-19;
+    - the universe and the freeze of the 07-31 run;
+    - the CPU valuation;
+    - scoring and audit by about 10-25.
+
 ## 1. What is tested
 
 **The system under test (SYSTEM)** is whatever S5 assembles, frozen before any gate-2b pack is built:

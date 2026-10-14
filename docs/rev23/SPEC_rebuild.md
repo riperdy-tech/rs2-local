@@ -4890,3 +4890,52 @@ gate-2b universe's annual accessions disagree, all listed.**
   - the cost is a rebuild like AL.20.
 
   It touches about 0.4% of accessions. Keeping `DocumentPeriodEndDate` in the store is the alternative, and also a store change (AK.51).
+
+**AK.53 (2026-10-14 21:08): the operator's timeline. Finish by the end of October 2026; three GPU-days are acceptable; build everything that can be
+built in parallel ("approve 1 and 2 ... If you need more forked sessions to run parallel work, do it").**
+- **Gate 2b v3, approved (the registration is amended before any of its data is drawn):**
+  - **The primary date is 2026-07-31.** It is untouched for engine v2, which has no knowledge cutoff, so a past date is valid.
+    - AH's reason for dropping it was the S5 fit's view of June-quarter outcomes through gate-2 date 2026-06-30. With w = 0 (AK.52) no
+      fit exists, so that reason is gone.
+    - The remaining overlap is removed: **every company in gate 2's 2026-06-30 sample is excluded**, since the coordinator has seen
+      their June-quarter outcomes in aggregate.
+  - **The universe:** the gate-2b rule (market cap at least $300M, a built family, an annual report and a 10-Q before T, engine v2
+    can value it). **All eligible companies are valued (a census, not a 150-quota draw),** because engine v2 is CPU.
+  - **The target is q1,** the next quarterly result not yet public at T, under the AK.37 v2 rules: same-filing measures, total-revenue
+    verification, public-availability exclusion with the register, and the 120-day guard. The June-quarter outcomes exist today.
+  - **The bars:** B2 and B3 in G1's form (median paired d < 0 with a company-clustered upper90 < 0, per measure), with SYSTEM = V2.
+    B1 is dropped (AK.52).
+  - **B4 (calibration of the year-1 annual band)** waits for fiscal-2026 annual outcomes in spring 2027. It is a **condition for real
+    money, not for paper (shadow) operation.**
+  - **Muse is recorded,** unused, on a 450-company random subset of the date (seed 20261010), at about 3 GPU-days, off the critical path.
+- **Confirmation dates (the operator's suggestion), registered now:** 2026-08-31, 09-30 and 10-30.
+  - Each is valued as its data allow and scored when its q1 outcomes are filed (Nov 2026 to Feb 2027), under the same rules.
+  - They are pooled with 07-31 for a confirmation read.
+  - **A confirmation failure triggers a review, and suspends promotion toward real money. A confirmation pass never rescues a 07-31
+    failure.**
+- **Parallel build (approved: "build the items we CAN build"):** the coordinator may run additional agents in parallel. Every line any agent
+  writes is audited by the coordinator (diff read, tests run, key numbers recomputed) before it is merged or reported.
+  - **Coordinator:** the gate-2b v3 registration text and cross-check 13; the 07-31 universe, freeze and scoring.
+  - **Fork 2:** AK.51 items 1–7, then v2.0.3 and E8/E5, then the engine freeze.
+  - **Parallel agents:**
+    - C2 in rs2 (`depth_gates` v4, the fiduciary gate v4, the overlay writer);
+    - C2 in the screener (`apply_llm_overlay` v4, the paper book, TRK-06);
+    - D4 (the live runner on engine v2: pack, then engine, then contract v4, then the ledger);
+    - each on its own branch, with no merge without the operator's approval and never a deploy.
+
+**AL.38 (2026-10-14 21:12): the freeze target and E8 on gate 2b's new date, agreed with fork 1 (AK.53); cross-check 13 sent.**
+- **The target:** the operator's end-of-October deadline (AK.53) puts the engine-v2 freeze at about 2026-10-18 to 10-19. Gate 2b's 07-31
+  freeze is pinned to it.
+- **The critical path:** E5 and E8 on v2.0.3 (`RS2-EngineV2-E5E8-2`). DONE is expected about 04:00 to 06:00 on 10-15. The verdicts are
+  opened then and reported negatives first. If both pass, the engine is frozen and its commit and table hashes go to fork 1.
+- **E8 and the 07-31 census:**
+  - E8's binding verdict stays the registered samples: the 18 held-out forensic dates, plus run 2's 2026 contexts as the sanity sample
+    (AL.34).
+  - No run-2 context exists for 07-31, so E8 cannot cover it before the freeze. Fork 1 will report the same E8 measures from its harness
+    on the 07-31 census after the freeze, beside gate 2b's verdict. It is a report, not an extra bar.
+- **Cross-check 13** (`CROSS_CHECK_13_decay_curves_report_date.md`, stocks-workspace b88a876; mirror 25bd6e7) went to ChatGPT and
+  Gemini. It covers the decay-curve registration and the period's authority (AL.37).
+- **Decisions still open for the operator:**
+  - **The decay-curve registration.** It needs the operator's approval by about 10-16 to fit the freeze: the test takes about a day, and
+    an adoption about another day. Otherwise gate 2b freezes on K, the registration's own fall-back.
+  - **The `reportDate` refinement.** Fork 2 recommends after gate 2b, and fork 1 agrees. Neither is the operator's decision.
