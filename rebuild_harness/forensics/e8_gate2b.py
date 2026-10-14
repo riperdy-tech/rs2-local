@@ -76,7 +76,7 @@ def main(argv=None):
     meta = {"copies_equal": prepare_scratch(state), "fingerprint_differences": fingerprint_check()}
     from rebuild_harness.gate2 import env as env_mod, sample as sample_mod, config
     from valuation import engine_financial, engine_operating, near_term as nt
-    from valuation.common import build_state
+    from valuation.common import DataNotPresent, build_state
     from valuation.muse.mapping import MusePriors, per_share_summary, run_engine
     from . import e5_v2 as E5
     g = env_mod._g1r()
@@ -94,7 +94,7 @@ def main(argv=None):
     if limit:
         jobs = jobs[:limit]
     table = nt.load_table(tables, 2025)
-    counts = {"jobs": len(jobs), "refused_inputs": 0, "not_built": 0, "v1_refused": 0, "base_year_differs_from_run2": 0, "written": 0}
+    counts = {"jobs": len(jobs), "refused_inputs": 0, "refused_discount_rate": 0, "not_built": 0, "v1_refused": 0, "base_year_differs_from_run2": 0, "written": 0}
     recs = {d: [] for d in DATES}
     for job in jobs:
         ci = ev.company_inputs(job)
@@ -107,7 +107,11 @@ def main(argv=None):
         st = build_state(ci.pit)
         st.update(ci.industry_context or {})
         ps = ci.priors.for_company(ci.family, st, ci.pit.asof)
-        disc = ci.disc_factory(st)
+        try:
+            disc = ci.disc_factory(st)
+        except DataNotPresent:                                               # the pipeline refuses here too ("discount rate: ..."), never values
+            counts["refused_discount_rate"] += 1
+            continue
         shares = st.get("shares_outstanding")
         mod = engine_operating if ci.family == "operating" else engine_financial
         res0, kept = _with_draws(mod, lambda: run_engine(ci.family, ci.pit, MusePriors(ps, ci.family, st, {}), disc, n_draws=2000, seed=ci.seed, corr=ci.corr, state=st))
