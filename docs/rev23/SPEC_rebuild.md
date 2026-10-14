@@ -3829,3 +3829,103 @@ The operator ruled for gate 2 that "tag-consistent governs" (AK.27–AK.30).
   - E5 on the point-in-time tables;
   - AL.13 (c) and (d), the residual tables and E3/E4 on the tag-consistent panels;
   - AL.15's hand check of the 10 largest gaps.
+
+**AK.37 (2026-10-14 11:51): PROPOSED for the operator's approval: the outcome amendment for gate 2b and S5's fit, written before any
+gate-2b data exists and before S5 is fitted.** It carries gate 2's three audit findings into the designs that come next, so they are
+fixed by rule and not discovered again.
+
+1. **Measurement (both targets):** growth and margin change are taken from **one filing's own comparative columns**, by the AK.27–AK.29
+   rules as implemented in `tag_consistent.py` and checked 20 of 20 against the filed documents (AK.36):
+   - one accession, one tag and one unit;
+   - among several revenue tags, the largest current-period value;
+   - a derived Q4 only when one tag spans the 10-K and the Q3 10-Q, with no recast in between.
+
+   This replaces "first-filed" for those two measures, because first-filed comparisons mix bases across recasts and tag seams (AK.31,
+   AL.13–AL.15).
+   - **The annual ROTE change keeps the registered definition** (`build_state`'s ROTE = net income ÷ average tangible equity). Its
+     denominator is balance-sheet instants. Its numerator, total net income, is not moved by a discontinued-operations recast.
+   - **A net-income tag-consistency check is reported beside it:** year-1 net income against the base year as given in the year-1 10-K's
+     comparative column.
+2. **Annual-target eligibility.** A company-date is excluded from the annual target, and listed, when year 1's full-year results were
+   public before T: the 10-K, or an 8-K earnings release for year 1's final quarter or full year, filed before T (AK.34; 4 + 15 rows on
+   gate 2).
+   - Its year 1 is not a forecast.
+   - On gate 2b's dates this mostly concerns non-calendar fiscal years.
+   - It applies to gate 2b's B4 and to S5's annual fit on gate-2 data.
+3. **q1 eligibility** (S5's q1 breadth check, gate 2b's early read). q1 is excluded, and listed, when:
+   - an 8-K filed after the q1 quarter's end was in the pack before T (AK.34 rule S1: 53 of 400 on gate 2); or
+   - the q1 quarter ended more than 120 days before T (the stale picks).
+4. **Implementation:**
+   - `outcome_extract` gains the same-filing functions, ported from `tag_consistent.py` with unit tests.
+   - **An equivalence test:** on gate 2's 424 rows the ported code must reproduce `tag_consistent/2026-10-06_v2` exactly.
+   - The eligibility rules read the pack manifest the runner already writes.
+   - Built now, outside the frozen worktree, and used only after approval.
+5. **What does not change:** gate 2's own result (AK.35: the tag-consistent version of record, with S1 and S2 reported); every bar,
+   threshold, date and seed of gate 2b and S5.
+
+**AL.17 (2026-10-14 11:58): the operator's approvals ("ok"), and what held the GPU for five hours this morning.**
+- **Approved:**
+  1. Engine v2 freezes on the point-in-time tables, `data/priors_v4_pit` (AL.10–AL.12), with vintage 2025 added when the chain builds it.
+     The AL.3 tables (`data/priors_v4`) are kept for comparison and are not used.
+  2. The fiscal-year mislabel fix (`PROBLEM_REPORT_fiscal_year_mislabel.md` sections 6–7).
+- **One correction before building, my own.** Section 6 says "USD durations ending on or before the filing date". "USD" would remove the
+  period of a report filed only in another currency (a 20-F in EUR), so it is dropped. The rule built is:
+  - durations of 350–380 days, **in any unit**, that end **on or before the accession's filing date**;
+  - otherwise the latest instant on or before the filing date.
+
+  `dei:DocumentPeriodEndDate` would be better, but the store does not keep it: it keeps only the cover-page share count. Using it would need
+  a store rebuild, so it is noted as a later improvement.
+- **Where it is built:** on its own branch, because the running CPU chain (AL.16) measures with the current `pit_data`. It joins the dev
+  branch after that chain's DONE.
+- **Validation,** as section 6 says:
+  - the mislabelled rows re-counted;
+  - Boeing and 20 others checked against the "Period of Report" on the SEC filing index;
+  - a test that a forward-dated fact cannot set a period;
+  - the per-vintage diff of the observation and priors tables, rebuilt as a **new version** (`priors_v3_fy`; the frozen inputs are kept).
+
+  The rebuild is CPU-heavy, so it follows the chain.
+- **The GPU stall, 06:30–11:43.**
+  - **06:19:** at logon, Windows registered a pending update of the OpenAI Codex/ChatGPT desktop app (26.924 → 26.1007; AppX deployment
+    log).
+  - **06:22:02:** the app's own Windows startup task (`windows.startupTask`, enabled, State 2) launched it.
+  - **06:30:** its GPU renderer (ChatGPT.exe, about 13 MiB of VRAM) was seen by the repeat runner's guard, which treats any other GPU
+    process as a game. The runner unloaded the model and waited.
+  - **11:42:44:** the app's container was destroyed (the app closed). One minute later the runner resumed.
+  - **What it was not:** there is no evidence the app did any work; the logs show only an automatic launch at login. Its background
+    service (`codex-windows-sandbox-service`) still runs, without the GPU.
+  - **The operator** can switch off its startup in Windows Settings > Apps > Startup.
+  - **For fork 1 (the runner is frozen, so no change now):** the guard counts a 13 MiB renderer as a game. A floor on VRAM or utilisation
+    would have saved five hours. Recorded for the runner's next version.
+
+**AL.18 (2026-10-14 12:03): the fiscal-year mislabel fix is built and validated on its own branch. The rebuild of everything downstream is still to do.**
+- **The code:** rs2-local `review-2026-10/pit-fy-fix` 8155188, pushed after a clean scan, worktree `scratch/rev23/wt-fyfix`.
+  - `CompanyPit.accessions()` takes an accession's period from its 350–380-day durations (any unit) that end on or before its filing
+    date; otherwise from its latest instant on or before that date.
+  - An accession whose forward-dated facts were ignored is marked `forward_dated_facts_ignored`.
+- **Tests:**
+  - **New:** a Boeing-shaped fixture with a 2018 tax-rate fact inside the FY2017 10-K. On the old code it reproduces the defect: at
+    2018-06-30 the years are `['2016-12-31']`, and FY2018 is stamped 2018-02-12. On the fix, FY2017 exists and FY2018 is stamped with
+    its own filing.
+  - **Suite:** 744 passed.
+- **Real data,** dumping the fiscal-year index with the old and the new code (`scratch/rev23/engine_v2_audit/fyfix/`):
+
+  | Sample | Companies | Mislabelled index entries | Fiscal years | Companies changed | Other effects |
+  |---|---|---|---|---|---|
+  | Every company with a mislabelled observation row in vintage 2025 | 362 | 529 → **0** | 3,808 → 4,223 (+447, −32) | 362 | – |
+  | Seeded random companies, the rest of the universe | 500 | 10 → 0 | 3,402 → 3,403 | 7 | All 7 traced to an old mislabel |
+
+  - Every changed company had an old mislabel.
+  - Every lost label was a mislabelled one, 32 + 10.
+  - Three entries that were not mislabelled now take an **earlier** own filing. Example: PPG FY2017 now comes from its 10-K of 2018-02-15,
+    not a 10-K/A of 2018-06-28, because the original 10-K had been relabelled away. That is also a correction.
+- **Against SEC's "Period of Report"** on the filing index page: Boeing 0000012927-18-000007 plus 20 seeded relabelled accessions, of 526
+  moved. **21 of 21 match the new fiscal year end** (`cover_check.json`; sec.gov under O5).
+- **Next, CPU-heavy, after the AL.16 chain's DONE:**
+  1. merge the fix into the dev branch;
+  2. rebuild the observation tables of every vintage into a new version, `data/priors_v3_fy`, then the priors tables, the per-vintage
+     panels and the near-term tables;
+  3. the per-vintage diff against the legacy versions;
+  4. E3/E4 and E6.
+
+  The frozen gate-2 inputs (`c7d7a4f`, priors_v3) stay as they are. Which version gate 2b's SYSTEM freeze uses is the operator's call,
+  with the diff. A cascade plan follows in its own entry before it runs.
