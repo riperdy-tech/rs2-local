@@ -4098,3 +4098,121 @@ unaffected.**
 - **Also aligned:** `tag_consistent.py`'s annual step now accepts 20-F and 40-F, as `same_filing` does (AK.38).
 - **Fork 2's merge:** the fiscal-year fix is in `688281f`. The same-filing measures read raw facts and are unaffected. The choice of year 1
   for gate 2b goes through `company_pit` and so uses the fixed version, as agreed.
+
+**AL.20 (2026-10-14 13:51): REGISTRATION of the priors cascade on the fixed `pit_data` (AL.17's "a repair rebuilds the priors as a new version").
+Fixed before any number exists. Nothing existing is overwritten; every output goes to a new folder.**
+- **The code.**
+  - **Fixed:** `review-2026-10/gate2-run2` at eb98533 or later, which carries the FY fix (688281f) and fork 1's AK.41.
+  - **Legacy reference:** a detached worktree at 22f22b0, which has the TAG_SEAM flag and does not have the FY fix. TAG_SEAM changes no
+    value.
+  - **The pass:** run from the study's `pass_priors.py`, copied from `review-2026-10/forecast-study`, against the dev code. Between
+    that branch and the dev code, the engines, `priors.py` and `priors_build` are identical; `pit_data` differs only by TAG_SEAM and
+    the fix; `gate1_run` differs by AK.16's cache release.
+- **Step 0, equivalence (it gates everything after it):**
+  - **(a)** `build_vintage 2020` with the legacy code into a scratch folder must reproduce `data/priors_v3/2020/obs.csv.gz` byte for
+    byte (its `obs_sha256`).
+  - **(b)** The pass at 2019-06-30 with the legacy dev code must reproduce the stored study pass file row for row.
+
+  If either fails, the cascade stops and the difference is diagnosed first.
+- **Steps, with the fixed code, at below-normal priority, with no model loaded:**
+  1. `build_vintage 2016..2025` into `data/priors_v3_fy` (`PRIORS_DATA_DIR`);
+  2. `make_tables` for the same years;
+  3. passes at 2017-06-30..2025-06-30 with `priors_v3_fy` into `forecast_study/pass_fy`;
+  4. per-vintage panels on `priors_v3_fy` obs (`panel_fy<V>.pkl`);
+  5. near-term tables into `data/priors_v4_fy`.
+- **Shared inputs:** `data/priors/_inputs` (the mcap panel, the SIC map) is used as is. The mcap panel rests on cover shares and prices,
+  not on the fiscal-year index; a spot check of 50 company-dates is reported.
+- **Reported, negatives first. There are no bars; the operator chooses the version with these numbers:**
+  - per vintage: observation rows gained and lost, and rows whose values changed;
+  - the change in every priors-table cell median and quantile;
+  - the near-term table diff against `priors_v4_pit`;
+  - E3 and E4 on `priors_v4_fy`, and E6 by construction.
+- **Unchanged:**
+  - gate 2's frozen inputs (`c7d7a4f`, `priors_v3`);
+  - the approved engine-v2 freeze on `priors_v4_pit`, until the operator rules on `priors_v4_fy`;
+  - AL.13's outcome-definition question, which is decided separately.
+- **How it runs:** as a scheduled chain like AL.16, with a HOLD file. The other session is told before it starts.
+
+**AL.21 (2026-10-14 13:58): AL.20 step 0. (a) passes; (b) fails and is diagnosed; the cascade is re-specified before it runs.**
+- **(a) passes.** `build_vintage 2020` with the legacy code reproduces `data/priors_v3/2020/obs.csv.gz` exactly, 33,903,374 bytes
+  decompressed (sha256 `508e96b8…`), in 74 s with 6 workers.
+  - **One amendment to AL.20:** the comparison is of the decompressed bytes. The gzip header carries a write timestamp, so the `.gz`
+    hashes differ by construction.
+- **(b) fails.** The pass at 2019-06-30 with the legacy dev code (22f22b0) gives 1,403 rows; the stored study pass has 1,405. 13 companies
+  differ, in `ticker`, `mcap` and `price` only.
+  - **The cause:** the study branch predates Addendum AD.10. AD.10 changed `gate1_run._best_ticker` from "the ticker with the largest
+    market cap" to "the common stock, first in SEC's order". Under the old rule, a high-priced preferred or note could set the price and
+    the cap (Bruker's BRKRP gave a "$48B" cap).
+  - **The effect:** the study's passes, and so the AL.3, AL.10 and AL.19 near-term tables built on them, carry the pre-AD.10 ticker rule.
+    At 2019 that is 13 of 1,405 companies, and 2 move across the $300M universe floor. A known and small limitation of `priors_v4_pit`,
+    now recorded.
+- **The cascade is re-specified,** before any of it runs:
+  - **The code:** the current dev code, which carries both corrections: AD.10's ticker rule and the FY fix.
+  - **The legacy reference for decomposing the diff:** the dev code without the FY fix (`wt-legacy`, 22f22b0).
+  - **What is reported:**
+    - the AD.10 effect, from the dev-legacy passes against the study's;
+    - the FY effect, from the fixed run against dev-legacy;
+    - the total.
+  - **Steps:**
+    1. obs into `priors_v3_fy` (fixed code);
+    2. `make_tables` (fixed);
+    3. passes at 2016-06-30..2025-06-30, twice. Once dev-legacy with `priors_v3` (`pass_devlegacy`), once fixed with `priors_v3_fy`
+       (`pass_fy`; `cfg["priors_dir"]` is overridden, and the 2025 guard is lifted as in AL.6);
+    4. panels `panel_fy<V>` on `priors_v3_fy` obs and `pass_fy`;
+    5. near-term tables into `data/priors_v4_fy`;
+    6. diffs, then E3/E4 (by hand).
+  - **How it runs:** as a scheduled chain with a guard and HOLD, as AL.16.
+
+**AL.22 (2026-10-14 14:03): AL.13 completed on the production rule. Recommendation: engine v2 keeps its first-filed residual tables.**
+- **Re-run on `rebuild_harness.gate2.same_filing.annual_measures` at eb98533,** which carries fork 1's near-tie fix (AK.41) and accepts
+  20-F and 40-F. Output in `engine_v2_audit/tc_sf/`; the provisional AL.19 run is kept in `tc/`.
+  - The two CIK 1831915 cases now match the filed totals (+28.2%, +17.7%).
+  - `pit_data` now carries the FY fix, so rows whose fiscal-year pair no longer matches the panel's are reported apart ("reproduced
+    only").
+- **Final numbers, vintage 2025** (operating revenue growth, k = 1–3):
+  - 26,120 rows with a same-filing pair (of 26,182);
+  - gaps larger than 5 points: 1,200 (4.6%); larger than 20 points: 505 (1.9%);
+  - reproduced rows only: 1,147 of 25,983 (4.4%) over 5 points;
+  - causes of gaps over 5 points: recast 907 (76%), tag seam 178 (15%), partial line 79 (7%), other 36 (3%).
+  - By vintage, the share over 5 points runs from 4.4% to 6.4%. Recasts are the largest cause throughout.
+- **(c) Tables built on the tag-consistent outcome,** a scratch build in `tc_sf/tables`, never a data directory: pools 2017–2025 are almost
+  the same size as `priors_v4_pit`'s (2025 operating growth k1: 8,609 against 8,624).
+- **(d) E3/E4, operating growth, with origins scored by each origin year's prior vintage:**
+
+  | Tables | Scored against | Coverage k1 / k2 / k3 | Interval score k1 / k2 / k3 |
+  |---|---|---|---|
+  | `priors_v4_pit` (first-filed) | first-filed outcomes (AL.12) | 0.664 / 0.626 / 0.681 | 1.778 / 3.781 / 1.020 |
+  | **`priors_v4_pit` (first-filed)** | **tag-consistent outcomes** | **0.677 / 0.635 / 0.690** | **1.580 / 3.705 / 1.002** |
+  | tag-consistent tables | tag-consistent outcomes | 0.654 / 0.600 / 0.665 | 1.589 / 3.736 / 1.006 |
+
+  On the outcome definition gate 2b scores (tag-consistent, AK.30), **the current tables are better on every k**: higher coverage and lower
+  interval score. Training on the cleaner outcomes narrows the bands, and v2 already under-covers (E3). The first-filed noise widens the
+  bands in the direction the calibration lacks. E3 FAILs and E4 PASSes (3 of 12) in every variant.
+- **The recommendation, for the operator:**
+  - Engine v2 keeps `priors_v4_pit` (first-filed residuals), as approved.
+  - Gate 2b and S5 score on the tag-consistent outcome, as fork 1's AK.37 proposes.
+  - No amendment to SPEC_engine_v2 section 3.
+
+  The measured 4–5% of misstated growth outcomes stays a documented property of the residual tables. Its effect is to widen the bands,
+  which on this evidence helps.
+
+**AL.23 (2026-10-14 14:05): fork 1's question on AL.22. Does first-filed training buy coverage with a biased centre? Answer: the P50 accuracy is the
+same.**
+- **The check:** `engine_v2_audit/p50_check.py` (`p50_check.json`). On tag-consistent outcomes, operating revenue growth, the P50 as v2
+  draws it (centre plus the cell's median bias, in log space). Both table versions use AL.22's scoring rule.
+
+  | k | n | P50 MAE, first-filed / tag-consistent | Median absolute error | Median error |
+  |---|---|---|---|---|
+  | 1 | 6,600 | 0.21677 / 0.21674 | 0.0903 / 0.0904 | −0.0009 / −0.0037 |
+  | 2 | 4,472 | 0.4336 / 0.4342 | 0.1004 / 0.1008 | +0.0138 / +0.0123 |
+  | 3 | 2,332 | 0.1535 / 0.1532 | 0.0816 / 0.0811 | +0.0231 / +0.0210 |
+
+  The paired difference in absolute error (first-filed minus tag-consistent) is +0.00003, −0.00061 and +0.00036.
+- **The median bias by cell,** 396 operating-growth pools and cells over 2017–2025:
+  - the first-filed median is lower in 71% of them, the direction fork 1 expected (recasts are mostly divestitures);
+  - the mean difference is −0.2 points;
+  - 17 differ by more than 1 point, the largest 1.9 points (vintage 2025, k1, cell s2_g6, n 56).
+- **The ruling:** the centre is not measurably worse, so AL.22's recommendation stands. The small downward lean of first-filed medians is
+  recorded as a property of `priors_v4_pit`.
+- **Fork 1's broader point is adopted:** label noise is not a calibration method. Under-coverage stays E3's diagnosed FAIL. Its remedy, if
+  any, is a separately registered marginal-calibration candidate (AL.5), never a choice of outcome definition made for its side effects.
