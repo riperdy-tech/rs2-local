@@ -73,3 +73,14 @@ def test_refusals_are_recorded_never_filled():
     crash = E5.values(c, {"fx_out": chain_out(n=3, override={("g", 1): -1.5})}, SHARES, table())         # a realised fall below -100% is not an input
     assert crash["v2"] is None
     assert E5.values(SimpleNamespace(family="commodity", st={}, ps=None, disc=None), {}, SHARES, table())["skipped"]
+
+
+def test_ak51_item3_the_matched_financial_oracle_uses_realised_tbv_growth_and_rote_in_both_engines():
+    c, _ = cap("financial", "6021")
+    base = chain_out(n=3, rote=0.12)
+    lo, hi = dict(base), dict(base)
+    lo["years"] = [dict(y, tbv=y["tbv"]) for y in base["years"]]
+    hi["years"] = [dict(y, tbv=y["tbv"] * (1.30 ** y["k"])) for y in base["years"]]                 # same ROTE, faster realised tangible-book growth
+    a, b = E5.values(c, {"fx_out": lo}, SHARES, table()), E5.values(c, {"fx_out": hi}, SHARES, table())
+    assert b["v2"] != a["v2"] and b["v1_same"] != a["v1_same"]                                          # the matched reading sees tbv growth
+    assert b["v2_rote_only"] == a["v2_rote_only"] and b["v1_same_rote_only"] == a["v1_same_rote_only"]  # the labelled ROTE-only sensitivity does not

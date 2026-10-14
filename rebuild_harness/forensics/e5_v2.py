@@ -72,8 +72,9 @@ def values(cap, rec: dict, shares: float, table: Optional[Mapping]) -> dict:
     out = {"family": fam, "k": rz["k"]}
     pm = A.PointModel(fam, ps, disc, st, shares)
     out["v1_p50"] = pm.ps_value(pm.run())
-    if fam == "financial":
-        out["v1_same"] = pm.ps_value(pm.run(rp_over=rz["rote"])) if rz["rote"] else None
+    if fam == "financial":                                                             # AK.51 item 3: the matched reading gives both engines tbv growth AND ROTE
+        out["v1_same"] = pm.ps_value(pm.run(rp_over=rz["rote"], g_over=rz["g"])) if (rz["rote"] and rz["g"]) else None
+        out["v1_same_rote_only"] = pm.ps_value(pm.run(rp_over=rz["rote"])) if rz["rote"] else None
     else:
         lr = {"margin_target": rz["m5"]} if rz["m5"] is not None else {}
         out["v1_same"] = pm.ps_value(pm.run(lr, g_over=rz["g"], m_over=rz["m"])) if (rz["g"] and rz["m"]) else None
@@ -84,8 +85,13 @@ def values(cap, rec: dict, shares: float, table: Optional[Mapping]) -> dict:
     out["v2_p50"], out["v2_p50_reason"] = p["ps"], p["reason"]
     over = {}
     if fam == "financial":
-        over.update({nt.name("rote", k): v for k, v in rz["rote"].items()})
-        ok = bool(rz["rote"])
+        rote_only = {nt.name("rote", k): v for k, v in rz["rote"].items()}
+        if rote_only:                                                                    # the labelled ROTE-only sensitivity (AK.51 item 3)
+            out["v2_rote_only"] = v2_point(fam, st, ps, disc, table, shares, rote_only)["ps"]
+        over.update(rote_only)
+        bad = [k for k, g in rz["g"].items() if g <= -1.0]
+        over.update({nt.name("tbvg", k): math.log1p(g) for k, g in rz["g"].items() if g > -1.0})
+        ok = bool(rz["rote"]) and bool(rz["g"]) and not bad
     else:
         bad = [k for k, g in rz["g"].items() if g <= -1.0]
         over.update({nt.name("growth", k): math.log1p(g) for k, g in rz["g"].items() if g > -1.0})
@@ -162,8 +168,10 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
     """DIAGNOSTIC (Addendum AL.25): engine v2's full run on the captured state, beside v1's own: the invalid-draw share and the per-share P10/P50/P90/mean.
     Reads no outcome."""
     from valuation import engine_financial_v2 as f2, engine_operating_v2 as o2
-    if cap.family not in ("operating", "financial") or table is None:
-        return {"skipped": True}
+    if cap.family not in ("operating", "financial"):
+        return {"skipped": True, "why": f"family {cap.family!r} out of scope"}
+    if table is None:
+        return {"skipped": True, "reasons": ["no near-term table for the vintage"]}
 
     class _Fixed:                                                       # the prior set the v1 run used, handed to v2 unchanged
         def __init__(self, ps):
@@ -201,10 +209,11 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
     d = r["distribution"]
     eq, ev = d.get("equity") or {}, d.get("ev") or {}
     per = {k: (eq.get(k) / shares if eq.get(k) is not None and shares else None) for k in ("p10", "p50", "p90", "mean")}
-    top = trim = w99 = None
+    top = top5 = trim = w99 = None
     if kept and sum(kept) > 0:
         ks = sorted(kept, reverse=True)
         top = sum(ks[:max(1, len(ks) // 100)]) / sum(ks)
+        top5 = sum(ks[:max(1, len(ks) // 20)]) / sum(ks)                                 # AK.51 item 6 (E8b'): the top-5% share of the mean
         cut = max(1, len(ks) // 100)                                                    # AL.28 option 2: the mean of the draws without the top and bottom 1%
         mid = ks[cut:len(ks) - cut]
         trim = (sum(mid) / len(mid)) / (sum(ks) / len(ks)) if mid else None
@@ -212,5 +221,19 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         w99 = (sum(min(x, p99) for x in ks) / len(ks)) / (sum(ks) / len(ks))
     return {"status": "ok", "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
             "ev_p10": ev.get("p10"), "ev_p50": ev.get("p50"), "ev_p90": ev.get("p90"), "ev_mean": ev.get("mean"), "share_floored": d.get("share_negative_equity"),
-            "top1pct_share_of_mean": top, "trimmed_mean_over_mean": trim, "winsor99_mean_over_mean": w99}
+            "top1pct_share_of_mean": top, "top5pct_share_of_mean": top5, "trimmed_mean_over_mean": trim, "winsor99_mean_over_mean": w99}
+
+
+def lineage(priors_dir, near_term_dir, vintages, repo) -> dict:
+    """AK.51 item 1: what an acceptance run used, pinned: the code commit, the priors and near-term folders and each vintage's table sha256."""
+    import hashlib
+    import subprocess
+    from pathlib import Path as _P
+    sha = lambda p: hashlib.sha256(_P(p).read_bytes()).hexdigest() if _P(p).exists() else None
+    head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "valuation", "rebuild_harness"], capture_output=True, text=True).stdout.strip()
+    return {"code_commit": head, "code_dirty": bool(dirty), "chain_version": nt.CHAIN_VERSION, "interim": nt.INTERIM,
+            "priors_dir": str(priors_dir), "near_term_dir": str(near_term_dir),
+            "priors_tables_sha256": {str(v): sha(_P(priors_dir) / str(v) / "tables.json") for v in vintages},
+            "near_term_sha256": {str(v): sha(_P(near_term_dir) / str(v) / "near_term.json") for v in vintages}}
 

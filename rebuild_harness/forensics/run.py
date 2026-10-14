@@ -122,6 +122,7 @@ def run_date_fx(d):
                         if cfg.get("e5_dist"):               # AL.25 diagnostic: v2's full distribution beside v1's
                             v1eq = sorted((x[0] for x in A.CAP.draws), reverse=True)
                             rec["e5"]["v1_top1pct_share_of_mean"] = (sum(v1eq[:max(1, len(v1eq) // 100)]) / sum(v1eq)) if v1eq and sum(v1eq) > 0 else None
+                            rec["e5"]["v1_top5pct_share_of_mean"] = (sum(v1eq[:max(1, len(v1eq) // 20)]) / sum(v1eq)) if v1eq and sum(v1eq) > 0 else None
                             if A.CAP.family == "operating" and A.CAP.draws:          # E8c (AL.27): v1's enterprise value P50 / P90 (explicit + terminal PV)
                                 import numpy as _np
                                 evs = _np.array([x[4] + x[1] for x in A.CAP.draws], dtype=float)
@@ -218,6 +219,7 @@ def main(argv=None):
     ap.add_argument("--dates", nargs="*")
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--limit-ciks", type=int)
+    ap.add_argument("--priors-dir", type=Path, help="AK.51 item 1: the priors folder (default: gate 1's freeze, data/priors_v3)")
     ap.add_argument("--e5-tables", type=Path, help="Addendum AL.24: engine v2's near-term tables; adds rec['e5'] (the oracle on one information set)")
     ap.add_argument("--e5-dist", action="store_true", help="Addendum AL.25 diagnostic: also v2's full distribution per name (rec['e5']['v2_dist'])")
     ap.add_argument("--e5-diag", action="store_true", help="Addendum AL.28 diagnostic variants (not part of E8)")
@@ -229,8 +231,12 @@ def main(argv=None):
         ap.error(f"refused: valuation dates after {LAST_VALUATION_DATE} are the untouched holdout: {bad}")
     a.out_dir.mkdir(parents=True, exist_ok=True)
     cfg, reports = build_cfg(a.out_dir, dates, a.limit_ciks)
+    if a.priors_dir:                                                # AK.51 item 1: the acceptance runs pin priors_v3_fy explicitly
+        cfg["priors_dir"] = str(a.priors_dir)
     if a.e5_tables:
         cfg["e5_tables"] = str(a.e5_tables)
+        (a.out_dir / "lineage.json").write_text(json.dumps(E5.lineage(cfg["priors_dir"], a.e5_tables, sorted({int(d[:4]) - 1 for d in dates}), g1r.REPO),
+                                                           indent=1), encoding="utf-8")
     if a.e5_dist:
         cfg["e5_dist"] = True
     if a.e5_diag:

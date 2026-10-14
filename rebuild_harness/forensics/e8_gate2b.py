@@ -2,7 +2,9 @@
 exactly as `valuation.muse.pipeline.run_company` runs it: the engine on the prior alone) and by engine v2 (its current chain version, the vintage-2025 near-term
 table), on the SAME inputs.  No outcome, no price after T, no model.  Writes records in the forensic shape that `e8_score.rows_of` reads.
 
-    python -m rebuild_harness.forensics.e8_gate2b SCRATCH_STATE_DIR OUT_DIR TABLES_DIR [--limit N]
+    python -m rebuild_harness.forensics.e8_gate2b SCRATCH_STATE_DIR OUT_DIR TABLES_DIR PRIORS_DIR [--limit N]
+AK.51: PRIORS_DIR is pinned (priors_v3_fy for acceptance); a scratch copy that differs from run 2's aborts; a fingerprint difference aborts unless its key is in
+FINGERPRINT_ALLOWED (the priors vintages, which differ by design when PRIORS_DIR is not run 2's).
 
 Read-only towards gate 2 (fork 1's recipe, AK of 2026-10-14): RealEnv runs on a SCRATCH state_dir holding copies of run 2's ctx/context_<d>.pkl for the three dates and
 its sample/ (copied here, hashes checked); submissions materialise in the scratch folder; fetch_documents=False.  The run's input fingerprint
@@ -18,6 +20,7 @@ from types import SimpleNamespace
 
 RUN2 = Path(r"C:\Users\riper\stocks\stocks-workspace\data\gate2_run2")
 DATES = ("2026-02-27", "2026-04-30", "2026-06-30")
+FINGERPRINT_ALLOWED = ("priors_vintages",)                       # AK.51 item 2: the fiscal-year inputs; nothing else may differ from run 2's freeze
 
 
 def _sha(p):
@@ -68,12 +71,17 @@ def _with_draws(mod, call):
 
 def main(argv=None):
     a = argv or sys.argv[1:]
-    state, out_dir, tables = Path(a[0]), Path(a[1]), Path(a[2])
+    state, out_dir, tables, priors_dir = Path(a[0]), Path(a[1]), Path(a[2]), Path(a[3])
     limit = int(a[a.index("--limit") + 1]) if "--limit" in a else None
     out_dir.mkdir(parents=True, exist_ok=True)
     import psutil
     psutil.Process().nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
     meta = {"copies_equal": prepare_scratch(state), "fingerprint_differences": fingerprint_check()}
+    if not all(meta["copies_equal"].values()):
+        raise SystemExit(f"aborted (AK.51 item 2): a scratch copy differs from run 2's: {meta['copies_equal']}")
+    bad = sorted(k for k in meta["fingerprint_differences"] if k not in FINGERPRINT_ALLOWED)
+    if bad:
+        raise SystemExit(f"aborted (AK.51 item 2): input fingerprint differences outside the allowlist: {bad}")
     from rebuild_harness.gate2 import env as env_mod, sample as sample_mod, config
     from valuation import engine_financial, engine_operating, near_term as nt
     from valuation.common import DataNotPresent, build_state
@@ -81,7 +89,7 @@ def main(argv=None):
     from . import e5_v2 as E5
     g = env_mod._g1r()
     ev = env_mod.RealEnv(state_dir=state, store=g.DEFAULT_STORE, id_map=g.DEFAULT_IDMAP, prices_daily=config.WORKSPACE / "data" / "prices_daily",
-                         prices_monthly=g.DEFAULT_PRICES, headers=g.DEFAULT_HEADERS, crosswalk=g.DEFAULT_CROSSWALK, sic=g.DEFAULT_SIC, priors_dir=None,
+                         prices_monthly=g.DEFAULT_PRICES, headers=g.DEFAULT_HEADERS, crosswalk=g.DEFAULT_CROSSWALK, sic=g.DEFAULT_SIC, priors_dir=priors_dir,
                          strict_classification=False, submissions_zip=config.WORKSPACE / "data" / "sec_bulk" / "submissions.zip", fetch_documents=False)
     smp = sample_mod.load_verified(sample_mod.sample_path(state))
     jobs = sample_mod.jobs(smp, dates=DATES)
@@ -94,6 +102,7 @@ def main(argv=None):
     if limit:
         jobs = jobs[:limit]
     table = nt.load_table(tables, 2025)
+    meta["lineage"] = E5.lineage(priors_dir, tables, [2025], Path(__file__).resolve().parents[2])
     counts = {"jobs": len(jobs), "refused_inputs": 0, "refused_discount_rate": 0, "not_built": 0, "v1_refused": 0, "base_year_differs_from_run2": 0, "written": 0}
     recs = {d: [] for d in DATES}
     for job in jobs:
@@ -120,7 +129,8 @@ def main(argv=None):
             continue
         eqs = sorted((r["equity"] for r in kept), reverse=True)
         top = (sum(eqs[:max(1, len(eqs) // 100)]) / sum(eqs)) if eqs and sum(eqs) > 0 else None
-        e5 = {"family": ci.family, "v1_top1pct_share_of_mean": top}
+        top5 = (sum(eqs[:max(1, len(eqs) // 20)]) / sum(eqs)) if eqs and sum(eqs) > 0 else None
+        e5 = {"family": ci.family, "v1_top1pct_share_of_mean": top, "v1_top5pct_share_of_mean": top5}
         if ci.family == "operating":
             import numpy as np
             evs = np.array([r["ev"] for r in kept], dtype=float)

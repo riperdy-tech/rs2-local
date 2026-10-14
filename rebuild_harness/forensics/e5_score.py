@@ -57,14 +57,16 @@ def build(run_dir, pf_path) -> pd.DataFrame:
     df["e5_v2"] = [_log_ratio(r.get("v2"), p) for r, p in zip(rec, df["price"])]
     df["e5_v1"] = [_log_ratio(r.get("v1_same"), p) for r, p in zip(rec, df["price"])]
     df["e5_v2_reason"] = [r.get("v2_reason") for r in rec]
+    df["e5_v2_rote_only"] = [_log_ratio(r.get("v2_rote_only"), p) for r, p in zip(rec, df["price"])]          # AK.51 item 3: the labelled sensitivity
+    df["e5_v1_rote_only"] = [_log_ratio(r.get("v1_same_rote_only"), p) for r, p in zip(rec, df["price"])]
     ratio = lambda fam, r: r.get("or_rote") if fam == "financial" else r.get("or_both")          # the stored full-K oracle, value / price (panel.row_of)
     df["or_full"] = [math.log(x) if (x is not None and isinstance(x, float) and math.isfinite(x) and x > 0) else None
                      for x in (ratio(f, r) for f, (_, r) in zip(df["family"], df.iterrows()))]
     return df
 
 
-def stat(sub, score, bound):
-    pdd = fxm.per_date(sub, score, 3, bound, extra_resid_cols=Y1)
+def stat(sub, score, bound, h=3):
+    pdd = fxm.per_date(sub, score, h, bound, extra_resid_cols=Y1)
     pdd["year"] = [str(d)[:4] for d in pdd.index]
     return {"pooled": float(np.nanmean(pdd["ic_resid"])), "by_year": {y: float(np.nanmean(g["ic_resid"])) for y, g in pdd.groupby("year")},
             "n_dates": int(pdd["ic_resid"].notna().sum()), "n_per_date": {str(k): int(v) for k, v in pdd["n"].items()}}
@@ -92,6 +94,16 @@ def score(df) -> dict:
         rep["families"][fam] = {"n": int(len(sub)), "tested": True, "v2_pooled": v2["pooled"], "v1_pooled": v1["pooled"], "same_sign": bool(same)}
         if not same:
             rep["bar_ii"] = False
+    fin = df[(df["family"] == "financial") & df["e5_v2_rote_only"].notna() & df["e5_v1_rote_only"].notna()]
+    if len(fin) >= MIN_FAMILY:                                                         # AK.51 item 3: reported, not a bar
+        rep["sensitivity_financial_rote_only"] = {"n": int(len(fin)), "v2": stat(fin, "e5_v2_rote_only", "excluded")["pooled"],
+                                                  "v1": stat(fin, "e5_v1_rote_only", "excluded")["pooled"]}
+    rep["diag_horizons"] = {}                                                          # AK.51: 12 and 36 months, reported; never rescue a 3-month fail
+    for h in (12, 36):
+        try:
+            rep["diag_horizons"][str(h)] = {"v2": stat(common, "e5_v2", "excluded", h)["pooled"], "v1_same": stat(common, "e5_v1", "excluded", h)["pooled"]}
+        except Exception as e:                                                         # a horizon not formed for every date is stated, not filled
+            rep["diag_horizons"][str(h)] = {"error": f"{type(e).__name__}: {str(e)[:120]}"}
     if df["or_full"].notna().any():
         rep["v1_full_k_reported"] = stat(df[df["or_full"].notna()], "or_full", "excluded")
     rep["E5"] = "PASS" if (rep["bar_i"] and rep["bar_ii"]) else "FAIL"
@@ -102,6 +114,8 @@ def main(argv=None):
     a = argv or sys.argv[1:]
     df = build(a[0], a[1])
     rep = score(df)
+    lin = Path(a[0]) / "lineage.json"
+    rep["lineage"] = json.loads(lin.read_text(encoding="utf-8")) if lin.exists() else None
     Path(a[2]).write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
     print(json.dumps({k: rep[k] for k in ("common_sample", "v2_only", "v1_only")}), "| verdict written to", a[2], "and NOT printed (AL.31: sealed until cross-check 12 is ruled)")
 
