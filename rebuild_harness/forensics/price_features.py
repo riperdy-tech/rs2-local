@@ -7,6 +7,8 @@ For ticker i and date T (bars on or before T only; the decision is taken at the 
   beta_1y    OLS slope of the ticker's daily total return on SPY's over the same 252-bar window (dates aligned); needs >= 200 common bars
   ret_1y     the 252-bar log total return (the drift of the naive distance to default)
   dvol_3m    the median over the last 63 bars of Close x Volume (both split-adjusted on the same basis, so the product is the traded dollar volume)
+  idio_vol_1y  (AL.24, Y1) the residual standard deviation of the beta_1y regression, annualised
+  ret_1m     (AL.24, Y1) the 21-bar log total return to T (the 1-month reversal control)
 Nothing here is read by an engine.  CPU only, no network."""
 import argparse
 import gzip
@@ -50,8 +52,13 @@ def features(df, spy_ret, dates):
                 x, y = spy_ret.loc[common].values, r.loc[common].values
                 vx = x.var(ddof=1)
                 row["beta_1y"] = float(np.cov(x, y, ddof=1)[0, 1] / vx) if vx > 0 else None
+                if vx > 0:                                     # AL.24 (Y1): the standard deviation of the residual of that regression, annualised
+                    b = np.cov(x, y, ddof=1)[0, 1] / vx
+                    row["idio_vol_1y"] = float(np.std(y - (y.mean() - b * x.mean()) - b * x, ddof=2) * np.sqrt(252))
             if k - WIN - 1 >= 0:
                 row["ret_1y"] = float(np.log(df["Adj Close"].iloc[k - 1] / df["Adj Close"].iloc[k - 1 - WIN]))
+        if k - 22 >= 0:                                        # AL.24 (Y1): the 21-bar log total return to T (1-month reversal)
+            row["ret_1m"] = float(np.log(df["Adj Close"].iloc[k - 1] / df["Adj Close"].iloc[k - 22]))
         dv = (df["Close"].iloc[max(0, k - 63):k] * df["Volume"].iloc[max(0, k - 63):k]).dropna()
         if len(dv) >= 40:
             row["dvol_3m"] = float(dv.median())

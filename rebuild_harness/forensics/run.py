@@ -27,6 +27,7 @@ from valuation import sic_crosswalk as sx
 from valuation.discount_rate import MriRiskFree
 from rebuild_harness import delisting_inputs, gate1_run as g1r, holdout_inputs, survivorship
 from . import analytics as A
+from . import e5_v2 as E5
 
 LAST_VALUATION_DATE = "2024-12-31"
 OUTCOMES_END = date(2026, 10, 6)                         # the last price bar held
@@ -115,6 +116,15 @@ def run_date_fx(d):
                     import traceback
                     rec["fx"] = {"error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-800:]}
                     chain_ok["error"] += 1
+                if cfg.get("e5_tables"):                     # Addendum AL.24: engine v2's oracle on the same information as v1's
+                    try:
+                        rec["e5"] = E5.values(A.CAP, rec, rec["shares"], _e5_table(cfg["e5_tables"], int(d[:4]) - 1))
+                        if cfg.get("e5_dist"):               # AL.25 diagnostic: v2's full distribution beside v1's
+                            rec["e5"]["v2_dist"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"])
+                            rec["e5"]["v2_dist_env"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], envelope=True)
+                    except Exception as e:
+                        import traceback
+                        rec["e5"] = {"error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-800:]}
         else:
             rec["status"], rec["reasons"] = "refused", list(v["reasons"])
         A.CAP.clear()
@@ -130,6 +140,20 @@ def run_date_fx(d):
     (out_dir / f"context_{d}.json").write_text(json.dumps(g1r._clean(summary), indent=1), encoding="utf-8")
     pit.drop_cache()
     return {k: summary[k] for k in ("date", "status", "seconds_pass1", "seconds_pass2", "chain_matches_engine")}
+
+
+_E5_TABLES = {}
+
+
+def _e5_table(root, vintage):
+    """Engine v2's near-term table of `vintage` (AL.24: data/priors_v4_pit), loaded once per worker; None when it does not exist or is refused."""
+    if vintage not in _E5_TABLES:
+        from valuation import near_term as nt
+        try:
+            _E5_TABLES[vintage] = nt.load_table(root, vintage)
+        except nt.NearTermRefusal:
+            _E5_TABLES[vintage] = None
+    return _E5_TABLES[vintage]
 
 
 def _work(d):
@@ -181,6 +205,8 @@ def main(argv=None):
     ap.add_argument("--dates", nargs="*")
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--limit-ciks", type=int)
+    ap.add_argument("--e5-tables", type=Path, help="Addendum AL.24: engine v2's near-term tables; adds rec['e5'] (the oracle on one information set)")
+    ap.add_argument("--e5-dist", action="store_true", help="Addendum AL.25 diagnostic: also v2's full distribution per name (rec['e5']['v2_dist'])")
     a = ap.parse_args(argv)
     dates = ordered(a.dates or month_end_dates())
     bad = [d for d in dates if d > LAST_VALUATION_DATE]
@@ -188,6 +214,10 @@ def main(argv=None):
         ap.error(f"refused: valuation dates after {LAST_VALUATION_DATE} are the untouched holdout: {bad}")
     a.out_dir.mkdir(parents=True, exist_ok=True)
     cfg, reports = build_cfg(a.out_dir, dates, a.limit_ciks)
+    if a.e5_tables:
+        cfg["e5_tables"] = str(a.e5_tables)
+    if a.e5_dist:
+        cfg["e5_dist"] = True
     meta = {"started": datetime.now().isoformat(timespec="seconds"), "dates": dates, "workers": a.workers, "git_head": g1r.holdout._git(g1r.REPO, "rev-parse", "HEAD").decode().strip(),
             "engine_files_sha256": {p.relative_to(g1r.REPO).as_posix(): g1r.holdout.sha256_file(p) for p in g1r.GATE1_FILES}, "n_ciks": len(cfg["ciks"]),
             "price_event_reports": reports, "horizons": list(FX_HORIZONS), "outcomes_end": cfg["outcomes_end"], "freeze_sha256": g1r.sha256_file(H / "gate1_freeze.json")}
