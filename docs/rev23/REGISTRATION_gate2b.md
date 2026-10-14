@@ -201,4 +201,7 @@ the bar reads NOT DECIDED.
 
 ## 7. Approval record
 
+**SYSTEM is V2 alone (AK.52, 2026-10-14 20:18).** S5's rule gave w = 0 on every measure, so SYSTEM and V2 are one arm and B1 is dropped, as section 4
+already provides. B2, B3 and the other bars are unchanged. Muse runs on these dates and its positions are recorded, not used.
+
 Approved by the operator on 2026-10-11 12:33 KST ("approve 1-4, keep D9 as written, adopt O3"). The bars are fixed from this point.

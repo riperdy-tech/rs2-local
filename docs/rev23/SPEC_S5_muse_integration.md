@@ -198,4 +198,8 @@ Every number reported from the fit is reproduced by the V3 script before it is r
 
 ## 9. Approval record
 
+**Outcome, by rule (AK.50, AK.52; operator 2026-10-14 20:18 KST: "go with A").** The eligible annual pairs are under 150 on every measure (143, 143, 49),
+so **w = 0 throughout** and the calibration is the identity. SYSTEM is engine v2 alone. Muse still runs on gate 2b's dates and its positions are
+recorded, unused, for a later, separately registered fit.
+
 Approved by the operator on 2026-10-12 23:48 KST ("approve S5 v2"). Fixed from this point; cross-check 9 may still raise points, ruled on before the fit.

@@ -4808,3 +4808,15 @@ minimum sends λ to 0 at year 4 (a cliff) or pins λ at 1 (a noisy small d_3).
 - **A bar on rank correlation with v1 (Gemini).** v1 is a reference, not the truth, and v2 is meant to differ.
 - **"Implement financing-aware growth now instead of an interim" (Gemini).** It is the registered end state (AK.48), but it needs its own
   specification, tests and E1–E8. It is not a 15-line change to slip in before validation.
+
+**AK.52 (2026-10-14 20:18): the operator chooses option A ("go with A").**
+- **S5's outcome is applied by rule:** w = 0 on every measure (AK.50's counts are under 150), and the calibration is the identity (its minimum
+  is not met). Recorded in S5 section 9.
+- **SYSTEM is engine v2 alone** (v2.0.3 once E8 passes, AK.51). Gate 2b treats SYSTEM and V2 as one arm and drops B1, as its section 4
+  already provides; B2, B3 and the other bars stand. Recorded in the gate-2b registration, section 7.
+- **Muse still runs on gate 2b's dates.** Its positions are recorded and used by nothing in gate 2b, so that a future Muse weight, fitted
+  under its own registration, can be tested on untouched dates.
+  - **The constraint on that future fit:** gate-2 and gate-2b companies share fiscal-2026 results, so its training outcomes must exclude
+    every (company, fiscal year) that gate 2b scores.
+  - **Multi-sampling:** k = 1, by AD R8 (AK.40).
+- **The red team stays dropped** (R3b, AK.35).
