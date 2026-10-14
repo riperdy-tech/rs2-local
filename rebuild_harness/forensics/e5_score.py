@@ -103,9 +103,7 @@ def main(argv=None):
     df = build(a[0], a[1])
     rep = score(df)
     Path(a[2]).write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
-    print(json.dumps({k: rep[k] for k in ("E5", "bar_i", "bar_ii", "common_sample", "v2_only", "v1_only")}))
-    for b, x in rep["bounds"].items():
-        print(b, "v2", round(x["v2"]["pooled"], 4), "v1_same", round(x["v1_same"]["pooled"], 4), "pass", x["pass_pooled"], x["pass_years"])
+    print(json.dumps({k: rep[k] for k in ("common_sample", "v2_only", "v1_only")}), "| verdict written to", a[2], "and NOT printed (AL.31: sealed until cross-check 12 is ruled)")
 
 
 if __name__ == "__main__":
