@@ -116,7 +116,32 @@ def _envelope_prior(ps):
     return q
 
 
-def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int = 2000, seed: int = 20261006, envelope: bool = False) -> dict:
+def _collapsed(table: Mapping, family: str, var: str) -> dict:
+    """DIAGNOSTIC (AL.28): the table with one variable's residual quantiles collapsed to their median (pool and cells, every k), so its draws carry no spread."""
+    import copy
+    t = copy.deepcopy(dict(table))
+    for k, entry in ((t.get("residuals") or {}).get(family, {}).get(var) or {}).items():
+        for c in [entry.get("pool") or {}] + list((entry.get("cells") or {}).values()):
+            q = c.get("q") or {}
+            if "0.5" in q:
+                c["q"] = {lv: q["0.5"] for lv in q}
+    return t
+
+
+def _winsorized(table: Mapping, family: str, var: str) -> dict:
+    """DIAGNOSTIC (AL.28, option 1): the table with one variable's extreme residual quantiles set to the next level in (P1 := P5, P99 := P95); P5..P95 kept."""
+    import copy
+    t = copy.deepcopy(dict(table))
+    for k, entry in ((t.get("residuals") or {}).get(family, {}).get(var) or {}).items():
+        for c in [entry.get("pool") or {}] + list((entry.get("cells") or {}).values()):
+            q = c.get("q") or {}
+            if "0.05" in q and "0.95" in q:
+                q["0.01"], q["0.99"] = q["0.05"], q["0.95"]
+    return t
+
+
+def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int = 2000, seed: int = 20261006, envelope: bool = False,
+                    collapse: Optional[str] = None, winsor: Optional[str] = None) -> dict:
     """DIAGNOSTIC (Addendum AL.25): engine v2's full run on the captured state, beside v1's own: the invalid-draw share and the per-share P10/P50/P90/mean.
     Reads no outcome."""
     from valuation import engine_financial_v2 as f2, engine_operating_v2 as o2
@@ -130,6 +155,12 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         def for_company(self, family, state, asof):
             return self._ps
     mod = o2 if cap.family == "operating" else f2
+    if collapse:
+        if collapse not in nt.VARIABLES[cap.family]:
+            return {"skipped": True}
+        table = _collapsed(table, cap.family, collapse)
+    if winsor:
+        table = _winsorized(table, cap.family, winsor)
     kept = []
     orig_sim = mod.simulate
 
@@ -149,11 +180,14 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
     d = r["distribution"]
     eq, ev = d.get("equity") or {}, d.get("ev") or {}
     per = {k: (eq.get(k) / shares if eq.get(k) is not None and shares else None) for k in ("p10", "p50", "p90", "mean")}
-    top = None
+    top = trim = None
     if kept and sum(kept) > 0:
         ks = sorted(kept, reverse=True)
         top = sum(ks[:max(1, len(ks) // 100)]) / sum(ks)
+        cut = max(1, len(ks) // 100)                                                    # AL.28 option 2: the mean of the draws without the top and bottom 1%
+        mid = ks[cut:len(ks) - cut]
+        trim = (sum(mid) / len(mid)) / (sum(ks) / len(ks)) if mid else None
     return {"status": "ok", "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
             "ev_p10": ev.get("p10"), "ev_p50": ev.get("p50"), "ev_p90": ev.get("p90"), "ev_mean": ev.get("mean"), "share_floored": d.get("share_negative_equity"),
-            "top1pct_share_of_mean": top}
+            "top1pct_share_of_mean": top, "trimmed_mean_over_mean": trim}
 
