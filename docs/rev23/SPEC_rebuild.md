@@ -3952,3 +3952,68 @@ fiscal-year fix is merged.**
   that reads `pit_data` is frozen before that merge.
 - **Agreed for the gate-2b runner** (a new freeze in any case): the GPU guard ignores a compute process under 500 MiB of VRAM and 5%
   utilisation, logged. This is AL.17's lesson from the ChatGPT app's 5-hour stall.
+
+**AK.39 (2026-10-14 12:18): rulings on the outside review of AK.37, with the measurements it asked for. AK.37 becomes v2, for the operator's
+approval.**
+
+*Accepted, measured first:*
+1. **Same-filing does not by itself prove the line is total revenue** (the problem report's failure mode (b)). The coordinator's AK.36
+   claim is corrected: the hand check confirmed that each scored figure appears in the company's filing, not that it is the total-revenue
+   line.
+   - **Measured now:** `scratch/rev23/gate2_audit/revenue_scope_check.py` tests each of the 337 q1 revenue figures of the version of
+     record, on the raw companyfacts.
+     - **Verified by dominance, 51:** the largest of two or more revenue tags in the filing.
+     - **Verified by closure, 201:** within 1% in the same filing and unit, both periods: either gross profit plus cost of revenue equals
+       revenue, or revenue minus total costs and expenses equals operating income. A derived Q4 is tested on its 10-K's annual pair.
+     - **Closure fails, 1:** NUTX, revenue minus costs is not equal to operating income.
+     - **No test available, 84.**
+   - **The rule for gate 2b and S5:**
+     - a closure failure **abstains**, and is listed;
+     - an untestable figure is scored but flagged, and every bar is also reported on the verified rows only.
+2. **Exclusion registers and denominators.** Every exclusion records the company, T, the target period, the metric(s), the public
+   source with its acceptance timestamp, and the reason. Both the original and the eligible sample sizes are reported.
+   - **The period-level rule is kept, not made per-metric.** When a release made the year (or quarter) public, all its metrics leave
+     the target. That is stricter than per-metric, because the releases carry full income statements, and parsing each release for
+     each metric would add judgement without a gain.
+   - The rule is applied identically to both arms, because eligibility is a property of the company-date.
+3. **Public, not just in the pack.** A result counts as public when SEC's own filing index shows an 8-K with Item 2.02 (results of
+   operations) accepted after the period's end and before the T cutoff, whether or not the pack held it.
+   - **Measured on gate 2 (submissions snapshot of 2026-10-07):** 56 q1 rows were public that way. 53 were in the pack, and 3 were not
+     (TRST, UFPI, APO).
+   - The pack rule stays as well, as the second route.
+4. **The benchmark, defined.** q1 is **the next quarterly result not yet public at T**. It may be a quarter that has already ended but is
+   unreported, which is a nowcast of an unreleased result. It is never a released one.
+   - **The 120-day rule** is a separate guard against a known artefact: a quarter that first appears in XBRL long after it ended (LHX,
+     JJSF, NABL, SYBT). It is not part of the benchmark's definition.
+5. **What gate 2's record holds** (labels made exact):
+   - **The registered extractor score is kept as the historical record.**
+   - **The tag-consistent score is the version of record** by the operator's ruling of 2026-10-13 23:23 (AK.30). That ruling came
+     before any score existed: the scoring ran 02:03–03:58 on 10-14. So it is a measurement rule fixed before outcomes were read.
+   - **S1, S2 and the scope-verified sets are post-audit sensitivities.** They were defined after the registered score's negatives line
+     had been seen, and they are labelled that way everywhere.
+   - **The overall gate-2 verdict is FAIL** (G1 on margin, and G4) in every version.
+
+*The reporting table the review asked for.* G1, q1, measured as the paired difference in absolute error, |Muse − outcome| − |code −
+outcome|. The interval is the 10th–90th percentile of 2,000 company-clustered bootstrap medians (whole companies resampled), and the
+registered bar reads its upper end. File: `g1_reporting_table.json`.
+
+| Version | Measure | n | Companies | Median d | 10%–90% | Mean abs. error, Muse / code |
+|---|---|---|---|---|---|---|
+| registered (historical record) | growth | 283 | 245 | −0.0211 | −0.0267 to −0.0164 | 0.099 / 0.129 |
+| tag-consistent (version of record) | growth | 281 | 243 | −0.0230 | −0.0270 to −0.0172 | 0.076 / 0.108 |
+| tag-consistent | margin | 391 | 338 | +0.0015 | +0.0004 to +0.0025 | 0.150 / 0.147 |
+| S1, no release in the pack (sensitivity) | growth | 267 | 232 | −0.0235 | −0.0273 to −0.0173 | 0.078 / 0.111 |
+| S2, no quarter ended at T (sensitivity) | growth | 192 | 175 | −0.0221 | −0.0283 to −0.0167 | 0.084 / 0.117 |
+| scope-verified revenue (sensitivity) | growth | 231 | 203 | −0.0232 | −0.0281 to −0.0155 | 0.083 / 0.114 |
+| scope-verified and S1 (sensitivity) | growth | 219 | 193 | −0.0238 | −0.0283 to −0.0167 | 0.085 / 0.118 |
+
+Muse's advantage on next-quarter revenue growth is about 2.1–2.4 points of median absolute error in every version, with the whole
+company-clustered interval below zero. Its margin disadvantage is about 0.15 points, again with the whole interval above zero.
+
+*AK.37 v2, for the operator:* AK.37 items 1–5, plus:
+- the total-revenue verification and the abstention on a closure failure (1 above);
+- the exclusion register and the denominators (2);
+- SEC Item 2.02 public availability (3);
+- the benchmark definition and the 120-day guard's role (4).
+
+The code (`same_filing.py`) gains the closure test and the Item 2.02 check before it is wired in.

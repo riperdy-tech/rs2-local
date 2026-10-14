@@ -1,0 +1,3402 @@
+{
+ "n": 337,
+ "dominance": 51,
+ "closure": 201,
+ "closure_fail": 1,
+ "unverified": 84,
+ "rows": [
+  {
+   "key": "2025-10-31_0001616862",
+   "ticker": "AXTA",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-10-31_0001039399",
+   "ticker": "FORM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000355811",
+   "ticker": "GNTX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001398659",
+   "ticker": "G",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001569345",
+   "ticker": "CXM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001395942",
+   "ticker": "OPLN",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000861884",
+   "ticker": "RS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001109354",
+   "ticker": "BRKR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001037868",
+   "ticker": "AME",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001100682",
+   "ticker": "CRL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0001316835",
+   "ticker": "BLDR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000027904",
+   "ticker": "DAL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001041061",
+   "ticker": "YUM",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001350593",
+   "ticker": "MWA",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000737758",
+   "ticker": "TTC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001172052",
+   "ticker": "SAFT",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0000202058",
+   "ticker": "LHX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0000057515",
+   "ticker": "MZTI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001589526",
+   "ticker": "BLBD",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000029534",
+   "ticker": "DG",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000771497",
+   "ticker": "ABM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0001739445",
+   "ticker": "ACA",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true,
+    "revenue_minus_costs_equals_oi": false
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000822818",
+   "ticker": "CLH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0000104889",
+   "ticker": "GHC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000868671",
+   "ticker": "GBCI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0000352915",
+   "ticker": "UHS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0000106040",
+   "ticker": "WDC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001092796",
+   "ticker": "SWBI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001103982",
+   "ticker": "MDLZ",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000874501",
+   "ticker": "OSG",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-10-31_0000050863",
+   "ticker": "INTC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true,
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000821002",
+   "ticker": "GIII",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000313616",
+   "ticker": "DHR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000026324",
+   "ticker": "CW",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-10-31_0001520358",
+   "ticker": "MAMA",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001841156",
+   "ticker": "PAY",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001834488",
+   "ticker": "NABL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000715579",
+   "ticker": "ACNB",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0000097134",
+   "ticker": "TNC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000020286",
+   "ticker": "CINF",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0001422930",
+   "ticker": "PUBM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001164863",
+   "ticker": "NPO",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000917520",
+   "ticker": "IART",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000717720",
+   "ticker": "VALU",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0000885978",
+   "ticker": "USPH",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-10-31_0000080424",
+   "ticker": "PG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0001530950",
+   "ticker": "POST",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000759944",
+   "ticker": "CFG",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-10-31_0000316709",
+   "ticker": "SCHW",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0001262976",
+   "ticker": "CMPR",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0001297989",
+   "ticker": "EXLS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0001694028",
+   "ticker": "LBRT",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001601548",
+   "ticker": "VVX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0000842162",
+   "ticker": "LEA",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001549346",
+   "ticker": "SSTK",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001083446",
+   "ticker": "ASTH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001632127",
+   "ticker": "CABO",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000049071",
+   "ticker": "HUM",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-10-31_0000935703",
+   "ticker": "DLTR",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-10-31_0001819928",
+   "ticker": "DV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0001169770",
+   "ticker": "BANC",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-10-31_0001613103",
+   "ticker": "MDT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-10-31_0000857005",
+   "ticker": "PTC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0001005284",
+   "ticker": "OLED",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-10-31_0000029644",
+   "ticker": "DCI",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-10-31_0000317540",
+   "ticker": "COKE",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001710155",
+   "ticker": "EYE",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0001672013",
+   "ticker": "GOLF",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001381197",
+   "ticker": "IBKR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0001010086",
+   "ticker": "SIGA",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000016040",
+   "ticker": "CBT",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001136869",
+   "ticker": "ZBH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000355811",
+   "ticker": "GNTX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001034670",
+   "ticker": "ALV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001535929",
+   "ticker": "VOYA",
+   "tag": "Revenues",
+   "n_revenue_tags": 3,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0000066740",
+   "ticker": "MMM",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0000021665",
+   "ticker": "CL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001212545",
+   "ticker": "WAL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0000070866",
+   "ticker": "VYX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000040729",
+   "ticker": "ALLY",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0001703056",
+   "ticker": "ADT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0000313927",
+   "ticker": "CHD",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000313143",
+   "ticker": "HAE",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0001104657",
+   "ticker": "MTRN",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001573516",
+   "ticker": "MUSA",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001674101",
+   "ticker": "VRT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0000002488",
+   "ticker": "AMD",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001214816",
+   "ticker": "AXS",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0001840572",
+   "ticker": "LUCK",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001699039",
+   "ticker": "RNGR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000021344",
+   "ticker": "KO",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000077360",
+   "ticker": "PNR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001261654",
+   "ticker": "UTI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0001357615",
+   "ticker": "KBR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000352915",
+   "ticker": "UHS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0000850141",
+   "ticker": "HMN",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0001368458",
+   "ticker": "SBH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001419612",
+   "ticker": "SEDG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001599617",
+   "ticker": "DNOW",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001811074",
+   "ticker": "TPL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000011544",
+   "ticker": "WRB",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0000356171",
+   "ticker": "TCBK",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0000815556",
+   "ticker": "FAST",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001428336",
+   "ticker": "HQY",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001121484",
+   "ticker": "OIS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001051627",
+   "ticker": "AXTI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0001393052",
+   "ticker": "VEEV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001049502",
+   "ticker": "MKSI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0000887733",
+   "ticker": "CENT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000046129",
+   "ticker": "ALNT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001092699",
+   "ticker": "SPSC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001086222",
+   "ticker": "AKAM",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000763532",
+   "ticker": "LYTS",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001368514",
+   "ticker": "ADMA",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000812011",
+   "ticker": "MTN",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0001822993",
+   "ticker": "JXN",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0000216228",
+   "ticker": "ITT",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000796505",
+   "ticker": "CLFD",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000008947",
+   "ticker": "AZZ",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000885725",
+   "ticker": "BSX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000071691",
+   "ticker": "NYT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0001828016",
+   "ticker": "PLTK",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000899051",
+   "ticker": "ALL",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0001497770",
+   "ticker": "WD",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0001133421",
+   "ticker": "NOC",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0001054905",
+   "ticker": "IOSP",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000861459",
+   "ticker": "GVA",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0000804328",
+   "ticker": "QCOM",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000912767",
+   "ticker": "UFPI",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0000766421",
+   "ticker": "ALK",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000069733",
+   "ticker": "NATH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true,
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000080424",
+   "ticker": "PG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2025-12-31_0000816956",
+   "ticker": "CNMD",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2025-12-31_0001166691",
+   "ticker": "CMCSA",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2025-12-31_0000818686",
+   "ticker": "TEVA",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001869198",
+   "ticker": "LTH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001794515",
+   "ticker": "GTM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0001521332",
+   "ticker": "APTV",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0001501585",
+   "ticker": "HII",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0000759944",
+   "ticker": "CFG",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0000944745",
+   "ticker": "CIVB",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0001941365",
+   "ticker": "MBC",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0001839839",
+   "ticker": "JBI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001158895",
+   "ticker": "LMAT",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001206264",
+   "ticker": "SGI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001144980",
+   "ticker": "ABG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000106040",
+   "ticker": "WDC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001436126",
+   "ticker": "MG",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0000103595",
+   "ticker": "VLGEA",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000802481",
+   "ticker": "PPC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001020859",
+   "ticker": "UNFI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001758730",
+   "ticker": "TW",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000878927",
+   "ticker": "ODFL",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000315213",
+   "ticker": "RHI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000750686",
+   "ticker": "CAC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0000033185",
+   "ticker": "EFX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001829864",
+   "ticker": "TASK",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001674101",
+   "ticker": "VRT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0001477294",
+   "ticker": "ST",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000004962",
+   "ticker": "AXP",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0001601046",
+   "ticker": "KEYS",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0000780571",
+   "ticker": "ITRI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001822993",
+   "ticker": "JXN",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0000885590",
+   "ticker": "BHC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001050797",
+   "ticker": "COLM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001889539",
+   "ticker": "CRBG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0000885639",
+   "ticker": "KSS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0001638290",
+   "ticker": "MCFT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001179929",
+   "ticker": "MOH",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000842023",
+   "ticker": "TECH",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0001680062",
+   "ticker": "ACMR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001315257",
+   "ticker": "KOP",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0000944695",
+   "ticker": "THG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0001599617",
+   "ticker": "DNOW",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001659166",
+   "ticker": "FTV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001594805",
+   "ticker": "SHOP",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001104657",
+   "ticker": "MTRN",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000911177",
+   "ticker": "CWST",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0001475841",
+   "ticker": "NBHC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0001834488",
+   "ticker": "NABL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000879526",
+   "ticker": "WNC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001164863",
+   "ticker": "NPO",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001328581",
+   "ticker": "BCC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000048465",
+   "ticker": "HRL",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000069488",
+   "ticker": "MYE",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000102752",
+   "ticker": "VSEC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0000854775",
+   "ticker": "DGII",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000798354",
+   "ticker": "FISV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001531152",
+   "ticker": "BJ",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0001801170",
+   "ticker": "CLOV",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0001377789",
+   "ticker": "AVNW",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000020212",
+   "ticker": "CHDN",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-02-27_0001841156",
+   "ticker": "PAY",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000793074",
+   "ticker": "WERN",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0000057131",
+   "ticker": "LZB",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000751978",
+   "ticker": "VICR",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0000883241",
+   "ticker": "SNPS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0001964789",
+   "ticker": "HUT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0000926326",
+   "ticker": "OMCL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000931015",
+   "ticker": "PII",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000097134",
+   "ticker": "TNC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-02-27_0000863436",
+   "ticker": "BHE",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-02-27_0001564902",
+   "ticker": "PRKS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000046250",
+   "ticker": "HWKN",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000046619",
+   "ticker": "HEI",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0000816761",
+   "ticker": "TDC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true,
+    "revenue_minus_costs_equals_oi": false
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000060086",
+   "ticker": "L",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0000070318",
+   "ticker": "THC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0000865752",
+   "ticker": "MNST",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000076282",
+   "ticker": "PKOH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001639300",
+   "ticker": "OLLI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001437578",
+   "ticker": "BFAM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001357615",
+   "ticker": "KBR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001666138",
+   "ticker": "ATKR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000866374",
+   "ticker": "FLEX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001639691",
+   "ticker": "LIVN",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001047335",
+   "ticker": "NHC",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0001368622",
+   "ticker": "AVAV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000005272",
+   "ticker": "AIG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0000944695",
+   "ticker": "THG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0000109380",
+   "ticker": "ZION",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0001090872",
+   "ticker": "A",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000896878",
+   "ticker": "INTU",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0001212545",
+   "ticker": "WAL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0000819793",
+   "ticker": "AIN",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000912767",
+   "ticker": "UFPI",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001613103",
+   "ticker": "MDT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0001436208",
+   "ticker": "LEGH",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0001496443",
+   "ticker": "PAYS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001672013",
+   "ticker": "GOLF",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001078075",
+   "ticker": "NTCT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001050797",
+   "ticker": "COLM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001100682",
+   "ticker": "CRL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0000317788",
+   "ticker": "APPS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true,
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001880319",
+   "ticker": "PRM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000908937",
+   "ticker": "SIRI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001095565",
+   "ticker": "HSTM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000004962",
+   "ticker": "AXP",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0001898496",
+   "ticker": "GETY",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001101302",
+   "ticker": "ENTG",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001610250",
+   "ticker": "BOOT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000091419",
+   "ticker": "SJM",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001005284",
+   "ticker": "OLED",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0000880117",
+   "ticker": "JBSS",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001048695",
+   "ticker": "FFIV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001964789",
+   "ticker": "HUT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0001479681",
+   "ticker": "NUTX",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": false
+   },
+   "status": "closure_fail"
+  },
+  {
+   "key": "2026-04-30_0000929008",
+   "ticker": "WCC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0001723128",
+   "ticker": "AMRX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001476034",
+   "ticker": "MCB",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0000842023",
+   "ticker": "TECH",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0000069733",
+   "ticker": "NATH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true,
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001043509",
+   "ticker": "SAH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001034670",
+   "ticker": "ALV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001680247",
+   "ticker": "PUMP",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001397187",
+   "ticker": "LULU",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000007431",
+   "ticker": "AWI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001022079",
+   "ticker": "DGX",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001308547",
+   "ticker": "DLB",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0001276520",
+   "ticker": "GNW",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0001488139",
+   "ticker": "AMRC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001858681",
+   "ticker": "APO",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-04-30_0001083301",
+   "ticker": "WULF",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0000277509",
+   "ticker": "FSS",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-04-30_0000886346",
+   "ticker": "KAI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001866633",
+   "ticker": "CCSI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001725255",
+   "ticker": "AHCO",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0000108516",
+   "ticker": "WOR",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001386570",
+   "ticker": "NAGE",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-04-30_0001261654",
+   "ticker": "UTI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0001653558",
+   "ticker": "PRTH",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001839839",
+   "ticker": "JBI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001665918",
+   "ticker": "USFD",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000903651",
+   "ticker": "INOD",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000921638",
+   "ticker": "SSRM",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0001743759",
+   "ticker": "CRSR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001325618",
+   "ticker": "IRMD",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-06-30_0000007431",
+   "ticker": "AWI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000930420",
+   "ticker": "KFRC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001609804",
+   "ticker": "OEC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001368622",
+   "ticker": "AVAV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000717954",
+   "ticker": "UNF",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000719955",
+   "ticker": "WSM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001090009",
+   "ticker": "SFST",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0001032975",
+   "ticker": "LOGI",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000794367",
+   "ticker": "M",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-06-30_0000027419",
+   "ticker": "TGT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0001683606",
+   "ticker": "CARS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0001408710",
+   "ticker": "FN",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "derived_q4",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-06-30_0000772406",
+   "ticker": "CRUS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000039311",
+   "ticker": "IBCP",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0001794515",
+   "ticker": "GTM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000769520",
+   "ticker": "MIDD",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000354950",
+   "ticker": "HD",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001000697",
+   "ticker": "WAT",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-06-30_0001944013",
+   "ticker": "CR",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000043196",
+   "ticker": "GTN",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000320335",
+   "ticker": "GL",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000036377",
+   "ticker": "FHB",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000080424",
+   "ticker": "PG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "derived_q4",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000842633",
+   "ticker": "TRS",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-06-30_0001831651",
+   "ticker": "SHLS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001481582",
+   "ticker": "RYZ",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001034670",
+   "ticker": "ALV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000317788",
+   "ticker": "APPS",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true,
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001230245",
+   "ticker": "PIPR",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-06-30_0000016040",
+   "ticker": "CBT",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001610250",
+   "ticker": "BOOT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001632127",
+   "ticker": "CABO",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001802665",
+   "ticker": "HRMY",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001422930",
+   "ticker": "PUBM",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001809987",
+   "ticker": "MIR",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001013272",
+   "ticker": "NWFL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000720672",
+   "ticker": "SF",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-06-30_0001433195",
+   "ticker": "APPF",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001609550",
+   "ticker": "INSP",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000094344",
+   "ticker": "STC",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000010795",
+   "ticker": "BDX",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000105770",
+   "ticker": "WST",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000042682",
+   "ticker": "GRC",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000027996",
+   "ticker": "DLX",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000907471",
+   "ticker": "CASH",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000314489",
+   "ticker": "BUSE",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000818686",
+   "ticker": "TEVA",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001811074",
+   "ticker": "TPL",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000004962",
+   "ticker": "AXP",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000791963",
+   "ticker": "OPY",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-06-30_0001814287",
+   "ticker": "ABX",
+   "tag": "Revenues",
+   "n_revenue_tags": 2,
+   "kind": "reported_3m",
+   "status": "dominance"
+  },
+  {
+   "key": "2026-06-30_0000102752",
+   "ticker": "VSEC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0001090872",
+   "ticker": "A",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001128928",
+   "ticker": "FLO",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0000071691",
+   "ticker": "NYT",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "revenue_minus_costs_equals_oi": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000764478",
+   "ticker": "BBY",
+   "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000102037",
+   "ticker": "UVV",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  },
+  {
+   "key": "2026-06-30_0001000228",
+   "ticker": "HSIC",
+   "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0000718937",
+   "ticker": "STAA",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {
+    "gross_profit_plus_cost": true
+   },
+   "status": "closure"
+  },
+  {
+   "key": "2026-06-30_0001598665",
+   "ticker": "HRTG",
+   "tag": "Revenues",
+   "n_revenue_tags": 1,
+   "kind": "reported_3m",
+   "tests": {},
+   "status": "unverified"
+  }
+ ]
+}
