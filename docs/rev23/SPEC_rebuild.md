@@ -4432,3 +4432,84 @@ any v2.0.1 number exists:
    - A test shows years 1–3 byte-identical to v2.0 at the same seeds and inputs. Any difference stops acceptance until it is explained.
 
 The order stays AL.27's: code and tests, then diagnostics, then E5 with E8, then the `mean_iv` question to the operator, then any freeze.
+
+**AL.28 (2026-10-14 15:27): v2.0.1 measured; the remaining tails attributed; four additions to E8/v2.0.1 adopted from an outside review (via fork 1,
+AK.45); the options for the operator's mean_iv ruling.**
+- **Two disclosures first,** in answer to fork 1's question "is it still true that no v2.0.1 number exists?". It is not.
+  1. **v2.0.1 numbers exist.** After AL.27 fixed E8's bars, v2.0.1 (e263517) was run diagnostically on 2 of E8's 20 dates (2021-06-30,
+     2024-06-30; 600 companies; below). E8's bars were fixed before; the additions below only tighten, and none uses those numbers. The
+     vintage-2025 run (addition 3) is on dates no diagnostic touched.
+  2. **The financial continuation was coded before its rule was written.** The envelope of ρ and φ was implemented in e263517 together with
+     the growth envelope. Its rule is written below, as built, and the code is held to it by the tests of addition 1.
+- **The financial rule, as built** (`financial_chain_v2`; for each curve c, ẽ is its running minimum, so ẽ_t = min(c_1..c_t)):
+  - **growth:** g_t = g_T + (g_3 − g_T)·d̃_t/d̃_3 for t ≥ 4. If d̃_3 = 0, then g_t = g_T (flat, stamped).
+  - **pre-fade ROTE:** R*_3 = I + (ROTE′_3 − I)/φ̃_3, then R_t = r_T + (R*_3 − r_T)·ρ̃_t/ρ̃_3. If φ̃_3 = 0 or ρ̃_3 = 0, then R_t = r_T
+    (flat, stamped).
+  - **after the fade:** ROTE′_t = I + (R_t − I)·φ̃_t.
+  - **Hence,** with r_T = I, ROTE′_t − I = (ROTE′_3 − I)·(ρ̃_t/ρ̃_3)·(φ̃_t/φ̃_3), and every factor is in [0, 1]. The division by a small φ̃_3
+    is cancelled by φ̃_t ≤ φ̃_3, so it cannot amplify. With r_T ≠ I, the path is a convex blend between ROTE′_3's deviation and the long-run
+    level's.
+  - **operating (as before):** g_t = g_T + (g_3 − g_T)·d̃_t/d̃_3.
+- **Fork 1's four additions, adopted:**
+  1. **Attenuation invariant.** With λ_t the multiplier on the year-3 deviation, 1 ≥ λ_4 ≥ λ_5 ≥ … ≥ 0 in both chains. Unit tests cover:
+     - a zero and a near-zero d_3, ρ_3 and φ_3;
+     - a non-monotone curve;
+     - deviations of both signs;
+     - a monotone curve, where v2.0.1 equals v2.0, and equals v1 wherever v2.0 did.
+  2. **Financial rules written,** as above.
+  3. **E8 on the gate-2b vintage.** The same measures and bars, against v1 on the same inputs, on gate 2's company-dates at 2026-02-27..
+     2026-06-30, valued at T with the vintage-2025 tables (`data/priors_v4_pit/2025`). It is a second E8 sample; both must pass.
+  4. **Identity and reproducibility.**
+     - The engine reports `engine_version` v2.0.1 (the near-term tables stay version v2.0; their hashes are listed with the freeze).
+     - A diff report of the engine files from v2.0 to v2.0.1.
+     - A test that years 1–3 (the near-term distributions, the forecasts reported, and the years-1–3 rows at the median point) are identical
+       to v2.0's at the same seed and inputs. Any difference stops acceptance until explained.
+- **v2.0.1 on the two diagnostic dates** (600 companies; v1 beside it):
+  - **Invalid draws: 0** in every name.
+  - **The top-1% share of the mean, median (90th percentile):**
+    - 2021 operating: v1 0.062 (0.177), v2.0.1 0.242 (0.369);
+    - 2021 financial: v1 0.023 (0.081), v2.0.1 0.197 (0.456);
+    - 2024 operating: v1 0.079 (0.163), v2.0.1 **0.095 (0.252)**;
+    - 2024 financial: v1 0.025 (0.049), v2.0.1 0.075 (0.359).
+  - So **v2.0.1 alone would not pass E8b** on 3 of the 4 cells.
+- **Attribution of what remains.** One variable's residual spread is collapsed to its median at a time (diagnostic):
+  - removing the **growth** spread (operating revenue growth; financial tangible-book growth) brings the median top-1% share to **0.046 /
+    0.013** (2021) and **0.045 / 0.015** (2024), at or below v1;
+  - removing the margin or ROTE spread changes almost nothing (0.238, 0.196, 0.090, 0.067).
+
+  **The remaining tails are the growth residual draws**, compounding through years 1–3 (positively correlated) into the years-4+ path.
+- **Why the growth tails are suspect as valuation inputs** (an argument, for the operator):
+  - The residuals are measured on first-filed total growth. That includes acquisitions and, for financials, tangible-book growth from
+    issuance. A per-share DCF or residual-income model does not pay for either the way the deal did.
+  - AL.22 also measured 4–5% of growth outcomes misstated by more than 5 points (recasts, seams, partial lines). Those concentrate in the
+    tails.
+- **The options for the mean_iv ruling,** each measured on the two diagnostic dates:
+
+  | Option | What changes | Top-1% share, median (2021 op / 2021 fin / 2024 op / 2024 fin) | Mean value against v2.0.1, median | P50 |
+  |---|---|---|---|---|
+  | **1. Trim the growth residuals' extreme 5% tails** (P1 := P5, P99 := P95, growth variables only; draws beyond carry the P5/P95 value) | the draws | **0.092 / 0.028 / 0.066 / 0.026** (all within 2× of v1; 90th percentiles 0.227 / 0.040 / 0.204 / 0.042) | −12% / −26% / −5% / −10% | unchanged |
+  | **2. Trimmed mean** (drop the top and bottom 1% of draws) | the statistic, not the draws | n/a (E8b measures the mean the contract reads; this changes what it reads) | −23% / −18% / −8% / −6% | unchanged |
+  | **3. Keep** | nothing | 0.242 / 0.197 / 0.095 / 0.075 | – | – |
+
+  - **Option 1** leaves P10–P90, and so E3's coverage, untouched. It needs a version (v2.0.2) with its own identity tests, because years
+    1–3 draws change in their outer 5%.
+  - **Option 3** fails E8 as registered.
+  - **Recommended: option 1.**
+
+**AK.46 (2026-10-14 15:28): AK.45's additions are registered by fork 2 in AL.28 (`5c7d811`); the coordinator's position on its v2.0.2 "option 1".**
+- **AL.28's disclosures, accepted as stated:**
+  - v2.0.1 numbers existed on 2 of E8's 20 dates before the additions. The additions only tighten, and the 2026 dates are untouched.
+  - The ρ/φ envelope was coded (`e263517`) before its rule was written. That is a process slip, recorded as such: the rule AL.28 writes
+    is the one built, and the addition-1 tests bind the code to it.
+- **The finding:** v2.0.1 has zero invalid draws, but E8b (the top-1% share) would still fail on 3 of 4 cells. Collapsing each variable in
+  turn puts the whole remaining tail in the **growth** residuals.
+- **Fork 2's option 1** (v2.0.2: the growth residuals' P1/P99 set to P5/P95) passes the bars on the diagnostic dates, with means 5–26% lower.
+  **The coordinator does not support it yet:**
+  1. **The likely cause is measured contamination, not true risk.** 4.6% of first-filed growth outcomes are wrong by more than 5 pt and
+     1.9% by more than 20 pt (AL.22: recasts, seams, partial lines), and those errors sit in exactly the P1/P99 tails. **Option 2,**
+     asked of fork 2: keep P10–P90 as now (AL.22's coverage result), and take the tail quantiles beyond them from the **tag-consistent**
+     residual tables already built. That removes a measured error; a P5/P95 cut is a choice made after seeing E8b fail.
+  2. **Choosing on E8's own dates.** Either option is chosen on 2 diagnostic dates. E8's verdict is read on the dates not used for the
+     choice (the other 18, and AL.28's 2026/vintage-2025 dates), reported apart from the 2.
+  3. **The mean moves.** Lowering means by 5–26% changes `mean_iv`-based direction, sizing and H-S1. That is an economic change, for the
+     operator with both options measured.
