@@ -84,3 +84,19 @@ def test_ak51_item3_the_matched_financial_oracle_uses_realised_tbv_growth_and_ro
     a, b = E5.values(c, {"fx_out": lo}, SHARES, table()), E5.values(c, {"fx_out": hi}, SHARES, table())
     assert b["v2"] != a["v2"] and b["v1_same"] != a["v1_same"]                                          # the matched reading sees tbv growth
     assert b["v2_rote_only"] == a["v2_rote_only"] and b["v1_same_rote_only"] == a["v1_same_rote_only"]  # the labelled ROTE-only sensitivity does not
+
+
+def test_v21_the_oracle_and_the_distribution_read_the_measured_continuation_only_when_given_the_tables():
+    import dataclasses
+    for family, sic in (("operating", "3674"), ("financial", "6021")):
+        pit, st, ps, disc = setup(family, sic)
+        ps = dataclasses.replace(ps, meta={"vintage": 2024, "features": {"g3": 0.07, "tg3": 0.07}})
+        zero = SimpleNamespace(tables=lambda v: {"edges": {"growth": [-0.10, 0.0, 0.05, 0.10, 0.20, 0.40]},
+                                                 "continuation": {family: {"buckets": [{"bucket": [0, 6], "lambda": [0.0] * 7}]}}})
+        c = SimpleNamespace(family=family, st=st, ps=ps, disc=disc, pit=pit)
+        k = E5.v2_point(family, st, ps, disc, table(), SHARES)
+        m = E5.v2_point(family, st, ps, disc, table(), SHARES, priors=zero)
+        assert k["reason"] is None and m["reason"] is None and k["ps"] != m["ps"]
+        dk = E5.v2_distribution(c, table(), SHARES, n_draws=50)
+        dm = E5.v2_distribution(c, table(), SHARES, n_draws=50, priors=zero)
+        assert dk["continuation"].startswith("K:") and "continuation (measured" in dm["continuation"] and dm["engine_version"] == "v2.1"

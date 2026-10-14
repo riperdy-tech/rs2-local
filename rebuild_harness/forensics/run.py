@@ -118,7 +118,7 @@ def run_date_fx(d):
                     chain_ok["error"] += 1
                 if cfg.get("e5_tables"):                     # Addendum AL.24: engine v2's oracle on the same information as v1's
                     try:
-                        rec["e5"] = E5.values(A.CAP, rec, rec["shares"], _e5_table(cfg["e5_tables"], int(d[:4]) - 1))
+                        rec["e5"] = E5.values(A.CAP, rec, rec["shares"], _e5_table(cfg["e5_tables"], int(d[:4]) - 1), priors=priors)
                         if cfg.get("e5_dist"):               # AL.25 diagnostic: v2's full distribution beside v1's
                             v1eq = sorted((x[0] for x in A.CAP.draws), reverse=True)
                             rec["e5"]["v1_top1pct_share_of_mean"] = (sum(v1eq[:max(1, len(v1eq) // 100)]) / sum(v1eq)) if v1eq and sum(v1eq) > 0 else None
@@ -127,14 +127,14 @@ def run_date_fx(d):
                                 import numpy as _np
                                 evs = _np.array([x[4] + x[1] for x in A.CAP.draws], dtype=float)
                                 rec["e5"]["v1_ev_p50"], rec["e5"]["v1_ev_p90"] = float(_np.quantile(evs, 0.5)), float(_np.quantile(evs, 0.9))
-                            rec["e5"]["v2_dist"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"])
+                            rec["e5"]["v2_dist"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], priors=priors)
                             if cfg.get("e5_diag"):                   # AL.28 diagnostic only: option 1 applied on top (redundant once v2.0.2 is the engine)
                                 gv = "growth" if A.CAP.family == "operating" else "tbvg"
-                                rec["e5"]["v2_dist_winsor"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], winsor=gv)
+                                rec["e5"]["v2_dist_winsor"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], winsor=gv, priors=priors)
                             if cfg.get("e5_tc_tables"):              # AL.29 diagnostic: fork 1's option, tails from the tag-consistent tables
                                 tct = _e5_table(cfg["e5_tc_tables"], int(d[:4]) - 1)
                                 if tct is not None:
-                                    rec["e5"]["v2_dist_tctails"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], tc_table=tct)
+                                    rec["e5"]["v2_dist_tctails"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], tc_table=tct, priors=priors)
                     except Exception as e:
                         import traceback
                         rec["e5"] = {"error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-800:]}

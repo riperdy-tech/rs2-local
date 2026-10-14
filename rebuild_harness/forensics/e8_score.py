@@ -39,7 +39,7 @@ def _q(xs, p):
 
 
 def new_recon() -> dict:
-    return {"attempted": 0, "both_valued": 0, "v2_refused_named": [], "v2_refused_unnamed": [], "instrumentation_errors": []}
+    return {"attempted": 0, "both_valued": 0, "v2_refused_named": [], "v2_refused_unnamed": [], "instrumentation_errors": [], "continuation": {}}
 
 
 def rows_of(run_dir, recon=None):
@@ -69,6 +69,9 @@ def rows_of(run_dir, recon=None):
                     continue
                 if recon is not None:
                     recon["both_valued"] += 1
+                    c = d2.get("continuation")                         # v2.1 (AL.40-AL.43): which continuation each valued name used
+                    kind = "not_recorded" if c is None else "K" if c.startswith("K:") else "family_pooled" if "family_pooled" in c else "measured"
+                    recon["continuation"][kind] = recon["continuation"].get(kind, 0) + 1
                 iv = v.get("iv_ps") or {}
                 if fam == "operating":
                     ev1 = (e["v1_ev_p90"] / e["v1_ev_p50"]) if e.get("v1_ev_p50") and e["v1_ev_p50"] > 0 and e.get("v1_ev_p90") is not None else None

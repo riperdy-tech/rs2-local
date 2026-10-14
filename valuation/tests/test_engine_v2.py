@@ -143,7 +143,7 @@ def test_full_runs_value_both_families_and_report_years_1_to_3():
     for family, sic, mod, var in (("operating", "3674", o2, "growth"), ("financial", "6021", f2, "rote")):
         pit, st, ps, disc = setup(family, sic)
         r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(corr={family: {nt.name(var, 1) + "|" + nt.name(var, 2): 0.5}}), n_draws=300, seed=3, state=st)
-        assert r["status"] == "ok" and r["engine_version"] == "v2.0.3" and r["engine_interim"].startswith("interim:") and r["near_term_table_version"] == "v2.0" and r["distribution"]["equity"]["p50"] > 0
+        assert r["status"] == "ok" and r["engine_version"] == "v2.1" and r["engine_interim"].startswith("interim:") and r["near_term_table_version"] == "v2.0" and r["distribution"]["equity"]["p50"] > 0
         assert set(r["forecast_years"][var]) == {1, 2, 3} and "p50" in r["forecast_year1"][var if family == "operating" else "rote"]
         assert r["near_term"]["copula"]["measured"] == [nt.name(var, 1) + "|" + nt.name(var, 2)]
 
@@ -359,7 +359,7 @@ def test_al28_years_1_to_3_are_identical_to_v2_0_at_the_same_seed_and_inputs():
         r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(), n_draws=200, seed=7, state=st)
         got = _json.loads(_json.dumps({"forecast_years": r["forecast_years"], "years_1_3": r["at_median_inputs"]["years"][:3]}, sort_keys=True, default=str))
         assert got["forecast_years"] == gold[family]["forecast_years"] and got["years_1_3"] == gold[family]["years_1_3"]
-        assert gold[family]["engine_version"] == "v2.0" and r["engine_version"] == "v2.0.3"
+        assert gold[family]["engine_version"] == "v2.0" and r["engine_version"] == "v2.1"
 
 
 # ---- Addendum AL.30: v2.0.2, the INTERIM clip of the growth tails --------------------------------------------------------------------------------------
@@ -393,3 +393,99 @@ def test_ak51_item7_rote_attenuation_holds_when_the_long_run_rote_differs_from_t
             a, b = path(ind + 0.02), path(ind + 0.10)
             lam = [(y1 - y0) / 0.08 for y0, y1 in zip(a, b)]
             assert all(1.0 + 1e-9 >= x >= y - 1e-9 for x, y in zip([1.0] + lam, lam)) and all(x >= -1e-9 for x in lam), (case, rT, lam)
+
+
+# ---- Addenda AL.40-AL.43: v2.1, the measured continuation ----------------------------------------------------------------------------------------------
+
+from types import SimpleNamespace as _NS                                              # noqa: E402
+from valuation.priors_build import continuation as _cont                              # noqa: E402
+
+CONT = Curve([1.0, 1.0, 1.0, 0.20, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0], "continuation")
+
+
+def test_v21_years_1_to_3_are_identical_with_and_without_the_continuation_and_later_years_follow_lambda():
+    pit, st, ps, disc = setup()
+    for g3 in (-0.30, 0.02, 0.25, 0.60):
+        k, gT = _op_point({"growth_decay": Curve(RISING, "growth_decay")}, math.log1p(g3))
+        c, _ = _op_point({"growth_decay": Curve(RISING, "growth_decay"), "continuation": CONT}, math.log1p(g3))
+        assert c["years"][:3] == k["years"][:3]
+        for y in c["years"][3:]:
+            assert math.isclose(y["growth"], gT + (g3 - gT) * CONT.at(y["t"]), rel_tol=0, abs_tol=1e-12)
+        assert nt.RULE_CONTINUATION in c["rules"] and o2.RULE_DECAY_ENVELOPE not in c["rules"] and o2.RULE_FLAT_DECAY not in c["rules"]
+        assert nt.RULE_CONTINUATION not in k["rules"]
+
+
+def test_v21_the_financial_continuation_moves_tangible_book_growth_only():
+    pit, st, ps, disc = setup("financial", "6021")
+    gT = terminal_growth_rate(disc.rf)
+    ind = st["industry_rote"]["value"]
+    q = {"g_terminal": gT, "rote_target": ind, "nt_ltbvg_1": 0.05, "nt_ltbvg_2": 0.05, "nt_ltbvg_3": math.log1p(0.3), "nt_rote_1": ind, "nt_rote_2": ind,
+         "nt_rote_3": ind + 0.05}
+    k = f2.financial_chain_v2(st, q, dict(ps.curves), disc, detail=True)
+    c = f2.financial_chain_v2(st, q, dict(ps.curves, continuation=CONT), disc, detail=True)
+    assert c["years"][:3] == k["years"][:3]
+    for a, b in zip(c["years"][3:], k["years"][3:]):
+        assert math.isclose(a["growth"], gT + (0.3 - gT) * CONT.at(a["t"]), abs_tol=1e-12)
+        assert a["rote_after_fade"] == b["rote_after_fade"]                            # the ROTE continuation is not part of v2.1 (AL.43)
+    assert nt.RULE_CONTINUATION in c["rules"]
+
+
+def test_v21_the_continuation_is_the_buckets_lambda_else_the_family_pool_else_none():
+    lam = [0.2, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0]
+    gd = {"growth_decay": Curve(RISING, "growth_decay")}
+
+    def ps(curves=gd, features={"g3": 0.07, "tg3": 0.07}):                            # 0.07 is growth bucket 3 under EDGES
+        return _NS(curves=curves, meta={"vintage": 2024, "features": features}, source="src")
+
+    EDGES = {"growth": [-0.10, 0.0, 0.05, 0.10, 0.20, 0.40]}
+
+    def pri(section):
+        return _NS(tables=lambda v: dict({"edges": EDGES}, **({"continuation": section} if section is not None else {})))
+    for row, pooled, expect, note in (({"bucket": [3, 4], "lambda": lam}, None, "measured", None),
+                                      ({"bucket": [3, 4], "lambda": None}, [0.1] * 7, "family_pooled", "family-pooled"),
+                                      ({"bucket": [3, 4], "lambda": None}, None, None, "neither")):
+        c, notes = nt.continuation(pri({"operating": {"buckets": [row], "family_pooled": pooled}}), ps(), "operating")
+        if expect is None:
+            assert c is None and any(note in n for n in notes)
+        else:
+            assert c.values[:3] == [1.0, 1.0, 1.0] and expect in c.source
+            assert c.values[3:] == ([float(x) for x in lam] if expect == "measured" else [0.1] * 7)
+            assert note is None or any(note in n for n in notes)
+    ok = {"operating": {"buckets": [{"bucket": [0, 2], "lambda": [0.9] * 7}, {"bucket": [3, 4], "lambda": lam}]},
+          "financial": {"buckets": [{"bucket": [3, 3], "lambda": [0.3] * 7}]}}
+    assert nt.continuation(pri(ok), ps(), "operating")[0].values[3:] == [float(x) for x in lam]
+    assert nt.continuation(pri(ok), ps(features={"g3": None, "g_latest": -0.05}), "operating")[0].values[3] == 0.9   # g_latest when g3 is missing
+    assert nt.continuation(pri(ok), ps(), "financial")[0].values[3] == 0.3              # the financial bucket comes from tangible-book growth
+    assert nt.continuation(pri(ok), ps(curves={}), "operating") == (None, [])          # no growth-decay curve: no continuation
+    assert nt.continuation(pri(ok), ps(features={}), "operating")[0] is None           # no growth delivered: K, noted
+    assert nt.continuation(pri(None), ps(), "operating") == (None, [])                 # tables without the section (priors_v3_fy): K, v2.0.3
+    assert nt.continuation(_NS(), ps(), "operating") == (None, [])                     # placeholder priors have no tables
+
+
+def test_v21_full_runs_on_tables_without_a_continuation_are_v2_0_3_and_report_k():
+    for family, sic, mod in (("operating", "3674", o2), ("financial", "6021", f2)):
+        pit, st, ps_, disc = setup(family, sic)
+        r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(), n_draws=50, seed=1, state=st)
+        assert r["continuation"].startswith("K:") and nt.RULE_CONTINUATION not in r["at_median_inputs"]["rules"]
+
+
+def test_v21_the_estimator_recovers_a_known_decay_and_never_rises_or_leaves_0_1():
+    import numpy as np
+    import pandas as pd
+    rng = np.random.default_rng(3)
+    n, T = 3000, 0.04
+    x = rng.normal(0, 0.2, n)
+    truth = {4: 0.6, 5: 0.4, 6: 0.2, 7: 0.2, 8: 0.1}
+    d = {"g_3": x + T}
+    for k, l in truth.items():
+        d[f"g_{k}"] = T + l * x + rng.standard_t(2, n) * 0.05
+    d["g_9"] = T + 0.9 * x                                                              # a rise: enveloped
+    d["g_10"] = np.full(n, np.nan)
+    lam, ns = _cont.lambdas(pd.DataFrame(d), "g", T)
+    for k, l in truth.items():
+        assert abs(lam[k - 4] - l) < 0.03
+    assert lam[5] == lam[4]                                                             # k = 9's measured 0.9 cannot rise above k = 8
+    assert all(b <= a for a, b in zip(lam, lam[1:])) and all(0.0 <= v <= 1.0 for v in lam) and len(lam) == 7
+    assert lam[6] == lam[5]                                                             # k = 10 is not measured here: held, then enveloped
+    few = pd.DataFrame({"g_3": [0.1] * 10, **{f"g_{k}": [0.05] * 10 for k in range(4, 11)}})
+    assert _cont.lambdas(few, "g", T) == (None, [])

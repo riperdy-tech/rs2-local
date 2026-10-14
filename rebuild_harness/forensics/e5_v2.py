@@ -37,8 +37,9 @@ def realised(rec: dict, family: str) -> dict:
             "k": {"g": len(p["g"]), "m": len(p["m"]), "rote": len(p["rote"])}}
 
 
-def v2_point(family: str, st: dict, ps, disc, table: Mapping, shares: float, over: Optional[dict] = None) -> dict:
-    """Engine v2's point value at its median inputs, with `over` replacing named inputs.  {"ps": value per share or None, "reason": ...}."""
+def v2_point(family: str, st: dict, ps, disc, table: Mapping, shares: float, over: Optional[dict] = None, priors=None) -> dict:
+    """Engine v2's point value at its median inputs, with `over` replacing named inputs.  {"ps": value per share or None, "reason": ...}.
+    `priors` (the run's PopulationPriors) supplies v2.1's measured continuation exactly as the engine's run() reads it (nt.continuation); None: K."""
     g_term = terminal_growth_rate(disc.rf)
     try:
         ndists, _corr, _info = nt.near_term_inputs(family, st, ps, g_term, table, prior_features(st, family), None)
@@ -53,17 +54,21 @@ def v2_point(family: str, st: dict, ps, disc, table: Mapping, shares: float, ove
         if unknown:
             return {"ps": None, "reason": f"override of an input the engine does not draw: {unknown}"}
         mid.update(over)
+    curves = dict(ps.curves)
+    cont, _notes = nt.continuation(priors, ps, family)
+    if cont is not None:
+        curves["continuation"] = cont
     try:
         if family == "financial":
-            r = financial_chain_v2(st, mid, ps.curves, disc)
+            r = financial_chain_v2(st, mid, curves, disc)
         else:
-            r = operating_chain_v2(st, mid, dict(ps.curves), disc)
+            r = operating_chain_v2(st, mid, curves, disc)
     except (DrawInvalid, InputError, ZeroDivisionError, ValueError) as e:
         return {"ps": None, "reason": f"{type(e).__name__}: {str(e)[:160]}"}
     return {"ps": _ps_value(r, shares), "reason": None}
 
 
-def values(cap, rec: dict, shares: float, table: Optional[Mapping]) -> dict:
+def values(cap, rec: dict, shares: float, table: Optional[Mapping], priors=None) -> dict:
     """The E5 record of one name (see the module docstring)."""
     fam, st, ps, disc = cap.family, cap.st, cap.ps, cap.disc
     if fam not in ("operating", "financial"):
@@ -81,13 +86,13 @@ def values(cap, rec: dict, shares: float, table: Optional[Mapping]) -> dict:
     if table is None:
         out["v2_reason"] = "no near-term table for the vintage"
         return out
-    p = v2_point(fam, st, ps, disc, table, shares)
+    p = v2_point(fam, st, ps, disc, table, shares, priors=priors)
     out["v2_p50"], out["v2_p50_reason"] = p["ps"], p["reason"]
     over = {}
     if fam == "financial":
         rote_only = {nt.name("rote", k): v for k, v in rz["rote"].items()}
         if rote_only:                                                                    # the labelled ROTE-only sensitivity (AK.51 item 3)
-            out["v2_rote_only"] = v2_point(fam, st, ps, disc, table, shares, rote_only)["ps"]
+            out["v2_rote_only"] = v2_point(fam, st, ps, disc, table, shares, rote_only, priors=priors)["ps"]
         over.update(rote_only)
         bad = [k for k, g in rz["g"].items() if g <= -1.0]
         over.update({nt.name("tbvg", k): math.log1p(g) for k, g in rz["g"].items() if g > -1.0})
@@ -102,7 +107,7 @@ def values(cap, rec: dict, shares: float, table: Optional[Mapping]) -> dict:
     if not ok:
         out["v2"], out["v2_reason"] = None, "no realised year 1 (or growth at or below -100%)"
         return out
-    q = v2_point(fam, st, ps, disc, table, shares, over)
+    q = v2_point(fam, st, ps, disc, table, shares, over, priors=priors)
     out["v2"], out["v2_reason"] = q["ps"], q["reason"]
     return out
 
@@ -164,7 +169,7 @@ def _tc_tails(table: Mapping, tc_table: Mapping, family: str, var: str) -> dict:
 
 
 def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int = 2000, seed: int = 20261006, envelope: bool = False,
-                    collapse: Optional[str] = None, winsor: Optional[str] = None, tc_table: Optional[Mapping] = None) -> dict:
+                    collapse: Optional[str] = None, winsor: Optional[str] = None, tc_table: Optional[Mapping] = None, priors=None) -> dict:
     """DIAGNOSTIC (Addendum AL.25): engine v2's full run on the captured state, beside v1's own: the invalid-draw share and the per-share P10/P50/P90/mean.
     Reads no outcome."""
     from valuation import engine_financial_v2 as f2, engine_operating_v2 as o2
@@ -176,6 +181,8 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
     class _Fixed:                                                       # the prior set the v1 run used, handed to v2 unchanged
         def __init__(self, ps):
             self._ps = ps
+            if priors is not None:                                      # v2.1: the run's tables, so the engine reads its measured continuation
+                self.tables = priors.tables
 
         def for_company(self, family, state, asof):
             return self._ps
@@ -219,7 +226,7 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         trim = (sum(mid) / len(mid)) / (sum(ks) / len(ks)) if mid else None
         p99 = ks[cut - 1] if cut >= 1 else ks[0]                                          # AL.30 option (b): draws above their own P99 set to it, then the mean
         w99 = (sum(min(x, p99) for x in ks) / len(ks)) / (sum(ks) / len(ks))
-    return {"status": "ok", "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
+    return {"status": "ok", "engine_version": r.get("engine_version"), "continuation": r.get("continuation"), "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
             "ev_p10": ev.get("p10"), "ev_p50": ev.get("p50"), "ev_p90": ev.get("p90"), "ev_mean": ev.get("mean"), "share_floored": d.get("share_negative_equity"),
             "top1pct_share_of_mean": top, "top5pct_share_of_mean": top5, "trimmed_mean_over_mean": trim, "winsor99_mean_over_mean": w99}
 

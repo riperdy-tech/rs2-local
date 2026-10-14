@@ -26,12 +26,15 @@ import numpy as np
 from .common import Curve, InputError, QuantileDist, _cholesky, level_path_weights
 
 ENGINE_VERSION = "v2.0"
-CHAIN_VERSION = "v2.0.3"          # AL.27 (v2.0.1): continuation ratios on the curves' running minimum; AL.30/AK.51 (v2.0.3): the growth UPPER tail clipped (INTERIM)
+CHAIN_VERSION = "v2.1"            # AL.27 (v2.0.1): continuation ratios on the curves' running minimum; AL.30/AK.51 (v2.0.3): the growth UPPER tail clipped (INTERIM);
+                                  # AL.40-AL.43 (v2.1): growth after year 3 continues by the measured continuation curve where the priors supply one
 # Addendum AL.30 (operator, AK.48) refined by AK.51 item 5 (v2.0.3): an INTERIM until financing-aware growth (its own registration) replaces it.  The
 # financing argument concerns externally financed UPSIDE growth, so only the growth variables' upper tail is clipped: P99 := P95 (draws beyond carry the P95
 # value).  P1 is kept: revenue collapse and distress are real downside.  P1..P95, and so every reported forecast (P10..P90), are unchanged.
 INTERIM = "interim: unmodelled financing approximated by clipped growth upper tail (growth residuals P99 := P95; Addenda AL.30, AK.51)"
 CLIP_LEVELS = {0.99: 0.95}
+# Addenda AL.40-AL.43 (v2.1): the measured continuation lambda_t of a year-3 growth deviation (REGISTRATION_continuation_direct.md); without one, K (v2.0.3)
+RULE_CONTINUATION = "v2.1: growth after year 3 is g_T + (g_3 - g_T) x the measured continuation lambda_t (Addenda AL.40-AL.43)"
 KS = (1, 2, 3)
 MIN_N = 50
 RESID_LEVELS = (0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99)
@@ -50,6 +53,38 @@ class NearTermRefusal(InputError):
     def __init__(self, reasons: List[str]):
         super().__init__("; ".join(reasons))
         self.reasons = list(reasons)
+
+
+def continuation(priors, ps, family: str) -> Tuple[Optional[Curve], List[str]]:
+    """Addenda AL.40-AL.43 (v2.1): the measured continuation lambda_4..lambda_10 of a year-3 growth deviation, for the growth-decay bucket the priors chose,
+    as a curve with years 1-3 = 1 (`continuation` in the vintage's tables, priors_v5).  The bucket is found as priors.py finds it: the growth delivered
+    (operating g3 else g_latest; financial tg3 else tg_latest, from the PriorSet's recorded features) in the growth edges, then the growth-decay bucket
+    holding it.  A bucket C could not measure takes the family-pooled continuation (AL.42, flagged).  (None, notes) when the tables carry no
+    `continuation` section, the priors have no tables (placeholders), there is no growth-decay curve, or neither the bucket nor the family is measurable:
+    v2 then continues by the growth-decay ratio (K, v2.0.3).  Read here, not in priors.py, so gate 2's frozen engine files stay byte-identical
+    (rebuild_harness/gate1_run.GATE1_FILES)."""
+    tables, meta = getattr(priors, "tables", None), getattr(ps, "meta", None) or {}
+    if tables is None or "growth_decay" not in ps.curves or "vintage" not in meta:
+        return None, []
+    T = tables(meta["vintage"])
+    ct = (T.get("continuation") or {}).get(family)
+    if not ct:
+        return None, []
+    ft = meta.get("features") or {}
+    a, b = ("tg3", "tg_latest") if family == "financial" else ("g3", "g_latest")
+    gv = ft.get(a) if ft.get(a) is not None else ft.get(b)
+    if gv is None or not math.isfinite(gv):
+        return None, ["continuation: no growth delivered to find the bucket; v2 continues by the growth-decay ratio (K)"]
+    gb = int(np.searchsorted(np.asarray(T["edges"]["growth"], dtype=float), gv, side="right"))
+    row = next((r for r in ct.get("buckets", []) if r["bucket"][0] <= gb <= r["bucket"][1]), None)
+    lam, how, notes = (row or {}).get("lambda"), "measured", []
+    if lam is None:
+        lam, how = ct.get("family_pooled"), "family_pooled"
+        if lam is None:
+            return None, ["continuation: neither the bucket nor the family is measurable; v2 continues by the growth-decay ratio (K)"]
+        notes.append("continuation: the bucket is not measurable (n < MIN_N at k = 4); the family-pooled continuation is used (AL.42)")
+    bucket = row["bucket"] if row else None
+    return Curve([1.0, 1.0, 1.0] + [float(x) for x in lam], "continuation", f"{ps.source} | continuation ({how}, bucket {bucket})"), notes
 
 
 def envelope(curve: Curve) -> Curve:

@@ -43,12 +43,15 @@ def financial_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
     tbv_prev = st["tbv"]
     pv_exp, rows, rules = 0.0, [], []
     gde, rhoe, phie = nt.envelope(gd), nt.envelope(rho), nt.envelope(phi)              # AL.27: ratios <= 1 after year 3 (v2.0 used the curves themselves)
-    if nt.rises(gd) or nt.rises(rho) or nt.rises(phi):
+    cont = curves.get("continuation")                                                  # AL.40-AL.43 (v2.1): the measured continuation; absent: K
+    if cont is not None:
+        rules.append(nt.RULE_CONTINUATION)
+    if (cont is None and nt.rises(gd)) or nt.rises(rho) or nt.rises(phi):
         rules.append(RULE_ENVELOPE)
     g3, d3 = math.expm1(p["nt_ltbvg_3"]), gde.at(3)
     rho3, phi3 = rhoe.at(3), phie.at(3)
     R3 = ind + (p["nt_rote_3"] - ind) / phi3 if phi3 > 0.0 else None
-    if d3 <= 0.0:
+    if cont is None and d3 <= 0.0:
         rules.append(RULE_FLAT_DECAY)
     if R3 is None or rho3 <= 0.0:
         rules.append(RULE_FLAT_ROTE)
@@ -56,7 +59,10 @@ def financial_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
         if t <= 3:
             g, Rp = math.expm1(p[f"nt_ltbvg_{t}"]), p[f"nt_rote_{t}"]
         else:
-            g = gT + (g3 - gT) * gde.at(t) / d3 if d3 > 0.0 else gT
+            if cont is not None:
+                g = gT + (g3 - gT) * cont.at(t)
+            else:
+                g = gT + (g3 - gT) * gde.at(t) / d3 if d3 > 0.0 else gT
             R = rT + (R3 - rT) * rhoe.at(t) / rho3 if (R3 is not None and rho3 > 0.0) else rT
             Rp = ind + (R - ind) * phie.at(t)
         if g <= -1.0:
@@ -112,7 +118,10 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, near_term_table: Mapping, *
     allcorr = dict(corr or {})
     allcorr.update(ncorr)
     allcorr = nt.checked_corr(sorted(dists), allcorr, info)
-    curves = ps.curves
+    curves = dict(ps.curves)
+    cont, cont_notes = nt.continuation(priors, ps, "financial")                       # AL.40-AL.43 (v2.1)
+    if cont is not None:
+        curves["continuation"] = cont
 
     def chain(draw):
         draw = dict(draw, g_terminal=g_term)
@@ -143,4 +152,5 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, near_term_table: Mapping, *
             "forecast_years": fy, "near_term": {k: v for k, v in info.items() if k != "forecast_years"},
             "inputs": {k: v.as_dict() for k, v in dists.items()},
             "terminal_growth": {"base": g_term, "rf": disc.rf, "anchor": TERMINAL_G_ANCHOR, "rule": "Addendum H2"},
-            "notes": ["return on tangible equity: net income / average tangible common equity; acquired-intangible amortization not added back"]}
+            "notes": ["return on tangible equity: net income / average tangible common equity; acquired-intangible amortization not added back"] + list(cont_notes),
+            "continuation": cont.source if cont is not None else "K: the growth-decay ratio (v2.0.3)"}

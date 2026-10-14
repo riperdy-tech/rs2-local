@@ -103,6 +103,8 @@ def main(argv=None):
         jobs = jobs[:limit]
     table = nt.load_table(tables, 2025)
     meta["lineage"] = E5.lineage(priors_dir, tables, [2025], Path(__file__).resolve().parents[2])
+    from valuation.priors import PopulationPriors
+    tables_priors = PopulationPriors(priors_dir)                       # v2.1: the tables engine v2 reads its measured continuation from (nt.continuation)
     counts = {"jobs": len(jobs), "refused_inputs": 0, "refused_discount_rate": 0, "not_built": 0, "v1_refused": 0, "base_year_differs_from_run2": 0, "written": 0}
     recs = {d: [] for d in DATES}
     for job in jobs:
@@ -136,7 +138,7 @@ def main(argv=None):
             evs = np.array([r["ev"] for r in kept], dtype=float)
             e5["v1_ev_p50"], e5["v1_ev_p90"] = float(np.quantile(evs, 0.5)), float(np.quantile(evs, 0.9))
         cap = SimpleNamespace(family=ci.family, pit=ci.pit, ps=ps, disc=disc, st=st)
-        e5["v2_dist"] = E5.v2_distribution(cap, table, shares, seed=ci.seed)
+        e5["v2_dist"] = E5.v2_distribution(cap, table, shares, seed=ci.seed, priors=tables_priors)
         key = f"{job['date']}_{job['cik']}"
         prior = (RUN2 / run2_dir[key] / "result.json") if key in run2_dir else None
         base_run2 = None

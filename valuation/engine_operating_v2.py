@@ -64,11 +64,14 @@ def operating_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
     if no_growth:
         rules.append(v1.RULE_NO_GROWTH)
     gde = nt.envelope(gd)                                                              # AL.27: a ratio gde_t / gde_3 <= 1 (v2.0 divided by gd_3)
-    if nt.rises(gd):
+    cont = curves.get("continuation")                                                  # AL.40-AL.43 (v2.1): the measured continuation; absent: K
+    if cont is not None:
+        rules.append(nt.RULE_CONTINUATION)
+    elif nt.rises(gd):
         rules.append(RULE_DECAY_ENVELOPE)
     g3, m3, d3 = math.expm1(p["nt_lgrowth_3"]), p["nt_margin_3"], gde.at(3)
     w3 = wm[2]
-    if d3 <= 0.0:
+    if cont is None and d3 <= 0.0:
         rules.append(RULE_FLAT_DECAY)
     if w3 >= 1.0 - 1e-12 and min(wm[3:LEVEL_REF_YEAR]) < 1.0 - 1e-12:
         rules.append(RULE_HELD_AFTER_TARGET)
@@ -78,7 +81,10 @@ def operating_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
         if t <= 3:                                                                     # v2: drawn years 1-3
             g, m = math.expm1(p[f"nt_lgrowth_{t}"]), p[f"nt_margin_{t}"]
         else:                                                                          # v2: the measured shapes, continued from the year-3 draw
-            g = gT + (g3 - gT) * gde.at(t) / d3 if d3 > 0.0 else gT
+            if cont is not None:
+                g = gT + (g3 - gT) * cont.at(t)
+            else:
+                g = gT + (g3 - gT) * gde.at(t) / d3 if d3 > 0.0 else gT
             m = (m3 + (m5 - m3) * (wm[t - 1] - w3) / (1.0 - w3)) if w3 < 1.0 - 1e-12 else m5
         if no_growth and t > LEVEL_REF_YEAR:
             g = min(g, 0.0)
@@ -156,6 +162,9 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, near_term_table: Mapping, *
     if miss:
         return v1.refusal(ENGINE, [f"priors do not supply: {miss}"], ticker=pit.ticker)
     curves = dict(ps.curves)
+    cont, cont_notes = nt.continuation(priors, ps, "operating")                       # AL.40-AL.43 (v2.1)
+    if cont is not None:
+        curves["continuation"] = cont
     ref = ps.refs.get("ev_fcf_multiple")
     g_term = terminal_growth_rate(disc.rf)
     try:
@@ -194,7 +203,7 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, near_term_table: Mapping, *
     if dist["equity"] is not None and dist["secondary_equity"] is not None:
         md, why = model_disagreement(dist["equity"]["p50"], dist["secondary_equity"]["p50"])
     fy = info["forecast_years"]
-    notes = []
+    notes = list(cont_notes)
     if st["read_as_none"]:
         notes.append("read as none: " + "; ".join(st["read_as_none"]))
     if disc.de_basis == "book":
@@ -207,4 +216,5 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, near_term_table: Mapping, *
             "forecast_years": fy, "near_term": {k: v for k, v in info.items() if k != "forecast_years"},
             "consistency": v1.capital_intensity_check(st, mid, disc), "cyclicality": st.get("cyclicality"),
             "inputs": {k: v.as_dict() for k, v in dists.items()},
-            "terminal_growth": {"base": g_term, "rf": disc.rf, "anchor": TERMINAL_G_ANCHOR, "rule": "Addendum H2"}, "notes": notes}
+            "terminal_growth": {"base": g_term, "rf": disc.rf, "anchor": TERMINAL_G_ANCHOR, "rule": "Addendum H2"}, "notes": notes,
+            "continuation": cont.source if cont is not None else "K: the growth-decay ratio (v2.0.3)"}
