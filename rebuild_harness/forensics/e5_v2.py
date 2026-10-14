@@ -140,8 +140,25 @@ def _winsorized(table: Mapping, family: str, var: str) -> dict:
     return t
 
 
+def _tc_tails(table: Mapping, tc_table: Mapping, family: str, var: str) -> dict:
+    """DIAGNOSTIC (AL.29, fork 1's option): P10..P90 of `var` as in `table`; the tails beyond (P1, P5, P95, P99) grafted from the tag-consistent table as
+    offsets from ITS P10 / P90 (q_lo := q10 + (tc_lo - tc_q10), q_hi := q90 + (tc_hi - tc_q90)), cell by cell, the tc pool where the tc table lacks the cell."""
+    import copy
+    t = copy.deepcopy(dict(table))
+    tcv = ((tc_table.get("residuals") or {}).get(family, {}).get(var) or {})
+    for k, entry in ((t.get("residuals") or {}).get(family, {}).get(var) or {}).items():
+        te = tcv.get(k) or {}
+        for cname, c in [("pool", entry.get("pool") or {})] + list((entry.get("cells") or {}).items()):
+            src = (te.get("pool") if cname == "pool" else (te.get("cells") or {}).get(cname)) or te.get("pool") or {}
+            q, tq = c.get("q") or {}, src.get("q") or {}
+            if all(x in q for x in ("0.1", "0.9")) and all(x in tq for x in ("0.01", "0.05", "0.1", "0.9", "0.95", "0.99")):
+                q["0.01"], q["0.05"] = q["0.1"] + (tq["0.01"] - tq["0.1"]), q["0.1"] + (tq["0.05"] - tq["0.1"])
+                q["0.95"], q["0.99"] = q["0.9"] + (tq["0.95"] - tq["0.9"]), q["0.9"] + (tq["0.99"] - tq["0.9"])
+    return t
+
+
 def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int = 2000, seed: int = 20261006, envelope: bool = False,
-                    collapse: Optional[str] = None, winsor: Optional[str] = None) -> dict:
+                    collapse: Optional[str] = None, winsor: Optional[str] = None, tc_table: Optional[Mapping] = None) -> dict:
     """DIAGNOSTIC (Addendum AL.25): engine v2's full run on the captured state, beside v1's own: the invalid-draw share and the per-share P10/P50/P90/mean.
     Reads no outcome."""
     from valuation import engine_financial_v2 as f2, engine_operating_v2 as o2
@@ -161,6 +178,10 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         table = _collapsed(table, cap.family, collapse)
     if winsor:
         table = _winsorized(table, cap.family, winsor)
+    if tc_table is not None:
+        if cap.family != "operating":
+            return {"skipped": True, "why": "tag-consistent tables exist for operating revenue growth only"}
+        table = _tc_tails(table, tc_table, "operating", "growth")
     kept = []
     orig_sim = mod.simulate
 

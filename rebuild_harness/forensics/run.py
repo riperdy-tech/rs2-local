@@ -125,6 +125,10 @@ def run_date_fx(d):
                             rec["e5"]["v2_dist"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"])
                             gv = "growth" if A.CAP.family == "operating" else "tbvg"   # AL.28 diagnostic: option 1, the growth residuals' P1/P99 at P5/P95
                             rec["e5"]["v2_dist_winsor"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], winsor=gv)
+                            if cfg.get("e5_tc_tables"):              # AL.29 diagnostic: fork 1's option, tails from the tag-consistent tables
+                                tct = _e5_table(cfg["e5_tc_tables"], int(d[:4]) - 1)
+                                if tct is not None:
+                                    rec["e5"]["v2_dist_tctails"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], tc_table=tct)
                     except Exception as e:
                         import traceback
                         rec["e5"] = {"error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-800:]}
@@ -150,13 +154,14 @@ _E5_TABLES = {}
 
 def _e5_table(root, vintage):
     """Engine v2's near-term table of `vintage` (AL.24: data/priors_v4_pit), loaded once per worker; None when it does not exist or is refused."""
-    if vintage not in _E5_TABLES:
+    key = (str(root), vintage)                                       # keyed by folder too: the AL.29 diagnostic loads two table sets
+    if key not in _E5_TABLES:
         from valuation import near_term as nt
         try:
-            _E5_TABLES[vintage] = nt.load_table(root, vintage)
+            _E5_TABLES[key] = nt.load_table(root, vintage)
         except nt.NearTermRefusal:
-            _E5_TABLES[vintage] = None
-    return _E5_TABLES[vintage]
+            _E5_TABLES[key] = None
+    return _E5_TABLES[key]
 
 
 def _work(d):
@@ -210,6 +215,7 @@ def main(argv=None):
     ap.add_argument("--limit-ciks", type=int)
     ap.add_argument("--e5-tables", type=Path, help="Addendum AL.24: engine v2's near-term tables; adds rec['e5'] (the oracle on one information set)")
     ap.add_argument("--e5-dist", action="store_true", help="Addendum AL.25 diagnostic: also v2's full distribution per name (rec['e5']['v2_dist'])")
+    ap.add_argument("--e5-tc-tables", type=Path, help="Addendum AL.29 diagnostic: the tag-consistent near-term tables, for the tail-graft variant")
     a = ap.parse_args(argv)
     dates = ordered(a.dates or month_end_dates())
     bad = [d for d in dates if d > LAST_VALUATION_DATE]
@@ -221,6 +227,8 @@ def main(argv=None):
         cfg["e5_tables"] = str(a.e5_tables)
     if a.e5_dist:
         cfg["e5_dist"] = True
+    if a.e5_tc_tables:
+        cfg["e5_tc_tables"] = str(a.e5_tc_tables)
     meta = {"started": datetime.now().isoformat(timespec="seconds"), "dates": dates, "workers": a.workers, "git_head": g1r.holdout._git(g1r.REPO, "rev-parse", "HEAD").decode().strip(),
             "engine_files_sha256": {p.relative_to(g1r.REPO).as_posix(): g1r.holdout.sha256_file(p) for p in g1r.GATE1_FILES}, "n_ciks": len(cfg["ciks"]),
             "price_event_reports": reports, "horizons": list(FX_HORIZONS), "outcomes_end": cfg["outcomes_end"], "freeze_sha256": g1r.sha256_file(H / "gate1_freeze.json")}
