@@ -26,11 +26,12 @@ import numpy as np
 from .common import Curve, InputError, QuantileDist, _cholesky, level_path_weights
 
 ENGINE_VERSION = "v2.0"
-CHAIN_VERSION = "v2.0.2"          # AL.27 (v2.0.1): continuation ratios on the curves' running minimum; AL.30 (v2.0.2): the growth tails clipped (INTERIM below)
-# Addendum AL.30 (operator, AK.48: "go w/ your lean"): an INTERIM until financing-aware growth (its own registration) replaces it.  The growth variables'
-# residual draws take P1 := P5 and P99 := P95 (draws beyond carry the P5 / P95 value); P5..P95, and so every reported forecast (P10..P90), are unchanged.
-INTERIM = "interim: unmodelled financing approximated by clipped growth tails (growth residuals P1 := P5, P99 := P95; Addendum AL.30)"
-CLIP_LEVELS = {0.01: 0.05, 0.99: 0.95}
+CHAIN_VERSION = "v2.0.3"          # AL.27 (v2.0.1): continuation ratios on the curves' running minimum; AL.30/AK.51 (v2.0.3): the growth UPPER tail clipped (INTERIM)
+# Addendum AL.30 (operator, AK.48) refined by AK.51 item 5 (v2.0.3): an INTERIM until financing-aware growth (its own registration) replaces it.  The
+# financing argument concerns externally financed UPSIDE growth, so only the growth variables' upper tail is clipped: P99 := P95 (draws beyond carry the P95
+# value).  P1 is kept: revenue collapse and distress are real downside.  P1..P95, and so every reported forecast (P10..P90), are unchanged.
+INTERIM = "interim: unmodelled financing approximated by clipped growth upper tail (growth residuals P99 := P95; Addenda AL.30, AK.51)"
+CLIP_LEVELS = {0.99: 0.95}
 KS = (1, 2, 3)
 MIN_N = 50
 RESID_LEVELS = (0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99)

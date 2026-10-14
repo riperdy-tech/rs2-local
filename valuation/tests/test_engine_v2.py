@@ -143,7 +143,7 @@ def test_full_runs_value_both_families_and_report_years_1_to_3():
     for family, sic, mod, var in (("operating", "3674", o2, "growth"), ("financial", "6021", f2, "rote")):
         pit, st, ps, disc = setup(family, sic)
         r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(corr={family: {nt.name(var, 1) + "|" + nt.name(var, 2): 0.5}}), n_draws=300, seed=3, state=st)
-        assert r["status"] == "ok" and r["engine_version"] == "v2.0.2" and r["engine_interim"].startswith("interim:") and r["near_term_table_version"] == "v2.0" and r["distribution"]["equity"]["p50"] > 0
+        assert r["status"] == "ok" and r["engine_version"] == "v2.0.3" and r["engine_interim"].startswith("interim:") and r["near_term_table_version"] == "v2.0" and r["distribution"]["equity"]["p50"] > 0
         assert set(r["forecast_years"][var]) == {1, 2, 3} and "p50" in r["forecast_year1"][var if family == "operating" else "rote"]
         assert r["near_term"]["copula"]["measured"] == [nt.name(var, 1) + "|" + nt.name(var, 2)]
 
@@ -359,12 +359,12 @@ def test_al28_years_1_to_3_are_identical_to_v2_0_at_the_same_seed_and_inputs():
         r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(), n_draws=200, seed=7, state=st)
         got = _json.loads(_json.dumps({"forecast_years": r["forecast_years"], "years_1_3": r["at_median_inputs"]["years"][:3]}, sort_keys=True, default=str))
         assert got["forecast_years"] == gold[family]["forecast_years"] and got["years_1_3"] == gold[family]["years_1_3"]
-        assert gold[family]["engine_version"] == "v2.0" and r["engine_version"] == "v2.0.2"
+        assert gold[family]["engine_version"] == "v2.0" and r["engine_version"] == "v2.0.3"
 
 
 # ---- Addendum AL.30: v2.0.2, the INTERIM clip of the growth tails --------------------------------------------------------------------------------------
 
-def test_al30_growth_draws_are_clipped_at_p5_p95_and_levels_are_untouched():
+def test_al30_ak51_growth_draws_are_clipped_at_p95_only_and_the_lower_tail_and_levels_are_untouched():
     for family, sic, gvar, lvar in (("operating", "3674", "growth", "margin"), ("financial", "6021", "tbvg", "rote")):
         pit, st, ps, disc = setup(family, sic)
         dists, _corr, info = nt.near_term_inputs(family, st, ps, terminal_growth_rate(disc.rf), table(), {"rev": 2e9, "usd": True, "g3": 0.07, "g_latest": 0.07,
@@ -372,6 +372,24 @@ def test_al30_growth_draws_are_clipped_at_p5_p95_and_levels_are_untouched():
         assert info["interim"] == nt.INTERIM
         for k in nt.KS:
             g, lv = dists[nt.name(gvar, k)], dists[nt.name(lvar, k)]
-            assert g.ppf(0.001) == pytest.approx(g.ppf(0.05)) and g.ppf(0.999) == pytest.approx(g.ppf(0.95))          # no draw beyond P5 / P95
+            assert g.ppf(0.999) == pytest.approx(g.ppf(0.95))                                                          # no draw above P95
+            assert g.ppf(0.01) - g.ppf(0.05) == pytest.approx(RESID[0.01] - RESID[0.05])                               # AK.51: P1 kept (distress)
             assert g.ppf(0.05) - g.ppf(0.10) == pytest.approx(RESID[0.05] - RESID[0.10])                               # P5..P95 as measured
             assert lv.ppf(0.01) - lv.ppf(0.5) == pytest.approx(RESID[0.01] - RESID[0.50])                              # levels keep their P1 / P99
+
+
+def test_ak51_item7_rote_attenuation_holds_when_the_long_run_rote_differs_from_the_industry():
+    """lambda_t = d ROTE'_t / d ROTE'_3 (the response to the year-3 deviation, other inputs fixed): in [0, 1] and non-increasing, for rT != I."""
+    pit, st, ps, disc = setup("financial", "6021")
+    gT = terminal_growth_rate(disc.rf)
+    ind = st["industry_rote"]["value"]
+    for case in sorted(CURVES_CASES):
+        c = Curve(CURVES_CASES[case], "c")
+        curves = dict(ps.curves, growth_decay=c, rote_retention=c, excess_fade=c)
+        for rT in (ind + 0.05, ind - 0.04):
+            def path(r3):
+                q = {"g_terminal": gT, "rote_target": rT, "nt_ltbvg_1": 0.05, "nt_ltbvg_2": 0.05, "nt_ltbvg_3": 0.05, "nt_rote_1": ind, "nt_rote_2": ind, "nt_rote_3": r3}
+                return [y["rote_after_fade"] for y in f2.financial_chain_v2(st, q, curves, disc, detail=True)["years"][3:]]
+            a, b = path(ind + 0.02), path(ind + 0.10)
+            lam = [(y1 - y0) / 0.08 for y0, y1 in zip(a, b)]
+            assert all(1.0 + 1e-9 >= x >= y - 1e-9 for x, y in zip([1.0] + lam, lam)) and all(x >= -1e-9 for x in lam), (case, rT, lam)
