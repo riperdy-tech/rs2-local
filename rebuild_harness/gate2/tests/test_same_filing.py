@@ -84,3 +84,12 @@ def test_a_fiscal_year_is_not_a_forecast_when_its_results_were_public_at_T():
     assert not sf.year_eligibility(tenk, "2025-12-31", "2026-02-27")["eligible"]
     assert not sf.year_eligibility([], "2025-12-31", "2026-02-27", year1_filed="2026-02-27")["eligible"]   # filed on T
     assert sf.year_eligibility([], "2025-12-31", "2025-10-31", year1_filed="2026-02-20")["eligible"]
+
+
+def test_on_a_tie_this_year_the_larger_prior_wins_so_a_sub_line_never_becomes_the_base():
+    # CIK 1831915 shape (AK.41): both tags 193.0M this year; last year `Revenues` is a 2.96M sub-line, the contract tag the 164.0M total
+    f = facts(Revenues={"USD": [row("2023-01-01", "2023-12-31", 193.015e6, "K", "2024-03-01", "10-K"), row("2022-01-01", "2022-12-31", 2.963e6, "K", "2024-03-01", "10-K")]},
+              RevenueFromContractWithCustomerExcludingAssessedTax={
+                  "USD": [row("2023-01-01", "2023-12-31", 193.015e6, "K", "2024-03-01", "10-K"), row("2022-01-01", "2022-12-31", 164.036e6, "K", "2024-03-01", "10-K")]})
+    m = sf.annual_measures(f, "2024-03-01", "2023-12-31", "2022-12-31")
+    assert m["revenue_growth"] == pytest.approx(193.015 / 164.036 - 1)        # +17.7%, not +6,414%
