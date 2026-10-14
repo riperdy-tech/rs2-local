@@ -260,10 +260,10 @@ def raw_pair(companyfacts: Mapping, tag: str, unit: str, accession, end, rng):
 def revenue_scope(companyfacts: Mapping, revenue_tag: str, unit: str, n_tags: int, accession, end, kind: str) -> dict:
     """Is the chosen revenue the TOTAL?  dominance (the largest of >= 2 tags), closure (in the same filing and unit, both periods, within 1%:
     gross profit + cost of revenue = revenue, or revenue - costs and expenses = operating income), closure_fail (abstain), or unverified (scored,
-    flagged).  A derived Q4 is tested on its 10-K's fiscal-year pair."""
+    flagged).  A derived Q4, and the annual target (kind "annual"), are tested on the annual report's fiscal-year pair."""
     if n_tags >= 2:
         return {"status": "dominance", "tests": {}}
-    rng = QFY if kind == "derived_q4" else Q3M
+    rng = QFY if kind in ("derived_q4", "annual") else Q3M
     rv = raw_pair(companyfacts, revenue_tag, unit, accession, end, rng)
     tests = {}
     if rv:
