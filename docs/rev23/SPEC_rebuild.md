@@ -4583,3 +4583,71 @@ verdict is read away from the diagnostic dates.**
   2. E5 and E8 on the held-out dates;
   3. if E8 passes, v2.0.2 is eligible for the gate-2b SYSTEM freeze;
   4. in parallel, (c)'s registration is drafted for the operator.
+
+**AK.49 (2026-10-14 15:42): the outcome builder of record is built and run on gate 2 (for S5's fit).** `rebuild_harness/gate2/eligible_outcomes.py`.
+- **What it applies:** the same-filing measures; total-revenue verification; public-availability eligibility (SEC Item 2.02, the pack, and
+  the annual report on or before T); the 120-day guard; the register. It runs on the post-fix `pit_data` (the fiscal-year fix changes
+  year 1 where reports were mislabelled; Avnet's base is now 2025-06-28).
+- **The output:** `scratch/rev23/s5_data/eligible/`.
+- **What it finds on gate 2:**
+  - q1: 400 → **344 eligible** (56 public through Item 2.02, which includes the 53 in packs and all 5 stale picks);
+  - annual: 213 → **194 eligible** (19 public: AK.34's 4 same-day and 15 released);
+  - scope: q1 51 / 201 / 84 / 1, as AK.39; annual 30 dominance, 105 closure, 45 unverified, 0 fail;
+  - **77 register entries,** each with its source and acceptance timestamp.
+- **Not yet done:** this builder's own unit tests, a full-suite run, and its use in the S5 fit (B4).
+
+**AL.30 (2026-10-14 15:42): the mean_iv ruling relayed by fork 1 (AK.48, the operator: "go w/ your lean"). v2.0.2 (interim) is built. Option (b) is
+recorded. Confirmation is asked of the operator in this session.**
+- **The ruling, as fork 1 relays it** (AK.48):
+  - **End state:** financing-aware growth. Growth above the internally fundable rate (reinvestment ÷ ROIC) is charged with dilution at
+    the current price. It is a new engine version with its own registration, drafted by fork 2. It replaces the interim when it passes.
+  - **Interim:** **v2.0.2** = v2.0.1 + option 1. Labelled everywhere as "interim: unmodelled financing approximated by clipped growth tails".
+  - **E8 for v2.0.2:** the AL.27 and AL.28 bars, read only on the **18 held-out dates and the 2026 / vintage-2025 sample**. The mean
+    change and the count of direction or size changes are reported.
+  - **Order:** v2.0.2 → E5 + E8 → (on a pass) eligible for the gate-2b freeze.
+
+  The ruling reached this session through a peer. It is recorded as relayed and acted on as reversible work. The operator is asked to
+  confirm it here.
+- **Option (b), for the record** (fork 1 asked for its numbers): the mean with each name's draws capped at its own P99, over the plain mean,
+  median (P10): 2021 operating 0.906 (0.751), 2021 financial 0.862 (0.627), 2024 operating 0.974 (0.912), 2024 financial 0.966 (0.715). Not
+  chosen.
+- **v2.0.2:** rs2-local `review-2026-10/gate2-run2` 53e7a59, pushed after a scan.
+  - **The clip:** `near_term.near_term_inputs` sets each growth variable's residual P1 := P5 and P99 := P95 before the draw (`CLIP_LEVELS`).
+  - **What is untouched:** P5..P95, and so every reported forecast (`REPORT_LEVELS` P10..P90). The level variables (margin, ROTE) keep
+    their tails.
+  - **Labels:** `engine_version` "v2.0.2"; `engine_interim` and the near-term info carry `nt.INTERIM`.
+- **Tests:**
+  - **New:** growth draws never go beyond P5/P95; P5..P95 are as measured; levels keep P1/P99.
+  - **Still passing:** the AL.28 attenuation and years-1–3 identity tests. Forecasts and the median-point years 1–3 equal v2.0's.
+  - **Suite:** 795 passed.
+- **Also in this period (AL.28 additions):** the attenuation-invariant tests in both chains (the zero and near-zero d_3/ρ_3/φ_3, a dip
+  before year 3, both signs, a monotone curve equal to v2.0) and the years-1–3 identity golden. That golden file was written by v2.0's own
+  code at 22f22b0 (`valuation/tests/data_v20_years_1_3.json`); commit 1d85356.
+- **Next:**
+  - (a) E8's second sample: a harness for gate 2's 2026 company-dates on the vintage-2025 tables;
+  - (b) the combined E5 + E8 forensic run on v2.0.2 (20 dates; the verdict read on 18), scheduled after the priors cascade;
+  - (c) the draft registration of financing-aware growth.
+
+**AL.31 (2026-10-14 18:24): the operator confirms AK.48 in this session ("confirmed, go ahead with v2.0.2 and E8"). The outstanding outside review is
+planned.**
+- **Confirmed:**
+  - v2.0.2 is the interim engine;
+  - financing-aware growth is the end state;
+  - E8 for v2.0.2 is read on the 18 held-out dates and the 2026 / vintage-2025 sample.
+
+  AL.30's "relayed" status is closed.
+- **The priors cascade (AL.20–AL.21)** wrote DONE at 16:22. Its diff report is still to be written.
+- **The outside review (Q9).** Cross-check 10 (tag seams, scoring order, v2.1 copula) was written but never answered as a package. Its
+  parts were overtaken: AK.30 ruled the tag-consistent outcome; outside reviews of AK.37 and AL.25 were ruled in AK.39 and AK.45. No outside
+  reviewer has seen:
+  - the fiscal-year fix and its rebuild (AL.17, AL.18, AL.20, AL.21);
+  - the point-in-time tables and the outcome-definition result (AL.10–AL.12, AL.22, AL.23);
+  - the E5 method (AL.24);
+  - v2.0.1's and v2.0.2's design and evidence (AL.25, AL.26, AL.28–AL.30);
+  - E8's second sample.
+
+  **Cross-check 12** is to be written and sent to ChatGPT and Gemini before any E8 result is read. Number 11 is held for the downstream (C2)
+  review, as AK.28 set out.
+- **The rule for E8 meanwhile.** The combined E5 + E8 run may compute; its scorer writes its verdict to a file that is **not opened** until
+  cross-check 12's rulings are recorded. A reviewer can then still change E8 before anyone has seen a v2.0.2 verdict.
+- **Next, after cross-check 12:** the draft registration of financing-aware growth, as its own outside review before the operator approves.
