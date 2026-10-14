@@ -4267,3 +4267,14 @@ exists.**
 - **Next, coordinator:** `same_filing` gains the closure test (reading raw companyfacts, because the store keeps only the extractor's
   tags) and the Item 2.02 check (reading SEC submissions), with tests. Then they are wired into the outcome builder used by S5's fit and
   by gate 2b, against the post-fix `pit_data` (`688281f` and later).
+
+**AK.43 (2026-10-14 14:43): the AK.37 v2 checks are built and reproduce the audit.** `same_filing.revenue_scope` and `same_filing.item_202_public`
+(rs2-local `review-2026-10/gate2-run2` `9b453d9`; 3 new unit tests; suite 760 passed).
+- **`revenue_scope`** reads SEC's raw companyfacts, because the store keeps only the extractor's tags. Its outcomes are dominance,
+  closure, closure_fail (abstains) or unverified (flagged).
+- **`item_202_public`** reads SEC submissions: an 8-K with Item 2.02 accepted after the period's end and before 16:00 ET on T, by its
+  acceptance timestamp.
+- **On gate 2 both reproduce the audit exactly:** scope 51 / 201 / 84 / 1 with 0 mismatches against `revenue_scope_check.json`, and 56
+  q1 rows public through Item 2.02.
+- **Next:** the outcome builder for S5's fit (gate-2 rows) and for gate 2b, applying measurement, verification, eligibility and the
+  register, on post-fix `pit_data`.
