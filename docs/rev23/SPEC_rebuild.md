@@ -4513,3 +4513,53 @@ AK.45); the options for the operator's mean_iv ruling.**
      choice (the other 18, and AL.28's 2026/vintage-2025 dates), reported apart from the 2.
   3. **The mean moves.** Lowering means by 5–26% changes `mean_iv`-based direction, sizing and H-S1. That is an economic change, for the
      operator with both options measured.
+
+**AL.29 (2026-10-14 15:33): fork 1's two concerns about option 1. The tag-consistent tail graft is measured: the tails are not measurement error. E8's
+verdict is read away from the diagnostic dates.**
+- **Concern 1, "are the heavy tails AL.22's misstated outcomes?"** Measured with the variant fork 1 proposed (`e5_v2._tc_tails`,
+  diagnostic):
+  - P10–P90 as in `priors_v4_pit`;
+  - P1, P5, P95 and P99 grafted from the tag-consistent tables (`engine_v2_audit/tc_sf/tables`, AL.22) as offsets from their own
+    P10/P90, cell by cell.
+
+  The same 2 diagnostic dates, operating revenue growth. The tag-consistent tables exist for that variable only, so financial
+  tangible-book growth cannot be tested this way.
+
+  | Date | Top-1% share, median (P90): v1 | v2.0.1 | option 1 (P1/P99 := P5/P95) | tag-consistent tails | Mean vs v2.0.1: option 1 / tc tails |
+  |---|---|---|---|---|---|
+  | 2021-06-30 (n 341) | 0.062 (0.177) | 0.242 (0.369) | **0.092 (0.227)** | 0.238 (0.377) | 0.88 / 1.01 |
+  | 2024-06-30 (n 277) | 0.079 (0.163) | 0.095 (0.252) | **0.066 (0.204)** | 0.098 (0.236) | 0.95 / 1.01 |
+
+  **The tag-consistent tails are as heavy as the first-filed ones.** The extreme growth outcomes driving E8b are not the recasts, seams or
+  partial lines of AL.22. They are real extreme reported growth (acquisitions, post-shock rebounds; for financials, issuance-driven book
+  growth). AL.28's "suspect as measurement" argument is withdrawn.
+
+  What stands is the economic argument alone: a per-share DCF or residual-income model credits that growth without the consideration or
+  dilution that bought it. **So option 1 is an economic modelling choice, not a data clean-up.** It lowers mean values by 5–26% on these
+  dates, which moves mean_iv, the verdict's direction, and the H-S1 signal (fork 1's point, adopted). The operator rules with that stated.
+- **Concern 2, "not fitted to E8's own dates," adopted.** Whatever is chosen was chosen on 2 of E8's 20 dates (2021-06-30, 2024-06-30).
+  E8's verdict is read on:
+  - the other **18** forensic dates;
+  - the **2026 / vintage-2025** sample (AL.28 item 3).
+
+  The 2 diagnostic dates are reported separately and count toward nothing.
+- **The diagnostic code:** `_tc_tails`, the `--e5-tc-tables` flag, and a fix that keys the worker's table cache by folder as well as
+  vintage (it would otherwise have mixed the two table sets).
+
+**AK.47 (2026-10-14 15:34): the coordinator's AK.46 hypothesis is refuted (fork 2's AL.29), recorded as the coordinator's error.**
+- **The test.** P10–P90 kept, with the tail quantiles taken from the tag-consistent tables cell by cell, on the same 2 diagnostic dates.
+  The operating top-1% share barely moves: 0.238 against v2.0.1's 0.242 (2021), and 0.098 against 0.095 (2024). Means move by less
+  than 1%.
+- **What it shows:** the heavy tails are real extreme reported growth (acquisitions, rebounds), not recasts or seams. Fork 2 has withdrawn
+  the measurement argument, and the coordinator's is withdrawn too.
+- **Adopted from AK.46:** E8's verdict is read only on the 18 dates and the 2026/vintage-2025 sample not used to choose a fix.
+- **The coordinator's framing of the remaining economic choice** (for the operator, with fork 2):
+  - **(a) Clip the growth tails at P5/P95 (option 1).** Simple. Means fall 5–26%, and it narrows the forecast distribution below what
+    history shows.
+  - **(b) Keep the distribution and change the value statistic** (for example, `mean_iv` from draws winsorised at P99). This is AL.27's
+    `mean_iv` question. It must be decided on economic grounds and registered before E8 reads it.
+  - **(c) Financing-aware growth.** Growth above the internally fundable rate (reinvestment ÷ ROIC) is charged with dilution at the
+    current price. It models the actual flaw (per-share value credited for externally financed growth), but it is a larger change
+    under its own registration.
+
+  The coordinator leans to (c) as the end state, with (a) or (b) only as a labelled interim. The decision is the operator's.
