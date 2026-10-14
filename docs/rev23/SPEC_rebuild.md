@@ -4651,3 +4651,37 @@ planned.**
 - **The rule for E8 meanwhile.** The combined E5 + E8 run may compute; its scorer writes its verdict to a file that is **not opened** until
   cross-check 12's rulings are recorded. A reviewer can then still change E8 before anyone has seen a v2.0.2 verdict.
 - **Next, after cross-check 12:** the draft registration of financing-aware growth, as its own outside review before the operator approves.
+
+**AL.32 (2026-10-14 18:25): the priors cascade on the fixed `pit_data` (AL.20–AL.21) is complete. The report, negatives first.** The new version
+lives in `data/priors_v3_fy` (observations and priors tables), `forecast_study/pass_fy` and `pass_devlegacy`,
+`forecast_study/out/panel_fy<V>.pkl` and `data/priors_v4_fy` (near-term tables). Nothing earlier was overwritten.
+- **The growth-decay curves are unstable at long horizons** (a negative, and the same root as AL.25):
+  - Between `priors_v3` and `priors_v3_fy`, the curve points actually used (ratio_median clipped to [0, 1]) move by more than 0.05 at
+    5–17 points per vintage, out of 42–127. The largest moves are 0.3 to 1.0, at k = 6–10; for example 2025 operating band 3, k = 10, moves
+    by 1.0.
+  - A few hundred corrected rows move them that much, so these curves are estimated on thin, noisy medians at long horizons. v2.0.1's
+    envelope limits the damage after year 3. v1 (the frozen gate-2 engine) uses them as measured.
+  - Recorded as an open item for the priors: a monotone or smoothed estimator of the decay curves. It needs its own registration.
+- **The observation tables:** mislabelled rows go to 0 in every vintage (261–426 in each before). 530–737 fiscal years are regained per
+  vintage. The 4–193 rows lost are all explained: mislabelled rows, plus the extractor's 12-year window (`MAX_YEARS`), which now drops
+  the oldest year when a restored year is added.
+- **The passes, with the decomposition AL.21 asked for:**
+  - **AD.10, ticker by SEC order (study → dev legacy):** 6–26 companies per date change ticker or price; 0–3 rows enter or leave the
+    universe.
+  - **The FY fix (dev legacy → fixed):** 0–17 companies per date change base year; 0–2 rows enter or leave. Almost every forecast moves
+    slightly, because the priors tables move. Median absolute change in the P50 is under 0.007 in every field; the 99th percentile is
+    under 0.05 (rote_norm 0.048 in 2018).
+  - **The extremes** are on the companies whose base year was corrected. For example, a 2025 margin forecast moves by 29, and 2024 ROTE
+    forecasts by 1.0–1.8 for a handful of names.
+- **The near-term tables, `priors_v4_fy` against `priors_v4_pit`:** pool P10/P50/P90 move by at most 0.036 (2018, financial tbvg k2);
+  from 2021 on, by at most 0.009. Cell counts are equal, or 1–3 larger (2021–2024).
+- **E3/E4 on `priors_v4_fy`** (`e3_e4_fy.json`, outcomes from `panel_fy2024`):
+  - every cell's coverage moves by at most 2.2 points (operating margin k2, 0.661 → 0.639). The others move by at most 1.3 points, in both
+    directions;
+  - **E3 FAIL and E4 PASS (3 of 12 worse) as before.**
+- **For the operator:**
+  - The fixed version is correct where the legacy one was not (missing and mislabelled fiscal years), at the cost of small shifts.
+  - **Recommended:** gate 2b and the v2.0.2 freeze use `priors_v3_fy` / `priors_v4_fy` with the fixed `pit_data` (688281f+), matching
+    fork 1's plan (AK.42). Gate 2's frozen inputs stay as they are.
+  - E5 and E8 are still to be run on `priors_v4_pit`, as registered (AL.24, AL.27). Cross-check 12 is asked whether they should move to
+    `priors_v4_fy` before running.
