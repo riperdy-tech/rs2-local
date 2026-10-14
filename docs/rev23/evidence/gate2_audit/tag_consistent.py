@@ -91,7 +91,11 @@ def choose(pairs, field):
     unit = "USD" if "USD" in units else sorted(units, key=lambda u: min(LADDER[field].index(k[1]) for k in pairs if k[2] == u))[0]
     cands = {k: v for k, v in pairs.items() if k[2] == unit}
     if field == "revenue":
-        key = sorted(cands, key=lambda k: (-cands[k][0], LADDER[field].index(k[1])))[0]
+        # AK.41: a total is never smaller than a line within it, in EITHER period.  Among the tags within 0.5% of the largest current value, the
+        # largest prior wins (a tag equal to the total this year can be a sub-line last year: CIK 1831915's FY2023 10-K), then the ladder order.
+        top = max(v[0] for v in cands.values())
+        near = [k for k in cands if cands[k][0] >= top * (1 - 0.005)]
+        key = sorted(near, key=lambda k: (-cands[k][1], LADDER[field].index(k[1])))[0]
         gr = {k[1]: (v[0] / v[1] - 1.0) if v[1] > 0 else None for k, v in cands.items()}
         vals = [g for g in gr.values() if g is not None]
         note = {"tags": gr, "disagree_over_1pt": (max(vals) - min(vals) > 0.01) if len(vals) > 1 else False}
@@ -166,7 +170,7 @@ def annual_tc(facts, a):
     got = {}
     for f in ("revenue", "operating_income"):
         rs = rows_of(facts, f)
-        accns = sorted({r["accn"] for r in rs if r["filed"] == a["year1_filed"] and r["form"].startswith("10-K") and abs(_days(a["year1_period"], r["end"])) <= 3})
+        accns = sorted({r["accn"] for r in rs if r["filed"] == a["year1_filed"] and r["form"].startswith(("10-K", "20-F", "40-F")) and abs(_days(a["year1_period"], r["end"])) <= 3})   # AK.38: 20-F/40-F filers too
         p = {}
         for ac in accns:
             for k, v in pairs_in_filing(rs, ac, a["year1_period"], QFY, prior_end=a["base_period"]).items():

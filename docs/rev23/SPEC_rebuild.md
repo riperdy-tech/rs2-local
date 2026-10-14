@@ -4035,3 +4035,66 @@ The code (`same_filing.py`) gains the closure test and the Item 2.02 check befor
   - **Branch:** C1 on growth (AK.35, AK.39 table). The red team is dropped (R3b); multi-sampling is not required by R8.
   - **Audit 1:** passed, with the hand check (AK.36) and the scope check (AK.39).
   - **Open for the operator:** AK.37 v2 (the outcome amendment for gate 2b and S5).
+
+**AL.19 (2026-10-14 13:48): the CPU chain finished. Vintage 2025 is built; the outcome measurement ran; the hand check found a defect in the shared
+tag-consistent rule; the fiscal-year fix is merged.**
+- **The chain** (AL.16) started at 13:27, after the repeat control was final at 13:25 (AK.39), and wrote DONE at 13:44.
+  - **Pass at origin 2025-06-30:** 1,758 companies (operating 1,383, financial 375). 0 errors; 1,635 have a code forecast. Every row
+    uses the **vintage-2024** priors, which is point in time.
+  - **Vintage-2025 panel** (`panel_cut2025_o2025.pkl`, its own obs, CUT 2025-12-31): 15,060 rows, 99.2% matched, no obs row dropped.
+    - The 2025 origin adds 1,751 rows; 227 have a year-1 outcome filed before the cut.
+    - The 13,309 older rows are identical to AL.6's panel (g_1 and m_1).
+  - **`data/priors_v4_pit/2025`:** loads through `load_table` (sha256, version, cut 2026-01-01). It is labelled `per_vintage` and
+    `legacy`. The medians' latest filing is 2025-12-31.
+- **E6 for 2025:** holds by construction (AL.12): the panel's `assert_cut`, its own obs, and nothing filed on or after 2026-01-01.
+  **E6 is now complete for 2016–2025.**
+- **AL.13 measurement, (a) and (b).** Operating revenue growth, first-filed against tag-consistent (`engine_v2_audit/tc/`).
+  - **Vintage 2025:** 26,182 rows; 24,598 with a same-filing pair; 1,541 have no pair; 43 years not found. First-filed is reproduced
+    from `pit_data` in 25,972 rows.
+  - **Gaps:** larger than 1 point in 1,316 rows (5.4%), larger than 5 points in 963 (3.9%), larger than 20 points in 475 (1.9%).
+  - **Causes of the gaps over 5 points:** recast 691 (72%), tag seam 151 (16%), partial line 62 (6%), other 59 (6%).
+  - **Earlier vintages,** share of rows over 5 points: 2017 3.7%, 2019 5.2%, 2021 4.5%, 2023 4.1%. Recasts are the largest cause in
+    every vintage.
+  - **Correction to AL.7 / the problem report:** in the $300M+ panel the gaps are about eight times AL.7's all-pairs estimate (0.47%
+    over 5 points), because recasts, which AL.7 did not measure, dominate.
+- **The hand check, AL.15 amendment 2.** The 10 largest distinct gaps of vintage 2025, against the income statement filed in year t's
+  own 10-K (sec.gov, O5):
+  - **8 of 10: tag-consistent matches the filed total and first-filed is wrong.**
+    - CIK 1164863: net sales 1,187.7 → 1,309.6, +10.3%; first-filed +327,300%.
+    - CIK 1404912: total revenues 3,557,280 → 2,395,836 K, −32.6%; first-filed +3,675% from an `OilAndGasRevenue` tag.
+    - Caleres (14707) +3.1%.
+    - Apogee (6845) +5.8%.
+    - CIK 835011, two cases: −3.5% and +8.2%.
+    - CIK 1289308, two cases: +10.0% and +8.8%.
+  - **2 of 10: first-filed is right and tag-consistent is wrong.** CIK 1831915: filed totals 127,950 → 164,036 → 193,015 K, +28.2% and
+    +17.7%; tag-consistent gives +7,421% and +6,414%.
+    - **The cause:** in its FY2023 10-K, `Revenues` and the contract-revenue tag both equal 193,015,000 for 2023. For 2022 and 2021,
+      `Revenues` is a 2–3M sub-line.
+    - **The defect:** `tag_consistent.choose` breaks the tie by ladder order and takes `Revenues`. This is a defect in the shared
+      rule (AK.28), so it also reaches gate 2's version of record wherever such a tie occurs.
+    - **Sent to fork 1** with a fix: sort by (−current, −prior, ladder), since a total is never smaller than a line within it in
+      either period. Its `disagree_over_1pt` note already marks the affected rows.
+  - **(a) and (b) are therefore provisional** until fork 1's fix lands. The tc step is then re-run on the fixed function, so gate 2 and
+    engine v2 keep one rule. (c) and (d), the tables and E3/E4 on the tag-consistent outcome, wait for that re-run.
+- **The fiscal-year fix is merged:** `review-2026-10/gate2-run2` 688281f, a merge of 8155188 on top of fork 1's 22f22b0; suite 752
+  passed; pushed after a scan; fork 1 told, for the gate-2b equivalence test.
+- **Next:** the priors cascade on the fixed `pit_data` (`priors_v3_fy`), and E5, the oracle. Both are CPU-heavy, and each gets its own
+  plan entry before it runs.
+
+**AK.41 (2026-10-14 13:49): a defect in the revenue-tag rule, found by fork 2's hand check (AL.15). Fixed; gate 2's bars are
+unaffected.**
+- **The defect:** `choose()` took the largest current-period value and broke ties by ladder order. In CIK 1831915's FY2023 10-K
+  (0001628280-24-010933), `Revenues` and the contract tag are both 193,015,000 for 2023, but `Revenues` is a 2,963,000 sub-line for 2022.
+  The tie went to `Revenues`, giving +6,414% where the filed totals give +17.7% (and +7,421% against +28.2% a year earlier).
+- **The fix, by AK.28's own reasoning** (a total is never smaller than a line within it, in either period): among tags within 0.5% of the
+  largest current value, the largest prior wins, then the ladder.
+  - **Where:** `same_filing.choose` (rs2-local `review-2026-10/gate2-run2` `eb98533`, on top of fork 2's fiscal-year merge `688281f`),
+    with a unit test of the 1831915 shape; and the audit's `tag_consistent.py`.
+  - **Suite:** 753 passed.
+- **The effect on gate 2's version of record, measured:** the fixed rule against `tag_consistent/2026-10-06_v2` over every q1, q2 and
+  annual measure.
+  - **One company changes:** NBHC (a bank), q1 revenue growth 4.94% to 4.83%, q2 7.78% to 7.41%.
+  - Banks are outside G1's growth bar (operating family only), so **no bar, interval or branch moves**. Recorded; not re-scored.
+- **Also aligned:** `tag_consistent.py`'s annual step now accepts 20-F and 40-F, as `same_filing` does (AK.38).
+- **Fork 2's merge:** the fiscal-year fix is in `688281f`. The same-filing measures read raw facts and are unaffected. The choice of year 1
+  for gate 2b goes through `company_pit` and so uses the fixed version, as agreed.
