@@ -5254,3 +5254,431 @@ changes.**
 - **AK.59 follow-up (2026-10-14 22:00): fork 2 confirms the slip had no effect.** The only lineage written so far is `e5e8_fy/forensic/lineage.json`
   (20:35:30, `code_dirty` false). No stage started during the window, and the forensic code imports neither edited file. Nothing is re-run
   or annotated. Fork 2's revised ETA for DONE is about 08:00–10:00 on 10-15.
+
+**AK.60 (2026-10-14 22:02): the coordinator's audit of the C2-rs2 diff corrects two AK.59 rulings, and two failures are recorded.**
+- **The corrections** (the contract's errata, AK.60):
+  - `level_reference` uses the gate's keys, `p01`/`p99`. AK.59's `p1` was the coordinator's error.
+  - `prior_verdict` is the producer's.
+- **The audit so far, of `e67fb2c`:**
+  - The routing is by `scheme` only, and v1–v3 rows take the old path unchanged.
+  - `assess_v4` fails closed on every malformed input.
+  - The overlay keeps the producer's fields and adds `gate_flags` and `not_applicable`.
+  - The fiduciary v4 check reads the row without changing it.
+  - **Still open:** with `muse_used` false, `integrity_fail` still demands `integrity.n_leakage_violations`. Under AK.59 it becomes not
+    applicable, and the agent is fixing it.
+- **The 07-31 context preparation failed at its first start.** The script lacked the `__main__` guard that Windows process spawning needs.
+  - No output was written: `data/gate2b_0731/ctx` is empty.
+  - The fixed script runs from the coordinator's own detached worktree `scratch/rev23/wt-g2b-prep` at `c210785` (not `wt-gate2-dev`), with
+    bytecode writes off.
+  - It is queued behind the memory guard.
+  - The failed log is kept as `prep_0731_failed_spawn.log`.
+
+**AK.61 (2026-10-14 22:05): the gate-2b census pipeline is briefed (`briefs/BRIEF_G2B_census_pipeline.md`), and the registration's open readings are
+fixed before any 07-31 data exists.**
+- **The builder works on `review-2026-10/gate2b-census` from `c210785`.**
+  - Its first commit is the coordinator's Item 7.01 patch, unchanged.
+  - It runs nothing on 07-31 or the confirmation dates, and rehearses only on gate 2's 06-30 state with dummy outcomes.
+  - The coordinator writes the independent recomputation and runs every 07-31 step after the freeze.
+- **Readings of v3 items 5, 11 and 12, fixed now** (they clarify and do not move a bar):
+  - **The one-sided 90% upper end** is the 0.90 quantile of the bootstrap medians, as in `gate2.scoring`.
+  - **Every bar's bootstrap uses seed 20261013** and 2,000 draws, for both the industry-clustered interval and the company-clustered one.
+  - **Industry pooling (item 12 a):** companies are counted per SIC-2 industry **within each bar's paired sample**. An industry with fewer
+    than 5 joins one pooled cluster per family.
+  - **A paired observation** needs both arms and the outcome. An arm's refusal removes the pair from that bar only, and is counted.
+  - **The verdict:** PASS only when every B2 and B3 bar passes. A bar below its minimum sample reads NOT DECIDED, and the verdict is then
+    NOT DECIDED (not PASS).
+  - **"The share of the median-d gain from the top 10 companies"** (item 11) is reported as the median d with the 10 companies of the most
+    negative d removed, beside the full median.
+  - **The reweighting** (item 12 c) uses the weight universe count ÷ sample count per cell. A cell with no sampled company is reported,
+    not imputed.
+
+**AK.62 (2026-10-14 22:07): fork 2's five requests for the census valuation are adopted** (brief G2B amendment):
+- V2 is valued through the engine's own `run()` with real `PopulationPriors`, so that v2.1's measured continuation is read and never falls
+  back silently.
+- Each row records `engine_version`, `continuation`, `base_accession` and `base_period`.
+- Fork 2 annotates period authority on (cik, base_accession), annotating and never dropping.
+- No hard-coded chain version.
+- A census freeze manifest of its own replaces the run-2 fingerprint aborts.
+- **Fork 2's status:** v2.1's code is done, its suite passes 806, and `priors_v5` is built, with its tables matching the test estimates in
+  108 of 108 cells. The commit and the identity check come next. E5/E8 on v2.1 follow the current chain's DONE.
+
+**AL.44 (2026-10-14 22:12): engine v2.1 is built on its own branch; its E5 and E8 are scheduled behind the v2.0.3 chain. v2.0.3 stays
+gate 2b's engine.**
+- **Branch:** rs2-local `review-2026-10/engine-v2.1` (worktree `scratch/rev23/wt-v21`, from c210785); 9966216 and 95fb358. Suite: 806
+  passed.
+- **The tables:** `data/priors_v5/<V>/tables.json` is `priors_v3_fy` plus a `continuation` section (`valuation/priors_build/continuation.py`;
+  sha256 in `tables.sha256`).
+  - **Checked:** the built `λ` equal the test's estimates in all 108 vintage × family × bucket cells (0 differences). Apart from
+    `continuation` and `priors_version` "5", every table is identical to `priors_v3_fy`'s.
+- **The engine:**
+  - `near_term.continuation()` finds the bucket the way `priors.py` does, using the growth delivered in the PriorSet's recorded features,
+    and returns the measured curve (`λ_1..λ_3 = 1`), the family-pooled fall-back (noted), or none (K).
+  - Both v2 chains use `g = g_T + (g_3 − g_T)·λ_t` after year 3 when a curve is present (`RULE_CONTINUATION`); otherwise v2.0.3's path,
+    unchanged. `CHAIN_VERSION` is "v2.1", and each result reports `continuation`.
+- **Two defects caught before commit:**
+  1. **The first version edited `priors.py`.** That is one of gate 2's frozen engine files (`gate1_run.GATE1_FILES`), and the freeze
+     test failed. The lookup was moved into `near_term.py`, and `priors.py` is byte-identical to c7d7a4f again.
+  2. **The financial priors record no growth-decay cell,** so a lookup through `meta["cells"]` would silently have left every
+     financial on K. The bucket is now derived from the recorded features; a test covers both families.
+- **The harness** (E5 and E8 call the chains outside `run()`):
+  - `e5_v2.v2_point`, `values` and `v2_distribution` take the run's PopulationPriors, so they read the same continuation;
+  - `run.py` and `e8_gate2b.py` pass it;
+  - E8's reconciliation counts continuation kinds (measured, family-pooled, K).
+- **The identity test (registration section 4):**
+  - every name valued with a measured continuation is re-run on the K path (the same engine without the tables);
+  - its years-1..3 rows at the median and its near-term forecasts must be identical, value for value;
+  - `years13_identical` is recorded per name, and any False fails E8 closed.
+- **The run:** the scheduled task `RS2-EngineV2-E5E8-3` (`engine_v2_audit/e5e8_chain3/`; priors_v5 + priors_v4_fy; code from wt-v21)
+  waits for `e5e8_chain2/DONE`, then runs the forensic run, E5, E8 on the forensic sample, the gate-2b harness and E8 on it. Verdicts are
+  sealed until opened and reported.
+- **Who decides what:**
+  - **Gate 2b:** the approved registration (AL.40) freezes gate 2b on v2.0.3. Fork 1 rules on gate-2b matters, but freezing on v2.1
+    instead would change an approved registration, so it goes to the operator.
+  - **Paper operation:** starting it on v2.1 is a cutover decision for the operator, on v2.1's E5 and E8 results.
+
+**AK.63 (2026-10-14 22:13): a coordinator error is corrected. The gate-2b freeze engine is already registered and is not the coordinator's to choose.**
+- **The error.** In a message to fork 2 (22:07) the coordinator called the choice between v2.0.3 and v2.1 for the freeze "my ruling".
+- **What governs.** The approved continuation registration (AL.40, section "Gate 2b") freezes gate 2b on **v2.0.3 on schedule**. Its B2/B3
+  verdict carries over to v2.1 only if the real-data identity test shows years 1–3 identical (AK.56, adopted in AL.40).
+- **As the gate-2b owner, the coordinator confirms that clause:**
+  - the census runs v2.0.3;
+  - the census pipeline keeps the engine a freeze parameter, so the identity re-run needs no code change.
+- **Not settled, and for the operator only** (fork 2 puts them with v2.1's E5/E8 results and the coordinator's recommendation):
+  - freezing gate 2b on v2.1 instead (an amendment of AL.40);
+  - starting paper operation on v2.1 (a cutover).
+- **Fork 2's v2.1 status (AL.44, stocks-workspace `343691c`):**
+  - branch `review-2026-10/engine-v2.1` (`9966216`, `95fb358`), with 806 tests passing;
+  - the unit-level identity test passes;
+  - the real-data identity (`years13_identical`, failing E8 closed) comes with the scheduled E5/E8 run `RS2-EngineV2-E5E8-3`, which waits
+    for the current chain's DONE;
+  - two defects were caught before commit: an edit to the frozen `priors.py`, moved out; and financial priors missing a decay cell, which
+    would have kept every financial name on K without saying so.
+
+**AK.64 (2026-10-14 22:35): the C2-rs2 follow-up (`3650d99`) is audited. The coordinator rules on its open points and records an engine observation
+from D4's smoke.**
+- **The audit.** The coordinator read the diff and found it correct:
+  - `integrity_fail` is not applicable when `muse_used` is false;
+  - `level_reference` must match the row's family and `asof`, with `n` > 0 and `p01` ≤ `p99`;
+  - the fiduciary check accepts `window` or `window_days`;
+  - the overlay header reads "mixed" and 9 only when v4 rows are present.
+
+  The suite: 3,167 passed, and the 42 failures are the baseline's. v1–v3 output is byte-identical.
+- **The rulings:**
+  - **R1:** the D1 event index's `manifest.json` carries `resolved_through`, under that key. D5 writes it.
+  - **R2:** live TRK-06 grading reads D3's live store. The gate-2 snapshot serves replays only.
+  - **R3:** an empty pack manifest is right while `muse_used` is false. A Muse row must pass its own.
+  - **R4:** accepted. Forecast and outcome share `build_state`'s ROTE, and the wide bands are reported.
+  - **Q12:** `depth_gates.analyst_valid` on a v4 row is true only when `versions.system_freeze` equals `PROMOTED_SYSTEM_FREEZE` (not None),
+    the same condition as `pre_valid_analyst`. Until gate 2b promotes a freeze, the screener scoreboard shows no v4 performance, which is
+    correct.
+- **An engine observation from D4's smoke** (2026-06-30, 5 companies):
+  - **The finding.** AVAV and CABO have a going-concern median value of 0 (CABO's P75 is also 0), while `prob_fail_12m` is only 3–5%. Engine
+    v1 gives 0 for both names too.
+  - **How common.** Across fork 2's 10,003 historical forensic rows, the median is ≤ 0 in 14.2% of v2 rows and 10.7% of v1 rows.
+  - **The cause** is the recorded per-draw equity floor (limited liability; the floor shares are reported in the E8 measures). It is not a
+    D4 defect.
+  - **What it touches.** These rows read "hold" and are never actionable. Gate 2b's bars score year-1 forecasts, not values.
+  - **For real money,** a value median of 0 at a positive price, alongside a low P(fail), is an open question about the engine's equity
+    distribution. It is listed for the real-money conditions, and studied after the freeze, without touching the engine before gate 2b.
+
+**AK.65 (2026-10-14 22:42): D4 is complete and audited, and the coordinator rules on its open items.**
+- **The branch:** `review-2026-10/d4-live-runner` (`4da01f6`, `24f257f`, `399e488`, `9668ef4`, `2ae4d5f`).
+  - The suite has 1,062 passed (262 new), none failed.
+  - The coordinator read the AK.59/60 diff and inspected the smoke rows.
+  - At 2026-06-30 the live C0 fit reproduces run 2's model and all 120 `survival_pfail` values exactly.
+  - Its rows pass the C2 fiduciary validator. The C2 gate's remaining blocks on a replay smoke are the expected ones.
+  - Merging needs the operator's approval.
+- **The rulings:**
+  1. **Integrity without Muse** was already resolved by C2's `3650d99` (AK.64). The runner's null counts are right.
+  2. **The flip condition** is an entry-timing condition, not an invalidation rule (contract errata AK.65). `thesis_monitor` reading
+     `mom_break` belongs to the follow-up rebase (C3).
+  3. **SCR-10's maximum age** is 3 weekdays; older gives "unknown", reason "stale" (errata AK.65).
+  4. **The distress training pool** ends at quarter-end 2025-06-30.
+     - D5's refresh extends it quarterly with the observations resolved before T, by the registered walk-forward rule.
+     - Until then each row states `last_train_date`, and `distress_model_not_validated` stays set.
+  5. **A universe pass** writes each row to `<run_id>.partial.jsonl` as it is produced. The final file is written at the end with
+     `level_reference`, and the partial file is kept as evidence. A crash then loses nothing, and a rerun takes a new run id.
+  6. **The new row fields** enter the single-owner table (errata AK.65).
+
+**AK.66 (2026-10-14 22:48): D5, the nightly shadow run of engine v2, is designed and briefed (`briefs/BRIEF_D5_shadow_orchestration.md`).**
+- **What the existing orchestrator does** (mapped read-only): `RS2-Depth-Orchestrator` runs every 4 hours; one GPU analyst subprocess per
+  name; the ledger is appended; and **every success commits and pushes the overlay to the screener's `main` through `screener-publish`
+  automatically.** That push is a site deploy. D5 therefore never calls it.
+- **The design (paper operation by end of October; KIS untouched):**
+  - **One nightly command** (`shadow_v4.py`):
+    1. preflight against the engine freeze manifest;
+    2. the data refresh: SEC submissions daily, a weekly companyfacts snapshot with a daily per-company refresh of new filers, Yahoo
+       closes, Damodaran monthly; write-once, never deleting;
+    3. the context for `asof`;
+    4. a **census of the whole universe** through the live runner, with the level reference in-run;
+    5. the **shadow ledger** and **shadow overlay** in `cache/shadow_v4/`, **never published**;
+    6. the weekly grader;
+    7. a nightly summary.
+  - **The pause marker:** its own, `SHADOW_V4_PAUSED`. `DEPTH_PAUSED` (the old GPU analyst) does not stop it.
+  - **`run_source`** is "orchestrator". The shadow is separated by path, so the gate judges it exactly as after cutover.
+  - **A census that takes more than 3 hours stops for a ruling:** a nightly subset, or a different level-reference rule.
+- **The cutover (D6, the operator's approval):** retire the old analyst's task; point the production ledger and overlay at v4; enable
+  publishing. Until then nothing reaches the site or KIS.
+- **The scheduled task** is written but not registered by the builder; the coordinator registers it after audit.
+
+**AK.67 (2026-10-15 00:17): the 2026-07-31 context is prepared. No outcome or value has been read; D4 is complete.**
+- **The run:**
+  - code: `scratch/rev23/prep_0731.py` from the coordinator's detached worktree `wt-g2b-prep` at `c210785`;
+  - configuration: the registered gate-2 configuration with the base priors `priors_v3_fy`, one worker;
+  - timing: 00:09–00:17.
+- **The output, in `data/gate2b_0731/ctx/`:**
+  - `universe_2026-07-31.json`, sha256 `7e4c14dad17ac779b19ee6eb5071be6351713398cf98aff5097eedce63db1388`;
+  - `context_2026-07-31.pkl`, sha256 `714cf0a45c2a063a1e1fea4d915c18feddb29b6a51ff2261ff635b6f876f3718`.
+- **The counts:** 2,059 companies in the universe (operating 1,468, financial 422, commodity 169). Prepared 2,752; family not built 1,677;
+  refused 387; below the $300M floor 693.
+  - **Gate 2's 2026-06-30 for comparison:** 2,065 (1,470 / 427 / 168), with 425 refused under `priors_v3`.
+  - The universe file holds only {cik, ticker, family} and the rule counts. **No engine value or outcome was read.**
+- **Next:** after fork 2's v2.0.3 freeze manifest, the census filters of brief G2B (commodity, the 10-Q rule, the gate-2 06-30 overlap,
+  the engine pre-check) and the freeze of the 07-31 run.
+- **D4's full suite at `b78aff0`,** re-run by the coordinator: 1,063 passed, none failed. D4 is complete and awaits the operator's merge
+  approval.
+
+**AK.68 (2026-10-15 00:28): the gate-2b census pipeline is reported; the coordinator rules on its open points and corrects its own patch.**
+- **The branch:** `review-2026-10/gate2b-census`, commits `864a907` (the Item 7.01 patch), `a4e2eb0` (the pipeline) and `62f7fb7` (the
+  single-cluster flag).
+  - **The suite:** 800 → 830 passed.
+  - **Prohibitions:** nothing ran on 07-31.
+  - **The 06-30 rehearsal** (dummy outcomes): 47 → 31 companies, both arms valued at **0.26 s per company**. Planted dummy: PASS on all 8 bars
+    once the minimums are lifted; noise reads NOT DECIDED.
+  - **The coordinator's audit of the diff** follows the fixes below.
+- **A coordinator error:** the AK.58 patch hard-wired Item 7.01 into gate 2's own `eligible_outcomes`, so a re-run of gate 2's or S5's
+  outcomes on that code would change. It is fixed:
+  - the default stays ("2.02",);
+  - gate 2b passes ("2.02", "7.01");
+  - the unapplied patch file for `wt-gate2-dev` is superseded by the branch.
+- **The registration's v3 item 13** (readings and one tightening before the freeze):
+  - (a) a bar passes only when both the industry-clustered and the company-clustered upper ends are < 0, with `few_clusters` below 10
+    clusters;
+  - (b) POPMED is taken over the universe file;
+  - (c) the precedence;
+  - (d) public through the pack is empty for the census;
+  - (e) the 10-Q and annual conditions.
+- **Accepted as built:**
+  - the seed `ci.seed` for both arms;
+  - filter 4 as a full V2 run with `status` ok;
+  - the covariate definitions as labelled;
+  - SIC as filed, else current, with the source recorded;
+  - the at-median horizon split, labelled as such;
+  - the extra attrition rows;
+  - `in_any_gate2_date` from run 2's sample.
+- **To build:**
+  - the C0 P(fail) table at T, through `stage2_layer.fit_models([T], pool, events)` as D4 does, tested to reproduce run 2 at 06-30;
+  - later, for the confirmation reads: the confirmation pool (item 12 d) and B4.
+- **Raised with fork 2 before the freeze:** V2 in the census (and in D4) receives the priors' copula correlation `ci.corr`, while E8's
+  harness ran V2 without it. The bars score year-1 marginals, which the correlation does not move. But E8's measures must describe the
+  configuration that runs.
+
+**AK.69 (2026-10-15 00:29): D5's first build is reported (`review-2026-10/d5-shadow`: `a80174c` merging C2-rs2, `57f43c7`, `2dfdfee`). The
+coordinator rules on its blockers; a fresh builder takes the follow-ups (`briefs/BRIEF_D5b_followups.md`).**
+- **The build:**
+  - **Tests:** 1,147 → 1,191 passed.
+  - **Byte identity:** the factored-out overlay and the grader are byte-identical on 3,207 fixture rows.
+  - **Fail-closed cases:** all nine are covered.
+  - **The no-network rehearsal at 06-30:** 40 rows, 0 actionable. An independent re-run of 4 companies through D4's own command line
+    matches all 26 fields.
+  - **The live rehearsal (asof 2026-10-13):** the refresh worked, then it stopped at the context step.
+  - The report is kept as `scratch/rev23/d5_REPORT.md`.
+- **The rulings:**
+  1. **Classification on a live date.** Strict classification is the holdout guard of Addendum L3: SIC as filed through the headers file,
+     which covers only filings older than about a month, so it can never cover a live date. **For a live `asof` the current SEC record,
+     fetched at that `asof`, is the point-in-time SIC.** Live runs therefore use `strict_classification=False`, and each row records its
+     classification source.
+     - This is allowed only when `asof` is within 3 weekdays of the fetch.
+     - Replays and gate 2b keep strict classification.
+  2. **Facts freshness on a weekly snapshot.** The 2-day limit is meant to catch a missed filing, so it applies to the **submissions check**,
+     not to the facts' fetch time. A company's facts are fresh when its submissions were read within 2 days, and no 10-Q or 10-K was accepted
+     after the store's latest filing for that company. The existing "store is behind" check stays.
+  3. **Prices:** the shadow keeps its **own price folder** (`cache/shadow_v4/prices_daily`, seeded by hard link or copy from
+     `data/prices_daily`, copy-on-write). It never appends to the shared folder, which gate 2, gate 2b and E5/E8 fingerprint.
+  4. **Disk:**
+     - SEC's `submissions.zip` bulk file becomes **weekly**, alongside the companyfacts snapshot.
+     - Daily changes come from the **EDGAR daily form index** (`daily-index/<year>/QTR<n>/form.<yyyymmdd>.idx`).
+     - Per-company submissions and facts are fetched only for the companies it lists.
+     - Nothing is deleted; pruning old snapshots is an operator decision when disk requires it.
+  5. **A company's own price age:** a valued row whose company close is older than `PRICE_MAX_TRADING_DAYS` (3) carries `stale_inputs`
+     "price". This is a runner change.
+  6. **Rows without a ticker:** every job carries its ticker from the id map, so a row refused before its inputs keeps the job's ticker.
+     The grader skips a row without a ticker, never failing.
+  7. **The census time limit** is raised to **6 hours**. The 4.0 h projection was measured under memory pressure.
+     - The job starts at 07:30 KST, after the US close and SEC's overnight files. It must finish before the US open (22:30 KST).
+     - Two workers are used when free memory exceeds 5 GB.
+     - The same-`asof` level-reference rule stands.
+  8. **Distress:** `resolved_through` and the quarterly pool extension remain open before real money (`distress_model_not_validated`
+     stays set). They are not needed for shadow operation.
+  9. **The judgement calls are confirmed as built:**
+     - the freeze identifier `<name>@sha256:<hex>`;
+     - the daily facts trigger (now from the daily index);
+     - 20-F and 6-K never triggering;
+     - final bars from 18:00 ET;
+     - prices for every ticker in the id map;
+     - SPY refreshed first;
+     - the Damodaran rule;
+     - the grader with `--no-signal-log`;
+     - no thesis cache in the shadow;
+     - dry runs with `run_source` "orchestrator";
+     - a static id map (new listings are a later item);
+     - the risk bucket read fresh.
+
+**AK.70 (2026-10-15 02:41): a defect in the E5/E8 harness, found through the census builder (AK.68) and confirmed by fork 2. E8 is re-measured on the
+configuration that runs; the freeze waits for it.**
+- **The defect:** `e5_v2.v2_distribution` called engine v2's `run()` without the priors' copula correlation (`ps.meta["corr"]`), so v2 drew
+  with only the near-term pairs.
+  - v1 received the correlation in both harnesses.
+  - Production (`gate1`, `company_inputs`, D4, the census) passes it.
+  - E8 is registered as "v2 against v1 on the same inputs" (AL.27), so the registered configuration is **with** the correlation.
+  - This is a harness defect, not a registration change.
+- **The superseded chain** was stopped with a HOLD file; nothing was deleted. Its sealed acceptance E5 and E8-forensic verdicts were **never
+  opened** and will not be used.
+- **The fix,** `df395bf` on `review-2026-10/gate2-run2`:
+  - harness only (`rebuild_harness/forensics/e5_v2.py` and its test); no engine file changed;
+  - gate 1's fallback for a correlation matrix that is not positive definite;
+  - records `corr_pairs_given` and `corr_not_positive_definite`;
+  - 801 passed;
+  - cherry-picked onto `engine-v2.1` as `1465cc0`.
+- **Next (fork 2):**
+  - a new v2.0.3 E5/E8 chain into new folders;
+  - the v2.1 chain repointed to wait for it;
+  - the freeze writer allowing HEAD `df395bf` provided the engine files equal `c210785`.
+
+  `wt-gate2-dev` is now at `df395bf`, and the coordinator still holds the Item 7.01 change away from it. The gate-2b branch carries the
+  change scoped to gate 2b (AK.68).
+- **The schedule:** the freeze moves by the length of the new chain. Fork 2 gives the ETA.
+- **Usage limit:** at about 02:0x both builder agents stopped at the account's usage limit (reset 02:40).
+  - The census builder had committed its AK.68 changes (`cb18159`); the coordinator audits them and runs the tests.
+  - The D5b builder had changed nothing; a fresh one is started.
+
+**AL.45 (2026-10-15 02:42): a harness defect found by fork 1's census builder (AK.68, AK.70). E8 ran engine v2 without the priors' input
+correlation, which v1 and production both use. The chain is stopped and re-run; the superseded verdicts were never opened.**
+- **The defect.** Each configuration was run differently:
+
+  | | Correlation used |
+  |---|---|
+  | v1 (forensic run: `gate1.value_company`; gate-2b harness: `corr=ci.corr`) | `ps.meta["corr"]` |
+  | production (`gate1`, `company_inputs`, D4) | `ps.meta["corr"]` |
+  | v2 in E8 (`e5_v2.v2_distribution`, which calls `run()`) | **none**: only its near-term pairs |
+
+  - So E8's value-distribution measures (the top-1% and top-5% shares, EV P90/P50, the P50 level) described a configuration that never
+    runs, and did not compare v2 and v1 "on the same inputs" as AL.27 registers.
+  - E5 uses point values at the medians and does not depend on the correlation. The year-1 P50s that gate 2b scores are marginals and are
+    unaffected.
+- **No registration change.** The registered configuration is the production one, with the correlation. The harness failed to implement
+  it.
+- **What was stopped.** `RS2-EngineV2-E5E8-2` was stopped around 00:25 on 10-15 (a HOLD file, then its own processes) during the
+  acceptance gate-2b step, and its task was removed. Nothing was deleted.
+  - Its acceptance `e5_verdict.json` and `e8_verdict_forensic.json` were written sealed and **never opened**. They are superseded and
+    not used.
+- **The fix.** df395bf on `review-2026-10/gate2-run2`, harness only (c210785..df395bf touches only `rebuild_harness/forensics/e5_v2.py`
+  and its test):
+  - `v2_distribution` passes `ps.meta["corr"]`, with gate1's rule for a matrix that is not positive definite (redraw independently,
+    stamped);
+  - it records `corr_pairs_given` and `corr_not_positive_definite`;
+  - a test checks both the pass-through and the fall-back;
+  - suite 801 passed; pushed after a scan.
+  - Cherry-picked onto `engine-v2.1` as 1465cc0, the conflict resolved by keeping both sets of fields.
+- **The re-run.** `RS2-EngineV2-E5E8-4` (`engine_v2_audit/e5e8_chain4/`; output `e5e8_fy_c/`, `e5e8_pit_c/`; code wt-gate2-dev at
+  df395bf, clean) runs the same steps as chain 2, verdicts sealed. v2.1's chain 3 now waits for `e5e8_chain4/DONE`.
+- **The freeze writer** now requires:
+  - HEAD = df395bf;
+  - no file outside `rebuild_harness/` changed since c210785;
+  - engine files equal to c210785;
+  - lineage from df395bf, clean, with chain version v2.0.3;
+  - and it reads the `e5e8_fy_c` verdicts.
+
+  The manifest records `engine_commit` c210785 and `harness_commit` df395bf.
+
+**AK.71 (2026-10-15 02:45): the census pipeline's AK.68 changes (`cb18159`) are audited; fork 2's corrected chain is running.**
+- **The audit** (the coordinator read the diff):
+  - Item 7.01 is an `items` parameter: gate 2's default is ("2.02",), with its reason text byte-identical, and gate 2b passes
+    `config.PUBLIC_ITEMS`.
+  - A bar passes only when both the industry and the company upper ends are < 0. `n_industry_clusters`, `few_clusters` (< 10) and
+    `single_cluster` are reported.
+  - The precedence follows item 13 (c).
+  - POPMED is taken over the universe file.
+  - `gate2b/pfail.py` fits C0 at T through `stage2_layer` unchanged. It copies the 2025 observation files with sha256 checks, and refuses a
+    date whose needed observations do not exist rather than training on fewer.
+  - **The suite, run by the coordinator: 833 passed, 1 skipped.** The skip is the opt-in real-data C0 test, queued behind the memory guard.
+- **Fork 2 (AL.45, stocks-workspace `26138d3`):**
+  - the corrected chain `RS2-EngineV2-E5E8-4` started at 02:43 (`df395bf`, clean; output in `e5e8_fy_c/` and `e5e8_pit_c/`; verdicts
+    sealed);
+  - ETA: the acceptance forensic run with E5/E8 scoring about 06:30; the acceptance gate-2b step about 07:30; legacy about 12:00–13:00;
+  - the freeze manifest is written right after DONE if the acceptance verdicts pass;
+  - v2.1 (chain 3) follows, about 18:00;
+  - times move later if memory stays tight.
+
+**AK.72 (2026-10-15 02:46): the coordinator's independent gate-2b recompute is written and agrees with the pipeline on the rehearsal.**
+- **The script:** `scratch/rev23/gate2_audit/independent_g2b.py`, copied to the public mirror's `evidence/gate2_audit/` at the next mirror
+  refresh. It imports nothing from `rebuild_harness` or `valuation`, and reads only the census files: the company records,
+  `baselines_v2.json` and the eligible outcomes. Every bar is rebuilt from the registration's text:
+  - the forecasts as changes from the base, by gate 2's convention;
+  - SIC-2 pooling within each bar's sample;
+  - both intervals;
+  - the minimum samples;
+  - the precedence.
+
+  Its bootstrap seed is 777, deliberately not the pipeline's.
+- **The check** (06-30 rehearsal, planted dummy outcomes, 26 eligible rows): on **all 8 bars** n and the median d are **identical**. The
+  company-clustered upper ends agree to 4 decimals, despite the different seed.
+- **At scoring,** it runs on the 07-31 census, both on all rows and with `--verified-only`, before anything is reported.
+
+**AK.73 (2026-10-15 02:47): the 07-31 scoring date is fixed (registration v3 item 13 (f)) and the run procedure is written (`scratch/rev23/RUN_g2b_0731.md`),
+before any 07-31 value or outcome exists.**
+- **The scoring date** is 2026-10-13, the companyfacts snapshot date, as gate 2 used. A q1 first filed after it is excluded and counted.
+- **The procedure:**
+  1. census, then the freeze record, then valuation, baselines, C0 P(fail), and E8's measures (reported);
+  2. then outcomes and eligibility, the report, the independent recompute (all rows and verified-only), and Audit 1;
+  3. only then the verdict.
+- **The code** runs from a fresh detached worktree at the audited head of `gate2b-census`, never the builder's.
+
+**AK.74 (2026-10-15 03:48): the census C0 step reproduces run 2. One stale run-2 row is explained.**
+- **The real-data test** (C0 fitted at 2026-06-30 through the census pipeline):
+  - **First run:** the fitted model is identical to run 2's, and 119 of 120 rows match exactly. The exception is RILYN (CIK 1464790).
+  - **The cause:** run 2's `stage2/survival_pfail.json` was written on 2026-10-09 at 15:23, **before AD.10**'s common-stock ticker fix
+    (`5455c4e`, 10-10 11:21). The stale row valued RILYN on its preferred listing.
+  - **Run 2 itself refused that company-date** (`progress.jsonl`: "below_mcap_floor_on_the_common_share: 298,529,958 < 300,000,000 (RILY)"),
+    so the row was never used.
+  - **Confirmed directly:** rebuilt under run 2's own code (`a5fd342`) and under the census code, the row is the same refusal.
+- **The test is corrected** (coordinator's commit on `gate2b-census`):
+  - every company run 2 valued must match exactly;
+  - a company run 2 refused must carry run 2's refusal reason.
+  - **Re-run: 1 passed.**
+- **For gate 2's record:** the C0 features use no price, so AD.10 could change only refusals. No row that gate 2 scored is affected.
+
+**AK.75 (2026-10-15 04:31): D5b is reported (`review-2026-10/d5-shadow` `2dfdfee` → `351f838`, one commit per item). The coordinator rules on its
+open points.**
+- **The build:**
+  - **Tests:** 1,191 → 1,223 passed, plus 200 in the neighbour suites, none failing.
+  - **Frozen files untouched:** the builder kept gate 2's frozen `sic_crosswalk.py` and `pit_adapter.py` equal to `c7d7a4f`, by putting the
+    live SIC code in the new file `valuation/live_sic.py`.
+  - **Rehearsal 1** is unchanged apart from the new field and the version stamps.
+  - **Rehearsal 2** (live, asof 10-13, 40 companies):
+    - the context step passes in live mode;
+    - 40 rows, 0 actionable, no stale inputs;
+    - classification `current_at_asof` on 38 rows, null on 2 refused below the floor;
+    - the 10-12 holiday recorded.
+  - **Time:** 0.20 s per company, so a full census is about 7 minutes. The earlier 4-hour projection was memory pressure.
+  - **Disk:** about 5 GB a week.
+- **The rulings:**
+  1. **A rerun of an `asof`** may reuse its saved context only when the context's classification mode equals the run's. Otherwise it
+     refuses. (A small fix, to be built.)
+  2. **The schedule stays at 07:30 KST** (18:30 ET in summer, before `asof`'s own daily index exists). The point-in-time layer already
+     excludes every filing dated on `asof` (same-day facts are ambiguous), so a filing on `asof` cannot be used that night in any design.
+     AK.69 item 7's wording "after SEC's overnight files" is corrected to "after the US close".
+  3. **Freshness by filing date,** not acceptance time, is accepted. The store has filing dates only, and a filing dated before `asof` that
+     the store lacks is caught.
+  4. **The errata** are updated (contract AK.75).
+- **The judgement calls are accepted:**
+  - the live SIC from the submissions record through the J11 crosswalk, marked "current at the date";
+  - a reclassification without any filing can go unseen for up to a week, stated;
+  - a missing day is treated as a holiday and checked again;
+  - per-company fetches over the whole id map;
+  - the pinned rehearsal zip's lower bound;
+  - `strict_classification` removed from the config, which is refused if it sets one;
+  - an out-of-universe ticker in SEC's order;
+  - the lock's age from its modification time.
+- **Next:** the coordinator's audit of the D5/D5b diff and a full run of the suite. Then a **full live census rehearsal** at the latest
+  `asof`, coordinator-run, into the scratch folder, without the weekly bulk files.

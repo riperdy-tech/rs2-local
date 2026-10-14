@@ -276,7 +276,7 @@ These are binding where they differ from the sections above. Each is recorded in
   - **`actionable` belongs to the gate alone.** The producer never writes it, abstentions included.
   - **Gate inputs, which the producer emits** (the names are the gate's):
     - `integrity` and `muse`, **not applicable** when `muse_used` is false;
-    - `level_reference` `{family, p1, p99, n, asof}`, the P1 and P99 of `median_iv / price` over the engine-v2 pass of the whole universe
+    - `level_reference` `{family, p01, p99, n, asof}` (key names corrected to the gate's, AK.60), the P1 and P99 of `median_iv / price` over the engine-v2 pass of the whole universe
       at that `asof`. A run over a subset reads the last universe pass of the same `asof`; without one, the row is blocked, failing closed;
     - `prior_verdict`, which the gate reads from the ledger.
   - **`system_freeze`** sits in `versions` only.
@@ -289,3 +289,23 @@ These are binding where they differ from the sections above. Each is recorded in
     - ROTE comes from `build_state`;
     - tangible-book growth is **unavailable** until a same-filing rule exists;
     - `prob_fail_12m` grading is **unavailable** until the event index records the date it is resolved through, which D5's refresh adds.
+- **AK.60 (2026-10-14 22:02): corrections to AK.59.**
+  - **`level_reference`'s keys are `p01` and `p99`**, the names the gate already reads. AK.59 wrote `p1`, which was my error.
+  - **`prior_verdict` is emitted by the producer, not read by the gate.** Only the producer holds the filing dates that
+    `new_filing_between` needs. Its shape is `{median_iv, asof, new_filing_between}`, built from the producer's previous v4 row for the
+    company:
+    - explicit `null` on the first verdict;
+    - when the key is absent, `instability` applies, which fails closed (as the gate does now).
+- **AK.65 (2026-10-14 22:42): additions to the single-owner table**, with the live runner as the only producer: `momentum_state`,
+  `momentum_break_rule`, `momentum_flip_condition`, `continuation_at_median`, `fiduciary_v4`, `prior_verdict`, `level_reference`, `date`,
+  `integrity` and `muse` (the last two not applicable while `muse_used` is false).
+  - **The flip condition** (`momentum_flip_condition`, an AND of three terms) is an **entry-timing** condition, not an invalidation rule.
+    The checkable momentum watch item is `mom_break`, a single rule.
+  - **SCR-10 freshness:** a `momentum_state.json` built after the row's date is never read. One built more than **3 weekdays** before the
+    date gives trend "unknown" with the reason "stale".
+- **AK.75 (2026-10-15 04:31): additions to the single-owner table** (producer: the live runner).
+  - **`classification_source`:** one of `as_filed`, `current_at_asof`, `current_dated_file` or `no_sic`, or null for a row refused before
+    classification.
+  - **`stale_inputs`** adds "price: last close <date>, <n> weekdays old" for a company's own close more than 3 weekdays old.
+  - **In the shadow's `submissions_read` mode,** the facts are fresh when the company's SEC record was read within 2 days and SEC lists no
+    10-Q or 10-K filed after the store's latest filing for it.

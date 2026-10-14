@@ -112,6 +112,23 @@ be untouched. The operator's deadline is the end of October 2026.
       registered), so B4 tests a partly known year. B4 stays as defined. For real money a **fiscal-year-2 calibration** (a year wholly
       after T) is added, read when available.
     - **(g) A diagnostic:** the share of each name's value from years 1, 2–3 and 4 onward (the `mean_iv` horizon decomposition).
+13. **Readings and one tightening, fixed before the 07-31 freeze** (AK.68, 2026-10-15 00:28; no 07-31 value or outcome had been read; nothing is relaxed):
+    - **(a) Few-cluster guard.** A cluster bootstrap over few clusters tends to understate uncertainty. A bar therefore passes only when
+      **both** the industry-clustered and the company-clustered upper ends are < 0. Each bar reports its number of industry clusters, and one
+      with fewer than 10 is flagged `few_clusters`. One pooled cluster is flagged `single_cluster`.
+    - **(b) POPMED's population** is the universe file (gate 2's convention, "over the gate universe"). The census-sample median is
+      reported beside it.
+    - **(c) The precedence:** FAIL if any decided bar fails; else NOT DECIDED if any bar lacks its minimum sample; else PASS.
+    - **(d) Public through the pack** is empty for the census, because no pack exists at T. Muse's 450-subset packs, built later, are not
+      used to exclude, so the scored sample does not depend on which names Muse ran.
+    - **(e) The 10-Q and annual conditions:** the 10-Q condition is an original 10-Q accepted in the 12 months to T at 16:00 ET. The annual
+      condition is gate 2's universe rule (an annual report in the layer at T).
+
+    - **(f) The q1 scoring date for 2026-07-31 is 2026-10-13** (AK.73, 2026-10-15 02:47; before any 07-31 outcome is read): the companyfacts
+      snapshot `companyfacts_2026-10-13`, as gate 2 scored on its 10-13 store. A q1 first filed after it is excluded and counted.
+      Submissions come from `data/sec_bulk/submissions.zip` of 2026-10-07, which holds every filing before T. Each confirmation date takes
+      the first snapshot at least 75 days after its own quarter-ends, registered before its outcomes are read.
+
     - **Not adopted:**
       - **a binding q1 interval check ("B4-q1").** The engine's band is for the annual quantity, so its coverage of a single quarter is
         not a calibration test. It is reported only, with that caveat;
