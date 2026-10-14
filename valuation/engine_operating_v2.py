@@ -199,7 +199,7 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, near_term_table: Mapping, *
         notes.append("read as none: " + "; ".join(st["read_as_none"]))
     if disc.de_basis == "book":
         notes.append("discount rate uses the book D/E")
-    return {"status": "ok", "engine": ENGINE, "engine_version": nt.CHAIN_VERSION, "near_term_table_version": nt.ENGINE_VERSION, "family": "operating", "ticker": pit.ticker, "asof": st["asof"],
+    return {"status": "ok", "engine": ENGINE, "engine_version": nt.CHAIN_VERSION, "engine_interim": nt.INTERIM, "near_term_table_version": nt.ENGINE_VERSION, "family": "operating", "ticker": pit.ticker, "asof": st["asof"],
             "base_period": st["base_period"], "base_filed": st["base_filed"], "base_accession": st["base_accession"],
             "placeholder": bool(ps.placeholder or disc.placeholder), "prior_source": ps.source, "discount": disc.as_dict(), "distribution": dist,
             "at_median_inputs": at_median, "model_disagreement": md, "model_disagreement_note": why,

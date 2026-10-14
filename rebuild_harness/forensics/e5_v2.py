@@ -201,14 +201,16 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
     d = r["distribution"]
     eq, ev = d.get("equity") or {}, d.get("ev") or {}
     per = {k: (eq.get(k) / shares if eq.get(k) is not None and shares else None) for k in ("p10", "p50", "p90", "mean")}
-    top = trim = None
+    top = trim = w99 = None
     if kept and sum(kept) > 0:
         ks = sorted(kept, reverse=True)
         top = sum(ks[:max(1, len(ks) // 100)]) / sum(ks)
         cut = max(1, len(ks) // 100)                                                    # AL.28 option 2: the mean of the draws without the top and bottom 1%
         mid = ks[cut:len(ks) - cut]
         trim = (sum(mid) / len(mid)) / (sum(ks) / len(ks)) if mid else None
+        p99 = ks[cut - 1] if cut >= 1 else ks[0]                                          # AL.30 option (b): draws above their own P99 set to it, then the mean
+        w99 = (sum(min(x, p99) for x in ks) / len(ks)) / (sum(ks) / len(ks))
     return {"status": "ok", "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
             "ev_p10": ev.get("p10"), "ev_p50": ev.get("p50"), "ev_p90": ev.get("p90"), "ev_mean": ev.get("mean"), "share_floored": d.get("share_negative_equity"),
-            "top1pct_share_of_mean": top, "trimmed_mean_over_mean": trim}
+            "top1pct_share_of_mean": top, "trimmed_mean_over_mean": trim, "winsor99_mean_over_mean": w99}
 

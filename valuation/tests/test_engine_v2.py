@@ -143,7 +143,7 @@ def test_full_runs_value_both_families_and_report_years_1_to_3():
     for family, sic, mod, var in (("operating", "3674", o2, "growth"), ("financial", "6021", f2, "rote")):
         pit, st, ps, disc = setup(family, sic)
         r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(corr={family: {nt.name(var, 1) + "|" + nt.name(var, 2): 0.5}}), n_draws=300, seed=3, state=st)
-        assert r["status"] == "ok" and r["engine_version"] == "v2.0.1" and r["near_term_table_version"] == "v2.0" and r["distribution"]["equity"]["p50"] > 0
+        assert r["status"] == "ok" and r["engine_version"] == "v2.0.2" and r["engine_interim"].startswith("interim:") and r["near_term_table_version"] == "v2.0" and r["distribution"]["equity"]["p50"] > 0
         assert set(r["forecast_years"][var]) == {1, 2, 3} and "p50" in r["forecast_year1"][var if family == "operating" else "rote"]
         assert r["near_term"]["copula"]["measured"] == [nt.name(var, 1) + "|" + nt.name(var, 2)]
 
@@ -359,4 +359,19 @@ def test_al28_years_1_to_3_are_identical_to_v2_0_at_the_same_seed_and_inputs():
         r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(), n_draws=200, seed=7, state=st)
         got = _json.loads(_json.dumps({"forecast_years": r["forecast_years"], "years_1_3": r["at_median_inputs"]["years"][:3]}, sort_keys=True, default=str))
         assert got["forecast_years"] == gold[family]["forecast_years"] and got["years_1_3"] == gold[family]["years_1_3"]
-        assert gold[family]["engine_version"] == "v2.0" and r["engine_version"] == "v2.0.1"
+        assert gold[family]["engine_version"] == "v2.0" and r["engine_version"] == "v2.0.2"
+
+
+# ---- Addendum AL.30: v2.0.2, the INTERIM clip of the growth tails --------------------------------------------------------------------------------------
+
+def test_al30_growth_draws_are_clipped_at_p5_p95_and_levels_are_untouched():
+    for family, sic, gvar, lvar in (("operating", "3674", "growth", "margin"), ("financial", "6021", "tbvg", "rote")):
+        pit, st, ps, disc = setup(family, sic)
+        dists, _corr, info = nt.near_term_inputs(family, st, ps, terminal_growth_rate(disc.rf), table(), {"rev": 2e9, "usd": True, "g3": 0.07, "g_latest": 0.07,
+                                                                                                          "tg3": 0.05, "tg_latest": 0.05, "m": 0.15, "rote": 0.12})
+        assert info["interim"] == nt.INTERIM
+        for k in nt.KS:
+            g, lv = dists[nt.name(gvar, k)], dists[nt.name(lvar, k)]
+            assert g.ppf(0.001) == pytest.approx(g.ppf(0.05)) and g.ppf(0.999) == pytest.approx(g.ppf(0.95))          # no draw beyond P5 / P95
+            assert g.ppf(0.05) - g.ppf(0.10) == pytest.approx(RESID[0.05] - RESID[0.10])                               # P5..P95 as measured
+            assert lv.ppf(0.01) - lv.ppf(0.5) == pytest.approx(RESID[0.01] - RESID[0.50])                              # levels keep their P1 / P99

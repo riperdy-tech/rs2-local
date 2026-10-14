@@ -135,7 +135,7 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, near_term_table: Mapping, *
     if dist["equity"] is not None and dist["secondary_equity"] is not None:
         md, why = model_disagreement(dist["equity"]["p50"], dist["secondary_equity"]["p50"])
     fy = info["forecast_years"]
-    return {"status": "ok", "engine": ENGINE, "engine_version": nt.CHAIN_VERSION, "near_term_table_version": nt.ENGINE_VERSION, "family": "financial", "ticker": pit.ticker, "asof": st["asof"],
+    return {"status": "ok", "engine": ENGINE, "engine_version": nt.CHAIN_VERSION, "engine_interim": nt.INTERIM, "near_term_table_version": nt.ENGINE_VERSION, "family": "financial", "ticker": pit.ticker, "asof": st["asof"],
             "base_period": st["base_period"], "base_filed": st["base_filed"], "base_accession": st["base_accession"],
             "placeholder": bool(ps.placeholder or disc.placeholder), "prior_source": ps.source, "discount": disc.as_dict(), "distribution": dist,
             "at_median_inputs": at_median, "model_disagreement": md, "model_disagreement_note": why,
