@@ -340,10 +340,12 @@ class CompanyPit:
 
     # -- annual accessions --
     def accessions(self):
-        """{accn: {"filed", "form", "period"}} of the annual-report accessions: period of report = the latest end among the accession's
-        fiscal-year-length duration facts (the latest instant end when it has none)."""
+        """{accn: {"filed", "form", "period"}} of the annual-report accessions: period of report = the latest end, ON OR BEFORE THE ACCESSION'S FILING
+        DATE, among its fiscal-year-length duration facts (any unit); the latest such instant end when it has none.  A report cannot cover a period
+        that ends after it was filed: a forward-looking fact (Boeing's FY2017 10-K files the 2018 statutory tax rate for calendar 2018) must not
+        relabel it (PROBLEM_REPORT_fiscal_year_mislabel.md, operator-approved in Addendum AL.17)."""
         if self._acc is None:
-            acc, inst = {}, {}
+            acc, dur, inst = {}, {}, {}
             for taxo, tags in self.facts.items():
                 if taxo == "dei":
                     continue
@@ -358,14 +360,20 @@ class CompanyPit:
                                 a["filed"] = filed
                             if start is not None:
                                 d = _days(start, end)
-                                if d is not None and DAYS_LO <= d <= DAYS_HI and (a["period"] is None or end > a["period"]):
-                                    a["period"] = end
-                            elif accn not in inst or end > inst[accn]:
-                                inst[accn] = end
+                                if d is not None and DAYS_LO <= d <= DAYS_HI:
+                                    dur.setdefault(accn, set()).add(end)
+                            else:
+                                inst.setdefault(accn, set()).add(end)
             for accn, a in acc.items():
-                if a["period"] is None:
-                    a["period"] = inst.get(accn)
+                ends = [e for e in dur.get(accn, ()) if e <= a["filed"]]
+                if ends:
+                    a["period"] = max(ends)
+                else:
+                    ends = [e for e in inst.get(accn, ()) if e <= a["filed"]]
+                    a["period"] = max(ends) if ends else None
                     a["period_from_instant"] = True
+                if any(e > a["filed"] for e in dur.get(accn, ())):
+                    a["forward_dated_facts_ignored"] = True
             self._acc = {k: v for k, v in acc.items() if v["period"] is not None}
         return self._acc
 

@@ -410,3 +410,18 @@ def test_the_company_pit_never_carries_a_value_accepted_after_the_decision_time(
     cp = PitData(tmp_path / "store", acceptance_source=acc, id_map={"AAA": "1"}).company_pit("1", "2020-03-02")
     assert cp.periods() == ["2018-12-31"]
     assert all(f.filed < "2020-03-02" or f.filed == "2019-03-01" for per in cp.series.values() for f in per.values())
+
+
+def test_a_forward_dated_fact_in_an_annual_report_cannot_relabel_its_fiscal_year(tmp_path):
+    # PROBLEM_REPORT_fiscal_year_mislabel.md (AL.17): Boeing's FY2017 10-K, filed 2018-02-12, also files the 2018 statutory tax rate for calendar 2018.
+    fy17 = synth.annual_report("2017-12-31", "2018-02-12", {"Revenues": 93.4, "Assets": 50.0})
+    fwd = [synth._fact("EffectiveIncomeTaxRateReconciliationAtFederalStatutoryIncomeTaxRate", "2018-12-31", "2018-02-12", 0.21, "acc-10-K-2018-02-12",
+                       "10-K", "pure")]                                    # in the FY2017 report's own accession
+    facts = (synth.annual_report("2016-12-31", "2017-02-08", {"Revenues": 94.6, "Assets": 48.0}) + fy17 + fwd +
+             synth.annual_report("2018-12-31", "2019-02-08", {"Revenues": 101.1, "Assets": 55.0}))
+    synth.write_company(tmp_path / "store", 1, facts)
+    pit = pit_with(tmp_path)
+    at = pit.fiscal_years("1", "2018-06-30")
+    assert list(at)[-1] == "2017-12-31" and at["2017-12-31"].cells["revenue"].val == 93.4          # FY2017 exists from its own report
+    first = pit.fiscal_years("1", "2019-06-30", mode="first_filed")
+    assert first["2018-12-31"].exists_from == "2019-02-08" and first["2018-12-31"].cells["revenue"].val == 101.1     # FY2018 stamped with its own filing
