@@ -100,3 +100,4 @@ def test_v21_the_oracle_and_the_distribution_read_the_measured_continuation_only
         dk = E5.v2_distribution(c, table(), SHARES, n_draws=50)
         dm = E5.v2_distribution(c, table(), SHARES, n_draws=50, priors=zero)
         assert dk["continuation"].startswith("K:") and "continuation (measured" in dm["continuation"] and dm["engine_version"] == "v2.1"
+        assert dm["years13_identical"] is True and dk["years13_identical"] is None and dm["ps_p50"] != dk["ps_p50"]

@@ -168,6 +168,21 @@ def _tc_tails(table: Mapping, tc_table: Mapping, family: str, var: str) -> dict:
     return t
 
 
+def years13_identity(mod, cap, table, r: dict, fixed_k) -> Optional[bool]:
+    """v2.1's identity test (REGISTRATION_continuation_direct.md section 4): the engine run again on the same inputs WITHOUT the tables (so the K path,
+    v2.0.3) gives the same years-1..3 rows at the median inputs and the same near-term forecasts as the run with the measured continuation.  None when
+    the run used no measured continuation."""
+    import json as _j
+    if (r.get("continuation") or "K:").startswith("K:"):
+        return None
+    k = mod.run(cap.pit, fixed_k, cap.disc, table, n_draws=50, seed=1, state=cap.st)
+    if k.get("status") != "ok" or not (k.get("continuation") or "").startswith("K:"):
+        return False
+    a = {"y": (r.get("at_median_inputs") or {}).get("years", [])[:3], "f": r.get("forecast_years")}
+    b = {"y": (k.get("at_median_inputs") or {}).get("years", [])[:3], "f": k.get("forecast_years")}
+    return _j.dumps(a, sort_keys=True, default=str) == _j.dumps(b, sort_keys=True, default=str)
+
+
 def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int = 2000, seed: int = 20261006, envelope: bool = False,
                     collapse: Optional[str] = None, winsor: Optional[str] = None, tc_table: Optional[Mapping] = None, priors=None) -> dict:
     """DIAGNOSTIC (Addendum AL.25): engine v2's full run on the captured state, beside v1's own: the invalid-draw share and the per-share P10/P50/P90/mean.
@@ -179,9 +194,9 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         return {"skipped": True, "reasons": ["no near-term table for the vintage"]}
 
     class _Fixed:                                                       # the prior set the v1 run used, handed to v2 unchanged
-        def __init__(self, ps):
+        def __init__(self, ps, with_tables=True):
             self._ps = ps
-            if priors is not None:                                      # v2.1: the run's tables, so the engine reads its measured continuation
+            if priors is not None and with_tables:                      # v2.1: the run's tables, so the engine reads its measured continuation
                 self.tables = priors.tables
 
         def for_company(self, family, state, asof):
@@ -213,6 +228,7 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         mod.simulate = orig_sim
     if r.get("status") != "ok":
         return {"status": r.get("status"), "reasons": [str(x)[:120] for x in (r.get("reasons") or [])][:3]}
+    ident = years13_identity(mod, cap, table, r, _Fixed(cap.ps, with_tables=False)) if priors is not None else None
     d = r["distribution"]
     eq, ev = d.get("equity") or {}, d.get("ev") or {}
     per = {k: (eq.get(k) / shares if eq.get(k) is not None and shares else None) for k in ("p10", "p50", "p90", "mean")}
@@ -226,7 +242,7 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         trim = (sum(mid) / len(mid)) / (sum(ks) / len(ks)) if mid else None
         p99 = ks[cut - 1] if cut >= 1 else ks[0]                                          # AL.30 option (b): draws above their own P99 set to it, then the mean
         w99 = (sum(min(x, p99) for x in ks) / len(ks)) / (sum(ks) / len(ks))
-    return {"status": "ok", "engine_version": r.get("engine_version"), "continuation": r.get("continuation"), "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
+    return {"status": "ok", "engine_version": r.get("engine_version"), "continuation": r.get("continuation"), "years13_identical": ident, "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
             "ev_p10": ev.get("p10"), "ev_p50": ev.get("p50"), "ev_p90": ev.get("p90"), "ev_mean": ev.get("mean"), "share_floored": d.get("share_negative_equity"),
             "top1pct_share_of_mean": top, "top5pct_share_of_mean": top5, "trimmed_mean_over_mean": trim, "winsor99_mean_over_mean": w99}
 

@@ -12,7 +12,7 @@ immaterial there); P50 equity v2/v1.  Bars, per family (operating, financial), p
   E8c   median EV P90/P50 <= 2 x v1's median
   E8d   median of P50 v2/v1 in [0.5, 2.0]
 FAILS CLOSED (AK.51 item 2): every in-scope name v1 valued is reconciled (valued by both, or excluded with its reason).  A v2 refusal with no named engine
-reason, an instrumentation error, or an expected date without records fails E8.
+reason, an instrumentation error, an expected date without records, or (v2.1) a name whose years 1-3 differ from the K path fails E8.
 The forensic sample's verdict EXCLUDES the two dates used to choose the interim (2021-06-30, 2024-06-30; AL.29); they are reported apart.
 Reported diagnostics, not bars (AK.51): mean_iv / P50; the 90th percentile of equity P90/P50; the median mean_iv / price; the mean over dates of the
 within-family rank correlation of v2's and v1's P50.
@@ -39,7 +39,7 @@ def _q(xs, p):
 
 
 def new_recon() -> dict:
-    return {"attempted": 0, "both_valued": 0, "v2_refused_named": [], "v2_refused_unnamed": [], "instrumentation_errors": [], "continuation": {}}
+    return {"attempted": 0, "both_valued": 0, "v2_refused_named": [], "v2_refused_unnamed": [], "instrumentation_errors": [], "continuation": {}, "years13_not_identical": []}
 
 
 def rows_of(run_dir, recon=None):
@@ -72,6 +72,8 @@ def rows_of(run_dir, recon=None):
                     c = d2.get("continuation")                         # v2.1 (AL.40-AL.43): which continuation each valued name used
                     kind = "not_recorded" if c is None else "K" if c.startswith("K:") else "family_pooled" if "family_pooled" in c else "measured"
                     recon["continuation"][kind] = recon["continuation"].get(kind, 0) + 1
+                    if d2.get("years13_identical") is False:            # v2.1's identity test failed for this name: E8 fails closed
+                        recon["years13_not_identical"].append([r["date"], r["cik"]])
                 iv = v.get("iv_ps") or {}
                 if fam == "operating":
                     ev1 = (e["v1_ev_p90"] / e["v1_ev_p50"]) if e.get("v1_ev_p50") and e["v1_ev_p50"] > 0 and e.get("v1_ev_p90") is not None else None
@@ -133,7 +135,8 @@ def score(rows, include_diagnostic=False, expected_dates=None, recon=None) -> di
         rep["diagnostic_dates_reported_apart"][fam] = judge([x for x in diag if x["family"] == fam])
     rep["missing_dates"] = sorted(set(expected_dates or []) - {x["date"] for x in rows})
     rep["reconciliation"] = recon
-    rep["fails_closed"] = bool(rep["missing_dates"]) or bool(recon and (recon["v2_refused_unnamed"] or recon["instrumentation_errors"]))
+    rep["fails_closed"] = bool(rep["missing_dates"]) or bool(recon and (recon["v2_refused_unnamed"] or recon["instrumentation_errors"]
+                                                                        or recon.get("years13_not_identical")))
     passes = all(v["pooled"]["pass"] and all(b["pass"] for b in v["by_year"].values()) for v in rep["held_out"].values())
     rep["E8"] = "PASS" if (passes and not rep["fails_closed"]) else "FAIL"
     return rep
