@@ -239,3 +239,63 @@ def year_eligibility(entries, year1_period, asof, year1_filed=None) -> dict:
     if rel:
         reasons.append(f"earnings release after the year end in the pack: {sorted({str(e['filed'])[:10] for e in rel})[0]}")
     return {"eligible": not reasons, "reasons": reasons}
+
+
+# ---- AK.37 v2 / AK.39 additions: total-revenue verification and SEC public availability ----------------------------------------------------------
+
+COST_TAGS = ("CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold")
+CLOSURE_TOL = 0.01
+
+
+def raw_pair(companyfacts: Mapping, tag: str, unit: str, accession, end, rng):
+    """(cur, prior) of a us-gaap tag in one filing, from SEC's raw companyfacts JSON (the store keeps only the extractor's tags), or None."""
+    rows = [{"taxo": "us-gaap", "tag": tag, "unit": unit, "start": r["start"], "end": r["end"], "val": float(r["val"]), "accn": r["accn"],
+             "filed": r["filed"], "form": r["form"]}
+            for r in ((((companyfacts or {}).get("facts") or {}).get("us-gaap") or {}).get(tag) or {}).get("units", {}).get(unit, [])
+            if r.get("start") and r.get("end") and r.get("val") is not None]
+    p = pairs_in_filing(rows, accession, end, rng)
+    return next(iter(p.values())) if p else None
+
+
+def revenue_scope(companyfacts: Mapping, revenue_tag: str, unit: str, n_tags: int, accession, end, kind: str) -> dict:
+    """Is the chosen revenue the TOTAL?  dominance (the largest of >= 2 tags), closure (in the same filing and unit, both periods, within 1%:
+    gross profit + cost of revenue = revenue, or revenue - costs and expenses = operating income), closure_fail (abstain), or unverified (scored,
+    flagged).  A derived Q4 is tested on its 10-K's fiscal-year pair."""
+    if n_tags >= 2:
+        return {"status": "dominance", "tests": {}}
+    rng = QFY if kind == "derived_q4" else Q3M
+    rv = raw_pair(companyfacts, revenue_tag, unit, accession, end, rng)
+    tests = {}
+    if rv:
+        gp = raw_pair(companyfacts, "GrossProfit", unit, accession, end, rng)
+        cost = next((v for v in (raw_pair(companyfacts, t, unit, accession, end, rng) for t in COST_TAGS) if v), None)
+        if gp and cost:
+            tests["gross_profit_plus_cost"] = all(rv[i] and abs((gp[i] + cost[i]) / rv[i] - 1) <= CLOSURE_TOL for i in (0, 1))
+        ce = raw_pair(companyfacts, "CostsAndExpenses", unit, accession, end, rng)
+        oi = raw_pair(companyfacts, "OperatingIncomeLoss", unit, accession, end, rng)
+        if ce and oi:
+            tests["revenue_minus_costs_equals_oi"] = all(rv[i] and abs((rv[i] - ce[i] - oi[i]) / rv[i]) <= CLOSURE_TOL for i in (0, 1))
+    status = ("closure" if any(tests.values()) else "closure_fail") if tests else "unverified"
+    return {"status": status, "tests": tests}
+
+
+def item_202_public(submissions: Mapping, period_end, asof) -> Optional[dict]:
+    """The first 8-K with Item 2.02 (results of operations) in SEC's filing index ACCEPTED after `period_end` and before 16:00 ET on `asof`, or None.
+    A result public that way is not a forecast at `asof`, whether or not the pack held it (AK.39 3)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    cutoff = datetime.fromisoformat(f"{str(asof)[:10]}T16:00:00").replace(tzinfo=et)
+    r = ((submissions or {}).get("filings") or {}).get("recent") or {}
+    n = len(r.get("form", []))
+    for i in range(n):
+        if not str(r["form"][i]).startswith("8-K") or "2.02" not in str((r.get("items") or [""] * n)[i] or ""):
+            continue
+        fd = str(r["filingDate"][i])[:10]
+        if fd <= str(period_end)[:10]:
+            continue
+        acc = str((r.get("acceptanceDateTime") or [""] * n)[i] or "")
+        when = datetime.fromisoformat(acc.replace("Z", "+00:00")) if acc else datetime.fromisoformat(f"{fd}T00:00:00").replace(tzinfo=et)
+        if when < cutoff:
+            return {"form": r["form"][i], "filed": fd, "accepted": acc or None, "accession": (r.get("accessionNumber") or [None] * n)[i]}
+    return None

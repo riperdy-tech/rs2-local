@@ -93,3 +93,32 @@ def test_on_a_tie_this_year_the_larger_prior_wins_so_a_sub_line_never_becomes_th
                   "USD": [row("2023-01-01", "2023-12-31", 193.015e6, "K", "2024-03-01", "10-K"), row("2022-01-01", "2022-12-31", 164.036e6, "K", "2024-03-01", "10-K")]})
     m = sf.annual_measures(f, "2024-03-01", "2023-12-31", "2022-12-31")
     assert m["revenue_growth"] == pytest.approx(193.015 / 164.036 - 1)        # +17.7%, not +6,414%
+
+
+def _cf(**tags):
+    return {"facts": {"us-gaap": {t: {"units": {"USD": [dict(start=s, end=e, val=v, accn=a, filed=f, form=fm) for s, e, v, a, f, fm in rows]}}
+                                  for t, rows in tags.items()}}}
+
+
+def test_revenue_scope_closure_verifies_a_total_and_flags_a_partial_line():
+    q = ("2025-07-01", "2025-09-30"), ("2024-07-01", "2024-09-30")
+    rev = [(q[0][0], q[0][1], 100.0, "X", "2025-11-01", "10-Q"), (q[1][0], q[1][1], 90.0, "X", "2025-11-01", "10-Q")]
+    gp = [(q[0][0], q[0][1], 40.0, "X", "2025-11-01", "10-Q"), (q[1][0], q[1][1], 35.0, "X", "2025-11-01", "10-Q")]
+    cost = [(q[0][0], q[0][1], 60.0, "X", "2025-11-01", "10-Q"), (q[1][0], q[1][1], 55.0, "X", "2025-11-01", "10-Q")]
+    ok = sf.revenue_scope(_cf(Revenues=rev, GrossProfit=gp, CostOfRevenue=cost), "Revenues", "USD", 1, "X", "2025-09-30", "reported_3m")
+    assert ok["status"] == "closure"
+    part = [(r[0], r[1], r[2] * 0.3, r[3], r[4], r[5]) for r in rev]                 # a line, not the total: GP + cost no longer adds up
+    assert sf.revenue_scope(_cf(Revenues=part, GrossProfit=gp, CostOfRevenue=cost), "Revenues", "USD", 1, "X", "2025-09-30", "reported_3m")["status"] == "closure_fail"
+    assert sf.revenue_scope(_cf(Revenues=rev), "Revenues", "USD", 1, "X", "2025-09-30", "reported_3m")["status"] == "unverified"
+    assert sf.revenue_scope({}, "Revenues", "USD", 2, "X", "2025-09-30", "reported_3m")["status"] == "dominance"
+
+
+def test_item_202_public_uses_the_acceptance_time_against_the_16_00_et_cutoff():
+    sub = {"filings": {"recent": {"form": ["8-K", "8-K", "10-Q"], "items": ["2.02,9.01", "5.02", ""],
+                                  "filingDate": ["2025-10-29", "2025-10-30", "2025-11-04"],
+                                  "acceptanceDateTime": ["2025-10-29T20:05:00.000Z", "2025-10-30T12:00:00.000Z", "2025-11-04T16:00:00.000Z"],
+                                  "accessionNumber": ["A", "B", "C"]}}}
+    hit = sf.item_202_public(sub, "2025-09-27", "2025-10-31")
+    assert hit and hit["accession"] == "A"                                     # a results 8-K, accepted before T
+    assert sf.item_202_public(sub, "2025-09-27", "2025-10-29") is None         # accepted 16:05 ET on T: after the cutoff
+    assert sf.item_202_public(sub, "2025-12-31", "2026-01-15") is None         # nothing filed after that quarter's end
