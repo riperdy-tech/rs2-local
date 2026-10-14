@@ -101,3 +101,30 @@ def test_v21_the_oracle_and_the_distribution_read_the_measured_continuation_only
         dm = E5.v2_distribution(c, table(), SHARES, n_draws=50, priors=zero)
         assert dk["continuation"].startswith("K:") and "continuation (measured" in dm["continuation"] and dm["engine_version"] == "v2.1"
         assert dm["years13_identical"] is True and dk["years13_identical"] is None and dm["ps_p50"] != dk["ps_p50"]
+def test_ak68_e8s_v2_distribution_draws_with_the_priors_correlation_as_production_does_and_falls_back_like_gate1(monkeypatch):
+    import dataclasses
+    from valuation import engine_operating_v2 as o2_
+    from valuation.common import InputError
+    pit, st, ps, disc = setup("operating", "3674")
+    corr = {("margin_target", "ronic"): 0.3}
+    ps = dataclasses.replace(ps, meta=dict(ps.meta or {}, corr=corr))
+    c = SimpleNamespace(family="operating", st=st, ps=ps, disc=disc, pit=pit)
+    seen, real = [], o2_.run
+
+    def spy(*a, **kw):
+        seen.append(kw.get("corr"))
+        return real(*a, **kw)
+    monkeypatch.setattr(o2_, "run", spy)
+    d = E5.v2_distribution(c, table(), SHARES, n_draws=50)
+    assert seen == [corr] and d["corr_pairs_given"] == 1 and d["corr_not_positive_definite"] is False
+
+    seen.clear()
+
+    def not_pd(*a, **kw):
+        seen.append(kw.get("corr"))
+        if kw.get("corr"):
+            raise InputError("correlation matrix is not positive definite")
+        return real(*a, **kw)
+    monkeypatch.setattr(o2_, "run", not_pd)
+    d = E5.v2_distribution(c, table(), SHARES, n_draws=50)
+    assert seen == [corr, None] and d["status"] == "ok" and d["corr_not_positive_definite"] is True
