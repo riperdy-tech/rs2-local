@@ -4563,3 +4563,23 @@ verdict is read away from the diagnostic dates.**
     under its own registration.
 
   The coordinator leans to (c) as the end state, with (a) or (b) only as a labelled interim. The decision is the operator's.
+
+**AK.48 (2026-10-14 15:38): the operator rules on engine v2's growth tails: "go w/ your lean" (AK.47).**
+- **The end state is (c), financing-aware growth.** Growth above the internally fundable rate (reinvestment ÷ ROIC) is charged with
+  dilution at the current price, so per-share value is never credited with externally financed growth. It is a new engine version under
+  its own registration (spec, tests, E1–E8 including the AK.45 additions), built by fork 2, and it replaces the interim when it passes.
+- **The interim is (a), v2.0.2:** v2.0.1 with the growth residuals' P1/P99 set to P5/P95. The coordinator chose it over (b) because it:
+  - acts on the growth input where the flaw lies;
+  - leaves P10–P90 untouched, so E3, gate 2b's B4 and S5's fit are unaffected;
+  - keeps `mean_iv`'s definition, so the approved verdict contract v4 and H-S1 stand as registered;
+  - is not a statistic that passes E8b by construction, which a P99-winsorised mean would be.
+
+  **Its label everywhere:** "interim: unmodelled financing of extreme growth approximated by clipped growth tails". Each verdict carries
+  the engine version, so every row made with it is identifiable.
+- **E8 for v2.0.2:** the registered bars (AL.27 + AL.28), read only on the 18 dates and the 2026/vintage-2025 sample not used to choose it
+  (AK.46/AL.29). The means' 5–26% fall is reported, with the count of rows whose direction or size changes.
+- **The order:**
+  1. v2.0.2 code, plus the AL.28 tests;
+  2. E5 and E8 on the held-out dates;
+  3. if E8 passes, v2.0.2 is eligible for the gate-2b SYSTEM freeze;
+  4. in parallel, (c)'s registration is drafted for the operator.
