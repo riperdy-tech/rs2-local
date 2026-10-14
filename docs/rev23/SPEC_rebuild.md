@@ -3929,3 +3929,26 @@ fixed by rule and not discovered again.
 
   The frozen gate-2 inputs (`c7d7a4f`, priors_v3) stay as they are. Which version gate 2b's SYSTEM freeze uses is the operator's call,
   with the diff. A cascade plan follows in its own entry before it runs.
+
+**AK.38 (2026-10-14 12:10): the AK.37 code is built and checked. It is not wired in until the operator approves AK.37 and fork 2's
+fiscal-year fix is merged.**
+- **The module:** `rebuild_harness/gate2/same_filing.py`, ported from the audit's `tag_consistent.py`, with the AK.37 eligibility
+  rules (rs2-local `review-2026-10/gate2-run2` `22f22b0`, pushed after a scan).
+  - **Tests:** 8 unit tests on synthetic cases: a recast (Dollar Tree shape), several tags with a side line and a convenience currency,
+    a derived Q4 with and without a recast in between, a bank with no revenue line, the annual comparative, and both eligibility rules.
+    The tag ladders are checked equal to `pit_data.quarter_fields()`.
+  - **Suite:** 751 passed.
+  - **The eligibility rule keys on earnings releases:** every 8-K in the gate-2 packs is `kind: earnings_release` (422 of 422), and so
+    are all 53 S1 flags.
+- **The equivalence test against gate 2's version of record** (`tag_consistent/2026-10-06_v2`): 2,511 measures compared.
+  - **Every quarterly measure is identical,** including the q1 hard-bar measures.
+  - **19 annual measures differ.** All are 20-F filers (WDH, HTHT, FUTU, ZTO and others): the audit script's annual step accepted only
+    10-Ks, so it found no annual outcome for them, while the port accepts 10-K, 20-F and 40-F, as `annual_outcomes` does.
+  - **A coordinator defect in the audit script, now recorded:** gate 2's reported annual diagnostics (R3a_annual, AK.35) left out
+    about 10 foreign filers. The hard bars and the branch rule read q1 and are unaffected. The ported module is the correct one, and S5
+    and gate 2b will use it.
+- **The pit_data version:** the same-filing measures read raw facts only, so fork 2's fiscal-year fix does not change them. The choice
+  of year 1 (`annual_outcomes` through `company_pit`) does, so gate 2b uses the post-fix `pit_data` (agreed with fork 2), and nothing
+  that reads `pit_data` is frozen before that merge.
+- **Agreed for the gate-2b runner** (a new freeze in any case): the GPU guard ignores a compute process under 500 MiB of VRAM and 5%
+  utilisation, logged. This is AL.17's lesson from the ChatGPT app's 5-hour stall.
