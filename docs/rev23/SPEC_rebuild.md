@@ -4820,3 +4820,73 @@ minimum sends λ to 0 at year 4 (a cliff) or pins λ at 1 (a noisy small d_3).
     every (company, fiscal year) that gate 2b scores.
   - **Multi-sampling:** k = 1, by AD R8 (AK.40).
 - **The red team stays dropped** (R3b, AK.35).
+
+**AL.35 (2026-10-14 20:27): fork 1's AK.51 rulings on cross-check 12 are adopted; items 1–3 and 5–7 are built; item 4 is running; the decay-curve "measure
+first" result. E5 and E8 stay sealed.**
+- **The superseded run is stopped.** The forensic E5 + E8 run (AL.33) had 13 of 20 dates on `priors_v3`/`priors_v4_pit`, v2.0.2 and the
+  ROTE-only financial oracle, all superseded by AK.51. It was stopped at 20:18: a HOLD file in `e5e8_chain/`, then the run's own processes
+  ended. Nothing was deleted. Its records are not used.
+- **Built** (rs2-local `review-2026-10/gate2-run2`; 7c0513c, c210785; suite 800 passed; pushed after scans):
+  - **Item 5, v2.0.3:** `CLIP_LEVELS = {0.99: 0.95}`. Only the growth upper tail is clipped; P1 is kept, and `INTERIM` says so. The tests
+    are updated (P99 → P95 only, P1 unchanged).
+    - **For the operator:** v2.0.3 refines the interim confirmed in AL.31 (v2.0.2). Fork 1 decided it before any verdict (AK.51). It is
+      flagged to the operator in this session for confirmation.
+  - **Item 7:** an attenuation test with r_T ≠ the industry ROTE. λ_t is the response of ROTE′_t to ROTE′_3; it lies in [0, 1] and is
+    non-increasing for every curve case and both signs of r_T − I.
+  - **Item 6:** the top-5% share, for v2 (`e5_v2`) and for v1 (the forensic run and the gate-2b harness). E8b′ is barred in `e8_score`.
+  - **Item 3:** E5's financial oracle is matched: both engines take realised tangible-book growth and ROTE for years 1–3. The ROTE-only values
+    are kept (`v2_rote_only`, `v1_same_rote_only`) and reported as a sensitivity. A test shows the matched values respond to tbv growth
+    and the ROTE-only values do not.
+  - **Item 2, fails closed** (`e8_score`): every v1-valued, in-scope name is reconciled (attempted, valued by both, or v2-refused with
+    its reasons).
+    - **What fails E8:** an unnamed v2 refusal, an instrumentation error, or an expected date without records.
+    - **What aborts the gate-2b harness:** a scratch copy that differs, or a fingerprint difference outside `FINGERPRINT_ALLOWED` (only
+      `priors_vintages`).
+    - A missing near-term table is now a named refusal.
+  - **Item 1, lineage:** the forensic run takes `--priors-dir`, and the gate-2b harness takes the priors folder as an argument; neither
+    uses a default any more. Each run writes `lineage.json`: the code commit, a dirty flag, the chain version and interim label, the
+    folders, and each vintage's `tables.json` and `near_term.json` sha256. The scorers copy it into their verdict files.
+  - **Diagnostics** (reported, not bars): `mean_iv`/P50, the 90th percentile of equity P90/P50, median `mean_iv`/price, the within-date
+    rank correlation of v2's and v1's P50 (E8), and E5 at 12 and 36 months.
+- **Item 4, the period's authority, running** (`engine_v2_audit/fyfix/period_authority.py`):
+  - every annual accession's inferred period, for every store company, with the legacy and the fixed code;
+  - (a) every accession whose period changed under the fix, and (b) every annual accession of the gate-2b universe proxy (run 2's 2026
+    universe files, 2,122 companies), checked against SEC's `reportDate` (the submissions JSON, including its paged files);
+  - disagreements over 10 days are listed; accessions SEC does not list are counted apart.
+- **"Measure first," the decay curves** (`priors_v3_fy`, 133 growth-decay curves over 2016–2025, operating and financial bands, as
+  `priors._curve_from_rows` builds them):
+  - **Cliffs** (the envelope sending λ_4 to 0): **none.**
+  - **Pins** (d_4 > d_3, so the envelope holds λ_4 = 1 and the year-3 deviation persists into year 4): **54 of 133 (41%)**; by vintage
+    0, 1, 3, 7, 7, 6, 9, 7, 6 and **8 of 14 in 2025**.
+  - **Pinned through the whole horizon** (the curve never falls below d_3 again): 0, 1, 3, 5, 5, 2, 0, 0, 0, **2 in 2025**.
+  - **Why:** many curves are measured only to k = 1–5 (n ≥ MIN_N) and are then held flat, so a rise at k = 4 stays for the remaining
+    years.
+  - **By AK.51's rule, pins are common.** The candidate, a monotone or smoothed growth-decay estimator for v1 and v2 under its own
+    registration, goes to the operator before the gate-2b freeze. Options follow in a separate note.
+
+**AL.36 (2026-10-14 20:40): the operator confirms v2.0.3 in this session ("confirmed, go ahead with v2.0.3").** The interim is the growth upper-tail clip
+(P99 := P95; P1 kept). It replaces v2.0.2 (AL.31) and is the engine E5 and E8 now test (`RS2-EngineV2-E5E8-2`, AL.35).
+
+**AL.37 (2026-10-14 20:43): AK.51 item 4, the period's authority, done. The fiscal-year fix is validated against SEC's `reportDate`; 0.36% of the
+gate-2b universe's annual accessions disagree, all listed.**
+- **Method:** `engine_v2_audit/fyfix/period_authority.py`; output `period_authority.json` lists every disagreement.
+  - Every annual accession of all 20,175 store companies was dumped with the legacy code (`wt-legacy`, 22f22b0) and the fixed code (dev).
+  - Both were compared with `reportDate` from `data/sec_bulk/submissions.zip`, including SEC's paged history files.
+  - A disagreement means more than 10 days apart.
+- **(a) The 877 accessions whose period the fix changed:**
+  - the fixed period agrees with `reportDate` in **856 (97.6%)**; the legacy period agreed in **0** of them;
+  - 21 still disagree. They include late filers, for example CIK 1379043: an FY2016 10-K filed in 2019 holds 2018 durations, so the
+    filing-date bound picks 2018. They also include a few SEC `reportDate`s that are not period ends (CIK 941548: 2012-02-15 and 2013-02-15
+    for calendar-year reports).
+- **(b) The gate-2b universe proxy** (run 2's 2026 universe, 2,122 companies): **26,213 annual accessions; 26,118 agree (99.64%), 94
+  disagree (0.36%), 1 is not listed by SEC.**
+- **Reading:**
+  - The fix moves 877 mislabelled periods to SEC's own period in 97.6% of cases, and the universe is 99.6% consistent with SEC.
+  - The residue includes the late-filer case Gemini raised (AK.51 item 4).
+- **A proposed refinement, for the operator** (not built):
+  - take SEC's `reportDate` as the authority for an accession's period wherever the submissions file lists it and it lies within a
+    year-length window of a duration end in that filing, otherwise keep the filing-date rule;
+  - `reportDate` is filed with the form, so it is point in time;
+  - the cost is a rebuild like AL.20.
+
+  It touches about 0.4% of accessions. Keeping `DocumentPeriodEndDate` in the store is the alternative, and also a store change (AK.51).
