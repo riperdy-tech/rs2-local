@@ -4017,3 +4017,21 @@ company-clustered interval below zero. Its margin disadvantage is about 0.15 poi
 - the benchmark definition and the 120-day guard's role (4).
 
 The code (`same_filing.py`) gains the closure test and the Item 2.02 check before it is wired in.
+
+**AK.40 (2026-10-14 13:27): the repeat control finished; R8 is computed. Gate 2's runs are complete.**
+- **The repeat control:** 30 of 30 at 13:25 (the GPU stall of 06:30–11:47 is in AK.36).
+- **R8** (`score_day r8`, written once beside the score: `data/gate2_run2/scoring/2026-10-06/r8.json`; it reads no outcome):
+  - 24 company-dates and 114 placed inputs compared between run 2 and the second-seed run;
+  - median absolute shift **4.0 percentile points**, mean 6.4, with 18% identical.
+  - **By AD R8, multi-sampling is not required** (the median is not above 10).
+  - **For S5's own k rule** (S5 section 5: the standard error of a position at most 5 points; it is decided per input in B4, not
+    here), an indication only: under independent runs a mean absolute difference of 6.4 implies a per-run σ of about 6.4 × √π / 2 ≈ 5.7
+    points. So k = 2 would meet 5 points on the pooled figure. B4 measures it per input.
+- **Housekeeping:** `RS2-Gate2-Repeat`, `RS2-Gate2-PostMasked` and `RS2-Gate2-MilestoneReview` are disabled (not deleted); their work is
+  final. The GPU is free, so fork 2's `RS2-EngineV2-CPU` chain now starts on its own conditions (AL.16).
+- **Gate 2, complete:**
+  - **Version of record:** tag-consistent (AK.30).
+  - **Verdict:** FAIL, on G1 margin and G4.
+  - **Branch:** C1 on growth (AK.35, AK.39 table). The red team is dropped (R3b); multi-sampling is not required by R8.
+  - **Audit 1:** passed, with the hand check (AK.36) and the scope check (AK.39).
+  - **Open for the operator:** AK.37 v2 (the outcome amendment for gate 2b and S5).
