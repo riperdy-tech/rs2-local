@@ -4341,3 +4341,94 @@ curves, into exploding valuation tails. Found while building E5. A decision for 
   - E3 and E4 (years 1–3).
 - **The lesson, adopted into the Q-rules:** no registered check covered the engine's valuation distribution, only its forecasts. From
   now on every engine version carries a valuation-level sanity check (E8) beside its forecast checks, before any freeze.
+
+**AL.26 (2026-10-14 15:02): the remaining tails of AL.25 attributed, before any E8 bar is set** (fork 1's AK.44 asked that the bars not be set around
+them). A diagnostic only; the engine is unchanged.
+- **The P90/P50 maxima of 52–1,016× are mostly a measurement artefact.** Those names have equity near the floor. Their v2 P50 is about 0
+  (CIK 1374535: v2 P50 $0.13 against v1's $13.67, with a similar P90), and v1's own P90/P50 is 12–70× on several of them.
+  - The ratio of equity quantiles is not a valid tail measure near the floor, so E8 must not use it alone.
+  - On enterprise value (no floor), the envelope prototype's 2021 operating median is 4.3, its 90th percentile 12.4, and its maximum still
+    367.
+- **The tail measure the verdict reads:** the share of a name's mean equity coming from its top 1% of draws (mean_iv, V1). Medians, with
+  90th percentiles in brackets:
+
+  | Date, family | v1 | v2.0 | v2 with the growth envelope (prototype) |
+  |---|---|---|---|
+  | 2021 operating (n 341) | 0.062 (0.177) | **0.543 (0.972)** | 0.242 (0.369) |
+  | 2024 operating (n 277) | 0.079 (0.163) | 0.241 (0.381) | **0.095** (0.252) |
+  | 2021 financial (n 144) | 0.023 (0.081) | 0.203 (0.637) | 0.197 (0.456) |
+  | 2024 financial (n 123) | 0.025 (0.049) | 0.154 (0.358) | 0.076 (0.358) |
+
+  The share of draws at the equity floor is similar across the versions (operating medians 0.21–0.30).
+- **The attribution:**
+  1. **The years-4+ amplification (AL.25)** is the largest source in operating. The envelope brings 2024 near v1, 0.095 against 0.079.
+  2. **Financial tails are another source.** The growth envelope barely changes them, which points to the ROTE continuation (ρ_t/ρ_3) and
+     the φ_3 division (AL.25). Not yet measured per term.
+  3. **2021 operating stays heavy** with the envelope (0.24). The candidate is the residual tables themselves: 2021 dates use the
+     vintage-2020 table, whose P1/P99 log-growth residuals include the COVID shock year (E3's shock-year failure, AL.4). Drawn in years
+     1–3 through a positively correlated copula, they compound. Not yet measured.
+- **What this means for the design** (the operator's, with AL.25's proposal):
+  - v2.0.1's growth envelope is necessary but not sufficient.
+  - The financial path needs its own fix.
+  - mean_iv's exposure to the residual tails is a property of v2's design: uncentred empirical residuals, a correlated copula, and the mean
+    as the value. It needs a ruling, not a patch.
+  - E8 reports and bars the top-1% share of the mean (fork 1's suggestion), together with invalid draws = 0, the EV P90/P50 against v1, and
+    P50 v2/v1. Bars are set before any v2.0.1 number exists.
+
+**AL.27 (2026-10-14 15:04): the operator approves AL.25–AL.26's proposal ("go ahead with 1-3"). E8 is registered here, before any v2.0.1 number
+exists.**
+- **Approved:**
+  1. **v2.0.1:** a fix of the years-4+ amplification in both chains, and a fix of the financial path, each measured first;
+  2. **E8:** a registered valuation-sanity check;
+  3. **mean_iv against tails:** brought back to the operator with options once the fixes are measured.
+
+  E5 waits for v2.0.1.
+- **E8, fixed now.** fork 1's AK.44 suggestions are adopted. Every bar is stated in terms of v1, measured in the same run; none is derived
+  from any v2.0.1 number.
+  - **The run:** E5's forensic pipeline (AL.24) over its 20 quarter-ends 2020-03-31..2024-12-31, `--e5-tables data/priors_v4_pit`. Each
+    valued operating or financial name with a market cap of at least $300M gets v2.0.1's full run beside v1's own, with 2,000 draws and
+    the engine's own seed.
+  - **The measures, per name:**
+    - the invalid-draw count;
+    - the top-1% share of mean equity (the sum of the largest 1% of valid draws over the sum of all);
+    - EV P90/P50 (operating: explicit plus terminal PV; financial: equity, since the floor is immaterial there);
+    - the P50 equity ratio v2/v1.
+  - **Bars.** Each holds for each family (operating, financial), pooled over the 20 dates and in each valuation year (4 dates):
+    - **E8a, invalid draws:** **zero** in every name.
+    - **E8b, the top-1% share of the mean:** the median ≤ **2 ×** v1's median, and the 90th percentile ≤ **2 ×** v1's 90th percentile.
+    - **E8c, EV P90/P50:** the median ≤ **2 ×** v1's median.
+    - **E8d, level:** the median of P50 v2/v1 lies in **[0.5, 2.0]**. This is the band REGISTRATION_engine_v2 section 2 named for
+      investigation; it is now a bar.
+  - **Reported, not barred:** the share of draws at the equity floor; names whose top-1% share exceeds 0.5, with the attribution of each;
+    the per-date values.
+  - **Outcome.** A pass makes v2.0.1 eligible for E5 and freezing. A fail is diagnosed, and any further fix is a new version measured
+    against these same bars. No bar changes after any v2.0.1 number exists.
+- **The order:**
+  1. v2.0.1 code and tests;
+  2. diagnostics of the remaining sources (the financial ρ and φ terms; the shock-year residuals of 2021), on a few dates only;
+  3. the combined E5 and E8 forensic run (about 6 CPU hours, scheduled with a guard);
+  4. the mean_iv question to the operator.
+
+**AK.45 (2026-10-14 15:22): rulings on an outside review of AL.25/AK.44.** The review read AL.25's draft E8. The registered E8 (AL.27, approved by the
+operator) already meets its main demands:
+- zero invalid draws (E8a);
+- a direct bar on tail dominance of `mean_iv`, the top-1% share (E8b);
+- v1 used as a reference beside validity bars, not as ground truth.
+
+**Four additions are accepted.** Each tightens the check and none loosens it. They are passed to fork 2 to register as an addendum before
+any v2.0.1 number exists:
+1. **The attenuation invariant, tested.** With λ_t the multiplier on the year-3 deviation, 1 ≥ λ_4 ≥ λ_5 ≥ 0 in both chains. The tests
+   cover:
+   - a zero or near-zero d_3 or ρ_3;
+   - a non-monotone curve;
+   - a sign change;
+   - the monotone case, where v2.0.1 equals v2.0 (and v1 wherever v2.0 equalled it).
+2. **The financial rules are written before any code.** ρ_t/ρ_3 and the φ_3 division each get an explicit mathematical rule in the
+   registration.
+3. **E8 on the gate-2b vintage.** E8 also runs on gate 2's 2026 company-dates, whose inputs at T use the vintage-2025 tables that gate 2b
+   uses. The measures and the bars against v1 on the same inputs are as AL.27 sets them.
+4. **Identity and reproducibility.**
+   - v2.0.1 carries its own `ENGINE_VERSION`, commit, table hashes and diff report.
+   - A test shows years 1–3 byte-identical to v2.0 at the same seeds and inputs. Any difference stops acceptance until it is explained.
+
+The order stays AL.27's: code and tests, then diagnostics, then E5 with E8, then the `mean_iv` question to the operator, then any freeze.
