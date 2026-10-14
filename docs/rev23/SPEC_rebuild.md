@@ -3783,3 +3783,49 @@ The operator ruled for gate 2 that "tag-consistent governs" (AK.27–AK.30).
     holding 13 MiB. The runner pauses for any GPU compute process (memory `gpu-shared-with-gaming`).
   - It resumed at 11:47, after the app closed, and had reached 19 of 30 at 11:47.
   - Answers are unaffected. The finish moves to the early afternoon.
+
+**AL.15 (2026-10-14 11:48): two amendments to AL.13, made after a 25-company dry test (vintage 2020, scratchpad only) and before the full measurement.**
+- **Context: the restart.** The PC restarted at 06:18. The repeat control resumed by itself.
+  - At 06:30 its GPU guard stopped the server because the ChatGPT desktop app held the GPU.
+  - It waited until 11:43, then restarted its own server. It is at 18 of 30.
+  - My CPU window still follows it.
+- **Amendment 1: a fourth cause class, `partial_line`.** AL.13's classes could not tell a company's own recast from the extractor
+  taking a sub-line.
+  - **Example:** Apogee (CIK 6845) files `Revenues` of 72.7M, 79.5M, 76.2M and 49.1M for FY2015–2018, against a total of about
+    1.4B. First-filed growth reads +2,757% and −92%; tag-consistent reads +5.8% and +19%. AL.13 had called it "recast".
+  - **The class:** checked after `tag_seam` and before `recast`. It applies when a first-filed cell is more than 0.5% below the
+    largest annual ladder value that its own filing reports for that period, in its unit.
+  - **What it changes:** classification only. There are no bars, and the measured differences are unchanged.
+- **Amendment 2: the Q4 check is replaced.** The script calls `tag_consistent.annual_tc` itself, so AL.13 item 5's agreement test would
+  be identity, not an independent check. Instead, the 10 largest gaps in the full run are checked by hand against the filed income
+  statements, as in AL.9, before anything is reported.
+- **What the dry test also showed:** 3 of 211 rows whose panel g_k is not reproduced by `pit_data` at the cut. They are reported as a
+  count (`first_filed_reproduced`).
+- **The script:** `scratch/rev23/engine_v2_audit/tc_outcomes.py`. It writes `tc_<V>.json`, `tc_rows_<V>.pkl` and `panel_tc<V>.pkl`
+  (the panel with tag-consistent growth), all outside any data directory.
+
+**AL.16 (2026-10-14 11:50): engine v2's CPU window is scheduled to run unattended after the repeat control (memory: long runs outside Claude).**
+- **The task:** `RS2-EngineV2-CPU` (`scratch/rev23/engine_v2_audit/chain/`: `ev2_cpu_chain.py`, `launch_ev2.vbs`,
+  `register_ev2_task.ps1`). It runs every 15 minutes and at logon.
+- **The guard.** Each run exits at once unless all of these hold:
+  - the repeat control is final (`score_day.control_final`; tested: repeat False, masked True);
+  - no llama-server is running;
+  - commit headroom is at least 8 GB;
+  - there is no `HOLD` file in the chain folder. Fork 1 or the operator can create one to keep the CPU free.
+- **The steps,** each skipped when its output exists. Every script writes once, so a restart resumes:
+  1. the pass at origin 2025-06-30 (AL.6) into `forecast_study/pass_v2025`;
+  2. vintage 2025's panel on its own obs (`panel_cut2025_o2025.pkl`);
+  3. `data/priors_v4_pit/2025` (AL.10);
+  4. AL.13's measurement for 2017–2025, into `engine_v2_audit/tc/`.
+
+  A failed step writes `FAILED_<step>` and stops the chain. Everything runs at below-normal priority. Nothing is reported before my audit
+  (Q4).
+- **Inputs copied, never moved:**
+  - the 9 study pass files into `forecast_study/pass_v2025` (sha256 equal);
+  - the study's code into `engine_v2_audit/studypkg/fs`, from branch `review-2026-10/forecast-study` and byte-equal to the copy used
+    in AL.6.
+- **Still manual, after DONE:**
+  - E6 for 2025;
+  - E5 on the point-in-time tables;
+  - AL.13 (c) and (d), the residual tables and E3/E4 on the tag-consistent panels;
+  - AL.15's hand check of the 10 largest gaps.
