@@ -200,8 +200,17 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
             return out
         return orig_sim(wrapped, dists, n, sd, corr, price_per_share, sh)
     mod.simulate = sim
+    corr = (getattr(cap.ps, "meta", None) or {}).get("corr") or None               # AK.68: the priors' input correlation, as production passes it (gate1, company_inputs)
+    corr_fallback = False
     try:
-        r = mod.run(cap.pit, _Fixed(_envelope_prior(cap.ps) if envelope else cap.ps), cap.disc, table, n_draws=n_draws, seed=seed, state=cap.st)
+        try:
+            r = mod.run(cap.pit, _Fixed(_envelope_prior(cap.ps) if envelope else cap.ps), cap.disc, table, n_draws=n_draws, seed=seed, corr=corr, state=cap.st)
+        except InputError as e:                                                         # gate1.value_company's rule: a matrix that is not positive definite
+            if corr is None or "positive definite" not in str(e):                       # is drawn independently, stamped
+                raise
+            kept.clear()
+            corr_fallback = True
+            r = mod.run(cap.pit, _Fixed(_envelope_prior(cap.ps) if envelope else cap.ps), cap.disc, table, n_draws=n_draws, seed=seed, corr=None, state=cap.st)
     finally:
         mod.simulate = orig_sim
     if r.get("status") != "ok":
@@ -219,7 +228,7 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         trim = (sum(mid) / len(mid)) / (sum(ks) / len(ks)) if mid else None
         p99 = ks[cut - 1] if cut >= 1 else ks[0]                                          # AL.30 option (b): draws above their own P99 set to it, then the mean
         w99 = (sum(min(x, p99) for x in ks) / len(ks)) / (sum(ks) / len(ks))
-    return {"status": "ok", "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
+    return {"status": "ok", "corr_pairs_given": len(corr) if corr else 0, "corr_not_positive_definite": corr_fallback, "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
             "ev_p10": ev.get("p10"), "ev_p50": ev.get("p50"), "ev_p90": ev.get("p90"), "ev_mean": ev.get("mean"), "share_floored": d.get("share_negative_equity"),
             "top1pct_share_of_mean": top, "top5pct_share_of_mean": top5, "trimmed_mean_over_mean": trim, "winsor99_mean_over_mean": w99}
 

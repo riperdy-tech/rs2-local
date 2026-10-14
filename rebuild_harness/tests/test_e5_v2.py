@@ -84,3 +84,32 @@ def test_ak51_item3_the_matched_financial_oracle_uses_realised_tbv_growth_and_ro
     a, b = E5.values(c, {"fx_out": lo}, SHARES, table()), E5.values(c, {"fx_out": hi}, SHARES, table())
     assert b["v2"] != a["v2"] and b["v1_same"] != a["v1_same"]                                          # the matched reading sees tbv growth
     assert b["v2_rote_only"] == a["v2_rote_only"] and b["v1_same_rote_only"] == a["v1_same_rote_only"]  # the labelled ROTE-only sensitivity does not
+
+
+def test_ak68_e8s_v2_distribution_draws_with_the_priors_correlation_as_production_does_and_falls_back_like_gate1(monkeypatch):
+    import dataclasses
+    from valuation import engine_operating_v2 as o2_
+    from valuation.common import InputError
+    pit, st, ps, disc = setup("operating", "3674")
+    corr = {("margin_target", "ronic"): 0.3}
+    ps = dataclasses.replace(ps, meta=dict(ps.meta or {}, corr=corr))
+    c = SimpleNamespace(family="operating", st=st, ps=ps, disc=disc, pit=pit)
+    seen, real = [], o2_.run
+
+    def spy(*a, **kw):
+        seen.append(kw.get("corr"))
+        return real(*a, **kw)
+    monkeypatch.setattr(o2_, "run", spy)
+    d = E5.v2_distribution(c, table(), SHARES, n_draws=50)
+    assert seen == [corr] and d["corr_pairs_given"] == 1 and d["corr_not_positive_definite"] is False
+
+    seen.clear()
+
+    def not_pd(*a, **kw):
+        seen.append(kw.get("corr"))
+        if kw.get("corr"):
+            raise InputError("correlation matrix is not positive definite")
+        return real(*a, **kw)
+    monkeypatch.setattr(o2_, "run", not_pd)
+    d = E5.v2_distribution(c, table(), SHARES, n_draws=50)
+    assert seen == [corr, None] and d["status"] == "ok" and d["corr_not_positive_definite"] is True
