@@ -113,6 +113,34 @@ It is labelled as a diagnostic and decides nothing.
 **Returns are not part of gate 2b.** The return question belongs to the selection registration, and these dates are
 outside its confirmatory count.
 
+
+**Amendment AK.37 v2 (approved by the operator 2026-10-14 14:39 KST: "approve AK.37 v2 and AL.22"; written before any gate-2b data exists and before
+S5 is fitted; the rules and their measured basis are in SPEC_rebuild AK.37, AK.39 and AK.41):**
+1. **Measurement.** Revenue growth and the operating-margin change come from **one filing's own comparative columns**
+   (`rebuild_harness/gate2/same_filing.py`):
+   - one accession, one tag, one unit;
+   - among several revenue tags, the largest current value, and on a near-tie (within 0.5%) the largest prior;
+   - a derived Q4 only with one tag across the 10-K and the Q3 10-Q, and no recast in between.
+
+   The ROTE change keeps the `build_state` definition, with a net-income tag-consistency check reported beside it.
+2. **Total revenue.** The chosen revenue figure must be verified as total revenue: either the largest of two or more tags, or a closure in
+   the same filing (gross profit plus cost of revenue equals revenue, or revenue minus total costs and expenses equals operating income,
+   within 1%).
+   - A closure failure abstains, and is listed.
+   - A figure with no test available is scored and flagged, and every bar is also reported on the verified rows only.
+3. **Eligibility, both arms alike.** A target is not a forecast, and leaves the scored sample (listed), when its result was **public before
+   the T cutoff**:
+   - through an 8-K with Item 2.02 in SEC's filing index, accepted after the period's end; or
+   - through an earnings release or the annual report in the pack; or
+   - for the annual target, through the annual report filed on or before T.
+
+   A quarter that ended more than 120 days before T is also excluded: a guard against a known XBRL artefact, not part of the benchmark.
+   The quarterly benchmark is **the next quarterly result not yet public at T**.
+4. **The register.** Every exclusion records the company, T, the target period, the metric(s), the public source with its acceptance
+   timestamp, and the reason. The original and the eligible sample sizes are both reported.
+
+   This replaces "first-filed, never restated" above for growth and margin.
+
 ## 4. Bars
 
 **The statistic** is G1's: per measure, the paired median of `|A − y| − |B − y|` over company-dates. A is better when

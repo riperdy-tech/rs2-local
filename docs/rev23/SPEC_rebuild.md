@@ -4216,3 +4216,54 @@ same.**
   recorded as a property of `priors_v4_pit`.
 - **Fork 1's broader point is adopted:** label noise is not a calibration method. Under-coverage stays E3's diagnosed FAIL. Its remedy, if
   any, is a separately registered marginal-calibration candidate (AL.5), never a choice of outcome definition made for its side effects.
+
+**AL.24 (2026-10-14 14:36): REGISTRATION of how E5 (the oracle, REGISTRATION_engine_v2 section 1) is computed. Fixed before any code or number
+exists.**
+- **Why it needs a re-run.** The forensic run's records (Addendum U, `scratch/rev23/forensics/run_main`) keep values and realised paths
+  but not the company states, so v2 cannot be valued from them. E5 re-runs that pipeline, `rebuild_harness.forensics.run`, unchanged,
+  over its 20 quarter-ends 2020-03-31..2024-12-31, with one addition per valued operating or financial name with a market cap of at least
+  $300M.
+- **One information set for both engines (a fairness rule).** The stored v1 oracle (`or_both` / `or_rote`) overrides every realised year
+  up to K ≤ 8. v2 can take realised values only in years 1–3 and the long-run margin. E5 therefore computes both engines on the same
+  realised information:
+  - **operating:** revenue growth and operating margin of years 1..min(K, 3); the long-run margin is the realised year-5 margin when
+    K ≥ 5, otherwise the prior's P50;
+  - **financial:** ROTE of years 1..min(K, 3); tangible-book growth stays the engine's own P50 path.
+
+  The three values:
+  - **v2 oracle:** `operating_chain_v2` / `financial_chain_v2` at v2's median point (`at_median_inputs`), with `nt_lgrowth_k` =
+    log(1 + realised g_k), `nt_margin_k` / `nt_rote_k` = the realised level, for those k. Tables: `data/priors_v4_pit`, vintage
+    year(T) − 1.
+  - **v1 oracle, same information:** the forensic chains (`forensics.chains.op_chain` / `fin_chain`) with `g_over` / `m_over` /
+    `rp_over` restricted to k ≤ 3, and the same long-run margin rule.
+  - **v1 oracle, full K:** the stored `or_main`, reported only.
+- **The score:** ln(oracle value per share ÷ price).
+- **The statistic:** `fxm.per_date`'s `ic_resid`. That is the Spearman correlation with the 3-month excess return of the score's rank
+  residual, after the yardsticks and the **Y1** controls (book ÷ price, log market cap, idiosyncratic volatility, 1-month reversal,
+  1/price), industry-demeaned. It is taken per date, then:
+  - the mean over the 20 dates (pooled);
+  - by valuation year (2020–2024, 4 dates each);
+  - under each of the three bounds.
+
+  Y1 columns the panel lacks are built point in time from the price files, as the selection tooling (E1) builds them.
+- **Bars,** applied to v2 oracle against v1 oracle on the same information:
+  - (i) pooled, and in each year: v2 `ic_resid` ≥ v1 `ic_resid` − 0.02, under each bound;
+  - (ii) for each family with at least 500 name-dates: the sign of v2's pooled `ic_resid` equals v1's. No family's sort is inverted.
+    Commodity is out of scope (V3).
+- **Also reported:** the v1 full-K oracle, n per date, and refusals (v2 refusing where v1 values, and the reverse).
+- **Compute:** about 5–6 CPU hours at 3 workers, as a scheduled chain with a guard and HOLD. It runs after the AL.21 cascade and needs
+  no GPU.
+- **Code:** a new `rebuild_harness/forensics/e5_v2.py` (my code, with tests) and a run flag. The forensic run's existing outputs are
+  untouched; E5 writes to its own folder.
+
+**AK.42 (2026-10-14 14:39): the operator approves AK.37 v2 and AL.22** ("approve AK.37 v2 and AL.22").
+- **AK.37 v2,** the outcome amendment with AK.39's additions, is written into `REGISTRATION_gate2b.md` (before section 4) and
+  `SPEC_S5_muse_integration.md` (before the procedure). It replaces first-filed growth and margin with the same-filing measure, adds the
+  total-revenue verification, public-availability eligibility (SEC Item 2.02, the pack, and the annual report on or before T), the 120-day
+  guard and the exclusion register. No gate-2b data and no S5 fit exist yet.
+- **AL.22:** engine v2 keeps `priors_v4_pit`, its first-filed residual tables, unchanged as approved. AL.23 measured that P50 accuracy is
+  equal on tag-consistent outcomes. The bands' under-coverage remains E3's recorded FAIL, and any remedy is a separately registered
+  calibration candidate.
+- **Next, coordinator:** `same_filing` gains the closure test (reading raw companyfacts, because the store keeps only the extractor's
+  tags) and the Item 2.02 check (reading SEC submissions), with tests. Then they are wired into the outcome builder used by S5's fit and
+  by gate 2b, against the post-fix `pit_data` (`688281f` and later).
