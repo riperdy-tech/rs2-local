@@ -304,3 +304,59 @@ def test_al27_the_financial_continuation_never_amplifies_tbv_growth_or_the_rote_
             assert abs(y["growth"] - gT) <= abs(g3 - gT) + 1e-12
             assert abs(y["rote_after_fade"] - ind) <= abs(r3 - ind) + 1e-12             # rote_target = I here, so the deviation from I can only shrink
         assert f2.RULE_ENVELOPE in r["rules"]
+
+
+# ---- Addendum AL.28 (fork 1's outside-review additions): the attenuation invariant and years 1-3 identity -----------------------------------------------
+
+import json as _json                                                                  # noqa: E402
+from pathlib import Path as _Path                                                     # noqa: E402
+
+CURVES_CASES = {
+    "monotone": [1.0, 0.8, 0.6, 0.5, 0.4, 0.3, 0.25, 0.2, 0.15, 0.1],
+    "rising": RISING,
+    "zero_d3": [1.0, 0.5, 0.0, 0.3, 0.4, 0.3, 0.2, 0.1, 0.1, 0.1],
+    "near_zero_d3": [1.0, 0.5, 1e-9, 0.3, 0.4, 0.3, 0.2, 0.1, 0.1, 0.1],
+    "dip_before_3": [1.0, 0.1, 0.4, 0.3, 0.5, 0.3, 0.2, 0.1, 0.1, 0.1],
+}
+
+
+def _lambdas(path, dev3, centre):
+    return [((x - centre) / dev3) for x in path] if abs(dev3) > 1e-15 else [0.0 for _ in path]
+
+
+@pytest.mark.parametrize("case", sorted(CURVES_CASES))
+@pytest.mark.parametrize("g3", [-0.35, -0.05, 0.12, 0.70])
+def test_al28_operating_attenuation_invariant_1_ge_lambda4_ge_lambda5_ge_0(case, g3):
+    r, gT = _op_point({"growth_decay": Curve(CURVES_CASES[case], "growth_decay")}, math.log1p(g3))
+    lam = _lambdas([y["growth"] for y in r["years"][3:]], g3 - gT, gT)
+    assert all(1.0 + 1e-12 >= a >= b - 1e-12 for a, b in zip([1.0] + lam, lam)) and all(x >= -1e-12 for x in lam), (case, lam)
+    if case == "monotone":                                                              # v2.0.1 == v2.0 on a non-increasing curve
+        c = CURVES_CASES[case]
+        assert all(y["growth"] == pytest.approx(gT + (g3 - gT) * c[min(t, len(c)) - 1] / c[2], abs=1e-15) for t, y in enumerate(r["years"][3:], start=4))
+        assert o2.RULE_DECAY_ENVELOPE not in r["rules"]
+
+
+@pytest.mark.parametrize("case", sorted(CURVES_CASES))
+@pytest.mark.parametrize("dev", [-0.07, 0.09])
+def test_al28_financial_attenuation_invariant_for_tbv_growth_and_the_rote_deviation(case, dev):
+    pit, st, ps, disc = setup("financial", "6021")
+    gT = terminal_growth_rate(disc.rf)
+    ind = st["industry_rote"]["value"]
+    c = Curve(CURVES_CASES[case], "c")
+    curves = dict(ps.curves, growth_decay=c, rote_retention=c, excess_fade=c)
+    g3, r3 = gT + dev, ind + dev
+    q = {"g_terminal": gT, "rote_target": ind, "nt_ltbvg_1": 0.05, "nt_ltbvg_2": 0.05, "nt_ltbvg_3": math.log1p(g3), "nt_rote_1": ind, "nt_rote_2": ind, "nt_rote_3": r3}
+    r = f2.financial_chain_v2(st, q, curves, disc, detail=True)
+    for lam in (_lambdas([y["growth"] for y in r["years"][3:]], g3 - gT, gT), _lambdas([y["rote_after_fade"] for y in r["years"][3:]], r3 - ind, ind)):
+        assert all(1.0 + 1e-12 >= a >= b - 1e-12 for a, b in zip([1.0] + lam, lam)) and all(x >= -1e-12 for x in lam), (case, lam)
+
+
+def test_al28_years_1_to_3_are_identical_to_v2_0_at_the_same_seed_and_inputs():
+    """The golden file was written by v2.0's own code (22f22b0, scratch worktree wt-legacy) on these fixtures: forecasts and the years-1..3 rows at the median point."""
+    gold = _json.loads((_Path(__file__).parent / "data_v20_years_1_3.json").read_text(encoding="utf-8"))
+    for family, sic, mod in (("operating", "3674", o2), ("financial", "6021", f2)):
+        pit, st, ps, disc = setup(family, sic)
+        r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(), n_draws=200, seed=7, state=st)
+        got = _json.loads(_json.dumps({"forecast_years": r["forecast_years"], "years_1_3": r["at_median_inputs"]["years"][:3]}, sort_keys=True, default=str))
+        assert got["forecast_years"] == gold[family]["forecast_years"] and got["years_1_3"] == gold[family]["years_1_3"]
+        assert gold[family]["engine_version"] == "v2.0" and r["engine_version"] == "v2.0.1"
