@@ -4685,3 +4685,126 @@ lives in `data/priors_v3_fy` (observations and priors tables), `forecast_study/p
     fork 1's plan (AK.42). Gate 2's frozen inputs stay as they are.
   - E5 and E8 are still to be run on `priors_v4_pit`, as registered (AL.24, AL.27). Cross-check 12 is asked whether they should move to
     `priors_v4_fy` before running.
+
+**AL.33 (2026-10-14 18:31): E5 and E8 on v2.0.2 are running, verdicts sealed (AL.31). Cross-check 12 is written. E8's second sample has its harness.**
+- **Cross-check 12:** `CROSS_CHECK_12_engine_v2_interim_e8.md` (fea6277), 12 questions. Fork 1 is asked to mirror it, with the records
+  through AL.32, for the operator to send to ChatGPT and Gemini.
+- **The forensic E5 + E8 run:** scheduled task `RS2-EngineV2-E5E8` (`engine_v2_audit/e5e8_chain/`), started 18:28.
+  - Its inputs: 20 quarter-ends, `--e5-tables data/priors_v4_pit --e5-dist`, engine v2.0.2.
+  - Its outputs: the records, then point-in-time price features (Y1), then E5's and E8's scorers.
+  - **Sealing:** both scorers write their verdict to a file and print counts only; the chain does not open them (AL.31).
+  - **The diagnostic variants** are now behind `--e5-diag` and are not run. The run records v1's EV P50/P90 from v1's own draws, for E8c.
+- **E8's second sample:** `rebuild_harness/forensics/e8_gate2b.py` (ea16c77), on fork 1's read-only recipe.
+  - **Read-only setup:** a scratch `RealEnv` state folder holding copies of run 2's `ctx/context_<d>.pkl` for 2026-02-27, 04-30 and 06-30,
+    and `sample/` (sha256 equal); `fetch_documents=False`. Nothing under `data/gate2_run2` is written.
+  - **The input fingerprint** against run 2's freeze: **no differences**.
+  - **Smoke test (6 jobs):** v1 there is run 2's code arm exactly. Its P50 per share equals `result.json`'s `code_only` value to the last
+    digit on all 5 valued names, and their base years equal run 2's.
+  - **The full run** (vintage-2025 table, `priors_v4_pit`) and its sealed scorer are in progress. The count of base years differing from
+    run 2 (the FY fix) will be reported, as fork 1 asked.
+- **Code** (rs2-local `review-2026-10/gate2-run2`, pushed after scans):
+  - 2d042a3: the E8 scorer; the E5 scorer sealed;
+  - ea16c77: the gate-2b sample harness.
+
+**AL.34 (2026-10-14 19:04): E8's second sample (2026, vintage 2025) is computed. Its verdict is sealed (AL.31); only the counts are read.**
+- **The first attempt crashed** on a name with no mapped Damodaran industry (`DataNotPresent` from the discount rate). The pipeline refuses
+  that case, so the harness now counts it as a refusal (5afb414) and does not value it.
+- **The run:** `engine_v2_audit/e8_2026/run`, tables `priors_v4_pit/2025`.
+  - 360 company-dates; **253 valued**;
+  - not valued: 1 refused at inputs, 12 at the discount rate, 94 by the v1 engine.
+  - The scratch copies are hash-equal, and the input fingerprint has no differences from run 2's freeze.
+  - **Base years differing from run 2: 0** (fork 1's question; the FY fix changes none of these names).
+- **Agreement with run 2:** run 2's statuses at these dates are ok 253, engine_refused 90, refused 14, error 3.
+  - The valued set has the same count, and the harness's v1 equals run 2's code arm on the smoke names (AL.33).
+  - The non-valued split differs (107 = 94 + 12 + 1 against 90 + 14 + 3) because run 2's 3 pre-model code errors are clean refusals in the
+    corrected code (AK.5).
+- **Sealed:** `e8_verdict_gate2b.json` is written and not opened. The scorer printed only "rows 253, 3 dates".
+
+**AK.50 (2026-10-14 19:04): S5's adoption rule will very likely give w = 0 on every measure. Measured as counts only (no error was read); the
+choice goes to the operator.**
+- **The rule** (S5 section 4, approved, with the AK.42 amendment): w is adopted only with **at least 150 annual out-of-fold pairs from at
+  least 2 dates with at least 30 each**, otherwise w = 0.
+- **The eligible annual outcomes on gate 2** (`scratch/rev23/s5_data/eligible`), before any forecast-availability filter, which can only
+  lower them:
+
+  | Measure | Pairs | 2025-10-31 / 12-31 / 2026-02-27 / 04-30 / 06-30 |
+  |---|---|---|
+  | Operating revenue growth | **143** | 60 / 55 / 13 / 13 / 2 |
+  | Operating-margin change | **143** | same |
+  | Financial ROTE change | **49** | 23 / 25 / 0 / 0 / 1 |
+
+  The q1 breadth outcomes are 265, 262 and 76.
+- **Every cell is under 150, so by the registered rule w = 0 throughout.** This is S5's foreseen outcome:
+  - S5 section 4 itself said the annual target comes mostly from two dates;
+  - the outside review warned of it in cross-check 9 (AK.19 ruled to keep the rule).
+
+  The audit's corrections moved revenue growth only from 150 (registered) to 144 (tag-consistent) to 143 (eligible).
+- **The coordinator's recommendation:**
+  1. keep the rule (w = 0), so gate 2b tests engine v2 as SYSTEM;
+  2. still run Muse on gate 2b's dates and record its positions, unused, so that a future Muse weight, fitted later under its own
+     registration, can be tested on untouched dates;
+  3. that later fit must avoid outcomes gate 2b scores: gate-2 and gate-2b companies share fiscal-2026 results, so its design needs care.
+
+  **Alternatives:** (B) skip Muse on gate 2b, saving about 3 GPU days; (C) amend the rule now, which the coordinator advises against
+  because it would be decided after seeing the consequence.
+- **Fork 2's AL.33–AL.34:** E8's 2026 sample is built on a scratch `RealEnv`:
+  - fingerprint equal to run 2's freeze;
+  - 253 valued, as in run 2;
+  - 0 base-year differences after the FY fix.
+
+  Its verdict is sealed until cross-check 12 is ruled.
+
+**AK.51 (2026-10-14 20:17): rulings on cross-check 12 (Gemini and ChatGPT). E5 and E8 stay sealed until items 1–7 are done.**
+
+ChatGPT read the branch code, and Gemini reviewed the brief only. The coordinator verified ChatGPT's code claims at `5afb414`:
+- `e8_score.rows_of` keeps only names valued "ok" by both engines;
+- `e8_gate2b` aborts on neither a copy mismatch nor a fingerprint difference, and passes `priors_dir=None`;
+- `e5_v2`'s financial oracle overrides realised ROTE but not tangible-book growth;
+- `compact_company` keeps only `EntityCommonStockSharesOutstanding` from `dei`.
+
+**Accepted; done before any verdict is opened** (fork 2 builds; each is a fix of test integrity or a tightening, never a relaxed bar):
+1. **Lineage (both).** The E5 and E8 acceptance runs use **`priors_v3_fy` + `priors_v4_fy`, pinned explicitly**, with paths and hashes in the
+   output and each date at its eligible vintage. The `priors_v3` / `priors_v4_pit` runs are kept as a labelled legacy sensitivity.
+2. **E8 fails closed (ChatGPT).**
+   - **Reconciliation:** attempted, then valued by both, then excluded, with the reason for every exclusion. A missing date fails.
+   - **v2 refusals:** a name v1 values but v2 refuses is listed. Without a named engine reason, it fails E8.
+   - **Integrity:** a scratch copy that does not match aborts the run. Fingerprint differences are allowed only from an approved list
+     (the fiscal-year inputs).
+3. **E5's financial oracle, matched (ChatGPT).** A variant gives both engines realised tangible-book growth and ROTE for years 1–3. It is
+   the financial reading. The ROTE-only version is kept as a labelled sensitivity. The bar is unchanged.
+4. **The fiscal period's authority (both; Gemini's case of a late or restated 10-K).** Before the freeze, every annual accession whose
+   inferred period changed under the fiscal-year fix is validated against SEC's `reportDate` (in the submissions JSON), and so are all
+   annual accessions of the gate-2b universe. Every disagreement is listed. Keeping `DocumentPeriodEndDate` in the store is a later store
+   change.
+5. **The interim clips the upper tail only: v2.0.3 (Gemini).** The financing argument (AK.47–AK.48) concerns externally financed **upside**
+   growth. Clipping P1 to P5 removes real downside, revenue collapse and distress, with no economic basis.
+   - v2.0.3 is v2.0.2 with only **P99 set to P95**; P1 is kept.
+   - It is decided now, before any E8 verdict, on the stated rationale, so the operator's ruling (a) is refined, not reversed.
+   - It is measured against the same bars on the held-out samples.
+6. **A top-5% share bar (Gemini).** A clip piles probability mass at P95, so the top-1% share alone can be passed by the very interim it
+   tests. **E8b′:** the top-5% share of mean equity, median ≤ 2× v1's and 90th percentile ≤ 2× v1's. It has the same form as E8b and is a
+   tightening.
+7. **Test completeness (ChatGPT):** an attenuation fixture with `rote_target` ≠ the industry ROTE.
+
+**Accepted as reported diagnostics, not bars:**
+- the factorial attribution, which toggles the growth spread, the other spreads and the copula dependence (both reviews);
+- E5 at 12 and 36 months (it never rescues a 3-month fail);
+- `mean_iv`/P50;
+- the 90th percentile of equity P90/P50;
+- the within-industry rank correlation with v1;
+- the median `mean_iv`/price;
+- the sensitivity of `mean_iv` and Pr(IV > price) to the tail treatment.
+
+**The decay-curve concern, measured first (Gemini Q1/Q12, ChatGPT Q12).** On the `priors_v4_fy` curves, fork 2 reports how often the running
+minimum sends λ to 0 at year 4 (a cliff) or pins λ at 1 (a noisy small d_3).
+- **The default (ChatGPT):** a smoothed or monotone estimator is a separately registered candidate, not part of this freeze.
+- **If the cliffs or pins are common,** that candidate goes to the operator before the gate-2b freeze.
+
+**Rejected, with reasons:**
+- **Rebuilding the residual tables on tag-consistent outcomes now (Gemini).** AL.22–AL.23 measured that the first-filed tables cover better,
+  with equal P50 accuracy, and the operator ruled (AK.42). AL.29 showed the extreme tails are real growth, not seams. ChatGPT reached the
+  same view: a qualified dispersion proxy.
+- **Making 12- or 36-month ICs binding (Gemini).** That replaces the registered E5 test; they are reported instead.
+- **A bar on rank correlation with v1 (Gemini).** v1 is a reference, not the truth, and v2 is meant to differ.
+- **"Implement financing-aware growth now instead of an interim" (Gemini).** It is the registered end state (AK.48), but it needs its own
+  specification, tests and E1–E8. It is not a 15-line change to slip in before validation.
