@@ -120,6 +120,8 @@ def run_date_fx(d):
                     try:
                         rec["e5"] = E5.values(A.CAP, rec, rec["shares"], _e5_table(cfg["e5_tables"], int(d[:4]) - 1))
                         if cfg.get("e5_dist"):               # AL.25 diagnostic: v2's full distribution beside v1's
+                            v1eq = sorted((x[0] for x in A.CAP.draws), reverse=True)
+                            rec["e5"]["v1_top1pct_share_of_mean"] = (sum(v1eq[:max(1, len(v1eq) // 100)]) / sum(v1eq)) if v1eq and sum(v1eq) > 0 else None
                             rec["e5"]["v2_dist"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"])
                             rec["e5"]["v2_dist_env"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], envelope=True)
                     except Exception as e:

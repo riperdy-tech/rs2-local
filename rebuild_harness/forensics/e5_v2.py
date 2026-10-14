@@ -130,11 +130,30 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         def for_company(self, family, state, asof):
             return self._ps
     mod = o2 if cap.family == "operating" else f2
-    r = mod.run(cap.pit, _Fixed(_envelope_prior(cap.ps) if envelope else cap.ps), cap.disc, table, n_draws=n_draws, seed=seed, state=cap.st)
+    kept = []
+    orig_sim = mod.simulate
+
+    def sim(chain_fn, dists, n, sd, corr=None, price_per_share=None, sh=None):     # records each valid draw's equity (the module's own simulate runs unchanged)
+        def wrapped(draw):
+            out = chain_fn(draw)
+            kept.append(out["equity"])
+            return out
+        return orig_sim(wrapped, dists, n, sd, corr, price_per_share, sh)
+    mod.simulate = sim
+    try:
+        r = mod.run(cap.pit, _Fixed(_envelope_prior(cap.ps) if envelope else cap.ps), cap.disc, table, n_draws=n_draws, seed=seed, state=cap.st)
+    finally:
+        mod.simulate = orig_sim
     if r.get("status") != "ok":
         return {"status": r.get("status"), "reasons": [str(x)[:120] for x in (r.get("reasons") or [])][:3]}
     d = r["distribution"]
-    eq = d.get("equity") or {}
+    eq, ev = d.get("equity") or {}, d.get("ev") or {}
     per = {k: (eq.get(k) / shares if eq.get(k) is not None and shares else None) for k in ("p10", "p50", "p90", "mean")}
-    return {"status": "ok", "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()}}
+    top = None
+    if kept and sum(kept) > 0:
+        ks = sorted(kept, reverse=True)
+        top = sum(ks[:max(1, len(ks) // 100)]) / sum(ks)
+    return {"status": "ok", "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
+            "ev_p10": ev.get("p10"), "ev_p50": ev.get("p50"), "ev_p90": ev.get("p90"), "ev_mean": ev.get("mean"), "share_floored": d.get("share_negative_equity"),
+            "top1pct_share_of_mean": top}
 
