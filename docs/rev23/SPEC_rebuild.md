@@ -4278,3 +4278,66 @@ exists.**
   q1 rows public through Item 2.02.
 - **Next:** the outcome builder for S5's fit (gate-2 rows) and for gate 2b, applying measurement, verification, eligibility and the
   register, on post-fix `pit_data`.
+
+**AL.25 (2026-10-14 14:53): a defect in engine v2 as approved. Its years-4-onward continuation amplifies year-3 deviations, through noise in the measured
+curves, into exploding valuation tails. Found while building E5. A decision for the operator before gate 2b's freeze.**
+- **How it was found.** E5's smoke run (one date, 300 companies; AL.24 code) refused 21 of 257 oracle values with "growth at or below
+  −100%", although every realised growth fed in was above −100%.
+- **The mechanism** (`engine_operating_v2`, SPEC_engine_v2 section 2): years 4–5 take g_t = g_T + (g_3 − g_T)·d_t / d_3, with d the measured
+  growth-decay curve.
+  - With v1's own path this reproduces v1 exactly. That was the design test.
+  - But the measured curves are not monotone: medians at k = 4–5 often exceed k = 3. So d_t/d_3 > 1, and any year-3 deviation is multiplied
+    after year 3. v1 never divides by d_3.
+  - The financial chain does the same three times: tangible-book growth (d_t/d_3), the pre-fade ROTE (ρ_t/ρ_3), and a division by the
+    excess-fade factor φ_3 in R*_3.
+- **How large** (max(d_4, d_5)/d_3 per growth band, priors_v3, clipped to [0, 1]):
+  - **operating, 2016–2025:** above 1 in most bands; 158× (2019, band 4), 22.5× (2021, band 2), 21.7× (2018, band 6). **Vintage 2025,
+    which gate 2b uses: 6.4×, 3.5× and 2.1× in the three fastest-growth bands.**
+  - **financial growth:** 164× (2023, band 0), 54× (2025, band 0).
+- **The effect on valuations.** Diagnostic `e5_v2.v2_distribution`: v2's full run, 2,000 draws, on the captured state beside v1's own.
+  The forensic pipeline, 600 companies, `priors_v4_pit`.
+
+  | Date, family | n | P90/P50, median: v1 / v2 | P90/P50 at the 90th percentile: v1 / v2 | Invalid draws, v2 | P50 v2/v1, median |
+  |---|---|---|---|---|---|
+  | 2021-06-30 operating | 272 | 2.69 / **17.7** | 6.6 / **526** (max 86,822) | **4.8%** (94 names over 5%) | 0.68 |
+  | 2024-06-30 operating | 238 | 3.03 / 5.87 | 7.9 / 16.1 | 0.4% | 0.93 |
+  | 2021-06-30 financial | 144 | 1.45 / 2.05 | 2.05 / 3.6 | 0% | 1.26 |
+  | 2024-06-30 financial | 123 | 1.35 / 2.05 | 1.57 / 2.5 | 1.8% | 1.03 |
+
+  The verdict contract v4 reads **mean_iv**, the mean of the draws (V1). Upper tails like these would dominate it.
+- **The cause is confirmed by a prototype** (diagnostic only; the engine is not changed). The growth-decay curve is replaced by its running
+  minimum, which is non-increasing, so a year-3 deviation can never grow afterwards:
+  - **2021 operating:** P90/P50 median 17.7 → **4.6**; 90th percentile 526 → **15**; invalid draws 4.8% → **0**.
+  - **2024 operating:** 5.87 → 3.40.
+  - **financial:** barely moves (2.05 → 2.03 and 1.83). Its ROTE path and the φ_3 division are separate sources, not yet measured.
+  - **What remains:** v2 stays wider than v1 (4.6 against 2.7). Part of that is by design, since v2 draws years 1–3 from its own measured
+    residuals, which E3 found still too narrow. Part is unexplained, with a maximum of 52–102×. That needs its own attribution.
+- **What was missed.** No registered check looked at v2's **valuation** distribution. E1–E4 test forecasts, E5 the oracle ranking, E7
+  isolation. E3/E4 are unaffected: they cover years 1–3 only.
+- **Proposed to the operator (nothing changed yet):**
+  1. **v2.0.1.** Every continuation ratio in both chains (d_t/d_3, ρ_t/ρ_3) uses the curve's running minimum, so the ratio is at most 1.
+     The financial φ_3 division is measured and fixed by its own rule before freezing. Identity with v1 is kept wherever the curve is
+     monotone, and tested.
+  2. **A new registered check, E8,** valuation sanity against v1 on the forensic dates. Fixed before it is run:
+     - invalid draws ≤ 1% per name in 99% of names;
+     - median P90/P50 within 2× of v1's;
+     - no name above 50×, unless explained by its inputs.
+  3. **E5 waits for v2.0.1.** Running it on v2.0 would score an engine about to change.
+
+  Gate 2b's freeze (after 10-30) needs v2.0.1 and its checks first.
+
+**AK.44 (2026-10-14 14:56): the coordinator's ruling on fork 2's AL.25 (engine v2's continuation defect), for the operator.**
+- **Agreed:** the defect is real and must be fixed before any SYSTEM freeze.
+  - A ratio d_t/d_3 above 1 multiplies a year-3 draw's deviation in years 4–5, and the measured curves are not monotone. The running-
+    minimum prototype removes the explosion (P90/P50 17.7 → 4.6; invalid draws 4.8% → 0).
+  - The valuation-level distribution (P10/P90, `mean_iv`, Pr(IV > price)) feeds the verdict contract (v4 section 2a), sizing and H-S1, so
+    a v2.0 freeze would carry it into gate 2b and the shadow book.
+  - The coordinator supports AL.25's plan: v2.0.1 (non-amplifying continuation in both chains, with the financial φ_3 division measured
+    and fixed by its own rule); E8 (valuation sanity against v1), registered before it is run; E5 waits.
+- **What is not affected:**
+  - **gate 2's result:** its code arm and Muse ran on engine v1 (`c7d7a4f`), and its bars score year-1 forecasts;
+  - **S5's fit:** it transports Muse onto v2's year-1 P50, which the year-4-onward continuation does not touch. The fit can proceed,
+    but the S5 **freeze** (SYSTEM) waits for v2.0.1 and E8;
+  - E3 and E4 (years 1–3).
+- **The lesson, adopted into the Q-rules:** no registered check covered the engine's valuation distribution, only its forecasts. From
+  now on every engine version carries a valuation-level sanity check (E8) beside its forecast checks, before any freeze.
