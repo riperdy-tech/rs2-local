@@ -3763,3 +3763,23 @@ The operator ruled for gate 2 that "tag-consistent governs" (AK.27–AK.30).
   between adjacent years (121 of AL.7's 123; the other 2 span a gap year), with 0 mismatches.
 - **Not built:** the fiscal-year mislabel fix, which awaits the operator's ruling.
 - **Not changed:** the frozen run-2 worktree (`a5fd342`), which the repeat control runs from.
+
+**AK.36 (2026-10-14 11:48): the hand check passes 20 of 20; the repeat control lost about 5 hours to a GPU-sharing app.**
+- **The hand check** (Audit 1, the version of record's 20 seeded q1 outcomes): `scratch/rev23/gate2_audit/hand_check.py` and
+  `hand_check_q4.py`. The filing documents themselves were downloaded from SEC under the standing approval: 24 files, 107,433,512 bytes,
+  each sha256 in `data/sec_bulk/handcheck_2026-10-14/manifest.json`.
+  - **Directly in the filing, 18 outcomes:** every scored value (revenue, operating income, and net income for the financials, both the
+    quarter and the year-earlier quarter) appears in the primary document's text. Growth recomputed from those values equals the scored
+    growth exactly wherever revenue exists. The banks (ISTR, FMAO) are checked on net income, which their ROTE uses.
+  - **The two derived fourth quarters** (UHS revenue; GS net income) appear in no filing, since they are full year minus nine months.
+    Both legs were checked: the fiscal-year pair in the 10-K and the nine-month pair in the third-quarter 10-Q, all four values found in
+    each case. UHS's Q4 growth from the filed figures is +9.0508%, the scored value.
+  - **Result: 20 of 20.**
+- **Audit 1 is complete:** look-ahead (the 4 same-day annual rows excluded), coverage, the independent recomputation (0 mismatches),
+  and the hand check. Only R8 is still open.
+- **The repeat control and the PC restart.**
+  - The PC restarted at 06:18. The repeat task resumed at 06:19 and completed company 18 of 30 at 06:30.
+  - It then stopped its server and waited, because the ChatGPT/Codex desktop app (`ChatGPT.exe`) showed up as a GPU compute process
+    holding 13 MiB. The runner pauses for any GPU compute process (memory `gpu-shared-with-gaming`).
+  - It resumed at 11:47, after the app closed, and had reached 19 of 30 at 11:47.
+  - Answers are unaffected. The finish moves to the early afternoon.

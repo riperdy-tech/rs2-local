@@ -1,0 +1,648 @@
+[
+ {
+  "key": "2026-04-30_0001723128",
+  "ticker": "AMRX",
+  "accession": "0001723128-26-000020",
+  "scored_growth": 0.038967818009260524,
+  "scored_margin_change": 0.051922089752968054,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 722519000.0,
+    "prior": 695420000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 141772000.0,
+    "prior": 100347000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 62256000.0,
+    "prior": 12195000.0
+   }
+  },
+  "doc": "amrx-20260331.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": 0.038967818009260524,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-02-27_0001801170",
+  "ticker": "CLOV",
+  "accession": "0001801170-26-000122",
+  "scored_growth": 0.6204602330365041,
+  "scored_margin_change": 0.03924038705438615,
+  "values": {
+   "revenue": {
+    "tag": "Revenues",
+    "cur": 749189000.0,
+    "prior": 462331000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 27334000.0,
+    "prior": -1274000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 27334000.0,
+    "prior": -1274000.0
+   }
+  },
+  "doc": "clov-20260331.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": 0.6204602330365041,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2025-12-31_0000352915",
+  "ticker": "UHS",
+  "accession": "0001193125-26-071676",
+  "scored_growth": 0.09050830367244078,
+  "scored_margin_change": 0.0004411058700469067,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 4486048000.0,
+    "prior": 4113722000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 517232000.0,
+    "prior": 472489000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 445941000.0,
+    "prior": 332397000.0
+   }
+  },
+  "doc": "uhs-20251231.htm",
+  "found": {
+   "revenue.cur": false,
+   "revenue.prior": false,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": 0.09050830367244078,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-04-30_0001357615",
+  "ticker": "KBR",
+  "accession": "0001357615-26-000141",
+  "scored_growth": -0.047076313181367735,
+  "scored_margin_change": -0.006495363877984259,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 1923000000.0,
+    "prior": 2018000000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 180000000.0,
+    "prior": 202000000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 102000000.0,
+    "prior": 116000000.0
+   }
+  },
+  "doc": "kbr-20260403.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": -0.047076313181367735,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-06-30_0001000228",
+  "ticker": "HSIC",
+  "accession": "0001000228-26-000045",
+  "scored_growth": 0.06728395061728398,
+  "scored_margin_change": 0.00284561117894451,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 3458000000.0,
+    "prior": 3240000000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 171000000.0,
+    "prior": 151000000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 94000000.0,
+    "prior": 86000000.0
+   }
+  },
+  "doc": "hsic-20260627.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": 0.06728395061728398,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-02-27_0000048465",
+  "ticker": "HRL",
+  "accession": "0000048465-26-000026",
+  "scored_growth": 0.02545527302582773,
+  "scored_margin_change": -0.012636031745445198,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+    "cur": 2972600000.0,
+    "prior": 2898810000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 217112000.0,
+    "prior": 248352000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 157474000.0,
+    "prior": 180017000.0
+   }
+  },
+  "doc": "hrl-20260426.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": 0.02545527302582773,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-02-27_0001941365",
+  "ticker": "MBC",
+  "accession": "0001941365-26-000056",
+  "scored_growth": -0.06406179009541113,
+  "scored_margin_change": -0.08612185693763794,
+  "values": {
+   "revenue": {
+    "tag": "Revenues",
+    "cur": 618000000.0,
+    "prior": 660300000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": -18500000.0,
+    "prior": 37100000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": -15400000.0,
+    "prior": 13300000.0
+   }
+  },
+  "doc": "mbc-20260329.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": -0.06406179009541113,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2025-10-31_0001083446",
+  "ticker": "ASTH",
+  "accession": "0001193125-25-274359",
+  "scored_growth": 0.997133964195442,
+  "scored_margin_change": -0.03928519586072607,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 956048000.0,
+    "prior": 478710000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 19210000.0,
+    "prior": 28425000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 373000.0,
+    "prior": 16094000.0
+   }
+  },
+  "doc": "asth-20250930.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": 0.997133964195442,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-02-27_0001328581",
+  "ticker": "BCC",
+  "accession": "0001328581-26-000016",
+  "scored_growth": -0.024653529398748097,
+  "scored_margin_change": -0.016942264139204393,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 1498614000.0,
+    "prior": 1536494000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 27785000.0,
+    "prior": 54519000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 17842000.0,
+    "prior": 40348000.0
+   }
+  },
+  "doc": "bcc-20260331.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": -0.024653529398748097,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-04-30_0001880319",
+  "ticker": "PRM",
+  "accession": "0001880319-26-000037",
+  "scored_growth": 0.7363459669582118,
+  "scored_margin_change": -0.5006266193150788,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 125069000.0,
+    "prior": 72030000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 72487000.0,
+    "prior": 77807000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 72936000.0,
+    "prior": 56686000.0
+   }
+  },
+  "doc": "prm-20260331.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": 0.7363459669582118,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-04-30_0001858681",
+  "ticker": "APO",
+  "accession": "0001858681-26-000026",
+  "scored_growth": -0.088139870223504,
+  "scored_margin_change": null,
+  "values": {
+   "revenue": {
+    "tag": "Revenues",
+    "cur": 5059000000.0,
+    "prior": 5548000000.0
+   },
+   "operating_income": null,
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": -1906000000.0,
+    "prior": 442000000.0
+   }
+  },
+  "doc": "apo-20260331.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": -0.088139870223504,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-06-30_0001032975",
+  "ticker": "LOGI",
+  "accession": "0001032975-26-000050",
+  "scored_growth": 0.06929580213696407,
+  "scored_margin_change": 0.06944443052295729,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 1227234000.0,
+    "prior": 1147703000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 258551000.0,
+    "prior": 162094000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 235697000.0,
+    "prior": 146015000.0
+   }
+  },
+  "doc": "logi-20260630.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": 0.06929580213696407,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-04-30_0001602658",
+  "ticker": "ISTR",
+  "accession": "0001437749-26-015924",
+  "scored_growth": null,
+  "scored_margin_change": null,
+  "values": {
+   "revenue": null,
+   "operating_income": null,
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 12024000.0,
+    "prior": 6293000.0
+   }
+  },
+  "doc": "istr20260331_10q.htm",
+  "found": {
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": null,
+  "growth_matches_scored": false
+ },
+ {
+  "key": "2025-10-31_0000792966",
+  "ticker": "FMAO",
+  "accession": "0001193125-26-081475",
+  "scored_growth": null,
+  "scored_margin_change": null,
+  "values": {
+   "revenue": null,
+   "operating_income": null,
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 9793000.0,
+    "prior": 8381000.0
+   }
+  },
+  "doc": "fmao-20251231.htm",
+  "found": {
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": null,
+  "growth_matches_scored": false
+ },
+ {
+  "key": "2026-06-30_0001128928",
+  "ticker": "FLO",
+  "accession": "0001193125-26-359192",
+  "scored_growth": -0.040150140605953344,
+  "scored_margin_change": -0.018050015353490913,
+  "values": {
+   "revenue": {
+    "tag": "Revenues",
+    "cur": 1192935000.0,
+    "prior": 1242835000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 68129000.0,
+    "prior": 93412000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 40656000.0,
+    "prior": 58365000.0
+   }
+  },
+  "doc": "flo-20260718.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": -0.040150140605953344,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2025-12-31_0001010086",
+  "ticker": "SIGA",
+  "accession": "0001437749-26-007557",
+  "scored_growth": -0.9534290068238742,
+  "scored_margin_change": -3.2045374329136322,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 3794084.0,
+    "prior": 81468823.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": -9499735.0,
+    "prior": 57085946.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": -5429918.0,
+    "prior": 45760315.0
+   }
+  },
+  "doc": "siga20251231_10k.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": -0.9534290068238742,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2026-04-30_0001476034",
+  "ticker": "MCB",
+  "accession": "0001104659-26-057925",
+  "scored_growth": -0.2681626928471248,
+  "scored_margin_change": null,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerIncludingAssessedTax",
+    "cur": 2609000.0,
+    "prior": 3565000.0
+   },
+   "operating_income": null,
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 31426000.0,
+    "prior": 16354000.0
+   }
+  },
+  "doc": "mcb-20260331x10q.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": -0.2681626928471248,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2025-10-31_0000886982",
+  "ticker": "GS",
+  "accession": "0000886982-26-000091",
+  "scored_growth": null,
+  "scored_margin_change": null,
+  "values": {
+   "revenue": null,
+   "operating_income": null,
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 4617000000.0,
+    "prior": 4111000000.0
+   }
+  },
+  "doc": "gs-20251231.htm",
+  "found": {
+   "net_income.cur": false,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": null,
+  "growth_matches_scored": false
+ },
+ {
+  "key": "2025-10-31_0000097134",
+  "ticker": "TNC",
+  "accession": "0000097134-25-000036",
+  "scored_growth": -0.039582013932868865,
+  "scored_margin_change": -0.023372206968856613,
+  "values": {
+   "revenue": {
+    "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "cur": 303300000.0,
+    "prior": 315800000.0
+   },
+   "operating_income": {
+    "tag": "OperatingIncomeLoss",
+    "cur": 22300000.0,
+    "prior": 30600000.0
+   },
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 14900000.0,
+    "prior": 20800000.0
+   }
+  },
+  "doc": "tnc-20250930.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "operating_income.cur": true,
+   "operating_income.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": -0.039582013932868865,
+  "growth_matches_scored": true
+ },
+ {
+  "key": "2025-12-31_0000850141",
+  "ticker": "HMN",
+  "accession": "0000850141-26-000007",
+  "scored_growth": 0.06308068459657701,
+  "scored_margin_change": null,
+  "values": {
+   "revenue": {
+    "tag": "Revenues",
+    "cur": 434800000.0,
+    "prior": 409000000.0
+   },
+   "operating_income": null,
+   "net_income": {
+    "tag": "NetIncomeLoss",
+    "cur": 36200000.0,
+    "prior": 38200000.0
+   }
+  },
+  "doc": "hmn-20251231.htm",
+  "found": {
+   "revenue.cur": true,
+   "revenue.prior": true,
+   "net_income.cur": true,
+   "net_income.prior": true
+  },
+  "growth_from_document_values": 0.06308068459657701,
+  "growth_matches_scored": true
+ }
+]

@@ -1,0 +1,54 @@
+[
+ {
+  "key": "2025-12-31_0000352915",
+  "field": "revenue",
+  "tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+  "fy": [
+   17364829000.0,
+   15827935000.0
+  ],
+  "nine_months": [
+   12878781000.0,
+   11714213000.0
+  ],
+  "q4": [
+   4486048000.0,
+   4113722000.0
+  ],
+  "q3_10q": "0001193125-25-272385",
+  "found": {
+   "fy.cur": true,
+   "fy.prior": true,
+   "9m.cur": true,
+   "9m.prior": true
+  },
+  "q4_growth": 0.09050830367244078,
+  "scored_growth": 0.09050830367244078
+ },
+ {
+  "key": "2025-10-31_0000886982",
+  "field": "net_income",
+  "tag": "NetIncomeLoss",
+  "fy": [
+   17176000000.0,
+   14276000000.0
+  ],
+  "nine_months": [
+   12559000000.0,
+   10165000000.0
+  ],
+  "q4": [
+   4617000000.0,
+   4111000000.0
+  ],
+  "q3_10q": "0000886982-25-001411",
+  "found": {
+   "fy.cur": true,
+   "fy.prior": true,
+   "9m.cur": true,
+   "9m.prior": true
+  },
+  "q4_growth": null,
+  "scored_growth": null
+ }
+]
