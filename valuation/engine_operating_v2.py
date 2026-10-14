@@ -3,7 +3,7 @@
 What differs from v1 (`engine_operating`, frozen at c7d7a4f and not edited):
   years 1-3   revenue growth and the operating margin are drawn inputs: log growth `nt_lgrowth_k` (g = exp(z) - 1, Addendum AL.1) and `nt_margin_k`
               (valuation/near_term.py: base-rate centres + the measured residuals of v2's own forecasts, joined to v1's Gaussian copula)
-  years 4-5   growth_t = g_T + (g_3 - g_T) d_t / d_3; margin_t = m_3 + (m_5 - m_3) (w_t - w_3) / (1 - w_3) on v1's own level-path weights w (clipped as v1
+  years 4-5   growth_t = g_T + (g_3 - g_T) e_t / e_3, e the running minimum of the growth-decay curve d (v2.0.1, Addendum AL.27; v2.0 used d itself); margin_t = m_3 + (m_5 - m_3) (w_t - w_3) / (1 - w_3) on v1's own level-path weights w (clipped as v1
               clips them; Addendum AL.1 4), m_5 when w_3 = 1
   any year    growth at or below -100% is an invalid draw (never repaired; counted by `simulate`)
   after       v1 unchanged (margin m_5; the decay path; the ROIC path H3, reinvestment priced at m_5, maintenance, the I2 rules, the terminal value, the
@@ -30,6 +30,8 @@ INVALID_GROWTH = "growth at or below -100% (revenue would not be positive)"
 # Addendum AL.1 4: v1's level path reached m_5 by year 3 and (a non-monotone curve) moves back before year 5; the year-3 draw cannot carry v1's base margin,
 # so v2 holds m_5 for years 4-5 (the one case where v2's continuation is not v1's path), stamped
 RULE_HELD_AFTER_TARGET = "v2: the margin path reached m_5 by year 3 under a non-monotone retention curve; held at m_5 in years 4-5 (v1 would move back)"
+# Addendum AL.27 (v2.0.1): growth after year 3 continues on the growth-decay curve's running minimum, so a year-3 deviation is never amplified (AL.25)
+RULE_DECAY_ENVELOPE = "v2.0.1: the growth-decay curve rises after a year; the continuation after year 3 uses its running minimum"
 
 
 def operating_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], disc: DiscountRate, *,
@@ -61,7 +63,10 @@ def operating_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
         rules.append(v1.RULE_NO_GROWTH_RONIC)
     if no_growth:
         rules.append(v1.RULE_NO_GROWTH)
-    g3, m3, d3 = math.expm1(p["nt_lgrowth_3"]), p["nt_margin_3"], gd.at(3)
+    gde = nt.envelope(gd)                                                              # AL.27: a ratio gde_t / gde_3 <= 1 (v2.0 divided by gd_3)
+    if nt.rises(gd):
+        rules.append(RULE_DECAY_ENVELOPE)
+    g3, m3, d3 = math.expm1(p["nt_lgrowth_3"]), p["nt_margin_3"], gde.at(3)
     w3 = wm[2]
     if d3 <= 0.0:
         rules.append(RULE_FLAT_DECAY)
@@ -73,7 +78,7 @@ def operating_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
         if t <= 3:                                                                     # v2: drawn years 1-3
             g, m = math.expm1(p[f"nt_lgrowth_{t}"]), p[f"nt_margin_{t}"]
         else:                                                                          # v2: the measured shapes, continued from the year-3 draw
-            g = gT + (g3 - gT) * gd.at(t) / d3 if d3 > 0.0 else gT
+            g = gT + (g3 - gT) * gde.at(t) / d3 if d3 > 0.0 else gT
             m = (m3 + (m5 - m3) * (wm[t - 1] - w3) / (1.0 - w3)) if w3 < 1.0 - 1e-12 else m5
         if no_growth and t > LEVEL_REF_YEAR:
             g = min(g, 0.0)
@@ -194,7 +199,7 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, near_term_table: Mapping, *
         notes.append("read as none: " + "; ".join(st["read_as_none"]))
     if disc.de_basis == "book":
         notes.append("discount rate uses the book D/E")
-    return {"status": "ok", "engine": ENGINE, "engine_version": nt.ENGINE_VERSION, "family": "operating", "ticker": pit.ticker, "asof": st["asof"],
+    return {"status": "ok", "engine": ENGINE, "engine_version": nt.CHAIN_VERSION, "near_term_table_version": nt.ENGINE_VERSION, "family": "operating", "ticker": pit.ticker, "asof": st["asof"],
             "base_period": st["base_period"], "base_filed": st["base_filed"], "base_accession": st["base_accession"],
             "placeholder": bool(ps.placeholder or disc.placeholder), "prior_source": ps.source, "discount": disc.as_dict(), "distribution": dist,
             "at_median_inputs": at_median, "model_disagreement": md, "model_disagreement_note": why,

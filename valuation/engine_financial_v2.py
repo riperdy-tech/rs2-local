@@ -3,7 +3,8 @@
 What differs from v1 (`engine_financial`, frozen at c7d7a4f and not edited):
   years 1-3   tangible-book growth, drawn as log growth `nt_ltbvg_k` (g = exp(z) - 1, Addendum AL.1), and the return on tangible equity after the fade toward the industry, `nt_rote_k` (the quantity v1's
               forecast_year1 reports as `rote`), are drawn inputs (valuation/near_term.py)
-  years 4+    growth_t = g_T + (g_3 - g_T) d_t / d_3;  the pre-fade ROTE R_t = rT + (R*_3 - rT) rho_t / rho_3 with R*_3 = I + (ROTE'_3 - I) / phi_3 (the year-3 draw
+  years 4+    (v2.0.1, Addendum AL.27: d, rho and phi below are each the running minimum of the measured curve; v2.0 used the curves themselves)
+              growth_t = g_T + (g_3 - g_T) d_t / d_3;  the pre-fade ROTE R_t = rT + (R*_3 - rT) rho_t / rho_3 with R*_3 = I + (ROTE'_3 - I) / phi_3 (the year-3 draw
               undone from its fade), and ROTE'_t = I + (R_t - I) phi_t; with phi_3 or rho_3 at 0 the path is rT (stamped)
   after       v1 unchanged (the terminal excess I4, the value, the roll-forward and the floor)
 WHY THE CHAIN IS A COPY: as engine_operating_v2 (Addendum AK.6); `test_engine_v2` proves that with the near-term draws equal to v1's own path the result is v1's.
@@ -25,6 +26,8 @@ ENGINE = "financial_v2"
 RULE_FLAT_DECAY = "v2: the growth-decay curve is 0 at year 3; growth after year 3 is terminal growth"
 INVALID_GROWTH = "tangible-book growth at or below -100% (tangible book would not be positive)"
 RULE_FLAT_ROTE = "v2: the ROTE retention or the excess fade is 0 at year 3; ROTE after year 3 is the long-run level"
+# Addendum AL.27 (v2.0.1): every continuation after year 3 uses the running minimum of its curve, so a year-3 deviation is never amplified (AL.25)
+RULE_ENVELOPE = "v2.0.1: a continuation curve (growth decay, ROTE retention or excess fade) rises after a year; years 4+ use its running minimum"
 
 
 def financial_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], disc: DiscountRate, *, roll_forward: bool = True, detail: bool = False) -> dict:
@@ -39,8 +42,11 @@ def financial_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
     ind = st["industry_rote"]["value"]
     tbv_prev = st["tbv"]
     pv_exp, rows, rules = 0.0, [], []
-    g3, d3 = math.expm1(p["nt_ltbvg_3"]), gd.at(3)
-    rho3, phi3 = rho.at(3), phi.at(3)
+    gde, rhoe, phie = nt.envelope(gd), nt.envelope(rho), nt.envelope(phi)              # AL.27: ratios <= 1 after year 3 (v2.0 used the curves themselves)
+    if nt.rises(gd) or nt.rises(rho) or nt.rises(phi):
+        rules.append(RULE_ENVELOPE)
+    g3, d3 = math.expm1(p["nt_ltbvg_3"]), gde.at(3)
+    rho3, phi3 = rhoe.at(3), phie.at(3)
     R3 = ind + (p["nt_rote_3"] - ind) / phi3 if phi3 > 0.0 else None
     if d3 <= 0.0:
         rules.append(RULE_FLAT_DECAY)
@@ -50,9 +56,9 @@ def financial_chain_v2(st: dict, p: Dict[str, float], curves: Dict[str, Curve], 
         if t <= 3:
             g, Rp = math.expm1(p[f"nt_ltbvg_{t}"]), p[f"nt_rote_{t}"]
         else:
-            g = gT + (g3 - gT) * gd.at(t) / d3 if d3 > 0.0 else gT
-            R = rT + (R3 - rT) * rho.at(t) / rho3 if (R3 is not None and rho3 > 0.0) else rT
-            Rp = ind + (R - ind) * phi.at(t)
+            g = gT + (g3 - gT) * gde.at(t) / d3 if d3 > 0.0 else gT
+            R = rT + (R3 - rT) * rhoe.at(t) / rho3 if (R3 is not None and rho3 > 0.0) else rT
+            Rp = ind + (R - ind) * phie.at(t)
         if g <= -1.0:
             raise DrawInvalid(INVALID_GROWTH)
         ri = (Rp - coe) * tbv_prev
@@ -129,7 +135,7 @@ def run(pit: CompanyPIT, priors, disc: DiscountRate, near_term_table: Mapping, *
     if dist["equity"] is not None and dist["secondary_equity"] is not None:
         md, why = model_disagreement(dist["equity"]["p50"], dist["secondary_equity"]["p50"])
     fy = info["forecast_years"]
-    return {"status": "ok", "engine": ENGINE, "engine_version": nt.ENGINE_VERSION, "family": "financial", "ticker": pit.ticker, "asof": st["asof"],
+    return {"status": "ok", "engine": ENGINE, "engine_version": nt.CHAIN_VERSION, "near_term_table_version": nt.ENGINE_VERSION, "family": "financial", "ticker": pit.ticker, "asof": st["asof"],
             "base_period": st["base_period"], "base_filed": st["base_filed"], "base_accession": st["base_accession"],
             "placeholder": bool(ps.placeholder or disc.placeholder), "prior_source": ps.source, "discount": disc.as_dict(), "distribution": dist,
             "at_median_inputs": at_median, "model_disagreement": md, "model_disagreement_note": why,

@@ -23,9 +23,10 @@ from typing import Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
-from .common import InputError, QuantileDist, _cholesky, level_path_weights
+from .common import Curve, InputError, QuantileDist, _cholesky, level_path_weights
 
 ENGINE_VERSION = "v2.0"
+CHAIN_VERSION = "v2.0.1"          # Addendum AL.27: the chains' years-4+ continuation ratios use the curves' running minimum (the tables stay ENGINE_VERSION)
 KS = (1, 2, 3)
 MIN_N = 50
 RESID_LEVELS = (0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99)
@@ -44,6 +45,21 @@ class NearTermRefusal(InputError):
     def __init__(self, reasons: List[str]):
         super().__init__("; ".join(reasons))
         self.reasons = list(reasons)
+
+
+def envelope(curve: Curve) -> Curve:
+    """The curve's running minimum (non-increasing), Addendum AL.27: a continuation ratio env_t / env_3 is then at most 1 for t > 3, so a year-3 deviation
+    can only shrink after year 3.  A curve that is already non-increasing is returned value for value (v2.0's path, and so v1's identity, unchanged)."""
+    out, m = [], float("inf")
+    for v in curve.values:
+        m = min(m, v)
+        out.append(m)
+    return Curve(out, curve.name)
+
+
+def rises(curve: Curve) -> bool:
+    """True when the curve increases somewhere (its envelope differs from it)."""
+    return any(b > a for a, b in zip(curve.values, curve.values[1:]))
 
 
 def name(var: str, k: int) -> str:

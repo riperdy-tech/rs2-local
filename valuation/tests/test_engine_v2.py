@@ -143,7 +143,7 @@ def test_full_runs_value_both_families_and_report_years_1_to_3():
     for family, sic, mod, var in (("operating", "3674", o2, "growth"), ("financial", "6021", f2, "rote")):
         pit, st, ps, disc = setup(family, sic)
         r = mod.run(pit, fx.LabeledPlaceholderPriors(), disc, table(corr={family: {nt.name(var, 1) + "|" + nt.name(var, 2): 0.5}}), n_draws=300, seed=3, state=st)
-        assert r["status"] == "ok" and r["engine_version"] == "v2.0" and r["distribution"]["equity"]["p50"] > 0
+        assert r["status"] == "ok" and r["engine_version"] == "v2.0.1" and r["near_term_table_version"] == "v2.0" and r["distribution"]["equity"]["p50"] > 0
         assert set(r["forecast_years"][var]) == {1, 2, 3} and "p50" in r["forecast_year1"][var if family == "operating" else "rote"]
         assert r["near_term"]["copula"]["measured"] == [nt.name(var, 1) + "|" + nt.name(var, 2)]
 
@@ -255,3 +255,52 @@ def test_al1_4b_the_one_case_v2_cannot_reproduce_v1_reached_target_by_year_3_the
     q = {"g_terminal": gT, "margin_target": 0.2, "ronic": 0.13, **{f"nt_lgrowth_{k}": 0.05 for k in nt.KS}, **{f"nt_margin_{k}": 0.2 for k in nt.KS}}
     r = o2.operating_chain_v2(st, q, cv, disc, detail=True)
     assert o2.RULE_HELD_AFTER_TARGET in r["rules"] and r["years"][3]["margin"] == 0.2
+
+
+# ---- Addendum AL.27: v2.0.1, no amplification after year 3 ---------------------------------------------------------------------------------------------
+
+from valuation.common import Curve                                                    # noqa: E402
+
+RISING = [1.0, 0.30, 0.02, 0.25, 0.45, 0.30, 0.20, 0.15, 0.10, 0.10]                  # the shape of priors_v3/2021 operating band 2 (AL.25): d_5 / d_3 = 22
+
+
+def _op_point(curves, g3_log, m3=0.12):
+    pit, st, ps, disc = setup()
+    gT = terminal_growth_rate(disc.rf)
+    q = {"g_terminal": gT, "margin_target": 0.15, "ronic": 0.12, "nt_lgrowth_1": 0.05, "nt_lgrowth_2": 0.04, "nt_lgrowth_3": g3_log,
+         "nt_margin_1": 0.12, "nt_margin_2": 0.12, "nt_margin_3": m3}
+    return o2.operating_chain_v2(st, q, dict(ps.curves, **curves), disc, detail=True), gT
+
+
+def test_al27_a_rising_growth_decay_curve_never_amplifies_a_year_3_deviation_and_is_stamped():
+    gd = Curve(RISING, "growth_decay")
+    for g3 in (-0.30, -0.10, 0.25, 0.60):
+        r, gT = _op_point({"growth_decay": gd}, math.log1p(g3))
+        later = [y["growth"] for y in r["years"][3:]]
+        assert all(abs(g - gT) <= abs(g3 - gT) + 1e-12 for g in later)                 # v2.0 gave gT + (g3 - gT) * 22.5 in year 5
+        assert o2.RULE_DECAY_ENVELOPE in r["rules"]
+    r, gT = _op_point({"growth_decay": gd}, math.log1p(-0.50))
+    assert r["equity"] >= 0.0                                                           # v2.0: year-5 growth -0.5 x 22.5 < -100%, an invalid draw
+
+
+def test_al27_a_non_increasing_curve_is_unchanged_by_the_envelope_so_v2_0_paths_and_v1_identity_stand():
+    pit, st, ps, disc = setup()
+    gd = ps.curves["growth_decay"]
+    assert not nt.rises(gd) and nt.envelope(gd).values == gd.values
+    r, _ = _op_point({}, math.log1p(0.08))
+    assert o2.RULE_DECAY_ENVELOPE not in r["rules"]
+
+
+def test_al27_the_financial_continuation_never_amplifies_tbv_growth_or_the_rote_deviation():
+    pit, st, ps, disc = setup("financial", "6021")
+    gT = terminal_growth_rate(disc.rf)
+    ind = st["industry_rote"]["value"]
+    curves = dict(ps.curves, growth_decay=Curve(RISING, "growth_decay"), rote_retention=Curve([1.0, 0.6, 0.05, 0.4, 0.6, 0.5, 0.4, 0.3, 0.3, 0.3], "rote_retention"),
+                  excess_fade=Curve([1.0, 0.7, 0.1, 0.5, 0.6, 0.5, 0.4, 0.4, 0.4, 0.4], "excess_fade"))
+    for g3, r3 in ((-0.2, ind + 0.08), (0.3, ind - 0.06)):
+        q = {"g_terminal": gT, "rote_target": ind, "nt_ltbvg_1": 0.05, "nt_ltbvg_2": 0.05, "nt_ltbvg_3": math.log1p(g3), "nt_rote_1": ind, "nt_rote_2": ind, "nt_rote_3": r3}
+        r = f2.financial_chain_v2(st, q, curves, disc, detail=True)
+        for y in r["years"][3:]:
+            assert abs(y["growth"] - gT) <= abs(g3 - gT) + 1e-12
+            assert abs(y["rote_after_fade"] - ind) <= abs(r3 - ind) + 1e-12             # rote_target = I here, so the deviation from I can only shrink
+        assert f2.RULE_ENVELOPE in r["rules"]
