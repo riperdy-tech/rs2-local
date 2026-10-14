@@ -1,6 +1,10 @@
 # Registration: a monotone growth-decay estimator for the priors (DRAFT, fork 2, 2026-10-14)
 
-**Status:** a draft for the operator, written before any result of a candidate exists.
+**Status: WITHDRAWN 2026-10-14 (SPEC_rebuild AL.39), before any candidate was scored, on the outside reviews of cross-check 13.** Isotonic
+smoothing changes years 2–3 and still leaves λ = 1 over the pooled block. Superseded by `REGISTRATION_continuation_direct.md`. The text
+below is kept as it was reviewed.
+
+**Original status:** a draft for the operator, written before any result of a candidate exists.
 
 **Why now.** AK.51 ruled that a smoothed or monotone estimator goes to the operator before gate 2b's freeze if the running-minimum envelope's pins
 are common. AL.35 measured them on `priors_v3_fy`:

@@ -4939,3 +4939,318 @@ built in parallel ("approve 1 and 2 ... If you need more forked sessions to run 
   - **The decay-curve registration.** It needs the operator's approval by about 10-16 to fit the freeze: the test takes about a day, and
     an adoption about another day. Otherwise gate 2b freezes on K, the registration's own fall-back.
   - **The `reportDate` refinement.** Fork 2 recommends after gate 2b, and fork 1 agrees. Neither is the operator's decision.
+
+**AK.54 (2026-10-14 21:30): the screener's C2 branch is audited; the coordinator rules on its open questions; the contract gets two errata.**
+- **The audit of `review-2026-10/c2-screener`** (`8f682e7b6e`, `273e76f85b`; not pushed):
+  - the diff was read in full;
+  - absent values stay absent, never 0;
+  - v3 rows are byte-identical on the 42 live v3 rows;
+  - re-run by the coordinator: Python 686 passed, 3 skipped (670 before, plus 16 new); `tsc` 0 errors.
+- **Contract errata (`SPEC_verdict_contract_v4.md`):**
+  1. **`gate_version` for v4 is 9, not 3.** The live `depth_gates.GATE_VERSION` is 8; the draft never checked. This is the coordinator's
+     error.
+  2. **`size_components` keys** are fixed: `dispersion_bucket`, `mos_bucket`, `probability_bucket` and `risk_bucket`, each
+     `{bucket, value}`.
+- **Rulings on the agent's questions:**
+  - **SCR-04 reads `100 × median_mos`.** Correct: base equals median in v4, so it is the v3 base-case MoS.
+  - **No bump of `FCT_LLM_GATE_VERSION`:** `scheme` identifies v4 rows.
+  - **The v3 run-based wording** ("every run above the price", "N of M runs", "one plausible run") is **misleading on v4 rows and must be
+    replaced before merge.** v4 has no runs. The wording becomes v4's: "the price is below the value's P10", and so on, in all three
+    languages.
+  - **`pre_valid_analyst` v4 rows stay hidden** from the desk, as intended: shadow rows are never shown as actionable.
+  - **Abstentions** stay in the desk's blocked group, labelled "NO VIEW".
+  - **`prob_fail_12m`** is shown as a plain risk line; `mean_iv` and `mean_mos` are not shown.
+  - **TRK-06 grading lives in rs2** (`tools/grade_depth_verdicts.py`). It is added to the C2-rs2 workstream.
+
+**AK.55 (2026-10-14 21:39): the live runner (D4) is audited in part; the coordinator rules on its questions; contract errata 3–6.**
+- **Branch `review-2026-10/d4-live-runner`** (`4da01f6`, `24f257f`):
+  - **The suite** (agent's run): 1,051 passed, the 800 base plus 251 new.
+  - **Read by the coordinator:**
+    - the mixture: quantile 0 at q ≤ p, else the going-concern quantile at (q − p)/(1 − p); mean (1 − p) × mean; Pr = (1 − p) × Pr_gc,
+      exactly section 2a;
+    - the direction rule, with the floor from `depth_gates.MIN_MOS_FOR_DIRECTION`;
+    - size as the most conservative bucket through `depth_pipeline._min_bucket` (single owners kept);
+    - the watch items.
+  - **The smoke test:** 5 names at 2026-06-30. An independent recomputation agrees, and `prob_fail_12m` equals run 2's.
+  - **A disclosed breach:** one smoke started at 0.93 GB of free memory, under the 1.5 GB rule; no harm.
+  - **The full diff audit** is completed before any merge.
+- **Contract errata (`SPEC_verdict_contract_v4.md`):**
+  3. **Versions for SYSTEM = engine v2 alone** (AK.52):
+     - `pack`, `templates`, `model_sha256` and `llama_cpp_build` carry `"not_applicable"`, allowed **only** when `muse_used` is false;
+     - `s5_freeze` carries `"w0_AK52"` and `calibration` carries `"identity_AK52"`;
+     - a new key, `system_freeze`, holds the engine freeze's identifier, and **`pre_valid_analyst` compares `system_freeze`** with the
+       freeze gate 2b promotes.
+  4. **The trend state, from SCR-10** (`momentum_state.json`, every field read as filed, never a model):
+     - **down** when `mom_break` is true;
+     - **up** when `above_200dma` is true and `dma200_slope_20d` > 0 (and not down);
+     - **flat** otherwise;
+     - **unknown** when a field is absent: then the trend-dependent axes are null and stated, never guessed.
+
+     `momentum_break_rule` is SCR-10's `mom_break` condition, and `momentum_flip_condition` is the "up" condition, both with
+     `window_days` 20.
+  5. **Watch-item shape.** Invalidation rules use the existing consumers' shape: `window` as the phrase they read (for example
+     "next 10-Q"), plus a numeric `window_days` beside it. Momentum rules keep `window_days`.
+  6. **The added row fields** (`run_id`, `cik`, `ticker`, `family`, `stale_inputs`, `notes`, `reasons`, `forecast_years`, `discount`,
+     `muse_used`, `system_freeze`) enter the single-owner table, with the live runner as their only producer.
+- **Other rulings:**
+  - **An `unclassifiable` company** is a no-view: `family_not_built`, with reason "unclassifiable".
+  - **Live runs inherit the gate-2 universe rules** (the $300M floor and the price rules).
+  - **Damodaran staleness** reads the monthly ERP row date.
+  - **The financial watch item** (120 days, base-year tangible book, the year-1 ROTE P10) is confirmed.
+  - **A null dispersion bucket at a going-concern median of 0** is correct: it is excluded from the minimum, and such a name cannot be
+    undervalued.
+  - **The distress model on a live date is a gap to close:** C0's P(fail) must be computable at any date by the registered walk-forward
+    rule (events resolved before T). The live runner gets that function. Until then a live row at a date without a model is `not_usable`,
+    correctly.
+  - **Context, store and submissions for live dates** belong to D5 orchestration (next workstream). **The frozen config** is the
+    coordinator's, after E8.
+
+**AL.39 (2026-10-14 21:40): rulings on cross-check 13 (ChatGPT, Gemini). The decay-curve registration is withdrawn before any candidate was
+scored and replaced by a directly measured continuation (`REGISTRATION_continuation_direct.md`). That is a real-money condition, not a
+gate-2b one. A correction to AL.35's counts.**
+
+- **Correction to AL.35, found while checking Gemini's point 2.**
+  - **The miscount:** AL.35 counted pins as `d_4 > d_3` and reported "cliffs: none". Both miss what the engine does. Where the envelope's
+    `d̃_3 = 0`, `engine_operating_v2` and `engine_financial_v2` set `g = g_T` from year 4 (`RULE_FLAT_DECAY`). That drops the drawn
+    year-3 deviation at once, which is a cliff in effect.
+  - **Recounted on `λ` itself** (all 133 growth-decay curves, `priors_v3_fy`):
+    - **17 flat** (`λ = 0` from year 4);
+    - **of the other 116, 93 have `λ_4 = 1` and 57 have `λ_10 = 1`.**
+    - The flat cases are concentrated late: 4 of the 7 operating curves in 2024 and 2025, holding 65% and 64% of the operating pairs.
+      The raw k = 3 medians are negative there (−0.009 to −0.105) and are clipped to 0.
+  - **`rote_retention` in 2025:** the positive and pooled bands have `λ_4 = 1`, and the negative band is flat.
+  - **Reading:** v2.0.3's continuation is close to binary, full persistence or none. Cross-check 13 understated this. The counts were
+    reproduced by a second script that imports no valuation code and rebuilds the curves from `tables.json` (MIN_N, the clip, the hold,
+    the running minimum): 133, 17, 93, 57.
+- **Decay curves, point by point:**
+  - **Gemini 1 (isotonic leaves `λ = 1` over the pooled block, and raises `d_3`): accepted, and it is decisive.** Verified:
+    - operating band 4 under I gives `λ_4..λ_6 = 1` at 0.194, then 0.44;
+    - in 2025, I and I₃ leave `λ_4 = 1` in 9 of the 10 non-flat curves;
+    - I and S are withdrawn.
+  - **ChatGPT 1–2 (prefer I₃ and S₃, which keep years 1–3): the principle is accepted, the candidate rejected.**
+    - Verified on 2025: I₃ is identical to K in 4 of 10 non-flat curves. Elsewhere it is *more* persistent (financial band 3: `λ_4`
+      0.43 → 1.0; band 5: `λ_6` 0 → 0.56).
+    - Gemini's "I₃ is redundant with K" is therefore partly right: identical in 4, different in 6, in mixed directions.
+  - **Both (the median of a ratio is unstable; use a regression slope): accepted.**
+    - The new candidate C measures the quantity the engine uses: `λ_k` is the L1 slope through the origin of `g_k − g_T` on
+      `g_3 − g_T`, by band.
+    - It leaves years 1–3 untouched, so ChatGPT's principle holds.
+  - **Gemini 3 (the k = 5 hump is a cycle, worse after 2020):** a hypothesis, not verified. It is consistent with the late concentration
+    of flat and pinned curves. C's by-vintage report will show it.
+  - **Gemini 8 (cap `λ_t` at `γ^(t−3)`): rejected.** γ would be unmeasured. C measures the decay.
+  - **ChatGPT 3 (cumulative path diagnostic), 4 (by-vintage n and contributing vintages), 5 (paired bootstrap, reported, bars
+    unchanged), 6 (keep 200 fixed): accepted** and built into C's registration as reported diagnostics.
+  - **Gemini 4–5 (bar on k ≤ 6, a 10 bp tolerance, scoring k = 2..3): not adopted.** C does not touch k ≤ 3, and ChatGPT's "no post hoc
+    tolerance" is kept.
+  - **ChatGPT 7 and Gemini 4 (ROTE and fade curves): accepted as a measurement.** C's registration reports the same estimator for the
+    ROTE continuation. Adopting it needs its own registration.
+  - **ChatGPT 8 and Gemini 8 (K as the fall-back): accepted, with ChatGPT's split.**
+    - K is acceptable for gate 2b if E5 and E8 pass. Gate 2b's bars score q1 only (AK.53), so they do not read years after 3.
+    - K is not evidence for real money: adopting C, or the operator's explicit acceptance of K, becomes a real-money condition.
+    - **Consequence:** the decay-curve decision no longer blocks the engine freeze (AL.38's 10-16 cut-off is withdrawn).
+  - **ChatGPT, documentation:** cross-check 13 described gate 2b as 150 companies per date. AK.53 (21:08, two minutes after cross-check 13
+    was written) made 07-31 a census. AK.53 governs.
+- **The fiscal period's authority:**
+  - **ChatGPT 3 (measure the selected-base exposure, not 0.36%): accepted, and done on the universe proxy.**
+    - For every proxy company, the latest annual accession filed on or before 2026-07-31 (and 06-30) was joined to the 94
+      disagreements. **4 match.** None changes a base year:
+    - **CIK 1090012 and 1094831:** a Part III 10-K/A filed in April 2026, labelled 2024-12-31 (SEC: 2025-12-31). The FY2025 original
+      10-K is labelled correctly and is the year's own filing.
+    - **CIK 2011641:** a 10-KT transition report labelled with the prior full year, 2025-07-31. The year's own filing is the original
+      10-K, and the five-month stub is not a fiscal year.
+    - **CIK 1697818:** a second 20-F filed 2025-06-12, labelled 2024-06-30 (SEC: 2024-12-31). This one **inserts a spurious mid-year
+      period** into the company's history: 1 company in the proxy.
+    - **To repeat on fork 1's actual 07-31 census when it exists.** Matches are annotated on the verdict, never dropped (non-negotiable
+      3). The rule is fixed now, before scoring.
+  - **Gemini, duplicate periods: checked.**
+    - 777 store companies (70 in the proxy) have two original annual accessions on one period.
+    - `accessions()` keeps the earliest original as the year's own filing; values follow the as-known rule (a later eligible filing
+      supersedes).
+    - The case cited, CIK 1379043, has several 2019 catch-up 10-Ks labelled 2017 and 2018; its own-filing rule is consistent. No defect
+      found. The count is recorded for R-after.
+  - **Both, Q1–Q2 (`reportDate` is not an infallible point-in-time authority; the year-window guard is too wide): accepted.**
+    - The SEC republishes submissions and can correct them post-acceptance (ChatGPT, citing SEC's API page; not verified here).
+    - Gemini shows a 365-day window still admits a filing-ish date.
+    - **R-after's design is amended:** XBRL `dei:DocumentPeriodEndDate`, stored per accession (immutable with the filing), is the
+      primary authority. `reportDate` only breaks ties between the filing's own annual duration ends within 10 days. Conflicts are
+      stamped unresolved, never guessed.
+  - **Q4 (late filers):**
+    - accession-level and fact-level periods are kept distinct (ChatGPT);
+    - a 2019 valuation uses the 2018 durations the filing holds (Gemini). That is the filing-date rule's behaviour.
+  - **Decision 2 stands: R-after.** Both reviewers agree, conditional on the exposure check, which finds 1 affected company in the proxy.
+    It remains the operator's decision.
+- **For the operator:**
+  1. Approve C's registration (`REGISTRATION_continuation_direct.md`). Its test is CPU-only, and it runs in parallel with gate 2b.
+  2. Confirm R-after.
+- **For fork 1:**
+  - The engine freeze no longer waits on the curves.
+  - Under C, v2.1 would change no year 1–3 quantity, so gate 2b's q1 verdict would carry over (an identity test is required).
+  - The exposure check is to be repeated on the census list.
+
+**AK.56 (2026-10-14 21:42): the coordinator's position on fork 2's AL.39 (v2.0.3's continuation is close to binary).**
+- **The finding, independently counted by fork 2.** In vintage 2025, 4 of the 7 operating decay curves have d̃_3 = 0, so growth falls to g_T from
+  year 4: an instant fade for 64% of operating pairs. Most other curves keep λ = 1, which means no fade at all.
+  - Gate 2b is unaffected: B2 and B3 score q1 against year-1 forecasts, and years 4 onward never enter.
+  - **Valuations are affected:** `mean_iv`, the band, direction and size all depend on the continuation.
+- **On the operator's question, carry-over:** if the direct-continuation candidate (`REGISTRATION_continuation_direct.md`) is adopted as a new
+  version and its identity test shows years 1–3 byte-identical, **gate 2b's B2/B3 verdict carries over unchanged.** Those bars read only the
+  year-1 P50, and the identity test proves it unchanged. The coordinator agrees. **E8 does not carry over:** it measures the valuation
+  distribution, so a new continuation needs its own E8 run.
+- **For paper operation before that candidate exists:** rows made with v2.0.3 carry a new non-blocking flag, `continuation_binary_interim`,
+  beside `joint_tail_undercoverage`, so every paper verdict states that its long-run path is a crude interim. **Adopting a measured
+  continuation stays a condition for real money** (with B4).
+- **Period authority:** fork 2's AL.39 rule is adopted: a company in the 07-31 census whose latest annual report disagrees with SEC's
+  `reportDate` is annotated on its verdict, never dropped. The census list goes to fork 2 when it exists.
+
+**AL.40 (2026-10-14 21:44): the operator approves the direct-continuation registration and confirms R-after ("approve the continuation
+registration, and R-after confirmed").**
+- **Approved:** `REGISTRATION_continuation_direct.md`. Sections 2–4 are fixed from now. No number from candidate C exists.
+- **Fork 1's AK.56, adopted:**
+  - B2 and B3 carry over to v2.1 only when the identity test shows years 1–3 byte-identical;
+  - E5 and E8 are re-run for any new continuation (the registration already requires it);
+  - v2.0.3 paper rows carry `continuation_binary_interim`, set by the runner from `engine_version`. The engine is not edited while E5 and
+    E8 test it.
+- **R-after confirmed:** the period-authority refinement (AL.39's amended design: `DocumentPeriodEndDate` primary, `reportDate` only as a
+  tie-break) is built after gate 2b's freeze.
+
+**AL.41 (2026-10-14 21:45): two clarifications of the continuation registration (AL.40), fixed before any number from C exists.**
+Reading `priors_build/stats.py::decay_tables` while writing the test showed two places where the registration's wording does not match
+how the curves are built. Both are resolved toward the existing definitions, the same for C and K:
+1. **Bands.** The registration says the bands are "assigned from `g_1`". `growth_decay`'s bands are the growth-delivered buckets: the
+   trailing 3-year CAGR at the base year (`g3_b`; financial `tg3_b`), merged by `merge_1d` to n ≥ MIN_N. C uses exactly V's merged
+   buckets, so a company's band is the same under C and K. The binding phrase "the same as `growth_decay`'s" governs.
+2. **`g_T` in estimation and scoring.** The curves are measured against the vintage's own terminal reference T: the pooled median
+   year-alone growth at the largest k with at least 500 observations (`terminal_reference` in `tables.json`), not the engine's
+   date-specific `g_T`. The test uses V's T for C's estimate and for both forecasts. C's table then stores the slope, and the engine
+   applies it to `g_3 − g_T` with its own `g_T`, as it does `d̃` today.
+
+**The test's mechanics, fixed now:**
+- C is estimated from V's own `obs.csv.gz`, through `prep_frame`.
+- The rows scored are those of the latest panel (vintage 2025) with `filed_k` on or after V's cut, and with `g_1` and `g_3` finite.
+- `y/x` with x = 0 is excluded.
+- Script: `scratch/rev23/continuation_test/run_test.py`.
+
+**AL.42 (2026-10-14 21:48): the continuation test's result. C passes the registered bar in all 10 cells; the independent recomputation
+agrees exactly. One gap in the registration, a bucket where C cannot be measured, gets a fall-back rule registered here before it is
+scored.**
+- **Negatives first:**
+  - **C cannot be measured in 24 of 108 vintage × family × bucket cells** (2017–2022, mostly financial bands 0, 5 and 6, and early
+    operating extremes): fewer than 50 pairs have both `g_3` and `g_4` there.
+    - The test skipped those cells for both C and K (a paired comparison), so **the bar is read only on the cells where C exists.**
+    - In vintage 2025, financial band 6 is not measurable.
+    - The registration had no rule for this. See the fall-back below.
+  - **Vintages where C is worse than K** (the C − K median difference):
+    - 2023: operating k4 +0.0097, financial k6 +0.0059 and k8 +0.0044;
+    - smaller ones: 2021 operating k8 +0.0021, financial k7 and k8 at most +0.0009; 2023 financial k7 +0.0005, operating k8 +0.0017.
+    - Every other vintage-cell favours C.
+  - **C measures almost no persistence.** In 2025, `λ_4` is 0 to 0.19 in the operating bands, and `λ_5` and later are about 0 everywhere
+    except financial band 0. That band is held at 0.282 from a single point with n = 53.
+    - So v2.1 would return growth to the terminal reference from about year 5. That will lower v2's values for growers relative to
+      v2.0.3. E8 (re-run, as required) measures by how much.
+  - **The statistic is a median.** C fits the conditional median of the continuation, and the test scores median errors; mean (tail)
+    behaviour is not tested here. E8's distribution measures are the check on it.
+- **The bar (registered):**
+  - not worse at every k = 4..8 in both families: **true**;
+  - strictly better at k = 4 or 5: **true**;
+  - **ADOPT C.**
+  - The bootstrap 90% intervals of C − K exclude 0 in every cell, so the report does not say "no demonstrated winner".
+
+  | k | operating MAE, C / K | operating C − K (90% interval) | financial MAE, C / K | financial C − K (90% interval) |
+  |---|---|---|---|---|
+  | 4 | 0.0999 / 0.1140 | −0.0141 (−0.0171, −0.0115) | 0.0789 / 0.1138 | −0.0349 (−0.0399, −0.0289) |
+  | 5 | 0.1010 / 0.1409 | −0.0399 (−0.0435, −0.0358) | 0.0843 / 0.1157 | −0.0313 (−0.0364, −0.0258) |
+  | 6 | 0.0944 / 0.1271 | −0.0326 (−0.0365, −0.0297) | 0.0805 / 0.0890 | −0.0085 (−0.0118, −0.0049) |
+  | 7 | 0.0885 / 0.1028 | −0.0143 (−0.0162, −0.0119) | 0.0606 / 0.0647 | −0.0041 (−0.0071, −0.0013) |
+  | 8 | 0.0811 / 0.0862 | −0.0051 (−0.0075, −0.0033) | 0.0532 / 0.0588 | −0.0055 (−0.0094, −0.0029) |
+
+  - n per cell: operating 38,973 / 31,805 / 25,160 / 17,759 / 9,255; financial 7,856 / 6,960 / 5,690 / 4,059 / 2,155. Every vintage
+    2017 (financial 2018) to 2024 contributes at every k.
+  - **The cumulative log path (diagnostic)** also favours C at every k. At k = 8: operating 0.258 against 0.284, financial 0.251 against
+    0.301.
+  - **Counts:** C has no `λ_4 = 1` and no `λ_10 = 1` in any vintage. K has 3–6 operating and 3–6 financial cells with `λ_4 = 1` per
+    vintage.
+- **Verification:**
+  - synthetic recovery of a known decay under t(2) noise; the running minimum of a rise; K's flat and pinned cases;
+  - `independent.py`, which imports no valuation code, reproduces all 10 cells' n and both MAEs to 1e-12 (0 mismatches).
+  - Files: `scratch/rev23/continuation_test/` (`run_test.py`, `independent.py`, `result.json`).
+- **The fall-back, registered now, before it is scored.** Where C is not measurable (n < 50 at k = 4), v2.1 uses the family-pooled C,
+  estimated over all of that family's buckets together, and flags it.
+  - It is adopted for those cells only if, on the walk-forward rows of exactly the unmeasurable cells, its pooled MAE is not worse than K's
+    at every k = 4..8 in each family that has such cells. **Otherwise those cells keep K**, flagged.
+  - Same data, rows, T and statistic as AL.41.
+- **The ROTE measurement** (reported, as the registration says) follows with the fall-back's score.
+
+**AL.43 (2026-10-14 21:49): the fall-back passes, and the ROTE continuation measurement.**
+- **The fall-back** (AL.42's rule, scored after it was committed in ee7c862). The family-pooled C against K, on the walk-forward rows of
+  exactly the cells where C is not measurable:
+  - **operating:** pooled C is better at every k (k4 0.131 against 0.164, n 4,427; k8 0.091 against 0.101, n 770);
+  - **financial:** pooled C is better at every k (k4 0.086 against 0.124, n 2,227; k8 0.052 against 0.079, n 388);
+  - **so the fall-back is adopted in both families.**
+  - **Six cells cannot be scored, and keep K:** all of vintage 2017's financial cells (pooled C is not measurable there), and 2019
+    financial band 6 (no K curve either; the engine already treats that band's growth decay as unavailable).
+- **The ROTE continuation** (financial; y and x are `ROTE_k` and `ROTE_3` minus the vintage's population-median ROTE; the same L1 slope;
+  raw, before the running minimum; reported, not adopted):
+  - **2025, pooled:** `λ_4..λ_7` = 0.45, 0.39, 0.30, 0.23 (n 3,857).
+  - **2025 by sign of `rote_dev`:**
+    - positive: 0.49, 0.39, 0.41, 0.58;
+    - negative: 0.55, 0.40, 0.15, 0.17.
+  - The pooled measure declines smoothly in every vintage from 2019 on. `rote_retention` under K is binary in 2025: positive and pooled
+    `λ = 1`, negative flat.
+  - **Reading:** ROTE deviations persist far more than growth deviations do, and decay gradually. A ROTE continuation registration (same
+    estimator, walk-forward against K) is worth writing. It stays out of v2.1 unless registered and passed.
+- **Files:** `scratch/rev23/continuation_test/fallback.py` and `fallback.json`.
+- **Next (v2.1, a real-money condition):**
+  1. the `continuation` table per vintage (C, the pooled fall-back, flags);
+  2. the engine change on a new branch;
+  3. the identity test (years 1–3 byte-identical to v2.0.3);
+  4. E5 and E8 re-run once `RS2-EngineV2-E5E8-2` is done.
+
+  v2.0.3 stays the gate-2b engine.
+
+**AK.57 (2026-10-14 21:55): cross-check 14 (ChatGPT's answer, relayed by the operator): every point is accepted, as limits and reported diagnostics; no bar
+changes.**
+- **ChatGPT's ruling:** "proceed with v3 as a paper/shadow screening test", with the q1-against-annual mismatch stated explicitly in the freeze
+  record and the verdict.
+- **Written into the gate-2b registration** as v3 item 11, before the 07-31 freeze:
+  - the test's exact description: a company-disjoint q1 proxy screen on a partly observed period, not a pristine holdout and not an
+    annual validation;
+  - the mismatch as a limitation;
+  - the diagnostics: target-quarter timing; errors by reporting delay, size and family; concentration (top-10 share, industry
+    leave-one-out);
+  - the selection reconciliation between universe and sample;
+  - B4 and D1–D10, including D9, unchanged for real money.
+- **Gemini's answer to cross-check 14** is not yet received.
+
+**AK.58 (2026-10-14 21:57): Gemini's answer to cross-check 14, ruled; v3 item 12.**
+- **Accepted:**
+  - (a) industry-clustered inference at 07-31: at T = 1, company clustering is no clustering;
+  - (b) 8-K Item 7.01 counts as public, besides Item 2.02 and the pack;
+  - (c) strata, an IPW score and the attrition table, reported;
+  - (d) the confirmation pool counts each outcome once, two-way clustered, and 2026-09-30 must pass alone for real money;
+  - (e) a sensitivity excluding every gate-2 company;
+  - (f) B4's partial-year limit stated, with fiscal-year-2 calibration added for real money;
+  - (g) the `mean_iv` horizon decomposition as a diagnostic.
+- **Not adopted, with reasons:**
+  - **a binding "B4-q1":** an annual band's coverage of one quarter is not a calibration;
+  - **a Muse shadow arm** with an unregistered weight;
+  - **extra seasonal adjustment:** q1 is already year-over-year;
+  - **excluding every gate-2 company from the primary:** only the same quarter's outcomes were seen. It is reported as a sensitivity.
+- **Gemini's reading that v3 "switched to q1 to meet the deadline"** is acknowledged and labelled (item 11). The bars stay those registered,
+  and no conclusion beyond a paper-operation screen is drawn.
+
+**AK.59 (2026-10-14 21:58): the C2-rs2 branch is reported; the coordinator rules on the producer/gate interface; a coordinator slip is recorded.**
+- **`review-2026-10/c2-rs2`** (`e67fb2c`, `cfe8e92`): the v4 gate, the v4 fiduciary gate, the overlay branch and the TRK-06 v4 grades.
+  - **The suite:** 3,146 passed. The 42 failures predate the branch, and 1 more is a timing flake that fails 3 times in 8 on the base.
+  - **v1–v3 output** is byte-identical on 5,091 rows, and the grader on the 4 real ledgers.
+  - **25 planted bugs** are all caught, after 2 test gaps were closed.
+  - The coordinator's diff audit is completed before any merge.
+- **The interface rulings** are in the contract's errata (AK.59): flags against `gate_flags`; `actionable` belonging to the gate; the gate
+  inputs `level_reference` and `prior_verdict`; the producer running the fiduciary check; the overlay header; `date`; and the TRK-06
+  sources.
+- **A coordinator slip:** at 21:57 the coordinator briefly had uncommitted edits (the Item 7.01 check, not engine code) in `wt-gate2-dev`,
+  where fork 2's E5/E8 chain records `code_dirty`. They were restored within a minute. The patch is kept in
+  `scratch/rev23/patch_ak58_item701.patch` and is applied after the chain's DONE. Fork 2 has been told so it can check the affected stages'
+  lineage. The coordinator does not touch `wt-gate2-dev` while a chain runs there.
+- **AK.59 follow-up (2026-10-14 22:00): fork 2 confirms the slip had no effect.** The only lineage written so far is `e5e8_fy/forensic/lineage.json`
+  (20:35:30, `code_dirty` false). No stage started during the window, and the forensic code imports neither edited file. Nothing is re-run
+  or annotated. Fork 2's revised ETA for DONE is about 08:00–10:00 on 10-15.

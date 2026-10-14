@@ -67,6 +67,59 @@ be untouched. The operator's deadline is the end of October 2026.
     - the CPU valuation;
     - scoring and audit by about 10-25.
 
+11. **Limits and reported diagnostics** (cross-check 14, ChatGPT; adopted in AK.57, 2026-10-14 21:55; fixed before the 07-31 freeze; none is a bar, and no
+    bar or threshold changes):
+    - **What the test is, stated in the freeze record and in the verdict.** "A company-disjoint, registered q1 proxy screen on a period
+      partly observed in aggregate (gate 2's results of the same reporting season were seen). It is **not** a pristine temporal holdout,
+      and **not** a validation of annual forecast accuracy." A pass supports controlled shadow operation only.
+    - **The q1-against-annual mismatch** is an explicit limitation: the engines forecast fiscal year 1, and q1 is one quarter, with
+      seasonality, one-offs and reporting timing. The shared mismatch does not guarantee an unbiased ranking; the persistence arm's
+      trailing-four-quarter rate behaves differently in a shocked quarter.
+    - **Reported beside the bars:**
+      - the target quarter's end date, its distance from T, and whether it is a late-reported or a later quarter;
+      - paired errors by reporting delay, size decile and family;
+      - the concentration of any advantage: the share of the median-d gain from the top 10 companies by contribution, and the result
+        with each industry left out in turn.
+    - **Selection reconciliation:** the full eligible universe against the scored q1 sample, on market cap, family, industry (SIC
+      2-digit), filing delay, leverage and distress (C0 P(fail)), and prior growth volatility, with exclusion counts by reason. No weight
+      is chosen and no case is removed after performance is seen.
+    - **Real money:** B4 (annual calibration and sharpness) and every applicable D1–D10 condition, including D9's money bar, stay
+      unchanged and mandatory. No gate-2b pass is ever presented as meeting them.
+
+12. **Amendments from Gemini's cross-check 14** (AK.58, 2026-10-14 21:57; fixed before the 07-31 freeze; each tightens or adds a report, and none relaxes a
+    bar):
+    - **(a) The inference unit for 07-31 is the industry.** At one date each company appears once, so a company-clustered bootstrap is an
+      unclustered one: it ignores shocks shared within an industry. **The B2/B3 interval for 07-31 is a cluster bootstrap by SIC 2-digit
+      industry** (2,000 draws, seed 20261013; an industry with fewer than 5 companies is pooled within its family). The company-clustered
+      interval is reported beside it.
+    - **(b) Public availability widens.** A result also counts as public when an 8-K with **Item 7.01** (Reg FD) is accepted after the
+      period end and before the T cutoff, as well as Item 2.02 or the pack. The rule over-excludes on purpose, and the count of extra
+      exclusions is reported.
+    - **(c) Strata and reweighting, reported:**
+      - B2/B3 within strata: fiscal-quarter-end month (late-reported June quarters against later quarter-ends), market-cap tercile and
+        family;
+      - an inverse-probability-of-selection score, reweighted to the full eligible universe on (SIC 2-digit × size tercile × quarter-end
+        month);
+      - the attrition table: universe, then gate-2 overlap, then public at T, then the 120-day guard, then the scored sample.
+    - **(d) The confirmation pool counts each outcome once.** Monthly dates can target the same quarterly filing, so the pooled read keeps
+      each (company, target-quarter period end) once, using its earliest snapshot. It is clustered two ways, by company and by
+      (industry × quarter).
+      - **For real money,** the confirmation read must pass pooled **and** on 2026-09-30 alone, the first quarter-end census after
+        07-31 (it includes the early large reporters that 07-31 lacks).
+    - **(e) A sensitivity:** the 07-31 bars recomputed with **every** company of any gate-2 date excluded, not only 2026-06-30's,
+      reported. The registered primary keeps the 06-30 exclusion, because only the same quarter's outcomes were seen.
+    - **(f) B4's limit, stated.** At 07-31 fiscal year 1 is partly elapsed (its reported quarters are in the information set, as AH
+      registered), so B4 tests a partly known year. B4 stays as defined. For real money a **fiscal-year-2 calibration** (a year wholly
+      after T) is added, read when available.
+    - **(g) A diagnostic:** the share of each name's value from years 1, 2–3 and 4 onward (the `mean_iv` horizon decomposition).
+    - **Not adopted:**
+      - **a binding q1 interval check ("B4-q1").** The engine's band is for the annual quantity, so its coverage of a single quarter is
+        not a calibration test. It is reported only, with that caveat;
+      - **a Muse shadow arm with an unregistered weight.** S5 is refitted under its own registration when the annual pairs reach 150,
+        excluding every (company, fiscal year) gate 2b scores;
+      - **q1 already compares a quarter with the same quarter a year earlier** (year-over-year, so seasonally matched), so no further
+        seasonal adjustment is added.
+
 ## 1. What is tested
 
 **The system under test (SYSTEM)** is whatever S5 assembles, frozen before any gate-2b pack is built:

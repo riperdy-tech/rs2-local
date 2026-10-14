@@ -30,7 +30,7 @@ the new core does not produce.
 | Field | Value | Note |
 |---|---|---|
 | `scheme` | `"core_v4"` | v1–v3 rows keep `"band_direction_v1"`. Consumers branch on it. |
-| `gate_version` | `3` | `depth_gates` v4. Rows with `gate_version < 3` are read by the existing rules, unchanged. |
+| `gate_version` | `9` | `depth_gates` v4 (erratum AK.54, 2026-10-14 21:30: the draft said 3, but the live `GATE_VERSION` is already 8). Consumers branch on `scheme`; rows that are not `core_v4` are read by the existing rules, unchanged. |
 | `run_source` | as today | DEP-09 routing, unchanged. |
 | `versions` | `{engine, near_term_vintage, priors_vintage, pack, templates, runner, calibration, distress_model, model_sha256, llama_cpp_build, s5_freeze}` | Every one is required; a row missing any is `not_usable`. `distress_model` names the P(fail) model in force (B5: `C0` until a candidate is selected) with its hash. |
 | `asof`, `price`, `price_date` | as today | |
@@ -113,7 +113,8 @@ never an extreme):
 | `probability_bucket` | `prob_value_above_price` ≥ 0.90 full; ≥ 0.80 half; else quarter | new; replaces `conviction_bucket` |
 | `risk_bucket` | the MRI turbulence flag read fresh; `None` with `risk_flag_unavailable` when unreadable | kept |
 
-`size_components` publishes every bucket with its raw value.
+`size_components` publishes every bucket with its raw value: keys `dispersion_bucket`, `mos_bucket`, `probability_bucket` and `risk_bucket`, each
+`{"bucket": quarter|half|full|null, "value": <raw value or null>}` (fixed in AK.54, 2026-10-14 21:30).
 
 **This size rule is provisional.** If S8 (`REGISTRATION_selection.md`) passes a sizing rule, that rule replaces it as a new version. It
 is never changed on returns otherwise.
@@ -169,7 +170,7 @@ An abstention is published, so the site shows **"no view: <reason>"**. It is nev
 - **What may not:** `depth_gates`, sizing, the paper book, the follow-up and the grader.
 - **Enforcement:** a contract test fails if any module except the site's display reads it.
 
-## 8. Actionable reasons, gate on read (`depth_gates.assess` v4, `gate_version` 3)
+## 8. Actionable reasons, gate on read (`depth_gates.assess` v4, `gate_version` 9; erratum AK.54)
 
 `assess(v)` never mutates or drops a row and returns every applicable reason (non-negotiable 3). For `scheme == "core_v4"`:
 
@@ -243,3 +244,48 @@ Dropped with their fields: the probability simplex, the tranche monotonicity and
 
 **Approved by the operator, 2026-10-13 21:50 KST:** "approve C1, B5, S5, mean_iv, and the engine v2 bundle" (SPEC_rebuild AK.23). The version approved is draft v2 with the AK.21 `joint_tail_undercoverage`
 flag. Any change from here on is a new version. Cross-check 10 reviews the downstream changes (plan C2).
+
+## 13. Errata
+
+These are binding where they differ from the sections above. Each is recorded in SPEC_rebuild.
+
+- **AK.54:**
+  - `gate_version` is 9;
+  - the `size_components` keys are fixed (section 3).
+- **AK.55, 3: versions for SYSTEM = engine v2 alone.**
+  - `pack`, `templates`, `model_sha256` and `llama_cpp_build` are `"not_applicable"`, allowed only when `muse_used` is false;
+  - `s5_freeze` is `"w0_AK52"` and `calibration` is `"identity_AK52"`;
+  - the new key `system_freeze` holds the engine freeze's identifier;
+  - `pre_valid_analyst` compares `versions.system_freeze` with the freeze gate 2b promotes.
+- **AK.55, 4: the trend state from SCR-10** (`momentum_state.json` as filed):
+  - **down** if `mom_break`;
+  - **up** if `above_200dma` and `dma200_slope_20d` > 0;
+  - **flat** otherwise;
+  - **unknown** if a field is absent: the trend-dependent axes are then null, and stated.
+
+  `momentum_break_rule` is the `mom_break` condition and `momentum_flip_condition` the "up" condition, both with `window_days` 20.
+- **AK.55, 5: invalidation rules** carry `window`, the phrase the consumers read, plus a numeric `window_days`. Momentum rules keep
+  `window_days`.
+- **AK.55, 6: the single-owner table** adds `run_id`, `cik`, `ticker`, `family`, `stale_inputs`, `notes`, `reasons`, `forecast_years`,
+  `discount`, `muse_used` and `system_freeze`. The live runner is their only producer.
+- **AK.55: an `unclassifiable` company** is a no-view: `family_not_built`, with reason "unclassifiable".
+- **AK.59 (2026-10-14 21:58): field ownership between the live runner (producer) and the gate.**
+  - **`flags` (producer)** holds the properties of the method: `value_distribution_model_implied`, `joint_tail_undercoverage`,
+    `continuation_binary_interim` and `distress_model_not_validated`. The gate never overwrites them; **`gate_flags` (gate)** holds what
+    the gate derives.
+  - **`actionable` belongs to the gate alone.** The producer never writes it, abstentions included.
+  - **Gate inputs, which the producer emits** (the names are the gate's):
+    - `integrity` and `muse`, **not applicable** when `muse_used` is false;
+    - `level_reference` `{family, p1, p99, n, asof}`, the P1 and P99 of `median_iv / price` over the engine-v2 pass of the whole universe
+      at that `asof`. A run over a subset reads the last universe pass of the same `asof`; without one, the row is blocked, failing closed;
+    - `prior_verdict`, which the gate reads from the ledger.
+  - **`system_freeze`** sits in `versions` only.
+  - **Momentum rules** carry both `window_days` (20) and `window` ("20 trading days").
+  - **The producer runs `validate_fiduciary_contract_v4`** and marks a failure `not_usable`. `assess` reads that result.
+  - **The overlay header,** when v4 rows are present: `"scheme": "mixed"` with each row's own `scheme`, and `gate_version` 9.
+  - **The producer also emits `date`** (equal to `asof`) for the grader's key.
+  - **TRK-06's realised values:**
+    - revenue growth and margin come from `rebuild_harness/gate2/same_filing.annual_measures`, the outcome definition of record;
+    - ROTE comes from `build_state`;
+    - tangible-book growth is **unavailable** until a same-filing rule exists;
+    - `prob_fail_12m` grading is **unavailable** until the event index records the date it is resolved through, which D5's refresh adds.
