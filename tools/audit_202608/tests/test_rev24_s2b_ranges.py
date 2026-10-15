@@ -329,3 +329,21 @@ def test_the_gate_bounds_are_the_cohorts_p5_and_p95():
     assert b["long_run_margin"]["p5"] == pytest.approx(0.08 - 2.0 * 0.04) and b["long_run_margin"]["p95"] == pytest.approx(0.08 + 3.0 * 0.04)
     assert b["terminal_g"] == b["revenue_cagr_10y"] and b["terminal_g"]["p5"] == -0.20 and b["terminal_g"]["K"] == 10
     assert b["terminal_ronic"]["p95"] == 0.55 and b["earnings_ratio_10y"] is None
+
+
+def test_a_commodity_companys_margin_is_the_normalization_curve_at_its_score_as_the_rebuild_reads_it():
+    """PopulationPriors, commodity family: the margin's retention distribution is the normalization quintile bands interpolated at the company's
+    score (flat beyond the end bands); the band of the margin-retention table is still recorded. The parity script found this rule (10 commodity
+    cases mismatched before it)."""
+    T = fixture_tables()
+    d = pr.ranges_for(rec(family="commodity", cyc_score=0.45), "2026-10-16", tables=T)["inputs"]["long_run_margin"]
+    assert d["cohort"] == "commodity:normalization_at_score" and d["band"] == "mid_pos" and d["table"] == "normalization"
+    assert d["retention"]["p50"] == pytest.approx(0.125) and d["position"]["p50"] == pytest.approx(0.125)
+    assert d["levels"]["p50"] == pytest.approx(0.08 + 0.125 * 0.04)
+    beyond = pr.ranges_for(rec(family="commodity", cyc_score=0.95), "2026-10-16", tables=T)["inputs"]["long_run_margin"]
+    assert beyond["retention"]["p50"] == pytest.approx(0.25)                    # the top band's, held flat beyond it
+    nos = pr.ranges_for(rec(family="commodity", cyc_score=None), "2026-10-16", tables=T)["inputs"]["long_run_margin"]
+    assert nos["cohort"] == "pooled_pos" and nos["table"] == "margin_retention"     # no score: the band, as the rebuild keeps it
+    # an operating company's position is its band's quantiles clipped to [0, 1] (the rebuild's curve position)
+    op = pr.ranges_for(rec(), "2026-10-16", tables=T)["inputs"]["long_run_margin"]
+    assert op["position"] == {k: min(1.0, max(0.0, v)) for k, v in op["retention"].items()}

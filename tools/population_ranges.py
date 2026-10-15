@@ -364,6 +364,45 @@ def _score(T, rec):
     return rec.get("cyc_score"), "equal weights"
 
 
+def _interp(x, xs, ys):
+    """np.interp for increasing xs: linear between the points, flat beyond the ends."""
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    j = bisect.bisect_right(xs, x)
+    x0, x1, y0, y1 = xs[j - 1], xs[j], ys[j - 1], ys[j]
+    return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+
+
+def _normalization_interpolated(T, score, min_n):
+    """(raw quantiles, the rebuild's position, the bands' rows used) of the margin's retention at `score`, interpolated between the normalization
+    quintile bands (PopulationPriors._normalization_position): the bands with a score median and n >= MIN_N, each at its year-5 row. The position is
+    the rebuild's own (each band's quantiles clipped to [0, 1], then interpolated); the raw quantiles are interpolated unclipped for the levels.
+    None without a score or a band."""
+    if score is None:
+        return None
+    pts = []
+    for b in T["normalization"]["bands"]:
+        if b.get("score_median") is None or b["all"]["n"] < min_n:
+            continue
+        row = _pos_row(b["all"]["ks"], "median", "n", min_n)
+        if row is None or not row.get("q"):
+            continue
+        q = _quantiles(row["q"])
+        if any(q[k] is None for k in ("p10", "p50", "p90")):
+            continue
+        pts.append((b["score_median"], q, {"k": row["k"], "n": int(row["q"].get("n") or row["n"]), "score_median": b["score_median"]}))
+    if not pts:
+        return None
+    xs = [p[0] for p in pts]
+    raw = {k: (_interp(score, xs, [p[1][k] for p in pts]) if all(p[1][k] is not None for p in pts) else None) for k in QKEYS}
+    pos = {k: (_interp(score, xs, [min(1.0, max(0.0, p[1][k])) for p in pts]) if all(p[1][k] is not None for p in pts) else None) for k in QKEYS}
+    lo = max([i for i, x in enumerate(xs) if x <= score] or [0])
+    hi = min([i for i, x in enumerate(xs) if x >= score] or [len(xs) - 1])
+    return raw, pos, [pts[lo][2]] + ([pts[hi][2]] if hi != lo else [])
+
+
 def _margin_retention(T, rec, min_n):
     mr = T["margin_retention"]
     cuts = mr["cyc_cuts"]
@@ -448,20 +487,36 @@ def ranges_for(company_record_: dict, T, tables=None, tdir=None) -> dict:
     else:
         key, bd, score, basis, fb = _margin_retention(T_, rec, min_n)
         row = _pos_row(bd["ks"], "median", "n", min_n) if bd else None
-        if row is None or not row.get("q"):
-            ins["long_run_margin"] = {"available": False, "reason": f"the band {key} has no measured year with n >= {min_n}", "cohort": key}
+        interp = _normalization_interpolated(T_, score, min_n) if fam == "commodity" else None
+        if interp is not None:
+            # PopulationPriors, commodity family: the margin's retention is the normalization curve of the company's cyclicality score, its
+            # distribution the quintile bands' interpolated quantile by quantile at the score (flat beyond the end bands)
+            rq, pos, used = interp
+            nb_ = T_["normalization"]
+            d = {"available": True, "table": "normalization", "cohort": "commodity:normalization_at_score", "band": key, "fallbacks": fb, "score": score,
+                 "score_basis": basis, "k": used[0]["k"], "n": min(u["n"] for u in used), "retention": rq, "position": pos, "trend": trend,
+                 "current": current, "op_margin": rec.get("m"), "op_median8": rec.get("med8"), "op_dev": rec.get("dev"),
+                 "cohort_text": (f"operating and commodity companies at your cyclicality score {score:.3f}: the quintile bands of the score interpolated "
+                                 f"at it (band medians {', '.join(f'{u['score_median']:.3f}' for u in used)}), both sides of the median"
+                                 + (" (the vintage's fitted cyclicality weights)" if basis != "equal weights" else ""))}
+        elif row is None or not row.get("q"):
+            d = {"available": False, "reason": f"the band {key} has no measured year with n >= {min_n}", "cohort": key}
         else:
             rq = _quantiles(row["q"])
-            d = {"available": True, "table": "margin_retention", "cohort": key, "fallbacks": fb, "score": score, "score_basis": basis,
+            d = {"available": True, "table": "margin_retention", "cohort": key, "band": key, "fallbacks": fb, "score": score, "score_basis": basis,
                  "cohort_text": _band_words(key, T_["margin_retention"]["cyc_cuts"], basis), "k": row["k"], "n": int(row["q"].get("n") or row["n"]),
-                 "retention": rq, "trend": trend, "current": current, "op_margin": rec.get("m"), "op_median8": rec.get("med8"), "op_dev": rec.get("dev")}
+                 "retention": rq, "position": {k: (None if v is None else min(1.0, max(0.0, v))) for k, v in rq.items()},
+                 "trend": trend, "current": current, "op_margin": rec.get("m"), "op_median8": rec.get("med8"), "op_dev": rec.get("dev")}
+        if d.get("available"):
             if lvl_missing:
                 d.update(available=False, reason=lvl_missing)
+            elif any(d["retention"][k] is None for k in QKEYS):
+                d.update(available=False, reason="the cohort's retained share is not measured at every quantile")
             else:
-                d["levels"] = _sorted_levels(trend, current, rq)
+                d["levels"] = _sorted_levels(trend, current, d["retention"])
                 if rec.get("dev") is not None and (current - trend) * rec["dev"] < 0:
                     d["stamps"] = ["earnings_deviation_sign_differs_from_operating"]
-            ins["long_run_margin"] = d
+        ins["long_run_margin"] = d
         nb = T_["normalization"]
         if score is None:
             ins["normalization"] = {"available": False, "reason": "no cyclicality score (fewer than 6 years of margins and revenues)"}
