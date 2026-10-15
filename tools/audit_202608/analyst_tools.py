@@ -174,8 +174,8 @@ TOOLS = [{
         "name": "run_financial_model",
         "description": (
             "Run the Python desk. One call values Base, Bull and Bear together: each scenario's base_cf, "
-            "five years of cash-flow growth, fade, discount rate and terminal growth (with an optional "
-            "terminal_ronic) give its per-share value. The desk also returns the reverse DCF (the growth today's "
+            "five years of cash-flow growth, fade, discount rate, terminal growth and long-run earnings margin "
+            "(with an optional terminal_ronic) give its per-share value. The desk also returns the reverse DCF (the growth today's "
             "price implies, under your structure and under the neutral reference) and quarter-Kelly sizing. "
             "On every run the desk also returns price_implied: for each judgment input, the value at which the Base "
             "would equal today's price with your other inputs unchanged, or not reachable inside its bound. "
@@ -316,6 +316,7 @@ TOOLS = [{
                     "description": "REQUIRED for DCF. Long-term nominal terminal growth rate as decimal (e.g. 0.025 for 2.5%, 0.035 for 3.5%). The silent default was removed in Phase 4; calls without it are refused."
                 },
                 "terminal_ronic": {"type": "number", "description": "The return on new investment (a fraction, e.g. 0.12) that pays for growth from year 6 and in the terminal value. Default: the DEFAULTS terminal_ronic. A Base value more than 2 points from it needs terminal_reason."},
+                "long_run_margin": {"type": "number", "description": "Required for a perpetual cash_flow_life, with no default: your judgment of the earnings margin (long-run earnings over revenue, a decimal, e.g. 0.12) the business earns at the end of the fade. The desk moves each scenario's year-5 earnings margin proportionally to it over fade_years (with fade_years 0, from the terminal year); a scenario's year-5 revenue is the pack's scaled by its owner earnings, as its earnings are, so its year-5 margin is the long_run block's m5. A scenario's own long_run_margin overrides this one. Where the pack has no year-5 revenue the margin is held and the desk says so."},
                 "sbc_treatment": {
                     "type": "string",
                     "enum": ["deducted_in_cf", "add_back_dilution"],
@@ -350,8 +351,8 @@ TOOLS = [{
                     "description": (
                         "Exactly three entries, one each with role Base, Bull and Bear. Each entry: name, prob, "
                         "base_cf ($B), explicit_growth (5 annual growth rates of base_cf, cash flow not revenue), "
-                        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_ronic "
-                        "and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
+                        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_ronic, "
+                        "long_run_margin and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
                         "sizing in one call."
                     ),
                     "items": {
@@ -367,13 +368,14 @@ TOOLS = [{
                             "wacc": {"type": "number", "description": "Discount rate as decimal"},
                             "terminal_g": {"type": "number", "description": "REQUIRED. Terminal growth as decimal"},
                             "terminal_ronic": {"type": "number", "description": "Return on new investment for this scenario, as a fraction. Default: the DEFAULTS terminal_ronic."},
+                            "long_run_margin": {"type": "number", "description": "This scenario's earnings margin at the end of the fade, as a decimal; default: the top-level long_run_margin."},
                             "shares_diluted": {"type": "number", "description": "Only for a contingent instrument that vests in this scenario, as a whole share count, for example 79,364,362; billions are also accepted. Needs shares_reason."}
                         },
                         "required": ["name", "prob"]
                     }
                 }
             },
-            "required": ["cash_flow_life", "cash_flow_life_reason", "terminal_g", "fade_years", "sbc_treatment"]
+            "required": ["cash_flow_life", "cash_flow_life_reason", "terminal_g", "fade_years", "sbc_treatment", "long_run_margin"]
         }
     }
 }]

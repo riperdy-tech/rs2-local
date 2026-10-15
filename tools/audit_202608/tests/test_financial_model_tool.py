@@ -123,6 +123,7 @@ def test_execute_financial_model_dispatch():
         "sbc_treatment": "deducted_in_cf",
         "cash_flow_life": "perpetual",
         "cash_flow_life_reason": "test",
+        "long_run_margin": 0.10,   # revision 24 step 2a: required; no long-run facts in these contexts, so the margin is held
         "base_cf_reason": "test",
         "bull_below_price_reason": "test",
     }
@@ -178,6 +179,7 @@ def test_batch_scenario_dcf_execution():
         "valuation_frame": "firm",
         "cash_flow_life": "perpetual",
         "cash_flow_life_reason": "test",
+        "long_run_margin": 0.10,   # revision 24 step 2a: required; no long-run facts in these contexts, so the margin is held
         "interest_addback": 0.3,
         "wacc_reason": "COE ANCHOR 9%, cost of debt 4%, tax 21%, weights 80/20",
         "base_cf_reason": "test",   # no owner_earnings_default_b in context (R2)
@@ -834,6 +836,7 @@ def test_old_amd_call_9_params_refused():
         "sbc_treatment": "deducted_in_cf",
         "cash_flow_life": "perpetual",
         "cash_flow_life_reason": "test",
+        "long_run_margin": 0.10,   # revision 24 step 2a: required; no long-run facts in these contexts, so the margin is held
         # omitted shares_diluted
     }
     res = execute_financial_model(params, context={"price": 160.0})
@@ -851,7 +854,7 @@ def test_old_amd_call_9_params_refused():
 def test_reverse_dcf_never_uses_defaulted_share_count():
     """Reverse DCF path must not run on a defaulted share count: explicit shares_diluted, or the
     context's shares_default_b, is required."""
-    cfl = {"cash_flow_life": "perpetual", "cash_flow_life_reason": "test", "base_cf_reason": "test",
+    cfl = {"cash_flow_life": "perpetual", "cash_flow_life_reason": "test", "base_cf_reason": "test", "long_run_margin": 0.10,
            "bull_below_price_reason": "test", "bear_above_price_reason": "test"}
 
     def three(base):

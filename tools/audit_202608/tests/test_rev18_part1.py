@@ -32,7 +32,7 @@ import rs2_data  # noqa: E402
 import throughcycle_record as tc  # noqa: E402
 from test_throughcycle_record import R, history, row  # noqa: E402
 from test_throughcycle_reference import (COE, EST, GA, MEDIAN5, NI_BASE, OE_BASE, REDUCTION, REV_BASE, SHARES,  # noqa: E402
-                                         _margin_record, _synthetic_pack)
+                                         _margin_record, _synthetic_pack, ref_long_run_margin)
 
 REAL_BILL_RATE_MEAN = rs2_data.bill_rate_mean       # captured at import, before the suite's autouse stub (conftest) is applied
 B = 1e9
@@ -318,7 +318,7 @@ def _desk_call(ref, **over):
             "terminal_g": GA, "fade_years": 5, "sbc_treatment": "deducted_in_cf", "cash_flow_life": "perpetual",
             "cash_flow_life_reason": "d", "base_cf_reason": "d", "scenario_deviation_reason": "d",
             "bull_below_price_reason": "d", "bear_above_price_reason": "d", "terminal_reason": "d", "coe_adjustment_reason": "d",
-            "shares_reason": "d"}
+            "shares_reason": "d", "long_run_margin": ref_long_run_margin(ref)}
     call.update(over)
     return call
 
@@ -537,7 +537,7 @@ def test_the_desk_equals_the_reference_to_the_cent_with_a_cash_term_on_a_seeded_
                 "terminal_g": gt, "fade_years": 5, "sbc_treatment": "deducted_in_cf", "cash_flow_life": "perpetual",
                 "cash_flow_life_reason": "t", "base_cf_reason": "t", "scenario_deviation_reason": "t",
                 "bull_below_price_reason": "t", "bear_above_price_reason": "t", "terminal_reason": "t",
-                "coe_adjustment_reason": "t"}
+                "coe_adjustment_reason": "t", "long_run_margin": ref_long_run_margin(ref)}
         ctx = {"price": 1e-3, "shares_default_b": shares / B, "coe_anchor": coe, "terminal_g_default": gt,
                "owner_earnings_default_b": base, "levels": {"year1": lv[0] / B, "year2": lv[1] / B},
                "terminal_ronic": facts["terminal_ronic"], "long_run": facts["long_run"],
@@ -547,7 +547,7 @@ def test_the_desk_equals_the_reference_to_the_cent_with_a_cash_term_on_a_seeded_
             out = {"scenario_dcfs": [{"dcf": fmt.unbundled_dcf(
                 base_cf=base, explicit_growth=path, wacc=coe, terminal_g=gt, shares_diluted=shares / B, fade_years=5,
                 sbc_treatment="deducted_in_cf", terminal_ronic=facts["terminal_ronic"], long_run=facts["long_run"],
-                working_capital=facts["working_capital"], excess_cash=cash_c / B)}]}
+                working_capital=facts["working_capital"], excess_cash=cash_c / B, long_run_margin=ref_long_run_margin(ref))}]}
         desk = out["scenario_dcfs"][0]["dcf"]["per_share_iv"]
         assert abs(desk - ref["value"]) <= 0.0051, (case, desk, ref["value"], record, stub)
         checked += 1
@@ -664,7 +664,8 @@ def test_the_desk_on_the_packs_printed_facts_equals_the_reference_with_the_cash_
                                          "coe_adjustment_reason", "shares_reason")}
     call = dict(reasons, scenarios=[sc("Base", 0.4, parsed["coe_anchor"]), sc("Bull", 0.3, parsed["coe_anchor"] - 0.0005),
                                     sc("Bear", 0.3, parsed["coe_anchor"] + 0.0005)],
-                terminal_g=parsed["terminal_g_default"], fade_years=5, sbc_treatment="deducted_in_cf", cash_flow_life="perpetual")
+                terminal_g=parsed["terminal_g_default"], fade_years=5, sbc_treatment="deducted_in_cf", cash_flow_life="perpetual",
+                long_run_margin=ref_long_run_margin(ref))
     out = fmt.execute_financial_model(call, ctx)
     assert "error" not in out, out.get("error")
     dcf = out["scenario_dcfs"][0]["dcf"]

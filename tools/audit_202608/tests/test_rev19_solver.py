@@ -41,7 +41,7 @@ def _b(**over):
                                  terminal_ronic=b["ronic"], annuity_flow=b["annuity"], annuity_cap_rate=b["annuity_cap"], net_debt=b["net_debt"],
                                  shares_diluted=b["shares"], valuation_frame=b["frame"], rate_type=b["rate_type"], sbc_treatment=b["sbc"],
                                  sbc_dilution=b["sbc_dil"], finite_life_years=b["finite"], long_run=b["long_run"], working_capital=b["wc"],
-                                 excess_cash=b["excess"])["per_share_iv_raw"]
+                                 excess_cash=b["excess"], long_run_margin=b.get("lrm"))["per_share_iv_raw"]
     return b
 
 
@@ -51,7 +51,8 @@ def _value(b, *, rates=None, fade=None, wacc=None, tg=None, ronic=None):
     first = fmt.unbundled_dcf(base_cf=b["cf"], explicit_growth=r0, wacc=b["wacc"], terminal_g=b["tg"], fade_years=left, terminal_ronic=b["ronic"],
                               annuity_flow=b["annuity"], annuity_cap_rate=b["annuity_cap"], net_debt=b["net_debt"], shares_diluted=b["shares"],
                               valuation_frame=b["frame"], rate_type=b["rate_type"], sbc_treatment=b["sbc"], sbc_dilution=b["sbc_dil"],
-                              finite_life_years=b["finite"], long_run=b["long_run"], working_capital=b["wc"], excess_cash=b["excess"])
+                              finite_life_years=b["finite"], long_run=b["long_run"], working_capital=b["wc"], excess_cash=b["excess"],
+                              long_run_margin=b.get("lrm"))      # revision 24 step 2a: the Base's long_run_margin, as price_implied passes it
     applied = first.get("terminal_ronic")
     applied = INF if applied == "unlimited" else applied
     out = fmt.unbundled_dcf(base_cf=b["cf"], explicit_growth=r0 if rates is None else rates, wacc=b["wacc"] if wacc is None else wacc,
@@ -59,7 +60,7 @@ def _value(b, *, rates=None, fade=None, wacc=None, tg=None, ronic=None):
                             terminal_ronic=applied if ronic is None else ronic, annuity_flow=b["annuity"], annuity_cap_rate=b["annuity_cap"],
                             net_debt=b["net_debt"], shares_diluted=b["shares"], valuation_frame=b["frame"], rate_type=b["rate_type"],
                             sbc_treatment=b["sbc"], sbc_dilution=b["sbc_dil"], finite_life_years=b["finite"], long_run=b["long_run"],
-                            working_capital=b["wc"], excess_cash=b["excess"])
+                            working_capital=b["wc"], excess_cash=b["excess"], long_run_margin=b.get("lrm"))
     assert "error" not in out, out
     return out["per_share_iv_raw"]
 
@@ -381,15 +382,18 @@ def test_not_reachable_exactly_when_the_price_is_outside_the_values_over_the_bou
     assert abs(_substitute(b, name, inside_bottom) - (bottom + eps)) <= 0.01
 
 
-def test_the_value_is_not_monotone_in_terminal_ronic_near_unlimited_and_the_solver_says_so():
-    """+inf is its own case in the long run (the return fades from RONIC_0 to RONIC_T, and an infinite RONIC_T is not the limit of a large one),
-    so the value over [coe, +inf] is not monotone for this Base: a price just above the +inf end is reached at a finite return, and the jump at +inf is no
-    second root (B-1)."""
+def test_the_value_is_monotone_in_terminal_ronic_up_to_unlimited_and_the_solver_says_so():
+    """Was `test_the_value_is_not_monotone_in_terminal_ronic_near_unlimited_and_the_solver_says_so`: +inf was its own case in the long run (the
+    start held until the last fade year), so the value over [coe, +inf] was not monotone and a price just above the +inf end was reached at a
+    finite return across a jump. Revision 24 step 2a (D4): an unlimited RONIC_T is the limit of a large finite one, the value rises to it, and a
+    price just above the +inf end is not reachable, with no jump and no root."""
     b = _b(growth=[0.12, 0.10, 0.08, 0.07, 0.06], tg=0.03, ronic=0.12, wacc=0.09)
     bd = _pi(b, 15.0)["terminal_ronic"]["bound"]
+    vals = [_value(b, ronic=x) for x in (0.09, 0.12, 0.2, 0.5, 1.0, 10.0, 1e6, INF)]
+    assert all(y >= x for x, y in zip(vals, vals[1:])) and bd["value_high"] == pytest.approx(vals[-1], abs=1e-9)
     blk = _pi(b, bd["value_high"] + 0.01)["terminal_ronic"]
-    assert blk["reachable"] and blk["roots_on_grid"] == 1 and blk["discontinuities"] == 1 and "discontinuity" in blk["stamps"]    # B-1: the second "root" was the jump at +inf
-    assert blk["value"] != "unlimited" and abs(_substitute(b, "terminal_ronic", blk) - (bd["value_high"] + 0.01)) <= 0.01
+    assert not blk["reachable"] and blk["side"] == "above" and blk["roots_on_grid"] == 0 and blk["discontinuities"] == 0
+    assert "discontinuity" not in blk["stamps"]
 
 
 def test_a_value_at_the_end_of_the_bound_is_a_root_within_the_tolerance():
@@ -422,7 +426,9 @@ def test_the_two_bracketing_integers_straddle_the_price():
 
 
 def test_a_fade_that_hits_the_price_exactly_is_its_own_bracket():
-    b = _b(ronic=0.15)
+    # revision 24 step 2a: an unlimited return (it was 15%; with the charge moving linearly in 1 / RONIC that Base's value peaks at a fade of 6, so
+    # the price at 7 has a second, nearer root at 4.87; this test is about an exact integer hit, not about which of two roots is nearer)
+    b = _b(ronic=INF)
     five, left = fmt._pi_normalise(b["growth"], b["tg"], b["fade"], None)
     price = _value(b, fade=7)
     blk = _pi(b, price)["fade_years"]
@@ -722,33 +728,42 @@ def test_the_compact_note_tells_the_model_when_the_own_growth_is_not_unique_or_n
 
 # ---- B-1 (the reviewer's evidence, SP/review_r19): a jump of the value is not a root --------------------------------------------------------------
 
-def _ronic_jump_prices(b):
-    """(V at unlimited, V at the largest finite return the search reaches, a price inside the jump between them): the frozen arithmetic treats an
-    unlimited return on new investment differently from a very large finite one, so the value jumps at +inf."""
+def _ronic_ends(b):
+    """(V at unlimited, V at the largest finite return the search reaches). Revision 24 step 2a (D4): the frozen arithmetic of revision 19 treated an
+    unlimited return differently from a very large finite one, so the value jumped at +inf (the B-1 evidence); ronic_at now moves the charge
+    1 / RONIC linearly, so an unlimited return is the limit of a large finite one and the two ends agree."""
     v_inf = _value(b, ronic=INF)
     v_big = _value(b, ronic=b["wacc"] * 1e9)
-    assert abs(v_inf - v_big) > 0.5
-    return v_inf, v_big, (v_inf + v_big) / 2.0
+    assert abs(v_inf - v_big) < 1e-6
+    return v_inf, v_big
 
 
 @pytest.mark.parametrize("own_ronic", [INF, 0.12])
-def test_a_price_inside_the_unlimited_return_jump_is_solved_at_the_real_root_not_at_the_jump(own_ronic):
-    """The brackets next to u = 0 (unlimited) hold the jump; the root the solver reports is the nearest bracket that holds a root. Own value unlimited
-    (the 44 DEFAULTS that print unlimited) and own value finite."""
+def test_a_price_near_the_unlimited_return_is_solved_at_its_root_with_no_jump(own_ronic):
+    """Was `test_a_price_inside_the_unlimited_return_jump_is_solved_at_the_real_root_not_at_the_jump` (revision 24 step 2a, D4: there is no jump at
+    unlimited any more). Own value unlimited and own value finite: a price just below the unlimited end is reached at a finite return, with one
+    root and no discontinuity; a price just above it is not reachable, on the side above, with no discontinuity either."""
     b = _b(growth=[0.12, 0.10, 0.08, 0.07, 0.06], tg=0.03, ronic=own_ronic, wacc=0.09)
-    v_inf, v_big, price = _ronic_jump_prices(b)
-    blk = _pi(b, price)["terminal_ronic"]
-    assert blk["reachable"] is True and blk["value"] != "unlimited" and blk["value"] < 100.0         # a finite return, not the jump's edge (wacc / 1e-9)
-    assert abs(_substitute(b, "terminal_ronic", blk) - price) <= 0.01
-    assert blk["roots_on_grid"] == 1 and blk["discontinuities"] == 1 and blk["stamps"] == ["discontinuity"]
+    v_inf, _ = _ronic_ends(b)
+    blk = _pi(b, v_inf - 0.05)["terminal_ronic"]
+    assert blk["reachable"] is True and blk["value"] != "unlimited" and blk["value"] < 100.0
+    assert abs(_substitute(b, "terminal_ronic", blk) - (v_inf - 0.05)) <= 0.01
+    assert blk["roots_on_grid"] == 1 and blk["discontinuities"] == 0 and blk["stamps"] == []
+    above = _pi(b, v_inf + 0.01)["terminal_ronic"]
+    assert above["reachable"] is False and above["side"] == "above" and above["discontinuities"] == 0 and above["stamps"] == []
 
 
 def test_the_discontinuity_is_counted_apart_from_the_roots_and_the_roots_are_not_miscounted():
+    """A price the unlimited end does not touch: one root, no jump. Revision 24 step 2a (D4): the self-made jump at +inf is gone, so no price
+    across the whole range of terminal_ronic meets a discontinuity (the counting itself is tested on step functions below)."""
     b = _b(growth=[0.12, 0.10, 0.08, 0.07, 0.06], tg=0.03, ronic=0.12, wacc=0.09)
-    plain = _pi(b, 20.0)["terminal_ronic"]                                  # a price the jump does not touch: one root, no jump
+    plain = _pi(b, 20.0)["terminal_ronic"]
     assert plain["reachable"] and plain["roots_on_grid"] == 1 and plain["discontinuities"] == 0 and plain["stamps"] == []
-    v_inf, v_big, price = _ronic_jump_prices(b)
-    assert max(v_inf, v_big) > price > min(v_inf, v_big)
+    v_inf, _ = _ronic_ends(b)
+    lo = _pi(b, 15.0)["terminal_ronic"]["bound"]["value_low"]
+    for k in range(1, 10):
+        blk = _pi(b, lo + (v_inf - lo) * k / 10.0)["terminal_ronic"]
+        assert blk["reachable"] and blk["roots_on_grid"] == 1 and blk["discontinuities"] == 0
 
 
 def test_solve_nearest_returns_not_reachable_when_every_bracket_is_a_jump():

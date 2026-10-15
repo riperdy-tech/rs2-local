@@ -132,10 +132,11 @@ def test_long_run_value_closed_forms():
     inf = cr.long_run_value(e5, g, gt, r, INF, INF, None, 5)
     assert inf["tv"] == pytest.approx(inf["e_terminal"] / (r - gt))
     assert all(f == pytest.approx(e) for f, e in zip(inf["flows"], inf["earnings"]))
-    # growth fades linearly from g to gt over the five years and the RONIC line runs from start to end
+    # growth fades linearly from g to gt over the five years and the reinvestment charge 1 / RONIC runs linearly from start to end
+    # (revision 24 step 2a, D4: it was RONIC itself)
     lr5 = cr.long_run_value(e5, g, gt, r, 0.20, 0.12, None, 5)
     assert lr5["growth"] == pytest.approx([g + (gt - g) * i / 5 for i in range(1, 6)])
-    assert lr5["ronic"] == pytest.approx([0.20 + (0.12 - 0.20) * i / 5 for i in range(1, 6)])
+    assert lr5["ronic"] == pytest.approx([1 / (1 / 0.20 + (1 / 0.12 - 1 / 0.20) * i / 5) for i in range(1, 6)])
     # the cash flow of year t pays for the growth of year t+1 (g_{N+1} = terminal g)
     e = lr5["earnings"]
     g_next = lr5["growth"][1:] + [gt]
@@ -148,10 +149,12 @@ def test_long_run_value_closed_forms():
     assert cr.long_run_value(e5, g, 0.10, 0.10, 0.15, 0.15, None, 5) is None
 
 
-def test_an_infinite_start_holds_until_the_last_fade_year():
-    assert cr.ronic_at(INF, 0.12, 0.5) == INF and cr.ronic_at(INF, 0.12, 1.0) == 0.12
-    assert cr.ronic_at(0.2, INF, 0.5) == 0.2 and cr.ronic_at(INF, INF, 0.5) == INF
-    assert cr.ronic_at(0.2, 0.1, 0.0) == 0.2 and cr.ronic_at(0.2, 0.1, 0.5) == pytest.approx(0.15)
+def test_an_infinite_start_or_end_moves_the_charge_linearly():
+    """Was `test_an_infinite_start_holds_until_the_last_fade_year`. Revision 24 step 2a (D4): ronic_at moves 1 / RONIC linearly, an unlimited
+    return being a charge of 0, so an infinite start or end no longer holds the start until the last fade year."""
+    assert cr.ronic_at(INF, 0.12, 0.5) == pytest.approx(0.24) and cr.ronic_at(INF, 0.12, 1.0) == 0.12      # 1 / RONIC = 0.5 x 1 / 0.12
+    assert cr.ronic_at(0.2, INF, 0.5) == pytest.approx(0.4) and cr.ronic_at(INF, INF, 0.5) == INF           # 1 / RONIC = 0.5 x 1 / 0.2
+    assert cr.ronic_at(0.2, 0.1, 0.0) == 0.2 and cr.ronic_at(0.2, 0.1, 0.5) == pytest.approx(1 / 7.5)       # (5 + 10) / 2 = 7.5
 
 
 def test_a_negative_long_run_value_is_floored_at_zero_and_stamped():
@@ -316,6 +319,16 @@ def test_terminal_growth_is_the_revenue_trend_held_between_breakeven_and_the_anc
 
 # ---- test 3: the desk equals the reference -------------------------------------------------------
 
+def ref_long_run_margin(ref):
+    """Revision 24 step 2a: the desk input that reproduces a reference's own long run, its margin rule's m_long; where the rule held the margin
+    (no ratio), the year-5 margin m5; with no revenue path (m5 None) the desk cannot apply a long_run_margin and holds the margin, so any number
+    (0.10) gives the reference's long run. The desk takes long_run_margin from the analyst; this is the reference's choice, for parity."""
+    lr = ref.get("long_run") or {}
+    if ref.get("m_long") is not None:
+        return ref["m_long"]
+    return lr["m5"] if lr.get("m5") is not None else 0.10
+
+
 def _facts_for(ref, record, gt, quantize):
     """The pack's facts for a reference, as capability_test builds them; quantize=True prints them at the
     DEFAULTS block's precision and reads them back, the way the desk receives them from a sidecar or text."""
@@ -356,7 +369,8 @@ def _desk_default_base(ref, facts, coe, gt, shares_default):
                              "explicit_growth": list(ref["path"]), "wacc": coe}
     call = {"scenarios": [sc("Base", 0.5), sc("Bull", 0.25), sc("Bear", 0.25)], "terminal_g": gt,
             "fade_years": 5, "sbc_treatment": "deducted_in_cf", "cash_flow_life": "perpetual",
-            "cash_flow_life_reason": "test", "bull_below_price_reason": "test", "bear_above_price_reason": "test"}
+            "cash_flow_life_reason": "test", "bull_below_price_reason": "test", "bear_above_price_reason": "test",
+            "long_run_margin": ref_long_run_margin(ref)}
     out = fmt.execute_financial_model(call, ctx)
     assert "error" not in out, out.get("error")
     return out["scenario_dcfs"][0]["dcf"]
@@ -479,7 +493,9 @@ def test_the_pack_builds_the_record_the_facts_and_the_lines_and_the_desk_follows
     call = {"scenarios": [sc("Base", 0.5), sc("Bull", 0.25), sc("Bear", 0.25)], "terminal_g": f["terminal_g_default"],
             "fade_years": 5, "sbc_treatment": "deducted_in_cf", "cash_flow_life": "perpetual",
             "cash_flow_life_reason": "test", "bull_below_price_reason": "test", "bear_above_price_reason": "test",
-            "base_cf_reason": "test"}
+            "base_cf_reason": "test",
+            # revision 24 step 2a: the reference's own long-run margin (the DEFAULTS long_run's m_long; m5 where the rule held the margin)
+            "long_run_margin": lr["m_long"] if lr.get("m_long") is not None else (lr.get("m5") if lr.get("m5") is not None else 0.10)}
     out = fmt.execute_financial_model(call, ctx)
     assert "error" not in out, out.get("error")
     base_dcf = out["scenario_dcfs"][0]["dcf"]
@@ -592,7 +608,7 @@ def test_the_desk_equals_the_reference_on_random_inputs_to_the_cent():
                 "terminal_g": gt, "fade_years": 5, "sbc_treatment": "deducted_in_cf", "cash_flow_life": "perpetual",
                 "cash_flow_life_reason": "t", "base_cf_reason": "t", "scenario_deviation_reason": "t",
                 "bull_below_price_reason": "t", "bear_above_price_reason": "t", "terminal_reason": "t",
-                "coe_adjustment_reason": "t"}
+                "coe_adjustment_reason": "t", "long_run_margin": ref_long_run_margin(ref)}
         ctx = {"price": 1e-3, "shares_default_b": shares / B, "coe_anchor": coe, "terminal_g_default": gt,
                "owner_earnings_default_b": base, "levels": {"year1": lv[0] / B, "year2": lv[1] / B},
                "terminal_ronic": facts["terminal_ronic"], "long_run": facts["long_run"],
@@ -604,7 +620,7 @@ def test_the_desk_equals_the_reference_on_random_inputs_to_the_cent():
             out = {"scenario_dcfs": [{"dcf": fmt.unbundled_dcf(
                 base_cf=base, explicit_growth=path, wacc=coe, terminal_g=gt, shares_diluted=shares / B, fade_years=5,
                 sbc_treatment="deducted_in_cf", terminal_ronic=facts["terminal_ronic"], long_run=facts["long_run"],
-                working_capital=facts["working_capital"])}]}
+                working_capital=facts["working_capital"], long_run_margin=ref_long_run_margin(ref))}]}
         desk = out["scenario_dcfs"][0]["dcf"]["per_share_iv"]
         assert abs(desk - ref["value"]) <= 0.0051, (case, desk, ref["value"], record, stub)
         checked += 1

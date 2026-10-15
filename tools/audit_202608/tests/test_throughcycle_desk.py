@@ -39,8 +39,9 @@ def _three(base_path, **base_extra):
 
 
 def _call(scenarios, **over):
+    # revision 24 step 2a: long_run_margin is required; EZPW_CTX carries no long-run facts, so it holds the margin and changes no value here
     p = {"scenarios": scenarios, "terminal_g": 0.0375, "fade_years": 5, "sbc_treatment": "deducted_in_cf",
-         "cash_flow_life": "perpetual", "cash_flow_life_reason": "test", "shares_diluted": 0.061443}
+         "cash_flow_life": "perpetual", "cash_flow_life_reason": "test", "shares_diluted": 0.061443, "long_run_margin": 0.08}
     p.update(over)
     return p
 
@@ -126,7 +127,8 @@ def test_the_held_base_uses_a_shorter_list_the_same_way():
 
 # ---- section 4d/4e: working capital and the long run -------------------------------------------------
 
-# brief F3: the facts carry the reference's margin_ratio (m_long / m5 = 0.06 / 0.10); the desk computes none
+# brief F3: the facts carry the reference's margin_ratio (m_long / m5 = 0.06 / 0.10); the desk computes none, and since revision 24 step 2a
+# it does not read it either (the analyst's long_run_margin moves the margin)
 LR_FACTS = {"e5": 0.30, "oe5": 0.28, "m5": 0.10, "margin_ratio": 0.6, "r_tc": 0.20, "stub_months": 8.5}
 WC = [0.004, 0.005, 0.006, 0.005, 0.004]
 
@@ -181,30 +183,36 @@ def test_the_long_run_takes_the_scenarios_own_growth_terminal_g_and_terminal_ron
     assert bear["terminal_ronic"] == 0.05 and res["scenario_dcfs"][0]["dcf"]["terminal_ronic"] == 0.135
 
 
-def test_the_scenarios_year_5_earnings_move_one_for_one_with_its_owner_earnings():
+def test_the_scenarios_year_5_earnings_scale_with_its_owner_earnings():
+    """Revision 24 step 2a (D3): E5 = e5 x OE5 / oe5, proportional (it was e5 + (OE5 - oe5), one for one)."""
     lr = {"e5": 0.30, "oe5": 0.28, "m5": None}
     low = _direct(EZPW_PATH, ronic=0.135, long_run=lr, base_cf=EZPW_BASE_CF)
     higher = _direct(EZPW_PATH, ronic=0.135, long_run=lr, base_cf=EZPW_BASE_CF * 1.10)
     e5_low, e5_high = low["long_run"]["year5_earnings"], higher["long_run"]["year5_earnings"]
     oe5_low = EZPW_BASE_CF * math.prod(1 + g for g in EZPW_PATH)
-    assert e5_low == pytest.approx(0.30 + (oe5_low - 0.28), abs=1e-4)
-    assert e5_high - e5_low == pytest.approx(oe5_low * 0.10, abs=1e-4)
+    assert e5_low == pytest.approx(0.30 * oe5_low / 0.28, abs=1e-4)
+    assert e5_high == pytest.approx(e5_low * 1.10, abs=1e-4)
 
 
-def test_the_desk_applies_the_facts_margin_ratio_and_computes_none_itself():
-    """Was `test_the_cycle_margin_factor_reverts_a_cycle_name_toward_its_median`: the desk no longer derives the ratio
-    from m_tc and the cycle flag; it takes the reference's margin_ratio from the facts (brief F3)."""
+def test_the_desk_applies_the_analysts_long_run_margin_and_not_the_facts_margin_ratio():
+    """Was `test_the_desk_applies_the_facts_margin_ratio_and_computes_none_itself` (brief F3: the reference's margin_ratio from the facts).
+    Revision 24 step 2a (ruling 1): the desk reads no margin_ratio from the facts and computes none from m_tc and the cycle flag; the margin moves
+    to the analyst's long_run_margin, the ratio being long_run_margin / (E5 / R5): the facts' year-5 revenue e5 / m5 = 3.0, scaled like the
+    earnings by the scenario's OE5 / oe5, so E5 / R5 = m5 = 10% and long_run_margin 6% gives the ratio 0.6."""
     flat = _direct(EZPW_PATH, ronic=0.135, long_run=dict(LR_FACTS, margin_ratio=None))
-    cyc = _direct(EZPW_PATH, ronic=0.135, long_run=LR_FACTS)
-    # an older block (m_tc and cycle, no margin_ratio) has no ratio: the desk holds the margin, it does not compute one
+    facts_ratio = _direct(EZPW_PATH, ronic=0.135, long_run=LR_FACTS)
+    # an older block (m_tc and cycle, no margin_ratio) holds the margin too
     older = _direct(EZPW_PATH, ronic=0.135, long_run={"e5": 0.30, "oe5": 0.28, "m5": 0.10, "m_tc": 0.06, "cycle": True,
                                                        "r_tc": 0.20, "stub_months": 8.5})
     assert older["long_run"]["margin_ratio"] is None and older["per_share_iv"] == flat["per_share_iv"]
-    assert flat["long_run"]["margin_ratio"] is None and cyc["long_run"]["margin_ratio"] == pytest.approx(0.6)
+    assert facts_ratio["long_run"]["margin_ratio"] is None and facts_ratio["per_share_iv"] == flat["per_share_iv"]
+    cyc = _direct(EZPW_PATH, ronic=0.135, long_run=LR_FACTS, long_run_margin=0.06)
+    oe5 = EZPW_BASE_CF * math.prod(1 + g for g in EZPW_PATH)
+    assert cyc["long_run"]["year5_revenue"] == pytest.approx(3.0 * oe5 / 0.28, abs=1e-4) and cyc["long_run"]["margin_ratio"] == pytest.approx(0.6)
     assert cyc["per_share_iv"] < flat["per_share_iv"]
-    # fewer fade years reach the median sooner
-    fast = _direct(EZPW_PATH, ronic=0.135, long_run=LR_FACTS, fade_years=2)
-    assert fast["long_run"]["margin_ratio"] == pytest.approx(0.6)
+    # fewer fade years reach the long-run margin sooner, with the same ratio
+    fast = _direct(EZPW_PATH, ronic=0.135, long_run=LR_FACTS, long_run_margin=0.06, fade_years=2)
+    assert fast["long_run"]["margin_ratio"] == cyc["long_run"]["margin_ratio"] and fast["per_share_iv"] < cyc["per_share_iv"]
 
 
 def test_a_negative_long_run_is_floored_and_stamped():

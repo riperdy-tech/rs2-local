@@ -180,8 +180,9 @@ def _desk_args(f, base_cf, wacc_shift=0.0):
                            "terminal_g": f["terminal_g_default"], "fade_years": 5}
     reasons = {k: "dated evidence 2026-10-01" for k in ("base_cf_reason", "scenario_deviation_reason", "bull_below_price_reason",
                                                          "bear_above_price_reason", "terminal_reason", "coe_adjustment_reason")}
+    # revision 24 step 2a: long_run_margin is required; the reference's own m_long keeps these Bases on the reference's arithmetic
     return dict(reasons, cash_flow_life="perpetual", cash_flow_life_reason="perpetual business", sbc_treatment="deducted_in_cf",
-                fade_years=5, terminal_g=f["terminal_g_default"],
+                fade_years=5, terminal_g=f["terminal_g_default"], long_run_margin=f["long_run"]["m_long"],
                 scenarios=[sc("Base", 0.5, wacc_shift), sc("Bull", 0.25, wacc_shift - 0.01), sc("Bear", 0.25, wacc_shift + 0.01)])
 
 

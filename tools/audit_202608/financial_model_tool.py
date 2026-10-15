@@ -191,28 +191,48 @@ def _is_num(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
-def _long_run_inputs(long_run, oe5, ronic_t_in, r):
+def _year5_revenue(long_run, oe5):
+    """Revision 24 step 2a: a scenario's year-5 revenue ($B). The facts' year-5 revenue is e5 / m5 (the revenue the reference's year-5
+    earnings margin m5 is measured on); the scenario's scales it by the scenario's year-5 owner earnings over the facts' (oe5 here is the
+    scenario's OE5), the scaling `_long_run_inputs` applies to the earnings (D3), so the scenario's year-5 earnings margin is m5. None when the
+    facts carry no reference with a revenue path (e5, oe5 or m5 missing, oe5 not positive) or the revenue is not a positive number."""
+    lr = long_run or {}
+    e5f, oe5f, m5f = lr.get("e5"), lr.get("oe5"), lr.get("m5")
+    if not (_is_num(e5f) and _is_num(oe5f) and oe5f > 0 and _is_num(m5f) and m5f != 0 and _is_num(oe5)):
+        return None
+    rev5 = e5f / m5f * oe5 / oe5f
+    return rev5 if math.isfinite(rev5) and rev5 > 0 else None
+
+
+def _long_run_inputs(long_run, oe5, ronic_t_in, r, long_run_margin=None):
     """What the long run needs, from the pack's facts and the scenario's own inputs (brief B 4e).
     Returns (e5, margin_ratio, ronic0, ronic_t, stamps).
 
-    E5 of the scenario = the reference's year-5 earnings plus the change in owner earnings the
-    scenario makes (one for one). Without a reference in the facts (no consensus): owner earnings scaled by the
-    base window's earnings before acquired-intangible amortization / owner earnings (`x_over_oe`, present when
-    the base year's amortization is known: stamp `long_run_base_ratio_x`), else by its net income / owner earnings
-    (`ni_over_oe`: `long_run_base_ratio_ni`), each when positive, else owner earnings themselves - labelled
-    fallbacks (never a refusal). The margin factor is the facts' `margin_ratio` (brief F3: the reference's margin rule
-    computed it; the desk computes none, and there is none without a reference or in an older block).
+    E5 of the scenario = the reference's year-5 earnings scaled by the scenario's year-5 owner earnings over the reference's,
+    e5 x OE5 / oe5 (revision 24 step 2a, D3: it was e5 + (OE5 - oe5), additive, which turned a Bear at 35% of the owner earnings into negative
+    long-run earnings; the translation is now proportional with or without a reference). Without a reference in the facts (no consensus, or
+    an oe5 that is not positive): owner earnings scaled by the base window's earnings before acquired-intangible amortization / owner earnings
+    (`x_over_oe`, present when the base year's amortization is known: stamp `long_run_base_ratio_x`), else by its net income / owner earnings
+    (`ni_over_oe`: `long_run_base_ratio_ni`), each when positive, else owner earnings themselves - labelled fallbacks (never a refusal).
+
+    The margin factor (revision 24 step 2a, ruling 1): the analyst's `long_run_margin`, the earnings margin at the end of the fade, over the
+    scenario's year-5 earnings margin E5 / R5, with R5 the scenario's year-5 revenue (`_year5_revenue`: the facts' e5 / m5 scaled like the
+    earnings, so E5 / R5 = m5): margin_ratio = long_run_margin / (E5 / R5), and every scenario's earnings margin reaches long_run_margin at
+    the end of the fade. The facts' margin_ratio (the reference's margin rule) is not read. No long_run_margin: the margin is held
+    (margin_ratio None). A long_run_margin the facts give no year-5 revenue for (no reference, a reference without a revenue path): the
+    margin is held, stamped `long_run_margin_not_applied_no_revenue`.
+
     RONIC_0 = max(r, R_tc) (the facts' r_tc; revision 18 - an older block's r_blend is no longer read), else r when the facts
     carry no R_tc; RONIC_T is the scenario's terminal_ronic, else the facts', else r (a record the pack did not carry:
-    growth earns only its cost)."""
+    growth earns only its cost). A RONIC_T below r is valued as r (consensus_reference.long_run_value), stamped `terminal_ronic_floored_at_r`
+    (revision 24 step 2a, ruling 5)."""
     lr = long_run or {}
     stamps = []
     e5f, oe5f = lr.get("e5"), lr.get("oe5")
     margin_ratio = None
-    if _is_num(e5f) and _is_num(oe5f):
-        e5 = e5f + (oe5 - oe5f)
-        if _is_num(lr.get("margin_ratio")):
-            margin_ratio = lr["margin_ratio"]
+    rev5 = _year5_revenue(lr, oe5)
+    if _is_num(e5f) and _is_num(oe5f) and oe5f > 0:
+        e5 = e5f * oe5 / oe5f
     else:
         ratio_x, ratio_ni = lr.get("x_over_oe"), lr.get("ni_over_oe")
         if _is_num(ratio_x) and ratio_x > 0 and oe5 > 0:
@@ -224,10 +244,17 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r):
         else:
             e5 = oe5
             stamps.append("long_run_on_owner_earnings")
+    if long_run_margin is not None:
+        if rev5 is not None and e5 != 0:
+            margin_ratio = float(long_run_margin) / (e5 / rev5)
+        else:
+            stamps.append("long_run_margin_not_applied_no_revenue")
     r_tc = lr.get("r_tc")
     ronic0 = max(r, r_tc) if _is_num(r_tc) else r
     if _is_num(ronic_t_in):
         ronic_t = float(ronic_t_in)
+        if ronic_t < r:
+            stamps.append("terminal_ronic_floored_at_r")
     else:
         ronic_t = r
         stamps.append("terminal_ronic_at_cost_of_equity")
@@ -256,6 +283,7 @@ def unbundled_dcf(
     long_run: Optional[Dict[str, Any]] = None,
     working_capital: Optional[List[float]] = None,
     excess_cash: Optional[float] = None,
+    long_run_margin: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Revision 17 (brief B): a funded-growth DCF. Years 1-5 are the explicit cash flows (owner
     earnings less the pack's working-capital schedule, when there is one); from year 6 growth is
@@ -266,7 +294,9 @@ def unbundled_dcf(
       fade_years). Each year's flow is base_cf's path less `working_capital[t]` ($B, five values).
     - Years 6..5+F (F = fade_years): growth fades linearly to terminal_g; earnings E_t start from the
       scenario's year-5 earnings (`long_run` facts, `_long_run_inputs`); cash flow_t = E_t (1 -
-      g_{t+1} / max(r, RONIC_t)); the margin moves by the facts' margin_ratio (the reference's margin rule, brief F).
+      g_{t+1} / max(r, RONIC_t)); the earnings margin moves from the scenario's year-5 margin to `long_run_margin` (a decimal, the
+      analyst's earnings margin at the end of the fade; revision 24 step 2a, ruling 1) by the end of the fade, proportionally
+      (`_long_run_inputs`); None holds the margin. The execute_financial_model path refuses a perpetual call without it.
       The terminal is E_{N+1} (1 - g / max(r, RONIC_T)) / (r - g): the value-driver form of
       Gordon growth, the only terminal there is (the exit multiple left the desk in revision 17).
       A negative long-run value is floored at 0 (`long_run_floor`). `terminal_ronic` (a fraction) is
@@ -332,6 +362,9 @@ def unbundled_dcf(
 
     if base_cf <= 0:
         return {"error": "base_cf must be positive for standard DCF", "validation_error": True}
+    if long_run_margin is not None and not (_is_num(long_run_margin) and math.isfinite(long_run_margin)):
+        return {"error": f"long_run_margin must be a number, the earnings margin at the end of the fade (got {long_run_margin!r})",
+                "validation_error": True}
 
     # Valuation frame enforcement (D1)
     frame = str(valuation_frame or "equity").strip().lower()
@@ -408,7 +441,8 @@ def unbundled_dcf(
     flows15 = [oe[t] - (wc[t] if wc else 0.0) for t in range(5)]
 
     # ---- years 6 on: growth paid for at the record's return ---------------------------------------
-    e5, margin_ratio, ronic0, ronic_t, stamps = _long_run_inputs(long_run, oe[4], terminal_ronic, rate)
+    e5, margin_ratio, ronic0, ronic_t, stamps = _long_run_inputs(long_run, oe[4], terminal_ronic, rate, long_run_margin)
+    rev5 = _year5_revenue(long_run, oe[4])
     lr = consensus_reference.long_run_value(e5, five[4], terminal_g, rate, ronic0, ronic_t,
                                             margin_ratio, fade_left)
     stub = (long_run or {}).get("stub_months")
@@ -478,6 +512,8 @@ def unbundled_dcf(
         "working_capital_deducted": [round(x, 4) for x in wc] if wc is not None else None,
         "long_run": {"years": n_years, "year5_earnings": round(e5, 4),
                      "margin_ratio": round(margin_ratio, 4) if margin_ratio is not None else None,
+                     "long_run_margin": long_run_margin,
+                     "year5_revenue": round(rev5, 4) if rev5 is not None else None,
                      "floored": lr["floor"]},
         "stamps": stamps,
         "gordon_terminal": {
@@ -814,7 +850,8 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
 
     `b` is the Base's exact applied arguments: cf ($B), growth (the applied explicit rates after any hold or cap), fade, wacc, tg, shares,
     sbc, sbc_dil, frame, net_debt, rate_type, annuity, annuity_cap, ronic (the terminal_ronic argument, maybe None), wc (the working capital
-    deducted, or None), excess, long_run, finite (cash_flow_life years or None) and raw (the Base's per_share_iv_raw). `price` is today's price.
+    deducted, or None), excess, long_run, finite (cash_flow_life years or None), raw (the Base's per_share_iv_raw) and, from revision 24 step
+    2a, lrm (the Base's long_run_margin; absent or None holds the margin). `price` is today's price.
 
     The Base is rebuilt on five applied rates and the fade left; `unbundled_dcf` on those must reproduce the Base's per_share_iv_raw within
     IDENTITY_TOL, or the block is {"error": "identity"}. For each input in PI_INPUTS the Base is valued with that input moved and every other
@@ -824,7 +861,8 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
     rates0, fade0 = _pi_normalise(b["growth"], b["tg"], b["fade"], finite)
     common = dict(annuity_flow=b["annuity"], annuity_cap_rate=b["annuity_cap"], net_debt=b["net_debt"], shares_diluted=b["shares"],
                   valuation_frame=b["frame"], rate_type=b["rate_type"], sbc_treatment=b["sbc"], sbc_dilution=b["sbc_dil"],
-                  finite_life_years=finite, long_run=b["long_run"], working_capital=b["wc"], excess_cash=b["excess"])
+                  finite_life_years=finite, long_run=b["long_run"], working_capital=b["wc"], excess_cash=b["excess"],
+                  long_run_margin=b.get("lrm"))
 
     def dcf(rates, fade, wacc, tg, ronic):
         return unbundled_dcf(base_cf=float(b["cf"]), explicit_growth=list(rates), wacc=wacc, terminal_g=tg, fade_years=fade, terminal_ronic=ronic,
@@ -976,7 +1014,7 @@ def defaults_price_implied(args, price, *, rf_eff=None, gdp_trend=None, levels=N
          "tg": float(args["terminal_g"]), "shares": args["shares_diluted"], "sbc": args["sbc_treatment"], "sbc_dil": None, "frame": "equity",
          "net_debt": 0.0, "rate_type": None, "annuity": 0.0, "annuity_cap": None, "ronic": args.get("terminal_ronic"),
          "wc": args.get("working_capital"), "excess": args.get("excess_cash"), "long_run": args.get("long_run"), "finite": None,
-         "raw": res["per_share_iv_raw"]}
+         "raw": res["per_share_iv_raw"], "lrm": args.get("long_run_margin")}
     return price_implied(b, float(price), rf_eff=rf_eff, gdp_trend=gdp_trend, levels=levels)
 
 
@@ -1058,6 +1096,7 @@ def reverse_dcf_expectations_gap(
     working_capital: Optional[List[float]] = None,
     excess_cash: Optional[float] = None,
     x0: Optional[float] = None,
+    long_run_margin: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Solve for market-implied growth per Phase 4 Decision D2:
     (a) under caller's own structure (solve constant stage-1 growth equating IV to price, holding fade/terminal/rate;
@@ -1073,6 +1112,7 @@ def reverse_dcf_expectations_gap(
     call's own Base year-1 growth; 0 when there is none), a stop at |value - price| <= $0.0005 with a bracket narrower than 1e-9; the roots on
     the grid are counted (more than one stamps `multiple_roots`), and with no root the result is `reachable: False` with its side, never a
     midpoint. The neutral solve is unchanged.
+    Revision 24 step 2a: `long_run_margin` (the call's Base value) reaches the own-structure value as it reaches the forward desk.
     """
     if terminal_g is None:
         return {"error": "terminal_g is required for reverse DCF (the silent default was removed in Phase 4)"}
@@ -1103,6 +1143,7 @@ def reverse_dcf_expectations_gap(
             long_run=long_run,
             working_capital=working_capital,
             excess_cash=excess_cash,
+            long_run_margin=long_run_margin,
         )
         if r.get("error"):
             return None
@@ -1514,8 +1555,9 @@ REFUSAL_GENERIC_CLAUSE = " Call again with the same inputs and these reasons, or
 # values the desk computes with; the reasons and the crux are text, and the scenario entries carry what the desk annotated.
 FOLLOWUP_INPUT_KEYS = ("mode", "valuation_frame", "rate_type", "cash_flow_life", "base_cf", "explicit_growth", "fade_years", "terminal_g",
                        "terminal_ronic", "sbc_treatment", "sbc_dilution", "wacc", "annuity_flow", "annuity_cap_rate", "net_debt", "shares_diluted",
-                       "excess_cash", "interest_addback")
-FOLLOWUP_SCENARIO_KEYS = ("prob", "base_cf", "explicit_growth", "fade_years", "wacc", "terminal_g", "terminal_ronic", "shares_diluted")
+                       "excess_cash", "interest_addback", "long_run_margin")
+FOLLOWUP_SCENARIO_KEYS = ("prob", "base_cf", "explicit_growth", "fade_years", "wacc", "terminal_g", "terminal_ronic", "shares_diluted",
+                          "long_run_margin")
 
 
 def _same_input(a, b):
@@ -1751,6 +1793,28 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 if not (0.99 <= total <= 1.01):
                     missing.append("scenarios[].prob (Base, Bull and Bear must sum to 0.99-1.01)")
 
+    # Revision 24 step 2a (ruling 1): the long-run margin is the analyst's judgment and has no default; a perpetual call names it at the top level
+    # or in every entry the desk values (a scenario's own value overrides the top level's), or it is refused by name. A finite life has no long run.
+    if cfl_norm == "perpetual":
+        top_lrm = params.get("long_run_margin")
+        holders = [(sc, f"{sc.get('name') or 'Scenario'}") for sc in scenarios if isinstance(sc, dict)]
+        top_growth = params.get("explicit_growth") if params.get("explicit_growth") is not None else params.get("growth_rates")
+        if base_cf is not None and top_growth and (params.get("wacc") is not None or params.get("discount_rate") is not None):
+            holders.append((params, "the top-level run"))
+        lacking, unreadable = [], []
+        for holder, label in holders:
+            v = holder.get("long_run_margin") if holder.get("long_run_margin") is not None else top_lrm
+            if v is None:
+                lacking.append(label)
+            elif not (_is_num(v) and math.isfinite(v)):
+                unreadable.append(label)
+        if lacking:
+            missing.append("long_run_margin" + ("" if len(lacking) == len(holders) else f" for {', '.join(lacking)}")
+                           + " (the earnings margin your long run reaches at the end of the fade, a decimal such as 0.12: your judgment, "
+                             "with no default)")
+        if unreadable:
+            missing.append(f"long_run_margin for {', '.join(unreadable)} (a number, for example 0.12)")
+
     # B2 (revision 19): a crux that is present must be well formed (a list of one to three entries, each with a judgment input, a reason and one to
     # five citations of {source, date, quote}); a failure is a `missing` entry, so the call is refused and does not use a desk run. A crux is optional:
     # none means HOLD, never a refusal, and nothing else about it refuses (validity is crux_check's, outside the desk).
@@ -1848,7 +1912,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     base_solver: Dict[str, Any] = {}     # Base name -> its exact applied arguments, for the price-implied solver (revision 19)
 
     def _value(name, cf_in, gr_in, wacc_in, tg_in, shares_in, fade_in, sbc_in, sbc_dil_in, frame_in,
-               net_debt_in, rate_type_in, annuity_in, annuity_cap_in, ronic_in):
+               net_debt_in, rate_type_in, annuity_in, annuity_cap_in, ronic_in, lrm_in=None):
         """One scenario's value, with the Base-only years-3-5 cap and years-1-2 hold. Returns the dcf
         dict, or None after recording a compute error."""
         base_b = _to_b(cf_in)
@@ -1880,6 +1944,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 long_run=long_run_ctx,
                 working_capital=wc_use,
                 excess_cash=excess_use,
+                long_run_margin=lrm_in,
             )
             if not res.get("error"):
                 if wc_in_base:
@@ -1956,7 +2021,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                              "sbc_dil": sbc_dil_in, "frame": frame_in, "net_debt": net_debt_in, "rate_type": rate_type_in,
                              "annuity": annuity_in, "annuity_cap": annuity_cap_in, "ronic": ronic_in, "wc": wc_use,
                              "excess": excess_use, "long_run": long_run_ctx, "finite": desk_finite_life_years,
-                             "raw": dcf_res["per_share_iv_raw"]}
+                             "raw": dcf_res["per_share_iv_raw"], "lrm": lrm_in}
         return dcf_res
 
     # ---- 1. Batch scenario DCF execution -------------------------------------------------------
@@ -1981,6 +2046,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         s_ronic = (sc.get("terminal_ronic") if sc.get("terminal_ronic") is not None
                    else params.get("terminal_ronic") if params.get("terminal_ronic") is not None
                    else ronic_default)
+        s_lrm = sc.get("long_run_margin") if sc.get("long_run_margin") is not None else params.get("long_run_margin")
         s_annuity = float(sc.get("annuity_flow", params.get("annuity_flow", 0.0)))
         s_annuity_cap = (float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate")
                          else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None))
@@ -1988,14 +2054,14 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         value_args[sc_name] = {"cf": s_cf, "wacc": s_wacc, "tg": s_term_g, "shares": s_shares, "sbc": s_sbc,
                                "sbc_dil": s_sbc_dil, "frame": sc_frame, "net_debt": sc_net_debt,
                                "rate_type": sc.get("rate_type", rate_type), "annuity": s_annuity,
-                               "annuity_cap": s_annuity_cap}
+                               "annuity_cap": s_annuity_cap, "lrm": s_lrm}
         dcf_res = _value(sc_name, s_cf, [float(g) for g in s_gr], s_wacc, s_term_g, s_shares, s_fade, s_sbc,
                          s_sbc_dil, sc_frame, sc_net_debt, sc.get("rate_type", rate_type), s_annuity,
-                         s_annuity_cap, s_ronic)
+                         s_annuity_cap, s_ronic, s_lrm)
         if dcf_res is None:
             continue
         if _role_of(sc_name) == "base":
-            base_inputs = {"ronic": s_ronic, "cf": s_cf, "wc_in_base": "wc_in_base" in dcf_res.get("stamps", [])}
+            base_inputs = {"ronic": s_ronic, "cf": s_cf, "wc_in_base": "wc_in_base" in dcf_res.get("stamps", []), "lrm": s_lrm}
         sc["iv"] = dcf_res["per_share_iv"]
         sc["dcf_details"] = dcf_res
         scenario_dcfs.append({"name": sc.get("name"), "dcf": dcf_res})
@@ -2013,11 +2079,11 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         top_annuity_cap = float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None
         dcf_single = _value("top-level", base_cf, [float(g) for g in growth_rates], wacc, params.get("terminal_g"),
                             top_shares, fade_years, sbc_treatment, sbc_dilution, val_frame, top_net_debt,
-                            rate_type, top_annuity, top_annuity_cap, top_ronic)
+                            rate_type, top_annuity, top_annuity_cap, top_ronic, params.get("long_run_margin"))
         if dcf_single is not None:
             if not base_inputs:
                 base_inputs = {"ronic": top_ronic, "cf": base_cf,
-                               "wc_in_base": "wc_in_base" in dcf_single.get("stamps", [])}
+                               "wc_in_base": "wc_in_base" in dcf_single.get("stamps", []), "lrm": params.get("long_run_margin")}
             result["dcf_model"] = dcf_single
 
     if compute_errors:
@@ -2252,7 +2318,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 n_errors = len(compute_errors)
                 dcf = _value(entry["name"], va["cf"], [y1 / cf_b - 1.0, level / y1 - 1.0] + list(five[2:]), va["wacc"],
                              tg, va["shares"], left, va["sbc"], va["sbc_dil"], va["frame"], va["net_debt"],
-                             va["rate_type"], va["annuity"], va["annuity_cap"], ronic_default)
+                             va["rate_type"], va["annuity"], va["annuity_cap"], ronic_default, va.get("lrm"))
                 del compute_errors[n_errors:]         # advice never refuses; a value it cannot compute is left out
                 return None if dcf is None else dcf["per_share_iv"]
 
@@ -2376,6 +2442,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                     working_capital=(None if (not wc_ctx or base_inputs.get("wc_in_base")) else wc_ctx),
                     excess_cash=excess_use,
                     x0=(base_solver[pi_key]["growth"][0] if pi_key is not None else None),
+                    long_run_margin=base_inputs.get("lrm") if base_inputs else None,
                 )
 
     # ---- 4. Continuous Kelly sizing and Payoff Skew --------------------------------------------

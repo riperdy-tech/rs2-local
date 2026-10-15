@@ -51,6 +51,7 @@ def test_validation_errors_do_not_consume_budget_and_7th_refused(monkeypatch, tm
                                 "terminal_g": 0.025,
                                 "cash_flow_life": "perpetual",
                                 "cash_flow_life_reason": "test",
+                                "long_run_margin": 0.10,     # revision 24 step 2a: required
                                 # missing shares_diluted, sbc_treatment
                             }
                         }

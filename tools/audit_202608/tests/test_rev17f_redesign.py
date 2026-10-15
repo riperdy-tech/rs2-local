@@ -30,7 +30,7 @@ import pack_facts  # noqa: E402
 import throughcycle_record as tc  # noqa: E402
 from test_review_b1_b4 import _byc, _gev_pack as _gev_pack_in  # noqa: E402
 from test_throughcycle_record import R, history, row  # noqa: E402
-from test_throughcycle_reference import (COE, GA, MEDIAN5, REDUCTION, _synthetic_pack)  # noqa: E402
+from test_throughcycle_reference import (COE, GA, MEDIAN5, REDUCTION, _synthetic_pack, ref_long_run_margin)  # noqa: E402
 
 B = 1e9
 INF = math.inf
@@ -289,12 +289,15 @@ def test_the_desk_reads_r_tc_from_the_facts_else_the_cost_of_equity_and_ignores_
     assert fmt._long_run_inputs({"r_tc": -INF}, 1.0, None, r)[2] == r
     assert fmt._long_run_inputs({}, 1.0, None, r)[2] == r and fmt._long_run_inputs(None, 1.0, None, r)[2] == r
     assert fmt._long_run_inputs({"r_tc": 0.0}, 1.0, None, 0.0)[2] == 0.0                           # 0.0 is a value
-    # the margin ratio is the facts' (only with a reference); no reference or an older block: none
+    # revision 24 step 2a (ruling 1): the facts' margin ratio is not read; the ratio is the analyst's long_run_margin over the scenario's
+    # year-5 earnings margin (E5 0.3 on the facts' year-5 revenue 0.3 / 0.1 = 3.0: 10%), only with a reference; no reference: none, stamped
     lr = {"e5": 0.3, "oe5": 0.28, "m5": 0.1, "margin_ratio": 0.655}
-    assert fmt._long_run_inputs(lr, 1.0, None, r)[1] == 0.655
-    assert fmt._long_run_inputs(dict(lr, margin_ratio=0.0), 1.0, None, r)[1] == 0.0
+    assert fmt._long_run_inputs(lr, 0.28, None, r)[1] is None
+    assert fmt._long_run_inputs(lr, 0.28, None, r, 0.0655)[1] == pytest.approx(0.655)
+    assert fmt._long_run_inputs(lr, 0.28, None, r, 0.0)[1] == 0.0
     assert fmt._long_run_inputs({"e5": 0.3, "oe5": 0.28, "m5": 0.1, "m_tc": 0.06, "cycle": True}, 1.0, None, r)[1] is None
-    assert fmt._long_run_inputs({"margin_ratio": 0.655, "ni_over_oe": 0.9}, 1.0, None, r)[1] is None    # no reference
+    no_ref = fmt._long_run_inputs({"margin_ratio": 0.655, "ni_over_oe": 0.9}, 1.0, None, r, 0.0655)
+    assert no_ref[1] is None and "long_run_margin_not_applied_no_revenue" in no_ref[4]
     # RONIC_T: the scenario's, else the facts', else r
     assert fmt._long_run_inputs(lr, 1.0, 0.11, r)[3] == 0.11 and fmt._long_run_inputs(lr, 1.0, None, r)[3] == r
 
@@ -592,7 +595,8 @@ def _desk_value(text, ref):
                                          "coe_adjustment_reason", "shares_reason")}
     call = dict(reasons, scenarios=[sc("Base", 0.4, parsed["coe_anchor"]), sc("Bull", 0.3, parsed["coe_anchor"] - 0.0005),
                                     sc("Bear", 0.3, parsed["coe_anchor"] + 0.0005)],
-                terminal_g=parsed["terminal_g_default"], fade_years=5, sbc_treatment="deducted_in_cf", cash_flow_life="perpetual")
+                terminal_g=parsed["terminal_g_default"], fade_years=5, sbc_treatment="deducted_in_cf", cash_flow_life="perpetual",
+                long_run_margin=ref_long_run_margin(ref))
     out = fmt.execute_financial_model(call, ctx)
     assert "error" not in out, out.get("error")
     return out["scenario_dcfs"][0]["dcf"], parsed
@@ -711,7 +715,7 @@ def _w9_desk(ref, **ctx_over):
             "terminal_g": GA, "fade_years": 5, "sbc_treatment": "deducted_in_cf", "cash_flow_life": "perpetual",
             "cash_flow_life_reason": "d", "base_cf_reason": "the fiscal-year base", "scenario_deviation_reason": "d",
             "bull_below_price_reason": "d", "bear_above_price_reason": "d", "terminal_reason": "d", "coe_adjustment_reason": "d",
-            "shares_reason": "d"}
+            "shares_reason": "d", "long_run_margin": ref_long_run_margin(ref)}
     out = fmt.execute_financial_model(call, ctx)
     assert "error" not in out, out.get("error")
     return out["scenario_dcfs"][0]["dcf"]

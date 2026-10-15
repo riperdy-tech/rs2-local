@@ -32,7 +32,9 @@ from financial_model_tool import unbundled_dcf, execute_financial_model, format_
 # order), so base_cf_reason (R2, which fires whenever owner_earnings_default_b is unavailable) and
 # the price-direction reasons (R13/R14, belt-and-suspenders since price is in context) are given
 # directly as call arguments instead.
-_CFL = {"cash_flow_life": "perpetual", "cash_flow_life_reason": "test"}
+# Revision 24 step 2a: long_run_margin is required for a perpetual life; no context here carries long-run facts, so it holds the margin and
+# changes no value.
+_CFL = {"cash_flow_life": "perpetual", "cash_flow_life_reason": "test", "long_run_margin": 0.10}
 _NEUTRAL_REASONS = {
     "base_cf_reason": "test", "bull_below_price_reason": "test", "bear_above_price_reason": "test",
 }

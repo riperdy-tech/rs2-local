@@ -39,7 +39,8 @@ def _call(**over):
     ]
     p = {"scenarios": sc, "terminal_g": 0.0375, "fade_years": 5, "sbc_treatment": "deducted_in_cf",
          "valuation_frame": "equity", "rate_type": "cost_of_equity",
-         "cash_flow_life": "perpetual", "cash_flow_life_reason": "perpetual franchise, 10-K 2025"}
+         "cash_flow_life": "perpetual", "cash_flow_life_reason": "perpetual franchise, 10-K 2025",
+         "long_run_margin": 0.10}          # revision 24 step 2a: required; no long-run facts here, so the margin is held
     for k, v in over.items():
         if k.startswith("sc_"):
             for s in sc:

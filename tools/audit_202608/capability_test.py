@@ -3656,6 +3656,11 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     if _margin_stamps:
                         for _sk in ("stamps", "stamps_full"):
                             _lr_raw[_sk] = list(_lr_raw.get(_sk) or []) + _margin_stamps
+                    # revision 24 step 2a (ruling 5): the margin rule's benchmark annotations are logged (the sidecar and the verdict's
+                    # long_run_facts carry stamps_full) and never printed: the rule serves only the reference benchmark
+                    _bench_stamps = [s for s in _ref["stamps"] if s in consensus_reference.BENCHMARK_STAMPS]
+                    if _bench_stamps:
+                        _lr_raw["stamps_full"] = list(_lr_raw.get("stamps_full") or []) + _bench_stamps
                     if _ref.get("wc"):
                         facts["working_capital"] = [pack_facts.q_b(x / 1e9) for x in _ref["wc"]]
                     if _ref.get("base_cf") is not None:

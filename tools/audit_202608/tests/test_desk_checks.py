@@ -69,6 +69,8 @@ def _happy_params(**over):
         "fade_years": 0,
         "terminal_g": 0.03,
         "sbc_treatment": "deducted_in_cf",
+        # revision 24 step 2a: required, no default; _ctx() carries no long-run facts, so it holds the margin and the values above are unchanged
+        "long_run_margin": 0.10,
         "scenarios": [
             _sc("Base", base_cf=5.0, growth=(0.05, 0.05, 0.02, 0.02, 0.02), wacc=0.08, terminal_g=0.03, prob=0.34),
             _sc("Bull", base_cf=5.0, growth=(0.10, 0.0909, 0.05, 0.05, 0.05), wacc=0.075, terminal_g=0.03, prob=0.33),

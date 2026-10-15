@@ -393,6 +393,9 @@ def test_ugis_four_refusals_replay_to_the_preview_percentages_and_the_new_texts(
     last, results = None, []
     for call in UGI["calls"]:
         p = copy.deepcopy(call["params"])
+        # revision 24 step 2a: the recorded calls predate the required long_run_margin; UGI's long-run facts carry no year-5 revenue, so the
+        # desk holds the margin and the replay's numbers are unchanged
+        p.setdefault("long_run_margin", 0.10)
         key = json.dumps(p, sort_keys=True, default=str)
         res = execute_financial_model(p, context=ctx)
         res, last = at.desk_loop_guard(res, key, last)

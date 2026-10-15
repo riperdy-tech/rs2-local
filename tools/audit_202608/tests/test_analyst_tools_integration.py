@@ -43,6 +43,7 @@ def test_dispatch_financial_model_tool():
         "cash_flow_life_reason": "test",
         "base_cf_reason": "test",
         "bull_below_price_reason": "test",
+        "long_run_margin": 0.10,          # revision 24 step 2a: required; no long-run facts here, so the margin is held
     }
     snap = []
     res = at.dispatch_tool("run_financial_model", args, snap=snap,
@@ -257,7 +258,8 @@ def test_financial_model_tool_schema_and_validation_agree():
     )
     assert props["shares_diluted"]["description"] == expected_desc
 
-    five_fields = ["cash_flow_life", "cash_flow_life_reason", "terminal_g", "fade_years", "sbc_treatment"]
+    # revision 24 step 2a: long_run_margin is the sixth (the analyst's long-run earnings margin, no default)
+    five_fields = ["cash_flow_life", "cash_flow_life_reason", "terminal_g", "fade_years", "sbc_treatment", "long_run_margin"]
     assert required == five_fields
     for field in five_fields:
         assert field in required
@@ -272,6 +274,7 @@ def test_financial_model_tool_schema_and_validation_agree():
         "sbc_treatment": "deducted_in_cf",
         "cash_flow_life": "perpetual",
         "cash_flow_life_reason": "test",
+        "long_run_margin": 0.10,
     }
     ctx = {"price": 100.0}
     for field in five_fields:

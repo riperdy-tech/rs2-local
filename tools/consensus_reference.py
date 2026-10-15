@@ -96,6 +96,9 @@ BASE_CAP_TOL = 0.02     # rev 17: filed EPS above the vendor's year-ago EPS by m
 FINANCIAL_SECTORS = ("Financial Services", "Real Estate")    # rev 18: no cash term (cash is an operating asset there)
 OUTSIDE_FENCE = ("outside_fence_above", "outside_fence_below")   # rev 18: reference_status values of a value printed but fenced
 LEVELS_HOLD_TOL = 0.05  # rev 17: the desk holds Base years 1-2 at the levels when year 2 is further off than this
+OM5_LOW, OM5_HIGH = -0.5, 1.0   # rev 24 step 2a (ruling 5): an implied year-5 operating margin outside this range is stamped, not changed
+# rev 24 step 2a (ruling 5): margin_rule's annotations of the logged benchmark; the pack keeps them in the facts' stamps_full, never prints them
+BENCHMARK_STAMPS = ("implied_operating_margin_out_of_range", "long_run_margin_clamped_to_zero")
 
 
 def consensus_earnings_growth(estimates):
@@ -284,7 +287,11 @@ def margin_rule(rec, m5):
     still a loss at year 5 is outside the cases the rule was built for, and it must not lift it above m5). The record's
     series is the operating margin, or the pre-tax margin where the company files no operating line (the record's
     om_basis starts with "pretax"; the arithmetic is the same and the text names the series, "series"). Returns
-    {"om_trend", "om_tc", "om_L", "om_shape", "series", "om_5", "target", "m_long", "ratio", "reason", "stamps"}."""
+    {"om_trend", "om_tc", "om_L", "om_shape", "series", "om_5", "target", "m_long", "ratio", "reason", "stamps"}.
+
+    Revision 24 step 2a (ruling 5, annotate never silent; the rule now serves only the logged reference benchmark, the desk takes the
+    analyst's long_run_margin): an implied OM_5 outside [OM5_LOW, OM5_HIGH] is stamped `implied_operating_margin_out_of_range`, and a
+    long-run margin the max(0, ...) raised to 0 is stamped `long_run_margin_clamped_to_zero`. Neither stamp moves a number."""
     om_trend, om_L = rec.get("om_trend"), rec.get("om_L")
     name = throughcycle_record.margin_series_name(rec.get("om_basis"))
     out = {"om_trend": om_trend, "om_tc": rec.get("om_tc"), "om_L": om_L, "om_shape": rec.get("om_shape"), "series": name,
@@ -303,6 +310,8 @@ def margin_rule(rec, m5):
     else:
         om_5 = om_L + (m5 - x_L) / (1.0 - tax_L)
     out["om_5"] = om_5
+    if not OM5_LOW <= om_5 <= OM5_HIGH:
+        out["stamps"].append("implied_operating_margin_out_of_range")
     if om_5 <= 0:
         trend_is = "is a loss and" if om_trend <= 0 else "is positive but"
         article = "an" if name == "operating" else "a"
@@ -311,20 +320,30 @@ def margin_rule(rec, m5):
         out["stamps"].append("margin_rule_unmeasured_current_loss")
         return out
     out["target"] = max(0.0, om_trend)
-    out["m_long"] = max(0.0, m5 + (1.0 - tax_L) * (out["target"] - om_5))
+    m_long = m5 + (1.0 - tax_L) * (out["target"] - om_5)
+    if m_long < 0:
+        out["stamps"].append("long_run_margin_clamped_to_zero")
+    out["m_long"] = max(0.0, m_long)
     out["ratio"] = out["m_long"] / m5
     return out
 
 
 def ronic_at(ronic0, ronic_t, frac):
-    """RONIC of a long-run year: RONIC_0 + (RONIC_T - RONIC_0) x frac, frac = (t - 5) / fade years
-    (RONIC_T from frac 1 on). With an infinite end point (a return on negative tangible equity) the
-    interpolation is not defined: the start holds until frac reaches 1."""
+    """RONIC of a long-run year, frac = (t - 5) / fade years (RONIC_T from frac 1 on).
+
+    Revision 24 step 2a (D4): the reinvestment charge per unit of growth, 1 / RONIC, moves linearly from 1 / RONIC_0 to 1 / RONIC_T, an
+    unlimited return being a charge of 0: 1 / RONIC_t = 1 / RONIC_0 + (1 / RONIC_T - 1 / RONIC_0) x frac. So with an unlimited RONIC_T the charge
+    g / RONIC fades linearly to 0 over the fade, an unlimited RONIC_T is the limit of a large finite one, and the value is monotone in RONIC_T up to
+    unlimited. It was RONIC_0 + (RONIC_T - RONIC_0) x frac, with the start held until frac reached 1 when either end was unlimited: an unlimited
+    RONIC_T was then worth less than a large finite one, and the price-implied terminal_ronic block met a jump the rule itself made."""
     if frac >= 1:
         return ronic_t
-    if frac <= 0 or ronic0 == ronic_t or math.isinf(ronic0) or math.isinf(ronic_t):
+    if frac <= 0 or ronic0 == ronic_t:
         return ronic0
-    return ronic0 + (ronic_t - ronic0) * frac
+    u0 = 0.0 if math.isinf(ronic0) else 1.0 / ronic0
+    ut = 0.0 if math.isinf(ronic_t) else 1.0 / ronic_t
+    u = u0 + (ut - u0) * frac
+    return math.inf if u <= 0 else 1.0 / u
 
 
 def long_run_value(e5, g5, gt, r, ronic0, ronic_t, margin_ratio=None, fade_years=FADE_YEARS):
@@ -336,13 +355,18 @@ def long_run_value(e5, g5, gt, r, ronic0, ronic_t, margin_ratio=None, fade_years
     where the margin factor k_t = 1 + (margin_ratio - 1) x min(1, (t-5)/F) (margin_ratio = m_tc / m5;
     None = margin held); RONIC_t from `ronic_at`; cash flow_t = E_t (1 - g_{t+1} / max(r, RONIC_t)) with
     g_{N+1} = gt (an infinite RONIC charges nothing). Terminal: E_{N+1} = E_N (1+gt), TV = E_{N+1}
-    (1 - gt / max(r, RONIC_T)) / (r - gt), discounted N years. F = 0 has no long-run years and no
-    margin fade. A negative long-run value is floored at 0 (`floor`).
+    (1 - gt / max(r, RONIC_T)) / (r - gt), discounted N years. F = 0 has no long-run years. A negative long-run value is floored at
+    0 (`floor`).
+
+    Revision 24 step 2a: D2, the margin factor reaches margin_ratio at the end of the fade whatever its length; with F = 0 it applies from
+    the terminal year (E_{N+1} = e5 x margin_ratio x (1 + gt)); it was dropped there. Ruling 5: RONIC_0 and RONIC_T below r are taken as r
+    before the fade (`ronic_at`), so a terminal return below r is valued exactly as r (the desk stamps it).
 
     None when r does not exceed gt. Else a dict: n_years, growth, earnings, margin_factor, ronic,
     flows (cash flows of years 6..N), pv_flows, e_terminal, tv, tv_pv, value_raw, value, floor."""
     if not r > gt:
         return None
+    ronic0, ronic_t = max(r, ronic0), max(r, ronic_t)
     F = int(fade_years)
     n = 5 + F
 
@@ -365,7 +389,7 @@ def long_run_value(e5, g5, gt, r, ronic0, ronic_t, margin_ratio=None, fade_years
         ronics.append(ron)
         flows.append(cf)
         pv_flows += cf / (1 + r) ** t
-    k_end = 1.0 if (margin_ratio is None or F == 0) else margin_ratio
+    k_end = 1.0 if margin_ratio is None else margin_ratio
     e_terminal = e5 * cum * k_end * (1 + gt)
     tv = e_terminal * (1 - gt / max(r, ronic_t)) / (r - gt)
     tv_pv = tv / (1 + r) ** n
@@ -847,9 +871,13 @@ def defaults_desk_args(ref, facts):
     need = ("coe_anchor", "terminal_g_default", "shares_default")
     if not all(_finite(f.get(k)) for k in need) or not f["shares_default"] > 0:
         return None, "the pack does not print every default input (coe_anchor, terminal_g_default, shares_default)"
+    # revision 24 step 2a (ruling 1): the long-run margin is the analyst's judgment with no default, and the margin rule's margin_ratio no
+    # longer reaches the desk: the DEFAULTS run passes no long_run_margin, so its margin is held at the year-5 level
+    lr = f.get("long_run")
+    lr = {k: v for k, v in lr.items() if k != "margin_ratio"} if isinstance(lr, dict) else lr
     return {"base_cf": base, "explicit_growth": path, "wacc": f["coe_anchor"], "terminal_g": f["terminal_g_default"],
             "shares_diluted": f["shares_default"] / 1e9, "fade_years": FADE_YEARS, "sbc_treatment": "deducted_in_cf",
-            "terminal_ronic": f.get("terminal_ronic"), "long_run": f.get("long_run"), "working_capital": f.get("working_capital"),
+            "terminal_ronic": f.get("terminal_ronic"), "long_run": lr, "working_capital": f.get("working_capital"),
             "excess_cash": f.get("excess_cash")}, None
 
 

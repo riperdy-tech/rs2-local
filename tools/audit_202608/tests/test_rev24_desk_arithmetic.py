@@ -9,6 +9,11 @@ rev23/defect_census.md) is reproduced on synthetic LITE-like and LIND-like compa
 Every defect found is stated as the property it violates, in a test marked xfail(strict=True) with the reason: the suite stays clean, and a fix
 turns the test into an XPASS, which strict mode reports, so the marker is removed with the fix. The coordinator rules on every fix.
 
+Revision 24 step 2a (brief BRIEF_R24_S2a_desk_fixes.md, the coordinator's rulings 1-6) fixed them: the desk takes the analyst's long_run_margin
+(the facts' margin_ratio no longer reaches it), D2, D3 and D4 are fixed, and a terminal_ronic below r and the margin rule's out-of-range and clamp
+are stamped. The eight markers are removed; a test that used the facts' margin_ratio now passes the same ratio as a long_run_margin over the
+scenario's year-5 earnings margin, and the tests that reproduced a defect are restated as the fixed behaviour (each says so).
+
 Two units: the desk (financial_model_tool.unbundled_dcf) takes $B and billions of shares; the default generator (consensus_reference.build)
 takes dollars and shares.
 """
@@ -78,18 +83,19 @@ def test_base_earnings_scale_every_flow_and_the_value_one_for_one_without_a_refe
     assert all(v > 0 for v in vals) and vals == sorted(vals)
 
 
-def test_with_a_reference_the_scenario_year5_earnings_move_one_for_one_with_its_owner_earnings():
-    """_long_run_inputs: E5 = e5 (facts) + (OE5 - oe5 (facts)), an ADDITIVE translation. Facts e5 0.8, oe5 1.0, margin held: base 1.0 gives
-    E5 0.8; base 2.0 gives E5 0.8 + 1.0 = 1.8, not 1.6. Value: 2 x PV15 + 1.8 x 1.03 / 0.07 / 1.1^5 = 7.581574 + 16.445545 = 24.027119."""
-    lr = {"e5": 0.8, "oe5": 1.0, "margin_ratio": None}
+def test_with_a_reference_the_scenario_year5_earnings_scale_with_its_owner_earnings():
+    """Restated by revision 24 step 2a (D3; it reproduced the additive E5 = e5 + (OE5 - oe5), which gave 1.8 below). _long_run_inputs:
+    E5 = e5 (facts) x OE5 / oe5 (facts), PROPORTIONAL. Facts e5 0.8, oe5 1.0, margin held: base 1.0 gives E5 0.8; base 2.0 gives E5 1.6.
+    Value: 2 x PV15 + 1.6 x 1.03 / 0.07 / 1.1^5 = 7.581574 + 14.618262 = 22.199836."""
+    lr = {"e5": 0.8, "oe5": 1.0}
     assert desk(base_cf=1.0, long_run=lr)["long_run"]["year5_earnings"] == pytest.approx(0.8)
-    assert desk(base_cf=2.0, long_run=lr)["long_run"]["year5_earnings"] == pytest.approx(1.8)
-    assert iv(base_cf=2.0, long_run=lr) == pytest.approx(2 * PV15_FLAT + 1.8 * LR_S / 1.0, rel=1e-12)
+    assert desk(base_cf=2.0, long_run=lr)["long_run"]["year5_earnings"] == pytest.approx(1.6)
+    assert iv(base_cf=2.0, long_run=lr) == pytest.approx(2 * PV15_FLAT + 1.6 * LR_S / 1.0, rel=1e-12)
 
 
 def test_without_a_reference_the_same_translation_is_proportional():
-    """The fallback (no reference e5 in the facts): E5 = OE5 x x_over_oe, proportional. Base 2.0, x_over_oe 0.8: E5 = 1.6. The desk therefore
-    translates owner earnings to earnings additively with a reference and proportionally without one (see the D3 xfail below)."""
+    """The fallback (no reference e5 in the facts): E5 = OE5 x x_over_oe, proportional. Base 2.0, x_over_oe 0.8: E5 = 1.6. Since revision 24
+    step 2a the translation with a reference is proportional too (the D3 test below)."""
     r = desk(base_cf=2.0, long_run={"x_over_oe": 0.8})
     assert r["long_run"]["year5_earnings"] == pytest.approx(1.6) and "long_run_base_ratio_x" in r["stamps"]
 
@@ -123,25 +129,29 @@ def test_each_explicit_growth_rate_raises_value_monotonically_with_no_sign_flip(
     assert all(v > 0 for v in vals) and all(b > a for a, b in zip(vals, vals[1:]))
 
 
-# ---- the long-run margin (the facts' margin_ratio) ----------------------------------------------------------------------------
+# ---- the long-run margin (revision 24 step 2a: the analyst's long_run_margin; it was the facts' margin_ratio) --------------------------
+# S's facts: e5 = oe5 = 1.0 and m5 = 10%, so the facts' year-5 revenue is 10.0 and S's year-5 earnings margin is 10%: long_run_margin = m x 10%
+# gives the margin ratio m.
+LR_M = {"e5": 1.0, "oe5": 1.0, "m5": 0.10}
+
 
 def test_the_long_run_margin_scales_the_long_run_linearly():
-    """margin_ratio m with a one-year fade: k6 = m and k_end = m, so the long run is m x 9.136414. m = 0.5: 3.790787 + 4.568207 = 8.358994;
-    m = 1.2: 3.790787 + 10.963697 = 14.754483. A higher long-run margin raises value."""
-    lr = lambda m: {"e5": 1.0, "oe5": 1.0, "margin_ratio": m}  # noqa: E731
-    assert iv(long_run=lr(0.5)) == pytest.approx(PV15_FLAT + 0.5 * LR_S, rel=1e-12)
-    assert iv(long_run=lr(1.2)) == pytest.approx(PV15_FLAT + 1.2 * LR_S, rel=1e-12)
+    """long_run_margin 5% (ratio 0.5) and 12% (ratio 1.2) with a one-year fade: k6 = k_end = ratio, so the long run is ratio x 9.136414.
+    0.5: 3.790787 + 4.568207 = 8.358994; 1.2: 3.790787 + 10.963697 = 14.754483. A higher long-run margin raises value."""
+    assert iv(long_run=LR_M, long_run_margin=0.05) == pytest.approx(PV15_FLAT + 0.5 * LR_S, rel=1e-12)
+    assert iv(long_run=LR_M, long_run_margin=0.12) == pytest.approx(PV15_FLAT + 1.2 * LR_S, rel=1e-12)
 
 
 def test_the_long_run_margin_is_monotone_and_never_flips_the_sign_of_a_flow():
-    """margin_ratio over 0 .. 1.5 with a five-year fade: value non-decreasing; every flow >= 0; at 0 the terminal value is 0, not negative."""
+    """long_run_margin over 0% .. 15% (ratio 0 .. 1.5) with a five-year fade: value rising; every flow >= 0; at 0 the terminal value is 0, not
+    negative."""
     vals = []
     for m in (0.0, 0.1, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5):
-        r = desk(long_run={"e5": 1.0, "oe5": 1.0, "margin_ratio": m}, fade_years=5, terminal_ronic=0.20)
+        r = desk(long_run=LR_M, long_run_margin=m * 0.10, fade_years=5, terminal_ronic=0.20)
         assert all(cf >= 0 for cf in r["projected_cfs"])
         vals.append(r["per_share_iv_raw"])
     assert all(b > a for a, b in zip(vals, vals[1:]))
-    assert desk(long_run={"e5": 1.0, "oe5": 1.0, "margin_ratio": 0.0}, fade_years=5)["terminal_value_nominal"] == 0
+    assert desk(long_run=LR_M, long_run_margin=0.0, fade_years=5)["terminal_value_nominal"] == 0
 
 
 # ---- terminal growth --------------------------------------------------------------------------------------------------------
@@ -190,13 +200,18 @@ def test_a_higher_ronic_lowers_the_reinvestment_charge(ronic, factor):
 
 
 def test_ronic_is_monotone_over_its_finite_range_and_a_value_below_r_is_valued_at_r():
-    """RONIC over r .. 10^6: value strictly rising (an unlimited RONIC is D4 below). Observation (documented design, `max(r, RONIC)`): a
-    terminal_ronic below r is valued as r and the result echoes the input unchanged, with no stamp."""
+    """RONIC over r .. 10^6: value strictly rising (an unlimited RONIC is D4 below). A terminal_ronic below r is valued as r (`max(r, RONIC)`)
+    and the result echoes the input unchanged; revision 24 step 2a (ruling 5) stamps it `terminal_ronic_floored_at_r` (it was silent)."""
     vals = [iv(terminal_ronic=x, fade_years=5, explicit_growth=[0.06] * 5) for x in (0.10, 0.12, 0.20, 0.50, 1.0, 10.0, 1e6)]
     assert all(b > a for a, b in zip(vals, vals[1:])) and min(vals) > 0
     low = desk(terminal_ronic=0.05, fade_years=5, explicit_growth=[0.06] * 5)
     assert low["per_share_iv_raw"] == pytest.approx(vals[0], rel=1e-12)
-    assert low["terminal_ronic"] == 0.05 and not [s for s in low["stamps"] if "ronic" in s]
+    assert low["terminal_ronic"] == 0.05 and [s for s in low["stamps"] if "ronic" in s] == ["terminal_ronic_floored_at_r"]
+    assert "terminal_ronic_floored_at_r" not in desk(terminal_ronic=0.10, fade_years=5, explicit_growth=[0.06] * 5)["stamps"]
+    # with a record start above r, the value at a terminal_ronic below r is still exactly the value at r (the end point is floored first)
+    rec = {"r_tc": 0.30}
+    at_r = iv(terminal_ronic=0.10, fade_years=5, explicit_growth=[0.06] * 5, long_run=rec)
+    assert iv(terminal_ronic=0.05, fade_years=5, explicit_growth=[0.06] * 5, long_run=rec) == pytest.approx(at_r, rel=1e-12)
 
 
 def test_the_record_return_sets_the_starting_ronic_of_the_fade():
@@ -271,19 +286,24 @@ def facts_of(r, rec=REC, coe=COE, tg=GA, shares=500e6, stub=None, excess=None):
     """The facts the pack derives from a reference, at full precision (the pack quantizes them; test_rev19 proves that to the cent)."""
     lr = r["long_run"]
     return {"coe_anchor": coe, "terminal_g_default": tg, "shares_default": shares, "terminal_ronic": rec["ronic_t"],
-            "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "margin_ratio": r["margin_ratio"], "r_tc": rec["R_tc"],
+            "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "margin_ratio": r["margin_ratio"], "r_tc": rec["R_tc"],
                          "stub_months": stub},
             "working_capital": [x / B for x in r["wc"]] if r["wc"] else None, "excess_cash": excess}
 
 
 def test_the_desk_on_the_defaults_is_the_default_generator_to_machine_precision():
-    """The two paths share the long-run arithmetic (consensus_reference.long_run_value) and the desk inherits the generator's margin ratio:
-    on full-precision facts the desk's value is the reference's (37.573360) to 1e-12."""
+    """The two paths share the long-run arithmetic (consensus_reference.long_run_value). Restated by revision 24 step 2a (ruling 1): the desk no
+    longer inherits the generator's margin ratio (defaults_desk_args drops it and the desk does not read it); given the generator's own long-run
+    margin m_long as its long_run_margin, the desk's value on full-precision facts is the reference's to 1e-12 (m_long / (e5 / revenue_5) is the
+    generator's ratio). Without one, the DEFAULTS run holds the year-5 margin. 37.544753 is the reference after D4 (ronic_at moves the charge
+    1 / RONIC linearly from RONIC_0 20% to RONIC_T 15%, a lower return in years 6-9 than the old linear move in RONIC, which gave 37.573360)."""
     r = ref()
     args, why = cr.defaults_desk_args(r, facts_of(r))
-    assert why is None
-    assert fmt.unbundled_dcf(**args)["per_share_iv_raw"] == pytest.approx(r["value"], rel=1e-12)
-    assert round(r["value"], 4) == 37.5734
+    assert why is None and "margin_ratio" not in args["long_run"]
+    held = fmt.unbundled_dcf(**args)
+    assert held["long_run"]["margin_ratio"] is None and held["per_share_iv_raw"] > r["value"]          # the generator's ratio 0.744727 < 1
+    assert fmt.unbundled_dcf(**args, long_run_margin=r["m_long"])["per_share_iv_raw"] == pytest.approx(r["value"], rel=1e-12)
+    assert round(r["value"], 6) == 37.544753
 
 
 def test_the_generator_long_run_margin_by_hand():
@@ -296,7 +316,8 @@ def test_the_generator_long_run_margin_by_hand():
 
 
 def test_the_generator_long_run_margin_rises_with_the_record_trend_and_plateaus_at_its_floor():
-    """om_trend -5% .. 30%: value non-decreasing and positive; below 0 the target is floored at 0 and the value is flat (14.196165)."""
+    """om_trend -5% .. 30%: value non-decreasing and positive; below 0 the target is floored at 0 and the value is flat (14.179302;
+    14.196165 before revision 24 step 2a's D4 change to ronic_at)."""
     vals = [ref(record=dict(REC, om_trend=t))["value"] for t in (-0.05, 0.0, 0.05, 0.10, 0.12, 0.15, 0.20, 0.30)]
     assert vals[0] == vals[1] and all(b > a for a, b in zip(vals[1:], vals[2:])) and all(v > 0 for v in vals)
 
@@ -306,10 +327,10 @@ def test_the_generator_terminal_growth_ronic_working_capital_and_rate_move_value
     ronic = [ref(record=dict(REC, R_tc=x, ronic_t=x))["value"] for x in (0.09, 0.12, 0.20, 0.50, INF)]
     nwc = [ref(record=dict(REC, nwc_intensity=n))["value"] for n in (-0.2, 0.0, 0.1, 0.3)]
     rate = [ref(coe=c, record=dict(REC, ronic_t=max(c, 0.15)))["value"] for c in (0.06, 0.08, 0.09, 0.11, 0.14)]
-    assert all(b > a for a, b in zip(tg, tg[1:]))                    # 31.93 .. 94.07
+    assert all(b > a for a, b in zip(tg, tg[1:]))                    # 31.92 .. 94.02 (31.93 .. 94.07 before the D4 change)
     assert all(b > a for a, b in zip(ronic, ronic[1:]))
-    assert all(b < a for a, b in zip(nwc, nwc[1:]))                  # 39.33 .. 36.40
-    assert all(b < a for a, b in zip(rate, rate[1:]))                # 82.62 .. 20.61
+    assert all(b < a for a, b in zip(nwc, nwc[1:]))                  # 39.30 .. 36.37 (39.33 .. 36.40)
+    assert all(b < a for a, b in zip(rate, rate[1:]))                # 82.59 .. 20.59 (82.62 .. 20.61)
     assert min(tg + ronic + nwc + rate) > 0
 
 
@@ -366,29 +387,35 @@ def lite_like(x_L=-2.30, om_trend=0.044):
 
 def test_o2_reproduced_lite_like_an_impossible_operating_margin_and_a_zero_long_run_margin():
     """OM_5 = 22% + (25.714% + 230%) / 0.79 = 345.69% of revenue. m_long = max(0, -230% + 0.79 x (4.4% - 22%)) = max(0, -243.9%) = 0.
-    The earnings fade to zero over years 6-10 and the terminal value is 0. No stamp records either."""
+    The generator's earnings fade to zero over years 6-10 and its terminal value is 0. Revision 24 step 2a (ruling 5): the benchmark stamps
+    both (it stamped neither); no `margin_rule_` stamp, so neither reaches the pack's printed stamps."""
     r, rec = lite_like()
     assert r["method"] == "levels" and r["long_run"]["m5"] == pytest.approx(18 * 0.1 / 7.0)
     assert r["om_5"] == pytest.approx(0.22 + (18 * 0.1 / 7.0 + 2.30) / 0.79, rel=1e-12)    # 3.456890
     assert r["om_5"] > 1.0
     assert r["m_long"] == 0.0 and r["margin_ratio"] == 0.0
     assert r["long_run"]["tv"] == 0.0 and r["long_run"]["earnings"][-1] == 0.0
+    assert {"implied_operating_margin_out_of_range", "long_run_margin_clamped_to_zero"} <= set(r["stamps"])
     assert not [s for s in r["stamps"] if s.startswith("margin_rule")]
 
 
-def test_o2_reproduced_lite_like_the_desk_inherits_the_zero_and_has_no_input_to_change_it():
-    """The desk computes no margin of its own: on the generator's facts it reproduces the value and its terminal value is 0. Its tool schema has
-    no long-run margin input (only the facts' margin_ratio reaches long_run_value), so no briefing text can move it; only base_cf, the growth
-    rates, the fade, terminal_g, terminal_ronic, wacc, excess_cash and the share count reach the desk."""
+def test_o2_lite_like_the_desk_no_longer_inherits_the_zero_and_takes_the_analysts_long_run_margin():
+    """Restated by revision 24 step 2a (ruling 1; it reproduced a desk that took the generator's margin_ratio 0 and had no input to change it).
+    On the generator's facts, without a long_run_margin the desk holds the year-5 margin and its terminal value is positive; given the
+    generator's m_long (0) it returns the generator's value with a terminal value of 0 (the shared arithmetic); given an analyst-style 15% it
+    has a positive long run. The tool schema now has long_run_margin."""
     r, rec = lite_like()
     f = facts_of(r, rec=rec, coe=0.105, tg=0.0236, shares=0.1e9)
     args, why = cr.defaults_desk_args(r, f)
-    d = fmt.unbundled_dcf(**args)
-    assert d["per_share_iv_raw"] == pytest.approx(r["value"], rel=1e-12)
-    assert d["terminal_value_nominal"] == 0 and d["long_run"]["margin_ratio"] == 0.0
+    held = fmt.unbundled_dcf(**args)
+    assert held["long_run"]["margin_ratio"] is None and held["terminal_value_nominal"] > 0
+    zero = fmt.unbundled_dcf(**args, long_run_margin=r["m_long"])
+    assert zero["per_share_iv_raw"] == pytest.approx(r["value"], rel=1e-12) and zero["terminal_value_nominal"] == 0
+    analyst = fmt.unbundled_dcf(**args, long_run_margin=0.15)
+    assert analyst["terminal_value_nominal"] > 0 and analyst["per_share_iv_raw"] > r["value"]
+    assert analyst["long_run"]["margin_ratio"] == pytest.approx(0.15 / r["long_run"]["m5"], abs=5e-5)
     props = _desk_schema_properties()
-    assert {"base_cf", "explicit_growth", "fade_years", "terminal_g", "terminal_ronic", "wacc", "excess_cash"} <= props
-    assert not [p for p in props if "margin" in p or p == "long_run"]
+    assert {"base_cf", "explicit_growth", "fade_years", "terminal_g", "terminal_ronic", "wacc", "excess_cash", "long_run_margin"} <= props
 
 
 def _desk_schema_properties():
@@ -421,26 +448,48 @@ def test_o2_reproduced_lind_like_a_modest_operating_margin_fall_zeroes_the_earni
     is a fixed cost in margin points forever; it is one base year's wedge."""
     rule = cr.margin_rule(lind_like(), 0.03)
     assert rule["om_5"] == pytest.approx(0.15 + 0.01 / 0.79, rel=1e-12)
-    assert rule["m_long"] == 0.0 and rule["ratio"] == 0.0 and rule["stamps"] == []
+    assert rule["m_long"] == 0.0 and rule["ratio"] == 0.0 and rule["stamps"] == ["long_run_margin_clamped_to_zero"]    # revision 24 step 2a
 
 
 def _saved(name):
     return json.loads((FIX / f"{name}_pack_facts.json").read_text(encoding="utf-8"))
 
 
+def _saved_desk(f, fade_years=5, **kw):
+    """The desk on a saved facts file's DEFAULTS (the reference's base, path, rate, terminal growth, return, working capital and cash)."""
+    return fmt.unbundled_dcf(base_cf=f["reference_base_b"], explicit_growth=f["reference_path"], wacc=f["coe_anchor"],
+                             terminal_g=f["terminal_g_default"], shares_diluted=f["shares_default"] / 1e9, fade_years=fade_years,
+                             sbc_treatment="deducted_in_cf", terminal_ronic=f["terminal_ronic"], long_run=f["long_run"],
+                             working_capital=f["working_capital"], excess_cash=f["excess_cash"], **kw)
+
+
 @pytest.mark.parametrize("name, civ", [("LITE_20261006_145640", 271.20), ("LIND_20261006_133708", 9.53)])
 def test_o2_reproduced_on_the_saved_facts_the_desk_on_the_defaults_returns_the_reference_with_a_zero_long_run_margin(name, civ):
-    """The two saved baseline facts files (verbatim). The desk on their DEFAULTS returns the CONSENSUS-IMPLIED VALUE to the cent, with
-    margin_ratio 0 and a terminal value of 0: everything after year 10 is worth nothing."""
+    """The two saved baseline facts files (verbatim). Restated by revision 24 step 2a (ruling 1): the desk no longer reads the facts'
+    margin_ratio 0; given the generator's own m_long (0) as its long_run_margin, the desk on their DEFAULTS still returns the
+    CONSENSUS-IMPLIED VALUE to the cent with a terminal value of 0 (everything after year 10 worth nothing): the arithmetic is shared, and the
+    zero is the generator's margin, not the desk's."""
     f = _saved(name)
     lr = f["long_run"]
-    d = fmt.unbundled_dcf(base_cf=f["reference_base_b"], explicit_growth=f["reference_path"], wacc=f["coe_anchor"],
-                          terminal_g=f["terminal_g_default"], shares_diluted=f["shares_default"] / 1e9, fade_years=5,
-                          sbc_treatment="deducted_in_cf", terminal_ronic=f["terminal_ronic"], long_run=lr,
-                          working_capital=f["working_capital"], excess_cash=f["excess_cash"])
+    d = _saved_desk(f, long_run_margin=lr["m_long"])
     assert f["consensus_implied_value"] == civ and d["per_share_iv"] == civ
     assert lr["margin_ratio"] == 0.0 and lr["m_long"] == 0.0 and d["terminal_value_nominal"] == 0
     assert not [s for s in lr["stamps"] if s.startswith("margin_rule")]
+    assert _saved_desk(f)["long_run"]["margin_ratio"] is None                     # the facts' margin_ratio 0 does not reach the desk
+
+
+@pytest.mark.parametrize("name, margin, value, tv", [("LITE_20261006_145640", 0.15, 594.32, 60.93), ("LIND_20261006_133708", 0.04, 14.72, 0.71)])
+def test_the_saved_facts_with_an_analyst_style_long_run_margin_have_a_positive_long_run(name, margin, value, tv):
+    """Revision 24 step 2a (ruling 6): LITE and LIND on their saved DEFAULTS with an analyst-style long_run_margin (15% and 4%): a positive
+    long run. LITE's year-5 earnings margin 31.58% (e5 6.812241 / revenue 21.5712) moves to 15% (ratio 0.475) by year 10: $594.32, terminal
+    value $60.93B (the reference: $271.20 with a terminal value of 0). LIND's 2.76% moves up to 4% (ratio 1.4473): $14.72, terminal value $0.71B
+    (the reference: $9.53, 0). At the end of the fade the earnings margin is the long_run_margin."""
+    f = _saved(name)
+    d = _saved_desk(f, long_run_margin=margin)
+    assert d["per_share_iv"] == value and d["terminal_value_nominal"] == tv and d["terminal_value_nominal"] > 0
+    lr = f["long_run"]
+    assert d["long_run"]["margin_ratio"] == pytest.approx(margin / lr["m5"], abs=1e-4)   # the Base is on the facts' own path: E5 / revenue_5 = m5
+    assert d["per_share_iv"] > f["consensus_implied_value"]
 
 
 @pytest.mark.parametrize("name", ["LITE_20261006_145640", "LIND_20261006_133708"])
@@ -458,33 +507,46 @@ def test_o2_reproduced_on_the_saved_facts_for_every_admissible_tax_rate(name, ta
     assert rule["m_long"] == 0.0 and rule["ratio"] == 0.0
 
 
-@pytest.mark.xfail(strict=True, reason="O2 defect: margin_rule accepts an implied year-5 operating margin above 100% of revenue (LITE "
-                                       "352.07%) without a stamp or a refusal; non-negotiable 3 asks for an annotation")
 def test_o2_an_impossible_implied_operating_margin_is_annotated():
+    """Was a strict xfail (O2a). Revision 24 step 2a (ruling 5): the benchmark stamps an implied year-5 operating margin outside [-50%, 100%]
+    `implied_operating_margin_out_of_range` (the brief's name; the audit's `margin_rule` prefix would have printed it in the pack's DEFAULTS
+    stamps, and the stamp is benchmark only). An in-range one is not stamped."""
     r, _ = lite_like()
     assert r["om_5"] > 1.0
-    assert [s for s in r["stamps"] if s.startswith("margin_rule")]
+    assert "implied_operating_margin_out_of_range" in r["stamps"] and "implied_operating_margin_out_of_range" in r["margin"]["stamps"]
+    assert "implied_operating_margin_out_of_range" not in cr.margin_rule(lind_like(), 0.03)["stamps"]       # OM_5 16.27%
+    low = cr.margin_rule({"om_trend": 0.05, "om_L": -0.40, "x_L": -0.80, "tax_L": 0.0}, 0.05)                 # OM_5 = -40% + 85% = 45%: in range
+    assert "implied_operating_margin_out_of_range" not in low["stamps"]
+    below = cr.margin_rule({"om_trend": 0.05, "om_L": -0.60, "x_L": 0.05, "tax_L": 0.0}, 0.04)                 # OM_5 -61%: a loss, stamped
+    assert below["om_5"] == pytest.approx(-0.61) and "implied_operating_margin_out_of_range" in below["stamps"]
 
 
-@pytest.mark.xfail(strict=True, reason="O2 defect: margin_rule clamps a negative long-run earnings margin to 0 (max(0, ...)) with no stamp, "
-                                       "so the zeroed long run of LITE and LIND carries no annotation (their saved stamps are empty)")
 def test_o2_a_long_run_margin_clamped_to_zero_is_stamped():
+    """Was a strict xfail (O2b). Revision 24 step 2a (ruling 5): the clamp of a negative long-run earnings margin to 0 is stamped
+    `long_run_margin_clamped_to_zero` (benchmark only); a margin at or above 0 is not."""
     rule = cr.margin_rule(lind_like(), 0.03)
     assert rule["m_long"] == 0.0
-    assert rule["stamps"], "the clamp to zero must be annotated"
+    assert rule["stamps"] == ["long_run_margin_clamped_to_zero"], "the clamp to zero must be annotated"
+    assert cr.margin_rule(lind_like(om_trend=0.20), 0.03)["stamps"] == []
 
 
-@pytest.mark.xfail(strict=True, reason="O2 defect: a non-operating one-off in the base year (x_L moves, om_L does not) moves the long-run "
-                                       "earnings margin one for one: m_long = x_L + (1 - tax_L)(om_trend - om_L); the consensus year-5 margin "
-                                       "does not enter it")
 def test_o2_a_base_year_non_operating_one_off_does_not_set_the_long_run_margin():
-    """Same operating record, same consensus (levels method: m5 = 25.714% comes from the vendor's EPS and does not hold the base year's one-off).
-    Base year with and without a $7.4B non-operating loss (x_L -230% against +16.7%): the long-run margin should not differ. With a trend of 20%
-    so that neither case is clamped: without the one-off m_long = 16.7% + 0.79 x (20% - 22%) = 15.12%; with it -231.6%, clamped to 0."""
-    clean, _ = lite_like(x_L=0.167, om_trend=0.20)
-    one_off, _ = lite_like(x_L=-2.30, om_trend=0.20)
+    """Was a strict xfail (O2c). Same operating record, same consensus (levels method: m5 = 25.714% comes from the vendor's EPS and does not hold
+    the base year's one-off). Base year with and without a $7.4B non-operating loss (x_L -230% against +16.7%), trend 20%. Revision 24 step 2a
+    (ruling 1): the long-run margin that values the company is the analyst's long_run_margin, which no base-year figure sets, so the desk on
+    either case's facts with the same long_run_margin gives the same value and the same long-run margin. The generator's m_long (the logged
+    benchmark only) still carries the one-off, x_L + (1 - tax_L)(om_trend - om_L): 15.12% without it, -231.6% clamped to 0 (stamped) with it."""
+    clean, crec = lite_like(x_L=0.167, om_trend=0.20)
+    one_off, orec = lite_like(x_L=-2.30, om_trend=0.20)
     assert clean["m_long"] == pytest.approx(0.167 + 0.79 * (0.20 - 0.22), rel=1e-9)
-    assert one_off["m_long"] == pytest.approx(clean["m_long"], rel=1e-6)
+    assert one_off["m_long"] == 0.0 and "long_run_margin_clamped_to_zero" in one_off["stamps"]       # the benchmark keeps the defect, stamped
+    runs = []
+    for r, rec in ((clean, crec), (one_off, orec)):
+        args, why = cr.defaults_desk_args(r, facts_of(r, rec=rec, coe=0.105, tg=0.0236, shares=0.1e9))
+        assert why is None
+        runs.append(fmt.unbundled_dcf(**args, long_run_margin=0.15))
+    assert runs[0]["per_share_iv_raw"] == pytest.approx(runs[1]["per_share_iv_raw"], rel=1e-12)
+    assert runs[0]["long_run"]["margin_ratio"] == runs[1]["long_run"]["margin_ratio"] and runs[0]["terminal_value_nominal"] > 0
 
 
 # =============================================================================================================================
@@ -492,106 +554,106 @@ def test_o2_a_base_year_non_operating_one_off_does_not_set_the_long_run_margin()
 # =============================================================================================================================
 
 def _margin_lr(m):
-    return {"e5": 1.0, "oe5": 1.0, "margin_ratio": m}
+    """The desk arguments that give the margin ratio m on S growing 3% a year (revision 24 step 2a: a long_run_margin, where the audit passed
+    the facts' margin_ratio): facts e5 = oe5 = 1.03^5 and m5 10%, so S's year-5 earnings margin is 10% and long_run_margin = m x 10%; m None
+    passes no long_run_margin (the margin held)."""
+    return {"long_run": {"e5": 1.03 ** 5, "oe5": 1.03 ** 5, "m5": 0.10}, "long_run_margin": None if m is None else m * 0.10}
 
 
 def test_d2_reproduced_a_fade_of_zero_drops_the_long_run_margin():
-    """long_run_value: k_end = 1 when F = 0, so a fade of 0 values the long run at the year-5 margin whatever margin_ratio says, and the result
-    still echoes the margin_ratio. S growing 3% a year, margin_ratio 0.5, g5 = gt = 3% (the fade changes no growth), RONIC unlimited:
-    PV of years 1-5 = sum 1.03^t / 1.1^t = 4.122678; OE5 = 1.03^5 = 1.159274; F = 1: long run = 0.5 x 1.159274 x 1.03 / 0.07 / 1.1^5 =
-    5.295804, value 9.418482; F = 0: 1.159274 x 1.03 / 0.07 / 1.1^5 = 10.591608, value 14.714286.
-    On the saved LITE facts the same switch takes the DEFAULTS value from $173.38 (fade 1) to $768.81 (fade 0); the reference is $271.20 at 5."""
-    base = dict(explicit_growth=[0.03] * 5, long_run=_margin_lr(0.5))
-    f1, f0 = desk(fade_years=1, **base), desk(fade_years=0, **base)
+    """Restated by revision 24 step 2a (D2; it reproduced k_end = 1 at F = 0, which valued the long run at the year-5 margin, 14.714286). S
+    growing 3% a year, margin ratio 0.5, g5 = gt = 3% (the fade changes no growth), RONIC unlimited: PV of years 1-5 = sum 1.03^t / 1.1^t =
+    4.122678; OE5 = 1.03^5 = 1.159274; F = 1: long run = 0.5 x 1.159274 x 1.03 / 0.07 / 1.1^5 = 5.295804, value 9.418482; F = 0 now applies the
+    ratio in the terminal year: the same 9.418482 (with g6 = gt and the ratio reached in year 6, a one-year fade is the terminal year)."""
+    f1 = desk(fade_years=1, explicit_growth=[0.03] * 5, **_margin_lr(0.5))
+    f0 = desk(fade_years=0, explicit_growth=[0.03] * 5, **_margin_lr(0.5))
     oe5 = 1.03 ** 5
     pv15 = sum(1.03 ** t / d for t, d in zip(range(1, 6), D5))
     assert f1["per_share_iv_raw"] == pytest.approx(pv15 + 0.5 * oe5 * 1.03 / 0.07 / 1.1 ** 5, rel=1e-12)
-    assert f0["per_share_iv_raw"] == pytest.approx(pv15 + oe5 * 1.03 / 0.07 / 1.1 ** 5, rel=1e-12)
+    assert f0["per_share_iv_raw"] == pytest.approx(pv15 + 0.5 * oe5 * 1.03 / 0.07 / 1.1 ** 5, rel=1e-12)
     assert f0["long_run"]["margin_ratio"] == 0.5
 
 
-@pytest.mark.xfail(strict=True, reason="D2 defect: long_run_value sets k_end = 1 when the fade is 0 (fade_years=0, or explicit rates that use "
-                                       "up the fade in _five_and_fade), so the facts' margin_ratio is silently dropped and the value jumps "
-                                       "(saved LITE facts: $173.38 at fade 1, $768.81 at fade 0)")
 def test_d2_the_long_run_margin_applies_whatever_the_fade_length():
-    """With g5 = gt the fade moves no growth, so with a margin ratio below 1 a longer fade (a slower fall in margin) can only raise value,
-    and a fade of 0 (the margin at its long-run level from year 6) must not be worth more than a fade of 1."""
-    base = dict(explicit_growth=[0.03] * 5, long_run=_margin_lr(0.5))
-    vals = [iv(fade_years=f, **base) for f in (0, 1, 2, 5)]
+    """Was a strict xfail (D2). With g5 = gt the fade moves no growth, so with a margin ratio below 1 a longer fade (a slower fall in margin) can
+    only raise value, and a fade of 0 (the margin at its long-run level from the terminal year) must not be worth more than a fade of 1."""
+    vals = [iv(fade_years=f, explicit_growth=[0.03] * 5, **_margin_lr(0.5)) for f in (0, 1, 2, 5)]
     assert all(b >= a for a, b in zip(vals, vals[1:]))
 
 
-@pytest.mark.xfail(strict=True, reason="D2 defect, the second route: two explicit rates with fade_years 3 leave no fade for the long run "
-                                       "(_five_and_fade gives 0), so margin_ratio is ignored: the value with margin_ratio 0.5 equals the "
-                                       "value with the margin held")
 def test_d2_fewer_explicit_rates_do_not_drop_the_long_run_margin():
-    a = iv(explicit_growth=[0.05, 0.05], fade_years=3, long_run=_margin_lr(0.5), terminal_ronic=0.20)
-    b = iv(explicit_growth=[0.05, 0.05], fade_years=3, long_run=_margin_lr(None), terminal_ronic=0.20)
+    """Was a strict xfail (D2, the second route): two explicit rates with fade_years 3 leave no fade for the long run (_five_and_fade gives
+    0); the margin ratio now still applies, in the terminal year."""
+    a = iv(explicit_growth=[0.05, 0.05], fade_years=3, terminal_ronic=0.20, **_margin_lr(0.5))
+    b = iv(explicit_growth=[0.05, 0.05], fade_years=3, terminal_ronic=0.20, **_margin_lr(None))
     assert a < b
 
 
-@pytest.mark.xfail(strict=True, reason="D3 defect: with a reference, the desk translates a scenario's owner earnings to its year-5 earnings "
-                                       "additively (E5 = e5 + OE5 - oe5), so a scenario with positive owner earnings can reach negative "
-                                       "long-run earnings and a long run floored at 0 (long_run_floor); without a reference the same "
-                                       "translation is proportional")
 def test_d3_positive_scenario_owner_earnings_keep_positive_long_run_earnings():
-    """Facts e5 0.6, oe5 1.0 (D&A above capex: earnings 60% of owner earnings). A Bear at 35% of the owner earnings: E5 = 0.6 + (0.35 - 1.0)
-    = -0.05, so the long run is negative and floored; proportionally it would be 0.6 x 0.35 = 0.21. At 50%: E5 = 0.10, an 83% cut in earnings
-    for a 50% cut in owner earnings."""
-    r = desk(base_cf=0.35, long_run={"e5": 0.6, "oe5": 1.0, "margin_ratio": 1.0}, fade_years=5, terminal_ronic=0.20)
+    """Was a strict xfail (D3). Facts e5 0.6, oe5 1.0 (D&A above capex: earnings 60% of owner earnings). A Bear at 35% of the owner earnings:
+    additively E5 = 0.6 + (0.35 - 1.0) = -0.05, a negative long run floored at 0; proportionally (revision 24 step 2a) E5 = 0.6 x 0.35 = 0.21."""
+    r = desk(base_cf=0.35, long_run={"e5": 0.6, "oe5": 1.0}, fade_years=5, terminal_ronic=0.20)
+    assert r["long_run"]["year5_earnings"] == pytest.approx(0.21, abs=5e-5)
     assert r["long_run"]["year5_earnings"] > 0 and "long_run_floor" not in r["stamps"]
 
 
 def test_d4_reproduced_an_unlimited_terminal_ronic_holds_the_starting_ronic_through_the_fade():
-    """ronic_at: with an infinite end point the start holds until frac reaches 1, while any finite end point interpolates. long_run_value with
-    e5 1.0, g5 = gt = 3%, r 10%, RONIC_0 = 10%, a two-year fade. Year 6 (frac 0.5): RONIC_T unlimited holds 10%, flow 1.03 x (1 - 0.03 / 0.10)
-    = 0.721; RONIC_T 10^12 interpolates to 5 x 10^11, flow 1.03. Year 7 and the terminal are the same in both. Difference at year 0 =
-    (1.03 - 0.721) / 1.1^6 = 0.174422: the unlimited return is worth less than a finite one."""
+    """Restated by revision 24 step 2a (D4; it reproduced the start held until frac 1, a year-6 flow of 0.721 unlimited against 1.03 at 10^12).
+    ronic_at now moves the charge 1 / RONIC linearly, an unlimited return being a charge of 0. long_run_value with e5 1.0, g5 = gt = 3%, r 10%,
+    RONIC_0 = 10%, a two-year fade. Year 6 (frac 0.5): 1 / RONIC = 0.5 x 10 = 5, RONIC 20%, flow 1.03 x (1 - 0.03 / 0.20) = 0.8755 whether RONIC_T
+    is unlimited or 10^12; year 7 and the terminal charge nothing: the unlimited return is the limit of a large finite one."""
     unl = cr.long_run_value(1.0, 0.03, 0.03, 0.10, 0.10, INF, None, 2)
     fin = cr.long_run_value(1.0, 0.03, 0.03, 0.10, 0.10, 1e12, None, 2)
-    assert unl["flows"][0] == pytest.approx(0.721, abs=1e-12) and fin["flows"][0] == pytest.approx(1.03, abs=1e-9)
-    assert fin["value"] - unl["value"] == pytest.approx((1.03 - 0.721) / 1.1 ** 6, abs=1e-9)
+    assert unl["flows"][0] == pytest.approx(0.8755, abs=1e-12) and fin["flows"][0] == pytest.approx(0.8755, abs=1e-9)
+    assert unl["flows"][1] == pytest.approx(1.03 ** 2, abs=1e-12)
+    assert fin["value"] - unl["value"] == pytest.approx(0.0, abs=1e-9)
+    assert cr.ronic_at(0.10, INF, 0.25) == pytest.approx(1 / 7.5) and cr.ronic_at(0.10, INF, 0.75) == pytest.approx(0.40)
 
 
-@pytest.mark.xfail(strict=True, reason="D4 defect: ronic_at holds RONIC_0 for years 6..N-1 when RONIC_T is +inf, so an unlimited terminal "
-                                       "return is worth less than a large finite one (desk S, RONIC_0 = r: $16.23 unlimited against $17.39 at "
-                                       "10^6 and $16.82 at 100%); value is not monotone in terminal_ronic")
 def test_d4_value_is_monotone_in_terminal_ronic_up_to_unlimited():
+    """Was a strict xfail (D4): $16.23 unlimited against $17.39 at 10^6. Now monotone, and unlimited is the limit (equal to 10^6 within half a
+    cent)."""
     vals = [iv(terminal_ronic=x, fade_years=5, explicit_growth=[0.06] * 5) for x in (0.50, 1.0, 1e6, INF)]
     assert all(b >= a for a, b in zip(vals, vals[1:]))
+    assert vals[3] - vals[2] < 0.005
 
 
-@pytest.mark.xfail(strict=True, reason="D4 defect, its reach: price_implied searches terminal_ronic up to unlimited (u = r / RONIC = 0). With "
-                                       "a finite RONIC_0 the value at the unlimited end ($17.00) is below the values just inside it, so the "
-                                       "block prints a bound's high value below a root it reports as reachable, and stamps a discontinuity "
-                                       "the desk's own rule creates")
 def test_d4_the_price_implied_terminal_ronic_block_has_no_self_made_discontinuity():
-    """A Base on S with growth 6% for five years, a five-year fade, terminal_ronic 15%, the record's r_tc 30% (RONIC_0 30%). Price $17.20."""
+    """Was a strict xfail (D4, its reach). A Base on S with growth 6% for five years, a five-year fade, terminal_ronic 15%, the record's r_tc 30%
+    (RONIC_0 30%). The price is $17.00 (the audit's $17.20 lay inside the jump the old rule made; the value now rises continuously to $17.17 at
+    unlimited, so $17.20 is above the bound and $17.00 is reachable)."""
     lr = {"r_tc": 0.30}
     b = dict(cf=1.0, growth=[0.06] * 5, fade=5, wacc=0.10, tg=0.03, shares=1.0, sbc="deducted_in_cf", sbc_dil=None, frame="equity",
              net_debt=None, rate_type=None, annuity=0.0, annuity_cap=None, ronic=0.15, wc=None, excess=None, long_run=lr, finite=None)
     b["raw"] = iv(terminal_ronic=0.15, fade_years=5, explicit_growth=[0.06] * 5, long_run=lr)
-    blk = fmt.price_implied(b, 17.20)["terminal_ronic"]
-    assert blk["reachable"] and blk["base_at_value"] == pytest.approx(17.20, abs=1e-6)
-    assert "discontinuity" not in blk["stamps"]
+    blk = fmt.price_implied(b, 17.00)["terminal_ronic"]
+    assert blk["reachable"] and blk["base_at_value"] == pytest.approx(17.00, abs=1e-6)
+    assert "discontinuity" not in blk["stamps"] and blk["discontinuities"] == 0 and blk["roots_on_grid"] == 1
     assert blk["bound"]["value_high"] >= blk["base_at_value"]
+    above = fmt.price_implied(b, 17.20)["terminal_ronic"]
+    assert not above["reachable"] and above["side"] == "above" and "discontinuity" not in above["stamps"]
 
 
 def test_d2_reproduced_on_the_saved_lite_facts():
-    """The saved LITE DEFAULTS through the desk at fade 0, 1 and 5: $768.81, $173.38, $271.20 (the CONSENSUS-IMPLIED VALUE). The fade of 0 is
-    worth 2.8 times the reference because it drops the facts' margin_ratio 0."""
+    """Restated by revision 24 step 2a (D2; it reproduced $768.81 at fade 0). The saved LITE DEFAULTS through the desk with the generator's
+    m_long (0) as the long_run_margin, at fade 0, 1 and 5: $173.38, $173.38, $271.20 (the CONSENSUS-IMPLIED VALUE). A fade of 0 now applies the
+    zero margin in the terminal year, as a fade of 1 does in year 6 (g6 = terminal growth either way)."""
     f = _saved("LITE_20261006_145640")
-    vals = {fy: fmt.unbundled_dcf(base_cf=f["reference_base_b"], explicit_growth=f["reference_path"], wacc=f["coe_anchor"],
-                                  terminal_g=f["terminal_g_default"], shares_diluted=f["shares_default"] / 1e9, fade_years=fy,
-                                  sbc_treatment="deducted_in_cf", terminal_ronic=f["terminal_ronic"], long_run=f["long_run"],
-                                  working_capital=f["working_capital"], excess_cash=f["excess_cash"])["per_share_iv"] for fy in (0, 1, 5)}
-    assert vals == {0: 768.81, 1: 173.38, 5: 271.20}
+    vals = {fy: _saved_desk(f, fade_years=fy, long_run_margin=f["long_run"]["m_long"])["per_share_iv"] for fy in (0, 1, 5)}
+    assert vals == {0: 173.38, 1: 173.38, 5: 271.20}
 
 
-def test_the_desk_applies_the_reference_margin_ratio_to_the_scenario_own_year5_earnings():
-    """_long_run_inputs passes the facts' margin_ratio unchanged; long_run_value multiplies the SCENARIO's E5 by it. So the long-run margin the
-    desk values is ratio x the scenario's year-5 margin, not the record's trend level: a scenario at twice the owner earnings keeps the ratio
-    0.5: E5 = 0.8 + (2.0 - 1.0) = 1.8, terminal value (one-year fade, RONIC unlimited) 0.5 x 1.8 x 1.03 x 1.03 / 0.07 = 13.64."""
-    r = desk(base_cf=2.0, long_run={"e5": 0.8, "oe5": 1.0, "margin_ratio": 0.5})
-    assert r["long_run"]["margin_ratio"] == 0.5 and r["long_run"]["year5_earnings"] == pytest.approx(1.8)
-    assert r["terminal_value_nominal"] == pytest.approx(0.5 * 1.8 * 1.03 * 1.03 / 0.07, abs=0.005)
+def test_the_desk_applies_the_analysts_long_run_margin_to_the_scenarios_own_year5_earnings_margin():
+    """Restated by revision 24 step 2a (ruling 1; it was the facts' margin_ratio applied to an additive E5). Facts e5 0.8, oe5 1.0, m5 8%: the
+    facts' year-5 revenue is 10.0. A scenario at twice the owner earnings has E5 = 1.6 (D3) on a year-5 revenue of 20.0 (scaled as its
+    earnings are), so its year-5 earnings margin is 8% and long_run_margin 4% gives the ratio 0.5 in it as in a scenario at the facts' own
+    owner earnings: the margin moves proportionally in every scenario. Terminal value (one-year fade, RONIC unlimited) 0.5 x 1.6 x 1.03 x 1.03
+    / 0.07 = 4% x 20.0 x 1.03 x 1.03 / 0.07 = 12.12, twice the 6.06 of the scenario at the facts' own owner earnings."""
+    lr = {"e5": 0.8, "oe5": 1.0, "m5": 0.08}
+    r = desk(base_cf=2.0, long_run=lr, long_run_margin=0.04)
+    assert r["long_run"]["margin_ratio"] == 0.5 and r["long_run"]["year5_earnings"] == pytest.approx(1.6)
+    assert r["long_run"]["year5_revenue"] == 20.0 and r["long_run"]["long_run_margin"] == 0.04
+    assert r["terminal_value_nominal"] == pytest.approx(0.04 * 20.0 * 1.03 * 1.03 / 0.07, abs=0.005)
+    own = desk(base_cf=1.0, long_run=lr, long_run_margin=0.04)
+    assert own["long_run"]["margin_ratio"] == 0.5 and own["long_run"]["year5_revenue"] == 10.0
+    assert own["terminal_value_nominal"] == pytest.approx(r["terminal_value_nominal"] / 2, abs=0.005)

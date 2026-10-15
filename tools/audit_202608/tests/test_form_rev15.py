@@ -173,8 +173,9 @@ def test_tools_schema_changed_descriptions_verbatim():
     assert props["scenarios"]["description"] == (
         "Exactly three entries, one each with role Base, Bull and Bear. Each entry: name, prob, "
         "base_cf ($B), explicit_growth (5 annual growth rates of base_cf, cash flow not revenue), "
-        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_ronic "
-        "and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
+        # revision 24 step 2a: long_run_margin joins the scenario's inputs
+        "fade_years, wacc (the discount rate), terminal_g, and optionally terminal_ronic, "
+        "long_run_margin and shares_diluted. The desk computes every value, the reverse DCF and Kelly "
         "sizing in one call."
     )
     sc_props = props["scenarios"]["items"]["properties"]
@@ -191,7 +192,7 @@ def test_tools_schema_changed_descriptions_verbatim():
 def test_tools_schema_required_list():
     fm = _run_financial_model_tool()
     assert fm["function"]["parameters"]["required"] == [
-        "cash_flow_life", "cash_flow_life_reason", "terminal_g", "fade_years", "sbc_treatment"
+        "cash_flow_life", "cash_flow_life_reason", "terminal_g", "fade_years", "sbc_treatment", "long_run_margin"   # revision 24 step 2a
     ]
 
 
@@ -199,7 +200,8 @@ def test_tools_run_financial_model_description_verbatim():
     fm = _run_financial_model_tool()
     assert fm["function"]["description"] == (
         "Run the Python desk. One call values Base, Bull and Bear together: each scenario's "
-        "base_cf, five years of cash-flow growth, fade, discount rate and terminal growth (with an "
+        # revision 24 step 2a: the long-run earnings margin
+        "base_cf, five years of cash-flow growth, fade, discount rate, terminal growth and long-run earnings margin (with an "
         "optional terminal_ronic) give its per-share value. The desk also returns the reverse DCF "
         "(the growth today's price implies, under your structure and under the neutral reference) "
         "and quarter-Kelly sizing. On every run the desk also returns price_implied: for each judgment "

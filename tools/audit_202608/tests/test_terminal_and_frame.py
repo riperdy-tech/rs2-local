@@ -75,7 +75,7 @@ def test_the_batch_table_prints_no_exit_multiple_lines():
     res = fmt.execute_financial_model({
         "valuation_frame": "equity", "rate_type": "cost_of_equity", "terminal_g": 0.0375,
         "fade_years": 5, "shares_diluted": 0.0352, "sbc_treatment": "deducted_in_cf",
-        "cash_flow_life": "perpetual", "cash_flow_life_reason": "test",
+        "cash_flow_life": "perpetual", "cash_flow_life_reason": "test", "long_run_margin": 0.10,    # revision 24 step 2a: required
         "base_cf_reason": "test", "terminal_reason": "test", "bear_above_price_reason": "test",
         "scenarios": [{"name": "Base", "prob": 0.5, "base_cf": 1.186, "growth_rates": FLOW["growth_rates"], "wacc": 0.0898},
                       # revision 16: a call that sends scenarios needs Bull too (not under test here)

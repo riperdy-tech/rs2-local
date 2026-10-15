@@ -79,7 +79,9 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 # description names PRIMARY P# among the sources; was "cff81bb1b95cdf0acc136564bd66022d06413c5bb94bc09e414201eec8242914".
 # 2026-10-16 (revision 24, R24.2): guidance_deviation_reason's description loses "a Base value outside 0.75-1.33 of the reference" (the R10 gate
 # is off); was "c3fd7ad03bf8db9155ed62c45fddfa7bbae96131973184cb3ae05277d6508ae3".
-TOOLS_SHA256 = "6d87df37c2e07ad92ef56ffe1d706379686cced16d19ce074d8a37ab223f2be8"
+# 2026-10-16 (revision 24 step 2a, ruling 1): run_financial_model gains long_run_margin (top level, required, and per scenario) and its
+# description and the scenarios description name it; was "6d87df37c2e07ad92ef56ffe1d706379686cced16d19ce074d8a37ab223f2be8".
+TOOLS_SHA256 = "600f6f24858387fd162e01b293362bd8899bd1d780c35cbdcdbd1dbd9659496b"
 # research_tools() (search_web, fetch_page) changed with them (revision 21, R4); was "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35".
 RESEARCH_TOOLS_SHA256 = "62cb74cb2a4fa294060ba2acd1556ef14e501dfadb6b226b9034bc4634c68e49"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
