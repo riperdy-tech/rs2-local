@@ -10,12 +10,14 @@ A value is written by the input it belongs to:
   fade_years          38.9 years               (one decimal; the desk's own value is an integer)
   terminal_ronic      33.0%  or  unlimited
   year2_level         $0.903B                  (three decimals, thousands grouped)
+  long_run_margin     12.50%                   (two decimals of a percent; revision 24 step 2b, the desk's block only)
 The DEFAULTS line lists the six inputs with "; " between them, each `name=value`, `name=not reachable (low to high)` or
 `name=not available (reason)`.
 """
 import math
 import re
 
+# the six inputs the DEFAULTS line prints (a revision-22 pack's line, byte for byte); the desk's block also holds long_run_margin (crux_check.J)
 INPUTS = ("coe", "growth_years_3_5", "fade_years", "terminal_g", "terminal_ronic", "year2_level")
 NA = "not available"
 
@@ -26,7 +28,7 @@ def fmt_value(name, v):
         return NA
     if v == "unlimited" or (isinstance(v, float) and math.isinf(v)):
         return "unlimited"
-    if name in ("coe", "terminal_g"):
+    if name in ("coe", "terminal_g", "long_run_margin"):
         return f"{v * 100:.2f}%"
     if name == "growth_years_3_5":
         return f"{v * 100:+.1f}% a year"
@@ -51,7 +53,7 @@ def parse_value(name, text):
         return None
     if s == "unlimited":
         return math.inf
-    if name in ("coe", "terminal_g"):
+    if name in ("coe", "terminal_g", "long_run_margin"):
         return float(s.rstrip("%")) / 100.0
     if name == "growth_years_3_5":
         return float(s.replace("% a year", "")) / 100.0

@@ -20,7 +20,9 @@ fetched in this sample that names the company (the source is its URL). Everythin
 import re
 import unicodedata
 
-J = ("coe", "growth_years_3_5", "fade_years", "terminal_g", "terminal_ronic", "year2_level")
+# revision 24 step 2b: long_run_margin (the analyst's earnings margin at the end of the fade, step 2a's desk input) joins the judgment inputs; the
+# DEFAULTS block's price_implied line keeps the six inputs it printed (pi_text.INPUTS), for it is solved at defaults this input does not have
+J = ("coe", "growth_years_3_5", "fade_years", "terminal_g", "terminal_ronic", "year2_level", "long_run_margin")
 REASONS = ("missing", "not_judgment", "not_reachable", "no_company_evidence", "quote_not_found")
 PACK_SOURCES = ("DATA 3", "DATA 4", "DATA 5", "DATA 6", "GUIDANCE")
 CLASSES = ("pack_company", "fetched_page_naming_company", "generic", "unknown_source")

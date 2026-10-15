@@ -87,7 +87,8 @@ def test_the_task_changes_are_exactly_the_briefs():
 def test_item_6_names_the_same_six_inputs_as_the_crux_schema_and_the_validity_owner():
     names = re.search(r"judgment input \(([^)]*)\)", cap.TASK).group(1).split(", ")
     import crux_check
-    assert tuple(names) == crux_check.J == fmt.PI_INPUTS == pi_text.INPUTS
+    # revision 24 step 2b: long_run_margin joined the judgment inputs (the desk's block and the crux); the DEFAULTS line keeps its six
+    assert tuple(names) == pi_text.INPUTS and crux_check.J == fmt.PI_INPUTS == pi_text.INPUTS + ("long_run_margin",)
 
 
 # ---- D3: the DEFAULTS lines -----------------------------------------------------------------------------------------------------------

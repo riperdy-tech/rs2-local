@@ -1,0 +1,1114 @@
+{
+ "_note": "The 17 saved baseline packs (rs2-local ab_reports/consensus/*_2026100[4-6]_*, pack revisions 21-22) whose facts hold no year-5 revenue: each one's saved long_run facts and the desk defaults, copied verbatim from its _pack_facts.json, plus the two members revision 24 step 2b adds, x_L (the base fiscal year's filed earnings margin: earnings before acquired-intangible amortization over revenue) and rev_L (its filed revenue, $B), computed on 2026-10-16 by tools/throughcycle_record.analyse from the screener's fundamentals_history at the record's base year (the saved facts predate the members).",
+ "packs": {
+  "APA": {
+   "run": "APA_20261005_033152",
+   "base_year": 2025,
+   "x_L": null,
+   "rev_L": null,
+   "long_run": {
+    "cycle": null,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": null,
+    "m_years": null,
+    "r_tc": 0.167124,
+    "r_years": [
+     2019,
+     2025,
+     7
+    ],
+    "p": 0.625,
+    "g_rev": null,
+    "g_rev_years": null,
+    "terminal_g_basis": "consensus_fallback",
+    "ni_over_oe": 1.307368,
+    "x_over_oe": 1.307368,
+    "nwc_intensity": null,
+    "nwc_years": null,
+    "stub_months": 9.1335,
+    "stamps": [
+     "tangible_equity_partial:2023-2025",
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ],
+    "om_tc": null,
+    "om_trend": null,
+    "om_L": null,
+    "om_years": null,
+    "om_shape": null,
+    "om_basis": null,
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "tangible_equity_partial:2023/2024/2025",
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ]
+   },
+   "owner_earnings_default_b": 1.274,
+   "coe_anchor": 0.08220000000000001,
+   "terminal_g_default": 0.0236,
+   "terminal_ronic": 0.13527699999999998,
+   "shares_default": 350351510.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.437319
+  },
+  "CBL": {
+   "run": "CBL_20261005_073209",
+   "base_year": 2025,
+   "x_L": 0.34689383840531973,
+   "rev_L": 0.578373,
+   "long_run": {
+    "cycle": true,
+    "cycle_year": 2018,
+    "cycle_years": [
+     2018
+    ],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": -0.033292,
+    "m_years": [
+     2018,
+     2025,
+     8
+    ],
+    "r_tc": 0.031686,
+    "r_years": [
+     2018,
+     2025,
+     8
+    ],
+    "p": 0.25,
+    "g_rev": -0.048955,
+    "g_rev_years": [
+     2018,
+     2025,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": null,
+    "x_over_oe": null,
+    "nwc_intensity": null,
+    "nwc_years": null,
+    "stub_months": 9.1335,
+    "stamps": [
+     "margin_record_not_available"
+    ],
+    "om_tc": null,
+    "om_trend": null,
+    "om_L": null,
+    "om_years": null,
+    "om_shape": null,
+    "om_basis": null,
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "margin_record_not_available"
+    ]
+   },
+   "owner_earnings_default_b": null,
+   "coe_anchor": 0.0857,
+   "terminal_g_default": 0.0236,
+   "terminal_ronic": 0.0857,
+   "shares_default": 30942757.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.0
+  },
+  "CHA": {
+   "run": "CHA_20261005_084028",
+   "base_year": 2025,
+   "x_L": 0.0907346345681447,
+   "rev_L": 1.845734,
+   "long_run": {
+    "cycle": null,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": 0.178093,
+    "oe5": 0.127694,
+    "m5": null,
+    "m_tc": null,
+    "m_years": null,
+    "r_tc": null,
+    "r_years": null,
+    "p": 0.125,
+    "g_rev": null,
+    "g_rev_years": null,
+    "terminal_g_basis": "consensus_fallback",
+    "ni_over_oe": 1.394688,
+    "x_over_oe": 1.394688,
+    "nwc_intensity": null,
+    "nwc_years": null,
+    "stub_months": 9.1335,
+    "stamps": [
+     "record_not_available",
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ],
+    "om_tc": null,
+    "om_trend": null,
+    "om_L": null,
+    "om_years": null,
+    "om_shape": null,
+    "om_basis": null,
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "record_not_available",
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ]
+   },
+   "owner_earnings_default_b": 0.097,
+   "coe_anchor": 0.10039999999999999,
+   "terminal_g_default": 0.0375,
+   "terminal_ronic": 0.10039999999999999,
+   "shares_default": 190763326.0,
+   "reference_status": "used",
+   "working_capital": null,
+   "excess_cash": 1.088021
+  },
+  "CMRE": {
+   "run": "CMRE_20261005_092801",
+   "base_year": 2025,
+   "x_L": 0.4152807836883472,
+   "rev_L": 0.8779,
+   "long_run": {
+    "cycle": false,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": 0.306731,
+    "oe5": 0.156213,
+    "m5": null,
+    "m_tc": 0.30406500000000003,
+    "m_years": [
+     2018,
+     2025,
+     8
+    ],
+    "r_tc": 0.112337,
+    "r_years": [
+     2018,
+     2025,
+     8
+    ],
+    "p": 0.625,
+    "g_rev": 0.152893,
+    "g_rev_years": [
+     2018,
+     2025,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": 1.963545,
+    "x_over_oe": null,
+    "nwc_intensity": 0.004207,
+    "nwc_years": [
+     2018,
+     2025,
+     8
+    ],
+    "stub_months": 9.1335,
+    "stamps": [
+     "amortization_gap:2021-2025",
+     "operating_margin_without_amortization"
+    ],
+    "om_tc": 0.440869,
+    "om_trend": 0.582085,
+    "om_L": 0.519638,
+    "om_years": [
+     2018,
+     2025,
+     8
+    ],
+    "om_shape": "swing",
+    "om_basis": "without_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "amortization_gap:2014/2015/2016/2021/2022/2023/2024/2025",
+     "tangible_equity_partial:2014/2015/2016/2017",
+     "operating_margin_without_amortization"
+    ]
+   },
+   "owner_earnings_default_b": 0.177,
+   "coe_anchor": 0.0904,
+   "terminal_g_default": 0.0375,
+   "terminal_ronic": 0.104111,
+   "shares_default": 120892607.0,
+   "reference_status": "used",
+   "working_capital": null,
+   "excess_cash": 0.532658
+  },
+  "ECO": {
+   "run": "ECO_20261005_130151",
+   "base_year": 2025,
+   "x_L": 0.3140133159231927,
+   "rev_L": 0.391548819,
+   "long_run": {
+    "cycle": false,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": 0.312061,
+    "m_years": [
+     2021,
+     2025,
+     5
+    ],
+    "r_tc": 0.151094,
+    "r_years": [
+     2021,
+     2025,
+     5
+    ],
+    "p": 0.5,
+    "g_rev": 0.19812200000000002,
+    "g_rev_years": [
+     2021,
+     2025,
+     5
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": 0.989648,
+    "x_over_oe": 0.989648,
+    "nwc_intensity": null,
+    "nwc_years": null,
+    "stub_months": 9.1335,
+    "stamps": [],
+    "om_tc": 0.414376,
+    "om_trend": 0.444571,
+    "om_L": 0.41509700000000005,
+    "om_years": [
+     2021,
+     2025,
+     5
+    ],
+    "om_shape": "trend",
+    "om_basis": "with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null
+   },
+   "owner_earnings_default_b": 0.12,
+   "coe_anchor": 0.0904,
+   "terminal_g_default": 0.0375,
+   "terminal_ronic": 0.120747,
+   "shares_default": 39044655.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.116637
+  },
+  "ESEA": {
+   "run": "ESEA_20261005_151808",
+   "base_year": 2025,
+   "x_L": 0.601067441952744,
+   "rev_L": 0.227873562,
+   "long_run": {
+    "cycle": false,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": 0.49365299999999995,
+    "m_years": [
+     2018,
+     2025,
+     8
+    ],
+    "r_tc": 0.293693,
+    "r_years": [
+     2018,
+     2025,
+     8
+    ],
+    "p": 0.625,
+    "g_rev": 0.297116,
+    "g_rev_years": [
+     2018,
+     2025,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": null,
+    "x_over_oe": null,
+    "nwc_intensity": -0.039308,
+    "nwc_years": [
+     2018,
+     2025,
+     8
+    ],
+    "stub_months": 9.1335,
+    "stamps": [],
+    "om_tc": 0.525405,
+    "om_trend": 0.701749,
+    "om_L": 0.6560630000000001,
+    "om_years": [
+     2018,
+     2025,
+     8
+    ],
+    "om_shape": "trend",
+    "om_basis": "with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null
+   },
+   "owner_earnings_default_b": null,
+   "coe_anchor": 0.0904,
+   "terminal_g_default": 0.0375,
+   "terminal_ronic": 0.21745799999999998,
+   "shares_default": 7055381.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.17646
+  },
+  "FLXS": {
+   "run": "FLXS_20261005_170004",
+   "base_year": 2026,
+   "x_L": 0.07214631363000841,
+   "rev_L": 0.459178,
+   "long_run": {
+    "cycle": true,
+    "cycle_year": 2019,
+    "cycle_years": [
+     2019
+    ],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": 0.031522,
+    "m_years": [
+     2019,
+     2026,
+     8
+    ],
+    "r_tc": 0.10101399999999999,
+    "r_years": [
+     2019,
+     2026,
+     8
+    ],
+    "p": 0.5,
+    "g_rev": 0.026446,
+    "g_rev_years": [
+     2019,
+     2026,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": null,
+    "x_over_oe": null,
+    "nwc_intensity": 0.21854800000000002,
+    "nwc_years": [
+     2019,
+     2026,
+     8
+    ],
+    "stub_months": 3.1869,
+    "stamps": [],
+    "om_tc": 0.034079,
+    "om_trend": 0.09082599999999999,
+    "om_L": 0.092666,
+    "om_years": [
+     2019,
+     2026,
+     8
+    ],
+    "om_shape": "swing",
+    "om_basis": "with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null
+   },
+   "owner_earnings_default_b": null,
+   "coe_anchor": 0.10039999999999999,
+   "terminal_g_default": 0.0264,
+   "terminal_ronic": 0.100707,
+   "shares_default": 4472368.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.016678
+  },
+  "GASS": {
+   "run": "GASS_20261005_200224",
+   "base_year": 2025,
+   "x_L": 0.35024311816049525,
+   "rev_L": 0.173161478,
+   "long_run": {
+    "cycle": false,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": 0.153439,
+    "m_years": [
+     2018,
+     2025,
+     8
+    ],
+    "r_tc": 0.042283999999999995,
+    "r_years": [
+     2018,
+     2025,
+     8
+    ],
+    "p": 0.375,
+    "g_rev": 0.01964,
+    "g_rev_years": [
+     2018,
+     2025,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": null,
+    "x_over_oe": null,
+    "nwc_intensity": -0.034687,
+    "nwc_years": [
+     2018,
+     2025,
+     8
+    ],
+    "stub_months": 9.1335,
+    "stamps": [],
+    "om_tc": 0.187342,
+    "om_trend": 0.352908,
+    "om_L": 0.31839,
+    "om_years": [
+     2018,
+     2025,
+     8
+    ],
+    "om_shape": "trend",
+    "om_basis": "with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null
+   },
+   "owner_earnings_default_b": null,
+   "coe_anchor": 0.0904,
+   "terminal_g_default": 0.0236,
+   "terminal_ronic": 0.0904,
+   "shares_default": 37628686.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.099078
+  },
+  "GSL": {
+   "run": "GSL_20261005_224438",
+   "base_year": 2025,
+   "x_L": 0.5480102446209869,
+   "rev_L": 0.766451,
+   "long_run": {
+    "cycle": false,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": 0.419137,
+    "m_years": [
+     2018,
+     2025,
+     8
+    ],
+    "r_tc": 0.146631,
+    "r_years": [
+     2018,
+     2025,
+     8
+    ],
+    "p": 0.625,
+    "g_rev": 0.22845300000000002,
+    "g_rev_years": [
+     2018,
+     2025,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": 1.131101,
+    "x_over_oe": 1.141058,
+    "nwc_intensity": 0.053074,
+    "nwc_years": [
+     2018,
+     2025,
+     8
+    ],
+    "stub_months": 9.1335,
+    "stamps": [
+     "amortization_gap:2018-2019",
+     "tangible_equity_partial:2021-2025"
+    ],
+    "om_tc": 0.534941,
+    "om_trend": 0.568361,
+    "om_L": 0.572365,
+    "om_years": [
+     2020,
+     2025,
+     6
+    ],
+    "om_shape": "swing",
+    "om_basis": "with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "amortization_gap:2014/2015/2016/2017/2018/2019",
+     "tangible_equity_partial:2014/2015/2021/2022/2023/2024/2025"
+    ]
+   },
+   "owner_earnings_default_b": 0.358,
+   "coe_anchor": 0.0904,
+   "terminal_g_default": 0.0375,
+   "terminal_ronic": 0.125544,
+   "shares_default": null,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.273876
+  },
+  "GTE": {
+   "run": "GTE_20261006_000805",
+   "base_year": 2025,
+   "x_L": -0.3236379968259448,
+   "rev_L": 0.596713,
+   "long_run": {
+    "cycle": true,
+    "cycle_year": 2023,
+    "cycle_years": [
+     2019,
+     2020,
+     2023
+    ],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": 0.036466,
+    "m_years": [
+     2018,
+     2025,
+     8
+    ],
+    "r_tc": 0.052717,
+    "r_years": [
+     2018,
+     2025,
+     8
+    ],
+    "p": 0.375,
+    "g_rev": 0.007437,
+    "g_rev_years": [
+     2018,
+     2025,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": null,
+    "x_over_oe": null,
+    "nwc_intensity": -0.226884,
+    "nwc_years": [
+     2018,
+     2025,
+     8
+    ],
+    "stub_months": 9.1663,
+    "stamps": [
+     "tangible_equity_partial:2021-2025",
+     "margin_record_pretax"
+    ],
+    "om_tc": 0.119199,
+    "om_trend": -0.08117100000000001,
+    "om_L": -0.390258,
+    "om_years": [
+     2018,
+     2025,
+     8
+    ],
+    "om_shape": "swing",
+    "om_basis": "pretax_with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "tangible_equity_partial:2021/2022/2023/2024/2025",
+     "margin_record_pretax"
+    ]
+   },
+   "owner_earnings_default_b": -0.271,
+   "coe_anchor": 0.08220000000000001,
+   "terminal_g_default": 0.0236,
+   "terminal_ronic": 0.08220000000000001,
+   "shares_default": 35380000.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.082931
+  },
+  "HAFN": {
+   "run": "HAFN_20261006_013204",
+   "base_year": 2024,
+   "x_L": 0.2701041441093903,
+   "rev_L": 2.868647,
+   "long_run": {
+    "cycle": false,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": null,
+    "m_years": null,
+    "r_tc": 0.346808,
+    "r_years": [
+     2022,
+     2024,
+     3
+    ],
+    "p": 0.375,
+    "g_rev": null,
+    "g_rev_years": null,
+    "terminal_g_basis": "consensus_fallback",
+    "ni_over_oe": 0.821172,
+    "x_over_oe": 0.822035,
+    "nwc_intensity": null,
+    "nwc_years": null,
+    "stub_months": null,
+    "stamps": [
+     "tangible_equity_partial:2022",
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ],
+    "om_tc": null,
+    "om_trend": null,
+    "om_L": null,
+    "om_years": null,
+    "om_shape": null,
+    "om_basis": null,
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "tangible_equity_partial:2022",
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ]
+   },
+   "owner_earnings_default_b": 0.926,
+   "coe_anchor": 0.0904,
+   "terminal_g_default": 0.0236,
+   "terminal_ronic": 0.186553,
+   "shares_default": 535331154.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.283568
+  },
+  "HG": {
+   "run": "HG_20261006_024417",
+   "base_year": 2025,
+   "x_L": 0.29452105713117493,
+   "rev_L": 2.905524,
+   "long_run": {
+    "cycle": true,
+    "cycle_year": 2022,
+    "cycle_years": [
+     2022
+    ],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": 0.196948,
+    "m_years": [
+     2021,
+     2025,
+     5
+    ],
+    "r_tc": 0.41228099999999995,
+    "r_years": [
+     2021,
+     2025,
+     5
+    ],
+    "p": 0.5,
+    "g_rev": 0.231523,
+    "g_rev_years": [
+     2021,
+     2025,
+     5
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": null,
+    "x_over_oe": null,
+    "nwc_intensity": null,
+    "nwc_years": null,
+    "stub_months": 9.1663,
+    "stamps": [
+     "tangible_equity_partial:2025",
+     "margin_record_pretax"
+    ],
+    "om_tc": 0.206695,
+    "om_trend": 0.289316,
+    "om_L": 0.289316,
+    "om_years": [
+     2021,
+     2025,
+     5
+    ],
+    "om_shape": "trend",
+    "om_basis": "pretax_with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "tangible_equity_partial:2025",
+     "margin_record_pretax"
+    ]
+   },
+   "owner_earnings_default_b": null,
+   "coe_anchor": 0.0898,
+   "terminal_g_default": 0.0375,
+   "terminal_ronic": 0.25104,
+   "shares_default": 98614386.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.0
+  },
+  "HOG": {
+   "run": "HOG_20261006_035935",
+   "base_year": 2025,
+   "x_L": 0.07572652534273754,
+   "rev_L": 4.473175,
+   "long_run": {
+    "cycle": true,
+    "cycle_year": 2024,
+    "cycle_years": [
+     2020,
+     2024
+    ],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": 0.08948600000000001,
+    "m_years": [
+     2018,
+     2025,
+     8
+    ],
+    "r_tc": 0.063092,
+    "r_years": [
+     2018,
+     2025,
+     8
+    ],
+    "p": 0.0,
+    "g_rev": -0.008054,
+    "g_rev_years": [
+     2018,
+     2025,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": 0.739775,
+    "x_over_oe": null,
+    "nwc_intensity": 0.40867600000000004,
+    "nwc_years": [
+     2018,
+     2025,
+     8
+    ],
+    "stub_months": 9.1663,
+    "stamps": [
+     "amortization_gap:2018-2019,2025",
+     "tangible_equity_partial:2018-2020,2025",
+     "operating_margin_without_amortization"
+    ],
+    "om_tc": 0.114217,
+    "om_trend": 0.092454,
+    "om_L": 0.086434,
+    "om_years": [
+     2018,
+     2025,
+     8
+    ],
+    "om_shape": "swing",
+    "om_basis": "without_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "amortization_gap:2018/2019/2025",
+     "tangible_equity_partial:2014/2016/2017/2018/2019/2020/2025",
+     "operating_margin_without_amortization"
+    ]
+   },
+   "owner_earnings_default_b": 0.152,
+   "coe_anchor": 0.10039999999999999,
+   "terminal_g_default": 0.0236,
+   "terminal_ronic": 0.10039999999999999,
+   "shares_default": 104072507.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 3.091744
+  },
+  "KSS": {
+   "run": "KSS_20261006_084156",
+   "base_year": 2026,
+   "x_L": 0.01751787209377214,
+   "rev_L": 15.527,
+   "long_run": {
+    "cycle": true,
+    "cycle_year": 2025,
+    "cycle_years": [
+     2021,
+     2023,
+     2025
+    ],
+    "e5": 0.241591,
+    "oe5": 0.558424,
+    "m5": null,
+    "m_tc": 0.017828999999999998,
+    "m_years": [
+     2019,
+     2026,
+     8
+    ],
+    "r_tc": 0.056349,
+    "r_years": [
+     2019,
+     2026,
+     8
+    ],
+    "p": 0.375,
+    "g_rev": -0.037296,
+    "g_rev_years": [
+     2019,
+     2026,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": 0.393752,
+    "x_over_oe": 0.393752,
+    "nwc_intensity": 0.034581,
+    "nwc_years": [
+     2019,
+     2026,
+     8
+    ],
+    "stub_months": 8.1478,
+    "stamps": [],
+    "om_tc": 0.040608000000000005,
+    "om_trend": 0.033287,
+    "om_L": 0.040187999999999995,
+    "om_years": [
+     2019,
+     2026,
+     8
+    ],
+    "om_shape": "swing",
+    "om_basis": "with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null
+   },
+   "owner_earnings_default_b": 0.63,
+   "coe_anchor": 0.1008,
+   "terminal_g_default": 0.0236,
+   "terminal_ronic": 0.1008,
+   "shares_default": 113376445.0,
+   "reference_status": "used",
+   "working_capital": null,
+   "excess_cash": 0.674
+  },
+  "MRP": {
+   "run": "MRP_20261006_175424",
+   "base_year": 2025,
+   "x_L": 0.6326206031698978,
+   "rev_L": 0.600461,
+   "long_run": {
+    "cycle": null,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": null,
+    "m_years": null,
+    "r_tc": null,
+    "r_years": null,
+    "p": 0.0,
+    "g_rev": null,
+    "g_rev_years": null,
+    "terminal_g_basis": "consensus_fallback",
+    "ni_over_oe": null,
+    "x_over_oe": null,
+    "nwc_intensity": null,
+    "nwc_years": null,
+    "stub_months": 9.1663,
+    "stamps": [
+     "record_not_available",
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ],
+    "om_tc": null,
+    "om_trend": null,
+    "om_L": null,
+    "om_years": null,
+    "om_shape": null,
+    "om_basis": null,
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "record_not_available",
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ]
+   },
+   "owner_earnings_default_b": null,
+   "coe_anchor": 0.0862,
+   "terminal_g_default": 0.0375,
+   "terminal_ronic": 0.0862,
+   "shares_default": 166047927.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.0
+  },
+  "NGVT": {
+   "run": "NGVT_20261006_194048",
+   "base_year": 2025,
+   "x_L": -0.11690647482014388,
+   "rev_L": 1.1676,
+   "long_run": {
+    "cycle": true,
+    "cycle_year": 2024,
+    "cycle_years": [
+     2024
+    ],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": 0.12241199999999999,
+    "m_years": [
+     2018,
+     2025,
+     8
+    ],
+    "r_tc": 0.241475,
+    "r_years": [
+     2018,
+     2025,
+     8
+    ],
+    "p": 0.75,
+    "g_rev": 0.011833,
+    "g_rev_years": [
+     2018,
+     2025,
+     8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": 0.502596,
+    "x_over_oe": 0.805192,
+    "nwc_intensity": 0.158993,
+    "nwc_years": [
+     2018,
+     2025,
+     8
+    ],
+    "stub_months": 9.1663,
+    "stamps": [],
+    "om_tc": 0.328228,
+    "om_trend": 0.368728,
+    "om_L": 0.38480600000000004,
+    "om_years": [
+     2018,
+     2025,
+     8
+    ],
+    "om_shape": "swing",
+    "om_basis": "with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "tangible_equity_partial:2014"
+    ]
+   },
+   "owner_earnings_default_b": 0.101,
+   "coe_anchor": 0.0904,
+   "terminal_g_default": 0.0236,
+   "terminal_ronic": 0.203706,
+   "shares_default": 34377922.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.0781
+  },
+  "NREF": {
+   "run": "NREF_20261006_204247",
+   "base_year": 2025,
+   "x_L": null,
+   "rev_L": null,
+   "long_run": {
+    "cycle": null,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": null,
+    "oe5": null,
+    "m5": null,
+    "m_tc": null,
+    "m_years": null,
+    "r_tc": 0.040021,
+    "r_years": [
+     2020,
+     2025,
+     6
+    ],
+    "p": 0.125,
+    "g_rev": null,
+    "g_rev_years": null,
+    "terminal_g_basis": "consensus_fallback",
+    "ni_over_oe": null,
+    "x_over_oe": null,
+    "nwc_intensity": null,
+    "nwc_years": null,
+    "stub_months": 9.1663,
+    "stamps": [
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ],
+    "om_tc": null,
+    "om_trend": null,
+    "om_L": null,
+    "om_years": null,
+    "om_shape": null,
+    "om_basis": null,
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null,
+    "stamps_full": [
+     "margin_record_not_available",
+     "cycle_not_testable"
+    ]
+   },
+   "owner_earnings_default_b": null,
+   "coe_anchor": 0.0862,
+   "terminal_g_default": 0.0375,
+   "terminal_ronic": 0.0862,
+   "shares_default": 34591618.0,
+   "reference_status": "not_available",
+   "working_capital": null,
+   "excess_cash": 0.0
+  }
+ }
+}

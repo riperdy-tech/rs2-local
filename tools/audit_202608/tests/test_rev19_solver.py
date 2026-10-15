@@ -45,7 +45,7 @@ def _b(**over):
     return b
 
 
-def _value(b, *, rates=None, fade=None, wacc=None, tg=None, ronic=None):
+def _value(b, *, rates=None, fade=None, wacc=None, tg=None, ronic=None, lrm=None):
     """The Base's unrounded value through unbundled_dcf, on its normalised five rates, with the named input moved: the test's own substitution."""
     r0, left = fmt._pi_normalise(b["growth"], b["tg"], b["fade"], b["finite"])
     first = fmt.unbundled_dcf(base_cf=b["cf"], explicit_growth=r0, wacc=b["wacc"], terminal_g=b["tg"], fade_years=left, terminal_ronic=b["ronic"],
@@ -60,7 +60,7 @@ def _value(b, *, rates=None, fade=None, wacc=None, tg=None, ronic=None):
                             terminal_ronic=applied if ronic is None else ronic, annuity_flow=b["annuity"], annuity_cap_rate=b["annuity_cap"],
                             net_debt=b["net_debt"], shares_diluted=b["shares"], valuation_frame=b["frame"], rate_type=b["rate_type"],
                             sbc_treatment=b["sbc"], sbc_dilution=b["sbc_dil"], finite_life_years=b["finite"], long_run=b["long_run"],
-                            working_capital=b["wc"], excess_cash=b["excess"], long_run_margin=b.get("lrm"))
+                            working_capital=b["wc"], excess_cash=b["excess"], long_run_margin=b.get("lrm") if lrm is None else lrm)
     assert "error" not in out, out
     return out["per_share_iv_raw"]
 
@@ -83,6 +83,8 @@ def _substitute(b, name, blk):
     if name == "year2_level":
         cf1 = b["cf"] * (1.0 + r0[0])
         return _value(b, rates=[r0[0], v / cf1 - 1.0] + r0[2:])
+    if name == "long_run_margin":                       # revision 24 step 2b: the Base's long-run earnings margin
+        return _value(b, lrm=v)
     raise AssertionError(name)
 
 
@@ -264,7 +266,7 @@ def test_substituting_the_returned_value_reproduces_the_price_for_every_input_on
                 got = _substitute(b, name, blk)
                 assert abs(got - price) <= 0.01, (case, pf, name, got, price)
                 assert abs(blk["base_at_value"] - price) <= 0.01
-    for name, least in (("coe", 20), ("growth_years_3_5", 20), ("terminal_g", 3), ("terminal_ronic", 3), ("year2_level", 2)):
+    for name, least in (("coe", 20), ("growth_years_3_5", 20), ("terminal_g", 3), ("terminal_ronic", 3), ("year2_level", 2), ("long_run_margin", 3)):
         assert reached[name] >= least, (name, reached, unreached)                       # the test is not vacuous for any input
     assert unreached["terminal_g"] > 0 and unreached["year2_level"] > 0                     # and it meets unreachable ones too
 

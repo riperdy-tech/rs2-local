@@ -397,7 +397,9 @@ def test_the_schema_has_the_crux_argument_verbatim_and_the_price_implied_sentenc
     assert p["description"] == CRUX_DESCRIPTION and p["type"] == "array" and p["minItems"] == 1 and p["maxItems"] == 3
     item = p["items"]
     assert item["type"] == "object" and item["required"] == ["input", "reason", "citations"]
-    assert item["properties"]["input"] == {"type": "string", "enum": ["coe", "growth_years_3_5", "fade_years", "terminal_g", "terminal_ronic", "year2_level"]}
+    # revision 24 step 2b: long_run_margin joined the judgment inputs
+    assert item["properties"]["input"] == {"type": "string", "enum": ["coe", "growth_years_3_5", "fade_years", "terminal_g", "terminal_ronic", "year2_level",
+                                                                      "long_run_margin"]}
     assert item["properties"]["reason"] == {"type": "string"}
     cit = item["properties"]["citations"]
     assert cit["type"] == "array" and cit["minItems"] == 1 and cit["maxItems"] == 5
