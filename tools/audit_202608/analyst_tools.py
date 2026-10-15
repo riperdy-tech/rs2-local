@@ -1192,6 +1192,13 @@ def stage_b_tools(tools):
     return out
 
 
+def reference_reveal_enabled():
+    """Revision 24 step 2a (cross-check 18 and the operator's ruling 1: the reference is never shown, before or after the analyst commits): stage B
+    runs only when config.json sets `reference_reveal` to true; absent or anything else is off, the default. Off, REFERENCE_REVEAL is never sent,
+    so the desk never receives `reference_revision_inputs` and refuses every `reference_revision` (financial_model_tool)."""
+    return rs2_data.CONFIG.get("reference_reveal") is True
+
+
 def reference_shown_after_commit(reveal_info):
     """True when stage B has a reference to show: a withheld-reference pack (`reveal_info` given) whose status is "used" with a positive value."""
     rv = reveal_info if isinstance(reveal_info, dict) else {}
@@ -2262,7 +2269,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             # Revision 24 (R24.2): stage A's final memorandum, after any crux follow-up (a bare HOLD to the follow-up leaves the first one)
             stage_a_report = (crux_first_report if crux_followup is not None and is_stub and (crux_first_report or "").strip()
                               else (final_report if not is_stub else None))
-            if stage_a_report is not None and reference_shown_after_commit(reference_reveal):
+            if stage_a_report is not None and reference_reveal_enabled() and reference_shown_after_commit(reference_reveal):
                 import contract_fill
                 rv = reference_reveal
                 ans_call, base_a, _r15 = contract_fill.answer_run(snap)

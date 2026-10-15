@@ -35,6 +35,14 @@ NEW_QUOTE = "ACME reports second quarter 2026 results."                  # PRIMA
 NEW_QUOTE_2 = "The Birmingham site adds 250 megawatts."                  # PRIMARY P1, never used in stage A (39 characters)
 
 
+@pytest.fixture(autouse=True)
+def _reveal_on(monkeypatch):
+    """Revision 24 step 2a: stage B is off by default (config `reference_reveal`, absent = false); its code and these tests are kept and run with
+    the flag on. test_rev24_s2a.py proves the default pipeline never fires it."""
+    import rs2_data
+    monkeypatch.setitem(rs2_data.CONFIG, "reference_reveal", True)
+
+
 def reveal_text(base):
     return ("For comparison only: the CONSENSUS-IMPLIED VALUE (what Wall Street's forecasts imply through a fixed formula) is $100.00 per share; its "
             f"inputs: {INPUTS}. Your Base is ${base:,.2f}. Reply KEEP if your valuation stands. You may revise only an input for which you have "
