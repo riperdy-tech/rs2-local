@@ -35,7 +35,9 @@ DISTRESSED = ("Ca2/CC", "C2/C", "D2/D")
 CCC = "Caa/CCC"
 MIN_GAP = 0.02                      # registration 2c (operator AL.55)
 IMMATERIAL_DEBT_WEIGHT = 0.05       # registration 2b (operator AL.57)
-GROSS_INTEREST_TAGS = ("InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt")    # AL.59; never InterestIncomeExpenseNet
+GROSS_INTEREST_TAGS = ("InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt", "InterestAndDebtExpense",
+                       "InterestExpenseDebtExcludingAmortization", "FinancingInterestExpense")       # AL.59, AL.64; never a *Net element, never InterestPaid
+GROSS_INTEREST_COMPONENTS = ("InterestExpenseLongTermDebt", "InterestExpenseShortTermBorrowings")      # AL.64: summed when no single gross element is filed
 ANNUAL_DAYS = (330, 400)
 
 
@@ -184,13 +186,15 @@ class CreditTables:
 # ---- inputs read from the point-in-time store ---------------------------------------------------------------------------------------
 
 def gross_interest_at(company, base_period: str, asof) -> Tuple[Optional[float], Optional[str]]:
-    """(value, tag): the gross interest expense of the fiscal year ending `base_period`, as known at `asof`, the first of GROSS_INTEREST_TAGS with a
-    current (not superseded, not after T) USD value of an annual duration; (None, None) when none is filed."""
+    """(value, tag): the gross interest expense of the fiscal year ending `base_period`, as known at `asof`: the first of GROSS_INTEREST_TAGS with a
+    current (not superseded, not after T) USD value of an annual duration, else the sum of GROSS_INTEREST_COMPONENTS filed for that year (AL.64);
+    (None, None) when none is filed.  Net elements and cash interest paid are never read."""
     if company is None:
         return None, None
     end = str(base_period)[:10]
-    recs = company.facts_table(asof, tags=set(GROSS_INTEREST_TAGS))
-    for tag in GROSS_INTEREST_TAGS:
+    recs = company.facts_table(asof, tags=set(GROSS_INTEREST_TAGS) | set(GROSS_INTEREST_COMPONENTS))
+    vals = {}
+    for tag in GROSS_INTEREST_TAGS + GROSS_INTEREST_COMPONENTS:
         best = None
         for x in recs:
             if x["tag"] != tag or x["unit"] != "USD" or x["state"] != PIT_VALID or x["instant"] or str(x["end"])[:10] != end:
@@ -201,7 +205,11 @@ def gross_interest_at(company, base_period: str, asof) -> Tuple[Optional[float],
             if best is None or (x["filed"], x["accession"]) > (best["filed"], best["accession"]):
                 best = x
         if best is not None:
-            return float(best["value"]), tag
+            if tag in GROSS_INTEREST_TAGS:
+                return float(best["value"]), tag
+            vals[tag] = float(best["value"])
+    if vals:
+        return sum(vals.values()), "+".join(sorted(vals))
     return None, None
 
 

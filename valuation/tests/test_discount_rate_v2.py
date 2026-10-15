@@ -133,3 +133,15 @@ def test_the_built_tables_load_when_present():
     s, info = t.spread("Baa2/BBB", "2022-06-30")
     assert info["january_table"] == 2022 and s > 0
     assert t.rating(5.0) == "A2/A"
+
+
+def test_al64_other_gross_elements_and_the_component_sum_are_read_but_cash_paid_never():
+    def company(rows):
+        class C:
+            def facts_table(self, asof, tags=None):
+                return [{"tag": tg, "unit": "USD", "state": D.PIT_VALID, "instant": False, "start": "2025-01-01", "end": "2025-12-31", "filed": "2026-02-20",
+                         "accession": "a", "value": v} for tg, v in rows if tags is None or tg in tags]
+        return C()
+    assert D.gross_interest_at(company([("InterestAndDebtExpense", 30.0), ("InterestPaid", 99.0)]), "2025-12-31", "2026-07-31") == (30.0, "InterestAndDebtExpense")
+    assert D.gross_interest_at(company([("InterestExpenseLongTermDebt", 20.0), ("InterestExpenseShortTermBorrowings", 5.0)]), "2025-12-31", "2026-07-31") ==         (25.0, "InterestExpenseLongTermDebt+InterestExpenseShortTermBorrowings")
+    assert D.gross_interest_at(company([("InterestPaidNet", 40.0), ("InterestIncomeExpenseNonoperatingNet", -12.0)]), "2025-12-31", "2026-07-31") == (None, None)
