@@ -157,6 +157,24 @@ and `reference_revision` `{fired, outcome: keep | revised_accepted | revised_rej
 toward_civ, civ, base_over_civ_a, base_over_civ_final}`, carried to the verdict row; the full exchange is in the sample's
 `_reference_reveal.md`.
 
+Step 2a (`BRIEF_R24_S2a_desk_fixes.md`, the coordinator's rulings on the desk arithmetic audit): stage B is off. It runs only when
+config.json sets `reference_reveal` to `true` (`analyst_tools.reference_reveal_enabled`); absent, the default, REFERENCE_REVEAL is never
+sent and the desk refuses every `reference_revision`. Stage A also no longer prints the TTM window's value (in the BASE WINDOW CHECK and
+the DEFAULTS `base_window` line; the facts keep it and parity leaves it out) and no longer names the reference in `reference_base_b`'s line,
+TASK item 3 or the desk's share-unit note.
+
+The long-run margin is the analyst's. `run_financial_model` takes `long_run_margin` (required for a perpetual cash-flow life, with no
+default; at the top level or per scenario): the earnings margin at the end of the fade. Each scenario's year-5 revenue is the facts'
+(e5 / m5) scaled by its year-5 owner earnings, as its earnings are, so its year-5 earnings margin is m5; the desk moves that margin to
+`long_run_margin` proportionally over the fade (`margin_ratio = long_run_margin / (E5 / R5)`), and with a fade of 0 in the terminal year.
+Where the facts carry no year-5 revenue (no reference, or one without a revenue path) the margin is held and the run is stamped
+`long_run_margin_not_applied_no_revenue`. The facts' `margin_ratio` no longer reaches the desk, nor the DEFAULTS run
+(`defaults_desk_args`); `margin_rule` serves only the logged reference and stamps `implied_operating_margin_out_of_range` and
+`long_run_margin_clamped_to_zero` into the facts' `stamps_full` (never printed). Year-5 earnings scale with the scenario's owner earnings
+(E5 = e5 x OE5 / oe5); the return on new investment moves linearly in its charge 1 / RONIC over the fade, so an unlimited terminal return
+is the limit of a large one and the value is monotone in it; a `terminal_ronic` below r is valued as r and stamped
+`terminal_ronic_floored_at_r` (in the desk output and the sample's `desk_stamps`).
+
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
 Every depth verdict (`verdict_depth.json`, each ledger row) carries, stamped by

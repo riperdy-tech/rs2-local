@@ -247,7 +247,7 @@ TIMEOUT = 14400
 #   position as "Net Debt -$X", a double negative the analyst read as net cash (ESEA: debt $0.198B, cash $0.176B, memo "net cash $21M").
 #   The card now prints "Net Debt $X" unsigned, matching the [Arithmetic] NET DEBT line and net_debt_b; no number changes.
 # Revision 24 (PHASE_4_REV24_MUSE.md R24.2): the CONSENSUS-IMPLIED VALUE is shown only after the analyst commits (stage A without it, stage B
-#   reveal with code-enforced revision guardrails); the R10 gate is off.
+#   reveal with code-enforced revision guardrails); the R10 gate is off. Step 2a: desk long_run_margin (analyst), D2–D4 fixed, reveal off.
 PACK_REVISION = 24
 
 LAST_PACK_MACRO_DEGRADED = False
