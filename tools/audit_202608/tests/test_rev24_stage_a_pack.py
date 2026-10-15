@@ -110,8 +110,11 @@ def test_window_line_keeps_the_ttm_clauses_it_was_not_asked_to_drop():
     shown = consensus_reference.window_line(win, {"value": 40.0}, 1.3e9, "2026-06-30", cap._bn)
     hidden = consensus_reference.window_line(win, {"value": 40.0}, 1.3e9, "2026-06-30", cap._bn, reference_shown=False)
     assert "$40.00 (the CONSENSUS-IMPLIED VALUE above)" in shown and "$40.00" not in hidden
-    # the map keeps the rest of the line, the TTM window's own value among it (reported to the coordinator as a gap)
-    assert "on the TTM window the consensus path is worth $50.00 per share" in hidden
+    # revision 24 step 2a (the leak R24.2 reported as a gap): the TTM window's value, the reference times 1 + gap, is no longer printed; its year-2
+    # level stays (the shown line still carries both)
+    assert "on the TTM window the consensus path is worth $50.00 per share" in shown
+    assert "$50.00" not in hidden and "consensus path" not in hidden
+    assert "on the TTM window the year-2 cash-flow level is 2.000" in hidden
     neg = dict(win, ttm_value=None, ttm_levels=None)
     assert "the TTM window's owner earnings are not positive" in consensus_reference.window_line(
         neg, {"value": 40.0}, -1e8, "2026-06-30", cap._bn, reference_shown=False)
@@ -211,7 +214,7 @@ def test_the_unit_note_compares_with_the_price_in_stage_a():
     for sc in args["scenarios"]:
         sc["shares_diluted"] = saved["shares_default"] * 1000.0          # a count in the wrong unit: values 1/1000 of the price
     res = fmt.execute_financial_model(args, ctx)
-    m = re.search(r"the Base value is ([\d.]+)x the reference, too far", res.get("error") or "")
+    m = re.search(r"the Base value is ([\d.]+)x the price, too far", res.get("error") or "")     # revision 24 step 2a: it named "the reference"
     assert m, res.get("error")
     base = civ / 1000.0                                                     # the defaults' Base on 1000x the shares (the excess cash too)
     assert abs(float(m.group(1)) - base / price) < 0.0002                  # the ratio is against today's price ...

@@ -2246,12 +2246,14 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             # (S3 3.5, except the order refusal and, from revision 17, the R13/R14 advice), so the note gives the
             # ratio and the pack's share count only.
             unit_ref = ref_val if ref_val is not None and ref_val > 0 else price
+            # revision 24 step 2a: the note names what it compares with; a withheld reference is never named (R24.2 leak list)
+            unit_name = "the reference" if ref_val is not None and ref_val > 0 else "the price"
             if unit_ref is not None and unit_ref > 0 and base_iv is not None and base_iv >= 0:
                 unit_ratio = base_iv / unit_ref
                 if unit_ratio < 0.01 or unit_ratio > 100:
                     default_bit = (f" (the pack's default is {ctx_shares_default_b * 1e9:,.0f}, or "
                                    f"{ctx_shares_default_b:.6f} in billions)" if ctx_shares_default_b else "")
-                    share_unit_note = (f"the Base value is {unit_ratio:.4f}x the reference, too far to be a "
+                    share_unit_note = (f"the Base value is {unit_ratio:.4f}x {unit_name}, too far to be a "
                                        f"valuation difference; the likely cause is the share unit: shares_diluted "
                                        f"is a whole share count or that count in billions, never thousands or "
                                        f"millions{default_bit}")

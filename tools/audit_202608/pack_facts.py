@@ -930,7 +930,9 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
         line("cash_basis_b", _dv_money(f.get("cash_basis_b")),
              "the alternative base (includes working-capital swings)"),
         line("reference_base_b", _dv_money6(f.get("reference_base_b")),
-             "the fiscal-year owner-earnings base the CONSENSUS-IMPLIED VALUE grows from"),
+             # revision 24 step 2a: a withheld-reference block never names the reference
+             "the fiscal-year owner-earnings base" if withhold_reference
+             else "the fiscal-year owner-earnings base the CONSENSUS-IMPLIED VALUE grows from"),
     ]
     nci_line = _nci_defaults_line(f)
     if nci_line:
@@ -940,7 +942,9 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     bw_parts = []
     if isinstance(bw.get("gap"), (int, float)):
         bw_parts.append(f"gap={bw['gap'] * 100:+.0f}%")
-    if isinstance(bw.get("ttm_value"), (int, float)):
+    if isinstance(bw.get("ttm_value"), (int, float)) and not withhold_reference:
+        # revision 24 step 2a: the TTM window's value is the reference times 1 + gap; a withheld-reference block does not print it (the facts
+        # keep it, and parity leaves it out)
         bw_parts.append(f"ttm_value={bw['ttm_value']:,.2f}")
     if isinstance(bw.get("ttm_year2"), (int, float)):
         bw_parts.append(f"ttm_year2={bw['ttm_year2']:.3f}")
@@ -1246,7 +1250,12 @@ def parity(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
 
     def _cmp(k, v):
         # `stamps_full` is the verdict's copy of the record's stamps: the DEFAULTS block prints the window's only
-        return {m: x for m, x in v.items() if m != "stamps_full"} if k == "long_run" and isinstance(v, dict) else v
+        if k == "long_run" and isinstance(v, dict):
+            return {m: x for m, x in v.items() if m != "stamps_full"}
+        # revision 24 step 2a: a withheld-reference block does not print the TTM window's value (the reference times 1 + gap)
+        if k == "base_window" and withheld and isinstance(v, dict):
+            return {m: x for m, x in v.items() if m != "ttm_value"}
+        return v
 
     for k in KEYS:
         if k in SIDECAR_ONLY or (withheld and k in WITHHELD_KEYS):

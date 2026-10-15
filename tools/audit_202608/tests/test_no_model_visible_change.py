@@ -50,7 +50,9 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # the primary sources are not searched or fetched again; was "dc955632d2ecf205aeff89354b0f2f0de97ecaa66370a1a0b8be816cd7d45505".
 # 2026-10-16 (revision 24, R24.2): item 6 no longer names the CONSENSUS-IMPLIED VALUE among the context that never supports a crux (stage A does
 # not show it); was "414a4fd72ee6e5b7af4eda667f06427863da5a033f88d956042db53e855e5d3d".
-TASK_SHA256 = "14653a0ee3adce964864536ac62da6f6771f03d2ea79fa60a653d227941b7efe"
+# 2026-10-16 (revision 24 step 2a, brief item 6): item 3's Valuation date sub-bullet loses "as the CONSENSUS-IMPLIED VALUE does"; was
+# "14653a0ee3adce964864536ac62da6f6771f03d2ea79fa60a653d227941b7efe".
+TASK_SHA256 = "fddd9731cb9b0e65a17991217634261e047db2c6316de57979ac23d6ca8e3e2e"
 RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].

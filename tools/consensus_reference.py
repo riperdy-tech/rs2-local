@@ -718,11 +718,14 @@ def window_line(win, ref, ttm_base, through, fmt_b, base_year_check=True, refere
     """SECTION 8's BASE WINDOW CHECK, printed only when the windows are more than WINDOW_TOL apart.
     The prefixes are fixed: the harness parses the gap, the TTM reference and its year-2 level.
     Revision 24 (R24.2): with `reference_shown` False (stage A) the line leaves out the fiscal-year CONSENSUS-IMPLIED VALUE and the TTM
-    window's fence side; the rest is printed as before."""
+    window's fence side; the rest is printed as before. Revision 24 step 2a: stage A also leaves out the TTM window's value (the fiscal-year
+    value times 1 + gap, so the reference is one division away from it); the TTM window's year-2 level stays."""
     if not (win and win["flag"]):
         return None
     if win.get("fence_side") and not reference_shown:
         alt = None
+    elif win["ttm_value"] is not None and not reference_shown:
+        alt = f"on the TTM window the year-2 cash-flow level is {fmt_b(win['ttm_levels'][1])}"
     elif win.get("fence_side"):
         # review B2: the E15 fence applies to the TTM window's value too; its side, never its number
         lo, hi = win["fence"]
