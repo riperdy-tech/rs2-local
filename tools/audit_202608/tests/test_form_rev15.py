@@ -113,7 +113,8 @@ def test_tools_schema_new_top_level_arguments_verbatim():
         # revision 17: the BASE WINDOW CHECK sentence left (the window no longer changes the Base's arithmetic)
         "base_cf_reason": "Why a Base base_cf more than 2% from the DEFAULTS owner earnings is more representative, with the filing behind it.",
         # revision 17: a Base year 2 more than 5% from the level is held by the desk unless this reason is given
-        "guidance_deviation_reason": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 5% from the DEFAULTS year-2 level (without it the desk holds years 1-2 at the DEFAULTS levels), a Base value outside 0.75-1.33 of the reference, or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth).",
+        # revision 24 (R24.2): the reference band clause is gone (the R10 gate is off)
+        "guidance_deviation_reason": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 5% from the DEFAULTS year-2 level (without it the desk holds years 1-2 at the DEFAULTS levels), or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth).",
         "scenario_deviation_reason": "Why a Bull or Bear year-2 cash flow is more than 15% from the DEFAULTS bull2 or bear2 level.",
         "coe_adjustment_reason": "Why the Base discount rate is more than 1.5 points from the COE ANCHOR.",
         "shares_reason": "The instrument and its vesting condition, when any scenario's shares_diluted differs from the pack's count by more than 1%. Add contingent shares only in the scenarios where they vest.",
