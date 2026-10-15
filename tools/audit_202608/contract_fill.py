@@ -96,8 +96,10 @@ def _close(a, b):
 
 
 def completed(call):
+    """A desk run that counts. Revision 24 (R24.2): a stage-B run the guardrails rejected (`reference_revision_rejected`, its reason) does not:
+    stage A's answer run stays the final run."""
     return (isinstance(call, dict) and call.get("tool") == "run_financial_model"
-            and not call.get("error") and not call.get("validation_error"))
+            and not call.get("error") and not call.get("validation_error") and not call.get("reference_revision_rejected"))
 
 
 def _body(call):

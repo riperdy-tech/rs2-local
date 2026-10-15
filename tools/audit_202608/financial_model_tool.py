@@ -1564,6 +1564,13 @@ def followup_input_changes(params, reference):
     return names
 
 
+def reference_revision_listed(revision):
+    """Revision 24 (R24.2): the input names a stage-B call lists in `reference_revision` (lower case), for the changed-input refusal; an entry
+    that is not an object with a text `input` lists nothing."""
+    return {e["input"].strip().lower() for e in (revision if isinstance(revision, list) else [])
+            if isinstance(e, dict) and isinstance(e.get("input"), str) and e["input"].strip()}
+
+
 def _refusal(missing, needs_reasons, order=None, share_unit_note=None, advice=None):
     """S3 3.7's refusal format. `share_unit_note`, when given, is appended to the detail.
 
@@ -1773,6 +1780,23 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                              "unchanged and add crux; these differ from the answer run: " + ", ".join(changed) + ". Call again with the "
                              "answer-run inputs and the crux, or reply HOLD without calling the desk.",
                     "validation_error": True, "missing": [], "needs_reasons": [], "crux_followup_changed": changed}
+
+    # revision 24 (R24.2): reference_revision is accepted only in stage B, after the reference is shown; there the call repeats the answer run's
+    # inputs and may change only the inputs it lists in reference_revision (the crux follow-up's changed-input rule). The guardrails on what the
+    # listed changes may do are the harness's (analyst_tools.reference_revision_outcome), after the call.
+    rev_inputs = ctx.get("reference_revision_inputs")
+    if params.get("reference_revision") is not None and not isinstance(rev_inputs, dict):
+        return {"error": "Not accepted as a desk run; it does not use one of your desk runs. reference_revision is accepted only in the one call "
+                         "after the reference is shown. Call again without it.",
+                "validation_error": True, "missing": [], "needs_reasons": [], "reference_revision_refused": "not_stage_b"}
+    if isinstance(rev_inputs, dict):
+        listed = reference_revision_listed(params.get("reference_revision"))
+        unlisted = [n for n in followup_input_changes(params, rev_inputs) if n.lower() not in listed]
+        if unlisted:
+            return {"error": "Not accepted as a desk run; it does not use one of your desk runs. This call must repeat your answer run's inputs, "
+                             "changing only the inputs listed in reference_revision; these differ from the answer run and are not listed: "
+                             + ", ".join(unlisted) + ". Call again with the answer-run inputs, or reply KEEP without calling the desk.",
+                    "validation_error": True, "missing": [], "needs_reasons": [], "reference_revision_unlisted": unlisted}
 
     # ---- Context defaults used while computing -------------------------------------------------
     ctx_shares_default_b = ctx.get("shares_default_b")

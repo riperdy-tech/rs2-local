@@ -717,6 +717,10 @@ def band_verdict(doc):
         # and its price-implied block; crux_valid and crux_by_sample are set below, once the basis samples are read
         "direction_m": None, "crux_valid": None, "crux_by_sample": None, "crux": None,
         "price_implied": scorecard.get("price_implied"),
+        # revision 24 (R24.2): the medoid sample's Base before and after stage B (the reference shown after the memorandum), and stage B's record
+        "base_iv_stage_a": scorecard.get("base_iv_stage_a"),
+        "base_iv_final": scorecard.get("base_iv_final"),
+        "reference_revision": scorecard.get("reference_revision"),
     })
 
     # Muse integration, M6: how the row was served (a doc written before the provider carried none, and gets none)

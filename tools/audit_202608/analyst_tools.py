@@ -1137,6 +1137,206 @@ def crux_followup_outcome(calls, start, answer_call_index):
     return "no_change"
 
 
+# Revision 24 (PHASE_4_REV24_MUSE.md R24.2, BRIEF_R24_2_reference_after_commit.md): stage B. Stage A is the whole session on a pack that does not
+# print the CONSENSUS-IMPLIED VALUE (CIV), its crux follow-up included. After its final memorandum the harness sends REFERENCE_REVEAL once; the model
+# replies KEEP or makes one desk call that repeats its answer run, changes only the inputs it lists in `reference_revision`, and cites new evidence
+# for each. Code-enforced guardrails (`reference_revision_outcome`) decide; every failure keeps stage A's answer run as the final run.
+def reference_reveal_message(civ, inputs, base):
+    """The stage-B message (the brief's text, with the CIV, its inputs and the stage-A Base filled in)."""
+    return (f"For comparison only: the CONSENSUS-IMPLIED VALUE (what Wall Street's forecasts imply through a fixed formula) is ${civ:,.2f} per share; "
+            f"its inputs: {inputs}. Your Base is ${base:,.2f}. Reply KEEP if your valuation stands. You may revise only an input for which you have "
+            f"evidence you did not use before: call the desk once with your answer-run inputs, changing only those inputs, and add "
+            f"`reference_revision`: a list of {{input, old, new, citation: {{source, quote}}}}. The source must be a PRIMARY P# item or a filing "
+            f"quoted exactly. The reference itself is never a reason.")
+
+
+def reference_reveal_inputs(line):
+    """The inputs of the reference: its SECTION 8 line (facts["reference_line"], the text stage A did not print) after its first clause, the value
+    clause; the line itself when it has no second clause."""
+    body = (line or "").strip()
+    body = body[2:] if body.startswith("- ") else body
+    return body.split(" | ", 1)[1] if " | " in body else body
+
+
+REFERENCE_REVISION_PROPERTY = {
+    "type": "array",
+    "description": ("Only in the one call after the reference is shown: each input you change from your answer run, with the evidence. input is the "
+                    "desk's name for it, a top-level argument (for example terminal_g) or a scenario's as Role.argument (for example Base.base_cf); "
+                    "old and new are the answer run's value and yours, as text; citation is {source, quote}: source is PRIMARY P# or the filing you "
+                    "quote, and quote, 30 to 600 characters copied exactly, is evidence you did not use before. Every input you do not list must "
+                    "equal your answer run's."),
+    "minItems": 1,
+    "items": {
+        "type": "object",
+        "properties": {
+            "input": {"type": "string"},
+            "old": {"type": "string"},
+            "new": {"type": "string"},
+            "citation": {"type": "object",
+                         "properties": {"source": {"type": "string"}, "quote": {"type": "string"}},
+                         "required": ["source", "quote"]},
+        },
+        "required": ["input", "old", "new", "citation"],
+    },
+}
+
+
+def stage_b_tools(tools):
+    """A copy of `tools` whose run_financial_model also accepts `reference_revision` (stage B only); the other tools are unchanged."""
+    out = json.loads(json.dumps(tools))
+    for t in out:
+        if t.get("function", {}).get("name") == "run_financial_model":
+            t["function"]["parameters"]["properties"]["reference_revision"] = json.loads(json.dumps(REFERENCE_REVISION_PROPERTY))
+    return out
+
+
+def reference_shown_after_commit(reveal_info):
+    """True when stage B has a reference to show: a withheld-reference pack (`reveal_info` given) whose status is "used" with a positive value."""
+    rv = reveal_info if isinstance(reveal_info, dict) else {}
+    civ = rv.get("civ")
+    return (rv.get("status") == "used" and isinstance(civ, (int, float)) and not isinstance(civ, bool) and civ > 0
+            and isinstance(rv.get("line"), str))
+
+
+def reference_revision_not_fired(reveal_info):
+    """The record of a sample whose stage B did not fire: outcome "not_available" when the pack had no reference to show, else None (an older pack,
+    a stub, a failure, a server error)."""
+    rv = reveal_info if isinstance(reveal_info, dict) else None
+    civ = (rv or {}).get("civ")
+    return {"fired": False, "outcome": "not_available" if rv is not None and not reference_shown_after_commit(rv) else None,
+            "guard_failed": None, "changed_inputs": [], "toward_civ": None,
+            "civ": civ if isinstance(civ, (int, float)) and not isinstance(civ, bool) else None,
+            "base_over_civ_a": None, "base_over_civ_final": None}
+
+
+def write_reference_reveal(out_dir, reveal, record):
+    """The full stage-B exchange for the run folder (`_reference_reveal.md`): the message sent, every reply turn (its text, its tool calls and its
+    thinking) and the record."""
+    lines = ["# Stage B (pack revision 24, R24.2): the reference shown after the memorandum", "", "## The message sent", "", reveal["message"], ""]
+    for i, t in enumerate(reveal["turns"], 1):
+        lines += [f"## Reply turn {i}", "", "### Text", "", t["content"] or "(none)", ""]
+        if t["tool_calls"]:
+            lines += ["### Tool calls", "", "```json", json.dumps(t["tool_calls"], indent=2, ensure_ascii=False, default=str), "```", ""]
+        if t["thinking"]:
+            lines += ["### Thinking", "", t["thinking"], ""]
+    lines += ["## Record", "", "```json", json.dumps(record, indent=2, default=str), "```", ""]
+    try:
+        p = Path(out_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        (p / "_reference_reveal.md").write_text("\n".join(lines), encoding="utf-8")
+    except Exception:
+        pass
+
+
+REFERENCE_REVISION_OUTCOMES = ("keep", "revised_accepted", "revised_rejected")
+# the reason each guardrail records when it fails (G4 and G5 are the brief's names)
+REFERENCE_REVISION_GUARDS = {"G1": "reference_revision_citation_unverified", "G2": "reference_revision_quote_not_new",
+                             "G3": "reference_revision_toward_civ_uncited", "G4": "reference_revision_too_large",
+                             "G5": "reference_revision_malformed"}
+REFERENCE_TOWARD_LIMIT = 0.10      # G3: a move toward the CIV of more than 10% of stage A's Base needs G1 and G2 on every changed input
+REFERENCE_MOVE_LIMIT = 0.25        # G4: a revised Base more than 25% from stage A's is rejected outright (the name is re-run, not patched)
+_KEEP_RE = re.compile(r"^[\s*_#`>\"'\[(]*KEEP\b", re.I)
+
+
+def _strings(obj):
+    """Every string inside a tool call's arguments, depth first."""
+    if isinstance(obj, str):
+        return [obj]
+    if isinstance(obj, dict):
+        return [s for v in obj.values() for s in _strings(v)]
+    if isinstance(obj, (list, tuple)):
+        return [s for v in obj for s in _strings(v)]
+    return []
+
+
+def stage_a_corpus(stage_a_calls, stage_a_texts):
+    """The normalised text stage A already used (G2): every string argument of every stage-A tool call and every stage-A assistant message
+    (its memoranda among them)."""
+    parts = [s for c in stage_a_calls if isinstance(c, dict) for s in _strings(c.get("params"))] + [t for t in stage_a_texts if isinstance(t, str)]
+    return crux_check.normalise("\n".join(parts))
+
+
+def _revision_entries(revision):
+    """{input name (lower case): entry} of a well-formed `reference_revision`, or None when it is not one (G5): a non-empty list of objects, each with a
+    text input, an old and a new value, and a citation object carrying a text source and a text quote, no input listed twice."""
+    if not isinstance(revision, list) or not revision:
+        return None
+    out = {}
+    for e in revision:
+        cit = e.get("citation") if isinstance(e, dict) else None
+        if not (isinstance(e, dict) and isinstance(e.get("input"), str) and e["input"].strip() and "old" in e and "new" in e
+                and isinstance(cit, dict) and isinstance(cit.get("source"), str) and cit["source"].strip() and isinstance(cit.get("quote"), str)):
+            return None
+        key = e["input"].strip().lower()
+        if key in out:
+            return None
+        out[key] = e
+    return out
+
+
+def reference_revision_outcome(stage_b_calls, reply, base_a, civ, answer_inputs, pack_text, calls, desk_context, corpus, server_error=False):
+    """Stage B's guardrails, in order G5, G4, G3, G1, G2. Returns (record, revision_call): `record` is {fired, outcome, guard_failed, changed_inputs,
+    toward_civ, civ, base_over_civ_a, base_over_civ_final}; `revision_call` is the stage-B desk record the guardrails judged (None when there was no
+    single accepted run). `stage_b_calls` are the session's run_financial_model records after the reveal; `reply` the model's last stage-B text;
+    `answer_inputs` stage A's answer-run params; `calls` every snapshot record (the pages fetched); `corpus` stage_a_corpus(...).
+    G5: neither KEEP nor a single accepted, complete stage-B desk run carrying a well-formed reference_revision that changes at least one input.
+    G4: the revised Base more than 25% from stage A's. G3: a move toward the CIV of more than 10% of stage A's Base with any changed input failing G1
+    or G2. G1: each changed input's citation is company evidence (crux_check.classify_citations: a PRIMARY P# item, DATA 3-6, GUIDANCE, or a page
+    fetched this session that names the company) whose quote, 30 to 600 characters normalised, is found in it. G2: that quote is not in `corpus`.
+    A server error before any accepted run gives outcome None (stage A stands, no reply to judge)."""
+    import contract_fill
+    import financial_model_tool as fmt
+    rec = {"fired": True, "outcome": None, "guard_failed": None, "changed_inputs": [], "toward_civ": None, "civ": civ,
+           "base_over_civ_a": round(base_a / civ, 3) if civ else None, "base_over_civ_final": round(base_a / civ, 3) if civ else None}
+    accepted = [c for c in stage_b_calls if contract_fill.completed(c)]
+    if not accepted:
+        if server_error:
+            return rec, None
+        if _KEEP_RE.match(reply or ""):
+            rec["outcome"] = "keep"
+        else:
+            rec.update(outcome="revised_rejected", guard_failed=REFERENCE_REVISION_GUARDS["G5"])
+        return rec, None
+    call = accepted[-1]
+    params = call.get("params") or {}
+
+    def reject(guard):
+        rec.update(outcome="revised_rejected", guard_failed=REFERENCE_REVISION_GUARDS[guard])
+        return rec, call
+
+    entries = _revision_entries(params.get("reference_revision"))
+    changed = fmt.followup_input_changes(params, answer_inputs)
+    rec["changed_inputs"] = changed
+    base_b = next((e["dcf"].get("per_share_iv") for e in contract_fill.entries(call) if e["role"] == "base"), None)
+    if (len(accepted) != 1 or entries is None or not changed or not desk_run_is_complete([call])
+            or not isinstance(base_b, (int, float)) or any(n.lower() not in entries for n in changed)):
+        return reject("G5")
+    rec["base_over_civ_final"] = round(base_b / civ, 3) if civ else None
+    rec["toward_civ"] = bool(base_b != base_a and (base_b - base_a) * (civ - base_a) > 0)
+    move = abs(base_b - base_a) / abs(base_a) if base_a else math.inf
+    if move > REFERENCE_MOVE_LIMIT + 1e-9:
+        return reject("G4")
+    ctx = desk_context or {}
+    sources, fetched, primary = crux_check.pack_sources(pack_text), crux_check.fetched_texts(calls), crux_check.primary_items(pack_text)
+    g1 = g2 = True
+    for name in changed:
+        cit = entries[name.lower()]["citation"]
+        cls = crux_check.classify_citations([cit], sources, fetched, ctx.get("company"), ctx.get("ticker"), primary)[0]
+        q = crux_check.normalise(cit.get("quote"))
+        ok1 = (cls["class"] in ("pack_company", "fetched_page_naming_company") and cls["quote_found"] is True
+               and crux_check.QUOTE_MIN <= len(q) <= crux_check.QUOTE_MAX)
+        g1 = g1 and ok1
+        g2 = g2 and bool(q) and q not in corpus
+    if rec["toward_civ"] and move > REFERENCE_TOWARD_LIMIT + 1e-9 and not (g1 and g2):
+        return reject("G3")
+    if not g1:
+        return reject("G1")
+    if not g2:
+        return reject("G2")
+    rec["outcome"] = "revised_accepted"
+    return rec, call
+
+
 # UGI s3 and LAMR s1 wrote essays of up to 30,523 characters into sector_multiple_band.metric. The
 # arguments stayed in every later prompt, and the desk echoed them into every scenario, which
 # pushed Bear past the 12,000-character cut of the tool message in 3 of 85 desk calls.
@@ -1706,8 +1906,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     seed=None, timeout=14400, verbose=True, draft_num_predict=None,
                     temperature=None, query_cache=None, url_cache=None,
                     tools=None, max_search_calls=25, max_model_calls=5, num_batch=None,
-                    desk_context=None):
+                    desk_context=None, reference_reveal=None):
     """Ollama chat with the search tools available. Returns (report, thinking, meta).
+
+    `reference_reveal` (revision 24, R24.2): for a pack that withheld the CONSENSUS-IMPLIED VALUE, {"civ", "status", "line"} from its facts; stage B
+    is sent once after the final memorandum when the status is "used". None (an older pack, or discovery) sends nothing. meta carries
+    "reference_revision" (the record), "base_iv_stage_a" and "base_iv_final".
 
     Snapshots every tool call to out_dir/_research_snapshot.json so the run stays reproducible
     and auditable against exactly what the model saw.
@@ -1774,6 +1978,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     crux_first_report = None            # the memorandum the follow-up was sent after: it stands when the reply is not a memorandum
     crux_followup_start = 0
     desk_ctx_now = desk_context         # the desk's context; the follow-up adds the answer run's inputs to it
+    reveal = None                       # revision 24 (R24.2): stage B's state once the reference is shown; None during stage A
+    reveal_record = None                # the record returned in meta as "reference_revision"; None until stage B fires or is ruled out
     server_errors = 0
     chars_per_token = [None]   # measured on the previous request, for the report-room rule
 
@@ -1900,6 +2106,26 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 failure = "server_error"
             final_report = ""
 
+    def _end_stage_b(reply, server_error=False):
+        """Revision 24 (R24.2): judge stage B and return the report the sample keeps. A stage-B run the guardrails did not accept is marked
+        `reference_revision_rejected`, so it never counts as a run (contract_fill.completed) and stage A's answer run stays the final run; the
+        stage-A memorandum stands unless the revision is accepted and its reply is itself a memorandum."""
+        nonlocal reveal_record
+        b_calls = [c for c in snap[reveal["start"]:] if isinstance(c, dict) and c.get("tool") == "run_financial_model"]
+        reveal_record, rev_call = reference_revision_outcome(
+            b_calls, reply, reveal["base_a"], reveal["civ"], reveal["answer_inputs"], msgs[0]["content"], snap, desk_context,
+            reveal["corpus"], server_error=server_error)
+        if rev_call is not None and reveal_record["outcome"] != "revised_accepted":
+            rev_call["reference_revision_rejected"] = reveal_record["guard_failed"]
+        _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
+        write_reference_reveal(out_dir, reveal, reveal_record)
+        if verbose:
+            print(f"    [harness] stage B: {reveal_record['outcome']}"
+                  + (f" ({reveal_record['guard_failed']})" if reveal_record["guard_failed"] else ""), flush=True)
+        if reveal_record["outcome"] == "revised_accepted" and report_is_deliverable(reply):
+            return reply
+        return reveal["stage_a_report"]
+
     while True:
         active_msgs, shrunk = _history()
         req_opts, est, eff_np = _turn_options(opts, active_msgs)
@@ -1933,12 +2159,21 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         if crux_followup_pending:
             turn_rec["crux_followup"] = True
             crux_followup_pending = False
+        if reveal is not None:
+            # revision 24 (R24.2): every stage-B turn is marked, and its full reply is kept for the run folder
+            turn_rec["stage_b"] = True
+            reveal["turns"].append({"content": msg.get("content") or "", "thinking": msg.get("thinking") or "",
+                                    "tool_calls": msg.get("tool_calls") or []})
         if resp.get("done_reason") == "server_error":
             turn_rec["server_error"] = True
             turn_rec["http_status"] = resp.get("http_status")
         turns.append(turn_rec)
 
         if server_errors >= 2:
+            if reveal is not None:
+                # revision 24 (R24.2): the server failing in stage B leaves stage A standing; the sample is not failed for it
+                final_report = _end_stage_b("", server_error=True)
+                break
             if failure is None:
                 failure = "server_error"
             final_report = ""
@@ -1995,7 +2230,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 continue
             # Revision 21 (S1): a delivered memorandum whose answer run is directional and passed no crux gets one follow-up message.
             fu = (crux_followup_state(snap, (desk_context or {}).get("price"), msgs[0]["content"], desk_context)
-                  if (crux_followup is None and not is_stub and failure is None and server_errors < 2 and done_reason != "server_error"
+                  if (crux_followup is None and reveal is None and not is_stub and failure is None and server_errors < 2
+                      and done_reason != "server_error"
                       and max_model_calls > 0 and desk_validation_errors <= 6
                       and any(t["function"]["name"] == "run_financial_model" for t in eff_tools))
                   else None)
@@ -2017,6 +2253,38 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 crux_followup = {"fired": True, "outcome": None, "turn": len(turns), "direction": fu["direction"],
                                  "answer_call_index": fu["answer_call_index"]}
                 continue
+            if reveal is not None:
+                # Revision 24 (R24.2): this turn is the model's last word of stage B (KEEP, or its reply after the stage-B desk call)
+                final_report = _end_stage_b(msg.get("content") or "", server_error=done_reason == "server_error")
+                break
+            # Revision 24 (R24.2): stage A's final memorandum, after any crux follow-up (a bare HOLD to the follow-up leaves the first one)
+            stage_a_report = (crux_first_report if crux_followup is not None and is_stub and (crux_first_report or "").strip()
+                              else (final_report if not is_stub else None))
+            if stage_a_report is not None and reference_shown_after_commit(reference_reveal):
+                import contract_fill
+                rv = reference_reveal
+                ans_call, base_a, _r15 = contract_fill.answer_run(snap)
+                civ = rv["civ"]
+                if (failure is None and server_errors < 2 and done_reason != "server_error" and max_model_calls > 0
+                        and ans_call is not None and isinstance(base_a, (int, float))
+                        and any(t["function"]["name"] == "run_financial_model" for t in eff_tools)):
+                    text = reference_reveal_message(civ, reference_reveal_inputs(rv.get("line")), base_a)
+                    if verbose:
+                        print("    [harness] stage A is committed - stage B: the reference is shown once", flush=True)
+                    stage_a_texts = [m.get("content") or "" for m in msgs if m.get("role") == "assistant"] + [msg.get("content") or ""]
+                    msgs.append({"role": "assistant", "content": msg.get("content") or ""})
+                    meta_msgs.append(None)
+                    msgs.append({"role": "user", "content": text})
+                    meta_msgs.append(None)
+                    if model_calls >= max_model_calls:
+                        max_model_calls = model_calls + 1            # the stage-B desk call, when the desk was used up
+                    desk_only = True
+                    answer_inputs = json.loads(json.dumps(ans_call.get("params") or {}, default=str))
+                    desk_ctx_now = dict(desk_context or {}, reference_revision_inputs=answer_inputs)
+                    eff_tools = stage_b_tools(eff_tools)
+                    reveal = {"start": len(snap), "message": text, "stage_a_report": stage_a_report, "civ": float(civ), "base_a": float(base_a),
+                              "answer_inputs": answer_inputs, "corpus": stage_a_corpus(snap, stage_a_texts), "turns": []}
+                    continue
             if crux_followup is not None and is_stub and (crux_first_report or "").strip():
                 # the follow-up's reply was not a memorandum (a bare HOLD): the first memorandum stands, as written
                 final_report = crux_first_report
@@ -2267,8 +2535,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                         else:
                             model_calls += 1
                             desk_refusal_window = None
-                            if crux_followup is not None:
-                                max_model_calls = model_calls      # revision 21: the follow-up is one desk run
+                            if crux_followup is not None or reveal is not None:
+                                max_model_calls = model_calls      # revision 21: the follow-up is one desk run; revision 24: so is stage B
                             if isinstance(result, dict) and isinstance((args or {}).get("crux"), list) and args["crux"]:
                                 # B4 (revision 19): v3 of the crux check on the pack and the pages fetched so far, shown to the model
                                 result = dict(result, crux_citation_check=crux_citation_check(args["crux"], msgs[0]["content"], snap, desk_context))
@@ -2349,8 +2617,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             msgs.append({"role": "tool", "content": content})
             meta_msgs.append({"name": name, "args": args, "result": result, "call_index": calls})
 
-        if search_calls >= max_search_calls and (model_calls >= max_model_calls or desk_validation_errors > 6):
-            # ALL BUDGETS REACHED -> force the answer, never just break.
+        if reveal is None and search_calls >= max_search_calls and (model_calls >= max_model_calls or desk_validation_errors > 6):
+            # ALL BUDGETS REACHED -> force the answer, never just break. Revision 24: not in stage B, whose reply is not a memorandum (the
+            # next turn, offered no tool, is its last word)
             exhausted_prompt = (
                 "Tool budgets are exhausted. Write the complete institutional memorandum "
                 "and Section 12 machine contract NOW from what you have. Do not search again."
@@ -2398,11 +2667,18 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     # evidence store does); one this function made would otherwise vanish with it, and a frozen replay needs the whole page, not the part the
     # snapshot kept.
     _write_own_evidence_caches(out_dir, q_cache if query_cache is None else None, u_cache if url_cache is None else None)
+    stage_a = snap[:reveal["start"]] if reveal is not None else snap       # revision 24: stage B's calls are not stage A's
     if desk_continuation is not None:
         desk_continuation["desk_calls_after"] = (
-            sum(1 for c in snap if c.get("tool") == "run_financial_model") - desk_calls_at_c8)
+            sum(1 for c in stage_a if c.get("tool") == "run_financial_model") - desk_calls_at_c8)
     if crux_followup is not None:
-        crux_followup["outcome"] = crux_followup_outcome(snap, crux_followup_start, crux_followup["answer_call_index"])
+        crux_followup["outcome"] = crux_followup_outcome(stage_a, crux_followup_start, crux_followup["answer_call_index"])
+    # revision 24 (R24.2): the record, and the Base before and after stage B (the answer run's, with a rejected stage-B run never counting)
+    import contract_fill
+    if reveal_record is None:
+        reveal_record = reference_revision_not_fired(reference_reveal)
+    base_iv_stage_a = reveal["base_a"] if reveal is not None else contract_fill.answer_run(snap)[1]
+    base_iv_final = contract_fill.answer_run(snap)[1]
     eval_rate = round(gen_tokens / (eval_duration_total / 1e9), 2) if eval_duration_total > 0 else 0
     return final_report, final_think, {"tool_calls": calls, "done_reason": done_reason,
                                        **llm_provider.turns_provenance(turns),
@@ -2429,7 +2705,10 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                        "continuation_for_desk": desk_continuation,
                                        "crux_followup": ({"fired": True, "outcome": crux_followup["outcome"]} if crux_followup is not None
                                                          else {"fired": False, "outcome": None}),
-                                       "primary_refusals": primary_refusals}
+                                       "primary_refusals": primary_refusals,
+                                       "reference_revision": reveal_record,
+                                       "base_iv_stage_a": base_iv_stage_a,
+                                       "base_iv_final": base_iv_final}
 
 
 if __name__ == "__main__":

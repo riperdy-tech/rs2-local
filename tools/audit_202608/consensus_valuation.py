@@ -216,6 +216,10 @@ def extract_scorecard(report, price):
         "desk_iv_match": None,
         "desk_reverse_neutral_cagr": None,
         "coe_minus_anchor": None,
+        # Revision 24 (R24.2), harness-filled: the Base before and after stage B, and stage B's record
+        "base_iv_stage_a": None,
+        "base_iv_final": None,
+        "reference_revision": None,
     }
 
     # 1. Primary: Structured JSON block from Section 12
@@ -523,6 +527,7 @@ def select_medoid_scorecard(
             "desk_share_basis_matched": None,
             "catalysts": None, "bull_below_price_reason": None, "bear_above_price_reason": None,
             "code_fill_mode": None,
+            "base_iv_stage_a": None, "base_iv_final": None, "reference_revision": None,   # revision 24 (R24.2)
         }
 
     ivs = [r["iv"] for r in good]
@@ -606,6 +611,7 @@ def select_medoid_scorecard(
             "cash_flow_life": san_fb.get("cash_flow_life"),
             "cash_flow_life_reason": san_fb.get("cash_flow_life_reason"),
             "code_fill_mode": None,
+            "base_iv_stage_a": None, "base_iv_final": None, "reference_revision": None,   # revision 24: no medoid sample, no stage B to carry
         }
         return san_fb, summary
 
@@ -723,6 +729,10 @@ def select_medoid_scorecard(
         "bull_below_price_reason": medoid_card.get("bull_below_price_reason"),
         "bear_above_price_reason": medoid_card.get("bear_above_price_reason"),
         "code_fill_mode": (medoid_card.get("code_fill") or {}).get("mode"),
+        # revision 24 (R24.2): the medoid sample's Base before and after stage B, and stage B's record
+        "base_iv_stage_a": medoid_card.get("base_iv_stage_a"),
+        "base_iv_final": medoid_card.get("base_iv_final"),
+        "reference_revision": medoid_card.get("reference_revision"),
     }
     return medoid_card, summary
 
@@ -1069,7 +1079,8 @@ def _desk_scenario_inputs(calls, target_iv, role=None):
         except (TypeError, ValueError):
             return False
 
-    for c in reversed([c for c in (calls or []) if c.get("tool") == "run_financial_model"]):
+    # revision 24 (R24.2): a stage-B run the guardrails rejected never backs a published value
+    for c in reversed([c for c in (calls or []) if c.get("tool") == "run_financial_model" and not c.get("reference_revision_rejected")]):
         params = c.get("params") or {}
         res = c.get("result") if isinstance(c.get("result"), dict) else c
         top = {k: params.get(k) for k in ("explicit_growth", "growth_rates", "shares_diluted", "net_debt",
@@ -1262,9 +1273,10 @@ def scenario_checks(snapshot_dir, scorecard, enrich_data=None, pack_text=None, p
     if not cfl_valid or not _has("cash_flow_life_reason"):
         flags.append("cash_flow_life_missing")
 
-    # the last COMPLETED desk run: a refused call (budget exhausted, validation error) keeps whatever the model sent
+    # the last COMPLETED desk run: a refused call (budget exhausted, validation error) keeps whatever the model sent; revision 24: so does a
+    # stage-B run the guardrails rejected
     model_calls = [c for c in (calls or []) if isinstance(c, dict) and c.get("tool") == "run_financial_model"
-                   and not c.get("error") and not c.get("validation_error")]
+                   and not c.get("error") and not c.get("validation_error") and not c.get("reference_revision_rejected")]
     if model_calls:
         last_c = model_calls[-1]
         p = last_c.get("params") or {}
@@ -1574,6 +1586,8 @@ def extract_desk_snapshot_metrics(
     candidates = []
 
     for c in model_calls:
+        if c.get("reference_revision_rejected"):
+            continue                    # revision 24 (R24.2): a rejected stage-B run backs no value (it still counts as a desk call)
         params = c.get("params") or {}
         if isinstance(params, dict):
             a_p = params.get("coe_anchor") or params.get("anchor_coe")
@@ -2221,6 +2235,9 @@ def main():
     # `is not None`, never `or`.
     company_name = rs2_data.resolve_name(t) or t          # revision 19 (B6): the crux check's name for the news filter's rule
     desk_context = build_desk_context(facts, price, t, company_name, run_date=datetime.now().date().isoformat())
+    # revision 24 (R24.2): what stage B shows, from the facts (never from the pack text); None for a pack that printed the reference
+    reference_reveal = ({"civ": facts.get("consensus_implied_value"), "status": facts.get("reference_status"), "line": facts.get("reference_line")}
+                        if facts.get("reference_withheld") is True else None)
 
     mode = (f"adaptive 2-escalate (early bar {EARLY_TOL_PCT:.0f}%, full {TOL_PCT:.0f}%)"
             if adaptive else f"{n} samples fixed")
@@ -2279,7 +2296,7 @@ def main():
                     seed=seed_base + i, draft_num_predict=draft_num_predict, temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
-                    desk_context=desk_context)
+                    desk_context=desk_context, reference_reveal=reference_reveal)
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2340,7 +2357,7 @@ def main():
                     temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
-                    desk_context=desk_context)
+                    desk_context=desk_context, reference_reveal=reference_reveal)
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2413,6 +2430,9 @@ def main():
                                           pack_text=pack, company=company_name)
         scorecard.update(filled)
         scorecard["code_fill"] = prov
+        # revision 24 (R24.2): stage B's record and the Base before and after it, always the harness's (None without the tools)
+        for _k in ("base_iv_stage_a", "base_iv_final", "reference_revision"):
+            scorecard[_k] = (meta or {}).get(_k)
 
         ivs = extract_iv(rep, price)
         # 0.0 is a value: a Base of 0.0 is judged (and refused) as the sample's number, not replaced by
@@ -2421,6 +2441,9 @@ def main():
         if iv is None:
             iv = st.median(ivs) if ivs else None
         ok, why, flags = plausibility(iv, price, t)
+        # revision 24 (R24.2, G4): a stage-B revision more than 25% from stage A's Base was rejected; the name is flagged for a re-run, not patched
+        if (scorecard.get("reference_revision") or {}).get("guard_failed") == "reference_revision_too_large":
+            flags = list(flags) + ["reference_revision_too_large"]
 
         desk_info = extract_desk_snapshot_metrics(
             snapshot=snapshot_dir,
