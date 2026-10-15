@@ -92,3 +92,11 @@ unchanged.
 ## 5. Approval
 
 For the operator. The definitions in sections 2–4 are fixed from approval. No number from C exists at the time of writing.
+
+## 6. Dated notes
+
+- **2026-10-15 10:36.** Section 4's "gate 2b freezes on v2.0.3" is amended by the operator: gate 2b freezes on v2.1, and paper operation
+  starts on v2.1 (SPEC_rebuild AL.49).
+  - **Why:** v2.0.3 failed E5 (AL.46); v2.1 passed E5 and E8 with the identity test holding on every name (AL.48).
+  - **Consequence:** the measured growth continuation is in the engine, so it is no longer an open real-money condition. The ROTE continuation remains a
+    separate registration.

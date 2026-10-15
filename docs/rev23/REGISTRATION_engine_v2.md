@@ -42,3 +42,11 @@ then the shadow record (S10).
 ## 4. Approval record
 
 Approved by the operator on 2026-10-11 21:04 KST ("approve the engine-v2 spec and registration"). Fixed from this point; cross-check 9 may still raise points, ruled on before the build.
+
+## 5. Dated notes
+
+- **2026-10-15 10:36.** v2.0.3 failed E5 bar (i) in 2021 (SPEC_rebuild AL.46).
+  - **The fix version is v2.1:** the measured continuation, REGISTRATION_continuation_direct.md, registered before any E5 result was
+    opened.
+  - **Re-run:** E5 and E8 pass (AL.48). E3–E4 carry over, because years 1–3 are identical by test on every name.
+  - **Approval:** the operator approved freezing gate 2b on v2.1 and starting paper operation on it (AL.49).

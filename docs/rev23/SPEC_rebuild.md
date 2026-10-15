@@ -5682,3 +5682,478 @@ open points.**
   - the lock's age from its modification time.
 - **Next:** the coordinator's audit of the D5/D5b diff and a full run of the suite. Then a **full live census rehearsal** at the latest
   `asof`, coordinator-run, into the scratch folder, without the weekly bulk files.
+
+**AL.46 (2026-10-15 06:36): engine v2.0.3's acceptance verdicts (chain 4: priors_v3_fy + priors_v4_fy, with the priors correlation). E5
+FAILS bar (i) in 2021. E8 PASSES on both samples. No freeze manifest is written.**
+- **E5: FAIL.**
+  - **Bar (i):** v2's oracle residual IC must be at least v1's − 0.02, pooled and in every year, under each of three return bounds. It
+    fails in **2021** under all three:
+
+    | Return bound | v2 − v1 in 2021 | Pooled, v2 / v1 |
+    |---|---|---|
+    | excluded | −0.0250 | 0.0912 / 0.0900 (passes) |
+    | minus100 | −0.0230 | 0.0741 / 0.0732 (passes) |
+    | last_close | −0.0231 | 0.0856 / 0.0852 (passes) |
+
+    Every other year passes: 2020, 2022 and 2023 favour v2; 2024 is −0.0016 to −0.0033.
+  - **Bar (ii) passes:** no family's sign is inverted (operating 0.0997 against 0.1013; financial 0.0814 against 0.0951; n = 14,085 and
+    5,191).
+  - **The sample:** 19,276 common names. 565 are valued by v1 only, and 185 by v2 only.
+    - **Corrected 06:40.** The first text said the 565 lacked a realised year 1. Checked against the records, **all 565 have a v2 oracle
+      value at or below 0** (floored equity), while v1's is positive.
+    - The log value/price score is undefined at 0, so they drop out of the common sample. E5's `v2_refusal_reasons` "none" means "no
+      engine reason", not "no data".
+    - This is a selection the IC never sees: names v2 values at zero. It is reported for the diagnosis, not changed.
+  - **Reported only:**
+    - the 12-month and 36-month horizons favour v2 (0.189 against 0.172; 0.343 against 0.297). They never rescue a 3-month fail
+      (AK.51).
+    - the ROTE-only financial sensitivity: v2 0.084, v1 0.076.
+  - **Independent recomputation** (`engine_v2_audit/e5_indep/indep_e5.py`, which imports neither `rebuild_harness` nor `valuation`; it
+    reads the panel E5 scored) reproduces every pooled and yearly difference to the 4th decimal.
+  - **Diagnosis, so far:**
+    - 2021's shortfall is broad, not one date: −0.045 (03-31), +0.041 (06-30), −0.067 (09-30) and −0.028 (12-31).
+    - It is in both families: operating −0.033, financial −0.028.
+    - Not barred, but noted: financial 2023 is −0.049.
+    - E5 values both engines at the medians, so the correlation defect (AL.45) cannot explain it.
+- **E8: PASS** on both samples. It does not fail closed, no date is missing, and every name reconciles: 23,783 of 23,783 forensic and
+  253 of 253 gate-2b names were valued by both, with no refusal and no instrumentation error.
+  - **Forensic held-out sample:** every bar passes, pooled and in every year, in both families.
+    - Operating: top-1% share median 0.083 against 0.065; EV P90/P50 3.51 against 2.62; P50 v2/v1 0.870; invalid draws 0; rank
+      correlation of the P50s 0.972.
+    - Financial: top-1% share 0.027 against 0.022; P50 ratio 1.126; rank correlation 0.997.
+  - **Gate-2b sample (2026):** every bar passes. Operating P50 ratio 0.958; financial 1.063.
+- **The consequence, under REGISTRATION_engine_v2.md section 3 ("Fail: the failed check is diagnosed; a fix is a new version with a
+  dated note; E3–E5 re-run in full"):**
+  - v2.0.3 is not accepted. `write_freeze.py` was not run, and no manifest exists.
+  - Gate 2b cannot freeze on v2.0.3 as AL.40 and AK.63 planned.
+  - **This needs the operator's decision.**
+- **Facts for that decision:**
+  - v2.1 is a new version, registered and approved (AL.40) before any E5 result was opened. Its E5 and E8 run next (chain 3, about
+    18:00 today).
+  - v2.1 changes only years 4+, so its E5 differs from v2.0.3's. Its years 1–3 are identical by test, so E3–E4 (years 1–3) carry over.
+  - Choosing v2.1 now is the registration's sanctioned fail path, not a weight chosen by E5. But it was not designed for this failure,
+    and nothing is known about its E5.
+  - No bar may be loosened: −0.025 against a −0.02 margin is a fail.
+- **The legacy configuration** (a labelled sensitivity) continues in chain 4; its verdicts are reported when DONE.
+- **Also found:** this Python install has no scipy, so the freeze writer's import would fail. To be fixed before it is ever run.
+
+**AK.76 (2026-10-15 06:37): engine v2.0.3 fails E5 bar (i) in 2021 (fork 2, AL.46). No freeze exists. Gate 2b and the D5 shadow are held. The coordinator
+gives the operator a recommendation.**
+- **The result** (fork 2; independently recomputed to the 4th decimal):
+  - Bar (i) requires v2's oracle residual IC ≥ v1's − 0.02, pooled and in every year. In 2021, v2 − v1 is −0.0250 (excluded), −0.0230
+    (minus100) and −0.0231 (last_close).
+  - It is broad within the year: by date −0.045, +0.041, −0.067, −0.028; by family, operating −0.033 and financial −0.028.
+  - Every other year and the pooled figures pass. E8 passes on both samples, fully reconciled.
+  - E5 uses median point values, so the correlation defect (AK.70) is not the cause.
+- **What holds now:**
+  - No 07-31 census or valuation and no outcome is read until an engine is frozen; the census needs the freeze manifest anyway.
+  - The D5 shadow cannot start either, since it refuses without a freeze.
+- **The registered fail path:** diagnose; a fix is a new version; re-run E3–E5. v2.1 (approved before this result was opened) has its E5/E8
+  next, from about 18:00, with results about 23:00 on 10-15.
+- **The coordinator's recommendation to the operator:**
+  1. **Do not relax bar (i) after the fact.** It was registered before data, and a one-year shortfall of 0.005 beyond the margin is still a
+     failure by its own rule.
+  2. **Wait for v2.1's E5/E8 tonight.**
+     - v2.1 changes only the continuation after year 3, and E5's IC is measured on values, so v2.1 can move it either way.
+     - **If v2.1 passes E5 and E8, and the real-data identity holds** (years 1–3 identical): approve an amendment of AL.40 freezing gate 2b on
+       **v2.1**. Gate 2b's bars score year-1 forecasts, which the identity makes identical to v2.0.3's, so nothing is lost. The 07-31 census
+       and scoring then take about a day, well inside the end of October.
+     - **If v2.1 also fails,** it is diagnosed first (fork 2). The operator then decides between a new version and an explicit,
+       recorded acceptance of the 2021 shortfall for **paper** operation only, with real money still barred.
+  3. **Meanwhile nothing is lost:** every other workstream is built and audited and waits only on a frozen engine.
+
+**AL.47 (2026-10-15 06:44): v2.1's E5 and E8 are brought forward; chain 4's legacy sensitivity is held.**
+- **Why:** v2.0.3 failed E5 (AL.46), so v2.1's verdicts are now on the critical path. The legacy configuration is a labelled sensitivity
+  on a failed version. The operator is asleep, so I decided this under the overnight rule; fork 1 asked for the same (AK.76).
+- **Chain 4 is held:**
+  - a HOLD file, then its processes (the parent, `run.py` and 3 workers) were stopped at 06:40;
+  - its 3 finished legacy dates pass `gzip -t` and are kept, and nothing was deleted;
+  - it resumes from them when the HOLD file is renamed (`HOLD.cleared_<time>`), after chain 3.
+- **Chain 3 now waits for chain 4's acceptance verdicts,** not its DONE. It started at 06:43:51: 20 dates on priors_v5 + priors_v4_fy,
+  code wt-v21 at 1465cc0.
+- **ETA:** the forensic run about 09:35; E5 and E8 about 09:45; the gate-2b sample with the identity re-runs about 10:30–11:00.
+- **Fork 1's recommendation for the operator (AK.76),** noted for the decision note:
+  - no relaxation of bar (i);
+  - if v2.1 passes E5 and E8 and `years13_identical` holds on real data, amend AL.40 so gate 2b freezes on v2.1;
+  - if v2.1 also fails E5, diagnose first. The operator then chooses a new version, or a recorded acceptance for paper only, with real
+    money barred.
+- **AK.76 follow-up (2026-10-15 06:44): v2.1's E5/E8 run was brought forward** (fork 2, AL.47).
+  - **The order:** chain 3 started at 06:43:51. Chain 4's legacy run is held; its 3 finished dates pass `gzip -t`, are kept, and resume
+    after chain 3.
+  - **ETA:** E5 and E8 scored about 09:45; the gate-2b sample with the real-data `years13_identical` re-runs about 10:30–11:00 on 10-15.
+
+**AL.48 (2026-10-15 10:34): engine v2.1's acceptance verdicts (chain 3: priors_v5 + priors_v4_fy, with the priors correlation; code
+1465cc0, clean, chain version v2.1). E5 PASSES, E8 PASSES on both samples, and the identity test holds on every name. For the
+operator: freeze gate 2b on v2.1 (amending AL.40).**
+- **Negatives first:**
+  - **2021 and 2024 are still below v1 in E5, but within the margin.** v2 − v1 in 2021: −0.0019, −0.0027, −0.0029 (v2.0.3: −0.023 to
+    −0.025); in 2024: −0.0022 to −0.0032.
+  - **The operating top-1% share's 90th percentile is above v1's:** 0.209 against 0.166 (forensic) and 0.164 against 0.128 (gate-2b).
+    It is inside E8b's 2× bound, and the medians are below v1's: 0.050 against 0.065.
+  - **468 forensic names and 3 gate-2b names used the family-pooled fall-back (AL.42).** None used K.
+  - **My AL.42 prediction was wrong at the median.** I expected v2.1 to lower growers' values relative to v2.0.3. Instead, the operating
+    P50 of v2 against v1 is 0.969 under v2.1, against 0.870 under v2.0.3, and v2.1 values 471 fewer names at zero or below (v1-only
+    names: 94 against 565).
+  - **v1's E5 figures differ between the two runs** (pooled 0.0912 against 0.0900) only because the common sample differs: 19,747
+    against 19,276 names. v1's code and inputs are identical.
+- **E5: PASS.**
+  - **Bar (i):**
+
+    | Return bound | Pooled, v2 / v1 | v2 − v1 by year: 2020, 2021, 2022, 2023, 2024 |
+    |---|---|---|
+    | excluded | 0.0949 / 0.0912 | +0.0035, −0.0019, +0.0083, +0.0118, −0.0032 |
+    | minus100 | 0.0779 / 0.0747 | +0.0021, −0.0027, +0.0102, +0.0087, −0.0022 |
+    | last_close | 0.0884 / 0.0861 | +0.0026, −0.0029, +0.0052, +0.0096, −0.0030 |
+
+    Every value is inside the −0.02 margin.
+  - **Bar (ii):** signs agree; operating 0.1055 against 0.1034, financial 0.1066 against 0.0958.
+  - **The sample:** 19,747 common names; 94 valued by v1 only (v2's value at or below 0); 88 by v2 only.
+  - **Reported only:** 12 months 0.183 against 0.172; 36 months 0.323 against 0.297; the ROTE-only financial sensitivity 0.092 against
+    0.076.
+  - **Independent recomputation** (`e5_indep/indep_e5.py` on the v2.1 panel) reproduces every pooled and yearly value to the 4th
+    decimal.
+- **E8: PASS** on both samples, all years. It does not fail closed; no date is missing; there is no refusal and no instrumentation error.
+  - **Forensic held-out sample:** 23,783 of 23,783 names reconciled. Continuation: 23,315 measured, 468 family-pooled, 0 K.
+    `years13_not_identical`: **0**.
+    - Operating: top-1% median 0.050 against 0.065; top-5% 0.191 against 0.213; EV P90/P50 2.46 against 2.62; P50 ratio 0.969; rank
+      correlation 0.990; invalid draws 0.
+    - Financial: top-1% 0.019 against 0.022; P50 ratio 1.077; rank correlation 0.997.
+  - **Gate-2b sample:** 253 of 253 names. Continuation: 250 measured, 3 pooled. `years13_not_identical` **0**.
+    - Operating P50 ratio 0.977, financial 1.006; rank correlations 0.995.
+- **What it means:** v2.1 passes the registration's E5 and E8, the identity test its own registration requires (section 4), and the
+  correlation-correct configuration (AL.45).
+  - Under REGISTRATION_engine_v2.md section 3, a fix is a new version with E3–E5 re-run.
+    - E5 is re-run here.
+    - E3–E4 concern years 1–3, which are identical by test on every name, so they carry over.
+    - v2.1 was registered (AL.40) before any E5 result was opened, so it is not a choice made from E5.
+  - **For the operator:**
+    1. Amend AL.40 so that gate 2b freezes on v2.1. Fork 1's AK.76 recommends this. B2 and B3 score year-1 forecasts, identical by
+       the identity test.
+    2. Whether paper operation starts on v2.1.
+  - **If approved:** a v2.1 freeze manifest (`write_freeze.py` adapted to wt-v21, 1465cc0, priors_v5) is written and sent to fork 1.
+- **Chain 4's legacy run** (a sensitivity on v2.0.3) resumed at 10:34 (`HOLD.cleared_20261015_1034`).
+
+**AL.49 (2026-10-15 10:36): the operator approves both decisions ("Yes to both decisions").**
+1. **AL.40 is amended: gate 2b freezes on engine v2.1** (not v2.0.3). B2 and B3 score year-1 forecasts, identical to v2.0.3's by the
+   identity test (AL.48: 0 of 24,036 names differ).
+2. **Paper operation starts on engine v2.1.** `continuation_binary_interim` does not apply to v2.1 rows. `joint_tail_undercoverage` and
+   the growth-clip interim (P99 := P95) still do.
+- **Next:** the v2.1 freeze manifest is written (`engine_v2_audit/freeze/ENGINE_V2_1_FREEZE.json`) and sent to fork 1 for the 07-31
+  census.
+- REGISTRATION_engine_v2.md and REGISTRATION_continuation_direct.md get dated notes.
+- v2.0.3 is not frozen; its E5 failure (AL.46) stands on record.
+
+**AK.77 (2026-10-15 10:42): the operator's approval (AL.49) is acted on. Gate 2b's 07-31 run uses the v2.1 freeze; the run tree is built and verified.**
+- **The freeze:**
+  - manifest `scratch/rev23/engine_v2_audit/freeze/ENGINE_V2_1_FREEZE.json`, sha256
+    `2908cf71077736b595267ac90c723657f1fe4bee60ab7e53b1715b96f9d2a58e` (matching its sidecar);
+  - engine v2.1 at `1465cc0`; `priors_v5` and `priors_v4_fy`, vintage 2025 for all four gate-2b dates;
+  - required row flag: `joint_tail_undercoverage` only.
+- **The run tree:** branch `review-2026-10/gate2b-run` (`284bfe1`, worktree `scratch/rev23/wt-g2b-run`), a clean merge of `gate2b-census`
+  `609aec4` with `engine-v2.1` `1465cc0`.
+  - **Engine files:** all 11 equal the manifest's LF sha256.
+  - **Suite:** 840 passed, 1 skipped (the opt-in real-data test).
+  - **`load_freeze`** passes for 07-31.
+- **The context is unaffected by the priors folder.**
+  - The 07-31 context (AK.67) was prepared with `priors_v3_fy`. `priors_v5/2025/tables.json` is that file plus the `continuation` key; the
+    only shared key that differs is the `priors_version` label.
+  - The context uses the g1 priors and the growth behind the consistent ERP, which are identical, so it is invariant. It is not rebuilt.
+- **The census (step 1 of `RUN_g2b_0731.md`)** is started behind the memory guard.
+  - After valuation, every v2.1 record is checked for `continuation` not starting with "K:" (fork 2's note).
+  - Fork 2 then receives `sample.json` with the base accessions for the period-authority annotation.
+- **The Item 7.01 patch for `wt-gate2-dev`** is withdrawn. Gate 2b carries its own scoped rule (AK.68), and gate 2's code stays as scored.
+
+**AK.78 (2026-10-15 10:46): coordination with the MRI session ("Macro events sensitivity in MRI"), and a D5 follow-up.**
+- **v4's MRI inputs** (stated to the MRI session) are exactly two:
+  - the risk-free rate, the nominal 10-year FRED yield from MRI's `raw_observations` as of the last observation before `asof`
+    (`gate2/env.py` → `discount_rate.MriRiskFree` → `rs2_data.asof_risk_free_legs`);
+  - the sizing flag `shock_register.json` `risk_flags["elevated_volatility_ahead"].active` (`depth_pipeline.risk_flag_active`), which only
+    halves the size bucket.
+
+  The cost-of-capital anchor, the shocks and the regime vector are not read.
+- **The MRI session's commitments:**
+  - the `risk_flags` contract stays byte-compatible, with a regression test;
+  - DGS10 and the as-of semantics of `raw_observations` are untouched, and its Yahoo oil tail goes in a separate table;
+  - its `capability_test` pack change and `PACK_REVISION` bump are dropped, since nothing live reads that pack;
+  - any proposal for which macro facts enter v4's inputs comes to the coordinator for registration and an operator ruling before anything is
+    built.
+- **A D5 follow-up (diagnostic only, never a sizing or gating rule):** the nightly shadow summary gains a **reversal log**. For every company
+  whose direction differs from its previous shadow verdict, it records:
+  - the prior and new median value and direction;
+  - the price, and rf at both dates;
+  - the active MRI flags;
+  - `stale_inputs` and `new_filing_between`;
+  - the days elapsed.
+
+  This answers the operator's "wobble" concern (a name re-upgraded days after a downgrade) with evidence, beside the existing `instability`
+  rule (a 25% median move with no new filing).
+
+**AK.79 (2026-10-15 10:51): a defect in the live runner, found before any live row existed. Engine v2.1 would have run on K in paper operation.**
+- **How it was found.** Merging engine v2.1 into the D5 branch (`5848cbf`) left two runner tests failing; both expected v2.0.3. The coordinator
+  then checked fork 2's warning (AK.62 item 1) against the runner.
+- **The defect.** `live_runner.run_engine_v2` passed `ci.priors`, which is `gate1.PreBuiltPriors`: `company_inputs` builds it, and it has no
+  `.tables`. Engine v2.1 reads its measured continuation from the priors' tables, so **every live and shadow row would have continued by K
+  without saying so.** That is the configuration whose E5 failed (AL.46), not the frozen one.
+- **The census was not affected:** it passes `PopulationPriors(freeze priors_dir)` (AK.62), as E8 did.
+- **The fix, live runner d4.7** (`16d703d` on `review-2026-10/d5-shadow`):
+  - engine v2 gets one real `PopulationPriors` per configured priors folder;
+  - each row's `continuation_at_median` carries the engine's own continuation `source`;
+  - a v2.1 row whose source starts "K:" is flagged `continuation_binary_interim`;
+  - the tests follow v2.1, and a spy test proves the engine receives the population priors, not `ci.priors`.
+  - **The runner tests: 269 passed.**
+- **Branches:** the D4 branch (`review-2026-10/d4-live-runner`) is superseded by D5, which contains it, for any merge. The full D5 suite runs
+  after the 07-31 census frees memory.
+- **Before cutover,** the shadow rehearsal must show no row with a "K:" source among companies whose priors carry a measured bucket.
+
+**AK.80 (2026-10-15 11:00): THE FREEZE OF GATE 2B'S 2026-07-31 RUN. It is written before any 07-31 value or outcome is read.**
+- **What the test is** (registration v3 item 11, stated here and in the verdict): "A company-disjoint, registered q1 proxy screen on a period
+  partly observed in aggregate (gate 2's results of the same reporting season were seen). It is **not** a pristine temporal holdout, and
+  **not** a validation of annual forecast accuracy." A pass supports controlled shadow operation only. Real money keeps B4, the fiscal-year-2
+  calibration, and every applicable D1–D10 condition.
+- **The engine:** v2.1. Freeze manifest `ENGINE_V2_1_FREEZE.json`, sha256 `2908cf71077736b595267ac90c723657f1fe4bee60ab7e53b1715b96f9d2a58e`
+  (AL.48–AL.49). `priors_v5` and `priors_v4_fy`, vintage 2025. 2,000 draws, with the seed `ci.seed`.
+- **The code:** `review-2026-10/gate2b-run` at `284bfe1`, clean. All 11 engine files equal the manifest's.
+- **The context:** `data/gate2b_0731/ctx` (AK.67): universe sha256 `7e4c14da…`, context `714cf0a4…`.
+- **The census** (`census/census_2026-07-31.json`, sha256 `4e1b3eb4266da1b9e1f8a788befb0312ceb899bc0bb2330c3673b75c3e0d4d93`), from 2,059 companies:
+  - removed: commodity 169; no 10-Q in 12 months 107; gate 2's 2026-06-30 sample 114 (an overlap of 0 remains, checked); engine v2.1 does not
+    value it 480 (operating 438, financial 42; mostly no trailing 3-year ROIC, 180, and no operating income, 119);
+  - **included: 1,189** (operating 857, financial 332).
+  - 264 included companies were in some gate-2 date; they form sensitivity (e).
+- **The sample:** `sample/sample.json`, sha256 `f2e47988627ef9e37499a11e4269e4f20b685e3f4792a88bc4ff8c71b2455113`, written once.
+- **The scoring** (fixed in v3 item 13 (f), AK.73):
+  - q1 outcomes as of the companyfacts snapshot of 2026-10-13, with submissions of 2026-10-07;
+  - Items 2.02 and 7.01;
+  - the 120-day guard;
+  - the bars of item 5 under item 13 (a): both upper ends below 0.
+- **Next, in order:**
+  1. valuation (CODE v1 and V2 v2.1);
+  2. the check that no V2 record's `continuation` starts with "K:" where its bucket is measurable;
+  3. baselines; C0 P(fail); E8 measures (reported);
+  4. the period-authority annotation (fork 2's annotator);
+  5. outcomes; scoring; the independent recompute; Audit 1.
+
+**AL.50 (2026-10-15 11:22): the period-authority annotation of gate 2b's 07-31 census, as AL.39 fixed it. 0 of 1,189 base accessions are
+among the disagreements.**
+- **The run:** fork 1 ran `engine_v2_audit/fyfix/annotate_census.py` on the census rows: `scratch/rev23/g2b_0731_annot_rows.json` in,
+  `g2b_0731_period_authority.json` out. 1,189 rows in and 1,189 out; 0 flagged.
+- **Checked as not vacuous:**
+  - every row carries a base accession;
+  - the four companies exposed in the proxy (AL.39: CIKs 1697818, 1090012, 1094831, 2011641) are not in the census;
+  - 47 census companies have some disagreeing accession in their history, but in none of them is it the base accession.
+- **The residue, reported and not annotated:** those 47 companies' history may contain one mislabelled prior year. That touches
+  trailing-growth features (`g3`), not the base year. AL.39's rule annotates base-accession matches only. R-after (AL.40) addresses the
+  rest.
+- **Also from fork 1:** 1,189 companies were valued by both arms, all on v2.1. Continuation: 1,166 measured, 23 family-pooled, 0 K.
+  Lineage 284bfe1, clean; the priors_v5 and priors_v4_fy 2025 table hashes equal the manifest's.
+- **Chain 4's legacy run** was held 10:44–11:22 for the census's memory, at fork 1's request; it resumed at 11:22.
+
+**AK.81 (2026-10-15 11:23): the 07-31 valuation, baselines, C0 and period-authority annotation are complete. No outcome has been read yet.**
+- **Valuation** (11:00–11:06):
+  - 1,189 of 1,189 companies valued by both arms; median 0.27 s per company.
+  - **V2: all on v2.1.** Continuation: **1,166 measured, 23 family-pooled, 0 "K:"** (fork 2's check).
+  - CODE (v1) valued all 1,189.
+  - **Lineage** (`valuation/census_manifest.json`): commit `284bfe1`, `code_dirty` false, chain v2.1. The `priors_v5` and `priors_v4_fy` 2025
+    table sha256 equal the freeze manifest's.
+- **Baselines** (through 11:18): runrate PERSIST, and POPMED over the universe file.
+- **C0 P(fail) at 07-31** (through 11:22): 1,189 of 1,189 ok, sha256 `1b766b7a…`. The 2025 observation copies equal their sources.
+- **Period-authority annotation** (fork 2's `annotate_census.py` on the 1,189 base accessions): **0 flagged**, with no row dropped and none
+  missing a base accession.
+- **Fork 2's legacy run** is released.
+- **Next (outcomes are read from here on):**
+  1. E8's measures on the census;
+  2. q1 extraction and eligibility (scoring date 2026-10-13);
+  3. the report;
+  4. the independent recompute (all rows and verified-only);
+  5. Audit 1.
+
+**AK.82 (2026-10-15 11:28): GATE 2B v3 (2026-07-31, engine v2.1): FAIL. The independent recompute agrees, and Audit 1 is clean.**
+- **What this test is** (item 11): "A company-disjoint, registered q1 proxy screen on a period partly observed in aggregate. It is **not** a
+  pristine temporal holdout, and **not** a validation of annual forecast accuracy."
+- **The bars** (median of d = |V2 − y| − |B − y|; a bar passes only when both upper ends of the one-sided 90% interval are < 0; n paired):
+
+  | Bar | n | median d | upper90 industry / company | status |
+  |---|---|---|---|---|
+  | B2 V2 vs PERSIST, growth | 229 | +0.0169 | 0.0250 / 0.0307 | **FAIL** |
+  | B2 V2 vs POPMED, growth | 231 | +0.0007 | 0.0008 / 0.0008 | **FAIL** |
+  | B2 V2 vs PERSIST, margin | 228 | +0.0034 | 0.0050 / 0.0052 | **FAIL** |
+  | B2 V2 vs POPMED, margin | 231 | +0.0006 | 0.0009 / 0.0008 | **FAIL** |
+  | B2 V2 vs PERSIST, ROTE | 32 | +0.0353 | 0.0573 / 0.0644 | NOT DECIDED (n < 100; 3 clusters) |
+  | B3 V2 vs CODE, growth | 231 | −0.0052 | −0.0052 / −0.0052 | PASS |
+  | B3 V2 vs CODE, margin | 231 | −0.0002 | 0.0012 / 0.0004 | **FAIL** |
+  | B3 V2 vs CODE, ROTE | 32 | +0.0033 | 0.0086 / 0.0097 | NOT DECIDED |
+
+  - **In plain terms:** on the next quarter, V2's forecasts are **worse than the trailing run-rate** on revenue growth (by about 1.7 points
+    of median absolute error) and on the margin change. They are **no better than the population median**: d is about +0.0007 with a tight
+    interval, which is a tie. V2 **beats v1 on growth** (−0.5 points) and ties it on margin.
+- **The reading is robust,** with the same sign everywhere:
+  - without the top 10 gains;
+  - leaving each industry out;
+  - reweighted to the universe;
+  - in sensitivity (e) (n about 178, below the minimum, so NOT DECIDED by count, but with the same signs);
+  - on the verified rows (n about 196, NOT DECIDED by count, same signs).
+- **The independent recompute** (`independent_g2b.py`, seed 777) gives n and median d identical on all 8 bars, with the upper ends close and
+  on the same side. Its verdict is FAIL.
+- **Audit 1:**
+  - **Look-ahead:** every base annual report was filed before T. Every eligible q1 was filed after T and on or before 10-13, its period ending
+    26–35 days before T. Classification is as filed at T.
+  - **Register:** 180 entries, the 174 public at T each with an SEC acceptance timestamp and accession (2.02: 140; 7.01 alone: 34), and 6
+    closure failures.
+  - **Coverage and attrition** add up: 1,189 → public at T −174 → no q1 by 10-13 −747 → **268 eligible** (operating 236, financial 32).
+  - **Hand check:** 20 seeded outcomes, all six values found in each filed 10-Q, and growth recomputed from the document equals the scored
+    value exactly (`scratch/rev23/g2b_0731_handcheck/`, sha256 manifest).
+- **Reported, not bars:**
+  - **E8 on the census:** financial passes. Operating fails E8a, because 2 names have invalid draws. E8b–E8d pass (P50 ratio 0.98).
+  - **q1 coverage of V2's year-1 band:** growth 0.81, margin 0.75, ROTE 0.47 (an annual band, not a calibration test).
+  - **The value at median inputs** comes about 89% from year 4 onward.
+  - **The period-authority hook** joined nothing, a format mismatch. The annotator flagged 0, so nothing changes; it is to be fixed before
+    the confirmation dates.
+- **The sample was smaller than planned, and stated:** 747 of 1,189 had filed their June quarter before T, so their next quarter (September)
+  is not filed by 10-13. Every eligible target is the late-reported June quarter. This was known in kind (cross-check 14 item 4), but its size
+  was not anticipated. It does not change the decided bars, all of which have n ≥ 228.
+- **Under the registration (section 5; v3 item 7):** SYSTEM = V2 is **not promoted**. A confirmation date never rescues this failure. No bar
+  is changed.
+- **Files:**
+  - the report `data/gate2b_0731/reports/gate2b_2026-07-31_scored_2026-10-13_primary.{json,md}`;
+  - the independent recompute `scratch/rev23/g2b_0731_indep_{all,verified}.json`;
+  - E8 `scratch/rev23/g2b_0731_e8.json`.
+- **For the operator (recommendation follows in the report):**
+  - whether shadow operation still runs, unpromoted and non-actionable (`pre_valid_analyst` blocks every row while no freeze is promoted),
+    as a measurement only;
+  - and what the next registered test is.
+
+**AL.51 (2026-10-15 11:29): fork 2's look at the census names fork 1 handed over after gate 2b's FAIL (AK.82). E8a's two failures are a
+discount-rate condition shared by both engines, not v2.1's continuation. A reporting defect is found. The verdict is not affected.**
+- **E8a's two names on the 07-31 census:**
+  - MAN (CIK 871763, SIC 7363) and FOUR (CIK 1794669, SIC 7389): **all 2,000 v2 draws are invalid, every one "terminal growth is not
+    below the discount rate".** The engine refuses a draw when WACC ≤ g_T.
+  - **The code arm (v1) has no value for either name** (`iv_ps` None), so the condition is not v2's.
+  - Both took a measured continuation, which plays no part in this check.
+  - **Hypothesis, not verified** (the census files do not store the discount rate): a WACC weighted by book D/E with a low effective
+    cost of debt. FOUR's book D/E is 3.15 and it carries low-coupon convertibles; MAN's is 0.80. To be checked against
+    `discount_rate.py`'s output.
+- **A reporting defect, in both engines:** a run in which every draw is invalid, or in which the per-share value cannot be formed,
+  returns `status: ok` with `iv_ps` None.
+  - The census has three such names: MAN and FOUR (all draws invalid), and **TR** (CIK 98677: 0 invalid draws, but no per-share value
+    in either arm, consistent with the dual-class share-count gap on the plan, D3).
+  - They should be named refusals. v1 is gate 2's frozen engine and v2.1 is now frozen, so this is recorded for the next engine version
+    and for the live runner (D4), which must treat `iv_ps` None as a refusal and not report it as a value.
+- **The 23 family-pooled names are all financial band 6** (tangible-book growth above 40%). C cannot be measured there in vintage 2025,
+  as foreseen in AL.42, so this is the registered fall-back.
+- **Gate 2b's result (AK.82, fork 1's):** FAIL against PERSIST on q1 growth and margin; a tie against POPMED; v2 beats v1 on growth.
+  These score year-1 forecasts, which v2.1's continuation does not change. The operator decides on fork 1's recommendation.
+
+**AK.83 (2026-10-15 11:30): fork 2's follow-up on the census (AL.51). An open discount-rate issue is recorded for real money; the gate-2b verdict is
+unaffected.**
+- **The census names with no per-share value:**
+  - MAN (871763) and FOUR (1794669): all 2,000 v2 draws are invalid ("terminal growth is not below the discount rate"), and v1 has no value
+    for either;
+  - TR (98677): 0 invalid draws but no per-share value in either arm, likely the dual-class share-count gap.
+
+  The census reconciliation's "valued by both" overstates by these 3. The bars score year-1 forecasts, which exist for all 3, so **no bar
+  changes.**
+- **The cause for MAN and FOUR** (the coordinator's dump, `scratch/rev23/g2b_0731_disc_MAN_FOUR.json`):
+  - MAN: `kd_pretax` **−0.0741**, book D/E 0.80 → WACC **0.0241**;
+  - FOUR: `kd_pretax` 0.0041 (low-coupon converts), book D/E 3.15, tax 0.0023 → WACC **0.0238**.
+- **The open issue (for real money):** `st["kd_effective"]` enters `discount_rate.wacc` unbounded (no floor at rf, a negative value allowed),
+  weighted by book D/E.
+  - Fork 2 sizes it across the census and the E5/E8 samples.
+  - A fix touches `discount_rate.py`, a frozen file shared by v1 and v2: a registered decision later, not part of gate 2b.
+- **The 23 family-pooled continuations** are all financial band 6 (tangible-book growth above 40%), which vintage 2025 cannot measure. This
+  is the registered fall-back (AL.42).
+- **The live runner, d4.8** (`review-2026-10/d5-shadow`): an engine "ok" with no valid draw is a named `not_usable` row ("no valid draws:
+  <reasons>"), never a value. The runner tests: 270 passed.
+- **The period-authority hook format** is given to fork 2 (an object keyed by 10-digit CIK, each annotation carrying `base_accession`).
+
+**AL.52 (2026-10-15 11:31): the cost-of-debt issue (fork 1's AK.83) sized on the forensic sample.**
+- **Scope:** operating names only, since only the operating engine discounts at WACC; the financial engine uses the cost of equity.
+  Counted on `val.discount` of every valued operating name in the v2.1 acceptance forensic run (`e5e8_v21`, 20 dates 2020–2024):
+  - 17,769 names with a cost of debt;
+  - 3,498 with none (no debt: WACC = cost of equity).
+- **Results** (g_T = min(rf, 3.75%), as the engines use it):
+
+  | Condition | Count | Share | Notes |
+  |---|---|---|---|
+  | `kd_pretax` < 0 | 24 | 0.1% | |
+  | `kd_pretax` < rf | 2,745 | 15.4% | 2020–21 0.7–1.5%; **2022 25.2%, 2023 31.0%**, 2024 19.3%: interest on debt fixed before rates rose |
+  | WACC ≤ g_T + 1% | 446 | 2.5% | |
+  | WACC ≤ g_T + 2% | 1,134 | 6.4% | 2024: 10.4% |
+  | WACC ≤ g_T (every draw invalid) | **0** | | in this sample |
+
+- **A second cause, seen in the examples:** at 2020-03-31, CBZ, RGP, FIS and QXO have a normal cost of debt (3–5%) and low D/E, yet WACC is
+  about 1.4–1.5%. Their cost of equity is very low that quarter, through the engine-consistent ERP (Addenda L1/M) with rf 0.7%. So a
+  WACC close to g_T comes from both the unbounded `kd` and low equity premia.
+- **The census (2026-07-31) was not sized here:** the census records do not carry the discount rate. The script
+  (`engine_v2_audit/kd_sizing.py`) reads `val.discount` and works on any record set that carries it.
+- **Status:** an open real-money engine issue (AK.83). A fix touches `discount_rate.py`, which is shared and frozen, so it needs a
+  registered decision and is not part of gate 2b.
+
+**AL.53 (2026-10-15 13:01): the cost-of-debt issue sized on gate 2b's 07-31 census, and a third cause.**
+- **Data:** fork 1's dump of `val.discount` for all 1,189 census names (`scratch/rev23/g2b_0731_census_disc.jsonl.gz`).
+  `engine_v2_audit/kd_sizing.py` now counts operating names only and reads both record formats. On the forensic sample it reproduces
+  AL.52 exactly.
+- **Census, operating:** 733 names with a cost of debt; 124 without.
+
+  | Condition | Count | Share | Forensic sample (AL.52) |
+  |---|---|---|---|
+  | `kd_pretax` < 0 | 6 | 0.8% | |
+  | `kd_pretax` < rf | 87 | 11.9% | |
+  | WACC ≤ g_T + 1% | 10 | 1.4% | |
+  | WACC ≤ g_T + 2% | 76 | **10.4%** | 6.4% |
+  | WACC ≤ g_T | **2** (MAN, FOUR) | 0.3% | |
+
+  At 2026-07-31, g_T = 3.75%, because rf = 4.68%.
+- **A third cause: book D/E of buyback-heavy companies.**
+  - The names closest to g_T include PEP (book D/E 2.41, WACC 4.17%), MA (2.46, 4.34%), RNG (2.72, 4.38%) and BR (1.22, 4.70%).
+  - Buybacks shrink book equity, so book D/E overstates leverage and puts most of WACC's weight on an after-tax cost of debt below the cost
+    of equity. The discount rate itself already warns: "D/E is the book (filed) ratio ... Hamada's relevering is defined on market D/E".
+- **Reading:** three mechanisms pull WACC towards g_T:
+  1. an unbounded or negative effective cost of debt;
+  2. a low engine-consistent ERP when rates are low (2020);
+  3. book D/E for companies with small book equity.
+
+  Near g_T, the terminal value is extremely sensitive. That is a real-money issue (AK.83). The fix belongs in `discount_rate.py`, shared
+  and frozen, under its own registration; none of it changes gate 2b's q1 bars.
+- **Fork 1's re-score** with the period-authority hook joined: 1,189 of 1,189 joined, 0 disagree, still FAIL with no bar changed (label
+  `authority_joined`).
+
+**AK.84 (2026-10-15 13:03): the operator's decisions on gate 2b's failure.** The operator: "1. let paper book trade. 2. Next test - yes but let's get
+outside review first. Make cross-check 15."
+1. **Paper trading v2.1, labelled experimental and unpromoted.**
+   - **The mechanism (the coordinator's design):** a **separate paper-only ledger**, like the Gemini interim arm. **Never** `rn_depth` or
+     `depth_overlay.json`, because the KIS real-money mirror copies `rn_depth` (only `KIS_HALT` protects it).
+   - **Rows:** the shadow's v4 rows feed a paper overlay file. A row is paper-tradeable when its only gate reason is `pre_valid_analyst` (the
+     unpromoted freeze).
+   - **The gate:** `PROMOTED_SYSTEM_FREEZE` stays None, so no v4 row is actionable anywhere else.
+   - **The ledger** is refused by the KIS target builder (its paper-only ledgers).
+   - Built on branches. Publishing to the site, and registering the nightly task, follow the coordinator's audit; each publish is stated.
+2. **The next test** waits for the outside review. **Cross-check 15** is written: `CROSS_CHECK_15_gate2b_fail.md` (self-contained). It covers:
+   - the result;
+   - the robustness and the audit;
+   - the sample;
+   - the cost-of-debt finding;
+   - six questions, including what paper trading should pre-register to inform real money without cherry-picking.
+
+**AK.85 (2026-10-15 13:13): the paper arm for v2.1 is built (AK.84), and the first live shadow night is started. Nothing is published.**
+- **rs2** (`review-2026-10/d5-shadow`):
+  - **`745ebd1`:** `shadow_v4.build_paper_overlay` writes `cache/shadow_v4/v4_paper_overlay.json`, scheme `v4_paper_experimental_v1`, labelled
+    "EXPERIMENTAL, UNPROMOTED ... never rn_depth, never the KIS mirror".
+    - It carries v4 rows only.
+    - A row is `actionable` only when its gate reasons are exactly `pre_valid_analyst`.
+    - It refuses the production overlay path.
+  - **`5302163`:** the shadow reads `ENGINE_V2_1_FREEZE.json`.
+  - **The suite** (valuation, rebuild_harness, contract v4, shadow): **1,238 passed**.
+- **The screener** (branch `review-2026-10/rn-v4-paper` from `origin/main`, `66430ae132`, **not pushed**):
+  - a new paper ledger **`rn_v4`** in `track_paper_portfolios.py`, from `public/data/v4_paper_overlay.json` through the `rn_depth` gate (equal
+    weight, undervalued and actionable among factor-ranked, unvetoed names);
+  - `kis/targets.py` `PAPER_ONLY_LEDGERS` adds `rn_v4`;
+  - the Track page shows the book, labelled experimental and unpromoted, in en, ko and zh;
+  - **tests:** `scripts/test_rn_v4_ledger.py` (4) plus `rn_gemini`'s (3); the screener suite 677 passed, 3 skipped; `tsc` exit 0.
+- **The first live night** (`shadow_v4.py`, from `wt-d5-shadow`, behind the memory guard):
+  - weekly SEC snapshot; daily index; Yahoo closes; live classification; the whole-universe census on v2.1;
+  - the shadow ledger, the shadow overlay and the paper overlay, into the worktree's `cache/shadow_v4`.
+  - Its result is audited before anything is published.
+- **For the operator before paper trading starts:**
+  1. merge `rn-v4-paper` to the screener's main (a site deploy);
+  2. publish each night's `v4_paper_overlay.json` through `screener-publish`, either by hand after the coordinator's check, or automatically by
+     the nightly job (non-negotiable 8: an automatic deploy needs the operator's explicit yes);
+  3. register the nightly task.
