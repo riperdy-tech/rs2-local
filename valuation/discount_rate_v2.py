@@ -293,6 +293,23 @@ def operating_discount_rate(st: dict, asof, *, industry: str, price: Optional[fl
                         warnings=[f"v2.2 discount rate (REGISTRATION_wacc_v22 rev 2): {x}" for x in flags])
 
 
+def discount_rate_v22(st: dict, asof, *, family: str, industry: str, price: Optional[float], shares: Optional[float], pitdata, cik: str, rates,
+                      tables: CreditTables, v1_disc: Optional[DiscountRate] = None) -> DiscountRate:
+    """The v2.2 discount rate a caller hands engine v2: operating by `operating_discount_rate` (gross interest and quarterly debt read from `pitdata`
+    as known at `asof`); financial = v1's cost of equity (`v1_disc`, the industry's levered beta) under the minimum-spread rule.  Raises
+    DiscountRefusal with the reason."""
+    if family == "financial":
+        if v1_disc is None:
+            raise DiscountRefusal("discount: no cost of equity for the financial family")
+        check_min_gap(v1_disc.coe, v1_disc.rf, "financial")
+        return v1_disc
+    company = pitdata.company(cik) if pitdata is not None else None
+    gi, tag = gross_interest_at(company, st["base_period"], asof)
+    q = pitdata.quarterly(cik, asof, fields=("debt_current", "debt_lt_noncurrent"))["records"] if pitdata is not None else []
+    return operating_discount_rate(st, asof, industry=industry, price=price, shares=shares, gross_interest=gi, gross_interest_tag=tag, quarter_records=q,
+                                   rf_provider=rates.rf, beta_provider=rates.beta, erp_provider=rates.erp, tables=tables)
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "build-tables":

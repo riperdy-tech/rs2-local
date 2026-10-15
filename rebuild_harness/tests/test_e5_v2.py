@@ -128,3 +128,18 @@ def test_ak68_e8s_v2_distribution_draws_with_the_priors_correlation_as_productio
     monkeypatch.setattr(o2_, "run", not_pd)
     d = E5.v2_distribution(c, table(), SHARES, n_draws=50)
     assert seen == [corr, None] and d["status"] == "ok" and d["corr_not_positive_definite"] is True
+
+
+def test_al61_v22_the_harness_values_v2_with_the_v22_discount_rate_and_records_a_v22_refusal_by_name():
+    import dataclasses
+    pit, st, ps, disc = setup("operating", "3674")
+    c = SimpleNamespace(family="operating", st=st, ps=ps, disc=disc, pit=pit)
+    disc2 = dataclasses.replace(disc, wacc=disc.wacc + 0.02, sources=dict(disc.sources, v22={"rating": "A2/A"}))
+    d1 = E5.v2_distribution(c, table(), SHARES, n_draws=50)
+    d2 = E5.v2_distribution(c, table(), SHARES, n_draws=50, disc2=disc2)
+    assert d1["discount_version"] == "v1" and d2["discount_version"] == "v2.2" and d2["wacc"] == disc2.wacc and d2["discount_v22"] == {"rating": "A2/A"}
+    assert d2["ps_p50"] < d1["ps_p50"]                                                  # a higher WACC values lower
+    r = E5.v2_distribution(c, table(), SHARES, n_draws=50, v2_refusal="discount: WACC 0.0400 within 2.0% of terminal growth 0.0375")
+    assert r["status"] == "refused" and r["reasons"][0].startswith("discount:")
+    v = E5.values(c, {"fx_out": chain_out(n=3)}, SHARES, table(), v2_refusal="discount: no market capitalisation (price or share count missing)")
+    assert v["v1_p50"] is not None and v["v2"] is None and v["v2_reason"].startswith("discount:")

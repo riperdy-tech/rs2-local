@@ -105,6 +105,11 @@ def main(argv=None):
     meta["lineage"] = E5.lineage(priors_dir, tables, [2025], Path(__file__).resolve().parents[2])
     from valuation.priors import PopulationPriors
     tables_priors = PopulationPriors(priors_dir)                       # v2.1: the tables engine v2 reads its measured continuation from (nt.continuation)
+    v22 = None
+    if "--discount-v22" in a:                                          # AL.61: engine v2.2 = engine v2.1 with discount_rate_v2
+        from valuation import discount_rate_v2 as D2
+        v22 = D2.CreditTables(Path(a[a.index("--discount-v22") + 1]))
+        meta["lineage"].update(discount_version="v2.2", discount_tables_dir=str(a[a.index("--discount-v22") + 1]), discount_tables_sha256=v22.sha)
     counts = {"jobs": len(jobs), "refused_inputs": 0, "refused_discount_rate": 0, "not_built": 0, "v1_refused": 0, "base_year_differs_from_run2": 0, "written": 0}
     recs = {d: [] for d in DATES}
     for job in jobs:
@@ -138,7 +143,14 @@ def main(argv=None):
             evs = np.array([r["ev"] for r in kept], dtype=float)
             e5["v1_ev_p50"], e5["v1_ev_p90"] = float(np.quantile(evs, 0.5)), float(np.quantile(evs, 0.9))
         cap = SimpleNamespace(family=ci.family, pit=ci.pit, ps=ps, disc=disc, st=st)
-        e5["v2_dist"] = E5.v2_distribution(cap, table, shares, seed=ci.seed, priors=tables_priors)
+        disc2 = v2_refusal = None
+        if v22 is not None:
+            try:
+                disc2 = D2.discount_rate_v22(st, job["date"], family=ci.family, industry=disc.sources.get("industry"), price=(ci.price_info or {}).get("price"),
+                                             shares=shares, pitdata=g._ENV["pit"], cik=ci.cik, rates=g._ENV["rates"], tables=v22, v1_disc=disc)
+            except D2.DiscountRefusal as ex:
+                v2_refusal = str(ex)
+        e5["v2_dist"] = E5.v2_distribution(cap, table, shares, seed=ci.seed, priors=tables_priors, disc2=disc2, v2_refusal=v2_refusal)
         key = f"{job['date']}_{job['cik']}"
         prior = (RUN2 / run2_dir[key] / "result.json") if key in run2_dir else None
         base_run2 = None

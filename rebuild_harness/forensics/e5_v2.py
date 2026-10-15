@@ -37,7 +37,7 @@ def realised(rec: dict, family: str) -> dict:
             "k": {"g": len(p["g"]), "m": len(p["m"]), "rote": len(p["rote"])}}
 
 
-def v2_point(family: str, st: dict, ps, disc, table: Mapping, shares: float, over: Optional[dict] = None, priors=None) -> dict:
+def v2_point(family: str, st: dict, ps, disc, table: Mapping, shares: float, over: Optional[dict] = None, priors=None) -> dict:      # disc: v1's, or v2.2's (AL.61)
     """Engine v2's point value at its median inputs, with `over` replacing named inputs.  {"ps": value per share or None, "reason": ...}.
     `priors` (the run's PopulationPriors) supplies v2.1's measured continuation exactly as the engine's run() reads it (nt.continuation); None: K."""
     g_term = terminal_growth_rate(disc.rf)
@@ -68,8 +68,9 @@ def v2_point(family: str, st: dict, ps, disc, table: Mapping, shares: float, ove
     return {"ps": _ps_value(r, shares), "reason": None}
 
 
-def values(cap, rec: dict, shares: float, table: Optional[Mapping], priors=None) -> dict:
-    """The E5 record of one name (see the module docstring)."""
+def values(cap, rec: dict, shares: float, table: Optional[Mapping], priors=None, disc2=None, v2_refusal: Optional[str] = None) -> dict:
+    """The E5 record of one name (see the module docstring).  `disc2`: engine v2.2's discount rate for v2 (v1 keeps its own); `v2_refusal`: v2.2's
+    discount rate refused the name (AL.61) -- v1's values are still recorded, v2's are None with the reason."""
     fam, st, ps, disc = cap.family, cap.st, cap.ps, cap.disc
     if fam not in ("operating", "financial"):
         return {"family": fam, "skipped": "family out of E5's scope"}
@@ -86,6 +87,10 @@ def values(cap, rec: dict, shares: float, table: Optional[Mapping], priors=None)
     if table is None:
         out["v2_reason"] = "no near-term table for the vintage"
         return out
+    if v2_refusal is not None:
+        out["v2"], out["v2_p50"], out["v2_reason"], out["v2_p50_reason"] = None, None, v2_refusal, v2_refusal
+        return out
+    disc = disc2 if disc2 is not None else disc
     p = v2_point(fam, st, ps, disc, table, shares, priors=priors)
     out["v2_p50"], out["v2_p50_reason"] = p["ps"], p["reason"]
     over = {}
@@ -168,14 +173,14 @@ def _tc_tails(table: Mapping, tc_table: Mapping, family: str, var: str) -> dict:
     return t
 
 
-def years13_identity(mod, cap, table, r: dict, fixed_k) -> Optional[bool]:
+def years13_identity(mod, cap, table, r: dict, fixed_k, disc=None) -> Optional[bool]:
     """v2.1's identity test (REGISTRATION_continuation_direct.md section 4): the engine run again on the same inputs WITHOUT the tables (so the K path,
     v2.0.3) gives the same years-1..3 rows at the median inputs and the same near-term forecasts as the run with the measured continuation.  None when
     the run used no measured continuation."""
     import json as _j
     if (r.get("continuation") or "K:").startswith("K:"):
         return None
-    k = mod.run(cap.pit, fixed_k, cap.disc, table, n_draws=50, seed=1, state=cap.st)
+    k = mod.run(cap.pit, fixed_k, disc if disc is not None else cap.disc, table, n_draws=50, seed=1, state=cap.st)
     if k.get("status") != "ok" or not (k.get("continuation") or "").startswith("K:"):
         return False
     a = {"y": (r.get("at_median_inputs") or {}).get("years", [])[:3], "f": r.get("forecast_years")}
@@ -184,7 +189,8 @@ def years13_identity(mod, cap, table, r: dict, fixed_k) -> Optional[bool]:
 
 
 def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int = 2000, seed: int = 20261006, envelope: bool = False,
-                    collapse: Optional[str] = None, winsor: Optional[str] = None, tc_table: Optional[Mapping] = None, priors=None) -> dict:
+                    collapse: Optional[str] = None, winsor: Optional[str] = None, tc_table: Optional[Mapping] = None, priors=None, disc2=None,
+                    v2_refusal: Optional[str] = None) -> dict:
     """DIAGNOSTIC (Addendum AL.25): engine v2's full run on the captured state, beside v1's own: the invalid-draw share and the per-share P10/P50/P90/mean.
     Reads no outcome."""
     from valuation import engine_financial_v2 as f2, engine_operating_v2 as o2
@@ -192,6 +198,9 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         return {"skipped": True, "why": f"family {cap.family!r} out of scope"}
     if table is None:
         return {"skipped": True, "reasons": ["no near-term table for the vintage"]}
+    if v2_refusal is not None:                                          # AL.61: v2.2's discount rate refused the name (named, never skipped)
+        return {"status": "refused", "reasons": [v2_refusal], "discount_version": "v2.2"}
+    disc = disc2 if disc2 is not None else cap.disc
 
     class _Fixed:                                                       # the prior set the v1 run used, handed to v2 unchanged
         def __init__(self, ps, with_tables=True):
@@ -226,18 +235,18 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
     corr_fallback = False
     try:
         try:
-            r = mod.run(cap.pit, _Fixed(_envelope_prior(cap.ps) if envelope else cap.ps), cap.disc, table, n_draws=n_draws, seed=seed, corr=corr, state=cap.st)
+            r = mod.run(cap.pit, _Fixed(_envelope_prior(cap.ps) if envelope else cap.ps), disc, table, n_draws=n_draws, seed=seed, corr=corr, state=cap.st)
         except InputError as e:                                                         # gate1.value_company's rule: a matrix that is not positive definite
             if corr is None or "positive definite" not in str(e):                       # is drawn independently, stamped
                 raise
             kept.clear()
             corr_fallback = True
-            r = mod.run(cap.pit, _Fixed(_envelope_prior(cap.ps) if envelope else cap.ps), cap.disc, table, n_draws=n_draws, seed=seed, corr=None, state=cap.st)
+            r = mod.run(cap.pit, _Fixed(_envelope_prior(cap.ps) if envelope else cap.ps), disc, table, n_draws=n_draws, seed=seed, corr=None, state=cap.st)
     finally:
         mod.simulate = orig_sim
     if r.get("status") != "ok":
         return {"status": r.get("status"), "reasons": [str(x)[:120] for x in (r.get("reasons") or [])][:3]}
-    ident = years13_identity(mod, cap, table, r, _Fixed(cap.ps, with_tables=False)) if priors is not None else None
+    ident = years13_identity(mod, cap, table, r, _Fixed(cap.ps, with_tables=False), disc) if priors is not None else None
     d = r["distribution"]
     eq, ev = d.get("equity") or {}, d.get("ev") or {}
     per = {k: (eq.get(k) / shares if eq.get(k) is not None and shares else None) for k in ("p10", "p50", "p90", "mean")}
@@ -251,7 +260,9 @@ def v2_distribution(cap, table: Optional[Mapping], shares: float, n_draws: int =
         trim = (sum(mid) / len(mid)) / (sum(ks) / len(ks)) if mid else None
         p99 = ks[cut - 1] if cut >= 1 else ks[0]                                          # AL.30 option (b): draws above their own P99 set to it, then the mean
         w99 = (sum(min(x, p99) for x in ks) / len(ks)) / (sum(ks) / len(ks))
-    return {"status": "ok", "engine_version": r.get("engine_version"), "continuation": r.get("continuation"), "years13_identical": ident, "corr_pairs_given": len(corr) if corr else 0, "corr_not_positive_definite": corr_fallback, "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
+    v22 = (disc.sources or {}).get("v22") if disc2 is not None else None
+    return {"status": "ok", "discount_version": "v2.2" if disc2 is not None else "v1", "discount_v22": v22, "wacc": getattr(disc, "wacc", None),
+            "coe": getattr(disc, "coe", None), "engine_version": r.get("engine_version"), "continuation": r.get("continuation"), "years13_identical": ident, "corr_pairs_given": len(corr) if corr else 0, "corr_not_positive_definite": corr_fallback, "n_invalid": d["n_invalid"], "n_draws": d["n_draws"], "invalid_reasons": d["invalid_reasons"], **{f"ps_{k}": v for k, v in per.items()},
             "ev_p10": ev.get("p10"), "ev_p50": ev.get("p50"), "ev_p90": ev.get("p90"), "ev_mean": ev.get("mean"), "share_floored": d.get("share_negative_equity"),
             "top1pct_share_of_mean": top, "top5pct_share_of_mean": top5, "trimmed_mean_over_mean": trim, "winsor99_mean_over_mean": w99}
 

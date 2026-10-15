@@ -118,7 +118,9 @@ def run_date_fx(d):
                     chain_ok["error"] += 1
                 if cfg.get("e5_tables"):                     # Addendum AL.24: engine v2's oracle on the same information as v1's
                     try:
-                        rec["e5"] = E5.values(A.CAP, rec, rec["shares"], _e5_table(cfg["e5_tables"], int(d[:4]) - 1), priors=priors)
+                        disc2, v2_refusal = _v22_discount(cfg, A.CAP, rec, d, pit, rates)                # AL.61: v2.2's discount rate (None: v1's)
+                        rec["e5"] = E5.values(A.CAP, rec, rec["shares"], _e5_table(cfg["e5_tables"], int(d[:4]) - 1), priors=priors, disc2=disc2,
+                                              v2_refusal=v2_refusal)
                         if cfg.get("e5_dist"):               # AL.25 diagnostic: v2's full distribution beside v1's
                             v1eq = sorted((x[0] for x in A.CAP.draws), reverse=True)
                             rec["e5"]["v1_top1pct_share_of_mean"] = (sum(v1eq[:max(1, len(v1eq) // 100)]) / sum(v1eq)) if v1eq and sum(v1eq) > 0 else None
@@ -127,7 +129,8 @@ def run_date_fx(d):
                                 import numpy as _np
                                 evs = _np.array([x[4] + x[1] for x in A.CAP.draws], dtype=float)
                                 rec["e5"]["v1_ev_p50"], rec["e5"]["v1_ev_p90"] = float(_np.quantile(evs, 0.5)), float(_np.quantile(evs, 0.9))
-                            rec["e5"]["v2_dist"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], priors=priors)
+                            rec["e5"]["v2_dist"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], priors=priors,
+                                                                      disc2=disc2, v2_refusal=v2_refusal)
                             if cfg.get("e5_diag"):                   # AL.28 diagnostic only: option 1 applied on top (redundant once v2.0.2 is the engine)
                                 gv = "growth" if A.CAP.family == "operating" else "tbvg"
                                 rec["e5"]["v2_dist_winsor"] = E5.v2_distribution(A.CAP, _e5_table(cfg["e5_tables"], int(d[:4]) - 1), rec["shares"], winsor=gv, priors=priors)
@@ -156,6 +159,25 @@ def run_date_fx(d):
 
 
 _E5_TABLES = {}
+
+
+_V22_TABLES = {}
+
+
+def _v22_discount(cfg, cap, rec, d, pit, rates):
+    """(disc2, refusal): engine v2.2's discount rate for v2 when cfg["discount_v22"] names the built tables (AL.61), else (None, None).  A v2.2
+    refusal is returned as its reason, so the record names it."""
+    root = cfg.get("discount_v22")
+    if not root:
+        return None, None
+    from valuation import discount_rate_v2 as D2
+    if root not in _V22_TABLES:
+        _V22_TABLES[root] = D2.CreditTables(root)
+    try:
+        return D2.discount_rate_v22(cap.st, d, family=cap.family, industry=cap.disc.sources.get("industry"), price=rec.get("price"), shares=rec.get("shares"),
+                                    pitdata=pit, cik=rec["cik"], rates=rates, tables=_V22_TABLES[root], v1_disc=cap.disc), None
+    except D2.DiscountRefusal as e:
+        return None, str(e)
 
 
 def _e5_table(root, vintage):
@@ -223,6 +245,7 @@ def main(argv=None):
     ap.add_argument("--e5-tables", type=Path, help="Addendum AL.24: engine v2's near-term tables; adds rec['e5'] (the oracle on one information set)")
     ap.add_argument("--e5-dist", action="store_true", help="Addendum AL.25 diagnostic: also v2's full distribution per name (rec['e5']['v2_dist'])")
     ap.add_argument("--e5-diag", action="store_true", help="Addendum AL.28 diagnostic variants (not part of E8)")
+    ap.add_argument("--discount-v22", type=Path, help="Addendum AL.61: v2.2's discount tables (data/discount_v22); v2 is valued with discount_rate_v2")
     ap.add_argument("--e5-tc-tables", type=Path, help="Addendum AL.29 diagnostic: the tag-consistent near-term tables, for the tail-graft variant")
     a = ap.parse_args(argv)
     dates = ordered(a.dates or month_end_dates())
@@ -237,6 +260,16 @@ def main(argv=None):
         cfg["e5_tables"] = str(a.e5_tables)
         (a.out_dir / "lineage.json").write_text(json.dumps(E5.lineage(cfg["priors_dir"], a.e5_tables, sorted({int(d[:4]) - 1 for d in dates}), g1r.REPO),
                                                            indent=1), encoding="utf-8")
+    if a.discount_v22:                                              # AL.61: engine v2.2 = engine v2.1 with discount_rate_v2
+        cfg["discount_v22"] = str(a.discount_v22)
+        from valuation import discount_rate_v2 as D2
+        lp = a.out_dir / "lineage.json"
+        if lp.exists():
+            lin = json.loads(lp.read_text(encoding="utf-8"))
+            lin["discount_version"] = "v2.2"
+            lin["discount_tables_dir"] = str(a.discount_v22)
+            lin["discount_tables_sha256"] = D2.CreditTables(a.discount_v22).sha
+            lp.write_text(json.dumps(lin, indent=1), encoding="utf-8")
     if a.e5_dist:
         cfg["e5_dist"] = True
     if a.e5_diag:
