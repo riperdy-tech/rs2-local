@@ -6157,3 +6157,402 @@ outside review first. Make cross-check 15."
   2. publish each night's `v4_paper_overlay.json` through `screener-publish`, either by hand after the coordinator's check, or automatically by
      the nightly job (non-negotiable 8: an automatic deploy needs the operator's explicit yes);
   3. register the nightly task.
+
+**AK.86 (2026-10-15 13:46): rulings on cross-check 15 (Gemini, ChatGPT). Two checks they asked for are done on data in hand.**
+- **The checks** (no new outcome read):
+  - **B3's identical figures (−0.0052 for the median and both upper ends) are legitimate, not a bootstrap defect.** On the 236 eligible
+    operating rows, V2's year-1 growth P50 minus v1's takes a few discrete values, one per near-term table cell: +0.0245 on 39 rows, +0.0052 on
+    19, +0.0441 on 18, and so on. With d equal to the offset whenever y lies outside both forecasts, the median and the bootstrap quantiles land
+    on one cell's value.
+  - **This confirms both reviewers' central diagnosis:** V2's year-1 centre is v1's population-prior P50 shifted by a cell constant. It
+    carries no company-specific recency.
+  - **The ROTE MAE (1.74)** is driven by the outcome measure, not the forecast: one q1 outcome is −43.4, a change annualised on a near-zero
+    tangible book. The ROTE outcome needs a denominator guard before any ROTE bar can mean anything. It is a measurement defect, recorded.
+- **Adopted:**
+  1. **FAIL stands and v2.1 is not promoted** (both reviewers). It is a failed **q1 proxy** screen, stated as such. It is not proof that the
+     annual forecasts or the values are inferior (ChatGPT).
+  2. **The paper book is diagnostic only, and pre-registered** before its first publication (both): `REGISTRATION_paper_v21.md`, covering the
+     engine and freeze, the 12-month primary window with monthly monitoring, the execution timing and costs, matched baselines, every signal
+     kept, reproduction from frozen snapshots, and the rule that **paper results can never promote v2.1**.
+  3. **The WACC defect is fixed by a combined stack, as a new engine version** (both):
+     - market-value weights (market D/E for the Hamada relevering);
+     - a cost of debt of rf plus a registered synthetic-rating spread from interest coverage, never below rf plus a minimum spread, with
+       malformed inputs (negative, or interest netted) refused, not floored silently;
+     - a registered minimum spread of WACC over g_T (2 points to study, with sensitivity) below which the valuation is refused.
+
+     It is registered and validated by E5/E8 before use. **The paper book does not wait for it** (ChatGPT), but per Gemini every row now
+     carries `wacc`, `g_terminal` and `wacc_minus_gT`. **The rn_v4 construction rule excludes names with WACC − g_T < 2 points** (a registered
+     paper rule, so the economic test is not dominated by denominator errors). Excluded names stay in the shadow ledger, annotated: the
+     measurement keeps every row.
+  4. **The diagnostics on the 07-31 sample** (both; diagnosis, never bars). These develop the near-term fix, and **07-31 is spent and cannot
+     confirm it**:
+     - d against the distance of the base metric from its family prior;
+     - PERSIST frozen at the base 10-K date (the value of recency);
+     - margin outcomes rebased to the base year (the definition);
+     - the year-1 change scaled by elapsed time (the horizon);
+     - fiscal-month and seasonal splits;
+     - the error table (median, MAE, tails) by forecast gap, size, industry and delay.
+  5. **The next tests, in two registered tracks** (the coordinator's ruling between Gemini's a→b→c and ChatGPT's b-first):
+     - **Track 1 (ChatGPT's first): an annual fiscal-year-1 score of the already-frozen 07-31 census.** v2.1's FY1 forecasts are scored on
+       the engine's own year-1 period (first-filed annual reports, mostly February–March 2027), against v1 and annual PERSIST/POPMED, with
+       calibration. It is registered now, before any FY1 outcome exists. It costs no valuation, since the census is frozen.
+     - **Track 2 (Gemini's first): the near-term centre.**
+       - **The candidate:** a company-run-rate blend into the year-1–3 centre with weights decaying toward the prior (empirical Bayes,
+         α_t), developed only on observed dates (gate 2's, and 07-31).
+       - **The confirmation (ChatGPT's condition):** a genuinely prospective census, the target quarter ending **after** T. The candidate
+         date is 2026-09-25, untouched, with the September quarter ending after T and its outcomes filed by mid-November.
+       - **The bar:** beat CODE, and non-inferiority to PERSIST with a registered margin.
+       - **Pre-registered diagnostics:** MAE and tail loss.
+     - **Returns (the selection registration)** come after these.
+  6. **Engine schema:** an engine "ok" with no per-share value becomes a hard engine error in the next version (fork 2, AL.51). The live runner
+     already refuses it (d4.8).
+  7. **Noted for later:** the S5 combination cliff (143 against 150). A future rule shrinks continuously by sample size instead (Gemini).
+     Coverage: 23% of the census is refused by the engine (Gemini), a real-money condition on coverage.
+- **Not adopted:** Gemini's "fix WACC before any paper trading". The operator's paper decision stands with the WACC exclusion rule and
+  per-row annotation. A paper record is diagnostic in any case.
+- **For the operator:**
+  - approve `REGISTRATION_paper_v21.md` (draft next), including the WACC exclusion rule;
+  - approve the two test tracks' registrations when drafted.
+
+**AK.87 (2026-10-15 13:50): AK.86 is acted on. Both registrations are drafted, the paper spread rule is built, and the engine work is handed to fork 2.**
+- **`REGISTRATION_paper_v21.md` (draft):**
+  - the diagnostic-only paper book `rn_v4`, which can never promote;
+  - the frozen v2.1 manifest;
+  - the construction rule (the gate's sole reason is `pre_valid_analyst`; the 2-point discount-spread exclusion; the `depth_targets` equal
+    weight);
+  - execution at the close of T+1 with 25 bps a side;
+  - a 12-month primary window with monthly monitoring;
+  - IWM as the primary benchmark, with a Newey–West t ≥ 2, else inconclusive, and no extension;
+  - a matched v1 arm when built;
+  - immutable snapshots and a monthly reconciliation.
+- **`REGISTRATION_gate2b_annual.md` (draft, track 1):**
+  - the frozen 07-31 census (no re-valuation), with fiscal year 1 scored on the year it forecasts;
+  - **prospective only** (fiscal year 1 ending after T: 1,129 of the 1,189; 60 excluded);
+  - first-filed annual reports by the outcome definition of record, with a ROTE denominator guard;
+  - scoring on 2027-04-15;
+  - B2, B3 and B4a/b in gate 2b's form;
+  - the pre-registered diagnostics (MAE, P90 tail, error splits, discount-spread decile).
+- **The live runner, d4.9** (`d04977c`):
+  - `discount_spread` (the rate, g_T, the spread, `near_terminal_growth`) on every valued row;
+  - the paper overlay excludes names under 2 points, or with an unknown spread, annotated `paper_exclusion` and counted;
+  - shadow and runner tests: 342 passed.
+- **Handed to fork 2:**
+  - the WACC-correction registration (the combined stack);
+  - track 2's near-term-centre diagnostics and candidate, with a prospective confirmation at T = 2026-09-25, whose data is untouched and
+    reserved.
+
+**AK.88 (2026-10-15 13:52): the operator approves the five items of AK.87** ("1. ok 2. ok. 3. Ok. 4. OK. 5. OK"):
+1. **`REGISTRATION_paper_v21.md`: APPROVED.** It is fixed from now; changes are dated amendments, forward only.
+2. **`REGISTRATION_gate2b_annual.md` (track 1): APPROVED.** It is fixed before any scored outcome exists.
+3. **Merging the screener branch `review-2026-10/rn-v4-paper` to `main`** (a site deploy): approved. It is done together with the first
+   published paper file, so the new ledger never runs with a missing file.
+4. **How the paper file is published.** "OK" answered an either/or, so the coordinator takes the safer reading: **by hand, through
+   `screener-publish`, after the coordinator's check of each night.** Automatic nightly publishing (an unattended deploy, non-negotiable 8)
+   waits for the operator's explicit "automatic".
+5. **Registering the nightly task: approved.** It runs `shadow_v4.py` daily at 07:30 KST from the pinned worktree
+   `scratch/rev23/wt-d5-shadow` (the `review-2026-10/d5-shadow` branch, clean). It never publishes; publishing is item 4.
+
+**AK.89 (2026-10-15 13:53): the operator settles AK.88 item 4** ("4: ok for you to do now, then once we know it works, make it automatic"):
+- **Now:** the coordinator publishes each night's `v4_paper_overlay.json` by hand, through `screener-publish`, after checking it.
+- **Later, automatic publishing is approved in advance, on one condition: "once we know it works."** The coordinator's test is **three
+  consecutive scheduled nights**, each passing the coordinator's check. The check covers:
+  - the run completed;
+  - the engine versions equal the freeze;
+  - 0 "K:";
+  - the coverage and refusal counts within the first night's ±10%;
+  - the paper file reconciling to the shadow ledger;
+  - no `rn_v4` weight in any KIS target.
+
+  The nightly job then publishes **only** that file, through `screener-publish` (never the development tree, non-negotiable 6), with its own
+  check refusing to publish on any failure. The switch to automatic is recorded when made.
+- **The nightly task `RS2-Shadow-V4`** was registered at 13:53 (AK.88 item 5). Its next run is 2026-10-16 07:30.
+
+**AL.54 (2026-10-15 14:15): rulings on cross-check 16 (Gemini, ChatGPT) on the v2.2 discount-rate registration. Both reviewers back the
+combined stack; ChatGPT asks for revision before approval. The registration is revised (rev 2).**
+- **Facts checked before ruling:**
+  - **Damodaran's current page** (`datafile/ratings.html`) is dated January 2026 and has one non-financial table (D 19.00% to AAA 0.40%;
+    BBB 1.11%) plus a financial one. It shows no small-firm table, so ChatGPT's claim that the small-firm table dates from January 2017 is
+    not verified here.
+  - **Damodaran archives a dated "Ratings, Spreads and Interest Coverage Ratios" table every January, 2014–2025**
+    (`pc/archives/bondspreadsYY.xlsx`; the January 2020 one is `bondspreads19.xlsx`). A point-in-time table is therefore available for every
+    test date.
+  - **Gemini's algebra is verified:** substituting Hamada gives `WACC = rf + β_U·ERP + D/V·[k_d(1−t) − rf − t·β_U·ERP]`. With synthetic
+    `k_d = rf + s`, a falling price raises D/V and **lowers** WACC whenever `s(1−t) < t(rf + β_U·ERP)`, roughly any investment-grade
+    spread. My cross-check question had the direction backwards; corrected here.
+  - **The financial terminal value is** `κ·max(ROTE_ind − k_e, 0)·TBV/(k_e − g_T)` (engine_financial_v2), so the k_e − g_T rule is valid
+    for financials.
+  - **The financial k_e uses the industry's levered beta** with no Hamada step (gate1: `levered_beta=fin`), so market weights do not touch
+    financials.
+  - **ICE history:** our MRI store holds HY OAS from 2023-05-15. ChatGPT reports FRED now serves about three years (from 2023-10-16).
+    Either way, no ICE series covers 2020–2024; the registration's wording is corrected.
+- **Rulings:**
+  1. **The multiplicative ladder off Baa (ChatGPT P0): accepted.** D/BBB = 17.1 would amplify a stressed Baa absurdly.
+     - Replaced by an investment-grade interpolation between `AAA10Y` and `BAA10Y`, plus additive differentials over Baa below investment
+       grade, from the January table of year(T).
+     - Distressed ratings (CC, C, D, including EBIT ≤ 0) take the CCC spread, flagged: no extrapolation.
+  2. **The table's point-in-time vintage (both): accepted.** The January table of year(T) from Damodaran's archive. The 2020–2024 test is
+     then point in time, not retrospective.
+  3. **The large/small split and the $5B cliff (both): accepted by removing the split.** The large non-financial thresholds apply to every
+     operating company. Gemini's 3–7B interpolation is not needed.
+  4. **The price reflexivity (both):**
+     - adopted: ChatGPT's ±20% price-perturbation diagnostic with the industry-D/E comparison, reported against the direction Gemini's
+       algebra predicts;
+     - **not adopted:** Gemini's rating cap at market D/E > 1. It would be an unmeasured rule; the perturbation result decides whether one is
+       needed, under its own registration.
+  5. **Debt timing (Gemini): accepted.** Debt from the latest balance sheet filed before T (10-Q or 10-K); `debt_annual_only` where the
+     store cannot supply it, with a feasibility check before the build.
+  6. **EBIT averaging:** Gemini's 3-year average as the primary is **not adopted**. ChatGPT is right that the table maps one-year coverage.
+     The 3-year aggregate coverage is a reported sensitivity.
+  7. **Mechanism 3, the ERP (both):** no ERP floor inside v2.2, which would mix two changes (ChatGPT). Gemini's point stands: the 2-point
+     rule does not catch a moderately understated ERP. **A separate ERP registration becomes a real-money condition.** v2.2 reports implied
+     ERP and k_e − rf by rate regime as its evidence base.
+  8. **Financials (both): resolved by fact.** k_e is unchanged, and rule (c) on k_e − g_T is tied to the verified terminal formula.
+     Financial refusals and terminal-value concentration are reported separately.
+  9. **The comparators (both):** E5 and E8 against v1 stay the bars, unchanged.
+     - Reported: v2.2 against v2.1, and Gemini's clean/defect cohort split for E5 and E8.
+     - Gemini's worry that E8d could fail because the defect is fixed: E8d is a universe median by family and year, not per company, so
+       the effect is diluted. The bar is not changed in advance; a failure would be diagnosed.
+  10. **Accuracy, not just difference (ChatGPT P1): accepted with the data in hand.** Synthetic k_d is compared with the stated coupons of
+      debt each company issued in the 12 months before T (SEC XBRL), reported with its limits. No accuracy claim beyond it.
+  11. **Also adopted:**
+      - Gemini's monotonicity check (WACC against realised volatility and market D/E);
+      - ChatGPT's terminal multiple and terminal-value-share reporting;
+      - coverage by refusal reason.
+  12. **The three choices:**
+      - **Spread source:** ChatGPT's B (add `AAA10Y`). It is needed by the revised investment-grade interpolation; Gemini's "< 15 bp" point
+        is noted, and a no-`AAA10Y` fallback is registered.
+      - **The 2-point rule:** 2.0, applied after the corrections (both).
+      - **Interest lines:** gross where filed (both), with Gemini's materiality exception: D/(D+E) < 5% means k_d = rf + s_AAA, flagged,
+        not refused.
+- **Revised registration:** `REGISTRATION_wacc_v22.md` rev 2.
+- **For the operator:**
+  1. approve the `AAA10Y` FRED download;
+  2. confirm 2.0;
+  3. confirm the interest-line handling;
+  4. approve the registration.
+
+  Nothing is built before approval.
+
+**AL.55 (2026-10-15 14:27): the operator approves the v2.2 discount-rate registration ("1. approved. 2. keep. 3. use gross interest where
+filed. 4. approve.").**
+1. The FRED `AAA10Y` download is approved, for the investment-grade anchor.
+2. The 2.0-point minimum spread over terminal growth is kept, applied after the corrections.
+3. Gross interest expense is used where it is filed.
+4. `REGISTRATION_wacc_v22.md` rev 2 is approved. Sections 2–4 are fixed from now.
+- **One point is open:** the operator's answer to 3 does not mention the 5%-debt-weight materiality exception (Gemini's, in section 2b). It
+  is part of the approved text, and it is put back to the operator for an explicit yes or no before the build reaches it. Until then, the
+  build implements it behind a single registered switch, so either answer is a one-line choice, fixed before any result.
+- **Next:** the AAA10Y download and the Damodaran January tables (2020–2026); the feasibility checks (quarterly debt, a separate gross
+  interest figure, XBRL coupon tags); then `discount_rate_v2` on a branch.
+
+**AL.56 (2026-10-15 14:28): v2.2's data. Downloaded and hashed. One part of the approved registration cannot be met as written: the archive
+holds the spreads but not the coverage thresholds.**
+- **FRED** (`data/credit_spreads/raw_20261015/`): `AAA10Y.csv` (1983-01-03 to 2026-10-13; approved, AL.55) and `BAA10Y.csv`.
+  - **Disclosure:** I also fetched `BAA10Y` from FRED. It was not separately approved; it is the series MRI already ingests from FRED.
+  - MRI's stored copy stays the source of record, and the FRED file is used only to cross-check it.
+- **Damodaran** (`data/damodaran/ratings_archive_20261015/`, standing approval): `bondspreads19.xlsx` to `bondspreads24.xlsx` and the
+  current `ratings.xls` (last saved 2026-01-26). sha256 for every file is in the build manifest.
+- **What the archive holds:**
+  - Each archived file is a **default-spread table by rating, with one column per January** ("Spread 2020", "Spread 2021" ...).
+  - The value for a given January is **identical in every later file** that carries it. Checked for AAA, BBB and CCC, 2020–2025, across
+    all six files.
+  - So the January-YYYY column is a stable record of that January's spreads. **v2.2 uses the column for year(T)**: 2020 through 2025 from
+    the archive, 2026 from the current file. That is point in time.
+  - The file names do not follow the page's labels: `bondspreads20` and `bondspreads21` are byte-identical and both carry a 2022 column.
+    Columns, not files, are the unit.
+- **What the archive does not hold: the coverage-to-rating thresholds.** They exist only in the current `ratings.xls` (January 2026).
+  - The registration's "rows read from that January's file" cannot be met for the thresholds.
+  - **Proposed:** the January-2026 thresholds for every date, labelled **retrospective for the thresholds only** (ChatGPT's option 2 in
+    cross-check 16). The spreads and anchors stay point in time.
+  - **To the operator for a yes or no before the build.**
+- **Still open with the operator:** the 5%-debt-weight materiality exception (AL.55).
+
+**AL.57 (2026-10-15 14:39): the operator settles the two open points of v2.2.**
+1. **The coverage thresholds:** the January-2026 thresholds are used for every date, **labelled retrospective for that component**. The
+   spreads (the January column of year(T)) and the AAA10Y/BAA10Y anchors stay point in time.
+2. **The materiality exception is approved:** debt below 5% of capital with a missing or unusable interest line gets k_d = rf + s_AAA(T),
+   flagged `kd_immaterial_floor`, not refused.
+- Both are added to `REGISTRATION_wacc_v22.md` as a dated note. The design is complete; the build may start.
+
+**AL.58 (2026-10-15 14:39): v2.2's feasibility checks before the build. Two items are feasible; the rate calibration (registration section 3,
+item 4) is not feasible on the current store.**
+- **Quarterly debt: feasible.**
+  - The quarterly store carries the `debt_current` and `debt_lt_noncurrent` instants from 10-Qs (`pit_data.quarter_fields`).
+  - Finance leases and separately tagged short-term borrowings are annual only.
+  - v2.2 takes D = the latest quarter's two debt components plus the annual finance lease when a 10-Q filed after the 10-K precedes T.
+    Otherwise it takes the annual total, flagged `debt_annual_only`.
+- **Gross interest: feasible.** In a random 300-company sample of the annual-fact store:
+  - 163 file a gross tag (`InterestExpense`, `InterestExpenseDebt` or `InterestExpenseNonoperating`);
+  - **9 file only `InterestIncomeExpenseNet`**: refused unless debt is below 5% of capital (AL.57);
+  - the rest file no interest tag (mostly no debt, or financials).
+- **The rate calibration: not feasible on the current store.**
+  - `DebtInstrumentInterestRateStatedPercentage` appears undimensioned for only 34 of the 300 companies, and with a fact from 2024 or later
+    for **1**.
+  - SEC's companyfacts carries no dimensional facts, and coupons are filed per instrument (`DebtInstrumentAxis`).
+  - The calibration would need SEC's Financial Statement and Notes data sets, which do carry dimensions. That is large, but covered by the
+    standing SEC approval.
+  - **For the operator:** either fetch those data sets for the calibration, or record item 4 as not run, with no claim of rate accuracy.
+    Real money then needs the operator's explicit acceptance of that limit (registration section 4).
+
+**AL.59 (2026-10-15 14:41): a data-layer finding while building v2.2. Since the 2024 taxonomy, many filers report interest only as
+`InterestExpenseNonoperating`, which the production extractor's ladder does not read.**
+- **The ladder:** the vendored production extractor's `interest_expense` ladder is `["InterestExpense", "InterestExpenseDebt"]`
+  (`valuation/vendored/build_fundamentals_history.py:101`). `pit_data` uses it.
+  - Only the separate `pit_companyfacts` ladder also has `InterestExpenseNonoperating` and `InterestIncomeExpenseNet`.
+  - So the state's `interest_expense` is always a gross tag: **a net tag cannot enter**. MAN's −7.41% is a negative value filed under a
+    gross tag, which v2.2 refuses (registration section 2b).
+- **Measured** on a random 600 companies of the annual-fact store: of those with any gross interest fact,
+  - for fiscal 2025, **32 of 80 (40%) file only `InterestExpenseNonoperating`**;
+  - for fiscal 2021, 0 of 133 (8 file only `InterestExpenseDebt`).
+- **Consequences:**
+  - **For v1 and v2.1 (frozen):** those companies have no `kd_effective` from 2024 filings onward. Gate 1 then substitutes rf plus the
+    population median spread (`gate1.py` lines 264–268). A quiet input change, not a refusal; recorded.
+  - **For v2.2:** its gross-interest reader takes `InterestExpense`, then `InterestExpenseNonoperating`, then `InterestExpenseDebt`, at the
+    base fiscal period, from the as-known annual facts. Without the second tag, v2.2 would refuse about 40% of indebted companies on
+    2025-and-later filings.
+    - This keeps the approved rule ("gross interest where filed"): `InterestExpenseNonoperating` is a gross interest-expense element.
+    - `InterestIncomeExpenseNet` is never read.
+- **For the data layer (later, the operator's call):** the production extractor's ladder misses the 2024 taxonomy's element. That affects
+  every consumer of `interest_expense`, the screener included. It is a separate fix.
+
+**AL.60 (2026-10-15 14:44): v2.2's tables are built. A correction to AL.56, and the Baa cross-check.**
+- **Correction to AL.56.** AL.56 said a January's spreads are "identical in every later file". I had checked only AAA, BBB and CCC.
+  - The build checks all 15 ratings and found **one disagreement in 165 values**: **January 2022, Ca2/CC**, 8.196% in `bondspreads20` and
+    `bondspreads21`, but 8.80% in `bondspreads23` and `bondspreads24` (a later revision).
+  - **Rule:** the earliest-published value is kept, as point in time, and every disagreement is listed in the table file.
+  - v2.2 never reads a CC spread (CC, C and D take the CCC spread), so the disagreement has no effect.
+- **The Baa cross-check:** FRED's `BAA10Y` equals MRI's stored series on all **10,195 of 10,195** dates (0 differences, the same date
+  set). The FRED file is therefore used for both anchors, with MRI as the verified equal.
+- **The tables** (`data/discount_v22/`, built by `valuation/discount_rate_v2.py build-tables`):
+  - `ratings_v22.json` (sha256 51d2355e…): the January-2026 large non-financial thresholds, the January spreads 2015–2026, the source
+    files' sha256, and the disagreements;
+  - `anchors_v22.json` (02ce2e70…): AAA10Y from 1983 and BAA10Y from 1986.
+- **Spot values** (AAA / BBB / CCC):
+
+  | January | AAA | BBB | CCC |
+  |---|---|---|---|
+  | 2020 | 0.63% | 1.56% | 8.20% |
+  | 2023 | 0.69% | 2.00% | 11.57% |
+  | 2026 | 0.40% | 1.11% | 8.85% |
+
+**AL.61 (2026-10-15 14:50): engine v2.2 is built on its own branch. A full-scale dry run comes next, then E5 and E8.**
+- **Branch:** rs2-local `review-2026-10/engine-v2.2` (worktree `scratch/rev23/wt-v22`, from v2.1's 1465cc0). Suite **818 passed**.
+  - **7c06085:** `valuation/discount_rate_v2.py` and 10 tests, covering:
+    - the coverage table and the strictly-before-T anchors;
+    - the spread ladder: investment grade interpolated, sub-investment grade additive, distressed capped at CCC;
+    - market weights and Hamada on market D/E;
+    - every named refusal (no market cap; no gross interest; non-positive interest; the 2-point rule);
+    - the 5% floor; zero debt; 10-Q debt with the T cut;
+    - the gross-interest reader (`InterestExpenseNonoperating` read, `InterestIncomeExpenseNet` never);
+    - the financial gap rule.
+  - **b19aea1:** the wiring:
+    - `discount_rate_v22()` for callers;
+    - `e5_v2` takes `disc2`, or a named v2.2 refusal, and records `discount_version`, `wacc`, `coe` and the v2.2 detail;
+    - `run.py --discount-v22` and `e8_gate2b --discount-v22` build v2.2's rate per name and add the tables' sha256 to the lineage.
+- **What v2.2 is:** engine v2.1's code (`CHAIN_VERSION` stays "v2.1") valued with `discount_rate_v2`, recorded as
+  `discount_version: v2.2`. v1, gate 2's frozen files, and v2.1 as frozen are unchanged.
+- **Next (Q3), when memory allows:**
+  1. a dry run of the forensic harness with `--discount-v22` on at least 150 real names, checking crashes, refusal reasons and rates,
+     WACC − g_T and the debt basis;
+  2. then E5 and E8 on v2.2 (the acceptance configuration and the run-2 2026 contexts), verdicts sealed;
+  3. then the registration's reported items.
+- **Memory:** free RAM is 0.6 GB while fork 1's live shadow run works. Chain 4's legacy run is still held (AL.47, AK.84).
+
+**AL.62 (2026-10-15 15:00): the operator on the rate calibration (AL.58): "ok for both".** Read as follows:
+- **Approved:** download SEC's quarterly Financial Statement and Notes data sets (standing SEC approval) for registration item 4. The
+  synthetic k_d is compared with the stated coupons of debt issued in the 12 months before T.
+- **Accepted as the fall-back:** if the data sets do not give usable coupons for enough names, item 4 is recorded as not run. No accuracy
+  is claimed, and real money then needs the operator's explicit acceptance of that limit.
+- **Practical:**
+  - The data sets are large (a zip per quarter; the notes are many gigabytes uncompressed). 191 GB of disk is free.
+  - The download and the streaming parse run after v2.2's E5/E8, not alongside them, because of RAM: 1.1 GB free at 15:00.
+- **What was using RAM at 15:00 (14.8 GB total):**
+  - **Docker Desktop's WSL VM, 5.3 GB:** another project's (`plm`) stack of 17 containers, running for 4 hours;
+  - **Claude app processes, about 2.3 GB** together;
+  - fork 1's `shadow_v4.py`, 0.2 GB;
+  - a `plm` integration test and the Gemini-baselining runner.
+  - None of it is this session's. Nothing was stopped.
+
+**AK.90 (2026-10-15 15:22): the first live shadow night is complete (asof 2026-10-14). The coordinator's check finds one defect and one decisive finding;
+nothing is published.**
+- **The run** (`shadow-2026-10-14-a1`, 13:54–15:21):
+  - freeze `2908cf71…`; KIS_HALT true;
+  - the weekly SEC submissions file (1.57 GB); the daily index; 130 per-company facts and 379 submissions;
+  - Yahoo closes (4 failures, refused by the stale rule); live classification (SEC records 1 weekday from `asof`);
+  - context 2,030; census 2,030 at 0.24 s each, all on v2.1;
+  - **0 "K:" continuations** (1,255 valued);
+  - 2 no-valid-draw rows refused; ledger 2,030 rows; the grader ran.
+- **The defect, fixed before the next night:** the daily index window began at `asof` (10-14) instead of at the facts snapshot's date (10-13). Filings
+  accepted on 10-13 were therefore missed, and **100 companies carried `stale_inputs` ("the store is behind")**. They failed closed (blocked,
+  never valued wrongly). The window must start at the earlier of the snapshot date and the day after the previous run's `asof`.
+- **The finding, which changes what the paper book would measure:**
+  - **The paper file:** 1,121 rows paper-actionable; 48 excluded by the 2-point discount-spread rule; **122 undervalued paper-actionable, of
+    which 121 are financial** (banks and insurers) and 1 operating.
+  - **The cause is the engine's level by family:**
+    - operating median IV/price **0.53** (undervalued 1, hold 670, overvalued 228);
+    - financial median IV/price **1.49** (undervalued 128, hold 184, overvalued 44).
+  - Under the approved construction rule (the `depth_targets` equal weight over undervalued names), `rn_v4` would be an equal-weight bank
+    portfolio. Its return would measure financials against IWM, not v2.1's selection.
+  - This was not visible before the census. It is consistent with gate 2's level finding (B3, a median 0.70× price) and E8's financial
+    mean/price of 1.57.
+- **Held for the operator:** whether to publish under the registered rule, or to amend the construction rule before the first publication
+  (forward-only and allowed: no paper row has been published). The coordinator's recommendation is in the report.
+
+**AL.63 (2026-10-15 15:22): v2.2's status, confirmed to fork 1, and a reported item added.**
+- **Status:**
+  - v2.2 is the WACC correction (AK.86 item 3).
+  - Its registration (rev 2) was approved by the operator before the build (AL.55, at 14:27), and its two open points were settled
+    (AL.57, at 14:39).
+  - v2.2 is built (AL.61) and is a **candidate only**: no freeze unless E5 and E8 pass, and freezing it or moving paper to it remains
+    the operator's decision.
+- **Added to the reported items,** before any v2.2 result, at fork 1's request: the per-family median IV/price, v2.2 beside v2.1, on the
+  census and on E8's samples.
+- **Fork 1's level finding,** from the first live shadow at 2026-10-14 on v2.1 (2,030 names):
+  - median IV/price **0.53 for operating**: 1 undervalued, 670 hold, 228 overvalued;
+  - median IV/price **1.49 for financial**: 128 undervalued;
+  - consistent with gate 2's B3 level of 0.70× price.
+- **Reading:** the absolute level is off by family, in opposite directions. The discount rate is one lever, and v2.2 should lower
+  operating values where WACC sat near g_T. But an operating median of 0.53 points mainly at the cash-flow side (margins, reinvestment,
+  growth). It is recorded as an open real-money issue on level, to diagnose separately.
+
+**AL.64 (2026-10-15 15:30): v2.2's first dry run (Q3; discount fields only, no E5/E8 measure read) found one coverage gap. It is fixed before
+any v2.2 result.**
+- **The run:** the forensic harness with `--discount-v22`, 2023-09-30, 600 companies, 1 worker (`scratch/rev23/v22_dryrun/`).
+  - 448 E5 records, **0 instrumentation errors**.
+  - Operating: 239 valued, **49 refused (17%), every one "debt with no gross interest expense filed"**. 133 financial valued.
+  - Flags: `debt_annual_only` 41, `distressed_debt` 19, `kd_immaterial_floor` 6.
+  - Debt basis: 148 from a 10-Q, 91 annual.
+  - Interest tags: `InterestExpense` 200, `InterestExpenseDebt` 16.
+  - WACC − g_T: minimum 2.25 pts, P10 3.79, median 5.08. No 2-point refusal.
+- **The 49 refusals, 25 inspected against the raw facts:**
+  1. **Correct, point in time.** RVTY, LUV, UAL and TSN file `InterestExpenseNonoperating` for their base year, but only in 2025–2026
+     filings' comparative columns: not known at T. Their filings at the time used other elements, or extensions.
+  2. **Net only, refused as ruled (AL.55):** ARW, DAL, HAL, HUBB, PNR, MEI, HWKN, MYE, OXM, TNC and others (`InterestIncomeExpenseNet` or
+     `...NonoperatingNet`).
+  3. **A gap in v2.2's reader:** gross interest filed under elements it did not list:
+     - `InterestAndDebtExpense` (TXN, TSN);
+     - `InterestExpenseLongTermDebt` + `InterestExpenseShortTermBorrowings` (CAG, LOW);
+     - `InterestExpenseDebtExcludingAmortization` (MTW);
+     - `FinancingInterestExpense` (EPAC).
+- **The fix (wt-v22 commit):** the reader also takes those three elements, then the sum of the two components. That is within the
+  operator's "gross interest where filed": each is a gross interest-expense element.
+  - Never read: `*Net` elements, `InterestPaid` and `InterestPaidNet` (cash paid is a different concept).
+  - A test covers it.
+  - The dry run is repeated before E5 and E8 (Q3).
+
+**AL.65 (2026-10-15 15:38): v2.2's second dry run is signed off; E5 and E8 on v2.2 have started.**
+- **Dry run 2** (after AL.64's fix; `scratch/rev23/v22_dryrun2/`): 0 instrumentation errors. Operating: 246 valued, **42 refused (14.6%), all
+  "debt with no gross interest expense filed"**. 133 financial valued.
+  - The added elements supplied 8 names: `InterestAndDebtExpense` 3, `InterestExpenseDebtExcludingAmortization` 2, the component sum 2,
+    `FinancingInterestExpense` 1.
+  - The remaining refusals are the AL.64 categories that are correct by rule: net only; a gross element known only from later filings;
+    extension elements.
+  - Flags: `debt_annual_only` 41, `distressed_debt` 20, `kd_immaterial_floor` 6.
+  - WACC − g_T: minimum 2.25 pts, median 5.08.
+  - **The 14.6% coverage cost is reported,** as the registration requires (a coverage condition for real money); it is not a defect.
+- **E5 and E8:** the scheduled task `RS2-EngineV2-E5E8-5` (`engine_v2_audit/e5e8_chain5/`) started at 15:38.
+  - Code: wt-v22 at e604cca, clean and pushed. Configuration: priors_v5 + priors_v4_fy, `--discount-v22 data/discount_v22`. Output:
+    `e5e8_v22/`. Verdicts sealed.
+  - It does not start a step between 07:00 and 08:45 (fork 1's nightly shadow).
+  - ETA: about 19:30–20:00 today.
+- **Chain 4's legacy run** (a v2.0.3 sensitivity) stays held until this finishes.

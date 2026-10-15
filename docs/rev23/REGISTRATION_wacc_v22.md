@@ -1,6 +1,6 @@
-# Registration: the corrected discount rate, engine v2.2 (DRAFT rev 2, fork 2, 2026-10-15)
+# Registration: the corrected discount rate, engine v2.2 (rev 2, fork 2, 2026-10-15)
 
-**Status:** a draft for the operator, written before any number from the candidate exists.
+**Status: APPROVED by the operator 2026-10-15 14:27 (SPEC_rebuild AL.55).** Written before any number from the candidate existed.
 - It answers fork 1's AK.86 item 3.
 - **Revision 2** applies the rulings on cross-check 16 (Gemini, ChatGPT), recorded in SPEC_rebuild AL.54. Revision 1 (commit 547a536) is
   superseded.
@@ -145,3 +145,16 @@ bars carry over.
 4. **Approve the registration.**
 
 No number from candidate D exists at the time of writing.
+
+## 6. Dated notes
+
+- **2026-10-15 14:39 (SPEC_rebuild AL.56, AL.57).**
+  - **Damodaran's archive** keeps the default spreads by January (one column per year, stable across files) but not the coverage-to-rating
+    thresholds.
+  - **The operator's ruling:**
+    - the thresholds are the January-2026 ones for every date, labelled retrospective for that component;
+    - the spreads use the January column of year(T);
+    - the anchors are AAA10Y and BAA10Y before T.
+  - **The 5% materiality exception in section 2b** is confirmed by the operator.
+- **2026-10-15 15:22 (SPEC_rebuild AL.63).** One reported item is added, before any v2.2 result exists (fork 1's request, AK.87): the
+  **per-family median IV/price**, v2.2 beside v2.1 on the same names, on the 07-31 census and on E8's samples. Reported, not barred.
