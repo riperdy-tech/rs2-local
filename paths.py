@@ -72,6 +72,15 @@ _CANDIDATES = {
         "Stock Screener/Macro Regime Indicator",
         "macro-regime-indicator",
     ),
+    # Revision 24 step 2b (population ranges): the rebuild's point-in-time population tables (priors_v5/<vintage>/tables.json) and the
+    # current-dated SIC file the rebuild classifies families with (sic_by_cik.json). Both are data in stocks-workspace, read only, and
+    # resolved on demand (tools/population_ranges.py, the pack builder), never eagerly in load_config().
+    "priors_dir": (
+        "stocks-workspace/data/priors_v5",
+    ),
+    "priors_inputs_dir": (
+        "stocks-workspace/data/priors/_inputs",
+    ),
 }
 
 # Per-key environment overrides. `anchors_dir` deliberately reads MRI_ANCHORS_DIR first and then
@@ -85,6 +94,8 @@ _ENV = {
     "anchors_dir": ("MRI_ANCHORS_DIR", "MRI_OUTPUTS_DIR"),
     "rs2_state_dir": ("RS2_STATE_DIR",),
     "mri_dir": ("MRI_DIR",),
+    "priors_dir": ("RS2_PRIORS_DIR",),
+    "priors_inputs_dir": ("RS2_PRIORS_INPUTS_DIR",),
 }
 
 
