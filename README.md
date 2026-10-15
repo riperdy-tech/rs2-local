@@ -138,6 +138,25 @@ unchanged plus a crux, or reply HOLD. The desk refuses a changed input (`financi
 `{fired, outcome: crux_added | hold_confirmed | no_change}`, and a sample whose memorandum's SECTION 0 verdict word differs from the
 code's label carries the flag `memo_verdict_mismatch` (reported, never a gate).
 
+### Pack revision 24 — the reference shown only after the analyst commits
+
+Stage A: the pack does not print the CONSENSUS-IMPLIED VALUE. DATA 8 has no reference line, the BASE WINDOW CHECK leaves out its
+fiscal-year value and the TTM window's fence side, the DEFAULTS block has no `consensus_implied_value` or `reference_status` line, TASK
+item 6 no longer names it, and the desk's R10 gate is off (its share-unit note compares with the price). The value, its status and the
+omitted line are still computed and kept in the facts and the sidecar (FACTS_VERSION 10: `reference_withheld`, `reference_line`); a
+revision-24 DEFAULTS read gives None for the value and the status, so a replay takes them from the sidecar, never from text.
+
+Stage B (`analyst_tools.chat_with_tools`, after the final memorandum and any crux follow-up): when the reference is in force (status
+`used`), the harness sends one message (`reference_reveal_message`) with the value, its inputs and the stage-A Base. The model replies
+KEEP, or calls the desk once more with its answer-run inputs, changing only the inputs it lists in `reference_revision` (each with a
+citation); the desk refuses an unlisted change and accepts `reference_revision` only in stage B. The guardrails
+(`reference_revision_outcome`: G5 malformed, G4 more than 25% from stage A's Base, G3 a move toward the reference of more than 10% with
+any changed input uncited, G1 an unverified citation, G2 a quote stage A already used) keep stage A's answer run on any failure; the
+rejected run is marked `reference_revision_rejected` and never counts as a run. Every sample records `base_iv_stage_a`, `base_iv_final`
+and `reference_revision` `{fired, outcome: keep | revised_accepted | revised_rejected | not_available, guard_failed, changed_inputs,
+toward_civ, civ, base_over_civ_a, base_over_civ_final}`, carried to the verdict row; the full exchange is in the sample's
+`_reference_reveal.md`.
+
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
 Every depth verdict (`verdict_depth.json`, each ledger row) carries, stamped by
