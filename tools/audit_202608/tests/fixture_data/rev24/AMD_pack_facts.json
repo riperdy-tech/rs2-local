@@ -1,0 +1,286 @@
+{
+  "version": 9,
+  "source": "build",
+  "consensus_implied_value": 285.18,
+  "years35_p90": 0.301,
+  "reference_status": "used",
+  "levels": {
+    "year1": 10.452,
+    "year2": 21.496,
+    "bull2": 27.934,
+    "bear2": 13.243
+  },
+  "base_window": {},
+  "next_fy_revenue_growth": 0.732,
+  "shares_outstanding": 1632475042.0,
+  "net_debt_b": -8.204,
+  "terminal_g_default": 0.0375,
+  "interest_expense_latest_b": 0.131,
+  "owner_earnings_source": "ttm_filed",
+  "coe_anchor": 0.10460000000000001,
+  "filed_shares_diluted": 1636000000.0,
+  "filed_shares_fy": 2025,
+  "terminal_g_anchor": 0.0375,
+  "base_rate_5y": {
+    "share_ge_10": 17.2,
+    "share_ge_20": 4.0,
+    "share_ge_30": 1.5,
+    "p50": 4.3,
+    "p90": 14.0
+  },
+  "owner_earnings_default_b": 7.148,
+  "cash_basis_b": 6.765,
+  "revenue_cagr_5y_pct": 28.8,
+  "shares_default": 1632475042.0,
+  "shares_dilution_factor": 1.0145,
+  "shares_dilution_period": "quarter ended 2026-06-30",
+  "shares_warning": null,
+  "consensus_data_status": "ok",
+  "terminal_ronic": 0.5541969999999999,
+  "long_run": {
+    "cycle": false,
+    "cycle_year": null,
+    "cycle_years": [],
+    "e5": 52.716357,
+    "oe5": 48.867917,
+    "m5": 0.262812,
+    "m_tc": 0.15,
+    "m_years": [
+      2018,
+      2025,
+      8
+    ],
+    "r_tc": 0.5541969999999999,
+    "r_years": [
+      2018,
+      2025,
+      8
+    ],
+    "p": 1.0,
+    "g_rev": 0.251992,
+    "g_rev_years": [
+      2018,
+      2025,
+      8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": 0.839961,
+    "x_over_oe": 1.161718,
+    "nwc_intensity": 0.13275700000000001,
+    "nwc_years": [
+      2018,
+      2025,
+      8
+    ],
+    "stub_months": 9.2649,
+    "stamps": [
+      "amortization_gap:2018-2022",
+      "tangible_equity_partial:2018-2020",
+      "operating_margin_without_amortization"
+    ],
+    "om_tc": 0.08371600000000001,
+    "om_trend": 0.077872,
+    "om_L": 0.106643,
+    "om_years": [
+      2018,
+      2025,
+      8
+    ],
+    "om_shape": "swing",
+    "om_basis": "without_amortization",
+    "om_5": 0.190314,
+    "m_long": 0.150369,
+    "margin_ratio": 0.572156,
+    "stamps_full": [
+      "amortization_gap:2018/2019/2020/2021/2022",
+      "tangible_equity_partial:2016/2017/2018/2019/2020",
+      "operating_margin_without_amortization"
+    ]
+  },
+  "working_capital": [
+    2.164239,
+    4.950961,
+    6.193452,
+    5.826408,
+    2.895501
+  ],
+  "base_year_cap": null,
+  "split_after_last_filing": null,
+  "reference_base_b": 5.752244,
+  "excess_cash": 10.552,
+  "coe_premium_source": "closure",
+  "base_year_cash_and_investments_b": 10.552,
+  "rf_eff": 0.0524,
+  "nominal_gdp_trend": 0.0447,
+  "reference_path": [
+    0.817,
+    1.0567,
+    0.5287333333333333,
+    0.32536666666666664,
+    0.122
+  ],
+  "price_implied_defaults": {
+    "coe": {
+      "value": 0.0668,
+      "reachable": true,
+      "bound": {
+        "low": null,
+        "high": null
+      },
+      "not_available": null
+    },
+    "growth_years_3_5": {
+      "value": 0.584,
+      "reachable": true,
+      "bound": {
+        "low": null,
+        "high": null
+      },
+      "not_available": null
+    },
+    "fade_years": {
+      "value": 41.7,
+      "reachable": true,
+      "bound": {
+        "low": null,
+        "high": null
+      },
+      "not_available": null
+    },
+    "terminal_g": {
+      "value": null,
+      "reachable": false,
+      "bound": {
+        "low": 0.0,
+        "high": 0.0447
+      },
+      "not_available": null
+    },
+    "terminal_ronic": {
+      "value": null,
+      "reachable": false,
+      "bound": {
+        "low": 0.105,
+        "high": Infinity
+      },
+      "not_available": null
+    },
+    "year2_level": {
+      "value": null,
+      "reachable": false,
+      "bound": {
+        "low": 13.243,
+        "high": 27.934
+      },
+      "not_available": null
+    }
+  },
+  "price_implied_price": 633.91,
+  "nci_attribution": {
+    "pi": 1.0,
+    "basis": "ni_split",
+    "year": 2025,
+    "ni_parent_b": 4.335,
+    "ni_incl_nci_b": 4.335,
+    "equity_b": 62.999,
+    "equity_incl_nci_b": 62.999,
+    "stamps": []
+  },
+  "ni_scope": "parent",
+  "per_share_basis": {
+    "status": "verified",
+    "year": 2025,
+    "n_common_b": 4.335,
+    "n_common_source": "net_income",
+    "eps_filed": 2.65,
+    "shares_diluted": 1636000000.0,
+    "eps_implied": 2.649755501222494,
+    "gap": -9.226368962489406e-05,
+    "tolerance": 0.006886792452830189,
+    "stamps": []
+  },
+  "cash_scope": "unrestricted_line",
+  "cash_restricted_b": 0.017,
+  "customer_money": {
+    "assets_b": null,
+    "liabilities_b": null,
+    "gap_b": null,
+    "stamps": [
+      "customer_money_excluded"
+    ]
+  },
+  "insurance_reserves_b": null,
+  "vendor_revenue_basis": {
+    "status": "consistent",
+    "s": 0.5493277408266432,
+    "k": 0.17177501574663376
+  },
+  "primary_sources": [
+    {
+      "id": "P1",
+      "type": "earnings_release",
+      "form": "8-K",
+      "accession": "0000002488-26-000121",
+      "filed": "2026-08-04",
+      "period": "Q2 2026",
+      "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000121/q22026991.htm",
+      "sha256": "3b596ce800417468aa8c763b2eb760ae942102fc406e32bafb3adaf1c55e2cc9",
+      "chars": 13810
+    },
+    {
+      "id": "P2",
+      "type": "other_exhibit",
+      "form": "8-K",
+      "accession": "0000002488-26-000121",
+      "filed": "2026-08-04",
+      "period": "Q2 2026",
+      "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000121/amdq22026earningsslidesf.htm",
+      "sha256": "f2ca144e296f7ece1244112e8e10f91e9dccedc2965b825ac7da0dfeb8e0c79a",
+      "chars": 5773
+    },
+    {
+      "id": "P3",
+      "type": "segment_table",
+      "form": "10-Q",
+      "accession": "0000002488-26-000123",
+      "filed": "2026-08-05",
+      "period": "Q2 2026",
+      "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/R11.htm",
+      "sha256": "160a790655e32168f573face572d61f5cc7d114f415a783ad400929e65c11ee7",
+      "chars": 4068
+    },
+    {
+      "id": "P4",
+      "type": "other_8k",
+      "form": "8-K",
+      "accession": "0000002488-26-000163",
+      "filed": "2026-08-19",
+      "period": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000163/pressrelease_bodxtr8x19x26.htm",
+      "sha256": "fcc5be752f3fe02b19dd6feabca71634e49954776a919a486c35efe32a9f6d1b",
+      "chars": 2497
+    },
+    {
+      "id": "P5",
+      "type": "other_8k",
+      "form": "8-K",
+      "accession": "0001193125-26-354029",
+      "filed": "2026-08-17",
+      "period": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/2488/000119312526354029/d142696dex11.htm",
+      "sha256": "3cab9a3fd38437797e00f7b9edd26f3d5002e507da4dff2a89723e7b63e0236e",
+      "chars": 2499
+    },
+    {
+      "id": "P6",
+      "type": "other_8k",
+      "form": "8-K",
+      "accession": "0000002488-26-000115",
+      "filed": "2026-07-01",
+      "period": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000115/amd-20260626.htm",
+      "sha256": "c7c6eb24b10849a6d4b8bac193746a652c11b5c10b0874c8c40317bdab3a61fc",
+      "chars": 1343
+    }
+  ]
+}

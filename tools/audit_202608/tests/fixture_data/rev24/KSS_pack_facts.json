@@ -1,0 +1,276 @@
+{
+  "version": 9,
+  "source": "build",
+  "consensus_implied_value": 41.43,
+  "years35_p90": 0.14,
+  "reference_status": "used",
+  "levels": {
+    "year1": 0.742,
+    "year2": 0.558,
+    "bull2": 0.683,
+    "bear2": 0.439
+  },
+  "base_window": {},
+  "next_fy_revenue_growth": 0.0,
+  "shares_outstanding": 113376445.0,
+  "net_debt_b": 0.762,
+  "terminal_g_default": 0.0236,
+  "interest_expense_latest_b": null,
+  "owner_earnings_source": "ttm_filed",
+  "coe_anchor": 0.1008,
+  "filed_shares_diluted": 114000000.0,
+  "filed_shares_fy": 2026,
+  "terminal_g_anchor": 0.0375,
+  "base_rate_5y": {
+    "share_ge_10": 17.2,
+    "share_ge_20": 4.0,
+    "share_ge_30": 1.5,
+    "p50": 4.3,
+    "p90": 14.0
+  },
+  "owner_earnings_default_b": 0.63,
+  "cash_basis_b": 1.0,
+  "revenue_cagr_5y_pct": -0.5,
+  "shares_default": 113376445.0,
+  "shares_dilution_factor": 1.0469,
+  "shares_dilution_period": "quarter ended 2026-07-31",
+  "shares_warning": null,
+  "consensus_data_status": "ok",
+  "terminal_ronic": 0.1008,
+  "long_run": {
+    "cycle": true,
+    "cycle_year": 2025,
+    "cycle_years": [
+      2021,
+      2023,
+      2025
+    ],
+    "e5": 0.241591,
+    "oe5": 0.558424,
+    "m5": null,
+    "m_tc": 0.017828999999999998,
+    "m_years": [
+      2019,
+      2026,
+      8
+    ],
+    "r_tc": 0.056349,
+    "r_years": [
+      2019,
+      2026,
+      8
+    ],
+    "p": 0.375,
+    "g_rev": -0.037296,
+    "g_rev_years": [
+      2019,
+      2026,
+      8
+    ],
+    "terminal_g_basis": "revenue_trend",
+    "ni_over_oe": 0.393752,
+    "x_over_oe": 0.393752,
+    "nwc_intensity": 0.034581,
+    "nwc_years": [
+      2019,
+      2026,
+      8
+    ],
+    "stub_months": 8.1478,
+    "stamps": [],
+    "om_tc": 0.040608000000000005,
+    "om_trend": 0.033287,
+    "om_L": 0.040187999999999995,
+    "om_years": [
+      2019,
+      2026,
+      8
+    ],
+    "om_shape": "swing",
+    "om_basis": "with_amortization",
+    "om_5": null,
+    "m_long": null,
+    "margin_ratio": null
+  },
+  "working_capital": null,
+  "base_year_cap": null,
+  "split_after_last_filing": null,
+  "reference_base_b": 0.578105,
+  "excess_cash": 0.674,
+  "coe_premium_source": "closure",
+  "base_year_cash_and_investments_b": 0.674,
+  "rf_eff": 0.0528,
+  "nominal_gdp_trend": 0.0447,
+  "reference_path": [
+    0.284,
+    -0.2486,
+    0.0004,
+    0.0004,
+    0.0004
+  ],
+  "price_implied_defaults": {
+    "coe": {
+      "value": null,
+      "reachable": false,
+      "bound": {
+        "low": 0.0528,
+        "high": 0.25
+      },
+      "not_available": null
+    },
+    "growth_years_3_5": {
+      "value": -0.5379999999999999,
+      "reachable": true,
+      "bound": {
+        "low": null,
+        "high": null
+      },
+      "not_available": null
+    },
+    "fade_years": {
+      "value": null,
+      "reachable": false,
+      "bound": {
+        "low": 0.0,
+        "high": 60.0
+      },
+      "not_available": null
+    },
+    "terminal_g": {
+      "value": null,
+      "reachable": false,
+      "bound": {
+        "low": 0.0,
+        "high": 0.0447
+      },
+      "not_available": null
+    },
+    "terminal_ronic": {
+      "value": null,
+      "reachable": false,
+      "bound": {
+        "low": 0.10099999999999999,
+        "high": Infinity
+      },
+      "not_available": null
+    },
+    "year2_level": {
+      "value": null,
+      "reachable": false,
+      "bound": {
+        "low": 0.439,
+        "high": 0.683
+      },
+      "not_available": null
+    }
+  },
+  "price_implied_price": 19.53,
+  "nci_attribution": {
+    "pi": 1.0,
+    "basis": "ni_split",
+    "year": 2026,
+    "ni_parent_b": 0.272,
+    "ni_incl_nci_b": 0.272,
+    "equity_b": 4.048,
+    "equity_incl_nci_b": 4.048,
+    "stamps": []
+  },
+  "ni_scope": "parent",
+  "per_share_basis": {
+    "status": "verified",
+    "year": 2026,
+    "n_common_b": 0.272,
+    "n_common_source": "net_income",
+    "eps_filed": 2.38,
+    "shares_diluted": 114000000.0,
+    "eps_implied": 2.3859649122807016,
+    "gap": 0.0025062656641603454,
+    "tolerance": 0.007100840336134454,
+    "stamps": []
+  },
+  "cash_scope": "unrestricted_line",
+  "cash_restricted_b": null,
+  "customer_money": {
+    "assets_b": null,
+    "liabilities_b": 0.275,
+    "gap_b": 0.275,
+    "stamps": [
+      "customer_money_excluded",
+      "customer_liabilities_exceed_separate_assets"
+    ]
+  },
+  "insurance_reserves_b": null,
+  "vendor_revenue_basis": {
+    "status": "consistent",
+    "s": 0.00042961724577057796,
+    "k": -0.286246763088039
+  },
+  "primary_sources": [
+    {
+      "id": "P1",
+      "type": "earnings_release",
+      "form": "8-K",
+      "accession": "0001193125-26-365860",
+      "filed": "2026-08-26",
+      "period": "Q2 2026",
+      "url": "https://www.sec.gov/Archives/edgar/data/885639/000119312526365860/d171200dex991.htm",
+      "sha256": "7c039d859cbd367a4dd8ea26c78b4cbe2b61265b525c3f363a995d993340d004",
+      "chars": 13198
+    },
+    {
+      "id": "P2",
+      "type": "other_exhibit",
+      "form": "8-K",
+      "accession": "0001193125-26-365860",
+      "filed": "2026-08-26",
+      "period": "Q2 2026",
+      "url": "https://www.sec.gov/Archives/edgar/data/885639/000119312526365860/d171200dex992.htm",
+      "sha256": "12ca6e9cd6104fc9c0ac6df429099dfcdc7553f8c8ff3c324b11073a221e7b83",
+      "chars": 5502
+    },
+    {
+      "id": "P3",
+      "type": "other_8k",
+      "form": "8-K",
+      "accession": "0001193125-26-377068",
+      "filed": "2026-08-31",
+      "period": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/885639/000119312526377068/kss-ex99_1.htm",
+      "sha256": "55d7955339c9c4eeafed5ce41b40e4a1dc27967b3574b9decb61e801d7a4b09c",
+      "chars": 2499
+    },
+    {
+      "id": "P4",
+      "type": "other_8k",
+      "form": "8-K",
+      "accession": "0001193125-26-365317",
+      "filed": "2026-08-25",
+      "period": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/885639/000119312526365317/kss-ex99_1.htm",
+      "sha256": "a162d37551b801be36a8840a09da45bf7430ed738d865c7c5496a10925b7b907",
+      "chars": 2494
+    },
+    {
+      "id": "P5",
+      "type": "other_8k",
+      "form": "8-K",
+      "accession": "0001193125-26-355669",
+      "filed": "2026-08-18",
+      "period": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/885639/000119312526355669/kss-ex99_1.htm",
+      "sha256": "e7797bedf1c167a72c931ba498d317fd8a549bb212854c2da17b2cab38284853",
+      "chars": 1276
+    },
+    {
+      "id": "P6",
+      "type": "other_8k",
+      "form": "8-K",
+      "accession": "0001193125-26-323775",
+      "filed": "2026-07-29",
+      "period": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/885639/000119312526323775/kss-ex99_1.htm",
+      "sha256": "5647b1cd2fcdf1c6fc20bdab901851428e619db1b158881475165fc3ece4ca66",
+      "chars": 2498
+    }
+  ]
+}

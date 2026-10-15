@@ -104,9 +104,13 @@ def test_no_reference_in_the_pack_means_no_reference_flag():
 
 
 def test_the_pack_says_when_there_is_no_reference(screener_data_stub):
+    # restated for pack revision 24 (R24.2): stage A prints no reference line; the facts keep the status and the line for stage B and the records
     import capability_test as cap
-    pack = str(cap.build_pack("GEV"))                      # the GEV fixture holds no estimates
-    assert "- CONSENSUS-IMPLIED VALUE: not available" in pack
+    built = cap.build_pack("GEV")                          # the GEV fixture holds no estimates
+    pack = str(built)
+    assert "- CONSENSUS-IMPLIED VALUE: not available" not in pack
+    assert built.facts["reference_status"] == "not_available"
+    assert built.facts["reference_line"].startswith("- CONSENSUS-IMPLIED VALUE: not available")
 
 
 def test_the_pack_prints_the_reference_with_estimates(screener_data_stub, monkeypatch):
@@ -115,8 +119,12 @@ def test_the_pack_prints_the_reference_with_estimates(screener_data_stub, monkey
     orig = rs2_data.load_json
     en = {"_ticker": "GEV", "_fetched_at": "2026-09-24T12:00:00", "estimates": AMD_EST}
     monkeypatch.setattr(rs2_data, "load_json", lambda p: en if str(p).endswith("GEV.json") and "enrich" in str(p) else orig(p))
-    pack = str(cap.build_pack("GEV"))
-    line = next(l for l in pack.splitlines() if "CONSENSUS-IMPLIED VALUE" in l)
+    built = cap.build_pack("GEV")
+    pack = str(built)
+    # restated for pack revision 24 (R24.2): the line is not printed (stage A); the facts keep it for stage B
+    assert not any(l.startswith("- [Arithmetic] CONSENSUS-IMPLIED VALUE") or l.startswith("- CONSENSUS-IMPLIED VALUE")
+                   for l in pack.splitlines())
+    line = built.facts["reference_line"]
     # a value when the fixture holds every input, otherwise the named missing input - never silence
     assert "per share" in line or "not available —" in line
 

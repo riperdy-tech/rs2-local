@@ -48,7 +48,9 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # "6c42ab72a946259410b1e174ef4a8d8acf4571c9b84d18b17cda0596c1abfa93".
 # 2026-10-03 (revision 21, brief_rev21.md Q3 and R4): item 6 names PRIMARY P# first among the sources of a crux and item 8 gains the sentence that
 # the primary sources are not searched or fetched again; was "dc955632d2ecf205aeff89354b0f2f0de97ecaa66370a1a0b8be816cd7d45505".
-TASK_SHA256 = "414a4fd72ee6e5b7af4eda667f06427863da5a033f88d956042db53e855e5d3d"
+# 2026-10-16 (revision 24, R24.2): item 6 no longer names the CONSENSUS-IMPLIED VALUE among the context that never supports a crux (stage A does
+# not show it); was "414a4fd72ee6e5b7af4eda667f06427863da5a033f88d956042db53e855e5d3d".
+TASK_SHA256 = "14653a0ee3adce964864536ac62da6f6771f03d2ea79fa60a653d227941b7efe"
 RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
@@ -75,7 +77,9 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 # "1caed0f6c38965b562b77783bb33e483b3b6241b400321e53a37f25b3f1f1f21".
 # 2026-10-03 (revision 21, brief_rev21.md R4): the search_web and fetch_page descriptions gain the primary-sources sentence and the crux argument's
 # description names PRIMARY P# among the sources; was "cff81bb1b95cdf0acc136564bd66022d06413c5bb94bc09e414201eec8242914".
-TOOLS_SHA256 = "c3fd7ad03bf8db9155ed62c45fddfa7bbae96131973184cb3ae05277d6508ae3"
+# 2026-10-16 (revision 24, R24.2): guidance_deviation_reason's description loses "a Base value outside 0.75-1.33 of the reference" (the R10 gate
+# is off); was "c3fd7ad03bf8db9155ed62c45fddfa7bbae96131973184cb3ae05277d6508ae3".
+TOOLS_SHA256 = "6d87df37c2e07ad92ef56ffe1d706379686cced16d19ce074d8a37ab223f2be8"
 # research_tools() (search_web, fetch_page) changed with them (revision 21, R4); was "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35".
 RESEARCH_TOOLS_SHA256 = "62cb74cb2a4fa294060ba2acd1556ef14e501dfadb6b226b9034bc4634c68e49"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
@@ -109,7 +113,7 @@ def _get_system_block(path: Path) -> str:
 def test_text_pins():
     # Revision 17 (brief_rev17_B_valuation.md): the pack text, the TASK and the tool schema changed on purpose (the
     # through-cycle package); revision 16 changed only the number on the first line.
-    assert capability_test.PACK_REVISION == 22
+    assert capability_test.PACK_REVISION == 24
     assert _sha256(capability_test.TASK) == TASK_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256

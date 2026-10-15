@@ -246,7 +246,9 @@ TIMEOUT = 14400
 # Revision 22 (operator 2026-10-05, from an outside review of the baseline's ESEA run): DATA 6's liquidity card printed a net-debt
 #   position as "Net Debt -$X", a double negative the analyst read as net cash (ESEA: debt $0.198B, cash $0.176B, memo "net cash $21M").
 #   The card now prints "Net Debt $X" unsigned, matching the [Arithmetic] NET DEBT line and net_debt_b; no number changes.
-PACK_REVISION = 22
+# Revision 24 (PHASE_4_REV24_MUSE.md R24.2): the CONSENSUS-IMPLIED VALUE is shown only after the analyst commits (stage A without it, stage B
+#   reveal with code-enforced revision guardrails); the R10 gate is off.
+PACK_REVISION = 24
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -1804,6 +1806,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     section10_printed = False   # S3 5.5/5.10: SECTION 12's Q&A pointer names SECTION 10 only if it ran
     facts = pack_facts.empty()
     facts["source"] = "build"
+    # revision 24 (R24.2): the reference is computed and kept in the facts, never printed; stage B shows it after the memorandum
+    facts["reference_withheld"] = True
     if asof_date is not None:
         from datetime import timedelta as _td
         asof_cutoff = asof_date - _td(days=POINT_IN_TIME_FILING_LAG_DAYS)
@@ -3626,8 +3630,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                         facts["levels"]["bear2"] = float(f"{_ref['range'][1] / 1e9:,.3f}".replace(",", ""))
                 # S3 5.6/5.7: bare numbers (_bn), not $/B (_b) — the unit is carried once, by
                 # convention with SECTION 3's typed lines, not a header bracket here.
+                # Revision 24 (R24.2): the line is not printed (stage A); its text is kept in the facts for stage B's reveal and the records.
                 if _not_meaningful:
-                    L.append(consensus_reference.not_meaningful_line(_ref))
+                    facts["reference_line"] = consensus_reference.not_meaningful_line(_ref)
                 else:
                     _civ_line = consensus_reference.pack_line(_ref, _fy_base, _coe if _coe is not None else 0.0,
                                                               _tg_used, _bn, anchor=facts["terminal_g_anchor"],
@@ -3636,7 +3641,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                         _civ_line += (f" | outside the street-target fence [${_fence[0]:,.2f}, ${_fence[1]:,.2f}] (0.5× the "
                                       f"lowest and 2× the highest analyst target, each discounted by 10%) — read it as a "
                                       f"level check only")
-                    L.append(_civ_line)
+                    facts["reference_line"] = _civ_line
                 if facts["reference_status"] in ("used", "not_meaningful") or _side:
                     # revision 17: what the reference's long run and working capital hold, for the desk (brief F5: a
                     # reference that is not meaningful still prints these)
@@ -3665,7 +3670,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
                     _win = consensus_reference.fence_window(_win, _wside, _wfence)
                 _wl = consensus_reference.window_line(_win, _ref, _ref_oe, _fy.get("through"), _bn,
-                                                      base_year_check=_byc_printed)
+                                                      base_year_check=_byc_printed, reference_shown=False)
                 if _wl:
                     L.append(_wl)
                     gap = int(f"{_win['gap'] * 100:+.0f}") / 100.0
@@ -3678,7 +3683,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     }
         if _civ_na and asof_date is None:
             facts["reference_status"] = "not_available"
-            L.append(f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}")
+            facts["reference_line"] = f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}"   # revision 24: not printed
         if en:
             L += [f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
                   f"{_sv(en, 'analyst_target_mean', en_stale)} / median "
@@ -4021,7 +4026,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 _dargs, _pack_price, rf_eff=facts["rf_eff"], gdp_trend=facts["nominal_gdp_trend"], levels=facts.get("levels")))
         else:
             facts["price_implied_defaults"] = {"not_available": "the pack has no price to solve at"}
-    L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker), ""]
+    L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker,
+                                           withhold_reference=True), ""]
 
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS
     LAST_PACK_MACRO_DEGRADED = macro_degraded
@@ -4071,7 +4077,7 @@ YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic vie
    - Cash-flow life: cash flows end when they come from a finite stock (a mine, a well, a reservoir) or a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of capex your base already deducts. The life is filed reserves over current production, or the remaining term, with the filing's date. A perpetual value must deduct the capex that replaces what the business depletes. Where revenue follows a quoted commodity price, state the price deck your flows assume and its source.
 4. Where an input departs from its DEFAULT, give the reason with dated evidence in the same desk call. The desk names any reason it needs, and a refused call does not use one of your desk runs. A reason is evidence, never text such as "no deviation"; leave a reason out when none is needed.
 5. Run Bear, Base and Bull together in one call. Your last complete desk run of all three is your answer. If you change any input after a complete run, the memorandum's 'Model revisions' list gives each changed input's old value, new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden; the harness records every run.
-6. The desk also returns price_implied: for each judgment input (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level), the value at which your Base would equal today's price with your other inputs unchanged, or "not reachable" when no value inside the input's bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at least one citation {source, date, quote} of this company's own evidence: the company's own filings, verbatim, in PRIMARY SOURCES (cite them as PRIMARY P# with the quote copied exactly), or DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied value from that run. DEFAULTS, the base rates, the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands, the consensus rows, the news list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system text says otherwise, this TASK takes precedence.
+6. The desk also returns price_implied: for each judgment input (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level), the value at which your Base would equal today's price with your other inputs unchanged, or "not reachable" when no value inside the input's bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at least one citation {source, date, quote} of this company's own evidence: the company's own filings, verbatim, in PRIMARY SOURCES (cite them as PRIMARY P# with the quote copied exactly), or DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied value from that run. DEFAULTS, the base rates, the macro anchors, the sector bands, the consensus rows, the news list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system text says otherwise, this TASK takes precedence.
 7. Timing: DATA 2.5's price facts are not a valuation input. State whether they confirm, sit neutral to or contradict your value call, when to enter, the position basis, and checkable conditions that would break the trend or the thesis.
 8. Tag every driver's source: [Actual], [Estimate], [Assumption] or [Unconfirmed]. The research brief and the news are claims by others; where they conflict with the filings, the filings win. PRIMARY SOURCES holds the company's own filings verbatim; do not search for or fetch them again — the tools return a pointer instead. Search only for what they do not contain.
 

@@ -22,7 +22,7 @@ import consensus_reference  # noqa: E402
 import pi_text  # noqa: E402
 import throughcycle_record  # noqa: E402
 
-FACTS_VERSION = 9
+FACTS_VERSION = 10
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -109,12 +109,21 @@ KEYS: list[str] = [
     # url, sha256 of its text, chars}; [] when the section printed `not available`. SIDECAR_ONLY: the pack text carries the items' text, not their
     # hashes, so a text read gives None and the parity check leaves it out.
     "primary_sources",
+    # version 10 (pack revision 24, PHASE_4_REV24_MUSE.md R24.2): `reference_withheld` is True when the pack does not print the CONSENSUS-IMPLIED
+    # VALUE (stage A; the desk's R10 gate is then off) and None for an older pack; a text read gives it from the revision marker. `reference_line`
+    # is the reference's SECTION 8 line that was not printed (stage B shows its inputs), or None. SIDECAR_ONLY: the text does not carry it.
+    "reference_withheld",
+    "reference_line",
 ]
 
 # keys the DEFAULTS text does not carry: a frozen replay reads them from the sidecar, and a text read gives None (parity ignores them)
 SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price",
                 "nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
-                "vendor_revenue_basis", "primary_sources")
+                "vendor_revenue_basis", "primary_sources", "reference_line")
+# revision 24 (R24.2): the facts a stage-A DEFAULTS block does not print; a text read of such a block gives None for them, so the CIV is taken from
+# the facts or the sidecar, never from text, and the parity check leaves them out when either side is a withheld-reference pack
+WITHHELD_KEYS = ("consensus_implied_value", "reference_status")
+_FIRST_WITHHELD_REVISION = 24
 # version 8's keys (and version 9's primary_sources), None on every text read (legacy or DEFAULTS)
 _SCOPE_KEYS = ("nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
                "vendor_revenue_basis", "primary_sources")
@@ -407,6 +416,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "base_year_cash_and_investments_b": None,
         "rf_eff": None, "nominal_gdp_trend": None, "reference_path": None, "price_implied_defaults": None, "price_implied_price": None,
         **{k: None for k in _SCOPE_KEYS},
+        "reference_withheld": None, "reference_line": None,
     }
 
 
@@ -869,7 +879,8 @@ def _nci_defaults_line(f: dict[str, Any]) -> str | None:
             f"filed figures")
 
 
-def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = None, no_marker: bool = False) -> str:
+def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = None, no_marker: bool = False,
+                          withhold_reference: bool = False) -> str:
     """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
     TASK. Prints every one of the `KEYS` (one fact per line; revision 17: `base_year_cap` only when
     the cap applied, `split_after_last_filing` only when a split was detected), plus two display-only lines that carry no facts key: the fixed rule lines
@@ -878,7 +889,8 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     `split_confirmed` (brief F7, not a fact): whether the split after the last filing is confirmed (a US company whose
     vendor EPS agrees); it chooses the split line's sentence, and None reads as not confirmed. `no_marker` (revision 18, amendment 2,
     not a fact): the history holds no tangible-capital provenance marker for the name, so the three lines derived from its record
-    (terminal_ronic, long_run, working_capital) print "not available" and say why."""
+    (terminal_ronic, long_run, working_capital) print "not available" and say why. `withhold_reference` (revision 24, R24.2, stage A): the
+    consensus_implied_value and reference_status lines are not printed; the facts keep both."""
     f = facts
 
     def line(key, value, explanation):
@@ -967,23 +979,24 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
                       "ok, or why DATA 8 prints no consensus estimates"))
 
     civ = f.get("consensus_implied_value")
-    if isinstance(civ, (int, float)) and not consensus_reference.reference_in_force(f.get("reference_status")):
-        # revision 18 (brief 1.5): outside the street-target fence the value is printed as a level check only
-        civ_expl = ("outside the street-target fence (reference_status): a level check only; no Base band and no "
-                    "guidance_deviation_reason apply to it")
-    elif isinstance(civ, (int, float)):
-        lo, hi = civ * consensus_reference.FAR_LOW, civ * consensus_reference.FAR_HIGH
-        civ_expl = (f"a Base value outside {consensus_reference.FAR_LOW:g}-"
-                   f"{consensus_reference.FAR_HIGH:g} of it ({lo:,.2f}-{hi:,.2f}) needs "
-                   f"guidance_deviation_reason")
-    else:
-        civ_expl = (f"a Base value outside {consensus_reference.FAR_LOW:g}-"
-                   f"{consensus_reference.FAR_HIGH:g} of it needs guidance_deviation_reason")
-    lines.append(line("consensus_implied_value",
-                      f"{civ:,.2f}" if isinstance(civ, (int, float)) else _NA, civ_expl))
-    lines.append(line("reference_status", _dv_str(f.get("reference_status")),
-                      "whether the reference is shown, fenced, not available, or not meaningful (a value of zero "
-                      "or less)"))
+    if not withhold_reference:          # revision 24 (R24.2): stage A prints neither line
+        if isinstance(civ, (int, float)) and not consensus_reference.reference_in_force(f.get("reference_status")):
+            # revision 18 (brief 1.5): outside the street-target fence the value is printed as a level check only
+            civ_expl = ("outside the street-target fence (reference_status): a level check only; no Base band and no "
+                        "guidance_deviation_reason apply to it")
+        elif isinstance(civ, (int, float)):
+            lo, hi = civ * consensus_reference.FAR_LOW, civ * consensus_reference.FAR_HIGH
+            civ_expl = (f"a Base value outside {consensus_reference.FAR_LOW:g}-"
+                       f"{consensus_reference.FAR_HIGH:g} of it ({lo:,.2f}-{hi:,.2f}) needs "
+                       f"guidance_deviation_reason")
+        else:
+            civ_expl = (f"a Base value outside {consensus_reference.FAR_LOW:g}-"
+                       f"{consensus_reference.FAR_HIGH:g} of it needs guidance_deviation_reason")
+        lines.append(line("consensus_implied_value",
+                          f"{civ:,.2f}" if isinstance(civ, (int, float)) else _NA, civ_expl))
+        lines.append(line("reference_status", _dv_str(f.get("reference_status")),
+                          "whether the reference is shown, fenced, not available, or not meaningful (a value of zero "
+                          "or less)"))
 
     lv = f.get("levels") or {}
     lv_parts = [f"{k}={lv[k]:.3f}" for k in ("year1", "year2", "bull2", "bear2")
@@ -1059,6 +1072,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
 
     m_rev = _REVISION_RE.search(t.split("\n", 1)[0])
     throughcycle = m_rev is not None and int(m_rev.group(1)) >= _FIRST_THROUGHCYCLE_REVISION
+    withheld = m_rev is not None and int(m_rev.group(1)) >= _FIRST_WITHHELD_REVISION
 
     def _opt(key):
         """A revision-17 line: required from revision 17 on, read when present before it (a block
@@ -1110,8 +1124,9 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     interest_expense_latest_b = _num("interest_expense_latest_b")
     consensus_data_status = _str("consensus_data_status")
 
-    consensus_implied_value = _num("consensus_implied_value")
-    reference_status = _str("reference_status")
+    # revision 24 (R24.2): a stage-A block prints neither line; the value and the status come from the facts or the sidecar, never from text
+    consensus_implied_value = None if withheld else _num("consensus_implied_value")
+    reference_status = None if withheld else _str("reference_status")
 
     lv_raw = _val("levels").strip()
     levels: dict[str, float] = {}
@@ -1198,6 +1213,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "rf_eff": None, "nominal_gdp_trend": None, "reference_path": None,
         "price_implied_defaults": price_implied_defaults, "price_implied_price": None,
         **{k: None for k in _SCOPE_KEYS},
+        "reference_withheld": True if withheld else None, "reference_line": None,
     }
 
 
@@ -1223,15 +1239,17 @@ def read_sidecar(d: str | Path) -> dict[str, Any] | None:
 
 
 def parity(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
-    """Return sorted list of KEYS whose values differ (source and version ignored)."""
+    """Return sorted list of KEYS whose values differ (source and version ignored). Revision 24: WITHHELD_KEYS are left out when either side is a
+    withheld-reference pack (its text does not carry them)."""
     mismatches: list[str] = []
+    withheld = a.get("reference_withheld") is True or b.get("reference_withheld") is True
 
     def _cmp(k, v):
         # `stamps_full` is the verdict's copy of the record's stamps: the DEFAULTS block prints the window's only
         return {m: x for m, x in v.items() if m != "stamps_full"} if k == "long_run" and isinstance(v, dict) else v
 
     for k in KEYS:
-        if k in SIDECAR_ONLY:
+        if k in SIDECAR_ONLY or (withheld and k in WITHHELD_KEYS):
             continue
         if _cmp(k, a.get(k)) != _cmp(k, b.get(k)):
             mismatches.append(k)

@@ -40,7 +40,7 @@ ITEM6 = ("6. The desk also returns price_implied: for each judgment input (coe, 
          "least one citation {source, date, quote} of this company's own evidence: the company's own filings, verbatim, in PRIMARY SOURCES (cite them as "
          "PRIMARY P# with the quote copied exactly), or DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), "
          "or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied "
-         "value from that run. DEFAULTS, the base rates, the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands, the consensus rows, the news "
+         "value from that run. DEFAULTS, the base rates, the macro anchors, the sector bands, the consensus rows, the news "   # revision 24: the CIV clause is gone
          "list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. "
          "Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the "
          "number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse "

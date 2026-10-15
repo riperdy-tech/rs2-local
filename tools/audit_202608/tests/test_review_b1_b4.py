@@ -193,11 +193,13 @@ def _gev_pack(monkeypatch, fye, year_ago, fin_edit=None, ttm_edit=None, hist_edi
     monkeypatch.setattr(rs2_data, "load_json", fake)
     monkeypatch.setattr(cap, "_fye_month_day", lambda t, with_source=False: fye if with_source else fye[:2])
     monkeypatch.setattr(cap, "datetime", _FixedNow)
-    return str(cap.build_pack("GEV"))
+    return cap.build_pack("GEV")
 
 
 def _ref_line(pack):
-    return next(l for l in pack.splitlines() if "CONSENSUS-IMPLIED VALUE" in l)
+    # restated for pack revision 24 (R24.2): the line is not printed; the facts keep its text
+    assert "- CONSENSUS-IMPLIED VALUE" not in pack and "CONSENSUS-IMPLIED VALUE (reference" not in pack
+    return pack.facts["reference_line"]
 
 
 @pytest.mark.usefixtures("screener_data_stub")

@@ -223,7 +223,7 @@ TOOLS = [{
                 },
                 "guidance_deviation_reason": {
                     "type": "string",
-                    "description": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 5% from the DEFAULTS year-2 level (without it the desk holds years 1-2 at the DEFAULTS levels), a Base value outside 0.75-1.33 of the reference, or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth)."
+                    "description": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 5% from the DEFAULTS year-2 level (without it the desk holds years 1-2 at the DEFAULTS levels), or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth)."
                 },
                 "scenario_deviation_reason": {
                     "type": "string",

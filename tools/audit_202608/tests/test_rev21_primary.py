@@ -379,7 +379,7 @@ def test_facts_primary_sources_per_item_with_the_text_hash(sec):
 
 
 def test_the_facts_schema_owns_primary_sources_and_the_version_is_9():
-    assert pack_facts.FACTS_VERSION == 9
+    assert pack_facts.FACTS_VERSION == 10          # revision 24 (R24.2): 9 -> 10
     assert "primary_sources" in pack_facts.KEYS and "primary_sources" in pack_facts.SIDECAR_ONLY
     assert pack_facts.empty()["primary_sources"] is None
     d = pack_facts.empty()
@@ -411,7 +411,7 @@ def test_the_pack_prints_the_failure_line_and_records_an_empty_list_when_the_sou
     assert "## PRIMARY SOURCES   [the company's own SEC filings, verbatim; cite as PRIMARY P#]\nPRIMARY SOURCES: not available — SEC fetch failed (submissions)\n" in pack
     assert pack.facts["primary_sources"] == []
     assert pack.index("## GUIDANCE & CONSENSUS") < pack.index("## PRIMARY SOURCES") < pack.index("## DATA 12")
-    assert pack.startswith("# DATA PACK - GEV   (pack revision 22)")
+    assert pack.startswith("# DATA PACK - GEV   (pack revision 24)")
 
 
 def test_the_pack_section_sits_directly_after_guidance_and_the_guidance_line_points_at_p1(monkeypatch, screener_data_stub):

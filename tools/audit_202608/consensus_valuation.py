@@ -2055,6 +2055,8 @@ def build_desk_context(facts, price, ticker, company, run_date=None):
         "rf_eff": facts.get("rf_eff"),
         "nominal_gdp_trend": facts.get("nominal_gdp_trend"),
         "reference_status": facts.get("reference_status"),
+        # revision 24 (R24.2): the pack did not print the reference, so the desk's R10 gate is off and its unit note compares with the price
+        "reference_withheld": facts.get("reference_withheld"),
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)
         # revision 19 (B4): the name and ticker the citation check's news-filter rule needs

@@ -75,12 +75,13 @@ def test_a_name_with_no_marker_gets_no_reference_and_the_defaults_lines_say_why(
     # the record's members are empty; the age of the base fiscal year is not part of the record and stays (finding 17)
     assert f["terminal_ronic"] is None and f["working_capital"] is None and f["reference_base_b"] is None
     assert f["long_run"]["stub_months"] is not None and all(v in (None, []) for k, v in f["long_run"].items() if k != "stub_months")
-    assert _line(text, "- CONSENSUS-IMPLIED VALUE") == f"- CONSENSUS-IMPLIED VALUE: not available — {REASON}"
+    # restated for pack revision 24 (R24.2): the line is not printed; the facts keep it
+    assert "- CONSENSUS-IMPLIED VALUE" not in text and f["reference_line"] == f"- CONSENSUS-IMPLIED VALUE: not available — {REASON}"
     assert "CONSENSUS-IMPLIED VALUE (reference" not in text
     for key in ("terminal_ronic", "working_capital"):
         assert _line(text, f"- {key}:").startswith(f"- {key}: not available | not available: {REASON}"), key
     assert _line(text, "- long_run:").startswith("- long_run: cycle=none, ") and f" | not available: {REASON}" in _line(text, "- long_run:")
-    assert _line(text, "- reference_status:").startswith("- reference_status: not_available")
+    assert "- reference_status:" not in text                                     # revision 24: not printed; the facts hold not_available
     assert pack_facts.parity(f, pack_facts.from_text(text)) == []               # the printed lines still read back as the facts
 
 

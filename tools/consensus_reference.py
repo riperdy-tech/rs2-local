@@ -690,12 +690,16 @@ def fence_window(win, side, fence):
 # they are prices, not the $B `fmt_b` covers.
 
 
-def window_line(win, ref, ttm_base, through, fmt_b, base_year_check=True):
+def window_line(win, ref, ttm_base, through, fmt_b, base_year_check=True, reference_shown=True):
     """SECTION 8's BASE WINDOW CHECK, printed only when the windows are more than WINDOW_TOL apart.
-    The prefixes are fixed: the harness parses the gap, the TTM reference and its year-2 level."""
+    The prefixes are fixed: the harness parses the gap, the TTM reference and its year-2 level.
+    Revision 24 (R24.2): with `reference_shown` False (stage A) the line leaves out the fiscal-year CONSENSUS-IMPLIED VALUE and the TTM
+    window's fence side; the rest is printed as before."""
     if not (win and win["flag"]):
         return None
-    if win.get("fence_side"):
+    if win.get("fence_side") and not reference_shown:
+        alt = None
+    elif win.get("fence_side"):
         # review B2: the E15 fence applies to the TTM window's value too; its side, never its number
         lo, hi = win["fence"]
         alt = (f"on the TTM window the consensus path lands {win['fence_side']} the street fence "
@@ -710,9 +714,11 @@ def window_line(win, ref, ttm_base, through, fmt_b, base_year_check=True):
               f"the fiscal-year base grown by the consensus current-FY EPS growth for "
               f"{win['quarters']} quarter(s) between them is {fmt_b(win['expected_ttm'])} "
               f"(one of the two windows holds items the other does not: a one-off gain or "
-              f"charge, a capex swing)",
-              alt,
-              f"on the fiscal-year window ${ref['value']:,.2f} (the CONSENSUS-IMPLIED VALUE above)"]
+              f"charge, a capex swing)"]
+    if alt is not None:
+        clauses.append(alt)
+    if reference_shown:
+        clauses.append(f"on the fiscal-year window ${ref['value']:,.2f} (the CONSENSUS-IMPLIED VALUE above)")
     # review R7: point to the BASE-YEAR CHECK only where it printed its numbers
     if base_year_check:
         clauses.append("the BASE-YEAR CHECK shows the analysts' own year-ago EPS against the "

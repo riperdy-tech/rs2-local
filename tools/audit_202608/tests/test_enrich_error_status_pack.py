@@ -25,7 +25,9 @@ def test_the_pack_says_the_fetch_failed_and_gates_the_verdict_as_consensus_unava
     assert pack.facts["consensus_data_status"] == "fetch_error"
     line = next(l for l in text.splitlines() if l.startswith("- CONSENSUS ESTIMATES:"))
     assert line == "- CONSENSUS ESTIMATES: not available — the vendor fetch failed (HTTP 401 at info, 2026-09-26); a failed fetch, not a lack of coverage"
-    assert "- CONSENSUS-IMPLIED VALUE: not available — consensus fetch failed" in text
+    # restated for pack revision 24 (R24.2): the line is not printed; the facts keep it
+    assert "- CONSENSUS-IMPLIED VALUE: not available" not in text
+    assert pack.facts["reference_line"] == "- CONSENSUS-IMPLIED VALUE: not available — consensus fetch failed"
     assert "CONSENSUS-IMPLIED VALUE (reference" not in text
     assert pack_facts.from_text(text)["consensus_data_status"] == "fetch_error"
     ok, reasons = depth_gates.assess({"consensus_data_status": "fetch_error", "gate_version": 6})

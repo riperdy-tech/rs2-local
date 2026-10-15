@@ -2137,10 +2137,12 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
 
         # R10 (Base value vs the fiscal-year reference). Revision 17: the Base's years 1-2 are held at
         # the levels by the desk (above), so only the value check remains, against the fiscal-year
-        # reference alone (the window choice is gone).
+        # reference alone (the window choice is gone). Revision 24 (R24.2): off when the pack withheld the reference
+        # (`reference_withheld`); the unit note below then compares with the price.
         guidance_reason_given = _reason_given(params.get("guidance_deviation_reason"))
         if base_entry is not None:
-            ref_val = ctx.get("consensus_implied_value") if ref_in_force else None
+            ref_val = (ctx.get("consensus_implied_value")
+                       if ref_in_force and ctx.get("reference_withheld") is not True else None)
             base_iv = base_entry["dcf"].get("per_share_iv")
             if ref_val and base_iv is not None:
                 ratio = base_iv / ref_val
