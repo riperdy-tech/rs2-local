@@ -184,9 +184,9 @@ year 3-5, asks no `terminal_reason` against a default, and needs `terminal_ronic
 
 `tools/population_ranges.py` reads the rebuild's priors_v5 tables (vintage year(T) - 1; `paths.resolve("priors_dir")`) and gives, for the
 company's cohort (the rebuild's own rules: margin_retention, normalization, growth_decay, terminal, ronic, ronic_fade), n, the vintage and
-the quantiles; the POPULATION RANGES section after DEFAULTS prints P10/P25/P75/P90, and P50 only when `ranges_show_p50` is true. The
-long-run earnings margin's levels are trend + R x (current - trend) on the record's earnings margins. A parity script, run in the rebuild's
-interpreter, is in stocks-workspace/scratch/rev23/r24_s2b/.
+the quantiles; the POPULATION RANGES section after DEFAULTS prints P10/P25/P75/P90, and P50 only when `ranges_show_p50` is true (step 2c
+below replaced 2b's margin, terminal growth and RONIC lines). A parity script, run in the rebuild's interpreter, is in
+stocks-workspace/scratch/rev23/r24_s2b/.
 
 The TASK asks for the near-term and normalized earnings and the transition, the three classifications (`margin_persistence`,
 `cycle_position`, `growth_trajectory`, each with an evidence pointer) and an `input_rationale` per long-run input, with three citation
@@ -203,6 +203,35 @@ output. `long_run_margin` is a judgment input of the crux and the desk's price-i
 The pilot arms (`pilot_arm` in config.json or `build_pack(pilot_arm=...)`): `rev22` builds the revision-22 pack and TASK byte for byte
 (the control); `iii_p50` and `iii_no_p50` the revision-24 pack, differing only by P50. Absent, the build is the revision-24 pack with P50
 per `ranges_show_p50` (absent: off).
+
+Step 2c (`BRIEF_R24_S2c_ranges_fix.md`; PHASE_4_AMENDMENTS.md "Revision 24 step 2b" rulings 1, 2, 5-8, 10, 12, 18 and cross-check 19's rulings
+A-C) replaced three of 2b's constructions:
+- the long-run margin's range is the rebuild's `margin_target` (Addenda H1, I1, I5): the operating margin five years out, centred on the
+  median-retention path (8-year median + r_5 x the deviation; the commodity family's r_5 from the normalization curve at its score), with the
+  measured year-5 residual of the company's current operating-margin band (`residual_k5_by_level`), merged up and refused, named, under MIN_N.
+  It is printed as a translated earnings-margin estimate, earnings_q = (1 - t) x OM_q + Delta, Delta the median of the record's
+  m_t - (1 - tax_t) x OM_t and t the record's median effective rate (21% stamped `tax_rate_statutory_fallback` outside [0, 0.5]), with the
+  operating quantiles, om_tc, Delta and t on a context line. Because it is measured five years out and `long_run_margin` is the margin at the end
+  of the fade, the gate only annotates it (`implausible_supported_long_run_margin` or `long_run_margin_outside_year5_range_unsupported`);
+- the `terminal` table is printed as the 10-year revenue CAGR and bounds the implied revenue growth to year 10; `terminal_g` has no population
+  range: above the pack's growth anchor (`terminal_g_anchor`), or above 0 for a shrinking business (8-year revenue trend below 0, or
+  `growth_trajectory` shrinking), it needs an outlier-level citation or the valuation is rejected (`implausible_unsupported_terminal_g`);
+- `terminal_ronic`'s context is the rebuild's ROIC level five years out (`roic_level` with its residual by level), around the table's own
+  population median ROIC of the latest complete fiscal year (stamped `roic_reference_population_median_not_industry`: the rebuild's engine uses
+  the date's industry median, which rs2 does not hold); the `ronic` and `ronic_fade` tables are not printed.
+A family the tables do not measure prints "no measured population for this family" and the gate annotates `no_population_cohort`. A gate
+citation resolves by `crux_check.evidence_failure`, the crux's own rule (PRIMARY P#, DATA 3-6, GUIDANCE, or a page fetched in the session that
+names the company, the quote found), and the TASK names exactly those sources. The classifications are checked
+(`invalid_classification_<name>`) and `within_p10_p90` is computed by code (`within_p10_p90_mismatch:<input>`,
+`outlier_citation_missing:<input>`); these annotations ride as verdict flags.
+
+Working capital follows each scenario's own revenue path: the record's intensity times the change in the consensus revenue path scaled year by year
+by the scenario's owner earnings over the consensus owner earnings (long_run's unprinted `revenue_path` and `oe_path`), so a faster scenario
+ties up more; on the consensus owner earnings it is the consensus schedule. The revision-24 DEFAULTS block prints `working_capital_intensity`,
+not the schedule. Under `pilot_arm` `rev22` the desk is the rev22 control desk: the generator's margin path (the facts' `margin_ratio`), no
+`long_run_margin` required, revision 22's tool schema, stamped `rev22_control_desk` (desk output and the sample's contract); D2-D4 and the
+own-path working capital apply to it too. A frozen `--pack-file` run stamps `pack_revision` from the pack's own first line, with
+`code_pack_revision` beside it when they differ. The parity script is in stocks-workspace/scratch/rev23/r24_s2c/.
 
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
