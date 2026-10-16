@@ -4,7 +4,8 @@
 Spec: stocks-workspace/docs/review_2026-09-22/rev23/SPEC_rev25_normalization_bridge.md section 5 (Stage 0.3).
 
 Every check is a pure function of plain numbers, lists and strings. None writes to an input, none clamps, overwrites or re-labels a
-declared value, and none reads a tolerance from anywhere but BRIEF_TOLERANCES below. Each returns
+declared value, and none reads a tolerance from anywhere but BRIDGE_TOLERANCES below. Every tolerance comparison allows EPS (1e-12)
+so a deviation equal to a tolerance written in decimals passes, as the coordinator's reference checks do (Stage 0.3 audit). Each returns
     {"id", "status": "pass" | "fail" | "not_computable", "declared", "derived", "horizon", "tolerance"}
 (plus a "note" saying why a check is not computable or what failed). The desk turns a fail into a reason request
 (`bridge_<id>_reason`, financial_model_tool) and annotates the result `reason_given`; it never changes the value.
@@ -25,6 +26,7 @@ BRIDGE_TOLERANCES: Dict[str, float] = {
     "tau_b": 0.01,           # UNCALIBRATED: margin points, the basis test (C5)
 }
 
+EPS = 1e-12                # the float allowance on every tolerance comparison (a tie passes)
 KNOWN_FLAGS = ("cyclical", "structural_growth", "structural_decline", "turnaround")
 CHECK_IDS = ("C1", "C1b", "C2", "C3", "C4", "C5")
 
@@ -78,7 +80,7 @@ def check_c1(path: Sequence[float], m_N: float, H: int) -> Dict[str, Any]:
     for t in range(lo, len(path) + 1):
         gap = abs(path[t - 1] - m_N)
         tol = tau_m(t)
-        if gap > tol:
+        if gap > tol + EPS:
             fail = True
         if gap / tol > worst_ratio:
             worst_t, worst_ratio, worst_gap = t, gap / tol, gap
@@ -93,7 +95,7 @@ def check_c1b(long_run_margin: float, m_N: float, fade_years: int) -> Dict[str, 
         return _nc("C1b", declared, "normalized_margin, long_run_margin or fade_years is not a number")
     T = 5 + fade_years
     tol = tau_m(T)
-    return _res("C1b", "fail" if abs(long_run_margin - m_N) > tol else "pass", m_N, long_run_margin, T, tol)
+    return _res("C1b", "fail" if abs(long_run_margin - m_N) > tol + EPS else "pass", m_N, long_run_margin, T, tol)
 
 
 def check_c2(cycle_position: Any, m_N: float, m_0: float) -> Dict[str, Any]:
@@ -108,7 +110,7 @@ def check_c2(cycle_position: Any, m_N: float, m_0: float) -> Dict[str, Any]:
         return _res("C2", "pass" if m_N >= m_0 else "fail", m_N, m_0, 0, None, "trough: m_N must not be below today's margin")
     if pos == "mid":
         tol = tau_m(1)
-        return _res("C2", "pass" if abs(m_N - m_0) <= tol else "fail", m_N, m_0, 0, tol, "mid: m_N within tolerance of today's margin")
+        return _res("C2", "pass" if abs(m_N - m_0) <= tol + EPS else "fail", m_N, m_0, 0, tol, "mid: m_N within tolerance of today's margin")
     if pos == "not_cyclical":
         return _nc("C2", declared, "cycle_position not_cyclical: the check has no rule")
     return _nc("C2", declared, "no cycle_position was declared in the desk call")
@@ -130,7 +132,7 @@ def check_c3(revenue: Sequence[float], R_N0: Optional[float], g_S: float, H: int
     for T, tol in points:
         normal = base * (1.0 + g_S) ** T
         gap = abs(revenue[T] / normal - 1.0)
-        if gap > tol:
+        if gap > tol + EPS:
             fail = True
         if worst is None or gap / tol > worst[3] / worst[2]:
             worst = (T, normal, tol, gap)
@@ -185,8 +187,8 @@ def check_c5(declared_margins: Dict[str, Any], operating_facts: Dict[str, Any], 
         return _nc("C5", dict(declared_margins), "no declared margin, no operating-basis fact or no X-basis fact to compare")
     hits = []
     for name, v in declared.items():
-        near_op = [k for k, f in ops.items() if abs(v - f) <= tol]
-        if near_op and all(abs(v - f) > tol for f in xs.values()):
+        near_op = [k for k, f in ops.items() if abs(v - f) <= tol + EPS]
+        if near_op and all(abs(v - f) > tol + EPS for f in xs.values()):
             nearest_x = min(xs.items(), key=lambda kv: abs(v - kv[1]))
             hits.append({"field": name, "value": v, "operating_fact": near_op[0], "operating_value": ops[near_op[0]],
                          "nearest_x_fact": nearest_x[0], "nearest_x_value": nearest_x[1]})
@@ -199,9 +201,9 @@ def run_checks(*, margins_1_5, long_run_margin, fade_years, m_N, H, m_0, revenue
                cycle_evidence=None, operating_facts=None, x_facts=None) -> List[Dict[str, Any]]:
     """C1, C1b, C2, C3, C4 and C5 for one scenario, in that order. Reads its arguments only."""
     path = margin_path(margins_1_5, long_run_margin, fade_years)
-    declared_margins = {f"earnings_margin[{i + 1}]": v for i, v in enumerate(margins_1_5)}
-    declared_margins["normalized_margin"] = m_N
-    declared_margins["long_run_margin"] = long_run_margin
+    # C5 reads the two normalization margins only (the Stage 0.3 audit, ruling 2 of 0.4 step 3): a near-term margin that sits on an operating
+    # figure is not a basis claim, and reading m_1..m_5 raised the question on coherent paths
+    declared_margins = {"normalized_margin": m_N, "long_run_margin": long_run_margin}
     return [check_c1(path[:5] if fade_years == 0 else path, m_N, H), check_c1b(long_run_margin, m_N, fade_years),
             check_c2(cycle_position, m_N, m_0), check_c3(revenue, R_N0, g_S, H),
             check_c4(flags, g_S, g_rev, m_N, m_0, H, cycle_evidence),

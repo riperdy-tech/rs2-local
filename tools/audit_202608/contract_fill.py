@@ -25,7 +25,7 @@ REVISION_24_2B = ("long_run_margin", "plausibility_gate", "rev22_control_desk")
 # and the terminal reinvestment rate (terminal_g / terminal_ronic, 0 when unlimited), from the desk's `implied` block
 REVISION_24_2D = ("terminal_value_share", "terminal_reinvestment_rate")
 # revision 25 (Stage 0.3, desk schema 25.1; SPEC_rev25_normalization_bridge.md sections 3, 6 and 8): the Base's bridge table (`dcf["bridge"]`), the
-# checks of the three scenarios by role, the schema, and the two S12 figures that are derived, not typed: near_term_earnings = [E_1, E_2] and
+# checks of the three scenarios by role, the schema, and the two S12 figures that are derived, not typed: near_term_earnings = E_1 and
 # normalized_earnings = N_0, both $B on the X basis, from the Base's bridge. Filled (and listed as unfilled) only for a pack whose facts carry
 # desk_schema 25.1; every other arm's fill is as it was.
 REVISION_25 = ("bridge", "bridge_checks", "desk_schema", "near_term_earnings", "normalized_earnings")
@@ -210,7 +210,8 @@ def _fill_bridge(out, prov, src, typed):
         prov["stamps"].append("s12_figures_typed_bridge_not_applied")
         return
     E, n0 = bridge.get("earnings"), bridge.get("n0")
-    derived = {"near_term_earnings": [E[1], E[2]] if isinstance(E, list) and len(E) > 2 else None, "normalized_earnings": _f(n0)}
+    # the Stage 0.3 audit: near_term_earnings stays a number (E_1, the type every reader of the field expects); E_2 is in the bridge table
+    derived = {"near_term_earnings": _f(E[1]) if isinstance(E, list) and len(E) > 1 else None, "normalized_earnings": _f(n0)}
     out.update(derived)
     for k, v in derived.items():
         t = (typed or {}).get(k)

@@ -444,11 +444,64 @@ def _tools_rev22():
     return out
 
 
+# Revision 25 (the Stage 0.3 audit): the desk-call properties of desk schema 25.1 (SPEC_rev25_normalization_bridge.md section 3). The path fields go in
+# each scenario; the normalization fields in the Base (or the top level), which Bull and Bear inherit unless they give their own.
+_BRIDGE_PATH_PROPS = {
+    "revenue_growth": {"type": "array", "items": {"type": "number"},
+                       "description": "The annual revenue growth of years 1-5, five decimals (0.08 = 8%), from the filed base year's revenue."},
+    "earnings_margin": {"type": "array", "items": {"type": "number"},
+                        "description": "The earnings margin of years 1-5, five decimals, on the X basis: earnings before acquired-intangible "
+                                       "amortization over revenue (the basis of x_L, m_tc and m5). Operating margins are not this basis."},
+}
+_BRIDGE_NORM_PROPS = {
+    "normalized_margin": {"type": "number", "description": "The X-basis earnings margin once any abnormal margin condition has ended."},
+    "normalization_horizon": {"type": "integer", "description": "The first year the margin is at normalized_margin, 0 to 5 plus fade_years; 0 when "
+                                                                "today's margin is not abnormal. After year 5 the fade should end at it "
+                                                                "(fade_years = normalization_horizon - 5)."},
+    "normalized_revenue_base": {"type": "number", "description": "$B: today's revenue on a normal footing, only when flags include cyclical and "
+                                                                 "today's revenue is itself at a cyclical level. Omit it otherwise."},
+    "structural_growth": {"type": "number", "description": "The annual revenue growth with any cyclical swing removed, a decimal."},
+    "flags": {"type": "array", "items": {"type": "string", "enum": ["cyclical", "structural_growth", "structural_decline", "turnaround"]},
+              "description": "Any of cyclical, structural_growth, structural_decline, turnaround; an empty list for none."},
+    "cycle_position": {"type": "string", "enum": ["trough", "mid", "peak", "not_cyclical"], "description": "For a cyclical business."},
+    "cycle_evidence": {"type": "string", "description": "A dated, industry-specific indicator, when flags include cyclical."},
+}
+_BRIDGE_REASON_PROPS = {f"bridge_C{c}_reason": {"type": "string", "description": f"Only when the desk asks for it: why check C{c} disagrees, "
+                                                                                  f"with dated evidence."} for c in ("1", "1b", "2", "3", "4", "5")}
+
+
+_DESK25_EXPLICIT_GROWTH = ("Only for a scenario the normalization bridge does not apply to (a finite cash_flow_life, the firm frame, or a pack without a "
+                           "positive base-year earnings margin): the owner-earnings growth of years 1-5. For every other scenario the desk refuses it; "
+                           "give revenue_growth and earnings_margin instead.")
+
+
+def _tools_desk25(base_tools):
+    """Revision 25 (the Stage 0.3 audit): `base_tools` with the desk-schema 25.1 properties added to run_financial_model, growth_rates removed and
+    explicit_growth kept only for a scenario the bridge does not apply to (SPEC section 4), which its description says."""
+    out = json.loads(json.dumps(base_tools))
+    for t in out:
+        f = t.get("function", {})
+        if f.get("name") != "run_financial_model":
+            continue
+        props = f["parameters"]["properties"]
+        item = props["scenarios"]["items"]["properties"]
+        for d in (props, item):
+            d.pop("growth_rates", None)
+            if "explicit_growth" in d:
+                d["explicit_growth"] = dict(d["explicit_growth"], description=_DESK25_EXPLICIT_GROWTH)
+        item.update(json.loads(json.dumps({**_BRIDGE_PATH_PROPS, **_BRIDGE_NORM_PROPS})))
+        props.update(json.loads(json.dumps({**_BRIDGE_NORM_PROPS, **_BRIDGE_REASON_PROPS})))
+    return out
+
+
 def tools_for(desk_context=None):
     """The tools a sample is offered: TOOLS, or (revision 24 step 2b) a copy whose desk text says what the desk does when the pack prints no
-    long-run default (desk_context["long_run_defaults_withheld"] is True), or (step 2c) revision 22's desk tool under pilot_arm rev22."""
+    long-run default (desk_context["long_run_defaults_withheld"] is True), or (step 2c) revision 22's desk tool under pilot_arm rev22, or (revision
+    25) the desk-schema 25.1 properties on top of whichever of those applies."""
     if isinstance(desk_context, dict) and desk_context.get("pilot_arm") == "rev22":
         return _tools_rev22()
+    if isinstance(desk_context, dict) and desk_context.get("desk_schema") == "25.1":
+        return _tools_desk25(tools_for(dict(desk_context, desk_schema=None)))
     if not (isinstance(desk_context, dict) and desk_context.get("long_run_defaults_withheld") is True):
         return TOOLS
     out = json.loads(json.dumps(TOOLS))

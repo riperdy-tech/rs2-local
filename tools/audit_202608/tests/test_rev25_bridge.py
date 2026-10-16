@@ -36,7 +36,10 @@ from test_desk_checks import _ALL_REASONS_GIVEN  # noqa: E402
 from test_rev24_s2b_pack import built  # noqa: E402,F401  (the fixture: a built GEV pack)
 
 INF = math.inf
-PILOT = Path("C:/Users/riper/stocks/stocks-workspace/scratch/rev23/pilot_r24/runs")
+# the pilot runs and the 0.4 synthetic set, read in place under STOCKS_ROOT (never an absolute path; financial_model_tool sets its default)
+_SCRATCH = Path(os.environ.get("STOCKS_ROOT") or ".") / "stocks-workspace" / "scratch" / "rev23"
+PILOT = _SCRATCH / "pilot_r24" / "runs"
+SYNTH = _SCRATCH / "r25_synth"
 
 
 # ---- the switch ----------------------------------------------------------------------------------------------------------------------------
@@ -436,7 +439,7 @@ def test_the_fill_derives_the_two_s12_figures_from_the_base_bridge_and_stamps_a_
     filled, prov = cf.fill(snap, {}, facts, 50.0)
     b = _dcf(res, "base")["bridge"]
     assert filled["desk_schema"] == "25.1" and filled["bridge"]["n0"] == b["n0"] and filled["normalized_earnings"] == pytest.approx(30.0)
-    assert filled["near_term_earnings"] == pytest.approx([b["earnings"][1], b["earnings"][2]])
+    assert filled["near_term_earnings"] == pytest.approx(b["earnings"][1])         # the audit: a number, E_1 (E_2 is in the bridge table)
     assert set(filled["bridge_checks"]) == {"base", "bull", "bear"} and prov["stamps"] == []
     filled2, prov2 = cf.fill(snap, {"normalized_earnings": 80.0, "near_term_earnings": 50.0}, facts, 50.0)
     assert filled2["normalized_earnings"] == pytest.approx(30.0) and prov2["stamps"] == ["s12_figure_derived_under_25_1"]     # the typed 80 is ignored
@@ -534,3 +537,73 @@ def test_mu_with_the_x_basis_median_fails_c1_and_draws_bridge_c1_reason():
     c1 = next(k for k in _dcf(res, "base")["bridge"]["checks"] if k["id"] == "C1")
     assert c1["status"] == "fail" and c1["reason_given"] is True
     assert _dcf(res, "base")["bridge"]["n0"] == pytest.approx(0.222 * 133.188)            # 29.6
+
+
+# ---- the Stage 0.3 audit (coordinator) -----------------------------------------------------------------------------------------------------------
+def test_c5_reads_only_the_two_normalization_margins():
+    ops, xs = {"om_tc": 0.20, "om_L": 0.47, "om_trend": 0.24}, {"m_tc": 0.15, "x_L": 0.40, "m5": 0.38}
+    # a year-1 margin on an operating figure is not a basis claim
+    res = bc.run_checks(margins_1_5=[0.47, 0.30, 0.15, 0.15, 0.15], long_run_margin=0.15, fade_years=5, m_N=0.15, H=3, m_0=0.40,
+                        revenue=[10, 9, 8, 7.5, 7.8, 8.1], R_N0=6.5, g_S=0.04, flags=["cyclical"], g_rev=0.06, cycle_position="peak",
+                        cycle_evidence="x", operating_facts=ops, x_facts=xs)
+    assert {r["id"]: r["status"] for r in res}["C5"] == "pass"
+    hit = bc.check_c5({"normalized_margin": 0.24}, ops, xs)
+    assert hit["status"] == "fail" and hit["derived"][0]["operating_fact"] == "om_trend"
+
+
+def test_a_deviation_equal_to_the_tolerance_passes():
+    tol = bc.BRIDGE_TOLERANCES["tau_m_y1_5"]
+    assert bc.check_c1([0.10 + tol] * 5, 0.10, 1)["status"] == "pass"
+    assert bc.check_c1([0.10 + tol + 1e-6] * 5, 0.10, 1)["status"] == "fail"
+
+
+def test_the_bridge_checks_agree_with_the_coordinators_reference_on_the_synthetic_set():
+    """0.4 step 3's 150 cases (scratch/rev23/r25_synth, frozen, sha256 714421ca...) at both ends of the admissible range: every status equals the
+    coordinator's independent ref_checks. Read in place; skipped when absent."""
+    cases_file = SYNTH / "synth_cases.json"
+    if not cases_file.exists():
+        pytest.skip("the synthetic set is absent")
+    sys.path.insert(0, str(SYNTH))
+    try:
+        from ref_checks import check_all
+    finally:
+        sys.path.remove(str(SYNTH))
+    cases = json.loads(cases_file.read_text(encoding="utf-8"))
+    saved = dict(bc.BRIDGE_TOLERANCES)
+    try:
+        for t in ({"m15": 0.005, "m610": 0.005, "R": 0.02, "b": 0.0025}, {"m15": 0.06, "m610": 0.06, "R": 0.20, "b": 0.02}):
+            bc.BRIDGE_TOLERANCES.update(tau_m_y1_5=t["m15"], tau_m_y6_10=t["m610"], tau_m_y11_plus=t["m610"], tau_R_T5=t["R"], tau_R_TH=t["R"],
+                                        tau_b=t["b"])
+            for c in cases:
+                f, d = c["facts"], c["decl"]
+                R = [f["rev_L"]]
+                for g in d["revenue_growth"]:
+                    R.append(R[-1] * (1 + g))
+                got = {r["id"]: r["status"] for r in bc.run_checks(
+                    margins_1_5=d["earnings_margin"], long_run_margin=d["long_run_margin"], fade_years=d["fade_years"], m_N=d["normalized_margin"],
+                    H=d["normalization_horizon"], m_0=f["x_L"], revenue=R, R_N0=d["normalized_revenue_base"], g_S=d["structural_growth"],
+                    flags=d["flags"], g_rev=f["g_rev"], cycle_position=d["cycle_position"], cycle_evidence=d["cycle_evidence"],
+                    operating_facts={k: f[k] for k in ("om_tc", "om_L", "om_trend")}, x_facts={k: f[k] for k in ("m_tc", "x_L", "m5")})}
+                want = {k: {"question": "fail", "not_applicable": "not_computable"}.get(v, v) for k, v in check_all(c, t).items()}
+                assert got == want, c["id"]
+    finally:
+        bc.BRIDGE_TOLERANCES.clear()
+        bc.BRIDGE_TOLERANCES.update(saved)
+
+
+def test_the_25_1_tools_offer_the_bridge_fields_and_keep_explicit_growth_only_for_the_unbridged():
+    import analyst_tools as at
+    desk = [t for t in at.tools_for({"desk_schema": "25.1", "long_run_defaults_withheld": True})
+            if t["function"]["name"] == "run_financial_model"][0]["function"]["parameters"]["properties"]
+    item = desk["scenarios"]["items"]["properties"]
+    assert {"revenue_growth", "earnings_margin", "normalized_margin", "normalization_horizon", "structural_growth", "flags"} <= set(item)
+    assert "growth_rates" not in item and "growth_rates" not in desk
+    assert item["explicit_growth"]["description"].startswith("Only for a scenario the normalization bridge does not apply to")
+    assert "bridge_C1_reason" in desk and "cycle_position" in desk
+    assert at.tools_for({"long_run_defaults_withheld": True}) == at.tools_for({"long_run_defaults_withheld": True, "desk_schema": None})
+    assert at.tools_for({}) == at.TOOLS
+
+
+def test_the_25_1_task_says_a_late_horizon_needs_the_fade_to_end_at_it():
+    assert "fade_years equal to normalization_horizon minus 5" in cap.TASK_REV25
+    assert "normalization_horizon" not in cap.TASK
