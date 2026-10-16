@@ -172,8 +172,8 @@ Where the facts carry no year-5 revenue (no reference, or one without a revenue 
 (`defaults_desk_args`); `margin_rule` serves only the logged reference and stamps `implied_operating_margin_out_of_range` and
 `long_run_margin_clamped_to_zero` into the facts' `stamps_full` (never printed). Year-5 earnings scale with the scenario's owner earnings
 (E5 = e5 x OE5 / oe5); the return on new investment moves linearly in its charge 1 / RONIC over the fade, so an unlimited terminal return
-is the limit of a large one and the value is monotone in it; a `terminal_ronic` below r is valued as r and stamped
-`terminal_ronic_floored_at_r` (in the desk output and the sample's `desk_stamps`).
+is the limit of a large one and the value is monotone in it. (Step 2a valued a `terminal_ronic` below r as r, stamped
+`terminal_ronic_floored_at_r`; step 2d removed that floor, below.)
 
 Step 2b (`BRIEF_R24_S2b_ranges_gate.md`): a long-run judgment gets no default. The DEFAULTS block prints no `terminal_g_default`,
 `terminal_ronic` or `price_implied` line, its `long_run` line drops the reference's margin rule (`om_5`, `m_long`, `margin_ratio`), DATA
@@ -232,6 +232,21 @@ not the schedule. Under `pilot_arm` `rev22` the desk is the rev22 control desk: 
 `long_run_margin` required, revision 22's tool schema, stamped `rev22_control_desk` (desk output and the sample's contract); D2-D4 and the
 own-path working capital apply to it too. A frozen `--pack-file` run stamps `pack_revision` from the pack's own first line, with
 `code_pack_revision` beside it when they differ. The parity script is in stocks-workspace/scratch/rev23/r24_s2c/.
+
+Step 2d (`BRIEF_R24_S2d_ronic_diagnostics.md`; cross-check 19, rulings 1, 6 and 9, and the step-2c audit):
+- **RONIC as stated** (`consensus_reference.long_run_returns`, shared by the desk and the reference): the terminal return is valued as given
+  when above 0, stamped `terminal_ronic_below_rate` below r; at or below 0 the desk refuses the call by name (a `missing` entry). The start
+  return is the record's r_tc as measured when above 0 (`ronic_start_below_rate` below r); missing or at or below 0, the fade starts at the
+  terminal return (`ronic_start_from_terminal`). The 1 / RONIC fade, the unlimited case and the floor of the whole long-run value at 0 are
+  unchanged. The reference's own stamps go to the facts' `stamps_full`. The price-implied `terminal_ronic` search runs from terminal_g (the
+  return at which the terminal reinvestment takes all the earnings; the discount rate when terminal_g is not above 0; the Base's own return
+  when lower) to unlimited.
+- **Diagnostics, never gates:** the desk's `implied` block and the sample's contract carry `terminal_value_share` (the terminal value's
+  present value over the enterprise value) and `terminal_reinvestment_rate` (terminal_g / terminal_ronic, 0 when unlimited);
+  `earnings_ratio_10y` stays reported and is never a rejection reason.
+- **Working capital normalized at the base:** revenue_t = consensus revenue_t x (owner earnings_t / base_cf) / (consensus owner
+  earnings_t / reference_base_b), so only growth that differs from the consensus moves revenue; a year with a negative deduction is
+  stamped `working_capital_release`.
 
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
