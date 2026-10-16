@@ -220,6 +220,11 @@ def extract_scorecard(report, price):
         "base_iv_stage_a": None,
         "base_iv_final": None,
         "reference_revision": None,
+        # Revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md item 3): the analyst's near-term and normalized earnings ($B) and the transition,
+        # the three classifications each with its evidence pointer, and the rationale of each long-run input
+        **{k: None for k in ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence",
+                             "margin_persistence_evidence", "cycle_position", "cycle_position_evidence", "growth_trajectory",
+                             "growth_trajectory_evidence", "input_rationale")},
     }
 
     # 1. Primary: Structured JSON block from Section 12
@@ -246,6 +251,15 @@ def extract_scorecard(report, price):
                 card["entry_timing"] = str(card["entry_timing"]).strip().lower()
             if card.get("position_basis"):
                 card["position_basis"] = str(card["position_basis"]).strip().lower()
+            for _k in ("margin_persistence", "cycle_position", "growth_trajectory"):       # revision 24 step 2b: the classifications' case
+                if isinstance(card.get(_k), str):
+                    card[_k] = card[_k].strip().lower()
+            for _k in ("near_term_earnings", "normalized_earnings"):                       # decimals ($B); text that is not a number stays as typed
+                if isinstance(card.get(_k), str):
+                    try:
+                        card[_k] = float(card[_k].replace(",", "").replace("$", "").rstrip("B").strip())
+                    except ValueError:
+                        pass
             if card.get("momentum_evidence"):
                 card["momentum_evidence"] = str(card["momentum_evidence"]).strip()
             if card.get("base_cf_reason"):
@@ -483,6 +497,13 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
         return "", "", {"done_reason": "error", "error": str(e)}
 
 
+# revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md item 3; non-negotiable 5, one owner per field): the SECTION 12 additions, the analyst's
+# long_run_margin and the plausibility gate, carried from the medoid sample to the summary and the verdict row (depth_pipeline.band_verdict)
+S12_SUMMARY_KEYS = ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence", "margin_persistence_evidence",
+                    "cycle_position", "cycle_position_evidence", "growth_trajectory", "growth_trajectory_evidence", "input_rationale",
+                    "long_run_margin", "plausibility_gate")
+
+
 def select_medoid_scorecard(
     runs: list,
     price: float,
@@ -530,6 +551,7 @@ def select_medoid_scorecard(
             "catalysts": None, "bull_below_price_reason": None, "bear_above_price_reason": None,
             "code_fill_mode": None,
             "base_iv_stage_a": None, "base_iv_final": None, "reference_revision": None,   # revision 24 (R24.2)
+            **{k: None for k in S12_SUMMARY_KEYS},                                         # revision 24 step 2b
         }
 
     ivs = [r["iv"] for r in good]
@@ -614,6 +636,7 @@ def select_medoid_scorecard(
             "cash_flow_life_reason": san_fb.get("cash_flow_life_reason"),
             "code_fill_mode": None,
             "base_iv_stage_a": None, "base_iv_final": None, "reference_revision": None,   # revision 24: no medoid sample, no stage B to carry
+            **{k: san_fb.get(k) for k in S12_SUMMARY_KEYS},                                # revision 24 step 2b
         }
         return san_fb, summary
 
@@ -735,6 +758,8 @@ def select_medoid_scorecard(
         "base_iv_stage_a": medoid_card.get("base_iv_stage_a"),
         "base_iv_final": medoid_card.get("base_iv_final"),
         "reference_revision": medoid_card.get("reference_revision"),
+        # revision 24 step 2b: the medoid sample's SECTION 12 additions, its long-run margin and its plausibility gate
+        **{k: medoid_card.get(k) for k in S12_SUMMARY_KEYS},
     }
     return medoid_card, summary
 

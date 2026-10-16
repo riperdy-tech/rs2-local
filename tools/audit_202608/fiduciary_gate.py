@@ -358,3 +358,103 @@ def validate_fiduciary_contract(
         card["kelly_fraction_pct"] = 0.0
 
     return True, card, issues
+
+
+# ---- revision 24 step 2b: the plausibility gate on the implied trajectory (BRIEF_R24_S2b_ranges_gate.md item 5) ---------------------------------
+#
+# Computed from the answer run's Base (the desk's `implied` block, financial_model_tool.implied_trajectory) and the pack's population ranges
+# (tools/population_ranges.gate_bounds: the cohort's P5 and P95). Mathematics first: terminal growth at or above the discount rate is rejected
+# (`terminal_growth_not_below_rate`). Then each implied metric against its cohort's P5-P95: inside passes; outside passes only with an
+# input_rationale citation that resolves - a PRIMARY item, or a filing quote, that crux_check's verifier accepts (class pack_company, the quote found
+# verbatim in it) - and is annotated `implausible_supported_<metric>`; outside without one is rejected, `implausible_unsupported_<metric>`. A metric
+# with no measured cohort, or that the trajectory cannot compute, is annotated (`plausibility_not_measured:<metric>`,
+# `plausibility_not_computable:<metric>`) and never rejected. Nothing is clamped and there is no other cap.
+
+PLAUSIBILITY_METRICS = ("long_run_margin", "revenue_cagr_10y", "terminal_ronic", "earnings_ratio_10y", "terminal_g")
+# the input_rationale entries whose citation can support an outlier of each metric: the long-run margin by long_run_margin; the revenue growth to
+# year 10 by the growth path (years 3-5) or the fade; the terminal return by terminal_ronic; terminal growth by terminal_g; year-10 earnings over
+# base earnings (no measured cohort) by any of the margin and the growth path
+RATIONALE_FOR = {"long_run_margin": ("long_run_margin",), "revenue_cagr_10y": ("growth_years_3_5", "fade_years"),
+                 "terminal_ronic": ("terminal_ronic",), "earnings_ratio_10y": ("long_run_margin", "growth_years_3_5", "fade_years"),
+                 "terminal_g": ("terminal_g",)}
+
+
+def _as_number(v):
+    if v == "unlimited":
+        return float("inf")
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return float(v)
+
+
+def _citations_of(input_rationale, names):
+    """The citations the analyst's input_rationale gives for `names`: each entry's `citation`, an object or a list of objects."""
+    out = []
+    ir = input_rationale if isinstance(input_rationale, dict) else {}
+    for n in names:
+        c = (ir.get(n) or {}).get("citation") if isinstance(ir.get(n), dict) else None
+        if isinstance(c, dict):
+            out.append(c)
+        elif isinstance(c, list):
+            out.extend(x for x in c if isinstance(x, dict))
+    return out
+
+
+def citation_resolves(citations, pack_text, calls, company, ticker):
+    """(resolved, records): whether any citation is a PRIMARY item or a filing quote that crux_check's verifier accepts - class pack_company
+    (PRIMARY P#, DATA 3-6 or GUIDANCE, the company's own words in the pack) with the quote found verbatim - and crux_check's per-citation records. A
+    page fetched in the session is not a filing and does not resolve here."""
+    import crux_check
+    if not citations:
+        return False, []
+    recs = crux_check.classify_citations(citations, crux_check.pack_sources(pack_text), crux_check.fetched_texts(calls), company, ticker,
+                                         crux_check.primary_items(pack_text))
+    return any(r["class"] == "pack_company" and r["quote_found"] for r in recs), recs
+
+
+def plausibility_gate(dcf, ranges, input_rationale=None, pack_text=None, calls=None, company=None, ticker=None):
+    """The gate on one sample's answer run. `dcf` is the Base's desk output (it carries `implied`), `ranges` the pack's population ranges
+    (facts["population_ranges"]), `input_rationale` the sample's SECTION 12 field. Returns {"verdict": "pass" | "reject" | "not_applicable",
+    "reasons": [the rejection names], "annotations": [...], "metrics": {metric: {"value", "p5", "p95", "cohort", "n", "status", "citation"}}}.
+    `not_applicable` for a finite cash-flow life (no long run to check) or no Base."""
+    import population_ranges
+    out = {"verdict": "not_applicable", "reasons": [], "annotations": [], "metrics": {}}
+    if not isinstance(dcf, dict) or dcf.get("per_share_iv") is None:
+        out["annotations"].append("no_answer_run_base")
+        return out
+    if dcf.get("finite_life_years") is not None:
+        out["annotations"].append("finite_life_no_long_run")
+        return out
+    imp = dcf.get("implied") if isinstance(dcf.get("implied"), dict) else {}
+    rate, tg = _as_number(dcf.get("discount_rate_applied")), _as_number(dcf.get("terminal_g"))
+    if rate is None or tg is None or not tg < rate:
+        out["reasons"].append("terminal_growth_not_below_rate")
+    bounds = population_ranges.gate_bounds(ranges)
+    values = {"long_run_margin": _as_number(imp.get("long_run_margin")), "revenue_cagr_10y": _as_number(imp.get("revenue_cagr_10y")),
+              "terminal_ronic": _as_number(imp.get("terminal_ronic") if imp.get("terminal_ronic") is not None else dcf.get("terminal_ronic")),
+              "earnings_ratio_10y": _as_number(imp.get("earnings_ratio_10y")), "terminal_g": tg}
+    for m in PLAUSIBILITY_METRICS:
+        b = bounds.get(m)
+        v = values[m]
+        rec = {"value": v, "p5": None if b is None else b["p5"], "p95": None if b is None else b["p95"],
+               "cohort": None if b is None else b.get("cohort"), "n": None if b is None else b.get("n"), "status": None, "citation": None}
+        out["metrics"][m] = rec
+        if b is None:
+            rec["status"] = "not_measured"
+            out["annotations"].append(f"plausibility_not_measured:{m}")
+        elif v is None:
+            rec["status"] = "not_computable"
+            out["annotations"].append(f"plausibility_not_computable:{m}")
+        elif b["p5"] <= v <= b["p95"]:
+            rec["status"] = "within"
+        else:
+            ok, recs = citation_resolves(_citations_of(input_rationale, RATIONALE_FOR[m]), pack_text, calls, company, ticker)
+            rec["citation"] = recs
+            if ok:
+                rec["status"] = "supported"
+                out["annotations"].append(f"implausible_supported_{m}")
+            else:
+                rec["status"] = "unsupported"
+                out["reasons"].append(f"implausible_unsupported_{m}")
+    out["verdict"] = "reject" if out["reasons"] else "pass"
+    return out

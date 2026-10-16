@@ -175,6 +175,35 @@ Where the facts carry no year-5 revenue (no reference, or one without a revenue 
 is the limit of a large one and the value is monotone in it; a `terminal_ronic` below r is valued as r and stamped
 `terminal_ronic_floored_at_r` (in the desk output and the sample's `desk_stamps`).
 
+Step 2b (`BRIEF_R24_S2b_ranges_gate.md`): a long-run judgment gets no default. The DEFAULTS block prints no `terminal_g_default`,
+`terminal_ronic` or `price_implied` line, its `long_run` line drops the reference's margin rule (`om_5`, `m_long`, `margin_ratio`), DATA
+1.5 prints no TERMINAL-GROWTH DEFAULT line, and no DEFAULTS text says "the reference"; the facts keep every value (FACTS_VERSION 11:
+`long_run_defaults_withheld`, and the sidecar-only `population_ranges`, `pilot_arm`, `ranges_show_p50`). The consensus years 1-2 and
+next-FY revenue growth are printed as what analysts forecast; with the defaults withheld the desk holds no year at the levels and caps no
+year 3-5, asks no `terminal_reason` against a default, and needs `terminal_ronic` (no default), as it needs `long_run_margin`.
+
+`tools/population_ranges.py` reads the rebuild's priors_v5 tables (vintage year(T) - 1; `paths.resolve("priors_dir")`) and gives, for the
+company's cohort (the rebuild's own rules: margin_retention, normalization, growth_decay, terminal, ronic, ronic_fade), n, the vintage and
+the quantiles; the POPULATION RANGES section after DEFAULTS prints P10/P25/P75/P90, and P50 only when `ranges_show_p50` is true. The
+long-run earnings margin's levels are trend + R x (current - trend) on the record's earnings margins. A parity script, run in the rebuild's
+interpreter, is in stocks-workspace/scratch/rev23/r24_s2b/.
+
+The TASK asks for the near-term and normalized earnings and the transition, the three classifications (`margin_persistence`,
+`cycle_position`, `growth_trajectory`, each with an evidence pointer) and an `input_rationale` per long-run input, with three citation
+levels; SECTION 12's contract carries them to the verdict row with `long_run_margin`. The plausibility gate
+(`fiduciary_gate.plausibility_gate`, run by `contract_fill.fill` on the answer run when the defaults were withheld) rejects terminal growth
+at or above the discount rate and an implied long-run margin, 10-year revenue CAGR, terminal RONIC or terminal growth outside its cohort's
+P5-P95 without an input_rationale citation that resolves (`implausible_unsupported_<metric>`; the verdict is NOT_USABLE); a supported
+outlier passes, flagged `implausible_supported_<metric>`. Nothing is clamped.
+
+With no year-5 revenue in the facts, m5 is the base fiscal year's filed earnings margin (long_run `x_L`, stamped `m5_from_base_year`); a
+base-year margin that is not positive holds the margin, stamped `long_run_margin_not_applied_no_revenue`, with the reason in the desk
+output. `long_run_margin` is a judgment input of the crux and the desk's price-implied block.
+
+The pilot arms (`pilot_arm` in config.json or `build_pack(pilot_arm=...)`): `rev22` builds the revision-22 pack and TASK byte for byte
+(the control); `iii_p50` and `iii_no_p50` the revision-24 pack, differing only by P50. Absent, the build is the revision-24 pack with P50
+per `ranges_show_p50` (absent: off).
+
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
 Every depth verdict (`verdict_depth.json`, each ledger row) carries, stamped by

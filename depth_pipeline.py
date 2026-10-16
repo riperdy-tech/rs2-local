@@ -721,6 +721,13 @@ def band_verdict(doc):
         "base_iv_stage_a": scorecard.get("base_iv_stage_a"),
         "base_iv_final": scorecard.get("base_iv_final"),
         "reference_revision": scorecard.get("reference_revision"),
+        # revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md items 3 and 5): the medoid's SECTION 12 additions, its long-run inputs (long_run_margin
+        # here; stage1_growth_path, fade_years, terminal_multiple_or_g and terminal_ronic above) and its plausibility gate; plausibility_by_sample
+        # is set below from the basis samples
+        **{k: scorecard.get(k) for k in ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence",
+                                         "margin_persistence_evidence", "cycle_position", "cycle_position_evidence", "growth_trajectory",
+                                         "growth_trajectory_evidence", "input_rationale", "long_run_margin", "plausibility_gate")},
+        "plausibility_by_sample": None,
     })
 
     # Muse integration, M6: how the row was served (a doc written before the provider carried none, and gets none)
@@ -741,6 +748,7 @@ def band_verdict(doc):
                   "momentum_evidence": scorecard.get("momentum_evidence"),
                   # revision 19 (brief C1): no direction, so no crux is read
                   "direction_m": "NOT_USABLE", "crux_valid": None, "crux_by_sample": None, "crux": None, "price_implied": None,
+                  "plausibility_by_sample": None,
                   "reason": "zero plausible complete samples — malfunction path, not a verdict"})
         _annotate(v, nar_flags, nar_notes)
         return v
@@ -831,6 +839,32 @@ def band_verdict(doc):
         v.setdefault("flags", []).append(f"no_valid_crux:{bad['reason']}")
         v["flags"] = sorted(set(v["flags"]))
         reason_notes.append(f"no valid stated disagreement with the price on sample {bad['sample']} ({bad['reason']}): {withheld} withheld")
+
+    # Revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md item 5): the plausibility gate. A basis sample whose implied trajectory left its cohort's
+    # P5-P95 without a citation that resolves (implausible_unsupported_<metric>), or whose terminal growth is not below its discount rate
+    # (terminal_growth_not_below_rate), makes the verdict not usable, with that reason, as an invalid crux makes it hold: every draw must pass. A
+    # supported outlier passes, annotated implausible_supported_<metric>. Nothing is clamped.
+    v["plausibility_by_sample"] = [{"sample": r.get("sample"), "verdict": ((r.get("scorecard") or {}).get("plausibility_gate") or {}).get("verdict"),
+                                    "reasons": ((r.get("scorecard") or {}).get("plausibility_gate") or {}).get("reasons") or [],
+                                    "annotations": ((r.get("scorecard") or {}).get("plausibility_gate") or {}).get("annotations") or []}
+                                   for r in good]
+    supported = sorted({a for s in v["plausibility_by_sample"] for a in s["annotations"] if a.startswith("implausible_supported_")})
+    if supported:
+        v["flags"] = sorted(set(v.get("flags") or []) | set(supported))
+    rejected = [s for s in v["plausibility_by_sample"] if s["verdict"] == "reject"]
+    if rejected:
+        bad = rejected[0]
+        _annotate(v, nar_flags, nar_notes)
+        v["flags"] = sorted(set(v.get("flags") or []) | set(bad["reasons"]) | {"PLAUSIBILITY_REJECTED"})
+        note = (f"the valuation is not usable: plausibility gate {', '.join(bad['reasons'])} on sample {bad['sample']} (the implied trajectory "
+                f"is outside its cohort's P5-P95 without a citation that resolves, or terminal growth is not below the discount rate)")
+        v.update({"direction": "NOT_USABLE", "size_hint": None, "kelly_fraction_pct": 0.0, "instability": None, "size_components": None,
+                  "fiduciary_verdict": "NOT_APPLICABLE", "fiduciary_violations": [], "fiduciary_amendments": [], "position_basis": "none",
+                  "not_usable_reason": bad["reasons"][0],
+                  "mos_vs_median_pct": round((v["median_iv"] / price - 1) * 100, 1) if v.get("median_iv") else None,
+                  "mos_vs_base_pct": None})
+        v["reason"] = "; ".join([x for x in (v.get("reason"), *reason_notes, note) if x])
+        return v
 
     # Report verdict mismatch flag (P4 T2 / D7)
     rep_label = scorecard.get("verdict_label")

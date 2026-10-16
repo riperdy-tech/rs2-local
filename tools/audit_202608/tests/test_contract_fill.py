@@ -137,7 +137,8 @@ def test_rule_no_desk_run():
     filled, prov = contract_fill.fill([failed_call], typed, facts, 100.0)
     assert prov["mode"] == "no_desk_run"
     assert filled == {}
-    assert len(prov["unfilled"]) == 37     # revision 18: excess_cash_reason joins the reasons; revision 19: direction_m, crux, crux_check, price_implied
+    assert len(prov["unfilled"]) == 39     # revision 18: excess_cash_reason joins the reasons; revision 19: direction_m, crux, crux_check, price_implied
+    # revision 24 step 2b: long_run_margin and plausibility_gate
     assert prov["unfilled"] == list(contract_fill.FILLED)
 
 
@@ -404,9 +405,11 @@ def test_real_samples():
     fix_dir = _HERE / "tests" / "fixture_data" / "contract_fill"
     golden_file = fix_dir / "golden_3_samples.json"
     golden = json.loads(golden_file.read_text(encoding="utf-8"))
-    new_fields = list(contract_fill.FILLED[19:-4])
+    new_fields = list(contract_fill.FILLED[19:-6])
     assert len(new_fields) == 14     # revision 18: excess_cash_reason joins the reasons
-    assert contract_fill.FILLED[-4:] == contract_fill.REVISION_19 == ("direction_m", "crux", "crux_check", "price_implied")
+    assert contract_fill.FILLED[-6:-2] == contract_fill.REVISION_19 == ("direction_m", "crux", "crux_check", "price_implied")
+    # revision 24 step 2b: the Base's long_run_margin and the plausibility gate (None: these packs printed long-run defaults)
+    assert contract_fill.FILLED[-2:] == contract_fill.REVISION_24_2B == ("long_run_margin", "plausibility_gate")
 
     for e in golden:
         fixture_path = fix_dir / f"{e['run']}_s{e['sample']}.json"
@@ -418,6 +421,9 @@ def test_real_samples():
         # revision 19: these recorded calls carry no crux, so a directional label is hold stamped no_valid_crux:missing, and direction_m is the
         # revision-18 label the golden file holds; every other filled value is as recorded
         new = {k: filled.pop(k) for k in contract_fill.REVISION_19}
+        new2b = {k: filled.pop(k) for k in contract_fill.REVISION_24_2B}
+        assert new2b["plausibility_gate"] is None                       # not a withheld-defaults pack: not gated
+        assert new2b["long_run_margin"] is None                         # these recorded calls predate the input
         recorded = e["filled"].get("verdict_label")
         assert new["direction_m"] == recorded and new["crux"] is None and new["crux_check"]["entries"] == []
         if recorded in ("undervalued", "overvalued"):

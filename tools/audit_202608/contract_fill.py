@@ -4,7 +4,7 @@ Given the calculator calls of one sample, its typed contract, the pack facts and
 returns the values code writes into the contract and the provenance of each.
 """
 import crux_check
-from fiduciary_gate import payoff_skew
+from fiduciary_gate import payoff_skew, plausibility_gate
 from financial_model_tool import _normalize_cash_flow_life
 
 # S3 3.3: the 11 reason arguments (cash_flow_life_reason counted among them); revision 18 adds excess_cash_reason (the name
@@ -18,6 +18,9 @@ REASONS_11 = (
 # crux (stamped on every sample), crux the answer call's argument, crux_check crux_check.check's record with the label's stamps, price_implied the
 # answer call's block
 REVISION_19 = ("direction_m", "crux", "crux_check", "price_implied")
+# revision 24 step 2b: the Base's long_run_margin (the analyst's long-run input, on the verdict row) and the plausibility gate's record on the answer
+# run (fiduciary_gate.plausibility_gate; None for a pack that printed long-run defaults, the rev22 arm)
+REVISION_24_2B = ("long_run_margin", "plausibility_gate")
 
 FILLED = (
     "base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability",
@@ -27,7 +30,7 @@ FILLED = (
     # S3 3.8: revision-15 additions. base_cf_basis is derived; interest_addback and the 11 reasons
     # (cash_flow_life_reason among them) are now call arguments, copied from the answer call.
     "base_cf_basis", "interest_addback",
-) + REASONS_11 + REVISION_19
+) + REASONS_11 + REVISION_19 + REVISION_24_2B
 ROLES = ("base", "bull", "bear")
 REL = 0.010001          # the harness's 1% desk-match tolerance (consensus_valuation, `close`)
 
@@ -283,6 +286,8 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
             if r is None:
                 r = _f(_inp(e, c, "discount_rate"))
         out["coe_used"] = r
+        lrm = _inp(e, c, "long_run_margin")                 # revision 24 step 2b: the scenario's own, else the call's
+        out["long_run_margin"] = _f(lrm) if lrm is not None else None
         fr = d.get("valuation_frame") or _inp(e, c, "valuation_frame")
         out["valuation_frame"] = str(fr).lower() if fr is not None else None
         leg = prov["legs"].get("base")
@@ -407,6 +412,11 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
         out["price_implied"] = pi
         out["crux_check"] = dict(chk, stamps=stamps)
         out["asymmetric_payoff_skew"] = payoff_skew(out.get("bull_iv"), out.get("bear_iv"), price)
+        # revision 24 step 2b: the plausibility gate on the answer run's Base, when the pack printed no long-run default (the iii arms); the rev22
+        # arm's control and an older pack are not gated (their briefing asked for no input rationale)
+        out["plausibility_gate"] = (plausibility_gate(src["base"][1]["dcf"] if "base" in src else None, facts.get("population_ranges"),
+                                                      typed.get("input_rationale"), pack_text, calls, company, ticker)
+                                    if facts.get("long_run_defaults_withheld") is True else None)
     filled = {}
     for k in FILLED:
         if k in out:
