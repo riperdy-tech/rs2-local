@@ -254,6 +254,20 @@ Step 2d (`BRIEF_R24_S2d_ronic_diagnostics.md`; cross-check 19, rulings 1, 6 and 
   level), so only growth that differs from the consensus moves revenue; a year with a negative deduction is stamped
   `working_capital_release`.
 
+### Revision 25, stage 0.3 — the normalization bridge (desk schema 25.1, pilot arms `r25_b` and `r25_c` only)
+
+Spec: `stocks-workspace/docs/review_2026-09-22/rev23/SPEC_rev25_normalization_bridge.md`. The pack fact `desk_schema` is `"25.1"` for those two arms
+and absent for every other pack (SIDECAR_ONLY); their pack marker reads `(pack revision 25)` and they are sent `TASK_REV25`. For a perpetual scenario
+in the equity frame the desk then values the declared path, not owner-earnings growth: `revenue_growth` and `earnings_margin` (X basis) for years
+1-5, `normalized_margin`, `normalization_horizon`, `normalized_revenue_base`, `structural_growth` and `flags`, with Bull and Bear inheriting the
+Base's normalization. R_t from the filed `rev_L`, kappa = base_cf / (rev_L x x_L), OE_t = kappa R_t m_t, WC_t = intensity x (R_t - R_(t-1)); the long
+run is `consensus_reference.long_run_value` unchanged, on e5 = R_5 m_5, g5 = R_5 / R_4 - 1 and margin_ratio = long_run_margin / m_5.
+`explicit_growth` and `growth_rates` are refused by name; a scenario the bridge does not apply to (firm frame, finite life, `rev_L` or earnings not
+positive, `x_L` missing) keeps revision 24's path, stamped `bridge_not_applied:<reason>`. The derived table, N_0 and N_H and the checks C1 to C5
+(`tools/audit_202608/bridge_checks.py`, tolerances `BRIDGE_TOLERANCES`, all UNCALIBRATED until stage 0.4) go in `dcf["bridge"]`; a failed check draws
+`bridge_C1_reason` ... `bridge_C5_reason` and, with the reason given, the value computes and the check stays `fail`. The verdict row carries `bridge`,
+`bridge_checks` and `desk_schema`, and `contract_fill` derives `near_term_earnings` ([E_1, E_2]) and `normalized_earnings` (N_0) from the Base.
+
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
 Every depth verdict (`verdict_depth.json`, each ledger row) carries, stamped by

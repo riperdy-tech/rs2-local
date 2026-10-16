@@ -35,6 +35,7 @@ import rate_engine
 import consensus_reference
 import crux_check
 import pi_text
+import bridge_checks
 
 # Revision 17 (brief B 4i): the unit rule for sbc_dilution.
 SBC_DILUTION_UNIT_MESSAGE = "sbc_dilution is a fraction below 1 (0.02 = 2%) or a whole number of new shares"
@@ -278,14 +279,22 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r, long_run_margin=None, info=No
     if info is not None:
         info.update(rev5=rev5, m5_basis=m5_basis, margin_held_reason=why_held if (long_run_margin is not None and margin_ratio is None
                                                                                   and lr.get("margin_source") != "generator") else None)
+    ronic0, ronic_t, ronic_stamps = _ronic_inputs(lr, ronic_t_in, r)
+    stamps += ronic_stamps
+    return e5, margin_ratio, ronic0, ronic_t, stamps
+
+
+def _ronic_inputs(lr, ronic_t_in, r):
+    """RONIC_0, RONIC_T and their stamps, as `_long_run_inputs` documents (shared with the revision 25 bridge path, which differs only in e5, g5
+    and the margin ratio)."""
+    stamps = []
     if _is_num(ronic_t_in):
         ronic_t = float(ronic_t_in)
     else:
         ronic_t = r
         stamps.append("terminal_ronic_at_cost_of_equity")
     ronic0, ronic_stamps = consensus_reference.long_run_returns(lr.get("r_tc"), ronic_t, r)
-    stamps += ronic_stamps
-    return e5, margin_ratio, ronic0, ronic_t, stamps
+    return ronic0, ronic_t, stamps + ronic_stamps
 
 
 def implied_trajectory(e5, rev5, margin_ratio, lr, terminal_g, ronic_t, rate, long_run, long_run_margin):
@@ -365,6 +374,7 @@ def unbundled_dcf(
     working_capital: Optional[Any] = None,
     excess_cash: Optional[float] = None,
     long_run_margin: Optional[float] = None,
+    bridge: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Revision 17 (brief B): a funded-growth DCF. Years 1-5 are the explicit cash flows (owner
     earnings less the pack's working-capital schedule, when there is one); from year 6 growth is
@@ -391,6 +401,11 @@ def unbundled_dcf(
       used as stated, no floor at r (`_long_run_inputs`); a terminal_ronic at or below 0 is refused by name (`missing`). The `implied` block
       also carries two diagnostics, never gates (ruling 6): terminal_value_share (the terminal value's present value over the enterprise
       value) and terminal_reinvestment_rate (terminal_g / terminal_ronic, 0 when unlimited).
+    - Revision 25 (desk schema 25.1, SPEC_rev25_normalization_bridge.md section 4): `bridge` {"revenue": [R_0..R_5], "margin": [m_1..m_5], "kappa",
+      "wc_intensity" (or None), "m0"} replaces three of the conventions above for a perpetual equity scenario: owner earnings of year t are
+      kappa x R_t x m_t; the working capital deducted is wc_intensity x (R_t - R_{t-1}); the long run starts from e5 = R_5 m_5, g5 = R_5 / R_4 - 1 and
+      margin_ratio = long_run_margin / m_5, through the same `long_run_value`. `explicit_growth` is then only the owner-earnings growth those figures
+      imply (echoed, and the shape the downstream code reads); the derived table goes in the result's `bridge`.
     - Valued at the base fiscal year end and rolled forward by (1 + r)^(long_run["stub_months"]/12),
       so the desk and the reference agree on identical inputs (the pack's stub, no roll without one).
     - Optional finite_life_years (1-60): discrete flows for N years with no terminal value, on the
@@ -459,6 +474,11 @@ def unbundled_dcf(
         return {"error": f"terminal_ronic must be above 0: growth cannot be paid for at a return at or below 0 (got {terminal_ronic!r})",
                 "missing": ["terminal_ronic (a positive number: growth cannot be paid for at a return at or below 0)"],
                 "validation_error": True}
+
+    if bridge is not None:
+        b_err = _bridge_input_error(bridge, long_run_margin, valuation_frame, finite_life_years)
+        if b_err:
+            return {"error": b_err, "validation_error": True}
 
     # Valuation frame enforcement (D1)
     frame = str(valuation_frame or "equity").strip().lower()
@@ -557,13 +577,32 @@ def unbundled_dcf(
         wc = [float(x) for x in working_capital] if working_capital else None
     if wc is not None and len(wc) != 5:
         return {"error": "working_capital holds the five deductions of years 1-5", "validation_error": True}
+    bridge_table = None
+    if bridge is not None:
+        # revision 25 (SPEC section 4): the explicit years from the declared revenue and margin, not from owner-earnings growth
+        R, mg, kap = [float(x) for x in bridge["revenue"]], [float(x) for x in bridge["margin"]], float(bridge["kappa"])
+        oe = [kap * R[t + 1] * mg[t] for t in range(5)]
+        inten = bridge.get("wc_intensity")
+        if _is_num(inten):
+            wc, wc_stamp, own_path_undefined = [float(inten) * (R[t + 1] - R[t]) for t in range(5)], "working_capital_bridge_revenue", False
+        else:
+            wc, wc_stamp, own_path_undefined = None, None, False
     flows15 = [oe[t] - (wc[t] if wc else 0.0) for t in range(5)]
 
     # ---- years 6 on: growth paid for at the record's return ---------------------------------------
     lr_info = {}
-    e5, margin_ratio, ronic0, ronic_t, stamps = _long_run_inputs(long_run, oe[4], terminal_ronic, rate, long_run_margin, info=lr_info)
-    rev5 = lr_info.get("rev5")
-    lr = consensus_reference.long_run_value(e5, five[4], terminal_g, rate, ronic0, ronic_t,
+    if bridge is not None:
+        ronic0, ronic_t, stamps = _ronic_inputs(long_run or {}, terminal_ronic, rate)
+        e5, rev5 = R[5] * mg[4], R[5]
+        margin_ratio = float(long_run_margin) / mg[4]
+        g5, fade_left = R[5] / R[4] - 1.0, fade_years
+        lr_info = {"rev5": rev5, "m5_basis": "bridge", "margin_held_reason": None}
+        stamps = ["desk_schema_25_1"] + stamps
+    else:
+        e5, margin_ratio, ronic0, ronic_t, stamps = _long_run_inputs(long_run, oe[4], terminal_ronic, rate, long_run_margin, info=lr_info)
+        rev5 = lr_info.get("rev5")
+        g5 = five[4]
+    lr = consensus_reference.long_run_value(e5, g5, terminal_g, rate, ronic0, ronic_t,
                                             margin_ratio, fade_left)
     stub = (long_run or {}).get("stub_months")
     roll = (1.0 + rate) ** (float(stub) / 12.0) if _is_num(stub) and stub else 1.0
@@ -574,7 +613,7 @@ def unbundled_dcf(
     if wc is not None:
         stamps.append("working_capital_deducted")
         if wc_stamp != "working_capital_deducted":
-            stamps.append(wc_stamp)                     # step 2c: deducted on the scenario's own revenue path
+            stamps.append(wc_stamp)                     # step 2c: deducted on the scenario's own revenue path (25.1: on the declared revenue)
         if any(x < 0 for x in wc):
             stamps.append("working_capital_release")    # step 2d: a year whose deduction is negative releases working capital into the flow
 
@@ -681,7 +720,37 @@ def unbundled_dcf(
         res["sbc_treatment"] = sbc_treatment
         res["sbc_dilution"] = sbc_dilution
 
+    if bridge is not None:
+        res["bridge"] = _bridge_table(bridge, oe, wc, long_run_margin, fade_years)
+
     return res
+
+
+def _bridge_input_error(bridge, long_run_margin, valuation_frame, finite_life_years):
+    """Why a `bridge` argument cannot be valued, or None. The bridge is for a perpetual scenario in the equity frame (SPEC section 4)."""
+    if finite_life_years is not None or str(valuation_frame or "equity").strip().lower() != "equity":
+        return "the bridge applies only to a perpetual scenario in the equity frame"
+    rv, mg, kap = bridge.get("revenue"), bridge.get("margin"), bridge.get("kappa")
+    if not (isinstance(rv, (list, tuple)) and len(rv) == 6 and all(_is_num(x) and math.isfinite(x) and x > 0 for x in rv)
+            and isinstance(mg, (list, tuple)) and len(mg) == 5 and all(_is_num(x) and math.isfinite(x) for x in mg)
+            and _is_num(kap) and math.isfinite(kap) and kap > 0):
+        return "the bridge needs six positive revenues (years 0-5), five margins (years 1-5) and a positive kappa"
+    if mg[4] == 0:
+        return "the bridge needs a year-5 earnings margin that is not 0 (the margin ratio divides by it)"
+    if not (_is_num(long_run_margin) and math.isfinite(long_run_margin)):
+        return "the bridge needs long_run_margin"
+    return None
+
+
+def _bridge_table(bridge, oe, wc, long_run_margin, fade_years):
+    """The derived figures of a bridge scenario (SPEC section 6): R, m, E, OE for years 0-5, WC for years 1-5, kappa and the margin path to 5+F.
+    Year 0 is the filed base year: m_0 = x_L, E_0 = R_0 x_0, OE_0 = base_cf (kappa x E_0)."""
+    R, mg, kap = [float(x) for x in bridge["revenue"]], [float(x) for x in bridge["margin"]], float(bridge["kappa"])
+    m0 = bridge.get("m0")
+    E = [R[t] * (mg[t - 1] if t else (m0 if _is_num(m0) else float("nan"))) for t in range(6)]
+    return {"applied": True, "kappa": kap, "revenue": R, "margin": [m0] + mg, "earnings": E,
+            "owner_earnings": [kap * E[0]] + list(oe), "working_capital": list(wc) if wc is not None else None,
+            "margin_path": bridge_checks.margin_path(mg, long_run_margin, fade_years), "years": list(range(6))}
 
 
 def _finite_life_dcf(base_cf, rates, rate, terminal_g, fade_years, finite_life_years, annuity_flow,
@@ -1005,6 +1074,8 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
                   valuation_frame=b["frame"], rate_type=b["rate_type"], sbc_treatment=b["sbc"], sbc_dilution=b["sbc_dil"],
                   finite_life_years=finite, long_run=b["long_run"], working_capital=b["wc"], excess_cash=b["excess"])
     lrm0 = b.get("lrm")
+    if b.get("bridge") is not None:
+        common["bridge"] = b["bridge"]          # revision 25: the Base is valued through its declared path wherever an input moves
 
     def dcf(rates, fade, wacc, tg, ronic, lrm=lrm0):
         return unbundled_dcf(base_cf=float(b["cf"]), explicit_growth=list(rates), wacc=wacc, terminal_g=tg, fade_years=fade, terminal_ronic=ronic,
@@ -1079,8 +1150,10 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
     def shifted(d):
         return rates0[:2] + [g + d for g in y35] + rates0[5:]
     f = lambda d: diff(raw(rates=shifted(d)))
-    res = solve_nearest(f, _linspace(d_lo, d_hi, SOLVER_GRID_POINTS), 0.0) if d_lo < d_hi else None
-    if res is None:
+    res = solve_nearest(f, _linspace(d_lo, d_hi, SOLVER_GRID_POINTS), 0.0) if (d_lo < d_hi and b.get("bridge") is None) else None
+    if b.get("bridge") is not None:
+        out["growth_years_3_5"] = unavailable("growth_years_3_5", own_g, "not applicable under desk schema 25.1 (the revenue growth and margins of years 1-5 are declared)")
+    elif res is None:
         out["growth_years_3_5"] = unavailable("growth_years_3_5", own_g, "the bound is empty")
     else:
         lo_v, hi_v, vlo, vhi = ends(f, d_lo, d_hi)
@@ -1140,7 +1213,9 @@ def price_implied(b, price, *, rf_eff=None, gdp_trend=None, levels=None):
     # year2_level --------------------------------------------------------------------------------------------------------------------
     own_l2 = cf1 * (1.0 + rates0[1])
     lv = levels or {}
-    if _is_num(lv.get("bear2")) and _is_num(lv.get("bull2")) and cf1 > 0 and lv["bear2"] > 0:
+    if b.get("bridge") is not None:
+        out["year2_level"] = unavailable("year2_level", own_l2, "not applicable under desk schema 25.1 (the year-2 cash flow follows from the declared path)")
+    elif _is_num(lv.get("bear2")) and _is_num(lv.get("bull2")) and cf1 > 0 and lv["bear2"] > 0:
         lo, hi = float(lv["bear2"]), float(lv["bull2"])
 
         def with_level(x):
@@ -1716,13 +1791,21 @@ REFUSAL_ADVISED_CLAUSE = " Call again with the same inputs and these reasons."
 REFUSAL_GENERIC_CLAUSE = " Call again with the same inputs and these reasons, or change an input with dated evidence."
 
 
+# revision 25 (Stage 0.3, desk schema 25.1): the bridge's declared inputs (the follow-up rule below compares them like any input)
+BRIDGE_PATH_FIELDS = ("revenue_growth", "earnings_margin")
+BRIDGE_NORMALIZATION_FIELDS = ("normalized_margin", "normalization_horizon", "normalized_revenue_base", "structural_growth", "flags",
+                               "cycle_position", "cycle_evidence")      # Bull and Bear inherit these from the Base unless they give their own
+BRIDGE_OPTIONAL_FIELDS = ("normalized_revenue_base", "cycle_position", "cycle_evidence")
+BRIDGE_REASONS = tuple(f"bridge_{cid}_reason" for cid in bridge_checks.CHECK_IDS)
+
+
 # Revision 21 (brief_rev21.md S2): the crux follow-up's desk call repeats the answer run's inputs unchanged and adds the crux. The inputs are the
 # values the desk computes with; the reasons and the crux are text, and the scenario entries carry what the desk annotated.
 FOLLOWUP_INPUT_KEYS = ("mode", "valuation_frame", "rate_type", "cash_flow_life", "base_cf", "explicit_growth", "fade_years", "terminal_g",
                        "terminal_ronic", "sbc_treatment", "sbc_dilution", "wacc", "annuity_flow", "annuity_cap_rate", "net_debt", "shares_diluted",
-                       "excess_cash", "interest_addback", "long_run_margin")
+                       "excess_cash", "interest_addback", "long_run_margin") + BRIDGE_PATH_FIELDS + BRIDGE_NORMALIZATION_FIELDS
 FOLLOWUP_SCENARIO_KEYS = ("prob", "base_cf", "explicit_growth", "fade_years", "wacc", "terminal_g", "terminal_ronic", "shares_diluted",
-                          "long_run_margin")
+                          "long_run_margin") + BRIDGE_PATH_FIELDS + BRIDGE_NORMALIZATION_FIELDS
 
 
 def _same_input(a, b):
@@ -1845,6 +1928,110 @@ def _pct_txt(x):
     return "unlimited" if x is not None and math.isinf(x) else f"{x * 100:.2f}%"
 
 
+# ---- revision 25 (Stage 0.3): the normalization bridge, desk schema 25.1 (SPEC_rev25_normalization_bridge.md) -----------------------------------------
+# A perpetual scenario in the equity frame is valued from the analyst's declared revenue growth and earnings margin (`unbundled_dcf(bridge=...)`).
+# Everything below prepares that call and reads its result; the arithmetic is in `unbundled_dcf` and the checks in bridge_checks.
+def _bridge_not_applied_reason(lr, frame, cfl_norm):
+    """SPEC section 4, 'where the bridge does not apply': the reason, or None when the bridge applies. Such a scenario keeps revision 24's path."""
+    if cfl_norm != "perpetual":
+        return "finite_life"
+    if frame != "equity":
+        return "firm_frame"
+    rev_L, x_L = (lr or {}).get("rev_L"), (lr or {}).get("x_L")
+    if not _is_num(x_L):
+        return "x_L_missing"
+    if not (_is_num(rev_L) and rev_L > 0):
+        return "revenue_not_positive"
+    if not rev_L * x_L > 0:
+        return "earnings_not_positive"
+    return None
+
+
+def _bridge_declarations(sc, params, base_decl=None):
+    """A scenario's declarations: the path fields from the entry, else the top level; the normalization fields from the entry, else (Base) the top
+    level or (Bull, Bear) the Base's. Returns (values, inherited field names). A field not given is None."""
+    vals, inherited = {}, []
+    for k in BRIDGE_PATH_FIELDS:
+        vals[k] = sc.get(k) if sc.get(k) is not None else params.get(k)
+    for k in BRIDGE_NORMALIZATION_FIELDS:
+        if sc.get(k) is not None:
+            vals[k] = sc[k]
+        elif base_decl is None:
+            vals[k] = params.get(k)
+        else:
+            vals[k] = base_decl[0].get(k)
+            if vals[k] is not None:
+                inherited.append(k)
+    return vals, inherited
+
+
+def _bridge_problems(vals, label, fade_years):
+    """The declarations the desk cannot read, as `missing` entries (named, the existing refusal pattern)."""
+    out = []
+    rg, em = vals.get("revenue_growth"), vals.get("earnings_margin")
+    if not (isinstance(rg, (list, tuple)) and len(rg) == 5 and all(_is_num(x) and math.isfinite(x) and x > -1 for x in rg)):
+        out.append(f"revenue_growth for {label} (five annual revenue growth rates of years 1-5, decimals above -1, for example [0.12, 0.10, 0.08, 0.06, 0.05])")
+    if not (isinstance(em, (list, tuple)) and len(em) == 5 and all(_is_num(x) and math.isfinite(x) for x in em)):
+        out.append(f"earnings_margin for {label} (five earnings margins of years 1-5 on the X basis, decimals, for example [0.20, 0.21, 0.22, 0.22, 0.22])")
+    elif em[4] == 0:
+        out.append(f"earnings_margin for {label} (the year-5 margin may not be 0: the long run's margin ratio divides by it)")
+    for k, what in (("normalized_margin", "the X-basis earnings margin once any abnormal margin condition has ended, a decimal"),
+                    ("structural_growth", "the annual revenue growth with the cyclical swing removed, a decimal above -1")):
+        v = vals.get(k)
+        if not (_is_num(v) and math.isfinite(v)) or (k == "structural_growth" and v <= -1):
+            out.append(f"{k} for {label} ({what})")
+    h = vals.get("normalization_horizon")
+    h_ok = _is_num(h) and float(h).is_integer() and h >= 0 and (fade_years is None or not _is_num(fade_years) or h <= 5 + int(fade_years))
+    if not h_ok:
+        out.append(f"normalization_horizon for {label} (a whole number from 0 to 5 plus fade_years: the first year the margin is at normalized_margin; "
+                   f"0 when today's margin is not abnormal)")
+    r = vals.get("normalized_revenue_base")
+    if r is not None and not (_is_num(r) and math.isfinite(r) and r > 0):
+        out.append(f"normalized_revenue_base for {label} (a positive number in $B, or omit it)")
+    fl = vals.get("flags")
+    if not (isinstance(fl, (list, tuple)) and all(isinstance(f, str) and f.strip().lower() in bridge_checks.KNOWN_FLAGS for f in fl)):
+        out.append(f"flags for {label} (a list, empty for none, of {', '.join(bridge_checks.KNOWN_FLAGS)})")
+    return out
+
+
+def _bridge_build(vals, inherited, cf, lr, wc_intensity, long_run_margin):
+    """(arithmetic for unbundled_dcf's `bridge`, the owner-earnings growth that arithmetic implies, the declarations to record). SPEC section 4:
+    R_0 = rev_L, R_t = R_{t-1}(1 + g_t); kappa = base_cf / (rev_L x_L). Called only for a scenario whose declarations passed `_bridge_problems`."""
+    rev_L, x_L = float(lr["rev_L"]), float(lr["x_L"])
+    R = [rev_L]
+    for g in vals["revenue_growth"]:
+        R.append(R[-1] * (1.0 + float(g)))
+    m = [float(x) for x in vals["earnings_margin"]]
+    kappa = float(cf) / (rev_L * x_L)
+    oe = [kappa * R[t + 1] * m[t] for t in range(5)]
+    growth, prev = [], float(cf)
+    for x in oe:
+        growth.append(x / prev - 1.0 if prev != 0 else 0.0)
+        prev = x
+    arith = {"revenue": R, "margin": m, "kappa": kappa, "wc_intensity": wc_intensity, "m0": x_L}
+    decl = {k: (list(v) if isinstance(v, (list, tuple)) else v) for k, v in vals.items()}
+    decl.update(long_run_margin=long_run_margin, inherited=list(inherited))
+    return arith, growth, decl
+
+
+def _bridge_finish(dcf, decl, lr, fade_years):
+    """Add the declarations, N_0 and N_H and the check results to a bridge scenario's `dcf["bridge"]` (read-only on every input)."""
+    b = dcf["bridge"]
+    R0, R = b["revenue"][0], b["revenue"]
+    R_N0 = decl.get("normalized_revenue_base")
+    base = R0 if R_N0 is None else float(R_N0)
+    m_N, g_S, H = float(decl["normalized_margin"]), float(decl["structural_growth"]), int(decl["normalization_horizon"])
+    b["declared"] = decl
+    b["n0"] = m_N * base                                   # N_0 = m_N R_N0 (1 + g_S)^0
+    b["nh"] = m_N * base * (1.0 + g_S) ** H
+    lrf = lr or {}
+    b["checks"] = bridge_checks.run_checks(
+        margins_1_5=decl["earnings_margin"], long_run_margin=decl["long_run_margin"], fade_years=int(fade_years), m_N=m_N, H=H, m_0=lrf.get("x_L"),
+        revenue=R, R_N0=R_N0, g_S=g_S, flags=decl["flags"], g_rev=lrf.get("g_rev"), cycle_position=decl.get("cycle_position"),
+        cycle_evidence=decl.get("cycle_evidence"),
+        operating_facts={k: lrf.get(k) for k in ("om_tc", "om_L", "om_trend")}, x_facts={k: lrf.get(k) for k in ("m_tc", "x_L", "m5")})
+
+
 def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Master tool dispatcher called by Qwen or automation harness.
     Supports single DCF, batch multi-scenario DCF, or blend mode in a single round trip.
@@ -1872,6 +2059,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     # generator's margin path; long_run_margin not required), with the revision-22 defaults, holds and cap (lr_withheld is False for that pack);
     # the step-2a fixes D2-D4 stay. Stamped rev22_control_desk on the result.
     rev22_control = ctx.get("pilot_arm") == "rev22"
+    # revision 25 (Stage 0.3): desk schema 25.1 values a perpetual equity scenario through the normalization bridge; every other pack keeps its desk
+    desk25 = ctx.get("desk_schema") == "25.1" and not rev22_control
 
     scenarios = params.get("scenarios") or []
     base_cf = params.get("base_cf")
@@ -1912,6 +2101,16 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         missing.append("cash_flow_life")
     if not _reason_given(params.get("cash_flow_life_reason")):                            # V2
         missing.append("cash_flow_life_reason")
+
+    # revision 25: which scenarios the bridge applies to (SPEC section 4); the others keep revision 24's path, stamped bridge_not_applied:<reason>
+    bridge_plan: Dict[int, Optional[str]] = {}
+    bridge_decls: Dict[int, Any] = {}
+    if desk25:
+        _lr_facts = ctx.get("long_run") if isinstance(ctx.get("long_run"), dict) else {}
+        for sc in scenarios:
+            if isinstance(sc, dict):
+                _fr = str(sc.get("valuation_frame", params.get("valuation_frame", "equity")) or "equity").strip().lower()
+                bridge_plan[id(sc)] = _bridge_not_applied_reason(_lr_facts, _fr, cfl_norm)
 
     # V3: finite_life_years leaves the schema; cash_flow_life applies to every scenario instead.
     if params.get("finite_life_years") is not None:
@@ -1965,8 +2164,9 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             if not isinstance(sc, dict):
                 continue
             growth = sc.get("explicit_growth") if sc.get("explicit_growth") is not None else sc.get("growth_rates")
+            bridge_here = desk25 and bridge_plan.get(id(sc), "off") is None        # revision 25: the declared path replaces explicit_growth
             lacks = [f for f, absent in (("base_cf", sc.get("base_cf") is None),
-                                         ("explicit_growth", not growth),
+                                         ("explicit_growth", not growth and not bridge_here),
                                          ("wacc", sc.get("wacc") is None and sc.get("discount_rate") is None))
                      if absent]
             if lacks:
@@ -2010,6 +2210,35 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 missing.append("terminal_ronic" + ("" if len(lacking_tr) == len(holders) else f" for {', '.join(lacking_tr)}")
                                + " (the return on new investment that pays for growth from year 6, a decimal such as 0.12: your judgment, with no "
                                  "default)")
+
+    # revision 25 (SPEC section 3): the bridge's declarations. Base is required; Bull and Bear inherit Base's normalization unless they give their own.
+    # explicit_growth and growth_rates are refused for a bridge scenario, so that there is only one path.
+    if desk25 and any(v is None for v in bridge_plan.values()):
+        for gone in ("explicit_growth", "growth_rates"):
+            if params.get(gone) is not None:
+                missing.append(f"{gone} at the top level (not accepted under desk schema 25.1: give revenue_growth and earnings_margin in each "
+                               f"scenario; the desk derives the owner earnings)")
+        _base_sc = next((sc for sc in scenarios if isinstance(sc, dict) and _role_of(sc.get("name")) == "base"), None)
+        _base_decl = _bridge_declarations(_base_sc, params) if _base_sc is not None else None
+        _base_problem_names = set()
+        for sc in sorted((x for x in scenarios if isinstance(x, dict)), key=lambda x: x is not _base_sc):      # the Base first
+            if bridge_plan.get(id(sc), "off") is not None:
+                continue
+            _label = str(sc.get("name") or "Scenario")
+            for gone in ("explicit_growth", "growth_rates"):
+                if sc.get(gone) is not None:
+                    missing.append(f"{gone} in {_label} (not accepted under desk schema 25.1: give revenue_growth and earnings_margin; the desk "
+                                   f"derives the owner earnings)")
+            _is_base = sc is _base_sc
+            bridge_decls[id(sc)] = _bridge_declarations(sc, params) if (_is_base or _base_decl is None) else _bridge_declarations(sc, params, _base_decl)
+            _fy = sc.get("fade_years") if sc.get("fade_years") is not None else params.get("fade_years")
+            for problem in _bridge_problems(bridge_decls[id(sc)][0], _label, _fy):
+                field = problem.split(" ", 1)[0]
+                if _is_base:
+                    _base_problem_names.add(field)
+                elif field in _base_problem_names and sc.get(field) is None:
+                    continue                # inherited from a Base that is already refused for it
+                missing.append(problem)
 
     # B2 (revision 19): a crux that is present must be well formed (a list of one to three entries, each with a judgment input, a reason and one to
     # five citations of {source, date, quote}); a failure is a `missing` entry, so the call is refused and does not use a desk run. A crux is optional:
@@ -2124,7 +2353,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     base_solver: Dict[str, Any] = {}     # Base name -> its exact applied arguments, for the price-implied solver (revision 19)
 
     def _value(name, cf_in, gr_in, wacc_in, tg_in, shares_in, fade_in, sbc_in, sbc_dil_in, frame_in,
-               net_debt_in, rate_type_in, annuity_in, annuity_cap_in, ronic_in, lrm_in=None):
+               net_debt_in, rate_type_in, annuity_in, annuity_cap_in, ronic_in, lrm_in=None, bridge_in=None):
         """One scenario's value, with the Base-only years-3-5 cap and years-1-2 hold. Returns the dcf
         dict, or None after recording a compute error."""
         base_b = _to_b(cf_in)
@@ -2134,6 +2363,11 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         near_oe = base_b is not None and any(abs(base_b - x) / abs(x) <= 0.020001 for x in oe_figures)
         wc_in_base = near_cash and not near_oe
         wc_use = None if (wc_in_base or not wc_ctx) else wc_ctx
+        bridge_run = None
+        if bridge_in is not None:
+            # revision 25: the bridge deducts working capital on its own declared revenue (not when the base already carries it, as before)
+            bridge_run = dict(bridge_in, wc_intensity=None if wc_in_base else bridge_in.get("wc_intensity"))
+            wc_use = None
 
         def run(growth, fade):
             res = unbundled_dcf(
@@ -2157,6 +2391,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 working_capital=wc_use,
                 excess_cash=excess_use,
                 long_run_margin=lrm_in,
+                **({"bridge": bridge_run} if bridge_run is not None else {}),
             )
             if not res.get("error"):
                 if wc_in_base:
@@ -2170,6 +2405,17 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             compute_errors.append(f"{name}: {dcf_res['error']}")
             return None
 
+        if bridge_run is not None:
+            # revision 25: the declared path is the valuation - no years-3-5 cap, no years-1-2 hold (both read owner-earnings growth); the Base is
+            # registered for the price-implied solver, which values it through the same bridge
+            if _role_of(name) == "base":
+                base_solver[name] = {"cf": float(cf_in), "growth": list(gr_in), "fade": fade_in, "wacc": float(wacc_in),
+                                     "tg": float(tg_in) if tg_in is not None else None, "shares": shares_in, "sbc": sbc_in,
+                                     "sbc_dil": sbc_dil_in, "frame": frame_in, "net_debt": net_debt_in, "rate_type": rate_type_in,
+                                     "annuity": annuity_in, "annuity_cap": annuity_cap_in, "ronic": ronic_in, "wc": None,
+                                     "excess": excess_use, "long_run": long_run_ctx, "finite": desk_finite_life_years,
+                                     "raw": dcf_res["per_share_iv_raw"], "lrm": lrm_in, "bridge": bridge_run}
+            return dcf_res
         if _role_of(name) != "base":
             return dcf_res
         requested_iv = dcf_res["per_share_iv"]
@@ -2245,7 +2491,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         s_gr = sc.get("explicit_growth") if sc.get("explicit_growth") is not None else sc.get("growth_rates")
         s_wacc = sc.get("wacc") if sc.get("wacc") is not None else sc.get("discount_rate")
         s_term_g = sc.get("terminal_g") if sc.get("terminal_g") is not None else params.get("terminal_g")
-        if s_cf is None or not s_gr or s_wacc is None:
+        if s_cf is None or (not s_gr and not (desk25 and id(sc) in bridge_decls)) or s_wacc is None:
             continue
         s_shares = _effective_shares(sc.get("shares_diluted"), top_shares, ctx_shares_default_b)
         s_fade = sc.get("fade_years") if sc.get("fade_years") is not None else fade_years
@@ -2262,6 +2508,13 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         s_annuity = float(sc.get("annuity_flow", params.get("annuity_flow", 0.0)))
         s_annuity_cap = (float(sc["annuity_cap_rate"]) if sc.get("annuity_cap_rate")
                          else (float(params["annuity_cap_rate"]) if params.get("annuity_cap_rate") else None))
+        # revision 25: a bridge scenario's explicit years come from its declared revenue growth and margins; `s_gr` is then only the owner-earnings
+        # growth they imply (the shape the rest of the desk reads)
+        bridge_in = bridge_decl = None
+        if desk25 and id(sc) in bridge_decls and _is_num(s_cf) and isinstance((long_run_ctx or {}).get("rev_L"), (int, float)):
+            _vals, _inh = bridge_decls[id(sc)]
+            _inten = (long_run_ctx or {}).get("nwc_intensity")
+            bridge_in, s_gr, bridge_decl = _bridge_build(_vals, _inh, s_cf, long_run_ctx, float(_inten) if _is_num(_inten) else None, s_lrm)
 
         value_args[sc_name] = {"cf": s_cf, "wacc": s_wacc, "tg": s_term_g, "shares": s_shares, "sbc": s_sbc,
                                "sbc_dil": s_sbc_dil, "frame": sc_frame, "net_debt": sc_net_debt,
@@ -2269,9 +2522,18 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                                "annuity_cap": s_annuity_cap, "lrm": s_lrm, "ronic": s_ronic}
         dcf_res = _value(sc_name, s_cf, [float(g) for g in s_gr], s_wacc, s_term_g, s_shares, s_fade, s_sbc,
                          s_sbc_dil, sc_frame, sc_net_debt, sc.get("rate_type", rate_type), s_annuity,
-                         s_annuity_cap, s_ronic, s_lrm)
+                         s_annuity_cap, s_ronic, s_lrm, bridge_in=bridge_in)
         if dcf_res is None:
             continue
+        if bridge_decl is not None:
+            _bridge_finish(dcf_res, bridge_decl, long_run_ctx, s_fade)
+        elif desk25 and bridge_plan.get(id(sc)):
+            # SPEC section 4: revision 24's path for a scenario the bridge does not apply to, stamped and reported
+            _why = f"bridge_not_applied:{bridge_plan[id(sc)]}"
+            dcf_res.setdefault("stamps", []).append(_why)
+            dcf_res["bridge"] = {"applied": False, "reason": bridge_plan[id(sc)]}
+            if _why not in result.setdefault("desk_stamps", []):
+                result["desk_stamps"].append(_why)
         if _role_of(sc_name) == "base":
             base_inputs = {"ronic": s_ronic, "cf": s_cf, "wc_in_base": "wc_in_base" in dcf_res.get("stamps", []), "lrm": s_lrm}
         sc["iv"] = dcf_res["per_share_iv"]
@@ -2436,6 +2698,20 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             if given_b is not None and abs(given_b - default_b) > 1.0000001e-6:
                 _need(reasons_needed, "excess_cash_reason", _reason_given(params.get("excess_cash_reason")), True,
                       f"excess_cash {given_b:.6f}B is not the DEFAULTS excess_cash {default_b:.6f}B")
+
+        # revision 25 (SPEC section 5): a failed bridge check draws the named reason request (bridge_C1_reason ... bridge_C5_reason). With the reason
+        # given the value computes and the check stays `fail`, annotated `reason_given`; nothing is clamped, overwritten or re-labelled.
+        for e in checked:
+            for ck in ((e["dcf"].get("bridge") or {}).get("checks") or []):
+                if ck.get("status") != "fail":
+                    continue
+                _rname = f"bridge_{ck['id']}_reason"
+                _given = _reason_given(params.get(_rname))
+                if _given:
+                    ck["reason_given"] = True
+                _need(reasons_needed, _rname, _given, True,
+                      f"{e['name']}'s check {ck['id']} failed" + (f": {ck['note']}" if ck.get("note") else "")
+                      + " (the declarations disagree; explain why, with dated evidence, or change a declaration)")
 
         # R10 (Base value vs the fiscal-year reference). Revision 17: the Base's years 1-2 are held at
         # the levels by the desk (above), so only the value check remains, against the fiscal-year
@@ -2680,6 +2956,30 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     return result
 
 
+def _bridge_markdown(name, br):
+    """Revision 25 (SPEC section 6): a bridge scenario's derived table for years 0-5, the margin path to 5+F, N_0 and N_H and the check table."""
+    if not isinstance(br, dict):
+        return []
+    if not br.get("applied"):
+        return [f"**{name}: normalization bridge not applied ({br.get('reason')}); revision 24's path.**", ""]
+    f = lambda x: "n/a" if x is None else f"{x:.4f}"
+    out = [f"**{name}: derived path (years 0-5, $B; margin on the X basis; kappa = owner earnings over earnings = {br['kappa']:.4f}):**",
+           "| Year | Revenue R | Margin m | Earnings E | Owner earnings OE | Working capital WC |", "|---|---|---|---|---|---|"]
+    for t in range(6):
+        wc = "" if t == 0 or br.get("working_capital") is None else f(br["working_capital"][t - 1])
+        out.append(f"| {t} | {f(br['revenue'][t])} | {f(br['margin'][t])} | {f(br['earnings'][t])} | {f(br['owner_earnings'][t])} | {wc} |")
+    out.append("")
+    out.append("Margin path m_t, years 1 to 5+F: " + ", ".join(f(x) for x in br.get("margin_path") or []))
+    if br.get("n0") is not None:
+        out.append(f"Normalized earnings: N_0 = {f(br['n0'])} (today's revenue scale), N_H = {f(br.get('nh'))} (year {(br.get('declared') or {}).get('normalization_horizon')}).")
+    out += ["", "| Check | Status | Declared | Derived | Horizon | Tolerance |", "|---|---|---|---|---|---|"]
+    for c in br.get("checks") or []:
+        status = c["status"] + (" (reason given)" if c.get("reason_given") else "")
+        out.append(f"| {c['id']} | {status} | {c.get('declared')} | {c.get('derived')} | {c.get('horizon')} | {c.get('tolerance')} |")
+    out.append("")
+    return out
+
+
 def format_model_results_markdown(res: Dict[str, Any]) -> str:
     """Format the financial model calculation into a clean markdown table for Qwen."""
     lines = ["### FINANCIAL MODELING DESK REPORT (Deterministic Python Verification)\n"]
@@ -2732,6 +3032,9 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
         if d.get("sbc_treatment"):
             lines.append(f"- SBC Policy: `{d.get('sbc_treatment')}`")
         lines.append("")
+
+    for item in res.get("scenario_dcfs") or []:
+        lines += _bridge_markdown(item.get("name", "Scenario"), (item.get("dcf") or {}).get("bridge"))
 
     yc = res.get("years35_cap")
     if isinstance(yc, dict):

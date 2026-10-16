@@ -455,7 +455,8 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
         "2. Complete any remaining analysis sections (Valuation Triad, Balance Sheet Audit, Risks, Milestones).\n"
         "3. Conclude with SECTION 12 and the complete ```json:underwriting contract with these fields: "
         # revision 24 step 2b: a revision-24 pack's contract carries the S12 fields too (cap.FORM_FIELDS_III); a revision-22 one (the rev22 arm) not
-        + ", ".join(cap.FORM_FIELDS_III if "(pack revision 24)" in pack.split("\n", 1)[0] else cap.FORM_FIELDS)
+        + ", ".join(cap.FORM_FIELDS_25 if "(pack revision 25)" in pack.split("\n", 1)[0]
+                    else cap.FORM_FIELDS_III if "(pack revision 24)" in pack.split("\n", 1)[0] else cap.FORM_FIELDS)
         + ". The values, probabilities and Kelly size come from your desk runs; do not type them into the contract.\n\n"
         "Do NOT repeat the prior sections. Proceed directly with the continuation."
     )
@@ -502,6 +503,7 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
 S12_SUMMARY_KEYS = ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence", "margin_persistence_evidence",
                     "cycle_position", "cycle_position_evidence", "growth_trajectory", "growth_trajectory_evidence", "input_rationale",
                     "long_run_margin", "plausibility_gate", "rev22_control_desk",       # step 2c: the rev22 control desk's stamp
+                    "bridge", "bridge_checks", "desk_schema",                           # revision 25: the normalization bridge (contract_fill.REVISION_25)
                     "terminal_value_share", "terminal_reinvestment_rate")               # step 2d: the two diagnostics (contract_fill.REVISION_24_2D)
 
 
@@ -2113,6 +2115,8 @@ def build_desk_context(facts, price, ticker, company, run_date=None):
         "long_run_defaults_withheld": facts.get("long_run_defaults_withheld"),
         # revision 24 step 2c (ruling 10 of step 2b): the pilot arm; under rev22 the desk is the rev22 control desk (the generator's margin path)
         "pilot_arm": facts.get("pilot_arm"),
+        # revision 25 (Stage 0.3): "25.1" values a perpetual equity scenario through the normalization bridge (financial_model_tool); None otherwise
+        "desk_schema": facts.get("desk_schema"),
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)
         # revision 19 (B4): the name and ticker the citation check's news-filter rule needs

@@ -730,7 +730,9 @@ def band_verdict(doc):
                                          "growth_trajectory_evidence", "input_rationale", "long_run_margin", "plausibility_gate",
                                          "rev22_control_desk",
                                          # revision 24 step 2d (cross-check 19, ruling 6): the Base's two diagnostics, never gates
-                                         "terminal_value_share", "terminal_reinvestment_rate")},
+                                         "terminal_value_share", "terminal_reinvestment_rate",
+                                         # revision 25 (Stage 0.3): the Base's normalization bridge, the checks of the three scenarios, the desk schema
+                                         "bridge", "bridge_checks", "desk_schema")},
         "plausibility_by_sample": None,
     })
 

@@ -111,17 +111,18 @@ def test_facts_version_and_key_count():
     # pack revision 24 (R24.2): FACTS_VERSION 9 -> 10, reference_withheld and the sidecar-only reference_line: 47 -> 49
     # pack revision 24 step 2b: FACTS_VERSION 10 -> 11, long_run_defaults_withheld and the sidecar-only population_ranges, pilot_arm and
     # ranges_show_p50: 49 -> 53
+    # revision 25 (Stage 0.3): the sidecar-only desk_schema: 53 -> 54; FACTS_VERSION stays 11 (an older sidecar reads it as None)
     assert pack_facts.FACTS_VERSION == 11
-    assert len(pack_facts.KEYS) == 53
+    assert len(pack_facts.KEYS) == 54
     scope = ["nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
              "vendor_revenue_basis"]
-    assert pack_facts.KEYS[-28:-4] == ["long_run", "working_capital", "base_year_cap", "split_after_last_filing",
+    assert pack_facts.KEYS[-29:-5] == ["long_run", "working_capital", "base_year_cap", "split_after_last_filing",
                                      "reference_base_b", "excess_cash", "coe_premium_source", "base_year_cash_and_investments_b",
                                      "rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_defaults", "price_implied_price"] + scope + [
                                          "primary_sources", "reference_withheld", "reference_line"]
-    assert pack_facts.KEYS[-4:] == ["long_run_defaults_withheld", "population_ranges", "pilot_arm", "ranges_show_p50"]
+    assert pack_facts.KEYS[-5:] == ["long_run_defaults_withheld", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema"]
     assert pack_facts.SIDECAR_ONLY == ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price") + tuple(scope) + (
-        "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50")
+        "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema")
 
 
 def test_empty_has_all_24_keys():

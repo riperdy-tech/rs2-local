@@ -259,8 +259,13 @@ PACK_REVISION = 24
 # Revision 24 step 2b: the pilot arms (PHASE_4_REV24_MUSE.md step 3). `rev22` is the revision-22 briefing byte for byte (the control: its marker,
 # the CONSENSUS-IMPLIED VALUE, the DEFAULTS of revision 22 and its TASK); the two `iii` arms are the revision-24 briefing and differ only by P50 in
 # the POPULATION RANGES section.
-PILOT_ARMS = ("rev22", "iii_p50", "iii_no_p50")
+PILOT_ARMS = ("rev22", "iii_p50", "iii_no_p50", "r25_b", "r25_c")
 REV22_REVISION = 22
+# Revision 25 (Stage 0.3, SPEC_rev25_normalization_bridge.md): the pilot arms B and C run desk schema 25.1 (the normalization bridge) with the
+# revision-25 briefing (PACK_REVISION 25 for these packs only, TASK_REV25, P50 omitted). Their difference (consensus withheld until pass 2) is Stage 0.6.
+R25_ARMS = ("r25_b", "r25_c")
+R25_REVISION = 25
+DESK_SCHEMA_25 = "25.1"
 
 
 def pack_flags(pilot_arm=None, ranges_show_p50=None):
@@ -274,7 +279,7 @@ def pack_flags(pilot_arm=None, ranges_show_p50=None):
     flag = None if flag is None else (flag is True)
     if arm == "rev22":
         return arm, None
-    if arm in ("iii_p50", "iii_no_p50"):
+    if arm in ("iii_p50", "iii_no_p50", "r25_b", "r25_c"):
         want = arm == "iii_p50"
         if flag is not None and flag != want:
             raise ValueError(f"pilot_arm {arm} and ranges_show_p50 {flag} contradict each other")
@@ -1874,6 +1879,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     _rev22 = _arm == "rev22"
     facts["pilot_arm"] = _arm
     facts["ranges_show_p50"] = _show_p50
+    _r25 = _arm in R25_ARMS
+    facts["desk_schema"] = DESK_SCHEMA_25 if _r25 else None        # revision 25: the desk's schema (pack_facts.KEYS), absent for every existing arm
     # revision 24 (R24.2): the reference is computed and kept in the facts, never printed; stage B shows it after the memorandum. Step 2b: nor is a
     # default for a long-run judgment. The rev22 arm prints both, as revision 22 did.
     facts["reference_withheld"] = None if _rev22 else True
@@ -1888,7 +1895,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # S3 5.1: the revision marker. from_text() dispatches on "(pack revision N)", N >= 15, appearing
     # in this first line (pack_facts._REVISION_RE) to read the DEFAULTS block instead of the legacy
     # regexes.
-    L = [f"# DATA PACK - {t}   (pack revision {REV22_REVISION if _rev22 else PACK_REVISION})", ""]
+    L = [f"# DATA PACK - {t}   (pack revision {REV22_REVISION if _rev22 else (R25_REVISION if _r25 else PACK_REVISION)})", ""]
     if asof_date is not None:
         L += [f"**POINT-IN-TIME BRIEFING — as of {asof_date.isoformat()}; you must not use "
               f"knowledge of events after this date.**",
@@ -4290,10 +4297,28 @@ METRIC VOCABULARY for `invalidation_rules` (at least one FINANCIAL and at least 
 Think carefully through the complete economic machinery before writing. Numbers before narrative."""
 
 
+# Revision 25 (Stage 0.3): the TASK of the packs with desk schema 25.1 - the revision-24 TASK with the path and normalization declarations in place of
+# the owner-earnings growth and the two typed earnings figures (near_term_earnings and normalized_earnings are derived by the desk, so the contract no
+# longer carries them). Built by replacing exact passages of TASK, so every other word is TASK's; a passage that moves breaks the import, not the run.
+def _task_rev25():
+    t = TASK
+    for old, new in (('the growth of that cash flow (not revenue) for years 1-5 in Base, Bull and Bear;', 'the revenue growth and the earnings margin of years 1-5 in Base, Bull and Bear;'), ('   a. State your near-term earnings (what the business earns over the next one to two years; DATA 8 and the DEFAULTS levels show what analysts forecast, as evidence) and your normalized mid-cycle earnings, and the transition between them with its reason.\n', "   a. Declare your path and your normalization in the desk call. Path: revenue_growth (the annual revenue growth of years 1-5, five values; DATA 8 and the DEFAULTS levels show what analysts forecast, as evidence) and earnings_margin (the earnings margin of years 1-5, five values). The margin basis is the X basis: earnings before acquired-intangible amortization over revenue, the basis of x_L, m_tc and m5 in DEFAULTS. Operating margins (om_tc, om_L, om_trend, om_5) are context only, on the operating basis; no input takes one. Normalization, for Base (Bull and Bear inherit Base's unless they give their own): normalized_margin (the X-basis earnings margin once any abnormal margin condition has ended), normalization_horizon (a whole number from 0 to 5 plus fade_years, the first year the margin is at normalized_margin; 0 when today's margin is not abnormal), structural_growth (the annual revenue growth with any cyclical swing removed), normalized_revenue_base ($B, only when flags include cyclical and today's revenue is itself at a cyclical level; default today's revenue) and flags (a list: any of cyclical, structural_growth, structural_decline, turnaround, or none). For a cyclical business also pass cycle_position and cycle_evidence. The desk derives near-term earnings (years 1 and 2) and normalized earnings (at today's revenue scale) from these declarations; do not type them. State the transition and why in normalization_reason. The desk checks the declarations against each other and asks for a named bridge reason (bridge_C1_reason to bridge_C5_reason) where one disagrees. revenue_growth and earnings_margin replace explicit_growth, which this desk refuses.\n"), ("the revenue being the consensus revenue path scaled year by year by that scenario's owner earnings over the consensus owner earnings, unless", 'the revenue being your declared revenue path from the filed base year, unless'), ('  "near_term_earnings": <float, $B: what the business earns over the next one to two years>,\n  "normalized_earnings": <float, $B: its normalized mid-cycle earnings>,\n', "")):
+        assert t.count(old) == 1, old[:60]
+        t = t.replace(old, new)
+    return t
+
+
+TASK_REV25 = _task_rev25()
+FORM_FIELDS_25 = tuple(f for f in FORM_FIELDS_III if f not in ("near_term_earnings", "normalized_earnings"))
+
+
 def task_for(facts):
     """Revision 24 step 2b: the TASK a pack is sent with - the revision-22 TASK for the rev22 arm (its facts' pilot_arm), the revision-24 TASK
-    otherwise."""
-    return TASK_REV22 if (facts or {}).get("pilot_arm") == "rev22" else TASK
+    otherwise; revision 25: TASK_REV25 for a pack with desk schema 25.1."""
+    f = facts or {}
+    if f.get("desk_schema") == DESK_SCHEMA_25:
+        return TASK_REV25
+    return TASK_REV22 if f.get("pilot_arm") == "rev22" else TASK
 
 
 # S3 4.3 (2026-09-28): replaces the revision-14 RESEARCH_ADDENDUM. Old literal above this

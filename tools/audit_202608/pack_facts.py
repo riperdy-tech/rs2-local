@@ -124,12 +124,15 @@ KEYS: list[str] = [
     "population_ranges",
     "pilot_arm",
     "ranges_show_p50",
+    # revision 25 (Stage 0.3, SPEC_rev25_normalization_bridge.md section 8): `desk_schema` is "25.1" for the pilot arms r25_b and r25_c (the desk values
+    # a perpetual equity scenario through the normalization bridge) and None for every other arm and pack. SIDECAR_ONLY: no pack text prints it.
+    "desk_schema",
 ]
 
 # keys the DEFAULTS text does not carry: a frozen replay reads them from the sidecar, and a text read gives None (parity ignores them)
 SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price",
                 "nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
-                "vendor_revenue_basis", "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50")
+                "vendor_revenue_basis", "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema")
 # revision 24 (R24.2): the facts a stage-A DEFAULTS block does not print; a text read of such a block gives None for them, so the CIV is taken from
 # the facts or the sidecar, never from text, and the parity check leaves them out when either side is a withheld-reference pack
 WITHHELD_KEYS = ("consensus_implied_value", "reference_status")
@@ -446,6 +449,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         **{k: None for k in _SCOPE_KEYS},
         "reference_withheld": None, "reference_line": None,
         "long_run_defaults_withheld": None, "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
+        "desk_schema": None,
     }
 
 
@@ -1332,6 +1336,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "reference_withheld": True if withheld else None, "reference_line": None,
         "long_run_defaults_withheld": True if withheld else None,
         "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
+        "desk_schema": None,
     }
 
 

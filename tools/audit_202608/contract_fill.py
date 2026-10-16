@@ -24,6 +24,12 @@ REVISION_24_2B = ("long_run_margin", "plausibility_gate", "rev22_control_desk")
 # revision 24 step 2d (cross-check 19, ruling 6): two diagnostics of the answer run's Base, never gates - the terminal value's share of the value
 # and the terminal reinvestment rate (terminal_g / terminal_ronic, 0 when unlimited), from the desk's `implied` block
 REVISION_24_2D = ("terminal_value_share", "terminal_reinvestment_rate")
+# revision 25 (Stage 0.3, desk schema 25.1; SPEC_rev25_normalization_bridge.md sections 3, 6 and 8): the Base's bridge table (`dcf["bridge"]`), the
+# checks of the three scenarios by role, the schema, and the two S12 figures that are derived, not typed: near_term_earnings = [E_1, E_2] and
+# normalized_earnings = N_0, both $B on the X basis, from the Base's bridge. Filled (and listed as unfilled) only for a pack whose facts carry
+# desk_schema 25.1; every other arm's fill is as it was.
+REVISION_25 = ("bridge", "bridge_checks", "desk_schema", "near_term_earnings", "normalized_earnings")
+DESK_SCHEMA_25 = "25.1"
 
 FILLED = (
     "base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability",
@@ -34,6 +40,7 @@ FILLED = (
     # (cash_flow_life_reason among them) are now call arguments, copied from the answer call.
     "base_cf_basis", "interest_addback",
 ) + REASONS_11 + REVISION_19 + REVISION_24_2B + REVISION_24_2D
+FILLED_25 = FILLED + REVISION_25          # the fields a pack with desk schema 25.1 is filled with (FILLED itself is every other pack's, as it was)
 ROLES = ("base", "bull", "bear")
 REL = 0.010001          # the harness's 1% desk-match tolerance (consensus_valuation, `close`)
 
@@ -190,6 +197,34 @@ def answer_run(calls):
     return ref, (_f(e["dcf"].get("per_share_iv")) if e else None), "cash_flow_life" in (ref.get("params") or {})
 
 
+def _fill_bridge(out, prov, src, typed):
+    """Revision 25: the bridge fields from the desk's own results. The two S12 figures come from the Base's bridge when it applied; a value the
+    analyst typed is ignored and the sample is stamped `s12_figure_derived_under_25_1` when it differs. A Base whose bridge did not apply (the desk
+    kept revision 24's path, `bridge_not_applied:<reason>`) has nothing to derive them from: the typed figures stand, stamped
+    `s12_figures_typed_bridge_not_applied`."""
+    out["desk_schema"] = DESK_SCHEMA_25
+    out["bridge_checks"] = {role: (((src[role][1].get("dcf") or {}).get("bridge") or {}).get("checks")) for role in ROLES if role in src}
+    bridge = ((src["base"][1].get("dcf") or {}).get("bridge")) if "base" in src else None
+    out["bridge"] = bridge
+    if not (isinstance(bridge, dict) and bridge.get("applied")):
+        prov["stamps"].append("s12_figures_typed_bridge_not_applied")
+        return
+    E, n0 = bridge.get("earnings"), bridge.get("n0")
+    derived = {"near_term_earnings": [E[1], E[2]] if isinstance(E, list) and len(E) > 2 else None, "normalized_earnings": _f(n0)}
+    out.update(derived)
+    for k, v in derived.items():
+        t = (typed or {}).get(k)
+        if t is None or v is None:
+            continue
+        if isinstance(v, list):
+            same = isinstance(t, list) and len(t) == len(v) and all(_close(a, b) for a, b in zip(t, v))
+        else:
+            same = _close(t, v)
+        if not same:
+            prov["stamps"].append("s12_figure_derived_under_25_1")
+            break
+
+
 def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=None, company=None):
     """(filled, prov). `typed` is the sample's parsed contract (extract_scorecard); `facts` needs
     'shares_outstanding' (raw count or None) and 'coe_anchor' (fraction or None). `ticker` is only
@@ -239,6 +274,9 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
     is_r15 = ref_call is not None and "cash_flow_life" in (ref_call.get("params") or {})
 
     out = {}
+    desk25 = facts.get("desk_schema") == DESK_SCHEMA_25
+    if desk25:
+        prov["stamps"] = []
     for role in ROLES:
         if role in src:
             c, e = src[role]
@@ -296,6 +334,8 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
         imp = d.get("implied") if isinstance(d, dict) and isinstance(d.get("implied"), dict) else {}
         for k in REVISION_24_2D:                            # step 2d: the diagnostics as the desk computed them (None when it did not)
             out[k] = _f(imp.get(k))
+        if desk25:
+            _fill_bridge(out, prov, src, typed)
         fr = d.get("valuation_frame") or _inp(e, c, "valuation_frame")
         out["valuation_frame"] = str(fr).lower() if fr is not None else None
         leg = prov["legs"].get("base")
@@ -430,7 +470,7 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
                                                                                                  "growth_trajectory")})
                                     if facts.get("long_run_defaults_withheld") is True else None)
     filled = {}
-    for k in FILLED:
+    for k in (FILLED_25 if desk25 else FILLED):
         if k in out:
             filled[k] = out[k]
         else:
