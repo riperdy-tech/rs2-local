@@ -227,12 +227,12 @@ def test_the_long_run_is_unchanged_for_equal_inputs_to_1e_9(monkeypatch):
 PATH = [0.30, 0.31, 0.32, 0.33, 0.34] + [0.34 - 0.01 * i for i in range(1, 6)]            # m_1..m_10 ending at 0.29
 
 
-def test_the_tolerances_are_one_dict_and_every_value_is_marked_uncalibrated():
+def test_the_tolerances_are_one_dict_and_marked_frozen():
     assert set(bc.BRIDGE_TOLERANCES) == {"tau_m_y1_5", "tau_m_y6_10", "tau_m_y11_plus", "tau_R_T5", "tau_R_TH", "tau_b"}
     assert bc.BRIDGE_TOLERANCES["tau_m_y1_5"] == 0.03 and bc.BRIDGE_TOLERANCES["tau_R_T5"] == 0.10 and bc.BRIDGE_TOLERANCES["tau_b"] == 0.01
     src = (HERE.parent / "bridge_checks.py").read_text(encoding="utf-8")
     block = src[src.index("BRIDGE_TOLERANCES: Dict"):src.index("KNOWN_FLAGS")]
-    assert block.count("UNCALIBRATED") == len(bc.BRIDGE_TOLERANCES)                          # each value's own comment
+    assert "UNCALIBRATED" not in block and "FROZEN 2026-10-16" in src                        # Stage 0.4 step 5 replaced the placeholders
     assert fmt.__dict__.get("BRIDGE_TOLERANCES") is None                                       # nothing reads a tolerance from anywhere else
 
 
@@ -607,3 +607,8 @@ def test_the_25_1_tools_offer_the_bridge_fields_and_keep_explicit_growth_only_fo
 def test_the_25_1_task_says_a_late_horizon_needs_the_fade_to_end_at_it():
     assert "fade_years equal to normalization_horizon minus 5" in cap.TASK_REV25
     assert "normalization_horizon" not in cap.TASK
+
+
+def test_the_tolerances_are_the_frozen_stage_0_4_values():
+    """Registered 2026-10-16 (PHASE_4_AMENDMENTS, Stage 0.4 step 5). A change here is a new registration, never an edit."""
+    assert bc.BRIDGE_TOLERANCES == {"tau_m_y1_5": 0.03, "tau_m_y6_10": 0.03, "tau_m_y11_plus": 0.03, "tau_R_T5": 0.10, "tau_R_TH": 0.10, "tau_b": 0.01}

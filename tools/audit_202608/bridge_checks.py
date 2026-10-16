@@ -16,14 +16,17 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Sequence
 
-# Stage 0.3 placeholders. Every value is UNCALIBRATED: Stage 0.4 replaces them, and nothing may read a tolerance from anywhere else.
+# FROZEN 2026-10-16 (Stage 0.4 step 5): the values below are registered and may not change after Stage 1 starts. Chosen by the rule in
+# scratch/rev23/r25_synth/CALIBRATION_PROTOCOL.md (sha256 acb2619c...), fixed before the pilot labels (PILOT_LABELS.md, 095e22d5...): every labelled
+# pilot company was coherent at a C1 gap of 0, so the pilot did not bound tau_m and the registered prior decides; tau_R and tau_b are priors (the pilot
+# holds no revenue or basis declarations). The level is validated only on Kohl's, Heritage and the sealed Stage 2 names, never retuned before Stage 2.
 BRIDGE_TOLERANCES: Dict[str, float] = {
-    "tau_m_y1_5": 0.03,      # UNCALIBRATED: margin points, years 1-5 (C1, C1b, C2 mid)
-    "tau_m_y6_10": 0.03,     # UNCALIBRATED: margin points, years 6-10
-    "tau_m_y11_plus": 0.03,  # UNCALIBRATED: margin points, years after 10 (a fade longer than 5 years)
-    "tau_R_T5": 0.10,        # UNCALIBRATED: relative revenue gap at T = 5 (C3)
-    "tau_R_TH": 0.10,        # UNCALIBRATED: relative revenue gap at T = H, 1 <= H <= 4, cyclical revenue (C3)
-    "tau_b": 0.01,           # UNCALIBRATED: margin points, the basis test (C5)
+    "tau_m_y1_5": 0.03,      # margin points, years 1-5 (C1, C1b, C2 mid)
+    "tau_m_y6_10": 0.03,     # margin points, years 6-10 (one value with years 1-5: no evidence separates the bands)
+    "tau_m_y11_plus": 0.03,  # margin points, years after 10 (a fade longer than 5 years)
+    "tau_R_T5": 0.10,        # relative revenue gap at T = 5 (C3): about 2 points of annual growth over five years
+    "tau_R_TH": 0.10,        # relative revenue gap at T = H, 1 <= H <= 4, cyclical revenue (C3)
+    "tau_b": 0.01,           # margin points, the basis test (C5)
 }
 
 EPS = 1e-12                # the float allowance on every tolerance comparison (a tie passes)
