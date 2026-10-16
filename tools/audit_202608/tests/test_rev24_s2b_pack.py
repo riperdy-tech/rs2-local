@@ -71,6 +71,14 @@ def test_the_rev22_arm_is_the_revision_22_pack_byte_for_byte_on_the_three_saved_
     got = rebuild_rev22(excerpt, saved)
     # AMD's saved pack is revision 21: revision 22 changed no line of this excerpt, only the marker
     want = re.sub(r"\(pack revision 2[12]\)", "(pack revision 22)", excerpt, count=1)
+    if t == "KSS":
+        # revision 24 step 2d (cross-check 19, ruling 1): KSS's r_tc 5.63% is above 0 and below the cost of equity, so the desk now starts the fade at
+        # it, and the DEFAULTS long_run clause says so - the one line of the control that changes with the correction (AMD's r_tc is above the cost
+        # of equity, HRTG's unlimited: unchanged)
+        old = ("starts at the cost of equity, coe_anchor (r_tc, your record's 8-year median return on tangible invested capital, is not above it "
+               "or is not available), then fades to")
+        assert want.count(old) == 1
+        want = want.replace(old, "fades from r_tc (your record's 8-year median return on tangible invested capital) to")
     assert got == want
     assert "- [Arithmetic] CONSENSUS-IMPLIED VALUE (reference, not a forecast): $" in got and "- consensus_implied_value: " in got
     for prefix in LONG_RUN_DEFAULT_LINES:

@@ -728,7 +728,9 @@ def band_verdict(doc):
         **{k: scorecard.get(k) for k in ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence",
                                          "margin_persistence_evidence", "cycle_position", "cycle_position_evidence", "growth_trajectory",
                                          "growth_trajectory_evidence", "input_rationale", "long_run_margin", "plausibility_gate",
-                                         "rev22_control_desk")},
+                                         "rev22_control_desk",
+                                         # revision 24 step 2d (cross-check 19, ruling 6): the Base's two diagnostics, never gates
+                                         "terminal_value_share", "terminal_reinvestment_rate")},
         "plausibility_by_sample": None,
     })
 

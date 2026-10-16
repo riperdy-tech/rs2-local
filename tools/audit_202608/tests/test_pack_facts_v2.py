@@ -193,8 +193,9 @@ def test_defaults_block_round_trip_ezpw_example():
         "a Base terminal_ronic more than 2 points away needs terminal_reason",
         # brief B2 F6: two sentences; brief F4: the explanation names the numbers that drive the long run
         "- long_run: not available | The desk values years 6 on from X_5 (earnings before acquired-intangible "
-        "amortization), pays for growth at a return that starts at the cost of equity, coe_anchor (r_tc, your record's "
-        "8-year median return on tangible invested capital, is not above it or is not available), then fades to "
+        # revision 24 step 2d (cross-check 19, ruling 1): with no r_tc the desk holds the return at terminal_ronic (it started at the cost of equity)
+        "amortization), pays for growth at a return that is held from year 6 (r_tc, your record's "
+        "8-year median return on tangible invested capital, is not above zero or is not available) at "
         "terminal_ronic, and "
         "moves the margin from m5 to m_long by year 10 (margin_ratio = m_long / m5; none means the margin is "
         "held): om_5, the operating margin the consensus implies at year 5, moves all the way to om_trend, the "
