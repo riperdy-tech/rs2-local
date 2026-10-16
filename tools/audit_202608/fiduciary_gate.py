@@ -371,7 +371,7 @@ def validate_fiduciary_contract(
 #
 # Step 2c (PHASE_4_AMENDMENTS.md "Revision 24 step 2b", rulings 1, 2, 5-8 and 18; BRIEF_R24_S2c_ranges_fix.md items 1-6 and 9):
 #   * the long-run margin is compared with the earnings-margin P5-P95 of the rebuilt range (ruling 2); terminal_ronic with the ROIC level five years on
-#     (ruling 6); the revenue CAGR to year 10 with the 10-year revenue CAGR (ruling 5);
+#     (ruling 6; annotated only from step 2d, ANNOTATED_ONLY); the revenue CAGR to year 10 with the 10-year revenue CAGR (ruling 5);
 #   * terminal_g has no population range (ruling 5): above the pack's printed long-run growth anchor (`terminal_g_anchor`, DEFAULTS and DATA 1.5) it
 #     is an outlier needing an outlier-level citation (`implausible_supported_terminal_g` / `implausible_unsupported_terminal_g`); no anchor printed
 #     is annotated `terminal_g_anchor_not_available`;
@@ -388,6 +388,11 @@ def validate_fiduciary_contract(
 #     (ruling 18; an annotation, never a rejection: the rejections are the P5-P95 and mathematics checks above).
 
 PLAUSIBILITY_METRICS = ("long_run_margin", "revenue_cagr_10y", "terminal_ronic", "earnings_ratio_10y", "terminal_g")
+# the metrics whose range is measured at another horizon than the input: outside P5-P95 without a resolving citation they are annotated
+# (<metric>_<status>), never rejected - the long-run margin (cross-check 19 ruling B) and, from step 2d (the cross-check 19 follow-up), terminal_ronic
+# against the ROIC level five years out. within_p10_p90 is still computed against their ranges for the citation level. The rejecting checks are the
+# revenue CAGR to year 10, terminal_g (anchor and shrinking rule) and terminal growth at or above the rate.
+ANNOTATED_ONLY = {"long_run_margin": "outside_year5_range_unsupported", "terminal_ronic": "outside_roic5_range_unsupported"}
 # the input_rationale entries whose citation can support an outlier of each metric: the long-run margin by long_run_margin; the revenue growth to
 # year 10 by the growth path (years 3-5) or the fade; the terminal return by terminal_ronic; terminal growth by terminal_g; year-10 earnings over
 # base earnings (no measured cohort) by any of the margin and the growth path
@@ -541,10 +546,11 @@ def plausibility_gate(dcf, ranges, input_rationale=None, pack_text=None, calls=N
         if ok:
             rec["status"] = "supported"
             out["annotations"].append(f"implausible_supported_{m}")
-        elif m == "long_run_margin":
-            # cross-check 19 ruling B: a year-5 range does not bound the margin at the end of the fade: annotated, never rejected
-            rec["status"] = "outside_year5_range_unsupported"
-            out["annotations"].append("long_run_margin_outside_year5_range_unsupported")
+        elif m in ANNOTATED_ONLY:
+            # cross-check 19 ruling B: a year-5 range does not bound the margin at the end of the fade; the cross-check 19 follow-up (step 2d): the
+            # ROIC level five years out does not bound the return on new investment in perpetuity either - annotated, never rejected
+            rec["status"] = ANNOTATED_ONLY[m]
+            out["annotations"].append(f"{m}_{ANNOTATED_ONLY[m]}")
         else:
             rec["status"] = "unsupported"
             out["reasons"].append(f"implausible_unsupported_{m}")

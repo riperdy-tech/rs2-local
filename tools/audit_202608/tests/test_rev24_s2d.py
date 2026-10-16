@@ -377,3 +377,199 @@ def test_the_ranges_supporting_line_labels_t_as_the_translations_estimate():
                                             tables=fixture_tables()), True)
     line = next(l for l in stat.splitlines() if l.startswith("- long_run_margin context"))
     assert "t = 21.0%, the translation's rate; an estimate, see DATA's tax note (21% statutory: no fiscal year passes the identity)" in line
+
+
+# =============================================================================================================================================
+# The cross-check 19 follow-up (the coordinator's additions to step 2d)
+# =============================================================================================================================================
+
+# ---- (2) no floor on any valuation path: at RONIC 0.5r, r, 1.5r and unlimited, and continuous at r -----------------------------------------
+# The desk: base_cf 1 / 1.03^5 growing 3% a year (owner earnings 1.03^(t-5), year 5 = 1), no record (year-5 earnings = owner earnings, the fade
+# starts at the terminal return), r 9%, g 3%, fade 5. Years 1-5: sum 1.03^(t-5) / 1.09^t = 3.650962; the long run is section 1's g5 = 3% column, so
+# value = 3.650962 + 3.719052 / 7.438104 / 8.677788 / 11.157155 = 7.370014 / 11.089066 / 12.328750 / 14.808117.
+PV15_3 = 3.650962
+PATH_GRID = (0.5 * R9, R9, 1.5 * R9, INF)
+DESK_HAND = (7.370014, 11.089066, 12.328750, 14.808117)
+
+
+def _d3(ronic, **kw):
+    a = dict(base_cf=1.0 / 1.03 ** 5, explicit_growth=[0.03] * 5, wacc=R9, terminal_g=GT, shares_diluted=1.0, fade_years=F,
+             sbc_treatment="deducted_in_cf", terminal_ronic=ronic)
+    a.update(kw)
+    return fmt.unbundled_dcf(**a)
+
+
+def test_every_path_values_ronic_as_stated_the_desk():
+    vals = [_d3(x)["per_share_iv_raw"] for x in PATH_GRID]
+    assert vals == pytest.approx(DESK_HAND, abs=5e-6)
+    assert sum(1.03 ** (t - 5) / 1.09 ** t for t in range(1, 6)) == pytest.approx(PV15_3, abs=5e-7)
+    # continuity at r, and the same slope on both sides (the old floor made the left side flat): d value / d RONIC = 0.03 / R^2 x 11.157155
+    # = 41.3228 at R = 9%
+    eps = 1e-7
+    lo, at, hi = (_d3(R9 * (1 + s))["per_share_iv_raw"] for s in (-eps, 0.0, eps))
+    slope = 0.03 / R9 ** 2 * 11.157155
+    assert (at - lo) / (R9 * eps) == pytest.approx(slope, rel=1e-4) and (hi - at) / (R9 * eps) == pytest.approx(slope, rel=1e-4)
+
+
+def test_every_path_values_ronic_as_stated_the_reference_and_the_desk_on_its_inputs():
+    """The reference (consensus_reference.build, record R_tc = ronic_t = x) and the desk on the reference's own inputs agree to the cent at each RONIC,
+    and both rise strictly across 0.5r, r, 1.5r and unlimited (test_throughcycle_reference's parity harness)."""
+    from test_throughcycle_reference import COE, EST, MEDIAN5, NI_BASE, OE_BASE, REDUCTION, REV_BASE, SHARES, _desk_default_base, _facts_for
+    gt, refs = 0.0325, []
+    for x in (0.5 * COE, COE, 1.5 * COE, INF):
+        record = dict(REDUCTION, R_tc=x, r_blend=x, ronic_t=x, nwc_intensity=0.06)
+        ref = cr.build(OE_BASE, EST, COE, gt, SHARES, MEDIAN5, record=record, base_ni=NI_BASE, base_revenue=REV_BASE, stub_months=8.5, anchor=0.0375)
+        desk = _desk_default_base(ref, _facts_for(ref, record, gt, quantize=False), COE, gt, SHARES)
+        assert desk["per_share_iv"] == round(ref["value"], 2), x
+        assert ref["ronic0"] == x and ref["terminal_ronic"] == x
+        refs.append(ref["value"])
+    assert all(b > a for a, b in zip(refs, refs[1:]))
+
+
+def test_every_path_values_ronic_as_stated_the_price_implied_block():
+    """Price = the desk's value at RONIC 0.5r, r, 1.5r (the Base's own RONIC 12%): the block returns that RONIC; at the unlimited value, unlimited."""
+    base = dict(cf=1.0 / 1.03 ** 5, growth=[0.03] * 5, fade=F, wacc=R9, tg=GT, shares=1.0, sbc="deducted_in_cf", sbc_dil=None, frame="equity",
+                net_debt=0.0, rate_type=None, annuity=0.0, annuity_cap=None, ronic=0.12, wc=None, excess=None, long_run=None, finite=None)
+    base["raw"] = _d3(0.12)["per_share_iv_raw"]
+    for x in PATH_GRID:
+        blk = fmt.price_implied(base, _d3(x)["per_share_iv_raw"], rf_eff=0.04, gdp_trend=0.04)["terminal_ronic"]
+        assert blk["reachable"], x
+        if math.isinf(x):
+            assert blk["value"] == "unlimited"
+        else:
+            assert blk["value"] == pytest.approx(x, rel=1e-4)
+    assert fmt.price_implied(base, base["raw"], rf_eff=0.04, gdp_trend=0.04)["terminal_ronic"]["bound"]["low"] == GT
+
+
+def test_every_path_values_ronic_as_stated_the_reverse_dcf():
+    """reverse_dcf_expectations_gap's own structure values through unbundled_dcf: at the price the desk gives for growth 3% at each RONIC, the implied
+    growth is 3% at each; at one price, the lower the return, the more growth it needs (no floor at r's value)."""
+    for x in PATH_GRID:
+        price = _d3(x)["per_share_iv_raw"]
+        r = fmt.reverse_dcf_expectations_gap(current_price=price, shares_diluted=1.0, base_cf=1.0 / 1.03 ** 5, wacc=R9, terminal_g=GT, fade_years=F,
+                                             terminal_ronic=x, x0=0.03)
+        assert r["own_structure"]["reachable"] and r["own_structure"]["implied_stage1_growth_pct"] == pytest.approx(3.0, abs=0.01), x
+    p, implied = _d3(R9)["per_share_iv_raw"], []
+    for x in PATH_GRID:
+        r = fmt.reverse_dcf_expectations_gap(current_price=p, shares_diluted=1.0, base_cf=1.0 / 1.03 ** 5, wacc=R9, terminal_g=GT, fade_years=F,
+                                             terminal_ronic=x, x0=0.03)
+        implied.append(r["own_structure"]["implied_stage1_growth_pct"])
+    assert implied[0] > implied[1] > implied[2] > implied[3]
+
+
+# ---- (3) reinvestment above earnings -------------------------------------------------------------------------------------------------------
+
+def test_reinvestment_above_earnings_is_annotated_never_gated(tmp_path):
+    """terminal_g 3% with terminal_ronic 2%: g / RONIC = 1.5, the perpetual reinvestment is 150% of earnings (a negative perpetual cash flow):
+    stamped terminal_reinvestment_above_earnings, the rate 1.5; the desk still values it. At RONIC 3% (= g, rate 1.0) and 5% (0.6): not stamped;
+    at g 0 and RONIC 1%: not stamped (no growth to pay for)."""
+    d = _s(terminal_ronic=0.02)
+    assert "terminal_reinvestment_above_earnings" in d["stamps"] and d["implied"]["terminal_reinvestment_rate"] == pytest.approx(1.5, rel=1e-15)
+    assert d["per_share_iv"] is not None and not d.get("error")
+    for kw in ({"terminal_ronic": 0.03}, {"terminal_ronic": 0.05}, {"terminal_ronic": 0.01, "terminal_g": 0.0}):
+        assert "terminal_reinvestment_above_earnings" not in _s(**kw)["stamps"], kw
+    # on the sample record: the desk's stamps (desk_stamps) and the rate (contract_fill's terminal_reinvestment_rate); the gate is not moved
+    import pack_facts
+    from test_terminal_and_frame import PACK, _snapshot
+    _, st = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv"]}, None, PACK, 1643.39,
+                               facts=dict(pack_facts.empty(), terminal_ronic=0.10))
+    assert "terminal_reinvestment_above_earnings" in st["desk_stamps"]
+    from test_rev24_s2b_gate import _fill
+    filled, _ = _fill(0.12, ronic=0.02)
+    assert filled["terminal_reinvestment_rate"] == pytest.approx(1.5, rel=1e-12) and filled["plausibility_gate"]["reasons"] == []
+
+
+# ---- (4) working capital: Bull and Bear each on its own path, amounts and signs ----------------------------------------------------------
+
+def test_bull_and_bear_each_deduct_on_their_own_path_with_no_asymmetry_from_the_base():
+    """The consensus of section 5 (revenue 100 at 10%, owner earnings from 10 at 10%, intensity 20%), from base 6 (40% below) and from base 10:
+    Bull at 15%: revenue 100 x 1.15^t = 115, 132.25, 152.0875, 174.900625, 201.13571875 -> 3.0, 3.45, 3.9675, 4.562625, 5.24701875;
+    Bear at 5%: 105, 110.25, 115.7625, 121.550625, 127.62815625 -> 1.0, 1.05, 1.1025, 1.157625, 1.21550625;
+    Base at 10%: 2.0, 2.2, 2.42, 2.662, 2.9282. The same at either base: the deduction depends on growth only. Each is positive (no release)."""
+    bull, bear, base = [3.0, 3.45, 3.9675, 4.562625, 5.24701875], [1.0, 1.05, 1.1025, 1.157625, 1.21550625], [2.0, 2.2, 2.42, 2.662, 2.9282]
+    for b0 in (6.0, 10.0):
+        p = dict(_ALL_REASONS_GIVEN, cash_flow_life="perpetual", cash_flow_life_reason="x", sbc_treatment="deducted_in_cf", fade_years=5,
+                 terminal_g=0.03, terminal_ronic=0.15, long_run_margin=0.10,
+                 scenarios=[{"name": n, "prob": pb, "base_cf": b0, "explicit_growth": [g] * 5, "wacc": 0.10}
+                            for n, pb, g in (("Base", 0.5, 0.10), ("Bull", 0.25, 0.15), ("Bear", 0.25, 0.05))])
+        lr = {"nwc_intensity": 0.2, "revenue_path": WC["revenue"], "oe_path": WC["owner_earnings"], "oe_base": 10.0}
+        res = fmt.execute_financial_model(p, {"price": 100.0, "shares_default_b": 1.0, "coe_anchor": 0.10, "owner_earnings_default_b": b0,
+                                              "long_run": lr, "long_run_defaults_withheld": True})
+        got = {s["name"]: s["dcf"] for s in res["scenario_dcfs"]}
+        assert got["Bull"]["working_capital_deducted"] == pytest.approx(bull, abs=5e-5)
+        assert got["Bear"]["working_capital_deducted"] == pytest.approx(bear, abs=5e-5)
+        assert got["Base"]["working_capital_deducted"] == pytest.approx(base, abs=5e-5)
+        assert all("working_capital_release" not in d["stamps"] for d in got.values())
+
+
+# ---- (5) Kohl's: not usable without a citation; the value at RONIC = r_tc ---------------------------------------------------------------------
+
+def test_kohls_rejection_makes_the_verdict_not_usable_and_terminal_g_at_or_below_zero_needs_no_citation():
+    """Through the fill and the verdict: Kohl's positive terminal_g (2.4%) with no citation is NOT_USABLE (implausible_unsupported_terminal_g); with
+    the resolving PRIMARY P1 citation it is usable, annotated; terminal_g 0 and -1% pass with no citation. The test reads the gate's behaviour; the
+    CONSENSUS-IMPLIED VALUE is never compared."""
+    import contract_fill
+    import depth_pipeline as dp
+    saved, f, ranges = _census("KSS")
+    pack = (REV24 / "KSS_primary_p1.md").read_text(encoding="utf-8")
+    facts = {"shares_outstanding": saved["shares_outstanding"], "coe_anchor": f["coe_anchor"], "long_run_defaults_withheld": True,
+             "population_ranges": ranges, "terminal_g_anchor": f["terminal_g_anchor"]}
+    ctx = cv.build_desk_context(f, saved["price_implied_price"], "KSS", "KSS", "2026-10-06")
+
+    def verdict(tg, cite=None):
+        p = _call(f, tg, 0.1008, 0.02)
+        res = fmt.execute_financial_model(copy.deepcopy(p), ctx)
+        typed = dict(KSS_CLASSES, input_rationale=_rationale(cite))
+        filled, _ = contract_fill.fill([{"tool": "run_financial_model", "params": p, "result": res, "call_index": 1}], typed, facts,
+                                       saved["price_implied_price"], ticker="KSS", pack_text=pack, company="Kohl's Corporation")
+        sc = dict(typed, **filled)
+        runs = [{"sample": 1, "iv": sc["base_iv"], "plausible": True, "basis": True, "scorecard": sc, "flags": []}]
+        _, summary = cv.select_medoid_scorecard(runs, saved["price_implied_price"])
+        return dp.band_verdict({"ticker": "KSS", "price": saved["price_implied_price"], "runs": runs, "scorecard": summary,
+                                "median_iv": sc["base_iv"], "spread_pct": None})
+    v = verdict(0.024)
+    assert v["direction"] == "NOT_USABLE" and v["not_usable_reason"] == "implausible_unsupported_terminal_g" and v["kelly_fraction_pct"] == 0.0
+    v = verdict(0.024, {"source": "PRIMARY P1", "date": "2026-08-26", "quote": KSS_QUOTE})
+    assert v["direction"] != "NOT_USABLE" and "implausible_supported_terminal_g" in v["flags"]
+    for tg in (0.0, -0.01):
+        assert verdict(tg)["direction"] != "NOT_USABLE", tg
+
+
+def test_kohls_value_at_its_record_return_is_below_the_old_floored_value():
+    """KSS's call (terminal_g 2.4%, long_run_margin 2%, the reference's base and path): terminal_ronic = its r_tc 5.6349% is now $39.62 (stamped
+    terminal_ronic_below_rate and ronic_start_below_rate); at the cost of equity 10.08% it is $42.85 (the fade starting at r_tc). On the step-2c
+    head both were $43.13 (r_tc and the terminal floored to 10.08%; measured on a 9df7c1c checkout)."""
+    saved, f, _ = _census("KSS")
+    at_rtc = _base("KSS", f, saved, 0.024, f["long_run"]["r_tc"], 0.02)
+    at_r = _base("KSS", f, saved, 0.024, f["coe_anchor"], 0.02)
+    assert at_rtc["per_share_iv"] == 39.62 and at_r["per_share_iv"] == 42.85
+    assert {"terminal_ronic_below_rate", "ronic_start_below_rate"} <= set(at_rtc["stamps"])
+    assert at_rtc["per_share_iv"] < at_r["per_share_iv"] < 43.13
+
+
+# ---- (1) the TASK and the gate agree on what rejects and what annotates ------------------------------------------------------------------------
+
+def test_the_task_says_what_the_gate_does_for_each_metric():
+    import capability_test as cap
+    from test_rev24_s2b_gate import PACK as G_PACK
+    from test_rev24_s2b_gate import _base_dcf
+    from test_rev24_s2b_gate import _ranges as g_ranges
+    from test_rev24_s2b_gate import _rationale as g_rationale
+    t = " ".join(cap.TASK.split())
+    rejects = ("checks the trajectory your inputs imply: the revenue growth to year 10 against the cohort's 10-year revenue CAGR P5-P95, and "
+               "terminal_g against the growth anchor and the shrinking rule. A value outside them without a citation the code can verify, given under "
+               "the input that drives it (the growth of years 3-5 or fade_years for the revenue growth), makes the valuation unusable.")
+    annotates = ("A long_run_margin outside its five-years-out P5-P95, and a terminal_ronic outside the P5-P95 of the return on invested capital "
+                 "five years out, are recorded against your verdict, not rejected")
+    assert rejects in t and annotates in t
+    assert set(fg.ANNOTATED_ONLY) == {"long_run_margin", "terminal_ronic"}
+    # the gate does what the TASK says: the two annotated metrics pass outside their range; the revenue CAGR and terminal_g reject
+    g = fg.plausibility_gate(_base_dcf(lrm=0.35, ronic=0.9), g_ranges(), g_rationale(), G_PACK, growth_anchor=0.0375)
+    assert g["verdict"] == "pass" and {"long_run_margin_outside_year5_range_unsupported", "terminal_ronic_outside_roic5_range_unsupported"} <= set(
+        g["annotations"])
+    assert fg.plausibility_gate(_base_dcf(tg=0.045), g_ranges(), g_rationale(), G_PACK, growth_anchor=0.0375)["reasons"] == [
+        "implausible_unsupported_terminal_g"]
+    lr = {"e5": 100.0, "oe5": 100.0, "m5": 0.10, "r_tc": INF, "x_L": 0.09, "rev_L": 600.0}
+    big = fmt.unbundled_dcf(base_cf=6000.0 / 1.05 ** 5, explicit_growth=[0.05] * 5, wacc=0.10, terminal_g=0.03, shares_diluted=1.0, fade_years=5,
+                            sbc_treatment="deducted_in_cf", terminal_ronic=0.2, long_run=lr, long_run_margin=0.12)
+    assert fg.plausibility_gate(big, g_ranges(), g_rationale(), G_PACK, growth_anchor=0.0375)["reasons"] == ["implausible_unsupported_revenue_cagr_10y"]

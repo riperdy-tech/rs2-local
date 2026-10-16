@@ -69,15 +69,28 @@ def test_an_in_range_trajectory_passes():
 
 
 def test_an_unsupported_outlier_is_rejected_by_name_and_never_clamped():
-    # step 2c (cross-check 19, ruling B): the rejection is shown on terminal_ronic (the long-run margin's year-5 range only annotates)
-    d = _base_dcf(ronic=0.9)                                           # 90% against the ROIC level's P95 of 51%
-    g = fg.plausibility_gate(d, _ranges(), _rationale(), PACK)
-    assert g["verdict"] == "reject" and g["reasons"] == ["implausible_unsupported_terminal_ronic"]
-    assert g["metrics"]["terminal_ronic"]["value"] == 0.9 and d["terminal_ronic"] == 0.9                       # the input is as given
+    # step 2d (the cross-check 19 follow-up): terminal_ronic's range only annotates now, as the long-run margin's does (ruling B), so the rejection is
+    # shown on terminal_g above the printed growth anchor (4.5% against 3.75%); it was shown on terminal_ronic at 90%
+    d = _base_dcf(tg=0.045)
+    g = fg.plausibility_gate(d, _ranges(), _rationale(), PACK, growth_anchor=0.0375)
+    assert g["verdict"] == "reject" and g["reasons"] == ["implausible_unsupported_terminal_g"]
+    assert g["metrics"]["terminal_g"]["value"] == 0.045 and d["terminal_g"] == 0.045                           # the input is as given
     # a citation that does not resolve (a quote the source does not hold, or a URL not fetched in the session) is no support
     for bad in ({"source": "DATA 5", "date": "2026-09-01", "quote": "a sentence the filing never wrote, long enough to count"},
                 {"source": "https://example.com/blog", "date": "2026-09-01", "quote": QUOTE}):
-        assert fg.plausibility_gate(d, _ranges(), _rationale(bad, on="terminal_ronic"), PACK)["reasons"] == ["implausible_unsupported_terminal_ronic"]
+        assert fg.plausibility_gate(d, _ranges(), _rationale(bad, on="terminal_g"), PACK, growth_anchor=0.0375)["reasons"] == [
+            "implausible_unsupported_terminal_g"]
+
+
+def test_a_terminal_ronic_outside_its_roic_five_years_range_is_annotated_never_rejected():
+    """Step 2d (the cross-check 19 follow-up): the ROIC level five years out is not the return on new investment in perpetuity. 90% against the
+    ROIC level's P95 of 51%: annotated terminal_ronic_outside_roic5_range_unsupported, the verdict passes; within_p10_p90 is still computed
+    against the range, so the citation level is the outlier's."""
+    d = _base_dcf(ronic=0.9)
+    g = fg.plausibility_gate(d, _ranges(), _rationale(), PACK)
+    assert g["verdict"] == "pass" and g["reasons"] == [] and "terminal_ronic_outside_roic5_range_unsupported" in g["annotations"]
+    assert g["metrics"]["terminal_ronic"]["status"] == "outside_roic5_range_unsupported" and g["metrics"]["terminal_ronic"]["value"] == 0.9
+    assert g["within_p10_p90"]["terminal_ronic"]["computed"] is False and "outlier_citation_missing:terminal_ronic" in g["annotations"]
 
 
 def test_a_long_run_margin_outside_its_year_5_range_is_annotated_never_rejected():
@@ -108,8 +121,9 @@ def test_terminal_growth_at_or_above_the_rate_is_rejected():
 
 
 def test_an_unlimited_terminal_return_is_an_outlier_and_a_finite_life_is_not_gated():
+    # step 2d: an outlier of the ROIC range, annotated (it was rejected)
     g = fg.plausibility_gate(_base_dcf(ronic=INF), _ranges(), _rationale(), PACK)
-    assert "implausible_unsupported_terminal_ronic" in g["reasons"]
+    assert g["reasons"] == [] and "terminal_ronic_outside_roic5_range_unsupported" in g["annotations"]
     fin = fmt.unbundled_dcf(base_cf=10.0, explicit_growth=[0.05] * 5, wacc=R, terminal_g=GT, shares_diluted=1.0, fade_years=0,
                             sbc_treatment="deducted_in_cf", finite_life_years=15)
     assert fg.plausibility_gate(fin, _ranges(), _rationale(), PACK)["verdict"] == "not_applicable"
@@ -123,8 +137,8 @@ def test_without_ranges_only_the_mathematics_is_checked():
 
 # ---- the gate in the fill, and the verdict ----------------------------------------------------------------------------------------------
 
-def _answer_call(lrm, ronic=0.2):
-    p = dict(_ALL_REASONS_GIVEN, cash_flow_life="perpetual", cash_flow_life_reason="perpetual franchise, 10-K 2025", fade_years=5, terminal_g=GT,
+def _answer_call(lrm, ronic=0.2, tg=GT):
+    p = dict(_ALL_REASONS_GIVEN, cash_flow_life="perpetual", cash_flow_life_reason="perpetual franchise, 10-K 2025", fade_years=5, terminal_g=tg,
              sbc_treatment="deducted_in_cf", long_run_margin=lrm, terminal_ronic=ronic,
              scenarios=[{"name": n, "prob": pb, "base_cf": 100.0 / 1.05 ** 5, "explicit_growth": [g] * 5, "wacc": R}
                         for n, pb, g in (("Base", 0.5, 0.05), ("Bull", 0.25, 0.08), ("Bear", 0.25, 0.0))])
@@ -135,19 +149,19 @@ def _answer_call(lrm, ronic=0.2):
     return {"tool": "run_financial_model", "params": p, "result": res, "call_index": 1}
 
 
-def _fill(lrm, facts_over=None, typed_over=None, ronic=0.2):
+def _fill(lrm, facts_over=None, typed_over=None, ronic=0.2, tg=GT):
     facts = {"shares_outstanding": 1e9, "coe_anchor": R, "long_run_defaults_withheld": True, "population_ranges": _ranges(), "terminal_g_anchor": 0.0375}
     facts.update(facts_over or {})
     typed = dict(S12, input_rationale=_rationale())
     typed.update(typed_over or {})
-    return contract_fill.fill([_answer_call(lrm, ronic)], typed, facts, 500.0, ticker="TEST", pack_text=PACK, company="Test Co")
+    return contract_fill.fill([_answer_call(lrm, ronic, tg)], typed, facts, 500.0, ticker="TEST", pack_text=PACK, company="Test Co")
 
 
 def test_the_fill_runs_the_gate_on_the_answer_runs_base_and_records_its_long_run_margin():
     filled, prov = _fill(0.12)
     assert filled["long_run_margin"] == 0.12 and filled["plausibility_gate"]["verdict"] == "pass"
-    filled, _ = _fill(0.12, ronic=0.9)
-    assert filled["plausibility_gate"]["reasons"] == ["implausible_unsupported_terminal_ronic"]
+    filled, _ = _fill(0.12, tg=0.045)                     # step 2d: the rejection shown on terminal_g (terminal_ronic's range annotates only)
+    assert filled["plausibility_gate"]["reasons"] == ["implausible_unsupported_terminal_g"]
     # the rev22 arm (and an older pack) is not gated
     filled, _ = _fill(0.35, facts_over={"long_run_defaults_withheld": None})
     assert filled["plausibility_gate"] is None and filled["long_run_margin"] == 0.35
@@ -181,13 +195,13 @@ def test_the_section_12_fields_are_whitelisted_and_reach_the_verdict_row():
 
 
 def test_a_rejected_gate_makes_the_verdict_not_usable_with_its_reason():
-    filled, _ = _fill(0.12, ronic=0.9)
+    filled, _ = _fill(0.12, tg=0.045)                     # step 2d: terminal_g above the anchor (terminal_ronic's range annotates only)
     sc = dict(S12, input_rationale=_rationale(), **filled)
     runs = [{"sample": 1, "iv": sc["base_iv"], "plausible": True, "basis": True, "scorecard": sc, "flags": []}]
     _, summary = cv.select_medoid_scorecard(runs, 500.0)
     v = dp.band_verdict({"ticker": "TEST", "price": 500.0, "runs": runs, "scorecard": summary, "median_iv": sc["base_iv"], "spread_pct": None})
-    assert v["direction"] == "NOT_USABLE" and v["not_usable_reason"] == "implausible_unsupported_terminal_ronic"
-    assert "implausible_unsupported_terminal_ronic" in v["flags"] and "PLAUSIBILITY_REJECTED" in v["flags"]
+    assert v["direction"] == "NOT_USABLE" and v["not_usable_reason"] == "implausible_unsupported_terminal_g"
+    assert "implausible_unsupported_terminal_g" in v["flags"] and "PLAUSIBILITY_REJECTED" in v["flags"]
     assert v["kelly_fraction_pct"] == 0.0 and v["size_hint"] is None and "the valuation is not usable" in v["reason"]
     import depth_gates
     actionable, reasons = depth_gates.assess(v)

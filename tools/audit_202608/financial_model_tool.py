@@ -604,6 +604,10 @@ def unbundled_dcf(
     implied["terminal_reinvestment_rate"] = 0.0 if math.isinf(ronic_t) else terminal_g / ronic_t
     if not ev > 0:
         implied["not_computable"].append("the enterprise value is not positive: no terminal value share")
+    if terminal_g > 0 and ronic_t < terminal_g:
+        # the cross-check 19 follow-up (step 2d): the terminal reinvestment g / RONIC exceeds the earnings (a negative perpetual free cash flow);
+        # a diagnostic, never a gate - the rate is implied["terminal_reinvestment_rate"]
+        stamps.append("terminal_reinvestment_above_earnings")
 
     gordon_in_band = None
     if sector_multiple_band and isinstance(sector_multiple_band, dict) and implied_multiple is not None:

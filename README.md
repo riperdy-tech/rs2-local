@@ -194,7 +194,8 @@ levels; SECTION 12's contract carries them to the verdict row with `long_run_mar
 (`fiduciary_gate.plausibility_gate`, run by `contract_fill.fill` on the answer run when the defaults were withheld) rejects terminal growth
 at or above the discount rate and an implied long-run margin, 10-year revenue CAGR, terminal RONIC or terminal growth outside its cohort's
 P5-P95 without an input_rationale citation that resolves (`implausible_unsupported_<metric>`; the verdict is NOT_USABLE); a supported
-outlier passes, flagged `implausible_supported_<metric>`. Nothing is clamped.
+outlier passes, flagged `implausible_supported_<metric>`. Nothing is clamped. (Steps 2c and 2d below: the long-run margin and terminal
+RONIC are now annotated only.)
 
 With no year-5 revenue in the facts, m5 is the base fiscal year's filed earnings margin (long_run `x_L`, stamped `m5_from_base_year`); a
 base-year margin that is not positive holds the margin, stamped `long_run_margin_not_applied_no_revenue`, with the reason in the desk
@@ -243,10 +244,15 @@ Step 2d (`BRIEF_R24_S2d_ronic_diagnostics.md`; cross-check 19, rulings 1, 6 and 
   when lower) to unlimited.
 - **Diagnostics, never gates:** the desk's `implied` block and the sample's contract carry `terminal_value_share` (the terminal value's
   present value over the enterprise value) and `terminal_reinvestment_rate` (terminal_g / terminal_ronic, 0 when unlimited);
-  `earnings_ratio_10y` stays reported and is never a rejection reason.
+  `earnings_ratio_10y` stays reported and is never a rejection reason. A terminal_ronic below a positive terminal_g (reinvestment above
+  the earnings, a negative perpetual cash flow) is stamped `terminal_reinvestment_above_earnings`.
+- **The gate annotates terminal_ronic** outside the ROIC-five-years-out P5-P95 (`terminal_ronic_outside_roic5_range_unsupported`, or
+  `implausible_supported_terminal_ronic` with a resolving citation), as it does the long-run margin (`fiduciary_gate.ANNOTATED_ONLY`); it
+  rejects on the revenue CAGR to year 10, terminal_g (anchor and shrinking rule) and terminal growth at or above the rate. TASK item 3d says so.
 - **Working capital normalized at the base:** revenue_t = consensus revenue_t x (owner earnings_t / base_cf) / (consensus owner
-  earnings_t / reference_base_b), so only growth that differs from the consensus moves revenue; a year with a negative deduction is
-  stamped `working_capital_release`.
+  earnings_t / oe_base), oe_base the base the consensus owner earnings were grown from (long_run, unprinted; a levels name's year-1
+  level), so only growth that differs from the consensus moves revenue; a year with a negative deduction is stamped
+  `working_capital_release`.
 
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
