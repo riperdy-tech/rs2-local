@@ -1275,6 +1275,95 @@ def crux_followup_outcome(calls, start, answer_call_index):
     return "no_change"
 
 
+# Revision 25, Stage 0.7: the memo merge after a crux follow-up. The pilot lost four memoranda when the follow-up's reply said, in effect, "unchanged
+# from prior". The final memorandum is now the answer memorandum with each SECTION replaced by the follow-up's section only when the follow-up gives
+# real content for it. A section is a placeholder when, with whitespace stripped, it has no body under its heading, or it is under MEMO_PLACEHOLDER_MAX
+# characters and holds one of MEMO_PLACEHOLDER_PHRASES; the prior section is kept. The contract (the ```json:underwriting block) is the follow-up's when
+# it is a complete one (a JSON object holding every key of the answer's), else the answer's. The record lists each section kept, replaced or added.
+MEMO_PLACEHOLDER_MAX = 200
+MEMO_PLACEHOLDER_PHRASES = ("unchanged", "same as", "as above", "as before", "see prior", "no change")
+_SECTION_HEAD = re.compile(r"^[ \t>#*_]*SECTION[ \t]+(\d+(?:\.\d+)?)(?!\d|\.\d)", re.M | re.I)
+_CONTRACT_BLOCK = re.compile(r"```json:underwriting\s*(\{.*?\})\s*```", re.S)
+
+
+def memo_section_is_placeholder(section_text):
+    """True when a SECTION (its heading line included) gives no real content: empty under its heading, or short and one of the fixed phrases."""
+    flat = re.sub(r"\s+", " ", section_text or "").strip()
+    nl = (section_text or "").strip().split("\n", 1)
+    if len(nl) < 2 or not nl[1].strip():
+        return True
+    return len(flat) < MEMO_PLACEHOLDER_MAX and any(p in flat.lower() for p in MEMO_PLACEHOLDER_PHRASES)
+
+
+def _memo_parts(text):
+    """(preamble, {section number: text}, contract block text or None, contract dict or None) of a memorandum; the contract block is taken out of the
+    sections (the last one stands)."""
+    text = text or ""
+    blocks = list(_CONTRACT_BLOCK.finditer(text))
+    contract, cdict = None, None
+    if blocks:
+        contract = blocks[-1].group(0)
+        try:
+            cdict = json.loads(blocks[-1].group(1))
+        except ValueError:
+            cdict = None
+        text = _CONTRACT_BLOCK.sub("", text)
+    heads = list(_SECTION_HEAD.finditer(text))
+    sections = {}
+    for j, m in enumerate(heads):
+        end = heads[j + 1].start() if j + 1 < len(heads) else len(text)
+        sections[m.group(1)] = sections.get(m.group(1), "") + text[m.start():end]
+    return (text[:heads[0].start()] if heads else text), sections, contract, cdict
+
+
+def merge_memo(answer, followup):
+    """(memorandum, record) after a crux follow-up: see the comment above. `answer` is the memorandum the follow-up was sent after, `followup` its
+    reply. record = {"mode", "sections": {number: "kept" | "replaced" | "added"}, "contract": "followup" | "answer" | "none"}."""
+    a_pre, a_secs, a_con, a_dict = _memo_parts(answer)
+    f_pre, f_secs, f_con, f_dict = _memo_parts(followup)
+    if not f_secs and report_is_deliverable(followup):
+        return followup, {"mode": "followup_unsectioned", "sections": {}, "contract": "followup" if f_con else "none"}
+    if not a_secs:
+        return (answer if not report_is_deliverable(followup) else followup), {"mode": "answer_unsectioned", "sections": {}, "contract": "none"}
+    record = {}
+    parts = [a_pre if a_pre.endswith("\n") or not a_pre else a_pre + "\n"]
+    for key, txt in a_secs.items():
+        if key in f_secs and not memo_section_is_placeholder(f_secs[key]):
+            txt, record[key] = f_secs[key], "replaced"
+        else:
+            record[key] = "kept"
+        parts.append(txt if txt.endswith("\n") else txt + "\n")
+    for key, txt in f_secs.items():
+        if key not in a_secs and not memo_section_is_placeholder(txt):
+            record[key] = "added"
+            parts.append(txt if txt.endswith("\n") else txt + "\n")
+    complete = (isinstance(f_dict, dict) and f_dict
+                and (not isinstance(a_dict, dict) or set(a_dict) <= set(f_dict)))
+    con = f_con if complete else a_con
+    if con:
+        parts.append("\n" + con + "\n")
+    return "".join(parts), {"mode": "merged", "sections": record, "contract": ("followup" if complete else "answer") if con else "none"}
+
+
+# Revision 25, Stage 0.6: the two-pass protocol (arms r25_b and r25_c). Pass 1 is the analyst's research and its preliminary forecast: at least one
+# complete desk run. When the analyst ends pass 1 (a turn with no tool call, or the tool budgets reached) and a complete run exists, the harness sends
+# TWO_PASS_MESSAGE once; arm C's message also carries the consensus block withheld from its pack, verbatim, after one blank line. Nothing else differs
+# between the arms. Pass 2 cannot open without a complete pass-1 run: the sample is stamped TWO_PASS_BREACH and is not usable. Every desk call carries
+# a `pass` stamp (1 or 2); contract_fill computes pass1_inputs and the change log from them.
+TWO_PASS_MESSAGE = "Pass 2: reconcile your preliminary forecast with everything in the pack."
+TWO_PASS_BREACH = "two_pass_breach:no_pass1"
+
+
+def two_pass_message(withheld_block=None):
+    """The one pass-2 message: TWO_PASS_MESSAGE, and for arm C the withheld block after it, verbatim."""
+    return TWO_PASS_MESSAGE + ("\n\n" + withheld_block if withheld_block else "")
+
+
+def two_pass_may_open(calls):
+    """The gate: pass 2 opens only after a complete pass-1 desk run (a run of Bear, Base and Bull, contract_fill's rule)."""
+    return desk_run_is_complete([c for c in (calls or []) if isinstance(c, dict) and c.get("pass") == 1])
+
+
 # Revision 24 (PHASE_4_REV24_MUSE.md R24.2, BRIEF_R24_2_reference_after_commit.md): stage B. Stage A is the whole session on a pack that does not
 # print the CONSENSUS-IMPLIED VALUE (CIV), its crux follow-up included. After its final memorandum the harness sends REFERENCE_REVEAL once; the model
 # replies KEEP or makes one desk call that repeats its answer run, changes only the inputs it lists in `reference_revision`, and cites new evidence
@@ -2051,8 +2140,11 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     seed=None, timeout=14400, verbose=True, draft_num_predict=None,
                     temperature=None, query_cache=None, url_cache=None,
                     tools=None, max_search_calls=25, max_model_calls=5, num_batch=None,
-                    desk_context=None, reference_reveal=None):
+                    desk_context=None, reference_reveal=None, two_pass=None):
     """Ollama chat with the search tools available. Returns (report, thinking, meta).
+
+    `two_pass` (revision 25, Stage 0.6): {"arm": "r25_b" | "r25_c", "withheld_block": the consensus block of arm C, None for arm B}; the protocol is
+    described at TWO_PASS_MESSAGE. None (every other arm, discovery) runs one pass as before. meta carries "two_pass" (the record) and "memo_merge".
 
     `reference_reveal` (revision 24, R24.2): for a pack that withheld the CONSENSUS-IMPLIED VALUE, {"civ", "status", "line"} from its facts; stage B
     is sent once after the final memorandum when the status is "used". None (an older pack, or discovery) sends nothing. meta carries
@@ -2125,6 +2217,16 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     desk_ctx_now = desk_context         # the desk's context; the follow-up adds the answer run's inputs to it
     reveal = None                       # revision 24 (R24.2): stage B's state once the reference is shown; None during stage A
     reveal_record = None                # the record returned in meta as "reference_revision"; None until stage B fires or is ruled out
+    tp_phase, tp_record, tp_pending = None, None, False      # revision 25 (Stage 0.6): the pass the session is in (1 or 2), its record, the next turn is pass 2's first
+    memo_merge = None                   # revision 25 (Stage 0.7): the record of the memorandum merge after a crux follow-up
+    if two_pass is not None:
+        if two_pass.get("arm") not in ("r25_b", "r25_c") or max_model_calls <= 0:
+            raise ValueError(f"two_pass needs arm r25_b or r25_c and a desk (got {two_pass.get('arm')!r}, max_model_calls {max_model_calls})")
+        if (two_pass["arm"] == "r25_c") != bool(two_pass.get("withheld_block")):
+            raise ValueError("arm r25_c needs its withheld consensus block, and arm r25_b has none")
+        tp_phase = 1
+        tp_record = {"arm": two_pass["arm"], "consensus_shown_pass1": two_pass["arm"] == "r25_b", "pass2_opened": False,
+                     "pass1_call_index": None, "breach": None}
     server_errors = 0
     chars_per_token = [None]   # measured on the previous request, for the report-room rule
 
@@ -2271,6 +2373,24 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             return reply
         return reveal["stage_a_report"]
 
+    def _open_pass2(assistant_text=None):
+        """Revision 25 (Stage 0.6): send the one pass-2 message. The desk keeps its budget; if it was used up in pass 1, pass 2 has one more run."""
+        nonlocal tp_phase, tp_pending, max_model_calls
+        import contract_fill
+        if assistant_text is not None:
+            msgs.append({"role": "assistant", "content": assistant_text})
+            meta_msgs.append(None)
+        msgs.append({"role": "user", "content": two_pass_message(two_pass.get("withheld_block"))})
+        meta_msgs.append(None)
+        tp_record["pass2_opened"] = True
+        tp_record["pass1_call_index"] = (contract_fill.pass1_run(snap) or {}).get("call_index")
+        tp_phase, tp_pending = 2, True
+        if model_calls >= max_model_calls:
+            max_model_calls = model_calls + 1
+        if verbose:
+            print(f"    [harness] pass 1 is complete (call {tp_record['pass1_call_index']}) - pass 2 opens"
+                  + (" with the withheld consensus" if two_pass.get("withheld_block") else ""), flush=True)
+
     while True:
         active_msgs, shrunk = _history()
         req_opts, est, eff_np = _turn_options(opts, active_msgs)
@@ -2304,6 +2424,11 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
         if crux_followup_pending:
             turn_rec["crux_followup"] = True
             crux_followup_pending = False
+        if two_pass is not None:
+            turn_rec["pass"] = tp_phase
+            if tp_pending:
+                turn_rec["pass2_first_turn"] = True
+                tp_pending = False
         if reveal is not None:
             # revision 24 (R24.2): every stage-B turn is marked, and its full reply is kept for the run folder
             turn_rec["stage_b"] = True
@@ -2373,6 +2498,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                      "turn": len(turns), "desk_calls_after": 0, "complete_after": False,
                                      "base_over_reference": None}
                 continue
+            # Revision 25 (Stage 0.6): the end of pass 1. Pass 2 opens only on a complete pass-1 run; without one the sample is a breach (stamped below).
+            if tp_phase == 1:
+                if two_pass_may_open(snap) and failure is None and server_errors < 2:
+                    _open_pass2(msg.get("content") or "")
+                    continue
+                break
             # Revision 21 (S1): a delivered memorandum whose answer run is directional and passed no crux gets one follow-up message.
             fu = (crux_followup_state(snap, (desk_context or {}).get("price"), msgs[0]["content"], desk_context)
                   if (crux_followup is None and reveal is None and not is_stub and failure is None and server_errors < 2
@@ -2398,6 +2529,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 crux_followup = {"fired": True, "outcome": None, "turn": len(turns), "direction": fu["direction"],
                                  "answer_call_index": fu["answer_call_index"]}
                 continue
+            if crux_followup is not None and reveal is None and memo_merge is None and (crux_first_report or "").strip():
+                # Revision 25 (Stage 0.7): the follow-up's reply replaces a SECTION of the first memorandum only where it gives real content
+                final_report, memo_merge = merge_memo(crux_first_report, final_report)
+                is_stub = not report_is_deliverable(final_report)
+                if verbose:
+                    print(f"    [harness] memorandum merge after the crux follow-up: {memo_merge['sections']} (contract: {memo_merge['contract']})", flush=True)
             if reveal is not None:
                 # Revision 24 (R24.2): this turn is the model's last word of stage B (KEEP, or its reply after the stage-B desk call)
                 final_report = _end_stage_b(msg.get("content") or "", server_error=done_reason == "server_error")
@@ -2476,6 +2613,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             }
             if arg_cuts:
                 call_rec["arg_truncated"] = arg_cuts
+            if tp_phase is not None:
+                call_rec["pass"] = tp_phase                 # revision 25: contract_fill reads the pass-1 run from this stamp
             snap.append(call_rec)
             _write_snapshot(out_dir, model, seed, calls, stub_rejected, turns, t0, snap)
 
@@ -2762,6 +2901,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
             msgs.append({"role": "tool", "content": content})
             meta_msgs.append({"name": name, "args": args, "result": result, "call_index": calls})
 
+        if tp_phase == 1 and search_calls >= max_search_calls and (model_calls >= max_model_calls or desk_validation_errors > 6):
+            # Revision 25 (Stage 0.6): the budgets end pass 1, not the sample
+            if two_pass_may_open(snap) and failure is None and server_errors < 2:
+                _open_pass2()
+                continue
+            break
         if reveal is None and search_calls >= max_search_calls and (model_calls >= max_model_calls or desk_validation_errors > 6):
             # ALL BUDGETS REACHED -> force the answer, never just break. Revision 24: not in stage B, whose reply is not a memorandum (the
             # next turn, offered no tool, is its last word)
@@ -2812,6 +2957,12 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     # evidence store does); one this function made would otherwise vanish with it, and a frozen replay needs the whole page, not the part the
     # snapshot kept.
     _write_own_evidence_caches(out_dir, q_cache if query_cache is None else None, u_cache if url_cache is None else None)
+    if tp_record is not None:
+        if not tp_record["pass2_opened"]:
+            tp_record["breach"] = TWO_PASS_BREACH          # revision 25: no complete pass-1 run (or the session ended in pass 1): not usable
+            if failure is None:
+                failure = TWO_PASS_BREACH
+        tp_record["memo_merge"] = memo_merge
     stage_a = snap[:reveal["start"]] if reveal is not None else snap       # revision 24: stage B's calls are not stage A's
     if desk_continuation is not None:
         desk_continuation["desk_calls_after"] = (
@@ -2852,6 +3003,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                                          else {"fired": False, "outcome": None}),
                                        "primary_refusals": primary_refusals,
                                        "reference_revision": reveal_record,
+                                       "two_pass": tp_record,
+                                       "memo_merge": memo_merge,
                                        "base_iv_stage_a": base_iv_stage_a,
                                        "base_iv_final": base_iv_final}
 

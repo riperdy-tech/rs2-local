@@ -84,7 +84,7 @@ def test_the_r25_task_describes_the_declarations_and_derives_the_two_figures():
     contract = t[t.index("```json:underwriting"):]
     assert '"near_term_earnings"' not in contract and '"normalized_earnings"' not in contract and '"normalization_reason"' in contract
     assert "near_term_earnings" not in cap.FORM_FIELDS_25 and "normalized_earnings" not in cap.FORM_FIELDS_25
-    assert "pass 2" not in t and "two-pass" not in t.lower()
+    assert t.count(cap.TWO_PASS_TASK_PARAGRAPH) == 1 and "reconciliation_reasons" in contract      # Stage 0.6: the TASK says there are two passes
     assert '"near_term_earnings"' in cap.TASK and "revenue_growth" not in cap.TASK        # the revision-24 TASK is untouched
 
 
