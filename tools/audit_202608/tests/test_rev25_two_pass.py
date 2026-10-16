@@ -115,11 +115,13 @@ def test_the_pass_2_messages_of_the_two_arms_differ_only_by_the_consensus_block(
     assert msg_b == {"role": "user", "content": "Pass 2: reconcile your preliminary forecast with everything in the pack."}
     assert msg_c["role"] == "user" and msg_c["content"].encode() == (msg_b["content"] + "\n\n" + BLOCK).encode()
     assert msg_c["content"].replace("\n\n" + BLOCK, "") == msg_b["content"]
-    # everything else sent to the model in pass 2 is the same: the history before the message, the options, the tools
-    assert bodies_b[2]["messages"][:-1] == bodies_c[2]["messages"][:-1]
+    # everything else sent to the model in pass 2 is the same: the history before the message (except the pass-1 desk result, which arm C's desk
+    # computed without the consensus-derived members: ruling 3), the options, the tools
+    nontool = lambda ms: [m for m in ms if m["role"] != "tool"]                      # noqa: E731
+    assert nontool(bodies_b[2]["messages"][:-1]) == nontool(bodies_c[2]["messages"][:-1])
     assert bodies_b[2]["options"] == bodies_c[2]["options"] and bodies_b[2].get("tools") == bodies_c[2].get("tools")
-    # and so is every request of pass 1
-    assert bodies_b[:2] == bodies_c[:2]
+    # and so is the first request of pass 1 (nothing of the desk has been seen yet)
+    assert bodies_b[0] == bodies_c[0]
 
 
 def test_meta_records_whether_consensus_was_shown_in_pass_1(monkeypatch, tmp_path):
@@ -188,7 +190,7 @@ def test_arm_c_pass_1_pack_holds_none_of_the_withheld_values():
         if ln in kept_lines:
             continue
         assert any(e["text"].find(ln) >= 0 for e in elements) or ln.startswith("- long_run:") or ln.startswith("- levels:") \
-            or ln.startswith("- next_fy_revenue_growth:"), ln[:80]
+            or ln.startswith("- next_fy_revenue_growth:") or ln.startswith("- Trailing P/E:"), ln[:80]
     for needle in ("m_tc=15.0000%", "r_tc=55.4197%", "owner_earnings_default_b: 7.148", "reference_base_b: 5.752244", "years35_p90: 30.1%",
                    "- 52-week range", "Trailing P/E"):
         if needle in text:
@@ -331,8 +333,8 @@ def test_the_merge_in_the_loop_keeps_the_memorandum_the_pilot_lost(monkeypatch, 
                                                                     "answer_call_index": 1, "inputs": {}})
     answer = ANSWER + "p" * 5000                                                         # a deliverable memorandum (5,000 characters or more)
     reply = _memo([(0, "Verdict", "unchanged from prior"), (3, "Thesis", "same as above"), (12, "Contract", "no change")])
-    _serve(monkeypatch, [_desk(OK), _turn(answer), _turn(reply)])
-    rep, _t, meta = _run(tmp_path)
+    _serve(monkeypatch, [_desk(OK), _turn(MEMO), _desk(_changed(explicit_growth=[0.05] * 5)), _turn(answer), _turn(reply)])
+    rep, _t, meta = _run(tmp_path, two_pass={"arm": "r25_b", "withheld_block": None})
     assert meta["crux_followup"]["fired"] is True
     assert meta["memo_merge"]["mode"] == "merged"
     assert meta["memo_merge"]["sections"] == {"0": "kept", "3": "kept", "12": "kept"}
@@ -345,8 +347,8 @@ def test_the_merge_in_the_loop_replaces_a_section_given_real_content(monkeypatch
     answer = ANSWER + "p" * 5000
     new0 = "The verdict is now UNDERVALUED on the margin crux. " + "q" * 300
     reply = _memo([(0, "Verdict", new0), (3, "Thesis", "unchanged")])
-    _serve(monkeypatch, [_desk(OK), _turn(answer), _turn(reply)])
-    rep, _t, meta = _run(tmp_path)
+    _serve(monkeypatch, [_desk(OK), _turn(MEMO), _desk(_changed(explicit_growth=[0.05] * 5)), _turn(answer), _turn(reply)])
+    rep, _t, meta = _run(tmp_path, two_pass={"arm": "r25_b", "withheld_block": None})
     assert meta["memo_merge"]["sections"]["0"] == "replaced" and meta["memo_merge"]["sections"]["3"] == "kept"
     assert new0 in rep and "The thesis in full." in rep
 
@@ -387,3 +389,155 @@ def test_the_verdict_row_carries_the_new_fields():
     src = Path(depth_pipeline.__file__).read_text(encoding="utf-8")
     for k in ("pass1_inputs", "change_log", "reconciliation_reasons", "two_pass_arm", "consensus_shown_pass1", "memo_merge"):
         assert f'"{k}"' in src, k
+
+
+def test_the_merge_is_for_the_r25_arms_only_arm_a_keeps_the_follow_up_reply_as_it_ran(monkeypatch, tmp_path):
+    """Without `two_pass` (arm A and every other arm) the follow-up's reply is the final memorandum, as at 4deab98."""
+    monkeypatch.setattr(at, "crux_followup_state", lambda *a, **k: {"direction": "undervalued", "base": 80.0, "price": 50.0,
+                                                                    "answer_call_index": 1, "inputs": {}})
+    answer = ANSWER + "p" * 5000
+    reply = _memo([(0, "Verdict", "The verdict is now BUY. " + "z" * 5200), (3, "Thesis", "unchanged"), (12, "Contract", "no change")])
+    _serve(monkeypatch, [_desk(OK), _turn(answer), _turn(reply)])
+    rep, _t, meta = _run(tmp_path)
+    assert meta["crux_followup"]["fired"] is True and meta["memo_merge"] is None
+    assert rep == reply and "The thesis in full." not in rep                 # no section of the first memorandum is carried over
+
+
+
+def test_a_two_pass_breach_is_not_retried_with_a_perturbed_seed():
+    """The empty-report retry (consensus_valuation.main, seed + 50000) is skipped for a sample stamped two_pass_breach:no_pass1."""
+    assert cv.is_two_pass_breach({"two_pass": {"breach": at.TWO_PASS_BREACH}}) is True
+    assert cv.is_two_pass_breach({"two_pass": {"breach": None}}) is False
+    assert cv.is_two_pass_breach({"two_pass": None}) is False and cv.is_two_pass_breach({}) is False and cv.is_two_pass_breach(None) is False
+    src = Path(cv.__file__).read_text(encoding="utf-8")
+    assert 'elif not (rep or "").strip() and use_tools and not is_two_pass_breach(meta):' in src
+
+
+# ---- ruling 3: arm C's pass 1 sees no consensus through the desk either ----------------------------------------------------------------------
+
+from test_rev25_bridge import LR as _LR, NORM as _NORM, _call as _b_call, _ctx as _b_ctx, _sc as _b_sc  # noqa: E402
+
+_LEVELS = {"year1": 31.337, "year2": 33.771, "bull2": 38.842, "bear2": 28.119}
+_WITHHELD_NUMBERS = ("38.842", "28.119", "31.337", "33.771", "77.654", "41.2345", "29.8765", "0.3457", "0.34567", "x the reference", "bull2 level")
+
+
+def _consensus_ctx():
+    lr = dict(_LR, om_tc=0.41, om_L=0.42, om_trend=0.43, e5=41.2345, oe5=29.8765, m5=0.34567)       # m5 is the nearest X-basis fact to a 0.41 margin
+    return _b_ctx(levels=dict(_LEVELS), consensus_implied_value=77.654, reference_status="used", years35_cap=0.0731, long_run=lr)
+
+
+def _bridge_call():
+    base = _b_sc("Base", 0.5, **dict(_NORM, normalized_margin=0.41, long_run_margin=0.41, earnings_margin=[0.41] * 5))
+    call = _b_call([base, _b_sc("Bull", 0.25, earnings_margin=[0.42] * 5, long_run_margin=0.42),
+                    _b_sc("Bear", 0.25, revenue_growth=[0.06] * 5, earnings_margin=[0.40] * 5, long_run_margin=0.40)])
+    for k in ("scenario_deviation_reason", "guidance_deviation_reason", "bridge_C5_reason"):
+        call.pop(k, None)
+    return call
+
+
+def _desk_text(call, ctx):
+    """Everything the model is shown for one desk call: the refusal or the accepted result, whole, and its markdown."""
+    res = fmt_execute(call, ctx)
+    return json.dumps(res) + "\n" + str(res.get("markdown_report") or ""), res
+
+
+def fmt_execute(call, ctx):
+    import financial_model_tool
+    return financial_model_tool.execute_financial_model(copy.deepcopy(call), ctx)
+
+
+def test_the_pass_1_context_of_arm_c_drops_every_consensus_member_and_the_original_is_untouched():
+    ctx = _consensus_ctx()
+    before = copy.deepcopy(ctx)
+    p1 = at.pass1_desk_context(ctx)
+    assert ctx == before                                                           # pass 2 builds from the full one
+    assert p1["levels"] is None and p1["years35_cap"] is None and p1["consensus_implied_value"] is None
+    import consensus_reference
+    assert not consensus_reference.reference_in_force(p1["reference_status"])
+    assert not {"e5", "oe5", "m5"} & set(p1["long_run"]) and {"x_L", "rev_L", "m_tc", "nwc_intensity"} <= set(p1["long_run"])
+    kept = ("reference_base_b", "owner_earnings_default_b", "terminal_g_anchor", "price", "coe_anchor", "desk_schema")
+    assert all(p1.get(k) == ctx.get(k) for k in kept)
+    assert at.pass1_desk_context(None) is None
+
+
+def test_a_pass_1_desk_result_of_arm_c_and_its_markdown_hold_none_of_the_withheld_numbers():
+    ctx = _consensus_ctx()
+    full, res_full = _desk_text(_bridge_call(), ctx)
+    p1, res_p1 = _desk_text(_bridge_call(), at.pass1_desk_context(ctx))
+    # the full context quotes the levels, the reference ratio and the m5 of the basis question (the refusal); with its reasons given, the run is accepted
+    assert ("28.119" in full or "38.842" in full) and "x the reference" in full and "0.3457" in full and res_full["validation_error"] is True
+    given = dict(_bridge_call(), scenario_deviation_reason="dated, 10-K 2026", guidance_deviation_reason="dated, 10-K 2026",
+                 bridge_C5_reason="dated, 10-K 2026")
+    full2, res_full2 = _desk_text(given, ctx)
+    assert "error" not in res_full2, res_full2.get("error")
+    assert "0.3457" in full2                                                       # C5 names m5 as the nearest X-basis fact
+    p1_2, res_p1_2 = _desk_text(given, at.pass1_desk_context(ctx))
+    assert "error" not in res_p1_2, res_p1_2.get("error")
+    for text in (p1, p1_2):
+        for n in _WITHHELD_NUMBERS:
+            assert n not in text, n
+    assert [n["reason"] for n in res_full["needs_reasons"]].count("scenario_deviation_reason") == 1                 # the full context asks for these
+    assert {n["reason"] for n in res_p1["needs_reasons"]} == {"bridge_C5_reason"}          # no deviation check fires without the levels and the reference
+    yl = res_p1_2["price_implied"]["year2_level"]
+    assert yl["value"] is None and "not applicable" in yl["not_available"]
+
+
+def _spy_dispatch(monkeypatch):
+    seen = []
+    real = at.dispatch_tool
+
+    def spy(name, args, **kw):
+        if name == "run_financial_model":
+            seen.append(kw.get("desk_context"))
+        return real(name, args, **kw)
+    monkeypatch.setattr(at, "dispatch_tool", spy)
+    return seen
+
+
+def _loop(monkeypatch, tmp_path, arm, block=None):
+    bodies = _serve(monkeypatch, [_desk(OK), _turn(MEMO), _desk(_changed(explicit_growth=[0.05] * 5)), _turn(MEMO2)])
+    seen = _spy_dispatch(monkeypatch)
+    ctx = _ctx_full()
+    _run(tmp_path, two_pass={"arm": arm, "withheld_block": block}, desk_context=ctx)
+    return seen, ctx, bodies
+
+
+def _ctx_full():
+    from test_desk_continuation import PRICE
+    from test_desk_checks import _ctx as desk_ctx
+    return desk_ctx(price=PRICE, long_run=dict(_LR, e5=41.2345, oe5=29.8765, m5=0.34567), reference_status="used", years35_cap=0.0731)
+
+
+def test_the_loop_gives_arm_c_the_withheld_context_in_pass_1_only_and_arm_b_the_full_one(monkeypatch, tmp_path):
+    seen, ctx, _b = _loop(monkeypatch, tmp_path / "c", "r25_c", BLOCK)
+    assert len(seen) == 2
+    assert seen[0]["levels"] is None and seen[0]["years35_cap"] is None and "m5" not in seen[0]["long_run"]       # pass 1
+    assert seen[1]["levels"] == ctx["levels"] and seen[1]["long_run"]["m5"] == 0.34567 and seen[1]["years35_cap"] == 0.0731     # pass 2
+    seen_b, ctx_b, _b = _loop(monkeypatch, tmp_path / "b", "r25_b")
+    assert len(seen_b) == 2 and all(c["levels"] == ctx_b["levels"] and c["long_run"]["m5"] == 0.34567 for c in seen_b)
+
+
+def test_the_same_call_in_arm_b_or_pass_2_shows_what_arm_c_pass_1_does_not():
+    """A call whose Base and Bull years 1-2 sit off the printed levels: the full context holds the Base at them and refuses the Bull, quoting the levels;
+    arm C's pass 1 neither holds, refuses nor quotes."""
+    moved = copy.deepcopy(OK)
+    moved.pop("scenario_deviation_reason", None)
+    moved.pop("guidance_deviation_reason", None)
+    ctx = _ctx_full()
+    ctx["levels"] = {"year1": 5.31234, "year2": 6.64321, "bull2": 7.77711, "bear2": 4.44447}          # numbers that occur nowhere else in the result
+    full = json.dumps(fmt_execute(moved, ctx))
+    p1 = json.dumps(fmt_execute(moved, at.pass1_desk_context(ctx)))
+    assert "7.7771" in full
+    for n in ("7.7771", "5.3123", "6.6432", "4.4445", "7.77711", "6.64321", "4.44447"):
+        assert n not in p1, n
+
+
+def test_the_peg_member_of_the_multiples_line_is_withheld_in_pass_1_and_the_trailing_pe_is_kept():
+    text = ("## DATA 8 - CONSENSUS & MULTIPLES   [Aggregator, 3d]\n"
+            "- Trailing P/E: 24.5   |   P/B: 6.1   |   PEG: 1.87   [trailing; the vendor does not state the period]\n"
+            "- Return on equity: 0.2\n")
+    p1, block, elements = cap.split_consensus(text)
+    assert "PEG: 1.87" not in p1 and "1.87" not in p1 and "PEG: withheld_until_pass_2" in p1
+    assert "Trailing P/E: 24.5" in p1 and "P/B: 6.1" in p1 and "[trailing; the vendor does not state the period]" in p1
+    assert "- PEG: 1.87" in block and [e["element"] for e in elements] == ["DATA 8 PEG (forward growth estimates)"]
+    assert elements[0]["source_line"] == 2

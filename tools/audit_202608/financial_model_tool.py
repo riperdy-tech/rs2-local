@@ -1795,7 +1795,7 @@ REFUSAL_GENERIC_CLAUSE = " Call again with the same inputs and these reasons, or
 BRIDGE_PATH_FIELDS = ("revenue_growth", "earnings_margin")
 BRIDGE_NORMALIZATION_FIELDS = ("normalized_margin", "normalization_horizon", "normalized_revenue_base", "structural_growth", "flags",
                                "cycle_position", "cycle_evidence", "growth_trajectory", "margin_persistence")      # Bull and Bear inherit these from the Base unless they give their own
-BRIDGE_OPTIONAL_FIELDS = ("normalized_revenue_base", "cycle_position", "cycle_evidence", "growth_trajectory", "margin_persistence")
+BRIDGE_OPTIONAL_FIELDS = ("normalized_revenue_base", "cycle_evidence")      # the three labels are required on the Base (Stage 0.5 follow-up)
 BRIDGE_REASONS = tuple(f"bridge_{cid}_reason" for cid in bridge_checks.CHECK_IDS)
 # revision 25 Stage 0.5 (SPEC v1.2): the three classification labels are declared in the desk call (the single owner); K1-K4 check them on the Base
 CLASS_LABEL_ENUMS = {"growth_trajectory": bridge_checks.GROWTH_TRAJECTORIES, "cycle_position": bridge_checks.CYCLE_POSITIONS,
@@ -1969,8 +1969,9 @@ def _bridge_declarations(sc, params, base_decl=None):
     return vals, inherited
 
 
-def _bridge_problems(vals, label, fade_years):
-    """The declarations the desk cannot read, as `missing` entries (named, the existing refusal pattern)."""
+def _bridge_problems(vals, label, fade_years, is_base=False):
+    """The declarations the desk cannot read, as `missing` entries (named, the existing refusal pattern). The three classification labels are
+    required on the Base (at the top level or in the scenario): the desk call is their single owner under 25.1; Bull and Bear inherit."""
     out = []
     rg, em = vals.get("revenue_growth"), vals.get("earnings_margin")
     if not (isinstance(rg, (list, tuple)) and len(rg) == 5 and all(_is_num(x) and math.isfinite(x) and x > -1 for x in rg)):
@@ -1995,10 +1996,12 @@ def _bridge_problems(vals, label, fade_years):
     fl = vals.get("flags")
     if not (isinstance(fl, (list, tuple)) and all(isinstance(f, str) and f.strip().lower() in bridge_checks.KNOWN_FLAGS for f in fl)):
         out.append(f"flags for {label} (a list, empty for none, of {', '.join(bridge_checks.KNOWN_FLAGS)})")
-    for k, enum in CLASS_LABEL_ENUMS.items():          # optional, but a label that is given must be one of its values
+    for k, enum in CLASS_LABEL_ENUMS.items():          # required on the Base; Bull and Bear inherit, and a label that is given must be one of its values
         v = vals.get(k)
-        if v is not None and not (isinstance(v, str) and v.strip().lower() in enum):
-            out.append(f"{k} for {label} (one of {', '.join(enum)}, or omit it)")
+        if v is None and is_base:
+            out.append(f"{k} for {label} (required, one of {', '.join(enum)})")
+        elif v is not None and not (isinstance(v, str) and v.strip().lower() in enum):
+            out.append(f"{k} for {label} (one of {', '.join(enum)}{'' if is_base else ', or omit it to inherit the Base'})")
     return out
 
 
@@ -2245,7 +2248,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             _is_base = sc is _base_sc
             bridge_decls[id(sc)] = _bridge_declarations(sc, params) if (_is_base or _base_decl is None) else _bridge_declarations(sc, params, _base_decl)
             _fy = sc.get("fade_years") if sc.get("fade_years") is not None else params.get("fade_years")
-            for problem in _bridge_problems(bridge_decls[id(sc)][0], _label, _fy):
+            for problem in _bridge_problems(bridge_decls[id(sc)][0], _label, _fy, is_base=_is_base):
                 field = problem.split(" ", 1)[0]
                 if _is_base:
                     _base_problem_names.add(field)

@@ -2129,6 +2129,13 @@ def build_desk_context(facts, price, ticker, company, run_date=None):
     }
 
 
+def is_two_pass_breach(meta):
+    """Revision 25: a sample the two-pass gate stamped `two_pass_breach:no_pass1` is a result, not an empty report: it is recorded, never retried
+    with a perturbed seed."""
+    import analyst_tools as _at
+    return ((meta or {}).get("two_pass") or {}).get("breach") == _at.TWO_PASS_BREACH
+
+
 def two_pass_setup(facts, withheld_block=None):
     """Revision 25 (Stage 0.6): the `two_pass` argument of analyst_tools.chat_with_tools for a pack of the pilot arms r25_b and r25_c (the facts' pilot_arm),
     None for every other pack. Arm C carries the consensus block withheld from its pack; arm B none."""
@@ -2420,7 +2427,7 @@ def main():
             except Exception as e:
                 print(f"  sample {i}: RETRY FAILED {str(e)[:90]}", flush=True)
                 continue
-        elif not (rep or "").strip() and use_tools:
+        elif not (rep or "").strip() and use_tools and not is_two_pass_breach(meta):
             try:
                 sample_retried = True
                 import analyst_tools as _at

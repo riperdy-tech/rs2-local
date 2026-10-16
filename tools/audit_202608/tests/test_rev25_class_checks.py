@@ -196,10 +196,11 @@ def test_the_25_1_tools_offer_the_labels_and_the_four_reasons():
 
 
 def test_the_r25_task_puts_the_labels_in_the_desk_call_and_leaves_evidence_in_the_contract():
-    assert "pass them in the desk call" in cap.TASK_REV25 and "class_K1_reason" in cap.TASK_REV25
+    assert "pass all three in the desk call" in cap.TASK_REV25 and "class_K1_reason" in cap.TASK_REV25
     assert "growth_trajectory_evidence" in cap.TASK_REV25
     assert "For a cyclical business also pass cycle_evidence." in cap.TASK_REV25
-    assert "pass them in the desk call" not in cap.TASK
+    assert "pass all three in the desk call" not in cap.TASK and "pass them in the desk call" not in cap.TASK
+    assert "repeat the same labels" not in cap.TASK_REV25
 
 
 def test_the_fill_takes_the_labels_from_the_desk_and_stamps_a_differing_typed_value():
@@ -223,3 +224,52 @@ def test_the_verdict_row_owners_carry_class_checks():
     import depth_pipeline
     assert "class_checks" in cv.S12_SUMMARY_KEYS and "class_checks" in cf.FILLED_25 and "class_checks" not in cf.FILLED
     assert '"class_checks"' in Path(depth_pipeline.__file__).read_text(encoding="utf-8")
+
+
+# ---- Stage 0.5 follow-up (rulings 1 and 2): the labels are required on the Base and the desk call is their single owner under 25.1
+LABEL_NAMES = ("growth_trajectory", "cycle_position", "margin_persistence")
+
+
+def _without(field):
+    ok = _norm()
+    ok.pop(field, None)
+    return ok
+
+
+@pytest.mark.parametrize("field", LABEL_NAMES)
+def test_a_base_without_a_label_is_refused_by_name_and_does_not_use_a_desk_run(field):
+    res = _run(_call([_sc("Base", 0.5, **_without(field)), _sc("Bull", 0.25), _sc("Bear", 0.25)]))
+    assert res["validation_error"] is True and any(m.startswith(f"{field} for Base") for m in res["missing"])
+    assert [m.split(" ", 1)[0] for m in res["missing"]] == [field]            # only the one that is left out
+    assert "scenario_dcfs" not in res
+
+
+def test_the_three_labels_may_be_given_at_the_top_level_and_bull_and_bear_inherit_without_naming_them():
+    base = _without("growth_trajectory")
+    for f in LABEL_NAMES:
+        base.pop(f, None)
+    res = _run(_call([_sc("Base", 0.5, **base), _sc("Bull", 0.25), _sc("Bear", 0.25)], growth_trajectory="decelerating",
+                     cycle_position="not_cyclical", margin_persistence="structural"))
+    assert "error" not in res, res.get("error")
+    assert all(f in _dcf(res, "bull")["bridge"]["declared"]["inherited"] for f in LABEL_NAMES)
+    # nothing at all: the Base is refused for each of the three, and Bull and Bear are not refused for what they inherit
+    res = _run(_call([_sc("Base", 0.5, **base), _sc("Bull", 0.25), _sc("Bear", 0.25)]))
+    assert [m.split(" ", 1)[0] for m in res["missing"]] == list(LABEL_NAMES)
+    assert all(" for Base" in m for m in res["missing"])
+
+
+def test_the_desk_call_is_the_single_owner_the_contract_template_and_form_fields_drop_the_labels():
+    for f in LABEL_NAMES:
+        assert f not in cap.FORM_FIELDS_25 and f'"{f}":' not in cap.TASK_REV25
+        assert f in cap.FORM_FIELDS_III and f'"{f}":' in cap.TASK                          # every other arm keeps them in the contract
+        assert f"{f}_evidence" in cap.FORM_FIELDS_25 and f'"{f}_evidence":' in cap.TASK_REV25
+    assert "reconciliation_reasons" in cap.FORM_FIELDS_25
+
+
+def test_the_fill_takes_the_labels_from_the_desk_only_under_25_1():
+    """A label the model still types in its contract is not the recorded one."""
+    call = _call([_sc("Base", 0.5, **_norm()), _sc("Bull", 0.25), _sc("Bear", 0.25)])
+    res = _run(call)
+    facts = {"desk_schema": "25.1", "coe_anchor": R_, "shares_outstanding": 1.0, "long_run_defaults_withheld": True}
+    filled, _prov = cf.fill([_snapshot_call(res, call)], {"growth_trajectory": "steady"}, facts, 50.0)
+    assert filled["growth_trajectory"] == "decelerating"                                   # the desk's, not the typed one

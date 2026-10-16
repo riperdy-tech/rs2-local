@@ -110,7 +110,8 @@ def _sc(name, prob, **extra):
     return d
 
 
-NORM = dict(normalized_margin=0.30, normalization_horizon=0, structural_growth=0.06, flags=[])
+LABELS = dict(growth_trajectory="decelerating", cycle_position="not_cyclical", margin_persistence="structural")     # required on the Base (Stage 0.5 follow-up)
+NORM = dict(normalized_margin=0.30, normalization_horizon=0, structural_growth=0.06, flags=[], **LABELS)
 
 
 def _call(scs=None, **over):
@@ -162,9 +163,10 @@ SYNTHETIC = [
     dict(base=_sc("Base", 0.5, **NORM)),
     dict(base=_sc("Base", 0.5, revenue_growth=[0.30, 0.12, 0.05, 0.02, 0.0], earnings_margin=[0.35, 0.30, 0.25, 0.22, 0.20], long_run_margin=0.18,
                   normalized_margin=0.18, normalization_horizon=6, structural_growth=0.03, flags=["cyclical"], cycle_position="peak",
-                  cycle_evidence="inventory days 112 vs 70 (10-Q)")),
+                  cycle_evidence="inventory days 112 vs 70 (10-Q)", growth_trajectory="decelerating", margin_persistence="transient")),
     dict(base=_sc("Base", 0.5, revenue_growth=[-0.10, -0.05, 0.0, 0.01, 0.02], earnings_margin=[0.25, 0.26, 0.28, 0.30, 0.31], long_run_margin=0.31,
-                  normalized_margin=0.31, normalization_horizon=5, structural_growth=0.0, flags=["turnaround"])),
+                  normalized_margin=0.31, normalization_horizon=5, structural_growth=0.0, flags=["turnaround"],
+                  growth_trajectory="accelerating", cycle_position="not_cyclical", margin_persistence="structural")),
 ]
 
 
@@ -513,7 +515,7 @@ def _mu_call(c, m_N, H=10, **reasons):
         if name == "Base":
             s.update(normalized_margin=m_N, normalization_horizon=H, structural_growth=0.117, flags=["cyclical"])
         scs.append(s)
-    p.update(scenarios=scs, fade_years=5, cycle_position="peak", cycle_evidence="DRAM contract price index peaked 2026Q3",
+    p.update(scenarios=scs, fade_years=5, cycle_position="peak", growth_trajectory="decelerating", margin_persistence="transient", cycle_evidence="DRAM contract price index peaked 2026Q3",
              scenario_deviation_reason="dated", bull_below_price_reason="dated", bear_above_price_reason="dated", **reasons)
     return p
 

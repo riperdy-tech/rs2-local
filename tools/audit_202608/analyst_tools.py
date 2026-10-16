@@ -463,7 +463,7 @@ _BRIDGE_NORM_PROPS = {
     "structural_growth": {"type": "number", "description": "The annual revenue growth with any cyclical swing removed, a decimal."},
     "flags": {"type": "array", "items": {"type": "string", "enum": ["cyclical", "structural_growth", "structural_decline", "turnaround"]},
               "description": "Any of cyclical, structural_growth, structural_decline, turnaround; an empty list for none."},
-    "cycle_position": {"type": "string", "enum": ["trough", "mid", "peak", "not_cyclical"], "description": "For a cyclical business."},
+    "cycle_position": {"type": "string", "enum": ["trough", "mid", "peak", "not_cyclical"], "description": "Required in the Base (not_cyclical when the business is not cyclical)."},
     "growth_trajectory": {"type": "string", "enum": ["accelerating", "steady", "decelerating", "shrinking"],
                           "description": "The Base's revenue growth path over years 1-5 (checked by K1 and K4)."},
     "margin_persistence": {"type": "string", "enum": ["structural", "partly_structural", "transient"],
@@ -1363,6 +1363,30 @@ TWO_PASS_BREACH = "two_pass_breach:no_pass1"
 def two_pass_message(withheld_block=None):
     """The one pass-2 message: TWO_PASS_MESSAGE, and for arm C the withheld block after it, verbatim."""
     return TWO_PASS_MESSAGE + ("\n\n" + withheld_block if withheld_block else "")
+
+
+# Revision 25 (coordinator's ruling 3 on builders A and B): arm C's pass 1 must not see consensus through the desk either. In pass 1 of r25_c only, the
+# desk's context withholds every consensus-derived member the desk reads; pass 2 and arm B get the full context. The desk then has nothing to print,
+# check or advise from: the bull2/bear2 deviation check (R11) and the band advice read `levels`; the Base value check (R10) reads the reference; the
+# C5 X-basis facts read long_run m5 (e5 and oe5 go with it: they are the year-5 earnings the consensus years 1-2 imply); years35_cap is next-FY
+# revenue growth; price_implied's year2_level reads the levels. Kept: reference_base_b (a filed figure), terminal_g_basis, the working-capital members
+# of long_run and consensus_data_status.
+PASS1_WITHHELD_LONG_RUN_MEMBERS = ("e5", "oe5", "m5")
+
+
+def pass1_desk_context(desk_context):
+    """A copy of the desk context for arm C's pass 1 (see above): the original is not touched, so pass 2 builds from the full one."""
+    if not isinstance(desk_context, dict):
+        return desk_context
+    out = dict(desk_context)
+    out["levels"] = None
+    out["consensus_implied_value"] = None
+    out["reference_status"] = "outside_fence_above"      # consensus_reference.OUTSIDE_FENCE: annotation only, in force for no band or refusal
+    out["reference_withheld"] = True                     # and the desk's unit note compares with the price, as for a pack that did not print it
+    out["years35_cap"] = None
+    if isinstance(out.get("long_run"), dict):
+        out["long_run"] = {k: v for k, v in out["long_run"].items() if k not in PASS1_WITHHELD_LONG_RUN_MEMBERS}
+    return out
 
 
 def two_pass_may_open(calls):
@@ -2535,8 +2559,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                 crux_followup = {"fired": True, "outcome": None, "turn": len(turns), "direction": fu["direction"],
                                  "answer_call_index": fu["answer_call_index"]}
                 continue
-            if crux_followup is not None and reveal is None and memo_merge is None and (crux_first_report or "").strip():
-                # Revision 25 (Stage 0.7): the follow-up's reply replaces a SECTION of the first memorandum only where it gives real content
+            if tp_record is not None and crux_followup is not None and reveal is None and memo_merge is None and (crux_first_report or "").strip():
+                # Revision 25 (Stage 0.7; the r25 arms only, so arm A runs as revision 24 ran): the follow-up's reply replaces a SECTION of the first memorandum only where it gives real content
                 final_report, memo_merge = merge_memo(crux_first_report, final_report)
                 is_stub = not report_is_deliverable(final_report)
                 if verbose:
@@ -2814,6 +2838,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                     else:
                         # the cap goes only where it is set, so a dispatcher without desk_context fails loudly
                         desk_kw = {"desk_context": desk_ctx_now} if desk_ctx_now is not None else {}
+                        if tp_phase == 1 and tp_record["arm"] == "r25_c" and desk_ctx_now is not None:
+                            desk_kw = {"desk_context": pass1_desk_context(desk_ctx_now)}      # revision 25: arm C sees no consensus in pass 1
                         call_key = json.dumps(args, sort_keys=True, default=str)      # the inputs as sent (the desk annotates args)
                         result = dispatch_tool(name, args, snap=None, query_cache=q_cache, url_cache=u_cache, **desk_kw)
                         if isinstance(result, dict) and result.get("validation_error") is True:

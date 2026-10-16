@@ -4316,7 +4316,7 @@ def _task_rev25():
     # Stage 0.5 (SPEC v1.2): the three classification labels go in the desk call (the desk checks them, K1-K4); the *_evidence fields stay in the contract
     for old, new in (("For a cyclical business also pass cycle_position and cycle_evidence.", "For a cyclical business also pass cycle_evidence."),
                      ("Classify three dimensions, each from its own evidence and none forced by another: margin_persistence (structural, partly_structural or transient), cycle_position (trough, mid, peak or not_cyclical) and growth_trajectory (accelerating, steady, decelerating or shrinking).",
-                      "Classify three dimensions, each from its own evidence and none forced by another, and pass them in the desk call, at the top level or in Base (Bull and Bear inherit them): margin_persistence (structural, partly_structural or transient), cycle_position (trough, mid, peak or not_cyclical) and growth_trajectory (accelerating, steady, decelerating or shrinking). The desk checks each label against your numbers and asks for a named reason (class_K1_reason to class_K4_reason) where one disagrees; it never changes a label. In the contract, repeat the same labels and give each one's evidence field (margin_persistence_evidence, cycle_position_evidence, growth_trajectory_evidence); the desk call's labels are the ones recorded.")):
+                      "Classify three dimensions, each from its own evidence and none forced by another, and pass all three in the desk call, at the top level or in Base (required: the desk refuses a Base without them; Bull and Bear inherit them): margin_persistence (structural, partly_structural or transient), cycle_position (trough, mid, peak or not_cyclical) and growth_trajectory (accelerating, steady, decelerating or shrinking). The desk checks each label against your numbers and asks for a named reason (class_K1_reason to class_K4_reason) where one disagrees; it never changes a label. In the contract, give each one's evidence field (margin_persistence_evidence, cycle_position_evidence, growth_trajectory_evidence); the labels are not in the contract: the desk call owns them.")):
         assert t.count(old) == 1, old[:60]
         t = t.replace(old, new)
     # Stage 0.6 (the two-pass protocol): the contract carries the analyst's reasons for what changed between its passes, and the TASK says there are
@@ -4324,6 +4324,11 @@ def _task_rev25():
     for anchor, add in (('  "momentum_view": "<confirming | neutral', '  "reconciliation_reasons": [{"input": "<an input your final desk run changed from your preliminary run, as the desk names it>", "reason": "<why, tied to the evidence>"}],\n'),):
         assert t.count(anchor) == 1, anchor
         t = t.replace(anchor, add + anchor)
+    # Stage 0.5 follow-up (ruling 2): the desk call is the labels' single owner under 25.1 - the three label fields leave the contract template
+    for line in ('  "margin_persistence": "<structural | partly_structural | transient>",\n', '  "cycle_position": "<trough | mid | peak | not_cyclical>",\n',
+                 '  "growth_trajectory": "<accelerating | steady | decelerating | shrinking>",\n'):
+        assert t.count(line) == 1, line
+        t = t.replace(line, "")
     anchor = "Think carefully through the complete economic machinery before writing. Numbers before narrative."
     assert t.count(anchor) == 1
     t = t.replace(anchor, TWO_PASS_TASK_PARAGRAPH + anchor)
@@ -4331,7 +4336,7 @@ def _task_rev25():
 
 
 TASK_REV25 = _task_rev25()
-FORM_FIELDS_25 = tuple(f for f in FORM_FIELDS_III if f not in ("near_term_earnings", "normalized_earnings")) + ("reconciliation_reasons",)      # Stage 0.6: the contract field of the two-pass protocol
+FORM_FIELDS_25 = tuple(f for f in FORM_FIELDS_III if f not in ("near_term_earnings", "normalized_earnings", "margin_persistence", "cycle_position", "growth_trajectory")) + ("reconciliation_reasons",)      # Stage 0.6: the contract field of the two-pass protocol
 
 
 def task_for(facts):
@@ -4350,7 +4355,7 @@ def task_for(facts):
 # the list of elements with their source line. It works on the rendered text, so what is withheld is exactly what the pack printed; the facts
 # sidecar is not touched (the desk reads it). The elements, by the code that prints them:
 #   DATA 8 (build_pack, "## DATA 8 - CONSENSUS & MULTIPLES"): the CONSENSUS ESTIMATES table (revenue, EPS, low/high, analysts, growth), the BASE-YEAR
-#     CHECK (the vendor's year-ago EPS), the next-FY EPS estimate trend, the estimate revisions and the analyst price targets;
+#     CHECK (the vendor's year-ago EPS), the next-FY EPS estimate trend, the estimate revisions and the analyst price targets, and the PEG member of the multiples line (it uses forward growth estimates; the trailing P/E and P/B stay);
 #   DEFAULTS (pack_facts.render_defaults_block): the `levels` line (the consensus cash-flow levels, bull2 and bear2), the `next_fy_revenue_growth`
 #     line, the `base_year_cap` line (it prints the vendor's year-ago EPS) and the `long_run` members e5, oe5 and m5 (the year-5 earnings and
 #     margin at the consensus estimates of years 1-2).
@@ -4360,6 +4365,7 @@ def task_for(facts):
 WITHHELD_FILE = "_withheld_consensus.md"
 WITHHELD_NOTE = "withheld until pass 2"
 _LR_MEMBER = re.compile(r"(?<![A-Za-z_0-9])(e5|oe5|m5)=([^,\s|]+)")
+_PEG_MEMBER = re.compile(r"(\|\s+PEG: )(.+?)(?=\s{3}\[|$)")     # the PEG member of DATA 8's multiples line (it uses forward growth estimates)
 _DATA8_LINES = (
     ("- CONSENSUS ESTIMATES   [", "DATA 8 consensus estimates table", True),
     ("- BASE-YEAR CHECK", "DATA 8 base-year check (the vendor's year-ago EPS)", False),
@@ -4399,6 +4405,17 @@ def split_consensus(pack_text):
                         while i + span < len(lines) and lines[i + span].startswith("|"):
                             span += 1
                     break
+            if label is None and ln.startswith("- Trailing P/E:") and _PEG_MEMBER.search(ln):
+                # ruling 3 on builders A and B: the PEG is withheld in pass 1; the trailing P/E, P/B and the rest of the line are kept
+                peg = _PEG_MEMBER.search(ln)
+                kept.append(_PEG_MEMBER.sub(lambda m: m.group(1) + WITHHELD_NOTE.replace(" ", "_"), ln))
+                if held_section != section:
+                    held += ["", f"[{section}]"]
+                    held_section = section
+                held.append("- PEG: " + peg.group(2))
+                elements.append({"element": "DATA 8 PEG (forward growth estimates)", "section": section, "source_line": i + 1, "text": "PEG: " + peg.group(2)})
+                i += 1
+                continue
         elif section == "DEFAULTS":
             for prefix, lab in _DEFAULTS_LINES:
                 if ln.startswith(prefix):
