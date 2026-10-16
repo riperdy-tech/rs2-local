@@ -328,7 +328,14 @@ def test_the_bounds_of_the_inputs_as_the_brief_sets_them():
     pi = _pi(b, 20.0)
     assert pi["coe"]["bound"]["low"] == max(RF_EFF, b["tg"] + 0.0001) and pi["coe"]["bound"]["high"] == 0.25
     assert pi["terminal_g"]["bound"]["low"] == 0.0 and pi["terminal_g"]["bound"]["high"] == pytest.approx(min(GDP, b["wacc"]) - 0.000001)
-    assert pi["terminal_ronic"]["bound"]["low"] == b["wacc"] and pi["terminal_ronic"]["bound"]["high"] == "unlimited"
+    # revision 24 step 2d (cross-check 19, ruling 1): terminal_ronic is valued as stated below the discount rate, so its search starts at terminal_g
+    # (the return at which the terminal reinvestment takes all the earnings; it was the discount rate), at the discount rate when terminal_g is not
+    # above 0, and at the Base's own return when that is lower
+    assert pi["terminal_ronic"]["bound"]["low"] == b["tg"] and pi["terminal_ronic"]["bound"]["high"] == "unlimited"
+    b0 = _b(tg=0.0)
+    assert _pi(b0, 20.0)["terminal_ronic"]["bound"]["low"] == b0["wacc"]
+    b_own = _b(ronic=0.02)
+    assert _pi(b_own, 20.0)["terminal_ronic"]["bound"]["low"] == 0.02
     assert pi["fade_years"]["bound"]["low"] == 0 and pi["fade_years"]["bound"]["high"] == 60
     assert pi["year2_level"]["bound"]["low"] == LEVELS["bear2"] and pi["year2_level"]["bound"]["high"] == LEVELS["bull2"]
     # the growth bound: 1 + g + shift >= 0.001 for each of years 3-5, and a ceiling of 10 for the largest
@@ -348,7 +355,8 @@ def test_the_bounds_of_the_inputs_as_the_brief_sets_them():
 def _grid_values(b, name, bound):
     """The values of the Base over the bound's 121-point grid, computed here independently of the solver."""
     r0, _left = fmt._pi_normalise(b["growth"], b["tg"], b["fade"], b["finite"])
-    pts = fmt._linspace(bound["low"], bound["high"], 121) if name != "terminal_ronic" else fmt._linspace(0.0, 1.0, 121)
+    # terminal_ronic: the charge wacc / RONIC over [0, wacc / low] (revision 24 step 2d: the low end is no longer the discount rate)
+    pts = fmt._linspace(bound["low"], bound["high"], 121) if name != "terminal_ronic" else fmt._linspace(0.0, b["wacc"] / bound["low"], 121)
     out = []
     for s in pts:
         if name == "coe":
@@ -378,7 +386,11 @@ def test_not_reachable_exactly_when_the_price_is_outside_the_values_over_the_bou
     assert not above["reachable"] and above["side"] == "above" and above["roots_on_grid"] == 0
     assert not below["reachable"] and below["side"] == "below" and below["roots_on_grid"] == 0
     # the bound and the values at its ends are recorded on the unreachable block
-    assert above["bound"] == bd and above["value"] is None and above["base_at_value"] is None
+    # (the values at the ends are value - price + price, so two prices can differ in the last bit: compared to 1e-9; revision 24 step 2d moved the
+    # values here and the exact comparison no longer held by chance)
+    assert {k: v for k, v in above["bound"].items() if isinstance(v, str)} == {k: v for k, v in bd.items() if isinstance(v, str)}
+    assert all(above["bound"][k] == pytest.approx(v, abs=1e-9) for k, v in bd.items() if not isinstance(v, str))
+    assert above["value"] is None and above["base_at_value"] is None
     # and reachable inside, the substitution holds
     assert abs(_substitute(b, name, inside_top) - (top - eps)) <= 0.01
     assert abs(_substitute(b, name, inside_bottom) - (bottom + eps)) <= 0.01

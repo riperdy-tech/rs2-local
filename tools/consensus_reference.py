@@ -58,7 +58,8 @@ information. The reference now values the long run from the company's own record
 - An earnings path (X = net income before acquired-intangible amortization, revenue) runs beside the
   owner-earnings path. Years 1-5 cash flow is
   owner earnings less the working capital the revenue growth ties up (the record's median NWC /
-  revenue). From year 6, growth is paid for: cash flow = earnings x (1 - g / max(r, RONIC)), where
+  revenue). From year 6, growth is paid for: cash flow = earnings x (1 - g / RONIC) (revision 24 step 2d: RONIC as stated; it was
+  max(r, RONIC)), where
   RONIC fades from the record's blended return on new capital (r_blend) toward the return on new
   investment the record supports (RONIC_T), and the earnings margin moves toward the company's own median
   operating margin by the fraction brief E measured (`margin_rule`, brief F). Terminal growth is the
@@ -71,7 +72,8 @@ information. The reference now values the long run from the company's own record
 
 Revision 18 (brief rev18 design, section 1; the structure the backtest tested):
 - Returns: RONIC_0 = max(r, R_tc) and RONIC_T = r + p x max(0, R_tc - r) (+inf when R_tc is +inf), from the record
-  (throughcycle_record.analyse); no blend and no caps.
+  (throughcycle_record.analyse); no blend and no caps. Revision 24 step 2d (cross-check 19, ruling 1): RONIC_0 = R_tc as measured when above 0,
+  else RONIC_T (`long_run_returns`); RONIC_T keeps the record's formula.
 - Margins: the long-run operating margin is max(0, om_trend), the record's trend level, reached linearly over years 6-10
   (`margin_rule`); the peak/trough cells, the loss cell and the calibration file are gone.
 - Cash at face for non-financial companies (`cash_term`, `build(cash=...)`): the after-tax interest on cash and short-term
@@ -99,6 +101,9 @@ LEVELS_HOLD_TOL = 0.05  # rev 17: the desk holds Base years 1-2 at the levels wh
 OM5_LOW, OM5_HIGH = -0.5, 1.0   # rev 24 step 2a (ruling 5): an implied year-5 operating margin outside this range is stamped, not changed
 # rev 24 step 2a (ruling 5): margin_rule's annotations of the logged benchmark; the pack keeps them in the facts' stamps_full, never prints them
 BENCHMARK_STAMPS = ("implied_operating_margin_out_of_range", "long_run_margin_clamped_to_zero")
+# rev 24 step 2d (cross-check 19, ruling 1): the annotations of the returns the long run is valued at (`long_run_returns`); the desk stamps them on
+# its output, and the reference's land in the facts' stamps_full (logged, never printed)
+RONIC_STAMPS = ("terminal_ronic_below_rate", "ronic_start_below_rate", "ronic_start_from_terminal")
 
 
 def consensus_earnings_growth(estimates):
@@ -346,6 +351,28 @@ def ronic_at(ronic0, ronic_t, frac):
     return math.inf if u <= 0 else 1.0 / u
 
 
+def long_run_returns(r_tc, ronic_t, r):
+    """Revision 24 step 2d (cross-check 19, ruling 1): the returns the long run is valued at, as stated - no floor at r. Returns (ronic0, stamps).
+
+    RONIC_T (`ronic_t`, +inf = unlimited) must be above 0: growth cannot be paid for at a return at or below 0, so a caller holding one refuses the
+    call by name (the desk does) and this raises ValueError. Below r it is kept and stamped `terminal_ronic_below_rate` (growth then destroys
+    value, and is priced so). The start RONIC_0 is the record's R_tc as measured when above 0 (+inf included), stamped `ronic_start_below_rate`
+    when below r; when R_tc is missing (None or not a number) or at or below 0 (-inf included), the fade starts at RONIC_T, stamped
+    `ronic_start_from_terminal`. It was max(r, R_tc) and max(r, RONIC_T) (step 2a, ruling 5), which priced growth at below-hurdle returns as
+    value-neutral."""
+    if not (isinstance(ronic_t, (int, float)) and not isinstance(ronic_t, bool) and ronic_t > 0):
+        raise ValueError(f"the terminal return on new investment must be above 0 (got {ronic_t!r})")
+    stamps = ["terminal_ronic_below_rate"] if ronic_t < r else []
+    if isinstance(r_tc, (int, float)) and not isinstance(r_tc, bool) and r_tc > 0:
+        ronic0 = float(r_tc)
+        if ronic0 < r:
+            stamps.append("ronic_start_below_rate")
+    else:
+        ronic0 = ronic_t
+        stamps.append("ronic_start_from_terminal")
+    return ronic0, stamps
+
+
 def long_run_value(e5, g5, gt, r, ronic0, ronic_t, margin_ratio=None, fade_years=FADE_YEARS):
     """Revision 17, brief B section 2d-2e: the value, at the base fiscal year end, of everything after
     year 5. The one copy of this arithmetic; the reference and the desk both call it.
@@ -353,20 +380,25 @@ def long_run_value(e5, g5, gt, r, ronic0, ronic_t, margin_ratio=None, fade_years
     e5: year-5 earnings; g5: the year-5 growth; gt: terminal growth; r: the discount rate.
     Years t = 6..5+F (F = fade_years): g_t = g5 + (gt - g5)(t-5)/F; earnings E_t = e5 x prod(1+g) x k_t,
     where the margin factor k_t = 1 + (margin_ratio - 1) x min(1, (t-5)/F) (margin_ratio = m_tc / m5;
-    None = margin held); RONIC_t from `ronic_at`; cash flow_t = E_t (1 - g_{t+1} / max(r, RONIC_t)) with
+    None = margin held); RONIC_t from `ronic_at`; cash flow_t = E_t (1 - g_{t+1} / RONIC_t) with
     g_{N+1} = gt (an infinite RONIC charges nothing). Terminal: E_{N+1} = E_N (1+gt), TV = E_{N+1}
-    (1 - gt / max(r, RONIC_T)) / (r - gt), discounted N years. F = 0 has no long-run years. A negative long-run value is floored at
+    (1 - gt / RONIC_T) / (r - gt), discounted N years. F = 0 has no long-run years. A negative long-run value is floored at
     0 (`floor`).
 
     Revision 24 step 2a: D2, the margin factor reaches margin_ratio at the end of the fade whatever its length; with F = 0 it applies from
-    the terminal year (E_{N+1} = e5 x margin_ratio x (1 + gt)); it was dropped there. Ruling 5: RONIC_0 and RONIC_T below r are taken as r
-    before the fade (`ronic_at`), so a terminal return below r is valued exactly as r (the desk stamps it).
+    the terminal year (E_{N+1} = e5 x margin_ratio x (1 + gt)); it was dropped there.
+    Revision 24 step 2d (cross-check 19, ruling 1): RONIC_0 and RONIC_T are used as stated (`long_run_returns` resolves them); step 2a's ruling 5
+    took each below r as r, which valued growth at a below-hurdle return as value-neutral. Each must be above 0 (ValueError otherwise). A RONIC
+    below g makes the reinvestment exceed the earnings and the flow negative: that is the economics and stays; only the whole long-run value is
+    floored at 0, as before.
 
     None when r does not exceed gt. Else a dict: n_years, growth, earnings, margin_factor, ronic,
     flows (cash flows of years 6..N), pv_flows, e_terminal, tv, tv_pv, value_raw, value, floor."""
     if not r > gt:
         return None
-    ronic0, ronic_t = max(r, ronic0), max(r, ronic_t)
+    for name, x in (("ronic0", ronic0), ("ronic_t", ronic_t)):
+        if not (isinstance(x, (int, float)) and not isinstance(x, bool) and x > 0):
+            raise ValueError(f"{name} must be above 0 (got {x!r}): resolve the returns with long_run_returns")
     F = int(fade_years)
     n = 5 + F
 
@@ -382,7 +414,7 @@ def long_run_value(e5, g5, gt, r, ronic0, ronic_t, margin_ratio=None, fade_years
         k = 1.0 if margin_ratio is None else 1 + (margin_ratio - 1) * min(1.0, frac)
         e = e5 * cum * k
         ron = ronic_at(ronic0, ronic_t, frac)
-        cf = e * (1 - g_at(t + 1) / max(r, ron))
+        cf = e * (1 - g_at(t + 1) / ron)
         growth.append(g)
         earnings.append(e)
         kfs.append(k)
@@ -391,7 +423,7 @@ def long_run_value(e5, g5, gt, r, ronic0, ronic_t, margin_ratio=None, fade_years
         pv_flows += cf / (1 + r) ** t
     k_end = 1.0 if margin_ratio is None else margin_ratio
     e_terminal = e5 * cum * k_end * (1 + gt)
-    tv = e_terminal * (1 - gt / max(r, ronic_t)) / (r - gt)
+    tv = e_terminal * (1 - gt / ronic_t) / (r - gt)
     tv_pv = tv / (1 + r) ** n
     raw = pv_flows + tv_pv
     return {"n_years": n, "growth": growth, "earnings": earnings, "margin_factor": kfs, "ronic": ronics,
@@ -502,7 +534,8 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     levels method's earnings are consensus EPS x shares, stamped levels_eps_basis); `base_revenue` (the
     filed base-year revenue).
 
-    Revision 18 inputs: `record` carries R_tc (RONIC_0 = max(coe, R_tc); None = no return record), ronic_t and om_trend (the
+    Revision 18 inputs: `record` carries R_tc (RONIC_0 = max(coe, R_tc); None = no return record; revision 24 step 2d: R_tc as measured when
+    above 0, else RONIC_T, `long_run_returns`, its stamps on the reference), ronic_t and om_trend (the
     margin rule's target; None = margin held); `cash` (`cash_term`'s dict; None = no cash term). With a cash term that
     applies, the after-tax interest on the cash (i_L) is taken out of the earnings the long run capitalises: the growth
     method's base becomes base_cf - i_L and base_ni - i_L (and the record's x_L becomes (X_L - i_L) / revenue_L, so the margin
@@ -628,7 +661,8 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
         out["stamps"].append("record_not_available")
     # brief F: the record's operating-margin stamps ride on the reference too
     out["stamps"] += [s for s in (rec.get("stamps") or []) if s.startswith(("operating_margin", "margin_record"))]
-    ronic0 = coe if r_tc is None else max(coe, r_tc)
+    # revision 24 step 2d (cross-check 19, ruling 1): the record's R_tc as measured when above 0, else the fade starts at RONIC_T (no floor at coe)
+    ronic0, ronic_stamps = long_run_returns(r_tc, ronic_t, coe)
     if cash_on and rec.get("x_L") is not None and base_ni is not None and isinstance(base_revenue, (int, float)) and base_revenue > 0:
         # without this the margin rule would read the removed interest as an operating-margin change and add it back
         rec["x_L"] = (base_ni - i_l) / base_revenue
@@ -663,6 +697,7 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
                              "year-5 earnings or owner earnings is not positive")
             return out
     lr = long_run_value(e5, g5, terminal_g, coe, ronic0, ronic_t, margin_ratio)
+    out["stamps"] += ronic_stamps
     if lr["floor"]:
         out["stamps"].append("long_run_floor")
     out["long_run"] = dict(lr, e5=e5, oe5=oe5, m5=m5, margin_ratio=margin_ratio, g5=g5)
@@ -773,7 +808,9 @@ def _long_run_clause(ref, coe):
     reference has no long run (levels reasons that stop before it). Revision 18 (amendment 2, T1): the clause names the
     record's median return (`record_R_tc`) only where the reference uses it: above the cost of equity `coe` it is the year-5
     return and the year-10 return is the cost of equity plus the median's excess weighted by the share of years above it;
-    at or below it growth earns the cost of equity; +inf needs no new investment."""
+    at or below it growth earns the cost of equity; +inf needs no new investment. Revision 24 step 2d (cross-check 19, ruling 1): the year-5
+    return is the median as measured when above 0 (`long_run_returns`), so a median above 0 but at or below the cost of equity is named as the
+    year-5 return, moving to the cost of equity (the record's year-10 return there); at or below 0 growth earns the cost of equity throughout."""
     lr = ref.get("long_run")
     if not lr:
         return None
@@ -784,14 +821,19 @@ def _long_run_clause(ref, coe):
     elif r_tc == math.inf:
         pay = ("from year 6 growth needs no new investment: your record's tangible capital is zero or negative, so the "
                "return on new investment is unlimited and cash flow = earnings")
-    elif r_tc <= coe:
-        # -inf (earnings of zero or less on zero or negative tangible capital) is not above the cost of equity: the arithmetic
-        # pays for growth at the cost of equity (ronic0 = ronic_t = coe), so the clause must not say "unlimited"
+    elif r_tc <= 0:
+        # -inf (earnings of zero or less on zero or negative tangible capital) is not above 0: the arithmetic starts the fade at the year-10
+        # return, the cost of equity there (ronic0 = ronic_t = coe), so the clause must not say "unlimited"
         shown = ("negative without limit (earnings of zero or less on zero or negative tangible capital)"
                  if r_tc == -math.inf else _return_txt(r_tc))
         pay = (f"from year 6 growth is paid for at the cost of equity, {coe * 100:.2f}%: the median return on tangible capital "
-               f"in your 8-year record, {shown}, is not above it, so new investment earns only its "
+               f"in your 8-year record, {shown}, is not above zero, so new investment earns only its "
                f"cost; cash flow = earnings x (1 - growth / return)")
+    elif r_tc <= coe:
+        r0, rt = ref["ronic0"], ref["terminal_ronic"]
+        pay = (f"from year 6 growth is paid for at the return on new investment your record supports: {_return_txt(r0)} in "
+               f"year 5, the median return on tangible capital in your 8-year record, which is not above the cost of equity, so growth "
+               f"does not add value, moving to {_return_txt(rt)} from year 10, the cost of equity; cash flow = earnings x (1 - growth / return)")
     else:
         r0, rt = ref["ronic0"], ref["terminal_ronic"]
         pay = (f"from year 6 growth is paid for at the return on new investment your record supports: {_return_txt(r0)} in "
@@ -847,6 +889,18 @@ def not_meaningful_line(ref):
 
 
 ANCHOR_ROLE = ("— context, never the reason for a call: the same generic rules for every company; it values the average stock close to its price but carries little information about any one stock (on 2019–2023 point-in-time data, a stock it valued at twice its price went on to earn only about 3% more over three years than one it valued at its price).")
+
+
+def oe_base(ref):
+    """Revision 24 step 2d: the owner-earnings base the reference's oe_path was grown from ($, None without one): the growth method's base, a
+    levels name's year-1 level (grown at 0 in year 1, the convention `defaults_desk_args` values the DEFAULTS run on). The desk normalizes each
+    scenario's revenue path for working capital at it."""
+    if not isinstance(ref, dict):
+        return None
+    if ref.get("base_cf") is not None:
+        return float(ref["base_cf"])
+    lv = ref.get("levels")
+    return float(lv[0]) if lv and lv[0] else None
 
 
 def defaults_desk_args(ref, facts, reference_margin=False):

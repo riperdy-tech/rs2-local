@@ -199,30 +199,41 @@ def test_a_higher_ronic_lowers_the_reinvestment_charge(ronic, factor):
     assert r["per_share_iv_raw"] == pytest.approx(PV15_FLAT + LR_S * factor, rel=1e-12)
 
 
-def test_ronic_is_monotone_over_its_finite_range_and_a_value_below_r_is_valued_at_r():
-    """RONIC over r .. 10^6: value strictly rising (an unlimited RONIC is D4 below). A terminal_ronic below r is valued as r (`max(r, RONIC)`)
-    and the result echoes the input unchanged; revision 24 step 2a (ruling 5) stamps it `terminal_ronic_floored_at_r` (it was silent)."""
-    vals = [iv(terminal_ronic=x, fade_years=5, explicit_growth=[0.06] * 5) for x in (0.10, 0.12, 0.20, 0.50, 1.0, 10.0, 1e6)]
+def test_ronic_is_monotone_and_a_value_below_r_is_valued_as_stated():
+    """RONIC over 5% .. 10^6: value strictly rising (an unlimited RONIC is D4 below). Was `..._a_value_below_r_is_valued_at_r` (step 2a's
+    ruling 5: max(r, RONIC), stamped `terminal_ronic_floored_at_r`). Revision 24 step 2d (cross-check 19, ruling 1): a terminal_ronic below r is
+    valued as stated, stamped `terminal_ronic_below_rate`. S by hand at 5% (one-year fade, no record, so the fade starts at the terminal return,
+    stamped `ronic_start_from_terminal`): flow6 = 1.03 x (1 - 0.03 / 0.05) = 0.412; the long run = 9.136414 x 0.4 = 3.654566; value = 3.790787 +
+    3.654566 = 7.445353; at r, 3.790787 + 9.136414 x 0.7 = 10.186277."""
+    vals = [iv(terminal_ronic=x, fade_years=5, explicit_growth=[0.06] * 5) for x in (0.05, 0.075, 0.10, 0.12, 0.20, 0.50, 1.0, 10.0, 1e6)]
     assert all(b > a for a, b in zip(vals, vals[1:])) and min(vals) > 0
-    low = desk(terminal_ronic=0.05, fade_years=5, explicit_growth=[0.06] * 5)
-    assert low["per_share_iv_raw"] == pytest.approx(vals[0], rel=1e-12)
-    assert low["terminal_ronic"] == 0.05 and [s for s in low["stamps"] if "ronic" in s] == ["terminal_ronic_floored_at_r"]
-    assert "terminal_ronic_floored_at_r" not in desk(terminal_ronic=0.10, fade_years=5, explicit_growth=[0.06] * 5)["stamps"]
-    # with a record start above r, the value at a terminal_ronic below r is still exactly the value at r (the end point is floored first)
+    low = desk(terminal_ronic=0.05)
+    assert low["per_share_iv_raw"] == pytest.approx(PV15_FLAT + LR_S * (1 - 0.03 / 0.05), rel=1e-12)          # 7.445353
+    assert desk(terminal_ronic=0.10)["per_share_iv_raw"] == pytest.approx(PV15_FLAT + LR_S * (1 - 0.03 / 0.10), rel=1e-12)   # 10.186277
+    assert low["terminal_ronic"] == 0.05
+    assert [s for s in low["stamps"] if "ronic" in s] == ["terminal_ronic_below_rate", "ronic_start_from_terminal"]
+    assert "terminal_ronic_below_rate" not in desk(terminal_ronic=0.10, fade_years=5, explicit_growth=[0.06] * 5)["stamps"]
+    # with a record start above r, a terminal_ronic below r is worth less than one at r (it was exactly the value at r)
     rec = {"r_tc": 0.30}
     at_r = iv(terminal_ronic=0.10, fade_years=5, explicit_growth=[0.06] * 5, long_run=rec)
-    assert iv(terminal_ronic=0.05, fade_years=5, explicit_growth=[0.06] * 5, long_run=rec) == pytest.approx(at_r, rel=1e-12)
+    assert iv(terminal_ronic=0.05, fade_years=5, explicit_growth=[0.06] * 5, long_run=rec) < at_r
 
 
 def test_the_record_return_sets_the_starting_ronic_of_the_fade():
-    """_long_run_inputs: RONIC_0 = max(r, r_tc). r_tc 40% against 12%: a higher start, a higher value; r_tc below r: the start is r."""
+    """_long_run_inputs: RONIC_0 = r_tc as measured when above 0 (revision 24 step 2d, cross-check 19 ruling 1; it was max(r, r_tc)). r_tc 40%
+    against 12%: a higher start, a higher value; r_tc 5%, below r: the start is 5%, stamped `ronic_start_below_rate`, and the value is below the
+    value at a start of r; r_tc at or below 0: the start is the terminal return, stamped `ronic_start_from_terminal`."""
     base = dict(fade_years=5, explicit_growth=[0.08] * 5, terminal_ronic=0.12)
     lo = desk(long_run={"e5": None, "r_tc": 0.05}, **base)
     hi = desk(long_run={"e5": None, "r_tc": 0.40}, **base)
     at_r = desk(long_run={"e5": None, "r_tc": 0.10}, **base)
-    assert lo["ronic_start"] == 0.10 and hi["ronic_start"] == 0.40
-    assert lo["per_share_iv_raw"] == pytest.approx(at_r["per_share_iv_raw"], rel=1e-12)
-    assert hi["per_share_iv_raw"] > at_r["per_share_iv_raw"]
+    neg = desk(long_run={"e5": None, "r_tc": -0.05}, **base)
+    flat = desk(long_run={"e5": None, "r_tc": 0.12}, **base)
+    assert lo["ronic_start"] == 0.05 and hi["ronic_start"] == 0.40 and neg["ronic_start"] == 0.12
+    assert "ronic_start_below_rate" in lo["stamps"] and "ronic_start_below_rate" not in at_r["stamps"]
+    assert "ronic_start_from_terminal" in neg["stamps"]
+    assert lo["per_share_iv_raw"] < at_r["per_share_iv_raw"] < hi["per_share_iv_raw"]
+    assert neg["per_share_iv_raw"] == pytest.approx(flat["per_share_iv_raw"], rel=1e-12)       # the fade starts at the terminal 12%
 
 
 # ---- working capital --------------------------------------------------------------------------------------------------------

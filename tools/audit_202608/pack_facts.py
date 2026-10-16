@@ -142,9 +142,10 @@ WITHHELD_LONG_RUN_KEYS = ("terminal_g_default", "terminal_ronic", "price_implied
 WITHHELD_LONG_RUN_MEMBERS = ("om_5", "m_long", "margin_ratio")
 # long_run members the DEFAULTS block never prints and the parity check never compares: the verdict's full stamps, and (revision 24 step 2b) the
 # base fiscal year's earnings margin and revenue the desk reads when the facts hold no year-5 revenue (ruling 3) and the implied trajectory needs
-LONG_RUN_UNPRINTED = ("stamps_full", "x_L", "rev_L", "revenue_path", "oe_path")
+LONG_RUN_UNPRINTED = ("stamps_full", "x_L", "rev_L", "revenue_path", "oe_path", "oe_base")
 # (step 2c, ruling 12 of step 2b: `revenue_path`, the consensus revenue of years 0-5, and `oe_path`, the consensus owner earnings of years 1-5 it pairs
-# with, $B, the common shares' share; the desk builds each scenario's own revenue path from them for the working-capital deduction)
+# with, $B, the common shares' share; the desk builds each scenario's own revenue path from them for the working-capital deduction. Step 2d: `oe_base`,
+# the base oe_path was grown from - the reference's owner-earnings base, a levels name's year-1 level - which the desk normalizes the path at)
 # version 8's keys (and version 9's primary_sources), None on every text read (legacy or DEFAULTS)
 _SCOPE_KEYS = ("nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
                "vendor_revenue_basis", "primary_sources")
@@ -643,6 +644,8 @@ def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
     for k in ("revenue_path", "oe_path"):                  # step 2c: kept for the desk's own-path working capital, never printed
         if isinstance(d.get(k), (list, tuple)):
             out[k] = [q_b(x) for x in d[k]]
+    if d.get("oe_base") is not None:                       # step 2d: the base oe_path was grown from, kept with it, never printed
+        out["oe_base"] = q_b(d["oe_base"])
     return out
 
 
@@ -867,15 +870,14 @@ def _terminal_ronic_explanation(f: dict[str, Any], no_marker: bool = False) -> s
 
 
 def _long_run_start_clause(f: dict[str, Any]) -> str:
-    """The DEFAULTS long_run text's account of where the return on new investment starts. The desk starts at max(cost of equity, r_tc)
-    (`financial_model_tool._long_run_inputs`: the cost of equity when r_tc is not above it, is -inf, or the record carries none). So
-    "fades from r_tc" is true only when r_tc is above coe_anchor (+inf included); every other case says where the desk really starts."""
-    r_tc, coe = (f.get("long_run") or {}).get("r_tc"), f.get("coe_anchor")
-    coe_known = isinstance(coe, (int, float)) and not isinstance(coe, bool)
-    if isinstance(r_tc, (int, float)) and not isinstance(r_tc, bool) and not (coe_known and r_tc <= coe):
+    """The DEFAULTS long_run text's account of where the return on new investment starts. Revision 24 step 2d (cross-check 19, ruling 1): the
+    desk starts at r_tc as measured when it is above 0 (+inf included), else at the terminal return itself
+    (`consensus_reference.long_run_returns`, through `financial_model_tool._long_run_inputs`); it was max(cost of equity, r_tc)."""
+    r_tc = (f.get("long_run") or {}).get("r_tc")
+    if isinstance(r_tc, (int, float)) and not isinstance(r_tc, bool) and r_tc > 0:
         return "fades from r_tc (your record's 8-year median return on tangible invested capital) to"
-    return ("starts at the cost of equity, coe_anchor (r_tc, your record's 8-year median return on tangible invested capital, "
-            "is not above it or is not available), then fades to")
+    return ("is held from year 6 (r_tc, your record's 8-year median return on tangible invested capital, is not above zero or is not "
+            "available) at")
 
 
 def _working_capital_explanation(f: dict[str, Any], no_marker: bool = False, withhold_reference: bool = False) -> str:

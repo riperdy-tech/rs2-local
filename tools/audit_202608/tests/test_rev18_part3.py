@@ -30,7 +30,11 @@ LR_ABOVE = ("from year 6 growth is paid for at the return on new investment your
             "return on tangible capital in your 8-year record, moving to {terminal_ronic} from year 10, the cost of equity plus "
             "that median's excess over it weighted by the share of record years above the cost of equity; " + LR_TAIL)
 LR_BELOW = ("from year 6 growth is paid for at the cost of equity, {coe}: the median return on tangible capital in your 8-year "
-            "record, {R_tc}, is not above it, so new investment earns only its cost; " + LR_TAIL)
+            "record, {R_tc}, is not above zero, so new investment earns only its cost; " + LR_TAIL)
+# revision 24 step 2d (cross-check 19, ruling 1): a median above 0 but not above the cost of equity is the year-5 return as measured
+LR_LOW = ("from year 6 growth is paid for at the return on new investment your record supports: {ronic0} in year 5, the median return on "
+          "tangible capital in your 8-year record, which is not above the cost of equity, so growth does not add value, moving to "
+          "{terminal_ronic} from year 10, the cost of equity; " + LR_TAIL)
 LR_INF = ("from year 6 growth needs no new investment: your record's tangible capital is zero or negative, so the return on new "
           "investment is unlimited and cash flow = earnings")
 
@@ -90,13 +94,22 @@ def test_the_long_run_clause_names_the_median_only_when_it_is_above_the_cost_of_
 
 
 def test_the_long_run_clause_names_the_cost_of_equity_when_the_median_is_not_above_it():
+    """Revision 24 step 2d (cross-check 19, ruling 1): at or below 0 (and -inf) the fade starts at the record's year-10 return, the cost of equity
+    (unchanged text, "not above zero"); above 0 and at or below the cost of equity the median is the year-5 return as measured (it was the cost
+    of equity: max(coe, R_tc))."""
     NEG_INF = "negative without limit (earnings of zero or less on zero or negative tangible capital)"
-    # below, negative, equal to the cost of equity, and -inf (earnings of zero or less on zero or negative tangible capital)
-    for r_tc, shown in ((0.05, "5.0%"), (-0.03, "-3.0%"), (COE, "9.0%"), (-INF, NEG_INF)):
+    # negative, zero and -inf (earnings of zero or less on zero or negative tangible capital): the cost of equity throughout
+    for r_tc, shown in ((-0.03, "-3.0%"), (0.0, "0.0%"), (-INF, NEG_INF)):
         ref, line, clause = _lr_clause({"R_tc": r_tc, "ronic_t": COE})
         assert ref["record_R_tc"] == r_tc and ref["ronic0"] == COE and ref["terminal_ronic"] == COE
         assert clause.startswith(LR_BELOW.format(coe="9.00%", R_tc=shown) + "; ")
         assert "moving to" not in clause and "in year 5" not in clause
+        assert "unlimited" not in clause and "needs no new investment" not in clause
+    # below and equal to the cost of equity: the median in year 5, moving to the cost of equity from year 10
+    for r_tc, shown in ((0.05, "5.0%"), (COE, "9.0%")):
+        ref, line, clause = _lr_clause({"R_tc": r_tc, "ronic_t": COE})
+        assert ref["record_R_tc"] == r_tc and ref["ronic0"] == r_tc and ref["terminal_ronic"] == COE
+        assert clause.startswith(LR_LOW.format(ronic0=shown, terminal_ronic="9.0%") + "; ")
         assert "unlimited" not in clause and "needs no new investment" not in clause
 
 

@@ -501,7 +501,8 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
 # long_run_margin and the plausibility gate, carried from the medoid sample to the summary and the verdict row (depth_pipeline.band_verdict)
 S12_SUMMARY_KEYS = ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence", "margin_persistence_evidence",
                     "cycle_position", "cycle_position_evidence", "growth_trajectory", "growth_trajectory_evidence", "input_rationale",
-                    "long_run_margin", "plausibility_gate", "rev22_control_desk")       # step 2c: the rev22 control desk's stamp
+                    "long_run_margin", "plausibility_gate", "rev22_control_desk",       # step 2c: the rev22 control desk's stamp
+                    "terminal_value_share", "terminal_reinvestment_rate")               # step 2d: the two diagnostics (contract_fill.REVISION_24_2D)
 
 
 def select_medoid_scorecard(

@@ -1,0 +1,226 @@
+{
+ "vintage": 2025,
+ "cut_date": "2026-01-01",
+ "priors_version": "5",
+ "family": "operating",
+ "min_n": 50,
+ "inputs": {
+  "long_run_margin": {
+   "available": true,
+   "table": "margin_retention.residual_k5_by_level",
+   "cohort": "pooled_all",
+   "band": "pooled_all",
+   "residual_cell": "pooled_all",
+   "level_band": {
+    "level": 0.040188059509241966,
+    "band": [
+     1,
+     1
+    ],
+    "lower": 0.02072386401,
+    "upper": 0.07192500849,
+    "merged": false
+   },
+   "fallbacks": [
+    "the operating margin is within 0.5 points of its 8-year median (no direction): the pooled band"
+   ],
+   "score": 0.6721418735364113,
+   "score_basis": "equal weights",
+   "n": 571,
+   "n_cell": 2856,
+   "centre_8y_median": 0.04060787731699224,
+   "centre_basis": "8-year median",
+   "dev": -0.00041981780775027233,
+   "r5": 0.6928963358234538,
+   "r5_source": "band pooled_all curve",
+   "level5_median": 0.04031698709628864,
+   "retention_k5_used": 0.6928963358234538,
+   "cohort_text": "operating and commodity companies of any cyclicality, whatever the side of their operating margin's 8-year median",
+   "level_text": "whose base-year operating margin was 2.1% to 7.2%",
+   "operating": {
+    "p5": -0.23438219588901718,
+    "p10": -0.1250999633205768,
+    "p25": -0.013894363966749541,
+    "p50": 0.0418826197865939,
+    "p75": 0.07652463147615694,
+    "p90": 0.12526301312878954,
+    "p95": 0.16066416674171521
+   },
+   "m_tc": 0.017828517186735005,
+   "om_tc": 0.04060787731699224,
+   "om_basis": "without_amortization",
+   "tax_t": 0.2104965037696785,
+   "tax_t_source": "the median effective rate of 6 fiscal years, FY2019-FY2026",
+   "tax_t_stamps": [],
+   "delta": -0.013568754176201885,
+   "delta_source": "the median of 8 fiscal years, FY2019-FY2026; 21% statutory in FY2021, FY2023 (tax_rate_statutory_fallback)",
+   "delta_years": [
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+   ],
+   "delta_tax_fallback_years": [
+    2021,
+    2023
+   ],
+   "earnings": {
+    "p5": -0.19861431728472104,
+    "p10": -0.11233561259608225,
+    "p25": -0.024538403105847248,
+    "p50": 0.01949772057659924,
+    "p75": 0.04684770992196094,
+    "p90": 0.08532683263732213,
+    "p95": 0.11327616718531362
+   }
+  },
+  "normalization": {
+   "available": true,
+   "table": "normalization",
+   "cohort": "quintile_4",
+   "band": 4,
+   "score": 0.6721418735364113,
+   "score_basis": "equal weights",
+   "cohort_text": "operating and commodity companies in cyclicality quintile 5 of 5 (score 0.646 or above), both sides of the median",
+   "k": 5,
+   "n": 283,
+   "retention_median": 0.5378745647955542,
+   "op_median_path": 0.04038206799635514
+  },
+  "growth_years_3_10": {
+   "available": true,
+   "table": "growth_decay",
+   "cohort": "operating:bucket_1-1",
+   "fallbacks": [],
+   "cohort_text": "operating companies whose 3-year revenue CAGR was -10% to 0%",
+   "growth_delivered": -0.04979132787839691,
+   "growth_basis": "3-year revenue CAGR",
+   "what": "revenue",
+   "n": 3014,
+   "terminal_reference": 0.028532124939310677,
+   "by_k": {
+    "3": {
+     "n": 2030,
+     "p25": -0.08211178801134003,
+     "p50": 0.006709782645320628,
+     "p75": 0.09592305502728343
+    },
+    "4": {
+     "n": 1585,
+     "p25": -0.06557520988254684,
+     "p50": 0.023397549623259684,
+     "p75": 0.12222247363895544
+    },
+    "5": {
+     "n": 1075,
+     "p25": -0.051420886663415044,
+     "p50": 0.05454517623332711,
+     "p75": 0.16717814662333463
+    },
+    "6": {
+     "n": 794,
+     "p25": -0.06726512823140665,
+     "p50": 0.021650356964773798,
+     "p75": 0.11163351432094532
+    },
+    "7": {
+     "n": 562,
+     "p25": -0.07076466396827163,
+     "p50": 0.005252080769727274,
+     "p75": 0.09207549009619093
+    },
+    "8": {
+     "n": 276,
+     "p25": -0.06938239151779302,
+     "p50": 0.015055823481439634,
+     "p75": 0.08506973129837825
+    }
+   },
+   "ratio_k": 5,
+   "ratio_n": 906,
+   "ratio": {
+    "p5": -5.4705888977395745,
+    "p10": -2.9830261199426076,
+    "p25": -0.5485092924765982,
+    "p50": 0.3107951758853741,
+    "p75": 1.4468428999858356,
+    "p90": 3.5876981369138035,
+    "p95": 5.637643030940037
+   }
+  },
+  "revenue_cagr_10y": {
+   "available": true,
+   "table": "terminal",
+   "cohort": "operating:shrinking:with_delisted",
+   "stratum": "shrinking",
+   "variant": "with_delisted",
+   "K": 10,
+   "fallbacks": [],
+   "n": 442,
+   "quantiles": {
+    "p5": -0.20674681438304002,
+    "p10": -0.1370311440936313,
+    "p25": -0.07077786442665152,
+    "p50": 0.004588289546529567,
+    "p75": 0.08408698806139742,
+    "p90": 0.21844804792069308,
+    "p95": 0.5428630256729267
+   },
+   "trend8": -0.03202837532847772,
+   "cohort_text": "operating companies whose 8-year revenue trend was falling: the 10-year revenue CAGR, companies that stopped filing included at their last filed year (3 years or more)"
+  },
+  "terminal_ronic": {
+   "available": true,
+   "table": "roic_level.residual_k5_by_level",
+   "cohort": "operating:all",
+   "band": "all",
+   "residual_cell": "all",
+   "fallbacks": [],
+   "n": 1146,
+   "n_cell": 5734,
+   "L0": 0.09135816417382936,
+   "reference": 0.1027078144768657,
+   "reference_year": 2024,
+   "reference_stamps": [
+    "roic_reference_population_median_not_industry",
+    "roic_reference_year_2024_for_base_year_2026"
+   ],
+   "phi5": 0.522979172876319,
+   "level5_median": 0.09677218374894829,
+   "quantiles": {
+    "p5": -0.1336781998755776,
+    "p10": -0.03775632696479188,
+    "p25": 0.045730324528982326,
+    "p50": 0.092067760416283,
+    "p75": 0.13652673690067207,
+    "p90": 0.2165439658138238,
+    "p95": 0.29089590803115445
+   },
+   "level_band": {
+    "level": 0.09135816417382936,
+    "band": [
+     2,
+     2
+    ],
+    "lower": 0.0795279481225177,
+    "upper": 0.12015528561835075,
+    "merged": false
+   },
+   "cohort_text": "operating and commodity companies whose trailing 3-year ROIC was on either side of the population median of its fiscal year",
+   "level_text": "whose trailing 3-year ROIC was 8.0% to 12.0%"
+  }
+ },
+ "revenue_trend8": -0.03202837532847772,
+ "obs_sha256": "1681dc10dcc690bc4a45fa49964fc1aa70d6edbc27aabd1900eca9e7b7995b9b",
+ "family_reason": "SIC 5311: default",
+ "family_stamps": [
+  "lending_book_test_not_evaluated",
+  "insurance_reserve_test_not_evaluated"
+ ],
+ "sic": "5311",
+ "fixture_provenance": "step 2d: population_ranges.ranges_for at 2026-10-06 on screener-publish fundamentals_history rows cut at base fiscal year 2026 (the saved pack's record window), SIC 5311 (priors_inputs sic_by_cik.json), tables priors_v5; earnings record computed by company_record on the same rows"
+}

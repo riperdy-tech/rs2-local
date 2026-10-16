@@ -21,6 +21,9 @@ REVISION_19 = ("direction_m", "crux", "crux_check", "price_implied")
 # revision 24 step 2b: the Base's long_run_margin (the analyst's long-run input, on the verdict row) and the plausibility gate's record on the answer
 # run (fiduciary_gate.plausibility_gate; None for a pack that printed long-run defaults, the rev22 arm)
 REVISION_24_2B = ("long_run_margin", "plausibility_gate", "rev22_control_desk")
+# revision 24 step 2d (cross-check 19, ruling 6): two diagnostics of the answer run's Base, never gates - the terminal value's share of the value
+# and the terminal reinvestment rate (terminal_g / terminal_ronic, 0 when unlimited), from the desk's `implied` block
+REVISION_24_2D = ("terminal_value_share", "terminal_reinvestment_rate")
 
 FILLED = (
     "base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability",
@@ -30,7 +33,7 @@ FILLED = (
     # S3 3.8: revision-15 additions. base_cf_basis is derived; interest_addback and the 11 reasons
     # (cash_flow_life_reason among them) are now call arguments, copied from the answer call.
     "base_cf_basis", "interest_addback",
-) + REASONS_11 + REVISION_19 + REVISION_24_2B
+) + REASONS_11 + REVISION_19 + REVISION_24_2B + REVISION_24_2D
 ROLES = ("base", "bull", "bear")
 REL = 0.010001          # the harness's 1% desk-match tolerance (consensus_valuation, `close`)
 
@@ -290,6 +293,9 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
         out["long_run_margin"] = _f(lrm) if lrm is not None else None
         # revision 24 step 2c (ruling 10 of step 2b): the answer run's Base was valued by the rev22 control desk (the generator's margin path)
         out["rev22_control_desk"] = True if "margin_from_generator" in ((d.get("stamps") or []) if isinstance(d, dict) else []) else None
+        imp = d.get("implied") if isinstance(d, dict) and isinstance(d.get("implied"), dict) else {}
+        for k in REVISION_24_2D:                            # step 2d: the diagnostics as the desk computed them (None when it did not)
+            out[k] = _f(imp.get(k))
         fr = d.get("valuation_frame") or _inp(e, c, "valuation_frame")
         out["valuation_frame"] = str(fr).lower() if fr is not None else None
         leg = prov["legs"].get("base")

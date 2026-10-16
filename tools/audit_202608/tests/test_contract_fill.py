@@ -137,7 +137,7 @@ def test_rule_no_desk_run():
     filled, prov = contract_fill.fill([failed_call], typed, facts, 100.0)
     assert prov["mode"] == "no_desk_run"
     assert filled == {}
-    assert len(prov["unfilled"]) == 40     # revision 18: excess_cash_reason joins the reasons; revision 19: direction_m, crux, crux_check, price_implied; revision 24 step 2c: rev22_control_desk
+    assert len(prov["unfilled"]) == 42     # revision 18: excess_cash_reason joins the reasons; revision 19: direction_m, crux, crux_check, price_implied; revision 24 step 2c: rev22_control_desk; step 2d: terminal_value_share, terminal_reinvestment_rate
     # revision 24 step 2b: long_run_margin and plausibility_gate
     assert prov["unfilled"] == list(contract_fill.FILLED)
 
@@ -405,12 +405,14 @@ def test_real_samples():
     fix_dir = _HERE / "tests" / "fixture_data" / "contract_fill"
     golden_file = fix_dir / "golden_3_samples.json"
     golden = json.loads(golden_file.read_text(encoding="utf-8"))
-    new_fields = list(contract_fill.FILLED[19:-7])
+    new_fields = list(contract_fill.FILLED[19:-9])
     assert len(new_fields) == 14     # revision 18: excess_cash_reason joins the reasons
-    assert contract_fill.FILLED[-7:-3] == contract_fill.REVISION_19 == ("direction_m", "crux", "crux_check", "price_implied")
+    assert contract_fill.FILLED[-9:-5] == contract_fill.REVISION_19 == ("direction_m", "crux", "crux_check", "price_implied")
     # revision 24 step 2b: the Base's long_run_margin and the plausibility gate (None: these packs printed long-run defaults)
     # revision 24 step 2c: and rev22_control_desk (None: these packs are not the rev22 pilot arm)
-    assert contract_fill.FILLED[-3:] == contract_fill.REVISION_24_2B == ("long_run_margin", "plausibility_gate", "rev22_control_desk")
+    assert contract_fill.FILLED[-5:-2] == contract_fill.REVISION_24_2B == ("long_run_margin", "plausibility_gate", "rev22_control_desk")
+    # revision 24 step 2d: the two diagnostics of the Base (None: these recorded desk outputs carry no `implied` block)
+    assert contract_fill.FILLED[-2:] == contract_fill.REVISION_24_2D == ("terminal_value_share", "terminal_reinvestment_rate")
 
     for e in golden:
         fixture_path = fix_dir / f"{e['run']}_s{e['sample']}.json"
@@ -423,6 +425,8 @@ def test_real_samples():
         # revision-18 label the golden file holds; every other filled value is as recorded
         new = {k: filled.pop(k) for k in contract_fill.REVISION_19}
         new2b = {k: filled.pop(k) for k in contract_fill.REVISION_24_2B}
+        new2d = {k: filled.pop(k) for k in contract_fill.REVISION_24_2D}
+        assert new2d == {"terminal_value_share": None, "terminal_reinvestment_rate": None}
         assert new2b["plausibility_gate"] is None                       # not a withheld-defaults pack: not gated
         assert new2b["long_run_margin"] is None                         # these recorded calls predate the input
         recorded = e["filled"].get("verdict_label")

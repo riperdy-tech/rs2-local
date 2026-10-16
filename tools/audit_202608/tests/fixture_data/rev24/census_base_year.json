@@ -1,0 +1,13 @@
+{
+ "provenance": "step 2d: throughcycle_record.analyse(fundamentals_history rows, coe_anchor, base_year) - x_L; rev_L the base year's filed revenue ($B); m_tc, R_tc, om_L and g_rev equal the saved facts' to their printed precision",
+ "KSS": {
+  "base_year": 2026,
+  "x_L": 0.01751787209377214,
+  "rev_L": 15.527
+ },
+ "HRTG": {
+  "base_year": 2025,
+  "x_L": 0.2363558534104819,
+  "rev_L": 0.84733
+ }
+}

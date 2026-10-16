@@ -34,7 +34,8 @@ S2B = HERE / "fixture_data" / "rev24_s2b"
 
 def _with_revenue_path(f):
     """The saved packs predate the unprinted long_run members revenue_path and oe_path: rebuilt from their own facts (R_5 = e5 / m5, R_{t-1} = R_t
-    - w_t / nwc_intensity; the owner earnings reference_base_b compounded at reference_path), which reproduce the saved schedule."""
+    - w_t / nwc_intensity; the owner earnings reference_base_b compounded at reference_path), which reproduce the saved schedule; step 2d: and
+    oe_base, the base they were grown from (reference_base_b)."""
     lr, wc = f["long_run"], f.get("working_capital")
     if wc and lr.get("nwc_intensity") and lr.get("m5"):
         R = [None] * 6
@@ -46,7 +47,7 @@ def _with_revenue_path(f):
             x *= 1 + g
             oe.append(x)
         assert oe[4] == pytest.approx(lr["oe5"], rel=1e-4)
-        lr.update(revenue_path=R, oe_path=oe)
+        lr.update(revenue_path=R, oe_path=oe, oe_base=f["reference_base_b"])
     return f
 
 
@@ -79,7 +80,21 @@ def test_a_revision_22_style_call_values_under_rev22_and_is_refused_under_the_ii
     assert "margin_from_generator" in base["stamps"]
     # at the DEFAULTS path the control desk is revision 22's: the CONSENSUS-IMPLIED VALUE to the cent (the generator's margin path; on the consensus
     # owner earnings the own-path working capital is the consensus schedule)
-    assert base["per_share_iv"] == pytest.approx(saved["consensus_implied_value"], abs=0.005)
+    # revision 24 step 2d (cross-check 19, ruling 1): the reference and the control change with the RONIC correction where the record's r_tc is
+    # above 0 and below the cost of equity - KSS (r_tc 5.6349%, coe 10.08%): the fade now starts at r_tc, stamped ronic_start_below_rate, and the
+    # value is 41.17 (the saved 41.43 started at the cost of equity). With r_tc at the cost of equity (the old start) it is the saved value to the
+    # cent, so the start return is the only change. AMD (r_tc 55%) and HRTG (unlimited) are unchanged.
+    if t == "KSS":
+        assert "ronic_start_below_rate" in base["stamps"] and base["ronic_start"] == pytest.approx(0.056349)
+        assert base["per_share_iv"] == pytest.approx(41.17, abs=0.005)
+        old = copy.deepcopy(f)
+        old["long_run"]["r_tc"] = old["coe_anchor"]
+        res_old = fmt.execute_financial_model(_rev22_call(old), cv.build_desk_context(old, saved["price_implied_price"], t, t, "2026-10-05"))
+        assert next(s["dcf"] for s in res_old["scenario_dcfs"] if s["name"] == "Base")["per_share_iv"] == pytest.approx(
+            saved["consensus_implied_value"], abs=0.005)
+    else:
+        assert base["per_share_iv"] == pytest.approx(saved["consensus_implied_value"], abs=0.005)
+        assert not {"ronic_start_below_rate", "terminal_ronic_below_rate"} & set(base["stamps"])
     assert base["long_run"]["margin_ratio"] == (round(saved["long_run"]["margin_ratio"], 4) if saved["long_run"].get("margin_ratio") is not None else None)
     for arm in ("iii_p50", "iii_no_p50"):
         g = _arm(saved, arm)
@@ -122,13 +137,15 @@ def test_the_rev22_control_stamp_reaches_the_sample_record_and_the_verdict_row()
 
 # ---- working capital on the scenario's own revenue path (ruling 12) --------------------------------------------------------------------------
 
-LR_WC = {"nwc_intensity": 0.2, "revenue_path": [100.0, 110.0, 121.0, 133.1, 146.41, 161.051], "oe_path": [11.0, 12.1, 13.31, 14.641, 16.1051]}
+LR_WC = {"nwc_intensity": 0.2, "revenue_path": [100.0, 110.0, 121.0, 133.1, 146.41, 161.051], "oe_path": [11.0, 12.1, 13.31, 14.641, 16.1051],
+         "oe_base": 10.0}         # step 2d: the consensus base the owner earnings were grown from (10 x 1.1 = 11)
 
 
 def _dcf(growth, wc=LR_WC):
     return fmt.unbundled_dcf(base_cf=10.0, explicit_growth=[growth] * 5, wacc=0.10, terminal_g=0.03, shares_diluted=1.0, fade_years=5,
                              sbc_treatment="deducted_in_cf", terminal_ronic=0.15, long_run=None, long_run_margin=None,
-                             working_capital={"intensity": wc["nwc_intensity"], "revenue": wc["revenue_path"], "owner_earnings": wc["oe_path"]})
+                             working_capital={"intensity": wc["nwc_intensity"], "revenue": wc["revenue_path"], "owner_earnings": wc["oe_path"],
+                                              "base_owner_earnings": wc["oe_base"]})
 
 
 def test_two_scenarios_differing_only_in_growth_deduct_on_their_own_revenue_paths_by_hand():

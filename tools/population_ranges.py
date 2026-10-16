@@ -903,10 +903,13 @@ def render_section(ranges: Optional[dict], show_p50: bool) -> str:
         dv = "not available" if d.get("delta") is None else _pct(d["delta"], True)
         base_txt = "8-year median operating margin" if d["centre_basis"] == "8-year median" else "base-year operating margin"
         dev_txt = _pct(d["dev"], True) if d["dev"] is not None else "(none)"
+        # step 2d (the step-2c audit, ruling 3): DATA prints "Effective tax rate: WITHHELD", so t is labelled as the translation's own estimate
+        t_label = ("the translation's rate, from the years whose net income + tax equals pre-tax income; an estimate, see DATA's tax note"
+                   if not d.get("tax_t_stamps") else "the translation's rate; an estimate, see DATA's tax note")
         lines.append(f"- long_run_margin context (the operating margin five years out, the tables' unit): {_qline(d['operating'], show_p50, _pct)} | "
                      f"centred on the median path: your {base_txt} {_pct(d['centre_8y_median'])} plus {d['r5']:.2f} of your base year's deviation "
                      f"from it {dev_txt} ({d['r5_source']}) | the translation: earnings margin = (1 - t) x operating margin + Delta; "
-                     f"t = {_pct(d['tax_t'])}, {d['tax_t_source']}; Delta = {dv}, your earnings margin less (1 - that year's tax rate) x its "
+                     f"t = {_pct(d['tax_t'])}, {t_label} ({d['tax_t_source']}); Delta = {dv}, your earnings margin less (1 - that year's tax rate) x its "
                      f"operating margin, {d.get('delta_source')}; om_tc {_pct(d.get('om_tc'))}, m_tc {_pct(d.get('m_tc'))} (DEFAULTS long_run)")
     else:
         lines.append(na(name, d))

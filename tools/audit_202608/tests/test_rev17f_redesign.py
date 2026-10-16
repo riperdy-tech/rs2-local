@@ -258,12 +258,16 @@ def test_a_median_of_minus_inf_or_a_thin_record_leaves_ronic_t_at_the_cost_of_eq
     assert thin["R_tc"] is None and "record_not_available" in thin["stamps"] and thin["ronic_t"] == R
 
 
-def test_ronic_0_is_the_larger_of_the_cost_of_equity_and_r_tc_and_the_reference_carries_the_records_ronic_t():
-    for r_tc, expect0 in ((0.05, COE), (0.20, 0.20), (INF, INF), (-INF, COE)):
+def test_ronic_0_is_r_tc_as_measured_above_0_else_the_terminal_return_and_the_reference_carries_the_records_ronic_t():
+    """Revision 24 step 2d (cross-check 19, ruling 1): RONIC_0 is R_tc as measured when above 0 (it was max(coe, R_tc)), stamped
+    ronic_start_below_rate below coe; at or below 0 the fade starts at RONIC_T (the record's ronic_t), stamped ronic_start_from_terminal."""
+    for r_tc, expect0, stamp in ((0.05, 0.05, "ronic_start_below_rate"), (0.20, 0.20, None), (INF, INF, None),
+                                 (-INF, 0.13, "ronic_start_from_terminal"), (0.0, 0.13, "ronic_start_from_terminal")):
         rec = dict(REDUCTION, R_tc=r_tc, ronic_t=0.13)
         ref = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=rec, base_ni=1.2 * B, base_revenue=10.0 * B,
                        stub_months=8.5, anchor=GA)
         assert ref["ronic0"] == expect0 and ref["terminal_ronic"] == 0.13
+        assert [x for x in ref["stamps"] if x in cr.RONIC_STAMPS] == ([stamp] if stamp else [])
     # an older record that still carries r_blend: it is not read
     old = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=dict(REDUCTION, R_tc=0.20, r_blend=0.50, ronic_t=0.13),
                    base_ni=1.2 * B, base_revenue=10.0 * B, stub_months=8.5, anchor=GA)
@@ -271,7 +275,7 @@ def test_ronic_0_is_the_larger_of_the_cost_of_equity_and_r_tc_and_the_reference_
     none = cr.build(1.1 * B, _est(), COE, GA, 500e6, MEDIAN5, record=dict(REDUCTION, R_tc=None, ronic_t=COE,
                                                                         stamps=["record_not_available"]),
                     base_ni=1.2 * B, base_revenue=10.0 * B, stub_months=8.5, anchor=GA)
-    assert none["ronic0"] == COE and "record_not_available" in none["stamps"]
+    assert none["ronic0"] == COE and "record_not_available" in none["stamps"] and "ronic_start_from_terminal" in none["stamps"]
 
 
 def _est():
@@ -279,16 +283,20 @@ def _est():
     return EST
 
 
-def test_the_desk_reads_r_tc_from_the_facts_else_the_cost_of_equity_and_ignores_an_older_blocks_r_blend():
+def test_the_desk_reads_r_tc_from_the_facts_else_the_terminal_return_and_ignores_an_older_blocks_r_blend():
+    """Revision 24 step 2d (cross-check 19, ruling 1): RONIC_0 is r_tc as measured when above 0, else RONIC_T (the scenario's terminal_ronic,
+    else r); it was max(r, r_tc), else r."""
     r = 0.09
-    assert fmt._long_run_inputs({"r_tc": 0.50}, 1.0, None, r)[2] == 0.50                           # max(r, R_tc)
+    assert fmt._long_run_inputs({"r_tc": 0.50}, 1.0, None, r)[2] == 0.50                           # r_tc as measured
     assert fmt._long_run_inputs({"r_blend": 0.20, "r_tc": 0.50}, 1.0, None, r)[2] == 0.50          # r_blend is not read
-    assert fmt._long_run_inputs({"r_blend": 0.20}, 1.0, None, r)[2] == r                           # ... even alone
-    assert fmt._long_run_inputs({"r_tc": 0.05}, 1.0, None, r)[2] == r                              # below r: r
+    assert fmt._long_run_inputs({"r_blend": 0.20}, 1.0, None, r)[2] == r                           # ... even alone (RONIC_T = r)
+    low = fmt._long_run_inputs({"r_tc": 0.05}, 1.0, None, r)
+    assert low[2] == 0.05 and "ronic_start_below_rate" in low[4]                                   # below r: as measured, stamped
     assert fmt._long_run_inputs({"r_tc": INF}, 1.0, None, r)[2] == INF
-    assert fmt._long_run_inputs({"r_tc": -INF}, 1.0, None, r)[2] == r
+    neg = fmt._long_run_inputs({"r_tc": -INF}, 1.0, 0.12, r)
+    assert neg[2] == 0.12 and "ronic_start_from_terminal" in neg[4]                                # not above 0: the terminal return
     assert fmt._long_run_inputs({}, 1.0, None, r)[2] == r and fmt._long_run_inputs(None, 1.0, None, r)[2] == r
-    assert fmt._long_run_inputs({"r_tc": 0.0}, 1.0, None, 0.0)[2] == 0.0                           # 0.0 is a value
+    assert fmt._long_run_inputs({"r_tc": 0.0}, 1.0, 0.12, r)[2] == 0.12                            # 0.0 is a value: not above 0
     # revision 24 step 2a (ruling 1): the facts' margin ratio is not read; the ratio is the analyst's long_run_margin over the scenario's
     # year-5 earnings margin (E5 0.3 on the facts' year-5 revenue 0.3 / 0.1 = 3.0: 10%), only with a reference; no reference: none, stamped
     lr = {"e5": 0.3, "oe5": 0.28, "m5": 0.1, "margin_ratio": 0.655}
@@ -708,7 +716,7 @@ def _w9_desk(ref, **ctx_over):
            "levels": {"year1": lv[0] / B, "year2": lv[1] / B}, "terminal_ronic": ref["terminal_ronic"],
            "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "margin_ratio": ref["margin_ratio"],
                         "r_tc": 0.15, "stub_months": 8.5, "revenue_path": ([x / B for x in ref["revenue"]] if ref.get("revenue") else None),
-                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital)
+                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "oe_base": (cr.oe_base(ref) / B if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital); step 2d: their base
            "working_capital": [x / B for x in ref["wc"]]}
     ctx.update(ctx_over)
     sc = lambda name, prob, w: {"name": name, "prob": prob, "base_cf": W9_FY_BASE / B, "explicit_growth": list(ref["path"]), "wacc": w}

@@ -253,7 +253,8 @@ TIMEOUT = 14400
 #   its price-implied run); the POPULATION RANGES section after DEFAULTS; the consensus years 1-2 as evidence (no desk hold); the three
 #   classifications, normalized earnings and the input rationale in SECTION 12; the plausibility gate; the pilot arms (pilot_arm rev22 is the
 #   revision-22 pack byte for byte). Step 2c (BRIEF_R24_S2c_ranges_fix.md): ranges per rebuild I1 (margin, ROIC level), 10-year revenue CAGR,
-#   terminal_g by anchor, working capital on own path, rev22 control desk.
+#   terminal_g by anchor, working capital on own path, rev22 control desk. Step 2d (BRIEF_R24_S2d_ronic_diagnostics.md): RONIC as stated (no floor
+#   at r), TV share and reinvestment diagnostics.
 PACK_REVISION = 24
 # Revision 24 step 2b: the pilot arms (PHASE_4_REV24_MUSE.md step 3). `rev22` is the revision-22 briefing byte for byte (the control: its marker,
 # the CONSENSUS-IMPLIED VALUE, the DEFAULTS of revision 22 and its TASK); the two `iii` arms are the revision-24 briefing and differ only by P50 in
@@ -3741,15 +3742,20 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                             _lr_raw[_sk] = list(_lr_raw.get(_sk) or []) + _margin_stamps
                     # revision 24 step 2a (ruling 5): the margin rule's benchmark annotations are logged (the sidecar and the verdict's
                     # long_run_facts carry stamps_full) and never printed: the rule serves only the reference benchmark
-                    _bench_stamps = [s for s in _ref["stamps"] if s in consensus_reference.BENCHMARK_STAMPS]
+                    # revision 24 step 2d: the returns' annotations (consensus_reference.RONIC_STAMPS) are logged the same way
+                    _bench_stamps = [s for s in _ref["stamps"]
+                                     if s in consensus_reference.BENCHMARK_STAMPS + consensus_reference.RONIC_STAMPS]
                     if _bench_stamps:
                         _lr_raw["stamps_full"] = list(_lr_raw.get("stamps_full") or []) + _bench_stamps
                     if _ref.get("wc"):
                         facts["working_capital"] = [pack_facts.q_b(x / 1e9) for x in _ref["wc"]]
                     if _ref.get("revenue") and _ref.get("oe_path"):
                         # revision 24 step 2c (ruling 12): the consensus revenue path and its owner earnings ($B), unprinted long_run members the
-                        # desk builds each scenario's own revenue path from (the working-capital deduction)
+                        # desk builds each scenario's own revenue path from (the working-capital deduction); step 2d: and the base they were grown
+                        # from (`oe_base`, consensus_reference.oe_base), at which the desk normalizes the path
                         _lr_raw.update({"revenue_path": [x / 1e9 for x in _ref["revenue"]], "oe_path": [x / 1e9 for x in _ref["oe_path"]]})
+                        if consensus_reference.oe_base(_ref) is not None:
+                            _lr_raw["oe_base"] = consensus_reference.oe_base(_ref) / 1e9
                     if _ref.get("base_cf") is not None:
                         facts["reference_base_b"] = pack_facts.q_b(_ref["base_cf"] / 1e9)
                     elif _ref.get("method") == "levels" and _ref.get("flows"):

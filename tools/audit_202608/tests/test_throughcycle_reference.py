@@ -125,9 +125,18 @@ def test_long_run_value_closed_forms():
     # RONIC = the cost of equity: growth adds no value, the terminal is E_{N+1} / r
     lr = cr.long_run_value(e5, g, gt, r, r, r, None, 5)
     assert lr["tv"] == pytest.approx(lr["e_terminal"] / r)
-    # RONIC below the cost of equity is charged at the cost of equity (max(r, RONIC))
+    # RONIC below the cost of equity is valued as stated (revision 24 step 2d, cross-check 19 ruling 1; it was charged at the cost of equity,
+    # max(r, RONIC)): TV = E_{N+1} (1 - 0.03 / 0.05) / (r - gt) = 0.4 E_{N+1} / 0.07, each fade flow E_t (1 - g_{t+1} / 0.05), and less value than at r
     low = cr.long_run_value(e5, g, gt, r, 0.05, 0.05, None, 5)
-    assert low["value"] == pytest.approx(lr["value"])
+    assert low["tv"] == pytest.approx(low["e_terminal"] * 0.4 / 0.07)
+    assert low["flows"][0] == pytest.approx(low["earnings"][0] * (1 - (g + (gt - g) * 2 / 5) / 0.05))
+    assert low["value"] < lr["value"]
+    # a return at or below 0 cannot pay for growth: refused (the desk refuses the call by name before it gets here)
+    for bad in (0.0, -0.05):
+        with pytest.raises(ValueError):
+            cr.long_run_value(e5, g, gt, r, 0.15, bad, None, 5)
+        with pytest.raises(ValueError):
+            cr.long_run_value(e5, g, gt, r, bad, 0.15, None, 5)
     # an infinite RONIC charges nothing: the terminal is Gordon on the earnings
     inf = cr.long_run_value(e5, g, gt, r, INF, INF, None, 5)
     assert inf["tv"] == pytest.approx(inf["e_terminal"] / (r - gt))
@@ -341,7 +350,7 @@ def _facts_for(ref, record, gt, quantize):
               "stamps": list(record.get("stamps") or []), "stub_months": ref["stub_months"],
               "ni_over_oe": NI_BASE / OE_BASE,
               "e5": ref["long_run"]["e5"] / B, "oe5": ref["long_run"]["oe5"] / B, "m5": ref["long_run"]["m5"], "revenue_path": ([x / B for x in ref["revenue"]] if ref.get("revenue") else None),
-                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None)}  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital)
+                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "oe_base": (cr.oe_base(ref) / B if ref.get("revenue") else None)}  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital); step 2d: their base
     if quantize:
         f["terminal_ronic"] = pack_facts.q_rate(ref["terminal_ronic"])
         f["long_run"] = pack_facts.quantize_long_run(lr_raw)
@@ -351,7 +360,7 @@ def _facts_for(ref, record, gt, quantize):
         out = pack_facts.from_text("# DATA PACK - X   (pack revision 17)\n\n" + block)
         # step 2c: the unprinted long_run members (the consensus revenue path and its owner earnings) reach the desk from the facts or the sidecar,
         # never from text
-        out["long_run"].update({k: f["long_run"][k] for k in ("revenue_path", "oe_path") if k in f["long_run"]})
+        out["long_run"].update({k: f["long_run"][k] for k in ("revenue_path", "oe_path", "oe_base") if k in f["long_run"]})
         return out
     f["terminal_ronic"] = ref["terminal_ronic"]
     f["long_run"] = {k: (v if not isinstance(v, float) else v) for k, v in lr_raw.items()}
@@ -601,14 +610,16 @@ def test_the_desk_equals_the_reference_on_random_inputs_to_the_cent():
         facts = {"terminal_ronic": ref["terminal_ronic"],
                  "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "margin_ratio": ref["margin_ratio"],
                               "r_blend": record["r_blend"], "r_tc": record["R_tc"], "stub_months": stub, "revenue_path": ([x / B for x in ref["revenue"]] if ref.get("revenue") else None),
-                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital)
+                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "oe_base": (cr.oe_base(ref) / B if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital); step 2d: their base
                  "working_capital": [x / B for x in ref["wc"]] if ref["wc"] else None}
         lv = ref["levels"]
         if ref["base_cf"] is not None:
             base, path = ref["base_cf"] / B, ref["path"]
         else:
-            base = oe0 / B
-            path = [lv[0] / B / base - 1, lv[1] / lv[0] - 1] + ref["path"][2:]
+            # revision 24 step 2d: a levels name is valued on the pack's own convention (consensus_reference.defaults_desk_args): its base is the
+            # year-1 level grown at 0 in year 1, the base its oe_path pairs with (oe_base), at which the desk normalizes working capital's revenue path
+            base = lv[0] / B
+            path = [0.0, lv[1] / lv[0] - 1] + ref["path"][2:]
         sc = lambda name, prob, w: {"name": name, "prob": prob, "base_cf": base, "explicit_growth": list(path), "wacc": w}
         call = {"scenarios": [sc("Base", 0.4, coe), sc("Bull", 0.3, coe - 0.0005), sc("Bear", 0.3, coe + 0.0005)],
                 "terminal_g": gt, "fade_years": 5, "sbc_treatment": "deducted_in_cf", "cash_flow_life": "perpetual",

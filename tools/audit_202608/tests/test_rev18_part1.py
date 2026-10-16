@@ -331,7 +331,7 @@ def _desk_ctx(ref, **over):
            "levels": {"year1": lv[0] / B, "year2": lv[1] / B}, "terminal_ronic": ref["terminal_ronic"],
            "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "margin_ratio": ref["margin_ratio"],
                         "r_tc": 0.15, "stub_months": 8.5, "revenue_path": ([x / B for x in ref["revenue"]] if ref.get("revenue") else None),
-                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital)
+                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "oe_base": (cr.oe_base(ref) / B if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital); step 2d: their base
            "working_capital": [x / B for x in ref["wc"]]}
     ctx.update(over)
     return ctx
@@ -452,7 +452,9 @@ def test_the_desk_adds_excess_cash_per_share_in_the_equity_frame_only():
                             sbc_treatment="dilution", sbc_dilution=0.10, terminal_ronic=INF, excess_cash=2.0)
     dil0 = fmt.unbundled_dcf(base_cf=1.0, explicit_growth=[0.08] * 5, wacc=0.09, terminal_g=0.03, shares_diluted=0.5, fade_years=5,
                              sbc_treatment="dilution", sbc_dilution=0.10, terminal_ronic=INF)
-    assert dil["per_share_iv"] == pytest.approx(dil0["per_share_iv"] + 2.0 / 0.55, abs=0.0051)
+    # (the unrounded values: two values rounded to the cent can differ by up to a cent more than the cash; revision 24 step 2d changed the value
+    # here - the fade now starts at the unlimited terminal return - and the rounded check no longer held by chance)
+    assert dil["per_share_iv_raw"] == pytest.approx(dil0["per_share_iv_raw"] + 2.0 / 0.55, abs=1e-9)
 
 
 def test_the_desk_reads_excess_cash_from_the_context_and_a_departure_needs_a_reason():
@@ -526,14 +528,16 @@ def test_the_desk_equals_the_reference_to_the_cent_with_a_cash_term_on_a_seeded_
         facts = {"terminal_ronic": ref["terminal_ronic"],
                  "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "margin_ratio": ref["margin_ratio"],
                               "r_tc": record["R_tc"], "stub_months": stub, "revenue_path": ([x / B for x in ref["revenue"]] if ref.get("revenue") else None),
-                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital)
+                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "oe_base": (cr.oe_base(ref) / B if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital); step 2d: their base
                  "working_capital": [x / B for x in ref["wc"]] if ref["wc"] else None}
         lv = ref["levels"]
         if ref["base_cf"] is not None:
             base, path = ref["base_cf"] / B, ref["path"]
         else:
-            base = (oe0 - cash["interest"]) / B
-            path = [lv[0] / B / base - 1, lv[1] / lv[0] - 1] + ref["path"][2:]
+            # revision 24 step 2d: a levels name is valued on the pack's own convention (consensus_reference.defaults_desk_args): its base is the
+            # year-1 level grown at 0 in year 1, the base its oe_path pairs with (oe_base), at which the desk normalizes working capital's revenue path
+            base = lv[0] / B
+            path = [0.0, lv[1] / lv[0] - 1] + ref["path"][2:]
         sc = lambda name, prob, w: {"name": name, "prob": prob, "base_cf": base, "explicit_growth": list(path), "wacc": w}
         call = {"scenarios": [sc("Base", 0.4, coe), sc("Bull", 0.3, coe - 0.0005), sc("Bear", 0.3, coe + 0.0005)],
                 "terminal_g": gt, "fade_years": 5, "sbc_treatment": "deducted_in_cf", "cash_flow_life": "perpetual",

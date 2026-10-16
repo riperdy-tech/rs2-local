@@ -142,19 +142,21 @@ def _dcf_ctx(**over):
 # revision 24 step 2c (ruling 12 of step 2b): the desk deducts working capital on each scenario's own revenue path, from the long_run facts' intensity,
 # consensus revenue path and its owner earnings. This consensus path is built so that a scenario on the Base's own owner-earnings path (EZPW_PATH from
 # EZPW_BASE_CF) deducts exactly WC; a scenario on another path deducts NWC x the change in revenue_t x its owner earnings_t / OE_REF_t.
+# Revision 24 step 2d: normalized at the base, revenue_t x (its owner earnings_t / its base_cf) / (OE_REF_t / EZPW_BASE_CF), the consensus base
+# (long_run oe_base); on the EZPW path from EZPW_BASE_CF the factor is 1, so the Base and the 2c expectations of the Bull and Bear are unchanged.
 NWC = 0.05
 OE_REF = [EZPW_BASE_CF * math.prod(1.0 + g for g in EZPW_PATH[:t + 1]) for t in range(5)]
 REV_REF = [2.0] + [2.0 + sum(WC[:t + 1]) / NWC for t in range(5)]
 
 
 def _wc_lr():
-    return {"nwc_intensity": NWC, "revenue_path": REV_REF, "oe_path": OE_REF}
+    return {"nwc_intensity": NWC, "revenue_path": REV_REF, "oe_path": OE_REF, "oe_base": EZPW_BASE_CF}
 
 
 def _own_wc(path, cf=None):
     cf = EZPW_BASE_CF if cf is None else cf
     oe = [cf * math.prod(1.0 + g for g in path[:t + 1]) for t in range(5)]
-    rev = [REV_REF[0]] + [REV_REF[t + 1] * oe[t] / OE_REF[t] for t in range(5)]
+    rev = [REV_REF[0]] + [REV_REF[t + 1] * (oe[t] / cf) / (OE_REF[t] / EZPW_BASE_CF) for t in range(5)]
     return [NWC * (rev[t + 1] - rev[t]) for t in range(5)]
 
 

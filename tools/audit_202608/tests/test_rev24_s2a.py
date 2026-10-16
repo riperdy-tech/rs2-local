@@ -178,15 +178,17 @@ def test_the_price_implied_block_and_the_reverse_dcf_value_the_base_with_its_lon
 
 # ---- 2. ruling 5: a terminal_ronic below r is stamped in the desk output and the sample record ----------------------------------
 
-def test_a_terminal_ronic_below_r_is_valued_as_r_and_stamped_in_the_desk_output_and_the_sample_record(tmp_path):
+def test_a_terminal_ronic_below_r_is_valued_as_stated_and_stamped_in_the_desk_output_and_the_sample_record(tmp_path):
+    """Was `..._is_valued_as_r_and_stamped_...` (step 2a's ruling 5, `terminal_ronic_floored_at_r`). Revision 24 step 2d (cross-check 19, ruling 1):
+    valued as stated, so below r it is worth less than at r, stamped `terminal_ronic_below_rate` on the desk output and the sample record."""
     from test_terminal_and_frame import PACK, _dcf, _snapshot
     d = _dcf(0.0898, terminal_ronic=0.05)
     at_r = _dcf(0.0898, terminal_ronic=0.0898)
-    assert "terminal_ronic_floored_at_r" in d["stamps"] and "terminal_ronic_floored_at_r" not in at_r["stamps"]
-    assert d["per_share_iv"] == at_r["per_share_iv"] and d["terminal_ronic"] == 0.05
+    assert "terminal_ronic_below_rate" in d["stamps"] and "terminal_ronic_below_rate" not in at_r["stamps"]
+    assert d["per_share_iv"] < at_r["per_share_iv"] and d["terminal_ronic"] == 0.05
     _, st = cv.scenario_checks(_snapshot(tmp_path, d), {"base_iv": d["per_share_iv"]}, None, PACK, 1643.39,
                                facts=dict(pack_facts.empty(), terminal_ronic=0.10))
-    assert "terminal_ronic_floored_at_r" in st["desk_stamps"]
+    assert "terminal_ronic_below_rate" in st["desk_stamps"]
 
 
 # ---- 3. ruling 5: the margin rule's benchmark stamps are logged, never printed ------------------------------------------------------

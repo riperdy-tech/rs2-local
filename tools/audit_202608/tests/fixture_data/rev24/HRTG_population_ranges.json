@@ -1,0 +1,84 @@
+{
+ "vintage": 2025,
+ "cut_date": "2026-01-01",
+ "priors_version": "5",
+ "family": "financial",
+ "min_n": 50,
+ "inputs": {
+  "long_run_margin": {
+   "available": false,
+   "family_unmeasured": true,
+   "reason": "no measured population for this family: the margin tables measure operating and commodity companies; a financial company's margin is not measured"
+  },
+  "normalization": {
+   "available": false,
+   "family_unmeasured": true,
+   "reason": "no measured population for this family: the margin tables measure operating and commodity companies; a financial company's margin is not measured"
+  },
+  "growth_years_3_10": {
+   "available": true,
+   "table": "growth_decay",
+   "cohort": "financial:bucket_6-6",
+   "fallbacks": [],
+   "cohort_text": "financial companies whose 3-year tangible-book CAGR was 40% or more",
+   "growth_delivered": 0.7999544739298727,
+   "growth_basis": "3-year tangible-book CAGR",
+   "what": "tangible book",
+   "n": 104,
+   "terminal_reference": 0.09296855934415438,
+   "by_k": {
+    "3": {
+     "n": 58,
+     "p25": -0.008234104321196478,
+     "p50": 0.06878778526184759,
+     "p75": 0.15405863801132635
+    }
+   },
+   "ratio_k": 3,
+   "ratio_n": 51,
+   "ratio": {
+    "p5": -2.230533682165938,
+    "p10": -1.6223803129359302,
+    "p25": -0.3534549904357508,
+    "p50": 0.02411081394357582,
+    "p75": 1.1509231245544305,
+    "p90": 2.086215358363613,
+    "p95": 3.5357266222343613
+   }
+  },
+  "revenue_cagr_10y": {
+   "available": true,
+   "table": "terminal",
+   "cohort": "financial:all:with_delisted",
+   "stratum": "all",
+   "variant": "with_delisted",
+   "K": 10,
+   "fallbacks": [],
+   "n": 1719,
+   "quantiles": {
+    "p5": -0.040243624477083906,
+    "p10": -0.007473249654628853,
+    "p25": 0.026785694927637493,
+    "p50": 0.06315819044746918,
+    "p75": 0.10941664417565944,
+    "p90": 0.17266192072070818,
+    "p95": 0.21992015050194472
+   },
+   "trend8": 0.08346174595307074,
+   "cohort_text": "financial companies: the 10-year revenue CAGR, companies that stopped filing included at their last filed year (3 years or more)"
+  },
+  "terminal_ronic": {
+   "available": false,
+   "family_unmeasured": true,
+   "reason": "no measured population for this family: the ROIC-level table measures operating and commodity companies; a financial company's return is not measured"
+  }
+ },
+ "revenue_trend8": 0.08346174595307074,
+ "obs_sha256": "1681dc10dcc690bc4a45fa49964fc1aa70d6edbc27aabd1900eca9e7b7995b9b",
+ "family_reason": "balance sheet: insurance reserves are 32.2% of total assets (>= 10%)",
+ "family_stamps": [
+  "lending_book_test_not_evaluated"
+ ],
+ "sic": "6331",
+ "fixture_provenance": "step 2d: population_ranges.ranges_for at 2026-10-06 on screener-publish fundamentals_history rows cut at base fiscal year 2025 (the saved pack's record window), SIC 6331 (priors_inputs sic_by_cik.json), tables priors_v5; earnings record computed by company_record on the same rows"
+}
