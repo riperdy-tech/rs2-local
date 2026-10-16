@@ -464,10 +464,16 @@ _BRIDGE_NORM_PROPS = {
     "flags": {"type": "array", "items": {"type": "string", "enum": ["cyclical", "structural_growth", "structural_decline", "turnaround"]},
               "description": "Any of cyclical, structural_growth, structural_decline, turnaround; an empty list for none."},
     "cycle_position": {"type": "string", "enum": ["trough", "mid", "peak", "not_cyclical"], "description": "For a cyclical business."},
+    "growth_trajectory": {"type": "string", "enum": ["accelerating", "steady", "decelerating", "shrinking"],
+                          "description": "The Base's revenue growth path over years 1-5 (checked by K1 and K4)."},
+    "margin_persistence": {"type": "string", "enum": ["structural", "partly_structural", "transient"],
+                           "description": "Whether today's margin's departure from the record persists (checked by K3 against long_run_margin)."},
     "cycle_evidence": {"type": "string", "description": "A dated, industry-specific indicator, when flags include cyclical."},
 }
 _BRIDGE_REASON_PROPS = {f"bridge_C{c}_reason": {"type": "string", "description": f"Only when the desk asks for it: why check C{c} disagrees, "
                                                                                   f"with dated evidence."} for c in ("1", "1b", "2", "3", "4", "5")}
+_BRIDGE_REASON_PROPS.update({f"class_K{k}_reason": {"type": "string", "description": f"Only when the desk asks for it: why classification check K{k} "
+                                                                                      f"disagrees with the label, with dated evidence."} for k in ("1", "2", "3", "4")})
 
 
 _DESK25_EXPLICIT_GROWTH = ("Only for a scenario the normalization bridge does not apply to (a finite cash_flow_life, the firm frame, or a pack without a "

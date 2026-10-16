@@ -28,7 +28,10 @@ REVISION_24_2D = ("terminal_value_share", "terminal_reinvestment_rate")
 # checks of the three scenarios by role, the schema, and the two S12 figures that are derived, not typed: near_term_earnings = E_1 and
 # normalized_earnings = N_0, both $B on the X basis, from the Base's bridge. Filled (and listed as unfilled) only for a pack whose facts carry
 # desk_schema 25.1; every other arm's fill is as it was.
-REVISION_25 = ("bridge", "bridge_checks", "desk_schema", "near_term_earnings", "normalized_earnings")
+# Stage 0.5 (SPEC v1.2): the Base's class_checks (K1-K4) and the three classification labels, which the desk call owns under 25.1 (the *_evidence
+# fields stay typed in the contract)
+CLASS_LABELS_25 = ("growth_trajectory", "cycle_position", "margin_persistence")
+REVISION_25 = ("bridge", "bridge_checks", "desk_schema", "near_term_earnings", "normalized_earnings", "class_checks") + CLASS_LABELS_25
 DESK_SCHEMA_25 = "25.1"
 
 FILLED = (
@@ -206,6 +209,7 @@ def _fill_bridge(out, prov, src, typed):
     out["bridge_checks"] = {role: (((src[role][1].get("dcf") or {}).get("bridge") or {}).get("checks")) for role in ROLES if role in src}
     bridge = ((src["base"][1].get("dcf") or {}).get("bridge")) if "base" in src else None
     out["bridge"] = bridge
+    out["class_checks"] = bridge.get("class_checks") if isinstance(bridge, dict) else None
     if not (isinstance(bridge, dict) and bridge.get("applied")):
         prov["stamps"].append("s12_figures_typed_bridge_not_applied")
         return
@@ -213,6 +217,13 @@ def _fill_bridge(out, prov, src, typed):
     # the Stage 0.3 audit: near_term_earnings stays a number (E_1, the type every reader of the field expects); E_2 is in the bridge table
     derived = {"near_term_earnings": _f(E[1]) if isinstance(E, list) and len(E) > 1 else None, "normalized_earnings": _f(n0)}
     out.update(derived)
+    decl = bridge.get("declared") or {}
+    for k in CLASS_LABELS_25:          # Stage 0.5: the labels come from the Base's desk declarations; a differing typed value is ignored and stamped
+        v = decl.get(k)
+        out[k] = v.strip().lower() if isinstance(v, str) else None
+        t = (typed or {}).get(k)
+        if t is not None and (str(t).strip().lower() != out[k]) and "classification_from_desk_under_25_1" not in prov["stamps"]:
+            prov["stamps"].append("classification_from_desk_under_25_1")
     for k, v in derived.items():
         t = (typed or {}).get(k)
         if t is None or v is None:
@@ -467,8 +478,8 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
         out["plausibility_gate"] = (plausibility_gate(src["base"][1]["dcf"] if "base" in src else None, facts.get("population_ranges"),
                                                       typed.get("input_rationale"), pack_text, calls, company, ticker,
                                                       growth_anchor=facts.get("terminal_g_anchor"),
-                                                      classifications={k: typed.get(k) for k in ("margin_persistence", "cycle_position",
-                                                                                                 "growth_trajectory")})
+                                                      classifications={k: (out[k] if k in out else typed.get(k)) for k in (
+                                                          "margin_persistence", "cycle_position", "growth_trajectory")})
                                     if facts.get("long_run_defaults_withheld") is True else None)
     filled = {}
     for k in (FILLED_25 if desk25 else FILLED):

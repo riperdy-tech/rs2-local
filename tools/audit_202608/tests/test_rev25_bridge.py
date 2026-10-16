@@ -228,7 +228,7 @@ PATH = [0.30, 0.31, 0.32, 0.33, 0.34] + [0.34 - 0.01 * i for i in range(1, 6)]  
 
 
 def test_the_tolerances_are_one_dict_and_marked_frozen():
-    assert set(bc.BRIDGE_TOLERANCES) == {"tau_m_y1_5", "tau_m_y6_10", "tau_m_y11_plus", "tau_R_T5", "tau_R_TH", "tau_b"}
+    assert set(bc.BRIDGE_TOLERANCES) == {"tau_m_y1_5", "tau_m_y6_10", "tau_m_y11_plus", "tau_R_T5", "tau_R_TH", "tau_b", "tau_g"}
     assert bc.BRIDGE_TOLERANCES["tau_m_y1_5"] == 0.03 and bc.BRIDGE_TOLERANCES["tau_R_T5"] == 0.10 and bc.BRIDGE_TOLERANCES["tau_b"] == 0.01
     src = (HERE.parent / "bridge_checks.py").read_text(encoding="utf-8")
     block = src[src.index("BRIDGE_TOLERANCES: Dict"):src.index("KNOWN_FLAGS")]
@@ -611,4 +611,5 @@ def test_the_25_1_task_says_a_late_horizon_needs_the_fade_to_end_at_it():
 
 def test_the_tolerances_are_the_frozen_stage_0_4_values():
     """Registered 2026-10-16 (PHASE_4_AMENDMENTS, Stage 0.4 step 5). A change here is a new registration, never an edit."""
-    assert bc.BRIDGE_TOLERANCES == {"tau_m_y1_5": 0.03, "tau_m_y6_10": 0.03, "tau_m_y11_plus": 0.03, "tau_R_T5": 0.10, "tau_R_TH": 0.10, "tau_b": 0.01}
+    assert bc.BRIDGE_TOLERANCES == {"tau_m_y1_5": 0.03, "tau_m_y6_10": 0.03, "tau_m_y11_plus": 0.03, "tau_R_T5": 0.10, "tau_R_TH": 0.10, "tau_b": 0.01,
+                                   "tau_g": 0.02}

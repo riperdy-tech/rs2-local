@@ -27,11 +27,16 @@ BRIDGE_TOLERANCES: Dict[str, float] = {
     "tau_R_T5": 0.10,        # relative revenue gap at T = 5 (C3): about 2 points of annual growth over five years
     "tau_R_TH": 0.10,        # relative revenue gap at T = H, 1 <= H <= 4, cyclical revenue (C3)
     "tau_b": 0.01,           # margin points, the basis test (C5)
+    "tau_g": 0.02,           # growth-rate change, the K1 steady band: a registered prior, frozen with spec v1.2 (no pilot fitting)
 }
 
 EPS = 1e-12                # the float allowance on every tolerance comparison (a tie passes)
 KNOWN_FLAGS = ("cyclical", "structural_growth", "structural_decline", "turnaround")
 CHECK_IDS = ("C1", "C1b", "C2", "C3", "C4", "C5")
+CLASS_CHECK_IDS = ("K1", "K2", "K3", "K4")
+GROWTH_TRAJECTORIES = ("accelerating", "steady", "decelerating", "shrinking")
+CYCLE_POSITIONS = ("peak", "mid", "trough", "not_cyclical")
+MARGIN_PERSISTENCES = ("structural", "partly_structural", "transient")
 
 
 def _num(x: Any) -> bool:
@@ -211,3 +216,97 @@ def run_checks(*, margins_1_5, long_run_margin, fade_years, m_N, H, m_0, revenue
             check_c2(cycle_position, m_N, m_0), check_c3(revenue, R_N0, g_S, H),
             check_c4(flags, g_S, g_rev, m_N, m_0, H, cycle_evidence),
             check_c5(declared_margins, operating_facts or {}, x_facts or {})]
+
+
+# ---- Stage 0.5 classification checks K1-K4 (spec v1.2). Pure; they read labels and numbers and never change a label. K2 and K3 reuse tau_m_y1_5.
+def _lab(v: Any) -> Optional[str]:
+    return v.strip().lower() if isinstance(v, str) else None
+
+
+def check_k1(growth_trajectory: Any, revenue: Sequence[float]) -> Dict[str, Any]:
+    """K1: growth_trajectory against delta = mean(g4, g5) - mean(g1, g2), g_t = R_t / R_(t-1) - 1; accelerating: delta > tau_g; decelerating:
+    delta < -tau_g; steady: |delta| <= tau_g; shrinking: the 5-year revenue CAGR < 0. `revenue` is R_0..R_5."""
+    declared = {"growth_trajectory": growth_trajectory}
+    lab = _lab(growth_trajectory)
+    if lab is None or lab not in GROWTH_TRAJECTORIES:
+        return _nc("K1", declared, "no valid growth_trajectory was declared in the desk call")
+    if not (len(revenue) == 6 and all(_num(x) for x in revenue) and all(x > 0 for x in revenue)):
+        return _nc("K1", declared, "the revenue path R_0..R_5 is not positive numbers")
+    tol = BRIDGE_TOLERANCES["tau_g"]
+    g = [revenue[t] / revenue[t - 1] - 1.0 for t in range(1, 6)]
+    delta = (g[3] + g[4]) / 2.0 - (g[0] + g[1]) / 2.0
+    cagr = (revenue[5] / revenue[0]) ** 0.2 - 1.0
+    if lab == "shrinking":
+        return _res("K1", "pass" if cagr < 0 else "fail", lab, cagr, 5, None, f"shrinking: the 5-year revenue CAGR {cagr:.4f} must be below 0")
+    if lab == "accelerating":
+        ok = delta > tol + EPS
+    elif lab == "decelerating":
+        ok = delta < -tol - EPS
+    else:
+        ok = abs(delta) <= tol + EPS
+    return _res("K1", "pass" if ok else "fail", lab, delta, 5, tol, f"growth change {delta:+.4f} (mean g4,g5 less mean g1,g2); 5-year CAGR {cagr:.4f}")
+
+
+def check_k2(cycle_position: Any, m_0: Any, m_tc: Any) -> Dict[str, Any]:
+    """K2: cycle_position against d = m_0 - m_tc (today's margin less the record's through-cycle margin); peak: d >= tau_m; trough: d <= -tau_m;
+    mid: |d| <= tau_m; not_cyclical: no rule. Margins only."""
+    declared = {"cycle_position": cycle_position}
+    lab = _lab(cycle_position)
+    if lab is None or lab not in CYCLE_POSITIONS:
+        return _nc("K2", declared, "no valid cycle_position was declared in the desk call")
+    if lab == "not_cyclical":
+        return _nc("K2", declared, "cycle_position not_cyclical: the check has no rule")
+    if not (_num(m_0) and _num(m_tc)):
+        return _nc("K2", declared, "today's margin or the record's through-cycle margin (m_tc) is not in the facts")
+    tol, d = BRIDGE_TOLERANCES["tau_m_y1_5"], m_0 - m_tc
+    ok = d >= tol - EPS if lab == "peak" else (d <= -tol + EPS if lab == "trough" else abs(d) <= tol + EPS)
+    return _res("K2", "pass" if ok else "fail", lab, d, 0, tol, f"m_0 {m_0:.4f} less m_tc {m_tc:.4f} = {d:+.4f}")
+
+
+def check_k3(margin_persistence: Any, long_run_margin: Any, m_0: Any, m_tc: Any) -> Dict[str, Any]:
+    """K3: margin_persistence against L = long_run_margin relative to m_0 and m_tc. |m_0 - m_tc| <= tau_m: not distinguishable, a pass. structural:
+    |L - m_0| <= |L - m_tc| + tau_m; transient: |L - m_tc| <= |L - m_0| + tau_m; partly_structural: L between m_tc and m_0, tau_m allowed at each end."""
+    declared = {"margin_persistence": margin_persistence}
+    lab = _lab(margin_persistence)
+    if lab is None or lab not in MARGIN_PERSISTENCES:
+        return _nc("K3", declared, "no valid margin_persistence was declared in the desk call")
+    if not (_num(long_run_margin) and _num(m_0) and _num(m_tc)):
+        return _nc("K3", declared, "long_run_margin, today's margin or the record's through-cycle margin (m_tc) is not a number")
+    tol, L = BRIDGE_TOLERANCES["tau_m_y1_5"], long_run_margin
+    if abs(m_0 - m_tc) <= tol + EPS:
+        return _res("K3", "pass", lab, L, 0, tol, "not distinguishable: today's margin is within tolerance of the record's through-cycle margin")
+    if lab == "structural":
+        ok = abs(L - m_0) <= abs(L - m_tc) + tol + EPS
+    elif lab == "transient":
+        ok = abs(L - m_tc) <= abs(L - m_0) + tol + EPS
+    else:
+        ok = min(m_0, m_tc) - tol - EPS <= L <= max(m_0, m_tc) + tol + EPS
+    return _res("K3", "pass" if ok else "fail", lab, L, 0, tol, f"L {L:.4f}, m_0 {m_0:.4f}, m_tc {m_tc:.4f}")
+
+
+def check_k4(growth_trajectory: Any, terminal_g: Any, g_S: Any) -> Dict[str, Any]:
+    """K4: growth_trajectory shrinking => terminal_g <= 0 and structural_growth < 0; each breach is reported separately."""
+    declared = {"growth_trajectory": growth_trajectory, "terminal_g": terminal_g, "structural_growth": g_S}
+    lab = _lab(growth_trajectory)
+    if lab is None or lab not in GROWTH_TRAJECTORIES:
+        return _nc("K4", declared, "no valid growth_trajectory was declared in the desk call")
+    if lab != "shrinking":
+        return _nc("K4", declared, "growth_trajectory is not shrinking: the check has no rule")
+    breaches, unknown = [], []
+    if not _num(terminal_g):
+        unknown.append("terminal_g is not a number")
+    elif not terminal_g <= 0:
+        breaches.append(f"shrinking needs terminal_g at or below 0, got {terminal_g:.4f}")
+    if not _num(g_S):
+        unknown.append("structural_growth is not a number")
+    elif not g_S < 0:
+        breaches.append(f"shrinking needs structural_growth below 0, got {g_S:.4f}")
+    status = "fail" if breaches else ("not_computable" if unknown else "pass")
+    return _res("K4", status, declared, {"breaches": breaches, "not_computable": unknown}, 0, None, "; ".join(breaches or unknown) or None)
+
+
+def run_class_checks(*, growth_trajectory=None, cycle_position=None, margin_persistence=None, revenue, long_run_margin, m_0, m_tc,
+                     terminal_g=None, g_S=None) -> List[Dict[str, Any]]:
+    """K1-K4 for the Base, in that order. A sibling of run_checks (the class checks read the Base only). Reads its arguments only."""
+    return [check_k1(growth_trajectory, revenue), check_k2(cycle_position, m_0, m_tc),
+            check_k3(margin_persistence, long_run_margin, m_0, m_tc), check_k4(growth_trajectory, terminal_g, g_S)]

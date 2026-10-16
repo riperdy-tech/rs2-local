@@ -1794,9 +1794,13 @@ REFUSAL_GENERIC_CLAUSE = " Call again with the same inputs and these reasons, or
 # revision 25 (Stage 0.3, desk schema 25.1): the bridge's declared inputs (the follow-up rule below compares them like any input)
 BRIDGE_PATH_FIELDS = ("revenue_growth", "earnings_margin")
 BRIDGE_NORMALIZATION_FIELDS = ("normalized_margin", "normalization_horizon", "normalized_revenue_base", "structural_growth", "flags",
-                               "cycle_position", "cycle_evidence")      # Bull and Bear inherit these from the Base unless they give their own
-BRIDGE_OPTIONAL_FIELDS = ("normalized_revenue_base", "cycle_position", "cycle_evidence")
+                               "cycle_position", "cycle_evidence", "growth_trajectory", "margin_persistence")      # Bull and Bear inherit these from the Base unless they give their own
+BRIDGE_OPTIONAL_FIELDS = ("normalized_revenue_base", "cycle_position", "cycle_evidence", "growth_trajectory", "margin_persistence")
 BRIDGE_REASONS = tuple(f"bridge_{cid}_reason" for cid in bridge_checks.CHECK_IDS)
+# revision 25 Stage 0.5 (SPEC v1.2): the three classification labels are declared in the desk call (the single owner); K1-K4 check them on the Base
+CLASS_LABEL_ENUMS = {"growth_trajectory": bridge_checks.GROWTH_TRAJECTORIES, "cycle_position": bridge_checks.CYCLE_POSITIONS,
+                     "margin_persistence": bridge_checks.MARGIN_PERSISTENCES}
+CLASS_REASONS = tuple(f"class_{cid}_reason" for cid in bridge_checks.CLASS_CHECK_IDS)
 
 
 # Revision 21 (brief_rev21.md S2): the crux follow-up's desk call repeats the answer run's inputs unchanged and adds the crux. The inputs are the
@@ -1991,6 +1995,10 @@ def _bridge_problems(vals, label, fade_years):
     fl = vals.get("flags")
     if not (isinstance(fl, (list, tuple)) and all(isinstance(f, str) and f.strip().lower() in bridge_checks.KNOWN_FLAGS for f in fl)):
         out.append(f"flags for {label} (a list, empty for none, of {', '.join(bridge_checks.KNOWN_FLAGS)})")
+    for k, enum in CLASS_LABEL_ENUMS.items():          # optional, but a label that is given must be one of its values
+        v = vals.get(k)
+        if v is not None and not (isinstance(v, str) and v.strip().lower() in enum):
+            out.append(f"{k} for {label} (one of {', '.join(enum)}, or omit it)")
     return out
 
 
@@ -2014,7 +2022,7 @@ def _bridge_build(vals, inherited, cf, lr, wc_intensity, long_run_margin):
     return arith, growth, decl
 
 
-def _bridge_finish(dcf, decl, lr, fade_years):
+def _bridge_finish(dcf, decl, lr, fade_years, is_base=False, terminal_g=None):
     """Add the declarations, N_0 and N_H and the check results to a bridge scenario's `dcf["bridge"]` (read-only on every input)."""
     b = dcf["bridge"]
     R0, R = b["revenue"][0], b["revenue"]
@@ -2030,6 +2038,11 @@ def _bridge_finish(dcf, decl, lr, fade_years):
         revenue=R, R_N0=R_N0, g_S=g_S, flags=decl["flags"], g_rev=lrf.get("g_rev"), cycle_position=decl.get("cycle_position"),
         cycle_evidence=decl.get("cycle_evidence"),
         operating_facts={k: lrf.get(k) for k in ("om_tc", "om_L", "om_trend")}, x_facts={k: lrf.get(k) for k in ("m_tc", "x_L", "m5")})
+    if is_base:         # Stage 0.5 (SPEC v1.2): K1-K4 check the Base's own labels; they never change one
+        b["class_checks"] = bridge_checks.run_class_checks(
+            growth_trajectory=decl.get("growth_trajectory"), cycle_position=decl.get("cycle_position"),
+            margin_persistence=decl.get("margin_persistence"), revenue=R, long_run_margin=decl.get("long_run_margin"), m_0=lrf.get("x_L"),
+            m_tc=lrf.get("m_tc"), terminal_g=terminal_g, g_S=g_S)
 
 
 def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -2526,7 +2539,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         if dcf_res is None:
             continue
         if bridge_decl is not None:
-            _bridge_finish(dcf_res, bridge_decl, long_run_ctx, s_fade)
+            _bridge_finish(dcf_res, bridge_decl, long_run_ctx, s_fade, is_base=_role_of(sc_name) == "base", terminal_g=s_term_g)
         elif desk25 and bridge_plan.get(id(sc)):
             # SPEC section 4: revision 24's path for a scenario the bridge does not apply to, stamped and reported
             _why = f"bridge_not_applied:{bridge_plan[id(sc)]}"
@@ -2712,6 +2725,19 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 _need(reasons_needed, _rname, _given, True,
                       f"{e['name']}'s check {ck['id']} failed" + (f": {ck['note']}" if ck.get("note") else "")
                       + " (the declarations disagree; explain why, with dated evidence, or change a declaration)")
+
+        # revision 25 Stage 0.5 (SPEC v1.2): a failed classification check draws class_K<n>_reason, the same way; the label is never changed
+        for e in checked:
+            for ck in ((e["dcf"].get("bridge") or {}).get("class_checks") or []):
+                if ck.get("status") != "fail":
+                    continue
+                _rname = f"class_{ck['id']}_reason"
+                _given = _reason_given(params.get(_rname))
+                if _given:
+                    ck["reason_given"] = True
+                _need(reasons_needed, _rname, _given, True,
+                      f"{e['name']}'s classification check {ck['id']} failed" + (f": {ck['note']}" if ck.get("note") else "")
+                      + " (the label disagrees with the numbers; explain why, with dated evidence, or change the label)")
 
         # R10 (Base value vs the fiscal-year reference). Revision 17: the Base's years 1-2 are held at
         # the levels by the desk (above), so only the value check remains, against the fiscal-year
@@ -2976,6 +3002,12 @@ def _bridge_markdown(name, br):
     for c in br.get("checks") or []:
         status = c["status"] + (" (reason given)" if c.get("reason_given") else "")
         out.append(f"| {c['id']} | {status} | {c.get('declared')} | {c.get('derived')} | {c.get('horizon')} | {c.get('tolerance')} |")
+    if br.get("class_checks"):
+        out += ["", f"**{name}: classification checks (the labels are the desk call's; a check never changes one):**",
+                "| Check | Status | Declared | Derived | Tolerance | Note |", "|---|---|---|---|---|---|"]
+        for c in br["class_checks"]:
+            status = c["status"] + (" (reason given)" if c.get("reason_given") else "")
+            out.append(f"| {c['id']} | {status} | {c.get('declared')} | {c.get('derived')} | {c.get('tolerance')} | {c.get('note') or ''} |")
     out.append("")
     return out
 
