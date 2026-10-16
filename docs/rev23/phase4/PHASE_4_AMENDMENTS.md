@@ -7384,3 +7384,70 @@ known failures plus the timing flake, no new failure)
   5. no rule changes after results.
 
   A passing pilot justifies a larger validation stage, not real money.
+
+### Revision 24 step 2d: built and audited (2026-10-16 12:20; `a8468d3`, `0f0a89e`, `226522d`, `2b799bd`)
+- **The suite:** 3,248 passed and the same 42 known failures, compared name by name with a `9df7c1c` checkout (the timing flake did not
+  fire). Pilot tooling: 32 tests pass (26 plus 6).
+- **The RONIC floor is gone in every path.** `long_run_returns` is the one resolver for the desk and the reference:
+  - the terminal return is used as stated when above 0 and refused at or below 0;
+  - the start return is the record's R_tc when above 0, else the terminal return, stamped.
+- **The coordinator's grep:** no `max(r, ·)` on a return remains in code; one stale docstring is in `throughcycle_record.py`. The
+  price-implied RONIC search now runs from terminal_g, where the terminal value is 0. The reference's record formula `ronic_t = r + p ×
+  max(0, R_tc − r)` stays: it is the logged benchmark's default, at or above r by construction.
+- **Independent recomputation** (the coordinator's own code, importing nothing), e5 1, r 9%, g 3%, fade 5:
+
+  | g5 | 0.5r | 0.75r | r | 1.5r | unlimited |
+  |---|---|---|---|---|---|
+  | 3% | 3.719052 | 6.198420 | 7.438104 | 8.677788 | 11.157155 |
+  | 10% | 3.026536 | 6.237182 | 7.842505 | 9.447829 | 12.658475 |
+
+  At g = 0 the value is 7.221460 for every RONIC, and the terminal-value ratio of 0.5r to r is 0.5. Every figure matches the builder's to 6
+  decimals.
+- **The effect:**
+  - of the 20 saved references, 19 are unchanged; KSS goes from $41.43 to $41.17;
+  - Kohl's at RONIC = r_tc is $39.62, against $43.13 at both returns under the old floor;
+  - LITE and LIND with an analyst return of 0.5r: $494.39 → $394.47 and $14.72 → $11.05.
+- **Working capital normalized at the base:** `revenue_t = consensus revenue_t × (oe_t / base_cf) / (ow_t / oe_base)`. The tests assert
+  amounts and signs:
+  - a base 40% below consensus on consensus growth gives the exact consensus schedule;
+  - faster growth deducts more;
+  - slower growth releases, stamped;
+  - Bull and Bear each follow their own path.
+
+  On AMD at a 40% lower base, step 2c's spurious year-1 release of 0.54 becomes the consensus deduction of 2.16.
+- **Diagnostics:** `terminal_value_share`, `terminal_reinvestment_rate` and `terminal_reinvestment_above_earnings` reach the verdict row.
+  None gates; the year-10 earnings ratio is tested never to reject.
+- **Census tests:**
+  - **Kohl's** (trend −3.2%): `terminal_g` 2.4% without a citation is `not_usable`; with a quote it passes annotated; at 0 or below it passes.
+    The quote used would grade "related", not "causal": code checks existence, the blind review checks relevance;
+  - **Heritage: no code check catches a peak base projected forever** for a financial with no cohort. At the consensus levels it is $112.46
+    (terminal value 61% of the value) and the gate passes. **Recorded as a gap covered only by the blind review;** no rule was invented.
+- **The builder's open points, ruled:**
+  1. The 34 baseline packs of 10-05/06 stand in for the AT10c-era set (AT10c's packs are gone): accepted.
+  2. **Levels names:** the consensus base for working capital is the year-1 level, the DEFAULTS run's own base. An analyst starting from the
+     filed base with a year-1 jump to the level is read as faster growth and deducts more. Accepted: the TASK tells the analyst to take the
+     cash-flow base from the DEFAULTS, so the DEFAULTS convention governs. The pilot report flags any levels name whose analyst base differs.
+  3. The new unprinted `oe_base` member: accepted. Packs built before 2d deduct no own-path working capital; the pilot's packs are fresh.
+  4. **The rev22 control's text changes** on names with r_tc between 0 and r (the DEFAULTS start clause and the reference clause): accepted as
+     a correction, like D2–D4. The control is byte-identical to revision 22 except where the corrected arithmetic is described.
+  5. The terminal-value share on enterprise value: accepted.
+  6. The Kohl's fixtures use today's data: accepted for a desk test.
+  7. The measures definitions: accepted, and recorded in measures.py's header.
+- **The hold is lifted for stage P** (research, discovery and the frozen packs) at `2b799bd`. Stage P judges nothing about the analyst.
+  Stage R, the 22 analyst runs, follows once stage P's output is checked.
+
+### Revision 24 pilot: stage P and stage R done; the blind scores hashed before unmasking (2026-10-16 18:18)
+- **Stage P** (13:02–14:24) passed on all six names: enrich, frozen quote, forced research, discovery and three arm packs. The coordinator
+  checked the packs:
+  - rev22 is revision 22 with the reference printed; iii is revision 24 with POPULATION RANGES and no reference;
+  - every pack has consensus status ok, 3–6 PRIMARY items, the research brief and the catalyst brief;
+  - UGI's and LAMR's iii packs are byte-identical, as registered.
+- **Stage R:** the 22 runs ran 14:26–18:12, 7–17 minutes each, on one server (pid 27912, 21,811 MiB). The pins held throughout, and the
+  run task was registered as `RS2-Pilot-R24-StageR`.
+- **The blind read:**
+  - `mask.py` masked 16 iii memos;
+  - the coordinator added `blind_traj.py`, which reads the key itself and writes each memo's desk trajectory with no per-share value,
+    price, ratio or label;
+  - the scores are in `scratch/rev23/pilot_r24/masked/SCORES_c_d.md`, **sha256 6158b7e5f67e34470d94cd5ecd5325eb6a3467516a1947ccec32e380e9f3a867**, written before `key.json` was opened.
+- **Deviation 2:** `mask.py` missed "Strong Buy", scenario MoS columns, momentum percentages and direction phrases in about half the memos.
+  Recorded in the scores file before unmasking.

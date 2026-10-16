@@ -129,3 +129,9 @@ I1 and I3–I7 are not rebuilt for a failure-finding pilot. This is recorded as 
   calls mature or steady.
 - **(d):** the gate's annotation-only checks (the long-run margin against the five-year margin range; the terminal RONIC against the
   five-year ROIC range) are reported with their citation relevance, like the rejections.
+
+**Deviation 1, 2026-10-16 14:55 (recorded, not an amendment): partial unblinding of labels.**
+- The runner's own log, `logs/stage_r.log`, prints each run's direction label. While checking that stage R was running, the coordinator saw
+  the labels of two iii runs: UGI `iii_p50` (hold) and MPWR `iii_p50` (overvalued). No value, price ratio or memo text was seen.
+- From then on, the coordinator's monitor strips the labels.
+- The (c) scores of those two memos are flagged as read with the label known.
