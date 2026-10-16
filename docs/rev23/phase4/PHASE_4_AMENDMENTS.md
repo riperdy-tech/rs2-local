@@ -7179,7 +7179,7 @@ known failures plus the timing flake, no new failure)
   19. Accepted (the parity script stays in workspace scratch).
 - **Step 2c** (a fresh builder; brief `BRIEF_R24_S2c_ranges_fix.md`) builds rulings 1, 2, 5, 6, 7, 8, 10, 12 and 18. The pilot waits for it.
 
-### Revision 24: the pilot runner, built and audited; cross-check 19 sent (2026-10-16 10:25)
+### Revision 24: the pilot runner, built and audited; cross-check 19 sent (2026-10-16 10:15)
 - **Cross-check 19** (`rev23/CROSS_CHECK_19_rev24_ranges_gate_pilot.md`, mirrored to rs2-local `docs/rev23-records` `e524968`; the code branch
   `review-2026-10/rev24-muse` pushed at `e8b8a9b` after a secret scan). The operator asked for it **before any GPU run**: no pilot stage starts
   until the replies are ruled on.
@@ -7204,3 +7204,94 @@ known failures plus the timing flake, no new failure)
   - **Added to step 2c:**
     - `pack_revision` is stamped from a frozen pack's own header (a revision-22 control was recorded as 24);
     - TASK item 3d names exactly the sources the gate accepts.
+
+### Cross-check 19: replies and the coordinator's rulings (2026-10-16 10:35)
+- **Received:** ChatGPT's combined verdict, which reviews Gemini's reply (Gemini's own text was not pasted here). The verdict was "proceed
+  conditionally". The coordinator rules on each point.
+- **Time-stamp correction:** the entry above ("the pilot runner, built and audited") was first stamped 10:25; it was written about 10:15 and is now stamped so.
+
+1. **The RONIC floor is a valuation defect. Confirmed by a deterministic test; blocking.**
+   - `consensus_reference.long_run_value` (shared by the desk and the reference) values `max(r, RONIC)` for both the record's start return
+     and the terminal return. Step 1's ruling 5 kept the floor and only stamped it. That was wrong: a stamp says the arithmetic was adjusted,
+     it does not make the adjustment sound.
+   - **The test:** e5 1.0, r 9%, terminal g 3%, fade 5, at g5 3% and 10%. A terminal RONIC of 4.5% and one of 6.75% give the same value as
+     9% (7.4381 and 7.8425). The correct terminal value at 4.5% is half that at 9%, since `1 − g/RONIC` = 0.333 against 0.667. Growth at
+     below-hurdle returns is priced as value-neutral.
+   - This is also how Kohl's reached the reference "naturally" (step 2b point 11).
+   - **Ruling:**
+     - **the terminal RONIC is valued as stated** whenever it is above 0. One below r is annotated `terminal_ronic_below_rate`, not changed.
+       A terminal RONIC at or below 0 is refused by the desk by name: growth cannot be paid for at a non-positive return, and the call must
+       name a positive one;
+     - **the start return** (the record's r_tc) is used as measured when above 0, annotated `ronic_start_below_rate` when below r. When it is
+       missing or at or below 0, the fade starts at the analyst's terminal RONIC, stamped `ronic_start_from_terminal`;
+     - the reinvestment charge may then exceed earnings (RONIC below g), giving negative long-run flows. That is the economics and stays.
+       The existing floor of the whole long-run value at 0 is kept and already stamped (`floor`);
+     - the reference benchmark and the `rev22` control change with it: it is a correction, like D2–D4;
+     - **the tests:** value strictly increasing in the terminal RONIC across 0.5r, 0.75r, r, 1.5r and unlimited, at g > 0; equal for every
+       RONIC at g = 0; refused at RONIC ≤ 0.
+   - Built in step 2d.
+2. **The margin range's horizon.** The range measures the margin **five years out**; `long_run_margin` is the margin at the end of the fade.
+   - **Accepted:** the range is labelled "five years out" everywhere. **The gate no longer rejects `long_run_margin` on it.** Outside its
+     P5–P95 is annotated only. The TASK's citation level (outside P10–P90, a sourced causal explanation) still applies, computed by code.
+   - **Rejected (Gemini's shortcut):** compounding the year-5 retention to year 10 while keeping the year-5 spread. It is an assumption, not a
+     measurement.
+   - A longer-horizon table, at 7 years where the n and attrition allow, is a later priors build. It is recorded as open.
+   - Sent to the step-2c builder.
+3. **Units: accepted.**
+   - The paired non-operating gap, `Δ = median_t[m_t − (1 − tax_t) × OM_t]`, so `m_q = (1 − t) × OM_q + Δ`. This replaces ruling 2's two
+     independent medians.
+   - The earnings-margin quantiles go on the main line, labelled "a translated estimate, margin five years out". The operating statistics go
+     on a supporting line.
+   - The limitation (a gap measured on history can go stale after a change in leverage or mix) is printed with it.
+   - Sent to 2c.
+4. **Shrinking businesses: accepted.** When the code-measured revenue trend is negative (the terminal table's own definition), **or** the
+   analyst classifies the trajectory as shrinking, any positive `terminal_g` is an outlier needing an outlier-level citation. It is supported
+   with one, rejected without. It is not forbidden. Sent to 2c.
+5. **Citations: the gap is accepted as real, and not closable by code now.**
+   - A verbatim quote proves the quote exists, not that it supports the economics. The gate checks existence and attachment to the specific
+     input.
+   - **Relevance is judged by the coordinator in measure (d)** for every outlier citation in the pilot, under the registered rubric (below).
+   - **For production,** an entailment check is an open item before any expansion that relies on the gate alone.
+6. **The trajectory metrics.**
+   - **Year-10 earnings ÷ base earnings** is a diagnostic only, never a rejection: it has no cohort, and the base can be negative, near zero or
+     at a peak. When the base is not positive it is not computed, as built.
+   - **Added as diagnostics, never gates:**
+     - the terminal value's share of the value;
+     - the implied terminal reinvestment rate, `g ÷ RONIC`.
+
+     The desk computes reinvestment as `g ÷ RONIC` by construction, so a separate consistency gate would check an identity.
+   - Built in step 2d.
+7. **The control arm: kept.** Each comparison is described precisely:
+   - `rev22` against `iii` measures the whole revised package (no long-run defaults, ranges, TASK, gate), not the ranges alone;
+   - `iii_p50` against `iii_no_p50` measures P50;
+   - no comparison with the historical revision-22 runs is called causal.
+8. **Run allocation: accepted, superseding amendment 1's use of the slots** (registration amendment 3).
+   - The prompt hashes are verified, not assumed: stage R already refuses unless stage P built identical iii packs for UGI and LAMR.
+   - Their redundant `iii_no_p50` slots move to `iii_no_p50` at seed 2402 for **MPWR and CMRE**. All four names with ranges then have an
+     `iii_no_p50` repeat.
+   - UGI and LAMR keep `rev22` and `iii_p50`, so the no-range fallback is exercised. 22 runs.
+9. **Not covered by the pilot, stated:** the shrinking-retailer (Kohl's) and peak-insurer (Heritage) failure modes. Step 2d adds desk tests
+   on their saved facts: Kohl's with a positive `terminal_g` and no citation is rejected; Heritage's peak base is annotated by the gate.
+10. **The rubric and "systematic copying" are defined before any run** (registration amendment 4).
+11. **The population-table gaps.** The coordinator's claim that survivor tilt "makes the gate stricter, not looser" was too confident. It is
+    withdrawn.
+    - Survivor-only long-horizon cells can sit too high and under-represent poor outcomes. Low outcomes then look implausible while high ones
+      pass. The direction depends on the cohort and the metric.
+    - **Ruling:** the gaps do not block this diagnostic pilot. They do block any claim that the gate is validated.
+    - The pilot report names each rejection that falls at a known weak boundary, with the cohort and the direction of the possible bias. The
+      commodity cohort (almost no delisted firms) is flagged.
+12. **Schema compliance on a 30B model: accepted as a measure.** Reported per arm, with denominators:
+    - malformed or refused desk calls;
+    - missing Section 12 fields;
+    - invalid classifications;
+    - citations lost or unresolved;
+    - crux-form failures.
+
+    An improvement in plausibility does not count if compliance gets materially worse. Added to measures.py in step 2d.
+- **The order:**
+  1. step 2c, with rulings 2–4;
+  2. step 2d: the RONIC floor, the diagnostics, the Kohl's and Heritage desk tests, the measures;
+  3. the coordinator's audit;
+  4. the tree at the audited head;
+  5. stage P;
+  6. stage R.

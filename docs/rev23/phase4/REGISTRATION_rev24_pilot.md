@@ -82,3 +82,43 @@ therefore:
   in every memo read under (c).
 
 I1 and I3–I7 are not rebuilt for a failure-finding pilot. This is recorded as a reduction of (d) from the registration's text.
+
+**Amendment 3, 2026-10-16 10:35 (cross-check 19, ruling 8; supersedes amendment 1's use of the slots).**
+- UGI and LAMR run `rev22` and `iii_p50` only (seed base 2401); stage R still refuses unless stage P built identical iii packs for them and
+  printed no range.
+- Their two freed slots run `iii_no_p50` at seed base 2402 for **MPWR** and **CMRE**.
+- **Repeats:** MU and AMD in both iii arms; MPWR and CMRE in `iii_no_p50`. 22 runs. (b) covers the four names with ranges.
+
+**Amendment 4, 2026-10-16 10:35 (cross-check 19, ruling 10): the rubrics, fixed before any run.**
+- **(c) Cash-flow plausibility,** per masked iii memo:
+  - **coherent:** the years 1–10 trajectory (earnings, margin, growth, reinvestment) follows from the stated near-term earnings, normalized
+    earnings and transition; each classification matches its cited evidence; no input contradicts the filings or the research brief.
+  - **questionable,** one of:
+    - an unexplained break in the margin or growth path;
+    - a classification whose evidence pointer is generic or does not address it;
+    - a long-run input whose rationale is not tied to the company's own facts.
+  - **incoherent,** any of:
+    - the trajectory contradicts the filings or the research brief on a material point (for example margin persistence "transient" with a
+      long-run margin at or above the current peak, or a "shrinking" trajectory with growth above the cohort median);
+    - an impossible quantity (a margin above 100%, negative revenue);
+    - near-term or normalized earnings that contradict filed figures without an explanation;
+    - two or more "questionable" findings.
+- **(d) Outlier-citation relevance,** each citation supporting an input outside P10–P90 or a gate outlier:
+  - **causal:** the quote states a mechanism, a contract or a filed figure that bears directly on the input's level;
+  - **related:** it is about the company and the topic, but not the level;
+  - **generic:** boilerplate or unrelated.
+
+  Only "causal" counts as support in the report. A gate pass resting on a related or generic citation is reported as a gate failure of
+  relevance.
+- **(a) Systematic copying** in an iii arm, across the names with ranges. Any one of these is systematic copying:
+  - **P50 copying** (`iii_p50`): more than half of the chosen inputs that have a printed P50 lie within 0.5 percentile points of P50;
+  - **boundary copying:** more than half of the chosen inputs lie within 0.5 points of the same printed quantile;
+  - **constancy:** for any one input, the chosen percentile spans less than 5 points across all the names.
+- **Blinding:** the (c) and (d) scores are written to one file, and its sha256 is recorded in `PHASE_4_AMENDMENTS.md` before the key is opened.
+- **Compliance, per arm with denominators** (cross-check 19, ruling 12):
+  - malformed or refused desk calls;
+  - missing Section 12 fields;
+  - invalid classifications;
+  - citations lost or unresolved;
+  - crux-form failures.
+- **Not covered, stated:** the shrinking-retailer and peak-insurer failure modes. They are tested at the desk (step 2d), not in the pilot.
