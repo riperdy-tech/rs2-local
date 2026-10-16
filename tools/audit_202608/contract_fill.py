@@ -282,6 +282,15 @@ def _fill_bridge(out, prov, src, typed):
     bridge = ((src["base"][1].get("dcf") or {}).get("bridge")) if "base" in src else None
     out["bridge"] = bridge
     out["class_checks"] = bridge.get("class_checks") if isinstance(bridge, dict) else None
+    # Stage 0.5: the labels come from the Base's desk declarations, bridged or not (the audit: an unbridged Base records them too); a differing
+    # typed value is ignored and stamped
+    decl = (bridge.get("declared") if isinstance(bridge, dict) else None) or {}
+    for k in CLASS_LABELS_25:
+        v = decl.get(k)
+        out[k] = v.strip().lower() if isinstance(v, str) else None
+        t = (typed or {}).get(k)
+        if t is not None and (str(t).strip().lower() != out[k]) and "classification_from_desk_under_25_1" not in prov["stamps"]:
+            prov["stamps"].append("classification_from_desk_under_25_1")
     if not (isinstance(bridge, dict) and bridge.get("applied")):
         prov["stamps"].append("s12_figures_typed_bridge_not_applied")
         return
@@ -289,13 +298,6 @@ def _fill_bridge(out, prov, src, typed):
     # the Stage 0.3 audit: near_term_earnings stays a number (E_1, the type every reader of the field expects); E_2 is in the bridge table
     derived = {"near_term_earnings": _f(E[1]) if isinstance(E, list) and len(E) > 1 else None, "normalized_earnings": _f(n0)}
     out.update(derived)
-    decl = bridge.get("declared") or {}
-    for k in CLASS_LABELS_25:          # Stage 0.5: the labels come from the Base's desk declarations; a differing typed value is ignored and stamped
-        v = decl.get(k)
-        out[k] = v.strip().lower() if isinstance(v, str) else None
-        t = (typed or {}).get(k)
-        if t is not None and (str(t).strip().lower() != out[k]) and "classification_from_desk_under_25_1" not in prov["stamps"]:
-            prov["stamps"].append("classification_from_desk_under_25_1")
     for k, v in derived.items():
         t = (typed or {}).get(k)
         if t is None or v is None:

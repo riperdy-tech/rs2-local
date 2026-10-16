@@ -381,7 +381,8 @@ def test_a_scenario_where_the_bridge_does_not_apply_keeps_revision_24s_path_and_
         res = _run(_call(scs), ctx)
         assert "error" not in res, (why, res.get("error"))
         d = _dcf(res, "base")
-        assert f"bridge_not_applied:{why}" in d["stamps"] and d["bridge"] == {"applied": False, "reason": why}
+        assert f"bridge_not_applied:{why}" in d["stamps"] and {k: d["bridge"][k] for k in ("applied", "reason")} == {"applied": False, "reason": why}
+        assert set(d["bridge"].get("declared") or {}) <= {"growth_trajectory", "cycle_position", "margin_persistence"}   # the audit: labels recorded
         assert f"bridge_not_applied:{why}" in res["desk_stamps"]
     # the firm frame: not applied, revision 24's path (which needs net_debt and interest_addback in its own way; the stamp is what is tested here)
     plan = fmt._bridge_not_applied_reason(LR, "firm", "perpetual"), fmt._bridge_not_applied_reason(LR, "equity", 10)
@@ -615,3 +616,20 @@ def test_the_tolerances_are_the_frozen_stage_0_4_values():
     """Registered 2026-10-16 (PHASE_4_AMENDMENTS, Stage 0.4 step 5). A change here is a new registration, never an edit."""
     assert bc.BRIDGE_TOLERANCES == {"tau_m_y1_5": 0.03, "tau_m_y6_10": 0.03, "tau_m_y11_plus": 0.03, "tau_R_T5": 0.10, "tau_R_TH": 0.10, "tau_b": 0.01,
                                    "tau_g": 0.02}
+
+
+
+def test_an_unbridged_base_still_records_its_labels_for_the_fill():
+    """The Stage 0.5-0.8 audit: the 25.1 contract no longer carries the three labels, so an unbridged Base records them from the desk call."""
+    facts = {"desk_schema": "25.1", "coe_anchor": R_, "shares_outstanding": 1.0, "long_run_defaults_withheld": True}
+    bridge = {"applied": False, "reason": "firm_frame", "declared": {"growth_trajectory": "Steady", "cycle_position": "mid",
+                                                                     "margin_persistence": "structural"}}
+    out, prov = {}, {"stamps": []}
+    src = {"base": ({}, {"dcf": {"bridge": bridge}})}
+    cf._fill_bridge(out, prov, src, {"growth_trajectory": "accelerating"})
+    assert out["growth_trajectory"] == "steady" and out["cycle_position"] == "mid" and out["margin_persistence"] == "structural"
+    assert "classification_from_desk_under_25_1" in prov["stamps"] and "s12_figures_typed_bridge_not_applied" in prov["stamps"]
+
+
+def test_the_25_1_task_tells_bull_and_bear_to_declare_their_own_normalization_when_their_margin_differs():
+    assert "gives its own normalized_margin and normalization_horizon" in cap.TASK_REV25

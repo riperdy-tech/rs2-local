@@ -2548,6 +2548,11 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             _why = f"bridge_not_applied:{bridge_plan[id(sc)]}"
             dcf_res.setdefault("stamps", []).append(_why)
             dcf_res["bridge"] = {"applied": False, "reason": bridge_plan[id(sc)]}
+            if _role_of(sc_name) == "base":
+                # the Stage 0.5-0.8 audit: the desk call still owns the three labels when the bridge does not apply (the 25.1 contract no longer
+                # carries them), so the Base's labels are recorded for the fill; no K check runs on revision 24's path
+                dcf_res["bridge"]["declared"] = {k: (sc.get(k) if sc.get(k) is not None else params.get(k))
+                                                 for k in ("growth_trajectory", "cycle_position", "margin_persistence")}
             if _why not in result.setdefault("desk_stamps", []):
                 result["desk_stamps"].append(_why)
         if _role_of(sc_name) == "base":
