@@ -122,3 +122,10 @@ I1 and I3–I7 are not rebuilt for a failure-finding pilot. This is recorded as 
   - citations lost or unresolved;
   - crux-form failures.
 - **Not covered, stated:** the shrinking-retailer and peak-insurer failure modes. They are tested at the desk (step 2d), not in the pilot.
+
+**Amendment 5, 2026-10-16 12:05 (cross-check 19 follow-up).**
+- **(c) rubric:** a perpetual trajectory whose terminal reinvestment exceeds earnings (terminal_g above 0 and above terminal RONIC,
+  annotated `terminal_reinvestment_above_earnings`) is **questionable** unless the memo explains it, and **incoherent** for a business the memo
+  calls mature or steady.
+- **(d):** the gate's annotation-only checks (the long-run margin against the five-year margin range; the terminal RONIC against the
+  five-year ROIC range) are reported with their citation relevance, like the rejections.

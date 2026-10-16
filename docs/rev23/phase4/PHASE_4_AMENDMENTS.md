@@ -7295,3 +7295,92 @@ known failures plus the timing flake, no new failure)
   4. the tree at the audited head;
   5. stage P;
   6. stage R.
+
+### Revision 24 step 2c: built and audited (2026-10-16 10:45; `3384d83`, `e6c527d`, `c5f10fe`, `9df7c1c`)
+- **The suite:** 3,218 passed, and the 42 known failures plus the timing flake (each failing file re-run: the identical 42). 41 new tests.
+- **Parity** with `priors.py` (`scratch/rev23/r24_s2c/PARITY_REPORT.md`): 0 mismatches in 47 cases.
+  - The margin target's P5–P95 was compared in 36 cases and refused for the identical reason in 4 more.
+  - The ROIC level was compared in 34 cases and refused identically in 6.
+- **The ranges are now usable** (earnings-margin P10 / P50 / P90, five years out):
+
+  | Name | P10 | P50 | P90 |
+  |---|---|---|---|
+  | MPWR | 8.6% | 22.6% | 29.7% |
+  | MU | 25.9% | 51.3% | 66.2% |
+  | AMD | 3.2% | 13.3% | 19.4% |
+  | CMRE | 12.7% | 35.0% | 48.0% |
+  | KSS | −11.2% | 1.9% | 8.5% |
+  | LIND | −32.3% | −4.3% | 6.2% |
+
+  UGI, LAMR, LITE (pre-profit) and HRTG (financial) print "no measured population for this family".
+- **The coordinator read** the diffs of `fiduciary_gate.py`, `crux_check.py` (`evidence_failure`, now the one acceptance rule for the crux
+  and the gate), `financial_model_tool.py` (the rev22 control desk, working capital's dict form, `implied_trajectory`), `consensus_valuation.py`
+  (`pack_revision_stamp`), and `population_ranges.py`'s `paired_gap` and `translation_tax`.
+- **One defect found, fixed in step 2d.**
+  - **Working capital on the "own path".** It scales each year's consensus revenue by the scenario's owner earnings over the consensus owner
+    earnings, starting from the filed base revenue. So an analyst base below the consensus base reads as a revenue fall in year 1, and
+    working capital is released into the cash flow.
+  - That is exactly the case of a cyclical at peak normalized down: MU or CMRE at a 40% lower base would book a spurious release of about
+    0.17 × the revenue drop.
+  - **Fix:** normalize at the base: `revenue_t = consensus revenue_t × (oe_t / oe_0) / (ow_t / ow_0)`, with oe_0 the scenario's base and ow_0
+    the consensus base. Only growth that differs from consensus moves revenue.
+  - Any year whose deduction is negative (a release) is stamped `working_capital_release`, so it is visible.
+  - **The remaining limit, recorded:** years 1–5 are an earnings-only model. Revenue is implied at the year-5 margin, so margin compression
+    expressed through the growth path still reads as falling revenue.
+- **Rulings on the builder's points:**
+  1. **ROIC centre:** accepted. It is the stand-in from the table's own build (the population median trailing 3-year ROIC of the latest
+     complete fiscal year), stamped `roic_reference_population_median_not_industry`; the industry median of the date is not held by rs2.
+  2. Accepted (the filed operating-margin basis for Δ).
+  3. **Tax:**
+     - the ranges line prints t, while DATA says "Effective tax rate: WITHHELD" (because a pre-tax figure can be domestic-only). In step 2d
+       the ranges line labels t "the translation's rate, from the years whose net income + tax equals pre-tax income; an estimate, see DATA's
+       tax note";
+     - CMRE (likely about 0% tax, no tax data) gets 21%, which compresses its earnings spread by about 21%. Recorded for the pilot report;
+       the margin gate only annotates, so nothing is rejected on it.
+  4. **The working-capital convention:** accepted, with the base normalization above.
+  5. Accepted (own-path working capital in the control too).
+  6. Accepted (replays of packs built before 2c deduct no working capital; the pilot's packs are built fresh).
+  7. Accepted (the clean `412578d` tool schema for the rev22 arm; the builder caught its own contamination).
+  8–14. Accepted.
+- **Step 2d** (`BRIEF_R24_S2d_ronic_diagnostics.md`, extended with the working-capital fix and the tax label) goes to a fresh builder now.
+
+### Cross-check 19 follow-up (ChatGPT, after the step-2c report): the coordinator's rulings (2026-10-16 12:05)
+- **Resolved, in the reviewer's own reading:** the RONIC direction, the margin horizon and translation, the shrinking safeguard, and
+  diagnostics kept separate from gates.
+- **The reviewer's qualification is accepted:** the 47-case parity proves the range construction matches the rebuild. It does not prove
+  the ranges are economically calibrated or free of survivorship bias.
+1. **Terminal RONIC against the five-year ROIC range: annotation only.**
+   - The range is ROIC five years out, not the return on new investment in perpetuity, so it is not a rejection boundary.
+   - Outside its P5–P95: `implausible_supported_terminal_ronic` with a resolving citation, `terminal_ronic_outside_roic5_range_unsupported`
+     without.
+   - The TASK's citation level (code-computed P10–P90) still applies.
+   - **The gate's rejections are now:**
+     - `terminal_g` at or above the discount rate;
+     - `terminal_g` above the growth anchor, or above 0 for a shrinking business, without a resolving citation;
+     - the 10-year revenue CAGR outside its P5–P95 without one.
+
+     The margin and RONIC are annotated. The TASK is reworded to say this; a test holds them in agreement.
+2. **The RONIC fix in every path:**
+   - `long_run_value` (desk and reference), the price-implied block, `reverse_dcf_expectations_gap` and any other `max(r, ·)` on a RONIC;
+   - each site is listed;
+   - tests at 0.5r, r, 1.5r and unlimited, with continuity at r.
+3. **Reinvestment above earnings** (terminal_g above 0 and above terminal RONIC): annotated `terminal_reinvestment_above_earnings`, with the
+   rate. A diagnostic, never a gate; the blind rubric reads it (registration amendment 5).
+4. **Working-capital tests assert amounts and signs:**
+   - normalization at the base releases nothing;
+   - a faster path deducts more;
+   - Bull and Bear each follow their own path;
+   - a slower path releases, stamped.
+5. **Kohl's and Heritage tests assert behaviour.**
+   - **Kohl's:** an uncited positive `terminal_g` is not usable, a cited one passes annotated, and `terminal_g` ≤ 0 needs no citation. It is
+     shown not to depend on landing on the reference.
+   - **Heritage:** the builder states plainly which code check, if any, catches a peak base projected forever for a financial with no cohort.
+     If none, that is recorded as a gap covered only by the blind review, not patched with a new rule.
+- **The order is unchanged:**
+  1. step 2d built;
+  2. the coordinator's audit of **the whole corrected path**, with these invariants;
+  3. stage P;
+  4. stage R;
+  5. no rule changes after results.
+
+  A passing pilot justifies a larger validation stage, not real money.
