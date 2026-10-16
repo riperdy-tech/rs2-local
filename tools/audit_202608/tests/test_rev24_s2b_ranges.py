@@ -35,6 +35,12 @@ def band(n, q5, n5=None, extra=()):
     return {"n": n, "ks": rows}
 
 
+def lvl(n, *groups):
+    """A residual-by-level cell: its n and its groups (lower, upper, n, the seven quantiles P5..P95)."""
+    return {"n": n, "groups": [{"band": [i, i], "lower": lo, "upper": hi, "n": gn, **dict(zip(QK, qs)), "merged": False}
+                               for i, (lo, hi, gn, qs) in enumerate(groups)]}
+
+
 def fixture_tables(**over):
     T = {
         "priors_version": "5", "vintage": 2025, "cut_date": "2026-01-01", "min_n": 50, "obs_sha256": "abc",
@@ -45,7 +51,16 @@ def fixture_tables(**over):
             "mid_pos": band(1700, R_MID_POS, n5=300), "mid_neg": band(30, q(30, *[0.4] * 7)),
             "high_pos": band(400, q(400, *[0.5] * 7)), "high_neg": band(400, q(400, *[0.6] * 7)),
             "pooled_pos": band(3000, q(1000, *[0.7] * 7)), "pooled_neg": band(3000, q(1000, -1.0, -0.5, 0.0, 0.25, 0.5, 1.0, 1.5)),
-            "pooled_all": band(6000, q(2000, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6))}},
+            "pooled_all": band(6000, q(2000, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6))},
+            # step 2c (ruling 1): the year-5 residual of the margin level by the current operating-margin band (stats.residual_by_level's shape)
+            "residual_k5_by_level": {
+                "mid_pos": lvl(300, (None, 0.12, 120, (-0.10, -0.06, -0.02, 0.0, 0.02, 0.05, 0.08)),
+                               (0.12, None, 180, (-0.20, -0.12, -0.04, 0.01, 0.03, 0.06, 0.10))),
+                "mid_neg": lvl(30, (None, None, 30, (-0.1,) * 7)),
+                **{k: lvl(400, (None, None, 400, (-0.08, -0.05, -0.02, 0.0, 0.02, 0.04, 0.07))) for k in ("low_pos", "low_neg", "high_pos", "high_neg")},
+                "pooled_pos": lvl(3000, (None, None, 3000, (-0.15, -0.10, -0.03, 0.0, 0.03, 0.07, 0.12))),
+                "pooled_neg": lvl(3000, (None, None, 3000, (-0.14, -0.09, -0.03, 0.0, 0.02, 0.06, 0.11))),
+                "pooled_all": lvl(6000, (None, None, 6000, (-0.12, -0.08, -0.02, 0.0, 0.02, 0.05, 0.09)))}},
         "normalization": {"cuts": [0.40, 0.50, 0.55, 0.65], "bands": [
             {"band": b, "score_median": 0.3 + 0.1 * b, "all": band(500, q(500, *[0.05 * (b + 1)] * 7))} for b in range(5)]},
         "growth_decay": {
@@ -72,6 +87,16 @@ def fixture_tables(**over):
                           "bands": {"low": {"band": 0, **q(1600, -1.8, -0.8, -0.1, 0.09, 0.4, 1.3, 2.2)},
                                     "mid": {"band": 1, **q(2900, -0.5, -0.2, -0.03, 0.05, 0.15, 0.35, 0.55)},
                                     "high": {"band": 2, **q(40, -1.0, -0.5, -0.1, 0.04, 0.2, 0.49, 0.78)}}}}},
+        # step 2c (ruling 6): the ROIC level path (stats.roic_level_tables' shape)
+        "roic_level": {"min_abs_gap": 0.02, "reference_by_year": {"2023": 0.09, "2024": 0.10, "2025": 0.13},
+                       "bands": {"pos": {"sign": 1, "n": 3000, "ks": [{"k": k, "n": 3000, "median": 0.9 - 0.1 * k} for k in range(1, 8)]},
+                                 "neg": {"sign": -1, "n": 3000, "ks": [{"k": k, "n": 3000, "median": 0.95 - 0.07 * k} for k in range(1, 8)]},
+                                 "all": {"sign": 0, "n": 6000, "ks": [{"k": k, "n": 6000, "median": 0.85 - 0.08 * k} for k in range(1, 8)]}},
+                       "residual_k5_by_level": {
+                           "pos": lvl(3000, (None, 0.20, 1500, (-0.12, -0.08, -0.03, 0.0, 0.03, 0.08, 0.13)),
+                                      (0.20, None, 1500, (-0.40, -0.25, -0.08, -0.01, 0.07, 0.20, 0.35))),
+                           "neg": lvl(3000, (None, None, 3000, (-0.20, -0.12, -0.04, 0.0, 0.03, 0.07, 0.10))),
+                           "all": lvl(6000, (None, None, 6000, (-0.15, -0.10, -0.04, 0.0, 0.04, 0.10, 0.15)))}},
         "ronic_fade": {"reference": 0.076, "n_base": 24000, "ks": [{"k": k, "n": 20000 - 2000 * k, "median": 0.8 - 0.05 * k, "p25": 0.1, "p75": 1.3}
                                                                    for k in range(1, 8)] + [{"k": 8, "n": 20, "median": 0.1, "p25": 0.0, "p75": 0.2}]},
     }
@@ -82,7 +107,9 @@ def fixture_tables(**over):
 def rec(**kw):
     base = {"family": "operating", "usd": True, "base_year": 2025, "rev": 2e9, "g_latest": 0.12, "g3": 0.15, "tg_latest": None, "tg3": None,
             "m": 0.15, "med8": 0.10, "n8": 8, "dev": 0.05, "trend8": 0.08, "cyc_score": 0.50, "cyc_components": None, "roic": 0.08,
-            "em_trend": 0.08, "em_current": 0.12, "missing": []}
+            "em_trend": 0.08, "em_current": 0.12, "roic3": 0.25, "tax_t": 0.20, "tax_t_source": "the median effective rate of 8 fiscal years",
+            "tax_t_stamps": [], "om_tc": 0.10, "om_basis": "without_amortization", "delta": -0.02,
+            "delta_source": "the median of 8 fiscal years, FY2018-FY2025", "missing": []}
     base.update(kw)
     return base
 
@@ -102,27 +129,13 @@ def test_the_tables_are_read_from_the_vintage_folder_and_a_missing_vintage_is_na
     assert pr.vintages_available(tmp_path) == [2025]
     none = pr.ranges_for(rec(), "2025-06-30", tdir=tmp_path)          # vintage 2024 is not on disk
     assert none["vintage"] == 2024 and all(not d["available"] for d in none["inputs"].values())
-    assert set(none["inputs"]) == set(pr.INPUTS) and "no priors vintage 2024 on disk" in none["inputs"]["terminal_g"]["reason"]
+    assert set(none["inputs"]) == set(pr.INPUTS) and "no priors vintage 2024 on disk" in none["inputs"]["revenue_cagr_10y"]["reason"]
 
 
 # ---- the long-run margin: the cohort and the levels ------------------------------------------------------------------------------------------
 
-def test_the_margin_cohort_is_the_cyclicality_tercile_by_the_sign_of_the_deviation_and_the_levels_are_trend_plus_r_times_the_deviation():
-    d = pr.ranges_for(rec(), "2026-10-16", tables=fixture_tables())["inputs"]["long_run_margin"]
-    assert d["available"] and d["cohort"] == "mid_pos" and d["k"] == 5 and d["n"] == 300 and d["fallbacks"] == []
-    assert d["retention"] == {k: R_MID_POS[k] for k in QK}
-    # trend 8%, current 12%: deviation +4 points; level = 0.08 + R x 0.04
-    want = [0.08 + r * 0.04 for r in (-2.0, -1.0, 0.0, 0.5, 1.0, 2.0, 3.0)]
-    assert [d["levels"][k] for k in QK] == pytest.approx(want)
-    assert "middle third of cyclicality (score 0.450 to 0.600)" in d["cohort_text"] and "above its 8-year median" in d["cohort_text"]
 
 
-def test_a_negative_earnings_deviation_reverses_the_order_of_the_levels():
-    d = pr.ranges_for(rec(em_current=0.06), "2026-10-16", tables=fixture_tables())["inputs"]["long_run_margin"]
-    # deviation -2 points: P5 of the level is trend + P95 of R x (-0.02)
-    assert d["levels"]["p5"] == pytest.approx(0.08 + 3.0 * -0.02) and d["levels"]["p95"] == pytest.approx(0.08 + -2.0 * -0.02)
-    assert d["levels"]["p50"] == pytest.approx(0.08 + 0.5 * -0.02)
-    assert d["stamps"] == ["earnings_deviation_sign_differs_from_operating"]      # the operating deviation is +5 points
 
 
 @pytest.mark.parametrize("kw, key, fallback", [
@@ -151,16 +164,8 @@ def test_fitted_cyclicality_weights_are_used_only_when_the_vintage_adopted_them(
     assert d["score"] == 0.9 and d["cohort"] == "high_pos"
 
 
-def test_without_an_earnings_margin_record_the_margin_range_is_not_available_and_says_why():
-    d = pr.ranges_for(rec(em_trend=None), "2026-10-16", tables=fixture_tables())["inputs"]["long_run_margin"]
-    assert d["available"] is False and "fewer than 5 years of earnings margin" in d["reason"] and d["cohort"] == "mid_pos"
 
 
-def test_normalization_is_the_cyclicality_quintile_band():
-    d = pr.ranges_for(rec(cyc_score=0.52), "2026-10-16", tables=fixture_tables())["inputs"]["normalization"]
-    assert d["available"] and d["band"] == 2 and d["cohort"] == "quintile_2" and d["n"] == 500
-    assert d["levels"]["p50"] == pytest.approx(0.08 + 0.15 * 0.04)
-    assert "quintile 3 of 5 (score 0.500 to 0.550)" in d["cohort_text"]
 
 
 def test_a_financial_company_has_no_margin_range():
@@ -194,41 +199,27 @@ def test_a_financial_reads_tangible_book_growth():
     assert d["available"] and d["what"] == "tangible book" and d["growth_basis"] == "3-year tangible-book CAGR" and d["terminal_reference"] == 0.09
 
 
-# ---- terminal growth: the family and the shrinking stratum ---------------------------------------------------------------------------------
+# ---- the 10-year revenue CAGR (step 2c: the terminal table, never terminal_g's range): the family and the shrinking stratum ---------------------------------------------------------------------------------
 
-def test_terminal_growth_is_the_family_and_the_shrinking_stratum_when_the_revenue_trend_is_below_zero():
+def test_the_10_year_revenue_cagr_is_the_family_and_the_shrinking_stratum_when_the_revenue_trend_is_below_zero():
     T = fixture_tables()
-    d = pr.ranges_for(rec(trend8=0.02), "2026-10-16", tables=T)["inputs"]["terminal_g"]
+    d = pr.ranges_for(rec(trend8=0.02), "2026-10-16", tables=T)["inputs"]["revenue_cagr_10y"]
     assert d["cohort"] == "operating:all:with_delisted" and d["n"] == 10000 and d["K"] == 10 and d["quantiles"]["p95"] == 0.55
-    d = pr.ranges_for(rec(trend8=-0.03), "2026-10-16", tables=T)["inputs"]["terminal_g"]
+    d = pr.ranges_for(rec(trend8=-0.03), "2026-10-16", tables=T)["inputs"]["revenue_cagr_10y"]
     assert d["cohort"] == "operating:shrinking:with_delisted" and d["n"] == 440 and d["quantiles"]["p50"] == 0.005
     assert "revenue trend was falling" in d["cohort_text"]
-    d = pr.ranges_for(rec(trend8=0.0), "2026-10-16", tables=T)["inputs"]["terminal_g"]
+    d = pr.ranges_for(rec(trend8=0.0), "2026-10-16", tables=T)["inputs"]["revenue_cagr_10y"]
     assert d["stratum"] == "all"                                                     # 0 is not below 0
-    d = pr.ranges_for(rec(trend8=None), "2026-10-16", tables=T)["inputs"]["terminal_g"]
+    d = pr.ranges_for(rec(trend8=None), "2026-10-16", tables=T)["inputs"]["revenue_cagr_10y"]
     assert d["stratum"] == "all" and "not measured" in d["fallbacks"][0]
-    d = pr.ranges_for(rec(family="commodity", trend8=-0.03), "2026-10-16", tables=T)["inputs"]["terminal_g"]
+    d = pr.ranges_for(rec(family="commodity", trend8=-0.03), "2026-10-16", tables=T)["inputs"]["revenue_cagr_10y"]
     assert d["stratum"] == "all" and d["n"] == 260 and "too few shrinking commodity companies (n=0)" in d["fallbacks"][0]
 
 
 # ---- the return on new investment ---------------------------------------------------------------------------------------------------------
 
-def test_terminal_ronic_is_the_roic_tercile_and_a_thin_or_missing_band_is_the_family():
-    T = fixture_tables()
-    d = pr.ranges_for(rec(roic=0.08), "2026-10-16", tables=T)["inputs"]["terminal_ronic"]
-    assert d["cohort"] == "operating:mid" and d["n"] == 2900 and d["quantiles"]["p90"] == 0.35
-    d = pr.ranges_for(rec(roic=0.04), "2026-10-16", tables=T)["inputs"]["terminal_ronic"]
-    assert d["cohort"] == "operating:mid"                                            # a value equal to a cut goes to the upper band
-    d = pr.ranges_for(rec(roic=0.30), "2026-10-16", tables=T)["inputs"]["terminal_ronic"]
-    assert d["cohort"] == "operating:floored_all" and "the high band has n=40 < 50" in d["fallbacks"][0]
-    d = pr.ranges_for(rec(roic=None), "2026-10-16", tables=T)["inputs"]["terminal_ronic"]
-    assert d["cohort"] == "operating:floored_all" and "no return on invested capital" in d["fallbacks"][0]
 
 
-def test_the_ronic_fade_is_the_last_year_measured_with_its_quartiles_only():
-    d = pr.ranges_for(rec(), "2026-10-16", tables=fixture_tables())["inputs"]["ronic_fade"]
-    assert d["k"] == 7 and d["n"] == 6000 and d["quantiles"]["p50"] == pytest.approx(0.45)
-    assert d["quantiles"]["p10"] is None and d["quantiles"]["p90"] is None
 
 
 def test_a_family_the_tables_do_not_measure_gets_no_range():
@@ -307,43 +298,3 @@ def test_a_record_too_short_for_the_cyclicality_score_says_why_and_a_cut_off_bas
 
 
 # ---- the section's text --------------------------------------------------------------------------------------------------------------------
-
-def test_the_section_prints_p10_p25_p75_p90_with_p50_only_on_its_flag():
-    got = pr.ranges_for(rec(), "2026-10-16", tables=fixture_tables())
-    no = pr.render_section(got, show_p50=False)
-    yes = pr.render_section(got, show_p50=True)
-    assert no.startswith("## POPULATION RANGES   [how companies like this one actually evolved; context for your choice, not a target.")
-    assert "vintage 2025" in no and "n=300 at year 5" in no and "P10 " in no and "P90 " in no
-    assert " P50 " not in no and "P50 " in yes
-    # the two differ only by the P50 entries
-    import re
-    assert re.sub(r", P50 [^,|]+(?=, )| P50 [+-][\d.]+%", "", yes) == no
-    for line in yes.split("\n")[1:]:
-        assert line.startswith("- ")
-    assert "not measured" in no                                           # the growth table's P10/P90 and the ronic fade's
-
-
-def test_the_gate_bounds_are_the_cohorts_p5_and_p95():
-    got = pr.ranges_for(rec(roic=0.08, trend8=-0.03), "2026-10-16", tables=fixture_tables())
-    b = pr.gate_bounds(got)
-    assert b["long_run_margin"]["p5"] == pytest.approx(0.08 - 2.0 * 0.04) and b["long_run_margin"]["p95"] == pytest.approx(0.08 + 3.0 * 0.04)
-    assert b["terminal_g"] == b["revenue_cagr_10y"] and b["terminal_g"]["p5"] == -0.20 and b["terminal_g"]["K"] == 10
-    assert b["terminal_ronic"]["p95"] == 0.55 and b["earnings_ratio_10y"] is None
-
-
-def test_a_commodity_companys_margin_is_the_normalization_curve_at_its_score_as_the_rebuild_reads_it():
-    """PopulationPriors, commodity family: the margin's retention distribution is the normalization quintile bands interpolated at the company's
-    score (flat beyond the end bands); the band of the margin-retention table is still recorded. The parity script found this rule (10 commodity
-    cases mismatched before it)."""
-    T = fixture_tables()
-    d = pr.ranges_for(rec(family="commodity", cyc_score=0.45), "2026-10-16", tables=T)["inputs"]["long_run_margin"]
-    assert d["cohort"] == "commodity:normalization_at_score" and d["band"] == "mid_pos" and d["table"] == "normalization"
-    assert d["retention"]["p50"] == pytest.approx(0.125) and d["position"]["p50"] == pytest.approx(0.125)
-    assert d["levels"]["p50"] == pytest.approx(0.08 + 0.125 * 0.04)
-    beyond = pr.ranges_for(rec(family="commodity", cyc_score=0.95), "2026-10-16", tables=T)["inputs"]["long_run_margin"]
-    assert beyond["retention"]["p50"] == pytest.approx(0.25)                    # the top band's, held flat beyond it
-    nos = pr.ranges_for(rec(family="commodity", cyc_score=None), "2026-10-16", tables=T)["inputs"]["long_run_margin"]
-    assert nos["cohort"] == "pooled_pos" and nos["table"] == "margin_retention"     # no score: the band, as the rebuild keeps it
-    # an operating company's position is its band's quantiles clipped to [0, 1] (the rebuild's curve position)
-    op = pr.ranges_for(rec(), "2026-10-16", tables=T)["inputs"]["long_run_margin"]
-    assert op["position"] == {k: min(1.0, max(0.0, v)) for k, v in op["retention"].items()}

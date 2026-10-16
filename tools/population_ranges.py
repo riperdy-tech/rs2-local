@@ -22,22 +22,26 @@ margin is quoted in (the record's 8-year median of earnings before acquired-inta
 come from tools/throughcycle_record.analyse, the record the pack already prints. The economic family (operating, commodity, financial, or
 family_not_built) comes from `family_for`, the rebuild's classification rules on the SIC code and the base year's balance sheet.
 
-THE COHORTS (`ranges_for`), each the rebuild's own rule:
-  * long-run earnings margin (`margin_retention`): the cyclicality tercile x the sign of the operating margin's deviation from its 8-year median
-    (|deviation| below 0.5 points, or no score: the stated pooled band; a band under MIN_N: its pooled sign band), PopulationPriors._operating's rule.
-    The row is the one PopulationPriors positions the curve at (year 5, or the last measured year before it): the largest year the table measures
-    the quantiles of the retained share R at. The levels are this company's earnings margins: trend + R x (current - trend) at each quantile of R,
-    trend the 8-year median earnings margin (m_tc) and current the base year's (x_L). R is measured on operating margins and applied here to the
-    earnings margin (stated in the definition).
-  * the same by cyclicality alone (`normalization`): the cyclicality quintile band (the table's own cuts), signs pooled.
+THE COHORTS (`ranges_for`), each the rebuild's own rule (step 2c, PHASE_4_AMENDMENTS.md "Revision 24 step 2b" rulings 1, 2, 5-7):
+  * the long-run margin (`margin_retention`): priors.py's margin_target, the operating margin LEVEL five years out. The cell is the cyclicality tercile x
+    the sign of the operating margin's deviation from its 8-year median (|deviation| below 0.5 points, or no score: the stated pooled band; a band under
+    MIN_N: its pooled sign band); the centre the median-retention path at year 5 (the 8-year median plus r_5 x the deviation, r_5 the band curve's
+    year-5 value; the commodity family's the normalization curve's at its score); the spread the measured year-5 residual of the cell's group holding
+    the company's CURRENT operating margin (`residual_k5_by_level`), merged up (sign-pooled, then fully pooled) and refused, named, under MIN_N
+    (Addenda H1, I1, I5). P5-P95 of the operating margin five years out; and in earnings-margin terms (the unit of long_run_margin) by the paired
+    translation of cross-check 19 (ruling A), earnings_q = (1 - t) x OM_q + Delta, Delta the median of the record's m_t - (1 - tax_t) x OM_t
+    (`paired_gap`), t the record's median effective tax rate (`translation_tax`; 21% stamped `tax_rate_statutory_fallback` outside [0, 0.5]).
+  * the margin by cyclicality alone (`normalization`): the cyclicality quintile band (the table's own cuts) and its year-5 median retention; context.
   * growth for years 3-10 (`growth_decay`): the family's table (the operating family's when the family's is unmeasured), the bucket of the growth
     delivered (3-year CAGR, else the latest year) on the table's growth edges. The table measures year-k growth at P25, P50 and P75 only, and the
     retained share of the year-1 growth gap over the long-run reference at P5-P95 for k <= 5.
-  * terminal growth (`terminal`): the family, and the shrinking stratum when the record's 8-year ln-revenue trend is below 0; the K-year revenue
-    CAGR with delisted companies at their last filed year (`with_delisted`).
-  * the return on new investment (`ronic`): the family x the base year's return on invested capital tercile (the table's own cuts); the 3-year
-    incremental return where invested capital grew at least 10%. `ronic_fade` (pooled): the retained share of a return's excess over the population
-    median, P25-P75 only.
+  * the 10-year revenue CAGR (`terminal`): the family, and the shrinking stratum when the record's 8-year ln-revenue trend is below 0; the K-year revenue
+    CAGR with delisted companies at their last filed year (`with_delisted`). Context for the growth path and the bound of the revenue growth to year
+    10; it is not terminal_g's range (terminal_g has none: the gate checks it against the pack's growth anchor).
+  * the return on new investment's context (`roic_level`): priors.py's `ronic`, the ROIC LEVEL five years out, I + phi_5 (L0 - I) plus the measured
+    year-5 residual of the group holding the company's trailing 3-year ROIC (L0); I is the table's own stand-in for the date's industry median
+    (`roic_reference`, stamped). The `ronic` (incremental) and `ronic_fade` tables are not read: priors.py reads neither.
+  * a family the tables do not measure (family_not_built; a financial company's margin and ROIC): "no measured population for this family" per input.
 
 0.0 is a value: every test is `is None`. Nothing is defaulted silently; an input the tables cannot serve is `available: False` with the reason, and
 every fallback to a pooled cell is listed.
@@ -67,8 +71,10 @@ DEBT_COMPONENTS = ("debt_lt_noncurrent", "debt_current", "short_term_borrowings_
 CYC_COMPONENTS = ("margin_volatility", "reversal_frequency", "autocorrelation", "revenue_cyclicality")
 FAMILIES = ("operating", "commodity", "financial")
 
-# the inputs the briefing prints, in its order
-INPUTS = ("long_run_margin", "normalization", "growth_years_3_10", "terminal_g", "terminal_ronic", "ronic_fade")
+# the inputs the briefing prints, in its order (step 2c: terminal_g has no population line, ruling 5; the `terminal` table is the 10-year revenue CAGR;
+# terminal_ronic's context is the ROIC level five years out, ruling 6; the `ronic` and `ronic_fade` tables are not printed: priors.py reads neither)
+INPUTS = ("long_run_margin", "normalization", "growth_years_3_10", "revenue_cagr_10y", "terminal_ronic")
+NO_POPULATION = "no measured population for this family"
 
 _TABLES: Dict[tuple, dict] = {}
 
@@ -184,12 +190,13 @@ def _tbv(row) -> Optional[float]:
 
 # ---- the company record --------------------------------------------------------------------------------------------------------------------
 
-def company_record(rows, base_year=None, *, family, usd=True, earnings_record=None, untagged=()) -> dict:
+def company_record(rows, base_year=None, *, family, usd=True, earnings_record=None, untagged=(), earnings_rows=None) -> dict:
     """The features the cohorts condition on, from fiscal-year rows ({year: row}, fundamentals_history's form; a year may be a digit string), at
     the base year (default: the newest year held). `family` is `family_for`'s. `usd` is False for a filer whose figures are not in US dollars (the
     size bucket is then unknown, as the rebuild's). `earnings_record` is tools/throughcycle_record.analyse's dict for the same base year (its m_tc and
     x_L are the earnings margins the long-run margin is quoted in); None computes it here on the same rows. Returns a dict; a figure that cannot be
-    computed is None, and `missing` names why."""
+    computed is None, and `missing` names why. `earnings_rows` (step 2c) are the rows the earnings record was measured on (the pack's consolidated view,
+    input_scope.record_view_for), for the paired non-operating gap; None reads `rows`."""
     rws = {int(y): r for y, r in (rows or {}).items() if str(y).isdigit() and isinstance(r, dict)}
     held = sorted(y for y in rws if base_year is None or y <= int(base_year))
     out: Dict[str, Any] = {"family": family, "usd": bool(usd), "base_year": None, "missing": []}
@@ -247,12 +254,113 @@ def company_record(rows, base_year=None, *, family, usd=True, earnings_record=No
     ic = None if (eq is None or debt is None or cash is None) else eq + debt - cash - (0.0 if sti is None else sti)
     nop = nopat_of(_num(row.get("operating_income")), tax)
     out["roic"] = (nop / ic) if (nop is not None and ic is not None and ic > 0) else None
-    # the earnings margins (X / revenue: the record's m_tc over its window, x_L of the base year)
+    # step 2c (ruling 6): the trailing 3-year ROIC level (common.build_state's roic3: the mean of NOPAT / invested capital over the three
+    # consecutive fiscal years ending at the base year, each defined; NOPAT at the same tax rate; a debt never tagged in any held year counts 0)
+    never = all(all(rws[p].get(k) is None for p in periods) for k in DEBT_COMPONENTS)
+    roic_y = {}
+    for p in periods:
+        r_ = rws[p]
+        d_ = total_debt(r_)
+        if d_ is None and never:
+            d_ = 0.0
+        eq_, cash_, sti_ = _num(r_.get("equity")), _num(r_.get("cash")), _num(r_.get("st_investments"))
+        ic_ = None if (eq_ is None or d_ is None or cash_ is None) else eq_ + d_ - cash_ - (0.0 if sti_ is None else sti_)
+        nop_ = nopat_of(_num(r_.get("operating_income")), tax)
+        if nop_ is not None and ic_ is not None and ic_ > 0:
+            roic_y[p] = nop_ / ic_
+    out["roic3"] = (sum(roic_y[base - k] for k in range(3)) / 3.0) if all((base - k) in roic_y for k in range(3)) else None
+    # the earnings margins (X / revenue: the record's m_tc over its window, x_L of the base year) and the record's operating-margin median
     rec = earnings_record if earnings_record is not None else tcr.analyse(rws, None, untagged_fields=untagged, base_year=base)
     out["em_trend"] = _num(rec.get("m_tc"))
     out["em_current"] = _num(rec.get("x_L"))
     out["em_years"] = list(rec.get("m_years") or [])
+    out["om_tc"], out["om_basis"] = _num(rec.get("om_tc")), rec.get("om_basis")
+    out.update(translation_tax(rws, base))
+    ers = {int(y): r for y, r in (earnings_rows or {}).items() if str(y).isdigit() and isinstance(r, dict)} if earnings_rows is not None else rws
+    out.update(paired_gap(ers, rws, base, untagged))
     return out
+
+
+TAX_FALLBACK = 0.21             # ruling 2: the statutory rate when the record's median effective rate is not within [0, 0.5]
+TAX_BOUNDS = (0.0, 0.5)
+TAX_IDENTITY_TOL = 0.05         # a year whose net income + tax differs from pre-tax income by more than 5% is not read (capability_test._pretax_note)
+
+
+def _years_phrase(years):
+    return f"1 fiscal year, FY{years[0]}" if len(years) == 1 else f"{len(years)} fiscal years, FY{years[0]}-FY{years[-1]}"
+
+
+def year_tax(row):
+    """(rate, None) or (21%, why): one fiscal year's effective tax rate, tax provision / pre-tax income, when pre-tax income is positive, the tax and
+    net income are filed, net income + tax equals pre-tax income within 5% and the rate is within [0, 0.5]; else the statutory 21% and the reason."""
+    pt, tx, ni = _num(row.get("pretax_income")), _num(row.get("tax_provision")), _num(row.get("net_income"))
+    if pt is None or tx is None or not pt > 0:
+        return TAX_FALLBACK, "no positive pre-tax income and tax figure"
+    if ni is None or abs((ni + tx) - pt) / abs(pt) > TAX_IDENTITY_TOL:
+        return TAX_FALLBACK, "net income + tax differs from pre-tax income by more than 5%"
+    r = tx / pt
+    if not (TAX_BOUNDS[0] <= r <= TAX_BOUNDS[1]):
+        return TAX_FALLBACK, f"the rate {r:.1%} is outside [0%, 50%]"
+    return r, None
+
+
+def paired_gap(earn_rows, op_rows, base, untagged=()) -> dict:
+    """{"delta", "delta_years", "delta_tax_fallback_years", "delta_source"}: the paired historical non-operating gap of the translation (cross-check 19,
+    ruling A, replacing step 2b ruling 2's two independent medians): the median, over the record's window (fiscal years base-7..base) with both
+    margins defined, of m_t - (1 - tax_t) x OM_t; m_t the earnings margin (earnings before acquired-intangible amortization over revenue,
+    throughcycle_record.adjusted_earnings, on the rows the earnings record was measured on), OM_t the operating margin on the population tables'
+    own basis (operating income over revenue as filed), tax_t the year's own effective rate (`year_tax`, 21% stamped per year). None with no such year."""
+    vals, years, fb = [], [], []
+    for y in range(int(base) - WINDOW + 1, int(base) + 1):
+        er, orow = earn_rows.get(y), op_rows.get(y)
+        if not isinstance(er, dict) or not isinstance(orow, dict):
+            continue
+        rev_e, rev_o, oi = _num(er.get("revenue")), _num(orow.get("revenue")), _num(orow.get("operating_income"))
+        x = tcr.adjusted_earnings(er, untagged)
+        if x is None or rev_e is None or not rev_e > 0 or oi is None or rev_o is None or not rev_o > 0:
+            continue
+        tx, why = year_tax(er)
+        if why is not None:
+            fb.append(y)
+        vals.append(x / rev_e - (1.0 - tx) * (oi / rev_o))
+        years.append(y)
+    if not vals:
+        return {"delta": None, "delta_years": [], "delta_tax_fallback_years": [],
+                "delta_source": f"no fiscal year of FY{int(base) - WINDOW + 1}-FY{int(base)} with both an earnings margin and an operating margin"}
+    note = (f"; 21% statutory in FY{', FY'.join(str(y) for y in fb)} (tax_rate_statutory_fallback)" if fb else "")
+    return {"delta": statistics.median(vals), "delta_years": years, "delta_tax_fallback_years": fb,
+            "delta_source": f"the median of {_years_phrase(years)}{note}"}
+
+
+def translation_tax(rws, base) -> dict:
+    """{"tax_t", "tax_t_source", "tax_t_years", "tax_t_stamps"}: the tax rate of the operating-to-earnings translation (ruling 2 of step 2b): the median
+    effective tax rate (tax provision / pre-tax income) of the record's window, the fiscal years base-7..base, over the years with positive pre-tax
+    income, a tax figure and a net income for which net income + tax equals pre-tax income within 5% (the pack's own screen of a domestic-only pre-tax
+    figure: a year that fails it is not read). Used when within [0, 0.5]; otherwise 21%, stamped `tax_rate_statutory_fallback`, with the reason."""
+    rates, years, failed = [], [], []
+    for y in range(int(base) - WINDOW + 1, int(base) + 1):
+        r = rws.get(y)
+        if not isinstance(r, dict):
+            continue
+        pt, tx, ni = _num(r.get("pretax_income")), _num(r.get("tax_provision")), _num(r.get("net_income"))
+        if pt is None or tx is None or not pt > 0:
+            continue
+        if ni is None or abs((ni + tx) - pt) / abs(pt) > TAX_IDENTITY_TOL:
+            failed.append(y)
+            continue
+        rates.append(tx / pt)
+        years.append(y)
+    note = f"; FY{', FY'.join(str(y) for y in failed)} not read (net income + tax differs from pre-tax income by more than 5%)" if failed else ""
+    if not rates:
+        return {"tax_t": TAX_FALLBACK, "tax_t_years": [], "tax_t_stamps": ["tax_rate_statutory_fallback"],
+                "tax_t_source": f"21% statutory: no fiscal year of FY{int(base) - WINDOW + 1}-FY{int(base)} with positive pre-tax income and a tax "
+                                f"figure that passes the identity{note}"}
+    med = statistics.median(rates)
+    if not (TAX_BOUNDS[0] <= med <= TAX_BOUNDS[1]):
+        return {"tax_t": TAX_FALLBACK, "tax_t_years": years, "tax_t_stamps": ["tax_rate_statutory_fallback"],
+                "tax_t_source": f"21% statutory: the median effective rate {med:.1%} of {len(years)} years is outside [0%, 50%]{note}"}
+    return {"tax_t": med, "tax_t_years": years, "tax_t_stamps": [],
+            "tax_t_source": f"the median effective rate of {_years_phrase(years)}{note}"}
 
 
 # ---- the family (the rebuild's classification rules) ----------------------------------------------------------------------------------------
@@ -348,13 +456,6 @@ def _quantiles(cell, keys=QKEYS) -> Dict[str, Optional[float]]:
     return {k: (_num(cell.get(k)) if isinstance(cell, dict) else None) for k in keys}
 
 
-def _sorted_levels(trend, current, rq):
-    """trend + R x (current - trend) at each quantile of R, as the quantiles of the level (a negative deviation reverses the order)."""
-    vals = [trend + rq[k] * (current - trend) for k in QKEYS]
-    vals.sort()
-    return dict(zip(QKEYS, vals))
-
-
 def _score(T, rec):
     """The cyclicality score on the vintage's weights: the equal-weight score unless the vintage adopted fitted weights (PopulationPriors)."""
     w = T.get("cyc_weights") or {}
@@ -373,34 +474,6 @@ def _interp(x, xs, ys):
     j = bisect.bisect_right(xs, x)
     x0, x1, y0, y1 = xs[j - 1], xs[j], ys[j - 1], ys[j]
     return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
-
-
-def _normalization_interpolated(T, score, min_n):
-    """(raw quantiles, the rebuild's position, the bands' rows used) of the margin's retention at `score`, interpolated between the normalization
-    quintile bands (PopulationPriors._normalization_position): the bands with a score median and n >= MIN_N, each at its year-5 row. The position is
-    the rebuild's own (each band's quantiles clipped to [0, 1], then interpolated); the raw quantiles are interpolated unclipped for the levels.
-    None without a score or a band."""
-    if score is None:
-        return None
-    pts = []
-    for b in T["normalization"]["bands"]:
-        if b.get("score_median") is None or b["all"]["n"] < min_n:
-            continue
-        row = _pos_row(b["all"]["ks"], "median", "n", min_n)
-        if row is None or not row.get("q"):
-            continue
-        q = _quantiles(row["q"])
-        if any(q[k] is None for k in ("p10", "p50", "p90")):
-            continue
-        pts.append((b["score_median"], q, {"k": row["k"], "n": int(row["q"].get("n") or row["n"]), "score_median": b["score_median"]}))
-    if not pts:
-        return None
-    xs = [p[0] for p in pts]
-    raw = {k: (_interp(score, xs, [p[1][k] for p in pts]) if all(p[1][k] is not None for p in pts) else None) for k in QKEYS}
-    pos = {k: (_interp(score, xs, [min(1.0, max(0.0, p[1][k])) for p in pts]) if all(p[1][k] is not None for p in pts) else None) for k in QKEYS}
-    lo = max([i for i, x in enumerate(xs) if x <= score] or [0])
-    hi = min([i for i, x in enumerate(xs) if x >= score] or [len(xs) - 1])
-    return raw, pos, [pts[lo][2]] + ([pts[hi][2]] if hi != lo else [])
 
 
 def _margin_retention(T, rec, min_n):
@@ -455,7 +528,9 @@ def ranges_for(company_record_: dict, T, tables=None, tdir=None) -> dict:
     rec = company_record_ or {}
     V = vintage_for(T)
     T_ = tables if tables is not None else load_tables(V, tdir)
-    out: Dict[str, Any] = {"vintage": V, "cut_date": None, "priors_version": None, "family": rec.get("family"), "min_n": None, "inputs": {}}
+    out: Dict[str, Any] = {"vintage": V, "cut_date": None, "priors_version": None, "family": rec.get("family"), "min_n": None, "inputs": {},
+                           # cross-check 19, ruling C: the record's 8-year ln-revenue OLS slope (the terminal table's shrinking test), for the gate
+                           "revenue_trend8": rec.get("trend8")}
     if T_ is None:
         why = f"no priors vintage {V} on disk"
         out["inputs"] = {k: {"available": False, "reason": why} for k in INPUTS}
@@ -467,80 +542,23 @@ def ranges_for(company_record_: dict, T, tables=None, tdir=None) -> dict:
     fam = rec.get("family")
     ins = out["inputs"]
     if fam not in FAMILIES:
-        why = (f"the company's family is {fam or 'not known'}: the population tables measure operating, commodity and financial companies only"
-               if fam != "family_not_built" else "the company is in a family the population tables do not measure (family_not_built: "
-               "real estate, utilities and pipelines, shells, or pre-profit)")
-        out["inputs"] = {k: {"available": False, "reason": why} for k in INPUTS}
+        why = (f"the company's family is {fam or 'not known'}; the population tables measure operating, commodity and financial companies only"
+               if fam != "family_not_built" else "the tables do not measure real estate, utilities and pipelines, shells or pre-profit companies "
+               f"(family_not_built: {rec.get('family_reason') or 'the rebuild classification rules'})")
+        out["inputs"] = {k: _unmeasured(why) for k in INPUTS}            # ruling 7 of step 2b
         return out
 
-    # ---- the long-run earnings margin (margin_retention), and by cyclicality alone (normalization) -------------------------------------------
-    trend, current = rec.get("em_trend"), rec.get("em_current")
-    lvl_missing = None
-    if trend is None:
-        lvl_missing = "the record holds fewer than 5 years of earnings margin in its 8-year window (no 8-year median earnings margin)"
-    elif current is None:
-        lvl_missing = "the base year's earnings margin is not defined"
+    # ---- the long-run margin (step 2c, ruling 1): the rebuild's margin_target, the operating margin LEVEL five years out -------------------------
+    # priors.PopulationPriors._operating, restated: centred on the median-retention path at year 5 (the 8-year median operating margin plus r_5 times
+    # the deviation; r_5 the band curve's year-5 value, the commodity family's the normalization curve's at its score), the spread the measured
+    # year-5 residual of the cell of the company's CURRENT operating-margin band (residual_k5_by_level), merged up (sign-pooled, then fully pooled)
+    # and refused, named, under MIN_N. Then printed in earnings-margin terms by the paired translation (cross-check 19, ruling A).
     if fam == "financial":
-        ins["long_run_margin"] = {"available": False, "reason": "the margin tables measure operating and commodity companies; a financial company's "
-                                                                "long-run margin has no population range here"}
+        ins["long_run_margin"] = _unmeasured("the margin tables measure operating and commodity companies; a financial company's margin is not measured")
         ins["normalization"] = dict(ins["long_run_margin"])
     else:
-        key, bd, score, basis, fb = _margin_retention(T_, rec, min_n)
-        row = _pos_row(bd["ks"], "median", "n", min_n) if bd else None
-        interp = _normalization_interpolated(T_, score, min_n) if fam == "commodity" else None
-        if interp is not None:
-            # PopulationPriors, commodity family: the margin's retention is the normalization curve of the company's cyclicality score, its
-            # distribution the quintile bands' interpolated quantile by quantile at the score (flat beyond the end bands)
-            rq, pos, used = interp
-            nb_ = T_["normalization"]
-            d = {"available": True, "table": "normalization", "cohort": "commodity:normalization_at_score", "band": key, "fallbacks": fb, "score": score,
-                 "score_basis": basis, "k": used[0]["k"], "n": min(u["n"] for u in used), "retention": rq, "position": pos, "trend": trend,
-                 "current": current, "op_margin": rec.get("m"), "op_median8": rec.get("med8"), "op_dev": rec.get("dev"),
-                 "cohort_text": (f"operating and commodity companies at your cyclicality score {score:.3f}: the quintile bands of the score interpolated "
-                                 f"at it (band medians {', '.join(f'{u['score_median']:.3f}' for u in used)}), both sides of the median"
-                                 + (" (the vintage's fitted cyclicality weights)" if basis != "equal weights" else ""))}
-        elif row is None or not row.get("q"):
-            d = {"available": False, "reason": f"the band {key} has no measured year with n >= {min_n}", "cohort": key}
-        else:
-            rq = _quantiles(row["q"])
-            d = {"available": True, "table": "margin_retention", "cohort": key, "band": key, "fallbacks": fb, "score": score, "score_basis": basis,
-                 "cohort_text": _band_words(key, T_["margin_retention"]["cyc_cuts"], basis), "k": row["k"], "n": int(row["q"].get("n") or row["n"]),
-                 "retention": rq, "position": {k: (None if v is None else min(1.0, max(0.0, v))) for k, v in rq.items()},
-                 "trend": trend, "current": current, "op_margin": rec.get("m"), "op_median8": rec.get("med8"), "op_dev": rec.get("dev")}
-        if d.get("available"):
-            if lvl_missing:
-                d.update(available=False, reason=lvl_missing)
-            elif any(d["retention"][k] is None for k in QKEYS):
-                d.update(available=False, reason="the cohort's retained share is not measured at every quantile")
-            else:
-                d["levels"] = _sorted_levels(trend, current, d["retention"])
-                if rec.get("dev") is not None and (current - trend) * rec["dev"] < 0:
-                    d["stamps"] = ["earnings_deviation_sign_differs_from_operating"]
-        ins["long_run_margin"] = d
-        nb = T_["normalization"]
-        if score is None:
-            ins["normalization"] = {"available": False, "reason": "no cyclicality score (fewer than 6 years of margins and revenues)"}
-        else:
-            b = _band(score, nb["cuts"])
-            band = next((x for x in nb["bands"] if x["band"] == b), None)
-            if band is None or band["all"]["n"] < min_n:
-                ins["normalization"] = {"available": False, "reason": f"the cyclicality quintile band {b} has n < {min_n}"}
-            else:
-                row = _pos_row(band["all"]["ks"], "median", "n", min_n)
-                if row is None or not row.get("q"):
-                    ins["normalization"] = {"available": False, "reason": f"the cyclicality quintile band {b} has no measured year with n >= {min_n}"}
-                else:
-                    rq = _quantiles(row["q"])
-                    d = {"available": True, "table": "normalization", "cohort": f"quintile_{b}", "band": b, "score": score, "score_basis": basis,
-                         "cohort_text": (f"operating and commodity companies in cyclicality quintile {b + 1} of 5 (score "
-                                         + (f"{nb['cuts'][b - 1]:.3f}" if b > 0 else "below") + (" to " if 0 < b < len(nb["cuts"]) else (" or above" if b > 0 else " "))
-                                         + (f"{nb['cuts'][b]:.3f}" if b < len(nb["cuts"]) else "") + "), both sides of the median"),
-                         "k": row["k"], "n": int(row["q"].get("n") or row["n"]), "retention": rq, "trend": trend, "current": current}
-                    if lvl_missing:
-                        d.update(available=False, reason=lvl_missing)
-                    else:
-                        d["levels"] = _sorted_levels(trend, current, rq)
-                    ins["normalization"] = d
+        ins["long_run_margin"] = _margin_target(T_, rec, min_n)
+        ins["normalization"] = _normalization_line(T_, rec, min_n)
 
     # ---- growth for years 3-10 (growth_decay) -------------------------------------------------------------------------------------------------
     gd = T_["growth_decay"].get(fam)
@@ -578,7 +596,8 @@ def ranges_for(company_record_: dict, T, tables=None, tdir=None) -> dict:
                 "ratio_k": prow["k"] if prow else None, "ratio_n": prow.get("n_ratio") if prow else None,
                 "ratio": _quantiles(prow.get("ratio_q")) if prow and prow.get("ratio_q") else None}
 
-    # ---- terminal growth (terminal) ------------------------------------------------------------------------------------------------------------
+    # ---- the 10-year revenue CAGR (terminal; step 2c, ruling 5) ---------------------------------------------------------------------------------
+    # context for the growth path and the bound of the revenue growth to year 10 the inputs imply; never terminal_g's range (terminal_g has none)
     tm = T_["terminal"]
     K = tm.get("K_eff")
     trend8 = rec.get("trend8")
@@ -590,60 +609,243 @@ def ranges_for(company_record_: dict, T, tables=None, tdir=None) -> dict:
         stratum = "all"
         cell = ((tm.get("families") or {}).get(fam) or {}).get("all", {}).get("with_delisted") or {}
     if not K or (cell.get("n") or 0) < min_n:
-        ins["terminal_g"] = {"available": False, "reason": f"the terminal table has n={cell.get('n') or 0} < {min_n} for this family"}
+        ins["revenue_cagr_10y"] = {"available": False, "reason": f"the terminal table has n={cell.get('n') or 0} < {min_n} for this family"}
     else:
-        ins["terminal_g"] = {
+        ins["revenue_cagr_10y"] = {
             "available": True, "table": "terminal", "cohort": f"{fam}:{stratum}:with_delisted", "stratum": stratum, "variant": "with_delisted", "K": K,
             "fallbacks": tfb, "n": int(cell["n"]), "quantiles": _quantiles(cell), "trend8": trend8,
             "cohort_text": (f"{fam} companies" + (" whose 8-year revenue trend was falling" if stratum == "shrinking" else "")
                             + f": the {K}-year revenue CAGR, companies that stopped filing included at their last filed year (3 years or more)")}
 
-    # ---- the return on new investment (ronic, ronic_fade) ---------------------------------------------------------------------------------------
-    rt = T_.get("ronic") or {}
-    fam_r = (rt.get("families") or {}).get(fam)
-    if fam_r is None:
-        ins["terminal_ronic"] = {"available": False, "reason": f"the ronic table measures operating and commodity companies, not {fam}"}
+    # ---- the return on new investment's context (step 2c, ruling 6): the ROIC LEVEL five years out --------------------------------------------
+    if fam == "financial":
+        ins["terminal_ronic"] = _unmeasured("the ROIC-level table measures operating and commodity companies; a financial company's return is not "
+                                            "measured")
     else:
-        cuts = rt.get("roic_cuts") or []
-        rb = _band(rec.get("roic"), cuts)
-        rfb = []
-        name = BAND_NAMES.get(rb) if rb >= 0 else None
-        cellr = (fam_r.get("bands") or {}).get(name) if name else None
-        if cellr is None:
-            rfb.append("no return on invested capital for the base year: every company of the family")
-        elif (cellr.get("n") or 0) < min_n:
-            rfb.append(f"the {name} band has n={cellr.get('n')} < {min_n}: every company of the family")
-            cellr = None
-        cohort = name if cellr is not None else "floored_all"
-        if cellr is None:
-            cellr = fam_r.get("floored_all") or {}
-        words = {"low": f"in the lowest third of return on invested capital (below {cuts[0]:.1%})" if cuts else "",
-                 "mid": f"in the middle third of return on invested capital ({cuts[0]:.1%} to {cuts[1]:.1%})" if len(cuts) > 1 else "",
-                 "high": f"in the top third of return on invested capital ({cuts[1]:.1%} or above)" if len(cuts) > 1 else ""}.get(cohort, "of any return on invested capital")
-        if (cellr.get("n") or 0) < min_n:
-            ins["terminal_ronic"] = {"available": False, "reason": f"the ronic cell has n={cellr.get('n') or 0} < {min_n}"}
-        else:
-            ins["terminal_ronic"] = {
-                "available": True, "table": "ronic", "cohort": f"{fam}:{cohort}", "fallbacks": rfb, "roic": rec.get("roic"), "n": int(cellr["n"]),
-                "quantiles": _quantiles(cellr),
-                "cohort_text": (f"{fam} companies {words}: the 3-year incremental return on invested capital where the capital grew at least "
-                                f"{float(rt.get('ic_growth_floor') or 0.1):.0%}")}
-    rf = T_.get("ronic_fade") or {}
-    used = []
-    for r in rf.get("ks") or []:
+        ins["terminal_ronic"] = _roic_level(T_, rec, min_n)
+    return out
+
+
+def _unmeasured(detail):
+    """An input the tables do not measure for the company's family (ruling 7): printed "no measured population for this family"."""
+    return {"available": False, "family_unmeasured": True, "reason": f"{NO_POPULATION}: {detail}"}
+
+
+def _curve_r5(rows, min_n):
+    """priors._curve_from_rows(...).at(CURVE_REF_YEAR): the measured medians read consecutively from k = 1 while n >= min_n, each clipped to [0, 1];
+    the year-5 value, or the last measured one when the measurement stops sooner (the curve holds it). None with no measured row."""
+    vals = []
+    for r in rows or []:
         if r.get("median") is None or r.get("n", 0) < min_n:
             break
-        used.append(r)
-    if not used:
-        ins["ronic_fade"] = {"available": False, "reason": f"the ronic_fade table has no year with n >= {min_n}"}
+        vals.append(min(1.0, max(0.0, r["median"])))
+    return vals[min(CURVE_REF_YEAR, len(vals)) - 1] if vals else None
+
+
+def _normalization_r5(T, score, min_n):
+    """priors._normalization_ref(...)(score).at(5): the quintile bands' curves (score median known, n >= MIN_N, a measured curve) at year 5,
+    interpolated at the score (flat beyond the end bands). None when no band has a curve."""
+    pts = []
+    for b in T["normalization"]["bands"]:
+        if b.get("score_median") is None or b["all"]["n"] < min_n:
+            continue
+        v = _curve_r5(b["all"]["ks"], min_n)
+        if v is not None:
+            pts.append((b["score_median"], v))
+    if not pts:
+        return None
+    return _interp(score, [p[0] for p in pts], [p[1] for p in pts])
+
+
+def _level_group(tab, level, min_n):
+    """priors._level_group: (the group of a residual-by-level table holding `level` ([lower, upper), open ends None), the n of the whole cell). The
+    group is None when the table is absent, the cell has fewer than MIN_N, the level is not a number, or the group holding it has fewer than MIN_N."""
+    if not tab or not tab.get("groups"):
+        return None, 0
+    n_cell = int(tab.get("n", 0))
+    if n_cell < min_n or level is None or not math.isfinite(level):
+        return None, n_cell
+    for g in tab["groups"]:
+        lo, hi = g.get("lower"), g.get("upper")
+        if (lo is None or level >= lo) and (hi is None or level < hi):
+            return (g if g.get("n", 0) >= min_n else None), n_cell
+    return None, n_cell
+
+
+def _shifted(cell, shift):
+    """priors._qd(cell, shift)'s quantiles: P5..P95 of the cell plus the centre; None unless P10, P50 and P90 are measured."""
+    q = {k: (None if _num(cell.get(k)) is None else _num(cell.get(k)) + shift) for k in QKEYS}
+    return q if all(q[k] is not None for k in ("p10", "p50", "p90")) else None
+
+
+def _level_words(g, what):
+    lo, hi = g.get("lower"), g.get("upper")
+    if lo is None and hi is None:
+        return f"at any {what}"
+    if lo is None:
+        return f"below {hi:.1%}"
+    if hi is None:
+        return f"{lo:.1%} or above"
+    return f"{lo:.1%} to {hi:.1%}"
+
+
+def _margin_target(T, rec, min_n):
+    """The long-run margin's range (ruling 1): priors.py's margin_target, restated; plus its earnings-margin equivalents (ruling 2)."""
+    mr = T["margin_retention"]
+    key, bd, score, basis, fb = _margin_retention(T, rec, min_n)
+    med8, dev, m = rec.get("med8"), rec.get("dev"), rec.get("m")
+    centre = med8 if (med8 is not None and dev is not None) else m          # priors.state_median: the margin held when no 8-year median is formed
+    if bd is None:
+        return {"available": False, "reason": f"margin_target: the margin_retention band {key} is not in the vintage", "cohort": key}
+    rl_tab = mr.get("residual_k5_by_level")
+    if rl_tab is None:
+        return {"available": False, "reason": "margin_target: this vintage has no level-conditional residual table (priors version < 3)", "cohort": key}
+    sg = key.rsplit("_", 1)[-1]
+    cands = [key] + ([f"pooled_{sg}"] if sg in ("pos", "neg") and not key.startswith("pooled") else []) + (["pooled_all"] if key != "pooled_all" else [])
+    grp, used, ns = None, None, []
+    for k in cands:
+        g_, n_ = _level_group(rl_tab.get(k), m, min_n)
+        ns.append(f"{k} n={n_}")
+        if g_ is not None:
+            grp, used = g_, k
+            break
+    if grp is None:
+        why = (f"margin_target: no residual cell with n >= {min_n} after the stated merges ({'; '.join(ns)})" if m is not None
+               else "margin_target: no current operating margin to place in a level band")
+        return {"available": False, "reason": why, "cohort": key}
+    if used != key:
+        fb = fb + [f"margin_target: residual cell of band {key} has n={(rl_tab.get(key) or {}).get('n', 0)} < {min_n}: merged up to {used} "
+                   f"(n={rl_tab[used]['n']})"]
+    r5, r5_source = _curve_r5(bd["ks"], min_n), f"band {key} curve"
+    if rec.get("family") == "commodity" and score is not None:
+        rn = _normalization_r5(T, score, min_n)
+        if rn is not None:
+            r5, r5_source = rn, "normalization curve of the cyclicality score"
+    if centre is None or r5 is None:
+        return {"available": False, "reason": "margin_target: no centre (no margin) or no residual spread", "cohort": key}
+    shift = r5 * (0.0 if dev is None else dev)
+    op = _shifted(grp, centre + shift)
+    if op is None:
+        return {"available": False, "reason": "margin_target: the residual cell has too few observations for P10/P50/P90", "cohort": key}
+    d = {"available": True, "table": "margin_retention.residual_k5_by_level", "cohort": key, "band": key, "residual_cell": used,
+         "level_band": {"level": m, "band": grp.get("band"), "lower": grp.get("lower"), "upper": grp.get("upper"), "merged": grp.get("merged")},
+         "fallbacks": fb, "score": score, "score_basis": basis, "n": int(grp["n"]), "n_cell": int(rl_tab[used]["n"]),
+         "centre_8y_median": centre, "centre_basis": "8-year median" if med8 is not None else "base-year operating margin (no 8-year median)",
+         "dev": dev, "r5": r5, "r5_source": r5_source, "level5_median": centre + shift,
+         "retention_k5_used": (rl_tab.get(used) or {}).get("retention_k5_used"),
+         "cohort_text": (_band_words(used, mr["cyc_cuts"], basis) if r5_source.startswith("band") else
+                         f"{_band_words(used, mr['cyc_cuts'], basis)}; centred on the normalization curve at your cyclicality score {score:.3f}"),
+         "level_text": f"whose base-year operating margin was {_level_words(grp, 'margin')}", "operating": op}
+    # cross-check 19, ruling A (replacing step 2b ruling 2's formula): earnings_q = (1 - t) x OM_q + Delta, Delta the PAIRED historical
+    # non-operating gap (`paired_gap`: the median over the record's years of m_t - (1 - tax_t) x OM_t), t the record's median effective rate
+    t, delta = rec.get("tax_t"), rec.get("delta")
+    d.update(m_tc=rec.get("em_trend"), om_tc=rec.get("om_tc"), om_basis=rec.get("om_basis"), tax_t=t, tax_t_source=rec.get("tax_t_source"),
+             tax_t_stamps=list(rec.get("tax_t_stamps") or []), delta=delta, delta_source=rec.get("delta_source"),
+             delta_years=list(rec.get("delta_years") or []), delta_tax_fallback_years=list(rec.get("delta_tax_fallback_years") or []))
+    if delta is None:
+        d["earnings"], d["earnings_reason"] = None, (rec.get("delta_source") or "no paired non-operating gap") + ": no translation to earnings"
+    elif t is None:
+        d["earnings"], d["earnings_reason"] = None, "no tax rate for the translation"
     else:
-        last = used[-1]
-        ins["ronic_fade"] = {
-            "available": True, "table": "ronic_fade", "cohort": "pooled", "k": last["k"], "n": last["n"], "reference": rf.get("reference"),
-            "quantiles": {"p5": None, "p10": None, "p25": last.get("p25"), "p50": last.get("median"), "p75": last.get("p75"), "p90": None, "p95": None},
-            "cohort_text": (f"all operating and commodity companies: the share of a return on invested capital's excess over the population median "
-                            f"({float(rf.get('reference') or 0):.1%}) still there after {last['k']} years")}
-    return out
+        d["earnings"] = {k: (None if op[k] is None else (1.0 - t) * op[k] + delta) for k in QKEYS}
+    return d
+
+
+def _normalization_line(T, rec, min_n):
+    """The cyclicality quintile band's year-5 median retention (ruling 3 of step 2b: the company's band, context the gate never reads). Step 2c:
+    the share's own quantiles are no longer turned into margin levels (ruling 1); the median path is printed, P10 and P90 not measured."""
+    nb = T["normalization"]
+    score, basis = _score(T, rec)
+    if score is None:
+        return {"available": False, "reason": "no cyclicality score (fewer than 6 years of margins and revenues)"}
+    b = _band(score, nb["cuts"])
+    band = next((x for x in nb["bands"] if x["band"] == b), None)
+    if band is None or band["all"]["n"] < min_n:
+        return {"available": False, "reason": f"the cyclicality quintile band {b} has n < {min_n}"}
+    row = _pos_row(band["all"]["ks"], "median", "n", min_n)
+    if row is None:
+        return {"available": False, "reason": f"the cyclicality quintile band {b} has no measured year with n >= {min_n}"}
+    r = min(1.0, max(0.0, row["median"]))
+    med8, dev = rec.get("med8"), rec.get("dev")
+    return {"available": True, "table": "normalization", "cohort": f"quintile_{b}", "band": b, "score": score, "score_basis": basis,
+            "cohort_text": (f"operating and commodity companies in cyclicality quintile {b + 1} of 5 (score "
+                            + (f"{nb['cuts'][b - 1]:.3f}" if b > 0 else "below") + (" to " if 0 < b < len(nb["cuts"]) else (" or above" if b > 0 else " "))
+                            + (f"{nb['cuts'][b]:.3f}" if b < len(nb["cuts"]) else "") + "), both sides of the median"),
+            "k": row["k"], "n": int(row["n"]), "retention_median": r,
+            "op_median_path": (med8 + r * dev) if (med8 is not None and dev is not None) else None}
+
+
+def roic_reference(T, base_year):
+    """(I, year, stamps): the level the ROIC fades toward. priors.py takes the date's industry median trailing 3-year ROIC from the population valued
+    on the date (gate1.DateContext), which rs2 does not hold; the table's own measured stand-in is the median roic3 of the vintage's same-fiscal-year
+    operating and commodity observations (roic_level.reference_by_year; stats.roic_level_tables names it the population analogue). The vintage's own
+    cut year holds only its early filers (vintage 2025: 12.7% for 2025 against 10.3% for 2024; every vintage 2016-2024 has its cut year 0.8-2.6 points above
+    the next vintage's figure for it), so the year read is the latest held at or before min(base fiscal year, vintage - 1). (None, None, []) when the
+    table holds no such year."""
+    rl = T.get("roic_level") or {}
+    by = {int(y): v for y, v in (rl.get("reference_by_year") or {}).items() if v is not None}
+    V = int(T.get("vintage")) if T.get("vintage") is not None else None
+    caps = [c for c in ((int(base_year) if base_year is not None else None), (V - 1 if V is not None else None)) if c is not None]
+    ys = [y for y in by if not caps or y <= min(caps)]
+    if not ys:
+        return None, None, []
+    y = max(ys)
+    stamps = ["roic_reference_population_median_not_industry"]
+    if base_year is not None and y != int(base_year):
+        stamps.append(f"roic_reference_year_{y}_for_base_year_{int(base_year)}")
+    return by[y], y, stamps
+
+
+def _roic_level(T, rec, min_n):
+    """The ROIC level five years out (ruling 6): priors.py's `ronic` input, restated - I + phi_5 (L0 - I) plus the measured year-5 residual of the
+    cell of the company's CURRENT trailing 3-year ROIC band (roic_level.residual_k5_by_level); the band by the sign of L0 - I (|gap| under
+    min_abs_gap: all), a band under MIN_N read as `all`, the residual cell merged to `all` under MIN_N and refused, named, there. I is
+    `roic_reference`'s stand-in for the industry median (stamped)."""
+    rl = T.get("roic_level")
+    if not rl or not rl.get("bands"):
+        return {"available": False, "reason": "ronic: this vintage has no roic_level table (priors version < 2)"}
+    L0 = rec.get("roic3")
+    if L0 is None:
+        return {"available": False, "reason": "ronic: no trailing 3-year ROIC for the company (three consecutive fiscal years with NOPAT and positive "
+                                              "invested capital)"}
+    I, iy, istamps = roic_reference(T, rec.get("base_year"))
+    if I is None:
+        return {"available": False, "reason": "ronic: the vintage holds no population median ROIC for a fiscal year at or before the base year"}
+    gap = L0 - I
+    key = "pos" if gap >= rl["min_abs_gap"] else ("neg" if gap <= -rl["min_abs_gap"] else "all")
+    fb = []
+    bd = rl["bands"].get(key)
+    if bd is None or bd.get("n", 0) < min_n:
+        fb.append(f"ronic: band {key} too thin in this vintage: the sign-pooled ROIC retention")
+        bd, key = rl["bands"].get("all"), "all"
+    phi5 = _curve_r5(bd["ks"], min_n) if bd else None
+    lv_tab = rl.get("residual_k5_by_level")
+    if lv_tab is None:
+        return {"available": False, "reason": "ronic: this vintage has no level-conditional ROIC residual table (priors version < 3)"}
+    res, used, ns = None, None, []
+    for k in ([key] + (["all"] if key != "all" else [])):
+        g_, n_ = _level_group(lv_tab.get(k), L0, min_n)
+        ns.append(f"{k} n={n_}")
+        if g_ is not None:
+            res, used = g_, k
+            break
+    if res is None:
+        return {"available": False, "reason": f"ronic: no ROIC residual cell with n >= {min_n} after the stated merges ({'; '.join(ns)})"}
+    if used != key:
+        fb.append(f"ronic: residual cell {key} has n={(lv_tab.get(key) or {}).get('n', 0)} < {min_n}: merged to {used} (n={lv_tab[used]['n']})")
+    if phi5 is None:
+        return {"available": False, "reason": "ronic: no measured ROIC retention curve in this vintage"}
+    centre5 = I + phi5 * gap
+    q = _shifted(res, centre5)
+    if q is None:
+        return {"available": False, "reason": "ronic: the residual spread has too few observations for P10/P50/P90"}
+    side = {"pos": "more than 2 points above", "neg": "more than 2 points below", "all": "on either side of"}[used]
+    return {"available": True, "table": "roic_level.residual_k5_by_level", "cohort": f"{rec.get('family')}:{key}", "band": key, "residual_cell": used,
+            "fallbacks": fb, "n": int(res["n"]), "n_cell": int(lv_tab[used]["n"]), "L0": L0, "reference": I, "reference_year": iy,
+            "reference_stamps": istamps, "phi5": phi5, "level5_median": centre5, "quantiles": q,
+            "level_band": {"level": L0, "band": res.get("band"), "lower": res.get("lower"), "upper": res.get("upper"), "merged": res.get("merged")},
+            "cohort_text": f"operating and commodity companies whose trailing 3-year ROIC was {side} the population median of its fiscal year",
+            "level_text": f"whose trailing 3-year ROIC was {_level_words(res, 'ROIC')}"}
 
 
 # ---- the briefing's text --------------------------------------------------------------------------------------------------------------------
@@ -664,8 +866,11 @@ def _qline(q, show_p50, fmt):
 
 
 def render_section(ranges: Optional[dict], show_p50: bool) -> str:
-    """The POPULATION RANGES section the briefing prints after DEFAULTS: one line per long-run input with the cohort in words, n, the vintage and
-    P10/P25/P75/P90; P50 only when `show_p50` (the pilot's flag ranges_show_p50). A quantile the table does not measure reads "not measured"."""
+    """The POPULATION RANGES section the briefing prints after DEFAULTS: one line per input with the cohort in words, n, the vintage and
+    P10/P25/P75/P90; P50 only when `show_p50` (the pilot's flag ranges_show_p50). A quantile the table does not measure reads "not measured"; an input
+    the tables do not measure for the company's family reads "no measured population for this family" (ruling 7). Step 2c: the long-run margin is
+    the operating margin five years out with its earnings-margin equivalents (rulings 1-2); the `terminal` table is printed as the 10-year revenue
+    CAGR, never as terminal_g's range (ruling 5); terminal_ronic's context is the ROIC level five years out (ruling 6)."""
     r = ranges or {}
     V = r.get("vintage")
     head = (f"## POPULATION RANGES   [{RANGES_LINE} Population tables priors_v5, vintage {V}: fiscal years whose annual report was filed "
@@ -677,26 +882,46 @@ def render_section(ranges: Optional[dict], show_p50: bool) -> str:
         return "\n".join(lines)
 
     def na(name, d):
+        if d.get("family_unmeasured"):
+            return f"- {name}: {d.get('reason')}"
         return f"- {name}: not available — {d.get('reason')}"
 
+    def fb(d):
+        return f"; {'; '.join(d['fallbacks'])}" if d.get("fallbacks") else ""
+
     d = ins.get("long_run_margin") or {}
+    name = "long_run_margin population (translated estimate from operating-margin tables, margin five years out)"
     if d.get("available"):
-        fb = f"; {'; '.join(d['fallbacks'])}" if d.get("fallbacks") else ""
-        lines.append(f"- long_run_margin population (the earnings margin at the end of the fade): cohort: {d['cohort_text']}{fb}; n={d['n']:,} at year {d['k']}, "
-                     f"vintage {V} | {_qline(d['levels'], show_p50, _pct)} | the cohort's share of the margin's deviation still there after "
-                     f"{d['k']} years (measured on operating margins), applied to your earnings margin: your 8-year median {_pct(d['trend'])} plus "
-                     f"that share of your base year's {_pct(d['current'])} minus it")
+        # cross-check 19 (rulings A and B): the earnings-margin quantiles on the main line, labelled a translated estimate five years out (your
+        # long_run_margin is the margin at the end of the fade); the operating quantiles, om_tc, Delta and t on the supporting context line
+        if d.get("earnings") is not None:
+            lines.append(f"- {name}: cohort: {d['cohort_text']}{fb(d)}; the spread of the n={d['n']:,} of them {d['level_text']}, vintage {V} | "
+                         f"earnings margin: {_qline(d['earnings'], show_p50, _pct)} | measured five years out; your long_run_margin is the margin at "
+                         f"the end of your fade")
+        else:
+            lines.append(f"- {name}: not available — {d.get('earnings_reason')}")
+        dv = "not available" if d.get("delta") is None else _pct(d["delta"], True)
+        base_txt = "8-year median operating margin" if d["centre_basis"] == "8-year median" else "base-year operating margin"
+        dev_txt = _pct(d["dev"], True) if d["dev"] is not None else "(none)"
+        lines.append(f"- long_run_margin context (the operating margin five years out, the tables' unit): {_qline(d['operating'], show_p50, _pct)} | "
+                     f"centred on the median path: your {base_txt} {_pct(d['centre_8y_median'])} plus {d['r5']:.2f} of your base year's deviation "
+                     f"from it {dev_txt} ({d['r5_source']}) | the translation: earnings margin = (1 - t) x operating margin + Delta; "
+                     f"t = {_pct(d['tax_t'])}, {d['tax_t_source']}; Delta = {dv}, your earnings margin less (1 - that year's tax rate) x its "
+                     f"operating margin, {d.get('delta_source')}; om_tc {_pct(d.get('om_tc'))}, m_tc {_pct(d.get('m_tc'))} (DEFAULTS long_run)")
     else:
-        lines.append(na("long_run_margin population", d))
+        lines.append(na(name, d))
     d = ins.get("normalization") or {}
+    name = "the margin by cyclicality alone"
     if d.get("available"):
-        lines.append(f"- long_run_margin population by cyclicality alone: cohort: {d['cohort_text']}; n={d['n']:,} at year {d['k']}, vintage {V} | "
-                     f"{_qline(d['levels'], show_p50, _pct)} | the same arithmetic on this band's share")
+        path = f"; your operating margin on that path: {_pct(d['op_median_path'])}" if d.get("op_median_path") is not None else ""
+        lines.append(f"- {name}: cohort: {d['cohort_text']}; n={d['n']:,} at year {d['k']}, vintage {V} | the median company kept "
+                     f"{d['retention_median']:.2f} of its operating margin's deviation from its 8-year median after {d['k']} years{path} | "
+                     f"P10 and P90 {NOT_MEASURED}")
     else:
-        lines.append(na("long_run_margin population by cyclicality alone", d))
+        lines.append(na(name, d))
     d = ins.get("growth_years_3_10") or {}
+    name = "growth of years 3-10 population"
     if d.get("available"):
-        fb = f"; {'; '.join(d['fallbacks'])}" if d.get("fallbacks") else ""
         yrs = []
         for k in sorted(d["by_k"]):
             q = d["by_k"][k]
@@ -706,45 +931,51 @@ def render_section(ranges: Optional[dict], show_p50: bool) -> str:
         if d.get("ratio"):
             ratio = (f" | the share of year 1's {d['what']} growth above the long-run reference {_pct(d['terminal_reference'], digits=2)} still there in "
                      f"year {d['ratio_k']} (n={d['ratio_n']:,}): {_qline(d['ratio'], show_p50, lambda v: NOT_MEASURED if v is None else f'{v:.2f}')}")
-        lines.append(f"- growth of years 3-10 population ({d['what']} growth in each year): cohort: {d['cohort_text']}{fb}; n={d['n']:,}, vintage {V} | "
+        lines.append(f"- {name} ({d['what']} growth in each year): cohort: {d['cohort_text']}{fb(d)}; n={d['n']:,}, vintage {V} | "
                      f"P10 and P90 {NOT_MEASURED} | " + "; ".join(yrs) + ratio)
     else:
-        lines.append(na("growth of years 3-10 population", d))
-    d = ins.get("terminal_g") or {}
+        lines.append(na(name, d))
+    d = ins.get("revenue_cagr_10y") or {}
+    name = "10-year revenue CAGR (context for your growth path; it bounds the revenue growth to year 10 your inputs imply)"
     if d.get("available"):
-        fb = f"; {'; '.join(d['fallbacks'])}" if d.get("fallbacks") else ""
-        lines.append(f"- terminal_g population: cohort: {d['cohort_text']}{fb}; n={d['n']:,}, vintage {V} | "
+        k_note = "" if d.get("K") == 10 else f" (this vintage measures {d['K']} years)"
+        lines.append(f"- {name}: cohort: {d['cohort_text']}{k_note}{fb(d)}; n={d['n']:,}, vintage {V} | "
                      f"{_qline(d['quantiles'], show_p50, lambda v: _pct(v, True))}")
     else:
-        lines.append(na("terminal_g population", d))
+        lines.append(na(name, d))
     d = ins.get("terminal_ronic") or {}
+    name = "terminal_ronic context (the return on invested capital five years out)"
     if d.get("available"):
-        fb = f"; {'; '.join(d['fallbacks'])}" if d.get("fallbacks") else ""
-        lines.append(f"- terminal_ronic population: cohort: {d['cohort_text']}{fb}; n={d['n']:,}, vintage {V} | {_qline(d['quantiles'], show_p50, _pct)}")
+        lines.append(f"- {name}: cohort: {d['cohort_text']}{fb(d)}; the spread of the n={d['n']:,} of them {d['level_text']}, vintage {V} | "
+                     f"{_qline(d['quantiles'], show_p50, _pct)} | centred on the median path: the population median ROIC of FY{d['reference_year']} "
+                     f"{_pct(d['reference'])} plus {d['phi5']:.2f} of the distance from it to your trailing 3-year ROIC {_pct(d['L0'])}")
     else:
-        lines.append(na("terminal_ronic population", d))
-    d = ins.get("ronic_fade") or {}
-    if d.get("available"):
-        lines.append(f"- the fade of the return on new investment, population: cohort: {d['cohort_text']}; n={d['n']:,}, vintage {V} | "
-                     f"{_qline(d['quantiles'], show_p50, lambda v: NOT_MEASURED if v is None else f'{v:.2f}')}")
-    else:
-        lines.append(na("the fade of the return on new investment, population", d))
+        lines.append(na(name, d))
     return "\n".join(lines)
 
 
-# ---- the cohort's P5-P95 for the plausibility gate --------------------------------------------------------------------------------------------
+# ---- the cohort's bounds for the plausibility gate --------------------------------------------------------------------------------------------
 
 def gate_bounds(ranges: Optional[dict]) -> Dict[str, Optional[dict]]:
-    """{metric: {"p5", "p95", "cohort", "n"} or None}: the cohort bounds the plausibility gate compares the implied trajectory with
-    (fiduciary_gate.plausibility_gate). long_run_margin from the margin levels; revenue_cagr_10y and terminal_g from the terminal table's K-year
-    revenue CAGR (its K stated); terminal_ronic from the ronic table; earnings_ratio_10y has no measured cohort (None)."""
+    """{metric: {"p5", "p10", "p90", "p95", "cohort", "n", "K"} or None}: the cohort bounds the plausibility gate compares the implied trajectory
+    with (fiduciary_gate.plausibility_gate). Step 2c: long_run_margin from the long-run margin's earnings-margin equivalents (ruling 2); revenue_cagr_10y
+    from the terminal table's K-year revenue CAGR (ruling 5); terminal_ronic from the ROIC level five years out (ruling 6); earnings_ratio_10y has no
+    measured cohort (None); terminal_g has no population range (ruling 5: the gate checks it against the pack's growth anchor). None also when the
+    input is not available."""
     ins = (ranges or {}).get("inputs") or {}
 
     def b(name, key):
         d = ins.get(name) or {}
         q = d.get(key) if d.get("available") else None
-        if not q or q.get("p5") is None or q.get("p95") is None:
+        if not q or any(q.get(k) is None for k in ("p5", "p10", "p90", "p95")):
             return None
-        return {"p5": q["p5"], "p95": q["p95"], "cohort": d.get("cohort"), "n": d.get("n"), "K": d.get("K")}
-    return {"long_run_margin": b("long_run_margin", "levels"), "revenue_cagr_10y": b("terminal_g", "quantiles"),
-            "terminal_ronic": b("terminal_ronic", "quantiles"), "earnings_ratio_10y": None, "terminal_g": b("terminal_g", "quantiles")}
+        return {"p5": q["p5"], "p10": q["p10"], "p90": q["p90"], "p95": q["p95"], "cohort": d.get("cohort"), "n": d.get("n"), "K": d.get("K")}
+    return {"long_run_margin": b("long_run_margin", "earnings"), "revenue_cagr_10y": b("revenue_cagr_10y", "quantiles"),
+            "terminal_ronic": b("terminal_ronic", "quantiles"), "earnings_ratio_10y": None}
+
+
+def family_unmeasured(ranges: Optional[dict], metric: str) -> bool:
+    """Whether the tables measure no population for this metric's input because of the company's family (ruling 7 of step 2b)."""
+    src = {"long_run_margin": "long_run_margin", "revenue_cagr_10y": "revenue_cagr_10y", "terminal_ronic": "terminal_ronic"}.get(metric)
+    d = ((ranges or {}).get("inputs") or {}).get(src) if src else None
+    return bool(isinstance(d, dict) and d.get("family_unmeasured"))
