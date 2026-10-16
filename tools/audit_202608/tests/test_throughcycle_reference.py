@@ -340,14 +340,19 @@ def _facts_for(ref, record, gt, quantize):
               "nwc_intensity": record["nwc_intensity"], "nwc_years": [2018, 2025, 8],
               "stamps": list(record.get("stamps") or []), "stub_months": ref["stub_months"],
               "ni_over_oe": NI_BASE / OE_BASE,
-              "e5": ref["long_run"]["e5"] / B, "oe5": ref["long_run"]["oe5"] / B, "m5": ref["long_run"]["m5"]}
+              "e5": ref["long_run"]["e5"] / B, "oe5": ref["long_run"]["oe5"] / B, "m5": ref["long_run"]["m5"], "revenue_path": ([x / B for x in ref["revenue"]] if ref.get("revenue") else None),
+                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None)}  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital)
     if quantize:
         f["terminal_ronic"] = pack_facts.q_rate(ref["terminal_ronic"])
         f["long_run"] = pack_facts.quantize_long_run(lr_raw)
         f["working_capital"] = [pack_facts.q_b(x / B) for x in ref["wc"]] if ref["wc"] else None
         f["coe_anchor"], f["terminal_g_default"] = pack_facts.q_rate(COE), pack_facts.q_rate(gt)
         block = pack_facts.render_defaults_block(f)
-        return pack_facts.from_text("# DATA PACK - X   (pack revision 17)\n\n" + block)
+        out = pack_facts.from_text("# DATA PACK - X   (pack revision 17)\n\n" + block)
+        # step 2c: the unprinted long_run members (the consensus revenue path and its owner earnings) reach the desk from the facts or the sidecar,
+        # never from text
+        out["long_run"].update({k: f["long_run"][k] for k in ("revenue_path", "oe_path") if k in f["long_run"]})
+        return out
     f["terminal_ronic"] = ref["terminal_ronic"]
     f["long_run"] = {k: (v if not isinstance(v, float) else v) for k, v in lr_raw.items()}
     f["working_capital"] = [x / B for x in ref["wc"]] if ref["wc"] else None
@@ -595,7 +600,8 @@ def test_the_desk_equals_the_reference_on_random_inputs_to_the_cent():
         lr = ref["long_run"]
         facts = {"terminal_ronic": ref["terminal_ronic"],
                  "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "margin_ratio": ref["margin_ratio"],
-                              "r_blend": record["r_blend"], "r_tc": record["R_tc"], "stub_months": stub},
+                              "r_blend": record["r_blend"], "r_tc": record["R_tc"], "stub_months": stub, "revenue_path": ([x / B for x in ref["revenue"]] if ref.get("revenue") else None),
+                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital)
                  "working_capital": [x / B for x in ref["wc"]] if ref["wc"] else None}
         lv = ref["levels"]
         if ref["base_cf"] is not None:

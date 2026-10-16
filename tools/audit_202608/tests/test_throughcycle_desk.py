@@ -139,20 +139,44 @@ def _dcf_ctx(**over):
     return ctx
 
 
+# revision 24 step 2c (ruling 12 of step 2b): the desk deducts working capital on each scenario's own revenue path, from the long_run facts' intensity,
+# consensus revenue path and its owner earnings. This consensus path is built so that a scenario on the Base's own owner-earnings path (EZPW_PATH from
+# EZPW_BASE_CF) deducts exactly WC; a scenario on another path deducts NWC x the change in revenue_t x its owner earnings_t / OE_REF_t.
+NWC = 0.05
+OE_REF = [EZPW_BASE_CF * math.prod(1.0 + g for g in EZPW_PATH[:t + 1]) for t in range(5)]
+REV_REF = [2.0] + [2.0 + sum(WC[:t + 1]) / NWC for t in range(5)]
+
+
+def _wc_lr():
+    return {"nwc_intensity": NWC, "revenue_path": REV_REF, "oe_path": OE_REF}
+
+
+def _own_wc(path, cf=None):
+    cf = EZPW_BASE_CF if cf is None else cf
+    oe = [cf * math.prod(1.0 + g for g in path[:t + 1]) for t in range(5)]
+    rev = [REV_REF[0]] + [REV_REF[t + 1] * oe[t] / OE_REF[t] for t in range(5)]
+    return [NWC * (rev[t + 1] - rev[t]) for t in range(5)]
+
+
 def test_working_capital_is_deducted_in_years_1_to_5_from_every_scenario_unless_the_base_carries_it():
     plain = _direct(EZPW_PATH, ronic=0.135)
     with_wc = _direct(EZPW_PATH, ronic=0.135, working_capital=WC)
     assert with_wc["per_share_iv"] < plain["per_share_iv"]
     assert with_wc["projected_cfs"][:5] == pytest.approx([a - b for a, b in zip(plain["projected_cfs"][:5], WC)], abs=1e-4)
     assert with_wc["working_capital_deducted"] == WC and plain["working_capital_deducted"] is None
-    # through the call: every scenario deducts the same schedule, the Base is skipped when within 2% of cash_basis_b
+    # through the call (revision 24 step 2c, ruling 12): each scenario deducts on its own revenue path - the Base, on the consensus owner earnings,
+    # exactly the consensus schedule; the faster Bull more and the slower Bear less; never one schedule for all. The Base is skipped when within 2%
+    # of cash_basis_b
     scs = _three(EZPW_PATH)
-    res = execute_financial_model(_call(scs, guidance_deviation_reason="x"), _dcf_ctx(working_capital=WC, cash_basis_b=None))
-    for item in res["scenario_dcfs"]:
-        assert item["dcf"]["working_capital_deducted"] == WC
+    res = execute_financial_model(_call(scs, guidance_deviation_reason="x"), _dcf_ctx(long_run=_wc_lr(), cash_basis_b=None))
+    got = {i["name"]: i["dcf"]["working_capital_deducted"] for i in res["scenario_dcfs"]}
+    assert got["Base"] == pytest.approx(WC, abs=1e-4)
+    assert got["Bull"] == pytest.approx(_own_wc(scs[1]["explicit_growth"]), abs=1e-4)
+    assert got["Bear"] == pytest.approx(_own_wc(scs[2]["explicit_growth"]), abs=1e-4)
+    assert sum(got["Bull"]) > sum(got["Base"]) > sum(got["Bear"])
     # (brief F6: a base within 2% of an owner-earnings figure is owner earnings, so the DEFAULTS owner earnings sit away)
     res = execute_financial_model(_call(_three(EZPW_PATH), guidance_deviation_reason="x", base_cf_reason="x"),
-                                  _dcf_ctx(working_capital=WC, cash_basis_b=0.1485, owner_earnings_default_b=0.20))
+                                  _dcf_ctx(long_run=_wc_lr(), cash_basis_b=0.1485, owner_earnings_default_b=0.20))
     for item in res["scenario_dcfs"]:                       # every scenario starts from 0.148, within 2% of 0.1485
         assert item["dcf"]["working_capital_deducted"] is None and "wc_in_base" in item["dcf"]["stamps"]
 
@@ -162,10 +186,10 @@ def test_wc_in_base_is_per_scenario_on_its_own_base_cf():
     scs[2]["base_cf"] = 0.10                                            # the Bear starts from a lower base
     res = execute_financial_model(_call(scs, guidance_deviation_reason="x", scenario_deviation_reason="x",
                                         base_cf_reason="x"),
-                                  _dcf_ctx(working_capital=WC, cash_basis_b=0.148, owner_earnings_default_b=0.20))
+                                  _dcf_ctx(long_run=_wc_lr(), cash_basis_b=0.148, owner_earnings_default_b=0.20))
     base, bull, bear = (i["dcf"] for i in res["scenario_dcfs"])
     assert "wc_in_base" in base["stamps"] and "wc_in_base" in bull["stamps"] and "wc_in_base" not in bear["stamps"]
-    assert bear["working_capital_deducted"] == WC
+    assert bear["working_capital_deducted"] == pytest.approx(_own_wc(scs[2]["explicit_growth"], cf=0.10), abs=1e-4)      # its own path
 
 
 def test_the_long_run_takes_the_scenarios_own_growth_terminal_g_and_terminal_ronic():

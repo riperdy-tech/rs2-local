@@ -1,0 +1,357 @@
+[
+ {
+  "type": "function",
+  "function": {
+   "name": "search_web",
+   "description": "Search the web for information that is NOT in your data pack. Use this for FORWARD-LOOKING and CONTEXTUAL facts: management guidance beyond the periods you were given, capital-expenditure plans for future years, analyst estimates, competitor spending, industry capacity, regulatory rulings, and current macro (rates, policy). DO NOT use it to re-source financial statement figures you already hold — your pack's revenue, net income, operating cash flow, capex, FCF and share counts come from SEC filings and are authoritative. Web restatements of those are less reliable, not more. If a number you need for an assumption is missing from the pack, SEARCH FOR IT rather than assuming a value. Your earlier tool results stay in the conversation as compact notes marked [call N]. Read them before searching; do not repeat a search you have already run. Fetching a page again gives its next unread part. PRIMARY SOURCES holds the company's own filings verbatim; do not search for or fetch them again — the tools return a pointer instead. Search only for what they do not contain.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "a specific search query"
+     },
+     "why": {
+      "type": "string",
+      "description": "what assumption this is meant to ground, in one line"
+     }
+    },
+    "required": [
+     "query"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "fetch_page",
+   "description": "Retrieve the readable text of one URL returned by search_web, when the snippet is not enough. Prefer primary sources: company IR pages, earnings-call transcripts, regulators, central banks. A page is served in parts of 9,000 characters; the result says which part you have and how many there are. Call again with the same url for the next part you have not read, or pass part to choose one. Pass find to get the passages of the whole page that contain a word or phrase. PRIMARY SOURCES holds the company's own filings verbatim; do not search for or fetch them again — the tools return a pointer instead. Search only for what they do not contain.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "url": {
+      "type": "string"
+     },
+     "part": {
+      "type": "integer",
+      "description": "Optional. The 9,000-character part to read; 1 is the start of the page."
+     },
+     "find": {
+      "type": "string",
+      "description": "Optional. A word or phrase of 3 to 100 characters; returns up to 5 passages of the whole page that contain it, each marked with its part. When given, part is ignored."
+     }
+    },
+    "required": [
+     "url"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "run_financial_model",
+   "description": "Run the Python desk. One call values Base, Bull and Bear together: each scenario's base_cf, five years of cash-flow growth, fade, discount rate and terminal growth (with an optional terminal_ronic) give its per-share value. The desk also returns the reverse DCF (the growth today's price implies, under your structure and under the neutral reference) and quarter-Kelly sizing. On every run the desk also returns price_implied: for each judgment input, the value at which the Base would equal today's price with your other inputs unchanged, or not reachable inside its bound. The harness supplies today's price, the pack's share count, the anchors and the base-rate table; pass only your decisions. An input that departs from its DEFAULT needs its reason argument: the desk names any that are missing, and a refused call does not use one of your desk runs. The desk holds Base years 3-5 at next-FY consensus revenue growth unless guidance_deviation_reason is given, and shows the value on your path beside it. It holds the Base's years 1-2 at the DEFAULTS cash-flow levels the same way (a Base year 2 more than 5% away). It deducts the DEFAULTS working capital in years 1-5 (not when base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b) and pays for growth from year 6 at terminal_ronic. It values at the base fiscal year end and rolls the value forward to today. The firm frame uses the same long run, an approximation: the return on new investment is measured on tangible invested capital before interest and applied to equity earnings, which is conservative for a levered company. Base is every scenario not named Bull or Bear. Blend mode combines named desk legs for display; it is never your answer.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "mode": {
+      "type": "string",
+      "enum": [
+       "dcf",
+       "blend"
+      ],
+      "description": "Calculation mode: 'dcf' (default) or 'blend'."
+     },
+     "valuation_frame": {
+      "type": "string",
+      "enum": [
+       "equity",
+       "firm"
+      ],
+      "description": "'equity' (the default) discounts the pack's after-interest flows at the cost of equity; nonzero net_debt is refused. 'firm' discounts a pre-interest flow at a WACC and needs interest_addback, wacc_reason and net debt (default: the DEFAULTS net debt)."
+     },
+     "rate_type": {
+      "type": "string",
+      "enum": [
+       "cost_of_equity",
+       "true_wacc",
+       "cost_of_equity_proxy"
+      ],
+      "description": "Semantic discount rate type. Must match valuation_frame (equity -> cost_of_equity; firm -> true_wacc)."
+     },
+     "cash_flow_life": {
+      "type": "string",
+      "description": "Required. \"perpetual\", or the whole number of years (1-60) until the cash flows end: filed reserves over current production, or the remaining licence, concession or patent term. It applies to every scenario; a finite life values the flows over that life with no end value."
+     },
+     "cash_flow_life_reason": {
+      "type": "string",
+      "description": "Required. One dated sentence: for a finite life, the filed reserves and production rate or the remaining term; where revenue follows a commodity price, the price deck your flows assume and its source."
+     },
+     "base_cf_reason": {
+      "type": "string",
+      "description": "Why a Base base_cf more than 2% from the DEFAULTS owner earnings is more representative, with the filing behind it."
+     },
+     "guidance_deviation_reason": {
+      "type": "string",
+      "description": "Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 5% from the DEFAULTS year-2 level (without it the desk holds years 1-2 at the DEFAULTS levels), a Base value outside 0.75-1.33 of the reference, or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth)."
+     },
+     "scenario_deviation_reason": {
+      "type": "string",
+      "description": "Why a Bull or Bear year-2 cash flow is more than 15% from the DEFAULTS bull2 or bear2 level."
+     },
+     "terminal_reason": {
+      "type": "string",
+      "description": "Dated evidence for a Base terminal_g more than 0.5 points from the DEFAULTS terminal-growth default, or for a Base terminal_ronic more than 2 points from the DEFAULTS terminal_ronic."
+     },
+     "coe_adjustment_reason": {
+      "type": "string",
+      "description": "Why the Base discount rate is more than 1.5 points from the COE ANCHOR."
+     },
+     "shares_reason": {
+      "type": "string",
+      "description": "The instrument and its vesting condition, when any scenario's shares_diluted differs from the pack's count by more than 1%. Add contingent shares only in the scenarios where they vest."
+     },
+     "net_debt_reason": {
+      "type": "string",
+      "description": "Firm frame: why net_debt differs from the DEFAULTS net debt."
+     },
+     "excess_cash": {
+      "type": "number",
+      "description": "Optional. The desk adds the DEFAULTS excess_cash ($B, cash and short-term investments at face) per share to every scenario's value in the equity frame. Pass another amount only with excess_cash_reason."
+     },
+     "excess_cash_reason": {
+      "type": "string",
+      "description": "Why excess_cash differs from the DEFAULTS amount, with dated evidence (for example cash held where it cannot be used, per a dated filing)."
+     },
+     "wacc_reason": {
+      "type": "string",
+      "description": "Firm frame, required: the COE ANCHOR, the cost of debt (filed interest over debt), the tax rate and the weights behind the WACC."
+     },
+     "interest_addback": {
+      "type": "number",
+      "description": "Firm frame, required: the after-tax interest expense in $B that makes the flow pre-interest. base_cf already includes it."
+     },
+     "bull_below_price_reason": {
+      "type": "string",
+      "description": "When the Bull value is below today's price: the assumption of the market-implied path you reject, with dated evidence; when Bull is also below the lowest analyst target, what every analyst is missing."
+     },
+     "bear_above_price_reason": {
+      "type": "string",
+      "description": "When the Bear value is above today's price: why even the downside case is worth more than the price, with dated evidence."
+     },
+     "crux": {
+      "type": "array",
+      "description": "Your stated disagreement with today's price, needed for a verdict of undervalued or overvalued (TASK item 6): one to three of the desk's judgment inputs (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level) on which your evidence says the price is wrong. For each: input; reason (why this company's value of it differs from what the price implies, and by how much); citations, one to five of {source, date, quote}: source is PRIMARY P# (an item of PRIMARY SOURCES: the company's own filings, verbatim), DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or the exact URL of a page you fetched in this session that names the company; date is YYYY-MM-DD; quote is 30 to 600 characters copied exactly from that source. Code fills in your value and the price-implied value from this run. Leave crux out when you have no such disagreement: the verdict is then HOLD.",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+       "type": "object",
+       "properties": {
+        "input": {
+         "type": "string",
+         "enum": [
+          "coe",
+          "growth_years_3_5",
+          "fade_years",
+          "terminal_g",
+          "terminal_ronic",
+          "year2_level"
+         ]
+        },
+        "reason": {
+         "type": "string"
+        },
+        "citations": {
+         "type": "array",
+         "minItems": 1,
+         "maxItems": 5,
+         "items": {
+          "type": "object",
+          "properties": {
+           "source": {
+            "type": "string"
+           },
+           "date": {
+            "type": "string"
+           },
+           "quote": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "source",
+           "date",
+           "quote"
+          ]
+         }
+        }
+       },
+       "required": [
+        "input",
+        "reason",
+        "citations"
+       ]
+      }
+     },
+     "explicit_growth": {
+      "type": "array",
+      "description": "Annual growth of base_cf - the owner cash flow being valued - for each of years 1-5 (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). Not revenue growth: revenue growth leaves out margin change. Years 1-2 normally follow consensus EPS growth (DATA 8). Base years 3-5 above next-FY consensus revenue growth are held at it unless guidance_deviation_reason is given.",
+      "items": {
+       "type": "number"
+      }
+     },
+     "growth_rates": {
+      "type": "array",
+      "description": "Alias for explicit_growth.",
+      "items": {
+       "type": "number"
+      }
+     },
+     "fade_years": {
+      "type": "integer",
+      "description": "Duration of Stage 2 linear fade in years (integer >= 0). Fades linearly from the last explicit rate to terminal_g; the return on new investment and a cyclical margin move to their long-run values over the same years."
+     },
+     "terminal_g": {
+      "type": "number",
+      "description": "REQUIRED for DCF. Long-term nominal terminal growth rate as decimal (e.g. 0.025 for 2.5%, 0.035 for 3.5%). The silent default was removed in Phase 4; calls without it are refused."
+     },
+     "terminal_ronic": {
+      "type": "number",
+      "description": "The return on new investment (a fraction, e.g. 0.12) that pays for growth from year 6 and in the terminal value. Default: the DEFAULTS terminal_ronic. A Base value more than 2 points from it needs terminal_reason."
+     },
+     "sbc_treatment": {
+      "type": "string",
+      "enum": [
+       "deducted_in_cf",
+       "add_back_dilution"
+      ],
+      "description": "SBC policy declaration. If 'deducted_in_cf', sbc_dilution may NOT also be passed (double deduction refused)."
+     },
+     "sbc_dilution": {
+      "type": "number",
+      "description": "Share dilution from SBC when sbc_treatment is 'add_back_dilution': a fraction below 1 (0.02 = 2%) or a whole number of new shares. Must NOT be passed if sbc_treatment is 'deducted_in_cf'."
+     },
+     "base_cf": {
+      "type": "number",
+      "description": "Base owner cash flow / FCF (in $B or per-share, matching units)."
+     },
+     "wacc": {
+      "type": "number",
+      "description": "Cost of capital / discount rate as decimal, e.g. 0.085 for 8.5%."
+     },
+     "annuity_flow": {
+      "type": "number",
+      "description": "Separate annual services / installed-base recurring annuity cash flow (if unbundled)."
+     },
+     "annuity_cap_rate": {
+      "type": "number",
+      "description": "Capitalization rate for annuity flow (e.g. 0.075 for 7.5%)."
+     },
+     "net_debt": {
+      "type": "number",
+      "description": "Firm frame only, in $B; default: the DEFAULTS net debt. Must be 0 or omitted in the equity frame."
+     },
+     "shares_diluted": {
+      "type": "number",
+      "description": "Optional. The desk uses the DEFAULTS block's shares_default when you leave it out. shares_default is a whole share count, for example 79,364,362; billions are also accepted. Pass it only for a different count, with shares_reason."
+     },
+     "legs": {
+      "type": "array",
+      "description": "Named valuation legs for blend mode: [{'name': 'Gordon DCF', 'weight': 0.6, 'iv': 150.0, 'source': 'desk'}, ...]. Weights must sum to 1.0.",
+      "items": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "weight": {
+         "type": "number"
+        },
+        "iv": {
+         "type": "number"
+        },
+        "source": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "name",
+        "weight",
+        "iv"
+       ]
+      }
+     },
+     "scenarios": {
+      "type": "array",
+      "description": "Exactly three entries, one each with role Base, Bull and Bear. Each entry: name, prob, base_cf ($B), explicit_growth (5 annual growth rates of base_cf, cash flow not revenue), fade_years, wacc (the discount rate), terminal_g, and optionally terminal_ronic and shares_diluted. The desk computes every value, the reverse DCF and Kelly sizing in one call.",
+      "items": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "prob": {
+         "type": "number"
+        },
+        "iv": {
+         "type": "number",
+         "description": "Optional pre-computed intrinsic value"
+        },
+        "base_cf": {
+         "type": "number",
+         "description": "Base FCF in $B for this scenario"
+        },
+        "growth_rates": {
+         "type": "array",
+         "items": {
+          "type": "number"
+         },
+         "description": "5 annual growth rates of base_cf (cash flow, not revenue)"
+        },
+        "explicit_growth": {
+         "type": "array",
+         "items": {
+          "type": "number"
+         },
+         "description": "5 annual growth rates of base_cf (cash flow, not revenue)"
+        },
+        "fade_years": {
+         "type": "integer"
+        },
+        "wacc": {
+         "type": "number",
+         "description": "Discount rate as decimal"
+        },
+        "terminal_g": {
+         "type": "number",
+         "description": "REQUIRED. Terminal growth as decimal"
+        },
+        "terminal_ronic": {
+         "type": "number",
+         "description": "Return on new investment for this scenario, as a fraction. Default: the DEFAULTS terminal_ronic."
+        },
+        "shares_diluted": {
+         "type": "number",
+         "description": "Only for a contingent instrument that vests in this scenario, as a whole share count, for example 79,364,362; billions are also accepted. Needs shares_reason."
+        }
+       },
+       "required": [
+        "name",
+        "prob"
+       ]
+      }
+     }
+    },
+    "required": [
+     "cash_flow_life",
+     "cash_flow_life_reason",
+     "terminal_g",
+     "fade_years",
+     "sbc_treatment"
+    ]
+   }
+  }
+ }
+]

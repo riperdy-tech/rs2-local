@@ -642,6 +642,7 @@ def build(base_cf, estimates, coe, terminal_g, shares, median_5y, da=None, capex
     elif revenue is not None:
         out["stamps"].append("working_capital_not_available")
     out["wc"], out["nwc_intensity"] = wc, nwc
+    out["oe_path"] = list(oe[:5])            # revision 24 step 2c: the owner earnings of years 1-5 the revenue path pairs with (the desk's own-path rule)
     cash = [oe[t] - (wc[t] if wc else 0.0) for t in range(5)]
     pv15 = sum(cf / (1 + coe) ** (t + 1) for t, cf in enumerate(cash))
 

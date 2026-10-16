@@ -395,9 +395,10 @@ _III_DESK_DESCRIPTION = (
     "pass only your decisions. An input that departs from a fact or convention in DEFAULTS needs its reason argument: the "
     "desk names any that are missing, and a refused call does not use one of your desk runs. The long-run inputs (long_run_margin, "
     "the growth of years 3-5, fade_years, terminal_g, terminal_ronic) have no default, and the desk holds and caps no year: the "
-    "consensus levels are evidence. It deducts the DEFAULTS working "
-    "capital in years 1-5 (not when base_cf is within 2% of cash_basis_b and not within 2% of "
-    "owner_earnings_default_b or reference_base_b) and pays for growth from year 6 "
+    "consensus levels are evidence. In years 1-5 it deducts the working capital each scenario's own revenue path "
+    "ties up: the DEFAULTS working_capital_intensity times each year's revenue change, revenue being the consensus "
+    "revenue path scaled year by year by that scenario's owner earnings (not when base_cf is within 2% of "
+    "cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b), and pays for growth from year 6 "
     "at terminal_ronic. It values at the base fiscal year end and rolls the value forward to today. "
     "The firm frame uses the same long run, an approximation: the return on new investment is measured on "
     "tangible invested capital before interest and applied to equity earnings, which is conservative "
@@ -418,9 +419,36 @@ _III_EXPLICIT_GROWTH = ("Annual growth of base_cf - the owner cash flow being va
 _III_SCENARIO_RONIC = "Return on new investment for this scenario, as a fraction; default: the top-level terminal_ronic."
 
 
+# Revision 24 step 2c (ruling 10 of step 2b): the rev22 control desk takes no long_run_margin, so the rev22 arm is offered revision 22's desk tool
+# (git 412578d): no long_run_margin property and revision 22's three texts; tests/fixture_data/rev24_s2b/tools_rev22.json pins it.
+_REV22_DESK_DESCRIPTION = "Run the Python desk. One call values Base, Bull and Bear together: each scenario's base_cf, five years of cash-flow growth, fade, discount rate and terminal growth (with an optional terminal_ronic) give its per-share value. The desk also returns the reverse DCF (the growth today's price implies, under your structure and under the neutral reference) and quarter-Kelly sizing. On every run the desk also returns price_implied: for each judgment input, the value at which the Base would equal today's price with your other inputs unchanged, or not reachable inside its bound. The harness supplies today's price, the pack's share count, the anchors and the base-rate table; pass only your decisions. An input that departs from its DEFAULT needs its reason argument: the desk names any that are missing, and a refused call does not use one of your desk runs. The desk holds Base years 3-5 at next-FY consensus revenue growth unless guidance_deviation_reason is given, and shows the value on your path beside it. It holds the Base's years 1-2 at the DEFAULTS cash-flow levels the same way (a Base year 2 more than 5% away). It deducts the DEFAULTS working capital in years 1-5 (not when base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b) and pays for growth from year 6 at terminal_ronic. It values at the base fiscal year end and rolls the value forward to today. The firm frame uses the same long run, an approximation: the return on new investment is measured on tangible invested capital before interest and applied to equity earnings, which is conservative for a levered company. Base is every scenario not named Bull or Bear. Blend mode combines named desk legs for display; it is never your answer."
+_REV22_GUIDANCE = 'Dated evidence for a Base that departs from consensus: a year-2 cash flow more than 5% from the DEFAULTS year-2 level (without it the desk holds years 1-2 at the DEFAULTS levels), a Base value outside 0.75-1.33 of the reference, or Base years 3-5 above next-FY revenue growth (without it the desk holds those years at that growth).'
+_REV22_SCENARIOS = 'Exactly three entries, one each with role Base, Bull and Bear. Each entry: name, prob, base_cf ($B), explicit_growth (5 annual growth rates of base_cf, cash flow not revenue), fade_years, wacc (the discount rate), terminal_g, and optionally terminal_ronic and shares_diluted. The desk computes every value, the reverse DCF and Kelly sizing in one call.'
+
+
+def _tools_rev22():
+    out = json.loads(json.dumps(TOOLS))
+    for t in out:
+        f = t.get("function", {})
+        if f.get("name") != "run_financial_model":
+            continue
+        f["description"] = _REV22_DESK_DESCRIPTION
+        props = f["parameters"]["properties"]
+        props.pop("long_run_margin", None)
+        props["scenarios"]["items"]["properties"].pop("long_run_margin", None)
+        props["guidance_deviation_reason"]["description"] = _REV22_GUIDANCE
+        props["scenarios"]["description"] = _REV22_SCENARIOS
+        f["parameters"]["required"] = [r for r in f["parameters"]["required"] if r != "long_run_margin"]
+        enum = props["crux"]["items"]["properties"]["input"]["enum"]          # revision 22's judgment inputs (crux_check.J before step 2b)
+        props["crux"]["items"]["properties"]["input"]["enum"] = [x for x in enum if x != "long_run_margin"]
+    return out
+
+
 def tools_for(desk_context=None):
     """The tools a sample is offered: TOOLS, or (revision 24 step 2b) a copy whose desk text says what the desk does when the pack prints no
-    long-run default (desk_context["long_run_defaults_withheld"] is True)."""
+    long-run default (desk_context["long_run_defaults_withheld"] is True), or (step 2c) revision 22's desk tool under pilot_arm rev22."""
+    if isinstance(desk_context, dict) and desk_context.get("pilot_arm") == "rev22":
+        return _tools_rev22()
     if not (isinstance(desk_context, dict) and desk_context.get("long_run_defaults_withheld") is True):
         return TOOLS
     out = json.loads(json.dumps(TOOLS))

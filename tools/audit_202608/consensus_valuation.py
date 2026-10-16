@@ -501,7 +501,7 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
 # long_run_margin and the plausibility gate, carried from the medoid sample to the summary and the verdict row (depth_pipeline.band_verdict)
 S12_SUMMARY_KEYS = ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence", "margin_persistence_evidence",
                     "cycle_position", "cycle_position_evidence", "growth_trajectory", "growth_trajectory_evidence", "input_rationale",
-                    "long_run_margin", "plausibility_gate")
+                    "long_run_margin", "plausibility_gate", "rev22_control_desk")       # step 2c: the rev22 control desk's stamp
 
 
 def select_medoid_scorecard(
@@ -2055,6 +2055,16 @@ def early_stop_check(g2, prior_base=None):
             "prior_delta_pct": prior_delta_pct, "prior_ok": prior_ok}
 
 
+def pack_revision_stamp(pack_text, frozen):
+    """{"pack_revision": ...} for consensus.json (revision 24 step 2c). A fresh build: the code's constant cap.PACK_REVISION. A frozen --pack-file
+    pack: the revision its own first line carries ("(pack revision N)"; None without a marker), plus "code_pack_revision" (the constant) when the
+    two differ, so a frozen revision-22 control pack is never recorded as revision 24."""
+    if not frozen:
+        return {"pack_revision": cap.PACK_REVISION}
+    own = pack_facts.revision_of(pack_text)
+    return {"pack_revision": own} if own == cap.PACK_REVISION else {"pack_revision": own, "code_pack_revision": cap.PACK_REVISION}
+
+
 def build_desk_context(facts, price, ticker, company, run_date=None):
     """The desk's context (S3 3.2; revision 19 brief G3): every constant the pack holds, from the facts object and the harness price. ONE function, so the
     context a fresh run builds from the facts its build returned and the context a `--pack-file` replay builds from the sidecar are the same
@@ -2100,6 +2110,8 @@ def build_desk_context(facts, price, ticker, company, run_date=None):
         "reference_withheld": facts.get("reference_withheld"),
         # revision 24 step 2b: the pack printed no long-run default, so the desk holds no year and takes no default terminal_ronic
         "long_run_defaults_withheld": facts.get("long_run_defaults_withheld"),
+        # revision 24 step 2c (ruling 10 of step 2b): the pilot arm; under rev22 the desk is the rev22 control desk (the generator's margin path)
+        "pilot_arm": facts.get("pilot_arm"),
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)
         # revision 19 (B4): the name and ticker the citation check's news-filter rule needs
@@ -2734,7 +2746,9 @@ def main():
            "draft_num_predict": draft_num_predict,
            "temperature": temperature,
            "seed_base": seed_base,
-           "pack_revision": cap.PACK_REVISION,
+           # revision 24 step 2c (coordinator): a frozen --pack-file pack is stamped with its own header's revision (a rev22 control pack is 22),
+           # and the code's constant is recorded beside it when they differ; a fresh build is stamped with the constant
+           **pack_revision_stamp(pack, pack_file_arg is not None),
            "pack_source": pack_source, "pack_sha256": pack_sha256,
            "pack_facts_source": pack_facts_source,
            "pack_facts_version": pack_facts.FACTS_VERSION,

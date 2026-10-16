@@ -82,8 +82,9 @@ def test_a_name_with_no_marker_gets_no_reference_and_the_defaults_lines_say_why(
     assert "\n- terminal_ronic: " not in text
     text22 = str(_synthetic_pack(monkeypatch, no_marker=True, pilot_arm="rev22"))
     assert _line(text22, "- terminal_ronic:").startswith(f"- terminal_ronic: not available | not available: {REASON}")
-    for key in ("working_capital",):
-        assert _line(text, f"- {key}:").startswith(f"- {key}: not available | not available: {REASON}"), key
+    # revision 24 step 2c (ruling 12): the revision-24 pack prints working_capital_intensity in working_capital's place; the rev22 arm prints the line
+    assert _line(text, "- working_capital_intensity:").startswith(f"- working_capital_intensity: not available | not available: {REASON}")
+    assert _line(text22, "- working_capital:").startswith(f"- working_capital: not available | not available: {REASON}")
     assert _line(text, "- long_run:").startswith("- long_run: cycle=none, ") and f" | not available: {REASON}" in _line(text, "- long_run:")
     assert "- reference_status:" not in text                                     # revision 24: not printed; the facts hold not_available
     assert pack_facts.parity(f, pack_facts.from_text(text)) == []               # the printed lines still read back as the facts

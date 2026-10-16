@@ -56,7 +56,7 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # Terminal value sub-bullets), item 6 names long_run_margin and no longer says DEFAULTS prints the price-implied values, and the contract carries
 # the S12 fields; was "fddd9731cb9b0e65a17991217634261e047db2c6316de57979ac23d6ca8e3e2e". The rev22 arm's TASK_REV22 is revision 22's,
 # "414a4fd72ee6e5b7af4eda667f06427863da5a033f88d956042db53e855e5d3d" (above).
-TASK_SHA256 = "558566a8fa7f7beb683a3819fccbfb6c6e3befc218dc36c5d6c99de120a602a8"
+TASK_SHA256 = "ba344621d2e36f63f66d4234251aefeeb19b4c8984d74c31a8cfcf3058584618"      # revision 24 step 2c: item 3d (the evidence crux_check accepts, the anchor, within_p10_p90 by code), the working-capital bullet
 TASK_REV22_SHA256 = "414a4fd72ee6e5b7af4eda667f06427863da5a033f88d956042db53e855e5d3d"
 RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was

@@ -260,7 +260,14 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r, long_run_margin=None, info=No
                         f"earnings margin cannot be turned into a ratio")
         else:
             why_held = "the facts hold no year-5 revenue and no base fiscal year's filed earnings margin"
-    if long_run_margin is not None:
+    if lr.get("margin_source") == "generator":
+        # revision 24 step 2c (ruling 10 of step 2b): the rev22 control desk takes the long run as revision 22 did - the generator's margin path, the
+        # facts' margin_ratio (the reference's margin rule; none holds the margin) - and reads no long_run_margin (stamped when one was passed)
+        margin_ratio = float(lr["margin_ratio"]) if _is_num(lr.get("margin_ratio")) else None
+        stamps.append("margin_from_generator")
+        if long_run_margin is not None:
+            stamps.append("long_run_margin_not_read_rev22_control")
+    elif long_run_margin is not None:
         if rev5 is not None and e5 != 0:
             margin_ratio = float(long_run_margin) / (e5 / rev5)
             if m5_basis == "base_year":
@@ -268,7 +275,8 @@ def _long_run_inputs(long_run, oe5, ronic_t_in, r, long_run_margin=None, info=No
         else:
             stamps.append("long_run_margin_not_applied_no_revenue")
     if info is not None:
-        info.update(rev5=rev5, m5_basis=m5_basis, margin_held_reason=why_held if (long_run_margin is not None and margin_ratio is None) else None)
+        info.update(rev5=rev5, m5_basis=m5_basis, margin_held_reason=why_held if (long_run_margin is not None and margin_ratio is None
+                                                                                  and lr.get("margin_source") != "generator") else None)
     r_tc = lr.get("r_tc")
     ronic0 = max(r, r_tc) if _is_num(r_tc) else r
     if _is_num(ronic_t_in):
@@ -305,7 +313,12 @@ def implied_trajectory(e5, rev5, margin_ratio, lr, terminal_g, ronic_t, rate, lo
         e10, k10 = e5 * cum * k_end * (1.0 + terminal_g) ** (10 - n), k_end
     out["year10_earnings"] = e10
     m5 = (e5 / rev5) if (rev5 is not None and rev5 != 0) else None
-    out["long_run_margin"] = long_run_margin if margin_ratio is not None else m5
+    if margin_ratio is None:
+        out["long_run_margin"] = m5
+    elif lrf.get("margin_source") == "generator":           # step 2c: the rev22 control's margin, the year-5 margin times the generator's ratio
+        out["long_run_margin"] = None if m5 is None else m5 * margin_ratio
+    else:
+        out["long_run_margin"] = long_run_margin
     if m5 is None:
         out["not_computable"].append("no year-5 revenue: the margin and revenue path are not known")
     else:
@@ -350,7 +363,7 @@ def unbundled_dcf(
     finite_life_years: Optional[int] = None,
     terminal_ronic: Optional[float] = None,
     long_run: Optional[Dict[str, Any]] = None,
-    working_capital: Optional[List[float]] = None,
+    working_capital: Optional[Any] = None,
     excess_cash: Optional[float] = None,
     long_run_margin: Optional[float] = None,
 ) -> Dict[str, Any]:
@@ -360,7 +373,10 @@ def unbundled_dcf(
 
     - Years 1-5: base_cf grown by the five explicit rates (fewer than five: the fade continues, see
       `_five_and_fade`; more than five are refused: years 6 on follow terminal_g, terminal_ronic and
-      fade_years). Each year's flow is base_cf's path less `working_capital[t]` ($B, five values).
+      fade_years). Each year's flow is base_cf's path less `working_capital[t]` ($B, five values); revision 24 step 2c: `working_capital`
+      may instead be {"intensity", "revenue": [years 0-5], "owner_earnings": [years 1-5]} (the consensus revenue path and its owner earnings),
+      and the deduction then follows the scenario's own revenue path (revenue_t x the scenario's owner earnings_t / owner_earnings_t; intensity x
+      each year's change), stamped working_capital_own_path.
     - Years 6..5+F (F = fade_years): growth fades linearly to terminal_g; earnings E_t start from the
       scenario's year-5 earnings (`long_run` facts, `_long_run_inputs`); cash flow_t = E_t (1 -
       g_{t+1} / max(r, RONIC_t)); the earnings margin moves from the scenario's year-5 margin to `long_run_margin` (a decimal, the
@@ -504,7 +520,26 @@ def unbundled_dcf(
     for g in five:
         cf *= 1.0 + g
         oe.append(cf)
-    wc = [float(x) for x in working_capital] if working_capital else None
+    wc_stamp, own_path_undefined = "working_capital_deducted", False
+    if isinstance(working_capital, dict):
+        # revision 24 step 2c (ruling 12 of step 2b): the deduction follows this scenario's own revenue path, never the reference's: the stated
+        # intensity times each year's change in the scenario's revenue, revenue_t = the consensus revenue_t x the scenario's owner earnings_t / the
+        # consensus owner earnings_t (the desk's one revenue convention, step 2a ruling 1: a scenario's revenue scales with its owner earnings; year 0
+        # is the filed base revenue). On the consensus owner-earnings path it is the consensus schedule; a faster path ties up more.
+        inten, rv, ow = working_capital.get("intensity"), working_capital.get("revenue"), working_capital.get("owner_earnings")
+        if not (_is_num(inten) and math.isfinite(inten) and isinstance(rv, (list, tuple)) and len(rv) == 6 and isinstance(ow, (list, tuple))
+                and len(ow) == 5 and all(_is_num(x) and math.isfinite(x) for x in list(rv) + list(ow)) and all(x > 0 for x in ow)):
+            return {"error": "working_capital (own path) needs an intensity, six revenues (years 0-5) and five positive owner earnings (years 1-5)",
+                    "validation_error": True}
+        if all(x > 0 for x in oe):
+            path = [float(rv[0])] + [float(rv[t + 1]) * oe[t] / float(ow[t]) for t in range(5)]
+            wc = [float(inten) * (path[t + 1] - path[t]) for t in range(5)]
+            wc_stamp = "working_capital_own_path"
+        else:                                   # a growth of -100% or below: no revenue scales with owner earnings that are not positive
+            wc, wc_stamp = None, None
+            own_path_undefined = True
+    else:
+        wc = [float(x) for x in working_capital] if working_capital else None
     if wc is not None and len(wc) != 5:
         return {"error": "working_capital holds the five deductions of years 1-5", "validation_error": True}
     flows15 = [oe[t] - (wc[t] if wc else 0.0) for t in range(5)]
@@ -519,8 +554,12 @@ def unbundled_dcf(
     roll = (1.0 + rate) ** (float(stub) / 12.0) if _is_num(stub) and stub else 1.0
     if lr["floor"]:
         stamps.append("long_run_floor")
+    if own_path_undefined:
+        stamps.append("working_capital_own_path_undefined_nonpositive_owner_earnings")
     if wc is not None:
         stamps.append("working_capital_deducted")
+        if wc_stamp != "working_capital_deducted":
+            stamps.append(wc_stamp)                     # step 2c: deducted on the scenario's own revenue path
 
     n_years = lr["n_years"]
     yearly = flows15 + ([] if lr["floor"] else lr["flows"])
@@ -1182,7 +1221,7 @@ def reverse_dcf_expectations_gap(
     base_rate_table: Optional[Dict[str, Any]] = None,
     terminal_ronic: Optional[float] = None,
     long_run: Optional[Dict[str, Any]] = None,
-    working_capital: Optional[List[float]] = None,
+    working_capital: Optional[Any] = None,
     excess_cash: Optional[float] = None,
     x0: Optional[float] = None,
     long_run_margin: Optional[float] = None,
@@ -1792,6 +1831,10 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     # at the consensus levels or the years-3-5 cap, asks no reason for terminal_g or terminal_ronic against a default, and takes no default
     # terminal_ronic (a perpetual call names it, as it names long_run_margin)
     lr_withheld = ctx.get("long_run_defaults_withheld") is True
+    # revision 24 step 2c (ruling 10 of step 2b): the rev22 control desk - under pilot_arm rev22 the long run is valued as revision 22 valued it (the
+    # generator's margin path; long_run_margin not required), with the revision-22 defaults, holds and cap (lr_withheld is False for that pack);
+    # the step-2a fixes D2-D4 stay. Stamped rev22_control_desk on the result.
+    rev22_control = ctx.get("pilot_arm") == "rev22"
 
     scenarios = params.get("scenarios") or []
     base_cf = params.get("base_cf")
@@ -1809,6 +1852,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         return result
 
     result = {"price": price}
+    if rev22_control:
+        result["desk_stamps"] = ["rev22_control_desk"]          # revision 24 step 2c (ruling 10 of step 2b)
     if params.get("price") is not None:
         result["price_note"] = f"today's price is supplied by the harness: {price}"
 
@@ -1897,7 +1942,7 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
 
     # Revision 24 step 2a (ruling 1): the long-run margin is the analyst's judgment and has no default; a perpetual call names it at the top level
     # or in every entry the desk values (a scenario's own value overrides the top level's), or it is refused by name. A finite life has no long run.
-    if cfl_norm == "perpetual":
+    if cfl_norm == "perpetual" and not rev22_control:
         top_lrm = params.get("long_run_margin")
         holders = [(sc, f"{sc.get('name') or 'Scenario'}") for sc in scenarios if isinstance(sc, dict)]
         top_growth = params.get("explicit_growth") if params.get("explicit_growth") is not None else params.get("growth_rates")
@@ -1992,7 +2037,18 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     reason = params.get("guidance_deviation_reason") if _reason_given(params.get("guidance_deviation_reason")) else ""
 
     long_run_ctx = ctx.get("long_run")
-    wc_ctx = ctx.get("working_capital")
+    if rev22_control and isinstance(long_run_ctx, dict):
+        long_run_ctx = dict(long_run_ctx, margin_source="generator")
+    # revision 24 step 2c (ruling 12 of step 2b): working capital follows each scenario's own revenue path (unbundled_dcf's dict form: the record's
+    # intensity, long_run nwc_intensity, times the change in the consensus revenue path, long_run revenue_path, scaled year by year by the
+    # scenario's owner earnings over the consensus owner earnings, long_run oe_path), never the facts' schedule, the reference's path (kept in
+    # the facts for the DEFAULTS run, the logged benchmark). No intensity, or no consensus revenue path (as before: no schedule either), or a
+    # consensus owner earnings that is not positive: no deduction.
+    _lr0 = long_run_ctx if isinstance(long_run_ctx, dict) else {}
+    _rv, _ow = _lr0.get("revenue_path"), _lr0.get("oe_path")       # unprinted long_run members (pack_facts.LONG_RUN_UNPRINTED)
+    wc_ctx = ({"intensity": float(_lr0["nwc_intensity"]), "revenue": list(_rv), "owner_earnings": list(_ow)}
+              if (_is_num(_lr0.get("nwc_intensity")) and isinstance(_rv, list) and len(_rv) == 6 and isinstance(_ow, list) and len(_ow) == 5
+                  and all(_is_num(x) and x > 0 for x in _ow)) else None)
     cash_basis_b = ctx.get("cash_basis_b")
     ronic_default = None if lr_withheld else ctx.get("terminal_ronic")
     # revision 18 (brief 1.7): the excess cash the desk adds at face to every scenario's value ($B): the model's own amount

@@ -136,11 +136,15 @@ WITHHELD_KEYS = ("consensus_implied_value", "reference_status")
 _FIRST_WITHHELD_REVISION = 24
 # revision 24 step 2b: the long-run defaults a withheld-defaults block does not print (the facts keep them for the logged reference benchmark), and
 # the long_run members of the reference's margin rule it drops; a text read gives None for them, and the parity check leaves them out
-WITHHELD_LONG_RUN_KEYS = ("terminal_g_default", "terminal_ronic", "price_implied_defaults")
+WITHHELD_LONG_RUN_KEYS = ("terminal_g_default", "terminal_ronic", "price_implied_defaults", "working_capital")
+# step 2c (ruling 12): `working_capital` (the reference's five deductions, its revenue path) is not printed in a withheld-defaults block either: the desk
+# deducts working capital on each scenario's own revenue path, and the block prints the display line working_capital_intensity instead
 WITHHELD_LONG_RUN_MEMBERS = ("om_5", "m_long", "margin_ratio")
 # long_run members the DEFAULTS block never prints and the parity check never compares: the verdict's full stamps, and (revision 24 step 2b) the
 # base fiscal year's earnings margin and revenue the desk reads when the facts hold no year-5 revenue (ruling 3) and the implied trajectory needs
-LONG_RUN_UNPRINTED = ("stamps_full", "x_L", "rev_L")
+LONG_RUN_UNPRINTED = ("stamps_full", "x_L", "rev_L", "revenue_path", "oe_path")
+# (step 2c, ruling 12 of step 2b: `revenue_path`, the consensus revenue of years 0-5, and `oe_path`, the consensus owner earnings of years 1-5 it pairs
+# with, $B, the common shares' share; the desk builds each scenario's own revenue path from them for the working-capital deduction)
 # version 8's keys (and version 9's primary_sources), None on every text read (legacy or DEFAULTS)
 _SCOPE_KEYS = ("nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
                "vendor_revenue_basis", "primary_sources")
@@ -194,6 +198,12 @@ def empty() -> dict[str, Any]:
         else:
             d[k] = None
     return d
+
+
+def revision_of(pack_text: str | None) -> int | None:
+    """The revision number the pack text's first line carries ("(pack revision N)"), or None without a marker (revision 24 step 2c)."""
+    m = _REVISION_RE.search((pack_text or "").split("\n", 1)[0])
+    return int(m.group(1)) if m else None
 
 
 def is_revision_15(pack_text: str | None) -> bool:
@@ -630,6 +640,9 @@ def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
         out["x_L"] = q_rate(d["x_L"])
     if d.get("rev_L") is not None:
         out["rev_L"] = q_b(d["rev_L"])
+    for k in ("revenue_path", "oe_path"):                  # step 2c: kept for the desk's own-path working capital, never printed
+        if isinstance(d.get(k), (list, tuple)):
+            out[k] = [q_b(x) for x in d[k]]
     return out
 
 
@@ -889,6 +902,27 @@ def _working_capital_explanation(f: dict[str, Any], no_marker: bool = False, wit
             f"reference_base_b (a base that matches an owner-earnings figure is owner earnings)")
 
 
+def _working_capital_intensity_line(f: dict[str, Any], no_marker: bool = False) -> str:
+    """Revision 24 step 2c (ruling 12 of step 2b): the withheld-defaults block's working-capital line. The desk deducts, in years 1-5, the record's
+    intensity times each year's change in the scenario's own revenue path (the consensus revenue path, years 1-2 the consensus revenue and years
+    3-5 next-FY revenue growth fading toward the base-rate median, scaled year by year by the scenario's owner earnings over the consensus owner
+    earnings); this line prints the intensity, never the reference's schedule. A display line: no facts key is read from it."""
+    lr = f.get("long_run") or {}
+    nwc, rp = lr.get("nwc_intensity"), lr.get("revenue_path")
+    if no_marker:
+        return f"- working_capital_intensity: {_NA} | not available: {consensus_reference.NO_MARKER_REASON}"
+    if not isinstance(nwc, (int, float)) or isinstance(nwc, bool) or not rp:
+        why = ("your record holds fewer than 5 years with a classified balance sheet" if not isinstance(nwc, (int, float)) or isinstance(nwc, bool)
+               else "the pack has no consensus revenue path")
+        return f"- working_capital_intensity: {_NA} | no working-capital deduction: {why}"
+    return (f"- working_capital_intensity: {nwc * 100:.2f}% | your record's median net working capital over revenue ({_years_txt(lr.get('nwc_years'))}); "
+            f"in years 1-5 the desk deducts this share of each year's revenue change on each scenario's own revenue path: the consensus revenue "
+            f"path (years 1-2 the consensus revenue, years 3-5 next-FY revenue growth fading toward the base-rate median) scaled year by year by "
+            f"that scenario's owner earnings over the consensus owner earnings, so a scenario that grows faster ties up more; not when base_cf is "
+            f"within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b (a base that matches an owner-earnings "
+            f"figure is owner earnings)")
+
+
 _NCI_BASIS_TXT = {"ni_split": "net-income split", "equity_split": "equity split", "no_nci": "no noncontrolling interest",
                   "unmeasured": "not measurable", "nci_unknown": "not measurable"}
 
@@ -1091,8 +1125,11 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     if split_fact:
         lines.append(line("split_after_last_filing", _dv_split(split_fact),
                           _split_explanation(split_fact, split_confirmed is True)))
-    lines.append(line("working_capital", _render_working_capital(f.get("working_capital")),
-                      _working_capital_explanation(f, no_marker, withhold_reference)))
+    if withhold_long_run:
+        lines.append(_working_capital_intensity_line(f, no_marker))      # step 2c: a display line, no facts key
+    else:
+        lines.append(line("working_capital", _render_working_capital(f.get("working_capital")),
+                          _working_capital_explanation(f, no_marker, withhold_reference)))
 
     lines.append(line("next_fy_revenue_growth", _dv_growth1(f.get("next_fy_revenue_growth")),
                       "what analysts forecast for next fiscal year's revenue growth; evidence, not a cap: the desk holds no year at it"
@@ -1157,7 +1194,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         mm = re.search(rf"^- {re.escape(key)}: (.*?) \| ", block, re.MULTILINE)
         if mm:
             return mm.group(1)
-        if withheld and key in ("terminal_ronic", "price_implied"):
+        if withheld and key in ("terminal_ronic", "price_implied", "working_capital"):
             return None                 # revision 24 step 2b: not printed; None, never from text
         if throughcycle and key not in ("base_year_cap", "split_after_last_filing", "reference_base_b", "excess_cash", "coe_premium_source",
                                   "base_year_cash_and_investments_b", "price_implied"):

@@ -707,7 +707,8 @@ def _w9_desk(ref, **ctx_over):
            "owner_earnings_default_b": 0.0885, "cash_basis_b": W9_CASH_BASIS / B, "reference_base_b": W9_FY_BASE / B,
            "levels": {"year1": lv[0] / B, "year2": lv[1] / B}, "terminal_ronic": ref["terminal_ronic"],
            "long_run": {"e5": lr["e5"] / B, "oe5": lr["oe5"] / B, "m5": lr["m5"], "margin_ratio": ref["margin_ratio"],
-                        "r_tc": 0.15, "stub_months": 8.5},
+                        "r_tc": 0.15, "stub_months": 8.5, "revenue_path": ([x / B for x in ref["revenue"]] if ref.get("revenue") else None),
+                              "oe_path": ([x / B for x in ref["oe_path"]] if ref.get("revenue") else None), "nwc_intensity": ref["nwc_intensity"]},  # step 2c: the consensus revenue path and its owner earnings (the desk's own-path working capital)
            "working_capital": [x / B for x in ref["wc"]]}
     ctx.update(ctx_over)
     sc = lambda name, prob, w: {"name": name, "prob": prob, "base_cf": W9_FY_BASE / B, "explicit_growth": list(ref["path"]), "wacc": w}
