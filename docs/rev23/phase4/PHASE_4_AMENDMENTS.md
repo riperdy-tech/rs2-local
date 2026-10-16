@@ -7178,3 +7178,29 @@ known failures plus the timing flake, no new failure)
       citation level required follows the code's computation.
   19. Accepted (the parity script stays in workspace scratch).
 - **Step 2c** (a fresh builder; brief `BRIEF_R24_S2c_ranges_fix.md`) builds rulings 1, 2, 5, 6, 7, 8, 10, 12 and 18. The pilot waits for it.
+
+### Revision 24: the pilot runner, built and audited; cross-check 19 sent (2026-10-16 10:25)
+- **Cross-check 19** (`rev23/CROSS_CHECK_19_rev24_ranges_gate_pilot.md`, mirrored to rs2-local `docs/rev23-records` `e524968`; the code branch
+  `review-2026-10/rev24-muse` pushed at `e8b8a9b` after a secret scan). The operator asked for it **before any GPU run**: no pilot stage starts
+  until the replies are ruled on.
+- **The pilot runner** (`scratch/rev23/pilot_r24/`, brief `BRIEF_R24_P1_pilot_runner.md`) was built by a builder; 26 unit tests pass and the
+  stub dry run gives 0 unexpected exits. A real offline P5 on AMD passed its three checks.
+  - **The coordinator read** `design.py`, `prep.sh`, `run.sh`, `stage_p.py` and `stage_r.py` in full. They reproduce `depth_pipeline.main()`
+    stage for stage (enrich and its error gate, the frozen quote, forced research with the company check, discovery, the offline arm packs,
+    `consensus_valuation --tools --pack-file --evidence-store`, `band_verdict`, `stamp_and_route` gate_test into the tree's test ledger).
+    Every refusal is there: a foreign server, an Ollama model, pins before and after, frozen artefacts, DISARM. The runner stops only its own
+    child and its own server.
+  - **Incident (the builder's report):** one dry-run attempt made three real price-quote calls (UGI, MPWR, MU; read-only) and called
+    `llamacpp_server.stop()`, which found no engine record and did nothing. Fixed: stub mode loads the stubs first and refuses every network
+    connection.
+  - **Timing rule:** P1 warms the same-day SEC caches and P5 builds offline, so P1 to P5 must fall in one UTC day (it turns at 09:00 KST).
+    The coordinator reads P1's output before P5, because a SEC fetch failure in the live build only warns.
+  - **The coordinator's changes:** registration amendments 1 and 2 (`f6ac932`). `design.py` and `stage_r.py` implement amendment 1, the test
+    is updated, the 26 tests pass and the dry run gives 0 unexpected exits.
+  - **Recorded, not fixed:**
+    - `depth_sanity` finds no runs under `--out-dir` (it warns and audits nothing; non-fatal);
+    - the pilot tree has no prior verdicts (by design);
+    - one dry-run refusal line sits in `logs/stage_r.log`.
+  - **Added to step 2c:**
+    - `pack_revision` is stamped from a frozen pack's own header (a revision-22 control was recorded as 24);
+    - TASK item 3d names exactly the sources the gate accepts.

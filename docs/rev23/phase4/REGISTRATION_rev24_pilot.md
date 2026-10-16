@@ -62,3 +62,23 @@ For each name and arm: the final value ÷ price, the formula reference ÷ price,
   accepted, and (a) shows no systematic copying (not most inputs at P50, nor at one boundary, across names).
 - **Otherwise the report names the failure,** and the next step is the operator's.
 - The P50 choice between the arms is made on (a) and (c).
+
+## Amendments (each dated, made before any pilot run)
+**Amendment 1, 2026-10-16 10:20.** UGI (utility) and LAMR (REIT) are in families the population tables do not measure (step 2b; ruling 7), so
+their `iii_p50` and `iii_no_p50` packs are byte-identical and two runs at the same seed would duplicate each other.
+- For these two names, the `iii_no_p50` slot runs `iii_p50` at seed base 2402 instead, a stability repeat counted under (b).
+- The run count stays 22. (b) now covers MU, AMD, UGI and LAMR. (a) and the P50 comparison cover MPWR, MU, AMD and CMRE.
+- Stage R refuses when stage P finds this assumption false: ranges printed for UGI or LAMR, or none for another name.
+
+**Amendment 2, 2026-10-16 10:20.** Measure (d) named "revision 21's checks I1–I8". The AT10b/AT10c scorer and AT10b's base registration (its
+section 7, the definitions of I1 and I3–I7) no longer exist on disk. They lived in a session scratchpad that has been cleaned. (d) is
+therefore:
+- **computed:**
+  - the run's own `crux_check` verdict and stamps per sample;
+  - the crux follow-up firings;
+  - the plausibility-gate outcomes, with the resolution of each outlier citation;
+  - `pack_revision`, provider and model tag (I2);
+- **read by the coordinator:** I8's revision-21 mechanics (served-from-primary refusals, follow-up conditions, PRIMARY citations resolving),
+  in every memo read under (c).
+
+I1 and I3–I7 are not rebuilt for a failure-finding pilot. This is recorded as a reduction of (d) from the registration's text.
