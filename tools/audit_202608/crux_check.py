@@ -229,6 +229,23 @@ def _names_company(text, company, ticker):
     return bool(company_news.names_company(company_news._clean_company_name(company, ticker), ticker, title=text))
 
 
+# the classes that are company evidence (1.3): the acceptance rule's one copy, read by `evidence_failure` (and so by the crux and, from revision 24
+# step 2c, by the plausibility gate's outlier citations, fiduciary_gate.citation_resolves)
+COMPANY_EVIDENCE = ("pack_company", "fetched_page_naming_company")
+
+
+def evidence_failure(records):
+    """The acceptance rule of (v3), the one copy (ruling 8 of revision 24 step 2b: the crux and the plausibility gate's outlier citations accept
+    exactly the same): None when at least one of `classify_citations`' records is company evidence (COMPANY_EVIDENCE) with its quote found verbatim;
+    else `no_company_evidence` when none is company evidence, `quote_not_found` when company evidence is cited but no quote is found."""
+    company_ev = [c for c in records or [] if c.get("class") in COMPANY_EVIDENCE]
+    if not company_ev:
+        return "no_company_evidence"
+    if not any(c.get("quote_found") for c in company_ev):
+        return "quote_not_found"
+    return None
+
+
 def check(crux, price_implied, pack_text, calls, company, ticker, defaults):
     """The validity of a crux (1.3). `crux` is the answer call's crux argument, `price_implied` its block (the desk's), `pack_text` the pack the
     model read, `calls` the sample's snapshot calls, `company` and `ticker` the name for the news filter's rule, `defaults` the pack's facts.
@@ -259,13 +276,8 @@ def check(crux, price_implied, pack_text, calls, company, ticker, defaults):
             if not rec["reachable"]:
                 rec["reason"] = "not_reachable"
             else:
-                company_ev = [c for c in rec["citations"] if c["class"] in ("pack_company", "fetched_page_naming_company")]
-                if not company_ev:
-                    rec["reason"] = "no_company_evidence"
-                elif not any(c["quote_found"] for c in company_ev):
-                    rec["reason"] = "quote_not_found"
-                else:
-                    rec["valid"] = True
+                rec["reason"] = evidence_failure(rec["citations"])
+                rec["valid"] = rec["reason"] is None
         entries.append(rec)
     first = next((x for x in entries if not x["valid"]), None)
     return {"valid": first is None, "reason": None if first is None else first["reason"], "entries": entries}

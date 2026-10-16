@@ -635,6 +635,7 @@ def band_verdict(doc):
          "spread_pct": doc.get("spread_pct"),
          "flags": sorted({f for r in good for f in (r.get("flags") or [])} | set(excluded)),
          "pack_revision": doc.get("pack_revision", 1),
+         "code_pack_revision": doc.get("code_pack_revision"),     # revision 24 step 2c: set only when a frozen pack's revision differs
          "scheme": "band_direction_v1"}
     # P4.3 — m: the price's position within the plausible-IV band, in half-widths. Computed here
     # (not left to ivs[0]/ivs[-1] above) because the NOT_USABLE path below has no band either.
@@ -726,7 +727,8 @@ def band_verdict(doc):
         # is set below from the basis samples
         **{k: scorecard.get(k) for k in ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence",
                                          "margin_persistence_evidence", "cycle_position", "cycle_position_evidence", "growth_trajectory",
-                                         "growth_trajectory_evidence", "input_rationale", "long_run_margin", "plausibility_gate")},
+                                         "growth_trajectory_evidence", "input_rationale", "long_run_margin", "plausibility_gate",
+                                         "rev22_control_desk")},
         "plausibility_by_sample": None,
     })
 
@@ -848,7 +850,11 @@ def band_verdict(doc):
                                     "reasons": ((r.get("scorecard") or {}).get("plausibility_gate") or {}).get("reasons") or [],
                                     "annotations": ((r.get("scorecard") or {}).get("plausibility_gate") or {}).get("annotations") or []}
                                    for r in good]
-    supported = sorted({a for s in v["plausibility_by_sample"] for a in s["annotations"] if a.startswith("implausible_supported_")})
+    # step 2c: the gate's other annotations ride as flags too (rulings 7 and 18: no population cohort, an invalid classification, a within_p10_p90
+    # the code reads differently, an outlier without a citation that resolves, no growth anchor printed); none of them rejects
+    supported = sorted({a for s in v["plausibility_by_sample"] for a in s["annotations"]
+                        if a.startswith(("implausible_supported_", "invalid_classification_", "within_p10_p90_mismatch:", "outlier_citation_missing:"))
+                        or a in ("no_population_cohort", "terminal_g_anchor_not_available", "long_run_margin_outside_year5_range_unsupported")})
     if supported:
         v["flags"] = sorted(set(v.get("flags") or []) | set(supported))
     rejected = [s for s in v["plausibility_by_sample"] if s["verdict"] == "reject"]

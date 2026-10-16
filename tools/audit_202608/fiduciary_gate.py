@@ -365,10 +365,27 @@ def validate_fiduciary_contract(
 # Computed from the answer run's Base (the desk's `implied` block, financial_model_tool.implied_trajectory) and the pack's population ranges
 # (tools/population_ranges.gate_bounds: the cohort's P5 and P95). Mathematics first: terminal growth at or above the discount rate is rejected
 # (`terminal_growth_not_below_rate`). Then each implied metric against its cohort's P5-P95: inside passes; outside passes only with an
-# input_rationale citation that resolves - a PRIMARY item, or a filing quote, that crux_check's verifier accepts (class pack_company, the quote found
-# verbatim in it) - and is annotated `implausible_supported_<metric>`; outside without one is rejected, `implausible_unsupported_<metric>`. A metric
-# with no measured cohort, or that the trajectory cannot compute, is annotated (`plausibility_not_measured:<metric>`,
-# `plausibility_not_computable:<metric>`) and never rejected. Nothing is clamped and there is no other cap.
+# input_rationale citation that resolves and is annotated `implausible_supported_<metric>`; outside without one is rejected,
+# `implausible_unsupported_<metric>`. A metric with no measured cohort, or that the trajectory cannot compute, is annotated
+# (`plausibility_not_measured:<metric>`, `plausibility_not_computable:<metric>`) and never rejected. Nothing is clamped and there is no other cap.
+#
+# Step 2c (PHASE_4_AMENDMENTS.md "Revision 24 step 2b", rulings 1, 2, 5-8 and 18; BRIEF_R24_S2c_ranges_fix.md items 1-6 and 9):
+#   * the long-run margin is compared with the earnings-margin P5-P95 of the rebuilt range (ruling 2); terminal_ronic with the ROIC level five years on
+#     (ruling 6); the revenue CAGR to year 10 with the 10-year revenue CAGR (ruling 5);
+#   * terminal_g has no population range (ruling 5): above the pack's printed long-run growth anchor (`terminal_g_anchor`, DEFAULTS and DATA 1.5) it
+#     is an outlier needing an outlier-level citation (`implausible_supported_terminal_g` / `implausible_unsupported_terminal_g`); no anchor printed
+#     is annotated `terminal_g_anchor_not_available`;
+#   * a family the tables do not measure is annotated `no_population_cohort` (ruling 7) and the gate still runs the mathematics and the anchor check;
+#   * cross-check 19, ruling B: the long-run margin's range is measured five years out while long_run_margin is the margin at the end of the fade, so
+#     outside its P5-P95 it is ANNOTATED, never rejected: `implausible_supported_long_run_margin` with a citation that resolves,
+#     `long_run_margin_outside_year5_range_unsupported` without one (within_p10_p90 is still computed against it for the citation level);
+#   * cross-check 19, ruling C: a shrinking business - the record's 8-year ln-revenue OLS slope below 0 (the terminal table's own shrinking test), or
+#     growth_trajectory classified shrinking - makes any terminal_g above 0 an outlier needing an outlier-level citation, as above the anchor;
+#   * a citation resolves by crux_check's own acceptance rule (ruling 8): `crux_check.evidence_failure`, the one rule for both levels;
+#   * the three classifications are checked against their allowed values (`invalid_classification_<name>`), and within_p10_p90 is computed from the
+#     printed range: the analyst's declaration is kept, a mismatch is annotated (`within_p10_p90_mismatch:<input>`), and the citation level follows
+#     the code's value - an input outside its printed P10-P90 without a citation that resolves is annotated `outlier_citation_missing:<input>`
+#     (ruling 18; an annotation, never a rejection: the rejections are the P5-P95 and mathematics checks above).
 
 PLAUSIBILITY_METRICS = ("long_run_margin", "revenue_cagr_10y", "terminal_ronic", "earnings_ratio_10y", "terminal_g")
 # the input_rationale entries whose citation can support an outlier of each metric: the long-run margin by long_run_margin; the revenue growth to
@@ -377,6 +394,12 @@ PLAUSIBILITY_METRICS = ("long_run_margin", "revenue_cagr_10y", "terminal_ronic",
 RATIONALE_FOR = {"long_run_margin": ("long_run_margin",), "revenue_cagr_10y": ("growth_years_3_5", "fade_years"),
                  "terminal_ronic": ("terminal_ronic",), "earnings_ratio_10y": ("long_run_margin", "growth_years_3_5", "fade_years"),
                  "terminal_g": ("terminal_g",)}
+# ruling 18: the allowed values of the three classifications (the TASK's and Section 12's)
+CLASSIFICATIONS = {"margin_persistence": ("structural", "partly_structural", "transient"),
+                   "cycle_position": ("trough", "mid", "peak", "not_cyclical"),
+                   "growth_trajectory": ("accelerating", "steady", "decelerating", "shrinking")}
+# the long-run inputs of input_rationale, and where the printed range each is read against comes from
+RATIONALE_INPUTS = ("long_run_margin", "growth_years_3_5", "fade_years", "terminal_g", "terminal_ronic")
 
 
 def _as_number(v):
@@ -401,24 +424,66 @@ def _citations_of(input_rationale, names):
 
 
 def citation_resolves(citations, pack_text, calls, company, ticker):
-    """(resolved, records): whether any citation is a PRIMARY item or a filing quote that crux_check's verifier accepts - class pack_company
-    (PRIMARY P#, DATA 3-6 or GUIDANCE, the company's own words in the pack) with the quote found verbatim - and crux_check's per-citation records. A
-    page fetched in the session is not a filing and does not resolve here."""
+    """(resolved, records): whether the citations pass crux_check's own acceptance rule for a crux entry (ruling 8 of step 2b: one rule for both
+    levels) - at least one is company evidence, class pack_company (PRIMARY P#, DATA 3-6 or GUIDANCE) or fetched_page_naming_company (a page fetched
+    in this sample that names the company), with its quote found verbatim - and crux_check's per-citation records."""
     import crux_check
     if not citations:
         return False, []
     recs = crux_check.classify_citations(citations, crux_check.pack_sources(pack_text), crux_check.fetched_texts(calls), company, ticker,
                                          crux_check.primary_items(pack_text))
-    return any(r["class"] == "pack_company" and r["quote_found"] for r in recs), recs
+    return crux_check.evidence_failure(recs) is None, recs
 
 
-def plausibility_gate(dcf, ranges, input_rationale=None, pack_text=None, calls=None, company=None, ticker=None):
+def _base_input(dcf, name):
+    """The Base's own value of a long-run input, as the desk applied it (None when the desk output does not carry it)."""
+    if name == "long_run_margin":
+        return _as_number((dcf.get("long_run") or {}).get("long_run_margin"))
+    if name in ("terminal_g", "terminal_ronic"):
+        return _as_number(dcf.get(name))
+    return None
+
+
+def classification_check(classifications):
+    """{name: {"value", "valid"}} and the annotations `invalid_classification_<name>` (ruling 18): a value is valid when, stripped and in lower
+    case, it is one of CLASSIFICATIONS[name]; a missing value is not one of them."""
+    recs, notes = {}, []
+    c = classifications if isinstance(classifications, dict) else {}
+    for name, allowed in CLASSIFICATIONS.items():
+        v = c.get(name)
+        norm = v.strip().lower() if isinstance(v, str) else v
+        ok = isinstance(norm, str) and norm in allowed
+        recs[name] = {"value": v, "valid": ok}
+        if not ok:
+            notes.append(f"invalid_classification_{name}")
+    return recs, notes
+
+
+def _shrinking(ranges, classifications):
+    """(shrinking, basis) for cross-check 19 ruling C: the record's 8-year revenue trend below 0, or growth_trajectory classified shrinking."""
+    tr = (ranges or {}).get("revenue_trend8") if isinstance(ranges, dict) else None
+    gt = (classifications or {}).get("growth_trajectory") if isinstance(classifications, dict) else None
+    gt = gt.strip().lower() if isinstance(gt, str) else gt
+    basis = []
+    if isinstance(tr, (int, float)) and not isinstance(tr, bool) and tr < 0:
+        basis.append(f"the record's 8-year revenue trend {tr:+.4f} is below 0")
+    if gt == "shrinking":
+        basis.append("growth_trajectory is classified shrinking")
+    return bool(basis), basis
+
+
+def plausibility_gate(dcf, ranges, input_rationale=None, pack_text=None, calls=None, company=None, ticker=None, growth_anchor=None,
+                      classifications=None):
     """The gate on one sample's answer run. `dcf` is the Base's desk output (it carries `implied`), `ranges` the pack's population ranges
-    (facts["population_ranges"]), `input_rationale` the sample's SECTION 12 field. Returns {"verdict": "pass" | "reject" | "not_applicable",
-    "reasons": [the rejection names], "annotations": [...], "metrics": {metric: {"value", "p5", "p95", "cohort", "n", "status", "citation"}}}.
-    `not_applicable` for a finite cash-flow life (no long run to check) or no Base."""
+    (facts["population_ranges"]), `input_rationale` the sample's SECTION 12 field, `growth_anchor` the pack's printed long-run nominal growth anchor
+    (facts["terminal_g_anchor"]), `classifications` {margin_persistence, cycle_position, growth_trajectory} from SECTION 12. Returns {"verdict":
+    "pass" | "reject" | "not_applicable", "reasons": [the rejection names], "annotations": [...], "metrics": {metric: {"value", "p5", "p95", "cohort",
+    "n", "status", "citation"}}, "within_p10_p90": {input: {...}}, "classifications": {...}}. `not_applicable` for a finite cash-flow life (no long run
+    to check) or no Base; the classifications are checked whatever the verdict."""
     import population_ranges
-    out = {"verdict": "not_applicable", "reasons": [], "annotations": [], "metrics": {}}
+    out = {"verdict": "not_applicable", "reasons": [], "annotations": [], "metrics": {}, "within_p10_p90": {}, "classifications": {}}
+    out["classifications"], notes = classification_check(classifications)
+    out["annotations"] += notes
     if not isinstance(dcf, dict) or dcf.get("per_share_iv") is None:
         out["annotations"].append("no_answer_run_base")
         return out
@@ -430,31 +495,93 @@ def plausibility_gate(dcf, ranges, input_rationale=None, pack_text=None, calls=N
     if rate is None or tg is None or not tg < rate:
         out["reasons"].append("terminal_growth_not_below_rate")
     bounds = population_ranges.gate_bounds(ranges)
+    anchor = _as_number(growth_anchor)
     values = {"long_run_margin": _as_number(imp.get("long_run_margin")), "revenue_cagr_10y": _as_number(imp.get("revenue_cagr_10y")),
               "terminal_ronic": _as_number(imp.get("terminal_ronic") if imp.get("terminal_ronic") is not None else dcf.get("terminal_ronic")),
               "earnings_ratio_10y": _as_number(imp.get("earnings_ratio_10y")), "terminal_g": tg}
+    unmeasured_family = False
+    shrinking, shrink_basis = _shrinking(ranges, classifications)
     for m in PLAUSIBILITY_METRICS:
-        b = bounds.get(m)
         v = values[m]
-        rec = {"value": v, "p5": None if b is None else b["p5"], "p95": None if b is None else b["p95"],
-               "cohort": None if b is None else b.get("cohort"), "n": None if b is None else b.get("n"), "status": None, "citation": None}
-        out["metrics"][m] = rec
-        if b is None:
-            rec["status"] = "not_measured"
-            out["annotations"].append(f"plausibility_not_measured:{m}")
-        elif v is None:
-            rec["status"] = "not_computable"
-            out["annotations"].append(f"plausibility_not_computable:{m}")
-        elif b["p5"] <= v <= b["p95"]:
-            rec["status"] = "within"
+        if m == "terminal_g":
+            # ruling 5: no population range; the anchor the pack prints is the outlier threshold (at or below it is an ordinary choice); cross-check
+            # 19 ruling C: for a shrinking business any terminal_g above 0 is an outlier too
+            rec = {"value": v, "anchor": anchor, "shrinking": shrink_basis, "status": None, "citation": None}
+            out["metrics"][m] = rec
+            if anchor is None:
+                out["annotations"].append("terminal_g_anchor_not_available")
+            if v is None:
+                rec["status"] = "not_computable"
+                out["annotations"].append(f"plausibility_not_computable:{m}")
+                continue
+            if anchor is None and not shrinking:
+                rec["status"] = "not_measured"
+                continue
+            outside = (anchor is not None and v > anchor) or (shrinking and v > 0)
         else:
-            ok, recs = citation_resolves(_citations_of(input_rationale, RATIONALE_FOR[m]), pack_text, calls, company, ticker)
-            rec["citation"] = recs
-            if ok:
-                rec["status"] = "supported"
-                out["annotations"].append(f"implausible_supported_{m}")
+            b = bounds.get(m)
+            rec = {"value": v, "p5": None if b is None else b["p5"], "p95": None if b is None else b["p95"],
+                   "cohort": None if b is None else b.get("cohort"), "n": None if b is None else b.get("n"), "status": None, "citation": None}
+            out["metrics"][m] = rec
+            if b is None:
+                rec["status"] = "not_measured"
+                out["annotations"].append(f"plausibility_not_measured:{m}")
+                unmeasured_family = unmeasured_family or population_ranges.family_unmeasured(ranges, m)
+                continue
+            if v is None:
+                rec["status"] = "not_computable"
+                out["annotations"].append(f"plausibility_not_computable:{m}")
+                continue
+            outside = not (b["p5"] <= v <= b["p95"])
+        if not outside:
+            rec["status"] = "within"
+            continue
+        ok, recs = citation_resolves(_citations_of(input_rationale, RATIONALE_FOR[m]), pack_text, calls, company, ticker)
+        rec["citation"] = recs
+        if ok:
+            rec["status"] = "supported"
+            out["annotations"].append(f"implausible_supported_{m}")
+        elif m == "long_run_margin":
+            # cross-check 19 ruling B: a year-5 range does not bound the margin at the end of the fade: annotated, never rejected
+            rec["status"] = "outside_year5_range_unsupported"
+            out["annotations"].append("long_run_margin_outside_year5_range_unsupported")
+        else:
+            rec["status"] = "unsupported"
+            out["reasons"].append(f"implausible_unsupported_{m}")
+    if unmeasured_family:
+        out["annotations"].append("no_population_cohort")
+    # ruling 18: within_p10_p90 by code, from the printed range of each input (long_run_margin: the earnings-margin P10-P90; terminal_ronic: the ROIC
+    # level's; terminal_g: at or below the growth anchor; the growth path and the fade have no printed P10-P90, so the in-range rationale applies)
+    ir = input_rationale if isinstance(input_rationale, dict) else {}
+    for name in RATIONALE_INPUTS:
+        entry = ir.get(name) if isinstance(ir.get(name), dict) else {}
+        declared = entry.get("within_p10_p90")
+        declared = declared if isinstance(declared, bool) else None
+        value, computed, basis = _base_input(dcf, name), None, None
+        if name in ("long_run_margin", "terminal_ronic"):
+            b = bounds.get(name)
+            if b is not None and value is not None:
+                computed, basis = (b["p10"] <= value <= b["p90"]), f"the printed P10-P90 {b['p10']:.4f} to {b['p90']:.4f}"
             else:
-                rec["status"] = "unsupported"
-                out["reasons"].append(f"implausible_unsupported_{m}")
+                basis = "no printed P10-P90" if b is None else "the Base carries no value"
+        elif name == "terminal_g":
+            if value is not None and (anchor is not None or shrinking):
+                computed = (anchor is None or value <= anchor) and not (shrinking and value > 0)
+                basis = "; ".join(([f"the long-run growth anchor {anchor:.4f}"] if anchor is not None else [])
+                                  + ([f"above 0 for a shrinking business ({', '.join(shrink_basis)})"] if shrinking else []))
+            else:
+                basis = "no growth anchor printed" if anchor is None else "the Base carries no value"
+        else:
+            basis = "no printed P10-P90"
+        level = "outlier" if computed is False else "in_range"
+        rec = {"value": value, "declared": declared, "computed": computed, "basis": basis, "citation_level": level, "citation_resolves": None}
+        if declared is not None and computed is not None and declared != computed:
+            out["annotations"].append(f"within_p10_p90_mismatch:{name}")
+        if level == "outlier":
+            ok, _recs = citation_resolves(_citations_of(ir, (name,)), pack_text, calls, company, ticker)
+            rec["citation_resolves"] = ok
+            if not ok:
+                out["annotations"].append(f"outlier_citation_missing:{name}")
+        out["within_p10_p90"][name] = rec
     out["verdict"] = "reject" if out["reasons"] else "pass"
     return out
