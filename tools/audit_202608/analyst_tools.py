@@ -3035,8 +3035,9 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
                                                          else {"fired": False, "outcome": None}),
                                        "primary_refusals": primary_refusals,
                                        "reference_revision": reveal_record,
-                                       "two_pass": tp_record,
-                                       "memo_merge": memo_merge,
+                                       # the Stage 0.5-0.8 audit: only the r25 arms carry the two-pass record and the merge (every other arm's meta is
+                                       # unchanged, test_llm_provider_provenance)
+                                       **({"two_pass": tp_record, "memo_merge": memo_merge} if tp_record is not None else {}),
                                        "base_iv_stage_a": base_iv_stage_a,
                                        "base_iv_final": base_iv_final}
 

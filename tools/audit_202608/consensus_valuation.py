@@ -504,10 +504,10 @@ S12_SUMMARY_KEYS = ("near_term_earnings", "normalized_earnings", "normalization_
                     "cycle_position", "cycle_position_evidence", "growth_trajectory", "growth_trajectory_evidence", "input_rationale",
                     "long_run_margin", "plausibility_gate", "rev22_control_desk",       # step 2c: the rev22 control desk's stamp
                     "bridge", "bridge_checks", "class_checks", "desk_schema",          # revision 25: the normalization bridge (contract_fill.REVISION_25)
-                    "terminal_value_share", "terminal_reinvestment_rate",               # step 2d: the two diagnostics (contract_fill.REVISION_24_2D)
                     # revision 25 (Stage 0.6, 0.7): the two-pass protocol's fields - the pass-1 inputs and the change log (contract_fill.REVISION_25_TWO_PASS),
                     # the analyst's reasons (the contract), the arm, whether consensus was shown in pass 1, and the memorandum merge after a crux follow-up
-                    "pass1_inputs", "change_log", "reconciliation_reasons", "two_pass_arm", "consensus_shown_pass1", "memo_merge")
+                    "pass1_inputs", "change_log", "reconciliation_reasons", "two_pass_arm", "consensus_shown_pass1", "memo_merge",
+                    "terminal_value_share", "terminal_reinvestment_rate")               # step 2d: the two diagnostics, kept last (test_rev24_s2d)
 
 
 def select_medoid_scorecard(

@@ -375,7 +375,7 @@ def test_the_other_arms_prompts_are_byte_for_byte_what_they_were():
 def test_a_session_without_two_pass_is_as_it_was(monkeypatch, tmp_path):
     bodies = _serve(monkeypatch, [_desk(OK), _turn(MEMO)])
     rep, _t, meta = _run(tmp_path)
-    assert meta["two_pass"] is None and meta["memo_merge"] is None and rep == MEMO
+    assert "two_pass" not in meta and "memo_merge" not in meta and rep == MEMO
     assert all("pass" not in c for c in _snap(tmp_path)["calls"]) and all("pass" not in t for t in meta["turns"])
     assert len(bodies) == 2
 
@@ -399,7 +399,7 @@ def test_the_merge_is_for_the_r25_arms_only_arm_a_keeps_the_follow_up_reply_as_i
     reply = _memo([(0, "Verdict", "The verdict is now BUY. " + "z" * 5200), (3, "Thesis", "unchanged"), (12, "Contract", "no change")])
     _serve(monkeypatch, [_desk(OK), _turn(answer), _turn(reply)])
     rep, _t, meta = _run(tmp_path)
-    assert meta["crux_followup"]["fired"] is True and meta["memo_merge"] is None
+    assert meta["crux_followup"]["fired"] is True and "memo_merge" not in meta
     assert rep == reply and "The thesis in full." not in rep                 # no section of the first memorandum is carried over
 
 
