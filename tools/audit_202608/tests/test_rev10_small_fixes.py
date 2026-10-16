@@ -28,7 +28,9 @@ def test_the_task_states_the_direction_band_the_takeover_rule_and_null_reasons()
     assert "base_cf_reason" in fm["function"]["parameters"]["properties"]
     assert "owner CF" not in cap.TASK
     # revision 17: the desk holds the Base's years 1-2 at the levels instead of asking for a reason
-    assert "the desk holds the Base's years 1-2 at the consensus cash-flow levels in DEFAULTS unless you give the reason DEFAULTS names for a departure" in cap.TASK
+    # revision 24 step 2b: the revision-24 TASK holds no year (the consensus is evidence); the revision-22 TASK (the rev22 arm) still says it does
+    assert "the desk holds the Base's years 1-2 at the consensus cash-flow levels in DEFAULTS unless you give the reason DEFAULTS names for a departure" in cap.TASK_REV22
+    assert "the consensus levels in DEFAULTS are what analysts forecast, evidence and not a value the desk holds, and the desk holds or caps no year" in cap.TASK
     assert "anchor Bull and Bear to the top and bottom of the company's own guidance range" in cap.TASK
 
 

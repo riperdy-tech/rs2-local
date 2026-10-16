@@ -403,7 +403,7 @@ def test_the_desk_equals_the_reference_on_the_reference_own_inputs(record_kw):
 
 
 def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None, separate_borrowings=False,
-                    op_margins=None, enrich_override=None, no_marker=False):
+                    op_margins=None, enrich_override=None, no_marker=False, pilot_arm=None):
     """build_pack("GEV") on the synthetic twelve-year history and estimates above (no network, clock frozen)."""
     import capability_test as cap
     import rs2_data
@@ -454,7 +454,7 @@ def _synthetic_pack(monkeypatch, untagged=(), drop_goodwill=False, debt_tag=None
             return enrich
         return orig(path)
     monkeypatch.setattr(rs2_data, "load_json", load)
-    return cap.build_pack("GEV", include_research=False)
+    return cap.build_pack("GEV", include_research=False, pilot_arm=pilot_arm)
 
 
 def test_the_pack_builds_the_record_the_facts_and_the_lines_and_the_desk_follows_them(screener_data_stub, monkeypatch):

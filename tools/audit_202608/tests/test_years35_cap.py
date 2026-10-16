@@ -774,6 +774,7 @@ def test_18_plumbing_consensus_valuation_passes_desk_context(monkeypatch, tmp_pa
         "rf_eff", "nominal_gdp_trend",
         # revision 24 (R24.2): the pack withheld the reference, so the R10 gate is off
         "reference_withheld",
+        "long_run_defaults_withheld",                   # revision 24 step 2b
     }
     for ctx in captured_calls:
         assert set(ctx.keys()) == expected_keys

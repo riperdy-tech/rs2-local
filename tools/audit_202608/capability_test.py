@@ -51,6 +51,7 @@ import world_news  # noqa: E402
 import company_news  # noqa: E402
 import catalyst_research  # noqa: E402
 import consensus_reference  # noqa: E402
+import population_ranges  # noqa: E402
 import throughcycle_record  # noqa: E402
 import input_scope  # noqa: E402
 import pack_facts  # noqa: E402
@@ -248,7 +249,35 @@ TIMEOUT = 14400
 #   The card now prints "Net Debt $X" unsigned, matching the [Arithmetic] NET DEBT line and net_debt_b; no number changes.
 # Revision 24 (PHASE_4_REV24_MUSE.md R24.2): the CONSENSUS-IMPLIED VALUE is shown only after the analyst commits (stage A without it, stage B
 #   reveal with code-enforced revision guardrails); the R10 gate is off. Step 2a: desk long_run_margin (analyst), D2–D4 fixed, reveal off.
+#   Step 2b (BRIEF_R24_S2b_ranges_gate.md): no default for a long-run judgment (terminal_g, terminal_ronic, long_run_margin, the years 3-5 path and
+#   its price-implied run); the POPULATION RANGES section after DEFAULTS; the consensus years 1-2 as evidence (no desk hold); the three
+#   classifications, normalized earnings and the input rationale in SECTION 12; the plausibility gate; the pilot arms (pilot_arm rev22 is the
+#   revision-22 pack byte for byte).
 PACK_REVISION = 24
+# Revision 24 step 2b: the pilot arms (PHASE_4_REV24_MUSE.md step 3). `rev22` is the revision-22 briefing byte for byte (the control: its marker,
+# the CONSENSUS-IMPLIED VALUE, the DEFAULTS of revision 22 and its TASK); the two `iii` arms are the revision-24 briefing and differ only by P50 in
+# the POPULATION RANGES section.
+PILOT_ARMS = ("rev22", "iii_p50", "iii_no_p50")
+REV22_REVISION = 22
+
+
+def pack_flags(pilot_arm=None, ranges_show_p50=None):
+    """(arm, show_p50) of a build: the arguments, else config.json's `pilot_arm` and `ranges_show_p50` (absent: no arm, P50 not shown). An arm
+    sets P50 (iii_p50 shows it, iii_no_p50 does not; rev22 prints no ranges); a contradicting ranges_show_p50 is refused, never resolved silently.
+    Only a literal true shows P50."""
+    arm = pilot_arm if pilot_arm is not None else CONFIG.get("pilot_arm")
+    if arm is not None and arm not in PILOT_ARMS:
+        raise ValueError(f"pilot_arm {arm!r} is not one of {PILOT_ARMS}")
+    flag = ranges_show_p50 if ranges_show_p50 is not None else CONFIG.get("ranges_show_p50")
+    flag = None if flag is None else (flag is True)
+    if arm == "rev22":
+        return arm, None
+    if arm in ("iii_p50", "iii_no_p50"):
+        want = arm == "iii_p50"
+        if flag is not None and flag != want:
+            raise ValueError(f"pilot_arm {arm} and ranges_show_p50 {flag} contradict each other")
+        return arm, want
+    return None, bool(flag)
 
 LAST_PACK_MACRO_DEGRADED = False
 LAST_PACK_FLAGS = []
@@ -1750,7 +1779,30 @@ def _q_b_or_none(v):
     return pack_facts.q_b(v / 1e9) if _is_number(v) else None
 
 
-def build_pack(t, price_override=None, include_research=True, asof=None, news_snippets=False):
+def _population_ranges_for(t, h, record, asof_date):
+    """Revision 24 step 2b: tools/population_ranges.ranges_for on this company's record at the valuation date (the pack's as-of date, else
+    today): the family from the rebuild's rules on the SIC (sic_by_cik.json, through the CIK) and the base year's row, the features from the
+    fiscal-year rows `h` (already cut to the as-of date), the earnings margins from the pack's own record. Never raises: a table or file that cannot
+    be read gives {"inputs": {}, "unavailable": <why>}, which the section prints."""
+    T = asof_date if asof_date is not None else datetime.now().date()
+    try:
+        import paths as _paths
+        sic_doc = rs2_data.load_json(_paths.resolve("priors_inputs_dir") / "sic_by_cik.json") or {}
+        c = cik(t)
+        sic = ((sic_doc.get("map") or {}).get(c) or {}).get("sic") if c else None
+        base_year = (record or {}).get("base_year")
+        fam = population_ranges.family_for(sic, h, base_year=base_year)
+        rec = population_ranges.company_record(h, base_year=base_year, family=fam["family"], earnings_record=record)
+        out = population_ranges.ranges_for(rec, T)
+        out["family_reason"], out["family_stamps"], out["sic"] = fam["reason"], fam["stamps"], sic
+        out["record"] = {k: v for k, v in rec.items() if k != "missing"}
+        out["record_missing"] = rec.get("missing")
+        return out
+    except Exception as e:                    # an unreadable table is stated in the pack, never a crash and never a silent blank
+        return {"vintage": population_ranges.vintage_for(T), "inputs": {}, "unavailable": f"the population tables could not be read ({type(e).__name__}: {e})"}
+
+
+def build_pack(t, price_override=None, include_research=True, asof=None, news_snippets=False, pilot_arm=None, ranges_show_p50=None):
     """Every fact we hold that is FILED, or is exact arithmetic on filed values, labelled with its
     source and its period. No judgment is exercised here: no valuation, no basis choice, no
     normalisation, no composite of our own. Where a series is known to be defective the pack says
@@ -1783,6 +1835,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     engine gives no date; the excerpt-bearing rows are unchanged). `catalyst_research.
     discovery_context` passes True, so the discovery run's input stays byte-identical to revision
     14's.
+
+    `pilot_arm` and `ranges_show_p50` (revision 24 step 2b): the pilot's arm and the POPULATION RANGES section's P50 flag (`pack_flags`; config.json
+    when not passed). The rev22 arm builds the revision-22 pack (its marker, the reference printed, the revision-22 DEFAULTS); every other build is
+    the revision-24 pack (no reference, no long-run default, the POPULATION RANGES section).
     """
     # Declared exactly once, here, for the whole function: two separate `global X` statements
     # either side of X's first assignment raise a SyntaxError even when each is individually
@@ -1806,8 +1862,14 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     section10_printed = False   # S3 5.5/5.10: SECTION 12's Q&A pointer names SECTION 10 only if it ran
     facts = pack_facts.empty()
     facts["source"] = "build"
-    # revision 24 (R24.2): the reference is computed and kept in the facts, never printed; stage B shows it after the memorandum
-    facts["reference_withheld"] = True
+    _arm, _show_p50 = pack_flags(pilot_arm, ranges_show_p50)
+    _rev22 = _arm == "rev22"
+    facts["pilot_arm"] = _arm
+    facts["ranges_show_p50"] = _show_p50
+    # revision 24 (R24.2): the reference is computed and kept in the facts, never printed; stage B shows it after the memorandum. Step 2b: nor is a
+    # default for a long-run judgment. The rev22 arm prints both, as revision 22 did.
+    facts["reference_withheld"] = None if _rev22 else True
+    facts["long_run_defaults_withheld"] = None if _rev22 else True
     if asof_date is not None:
         from datetime import timedelta as _td
         asof_cutoff = asof_date - _td(days=POINT_IN_TIME_FILING_LAG_DAYS)
@@ -1818,7 +1880,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # S3 5.1: the revision marker. from_text() dispatches on "(pack revision N)", N >= 15, appearing
     # in this first line (pack_facts._REVISION_RE) to read the DEFAULTS block instead of the legacy
     # regexes.
-    L = [f"# DATA PACK - {t}   (pack revision {PACK_REVISION})", ""]
+    L = [f"# DATA PACK - {t}   (pack revision {REV22_REVISION if _rev22 else PACK_REVISION})", ""]
     if asof_date is not None:
         L += [f"**POINT-IN-TIME BRIEFING — as of {asof_date.isoformat()}; you must not use "
               f"knowledge of events after this date.**",
@@ -2044,6 +2106,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             # record's full list
             "stamps": pack_facts.compact_stamps(_record["stamps"], _record["window"]),
             "stamps_full": list(_record["stamps"])})
+        # revision 24 step 2b (ruling 3 of step 2a): the base fiscal year's filed earnings margin (the record's x_L) and filed revenue, the common
+        # shares' share of it (pi, as e5 and oe5 are attributed), $B; the desk's m5 when the facts hold no year-5 revenue, and the implied
+        # trajectory's base
+        _rev_L = throughcycle_record._num((h.get(str(_record["base_year"])) or {}).get("revenue")) if _record.get("base_year") else None
+        _lr_raw.update({"x_L": _record.get("x_L"),
+                        "rev_L": (_rev_L * _pi / 1e9) if (_rev_L is not None and isinstance(_pi, (int, float))) else None})
 
     # ---- SECTION 1 - IDENTITY & INSTITUTIONAL TAXONOMY -------------------------------------
     sector, industry = rs2_data.sector_lookup(t)
@@ -2201,7 +2269,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                          f"adjusted loading {adj_load_val:.3f}× (Blume: 0.67 × raw "
                          f"{raw_load_val:.3f} + 0.33) × implied ERP {erp_pct:.2f}% (asof "
                          f"{asof_date.isoformat()}, {erp_src}; {_STRUCTURAL_LOADING_LABEL}); point-in-time packs use "
-                         f"Damodaran's premium; the live reference's closure premium cannot be rebuilt for a past date")
+                         f"Damodaran's premium; " + ("the live reference's closure premium" if _rev22 else "the closure premium")
+                         + " cannot be rebuilt for a past date")
         else:
             coe_clause = f"COE ANCHOR for this name: {ASOF_NULL}"
         if terminal_g_val is not None:
@@ -2218,7 +2287,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               f"point-in-time; verified: do not search the web for them]",
               rates_line,
               coe_anchor_line]
-        if terminal_def_line:
+        if terminal_def_line and _rev22:      # revision 24 step 2b: no long-run default is printed (the facts keep it, for the benchmark)
             L.append(terminal_def_line)
         facts["terminal_g_default"] = terminal_def_val   # quantized to the printed two decimals
         _record_facts()
@@ -2449,7 +2518,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         rates_line = ("- Rates: rf (nominal 10y) " + (f"{rf_pct:.2f}%" if rf_pct is not None else NULL)
                       + " | real 10y " + (f"{real_pct:.2f}%" if real_pct is not None else NULL)
                       + " | breakeven 10y " + (f"{be_pct:.2f}%" if be_pct is not None else NULL)
-                      + " | MRI universe premium (context; not used in the reference) "
+                      + (" | MRI universe premium (context; not used in the reference) " if _rev22 else
+                         " | MRI universe premium (context; not used in the COE ANCHOR) ")
                       + (f"{erp_pct:.2f}%" if erp_pct is not None else NULL)
                       + " | MRI market cost of equity (context) " + (f"{coe_pct:.2f}%" if coe_pct is not None else NULL)
                       + " | sector cost-of-equity loading"
@@ -2477,7 +2547,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               "search the web for them]",
               rates_line,
               coe_anchor_line]
-        if terminal_def_line:
+        if terminal_def_line and _rev22:      # revision 24 step 2b: no long-run default is printed (the facts keep it, for the benchmark)
             L.append(terminal_def_line)
         facts["terminal_g_default"] = terminal_def_val   # quantized to the printed two decimals
         _record_facts()
@@ -3631,7 +3701,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 # S3 5.6/5.7: bare numbers (_bn), not $/B (_b) — the unit is carried once, by
                 # convention with SECTION 3's typed lines, not a header bracket here.
                 # Revision 24 (R24.2): the line is not printed (stage A); its text is kept in the facts for stage B's reveal and the records.
-                if _not_meaningful:
+                # Step 2b: the rev22 arm prints it, as revision 22 did.
+                if _not_meaningful and _rev22:
+                    L.append(consensus_reference.not_meaningful_line(_ref))
+                elif _not_meaningful:
                     facts["reference_line"] = consensus_reference.not_meaningful_line(_ref)
                 else:
                     _civ_line = consensus_reference.pack_line(_ref, _fy_base, _coe if _coe is not None else 0.0,
@@ -3641,7 +3714,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                         _civ_line += (f" | outside the street-target fence [${_fence[0]:,.2f}, ${_fence[1]:,.2f}] (0.5× the "
                                       f"lowest and 2× the highest analyst target, each discounted by 10%) — read it as a "
                                       f"level check only")
-                    facts["reference_line"] = _civ_line
+                    if _rev22:
+                        L.append(_civ_line)
+                    else:
+                        facts["reference_line"] = _civ_line
                 if facts["reference_status"] in ("used", "not_meaningful") or _side:
                     # revision 17: what the reference's long run and working capital hold, for the desk (brief F5: a
                     # reference that is not meaningful still prints these)
@@ -3675,7 +3751,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     _wside, _wfence = _reference_outside_fence(_win["ttm_value"], _band)
                     _win = consensus_reference.fence_window(_win, _wside, _wfence)
                 _wl = consensus_reference.window_line(_win, _ref, _ref_oe, _fy.get("through"), _bn,
-                                                      base_year_check=_byc_printed, reference_shown=False)
+                                                      base_year_check=_byc_printed, reference_shown=_rev22)
                 if _wl:
                     L.append(_wl)
                     gap = int(f"{_win['gap'] * 100:+.0f}") / 100.0
@@ -3688,7 +3764,10 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                     }
         if _civ_na and asof_date is None:
             facts["reference_status"] = "not_available"
-            facts["reference_line"] = f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}"   # revision 24: not printed
+            if _rev22:
+                L.append(f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}")
+            else:
+                facts["reference_line"] = f"- CONSENSUS-IMPLIED VALUE: not available \u2014 {_civ_na}"   # revision 24: not printed
         if en:
             L += [f"- Analyst price targets: low {_sv(en, 'analyst_target_low', en_stale)} / mean "
                   f"{_sv(en, 'analyst_target_mean', en_stale)} / median "
@@ -4019,7 +4098,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # on the one production construction of the DEFAULTS run (consensus_reference.defaults_desk_args); the two anchors the desk's bounds read
     facts["rf_eff"] = _rf_eff
     facts["nominal_gdp_trend"] = rs2_data.anchor_nominal_gdp_trend()[0]
-    _dargs, _dwhy = consensus_reference.defaults_desk_args(_ref, facts)
+    # revision 24 step 2b: the rev22 arm's DEFAULTS run applies the reference's long-run margin (m_long), as revision 22's did; the revision-24 run
+    # holds it (the run is the logged benchmark's, never printed there)
+    _dargs, _dwhy = consensus_reference.defaults_desk_args(_ref, facts, reference_margin=_rev22)
     if _dargs is None:
         facts["price_implied_defaults"] = {"not_available": _dwhy}
     else:
@@ -4032,7 +4113,12 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         else:
             facts["price_implied_defaults"] = {"not_available": "the pack has no price to solve at"}
     L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker,
-                                           withhold_reference=True), ""]
+                                           withhold_reference=not _rev22, withhold_long_run=not _rev22), ""]
+    # revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md item 2): the population ranges of the long-run inputs, after DEFAULTS; the rev22 arm
+    # prints none. The facts keep them for the plausibility gate.
+    facts["population_ranges"] = _population_ranges_for(t, h, _record, asof_date)
+    if not _rev22:
+        L += [population_ranges.render_section(facts["population_ranges"], bool(_show_p50)), ""]
 
     global LAST_PACK_MACRO_DEGRADED, LAST_PACK_FLAGS, LAST_PACK_FACTS
     LAST_PACK_MACRO_DEGRADED = macro_degraded
@@ -4061,11 +4147,17 @@ FINANCIAL_METRICS = (
 FORM_FIELDS = ("catalysts", "conviction_score", "business_quality_moat", "cycle_evidence", "momentum_view",
                "entry_timing", "position_basis", "momentum_evidence", "momentum_flip_condition",
                "momentum_break_rule", "invalidation_rules", "reentry_tranches", "thesis_invalidation_trigger")
+# Revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md item 3): the fields the revision-24 contract adds after cycle_evidence - the near-term and
+# normalized earnings and the transition, the three classifications with their evidence pointers, and the input rationale. The rev22 arm's TASK
+# keeps FORM_FIELDS.
+S12_FIELDS = ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence", "margin_persistence_evidence",
+              "cycle_position", "cycle_position_evidence", "growth_trajectory", "growth_trajectory_evidence", "input_rationale")
+FORM_FIELDS_III = FORM_FIELDS[:4] + S12_FIELDS + FORM_FIELDS[4:]
 
 # S3 4.2 (2026-09-28): replaces the revision-14 TASK, whose narrative rules code now enforces
 # (the desk's DEFAULTS block and its refusals) or which is now derived, not typed. Old literal
 # above this comment, in git history at 3d02fbd.
-TASK = """You are underwriting this company for real money. T0 is today's price in DATA 2. The data pack above is what our systems hold. Its DEFAULTS block gives the value each desk input takes unless you decide otherwise, and the reason the desk asks for when you do.
+TASK_REV22 = """You are underwriting this company for real money. T0 is today's price in DATA 2. The data pack above is what our systems hold. Its DEFAULTS block gives the value each desk input takes unless you decide otherwise, and the reason the desk asks for when you do.
 
 YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic view, the moat judgment, the scenario boundaries and the capital decision, as the charter sets them. Every value you publish comes from run_financial_model: do not compute present values, terminal values, per-share values or Kelly sizes in your reasoning. Call the desk as soon as your inputs are set, and reason from its output.
 
@@ -4076,13 +4168,13 @@ YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic vie
    - Scenarios: Bull rests on the strongest bull catalyst the market is reacting to, and Bear on the strongest bear catalyst. The Bear traces an operating shock through the business (volume, the installed base's durability, operating deleverage, a wider discount rate), not an arbitrary cut. Where the filings show contracted backlog above one year of revenue or recurring revenue above 70%, cite it: the Bear may not fall below that contracted floor without a stated reason.
    - Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders; a departure from the terminal_g or terminal_ronic default needs evidence, not a cap.
    - Working capital: the desk deducts the DEFAULTS working_capital from every scenario's owner earnings in years 1-5, unless your base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b (a base that matches an owner-earnings figure is owner earnings).
-   - Valuation date: the desk values at the base fiscal year end and rolls the value forward to today at your discount rate.
+   - Valuation date: the desk values at the base fiscal year end and rolls the value forward to today at your discount rate, as the CONSENSUS-IMPLIED VALUE does.
    - Frame: every flow in this pack is after interest, so value it in the equity frame. The firm frame needs a pre-interest flow, a WACC built from the COE ANCHOR, and net debt; the desk asks for each.
    - Shares: use the DEFAULTS block's shares_default, the desk's default (DATA 2's count, times the dilution factor when DATA 2 shows one). Add a contingent instrument (warrants, earn-outs) only in the scenarios where it vests, never in one whose premise is that it does not.
    - Cash-flow life: cash flows end when they come from a finite stock (a mine, a well, a reservoir) or a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of capex your base already deducts. The life is filed reserves over current production, or the remaining term, with the filing's date. A perpetual value must deduct the capex that replaces what the business depletes. Where revenue follows a quoted commodity price, state the price deck your flows assume and its source.
 4. Where an input departs from its DEFAULT, give the reason with dated evidence in the same desk call. The desk names any reason it needs, and a refused call does not use one of your desk runs. A reason is evidence, never text such as "no deviation"; leave a reason out when none is needed.
 5. Run Bear, Base and Bull together in one call. Your last complete desk run of all three is your answer. If you change any input after a complete run, the memorandum's 'Model revisions' list gives each changed input's old value, new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden; the harness records every run.
-6. The desk also returns price_implied: for each judgment input (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level), the value at which your Base would equal today's price with your other inputs unchanged, or "not reachable" when no value inside the input's bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at least one citation {source, date, quote} of this company's own evidence: the company's own filings, verbatim, in PRIMARY SOURCES (cite them as PRIMARY P# with the quote copied exactly), or DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied value from that run. DEFAULTS, the base rates, the macro anchors, the sector bands, the consensus rows, the news list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system text says otherwise, this TASK takes precedence.
+6. The desk also returns price_implied: for each judgment input (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level), the value at which your Base would equal today's price with your other inputs unchanged, or "not reachable" when no value inside the input's bound does it. DEFAULTS prints the same at the default inputs. A verdict of undervalued or overvalued needs a stated disagreement with the price: in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at least one citation {source, date, quote} of this company's own evidence: the company's own filings, verbatim, in PRIMARY SOURCES (cite them as PRIMARY P# with the quote copied exactly), or DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied value from that run. DEFAULTS, the base rates, the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands, the consensus rows, the news list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system text says otherwise, this TASK takes precedence.
 7. Timing: DATA 2.5's price facts are not a valuation input. State whether they confirm, sit neutral to or contradict your value call, when to enter, the position basis, and checkable conditions that would break the trend or the thesis.
 8. Tag every driver's source: [Actual], [Estimate], [Assumption] or [Unconfirmed]. The research brief and the news are claims by others; where they conflict with the filings, the filings win. PRIMARY SOURCES holds the company's own filings verbatim; do not search for or fetch them again — the tools return a pointer instead. Search only for what they do not contain.
 
@@ -4111,6 +4203,76 @@ METRIC VOCABULARY for `invalidation_rules` (at least one FINANCIAL and at least 
   - FINANCIAL metrics: """ + ", ".join(FINANCIAL_METRICS) + """.
 
 Think carefully through the complete economic machinery before writing. Numbers before narrative."""
+
+
+# Revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md item 4): the TASK of the revision-24 pack (the pilot arms iii). The long-run inputs have no default; items 3a-3d ask for the near-term and normalized
+# earnings, the three classifications, the choice with the POPULATION RANGES as context, and the three citation levels; SECTION 12's contract carries them. It never names the reference.
+TASK = """You are underwriting this company for real money. T0 is today's price in DATA 2. The data pack above is what our systems hold. Its DEFAULTS block gives the filed facts and conventions each desk input takes unless you decide otherwise, and the reason the desk asks for when you do. The long-run inputs (long_run_margin, the growth of years 3-5, fade_years, terminal_g and terminal_ronic) have no default: you choose them, and the POPULATION RANGES section shows how companies like this one actually evolved, as context for your choice, not a target.
+
+YOU OWN THE UNDERWRITING; THE DESK DOES THE ARITHMETIC. You own the economic view, the moat judgment, the scenario boundaries and the capital decision, as the charter sets them. Every value you publish comes from run_financial_model: do not compute present values, terminal values, per-share values or Kelly sizes in your reasoning. Call the desk as soon as your inputs are set, and reason from its output.
+
+1. Explain the recent move first. Start from the CATALYST BRIEF, RECENT COMPANY NEWS and DATA 8's estimate trend and revisions. For each development, say whether you accept or dispute it and why, and how it enters Bull, Base and Bear. Add any development you find yourself, and fetch the articles you rely on. Record them in `catalysts`. If a public takeover offer is pending, value the business standalone; in the memorandum give the offer's probability and the expected value with and without it. The verdict stays on standalone value.
+2. Decompose the business into its economic engines: transactional deliveries; a captive installed base, recurring contractual annuity or subscriptions; strategic optionality. Do not force it into one formula. Credit a multi-year annuity only where the filings show the backlog or installed base that secures it (cite the filing and the figure). Customer advances and one-off prepayment float are not recurring cash flow, and a supplier purchase commitment is not customer revenue.
+3. Choose every valuation input and pass it to the desk: the cash-flow base and its window; the growth of that cash flow (not revenue) for years 1-5 in Base, Bull and Bear; fade years; long_run_margin (the earnings margin, earnings over revenue, the business earns at the end of the fade); terminal growth and terminal_ronic (the return on new investment that pays for growth from year 6); the discount rate; the frame; the share count; net debt (firm frame only); the cash-flow life; and the scenario probabilities, justified by milestones and the balance of evidence. The filed facts and the conventions (the cash-flow base, the COE ANCHOR, the share count, working capital, excess cash) start from the DEFAULTS; do not run trial bases through the desk. For the long-run inputs, in this order:
+   a. State your near-term earnings (what the business earns over the next one to two years; DATA 8 and the DEFAULTS levels show what analysts forecast, as evidence) and your normalized mid-cycle earnings, and the transition between them with its reason.
+   b. Classify three dimensions, each from its own evidence and none forced by another: margin_persistence (structural, partly_structural or transient), cycle_position (trough, mid, peak or not_cyclical) and growth_trajectory (accelerating, steady, decelerating or shrinking).
+   c. Choose each long-run input (long_run_margin, the growth of years 3-5, fade_years, terminal_g, terminal_ronic), using the POPULATION RANGES as context, not a target.
+   d. Support each choice at its level: within the cohort's P10-P90, a concise rationale tied to the facts and the population; outside P10-P90, a sourced, causal explanation of why this company differs from its cohort, with a citation {source, date, quote} from PRIMARY SOURCES, DATA 3-6 or GUIDANCE, the quote copied exactly; the buy or sell crux needs verified primary-source quotes (item 6). Code checks the trajectory your inputs imply (the long-run margin, the revenue growth to year 10, the terminal return on new investment and terminal growth) against the cohort's P5-P95: an implied value outside it without a citation the code can verify makes the valuation unusable. terminal_g must stay below your discount rate.
+   - Growth: your years 1-2 are your own; the consensus levels in DEFAULTS are what analysts forecast, evidence and not a value the desk holds, and the desk holds or caps no year. Growth above the base-rate p90 needs dated, company-specific evidence. With fewer than 3 analysts there is no consensus range: anchor Bull and Bear to the top and bottom of the company's own guidance range where the GUIDANCE section gives one; otherwise state your own range and why.
+   - Scenarios: Bull rests on the strongest bull catalyst the market is reacting to, and Bear on the strongest bear catalyst. The Bear traces an operating shock through the business (volume, the installed base's durability, operating deleverage, a wider discount rate), not an arbitrary cut. Where the filings show contracted backlog above one year of revenue or recurring revenue above 70%, cite it: the Bear may not fall below that contracted floor without a stated reason.
+   - Terminal value: do not clamp terminal growth or impose multiple ceilings on durable compounders; terminal_g and terminal_ronic have no default and need the support item 3d asks for, not a cap.
+   - Working capital: the desk deducts the DEFAULTS working_capital from every scenario's owner earnings in years 1-5, unless your base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or reference_base_b (a base that matches an owner-earnings figure is owner earnings).
+   - Valuation date: the desk values at the base fiscal year end and rolls the value forward to today at your discount rate.
+   - Frame: every flow in this pack is after interest, so value it in the equity frame. The firm frame needs a pre-interest flow, a WACC built from the COE ANCHOR, and net debt; the desk asks for each.
+   - Shares: use the DEFAULTS block's shares_default, the desk's default (DATA 2's count, times the dilution factor when DATA 2 shows one). Add a contingent instrument (warrants, earn-outs) only in the scenarios where it vests, never in one whose premise is that it does not.
+   - Cash-flow life: cash flows end when they come from a finite stock (a mine, a well, a reservoir) or a right that expires (a licence, concession or patent), unless the filings show the stock or right is replaced out of capex your base already deducts. The life is filed reserves over current production, or the remaining term, with the filing's date. A perpetual value must deduct the capex that replaces what the business depletes. Where revenue follows a quoted commodity price, state the price deck your flows assume and its source.
+4. Where an input departs from its DEFAULT, give the reason with dated evidence in the same desk call. The desk names any reason it needs, and a refused call does not use one of your desk runs. A reason is evidence, never text such as "no deviation"; leave a reason out when none is needed.
+5. Run Bear, Base and Bull together in one call. Your last complete desk run of all three is your answer. If you change any input after a complete run, the memorandum's 'Model revisions' list gives each changed input's old value, new value and the dated evidence that forced the change. Changing an input because you dislike the resulting value is forbidden; the harness records every run.
+6. The desk also returns price_implied: for each judgment input (coe, growth_years_3_5, fade_years, terminal_g, terminal_ronic, year2_level, long_run_margin), the value at which your Base would equal today's price with your other inputs unchanged, or "not reachable" when no value inside the input's bound does it. A verdict of undervalued or overvalued needs a stated disagreement with the price: in your answer run, pass crux, naming one to three of those inputs where your evidence says the price is wrong, each with your reason and at least one citation {source, date, quote} of this company's own evidence: the company's own filings, verbatim, in PRIMARY SOURCES (cite them as PRIMARY P# with the quote copied exactly), or DATA 3, DATA 4, DATA 5, DATA 6, GUIDANCE (the company's own release), or a page you fetched in this session that names the company, with the quote copied exactly. Code fills in your value and the price-implied value from that run. DEFAULTS, the base rates, the macro anchors, the sector bands, the consensus rows, the news list and the research briefs are context and never support a crux. Without a valid crux your verdict is HOLD, wherever your Base sits. Disagreeing with the analysts' targets is allowed when your evidence supports it. In SECTION 3, state each crux (the input, your number, the number the price implies, and the dated evidence) and argue the size of the disagreement, not only its sign. Also report the neutral reverse DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system text says otherwise, this TASK takes precedence.
+7. Timing: DATA 2.5's price facts are not a valuation input. State whether they confirm, sit neutral to or contradict your value call, when to enter, the position basis, and checkable conditions that would break the trend or the thesis.
+8. Tag every driver's source: [Actual], [Estimate], [Assumption] or [Unconfirmed]. The research brief and the news are claims by others; where they conflict with the filings, the filings win. PRIMARY SOURCES holds the company's own filings verbatim; do not search for or fetch them again — the tools return a pointer instead. Search only for what they do not contain.
+
+Produce the full memorandum, SECTION 0 through SECTION 12, as the system text specifies, and end with the contract below. The contract no longer carries the scenario values, probabilities, Kelly size, verdict label, valuation inputs, reasons or crux: code takes them from your last complete desk run of Bear, Base and Bull. Where the system text asks you to type any of them into SECTION 12's contract, this TASK takes precedence, and SECTION 4's scenario table and SECTION 12's figures must show that run's values exactly.
+
+```json:underwriting
+{
+  "catalysts": [{"date": "<YYYY-MM-DD>", "event": "<what happened>", "direction": "<bull | bear>", "estimates_moved": "<how consensus estimates moved with it, or 'no visible change'>", "scenario": "<which scenario it supports and how it moves the numbers>"}],
+  "conviction_score": <float between 4.0 and 15.0: analytical certainty>,
+  "business_quality_moat": <float between 1.0 and 5.0: moat durability>,
+  "cycle_evidence": "<a dated, industry-specific indicator (pricing, inventory, capacity, orders) when you apply a cyclical, mid-cycle or margin-mean-reversion treatment; a growth rate alone is not evidence; null otherwise>",
+  "near_term_earnings": <float, $B: what the business earns over the next one to two years>,
+  "normalized_earnings": <float, $B: its normalized mid-cycle earnings>,
+  "normalization_reason": "<the transition from near-term to normalized earnings, and why>",
+  "margin_persistence": "<structural | partly_structural | transient>",
+  "margin_persistence_evidence": "<one line: where the evidence is>",
+  "cycle_position": "<trough | mid | peak | not_cyclical>",
+  "cycle_position_evidence": "<one line: where the evidence is>",
+  "growth_trajectory": "<accelerating | steady | decelerating | shrinking>",
+  "growth_trajectory_evidence": "<one line: where the evidence is>",
+  "input_rationale": {"long_run_margin": {"value": <float>, "within_p10_p90": <true | false>, "rationale": "<tied to the facts and the population>", "citation": <null within P10-P90; outside it {"source": "<PRIMARY P# | DATA 3 | DATA 4 | DATA 5 | DATA 6 | GUIDANCE>", "date": "<YYYY-MM-DD>", "quote": "<copied exactly from the source>"}>}, "growth_years_3_5": {<the same four fields>}, "fade_years": {<the same>}, "terminal_g": {<the same>}, "terminal_ronic": {<the same>}},
+  "momentum_view": "<confirming | neutral | contradicting: DATA 2.5's price action against your value call>",
+  "entry_timing": "<buy_now | wait_for_momentum | avoid>",
+  "position_basis": "<value | momentum | none: value only when undervalued; momentum when your honest direction is hold or overvalued but the business is in a strong, fundamentally backed uptrend (entry_timing buy_now); otherwise none>",
+  "momentum_evidence": "<when position_basis is momentum: the dated facts from the GUIDANCE block or the filings that back the trend (guidance raised, backlog or orders growth, estimates rising); null otherwise>",
+  "momentum_flip_condition": {"metric": "<one of the SCR-10 price-fact fields printed in DATA 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
+  "momentum_break_rule": {"metric": "<one of the SCR-10 price-fact fields printed in DATA 2.5>", "comparator": "< | <= | > | >=", "threshold": <float>, "window_days": <integer>},
+  "invalidation_rules": [{"metric": "<name from the metric vocabulary below>", "comparator": "< | <= | > | >=", "threshold": <float>, "window": "<string, e.g. 'next reported quarter'>", "source": "<where this is checked, e.g. 'fundamentals_quarterly.json'; \\"unverifiable\\" if the metric is outside both vocabularies>"}],
+  "reentry_tranches": {"tranche_1_starter": <float price for the starter allocation, reflecting margin of safety>, "tranche_2_core": <float price for the core allocation, anchored to Bear IV or a deep pullback>},
+  "thesis_invalidation_trigger": "<the exact operational or financial threshold that invalidates this thesis>"
+}
+```
+
+METRIC VOCABULARY for `invalidation_rules` (at least one FINANCIAL and at least one PRICE/MOMENTUM rule are required; anything outside both lists must be declared `source: "unverifiable"`):
+  - MOMENTUM metrics (the SCR-10 field names, exactly as printed in DATA 2.5): """ + ", ".join(MOMENTUM_METRICS) + """.
+  - FINANCIAL metrics: """ + ", ".join(FINANCIAL_METRICS) + """.
+
+Think carefully through the complete economic machinery before writing. Numbers before narrative."""
+
+
+def task_for(facts):
+    """Revision 24 step 2b: the TASK a pack is sent with - the revision-22 TASK for the rev22 arm (its facts' pilot_arm), the revision-24 TASK
+    otherwise."""
+    return TASK_REV22 if (facts or {}).get("pilot_arm") == "rev22" else TASK
 
 
 # S3 4.3 (2026-09-28): replaces the revision-14 RESEARCH_ADDENDUM. Old literal above this
@@ -4154,7 +4316,7 @@ def main():
     temp = _arg("--temp")
 
     pack = build_pack(t)
-    content = f"{pack}\n\n---\n\n{TASK}"
+    content = f"{pack}\n\n---\n\n{task_for(pack.facts)}"
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     d = OUT / f"{t}_{ts}_{label}"
     d.mkdir(parents=True, exist_ok=True)

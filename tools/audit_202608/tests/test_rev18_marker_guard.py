@@ -78,7 +78,11 @@ def test_a_name_with_no_marker_gets_no_reference_and_the_defaults_lines_say_why(
     # restated for pack revision 24 (R24.2): the line is not printed; the facts keep it
     assert "- CONSENSUS-IMPLIED VALUE" not in text and f["reference_line"] == f"- CONSENSUS-IMPLIED VALUE: not available — {REASON}"
     assert "CONSENSUS-IMPLIED VALUE (reference" not in text
-    for key in ("terminal_ronic", "working_capital"):
+    # revision 24 step 2b: the revision-24 pack prints no terminal_ronic line (a long-run default); the rev22 arm prints it, not available
+    assert "\n- terminal_ronic: " not in text
+    text22 = str(_synthetic_pack(monkeypatch, no_marker=True, pilot_arm="rev22"))
+    assert _line(text22, "- terminal_ronic:").startswith(f"- terminal_ronic: not available | not available: {REASON}")
+    for key in ("working_capital",):
         assert _line(text, f"- {key}:").startswith(f"- {key}: not available | not available: {REASON}"), key
     assert _line(text, "- long_run:").startswith("- long_run: cycle=none, ") and f" | not available: {REASON}" in _line(text, "- long_run:")
     assert "- reference_status:" not in text                                     # revision 24: not printed; the facts hold not_available

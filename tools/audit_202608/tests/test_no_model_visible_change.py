@@ -52,7 +52,12 @@ FIXTURE = Path(__file__).resolve().parent / "fixture_data"
 # not show it); was "414a4fd72ee6e5b7af4eda667f06427863da5a033f88d956042db53e855e5d3d".
 # 2026-10-16 (revision 24 step 2a, brief item 6): item 3's Valuation date sub-bullet loses "as the CONSENSUS-IMPLIED VALUE does"; was
 # "14653a0ee3adce964864536ac62da6f6771f03d2ea79fa60a653d227941b7efe".
-TASK_SHA256 = "fddd9731cb9b0e65a17991217634261e047db2c6316de57979ac23d6ca8e3e2e"
+# 2026-10-16 (revision 24 step 2b, BRIEF_R24_S2b_ranges_gate.md item 4): the long-run inputs have no default (the intro, item 3's a-d, the Growth and
+# Terminal value sub-bullets), item 6 names long_run_margin and no longer says DEFAULTS prints the price-implied values, and the contract carries
+# the S12 fields; was "fddd9731cb9b0e65a17991217634261e047db2c6316de57979ac23d6ca8e3e2e". The rev22 arm's TASK_REV22 is revision 22's,
+# "414a4fd72ee6e5b7af4eda667f06427863da5a033f88d956042db53e855e5d3d" (above).
+TASK_SHA256 = "558566a8fa7f7beb683a3819fccbfb6c6e3befc218dc36c5d6c99de120a602a8"
+TASK_REV22_SHA256 = "414a4fd72ee6e5b7af4eda667f06427863da5a033f88d956042db53e855e5d3d"
 RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8ff56a7420acb"
 # 2026-09-28 (reviewer, S3 A+B review): cash_flow_life takes one JSON type, "string"; was
 # "fd75fbe0f4aea35b74e3d2c1f72caec603e89b18be10d5d2bddd9f9aae4567b8" with ["string", "integer"].
@@ -83,7 +88,9 @@ RESEARCH_ADDENDUM_SHA256 = "e8904157f94de97e64e2ec78c82e068f7f14a8cf04454b405ac8
 # is off); was "c3fd7ad03bf8db9155ed62c45fddfa7bbae96131973184cb3ae05277d6508ae3".
 # 2026-10-16 (revision 24 step 2a, ruling 1): run_financial_model gains long_run_margin (top level, required, and per scenario) and its
 # description and the scenarios description name it; was "6d87df37c2e07ad92ef56ffe1d706379686cced16d19ce074d8a37ab223f2be8".
-TOOLS_SHA256 = "600f6f24858387fd162e01b293362bd8899bd1d780c35cbdcdbd1dbd9659496b"
+# 2026-10-16 (revision 24 step 2b): the crux input enum gains long_run_margin, and long_run_margin's description says m5 is the base fiscal year's
+# filed earnings margin when the pack has no year-5 revenue (ruling 3 of step 2a); was "600f6f24858387fd162e01b293362bd8899bd1d780c35cbdcdbd1dbd9659496b".
+TOOLS_SHA256 = "fe7489ca4e77e03a6ed6219ba7749d3d225bd763fc56189de3158791e51f7fbe"
 # research_tools() (search_web, fetch_page) changed with them (revision 21, R4); was "b325e8e236993e09a8d0230eccd3f17206af3133b64ff93e31ec82f613c91a35".
 RESEARCH_TOOLS_SHA256 = "62cb74cb2a4fa294060ba2acd1556ef14e501dfadb6b226b9034bc4634c68e49"
 SYSTEM_MTP5_SHA256 = "a76fd089a4c3c2ca25b21eee1633a233ffca3e8c0dbb8c02a6b044edd3d56a7d"
@@ -99,7 +106,9 @@ SYSTEM_MTP5_Q4_V33_SHA256 = "ff033c2519528445a1f2e56a797746524d64bff7d65e5a31612
 # depth_provider "ollama" the request is byte for byte what it was (tools/audit_202608/tests/test_llm_provider_ollama_identity.py
 # proves URL, bytes, headers and timeout, and passes on the old code too); was
 # "71742a7a93e0d6f1aa02792c3414936abf07cf8fdf45d6989be4f94ecd8d64c3".
-CONTINUE_REPORT_SHA256 = "3bf8a179c11596113e73e8f44037ff3e61c3f1fc459bc64d32f7f52b3ce21344"
+# 2026-10-16 (revision 24 step 2b): instruction 3 lists cap.FORM_FIELDS_III (the S12 fields too) for a revision-24 pack, cap.FORM_FIELDS for a
+# revision-22 one; was "3bf8a179c11596113e73e8f44037ff3e61c3f1fc459bc64d32f7f52b3ce21344".
+CONTINUE_REPORT_SHA256 = "c128645ac57ecb3ebb376ff0c0a99dc9e76bccbe7f814b1ba85474d836d4b451"
 
 
 def _sha256(s: str) -> str:
@@ -119,6 +128,7 @@ def test_text_pins():
     # through-cycle package); revision 16 changed only the number on the first line.
     assert capability_test.PACK_REVISION == 24
     assert _sha256(capability_test.TASK) == TASK_SHA256
+    assert _sha256(capability_test.TASK_REV22) == TASK_REV22_SHA256
     assert _sha256(capability_test.RESEARCH_ADDENDUM) == RESEARCH_ADDENDUM_SHA256
     assert _sha256(json.dumps(analyst_tools.TOOLS, sort_keys=True, ensure_ascii=False)) == TOOLS_SHA256
     assert _sha256(json.dumps(analyst_tools.research_tools(), sort_keys=True, ensure_ascii=False)) == RESEARCH_TOOLS_SHA256

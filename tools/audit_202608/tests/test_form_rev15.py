@@ -25,8 +25,8 @@ RETIRED_FIELD_NAMES = (
 )
 
 
-def _task_contract_keys():
-    m = re.search(r"```json:underwriting\s*(\{.*?\})\s*```", cap.TASK, re.DOTALL)
+def _task_contract_keys(task=None):
+    m = re.search(r"```json:underwriting\s*(\{.*?\})\s*```", cap.TASK if task is None else task, re.DOTALL)
     assert m, "TASK has no ```json:underwriting block"
     return re.findall(r'^\s*"(\w+)":', m.group(1), re.MULTILINE)
 
@@ -40,7 +40,9 @@ def test_form_fields_tuple():
 
 
 def test_task_contract_keys_equal_form_fields_in_order():
-    assert _task_contract_keys() == list(cap.FORM_FIELDS)
+    # revision 24 step 2b: the revision-24 contract adds the S12 fields after cycle_evidence; the revision-22 TASK (the rev22 arm) keeps the 13
+    assert _task_contract_keys() == list(cap.FORM_FIELDS_III)
+    assert _task_contract_keys(cap.TASK_REV22) == list(cap.FORM_FIELDS)
 
 
 def test_extract_scorecard_whitelist_still_accepts_every_form_field():

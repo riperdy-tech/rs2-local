@@ -379,7 +379,7 @@ def test_facts_primary_sources_per_item_with_the_text_hash(sec):
 
 
 def test_the_facts_schema_owns_primary_sources_and_the_version_is_9():
-    assert pack_facts.FACTS_VERSION == 10          # revision 24 (R24.2): 9 -> 10
+    assert pack_facts.FACTS_VERSION == 11          # revision 24 (R24.2): 9 -> 10; step 2b: 10 -> 11
     assert "primary_sources" in pack_facts.KEYS and "primary_sources" in pack_facts.SIDECAR_ONLY
     assert pack_facts.empty()["primary_sources"] is None
     d = pack_facts.empty()

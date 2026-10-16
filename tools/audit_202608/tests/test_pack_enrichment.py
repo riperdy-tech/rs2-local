@@ -106,7 +106,7 @@ def test_pack_section_1_5_present_anchors_and_probability_vector(screener_data_s
             "search the web for them]") in pack
     # revision 18 (brief 1.6): MRI's premium is market context on the Rates line, not an input of the reference
     assert ("- Rates: rf (nominal 10y) 5.01% | real 10y 2.68% | breakeven 10y 2.34% | MRI universe premium "
-            "(context; not used in the reference) 4.35% | MRI market cost of equity (context) 9.36% | sector cost-of-equity loading "
+            "(context; not used in the COE ANCHOR) 4.35% | MRI market cost of equity (context) 9.36% | sector cost-of-equity loading "  # revision 24 step 2b
             "(industrials) 0.868x") in pack
 
     # Secondary macro series, folded into one "Curve" line:

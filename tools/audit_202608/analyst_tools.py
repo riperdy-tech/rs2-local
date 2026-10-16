@@ -316,7 +316,7 @@ TOOLS = [{
                     "description": "REQUIRED for DCF. Long-term nominal terminal growth rate as decimal (e.g. 0.025 for 2.5%, 0.035 for 3.5%). The silent default was removed in Phase 4; calls without it are refused."
                 },
                 "terminal_ronic": {"type": "number", "description": "The return on new investment (a fraction, e.g. 0.12) that pays for growth from year 6 and in the terminal value. Default: the DEFAULTS terminal_ronic. A Base value more than 2 points from it needs terminal_reason."},
-                "long_run_margin": {"type": "number", "description": "Required for a perpetual cash_flow_life, with no default: your judgment of the earnings margin (long-run earnings over revenue, a decimal, e.g. 0.12) the business earns at the end of the fade. The desk moves each scenario's year-5 earnings margin proportionally to it over fade_years (with fade_years 0, from the terminal year); a scenario's year-5 revenue is the pack's scaled by its owner earnings, as its earnings are, so its year-5 margin is the long_run block's m5. A scenario's own long_run_margin overrides this one. Where the pack has no year-5 revenue the margin is held and the desk says so."},
+                "long_run_margin": {"type": "number", "description": "Required for a perpetual cash_flow_life, with no default: your judgment of the earnings margin (long-run earnings over revenue, a decimal, e.g. 0.12) the business earns at the end of the fade. The desk moves each scenario's year-5 earnings margin proportionally to it over fade_years (with fade_years 0, from the terminal year); a scenario's year-5 revenue is the pack's scaled by its owner earnings, as its earnings are, so its year-5 margin is the long_run block's m5. A scenario's own long_run_margin overrides this one. Where the pack has no year-5 revenue, m5 is the base fiscal year's filed earnings margin; where that is not positive the margin is held and the desk says so."},
                 "sbc_treatment": {
                     "type": "string",
                     "enum": ["deducted_in_cf", "add_back_dilution"],
@@ -379,6 +379,61 @@ TOOLS = [{
         }
     }
 }]
+
+
+# Revision 24 step 2b: the desk's text when the pack prints no long-run default (the pilot arms iii; desk context long_run_defaults_withheld). The
+# desk then holds no year at the consensus levels or the years-3-5 cap, asks no reason against a terminal default, and takes no default
+# terminal_ronic; these descriptions replace the ones that said otherwise. The rev22 arm keeps TOOLS as it is.
+_III_DESK_DESCRIPTION = (
+    "Run the Python desk. One call values Base, Bull and Bear together: each scenario's base_cf, "
+    "five years of cash-flow growth, fade, discount rate, terminal growth, long-run earnings margin "
+    "and terminal_ronic give its per-share value. The desk also returns the reverse DCF (the growth today's "
+    "price implied, under your structure and under the neutral reference) and quarter-Kelly sizing. "
+    "On every run the desk also returns price_implied: for each judgment input, the value at which the Base "
+    "would equal today's price with your other inputs unchanged, or not reachable inside its bound. "
+    "The harness supplies today's price, the pack's share count, the anchors and the base-rate table; "
+    "pass only your decisions. An input that departs from a fact or convention in DEFAULTS needs its reason argument: the "
+    "desk names any that are missing, and a refused call does not use one of your desk runs. The long-run inputs (long_run_margin, "
+    "the growth of years 3-5, fade_years, terminal_g, terminal_ronic) have no default, and the desk holds and caps no year: the "
+    "consensus levels are evidence. It deducts the DEFAULTS working "
+    "capital in years 1-5 (not when base_cf is within 2% of cash_basis_b and not within 2% of "
+    "owner_earnings_default_b or reference_base_b) and pays for growth from year 6 "
+    "at terminal_ronic. It values at the base fiscal year end and rolls the value forward to today. "
+    "The firm frame uses the same long run, an approximation: the return on new investment is measured on "
+    "tangible invested capital before interest and applied to equity earnings, which is conservative "
+    "for a levered company. Base is every scenario not named Bull or Bear. "
+    "Blend mode combines named desk legs for display; it is never your answer."
+)
+_III_PROPERTIES = {
+    "guidance_deviation_reason": "Optional: dated evidence for a Base whose years 1-2 depart from the consensus levels. The desk holds and caps no "
+                                 "year, so nothing requires it.",
+    "terminal_reason": "Optional: terminal_g and terminal_ronic have no default, so no departure needs this; support them in input_rationale.",
+    "explicit_growth": None,             # set below: the text without the hold
+    "terminal_ronic": "Required for a perpetual cash_flow_life, with no default: the return on new investment (a fraction, e.g. 0.12) that pays "
+                      "for growth from year 6 and in the terminal value; a scenario's own terminal_ronic overrides this one.",
+}
+_III_EXPLICIT_GROWTH = ("Annual growth of base_cf - the owner cash flow being valued - for each of years 1-5 (e.g. [0.12, 0.10, 0.08, 0.06, 0.05]). "
+                        "Not revenue growth: revenue growth leaves out margin change. Years 1-2 are your own; the consensus in DATA 8 and the "
+                        "DEFAULTS levels is evidence. The desk holds and caps no year.")
+_III_SCENARIO_RONIC = "Return on new investment for this scenario, as a fraction; default: the top-level terminal_ronic."
+
+
+def tools_for(desk_context=None):
+    """The tools a sample is offered: TOOLS, or (revision 24 step 2b) a copy whose desk text says what the desk does when the pack prints no
+    long-run default (desk_context["long_run_defaults_withheld"] is True)."""
+    if not (isinstance(desk_context, dict) and desk_context.get("long_run_defaults_withheld") is True):
+        return TOOLS
+    out = json.loads(json.dumps(TOOLS))
+    for t in out:
+        f = t.get("function", {})
+        if f.get("name") != "run_financial_model":
+            continue
+        f["description"] = _III_DESK_DESCRIPTION
+        props = f["parameters"]["properties"]
+        for k, v in _III_PROPERTIES.items():
+            props[k]["description"] = _III_EXPLICIT_GROWTH if k == "explicit_growth" else v
+        props["scenarios"]["items"]["properties"]["terminal_ronic"]["description"] = _III_SCENARIO_RONIC
+    return out
 
 
 def research_tools():
@@ -1963,7 +2018,7 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     model_calls = 0
     desk_validation_errors = 0
     desk_refusal_window = None          # (reasons, inputs) of the last two refused desk calls, cleared by an accepted call (C6b)
-    eff_tools = TOOLS if tools is None else tools
+    eff_tools = tools_for(desk_context) if tools is None else tools        # revision 24 step 2b: the arm's desk text
 
     sample_search_queries = []
     page_alias = {}

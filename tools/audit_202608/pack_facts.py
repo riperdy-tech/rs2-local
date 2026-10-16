@@ -22,7 +22,7 @@ import consensus_reference  # noqa: E402
 import pi_text  # noqa: E402
 import throughcycle_record  # noqa: E402
 
-FACTS_VERSION = 10
+FACTS_VERSION = 11
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -114,16 +114,33 @@ KEYS: list[str] = [
     # is the reference's SECTION 8 line that was not printed (stage B shows its inputs), or None. SIDECAR_ONLY: the text does not carry it.
     "reference_withheld",
     "reference_line",
+    # version 11 (pack revision 24 step 2b, BRIEF_R24_S2b_ranges_gate.md): `long_run_defaults_withheld` is True when the pack prints no default
+    # for a long-run judgment (terminal_g, terminal_ronic, the long-run margin and its price-implied run; the pilot arms iii and the revision-24
+    # pack) and None otherwise (the rev22 arm, an older pack); a text read gives it from the revision marker, as reference_withheld. The other
+    # three are SIDECAR_ONLY: `population_ranges` the POPULATION RANGES section's figures (tools/population_ranges.ranges_for's dict, which the
+    # plausibility gate reads), `pilot_arm` the pilot's arm ("rev22", "iii_p50", "iii_no_p50", or None outside the pilot) and `ranges_show_p50`
+    # whether the section printed P50.
+    "long_run_defaults_withheld",
+    "population_ranges",
+    "pilot_arm",
+    "ranges_show_p50",
 ]
 
 # keys the DEFAULTS text does not carry: a frozen replay reads them from the sidecar, and a text read gives None (parity ignores them)
 SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price",
                 "nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
-                "vendor_revenue_basis", "primary_sources", "reference_line")
+                "vendor_revenue_basis", "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50")
 # revision 24 (R24.2): the facts a stage-A DEFAULTS block does not print; a text read of such a block gives None for them, so the CIV is taken from
 # the facts or the sidecar, never from text, and the parity check leaves them out when either side is a withheld-reference pack
 WITHHELD_KEYS = ("consensus_implied_value", "reference_status")
 _FIRST_WITHHELD_REVISION = 24
+# revision 24 step 2b: the long-run defaults a withheld-defaults block does not print (the facts keep them for the logged reference benchmark), and
+# the long_run members of the reference's margin rule it drops; a text read gives None for them, and the parity check leaves them out
+WITHHELD_LONG_RUN_KEYS = ("terminal_g_default", "terminal_ronic", "price_implied_defaults")
+WITHHELD_LONG_RUN_MEMBERS = ("om_5", "m_long", "margin_ratio")
+# long_run members the DEFAULTS block never prints and the parity check never compares: the verdict's full stamps, and (revision 24 step 2b) the
+# base fiscal year's earnings margin and revenue the desk reads when the facts hold no year-5 revenue (ruling 3) and the implied trajectory needs
+LONG_RUN_UNPRINTED = ("stamps_full", "x_L", "rev_L")
 # version 8's keys (and version 9's primary_sources), None on every text read (legacy or DEFAULTS)
 _SCOPE_KEYS = ("nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
                "vendor_revenue_basis", "primary_sources")
@@ -417,6 +434,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "rf_eff": None, "nominal_gdp_trend": None, "reference_path": None, "price_implied_defaults": None, "price_implied_price": None,
         **{k: None for k in _SCOPE_KEYS},
         "reference_withheld": None, "reference_line": None,
+        "long_run_defaults_withheld": None, "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
     }
 
 
@@ -606,6 +624,12 @@ def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
         out[k] = v
     if d.get("stamps_full"):
         out["stamps_full"] = list(d["stamps_full"])
+    # revision 24 step 2b (ruling 3 of step 2a): the base fiscal year's filed earnings margin (x_L) and revenue ($B, the common shares' share where
+    # the facts are attributed); kept for the desk, never printed
+    if d.get("x_L") is not None:
+        out["x_L"] = q_rate(d["x_L"])
+    if d.get("rev_L") is not None:
+        out["rev_L"] = q_b(d["rev_L"])
     return out
 
 
@@ -647,8 +671,9 @@ def _fnum(v, fmt):
     return _NONE if v is None else format(v, fmt)
 
 
-def _render_long_run(lr: dict[str, Any]) -> str:
-    """The long_run members as `name=value, ...` (`, `-separated; values carry no comma)."""
+def _render_long_run(lr: dict[str, Any], withhold_long_run: bool = False) -> str:
+    """The long_run members as `name=value, ...` (`, `-separated; values carry no comma). `withhold_long_run` (revision 24 step 2b): the members
+    of the reference's margin rule (om_5, m_long, margin_ratio) are not printed."""
     if not lr:
         return _NA
     cyc = lr.get("cycle")
@@ -683,6 +708,8 @@ def _render_long_run(lr: dict[str, Any]) -> str:
         "margin_ratio=" + _fnum(lr.get("margin_ratio"), ".6f"),
         "stamps=" + (";".join(compact_stamps(lr["stamps"])) if lr.get("stamps") else _NONE),
     ]
+    if withhold_long_run:
+        parts = [x for x in parts if x.split("=", 1)[0] not in WITHHELD_LONG_RUN_MEMBERS]
     return ", ".join(parts)
 
 
@@ -838,15 +865,24 @@ def _long_run_start_clause(f: dict[str, Any]) -> str:
             "is not above it or is not available), then fades to")
 
 
-def _working_capital_explanation(f: dict[str, Any], no_marker: bool = False) -> str:
+def _working_capital_explanation(f: dict[str, Any], no_marker: bool = False, withhold_reference: bool = False) -> str:
     lr = f.get("long_run") or {}
     if no_marker:
         return f"not available: {consensus_reference.NO_MARKER_REASON}"
     if not f.get("working_capital"):
+        if withhold_reference:          # revision 24 step 2b: a withheld-reference block never says "the reference"
+            return ("no working-capital deduction: the pack has no consensus revenue path or your record holds fewer than 5 years with a "
+                    "classified balance sheet")
         return ("no working-capital deduction: the reference has no revenue path or your record holds fewer "
                 "than 5 years with a classified balance sheet")
     nwc = lr.get("nwc_intensity")
     share = f"{nwc * 100:.2f}% of each year's revenue change" if isinstance(nwc, (int, float)) else "your record's median"
+    if withhold_reference:
+        return (f"the working capital the consensus revenue path ties up in years 1-5, $B ({share}, median of "
+                f"{_years_txt(lr.get('nwc_years'))}; years 1-2 the consensus revenue, years 3-5 next-FY revenue growth fading toward the "
+                f"base-rate median), which the desk deducts from every scenario's owner earnings "
+                f"unless base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or "
+                f"reference_base_b (a base that matches an owner-earnings figure is owner earnings)")
     return (f"the working capital the reference's revenue growth ties up in years 1-5, $B ({share}, median of "
             f"{_years_txt(lr.get('nwc_years'))}), which the desk deducts from every scenario's owner earnings "
             f"unless base_cf is within 2% of cash_basis_b and not within 2% of owner_earnings_default_b or "
@@ -880,7 +916,7 @@ def _nci_defaults_line(f: dict[str, Any]) -> str | None:
 
 
 def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = None, no_marker: bool = False,
-                          withhold_reference: bool = False) -> str:
+                          withhold_reference: bool = False, withhold_long_run: bool = False) -> str:
     """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
     TASK. Prints every one of the `KEYS` (one fact per line; revision 17: `base_year_cap` only when
     the cap applied, `split_after_last_filing` only when a split was detected), plus two display-only lines that carry no facts key: the fixed rule lines
@@ -890,7 +926,10 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     vendor EPS agrees); it chooses the split line's sentence, and None reads as not confirmed. `no_marker` (revision 18, amendment 2,
     not a fact): the history holds no tangible-capital provenance marker for the name, so the three lines derived from its record
     (terminal_ronic, long_run, working_capital) print "not available" and say why. `withhold_reference` (revision 24, R24.2, stage A): the
-    consensus_implied_value and reference_status lines are not printed; the facts keep both."""
+    consensus_implied_value and reference_status lines are not printed; the facts keep both. `withhold_long_run` (revision 24 step 2b,
+    BRIEF_R24_S2b_ranges_gate.md item 2): a long-run judgment gets no default - the terminal_g_default, terminal_ronic and price_implied lines are
+    not printed, the long_run line drops the reference's margin rule (om_5, m_long, margin_ratio) and explains the record and the desk's long run,
+    and the levels and next_fy_revenue_growth lines print the consensus as evidence (the desk holds nothing at them); the facts keep every value."""
     f = facts
 
     def line(key, value, explanation):
@@ -921,7 +960,9 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
         line("excess_cash", _dv_money6(f.get("excess_cash")),
              "$B: the base fiscal year's cash and short-term investments at face (0 for a financial company; not "
              "available when the cash term could not be computed, see long_run stamps), which the desk adds per share to "
-             "every scenario's value; the owner-earnings default and the reference base exclude the after-tax interest "
+             "every scenario's value; the owner-earnings default and "
+             + ("reference_base_b" if withhold_reference else "the reference base")      # revision 24 step 2b: never "the reference"
+             + " exclude the after-tax interest "
              "on it; a different amount needs excess_cash_reason; the desk refuses an amount above "
              "base_year_cash_and_investments_b"),
         line("base_year_cash_and_investments_b", _dv_money6(f.get("base_year_cash_and_investments_b")),
@@ -953,26 +994,47 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
 
     lines.append(line("coe_anchor", _dv_rate2(f.get("coe_anchor")),
                       "the Base discount rate; more than 1.5 points away needs coe_adjustment_reason"))
-    lines.append(line("coe_premium_source", _dv_str(f.get("coe_premium_source")),
-                      "where the premium behind coe_anchor comes from: the live reference uses rs2's closure premium; "
-                      "point-in-time packs use Damodaran's premium, because the live reference's closure premium cannot be "
-                      "rebuilt for a past date"))
-    lines.append(line("terminal_g_default", _dv_rate2(f.get("terminal_g_default")),
-                      _terminal_g_explanation(f)))
+    if withhold_reference:
+        # revision 24 step 2b: a withheld-reference block never says "the reference"
+        lines.append(line("coe_premium_source", _dv_str(f.get("coe_premium_source")),
+                          "where the premium behind coe_anchor comes from: live packs use rs2's closure premium; point-in-time packs use "
+                          "Damodaran's premium, because the closure premium cannot be rebuilt for a past date"))
+    else:
+        lines.append(line("coe_premium_source", _dv_str(f.get("coe_premium_source")),
+                          "where the premium behind coe_anchor comes from: the live reference uses rs2's closure premium; "
+                          "point-in-time packs use Damodaran's premium, because the live reference's closure premium cannot be "
+                          "rebuilt for a past date"))
+    if not withhold_long_run:
+        lines.append(line("terminal_g_default", _dv_rate2(f.get("terminal_g_default")),
+                          _terminal_g_explanation(f)))
     lines.append(line("terminal_g_anchor", _dv_rate2(f.get("terminal_g_anchor")),
                       "the long-run nominal growth anchor"))
-    lines.append(line("terminal_ronic", _dv_rate4(f.get("terminal_ronic")),
-                      _terminal_ronic_explanation(f, no_marker)))
+    if not withhold_long_run:
+        lines.append(line("terminal_ronic", _dv_rate4(f.get("terminal_ronic")),
+                          _terminal_ronic_explanation(f, no_marker)))
     lr_series = throughcycle_record.margin_series_name((f.get("long_run") or {}).get("om_basis"))
-    lines.append(line("long_run", _render_long_run(f.get("long_run") or {}),
-                      f"not available: {consensus_reference.NO_MARKER_REASON}" if no_marker else
-                      "The desk values years 6 on from X_5 (earnings before acquired-intangible "
-                      "amortization), pays for growth at a return that " + _long_run_start_clause(f) + " "
-                      "terminal_ronic, and moves the margin from m5 to m_long by year 10 (margin_ratio = m_long / "
-                      f"m5; none means the margin is held): om_5, the {lr_series} margin the consensus implies at "
-                      f"year 5, moves all the way to om_trend, the trend level of your record's 8-year {lr_series} "
-                      "margin (to zero for a loss record). The members are the record "
-                      "behind it."))
+    if withhold_long_run:
+        lines.append(line("long_run", _render_long_run(f.get("long_run") or {}, withhold_long_run=True),
+                          f"not available: {consensus_reference.NO_MARKER_REASON}" if no_marker else
+                          "your record and the year-5 anchor of the desk's long run, not defaults: the desk values years 6 on from X_5 (earnings "
+                          "before acquired-intangible amortization; e5 and m5 are the year-5 earnings and earnings margin at the consensus estimates of years 1-2 "
+                          "and next-FY revenue growth fading toward the base-rate median in years 3-5, "
+                          "and with no year-5 revenue m5 is your base fiscal year's filed earnings margin), pays for growth at a return that "
+                          + _long_run_start_clause(f) + " your terminal_ronic, and moves each scenario's earnings margin from its year-5 margin "
+                          "to your long_run_margin by the end of the fade; m_tc is your record's 8-year median earnings margin, om_tc, om_L and "
+                          f"om_trend its 8-year median, base-year and trend-level {lr_series} margins, r_tc and p its returns on tangible "
+                          "invested capital, g_rev its revenue trend; you choose long_run_margin, fade_years, terminal_g and terminal_ronic "
+                          "(POPULATION RANGES)"))
+    else:
+        lines.append(line("long_run", _render_long_run(f.get("long_run") or {}),
+                          f"not available: {consensus_reference.NO_MARKER_REASON}" if no_marker else
+                          "The desk values years 6 on from X_5 (earnings before acquired-intangible "
+                          "amortization), pays for growth at a return that " + _long_run_start_clause(f) + " "
+                          "terminal_ronic, and moves the margin from m5 to m_long by year 10 (margin_ratio = m_long / "
+                          f"m5; none means the margin is held): om_5, the {lr_series} margin the consensus implies at "
+                          f"year 5, moves all the way to om_trend, the trend level of your record's 8-year {lr_series} "
+                          "margin (to zero for a loss record). The members are the record "
+                          "behind it."))
 
     lines.append(line("net_debt_b", _dv_money(f.get("net_debt_b")),
                       "the firm frame's net debt; another figure needs net_debt_reason (the "
@@ -1005,14 +1067,20 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
     lv = f.get("levels") or {}
     lv_parts = [f"{k}={lv[k]:.3f}" for k in ("year1", "year2", "bull2", "bear2")
                 if isinstance(lv.get(k), (int, float))]
-    lines.append(line("levels", ", ".join(lv_parts) if lv_parts else _NA,
-                      "the desk holds the Base's years 1-2 at year1 and year2 unless you pass "
-                      "guidance_deviation_reason (a Base year 2 more than 5% away); a Bull or Bear "
-                      "more than 15% from bull2 or bear2 needs scenario_deviation_reason"))
-    lines.append(line("price_implied", pi_text.render_line_value(f.get("price_implied_defaults")),
-                      "at the DEFAULTS, the value of each judgment input at which the Base equals today's price, the other inputs held; "
-                      "the desk returns the same for your own inputs on every run; a verdict of undervalued or overvalued needs a crux on "
-                      "one of them (TASK item 6)"))
+    if withhold_long_run:
+        lines.append(line("levels", ", ".join(lv_parts) if lv_parts else _NA,
+                          "what analysts forecast: the consensus cash-flow levels of years 1 and 2 ($B), bull2 and bear2 from the high and "
+                          "low EPS estimates; evidence for your own years 1-2, not levels the desk holds; a Bull or Bear more than 15% from "
+                          "bull2 or bear2 needs scenario_deviation_reason"))
+    else:
+        lines.append(line("levels", ", ".join(lv_parts) if lv_parts else _NA,
+                          "the desk holds the Base's years 1-2 at year1 and year2 unless you pass "
+                          "guidance_deviation_reason (a Base year 2 more than 5% away); a Bull or Bear "
+                          "more than 15% from bull2 or bear2 needs scenario_deviation_reason"))
+        lines.append(line("price_implied", pi_text.render_line_value(f.get("price_implied_defaults")),
+                          "at the DEFAULTS, the value of each judgment input at which the Base equals today's price, the other inputs held; "
+                          "the desk returns the same for your own inputs on every run; a verdict of undervalued or overvalued needs a crux on "
+                          "one of them (TASK item 6)"))
     cap_fact = f.get("base_year_cap")
     if cap_fact:
         lines.append(line("base_year_cap", _render_base_year_cap(cap_fact),
@@ -1024,9 +1092,11 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
         lines.append(line("split_after_last_filing", _dv_split(split_fact),
                           _split_explanation(split_fact, split_confirmed is True)))
     lines.append(line("working_capital", _render_working_capital(f.get("working_capital")),
-                      _working_capital_explanation(f, no_marker)))
+                      _working_capital_explanation(f, no_marker, withhold_reference)))
 
     lines.append(line("next_fy_revenue_growth", _dv_growth1(f.get("next_fy_revenue_growth")),
+                      "what analysts forecast for next fiscal year's revenue growth; evidence, not a cap: the desk holds no year at it"
+                      if withhold_long_run else
                       "Base years 3-5 above it need guidance_deviation_reason, or the desk holds "
                       "them at it"))
     lines.append(line("years35_p90", _dv_pct1(f.get("years35_p90")),
@@ -1077,6 +1147,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
     m_rev = _REVISION_RE.search(t.split("\n", 1)[0])
     throughcycle = m_rev is not None and int(m_rev.group(1)) >= _FIRST_THROUGHCYCLE_REVISION
     withheld = m_rev is not None and int(m_rev.group(1)) >= _FIRST_WITHHELD_REVISION
+    # revision 24 step 2b: a revision-24 block prints no long-run default (a rev22-arm pack carries the revision-22 marker)
 
     def _opt(key):
         """A revision-17 line: required from revision 17 on, read when present before it (a block
@@ -1086,6 +1157,8 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         mm = re.search(rf"^- {re.escape(key)}: (.*?) \| ", block, re.MULTILINE)
         if mm:
             return mm.group(1)
+        if withheld and key in ("terminal_ronic", "price_implied"):
+            return None                 # revision 24 step 2b: not printed; None, never from text
         if throughcycle and key not in ("base_year_cap", "split_after_last_filing", "reference_base_b", "excess_cash", "coe_premium_source",
                                   "base_year_cash_and_investments_b", "price_implied"):
             raise ValueError(f"revision-17 DEFAULTS block has no {key!r} line")
@@ -1122,7 +1195,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
             base_window[bk] = (float(bv.rstrip("%")) / 100.0) if bk == "gap" else float(bv.replace(",", ""))
 
     coe_anchor = _num("coe_anchor", pct=True)
-    terminal_g_default = _num("terminal_g_default", pct=True)
+    terminal_g_default = None if withheld else _num("terminal_g_default", pct=True)
     terminal_g_anchor = _num("terminal_g_anchor", pct=True)
     net_debt_b = _num("net_debt_b")
     interest_expense_latest_b = _num("interest_expense_latest_b")
@@ -1218,6 +1291,8 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "price_implied_defaults": price_implied_defaults, "price_implied_price": None,
         **{k: None for k in _SCOPE_KEYS},
         "reference_withheld": True if withheld else None, "reference_line": None,
+        "long_run_defaults_withheld": True if withheld else None,
+        "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
     }
 
 
@@ -1244,21 +1319,25 @@ def read_sidecar(d: str | Path) -> dict[str, Any] | None:
 
 def parity(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
     """Return sorted list of KEYS whose values differ (source and version ignored). Revision 24: WITHHELD_KEYS are left out when either side is a
-    withheld-reference pack (its text does not carry them)."""
+    withheld-reference pack (its text does not carry them); step 2b: WITHHELD_LONG_RUN_KEYS (and the long_run margin-rule members) when either
+    side withheld the long-run defaults."""
     mismatches: list[str] = []
     withheld = a.get("reference_withheld") is True or b.get("reference_withheld") is True
+    lr_withheld = a.get("long_run_defaults_withheld") is True or b.get("long_run_defaults_withheld") is True
 
     def _cmp(k, v):
-        # `stamps_full` is the verdict's copy of the record's stamps: the DEFAULTS block prints the window's only
+        # `stamps_full` is the verdict's copy of the record's stamps: the DEFAULTS block prints the window's only; revision 24 step 2b: x_L and
+        # rev_L are never printed, and a withheld-defaults block drops the reference's margin-rule members
         if k == "long_run" and isinstance(v, dict):
-            return {m: x for m, x in v.items() if m != "stamps_full"}
+            drop = LONG_RUN_UNPRINTED + (WITHHELD_LONG_RUN_MEMBERS if lr_withheld else ())
+            return {m: x for m, x in v.items() if m not in drop}
         # revision 24 step 2a: a withheld-reference block does not print the TTM window's value (the reference times 1 + gap)
         if k == "base_window" and withheld and isinstance(v, dict):
             return {m: x for m, x in v.items() if m != "ttm_value"}
         return v
 
     for k in KEYS:
-        if k in SIDECAR_ONLY or (withheld and k in WITHHELD_KEYS):
+        if k in SIDECAR_ONLY or (withheld and k in WITHHELD_KEYS) or (lr_withheld and k in WITHHELD_LONG_RUN_KEYS):
             continue
         if _cmp(k, a.get(k)) != _cmp(k, b.get(k)):
             mismatches.append(k)

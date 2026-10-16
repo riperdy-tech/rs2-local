@@ -682,18 +682,18 @@ def render_section(ranges: Optional[dict], show_p50: bool) -> str:
     d = ins.get("long_run_margin") or {}
     if d.get("available"):
         fb = f"; {'; '.join(d['fallbacks'])}" if d.get("fallbacks") else ""
-        lines.append(f"- long_run_margin (the earnings margin at the end of the fade): cohort: {d['cohort_text']}{fb}; n={d['n']:,} at year {d['k']}, "
+        lines.append(f"- long_run_margin population (the earnings margin at the end of the fade): cohort: {d['cohort_text']}{fb}; n={d['n']:,} at year {d['k']}, "
                      f"vintage {V} | {_qline(d['levels'], show_p50, _pct)} | the cohort's share of the margin's deviation still there after "
                      f"{d['k']} years (measured on operating margins), applied to your earnings margin: your 8-year median {_pct(d['trend'])} plus "
                      f"that share of your base year's {_pct(d['current'])} minus it")
     else:
-        lines.append(na("long_run_margin", d))
+        lines.append(na("long_run_margin population", d))
     d = ins.get("normalization") or {}
     if d.get("available"):
-        lines.append(f"- long_run_margin by cyclicality alone: cohort: {d['cohort_text']}; n={d['n']:,} at year {d['k']}, vintage {V} | "
+        lines.append(f"- long_run_margin population by cyclicality alone: cohort: {d['cohort_text']}; n={d['n']:,} at year {d['k']}, vintage {V} | "
                      f"{_qline(d['levels'], show_p50, _pct)} | the same arithmetic on this band's share")
     else:
-        lines.append(na("long_run_margin by cyclicality alone", d))
+        lines.append(na("long_run_margin population by cyclicality alone", d))
     d = ins.get("growth_years_3_10") or {}
     if d.get("available"):
         fb = f"; {'; '.join(d['fallbacks'])}" if d.get("fallbacks") else ""
@@ -706,29 +706,29 @@ def render_section(ranges: Optional[dict], show_p50: bool) -> str:
         if d.get("ratio"):
             ratio = (f" | the share of year 1's {d['what']} growth above the long-run reference {_pct(d['terminal_reference'], digits=2)} still there in "
                      f"year {d['ratio_k']} (n={d['ratio_n']:,}): {_qline(d['ratio'], show_p50, lambda v: NOT_MEASURED if v is None else f'{v:.2f}')}")
-        lines.append(f"- growth of years 3-10 ({d['what']} growth in each year): cohort: {d['cohort_text']}{fb}; n={d['n']:,}, vintage {V} | "
+        lines.append(f"- growth of years 3-10 population ({d['what']} growth in each year): cohort: {d['cohort_text']}{fb}; n={d['n']:,}, vintage {V} | "
                      f"P10 and P90 {NOT_MEASURED} | " + "; ".join(yrs) + ratio)
     else:
-        lines.append(na("growth of years 3-10", d))
+        lines.append(na("growth of years 3-10 population", d))
     d = ins.get("terminal_g") or {}
     if d.get("available"):
         fb = f"; {'; '.join(d['fallbacks'])}" if d.get("fallbacks") else ""
-        lines.append(f"- terminal_g: cohort: {d['cohort_text']}{fb}; n={d['n']:,}, vintage {V} | "
+        lines.append(f"- terminal_g population: cohort: {d['cohort_text']}{fb}; n={d['n']:,}, vintage {V} | "
                      f"{_qline(d['quantiles'], show_p50, lambda v: _pct(v, True))}")
     else:
-        lines.append(na("terminal_g", d))
+        lines.append(na("terminal_g population", d))
     d = ins.get("terminal_ronic") or {}
     if d.get("available"):
         fb = f"; {'; '.join(d['fallbacks'])}" if d.get("fallbacks") else ""
-        lines.append(f"- terminal_ronic: cohort: {d['cohort_text']}{fb}; n={d['n']:,}, vintage {V} | {_qline(d['quantiles'], show_p50, _pct)}")
+        lines.append(f"- terminal_ronic population: cohort: {d['cohort_text']}{fb}; n={d['n']:,}, vintage {V} | {_qline(d['quantiles'], show_p50, _pct)}")
     else:
-        lines.append(na("terminal_ronic", d))
+        lines.append(na("terminal_ronic population", d))
     d = ins.get("ronic_fade") or {}
     if d.get("available"):
-        lines.append(f"- the fade of the return on new investment: cohort: {d['cohort_text']}; n={d['n']:,}, vintage {V} | "
+        lines.append(f"- the fade of the return on new investment, population: cohort: {d['cohort_text']}; n={d['n']:,}, vintage {V} | "
                      f"{_qline(d['quantiles'], show_p50, lambda v: NOT_MEASURED if v is None else f'{v:.2f}')}")
     else:
-        lines.append(na("the fade of the return on new investment", d))
+        lines.append(na("the fade of the return on new investment, population", d))
     return "\n".join(lines)
 
 

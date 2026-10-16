@@ -848,7 +848,7 @@ def not_meaningful_line(ref):
 ANCHOR_ROLE = ("— context, never the reason for a call: the same generic rules for every company; it values the average stock close to its price but carries little information about any one stock (on 2019–2023 point-in-time data, a stock it valued at twice its price went on to earn only about 3% more over three years than one it valued at its price).")
 
 
-def defaults_desk_args(ref, facts):
+def defaults_desk_args(ref, facts, reference_margin=False):
     """Revision 19 (brief D3): the DEFAULTS run, the desk's Base valued on the pack's own default inputs, built in ONE place. Returns (args, None)
     with `args` the keyword arguments of financial_model_tool.unbundled_dcf, or (None, reason) when there is no DEFAULTS run.
     The reference's full-precision base and path ($B); for a levels name the year-1 level with year-1 growth 0 and year 2 at the year-2 level
@@ -856,7 +856,11 @@ def defaults_desk_args(ref, facts):
     run, working capital, terminal_ronic, excess cash, COE anchor (the rate), terminal_g default and shares default. It mirrors the construction
     AT1a's desk parity checks against the reference (tools/acceptance_r18/desk_checks.desk_parity), and a test proves they agree to the cent.
     No run: a status of not_available (no reference), a cash-only reference (no operating business to value), a year-1 base that is not positive,
-    or a DEFAULTS input the pack does not print."""
+    or a DEFAULTS input the pack does not print.
+
+    `reference_margin` (revision 24 step 2b): the run applies the reference's own long-run margin (the facts' m_long, so the margin ratio is the
+    rule's margin_ratio), as revision 22's DEFAULTS run did - the rev22 pilot arm's. Otherwise no long_run_margin is passed and the margin is held
+    (step 2a)."""
     if not isinstance(ref, dict) or ref.get("value") is None:
         return None, "the pack has no consensus reference (reference_status not_available)"
     if ref.get("method") == "cash_only":
@@ -878,10 +882,14 @@ def defaults_desk_args(ref, facts):
     # longer reaches the desk: the DEFAULTS run passes no long_run_margin, so its margin is held at the year-5 level
     lr = f.get("long_run")
     lr = {k: v for k, v in lr.items() if k != "margin_ratio"} if isinstance(lr, dict) else lr
-    return {"base_cf": base, "explicit_growth": path, "wacc": f["coe_anchor"], "terminal_g": f["terminal_g_default"],
+    args = {"base_cf": base, "explicit_growth": path, "wacc": f["coe_anchor"], "terminal_g": f["terminal_g_default"],
             "shares_diluted": f["shares_default"] / 1e9, "fade_years": FADE_YEARS, "sbc_treatment": "deducted_in_cf",
             "terminal_ronic": f.get("terminal_ronic"), "long_run": lr, "working_capital": f.get("working_capital"),
-            "excess_cash": f.get("excess_cash")}, None
+            "excess_cash": f.get("excess_cash")}
+    full = f.get("long_run") if isinstance(f.get("long_run"), dict) else {}
+    if reference_margin and _finite(full.get("m_long")) and full.get("margin_ratio") is not None:
+        args["long_run_margin"] = full["m_long"]
+    return args, None
 
 
 _YEARS35_RULE = "next-FY revenue growth fading toward the base-rate median, never above next-FY revenue growth"

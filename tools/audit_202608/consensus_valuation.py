@@ -440,7 +440,9 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
         "1. Pick up IMMEDIATELY from that exact unfinished sentence and complete it seamlessly.\n"
         "2. Complete any remaining analysis sections (Valuation Triad, Balance Sheet Audit, Risks, Milestones).\n"
         "3. Conclude with SECTION 12 and the complete ```json:underwriting contract with these fields: "
-        + ", ".join(cap.FORM_FIELDS) + ". The values, probabilities and Kelly size come from your desk runs; do not type them into the contract.\n\n"
+        # revision 24 step 2b: a revision-24 pack's contract carries the S12 fields too (cap.FORM_FIELDS_III); a revision-22 one (the rev22 arm) not
+        + ", ".join(cap.FORM_FIELDS_III if "(pack revision 24)" in pack.split("\n", 1)[0] else cap.FORM_FIELDS)
+        + ". The values, probabilities and Kelly size come from your desk runs; do not type them into the contract.\n\n"
         "Do NOT repeat the prior sections. Proceed directly with the continuation."
     )
     messages = [
@@ -2071,6 +2073,8 @@ def build_desk_context(facts, price, ticker, company, run_date=None):
         "reference_status": facts.get("reference_status"),
         # revision 24 (R24.2): the pack did not print the reference, so the desk's R10 gate is off and its unit note compares with the price
         "reference_withheld": facts.get("reference_withheld"),
+        # revision 24 step 2b: the pack printed no long-run default, so the desk holds no year and takes no default terminal_ronic
+        "long_run_defaults_withheld": facts.get("long_run_defaults_withheld"),
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)
         # revision 19 (B4): the name and ticker the citation check's news-filter rule needs
@@ -2194,7 +2198,7 @@ def main():
         pack_text = cap.build_pack(t, price_override=price_override)
         pack_macro_degraded = bool(getattr(pack_text, "macro_degraded", False)
                                    or getattr(cap, "LAST_PACK_MACRO_DEGRADED", False))
-        pack = pack_text + "\n\n---\n\n" + cap.TASK
+        pack = pack_text + "\n\n---\n\n" + cap.task_for(pack_text.facts)     # revision 24 step 2b: the arm's TASK (rev22 or revision 24)
         pack_source = "fresh"
         # Rule 11 (verdict stamping, C1 + P4.3 prep): the exact §1.6/§2.5 blocks THIS pack build
         # printed, so consensus.json (below) can record what the analyst actually saw.

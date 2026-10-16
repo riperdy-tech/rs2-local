@@ -100,8 +100,9 @@ def test_defaults_block_is_last_and_parses(screener_data_stub, monkeypatch):
     # nothing else starts a new top-level "## " block after it (a "### " sub-header would not
     # count, but DEFAULTS has none)
     tail = text[i:]
-    assert tail.count("\n## ") == 0
-    assert text.rstrip().endswith(
+    # revision 24 step 2b: the POPULATION RANGES section follows DEFAULTS and is the pack's last block
+    assert tail.count("\n## ") == 1 and "\n\n## POPULATION RANGES   [" in tail
+    assert tail.split("\n\n## POPULATION RANGES")[0].rstrip().endswith(
         "a Bear value above it needs bear_above_price_reason")
     parsed = pack_facts.from_text(text)
     assert parsed["source"] == "defaults_block"

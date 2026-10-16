@@ -42,7 +42,8 @@ def rebuild_rev24(excerpt, saved_facts):
     """(text, facts) of the saved excerpt as build_pack prints it at revision 24, from its facts: the first line's marker is 24; the reference's
     line is not printed and goes to facts["reference_line"] (build_pack's revision-24 step); the BASE WINDOW CHECK is re-rendered by the production
     window_line without the reference from the numbers the saved line printed; the DEFAULTS block is the production renderer's on the facts."""
-    facts = dict(copy.deepcopy(saved_facts), reference_withheld=True)
+    # revision 24 step 2b: the revision-24 pack also withholds the long-run defaults (the DEFAULTS block below is rendered as build_pack renders it)
+    facts = dict(copy.deepcopy(saved_facts), reference_withheld=True, long_run_defaults_withheld=True)
     out = []
     for line in excerpt.split("\n"):
         if line.startswith("# DATA PACK"):
@@ -59,7 +60,7 @@ def rebuild_rev24(excerpt, saved_facts):
             out.append(consensus_reference.window_line(win, {"value": facts["consensus_implied_value"]}, _num(m.group(3)) * 1e9, m.group(2),
                                                        cap._bn, base_year_check="the BASE-YEAR CHECK shows" in line, reference_shown=False))
         elif line.startswith("## DEFAULTS"):
-            out.append(pack_facts.render_defaults_block(facts, withhold_reference=True))
+            out.append(pack_facts.render_defaults_block(facts, withhold_reference=True, withhold_long_run=True))
             break
         else:
             out.append(line)

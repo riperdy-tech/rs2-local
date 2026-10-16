@@ -47,6 +47,12 @@ ITEM6 = ("6. The desk also returns price_implied: for each judgment input (coe, 
          "DCF's implied 10-year growth and the base-rate band it falls in. SECTION 0 and SECTION 12 state the verdict this item gives; where the system "
          "text says otherwise, this TASK takes precedence.")
 
+# revision 24 step 2b: item 6 of the revision-24 TASK names long_run_margin among the judgment inputs and no longer says DEFAULTS prints the price-implied
+# values (it prints none); the revision-22 TASK (the rev22 arm) carries revision 22's item 6, with the reference among the context
+ITEM6_III = ITEM6.replace("terminal_ronic, year2_level), ", "terminal_ronic, year2_level, long_run_margin), ").replace(
+    " DEFAULTS prints the same at the default inputs.", "")
+ITEM6_REV22 = ITEM6.replace("the macro anchors, the sector bands", "the macro anchors, the CONSENSUS-IMPLIED VALUE, the sector bands")
+
 PI_EXPLANATION = ("at the DEFAULTS, the value of each judgment input at which the Base equals today's price, the other inputs held; the desk returns "
                   "the same for your own inputs on every run; a verdict of undervalued or overvalued needs a crux on one of them (TASK item 6)")
 CASH_EXPLANATION = ("the base fiscal year's cash and short-term investments as filed; the desk refuses an excess_cash above it (cash after the valuation "
@@ -70,12 +76,14 @@ def test_the_anchor_sentence_is_the_brief_verbatim_and_the_label_stays():
 
 # ---- D2 -----------------------------------------------------------------------------------------------------------------------------------
 
-def test_the_task_changes_are_exactly_the_briefs():
-    t = cap.TASK
+@pytest.mark.parametrize("which", ("TASK", "TASK_REV22"))
+def test_the_task_changes_are_exactly_the_briefs(which):
+    t = getattr(cap, which)
+    item6 = ITEM6_III if which == "TASK" else ITEM6_REV22
     assert "Level anchor" not in t and "level of your Base" not in t and "earns no credit" not in t                      # (a) the bullet is gone
     assert ("Changing an input because you dislike the resulting value is forbidden; the harness records every run.\n6. ") in t   # (b)
     assert "moving any input toward today's price" not in t
-    assert ITEM6 in t and "\n" + ITEM6 + "\n7. Timing:" in t                                                                      # (c)
+    assert item6 in t and "\n" + item6 + "\n7. Timing:" in t                                                                      # (c)
     assert "The desk also returns the reverse DCF" not in t
     assert "valuation inputs, reasons or crux: code takes them from your last complete desk run of Bear, Base and Bull." in t   # (d)
     assert "verdict label, valuation inputs or reasons" not in t
@@ -87,8 +95,11 @@ def test_the_task_changes_are_exactly_the_briefs():
 def test_item_6_names_the_same_six_inputs_as_the_crux_schema_and_the_validity_owner():
     names = re.search(r"judgment input \(([^)]*)\)", cap.TASK).group(1).split(", ")
     import crux_check
-    # revision 24 step 2b: long_run_margin joined the judgment inputs (the desk's block and the crux); the DEFAULTS line keeps its six
-    assert tuple(names) == pi_text.INPUTS and crux_check.J == fmt.PI_INPUTS == pi_text.INPUTS + ("long_run_margin",)
+    # revision 24 step 2b: long_run_margin joined the judgment inputs (the desk's block, the crux and the revision-24 TASK); the DEFAULTS line and
+    # the revision-22 TASK keep the six
+    assert tuple(names) == crux_check.J == fmt.PI_INPUTS == pi_text.INPUTS + ("long_run_margin",)
+    names22 = re.search(r"judgment input \(([^)]*)\)", cap.TASK_REV22).group(1).split(", ")
+    assert tuple(names22) == pi_text.INPUTS
 
 
 # ---- D3: the DEFAULTS lines -----------------------------------------------------------------------------------------------------------
@@ -247,8 +258,14 @@ def test_no_reference_means_no_defaults_run_and_the_line_says_why(screener_data_
     nope = _synthetic_pack(monkeypatch, enrich_override={"_ticker": "GEV", "_fetched_at": "2026-09-26T12:00:00", "estimates": None})
     assert nope.facts["reference_status"] == "not_available"
     assert nope.facts["price_implied_defaults"] == {"not_available": "the pack has no consensus reference (reference_status not_available)"}
-    assert _line(str(nope), "price_implied") == ("- price_implied: not available — the pack has no consensus reference (reference_status not_available)"
-                                                  f" | {PI_EXPLANATION}")
+    # revision 24 step 2b: the revision-24 pack prints no price_implied line (it is solved at defaults the long-run inputs no longer have); the
+    # rev22 arm prints it as revision 22 did
+    assert "\n- price_implied: " not in str(nope)
+    nope22 = _synthetic_pack(monkeypatch, enrich_override={"_ticker": "GEV", "_fetched_at": "2026-09-26T12:00:00", "estimates": None},
+                             pilot_arm="rev22")
+    assert _line(str(nope22), "price_implied") == ("- price_implied: not available — the pack has no consensus reference (reference_status not_available)"
+                                                    f" | {PI_EXPLANATION}")
+    assert pack_facts.parity(nope22.facts, pack_facts.from_text(str(nope22))) == []
     assert nope.facts["reference_path"] is None and nope.facts["price_implied_price"] is None
     assert pack_facts.parity(nope.facts, pack_facts.from_text(str(nope))) == []
 
