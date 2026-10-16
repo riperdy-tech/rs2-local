@@ -732,7 +732,10 @@ def band_verdict(doc):
                                          # revision 24 step 2d (cross-check 19, ruling 6): the Base's two diagnostics, never gates
                                          "terminal_value_share", "terminal_reinvestment_rate",
                                          # revision 25 (Stage 0.3): the Base's normalization bridge, the checks of the three scenarios, the desk schema
-                                         "bridge", "bridge_checks", "class_checks", "desk_schema")},
+                                         "bridge", "bridge_checks", "class_checks", "desk_schema",
+                                         # revision 25 (Stage 0.6, 0.7): the two-pass protocol's fields and the memorandum merge after a crux follow-up
+                                         "pass1_inputs", "change_log", "reconciliation_reasons", "two_pass_arm", "consensus_shown_pass1",
+                                         "memo_merge")},
         "plausibility_by_sample": None,
     })
 

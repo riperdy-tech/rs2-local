@@ -33,6 +33,10 @@ REVISION_24_2D = ("terminal_value_share", "terminal_reinvestment_rate")
 CLASS_LABELS_25 = ("growth_trajectory", "cycle_position", "margin_persistence")
 REVISION_25 = ("bridge", "bridge_checks", "desk_schema", "near_term_earnings", "normalized_earnings", "class_checks") + CLASS_LABELS_25
 DESK_SCHEMA_25 = "25.1"
+# revision 25 (Stage 0.6, the two-pass protocol): the inputs of the last complete pass-1 desk run and the code-computed change log against the answer
+# run's inputs. Filled from the calls' own `pass` stamps (analyst_tools.chat_with_tools), never from the model's text; None for a sample that ran no
+# pass 1. The analyst's reasons (`reconciliation_reasons`) are a contract field, typed.
+REVISION_25_TWO_PASS = ("pass1_inputs", "change_log")
 
 FILLED = (
     "base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability",
@@ -43,7 +47,7 @@ FILLED = (
     # (cash_flow_life_reason among them) are now call arguments, copied from the answer call.
     "base_cf_basis", "interest_addback",
 ) + REASONS_11 + REVISION_19 + REVISION_24_2B + REVISION_24_2D
-FILLED_25 = FILLED + REVISION_25          # the fields a pack with desk schema 25.1 is filled with (FILLED itself is every other pack's, as it was)
+FILLED_25 = FILLED + REVISION_25 + REVISION_25_TWO_PASS          # the fields a pack with desk schema 25.1 is filled with (FILLED itself is every other pack's, as it was)
 ROLES = ("base", "bull", "bear")
 REL = 0.010001          # the harness's 1% desk-match tolerance (consensus_valuation, `close`)
 
@@ -198,6 +202,74 @@ def answer_run(calls):
         return None, None, False
     e = next((x for x in entries(ref) if x["role"] == "base"), None)
     return ref, (_f(e["dcf"].get("per_share_iv")) if e else None), "cash_flow_life" in (ref.get("params") or {})
+
+
+# ---- revision 25, Stage 0.6: the change log of the two-pass protocol --------------------------------------------------------------------------
+# What counts as an input of a desk run: a parameter the desk's tool schema declares (the snapshot's params also carry what the desk writes back into
+# them, `iv` and `dcf_details` on a scenario), except the free text (a `*_reason`, the crux and its citations). Scenario parameters are keyed
+# "<scenario name>.<parameter>".
+_NOT_INPUT = ("crux", "citations", "iv", "dcf_details")        # `iv` is declared optional, but the desk overwrites it with the scenario's result
+_DECLARED = []
+
+
+def _declared_inputs():
+    """(top-level names, scenario names) of run_financial_model's tool schema (the desk-schema 25.1 superset), read once."""
+    if not _DECLARED:
+        import analyst_tools        # not at module level: analyst_tools imports this module
+        tools = analyst_tools._tools_desk25(analyst_tools.tools_for({"long_run_defaults_withheld": True}))
+        props = next(t["function"] for t in tools if t["function"]["name"] == "run_financial_model")["parameters"]["properties"]
+        _DECLARED.append((set(props), set(props["scenarios"]["items"]["properties"])))
+    return _DECLARED[0]
+
+
+def run_inputs(call):
+    """{path: value} of a desk call's inputs, from its params only (no model text is read)."""
+    params = (call or {}).get("params") or {}
+    top, per_scenario = _declared_inputs()
+    out = {}
+
+    def keep(k, declared):
+        return k in declared and not (k in _NOT_INPUT or k == "reason" or k.endswith("_reason"))
+
+    for k, v in params.items():
+        if k == "scenarios":
+            for i, sc in enumerate(v if isinstance(v, list) else []):
+                if isinstance(sc, dict):
+                    nm = str(sc.get("name") or f"scenario{i + 1}")
+                    for sk, sv in sc.items():
+                        if sk != "name" and keep(sk, per_scenario):
+                            out[f"{nm}.{sk}"] = sv
+        elif keep(k, top):
+            out[k] = v
+    return out
+
+
+def _same_value(a, b):
+    if isinstance(a, bool) or isinstance(b, bool):
+        return isinstance(a, bool) and isinstance(b, bool) and a == b
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return a == b
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        return len(a) == len(b) and all(_same_value(x, y) for x, y in zip(a, b))
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_same_value(a[k], b[k]) for k in a)
+    return a == b
+
+
+def change_log(pass1_inputs, final_inputs):
+    """[{input, pass1, final}] for each input that differs between two run_inputs dicts, sorted by input; a missing input is None. Arithmetic on the
+    two dicts only."""
+    log = []
+    for k in sorted(set(pass1_inputs) | set(final_inputs)):
+        a, b = pass1_inputs.get(k), final_inputs.get(k)
+        if k not in pass1_inputs or k not in final_inputs or not _same_value(a, b):
+            log.append({"input": k, "pass1": a, "final": b})
+    return log
+
+
+def pass1_run(calls):
+    """The last complete pass-1 desk run (the answer-run rule over the calls stamped pass 1), or None."""
+    return answer_run([c for c in (calls or []) if isinstance(c, dict) and c.get("pass") == 1])[0]
 
 
 def _fill_bridge(out, prov, src, typed):
@@ -481,6 +553,11 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
                                                       classifications={k: (out[k] if k in out else typed.get(k)) for k in (
                                                           "margin_persistence", "cycle_position", "growth_trajectory")})
                                     if facts.get("long_run_defaults_withheld") is True else None)
+    # revision 25, Stage 0.6: a sample of the two-pass protocol (its calls carry a `pass` stamp) records its pass-1 inputs and what changed by the
+    # answer run; a sample whose answer run is the pass-1 run changed nothing; no pass-1 run (a breach) fills neither
+    p1 = pass1_run(calls)
+    out["pass1_inputs"] = run_inputs(p1) if p1 is not None else None
+    out["change_log"] = (change_log(run_inputs(p1), run_inputs(ref_call)) if p1 is not None and ref_call is not None else None)
     filled = {}
     for k in (FILLED_25 if desk25 else FILLED):
         if k in out:

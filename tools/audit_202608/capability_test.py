@@ -4297,6 +4297,14 @@ METRIC VOCABULARY for `invalidation_rules` (at least one FINANCIAL and at least 
 Think carefully through the complete economic machinery before writing. Numbers before narrative."""
 
 
+# Revision 25 (Stage 0.6): the two-pass paragraph of TASK_REV25. The pass-2 message the harness sends is analyst_tools.TWO_PASS_MESSAGE.
+TWO_PASS_TASK_PARAGRAPH = (
+    "You work in two passes. In pass 1 you research and make at least one complete desk run (Bear, Base and Bull) as your preliminary forecast; "
+    "without one, pass 2 does not open and the sample is not used. When pass 1 ends, the harness sends one message opening pass 2, where you "
+    "reconcile your preliminary forecast with everything in the pack, make your final desk calls and write the memorandum and the contract. "
+    "Code compares your final run's inputs with your preliminary run's and records every change; in `reconciliation_reasons` give one "
+    "{input, reason} for each input that changed, tied to the evidence.\n\n")
+
 # Revision 25 (Stage 0.3): the TASK of the packs with desk schema 25.1 - the revision-24 TASK with the path and normalization declarations in place of
 # the owner-earnings growth and the two typed earnings figures (near_term_earnings and normalized_earnings are derived by the desk, so the contract no
 # longer carries them). Built by replacing exact passages of TASK, so every other word is TASK's; a passage that moves breaks the import, not the run.
@@ -4311,11 +4319,19 @@ def _task_rev25():
                       "Classify three dimensions, each from its own evidence and none forced by another, and pass them in the desk call, at the top level or in Base (Bull and Bear inherit them): margin_persistence (structural, partly_structural or transient), cycle_position (trough, mid, peak or not_cyclical) and growth_trajectory (accelerating, steady, decelerating or shrinking). The desk checks each label against your numbers and asks for a named reason (class_K1_reason to class_K4_reason) where one disagrees; it never changes a label. In the contract, repeat the same labels and give each one's evidence field (margin_persistence_evidence, cycle_position_evidence, growth_trajectory_evidence); the desk call's labels are the ones recorded.")):
         assert t.count(old) == 1, old[:60]
         t = t.replace(old, new)
+    # Stage 0.6 (the two-pass protocol): the contract carries the analyst's reasons for what changed between its passes, and the TASK says there are
+    # two passes. Both arms (r25_b and r25_c) are sent the same words; only the pack and the pass-2 message differ.
+    for anchor, add in (('  "momentum_view": "<confirming | neutral', '  "reconciliation_reasons": [{"input": "<an input your final desk run changed from your preliminary run, as the desk names it>", "reason": "<why, tied to the evidence>"}],\n'),):
+        assert t.count(anchor) == 1, anchor
+        t = t.replace(anchor, add + anchor)
+    anchor = "Think carefully through the complete economic machinery before writing. Numbers before narrative."
+    assert t.count(anchor) == 1
+    t = t.replace(anchor, TWO_PASS_TASK_PARAGRAPH + anchor)
     return t
 
 
 TASK_REV25 = _task_rev25()
-FORM_FIELDS_25 = tuple(f for f in FORM_FIELDS_III if f not in ("near_term_earnings", "normalized_earnings"))
+FORM_FIELDS_25 = tuple(f for f in FORM_FIELDS_III if f not in ("near_term_earnings", "normalized_earnings")) + ("reconciliation_reasons",)      # Stage 0.6: the contract field of the two-pass protocol
 
 
 def task_for(facts):
@@ -4325,6 +4341,97 @@ def task_for(facts):
     if f.get("desk_schema") == DESK_SCHEMA_25:
         return TASK_REV25
     return TASK_REV22 if f.get("pilot_arm") == "rev22" else TASK
+
+
+# ---- Revision 25, Stage 0.6: what arm C withholds in pass 1 ------------------------------------------------------------------------------------
+# Arm C (r25_c) sees the same pack as arm B (r25_b) except for every element derived from analyst estimates, which it sees only in the pass-2
+# message. `split_consensus` takes the rendered pack text (before TASK is appended) and returns (pass1_text, withheld_block, elements): the pack
+# with each such element replaced by one placeholder line, the lines it took out (verbatim, under the heading of the section they came from) and
+# the list of elements with their source line. It works on the rendered text, so what is withheld is exactly what the pack printed; the facts
+# sidecar is not touched (the desk reads it). The elements, by the code that prints them:
+#   DATA 8 (build_pack, "## DATA 8 - CONSENSUS & MULTIPLES"): the CONSENSUS ESTIMATES table (revenue, EPS, low/high, analysts, growth), the BASE-YEAR
+#     CHECK (the vendor's year-ago EPS), the next-FY EPS estimate trend, the estimate revisions and the analyst price targets;
+#   DEFAULTS (pack_facts.render_defaults_block): the `levels` line (the consensus cash-flow levels, bull2 and bear2), the `next_fy_revenue_growth`
+#     line, the `base_year_cap` line (it prints the vendor's year-ago EPS) and the `long_run` members e5, oe5 and m5 (the year-5 earnings and
+#     margin at the consensus estimates of years 1-2).
+# Not withheld: filed facts, the company's own guidance, price, the population ranges and the research (news, the catalyst brief, the research
+# brief). The fence of the street targets and the CONSENSUS-IMPLIED VALUE are not printed in a revision-24 or later pack, so there is nothing to
+# take out.
+WITHHELD_FILE = "_withheld_consensus.md"
+WITHHELD_NOTE = "withheld until pass 2"
+_LR_MEMBER = re.compile(r"(?<![A-Za-z_0-9])(e5|oe5|m5)=([^,\s|]+)")
+_DATA8_LINES = (
+    ("- CONSENSUS ESTIMATES   [", "DATA 8 consensus estimates table", True),
+    ("- BASE-YEAR CHECK", "DATA 8 base-year check (the vendor's year-ago EPS)", False),
+    ("- [Arithmetic] BASE-YEAR CHECK", "DATA 8 base-year check (the vendor's year-ago EPS)", False),
+    ("- Next-FY EPS estimate trend", "DATA 8 next-FY EPS estimate trend", False),
+    ("- Estimate revisions", "DATA 8 estimate revisions", False),
+    ("- Analyst price targets", "DATA 8 analyst price targets", False),
+    # lines a revision-24 or later pack does not print (the reference is kept in the facts); an older pack, or a fixture of one, would
+    ("- [Arithmetic] CONSENSUS-IMPLIED VALUE", "DATA 8 consensus-implied value", False),
+    ("- CONSENSUS-IMPLIED VALUE", "DATA 8 consensus-implied value", False),
+    ("- [Arithmetic] BASE WINDOW CHECK", "DATA 8 base window check", False),
+)
+_DEFAULTS_LINES = (
+    ("- levels:", "DEFAULTS levels"),
+    ("- next_fy_revenue_growth:", "DEFAULTS next_fy_revenue_growth"),
+    ("- base_year_cap:", "DEFAULTS base_year_cap (the vendor's year-ago EPS)"),
+)
+
+
+def split_consensus(pack_text):
+    """(pass1_text, withheld_block, elements). `elements` is [{"element", "section", "source_line" (1-based, in `pack_text`), "text"}]; the text of
+    a long_run element is its three members. A pack with no such element gives the pack itself, an empty block and no elements."""
+    lines = str(pack_text).split("\n")
+    kept, held, elements = [], [], []
+    section, held_section = None, None
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        if ln.startswith("## "):
+            section = ln[3:].split("   [")[0].strip()
+        label, span = None, 1
+        if section and section.startswith("DATA 8 - "):
+            for prefix, lab, table in _DATA8_LINES:
+                if ln.startswith(prefix):
+                    label = lab
+                    if table:
+                        while i + span < len(lines) and lines[i + span].startswith("|"):
+                            span += 1
+                    break
+        elif section == "DEFAULTS":
+            for prefix, lab in _DEFAULTS_LINES:
+                if ln.startswith(prefix):
+                    label = lab
+                    break
+            if label is None and ln.startswith("- long_run:") and _LR_MEMBER.search(ln):
+                members = [m.group(0) for m in _LR_MEMBER.finditer(ln)]
+                kept.append(_LR_MEMBER.sub(lambda m: f"{m.group(1)}={WITHHELD_NOTE.replace(' ', '_')}", ln))
+                if held_section != section:
+                    held += ["", f"[{section}]"]
+                    held_section = section
+                held.append("- long_run members: " + ", ".join(members))
+                elements.append({"element": "DEFAULTS long_run members e5, oe5, m5", "section": section, "source_line": i + 1,
+                                 "text": ", ".join(members)})
+                i += 1
+                continue
+        if label is None:
+            kept.append(ln)
+            i += 1
+            continue
+        chunk = lines[i:i + span]
+        if held_section != section:
+            held += ["", f"[{section}]"]
+            held_section = section
+        held += chunk
+        elements.append({"element": label, "section": section, "source_line": i + 1, "text": "\n".join(chunk)})
+        kept.append(f"- {label}: {WITHHELD_NOTE}")
+        i += span
+    block = ""
+    if elements:
+        block = ("CONSENSUS AND ANALYST-DERIVED PACK ELEMENTS, withheld in pass 1 (the pack's own lines, verbatim, under the section each came from)"
+                 + "\n".join(held) + "\n")
+    return "\n".join(kept), block, elements
 
 
 # S3 4.3 (2026-09-28): replaces the revision-14 RESEARCH_ADDENDUM. Old literal above this

@@ -224,7 +224,7 @@ def extract_scorecard(report, price):
         # the three classifications each with its evidence pointer, and the rationale of each long-run input
         **{k: None for k in ("near_term_earnings", "normalized_earnings", "normalization_reason", "margin_persistence",
                              "margin_persistence_evidence", "cycle_position", "cycle_position_evidence", "growth_trajectory",
-                             "growth_trajectory_evidence", "input_rationale")},
+                             "growth_trajectory_evidence", "input_rationale", "reconciliation_reasons")},    # revision 25 (Stage 0.6)
     }
 
     # 1. Primary: Structured JSON block from Section 12
@@ -504,7 +504,10 @@ S12_SUMMARY_KEYS = ("near_term_earnings", "normalized_earnings", "normalization_
                     "cycle_position", "cycle_position_evidence", "growth_trajectory", "growth_trajectory_evidence", "input_rationale",
                     "long_run_margin", "plausibility_gate", "rev22_control_desk",       # step 2c: the rev22 control desk's stamp
                     "bridge", "bridge_checks", "class_checks", "desk_schema",          # revision 25: the normalization bridge (contract_fill.REVISION_25)
-                    "terminal_value_share", "terminal_reinvestment_rate")               # step 2d: the two diagnostics (contract_fill.REVISION_24_2D)
+                    "terminal_value_share", "terminal_reinvestment_rate",               # step 2d: the two diagnostics (contract_fill.REVISION_24_2D)
+                    # revision 25 (Stage 0.6, 0.7): the two-pass protocol's fields - the pass-1 inputs and the change log (contract_fill.REVISION_25_TWO_PASS),
+                    # the analyst's reasons (the contract), the arm, whether consensus was shown in pass 1, and the memorandum merge after a crux follow-up
+                    "pass1_inputs", "change_log", "reconciliation_reasons", "two_pass_arm", "consensus_shown_pass1", "memo_merge")
 
 
 def select_medoid_scorecard(
@@ -2126,6 +2129,15 @@ def build_desk_context(facts, price, ticker, company, run_date=None):
     }
 
 
+def two_pass_setup(facts, withheld_block=None):
+    """Revision 25 (Stage 0.6): the `two_pass` argument of analyst_tools.chat_with_tools for a pack of the pilot arms r25_b and r25_c (the facts' pilot_arm),
+    None for every other pack. Arm C carries the consensus block withheld from its pack; arm B none."""
+    arm = (facts or {}).get("pilot_arm")
+    if arm not in cap.R25_ARMS:
+        return None
+    return {"arm": arm, "withheld_block": withheld_block if arm == "r25_c" else None}
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     t = (args[0] if args else "GOOG").upper()
@@ -2213,6 +2225,7 @@ def main():
                     if "--price-asof" in sys.argv else None)
         price_override = {"price": px_val, "asof": asof_val}
     price = price_override["price"] if price_override else vb._num(fin.get("Price"))
+    withheld_block, withheld_elements = None, []         # revision 25 (Stage 0.6): arm C's withheld consensus block, and what it holds
     if pack_file_arg is not None:
         # P4.0b frozen-evidence battery: reuse a saved _pack.md VERBATIM instead of rebuilding,
         # so every sample of a battery run — and every arm compared against it — sees a
@@ -2236,6 +2249,13 @@ def main():
             pack_facts_version_read = None
         pack_facts_parity = None
         print(f"  [pack facts] source: {pack_facts_source}", flush=True)
+        if facts.get("pilot_arm") == "r25_c":
+            # revision 25 (Stage 0.6): arm C's pack is the pass-1 pack; the consensus it withheld is a separate frozen file beside it
+            wf = pack_file_arg.parent / cap.WITHHELD_FILE
+            if not wf.exists():
+                print(f"[consensus] ::HARD FAIL:: arm r25_c needs {wf} beside the frozen pack", flush=True)
+                raise FileNotFoundError(str(wf))
+            withheld_block = wf.read_text(encoding="utf-8")
     else:
         pack_text = cap.build_pack(t, price_override=price_override)
         pack_macro_degraded = bool(getattr(pack_text, "macro_degraded", False)
@@ -2253,6 +2273,11 @@ def main():
         pack_facts_version_read = facts.get("version")
         diffs = pack_facts.parity(facts, pack_facts.from_text(pack))
         pack_facts_parity = {"ok": len(diffs) == 0, "mismatches": diffs}
+        if facts.get("pilot_arm") == "r25_c":
+            # revision 25 (Stage 0.6): arm C's pass-1 pack is the pack without the elements derived from analyst estimates (parity above is the whole
+            # pack's); the elements go to a separate artefact, written to the run folder below and sent in the pass-2 message
+            pass1_text, withheld_block, withheld_elements = cap.split_consensus(pack_text)
+            pack = pass1_text + "\n\n---\n\n" + cap.task_for(pack_text.facts)
         if diffs:
             print(f"::PACK FACTS PARITY:: mismatches: {', '.join(diffs)}", flush=True)
     pack_sha256 = hashlib.sha256(pack.encode("utf-8")).hexdigest()
@@ -2274,6 +2299,10 @@ def main():
     # — found when three auditors had to reconstruct it independently to check the reports.
     (d / "_pack.md").write_text(pack, encoding="utf-8")
     pack_facts.write_sidecar(d, facts)
+    if withheld_block:
+        (d / cap.WITHHELD_FILE).write_text(withheld_block, encoding="utf-8")       # revision 25: arm C's withheld consensus, frozen beside its pack
+        (d / "_withheld_elements.json").write_text(json.dumps(withheld_elements, indent=1), encoding="utf-8")
+    two_pass = two_pass_setup(facts, withheld_block)
 
     # S3 3.2: the harness hands the desk every constant the pack holds, once per run, from the
     # facts object and the harness price. shares_default_b is 5.11's default, not SECTION 2's
@@ -2342,7 +2371,7 @@ def main():
                     seed=seed_base + i, draft_num_predict=draft_num_predict, temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
-                    desk_context=desk_context, reference_reveal=reference_reveal)
+                    desk_context=desk_context, reference_reveal=reference_reveal, two_pass=two_pass)
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2403,7 +2432,7 @@ def main():
                     temperature=temperature,
                     query_cache=evidence_query_cache if evidence_store_dir is not None else None,
                     url_cache=evidence_url_cache if evidence_store_dir is not None else None,
-                    desk_context=desk_context, reference_reveal=reference_reveal)
+                    desk_context=desk_context, reference_reveal=reference_reveal, two_pass=two_pass)
                 sample_es_hits += meta.get("evidence_hits") or 0
                 sample_es_misses += meta.get("evidence_misses") or 0
                 resp = {"done_reason": meta.get("done_reason"),
@@ -2479,6 +2508,11 @@ def main():
         # revision 24 (R24.2): stage B's record and the Base before and after it, always the harness's (None without the tools)
         for _k in ("base_iv_stage_a", "base_iv_final", "reference_revision"):
             scorecard[_k] = (meta or {}).get(_k)
+        # revision 25 (Stage 0.6, 0.7): the two-pass record (None outside the arms r25_b and r25_c) and the memorandum merge after a crux follow-up
+        _tp = (meta or {}).get("two_pass")
+        scorecard["two_pass_arm"] = _tp["arm"] if _tp else None
+        scorecard["consensus_shown_pass1"] = _tp["consensus_shown_pass1"] if _tp else None
+        scorecard["memo_merge"] = (meta or {}).get("memo_merge")
 
         ivs = extract_iv(rep, price)
         # 0.0 is a value: a Base of 0.0 is judged (and refused) as the sample's number, not replaced by
