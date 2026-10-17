@@ -160,6 +160,36 @@ step 7: names with D&A above capex and δ > 0 lose value relative to δ = 0 (BUD
 
 **Positivity:** the rule moves from base_cf to E_0: E_0 ≤ 0 is refused, as before; a negative flow year is valued.
 
+**Amendment, 2026-10-18 (ChatGPT P0/P1, Gemini's drop-in spec), ruled by the coordinator:**
+
+- **D&A basis (P0, accepted, with the exact identity).** The pack's E is X = NI + (1 − τ)·A, A being acquired-intangible amortization
+  (`throughcycle_record.earnings_detail`), an after-tax add-back at the record's tax rate. Substituting into the cash identity
+  Flow = NI + D&A − capex − ΔNWC − P gives exactly
+
+  > Flow_t = X_t − (1 − δ)(capex_t − D&A_org,t + ΔNWC_t) − (P_t − ROU_t) + τ·A_t,   D&A_org = D&A − ROU − A
+
+  The τ·A term is the amortization's tax shield, which X drops. Gemini's identity check ("Flow_0 ≡ E_0 at δ = 0, capex = D&A, no
+  leases") is therefore wrong by τ·A; the code checks the identity above instead, to 1e-9. A_t follows the filed five-year amortization
+  schedule (`FiniteLivedIntangibleAssetsAmortizationExpenseNextTwelveMonths` … `YearFive`, filed by 91 of 160 names), else A_0 held,
+  stamped `amortization_schedule_not_filed`. After year 5 the shield is dropped, as today (synthetic firm D's −1.7%; recorded, not
+  changed).
+- **Units and interpolation (accepted, as Gemini wrote them).** c_t is capex over revenue and capex_t = c_t R_t. Mode 1 is five values;
+  mode 2 is a year-5 target, c_t = c_base + (t/5)(c_5 − c_base); mode 3 is no override, c_t = c_base. c_base and d_base are five-year pooled
+  sums, with the raw totals and the denominator flags (`rev_5yr_nonpositive`, `partial_history_n_years`) on the payload.
+- **The override's depreciation (P1).** Settled on firm B **before** coding:
+  - **First test:** D&A_org = d_base R_t in a reference implementation inside the harness. The ±3% value criterion applies, and the
+    annual flows are compared.
+  - **If that fails,** Gemini's incremental-vintage rule: ΔCapex_j = (c_j − c_base) R_j, depreciated straight line from the half year,
+    ΔD&A_t = (½ΔCapex_t + Σ_{j<t} ΔCapex_j)/L, each vintage capped at its cost. With no override it is identically 0. L is
+    2 × net PP&E / D&A_org at the base year (the store holds net, not gross, PP&E; under straight line the average asset is half
+    depreciated), bounded [3, 40], stamped.
+- **δ excludes leases (confirmed):** debt is non-lease debt (`REPORT_census_1a_addendum.md` §2).
+- **Regression gate (confirmed):** s = 0, w = 0, δ = 0 on the legacy path reproduces today to the cent and 1e-6 relative, tested
+  separately from the synthetic suite.
+- **Sequence (accepted):** the harness exists (step 1). Step 3 starts with a reference implementation of D2 inside the harness
+  (`synthetic.py`, no rs2 code changed). The desk code is written only once that reference passes A–I, C2, G and H at the registered criteria
+  (C, C2 and H only with s, which is step 5).
+
 ## 4. Work plan
 
 Each step has its check. Coders are fresh agents per step; every diff is audited line by line before merge.
