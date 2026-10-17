@@ -142,7 +142,7 @@ Each step has its check. Coders are fresh agents per step; every diff is audited
 | 3 | D2 seam and diagnostics with s = 0 (desk only, `consensus_reference.long_run_value` and `financial_model_tool`) | s = 0, w = 0, δ = 0 reproduces today to the cent; firms A, B, D, E within ±3% of truth; full test suite |
 | 4 | Financial route from year 1 | firm F within ±3%; MCY by hand |
 | 5 | ASC 932 feasibility: which depleting names in the book have the tables in XBRL or parseable 20-F/10-K HTML; then S measurement | coverage count reported; EQNR's S traced by hand from its 20-F; firm C within ±3% when S is measured, and its error reported when not |
-| 6 | Offline recompute of the whole book from stored analyst inputs (no GPU): value change, seam ratio and diagnostics by category | report; value/price shown, never a target |
+| 6 | Offline recompute from stored analyst inputs (no GPU; about 20 names hold stored runs, not 160: `REPORT_census_1a_terminal.md` §5): value change, seam ratio and diagnostics by category | report; value/price shown, never a target |
 | 7 | Outside-AI cross-check of steps 1–6, then registration (desk version, diagnostic thresholds, reason requests as a PACK_REVISION, recorded) | cross-check record; registration record |
 | 8 | GPU runs only after 7 | the registered gate |
 
