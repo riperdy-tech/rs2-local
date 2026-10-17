@@ -71,4 +71,26 @@ sheet rather than companyfacts' standard tags.
 
 ## 5. Concession screen
 
-*Filled in when the full-text screen completes. It is in progress, run by a fresh agent under `briefs/BRIEF_1a_concession_screen.md`.*
+SEC full-text search over each name's latest 10-K, 20-F or 40-F (window 2025-06-01 to 2026-10-18), nine phrases. Run by a fresh agent
+under `briefs/BRIEF_1a_concession_screen.md`; output `scratch/rev23/terminal_d2/concession_screen.json`. Every search succeeded and every
+name had an annual report in the window.
+
+**Counts:** positive 5, incidental 10, negative 143, unresolved 2.
+
+| Name | Screen | What is finite | Ruling for the desk |
+|---|---|---|---|
+| CAAP | positive | airport concessions end 2031–2053; the main one (AA2000) in 2038; extensions granted before, none of right | **finite life**: the analyst sets finite_life_years from the concession terms, cited |
+| BIP | positive | toll roads and other concessions revert after 20–40 years, beside perpetual franchises | **mixed**: a perpetuity for the franchise part is wrong for the concession part. The sum-of-the-parts family is not built; stamp `concession_mixed`, reason request |
+| APA | positive | the Egypt concession (23% of production), development leases renewed to 2041 | **no change**: the reserves end first; the depleting treatment (s) covers it |
+| VLRS | positive | the route concession ends 2040, renewable for up to 30 years at a time, no assets revert | **not finite-life**: a renewable operating licence. Stamp `licence_renewable`, no reason request |
+| VEON | positive (weak) | telecom licences for fixed terms, renewal not assured | **not finite-life by default**: stamp `licence_renewal_uncertain`, reason request |
+| EQNR | unresolved | Norwegian production licences use wording outside the phrase list | depleting treatment covers it, as for APA |
+| ENLT | unresolved | Israeli licences with fixed lives; whether they revert is not stated | stamp `concession_unresolved`, reason request |
+
+**Rule stated once:** finite life applies where assets revert, or where the right ends with no renewal right, for a material part of the
+business. A renewable licence is a perpetuity with a renewal risk the analyst prices. A concession inside a reserve life is the depleting
+case.
+
+**Limit, carried forward:** a negative means only that none of the nine phrases appears. Licence-based businesses that never say "concession"
+are not caught: oil and gas production licences, telecom licences (TLK, GSAT), generation licences, fixed-term PPAs (CWEN). They are not
+cleared; the analyst's research is their screen.
