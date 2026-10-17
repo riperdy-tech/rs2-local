@@ -129,6 +129,37 @@ toward the funded rate instead of toward D's ρ_T, so their offline values shoul
 Material negative ρ_5, a wedge above a registered size, and an implied return far from RONIC_T draw reason requests. The thresholds are
 registered before any run, from the book's distribution, not tuned on outcomes.
 
+## 3a. Step 3 specification of the O7 leg (2026-10-18, after Gemini's three guardrails)
+
+**Years 1–5, levels:**
+
+> Flow_t = E_t − (1 − δ)(capex_t − D&A_nl,t + ΔNWC_t) − (P_t − ROU_t)
+
+- E_t = R_t × m_t: the rev25 bridge's revenue and margin.
+- D&A_nl is D&A less right-of-use depreciation. P_t is lease principal and ROU_t right-of-use depreciation (L1).
+- **The lease term takes no δ:** leases are 100% lease-funded (`REPORT_step2_lease_audit.md` §3).
+- **Gemini's point 1, ruling:** lease principal does **not** go on the capex side. It is a separate term, without δ. With no lease the
+  form is O7 as approved.
+
+**Default paths: five-year pooled ratios to revenue** (Gemini 1, accepted). capex/revenue = Σ capex / Σ revenue over the five base years,
+likewise D&A_nl, P and ROU. Never the mean of annual ratios. A base year below 2025 or a vendor-capex fallback is stamped, as the pack
+stamps them today.
+
+**δ applies to negative net reinvestment as well** (Gemini 2, accepted; it restates `RULINGS_step1a_outside_review.md`). A company
+disinvesting at constant leverage repays debt pro rata, so its equity flow is reduced by δ of the release. Expected effect, registered in
+step 7: names with D&A above capex and δ > 0 lose value relative to δ = 0 (BUD δ 0.29, DXC δ 0.51).
+
+**Analyst override of the capex path** (Gemini 3, accepted with one change):
+- **Format:** either five values [c_1..c_5] (a build-out that winds down, as at DAC or firm B) or a year-5 target c_5, linearly
+  interpolated from the pooled base ratio.
+- **Citation:** each override carries a citation (filing, guidance, the company's capex plan).
+- **The change:** the citation check annotates, it does not gate. An uncited override is used as stated, stamped
+  `capex_override_uncited`, and draws a reason request (design rule: annotate, never silently gate). D&A_nl follows its pooled ratio to
+  revenue in both cases. Firm B tests whether that is close enough after a build-out; if not, D&A_nl gains the depreciation of the
+  override's capex at the filed asset life.
+
+**Positivity:** the rule moves from base_cf to E_0: E_0 ≤ 0 is refused, as before; a negative flow year is valued.
+
 ## 4. Work plan
 
 Each step has its check. Coders are fresh agents per step; every diff is audited line by line before merge.
