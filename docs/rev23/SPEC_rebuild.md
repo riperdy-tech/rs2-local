@@ -6556,3 +6556,201 @@ any v2.2 result.**
   - It does not start a step between 07:00 and 08:45 (fork 1's nightly shadow).
   - ETA: about 19:30–20:00 today.
 - **Chain 4's legacy run** (a v2.0.3 sensitivity) stays held until this finishes.
+
+**AK.91 (2026-10-15 16:39): rulings on cross-check 17. Both reviewers chose a controlled selection design (option D), and it is adopted before the first
+publication.**
+- **ChatGPT:**
+  - peer-ranked top-against-bottom deciles over all eligible valued names, whatever their direction;
+  - the spread as the primary measure; a long-only top decile as the practical book; the original rule kept as an audit ledger;
+  - per-family reporting;
+  - the safeguard: an immutable, disclosed amendment.
+- **Gemini:**
+  - sector-normalised ranking;
+  - a turnover buffer (enter at 90%, exit below 85%);
+  - a bottom-decile comparison ledger;
+  - the original-rule ledger published alongside.
+- **The coordinator's rulings:**
+  - **Adopted:**
+    - the design in `REGISTRATION_paper_v21.md` amendment AK.91: family × industry peer groups, pooled below 10, never across families;
+    - median_iv/price, ties by mean_iv/price;
+    - the 0.90/0.85 buffer;
+    - three ledgers: `rn_v4`, `rn_v4_low` and `rn_v4_abs`;
+    - the spread primary, reported per family;
+    - per-position attribution fields.
+  - **Not adopted, Gemini's P10/price score:** within-group ranking already removes the group level. P10 rewards narrow distributions, which
+    is a different signal. It is logged as a diagnostic rank instead.
+  - **Not adopted, quarantining financials from the main book:** within-family ranking already separates the opposite level errors, and
+    per-family reporting keeps them readable.
+- **Built:**
+  - rs2 `de9d589`: `peer_ranks`, the paper overlay v2, and tests;
+  - the screener `4d0212289e`: `v4_sleeve_targets` with the buffer, `v4_rule_b_targets`, three ledgers refused by KIS, tests, the screener
+    suite at 679 passed and 3 skipped, `tsc` 0.
+- **First-night preview** (`asof` 10-14):
+  - **the top sleeve:** 111 names, 78 operating and 33 financial, across 38 peer groups;
+  - **the bottom sleeve:** 111 names, 61% at the equity floor (median 0), ordered by mean.
+- **The operator's one-page status map** is written: `WHERE_WE_ARE_2026-10-15.md`.
+
+**AK.92 (2026-10-15 16:40): the v2.1 paper books go live (paper only). This is the first publication, by hand, after the coordinator's check (AK.88–AK.89).**
+- **The screener's main:** `4d0212289` (fast-forward from `f4cc21cbba`; the branch `review-2026-10/rn-v4-paper`). It carries the `rn_v4`,
+  `rn_v4_low` and `rn_v4_abs` ledgers, the KIS refusal, and the Track column. A site deploy, approved in AK.88 item 3.
+- **The paper file, through `screener-publish`:** `public/data/v4_paper_overlay.json` at `0006183a4`, sha256
+  `3a1042ad0dc1196a5bf039d8c4900176f2f7e203c549ccf261d2c786d699f44e`.
+  - scheme `v4_paper_experimental_v2`; `asof` 2026-10-14; freeze `2908cf71…`;
+  - 2,030 rows, 1,121 paper-actionable;
+  - top sleeve 111, bottom sleeve 111, original-rule picks 122, discount-spread exclusions 48.
+- **First trades:** the screener's post-close paper run (21:05 UTC weekdays) of 2026-10-15 trades the books at that day's close.
+- **Isolation, checked:** `PAPER_ONLY_LEDGERS` holds all three; `rn_depth` and `depth_overlay.json` are untouched; KIS_HALT stays true.
+- **Publication stays by hand** until three consecutive scheduled nights pass the AK.89 check. The next night runs at 07:30 KST on 10-16.
+
+**AK.93 (2026-10-15 17:17): A CORRECTION OF RECORD. AK.52's "option A" was not informed approval to remove the AI analyst. The AI analyst is a required
+part of the system.**
+- **The operator's words:** "I didn't know that you'd given me an option to completely remove local AI agent out of the entire stock analysis
+  system. Without AI, I can't fathom how you can ever have a true evaluation of a stock unless it's human or AI."
+- **The coordinator's error:**
+  - AK.52 presented "SYSTEM = engine v2 alone" as a technical consequence of S5's weight rule (143 annual pairs against a minimum of 150). It
+    never said plainly that this removes the AI analyst from every live verdict.
+  - Later steps then built on it without restating the consequence: gate 2b v3 tested the code engine alone; the D5 shadow and the paper books
+    value the whole universe with no AI and without the screener's nominated book.
+  - The packs' deliberate exclusion of news and research (right for leak-free testing) was never followed by a plan to restore them for live
+    use.
+- **What governs from now:**
+  1. **The system is the operator's design** (`docs/system-map/01_BIG_PICTURE.md`, `03_RS2_DEPTH.md`):
+     - the screener nominates the book (research_now and watchlist);
+     - the local AI analyst (Muse) forms the judgment for each nominated stock from the prepared inputs and research;
+     - code computes values and enforces the guards.
+  2. **"Engine v2 alone" is not the system.** It is a **code baseline** the AI system must beat. The AK.52 approval is rescinded as a
+     definition of the system. S5's w = 0 stands only as the result of that one rule.
+  3. **The current v2.1 paper books** are relabelled as the code baseline, pending the operator's decision on whether they keep running.
+  4. **A plan restoring the AI analyst follows, for the operator's approval:**
+     - the live system on the screener's book;
+     - Muse back as the analyst, with a sample-size-continuous weight rule replacing the 150 cliff, fitted on gate 2 and tested on fresh
+       data;
+     - research and news restored for live analysis.
+- **The rule for the coordinator, recorded in memory:** never offer an option whose effect removes or bypasses a core component of the
+  operator's design without stating that effect in plain words, and checking it against the system map.
+- **AK.93 follow-up (2026-10-15 17:19): the operator first said "stop now", then within minutes "or actually, yeah keep it running. use it as comparison
+  baseline".**
+  - The coordinator's revert commits had been made locally only, never pushed, and were discarded. The nightly task was never disabled.
+  - **The v2.1 paper books keep running as the code baseline** against which the AI-analyst system is measured.
+  - The site labels them "Code baseline (engine v2.1, no AI)", in en, ko and zh, on the screener's main.
+
+**AL.66 (2026-10-16 00:19): v2.2's gate-2b step failed closed on the inputs fingerprint. My own download caused it; it is fixed, and the
+step is re-running.**
+- **What happened:**
+  - Chain 5's forensic run finished at 22:07 (20 dates, slowed by RAM pressure: about 0.3–1 GB free and heavy paging all evening). E5 and
+    E8 forensic were scored, sealed, at 22:08.
+  - The gate-2b harness then **aborted at 22:08:58**: "input fingerprint differences outside the allowlist: ['damodaran']" (AK.51 item 2).
+- **Cause:** at 14:27 (AL.56) I saved the Damodaran rating tables under `data/damodaran/ratings_archive_20261015/`. That folder is part of
+  gate 2's frozen inputs fingerprint (`freeze_content`: a tree fingerprint of `data/damodaran`), so the fingerprint no longer matched the
+  freeze.
+- **The fix, nothing deleted:**
+  - the folder was moved to `data/discount_v22/sources/damodaran_ratings_archive_20261015/`. The built tables record each file's sha256,
+    which is unchanged;
+  - `e8_gate2b.fingerprint_check()` then returned **no differences**;
+  - the chain's failure marker was renamed (`RESOLVED_failed_gate2b_v22_20261016_0017`) and the task restarted at 00:19. Finished steps
+    are kept.
+- **For fork 1:** between 14:27 on 10-15 and 00:18 on 10-16, any run that fingerprints `data/damodaran` against gate 2's freeze saw a
+  difference. Its contents for the betas and ERP files were unchanged; only the added sub-folder differed.
+- **Lesson:** new downloads go outside folders that a freeze fingerprints. Here that means `data/discount_v22/sources/`, never under
+  `data/damodaran/`.
+
+**AL.67 (2026-10-16 01:03): engine v2.2's verdicts (chain 5: priors_v5 + priors_v4_fy, `discount_rate_v2`; code e604cca, clean). E5 PASSES
+and E8 PASSES on both samples; the identity holds on every name. But v2.2 refuses a large share of names, concentrated where the implied
+ERP is low. For the operator.**
+- **Negatives first:**
+  1. **Coverage.** v2.2 refuses 3,814 of 23,783 forensic names (16.0%), and **66 of 253 (26.1%) in the 2026 gate-2b sample.**
+
+     | Sample | Family | Reason | Refused | Share of family |
+     |---|---|---|---|---|
+     | Forensic | Operating | debt with no gross interest filed | 2,515 | 13.7% |
+     | Forensic | Operating | WACC within 2 pts of g_T | 890 | 4.9% |
+     | Forensic | Operating | non-positive interest | 12 | 0.1% |
+     | Forensic | Financial | cost of equity within 2 pts of g_T | **397** | 7.3% |
+     | 2026 | Operating | no gross interest | 19 | 10.7% |
+     | 2026 | Operating | WACC within 2 pts | 13 | 7.3% |
+     | 2026 | Financial | cost of equity within 2 pts | **32** | **42.7%** |
+
+     - **Every forensic financial refusal is from 2024.**
+  2. **Cause of the financial refusals:** with rf above 3.75%, g_T is capped at 3.75%. A low engine-consistent ERP (2.88% at 2026-07)
+     times a bank's levered beta then gives a cost of equity of 5.2–5.7%, within 2 pts.
+     - This is mechanism 3 (the ERP), which v2.2 does not fix. The 2-point rule now turns it into refusals.
+     - **The separate ERP registration (AL.54, a real-money condition) becomes the binding constraint for financials.**
+  3. **v2.2 does not fix the level problem (AK.87).** Median IV/price on the same forensic names: operating 0.616 under v2.1 against
+     **0.604** under v2.2; financial 1.833 against 1.833. The discount rate is not what puts the operating median near 0.6.
+  4. **The gain over v2.1 is small.** E5 on the same 16,496 names: v2.2 0.1080 against v2.1 0.1061 pooled; by year +0.0048, −0.0041,
+     −0.0053, +0.0150, −0.0012.
+  5. **E5 against v1 is now on a selected sample.** The 3,390 v1-only names are mostly v2.2's refusals. Bar (i) passes on the 16,451
+     names both value, not on the full sample. It is barred as registered; the selection is stated.
+- **E5: PASS.** Bar (i), v2 − v1 by year, 2020–2024:
+
+  | Return bound | Pooled, v2 / v1 | 2020 | 2021 | 2022 | 2023 | 2024 |
+  |---|---|---|---|---|---|---|
+  | excluded | 0.1096 / 0.1034 | +0.0091 | −0.0059 | +0.0045 | +0.0287 | −0.0057 |
+  | minus100 | | | **−0.0123** | | | |
+  | last_close | | | −0.0068 | | | |
+
+  All are within −0.02.
+  - Bar (ii): signs agree (operating 0.1105 against 0.1055; financial 0.1066 against 0.0951).
+  - Reported only: 12 months 0.210 against 0.195; 36 months 0.366 against 0.332.
+  - **The independent recomputation** reproduces every value to the 4th decimal.
+- **E8: PASS** on both samples, all years. No fail-closed condition.
+  - **Forensic:** 19,969 names both valued and 3,814 named refusals, with 0 unnamed and 0 instrumentation errors.
+    - Continuation: 19,501 measured, 468 pooled. **`years13_not_identical` 0.**
+    - Operating: top-1% share 0.049 against 0.063; P90 of that share 0.225 against 0.165 (inside 2×); EV P90/P50 2.43 against 2.59; P50
+      ratio 0.962; rank correlation 0.973.
+    - Financial: P50 ratio 1.082; rank correlation 0.997.
+  - **Gate-2b:** 187 both valued, 66 named refusals; identity 0 failures. Operating P50 ratio 0.967, financial 1.005.
+- **The discount rate itself:**
+  - Operating WACC − g_T: minimum 2.00 pts (the rule), P10 2.84, median **4.34**. At 2026: P10 2.61, median 3.43.
+  - Flags (forensic): `distressed_debt` 1,516, `debt_annual_only` 1,763, `kd_immaterial_floor` 828.
+- **For the operator:**
+  - v2.2 meets its registered bars, so it may be frozen as a **candidate**.
+  - **My recommendation: do not move paper to v2.2 yet.** Its gain over v2.1 is small, and its coverage cost is large: 26% of 2026
+    names, 43% of financials. That cost comes mostly from the ERP issue v2.2 leaves open, and from net-only interest filers.
+  - Better: freeze v2.2 as a candidate; open the ERP registration next, because it is now the binding constraint; and keep v2.1 on paper.
+- **Not yet run, from the registration's reported list:** the price perturbation, the cohort split, monotonicity, the rate calibration
+  (SEC notes data, AL.62), and the 1.5- and 3.0-pt sensitivities.
+- **Chain 4's legacy run** resumed at 01:03.
+
+**AL.68 (2026-10-16 01:04): fork 2 adopts AK.93. The system is the operator's design (the screener's book, Muse as the analyst, code for
+arithmetic and guards). The engine-v2 track is a comparison baseline only. AL.67's decision request is withdrawn.**
+- **AK.93 read and confirmed** (17:17 on 10-15). The operator's words are quoted there: the AI analyst is a required part of the system.
+- **Consequences for fork 2's work:**
+  - **v2.2:** a candidate only (AL.67's recommendation, and fork 1's ruling). Paper stays on v2.1 as the code baseline.
+  - **Withdrawn:** AL.67's three questions to the operator (freeze v2.2; move paper; open the ERP registration) are **not** put to the
+    operator. No ERP registration and no further engine-v2 development unless the operator asks.
+  - **Kept for the record, as findings:**
+    - the coverage cost of the 2-point rule under a low engine-consistent ERP (AL.67);
+    - the `InterestExpenseNonoperating` gap in the production interest ladder (AL.59);
+    - the unchanged level problem (AL.67).
+  - **Note:** Phase 4's desk uses the closure premium (4.388%), not the engine-consistent ERP (fork 1, AK.93).
+- **Offered to the operator:** a comments-only read of `rev23/briefs/BRIEF_R24_3_reference_defects.md`, checking that priors_v5's tables
+  (margin_retention, normalization, terminal.shrinking, growth_decay: their bands, k and vintages) are used correctly before it is built.
+  No building in rev24.
+- **Housekeeping:**
+  - the finished chains' tasks (`RS2-EngineV2-E5E8-3`, `-5`) are removed;
+  - chain 4's legacy sensitivity finishes overnight, under the shadow-window guard, and is then recorded briefly.
+
+**AL.69 (2026-10-16 03:33): chain 4's legacy sensitivity is done: v2.0.3 on priors_v3 + priors_v4_pit, with the priors correlation. It agrees
+with the acceptance result (AL.46).**
+- **E5 FAIL** in **2021** under all three bounds (excluded −0.0272); pooled v2 0.0897 against v1 0.0906. The other years: +0.0013, +0.0118,
+  +0.0131, −0.0037.
+- **E8 PASS** on both samples, every year, in both families.
+- **Reading:** the pre-fiscal-year-fix tables give the same verdict as the acceptance configuration. v2.0.3's 2021 E5 shortfall is not an
+  artefact of the fiscal-year fix. No action: v2.0.3 was never frozen, and the engine track is a baseline (AL.68).
+- wt-gate2-dev is free of every chain of mine. Chain 4's task is removed.
+
+**AK.94 (2026-10-16 08:23): the code-baseline shadow, first scheduled night (asof 2026-10-15). The check passes, the paper file is published by hand,
+and the AK.90 stale diagnosis is corrected.**
+- **The night** (`RS2-Shadow-V4`, 07:30–08:17):
+  - 2,033 rows; 1,258 valued (+0.2% against the first night);
+  - all v2.1, one freeze, **0 "K:"**;
+  - not_usable 2;
+  - the paper file: sleeves 95/95 (top: operating 63, financial 32); original-rule picks 125; spread exclusions 42.
+- **Published:** `screener-publish` (AK.89, by hand). Night 1 of the three consecutive scheduled nights the automatic switch needs.
+- **A CORRECTION OF AK.90.** The stale rows (100 on the first night, 96 now) were **not** caused by the daily-index window. Example: ABT, KO,
+  CLX and CTS. SEC lists their July/August 10-Q, but the composed store's latest filing for them is April. The cause lies in the store or
+  snapshot path for those companies, not in the index. AK.90's diagnosis was the coordinator's error; its index-window change (`f46d92c`)
+  stands as correct but did not touch this.
+  - The rows fail closed: `stale_inputs`, blocked, never valued.
+  - The diagnosis is recorded as an open defect of the **code baseline**, below Phase 4 in priority (AK.93).

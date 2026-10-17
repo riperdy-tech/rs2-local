@@ -66,3 +66,34 @@ publication of any paper-book row. **Fixed from approval on;** any change afterw
   - an isolation check fails (any `rn_v4` weight reaching a KIS target);
   - the operator rules so.
 - **A coordinator audit** (a reconciliation of paper trades to the overlay rows) runs monthly, and before any report that cites the record.
+
+## Amendment AK.91 (2026-10-15 16:39): the selection rule changes before the first publication (cross-check 17, option D)
+
+**Disclosure:**
+- This amendment was made **after inspecting the first live night's signal** (2026-10-14). Under the original rule (section 3.3) the book held
+  122 names, of which 121 were financial. The cause is the engine's level by family: the operating median IV/price is 0.53 and the
+  financial median is 1.49.
+- **No paper row had been published, and no paper return exists.**
+- Both outside reviewers (Gemini, ChatGPT) independently recommended this design.
+
+**Governing from now (it replaces section 3.3; every other rule stands):**
+1. **Eligible:** every paper-actionable valued row (section 3.1–3.2), **whatever its direction** (hold, overvalued, undervalued). The level
+   defect must not decide who enters.
+2. **Peer groups:** family × Damodaran industry (`discount.sources.industry`). A group with fewer than 10 eligible names joins its family's pool.
+   Families are never pooled together.
+3. **Score:** median_iv / price; ties broken by mean_iv / price, then ticker. The percentile is (rank − 0.5) / n within the peer group.
+4. **`rn_v4` (the primary book):**
+   - holds the **top decile** (percentile ≥ 0.90) of each peer group, a held name kept while ≥ 0.85 (a turnover buffer);
+   - the screener's factor-rank and veto filters apply;
+   - equal weight over max(count, 8).
+5. **`rn_v4_low` (comparison):** the bottom decile (≤ 0.10, kept while ≤ 0.15), on the same mechanics.
+6. **`rn_v4_abs` (audit):** the original rule (undervalued and paper-actionable), unchanged, published beside the others in every report.
+7. **The primary measure** (replacing section 4's): the monthly top-minus-bottom return spread (`rn_v4` − `rn_v4_low`).
+   - Newey–West t ≥ 2 over the 12-month window to call it positive; otherwise inconclusive.
+   - `rn_v4` against IWM and against the `equal` control is reported as the practical portfolio diagnostic.
+   - The spread is also reported **separately for operating and financial**.
+8. **The top sleeve is a "top relative-score cohort", not a set of "undervalued stocks".** With the operating level about 0.5×, even its top
+   decile may sit below price.
+9. **Logged per position,** for later attribution: family, industry, size, the discount spread, the distance from the family prior, and the
+   value-factor rank.
+10. **Any later methodology change starts a separately identified prospective experiment.** It never replaces or overwrites this one.
