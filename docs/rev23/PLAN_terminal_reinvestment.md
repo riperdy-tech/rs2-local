@@ -161,6 +161,7 @@ Order matters: step 2 can change base_cf for many names, so the offline numbers 
   today, correcting §2a). Book weights would give EQNR +24.7%. The large effects are outside the 8: utilities, levered shipowners,
   REITs, VLRS; step 1a counts them. A utility whose capex exceeds D&A has base_cf ≤ 0 and is refused by the desk today; under δ it may become
   valuable. That is a change in which names reach the book, not only in their values.
+- **O7 (open, from step 1).** Explicit years stated as flows (levels), so names whose owner earnings cross zero (a capex programme, a growing utility; 28 census names) are valued instead of refused. Changes the rev25 explicit years. See `REPORT_synthetic_baseline_terminal.md`.
 - **O6 (revised).** Equity real estate goes through D2 now, with a measured negative s and δ; mortgage REITs (NREF, CIM) take the financial route. The first wording (wait for a family build) mixed up the code-only engine, which does not value REITs, with the AI desk, which does.
 
 ## 6. Recorded, not done here
