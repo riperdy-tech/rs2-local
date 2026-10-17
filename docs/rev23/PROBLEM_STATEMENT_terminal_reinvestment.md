@@ -147,6 +147,8 @@ where ρ_t is the reinvestment rate: the share of earnings reinvested, including
 **The rate along the path:**
 1. **Year 5:** ρ_5 = 1 − Flow_5 / E_5, the reinvestment rate the analyst's year-5 path implies (owner earnings less working capital, over
    earnings). The explicit years are therefore unchanged.
+   *Correction (2026-10-18, after the outside reviews):* this is a bridge identity, not a measured reinvestment rate. E_5 is converted at
+   consensus's earnings-to-owner-earnings ratio (or κ on the rev25 bridge), so OE_5 / E_5 is fixed by that ratio, not by the analyst's path.
 2. **Terminal:** ρ_T = g_T / RONIC_T + ρ_sust. The ρ_sust term is above zero only for depleting-asset companies (see 4).
 3. **The fade:** ρ_t moves linearly from ρ_5 to ρ_T. **The terminal uses ρ_T.**
 
@@ -193,6 +195,8 @@ The coordinator's independent code reproduces every current value exactly first.
   inflated by prices (g_hist = 5.2% revenue CAGR, RONIC_hist = 12.4%), so its size is uncertain.
 - **A negative ρ_5** (BUD, MSGE, MCY) means the forecast's year 5 reinvests less than nothing (D&A above capex, or a working-capital release).
   That is not sustainable; D moves it to a positive terminal rate.
+  *Correction (2026-10-18):* overstated. A negative ρ_5 means only Flow_5 > E_5; it is not by itself proof that the path is unsustainable.
+  The number is kept and a material one draws a reason request. See `PLAN_terminal_reinvestment.md`.
 - **The implied-return diagnostic flags DAC** (earnings falling while reinvesting) and GOLD and TASK (very high implied returns), beside their
   terminal RONICs.
 
