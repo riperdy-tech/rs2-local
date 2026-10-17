@@ -3,6 +3,7 @@
 `chat(body, timeout)` takes the Ollama /api/chat body the harness builds and returns an Ollama-shaped response.
 
   depth_provider "ollama"    today's request, byte for byte: POST of json.dumps(body) to the local Ollama.
+  depth_provider "ollama_raw" /api/generate raw: the chat template and the tool-call reader are ours (ollama_raw.py); see there.
   depth_provider "llamacpp"  the validated Phase 7 adapter (ollama2llamacpp.py, sha256 2d57497f...), in process:
                              translate to llama-server's OpenAI endpoint and back, with the adapter's constants, error
                              table, sampling rule, reasoning rule and SYSTEM injection. The llama-server process itself
@@ -40,7 +41,7 @@ import rs2_data  # noqa: E402
 # The address every call site hard-coded before this module existed (analyst_tools.OLLAMA and the literals in
 # consensus_valuation.py). Kept as the one literal; analyst_tools.OLLAMA stays defined for the tests and tools that import it.
 OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
-PROVIDERS = ("ollama", "llamacpp")
+PROVIDERS = ("ollama", "llamacpp", "ollama_raw")
 
 ENGINE_DIR = HERE / "cache" / "llamacpp"           # tests point this at a temporary folder
 ENGINE_FILE = "engine.json"
@@ -473,11 +474,23 @@ def _llamacpp_chat(body, timeout):
         raise http_500(ProviderError("adapter_exception", f"{type(e).__name__}: {e}"), url or "") from e
 
 
+def _ollama_raw_chat(body, timeout):
+    """depth_provider "ollama_raw" (brief H): /api/generate raw, our template and our tool-call reader (ollama_raw.py). A refusal
+    (template drift, no SYSTEM, a template error) is the same named HTTP 500 the llamacpp provider raises."""
+    import ollama_raw
+    try:
+        return ollama_raw.chat(body, timeout, OLLAMA_URL)
+    except ollama_raw.RawProviderError as e:
+        raise http_500(ProviderError(e.cause, e.detail), OLLAMA_URL) from e
+
+
 def chat(body, timeout):
     """The analyst-model call: an Ollama /api/chat body in, an Ollama-shaped response out."""
     provider = provider_name()
     if provider == "ollama":
         return _ollama_chat(body, timeout)
+    if provider == "ollama_raw":
+        return _ollama_raw_chat(body, timeout)
     return _llamacpp_chat(body, timeout)
 
 
@@ -546,4 +559,7 @@ def serving_block(provider, model, engine=None):
     if provider == "llamacpp":
         eng = engine if isinstance(engine, dict) else {}
         return {"provider": "llamacpp", **{k: eng.get(k) for k in SERVING_KEYS_LLAMACPP}}
+    if provider == "ollama_raw":
+        import ollama_raw
+        return {**ollama_serving(model), "provider": "ollama_raw", "template_sha256": ollama_raw.TEMPLATE_SHA256}
     return ollama_serving(model)

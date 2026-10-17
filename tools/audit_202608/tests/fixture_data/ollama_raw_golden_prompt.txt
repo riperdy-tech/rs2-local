@@ -1,0 +1,79 @@
+<|im_start|>system
+Reasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.
+
+# Tools
+
+You have access to the following functions:
+
+<tools>
+{"type": "function", "function": {"name": "run_financial_model", "description": "Run the DCF desk.", "parameters": {"type": "object", "properties": {"ticker": {"type": "string"}, "scenarios": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "probability": {"type": "number"}, "explicit_growth": {"type": "array", "items": {"type": "number"}}, "revenue_growth": {"type": "array", "items": {"type": "number"}}, "earnings_margin": {"type": "array", "items": {"type": "number"}}}, "required": ["name", "probability", "explicit_growth"]}}, "years": {"type": "integer"}, "flag": {"type": "boolean"}, "ratio": {"type": "number"}, "meta": {"type": "object"}}, "required": ["ticker", "scenarios"]}}}
+{"type": "function", "function": {"name": "web_search", "description": "Search.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}}
+</tools>
+
+If you choose to call a function ONLY reply in the following format with NO suffix:
+
+<tool_call>
+<function=example_function_name>
+<parameter=example_parameter_1>
+value_1
+</parameter>
+<parameter=example_parameter_2>
+This is the value for the second parameter
+that can span
+multiple lines
+</parameter>
+</function>
+</tool_call>
+
+<IMPORTANT>
+Reminder:
+- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags
+- Required parameters MUST be specified
+- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after
+- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls
+</IMPORTANT>
+
+You are the underwriter.<|im_end|>
+<|im_start|>user
+Value XYZ.<|im_end|>
+<|im_start|>assistant
+<think>
+I should search first.
+</think>
+
+Searching.
+
+<tool_call>
+<function=web_search>
+<parameter=query>
+XYZ 10-K <risk> & more
+</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=run_financial_model>
+<parameter=ticker>
+XYZ
+</parameter>
+<parameter=scenarios>
+[{"name": "bear", "probability": 0.25, "explicit_growth": [0.05, 0.04, 0.03], "revenue_growth": [0.04, 0.03], "earnings_margin": [0.1, 0.09]}]
+</parameter>
+<parameter=years>
+5
+</parameter>
+<parameter=flag>
+false
+</parameter>
+</function>
+</tool_call><|im_end|>
+<|im_start|>user
+<tool_response>
+result one
+</tool_response>
+<tool_response>
+result two
+</tool_response><|im_end|>
+<|im_start|>user
+Now the memorandum.<|im_end|>
+<|im_start|>assistant
+<think>
