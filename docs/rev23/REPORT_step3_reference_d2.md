@@ -66,3 +66,54 @@ company whose capex is about to change.
 filled, a build-out when it completes. The analyst states it with a citation. The default is the fade length F (the approved O2), and an
 uncited value is used, stamped `capex_state_uncited`, with a reason request. Evidence: firm E goes from +11.6% to −0.5%, and no other firm
 changes.
+
+## Addendum (2026-10-18): the O2b reviews, and ChatGPT's mandatory condition tested
+
+Gemini and ChatGPT both approve O2b. ChatGPT made one condition mandatory: firm E is not accepted on its total value alone; the annual
+flows must show the holiday and the rebuild. **Tested: the condition fails O2b as worded.**
+
+**Firm E with the gap fading over H = 3** (the O2b form both reviews specified; value −0.5%):
+
+| Year | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| True flow | 0.220 | 0.229 | 0.215 | 0.101 | 0.107 | 0.115 | 0.122 | 0.130 | 0.138 | 0.201 |
+| D2, gap over 3 years | 0.190 | 0.165 | 0.137 | 0.145 | 0.154 | 0.163 | 0.172 | 0.181 | 0.191 | 0.201 |
+
+Years 6–8 are too low and the rebuild (years 9–14) too high: **the −0.5% is two wrong paths cancelling.** A gap that only declines
+can end a holiday, but it cannot add the rebuild after it. ChatGPT's concern is confirmed.
+
+**What does represent it: the levels leg extended through the end of the investment state.** The analyst's cited capex path runs to
+year 5 + H, with H covering the whole state (holiday *and* rebuild). Through that year the flow is O7's levels formula; after it, the
+funded path with no gap; the horizon is N = 5 + max(F, H) (ChatGPT's H > F rule, with no truncation). For E, H = 9 (the rebuild ends
+in year 14):
+
+| Year | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 18 | 20 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| True flow | 0.220 | 0.229 | 0.215 | 0.101 | 0.107 | 0.115 | 0.122 | 0.130 | 0.138 | 0.201 | 0.221 | 0.236 |
+| D2, levels to year 14 | 0.224 | 0.237 | 0.226 | 0.114 | 0.120 | 0.126 | 0.133 | 0.141 | 0.148 | 0.203 | 0.245 | 0.267 |
+
+The shape is right. **Value +3.03%: at the ±3% bar, not inside it, and not tuned to get there.** The residual has two named
+sources:
+- the pooled D&A ratio is inflated by the demand collapse in the base years. A roll-forward D&A rule does not help (+3.44%).
+- after year 15 the true flows sit below the funded path, because the firm's 40-year asset life echoes the shock as uneven replacement
+  capex for decades. No steady-state terminal represents that.
+
+E is recorded as a borderline fail with its causes, not as a pass.
+
+**Where each form belongs:**
+- **No investment-state override:** the gap fades over F. This is O2 as approved, and it passes A, B2, D, G, H and I as reported above.
+  Moving every firm to "no gap" (H = 0) is worse: H +5.4%, B2 −2.9%.
+- **A cited state that ends, then returns to steady replacement:** a holiday followed by a rebuild, or a build-out followed by normal
+  replacement. Use the levels leg through 5 + H with the analyst's capex path.
+- **Not for long renewals** (firm B, a fleet replaced at once): levels through year 30 give −5.9%, because the pooled D&A ratio drifts
+  over 25 years. A long F with the gap, −1.7% at F = 25, remains the treatment there.
+
+**O2c, for the operator:** O2b's input H means *the years of the cited capex path beyond year 5*. That is, the levels leg is extended
+through the end of the investment state, not a gap fade length. The default is H = 0 with the gap fading over F (O2, unchanged).
+Cited and uncited handling is as O2b: an uncited path is used, stamped `investment_state_duration_uncited`, with a reason request.
+There is no clamping, and the horizon extends when 5 + H > 5 + F. Gemini's diagnostic is kept: a negative ρ_5 faded over F > 5
+draws `negative_reinvestment_faded_over_long_horizon`. The evidence must have been filed before the valuation date. The desk code tests
+cited, uncited, malformed and missing H, and H > F.
+
+**Firm C (ChatGPT's line):** its +12% was the 5-year gap fade, which is not used. At the default it is +5.3%, and its acceptance waits for
+the measured s of step 5, as registered.
