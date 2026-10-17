@@ -500,8 +500,13 @@ def test_the_desks_own_check_per_entry_and_its_rendering():
     assert fmt.crux_desk_check_lines(hand) == [
         "crux[1] revenue: not a judgment input (v1 fails)",
         "crux[2] terminal_g: the price-implied value is not reachable inside its bound (v2 fails)",
-        "crux[3] coe: judgment input, reachable: price-implied 9.80% [yours 7.35%]"]
+        "crux[3] coe: judgment input, reachable: price-implied 9.80% [yours 7.35%]",
+        "Your crux as submitted is NOT valid: a crux is valid only when every entry is, and crux[1] revenue, crux[2] terminal_g fail. "
+        "Without a valid crux the verdict is HOLD. Drop or replace the failing entries in your next desk call, or report HOLD."]
     assert fmt.crux_desk_check_lines(None) == []
+    # 2026-10-18: one failing entry fails the whole crux, said plainly (the restoration's TASK and GOLD memos misread a partial pass)
+    one = fmt.crux_desk_check_lines(hand[1:])
+    assert one[-1].startswith("Your crux as submitted is NOT valid") and "crux[1] terminal_g fails" in one[-1]
 
 
 def test_the_citation_check_and_its_rendering():
@@ -529,10 +534,12 @@ def test_the_summary_and_the_compact_note_carry_the_crux_lines():
               "crux_desk_check": [{"input": "coe", "judgment_input": True, "reachable": True, "price_implied": 0.098, "own": 0.0735}],
               "crux_citation_check": [{"input": "coe", "citations": [{"source": "GUIDANCE", "class": "pack_company", "quote_found": True}]}]}
     want = ["crux[1] coe: judgment input, reachable: price-implied 9.80% [yours 7.35%]",
+            "Every entry is a reachable judgment input. That is not yet a valid crux: each entry's quotes are verified separately, "
+            "and one entry whose quotes do not resolve makes the whole crux invalid.",
             "crux[1] coe citation 1 (GUIDANCE): the company's own filing or release in the pack, quote found"]
     assert at._desk_summary({}, result)["crux_check"] == want
     note = at.compact_tool_note("run_financial_model", {}, result, 4)
-    assert note.split("\n")[-2:] == want and "price_implied coe: 9.80% [8.01%]" in note
+    assert note.split("\n")[-3:] == want and "price_implied coe: 9.80% [8.01%]" in note
     assert "crux_check" not in at._desk_summary({}, {"price": 50.0, "scenario_dcfs": []})
 
 

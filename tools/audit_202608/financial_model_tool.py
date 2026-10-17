@@ -1284,6 +1284,16 @@ def crux_desk_check_lines(items):
         else:
             lines.append(f"crux[{i}] {name}: judgment input, reachable: price-implied {_fmt_pi_value(name, it.get('price_implied'))} "
                          f"[yours {_fmt_pi_value(name, it.get('own'))}]")
+    # 2026-10-18 (the restoration's TASK and GOLD memos called an invalid crux valid): the verdict on the crux as a whole, stated plainly - a crux is
+    # valid only when every entry is (crux_check: the first failing entry fails it), and reachability is not validity (the quotes are checked apart)
+    failing = [f"crux[{i}] {it.get('input')}" for i, it in enumerate(items or [], 1) if not (it.get("judgment_input") and it.get("reachable"))]
+    if failing:
+        lines.append(f"Your crux as submitted is NOT valid: a crux is valid only when every entry is, and {', '.join(failing)} "
+                     f"{'fails' if len(failing) == 1 else 'fail'}. Without a valid crux the verdict is HOLD. Drop or replace the failing "
+                     f"{'entry' if len(failing) == 1 else 'entries'} in your next desk call, or report HOLD.")
+    elif items:
+        lines.append("Every entry is a reachable judgment input. That is not yet a valid crux: each entry's quotes are verified separately, "
+                     "and one entry whose quotes do not resolve makes the whole crux invalid.")
     return lines
 
 
