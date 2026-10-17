@@ -25,6 +25,8 @@
 | B | shipowner doubling its fleet in years 1–3 | 5.769 | refused | — | owner earnings negative in years 1–3 | | | |
 | B2 | shipowner adding 12% in years 1–3 | 4.987 | 4.855 | −2.7% | 0.808 / 0.808 | 2.000 / 1.846 | 2.180 / 2.200 | 0.94 / 1.03 |
 | C | depleter: flat output, replacement cost rising 3%/yr faster than price for 20 years | 2.231 | 2.434 | **+9.1%** | 0.845 / 0.845 | 1.160 / 1.439 | 0.226 / 0.150 | 1.31 / 0.99 |
+| C2 | C with 40% debt at book (added 2026-10-18, rulings point 1) | 2.296 | 2.180 | −5.0% | 0.854 / 0.777 | 1.236 / 1.290 | 0.206 / 0.110 | 1.36 / 1.00 |
+| I | A with its capacity leased under IFRS 16 (added 2026-10-18) | 1.681 | 1.731 | +3.0%: **two offsetting errors** | 0.382 / 0.750 | 0.523 / 0.395 | 0.776 / 0.590 | 0.40 / 1.04 |
 | D | A plus acquired-intangible amortization (4% of revenue, years −5..9) | 1.777 | 1.747 | −1.7% | 0.429 / 0.429 | 0.555 / 0.536 | 0.793 / 0.780 | 0.97 / 1.03 |
 | E | venue owner, 40% spare capacity, no capex in years 0–7 | 2.469 | 2.389 | −3.2% | 0.750 / 0.750 | 0.918 / 0.882 | 0.801 / 0.760 | **0.59** / 1.04 |
 | F | insurer: ROE 12%, book equity growing 8% then 3.5% | 112.3 | 133.8 | **+19.2%** | 11.6 / 34.7 | 32.2 / 33.4 | 68.5 / 65.7 | 0.44 / 1.20 |
@@ -52,12 +54,15 @@
 7. **Acquirer (D): −1.7%.** The desk's earnings basis X (net income before acquired-intangible amortization) drops amortization's tax shield
    in the fade years before the amortization ends. Small and correct in sign; recorded, no change proposed.
 
+**C2 and I (added later).** C2's error changes sign against C, because years 1–5 miss the debt-funded share; it is S's δ test. I's +3.0% is not a pass: years 1–5 are double the truth and the fade and terminal a third low (`REPORT_step2_lease_audit.md` §3).
+
 ## Acceptance targets for steps 3–5 (±3% of the true value)
 
 - **Step 3 (D2 seam and δ):** A stays at 0.0% to 1e-9 on the regression path, and A, B2, D and E are within ±3%. G is tested with δ in the
   fade and terminal; it values only once O7 is ruled.
 - **Step 4 (financial route):** F within ±3%.
-- **Step 5 (measured s):** C and H within ±3%.
+- **Step 5 (measured s):** C, C2 and H within ±3%.
+- **Step 3 (with the lease fix L1–L4):** I within ±3% in each of the three periods, not only in total.
 - **B and G:** stay refused until O7 is ruled. Recorded as a known coverage hole, not a pass.
 
 ## O7, for the operator
