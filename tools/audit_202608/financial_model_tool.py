@@ -375,6 +375,7 @@ def unbundled_dcf(
     excess_cash: Optional[float] = None,
     long_run_margin: Optional[float] = None,
     bridge: Optional[Dict[str, Any]] = None,
+    d2: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Revision 17 (brief B): a funded-growth DCF. Years 1-5 are the explicit cash flows (owner
     earnings less the pack's working-capital schedule, when there is one); from year 6 growth is
@@ -406,6 +407,11 @@ def unbundled_dcf(
       kappa x R_t x m_t; the working capital deducted is wc_intensity x (R_t - R_{t-1}); the long run starts from e5 = R_5 m_5, g5 = R_5 / R_4 - 1 and
       margin_ratio = long_run_margin / m_5, through the same `long_run_value`. `explicit_growth` is then only the owner-earnings growth those figures
       imply (echoed, and the shape the downstream code reads); the derived table goes in the result's `bridge`.
+    - Design D2 (PLAN_terminal_reinvestment.md; BRIEF_D2a_desk_port.md): the optional `d2` members (named in one place, the comment block above
+      `consensus_reference.equity_ronic`; validated by `_d2_prepare`) value the explicit years on levels (earnings less (1 - delta) x net reinvestment and
+      the lease terms, plus the amortization's tax shield), carry the year-5 reinvestment wedge through the fade or, with a cited path of H years, the
+      levels to year 5 + H, and end in the funded terminal at the equity return; the financial family runs E_t (1 - g_{t+1} / ROE_t) from year 1. It needs
+      the bridge; base_cf is not read (the positivity rule is E_0 > 0). There is no sustaining charge. With `d2` absent nothing here runs.
     - Valued at the base fiscal year end and rolled forward by (1 + r)^(long_run["stub_months"]/12),
       so the desk and the reference agree on identical inputs (the pack's stub, no roll without one).
     - Optional finite_life_years (1-60): discrete flows for N years with no terminal value, on the
@@ -450,7 +456,9 @@ def unbundled_dcf(
 
     # Resolve rates
     rates = explicit_growth if explicit_growth is not None else growth_rates
-    if not rates or len(rates) == 0:
+    if d2 is not None and not rates:
+        rates = []                  # design D2: the explicit growth is derived from the bridge's earnings path and echoed
+    elif not rates or len(rates) == 0:
         return {"error": "explicit_growth (or growth_rates) must be a non-empty list of growth rates",
                 "validation_error": True}
     if finite_life_years is None and len(rates) > 5:
@@ -464,7 +472,7 @@ def unbundled_dcf(
         return {"error": "wacc (or discount_rate) must be positive", "validation_error": True}
     rate = float(effective_rate)
 
-    if base_cf <= 0:
+    if d2 is None and base_cf <= 0:
         return {"error": "base_cf must be positive for standard DCF", "validation_error": True}
     if long_run_margin is not None and not (_is_num(long_run_margin) and math.isfinite(long_run_margin)):
         return {"error": f"long_run_margin must be a number, the earnings margin at the end of the fade (got {long_run_margin!r})",
@@ -475,6 +483,8 @@ def unbundled_dcf(
                 "missing": ["terminal_ronic (a positive number: growth cannot be paid for at a return at or below 0)"],
                 "validation_error": True}
 
+    if d2 is not None and bridge is None:
+        return _d2_refuse("d2_requires_bridge", "the d2 members need the revision 25 bridge (revenue, margin): E_t = R_t m_t is the earnings of the explicit years")
     if bridge is not None:
         b_err = _bridge_input_error(bridge, long_run_margin, valuation_frame, finite_life_years)
         if b_err:
@@ -536,6 +546,10 @@ def unbundled_dcf(
 
     # revision 18: the cash at face, in the equity frame only (the firm frame's net_debt already nets it)
     cash_b = float(excess_cash) if (excess_cash is not None and frame == "equity") else 0.0
+
+    if d2 is not None:
+        return _d2_dcf(d2, bridge, rates, rate, terminal_g, fade_years, terminal_ronic, long_run, long_run_margin, annuity_flow, annuity_cap_rate,
+                       effective_net_debt, effective_shares, cash_b, frame, rate_type_norm, sector_multiple_band, sbc_treatment, sbc_dilution)
 
     if finite_life_years is not None:
         return _finite_life_dcf(base_cf, rates, rate, terminal_g, fade_years, finite_life_years,
@@ -723,6 +737,376 @@ def unbundled_dcf(
     if bridge is not None:
         res["bridge"] = _bridge_table(bridge, oe, wc, long_run_margin, fade_years)
 
+    return res
+
+
+# ---- design D2 (PLAN_terminal_reinvestment.md): the optional `d2` long-run members ---------------------------------------------------------------
+# The members are named and documented in one place, the comment block above `consensus_reference.equity_ronic`. A call without `d2` never reaches
+# any of this: `unbundled_dcf` is today's desk, byte for byte. There is no sustaining charge s in this code (O8).
+
+D2_FAMILIES = ("operating", "financial")
+D2_STATE_UNITS = "capex_over_revenue"
+D2_STATE_MAX_YEARS = 60
+
+
+def _fin(v):
+    return _is_num(v) and math.isfinite(v)
+
+
+def _d2_refuse(name, msg):
+    return {"error": f"d2: {msg}", "validation_error": True, "d2_refusal": name}
+
+
+def _d2_state_path(sp, valuation_date):
+    """O2c: (H, rows, state, error). state is "missing" (no path: H = 0, the year-5 gap fades over F), "cited" or "uncited" (used as stated).
+    A path that is declared but absent, malformed or inconsistent is refused by name: never a silently shortened forecast."""
+    if sp is None:
+        return 0, [], "missing", None
+    bad = lambda why: (0, [], None, _d2_refuse("investment_state_path_malformed", f"investment_state_path_malformed: {why}"))
+    if not isinstance(sp, dict):
+        return bad("state_path must be an object {\"H\", \"years\"}")
+    h, years = sp.get("H"), sp.get("years")
+    if isinstance(h, bool) or not isinstance(h, int) or h < 0 or h > D2_STATE_MAX_YEARS:
+        return bad(f"H must be a whole number of years between 0 and {D2_STATE_MAX_YEARS} (got {h!r})")
+    if h == 0 and not years:
+        return 0, [], "missing", None
+    if not years:
+        return 0, [], None, _d2_refuse("investment_state_path_missing", f"investment_state_path_missing: H = {h} but no path of years was supplied")
+    if not isinstance(years, (list, tuple)) or len(years) != h:
+        return bad(f"H = {h} must equal the number of years supplied ({len(years) if isinstance(years, (list, tuple)) else 'not a list'})")
+    rows, cited = [], True
+    for k, y in enumerate(years):
+        if not isinstance(y, dict):
+            return bad(f"year entry {k + 1} is not an object")
+        if y.get("year") != 6 + k:
+            return bad(f"entry {k + 1} must be year {6 + k} (got {y.get('year')!r})")
+        if y.get("units") != D2_STATE_UNITS:
+            return bad(f"year {6 + k}: units must be \"{D2_STATE_UNITS}\" (got {y.get('units')!r})")
+        c, rv, mg = y.get("capex_over_revenue"), y.get("revenue"), y.get("margin")
+        if not (_fin(c) and c >= 0 and _fin(rv) and rv > 0 and _fin(mg)):
+            return bad(f"year {6 + k}: capex_over_revenue (>= 0), revenue (> 0) and margin must be finite numbers")
+        filed = y.get("filed")
+        if filed is not None and valuation_date is not None:
+            if not (isinstance(filed, str) and isinstance(valuation_date, str)):
+                return bad(f"year {6 + k}: filed and valuation_date must be ISO date strings")
+            if filed > valuation_date:
+                return bad(f"year {6 + k}: the evidence was filed {filed}, after the valuation date {valuation_date}")
+        if not (isinstance(y.get("citation"), str) and y["citation"].strip()):
+            cited = False
+        rows.append((float(c), float(rv), float(mg)))
+    return h, rows, "cited" if cited else "uncited", None
+
+
+def _d2_prepare(d2, bridge, rate, terminal_g, fade_years, terminal_ronic, long_run, long_run_margin):
+    """Validate the d2 members and derive the arithmetic's inputs. Returns {"error": ...} (a named refusal) or the inputs dict."""
+    if not isinstance(d2, dict):
+        return _d2_refuse("d2_malformed", "d2 must be an object (see consensus_reference, \"THE d2 MEMBERS\")")
+    fam = d2.get("family", "operating")
+    if fam not in D2_FAMILIES:
+        return _d2_refuse("d2_malformed", f"family must be one of {D2_FAMILIES} (got {fam!r})")
+    R, mg = [float(x) for x in bridge["revenue"]], [float(x) for x in bridge["margin"]]
+    m0 = bridge.get("m0")
+    if not _fin(m0):
+        return _d2_refuse("d2_e0_missing", "the bridge needs m0, the base year's earnings margin: E_0 = R_0 m_0 is the positivity test")
+    e0 = R[0] * float(m0)
+    if not e0 > 0:
+        return _d2_refuse("d2_e0_not_positive", f"E_0 = R_0 m_0 = {e0:.6g} is not positive: no earnings base, refused (a negative flow year is valued; "
+                                                f"a base without earnings is not)")
+    stamps, diag = ["desk_d2_terminal_reinvestment"], {"route": fam}
+    ronic0, ronic_t, rstamps = _ronic_inputs(long_run or {}, terminal_ronic, rate)
+    stamps += rstamps
+    f_years = int(fade_years)
+    out = {"family": fam, "R": R, "mg": mg, "e0": e0, "ronic0": ronic0, "ronic_t": ronic_t, "m_long": float(long_run_margin), "stamps": stamps,
+           "diag": diag, "fade": f_years}
+    if fam == "financial":
+        if any(d2.get(k) is not None for k in ("capex_override", "state_path", "ppe", "pooled", "amortization")):
+            stamps.append("d2_financial_route_ignores_operating_members")
+        diag.update(H=0, investment_state="not_applicable")
+        out.update(h=0, delta=0.0, kd=0.0, tau=0.0)
+        return out
+    delta, tau = d2.get("delta"), d2.get("tau")
+    if not (_fin(delta) and 0.0 <= delta < 1.0):
+        return _d2_refuse("d2_input_invalid", f"delta must be a number in [0, 1) (got {delta!r})")
+    if not (_fin(tau) and 0.0 <= tau < 1.0):
+        return _d2_refuse("d2_input_invalid", f"tau must be a number in [0, 1) (got {tau!r})")
+    kd = d2.get("kd")
+    if delta > 0 and not (_fin(kd) and kd >= 0):
+        return _d2_refuse("d2_input_invalid", f"kd, the cost of the non-lease debt, is needed with delta > 0 (got {kd!r})")
+    kd = float(kd) if _fin(kd) else 0.0
+    for nm, v in (("ronic0", ronic0), ("ronic_t", ronic_t)):
+        if not math.isinf(v) and not consensus_reference.equity_ronic(v, delta, kd, tau) > 0:
+            return _d2_refuse("d2_equity_ronic_not_positive", f"the return on incremental equity from {nm} = {v:.4f} at delta {delta:.3f} is not "
+                                                                 f"positive: growth cannot be paid for at a return at or below 0")
+    pooled = d2.get("pooled")
+    need = ("revenue", "capex", "da_org")
+    if not (isinstance(pooled, dict) and all(_fin(pooled.get(k)) for k in need)
+            and all(pooled.get(k) is None or _fin(pooled.get(k)) for k in ("lease_principal", "rou_dep"))):
+        return _d2_refuse("d2_input_invalid", "pooled needs the five-year totals revenue, capex and da_org (and lease_principal, rou_dep when leased)")
+    if not pooled["revenue"] > 0:
+        return _d2_refuse("rev_5yr_nonpositive", "rev_5yr_nonpositive: the five-year revenue total is not positive: no pooled ratio to it")
+    rev_tot = float(pooled["revenue"])
+    c_base, d_base = pooled["capex"] / rev_tot, pooled["da_org"] / rev_tot
+    p_base, rou_base = (pooled.get("lease_principal") or 0.0) / rev_tot, (pooled.get("rou_dep") or 0.0) / rev_tot
+    n_years = pooled.get("years", 5)
+    if n_years != 5:
+        stamps.append("partial_history_n_years")
+    diag["pooled"] = {"totals": {k: pooled.get(k) for k in ("revenue", "capex", "da_org", "lease_principal", "rou_dep")}, "years": n_years,
+                      "rev_5yr_nonpositive": False, "partial_history_n_years": None if n_years == 5 else n_years,
+                      "capex_ratio": c_base, "da_org_ratio": d_base, "lease_principal_ratio": p_base, "rou_dep_ratio": rou_base}
+    # ---- the capex path: the analyst's override (mode 1 five values, mode 2 a year-5 target) or the pooled ratio held (mode 3)
+    ov, mode, c = d2.get("capex_override"), 3, [c_base] * 5
+    if ov is not None:
+        if not isinstance(ov, dict):
+            return _d2_refuse("capex_override_malformed", "capex_override must be an object {\"mode\", \"values\" | \"year5\", \"citation\"}")
+        mode = ov.get("mode")
+        if mode == 1 and isinstance(ov.get("values"), (list, tuple)) and len(ov["values"]) == 5 and all(_fin(v) and v >= 0 for v in ov["values"]):
+            c = [float(v) for v in ov["values"]]
+        elif mode == 2 and _fin(ov.get("year5")) and ov["year5"] >= 0:
+            c = [c_base + (t / 5.0) * (float(ov["year5"]) - c_base) for t in range(1, 6)]
+        else:
+            return _d2_refuse("capex_override_malformed", "capex_override: mode 1 needs five values (capex / revenue, >= 0), mode 2 a year-5 "
+                                                          "target year5 (>= 0)")
+        if not (isinstance(ov.get("citation"), str) and ov["citation"].strip()):
+            stamps.append("capex_override_uncited")
+    diag["capex_mode"] = mode
+    # ---- O2c: the cited path beyond year 5
+    h, rows, state, err = _d2_state_path(d2.get("state_path"), d2.get("valuation_date"))
+    if err:
+        return err
+    if state == "uncited":
+        stamps.append("investment_state_duration_uncited")
+    if h > f_years:
+        stamps.append("investment_state_longer_than_fade")
+    diag.update(H=h, investment_state=state)
+    e_end = 5 + h
+    rev = R + [r_[1] for r_ in rows]
+    marg = mg + [r_[2] for r_ in rows]
+    c = c + [r_[0] for r_ in rows]
+    n = max(5 + f_years, e_end)
+    # ---- amortization (tau A): the filed schedule, else A_0 held, else none
+    am = d2.get("amortization")
+    if am is None:
+        sched, after = [0.0] * 5, 0.0
+    elif isinstance(am, dict) and isinstance(am.get("schedule"), (list, tuple)) and len(am["schedule"]) == 5 \
+            and all(_fin(a) and a >= 0 for a in am["schedule"]) and (am.get("thereafter") is None or (_fin(am["thereafter"]) and am["thereafter"] >= 0)):
+        sched, after = [float(a) for a in am["schedule"]], float(am.get("thereafter") or 0.0)
+    elif isinstance(am, dict) and am.get("schedule") is None and _fin(am.get("a0")) and am["a0"] >= 0:
+        sched, after = [float(am["a0"])] * 5, 0.0
+        stamps.append("amortization_schedule_not_filed")
+    else:
+        return _d2_refuse("d2_input_invalid", "amortization needs a five-value schedule (>= 0) and optionally the 'thereafter' balance, or a0")
+    amort = consensus_reference.d2_amortization(sched, after, n + 1)
+    # ---- D&A: the vintages rule from the filed PP&E, else the pooled ratio
+    ppe = d2.get("ppe")
+    ppe_ok = isinstance(ppe, dict) and all(_fin(ppe.get(k)) for k in ("gross_prior", "gross", "net", "da_org_0"))
+    capex_amt = [c[t - 1] * rev[t] for t in range(1, e_end + 1)]
+    da, da_rule = consensus_reference.d2_da_org_path(e_end, rev, capex_amt, d_base, ppe if ppe_ok else None)
+    if da_rule == "pooled":
+        stamps.append("da_vintages_no_gross_ppe")
+    diag["da_rule"] = da_rule
+    wc_int = bridge.get("wc_intensity")
+    wc_int = float(wc_int) if _fin(wc_int) else 0.0
+    dnwc = [wc_int * (rev[t] - rev[t - 1]) for t in range(1, e_end + 1)]
+    x = [rev[t] * marg[t - 1] for t in range(1, e_end + 1)]
+    levels = [consensus_reference.d2_flow(x[t - 1], capex_amt[t - 1], da[t - 1], dnwc[t - 1], p_base * rev[t], rou_base * rev[t], amort[t - 1],
+                                          delta, tau) for t in range(1, e_end + 1)]
+    out.update(h=h, delta=float(delta), kd=kd, tau=float(tau), rev=rev, marg=marg, x=x, levels=levels, amort=amort, dnwc=dnwc, ppe=ppe if ppe_ok else None,
+               c_base=c_base, d_base=d_base, p_base=p_base, rou_base=rou_base, wc_int=wc_int)
+    return out
+
+
+def _d2_diagnostics(d2, prep, lr, rate):
+    """The diagnostics of PLAN section 3 (and O8), stamped on the result; they read the valuation and never change it. Returns (diag, stamps)."""
+    diag, stamps = prep["diag"], []
+    fam, x_all, flows = prep["family"], lr["x_all"], lr["flows_all"]
+    tau, delta = prep["tau"], prep["delta"]
+    unavailable = "unavailable"
+    amort = prep.get("amort")
+    inv = [x_all[t - 1] - (flows[t - 1] - (tau * amort[t - 1] if amort else 0.0)) for t in range(1, lr["n_years"] + 1)]   # I_t, the shield apart
+    diag["rho_5_bridge"] = inv[4] / x_all[4] if x_all[4] else None
+    diag["wedge_rate_5"] = lr["wedge_rate_5"]
+    diag["wedge_applied"] = lr["wedge_applied"]
+    diag["reinvestment_5"] = {"actual": lr["i5"], "modelled": lr["i5_star"]}
+    # the explicit years' implied return: (E_5 - E_0) / sum of I_t over t = 0..4 (I_0 from the base-year figures)
+    y0 = d2.get("year0") if isinstance(d2.get("year0"), dict) else None
+    implied = unavailable
+    if fam == "operating" and y0 is not None and all(_fin(y0.get(k)) for k in ("capex", "da_org", "dnwc")):
+        i0 = (1.0 - delta) * (y0["capex"] - y0["da_org"] + y0["dnwc"]) + (y0.get("lease_principal") or 0.0) - (y0.get("rou_dep") or 0.0)
+        net_reinvestment = i0 + sum(inv[:4])
+        if net_reinvestment <= 0:
+            implied = "negative_net_reinvestment_explicit"
+            stamps.append("negative_net_reinvestment_explicit")
+        else:
+            implied = (x_all[4] - prep["e0"]) / net_reinvestment
+    diag["explicit_years_implied_return"] = implied
+    if fam == "operating" and y0 is not None and all(_fin(y0.get(k)) for k in ("capex", "da_org", "dnwc")):
+        diag["flow_0"] = consensus_reference.d2_flow(prep["e0"], y0["capex"], y0["da_org"], y0["dnwc"], y0.get("lease_principal") or 0.0,
+                                                     y0.get("rou_dep") or 0.0, y0.get("amortization") or 0.0, delta, tau)
+    # the clean-surplus roll-forward: IC_N = IC_0 + sum I_t over the horizon, ROIC_{N+1} = E_{N+1} / IC_N, beside RONIC_T and r_tc
+    ic0 = y0.get("invested_capital") if y0 is not None else None
+    roll = {"status": unavailable, "implied_roic_n1": None, "ronic_t": prep["ronic_t"], "ronic_t_equity": lr["ronic_t_equity"], "r_tc": prep["ronic0"]}
+    if _fin(ic0):
+        ic_n = ic0 + sum(inv)
+        if ic_n > 0:
+            roll.update(status="computed", implied_roic_n1=lr["e_terminal"] / ic_n)
+        else:
+            roll["status"] = "capital_not_positive"
+    diag["roic_n1_roll_forward"] = roll
+    diag["seam_ratio"] = (flows[5] / flows[4]) if (len(flows) > 5 and flows[4]) else None
+    # the steady-state capex / D&A at g_T for the filed asset life (row 11's identity), against the measured five-year ratio
+    ss = {"status": unavailable, "steady_state": None, "measured": None, "life_years": None}
+    if fam == "operating":
+        pooled = diag["pooled"]
+        if pooled["da_org_ratio"] > 0:
+            ss["measured"] = pooled["capex_ratio"] / pooled["da_org_ratio"]
+        p = prep.get("ppe")
+        if p and p["da_org_0"] > 0 and p["gross_prior"] > 0:
+            life = max(3.0, min(60.0, p["gross_prior"] / p["da_org_0"]))
+            g = prep["terminal_g"]
+            ss.update(status="computed", life_years=life, steady_state=1.0 if g == 0 else life * g / (1.0 - (1.0 + g) ** -life))
+    diag["steady_state_capex_over_da"] = ss
+    # O8: diagnostics only, computed when their inputs are supplied, else unavailable (never read as "no gap")
+    rs, rt = d2.get("reserves"), d2.get("reit")
+    if isinstance(rs, dict) and all(_fin(rs.get(k)) and rs[k] > 0 for k in ("costs_incurred", "reserve_additions", "dda", "production")):
+        fd, dd = rs["costs_incurred"] / rs["reserve_additions"], rs["dda"] / rs["production"]
+        diag["fd_vs_dda_gap"] = {"fd_per_unit": fd, "dda_per_unit": dd, "gap": fd / dd - 1.0}
+    else:
+        diag["fd_vs_dda_gap"] = unavailable
+    if isinstance(rt, dict) and _fin(rt.get("recurring_capex")) and _fin(rt.get("da")) and rt["da"] > 0:
+        diag["reit_recurring_capex_vs_da"] = {"recurring_capex": rt["recurring_capex"], "da": rt["da"], "ratio": rt["recurring_capex"] / rt["da"]}
+    else:
+        diag["reit_recurring_capex_vs_da"] = unavailable
+    if "capex_override_uncited" in prep["stamps"]:
+        diag["capex_override_uncited"] = True
+    if (fam == "operating" and prep["h"] == 0 and prep["fade"] > 5 and diag["rho_5_bridge"] is not None and diag["rho_5_bridge"] < 0):
+        stamps.append("negative_reinvestment_faded_over_long_horizon")
+    return diag, stamps
+
+
+def _d2_dcf(d2, bridge, rates, rate, terminal_g, fade_years, terminal_ronic, long_run, long_run_margin, annuity_flow, annuity_cap_rate,
+            effective_net_debt, effective_shares, cash_b, frame, rate_type_norm, sector_multiple_band, sbc_treatment, sbc_dilution):
+    """The perpetual equity scenario valued by design D2 (called by `unbundled_dcf` only when `d2` is supplied). The result has the keys of the
+    bridge result plus `d2` (the diagnostics)."""
+    prep = _d2_prepare(d2, bridge, rate, terminal_g, fade_years, terminal_ronic, long_run, long_run_margin)
+    if "error" in prep:
+        return prep
+    R, mg, m_long, f_years = prep["R"], prep["mg"], prep["m_long"], prep["fade"]
+    prep["terminal_g"] = terminal_g
+    if prep["family"] == "financial":
+        lr = consensus_reference.d2_value_financial(R, mg, rate, terminal_g, f_years, prep["ronic0"], prep["ronic_t"], m_long)
+        x15 = lr["x_all"][:5]
+        wc, wc_stamp = None, None
+    else:
+        lr = consensus_reference.d2_value(prep["levels"], prep["x"], prep["rev"], prep["marg"], prep["amort"], prep["delta"], prep["kd"], prep["tau"],
+                                          rate, terminal_g, f_years, prep["h"], prep["ronic0"], prep["ronic_t"], m_long)
+        x15 = prep["x"][:5]
+        wc = prep["dnwc"][:5] if prep["wc_int"] else None
+        wc_stamp = "working_capital_bridge_revenue"
+    stamps = prep["stamps"]
+    diag, dstamps = _d2_diagnostics(d2, prep, lr, rate)
+    stamps += dstamps
+    if lr["value_raw"] < 0:
+        stamps.append("d2_long_run_value_negative")      # valued as the economics: no floor (a negative flow year is valued)
+    if wc is not None:
+        stamps += ["working_capital_deducted", wc_stamp]
+        if any(v < 0 for v in wc):
+            stamps.append("working_capital_release")
+    e0 = prep["e0"]
+    xs = [e0] + list(x15)
+    five = [xs[t] / xs[t - 1] - 1.0 for t in range(1, 6)]
+    rates = [float(g) for g in five]
+    flows15 = lr["flows_all"][:5]
+    e5, rev5, g5 = x15[4], R[5], R[5] / R[4] - 1.0
+    margin_ratio = m_long / mg[4]
+    lr_info = {"rev5": rev5, "m5_basis": "bridge", "margin_held_reason": None}
+    ronic0, ronic_t = prep["ronic0"], prep["ronic_t"]
+    stub = (long_run or {}).get("stub_months")
+    roll = (1.0 + rate) ** (float(stub) / 12.0) if _is_num(stub) and stub else 1.0
+    n_years = lr["n_years"]
+    yearly = list(lr["flows_all"])
+    pv_each = [roll * f / (1.0 + rate) ** (t + 1) for t, f in enumerate(yearly)]
+    growth_applied = list(five) + list(lr["growth"])
+    dcf_pv = sum(pv_each)
+    tv_pv, tv_nominal = roll * lr["tv_pv"], lr["tv"]
+    annuity_pv = 0.0
+    if annuity_flow and float(annuity_flow) > 0:
+        cap_rate = float(annuity_cap_rate) if (annuity_cap_rate and float(annuity_cap_rate) > 0) else max(0.04, rate - 0.01)
+        annuity_pv = float(annuity_flow) / cap_rate
+    ev = dcf_pv + tv_pv + annuity_pv
+    eq = ev - effective_net_debt + cash_b
+    per_share_iv = (ev - effective_net_debt) / effective_shares + cash_b / effective_shares
+    final_cf = yearly[-1]
+    implied_multiple = (lr["tv"] / final_cf) if final_cf > 0 else None
+    tv_share = (tv_pv / ev) if ev > 0 else 0.0
+    implied = implied_trajectory(e5, rev5, margin_ratio, lr, terminal_g, ronic_t, rate, long_run, long_run_margin)
+    implied["terminal_value_share"] = (tv_pv / ev) if ev > 0 else None
+    implied["terminal_reinvestment_rate"] = 0.0 if math.isinf(ronic_t) else terminal_g / ronic_t
+    if not ev > 0:
+        implied["not_computable"].append("the enterprise value is not positive: no terminal value share")
+    if terminal_g > 0 and ronic_t < terminal_g:
+        stamps.append("terminal_reinvestment_above_earnings")
+    gordon_in_band = None
+    if sector_multiple_band and isinstance(sector_multiple_band, dict) and implied_multiple is not None:
+        gordon_in_band = (float(sector_multiple_band.get("low", float("-inf"))) <= implied_multiple
+                          <= float(sector_multiple_band.get("high", float("inf"))))
+    res: Dict[str, Any] = {
+        "per_share_iv": round(per_share_iv, 2),
+        "per_share_iv_raw": per_share_iv,
+        "per_share_iv_gordon": round(per_share_iv, 2),
+        "enterprise_value": round(ev, 2),
+        "equity_value": round(eq, 2),
+        "dcf_pv": round(dcf_pv, 2),
+        "terminal_value_nominal": round(tv_nominal, 2),
+        "terminal_value_pv": round(tv_pv, 2),
+        "terminal_method": (f"Gordon growth @ {terminal_g * 100:.1f}% on funded earnings (design D2), "
+                            f"terminal return on new investment {'unlimited' if math.isinf(ronic_t) else f'{ronic_t * 100:.1f}%'}"),
+        "terminal_share_of_value": round(tv_share, 4),
+        "implied_terminal_ev_fcf_gordon": round(implied_multiple, 2) if implied_multiple is not None else None,
+        "annuity_pv": round(annuity_pv, 2),
+        "projected_cfs": [round(x, 4) for x in yearly],
+        "pv_cfs": [round(x, 4) for x in pv_each],
+        "growth_rates_applied": [round(g, 4) for g in growth_applied],
+        "explicit_growth": [round(float(g), 4) for g in rates],
+        "fade_years": fade_years,
+        "terminal_g": terminal_g,
+        "terminal_ronic": _json_ronic(ronic_t),
+        "ronic_start": _json_ronic(ronic0),
+        "net_debt": round(effective_net_debt, 2),
+        "excess_cash": round(cash_b, 4),
+        "shares_diluted": round(effective_shares, 4),
+        "valuation_frame": frame,
+        "rate_type": rate_type_norm,
+        "discount_rate_applied": round(rate, 4),
+        "valued_at": "base fiscal year end, rolled forward" if roll != 1.0 else "base fiscal year end",
+        "roll_forward_factor": round(roll, 6),
+        "working_capital_deducted": [round(x, 4) for x in wc] if wc is not None else None,
+        "long_run": {"years": n_years, "year5_earnings": round(e5, 4), "margin_ratio": round(margin_ratio, 4), "long_run_margin": long_run_margin,
+                     "year5_revenue": round(rev5, 4), "m5_basis": lr_info["m5_basis"], "margin_held_reason": None, "floored": False},
+        "implied": implied,
+        "stamps": stamps,
+        "gordon_terminal": {
+            "per_share_iv": round(per_share_iv, 2),
+            "terminal_value_nominal": round(tv_nominal, 2),
+            "terminal_value_pv": round(tv_pv, 2),
+            "enterprise_value": round(ev, 2),
+            "equity_value": round(eq, 2),
+            "terminal_share_of_value": round(tv_share, 4),
+            "implied_terminal_multiple": round(implied_multiple, 2) if implied_multiple is not None else None,
+            "in_band": gordon_in_band,
+        },
+        "d2": diag,
+        "d2_flows": [float(f) for f in yearly],              # unrounded, years 1..N (the projected_cfs are rounded to 4 places)
+    }
+    if sector_multiple_band is not None:
+        res["sector_multiple_band"] = (
+            {k: (str(v)[:80] if k == "metric" else v) for k, v in sector_multiple_band.items() if k in ("low", "mid", "high", "metric")}
+            if isinstance(sector_multiple_band, dict) else sector_multiple_band)
+        res["multiple_in_band_gordon"] = gordon_in_band
+    if sbc_treatment is not None:
+        res["sbc_treatment"] = sbc_treatment
+        res["sbc_dilution"] = sbc_dilution
+    oe_tbl = [prep["x"][t] for t in range(5)] if prep["family"] == "operating" else list(x15)
+    res["bridge"] = _bridge_table(bridge, oe_tbl, wc, long_run_margin, fade_years)
     return res
 
 

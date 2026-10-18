@@ -431,6 +431,217 @@ def long_run_value(e5, g5, gt, r, ronic0, ronic_t, margin_ratio=None, fade_years
             "value_raw": raw, "value": max(0.0, raw), "floor": raw < 0}
 
 
+# ---- design D2 (PLAN_terminal_reinvestment.md section 3, 3a, 5 O2c / O3 / O5 / O7 / O8): the terminal reinvestment fix ------------------------
+# The arithmetic of the optional `d2` long-run members of `financial_model_tool.unbundled_dcf`. Nothing here runs unless the call carries `d2`;
+# `long_run_value` above is untouched, so a call without `d2` is today's desk byte for byte.
+#
+# THE d2 MEMBERS (the one place they are named; the validation is `financial_model_tool._d2_prepare`). A call with `d2` also carries the
+# revision 25 `bridge` (revenue R_0..R_5, margin m_1..m_5, optional wc_intensity and m0 = the base year's earnings margin) - E_t = R_t m_t is
+# the earnings X of the explicit years - and the usual terminal_g, fade_years, terminal_ronic, long_run_margin and long_run["r_tc"].
+#
+#   d2 = {
+#     "family":       "operating" (default) | "financial"       the financial route (O3): Flow_t = E_t (1 - g_{t+1} / ROE_t) from year 1
+#     "delta":        measured leverage, non-lease debt at market weights, [0, 1)                                              (O5)
+#     "kd", "tau":    pre-tax cost of the non-lease debt (needed when delta > 0) and the tax rate: the code converts the analyst's return on
+#                     capital to a return on incremental equity, ROE = ROC + delta/(1-delta) (ROC - kd (1 - tau))
+#     "pooled":       five-year raw totals, never means of annual ratios: {"revenue", "capex", "da_org", "lease_principal", "rou_dep",
+#                     "years": 5}. The pooled ratios are the totals' quotients; D&A_org = D&A - ROU - acquired amortization
+#     "ppe":          the vintage inputs {"gross_prior", "gross", "net", "da_org_0"} (gross PP&E at the end of the year before the base, at the
+#                     base, net PP&E at the base, the base year's D&A_org); absent: pooled D&A / revenue, stamped da_vintages_no_gross_ppe
+#     "amortization": {"schedule": [A_1..A_5], "thereafter": balance after year 5} (tax-deductible acquired-intangible amortization, run off at
+#                     the year-5 rate until exhausted); or {"a0": A_0} with no schedule filed (A_0 held five years, amortization_schedule_not_filed)
+#     "capex_override": {"mode": 1, "values": [c_1..c_5]} | {"mode": 2, "year5": c_5} (c = capex / revenue; mode 2 interpolates linearly from
+#                     the pooled ratio), with "citation"; none = the pooled ratio held (mode 3). Uncited: used, stamped capex_override_uncited
+#     "state_path":   O2c, the analyst's cited capex path beyond year 5: {"H": n, "years": [{"year": 6, "capex_over_revenue": c, "revenue": R,
+#                     "margin": m, "units": "capex_over_revenue", "citation": "...", "filed": "YYYY-MM-DD"}, ...]}; the levels leg then runs to
+#                     5 + H and the funded path follows with no gap. Absent: H = 0 and the year-5 gap fades over F
+#     "valuation_date": optional; a path year "filed" after it is refused as malformed
+#     "year0":        optional base-year figures {"capex", "da_org", "dnwc", "lease_principal", "rou_dep", "amortization", "invested_capital"} for
+#                     the Flow_0 identity and the explicit-years diagnostic
+#     "reserves", "reit": the O8 diagnostics' inputs, {"costs_incurred", "reserve_additions", "dda", "production"} and {"recurring_capex",
+#                     "da"} (five-year totals). Diagnostics only: nothing in the valuation reads them
+#   }
+#
+# There is no sustaining charge s anywhere (O8): not a parameter, not a default of 0.
+
+def equity_ronic(roc, delta, kd, tau):
+    """O5: the return on incremental equity from the return on capital, ROE = ROC + delta/(1-delta) (ROC - kd (1 - tau)); ROC itself at no leverage."""
+    if not delta:
+        return roc
+    return roc + delta / (1.0 - delta) * (roc - kd * (1.0 - tau))
+
+
+def d2_flow(x, capex, da_org, dnwc, p, rou, a, delta, tau):
+    """The levels leg of one year (O7, the D&A vintages and tau A amendment): Flow = X - (1 - delta)(capex - D&A_org + dNWC) - (P - ROU) + tau A.
+    The lease term takes no delta (leases are lease-funded); tau A is the amortization's tax shield, which X (net income before the after-tax
+    amortization) drops."""
+    return x - (1.0 - delta) * (capex - da_org + dnwc) - (p - rou) + tau * a
+
+
+def d2_amortization(schedule, thereafter, n_years):
+    """A_1..A_n: the filed five-year schedule, then the 'thereafter' balance run off at the year-5 rate until exhausted."""
+    out = [float(a) for a in schedule]
+    after = float(thereafter)
+    rate = out[-1]
+    while len(out) < n_years:
+        a = min(rate, max(0.0, after)) if rate > 0 else 0.0
+        out.append(a)
+        after -= a
+    return out[:n_years]
+
+
+def d2_da_org_path(n_years, revenue, capex, d_ratio, ppe=None):
+    """D&A_org for years 1..n_years. revenue[t] is the revenue of year t (index 0 = the base year), capex[t-1] the capex of year t.
+
+    With the filed vintage inputs (`ppe`: gross_prior, gross, net, da_org_0): L = prior gross PP&E / D&A_org, rounded and bounded [3, 60]; the
+    steady geometric vintage profile whose net / gross equals the filed ratio (bisection on its growth) gives the base vintages; each depreciates
+    straight line over L, and each year's capex over L from the next year. Without them (or with a non-positive D&A or gross PP&E), the pooled
+    D&A / revenue ratio times the year's revenue. Returns (path, rule), rule "vintages" or "pooled"."""
+    pooled = [d_ratio * revenue[t] for t in range(1, n_years + 1)]
+    if not ppe:
+        return pooled, "pooled"
+    da0, gross0, net0, gross_prior = ppe["da_org_0"], ppe["gross"], ppe["net"], ppe["gross_prior"]
+    if not (da0 > 0 and gross0 > 0 and gross_prior > 0):
+        return pooled, "pooled"
+    life = max(3, min(60, round(gross_prior / da0)))
+
+    def net_over_gross(g):
+        w = [(1 + g) ** (-a) for a in range(life)]
+        return sum(wi * (1 - a / life) for a, wi in enumerate(w)) / sum(w)
+
+    lo, hi, target = -0.3, 0.6, net0 / gross0
+    for _ in range(80):                          # net / gross falls as g falls: bisect
+        mid = (lo + hi) / 2
+        if net_over_gross(mid) < target:
+            lo = mid
+        else:
+            hi = mid
+    g = (lo + hi) / 2
+    w = [(1 + g) ** (-a) for a in range(life)]
+    k = gross0 / sum(w)
+    vint = [k * wi for wi in w]                  # cost by age at the base year end: age 0 depreciates in years 1..L
+    out = []
+    for t in range(1, n_years + 1):
+        existing = sum(c / life for a, c in enumerate(vint) if a + t <= life)
+        new = sum(capex[j - 1] / life for j in range(1, t) if 0 < t - j <= life)
+        out.append(existing + new)
+    return out, "vintages"
+
+
+def d2_value(levels, x, rev, margin, amort, delta, kd, tau, r, gt, fade_years, state_years, ronic0, ronic_t, m_long):
+    """D2 for an operating company (PLAN section 3): the long run after the levels leg.
+
+    levels: the levels-leg flows of years 1..5+H (`d2_flow`); x: the earnings X of those years; rev: revenue R_0..R_{5+H}; margin: m_1..m_{5+H};
+    amort: A_1..A_n (n = N); delta, kd, tau: leverage and its cost, the tax rate; r, gt: the discount and terminal growth; fade_years = F;
+    state_years = H (O2c); ronic0, ronic_t: the analyst's returns on CAPITAL (+inf allowed), converted here to equity returns; m_long: the margin
+    at the end of the fade.
+
+    H = 0: the year-5 gap w_5 = (I_5 - I*_5) / R_5, I_5 = X_5 - (Flow_5 - tau A_5), I*_5 = (g_6 / RONIC_0) X_5 (no sustaining term, O8), fades
+    linearly to 0 over F: Flow_t = X_t (1 - g_{t+1} / RONIC_t) - w_t R_t + tau A_t. H > 0: the levels leg runs to 5 + H, then the funded path with
+    no gap. N = 5 + max(F, H). The terminal is X_{N+1} (1 - g_T / RONIC_T) / (r - g_T).
+    Returns a dict shaped like `long_run_value` (n_years, growth, earnings, margin_factor, ronic, flows of years 6..N, ...) plus the whole
+    schedule `flows_all` (years 1..N), `x_all`, the year-5 boundary and the terminal figures."""
+    f_years = int(fade_years)
+    h = int(state_years)
+    e_end = 5 + h
+    n = max(5 + f_years, e_end)
+    fr = n - e_end                                  # the funded years after the levels leg
+    g_e = rev[e_end] / rev[e_end - 1] - 1.0
+    g5 = rev[5] / rev[4] - 1.0
+    g6_def = gt if f_years == 0 else g5 + (gt - g5) / f_years   # the first fade growth of the default (H = 0) path
+
+    def g_at(t):
+        return gt if (fr == 0 or t > n) else g_e + (gt - g_e) * (t - e_end) / fr
+
+    def ron_eq(frac):
+        return equity_ronic(ronic_at(ronic0, ronic_t, frac), delta, kd, tau)
+
+    flows = list(levels)
+    xs = list(x)
+    i5 = x[4] - (levels[4] - tau * amort[4])      # the year-5 reinvestment (the shield is not reinvestment)
+    i5_star = g6_def / ron_eq(0.0) * x[4]
+    w5 = (i5 - i5_star) / rev[5]
+    wedge_on = h == 0
+    frac0 = (e_end - 5) / f_years if f_years else 1.0
+    rt = rev[e_end]
+    m_e = margin[e_end - 1]
+    growth, earnings, kfs, ronics = [], [], [], []
+    for t in range(6, e_end + 1):                   # levels years beyond year 5 (O2c)
+        growth.append(rev[t] / rev[t - 1] - 1.0)
+        earnings.append(x[t - 1])
+        kfs.append(margin[t - 1] / margin[4])
+        ronics.append(ron_eq(min(1.0, (t - 5) / f_years)) if f_years else ron_eq(1.0))
+    for t in range(e_end + 1, n + 1):
+        frac = (t - e_end) / fr
+        g = g_at(t)
+        rt *= 1.0 + g
+        mt = m_e + (m_long - m_e) * frac
+        xt = rt * mt
+        ron = ron_eq(min(1.0, frac0 + (1.0 - frac0) * frac))
+        f = xt * (1.0 - g_at(t + 1) / ron) + tau * amort[t - 1]
+        if wedge_on:
+            f -= w5 * max(0.0, 1.0 - (t - 5) / f_years) * rt
+        flows.append(f)
+        xs.append(xt)
+        growth.append(g)
+        earnings.append(xt)
+        kfs.append(mt / margin[4])
+        ronics.append(ron)
+    x_n1 = rt * (1.0 + gt) * m_long
+    ron_t_eq = equity_ronic(ronic_t, delta, kd, tau)
+    tv = x_n1 * (1.0 - gt / ron_t_eq) / (r - gt)
+    tv_pv = tv / (1 + r) ** n
+    pv_flows = sum(f / (1 + r) ** (t + 1) for t, f in enumerate(flows) if t + 1 >= 6)
+    raw = pv_flows + tv_pv
+    return {"n_years": n, "growth": growth, "earnings": earnings, "margin_factor": kfs, "ronic": ronics, "flows": flows[5:], "flows_all": flows,
+            "x_all": xs, "pv_flows": pv_flows, "e_terminal": x_n1, "tv": tv, "tv_pv": tv_pv, "value_raw": raw, "value": raw, "floor": False,
+            "i5": i5, "i5_star": i5_star, "wedge_rate_5": w5, "wedge_applied": wedge_on, "levels_years": e_end, "ronic_t_equity": ron_t_eq,
+            "ronic_0_equity": ron_eq(0.0)}
+
+
+def d2_value_financial(rev, margin, r, gt, fade_years, ronic0, ronic_t, m_long):
+    """The financial route (O3): Flow_t = E_t (1 - g_{t+1} / ROE_t) from year 1, no capex, D&A or working capital. E_t = R_t m_t for years 1..5 (the
+    bridge); ROE_t = the analyst's start return (ROE_0) through year 5, then moved to ROE_T on 1/ROE as the operating fade moves RONIC; years 6..N
+    as `long_run_value` (revenue growth fading from g_5 to g_T over F, the margin moving to m_long). g_{t+1} is the earnings growth of the bridge
+    through year 5 (and the fade growth from year 6)."""
+    f_years = int(fade_years)
+    n = 5 + f_years
+    e = [rev[t] * margin[t - 1] for t in range(1, 6)]
+    g5 = rev[5] / rev[4] - 1.0
+
+    def g_at(t):
+        return gt if (f_years == 0 or t > n) else g5 + (gt - g5) * (t - 5) / f_years
+
+    flows = []
+    for t in range(1, 6):
+        g_next = e[t] / e[t - 1] - 1.0 if t < 5 else g_at(6)
+        flows.append(e[t - 1] * (1.0 - g_next / ronic0))
+    growth, earnings, kfs, ronics = [], [], [], []
+    rt = rev[5]
+    for t in range(6, n + 1):
+        frac = (t - 5) / f_years
+        g = g_at(t)
+        rt *= 1.0 + g
+        mt = margin[4] + (m_long - margin[4]) * frac
+        xt = rt * mt
+        ron = ronic_at(ronic0, ronic_t, frac)
+        flows.append(xt * (1.0 - g_at(t + 1) / ron))
+        growth.append(g)
+        earnings.append(xt)
+        kfs.append(mt / margin[4])
+        ronics.append(ron)
+    x_n1 = rt * (1.0 + gt) * m_long
+    tv = x_n1 * (1.0 - gt / ronic_t) / (r - gt)
+    tv_pv = tv / (1 + r) ** n
+    pv_flows = sum(f / (1 + r) ** (t + 1) for t, f in enumerate(flows) if t + 1 >= 6)
+    raw = pv_flows + tv_pv
+    xs = e + earnings
+    return {"n_years": n, "growth": growth, "earnings": earnings, "margin_factor": kfs, "ronic": ronics, "flows": flows[5:], "flows_all": flows,
+            "x_all": xs, "pv_flows": pv_flows, "e_terminal": x_n1, "tv": tv, "tv_pv": tv_pv, "value_raw": raw, "value": raw, "floor": False,
+            "i5": e[4] - flows[4], "i5_star": None, "wedge_rate_5": None, "wedge_applied": False, "levels_years": 5,
+            "ronic_t_equity": ronic_t, "ronic_0_equity": ronic0}
+
+
 def _pv(flows, g_last, coe, terminal_g, fade_years):
     """PV of explicit flows (years 1..n), then a linear fade from g_last to terminal_g over
     fade_years, then a Gordon terminal value, all at coe."""
