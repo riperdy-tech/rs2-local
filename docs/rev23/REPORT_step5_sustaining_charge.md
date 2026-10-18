@@ -73,5 +73,12 @@ table. The firms where s looked helpful (C, C2) are fixed instead by the analyst
 
 - **The reference now meets the registered criteria for every firm step 3 owns, with s = 0:** A, B (levels), B2, C, C2 (cited path), C3,
   D, E (levels), F, G, H, I.
+  - **Correction (2026-10-18, the O8 reviews):** this overstates C and C2. With the default forecast D2 still fails them (+7.37%, +4.53%);
+    they pass only on their cited escalation path. They are reported as forecast-dependent passes, never as default passes. B and E pass on
+    their levels paths likewise.
 - **Step 5 as planned** (measured s, ASC 932 parsing for EQNR, SM and DEC) reduces to wiring the diagnostics.
 - **The desk port (step 3, part 2) can start once O8 is ruled.**
+
+
+## O8: approved by the operator 2026-10-18
+ChatGPT and Gemini both approved. The rulings, the conditions and the regression gate are recorded in `PLAN_terminal_reinvestment.md`, §5 O8.
