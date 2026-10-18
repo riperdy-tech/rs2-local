@@ -183,6 +183,10 @@ step 7: names with D&A above capex and δ > 0 lose value relative to δ = 0 (BUD
     ΔD&A_t = (½ΔCapex_t + Σ_{j<t} ΔCapex_j)/L, each vintage capped at its cost. With no override it is identically 0. L is
     2 × net PP&E / D&A_org at the base year (the store holds net, not gross, PP&E; under straight line the average asset is half
     depreciated), bounded [3, 40], stamped.
+- **P1 and O2c, settled 2026-10-18 (`REPORT_step3_reference_d2.md` addenda 1–2; O2c approved by the operator):**
+  - **D&A in the levels leg is the vintages rule:** base vintages from filed gross PP&E, net PP&E and D&A, with L = prior gross / D&A; pooled D&A/revenue is the fallback where gross PP&E is not filed, stamped `da_vintages_no_gross_ppe`.
+  - **τ·A runs to exhaustion:** five-year schedule, then the 'thereafter' balance at the year-5 rate, in every period.
+  - **O2c replaces O2b:** H is the years of the analyst's cited capex path beyond year 5, and the levels leg runs to 5 + H, then the funded path with no gap. N = 5 + max(F, H). With no override, the gap fades over F (O2). H must equal the supplied path's length, and each year carries units (capex/revenue), the year and a citation, filed before the valuation date. A missing, malformed or inconsistent path gets a named diagnostic, never a silently shortened forecast. An uncited path is used, stamped `investment_state_duration_uncited`, with a reason request. A negative ρ_5 faded over F > 5 draws `negative_reinvestment_faded_over_long_horizon`.
 - **δ excludes leases (confirmed):** debt is non-lease debt (`REPORT_census_1a_addendum.md` §2).
 - **Regression gate (confirmed):** s = 0, w = 0, δ = 0 on the legacy path reproduces today to the cent and 1e-6 relative, tested
   separately from the synthetic suite.

@@ -117,3 +117,58 @@ cited, uncited, malformed and missing H, and H > F.
 
 **Firm C (ChatGPT's line):** its +12% was the 5-year gap fade, which is not used. At the default it is +5.3%, and its acceptance waits for
 the measured s of step 5, as registered.
+
+## Addendum 2 (2026-10-18): E's residual resolved by the D&A rule; τ·A across the horizon
+
+ChatGPT's ruling: O2c approved as the specification. The port is held until E passes or a reviewed revision changes the criteria, and the
+τ·A shield must be defined across an extended levels period. Both are done here.
+
+**E's +3.03% split by source:** years 1–14 +0.027, years 15–20 +0.023, terminal +0.025 (truth 2.469). The first part was the D&A in the
+reinvestment term: the pooled D&A/revenue ratio was inflated by the demand collapse, which hit revenue and not the asset base.
+
+**Four D&A rules were tested, all reported** (no selection by outcome alone):
+
+| Rule | How D&A_t is formed | Basis |
+|---|---|---|
+| pooled | pooled D&A / revenue × R_t | ties D&A to revenue, which is not its accounting driver |
+| uniform | base D&A falls linearly to 0 over L = 2 net/D&A, plus capex/L | assumes uniform asset ages |
+| ppe | pooled D&A / prior net PP&E × rolled-forward net PP&E | applies a rate on half-depreciated assets to new assets, about twice too fast |
+| **vintages** | rebuild the base vintages from filed gross PP&E, net PP&E and D&A (L = prior gross / D&A; the geometric growth that reproduces net/gross), depreciate each vintage, and each year's capex over L from the next year | **the accounting identity itself: exact on any steady history** |
+
+| Firm | Path | pooled | uniform | ppe | **vintages** |
+|---|---|---|---|---|---|
+| A | default | +0.00% | −2.40% | +0.00% | **+0.00%** |
+| B | levels to year 30 (fleet renewal, cited) | −5.94% | −11.5% | +2.00% | **−2.91%** |
+| B2 | default | −1.46% | | +0.69% | **−0.87%** |
+| B2 | levels to year 8 | −1.90% | −3.61% | −0.31% | **−1.45%** |
+| D | default | +0.00% | | +0.00% | **+0.00%** |
+| E | levels to year 14 (holiday and rebuild, cited) | +3.03% | +1.34% | +0.45% | **+1.74%** |
+| F | financial route | −1.19% | | −1.19% | **−1.19%** |
+| G | default | −0.82% | −2.03% | −0.04% | **−2.71%** |
+| H | default | +1.32% | | +2.21% | **+1.73%** |
+| I | default | +0.00% | | +0.00% | **+0.00%, every period** |
+| C / C2 | default (s is step 5) | +5.3% / +3.3% | | +8.4% / +5.1% | +7.4% / +4.5% |
+| B | default, F = 25, no state override | −1.70% | | **+21.7%** | +4.78% |
+
+**Ruling: the vintages rule.** It is chosen because it is the accounting identity, not because of the table. It is exact on every steady
+history (A, D, I), and on the investment-state paths it reproduces the annual flows: E years 1–14 within ±0.001 of the truth, B years
+1–30 exactly. Its errors are where the economics leave steady state (E's 40-year echo after year 15, B's terminal), and every registered
+case passes on its intended path.
+- **ppe is rejected:** B +21.7% on the default path.
+- **pooled is kept only as the fallback:** gross PP&E is filed in companyfacts for 95 of the 139 non-financial names. The 44 without it
+  (mostly IFRS filers, whose gross figure sits in the dimensioned PP&E note, and shippers) take pooled, stamped `da_vintages_no_gross_ppe`.
+- **G at −2.71%** passes, but nearer the bar than under pooled. The pooled −0.82% hid an offset against the linear-fade error recorded in
+  part 1 §4.
+
+**B's two paths.** Under O2c, a fleet renewed at once is a cited investment state: the young fleet needs almost no replacement until the
+ships near their life. Its route is therefore levels to the end of that state, −2.91%. The default path with a long F (+4.78%) is not the
+route for B. The pack's F guidance sentence (part 1 §3) is replaced by the O2c guidance: state the investment-state path.
+
+**τ·A across the horizon.** A_t is the filed five-year schedule. Beyond it, the filed "thereafter" balance runs off at the year-5 rate until
+exhausted. τ·A_t is added in the levels leg, the fade and the transition alike, and it is carried outside the year-5 gap, so the
+transition has no step. Firm D: +0.00% (−1.7% today, +0.2% in part 1 when the shield stopped at year 5).
+
+**E's status: passes (+1.74%)** on a general rule fixed before E was re-run on it. The criterion is unchanged.
+
+**Remaining before the desk port:** C and C2 wait for the measured s of step 5, as registered. With that, the reference meets the
+registered criteria for every firm step 3 owns.
