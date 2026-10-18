@@ -967,9 +967,10 @@ def _pct(v: Any) -> str:
     return "not available" if not isinstance(v, (int, float)) else f"{v * 100:.1f}%"
 
 
-def _x_margin_year_text(y: dict[str, Any]) -> str:
-    """One fiscal year of x_margin_history in words: the margin as filed, without one-offs, and the filed lines the add-back rests on, each with its source."""
-    head = f"FY{y['fy']} {_pct(y['x_margin'])} as filed, {_pct(y['x_margin_ex_one_offs'])} without one-offs"
+def _x_margin_year_text(y: dict[str, Any], show_ex: bool) -> str:
+    """One fiscal year of x_margin_history in words: the margin as filed (the primary figure), the after-tax impact of the filed one-off lines in margin points and, unless the
+    charge recurs, the margin without them, each line with its source. Cross-check 21: the figure without one-offs is never called normal."""
+    head = f"FY{y['fy']} {_pct(y['x_margin'])} as filed"
     status = y.get("one_offs_status")
     if status == "filed":
         parts = []
@@ -977,7 +978,10 @@ def _x_margin_year_text(y: dict[str, Any]) -> str:
             line = next((ln for ln in y.get("one_off_lines") or [] if ln.get("group") == group and ln.get("counted")), None)
             if line is not None:
                 parts.append(f"{group} ${total:.3f}B ({line['tag']}, {line.get('form')} filed {line.get('filed')})")
-        detail = (f"added back after tax at {y['tax_rate'] * 100:.1f}%: " + " and ".join(parts)) if parts else "no one-off counted"
+        pts = y["one_off_margin_points"] * 100
+        detail = f"filed one-offs after tax at {y['tax_rate'] * 100:.1f}% are {pts:.1f} margin points: " + " and ".join(parts)
+        if show_ex:
+            detail += f"; the margin excluding those lines is {_pct(y['x_margin_ex_one_offs'])}"
     elif status == "none_filed":
         detail = "no impairment or restructuring line filed"
     else:
@@ -1001,10 +1005,15 @@ def render_x_margin_lines(facts: dict[str, Any]) -> list[str]:
                 "for years 1-5. Operating margins (om_tc, om_L, om_trend, om_5) are another basis, context only; no input takes one.")]
     hist = facts.get("x_margin_history")
     if isinstance(hist, dict) and hist.get("years"):
-        value = "; ".join(_x_margin_year_text(y) for y in hist["years"])
-        expl = ("the earnings margin on this basis for each filed fiscal year of your record's window, as filed and without one-offs; one-offs are the filed impairment and "
-                "restructuring lines (the largest filed line of each group; the others are not added because a filer may tag one charge twice), added back after tax at that "
-                "year's tax rate; the first source is the screener's fiscal-year history, the second the company's own filed companyfacts")
+        show_ex = hist.get("ex_one_offs_printed") is not False
+        freq = hist.get("one_off_frequency") or {}
+        value = "; ".join(_x_margin_year_text(y, show_ex) for y in hist["years"])
+        if freq.get("n"):
+            value += f"; filed impairment or restructuring present in {freq['k']} of the last {freq['n']} years"
+        expl = ("the earnings margin on this basis for each filed fiscal year of your record's window, as filed (the figure to use), with the after-tax impact of the filed impairment and "
+                "restructuring lines in margin points (the largest filed line of each group; the others are not added because a filer may tag one charge twice) and how often they are filed"
+                + ("" if show_ex else "; the charge recurs (3 or more of the last 5 years), so no series without it is printed: it is part of how this company earns")
+                + "; sources: the screener's fiscal-year history and the company's own filed companyfacts")
         if hist.get("stamps"):
             expl += "; stamps: " + ", ".join(hist["stamps"])
     else:
@@ -1020,7 +1029,7 @@ def render_x_margin_lines(facts: dict[str, Any]) -> list[str]:
     else:
         value = "not available"
         why = str(cm["reason"]) if isinstance(cm, dict) and cm.get("reason") else "the pack holds no usable consensus estimates"
-        expl = f"no consensus margin: {why} (the desk's margin basis check cannot run: no_basis_check_no_consensus)"
+        expl = f"no consensus margin: {why} (the desk's margin basis check cannot run: consensus_margin_check_unavailable)"
     out.append(line("x_margin_consensus_y1y2", value, expl))
     return out
 

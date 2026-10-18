@@ -4,6 +4,7 @@ Given the calculator calls of one sample, its typed contract, the pack facts and
 returns the values code writes into the contract and the provenance of each.
 """
 import crux_check
+import x_margin_basis
 from fiduciary_gate import payoff_skew, plausibility_gate
 from financial_model_tool import _normalize_cash_flow_life
 
@@ -42,7 +43,7 @@ REVISION_25_TWO_PASS = ("pass1_inputs", "change_log")
 # band, None when no check was made). Nothing else of REVISION_25 exists in a 25.2 run: no bridge_checks, no class_checks, no derived near_term_earnings or
 # normalized_earnings and no desk-owned label (the written contract owns them, as in revision 24: stamp `s12_figures_typed_desk_schema_25_2`), and no two-pass fields.
 DESK_SCHEMA_252 = "25.2"
-REVISION_25_2 = ("bridge", "desk_schema", "margin_basis_gap")
+REVISION_25_2 = ("bridge", "desk_schema", "consensus_margin_divergence", "post_contract_diagnostics")
 
 FILLED = (
     "base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability",
@@ -318,7 +319,7 @@ def _fill_bridge(out, prov, src, typed):
             break
 
 
-def _fill_bridge_252(out, prov, src):
+def _fill_bridge_252(out, prov, src, typed=None):
     """Desk schema 25.2: the Base's path table, the schema and the margin basis flag of the three scenarios, from the desk's own results. The near-term and
     normalized earnings and the three labels are not derived: they stay the analyst's written contract (stamped), as in revision 24."""
     out["desk_schema"] = DESK_SCHEMA_252
@@ -332,11 +333,27 @@ def _fill_bridge_252(out, prov, src):
             statuses.append(mb.get("status"))
             gaps += [dict(g, scenario=role) for g in mb.get("gaps") or []]
     if "checked" in statuses:
-        out["margin_basis_gap"] = gaps
+        out["consensus_margin_divergence"] = gaps
     else:
-        out["margin_basis_gap"] = None
-        prov["stamps"].append(statuses[0] if statuses else "no_basis_check_not_computed")
+        out["consensus_margin_divergence"] = None
+        prov["stamps"].append(statuses[0] if statuses else "consensus_margin_check_unavailable")
     prov["stamps"].append("s12_figures_typed_desk_schema_25_2")
+    # cross-check 21: the post-contract diagnostics, computed here (after the memorandum and the contract, so they cannot draw a desk reason or loop) and stamped
+    scen = {}
+    for role in ROLES:
+        if role in src:
+            d = ((((src[role][1].get("dcf") or {}).get("bridge")) or {}).get("declared")) or {}
+            scen[role] = d.get("earnings_margin")
+    base_b = out["bridge"] if isinstance(out.get("bridge"), dict) else {}
+    base_m = scen.get("base")
+    rev0 = (base_b.get("revenue") or [None])[0]
+    diag = x_margin_basis.post_contract_diagnostics(scen, base_m[4] if isinstance(base_m, (list, tuple)) and len(base_m) == 5 else None,
+                                                    _f((typed or {}).get("normalized_earnings")), rev0)
+    out["post_contract_diagnostics"] = diag
+    if diag["normalized_vs_path_gap"]:
+        prov["stamps"].append("normalized_vs_path_gap")
+    if diag["flat_margin_path"]:
+        prov["stamps"].append("flat_margin_path")
 
 
 def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=None, company=None):
@@ -452,7 +469,7 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
         if desk25:
             _fill_bridge(out, prov, src, typed)
         elif desk252:
-            _fill_bridge_252(out, prov, src)
+            _fill_bridge_252(out, prov, src, typed)
         fr = d.get("valuation_frame") or _inp(e, c, "valuation_frame")
         out["valuation_frame"] = str(fr).lower() if fr is not None else None
         leg = prov["legs"].get("base")

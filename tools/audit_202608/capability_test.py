@@ -4392,11 +4392,11 @@ TASK_REV25 = _task_rev25()
 SF_BASIS_PARAGRAPH = (
     "   - The two lists: revenue_growth (the annual revenue growth of years 1-5, five values) and earnings_margin (the earnings margin of years 1-5, five values), "
     "in each of Base, Bull and Bear, from the filed base year. " + x_margin_basis.BASIS_WORDS[0].upper() + x_margin_basis.BASIS_WORDS[1:] + ". "
-    "DEFAULTS prints this basis (earnings_margin_basis), your record on it for each filed year with and without one-offs (x_margin_history) and the margin the consensus "
+    "DEFAULTS prints this basis (earnings_margin_basis), your record on it for each filed year, with the after-tax impact of any filed one-off lines in margin points and how often they recur (x_margin_history), and the margin the consensus "
     "EPS levels imply for years 1 and 2 (x_margin_consensus_y1y2). The desk derives the owner earnings from your two lists and values the long run from year 5 as before; "
     "revenue_growth and earnings_margin replace explicit_growth, which this desk refuses except for a scenario they do not apply to (a finite cash_flow_life or the firm "
-    "frame; the desk says so). If a declared margin of year 1 or 2 is outside 0.67 to 1.5 times the consensus-implied one, the desk states the gap once, as information: "
-    "it asks for no reason and changes nothing." + chr(10))
+    "frame; the desk says so). If a declared margin of year 1 or 2 is outside 0.67 to 1.5 times the consensus-implied one and more than 3 margin points from it, the desk states the divergence once, "
+    "as information: it asks for no reason and changes nothing." + chr(10))
 
 
 def _task_sf():

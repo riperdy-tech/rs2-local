@@ -29,6 +29,9 @@ import throughcycle_record
 BASIS_WORDS = ("earnings margin = net income plus after-tax amortization of acquired intangibles, divided by revenue; after interest and tax; "
                "not the operating margin")
 BASIS_BAND = (0.67, 1.5)          # registered with the short form (BRIEF_SF, item 5), before any run
+ABS_GAP = 0.03                    # cross-check 21: the flag also needs an absolute gap above 3 margin points
+FLAT_PATH = 0.001                 # cross-check 21: m1..m5 all within 0.1 margin point of each other is a flat path
+NORMALIZED_GAP = 0.03             # cross-check 21: |Base m5 - normalized_earnings / R_0| above 3 margin points
 EPS = 1e-12                       # a ratio equal to a band edge is inside it (the bridge checks' convention)
 
 # us-gaap tags of the filed one-off lines. Two groups; the lines of a group are alternatives for the same charge (see the module text).
@@ -39,6 +42,7 @@ IMPAIRMENT_TAGS = ("GoodwillImpairmentLoss", "GoodwillAndIntangibleAssetImpairme
 RESTRUCTURING_TAGS = ("RestructuringCharges",)
 ANNUAL_FORMS = ("10-K", "20-F", "40-F")       # prefix match (10-K405, 10-K/A)
 ANNUAL_DAYS = (340, 380)
+RECURRING_YEARS = 3               # cross-check 21: present in at least 3 of the last 5 years
 GROUP_RULE = "largest positive filed line of each group counted; the others listed, not counted"
 
 
@@ -154,9 +158,18 @@ def history(rows: Dict[Any, Dict[str, Any]], untagged: Sequence[str], period_end
         out["years"].append({
             "fy": y, "period_end": end, "revenue_b": rev / 1e9, "x_b": x / 1e9, "x_margin": x / rev, "amortization_gap": bool(gap), "tax_rate": tax,
             "one_offs_status": oo["status"], "one_off_lines": oo["lines"], "impairment_b": oo["impairment_b"], "restructuring_b": oo["restructuring_b"],
-            "one_offs_after_tax_b": added / 1e9, "x_margin_ex_one_offs": (x + added) / rev})
+            "one_offs_after_tax_b": added / 1e9, "one_off_margin_points": added / rev, "x_margin_ex_one_offs": (x + added) / rev})
     if not out["years"]:
         out["stamps"].append("x_margin_history_no_defined_year")
+    # cross-check 21: how often a filed one-off recurs. The raw series is the primary one; a charge present in RECURRING_YEARS of the last 5 years is part of how this company earns,
+    # so the without-one-offs series is not printed for it (the facts keep the figures, `ex_one_offs_printed` says whether the pack shows them)
+    last5 = out["years"][-5:]
+    k = sum(1 for y in last5 if y["one_offs_status"] == "filed")
+    out["one_off_frequency"] = {"k": k, "n": len(last5)}
+    out["recurring"] = k >= RECURRING_YEARS
+    out["ex_one_offs_printed"] = not out["recurring"]
+    if out["recurring"]:
+        out["stamps"].append("recurring_restructuring_or_impairment")
     if any(y["amortization_gap"] for y in out["years"]):
         out["stamps"].append("amortization_gap:" + "/".join(str(y["fy"]) for y in out["years"] if y["amortization_gap"]))
     return out
@@ -205,11 +218,12 @@ def consensus_margins(estimates: Optional[Dict[str, Any]], shares: Any, pi: Any 
 
 def basis_check(margins_1_5: Optional[Sequence[Any]], consensus: Optional[Dict[str, Any]], band: Sequence[float] = BASIS_BAND) -> Dict[str, Any]:
     """The declared margins of years 1 and 2 against the consensus-implied ones. {"band", "status", "years": {"1": {...}, "2": {...}}, "gaps": [...]}.
-    status: "checked" | "no_basis_check_no_consensus" (no consensus margin for either year) | "no_basis_check_consensus_margin_not_positive". A year whose
+    status: "checked" | "consensus_margin_check_unavailable" (no consensus margin for either year) | "consensus_margin_check_unavailable". A year whose
     consensus margin is not positive is not checked (a ratio to it means nothing). Outside the band: the year is a gap (`outside_band` true) and `gaps` lists it with its values.
+    Cross-check 21: a year is a divergence only when the ratio is outside the band AND the absolute gap exceeds ABS_GAP (3 margin points). Unavailable is never a pass.
     Nothing is refused, clamped or changed; 0.0 is a value."""
     lo, hi = float(band[0]), float(band[1])
-    out: Dict[str, Any] = {"band": [lo, hi], "status": "no_basis_check_no_consensus", "years": {}, "gaps": []}
+    out: Dict[str, Any] = {"band": [lo, hi], "status": "consensus_margin_check_unavailable", "years": {}, "gaps": []}
     cons = consensus or {}
     declared = list(margins_1_5 or [])
     for n, label in ((1, "y1"), (2, "y2")):
@@ -225,12 +239,31 @@ def basis_check(margins_1_5: Optional[Sequence[Any]], consensus: Optional[Dict[s
             rec["note"] = "consensus_margin_not_positive"
         else:
             rec["ratio"] = d / cm
-            rec["outside_band"] = bool(rec["ratio"] < lo - EPS or rec["ratio"] > hi + EPS)
+            rec["abs_gap"] = abs(d - cm)
+            rec["outside_band"] = bool((rec["ratio"] < lo - EPS or rec["ratio"] > hi + EPS) and rec["abs_gap"] > ABS_GAP + EPS)
         out["years"][str(n)] = rec
         if rec["outside_band"]:
             out["gaps"].append({"year": n, "declared": d, "consensus": cm, "ratio": rec["ratio"]})
     if any(r["ratio"] is not None for r in out["years"].values()):
         out["status"] = "checked"
     elif out["years"]:
-        out["status"] = "no_basis_check_consensus_margin_not_positive"
+        out["status"] = "consensus_margin_check_unavailable"
+    return out
+
+
+# ---- the post-contract diagnostics (cross-check 21): computed after the memorandum and contract, so they cannot loop ---------------------------------
+
+def post_contract_diagnostics(path_margins: Dict[str, Any], base_m5: Any, normalized_earnings_b: Any, rev0_b: Any) -> Dict[str, Any]:
+    """{"normalized_vs_path_gap": {...} | None, "flat_margin_path": [scenario names]}. `path_margins` maps a scenario name to its declared m1..m5. normalized_vs_path_gap fires
+    when |Base m5 - normalized_earnings / R_0| exceeds NORMALIZED_GAP (the contract's normalized earnings, $B, over the filed base-year revenue, $B); flat_margin_path lists
+    the scenarios whose five margins are all within FLAT_PATH of each other. Annotations only; an input that is not a number gives no diagnostic (never a pass or a fail)."""
+    out: Dict[str, Any] = {"normalized_vs_path_gap": None, "flat_margin_path": []}
+    if _num(base_m5) and _num(normalized_earnings_b) and _num(rev0_b) and rev0_b > 0:
+        implied = normalized_earnings_b / rev0_b
+        gap = abs(base_m5 - implied)
+        if gap > NORMALIZED_GAP + EPS:
+            out["normalized_vs_path_gap"] = {"base_m5": base_m5, "normalized_margin_implied": implied, "gap": gap, "normalized_earnings_b": normalized_earnings_b, "rev0_b": rev0_b}
+    for name, m in (path_margins or {}).items():
+        if isinstance(m, (list, tuple)) and len(m) == 5 and all(_num(x) for x in m) and max(m) - min(m) <= FLAT_PATH + EPS:
+            out["flat_margin_path"].append(name)
     return out

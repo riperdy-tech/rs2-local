@@ -263,8 +263,9 @@ def test_the_defaults_text_states_each_year_with_its_sources_and_says_where_none
     facts = {"desk_schema": "25.2", "x_margin_history": hist, "x_margin_consensus_y1y2": {"y1": {"x_margin": 0.11}, "y2": None, "stamps": [], "reason": None}}
     lines = pack_facts.render_x_margin_lines(facts)
     hist_line = next(ln for ln in lines if ln.startswith("- x_margin_history:"))
-    assert "FY2024 11.6% as filed, 18.8% without one-offs" in hist_line and "AssetImpairmentCharges, 10-K filed 2025-02-20" in hist_line
-    assert "RestructuringCharges, 10-K filed 2025-02-20" in hist_line and "added back after tax at 20.0%" in hist_line
+    assert "FY2024 11.6% as filed (filed one-offs after tax at 20.0% are 7.2 margin points" in hist_line and "the margin excluding those lines is 18.8%" in hist_line
+    assert "AssetImpairmentCharges, 10-K filed 2025-02-20" in hist_line and "RestructuringCharges, 10-K filed 2025-02-20" in hist_line
+    assert "normal" not in hist_line.lower() and "present in 1 of the last 2 years" in hist_line
     assert "FY2023 9.0% as filed" in hist_line and "not held for this year" in hist_line               # the 2023 year end is not covered by the file's 2024 rows
     assert hist_line.count(" | ") == 1                                                                   # the value never holds the reader's separator
     basis = lines[0]
@@ -273,7 +274,7 @@ def test_the_defaults_text_states_each_year_with_its_sources_and_says_where_none
     none_filed = pack_facts.render_x_margin_lines(dict(facts, x_margin_history=xm.history(ROWS, [], ENDS, _gaap())))
     assert "no impairment or restructuring line filed" in none_filed[1]
     nocons = pack_facts.render_x_margin_lines(dict(facts, x_margin_consensus_y1y2={"y1": None, "y2": None, "reason": "no consensus estimates"}))
-    assert nocons[2].startswith("- x_margin_consensus_y1y2: not available | no consensus margin: no consensus estimates") and "no_basis_check_no_consensus" in nocons[2]
+    assert nocons[2].startswith("- x_margin_consensus_y1y2: not available | no consensus margin: no consensus estimates") and "consensus_margin_check_unavailable" in nocons[2]
 
 
 # ---- 2c. the consensus-implied margin -------------------------------------------------------------------------------------------------------------
@@ -346,7 +347,7 @@ def test_the_25_2_arithmetic_is_the_25_1_bridges_path_arithmetic():
 
 def test_a_25_1_result_is_as_it_was():
     res = _run(_call(), _ctx())
-    assert "margin_basis" not in res and "margin_basis_gap" not in res
+    assert "margin_basis" not in res and "consensus_margin_divergence" not in res
     for role in ("base", "bull", "bear"):
         b = _dcf(res, role)["bridge"]
         assert "margin_basis" not in b and "desk_schema_25_1" in _dcf(res, role)["stamps"]
@@ -393,7 +394,7 @@ def test_explicit_growth_is_refused_for_a_bridged_scenario_and_accepted_where_th
     assert "error" not in res, res.get("error")
     b = _dcf(res, "base")["bridge"]
     assert b == {"applied": False, "reason": "finite_life"} and "bridge_not_applied:finite_life" in res["desk_stamps"]      # no labels recorded: they are the written contract's
-    assert res["margin_basis"]["status"] == "no_basis_check_bridge_not_applied" and "no_basis_check_no_consensus" not in res["desk_stamps"]
+    assert res["margin_basis"]["status"] == "consensus_margin_check_unavailable" and "consensus_margin_check_unavailable" not in res["desk_stamps"]
 
 
 # ---- 4. the basis flag -----------------------------------------------------------------------------------------------------------------------------
@@ -410,8 +411,8 @@ def _flag_run(declared_y1_y2, cons=CONS):
 
 def test_inside_the_band_nothing_is_flagged_and_the_edges_are_inside():
     res = _flag_run([0.30, 0.30])
-    assert "margin_basis_gap" not in res and res["margin_basis"]["status"] == "checked" and res["margin_basis"]["margin_basis_gap"] == []
-    assert "margin_basis_gap" not in res.get("desk_stamps", [])
+    assert "consensus_margin_divergence" not in res and res["margin_basis"]["status"] == "checked" and res["margin_basis"]["consensus_margin_divergence"] == []
+    assert "consensus_margin_divergence" not in res.get("desk_stamps", [])
     lo, hi = x_lo_hi = (0.67, 1.5)
     assert tuple(res["margin_basis"]["band"]) == x_lo_hi == xm.BASIS_BAND
     edge = _flag_run([0.30 * lo, 0.30 * hi])                                                              # a ratio equal to a band edge is inside
@@ -421,9 +422,9 @@ def test_inside_the_band_nothing_is_flagged_and_the_edges_are_inside():
 @pytest.mark.parametrize("declared,year,ratio", [([0.19, 0.30], 1, 0.19 / 0.30), ([0.30, 0.46], 2, 0.46 / 0.30), ([0.0, 0.30], 1, 0.0), ([-0.02, 0.30], 1, -0.02 / 0.30)])
 def test_outside_the_band_the_result_carries_the_gap_with_its_values(declared, year, ratio):
     res = _flag_run(declared)
-    gaps = [g for g in res["margin_basis_gap"] if g["scenario"] == "Base"]
+    gaps = [g for g in res["consensus_margin_divergence"] if g["scenario"] == "Base"]
     assert len(gaps) == 1 and gaps[0]["year"] == year and gaps[0]["ratio"] == pytest.approx(ratio) and gaps[0]["consensus"] == 0.30
-    assert gaps[0]["declared"] == declared[year - 1] and "margin_basis_gap" in res["desk_stamps"]
+    assert gaps[0]["declared"] == declared[year - 1] and "consensus_margin_divergence" in res["desk_stamps"]
     assert res["margin_basis"]["scenarios"]["Base"]["gaps"] == [{k: gaps[0][k] for k in ("year", "declared", "consensus", "ratio")}]
     assert _dcf(res, "base")["bridge"]["declared"]["earnings_margin"][year - 1] == declared[year - 1]    # 0.0 and a negative margin stay as declared
 
@@ -434,12 +435,12 @@ def test_the_gap_is_an_annotation_that_changes_nothing_and_is_stated_once_as_inf
     quiet = _run252(_call252(), _ctx252())
     nocons = _run252(_call252(), _ctx252(cons=None))
     ivs = lambda r: [i["dcf"]["per_share_iv_raw"] for i in r["scenario_dcfs"]]
-    assert flagged["margin_basis_gap"] and "margin_basis_gap" not in quiet and ivs(flagged) == ivs(quiet) == ivs(nocons)       # the flag moves no value
-    assert flagged["margin_basis_gap"] != [] and len(flagged["margin_basis_gap"]) == 6                                       # 3 scenarios x 2 years
+    assert flagged["consensus_margin_divergence"] and "consensus_margin_divergence" not in quiet and ivs(flagged) == ivs(quiet) == ivs(nocons)       # the flag moves no value
+    assert flagged["consensus_margin_divergence"] != [] and len(flagged["consensus_margin_divergence"]) == 6                                       # 3 scenarios x 2 years
     for res in (flagged, quiet, nocons):
         assert res.get("needs_reasons") in (None, []) and "validation_error" not in res                  # never a request, never a refusal
     md = fmt.format_model_results_markdown(flagged)
-    assert md.count("Information, not a request") == 1 and "margin_basis_gap" in md and "valued your lists as declared" in md      # six gaps, one statement
+    assert md.count("Information, not a request") == 1 and "consensus_margin_divergence" in md and "valued your lists as declared" in md      # six gaps, one statement
     assert "Information, not a request" not in fmt.format_model_results_markdown(quiet)
     assert "Information, not a request" not in fmt.format_model_results_markdown(nocons)
 
@@ -447,15 +448,26 @@ def test_the_gap_is_an_annotation_that_changes_nothing_and_is_stated_once_as_inf
 def test_no_consensus_is_stated_and_a_nonpositive_consensus_is_not_compared():
     for cons in (None, {}, {"y1": None, "y2": None}):
         res = _run252(_call252(), _ctx252(cons=cons))
-        assert res["margin_basis"]["status"] == "no_basis_check_no_consensus" and "no_basis_check_no_consensus" in res["desk_stamps"]
-        assert "margin_basis_gap" not in res and res["margin_basis"]["margin_basis_gap"] == []
+        assert res["margin_basis"]["status"] == "consensus_margin_check_unavailable" and "consensus_margin_check_unavailable" in res["desk_stamps"]
+        assert "consensus_margin_divergence" not in res and res["margin_basis"]["consensus_margin_divergence"] == []
     ctx = _ctx252()
     del ctx["x_margin_consensus_y1y2"]                                                                   # a context built without the key (an older pack) is no consensus too
-    assert _run252(_call252(), ctx)["margin_basis"]["status"] == "no_basis_check_no_consensus"
+    assert _run252(_call252(), ctx)["margin_basis"]["status"] == "consensus_margin_check_unavailable"
     neg = _run252(_call252(), _ctx252(cons={"y1": {"x_margin": -0.05}, "y2": {"x_margin": 0.0}}))
-    assert neg["margin_basis"]["status"] == "no_basis_check_consensus_margin_not_positive" and neg["margin_basis"]["margin_basis_gap"] == []
+    assert neg["margin_basis"]["status"] == "consensus_margin_check_unavailable" and neg["margin_basis"]["consensus_margin_divergence"] == []
     half = _run252(_call252(), _ctx252(cons={"y1": {"x_margin": 0.30}, "y2": None}))
     assert half["margin_basis"]["status"] == "checked" and list(half["margin_basis"]["scenarios"]["Base"]["years"]) == ["1"]
+
+
+def test_a_divergence_needs_the_ratio_outside_the_band_and_more_than_three_margin_points():
+    cons = {"y1": {"x_margin": 0.04}, "y2": {"x_margin": 0.04}}
+    r = xm.basis_check([0.02, 0.0661], cons)            # ratio 0.5 and 4 points off; ratio 1.65 and 2.61 points off
+    assert r["years"]["1"]["outside_band"] is False and r["years"]["1"]["abs_gap"] == pytest.approx(0.02)      # outside the band but only 2 points: not a divergence
+    assert r["years"]["2"]["outside_band"] is False and r["gaps"] == []                                          # 1.65x but 2.61 points
+    r = xm.basis_check([0.0, 0.08], cons)               # 0.0 is a value: ratio 0, 4 points off; 2.0x and 4 points off
+    assert [g["year"] for g in r["gaps"]] == [1, 2] and r["years"]["1"]["declared"] == 0.0
+    assert xm.basis_check([0.07, 0.0], {"y1": {"x_margin": 0.04}, "y2": {"x_margin": 0.04}})["gaps"][0]["year"] == 2     # 0.07/0.04 = 1.75 but exactly 3 points: not above 3
+    assert [g["year"] for g in xm.basis_check([0.0701, 0.04], cons)["gaps"]] == [1]                                   # 3.01 points
 
 
 def test_basis_check_is_pure_and_reads_two_years():
@@ -472,29 +484,92 @@ def _answer_call(res, call):
 
 
 def test_the_fill_of_a_25_2_run_carries_the_path_the_schema_and_the_flag_and_derives_nothing_else():
-    assert set(cf.FILLED_252) == set(cf.FILLED) | {"bridge", "desk_schema", "margin_basis_gap"}
+    assert set(cf.FILLED_252) == set(cf.FILLED) | {"bridge", "desk_schema", "consensus_margin_divergence", "post_contract_diagnostics"}
     for gone in ("bridge_checks", "class_checks", "near_term_earnings", "normalized_earnings", "growth_trajectory", "cycle_position", "margin_persistence",
                  "pass1_inputs", "change_log"):
         assert gone not in cf.FILLED_252
-    assert "margin_basis_gap" in cv.S12_SUMMARY_KEYS and cv.S12_SUMMARY_KEYS[-2:] == ("terminal_value_share", "terminal_reinvestment_rate")
+    assert "consensus_margin_divergence" in cv.S12_SUMMARY_KEYS and cv.S12_SUMMARY_KEYS[-2:] == ("terminal_value_share", "terminal_reinvestment_rate")
     res = _flag_run([0.10, 0.30])
     src = {role: (None, {"dcf": _dcf(res, role)}) for role in cf.ROLES}
     out, prov = {}, {"stamps": []}
     cf._fill_bridge_252(out, prov, src)
     assert out["desk_schema"] == "25.2" and out["bridge"] is _dcf(res, "base")["bridge"] and "checks" not in out["bridge"]
-    base_gaps = [g for g in out["margin_basis_gap"] if g["scenario"] == "base"]
+    base_gaps = [g for g in out["consensus_margin_divergence"] if g["scenario"] == "base"]
     assert len(base_gaps) == 1 and base_gaps[0]["year"] == 1 and base_gaps[0]["declared"] == 0.10 and base_gaps[0]["consensus"] == 0.30
     assert "s12_figures_typed_desk_schema_25_2" in prov["stamps"]
     none = _run252(_call252(), _ctx252(cons=None))
     out2, prov2 = {}, {"stamps": []}
     cf._fill_bridge_252(out2, prov2, {role: (None, {"dcf": _dcf(none, role)}) for role in cf.ROLES})
-    assert out2["margin_basis_gap"] is None and "no_basis_check_no_consensus" in prov2["stamps"]
+    assert out2["consensus_margin_divergence"] is None and "consensus_margin_check_unavailable" in prov2["stamps"]
     inside = _run252(_call252(), _ctx252())
     out3, prov3 = {}, {"stamps": []}
     cf._fill_bridge_252(out3, prov3, {role: (None, {"dcf": _dcf(inside, role)}) for role in cf.ROLES})
-    assert out3["margin_basis_gap"] == [] and prov3["stamps"] == ["s12_figures_typed_desk_schema_25_2"]
+    assert out3["consensus_margin_divergence"] == [] and prov3["stamps"] == ["s12_figures_typed_desk_schema_25_2", "flat_margin_path"]      # the default Bull and Bear lists are flat (cross-check 21)
 
 
 def test_the_verdict_row_carries_the_flag_beside_the_other_scorecard_keys():
     src = (HERE.parent.parent.parent / "depth_pipeline.py").read_text(encoding="utf-8")
-    assert re.search(r'"desk_schema", "margin_basis_gap",', src)
+    assert re.search(r'"desk_schema", "consensus_margin_divergence",', src)
+
+
+# ---- 6. cross-check 21: the recurring one-off rule and the post-contract diagnostics -----------------------------------------------------------------
+
+def _recurring_rows(years_with_charge):
+    rows, us = {}, _gaap()
+    us["Revenues"] = {"units": {"USD": [_line(1e9, end=f"{y}-12-31", start=f"{y}-01-01") for y in range(2020, 2025)]}}         # the file covers every year
+    for y in range(2020, 2025):
+        rows[y] = _row(1e9, 100e6, amort=20e6, pretax=125e6, tax=25e6)
+        if y in years_with_charge:
+            us["RestructuringCharges"] = {"units": {"USD": us.get("RestructuringCharges", {}).get("units", {}).get("USD", []) + [_line(10e6, end=f"{y}-12-31", start=f"{y}-01-01")]}}
+    return rows, {str(y): f"{y}-12-31" for y in rows}, us
+
+
+def test_a_charge_in_three_of_the_last_five_years_is_recurring_and_no_series_without_it_is_printed():
+    rows, ends, us = _recurring_rows({2022, 2023, 2024})
+    h = xm.history(rows, [], ends, us)
+    assert h["one_off_frequency"] == {"k": 3, "n": 5} and h["recurring"] is True and h["ex_one_offs_printed"] is False
+    assert "recurring_restructuring_or_impairment" in h["stamps"]
+    assert h["years"][-1]["one_off_margin_points"] == pytest.approx(0.008)                                  # 10e6 x (1 - 0.2) / 1e9, in margin points
+    text = pack_facts.render_x_margin_lines({"desk_schema": "25.2", "x_margin_history": h, "x_margin_consensus_y1y2": None})[1]
+    assert "present in 3 of the last 5 years" in text and "excluding those lines" not in text and "so no series without it is printed" in text
+    assert "FY2024 11.6% as filed" in text and "0.8 margin points" in text and "normal" not in text.lower().replace("normalization", "")
+    rows, ends, us = _recurring_rows({2023, 2024})
+    h2 = xm.history(rows, [], ends, us)
+    assert h2["one_off_frequency"] == {"k": 2, "n": 5} and h2["recurring"] is False and h2["ex_one_offs_printed"] is True
+    assert "recurring_restructuring_or_impairment" not in h2["stamps"]
+    assert "the margin excluding those lines is 12.4%" in pack_facts.render_x_margin_lines({"desk_schema": "25.2", "x_margin_history": h2, "x_margin_consensus_y1y2": None})[1]
+    assert xm.history(rows, [], ends, None)["one_off_frequency"] == {"k": 0, "n": 5}                         # not held is not "filed"
+
+
+def test_normalized_vs_path_gap_and_flat_margin_path():
+    d = xm.post_contract_diagnostics({"base": [0.10] * 5, "bull": [0.12, 0.13, 0.14, 0.15, 0.16], "bear": [0.08, 0.0805, 0.081, 0.0815, 0.0819]}, 0.10, 6.0, 100.0)
+    assert d["normalized_vs_path_gap"]["gap"] == pytest.approx(0.04) and d["normalized_vs_path_gap"]["normalized_margin_implied"] == pytest.approx(0.06)
+    assert d["flat_margin_path"] == ["base"]                                            # spreads 0.0, 0.04 and 0.0019: only the first is within 0.1 margin point
+    assert xm.post_contract_diagnostics({"b": [0.1, 0.1005, 0.1, 0.1, 0.101]}, 0.10, 10.0, 100.0)["flat_margin_path"] == ["b"]      # a spread of exactly 0.1 point is flat
+    assert xm.post_contract_diagnostics({}, 0.10, 7.0, 100.0)["normalized_vs_path_gap"] is None               # exactly 3 points: not above
+    assert xm.post_contract_diagnostics({}, 0.10, 6.99, 100.0)["normalized_vs_path_gap"] is not None
+    assert xm.post_contract_diagnostics({}, 0.10, 0.0, 100.0)["normalized_vs_path_gap"]["normalized_margin_implied"] == 0.0     # 0.0 is a value
+    nothing = xm.post_contract_diagnostics({"x": None}, None, "n/a", 100.0)
+    assert nothing == {"normalized_vs_path_gap": None, "flat_margin_path": []}                                # no number, no diagnostic
+
+
+def test_the_fill_stamps_the_post_contract_diagnostics_from_the_contract_after_the_desk_run():
+    call = _call252()
+    call["scenarios"][0]["earnings_margin"] = [0.30] * 5
+    for sc in call["scenarios"][1:]:
+        sc["earnings_margin"] = [0.31, 0.32, 0.33, 0.34, 0.35] if sc["name"] == "Bull" else [0.28, 0.285, 0.29, 0.295, 0.30]
+    res = _run252(call)
+    assert "error" not in res, res.get("error")
+    src = {role: (None, {"dcf": _dcf(res, role)}) for role in cf.ROLES}
+    out, prov = {}, {"stamps": []}
+    cf._fill_bridge_252(out, prov, src, {"normalized_earnings": 15.0})              # R_0 = 100: 15% against the path's 30%
+    d = out["post_contract_diagnostics"]
+    assert d["normalized_vs_path_gap"]["gap"] == pytest.approx(0.15) and d["flat_margin_path"] == ["base"]
+    assert "normalized_vs_path_gap" in prov["stamps"] and "flat_margin_path" in prov["stamps"]
+    out2, prov2 = {}, {"stamps": []}
+    cf._fill_bridge_252(out2, prov2, src, {"normalized_earnings": 30.0})
+    assert out2["post_contract_diagnostics"]["normalized_vs_path_gap"] is None and "normalized_vs_path_gap" not in prov2["stamps"]
+    out3, prov3 = {}, {"stamps": []}
+    cf._fill_bridge_252(out3, prov3, src, None)                                      # no contract: no diagnostic, no pass
+    assert out3["post_contract_diagnostics"]["normalized_vs_path_gap"] is None
+    assert "post_contract_diagnostics" in cv.S12_SUMMARY_KEYS

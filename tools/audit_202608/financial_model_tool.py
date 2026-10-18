@@ -2600,11 +2600,11 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         # revision 25 short form: the margin basis check, an annotation (the desk's message states a gap once, as information; nothing is refused or changed)
         result["margin_basis"] = _margin_basis_summary(scenario_dcfs, ctx.get("x_margin_consensus_y1y2"))
         _mb = result["margin_basis"]
-        if _mb["margin_basis_gap"]:
-            result["margin_basis_gap"] = _mb["margin_basis_gap"]
-            result.setdefault("desk_stamps", []).append("margin_basis_gap")
-        elif _mb["status"] == "no_basis_check_no_consensus":
-            result.setdefault("desk_stamps", []).append("no_basis_check_no_consensus")
+        if _mb["consensus_margin_divergence"]:
+            result["consensus_margin_divergence"] = _mb["consensus_margin_divergence"]
+            result.setdefault("desk_stamps", []).append("consensus_margin_divergence")
+        elif _mb["status"] == "consensus_margin_check_unavailable" and _mb["scenarios"]:
+            result.setdefault("desk_stamps", []).append("consensus_margin_check_unavailable")
 
     # ---- 2. Single (top-level) DCF projection --------------------------------------------------
     growth_rates = params.get("explicit_growth") if params.get("explicit_growth") is not None else params.get("growth_rates")
@@ -3034,8 +3034,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
 
 def _margin_basis_summary(scenario_dcfs, consensus):
     """Desk schema 25.2: the margin basis check of every bridged scenario in one record. {"band", "status", "consensus_x_margin": {"y1", "y2"},
-    "scenarios": {name: x_margin_basis.basis_check}, "margin_basis_gap": [{"scenario", "year", "declared", "consensus", "ratio"}]}. The status is "checked" when any
-    scenario was compared with a consensus margin, else the first scenario's own status (no_basis_check_no_consensus when the pack holds no consensus margin); no_basis_check_bridge_not_applied when no
+    "scenarios": {name: x_margin_basis.basis_check}, "consensus_margin_divergence": [{"scenario", "year", "declared", "consensus", "ratio"}]}. The status is "checked" when any
+    scenario was compared with a consensus margin, else the first scenario's own status (consensus_margin_check_unavailable when the pack holds no consensus margin); consensus_margin_check_unavailable when no
     scenario was bridged (a finite life or the firm frame: there are no declared margins to compare)."""
     scen, gaps, statuses = {}, [], []
     for it in scenario_dcfs:
@@ -3048,9 +3048,9 @@ def _margin_basis_summary(scenario_dcfs, consensus):
         gaps += [dict(g, scenario=name) for g in mb.get("gaps") or []]
     cons = consensus if isinstance(consensus, dict) else {}
     return {"band": list(x_margin_basis.BASIS_BAND),
-            "status": "checked" if "checked" in statuses else (statuses[0] if statuses else "no_basis_check_bridge_not_applied"),
+            "status": "checked" if "checked" in statuses else (statuses[0] if statuses else "consensus_margin_check_unavailable"),
             "consensus_x_margin": {k: (cons.get(k) or {}).get("x_margin") if isinstance(cons.get(k), dict) else None for k in ("y1", "y2")},
-            "scenarios": scen, "margin_basis_gap": gaps}
+            "scenarios": scen, "consensus_margin_divergence": gaps}
 
 
 def _bridge_markdown(name, br):
@@ -3140,13 +3140,13 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
     for item in res.get("scenario_dcfs") or []:
         lines += _bridge_markdown(item.get("name", "Scenario"), (item.get("dcf") or {}).get("bridge"))
 
-    mbg = res.get("margin_basis_gap")
+    mbg = res.get("consensus_margin_divergence")
     if mbg:
         # desk schema 25.2: one statement of the gap, as information; nothing is asked, refused or changed
         lo, hi = (res.get("margin_basis") or {}).get("band") or x_margin_basis.BASIS_BAND
         detail = "; ".join(f"{g['scenario']} year {g['year']}: declared {g['declared'] * 100:.1f}% against {g['consensus'] * 100:.1f}% ({g['ratio']:.2f}x)" for g in mbg)
-        lines.append(f"**Information, not a request:** the earnings margin you declared for years 1-2 is outside {lo:g} to {hi:g} times the X-basis margin the consensus EPS "
-                     f"levels imply (DEFAULTS x_margin_consensus_y1y2): {detail}. The desk valued your lists as declared; the gap is recorded as margin_basis_gap.")
+        lines.append(f"**Information, not a request:** the earnings margin you declared for years 1-2 is outside {lo:g} to {hi:g} times, and more than {x_margin_basis.ABS_GAP * 100:g} margin points from, the X-basis margin the consensus EPS "
+                     f"levels imply (DEFAULTS x_margin_consensus_y1y2): {detail}. The desk valued your lists as declared; the divergence is recorded as consensus_margin_divergence.")
         lines.append("")
 
     yc = res.get("years35_cap")

@@ -278,15 +278,19 @@ that arm and absent for every other (SIDECAR_ONLY, as is each new fact below); i
 The desk (`financial_model_tool`, `desk_schema` `"25.2"`) values a perpetual equity scenario on 25.1's path arithmetic with `revenue_growth` and `earnings_margin`
 (five values each, declared in every scenario, nothing inherited) as the only declarations: no normalization block, no desk-call labels, no C or K check, no reason request,
 no N_0 or N_H (`dcf["bridge"]` carries the derived path table, `declared` and `margin_basis`). The near-term and normalized earnings and the three labels are the revision-24
-written contract (`contract_fill` stamps `s12_figures_typed_desk_schema_25_2` and fills `bridge`, `desk_schema` and `margin_basis_gap` only). `explicit_growth` is refused by name
+written contract (`contract_fill` stamps `s12_figures_typed_desk_schema_25_2` and fills `bridge`, `desk_schema` and `consensus_margin_divergence` only). `explicit_growth` is refused by name
 except for a scenario the lists do not apply to, as in 25.1.
 The DEFAULTS block adds three lines after `long_run` (`pack_facts.render_x_margin_lines`): the earnings margin basis in plain words, `x_margin_history` (the X-basis margin per
-filed year of the record's window, as filed and without one-offs: the largest filed impairment line and the restructuring line, after tax at that year's rate, each with its
-form and filing date; `x_margin_basis.history`, the filed lines from `paths.resolve("screener_sec_facts_dir")`, "not held" when that file is missing and "none filed" only when
-the file covers the year) and `x_margin_consensus_y1y2` (consensus EPS x the share-count default over the consensus revenue, years 1 and 2; `x_margin_basis.consensus_margins`).
-The basis flag (`x_margin_basis.basis_check`, band `BASIS_BAND` = [0.67, 1.5], registered before any run) annotates the result, the scorecard and the verdict row with
-`margin_basis_gap` when a declared year-1 or year-2 margin is outside the band, states it once in the desk message as information, and stamps `no_basis_check_no_consensus`
-when the pack holds no consensus margin. It refuses, clamps and changes nothing.
+filed year of the record's window, as filed (the primary series), with the after-tax impact of the filed impairment line and restructuring line in margin points and how
+often they are filed; the series without them is printed only when they are filed in fewer than 3 of the last 5 years, otherwise `recurring_restructuring_or_impairment` is
+stamped and none is printed; the filed lines come from `paths.resolve("screener_sec_facts_dir")`: "not held" when that file is missing, "none filed" only when it covers the
+year) and `x_margin_consensus_y1y2` (consensus EPS x the share-count default over the consensus revenue, years 1 and 2; `x_margin_basis.consensus_margins`).
+`consensus_margin_divergence` (`x_margin_basis.basis_check`) annotates the result, the scorecard and the verdict row when a declared year-1 or year-2 margin is outside
+`BASIS_BAND` = [0.67, 1.5] times the consensus-implied one AND more than 3 margin points from it; the desk message states it once as information, and
+`consensus_margin_check_unavailable` is stamped when there is no usable consensus margin (never a pass). It refuses, clamps and changes nothing. After the memorandum and
+the contract, `contract_fill` stamps `post_contract_diagnostics`: `normalized_vs_path_gap` (|Base m5 - contract normalized_earnings / R_0| above 3 points) and
+`flat_margin_path` (a scenario's m1..m5 within 0.1 point of each other); neither can draw a desk reason. `ollama_raw` raises the named failure `context_overflow` when
+prompt_eval_count plus the request's num_predict exceeds num_ctx (Ollama truncates the front of such a prompt silently).
 
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 

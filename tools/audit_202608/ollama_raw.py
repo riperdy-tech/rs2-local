@@ -168,6 +168,17 @@ def to_chat_shape(resp, body, version=None):
     return out
 
 
+def context_overflow_guard(resp, options):
+    """Front-truncation guard (cross-check 21): Ollama cuts the FRONT of a prompt that does not fit num_ctx without saying so, which drops the system text and the pack. A prompt of
+    prompt_eval_count tokens plus the request's output limit (options.num_predict, when positive) above num_ctx means the window cannot hold both: a named failure, never a
+    silent truncation. Nothing is checked when the request or the reply does not carry the numbers."""
+    ctx, out, n = (options or {}).get("num_ctx"), (options or {}).get("num_predict"), resp.get("prompt_eval_count")
+    if isinstance(ctx, int) and isinstance(n, int) and not isinstance(ctx, bool):
+        limit = out if isinstance(out, int) and out > 0 else 0
+        if n + limit > ctx:
+            raise RawProviderError("context_overflow", f"prompt_eval_count {n} + output limit {limit} = {n + limit} exceeds num_ctx {ctx}: the front of the prompt may have been truncated")
+
+
 def chat(body, timeout, url):
     """`url` is the "ollama" provider's /api/chat address; /api/generate and /api/version sit beside it."""
     if body.get("stream") is True:
@@ -179,4 +190,5 @@ def chat(body, timeout, url):
                                   headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(http, timeout=timeout) as r:
         resp = json.loads(r.read().decode())
+    context_overflow_guard(resp, req["options"])
     return to_chat_shape(resp, body, ollama_version(base))
