@@ -246,7 +246,8 @@ def test_desk_uses_the_after_lease_ronic_start_only_when_enabled():
 # ---- the model-visible text does not change when the screener's eleven new keys arrive ---------------------------------------------------------
 
 NEW_KEYS = ("lease_principal", "lease_interest", "rou_depreciation", "interest_on_borrowings", "ppe_gross", "amortization_sched_y1",
-            "amortization_sched_y2", "amortization_sched_y3", "amortization_sched_y4", "amortization_sched_y5", "amortization_sched_thereafter")
+            "amortization_sched_y2", "amortization_sched_y3", "amortization_sched_y4", "amortization_sched_y5", "amortization_sched_thereafter",
+            "capex_d2", "debt_d2_total")      # the last two: D2b3 (BRIEF_D2b3_coverage.md, Part R)
 
 
 def test_the_eleven_new_keys_are_reviewed_and_the_pack_text_is_byte_identical(monkeypatch):
@@ -293,3 +294,161 @@ def test_d2_enabled_with_a_bridge_forwards_d2_and_starts_ronic_at_the_after_leas
     assert "desk_d2_terminal_reinvestment" in dd["stamps"] and dd["d2"]["roic_n1_roll_forward"]["r_tc"] == pytest.approx(0.10)
     on2 = _run(_call(), _ctx(long_run=dict(lr, r_tc_after_lease_interest=None), d2=d2, d2_enabled=True))
     assert _dcf(on2, "base")["d2"]["roic_n1_roll_forward"]["r_tc"] == pytest.approx(0.12)       # absent: today's r_tc
+
+
+# ---- D2b3 Part R: coverage rules (kd source, capex_d2, debt_d2_total, the debt-free rule) ---------------------------------------------------
+
+def fp(field, tag, state="primary", years=range(2021, 2026)):
+    return {field: {y: {"tag": tag, "state": state} for y in years}}
+
+
+def test_kd_prefers_interest_on_borrowings_and_never_subtracts_lease_interest_from_an_ifrs_rung():
+    rs = rows(interest_on_borrowings=15.0, lease_interest=4.0)
+    out = build(rs, field_prov=fp("interest_on_borrowings", "InterestExpenseOnBorrowings"))
+    assert out["d2"]["kd"] == pytest.approx(15.0 / 320.0)
+    assert out["d2_provenance"]["members"]["kd"]["source"].startswith("interest_on_borrowings:InterestExpenseOnBorrowings /")
+    comp = build(rs, field_prov=fp("interest_on_borrowings", "InterestExpenseOnBonds+InterestExpenseOnBankLoansAndOverdrafts", "component_sum"))
+    assert comp["d2"]["kd"] == pytest.approx(15.0 / 320.0)
+
+
+def test_kd_subtracts_lease_interest_on_the_nonoperating_rung_and_on_interest_expense():
+    rs = rows(interest_on_borrowings=15.0, lease_interest=4.0)
+    out = build(rs, field_prov=fp("interest_on_borrowings", "InterestExpenseNonoperating"))
+    assert out["d2"]["kd"] == pytest.approx(11.0 / 320.0)
+    assert "less_lease_interest" in out["d2_provenance"]["members"]["kd"]["source"]
+    ie = build(rows(lease_interest=4.0))
+    assert ie["d2"]["kd"] == pytest.approx(16.0 / 320.0)
+    # a filed 0.0 interest_on_borrowings is a value: interest_expense does not replace it (IFRS rung: nothing subtracted)
+    z = build(rows(interest_on_borrowings=0.0, lease_interest=4.0), field_prov=fp("interest_on_borrowings", "InterestExpenseOnBorrowings"))
+    assert z["d2"] is None and z["d2_provenance"]["kd_outside_plausible_range"]["kd"] == 0.0     # used as 0.0 (not replaced), then out of range
+    assert "interest_on_borrowings:InterestExpenseOnBorrowings" in z["d2_provenance"]["members"]["kd"]["source"]
+    unk = build(rs)
+    assert unk["d2"]["kd"] == pytest.approx(15.0 / 320.0) and "interest_on_borrowings_tag_unknown" in unk["d2_provenance"]["members"]["kd"]["stamps"]
+
+
+def test_capex_d2_fills_pooled_and_year0_only_when_capex_is_null_and_carries_its_class():
+    rs = rows(capex=None, capex_d2=-90.0)
+    out = build(rs, field_prov=fp("capex_d2", "PaymentsForProceedsFromProductiveAssets"))
+    assert out["d2"]["pooled"]["years"] == 5 and out["d2"]["pooled"]["capex"] == pytest.approx(450.0)
+    assert out["d2"]["year0"]["capex"] == pytest.approx(90.0)
+    pv = out["d2_provenance"]
+    assert pv["capex_d2"]["2025"]["classes"] == ["net_of_proceeds"]
+    assert "capex_from_d2_year_2023:net_of_proceeds" in pv["members"]["pooled"]["stamps"]
+    assert "capex_from_d2:net_of_proceeds" in pv["members"]["year0"]["stamps"]
+    both = build(rows(capex=80.0, capex_d2=999.0))                    # capex filed: capex wins, capex_d2 never read
+    assert both["d2"]["pooled"]["capex"] == pytest.approx(400.0) and "capex_d2" not in both["d2_provenance"]
+    z = build(rows(capex=0.0, capex_d2=999.0))                        # capex 0.0 is a value
+    assert z["d2"]["pooled"]["capex"] == 0.0
+    none = build(rows(capex=None))                                    # neither: the years are excluded by name, as before
+    assert "pooled" in (none["d2_unavailable"] or [])
+
+
+def test_capex_d2_class_markers():
+    c = D.capex_class
+    assert c({"tag": "x", "state": "from_capex"}) == ["from_capex"]
+    assert c({"tag": "PaymentsToAcquireRealEstate+PaymentsToAcquireLand", "state": "component_sum"}) == ["component_sum", "real_estate_components"]
+    assert c({"tag": "PaymentsForConstructionInProcess", "state": "primary"}) == ["construction_in_process"]
+    assert c({"tag": "PaymentsToAcquireOtherPropertyPlantAndEquipment", "state": "primary"}) == ["other_ppe_partial_risk"]
+    assert c({"tag": "PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets",
+              "state": "primary"}) == ["includes_intangibles"]
+    assert c(None) == []
+
+
+NO_LADDER = dict(lt_debt=None, debt_lt_noncurrent=None, debt_current=None)
+
+
+def test_debt_d2_total_replaces_an_absent_ladder_and_year0_invested_capital_uses_the_same_debt():
+    rs = rows(**NO_LADDER, debt_d2_total=250.0)
+    out = build(rs)
+    pv = out["d2_provenance"]["members"]
+    nd = 250.0 - 60.0 - 10.0
+    assert out["d2"]["delta"] == pytest.approx(nd / (nd + 1000.0))
+    assert out["d2"]["kd"] == pytest.approx(20.0 / 250.0)
+    for m in ("delta", "kd", "year0"):
+        assert "debt_from_d2_total" in pv[m]["stamps"]
+    base = tcr.invested_capital(tcr.normalise_rows(rs)[2025])         # the record's own invested capital is untouched (ladder counted 0)
+    assert out["d2"]["year0"]["invested_capital"] == pytest.approx(base + 250.0)
+
+
+def test_the_ladder_wins_when_it_resolves_and_debt_d2_total_is_ignored():
+    out = build(rows(debt_d2_total=9999.0))
+    assert out["d2"]["kd"] == pytest.approx(20.0 / 320.0)
+    assert "debt_from_d2_total" not in out["d2_provenance"]["stamps"]
+
+
+def test_short_term_filed_without_long_term_uses_the_total_without_double_counting():
+    rs = rows(lt_debt=None, debt_lt_noncurrent=None, debt_current=20.0, debt_d2_total=250.0)
+    out = build(rs)
+    base = tcr.invested_capital(tcr.normalise_rows(rs)[2025])         # counted the 20 of short-term debt
+    assert out["d2"]["year0"]["invested_capital"] == pytest.approx(base + 250.0 - 20.0)
+
+
+def test_debt_free_rule_zero_only_with_the_vendor_test():
+    rs = rows(**NO_LADDER, finance_lease_liability=40.0, operating_lease_liability=60.0)
+    for vendor, ok in ((0.0, True), (100.0, True), (110.0, True), (111.0, False), (5000.0, False), (None, False)):
+        out = build(rs, vendor_total_debt=vendor)
+        if ok:
+            st = out["d2_provenance"]["members"]["delta"]["stamps"]
+            assert out["d2"]["delta"] == 0.0 and "debt_zero_inferred_leases_only" in st and "delta_debt_not_filed" not in st, vendor
+            assert "debt_zero_inferred_leases_only" in out["d2_provenance"]["members"]["kd"]["stamps"]
+            assert out["d2"]["year0"]["invested_capital"] == pytest.approx(tcr.invested_capital(tcr.normalise_rows(rs)[2025]))
+        else:
+            assert "delta_debt_not_filed" in out["d2_provenance"]["members"]["delta"]["stamps"], vendor
+            assert "debt_zero_inferred_leases_only" not in out["d2_provenance"]["stamps"] and "delta" in out["d2_unavailable"], vendor
+    nl = rows(**NO_LADDER)                                            # no filed leases: only a vendor Total_Debt of 0 passes
+    assert build(nl, vendor_total_debt=0.0)["d2"]["delta"] == 0.0
+    assert build(nl, vendor_total_debt=1.0)["d2"] is None
+
+
+def test_debt_free_rule_needs_every_window_year_clean_and_a_proven_currency():
+    rs = rows(**NO_LADDER)
+    rs["2023"]["debt_current"] = 5.0                                  # one window year files a debt tag
+    assert "debt_zero_inferred_leases_only" not in build(rs, vendor_total_debt=0.0)["d2_provenance"]["stamps"]
+    rs = rows(**NO_LADDER)
+    rs["2022"]["debt_d2_total"] = 5.0                                 # debt_d2_total filed in an earlier year: not debt-free
+    assert "debt_zero_inferred_leases_only" not in build(rs, vendor_total_debt=0.0)["d2_provenance"]["stamps"]
+    cur = build(rows(**NO_LADDER), vendor_total_debt=0.0, statement_currency="EUR")
+    assert "debt_zero_inferred_leases_only" not in cur["d2_provenance"]["stamps"]
+
+
+# ---- coordinator additions: vendor agreement of rung-sourced values, and the kd plausible range -----------------------------------------
+
+def test_capex_d2_rung_is_verified_against_the_vendor():
+    rs = rows(capex=None, capex_d2=90.0)
+    cls = fp("capex_d2", "PaymentsToAcquireOilAndGasPropertyAndEquipment")
+    ok = build(rs, field_prov=cls, vendor_capex=-100.0)
+    assert ok["d2"]["pooled"]["capex"] == pytest.approx(450.0) and "capex_d2_rung_vendor_agrees" in ok["d2_provenance"]["members"]["pooled"]["stamps"]
+    for bad in (-300.0, -50.0):                                           # ratios 0.30 and 1.80
+        out = build(rs, field_prov=cls, vendor_capex=bad)
+        assert "capex_d2_vendor_disagrees" in out["d2_provenance"]["members"]["pooled"]["stamps"]
+        assert out["d2"] is None and "pooled" in out["d2_unavailable"]
+        assert out["d2_provenance"]["capex_d2_vendor"]["ratio"] == pytest.approx(90.0 / abs(bad))
+    un = build(rs, field_prov=cls)
+    assert "capex_d2_rung_unverified" in un["d2_provenance"]["members"]["pooled"]["stamps"] and un["d2"]["pooled"]["years"] == 5
+    fc = build(rows(capex=None, capex_d2=90.0), field_prov=fp("capex_d2", "x", "from_capex"), vendor_capex=-1000.0)   # from_capex: not checked
+    assert fc["d2"]["pooled"]["years"] == 5 and "capex_d2_vendor_disagrees" not in fc["d2_provenance"]["stamps"]
+
+
+def test_debt_d2_total_rung_is_verified_against_the_vendor_less_leases():
+    rs = rows(**NO_LADDER, debt_d2_total=250.0, finance_lease_liability=20.0, operating_lease_liability=30.0)
+    d2 = fp("debt_d2_total", "DebtInstrumentCarryingAmount")
+    ok = build(rs, field_prov=d2, vendor_total_debt=300.0)               # 250 / (300 - 50) = 1.0
+    assert ok["d2"]["delta"] > 0 and "debt_d2_total_rung_vendor_agrees" in ok["d2_provenance"]["members"]["delta"]["stamps"]
+    for vendor in (1000.0, 60.0):                                         # ratios 0.26 and 25
+        out = build(rs, field_prov=d2, vendor_total_debt=vendor)
+        assert "debt_d2_vendor_disagrees" in out["d2_provenance"]["members"]["delta"]["stamps"] and "delta" in out["d2_unavailable"]
+        assert out["d2_provenance"]["debt_d2_vendor_ratio"] == pytest.approx(250.0 / (vendor - 50.0))
+    un = build(rs, field_prov=d2)
+    assert "debt_d2_total_rung_unverified" in un["d2_provenance"]["members"]["delta"]["stamps"] and un["d2"]["delta"] > 0
+    lad = build(rs, field_prov=fp("debt_d2_total", "x", "from_ladder"), vendor_total_debt=1000.0)
+    assert not any("vendor" in x for x in lad["d2_provenance"]["members"]["delta"]["stamps"]) and lad["d2"]["delta"] > 0
+
+
+def test_kd_outside_the_plausible_range_is_unavailable_with_the_value_kept():
+    for interest in (2.0, 90.0):                                          # kd 0.00625 and 0.28 on 320 of debt
+        out = build(rows(interest_expense=interest))
+        assert out["d2"] is None and "kd" in out["d2_unavailable"]
+        assert out["d2_provenance"]["kd_outside_plausible_range"]["kd"] == pytest.approx(interest / 320.0)
+        assert "kd_outside_plausible_range" in out["d2_provenance"]["members"]["kd"]["stamps"]
+    edge = build(rows(interest_expense=3.2))                              # exactly 0.01 is inside
+    assert edge["d2"]["kd"] == pytest.approx(0.01)

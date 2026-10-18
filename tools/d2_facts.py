@@ -22,11 +22,79 @@ import throughcycle_record as tcr
 POOLED_YEARS = 5                 # the base year and the 4 before it
 INSURANCE_RESERVE_SHARE = 0.10   # the census addendum's route rule, section 1
 FUNDING_SHARE = 0.50
-KD_PLAUSIBLE = (0.0, 0.25)       # annotation only (the census flagged k_d outside it); nothing is gated
+KD_PLAUSIBLE = (0.01, 0.20)      # D2b3 (b): a kd outside it is a measurement failure (the member is unavailable), not a gate on the sample
+VENDOR_AGREE = (0.7, 1.3)        # D2b3 (a): a rung-sourced capex_d2 / debt_d2_total must agree with the vendor within this ratio
 # The route rule's tests the fiscal-year rows cannot evaluate (no loan, deposit, repurchase or investments concept is held)
 TESTS_NOT_EVALUATED = ("lending_book_ge_50pct_of_assets", "deposits_ge_50pct_of_liabilities", "repurchase_agreements_ge_20pct_of_assets",
                        "investments_ge_50pct_of_assets")
 _REQUIRED_OPERATING = ("delta", "tau", "pooled")
+# D2b3 (BRIEF_D2b3_coverage.md, Part R). The class of a capex_d2 rung, read from the winning tag in the provenance (the screener's Part S names the tag
+# of the rung that filed; a '+'-joined composite is a component sum). A tag not listed here is carried verbatim with no class.
+CAPEX_CLASS_BY_TAG = (
+    ("PaymentsForProceedsFromProductiveAssets", "net_of_proceeds"),
+    ("PaymentsForConstructionInProcess", "construction_in_process"),
+    ("PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets", "includes_intangibles"),
+    ("PaymentsToAcquireOtherPropertyPlantAndEquipment", "other_ppe_partial_risk"),
+)
+REAL_ESTATE_TAGS = ("PaymentsToAcquireRealEstate", "PaymentsToDevelopRealEstateAssets", "PaymentsForCapitalImprovements", "PaymentsToAcquireLand")
+NONOPERATING_INTEREST_TAG = "InterestExpenseNonoperating"   # the one interest_on_borrowings rung that still carries lease interest
+DEBT_FREE_LEASE_MARGIN = 1.10                                # fix 4: vendor Total_Debt <= 1.10 x filed lease liabilities reads as leases only
+
+
+def capex_class(cell):
+    """The class markers of one year's capex_d2 cell {"tag", "state"}: ["from_capex"] / ["component_sum", "real_estate_components"] / ["net_of_proceeds"] / ..."""
+    if not cell:
+        return []
+    tag, state = cell.get("tag") or "", cell.get("state") or ""
+    out = []
+    if state in ("from_capex", "component_sum"):
+        out.append(state)
+    if state == "s" and "component_sum" not in out:
+        out.append("component_sum")
+    if "+" in tag or any(t in tag for t in REAL_ESTATE_TAGS):
+        if "component_sum" not in out:
+            out.append("component_sum")
+        if any(t in tag for t in REAL_ESTATE_TAGS):
+            out.append("real_estate_components")
+    for needle, marker in CAPEX_CLASS_BY_TAG:
+        if needle in tag:
+            out.append(marker)
+    return out
+
+
+def kd_interest(row, ob_tag=None):
+    """(interest, source) for kd. interest_on_borrowings when filed, else interest_expense. Lease interest is subtracted when the source is
+    interest_expense or the Nonoperating rung of interest_on_borrowings (the winning tag, from provenance); never from an IFRS borrowings rung.
+    A null lease interest counts 0. 0.0 is a value. Sources: interest_on_borrowings:<tag>, interest_on_borrowings:<tag>_less_lease_interest,
+    interest_expense, interest_expense_less_lease_interest; (None, None) when neither interest is filed."""
+    ob, li = _n(row.get("interest_on_borrowings")), _n(row.get("lease_interest"))
+    if ob is not None:
+        label = "interest_on_borrowings:" + (ob_tag or "tag_unknown")
+        if ob_tag is not None and NONOPERATING_INTEREST_TAG in ob_tag and li is not None:
+            return ob - li, label + "_less_lease_interest"
+        return ob, label
+    ie = _n(row.get("interest_expense"))
+    if ie is None:
+        return None, None
+    return (ie, "interest_expense") if li is None else (ie - li, "interest_expense_less_lease_interest")
+
+
+def debt_free_inference(rws, window, base_row, vendor_total_debt):
+    """Fix 4. (zero_ok, evidence): True only when no debt tag is filed in any window year (the existing ladder's four components and
+    debt_d2_total all null in every year) AND the vendor Total_Debt is 0 or at most 1.10 x the base year's filed lease liabilities
+    (finance_lease_liability + operating_lease_liability, a null one counting 0). Never True without that test."""
+    ladder = ("debt_lt_noncurrent", "lt_debt", "debt_current", "short_term_borrowings_separate", "debt_d2_total")
+    for y in window:
+        r = rws.get(y)
+        if r is not None and any(_n(r.get(f)) is not None for f in ladder):
+            return False, {"reason": "a debt tag is filed in a window year", "year": y}
+    vtd = _n(vendor_total_debt)
+    if vtd is None:
+        return False, {"reason": "vendor Total_Debt not available"}
+    leases = sum(v for v in (_n(base_row.get("finance_lease_liability")), _n(base_row.get("operating_lease_liability"))) if v is not None)
+    ok = vtd == 0 or vtd <= DEBT_FREE_LEASE_MARGIN * leases
+    return ok, {"vendor_total_debt": vtd, "filed_lease_liabilities": leases, "reason": "vendor debt is zero or within 1.10x the filed leases" if ok
+                else "vendor debt exceeds 1.10x the filed leases"}
 
 
 def _n(v):
@@ -85,14 +153,17 @@ def _scale(v, pi, unit=1.0):
 
 
 def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price=None, shares=None, shares_source=None, statement_currency=None,
-          quote_currency=None, currency_source=None, valuation_date=None, pi=None, untagged=(), dc_tags=None, unit=1e9) -> dict[str, Any]:
+          quote_currency=None, currency_source=None, valuation_date=None, pi=None, untagged=(), dc_tags=None, unit=1e9, field_prov=None,
+          vendor_total_debt=None, vendor_capex=None, vendor_capex_why=None) -> dict[str, Any]:
     """{"d2": dict | None, "d2_provenance": dict, "d2_unavailable": [member names] | None} for one name at its base year.
 
     `rows` the fiscal-year rows (the record's view: consolidated net income and equity); `price` and `shares` the pack's price and diluted share
     count (the desk's default), in one quote currency; `statement_currency` / `quote_currency` the currencies of the filed statements and of the
     quote (None = not known: delta is then absent, stamped `delta_currency_unproven`); `pi` the common shareholders' share the pack applies to
     every level it hands the desk (the year-0 and PP&E levels are scaled by it; the pooled totals stay raw, only their ratios are read);
-    `untagged` the record's untagged fields; `dc_tags` {year: debt_current tag}. Every level in `d2` (pooled totals, PP&E, amortization, year 0) is
+    `untagged` the record's untagged fields; `dc_tags` {year: debt_current tag}; `field_prov` {field: {year: {"tag", "state"}}} the winning tag and state of capex_d2, debt_d2_total and
+    interest_on_borrowings (D2b3); `vendor_total_debt` the vendor file's Total_Debt (fix 4 and the debt rung check); `vendor_capex` the vendor's Capital_Expenditure when the pack's
+    vendor-capex gate (`_vendor_capex_usable`) passes, else None (`vendor_capex_why` says why). Every level in `d2` (pooled totals, PP&E, amortization, year 0) is
     in units of `unit` currency (default 1e9: $B, the unit of the bridge's revenue); ratios and rates are unit-free."""
     rws = tcr.normalise_rows(rows)
     untagged = frozenset(untagged or ())
@@ -123,6 +194,43 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
         stamp("year0", "pi_not_measured_levels_unscaled")
     # ---- family
     debt, debt_filed, lt_filed = gross_debt(row, tags.get(L))
+    fprov = field_prov or {}
+    # D2b3 item 3: when the existing ladder carries no long-term debt (debt_lt_noncurrent and lt_debt both unfiled), the non-lease total of the
+    # screener's debt_d2_total is the debt for delta, kd and year0.invested_capital (stamped debt_from_d2_total). The ladder, when it resolves,
+    # is unchanged, and so are throughcycle_record.invested_capital and r_tc.
+    debt_from_d2 = False
+    d2t = _n(row.get("debt_d2_total"))
+    d2t_state = ((fprov.get("debt_d2_total") or {}).get(L) or {}).get("state")
+    debt_rung_stamps: list[str] = []
+    if not lt_filed and d2t is not None:
+        verdict, ratio = "unverified", None
+        if d2t_state in ("from_ladder",):
+            verdict = "ladder"
+        else:
+            vtd = _n(vendor_total_debt) if (statement_currency and statement_currency == quote_currency) else None
+            leases = sum(v for v in (_n(row.get("finance_lease_liability")), _n(row.get("operating_lease_liability"))) if v is not None)
+            if vtd is not None and vtd - leases > 0:
+                ratio = d2t / (vtd - leases)
+                verdict = "agrees" if VENDOR_AGREE[0] <= ratio <= VENDOR_AGREE[1] else "disagrees"
+                prov["debt_d2_vendor"] = {"debt_d2_total": d2t, "vendor_total_debt": vtd, "filed_lease_liabilities": leases, "ratio": ratio}
+        if verdict == "disagrees":
+            debt_rung_stamps.append("debt_d2_vendor_disagrees")
+            prov["debt_d2_vendor_ratio"] = ratio
+            d2t = None                  # unusable: the member is unavailable (delta_debt_not_filed below), and the fix-4 test sees a filed tag
+        elif verdict == "agrees":
+            debt_rung_stamps.append("debt_d2_total_rung_vendor_agrees")
+        elif verdict == "unverified":
+            debt_rung_stamps.append("debt_d2_total_rung_unverified")
+    if not lt_filed and d2t is not None:
+        debt, debt_filed, lt_filed, debt_from_d2 = d2t, True, True, True
+    # fix 4: no debt tag in any window year, and the vendor total is leases only (or zero): non-lease debt is 0
+    debt_zero_inferred = False
+    if not debt_filed:
+        zero_ok, zero_ev = debt_free_inference(rws, list(range(L - POOLED_YEARS + 1, L + 1)), row,
+                                               vendor_total_debt if (statement_currency and statement_currency == quote_currency) else None)
+        prov["debt_free_test"] = zero_ev
+        if zero_ok:
+            debt, debt_filed, lt_filed, debt_zero_inferred = 0.0, True, True, True
     rt = route(sic, row, sector, financial_sectors, debt if debt_filed else None)
     prov["route"] = {"sic": sic, "sector": sector, "evidence": rt["evidence"], "tests_not_evaluated": rt["tests_not_evaluated"]}
     source("family", "route rule of REPORT_census_1a_addendum.md section 1 on the fiscal-year row")
@@ -161,6 +269,12 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
     if cash is None:
         stamp("delta", "delta_cash_not_filed")
         delta_ok = False
+    for s_ in debt_rung_stamps:
+        stamp("delta", s_)
+    if debt_from_d2:
+        stamp("delta", "debt_from_d2_total")
+    if debt_zero_inferred:
+        stamp("delta", "debt_zero_inferred_leases_only")
     if not debt_filed:
         stamp("delta", "delta_debt_not_filed")          # no debt component is filed at all: unproven, never read as zero debt
         delta_ok = False
@@ -177,10 +291,19 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
         unavailable.append("delta")
 
     # ---- kd: non-lease interest over non-lease gross debt; absent when debt is 0 or unproven, never defaulted
-    interest, isrc = tcr.non_lease_interest(row)
+    ob_tag = ((fprov.get("interest_on_borrowings") or {}).get(L) or {}).get("tag")
+    interest, isrc = kd_interest(row, ob_tag)
     source("kd", f"{isrc or 'no interest filed'} / non-lease gross debt (base year)")
     if isrc == "interest_expense":
         stamp("kd", "lease_interest_not_filed")
+    if isrc is not None and isrc.startswith("interest_on_borrowings") and ob_tag is None:
+        stamp("kd", "interest_on_borrowings_tag_unknown")
+    if debt_from_d2:
+        stamp("kd", "debt_from_d2_total")
+        for s_ in debt_rung_stamps:
+            stamp("kd", s_)
+    if debt_zero_inferred:
+        stamp("kd", "debt_zero_inferred_leases_only")
     if not debt_filed or not debt > 0:
         stamp("kd", "kd_debt_zero_or_unproven")
     elif interest is None:
@@ -189,14 +312,34 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
         stamp("kd", "kd_negative_interest_after_lease_interest")
     else:
         kd = interest / debt
-        d2["kd"] = kd
         if not (KD_PLAUSIBLE[0] <= kd <= KD_PLAUSIBLE[1]):
-            stamp("kd", "kd_outside_0_25pct")
+            stamp("kd", "kd_outside_plausible_range")      # a measurement failure, not a gate on the sample: the member is unavailable, the value kept here
+            prov["kd_outside_plausible_range"] = {"kd": kd, "interest": interest, "debt": debt, "range": list(KD_PLAUSIBLE)}
+        else:
+            d2["kd"] = kd
     if "delta" in d2 and d2["delta"] > 0 and "kd" not in d2:
         unavailable.append("kd")
 
     # ---- pooled: five-year raw totals over the complete years
     window = list(range(L - POOLED_YEARS + 1, L + 1))
+    # D2b3 (a): a capex_d2 that is not simply the filed capex is checked against the vendor's Capital_Expenditure (base year, abs) before any year uses it
+    cd2_ok, capex_rung_stamp = True, None
+    cd2_base = _n(row.get("capex_d2"))
+    if cd2_base is not None and ((fprov.get("capex_d2") or {}).get(L) or {}).get("state") != "from_capex":
+        vc = _n(vendor_capex)
+        if vc is None or vc == 0:
+            capex_rung_stamp = "capex_d2_rung_unverified"
+            prov["capex_d2_vendor"] = {"capex_d2": cd2_base, "vendor_capex": vc, "why": vendor_capex_why or "vendor Capital_Expenditure absent or zero"}
+        else:
+            ratio = abs(cd2_base) / abs(vc)
+            prov["capex_d2_vendor"] = {"capex_d2": cd2_base, "vendor_capex": vc, "ratio": ratio}
+            if VENDOR_AGREE[0] <= ratio <= VENDOR_AGREE[1]:
+                capex_rung_stamp = "capex_d2_rung_vendor_agrees"
+            else:
+                capex_rung_stamp, cd2_ok = "capex_d2_vendor_disagrees", False
+    if capex_rung_stamp:
+        stamp("pooled", capex_rung_stamp)
+        stamp("year0", capex_rung_stamp)
     optional = ("rou_depreciation", "amortization_intangibles", "lease_principal")
     present_any = {f: any(y in rws and _n(rws[y].get(f)) is not None for y in window) for f in optional}
     if "amortization_intangibles" in untagged:
@@ -209,6 +352,11 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
             stamp("pooled", f"pooled_year_{y}_excluded:no_row")
             continue
         vals = {f: _n(r.get(f)) for f in ("revenue", "capex", "da") + optional}
+        if cd2_ok and vals["capex"] is None and _n(r.get("capex_d2")) is not None:
+            vals["capex"] = _n(r.get("capex_d2"))
+            cls = capex_class(((fprov.get("capex_d2") or {}).get(y)) or {})
+            prov.setdefault("capex_d2", {})[str(y)] = {"classes": cls, **(((fprov.get("capex_d2") or {}).get(y)) or {})}
+            stamp("pooled", f"capex_from_d2_year_{y}" + (":" + "+".join(cls) if cls else ""))
         missing = [f for f in ("revenue", "capex", "da") if vals[f] is None] + [f for f in optional if present_any[f] and vals[f] is None]
         if missing:
             stamp("pooled", f"pooled_year_{y}_excluded:" + "+".join(missing))
@@ -297,6 +445,11 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
     y0: dict[str, float] = {}
     source("year0", "base-year capex, D&A_org, change in NWC, lease principal, ROU depreciation, amortization and invested capital, scaled by pi")
     cx = _n(row.get("capex"))
+    if cd2_ok and cx is None and _n(row.get("capex_d2")) is not None:
+        cx = _n(row.get("capex_d2"))
+        cls = capex_class(((fprov.get("capex_d2") or {}).get(L)) or {})
+        prov.setdefault("capex_d2", {})[str(L)] = {"classes": cls, **(((fprov.get("capex_d2") or {}).get(L)) or {})}
+        stamp("year0", "capex_from_d2" + (":" + "+".join(cls) if cls else ""))
     for name, v in (("capex", None if cx is None else abs(cx)), ("da_org", da0), ("lease_principal", _n(row.get("lease_principal"))),
                     ("rou_dep", _n(row.get("rou_depreciation"))), ("amortization", a0)):
         if v is None:
@@ -310,6 +463,12 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
     else:
         y0["dnwc"] = _scale(nwc_l - nwc_p, pi, unit)
     ic = tcr.invested_capital(row, untagged, tags.get(L))
+    if ic is not None and debt_from_d2:
+        # year0.invested_capital under D2 uses the same debt as delta: invested_capital counted the (unfiled) ladder as 0, so the total is added
+        ic += debt - tcr.short_term_debt(row, tags.get(L))   # the ladder's short-term debt is already in ic; d2 total replaces the whole ladder
+        stamp("year0", "debt_from_d2_total")
+    if debt_zero_inferred:
+        stamp("year0", "debt_zero_inferred_leases_only")
     if ic is None:
         stamp("year0", "year0_invested_capital_not_available")
     else:

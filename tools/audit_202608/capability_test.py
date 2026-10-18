@@ -393,6 +393,8 @@ REVIEWED_HISTORY_KEYS = frozenset({
     "lease_principal", "lease_interest", "rou_depreciation", "interest_on_borrowings", "ppe_gross",
     "amortization_sched_y1", "amortization_sched_y2", "amortization_sched_y3", "amortization_sched_y4", "amortization_sched_y5",
     "amortization_sched_thereafter",
+    # D2b3 (BRIEF_D2b3_coverage.md): the two coverage fields, consumed only by facts["d2"] (tools/d2_facts.py; sidecar only), deliberately not printed
+    "capex_d2", "debt_d2_total",
 }) | frozenset(input_scope.HISTORY_FIELDS)
 
 
@@ -1817,10 +1819,37 @@ def _d2_facts_for(t, h, hist_doc, record, sic, sector, price, facts, fin, pi, as
                 ccy = (fx.get("statement_currency"), fx.get("quote_currency"), f"vendor FX block ({fx.get('flag') or 'converted'})")
         else:
             ccy = (None, None, "no vendor file")
+        field_prov = {}
+        tag_names, state_names = prov.get("_tags"), prov.get("_states") or {}
+        for f in ("capex_d2", "debt_d2_total", "interest_on_borrowings"):
+            runs_f = ((prov.get("runs") or {}).get(t) or {}).get(f)
+            if runs_f and tag_names:
+                tg = throughcycle_record.resolve_run_tags(runs_f, tag_names, yrs)
+                ordered = sorted((int(r[0]), r[2]) for r in runs_f)
+                cells = {}
+                for y in yrs:
+                    st = None
+                    for first, code in ordered:
+                        if y >= first:
+                            st = state_names.get(code, code)
+                    if y in tg:
+                        cells[y] = {"tag": tg[y], "state": st}
+                field_prov[f] = cells
+        vendor_total_debt = (fin or {}).get("Total_Debt")
+        vendor_capex, vendor_capex_why = None, "no vendor file"
+        if fin:                       # the pack's own vendor-capex gate: FX converted, and the vendor's latest annual dated at our fiscal year end
+            pe = (((prov.get("period_end") or {}).get(t) or {}).get(str(base_year)))
+            try:
+                fye = datetime.fromisoformat(str(pe)[:10]).date() if pe else None
+            except ValueError:
+                fye = None
+            okv, vendor_capex_why = _vendor_capex_usable(fin, fye)
+            vendor_capex = fin.get("Capital_Expenditure") if okv else None
         vdate = (asof_date if asof_date is not None else datetime.now().date())
         out = d2_facts.build(view, base_year, sic=sic, sector=sector, financial_sectors=consensus_reference.FINANCIAL_SECTORS, price=price,
                              shares=shares, shares_source=shares_src, statement_currency=ccy[0], quote_currency=ccy[1], currency_source=ccy[2],
-                             valuation_date=vdate.isoformat(), pi=pi, untagged=untagged, dc_tags=dc_tags)
+                             valuation_date=vdate.isoformat(), pi=pi, untagged=untagged, dc_tags=dc_tags, field_prov=field_prov,
+                             vendor_total_debt=vendor_total_debt, vendor_capex=vendor_capex, vendor_capex_why=vendor_capex_why)
         rec = record or {}
         rtc2 = rec.get("R_tc_after_lease_interest")
         out["d2_provenance"]["r_tc_after_lease_interest"] = {
