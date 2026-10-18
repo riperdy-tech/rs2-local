@@ -114,7 +114,9 @@ SYSTEM_MTP5_Q4_V33_SHA256 = "ff033c2519528445a1f2e56a797746524d64bff7d65e5a31612
 # revision-22 one; was "3bf8a179c11596113e73e8f44037ff3e61c3f1fc459bc64d32f7f52b3ce21344".
 # revision 25 (Stage 0.3): continue_report names FORM_FIELDS_25 for a "(pack revision 25)" pack (the desk-schema-25.1 arms); the text it sends for every
 # other pack is unchanged. Was "c128645ac57ecb3ebb376ff0c0a99dc9e76bccbe7f814b1ba85474d836d4b451".
-CONTINUE_REPORT_SHA256 = "4d6c9dfe21629ba34f0675633dcd9a4e599939517e4e85b06576557751519878"
+# revision 25 short form (desk schema 25.2): continue_report names FORM_FIELDS_III also for a "(pack revision 26)" pack (the r25_sf arm; its contract is revision 24's);
+# the text it sends for every other pack is unchanged. Was "4d6c9dfe21629ba34f0675633dcd9a4e599939517e4e85b06576557751519878".
+CONTINUE_REPORT_SHA256 = "1d1df7e7e64cb03bed4e501dcee541d518b1b4be45008773af6fb297d1a3b076"
 
 
 def _sha256(s: str) -> str:

@@ -36,6 +36,7 @@ import consensus_reference
 import crux_check
 import pi_text
 import bridge_checks
+import x_margin_basis
 
 # Revision 17 (brief B 4i): the unit rule for sbc_dilution.
 SBC_DILUTION_UNIT_MESSAGE = "sbc_dilution is a fraction below 1 (0.02 = 2%) or a whole number of new shares"
@@ -597,7 +598,7 @@ def unbundled_dcf(
         margin_ratio = float(long_run_margin) / mg[4]
         g5, fade_left = R[5] / R[4] - 1.0, fade_years
         lr_info = {"rev5": rev5, "m5_basis": "bridge", "margin_held_reason": None}
-        stamps = ["desk_schema_25_1"] + stamps
+        stamps = [("desk_schema_25_2" if bridge.get("schema") == DESK_SCHEMA_252 else "desk_schema_25_1")] + stamps
     else:
         e5, margin_ratio, ronic0, ronic_t, stamps = _long_run_inputs(long_run, oe[4], terminal_ronic, rate, long_run_margin, info=lr_info)
         rev5 = lr_info.get("rev5")
@@ -1803,6 +1804,9 @@ REFUSAL_GENERIC_CLAUSE = " Call again with the same inputs and these reasons, or
 
 # revision 25 (Stage 0.3, desk schema 25.1): the bridge's declared inputs (the follow-up rule below compares them like any input)
 BRIDGE_PATH_FIELDS = ("revenue_growth", "earnings_margin")
+# revision 25 short form (BRIEF_SF_short_form.md): desk schema 25.2 values a scenario through the same path arithmetic with the two lists as its only declarations -
+# no normalization block, no C or K check, no reason request; it annotates the margin basis (x_margin_basis.basis_check) and nothing else
+DESK_SCHEMA_252 = "25.2"
 BRIDGE_NORMALIZATION_FIELDS = ("normalized_margin", "normalization_horizon", "normalized_revenue_base", "structural_growth", "flags",
                                "cycle_position", "cycle_evidence", "growth_trajectory", "margin_persistence")      # Bull and Bear inherit these from the Base unless they give their own
 BRIDGE_OPTIONAL_FIELDS = ("normalized_revenue_base", "cycle_evidence")      # the three labels are required on the Base (Stage 0.5 follow-up)
@@ -1961,13 +1965,14 @@ def _bridge_not_applied_reason(lr, frame, cfl_norm):
     return None
 
 
-def _bridge_declarations(sc, params, base_decl=None):
+def _bridge_declarations(sc, params, base_decl=None, short=False):
     """A scenario's declarations: the path fields from the entry, else the top level; the normalization fields from the entry, else (Base) the top
-    level or (Bull, Bear) the Base's. Returns (values, inherited field names). A field not given is None."""
+    level or (Bull, Bear) the Base's. Returns (values, inherited field names). A field not given is None. `short` (desk schema 25.2): the path fields
+    only - every scenario declares its own two lists, and there is nothing to inherit."""
     vals, inherited = {}, []
     for k in BRIDGE_PATH_FIELDS:
         vals[k] = sc.get(k) if sc.get(k) is not None else params.get(k)
-    for k in BRIDGE_NORMALIZATION_FIELDS:
+    for k in (() if short else BRIDGE_NORMALIZATION_FIELDS):
         if sc.get(k) is not None:
             vals[k] = sc[k]
         elif base_decl is None:
@@ -1979,9 +1984,10 @@ def _bridge_declarations(sc, params, base_decl=None):
     return vals, inherited
 
 
-def _bridge_problems(vals, label, fade_years, is_base=False):
+def _bridge_problems(vals, label, fade_years, is_base=False, short=False):
     """The declarations the desk cannot read, as `missing` entries (named, the existing refusal pattern). The three classification labels are
-    required on the Base (at the top level or in the scenario): the desk call is their single owner under 25.1; Bull and Bear inherit."""
+    required on the Base (at the top level or in the scenario): the desk call is their single owner under 25.1; Bull and Bear inherit. `short` (desk
+    schema 25.2): the two lists only; the normalization block and the labels are not asked for."""
     out = []
     rg, em = vals.get("revenue_growth"), vals.get("earnings_margin")
     if not (isinstance(rg, (list, tuple)) and len(rg) == 5 and all(_is_num(x) and math.isfinite(x) and x > -1 for x in rg)):
@@ -1990,6 +1996,8 @@ def _bridge_problems(vals, label, fade_years, is_base=False):
         out.append(f"earnings_margin for {label} (five earnings margins of years 1-5 on the X basis, decimals, for example [0.20, 0.21, 0.22, 0.22, 0.22])")
     elif em[4] == 0:
         out.append(f"earnings_margin for {label} (the year-5 margin may not be 0: the long run's margin ratio divides by it)")
+    if short:
+        return out
     for k, what in (("normalized_margin", "the X-basis earnings margin once any abnormal margin condition has ended, a decimal"),
                     ("structural_growth", "the annual revenue growth with the cyclical swing removed, a decimal above -1")):
         v = vals.get(k)
@@ -2015,9 +2023,10 @@ def _bridge_problems(vals, label, fade_years, is_base=False):
     return out
 
 
-def _bridge_build(vals, inherited, cf, lr, wc_intensity, long_run_margin):
+def _bridge_build(vals, inherited, cf, lr, wc_intensity, long_run_margin, short=False):
     """(arithmetic for unbundled_dcf's `bridge`, the owner-earnings growth that arithmetic implies, the declarations to record). SPEC section 4:
-    R_0 = rev_L, R_t = R_{t-1}(1 + g_t); kappa = base_cf / (rev_L x_L). Called only for a scenario whose declarations passed `_bridge_problems`."""
+    R_0 = rev_L, R_t = R_{t-1}(1 + g_t); kappa = base_cf / (rev_L x_L). Called only for a scenario whose declarations passed `_bridge_problems`.
+    `short` (desk schema 25.2): the same arithmetic; the schema is named in the arithmetic so the result is stamped desk_schema_25_2."""
     rev_L, x_L = float(lr["rev_L"]), float(lr["x_L"])
     R = [rev_L]
     for g in vals["revenue_growth"]:
@@ -2030,14 +2039,22 @@ def _bridge_build(vals, inherited, cf, lr, wc_intensity, long_run_margin):
         growth.append(x / prev - 1.0 if prev != 0 else 0.0)
         prev = x
     arith = {"revenue": R, "margin": m, "kappa": kappa, "wc_intensity": wc_intensity, "m0": x_L}
+    if short:
+        arith["schema"] = DESK_SCHEMA_252
     decl = {k: (list(v) if isinstance(v, (list, tuple)) else v) for k, v in vals.items()}
     decl.update(long_run_margin=long_run_margin, inherited=list(inherited))
     return arith, growth, decl
 
 
-def _bridge_finish(dcf, decl, lr, fade_years, is_base=False, terminal_g=None):
-    """Add the declarations, N_0 and N_H and the check results to a bridge scenario's `dcf["bridge"]` (read-only on every input)."""
+def _bridge_finish(dcf, decl, lr, fade_years, is_base=False, terminal_g=None, short=False, consensus_margins=None):
+    """Add the declarations, N_0 and N_H and the check results to a bridge scenario's `dcf["bridge"]` (read-only on every input).
+    `short` (desk schema 25.2): the declarations and the margin basis check only. No N_0, N_H, C check or K check exists in a 25.2 result: the near-term
+    and normalized earnings and the three labels are the analyst's written contract, as in revision 24, and nothing here stands in for them."""
     b = dcf["bridge"]
+    if short:
+        b["declared"] = decl
+        b["margin_basis"] = x_margin_basis.basis_check(decl.get("earnings_margin"), consensus_margins)
+        return
     R0, R = b["revenue"][0], b["revenue"]
     R_N0 = decl.get("normalized_revenue_base")
     base = R0 if R_N0 is None else float(R_N0)
@@ -2086,7 +2103,9 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     # the step-2a fixes D2-D4 stay. Stamped rev22_control_desk on the result.
     rev22_control = ctx.get("pilot_arm") == "rev22"
     # revision 25 (Stage 0.3): desk schema 25.1 values a perpetual equity scenario through the normalization bridge; every other pack keeps its desk
-    desk25 = ctx.get("desk_schema") == "25.1" and not rev22_control
+    desk25 = ctx.get("desk_schema") in ("25.1", DESK_SCHEMA_252) and not rev22_control
+    # revision 25 short form (desk schema 25.2): the same path arithmetic with the two lists as the only declarations; no normalization, no C or K check
+    desk252 = desk25 and ctx.get("desk_schema") == DESK_SCHEMA_252
 
     scenarios = params.get("scenarios") or []
     base_cf = params.get("base_cf")
@@ -2240,12 +2259,13 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     # revision 25 (SPEC section 3): the bridge's declarations. Base is required; Bull and Bear inherit Base's normalization unless they give their own.
     # explicit_growth and growth_rates are refused for a bridge scenario, so that there is only one path.
     if desk25 and any(v is None for v in bridge_plan.values()):
+        _dsv = DESK_SCHEMA_252 if desk252 else "25.1"
         for gone in ("explicit_growth", "growth_rates"):
             if params.get(gone) is not None:
-                missing.append(f"{gone} at the top level (not accepted under desk schema 25.1: give revenue_growth and earnings_margin in each "
+                missing.append(f"{gone} at the top level (not accepted under desk schema {_dsv}: give revenue_growth and earnings_margin in each "
                                f"scenario; the desk derives the owner earnings)")
         _base_sc = next((sc for sc in scenarios if isinstance(sc, dict) and _role_of(sc.get("name")) == "base"), None)
-        _base_decl = _bridge_declarations(_base_sc, params) if _base_sc is not None else None
+        _base_decl = _bridge_declarations(_base_sc, params, short=desk252) if _base_sc is not None else None
         _base_problem_names = set()
         for sc in sorted((x for x in scenarios if isinstance(x, dict)), key=lambda x: x is not _base_sc):      # the Base first
             if bridge_plan.get(id(sc), "off") is not None:
@@ -2253,17 +2273,18 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             _label = str(sc.get("name") or "Scenario")
             for gone in ("explicit_growth", "growth_rates"):
                 if sc.get(gone) is not None:
-                    missing.append(f"{gone} in {_label} (not accepted under desk schema 25.1: give revenue_growth and earnings_margin; the desk "
+                    missing.append(f"{gone} in {_label} (not accepted under desk schema {_dsv}: give revenue_growth and earnings_margin; the desk "
                                    f"derives the owner earnings)")
             _is_base = sc is _base_sc
-            bridge_decls[id(sc)] = _bridge_declarations(sc, params) if (_is_base or _base_decl is None) else _bridge_declarations(sc, params, _base_decl)
+            bridge_decls[id(sc)] = (_bridge_declarations(sc, params, short=True) if desk252 else
+                                    _bridge_declarations(sc, params) if (_is_base or _base_decl is None) else _bridge_declarations(sc, params, _base_decl))
             _fy = sc.get("fade_years") if sc.get("fade_years") is not None else params.get("fade_years")
-            for problem in _bridge_problems(bridge_decls[id(sc)][0], _label, _fy, is_base=_is_base):
+            for problem in _bridge_problems(bridge_decls[id(sc)][0], _label, _fy, is_base=_is_base, short=desk252):
                 field = problem.split(" ", 1)[0]
                 if _is_base:
                     _base_problem_names.add(field)
-                elif field in _base_problem_names and sc.get(field) is None:
-                    continue                # inherited from a Base that is already refused for it
+                elif field in _base_problem_names and sc.get(field) is None and not desk252:
+                    continue                # inherited from a Base that is already refused for it (25.1; under 25.2 every scenario declares its own lists)
                 missing.append(problem)
 
     # B2 (revision 19): a crux that is present must be well formed (a list of one to three entries, each with a judgment input, a reason and one to
@@ -2540,7 +2561,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         if desk25 and id(sc) in bridge_decls and _is_num(s_cf) and isinstance((long_run_ctx or {}).get("rev_L"), (int, float)):
             _vals, _inh = bridge_decls[id(sc)]
             _inten = (long_run_ctx or {}).get("nwc_intensity")
-            bridge_in, s_gr, bridge_decl = _bridge_build(_vals, _inh, s_cf, long_run_ctx, float(_inten) if _is_num(_inten) else None, s_lrm)
+            bridge_in, s_gr, bridge_decl = _bridge_build(_vals, _inh, s_cf, long_run_ctx, float(_inten) if _is_num(_inten) else None, s_lrm,
+                                                         short=desk252)
 
         value_args[sc_name] = {"cf": s_cf, "wacc": s_wacc, "tg": s_term_g, "shares": s_shares, "sbc": s_sbc,
                                "sbc_dil": s_sbc_dil, "frame": sc_frame, "net_debt": sc_net_debt,
@@ -2552,13 +2574,14 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
         if dcf_res is None:
             continue
         if bridge_decl is not None:
-            _bridge_finish(dcf_res, bridge_decl, long_run_ctx, s_fade, is_base=_role_of(sc_name) == "base", terminal_g=s_term_g)
+            _bridge_finish(dcf_res, bridge_decl, long_run_ctx, s_fade, is_base=_role_of(sc_name) == "base", terminal_g=s_term_g, short=desk252,
+                           consensus_margins=ctx.get("x_margin_consensus_y1y2"))
         elif desk25 and bridge_plan.get(id(sc)):
             # SPEC section 4: revision 24's path for a scenario the bridge does not apply to, stamped and reported
             _why = f"bridge_not_applied:{bridge_plan[id(sc)]}"
             dcf_res.setdefault("stamps", []).append(_why)
             dcf_res["bridge"] = {"applied": False, "reason": bridge_plan[id(sc)]}
-            if _role_of(sc_name) == "base":
+            if _role_of(sc_name) == "base" and not desk252:
                 # the Stage 0.5-0.8 audit: the desk call still owns the three labels when the bridge does not apply (the 25.1 contract no longer
                 # carries them), so the Base's labels are recorded for the fill; no K check runs on revision 24's path
                 dcf_res["bridge"]["declared"] = {k: (sc.get(k) if sc.get(k) is not None else params.get(k))
@@ -2573,6 +2596,15 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
 
     if scenario_dcfs:
         result["scenario_dcfs"] = scenario_dcfs
+    if desk252 and scenario_dcfs:
+        # revision 25 short form: the margin basis check, an annotation (the desk's message states a gap once, as information; nothing is refused or changed)
+        result["margin_basis"] = _margin_basis_summary(scenario_dcfs, ctx.get("x_margin_consensus_y1y2"))
+        _mb = result["margin_basis"]
+        if _mb["margin_basis_gap"]:
+            result["margin_basis_gap"] = _mb["margin_basis_gap"]
+            result.setdefault("desk_stamps", []).append("margin_basis_gap")
+        elif _mb["status"] == "no_basis_check_no_consensus":
+            result.setdefault("desk_stamps", []).append("no_basis_check_no_consensus")
 
     # ---- 2. Single (top-level) DCF projection --------------------------------------------------
     growth_rates = params.get("explicit_growth") if params.get("explicit_growth") is not None else params.get("growth_rates")
@@ -3000,6 +3032,27 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     return result
 
 
+def _margin_basis_summary(scenario_dcfs, consensus):
+    """Desk schema 25.2: the margin basis check of every bridged scenario in one record. {"band", "status", "consensus_x_margin": {"y1", "y2"},
+    "scenarios": {name: x_margin_basis.basis_check}, "margin_basis_gap": [{"scenario", "year", "declared", "consensus", "ratio"}]}. The status is "checked" when any
+    scenario was compared with a consensus margin, else the first scenario's own status (no_basis_check_no_consensus when the pack holds no consensus margin); no_basis_check_bridge_not_applied when no
+    scenario was bridged (a finite life or the firm frame: there are no declared margins to compare)."""
+    scen, gaps, statuses = {}, [], []
+    for it in scenario_dcfs:
+        mb = (((it.get("dcf") or {}).get("bridge")) or {}).get("margin_basis")
+        if not isinstance(mb, dict):
+            continue
+        name = str(it.get("name") or "Scenario")
+        scen[name] = mb
+        statuses.append(mb.get("status"))
+        gaps += [dict(g, scenario=name) for g in mb.get("gaps") or []]
+    cons = consensus if isinstance(consensus, dict) else {}
+    return {"band": list(x_margin_basis.BASIS_BAND),
+            "status": "checked" if "checked" in statuses else (statuses[0] if statuses else "no_basis_check_bridge_not_applied"),
+            "consensus_x_margin": {k: (cons.get(k) or {}).get("x_margin") if isinstance(cons.get(k), dict) else None for k in ("y1", "y2")},
+            "scenarios": scen, "margin_basis_gap": gaps}
+
+
 def _bridge_markdown(name, br):
     """Revision 25 (SPEC section 6): a bridge scenario's derived table for years 0-5, the margin path to 5+F, N_0 and N_H and the check table."""
     if not isinstance(br, dict):
@@ -3016,10 +3069,11 @@ def _bridge_markdown(name, br):
     out.append("Margin path m_t, years 1 to 5+F: " + ", ".join(f(x) for x in br.get("margin_path") or []))
     if br.get("n0") is not None:
         out.append(f"Normalized earnings: N_0 = {f(br['n0'])} (today's revenue scale), N_H = {f(br.get('nh'))} (year {(br.get('declared') or {}).get('normalization_horizon')}).")
-    out += ["", "| Check | Status | Declared | Derived | Horizon | Tolerance |", "|---|---|---|---|---|---|"]
-    for c in br.get("checks") or []:
-        status = c["status"] + (" (reason given)" if c.get("reason_given") else "")
-        out.append(f"| {c['id']} | {status} | {c.get('declared')} | {c.get('derived')} | {c.get('horizon')} | {c.get('tolerance')} |")
+    if br.get("checks"):            # desk schema 25.2 has none
+        out += ["", "| Check | Status | Declared | Derived | Horizon | Tolerance |", "|---|---|---|---|---|---|"]
+        for c in br["checks"]:
+            status = c["status"] + (" (reason given)" if c.get("reason_given") else "")
+            out.append(f"| {c['id']} | {status} | {c.get('declared')} | {c.get('derived')} | {c.get('horizon')} | {c.get('tolerance')} |")
     if br.get("class_checks"):
         out += ["", f"**{name}: classification checks (the labels are the desk call's; a check never changes one):**",
                 "| Check | Status | Declared | Derived | Tolerance | Note |", "|---|---|---|---|---|---|"]
@@ -3085,6 +3139,15 @@ def format_model_results_markdown(res: Dict[str, Any]) -> str:
 
     for item in res.get("scenario_dcfs") or []:
         lines += _bridge_markdown(item.get("name", "Scenario"), (item.get("dcf") or {}).get("bridge"))
+
+    mbg = res.get("margin_basis_gap")
+    if mbg:
+        # desk schema 25.2: one statement of the gap, as information; nothing is asked, refused or changed
+        lo, hi = (res.get("margin_basis") or {}).get("band") or x_margin_basis.BASIS_BAND
+        detail = "; ".join(f"{g['scenario']} year {g['year']}: declared {g['declared'] * 100:.1f}% against {g['consensus'] * 100:.1f}% ({g['ratio']:.2f}x)" for g in mbg)
+        lines.append(f"**Information, not a request:** the earnings margin you declared for years 1-2 is outside {lo:g} to {hi:g} times the X-basis margin the consensus EPS "
+                     f"levels imply (DEFAULTS x_margin_consensus_y1y2): {detail}. The desk valued your lists as declared; the gap is recorded as margin_basis_gap.")
+        lines.append("")
 
     yc = res.get("years35_cap")
     if isinstance(yc, dict):

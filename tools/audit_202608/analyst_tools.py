@@ -500,6 +500,40 @@ def _tools_desk25(base_tools):
     return out
 
 
+# Revision 25 short form (BRIEF_SF_short_form.md): the desk-call properties of desk schema 25.2 - the two lists in each scenario and nothing else: no normalization
+# block, no labels, no reason property. The earnings margin is described in the plain words the pack's DEFAULTS and the TASK use.
+_BRIDGE_PATH_PROPS_252 = {
+    "revenue_growth": {"type": "array", "items": {"type": "number"},
+                       "description": "The annual revenue growth of years 1-5, five decimals (0.08 = 8%), from the filed base year's revenue. Give it in each scenario."},
+    "earnings_margin": {"type": "array", "items": {"type": "number"},
+                        "description": "The earnings margin of years 1-5, five decimals. Earnings margin = net income plus after-tax amortization of acquired "
+                                       "intangibles, divided by revenue; after interest and tax; not the operating margin. Give it in each scenario."},
+}
+
+
+_DESK252_EXPLICIT_GROWTH = ("Only for a scenario revenue_growth and earnings_margin do not apply to (a finite cash_flow_life, the firm frame, or a pack without a "
+                            "positive base-year earnings margin): the owner-earnings growth of years 1-5. For every other scenario the desk refuses it; "
+                            "give revenue_growth and earnings_margin instead.")
+
+
+def _tools_desk252(base_tools):
+    """Revision 25 short form: `base_tools` with the desk-schema 25.2 properties added to run_financial_model (the two lists, in every scenario), growth_rates
+    removed and explicit_growth kept only for a scenario the lists do not apply to (the rule of 25.1 carries over)."""
+    out = json.loads(json.dumps(base_tools))
+    for t in out:
+        f = t.get("function", {})
+        if f.get("name") != "run_financial_model":
+            continue
+        props = f["parameters"]["properties"]
+        item = props["scenarios"]["items"]["properties"]
+        for d in (props, item):
+            d.pop("growth_rates", None)
+            if "explicit_growth" in d:
+                d["explicit_growth"] = dict(d["explicit_growth"], description=_DESK252_EXPLICIT_GROWTH)
+        item.update(json.loads(json.dumps(_BRIDGE_PATH_PROPS_252)))
+    return out
+
+
 def tools_for(desk_context=None):
     """The tools a sample is offered: TOOLS, or (revision 24 step 2b) a copy whose desk text says what the desk does when the pack prints no
     long-run default (desk_context["long_run_defaults_withheld"] is True), or (step 2c) revision 22's desk tool under pilot_arm rev22, or (revision
@@ -508,6 +542,8 @@ def tools_for(desk_context=None):
         return _tools_rev22()
     if isinstance(desk_context, dict) and desk_context.get("desk_schema") == "25.1":
         return _tools_desk25(tools_for(dict(desk_context, desk_schema=None)))
+    if isinstance(desk_context, dict) and desk_context.get("desk_schema") == "25.2":
+        return _tools_desk252(tools_for(dict(desk_context, desk_schema=None)))
     if not (isinstance(desk_context, dict) and desk_context.get("long_run_defaults_withheld") is True):
         return TOOLS
     out = json.loads(json.dumps(TOOLS))

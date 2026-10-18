@@ -270,6 +270,24 @@ positive, `x_L` missing) keeps revision 24's path, stamped `bridge_not_applied:<
 
 Two-pass fields, memo merge and classification labels (stages 0.5 to 0.7, same two arms). Every desk call carries a `pass` stamp; `contract_fill` adds `pass1_inputs` (the last complete pass-1 run's inputs) and `change_log` (code-computed against the answer run; the analyst's `reconciliation_reasons` are typed), and the verdict row carries `two_pass_arm`, `consensus_shown_pass1` and `memo_merge`. A sample with no complete pass-1 run is stamped `two_pass_breach:no_pass1`; it is recorded and never retried with a perturbed seed. In `r25_c` pass 1 the desk context withholds `levels`, the reference, `long_run` e5/oe5/m5 and the next-FY growth cap (`analyst_tools.pass1_desk_context`), and the pack withholds the DATA 8 PEG with the rest of the consensus; pass 2 has the full context. After a crux follow-up the memorandum is merged section by section (`merge_memo`) for these arms only; every other arm keeps the follow-up's reply as before. `growth_trajectory`, `cycle_position` and `margin_persistence` are required on the Base in the desk call (top level or scenario; Bull and Bear inherit), refused by name when missing, checked by K1 to K4 (`class_K1_reason` ... `class_K4_reason`), and owned by the desk call: they are not in the 25.1 contract, only their `*_evidence` fields are.
 
+### Revision 25, the short form — desk schema 25.2 (pilot arm `r25_sf` only)
+
+Spec: `stocks-workspace/docs/review_2026-09-22/rev23/briefs/BRIEF_SF_short_form.md` (operator-approved 2026-10-18). The pack fact `desk_schema` is `"25.2"` for
+that arm and absent for every other (SIDECAR_ONLY, as is each new fact below); its pack marker reads `(pack revision 26)` (`PACK_REVISION` stays 24), it is sent `TASK_SF`
+(revision 24's TASK with item 3 asking for the two lists and the working-capital sentence on the declared revenue) and it is a single pass (the arm is not in `R25_ARMS`).
+The desk (`financial_model_tool`, `desk_schema` `"25.2"`) values a perpetual equity scenario on 25.1's path arithmetic with `revenue_growth` and `earnings_margin`
+(five values each, declared in every scenario, nothing inherited) as the only declarations: no normalization block, no desk-call labels, no C or K check, no reason request,
+no N_0 or N_H (`dcf["bridge"]` carries the derived path table, `declared` and `margin_basis`). The near-term and normalized earnings and the three labels are the revision-24
+written contract (`contract_fill` stamps `s12_figures_typed_desk_schema_25_2` and fills `bridge`, `desk_schema` and `margin_basis_gap` only). `explicit_growth` is refused by name
+except for a scenario the lists do not apply to, as in 25.1.
+The DEFAULTS block adds three lines after `long_run` (`pack_facts.render_x_margin_lines`): the earnings margin basis in plain words, `x_margin_history` (the X-basis margin per
+filed year of the record's window, as filed and without one-offs: the largest filed impairment line and the restructuring line, after tax at that year's rate, each with its
+form and filing date; `x_margin_basis.history`, the filed lines from `paths.resolve("screener_sec_facts_dir")`, "not held" when that file is missing and "none filed" only when
+the file covers the year) and `x_margin_consensus_y1y2` (consensus EPS x the share-count default over the consensus revenue, years 1 and 2; `x_margin_basis.consensus_margins`).
+The basis flag (`x_margin_basis.basis_check`, band `BASIS_BAND` = [0.67, 1.5], registered before any run) annotates the result, the scorecard and the verdict row with
+`margin_basis_gap` when a declared year-1 or year-2 margin is outside the band, states it once in the desk message as information, and stamps `no_basis_check_no_consensus`
+when the pack holds no consensus margin. It refuses, clamps and changes nothing.
+
 ## Verdict provenance and gating (P1.2/P1.3/P1.5)
 
 Every depth verdict (`verdict_depth.json`, each ledger row) carries, stamped by

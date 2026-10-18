@@ -456,7 +456,7 @@ def continue_report(model, pack, partial_report, ctx=98304, timeout=1800, seed=N
         "3. Conclude with SECTION 12 and the complete ```json:underwriting contract with these fields: "
         # revision 24 step 2b: a revision-24 pack's contract carries the S12 fields too (cap.FORM_FIELDS_III); a revision-22 one (the rev22 arm) not
         + ", ".join(cap.FORM_FIELDS_25 if "(pack revision 25)" in pack.split("\n", 1)[0]
-                    else cap.FORM_FIELDS_III if "(pack revision 24)" in pack.split("\n", 1)[0] else cap.FORM_FIELDS)
+                    else cap.FORM_FIELDS_III if any(f"(pack revision {n})" in pack.split("\n", 1)[0] for n in (24, cap.R25_SF_REVISION)) else cap.FORM_FIELDS)
         + ". The values, probabilities and Kelly size come from your desk runs; do not type them into the contract.\n\n"
         "Do NOT repeat the prior sections. Proceed directly with the continuation."
     )
@@ -504,6 +504,7 @@ S12_SUMMARY_KEYS = ("near_term_earnings", "normalized_earnings", "normalization_
                     "cycle_position", "cycle_position_evidence", "growth_trajectory", "growth_trajectory_evidence", "input_rationale",
                     "long_run_margin", "plausibility_gate", "rev22_control_desk",       # step 2c: the rev22 control desk's stamp
                     "bridge", "bridge_checks", "class_checks", "desk_schema",          # revision 25: the normalization bridge (contract_fill.REVISION_25)
+                    "margin_basis_gap",                                                # revision 25 short form, desk schema 25.2 (contract_fill.REVISION_25_2)
                     # revision 25 (Stage 0.6, 0.7): the two-pass protocol's fields - the pass-1 inputs and the change log (contract_fill.REVISION_25_TWO_PASS),
                     # the analyst's reasons (the contract), the arm, whether consensus was shown in pass 1, and the memorandum merge after a crux follow-up
                     "pass1_inputs", "change_log", "reconciliation_reasons", "two_pass_arm", "consensus_shown_pass1", "memo_merge",
@@ -2079,7 +2080,7 @@ def build_desk_context(facts, price, ticker, company, run_date=None):
     `is not None`, never `or`.
     `run_date` (an ISO date string, revision 19 follow-up C7): the date of the run, which the crux's form check holds each citation's date against; None
     leaves the desk to read today's date, which is only right for a run made today (a replay of an older run passes that run's date)."""
-    return {
+    ctx = {
         "price": price,                                   # the harness price, the one the verdict uses
         "shares_default_b": (_num_b(facts["shares_default"])
                              if facts["shares_default"] is not None and facts["shares_default"] > 0
@@ -2127,6 +2128,11 @@ def build_desk_context(facts, price, ticker, company, run_date=None):
         "company": company,
         "run_date": run_date,                             # revision 19 (C7): the date the crux's citations are held to
     }
+    if facts.get("desk_schema") == "25.2":
+        # revision 25 short form: the margin the consensus EPS levels imply for years 1 and 2, which the desk's margin basis check compares the declared margins with
+        # (only a 25.2 pack adds the key: every other pack's context is as it was)
+        ctx["x_margin_consensus_y1y2"] = facts.get("x_margin_consensus_y1y2")
+    return ctx
 
 
 def is_two_pass_breach(meta):

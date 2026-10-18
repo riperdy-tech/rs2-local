@@ -37,6 +37,12 @@ DESK_SCHEMA_25 = "25.1"
 # run's inputs. Filled from the calls' own `pass` stamps (analyst_tools.chat_with_tools), never from the model's text; None for a sample that ran no
 # pass 1. The analyst's reasons (`reconciliation_reasons`) are a contract field, typed.
 REVISION_25_TWO_PASS = ("pass1_inputs", "change_log")
+# revision 25 short form (desk schema 25.2, BRIEF_SF_short_form.md): the Base's path table (`dcf["bridge"]`: R, m, E, OE, WC and the margin path, with no N_0, N_H or
+# check), the schema and the margin basis flag of the three scenarios (a list of {scenario, year, declared, consensus, ratio}, empty when every year is inside the
+# band, None when no check was made). Nothing else of REVISION_25 exists in a 25.2 run: no bridge_checks, no class_checks, no derived near_term_earnings or
+# normalized_earnings and no desk-owned label (the written contract owns them, as in revision 24: stamp `s12_figures_typed_desk_schema_25_2`), and no two-pass fields.
+DESK_SCHEMA_252 = "25.2"
+REVISION_25_2 = ("bridge", "desk_schema", "margin_basis_gap")
 
 FILLED = (
     "base_iv", "bull_iv", "bear_iv", "base_probability", "bull_probability", "bear_probability",
@@ -48,6 +54,7 @@ FILLED = (
     "base_cf_basis", "interest_addback",
 ) + REASONS_11 + REVISION_19 + REVISION_24_2B + REVISION_24_2D
 FILLED_25 = FILLED + REVISION_25 + REVISION_25_TWO_PASS          # the fields a pack with desk schema 25.1 is filled with (FILLED itself is every other pack's, as it was)
+FILLED_252 = FILLED + REVISION_25_2                              # desk schema 25.2 (a single pass: no pass-1 fields)
 ROLES = ("base", "bull", "bear")
 REL = 0.010001          # the harness's 1% desk-match tolerance (consensus_valuation, `close`)
 
@@ -311,6 +318,27 @@ def _fill_bridge(out, prov, src, typed):
             break
 
 
+def _fill_bridge_252(out, prov, src):
+    """Desk schema 25.2: the Base's path table, the schema and the margin basis flag of the three scenarios, from the desk's own results. The near-term and
+    normalized earnings and the three labels are not derived: they stay the analyst's written contract (stamped), as in revision 24."""
+    out["desk_schema"] = DESK_SCHEMA_252
+    out["bridge"] = ((src["base"][1].get("dcf") or {}).get("bridge")) if "base" in src else None
+    gaps, statuses = [], []
+    for role in ROLES:
+        if role not in src:
+            continue
+        mb = (((src[role][1].get("dcf") or {}).get("bridge")) or {}).get("margin_basis")
+        if isinstance(mb, dict):
+            statuses.append(mb.get("status"))
+            gaps += [dict(g, scenario=role) for g in mb.get("gaps") or []]
+    if "checked" in statuses:
+        out["margin_basis_gap"] = gaps
+    else:
+        out["margin_basis_gap"] = None
+        prov["stamps"].append(statuses[0] if statuses else "no_basis_check_not_computed")
+    prov["stamps"].append("s12_figures_typed_desk_schema_25_2")
+
+
 def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=None, company=None):
     """(filled, prov). `typed` is the sample's parsed contract (extract_scorecard); `facts` needs
     'shares_outstanding' (raw count or None) and 'coe_anchor' (fraction or None). `ticker` is only
@@ -361,7 +389,8 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
 
     out = {}
     desk25 = facts.get("desk_schema") == DESK_SCHEMA_25
-    if desk25:
+    desk252 = facts.get("desk_schema") == DESK_SCHEMA_252
+    if desk25 or desk252:
         prov["stamps"] = []
     for role in ROLES:
         if role in src:
@@ -422,6 +451,8 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
             out[k] = _f(imp.get(k))
         if desk25:
             _fill_bridge(out, prov, src, typed)
+        elif desk252:
+            _fill_bridge_252(out, prov, src)
         fr = d.get("valuation_frame") or _inp(e, c, "valuation_frame")
         out["valuation_frame"] = str(fr).lower() if fr is not None else None
         leg = prov["legs"].get("base")
@@ -561,7 +592,7 @@ def fill(calls, typed, facts, price, ticker=None, allow_blend=True, pack_text=No
     out["pass1_inputs"] = run_inputs(p1) if p1 is not None else None
     out["change_log"] = (change_log(run_inputs(p1), run_inputs(ref_call)) if p1 is not None and ref_call is not None else None)
     filled = {}
-    for k in (FILLED_25 if desk25 else FILLED):
+    for k in (FILLED_25 if desk25 else FILLED_252 if desk252 else FILLED):
         if k in out:
             filled[k] = out[k]
         else:

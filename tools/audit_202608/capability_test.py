@@ -56,6 +56,7 @@ import throughcycle_record  # noqa: E402
 import input_scope  # noqa: E402
 import pack_facts  # noqa: E402
 import pi_text  # noqa: E402
+import x_margin_basis  # noqa: E402
 
 CONFIG = rs2_data.CONFIG
 SD = Path(CONFIG["screener_data_dir"])
@@ -259,13 +260,22 @@ PACK_REVISION = 24
 # Revision 24 step 2b: the pilot arms (PHASE_4_REV24_MUSE.md step 3). `rev22` is the revision-22 briefing byte for byte (the control: its marker,
 # the CONSENSUS-IMPLIED VALUE, the DEFAULTS of revision 22 and its TASK); the two `iii` arms are the revision-24 briefing and differ only by P50 in
 # the POPULATION RANGES section.
-PILOT_ARMS = ("rev22", "iii_p50", "iii_no_p50", "r25_b", "r25_c")
+PILOT_ARMS = ("rev22", "iii_p50", "iii_no_p50", "r25_b", "r25_c", "r25_sf")
 REV22_REVISION = 22
 # Revision 25 (Stage 0.3, SPEC_rev25_normalization_bridge.md): the pilot arms B and C run desk schema 25.1 (the normalization bridge) with the
 # revision-25 briefing (PACK_REVISION 25 for these packs only, TASK_REV25, P50 omitted). Their difference (consensus withheld until pass 2) is Stage 0.6.
 R25_ARMS = ("r25_b", "r25_c")
 R25_REVISION = 25
 DESK_SCHEMA_25 = "25.1"
+# Revision 25 short form (BRIEF_SF_short_form.md, operator-approved 2026-10-18): the pilot arm r25_sf runs desk schema 25.2 on the revision-24 briefing. It is the 25.1
+# bridge's path arithmetic (R_t, m_t, kappa, working capital on the declared revenue) with the two lists revenue_growth and earnings_margin as the only declarations: no
+# normalization block, no C or K check, no desk-call labels and a single pass (the arm is not in R25_ARMS, so the two-pass protocol never opens). The briefing adds the
+# earnings margin basis in plain words, x_margin_history (the X-basis margin per filed year, with and without one-offs) and x_margin_consensus_y1y2 to DEFAULTS, and the
+# TASK asks for the two lists (TASK_SF). The pack's revision marker is R25_SF_REVISION (PACK_REVISION stays 24: no book name re-triggers); the near-term and normalized
+# earnings and the three labels stay the written contract of revision 24. D2 stays off (d2_enabled unset): this arm is the analyst form only.
+R25_SF_ARM = "r25_sf"
+R25_SF_REVISION = 26
+DESK_SCHEMA_252 = "25.2"
 
 
 def pack_flags(pilot_arm=None, ranges_show_p50=None):
@@ -279,7 +289,7 @@ def pack_flags(pilot_arm=None, ranges_show_p50=None):
     flag = None if flag is None else (flag is True)
     if arm == "rev22":
         return arm, None
-    if arm in ("iii_p50", "iii_no_p50", "r25_b", "r25_c"):
+    if arm in ("iii_p50", "iii_no_p50", "r25_b", "r25_c", R25_SF_ARM):
         want = arm == "iii_p50"
         if flag is not None and flag != want:
             raise ValueError(f"pilot_arm {arm} and ranges_show_p50 {flag} contradict each other")
@@ -1815,6 +1825,39 @@ def _population_ranges_for(t, h, record, asof_date, hist_doc=None):
         return {"vintage": population_ranges.vintage_for(T), "inputs": {}, "unavailable": f"the population tables could not be read ({type(e).__name__}: {e})"}
 
 
+def _one_off_us_gaap(t):
+    """The us-gaap block of company `t`'s filed SEC companyfacts, from paths.resolve("screener_sec_facts_dir"), or None when the directory or the company's file is not
+    held (the one-off lines are then "not held", never "none filed")."""
+    import paths as _paths
+    c = cik(t)
+    d = _paths.resolve("screener_sec_facts_dir", required=False)
+    p = (Path(d) / f"CIK{c}.json") if (d is not None and c) else None
+    if p is None or not p.is_file():
+        return None
+    try:
+        return (json.loads(p.read_text(encoding="utf-8")).get("facts") or {}).get("us-gaap") or {}
+    except (OSError, ValueError):
+        return None
+
+
+def x_margin_basis_facts(t, h, hist_doc, estimates, facts):
+    """Revision 25 short form (desk schema 25.2): {"x_margin_history", "x_margin_consensus_y1y2"} for company `t`, a pure function of its stored data - the screener's
+    fiscal-year rows `h` and history document (the record's own view of them, as `_record_for` reads), the filed companyfacts, the frozen enrich `estimates` - and of the
+    pack's own `facts` (shares_default, nci_attribution.pi, vendor_revenue_basis). Collects nothing: the build, and the derivation of a frozen revision-24 pack, call it alike."""
+    yrs = sorted(int(y) for y in h if str(y).isdigit())
+    base_year = max(yrs) if yrs else None
+    untagged = _marker_for(hist_doc, t) or []
+    view = input_scope.record_view_for(h, hist_doc, t, base_year)[0]
+    period_ends = (((hist_doc.get("provenance") or {}).get("period_end") or {}).get(t)) or {}
+    hist = x_margin_basis.history(view, untagged, period_ends, _one_off_us_gaap(t), base_year)
+    pi = (facts.get("nci_attribution") or {}).get("pi")
+    vb = str((facts.get("vendor_revenue_basis") or {}).get("status") or "")
+    cons = x_margin_basis.consensus_margins(estimates, facts.get("shares_default"), pi, vendor_break=vb.startswith("break"))
+    fy_rev = (h.get(str(base_year)) or {}).get("revenue") if base_year is not None else None
+    cons["vintage_aligned"] = consensus_reference.vintage_aligned(estimates, fy_rev)
+    return {"x_margin_history": hist, "x_margin_consensus_y1y2": cons}
+
+
 def build_pack(t, price_override=None, include_research=True, asof=None, news_snippets=False, pilot_arm=None, ranges_show_p50=None):
     """Every fact we hold that is FILED, or is exact arithmetic on filed values, labelled with its
     source and its period. No judgment is exercised here: no valuation, no basis choice, no
@@ -1880,7 +1923,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     facts["pilot_arm"] = _arm
     facts["ranges_show_p50"] = _show_p50
     _r25 = _arm in R25_ARMS
-    facts["desk_schema"] = DESK_SCHEMA_25 if _r25 else None        # revision 25: the desk's schema (pack_facts.KEYS), absent for every existing arm
+    _sf = _arm == R25_SF_ARM
+    facts["desk_schema"] = DESK_SCHEMA_25 if _r25 else (DESK_SCHEMA_252 if _sf else None)        # revision 25: the desk's schema (pack_facts.KEYS), absent for every existing arm
     # revision 24 (R24.2): the reference is computed and kept in the facts, never printed; stage B shows it after the memorandum. Step 2b: nor is a
     # default for a long-run judgment. The rev22 arm prints both, as revision 22 did.
     facts["reference_withheld"] = None if _rev22 else True
@@ -1895,7 +1939,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # S3 5.1: the revision marker. from_text() dispatches on "(pack revision N)", N >= 15, appearing
     # in this first line (pack_facts._REVISION_RE) to read the DEFAULTS block instead of the legacy
     # regexes.
-    L = [f"# DATA PACK - {t}   (pack revision {REV22_REVISION if _rev22 else (R25_REVISION if _r25 else PACK_REVISION)})", ""]
+    L = [f"# DATA PACK - {t}   (pack revision {REV22_REVISION if _rev22 else (R25_REVISION if _r25 else (R25_SF_REVISION if _sf else PACK_REVISION))})", ""]
     if asof_date is not None:
         L += [f"**POINT-IN-TIME BRIEFING — as of {asof_date.isoformat()}; you must not use "
               f"knowledge of events after this date.**",
@@ -4136,6 +4180,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                 _dargs, _pack_price, rf_eff=facts["rf_eff"], gdp_trend=facts["nominal_gdp_trend"], levels=facts.get("levels")))
         else:
             facts["price_implied_defaults"] = {"not_available": "the pack has no price to solve at"}
+    if _sf:
+        # revision 25 short form: the earnings-margin basis facts, computed from this build's own record, estimates and the filed companyfacts (the DEFAULTS block prints them)
+        facts.update(x_margin_basis_facts(t, h, _hist_doc, en.get("estimates") if en else None, facts))
     L += [pack_facts.render_defaults_block(facts, split_confirmed=bool(_split and _split["confirmed"]), no_marker=_no_marker,
                                            withhold_reference=not _rev22, withhold_long_run=not _rev22), ""]
     # revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md item 2): the population ranges of the long-run inputs, after DEFAULTS; the rev22 arm
@@ -4336,15 +4383,44 @@ def _task_rev25():
 
 
 TASK_REV25 = _task_rev25()
+
+
+# Revision 25 short form (BRIEF_SF_short_form.md item 6): the TASK of the packs with desk schema 25.2 - the revision-24 TASK with item 3 asking for the two lists in place of the
+# owner-earnings growth, the basis stated in plain words, and the working-capital sentence on the declared revenue. Nothing else changes: the near-term and normalized earnings
+# (item 3a), the three classifications (item 3b) and the contract are the revision-24 text, there is no normalization block, no check and no second pass. Built by replacing
+# exact passages of TASK, so every other word is TASK's; a passage that moves breaks the import, not the run.
+SF_BASIS_PARAGRAPH = (
+    "   - The two lists: revenue_growth (the annual revenue growth of years 1-5, five values) and earnings_margin (the earnings margin of years 1-5, five values), "
+    "in each of Base, Bull and Bear, from the filed base year. " + x_margin_basis.BASIS_WORDS[0].upper() + x_margin_basis.BASIS_WORDS[1:] + ". "
+    "DEFAULTS prints this basis (earnings_margin_basis), your record on it for each filed year with and without one-offs (x_margin_history) and the margin the consensus "
+    "EPS levels imply for years 1 and 2 (x_margin_consensus_y1y2). The desk derives the owner earnings from your two lists and values the long run from year 5 as before; "
+    "revenue_growth and earnings_margin replace explicit_growth, which this desk refuses except for a scenario they do not apply to (a finite cash_flow_life or the firm "
+    "frame; the desk says so). If a declared margin of year 1 or 2 is outside 0.67 to 1.5 times the consensus-implied one, the desk states the gap once, as information: "
+    "it asks for no reason and changes nothing." + chr(10))
+
+
+def _task_sf():
+    t = TASK
+    for old, new in (('the growth of that cash flow (not revenue) for years 1-5 in Base, Bull and Bear;', 'the revenue growth and the earnings margin of years 1-5 in Base, Bull and Bear (the two lists, below);'),
+                     ("the revenue being the consensus revenue path scaled year by year by that scenario's owner earnings over the consensus owner earnings, unless", 'the revenue being your declared revenue path from the filed base year, unless'),
+                     ("   - Growth: your years 1-2 are your own;", SF_BASIS_PARAGRAPH + "   - Growth: your years 1-2 are your own;")):
+        assert t.count(old) == 1, old[:60]
+        t = t.replace(old, new)
+    return t
+
+
+TASK_SF = _task_sf()
 FORM_FIELDS_25 = tuple(f for f in FORM_FIELDS_III if f not in ("near_term_earnings", "normalized_earnings", "margin_persistence", "cycle_position", "growth_trajectory")) + ("reconciliation_reasons",)      # Stage 0.6: the contract field of the two-pass protocol
 
 
 def task_for(facts):
     """Revision 24 step 2b: the TASK a pack is sent with - the revision-22 TASK for the rev22 arm (its facts' pilot_arm), the revision-24 TASK
-    otherwise; revision 25: TASK_REV25 for a pack with desk schema 25.1."""
+    otherwise; revision 25: TASK_REV25 for a pack with desk schema 25.1, TASK_SF for desk schema 25.2."""
     f = facts or {}
     if f.get("desk_schema") == DESK_SCHEMA_25:
         return TASK_REV25
+    if f.get("desk_schema") == DESK_SCHEMA_252:
+        return TASK_SF
     return TASK_REV22 if f.get("pilot_arm") == "rev22" else TASK
 
 

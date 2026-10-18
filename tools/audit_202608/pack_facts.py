@@ -21,6 +21,7 @@ if str(_REPO_TOOLS) not in sys.path:
 import consensus_reference  # noqa: E402
 import pi_text  # noqa: E402
 import throughcycle_record  # noqa: E402
+import x_margin_basis  # noqa: E402
 
 FACTS_VERSION = 11
 SIDECAR = "_pack_facts.json"
@@ -127,12 +128,19 @@ KEYS: list[str] = [
     # revision 25 (Stage 0.3, SPEC_rev25_normalization_bridge.md section 8): `desk_schema` is "25.1" for the pilot arms r25_b and r25_c (the desk values
     # a perpetual equity scenario through the normalization bridge) and None for every other arm and pack. SIDECAR_ONLY: no pack text prints it.
     "desk_schema",
+    # revision 25 short form (BRIEF_SF_short_form.md item 4, desk schema 25.2): the earnings-margin basis facts. `x_margin_history` is the X-basis margin per filed year of
+    # the record's window, as filed and without one-offs (x_margin_basis.history); `x_margin_consensus_y1y2` the X-basis margin the consensus EPS levels imply for
+    # years 1 and 2 (x_margin_basis.consensus_margins). Both None for every pack but a 25.2 one. SIDECAR_ONLY: the 25.2 DEFAULTS block prints them in words
+    # (render_x_margin_lines), and a text read gives None.
+    "x_margin_history",
+    "x_margin_consensus_y1y2",
 ]
 
 # keys the DEFAULTS text does not carry: a frozen replay reads them from the sidecar, and a text read gives None (parity ignores them)
 SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price",
                 "nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
-                "vendor_revenue_basis", "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema")
+                "vendor_revenue_basis", "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema",
+                "x_margin_history", "x_margin_consensus_y1y2")
 # revision 24 (R24.2): the facts a stage-A DEFAULTS block does not print; a text read of such a block gives None for them, so the CIV is taken from
 # the facts or the sidecar, never from text, and the parity check leaves them out when either side is a withheld-reference pack
 WITHHELD_KEYS = ("consensus_implied_value", "reference_status")
@@ -449,7 +457,7 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         **{k: None for k in _SCOPE_KEYS},
         "reference_withheld": None, "reference_line": None,
         "long_run_defaults_withheld": None, "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
-        "desk_schema": None,
+        "desk_schema": None, "x_margin_history": None, "x_margin_consensus_y1y2": None,
     }
 
 
@@ -955,6 +963,90 @@ def _nci_defaults_line(f: dict[str, Any]) -> str | None:
             f"filed figures")
 
 
+def _pct(v: Any) -> str:
+    return "not available" if not isinstance(v, (int, float)) else f"{v * 100:.1f}%"
+
+
+def _x_margin_year_text(y: dict[str, Any]) -> str:
+    """One fiscal year of x_margin_history in words: the margin as filed, without one-offs, and the filed lines the add-back rests on, each with its source."""
+    head = f"FY{y['fy']} {_pct(y['x_margin'])} as filed, {_pct(y['x_margin_ex_one_offs'])} without one-offs"
+    status = y.get("one_offs_status")
+    if status == "filed":
+        parts = []
+        for group, total in (("impairment", y.get("impairment_b")), ("restructuring", y.get("restructuring_b"))):
+            line = next((ln for ln in y.get("one_off_lines") or [] if ln.get("group") == group and ln.get("counted")), None)
+            if line is not None:
+                parts.append(f"{group} ${total:.3f}B ({line['tag']}, {line.get('form')} filed {line.get('filed')})")
+        detail = (f"added back after tax at {y['tax_rate'] * 100:.1f}%: " + " and ".join(parts)) if parts else "no one-off counted"
+    elif status == "none_filed":
+        detail = "no impairment or restructuring line filed"
+    else:
+        detail = "filed one-off lines not held for this year"
+    if y.get("amortization_gap"):
+        detail += "; net income alone (the amortization is missing)"
+    return f"{head} ({detail})"
+
+
+def render_x_margin_lines(facts: dict[str, Any]) -> list[str]:
+    """Revision 25 short form (desk schema 25.2): the three DEFAULTS lines that state the earnings-margin basis in plain words and give the record and the consensus on it:
+    earnings_margin_basis, x_margin_history (per filed year, with and without one-offs, each source stamped; `none filed` said where none are) and
+    x_margin_consensus_y1y2. [] for every other pack, so no other pack's block changes."""
+    if facts.get("desk_schema") != "25.2":
+        return []
+
+    def line(key, value, explanation):
+        return f"- {key}: {value} | {explanation}"
+    out = [line("earnings_margin_basis", "the X basis",
+                x_margin_basis.BASIS_WORDS + ". It is the basis of x_L, m_tc and m5 in long_run, of the history and consensus lines below and of the earnings_margin you declare "
+                "for years 1-5. Operating margins (om_tc, om_L, om_trend, om_5) are another basis, context only; no input takes one.")]
+    hist = facts.get("x_margin_history")
+    if isinstance(hist, dict) and hist.get("years"):
+        value = "; ".join(_x_margin_year_text(y) for y in hist["years"])
+        expl = ("the earnings margin on this basis for each filed fiscal year of your record's window, as filed and without one-offs; one-offs are the filed impairment and "
+                "restructuring lines (the largest filed line of each group; the others are not added because a filer may tag one charge twice), added back after tax at that "
+                "year's tax rate; the first source is the screener's fiscal-year history, the second the company's own filed companyfacts")
+        if hist.get("stamps"):
+            expl += "; stamps: " + ", ".join(hist["stamps"])
+    else:
+        value = "not available"
+        expl = "no fiscal year of the record has a defined earnings margin" + (": " + ", ".join(hist["stamps"]) if isinstance(hist, dict) and hist.get("stamps") else "")
+    out.append(line("x_margin_history", value, expl))
+    cm = facts.get("x_margin_consensus_y1y2")
+    ys = [(n, (cm or {}).get(f"y{n}")) for n in (1, 2)]
+    if isinstance(cm, dict) and any(isinstance(y, dict) for _, y in ys):
+        value = ", ".join(f"y{n}={_pct(y['x_margin'])}" if isinstance(y, dict) else f"y{n}=none" for n, y in ys)
+        expl = ("what the consensus implies for years 1 and 2 on this basis: DATA 8's EPS averages times the share-count default over DATA 8's revenue averages (revenue on the "
+                "common shares' share), after interest and tax; the vendor's EPS may be on an adjusted basis, so a difference from your filed history is information, not an error")
+    else:
+        value = "not available"
+        why = str(cm["reason"]) if isinstance(cm, dict) and cm.get("reason") else "the pack holds no usable consensus estimates"
+        expl = f"no consensus margin: {why} (the desk's margin basis check cannot run: no_basis_check_no_consensus)"
+    out.append(line("x_margin_consensus_y1y2", value, expl))
+    return out
+
+
+def insert_x_margin_lines(pack_text: str, facts: dict[str, Any]) -> str:
+    """Revision 25 short form: `pack_text` (a pack with a DEFAULTS block that has none of the x_margin lines, as a revision-24 pack has) with the lines
+    `render_x_margin_lines(facts)` placed directly after its `- long_run:` line, where `render_defaults_block` prints them for a 25.2 build. Pure text: the
+    derivation of a frozen revision-24 pack into the short form's pack calls it, so a derived pack and a fresh build print the same block. Raises ValueError when the block
+    has no single `- long_run:` line, already holds an x_margin line, or `facts` render no lines."""
+    new = render_x_margin_lines(facts)
+    if not new:
+        raise ValueError("the facts are not a desk-schema 25.2 pack's: no x_margin lines to insert")
+    lines = pack_text.split(chr(10))
+    start = next((i for i, ln in enumerate(lines) if ln.startswith("## DEFAULTS")), None)
+    if start is None:
+        raise ValueError("the pack has no DEFAULTS block")
+    end = next((i for i in range(start + 1, len(lines)) if not lines[i].startswith("-")), len(lines))
+    block = lines[start + 1:end]
+    if any(ln.startswith(("- earnings_margin_basis:", "- x_margin_history:", "- x_margin_consensus_y1y2:")) for ln in block):
+        raise ValueError("the DEFAULTS block already holds the x_margin lines")
+    at = [i for i, ln in enumerate(block) if ln.startswith("- long_run:")]
+    if len(at) != 1:
+        raise ValueError(f"the DEFAULTS block has {len(at)} long_run lines, not 1")
+    return chr(10).join(lines[:start + 1] + block[:at[0] + 1] + new + block[at[0] + 1:] + lines[end:])
+
+
 def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = None, no_marker: bool = False,
                           withhold_reference: bool = False, withhold_long_run: bool = False) -> str:
     """S3 5.2: the DEFAULTS block, the last block of the pack, printed immediately before the
@@ -1075,6 +1167,8 @@ def render_defaults_block(facts: dict[str, Any], split_confirmed: bool | None = 
                           f"year 5, moves all the way to om_trend, the trend level of your record's 8-year {lr_series} "
                           "margin (to zero for a loss record). The members are the record "
                           "behind it."))
+
+    lines += render_x_margin_lines(f)          # revision 25 short form: [] unless the pack is a 25.2 one
 
     lines.append(line("net_debt_b", _dv_money(f.get("net_debt_b")),
                       "the firm frame's net debt; another figure needs net_debt_reason (the "
@@ -1336,7 +1430,7 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "reference_withheld": True if withheld else None, "reference_line": None,
         "long_run_defaults_withheld": True if withheld else None,
         "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
-        "desk_schema": None,
+        "desk_schema": None, "x_margin_history": None, "x_margin_consensus_y1y2": None,
     }
 
 

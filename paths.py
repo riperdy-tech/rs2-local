@@ -81,6 +81,13 @@ _CANDIDATES = {
     "priors_inputs_dir": (
         "stocks-workspace/data/priors/_inputs",
     ),
+    # Revision 25 short form (BRIEF_SF_short_form.md item 4): the filed SEC companyfacts, one CIK<cik>.json per company, from which the pack's x_margin_history reads
+    # the filed impairment and restructuring lines. They are data the screener keeps untracked: the dedicated publish clone does not hold them, the stock-screener
+    # checkout does. Read only, resolved on demand (capability_test), never eagerly in load_config(); no file means the lines are "not held", never "none filed".
+    "screener_sec_facts_dir": (
+        "screener-publish/public/data/sec_facts",
+        "stock-screener/public/data/sec_facts",
+    ),
 }
 
 # Per-key environment overrides. `anchors_dir` deliberately reads MRI_ANCHORS_DIR first and then
@@ -96,6 +103,7 @@ _ENV = {
     "mri_dir": ("MRI_DIR",),
     "priors_dir": ("RS2_PRIORS_DIR",),
     "priors_inputs_dir": ("RS2_PRIORS_INPUTS_DIR",),
+    "screener_sec_facts_dir": ("SCREENER_SEC_FACTS_DIR",),
 }
 
 
