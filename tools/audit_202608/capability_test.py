@@ -53,6 +53,7 @@ import catalyst_research  # noqa: E402
 import consensus_reference  # noqa: E402
 import population_ranges  # noqa: E402
 import throughcycle_record  # noqa: E402
+import d2_facts  # noqa: E402
 import input_scope  # noqa: E402
 import pack_facts  # noqa: E402
 import pi_text  # noqa: E402
@@ -387,6 +388,11 @@ REVIEWED_HISTORY_KEYS = frozenset({
     "goodwill", "intangibles_ex_goodwill", "amortization_intangibles",
     # revision 20 (brief_input_scope_fixes.md 1.2(b), 2.2(b), 1.4): read by tools/input_scope.py - the consolidated net income and equity,
     # the balances outside the unrestricted cash line, and the per-share check's three facts
+    # version 12 (design D2 port): consumed by facts["d2"] (tools/d2_facts.py; sidecar only), deliberately not printed
+    # (PLAN_terminal_reinvestment.md 3a; part (c) decides any printing)
+    "lease_principal", "lease_interest", "rou_depreciation", "interest_on_borrowings", "ppe_gross",
+    "amortization_sched_y1", "amortization_sched_y2", "amortization_sched_y3", "amortization_sched_y4", "amortization_sched_y5",
+    "amortization_sched_thereafter",
 }) | frozenset(input_scope.HISTORY_FIELDS)
 
 
@@ -1786,6 +1792,47 @@ def _q_b_or_none(v):
     return pack_facts.q_b(v / 1e9) if _is_number(v) else None
 
 
+def _d2_facts_for(t, h, hist_doc, record, sic, sector, price, facts, fin, pi, asof_date):
+    """Version 12 (design D2 port, part (b); BRIEF_D2b2_pack_facts.md): the facts `d2`, `d2_provenance` and `d2_unavailable` from the filed rows (see
+    tools/d2_facts.py). The rows are the record's view (consolidated net income and equity), the price the pack's, the shares the desk's default.
+    The statements' currency is the vendor FX block's statement currency (absent block: the screener found no mismatch, taken as the quote
+    currency and said so); no vendor file: unknown. Never raises: a failure is stated in the provenance, and the desk reads nothing of this
+    unless its context sets `d2_enabled`."""
+    try:
+        yrs = sorted(int(y) for y in h if str(y).isdigit())
+        base_year = (record or {}).get("base_year") or (yrs[-1] if yrs else None)
+        view = input_scope.record_view_for(h, hist_doc, t, base_year)[0]
+        prov = hist_doc.get("provenance") or {}
+        dc_runs = ((prov.get("runs") or {}).get(t) or {}).get("debt_current")
+        dc_tags = throughcycle_record.resolve_run_tags(dc_runs, prov.get("_tags"), yrs)
+        untagged = _marker_for(hist_doc, t) or []
+        shares, shares_src = facts.get("shares_default"), "shares_default"
+        if shares is None:
+            shares, shares_src = facts.get("shares_outstanding"), "shares_outstanding"
+        if fin:
+            fx = fin.get("FX")
+            if fx is None:
+                ccy = ("USD", "USD", "no FX block on the vendor file: the screener found no statement/quote currency mismatch")
+            else:
+                ccy = (fx.get("statement_currency"), fx.get("quote_currency"), f"vendor FX block ({fx.get('flag') or 'converted'})")
+        else:
+            ccy = (None, None, "no vendor file")
+        vdate = (asof_date if asof_date is not None else datetime.now().date())
+        out = d2_facts.build(view, base_year, sic=sic, sector=sector, financial_sectors=consensus_reference.FINANCIAL_SECTORS, price=price,
+                             shares=shares, shares_source=shares_src, statement_currency=ccy[0], quote_currency=ccy[1], currency_source=ccy[2],
+                             valuation_date=vdate.isoformat(), pi=pi, untagged=untagged, dc_tags=dc_tags)
+        rec = record or {}
+        rtc2 = rec.get("R_tc_after_lease_interest")
+        out["d2_provenance"]["r_tc_after_lease_interest"] = {
+            "value": None if rtc2 is None else pack_facts.q_rate(rtc2), "r_tc": None if rec.get("R_tc") is None else pack_facts.q_rate(rec["R_tc"]),
+            "lease_interest_filed": any(isinstance(r, dict) and (throughcycle_record._num(r.get("lease_interest")) is not None
+                                                                or throughcycle_record._num(r.get("interest_on_borrowings")) is not None)
+                                        for r in view.values())}
+        return out
+    except Exception as e:                    # stated, never a crash and never a silent blank
+        return {"d2": None, "d2_provenance": {"error": f"{type(e).__name__}: {e}"}, "d2_unavailable": ["d2_build_error"]}
+
+
 def _population_ranges_for(t, h, record, asof_date, hist_doc=None):
     """Revision 24 step 2b: tools/population_ranges.ranges_for on this company's record at the valuation date (the pack's as-of date, else
     today): the family from the rebuild's rules on the SIC (sic_by_cik.json, through the CIK) and the base year's row, the features from the
@@ -2111,6 +2158,8 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             "cycle": _record["cycle"], "cycle_year": _record["cycle_year"], "cycle_years": _record["cycle_years"],
             "m_tc": _record["m_tc"], "m_years": _yrs(_record["m_tc"], _record["m_years"]),
             "r_tc": _record["R_tc"], "r_years": _yrs(_record["R_tc"], _record["r_years"]), "p": _record["p"],
+            # version 12 (design D2, L3): r_tc with the lease interest left deducted; unprinted, read by the desk only under d2_enabled
+            "r_tc_after_lease_interest": _record.get("R_tc_after_lease_interest"),
             "g_rev": _record["g_rev"], "g_rev_years": _yrs(_record["g_rev"], _record["g_rev_years"]),
             "terminal_g_basis": terminal_def_basis,
             "nwc_intensity": _record["nwc_intensity"], "nwc_years": _yrs(_record["nwc_intensity"], _record["nwc_years"]),
@@ -4141,6 +4190,9 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
     # revision 24 step 2b (BRIEF_R24_S2b_ranges_gate.md item 2): the population ranges of the long-run inputs, after DEFAULTS; the rev22 arm
     # prints none. The facts keep them for the plausibility gate.
     facts["population_ranges"] = _population_ranges_for(t, h, _record, asof_date, _hist_doc)
+    # version 12 (design D2 port, part (b)): the d2 members, sidecar-only; nothing the model reads
+    facts.update(_d2_facts_for(t, h, _hist_doc, _record, (facts["population_ranges"] or {}).get("sic"), sector,
+                               _pack_price if _pack_price is not None else px, facts, fin, _pi, asof_date))
     if not _rev22:
         L += [population_ranges.render_section(facts["population_ranges"], bool(_show_p50)), ""]
 

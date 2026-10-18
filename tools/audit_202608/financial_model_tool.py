@@ -2719,6 +2719,13 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
     long_run_ctx = ctx.get("long_run")
     if rev22_control and isinstance(long_run_ctx, dict):
         long_run_ctx = dict(long_run_ctx, margin_source="generator")
+    # version 12 (design D2 port, part (b)): the d2 members the pack built from filed data are forwarded to `unbundled_dcf(d2=...)` ONLY when the
+    # context sets `d2_enabled` (no arm does; part (c) will), and then the RONIC start is the return after lease interest (L3) where the pack has it.
+    # Otherwise nothing here runs: the call, the long run and every value are today's.
+    d2_ctx = ctx.get("d2") if (ctx.get("d2_enabled") is True and isinstance(ctx.get("d2"), dict)) else None
+    d2_long_run_ctx = long_run_ctx
+    if d2_ctx is not None and isinstance(long_run_ctx, dict) and _is_num(long_run_ctx.get("r_tc_after_lease_interest")):
+        d2_long_run_ctx = dict(long_run_ctx, r_tc=long_run_ctx["r_tc_after_lease_interest"])
     # revision 24 step 2c (ruling 12 of step 2b): working capital follows each scenario's own revenue path (unbundled_dcf's dict form: the record's
     # intensity, long_run nwc_intensity, times the change in the consensus revenue path, long_run revenue_path, scaled year by year by the
     # scenario's owner earnings over the consensus owner earnings, long_run oe_path), never the facts' schedule, the reference's path (kept in
@@ -2779,6 +2786,8 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
             bridge_run = dict(bridge_in, wc_intensity=None if wc_in_base else bridge_in.get("wc_intensity"))
             wc_use = None
 
+        use_d2 = d2_ctx is not None and bridge_run is not None
+
         def run(growth, fade):
             res = unbundled_dcf(
                 base_cf=float(cf_in),
@@ -2797,12 +2806,15 @@ def execute_financial_model(params: Dict[str, Any], context: Optional[Dict[str, 
                 sbc_dilution=sbc_dil_in,
                 finite_life_years=desk_finite_life_years,
                 terminal_ronic=ronic_in,
-                long_run=long_run_ctx,
+                long_run=d2_long_run_ctx if use_d2 else long_run_ctx,
                 working_capital=wc_use,
                 excess_cash=excess_use,
                 long_run_margin=lrm_in,
                 **({"bridge": bridge_run} if bridge_run is not None else {}),
+                **({"d2": d2_ctx} if use_d2 else {}),
             )
+            if d2_ctx is not None and not use_d2 and not res.get("error"):
+                res.setdefault("stamps", []).append("d2_not_applied_no_bridge")     # d2 needs the revision 25 bridge
             if not res.get("error"):
                 if wc_in_base:
                     res.setdefault("stamps", []).append("wc_in_base")

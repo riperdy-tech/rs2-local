@@ -777,6 +777,7 @@ def test_18_plumbing_consensus_valuation_passes_desk_context(monkeypatch, tmp_pa
         "long_run_defaults_withheld",                   # revision 24 step 2b
         "pilot_arm",                                    # revision 24 step 2c: the rev22 control desk
         "desk_schema",                                  # revision 25 (Stage 0.3): "25.1" values a perpetual equity scenario through the bridge
+        "d2",                                           # version 12 (design D2 port, part (b)): the d2 members; the desk reads them only under d2_enabled
     }
     for ctx in captured_calls:
         assert set(ctx.keys()) == expected_keys

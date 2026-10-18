@@ -22,7 +22,9 @@ import consensus_reference  # noqa: E402
 import pi_text  # noqa: E402
 import throughcycle_record  # noqa: E402
 
-FACTS_VERSION = 11
+# Version 12 (design D2 port, part (b); BRIEF_D2b2_pack_facts.md): the sidecar-only `d2`, `d2_provenance` and `d2_unavailable` (below) and, in
+# `long_run`, the unprinted `r_tc_after_lease_interest`. Nothing the model reads changes; an older sidecar reads the three keys as None.
+FACTS_VERSION = 12
 SIDECAR = "_pack_facts.json"
 
 KEYS: list[str] = [
@@ -127,12 +129,20 @@ KEYS: list[str] = [
     # revision 25 (Stage 0.3, SPEC_rev25_normalization_bridge.md section 8): `desk_schema` is "25.1" for the pilot arms r25_b and r25_c (the desk values
     # a perpetual equity scenario through the normalization bridge) and None for every other arm and pack. SIDECAR_ONLY: no pack text prints it.
     "desk_schema",
+    # version 12 (design D2 port, part (b)): `d2` is the optional long-run member set of `unbundled_dcf(d2=...)`, built from filed data by
+    # tools/d2_facts.py (the members are named in consensus_reference, "THE d2 MEMBERS"), or None when a required member cannot be measured;
+    # `d2_provenance` the source and stamps of each member; `d2_unavailable` the required members that could not be measured, by name (None when
+    # `d2` was built). All SIDECAR_ONLY: no pack text prints them, and the desk reads `d2` only when its context sets `d2_enabled` (no arm does).
+    "d2",
+    "d2_provenance",
+    "d2_unavailable",
 ]
 
 # keys the DEFAULTS text does not carry: a frozen replay reads them from the sidecar, and a text read gives None (parity ignores them)
 SIDECAR_ONLY = ("rf_eff", "nominal_gdp_trend", "reference_path", "price_implied_price",
                 "nci_attribution", "ni_scope", "per_share_basis", "cash_scope", "cash_restricted_b", "customer_money", "insurance_reserves_b",
-                "vendor_revenue_basis", "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema")
+                "vendor_revenue_basis", "primary_sources", "reference_line", "population_ranges", "pilot_arm", "ranges_show_p50", "desk_schema",
+                "d2", "d2_provenance", "d2_unavailable")
 # revision 24 (R24.2): the facts a stage-A DEFAULTS block does not print; a text read of such a block gives None for them, so the CIV is taken from
 # the facts or the sidecar, never from text, and the parity check leaves them out when either side is a withheld-reference pack
 WITHHELD_KEYS = ("consensus_implied_value", "reference_status")
@@ -145,7 +155,7 @@ WITHHELD_LONG_RUN_KEYS = ("terminal_g_default", "terminal_ronic", "price_implied
 WITHHELD_LONG_RUN_MEMBERS = ("om_5", "m_long", "margin_ratio")
 # long_run members the DEFAULTS block never prints and the parity check never compares: the verdict's full stamps, and (revision 24 step 2b) the
 # base fiscal year's earnings margin and revenue the desk reads when the facts hold no year-5 revenue (ruling 3) and the implied trajectory needs
-LONG_RUN_UNPRINTED = ("stamps_full", "x_L", "rev_L", "revenue_path", "oe_path", "oe_base")
+LONG_RUN_UNPRINTED = ("stamps_full", "x_L", "rev_L", "revenue_path", "oe_path", "oe_base", "r_tc_after_lease_interest")
 # (step 2c, ruling 12 of step 2b: `revenue_path`, the consensus revenue of years 0-5, and `oe_path`, the consensus owner earnings of years 1-5 it pairs
 # with, $B, the common shares' share; the desk builds each scenario's own revenue path from them for the working-capital deduction. Step 2d: `oe_base`,
 # the base oe_path was grown from - the reference's owner-earnings base, a levels name's year-1 level - which the desk normalizes the path at)
@@ -450,6 +460,9 @@ def _from_legacy_text(t: str) -> dict[str, Any]:
         "reference_withheld": None, "reference_line": None,
         "long_run_defaults_withheld": None, "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
         "desk_schema": None,
+        "d2": None,
+        "d2_provenance": None,
+        "d2_unavailable": None,
     }
 
 
@@ -650,6 +663,8 @@ def quantize_long_run(d: dict[str, Any] | None) -> dict[str, Any]:
             out[k] = [q_b(x) for x in d[k]]
     if d.get("oe_base") is not None:                       # step 2d: the base oe_path was grown from, kept with it, never printed
         out["oe_base"] = q_b(d["oe_base"])
+    if d.get("r_tc_after_lease_interest") is not None:      # version 12 (design D2, L3): r_tc with the lease interest left deducted, never printed
+        out["r_tc_after_lease_interest"] = q_rate(d["r_tc_after_lease_interest"])
     return out
 
 
@@ -1337,6 +1352,9 @@ def _from_defaults_block(t: str) -> dict[str, Any]:
         "long_run_defaults_withheld": True if withheld else None,
         "population_ranges": None, "pilot_arm": None, "ranges_show_p50": None,
         "desk_schema": None,
+        "d2": None,
+        "d2_provenance": None,
+        "d2_unavailable": None,
     }
 
 

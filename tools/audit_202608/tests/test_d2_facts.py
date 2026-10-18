@@ -1,0 +1,295 @@
+"""Brief D2b2 (BRIEF_D2b2_pack_facts.md): the pack facts that produce the `d2` members, and their wiring (sidecar, context, desk switch).
+
+1. Legacy unchanged: the new facts are sidecar-only, parity ignores them, the context only carries d2, and without `d2_enabled` the desk is today's.
+2. Measurement of every member from constructed fundamentals rows: IFRS lessee, US GAAP finance lessee, no leases, net cash, a currency mismatch,
+   the financial route, partial history, the schedule versus the a0 fallback, 0.0 kept as a value.
+3. L3: r_tc_after_lease_interest beside r_tc.
+"""
+import copy
+import sys
+from pathlib import Path
+
+import pytest
+
+HERE = Path(__file__).resolve().parent
+for _p in (str(HERE.parent), str(HERE.parent.parent), str(HERE)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import d2_facts as D  # noqa: E402
+import pack_facts  # noqa: E402
+import throughcycle_record as tcr  # noqa: E402
+import consensus_reference as cr  # noqa: E402
+
+
+def row(y, **kw):
+    r = {"revenue": 1000.0 + 50 * (y - 2021), "capex": 80.0, "da": 70.0, "net_income": 100.0, "pretax_income": 130.0, "tax_provision": 26.0,
+         "interest_expense": 20.0, "lt_debt": 300.0, "debt_lt_noncurrent": 300.0, "debt_current": 20.0, "cash": 60.0, "st_investments": 10.0,
+         "equity": 500.0, "total_assets": 1200.0, "total_liabilities": 700.0, "current_assets": 400.0, "current_liabilities": 250.0,
+         "amortization_intangibles": 5.0}
+    r.update(kw)
+    return r
+
+
+def rows(**kw):
+    return {str(y): row(y, **kw) for y in range(2021, 2026)}
+
+
+def build(rs=None, **kw):
+    args = dict(sic=3571, sector="Technology", financial_sectors=("Financial Services", "Real Estate"), price=10.0, shares=100.0,
+                statement_currency="USD", quote_currency="USD", currency_source="test", valuation_date="2026-10-18", pi=1.0, unit=1.0)
+    args.update(kw)
+    return D.build(rs if rs is not None else rows(), 2025, **args)
+
+
+# ---- 1. legacy ------------------------------------------------------------------------------------------------------------------------------
+
+def test_the_new_keys_are_sidecar_only_and_version_12():
+    assert pack_facts.FACTS_VERSION == 12
+    for k in ("d2", "d2_provenance", "d2_unavailable"):
+        assert k in pack_facts.KEYS and k in pack_facts.SIDECAR_ONLY
+        assert pack_facts.empty()[k] is None
+    assert pack_facts.parity({"d2": {"family": "operating"}}, {"d2": None}) == []
+    assert "r_tc_after_lease_interest" in pack_facts.LONG_RUN_UNPRINTED
+    a = pack_facts.quantize_long_run({"r_tc": 0.1, "r_tc_after_lease_interest": 0.09})
+    b = pack_facts.quantize_long_run({"r_tc": 0.1})
+    assert a.pop("r_tc_after_lease_interest") == 0.09 and a == b
+    assert pack_facts.parity({"long_run": pack_facts.quantize_long_run({"r_tc": 0.1, "r_tc_after_lease_interest": 0.09})},
+                             {"long_run": b}) == []
+
+
+def test_the_context_carries_d2_and_the_desk_ignores_it_unless_enabled():
+    import consensus_valuation as cv
+    import financial_model_tool as fmt
+    f = pack_facts.empty()
+    f["shares_default"] = 1.0
+    f["d2"] = {"family": "operating"}
+    ctx = cv.build_desk_context(f, 10.0, "T", "Co")
+    assert ctx["d2"] == {"family": "operating"} and "d2_enabled" not in ctx
+    params = {"scenarios": [{"name": "Base", "base_cf": 1.0, "growth_rates": [0.05] * 5, "wacc": 0.09, "terminal_g": 0.02}]}
+    c0 = {"price": 10.0, "shares_default_b": 1.0}
+    r0 = fmt.execute_financial_model(copy.deepcopy(params), dict(c0))
+    r1 = fmt.execute_financial_model(copy.deepcopy(params), dict(c0, d2={"family": "operating"}))
+    assert r0 == r1        # d2 present but d2_enabled unset: the same result
+
+
+# ---- 2. measurement -------------------------------------------------------------------------------------------------------------------------
+
+def test_us_gaap_filer_without_leases():
+    out = build()
+    d2 = out["d2"]
+    assert out["d2_unavailable"] is None and d2["family"] == "operating"
+    nd = 320.0 - 60.0 - 10.0
+    assert d2["delta"] == pytest.approx(nd / (nd + 1000.0))
+    assert d2["kd"] == pytest.approx(20.0 / 320.0)
+    assert d2["tau"] == pytest.approx(0.2)
+    p = d2["pooled"]
+    assert p["years"] == 5 and p["revenue"] == sum(1000.0 + 50 * k for k in range(5)) and p["capex"] == 400.0
+    assert p["da_org"] == pytest.approx(5 * (70.0 - 5.0))          # D&A less acquired amortization, per year
+    assert "lease_principal" not in p and "rou_dep" not in p
+    assert "lease_principal_not_filed" in out["d2_provenance"]["stamps"]
+    assert d2["valuation_date"] == "2026-10-18"
+    # the debt is the one invested_capital counts
+    r = rows()["2025"]
+    te = tcr.tangible_equity(r)
+    assert tcr.invested_capital(r) == pytest.approx(te + D.gross_debt(r)[0] - 60.0 - 10.0)
+
+
+def test_us_gaap_finance_lessee_and_ifrs_lessee():
+    extra = dict(lease_principal=12.0, rou_depreciation=9.0, lease_interest=3.0, finance_lease_liability=50.0)
+    out = build(rows(**extra))
+    p = out["d2"]["pooled"]
+    assert p["lease_principal"] == 60.0 and p["rou_dep"] == 45.0
+    assert p["da_org"] == pytest.approx(5 * (70.0 - 9.0 - 5.0))                      # D&A_org = D&A - ROU - amortization, per year
+    assert out["d2"]["kd"] == pytest.approx((20.0 - 3.0) / 320.0)                    # lease interest comes out of the interest
+    assert out["d2"]["year0"]["lease_principal"] == 12.0 and out["d2"]["year0"]["rou_dep"] == 9.0
+    # IFRS: interest_on_borrowings is already without lease interest and is used as filed (no second subtraction)
+    out = build(rows(**dict(extra, interest_on_borrowings=15.0)))
+    assert out["d2"]["kd"] == pytest.approx(15.0 / 320.0)
+
+
+def test_net_cash_delta_is_zero_and_zero_is_kept():
+    out = build(rows(lt_debt=0.0, debt_lt_noncurrent=0.0, debt_current=0.0, cash=500.0))
+    assert out["d2"]["delta"] == 0.0 and "net_cash_delta_zero" in out["d2_provenance"]["stamps"]
+    assert "kd" not in out["d2"] and "kd_debt_zero_or_unproven" in out["d2_provenance"]["stamps"]      # zero debt: no kd, never 0.05
+    # 0.0 is a value: a filed zero capex, zero lease principal and zero amortization are summed, not dropped
+    out = build(rows(capex=0.0, lease_principal=0.0, rou_depreciation=0.0, amortization_intangibles=0.0))
+    p = out["d2"]["pooled"]
+    assert p["capex"] == 0.0 and p["lease_principal"] == 0.0 and p["rou_dep"] == 0.0 and p["years"] == 5
+    assert out["d2"]["year0"]["capex"] == 0.0 and out["d2"]["year0"]["amortization"] == 0.0
+
+
+def test_no_debt_filed_at_all_is_unproven_not_zero():
+    out = build(rows(lt_debt=None, debt_lt_noncurrent=None, debt_current=None))
+    assert out["d2"] is None and out["d2_unavailable"] == ["delta"]
+    assert "delta_debt_not_filed" in out["d2_provenance"]["stamps"]
+
+
+def test_currency_mismatch_leaves_delta_absent():
+    out = build(statement_currency="IDR")
+    assert out["d2"] is None and out["d2_unavailable"] == ["delta"]
+    assert "delta_currency_unproven" in out["d2_provenance"]["stamps"]
+    assert build(statement_currency=None, quote_currency=None)["d2_unavailable"] == ["delta"]
+
+
+def test_financial_route_takes_no_delta():
+    r = rows(insurance_reserves=600.0)                      # 600 / 1200 of assets
+    out = build(r, sic=6331)
+    assert out["d2"] == {"family": "financial", "valuation_date": "2026-10-18"}
+    assert "delta_not_applied_financial_route" in out["d2_provenance"]["stamps"]
+    assert build(sic=6211)["d2"]["family"] == "financial"
+    # a credit SIC is financial only when borrowings fund >= 50% of liabilities
+    assert build(rows(lt_debt=400.0, debt_lt_noncurrent=400.0), sic=6153)["d2"]["family"] == "financial"
+    ops = build(sic=6153)
+    assert ops["d2"]["family"] == "operating" and "family_route_unresolved" in ops["d2_provenance"]["stamps"]
+    # a name no evaluated test confirms, outside the financial SIC range, is operating without the unresolved stamp
+    assert "family_route_unresolved" not in build()["d2_provenance"]["stamps"]
+    assert "family_route_unresolved" in build(sic=None)["d2_provenance"]["stamps"]
+
+
+def test_partial_history_excludes_incomplete_years_by_name():
+    rs = rows()
+    rs["2022"]["capex"] = None
+    del rs["2021"]
+    out = build(rs)
+    p = out["d2"]["pooled"]
+    assert p["years"] == 3 and p["capex"] == 240.0
+    st = out["d2_provenance"]["stamps"]
+    assert "pooled_year_2021_excluded:no_row" in st and "pooled_year_2022_excluded:capex" in st
+    # an optional component filed elsewhere in the window and missing in a year excludes that year from every sum
+    rs = rows(rou_depreciation=4.0)
+    rs["2023"]["rou_depreciation"] = None
+    out = build(rs)
+    assert out["d2"]["pooled"]["years"] == 4 and "pooled_year_2023_excluded:rou_depreciation" in out["d2_provenance"]["stamps"]
+    # no complete year: pooled is a named unavailable member
+    rs = rows(capex=None)
+    out = build(rs)
+    assert out["d2"] is None and "pooled" in out["d2_unavailable"]
+
+
+def test_schedule_versus_a0_fallback_and_ppe():
+    full = {f"amortization_sched_y{i}": 5.0 - i * 0.5 for i in range(1, 6)}
+    r = rows()
+    r["2025"].update(full, amortization_sched_thereafter=2.0, ppe_gross=900.0, ppe_net=600.0)
+    r["2024"]["ppe_gross"] = 850.0
+    out = build(r)
+    am = out["d2"]["amortization"]
+    assert am == {"schedule": [4.5, 4.0, 3.5, 3.0, 2.5], "thereafter": 2.0}
+    assert out["d2"]["ppe"] == {"gross_prior": 850.0, "gross": 900.0, "net": 600.0, "da_org_0": 65.0}
+    # thereafter null: absent and stamped
+    r["2025"]["amortization_sched_thereafter"] = None
+    out = build(r)
+    assert out["d2"]["amortization"] == {"schedule": [4.5, 4.0, 3.5, 3.0, 2.5]}
+    assert "amortization_thereafter_not_filed" in out["d2_provenance"]["stamps"]
+    # a partial schedule falls back to A_0 and says so; no schedule at all, the same; 0.0 A_0 is a value
+    r["2025"]["amortization_sched_y5"] = None
+    out = build(r)
+    assert out["d2"]["amortization"] == {"a0": 5.0}
+    assert any(s.startswith("amortization_schedule_partial") for s in out["d2_provenance"]["stamps"])
+    out = build(rows(amortization_intangibles=0.0))
+    assert out["d2"]["amortization"] == {"a0": 0.0} and "ppe" not in out["d2"] and "ppe_gross_not_filed" in out["d2_provenance"]["stamps"]
+    out = build(rows(amortization_intangibles=None))
+    assert "amortization" not in out["d2"]
+
+
+def test_year0_levels_are_scaled_by_pi_and_nwc_comes_from_the_record():
+    out = build(pi=0.5)
+    y0 = out["d2"]["year0"]
+    assert y0["capex"] == 40.0 and y0["da_org"] == pytest.approx(32.5)
+    nwc = tcr.net_working_capital(rows()["2025"])
+    assert y0["dnwc"] == pytest.approx(0.5 * (nwc - tcr.net_working_capital(rows()["2024"])))
+    assert y0["invested_capital"] == pytest.approx(0.5 * tcr.invested_capital(rows()["2025"]))
+    assert out["d2"]["pooled"]["capex"] == 400.0          # the pooled totals stay raw
+
+
+def test_tau_default_is_stamped():
+    out = build(rows(pretax_income=None))
+    assert out["d2"]["tau"] == 0.21 and "tax_rate_default_21pct" in out["d2_provenance"]["stamps"]
+
+
+# ---- 3. L3 -------------------------------------------------------------------------------------------------------------------------------
+
+def test_r_tc_after_lease_interest():
+    hist = {y: row(y, interest_expense=30.0, lease_interest=10.0) for y in range(2014, 2026)}
+    rec = tcr.analyse(hist, 0.08, base_year=2025)
+    plain = tcr.analyse({y: {k: v for k, v in r.items() if k != "lease_interest"} for y, r in hist.items()}, 0.08, base_year=2025)
+    assert rec["R_tc"] == plain["R_tc"]                                           # r_tc is untouched
+    assert rec["R_tc_after_lease_interest"] < rec["R_tc"]                         # the lease interest stays deducted
+    assert plain["R_tc_after_lease_interest"] == plain["R_tc"]                   # nothing filed: the same number
+    x = tcr.adjusted_earnings(hist[2025])
+    assert tcr.return_numerator_after_lease_interest(hist[2025]) == pytest.approx(x + 20.0 * (1 - tcr.tax_rate(hist[2025])))
+    assert tcr.non_lease_interest({"interest_expense": 5.0, "interest_on_borrowings": 0.0}) == (0.0, "interest_on_borrowings")
+
+
+def test_desk_uses_the_after_lease_ronic_start_only_when_enabled():
+    import financial_model_tool as fmt
+    calls = []
+    real = fmt.unbundled_dcf
+
+    def spy(**kw):
+        calls.append(kw)
+        return real(**kw)
+    fmt.unbundled_dcf = spy
+    try:
+        params = {"scenarios": [{"name": "Base", "base_cf": 1.0, "growth_rates": [0.05] * 5, "wacc": 0.09, "terminal_g": 0.02}]}
+        ctx = {"price": 10.0, "shares_default_b": 1.0, "d2": {"family": "operating"}, "long_run": {"r_tc": 0.12, "r_tc_after_lease_interest": 0.1}}
+        fmt.execute_financial_model(copy.deepcopy(params), dict(ctx))
+        assert all("d2" not in c and c["long_run"]["r_tc"] == 0.12 for c in calls)
+        calls.clear()
+        fmt.execute_financial_model(copy.deepcopy(params), dict(ctx, d2_enabled=True))
+        # no bridge in this call: d2 is not forwarded (it needs the bridge), and the start is today's
+        assert all("d2" not in c and c["long_run"]["r_tc"] == 0.12 for c in calls)
+    finally:
+        fmt.unbundled_dcf = real
+
+
+# ---- the model-visible text does not change when the screener's eleven new keys arrive ---------------------------------------------------------
+
+NEW_KEYS = ("lease_principal", "lease_interest", "rou_depreciation", "interest_on_borrowings", "ppe_gross", "amortization_sched_y1",
+            "amortization_sched_y2", "amortization_sched_y3", "amortization_sched_y4", "amortization_sched_y5", "amortization_sched_thereafter")
+
+
+def test_the_eleven_new_keys_are_reviewed_and_the_pack_text_is_byte_identical(monkeypatch):
+    import capability_test as cap
+    import rs2_data
+    assert set(NEW_KEYS) <= cap.REVIEWED_HISTORY_KEYS
+    real = rs2_data.load_json
+    hist = real(cap.SD / "fundamentals_history.json")
+    if not hist or "BUD" not in (hist.get("tickers") or {}):
+        pytest.skip("no stored fundamentals history for BUD")
+    with_keys = copy.deepcopy(hist)
+    for y, r in with_keys["tickers"]["BUD"].items():
+        if isinstance(r, dict):
+            r.update({k: 1.5e9 for k in NEW_KEYS})
+
+    def build(doc):
+        monkeypatch.setattr(rs2_data, "load_json", lambda p, *a, **k: doc if str(p).endswith("fundamentals_history.json") else real(p, *a, **k))
+        return str(cap.build_pack("BUD", price_override=60.0, include_research=False))
+
+    assert build(hist) == build(with_keys)
+
+
+def test_levels_are_in_billions_by_default_ratios_unchanged():
+    big = {y: {k: (v * 1e9 if isinstance(v, float) and k not in ("pretax_income",) else v) for k, v in r.items()} for y, r in rows().items()}
+    for r in big.values():
+        r["pretax_income"], r["tax_provision"] = 130.0e9, 26.0e9
+    out = D.build(big, 2025, sic=3571, sector="Technology", price=10.0, shares=100.0, statement_currency="USD",
+                  quote_currency="USD", valuation_date="2026-10-18", pi=1.0)
+    ref = build()
+    assert out["d2"]["pooled"]["capex"] == pytest.approx(ref["d2"]["pooled"]["capex"])      # 400e9 / 1e9 = 400
+    assert out["d2"]["year0"]["capex"] == pytest.approx(80.0)
+
+
+def test_d2_enabled_with_a_bridge_forwards_d2_and_starts_ronic_at_the_after_lease_return():
+    import financial_model_tool as fmt
+    from test_rev25_bridge import _call, _ctx, _run, _dcf
+    d2 = build(unit=1.0)["d2"]
+    d2 = dict(d2, year0={}, delta=0.0, kd=0.05)
+    lr = dict(_ctx()["long_run"], r_tc=0.12, r_tc_after_lease_interest=0.10)
+    base = _run(_call(), _ctx(long_run=lr, d2=d2))
+    on = _run(_call(), _ctx(long_run=lr, d2=d2, d2_enabled=True))
+    assert "d2" not in _dcf(base, "base")                                              # unset: the legacy desk, no d2 diagnostics
+    dd = _dcf(on, "base")
+    assert "desk_d2_terminal_reinvestment" in dd["stamps"] and dd["d2"]["roic_n1_roll_forward"]["r_tc"] == pytest.approx(0.10)
+    on2 = _run(_call(), _ctx(long_run=dict(lr, r_tc_after_lease_interest=None), d2=d2, d2_enabled=True))
+    assert _dcf(on2, "base")["d2"]["roic_n1_roll_forward"]["r_tc"] == pytest.approx(0.12)       # absent: today's r_tc

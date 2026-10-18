@@ -271,15 +271,41 @@ def return_numerator(row, untagged=()):
     return x + (0.0 if interest is None else interest) * (1.0 - tax_rate(row))
 
 
-def return_series(rows, untagged=(), dc_tags=None):
+def non_lease_interest(row):
+    """(interest, source): the interest on the non-lease debt, the debt `invested_capital` counts (design D2, L3). `interest_on_borrowings` when
+    filed (the screener's field is already without lease interest); else `interest_expense` less `lease_interest`, a null lease interest
+    counting 0 (source "interest_expense" then). (None, None) when neither interest is filed. 0.0 is a value."""
+    ob = _num(row.get("interest_on_borrowings"))
+    if ob is not None:
+        return ob, "interest_on_borrowings"
+    ie = _num(row.get("interest_expense"))
+    if ie is None:
+        return None, None
+    li = _num(row.get("lease_interest"))
+    return (ie, "interest_expense") if li is None else (ie - li, "interest_expense_less_lease_interest")
+
+
+def return_numerator_after_lease_interest(row, untagged=()):
+    """`return_numerator` with the non-lease interest added back (L3, design D2 only): invested capital excludes leases, so the interest on
+    them stays deducted. Equals `return_numerator` where neither `lease_interest` nor `interest_on_borrowings` is filed."""
+    x = adjusted_earnings(row, untagged)
+    if x is None:
+        return None
+    interest, _ = non_lease_interest(row)
+    return x + (0.0 if interest is None else interest) * (1.0 - tax_rate(row))
+
+
+def return_series(rows, untagged=(), dc_tags=None, numerator=None):
     """{year: R_y} over every year in `rows` (None where missing): the numerator over the average of IC_{y-1}
     and IC_y, or IC_y alone when the prior year is missing or not positive. IC_y <= 0: +inf when the numerator is
-    positive, else -inf. `dc_tags` is {year: debt_current tag} for F4 (None: debt_current alone)."""
+    positive, else -inf. `dc_tags` is {year: debt_current tag} for F4 (None: debt_current alone). `numerator`
+    (default `return_numerator`) is the row-level numerator function (L3 passes the after-lease-interest one)."""
     tags = dc_tags or {}
+    numerator = numerator or return_numerator
     ic = {y: invested_capital(row, untagged, tags.get(y)) for y, row in rows.items()}
     out = {}
     for y in sorted(rows):
-        num = return_numerator(rows[y], untagged)
+        num = numerator(rows[y], untagged)
         cap = ic[y]
         if cap is None or num is None:
             out[y] = None
@@ -332,6 +358,7 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
     L-7..L. `debt_current_tags` is {year: the tag debt_current resolved from} (F4). Returns a dict:
       base_year, window, r,
       R (every held year <= L -> return on tangible invested capital or None), r_years (defined years in W),
+      R_tc_after_lease_interest (L3: R_tc with the lease interest left deducted; read only by design D2),
       R_tc, p, p_years (years in W with R_y > r), ronic_t (r + p x max(0, R_tc - r); +inf when R_tc is +inf; r when
       R_tc is None),
       cycle (True / False, None when no year could be tested), cycle_years (the years with both falls),
@@ -370,7 +397,7 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
            "nwc_intensity": None, "nwc_years": [], "amortization_gap_years": [],
            "tangible_equity_partial_years": [], "stamps": [], "untagged_fields": sorted(untagged),
            "om_basis": None, "om_tc": None, "om_trend": None, "om_L": None, "om_years": None, "om_crossings": None, "om_shape": None,
-           "x_L": None, "tax_L": None}
+           "x_L": None, "tax_L": None, "R_tc_after_lease_interest": None}
     if not held:
         out["stamps"].append("record_not_available")
         return out
@@ -394,6 +421,11 @@ def analyse(rows, r, untagged_fields=(), base_year=None, debt_current_tags=None)
     out["r_years"] = sorted(r_w)
     if len(r_w) >= R_MIN_YEARS:
         out["R_tc"] = median(list(r_w.values()))
+    # L3 (design D2 only; nothing here reads it): the same statistic with the lease interest left deducted, beside R_tc
+    R2 = return_series(used, untagged, tags, return_numerator_after_lease_interest)
+    r_w2 = [R2[y] for y in W if R2.get(y) is not None]
+    if len(r_w2) >= R_MIN_YEARS:
+        out["R_tc_after_lease_interest"] = median(r_w2)
     if r is not None:
         out["p_years"] = sorted(y for y, v in r_w.items() if v > r)
         # p is a share of the window's eight years, missing years counting as not above; with no defined

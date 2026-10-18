@@ -2120,6 +2120,9 @@ def build_desk_context(facts, price, ticker, company, run_date=None):
         "pilot_arm": facts.get("pilot_arm"),
         # revision 25 (Stage 0.3): "25.1" values a perpetual equity scenario through the normalization bridge (financial_model_tool); None otherwise
         "desk_schema": facts.get("desk_schema"),
+        # version 12 (design D2 port, part (b)): the d2 long-run members built from filed data. Carried, not used: the desk forwards them to
+        # unbundled_dcf only when the context also sets `d2_enabled`, which no arm does (part (c) will)
+        "d2": facts.get("d2"),
         "years35_cap": facts["next_fy_revenue_growth"],
         "shares_warning": facts["shares_warning"],       # R1b (5.11)
         # revision 19 (B4): the name and ticker the citation check's news-filter rule needs
