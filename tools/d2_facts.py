@@ -62,6 +62,40 @@ def capex_class(cell):
     return out
 
 
+# D2b4 Part R: the rung markers of da_d2 and revenue_d2. The screener's state names the rung that filed (from_da / from_revenue: the plain field, no marker); the
+# tag is the fallback when the state is not a marker.
+DA_MARKERS = ("cogs_da", "includes_accretion", "da_lone_depreciation")
+DA_MARKER_BY_TAG = (("CostOfGoodsAndServicesSoldDepreciationAndAmortization", "cogs_da"),
+                    ("ResultsOfOperationsDepreciationDepletionAmortizationAndAccretion", "includes_accretion"),
+                    ("Depreciation", "da_lone_depreciation"))     # Depreciation, DepreciationExpense, DepreciationNonproduction: a lone depreciation series
+REVENUE_MARKERS = ("transport_services_revenue",)
+REVENUE_MARKER_BY_TAG = (("RevenueFromRenderingOfTransportServices", "transport_services_revenue"),)
+
+
+def _markers(cell, plain_state, markers, by_tag):
+    """[marker] of one year's da_d2 / revenue_d2 cell {"tag", "state"}; [] when the plain field supplied it (state `plain_state`); ["rung_unclassified"] when a
+    rung filed whose marker is not named."""
+    if not cell:
+        return []
+    state, tag = cell.get("state") or "", cell.get("tag") or ""
+    if state == plain_state:
+        return []
+    if state in markers:
+        return [state]
+    for needle, m in by_tag:
+        if needle in tag:
+            return [m]
+    return ["rung_unclassified"]
+
+
+def da_class(cell):
+    return _markers(cell, "from_da", DA_MARKERS, DA_MARKER_BY_TAG)
+
+
+def revenue_class(cell):
+    return _markers(cell, "from_revenue", REVENUE_MARKERS, REVENUE_MARKER_BY_TAG)
+
+
 def kd_interest(row, ob_tag=None):
     """(interest, source) for kd. interest_on_borrowings when filed, else interest_expense. Lease interest is subtracted when the source is
     interest_expense or the Nonoperating rung of interest_on_borrowings (the winning tag, from provenance); never from an IFRS borrowings rung.
@@ -154,7 +188,7 @@ def _scale(v, pi, unit=1.0):
 
 def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price=None, shares=None, shares_source=None, statement_currency=None,
           quote_currency=None, currency_source=None, valuation_date=None, pi=None, untagged=(), dc_tags=None, unit=1e9, field_prov=None,
-          vendor_total_debt=None, vendor_capex=None, vendor_capex_why=None) -> dict[str, Any]:
+          vendor_total_debt=None, vendor_capex=None, vendor_capex_why=None, vendor_da=None, vendor_da_why=None, vendor_revenue=None) -> dict[str, Any]:
     """{"d2": dict | None, "d2_provenance": dict, "d2_unavailable": [member names] | None} for one name at its base year.
 
     `rows` the fiscal-year rows (the record's view: consolidated net income and equity); `price` and `shares` the pack's price and diluted share
@@ -163,7 +197,9 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
     every level it hands the desk (the year-0 and PP&E levels are scaled by it; the pooled totals stay raw, only their ratios are read);
     `untagged` the record's untagged fields; `dc_tags` {year: debt_current tag}; `field_prov` {field: {year: {"tag", "state"}}} the winning tag and state of capex_d2, debt_d2_total and
     interest_on_borrowings (D2b3); `vendor_total_debt` the vendor file's Total_Debt (fix 4 and the debt rung check); `vendor_capex` the vendor's Capital_Expenditure when the pack's
-    vendor-capex gate (`_vendor_capex_usable`) passes, else None (`vendor_capex_why` says why). Every level in `d2` (pooled totals, PP&E, amortization, year 0) is
+    vendor-capex gate (`_vendor_capex_usable`) passes, else None (`vendor_capex_why` says why). D2b4: `vendor_da` the vendor's Calculated_Metrics.Depreciation_Amortization (TTM; None when the vendor-capex gate fails, `vendor_da_why` says why);
+    `vendor_revenue` {fiscal year: vendor annual revenue} for the years the vendor holds, matched on the period end. `field_prov` also carries da_d2 and revenue_d2.
+    Every level in `d2` (pooled totals, PP&E, amortization, year 0) is
     in units of `unit` currency (default 1e9: $B, the unit of the bridge's revenue); ratios and rates are unit-free."""
     rws = tcr.normalise_rows(rows)
     untagged = frozenset(untagged or ())
@@ -340,6 +376,54 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
     if capex_rung_stamp:
         stamp("pooled", capex_rung_stamp)
         stamp("year0", capex_rung_stamp)
+    # D2b4 (a): a da_d2 that is not simply the filed da is checked against the vendor's TTM Depreciation_Amortization (base year, abs), as capex_d2 is.
+    # The D&A_org arithmetic is unchanged. For da_lone_depreciation there is no amortization to subtract: the screener files that rung only when the filer
+    # files no amortization series in the five-year window, so D&A_org = depreciation - ROU depreciation.
+    dd_ok, da_rung_stamp = True, None
+    dd_base = _n(row.get("da_d2"))
+    if dd_base is not None and ((fprov.get("da_d2") or {}).get(L) or {}).get("state") != "from_da":
+        vd = _n(vendor_da)
+        if vd is None or vd == 0:
+            da_rung_stamp = "da_d2_rung_unverified"
+            prov["da_d2_vendor"] = {"da_d2": dd_base, "vendor_da": vd, "why": vendor_da_why or "vendor Depreciation_Amortization absent or zero"}
+        else:
+            ratio = abs(dd_base) / abs(vd)
+            prov["da_d2_vendor"] = {"da_d2": dd_base, "vendor_da": vd, "ratio": ratio}
+            if VENDOR_AGREE[0] <= ratio <= VENDOR_AGREE[1]:
+                da_rung_stamp = "da_d2_rung_vendor_agrees"
+            else:
+                da_rung_stamp, dd_ok = "da_d2_vendor_disagrees", False
+    if da_rung_stamp:
+        stamp("pooled", da_rung_stamp)
+        stamp("year0", da_rung_stamp)
+    # D2b4 (b): each rung-sourced revenue_d2 year in the window is checked against the vendor's annual revenue of the same fiscal year, when the vendor holds it.
+    # Any disagreement makes revenue_d2 unusable everywhere (as capex_d2): the years are then excluded by name.
+    rd_ok = True
+    vrev = vendor_revenue or {}
+    rd_agree, rd_unver = [], []
+    for y in window:
+        r_ = rws.get(y)
+        rd = _n(r_.get("revenue_d2")) if r_ is not None else None
+        if rd is None or _n(r_.get("revenue")) is not None or not revenue_class(((fprov.get("revenue_d2") or {}).get(y)) or {"state": "unknown"}):
+            continue
+        vr = _n(vrev.get(y))
+        if vr is None or vr == 0:
+            rd_unver.append(y)
+            continue
+        ratio = abs(rd) / abs(vr)
+        prov.setdefault("revenue_d2_vendor", {})[str(y)] = {"revenue_d2": rd, "vendor_revenue": vr, "ratio": ratio}
+        if VENDOR_AGREE[0] <= ratio <= VENDOR_AGREE[1]:
+            rd_agree.append(y)
+        else:
+            rd_ok = False
+    if not rd_ok:
+        stamp("pooled", "revenue_d2_vendor_disagrees")
+    else:
+        if rd_agree:
+            stamp("pooled", "revenue_d2_rung_vendor_agrees")
+        if rd_unver:
+            stamp("pooled", "revenue_d2_rung_unverified")
+            prov.setdefault("revenue_d2_vendor", {})["unverified_years"] = rd_unver
     optional = ("rou_depreciation", "amortization_intangibles", "lease_principal")
     present_any = {f: any(y in rws and _n(rws[y].get(f)) is not None for y in window) for f in optional}
     if "amortization_intangibles" in untagged:
@@ -352,6 +436,16 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
             stamp("pooled", f"pooled_year_{y}_excluded:no_row")
             continue
         vals = {f: _n(r.get(f)) for f in ("revenue", "capex", "da") + optional}
+        if vals["revenue"] is None and rd_ok and _n(r.get("revenue_d2")) is not None:
+            vals["revenue"] = _n(r.get("revenue_d2"))
+            cls = revenue_class(((fprov.get("revenue_d2") or {}).get(y)) or {})
+            prov.setdefault("revenue_d2", {})[str(y)] = {"classes": cls, **(((fprov.get("revenue_d2") or {}).get(y)) or {})}
+            stamp("pooled", f"revenue_from_d2_year_{y}" + (":" + "+".join(cls) if cls else ""))
+        if vals["da"] is None and dd_ok and _n(r.get("da_d2")) is not None:
+            vals["da"] = _n(r.get("da_d2"))
+            cls = da_class(((fprov.get("da_d2") or {}).get(y)) or {})
+            prov.setdefault("da_d2", {})[str(y)] = {"classes": cls, **(((fprov.get("da_d2") or {}).get(y)) or {})}
+            stamp("pooled", f"da_from_d2_year_{y}" + (":" + "+".join(cls) if cls else ""))
         if cd2_ok and vals["capex"] is None and _n(r.get("capex_d2")) is not None:
             vals["capex"] = _n(r.get("capex_d2"))
             cls = capex_class(((fprov.get("capex_d2") or {}).get(y)) or {})
@@ -398,6 +492,8 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
     # ---- per-year D&A_org for the base year (ppe.da_org_0 and year0.da_org)
     def da_org_of(r):
         da = _n(r.get("da"))
+        if da is None and dd_ok:
+            da = _n(r.get("da_d2"))          # D2b4: the same fallback as the pooled years; the subtraction below is unchanged
         if da is None:
             return None
         rou, am = _n(r.get("rou_depreciation")), _n(r.get("amortization_intangibles"))
@@ -406,6 +502,10 @@ def build(rows, base_year, *, sic=None, sector=None, financial_sectors=(), price
         return da - (rou if present_any["rou_depreciation"] else 0.0) - (am if present_any["amortization_intangibles"] else 0.0)
 
     da0 = da_org_of(row)
+    if _n(row.get("da")) is None and dd_ok and _n(row.get("da_d2")) is not None and da0 is not None:
+        cls = da_class(((fprov.get("da_d2") or {}).get(L)) or {})
+        prov.setdefault("da_d2", {})[str(L)] = {"classes": cls, **(((fprov.get("da_d2") or {}).get(L)) or {})}
+        stamp("year0", "da_from_d2" + (":" + "+".join(cls) if cls else ""))
     # ---- ppe: the vintage inputs; absent when ppe_gross is not filed
     gp, g, nt = (_n(rws[L - 1].get("ppe_gross")) if (L - 1) in rws else None), _n(row.get("ppe_gross")), _n(row.get("ppe_net"))
     source("ppe", "ppe_gross (prior year and base year), ppe_net and D&A_org of the base year, scaled by pi")

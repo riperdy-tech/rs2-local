@@ -395,6 +395,8 @@ REVIEWED_HISTORY_KEYS = frozenset({
     "amortization_sched_thereafter",
     # D2b3 (BRIEF_D2b3_coverage.md): the two coverage fields, consumed only by facts["d2"] (tools/d2_facts.py; sidecar only), deliberately not printed
     "capex_d2", "debt_d2_total",
+    # D2b4 (BRIEF_D2b4_da_revenue.md, Part R): the D2-only D&A and revenue fallbacks, consumed only by facts["d2"] (sidecar only), deliberately not printed
+    "da_d2", "revenue_d2",
 }) | frozenset(input_scope.HISTORY_FIELDS)
 
 
@@ -1390,6 +1392,30 @@ def _vendor_capex_usable(fin, fy_end):
     return True, None
 
 
+def _vendor_revenue_by_year(fin, period_ends, years):
+    """D2b4: {fiscal year: the vendor's annual TotalRevenue} for the years whose period end (`period_ends` {str(year): date}) the vendor's annual statement
+    is dated within 7 days of. Empty when the vendor's statements are in an unconverted currency. A year the vendor does not hold is absent."""
+    fx = fin.get("FX") or {}
+    if fx and not fx.get("converted") and fx.get("flag"):
+        return {}
+    out = {}
+    for y in years:
+        try:
+            fye = datetime.fromisoformat(str(period_ends.get(str(y)))[:10]).date()
+        except (ValueError, TypeError):
+            continue
+        for r in fin.get("Annual_Income_Statement") or []:
+            try:
+                d = datetime.fromisoformat(str(r.get("Date"))[:10]).date()
+            except ValueError:
+                continue
+            v = r.get("TotalRevenue")
+            if abs((d - fye).days) <= 7 and isinstance(v, (int, float)) and not isinstance(v, bool):
+                out[y] = v
+                break
+    return out
+
+
 def _fy_end_date_for(year, month, day):
     """`date(year, month, day)`, clamped to the last real day of `month` (handles Feb 29 in a
     non-leap fiscal-label year, and any other month/day combination that cannot exist)."""
@@ -1821,7 +1847,7 @@ def _d2_facts_for(t, h, hist_doc, record, sic, sector, price, facts, fin, pi, as
             ccy = (None, None, "no vendor file")
         field_prov = {}
         tag_names, state_names = prov.get("_tags"), prov.get("_states") or {}
-        for f in ("capex_d2", "debt_d2_total", "interest_on_borrowings"):
+        for f in ("capex_d2", "debt_d2_total", "interest_on_borrowings", "da_d2", "revenue_d2"):
             runs_f = ((prov.get("runs") or {}).get(t) or {}).get(f)
             if runs_f and tag_names:
                 tg = throughcycle_record.resolve_run_tags(runs_f, tag_names, yrs)
@@ -1837,6 +1863,7 @@ def _d2_facts_for(t, h, hist_doc, record, sic, sector, price, facts, fin, pi, as
                 field_prov[f] = cells
         vendor_total_debt = (fin or {}).get("Total_Debt")
         vendor_capex, vendor_capex_why = None, "no vendor file"
+        vendor_da, vendor_da_why, vendor_revenue = None, "no vendor file", {}
         if fin:                       # the pack's own vendor-capex gate: FX converted, and the vendor's latest annual dated at our fiscal year end
             pe = (((prov.get("period_end") or {}).get(t) or {}).get(str(base_year)))
             try:
@@ -1845,11 +1872,15 @@ def _d2_facts_for(t, h, hist_doc, record, sic, sector, price, facts, fin, pi, as
                 fye = None
             okv, vendor_capex_why = _vendor_capex_usable(fin, fye)
             vendor_capex = fin.get("Capital_Expenditure") if okv else None
+            vendor_da = (fin.get("Calculated_Metrics") or {}).get("Depreciation_Amortization") if okv else None      # D2b4: TTM, same gate as the capex
+            vendor_da_why = vendor_capex_why
+            vendor_revenue = _vendor_revenue_by_year(fin, (prov.get("period_end") or {}).get(t) or {}, yrs)
         vdate = (asof_date if asof_date is not None else datetime.now().date())
         out = d2_facts.build(view, base_year, sic=sic, sector=sector, financial_sectors=consensus_reference.FINANCIAL_SECTORS, price=price,
                              shares=shares, shares_source=shares_src, statement_currency=ccy[0], quote_currency=ccy[1], currency_source=ccy[2],
                              valuation_date=vdate.isoformat(), pi=pi, untagged=untagged, dc_tags=dc_tags, field_prov=field_prov,
-                             vendor_total_debt=vendor_total_debt, vendor_capex=vendor_capex, vendor_capex_why=vendor_capex_why)
+                             vendor_total_debt=vendor_total_debt, vendor_capex=vendor_capex, vendor_capex_why=vendor_capex_why,
+                             vendor_da=vendor_da, vendor_da_why=vendor_da_why, vendor_revenue=vendor_revenue)
         rec = record or {}
         rtc2 = rec.get("R_tc_after_lease_interest")
         out["d2_provenance"]["r_tc_after_lease_interest"] = {

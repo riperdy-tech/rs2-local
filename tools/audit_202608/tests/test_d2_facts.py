@@ -245,7 +245,7 @@ def test_desk_uses_the_after_lease_ronic_start_only_when_enabled():
 
 # ---- the model-visible text does not change when the screener's eleven new keys arrive ---------------------------------------------------------
 
-NEW_KEYS = ("lease_principal", "lease_interest", "rou_depreciation", "interest_on_borrowings", "ppe_gross", "amortization_sched_y1",
+NEW_KEYS = ("da_d2", "revenue_d2", "lease_principal", "lease_interest", "rou_depreciation", "interest_on_borrowings", "ppe_gross", "amortization_sched_y1",
             "amortization_sched_y2", "amortization_sched_y3", "amortization_sched_y4", "amortization_sched_y5", "amortization_sched_thereafter",
             "capex_d2", "debt_d2_total")      # the last two: D2b3 (BRIEF_D2b3_coverage.md, Part R)
 
@@ -452,3 +452,88 @@ def test_kd_outside_the_plausible_range_is_unavailable_with_the_value_kept():
         assert "kd_outside_plausible_range" in out["d2_provenance"]["members"]["kd"]["stamps"]
     edge = build(rows(interest_expense=3.2))                              # exactly 0.01 is inside
     assert edge["d2"]["kd"] == pytest.approx(0.01)
+
+
+# ---- D2b4 Part R: da_d2 and revenue_d2 (BRIEF_D2b4_da_revenue.md) ----------------------------------------------------------------------------
+
+def test_da_and_revenue_d2_keys_are_reviewed():
+    import capability_test as cap
+    assert {"da_d2", "revenue_d2"} <= cap.REVIEWED_HISTORY_KEYS
+
+
+def test_da_d2_markers_by_state_and_by_tag():
+    c = D.da_class
+    assert c({"tag": "x", "state": "from_da"}) == []
+    assert c({"tag": "x", "state": "cogs_da"}) == ["cogs_da"]
+    assert c({"tag": "ResultsOfOperationsDepreciationDepletionAmortizationAndAccretion", "state": "rung"}) == ["includes_accretion"]
+    assert c({"tag": "DepreciationNonproduction", "state": "rung"}) == ["da_lone_depreciation"]
+    assert c({"tag": "Weird", "state": "rung"}) == ["rung_unclassified"]
+    assert D.revenue_class({"tag": "RevenueFromRenderingOfTransportServices", "state": "rung"}) == ["transport_services_revenue"]
+    assert D.revenue_class({"tag": "Revenues", "state": "from_revenue"}) == []
+
+
+def test_da_d2_fills_pooled_and_year0_only_when_da_is_null_and_keeps_the_da_org_arithmetic():
+    rs = rows(da=None, da_d2=70.0, rou_depreciation=10.0, lease_principal=5.0)
+    out = build(rs, field_prov=fp("da_d2", "CostOfGoodsAndServicesSoldDepreciationAndAmortization", "cogs_da"), vendor_da=75.0)
+    pv = out["d2_provenance"]
+    assert out["d2"]["pooled"]["years"] == 5 and out["d2"]["pooled"]["da_org"] == pytest.approx(5 * (70.0 - 10.0 - 5.0))
+    assert out["d2"]["year0"]["da_org"] == pytest.approx(55.0)
+    assert pv["da_d2"]["2025"]["classes"] == ["cogs_da"]
+    assert "da_from_d2_year_2023:cogs_da" in pv["members"]["pooled"]["stamps"] and "da_from_d2:cogs_da" in pv["members"]["year0"]["stamps"]
+    assert "da_d2_rung_vendor_agrees" in pv["members"]["pooled"]["stamps"] and "da_d2_rung_vendor_agrees" in pv["members"]["year0"]["stamps"]
+    both = build(rows(da=70.0, da_d2=999.0))                      # da filed: da wins, da_d2 never read
+    assert both["d2"]["pooled"]["da_org"] == pytest.approx(5 * 65.0) and "da_d2" not in both["d2_provenance"]
+    z = build(rows(da=0.0, da_d2=999.0))                          # 0.0 is a value
+    assert z["d2"]["pooled"]["da_org"] == pytest.approx(5 * -5.0)
+    none = build(rows(da=None))
+    assert "pooled" in (none["d2_unavailable"] or [])
+
+
+def test_da_d2_lone_depreciation_subtracts_no_amortization():
+    rs = rows(da=None, da_d2=70.0, amortization_intangibles=None)
+    out = build(rs, field_prov=fp("da_d2", "Depreciation", "da_lone_depreciation"), vendor_da=70.0)
+    assert out["d2"]["pooled"]["da_org"] == pytest.approx(350.0)
+    assert "da_from_d2_year_2025:da_lone_depreciation" in out["d2_provenance"]["members"]["pooled"]["stamps"]
+
+
+def test_da_d2_rung_is_verified_against_the_vendor():
+    rs = rows(da=None, da_d2=70.0)
+    cls = fp("da_d2", "ResultsOfOperationsDepreciationDepletionAmortizationAndAccretion", "includes_accretion")
+    for bad in (30.0, 200.0):                                      # ratios 2.33 and 0.35
+        out = build(rs, field_prov=cls, vendor_da=bad)
+        assert "da_d2_vendor_disagrees" in out["d2_provenance"]["members"]["pooled"]["stamps"]
+        assert out["d2"] is None and "pooled" in out["d2_unavailable"]
+    for vd in (None, 0.0):                                         # the absent-vendor stamp
+        un = build(rs, field_prov=cls, vendor_da=vd)
+        assert "da_d2_rung_unverified" in un["d2_provenance"]["members"]["pooled"]["stamps"] and un["d2"]["pooled"]["years"] == 5
+    fd = build(rs, field_prov=fp("da_d2", "x", "from_da"), vendor_da=1.0)         # from_da: not checked
+    assert fd["d2"]["pooled"]["years"] == 5 and "da_d2_vendor_disagrees" not in fd["d2_provenance"]["stamps"]
+
+
+def test_revenue_d2_fills_pooled_revenue_and_is_checked_per_year_against_the_vendor():
+    rs = rows(revenue=None, revenue_d2=1000.0)
+    cls = fp("revenue_d2", "RevenueFromRenderingOfTransportServices", "transport_services_revenue")
+    vend = {y: 1000.0 for y in range(2021, 2026)}
+    out = build(rs, field_prov=cls, vendor_revenue=vend)
+    pv = out["d2_provenance"]
+    assert out["d2"]["pooled"]["revenue"] == pytest.approx(5000.0) and out["d2"]["pooled"]["years"] == 5
+    assert pv["revenue_d2"]["2024"]["classes"] == ["transport_services_revenue"]
+    assert "revenue_from_d2_year_2024:transport_services_revenue" in pv["members"]["pooled"]["stamps"]
+    assert "revenue_d2_rung_vendor_agrees" in pv["members"]["pooled"]["stamps"]
+    part = build(rs, field_prov=cls, vendor_revenue={2025: 1000.0})                # the vendor holds one year only
+    assert "revenue_d2_rung_unverified" in part["d2_provenance"]["members"]["pooled"]["stamps"] and part["d2"]["pooled"]["years"] == 5
+    assert "revenue_d2_rung_unverified" in build(rs, field_prov=cls)["d2_provenance"]["members"]["pooled"]["stamps"]
+    bad = build(rs, field_prov=cls, vendor_revenue={**vend, 2023: 3000.0})
+    assert "revenue_d2_vendor_disagrees" in bad["d2_provenance"]["members"]["pooled"]["stamps"] and bad["d2"] is None
+    plain = build(rows(revenue_d2=1.0), vendor_revenue={2025: 9e9})               # revenue filed: revenue_d2 never read, never checked
+    assert plain["d2"]["pooled"]["revenue"] == pytest.approx(5500.0) and "revenue_d2" not in plain["d2_provenance"]
+    z = build(rows(revenue=0.0, revenue_d2=500.0))                                # 0.0 is a value
+    assert z["d2"]["pooled"]["revenue"] == 0.0
+
+
+def test_vendor_revenue_by_year_matches_on_the_period_end_and_refuses_unconverted_fx():
+    import capability_test as cap
+    fin = {"Annual_Income_Statement": [{"Date": "2025-03-31", "TotalRevenue": 7.0}, {"Date": "2024-03-30", "TotalRevenue": 6.0}]}
+    pe = {"2025": "2025-03-31", "2024": "2024-03-31", "2023": "2023-03-31"}
+    assert cap._vendor_revenue_by_year(fin, pe, [2023, 2024, 2025]) == {2025: 7.0, 2024: 6.0}
+    assert cap._vendor_revenue_by_year(dict(fin, FX={"converted": False, "flag": "INR"}), pe, [2025]) == {}
