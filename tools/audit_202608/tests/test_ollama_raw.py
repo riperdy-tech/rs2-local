@@ -350,15 +350,17 @@ def test_provider_names_and_serving_block():
 def test_ollama_raw_names_a_context_overflow_instead_of_a_silent_front_truncation(stub):
     import urllib.error
     body = {"model": "m", "stream": False, "messages": [{"role": "system", "content": "S"}, {"role": "user", "content": "U"}],
-            "options": {"num_ctx": 98304, "num_predict": 32768, "seed": 1}}
-    stub.reply = {"response": "x", "done": True, "done_reason": "stop", "prompt_eval_count": 98304 - 32768 + 1}
+            "options": {"num_ctx": 98304, "num_predict": 64041, "seed": 1}}
+    stub.reply = {"response": "x", "done": True, "done_reason": "stop", "prompt_eval_count": 98304 - 1000, "eval_count": 1001}
     with pytest.raises(urllib.error.HTTPError) as e:
         prov.chat(body, 30)
     assert e.value.code == 500 and e.value.cause == "context_overflow"
-    stub.reply = dict(stub.reply, prompt_eval_count=98304 - 32768)                       # exactly full is inside
+    stub.reply = dict(stub.reply, eval_count=1000)                                        # exactly full is inside
     assert prov.chat(body, 30)["done_reason"] == "stop"
-    assert raw.context_overflow_guard({"prompt_eval_count": 90000}, {"num_ctx": 98304}) is None          # no output limit: only the prompt is counted
+    # defect 1 (2026-10-18): the output LIMIT is not counted - a prompt of 34,264 tokens with num_predict 64,041 sized from an estimate of 32,215
+    # used 34,264 + 5,000 tokens, far inside the window, and must pass
+    assert raw.context_overflow_guard({"prompt_eval_count": 34264, "eval_count": 5000}, {"num_ctx": 98304, "num_predict": 64041}) is None
     assert raw.context_overflow_guard({}, {"num_ctx": 10, "num_predict": 99}) is None                 # no count in the reply: nothing to check
     with pytest.raises(raw.RawProviderError) as e2:
-        raw.context_overflow_guard({"prompt_eval_count": 0}, {"num_ctx": 100, "num_predict": 101})     # 0 tokens is a value: 0 + 101 > 100
+        raw.context_overflow_guard({"prompt_eval_count": 101, "eval_count": 0}, {"num_ctx": 100})       # 0 generated is a value: 101 > 100
     assert e2.value.cause == "context_overflow"

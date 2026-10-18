@@ -169,14 +169,16 @@ def to_chat_shape(resp, body, version=None):
 
 
 def context_overflow_guard(resp, options):
-    """Front-truncation guard (cross-check 21): Ollama cuts the FRONT of a prompt that does not fit num_ctx without saying so, which drops the system text and the pack. A prompt of
-    prompt_eval_count tokens plus the request's output limit (options.num_predict, when positive) above num_ctx means the window cannot hold both: a named failure, never a
-    silent truncation. Nothing is checked when the request or the reply does not carry the numbers."""
-    ctx, out, n = (options or {}).get("num_ctx"), (options or {}).get("num_predict"), resp.get("prompt_eval_count")
-    if isinstance(ctx, int) and isinstance(n, int) and not isinstance(ctx, bool):
-        limit = out if isinstance(out, int) and out > 0 else 0
-        if n + limit > ctx:
-            raise RawProviderError("context_overflow", f"prompt_eval_count {n} + output limit {limit} = {n + limit} exceeds num_ctx {ctx}: the front of the prompt may have been truncated")
+    """Front-truncation guard (cross-check 21): Ollama cuts the FRONT of a prompt that does not fit num_ctx without saying so, which drops the system text and the pack. The
+    window held more than it can when the tokens actually used, prompt_eval_count plus eval_count, exceed num_ctx: a named failure, never a silent truncation.
+    The output LIMIT (num_predict) is not used: the harness sizes it to the estimated remaining room, so limit plus prompt can exceed num_ctx by the estimate's
+    error while nothing was truncated (defect 1 of the short-form test, 2026-10-18: every turn was refused after a full generation). Nothing is checked when the
+    reply does not carry the numbers."""
+    ctx, n, g = (options or {}).get("num_ctx"), resp.get("prompt_eval_count"), resp.get("eval_count")
+    if isinstance(ctx, int) and not isinstance(ctx, bool) and isinstance(n, int):
+        used = n + (g if isinstance(g, int) and g > 0 else 0)
+        if used > ctx:
+            raise RawProviderError("context_overflow", f"prompt_eval_count {n} + eval_count {g} = {used} exceeds num_ctx {ctx}: the front of the prompt may have been truncated")
 
 
 def chat(body, timeout, url):
