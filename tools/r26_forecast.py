@@ -108,8 +108,8 @@ def validate_scenario(sc: Any, label: str, known: Optional[set]) -> List[Dict[st
         if not _int(N):
             out.append({"field": p + "normalized.year", "problem": "not_a_whole_number"})
             N = None
-        elif N < 3 or (_int(F) and F >= 0 and N > 5 + F):          # SPEC: N is 3..5+F (a year index, not a bounded estimate)
-            out.append({"field": p + "normalized.year", "problem": "year_outside_3_to_5_plus_fade_years"})
+        elif N < 3 or N > HORIZON:                                  # coordinator ruling: N is 3..5 (a year index, not a bounded estimate)
+            out.append({"field": p + "normalized.year", "problem": "normalized_year_out_of_range"})
         for k in ("rev_growth", "delta_pts"):
             if not _num(nm.get(k)):
                 out.append({"field": p + f"normalized.{k}", "problem": "not_a_finite_number"})
@@ -143,7 +143,10 @@ def validate_forecast(obj: Any, dossier: Optional[Dict[str, Any]] = None) -> Lis
 
     Checked: the fields exist and have their types; every number is finite (NaN, infinity and booleans are refused, 0.0 is accepted); the enums
     (`baseline`, `transition`, `frame`); whole-number year fields; the word count of `reason`; and, when `dossier` is given, that every cited fact ID
-    exists in it. Never checked: how large or small a number is. A margin of 400% is structurally valid."""
+    exists in it. Never checked: how large or small a number is. A margin of 400% is structurally valid.
+
+    The normalized year N must be a whole number 3..5 (`normalized_year_out_of_range`). A normalization that is reached after year 5 is not given
+    as N: it is expressed through `long_run_margin_op` and `fade_years`, which the desk already fades to after year 5."""
     if not isinstance(obj, dict):
         return [{"field": "forecast", "problem": "not_an_object"}]
     out: List[Dict[str, str]] = []
@@ -201,7 +204,7 @@ def build_path(forecast: Dict[str, Any], op_margin_bar: Dict[str, Any], rev0: fl
 
     Years 1 and 2 are the model's near term. Years 3..N move from the year-2 value to the normalized value (the margin to the code's normalized margin,
     the growth to the model's `normalized.rev_growth`) by the transition; years after N hold the normalized value. Growth moves exactly as the margin does.
-    N may be beyond `years` (up to 5 + fade_years); the path then ends mid-transition and says so (`normalized_year_beyond_path`).
+    N is 3..5 after validate_forecast; a direct caller may pass a later N, and the path then ends mid-transition and says so (`normalized_year_beyond_path`, defensive).
 
     Worked examples (year-2 margin 0.10, normalized 0.16, N = 5):
       linear                 years 3, 4, 5 -> 0.12, 0.14, 0.16   (a third of the way each year)
