@@ -132,6 +132,15 @@ DROP_RULES: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
         r"sank|slumped|rallied|closed|traded|trades|trading|are up|are down|is up|is down|edges|edged)\b|\btrading at\b|\b52[- ]week (?:high|low|range)\b|"
         r"\bthe price (?:is|was|has|had)\b|\b(?:12|six|6|3|1)[- ]?(?:month|week|day|year)s?\s+(?:run|rally|rise|gain|move|return|decline|drop|performance)\b|"
         r"\$\d[\d.,]*\s+price\b|%\s+at\s+~?\$\d", _I)),
+    ("analyst_view", re.compile(
+        r"\b(?:buy|sell|hold|overweight|underweight|outperform|underperform|neutral|equal[- ]weight|market[- ]perform)\s+ratings?\b|"
+        r"\bratings?\s+(?:of|to|from)\s+(?:buy|sell|hold|overweight|underweight|outperform|underperform|neutral)\b|"
+        r"\brated\s+(?:buy|sell|hold|overweight|underweight|outperform|underperform|neutral)\b|\binitiat(?:e|ed|es|ing)\s+(?:\w+\s+)?coverage\b|\bcoverage\s+initiat\w+|"
+        r"\bupgrad\w+|\bdowngrad\w+|\bprice\s+(?:target|objective)s?\b|\btarget\s+price\b|(?-i:\bPTs?\b)|\bthe street\b|(?-i:\bStreet\b)|\bsell[- ]side\b|"
+        r"\bestimates?\b|\bEPS\s+revisions?\b|\brevisions?\s+(?:up|down|upward|downward|higher|lower)\b|\brevised\s+(?:up|down|upward|downward)\b|"
+        r"\b\d+\s+up\s*/\s*\d+\s+down\b|\b\d+\s+up,?\s+\d+\s+down\b|\bon the day\b|\b(?:stock|shares?)\s+[-+\u2212]\s*\d|"
+        r"\b(?:stock|shares?)\s+(?:moved|rose|fell|gained|lost|dropped|jumped|climbed|slid|slipped|sank|surged|plunged|tumbled|soared|rallied)\b|"
+        r"\b(?:fell|rose|dropped|gained|lost|jumped|slid|slipped|sank|surged|plunged|tumbled|soared|rallied|climbed)\s+[-+\u2212]\s*\d", _I)),
     ("market_cap", re.compile(r"\bmarket cap(?:italization|italisation)?\b", _I)),
     ("price_multiple", re.compile(
         r"\bP/E\b|\bprice[- /]to[- /](?:earnings|book|sales|cash[- ]?flow)\b|\bEV/(?:EBITDA|sales|revenue|ebit)\b|\benterprise value (?:to|of)\b.{0,30}\b(?:ebitda|sales|revenue)\b|"
@@ -288,7 +297,7 @@ def blind_split(L: PackLines) -> Dict[str, Any]:
 
 # ---- the leak test ------------------------------------------------------------------------------------------------------------------------------
 
-_NUM = re.compile(r"(?<![\w.])(?P<tok>(?:[-+]?\$)?[-+]?\d[\d,]*(?:\.\d+)?(?P<unit>%|[BMK](?![A-Za-z])|x(?![A-Za-z]))?)")
+_NUM = re.compile(r"(?<![\w.])(?P<tok>(?:[-+]?\$)?[-+]?\d[\d,]*(?:\.\d+)?(?P<unit>%|\s?(?:million|billion|thousand|mn|bn)\b|[BMK](?![A-Za-z])|x(?![A-Za-z]))?)")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
@@ -301,13 +310,13 @@ def _norm(tok: str) -> str:
     return s
 
 
-def sig_forms(x: float) -> List[str]:
-    """`x` rendered to 1, 2 and 3 significant digits as plain decimals (no sign, no marks, no trailing zeros after the point)."""
+def sig_forms(x: float, top: int = 3) -> List[str]:
+    """`x` rendered to 1, 2 and 3 (up to `top`) significant digits as plain decimals (no sign, no marks, no trailing zeros after the point)."""
     x = abs(float(x))
     if not math.isfinite(x) or x == 0:
         return []
     out = []
-    for k in (1, 2, 3):
+    for k in range(1, top + 1):
         s = format(Decimal(f"{x:.{k - 1}e}"), "f")
         if "." in s:
             s = s.rstrip("0").rstrip(".")
@@ -323,6 +332,19 @@ def _tokens(line: str) -> Iterable[Tuple[str, str, bool]]:
         tok = m.group("tok")
         strong = ("." in tok) or ("$" in tok) or bool(m.group("unit"))
         yield tok, _norm(tok), strong
+
+
+def unit_class(tok: str) -> str:
+    """The unit class of a printed number: "%", "x" (a multiple), "B" / "M" / "K" (an amount with that suffix or word), "$" (a dollar figure with no suffix: per share),
+    else "bare"."""
+    tail = re.sub(r"^[-+]?\$?[-+]?[\d,]*(?:\.\d+)?", "", tok).strip().lower()
+    if tail in ("%", "x"):
+        return tail
+    if tail[:1] in ("b", "m", "k"):
+        return tail[:1].upper()
+    if tail[:1] == "t":
+        return "K"
+    return "$" if "$" in tok else "bare"
 
 
 _SECTION_REF = re.compile(r"\bDATA \d+(?:\.\d+)?\b")
@@ -387,7 +409,7 @@ def removed_numbers(facts: Dict[str, Any]) -> List[Dict[str, Any]]:
         if r.get("section") == "DEFAULTS":
             text = text.split(" | ", 1)[0]          # "- key: value | explanation": the value is the fact, the explanation is fixed text (its rule constants are not data)
         for v, tok in numbers_in_text(text):
-            out.append({"value": v, "origin": f"{r.get('cls')}:{r.get('section')}:{tok}", "kind": "printed"})
+            out.append({"value": v, "origin": f"{r.get('cls')}:{r.get('section')}:{tok}", "kind": "printed", "unit": unit_class(tok)})
 
     def add(obj: Any, path: str) -> None:
         for v, p in _floats(obj, path):
@@ -416,16 +438,44 @@ def _span_of(spans: Sequence[Dict[str, Any]], line_no: int) -> Tuple[str, str]:
     return "unknown", ""
 
 
-def _leak_forms(nums: Sequence[Dict[str, Any]]) -> Dict[str, List[str]]:
-    """{form: [origins]}: each removed number to 1-3 significant digits (a fact that is a fraction also x 100)."""
-    forms: Dict[str, List[str]] = {}
+# a removed fact's unit is not recorded: it is tried in every class a pack prints it in (a fraction also x 100 as a percent; an amount in $B also as $M and $K)
+_FACT_CLASSES = (("$", 1.0), ("bare", 1.0), ("x", 1.0), ("%", 1.0), ("B", 1.0), ("M", 1e3), ("K", 1e6))
+
+
+def _leak_forms(nums: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str], List[str]]:
+    """{(unit class, form): [origins]}: each removed number to 1-3 significant digits in the unit class it is printed in. A printed number keeps its own class and the
+    scale it was printed at ($2.50 is a "$", $2.5M an "M", 2.5x an "x"). A fact has no recorded unit: it is tried as a "$", a bare number, a multiple, a percent, and a $B amount
+    (shown in $M or $K at that scale too); a fact that is a fraction is also x 100 as a percent."""
+    forms: Dict[Tuple[str, str], List[str]] = {}
+
+    def put(cls: str, x: float, origin: str) -> None:
+        for f in sig_forms(x, 6):         # to 6 digits: a copy at the number's own precision is a leak too
+            forms.setdefault((cls, f), []).append(origin)
+
     for n in nums:
-        cand = set(sig_forms(n["value"]))
-        if n["kind"] == "fact" and abs(n["value"]) <= 1.0:
-            cand |= set(sig_forms(n["value"] * 100.0))
-        for f in cand:
-            forms.setdefault(f, []).append(n["origin"])
+        v = n["value"]
+        if n["kind"] == "printed":
+            put(n.get("unit") or "bare", v, n["origin"])
+            continue
+        for cls, scale in _FACT_CLASSES:
+            put(cls, v * scale, n["origin"])
+        if abs(v) <= 1.0:
+            put("%", v * 100.0, n["origin"])
     return forms
+
+
+def _form_hit(forms: Dict[Tuple[str, str], List[str]], tok: str, norm: str, strict: bool = True) -> Optional[List[str]]:
+    """The origins of the removed number the token matches: same unit class (a "$" figure and a bare number are one class here: a per-share figure is printed either way)
+    and the same digits at the token's own written precision; else None. Not `strict`: the digits alone decide (a filed line's bare figure is in the section's unit, and a
+    bare integer has no unit to compare)."""
+    if not strict:
+        return next((o for (c, f), o in forms.items() if f == norm), None)
+    cls = unit_class(tok)
+    for c in (("$", "bare") if cls in ("$", "bare") else (cls,)):
+        hit = forms.get((c, norm))
+        if hit:
+            return hit
+    return None
 
 
 def _filed_support(lines: Sequence[str], classes: Sequence[Tuple[str, str]]) -> Dict[str, str]:
@@ -467,17 +517,18 @@ def r26_leak_audit(blind_pack_text: str, facts: Dict[str, Any]) -> Dict[str, Any
             continue
         cls, sec = classes[i]
         for tok, norm, strong in _tokens(line):
-            if norm not in forms:
+            hit = _form_hit(forms, tok, norm, strict=strong and cls not in EXCEPTION_CLASSES)
+            if hit is None:
                 continue
             if not strong:
                 weak += 1
                 continue
             source = sec if cls in EXCEPTION_CLASSES else support.get(norm)
             if source is None:
-                leaks.append({"line": i, "token": tok, "form": norm, "class": cls, "section": sec, "matches": forms[norm][:3], "text": line[:160]})
+                leaks.append({"line": i, "token": tok, "form": norm, "unit": unit_class(tok), "class": cls, "section": sec, "matches": hit[:3], "text": line[:160]})
                 continue
             e = exceptions.setdefault((sec, norm, source), {"section": sec, "class": cls, "form": norm, "filed_source": source, "count": 0, "example": line[:160],
-                                                           "matches": forms[norm][:3]})
+                                                           "matches": hit[:3]})
             e["count"] += 1
     return {"pass": not leaks, "leaks": leaks, "exceptions": sorted(exceptions.values(), key=lambda e: (e["section"], e["form"])),
             "weak_matches": weak, "n_removed_numbers": len(nums), "n_forms": len(forms),
@@ -528,8 +579,9 @@ def _number_leak(text: str, forms: Dict[str, List[str]], support: Dict[str, str]
     """The first strong number of `text` that is a removed-class number with no filed or derived line holding it too, as `removed_class_number:<origin>`; else None."""
     for line in str(text).split("\n"):
         for tok, norm, strong in _tokens(line):
-            if strong and norm in forms and norm not in support:
-                return f"removed_class_number:{forms[norm][0]}"
+            hit = _form_hit(forms, tok, norm) if strong and norm not in support else None
+            if hit:
+                return f"removed_class_number:{hit[0]}"
     return None
 
 
@@ -543,8 +595,9 @@ def text_leaks(text: str, blind_pack_text: str, facts: Dict[str, Any]) -> List[D
     out = []
     for i, line in enumerate(str(text).split("\n")):
         for tok, norm, strong in _tokens(line):
-            if strong and norm in forms and norm not in support:
-                out.append({"line": i, "token": tok, "form": norm, "matches": forms[norm][:3]})
+            hit = _form_hit(forms, tok, norm) if strong and norm not in support else None
+            if hit:
+                out.append({"line": i, "token": tok, "form": norm, "matches": hit[:3]})
     return out
 
 
