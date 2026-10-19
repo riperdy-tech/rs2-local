@@ -699,12 +699,24 @@ def _prose_matches(a, v, decimals):
     return any(abs(a * 10.0 ** k - v) <= tol for k in _SCALE_POWERS)
 
 
-def prose_number_mismatches(memo, rows, facts=None, cited_ids=(), skip_spans=()):
+def _numbers_in(texts):
+    """Every number written in `texts`, as a float, at the precision it is written (a comma-grouped number is read whole)."""
+    out = []
+    for t in texts or ():
+        for m in re.finditer(r"\d[\d,]*(?:\.\d+)?", str(t)):
+            try:
+                out.append(float(m.group(0).replace(",", "")))
+            except ValueError:
+                continue
+    return out
+
+
+def prose_number_mismatches(memo, rows, facts=None, cited_ids=(), skip_spans=(), input_texts=()):
     """[{"flag": "memo_prose_number_mismatch", "memo": the number as written, "context": the words around it}] for every number the memo writes with a %, a $, an x or bps
-    that is neither in the table nor a number of a cited or named fact. A number with no mark (a year, a date, a count) is not read. A number inside `skip_spans` (a labelled
+    that is neither in the table nor a number of a cited or named fact, nor a number written in any of `input_texts` (every input stage 4 was given: ruling 2026-10-19). A number with no mark (a year, a date, a count) is not read. A number inside `skip_spans` (a labelled
     number the label check already compared) is left to that check."""
     text = memo or ""
-    allowed = _prose_allowed(rows, facts, text, cited_ids)
+    allowed = _prose_allowed(rows, facts, text, cited_ids) + _numbers_in(input_texts)
     out = []
     for m in _PROSE_NUMBER.finditer(text):
         if not (m.group("dollar") or m.group("unit")):
@@ -720,7 +732,7 @@ def prose_number_mismatches(memo, rows, facts=None, cited_ids=(), skip_spans=())
     return out
 
 
-def verify_memo(memo, rows, facts=None, cited_ids=()):
+def verify_memo(memo, rows, facts=None, cited_ids=(), input_texts=()):
     """{"flags": [...], "annotations": [...], "details": [{"flag", "label", "memo", "table"}]}. `flags` are the three labelled checks (they gate); `annotations` is the prose-number
     check (item 13), which reports and does not gate. `facts` are the dossier's facts and `cited_ids` the ids the final forecast cites: the numbers a memo may state besides the
     table's. Nothing is changed."""
@@ -764,7 +776,7 @@ def verify_memo(memo, rows, facts=None, cited_ids=()):
         if w is None or w != vr["value"]:
             details.append({"flag": "memo_verdict_mismatch", "label": "Verdict", "memo": w, "table": vr["value"]})
     flags = [f for f in MEMO_FLAGS if any(d["flag"] == f for d in details)]
-    prose = prose_number_mismatches(text, rows, facts, cited_ids, checked)
+    prose = prose_number_mismatches(text, rows, facts, cited_ids, checked, input_texts)
     return {"flags": flags, "annotations": ["memo_prose_number_mismatch"] if prose else [], "details": details + prose}
 
 

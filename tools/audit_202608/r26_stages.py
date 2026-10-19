@@ -1596,11 +1596,56 @@ def run_stage3(*, run_dir, model, dossier, valuation, op_margin_bar, consensus_c
     if st["crux_state"] == "form_failed":
         chk = dict(chk, valid=False, reason="crux_form: " + "; ".join(st["form_problems"]))
     reveal["crux"] = {"stated": st["crux"], "resolved": st["resolved"], "translated": crux_t, "form_problems": st["form_problems"], "state": st["crux_state"] or "not_stated", "check": chk, "valid": bool(chk.get("valid"))}
+    if not chk.get("valid") and st["crux_state"] == "accepted" and res["ended"] in ("closed", "turn_budget"):
+        # ruling 2026-10-19: ONE correction turn for an invalid crux (the one-repair rule), then no_call. Code names the failing entries and why.
+        first = dict(reveal["crux"])
+        fix = {"crux": None, "resolved": None, "problems": [], "turns": 0}
+
+        def handle_fix(name, args):
+            if name != "state_crux" or fix["crux"] is not None:
+                return {"error": "only one corrected state_crux call is accepted now"}, fix["crux"] is not None
+            fix["crux"] = args.get("crux")
+            fix["resolved"], cp = resolve_crux_citations(fix["crux"], dossier, valuation["run_date"], blind_pack)
+            fix["problems"] = cp + [x for x in crux_check.form_problems(fix["resolved"], valuation["run_date"]) if not any(x.startswith(t.split(".fact_id")[0]) for t in cp)]
+            return {"accepted": True}, True
+
+        msgs.append({"role": "user", "content": crux_correction_message(chk)})
+        res2 = _session(model, msgs, [r26_late.STATE_CRUX_TOOL], run_dir, "stage3_crux_fix", handle_fix, seed=seed, max_turns=3,
+                        nudge="You ended the turn without calling a tool. Call state_crux once with the corrected crux.", **sess)
+        fix["turns"] = res2["turns"]
+        reveal["turns"] += res2["turns"]
+        if fix["crux"] is not None:
+            crux_t2 = translate_crux(fix["resolved"])
+            chk2 = crux_check.check(crux_t2, (final_vf.get("desk") or {}).get("price_implied"), blind_pack, list(fetch_calls), company, ticker, facts or {})
+            if fix["problems"]:
+                chk2 = dict(chk2, valid=False, reason="crux_form: " + "; ".join(fix["problems"]))
+            reveal["crux"] = {"stated": fix["crux"], "resolved": fix["resolved"], "translated": crux_t2, "form_problems": fix["problems"], "state": "corrected", "check": chk2,
+                              "valid": bool(chk2.get("valid")), "first": first, "correction_used": True}
+            chk = chk2
+        else:
+            reveal["crux"]["first"] = first
+            reveal["crux"]["correction_used"] = True
+            reveal["crux"]["correction_ended"] = res2["ended"]
     if not chk.get("valid"):
         reveal["no_call"] = True
         reveal["no_call_reasons"].append(f"crux_invalid:{chk.get('reason')}")
     _write_json(run_dir / ARTIFACTS["stage3"], reveal)
     return reveal
+
+
+def crux_correction_message(chk):
+    """The one correction turn for an invalid crux (ruling 2026-10-19): which entry failed and why, and that it may be dropped or replaced."""
+    why = {"not_reachable": "the price-implied value for this input is not reachable within the desk's bounds, so it cannot be a disagreement with the price",
+           "not_judgment": "this is not a judgment input of the desk", "missing": "the entry is empty or missing"}
+    lines = []
+    for i, e in enumerate(chk.get("entries") or [], 1):
+        if not e.get("valid"):
+            r = e.get("reason") or "invalid"
+            lines.append(f"entry {i} ({e.get('input')}): {why.get(r, r)} [{r}]")
+    if not lines:
+        lines = [f"the crux as a whole: {chk.get('reason')}"]
+    return ("Your crux is not valid: " + "; ".join(lines) + ". You may drop or replace the failing entries; a crux of 1 to 3 valid entries is enough. Call state_crux once more with the "
+            "corrected crux. This is the only correction; a second invalid crux ends the name as no_call.")
 
 
 def numbers_only(fc):
@@ -1710,7 +1755,9 @@ def run_stage4(*, run_dir, model, dossier, valuation, op_margin_bar, facts=None,
         cited |= set((sc_.get("near_term") or {}).get("fact_ids") or []) | set((sc_.get("normalized") or {}).get("fact_ids") or []) | set(sc_.get("long_run_fact_ids") or [])
         for lk in r26_late.LABEL_ENUMS:
             cited |= set((sc_.get(lk) or {}).get("fact_ids") or [])
-    ver = (r26_late.verify_memo(memo, rows, [f for f in dossier.get("facts", []) if f.get("usable")], sorted(cited)) if memo.strip()
+    usable_view = {**dossier, "facts": [f for f in dossier.get("facts", []) if f.get("usable")]}
+    in_texts = [v for k, v in inputs.items() if isinstance(v, str) and k != "task"] + [r26_late.render_dossier(usable_view)]
+    ver = (r26_late.verify_memo(memo, rows, [f for f in dossier.get("facts", []) if f.get("usable")], sorted(cited), in_texts) if memo.strip()
            else {"flags": ["memo_missing"], "annotations": [], "details": [{"flag": "memo_missing"}]})
     # ---- the contract: numbers by code
     crux_t = crux.get("translated")

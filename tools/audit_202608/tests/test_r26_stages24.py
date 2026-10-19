@@ -303,7 +303,7 @@ def test_no_call_when_the_samples_split_by_direction_and_no_model_call_is_made(t
 
 def test_no_call_when_the_crux_is_invalid_after_the_stage(tmp_path, monkeypatch):
     bad = crux_args("keep", citations=[{"fact_id": "F5"}])
-    _, _, rv, fi = run_stages(tmp_path, monkeypatch, THREE + [bad, memo_step()])
+    _, _, rv, fi = run_stages(tmp_path, monkeypatch, THREE + [bad, bad, memo_step()])
     assert rv["called"] and rv["no_call"] and rv["no_call_reasons"] == ["crux_invalid:quote_not_found"] and rv["crux"]["valid"] is False
     assert fi["no_call"] and fi["actionable"] is False and fi["verdict"]["verdict_label"] == "hold" and fi["verdict"]["r26"]["actionable"] is False
 
