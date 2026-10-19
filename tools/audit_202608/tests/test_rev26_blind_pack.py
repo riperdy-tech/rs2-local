@@ -47,7 +47,7 @@ LEGACY_6BC2AD0 = {
 # ---- 1. the switch ------------------------------------------------------------------------------------------------------------------------------
 
 def test_the_arm_its_marker_and_the_untouched_pack_revision():
-    assert "r26" in cap.PILOT_ARMS and cap.R26_ARM == "r26" and cap.R26_REVISION == 26 and cap.PACK_REVISION == 24
+    assert "r26" in cap.PILOT_ARMS and cap.R26_ARM == "r26" and cap.R26_REVISION == 27 and cap.R25_SF_REVISION == 26 and cap.PACK_REVISION == 24
     assert cap.pack_flags("r26") == ("r26", False)
     with pytest.raises(ValueError):
         cap.pack_flags("r26", ranges_show_p50=True)
@@ -339,20 +339,22 @@ def test_the_other_not_comparable_branches_each_state_their_reason():
 
 
 def test_the_operating_basis_equivalent_is_pending_until_the_bridge_inversion_exists_and_calls_it_when_it_does(monkeypatch):
-    monkeypatch.delitem(sys.modules, "bridge_inversion", raising=False)
-    monkeypatch.setitem(sys.modules, "bridge_inversion", None)                                    # not importable
+    monkeypatch.setitem(sys.modules, "r26_forecast", None)                                        # not importable
     assert _cc()["operating_basis"] == {"status": "pending_bridge"}
     import types
-    fake = types.ModuleType("bridge_inversion")
-    seen = {}
+    fake = types.ModuleType("r26_forecast")
+    seen = []
 
-    def invert_bridge(x_margins, **ctx):
-        seen.update(x=dict(x_margins), ctx=ctx)
-        return {"y1": 0.2}
+    def invert_bridge(x_margin, year, facts, revenue=None):
+        seen.append((x_margin, year, facts, revenue))
+        return {"status": "ok", "op_margin": x_margin + 0.05}
     fake.invert_bridge = invert_bridge
-    monkeypatch.setitem(sys.modules, "bridge_inversion", fake)
-    c = rb.consensus_corrected(_est(), 1.5, 2.0, 1e9, 1.0, False, bridge_context={"ticker": "T"})
-    assert c["operating_basis"] == {"status": "inverted", "values": {"y1": 0.2}} and seen["ctx"] == {"ticker": "T"} and math.isclose(seen["x"]["y1"], 0.15)
+    monkeypatch.setitem(sys.modules, "r26_forecast", fake)
+    c = rb.consensus_corrected(_est(), 1.5, 2.0, 1e9, 1.0, False, bridge_facts={"k": 1}, base_year=2025)
+    assert [(round(x, 4), y, f, r) for x, y, f, r in seen] == [(0.15, 2026, {"k": 1}, 10e9), (0.1875, 2027, {"k": 1}, 12e9)]
+    assert c["operating_basis"]["status"] == "inverted" and math.isclose(c["operating_basis"]["values"]["y1"]["op_margin"], 0.2)
+    # no base year: stated, not guessed
+    assert rb.consensus_corrected(_est(), 1.5, 2.0, 1e9, 1.0, False)["operating_basis"] == {"status": "no_base_year"}
 
 
 # ---- 6. a built GEV r26 pack with consensus data --------------------------------------------------------------------------------------------------
@@ -390,14 +392,14 @@ def gev_r26(built, monkeypatch):
 
 
 LEFT_OUT = ("- Price: $", "- Market cap: ", "- CONSENSUS ESTIMATES", "- BASE-YEAR CHECK", "- [Arithmetic] BASE-YEAR CHECK", "- Next-FY EPS estimate trend", "- Estimate revisions",
-            "- Analyst price targets", "- 52-week range", "- Trailing P/E", "- Return on equity", "## DATA 2.5", "## DATA 8 ", "## DATA 8.5", "- levels:", "- next_fy_revenue_growth:",
+            "- Analyst price targets", "- 52-week range", "- Trailing P/E", "## DATA 2.5", "## DATA 8.5", "- levels:", "- next_fy_revenue_growth:",
             "- consensus_data_status:", "- base_year_cap:", "- base_window:", "- x_margin_consensus_y1y2:", "- price:", "- consensus_implied_value:", "- price_implied:")
 
 
 def test_the_built_blind_pack_leaves_out_the_removed_classes_and_the_full_text_keeps_them(gev_r26):
     pk, sf = gev_r26
     blind, full = str(pk), pk.full_text
-    assert blind.split("\n", 1)[0] == "# DATA PACK - GEV   (pack revision 26)" and full.split("\n", 1)[0] == blind.split("\n", 1)[0]
+    assert blind.split("\n", 1)[0] == "# DATA PACK - GEV   (pack revision 27)" and full.split("\n", 1)[0] == blind.split("\n", 1)[0]
     assert pk.facts["pilot_arm"] == "r26" and pk.facts["desk_schema"] == "25.2" and cap.task_for(pk.facts) is cap.TASK_SF
     sf_text = str(sf)
     assert "- CONSENSUS ESTIMATES" in sf_text and "- Price: $" in sf_text            # the same data, in the arm that prints it
@@ -412,7 +414,13 @@ def test_the_built_blind_pack_leaves_out_the_removed_classes_and_the_full_text_k
     basis = next(ln for ln in blind.split("\n") if ln.startswith("- earnings_margin_basis:"))
     assert "m5" not in basis and "consensus" not in basis
     # nothing but the removals, the blind variants and DATA 5.1 separates the full text from the short-form pack
-    assert [ln for ln in full.split("\n") if ln not in set(sf_text.split("\n"))][0].startswith("## DATA 5.1")
+    assert [ln for ln in full.split("\n")[1:] if ln not in set(sf_text.split("\n"))][0].startswith("## DATA 5.1")
+    assert sf_text.split("\n")[0].endswith("(pack revision 26)")             # the arm's marker differs from the short form's
+    # DATA 8 keeps its ROE / gross margin / operating margin line, without the dividend yield (price-derived)
+    roe = next(ln for ln in blind.split("\n") if ln.startswith("- Return on equity:"))
+    assert "dividend yield" not in roe and "operating margin:" in roe
+    assert "dividend yield" in next(ln for ln in full.split("\n") if ln.startswith("- Return on equity:"))
+    assert any(r["cls"] == "multiple" and "dividend yield" in r["text"] for r in pk.facts["r26_blind_source"]["removed_lines"])
     # the full text still reads back to the facts, as the short-form pack does
     assert pack_facts.parity(pk.facts, pack_facts.from_text(full)) == []
 

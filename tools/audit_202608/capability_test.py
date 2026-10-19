@@ -258,7 +258,7 @@ TIMEOUT = 14400
 #   terminal_g by anchor, working capital on own path, rev22 control desk. Step 2d (BRIEF_R24_S2d_ronic_diagnostics.md): RONIC as stated (no floor
 #   at r), TV share and reinvestment diagnostics; terminal_ronic's ROIC-five-years range annotates only (TASK item 3d).
 # Revision 26 (BRIEF_R26_B_blind_pack.md, SPEC_rev26_staged_analyst.md section 5; operator-approved 2026-10-19): the pilot arm r26 is the staged analyst's pack. It runs desk schema 25.2 on the
-#   revision-24 briefing (as r25_sf does) and its marker is R26_REVISION 26 for this arm only; PACK_REVISION stays 24, so no book name re-triggers and every other arm's pack is
+#   revision-24 briefing (as r25_sf does) and its marker is R26_REVISION 27 for this arm only (SPEC amended: revision 27 for the staged arm, so it differs from r25_sf's 26); PACK_REVISION stays 24, so no book name re-triggers and every other arm's pack is
 #   byte-identical. The text build_pack returns for it is the BLIND pack: the full pack's elements carry a source class each (r26_blind.PackLines, a side list never printed), and
 #   the classes consensus, price_target, price, market_cap, multiple, price_action and reference are left out; the narrative sources (news, the catalyst brief, guidance, the
 #   earnings call, the research brief) are filtered sentence by sentence by one rule (r26_blind.names_removed_class) and every dropped sentence is listed in the facts
@@ -287,7 +287,7 @@ R25_SF_REVISION = 26
 DESK_SCHEMA_252 = "25.2"
 # Revision 26 (see the comment log above PACK_REVISION): the arm r26 and its marker.
 R26_ARM = "r26"
-R26_REVISION = 26
+R26_REVISION = 27
 
 
 def pack_flags(pilot_arm=None, ranges_show_p50=None):
@@ -3570,7 +3570,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
         ob_stale = _not_fresh(ob)
         en_stale = _not_fresh(en)
         L.cls = r26_blind.CONSENSUS
-        L += [f"## DATA 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age_label(ob)}]",
+        L += [r26_blind.tag(r26_blind.AGGREGATOR, f"## DATA 8 - CONSENSUS & MULTIPLES   [Aggregator, {_age_label(ob)}]"),
               # price_to_sales dropped 2026-08-20: measured non-null on 0 of 294 vendor records, so
               # the line could never print a value. Market cap and revenue are both in this pack;
               # the model can divide. A field that is structurally always absent is noise, not a
@@ -3578,11 +3578,16 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
               r26_blind.tag(r26_blind.MULTIPLE, f"- Trailing P/E: {_sv(met, 'pe_ratio', ob_stale)}   |   P/B: "
               f"{_sv(met, 'price_to_book', ob_stale)}   |   PEG: {_sv(met, 'peg_ratio', ob_stale)}   "
               f"[trailing; the vendor does not state the period]"),
-              r26_blind.tag(r26_blind.MULTIPLE, f"- Return on equity: {_sv(met, 'return_on_equity', ob_stale)}   |   gross margin: "
+              r26_blind.tag(r26_blind.AGGREGATOR, f"- Return on equity: {_sv(met, 'return_on_equity', ob_stale)}   |   gross margin: "
               f"{_sv(met, 'gross_margin', ob_stale)}   |   operating margin: "
               f"{_sv(met, 'operating_margin', ob_stale)}   |   dividend yield: "
               f"{_sv(met, 'dividend_yield', ob_stale)}   [vendor-computed, expressed as fractions not "
-              f"percents]")]
+              f"percents]",
+              # revision 26: the blind pack prints this line without the dividend yield (a yield on the price)
+              blind=(f"- Return on equity: {_sv(met, 'return_on_equity', ob_stale)}   |   gross margin: "
+                     f"{_sv(met, 'gross_margin', ob_stale)}   |   operating margin: "
+                     f"{_sv(met, 'operating_margin', ob_stale)}   [vendor-computed, expressed as fractions not percents]"),
+              removed_text=f"- dividend yield: {_sv(met, 'dividend_yield', ob_stale)}", removed_cls=r26_blind.MULTIPLE)]
         est = en.get("estimates") if en else None
         _civ_na = None   # why SECTION 8 has no CONSENSUS-IMPLIED VALUE (E10)
         if en_stale:
@@ -3897,7 +3902,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
                         ))
             L += [r26_blind.tag(r26_blind.PRICE, f"- 52-week range: {_sv(en, 'fifty_two_week_low', en_stale)} - "
                   f"{_sv(en, 'fifty_two_week_high', en_stale)}")]
-        L.append("")
+        L.append(r26_blind.tag(r26_blind.AGGREGATOR, ""))
 
         # ---- SECTION 8.5 - PEER CONTEXT [Aggregator, context not an anchor]   [P4.10] -----------
         L.cls = r26_blind.MULTIPLE
@@ -4260,7 +4265,7 @@ def build_pack(t, price_override=None, include_research=True, asof=None, news_sn
             en.get("estimates") if en else None, _r26_base.get("filed_eps"), _r26_base.get("vendor_eps"), facts.get("shares_default"), _pi26,
             _vb26.startswith("break"), vintage_aligned=_r26_base.get("aligned"), shares_agree=bool(_r26_base.get("shares_agree")),
             filed_x_margins=({"fy": _xh_last["fy"], "x_margin": _xh_last["x_margin"]} if isinstance(_xh_last, dict) else None),
-            bridge_context={"ticker": t})
+            bridge_facts=facts, base_year=_xh.get("base_year"))
         _split26 = r26_blind.blind_split(L)
         facts["r26_blind_drops"] = _split26["drops"]
         facts["r26_blind_source"] = {"removed_lines": _split26["removed"], "spans": _split26["spans"], "dropped_sections": _split26["dropped_sections"],

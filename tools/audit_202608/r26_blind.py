@@ -49,14 +49,16 @@ class Tagged(str):
     """A pack element that carries its own source class (and, optionally, the text the blind pack prints in its place)."""
     cls: Optional[str] = None
     blind: Optional[str] = None            # the text the blind pack prints instead of this element (the element is kept in full in the full text)
+    removed_cls: str = "consensus"         # the class of what the blind variant leaves out
     removed_text: Optional[str] = None     # what the blind variant leaves out, recorded as a removed line (a consensus member of an otherwise kept line)
 
 
-def tag(cls: str, text: str, blind: Optional[str] = None, removed_text: Optional[str] = None) -> Tagged:
+def tag(cls: str, text: str, blind: Optional[str] = None, removed_text: Optional[str] = None, removed_cls: str = "consensus") -> Tagged:
     s = Tagged(text)
     s.cls = cls
     s.blind = blind
     s.removed_text = removed_text
+    s.removed_cls = removed_cls
     return s
 
 
@@ -234,7 +236,7 @@ def blind_split(L: PackLines) -> Dict[str, Any]:
         alt = getattr(text, "blind", None)
         if alt is not None:
             if getattr(text, "removed_text", None):
-                removed.append({"cls": CONSENSUS, "section": sec, "id": sid, "text": text.removed_text, "replaced_by_blind_variant": True})
+                removed.append({"cls": text.removed_cls, "section": sec, "id": sid, "text": text.removed_text, "replaced_by_blind_variant": True})
             shown = alt
         if cls == NARRATIVE and not header:
             shown, d = filter_narrative(shown, sec)
@@ -579,20 +581,27 @@ RATIO_BAND = (0.5, 2.0)
 MIN_EPS_ANALYSTS = 3
 
 
-def _bridge_hook(x_margins: Dict[str, Optional[float]], context: Dict[str, Any]) -> Dict[str, Any]:
-    """The operating-basis equivalent of the X-basis margins, by inverting the bridge at the same year (R26-C). Calls `bridge_inversion.invert_bridge` when that
-    module is importable; otherwise {"status": "pending_bridge"}."""
+def _bridge_hook(x_margins: Dict[str, Optional[float]], years: Dict[str, Optional[Dict[str, Any]]], facts: Dict[str, Any], base_year: Optional[int]) -> Dict[str, Any]:
+    """The operating-basis equivalent of each X-basis margin, by inverting the bridge at the same year: `r26_forecast.invert_bridge(x_margin, year, facts, revenue=...)`
+    (tools/r26_forecast.py, R26-C), with the consensus revenue of that year in dollars. {"status": "pending_bridge"} when that module is not importable."""
     try:
-        import bridge_inversion as bi          # noqa: WPS433  (R26-C's module; absent until it lands)
-        fn = getattr(bi, "invert_bridge")
+        from r26_forecast import invert_bridge          # noqa: WPS433  (R26-C's module; absent until it lands)
     except (ImportError, AttributeError):
         return {"status": "pending_bridge"}
-    return {"status": "inverted", "values": fn(x_margins, **context)}
+    if base_year is None:
+        return {"status": "no_base_year"}
+    out: Dict[str, Any] = {}
+    for n, label in ((1, "y1"), (2, "y2")):
+        x, y = x_margins.get(label), (years or {}).get(label)
+        if x is None or not isinstance(y, dict):
+            continue
+        out[label] = invert_bridge(x, base_year + n, facts, revenue=y["revenue_b"] * 1e9)
+    return {"status": "inverted", "values": out}
 
 
 def consensus_corrected(estimates: Optional[Dict[str, Any]], filed_eps: Any, vendor_eps: Any, shares: Any, pi: Any, vendor_break: bool,
                         vintage_aligned: Any = True, shares_agree: bool = True, filed_x_margins: Optional[Dict[str, Any]] = None,
-                        bridge_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                        bridge_facts: Optional[Dict[str, Any]] = None, base_year: Optional[int] = None) -> Dict[str, Any]:
     """The vendor's consensus EPS on the filed base year's basis (SPEC section 5): each year's vendor EPS x (filed base-year EPS / the vendor's base-year EPS),
     converted to an X-basis margin on the consensus revenue (x_margin_basis.consensus_margins, the arithmetic of x_margin_consensus_y1y2).
     {"consensus_not_comparable", "reason", "ratio", "ratio_band", "min_eps_analysts", "filed_eps", "vendor_eps", "x_margin": {"y1", "y2"}, "years": {...},
@@ -650,5 +659,5 @@ def consensus_corrected(estimates: Optional[Dict[str, Any]], filed_eps: Any, ven
     if out["x_margin"]["y1"] is None and out["x_margin"]["y2"] is None:
         return stop("no year with at least 3 EPS analysts and a revenue consensus")
     out["consensus_not_comparable"] = False
-    out["operating_basis"] = _bridge_hook(dict(out["x_margin"]), dict(bridge_context or {}))
+    out["operating_basis"] = _bridge_hook(dict(out["x_margin"]), out["years"], dict(bridge_facts or {}), base_year)
     return out
