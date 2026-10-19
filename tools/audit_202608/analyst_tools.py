@@ -52,6 +52,7 @@ if _AUDIT_DIR not in sys.path:
     sys.path.insert(0, _AUDIT_DIR)
 import crux_check  # noqa: E402  (revision 19: the judgment inputs, the citation check)
 import llm_provider  # noqa: E402  (the one door every analyst-model call goes through)
+import turn_log  # noqa: E402  (the ollama_raw per-turn log; writes nothing under any other provider)
 import sec_primary  # noqa: E402  (revision 21: the PRIMARY SOURCES items and the refusals that point at them)
 
 SEARX = rs2_data.CONFIG.get("searxng_url", "http://localhost:8888")
@@ -2320,7 +2321,8 @@ def chat_with_tools(model, content, out_dir, think="high", ctx=65536, num_predic
     def _post(body):
         nonlocal server_errors
         try:
-            resp = llm_provider.chat(body, timeout)
+            with turn_log.logging_to(Path(out_dir) / "turns", "main"):      # SPEC revision 26 section 0: the ollama_raw provider logs each turn here
+                resp = llm_provider.chat(body, timeout)
         except urllib.error.HTTPError as e:
             if e.code >= 500:
                 server_errors += 1

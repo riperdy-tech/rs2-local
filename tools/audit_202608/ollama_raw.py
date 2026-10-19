@@ -19,6 +19,7 @@ import jinja2.ext
 import jinja2.sandbox
 
 import qwen_tool_reader
+import turn_log
 
 HERE = Path(__file__).resolve().parents[2]
 TEMPLATE_PATH = HERE / "charters" / "chat_template_qwen38_v33.jinja"
@@ -181,6 +182,11 @@ def context_overflow_guard(resp, options):
             raise RawProviderError("context_overflow", f"prompt_eval_count {n} + eval_count {g} = {used} exceeds num_ctx {ctx}: the front of the prompt may have been truncated")
 
 
+def _system_of(body):
+    """The text of the body's first system message (the SYSTEM in force when the harness sent one)."""
+    return next((m.get("content") for m in body["messages"] if m.get("role") == "system"), "")
+
+
 def chat(body, timeout, url):
     """`url` is the "ollama" provider's /api/chat address; /api/generate and /api/version sit beside it."""
     if body.get("stream") is True:
@@ -192,5 +198,7 @@ def chat(body, timeout, url):
                                   headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(http, timeout=timeout) as r:
         resp = json.loads(r.read().decode())
+    if turn_log.active() is not None:           # SPEC revision 26, section 0: additive files only, after the reply, never part of the request
+        turn_log.log_turn(req, resp, system if system is not None else _system_of(body), TEMPLATE_SHA256, req["model"], req["options"])
     context_overflow_guard(resp, req["options"])
     return to_chat_shape(resp, body, ollama_version(base))

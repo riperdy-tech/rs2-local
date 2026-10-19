@@ -2316,6 +2316,9 @@ def main():
         (d / cap.WITHHELD_FILE).write_text(withheld_block, encoding="utf-8")       # revision 25: arm C's withheld consensus, frozen beside its pack
         (d / "_withheld_elements.json").write_text(json.dumps(withheld_elements, indent=1), encoding="utf-8")
     two_pass = two_pass_setup(facts, withheld_block)
+    if facts.get("pilot_arm") == "r26" and "--tools" not in sys.argv:
+        print("[consensus] ::HARD FAIL:: arm r26 is the staged analyst, whose stage 1 researches with tools: pass --tools", flush=True)
+        raise SystemExit(2)
 
     # S3 3.2: the harness hands the desk every constant the pack holds, once per run, from the
     # facts object and the harness price. shares_default_b is 5.11's default, not SECTION 2's
@@ -2377,7 +2380,28 @@ def main():
         # initial chat_with_tools call and the empty-report retry (below) for THIS sample.
         sample_es_hits, sample_es_misses = 0, 0
         try:
-            if use_tools:
+            if use_tools and facts.get("pilot_arm") == "r26":
+                # revision 26 (brief R26-A1): the staged analyst. Four separate sessions joined by artifacts (dossier.json, ...) under the sample's folder;
+                # the same model, think level, window and seed as every other arm.
+                import r26_stages
+                sd_i = d / f"sample{i}_research"
+                rep, think, meta = r26_stages.run_sample(
+                    model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT, num_batch=num_batch,
+                    seed=i + seed_base, draft_num_predict=draft_num_predict, temperature=temperature,
+                    query_cache=evidence_query_cache if evidence_store_dir is not None else None,
+                    url_cache=evidence_url_cache if evidence_store_dir is not None else None, ticker=t)
+                if not (rep or "").strip():
+                    # no report is a failed sample for this arm: the empty-report retry below runs the single-session analyst, which is not this arm
+                    print(f"  sample {i}: arm r26 returned no report", flush=True)
+                    continue
+                sample_es_hits += meta.get("evidence_hits") or 0
+                sample_es_misses += meta.get("evidence_misses") or 0
+                resp = {"done_reason": meta.get("done_reason"),
+                        "eval_count": meta.get("generated_tokens"),
+                        "eval_rate": meta.get("eval_rate"),
+                        "eval_duration_s": meta.get("eval_duration_s")}
+                msg = {}
+            elif use_tools:
                 sd_i = d / f"sample{i}_research"
                 rep, think, meta = analyst_tools.chat_with_tools(
                     model, pack, sd_i, think=think_level, ctx=ctx, num_predict=NUM_PREDICT, num_batch=num_batch,
